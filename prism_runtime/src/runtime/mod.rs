@@ -11,6 +11,9 @@
 
 use std::{collections::BTreeMap, sync::Mutex};
 
+// TODO: Should we have any guarantees that we don't mix runtimes?
+
+/// This represents an instance of a reactive graph.
 pub struct Runtime(Mutex<RuntimeInner>);
 
 struct RuntimeInner {
@@ -22,7 +25,14 @@ pub(crate) trait Action {
     fn act(self: Box<Self>, runtime: &Runtime);
 }
 
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Runtime {
+    /// Construct a fresh runtime.
     pub fn new() -> Self {
         Runtime(Mutex::new(RuntimeInner {
             actions: Default::default(),
@@ -43,24 +53,30 @@ impl Runtime {
             .push(Box::new(action));
     }
 
+    /// Propagate scheduled events.
     pub fn propagate(&mut self) {
-        {
-            let mut this = self.0.lock().unwrap();
-            if this.height.is_some() {
-                panic!("Can't initiate propagation while propagation is already happening");
-            }
-            let Some((&height, _)) = this.actions.first_key_value() else {
-                return;
-            };
-            this.height = Some(height);
-        }
+        let mut first_round = true;
         loop {
             let actions = {
                 let mut this = self.0.lock().unwrap();
+
+                if first_round && this.height.is_some() {
+                    panic!("Can't initiate propagation while propagation is already happening");
+                }
+                first_round = false;
+
                 let Some((height, actions)) = this.actions.pop_first() else {
+                    // Done propagating
                     this.height = None;
                     return;
                 };
+                if let Some(this_height) = this.height
+                    && height <= this_height
+                {
+                    panic!(
+                        "Runtime actions must always increase in height to prevent infinite regress"
+                    );
+                }
                 this.height = Some(height);
                 actions
             };

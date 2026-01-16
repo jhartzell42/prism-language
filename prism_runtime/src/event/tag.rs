@@ -87,6 +87,13 @@ impl<A: 'static, B: 'static> EventImpl<(Arc<A>, Arc<B>)> for Tag<A, B> {
 }
 
 impl<A: 'static> Event<A> {
+    /// This creates a new event that is triggered whenever `self` is triggered.
+    /// It augments the value of `self` with the value of `behavior` that it had
+    /// before this occurrence.
+    ///
+    /// It is **not** *prompt*, that is, it doesn't reflect updates to the
+    /// behavior that happen during this occurrence. Promptness is basically
+    /// never what you want anyway.
     pub fn tag<B: 'static>(&self, behavior: Behavior<B>) -> Event<(Arc<A>, Arc<B>)> {
         Event(Arc::new_cyclic(|weak| Tag {
             event: self.clone(),

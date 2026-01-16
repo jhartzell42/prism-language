@@ -24,6 +24,8 @@ mod tag;
 #[cfg(test)]
 mod test;
 
+/// This is a handle for an event that contains a value of type `T` in
+/// any occurrence for which it is triggered.
 pub struct Event<T>(pub(crate) Arc<dyn EventImpl<T>>);
 
 impl<T> Clone for Event<T> {
@@ -54,6 +56,7 @@ pub(crate) trait EventImpl<T> {
 }
 
 impl<T: Debug + 'static> Event<T> {
+    /// This logs all triggerings of the event, at `log::debug!` level.
     pub fn trace(&self, label: String) {
         struct Tracer<T> {
             label: String,

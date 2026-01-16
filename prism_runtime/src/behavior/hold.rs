@@ -10,6 +10,9 @@ use crate::{
 // Do we want to require that?
 
 impl<T: 'static> Event<T> {
+    /// Creates a behavior that has the value from this event
+    /// from the last occurrence in which the event was triggered.
+    /// If it has never triggered, it will have the `initial` value.
     pub fn hold(&self, initial: Arc<T>) -> Behavior<T> {
         let hold = Arc::new_cyclic(|weak| HoldBehavior {
             value: Mutex::new(initial),

@@ -14,12 +14,13 @@ impl<O: 'static> Behavior<O> {
         a: Behavior<A>,
         b: Behavior<B>,
     ) -> Self {
+        type Dependents = Vec<Weak<dyn BehaviorDependent>>;
         struct BinaryBehavior<A, B, O, F: Fn(Arc<A>, Arc<B>) -> Arc<O>> {
             a: Behavior<A>,
             b: Behavior<B>,
             f: F,
             weak_self: Weak<Self>,
-            cache: Mutex<Option<(Arc<O>, Vec<Weak<dyn BehaviorDependent>>)>>,
+            cache: Mutex<Option<(Arc<O>, Dependents)>>,
             phantom: PhantomData<O>,
         }
 

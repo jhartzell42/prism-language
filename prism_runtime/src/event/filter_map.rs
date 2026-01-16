@@ -95,6 +95,12 @@ impl<O: 'static, T: 'static, F: Fn(Arc<T>) -> Option<Arc<O>> + 'static> EventImp
 }
 
 impl<T: 'static> Event<T> {
+    /// Creates a new event based on the existing one and the function `f`.
+    ///
+    /// If the existing event is triggered, run `f` on the value.
+    ///
+    /// If `f` returns `Some(value)`, the new event is triggered with
+    /// the value `value`. If `f` returns `None`, the new event is not triggered.
     pub fn filter_map<O: 'static>(
         &self,
         f: impl Fn(Arc<T>) -> Option<Arc<O>> + 'static,
