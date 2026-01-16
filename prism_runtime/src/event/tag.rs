@@ -53,6 +53,13 @@ impl<A: 'static, B: 'static> EventCallback<A> for TagCallback<A, B> {
         let height = this.height();
         runtime.schedule(height, TagAction { tag: this, value });
     }
+
+    fn invalidate_height(&self) {
+        let Some(this) = self.tag.upgrade() else {
+            return;
+        };
+        *this.height.lock().unwrap() = None;
+    }
 }
 
 impl<A: 'static, B: 'static> Tag<A, B> {

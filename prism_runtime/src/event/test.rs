@@ -15,6 +15,8 @@ impl<T> EventCallback<T> for TestLogger<T> {
         let mut log = self.log.lock().unwrap();
         log.push(value);
     }
+
+    fn invalidate_height(&self) {}
 }
 
 #[test]
@@ -95,6 +97,58 @@ fn hold_test() {
             Arc::new(5),
             Arc::new(5),
             Arc::new(4)
+        ]
+    );
+}
+
+#[test]
+fn switch_hold_test() {
+    let mut runtime = Runtime::new();
+    let (outer_event, outer_trigger) = Event::<Event<u32>>::external();
+    let last_event = outer_event.switch_hold();
+
+    let last_event_logger = Arc::new(TestLogger::<u32> {
+        log: Mutex::new(vec![]),
+    });
+    let last_event_logger2: Arc<dyn EventCallback<u32>> = last_event_logger.clone();
+    last_event.0.subscribe(Arc::downgrade(&last_event_logger2));
+
+    let (inner_event, inner_trigger) = Event::<u32>::external();
+    let inner_event_plus_1 = inner_event.filter_map(|x| Some(Arc::new(*x + 1)));
+    let inner_event_plus_2 = inner_event_plus_1.filter_map(|x| Some(Arc::new(*x + 1)));
+    let inner_event_plus_3 = inner_event_plus_2.filter_map(|x| Some(Arc::new(*x + 1)));
+    let inner_event_plus_4 = inner_event_plus_3.filter_map(|x| Some(Arc::new(*x + 1)));
+    let inner_event_plus_5 = inner_event_plus_4.filter_map(|x| Some(Arc::new(*x + 1)));
+
+    runtime.schedule_trigger(&inner_trigger, Arc::new(0));
+    runtime.propagate();
+    runtime.schedule_trigger(&outer_trigger, Arc::new(inner_event.clone()));
+    runtime.schedule_trigger(&inner_trigger, Arc::new(0));
+    runtime.propagate();
+    runtime.schedule_trigger(&inner_trigger, Arc::new(0));
+    runtime.propagate(); // Now 0
+    runtime.schedule_trigger(&outer_trigger, Arc::new(inner_event_plus_5.clone()));
+    runtime.schedule_trigger(&inner_trigger, Arc::new(0));
+    runtime.propagate(); // Also 0
+    runtime.schedule_trigger(&inner_trigger, Arc::new(0));
+    runtime.propagate(); // Now it's 5
+    runtime.schedule_trigger(&outer_trigger, Arc::new(inner_event_plus_3.clone()));
+    runtime.schedule_trigger(&inner_trigger, Arc::new(0));
+    runtime.propagate(); // Also 5
+    runtime.schedule_trigger(&inner_trigger, Arc::new(0));
+    runtime.propagate(); // Now it's 3
+
+    let log = last_event_logger.log.lock().unwrap();
+    let log = log.clone();
+
+    assert_eq!(
+        log,
+        vec![
+            Arc::new(0),
+            Arc::new(0),
+            Arc::new(5),
+            Arc::new(5),
+            Arc::new(3)
         ]
     );
 }

@@ -36,6 +36,7 @@ impl<T> Clone for Event<T> {
 
 pub(crate) trait EventCallback<T> {
     fn event_fired(&self, runtime: &Runtime, value: Arc<T>);
+    fn invalidate_height(&self);
 }
 
 pub(crate) trait EventImpl<T> {
@@ -67,6 +68,8 @@ impl<T: Debug + 'static> Event<T> {
             fn event_fired(&self, _: &Runtime, value: Arc<T>) {
                 log::trace!("{}: {value:?}", self.label)
             }
+
+            fn invalidate_height(&self) {}
         }
 
         let tracer: Arc<dyn EventCallback<T>> = Arc::new(Tracer {

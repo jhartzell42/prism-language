@@ -39,6 +39,13 @@ impl<O: 'static, T: 'static, F: 'static + Fn(Arc<T>) -> Option<Arc<O>>> EventCal
             },
         );
     }
+
+    fn invalidate_height(&self) {
+        let Some(this) = self.filter_map.upgrade() else {
+            return;
+        };
+        *this.height.lock().unwrap() = None;
+    }
 }
 
 impl<O, T, F: Fn(Arc<T>) -> Option<Arc<O>>> Action for FilterMapAction<O, T, F> {

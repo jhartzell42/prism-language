@@ -51,8 +51,12 @@ impl<T: 'static> EventCallback<T> for HoldBehavior<T> {
         let Some(this) = self.weak_self.upgrade() else {
             return;
         };
+        // Behavior updates happen after all event propagation.
         runtime.schedule(usize::MAX, HoldAction { hold: this, value })
     }
+
+    // Heights of a behavior are always `usize::MAX`.
+    fn invalidate_height(&self) {}
 }
 
 struct HoldAction<T> {
