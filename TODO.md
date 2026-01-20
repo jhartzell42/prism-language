@@ -1,7 +1,4 @@
-* Implement `Dynamic`
-    * Hide behaviors from end user
-        * They're not exposed in the programming language
-            * Maybe later if we need them
+* Combinators
 * Widgets
     * `Widget<T>` has a callback
         * Returns a `WidgetNode` and a `T`

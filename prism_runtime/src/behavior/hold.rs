@@ -6,8 +6,9 @@ use crate::{
     runtime::{Action, Runtime},
 };
 
-// TODO: I think Reflex requires a widget for this operation.
-// Do we want to require that?
+// TODO: I think Reflex requires a widget context for this operation.
+// Do we want to require that? Why does it require that? How's it doing that sort
+// of thing anyway?
 
 impl<T: 'static> Behavior<T> {
     /// Creates a behavior that has the value from this event
@@ -28,8 +29,8 @@ impl<T: 'static> Behavior<T> {
 }
 
 struct HoldBehavior<T> {
-    value: Mutex<Arc<T>>,
-    _event: Event<T>, // We need to keep the event alive
+    value: Mutex<Arc<T>>, // Not a cache, we have no way of recomputing it in case of problem
+    _event: Event<T>,     // We need to keep the event alive
     weak_self: Weak<Self>,
     dependents: Mutex<Vec<Weak<dyn BehaviorDependent>>>,
 }
