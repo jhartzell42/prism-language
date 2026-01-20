@@ -55,7 +55,7 @@ impl<T: 'static> Dynamic<T> {
     pub fn hold(initial: Arc<T>, event: Event<T>) -> Dynamic<T> {
         Self {
             behavior: Behavior::hold(initial, event.clone()),
-            event: event,
+            event,
         }
     }
 

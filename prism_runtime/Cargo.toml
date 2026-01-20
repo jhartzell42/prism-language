@@ -11,4 +11,4 @@ env_logger = "*"
 
 [examples]
 [[filter]]
-bin = "filter"
+name = "filter"

@@ -97,10 +97,10 @@ impl<T: 'static> SubscriptionEvent<T> for EventTriggerInner<T> {
     type Inner = ();
 
     fn invalidate_height(&self) {
-        todo!()
+        unreachable!("external events have no outgoing subscription edge")
     }
 
     fn handle_main_subscription(&self, _: &Runtime, _: Arc<Self::Inner>) {
-        unimplemented!("external events have no outgoing subscription edge")
+        unreachable!("external events have no outgoing subscription edge")
     }
 }

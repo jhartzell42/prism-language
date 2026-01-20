@@ -33,9 +33,21 @@ impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         event: Option<&Event<E::Inner>>,
         cb: Weak<dyn EventCallback<T>>,
     ) {
-        let mut list = self.subscribers.lock().unwrap();
-        list.push(cb);
-        self.populate_subscriber(this, event, false);
+        let len = {
+            let mut list = self.subscribers.lock().unwrap();
+            let len = list.len();
+            list.push(cb);
+            len
+        };
+        if len == 0 {
+            self.populate_subscriber(this, event, false);
+        } else if len % 16 == 0 {
+            // Every once in a while, we should check to see if these weak
+            // pointers are all still pointing somewhere.
+            //
+            // TODO: Make a real `WeakBag` implementation.
+            self.consolidate();
+        }
     }
 
     pub(crate) fn clear_subscriber(&self) {

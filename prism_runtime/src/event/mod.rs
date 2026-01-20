@@ -55,7 +55,10 @@ pub(crate) trait EventImpl<T> {
 }
 
 impl<T: Debug + 'static> Event<T> {
-    /// This logs all triggerings of the event, at `log::debug!` level.
+    /// This logs all triggerings of the event, at `log::trace!` level.
+    ///
+    /// It's strictly for debugging purposes as it leaks memory and violates
+    /// many design principles.
     pub fn trace(&self, label: String) {
         struct Tracer<T> {
             label: String,
