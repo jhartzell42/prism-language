@@ -6,6 +6,26 @@ use crate::{
     runtime::{Action, Runtime},
 };
 
+impl<A: 'static> Event<A> {
+    /// This creates a new event that is triggered whenever `self` is triggered.
+    /// It augments the value of `self` with the value of a [`Dynamic`] or
+    /// [`Behavior`].
+    ///
+    /// It is **not** *prompt*, that is, it doesn't reflect updates to the
+    /// tagged value that happened during this occurrence. Promptness is
+    /// basically never what you want anyway.
+    pub fn tag<B: 'static>(&self, behavior: impl Into<Behavior<B>>) -> Event<(Arc<A>, Arc<B>)> {
+        Event(Arc::new_cyclic(|weak| Tag {
+            event: self.clone(),
+            behavior: behavior.into(),
+            subscriber_list: SubscriberList::new(),
+            height: Mutex::new(None),
+            inner_sub: Mutex::new(None),
+            weak_self: weak.clone(),
+        }))
+    }
+}
+
 struct Tag<A, B> {
     subscriber_list: SubscriberList<(Arc<A>, Arc<B>)>,
     event: Event<A>,
@@ -90,25 +110,5 @@ impl<A: 'static, B: 'static> EventImpl<(Arc<A>, Arc<B>)> for Tag<A, B> {
         let new_height = self.event.0.height() + 1;
         *height = Some(new_height);
         new_height
-    }
-}
-
-impl<A: 'static> Event<A> {
-    /// This creates a new event that is triggered whenever `self` is triggered.
-    /// It augments the value of `self` with the value of `behavior` that it had
-    /// before this occurrence.
-    ///
-    /// It is **not** *prompt*, that is, it doesn't reflect updates to the
-    /// behavior that happen during this occurrence. Promptness is basically
-    /// never what you want anyway.
-    pub fn tag<B: 'static>(&self, behavior: Behavior<B>) -> Event<(Arc<A>, Arc<B>)> {
-        Event(Arc::new_cyclic(|weak| Tag {
-            event: self.clone(),
-            behavior,
-            subscriber_list: SubscriberList::new(),
-            height: Mutex::new(None),
-            inner_sub: Mutex::new(None),
-            weak_self: weak.clone(),
-        }))
     }
 }

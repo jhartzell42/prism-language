@@ -56,7 +56,7 @@ fn hold_test() {
     let (event1, trigger1) = Event::<u32>::external();
     let (event2, trigger2) = Event::<()>::external();
 
-    let hold_behavior = event1.hold(Arc::new(0));
+    let hold_behavior = Behavior::hold(Arc::new(0), event1);
     let const_behavior = Behavior::constant(Arc::new(1));
     let derived_behavior = Behavior::map2(|a, b| Arc::new(*a + *b), hold_behavior, const_behavior);
     let tag_event = event2.tag(derived_behavior);

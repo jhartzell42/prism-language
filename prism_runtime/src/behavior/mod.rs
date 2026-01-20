@@ -23,6 +23,12 @@ mod hold;
 /// constructing other behaviors.
 pub struct Behavior<T>(pub(crate) Arc<dyn BehaviorImpl<T>>);
 
+impl<T> Clone for Behavior<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
 pub(crate) trait BehaviorDependent {
     fn invalidate(&self);
 }

@@ -9,19 +9,19 @@ use crate::{
 // TODO: I think Reflex requires a widget for this operation.
 // Do we want to require that?
 
-impl<T: 'static> Event<T> {
+impl<T: 'static> Behavior<T> {
     /// Creates a behavior that has the value from this event
     /// from the last occurrence in which the event was triggered.
     /// If it has never triggered, it will have the `initial` value.
-    pub fn hold(&self, initial: Arc<T>) -> Behavior<T> {
+    pub fn hold(initial: Arc<T>, event: Event<T>) -> Self {
         let hold = Arc::new_cyclic(|weak| HoldBehavior {
             value: Mutex::new(initial),
-            _event: self.clone(),
+            _event: event.clone(),
             weak_self: weak.clone(),
             dependents: Mutex::new(vec![]),
         });
         let hold2: Arc<dyn EventCallback<T>> = hold.clone();
-        self.0.subscribe(Arc::downgrade(&hold2));
+        event.0.subscribe(Arc::downgrade(&hold2));
 
         Behavior(hold)
     }
