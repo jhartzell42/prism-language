@@ -1,30 +1,70 @@
-use std::sync::{Arc, Mutex, Weak};
+use std::{
+    marker::PhantomData,
+    sync::{Arc, Mutex, Weak},
+};
 
-use crate::{event::EventCallback, runtime::Runtime};
+use crate::{
+    event::{Event, EventCallback, EventImpl},
+    runtime::{Action, Runtime},
+};
 
-pub(super) struct SubscriberList<T>(Mutex<Vec<Weak<dyn EventCallback<T>>>>);
+pub(super) struct SubscriptionManager<T, E: SubscriptionEvent<T>> {
+    subscribers: Mutex<Vec<Weak<dyn EventCallback<T>>>>,
+    subscription: Mutex<Option<Arc<MainSubscription<T, E>>>>,
+}
 
-impl<T> SubscriberList<T> {
+pub(super) trait SubscriptionEvent<T>: EventImpl<T> + 'static {
+    type Inner: 'static;
+    fn invalidate_height(&self);
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>);
+}
+
+impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
     pub(super) fn new() -> Self {
-        Self(Mutex::new(vec![]))
-    }
-
-    pub(super) fn add(&self, cb: Weak<dyn EventCallback<T>>) {
-        let mut this = self.0.lock().unwrap();
-        this.push(cb);
-    }
-
-    pub(super) fn notify(&self, runtime: &Runtime, value: Arc<T>) -> bool {
-        let subscribers = self.consolidate();
-        let notified_anyone = !subscribers.is_empty();
-        for subscriber in subscribers {
-            subscriber.event_fired(runtime, value.clone())
+        Self {
+            subscribers: Mutex::new(vec![]),
+            subscription: Mutex::new(None),
         }
-        notified_anyone
+    }
+
+    pub(super) fn add_subscriber(
+        &self,
+        this: Weak<E>,
+        event: Option<&Event<E::Inner>>,
+        cb: Weak<dyn EventCallback<T>>,
+    ) {
+        let mut list = self.subscribers.lock().unwrap();
+        list.push(cb);
+        self.populate_subscriber(this, event, false);
+    }
+
+    pub(crate) fn clear_subscriber(&self) {
+        *self.subscription.lock().unwrap() = None;
+    }
+
+    pub(crate) fn populate_subscriber(
+        &self,
+        this: Weak<E>,
+        event: Option<&Event<E::Inner>>,
+        // If true, reconstruct even if there already is one. If false, recycle existing.
+        refresh: bool,
+    ) {
+        if let Some(event) = event {
+            let mut sub = self.subscription.lock().unwrap();
+            if sub.is_none() || refresh {
+                let new_sub = Arc::new(MainSubscription {
+                    this,
+                    phantom: PhantomData,
+                });
+                let new_sub2: Arc<dyn EventCallback<E::Inner>> = new_sub.clone();
+                event.0.subscribe(Arc::downgrade(&new_sub2));
+                *sub = Some(new_sub);
+            }
+        }
     }
 
     pub(super) fn consolidate(&self) -> Vec<Arc<dyn EventCallback<T>>> {
-        let mut subscribers = self.0.lock().unwrap();
+        let mut subscribers = self.subscribers.lock().unwrap();
         let mut new_subscribers = vec![];
         let mut to_notify = vec![];
         for subscriber in std::mem::take(&mut *subscribers) {
@@ -35,5 +75,68 @@ impl<T> SubscriberList<T> {
         }
         *subscribers = new_subscribers;
         to_notify
+    }
+
+    // Notify can be lazy. Maybe we only even compute **whether** this thing triggers
+    // if there's anyone actually listening.
+    pub(super) fn notify(
+        &self,
+        // Bookkeeping our other subscription
+        this: Weak<E>,
+        event: Option<&Event<E::Inner>>,
+        // Propagation
+        runtime: &Runtime,
+        // Thunk to compute value
+        value: impl FnOnce() -> Option<Arc<T>>,
+    ) -> bool {
+        let subscribers = self.consolidate();
+
+        if subscribers.is_empty() {
+            self.clear_subscriber();
+            return false;
+        }
+        if let Some(value) = value() {
+            for subscriber in subscribers {
+                subscriber.event_fired(runtime, value.clone())
+            }
+        }
+
+        self.populate_subscriber(this, event, false);
+
+        true
+    }
+}
+
+pub(super) struct MainSubscription<T, E: SubscriptionEvent<T>> {
+    this: Weak<E>,
+    phantom: PhantomData<T>,
+}
+
+impl<T: 'static, E: SubscriptionEvent<T>> EventCallback<E::Inner> for MainSubscription<T, E> {
+    fn event_fired(&self, runtime: &Runtime, value: Arc<E::Inner>) {
+        let Some(this) = self.this.upgrade() else {
+            return;
+        };
+        let height = this.height();
+        runtime.schedule(height, MainAction { this, value })
+    }
+
+    fn invalidate_height(&self) {
+        let Some(this) = self.this.upgrade() else {
+            return;
+        };
+        this.invalidate_height();
+    }
+}
+
+pub(super) struct MainAction<T, E: SubscriptionEvent<T>> {
+    this: Arc<E>,
+    value: Arc<E::Inner>,
+}
+
+impl<T, E: SubscriptionEvent<T>> Action for MainAction<T, E> {
+    fn act(self: Box<Self>, runtime: &Runtime) {
+        let Self { this, value } = *self;
+        this.handle_main_subscription(runtime, value);
     }
 }

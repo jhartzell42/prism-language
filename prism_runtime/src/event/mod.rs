@@ -21,8 +21,6 @@ mod never;
 mod subscriber_list;
 mod switch_hold;
 mod tag;
-#[cfg(test)]
-mod test;
 
 /// This is a handle for an event that contains a value of type `T` in
 /// any occurrence for which it is triggered.

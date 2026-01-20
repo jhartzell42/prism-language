@@ -1,4 +1,6 @@
 * Combinators
+    * Basics for dynamic
+        * `map`, `map2` `map3`
 * Widgets
     * `Widget<T>` has a callback
         * Returns a `WidgetNode` and a `T`

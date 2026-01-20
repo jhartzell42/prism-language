@@ -10,3 +10,6 @@ pub mod dynamic;
 pub mod event;
 pub mod runtime;
 mod widget;
+
+#[cfg(test)]
+mod test;

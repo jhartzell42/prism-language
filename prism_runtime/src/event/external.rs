@@ -1,27 +1,19 @@
 use std::sync::{Arc, Mutex, Weak};
 
 use crate::{
-    event::{Event, EventCallback, EventImpl, subscriber_list::SubscriberList},
+    event::{
+        Event, EventCallback, EventImpl,
+        subscriber_list::{SubscriptionEvent, SubscriptionManager},
+    },
     runtime::{Action, Runtime},
 };
 
-pub struct EventTrigger<T>(Weak<EventTriggerInner<T>>);
-
-impl<T> Clone for EventTrigger<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-struct EventTriggerInner<T> {
-    subscribers: SubscriberList<T>,
-    scheduled: Mutex<bool>,
-}
+pub struct EventTrigger<T: 'static>(Weak<EventTriggerInner<T>>);
 
 impl Runtime {
     /// Schedule an event to trigger in the next propagation stage of the runtime.
     pub fn schedule_trigger<T: 'static>(&self, trigger: &EventTrigger<T>, value: Arc<T>) {
-        struct TriggerAction<T> {
+        struct TriggerAction<T: 'static> {
             trigger: EventTrigger<T>,
             value: Arc<T>,
         }
@@ -33,7 +25,9 @@ impl Runtime {
                 };
                 let mut scheduled = trigger.scheduled.lock().unwrap();
                 *scheduled = false;
-                trigger.subscribers.notify(runtime, self.value);
+                trigger
+                    .subscribers
+                    .notify(self.trigger.0.clone(), None, runtime, || Some(self.value));
             }
         }
 
@@ -59,9 +53,10 @@ impl Runtime {
     }
 }
 
-impl<T> EventImpl<T> for EventTriggerInner<T> {
+impl<T: 'static> EventImpl<T> for EventTriggerInner<T> {
     fn subscribe(&self, cb: Weak<dyn EventCallback<T>>) {
-        self.subscribers.add(cb);
+        self.subscribers
+            .add_subscriber(self.weak_self.clone(), None, cb);
     }
 
     fn height(&self) -> usize {
@@ -73,13 +68,39 @@ impl<T: 'static> Event<T> {
     /// Return a tuple of an event that represents an external event,
     /// and a way to trigger it in a given runtime.
     pub fn external() -> (Event<T>, EventTrigger<T>) {
-        let trigger = Arc::new(EventTriggerInner {
-            subscribers: SubscriberList::new(),
+        let trigger = Arc::new_cyclic(|weak| EventTriggerInner {
+            subscribers: SubscriptionManager::new(),
             scheduled: Mutex::new(false),
+            weak_self: weak.clone(),
         });
         (
             Event(trigger.clone()),
             EventTrigger(Arc::downgrade(&trigger)),
         )
+    }
+}
+
+impl<T: 'static> Clone for EventTrigger<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+struct EventTriggerInner<T: 'static> {
+    subscribers: SubscriptionManager<T, Self>,
+    scheduled: Mutex<bool>,
+    weak_self: Weak<Self>,
+}
+
+impl<T: 'static> SubscriptionEvent<T> for EventTriggerInner<T> {
+    // Does Rust choke on "never" types?
+    type Inner = ();
+
+    fn invalidate_height(&self) {
+        todo!()
+    }
+
+    fn handle_main_subscription(&self, _: &Runtime, _: Arc<Self::Inner>) {
+        unimplemented!("external events have no outgoing subscription edge")
     }
 }

@@ -1,7 +1,10 @@
 use std::sync::{Arc, Mutex, Weak};
 
 use crate::{
-    event::{Event, EventCallback, EventImpl, subscriber_list::SubscriberList},
+    event::{
+        Event, EventCallback, EventImpl,
+        subscriber_list::{SubscriptionEvent, SubscriptionManager},
+    },
     runtime::{Action, Runtime},
 };
 
@@ -16,9 +19,8 @@ impl<T: 'static> Event<Event<T>> {
             let outer_sub2: Arc<dyn EventCallback<Event<T>>> = outer_sub.clone();
             self.0.subscribe(Arc::downgrade(&outer_sub2));
             SwitchHold::<T> {
-                subscriber_list: SubscriberList::new(),
+                subscriber_list: SubscriptionManager::new(),
                 inner_event: Mutex::new(None),
-                inner_sub: Mutex::new(None),
                 _outer_event: self.clone(),
                 _outer_sub: outer_sub,
                 weak_self: weak.clone(),
@@ -28,10 +30,9 @@ impl<T: 'static> Event<Event<T>> {
     }
 }
 
-struct SwitchHold<T> {
-    subscriber_list: SubscriberList<T>,
+struct SwitchHold<T: 'static> {
+    subscriber_list: SubscriptionManager<T, Self>,
     inner_event: Mutex<Option<Event<T>>>,
-    inner_sub: Mutex<Option<Arc<SwitchHoldInnerCallback<T>>>>,
     _outer_event: Event<Event<T>>,
     _outer_sub: Arc<SwitchHoldOuterCallback<T>>,
     weak_self: Weak<Self>,
@@ -40,11 +41,9 @@ struct SwitchHold<T> {
 
 impl<T: 'static> EventImpl<T> for SwitchHold<T> {
     fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) {
-        self.subscriber_list.add(cb);
-        let mut inner_sub = self.inner_sub.lock().unwrap();
-        if inner_sub.is_none() {
-            *inner_sub = Some(self.inner_subscription());
-        }
+        let event = self.inner_event.lock().unwrap().clone();
+        self.subscriber_list
+            .add_subscriber(self.weak_self.clone(), event.as_ref(), cb);
     }
 
     fn height(&self) -> usize {
@@ -65,55 +64,23 @@ impl<T: 'static> EventImpl<T> for SwitchHold<T> {
     }
 }
 
-impl<T: 'static> SwitchHold<T> {
-    fn inner_subscription(&self) -> Arc<SwitchHoldInnerCallback<T>> {
-        let sub = Arc::new(SwitchHoldInnerCallback {
-            this: self.weak_self.clone(),
-        });
-        let Some(inner_event) = self.inner_event.lock().unwrap().clone() else {
-            return sub;
-        };
-        let sub2: Arc<dyn EventCallback<T>> = sub.clone();
-        inner_event.0.subscribe(Arc::downgrade(&sub2));
-        sub
-    }
-}
-
-struct SwitchHoldInnerCallback<T> {
-    this: Weak<SwitchHold<T>>,
-}
-
-impl<T: 'static> EventCallback<T> for SwitchHoldInnerCallback<T> {
-    fn event_fired(&self, runtime: &Runtime, value: Arc<T>) {
-        let Some(this) = self.this.upgrade() else {
-            return;
-        };
-        runtime.schedule(this.height(), SwitchHoldInnerAction { this, value });
-    }
+impl<T: 'static> SubscriptionEvent<T> for SwitchHold<T> {
+    type Inner = T;
 
     fn invalidate_height(&self) {
-        let Some(this) = self.this.upgrade() else {
-            return;
-        };
-        *this.height.lock().unwrap() = None;
+        *self.height.lock().unwrap() = None;
+    }
+
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>) {
+        let event = self.inner_event.lock().unwrap().clone();
+        self.subscriber_list
+            .notify(self.weak_self.clone(), event.as_ref(), runtime, || {
+                Some(value)
+            });
     }
 }
 
-struct SwitchHoldInnerAction<T> {
-    this: Arc<SwitchHold<T>>,
-    value: Arc<T>,
-}
-
-impl<T> Action for SwitchHoldInnerAction<T> {
-    fn act(self: Box<Self>, runtime: &Runtime) {
-        let Self { this, value } = *self;
-        if !this.subscriber_list.notify(runtime, value) {
-            *this.inner_sub.lock().unwrap() = None;
-        }
-    }
-}
-
-struct SwitchHoldOuterCallback<T> {
+struct SwitchHoldOuterCallback<T: 'static> {
     this: Weak<SwitchHold<T>>,
 }
 
@@ -135,7 +102,7 @@ impl<T: 'static> EventCallback<Event<T>> for SwitchHoldOuterCallback<T> {
     }
 }
 
-struct SwitchHoldOuterAction<T> {
+struct SwitchHoldOuterAction<T: 'static> {
     this: Arc<SwitchHold<T>>,
     event: Event<T>,
 }
@@ -143,7 +110,7 @@ struct SwitchHoldOuterAction<T> {
 impl<T: 'static> Action for SwitchHoldOuterAction<T> {
     fn act(self: Box<Self>, _: &Runtime) {
         let Self { this, event } = *self;
-        *this.inner_event.lock().unwrap() = Some(event);
+        *this.inner_event.lock().unwrap() = Some(event.clone());
 
         // Yeah, we have no clue what our height is anymore.
         //
@@ -152,16 +119,16 @@ impl<T: 'static> Action for SwitchHoldOuterAction<T> {
         *this.height.lock().unwrap() = None;
         // Let everyone else know what they now don't know.
         let cbs = this.subscriber_list.consolidate();
-        let dont_subscribe = cbs.is_empty();
-        for cb in cbs {
-            cb.invalidate_height();
+
+        if cbs.is_empty() {
+            this.subscriber_list.clear_subscriber();
+        } else {
+            this.subscriber_list
+                .populate_subscriber(this.weak_self.clone(), Some(&event), true);
         }
 
-        let mut sub = this.inner_sub.lock().unwrap();
-        if dont_subscribe {
-            *sub = None;
-        } else {
-            *sub = Some(this.inner_subscription());
+        for cb in cbs {
+            cb.invalidate_height();
         }
     }
 }

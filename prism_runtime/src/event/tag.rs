@@ -2,8 +2,11 @@ use std::sync::{Arc, Mutex, Weak};
 
 use crate::{
     behavior::Behavior,
-    event::{Event, EventCallback, EventImpl, subscriber_list::SubscriberList},
-    runtime::{Action, Runtime},
+    event::{
+        Event, EventImpl,
+        subscriber_list::{SubscriptionEvent, SubscriptionManager},
+    },
+    runtime::Runtime,
 };
 
 impl<A: 'static> Event<A> {
@@ -18,88 +21,42 @@ impl<A: 'static> Event<A> {
         Event(Arc::new_cyclic(|weak| Tag {
             event: self.clone(),
             behavior: behavior.into(),
-            subscriber_list: SubscriberList::new(),
+            subscriber_list: SubscriptionManager::new(),
             height: Mutex::new(None),
-            inner_sub: Mutex::new(None),
             weak_self: weak.clone(),
         }))
     }
 }
 
-struct Tag<A, B> {
-    subscriber_list: SubscriberList<(Arc<A>, Arc<B>)>,
+struct Tag<A: 'static, B: 'static> {
+    subscriber_list: SubscriptionManager<(Arc<A>, Arc<B>), Self>,
     event: Event<A>,
     behavior: Behavior<B>,
     height: Mutex<Option<usize>>,
     weak_self: Weak<Self>,
-    inner_sub: Mutex<Option<Arc<TagCallback<A, B>>>>,
 }
 
-struct TagCallback<A, B> {
-    tag: Weak<Tag<A, B>>,
-}
-
-struct TagAction<A, B> {
-    tag: Arc<Tag<A, B>>,
-    value: Arc<A>,
-}
-
-impl<A, B> Action for TagAction<A, B> {
-    fn act(self: Box<Self>, runtime: &Runtime) {
-        let this = self.tag;
-        let value = self.value;
-        let subs = this.subscriber_list.consolidate();
-
-        if subs.is_empty() {
-            let mut inner_sub = this.inner_sub.lock().unwrap();
-            *inner_sub = None;
-            return;
-        }
-
-        let behavior_value = this.behavior.0.query_for_tag();
-        let combined_value = Arc::new((value, behavior_value));
-
-        for sub in subs {
-            sub.event_fired(runtime, combined_value.clone());
-        }
-    }
-}
-
-impl<A: 'static, B: 'static> EventCallback<A> for TagCallback<A, B> {
-    fn event_fired(&self, runtime: &Runtime, value: Arc<A>) {
-        let Some(this) = self.tag.upgrade() else {
-            return;
-        };
-        let height = this.height();
-        runtime.schedule(height, TagAction { tag: this, value });
-    }
+impl<A: 'static, B> SubscriptionEvent<(Arc<A>, Arc<B>)> for Tag<A, B> {
+    type Inner = A;
 
     fn invalidate_height(&self) {
-        let Some(this) = self.tag.upgrade() else {
-            return;
-        };
-        *this.height.lock().unwrap() = None;
+        *self.height.lock().unwrap() = None;
     }
-}
 
-impl<A: 'static, B: 'static> Tag<A, B> {
-    fn inner_subscription(&self) -> Arc<TagCallback<A, B>> {
-        let sub = Arc::new(TagCallback {
-            tag: self.weak_self.clone(),
-        });
-        let sub_dyn: Arc<dyn EventCallback<A>> = sub.clone();
-        self.event.0.subscribe(Arc::downgrade(&sub_dyn));
-        sub
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>) {
+        self.subscriber_list
+            .notify(self.weak_self.clone(), Some(&self.event), runtime, || {
+                let behavior_value = self.behavior.0.query_for_tag();
+                let combined_value = Arc::new((value, behavior_value));
+                Some(combined_value)
+            });
     }
 }
 
 impl<A: 'static, B: 'static> EventImpl<(Arc<A>, Arc<B>)> for Tag<A, B> {
     fn subscribe(&self, cb: Weak<dyn super::EventCallback<(Arc<A>, Arc<B>)>>) {
-        self.subscriber_list.add(cb);
-        let mut inner_sub = self.inner_sub.lock().unwrap();
-        if inner_sub.is_none() {
-            *inner_sub = Some(self.inner_subscription());
-        }
+        self.subscriber_list
+            .add_subscriber(self.weak_self.clone(), Some(&self.event), cb);
     }
 
     fn height(&self) -> usize {
