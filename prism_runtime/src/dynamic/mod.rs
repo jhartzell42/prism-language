@@ -19,7 +19,10 @@
 
 use std::sync::Arc;
 
-use crate::{behavior::Behavior, event::Event};
+use crate::{
+    behavior::Behavior,
+    event::{Event, OneOrBoth},
+};
 
 /// This represents an actual dynamic value.
 ///
@@ -74,6 +77,28 @@ impl<T: 'static> Dynamic<T> {
             behavior: self.behavior.map(f.clone()),
             event: self.event.filter_map(move |e| Some(f(e))),
         }
+    }
+
+    /// Combine two [`Dynamic`] values with a function. Output dynamic always
+    /// equals `f(a,b)` for the current values of `a` and `b`, even if they
+    /// update in the same occurrence.
+    pub fn map2<A: 'static, B: 'static>(
+        a: Dynamic<A>,
+        b: Dynamic<B>,
+        f: impl 'static + Clone + Fn(Arc<A>, Arc<B>) -> Arc<T>,
+    ) -> Self {
+        type Tagged<A, B> = OneOrBoth<(Arc<A>, Arc<B>), (Arc<B>, Arc<A>)>;
+
+        let behavior = Behavior::map2(f.clone(), a.behavior.clone(), b.behavior.clone());
+        let a_event = a.event.tag(b.behavior);
+        let b_event = b.event.tag(a.behavior);
+        let combinator = move |one_or_both: Tagged<A, B>| match one_or_both {
+            OneOrBoth::A(a) => Some(f(a.0.clone(), a.1.clone())),
+            OneOrBoth::B(b) => Some(f(b.1.clone(), b.0.clone())),
+            OneOrBoth::Both(a, b) => Some(f(a.0.clone(), b.0.clone())),
+        };
+        let event = Event::combine(combinator, a_event, b_event);
+        Self { behavior, event }
     }
 }
 

@@ -1,4 +1,3 @@
 [workspace]
-name = "prism"
 members = ["prism_runtime"]
 resolver = "3"

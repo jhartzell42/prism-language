@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     behavior::Behavior,
+    dynamic::Dynamic,
     event::{Event, EventCallback},
     runtime::Runtime,
 };
@@ -229,5 +230,46 @@ fn combine_test() {
             Arc::new("B(hello)".to_string()),
             Arc::new("Both(42, world)".to_string()),
         ]
+    );
+}
+
+#[test]
+fn dynamic_map2_test() {
+    let mut runtime = Runtime::new();
+    let (a_event, a_trigger) = Event::<u32>::external();
+    let (b_event, b_trigger) = Event::<u32>::external();
+
+    // Create dynamics with initial values
+    let a_dyn = Dynamic::hold(Arc::new(1), a_event);
+    let b_dyn = Dynamic::hold(Arc::new(10), b_event);
+
+    // map2: sum them
+    let sum_dyn = Dynamic::map2(a_dyn, b_dyn, |a, b| Arc::new(*a + *b));
+
+    let logger = Arc::new(TestLogger::<u32> {
+        log: Mutex::new(vec![]),
+    });
+    let logger2: Arc<dyn EventCallback<u32>> = logger.clone();
+    sum_dyn.event().0.subscribe(Arc::downgrade(&logger2));
+
+    // Fire A only: a=2, b=10 (from behavior) => 12
+    runtime.schedule_trigger(&a_trigger, Arc::new(2));
+    runtime.propagate();
+
+    // Fire B only: a=2 (from behavior), b=20 => 22
+    runtime.schedule_trigger(&b_trigger, Arc::new(20));
+    runtime.propagate();
+
+    // Fire both: a=3, b=30 => 33 (both from events, no stale behavior values)
+    runtime.schedule_trigger(&a_trigger, Arc::new(3));
+    runtime.schedule_trigger(&b_trigger, Arc::new(30));
+    runtime.propagate();
+
+    let log = logger.log.lock().unwrap();
+    let log = log.clone();
+
+    assert_eq!(
+        log,
+        vec![Arc::new(12), Arc::new(22), Arc::new(33)]
     );
 }
