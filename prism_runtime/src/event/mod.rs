@@ -15,7 +15,10 @@ use std::{
 
 use crate::runtime::Runtime;
 
+mod combine;
 mod external;
+
+pub use combine::OneOrBoth;
 mod filter_map;
 mod leftmost;
 mod never;

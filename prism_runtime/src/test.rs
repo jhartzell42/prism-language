@@ -180,3 +180,54 @@ fn leftmost_test() {
 
     assert_eq!(log, vec![Arc::new(1), Arc::new(2), Arc::new(1),]);
 }
+
+#[test]
+fn combine_test() {
+    use crate::event::OneOrBoth;
+
+    let mut runtime = Runtime::new();
+    let (a_event, a_trigger) = Event::<u32>::external();
+    let (b_event, b_trigger) = Event::<String>::external();
+
+    // Combine into a string describing what fired
+    let combined = Event::combine(
+        |oob| match oob {
+            OneOrBoth::A(a) => Some(Arc::new(format!("A({})", a))),
+            OneOrBoth::B(b) => Some(Arc::new(format!("B({})", b))),
+            OneOrBoth::Both(a, b) => Some(Arc::new(format!("Both({}, {})", a, b))),
+        },
+        a_event,
+        b_event,
+    );
+
+    let logger = Arc::new(TestLogger::<String> {
+        log: Mutex::new(vec![]),
+    });
+    let logger2: Arc<dyn EventCallback<String>> = logger.clone();
+    combined.0.subscribe(Arc::downgrade(&logger2));
+
+    // Fire A only
+    runtime.schedule_trigger(&a_trigger, Arc::new(1));
+    runtime.propagate();
+
+    // Fire B only
+    runtime.schedule_trigger(&b_trigger, Arc::new("hello".to_string()));
+    runtime.propagate();
+
+    // Fire both simultaneously
+    runtime.schedule_trigger(&a_trigger, Arc::new(42));
+    runtime.schedule_trigger(&b_trigger, Arc::new("world".to_string()));
+    runtime.propagate();
+
+    let log = logger.log.lock().unwrap();
+    let log = log.clone();
+
+    assert_eq!(
+        log,
+        vec![
+            Arc::new("A(1)".to_string()),
+            Arc::new("B(hello)".to_string()),
+            Arc::new("Both(42, world)".to_string()),
+        ]
+    );
+}

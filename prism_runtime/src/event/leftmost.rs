@@ -63,9 +63,8 @@ impl<T: 'static> SubscriptionEvent<T> for LeftmostEvent<T> {
             && current_tag < tag
         {
             return;
-        } else {
-            *winner = Some((value, tag));
         }
+        *winner = Some((value, tag));
     }
 }
 
