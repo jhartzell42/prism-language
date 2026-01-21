@@ -152,3 +152,31 @@ fn switch_hold_test() {
         ]
     );
 }
+
+#[test]
+fn leftmost_test() {
+    let mut runtime = Runtime::new();
+    let (left_event, left_trigger) = Event::<u32>::external();
+    let (right_event, right_trigger) = Event::<u32>::external();
+    let last_event = Event::leftmost(vec![left_event, right_event]);
+
+    let last_event_logger = Arc::new(TestLogger::<u32> {
+        log: Mutex::new(vec![]),
+    });
+    let last_event_logger2: Arc<dyn EventCallback<u32>> = last_event_logger.clone();
+    last_event.0.subscribe(Arc::downgrade(&last_event_logger2));
+
+    runtime.propagate(); // Nothing
+    runtime.schedule_trigger(&left_trigger, Arc::new(1));
+    runtime.propagate(); // 1
+    runtime.schedule_trigger(&right_trigger, Arc::new(2));
+    runtime.propagate(); // 2
+    runtime.schedule_trigger(&right_trigger, Arc::new(2));
+    runtime.schedule_trigger(&left_trigger, Arc::new(1));
+    runtime.propagate(); // 1
+
+    let log = last_event_logger.log.lock().unwrap();
+    let log = log.clone();
+
+    assert_eq!(log, vec![Arc::new(1), Arc::new(2), Arc::new(1),]);
+}

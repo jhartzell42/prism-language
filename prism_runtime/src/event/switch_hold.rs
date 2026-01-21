@@ -19,7 +19,7 @@ impl<T: 'static> Event<Event<T>> {
             let outer_sub2: Arc<dyn EventCallback<Event<T>>> = outer_sub.clone();
             self.0.subscribe(Arc::downgrade(&outer_sub2));
             SwitchHold::<T> {
-                subscriber_list: SubscriptionManager::new(),
+                subscriber_list: SubscriptionManager::new(()),
                 inner_event: Mutex::new(None),
                 _outer_event: self.clone(),
                 _outer_sub: outer_sub,
@@ -66,12 +66,13 @@ impl<T: 'static> EventImpl<T> for SwitchHold<T> {
 
 impl<T: 'static> SubscriptionEvent<T> for SwitchHold<T> {
     type Inner = T;
+    type Tag = ();
 
     fn invalidate_height(&self) {
         *self.height.lock().unwrap() = None;
     }
 
-    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>) {
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>, _: ()) {
         let event = self.inner_event.lock().unwrap().clone();
         self.subscriber_list
             .notify(self.weak_self.clone(), event.as_ref(), runtime, || {

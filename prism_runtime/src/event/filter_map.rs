@@ -20,7 +20,7 @@ impl<T: 'static> Event<T> {
         f: impl Fn(Arc<T>) -> Option<Arc<O>> + 'static,
     ) -> Event<O> {
         Event(Arc::new_cyclic(|weak| FilterMapEvent {
-            subscriber_list: SubscriptionManager::new(),
+            subscriber_list: SubscriptionManager::new(()),
             inner: self.clone(),
             weak_self: weak.clone(),
             f,
@@ -41,12 +41,13 @@ impl<O: 'static, T: 'static, F: 'static + Fn(Arc<T>) -> Option<Arc<O>>> Subscrip
     for FilterMapEvent<O, T, F>
 {
     type Inner = T;
+    type Tag = ();
 
     fn invalidate_height(&self) {
         *self.height.lock().unwrap() = None;
     }
 
-    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>) {
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>, _: ()) {
         self.subscriber_list
             .notify(self.weak_self.clone(), Some(&self.inner), runtime, || {
                 (self.f)(value)

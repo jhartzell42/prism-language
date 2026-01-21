@@ -17,6 +17,7 @@ use crate::runtime::Runtime;
 
 mod external;
 mod filter_map;
+mod leftmost;
 mod never;
 mod subscriber_list;
 mod switch_hold;

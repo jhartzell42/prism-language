@@ -21,7 +21,7 @@ impl<A: 'static> Event<A> {
         Event(Arc::new_cyclic(|weak| Tag {
             event: self.clone(),
             behavior: behavior.into(),
-            subscriber_list: SubscriptionManager::new(),
+            subscriber_list: SubscriptionManager::new(()),
             height: Mutex::new(None),
             weak_self: weak.clone(),
         }))
@@ -38,12 +38,13 @@ struct Tag<A: 'static, B: 'static> {
 
 impl<A: 'static, B> SubscriptionEvent<(Arc<A>, Arc<B>)> for Tag<A, B> {
     type Inner = A;
+    type Tag = ();
 
     fn invalidate_height(&self) {
         *self.height.lock().unwrap() = None;
     }
 
-    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>) {
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>, _: ()) {
         self.subscriber_list
             .notify(self.weak_self.clone(), Some(&self.event), runtime, || {
                 let behavior_value = self.behavior.0.query_for_tag();

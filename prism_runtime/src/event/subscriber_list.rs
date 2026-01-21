@@ -11,19 +11,27 @@ use crate::{
 pub(super) struct SubscriptionManager<T, E: SubscriptionEvent<T>> {
     subscribers: Mutex<Vec<Weak<dyn EventCallback<T>>>>,
     subscription: Mutex<Option<Arc<MainSubscription<T, E>>>>,
+    tag: E::Tag,
 }
 
 pub(super) trait SubscriptionEvent<T>: EventImpl<T> + 'static {
     type Inner: 'static;
+    type Tag: Clone;
+
     fn invalidate_height(&self);
-    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>);
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>, tag: Self::Tag);
+
+    fn handle_early_subscription(&self, _: &Runtime, _: Arc<Self::Inner>, _: Self::Tag) {
+        // Do nothing by default.
+    }
 }
 
 impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(tag: E::Tag) -> Self {
         Self {
             subscribers: Mutex::new(vec![]),
             subscription: Mutex::new(None),
+            tag,
         }
     }
 
@@ -67,6 +75,7 @@ impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
                 let new_sub = Arc::new(MainSubscription {
                     this,
                     phantom: PhantomData,
+                    tag: self.tag.clone(),
                 });
                 let new_sub2: Arc<dyn EventCallback<E::Inner>> = new_sub.clone();
                 event.0.subscribe(Arc::downgrade(&new_sub2));
@@ -122,6 +131,7 @@ impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
 pub(super) struct MainSubscription<T, E: SubscriptionEvent<T>> {
     this: Weak<E>,
     phantom: PhantomData<T>,
+    tag: E::Tag,
 }
 
 impl<T: 'static, E: SubscriptionEvent<T>> EventCallback<E::Inner> for MainSubscription<T, E> {
@@ -130,7 +140,9 @@ impl<T: 'static, E: SubscriptionEvent<T>> EventCallback<E::Inner> for MainSubscr
             return;
         };
         let height = this.height();
-        runtime.schedule(height, MainAction { this, value })
+        let tag = self.tag.clone();
+        this.handle_early_subscription(runtime, value.clone(), tag.clone());
+        runtime.schedule(height, MainAction { this, value, tag })
     }
 
     fn invalidate_height(&self) {
@@ -144,11 +156,12 @@ impl<T: 'static, E: SubscriptionEvent<T>> EventCallback<E::Inner> for MainSubscr
 pub(super) struct MainAction<T, E: SubscriptionEvent<T>> {
     this: Arc<E>,
     value: Arc<E::Inner>,
+    tag: E::Tag,
 }
 
 impl<T, E: SubscriptionEvent<T>> Action for MainAction<T, E> {
     fn act(self: Box<Self>, runtime: &Runtime) {
-        let Self { this, value } = *self;
-        this.handle_main_subscription(runtime, value);
+        let Self { this, value, tag } = *self;
+        this.handle_main_subscription(runtime, value, tag);
     }
 }
