@@ -6,6 +6,37 @@ use std::{
 use crate::behavior::{Behavior, BehaviorDependent, BehaviorImpl};
 
 impl<O: 'static> Behavior<O> {
+    /// This returns a behavior whose value will always be `f(a)` where
+    /// `a` is a behavior of appropriate type. `f` is assumed to be
+    /// a pure function.
+    pub fn map<T: 'static>(&self, f: impl Fn(Arc<O>) -> Arc<T> + 'static) -> Behavior<T> {
+        struct OneBehaviorFunction<A, F: Fn(Arc<A>) -> Arc<O>, O> {
+            a: Behavior<A>,
+            f: F,
+            phantom: PhantomData<O>,
+        }
+
+        impl<A: 'static, F: Fn(Arc<A>) -> Arc<O>, O> BehaviorComputation<O>
+            for OneBehaviorFunction<A, F, O>
+        {
+            fn compute(&self, dependent: BehaviorDependencyTracker) -> Arc<O> {
+                let a = self.a.query_for_computation(dependent);
+                (self.f)(a)
+            }
+        }
+
+        Behavior(Arc::new_cyclic(|weak| DependentBehavior {
+            computation: OneBehaviorFunction {
+                a: self.clone(),
+                f,
+                phantom: PhantomData,
+            },
+            weak_self: weak.clone(),
+            cache: Mutex::new(None),
+            phantom: PhantomData,
+        }))
+    }
+
     /// This returns a behavior whose value will always be `f(a,b)` where
     /// `a` and `b` are behaviors of appropriate type. `f` is assumed to be
     /// a pure function.
@@ -35,6 +66,48 @@ impl<O: 'static> Behavior<O> {
             computation: TwoBehaviorFunction {
                 a,
                 b,
+                f,
+                phantom: PhantomData,
+            },
+            weak_self: weak.clone(),
+            cache: Mutex::new(None),
+            phantom: PhantomData,
+        }))
+    }
+
+    /// This returns a behavior whose value will always be `f(a,b,c)` where
+    /// `a`, `b`, and `c` are behaviors of appropriate type. `f` is assumed to be
+    /// a pure function.
+    pub fn map3<A: 'static, B: 'static, C: 'static>(
+        f: impl Fn(Arc<A>, Arc<B>, Arc<C>) -> Arc<O> + 'static,
+        a: Behavior<A>,
+        b: Behavior<B>,
+        c: Behavior<C>,
+    ) -> Self {
+        struct ThreeBehaviorFunction<A, B, C, F: Fn(Arc<A>, Arc<B>, Arc<C>) -> Arc<O>, O> {
+            a: Behavior<A>,
+            b: Behavior<B>,
+            c: Behavior<C>,
+            f: F,
+            phantom: PhantomData<O>,
+        }
+
+        impl<A: 'static, B: 'static, C: 'static, F: Fn(Arc<A>, Arc<B>, Arc<C>) -> Arc<O>, O>
+            BehaviorComputation<O> for ThreeBehaviorFunction<A, B, C, F, O>
+        {
+            fn compute(&self, dependent: BehaviorDependencyTracker) -> Arc<O> {
+                let a = self.a.query_for_computation(dependent.clone());
+                let b = self.b.query_for_computation(dependent.clone());
+                let c = self.c.query_for_computation(dependent);
+                (self.f)(a, b, c)
+            }
+        }
+
+        Behavior(Arc::new_cyclic(|weak| DependentBehavior {
+            computation: ThreeBehaviorFunction {
+                a,
+                b,
+                c,
                 f,
                 phantom: PhantomData,
             },

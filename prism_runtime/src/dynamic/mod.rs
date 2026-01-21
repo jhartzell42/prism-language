@@ -66,6 +66,15 @@ impl<T: 'static> Dynamic<T> {
             event: Event::<T>::never(),
         }
     }
+
+    /// Create a new [`Dynamic`] that always has the value `f(val)` where `val`
+    /// is the current value of `self`.
+    pub fn map<O: 'static>(&self, f: impl 'static + Clone + Fn(Arc<T>) -> Arc<O>) -> Dynamic<O> {
+        Dynamic {
+            behavior: self.behavior.map(f.clone()),
+            event: self.event.filter_map(move |e| Some(f(e))),
+        }
+    }
 }
 
 impl<T: 'static> From<Dynamic<T>> for Behavior<T> {
