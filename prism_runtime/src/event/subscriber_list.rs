@@ -8,13 +8,13 @@ use crate::{
     runtime::{Action, Runtime},
 };
 
-pub(super) struct SubscriptionManager<T, E: SubscriptionEvent<T>> {
+pub struct SubscriptionManager<T, E: SubscriptionEvent<T>> {
     subscribers: Mutex<Vec<Weak<dyn EventCallback<T>>>>,
     subscription: Mutex<Option<Arc<MainSubscription<T, E>>>>,
     tag: E::Tag,
 }
 
-pub(super) trait SubscriptionEvent<T>: EventImpl<T> + 'static {
+pub trait SubscriptionEvent<T>: EventImpl<T> + 'static {
     type Inner: 'static;
     type Tag: Clone;
 
@@ -27,7 +27,7 @@ pub(super) trait SubscriptionEvent<T>: EventImpl<T> + 'static {
 }
 
 impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
-    pub(super) fn new(tag: E::Tag) -> Self {
+    pub fn new(tag: E::Tag) -> Self {
         Self {
             subscribers: Mutex::new(vec![]),
             subscription: Mutex::new(None),
@@ -35,7 +35,7 @@ impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         }
     }
 
-    pub(super) fn add_subscriber(
+    pub fn add_subscriber(
         &self,
         this: Weak<E>,
         event: Option<&Event<E::Inner>>,
@@ -84,7 +84,7 @@ impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         }
     }
 
-    pub(super) fn consolidate(&self) -> Vec<Arc<dyn EventCallback<T>>> {
+    pub fn consolidate(&self) -> Vec<Arc<dyn EventCallback<T>>> {
         let mut subscribers = self.subscribers.lock().unwrap();
         let mut new_subscribers = vec![];
         let mut to_notify = vec![];
@@ -100,7 +100,7 @@ impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
 
     // Notify can be lazy. Maybe we only even compute **whether** this thing triggers
     // if there's anyone actually listening.
-    pub(super) fn notify(
+    pub fn notify(
         &self,
         // Bookkeeping our other subscription
         this: Weak<E>,
@@ -128,7 +128,7 @@ impl<T: 'static, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
     }
 }
 
-pub(super) struct MainSubscription<T, E: SubscriptionEvent<T>> {
+pub struct MainSubscription<T, E: SubscriptionEvent<T>> {
     this: Weak<E>,
     phantom: PhantomData<T>,
     tag: E::Tag,
@@ -153,7 +153,7 @@ impl<T: 'static, E: SubscriptionEvent<T>> EventCallback<E::Inner> for MainSubscr
     }
 }
 
-pub(super) struct MainAction<T, E: SubscriptionEvent<T>> {
+pub struct MainAction<T, E: SubscriptionEvent<T>> {
     this: Arc<E>,
     value: Arc<E::Inner>,
     tag: E::Tag,

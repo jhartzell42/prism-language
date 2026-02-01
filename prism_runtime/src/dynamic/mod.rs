@@ -36,10 +36,18 @@ use crate::{
 /// All safe ways of constructing a dynamic should uphold that guarantee. While
 /// [`Dynamic::new_unchecked()`] is available to construct a dynamic raw, you
 /// should only use it when you're willing to uphold this guarantee.
-#[derive(Clone)]
 pub struct Dynamic<T> {
     event: Event<T>,
     behavior: Behavior<T>,
+}
+
+impl<T> Clone for Dynamic<T> {
+    fn clone(&self) -> Self {
+        Self {
+            event: self.event.clone(),
+            behavior: self.behavior.clone(),
+        }
+    }
 }
 
 impl<T: 'static> Dynamic<T> {

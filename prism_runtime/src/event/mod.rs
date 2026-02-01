@@ -17,14 +17,15 @@ use crate::runtime::Runtime;
 
 mod combine;
 mod external;
-
-pub use combine::OneOrBoth;
 mod filter_map;
 mod leftmost;
 mod never;
-mod subscriber_list;
+pub(crate) mod subscriber_list;
 mod switch_hold;
 mod tag;
+
+pub use combine::OneOrBoth;
+pub use external::EventTrigger;
 
 /// This is a handle for an event that contains a value of type `T` in
 /// any occurrence for which it is triggered.
