@@ -17,8 +17,8 @@ pub(super) struct WidgetReadyTrigger {
     height: usize,
 }
 
-impl WidgetReadyTrigger {
-    pub(super) fn trigger(&self, runtime: &Runtime) {
+impl Action for Arc<WidgetReadyTrigger> {
+    fn act(self: Box<Self>, runtime: &Runtime) {
         let events = {
             let mut events = self.events.lock().unwrap();
             std::mem::take(&mut *events)

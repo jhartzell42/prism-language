@@ -1,11 +1,17 @@
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use serde_json::Value;
 
-use crate::widget::erased::{ErasedDynamic, ErasedEvent, ErasedEventTrigger};
+use crate::{
+    runtime::Runtime,
+    widget::{
+        delegate::{WidgetDelegate, WidgetDelegateContext},
+        erased::{ErasedDynamic, ErasedEvent, ErasedEventTrigger},
+    },
+};
 
 /// A [`WidgetNode`] is a widget in a form that it's already present
 /// in an app. A tree of [`WidgetNode`]s represents the state of
@@ -13,15 +19,18 @@ use crate::widget::erased::{ErasedDynamic, ErasedEvent, ErasedEventTrigger};
 /// a tree of widget nodes.
 pub struct WidgetNode {
     /// Tracks current children of the node.
-    pub(crate) children: Mutex<Vec<Arc<WidgetNode>>>,
+    pub children: Mutex<Vec<Arc<WidgetNode>>>,
     /// Exposed dynamics for backends to read and subscribe to.
-    pub(crate) dynamics: Slots<ErasedDynamic>,
+    pub dynamics: Slots<ErasedDynamic>,
     /// Exposed events for backends to subscribe to.
-    pub(crate) events: Slots<ErasedEvent>,
+    pub events: Slots<ErasedEvent>,
     /// Exposed triggers for backends to provide data from the outside world
-    pub(crate) triggers: Slots<ErasedEventTrigger>,
+    pub triggers: Slots<ErasedEventTrigger>,
     /// Backend data so the backend knows what (if anything) to do with this widget node.
-    pub(crate) backend_data: Value,
+    pub backend_data: Value,
+    /// The delegate is inserted by the backend and handles callbacks.
+    /// It's kept alive here.
+    pub delegate: OnceLock<Arc<dyn WidgetDelegate>>,
 }
 
 impl WidgetNode {
@@ -32,7 +41,27 @@ impl WidgetNode {
             events: Slots::default(),
             triggers: Slots::default(),
             backend_data: Value::Null,
+            delegate: OnceLock::new(),
         }
+    }
+
+    pub(crate) fn set_delegate(&self, runtime: &Runtime, delegate: Arc<dyn WidgetDelegate>) {
+        let Ok(_) = self.delegate.set(delegate) else {
+            panic!("set delegate multiple times");
+        };
+        let children = self.children.lock().unwrap().clone();
+        let ctxt = WidgetDelegateContext {
+            runtime,
+            node: self,
+        };
+        for child in children {
+            child.set_delegate(
+                runtime,
+                self.delegate.get().unwrap().new_child_created(ctxt, &child),
+            );
+        }
+
+        // XXX: Subscribe to all the events somehow
     }
 }
 
@@ -51,10 +80,6 @@ impl<T> Default for Slots<T> {
 }
 
 impl<T: Clone> Slots<T> {
-    pub(crate) fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.values.len()
     }

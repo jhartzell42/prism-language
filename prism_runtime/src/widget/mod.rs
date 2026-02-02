@@ -2,13 +2,31 @@
 //! the interface between FRP components and the outside world.
 
 mod builder;
-pub mod erased;
+mod delegate;
+mod erased;
 mod node;
-pub mod widget_ready;
+mod widget_ready;
 
 use builder::WidgetBuilder;
 pub use node::WidgetNode;
 
+/// Implementers of this trait represent a Prism component that
+/// is implemented inside the context of the Prism runtime.
+/// This is distinct from backend components, which are implemented
+/// outside of the Prism runtime.
+///
+/// Implementers of this trait should only implement externally visible mutable
+/// state through the graph of events, dynamics, and behaviors they build in the
+/// form of a widget node. They construct the widget node through the builder.
+/// They should not call methods like `subscribe()` on events, nor should they
+/// trigger external events, nor should they query the current state of behaviors
+/// or dynamics directly. They should instead build new events out of old ones,
+/// and new behaviors out of old ones, and express their logic in that way.
+///
+/// `Self` constitutes the inputs to this component. The `T`
+/// represents the output type. The implementation of the `build` function represents
+/// the implementation of the component.
 pub trait Widget<T> {
+    /// Use `builder` to build a widget node. Return the outputs.
     fn build(&self, builder: &mut WidgetBuilder) -> T;
 }

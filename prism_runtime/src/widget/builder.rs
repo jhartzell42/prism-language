@@ -1,10 +1,14 @@
-use std::any::Any as _;
 use std::sync::Arc;
 
 use crate::{
-    event::Event,
+    event::{Event, EventTrigger},
     runtime::Runtime,
-    widget::{Widget, WidgetNode, erased::ErasedEvent, widget_ready::WidgetReadyEvent},
+    widget::{
+        Widget, WidgetNode,
+        delegate::WidgetDelegate,
+        erased::{ErasedEvent, ErasedEventTrigger},
+        widget_ready::WidgetReadyEvent,
+    },
 };
 
 pub struct WidgetBuilder<'a> {
@@ -15,8 +19,33 @@ pub struct WidgetBuilder<'a> {
 }
 
 impl WidgetBuilder<'_> {
+    /// Call from outside (e.g. a backend) to create a root widget.
+    pub fn build_root<T: 'static>(
+        runtime: &Runtime,
+        widget: impl Widget<T>,
+        delegate: Arc<dyn WidgetDelegate>,
+    ) -> (Arc<WidgetNode>, T) {
+        let (mut done_event, trigger) = WidgetReadyEvent::new_with_trigger(0);
+        let mut this = WidgetBuilder {
+            node: WidgetNode::new(),
+            children: vec![],
+            done_event,
+            runtime,
+        };
+        let res = widget.build(&mut this);
+        let node = Arc::new(this.node);
+        this.done_event.set_node(node.clone());
+        {
+            let mut node_children = node.children.lock().unwrap();
+            *node_children = this.children;
+        }
+        runtime.schedule(0, trigger);
+        node.set_delegate(runtime, delegate);
+        (node, res)
+    }
+
     /// Call from a widget to create a subwidget.
-    pub fn bind<T: 'static>(&mut self, widget: impl Widget<T>) -> Arc<T> {
+    pub fn bind<T: 'static>(&mut self, widget: impl Widget<T>) -> T {
         let mut sub = WidgetBuilder {
             node: WidgetNode::new(),
             children: vec![],
@@ -31,7 +60,7 @@ impl WidgetBuilder<'_> {
             *node_children = sub.children;
         }
         self.children.push(node);
-        Arc::new(res)
+        res
     }
 
     /// Call externally to a widget to build a widget node.
@@ -68,13 +97,15 @@ impl WidgetBuilder<'_> {
     }
 
     /// Create a new cyclic event. You must close it, or else it will never fire.
-    pub fn new_cyclic_event<T: 'static>(&mut self, name: String) -> (usize, Event<T>) {
+    pub fn add_cyclic_event<T: 'static>(&mut self, name: String) -> (usize, Event<T>) {
         let ix = self.node.events.len();
         let event = self
             .done_event()
             .filter_map(move |node| Some(Arc::new(node.events.get_index(ix).get::<T>())))
             .switch_hold();
-        self.node.events.add(name, ErasedEvent::new(event.clone()));
+        self.node
+            .events
+            .add(name, ErasedEvent::new(Event::<T>::never()));
         (ix, event)
     }
 
@@ -95,4 +126,27 @@ impl WidgetBuilder<'_> {
             .events
             .update_index(index, ErasedEvent::new(event.clone()));
     }
+
+    pub fn add_external_event<T: 'static>(&mut self, name: String) -> ExternalEventInfo<T> {
+        let (event, trigger) = Event::<T>::external();
+        let trigger_index = self
+            .node
+            .triggers
+            .add(name.clone(), ErasedEventTrigger::new(trigger.clone()));
+        let event_index = self.node.events.add(name, ErasedEvent::new(event.clone()));
+
+        ExternalEventInfo {
+            trigger,
+            trigger_index,
+            event,
+            event_index,
+        }
+    }
+}
+
+struct ExternalEventInfo<T> {
+    trigger: EventTrigger<T>,
+    event: Event<T>,
+    trigger_index: usize,
+    event_index: usize,
 }
