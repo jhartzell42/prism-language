@@ -4,7 +4,7 @@ use std::sync::Arc;
 /// This is an event handler that the backend installs on a widget node.  It
 /// must not hold a strong `Arc` pointer to the node, because the node owns the
 /// delegate with a strong `Arc` pointer.
-pub trait WidgetDelegate {
+pub trait WidgetDelegate: Send + Sync {
     /// A new subnode has been created of the node we're the delegate for.
     ///
     /// Return a delegate for the new subnode.  You can alias yourself, or you
@@ -18,6 +18,7 @@ pub trait WidgetDelegate {
     fn new_child_created(
         &self,
         ctxt: WidgetDelegateContext,
+        index: usize,
         child: &WidgetNode,
     ) -> Arc<dyn WidgetDelegate>;
     /// The node we're a delegate for is about to be destroyed by a node reconstruction

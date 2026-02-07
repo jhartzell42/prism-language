@@ -19,21 +19,24 @@ mod constant;
 mod derived;
 mod hold;
 
+#[cfg(test)]
+mod tests;
+
 /// This represents a handle of a behavior, useful for querying the value and
 /// constructing other behaviors.
-pub struct Behavior<T>(pub(crate) Arc<dyn BehaviorImpl<T>>);
+pub struct Behavior<T: ?Sized + Send + Sync>(pub(crate) Arc<dyn BehaviorImpl<T>>);
 
-impl<T> Clone for Behavior<T> {
+impl<T: ?Sized + Send + Sync> Clone for Behavior<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-pub(crate) trait BehaviorDependent {
+pub(crate) trait BehaviorDependent: Send + Sync {
     fn invalidate(&self);
 }
 
-pub(crate) trait BehaviorImpl<T> {
+pub(crate) trait BehaviorImpl<T: ?Sized>: Send + Sync {
     // What is the current value of the behavior?
     fn query_for_behavior(&self, dependent: Weak<dyn BehaviorDependent>) -> Arc<T>;
     fn query_for_tag(&self) -> Arc<T>;

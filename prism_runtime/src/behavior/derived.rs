@@ -5,19 +5,29 @@ use std::{
 
 use crate::behavior::{Behavior, BehaviorDependent, BehaviorImpl};
 
-impl<O: 'static> Behavior<O> {
+impl<O: ?Sized + 'static + Send + Sync> Behavior<O> {
     /// This returns a behavior whose value will always be `f(a)` where
     /// `a` is a behavior of appropriate type. `f` is assumed to be
     /// a pure function.
-    pub fn map<T: 'static>(&self, f: impl Fn(Arc<O>) -> Arc<T> + 'static) -> Behavior<T> {
-        struct OneBehaviorFunction<A, F: Fn(Arc<A>) -> Arc<O>, O> {
+    pub fn map<T: ?Sized + 'static + Send + Sync>(
+        &self,
+        f: impl Send + Sync + Fn(Arc<O>) -> Arc<T> + 'static,
+    ) -> Behavior<T> {
+        struct OneBehaviorFunction<
+            A: ?Sized + Send + Sync,
+            F: Send + Sync + Fn(Arc<A>) -> Arc<O>,
+            O: ?Sized,
+        > {
             a: Behavior<A>,
             f: F,
             phantom: PhantomData<O>,
         }
 
-        impl<A: 'static, F: Fn(Arc<A>) -> Arc<O>, O> BehaviorComputation<O>
-            for OneBehaviorFunction<A, F, O>
+        impl<
+            A: ?Sized + 'static + Send + Sync,
+            F: Send + Sync + Fn(Arc<A>) -> Arc<O>,
+            O: ?Sized + Send + Sync,
+        > BehaviorComputation<O> for OneBehaviorFunction<A, F, O>
         {
             fn compute(&self, dependent: BehaviorDependencyTracker) -> Arc<O> {
                 let a = self.a.query_for_computation(dependent);
@@ -40,20 +50,29 @@ impl<O: 'static> Behavior<O> {
     /// This returns a behavior whose value will always be `f(a,b)` where
     /// `a` and `b` are behaviors of appropriate type. `f` is assumed to be
     /// a pure function.
-    pub fn map2<A: 'static, B: 'static>(
-        f: impl Fn(Arc<A>, Arc<B>) -> Arc<O> + 'static,
+    pub fn map2<A: 'static + Send + Sync, B: 'static + Send + Sync>(
+        f: impl Send + Sync + Fn(Arc<A>, Arc<B>) -> Arc<O> + 'static,
         a: Behavior<A>,
         b: Behavior<B>,
     ) -> Self {
-        struct TwoBehaviorFunction<A, B, F: Fn(Arc<A>, Arc<B>) -> Arc<O>, O> {
+        struct TwoBehaviorFunction<
+            A: ?Sized + Send + Sync,
+            B: ?Sized + Send + Sync,
+            F: Fn(Arc<A>, Arc<B>) -> Arc<O>,
+            O: ?Sized,
+        > {
             a: Behavior<A>,
             b: Behavior<B>,
             f: F,
             phantom: PhantomData<O>,
         }
 
-        impl<A: 'static, B: 'static, F: Fn(Arc<A>, Arc<B>) -> Arc<O>, O> BehaviorComputation<O>
-            for TwoBehaviorFunction<A, B, F, O>
+        impl<
+            A: ?Sized + 'static + Send + Sync,
+            B: ?Sized + 'static + Send + Sync,
+            F: Send + Sync + Fn(Arc<A>, Arc<B>) -> Arc<O>,
+            O: ?Sized + Send + Sync,
+        > BehaviorComputation<O> for TwoBehaviorFunction<A, B, F, O>
         {
             fn compute(&self, dependent: BehaviorDependencyTracker) -> Arc<O> {
                 let a = self.a.query_for_computation(dependent.clone());
@@ -66,48 +85,6 @@ impl<O: 'static> Behavior<O> {
             computation: TwoBehaviorFunction {
                 a,
                 b,
-                f,
-                phantom: PhantomData,
-            },
-            weak_self: weak.clone(),
-            cache: Mutex::new(None),
-            phantom: PhantomData,
-        }))
-    }
-
-    /// This returns a behavior whose value will always be `f(a,b,c)` where
-    /// `a`, `b`, and `c` are behaviors of appropriate type. `f` is assumed to be
-    /// a pure function.
-    pub fn map3<A: 'static, B: 'static, C: 'static>(
-        f: impl Fn(Arc<A>, Arc<B>, Arc<C>) -> Arc<O> + 'static,
-        a: Behavior<A>,
-        b: Behavior<B>,
-        c: Behavior<C>,
-    ) -> Self {
-        struct ThreeBehaviorFunction<A, B, C, F: Fn(Arc<A>, Arc<B>, Arc<C>) -> Arc<O>, O> {
-            a: Behavior<A>,
-            b: Behavior<B>,
-            c: Behavior<C>,
-            f: F,
-            phantom: PhantomData<O>,
-        }
-
-        impl<A: 'static, B: 'static, C: 'static, F: Fn(Arc<A>, Arc<B>, Arc<C>) -> Arc<O>, O>
-            BehaviorComputation<O> for ThreeBehaviorFunction<A, B, C, F, O>
-        {
-            fn compute(&self, dependent: BehaviorDependencyTracker) -> Arc<O> {
-                let a = self.a.query_for_computation(dependent.clone());
-                let b = self.b.query_for_computation(dependent.clone());
-                let c = self.c.query_for_computation(dependent);
-                (self.f)(a, b, c)
-            }
-        }
-
-        Behavior(Arc::new_cyclic(|weak| DependentBehavior {
-            computation: ThreeBehaviorFunction {
-                a,
-                b,
-                c,
                 f,
                 phantom: PhantomData,
             },
@@ -140,21 +117,23 @@ pub struct BehaviorDependencyTracker(Weak<dyn BehaviorDependent>);
 
 /// Trait for a value that represents how to compute a derived behavior.
 /// The value should own other behaviors.
-pub trait BehaviorComputation<O> {
+pub trait BehaviorComputation<O: ?Sized>: Send + Sync {
     /// This function should query the behaviors this value owns with
     /// [`Behavior::query_for_computation()`].
     fn compute(&self, dependent: BehaviorDependencyTracker) -> Arc<O>;
 }
 
 type Dependents = Vec<Weak<dyn BehaviorDependent>>;
-struct DependentBehavior<O, C: BehaviorComputation<O>> {
+struct DependentBehavior<O: ?Sized + Send + Sync, C: BehaviorComputation<O>> {
     computation: C,
     weak_self: Weak<Self>,
     cache: Mutex<Option<(Arc<O>, Dependents)>>,
     phantom: PhantomData<O>,
 }
 
-impl<O: 'static, C: 'static + BehaviorComputation<O>> BehaviorImpl<O> for DependentBehavior<O, C> {
+impl<O: ?Sized + 'static + Send + Sync, C: 'static + BehaviorComputation<O>> BehaviorImpl<O>
+    for DependentBehavior<O, C>
+{
     fn query_for_behavior(&self, dependent: Weak<dyn BehaviorDependent>) -> Arc<O> {
         let mut cache = self.cache.lock().unwrap();
         if let Some((value, dependents)) = &mut *cache {
@@ -173,15 +152,15 @@ impl<O: 'static, C: 'static + BehaviorComputation<O>> BehaviorImpl<O> for Depend
         if let Some((value, _)) = &mut *cache {
             return value.clone();
         }
-        let value = self
-            .computation
-            .compute(BehaviorDependencyTracker(self.weak_self.clone()));
+        let value = self.computation.compute(BehaviorDependencyTracker(
+            self.weak_self.clone() as Weak<dyn BehaviorDependent>
+        ));
         *cache = Some((value.clone(), vec![]));
         value
     }
 }
 
-impl<O: 'static, C: 'static + BehaviorComputation<O>> BehaviorDependent
+impl<O: ?Sized + 'static + Send + Sync, C: 'static + BehaviorComputation<O>> BehaviorDependent
     for DependentBehavior<O, C>
 {
     fn invalidate(&self) {

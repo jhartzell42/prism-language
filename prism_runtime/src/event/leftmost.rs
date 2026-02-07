@@ -8,7 +8,7 @@ use crate::{
     runtime::Runtime,
 };
 
-impl<T: 'static> Event<T> {
+impl<T: 'static + Send + Sync> Event<T> {
     /// Creates a new event based on the existing one and the function `f`.
     ///
     /// If the existing event is fired, run `f` on the value.
@@ -29,7 +29,7 @@ impl<T: 'static> Event<T> {
     }
 }
 
-struct LeftmostEvent<T: 'static> {
+struct LeftmostEvent<T: 'static + Send + Sync> {
     events: Vec<Event<T>>,
     subscription_managers: Vec<SubscriptionManager<T, Self>>,
     weak_self: Weak<Self>,
@@ -37,7 +37,7 @@ struct LeftmostEvent<T: 'static> {
     winning_value: Mutex<Option<(Arc<T>, usize)>>,
 }
 
-impl<T: 'static> SubscriptionEvent<T> for LeftmostEvent<T> {
+impl<T: 'static + Send + Sync> SubscriptionEvent<T> for LeftmostEvent<T> {
     type Inner = T;
     type Tag = usize;
 
@@ -68,7 +68,7 @@ impl<T: 'static> SubscriptionEvent<T> for LeftmostEvent<T> {
     }
 }
 
-impl<T: 'static> EventImpl<T> for LeftmostEvent<T> {
+impl<T: 'static + Send + Sync> EventImpl<T> for LeftmostEvent<T> {
     fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) {
         for (ix, man) in self.subscription_managers.iter().enumerate() {
             man.add_subscriber(self.weak_self.clone(), Some(&self.events[ix]), cb.clone());

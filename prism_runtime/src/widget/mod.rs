@@ -6,11 +6,14 @@ mod delegate;
 mod dynamic;
 mod erased;
 mod node;
+mod slots;
 mod widget_ready;
 
-use builder::WidgetBuilder;
+pub use builder::*;
 pub use delegate::*;
+pub use erased::*;
 pub use node::*;
+pub use slots::*;
 
 /// Implementers of this trait represent a Prism component that
 /// is implemented inside the context of the Prism runtime.
@@ -28,14 +31,14 @@ pub use node::*;
 /// `Self` constitutes the inputs to this component. The `T`
 /// represents the output type. The implementation of the `build` function represents
 /// the implementation of the component.
-pub trait Widget {
+pub trait Widget: Send + Sync {
     // XXX: This might be too inflexible. Do we want this trait to be `dyn`-compatible??
     // I guess we'll find out whether that's necessary at some point.
     //
     // I think you could create a type-erased version of this through some sort of trickery with
     // an adapter and a dyn-compatible helper trait?
     /// What type does this widget output?
-    type Output: 'static;
+    type Output: 'static + Send + Sync;
     /// Use `builder` to build a widget node. Return the outputs.
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output;
 }

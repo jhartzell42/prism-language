@@ -17,6 +17,9 @@
 //! Events won't even compute whether they're triggering unless someone is
 //! subscribing to them.
 
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 
 use crate::{
@@ -36,12 +39,12 @@ use crate::{
 /// All safe ways of constructing a dynamic should uphold that guarantee. While
 /// [`Dynamic::new_unchecked()`] is available to construct a dynamic raw, you
 /// should only use it when you're willing to uphold this guarantee.
-pub struct Dynamic<T> {
+pub struct Dynamic<T: ?Sized + Send + Sync> {
     event: Event<T>,
     behavior: Behavior<T>,
 }
 
-impl<T> Clone for Dynamic<T> {
+impl<T: ?Sized + Send + Sync> Clone for Dynamic<T> {
     fn clone(&self) -> Self {
         Self {
             event: self.event.clone(),
@@ -50,7 +53,7 @@ impl<T> Clone for Dynamic<T> {
     }
 }
 
-impl<T: 'static> Dynamic<T> {
+impl<T: ?Sized + 'static + Send + Sync> Dynamic<T> {
     /// Get the event that fires whenever the [`Dynamic`] changes.
     pub fn event(&self) -> Event<T> {
         self.event.clone()
@@ -80,7 +83,10 @@ impl<T: 'static> Dynamic<T> {
 
     /// Create a new [`Dynamic`] that always has the value `f(val)` where `val`
     /// is the current value of `self`.
-    pub fn map<O: 'static>(&self, f: impl 'static + Clone + Fn(Arc<T>) -> Arc<O>) -> Dynamic<O> {
+    pub fn map<O: ?Sized + 'static + Send + Sync>(
+        &self,
+        f: impl Send + Sync + 'static + Clone + Fn(Arc<T>) -> Arc<O>,
+    ) -> Dynamic<O> {
         Dynamic {
             behavior: self.behavior.map(f.clone()),
             event: self.event.filter_map(move |e| Some(f(e))),
@@ -90,10 +96,10 @@ impl<T: 'static> Dynamic<T> {
     /// Combine two [`Dynamic`] values with a function. Output dynamic always
     /// equals `f(a,b)` for the current values of `a` and `b`, even if they
     /// update in the same occurrence.
-    pub fn map2<A: 'static, B: 'static>(
+    pub fn map2<A: 'static + Send + Sync, B: 'static + Send + Sync>(
         a: Dynamic<A>,
         b: Dynamic<B>,
-        f: impl 'static + Clone + Fn(Arc<A>, Arc<B>) -> Arc<T>,
+        f: impl 'static + Clone + Send + Sync + Fn(Arc<A>, Arc<B>) -> Arc<T>,
     ) -> Self {
         type Tagged<A, B> = OneOrBoth<(Arc<A>, Arc<B>), (Arc<B>, Arc<A>)>;
 
@@ -110,7 +116,7 @@ impl<T: 'static> Dynamic<T> {
     }
 }
 
-impl<T: 'static> From<Dynamic<T>> for Behavior<T> {
+impl<T: 'static + Send + Sync> From<Dynamic<T>> for Behavior<T> {
     fn from(value: Dynamic<T>) -> Self {
         value.behavior()
     }

@@ -8,10 +8,10 @@ use crate::{
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::Action,
-    widget::{Widget, WidgetNode, builder::WidgetBuilder},
+    widget::{Widget, WidgetDelegateContext, WidgetNode, builder::WidgetBuilder},
 };
 
-impl<T: Widget + 'static> Dynamic<T> {
+impl<T: Widget + 'static + Send + Sync> Dynamic<T> {
     /// Create a dynamic widget that starts out by building current value of `self`,
     /// and then replaces it with whatever widget `self` updates to.
     pub fn dynamic_widget(&self) -> impl Widget<Output = Event<T::Output>> {
@@ -112,7 +112,18 @@ impl<T: 'static + Widget> Action for DWAction<T> {
             unreachable!();
         };
         let (child_node, output) =
-            WidgetBuilder::build_root(runtime, &*self.value, delegate.clone(), self.event.height());
+            WidgetBuilder::build_root(runtime, &*self.value, self.event.height());
+        child_node.set_delegate(
+            runtime,
+            delegate.new_child_created(
+                WidgetDelegateContext {
+                    runtime,
+                    node: &parent_node,
+                },
+                0,
+                &child_node,
+            ),
+        );
         self.event
             .subscribers
             .notify(Arc::downgrade(&self.event), None, runtime, || {

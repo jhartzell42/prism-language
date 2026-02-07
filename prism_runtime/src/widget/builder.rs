@@ -5,7 +5,6 @@ use crate::{
     runtime::Runtime,
     widget::{
         Widget, WidgetNode,
-        delegate::WidgetDelegate,
         erased::{ErasedEvent, ErasedEventTrigger},
         widget_ready::WidgetReadyEvent,
     },
@@ -30,10 +29,11 @@ impl WidgetBuilder<'_> {
     /// where `height` is the height of the event that triggered this reconstruction.
     /// All widget creation events fire towards the end of this method. They will
     /// fire at a height 1 higher than the height you pass.
+    ///
+    /// The caller is responsible for setting the delegate.
     pub fn build_root<W: Widget>(
         runtime: &Runtime,
         widget: &W,
-        delegate: Arc<dyn WidgetDelegate>,
         height: usize,
     ) -> (Arc<WidgetNode>, W::Output) {
         let (done_event, trigger) = WidgetReadyEvent::new_with_trigger(height + 1);
@@ -51,7 +51,6 @@ impl WidgetBuilder<'_> {
             *node_children = this.children;
         }
         runtime.schedule(height, trigger);
-        node.set_delegate(runtime, delegate);
         (node, res)
     }
 
@@ -74,17 +73,20 @@ impl WidgetBuilder<'_> {
         res
     }
 
-    /// Get the `done_event`
+    /// This event fires and provides the `WidgetNode` when it's actually done being built.
     pub fn done_event(&self) -> Event<WidgetNode> {
         Event(self.done_event.clone())
     }
 
     /// Create a new cyclic event. You must close it, or else it will never fire.
-    pub fn add_cyclic_event<T: 'static>(&mut self, name: String) -> (usize, Event<T>) {
+    pub fn add_cyclic_event<T: 'static + Send + Sync>(
+        &mut self,
+        name: String,
+    ) -> (usize, Event<T>) {
         let ix = self.node.events.len();
         let event = self
             .done_event()
-            .filter_map(move |node| Some(Arc::new(node.events.get_index(ix).get::<T>())))
+            .filter_map(move |node| Some(Arc::new(node.events[ix].get::<T>())))
             .switch_hold();
         self.node
             .events
@@ -94,46 +96,59 @@ impl WidgetBuilder<'_> {
 
     /// Close a cyclic loop by providing the event back. When this event fires, the
     /// original event we got from `new_cyclic_event` will also fire.
-    pub fn close_cyclic_event_by_name<T: 'static>(&mut self, name: &str, event: Event<T>) {
-        assert!(self.node.events.get_name(name).matches_inner_type::<T>());
+    pub fn close_cyclic_event_by_name<T: 'static + Send + Sync>(
+        &mut self,
+        name: &str,
+        event: Event<T>,
+    ) {
+        assert!(self.node.events[name].matches_inner_type::<T>());
         self.node
             .events
-            .update_name(name, ErasedEvent::new(event.clone()));
+            .update_name(name, ErasedEvent::new(event.clone()))
+            .unwrap();
     }
 
     /// Close a cyclic loop by providing the event back. When this event fires, the
     /// original event we got from `new_cyclic_event` will also fire.
-    pub fn close_cyclic_event_by_index<T: 'static>(&mut self, index: usize, event: Event<T>) {
-        assert!(self.node.events.get_index(index).matches_inner_type::<T>());
+    pub fn close_cyclic_event_by_index<T: 'static + Send + Sync>(
+        &mut self,
+        index: usize,
+        event: Event<T>,
+    ) {
+        assert!(self.node.events[index].matches_inner_type::<T>());
         self.node
             .events
-            .update_index(index, ErasedEvent::new(event.clone()));
+            .update_index(index, ErasedEvent::new(event.clone()))
+            .unwrap();
     }
 
-    pub fn add_external_event<T: 'static>(&mut self, name: String) -> ExternalEventInfo<T> {
+    /// Add an event that the backend/delegate will have to trigger. This doesn't automatically register the
+    /// event as externally accessible, just the trigger.
+    pub fn add_external_event<T: 'static + Send + Sync>(
+        &mut self,
+        name: String,
+    ) -> ExternalEventInfo<T> {
         let (event, trigger) = Event::<T>::external();
         let trigger_index = self
             .node
             .triggers
             .add(name.clone(), ErasedEventTrigger::new(trigger.clone()));
-        let event_index = self.node.events.add(name, ErasedEvent::new(event.clone()));
 
         ExternalEventInfo {
             trigger,
             trigger_index,
             event,
-            event_index,
         }
     }
 
-    pub fn add_event<T: 'static>(&mut self, name: String, event: Event<T>) {
+    /// Add an externally accessible event, so that the backend can access it.
+    pub fn add_event<T: 'static + Send + Sync>(&mut self, name: String, event: Event<T>) {
         self.node.events.add(name, ErasedEvent::new(event));
     }
 }
 
-pub struct ExternalEventInfo<T: 'static> {
+pub struct ExternalEventInfo<T: 'static + Send + Sync> {
     pub trigger: EventTrigger<T>,
     pub event: Event<T>,
     pub trigger_index: usize,
-    pub event_index: usize,
 }

@@ -8,7 +8,7 @@ use crate::{
     runtime::{Action, Runtime},
 };
 
-impl<T: 'static> Event<Event<T>> {
+impl<T: 'static + Send + Sync> Event<Event<T>> {
     /// Given an event of events, keep track of the most recent inner event
     /// to have shown up on the outer event. When that inner event fires,
     /// fire with that value. If the inner event and outer event fire within
@@ -34,7 +34,7 @@ impl<T: 'static> Event<Event<T>> {
     }
 }
 
-struct SwitchHold<T: 'static> {
+struct SwitchHold<T: 'static + Send + Sync> {
     subscriber_list: SubscriptionManager<T, Self>,
     inner_event: Mutex<Option<Event<T>>>,
     _outer_event: Event<Event<T>>,
@@ -43,7 +43,7 @@ struct SwitchHold<T: 'static> {
     height: Mutex<Option<usize>>,
 }
 
-impl<T: 'static> EventImpl<T> for SwitchHold<T> {
+impl<T: 'static + Send + Sync> EventImpl<T> for SwitchHold<T> {
     fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) {
         let event = self.inner_event.lock().unwrap().clone();
         self.subscriber_list
@@ -68,7 +68,7 @@ impl<T: 'static> EventImpl<T> for SwitchHold<T> {
     }
 }
 
-impl<T: 'static> SubscriptionEvent<T> for SwitchHold<T> {
+impl<T: 'static + Send + Sync> SubscriptionEvent<T> for SwitchHold<T> {
     type Inner = T;
     type Tag = ();
 
@@ -85,11 +85,11 @@ impl<T: 'static> SubscriptionEvent<T> for SwitchHold<T> {
     }
 }
 
-struct SwitchHoldOuterCallback<T: 'static> {
+struct SwitchHoldOuterCallback<T: 'static + Send + Sync> {
     this: Weak<SwitchHold<T>>,
 }
 
-impl<T: 'static> EventCallback<Event<T>> for SwitchHoldOuterCallback<T> {
+impl<T: 'static + Send + Sync> EventCallback<Event<T>> for SwitchHoldOuterCallback<T> {
     fn event_fired(&self, runtime: &Runtime, value: Arc<Event<T>>) {
         let Some(this) = self.this.upgrade() else {
             return;
@@ -107,12 +107,12 @@ impl<T: 'static> EventCallback<Event<T>> for SwitchHoldOuterCallback<T> {
     }
 }
 
-struct SwitchHoldOuterAction<T: 'static> {
+struct SwitchHoldOuterAction<T: 'static + Send + Sync> {
     this: Arc<SwitchHold<T>>,
     event: Event<T>,
 }
 
-impl<T: 'static> Action for SwitchHoldOuterAction<T> {
+impl<T: 'static + Send + Sync> Action for SwitchHoldOuterAction<T> {
     fn act(self: Box<Self>, _: &Runtime) {
         let Self { this, event } = *self;
         *this.inner_event.lock().unwrap() = Some(event.clone());

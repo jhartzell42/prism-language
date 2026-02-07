@@ -9,9 +9,9 @@ use crate::{
 };
 
 /// This is a handle used to schedule the triggering of an event.
-pub struct EventTrigger<T: 'static>(Weak<EventTriggerInner<T>>);
+pub struct EventTrigger<T: 'static + Send + Sync>(Weak<EventTriggerInner<T>>);
 
-impl<T: 'static> Event<T> {
+impl<T: 'static + Send + Sync> Event<T> {
     /// Return a tuple of an event that represents an external event,
     /// and a way to trigger it in a given runtime.
     pub fn external() -> (Event<T>, EventTrigger<T>) {
@@ -29,13 +29,17 @@ impl<T: 'static> Event<T> {
 
 impl Runtime {
     /// Schedule an event to trigger in the next propagation stage of the runtime.
-    pub fn schedule_trigger<T: 'static>(&self, trigger: &EventTrigger<T>, value: Arc<T>) {
-        struct TriggerAction<T: 'static> {
+    pub fn schedule_trigger<T: 'static + Send + Sync>(
+        &self,
+        trigger: &EventTrigger<T>,
+        value: Arc<T>,
+    ) {
+        struct TriggerAction<T: 'static + Send + Sync> {
             trigger: EventTrigger<T>,
             value: Arc<T>,
         }
 
-        impl<T> Action for TriggerAction<T> {
+        impl<T: Send + Sync> Action for TriggerAction<T> {
             fn act(self: Box<Self>, runtime: &Runtime) {
                 let Some(trigger) = self.trigger.0.upgrade() else {
                     return;
@@ -70,13 +74,13 @@ impl Runtime {
     }
 }
 
-struct EventTriggerInner<T: 'static> {
+struct EventTriggerInner<T: 'static + Send + Sync> {
     subscribers: SubscriptionManager<T, Self>,
     scheduled: Mutex<bool>,
     weak_self: Weak<Self>,
 }
 
-impl<T: 'static> EventImpl<T> for EventTriggerInner<T> {
+impl<T: 'static + Send + Sync> EventImpl<T> for EventTriggerInner<T> {
     fn subscribe(&self, cb: Weak<dyn EventCallback<T>>) {
         self.subscribers
             .add_subscriber(self.weak_self.clone(), None, cb);
@@ -87,13 +91,13 @@ impl<T: 'static> EventImpl<T> for EventTriggerInner<T> {
     }
 }
 
-impl<T: 'static> Clone for EventTrigger<T> {
+impl<T: 'static + Send + Sync> Clone for EventTrigger<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<T: 'static> SubscriptionEvent<T> for EventTriggerInner<T> {
+impl<T: Send + Sync + 'static> SubscriptionEvent<T> for EventTriggerInner<T> {
     // Does Rust choke on "never" types?
     type Inner = ();
     type Tag = ();

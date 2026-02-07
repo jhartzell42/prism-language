@@ -10,7 +10,7 @@ use crate::{
 // Do we want to require that? Why does it require that? How's it doing that sort
 // of thing anyway?
 
-impl<T: 'static> Behavior<T> {
+impl<T: 'static + ?Sized + Send + Sync> Behavior<T> {
     /// Creates a behavior that has the value from this event
     /// from the last occurrence in which the event was fired.
     /// If it has never fired, it will have the `initial` value.
@@ -28,14 +28,14 @@ impl<T: 'static> Behavior<T> {
     }
 }
 
-struct HoldBehavior<T> {
+struct HoldBehavior<T: ?Sized + Send + Sync> {
     value: Mutex<Arc<T>>, // Not a cache, we have no way of recomputing it in case of problem
     _event: Event<T>,     // We need to keep the event alive
     weak_self: Weak<Self>,
     dependents: Mutex<Vec<Weak<dyn BehaviorDependent>>>,
 }
 
-impl<T> BehaviorImpl<T> for HoldBehavior<T> {
+impl<T: ?Sized + Send + Sync> BehaviorImpl<T> for HoldBehavior<T> {
     fn query_for_behavior(&self, dep: Weak<dyn BehaviorDependent>) -> Arc<T> {
         let mut deps = self.dependents.lock().unwrap();
         deps.push(dep);
@@ -47,7 +47,7 @@ impl<T> BehaviorImpl<T> for HoldBehavior<T> {
     }
 }
 
-impl<T: 'static> EventCallback<T> for HoldBehavior<T> {
+impl<T: ?Sized + 'static + Send + Sync> EventCallback<T> for HoldBehavior<T> {
     fn event_fired(&self, runtime: &Runtime, value: Arc<T>) {
         let Some(this) = self.weak_self.upgrade() else {
             return;
@@ -60,12 +60,12 @@ impl<T: 'static> EventCallback<T> for HoldBehavior<T> {
     fn invalidate_height(&self) {}
 }
 
-struct HoldAction<T> {
+struct HoldAction<T: ?Sized + Send + Sync> {
     hold: Arc<HoldBehavior<T>>,
     value: Arc<T>,
 }
 
-impl<T> Action for HoldAction<T> {
+impl<T: ?Sized + Send + Sync> Action for HoldAction<T> {
     fn act(self: Box<Self>, _: &Runtime) {
         let this = self.hold;
         let value = self.value;

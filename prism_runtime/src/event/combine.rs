@@ -28,15 +28,15 @@ impl<A, B> Clone for OneOrBoth<A, B> {
     }
 }
 
-impl<T: 'static> Event<T> {
+impl<T: ?Sized + 'static + Send + Sync> Event<T> {
     /// Creates a new event based on the existing one and the function `f`.
     ///
     /// If the existing event is fired, run `f` on the value.
     ///
-    /// If `f` returns `Some(value)`, the new event is fired with
+    /// If `f` returns `Some(vague)`, the new event is fired with
     /// the value `value`. If `f` returns `None`, the new event is not fired.
-    pub fn combine<A: 'static, B: 'static>(
-        function: impl Fn(OneOrBoth<A, B>) -> Option<Arc<T>> + 'static,
+    pub fn combine<A: 'static + Send + Sync, B: 'static + Send + Sync>(
+        function: impl Send + Sync + Fn(OneOrBoth<A, B>) -> Option<Arc<T>> + 'static,
         a: Event<A>,
         b: Event<B>,
     ) -> Event<T> {
@@ -54,10 +54,10 @@ impl<T: 'static> Event<T> {
 }
 
 struct CombineEvent<
-    A: 'static,
-    B: 'static,
-    F: 'static + Fn(OneOrBoth<A, B>) -> Option<Arc<O>>,
-    O: 'static,
+    A: 'static + Send + Sync,
+    B: 'static + Send + Sync,
+    F: Sync + Send + 'static + Fn(OneOrBoth<A, B>) -> Option<Arc<O>>,
+    O: ?Sized + 'static + Send + Sync,
 > {
     a: Event<OneOrBoth<A, B>>,
     b: Event<OneOrBoth<A, B>>,
@@ -69,8 +69,12 @@ struct CombineEvent<
     one_or_both: Mutex<Option<OneOrBoth<A, B>>>,
 }
 
-impl<A: 'static, B: 'static, F: 'static + Fn(OneOrBoth<A, B>) -> Option<Arc<O>>, O: 'static>
-    SubscriptionEvent<O> for CombineEvent<A, B, F, O>
+impl<
+    A: 'static + Send + Sync,
+    B: 'static + Send + Sync,
+    F: 'static + Fn(OneOrBoth<A, B>) -> Option<Arc<O>> + Send + Sync,
+    O: ?Sized + 'static + Send + Sync,
+> SubscriptionEvent<O> for CombineEvent<A, B, F, O>
 {
     type Inner = OneOrBoth<A, B>;
     type Tag = ();
@@ -102,8 +106,12 @@ impl<A: 'static, B: 'static, F: 'static + Fn(OneOrBoth<A, B>) -> Option<Arc<O>>,
     }
 }
 
-impl<A: 'static, B: 'static, F: Fn(OneOrBoth<A, B>) -> Option<Arc<O>>, O: 'static> EventImpl<O>
-    for CombineEvent<A, B, F, O>
+impl<
+    A: 'static + Send + Sync,
+    B: 'static + Send + Sync,
+    F: Send + Sync + Fn(OneOrBoth<A, B>) -> Option<Arc<O>>,
+    O: ?Sized + 'static + Send + Sync,
+> EventImpl<O> for CombineEvent<A, B, F, O>
 {
     fn subscribe(&self, cb: Weak<dyn EventCallback<O>>) {
         self.manager_a

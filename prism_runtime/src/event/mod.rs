@@ -24,25 +24,28 @@ pub(crate) mod subscriber_list;
 mod switch_hold;
 mod tag;
 
+#[cfg(test)]
+pub mod tests;
+
 pub use combine::OneOrBoth;
 pub use external::EventTrigger;
 
 /// This is a handle for an event that contains a value of type `T` in
 /// any occurrence for which it is fired.
-pub struct Event<T: ?Sized>(pub(crate) Arc<dyn EventImpl<T>>);
+pub struct Event<T: ?Sized + Send + Sync>(pub(crate) Arc<dyn EventImpl<T>>);
 
-impl<T: ?Sized> Clone for Event<T> {
+impl<T: ?Sized + Send + Sync> Clone for Event<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-pub(crate) trait EventCallback<T: ?Sized> {
+pub(crate) trait EventCallback<T: ?Sized + Send + Sync>: Send + Sync {
     fn event_fired(&self, runtime: &Runtime, value: Arc<T>);
     fn invalidate_height(&self);
 }
 
-pub(crate) trait EventImpl<T: ?Sized> {
+pub(crate) trait EventImpl<T: ?Sized + Send + Sync>: Send + Sync {
     // When you subscribe to an event, you are responsible for making sure
     // the event callback stays alive, or otherwise, your subscription will vanish.
     //
@@ -59,7 +62,7 @@ pub(crate) trait EventImpl<T: ?Sized> {
     fn height(&self) -> usize;
 }
 
-impl<T: Debug + 'static + ?Sized> Event<T> {
+impl<T: Debug + 'static + ?Sized + Send + Sync> Event<T> {
     /// This logs all triggerings of the event, at `log::trace!` level.
     ///
     /// It's strictly for debugging purposes as it leaks memory and violates
@@ -70,7 +73,7 @@ impl<T: Debug + 'static + ?Sized> Event<T> {
             phantom: PhantomData<T>,
         }
 
-        impl<T: Debug + ?Sized> EventCallback<T> for Tracer<T> {
+        impl<T: Debug + ?Sized + Send + Sync> EventCallback<T> for Tracer<T> {
             fn event_fired(&self, _: &Runtime, value: Arc<T>) {
                 log::trace!("{}: {value:?}", self.label)
             }

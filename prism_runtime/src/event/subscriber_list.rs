@@ -8,15 +8,15 @@ use crate::{
     runtime::{Action, Runtime},
 };
 
-pub struct SubscriptionManager<T: ?Sized, E: SubscriptionEvent<T>> {
+pub struct SubscriptionManager<T: ?Sized + Send + Sync, E: SubscriptionEvent<T>> {
     subscribers: Mutex<Vec<Weak<dyn EventCallback<T>>>>,
     subscription: Mutex<Option<Arc<MainSubscription<T, E>>>>,
     tag: E::Tag,
 }
 
-pub trait SubscriptionEvent<T: ?Sized>: EventImpl<T> + 'static {
-    type Inner: 'static + ?Sized;
-    type Tag: Clone;
+pub trait SubscriptionEvent<T: ?Sized + Send + Sync>: EventImpl<T> + 'static {
+    type Inner: 'static + ?Sized + Send + Sync;
+    type Tag: Clone + Send + Sync;
 
     fn invalidate_height(&self);
     fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>, tag: Self::Tag);
@@ -26,7 +26,7 @@ pub trait SubscriptionEvent<T: ?Sized>: EventImpl<T> + 'static {
     }
 }
 
-impl<T: 'static + ?Sized, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
+impl<T: 'static + ?Sized + Send + Sync, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
     pub fn new(tag: E::Tag) -> Self {
         Self {
             subscribers: Mutex::new(vec![]),
@@ -128,13 +128,13 @@ impl<T: 'static + ?Sized, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
     }
 }
 
-pub struct MainSubscription<T: ?Sized, E: SubscriptionEvent<T>> {
+pub struct MainSubscription<T: ?Sized + Send + Sync, E: SubscriptionEvent<T>> {
     this: Weak<E>,
     phantom: PhantomData<T>,
     tag: E::Tag,
 }
 
-impl<T: 'static + ?Sized, E: SubscriptionEvent<T>> EventCallback<E::Inner>
+impl<T: 'static + ?Sized + Send + Sync, E: SubscriptionEvent<T>> EventCallback<E::Inner>
     for MainSubscription<T, E>
 {
     fn event_fired(&self, runtime: &Runtime, value: Arc<E::Inner>) {
@@ -155,13 +155,13 @@ impl<T: 'static + ?Sized, E: SubscriptionEvent<T>> EventCallback<E::Inner>
     }
 }
 
-pub struct MainAction<T: ?Sized, E: SubscriptionEvent<T>> {
+pub struct MainAction<T: ?Sized + Send + Sync, E: SubscriptionEvent<T>> {
     this: Arc<E>,
     value: Arc<E::Inner>,
     tag: E::Tag,
 }
 
-impl<T: ?Sized, E: SubscriptionEvent<T>> Action for MainAction<T, E> {
+impl<T: ?Sized + Send + Sync, E: SubscriptionEvent<T>> Action for MainAction<T, E> {
     fn act(self: Box<Self>, runtime: &Runtime) {
         let Self { this, value, tag } = *self;
         this.handle_main_subscription(runtime, value, tag);
