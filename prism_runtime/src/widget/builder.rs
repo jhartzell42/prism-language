@@ -32,7 +32,7 @@ impl WidgetBuilder<'_> {
     /// fire at a height 1 higher than the height you pass.
     pub fn build_root<W: Widget>(
         runtime: &Runtime,
-        widget: W,
+        widget: &W,
         delegate: Arc<dyn WidgetDelegate>,
         height: usize,
     ) -> (Arc<WidgetNode>, W::Output) {
@@ -56,7 +56,7 @@ impl WidgetBuilder<'_> {
     }
 
     /// Call from a widget to create a subwidget.
-    pub fn bind<W: Widget>(&mut self, widget: W) -> W::Output {
+    pub fn bind<W: Widget>(&mut self, widget: &W) -> W::Output {
         let mut sub = WidgetBuilder {
             node: WidgetNode::new(),
             children: vec![],
@@ -124,6 +124,10 @@ impl WidgetBuilder<'_> {
             event,
             event_index,
         }
+    }
+
+    pub fn add_event<T: 'static>(&mut self, name: String, event: Event<T>) {
+        self.node.events.add(name, ErasedEvent::new(event));
     }
 }
 

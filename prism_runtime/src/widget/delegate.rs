@@ -29,10 +29,13 @@ pub trait WidgetDelegate {
 /// Common parameters to pass to the widget delegate.
 #[derive(Clone, Copy)]
 pub struct WidgetDelegateContext<'a> {
+    /// Current runtime.
     pub runtime: &'a Runtime,
+    /// Node we're dealing with.
     pub node: &'a WidgetNode,
 }
 
+/// A trivial delegate for nodes that don't actually have backend interaction.
 pub struct TrivialDelegate;
 
 impl WidgetDelegate for TrivialDelegate {
