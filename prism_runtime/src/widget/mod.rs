@@ -2,9 +2,10 @@
 //! the interface between FRP components and the outside world.
 
 mod builder;
-mod delegate;
+pub mod delegate;
+mod dynamic;
 mod erased;
-mod node;
+pub mod node;
 mod widget_ready;
 
 use builder::WidgetBuilder;
@@ -26,7 +27,14 @@ pub use node::WidgetNode;
 /// `Self` constitutes the inputs to this component. The `T`
 /// represents the output type. The implementation of the `build` function represents
 /// the implementation of the component.
-pub trait Widget<T> {
+pub trait Widget {
+    // XXX: This might be too inflexible. Do we want this trait to be `dyn`-compatible??
+    // I guess we'll find out whether that's necessary at some point.
+    //
+    // I think you could create a type-erased version of this through some sort of trickery with
+    // an adapter and a dyn-compatible helper trait?
+    /// What type does this widget output?
+    type Output: 'static;
     /// Use `builder` to build a widget node. Return the outputs.
-    fn build(&self, builder: &mut WidgetBuilder) -> T;
+    fn build(&self, builder: &mut WidgetBuilder) -> Self::Output;
 }

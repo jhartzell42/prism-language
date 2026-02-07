@@ -1,7 +1,9 @@
 //! A [`Runtime`] represents a graph of behaviors, events, and dynamics.
 //!
-//! Its key method is `propagate()`. During propagation, every event
-//! is either triggered or not, and if it's triggered it has a value.
+//! Its key method is `propagate()`. During propagation of an *occurrence*, every event
+//! is either fired or not, and if it's fired it has a value.
+//! Each event may be fired at most once per occurrence.
+//!
 //! Then, behaviors are updated or invalidated to reflect any
 //! changes that occurred as a result of those events.
 //!

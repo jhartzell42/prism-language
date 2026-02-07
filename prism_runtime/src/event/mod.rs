@@ -28,21 +28,21 @@ pub use combine::OneOrBoth;
 pub use external::EventTrigger;
 
 /// This is a handle for an event that contains a value of type `T` in
-/// any occurrence for which it is triggered.
-pub struct Event<T>(pub(crate) Arc<dyn EventImpl<T>>);
+/// any occurrence for which it is fired.
+pub struct Event<T: ?Sized>(pub(crate) Arc<dyn EventImpl<T>>);
 
-impl<T> Clone for Event<T> {
+impl<T: ?Sized> Clone for Event<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-pub(crate) trait EventCallback<T> {
+pub(crate) trait EventCallback<T: ?Sized> {
     fn event_fired(&self, runtime: &Runtime, value: Arc<T>);
     fn invalidate_height(&self);
 }
 
-pub(crate) trait EventImpl<T> {
+pub(crate) trait EventImpl<T: ?Sized> {
     // When you subscribe to an event, you are responsible for making sure
     // the event callback stays alive, or otherwise, your subscription will vanish.
     //
@@ -59,18 +59,18 @@ pub(crate) trait EventImpl<T> {
     fn height(&self) -> usize;
 }
 
-impl<T: Debug + 'static> Event<T> {
+impl<T: Debug + 'static + ?Sized> Event<T> {
     /// This logs all triggerings of the event, at `log::trace!` level.
     ///
     /// It's strictly for debugging purposes as it leaks memory and violates
     /// many design principles.
     pub fn trace(&self, label: String) {
-        struct Tracer<T> {
+        struct Tracer<T: ?Sized> {
             label: String,
             phantom: PhantomData<T>,
         }
 
-        impl<T: Debug> EventCallback<T> for Tracer<T> {
+        impl<T: Debug + ?Sized> EventCallback<T> for Tracer<T> {
             fn event_fired(&self, _: &Runtime, value: Arc<T>) {
                 log::trace!("{}: {value:?}", self.label)
             }

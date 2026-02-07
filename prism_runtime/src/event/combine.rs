@@ -31,10 +31,10 @@ impl<A, B> Clone for OneOrBoth<A, B> {
 impl<T: 'static> Event<T> {
     /// Creates a new event based on the existing one and the function `f`.
     ///
-    /// If the existing event is triggered, run `f` on the value.
+    /// If the existing event is fired, run `f` on the value.
     ///
-    /// If `f` returns `Some(value)`, the new event is triggered with
-    /// the value `value`. If `f` returns `None`, the new event is not triggered.
+    /// If `f` returns `Some(value)`, the new event is fired with
+    /// the value `value`. If `f` returns `None`, the new event is not fired.
     pub fn combine<A: 'static, B: 'static>(
         function: impl Fn(OneOrBoth<A, B>) -> Option<Arc<T>> + 'static,
         a: Event<A>,

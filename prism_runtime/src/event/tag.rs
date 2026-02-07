@@ -10,7 +10,7 @@ use crate::{
 };
 
 impl<A: 'static> Event<A> {
-    /// This creates a new event that is triggered whenever `self` is triggered.
+    /// This creates a new event that is fired whenever `self` is fired.
     /// It augments the value of `self` with the value of a [`Dynamic`] or
     /// [`Behavior`].
     ///

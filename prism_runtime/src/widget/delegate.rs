@@ -1,5 +1,5 @@
 use crate::{runtime::Runtime, widget::WidgetNode};
-use std::{any::Any, sync::Arc};
+use std::sync::Arc;
 
 /// This is an event handler that the backend installs on a widget node.  It
 /// must not hold a strong `Arc` pointer to the node, because the node owns the
@@ -13,6 +13,8 @@ pub trait WidgetDelegate {
     /// This is called when the node is originally created, and when subnodes
     /// change for those widgets that support that.
     ///
+    /// The delegate must manage subscribing to its own events if that's something
+    /// it would like to do in this case.
     fn new_child_created(
         &self,
         ctxt: WidgetDelegateContext,
@@ -22,14 +24,6 @@ pub trait WidgetDelegate {
     /// or else the termination of the application. If you're singly owned, you will
     /// soon be dropped.
     fn will_be_destroyed(&self, ctxt: WidgetDelegateContext);
-    /// An event of the node we're a delegate for has fired.
-    fn event_fired(
-        &self,
-        ctxt: WidgetDelegateContext,
-        name: &str,
-        index: usize,
-        value: Arc<dyn Any>,
-    );
 }
 
 /// Common parameters to pass to the widget delegate.
@@ -51,6 +45,4 @@ impl WidgetDelegate for TrivialDelegate {
     }
 
     fn will_be_destroyed(&self, _: WidgetDelegateContext) {}
-
-    fn event_fired(&self, _: WidgetDelegateContext, _: &str, _: usize) {}
 }

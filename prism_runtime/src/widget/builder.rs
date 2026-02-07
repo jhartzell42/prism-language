@@ -20,12 +20,23 @@ pub struct WidgetBuilder<'a> {
 
 impl WidgetBuilder<'_> {
     /// Call from outside (e.g. a backend) to create a root widget.
-    pub fn build_root<T: 'static>(
+    /// This is used at the top level to build the initial tree with `height = 0`.
+    ///
+    /// Call from a rebuilding primitive (like `dynamic_widget` or `dynamic_list_widget`).
+    /// In that case, it'll be in an event processing context, and the height will
+    /// be the height of the input event.
+    ///
+    /// This is used for dynamic reconstruction of widgets in response to an event,
+    /// where `height` is the height of the event that triggered this reconstruction.
+    /// All widget creation events fire towards the end of this method. They will
+    /// fire at a height 1 higher than the height you pass.
+    pub fn build_root<W: Widget>(
         runtime: &Runtime,
-        widget: impl Widget<T>,
+        widget: W,
         delegate: Arc<dyn WidgetDelegate>,
-    ) -> (Arc<WidgetNode>, T) {
-        let (mut done_event, trigger) = WidgetReadyEvent::new_with_trigger(0);
+        height: usize,
+    ) -> (Arc<WidgetNode>, W::Output) {
+        let (done_event, trigger) = WidgetReadyEvent::new_with_trigger(height + 1);
         let mut this = WidgetBuilder {
             node: WidgetNode::new(),
             children: vec![],
@@ -39,13 +50,13 @@ impl WidgetBuilder<'_> {
             let mut node_children = node.children.lock().unwrap();
             *node_children = this.children;
         }
-        runtime.schedule(0, trigger);
+        runtime.schedule(height, trigger);
         node.set_delegate(runtime, delegate);
         (node, res)
     }
 
     /// Call from a widget to create a subwidget.
-    pub fn bind<T: 'static>(&mut self, widget: impl Widget<T>) -> T {
+    pub fn bind<W: Widget>(&mut self, widget: W) -> W::Output {
         let mut sub = WidgetBuilder {
             node: WidgetNode::new(),
             children: vec![],
@@ -61,34 +72,6 @@ impl WidgetBuilder<'_> {
         }
         self.children.push(node);
         res
-    }
-
-    /// Call externally to a widget to build a widget node.
-    /// This is used at the top level to build the initial tree with `height = 0`.
-    /// This is used for dynamic reconstruction of widgets in response to an event,
-    /// where `height` is the height of the event that triggered this reconstruction.
-    /// All widget creation events fire towards the end of this method.
-    pub fn from_scratch<T: 'static>(
-        runtime: &Runtime,
-        widget: impl Widget<T>,
-        height: usize,
-    ) -> (Arc<T>, Arc<WidgetNode>) {
-        let (done_event, trigger) = WidgetReadyEvent::new_with_trigger(height + 1);
-        let mut builder = WidgetBuilder {
-            node: WidgetNode::new(),
-            children: vec![],
-            done_event: done_event.clone(),
-            runtime,
-        };
-        let res = widget.build(&mut builder);
-        let node = Arc::new(builder.node);
-        done_event.set_node(node.clone());
-        {
-            let mut node_children = node.children.lock().unwrap();
-            *node_children = builder.children;
-        }
-        trigger.trigger(runtime);
-        (Arc::new(res), node)
     }
 
     /// Get the `done_event`
@@ -144,9 +127,9 @@ impl WidgetBuilder<'_> {
     }
 }
 
-struct ExternalEventInfo<T> {
-    trigger: EventTrigger<T>,
-    event: Event<T>,
-    trigger_index: usize,
-    event_index: usize,
+pub struct ExternalEventInfo<T: 'static> {
+    pub trigger: EventTrigger<T>,
+    pub event: Event<T>,
+    pub trigger_index: usize,
+    pub event_index: usize,
 }

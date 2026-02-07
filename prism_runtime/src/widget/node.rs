@@ -54,18 +54,25 @@ impl WidgetNode {
             runtime,
             node: self,
         };
+
         for child in children {
             child.set_delegate(
                 runtime,
                 self.delegate.get().unwrap().new_child_created(ctxt, &child),
             );
         }
+    }
 
-        // XXX: Subscribe to all the events somehow
+    pub(crate) fn prepare_destruction(&self, runtime: &Runtime) {
+        let ctxt = WidgetDelegateContext {
+            runtime,
+            node: self,
+        };
+        self.delegate.get().unwrap().will_be_destroyed(ctxt);
     }
 }
 
-pub(crate) struct Slots<T> {
+pub struct Slots<T> {
     pub(crate) values: Vec<T>,
     pub(crate) names: BTreeMap<String, usize>,
 }
@@ -80,11 +87,11 @@ impl<T> Default for Slots<T> {
 }
 
 impl<T: Clone> Slots<T> {
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.values.len()
     }
 
-    pub(crate) fn add(&mut self, name: String, value: T) -> usize {
+    pub fn add(&mut self, name: String, value: T) -> usize {
         if self.names.contains_key(&name) {
             panic!("Already have slot with name {name}");
         }
@@ -94,19 +101,19 @@ impl<T: Clone> Slots<T> {
         ix
     }
 
-    pub(crate) fn get_index(&self, ix: usize) -> T {
+    pub fn get_index(&self, ix: usize) -> T {
         self.values[ix].clone()
     }
 
-    pub(crate) fn get_name(&self, name: &str) -> T {
+    pub fn get_name(&self, name: &str) -> T {
         self.get_index(*self.names.get(name).expect("name not found"))
     }
 
-    pub(crate) fn update_name(&mut self, name: &str, val: T) {
+    pub fn update_name(&mut self, name: &str, val: T) {
         self.update_index(*self.names.get(name).expect("name not found"), val);
     }
 
-    pub(crate) fn update_index(&mut self, ix: usize, val: T) {
+    pub fn update_index(&mut self, ix: usize, val: T) {
         self.values[ix] = val;
     }
 }

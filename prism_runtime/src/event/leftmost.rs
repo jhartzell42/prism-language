@@ -11,10 +11,10 @@ use crate::{
 impl<T: 'static> Event<T> {
     /// Creates a new event based on the existing one and the function `f`.
     ///
-    /// If the existing event is triggered, run `f` on the value.
+    /// If the existing event is fired, run `f` on the value.
     ///
-    /// If `f` returns `Some(value)`, the new event is triggered with
-    /// the value `value`. If `f` returns `None`, the new event is not triggered.
+    /// If `f` returns `Some(value)`, the new event is fired with
+    /// the value `value`. If `f` returns `None`, the new event is not fired.
     pub fn leftmost(events: Vec<Event<T>>) -> Event<T> {
         let subscription_managers = (0..events.len())
             .map(|i| SubscriptionManager::new(i))

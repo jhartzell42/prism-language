@@ -8,14 +8,14 @@ use crate::{
     runtime::Runtime,
 };
 
-impl<T: 'static> Event<T> {
+impl<T: 'static + ?Sized> Event<T> {
     /// Creates a new event based on the existing one and the function `f`.
     ///
-    /// If the existing event is triggered, run `f` on the value.
+    /// If the existing event is fired, run `f` on the value.
     ///
-    /// If `f` returns `Some(value)`, the new event is triggered with
-    /// the value `value`. If `f` returns `None`, the new event is not triggered.
-    pub fn filter_map<O: 'static>(
+    /// If `f` returns `Some(value)`, the new event is fired with
+    /// the value `value`. If `f` returns `None`, the new event is not fired.
+    pub fn filter_map<O: 'static + ?Sized>(
         &self,
         f: impl Fn(Arc<T>) -> Option<Arc<O>> + 'static,
     ) -> Event<O> {
@@ -29,7 +29,11 @@ impl<T: 'static> Event<T> {
     }
 }
 
-struct FilterMapEvent<O: 'static, T: 'static, F: 'static + Fn(Arc<T>) -> Option<Arc<O>>> {
+struct FilterMapEvent<
+    O: 'static + ?Sized,
+    T: 'static + ?Sized,
+    F: 'static + Fn(Arc<T>) -> Option<Arc<O>>,
+> {
     subscriber_list: SubscriptionManager<O, Self>,
     inner: Event<T>,
     weak_self: Weak<Self>,
@@ -37,8 +41,8 @@ struct FilterMapEvent<O: 'static, T: 'static, F: 'static + Fn(Arc<T>) -> Option<
     height: Mutex<Option<usize>>,
 }
 
-impl<O: 'static, T: 'static, F: 'static + Fn(Arc<T>) -> Option<Arc<O>>> SubscriptionEvent<O>
-    for FilterMapEvent<O, T, F>
+impl<O: 'static + ?Sized, T: 'static + ?Sized, F: 'static + Fn(Arc<T>) -> Option<Arc<O>>>
+    SubscriptionEvent<O> for FilterMapEvent<O, T, F>
 {
     type Inner = T;
     type Tag = ();
@@ -54,8 +58,8 @@ impl<O: 'static, T: 'static, F: 'static + Fn(Arc<T>) -> Option<Arc<O>>> Subscrip
             });
     }
 }
-impl<O: 'static, T: 'static, F: Fn(Arc<T>) -> Option<Arc<O>> + 'static> EventImpl<O>
-    for FilterMapEvent<O, T, F>
+impl<O: 'static + ?Sized, T: 'static + ?Sized, F: Fn(Arc<T>) -> Option<Arc<O>> + 'static>
+    EventImpl<O> for FilterMapEvent<O, T, F>
 {
     fn subscribe(&self, cb: std::sync::Weak<dyn super::EventCallback<O>>) {
         self.subscriber_list

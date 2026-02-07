@@ -10,9 +10,13 @@ use crate::{
 
 impl<T: 'static> Event<Event<T>> {
     /// Given an event of events, keep track of the most recent inner event
-    /// to have shown up on the outer event. When that inner event triggers,
-    /// trigger with that value. If the inner event and outer event trigger within
+    /// to have shown up on the outer event. When that inner event fires,
+    /// fire with that value. If the inner event and outer event fire within
     /// the same occurrence, follow the old inner event until the next occurrence.
+    ///
+    /// This means the outer event has to fire in one occurrence, and then the
+    /// inner event in a separate occurrence, in order for the resulting event
+    /// to ever fire.
     pub fn switch_hold(&self) -> Event<T> {
         Event(Arc::new_cyclic(|weak| {
             let outer_sub = Arc::new(SwitchHoldOuterCallback { this: weak.clone() });

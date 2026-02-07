@@ -8,6 +8,7 @@ use crate::{
     runtime::{Action, Runtime},
 };
 
+/// This is a handle used to schedule the triggering of an event.
 pub struct EventTrigger<T: 'static>(Weak<EventTriggerInner<T>>);
 
 impl<T: 'static> Event<T> {

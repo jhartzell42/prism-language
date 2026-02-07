@@ -3,11 +3,14 @@ use std::{any::Any, sync::Arc};
 use crate::{dynamic::Dynamic, event::Event, event::EventTrigger};
 
 #[derive(Clone)]
-pub struct ErasedEvent(Arc<dyn Any>);
+pub struct ErasedEvent(Arc<dyn Any>, Event<dyn Any>);
 
 impl ErasedEvent {
     pub fn new<T: 'static>(event: Event<T>) -> ErasedEvent {
-        Self(Arc::new(event))
+        Self(
+            Arc::new(event.clone()),
+            event.filter_map(|x| Some(x as Arc<dyn Any>)),
+        )
     }
 
     pub fn try_get<T: 'static>(&self) -> Option<Event<T>> {
@@ -20,6 +23,10 @@ impl ErasedEvent {
 
     pub fn matches_inner_type<T: 'static>(&self) -> bool {
         self.0.is::<Event<T>>()
+    }
+
+    pub fn as_any_event(&self) -> Event<dyn Any> {
+        self.1.clone()
     }
 }
 
