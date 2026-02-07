@@ -34,18 +34,3 @@ pub struct WidgetDelegateContext<'a> {
     /// Node we're dealing with.
     pub node: &'a WidgetNode,
 }
-
-/// A trivial delegate for nodes that don't actually have backend interaction.
-pub struct TrivialDelegate;
-
-impl WidgetDelegate for TrivialDelegate {
-    fn new_child_created(
-        &self,
-        _: WidgetDelegateContext,
-        _: &WidgetNode,
-    ) -> Arc<dyn WidgetDelegate> {
-        Arc::new(TrivialDelegate)
-    }
-
-    fn will_be_destroyed(&self, _: WidgetDelegateContext) {}
-}

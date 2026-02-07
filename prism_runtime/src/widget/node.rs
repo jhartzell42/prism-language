@@ -72,6 +72,12 @@ impl WidgetNode {
     }
 }
 
+/// These are externally visible properties of the node for backends
+/// to interact with them for nodes that require interaction with the backend.
+///
+/// They have both names and indexes. The expectation is that the backend
+/// interacting with them will know what names or indexes to use to query
+/// various properties as part of that backend components API.
 pub struct Slots<T> {
     pub(crate) values: Vec<T>,
     pub(crate) names: BTreeMap<String, usize>,
@@ -87,10 +93,12 @@ impl<T> Default for Slots<T> {
 }
 
 impl<T: Clone> Slots<T> {
+    /// How many items?
     pub fn len(&self) -> usize {
         self.values.len()
     }
 
+    /// Add a new item.
     pub fn add(&mut self, name: String, value: T) -> usize {
         if self.names.contains_key(&name) {
             panic!("Already have slot with name {name}");
@@ -101,18 +109,27 @@ impl<T: Clone> Slots<T> {
         ix
     }
 
+    /// Get an item by index.
     pub fn get_index(&self, ix: usize) -> T {
         self.values[ix].clone()
     }
 
+    /// Get an item by name.
     pub fn get_name(&self, name: &str) -> T {
         self.get_index(*self.names.get(name).expect("name not found"))
     }
 
+    /// Get an index for a given name.
+    pub fn index_for_name(&self, name: &str) -> usize {
+        *self.names.get(name).expect("name not found")
+    }
+
+    /// Update an item with a name.
     pub fn update_name(&mut self, name: &str, val: T) {
         self.update_index(*self.names.get(name).expect("name not found"), val);
     }
 
+    /// Update an item with an index
     pub fn update_index(&mut self, ix: usize, val: T) {
         self.values[ix] = val;
     }

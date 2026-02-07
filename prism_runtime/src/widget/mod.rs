@@ -2,14 +2,15 @@
 //! the interface between FRP components and the outside world.
 
 mod builder;
-pub mod delegate;
+mod delegate;
 mod dynamic;
 mod erased;
-pub mod node;
+mod node;
 mod widget_ready;
 
 use builder::WidgetBuilder;
-pub use node::WidgetNode;
+pub use delegate::*;
+pub use node::*;
 
 /// Implementers of this trait represent a Prism component that
 /// is implemented inside the context of the Prism runtime.
