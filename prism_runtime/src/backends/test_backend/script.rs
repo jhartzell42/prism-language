@@ -154,4 +154,12 @@ impl TestScript {
         backend.main_loop(self)?;
         Ok(output)
     }
+
+    /// Run this test script on the following widget, panicking on failure
+    pub fn test<W: Widget>(self, widget: &W) -> W::Output {
+        match self.run(widget) {
+            Ok(res) => res,
+            Err(err) => panic!("{err}"),
+        }
+    }
 }

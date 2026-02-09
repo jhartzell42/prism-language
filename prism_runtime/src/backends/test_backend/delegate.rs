@@ -58,7 +58,7 @@ impl TestDelegate {
     ) -> Arc<TestDelegate> {
         let event_callbacks = {
             let mut cbs = vec![];
-            for (name, &ix) in &node.events.names {
+            for (name, &ix) in &node.public_events.names {
                 let cb = Arc::new(TestCallback {
                     path: Path {
                         indexes: path.clone(),
@@ -66,7 +66,7 @@ impl TestDelegate {
                     },
                     event_tx: event_tx.clone(),
                 });
-                node.events.values[ix]
+                node.public_events.values[ix]
                     .as_any_event()
                     .0
                     .subscribe(Arc::downgrade(
@@ -79,7 +79,7 @@ impl TestDelegate {
         Arc::new(TestDelegate {
             path,
             _event_callbacks: event_callbacks,
-            dynamics: node.dynamics.clone(),
+            dynamics: node.public_dynamics.clone(),
             triggers: node.triggers.clone(),
             event_tx,
             children: Mutex::new(vec![]),

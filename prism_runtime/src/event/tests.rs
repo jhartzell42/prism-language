@@ -1,26 +1,11 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use test_log::test;
 
 use crate::{
-    backends::test_backend::{
-        Path, TestAction, TestScript, TestStep, crickets, delay_trigger, event, script, trigger,
-    },
-    event::{Event, EventCallback},
-    runtime::Runtime,
-    widget::{ExternalEventInfo, Widget},
+    backends::test_backend::{crickets, delay_trigger, event, script, trigger},
+    event::Event,
+    widget::Widget,
 };
-
-pub struct TestLogger<T> {
-    pub log: Mutex<Vec<Arc<T>>>,
-}
-
-impl<T: 'static + Send + Sync> EventCallback<T> for TestLogger<T> {
-    fn event_fired(&self, _: &Runtime, value: std::sync::Arc<T>) {
-        let mut log = self.log.lock().unwrap();
-        log.push(value);
-    }
-
-    fn invalidate_height(&self) {}
-}
 
 #[test]
 fn event_filter_test() {
@@ -30,8 +15,7 @@ fn event_filter_test() {
         type Output = ();
 
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
-            let ExternalEventInfo { event, .. } =
-                builder.add_external_event::<u32>("unfiltered".to_string());
+            let event = builder.add_external_event::<u32>("unfiltered".to_string());
             let filter_zero_event = event.filter_map(|a| {
                 if *a == 0 {
                     None
@@ -39,11 +23,11 @@ fn event_filter_test() {
                     Some(Arc::new(*a - 1))
                 }
             });
-            builder.add_event("filtered".to_string(), filter_zero_event);
+            builder.add_public_event("filtered".to_string(), filter_zero_event);
         }
     }
 
-    let result = script([
+    script([
         trigger([], "unfiltered", 2u32),
         event([], "filtered", 1u32),
         trigger([], "unfiltered", 0u32),
@@ -52,11 +36,7 @@ fn event_filter_test() {
         event([], "filtered", 1u32),
         trigger([], "unfiltered", 0u32),
     ])
-    .run(&TestWidget);
-
-    if let Err(err) = result {
-        panic!("{err}");
-    }
+    .test(&TestWidget);
 }
 
 #[test]
@@ -67,10 +47,8 @@ fn switch_hold_test2() {
         type Output = ();
 
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
-            let ExternalEventInfo { event: outer, .. } =
-                builder.add_external_event::<u32>("outer".to_string());
-            let ExternalEventInfo { event: inner, .. } =
-                builder.add_external_event::<u32>("inner".to_string());
+            let outer = builder.add_external_event::<u32>("outer".to_string());
+            let inner = builder.add_external_event::<u32>("inner".to_string());
 
             let outer_event = outer.filter_map(move |outer| {
                 Some(Arc::new(
@@ -78,7 +56,7 @@ fn switch_hold_test2() {
                 ))
             });
             let event = outer_event.switch_hold();
-            builder.add_event("output".into(), event);
+            builder.add_public_event("output".into(), event);
         }
     }
 
@@ -121,13 +99,11 @@ fn leftmost_test() {
         type Output = ();
 
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
-            let ExternalEventInfo { event: left, .. } =
-                builder.add_external_event::<u32>("left".to_string());
-            let ExternalEventInfo { event: right, .. } =
-                builder.add_external_event::<u32>("right".to_string());
+            let left = builder.add_external_event::<u32>("left".to_string());
+            let right = builder.add_external_event::<u32>("right".to_string());
 
             let output = Event::leftmost(vec![left, right]);
-            builder.add_event("output".into(), output);
+            builder.add_public_event("output".into(), output);
         }
     }
 
@@ -161,51 +137,54 @@ fn leftmost_test() {
 
 #[test]
 fn combine_test() {
-    use crate::event::OneOrBoth;
+    struct TestWidget;
 
-    let mut runtime = Runtime::new();
-    let (a_event, a_trigger) = Event::<u32>::external();
-    let (b_event, b_trigger) = Event::<String>::external();
+    impl Widget for TestWidget {
+        type Output = ();
 
-    // Combine into a string describing what fired
-    let combined = Event::combine(
-        |oob| match oob {
-            OneOrBoth::A(a) => Some(Arc::new(format!("A({})", a))),
-            OneOrBoth::B(b) => Some(Arc::new(format!("B({})", b))),
-            OneOrBoth::Both(a, b) => Some(Arc::new(format!("Both({}, {})", a, b))),
-        },
-        a_event,
-        b_event,
-    );
+        fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
+            let a = builder.add_external_event::<u32>("a".to_string());
+            let b = builder.add_external_event::<String>("b".to_string());
 
-    let logger = Arc::new(TestLogger::<String> {
-        log: Mutex::new(vec![]),
-    });
-    let logger2: Arc<dyn EventCallback<String>> = logger.clone();
-    combined.0.subscribe(Arc::downgrade(&logger2));
+            let output = Event::combine(
+                |oob| {
+                    Some(Arc::new(match oob {
+                        crate::event::OneOrBoth::A(a) => format!("a={a}"),
+                        crate::event::OneOrBoth::B(b) => format!("b={b}"),
+                        crate::event::OneOrBoth::Both(a, b) => format!("a={a} b={b}"),
+                    }))
+                },
+                a,
+                b,
+            );
+            builder.add_public_event("output".into(), output);
+        }
+    }
 
-    // Fire A only
-    runtime.schedule_trigger(&a_trigger, Arc::new(1));
-    runtime.propagate();
+    let result = script([
+        crickets(),
+        // Just a
+        trigger([], "a", 0u32),
+        event([], "output", "a=0".to_string()),
+        crickets(),
+        // Just right
+        trigger([], "b", "hello".to_string()),
+        event([], "output", "b=hello".to_string()),
+        crickets(),
+        // Both
+        delay_trigger([], "b", "hey".to_string()),
+        trigger([], "a", 4u32),
+        event([], "output", "a=4 b=hey".to_string()),
+        crickets(),
+        // Both reversed
+        delay_trigger([], "a", 5u32),
+        trigger([], "b", "wassup".to_string()),
+        event([], "output", "a=5 b=wassup".to_string()),
+        crickets(),
+    ])
+    .run(&TestWidget);
 
-    // Fire B only
-    runtime.schedule_trigger(&b_trigger, Arc::new("hello".to_string()));
-    runtime.propagate();
-
-    // Fire both simultaneously
-    runtime.schedule_trigger(&a_trigger, Arc::new(42));
-    runtime.schedule_trigger(&b_trigger, Arc::new("world".to_string()));
-    runtime.propagate();
-
-    let log = logger.log.lock().unwrap();
-    let log = log.clone();
-
-    assert_eq!(
-        log,
-        vec![
-            Arc::new("A(1)".to_string()),
-            Arc::new("B(hello)".to_string()),
-            Arc::new("Both(42, world)".to_string()),
-        ]
-    );
+    if let Err(err) = result {
+        panic!("{err}");
+    }
 }

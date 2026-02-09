@@ -7,7 +7,7 @@ use crate::{
         Event, EventCallback, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::Action,
+    runtime::{Action, Runtime},
     widget::{Widget, WidgetDelegateContext, WidgetNode, builder::WidgetBuilder},
 };
 
@@ -28,7 +28,7 @@ struct DynamicWidget<T: 'static + Widget> {
 struct DynamicWidgetEvent<T: 'static + Widget> {
     widget: DynamicWidget<T>,
     weak_self: Weak<Self>,
-    node: Behavior<WidgetNode>,
+    node: Behavior<Option<Arc<WidgetNode>>>,
     subscribers: SubscriptionManager<T::Output, Self>,
 }
 
@@ -53,13 +53,12 @@ impl<T: 'static + Widget> Widget for DynamicWidget<T> {
             let output = output.take().unwrap();
             Some(Arc::new(output))
         });
-
         let next_event = Arc::new_cyclic(|weak_self| DynamicWidgetEvent {
             widget: self.clone(),
             weak_self: weak_self.clone(),
             node: Behavior::hold(
-                Arc::new(WidgetNode::new()),
-                done_event.filter_map(|x| Some(x)),
+                Arc::new(None),
+                done_event.filter_map(|x| Some(Arc::new(Some(x)))),
             ),
             subscribers: SubscriptionManager::new(()),
         });
@@ -68,7 +67,7 @@ impl<T: 'static + Widget> Widget for DynamicWidget<T> {
         ));
         let next_event = Event(next_event);
         // Keep this alive even if no one's using the output event.
-        builder.add_event("rebuilt".to_string(), next_event.clone());
+        builder.add_public_event("rebuilt".to_string(), next_event.clone());
 
         let event = Event::leftmost(vec![first_time_event, next_event]);
         event
@@ -106,13 +105,15 @@ struct DWAction<T: 'static + Widget> {
 }
 
 impl<T: 'static + Widget> Action for DWAction<T> {
-    fn act(self: Box<Self>, runtime: &crate::runtime::Runtime) {
-        let parent_node = self.event.node.0.query_for_tag();
+    fn act(self: Box<Self>, runtime: &Runtime) {
+        let Some(parent_node) = Arc::unwrap_or_clone(self.event.node.0.query_for_tag()) else {
+            unreachable!("parent_node not set");
+        };
         let Some(delegate) = parent_node.delegate.get() else {
-            unreachable!();
+            unreachable!("parent node has no delegate?");
         };
         let (child_node, output) =
-            WidgetBuilder::build_root(runtime, &*self.value, self.event.height());
+            WidgetBuilder::build_root(runtime, &*self.value, self.event.height() + 1);
         child_node.set_delegate(
             runtime,
             delegate.new_child_created(

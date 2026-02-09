@@ -33,12 +33,15 @@ impl TestBackend {
         // TODO: This should live in `TestDelegate`, not here.
         let delegate = TestDelegate::for_root_node(&node, event_tx);
         node.set_delegate(&runtime, delegate.clone());
-        let backend = TestBackend {
+        let mut backend = TestBackend {
             node,
             runtime,
             delegate,
             event_rx,
         };
+
+        // Must propagate once for the widget node's initial creation events to land.
+        backend.runtime.propagate();
         (output, backend)
     }
 
@@ -115,6 +118,7 @@ impl TestBackend {
 
     pub fn main_loop(&mut self, script: TestScript) -> Result<(), ScriptError> {
         for (index, step) in script.steps.into_iter().enumerate() {
+            log::debug!("{index}: {step:?}");
             let propagate = step.action == TestAction::TriggerEvent;
             self.step(&self.runtime, step)
                 .map_err(|error| ScriptError { index, error })?;

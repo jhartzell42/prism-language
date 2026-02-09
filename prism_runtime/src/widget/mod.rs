@@ -9,6 +9,9 @@ mod node;
 mod slots;
 mod widget_ready;
 
+#[cfg(test)]
+mod tests;
+
 pub use builder::*;
 pub use delegate::*;
 pub use erased::*;

@@ -19,9 +19,6 @@ mod constant;
 mod derived;
 mod hold;
 
-#[cfg(test)]
-mod tests;
-
 /// This represents a handle of a behavior, useful for querying the value and
 /// constructing other behaviors.
 pub struct Behavior<T: ?Sized + Send + Sync>(pub(crate) Arc<dyn BehaviorImpl<T>>);

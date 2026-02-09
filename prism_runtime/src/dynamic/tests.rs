@@ -1,97 +1,56 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use test_log::test;
 
 use crate::{
-    behavior::Behavior,
+    backends::test_backend::{crickets, delay_trigger, dynamic, event, script, trigger},
     dynamic::Dynamic,
-    event::{Event, EventCallback, tests::TestLogger},
-    runtime::Runtime,
+    widget::Widget,
 };
 
 #[test]
-fn hold_test() {
-    let mut runtime = Runtime::new();
-    let (event1, trigger1) = Event::<u32>::external();
-    let (event2, trigger2) = Event::<()>::external();
+fn hold_map2_test() {
+    struct TestWidget;
 
-    let hold_behavior = Behavior::hold(Arc::new(0), event1);
-    let const_behavior = Behavior::constant(Arc::new(1));
-    let derived_behavior = Behavior::map2(|a, b| Arc::new(*a + *b), hold_behavior, const_behavior);
-    let tag_event = event2.tag(derived_behavior);
-    let last_event = tag_event.filter_map(|x| Some(Arc::new(*x.1)));
+    impl Widget for TestWidget {
+        type Output = ();
 
-    let last_event_logger = Arc::new(TestLogger::<u32> {
-        log: Mutex::new(vec![]),
-    });
-    let last_event_logger2: Arc<dyn EventCallback<u32>> = last_event_logger.clone();
-    last_event.0.subscribe(Arc::downgrade(&last_event_logger2));
+        fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
+            let update = builder.add_external_event::<u32>("update".to_string());
+            let tag = builder.add_external_event::<()>("query".to_string());
+            let d_hold = Dynamic::hold(Arc::new(0), update);
+            let d_const = Dynamic::constant(Arc::new(10));
+            let d_combo = Dynamic::map2(d_hold.clone(), d_const, |a, b| Arc::new(*a + *b));
+            let output = tag.tag(d_combo).filter_map(|x| Some(Arc::new(*x.1)));
+            builder.add_public_event("output".into(), output);
+            builder.add_public_dynamic("output".into(), d_hold);
+        }
+    }
 
-    runtime.schedule_trigger(&trigger2, Arc::new(()));
-    runtime.propagate(); // 0
-    runtime.schedule_trigger(&trigger1, Arc::new(2));
-    runtime.propagate();
-    runtime.schedule_trigger(&trigger1, Arc::new(4));
-    runtime.propagate();
-    // behavior has 4
-    runtime.schedule_trigger(&trigger2, Arc::new(()));
-    runtime.propagate(); // 4
-    runtime.schedule_trigger(&trigger2, Arc::new(()));
-    runtime.propagate(); // 4
-    runtime.schedule_trigger(&trigger1, Arc::new(3));
-    runtime.schedule_trigger(&trigger2, Arc::new(()));
-    runtime.propagate(); // still 4, not prompt
-    runtime.schedule_trigger(&trigger2, Arc::new(()));
-    runtime.propagate(); // 3
-
-    let log = last_event_logger.log.lock().unwrap();
-    let log = log.clone();
-
-    // Everything's incremented by 1 b/c we added to the other behavior
-    assert_eq!(
-        log,
-        vec![
-            Arc::new(1),
-            Arc::new(5),
-            Arc::new(5),
-            Arc::new(5),
-            Arc::new(4)
-        ]
-    );
-}
-
-#[test]
-fn dynamic_map2_test() {
-    let mut runtime = Runtime::new();
-    let (a_event, a_trigger) = Event::<u32>::external();
-    let (b_event, b_trigger) = Event::<u32>::external();
-
-    // Create dynamics with initial values
-    let a_dyn = Dynamic::hold(Arc::new(1), a_event);
-    let b_dyn = Dynamic::hold(Arc::new(10), b_event);
-
-    // map2: sum them
-    let sum_dyn = Dynamic::map2(a_dyn, b_dyn, |a, b| Arc::new(*a + *b));
-
-    let logger = Arc::new(TestLogger::<u32> {
-        log: Mutex::new(vec![]),
-    });
-    let logger2: Arc<dyn EventCallback<u32>> = logger.clone();
-    sum_dyn.event().0.subscribe(Arc::downgrade(&logger2));
-
-    // Fire A only: a=2, b=10 (from behavior) => 12
-    runtime.schedule_trigger(&a_trigger, Arc::new(2));
-    runtime.propagate();
-
-    // Fire B only: a=2 (from behavior), b=20 => 22
-    runtime.schedule_trigger(&b_trigger, Arc::new(20));
-    runtime.propagate();
-
-    // Fire both: a=3, b=30 => 33 (both from events, no stale behavior values)
-    runtime.schedule_trigger(&a_trigger, Arc::new(3));
-    runtime.schedule_trigger(&b_trigger, Arc::new(30));
-    runtime.propagate();
-
-    let log = logger.log.lock().unwrap();
-    let log = log.clone();
-
-    assert_eq!(log, vec![Arc::new(12), Arc::new(22), Arc::new(33)]);
+    // `output` event is offset by 10, `output` dynamic is not
+    script([
+        // Query
+        trigger([], "query".into(), ()),
+        event([], "output".into(), 10u32),
+        // Update
+        trigger([], "update".into(), 4u32),
+        crickets(),
+        dynamic([], "output".into(), 4u32),
+        // Update more
+        trigger([], "update".into(), 5u32),
+        trigger([], "update".into(), 6u32),
+        crickets(),
+        dynamic([], "output".into(), 6u32),
+        // Query
+        trigger([], "query".into(), ()),
+        event([], "output".into(), 16u32),
+        // Simultaneous, don't be prompt
+        delay_trigger([], "update".into(), 7u32),
+        trigger([], "query".into(), ()),
+        dynamic([], "output".into(), 7u32),
+        event([], "output".into(), 16u32),
+        // Now it's updated
+        trigger([], "query".into(), ()),
+        event([], "output".into(), 17u32),
+    ])
+    .test(&TestWidget);
 }

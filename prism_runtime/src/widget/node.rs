@@ -20,9 +20,11 @@ pub struct WidgetNode {
     /// Tracks current children of the node.
     pub children: Mutex<Vec<Arc<WidgetNode>>>,
     /// Exposed dynamics for backends to read and subscribe to.
-    pub dynamics: Slots<ErasedDynamic>,
+    pub public_dynamics: Slots<ErasedDynamic>,
     /// Exposed events for backends to subscribe to.
-    pub events: Slots<ErasedEvent>,
+    pub public_events: Slots<ErasedEvent>,
+    /// Cyclic events, rooted here in the widget.
+    pub cyclic_events: Slots<ErasedEvent>,
     /// Exposed triggers for backends to provide data from the outside world
     pub triggers: Slots<ErasedEventTrigger>,
     /// Backend data so the backend knows what (if anything) to do with this widget node.
@@ -36,8 +38,9 @@ impl WidgetNode {
     pub(crate) fn new() -> WidgetNode {
         WidgetNode {
             children: Mutex::new(vec![]),
-            dynamics: Slots::default(),
-            events: Slots::default(),
+            public_dynamics: Slots::default(),
+            public_events: Slots::default(),
+            cyclic_events: Slots::default(),
             triggers: Slots::default(),
             backend_data: Value::Null,
             delegate: OnceLock::new(),
@@ -78,8 +81,8 @@ impl Debug for WidgetNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WidgetNode")
             .field("children", &self.children)
-            .field("dynamics", &self.dynamics)
-            .field("events", &self.events)
+            .field("dynamics", &self.public_dynamics)
+            .field("events", &self.public_events)
             .field("triggers", &self.triggers)
             .field("backend_data", &self.backend_data)
             .finish()

@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
+    dynamic::Dynamic,
     event::{Event, EventTrigger},
     runtime::Runtime,
     widget::{
-        Widget, WidgetNode,
+        ErasedDynamic, Widget, WidgetNode,
         erased::{ErasedEvent, ErasedEventTrigger},
         widget_ready::WidgetReadyEvent,
     },
@@ -83,72 +84,73 @@ impl WidgetBuilder<'_> {
         &mut self,
         name: String,
     ) -> (usize, Event<T>) {
-        let ix = self.node.events.len();
+        let ix = self.node.cyclic_events.len();
         let event = self
             .done_event()
-            .filter_map(move |node| Some(Arc::new(node.events[ix].get::<T>())))
+            .filter_map(move |node| Some(Arc::new(node.cyclic_events[ix].get::<T>())))
             .switch_hold();
         self.node
-            .events
+            .cyclic_events
             .add(name, ErasedEvent::new(Event::<T>::never()));
         (ix, event)
     }
 
-    /// Close a cyclic loop by providing the event back. When this event fires, the
-    /// original event we got from `new_cyclic_event` will also fire.
+    /// Close a cyclic loop by providing the event back, given the event's name. When this event fires, the
+    /// original event we got from [`add_cyclic_event()`] will also fire.
+    ///
+    /// [`add_cyclic_event()`]: Self::add_cyclic_event()
     pub fn close_cyclic_event_by_name<T: 'static + Send + Sync>(
         &mut self,
         name: &str,
         event: Event<T>,
     ) {
-        assert!(self.node.events[name].matches_inner_type::<T>());
+        assert!(self.node.cyclic_events[name].matches_inner_type::<T>());
         self.node
-            .events
+            .cyclic_events
             .update_name(name, ErasedEvent::new(event.clone()))
             .unwrap();
     }
 
-    /// Close a cyclic loop by providing the event back. When this event fires, the
-    /// original event we got from `new_cyclic_event` will also fire.
+    /// Close a cyclic loop by providing the event back, given the event's index. When this event fires, the
+    /// original event we got from [`add_cyclic_event()`] will also fire.
+    ///
+    /// [`add_cyclic_event()`]: Self::add_cyclic_event()
     pub fn close_cyclic_event_by_index<T: 'static + Send + Sync>(
         &mut self,
         index: usize,
         event: Event<T>,
     ) {
-        assert!(self.node.events[index].matches_inner_type::<T>());
+        assert!(self.node.cyclic_events[index].matches_inner_type::<T>());
         self.node
-            .events
+            .cyclic_events
             .update_index(index, ErasedEvent::new(event.clone()))
             .unwrap();
     }
 
     /// Add an event that the backend/delegate will have to trigger. This doesn't automatically register the
     /// event as externally accessible, just the trigger.
-    pub fn add_external_event<T: 'static + Send + Sync>(
-        &mut self,
-        name: String,
-    ) -> ExternalEventInfo<T> {
+    pub fn add_external_event<T: 'static + Send + Sync>(&mut self, name: String) -> Event<T> {
         let (event, trigger) = Event::<T>::external();
-        let trigger_index = self
-            .node
+        self.node
             .triggers
             .add(name.clone(), ErasedEventTrigger::new(trigger.clone()));
 
-        ExternalEventInfo {
-            trigger,
-            trigger_index,
-            event,
-        }
+        event
     }
 
     /// Add an externally accessible event, so that the backend can access it.
-    pub fn add_event<T: 'static + Send + Sync>(&mut self, name: String, event: Event<T>) {
-        self.node.events.add(name, ErasedEvent::new(event));
+    pub fn add_public_event<T: 'static + Send + Sync>(&mut self, name: String, event: Event<T>) {
+        self.node.public_events.add(name, ErasedEvent::new(event));
     }
-}
 
-pub struct ExternalEventInfo<T: 'static + Send + Sync> {
-    pub trigger: EventTrigger<T>,
-    pub event: Event<T>,
-    pub trigger_index: usize,
+    /// Add an externally accessible dynamic, so that the backend can access it.
+    pub fn add_public_dynamic<T: 'static + Send + Sync>(
+        &mut self,
+        name: String,
+        dynamic: Dynamic<T>,
+    ) {
+        self.node
+            .public_dynamics
+            .add(name, ErasedDynamic::new(dynamic));
+    }
 }
