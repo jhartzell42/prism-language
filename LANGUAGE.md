@@ -1,7 +1,7 @@
 # Prism Programming Language
 
-The Prism Programming Language is a strongly typed programming language for
-writing applications in a Functional Reactive paradigm. It is integrated with
+The Prism Programming Language is a planned strongly typed programming language for
+writing applications in a Functional Reactive paradigm. It will be integrated with
 the Prism Runtime, a polyglot framework for writing FRP components.
 
 This document is intended for an audience familiar with Haskell, FRP, and who
@@ -11,47 +11,85 @@ language, and not a tutorial for one. Tutorials are for future work.
 ## Status
 
 None of the programming language itself is implemented yet. Major parts of the
-runtime are.
+runtime are, but that's just an FRP runtime for Rust so far. So almost none of
+the ideas in this document are actually available for use yet.
 
-## Motivation and Vision
+## Why Write a New Programming Language
+
+Personally, I write programming languages because it's fun. But for this one,
+I also would like to try to convince other people to get involved, so I should
+probably explain a little more. While this is a hobby project and an incomplete
+prototype right now, I do hope that this one can grow to be more than that.
 
 The first question any designer of a programming language is asked is always the
-same: Why? Or the slightly expanded version: Don't we already have enough
-programming languages? To which my blanket answer is: No. Different programming
-situations benefit from different programming languages, and the existing
-ones are frankly not good enough to build the tech world of the present,
-let alone the future.
+same: Why? The assumption behind this tends to be: Don't we already have enough
+programming languages?
 
-But I want my programming language to succeed, and if and when it has fans I
-want them to have talking points, so in this section I'll pitch the "why." This
-will also help people stay on track, and avoid having them add features that
-will ruin everything.
+My answer is a strong "no." We need many programming languages. Different
+programming situations benefit from different programming languages. Different
+application domains require different trade-offs. Some trade-offs are best baked
+into the programming language itself, especially when it comes to policies on
+types, overhead of abstractions, and mutations.
+
+The existing programming languages are frankly not good enough to build
+the tech world of the present, let alone the future. Many of them
+make too many of the same trade-offs, or are different in ways that
+are only interesting for historical reasons. As a field, we've only
+recently started to recover from our obsession with object-oriented
+programming and explore alternatives.
+
+In this document, I lay out my case for this programming language.
+I hope you like the idea. But even if you don't, that's fine. Even
+if this programming language ends up being terrible to use,
+that's also fine. 
+
+I'm building the programming language I would want to use for application
+development. I hope someday that it'll be usable in production applications.
+I have no guarantee that this will happen---this is currently a partial prototype
+and a hobby project. Even if it doesn't get there, though, I hope that it
+moves the conversation on how programming languages should work in general,
+and how GUI programming should be done specifically.
+
+But those all are stretch goals. At the very least, I expect to learn a lot
+through this project. And I expect to be able to polish it up as an example of
+how I program Rust and solve problems in Rust. Hopefully, through reading it,
+you can learn more about Rust, or at least about my approach to it.
+
+## Why Write This New Programming Language
+
+Prism is intended for a fairly narrow domain, functional reactive programming.
+It's not going to be a multiparadigm language. It's a specialist in a single
+paradigm of organizing mutation and structuring code.
+
+FRP is particularly useful for GUI programming. In my view, it's the only
+credible alternative to OOP for designing user interfaces. It's a new conceptual
+model for experienced GUI programmers, but I think the additional rigor will be
+worth it in the end.
 
 I have had an excellent experience with the Reflex FRP framework in Haskell,
 both professionally as an employee at Obsidian and in the one small hobby
 project I've done in it. I truly believe that FRP is the way of the future for
-writing GUIs, and GUIs should be written in such a framework. Haskell's features
-are deeply built into the framework, and it's hard to imagine FRP semantics
-working in a programming language without those features.
+writing GUIs. Haskell's features are deeply built into Reflex, and it's hard to
+imagine FRP semantics working in a programming language without those features.
 
 That said, there are certain things I've found frustrating about FRP in Haskell.
 I've found myself writing `dFoo`, `eFoo`, `deFoo` to disambiguate variables that
 concern themselves with the same thing, which is sort of a Haskell version of
-Hungarian Notation. Ryan officially recommends against doing it, but not doing
-it is worse, because all of these monads are recursive, which means you can't
-use shadowing consistently as an alternative.
+Hungarian Notation. The author of Reflex, officially recommends against doing
+it, but because all of these monads are recursive, you can't use shadowing
+consistently as an alternative.
 
 This is just the most superficial frustration (and the most visible in Prism).
 There are many smaller issues where it seemed like the framework's semantics
 of FRP were working at cross-purposes with the general semantics of Haskell.
 
-Additionally, being tied to Haskell means that the success of FRP is tied to the
+Being tied to Haskell means that the success of FRP is tied to the
 success of Haskell. While I enjoy Haskell deeply, especially at a conceptual
 level, the community is commiting to "avoid\[ing\] success at all costs." While
 I understand that this is meant as a tongue-in-cheek inside joke, I think
 they've succeeded at the more salient interpretation of this goal.
 
-So, for FRP to succeed, it needs a different programming language than Haskell,
+For FRP to succeed, it needs a different programming language than Haskell,
 one that seeks success at some cost. But why its own programming language?
 
 Well, FRP's semantics were designed for pure functional semantics. Pure
@@ -71,48 +109,51 @@ both mutation and aliasing.
 
 If how to handle mutation and IO is a policy that we set at the programming
 language level---which it seems that it is---then what does this mean for FRP,
-which is a policy for mutation and IO that doesn't play well with others? Well,
-outside of the one programming language that made flexible and programmable
-mutation policy one of its core features, all of this implies that FRP will be
-fundamentally at odds with every other existing programming language.
+which is a policy for mutation and IO that doesn't play well with others?
+Outside of the one programming language that made flexible and programmable
+mutation policy one of its core features, FRP will be fundamentally at odds with
+every other existing programming language.
 
-For these reasons, I have concluded the only way to have FRP outside of Haskell
-(or a Haskell derivative or strict dialect) would be to design a new programming
-language where FRP is that programming language's mutation (and IO) policy.
+It seems that the only way to have FRP outside of Haskell (or a Haskell
+derivative or strict dialect) would be to design a new programming language
+where FRP is that programming language's mutation (and IO) policy.
+All the FRP primitives should be language primitives. It should not only
+be easy to use it to build an FRP application, it should be impossible to
+use it to build any other sort.
 
-And that is where the Prism Language comes in. It is not a systems programming
-language. It is an applications programming language. I anticipate that
-low-level or performance-sensitive components for the Prism Runtime will have to
-be written in other programming languages---for which programmers will pay the
-price of having a programming language ill-matched to the FRP mutation semantics.
-Given that those low-level components will likely involve translating from
-FRP mutation and IO semantics to other semantics, this is a cost I am more than
-willing to pay.
+And that is where the Prism Language comes in: a specialized application
+language for FRP. I anticipate that low-level or performance-sensitive
+components for the Prism Runtime will have to be written in other programming
+languages---for which programmers will pay the price of having a programming
+language ill-matched to the FRP mutation semantics.  Given that those low-level
+components will likely involve translating from FRP mutation and IO semantics to
+other semantics, this is a necessary cost.
 
 Since we are trying to use FRP semantics as our sole mechanism for mutation and
 IO, the semantics of Prism will be tightly constrained. The syntax I'm designing
 has a misleading scripting-language vibe: significant whitespace, comments with
 `#`, and the `$` sigil for the most common type of mutable state. It also will
 support convenient automatic coercions based on what I judge that people will
-want to avoid extra typing and thinking. But that doesn't mean it's going to be
-a Perl or Javascript-style anarchy.
+want to avoid extra typing and thinking.
 
-I imagine that Rust and Haskell will be the other preferred languages for
-interacting with the Prism Runtime---and probably just Rust, due to Haskell's
-professed aversion to success. Maybe we can get Swift in there too, if the Swift
-people want.
+But that doesn't mean it's going to be a Perl or Javascript-style anarchy.
+Prism will be strongly typed. I hope to at some point add a version of Haskell
+typeclasses or Rust traits. I haven't fully figured out the error handling
+story, but I think I'm starting with a good baseline.
 
 I know that learning a new programming language takes work. My goal is to spread
 FRP semantics, and learning FRP semantics will take work in any case. Whether
 embedded in another programming language or not, FRP is a different programming
 paradigm than any other, distinct from the procedural paradigm, imperative OOP,
 the pure functional paradigm, and Rust's hybrid paradigm blending systems and
-functional programming.  I would argue that learning a new programming paradigm
-is far more work than learning one individual programming language within that
-paradigm. As evidence to that, see all the complaints about Rust not supporting
-inheritance from people who know several OOP programming languages.
+functional programming.
 
-Given that, I think it's better that people learn it a new programming language.
+I would argue that learning a new programming paradigm is far more work than
+learning one individual programming language within that paradigm. As evidence
+to that, see all the complaints about Rust not supporting inheritance from
+people who know several OOP programming languages.
+
+Given that, I think it's better that people learn FRP in a new programming language.
 They will be less tempted to use other paradigms for their mutation---which, if
 Prism were embedded in another language, they would be able to do.  Learners
 would work around FRP, create their own worse versions of other GUI frameworks,
@@ -120,13 +161,14 @@ and then blame FRP for its awkwardness and their terrible results.
 
 Humans have to learn. I truly believe that FRP will make it worth it for them.
 I also truly believe, in the case of FRP, that well-designed, finely tailored
-syntax will make it easier for them. I believe that with rare exceptions, anyone
+syntax will make it easier for them. I also believe that with rare exceptions, anyone
 can learn any skill to proficiency, given enough time and appropriate motivation.
 
-But I will also try to make it as easy for folks as possible. I believe in success
-at some cost. But also, I believe that success sometimes comes from imitating
-other programming languages superficially, and sometimes comes from just making
-a system intuitive but distinctive. Prism focuses on the latter philosophy.
+But I will also try to make it as easy for folks as possible. I believe in
+success at some cost. But also, I believe that success sometimes comes from
+imitating other programming languages superficially, and sometimes comes from
+just making a system intuitive but distinctive. Prism chooses the latter
+philosophy.
 
 ## Feature Selection
 
@@ -140,9 +182,10 @@ opposition to it. Some of these semantics will feel like OOP to some
 people---and if that's what it takes to get you to "get" it, by all means think
 of them that way!
 
-But that doesn't mean I'll add your favorite OOP feature. I won't reject it out
-of hand just because it comes from OOP. Even if you pitch me a feature called
-"inheritance," I'll consider the actual concrete proposal on its merits.
+But that doesn't mean I'll add your favorite OOP feature. I probably won't. I
+won't reject it out of hand just because it comes from OOP. Even if you pitch me
+a feature called "inheritance," I'll consider the actual concrete proposal on
+its merits.
 
 ## Syntax-Forward Tour
 
@@ -169,8 +212,15 @@ an operation is doing should be visible in how we write the operation.
 
 ### Identifiers
 
-A la Perl, identifiers use sigils to identify their functor (i.e. widget, event,
-dynamic, etc):
+A la Perl, identifiers use sigils. Unlike Perl, the sigils identify their
+*functor* (i.e. widget, event, dynamic, etc). Functors are a concept
+from Haskell, but in a Prism context, they mostly have to do with how the value
+interacts with the FRP graph and the mutation semantics.  Since there's a fixed
+list of built-in functors in Prism,
+*functor* is probably the wrong word, so I will likely end up just calling them
+**sigils*.
+
+Here are the sigils in Prism:
 
 * **`!`** for **events** which represent values that "fire" or not at any
 given instant in time (known as an occurrence). Occurrences are created
@@ -220,36 +270,37 @@ functor of their return value. Types also start with an uppercase letter.
 Function values inside functors (a `Dynamic<Fn>`) are treated as pure values.
 
 Lowercase identifiers are expected to be in `snake_case` and uppercase
-identifiers in `UpperCamelCase`. To do otherwise is an error.
+identifiers in `UpperCamelCase`. To do otherwise will be an error.
 
-I considered trying to get people to call them "funny characters" in an homage
+I considered trying to get people to call these sigils "funny characters" in an homage
 to Perl, but I don't think I can make it a thing. If anyone disagrees, though,
-let me know, and if there's enough interest I will go along with it. I imagine
-that rather than discussing what functor a value is in, people might say what
-sigil it's in.
+let me know, and if there's enough interest I will go along with it.
 
-On a more earnest note, behaviors aren't exposed at a Prism Language level.
-Like in Reflex, a `$dynamic` consists internally of a behavior and an event.
-Unlike in Reflex, there's no way to access the behavior independently. Any
-tagging or switching primitives implicitly access the behavior---if you want
-promptness, implement it yourself, at the risk of cycles. This is to say,
-during event propagation, dynamics consistently are considered to have
-their *old* values. During dynamic construction, of course, old and
-new values must be considered.
+On a more earnest note, behaviors (that is, pure pull values) aren't exposed at
+a Prism Language level. Like in Reflex, a `$dynamic` consists internally of a
+behavior and an event. Unlike in Reflex, there's no way to access the behavior
+independently. Any tagging or switching primitives implicitly access the
+behavior *non-promptly*. This is to say, during event propagation, dynamics
+consistently are considered to have their *old* values.
+
+Dynamic construction, however, has internal elements of promptness.
+You can always trust that the event contains the new value in any instance
+of propagation, and that the behavior will reflect that exact value afterwards.
 
 ### Blocks
 
 There are a number of different kinds of blocks for different kinds of flow
 control. Layout is Python-style: blocks are introduced with `:`. Statements
-are newline separated and indented. These are based on Haskell's monads,
-especially monads in a Reflex context, but unlike in Haskell, we will not
-be allowing custom polymorphic monad operators (at least for now). Some
-built-in operations may support multiple monads, but that doesn't extend
-into a full Haskell-style effects system.
+are newline separated and indented.
+
+The kinds of blocks are based on Haskell's monads, especially monads in a Reflex
+context. Unlike in Haskell, we will not be allowing custom polymorphic monad
+operators (at least for now). Some built-in operations may support multiple
+monads, but that doesn't extend into a full Haskell-style effects system.
 
 #### Widget Blocks
 
-Can define widgets (a user interface or IO component element with no inputs or configuration), or
+Widget blocks define widgets (a user interface or IO component element with no inputs or configuration), or
 functions that return widgets (a component with inputs or configuration). Here's an example
 of defining a widget at the top level:
 
@@ -340,8 +391,9 @@ In a `read` block, only `let`s are allowed except for one statement with a
 value, which computes the return value, to which the `read` expression
 evaluates.
 
-The Rust/Haskell meaning of `_` is covered by the `ignore` keyword. You can
-also specify a variable name, by writing `read foo <- v` or similar.
+You may also specify a variable name besides `_`, by writing `read foo <- v` or
+similar. The Rust/Haskell meaning of `_`, to ignore a binding, is covered by the
+`ignore` keyword.
 
 #### Update Blocks (from Haskell `MonadState`/Rust mutable references)
 
@@ -477,9 +529,10 @@ You may also write: `dyn pattern <- $_`.
 All operations are automatically lifted. `1 + !event` returns a
 new event where the value inside is one more than the previous
 event. Similarly, `1 + $dynamic` returns a new dynamic.
-Only one event is supported per operation.
 
 Operations can include dynamics and a single event.
+Only one event is supported per non-specialized operation.
+You need event-focused combinators to combine multiple events.
 
 #### Function Calls
 
@@ -527,7 +580,8 @@ Division results in a `?`, whether integer or floating-point.
 
 Technically, `on` just returns its left-hand side. Since it's used
 with a pure value or dynamic on the left, automatic lifting gives it
-its semantics.
+its semantics of an event that fires based on the right-hand side
+but takes its value from the left-hand side.
 
 `|` fires whenever either of its inputs fire. If both fire in the same
 occurrence, it returns the left side. For many, you can use `!Leftmost`, which
