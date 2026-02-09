@@ -5,6 +5,7 @@ mod builder;
 mod delegate;
 mod dynamic;
 mod erased;
+mod fold_dyn;
 mod node;
 mod slots;
 mod widget_ready;

@@ -123,6 +123,11 @@ impl<T: ?Sized + 'static + Send + Sync> Behavior<Behavior<T>> {
     }
 }
 
+/// This type is used to track the graph of what behaviors depend on what
+/// behaviors. This lets behaviors propagate invalidation information.
+/// When you recompute a behavior, it's important to use [`Behavior::query_for_computation()`]
+/// with a value of this type so that the graph of invalidations can be properly
+/// maintained.
 #[derive(Clone)]
 pub struct BehaviorDependencyTracker(Weak<dyn BehaviorDependent>);
 

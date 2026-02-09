@@ -2,10 +2,60 @@ use std::sync::Arc;
 use test_log::test;
 
 use crate::{
-    backends::test_backend::{dynamic, script, trigger},
+    backends::test_backend::{crickets, dynamic, event, script, trigger},
     dynamic::Dynamic,
     widget::{Widget, WidgetBuilder},
 };
+
+#[test]
+fn fold_dyn() {
+    struct TestWidget;
+
+    impl Widget for TestWidget {
+        type Output = ();
+
+        fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
+            let increment = builder.add_external_event::<i32>("increment".to_string());
+            let dynamic = builder.fold_dyn(
+                "accumulator".to_string(),
+                |a, b| Arc::new(*a + *b),
+                Arc::new(0),
+                increment,
+            );
+            // This tests the behavior
+            builder.add_public_dynamic("accumulator".to_string(), dynamic.clone());
+            // This tests the event
+            builder.add_public_event("new_value".to_string(), dynamic.event());
+        }
+    }
+
+    script([
+        // Check starting state
+        dynamic([], "accumulator", 0),
+        crickets(),
+        // Add 3
+        trigger([], "increment", 3),
+        event([], "new_value", 3),
+        crickets(),
+        dynamic([], "accumulator", 3),
+        // Subtract 4
+        trigger([], "increment", -4),
+        event([], "new_value", -1),
+        crickets(),
+        dynamic([], "accumulator", -1),
+        // Add 1
+        trigger([], "increment", 1),
+        event([], "new_value", 0),
+        crickets(),
+        dynamic([], "accumulator", 0),
+        // Add 0, refires event (hmpf)
+        trigger([], "increment", 0),
+        event([], "new_value", 0),
+        crickets(),
+        dynamic([], "accumulator", 0),
+    ])
+    .test(&TestWidget)
+}
 
 #[test]
 fn dynamic_widget() {
