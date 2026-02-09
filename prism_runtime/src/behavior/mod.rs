@@ -15,9 +15,11 @@
 
 use std::sync::{Arc, Weak};
 
+mod compute;
 mod constant;
-mod derived;
 mod hold;
+
+pub use compute::*;
 
 /// This represents a handle of a behavior, useful for querying the value and
 /// constructing other behaviors.

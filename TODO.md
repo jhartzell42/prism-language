@@ -17,10 +17,16 @@
         * Button
         * Label
 * Write sample apps
-    * Mortgage calculator
-    * Chess
-    * Tabbed root app chooser
+    * Ideas
+        * Mortgage calculator
+        * Chess
+        * Tabbed root app chooser
+    * Test
+        * Using test backend
+        * Using GUI backend
 * Universal erased copy/clone value type
+    * Interface over implementation
+        * Interface that allows replacing the implementation
     * Different debug impl vs release
         * Release impl doesn't check if types match
     * Anything you store in it has to implement `PrismValue`
@@ -28,12 +34,18 @@
             * "Runtime" queries size to determine whether to box
         * Implementation present for `Event`/`Dynamic`/`Behavior`
     * Reconsider erased dynamic/event/trigger types
-* Define AST for PL
-    * In `prism_language`
+* Define bytecode/AST for PL
+    * In `prism_ir`
+        * SSA or bytecode
+    * Implement event/dynamic transformers
+    * Implement widgets
+    * Rewrite sample apps in IR
+* Implement compiler to IR
+    * In `prism_frontend`
+    * Rewrite sample apps in programming language
 
 # Hygiene refactors:
 
 * Use `thiserror` everywhere
 * Add named fields to types in `erased.rs`
-* Get proper test logging
 * Add documentation to public methods

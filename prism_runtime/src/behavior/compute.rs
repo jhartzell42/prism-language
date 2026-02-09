@@ -35,16 +35,11 @@ impl<O: ?Sized + 'static + Send + Sync> Behavior<O> {
             }
         }
 
-        Behavior(Arc::new_cyclic(|weak| DependentBehavior {
-            computation: OneBehaviorFunction {
-                a: self.clone(),
-                f,
-                phantom: PhantomData,
-            },
-            weak_self: weak.clone(),
-            cache: Mutex::new(None),
+        Behavior::computation_behavior(OneBehaviorFunction {
+            a: self.clone(),
+            f,
             phantom: PhantomData,
-        }))
+        })
     }
 
     /// This returns a behavior whose value will always be `f(a,b)` where
@@ -81,17 +76,12 @@ impl<O: ?Sized + 'static + Send + Sync> Behavior<O> {
             }
         }
 
-        Behavior(Arc::new_cyclic(|weak| DependentBehavior {
-            computation: TwoBehaviorFunction {
-                a,
-                b,
-                f,
-                phantom: PhantomData,
-            },
-            weak_self: weak.clone(),
-            cache: Mutex::new(None),
+        Self::computation_behavior(TwoBehaviorFunction {
+            a,
+            b,
+            f,
             phantom: PhantomData,
-        }))
+        })
     }
 
     /// This should be used inside an implementation of `BehaviorComputation`
@@ -102,13 +92,34 @@ impl<O: ?Sized + 'static + Send + Sync> Behavior<O> {
 
     /// Construct a new dependent behavior from an implementor of [`BehaviorComputation`].
     /// This low level function can be used to build a variety custom computational primitives.
-    pub fn dependent_behavior(computation: impl BehaviorComputation<O> + 'static) -> Behavior<O> {
+    pub fn computation_behavior(computation: impl BehaviorComputation<O> + 'static) -> Behavior<O> {
         Behavior(Arc::new_cyclic(|weak| DependentBehavior {
             computation,
             weak_self: weak.clone(),
             cache: Mutex::new(None),
             phantom: PhantomData,
         }))
+    }
+}
+
+impl<T: ?Sized + 'static + Send + Sync> Behavior<Behavior<T>> {
+    /// Given a nested behavior inside a behavior, create a behavior that always has the
+    /// current value of the current inner behavior.
+    pub fn join(&self) -> Behavior<T> {
+        struct JoinComputation<T: ?Sized + 'static + Send + Sync> {
+            outer: Behavior<Behavior<T>>,
+        }
+
+        impl<T: 'static + ?Sized + Send + Sync> BehaviorComputation<T> for JoinComputation<T> {
+            fn compute(&self, dep: BehaviorDependencyTracker) -> Arc<T> {
+                let inner = Arc::unwrap_or_clone(self.outer.query_for_computation(dep.clone()));
+                inner.query_for_computation(dep)
+            }
+        }
+
+        Behavior::computation_behavior(JoinComputation {
+            outer: self.clone(),
+        })
     }
 }
 

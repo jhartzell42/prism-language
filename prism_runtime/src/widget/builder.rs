@@ -1,8 +1,12 @@
-use std::sync::Arc;
+use std::{
+    marker::PhantomData,
+    sync::{Arc, OnceLock},
+};
 
 use crate::{
+    behavior::{Behavior, BehaviorComputation, BehaviorDependencyTracker},
     dynamic::Dynamic,
-    event::{Event, EventTrigger},
+    event::Event,
     runtime::Runtime,
     widget::{
         ErasedDynamic, Widget, WidgetNode,
@@ -11,6 +15,8 @@ use crate::{
     },
 };
 
+/// Passed into widgets to allow them to create subwidgets, cyclic events and dynamics,
+/// and publicly exposed material.
 pub struct WidgetBuilder<'a> {
     node: WidgetNode,
     children: Vec<Arc<WidgetNode>>,
@@ -79,6 +85,69 @@ impl WidgetBuilder<'_> {
         Event(self.done_event.clone())
     }
 
+    /// Add cyclic dynamic
+    pub fn add_cyclic_dynamic<T: 'static + Send + Sync>(
+        &mut self,
+        name: String,
+    ) -> (usize, Dynamic<T>) {
+        let lock = Arc::new(OnceLock::new());
+        let ix = self.node.cyclic_dynamics.add(name, lock.clone());
+
+        struct Computation<T: 'static + Send + Sync> {
+            lock: Arc<OnceLock<ErasedDynamic>>,
+            phantom: PhantomData<T>,
+        }
+
+        impl<T: 'static + Send + Sync> BehaviorComputation<T> for Computation<T> {
+            fn compute(&self, dep: BehaviorDependencyTracker) -> Arc<T> {
+                let d = self.lock.get().expect("cyclic dynamic never closed");
+                let d = d.get::<T>();
+                d.behavior().query_for_computation(dep)
+            }
+        }
+
+        let behavior = Behavior::computation_behavior(Computation {
+            lock,
+            phantom: PhantomData,
+        });
+        let event = self
+            .done_event()
+            .filter_map(move |node| {
+                Some(Arc::new(
+                    node.cyclic_dynamics[ix]
+                        .get()
+                        .expect("cyclic dynamic never closed")
+                        .get::<T>()
+                        .event(),
+                ))
+            })
+            .switch_hold();
+        (ix, unsafe { Dynamic::new(behavior, event) })
+    }
+
+    /// Close a cyclic dynamic by providing the underlying dynamic.
+    pub fn close_cyclic_dynamic_by_index<T: 'static + Send + Sync>(
+        &mut self,
+        ix: usize,
+        dynamic: Dynamic<T>,
+    ) {
+        self.node.cyclic_dynamics[ix]
+            .set(ErasedDynamic::new(dynamic))
+            .expect("set cyclic dynamic twice");
+    }
+
+    /// Close a cyclic dynamic by providing the underlying dynamic.
+    pub fn close_cyclic_dynamic_by_name<T: 'static + Send + Sync>(
+        &mut self,
+        name: &str,
+        dynamic: Dynamic<T>,
+    ) {
+        self.close_cyclic_dynamic_by_index(
+            self.node.cyclic_dynamics.index_for_name(name).unwrap(),
+            dynamic,
+        );
+    }
+
     /// Create a new cyclic event. You must close it, or else it will never fire.
     pub fn add_cyclic_event<T: 'static + Send + Sync>(
         &mut self,
@@ -104,11 +173,10 @@ impl WidgetBuilder<'_> {
         name: &str,
         event: Event<T>,
     ) {
-        assert!(self.node.cyclic_events[name].matches_inner_type::<T>());
-        self.node
-            .cyclic_events
-            .update_name(name, ErasedEvent::new(event.clone()))
-            .unwrap();
+        self.close_cyclic_event_by_index(
+            self.node.cyclic_events.index_for_name(name).expect(name),
+            event,
+        );
     }
 
     /// Close a cyclic loop by providing the event back, given the event's index. When this event fires, the

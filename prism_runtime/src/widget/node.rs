@@ -25,6 +25,8 @@ pub struct WidgetNode {
     pub public_events: Slots<ErasedEvent>,
     /// Cyclic events, rooted here in the widget.
     pub cyclic_events: Slots<ErasedEvent>,
+    /// Cyclic dynamics, rooted here in the widget.
+    pub cyclic_dynamics: Slots<Arc<OnceLock<ErasedDynamic>>>,
     /// Exposed triggers for backends to provide data from the outside world
     pub triggers: Slots<ErasedEventTrigger>,
     /// Backend data so the backend knows what (if anything) to do with this widget node.
@@ -41,6 +43,7 @@ impl WidgetNode {
             public_dynamics: Slots::default(),
             public_events: Slots::default(),
             cyclic_events: Slots::default(),
+            cyclic_dynamics: Slots::default(),
             triggers: Slots::default(),
             backend_data: Value::Null,
             delegate: OnceLock::new(),

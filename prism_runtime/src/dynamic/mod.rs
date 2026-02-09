@@ -54,6 +54,13 @@ impl<T: ?Sized + Send + Sync> Clone for Dynamic<T> {
 }
 
 impl<T: ?Sized + 'static + Send + Sync> Dynamic<T> {
+    /// Construct a new dynamic from a behavior or an event.
+    ///
+    /// SAFETY: It must uphold the invariant.
+    pub unsafe fn new(behavior: Behavior<T>, event: Event<T>) -> Dynamic<T> {
+        Dynamic { event, behavior }
+    }
+
     /// Get the event that fires whenever the [`Dynamic`] changes.
     pub fn event(&self) -> Event<T> {
         self.event.clone()

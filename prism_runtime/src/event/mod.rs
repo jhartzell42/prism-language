@@ -25,7 +25,7 @@ mod switch_hold;
 mod tag;
 
 #[cfg(test)]
-pub mod tests;
+mod tests;
 
 pub use combine::OneOrBoth;
 pub use external::EventTrigger;
