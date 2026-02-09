@@ -78,7 +78,7 @@ impl<T> Slots<T> {
             self.index_for_name(name)
                 .ok_or(SlotError::NameNotFound(name.to_string()))?,
             val,
-        );
+        )?;
         Ok(())
     }
 
@@ -93,8 +93,11 @@ impl<T> Slots<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[allow(missing_docs)]
 pub enum SlotError {
+    #[error("name not found: {0:?}")]
     NameNotFound(String),
+    #[error("index not found: {0}")]
     IndexNotFound(usize),
 }

@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::any::type_name;
 use std::fmt::{Debug, Formatter};
 use std::{any::Any, sync::Arc};
