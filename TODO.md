@@ -1,6 +1,5 @@
 # Plan
 
-* Test cyclic event values too
 * Write button/label sample app
 * List combinator for widgets
 * Do hygiene refactors
