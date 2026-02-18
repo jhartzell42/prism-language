@@ -67,7 +67,7 @@ impl<T: 'static + Widget> Widget for DynamicWidget<T> {
         ));
         let next_event = Event(next_event);
         // Keep this alive even if no one's using the output event.
-        // This fires before the delegate is attached
+        // This fires before the delegate is attached. So, from the delegate's POV, it never fires.
         builder.add_public_event("__rebuilt__".to_string(), next_event.clone());
 
         let event = Event::leftmost(vec![first_time_event, next_event]);

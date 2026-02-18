@@ -5,7 +5,9 @@ use std::{
 
 use crate::{
     backends::test_backend::{Path, backend::EventRecord},
-    widget::{ErasedDynamic, ErasedEventTrigger, Slots, WidgetDelegate, WidgetNode},
+    widget::{
+        ErasedDynamic, ErasedEventTrigger, Slots, WidgetDelegate, WidgetDelegateContext, WidgetNode,
+    },
 };
 
 pub(crate) struct TestDelegate {
@@ -61,14 +63,14 @@ impl TestDelegate {
 impl WidgetDelegate for TestDelegate {
     fn new_child_created(
         &self,
-        _: crate::widget::WidgetDelegateContext,
+        _: WidgetDelegateContext,
         ix: usize,
         child: &WidgetNode,
     ) -> Arc<dyn WidgetDelegate> {
         self.for_child(ix, child)
     }
 
-    fn will_be_destroyed(&self, _: crate::widget::WidgetDelegateContext) {
+    fn will_be_destroyed(&self, _: WidgetDelegateContext) {
         // It's fine.
     }
 
