@@ -1,5 +1,5 @@
 use crate::{runtime::Runtime, widget::WidgetNode};
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
 /// This is an event handler that the backend installs on a widget node.  It
 /// must not hold a strong `Arc` pointer to the node, because the node owns the
@@ -25,6 +25,8 @@ pub trait WidgetDelegate: Send + Sync {
     /// or else the termination of the application. If you're singly owned, you will
     /// soon be dropped.
     fn will_be_destroyed(&self, ctxt: WidgetDelegateContext);
+    /// The node we're a delegate for fired a public event.
+    fn event_fired(&self, s: &str, val: Arc<dyn Any + Send + Sync + 'static>);
 }
 
 /// Common parameters to pass to the widget delegate.

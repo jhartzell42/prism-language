@@ -5,24 +5,16 @@ use std::{
 
 use crate::{
     backends::test_backend::{Path, backend::EventRecord},
-    event::EventCallback,
-    runtime::Runtime,
     widget::{ErasedDynamic, ErasedEventTrigger, Slots, WidgetDelegate, WidgetNode},
 };
 
 pub(crate) struct TestDelegate {
     pub(crate) path: Vec<usize>,
     // These must be kept alive by the recipient.
-    pub(crate) _event_callbacks: Vec<Arc<TestCallback>>,
     pub(crate) dynamics: Slots<ErasedDynamic>,
     pub(crate) triggers: Slots<ErasedEventTrigger>,
     pub(crate) event_tx: mpsc::Sender<EventRecord>,
     pub(crate) children: Mutex<Vec<Arc<TestDelegate>>>,
-}
-
-pub(crate) struct TestCallback {
-    path: Path,
-    event_tx: mpsc::Sender<EventRecord>,
 }
 
 impl TestDelegate {
@@ -56,29 +48,8 @@ impl TestDelegate {
         node: &WidgetNode,
         event_tx: mpsc::Sender<EventRecord>,
     ) -> Arc<TestDelegate> {
-        let event_callbacks = {
-            let mut cbs = vec![];
-            for (name, &ix) in &node.public_events.names {
-                let cb = Arc::new(TestCallback {
-                    path: Path {
-                        indexes: path.clone(),
-                        name: name.clone(),
-                    },
-                    event_tx: event_tx.clone(),
-                });
-                node.public_events.values[ix]
-                    .as_any_event()
-                    .0
-                    .subscribe(Arc::downgrade(
-                        &(cb.clone() as Arc<dyn EventCallback<dyn Any + Send + Sync>>),
-                    ));
-                cbs.push(cb);
-            }
-            cbs
-        };
         Arc::new(TestDelegate {
             path,
-            _event_callbacks: event_callbacks,
             dynamics: node.public_dynamics.clone(),
             triggers: node.triggers.clone(),
             event_tx,
@@ -100,17 +71,14 @@ impl WidgetDelegate for TestDelegate {
     fn will_be_destroyed(&self, _: crate::widget::WidgetDelegateContext) {
         // It's fine.
     }
-}
 
-impl EventCallback<dyn Any + Send + Sync> for TestCallback {
-    fn event_fired(&self, _: &Runtime, value: Arc<dyn Any + Send + Sync>) {
+    fn event_fired(&self, s: &str, value: Arc<dyn Any + Send + Sync + 'static>) {
         let _ = self.event_tx.send(EventRecord {
-            path: self.path.clone(),
+            path: Path {
+                indexes: self.path.clone(),
+                name: s.into(),
+            },
             value,
         });
-    }
-
-    fn invalidate_height(&self) {
-        // Wow, we so don't care.
     }
 }

@@ -1,8 +1,10 @@
+use std::any::Any;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use serde_json::Value;
 
+use crate::event::EventCallback;
 use crate::{
     runtime::Runtime,
     widget::{
@@ -23,6 +25,9 @@ pub struct WidgetNode {
     pub public_dynamics: Slots<ErasedDynamic>,
     /// Exposed events for backends to subscribe to.
     pub public_events: Slots<ErasedEvent>,
+    /// Public event callbacks. These are just here to retain the relationship between
+    /// the event and the delegate.
+    pub _public_event_callbacks: OnceLock<Vec<Arc<DelegateCallback>>>,
     /// Cyclic events, rooted here in the widget.
     pub cyclic_events: Slots<ErasedEvent>,
     /// Cyclic dynamics, rooted here in the widget.
@@ -42,6 +47,7 @@ impl WidgetNode {
             children: Mutex::new(vec![]),
             public_dynamics: Slots::default(),
             public_events: Slots::default(),
+            _public_event_callbacks: OnceLock::new(),
             cyclic_events: Slots::default(),
             cyclic_dynamics: Slots::default(),
             triggers: Slots::default(),
@@ -51,8 +57,28 @@ impl WidgetNode {
     }
 
     pub(crate) fn set_delegate(&self, runtime: &Runtime, delegate: Arc<dyn WidgetDelegate>) {
-        let Ok(_) = self.delegate.set(delegate) else {
+        let Ok(_) = self.delegate.set(delegate.clone()) else {
             panic!("set delegate multiple times");
+        };
+        let cbs = {
+            let mut cbs = vec![];
+            for (name, &ix) in &self.public_events.names {
+                let cb = Arc::new(DelegateCallback {
+                    delegate: delegate.clone(),
+                    name: name.into(),
+                });
+                self.public_events.values[ix]
+                    .as_any_event()
+                    .0
+                    .subscribe(Arc::downgrade(
+                        &(cb.clone() as Arc<dyn EventCallback<dyn Any + Send + Sync>>),
+                    ));
+                cbs.push(cb);
+            }
+            cbs
+        };
+        let Ok(_) = self._public_event_callbacks.set(cbs) else {
+            panic!("set public_event_callbacks multiple times");
         };
         let children = self.children.lock().unwrap().clone();
         let ctxt = WidgetDelegateContext {
@@ -61,13 +87,7 @@ impl WidgetNode {
         };
 
         for (ix, child) in children.into_iter().enumerate() {
-            child.set_delegate(
-                runtime,
-                self.delegate
-                    .get()
-                    .unwrap()
-                    .new_child_created(ctxt, ix, &child),
-            );
+            child.set_delegate(runtime, delegate.new_child_created(ctxt, ix, &child));
         }
     }
 
@@ -89,5 +109,21 @@ impl Debug for WidgetNode {
             .field("triggers", &self.triggers)
             .field("backend_data", &self.backend_data)
             .finish()
+    }
+}
+
+#[allow(missing_docs)]
+pub struct DelegateCallback {
+    delegate: Arc<dyn WidgetDelegate>,
+    name: String,
+}
+
+impl EventCallback<dyn Any + Send + Sync> for DelegateCallback {
+    fn event_fired(&self, _: &Runtime, value: Arc<dyn Any + Send + Sync>) {
+        self.delegate.event_fired(&self.name, value);
+    }
+
+    fn invalidate_height(&self) {
+        // We don't care.
     }
 }
