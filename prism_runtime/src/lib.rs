@@ -10,4 +10,5 @@ pub mod behavior;
 pub mod dynamic;
 pub mod event;
 pub mod runtime;
+pub mod value;
 pub mod widget;

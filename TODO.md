@@ -31,8 +31,6 @@
 
 # Hygiene refactors:
 
-* Add named fields to types in `erased.rs`
-* Add documentation to public methods
 * Universal erased copy/clone value type
     * Interface over implementation
         * Interface that allows replacing the implementation
@@ -47,6 +45,8 @@
         * `AnyEvent`, `AnyDynamic`, and `AnyBehavior`
     * Maybe later: Different debug impl vs release
         * Release impl doesn't check if types match?
+* Add named fields to types in `erased.rs`
+* Add documentation to public methods
 * All combinators that take closures
     * Take custom traits
     * Easy conversions for closures?
