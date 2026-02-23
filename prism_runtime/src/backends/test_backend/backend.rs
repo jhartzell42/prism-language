@@ -1,13 +1,11 @@
-use std::{
-    any::Any,
-    sync::{Arc, mpsc},
-};
+use std::sync::{Arc, mpsc};
 
 use crate::{
     backends::test_backend::{
         Path, ScriptError, StepError, TestAction, TestScript, TestStep, delegate::TestDelegate,
     },
     runtime::Runtime,
+    value::AnyValue,
     widget::{Widget, WidgetBuilder, WidgetNode},
 };
 
@@ -22,7 +20,7 @@ pub struct TestBackend {
 #[derive(Debug)]
 pub struct EventRecord {
     pub(super) path: Path,
-    pub(super) value: Arc<dyn Any + Send + Sync>,
+    pub(super) value: AnyValue,
 }
 
 impl TestBackend {
@@ -105,7 +103,7 @@ impl TestBackend {
                     .get_name(&step.path.name)
                     .ok_or_else(|| StepError::MissingDynamicName(step.path.name.clone()))?;
                 let value = dynamic.as_any_dynamic().behavior().0.query_for_tag();
-                if let Err(mismatch) = step.value.assert_eq(value.clone()) {
+                if let Err(mismatch) = step.value.assert_eq(value.into()) {
                     return Err(StepError::BadDynamic {
                         path: step.path,
                         mismatch,

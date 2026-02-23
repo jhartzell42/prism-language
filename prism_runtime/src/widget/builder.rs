@@ -8,6 +8,7 @@ use crate::{
     dynamic::Dynamic,
     event::Event,
     runtime::Runtime,
+    value::{PrismArc, Value, ValueType},
     widget::{
         ErasedDynamic, Widget, WidgetNode,
         erased::{ErasedEvent, ErasedEventTrigger},
@@ -81,15 +82,12 @@ impl WidgetBuilder<'_> {
     }
 
     /// This event fires and provides the `WidgetNode` when it's actually done being built.
-    pub fn done_event(&self) -> Event<WidgetNode> {
+    pub fn done_event(&self) -> Event<Arc<WidgetNode>> {
         Event(self.done_event.clone())
     }
 
     /// Add cyclic dynamic
-    pub fn add_cyclic_dynamic<T: 'static + Send + Sync>(
-        &mut self,
-        name: String,
-    ) -> (usize, Dynamic<T>) {
+    pub fn add_cyclic_dynamic<T: ValueType>(&mut self, name: String) -> (usize, Dynamic<T>) {
         let lock = Arc::new(OnceLock::new());
         let ix = self.node.cyclic_dynamics.add(name, lock.clone());
 
@@ -98,8 +96,8 @@ impl WidgetBuilder<'_> {
             phantom: PhantomData<T>,
         }
 
-        impl<T: 'static + Send + Sync> BehaviorComputation<T> for Computation<T> {
-            fn compute(&self, dep: BehaviorDependencyTracker) -> Arc<T> {
+        impl<T: ValueType> BehaviorComputation<T> for Computation<T> {
+            fn compute(&self, dep: BehaviorDependencyTracker) -> Value<T> {
                 let d = self.lock.get().expect("cyclic dynamic never closed");
                 let d = d.get::<T>();
                 d.behavior().query_for_computation(dep)
@@ -113,35 +111,30 @@ impl WidgetBuilder<'_> {
         let event = self
             .done_event()
             .filter_map(move |node| {
-                Some(Arc::new(
-                    node.cyclic_dynamics[ix]
-                        .get()
-                        .expect("cyclic dynamic never closed")
-                        .get::<T>()
-                        .event(),
-                ))
+                Some(
+                    Arc::new(
+                        node.get().cyclic_dynamics[ix]
+                            .get()
+                            .expect("cyclic dynamic never closed")
+                            .get::<T>()
+                            .event(),
+                    )
+                    .into(),
+                )
             })
             .switch_hold();
         (ix, unsafe { Dynamic::new(behavior, event) })
     }
 
     /// Close a cyclic dynamic by providing the underlying dynamic.
-    pub fn close_cyclic_dynamic_by_index<T: 'static + Send + Sync>(
-        &mut self,
-        ix: usize,
-        dynamic: Dynamic<T>,
-    ) {
+    pub fn close_cyclic_dynamic_by_index<T: ValueType>(&mut self, ix: usize, dynamic: Dynamic<T>) {
         self.node.cyclic_dynamics[ix]
             .set(ErasedDynamic::new(dynamic))
             .expect("set cyclic dynamic twice");
     }
 
     /// Close a cyclic dynamic by providing the underlying dynamic.
-    pub fn close_cyclic_dynamic_by_name<T: 'static + Send + Sync>(
-        &mut self,
-        name: &str,
-        dynamic: Dynamic<T>,
-    ) {
+    pub fn close_cyclic_dynamic_by_name<T: ValueType>(&mut self, name: &str, dynamic: Dynamic<T>) {
         self.close_cyclic_dynamic_by_index(
             self.node.cyclic_dynamics.index_for_name(name).unwrap(),
             dynamic,
@@ -149,14 +142,11 @@ impl WidgetBuilder<'_> {
     }
 
     /// Create a new cyclic event. You must close it, or else it will never fire.
-    pub fn add_cyclic_event<T: 'static + Send + Sync>(
-        &mut self,
-        name: String,
-    ) -> (usize, Event<T>) {
+    pub fn add_cyclic_event<T: ValueType>(&mut self, name: String) -> (usize, Event<T>) {
         let ix = self.node.cyclic_events.len();
         let event = self
             .done_event()
-            .filter_map(move |node| Some(Arc::new(node.cyclic_events[ix].get::<T>())))
+            .filter_map(move |node| Some(PrismArc::new(node.get().cyclic_events[ix].get::<T>())))
             .switch_hold();
         self.node
             .cyclic_events
@@ -168,11 +158,7 @@ impl WidgetBuilder<'_> {
     /// original event we got from [`add_cyclic_event()`] will also fire.
     ///
     /// [`add_cyclic_event()`]: Self::add_cyclic_event()
-    pub fn close_cyclic_event_by_name<T: 'static + Send + Sync>(
-        &mut self,
-        name: &str,
-        event: Event<T>,
-    ) {
+    pub fn close_cyclic_event_by_name<T: ValueType>(&mut self, name: &str, event: Event<T>) {
         self.close_cyclic_event_by_index(
             self.node.cyclic_events.index_for_name(name).expect(name),
             event,
@@ -183,11 +169,7 @@ impl WidgetBuilder<'_> {
     /// original event we got from [`add_cyclic_event()`] will also fire.
     ///
     /// [`add_cyclic_event()`]: Self::add_cyclic_event()
-    pub fn close_cyclic_event_by_index<T: 'static + Send + Sync>(
-        &mut self,
-        index: usize,
-        event: Event<T>,
-    ) {
+    pub fn close_cyclic_event_by_index<T: ValueType>(&mut self, index: usize, event: Event<T>) {
         assert!(self.node.cyclic_events[index].matches_inner_type::<T>());
         self.node
             .cyclic_events
@@ -197,7 +179,7 @@ impl WidgetBuilder<'_> {
 
     /// Add an event that the backend/delegate will have to trigger. This doesn't automatically register the
     /// event as externally accessible, just the trigger.
-    pub fn add_external_event<T: 'static + Send + Sync>(&mut self, name: String) -> Event<T> {
+    pub fn add_external_event<T: ValueType>(&mut self, name: String) -> Event<T> {
         let (event, trigger) = Event::<T>::external();
         self.node
             .triggers
@@ -207,16 +189,12 @@ impl WidgetBuilder<'_> {
     }
 
     /// Add an externally accessible event, so that the backend can access it.
-    pub fn add_public_event<T: 'static + Send + Sync>(&mut self, name: String, event: Event<T>) {
+    pub fn add_public_event<T: ValueType>(&mut self, name: String, event: Event<T>) {
         self.node.public_events.add(name, ErasedEvent::new(event));
     }
 
     /// Add an externally accessible dynamic, so that the backend can access it.
-    pub fn add_public_dynamic<T: 'static + Send + Sync>(
-        &mut self,
-        name: String,
-        dynamic: Dynamic<T>,
-    ) {
+    pub fn add_public_dynamic<T: ValueType>(&mut self, name: String, dynamic: Dynamic<T>) {
         self.node
             .public_dynamics
             .add(name, ErasedDynamic::new(dynamic));

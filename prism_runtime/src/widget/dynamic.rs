@@ -1,5 +1,7 @@
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex, Weak};
 
+use crate::value::{PrismArc, Value};
 use crate::{
     behavior::Behavior,
     dynamic::Dynamic,
@@ -11,28 +13,28 @@ use crate::{
     widget::{Widget, WidgetDelegateContext, WidgetNode, builder::WidgetBuilder},
 };
 
-impl<T: Widget + 'static + Send + Sync> Dynamic<T> {
+impl<T: Widget + 'static + Send + Sync + Debug> Dynamic<Arc<T>> {
     /// Create a dynamic widget that starts out by building current value of `self`,
     /// and then replaces it with whatever widget `self` updates to.
-    pub fn dynamic_widget(&self) -> impl Widget<Output = Event<T::Output>> {
+    pub fn dynamic_widget(&self) -> impl Widget<Output = Arc<Event<Arc<T::Output>>>> {
         DynamicWidget {
             dynamic: self.clone(),
         }
     }
 }
 
-struct DynamicWidget<T: 'static + Widget> {
-    dynamic: Dynamic<T>,
+struct DynamicWidget<T: 'static + Widget + Send + Sync + Debug> {
+    dynamic: Dynamic<Arc<T>>,
 }
 
-struct DynamicWidgetEvent<T: 'static + Widget> {
+struct DynamicWidgetEvent<T: 'static + Widget + Send + Sync + Debug> {
     widget: DynamicWidget<T>,
     weak_self: Weak<Self>,
-    node: Behavior<Option<Arc<WidgetNode>>>,
-    subscribers: SubscriptionManager<T::Output, Self>,
+    node: Behavior<Arc<Option<Arc<WidgetNode>>>>,
+    subscribers: SubscriptionManager<Arc<T::Output>, Self>,
 }
 
-impl<T: 'static + Widget> Clone for DynamicWidget<T> {
+impl<T: 'static + Widget + Debug + Send + Sync> Clone for DynamicWidget<T> {
     fn clone(&self) -> Self {
         Self {
             dynamic: self.dynamic.clone(),
@@ -40,8 +42,8 @@ impl<T: 'static + Widget> Clone for DynamicWidget<T> {
     }
 }
 
-impl<T: 'static + Widget> Widget for DynamicWidget<T> {
-    type Output = Event<T::Output>;
+impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
+    type Output = Arc<Event<Arc<T::Output>>>;
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
         let initial_widget = self.dynamic.behavior().0.query_for_tag();
 
@@ -51,19 +53,22 @@ impl<T: 'static + Widget> Widget for DynamicWidget<T> {
         let first_time_event = builder.done_event().filter_map(move |_| {
             let mut output = output.lock().unwrap();
             let output = output.take().unwrap();
-            Some(Arc::new(output))
+            Some(PrismArc::new(output))
         });
         let next_event = Arc::new_cyclic(|weak_self| DynamicWidgetEvent {
             widget: self.clone(),
             weak_self: weak_self.clone(),
             node: Behavior::hold(
-                Arc::new(None),
-                done_event.filter_map(|x| Some(Arc::new(Some(x)))),
+                PrismArc::new(None),
+                done_event.filter_map(|x| {
+                    let x = x.get();
+                    Some(PrismArc::new(Some(x)))
+                }),
             ),
             subscribers: SubscriptionManager::new(()),
         });
         self.dynamic.event().0.subscribe(Arc::downgrade(
-            &(next_event.clone() as Arc<dyn EventCallback<T>>),
+            &(next_event.clone() as Arc<dyn EventCallback<Arc<T>>>),
         ));
         let next_event = Event(next_event);
         // Keep this alive even if no one's using the output event.
@@ -71,12 +76,12 @@ impl<T: 'static + Widget> Widget for DynamicWidget<T> {
         builder.add_public_event("__rebuilt__".to_string(), next_event.clone());
 
         let event = Event::leftmost(vec![first_time_event, next_event]);
-        event
+        Arc::new(event)
     }
 }
 
-impl<T: 'static + Widget> EventImpl<T::Output> for DynamicWidgetEvent<T> {
-    fn subscribe(&self, cb: std::sync::Weak<dyn EventCallback<T::Output>>) {
+impl<T: 'static + Widget + Debug> EventImpl<Arc<T::Output>> for DynamicWidgetEvent<T> {
+    fn subscribe(&self, cb: std::sync::Weak<dyn EventCallback<Arc<T::Output>>>) {
         self.subscribers
             .add_subscriber(self.weak_self.clone(), None, cb);
     }
@@ -86,13 +91,19 @@ impl<T: 'static + Widget> EventImpl<T::Output> for DynamicWidgetEvent<T> {
     }
 }
 
-impl<T: 'static + Widget> EventCallback<T> for DynamicWidgetEvent<T> {
-    fn event_fired(&self, runtime: &crate::runtime::Runtime, value: Arc<T>) {
+impl<T: 'static + Widget + Debug> EventCallback<Arc<T>> for DynamicWidgetEvent<T> {
+    fn event_fired(&self, runtime: &crate::runtime::Runtime, value: PrismArc<T>) {
         let Some(this) = self.weak_self.upgrade() else {
             // The outer widget's been destroyed lol, guess we can be done.
             return;
         };
-        runtime.schedule(self.height(), DWAction { event: this, value });
+        runtime.schedule(
+            self.height(),
+            DWAction {
+                event: this,
+                value: value.get(),
+            },
+        );
     }
 
     fn invalidate_height(&self) {
@@ -100,14 +111,14 @@ impl<T: 'static + Widget> EventCallback<T> for DynamicWidgetEvent<T> {
     }
 }
 
-struct DWAction<T: 'static + Widget> {
+struct DWAction<T: 'static + Widget + Debug> {
     event: Arc<DynamicWidgetEvent<T>>,
     value: Arc<T>,
 }
 
-impl<T: 'static + Widget> Action for DWAction<T> {
+impl<T: 'static + Widget + Debug> Action for DWAction<T> {
     fn act(self: Box<Self>, runtime: &Runtime) {
-        let Some(parent_node) = Arc::unwrap_or_clone(self.event.node.0.query_for_tag()) else {
+        let Some(parent_node) = self.event.node.0.query_for_tag().extract() else {
             unreachable!("parent_node not set");
         };
         let Some(delegate) = parent_node.delegate.get() else {
@@ -129,7 +140,7 @@ impl<T: 'static + Widget> Action for DWAction<T> {
         self.event
             .subscribers
             .notify(Arc::downgrade(&self.event), None, runtime, || {
-                Some(Arc::new(output))
+                Some(PrismArc::new(output))
             });
         let old_node = {
             let mut children = parent_node.children.lock().unwrap();
@@ -139,7 +150,7 @@ impl<T: 'static + Widget> Action for DWAction<T> {
     }
 }
 
-impl<T: 'static + Widget> SubscriptionEvent<T::Output> for DynamicWidgetEvent<T> {
+impl<T: 'static + Widget + Debug> SubscriptionEvent<Arc<T::Output>> for DynamicWidgetEvent<T> {
     type Inner = ();
 
     type Tag = ();
@@ -151,7 +162,7 @@ impl<T: 'static + Widget> SubscriptionEvent<T::Output> for DynamicWidgetEvent<T>
     fn handle_main_subscription(
         &self,
         _: &crate::runtime::Runtime,
-        _: Arc<Self::Inner>,
+        _: Value<Self::Inner>,
         _: Self::Tag,
     ) {
         unreachable!()

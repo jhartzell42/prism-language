@@ -6,9 +6,10 @@ use crate::{
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::{Action, Runtime},
+    value::{PrismArc, Value, ValueType},
 };
 
-impl<T: 'static + Send + Sync> Event<Event<T>> {
+impl<T: ValueType> Event<Arc<Event<T>>> {
     /// Given an event of events, keep track of the most recent inner event
     /// to have shown up on the outer event. When that inner event fires,
     /// fire with that value. If the inner event and outer event fire within
@@ -20,7 +21,7 @@ impl<T: 'static + Send + Sync> Event<Event<T>> {
     pub fn switch_hold(&self) -> Event<T> {
         Event(Arc::new_cyclic(|weak| {
             let outer_sub = Arc::new(SwitchHoldOuterCallback { this: weak.clone() });
-            let outer_sub2: Arc<dyn EventCallback<Event<T>>> = outer_sub.clone();
+            let outer_sub2: Arc<dyn EventCallback<Arc<Event<T>>>> = outer_sub.clone();
             self.0.subscribe(Arc::downgrade(&outer_sub2));
             SwitchHold::<T> {
                 subscriber_list: SubscriptionManager::new(()),
@@ -34,16 +35,16 @@ impl<T: 'static + Send + Sync> Event<Event<T>> {
     }
 }
 
-struct SwitchHold<T: 'static + Send + Sync> {
+struct SwitchHold<T: ValueType> {
     subscriber_list: SubscriptionManager<T, Self>,
     inner_event: Mutex<Option<Event<T>>>,
-    _outer_event: Event<Event<T>>,
+    _outer_event: Event<Arc<Event<T>>>,
     _outer_sub: Arc<SwitchHoldOuterCallback<T>>,
     weak_self: Weak<Self>,
     height: Mutex<Option<usize>>,
 }
 
-impl<T: 'static + Send + Sync> EventImpl<T> for SwitchHold<T> {
+impl<T: ValueType> EventImpl<T> for SwitchHold<T> {
     fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) {
         let event = self.inner_event.lock().unwrap().clone();
         self.subscriber_list
@@ -68,7 +69,7 @@ impl<T: 'static + Send + Sync> EventImpl<T> for SwitchHold<T> {
     }
 }
 
-impl<T: 'static + Send + Sync> SubscriptionEvent<T> for SwitchHold<T> {
+impl<T: ValueType> SubscriptionEvent<T> for SwitchHold<T> {
     type Inner = T;
     type Tag = ();
 
@@ -76,7 +77,7 @@ impl<T: 'static + Send + Sync> SubscriptionEvent<T> for SwitchHold<T> {
         *self.height.lock().unwrap() = None;
     }
 
-    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>, _: ()) {
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Value<Self::Inner>, _: ()) {
         let event = self.inner_event.lock().unwrap().clone();
         self.subscriber_list
             .notify(self.weak_self.clone(), event.as_ref(), runtime, || {
@@ -85,16 +86,16 @@ impl<T: 'static + Send + Sync> SubscriptionEvent<T> for SwitchHold<T> {
     }
 }
 
-struct SwitchHoldOuterCallback<T: 'static + Send + Sync> {
+struct SwitchHoldOuterCallback<T: ValueType> {
     this: Weak<SwitchHold<T>>,
 }
 
-impl<T: 'static + Send + Sync> EventCallback<Event<T>> for SwitchHoldOuterCallback<T> {
-    fn event_fired(&self, runtime: &Runtime, value: Arc<Event<T>>) {
+impl<T: ValueType> EventCallback<Arc<Event<T>>> for SwitchHoldOuterCallback<T> {
+    fn event_fired(&self, runtime: &Runtime, value: PrismArc<Event<T>>) {
         let Some(this) = self.this.upgrade() else {
             return;
         };
-        let event = (*value).clone();
+        let event = value.extract();
         // Not "prompt," never "prompt." Doesn't take effect until after this occurrence.
         runtime.schedule(usize::MAX, SwitchHoldOuterAction { this, event });
     }
@@ -107,12 +108,12 @@ impl<T: 'static + Send + Sync> EventCallback<Event<T>> for SwitchHoldOuterCallba
     }
 }
 
-struct SwitchHoldOuterAction<T: 'static + Send + Sync> {
+struct SwitchHoldOuterAction<T: ValueType> {
     this: Arc<SwitchHold<T>>,
     event: Event<T>,
 }
 
-impl<T: 'static + Send + Sync> Action for SwitchHoldOuterAction<T> {
+impl<T: ValueType> Action for SwitchHoldOuterAction<T> {
     fn act(self: Box<Self>, _: &Runtime) {
         let Self { this, event } = *self;
         *this.inner_event.lock().unwrap() = Some(event.clone());

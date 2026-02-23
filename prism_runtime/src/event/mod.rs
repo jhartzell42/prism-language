@@ -7,13 +7,12 @@
 //! trigger other events, but their values are ephemeral. Events only implement
 //! triggering and compute their value if someone is subscribed to them.
 
+use std::any::type_name;
 use std::fmt::Debug;
-use std::{
-    marker::PhantomData,
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
 use crate::runtime::Runtime;
+use crate::value::{Value, ValueType};
 
 mod combine;
 mod external;
@@ -23,6 +22,7 @@ mod never;
 pub(crate) mod subscriber_list;
 mod switch_hold;
 mod tag;
+mod trace;
 
 #[cfg(test)]
 mod tests;
@@ -32,20 +32,27 @@ pub use external::EventTrigger;
 
 /// This is a handle for an event that contains a value of type `T` in
 /// any occurrence for which it is fired.
-pub struct Event<T: ?Sized + Send + Sync>(pub(crate) Arc<dyn EventImpl<T>>);
+pub struct Event<T: ValueType>(pub(crate) Arc<dyn EventImpl<T>>);
 
-impl<T: ?Sized + Send + Sync> Clone for Event<T> {
+impl<T: ValueType> Debug for Event<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let type_name_content = type_name::<T>();
+        f.debug_tuple("Event").field(&type_name_content).finish()
+    }
+}
+
+impl<T: ValueType> Clone for Event<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-pub(crate) trait EventCallback<T: ?Sized + Send + Sync>: Send + Sync {
-    fn event_fired(&self, runtime: &Runtime, value: Arc<T>);
+pub(crate) trait EventCallback<T: ValueType>: Send + Sync {
+    fn event_fired(&self, runtime: &Runtime, value: Value<T>);
     fn invalidate_height(&self);
 }
 
-pub(crate) trait EventImpl<T: ?Sized + Send + Sync>: Send + Sync {
+pub(crate) trait EventImpl<T: ValueType>: Send + Sync + 'static {
     // When you subscribe to an event, you are responsible for making sure
     // the event callback stays alive, or otherwise, your subscription will vanish.
     //
@@ -60,34 +67,4 @@ pub(crate) trait EventImpl<T: ?Sized + Send + Sync>: Send + Sync {
     // reason why FRP exists.
     fn subscribe(&self, cb: Weak<dyn EventCallback<T>>);
     fn height(&self) -> usize;
-}
-
-impl<T: Debug + 'static + ?Sized + Send + Sync> Event<T> {
-    /// This logs all triggerings of the event, at `log::trace!` level.
-    ///
-    /// It's strictly for debugging purposes as it leaks memory and violates
-    /// many design principles.
-    pub fn trace(&self, label: String) {
-        struct Tracer<T: ?Sized> {
-            label: String,
-            phantom: PhantomData<T>,
-        }
-
-        impl<T: Debug + ?Sized + Send + Sync> EventCallback<T> for Tracer<T> {
-            fn event_fired(&self, _: &Runtime, value: Arc<T>) {
-                log::trace!("{}: {value:?}", self.label)
-            }
-
-            fn invalidate_height(&self) {}
-        }
-
-        let tracer: Arc<dyn EventCallback<T>> = Arc::new(Tracer {
-            label,
-            phantom: PhantomData,
-        });
-        self.0.subscribe(Arc::downgrade(&tracer));
-
-        // Leak tracer. Continue subscribing for rest of the program.
-        std::mem::forget(tracer);
-    }
 }

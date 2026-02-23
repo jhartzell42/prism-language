@@ -1,10 +1,11 @@
-use std::any::Any;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use serde_json::Value;
+use crate::value::Value;
+use serde_json::Value as JsonValue;
 
 use crate::event::EventCallback;
+use crate::value::AnyValue;
 use crate::{
     runtime::Runtime,
     widget::{
@@ -35,7 +36,7 @@ pub struct WidgetNode {
     /// Exposed triggers for backends to provide data from the outside world
     pub triggers: Slots<ErasedEventTrigger>,
     /// Backend data so the backend knows what (if anything) to do with this widget node.
-    pub backend_data: Value,
+    pub backend_data: JsonValue,
     /// The delegate is inserted by the backend and handles callbacks.
     /// It's kept alive here.
     pub delegate: OnceLock<Arc<dyn WidgetDelegate>>,
@@ -51,7 +52,7 @@ impl WidgetNode {
             cyclic_events: Slots::default(),
             cyclic_dynamics: Slots::default(),
             triggers: Slots::default(),
-            backend_data: Value::Null,
+            backend_data: JsonValue::Null,
             delegate: OnceLock::new(),
         }
     }
@@ -71,7 +72,7 @@ impl WidgetNode {
                     .as_any_event()
                     .0
                     .subscribe(Arc::downgrade(
-                        &(cb.clone() as Arc<dyn EventCallback<dyn Any + Send + Sync>>),
+                        &(cb.clone() as Arc<dyn EventCallback<AnyValue>>),
                     ));
                 cbs.push(cb);
             }
@@ -118,9 +119,9 @@ pub struct DelegateCallback {
     name: String,
 }
 
-impl EventCallback<dyn Any + Send + Sync> for DelegateCallback {
-    fn event_fired(&self, _: &Runtime, value: Arc<dyn Any + Send + Sync>) {
-        self.delegate.event_fired(&self.name, value);
+impl EventCallback<AnyValue> for DelegateCallback {
+    fn event_fired(&self, _: &Runtime, value: Value<AnyValue>) {
+        self.delegate.event_fired(&self.name, value.into());
     }
 
     fn invalidate_height(&self) {

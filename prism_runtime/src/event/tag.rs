@@ -7,9 +7,10 @@ use crate::{
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::Runtime,
+    value::{PrismArc, Value, ValueType},
 };
 
-impl<A: 'static + Send + Sync> Event<A> {
+impl<A: ValueType> Event<A> {
     /// This creates a new event that is fired whenever `self` is fired.
     /// It augments the value of `self` with the value of a [`Dynamic`] or
     /// [`Behavior`].
@@ -17,20 +18,20 @@ impl<A: 'static + Send + Sync> Event<A> {
     /// It is **not** *prompt*, that is, it doesn't reflect updates to the
     /// tagged value that happened during this occurrence. Promptness is
     /// basically never what you want anyway.
-    pub fn tag<B: 'static + Send + Sync>(
+    pub fn tag<B: ValueType>(
         &self,
         behavior: impl Into<Behavior<B>>,
-    ) -> Event<(Arc<A>, Arc<B>)> {
-        self.tag_map(|a, b| Some(Arc::new((a, b))), behavior.into())
+    ) -> Event<Arc<(Value<A>, Value<B>)>> {
+        self.tag_map(|a, b| Some(PrismArc::new((a, b)).into()), behavior.into())
     }
 
     /// [`Event::tag()`], but with a custom function to combine the event and the behavior,
     /// which can also control whether or not the event fires.
     ///
     /// Also not prompt.
-    pub fn tag_map<B: 'static + Send + Sync, O: 'static + Send + Sync>(
+    pub fn tag_map<B: ValueType, O: ValueType>(
         &self,
-        function: impl Fn(Arc<A>, Arc<B>) -> Option<Arc<O>> + 'static + Send + Sync,
+        function: impl Fn(Value<A>, Value<B>) -> Option<Value<O>> + 'static + Send + Sync,
         behavior: impl Into<Behavior<B>>,
     ) -> Event<O> {
         Event(Arc::new_cyclic(|weak| Tag {
@@ -45,10 +46,10 @@ impl<A: 'static + Send + Sync> Event<A> {
 }
 
 struct Tag<
-    A: 'static + Send + Sync,
-    B: 'static + Send + Sync,
-    O: 'static + Send + Sync,
-    F: 'static + Fn(Arc<A>, Arc<B>) -> Option<Arc<O>> + Send + Sync,
+    A: ValueType,
+    B: ValueType,
+    O: ValueType,
+    F: 'static + Fn(Value<A>, Value<B>) -> Option<Value<O>> + Send + Sync,
 > {
     subscriber_list: SubscriptionManager<O, Self>,
     event: Event<A>,
@@ -59,10 +60,10 @@ struct Tag<
 }
 
 impl<
-    A: 'static + Send + Sync,
-    B: 'static + Send + Sync,
-    O: 'static + Send + Sync,
-    F: Fn(Arc<A>, Arc<B>) -> Option<Arc<O>> + Send + Sync,
+    A: ValueType,
+    B: ValueType,
+    O: ValueType,
+    F: 'static + Fn(Value<A>, Value<B>) -> Option<Value<O>> + Send + Sync,
 > SubscriptionEvent<O> for Tag<A, B, O, F>
 {
     type Inner = A;
@@ -72,7 +73,7 @@ impl<
         *self.height.lock().unwrap() = None;
     }
 
-    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>, _: ()) {
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Value<Self::Inner>, _: ()) {
         self.subscriber_list
             .notify(self.weak_self.clone(), Some(&self.event), runtime, || {
                 let behavior_value = self.behavior.0.query_for_tag();
@@ -82,10 +83,10 @@ impl<
 }
 
 impl<
-    A: 'static + Send + Sync,
-    B: 'static + Send + Sync,
-    O: 'static + Send + Sync,
-    F: Fn(Arc<A>, Arc<B>) -> Option<Arc<O>> + Send + Sync,
+    A: ValueType,
+    B: ValueType,
+    O: ValueType,
+    F: 'static + Fn(Value<A>, Value<B>) -> Option<Value<O>> + Send + Sync,
 > EventImpl<O> for Tag<A, B, O, F>
 {
     fn subscribe(&self, cb: Weak<dyn EventCallback<O>>) {

@@ -1,5 +1,18 @@
 # Plan
 
+* Universal erased value type
+    * Get it working
+        * Fix more types
+            * Test backend
+            * Widget
+        * Run tests
+        * Commit
+    * Migrate erased events
+        * Can treat as events of erased types
+        * Can cast back with checks to events of specific types
+    * Store erased in `PrismValue`
+        * Making events valid `PrismValue` without double `Arc`
+    * Work on more ergonomic API for dealing with this stuff
 * Write button/label sample app
 * List combinator for widgets
 * Do hygiene refactors
@@ -31,20 +44,6 @@
 
 # Hygiene refactors:
 
-* Universal erased copy/clone value type
-    * Interface over implementation
-        * Interface that allows replacing the implementation
-    * Anything you store in it has to implement `PrismValue`
-        * Requires `'static`, `Send`, and `Sync`
-        * Blanket implementation for `Copy`
-            * "Runtime" queries size to determine whether to box
-        * Implementation present for `Event`/`Dynamic`/`Behavior`
-    * Dynamic types
-        * `AnyPrismValue` stores an erased version
-            * Can cast in and out
-        * `AnyEvent`, `AnyDynamic`, and `AnyBehavior`
-    * Maybe later: Different debug impl vs release
-        * Release impl doesn't check if types match?
 * Add named fields to types in `erased.rs`
 * Add documentation to public methods
 * All combinators that take closures

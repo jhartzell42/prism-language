@@ -25,6 +25,7 @@ use std::sync::Arc;
 use crate::{
     behavior::Behavior,
     event::{Event, OneOrBoth},
+    value::{Value, ValueType},
 };
 
 /// This represents an actual dynamic value.
@@ -39,12 +40,12 @@ use crate::{
 /// All safe ways of constructing a dynamic should uphold that guarantee. While
 /// [`Dynamic::new_unchecked()`] is available to construct a dynamic raw, you
 /// should only use it when you're willing to uphold this guarantee.
-pub struct Dynamic<T: ?Sized + Send + Sync> {
+pub struct Dynamic<T: ValueType> {
     event: Event<T>,
     behavior: Behavior<T>,
 }
 
-impl<T: ?Sized + Send + Sync> Clone for Dynamic<T> {
+impl<T: ValueType> Clone for Dynamic<T> {
     fn clone(&self) -> Self {
         Self {
             event: self.event.clone(),
@@ -53,7 +54,7 @@ impl<T: ?Sized + Send + Sync> Clone for Dynamic<T> {
     }
 }
 
-impl<T: ?Sized + 'static + Send + Sync> Dynamic<T> {
+impl<T: ValueType> Dynamic<T> {
     /// Construct a new dynamic from a behavior or an event.
     ///
     /// SAFETY: It must uphold the invariant.
@@ -73,7 +74,7 @@ impl<T: ?Sized + 'static + Send + Sync> Dynamic<T> {
 
     /// Create a [`Dynamic`] that always has the last value of `event`,
     /// starting with the value `initial`.
-    pub fn hold(initial: Arc<T>, event: Event<T>) -> Dynamic<T> {
+    pub fn hold(initial: Value<T>, event: Event<T>) -> Dynamic<T> {
         Self {
             behavior: Behavior::hold(initial, event.clone()),
             event,
@@ -81,7 +82,7 @@ impl<T: ?Sized + 'static + Send + Sync> Dynamic<T> {
     }
 
     /// Create a constant [`Dynamic`] that always has the value `val`.
-    pub fn constant(val: Arc<T>) -> Dynamic<T> {
+    pub fn constant(val: Value<T>) -> Dynamic<T> {
         Self {
             behavior: Behavior::constant(val),
             event: Event::<T>::never(),
@@ -90,9 +91,9 @@ impl<T: ?Sized + 'static + Send + Sync> Dynamic<T> {
 
     /// Create a new [`Dynamic`] that always has the value `f(val)` where `val`
     /// is the current value of `self`.
-    pub fn map<O: ?Sized + 'static + Send + Sync>(
+    pub fn map<O: ValueType>(
         &self,
-        f: impl Send + Sync + 'static + Clone + Fn(Arc<T>) -> Arc<O>,
+        f: impl Send + Sync + 'static + Clone + Fn(Value<T>) -> Value<O>,
     ) -> Dynamic<O> {
         Dynamic {
             behavior: self.behavior.map(f.clone()),
@@ -103,27 +104,33 @@ impl<T: ?Sized + 'static + Send + Sync> Dynamic<T> {
     /// Combine two [`Dynamic`] values with a function. Output dynamic always
     /// equals `f(a,b)` for the current values of `a` and `b`, even if they
     /// update in the same occurrence.
-    pub fn map2<A: 'static + Send + Sync, B: 'static + Send + Sync>(
+    pub fn map2<A: ValueType, B: ValueType>(
         a: Dynamic<A>,
         b: Dynamic<B>,
-        f: impl 'static + Clone + Send + Sync + Fn(Arc<A>, Arc<B>) -> Arc<T>,
+        f: impl 'static + Clone + Send + Sync + Fn(Value<A>, Value<B>) -> Value<T>,
     ) -> Self {
-        type Tagged<A, B> = OneOrBoth<(Arc<A>, Arc<B>), (Arc<B>, Arc<A>)>;
+        type Tagged<A, B> = OneOrBoth<Arc<(Value<A>, Value<B>)>, Arc<(Value<B>, Value<A>)>>;
 
         let behavior = Behavior::map2(f.clone(), a.behavior.clone(), b.behavior.clone());
         let a_event = a.event.tag(b.behavior);
         let b_event = b.event.tag(a.behavior);
         let combinator = move |one_or_both: Tagged<A, B>| match one_or_both {
-            OneOrBoth::A(a) => Some(f(a.0.clone(), a.1.clone())),
-            OneOrBoth::B(b) => Some(f(b.1.clone(), b.0.clone())),
-            OneOrBoth::Both(a, b) => Some(f(a.0.clone(), b.0.clone())),
+            OneOrBoth::A(a) => {
+                let a = a.extract();
+                Some(f(a.0.clone(), a.1.clone()))
+            }
+            OneOrBoth::B(b) => {
+                let b = b.extract();
+                Some(f(b.1.clone(), b.0.clone()))
+            }
+            OneOrBoth::Both(a, b) => Some(f(a.extract().0, b.extract().0)),
         };
         let event = Event::combine(combinator, a_event, b_event);
         Self { behavior, event }
     }
 }
 
-impl<T: 'static + Send + Sync> From<Dynamic<T>> for Behavior<T> {
+impl<T: ValueType> From<Dynamic<T>> for Behavior<T> {
     fn from(value: Dynamic<T>) -> Self {
         value.behavior()
     }

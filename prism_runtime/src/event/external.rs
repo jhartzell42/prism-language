@@ -6,12 +6,13 @@ use crate::{
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::{Action, Runtime},
+    value::{Value, ValueType},
 };
 
 /// This is a handle used to schedule the triggering of an event.
-pub struct EventTrigger<T: 'static + Send + Sync>(Weak<EventTriggerInner<T>>);
+pub struct EventTrigger<T: ValueType>(Weak<EventTriggerInner<T>>);
 
-impl<T: 'static + Send + Sync> Event<T> {
+impl<T: ValueType> Event<T> {
     /// Return a tuple of an event that represents an external event,
     /// and a way to trigger it in a given runtime.
     pub fn external() -> (Event<T>, EventTrigger<T>) {
@@ -29,17 +30,13 @@ impl<T: 'static + Send + Sync> Event<T> {
 
 impl Runtime {
     /// Schedule an event to trigger in the next propagation stage of the runtime.
-    pub fn schedule_trigger<T: 'static + Send + Sync>(
-        &self,
-        trigger: &EventTrigger<T>,
-        value: Arc<T>,
-    ) {
-        struct TriggerAction<T: 'static + Send + Sync> {
+    pub fn schedule_trigger<T: ValueType>(&self, trigger: &EventTrigger<T>, value: Value<T>) {
+        struct TriggerAction<T: ValueType> {
             trigger: EventTrigger<T>,
-            value: Arc<T>,
+            value: Value<T>,
         }
 
-        impl<T: Send + Sync> Action for TriggerAction<T> {
+        impl<T: ValueType> Action for TriggerAction<T> {
             fn act(self: Box<Self>, runtime: &Runtime) {
                 let Some(trigger) = self.trigger.0.upgrade() else {
                     return;
@@ -74,13 +71,13 @@ impl Runtime {
     }
 }
 
-struct EventTriggerInner<T: 'static + Send + Sync> {
+struct EventTriggerInner<T: ValueType> {
     subscribers: SubscriptionManager<T, Self>,
     scheduled: Mutex<bool>,
     weak_self: Weak<Self>,
 }
 
-impl<T: 'static + Send + Sync> EventImpl<T> for EventTriggerInner<T> {
+impl<T: ValueType> EventImpl<T> for EventTriggerInner<T> {
     fn subscribe(&self, cb: Weak<dyn EventCallback<T>>) {
         self.subscribers
             .add_subscriber(self.weak_self.clone(), None, cb);
@@ -91,13 +88,13 @@ impl<T: 'static + Send + Sync> EventImpl<T> for EventTriggerInner<T> {
     }
 }
 
-impl<T: 'static + Send + Sync> Clone for EventTrigger<T> {
+impl<T: ValueType> Clone for EventTrigger<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<T: Send + Sync + 'static> SubscriptionEvent<T> for EventTriggerInner<T> {
+impl<T: ValueType> SubscriptionEvent<T> for EventTriggerInner<T> {
     // Does Rust choke on "never" types?
     type Inner = ();
     type Tag = ();
@@ -106,7 +103,7 @@ impl<T: Send + Sync + 'static> SubscriptionEvent<T> for EventTriggerInner<T> {
         unreachable!("external events have no outgoing subscription edge")
     }
 
-    fn handle_main_subscription(&self, _: &Runtime, _: Arc<Self::Inner>, _: ()) {
+    fn handle_main_subscription(&self, _: &Runtime, _: Value<Self::Inner>, _: ()) {
         unreachable!("external events have no outgoing subscription edge")
     }
 }

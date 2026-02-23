@@ -4,6 +4,7 @@ use test_log::test;
 use crate::{
     backends::test_backend::{crickets, dynamic, event, script, trigger},
     dynamic::Dynamic,
+    value::{PrismArc, Value},
     widget::{Widget, WidgetBuilder},
 };
 
@@ -19,8 +20,8 @@ fn fold_dyn_cyclic_dyn() {
             let accumulator = builder
                 .add_cyclic_dynamic::<i32>("accumulator".to_string())
                 .1;
-            let new_accumulator = increment.tag_map(|a, b| Some(Arc::new(*a + *b)), accumulator);
-            let accumulator = Dynamic::hold(Arc::new(0), new_accumulator);
+            let new_accumulator = increment.tag_map(|a, b| Some(Value::from(*a + *b)), accumulator);
+            let accumulator = Dynamic::hold(Value::from(0i32), new_accumulator);
             builder.close_cyclic_dynamic_by_name("accumulator", accumulator.clone());
 
             // This tests the behavior
@@ -69,8 +70,8 @@ fn fold_dyn() {
             let increment = builder.add_external_event::<i32>("increment".to_string());
             let dynamic = builder.fold_dyn(
                 "accumulator".to_string(),
-                |a, b| Arc::new(*a + *b),
-                Arc::new(0),
+                |a, b| Value::from(*a + *b),
+                Value::from(0),
                 increment,
             );
             // This tests the behavior
@@ -116,31 +117,33 @@ fn dynamic_widget() {
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
+            #[derive(Debug, Clone)]
             struct Inner(String);
 
             impl Widget for Inner {
                 type Output = ();
 
                 fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
-                    builder.add_public_dynamic(self.0.clone(), Dynamic::constant(Arc::new(())));
+                    builder
+                        .add_public_dynamic(self.0.clone(), Dynamic::constant(PrismArc::new(())));
                 }
             }
 
-            let rebuild = builder.add_external_event::<String>("rebuild".to_string());
+            let rebuild = builder.add_external_event::<Arc<String>>("rebuild".into());
             let d_widget = Dynamic::hold(
-                Arc::new(Inner("initial".to_string())),
-                rebuild.filter_map(|s| Some(Arc::new(Inner(Arc::unwrap_or_clone(s))))),
+                PrismArc::new(Inner("initial".to_string())),
+                rebuild.filter_map(|s| Some(PrismArc::new(Inner(s.extract())))),
             );
             builder.bind(&d_widget.dynamic_widget());
         }
     }
 
     script([
-        dynamic([0, 0], "initial", ()),
-        trigger([], "rebuild", "hello".to_string()),
-        dynamic([0, 0], "hello", ()),
-        trigger([], "rebuild", "hi".to_string()),
-        dynamic([0, 0], "hi", ()),
+        dynamic([0, 0], "initial", Arc::new(())),
+        trigger([], "rebuild", Arc::new("hello".to_string())),
+        dynamic([0, 0], "hello", Arc::new(())),
+        trigger([], "rebuild", Arc::new("hi".to_string())),
+        dynamic([0, 0], "hi", Arc::new(())),
     ])
     .test(&TestWidget);
 }

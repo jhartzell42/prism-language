@@ -4,6 +4,7 @@ use test_log::test;
 use crate::{
     backends::test_backend::{crickets, delay_trigger, event, script, trigger},
     event::Event,
+    value::{PrismArc, Value},
     widget::Widget,
 };
 
@@ -17,10 +18,11 @@ fn event_filter_test() {
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
             let event = builder.add_external_event::<u32>("unfiltered".to_string());
             let filter_zero_event = event.filter_map(|a| {
-                if *a == 0 {
+                let a = a.get();
+                if a == 0 {
                     None
                 } else {
-                    Some(Arc::new(*a - 1))
+                    Some(Value::from(a - 1))
                 }
             });
             builder.add_public_event("filtered".to_string(), filter_zero_event);
@@ -51,8 +53,8 @@ fn switch_hold_test2() {
             let inner = builder.add_external_event::<u32>("inner".to_string());
 
             let outer_event = outer.filter_map(move |outer| {
-                Some(Arc::new(
-                    inner.filter_map(move |inner| Some(Arc::new(*outer + *inner))),
+                Some(PrismArc::new(
+                    inner.filter_map(move |inner| Some(Value::from(*outer + *inner))),
                 ))
             });
             let event = outer_event.switch_hold();
@@ -144,14 +146,24 @@ fn combine_test() {
 
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
             let a = builder.add_external_event::<u32>("a".to_string());
-            let b = builder.add_external_event::<String>("b".to_string());
+            let b = builder.add_external_event::<Arc<String>>("b".to_string());
 
             let output = Event::combine(
                 |oob| {
-                    Some(Arc::new(match oob {
-                        crate::event::OneOrBoth::A(a) => format!("a={a}"),
-                        crate::event::OneOrBoth::B(b) => format!("b={b}"),
-                        crate::event::OneOrBoth::Both(a, b) => format!("a={a} b={b}"),
+                    Some(PrismArc::new(match oob {
+                        crate::event::OneOrBoth::A(a) => {
+                            let a = a.get();
+                            format!("a={a}")
+                        }
+                        crate::event::OneOrBoth::B(b) => {
+                            let b = b.extract();
+                            format!("b={b}")
+                        }
+                        crate::event::OneOrBoth::Both(a, b) => {
+                            let a = a.get();
+                            let b = b.extract();
+                            format!("a={a} b={b}")
+                        }
                     }))
                 },
                 a,
@@ -165,21 +177,21 @@ fn combine_test() {
         crickets(),
         // Just a
         trigger([], "a", 0u32),
-        event([], "output", "a=0".to_string()),
+        event([], "output", Arc::new("a=0".to_string())),
         crickets(),
         // Just right
-        trigger([], "b", "hello".to_string()),
-        event([], "output", "b=hello".to_string()),
+        trigger([], "b", Arc::new("hello".to_string())),
+        event([], "output", Arc::new("b=hello".to_string())),
         crickets(),
         // Both
-        delay_trigger([], "b", "hey".to_string()),
+        delay_trigger([], "b", Arc::new("hey".to_string())),
         trigger([], "a", 4u32),
-        event([], "output", "a=4 b=hey".to_string()),
+        event([], "output", Arc::new("a=4 b=hey".to_string())),
         crickets(),
         // Both reversed
         delay_trigger([], "a", 5u32),
-        trigger([], "b", "wassup".to_string()),
-        event([], "output", "a=5 b=wassup".to_string()),
+        trigger([], "b", Arc::new("wassup".to_string())),
+        event([], "output", Arc::new("a=5 b=wassup".to_string())),
         crickets(),
     ])
     .run(&TestWidget);

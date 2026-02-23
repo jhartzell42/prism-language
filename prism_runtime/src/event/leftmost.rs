@@ -6,9 +6,10 @@ use crate::{
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::Runtime,
+    value::{Value, ValueType},
 };
 
-impl<T: 'static + Send + Sync> Event<T> {
+impl<T: ValueType> Event<T> {
     /// Creates a new event based on the existing one and the function `f`.
     ///
     /// If the existing event is fired, run `f` on the value.
@@ -29,15 +30,15 @@ impl<T: 'static + Send + Sync> Event<T> {
     }
 }
 
-struct LeftmostEvent<T: 'static + Send + Sync> {
+struct LeftmostEvent<T: ValueType> {
     events: Vec<Event<T>>,
     subscription_managers: Vec<SubscriptionManager<T, Self>>,
     weak_self: Weak<Self>,
     height: Mutex<Option<usize>>,
-    winning_value: Mutex<Option<(Arc<T>, usize)>>,
+    winning_value: Mutex<Option<(Value<T>, usize)>>,
 }
 
-impl<T: 'static + Send + Sync> SubscriptionEvent<T> for LeftmostEvent<T> {
+impl<T: ValueType> SubscriptionEvent<T> for LeftmostEvent<T> {
     type Inner = T;
     type Tag = usize;
 
@@ -45,7 +46,7 @@ impl<T: 'static + Send + Sync> SubscriptionEvent<T> for LeftmostEvent<T> {
         *self.height.lock().unwrap() = None;
     }
 
-    fn handle_main_subscription(&self, runtime: &Runtime, _: Arc<Self::Inner>, _: usize) {
+    fn handle_main_subscription(&self, runtime: &Runtime, _: Value<Self::Inner>, _: usize) {
         let Some((winner, tag)) = self.winning_value.lock().unwrap().take() else {
             return;
         };
@@ -57,7 +58,7 @@ impl<T: 'static + Send + Sync> SubscriptionEvent<T> for LeftmostEvent<T> {
         );
     }
 
-    fn handle_early_subscription(&self, _: &Runtime, value: Arc<Self::Inner>, tag: Self::Tag) {
+    fn handle_early_subscription(&self, _: &Runtime, value: Value<Self::Inner>, tag: Self::Tag) {
         let mut winner = self.winning_value.lock().unwrap();
         if let Some((_, current_tag)) = *winner
             && current_tag < tag
@@ -68,7 +69,7 @@ impl<T: 'static + Send + Sync> SubscriptionEvent<T> for LeftmostEvent<T> {
     }
 }
 
-impl<T: 'static + Send + Sync> EventImpl<T> for LeftmostEvent<T> {
+impl<T: ValueType> EventImpl<T> for LeftmostEvent<T> {
     fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) {
         for (ix, man) in self.subscription_managers.iter().enumerate() {
             man.add_subscriber(self.weak_self.clone(), Some(&self.events[ix]), cb.clone());

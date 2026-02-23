@@ -1,10 +1,8 @@
-use std::{
-    any::Any,
-    sync::{Arc, Mutex, mpsc},
-};
+use std::sync::{Arc, Mutex, mpsc};
 
 use crate::{
     backends::test_backend::{Path, backend::EventRecord},
+    value::AnyValue,
     widget::{
         ErasedDynamic, ErasedEventTrigger, Slots, WidgetDelegate, WidgetDelegateContext, WidgetNode,
     },
@@ -74,7 +72,7 @@ impl WidgetDelegate for TestDelegate {
         // It's fine.
     }
 
-    fn event_fired(&self, s: &str, value: Arc<dyn Any + Send + Sync + 'static>) {
+    fn event_fired(&self, s: &str, value: AnyValue) {
         let _ = self.event_tx.send(EventRecord {
             path: Path {
                 indexes: self.path.clone(),

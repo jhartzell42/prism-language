@@ -6,27 +6,33 @@ use std::{
 use crate::{
     event::{Event, EventCallback, EventImpl},
     runtime::{Action, Runtime},
+    value::{Value, ValueType},
 };
 
-pub struct SubscriptionManager<T: ?Sized + Send + Sync, E: SubscriptionEvent<T>> {
+pub struct SubscriptionManager<T: ValueType, E: SubscriptionEvent<T>> {
     subscribers: Mutex<Vec<Weak<dyn EventCallback<T>>>>,
     subscription: Mutex<Option<Arc<MainSubscription<T, E>>>>,
     tag: E::Tag,
 }
 
-pub trait SubscriptionEvent<T: ?Sized + Send + Sync>: EventImpl<T> + 'static {
-    type Inner: 'static + ?Sized + Send + Sync;
+pub trait SubscriptionEvent<T: ValueType>: EventImpl<T> + 'static {
+    type Inner: ValueType;
     type Tag: Clone + Send + Sync;
 
     fn invalidate_height(&self);
-    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>, tag: Self::Tag);
+    fn handle_main_subscription(
+        &self,
+        runtime: &Runtime,
+        value: Value<Self::Inner>,
+        tag: Self::Tag,
+    );
 
-    fn handle_early_subscription(&self, _: &Runtime, _: Arc<Self::Inner>, _: Self::Tag) {
+    fn handle_early_subscription(&self, _: &Runtime, _: Value<Self::Inner>, _: Self::Tag) {
         // Do nothing by default.
     }
 }
 
-impl<T: 'static + ?Sized + Send + Sync, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
+impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
     pub fn new(tag: E::Tag) -> Self {
         Self {
             subscribers: Mutex::new(vec![]),
@@ -108,7 +114,7 @@ impl<T: 'static + ?Sized + Send + Sync, E: SubscriptionEvent<T>> SubscriptionMan
         // Propagation
         runtime: &Runtime,
         // Thunk to compute value
-        value: impl FnOnce() -> Option<Arc<T>>,
+        value: impl FnOnce() -> Option<Value<T>>,
     ) -> bool {
         let subscribers = self.consolidate();
 
@@ -128,16 +134,14 @@ impl<T: 'static + ?Sized + Send + Sync, E: SubscriptionEvent<T>> SubscriptionMan
     }
 }
 
-pub struct MainSubscription<T: ?Sized + Send + Sync, E: SubscriptionEvent<T>> {
+pub struct MainSubscription<T: ValueType, E: SubscriptionEvent<T>> {
     this: Weak<E>,
     phantom: PhantomData<T>,
     tag: E::Tag,
 }
 
-impl<T: 'static + ?Sized + Send + Sync, E: SubscriptionEvent<T>> EventCallback<E::Inner>
-    for MainSubscription<T, E>
-{
-    fn event_fired(&self, runtime: &Runtime, value: Arc<E::Inner>) {
+impl<T: ValueType, E: SubscriptionEvent<T>> EventCallback<E::Inner> for MainSubscription<T, E> {
+    fn event_fired(&self, runtime: &Runtime, value: Value<E::Inner>) {
         let Some(this) = self.this.upgrade() else {
             return;
         };
@@ -155,13 +159,13 @@ impl<T: 'static + ?Sized + Send + Sync, E: SubscriptionEvent<T>> EventCallback<E
     }
 }
 
-pub struct MainAction<T: ?Sized + Send + Sync, E: SubscriptionEvent<T>> {
+pub struct MainAction<T: ValueType, E: SubscriptionEvent<T>> {
     this: Arc<E>,
-    value: Arc<E::Inner>,
+    value: Value<E::Inner>,
     tag: E::Tag,
 }
 
-impl<T: ?Sized + Send + Sync, E: SubscriptionEvent<T>> Action for MainAction<T, E> {
+impl<T: ValueType, E: SubscriptionEvent<T>> Action for MainAction<T, E> {
     fn act(self: Box<Self>, runtime: &Runtime) {
         let Self { this, value, tag } = *self;
         this.handle_main_subscription(runtime, value, tag);

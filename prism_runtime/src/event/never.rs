@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
-use crate::event::{Event, EventImpl};
+use crate::{
+    event::{Event, EventImpl},
+    value::ValueType,
+};
 
-impl<T: ?Sized + Send + Sync> Event<T> {
+impl<T: ValueType> Event<T> {
     /// Returns an event that is never firing.
     pub fn never() -> Self {
         struct Never;
 
-        impl<T: ?Sized + Send + Sync> EventImpl<T> for Never {
+        impl<T: ValueType> EventImpl<T> for Never {
             fn subscribe(&self, _: std::sync::Weak<dyn super::EventCallback<T>>) {
                 // Don't need this callback
             }

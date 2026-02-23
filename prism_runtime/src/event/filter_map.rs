@@ -6,18 +6,19 @@ use crate::{
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::Runtime,
+    value::{Value, ValueType},
 };
 
-impl<T: 'static + ?Sized + Send + Sync> Event<T> {
+impl<T: ValueType> Event<T> {
     /// Creates a new event based on the existing one and the function `f`.
     ///
     /// If the existing event is fired, run `f` on the value.
     ///
     /// If `f` returns `Some(value)`, the new event is fired with
     /// the value `value`. If `f` returns `None`, the new event is not fired.
-    pub fn filter_map<O: 'static + ?Sized + Send + Sync>(
+    pub fn filter_map<O: ValueType>(
         &self,
-        f: impl Send + Sync + Fn(Arc<T>) -> Option<Arc<O>> + 'static,
+        f: impl Send + Sync + Fn(Value<T>) -> Option<Value<O>> + 'static,
     ) -> Event<O> {
         Event(Arc::new_cyclic(|weak| FilterMapEvent {
             subscriber_list: SubscriptionManager::new(()),
@@ -27,12 +28,21 @@ impl<T: 'static + ?Sized + Send + Sync> Event<T> {
             height: Mutex::new(None),
         }))
     }
+
+    /// Make a new event that fires every time the existing one fires,
+    /// but with a value transformed by `f`.
+    pub fn map<O: ValueType>(
+        &self,
+        f: impl Send + Sync + Fn(Value<T>) -> Value<O> + 'static,
+    ) -> Event<O> {
+        self.filter_map(move |x| Some(f(x)))
+    }
 }
 
 struct FilterMapEvent<
-    O: 'static + ?Sized + Send + Sync,
-    T: 'static + ?Sized + Send + Sync,
-    F: 'static + Send + Sync + Fn(Arc<T>) -> Option<Arc<O>>,
+    O: ValueType,
+    T: ValueType,
+    F: 'static + Send + Sync + Fn(Value<T>) -> Option<Value<O>>,
 > {
     subscriber_list: SubscriptionManager<O, Self>,
     inner: Event<T>,
@@ -41,11 +51,8 @@ struct FilterMapEvent<
     height: Mutex<Option<usize>>,
 }
 
-impl<
-    O: 'static + ?Sized + Send + Sync,
-    T: 'static + ?Sized + Send + Sync,
-    F: 'static + Fn(Arc<T>) -> Option<Arc<O>> + Send + Sync,
-> SubscriptionEvent<O> for FilterMapEvent<O, T, F>
+impl<O: ValueType, T: ValueType, F: 'static + Send + Sync + Fn(Value<T>) -> Option<Value<O>>>
+    SubscriptionEvent<O> for FilterMapEvent<O, T, F>
 {
     type Inner = T;
     type Tag = ();
@@ -54,18 +61,15 @@ impl<
         *self.height.lock().unwrap() = None;
     }
 
-    fn handle_main_subscription(&self, runtime: &Runtime, value: Arc<Self::Inner>, _: ()) {
+    fn handle_main_subscription(&self, runtime: &Runtime, value: Value<Self::Inner>, _: ()) {
         self.subscriber_list
             .notify(self.weak_self.clone(), Some(&self.inner), runtime, || {
                 (self.f)(value)
             });
     }
 }
-impl<
-    O: 'static + ?Sized + Send + Sync,
-    T: 'static + ?Sized + Send + Sync,
-    F: Fn(Arc<T>) -> Option<Arc<O>> + 'static + Send + Sync,
-> EventImpl<O> for FilterMapEvent<O, T, F>
+impl<O: ValueType, T: ValueType, F: 'static + Send + Sync + Fn(Value<T>) -> Option<Value<O>>>
+    EventImpl<O> for FilterMapEvent<O, T, F>
 {
     fn subscribe(&self, cb: std::sync::Weak<dyn super::EventCallback<O>>) {
         self.subscriber_list

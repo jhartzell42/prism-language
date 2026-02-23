@@ -19,6 +19,8 @@ pub use erased::*;
 pub use node::*;
 pub use slots::*;
 
+use crate::value::ValueType;
+
 /// Implementers of this trait represent a Prism component that
 /// is implemented inside the context of the Prism runtime.
 /// This is distinct from backend components, which are implemented
@@ -42,7 +44,7 @@ pub trait Widget: Send + Sync {
     // I think you could create a type-erased version of this through some sort of trickery with
     // an adapter and a dyn-compatible helper trait?
     /// What type does this widget output?
-    type Output: 'static + Send + Sync;
+    type Output: ValueType;
     /// Use `builder` to build a widget node. Return the outputs.
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output;
 }

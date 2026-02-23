@@ -3,12 +3,13 @@ use std::sync::{Arc, Mutex, OnceLock, Weak};
 use crate::event::subscriber_list::{SubscriptionEvent, SubscriptionManager};
 use crate::event::{EventCallback, EventImpl};
 use crate::runtime::{Action, Runtime};
+use crate::value::Value;
 use crate::widget::WidgetNode;
 
 pub(super) struct WidgetReadyEvent {
     node: OnceLock<Arc<WidgetNode>>,
     trigger: Arc<WidgetReadyTrigger>,
-    subscribers: SubscriptionManager<WidgetNode, Self>,
+    subscribers: SubscriptionManager<Arc<WidgetNode>, Self>,
     weak_self: Weak<Self>,
 }
 
@@ -33,7 +34,7 @@ impl Action for Arc<WidgetReadyEvent> {
     fn act(self: Box<Self>, runtime: &Runtime) {
         let value = self.node.get().unwrap().clone();
         self.subscribers
-            .notify(self.weak_self.clone(), None, runtime, || Some(value));
+            .notify(self.weak_self.clone(), None, runtime, || Some(value.into()));
     }
 }
 
@@ -69,8 +70,8 @@ impl WidgetReadyEvent {
     }
 }
 
-impl EventImpl<WidgetNode> for WidgetReadyEvent {
-    fn subscribe(&self, cb: Weak<dyn EventCallback<WidgetNode>>) {
+impl EventImpl<Arc<WidgetNode>> for WidgetReadyEvent {
+    fn subscribe(&self, cb: Weak<dyn EventCallback<Arc<WidgetNode>>>) {
         self.subscribers
             .add_subscriber(self.weak_self.clone(), None, cb);
     }
@@ -80,7 +81,7 @@ impl EventImpl<WidgetNode> for WidgetReadyEvent {
     }
 }
 
-impl SubscriptionEvent<WidgetNode> for WidgetReadyEvent {
+impl SubscriptionEvent<Arc<WidgetNode>> for WidgetReadyEvent {
     type Inner = ();
     type Tag = ();
 
@@ -91,7 +92,7 @@ impl SubscriptionEvent<WidgetNode> for WidgetReadyEvent {
     fn handle_main_subscription(
         &self,
         _: &crate::runtime::Runtime,
-        _: Arc<Self::Inner>,
+        _: Value<Self::Inner>,
         _: Self::Tag,
     ) {
         unreachable!("WidgetReadyEvents have no outgoing subscription logic")

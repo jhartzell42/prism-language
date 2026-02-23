@@ -13,7 +13,10 @@
 //! 3. A pure function of other behaviors.
 //! 4. An external state.
 
-use std::sync::{Arc, Weak};
+use std::{
+    any::type_name,
+    sync::{Arc, Weak},
+};
 
 mod compute;
 mod constant;
@@ -21,11 +24,22 @@ mod hold;
 
 pub use compute::*;
 
+use std::fmt::Debug;
+
+use crate::value::{Value, ValueType};
+
 /// This represents a handle of a behavior, useful for querying the value and
 /// constructing other behaviors.
-pub struct Behavior<T: ?Sized + Send + Sync>(pub(crate) Arc<dyn BehaviorImpl<T>>);
+pub struct Behavior<T: ValueType>(pub(crate) Arc<dyn BehaviorImpl<T>>);
 
-impl<T: ?Sized + Send + Sync> Clone for Behavior<T> {
+impl<T: ValueType> Debug for Behavior<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let type_name_content = type_name::<T>();
+        f.debug_tuple("Behavior").field(&type_name_content).finish()
+    }
+}
+
+impl<T: ValueType> Clone for Behavior<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
@@ -35,8 +49,8 @@ pub(crate) trait BehaviorDependent: Send + Sync {
     fn invalidate(&self);
 }
 
-pub(crate) trait BehaviorImpl<T: ?Sized>: Send + Sync {
+pub(crate) trait BehaviorImpl<T: ValueType>: Send + Sync {
     // What is the current value of the behavior?
-    fn query_for_behavior(&self, dependent: Weak<dyn BehaviorDependent>) -> Arc<T>;
-    fn query_for_tag(&self) -> Arc<T>;
+    fn query_for_behavior(&self, dependent: Weak<dyn BehaviorDependent>) -> Value<T>;
+    fn query_for_tag(&self) -> Value<T>;
 }
