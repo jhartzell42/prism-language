@@ -1,10 +1,10 @@
 //! Widgets are how we organize FRP components. They also represent
 //! the interface between FRP components and the outside world.
 
+mod any;
 mod builder;
 mod delegate;
 mod dynamic;
-mod erased;
 mod fold_dyn;
 mod node;
 mod slots;
@@ -13,9 +13,9 @@ mod widget_ready;
 #[cfg(test)]
 mod tests;
 
+pub use any::*;
 pub use builder::*;
 pub use delegate::*;
-pub use erased::*;
 pub use node::*;
 pub use slots::*;
 

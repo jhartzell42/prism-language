@@ -10,8 +10,8 @@ use crate::{
     runtime::Runtime,
     value::{PrismArc, Value, ValueType},
     widget::{
-        ErasedDynamic, Widget, WidgetNode,
-        erased::{ErasedEvent, ErasedEventTrigger},
+        AnyDynamic, Widget, WidgetNode,
+        any::{AnyEvent, AnyEventTrigger},
         widget_ready::WidgetReadyEvent,
     },
 };
@@ -92,7 +92,7 @@ impl WidgetBuilder<'_> {
         let ix = self.node.cyclic_dynamics.add(name, lock.clone());
 
         struct Computation<T: 'static + Send + Sync> {
-            lock: Arc<OnceLock<ErasedDynamic>>,
+            lock: Arc<OnceLock<AnyDynamic>>,
             phantom: PhantomData<T>,
         }
 
@@ -129,7 +129,7 @@ impl WidgetBuilder<'_> {
     /// Close a cyclic dynamic by providing the underlying dynamic.
     pub fn close_cyclic_dynamic_by_index<T: ValueType>(&mut self, ix: usize, dynamic: Dynamic<T>) {
         self.node.cyclic_dynamics[ix]
-            .set(ErasedDynamic::new(dynamic))
+            .set(AnyDynamic::new(dynamic))
             .expect("set cyclic dynamic twice");
     }
 
@@ -150,7 +150,7 @@ impl WidgetBuilder<'_> {
             .switch_hold();
         self.node
             .cyclic_events
-            .add(name, ErasedEvent::new(Event::<T>::never()));
+            .add(name, AnyEvent::new(Event::<T>::never()));
         (ix, event)
     }
 
@@ -173,7 +173,7 @@ impl WidgetBuilder<'_> {
         assert!(self.node.cyclic_events[index].matches_inner_type::<T>());
         self.node
             .cyclic_events
-            .update_index(index, ErasedEvent::new(event.clone()))
+            .update_index(index, AnyEvent::new(event.clone()))
             .unwrap();
     }
 
@@ -183,20 +183,20 @@ impl WidgetBuilder<'_> {
         let (event, trigger) = Event::<T>::external();
         self.node
             .triggers
-            .add(name.clone(), ErasedEventTrigger::new(trigger.clone()));
+            .add(name.clone(), AnyEventTrigger::new(trigger.clone()));
 
         event
     }
 
     /// Add an externally accessible event, so that the backend can access it.
     pub fn add_public_event<T: ValueType>(&mut self, name: String, event: Event<T>) {
-        self.node.public_events.add(name, ErasedEvent::new(event));
+        self.node.public_events.add(name, AnyEvent::new(event));
     }
 
     /// Add an externally accessible dynamic, so that the backend can access it.
     pub fn add_public_dynamic<T: ValueType>(&mut self, name: String, dynamic: Dynamic<T>) {
         self.node
             .public_dynamics
-            .add(name, ErasedDynamic::new(dynamic));
+            .add(name, AnyDynamic::new(dynamic));
     }
 }

@@ -4,15 +4,15 @@ use crate::{
     backends::test_backend::{Path, backend::EventRecord},
     value::AnyValue,
     widget::{
-        ErasedDynamic, ErasedEventTrigger, Slots, WidgetDelegate, WidgetDelegateContext, WidgetNode,
+        AnyDynamic, AnyEventTrigger, Slots, WidgetDelegate, WidgetDelegateContext, WidgetNode,
     },
 };
 
 pub(crate) struct TestDelegate {
     pub(crate) path: Vec<usize>,
     // These must be kept alive by the recipient.
-    pub(crate) dynamics: Slots<ErasedDynamic>,
-    pub(crate) triggers: Slots<ErasedEventTrigger>,
+    pub(crate) dynamics: Slots<AnyDynamic>,
+    pub(crate) triggers: Slots<AnyEventTrigger>,
     pub(crate) event_tx: mpsc::Sender<EventRecord>,
     pub(crate) children: Mutex<Vec<Arc<TestDelegate>>>,
 }

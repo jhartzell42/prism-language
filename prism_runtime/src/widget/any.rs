@@ -8,18 +8,21 @@ use crate::value::{AnyValue, ValueType};
 use crate::{dynamic::Dynamic, event::Event, event::EventTrigger};
 
 #[derive(Clone)]
-pub struct ErasedEvent(Arc<dyn Any + Send + Sync>, Event<AnyValue>);
+pub struct AnyEvent {
+    inner: Arc<dyn Any + Send + Sync>,
+    converted: Event<AnyValue>,
+}
 
-impl ErasedEvent {
-    pub fn new<T: ValueType>(event: Event<T>) -> ErasedEvent {
-        Self(
-            Arc::new(event.clone()),
-            event.filter_map(|x| Some(AnyValue::from(x).into())),
-        )
+impl AnyEvent {
+    pub fn new<T: ValueType>(event: Event<T>) -> AnyEvent {
+        Self {
+            inner: Arc::new(event.clone()),
+            converted: event.filter_map(|x| Some(AnyValue::from(x).into())),
+        }
     }
 
     pub fn try_get<T: ValueType>(&self) -> Option<Event<T>> {
-        self.0.downcast_ref::<Event<T>>().map(|e| e.clone())
+        self.inner.downcast_ref::<Event<T>>().map(|e| e.clone())
     }
 
     pub fn get<T: ValueType>(&self) -> Event<T> {
@@ -27,27 +30,30 @@ impl ErasedEvent {
     }
 
     pub fn matches_inner_type<T: ValueType>(&self) -> bool {
-        self.0.is::<Event<T>>()
+        self.inner.is::<Event<T>>()
     }
 
     pub fn as_any_event(&self) -> Event<AnyValue> {
-        self.1.clone()
+        self.converted.clone()
     }
 }
 
 #[derive(Clone)]
-pub struct ErasedDynamic(Arc<dyn Any + Send + Sync>, Dynamic<AnyValue>);
+pub struct AnyDynamic {
+    inner: Arc<dyn Any + Send + Sync>,
+    converted: Dynamic<AnyValue>,
+}
 
-impl ErasedDynamic {
-    pub fn new<T: ValueType>(dynamic: Dynamic<T>) -> ErasedDynamic {
-        Self(
-            Arc::new(dynamic.clone()),
-            dynamic.map(|x| AnyValue::from(x).into()),
-        )
+impl AnyDynamic {
+    pub fn new<T: ValueType>(dynamic: Dynamic<T>) -> AnyDynamic {
+        Self {
+            inner: Arc::new(dynamic.clone()),
+            converted: dynamic.map(|x| AnyValue::from(x).into()),
+        }
     }
 
     pub fn try_get<T: ValueType>(&self) -> Option<Dynamic<T>> {
-        self.0.downcast_ref::<Dynamic<T>>().map(|e| e.clone())
+        self.inner.downcast_ref::<Dynamic<T>>().map(|e| e.clone())
     }
 
     pub fn get<T: ValueType>(&self) -> Dynamic<T> {
@@ -55,24 +61,32 @@ impl ErasedDynamic {
     }
 
     pub fn as_any_dynamic(&self) -> Dynamic<AnyValue> {
-        self.1.clone()
+        self.converted.clone()
     }
 }
 
 #[derive(Clone)]
-pub struct ErasedEventTrigger(Arc<dyn Any + Send + Sync>, String);
+pub struct AnyEventTrigger {
+    inner: Arc<dyn Any + Send + Sync>,
+    debug_type: String,
+}
 
-impl ErasedEventTrigger {
-    pub fn new<T: ValueType>(event: EventTrigger<T>) -> ErasedEventTrigger {
-        Self(Arc::new(event), type_name::<T>().into())
+impl AnyEventTrigger {
+    pub fn new<T: ValueType>(event: EventTrigger<T>) -> AnyEventTrigger {
+        Self {
+            inner: Arc::new(event),
+            debug_type: type_name::<T>().into(),
+        }
     }
 
     pub fn type_name(&self) -> &str {
-        &self.1
+        &self.debug_type
     }
 
     pub fn try_get<T: ValueType>(&self) -> Option<EventTrigger<T>> {
-        self.0.downcast_ref::<EventTrigger<T>>().map(|e| e.clone())
+        self.inner
+            .downcast_ref::<EventTrigger<T>>()
+            .map(|e| e.clone())
     }
 
     pub fn get<T: ValueType>(&self) -> EventTrigger<T> {
@@ -80,19 +94,19 @@ impl ErasedEventTrigger {
     }
 }
 
-impl Debug for ErasedEvent {
+impl Debug for AnyEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("ErasedEvent").finish()
     }
 }
 
-impl Debug for ErasedDynamic {
+impl Debug for AnyDynamic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("ErasedEvent").finish()
     }
 }
 
-impl Debug for ErasedEventTrigger {
+impl Debug for AnyEventTrigger {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("ErasedEvent").finish()
     }

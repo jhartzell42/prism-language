@@ -1,18 +1,7 @@
 # Plan
 
-* Universal erased value type
-    * Get it working
-        * Fix more types
-            * Test backend
-            * Widget
-        * Run tests
-        * Commit
-    * Migrate erased events
-        * Can treat as events of erased types
-        * Can cast back with checks to events of specific types
-    * Store erased in `PrismValue`
-        * Making events valid `PrismValue` without double `Arc`
-    * Work on more ergonomic API for dealing with this stuff
+* Figure out how to put events in values without `Arc`
+    * `AnyEvent` trait type?
 * Write button/label sample app
 * List combinator for widgets
 * Do hygiene refactors
@@ -44,7 +33,6 @@
 
 # Hygiene refactors:
 
-* Add named fields to types in `erased.rs`
 * Add documentation to public methods
 * All combinators that take closures
     * Take custom traits

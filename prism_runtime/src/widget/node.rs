@@ -10,8 +10,8 @@ use crate::{
     runtime::Runtime,
     widget::{
         Slots,
+        any::{AnyDynamic, AnyEvent, AnyEventTrigger},
         delegate::{WidgetDelegate, WidgetDelegateContext},
-        erased::{ErasedDynamic, ErasedEvent, ErasedEventTrigger},
     },
 };
 
@@ -23,18 +23,18 @@ pub struct WidgetNode {
     /// Tracks current children of the node.
     pub children: Mutex<Vec<Arc<WidgetNode>>>,
     /// Exposed dynamics for backends to read and subscribe to.
-    pub public_dynamics: Slots<ErasedDynamic>,
+    pub public_dynamics: Slots<AnyDynamic>,
     /// Exposed events for backends to subscribe to.
-    pub public_events: Slots<ErasedEvent>,
+    pub public_events: Slots<AnyEvent>,
     /// Public event callbacks. These are just here to retain the relationship between
     /// the event and the delegate.
     pub _public_event_callbacks: OnceLock<Vec<Arc<DelegateCallback>>>,
     /// Cyclic events, rooted here in the widget.
-    pub cyclic_events: Slots<ErasedEvent>,
+    pub cyclic_events: Slots<AnyEvent>,
     /// Cyclic dynamics, rooted here in the widget.
-    pub cyclic_dynamics: Slots<Arc<OnceLock<ErasedDynamic>>>,
+    pub cyclic_dynamics: Slots<Arc<OnceLock<AnyDynamic>>>,
     /// Exposed triggers for backends to provide data from the outside world
-    pub triggers: Slots<ErasedEventTrigger>,
+    pub triggers: Slots<AnyEventTrigger>,
     /// Backend data so the backend knows what (if anything) to do with this widget node.
     pub backend_data: JsonValue,
     /// The delegate is inserted by the backend and handles callbacks.

@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::value::{AnyValue, TypeMismatch, ValueType};
-use crate::{runtime::Runtime, widget::ErasedEventTrigger};
+use crate::{runtime::Runtime, widget::AnyEventTrigger};
 
 /// Almost all values implement this trait. Requires `'static`, [`Eq`], [`Debug`], [`Sync`], and [`Send`]
 /// and it's automatically implemented. Required for using with [`test_backend`]. You don't
@@ -15,7 +15,7 @@ pub trait TestValue: Debug + Send + Sync + 'static {
     fn trigger(
         self: Arc<Self>,
         runtime: &Runtime,
-        trigger: &ErasedEventTrigger,
+        trigger: &AnyEventTrigger,
     ) -> Result<(), Mismatch>;
 
     #[allow(missing_docs)]
@@ -26,7 +26,7 @@ impl<T: ValueType + PartialEq> TestValue for T {
     fn trigger(
         self: Arc<Self>,
         runtime: &Runtime,
-        trigger: &ErasedEventTrigger,
+        trigger: &AnyEventTrigger,
     ) -> Result<(), Mismatch> {
         let Some(trigger) = trigger.try_get::<T>() else {
             return Err(Mismatch::Type(TypeMismatch {
