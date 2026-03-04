@@ -5,7 +5,12 @@ use std::{
     sync::Arc,
 };
 
-use crate::value::{AnyValue, AnyValueInner, TypeMismatch, ValueType};
+use crate::{
+    dynamic::Dynamic,
+    event::Event,
+    value::{AnyValue, AnyValueInner, TypeMismatch, ValueType},
+    widget::AnyEvent,
+};
 
 pub trait PrismValueInner: Debug + Clone + Sync + Send + 'static {
     type Ref: ?Sized;
@@ -167,5 +172,65 @@ where
 
     fn to_any(self) -> AnyValue {
         AnyValue(AnyValueInner::Arc(self.clone()))
+    }
+}
+
+impl<T: ValueType> PrismValueInner for Event<T> {
+    type Ref = Event<T>;
+
+    fn try_get_any(value: &AnyValue) -> Result<&Self::Ref, TypeMismatch> {
+        Arc::<Event<T>>::try_get_any(value)
+    }
+
+    fn from_any(value: AnyValue) -> Self {
+        Arc::unwrap_or_clone(Arc::<Event<T>>::from_any(value))
+    }
+
+    fn to_any(self) -> AnyValue {
+        Arc::new(self).to_any()
+    }
+
+    fn type_string() -> String {
+        format!("Event<{}>", type_name::<T>())
+    }
+}
+
+impl<T: ValueType> PrismValueInner for Dynamic<T> {
+    type Ref = Dynamic<T>;
+
+    fn try_get_any(value: &AnyValue) -> Result<&Self::Ref, TypeMismatch> {
+        Arc::<Dynamic<T>>::try_get_any(value)
+    }
+
+    fn from_any(value: AnyValue) -> Self {
+        Arc::unwrap_or_clone(Arc::<Dynamic<T>>::from_any(value))
+    }
+
+    fn to_any(self) -> AnyValue {
+        Arc::new(self).to_any()
+    }
+
+    fn type_string() -> String {
+        format!("Dynamic<{}>", type_name::<T>())
+    }
+}
+
+impl PrismValueInner for AnyEvent {
+    type Ref = AnyEvent;
+
+    fn try_get_any(value: &AnyValue) -> Result<&Self::Ref, TypeMismatch> {
+        Arc::<AnyEvent>::try_get_any(value)
+    }
+
+    fn from_any(value: AnyValue) -> Self {
+        Arc::unwrap_or_clone(Arc::<AnyEvent>::from_any(value))
+    }
+
+    fn to_any(self) -> AnyValue {
+        Arc::new(self).to_any()
+    }
+
+    fn type_string() -> String {
+        "AnyEvent".to_string()
     }
 }

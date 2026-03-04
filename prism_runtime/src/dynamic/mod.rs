@@ -40,6 +40,7 @@ use crate::{
 /// All safe ways of constructing a dynamic should uphold that guarantee. While
 /// [`Dynamic::new_unchecked()`] is available to construct a dynamic raw, you
 /// should only use it when you're willing to uphold this guarantee.
+#[derive(Debug)]
 pub struct Dynamic<T: ValueType> {
     event: Event<T>,
     behavior: Behavior<T>,

@@ -6,10 +6,10 @@ use crate::{
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::{Action, Runtime},
-    value::{PrismArc, Value, ValueType},
+    value::{Value, ValueType},
 };
 
-impl<T: ValueType> Event<Arc<Event<T>>> {
+impl<T: ValueType> Event<Event<T>> {
     /// Given an event of events, keep track of the most recent inner event
     /// to have shown up on the outer event. When that inner event fires,
     /// fire with that value. If the inner event and outer event fire within
@@ -21,7 +21,7 @@ impl<T: ValueType> Event<Arc<Event<T>>> {
     pub fn switch_hold(&self) -> Event<T> {
         Event(Arc::new_cyclic(|weak| {
             let outer_sub = Arc::new(SwitchHoldOuterCallback { this: weak.clone() });
-            let outer_sub2: Arc<dyn EventCallback<Arc<Event<T>>>> = outer_sub.clone();
+            let outer_sub2: Arc<dyn EventCallback<Event<T>>> = outer_sub.clone();
             self.0.subscribe(Arc::downgrade(&outer_sub2));
             SwitchHold::<T> {
                 subscriber_list: SubscriptionManager::new(()),
@@ -38,7 +38,7 @@ impl<T: ValueType> Event<Arc<Event<T>>> {
 struct SwitchHold<T: ValueType> {
     subscriber_list: SubscriptionManager<T, Self>,
     inner_event: Mutex<Option<Event<T>>>,
-    _outer_event: Event<Arc<Event<T>>>,
+    _outer_event: Event<Event<T>>,
     _outer_sub: Arc<SwitchHoldOuterCallback<T>>,
     weak_self: Weak<Self>,
     height: Mutex<Option<usize>>,
@@ -90,12 +90,12 @@ struct SwitchHoldOuterCallback<T: ValueType> {
     this: Weak<SwitchHold<T>>,
 }
 
-impl<T: ValueType> EventCallback<Arc<Event<T>>> for SwitchHoldOuterCallback<T> {
-    fn event_fired(&self, runtime: &Runtime, value: PrismArc<Event<T>>) {
+impl<T: ValueType> EventCallback<Event<T>> for SwitchHoldOuterCallback<T> {
+    fn event_fired(&self, runtime: &Runtime, value: Value<Event<T>>) {
         let Some(this) = self.this.upgrade() else {
             return;
         };
-        let event = value.extract();
+        let event = value.get();
         // Not "prompt," never "prompt." Doesn't take effect until after this occurrence.
         runtime.schedule(usize::MAX, SwitchHoldOuterAction { this, event });
     }

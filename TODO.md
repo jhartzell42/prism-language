@@ -1,7 +1,8 @@
 # Plan
 
-* Figure out how to put events in values without `Arc`
-    * `AnyEvent` trait type?
+* Make it so that `Event`/`Dynamic` have implicit `Arc`
+    * So you don't have to use `Arc` with them
+    * Later, we can refine the implementation
 * Write button/label sample app
 * List combinator for widgets
 * Do hygiene refactors
@@ -33,6 +34,16 @@
 
 # Hygiene refactors:
 
+* Figure out how to put events in values without `Arc`
+    * `EventImpl` has associated type for output
+    * `EventHarness` implements the actual `EventInterface` trait
+        * For `AnyValue` and for `T`
+            * So they share the same underlying impl
+        * `EventInterface` has `as_any_event()` casting to `Event<AnyValue>`
+        * `EventInterface` has `as_specific_event()`
+            * For casting from `Event<AnyValue>` to `Event<T>`
+            * Giving you a `&dyn Any`
+                * Which is an `Event<T>`
 * Add documentation to public methods
 * All combinators that take closures
     * Take custom traits

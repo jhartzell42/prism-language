@@ -8,7 +8,7 @@ use crate::{
     dynamic::Dynamic,
     event::Event,
     runtime::Runtime,
-    value::{PrismArc, Value, ValueType},
+    value::{Value, ValueType},
     widget::{
         AnyDynamic, Widget, WidgetNode,
         any::{AnyEvent, AnyEventTrigger},
@@ -112,14 +112,12 @@ impl WidgetBuilder<'_> {
             .done_event()
             .filter_map(move |node| {
                 Some(
-                    Arc::new(
-                        node.get().cyclic_dynamics[ix]
-                            .get()
-                            .expect("cyclic dynamic never closed")
-                            .get::<T>()
-                            .event(),
-                    )
-                    .into(),
+                    node.get().cyclic_dynamics[ix]
+                        .get()
+                        .expect("cyclic dynamic never closed")
+                        .get::<T>()
+                        .event()
+                        .into(),
                 )
             })
             .switch_hold();
@@ -146,7 +144,7 @@ impl WidgetBuilder<'_> {
         let ix = self.node.cyclic_events.len();
         let event = self
             .done_event()
-            .filter_map(move |node| Some(PrismArc::new(node.get().cyclic_events[ix].get::<T>())))
+            .filter_map(move |node| Some(node.get().cyclic_events[ix].get::<T>().into()))
             .switch_hold();
         self.node
             .cyclic_events

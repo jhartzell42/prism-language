@@ -53,9 +53,11 @@ fn switch_hold_test2() {
             let inner = builder.add_external_event::<u32>("inner".to_string());
 
             let outer_event = outer.filter_map(move |outer| {
-                Some(PrismArc::new(
-                    inner.filter_map(move |inner| Some(Value::from(*outer + *inner))),
-                ))
+                Some(
+                    inner
+                        .filter_map(move |inner| Some(Value::from(*outer + *inner)))
+                        .into(),
+                )
             });
             let event = outer_event.switch_hold();
             builder.add_public_event("output".into(), event);
