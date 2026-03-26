@@ -34,9 +34,9 @@ use crate::value::ValueType;
 /// or dynamics directly. They should instead build new events out of old ones,
 /// and new behaviors out of old ones, and express their logic in that way.
 ///
-/// `Self` constitutes the inputs to this component. The `T`
-/// represents the output type. The implementation of the `build` function represents
-/// the implementation of the component.
+/// If they want to do external stuff, that more appropriately belongs in the backend.
+/// Implementers of this trait can delegate such implementations to the backend by annotating
+/// the resulting widget node with backend-relevant information.
 pub trait Widget: Send + Sync {
     // XXX: This might be too inflexible. Do we want this trait to be `dyn`-compatible??
     // I guess we'll find out whether that's necessary at some point.

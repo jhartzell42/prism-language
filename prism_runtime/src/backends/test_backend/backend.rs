@@ -12,8 +12,11 @@ use crate::{
 pub struct TestBackend {
     // Backend is responsible for keeping the application root node alive
     node: Arc<WidgetNode>,
+    // Backend is responsible for owning the runtime
     runtime: Runtime,
+    // Backend is responsible for owning the test delegate.
     delegate: Arc<TestDelegate>,
+    // This is special for the test backend.
     event_rx: mpsc::Receiver<EventRecord>,
 }
 

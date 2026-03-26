@@ -1,9 +1,44 @@
 # Plan
 
-* Make it so that `Event`/`Dynamic` have implicit `Arc`
-    * So you don't have to use `Arc` with them
-    * Later, we can refine the implementation
+* Make widgets dynamic and static
+    * Can we have mutual blanket implementations?
+        * `DynWidget<T>` implemented for any `Widget<Output = T>`
+        * `Widget<Output = T>` implemented for `dyn DynWidget<T>`
+            * But `dyn DynWidget<T>` will then implement `DynWidget<T>` two ways?
+            * Maybe just have a newtype wrapper for this?
+            * Maybe it's `PrismArc<dyn DynWidget<T>>`?
+                * This probably resolves the incoherence issues
+        * Any particular type is always both?
+* Write backend plan
+    * A composable backend?
+        * A delegate that looks up what component we're looking for
+            * A few different ways to register components
+            * Which run loops is a given component compatible with?
+                * Capabilities
+                    * Async
+                    * `egui`
+                        * But maybe this is introduced by context
+                        * And if you start an `egui` window component
+                            * Then it activates new components within it?
+                    * `ratatui`
+                        * Maybe this is similar?
+                * Maybe a generic way of writing async IO components
+                    * This should be compatible with basically any run loop
+                * But components can also be implemented for specific run loops(?)
+                    * Same component for multiple run loops = form of polymorphism
+                    * This can be exposed higher up
+                    * But maybe components can contain their own run loop
+                        * Which runs in its own thread?
+        * Run loop ideas
+            * Just `async`
+            * `egui`
+            * `ratatui`
 * Write button/label sample app
+    * With `test_backend` test
+    * Start determining how we communicate with backend
+        * Way of loading backend components
+        * GUI + async?
+        * How do we do this?
 * List combinator for widgets
 * Do hygiene refactors
 * GUI backend
