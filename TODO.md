@@ -1,15 +1,17 @@
 # Plan
 
-* Make widgets dynamic and static
-    * Can we have mutual blanket implementations?
-        * `DynWidget<T>` implemented for any `Widget<Output = T>`
-        * `Widget<Output = T>` implemented for `dyn DynWidget<T>`
-            * But `dyn DynWidget<T>` will then implement `DynWidget<T>` two ways?
-            * Maybe just have a newtype wrapper for this?
-            * Maybe it's `PrismArc<dyn DynWidget<T>>`?
-                * This probably resolves the incoherence issues
-        * Any particular type is always both?
+* Make widgets dyn-compatible
+    * Why were they not to begin with?
+        * If there's a good reason, address it! Certainly document it!
+        * `AnyWidget` should then probably also be a thing!
+        * `Widget`s should be storable in values...
+    * This will make everything easier later on
+        * Perf is not a priority right now!
+            * Perf will be addressed once the damn thing is working at all!
 * Write backend plan
+    * Do a bunch of research into `egui`
+    * Write up a proper backend plan document
+        * Give a few alternatives to how backend plans might actually look
     * A composable backend?
         * A delegate that looks up what component we're looking for
             * A few different ways to register components
@@ -39,7 +41,7 @@
         * Way of loading backend components
         * GUI + async?
         * How do we do this?
-* List combinator for widgets
+* List combinator for widgets!
 * Do hygiene refactors
 * GUI backend
     * `egui`?

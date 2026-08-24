@@ -94,7 +94,7 @@ impl PrismValueInner for i32 {
 
     fn from_any(value: AnyValue) -> Self {
         let AnyValue(AnyValueInner::I32(value)) = value else {
-            panic!();
+            panic!()
         };
         value
     }
