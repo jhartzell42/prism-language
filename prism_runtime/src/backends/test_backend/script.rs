@@ -124,6 +124,8 @@ pub enum TestAction {
 }
 
 /// Where the actual event/dynamic/trigger is in the [`WidgetNode`] structure.
+///
+/// [`WidgetNode`]: crate::widget::WidgetNode
 #[derive(Clone, PartialEq)]
 pub struct Path {
     /// How to navigate from the root node.

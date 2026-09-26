@@ -37,9 +37,7 @@ use crate::{
 /// behavior is guaranteed to always contain the new value of an event.
 /// This invariant is essential to maintaining everyone's sanity.
 ///
-/// All safe ways of constructing a dynamic should uphold that guarantee. While
-/// [`Dynamic::new_unchecked()`] is available to construct a dynamic raw, you
-/// should only use it when you're willing to uphold this guarantee.
+/// All safe ways of constructing a dynamic should uphold that guarantee.
 #[derive(Debug)]
 pub struct Dynamic<T: ValueType> {
     event: Event<T>,

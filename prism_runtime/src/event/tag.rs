@@ -18,6 +18,8 @@ impl<A: ValueType> Event<A> {
     /// It is **not** *prompt*, that is, it doesn't reflect updates to the
     /// tagged value that happened during this occurrence. Promptness is
     /// basically never what you want anyway.
+    ///
+    /// [`Dynamic`]: crate::dynamic::Dynamic
     pub fn tag<B: ValueType>(
         &self,
         behavior: impl Into<Behavior<B>>,
