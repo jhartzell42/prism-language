@@ -21,7 +21,7 @@ use crate::{
 pub struct WidgetBuilder<'a> {
     node: WidgetNode,
     children: Vec<Arc<WidgetNode>>,
-    done_event: Arc<WidgetReadyEvent>,
+    pub(super) done_event: Arc<WidgetReadyEvent>,
     runtime: &'a Runtime,
 }
 

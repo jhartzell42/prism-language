@@ -97,7 +97,9 @@ impl WidgetNode {
             runtime,
             node: self,
         };
-        self.delegate.get().unwrap().will_be_destroyed(ctxt);
+        if let Some(delegate) = self.delegate.get() {
+            delegate.will_be_destroyed(ctxt);
+        }
     }
 }
 

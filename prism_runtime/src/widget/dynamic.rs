@@ -2,15 +2,15 @@ use std::fmt::Debug;
 use std::sync::{Arc, Mutex, Weak};
 
 use crate::value::{PrismArc, Value};
+use crate::widget::widget_ready::WidgetReadyEvent;
 use crate::{
-    behavior::Behavior,
     dynamic::Dynamic,
     event::{
         Event, EventCallback, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::{Action, Runtime},
-    widget::{Widget, WidgetDelegateContext, WidgetNode, builder::WidgetBuilder},
+    widget::{Widget, WidgetDelegateContext, builder::WidgetBuilder},
 };
 
 impl<T: Widget + 'static + Send + Sync + Debug> Dynamic<Arc<T>> {
@@ -30,7 +30,7 @@ struct DynamicWidget<T: 'static + Widget + Send + Sync + Debug> {
 struct DynamicWidgetEvent<T: 'static + Widget + Send + Sync + Debug> {
     widget: DynamicWidget<T>,
     weak_self: Weak<Self>,
-    node: Behavior<Arc<Option<Arc<WidgetNode>>>>,
+    ready: Arc<WidgetReadyEvent>,
     subscribers: SubscriptionManager<Arc<T::Output>, Self>,
 }
 
@@ -48,7 +48,6 @@ impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
         let initial_widget = self.dynamic.behavior().0.query_for_tag();
 
         // `builder.done_event()` will only fire once, so we can use this hack
-        let done_event = builder.done_event();
         let output = Mutex::new(Some(builder.bind(&*initial_widget)));
         let first_time_event = builder.done_event().filter_map(move |_| {
             let mut output = output.lock().unwrap();
@@ -58,13 +57,7 @@ impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
         let next_event = Arc::new_cyclic(|weak_self| DynamicWidgetEvent {
             widget: self.clone(),
             weak_self: weak_self.clone(),
-            node: Behavior::hold(
-                PrismArc::new(None),
-                done_event.filter_map(|x| {
-                    let x = x.get();
-                    Some(PrismArc::new(Some(x)))
-                }),
-            ),
+            ready: builder.done_event.clone(),
             subscribers: SubscriptionManager::new(()),
         });
         self.dynamic.event().0.subscribe(Arc::downgrade(
@@ -75,7 +68,7 @@ impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
         // This fires before the delegate is attached. So, from the delegate's POV, it never fires.
         builder.add_public_event("__rebuilt__".to_string(), next_event.clone());
 
-        let event = Event::leftmost(vec![first_time_event, next_event]);
+        let event = Event::leftmost(vec![next_event, first_time_event]);
         Arc::new(event)
     }
 }
@@ -120,25 +113,22 @@ struct DWAction<T: 'static + Widget + Debug> {
 
 impl<T: 'static + Widget + Debug> Action for DWAction<T> {
     fn act(self: Box<Self>, runtime: &Runtime) {
-        let Some(parent_node) = self.event.node.0.query_for_tag().extract() else {
-            unreachable!("parent_node not set");
-        };
-        let Some(delegate) = parent_node.delegate.get() else {
-            unreachable!("parent node has no delegate?");
-        };
+        let parent_node = self.event.ready.node.get().unwrap().clone();
         let (child_node, output) =
             WidgetBuilder::build_root(runtime, &*self.value, self.event.height() + 1);
-        child_node.set_delegate(
-            runtime,
-            delegate.new_child_created(
-                WidgetDelegateContext {
-                    runtime,
-                    node: &parent_node,
-                },
-                0,
-                &child_node,
-            ),
-        );
+        if let Some(delegate) = parent_node.delegate.get() {
+            child_node.set_delegate(
+                runtime,
+                delegate.new_child_created(
+                    WidgetDelegateContext {
+                        runtime,
+                        node: &parent_node,
+                    },
+                    0,
+                    &child_node,
+                ),
+            );
+        }
         self.event
             .subscribers
             .notify(Arc::downgrade(&self.event), None, runtime, || {
