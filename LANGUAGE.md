@@ -308,7 +308,7 @@ of defining a widget at the top level:
 @counter:
     !increment <- @Button $"Increment"
     !decrement <- @Button $"Decrement"
-    let !delta = -1 on !decrement || +1 on !increment 
+    let !delta = -1 on !decrement | +1 on !increment 
     $count <- 0 <= $count + !delta
     @Label $"Count: $count"
 ```
@@ -833,7 +833,7 @@ type TestResult = TestPassed | TestFailed
 @counter:
     !increment <- @Button $"Increment"
     !decrement <- @Button $"Decrement"
-    let !delta = -1 on !decrement || +1 on !increment 
+    let !delta = -1 on !decrement | +1 on !increment 
     $count <- 0 <= $count + !delta
     @Label <- $"Count: $count"
 
