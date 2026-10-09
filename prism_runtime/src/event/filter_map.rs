@@ -82,7 +82,10 @@ impl<O: ValueType, T: ValueType, F: 'static + Send + Sync + Fn(Value<T>) -> Opti
     }
 
     fn height(&self) -> usize {
-        let mut height = self.height.lock().unwrap();
+        let mut height = self
+            .height
+            .try_lock()
+            .unwrap_or_else(|_| panic!("event cycle: an event depends on itself in one occurrence"));
         if let Some(height) = *height {
             return height;
         }
