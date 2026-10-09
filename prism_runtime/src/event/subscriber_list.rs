@@ -5,14 +5,15 @@ use std::{
 
 use crate::{
     event::{Event, EventCallback, EventImpl},
-    runtime::{Action, Runtime},
+    runtime::{Action, CURRENT_OCCURRENCE, Runtime},
     value::{Value, ValueType},
 };
 
 pub struct SubscriptionManager<T: ValueType, E: SubscriptionEvent<T>> {
-    subscribers: Mutex<Vec<Weak<dyn EventCallback<T>>>>,
+    subscribers: Mutex<Vec<(Weak<dyn EventCallback<T>>, Option<u64>)>>,
     subscription: Mutex<Option<Arc<MainSubscription<T, E>>>>,
     tag: E::Tag,
+    created_in: Option<u64>,
 }
 
 pub trait SubscriptionEvent<T: ValueType>: EventImpl<T> + 'static {
@@ -38,6 +39,7 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
             subscribers: Mutex::new(vec![]),
             subscription: Mutex::new(None),
             tag,
+            created_in: CURRENT_OCCURRENCE.get(),
         }
     }
 
@@ -50,7 +52,7 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         let len = {
             let mut list = self.subscribers.lock().unwrap();
             let len = list.len();
-            list.push(cb);
+            list.push((cb, CURRENT_OCCURRENCE.get()));
             len
         };
         if len == 0 {
@@ -94,9 +96,9 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         let mut subscribers = self.subscribers.lock().unwrap();
         let mut new_subscribers = vec![];
         let mut to_notify = vec![];
-        for subscriber in std::mem::take(&mut *subscribers) {
+        for (subscriber, added_in) in std::mem::take(&mut *subscribers) {
             if let Some(s) = subscriber.upgrade() {
-                new_subscribers.push(subscriber);
+                new_subscribers.push((subscriber, added_in));
                 to_notify.push(s);
             }
         }
@@ -116,14 +118,28 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         // Thunk to compute value
         value: impl FnOnce() -> Option<Value<T>>,
     ) -> bool {
-        let subscribers = self.consolidate();
+        let current = CURRENT_OCCURRENCE.get();
+        let (alive, ready) = {
+            let mut list = self.subscribers.lock().unwrap();
+            list.retain(|(subscriber, _)| subscriber.strong_count() > 0);
+            let ready: Vec<_> = list
+                .iter()
+                .filter(|(_, added_in)| {
+                    current.is_none() || *added_in != current || self.created_in == current
+                })
+                .filter_map(|(subscriber, _)| subscriber.upgrade())
+                .collect();
+            (list.len(), ready)
+        };
 
-        if subscribers.is_empty() {
+        if alive == 0 {
             self.clear_subscriber();
             return false;
         }
-        if let Some(value) = value() {
-            for subscriber in subscribers {
+        if !ready.is_empty()
+            && let Some(value) = value()
+        {
+            for subscriber in ready {
                 subscriber.event_fired(runtime, value.clone())
             }
         }
