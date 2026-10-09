@@ -30,7 +30,7 @@ pub(crate) struct RuntimeInner {
     pub(crate) height: Option<usize>,
 }
 
-pub(crate) trait Action {
+pub(crate) trait Action: Send {
     fn act(self: Box<Self>, runtime: &Runtime);
 }
 
