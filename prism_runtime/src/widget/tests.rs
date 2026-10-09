@@ -530,3 +530,88 @@ fn a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value(
 
     assert_eq!(shown.lock().unwrap().last(), Some(&7));
 }
+
+#[test]
+fn a_widget_built_mid_occurrence_gets_the_mapped_value_of_an_event_that_already_fired() {
+    #[derive(Debug)]
+    struct Tens {
+        input: Event<u32>,
+        built: Arc<Mutex<Vec<Dynamic<u32>>>>,
+    }
+
+    impl Widget for Tens {
+        type Output = ();
+
+        fn build(&self, _: &mut WidgetBuilder) {
+            let tens = Dynamic::hold(0u32.into(), self.input.map(|x| Value::from(*x * 10)));
+            self.built.lock().unwrap().push(tens);
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (input, trigger) = Event::<u32>::external();
+    let built = Arc::new(Mutex::new(vec![]));
+    let new_tens = {
+        let (input, built) = (input.clone(), built.clone());
+        move || PrismArc::new(Tens { input: input.clone(), built: built.clone() })
+    };
+    let widgets = Dynamic::hold(new_tens(), input.map(move |_| new_tens()));
+    let (_node, _output) = WidgetBuilder::build_root(&runtime, &widgets.dynamic_widget(), 0);
+    runtime.propagate();
+
+    runtime.schedule_trigger(&trigger, 7u32.into()).unwrap();
+    runtime.propagate();
+
+    let tens = built.lock().unwrap().last().unwrap().clone();
+    assert_eq!(*tens.behavior().0.query_for_tag(), 70);
+}
+
+#[test]
+fn a_closure_runs_once_per_occurrence_even_when_late_subscribers_read_it() {
+    #[derive(Debug)]
+    struct TwoReaders {
+        counted: Event<u32>,
+        built: Arc<Mutex<Vec<(Dynamic<u32>, Dynamic<u32>)>>>,
+    }
+
+    impl Widget for TwoReaders {
+        type Output = ();
+
+        fn build(&self, _: &mut WidgetBuilder) {
+            self.built.lock().unwrap().push((
+                Dynamic::hold(0u32.into(), self.counted.clone()),
+                Dynamic::hold(0u32.into(), self.counted.clone()),
+            ));
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (input, trigger) = Event::<u32>::external();
+    let runs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = {
+        let runs = runs.clone();
+        input.map(move |x| {
+            runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Value::from(*x * 10)
+        })
+    };
+    let built = Arc::new(Mutex::new(vec![]));
+    let new_readers = {
+        let built = built.clone();
+        move |counted: Event<u32>| PrismArc::new(TwoReaders { counted, built: built.clone() })
+    };
+    let widgets = Dynamic::hold(
+        new_readers(Event::never()),
+        input.map(move |_| new_readers(counted.clone())),
+    );
+    let (_node, _output) = WidgetBuilder::build_root(&runtime, &widgets.dynamic_widget(), 0);
+    runtime.propagate();
+
+    runtime.schedule_trigger(&trigger, 7u32.into()).unwrap();
+    runtime.propagate();
+
+    let (first, second) = built.lock().unwrap().last().unwrap().clone();
+    assert_eq!(*first.behavior().0.query_for_tag(), 70);
+    assert_eq!(*second.behavior().0.query_for_tag(), 70);
+    assert_eq!(runs.load(std::sync::atomic::Ordering::SeqCst), 1);
+}

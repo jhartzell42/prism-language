@@ -33,8 +33,7 @@ impl Action for Arc<WidgetReadyTrigger> {
 impl Action for Arc<WidgetReadyEvent> {
     fn act(self: Box<Self>, runtime: &Runtime) {
         let value = self.node.get().unwrap().clone();
-        self.subscribers
-            .notify(self.weak_self.clone(), None, runtime, || Some(value.into()));
+        self.subscribers.fire(runtime, value.into());
     }
 }
 
@@ -71,17 +70,16 @@ impl WidgetReadyEvent {
 }
 
 impl EventImpl<Arc<WidgetNode>> for WidgetReadyEvent {
-    fn subscribe(&self, cb: Weak<dyn EventCallback<Arc<WidgetNode>>>) {
+    fn subscribe(
+        &self,
+        cb: Weak<dyn EventCallback<Arc<WidgetNode>>>,
+    ) -> Option<Value<Arc<WidgetNode>>> {
         self.subscribers
-            .add_subscriber(self.weak_self.clone(), None, cb);
+            .add_subscriber(self.weak_self.clone(), None, cb)
     }
 
     fn height(&self) -> usize {
         self.trigger.height
-    }
-
-    fn value_now(&self) -> Option<Value<Arc<WidgetNode>>> {
-        self.subscribers.fired_now()
     }
 }
 
@@ -99,6 +97,10 @@ impl SubscriptionEvent<Arc<WidgetNode>> for WidgetReadyEvent {
         _: Value<Self::Inner>,
         _: Self::Tag,
     ) {
+        unreachable!("WidgetReadyEvents have no outgoing subscription logic")
+    }
+
+    fn handle_already_fired(&self, _: Value<Self::Inner>, _: Self::Tag) {
         unreachable!("WidgetReadyEvents have no outgoing subscription logic")
     }
 }

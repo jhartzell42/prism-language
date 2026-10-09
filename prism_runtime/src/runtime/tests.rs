@@ -32,6 +32,8 @@ impl EventCallback<u32> for PanicOnFire {
         panic!("subscriber panicked")
     }
 
+    fn already_fired(&self, _: Value<u32>) {}
+
     fn invalidate_height(&self) {}
 }
 

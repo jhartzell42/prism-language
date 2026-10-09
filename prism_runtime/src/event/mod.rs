@@ -50,6 +50,7 @@ impl<T: ValueType> Clone for Event<T> {
 
 pub(crate) trait EventCallback<T: ValueType>: Send + Sync {
     fn event_fired(&self, runtime: &Runtime, value: Value<T>);
+    fn already_fired(&self, value: Value<T>);
     /// Called when the height of the event this callback subscribes to may
     /// have changed. Implementations clear any height they cached and pass
     /// the call on to their own subscribers. See [`EventImpl::height`] for
@@ -70,7 +71,7 @@ pub(crate) trait EventImpl<T: ValueType>: Send + Sync + 'static {
     // If this seems complicated, this is exactly why callbacks are nasty.  The
     // ability to completely avoid this sort of thing in user code is a major
     // reason why FRP exists.
-    fn subscribe(&self, cb: Weak<dyn EventCallback<T>>);
+    fn subscribe(&self, cb: Weak<dyn EventCallback<T>>) -> Option<Value<T>>;
     /// One more than the height of every event this one is computed from.
     ///
     /// Heights may be cached. Invalidation of cached heights stops early at
@@ -82,5 +83,4 @@ pub(crate) trait EventImpl<T: ValueType>: Send + Sync + 'static {
     /// `invalidate_height` must clear its cache and pass the call on to its
     /// subscribers.
     fn height(&self) -> usize;
-    fn value_now(&self) -> Option<Value<T>>;
 }

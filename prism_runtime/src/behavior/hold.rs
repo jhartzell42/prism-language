@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, Weak};
 use crate::{
     behavior::{Behavior, BehaviorDependent, BehaviorImpl},
     event::{Event, EventCallback},
-    runtime::{Action, CATCH_UP, CURRENT_OCCURRENCE, Runtime},
+    runtime::{Action, Runtime, defer},
     value::{Value, ValueType},
 };
 
@@ -23,24 +23,15 @@ impl<T: ValueType> Behavior<T> {
             dependents: Mutex::new(vec![]),
         });
         let hold2: Arc<dyn EventCallback<T>> = hold.clone();
-        event.0.subscribe(Arc::downgrade(&hold2));
-        if CURRENT_OCCURRENCE.get().is_some() {
-            let caught_up = hold.clone();
-            CATCH_UP.with_borrow_mut(|catch_ups| {
-                catch_ups.push(Box::new(move |runtime| {
-                    if let Some(value) = event.0.value_now() {
-                        runtime.schedule(
-                            usize::MAX,
-                            HoldAction {
-                                hold: caught_up,
-                                value,
-                            },
-                        );
-                    }
-                }))
-            });
+        if let Some(value) = event.0.subscribe(Arc::downgrade(&hold2)) {
+            defer(
+                usize::MAX,
+                HoldAction {
+                    hold: hold.clone(),
+                    value,
+                },
+            );
         }
-
         Behavior(hold)
     }
 }
@@ -72,6 +63,13 @@ impl<T: ValueType> EventCallback<T> for HoldBehavior<T> {
         };
         // Behavior updates happen after all event propagation.
         runtime.schedule(usize::MAX, HoldAction { hold: this, value })
+    }
+
+    fn already_fired(&self, value: Value<T>) {
+        let Some(this) = self.weak_self.upgrade() else {
+            return;
+        };
+        defer(usize::MAX, HoldAction { hold: this, value })
     }
 
     // Heights of a behavior are always `usize::MAX`.

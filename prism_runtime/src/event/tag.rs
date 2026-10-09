@@ -87,6 +87,15 @@ impl<
                 (self.function)(value, behavior_value)
             });
     }
+
+    fn handle_already_fired(&self, value: Value<Self::Inner>, _: ()) {
+        if let Some(value) = self
+            .subscriber_list
+            .record_once(|| (self.function)(value, self.behavior.0.query_for_tag()))
+        {
+            self.subscriber_list.deliver_already_fired(value);
+        }
+    }
 }
 
 impl<
@@ -96,9 +105,9 @@ impl<
     F: 'static + Fn(Value<A>, Value<B>) -> Option<Value<O>> + Send + Sync,
 > EventImpl<O> for Tag<A, B, O, F>
 {
-    fn subscribe(&self, cb: Weak<dyn EventCallback<O>>) {
+    fn subscribe(&self, cb: Weak<dyn EventCallback<O>>) -> Option<Value<O>> {
         self.subscriber_list
-            .add_subscriber(self.weak_self.clone(), Some(&self.event), cb);
+            .add_subscriber(self.weak_self.clone(), Some(&self.event), cb)
     }
 
     fn height(&self) -> usize {
@@ -112,12 +121,5 @@ impl<
         let new_height = self.event.0.height() + 1;
         *height = Some(new_height);
         new_height
-    }
-
-    fn value_now(&self) -> Option<Value<O>> {
-        self.subscriber_list.value_now(|| {
-            let value = self.event.0.value_now()?;
-            (self.function)(value, self.behavior.0.query_for_tag())
-        })
     }
 }

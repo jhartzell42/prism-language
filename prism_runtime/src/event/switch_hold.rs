@@ -5,7 +5,7 @@ use crate::{
         Event, EventCallback, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::{Action, CATCH_UP, CURRENT_OCCURRENCE, Runtime},
+    runtime::{Action, Runtime, defer},
     value::{Value, ValueType},
 };
 
@@ -19,35 +19,23 @@ impl<T: ValueType> Event<Event<T>> {
     /// inner event in a separate occurrence, in order for the resulting event
     /// to ever fire.
     pub fn switch_hold(&self) -> Event<T> {
-        let switch = Arc::new_cyclic(|weak| {
-            let outer_sub = Arc::new(SwitchHoldOuterCallback { this: weak.clone() });
-            let outer_sub2: Arc<dyn EventCallback<Event<T>>> = outer_sub.clone();
-            self.0.subscribe(Arc::downgrade(&outer_sub2));
-            SwitchHold::<T> {
-                subscriber_list: SubscriptionManager::new(()),
-                inner_event: Mutex::new(None),
-                _outer_event: self.clone(),
-                _outer_sub: outer_sub,
-                weak_self: weak.clone(),
-                height: Mutex::new(None),
-            }
+        let switch = Arc::new_cyclic(|weak| SwitchHold::<T> {
+            subscriber_list: SubscriptionManager::new(()),
+            inner_event: Mutex::new(None),
+            _outer_event: self.clone(),
+            _outer_sub: Arc::new(SwitchHoldOuterCallback { this: weak.clone() }),
+            weak_self: weak.clone(),
+            height: Mutex::new(None),
         });
-        if CURRENT_OCCURRENCE.get().is_some() {
-            let outer = self.clone();
-            let caught_up = switch.clone();
-            CATCH_UP.with_borrow_mut(|catch_ups| {
-                catch_ups.push(Box::new(move |runtime| {
-                    if let Some(event) = outer.0.value_now() {
-                        runtime.schedule(
-                            usize::MAX,
-                            SwitchHoldOuterAction {
-                                this: caught_up,
-                                event: event.get(),
-                            },
-                        );
-                    }
-                }))
-            });
+        let outer_sub: Arc<dyn EventCallback<Event<T>>> = switch._outer_sub.clone();
+        if let Some(event) = self.0.subscribe(Arc::downgrade(&outer_sub)) {
+            defer(
+                usize::MAX,
+                SwitchHoldOuterAction {
+                    this: switch.clone(),
+                    event: event.get(),
+                },
+            );
         }
         Event(switch)
     }
@@ -63,10 +51,10 @@ struct SwitchHold<T: ValueType> {
 }
 
 impl<T: ValueType> EventImpl<T> for SwitchHold<T> {
-    fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) {
+    fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) -> Option<Value<T>> {
         let event = self.inner_event.lock().unwrap().clone();
         self.subscriber_list
-            .add_subscriber(self.weak_self.clone(), event.as_ref(), cb);
+            .add_subscriber(self.weak_self.clone(), event.as_ref(), cb)
     }
 
     fn height(&self) -> usize {
@@ -87,11 +75,6 @@ impl<T: ValueType> EventImpl<T> for SwitchHold<T> {
             .unwrap_or(0);
         *height = Some(new_height);
         new_height
-    }
-
-    fn value_now(&self) -> Option<Value<T>> {
-        let inner = self.inner_event.lock().unwrap().clone();
-        self.subscriber_list.value_now(|| inner?.0.value_now())
     }
 }
 
@@ -115,6 +98,12 @@ impl<T: ValueType> SubscriptionEvent<T> for SwitchHold<T> {
                 Some(value)
             });
     }
+
+    fn handle_already_fired(&self, value: Value<Self::Inner>, _: ()) {
+        if let Some(value) = self.subscriber_list.record_once(|| Some(value)) {
+            self.subscriber_list.deliver_already_fired(value);
+        }
+    }
 }
 
 struct SwitchHoldOuterCallback<T: ValueType> {
@@ -129,6 +118,19 @@ impl<T: ValueType> EventCallback<Event<T>> for SwitchHoldOuterCallback<T> {
         let event = value.get();
         // Not "prompt," never "prompt." Doesn't take effect until after this occurrence.
         runtime.schedule(usize::MAX, SwitchHoldOuterAction { this, event });
+    }
+
+    fn already_fired(&self, value: Value<Event<T>>) {
+        let Some(this) = self.this.upgrade() else {
+            return;
+        };
+        defer(
+            usize::MAX,
+            SwitchHoldOuterAction {
+                this,
+                event: value.get(),
+            },
+        );
     }
 
     fn invalidate_height(&self) {
@@ -161,7 +163,7 @@ impl<T: ValueType> Action for SwitchHoldOuterAction<T> {
             this.subscriber_list.clear_subscriber();
         } else {
             this.subscriber_list
-                .populate_subscriber(this.weak_self.clone(), Some(&event), true);
+                .resubscribe(this.weak_self.clone(), &event);
         }
 
         for cb in cbs {

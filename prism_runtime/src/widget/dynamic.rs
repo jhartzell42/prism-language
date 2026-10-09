@@ -9,7 +9,7 @@ use crate::{
         Event, EventCallback, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::{Action, Runtime},
+    runtime::{Action, CURRENT_HEIGHT, Runtime, defer},
     widget::{Widget, WidgetDelegateContext, WidgetNode, builder::WidgetBuilder},
 };
 
@@ -45,11 +45,19 @@ impl<T: 'static + Widget + Debug + Send + Sync> Clone for DynamicWidget<T> {
 impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
     type Output = Arc<Event<Arc<T::Output>>>;
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
+        let next_event = Arc::new_cyclic(|weak_self| DynamicWidgetEvent {
+            widget: self.clone(),
+            weak_self: weak_self.clone(),
+            ready: builder.done_event.clone(),
+            subscribers: SubscriptionManager::new(()),
+        });
         let initial_widget = self
             .dynamic
             .event()
             .0
-            .value_now()
+            .subscribe(Arc::downgrade(
+                &(next_event.clone() as Arc<dyn EventCallback<Arc<T>>>),
+            ))
             .unwrap_or_else(|| self.dynamic.behavior().0.query_for_tag());
 
         // `builder.done_event()` will only fire once, so we can use this hack
@@ -59,15 +67,6 @@ impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
             let output = output.take().unwrap();
             Some(PrismArc::new(output))
         });
-        let next_event = Arc::new_cyclic(|weak_self| DynamicWidgetEvent {
-            widget: self.clone(),
-            weak_self: weak_self.clone(),
-            ready: builder.done_event.clone(),
-            subscribers: SubscriptionManager::new(()),
-        });
-        self.dynamic.event().0.subscribe(Arc::downgrade(
-            &(next_event.clone() as Arc<dyn EventCallback<Arc<T>>>),
-        ));
         let next_event = Event(next_event);
         // Keep this alive even if no one's using the output event.
         // This fires before the delegate is attached. So, from the delegate's POV, it never fires.
@@ -79,17 +78,16 @@ impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
 }
 
 impl<T: 'static + Widget + Debug> EventImpl<Arc<T::Output>> for DynamicWidgetEvent<T> {
-    fn subscribe(&self, cb: std::sync::Weak<dyn EventCallback<Arc<T::Output>>>) {
+    fn subscribe(
+        &self,
+        cb: std::sync::Weak<dyn EventCallback<Arc<T::Output>>>,
+    ) -> Option<Value<Arc<T::Output>>> {
         self.subscribers
-            .add_subscriber(self.weak_self.clone(), None, cb);
+            .add_subscriber(self.weak_self.clone(), None, cb)
     }
 
     fn height(&self) -> usize {
         self.widget.dynamic.event().0.height() + 1
-    }
-
-    fn value_now(&self) -> Option<Value<Arc<T::Output>>> {
-        self.subscribers.fired_now()
     }
 }
 
@@ -99,11 +97,30 @@ impl<T: 'static + Widget + Debug> EventCallback<Arc<T>> for DynamicWidgetEvent<T
             // The outer widget's been destroyed lol, guess we can be done.
             return;
         };
+        let height = self.height();
         runtime.schedule(
-            self.height(),
+            height,
             DWAction {
                 event: this,
                 value: value.get(),
+                height,
+            },
+        );
+    }
+
+    fn already_fired(&self, value: PrismArc<T>) {
+        let Some(this) = self.weak_self.upgrade() else {
+            return;
+        };
+        let height = CURRENT_HEIGHT
+            .get()
+            .map_or(self.height(), |current| self.height().max(current + 1));
+        defer(
+            height,
+            DWAction {
+                event: this,
+                value: value.get(),
+                height,
             },
         );
     }
@@ -118,13 +135,14 @@ impl<T: 'static + Widget + Debug> EventCallback<Arc<T>> for DynamicWidgetEvent<T
 struct DWAction<T: 'static + Widget + Debug> {
     event: Arc<DynamicWidgetEvent<T>>,
     value: Arc<T>,
+    height: usize,
 }
 
 impl<T: 'static + Widget + Debug> Action for DWAction<T> {
     fn act(self: Box<Self>, runtime: &Runtime) {
         let parent_node = self.event.ready.node.get().unwrap().clone();
         let (child_node, output) =
-            WidgetBuilder::build_root(runtime, &*self.value, self.event.height() + 1);
+            WidgetBuilder::build_root(runtime, &*self.value, self.height + 1);
         if let Some(delegate) = parent_node.delegate.get() {
             child_node.set_delegate(
                 runtime,
@@ -175,6 +193,10 @@ impl<T: 'static + Widget + Debug> SubscriptionEvent<Arc<T::Output>> for DynamicW
         _: Value<Self::Inner>,
         _: Self::Tag,
     ) {
+        unreachable!()
+    }
+
+    fn handle_already_fired(&self, _: Value<Self::Inner>, _: Self::Tag) {
         unreachable!()
     }
 }

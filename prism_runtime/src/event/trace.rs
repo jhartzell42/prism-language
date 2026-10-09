@@ -22,6 +22,10 @@ impl<T: ValueType> Event<T> {
                 log::trace!("{}: {value:?}", self.label)
             }
 
+            fn already_fired(&self, value: Value<T>) {
+                log::trace!("{}: {value:?}", self.label)
+            }
+
             fn invalidate_height(&self) {}
         }
 
@@ -29,7 +33,9 @@ impl<T: ValueType> Event<T> {
             label,
             phantom: PhantomData,
         });
-        self.0.subscribe(Arc::downgrade(&tracer));
+        if let Some(value) = self.0.subscribe(Arc::downgrade(&tracer)) {
+            tracer.already_fired(value);
+        }
 
         // Leak tracer. Continue subscribing for rest of the program.
         std::mem::forget(tracer);

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     event::{Event, EventImpl},
-    value::ValueType,
+    value::{Value, ValueType},
 };
 
 impl<T: ValueType> Event<T> {
@@ -11,16 +11,12 @@ impl<T: ValueType> Event<T> {
         struct Never;
 
         impl<T: ValueType> EventImpl<T> for Never {
-            fn subscribe(&self, _: std::sync::Weak<dyn super::EventCallback<T>>) {
-                // Don't need this callback
+            fn subscribe(&self, _: std::sync::Weak<dyn super::EventCallback<T>>) -> Option<Value<T>> {
+                None
             }
 
             fn height(&self) -> usize {
                 0
-            }
-
-            fn value_now(&self) -> Option<crate::value::Value<T>> {
-                None
             }
         }
 
