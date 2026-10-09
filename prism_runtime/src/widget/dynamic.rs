@@ -107,7 +107,9 @@ impl<T: 'static + Widget + Debug> EventCallback<Arc<T>> for DynamicWidgetEvent<T
     }
 
     fn invalidate_height(&self) {
-        // We never cache the height
+        for subscriber in self.subscribers.consolidate() {
+            subscriber.invalidate_height();
+        }
     }
 }
 

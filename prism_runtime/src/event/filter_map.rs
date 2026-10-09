@@ -58,7 +58,12 @@ impl<O: ValueType, T: ValueType, F: 'static + Send + Sync + Fn(Value<T>) -> Opti
     type Tag = ();
 
     fn invalidate_height(&self) {
-        *self.height.lock().unwrap() = None;
+        if self.height.lock().unwrap().take().is_none() {
+            return;
+        }
+        for subscriber in self.subscriber_list.consolidate() {
+            subscriber.invalidate_height();
+        }
     }
 
     fn handle_main_subscription(&self, runtime: &Runtime, value: Value<Self::Inner>, _: ()) {
