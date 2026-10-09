@@ -31,7 +31,7 @@ pub struct WidgetNode {
     /// the event and the delegate.
     pub _public_event_callbacks: OnceLock<Vec<Arc<DelegateCallback>>>,
     /// Cyclic events, rooted here in the widget.
-    pub cyclic_events: Slots<AnyEvent>,
+    pub cyclic_events: Slots<Arc<dyn Any + Send + Sync>>,
     /// Cyclic dynamics, rooted here in the widget.
     pub cyclic_dynamics: Slots<Arc<dyn Any + Send + Sync>>,
     /// Exposed triggers for backends to provide data from the outside world

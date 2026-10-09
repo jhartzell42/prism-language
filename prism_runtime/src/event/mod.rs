@@ -17,6 +17,7 @@ use crate::value::{Value, ValueType};
 mod combine;
 mod external;
 mod filter_map;
+pub(crate) mod forward;
 mod leftmost;
 mod never;
 pub(crate) mod subscriber_list;

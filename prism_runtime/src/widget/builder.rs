@@ -3,7 +3,7 @@ use std::sync::{Arc, OnceLock};
 use crate::{
     behavior::{Behavior, BehaviorComputation, BehaviorDependencyTracker},
     dynamic::Dynamic,
-    event::Event,
+    event::{Event, forward::ForwardEvent},
     runtime::Runtime,
     value::{Value, ValueType},
     widget::{
@@ -85,44 +85,32 @@ impl WidgetBuilder<'_> {
 
     /// Add cyclic dynamic
     pub fn add_cyclic_dynamic<T: ValueType>(&mut self, name: String) -> (usize, Dynamic<T>) {
-        let lock = Arc::new(OnceLock::<Dynamic<T>>::new());
-        let ix = self.node.cyclic_dynamics.add(name, lock.clone());
+        let forward = ForwardEvent::<T>::new();
+        let slot = Arc::new((OnceLock::<Dynamic<T>>::new(), forward.clone()));
+        let ix = self.node.cyclic_dynamics.add(name, slot.clone());
 
         struct Computation<T: ValueType> {
-            lock: Arc<OnceLock<Dynamic<T>>>,
+            slot: Arc<(OnceLock<Dynamic<T>>, Arc<ForwardEvent<T>>)>,
         }
 
         impl<T: ValueType> BehaviorComputation<T> for Computation<T> {
             fn compute(&self, dep: BehaviorDependencyTracker) -> Value<T> {
-                let d = self.lock.get().expect("cyclic dynamic never closed");
+                let d = self.slot.0.get().expect("cyclic dynamic never closed");
                 d.behavior().query_for_computation(dep)
             }
         }
 
-        let event_lock = lock.clone();
-        let behavior = Behavior::computation_behavior(Computation { lock });
-        let event = self
-            .done_event()
-            .filter_map(move |_| {
-                Some(
-                    event_lock
-                        .get()
-                        .expect("cyclic dynamic never closed")
-                        .event()
-                        .into(),
-                )
-            })
-            .switch_hold();
-        (ix, unsafe { Dynamic::new(behavior, event) })
+        let behavior = Behavior::computation_behavior(Computation { slot });
+        (ix, unsafe { Dynamic::new(behavior, Event(forward)) })
     }
 
     /// Close a cyclic dynamic by providing the underlying dynamic.
     pub fn close_cyclic_dynamic_by_index<T: ValueType>(&mut self, ix: usize, dynamic: Dynamic<T>) {
-        self.node.cyclic_dynamics[ix]
-            .downcast_ref::<OnceLock<Dynamic<T>>>()
-            .expect("cyclic dynamic closed with the wrong type")
-            .set(dynamic)
-            .expect("set cyclic dynamic twice");
+        let (lock, forward) = self.node.cyclic_dynamics[ix]
+            .downcast_ref::<(OnceLock<Dynamic<T>>, Arc<ForwardEvent<T>>)>()
+            .expect("cyclic dynamic closed with the wrong type");
+        forward.close(dynamic.event());
+        lock.set(dynamic).expect("set cyclic dynamic twice");
     }
 
     /// Close a cyclic dynamic by providing the underlying dynamic.
@@ -135,15 +123,9 @@ impl WidgetBuilder<'_> {
 
     /// Create a new cyclic event. You must close it, or else it will never fire.
     pub fn add_cyclic_event<T: ValueType>(&mut self, name: String) -> (usize, Event<T>) {
-        let ix = self.node.cyclic_events.len();
-        let event = self
-            .done_event()
-            .filter_map(move |node| Some(node.get().cyclic_events[ix].get::<T>().into()))
-            .switch_hold();
-        self.node
-            .cyclic_events
-            .add(name, AnyEvent::new(Event::<T>::never()));
-        (ix, event)
+        let forward = ForwardEvent::<T>::new();
+        let ix = self.node.cyclic_events.add(name, forward.clone());
+        (ix, Event(forward))
     }
 
     /// Close a cyclic loop by providing the event back, given the event's name. When this event fires, the
@@ -162,11 +144,10 @@ impl WidgetBuilder<'_> {
     ///
     /// [`add_cyclic_event()`]: Self::add_cyclic_event()
     pub fn close_cyclic_event_by_index<T: ValueType>(&mut self, index: usize, event: Event<T>) {
-        assert!(self.node.cyclic_events[index].matches_inner_type::<T>());
-        self.node
-            .cyclic_events
-            .update_index(index, AnyEvent::new(event.clone()))
-            .unwrap();
+        self.node.cyclic_events[index]
+            .downcast_ref::<ForwardEvent<T>>()
+            .expect("cyclic event closed with the wrong type")
+            .close(event);
     }
 
     /// Add an event that the backend/delegate will have to trigger. This doesn't automatically register the
