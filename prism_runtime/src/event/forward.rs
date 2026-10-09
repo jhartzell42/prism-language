@@ -59,6 +59,11 @@ impl<T: ValueType> EventImpl<T> for ForwardEvent<T> {
         *height = Some(new_height);
         new_height
     }
+
+    fn value_now(&self) -> Option<Value<T>> {
+        self.subscriber_list
+            .value_now(|| self.target()?.0.value_now())
+    }
 }
 
 impl<T: ValueType> SubscriptionEvent<T> for ForwardEvent<T> {

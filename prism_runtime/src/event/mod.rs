@@ -82,4 +82,5 @@ pub(crate) trait EventImpl<T: ValueType>: Send + Sync + 'static {
     /// `invalidate_height` must clear its cache and pass the call on to its
     /// subscribers.
     fn height(&self) -> usize;
+    fn value_now(&self) -> Option<Value<T>>;
 }

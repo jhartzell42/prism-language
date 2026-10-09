@@ -79,6 +79,10 @@ impl EventImpl<Arc<WidgetNode>> for WidgetReadyEvent {
     fn height(&self) -> usize {
         self.trigger.height
     }
+
+    fn value_now(&self) -> Option<Value<Arc<WidgetNode>>> {
+        self.subscribers.fired_now()
+    }
 }
 
 impl SubscriptionEvent<Arc<WidgetNode>> for WidgetReadyEvent {

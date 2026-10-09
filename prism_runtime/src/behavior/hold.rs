@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, Weak};
 use crate::{
     behavior::{Behavior, BehaviorDependent, BehaviorImpl},
     event::{Event, EventCallback},
-    runtime::{Action, Runtime},
+    runtime::{Action, CATCH_UP, CURRENT_OCCURRENCE, Runtime},
     value::{Value, ValueType},
 };
 
@@ -24,6 +24,22 @@ impl<T: ValueType> Behavior<T> {
         });
         let hold2: Arc<dyn EventCallback<T>> = hold.clone();
         event.0.subscribe(Arc::downgrade(&hold2));
+        if CURRENT_OCCURRENCE.get().is_some() {
+            let caught_up = hold.clone();
+            CATCH_UP.with_borrow_mut(|catch_ups| {
+                catch_ups.push(Box::new(move |runtime| {
+                    if let Some(value) = event.0.value_now() {
+                        runtime.schedule(
+                            usize::MAX,
+                            HoldAction {
+                                hold: caught_up,
+                                value,
+                            },
+                        );
+                    }
+                }))
+            });
+        }
 
         Behavior(hold)
     }

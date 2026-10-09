@@ -93,4 +93,10 @@ impl<O: ValueType, T: ValueType, F: 'static + Send + Sync + Fn(Value<T>) -> Opti
         *height = Some(new_height);
         new_height
     }
+
+    fn value_now(&self) -> Option<Value<O>> {
+        self.subscriber_list.value_now(|| {
+            self.inner.0.value_now().and_then(|value| (self.f)(value))
+        })
+    }
 }

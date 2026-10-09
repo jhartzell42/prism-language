@@ -45,6 +45,7 @@ impl Runtime {
                 let Some(trigger) = self.trigger.0.upgrade() else {
                     return;
                 };
+                trigger.subscribers.record_firing(&self.value);
                 trigger
                     .subscribers
                     .notify(self.trigger.0.clone(), None, runtime, || {
@@ -110,6 +111,10 @@ impl<T: ValueType> EventImpl<T> for EventTriggerInner<T> {
 
     fn height(&self) -> usize {
         0
+    }
+
+    fn value_now(&self) -> Option<Value<T>> {
+        self.subscribers.fired_now()
     }
 }
 

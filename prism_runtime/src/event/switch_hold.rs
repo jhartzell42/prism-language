@@ -5,7 +5,7 @@ use crate::{
         Event, EventCallback, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::{Action, Runtime},
+    runtime::{Action, CATCH_UP, CURRENT_OCCURRENCE, Runtime},
     value::{Value, ValueType},
 };
 
@@ -19,7 +19,7 @@ impl<T: ValueType> Event<Event<T>> {
     /// inner event in a separate occurrence, in order for the resulting event
     /// to ever fire.
     pub fn switch_hold(&self) -> Event<T> {
-        Event(Arc::new_cyclic(|weak| {
+        let switch = Arc::new_cyclic(|weak| {
             let outer_sub = Arc::new(SwitchHoldOuterCallback { this: weak.clone() });
             let outer_sub2: Arc<dyn EventCallback<Event<T>>> = outer_sub.clone();
             self.0.subscribe(Arc::downgrade(&outer_sub2));
@@ -31,7 +31,25 @@ impl<T: ValueType> Event<Event<T>> {
                 weak_self: weak.clone(),
                 height: Mutex::new(None),
             }
-        }))
+        });
+        if CURRENT_OCCURRENCE.get().is_some() {
+            let outer = self.clone();
+            let caught_up = switch.clone();
+            CATCH_UP.with_borrow_mut(|catch_ups| {
+                catch_ups.push(Box::new(move |runtime| {
+                    if let Some(event) = outer.0.value_now() {
+                        runtime.schedule(
+                            usize::MAX,
+                            SwitchHoldOuterAction {
+                                this: caught_up,
+                                event: event.get(),
+                            },
+                        );
+                    }
+                }))
+            });
+        }
+        Event(switch)
     }
 }
 
@@ -69,6 +87,11 @@ impl<T: ValueType> EventImpl<T> for SwitchHold<T> {
             .unwrap_or(0);
         *height = Some(new_height);
         new_height
+    }
+
+    fn value_now(&self) -> Option<Value<T>> {
+        let inner = self.inner_event.lock().unwrap().clone();
+        self.subscriber_list.value_now(|| inner?.0.value_now())
     }
 }
 

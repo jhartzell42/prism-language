@@ -12,7 +12,7 @@
 //! begins.
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     collections::BTreeMap,
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::{
@@ -28,6 +28,7 @@ mod tests;
 
 thread_local! {
     pub(crate) static CURRENT_OCCURRENCE: Cell<Option<u64>> = const { Cell::new(None) };
+    pub(crate) static CATCH_UP: RefCell<Vec<Box<dyn FnOnce(&Runtime)>>> = const { RefCell::new(Vec::new()) };
 }
 
 static NEXT_OCCURRENCE: AtomicU64 = AtomicU64::new(0);
@@ -102,11 +103,18 @@ impl Runtime {
                 actions
             };
             for action in actions {
-                if let Err(panic) = catch_unwind(AssertUnwindSafe(|| action.act(self))) {
+                let outcome = catch_unwind(AssertUnwindSafe(|| {
+                    action.act(self);
+                    for catch_up in CATCH_UP.take() {
+                        catch_up(self);
+                    }
+                }));
+                if let Err(panic) = outcome {
                     let mut this = self.0.lock().unwrap();
                     this.actions.clear();
                     this.height = None;
                     drop(this);
+                    CATCH_UP.take();
                     CURRENT_OCCURRENCE.set(None);
                     resume_unwind(panic);
                 }

@@ -18,6 +18,10 @@ impl<T: ValueType> Event<T> {
             fn height(&self) -> usize {
                 0
             }
+
+            fn value_now(&self) -> Option<crate::value::Value<T>> {
+                None
+            }
         }
 
         Self(Arc::new(Never))

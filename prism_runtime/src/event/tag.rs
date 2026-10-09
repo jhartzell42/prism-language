@@ -113,4 +113,11 @@ impl<
         *height = Some(new_height);
         new_height
     }
+
+    fn value_now(&self) -> Option<Value<O>> {
+        self.subscriber_list.value_now(|| {
+            let value = self.event.0.value_now()?;
+            (self.function)(value, self.behavior.0.query_for_tag())
+        })
+    }
 }

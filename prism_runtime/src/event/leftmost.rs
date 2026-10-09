@@ -88,4 +88,15 @@ impl<T: ValueType> EventImpl<T> for LeftmostEvent<T> {
         *self.height.lock().unwrap() = Some(height);
         height
     }
+
+    fn value_now(&self) -> Option<Value<T>> {
+        self.subscription_managers
+            .iter()
+            .find_map(|manager| manager.fired_now())
+            .or_else(|| {
+                self.subscription_managers.first()?.value_now(|| {
+                    self.events.iter().find_map(|event| event.0.value_now())
+                })
+            })
+    }
 }

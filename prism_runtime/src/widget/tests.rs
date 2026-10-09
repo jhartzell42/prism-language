@@ -378,10 +378,8 @@ fn a_widget_built_mid_occurrence_sees_the_same_events_at_any_depth() {
     runtime.propagate();
 
     let (shallow_held, deep_held) = built.lock().unwrap().last().unwrap().clone();
-    assert_eq!(
-        *shallow_held.behavior().0.query_for_tag(),
-        *deep_held.behavior().0.query_for_tag()
-    );
+    assert_eq!(*shallow_held.behavior().0.query_for_tag(), 42);
+    assert_eq!(*deep_held.behavior().0.query_for_tag(), 42);
 }
 
 #[test]

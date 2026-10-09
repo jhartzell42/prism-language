@@ -10,10 +10,11 @@ use crate::{
 };
 
 pub struct SubscriptionManager<T: ValueType, E: SubscriptionEvent<T>> {
-    subscribers: Mutex<Vec<(Weak<dyn EventCallback<T>>, Option<u64>)>>,
+    subscribers: Mutex<Vec<Weak<dyn EventCallback<T>>>>,
     subscription: Mutex<Option<Arc<MainSubscription<T, E>>>>,
     tag: E::Tag,
-    created_in: Option<u64>,
+    last_firing: Mutex<Option<(u64, Value<T>)>>,
+    pulling: Mutex<()>,
 }
 
 pub trait SubscriptionEvent<T: ValueType>: EventImpl<T> + 'static {
@@ -42,7 +43,8 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
             subscribers: Mutex::new(vec![]),
             subscription: Mutex::new(None),
             tag,
-            created_in: CURRENT_OCCURRENCE.get(),
+            last_firing: Mutex::new(None),
+            pulling: Mutex::new(()),
         }
     }
 
@@ -55,7 +57,7 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         let len = {
             let mut list = self.subscribers.lock().unwrap();
             let len = list.len();
-            list.push((cb, CURRENT_OCCURRENCE.get()));
+            list.push(cb);
             len
         };
         if len == 0 {
@@ -99,9 +101,9 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         let mut subscribers = self.subscribers.lock().unwrap();
         let mut new_subscribers = vec![];
         let mut to_notify = vec![];
-        for (subscriber, added_in) in std::mem::take(&mut *subscribers) {
+        for subscriber in std::mem::take(&mut *subscribers) {
             if let Some(s) = subscriber.upgrade() {
-                new_subscribers.push((subscriber, added_in));
+                new_subscribers.push(subscriber);
                 to_notify.push(s);
             }
         }
@@ -121,28 +123,15 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         // Thunk to compute value
         value: impl FnOnce() -> Option<Value<T>>,
     ) -> bool {
-        let current = CURRENT_OCCURRENCE.get();
-        let (alive, ready) = {
-            let mut list = self.subscribers.lock().unwrap();
-            list.retain(|(subscriber, _)| subscriber.strong_count() > 0);
-            let ready: Vec<_> = list
-                .iter()
-                .filter(|(_, added_in)| {
-                    current.is_none() || *added_in != current || self.created_in == current
-                })
-                .filter_map(|(subscriber, _)| subscriber.upgrade())
-                .collect();
-            (list.len(), ready)
-        };
+        let subscribers = self.consolidate();
 
-        if alive == 0 {
+        if subscribers.is_empty() {
             self.clear_subscriber();
             return false;
         }
-        if !ready.is_empty()
-            && let Some(value) = value()
-        {
-            for subscriber in ready {
+        if let Some(value) = value() {
+            self.record_firing(&value);
+            for subscriber in subscribers {
                 subscriber.event_fired(runtime, value.clone())
             }
         }
@@ -150,6 +139,34 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         self.populate_subscriber(this, event, false);
 
         true
+    }
+}
+
+impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
+    pub(crate) fn record_firing(&self, value: &Value<T>) {
+        if let Some(occurrence) = CURRENT_OCCURRENCE.get() {
+            *self.last_firing.lock().unwrap() = Some((occurrence, value.clone()));
+        }
+    }
+
+    pub(crate) fn fired_now(&self) -> Option<Value<T>> {
+        let occurrence = CURRENT_OCCURRENCE.get()?;
+        match &*self.last_firing.lock().unwrap() {
+            Some((fired_in, value)) if *fired_in == occurrence => Some(value.clone()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn value_now(&self, recompute: impl FnOnce() -> Option<Value<T>>) -> Option<Value<T>> {
+        CURRENT_OCCURRENCE.get()?;
+        if let Some(value) = self.fired_now() {
+            return Some(value);
+        }
+        let _pulling = self
+            .pulling
+            .try_lock()
+            .unwrap_or_else(|_| panic!("event cycle: an event depends on itself in one occurrence"));
+        recompute()
     }
 }
 

@@ -45,7 +45,12 @@ impl<T: 'static + Widget + Debug + Send + Sync> Clone for DynamicWidget<T> {
 impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
     type Output = Arc<Event<Arc<T::Output>>>;
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
-        let initial_widget = self.dynamic.behavior().0.query_for_tag();
+        let initial_widget = self
+            .dynamic
+            .event()
+            .0
+            .value_now()
+            .unwrap_or_else(|| self.dynamic.behavior().0.query_for_tag());
 
         // `builder.done_event()` will only fire once, so we can use this hack
         let output = Mutex::new(Some(builder.bind(&*initial_widget)));
@@ -81,6 +86,10 @@ impl<T: 'static + Widget + Debug> EventImpl<Arc<T::Output>> for DynamicWidgetEve
 
     fn height(&self) -> usize {
         self.widget.dynamic.event().0.height() + 1
+    }
+
+    fn value_now(&self) -> Option<Value<Arc<T::Output>>> {
+        self.subscribers.fired_now()
     }
 }
 

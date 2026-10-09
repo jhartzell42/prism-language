@@ -132,4 +132,19 @@ impl<
         *self.height.lock().unwrap() = Some(height);
         height
     }
+
+    fn value_now(&self) -> Option<Value<O>> {
+        self.manager_a.value_now(|| {
+            let one_or_both = match (self.a.0.value_now(), self.b.0.value_now()) {
+                (Some(a), Some(b)) => match (a.extract(), b.extract()) {
+                    (OneOrBoth::A(a), OneOrBoth::B(b)) => OneOrBoth::Both(a, b),
+                    (a, _) => a,
+                },
+                (Some(a), None) => a.extract(),
+                (None, Some(b)) => b.extract(),
+                (None, None) => return None,
+            };
+            (self.function)(one_or_both)
+        })
+    }
 }
