@@ -154,6 +154,7 @@ impl<O: ValueType, C: 'static + BehaviorComputation<O>> BehaviorImpl<O>
             .try_lock()
             .unwrap_or_else(|_| panic!("behavior cycle: a behavior depends on itself"));
         if let Some((value, dependents)) = &mut *cache {
+            dependents.retain(|existing| existing.strong_count() > 0 && !existing.ptr_eq(&dependent));
             dependents.push(dependent);
             return value.clone();
         }
