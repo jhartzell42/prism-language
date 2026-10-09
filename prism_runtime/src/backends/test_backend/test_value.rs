@@ -34,7 +34,9 @@ impl<T: ValueType + PartialEq> TestValue for T {
                 actual: trigger.type_name().to_string(),
             }));
         };
-        runtime.schedule_trigger(&trigger, Arc::unwrap_or_clone(self).into());
+        runtime
+            .schedule_trigger(&trigger, Arc::unwrap_or_clone(self).into())
+            .expect("test script scheduled one trigger twice before propagating");
         Ok(())
     }
 

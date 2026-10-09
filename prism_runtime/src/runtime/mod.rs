@@ -23,11 +23,11 @@ mod tests;
 // TODO: Should we have any guarantees that we don't mix runtimes?
 
 /// This represents an instance of a reactive graph.
-pub struct Runtime(Mutex<RuntimeInner>);
+pub struct Runtime(pub(crate) Mutex<RuntimeInner>);
 
-struct RuntimeInner {
+pub(crate) struct RuntimeInner {
     actions: BTreeMap<usize, Vec<Box<dyn Action>>>,
-    height: Option<usize>,
+    pub(crate) height: Option<usize>,
 }
 
 pub(crate) trait Action {

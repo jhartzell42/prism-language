@@ -175,7 +175,7 @@ fn dyn_rebuilds_without_a_backend_delegate() {
     let latest = Dynamic::hold(PrismArc::new(0u32), (*built).clone());
     runtime.propagate();
 
-    runtime.schedule_trigger(&trigger, 5u32.into());
+    runtime.schedule_trigger(&trigger, 5u32.into()).unwrap();
     runtime.propagate();
 
     assert_eq!(*latest.behavior().0.query_for_tag(), 5);
@@ -192,7 +192,7 @@ fn dyn_rebuilds_when_its_input_arrives_in_occurrence_zero() {
     let (_node, built) = WidgetBuilder::build_root(&runtime, &widgets.dynamic_widget(), 0);
     let latest = Dynamic::hold(PrismArc::new(0u32), (*built).clone());
 
-    runtime.schedule_trigger(&trigger, 5u32.into());
+    runtime.schedule_trigger(&trigger, 5u32.into()).unwrap();
     runtime.propagate();
 
     assert_eq!(*latest.behavior().0.query_for_tag(), 5);
@@ -227,7 +227,7 @@ fn nested_dyn_rebuilds_in_the_same_occurrence_as_its_parent() {
     let (_node, _built) = WidgetBuilder::build_root(&runtime, &middles.dynamic_widget(), 0);
     runtime.propagate();
 
-    runtime.schedule_trigger(&trigger, 7u32.into());
+    runtime.schedule_trigger(&trigger, 7u32.into()).unwrap();
     runtime.propagate();
 }
 
@@ -305,7 +305,7 @@ fn a_same_occurrence_cycle_through_a_cyclic_event_is_reported_instead_of_hanging
             let (input, trigger) = Event::<u32>::external();
             let (_node, _held) = WidgetBuilder::build_root(&runtime, &Loop(input), 0);
             runtime.propagate();
-            runtime.schedule_trigger(&trigger, 0u32.into());
+            runtime.schedule_trigger(&trigger, 0u32.into()).unwrap();
             runtime.propagate();
         });
         reported_sender.send(outcome.is_err()).unwrap();
@@ -374,7 +374,7 @@ fn a_widget_built_mid_occurrence_sees_the_same_events_at_any_depth() {
     let (_node, _output) = WidgetBuilder::build_root(&runtime, &children.dynamic_widget(), 0);
     runtime.propagate();
 
-    runtime.schedule_trigger(&trigger, 42u32.into());
+    runtime.schedule_trigger(&trigger, 42u32.into()).unwrap();
     runtime.propagate();
 
     let (shallow_held, deep_held) = built.lock().unwrap().last().unwrap().clone();

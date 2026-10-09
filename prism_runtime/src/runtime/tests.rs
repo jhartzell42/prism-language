@@ -11,9 +11,9 @@ fn runtime_keeps_working_after_a_closure_panics() {
         event.map(|x| if *x == 1 { panic!("closure panicked") } else { x }),
     );
 
-    runtime.schedule_trigger(&trigger, 1u32.into());
+    runtime.schedule_trigger(&trigger, 1u32.into()).unwrap();
     let _ = catch_unwind(AssertUnwindSafe(|| runtime.propagate()));
-    runtime.schedule_trigger(&trigger, 2u32.into());
+    runtime.schedule_trigger(&trigger, 2u32.into()).unwrap();
     runtime.propagate();
 
     assert_eq!(*held.behavior().0.query_for_tag(), 2);

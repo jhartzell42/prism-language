@@ -215,13 +215,13 @@ fn switching_to_a_deeper_event_keeps_downstream_heights_valid() {
     let deep = deep_source.map(|x| x).map(|x| x).map(|x| x).map(|x| x);
     let held = Dynamic::hold(0u32.into(), outer.switch_hold().map(|x| x).map(|x| x));
 
-    runtime.schedule_trigger(&outer_trigger, shallow.into());
+    runtime.schedule_trigger(&outer_trigger, shallow.into()).unwrap();
     runtime.propagate();
-    runtime.schedule_trigger(&shallow_trigger, 1u32.into());
+    runtime.schedule_trigger(&shallow_trigger, 1u32.into()).unwrap();
     runtime.propagate();
-    runtime.schedule_trigger(&outer_trigger, deep.into());
+    runtime.schedule_trigger(&outer_trigger, deep.into()).unwrap();
     runtime.propagate();
-    runtime.schedule_trigger(&deep_trigger, 2u32.into());
+    runtime.schedule_trigger(&deep_trigger, 2u32.into()).unwrap();
     runtime.propagate();
 
     assert_eq!(*held.behavior().0.query_for_tag(), 2);
@@ -248,7 +248,7 @@ fn scheduling_a_trigger_during_propagation_is_refused_without_a_panic() {
     }));
     first.0.subscribe(Arc::downgrade(&callback));
 
-    runtime.schedule_trigger(&first_trigger, 1u32.into());
+    runtime.schedule_trigger(&first_trigger, 1u32.into()).unwrap();
     runtime.propagate();
     runtime.propagate();
 
@@ -266,7 +266,7 @@ fn a_subscriber_rescheduling_its_own_trigger_does_not_hang() {
             let _ = runtime.schedule_trigger(&same_trigger, 2u32.into());
         }));
         event.0.subscribe(Arc::downgrade(&callback));
-        runtime.schedule_trigger(&trigger, 1u32.into());
+        runtime.schedule_trigger(&trigger, 1u32.into()).unwrap();
         runtime.propagate();
         finished_sender.send(()).unwrap();
     });

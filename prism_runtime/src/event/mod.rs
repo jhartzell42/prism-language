@@ -29,7 +29,7 @@ mod trace;
 mod tests;
 
 pub use combine::OneOrBoth;
-pub use external::EventTrigger;
+pub use external::{EventTrigger, ScheduleError};
 
 /// This is a handle for an event that contains a value of type `T` in
 /// any occurrence for which it is fired.

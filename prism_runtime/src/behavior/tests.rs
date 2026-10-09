@@ -14,7 +14,7 @@ fn a_behavior_that_never_changes_does_not_collect_dependents() {
     );
 
     for value in 0..1000u32 {
-        runtime.schedule_trigger(&changing_trigger, value.into());
+        runtime.schedule_trigger(&changing_trigger, value.into()).unwrap();
         runtime.propagate();
         sum.0.query_for_tag();
     }
