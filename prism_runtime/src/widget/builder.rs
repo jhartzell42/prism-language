@@ -1,4 +1,4 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, Weak};
 
 use crate::{
     behavior::{Behavior, BehaviorComputation, BehaviorDependencyTracker},
@@ -90,17 +90,23 @@ impl WidgetBuilder<'_> {
         let ix = self.node.cyclic_dynamics.add(name, slot.clone());
 
         struct Computation<T: ValueType> {
-            slot: Arc<(OnceLock<Dynamic<T>>, Arc<ForwardEvent<T>>)>,
+            slot: Weak<(OnceLock<Dynamic<T>>, Arc<ForwardEvent<T>>)>,
         }
 
         impl<T: ValueType> BehaviorComputation<T> for Computation<T> {
             fn compute(&self, dep: BehaviorDependencyTracker) -> Value<T> {
-                let d = self.slot.0.get().expect("cyclic dynamic never closed");
+                let slot = self
+                    .slot
+                    .upgrade()
+                    .expect("cyclic dynamic sampled after its widget was dropped");
+                let d = slot.0.get().expect("cyclic dynamic never closed");
                 d.behavior().query_for_computation(dep)
             }
         }
 
-        let behavior = Behavior::computation_behavior(Computation { slot });
+        let behavior = Behavior::computation_behavior(Computation {
+            slot: Arc::downgrade(&slot),
+        });
         (ix, unsafe { Dynamic::new(behavior, Event(forward)) })
     }
 
@@ -109,7 +115,7 @@ impl WidgetBuilder<'_> {
         let (lock, forward) = self.node.cyclic_dynamics[ix]
             .downcast_ref::<(OnceLock<Dynamic<T>>, Arc<ForwardEvent<T>>)>()
             .expect("cyclic dynamic closed with the wrong type");
-        forward.close(dynamic.event());
+        forward.close(&dynamic.event());
         lock.set(dynamic).expect("set cyclic dynamic twice");
     }
 
@@ -124,7 +130,10 @@ impl WidgetBuilder<'_> {
     /// Create a new cyclic event. You must close it, or else it will never fire.
     pub fn add_cyclic_event<T: ValueType>(&mut self, name: String) -> (usize, Event<T>) {
         let forward = ForwardEvent::<T>::new();
-        let ix = self.node.cyclic_events.add(name, forward.clone());
+        let ix = self
+            .node
+            .cyclic_events
+            .add(name, Arc::new((forward.clone(), OnceLock::<Event<T>>::new())));
         (ix, Event(forward))
     }
 
@@ -144,10 +153,11 @@ impl WidgetBuilder<'_> {
     ///
     /// [`add_cyclic_event()`]: Self::add_cyclic_event()
     pub fn close_cyclic_event_by_index<T: ValueType>(&mut self, index: usize, event: Event<T>) {
-        self.node.cyclic_events[index]
-            .downcast_ref::<ForwardEvent<T>>()
-            .expect("cyclic event closed with the wrong type")
-            .close(event);
+        let (forward, target) = self.node.cyclic_events[index]
+            .downcast_ref::<(Arc<ForwardEvent<T>>, OnceLock<Event<T>>)>()
+            .expect("cyclic event closed with the wrong type");
+        forward.close(&event);
+        target.set(event).expect("cyclic event closed twice");
     }
 
     /// Add an event that the backend/delegate will have to trigger. This doesn't automatically register the

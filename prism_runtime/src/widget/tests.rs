@@ -402,3 +402,84 @@ fn closing_a_cyclic_dynamic_with_the_wrong_type_fails_while_building() {
 
     assert!(build.is_err());
 }
+
+#[test]
+fn dropping_a_widget_frees_its_cyclic_loops() {
+    struct Loops(Event<u32>);
+
+    impl Widget for Loops {
+        type Output = Arc<(Dynamic<u32>, Event<u32>)>;
+
+        fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
+            let (event_index, looped_back) = builder.add_cyclic_event::<u32>("event".into());
+            let looped = Event::leftmost(vec![self.0.clone(), looped_back.map(|x| x)]);
+            builder.close_cyclic_event_by_index(event_index, looped.clone());
+
+            let (dynamic_index, total) = builder.add_cyclic_dynamic::<u32>("total".into());
+            let next_total = Dynamic::hold(
+                0u32.into(),
+                self.0.tag_map(|step, total: Value<u32>| Some(Value::from(*step + *total)), total),
+            );
+            builder.close_cyclic_dynamic_by_index(dynamic_index, next_total.clone());
+
+            Arc::new((next_total, looped))
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (input, _trigger) = Event::<u32>::external();
+    let (node, loops) = WidgetBuilder::build_root(&runtime, &Loops(input), 0);
+    runtime.propagate();
+    let event_in_loop = Arc::downgrade(&loops.1.0);
+    let dynamic_in_loop = Arc::downgrade(&loops.0.behavior().0);
+
+    drop(loops);
+    drop(node);
+
+    assert!(event_in_loop.upgrade().is_none());
+    assert!(dynamic_in_loop.upgrade().is_none());
+}
+
+#[test]
+fn a_replaced_child_keeps_working_until_its_last_occurrence_ends() {
+    #[derive(Debug)]
+    struct Counter(Event<u32>);
+
+    impl Widget for Counter {
+        type Output = Event<u32>;
+
+        fn build(&self, builder: &mut WidgetBuilder) -> Event<u32> {
+            let (index, total) = builder.add_cyclic_dynamic::<u32>("total".into());
+            let next_total = Dynamic::hold(
+                0u32.into(),
+                self.0.tag_map(|step, total: Value<u32>| Some(Value::from(*step + *total)), total.clone()),
+            );
+            builder.close_cyclic_dynamic_by_index(index, next_total);
+            self.0.tag_map(|_, total: Value<u32>| Some(total), total)
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (rebuild, rebuild_trigger) = Event::<u32>::external();
+    let (tick, tick_trigger) = Event::<u32>::external();
+    let deep_tick = tick.map(|x| x).map(|x| x).map(|x| x).map(|x| x).map(|x| x);
+    let tick_for_new_counters = deep_tick.clone();
+    let counters = Dynamic::hold(
+        PrismArc::new(Counter(deep_tick)),
+        rebuild.map(move |_| PrismArc::new(Counter(tick_for_new_counters.clone()))),
+    );
+    let (_node, built) = WidgetBuilder::build_root(&runtime, &counters.dynamic_widget(), 0);
+    let current_output = (*built)
+        .clone()
+        .map(|output: Value<Arc<Event<u32>>>| Value::from((*output).clone()));
+    let latest = Dynamic::hold(0u32.into(), current_output.switch_hold());
+    runtime.propagate();
+    runtime.schedule_trigger(&tick_trigger, 1u32.into()).unwrap();
+    runtime.propagate();
+
+    runtime.schedule_trigger(&tick_trigger, 1u32.into()).unwrap();
+    runtime.schedule_trigger(&rebuild_trigger, 1u32.into()).unwrap();
+    runtime.propagate();
+
+    assert_eq!(*latest.behavior().0.query_for_tag(), 1);
+}

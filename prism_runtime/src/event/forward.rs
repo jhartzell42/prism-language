@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub(crate) struct ForwardEvent<T: ValueType> {
-    inner: OnceLock<Event<T>>,
+    inner: OnceLock<Weak<dyn EventImpl<T>>>,
     subscriber_list: SubscriptionManager<T, Self>,
     weak_self: Weak<Self>,
     height: Mutex<Option<usize>>,
@@ -26,21 +26,25 @@ impl<T: ValueType> ForwardEvent<T> {
         })
     }
 
-    pub(crate) fn close(&self, event: Event<T>) {
-        if self.inner.set(event).is_err() {
+    pub(crate) fn close(&self, event: &Event<T>) {
+        if self.inner.set(Arc::downgrade(&event.0)).is_err() {
             panic!("cyclic event closed twice");
         }
         if !self.subscriber_list.consolidate().is_empty() {
             self.subscriber_list
-                .populate_subscriber(self.weak_self.clone(), self.inner.get(), true);
+                .populate_subscriber(self.weak_self.clone(), Some(event), true);
         }
+    }
+
+    fn target(&self) -> Option<Event<T>> {
+        self.inner.get().and_then(Weak::upgrade).map(Event)
     }
 }
 
 impl<T: ValueType> EventImpl<T> for ForwardEvent<T> {
     fn subscribe(&self, cb: Weak<dyn EventCallback<T>>) {
         self.subscriber_list
-            .add_subscriber(self.weak_self.clone(), self.inner.get(), cb);
+            .add_subscriber(self.weak_self.clone(), self.target().as_ref(), cb);
     }
 
     fn height(&self) -> usize {
@@ -51,7 +55,7 @@ impl<T: ValueType> EventImpl<T> for ForwardEvent<T> {
         if let Some(height) = *height {
             return height;
         }
-        let new_height = self.inner.get().map(|e| e.0.height() + 1).unwrap_or(0);
+        let new_height = self.target().map(|e| e.0.height() + 1).unwrap_or(0);
         *height = Some(new_height);
         new_height
     }
@@ -72,6 +76,6 @@ impl<T: ValueType> SubscriptionEvent<T> for ForwardEvent<T> {
 
     fn handle_main_subscription(&self, runtime: &Runtime, value: Value<T>, _: ()) {
         self.subscriber_list
-            .notify(self.weak_self.clone(), self.inner.get(), runtime, || Some(value));
+            .notify(self.weak_self.clone(), self.target().as_ref(), runtime, || Some(value));
     }
 }

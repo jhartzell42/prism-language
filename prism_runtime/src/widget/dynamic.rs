@@ -10,7 +10,7 @@ use crate::{
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::{Action, Runtime},
-    widget::{Widget, WidgetDelegateContext, builder::WidgetBuilder},
+    widget::{Widget, WidgetDelegateContext, WidgetNode, builder::WidgetBuilder},
 };
 
 impl<T: Widget + 'static + Send + Sync + Debug> Dynamic<Arc<T>> {
@@ -139,6 +139,15 @@ impl<T: 'static + Widget + Debug> Action for DWAction<T> {
             std::mem::replace(&mut children[0], child_node)
         };
         old_node.prepare_destruction(runtime);
+        runtime.schedule(usize::MAX, KeepUntilOccurrenceEnds(old_node));
+    }
+}
+
+struct KeepUntilOccurrenceEnds(Arc<WidgetNode>);
+
+impl Action for KeepUntilOccurrenceEnds {
+    fn act(self: Box<Self>, _: &Runtime) {
+        drop(self.0);
     }
 }
 
