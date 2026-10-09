@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -32,7 +33,7 @@ pub struct WidgetNode {
     /// Cyclic events, rooted here in the widget.
     pub cyclic_events: Slots<AnyEvent>,
     /// Cyclic dynamics, rooted here in the widget.
-    pub cyclic_dynamics: Slots<Arc<OnceLock<AnyDynamic>>>,
+    pub cyclic_dynamics: Slots<Arc<dyn Any + Send + Sync>>,
     /// Exposed triggers for backends to provide data from the outside world
     pub triggers: Slots<AnyEventTrigger>,
     /// Backend data so the backend knows what (if anything) to do with this widget node.

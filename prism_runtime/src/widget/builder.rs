@@ -1,7 +1,4 @@
-use std::{
-    marker::PhantomData,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 
 use crate::{
     behavior::{Behavior, BehaviorComputation, BehaviorDependencyTracker},
@@ -88,34 +85,29 @@ impl WidgetBuilder<'_> {
 
     /// Add cyclic dynamic
     pub fn add_cyclic_dynamic<T: ValueType>(&mut self, name: String) -> (usize, Dynamic<T>) {
-        let lock = Arc::new(OnceLock::new());
+        let lock = Arc::new(OnceLock::<Dynamic<T>>::new());
         let ix = self.node.cyclic_dynamics.add(name, lock.clone());
 
-        struct Computation<T: 'static + Send + Sync> {
-            lock: Arc<OnceLock<AnyDynamic>>,
-            phantom: PhantomData<T>,
+        struct Computation<T: ValueType> {
+            lock: Arc<OnceLock<Dynamic<T>>>,
         }
 
         impl<T: ValueType> BehaviorComputation<T> for Computation<T> {
             fn compute(&self, dep: BehaviorDependencyTracker) -> Value<T> {
                 let d = self.lock.get().expect("cyclic dynamic never closed");
-                let d = d.get::<T>();
                 d.behavior().query_for_computation(dep)
             }
         }
 
-        let behavior = Behavior::computation_behavior(Computation {
-            lock,
-            phantom: PhantomData,
-        });
+        let event_lock = lock.clone();
+        let behavior = Behavior::computation_behavior(Computation { lock });
         let event = self
             .done_event()
-            .filter_map(move |node| {
+            .filter_map(move |_| {
                 Some(
-                    node.get().cyclic_dynamics[ix]
+                    event_lock
                         .get()
                         .expect("cyclic dynamic never closed")
-                        .get::<T>()
                         .event()
                         .into(),
                 )
@@ -127,7 +119,9 @@ impl WidgetBuilder<'_> {
     /// Close a cyclic dynamic by providing the underlying dynamic.
     pub fn close_cyclic_dynamic_by_index<T: ValueType>(&mut self, ix: usize, dynamic: Dynamic<T>) {
         self.node.cyclic_dynamics[ix]
-            .set(AnyDynamic::new(dynamic))
+            .downcast_ref::<OnceLock<Dynamic<T>>>()
+            .expect("cyclic dynamic closed with the wrong type")
+            .set(dynamic)
             .expect("set cyclic dynamic twice");
     }
 
