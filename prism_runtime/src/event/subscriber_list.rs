@@ -20,6 +20,9 @@ pub trait SubscriptionEvent<T: ValueType>: EventImpl<T> + 'static {
     type Inner: ValueType;
     type Tag: Clone + Send + Sync;
 
+    /// Clears this event's cached height and passes the call on to its
+    /// subscribers, stopping if the cache was already empty. See
+    /// [`EventImpl::height`] for why stopping there is safe.
     fn invalidate_height(&self);
     fn handle_main_subscription(
         &self,
