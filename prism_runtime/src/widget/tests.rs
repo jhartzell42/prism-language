@@ -483,3 +483,52 @@ fn a_replaced_child_keeps_working_until_its_last_occurrence_ends() {
 
     assert_eq!(*latest.behavior().0.query_for_tag(), 1);
 }
+
+#[test]
+fn a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value() {
+    #[derive(Debug)]
+    struct Title {
+        text: u32,
+        shown: Arc<Mutex<Vec<u32>>>,
+    }
+
+    impl Widget for Title {
+        type Output = ();
+
+        fn build(&self, _: &mut WidgetBuilder) {
+            self.shown.lock().unwrap().push(self.text);
+        }
+    }
+
+    #[derive(Debug)]
+    struct Page(Dynamic<Arc<Title>>);
+
+    impl Widget for Page {
+        type Output = ();
+
+        fn build(&self, builder: &mut WidgetBuilder) {
+            builder.bind(&self.0.dynamic_widget());
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (input, trigger) = Event::<u32>::external();
+    let shown = Arc::new(Mutex::new(vec![]));
+    let new_title = {
+        let shown = shown.clone();
+        move |text: u32| PrismArc::new(Title { text, shown: shown.clone() })
+    };
+    let title = Dynamic::hold(new_title(0), input.map(move |text| new_title(*text)));
+    let title_for_pages = title.clone();
+    let page = Dynamic::hold(
+        PrismArc::new(Page(title)),
+        input.map(move |_| PrismArc::new(Page(title_for_pages.clone()))),
+    );
+    let (_node, _output) = WidgetBuilder::build_root(&runtime, &page.dynamic_widget(), 0);
+    runtime.propagate();
+
+    runtime.schedule_trigger(&trigger, 7u32.into()).unwrap();
+    runtime.propagate();
+
+    assert_eq!(shown.lock().unwrap().last(), Some(&7));
+}
