@@ -131,3 +131,10 @@ Write the chapter file. At the top, a one-paragraph lead stating the chapter's p
 - Array literals are written with double brackets, `[[1, 2, 3]]`, parallel to `((a, b))` tuples; `[[]]` or `empty` is the empty array. Single `[i]` is always indexing. Array types stay `[A]`.
 - `;` separates statements in an inline block: `type Pair<a, b> = record: first: a; second: b`, `if c: Log x; Log y`. A layout block never needs it.
 - The Haskell implementation is not negative space for real Worlds or production use: those are out of scope for the plan, not excluded by design, and the book says little about them.
+
+## Decision: boolean operators, interpolation, Float division
+
+- Boolean negation, and, or are keyword operators `not`, `and`, `or` (precedence: `not` binds tighter than comparison; `and` tighter than `or`; both looser than comparison and tighter than `on` and `|`). The prelude functions `Not`, `And`, `Or` do not exist; the optional default stays `Or ?x, default`.
+- `a -1` stays a call-versus-subtraction question decided by the spacing rule, as chapter 3 states it.
+- Text interpolation is only `{expr}`: `"count: {$count}"`, `"hi {name}"`; a literal brace is `\{` and `\}`; `$` in text is always literal. `"$count"` is no longer an interpolation. A literal that interpolates a dynamic is a dynamic.
+- `/` on `Float` follows IEEE (infinities and NaN) and never fails; on `Nat` and `Int` it returns `?`. `Float` has a total order (IEEE totalOrder) so it can key a map; closed `choice`s are ordered by declaration order.

@@ -10,6 +10,6 @@ and events.
 
 Currently, I'm prototyping the runtime in Rust. You can't write a Prism program yet.
 
-`LANGUAGE.md` contains a pitch for what I want the programming language to look
-like someday, and why I'm writing it. I'm making my progress available under the
+`claude/` contains the specification and plan for the language (the typeset book is
+`claude/prism-book.pdf`; start with `claude/ch00-introduction.md`), and why I'm writing it. I'm making my progress available under the
 MIT license, available in `LICENSE.md`.
