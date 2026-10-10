@@ -308,6 +308,12 @@ The Haskell implementation interprets the typed AST, and a lens in Haskell is a 
 
 A program in the suite, or a library, whose fold functions are more plumbing than logic. The text editor is the likeliest first case, because its buffer is a map of lines and every keystroke is a nested update. Before that, functional update is adequate and the feature would be a guess about ergonomics.
 
+### Index names and what the check can refuse
+
+The sketch above reserves `ix`, `jx` and `kx` as the loop indices and stops at three nested loops. Nothing in the semantics asks for that. It follows from spelling the index as a keyword where an ordinary binding would do, and a programmer who has written `enumerate` expects to name the index and nest as deep as the problem does. A loop that binds its own index, `for &_ |i|:` or `for ((i, &x)) <- &_:`, removes the limit and the reserved names, and `ix` survives, if at all, as the default when no name is given.
+
+The same question arises for the borrowing check. The sketch rejects two references whose keys are variables, a reference held across the arms of an `if`, and a function taking two references. All three have a meaning in the functional reading of the block, since swapping `a[i]` and `a[j]` is a well-defined fold of two lens applications. The rules are there so that the in-place implementation is safe and so that the check stays one pass over the block. A static check for the cases it can prove, with a runtime comparison of keys for the cases it cannot, gives programs the meaning the functional reading gives them: when the two keys are equal, the statements run in sequence on a copy at that level, or the occurrence aborts the way an out-of-range write does. Which of the two is right depends on whether a program that swaps an element with itself should be a no-op or a mistake, and the text editor's buffer is the first place the question will come up.
+
 ## Native backends
 
 A Prism program ships today as source plus the frontend, and runs through the closure compiler: a `Program { functions, blocks, tags, constants }`, a table of compiled blocks and leaf functions, and an `IrWidget { program, block, captures, span }` per widget whose `build` runs its block's steps in order against a builder, each step calling a runtime constructor and writing into an environment vector. That is the right first implementation because it has one intermediate form, the typed AST, and no second syntax. It stops being the right one in two situations. A World has to ship a program without a frontend in it: a browser bundle that should not include a parser, a device that cannot afford one, or a World that receives programs it did not compile and wants to check them before building. Or the closure compiler is measured to be the cost: a leaf that runs per occurrence through a tree walk and an environment lookup, when it should be three machine instructions. This item is what a native backend is, lowered from what, and what the differential test gives once there are two ways to run the same program.
@@ -709,6 +715,28 @@ The language, the typed AST beyond qualified names, the laws. A program with pac
 ### Trigger
 
 The second program that wants the GUI library, from a different repository. Before that, a module system and a path on disk are enough.
+
+## Performance and constant factors
+
+The runtime chapter's performance notes say what is proportional to what. This section is about the places where the language as specified asks the implementation for work proportional to the size of the program or the screen when the change was small, and about constant factors, which matter for the applications Prism is aimed at: a GUI redraws at the frame rate, a text editor handles every keystroke, a server handles every request. None of the items below changes a transcript, and each has to leave the differential test empty.
+
+*GUI frames.* A container such as `@VBox` captures its children's draw lists, offsets them and re-emits them, and `@Window` emits one `Gui.Window` whose field is the whole list. A label change therefore rebuilds every list on its path to the root, about depth times total draws, and the World then diffs or re-rasterizes the window. Under `Gui.Frames` driving an animation this dominates everything else. Draw lists want to be persistent shared values: reference-counted nodes, a group draw that holds a child list by identity, and a cached hash. Re-emitting then costs the changed path, the World's diff takes a pointer-equality fast path to skip unchanged subtrees, and the rasterizer gets damage rectangles from the diff.
+
+*Equal values are not deduplicated.* A derived dynamic whose operands change fires with its new value even when the value is equal to the old one, so `$is_selected` over `$selected` changes in every row when one row is clicked, and every row's `dyn` over it rebuilds with a new slot and a new path. The semantics are right, since a rebuild is observable. The cost is a rebuild per row per click, and the remedy is `$Distinct` plus a lint warning for a `dyn` over a derived dynamic that is not wrapped in it.
+
+*Collections.* `Filter` and `MapValues` over a map are linear in the map for every change to it. `for` is incremental per key, but the keyed list widget diffs old and new key sets, which is linear in the keys unless the map can say what changed. Three things fix this together. Maps are persistent balanced trees with structural sharing, since otherwise `Insert` is a copy. Diffing two maps compares shared subtrees by pointer, so a diff costs the changes times log n. And patch-carrying dynamics, in the manner of Reflex's `Incremental` (from memory), let a derived collection say what changed instead of being recomputed.
+
+*Walks that touch the whole program.* The open-time snapshot of every response fan is a walk over every interceptor in the tree, and every GUI container is an interceptor, so a quiet occurrence pays for the whole tree. The snapshot is not needed for correctness: a list's value side already lags to commit, so reading the behavior at lookup time returns the list as the occurrence opened. The run call's `Outcome` carries the full element list on every call, including every `Defer` occurrence; the patch should be the primary output, with the full list a shared value a World can ask for. The incremental element list belongs in the first implementation, because a GUI meets the naive cost at once.
+
+*Keys.* The supplier's memo and the oracle's cache are keyed by whole element values, and comparing two elements whose fields hold a large text or a draw list costs the size of the field. Paths cost their depth. Interning elements and paths with a cached hash, and comparing by pointer first, makes both constant in the common case.
+
+*Plain compute.* Plain expressions compile to a tree of boxed closures over a two-word value. For tight loops that is probably about an order of magnitude slower than native Rust; the figure is an estimate from similar closure compilers and has not been measured. It matters because layout, hit-testing and text editing are Prism code. The hot prelude functions, the layout arithmetic and the text operations, should be native, and a real backend is an option behind them.
+
+*Replay in the Haskell implementation.* Rollback by replay keeps the log of every committed run call, so memory grows with the length of a run. It is adequate for the differential test, which is the only use the plan gives that implementation.
+
+### Trigger
+
+A profile of the text editor or the thousand-row todo list under the software World. Both exist in the book's examples, and both hit the first four items at once, so the order above is the order of the likely wins: shared draw lists, distinct dynamics, persistent maps, then the fixed per-occurrence walks.
 
 ## What the list has in common
 
