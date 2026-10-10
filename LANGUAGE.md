@@ -2,6 +2,7 @@
 
 The specification and plan for Prism live in [`claude/`](claude/), one chapter per file:
 
+0. [Introduction](claude/ch00-introduction.md)
 1. [Worked examples](claude/ch01-worked-examples.md)
 2. [Sigils, lexical structure, values, expressions](claude/ch02-language-core.md)
 3. [Events, dynamics, and time](claude/ch03-events-dynamics-time.md)
