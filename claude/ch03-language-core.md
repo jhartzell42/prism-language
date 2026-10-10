@@ -186,6 +186,7 @@ F - 1         # binary: F minus one (a type error unless F is a number)
 F-1           # binary
 \F .x         # prefix, with _ in scope: F applied to _.x
 \F [0]        # prefix: F applied to _[0]
+for xs: F .x  # prefix, in a for body: F applied to _.x
 a.x           # binary: field x of a
 xs[0]         # binary: index into xs
 @ x           # free sigil (always prefix; a sigil is never binary)
@@ -326,6 +327,7 @@ You have read `render(layout(items, width), theme)` and counted parentheses to l
 A function is applied by writing its name and then its arguments, separated by commas: `Insert items, id, todo`. The rules, all of them:
 
 - **A paren-less call takes the rest of its expression.** Its arguments are whole expressions separated by commas, and the last one runs to the end of the expression the call sits in. A paren-less call inside an argument takes no commas, so commas belong to the outermost call: `F a, G b, c` is `F(a, G(b), c)`, and `F a + 1, b` is `F(a + 1, b)`.
+- **A lambda takes the rest of its expression too, so the call heading its body takes the commas after it.** `Fold changes, items, \|acc, id, c| Step acc, id, c` gives `Step` three arguments and `Fold` three; a lambda that is not the last argument takes parentheses.
 - **Single parentheses group, and a group whose head is a call is that call with all its commas.** `F a, (G b, c)` gives `G` two arguments; `(Insert $items, $next, todo) on !add` is one three-argument call, sampled at `!add`.
 - **Double parentheses make a tuple.** `((a, b))` is a pair, and the commas inside belong to the tuple: `((G b, c))` is the pair of `G b` and `c`. A multi-argument call inside a tuple takes its own single parentheses: `(((G b, c), d))`.
 - **Double brackets make an array literal.** `[[F a, G b]]` is a two-element array. Single brackets are always indexing: `xs[i]`.
@@ -466,6 +468,50 @@ firsts = for(rows, Map(_, λ_. index(_, 0)))
 ```
 
 The lambda is the last argument and its body takes the rest of the line. Inside the `\` body a prefix `.done` is `_.done` and a prefix `[0]` is `_[0]`; the `_` of the `for` body is the argument `Map` receives, and the lambda's own `_` shadows it inside the lambda.
+
+**8. A lambda body that is a call, and a bare projection.**
+
+```prism
+let total = Fold changes, 0, \|acc, c| Add acc, c.amount
+let ids = Map todos, \.id
+```
+
+```
+total = Fold(changes, 0, λ(acc, c). Add(acc, field(c, amount)))
+ids = Map(todos, λ_. field(_, id))
+```
+
+`Add` takes both commas because the lambda body takes the rest of the expression; `Fold` still has three arguments.
+
+**9. Redundant parentheses, a free sigil on a call, and an inline block.**
+
+```prism
+let a = ((x))
+let b = @ F x, y
+let c = F x + 1, y
+type Pair<a, b> = record: first: a; second: b
+```
+
+```
+a = x
+b = @(F(x, y))
+c = F(x + 1, y)
+Pair<a, b> = record(first: a, second: b)
+```
+
+`((x))` has no comma and is `x`. The free `@` wraps the whole call, and the `;` separates the two statements of the inline `record` block.
+
+**10. A spaced `.Method` on one line is an error.**
+
+```prism
+let bad = items.Filter IsDone .MapValues Label
+```
+
+```
+ERROR(a .Method step must start its own line)
+```
+
+The program writes the step on its own line, as in case 4.
 
 ### What a conforming lexer must get right
 
@@ -888,7 +934,7 @@ $"Count: $count"                       # $Text over a $Int
 "\$5"                                  # the character $ itself
 ```
 
-A `$` inside text followed by a name character or `{` is an interpolation; followed by anything else it is a literal `$` and needs no escape, so `"cost: $ 5"` is fine and `"cost: $5"` is an error, since `5` is a name character and `$5` is not a name. The escape `\$` is for when the text really wants a `$` glued to a name.
+A `$` inside text followed by a letter, `_`, another sigil or `{` is an interpolation; followed by anything else, digits included, it is a literal `$` and needs no escape, so `"cost: $5"` and `"cost: $ 5"` are both plain text. No name starts with a digit, so nothing is lost by reading `$5` as text. The escape `\$` is for when the text really wants a `$` glued to a name.
 
 ### `for` as an expression
 
@@ -1210,12 +1256,12 @@ let m = \| a , b |) a | b ; let n = !x | !y
 **10. A sigil before a bracket, both spellings.**
 
 ```prism
-@ (!a, $b)
-@(!a, $b)
+@ ((!a, $b))
+@((!a, $b))
 ```
 
 ```
-@free ( !a , $b ) ; @free ( !a , $b )
+@free (( !a , $b )) ; @free (( !a , $b ))
 ```
 
 Identical streams.
@@ -1253,15 +1299,16 @@ Both lexers must report the error at the `|` line with those columns.
 **13. A method chain with the spacing rule.**
 
 ```prism
-let a = items.Filter IsDone .MapValues Label
+let a = items.Filter IsDone
+    .MapValues Label
 let b = Filter items, \.done
 ```
 
 ```
-let a = items .bin Filter IsDone .pre MapValues Label ; let b = Filter items , \ .pre done
+let a = items .bin Filter IsDone .chain MapValues Label ; let b = Filter items , \ .pre done
 ```
 
-`.bin` after `items` is method form; `.pre` before `MapValues` applies the method to the pronoun, which the parser resolves as the chain's left operand; `.pre` after `\` is field access on `_`.
+`.bin` after `items` is method form; `.chain` marks a `.` that is the first token of a continuation line, which the parser reads as a step whose receiver is everything back to the `=`; `.pre` after `\` is field access on `_`. The one-line spelling `items.Filter IsDone .MapValues Label` is an error from the parser, since its `.` is neither first on its line nor attached.
 
 **14. Interpolation containing text and a colon.**
 
