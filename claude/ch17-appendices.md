@@ -157,7 +157,7 @@ clicks <- switchHold never $ mergeMap <$> updated rows'   -- which switch decide
 ```prism
 # Prism: keys are identity, and the consolidated event is the result
 !clicks <- for $items_by_id:
-    !c <- @Button $"Remove $key"
+    !c <- @Button $"Remove {key}"
     @ key on !c
 # insert key 7 in occurrence n: one block built in n; its @started would be in !clicks in n
 ```
@@ -304,9 +304,9 @@ Sigils nest leftmost-outermost: `?$user`, `!!rendered`, `@!unit`, `$@a`, `$(Key 
 
 ### Lexical
 
-Comments `#` to end of line. UTF-8 source. Layout is the offside rule with `:` as the block opener: a `:` ending a line opens a block on the next, more-indented line; a `:` with tokens after it on the same line opens an inline block of that line, and `else` terminates an inline block, so `if c: a else: b` is one line with two inline blocks; inside `( ) (( )) [ ] [[ ]] { }` layout is suspended and `:` is the map key separator. Inline `:` is a plain token the parser interprets, not a layout token. `;` separates statements in an inline block: `type Pair<a, b> = record: first: a; second: b`, `if c: Log x; Log y else: Log z`; a layout block never needs it. `((` and `))` open and close a tuple, `[[` and `]]` an array literal; single `( )` is grouping and single `[ ]` is indexing or an array type. A trailing lambda as the last argument absorbs the rest of the line, so `MapValues !xs, \|x| x + 1` needs no parentheses around the lambda. Keywords: `let type tag of fn match if else for dyn intercept widget record choice map array unit test ignore on lt le gt ge key ix jx kx`; `read` and `update` are reserved for future work. `never started main Switch Leftmost Join Filter Updated Distinct Element Kind` are prelude names written with their sigils where they have one: `!never`, `@started`, `@main`, `!Switch: fn !!A -> !A`, `!Leftmost: fn [!A] -> !A`, `$Join: fn $$A -> $A`, `!Filter: fn !?A -> !A`, `!Updated: fn $A -> !A` (fires with the new value in every occurrence the dynamic changes; never at build), `$Distinct: fn $A -> $A` (needs equality; suppresses equal-valued changes, which nothing else does), `@Element`, `Kind: fn Element -> Kind`. `Wrap.*` and `Checked.*` are the prelude's wrapping and checked arithmetic (`Wrap.Add`, `Checked.Add: fn Nat, Nat -> ?Nat`, and so on); the bare operators abort the occurrence with an `Overflow` error.
+Comments `#` to end of line. UTF-8 source. Layout is the offside rule with `:` as the block opener: a `:` ending a line opens a block on the next, more-indented line; a `:` with tokens after it on the same line opens an inline block of that line, and `else` terminates an inline block, so `if c: a else: b` is one line with two inline blocks; inside `( ) (( )) [ ] [[ ]] { }` layout is suspended and `:` is the map key separator. Inline `:` is a plain token the parser interprets, not a layout token. `;` separates statements in an inline block: `type Pair<a, b> = record: first: a; second: b`, `if c: Log x; Log y else: Log z`; a layout block never needs it. `((` and `))` open and close a tuple, `[[` and `]]` an array literal; single `( )` is grouping and single `[ ]` is indexing or an array type. A trailing lambda as the last argument absorbs the rest of the line, so `MapValues !xs, \|x| x + 1` needs no parentheses around the lambda. Keywords: `let type tag of fn match if else for dyn intercept widget record choice map array unit test ignore on not and or lt le gt ge key ix jx kx empty`; `read` and `update` are reserved for future work. `never started main Switch Leftmost Join Filter Updated Distinct Element Kind` are prelude names written with their sigils where they have one: `!never`, `@started`, `@main`, `!Switch: fn !!A -> !A`, `!Leftmost: fn [!A] -> !A`, `$Join: fn $$A -> $A`, `!Filter: fn !?A -> !A`, `!Updated: fn $A -> !A` (fires with the new value in every occurrence the dynamic changes; never at build), `$Distinct: fn $A -> $A` (needs equality; suppresses equal-valued changes, which nothing else does), `@Element`, `Kind: fn Element -> Kind`, and the optional default `Or: fn ?A, A -> A` (`Or ?x, default`; a function, unrelated to the keyword operator `or`). There are no prelude `Not`, `And` or boolean `Or` functions: `not`, `and`, `or` are operators. `Wrap.*` and `Checked.*` are the prelude's wrapping and checked arithmetic (`Wrap.Add: fn Nat, Nat -> Nat`, `Checked.Add: fn Nat, Nat -> ?Nat`, and likewise `Sub`, `Mul` and the `Int` forms); the bare operators abort the occurrence with an `Overflow` error.
 
-Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` when nothing constrains it (`$n <- 0 <= $n + 1 on !tick` is an `Int` counter); `-1` is an `Int`; a `Nat` is pinned by annotation; a decimal-spelled literal is `Float`. `"text"` with `\\ \" \n \t \$ \u{hex}` and interpolation `$name` / `${expr}`; interpolating a dynamic or an event lifts the whole literal (`"Count: $count"` is a `$Text`; `"got ${!line}"` is a `!Text`). `'c'`, `unit`; `[[1, 2, 3]]` for an array, `[[]]` or `empty` for the empty one; `{k: v}` for a map, `{}` for the empty one; `((a, b))` for a tuple. The spacing rule: a token that can be prefix or binary is prefix when preceded by whitespace and followed immediately by a non-space (`F -1` passes negative one; `F - 1` subtracts). Wherever `_` is in scope (a `\` body, a `for` body, any pronoun-binding construct) a prefix `.x` is `_.x` and a prefix `[i]` is `_[i]`; with no `_` in scope it is an unbound-pronoun error, and a `.Method` that starts a continuation line is a chain step.
+Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` when nothing constrains it (`$n <- 0 <= $n + 1 on !tick` is an `Int` counter); `-1` is an `Int`; a `Nat` is pinned by annotation; a decimal-spelled literal is `Float`. `"text"` with the escapes `\\ \" \n \t \{ \} \u{hex}` and interpolation `{expr}` only (`"hi {name}"`, `"count: {$count}"`); a `$` in text is always a literal `$`, so `"$count"` is plain text, and a literal brace is `\{` or `\}`. Interpolating a dynamic or an event lifts the whole literal (`"Count: {$count}"` is a `$Text`; `"got {!line}"` is a `!Text`). `'c'`, `unit`; `[[1, 2, 3]]` for an array, `[[]]` or `empty` for the empty one; `{k: v}` for a map, `{}` for the empty one; `((a, b))` for a tuple. The spacing rule: a token that can be prefix or binary is prefix when preceded by whitespace and followed immediately by a non-space (`F -1` passes negative one; `F - 1` subtracts). Wherever `_` is in scope (a `\` body, a `for` body, any pronoun-binding construct) a prefix `.x` is `_.x` and a prefix `[i]` is `_[i]`; with no `_` in scope it is an unbound-pronoun error, and a `.Method` that starts a continuation line is a chain step.
 
 ### Statements in a widget block
 
@@ -335,11 +335,16 @@ A top-level definition is `name: type = expr`, with the annotation required and 
 | 3 | paren-less application | extends to the end of the expression: `F a + 1` is `F(a + 1)`, and `(F a) + 1` is the other grouping; commas belong to the outermost call on the line or in the enclosing single-paren group; a trailing lambda absorbs the rest of the line |
 | 4 | `\|` | leftmost merge of events; associative; `!never` is its identity |
 | 5 | `on` | `v on !e` fires with `!e`, value `v` (dynamic `v` read before the occurrence) |
-| 6 | `lt le gt ge`, `== !=` | comparison; `a lt b` through the ordering trait, `a == b` through the equality trait; `Bool` result |
-| 7 | `+ -` and `+~ -~` (Int), `+. -.` (Float) | suffixed spellings only when inference cannot decide between `Int` and `Float`; there are no suffixed `Nat` spellings, a `Nat` is pinned by annotation |
-| 8 | `* /` and suffixed | `/` returns `?` |
-| 9 | prefix `+ -`, free sigils `! $ @ ?`, `+?` | prefix `+` is numeric identity; `+?: fn Int -> ?Nat` converts, `Nil` below zero |
-| 10 | `.field`, `[index]`, attached sigils, `.F args` method form | `x.F y` is `F x, y`; chains associate left, so `x.F.G` is `G (F x)`; a `.F` that starts a continuation line closes the call above it and takes it as receiver; `a[i]` and `m[k]` return `?` |
+| 6 | `or` | boolean or; associates left |
+| 7 | `and` | boolean and; binds tighter than `or`: `x or y and z` is `x or (y and z)` |
+| 8 | `lt le gt ge`, `== !=` | comparison; `a lt b` through the ordering trait, `a == b` through the equality trait; `Bool` result |
+| 9 | prefix `not` | boolean negation; binds tighter than comparison, so its operand is an additive expression, and `not a == b` is `(not a) == b` (write `not (a == b)` or `a != b`) |
+| 10 | `+ -` and `+~ -~` (Int), `+. -.` (Float) | suffixed spellings only when inference cannot decide between `Int` and `Float`; there are no suffixed `Nat` spellings, a `Nat` is pinned by annotation |
+| 11 | `* /` and suffixed | `/` on `Nat` and `Int` returns `?`; on `Float` it follows IEEE (infinities, NaN) and never fails |
+| 12 | prefix `+ -`, free sigils `! $ @ ?`, `+?` | prefix `+` is numeric identity; `+?: fn Int -> ?Nat` converts, `Nil` below zero |
+| 13 | `.field`, `[index]`, attached sigils, `.F args` method form | `x.F y` is `F x, y`; chains associate left, so `x.F.G` is `G (F x)`; a `.F` that starts a continuation line closes the call above it and takes it as receiver; `a[i]` and `m[k]` return `?` |
+
+`not`, `and` and `or` are keywords over `Bool`, lifted by the sigils like any operator: `$done or $count gt limit on !click` is `($done or ($count gt limit)) on !click`.
 
 Parentheses: a single-paren group whose head is a call is that call with all its commas, so `(F a, b)` is `F(a, b)` and `G x, (F a, b)` gives `F` two arguments. Tuples are double parens: `((a, b))` is a pair, `((F a, b))` the pair of `F a` and `b`, and a multi-argument call inside a tuple takes its own single parens, `(((F a, b), c))`. Array literals are double brackets, `[[1, 2, 3]]`; single `[i]` is always indexing. A chain is written one step per line, and indentation decides where each call ends:
 
@@ -348,11 +353,11 @@ items.Filter IsDone
     .MapValues Label            # MapValues (Filter items, IsDone), Label
 ```
 
-On one line, `x.F y` is method form and a spaced `.F` is not a chain step. Comparisons are the infix keywords `lt`, `le`, `gt`, `ge` (`a lt b`), resolved through the ordering trait, and `==`, `!=`, resolved through the equality trait. Arithmetic, equality and ordering are the three built-in traits; nothing else is overloaded. Records have equality when every field does, and ordering, lexicographic in field declaration order, when every field is ordered; tuples, arrays, primitives and text are ordered; element equality is the tag plus the plain fields, never the request event, and elements are ordered by tag name then plain fields, so they can key sorted maps.
+On one line, `x.F y` is method form and a spaced `.F` is not a chain step. Comparisons are the infix keywords `lt`, `le`, `gt`, `ge` (`a lt b`), resolved through the ordering trait, and `==`, `!=`, resolved through the equality trait. Arithmetic, equality and ordering are the three built-in traits; nothing else is overloaded. Records have equality when every field does, and ordering, lexicographic in field declaration order, when every field is ordered; tuples, arrays, primitives and text are ordered; `Float` has a total order (IEEE totalOrder) and can key a map; the alternatives of a closed `choice` are ordered by declaration order; element equality is the tag plus the plain fields, never the request event, and elements are ordered by tag name then plain fields, so they can key sorted maps.
 
 ### Lifting
 
-Read off the operands' sigils at every operation and application. All plain: plain. Some `$`, no `!`: a dynamic, prompt. Some `$` and one `!`: an event firing with the `!`, the dynamics read before the occurrence (tag law). Two `!` in one operation: an error naming both. Field access and indexing lift like application: `!!panes.!inbox` and `$users[id]` are fine. `@` operands are not lifted; `@` as a prefix lifts a plain value into a widget. `?` lifts at the plain layer like an applicative `Maybe` (`a / b + 1` is `?`), and `match` on a `?` is its eliminator. Lifting never crosses a sigil boundary; `!Switch` (non-prompt) and `$Join` (prompt) do. `match $x:` and `match !e:` lift like application when all arms are plain; when any arm is a widget the scrutinee must be plain. A derived dynamic recomputed to an equal value still changes; `$Distinct` is the one place equal values are suppressed.
+Read off the operands' sigils at every operation and application. All plain: plain. Some `$`, no `!`: a dynamic, prompt. Some `$` and one `!`: an event firing with the `!`, the dynamics read before the occurrence (tag law). Two `!` in one operation: an error naming both. Field access and indexing lift like application: `!!panes.!inbox` and `$users[id]` are fine. `@` operands are not lifted; `@` as a prefix lifts a plain value into a widget. `?` lifts at the plain layer like an applicative `Maybe` (`a / b + 1` is `?Nat` for `Nat` operands; `Float` division has no `?`), and `match` on a `?` is its eliminator. Lifting never crosses a sigil boundary; `!Switch` (non-prompt) and `$Join` (prompt) do. `match $x:` and `match !e:` lift like application when all arms are plain; when any arm is a widget the scrutinee must be plain. A derived dynamic recomputed to an equal value still changes; `$Distinct` is the one place equal values are suppressed.
 
 Binding a widget application lifts by the result: `!x <- @Button $label` is `dyn $label:` around the build with `!x` as the `!Switch` of the result; a state-returning element under a `dyn` binds as a hold of dynamics joined with `$Join`, with the first build's result as the hold's initial value; a widget application whose result is plain binds as a `$` holding the first build's value. An unannotated `let` lambda is a plain function lifted afresh at each application; a lambda mentioning `$_`, `!_` or `@_` takes that kind and is not lifted over it.
 
@@ -480,53 +485,86 @@ type Point = record:
     x: Float
     y: Float
 
+type Vector = record:
+    x: Float
+    y: Float
+
+type Size = record:
+    w: Float
+    h: Float
+
+type Extent = record:                      # the width and height of a text; what Gui.Metrics answers
+    w: Float
+    h: Float
+
 type Rect = record:
     x: Float
     y: Float
     w: Float
     h: Float
 
-type Key = choice:
-    Char Char
-    Left
-    Right
-    Up
-    Down
-    Backspace
-    Tab
-    Enter
-    Escape
+type Color = record:
+    r: Float
+    g: Float
+    b: Float
+    a: Float
+
+type Font = record:                        # named in the value that draws it; the World resolves it
+    family: Text
+    size: Float
+
+type ImageId = ImageId Nat                 # an opaque handle the World allocates
 
 type Button = choice Primary | Secondary | Middle
 
 type Pointer = choice:
     Moved Point
-    Pressed Point, Button
-    Released Point, Button
-    Scrolled Point, Float
+    Down Point, Button
+    Up Point, Button
+    Scroll Point, Vector
+
+type NamedKey = choice Left | Right | Up | Down | Backspace | Delete | Tab | Enter | Escape
+
+type CompositionEvent = choice:            # an input method's composition
+    Start
+    Update Text, Nat
+    Commit Text
+    End
+
+type Key = choice:
+    Char Char
+    Named NamedKey
+    Composition CompositionEvent
 
 type WindowEvent = choice:                 # what a Gui.Window responds with
+    Resized Size
+    CloseRequested
     Pointer Pointer
-    Key Key
-    Resized Nat, Nat
-    Closed
+    Pressed Key
 
-type FocusEvent = choice:                  # what a Gui.Focusable responds with
-    Key Key
-    Focused
-    Blurred
+type Draw.Rect = record:                   # draw commands are values, not tags
+    rect: Rect
+    color: Color
 
-type Draw = choice:                        # draw commands are values, not tags
-    Rect Rect, Text                        # a filled rectangle and its colour
-    Text Rect, Text, Text                  # text, in a rectangle, in a font
-    Image Rect, Text                       # an image by source, in a rectangle
-    Clip Rect, [Draw]                      # children drawn clipped to the rectangle
+type Draw.Text = record:
+    origin: Point
+    text: Text
+    font: Font
+    color: Color
+    ime_at: ?Nat                           # offset into text where an input method's candidate window goes
 
-type Frame = Frame Instant                 # one displayed frame, with its time
-type Metrics = Metrics Nat                 # an opaque handle to the installed fonts; Measure is a pure function over it
-type Size = record:
-    w: Float
-    h: Float
+type Draw.Image = record:
+    rect: Rect
+    image: ImageId
+
+type Draw.Clip = record:                   # children drawn clipped to the rectangle
+    rect: Rect
+    draw: [Draw]
+
+type Draw = Draw.Rect | Draw.Text | Draw.Image | Draw.Clip
+
+type Frame = record:                       # one displayed frame
+    now: Instant
 
 type ChildInput = record:                  # what a Ui container responds with
     path: Path
@@ -634,32 +672,30 @@ type Span = record:
     file: Text
     line: Nat
     column: Nat
-
-type Error = record:                       # what Errors responds with
-    kind: ErrorKind
-    spans: [Span]
-    occurrence: Nat
+    name: Text                             # the binding's name
 
 type Unsupported = unsupported
 ```
 
-`Bytes` is the byte-string primitive. `Response` and `State` are the generic response and state types an interceptor sees in a catch-all arm; `Path` is the position type. `Error`'s `kind` is a closed choice on purpose: a program that matches on it is exhaustive, and a new kind of failure is a change to the language, not to a World.
+`Bytes` is the byte-string primitive. `Response` and `State` are the generic response and state types an interceptor sees in a catch-all arm; `Path` is the position type. `ErrorKind` is a closed choice on purpose: a program that matches on `Error`'s `kind` is exhaustive, and a new kind of failure is a change to the language, not to a World. `Error` itself is a tag (the last table below), so one value serves as the presence element a failed build leaves and as the response `Errors` delivers; `RuntimeError { kind, spans, occurrence, .. }` is the same record at the Rust boundary, where the runtime's `Outcome` lists the contained build failures.
 
 ### Screen: `Gui.*` and `Ui.*`
 
-GUI is not a World concept. `Gui.*` is the primitive vocabulary every GUI World speaks: five tags, and a World that knows about screens accepts these and nothing more. `Ui.*` is the Prism GUI library's own vocabulary, handled by the library's interceptors; the rows are listed because the examples use them, and they reach a World only if that World accepts them (the Test World accepts every tag; a World wrapping a native toolkit may accept some). Under a World that accepts only the primitives, `Ui.Button` is an interceptor's business. The World does no geometry: layout, hit-testing, focus traversal and text editing are Prism over the five primitives.
+GUI is not a World concept. `Gui.*` is the primitive vocabulary every GUI World speaks: five tags, and a World that knows about screens accepts these and nothing more. `Ui.*` is the Prism GUI library's own vocabulary, handled by the library's interceptors; the rows are listed because the examples use them, and they reach a World only if that World accepts them (the Test World accepts every tag; a World wrapping a native toolkit may accept some). Under a World that accepts only the primitives, `Ui.Button` is an interceptor's business. The World does no geometry: layout, hit-testing, focus traversal and text editing are Prism over the five primitives. Draw commands (`Draw.Rect`, `Draw.Text`, `Draw.Image`, `Draw.Clip`) are plain values in a `Gui.Scene`'s `draw` list, never tags.
 
 | Tag | Fields | Requests | Responds | State | Identity | Meaning |
 | --- | --- | --- | --- | --- | --- | --- |
-| `Gui.Window` | `title: Text` | | `WindowEvent` | | path | *Primitive.* One top-level window per slot. Pointer and key events arrive here, over the whole window, and the library hit-tests against its own layout and routes them inward; `Resized` reports the size the platform gave; `Closed` is a request from the user that the program answers by tearing the window down, or not. |
-| `Gui.Scene` | `window: Text`, `draw: [Draw]` | | | | path | *Primitive. Presence.* The draw list for the window of that title, as data, read by the World from the committed list after each turn. A picture that changes is a fresh slot per change, at the same tree position; nothing is in flight on a picture, so that is right. |
-| `Gui.Focusable` | `name: Text` | | `FocusEvent` | | path | *Primitive.* A named region that receives keys while focused, with `Focused` and `Blurred` at the edges. Which name is focused is a library concept: the library tells the World by emitting exactly one `Gui.Focusable` at a time, or routes keys inward itself from the window. No rectangle: the World does no geometry. |
-| `Gui.Metrics` | | | | `Metrics` | value | *Primitive.* The installed fonts as an opaque plain value, answered synchronously from the oracle, so that `Measure: fn Metrics, Text, Text -> Size` (a pure function the World provides natively) has no occurrence between asking and knowing. Pushed if fonts change. |
-| `Gui.Frames` | | | `Frame` | | path | *Primitive.* One `Frame` per displayed frame while the slot exists, with the frame's time; for animation. Put the slot under a `dyn` over whether anything is animating, so that when nothing is, the World stops asking for frames. |
+| `Gui.Window` | `title: Text`, `size: Size` | | `WindowEvent` | | path | *Primitive.* One top-level window per slot; `size` is what the program asks for when it opens. Every pointer event over the window arrives here, and every key (`Pressed`), as does the size the platform gave (`Resized`) and `CloseRequested`, which the program answers by tearing the window down, or not. The library hit-tests against its own layout, routes pointer hits inward, and routes each key to the input whose name is the focus. |
+| `Gui.Scene` | `window: Text`, `draw: [Draw]` | | | | path | *Primitive. Presence.* The draw list for the window of that title, as data in paint order, read by the World from the committed list after each turn. A picture that changes is a fresh slot per change, at the same tree position; nothing is in flight on a picture, so that is right. |
+| `Gui.Focusable` | `name: Text` | | | | path | *Primitive. Presence.* The name of the focused region and nothing else; keys do not go here but to `Gui.Window`. It lets a World show the platform focus ring, place an input method candidate window and inform a screen reader. Which name is focused, what Tab does and where the caret is are holds in the library, which emits at most one `Gui.Focusable` at a time. No rectangle: the World does no geometry. |
+| `Gui.Metrics` | `text: Text`, `font: Font` | | | `Extent` | value | *Primitive.* The width and height of a text in a font, answered synchronously from the oracle, so a layout has its measurement in the occurrence that asks. Every slot asking about the same text and font shares one answer. |
+| `Gui.Frames` | | | `Frame` | | path | *Primitive.* One `Frame(now: Instant)` per displayed frame while the slot exists, for animation. Put the slot under a `dyn` over whether anything is animating, so that when nothing is, the World stops asking for frames. |
 | `Ui.Label` | `text: Text` | | | | path | *Library.* Text at the position layout gives it. |
 | `Ui.Button` | `label: Text` | | `Click` | | path | *Library.* A button; responds `click` in the occurrence the library routes the press to it, which is later than the press's own occurrence. |
-| `Ui.TextInput` | `name: Text` | | `Key` | | path | *Library.* A focusable editing region; the text, cursor and selection are holds in the Prism widget around it, and there is no second copy. |
+| `Ui.TextInput` | `name: Text`, `text: Text`, `cursor: Nat` | | `Key` | | path | *Library.* A focusable editing region; the text and cursor are holds in the Prism widget around it, mirrored into the fields for drawing, and there is no second copy in a World. |
 | `Ui.VBox` | `children: Path ==> Element` | | `ChildInput` | | path | *Library.* Vertical layout container; routes any child-addressed response inward by path through `ChildInput(path, response)`, one level per container. |
+| `Ui.HBox` | `children: Path ==> Element` | | `ChildInput` | | path | *Library.* Horizontal layout container; routes as `Ui.VBox` does. |
+| `Ui.Scroll` | `name: Text`, `height: Int`, `children: Path ==> Element` | | `ChildInput` | | path | *Library.* A clipped, scrollable container, a `Draw.Clip` and an offset the library holds. |
 
 A `Gui.Scene` appearing is a description the World draws; a `Ui.Button` disappearing stops nothing but the delivery of clicks to a path that no longer exists.
 
@@ -732,6 +768,7 @@ Chapter 7 declares the persistence vocabulary; the rows are repeated here so the
 | Tag | Fields | Requests | Responds | State | Identity | Meaning |
 | --- | --- | --- | --- | --- | --- | --- |
 | `Defer` | | `!unit` | `unit` | | path | Answered in a later occurrence of the same turn, at most once per slot per turn; firing again after being answered in the same turn is a `DeferBackwards` error. A `Defer` reborn by a `dyn` at the same tree position counts as the same `Defer` for the once-per-turn bound; independent `Defer`s fired in one occurrence are answered together. How an interceptor answers a request itself. Every World provides it. |
+| `Error` | `kind: ErrorKind`, `spans: [Span]`, `occurrence: Nat`, `turn: Nat`, `message: Text`, `owner: ?Path`, `path: ?Path` | | | | path | *Presence.* The error value: what a failed build or a quarantined subtree leaves in the element list, and what `Errors` delivers, so one `match` reads both. One tag with the kind as a field. |
 | `Errors` | | | `Error` | | path | A stream a program may subscribe to: each runtime error the World would otherwise only report, with its kind, spans and occurrence. A failed `dyn` build does not fire the `dyn`'s event and is reported here. A program cannot catch an error any other way. |
 | `World.Tags` | | | | `[Text]` | value | The tags this World accepts natively, as state, so a program can read it in occurrence zero and build under a `dyn` over it; what a library consults before deciding which interceptors to install. An interceptor supplies a sandboxed child a narrower one. The Test World's lists every tag. |
 

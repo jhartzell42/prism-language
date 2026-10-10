@@ -51,7 +51,7 @@ Why three bits and not one. A one-bit scheme, the kind OCaml uses (from memory),
 
 ### Integers keep their meaning
 
-`Nat` is `u64` and `Int` is `i64` on every target, overflow panics, and none of that changes. Tag bits belong to the representation, and the language does not shrink to make room for them.
+`Nat` is `u64` and `Int` is `i64` on every target, overflow aborts the occurrence with kind `Overflow` (in the runtime a panic caught at the occurrence boundary; the language offers `Checked.*` and `Wrap.*` for programs that want another outcome), and none of that changes. Tag bits belong to the representation, and the language does not shrink to make room for them.
 
 The runtime keeps an `Int` in the word when it fits beside the tag: −2^60 through 2^60 − 1 on 64-bit targets, −2^28 through 2^28 − 1 on wasm32. Otherwise the `Int` is a heap object with an `Int` descriptor holding the full `i64`. `Nat` works the same way on its own tag. The form is canonical: a value that fits is always immediate, never boxed. So two immediates are equal exactly when their words are, a boxed integer never equals an immediate one, and equality on integers is a word compare followed, only when both words are heap pointers, by a descriptor call.
 
@@ -460,7 +460,7 @@ trait Show a:
     Show: fn a -> Text
 
 impl Show Vector:
-    Show = \read _: "(${.x}, ${.y}, ${.z})"
+    Show = \read _: "({.x}, {.y}, {.z})"
 
 impl <a: Show> Show [a]:
     Show = \|xs| Concat [["[", (JoinText ", ", (for xs: Show _)), "]"]]
@@ -470,7 +470,7 @@ The elaborator treats a trait as a record of functions, an `impl` as a value of 
 
 What traits do not do, and the exclusion is the design: no traits over the functors. There is no `Functor` or `Monad` trait, no user-defined block kind, no instance that says how `!` lifts. The sigils fix the set of functors and the lifting rule is the language's; a trait that could change how `$a + !b` elaborates would make the sentence "you can see what moves" false, because what moves would depend on an instance in scope. Traits are over plain types only, and a sigiled type (`!Int`) may not be an instance. Coherence is the simple rule: one `impl` per trait per type in a program, and overlap is an error at the point both are in scope, which the module system below makes a concrete place.
 
-What traits buy, in order of how soon it will be wanted: `Show` for debugging and labels, `Default` for a record with many fields, a `Draw` trait in the GUI library so that a container can take `[Drawable]` without a closed choice of what can be drawn, and the user-defined numeric types (a `Money`, a `Px`) that make `+` mean something for them without a suffix. The last is also the one place the deferral has a visible cost today: a program with a `Vector` type writes `Add a, b` where it would write `a + b`, which is where this section began.
+What traits buy, in order of how soon it will be wanted: `Show` for debugging and labels, `Default` for a record with many fields, a `Paint` trait in the GUI library so that a container can take a list of any types with a `Paint` instance, without a closed choice of what can be drawn, and the user-defined numeric types (a `Money`, a `Px`) that make `+` mean something for them without a suffix. The last is also the one place the deferral has a visible cost today: a program with a `Vector` type writes `Add a, b` where it would write `a + b`, which is where this section began.
 
 ### Modules
 
@@ -720,7 +720,7 @@ The second program that wants the GUI library, from a different repository. Befo
 
 The runtime chapter's performance notes say what is proportional to what. This section is about the places where the language as specified asks the implementation for work proportional to the size of the program or the screen when the change was small, and about constant factors, which matter for the applications Prism is aimed at: a GUI redraws at the frame rate, a text editor handles every keystroke, a server handles every request. None of the items below changes a transcript, and each has to leave the differential test empty.
 
-*GUI frames.* A container such as `@VBox` captures its children's draw lists, offsets them and re-emits them, and `@Window` emits one `Gui.Window` whose field is the whole list. A label change therefore rebuilds every list on its path to the root, about depth times total draws, and the World then diffs or re-rasterizes the window. Under `Gui.Frames` driving an animation this dominates everything else. Draw lists want to be persistent shared values: reference-counted nodes, a group draw that holds a child list by identity, and a cached hash. Re-emitting then costs the changed path, the World's diff takes a pointer-equality fast path to skip unchanged subtrees, and the rasterizer gets damage rectangles from the diff.
+*GUI frames.* A container such as `@VBox` captures its children's draw lists, offsets them and re-emits them, and `@Window` emits one `Gui.Scene` whose `draw` field is the whole list. A label change therefore rebuilds every list on its path to the root, about depth times total draws, and the World then diffs or re-rasterizes the window. Under `Gui.Frames` driving an animation this dominates everything else. Draw lists want to be persistent shared values: reference-counted nodes, a group draw that holds a child list by identity, and a cached hash. Re-emitting then costs the changed path, the World's diff takes a pointer-equality fast path to skip unchanged subtrees, and the rasterizer gets damage rectangles from the diff.
 
 *Equal values are not deduplicated.* A derived dynamic whose operands change fires with its new value even when the value is equal to the old one, so `$is_selected` over `$selected` changes in every row when one row is clicked, and every row's `dyn` over it rebuilds with a new slot and a new path. The semantics are right, since a rebuild is observable. The cost is a rebuild per row per click, and the remedy is `$Distinct` plus a lint warning for a `dyn` over a derived dynamic that is not wrapped in it.
 

@@ -48,7 +48,7 @@ The runtime today has locks whose only job is to detect re-entry, thread-locals 
 
 *Step 2: re-entry is a cycle, reported.* Every place a lock served as a re-entry guard (`SwitchHold::height` re-locking its own mutex is the known one; the `try_lock` panics "event cycle" are the others) becomes a `Cell<bool>` on the node, set on entry and cleared on exit, and a set flag on entry is a cycle. The runtime's `schedule` keeps its height comparison. Both report through one path: `RuntimeInner::fail(RuntimeError)`, which records the first error of the occurrence; propagation stops at the next action boundary. The test `a_cycle_closed_through_a_cyclic_event_is_reported_not_hung` closes an event in terms of itself through `add_cyclic_event`, runs under a timeout, and expects `Err` with `kind == ErrorKind::Cycle`.
 
-*Step 3: the occurrence as a transaction.* `Runtime::propagate` becomes `Runtime::run_occurrence(&mut self) -> Result<(), RuntimeError>` (the public `run` with `Inputs` and `Outcome` is milestone 2; here the inputs are still triggers scheduled by the test). Inside: open (reset per-occurrence state), propagate by height, commit at `usize::MAX`, clear, close. The error path is a rollback, and a rollback needs three things the code does not keep today: a *commit list* (every hold write, switch retarget and child replacement is already deferred to commit time; collect them in one `Vec<Box<dyn Commit>>` on the runtime instead of as actions at `usize::MAX`), a *build journal* (every node built during the occurrence is pushed to `RuntimeInner::built_this_occurrence: Vec<Rc<WidgetNode>>`, so that on error they are dropped and their parents' child lists restored), and the *fired marks* (the per-event `SubscriptionManager.occurrence` cache is already keyed by occurrence number; bumping the number is the clear). On `Err`, drop the commit list, unwind the journal, bump the occurrence number, return. A panic inside an action is caught with `catch_unwind` and becomes `RuntimeError::Panic { message, node: Option<NodeId> }`; nothing resumes it.
+*Step 3: the occurrence as a transaction.* `Runtime::propagate` becomes `Runtime::run_occurrence(&mut self) -> Result<(), RuntimeError>` (the public `run` with `Inputs` and `Outcome` is milestone 2; here the inputs are still triggers scheduled by the test). Inside: open (reset per-occurrence state), propagate by height, commit at `usize::MAX`, clear, close. The error path is a rollback, and a rollback needs three things the code does not keep today: a *commit list* (every hold write, switch retarget and child replacement is already deferred to commit time; collect them in one `Vec<Box<dyn Commit>>` on the runtime instead of as actions at `usize::MAX`), a *build journal* (every node built during the occurrence is pushed to `RuntimeInner::built_this_occurrence: Vec<Rc<WidgetNode>>`, so that on error they are dropped and their parents' child lists restored), and the *fired marks* (the per-event `SubscriptionManager.occurrence` cache is already keyed by occurrence number; bumping the number is the clear). On `Err`, drop the commit list, unwind the journal, bump the occurrence number, return. A panic inside an action is caught with `catch_unwind` and becomes a `RuntimeError` of kind `Component` with the panic's message and the node (a panic in native code a World or library put inside a closure is the `Component` kind); nothing resumes it.
 
 Add `Runtime::check_invariants(&self) -> Result<(), String>` and call it at the end of every test, after every occurrence, including failed ones: no event's cached occurrence value is from the current occurrence number, no hold has an uncommitted pending value, no node's re-entry flag is set, the action map is empty, the build journal is empty. This function is the one piece of test scaffolding that is kept forever; the chapter on the runtime calls it the invariant checked after every occurrence.
 
@@ -245,32 +245,66 @@ This milestone has no runtime in it, and a model given only the language chapter
 
 ### The work
 
-*Step 1: lexer and layout.* `lex.rs` and `layout.rs`: the token set of the lexical chapter (sigils, `<-`, `<=`, `|` as merge distinct from the bars of `\|a, b|`, the suffixed operators `+~ +.` and friends, `==>`, `..`, `;`, `ignore`, the comparison keywords `lt le gt ge` beside `==` and `!=`), indent and dedent tokens by the offside rule, `:` at end of line opening a block, and the spacing rule that tells `F -1` from `F - 1` and a prefix `.x` or `[i]` (the pronoun's field or index, wherever `_` is in scope) from `a.x` and `a[i]`. Every token has a `Span { file, start, end }`. The layout corpus is the first test and is a golden: a program in, its token stream out, one token per line.
+*Step 1: lexer and layout.* `lex.rs` and `layout.rs`: the token set of the lexical chapter (sigils, `<-`, `<=`, `|` as merge distinct from the bars of `\|a, b|`, the suffixed operators `+~ +.` and friends, `==>`, `..`, `;`, `ignore`, the comparison keywords `lt le gt ge` beside `==` and `!=`, the boolean keywords `not`, `and`, `or`, and text literals with `{expr}` interpolation: a text literal lexes as literal runs and `{` expression `}` pieces, `\{` and `\}` are literal braces, and `$` inside text is always literal), indent and dedent tokens by the offside rule, `:` at end of line opening a block, and the spacing rule that tells `F -1` from `F - 1` and a prefix `.x` or `[i]` (the pronoun's field or index, wherever `_` is in scope) from `a.x` and `a[i]`. Every token has a `Span { file, start, end }`. The layout corpus is the first test and is a golden: a program in, its token stream out, one token per line.
 
-*Step 2: parser.* `parse.rs` and `ast.rs`: paren-less calls with comma-separated arguments, single parentheses as grouping (a group headed by a call is that call with all its commas, so `(G b, c)` is `G(b, c)`), double parentheses for tuples, tuple types and tuple patterns (`((a, b))`), double brackets for array literals (`[[1, 2, 3]]`, `[[]]`) with single `[i]` always indexing, function types `fn A, B -> C` with parentheses only around a function-typed argument or result, method chains by indentation (a `.Method` that starts a continuation line closes the call above it), `;` between the statements of an inline block, the precedence table with the comparison level between `|`/`on` and arithmetic, sigiled names, blocks (`widget`, `dyn`, `for`, `match`, `intercept`), patterns including element patterns with `..` and `Ns.*(..)`, `tag T of Element:` declarations with `requests`/`responds`/`state`, `type` declarations, lambdas (`\|e| body` and the bare `\body` with `_`), and `test` blocks (parsed now, used in milestone 6). Every node has a span from the first commit.
+*Step 2: parser.* `parse.rs` and `ast.rs`: paren-less calls with comma-separated arguments, single parentheses as grouping (a group headed by a call is that call with all its commas, so `(G b, c)` is `G(b, c)`), double parentheses for tuples, tuple types and tuple patterns (`((a, b))`), double brackets for array literals (`[[1, 2, 3]]`, `[[]]`) with single `[i]` always indexing, function types `fn A, B -> C` with parentheses only around a function-typed argument or result, method chains by indentation (a `.Method` that starts a continuation line closes the call above it), `;` between the statements of an inline block, the precedence table (comparison between `|`/`on` and arithmetic; `not` binds tighter than comparison, `and` tighter than `or`, and `and`/`or` sit above comparison and below `on` and `|`), the `{expr}` pieces of a text literal parsed as expressions, sigiled names, blocks (`widget`, `dyn`, `for`, `match`, `intercept`), patterns including element patterns with `..` and `Ns.*(..)`, `tag T of Element:` declarations with `requests`/`responds`/`state`, `type` declarations, lambdas (`\|e| body` and the bare `\body` with `_`), and `test` blocks (parsed now, used in milestone 6). Every node has a span from the first commit.
 
 *Step 3: resolver.* `resolve.rs`: scopes, the pronoun and its sigiled forms, tag namespaces, the prelude, and binding groups: dependency analysis over each widget block into strongly connected components in dependency order. The resolver labels each dependency edge *prompt* or *delayed* (a read through `on`, a hold's own name on the right of `<=`, a `dyn`'s event, `!Switch`), which the cycle check needs.
 
-*Step 4: elaborator.* `elab/`: Hindley–Milner on the value layer with the three built-in traits (equality, ordering, numeric) resolved by inference and the suffixed spellings when it cannot; the functor layer read off the sigils with the lifting rule (dynamics and no event: dynamic; dynamics and one event: event, dynamics read through tags; two events: error); `?` lifting at the plain layer; `match` on `?` as its eliminator; application lifting, including a dynamic of widgets lifting to `dyn` with `!Switch` or hold-plus-`$Join` by the result kind; `for` consolidation by result kind; tag field types from declarations; the build-time or occurrence-time mark on every binding; the cycle check over the groups with their edge labels; exhaustiveness for closed choices and the catch-all requirement for extensible ones; the tag-indexed refinement of `Slot.!request` and supplier results inside a `match` arm. The output is `typed.rs`: the typed AST.
+*Step 4: elaborator.* `elab/`: Hindley–Milner on the value layer with the three built-in traits (equality, ordering, numeric) resolved by inference and the suffixed spellings when it cannot; the functor layer read off the sigils with the lifting rule (dynamics and no event: dynamic; dynamics and one event: event, dynamics read through tags; two events: error); `?` lifting at the plain layer; text interpolation lifting like application (a literal that interpolates a dynamic is a dynamic, and one that interpolates an event is an event); `match` on `?` as its eliminator; application lifting, including a dynamic of widgets lifting to `dyn` with `!Switch` or hold-plus-`$Join` by the result kind; `for` consolidation by result kind; tag field types from declarations; the build-time or occurrence-time mark on every binding; the cycle check over the groups with their edge labels; exhaustiveness for closed choices and the catch-all requirement for extensible ones; the tag-indexed refinement of `Slot.!request` and supplier results inside a `match` arm. The output is `typed.rs`: the typed AST.
 
-*Step 5: the text form.* `typed/text.rs`: one binding per line, `name: sigil type [mark] [group] = expr @span`, with every lift an explicit node (`map`, `tag`, `hold`, `leftmost`, `switch`, `join`, `dyn`, `for`, `element`, `intercept`, `placeholder`, `close`), printed and parsed from the same definition (a derive or a single table), with a round-trip test on every fixture. Inferred type variables are named in order of first appearance, left to right, top to bottom, so that two frontends agree. `prism dump foo.prism` prints it.
+*Step 5: the text form.* `typed/text.rs`: one binding per line, `name: type [mark] group = expr @span` (the sigil is part of the type), with every lift an explicit node (`dmap`, `map`, `tag`, `hold`, `hold_first`, `leftmost`, `switch`, `join`, `dyn`, `for` with its can-fire-at-birth flag, `element`, `intercept`, `placeholder`, `close`), printed and parsed from the same definition (a derive or a single table), with a round-trip test on every fixture. Inferred type variables are named in order of first appearance, left to right, top to bottom, so that two frontends agree. `prism dump foo.prism` prints it.
 
 *Step 6: goldens and diagnostics.* `tests/goldens/`: the counter, each program of the test corpus, `lib/gui.prism`, and one small file per rule of the lexical and expression chapters. `tests/negative/`: a rejected program and its exact error with spans, for each of: two events in one operation (names both, points at `|` and `!Leftmost`); a rejected prompt cycle in a widget block (every binding in it, in order, with spans); a cycle through `dyn` alone (pins that `dyn` is not a delay); `a -1` on a `Nat` ("did you mean `a - 1`?"); a `Nat` and an `Int` in one operation, and `+~` on floats ("use `+.`"); a generic function putting its type parameter into an element field; a `match` on an extensible variant with no catch-all; a sigil disagreeing with the inferred kind; a state tag with no supplier at an interceptor whose supplier is a visible lambda. The first four are the ones whose wording the implementation chapter fixes; the rest need the span and the names right, not the prose.
 
 ### Done
 
-The layout corpus passes. `prism dump` of the counter is this, or the frozen equivalent once the form settles during the milestone:
+The layout corpus passes. `prism dump` of the counter is this, character for character, with `@Button` and `@Label` defined above it as in the language implementation chapter:
+
+```prism
+@Button: fn $Text -> @!Click = \|$label| @widget:
+    !!clicks <- dyn $label:
+        @Element Ui.Button(label=_)
+    @ !Switch !!clicks
+
+@Label: fn $Text -> @unit = \|$text| @widget:
+    dyn $text:
+        @Element Ui.Label(text=_)
+    @ unit
+
+@counter:
+    !increment <- @Button $"Increment"
+    !decrement <- @Button $"Decrement"
+    let !delta = -1 on !decrement | +1 on !increment
+    $count <- 0 <= $count + !delta
+    @Label "Count: {$count}"
+```
 
 ```
-@counter: @unit [build] =
-  !increment: !Click [build] g1 = switch (dyn (map (const "Increment") \|l| element Ui.Button{label=l}))     @2:5
-  !decrement: !Click [build] g2 = switch (dyn (map (const "Decrement") \|l| element Ui.Button{label=l}))     @3:5
-  !delta: !Int [occ] g3 = leftmost [tag (const -1) !decrement, tag (const +1) !increment]                   @4:9
-  $count: $Int [build] g4 = placeholder                                                                       @5:5
-  $count.hold: $Int [build] g4 = hold 0 (map2 (+ : Int) (tag $count !delta))                                  @5:5
-  close $count $count.hold                                                                                    @5:5
-  _: unit [build] g5 = dyn (map (fmt "Count: ") $count) \|t| element Ui.Label{text=t}                         @6:5
+@Button: fn $Text -> @!Click = \|$label| @widget:                                   @1:1
+  !!clicks: !!Click [build] g1 = dyn $label \|label| @widget:                          @2:5
+    _: !Click [build] g1 = element Ui.Button{label=label} responds                     @3:9
+    @ _
+  @ switch !!clicks
+
+@Label: fn $Text -> @unit = \|$text| @widget:                                        @6:1
+  _: unit [build] g1 = dyn $text \|text| @widget:                                      @7:5
+    _: unit [build] g1 = element Ui.Label{text=text}                                   @8:9
+    @ unit
+  @ unit
+
+@counter: @unit                                                                       @11:1
+  !increment: !Click [build] g1 = bind @Button(const "Increment")                     @12:5
+  !decrement: !Click [build] g2 = bind @Button(const "Decrement")                     @13:5
+  !delta: !Int [occ] g3 = leftmost [map !decrement \|ignore| -1:Int, map !increment \|ignore| +1:Int]   @14:9
+  $count: $Int [build] g4 = placeholder                                               @15:5
+  $count.hold: $Int [build] g4 = hold 0:Int (tag !delta [$count] \|d, c| Num.Add[Int] c, d)   @15:5
+  close $count $count.hold                                                            @15:5
+  _: unit [build] g5 = bind @Label(dmap [$count] \|c| cat ["Count: ", ToText[Int] c])   @16:5
+  @ _
 ```
+
+The conventions are the text-form section's: sigils inside the type, `[build]` or `[occ]` on every binding, the group number shared by a placeholder, its `.hold` definition and its `close`, application printed with parentheses and commas, literals with their type (`0:Int`), `{expr}` interpolation printed as `cat`, and the span of each binding's start.
 
 Every golden and negative golden is in and passes; the printer and parser round-trip every fixture; the four diagnostics read as the implementation chapter specifies. The crate has no dependency on `prism_runtime`.
 
@@ -284,7 +318,7 @@ The text form will change during the milestone and that is fine; it must stop ch
 
 The cycle check needs the resolver's edge labels to be right, and the labelling of `dyn`'s event (prompt: it fires in the rebuild occurrence) and `!Switch` (delayed) is where a model will guess. The negative golden for a cycle through `dyn` alone is there for that.
 
-The dynamic-of-widgets lift is the one place the elaborator inserts a `dyn` the programmer did not write. Its golden should show `switch (dyn ...)` for an event-returning widget and `join (hold first (dyn ...))` for a dynamic-returning one, and the second form is easy to get wrong (the hold's initial value is the first build's result, which the `dyn`'s event provides in occurrence zero).
+The dynamic-of-widgets lift is the one place the elaborator inserts a `dyn` the programmer did not write. Its golden should show `switch (dyn ...)` for an event-returning widget and `join (hold_first (dyn ...))` for a dynamic-returning one, and the second form is easy to get wrong (the hold's initial value is the first build's result, which the `dyn`'s event provides in occurrence zero).
 
 ## Milestone 5: the closure compiler
 
@@ -335,9 +369,9 @@ Everything so far was tested from Rust. This milestone makes the specification t
 
 ### The work
 
-*Step 1: the script language.* `test name: Test @widget: array:` blocks parsed by `prism_lang` (the parser from milestone 4 already accepts them) with the steps `Expect`, `ExpectTop`, `ExpectNone`, `ExpectCount`, `Send`, `Together`, `State`, `Push`, `Returns`, `Fired`, `Quiet`, `Requested`, `Errors`. Patterns are element patterns: a tag with named fields and `..`, or `Ns.*(..)`; a value in a pattern is compared structurally. `prism test foo.prism` runs every test block in the file.
+*Step 1: the script language.* `test name: Test @widget: array:` blocks parsed by `prism_lang` (the parser from milestone 4 already accepts them) with the steps `Expect`, `ExpectTop`, `ExpectNone`, `ExpectCount`, `ExpectTopNone`, `Send`, `Together`, `State`, `Push`, `Returns`, `Fired`, `Quiet`, `Requested`, `Unrequested`, `Errors`. Patterns are element patterns: a tag with named fields and `..`, or `Ns.*(..)`; a value in a pattern is compared structurally. `prism test foo.prism` runs every test block in the file.
 
-*Step 2: the Test World.* In the worlds crate from milestone 7's core half: `TestWorld` is the world core plus one component, `Script`, that accepts every tag. Its oracle answers from the `State` steps and fails the slot's creation with the unsupplied-state error if a state element has no `State` and its tag declares no default; its responses are the `Send`s; it records request firings, results and errors for `Requested`, `Fired`, `Quiet` and `Errors`. Depth: `Expect` and `Send` reach into containers by the GUI library's convention (a `children` field holding the keyed element list; a `ChildInput(path, response)` response to route inward), and the Test World knows the convention because the library is part of the suite.
+*Step 2: the Test World.* In the worlds crate from milestone 7's core half: `TestWorld` is the world core plus one component, `Script`, that accepts every tag. Its oracle answers from the `State` steps. Tags declare no defaults, so a state element with no `State` step is an `UnsuppliedState` error at the slot's creation: a script gives a `State` step before the build for every state tag the program creates at build, which a `State` step may do; its responses are the `Send`s; it records request firings, results and errors for `Requested`, `Fired`, `Quiet` and `Errors`. Depth: `Expect` and `Send` reach into containers by the GUI library's convention (a `children` field holding the keyed element list; a `ChildInput(path, response)` response to route inward), and the Test World knows the convention because the library is part of the suite.
 
 *Step 3: the transcript.* The printer moves from the harness to the world core, prints a turn as its occurrences (each with its inputs, list, request firings and result, and an error if any), and the format is frozen in `transcript.md` beside it with one example per feature. `prism test --transcript` prints it; the suite stores one per test and diffs. Nothing after this milestone changes the format without changing the file and every stored transcript.
 
@@ -459,7 +493,7 @@ The Haskell runtime is Reflex plus a thin layer that gives it slots and the run 
 - `Prism.World.Test`: the Test World over the script language, parsed by `Prism.Parse`.
 - `prism-hs test foo.prism`, and `tools/diff-transcripts.sh` over the whole suite.
 
-A review checklist, applied by reading the evaluator once it exists: no `current` outside a `tag` node; no `switchPromptly`, `switchPromptlyDyn` or `coincidence`; no `getPostBuild`; no `performEvent` that does anything but collect request firings; no `sample` in a build that the typed AST did not mark.
+A review checklist, applied by reading the evaluator once it exists: no `current` outside the three places the Haskell chapter names (the `tag` node, routing against the opened list, the supplier read); no `switchPromptly` or `switchPromptlyDyn`, and no `coincidence` outside `for`'s birth term; no `getPostBuild`; no `performEvent` that does anything but collect request firings; no `sample` in a build that the typed AST did not mark.
 
 ### Done
 
@@ -483,43 +517,90 @@ GUI is not a language concept and not a World concept. Some Worlds know how to p
 
 ### The vocabulary
 
-Declared in `lib/gui.prism` beside the widgets of milestone 6:
+Five tags, declared in `lib/gui.prism` beside the widgets of milestone 6. A window, the picture in it, the name of the focused region, a way to measure text, and a tick per frame.
 
 ```prism
+type Pointer = choice:
+    Moved Point
+    Down Point, Button
+    Up Point, Button
+    Scroll Point, Vector
+
+type Key = choice:
+    Char Char
+    Named NamedKey                 # Left | Right | Backspace | Tab | Enter | ...
+    Composition CompositionEvent   # IME: Start | Update Text, Nat | Commit Text | End
+
+type WindowEvent = choice:
+    Resized Size
+    CloseRequested
+    Pointer Pointer
+    Pressed Key
+
 tag Gui.Window of Element:
     title: Text
-    size: ((Nat, Nat))
-    responds: Resized ((Nat, Nat)) | Closed
+    size: Size                     # the size the program asks for when the window opens
+    responds: WindowEvent
 
-tag Gui.Draw of Element:
-    commands: [DrawCommand]        # Rect, Text, Image, Clip, in draw order
+tag Gui.Scene of Element:
+    window: Text                   # the title of the window it paints
+    draw: [Draw]
 
-tag Gui.Focusable of Element:
-    region: Rect
-    responds: Pointer PointerEvent | Key KeyEvent | FocusIn | FocusOut
+tag Gui.Focusable of Element:   # presence: the name of the focused region
+    name: Text
 
-tag Gui.Frame of Element:
-    responds: Tick Instant
-
-tag Text.Measure of Element:
+tag Gui.Metrics of Element:
     text: Text
     font: Font
-    state: Unavailable | Known ((Nat, Nat))
+    state: Extent                  # width and height of the text; answered synchronously
+
+type Frame = record:
+    now: Instant
+
+tag Gui.Frames of Element:
+    responds: Frame                # a GUI World fires this before it paints
 ```
 
-A `Text.Measure` is state because a layout needs the width of a string in the occurrence it lays out, and unavailability is in the type for a World without the font. The library over these: `@Window`, a layout interceptor (`@VBox`, `@HBox` producing `Gui.Draw` and positioned `Gui.Focusable` leaves from their children's elements and sampled measurements), hit-testing (the layout interceptor routes a `Pointer` on its region to the child whose rect contains the point, the layout being read through a tag as the occurrence opened), focus traversal (a hold of the focused path, moved by `Key Tab`), `@TextInput` with the cursor as a hold outside any `dyn` and keystrokes arriving at a `Gui.Focusable` with no dynamic fields, and `@Button` and `@Label` rewritten over draw commands with the milestone 6 versions kept as the Test World's simpler vocabulary. The library's tests run under the Test World first: a click at a point lands on the right button; Tab moves focus; typing moves the cursor; a resize re-lays out.
+The draw commands are values in the scene's `draw` list, in paint order, and never tags:
+
+```prism
+type Draw.Rect = record:
+    rect: Rect
+    color: Color
+
+type Draw.Text = record:
+    origin: Point
+    text: Text
+    font: Font
+    color: Color
+    ime_at: ?Nat                   # an offset into text where an input method's candidate window goes
+
+type Draw.Image = record:
+    rect: Rect
+    image: ImageId
+
+type Draw.Clip = record:
+    rect: Rect
+    draw: [Draw]
+
+type Draw = Draw.Rect | Draw.Text | Draw.Image | Draw.Clip
+```
+
+`Gui.Metrics` is state because a layout needs the width of a string in the occurrence it lays out. The World does no geometry and no hit-testing: the window responds with every pointer event over it, the library knows what is under the pointer, and focus is by name, a `Text` hold in the library with at most one `Gui.Focusable` emitted at a time, so a World has one place to send keys, the window, and the `Gui.Focusable` is only for the platform's focus ring, input method candidate window and screen reader.
+
+The library over these has its own tags under `Ui` (`Ui.Label`, `Ui.Button` responding `Click`, `Ui.TextInput`, `Ui.VBox`, and so on), which never reach a World: its interceptors claim them. `@Window` is the interceptor at the top. It captures the children's `Ui.*` elements, lays them out using `Gui.Metrics` readings, emits one `Gui.Window` and one `Gui.Scene` holding the whole draw list, hit-tests the window's `Pointer` responses against the layout it holds (read through a tag as the occurrence opened), and routes each hit inward as a `Click`, and each `Pressed` key to the input whose name is the focus. Focus is a hold of the focused name moved by the Tab key and by clicks, and only the focused child's `Gui.Focusable` goes up. `@VBox` and `@HBox` assign positions; `@TextInput` keeps its text and cursor as holds outside any `dyn`, draws `Draw.Text` runs and a caret `Draw.Rect` placed from a `Gui.Metrics` reading, and receives keystrokes through the library's routing by focus name, from the window's key responses. `@Button` and `@Label` are written over `Draw.Rect` and `Draw.Text`; the milestone 6 versions remain as the Test World's simpler vocabulary. The library's tests run under the Test World first, which sends `Pointer` and `Pressed` responses to the `Gui.Window` slot: a click at a point lands on the right button; Tab moves focus by name; typing moves the cursor; a resize re-lays out.
 
 ### The software rasteriser World
 
-A crate `prism_gui_soft`: `winit` for the window and input, `softbuffer` for the pixels, a small rasteriser for rects and clipped text with a bitmap or `fontdue` font for `Text.Measure`. Components: `Gui.Window`, `Gui.Draw` (after each turn, the draw lists in list order are rasterised into the buffer and presented), `Gui.Focusable` (pointer and key events from `winit`, routed to the region under the pointer or the focused region; a turn per event), `Gui.Frame` (a turn per frame while a slot exists), `Text.Measure`, plus the CLI World's general components. Which drawing backend is used has no language consequence; `softbuffer` is chosen because it has no GPU dependency and its output can be screenshotted into a golden PNG in a test (from memory).
+A crate `prism_gui_soft`: `winit` for the window and input, `softbuffer` for the pixels, a small rasteriser for rectangles and clipped text with a bitmap or `fontdue` font for `Gui.Metrics`. Components: `Gui.Window` (opens the window, responds with `Resized`, `CloseRequested` and every pointer event as `Pointer` and every key event from `winit` as `Pressed`, a turn per event), `Gui.Scene` (after each turn the draw list is rasterised into the buffer in list order and presented), `Gui.Focusable` (presence; the World notes it to show a focus ring and place the input method's candidate window), `Gui.Frames` (a turn per frame while a slot exists), `Gui.Metrics` (the font's advances, synchronously), plus the CLI World's general components. Which drawing backend is used has no language consequence; `softbuffer` is chosen because it has no GPU dependency and its output can be screenshotted into a golden PNG in a test (from memory).
 
 ### The reflex-dom World
 
-In `prism-hs`: the same tags rendered to the DOM. `Gui.Draw` becomes absolutely positioned `div`s and `span`s; `Gui.Focusable` becomes a focusable element with listeners; `Text.Measure` is answered from a hidden `canvas` measurement; a turn per DOM event. This is the cheap way to see Prism programs on a screen, and it is the Haskell implementation doing something the Rust one cannot yet.
+In `prism-hs`: the same five tags rendered to the DOM. `Gui.Scene` becomes absolutely positioned `div`s and `span`s, one per `Draw.*` entry, with `Draw.Clip` as a `div` with `overflow: hidden`; `Gui.Window` listens for pointer, key and resize events; `Gui.Focusable` becomes a focusable element that gives the browser a focus ring and a screen reader a name, its key events bubbling to the window listener; `Gui.Metrics` is answered from a hidden `canvas` measurement; a turn per DOM event. This is the cheap way to see Prism programs on a screen, and it is the Haskell implementation doing something the Rust one cannot yet.
 
 ### The X11-over-sockets proof
 
-A Prism program, under the CLI World, with no GUI World at all. `lib/x11.prism` is an interceptor `@X11` over the GUI vocabulary: it opens a `Net.Socket` to the X server, speaks the X11 wire protocol (connection setup, `CreateWindow`, `MapWindow`, `PolyFillRectangle`, `ImageText8`, event reads for `ButtonPress`, `KeyPress`, `Expose`, `ConfigureNotify`; request and event names from memory), turns its children's `Gui.Draw` lists into request bytes on the socket's `!request` event, and turns `Received` bytes into `Pointer` and `Key` responses routed to its children's `Gui.Focusable` slots. Text measurement uses a fixed-width font so that `Text.Measure` is pure. The counter runs on an X display with the CLI World as the only host code, and the CLI World knows nothing about windows.
+A Prism program, under the CLI World, with no GUI World at all. `lib/x11.prism` is an interceptor `@X11` over the GUI vocabulary: it opens a `Net.Socket` to the X server, speaks the X11 wire protocol (connection setup, `CreateWindow`, `MapWindow`, `PolyFillRectangle`, `ImageText8`, event reads for `ButtonPress`, `KeyPress`, `Expose`, `ConfigureNotify`; request and event names from memory), turns its children's `Gui.Scene` draw lists into request bytes on the socket's `!request` event, and turns `Received` bytes into `Pointer`, `Pressed` and `Resized` responses for the `Gui.Window` slot. It answers its children's `Gui.Metrics` itself through the supplier, with a fixed-width font, so measurement is pure. The counter runs on an X display with the CLI World as the only host code, and the CLI World knows nothing about windows.
 
 ### Done
 
@@ -531,9 +612,9 @@ That one GUI vocabulary serves many Worlds, that layout and focus and text editi
 
 ### Risks
 
-Text. Measurement by a state element is right, but a World that answers it asynchronously (a font loaded later) gives `Unavailable` in the first occurrence and a push afterwards, and the layout must handle the push by re-laying out, which it does by being a derived dynamic over the measurements. Write the layout that way from the start and the risk is gone.
+Text. Measurement by a state element is right, but a World whose fonts change (a font loaded later) pushes new metrics for the elements it has answered, and the layout must handle the push by re-laying out, which it does by being a derived dynamic over the measurements. Write the layout that way from the start and the risk is gone.
 
-Hit-testing reads the layout as the occurrence opened. A click delivered in the occurrence after a resize lands on the old layout; that is the design (routing against the opened list, applied to regions), and a test under the Test World pins it so that nobody "fixes" it in the World.
+Hit-testing is the library's and reads its layout as the occurrence opened. A click delivered in the occurrence after a resize lands on the old layout; that is the design (the tag law, applied to the layout), and a test under the Test World pins it so that nobody moves hit-testing into a World.
 
 The X11 interceptor is a few thousand lines of Prism and will find holes in the plain-value library (bytes, integer encoding, slicing). Those are prelude work, not language work, and the milestone should say which prelude functions it added.
 
@@ -541,30 +622,32 @@ The X11 interceptor is a few thousand lines of Prism and will find holes in the 
 
 **Waits on** milestone 3. It can be slotted anywhere after; it is last here because nothing above needs it, and the Test World's `Errors` step is the only thing in the suite that reads it.
 
-The transaction from milestone 1 already makes an occurrence abortable. This milestone decides what the World is told, adds the construction-abort, and gives the Test World its `Errors` step.
+The transaction from milestone 1 already makes an occurrence abortable. This milestone decides what the World is told, contains a failed `dyn` build, and gives the Test World its `Errors` step.
 
 ### The work
 
-- `RuntimeError` gains the full report: the kind (`Cycle`, `UnknownPath`, `UnsuppliedState`, `WrongResponseType`, `DeferredBackwards`, `Panic`), the spans of every binding involved (for a cycle, the whole cycle in order, with the Prism spans the compiler attached to each cyclic slot), the path, the tag and the interceptor chain for a protocol error, and which occurrence of which turn. The compiler names every cyclic placeholder after its source span so that a runtime cycle reports Prism source.
-- Construction-abort: a cycle or panic found while a `dyn` or `for` is building a block in the middle of an occurrence aborts the build, not the occurrence. The block's construction already has a boundary (the deferred build from milestone 3); wrap it so that an error inside leaves the `dyn`'s slot holding an `Error(span, message)` element instead, and the rest of the occurrence continues. The `Error` tag is declared in the prelude as a presence element.
+- `RuntimeError` gains the full report: the kind, the closed `ErrorKind` (`Cycle`, `Overflow`, `UnknownPath`, `UnsuppliedState`, `DeferBackwards`, `Component`, `Build`), the spans of every binding involved (for a cycle, the whole cycle in order, with the Prism spans the compiler attached to each cyclic slot), the path, the tag and the interceptor chain for a protocol error, and which occurrence of which turn. The compiler names every cyclic placeholder after its source span so that a runtime cycle reports Prism source.
+- Containment at the build boundary: a failed `dyn` build does not fire and is reported through `Errors`. A cycle or native failure found while a `dyn` or `for` builds a block in the middle of an occurrence abandons that build, not the occurrence. The block's construction already has a boundary (the deferred build from milestone 3); wrap it so that an error inside drops the half-built node, leaves the slot holding an `Error` presence element in the block's place, does not fire the `dyn`'s event, and records a `RuntimeError` of kind `Build` in `Outcome.errors`, which the world core hands to its `Errors` element. The rest of the occurrence continues. The `Error` tag is declared in the prelude.
 - World reporting: the world core's `Report` prints the above; the CLI World prints to stderr and exits nonzero; the Test World records it for `Errors pattern`.
-- Checked arithmetic as the default spelling with overflow returning `?`, an unchecked form for the hot loop, and the transaction as the backstop for native panics.
+- Overflow in `Nat` and `Int` arithmetic aborts the occurrence with kind `Overflow`; `Checked.*` (returning `?`) and `Wrap.*` (wrapping) are prelude functions bound to Rust's `checked_*` and `wrapping_*`; recursion past the closure compiler's depth guard is also `Overflow`; the transaction is the backstop for native panics, which are kind `Component`.
 - Quarantine of the owning subtree (replace the lowest common owning widget's node with an `Error` element in the next occurrence) as a World option on the core, off by default, with one test showing it on.
 
 ### Done
 
 - `a_cycle_at_runtime_aborts_the_occurrence_and_reports_every_binding_in_it_with_prism_spans`
 - `an_aborted_occurrence_leaves_the_program_as_it_was_and_the_world_is_told`
-- `a_cycle_found_while_a_dyn_rebuilds_aborts_the_build_and_leaves_an_error_element_in_the_list`
-- `the_rest_of_the_occurrence_continues_after_a_construction_abort`
+- `a_cycle_found_while_a_dyn_rebuilds_does_not_fire_the_dyn_and_is_reported_through_errors`
+- `a_failed_dyn_build_leaves_an_error_element_in_the_list`
+- `the_rest_of_the_occurrence_continues_after_a_failed_dyn_build`
 - `a_protocol_error_names_the_path_the_tag_and_the_interceptor_chain`
-- `overflow_returns_nothing_under_the_checked_spelling`
+- `overflow_aborts_the_occurrence_with_kind_overflow`
+- `checked_functions_return_nothing_on_overflow_and_wrap_functions_wrap`
 - `quarantine_replaces_the_owning_subtree_with_an_error_element_when_the_world_asks_for_it`
 - the `Errors` step passes in the Test World on each of the above written as Prism tests.
 
 ### What it proves
 
-That the transaction was worth having: the error path is cheap, coherent and silent to the program, and the one smaller unit (a construction) falls out of the `dyn` boundary that already exists. And that errors a program is meant to handle are values and nothing else: there is no `catch`, and an interceptor that wants to handle a child's failure handles an `Error` element like anything else a child emits.
+That the transaction was worth having: the error path is cheap, coherent and silent to the program, and the one smaller unit (a failed construction) falls out of the `dyn` boundary that already exists. And that errors a program is meant to handle are values and nothing else: there is no `catch`, and an interceptor that wants to handle a child's failure handles an `Error` element like anything else a child emits.
 
 ### Risks
 
@@ -626,7 +709,7 @@ Each milestone has a short list of things a model will do because they are easie
 - Milestone 6: pattern matching in the Test World rather than in `prism_lang`; a second depth convention; a transcript printed two ways.
 - Milestone 7: a request performed during a turn; `tokio` before a component needs it; a component holding a runtime object.
 - Milestone 8: the Rust frontend's source in the model's context; a text form that differs in type-variable names.
-- Milestone 9: `current` outside `tag`; `switchPromptly`; `getPostBuild`; `performEvent` doing work.
+- Milestone 9: `current` outside its three named places; `switchPromptly`; a `coincidence` outside `for`'s birth term; `getPostBuild`; `performEvent` doing work.
 - Milestone 10: layout, hit-testing or focus in a World; a text input with a dynamic field; host code in the X11 proof.
 - Milestone 11: a `catch`; an error the program can observe other than as an `Error` element.
 

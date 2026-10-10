@@ -653,6 +653,7 @@ type Frame = record:
 
 tag Gui.Metrics of Element:                  # state: the size of a text, answered synchronously
     text: Text
+    font: Font                               # a plain value; Default unless the program names one
     state: Extent
 
 tag Gui.Frames of Element:                   # stream: one Frame per displayed frame while a slot exists
@@ -663,7 +664,7 @@ The window has no dynamic field, so its slot is stable for the life of the progr
 
 Draw commands are values inside the scene, not elements. Suppose each rectangle and each run of text were a slot of its own: a window of two thousand glyph runs would be two thousand paths, each with an identity nobody addresses, and a redraw would be two thousand teardowns and builds. As one field, the scene is one slot, the World reads the list in order, which is paint order, and `Draw.Clip` nests a list inside a rectangle. A command has no response and no state, so nothing about it needs a slot.
 
-The measurer is a state element for the reason the whole second half of this chapter gives. A layout needs the width of a text in the occurrence it lays out. As a request, the width would arrive a turn later, and the scene would be drawn once with the wrong width and once with the right one. As state, `Gui.Metrics(text="Ada")` has its `Extent` in the occurrence the slot is created, and every slot asking about the same text shares one answer. The World owns the fonts and the library never sees them.
+The measurer is a state element for the reason the whole second half of this chapter gives. A layout needs the width of a text in the occurrence it lays out. As a request, the width would arrive a turn later, and the scene would be drawn once with the wrong width and once with the right one. As state, `Gui.Metrics(text="Ada", font=Default)` has its `Extent` in the occurrence the slot is created, and every slot asking about the same text and font shares one answer. `Font` is a plain value naming a family and size, declared with the other values in Appendix D, and `Default` is the font a program gets when it names none. The World owns the fonts and the library never sees them.
 
 A World that offers these five can run every program in this section. A software rasteriser, a GTK-backed World that paints into a drawing area, a web World that turns `Draw` values into canvas calls, and a native Prism system that speaks X11 over a socket are all the same World as far as the library is concerned. A World that would rather offer native widgets accepts `Ui.*` tags or `Gtk.Button` and friends directly, and a different library targets it; the program above both libraries is the same program.
 
@@ -927,7 +928,7 @@ let Scrolled: fn Text ==> Int, Wheeled -> Text ==> Int = \|offsets, w|
     !raw <- @Element Gui.Window(title=title, size=size0)
     let $kids = UiOnly $slots
     $sizes <- for (TextsIn $kids):               # a Gui.Metrics slot per distinct text
-        $m <- @Element Gui.Metrics(text=key)
+        $m <- @Element Gui.Metrics(text=key, font=Default)
         @ $m
     $size <- size0 <= !Filter (ResizeOf !raw)
     let $root = Ui.VBox(children=$kids)
@@ -979,10 +980,10 @@ The World's text measurement is fixed-width in this walk: eight pixels per chara
 
 ```
 1:               Gui.Window(title="Form", size=Extent(w=400, h=300))
-2/[Ada]/0:       Gui.Metrics(text="Ada")
-2/[Cancel]/0:    Gui.Metrics(text="Cancel")
-2/[Hello, Ada]/0: Gui.Metrics(text="Hello, Ada")
-2/[OK]/0:        Gui.Metrics(text="OK")
+2/[Ada]/0:       Gui.Metrics(text="Ada", font=Default)
+2/[Cancel]/0:    Gui.Metrics(text="Cancel", font=Default)
+2/[Hello, Ada]/0: Gui.Metrics(text="Hello, Ada", font=Default)
+2/[OK]/0:        Gui.Metrics(text="OK", font=Default)
 4/#0/0:          Gui.Scene(window="Form", draw=[[...]])
 ```
 
@@ -1018,10 +1019,10 @@ The test drives the library below the window, so it checks routing through the b
 
 ```prism
 test window_focus: Test (@Window "Form", (Extent 400, 300), (@VBox @form)): array:
-    State Gui.Metrics(text="Ada"), Extent 24, 16
-    State Gui.Metrics(text="Cancel"), Extent 48, 16
-    State Gui.Metrics(text="Hello, Ada"), Extent 80, 16
-    State Gui.Metrics(text="OK"), Extent 16, 16
+    State Gui.Metrics(text="Ada", font=Default), Extent 24, 16
+    State Gui.Metrics(text="Cancel", font=Default), Extent 48, 16
+    State Gui.Metrics(text="Hello, Ada", font=Default), Extent 80, 16
+    State Gui.Metrics(text="OK", font=Default), Extent 16, 16
     Send Gui.Window(..), Pointer (Point 12, 10)
     Expect Gui.Focusable(name="name")
 ```
@@ -1030,7 +1031,7 @@ test window_focus: Test (@Window "Form", (Extent 400, 300), (@VBox @form)): arra
 
 ### What the library does not do, yet
 
-Text longer than its box needs wrapping, which is line breaking over widths: the library asks `Gui.Metrics` for the prefixes it needs, as `InputDraw` does for the caret, and breaks where the widths say. A World with more than one font adds a `font` field to `Gui.Metrics` and to the draw commands, and the library passes a font name along. Size feedback, where a child wants to be a different size because of the size it was given, is a cycle through the layout and needs a `Defer` to break it; the library above has no such child. An accessibility tree is a derived dynamic over the same element tree the layout uses, with the input names as node ids, emitted as an element of its own for a World that speaks to a screen reader. Animation is a `Gui.Frames` slot inside a `dyn` over whether anything is moving, so that a window at rest asks the World for no frames, and each `Frame` is an input to a hold. Each is more Prism over the same five tags, and none is a new primitive.
+Text longer than its box needs wrapping, which is line breaking over widths: the library asks `Gui.Metrics` for the prefixes it needs, as `InputDraw` does for the caret, and breaks where the widths say. A library with more than one font passes the font along: `Gui.Metrics` already has the `font` field, the draw commands gain one, and `$sizes` is keyed by text and font. Size feedback, where a child wants to be a different size because of the size it was given, is a cycle through the layout and needs a `Defer` to break it; the library above has no such child. An accessibility tree is a derived dynamic over the same element tree the layout uses, with the input names as node ids, emitted as an element of its own for a World that speaks to a screen reader. Animation is a `Gui.Frames` slot inside a `dyn` over whether anything is moving, so that a window at rest asks the World for no frames, and each `Frame` is an input to a hold. Each is more Prism over the same five tags, and none is a new primitive.
 
 ## Worked interceptors
 

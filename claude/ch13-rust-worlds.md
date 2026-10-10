@@ -421,12 +421,6 @@ impl Snapshots {
                   ask: impl FnOnce(&ElementValue) -> Option<Value>) -> Option<Value>
     {
         if let Some(v) = self.prev.get(e) { return Some(v.clone()); }
-        if let Some(v) = self.next.remove(e) {
-            // a push arrived for this value before anyone asked: it is the value
-            self.prev.insert(e.clone(), v.clone());
-            self.next.insert(e.clone(), v.clone());
-            return Some(v);
-        }
         let v = ask(e)?;
         self.prev.insert(e.clone(), v.clone());
         self.next.insert(e.clone(), v.clone());
@@ -741,8 +735,7 @@ The `Requested` step's second argument is a pattern over the request value rathe
 
 ```rust
 pub struct ScriptComponent {
-    snapshot: BTreeMap<ElementValue, Value>,     // from State steps
-    defaults: TagTable,                           // tags' declared default state values
+    snapshot: BTreeMap<ElementValue, Value>,     // from State steps; nothing else supplies state
     accepted: Vec<Tag>,                           // every tag the program declares
 }
 
@@ -752,18 +745,18 @@ impl Component for ScriptComponent {
     fn slot_removed(&mut self, _: &Path, _: &ElementValue, _: &mut Cx) {}
     fn perform(&mut self, _: &Path, _: &ElementValue, _: Value, _: &mut Cx) {}   // recorded by the core
     fn oracle(&mut self, e: &ElementValue, cx: &mut Cx) -> Value {
-        self.snapshot.get(e).cloned()
-            .or_else(|| self.defaults.default_state(&e.tag))
-            .unwrap_or_else(|| { cx.diagnostic(Diagnostic::Component {
-                tag: e.tag, message: "no State step and no declared default".into() });
-                Value::missing() })
+        self.snapshot.get(e).cloned().unwrap_or_else(|| {
+            cx.diagnostic(Diagnostic::Component {
+                tag: e.tag, message: "no State step for this element".into() });
+            Value::missing()
+        })
     }
     fn gather(&mut self, _: &mut Cx) {}
     fn quiescent(&self) -> bool { true }
 }
 ```
 
-The component is almost empty, and that is the design: a Test World does nothing, so its component does nothing, and everything the steps need is in the `TurnOutcome` the core already returns. `Value::missing()` is a sentinel the core turns into the unsupplied-state error, so a state element with no `State` step and no declared default fails the test at the slot's creation with the same error a real World would give.
+The component is almost empty, and that is the design: a Test World does nothing, so its component does nothing, and everything the steps need is in the `TurnOutcome` the core already returns. `Value::missing()` is a sentinel the core turns into an `UnsuppliedState` error, so a state element with no `State` step fails the test at the slot's creation with the same error a real World gives for a state tag it does not accept. Tag declarations carry no default state value, so there is nothing to fall back on: a program that creates `Clock` or `Gui.Metrics` while it builds needs a `State` step for that element before the build, and a test that forgets one fails with an error that names the element instead of running against a value nobody chose.
 
 The runner holds the harness and the script and walks the steps:
 
@@ -778,8 +771,10 @@ pub struct TestRun {
 
 impl TestRun {
     pub fn run(mut self, steps: &[Step]) -> Result<Transcript, Failure> {
-        self.record(self.harness.start());
-        for (i, step) in steps.iter().enumerate() {
+        let lead = steps.iter().take_while(|s| matches!(s, Step::State(..))).count();
+        for (i, step) in steps[..lead].iter().enumerate() { self.step(step).map_err(|why| Failure { step: i, why })?; }
+        self.record(self.harness.start());                  // the build reads the leading State steps
+        for (i, step) in steps.iter().enumerate().skip(lead) {
             self.step(step).map_err(|why| Failure { step: i, why })?;
         }
         Ok(self.transcript)
@@ -837,7 +832,7 @@ The Test World's harness uses `BatchPolicy::Drain`, because a script says exactl
 
 `find_all` is the depth rule. It walks every slot in the list, matches the pattern against the element, and then descends into any field whose value is an element or a collection of elements, because that is the convention a GUI library uses to hold children as data in a container element. The Test World knows the convention as a structural fact about values, not as a tag name: a field of type `Element`, `[Element]` or `k ==> Element` is descended into. `Send` to a nested element delivers to the containing root slot's path with the nested index attached in the response, following the same library convention the other way; chapter 2's vertical box shows the Prism side of it.
 
-The `State` step takes effect "as the next turn's push and oracle": `set` writes the script's snapshot, which the oracle reads for values not yet asked about, and the next turn's `gather` reports the changed values as pushes for values already asked about. `Push` is `State` plus a turn with the push as its only delivery.
+The `State` step takes effect "as the next turn's push and oracle": the `State` steps at the head of a script run before the build, and the build occurrence reads them; `set` writes the script's snapshot, which the oracle reads for values not yet asked about, and the next turn's `gather` reports the changed values as pushes for values already asked about. `Push` is `State` plus a turn with the push as its only delivery.
 
 ### How `State`, `Push`, `Requested` and `Errors` are implemented
 
@@ -1425,85 +1420,42 @@ A World that mixes a GUI main thread and tokio IO, which a desktop World does, r
 
 ## The GUI World
 
-GUI is not a World concept. There is one GUI vocabulary, a small set of tags for windows, draw primitives and input regions, and any World that can put pixels on a screen and read a pointer and a keyboard can speak it. Layout, hit-testing within a widget, focus traversal, text editing, buttons, lists and scrolling are Prism interceptors over those tags, in a library that is part of the conformance suite, so that they run under the Test World too. The World's part is small on purpose, because everything the World does is something a test cannot see.
+A click at (50, 10) reaches the software rasteriser below as one winit event. The World turns it into one response, `Pointer (Down ((50, 10)), Left)`, addressed to the path of the program's `Gui.Window` slot, runs a turn, and paints the `Gui.Scene` the turn left in the list. It did not look for a button, and it could not have: no button is in the list. The library above it hit-tests the point against the layout it drew, which is the only place that layout exists. Everything this section builds is the same small job done for a different platform event.
+
+GUI is not a World concept. There is one GUI vocabulary, five tags, and any World that can put pixels on a screen and read a pointer and a keyboard can speak it. Layout, hit-testing, focus traversal, text editing, buttons, lists and scrolling are Prism interceptors over those tags, in a library that is part of the conformance suite, so that they run under the Test World too. The World's part is small on purpose, because everything the World does is something a test cannot see.
 
 ### The vocabulary
 
+Chapter 7 declares the vocabulary and the event types, and the Rust side reads them as follows. A window and the one place events for it go, keys included; the picture, as a list of plain `Draw.*` values; the name of the focused region; text measurement; and a tick per frame.
+
 ```prism
-type Point = record: x: Float; y: Float
-type Rect = record: x: Float; y: Float; w: Float; h: Float
-type Color = record: r: Float; g: Float; b: Float; a: Float
-
-type WindowState = record:
-    size: ((Float, Float))
-    scale: Float
-    focused: Bool
-
 tag Gui.Window of Element:
     title: Text
-    state: WindowState
+    size: Size                     # asked for when the window opens
+    responds: WindowEvent          # Resized Size | CloseRequested | Pointer Pointer | Pressed Key
 
-tag Gui.Rect of Element:
-    rect: Rect
-    color: Color
-    clip: ?Rect
+tag Gui.Scene of Element:
+    window: Text                   # the title of the window it paints
+    draw: [Draw]                   # Draw.Rect | Draw.Text | Draw.Image | Draw.Clip, in paint order
 
-tag Gui.Text of Element:
-    origin: Point
-    text: Text
-    font: Font
-    color: Color
-    clip: ?Rect
-
-tag Gui.Image of Element:
-    rect: Rect
-    image: ImageId
-    clip: ?Rect
+tag Gui.Focusable of Element:     # presence: no responses; keys arrive at Gui.Window as Pressed Key
+    name: Text
 
 tag Gui.Metrics of Element:
     text: Text
     font: Font
-    state: TextMetrics            # glyph advances and line height; answered synchronously
+    state: Extent                  # width and height of the text; answered synchronously
 
-type Modifiers = record: shift: Bool; ctrl: Bool; alt: Bool; meta: Bool
+type Frame = record:
+    now: Instant
 
-type RegionEvent = choice:
-    PointerDown Point Button Modifiers
-    PointerUp Point Button Modifiers
-    PointerMove Point Modifiers
-    Scroll Point Float Float
-    KeyDown Key Modifiers
-    KeyUp Key Modifiers
-    Char Text
-    ImeCommit Text
-    ImePreedit Text Nat Nat        # text, cursor start, cursor end
-    FocusGained
-    FocusLost
-
-type RegionRequest = choice:
-    TakeFocus
-    ImeCursorArea Rect
-    Capture                        # pointer capture until PointerUp
-    SetCursor CursorIcon
-
-tag Gui.Region of Element:
-    rect: Rect
-    requests: !RegionRequest
-    responds: RegionEvent
-
-type Frame = Frame Instant
-
-tag Gui.Frame of Element:
+tag Gui.Frames of Element:
     responds: Frame
 ```
 
-The draw primitives are presence elements: a `Gui.Rect` in the list is a rectangle on the screen, in list order, which is paint order. Nothing is drawn because an element appeared; the list *is* the description, and the World paints what the list describes after each turn, the way a CLI World writes what the requests said. A label whose text changes is a `dyn` with a fresh slot, because `text` is a plain field and a dynamic there lifts into a `dyn`; the World diffs lists by path and element, sees one slot gone and one new, and damages the union of their rects.
+Only `Gui.Metrics` is a state tag, and none of the five has a `requests` field. A World that speaks this vocabulary therefore performs nothing: it paints a list, answers one question, and delivers events. The negative space is deliberate. There is no region for the World to hit-test, so there is no overlap rule, no disabled-region rule and no pointer capture to get wrong; there is no focus request for the World to grant, so the World and the library cannot hold two opinions about who is focused; and a draw command is a value in a list, so it has no path, no slot and no teardown to track. The clipboard is a separate bare tag, `Clipboard`, which a World offers or does not (chapter 7 says why it is not part of `Gui.*`), and installed fonts are not a tag.
 
-Input enters through `Gui.Region`. It has a rect, which the World uses for pointer hit-testing (the last region in list order whose rect contains the point gets the event), it responds with pointer, key and IME events, and it requests focus, pointer capture, an IME cursor area and a cursor icon. Keys go to the focused region, and focus is something a region asked for with `TakeFocus`, which the World grants and reports with `FocusGained` in a later occurrence. A region's rect is a plain field, so a region that moves is a fresh slot; focus is therefore keyed by the World on the element value plus tree position, so that a `Gui.Region` rebuilt at the same tree position with a new rect keeps focus. That is a World policy and the language promises nothing about it; the GUI library keeps its own idea of focus in a hold and re-requests when a rebuild loses it, which is the robust version.
-
-`Gui.Metrics` is the one state element in the vocabulary, and it is the answer to the problem every text layout has: you cannot place a caret without knowing how wide the text is, and you cannot know how wide the text is without asking the thing that has the fonts. As a request it would be answered next turn, and the text field would draw one frame with stale glyph positions; as a state element its oracle is synchronous, the component lays out the glyphs when asked, and the slot has its metrics in the occurrence it is created, so the layout that depends on them is right in the same occurrence. The push for it fires only when the installed fonts change, which is almost never. Value identity makes this cheap: every slot asking for the metrics of `("Start", Default)` shares one glyph layout, and the component's cache is keyed by the same element value the core's snapshot is.
-
-`Gui.Frame` responds with a tick per displayed frame while a slot exists, for animation, and the World requests continuous redraw only while there is one.
+A label whose text changes rebuilds the library's scene: `Gui.Scene` is a presence element with a plain `draw` field, so a new draw list is a fresh slot at the next generation, and the World diffs the new list against the one it painted. The `Gui.Window` slot stays put, which is what keeps a pointer event's address stable across frames.
 
 ### A software rasteriser first
 
@@ -1515,25 +1467,21 @@ pub struct Screen {
     window: Option<Arc<winit::window::Window>>,
     surface: Option<softbuffer::Surface<..>>,
     fonts: FontCache,                               // glyph layout and rasterising
-    scene: Vec<(Path, ElementValue)>,               // the draw list as of the last turn
-    regions: Vec<(Path, Rect)>,                     // Gui.Region slots in list order
-    focused: Option<Path>,
-    captured: Option<Path>,
+    window_path: Option<Path>,                      // the Gui.Window slot: where pointer events, keys and resizes go
+    focusable: Option<Path>,                        // the Gui.Focusable slot, if the list has one: where the focus ring and the candidate window are shown; keys do not go here
+    scene: Vec<Draw>,                               // the draw list as of the last turn
     damage: Vec<Rect>,
     frame_slots: BTreeSet<Path>,
-    window_state: Value,
     window_slots: usize,
 }
 
 impl Component for Screen {
     fn tags(&self) -> Vec<Tag> {
-        vec![Tag::GUI_WINDOW, Tag::GUI_RECT, Tag::GUI_TEXT, Tag::GUI_IMAGE,
-             Tag::GUI_METRICS, Tag::GUI_REGION, Tag::GUI_FRAME]
+        vec![Tag::GUI_WINDOW, Tag::GUI_SCENE, Tag::GUI_FOCUSABLE, Tag::GUI_METRICS, Tag::GUI_FRAMES]
     }
 
     fn oracle(&mut self, el: &ElementValue, _: &mut Cx) -> Value {
         match el.tag {
-            Tag::GUI_WINDOW => self.window_state.clone(),
             Tag::GUI_METRICS => self.fonts.measure(el.field("text").as_text(), el.field("font")),
             _ => unreachable!("only state tags are asked"),
         }
@@ -1541,69 +1489,72 @@ impl Component for Screen {
 
     fn slot_created(&mut self, path: &Path, el: &ElementValue, _: &mut Cx) {
         match el.tag {
-            Tag::GUI_WINDOW => { self.window_slots += 1; self.ensure_window(el.field("title").as_text()); }
-            Tag::GUI_RECT | Tag::GUI_TEXT | Tag::GUI_IMAGE => self.damage.push(bounds(el)),
-            Tag::GUI_REGION => self.regions_dirty = true,
-            Tag::GUI_FRAME => { self.frame_slots.insert(path.clone()); self.request_redraw(); }
-            _ => {}
+            Tag::GUI_WINDOW => {
+                self.window_slots += 1;
+                self.window_path = Some(path.clone());
+                self.ensure_window(el.field("title").as_text(), el.field("size").as_size());
+            }
+            Tag::GUI_FOCUSABLE => self.focusable = Some(path.clone()),
+            Tag::GUI_FRAMES => { self.frame_slots.insert(path.clone()); self.request_redraw(); }
+            _ => {}                                  // a Gui.Scene is read from the list in after_turn
         }
     }
 
     fn slot_removed(&mut self, path: &Path, el: &ElementValue, _: &mut Cx) {
         match el.tag {
-            Tag::GUI_WINDOW => { self.window_slots -= 1; if self.window_slots == 0 { self.close_window(); } }
-            Tag::GUI_RECT | Tag::GUI_TEXT | Tag::GUI_IMAGE => self.damage.push(bounds(el)),
-            Tag::GUI_REGION => { self.regions_dirty = true;
-                                 if self.focused.as_ref() == Some(path) { self.focused = None; } }
-            Tag::GUI_FRAME => { self.frame_slots.remove(path); }
+            Tag::GUI_WINDOW => {
+                self.window_slots -= 1;
+                if self.window_slots == 0 { self.close_window(); self.window_path = None; }
+            }
+            Tag::GUI_FOCUSABLE => if self.focusable.as_ref() == Some(path) { self.focusable = None; },
+            Tag::GUI_FRAMES => { self.frame_slots.remove(path); }
             _ => {}
         }
     }
 
-    fn perform(&mut self, path: &Path, _: &ElementValue, request: Value, cx: &mut Cx) {
-        match request.as_region_request() {
-            RegionRequest::TakeFocus => {
-                if let Some(old) = self.focused.replace(path.clone()) { cx.respond(&old, focus_lost()); }
-                cx.respond(path, focus_gained());
-            }
-            RegionRequest::ImeCursorArea(r) => self.window().set_ime_cursor_area(pos(r), size(r)),
-            RegionRequest::Capture => self.captured = Some(path.clone()),
-            RegionRequest::SetCursor(c) => self.window().set_cursor(cursor(c)),
-        }
-    }
-
+    fn perform(&mut self, _: &Path, _: &ElementValue, _: Value, _: &mut Cx) {}   // no tag here has requests
     fn gather(&mut self, _: &mut Cx) {}
     fn quiescent(&self) -> bool { self.window_slots == 0 }
 }
 ```
 
-The World's half of the loop is winit's `ApplicationHandler` (the winit names below are from memory). Each platform event becomes a delivery and a `step`, and after each turn the component rebuilds its scene from the turn's list and asks for a redraw if anything was damaged:
+Metrics are answered from the same `FontCache` the painter uses, so a label is measured with the glyphs it will be drawn with. The oracle cannot fail, and the cache is keyed by the element value, as the core's snapshot is, so every slot asking about `("Start", Default)` shares one glyph layout. The push for it fires only when the installed fonts change, which is almost never.
+
+The World's half of the loop is winit's `ApplicationHandler` (the winit names below are from memory). Each platform event becomes zero or more deliveries and a `step`:
 
 ```rust
 impl ApplicationHandler<Delivery> for App {
     fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
         let screen = self.screen.borrow();
-        let delivery = match event {
+        let to_window = |value| screen.window_path.clone()
+            .map(|path| Delivery::Response { path, value });
+        let mut redraw = false;
+        let batch: Vec<Delivery> = match event {
             WindowEvent::CursorMoved { position, .. } => {
                 self.pointer = position.into();
-                screen.hit(self.pointer, self.captured)
-                      .map(|path| Delivery::Response { path, value: pointer_move(self.pointer, self.mods) })
+                to_window(pointer_moved(self.pointer)).into_iter().collect()
             }
-            WindowEvent::MouseInput { state: Pressed, button, .. } =>
-                screen.hit(self.pointer, None).map(|path| Delivery::Response { path, value: pointer_down(..) }),
+            WindowEvent::MouseInput { state, button, .. } =>
+                to_window(pointer_button(state, self.pointer, button)).into_iter().collect(),
+            WindowEvent::MouseWheel { delta, .. } =>
+                to_window(pointer_scroll(self.pointer, delta)).into_iter().collect(),
             WindowEvent::KeyboardInput { event, .. } =>
-                screen.focused.clone().map(|path| Delivery::Response { path, value: key_event(event) }),
-            WindowEvent::Ime(ime) =>
-                screen.focused.clone().map(|path| Delivery::Response { path, value: ime_event(ime) }),
-            WindowEvent::Resized(size) =>
-                Some(Delivery::Push { element: window_element(), value: window_state(size, ..) }),
-            WindowEvent::RedrawRequested => { screen.paint(); None }
-            WindowEvent::CloseRequested => Some(Delivery::Push { element: window_element(), value: close_requested(..) }),
-            _ => None,
+                to_window(pressed(key_event(event))).into_iter().collect(),   // the library routes it by focus name
+            WindowEvent::Ime(ime) => to_window(pressed(composition_event(ime))).into_iter().collect(),
+            WindowEvent::Resized(size) => to_window(resized(size)).into_iter().collect(),
+            WindowEvent::CloseRequested => to_window(close_requested()).into_iter().collect(),
+            WindowEvent::RedrawRequested => {
+                redraw = true;                                        // Gui.Frames fires before the paint
+                screen.frame_slots.iter()
+                    .map(|path| Delivery::Response { path: path.clone(), value: frame(self.clock.now()) })
+                    .collect()
+            }
+            _ => vec![],
         };
         drop(screen);
-        if let Some(d) = delivery { self.harness.push(d); }
+        self.harness.push_all(batch);
         self.run_turns(el);
+        if redraw { self.screen.borrow_mut().paint(); }
     }
 
     fn user_event(&mut self, el: &ActiveEventLoop, _: Delivery) { self.run_turns(el); }   // the waker
@@ -1621,15 +1572,17 @@ impl ApplicationHandler<Delivery> for App {
 }
 ```
 
-`after_turn` is the diff: compare the new list's `Gui.*` slots against `scene` by path, damage the bounds of anything that changed, and request a redraw if `damage` is non-empty or a `Gui.Frame` slot exists. `paint` clears the damaged rects and replays the draw primitives in list order, clipped to the damage. The pointer-move coalescing that every GUI does is the harness's `Drain` policy plus a line in the handler that replaces a queued `PointerMove` with the latest one, which promises the program no less than the platform does; keys, clicks and IME events are never coalesced.
+Three things are missing from the handler on purpose. It does no hit-testing: every pointer event goes to the one window path, with the point in it. It keeps no focus: a key goes to the window path like a pointer event, and the library routes it to the input whose name is the focus, or drops it when no input is focused. The `Gui.Focusable` in the list is only read, to show the platform's focus ring. And `Resized` is a response like any other, not a pushed state; the library holds the size and lays out again in the occurrence the response arrives in.
 
-The window's `WindowState` is a state element pushed on resize and focus change, which means a layout that depends on the window size is a dynamic over `$window.size` and relayouts in the occurrence the resize arrives. Live resize on platforms that call back synchronously during a drag is one turn per callback, with the paint inside the callback; the harness's `step` never blocks, so this is safe.
+`after_turn` finds the `Gui.Scene` in the turn's list and compares its draw list with `scene`, command by command in paint order. A command that differs damages both its old and its new bounds, a longer or shorter list damages the tail, and a World that would rather repaint the whole window is free to, because the language cannot see which it did. It then looks for the one `Draw.Text` whose `ime_at` is set, which the library sets only on the focused input's run, turns the offset into a position with the font cache and tells the platform where the candidate window goes (`set_ime_cursor_area`, from memory). It requests a redraw if `damage` is non-empty or a `Gui.Frames` slot exists. `paint` clears the damaged rects and replays the `Draw.Rect`, `Draw.Text`, `Draw.Image` and `Draw.Clip` commands in list order, clipped to the damage; a `Draw.Clip` pushes its rect on a clip stack for its nested list and pops it after. The pointer-move coalescing that every GUI does is the harness's `Drain` policy plus a line in the handler that replaces a queued `Pointer (Moved ..)` with the latest one, which promises the program no less than the platform does; clicks, keys and composition events are never coalesced.
+
+Live resize on platforms that call back synchronously during a drag is one turn per callback, with the paint inside the callback; the harness's `step` never blocks, so this is safe.
 
 The error policy is a GUI World's and not the core's: on `Step::Error`, the window stays open, the error is drawn in it, and the next input is a fresh occurrence against the rolled-back runtime. A CLI World exits; a GUI World has a window to show the error in, and a user who can see what went wrong and keep going is better served than one whose window vanished.
 
 ### How a native-toolkit wrapper differs
 
-A World that wraps GTK or AppKit does not speak the draw vocabulary; it offers higher tags, and the same Prism program targets it through a different library.
+A World that wraps GTK or AppKit does not speak the `Gui.*` vocabulary; it offers higher tags, and the same Prism program targets it through a different library.
 
 ```prism
 tag Gtk.Window of Element:
@@ -1649,7 +1602,7 @@ tag Gtk.Entry of Element:
 
 The whole middle of the World differs. There is no draw list and no rasteriser; instead the component keeps a map from path to native widget, and `after_turn` becomes a reconciliation: a slot created makes a native widget, a slot removed destroys one, and because fields are fixed for a slot's life, a changed label is a removed slot and a created slot, which the component may recognise as the same tree position and the same tag and turn into a `set_label` on the existing native widget rather than a destroy-and-create, keeping the native widget's own state (cursor, selection, scroll position). That is the continuity-by-tree-position policy the specification leaves to Worlds, and here is where it earns its keep: a native entry has state the program cannot see, and the World keeps it across rebuilds by keying on position and tag.
 
-`Gtk.Entry` shows why the native route is the harder one for the language. Its text is state the native widget owns, so the tag has both a `state: Text` the World pushes on every keystroke and a `requests: !EntryRequest` for the program to set it, and the program has two sources of truth to reconcile, which is exactly the situation the Prism text field of chapter 2 avoids by owning the text itself and letting the World see only draw primitives. The native wrapper is the right World for a program that wants the platform's own widgets, and it is a different World with a different library, and which is better is a library question. The language has an opinion only about the structure: leaves are elements, containment is interception, and `Gtk.Window(children=[[...]])` holding its children as data is the container convention the Test World's depth rule already understands.
+`Gtk.Entry` shows why the native route is the harder one for the language. Its text is state the native widget owns, so the tag has both a `state: Text` the World pushes on every keystroke and a `requests: !EntryRequest` for the program to set it, and the program has two sources of truth to reconcile, which is exactly the situation the Prism text field of chapter 2 avoids by owning the text itself and letting the World see only a scene and a focusable name. The native wrapper is the right World for a program that wants the platform's own widgets, and it is a different World with a different library, and which is better is a library question. The language has an opinion only about the structure: leaves are elements, containment is interception, and `Gtk.Window(children=[[...]])` holding its children as data is the container convention the Test World's depth rule already understands.
 
 ## The X11-over-sockets World
 
@@ -1682,7 +1635,7 @@ The World is the tokio skeleton of the previous section with the `Sockets` compo
 
 ### What the library does
 
-`@X11.Display` is an interceptor. From the inside it offers the `Gui` vocabulary: its child creates `Gui.Window`, `Gui.Rect`, `Gui.Text`, `Gui.Region` and `Gui.Metrics` slots and gets what those tags promise. From the outside it makes one `Net.Socket` element and one `Fs.File` element, and everything between is Prism.
+`@X11.Display` is an interceptor. From the inside it offers the `Gui` vocabulary: its child creates `Gui.Window`, `Gui.Scene`, `Gui.Focusable` and `Gui.Metrics` slots and gets what those tags promise. From the outside it makes one `Net.Socket` element and one `Fs.Contents` element, and everything between is Prism.
 
 ```prism
 @X11.Display: fn @a -> @a = \|@child| @widget:
@@ -1696,32 +1649,31 @@ The World is the tokio skeleton of the previous section with the `Sockets` compo
     let !events = X11.Events $conn, !sock                  # parsed Expose, KeyPress, ButtonPress, ...
 
     # Up: the setup request first (the World queues bytes until the socket connects),
-    # then CreateWindow and a PutImage of the rasterised damage whenever the scene
-    # or the connection changes, then replies to Expose.
+    # then CreateWindow for the Gui.Window and a PutImage of the rasterised scene
+    # whenever the draw list or the connection changes, then replies to Expose.
     let !out = (X11.Setup $auth) on !start
              | (X11.Render $slots, $conn) on (!events | !later)
              | X11.Reply $conn, !events
 
-    # Down: pointer and key events routed to the region under them, by the
-    # layout as the occurrence opened; metrics answered from the library's fonts.
+    # Down: a pointer event and a key both go to the Gui.Window slot,
+    # by the list as the occurrence opened. Nothing is hit-tested here.
     !later <- @Element Defer(requests=(unit on !events))
     let !down = (X11.Route $slots, $conn) on !later
     let supply = \|e| match e:
-        Gui.Window(..): @ $ (X11.WindowState $conn)
         Gui.Metrics(text=t, font=f): @ $ (X11.Measure t, f)
-        ignore: @Element e
+        ignore: @Element e               # Window, Scene and Focusable are read from $slots; NonGui forwards the rest
     @ result
 ```
 
-`X11.Step` is a pure function from the connection state, the authority file, the current slot list and a received chunk to the new connection state: it parses the setup reply, tracks the sequence numbers, and keeps the window id. `X11.Render` is a pure function from the slot list to the bytes of a `PutImage` request: it rasterises the `Gui.Rect` and `Gui.Text` slots into a pixel buffer in Prism (a rasteriser is a pure function over a list of primitives, and glyphs are a bitmap font held as data) and encodes the request. `X11.Route` turns a parsed `ButtonPress` at a point into a response to the `Gui.Region` whose rect contains it, keyed by the child's path, which `for` consolidates into `!(Path ==> Response)`. `X11.Measure` is the bitmap font's advance table.
+`X11.Step` is a pure function from the connection state, the authority file, the current slot list and a received chunk to the new connection state: it parses the setup reply, tracks the sequence numbers, and keeps the window id. `X11.Render` is a pure function from the slot list to the bytes of a `PutImage` request: it takes the `draw` list of the `Gui.Scene` whose `window` names the `Gui.Window`'s title, rasterises the `Draw.Rect`, `Draw.Text`, `Draw.Image` and `Draw.Clip` values into a pixel buffer in Prism (a rasteriser is a pure function over a list of draw values, and glyphs are a bitmap font held as data), and encodes the request. `X11.Route` turns a parsed `ButtonPress` or `MotionNotify` into a `Pointer` response to the `Gui.Window` slot, a `KeyPress` into a `Pressed` response to the same `Gui.Window` slot, a `ConfigureNotify` into `Resized` and the window manager's close message into `CloseRequested`, each keyed by the child's path, which `for` consolidates into `!(Path ==> Response)`. A key with no focused input is dropped by the library above, as in the rasteriser World, and the interceptor does not look at `Gui.Focusable` for routing. `X11.Measure` is the bitmap font's advance table, the same data `X11.Render` draws with, so a label is measured with the glyphs it will be painted with. This interceptor does not produce `Composition` keys, which would need X input methods, and it does not answer `Gui.Frames`: the slot reaches the World, which has no component for it, and `Unsupported` says so. An animated program under this World needs one more component, a clock.
 
-The `Defer` is there for the reason every interceptor needs one: an event arrives on the socket in occurrence n, and the response to a child region is a response, which cannot be in the same occurrence as the event that caused it. The interceptor fires `Defer` and routes when it comes back, in n+1 of the same turn; from the outside World's view, one chunk arrived and one turn happened.
+The `Defer` is there for the reason every interceptor needs one: an event arrives on the socket in occurrence n, and the response to a child is a response, which cannot be in the same occurrence as the event that caused it. The interceptor fires `Defer` and routes when it comes back, in n+1 of the same turn; from the outside World's view, one chunk arrived and one turn happened.
 
 Everything else is encoding and decoding bytes, which is pure, and which is the kind of code the language is bad at only in the sense that any pure language is tedious at byte-twiddling. The library is long and the interceptor is short, and that is the right proportion.
 
 ### What it proves, and what it does not
 
-It proves that the World boundary is where the design says it is. A World provides effects; the GUI library is a set of interceptors over tags; and a program written against the `Gui` vocabulary runs under the rasteriser World, the Test World and the X11 World without a line changed, because in each case something speaks the vocabulary and the program cannot tell what. It proves that a World with one component is a World, and that `Net.Socket`'s combination of a request event, a response event and a state dynamic in one tag is enough to drive a real protocol. It proves that `Defer` is the only "later" an interceptor needs, including for routing input through a layout. And it proves the sandbox argument from the other side: an interceptor that offers a window to its child while making only a socket itself is also an interceptor that could offer a fake window, or a logged one, or a window on a remote display, and the child would not know.
+It proves that the World boundary is where the design says it is. A World provides effects; the GUI library is a set of interceptors over tags; and a program written against the `Gui` vocabulary runs under the rasteriser World, the Test World and the X11 World without a line changed, because in each case something speaks the vocabulary and the program cannot tell what. It proves that a World with one component is a World, and that `Net.Socket`'s combination of a request event, a response event and a state dynamic in one tag is enough to drive a real protocol. It proves that `Defer` is the only "later" an interceptor needs, including for routing input to the window. And it proves the sandbox argument from the other side: an interceptor that offers a window to its child while making only a socket itself is also an interceptor that could offer a fake window, or a logged one, or a window on a remote display, and the child would not know.
 
 It does not prove that this is a good way to build a GUI. A `PutImage` of the damaged region per keystroke over a Unix socket is fine for a text field and bad for a video; the rasteriser in Prism is slower than one in Rust; and X11 is the protocol chosen because it is a bytes-over-socket protocol with a window in it, not because anyone should target it in 2026. The point is what it demonstrates about the boundary, and a World that speaks Wayland or a GPU is a World with a different component set and the same core.
 
@@ -1947,7 +1899,7 @@ The cases, and what each pins:
 | `args_env` | `Process.Args` and `Process.Env` printed from the build turn, with no args, several args, and an empty environment |
 | `file_then_stdin` | `Fs.File` read on `@started`, then `Cli.Stdin` built inside a `dyn`; stdin is not read until the slot exists (the harness checks the pipe is still full after the file read's turn) |
 | `unsupported` | a `Ui.Button` at the root: `note:` on stderr naming the chain, and the `Unsupported` response reaching a `Cli.Stdout` write |
-| `unsupplied_state` | a `Gui.Window` state element at the root: the error on stderr with span, exit nonzero, nothing on stdout |
+| `unsupplied_state` | a `Gui.Metrics` state element at the root: the error on stderr with span, exit nonzero, nothing on stdout |
 | `signal_handled` | a `Cli.Signals` slot; the harness sends `SIGINT` after reading a `ready` line from stdout; the program prints `interrupted` and exits 3 |
 | `signal_default` | no `Cli.Signals` slot; `SIGINT` kills the process with the OS's status |
 | `closed_pipe` | stdout piped to a reader that closes early; `EPIPE` is a `note:`, the program keeps running and exits by its own `Process.Exit` |

@@ -103,12 +103,13 @@ pub enum TokenKind {
     // literals
     Nat(u128),                      // integer-spelled; typed later
     Float(f64),                     // decimal-spelled
-    Text(Sigils, Vec<TextPart>),    // $"Count: $count": sigils plus parts
+    Text(Vec<TextPart>),            // "Count: {$count}": literal and interpolated parts
     Char(char),
     // keywords
     Let, Type, Tag, Of, Fn, Match, If, Else, For, Dyn, Intercept, Widget,
     Record, Choice, Map, Array, Unit, Test, Ignore, On, Key, Ix, Jx, Kx, Empty,
     Lt, Le, Gt, Ge,                 // the comparison keywords: a lt b
+    Not, And, Or,                   // the boolean keywords: not a, a and b, a or b
     // operators and punctuation
     Bind, Define, Hold,             // <-  =  <=
     EqEq, NotEq,                    // ==  !=
@@ -136,12 +137,12 @@ pub enum TokenKind {
 pub struct Sigils(SmallVec<[Sigil; 3]>);  // leftmost outermost: !$ is [Event, Dyn]
 pub enum Sigil { Event, Dyn, Widget, Opt }
 
-pub enum TextPart { Lit(String), Interp(Vec<Token>) }
+pub enum TextPart { Lit(String), Interp(Vec<Token>) }   // Interp: the tokens between { and the matching }
 ```
 
 Five things about this type are decisions rather than transcription.
 
-*Sigils are part of a name token.* `$count` is one token, `Lower([Dyn], "count")`, and the parser never has to glue a sigil to a name. The alternative, a sigil token followed by a name token, would make the attachment rule the parser's and would let a later pass ask whether a space had been there; the language says the space is the whole difference between `$ x` and `$x`, so the lexer answers it once. A sigil that is not attached is `FreeSigil`, and the parser treats it as a prefix operator at the precedence the language chapter gives it.
+*Sigils are part of a name token.* `$count` is one token, `Lower([Dyn], "count")`, and the parser never has to glue a sigil to a name. The alternative, a sigil token followed by a name token, would make the attachment rule the parser's and would let a later pass ask whether a space had been there; the language says the space is the whole difference between `$ x` and `$x`, so the lexer answers it once. A sigil that is not attached to a name is `FreeSigil`, and the parser treats it as a prefix operator at the precedence the language chapter gives it. That includes the `$` of `$"Increment"`: a text literal has no sigil in its token, so the `$` before the quote is a `FreeSigil` that makes the literal a constant dynamic.
 
 *The merge bar and the lambda bars are different tokens.* `\|a, b| a | b` lexes as `Backslash LambdaOpen a Comma b LambdaClose a Merge b`. The lexer knows which is which by position: a `|` immediately after `\` is `LambdaOpen`, the next `|` at bracket depth zero relative to it is `LambdaClose`, and every other `|` is `Merge`. Inside the bars only patterns appear, so there is no merge to confuse them with.
 
@@ -153,7 +154,9 @@ Five things about this type are decisions rather than transcription.
 
 `;` lexes as `Semi` and only as `Semi`. It never becomes a layout `Sep`, because the two end different things: a `Sep` ends a statement of a layout block and with it every inline block open on the line, while a `Semi` separates statements inside the innermost block, inline or layout, and leaves that block open.
 
-A text literal is one token holding a list of parts, and each interpolation part is itself a token stream, lexed with the same lexer in bracket mode (layout suspended) up to the matching `}`. The parser never sees a `$` inside text. `$"Count: $count"` is `Text([Dyn], [Lit("Count: "), Interp([Lower([Dyn], "count")])])`; the outer sigil is the literal's, the inner one belongs to the interpolated name, and both are the lexer's business.
+A text literal is one token holding a list of parts, and each interpolation part is itself a token stream, lexed with the same lexer in bracket mode (layout suspended) from a `{` up to the matching `}`. Braces inside the interpolation nest, so a map literal or a nested text can sit in it. `\{` and `\}` are literal braces and join the surrounding literal part; a `$` in text is an ordinary character, so `"cost: $5"` has one part and `"$count"` is the six characters it shows. `"Count: {$count}"` is `Text([Lit("Count: "), Interp([Lower([Dyn], "count")])])`. The literal has no sigil of its own: the sigil of the interpolated name is the name token's, and the elaborator, not the lexer, decides that a literal with a dynamic inside is a dynamic.
+
+The corpus prints a text token as `text(` followed by its parts separated by commas: a literal part as the quoted string with `\{` and `\}` replaced by the braces themselves and `\"` kept, and an interpolation as `interp(` followed by the tokens of its expression in the corpus's own notation, then `)`. A text without interpolation has one part, `text("a")`; the empty text is `text("")`; adjacent literal pieces are one part, so `"n={x}, \{ok\}"` is `text("n=", interp(ident(x)), ", {ok}")`, and a leading or trailing interpolation has no empty literal beside it, so `"{x}"` is `text(interp(ident(x)))`. Name tokens print their sigils inside the parentheses, `ident($n)`. This is the one notation for text tokens: the conformance chapter's layout corpus and the Haskell lexer's output use it unchanged.
 
 Names are checked for their convention at lex time: `isClick` is an error token with the message the language chapter gives, and a lexer that let it through would make the resolver report it later against a worse span. A qualified name is one token only when there is no whitespace anywhere in it and every part is uppercase; `Gui.*` is three tokens, `Upper(Gui)`, `Dot(binary)`, `Star`, which the parser recognises as the wildcard pattern.
 
@@ -186,7 +189,7 @@ on each raw line L with first-token column c (blank and comment-only lines are s
   emit Sep; emit L's tokens
 
 on each raw token t within a line:
-  if t is '(' '[' '{' '((' '[[' or the '${' of a text part: depth += 1   # fused brackets count once
+  if t is '(' '[' '{' '((' '[[':                         depth += 1   # fused brackets count once; a text part's braces are inside its token
   if t is ')' ']' '}' '))' ']]':                         depth -= 1
   if t is ':' and depth == 0:
       if t is the last token on its line (comments ignored): pending := true   # a layout block
@@ -274,13 +277,13 @@ pub struct QName { pub parts: Vec<Name>, pub span: Span }
 pub enum Expr {
     Var(SName), QVar(Sigils, QName),
     Nat(u128), Float(f64), Char(char), Unit, Empty, EmptyMap,
-    Text(Sigils, Vec<TextPartAst>),
+    Text(Vec<TextPartAst>),                                  // "hi {name}"; a dynamic inside makes it a dynamic, decided by the elaborator
     Array(Vec<Expr>), MapLit(Vec<(Expr, Expr)>), Tuple(Vec<Expr>),   // [[a, b]]  {k: v}  ((a, b))
     Call   { f: Box<Expr>, args: Vec<Expr> },                // F a, b   (F a, b)   x.F a, b   and a chain step
     Named  { ctor: Box<Expr>, args: Vec<(Name, Expr)> },     // Vector(x=1.0, y=2.0), Ui.Button(label="OK")
     RecordBlock { ctor: Box<Expr>, fields: Vec<(Name, Expr)> }, // Vector: x: 0.0 ...
-    Binary { op: BinOp, l: Box<Expr>, r: Box<Expr> },        // + - * / +~ ... lt le gt ge == != |  on
-    Prefix { op: PrefixOp, e: Box<Expr> },                   // + - +? and free sigils
+    Binary { op: BinOp, l: Box<Expr>, r: Box<Expr> },        // + - * / +~ ... lt le gt ge == != and or |  on
+    Prefix { op: PrefixOp, e: Box<Expr> },                   // + - +? not and free sigils
     Field  { e: Box<Expr>, field: SName },                   // e.x  e.!changed
     Index  { e: Box<Expr>, i: Box<Expr> },                   // e[i]
     Lambda { params: Vec<Pat>, body: Box<Expr> },            // \body  (params = [_])  or  \|a, b| body
@@ -346,8 +349,11 @@ block_stmt  := pat '<-' expr '<=' expr                            # hold: pat mu
 expr(hold)  := expr(chain) ('<=' expr(chain))?                    # does not associate
 expr(chain) := expr(merge) (ChainDot Upper call_args?)*            # a chain step on a continuation line
 expr(merge) := expr(on) ('|' expr(on))*
-expr(on)    := expr(cmp) ('on' expr(cmp))*
-expr(cmp)   := expr(add) (cmpop expr(add))?                       # cmpop: lt le gt ge == !=
+expr(on)    := expr(or) ('on' expr(or))*
+expr(or)    := expr(and) ('or' expr(and))*
+expr(and)   := expr(cmp) ('and' expr(cmp))*
+expr(cmp)   := expr(not) (cmpop expr(not))?                       # cmpop: lt le gt ge == !=
+expr(not)   := 'not' expr(not) | expr(add)                        # tighter than comparison: its operand reaches over arithmetic only
 expr(add)   := expr(mul) (addop expr(mul))*
 expr(mul)   := expr(prefix) (mulop expr(prefix))*
 expr(prefix):= prefixop expr(prefix) | freesigil expr(postfix) | expr(postfix)
@@ -406,11 +412,13 @@ A step's own arguments are parsed as a call's and end at the next `ChainDot`. In
 
 **A free sigil applies to the whole call after it.** `expr(prefix)` on a `FreeSigil` parses its operand at the `postfix` level, where a callable name takes its arguments, so `@ ChecklistUpdate ix, !checked` is `@ (ChecklistUpdate ix, !checked)` and `$ x + 1` is `$ (x + 1)`. An attached sigil is part of the name token and never reaches this rule.
 
+**Boolean operators.** `not` is a prefix keyword that takes an `expr(not)`, so its operand reaches over arithmetic and stops at comparison: `not $n + 1 gt limit` is `(not ($n + 1)) gt limit`, and `not a == b` is `(not a) == b`. `and` and `or` are left-associative and sit between comparison and `on`, with `and` tighter, so `x or y and z` is `x or (y and z)` and `$done or $n gt limit on !click` is `($done or ($n gt limit)) on !click`. The parser builds `Binary` and `Prefix` nodes and stops there; a non-`Bool` operand is the checker's error, whose message for the common slip says to write `not (a == b)`.
+
 **Hold does not associate.** `expr(hold)` takes at most one `<=`; a second is the error "`<=` does not associate; a hold has one initial value and one event".
 
 **Method form.** `x.F y, z` is parsed at the postfix level: `x`, then `.` with the binary flag, then an uppercase name, then arguments as for a call, and the tree is `Call { f: F, args: [x, y, z] }`. Method form associates left: `x.F.G` is `G (F x)`.
 
-**The pronoun shorthand applies wherever `_` is in scope.** A prefix `.` before a lowercase name is a field of the pronoun, before an uppercase name the method applied to the pronoun, and a prefix `[i]` indexes the pronoun: `\.done`, `\.Len`, `\[0]`, `\Not .done`, and the same inside a `for` body or a `dyn` body or a `match` arm that binds `_`. All are `Field`, `Call` and `Index` nodes over `Var(_)`. The parser does not track which constructs bind `_`: it builds these nodes wherever the lexer set the `prefix` flag, and the resolver, which owns scopes, finds the binder. Where no `_` is in scope the resolver reports "no pronoun here; `.x` means `_.x`, so write `_.x`, or put a chain step on its own line", so a stray space never quietly turns a method call into a pronoun read. A `.Method` that starts a continuation line is a `ChainDot`, never a prefix `Dot`, so indentation separates the two readings.
+**The pronoun shorthand applies wherever `_` is in scope.** A prefix `.` before a lowercase name is a field of the pronoun, before an uppercase name the method applied to the pronoun, and a prefix `[i]` indexes the pronoun: `\.done`, `\.Len`, `\[0]`, `\not .done`, and the same inside a `for` body or a `dyn` body or a `match` arm that binds `_`. All are `Field`, `Call` and `Index` nodes over `Var(_)`. The parser does not track which constructs bind `_`: it builds these nodes wherever the lexer set the `prefix` flag, and the resolver, which owns scopes, finds the binder. Where no `_` is in scope the resolver reports "no pronoun here; `.x` means `_.x`, so write `_.x`, or put a chain step on its own line", so a stray space never quietly turns a method call into a pronoun read. A `.Method` that starts a continuation line is a `ChainDot`, never a prefix `Dot`, so indentation separates the two readings.
 
 **Record forms.** `Vector 1.0, 2.0` is an ordinary `Call` and the elaborator learns that `Vector` is a constructor. `Vector(x=1.0, y=2.0)` is `Named`, recognised because a qualified or uppercase name is followed immediately (no whitespace) by `(` and the first thing inside is `lower =`. `Vector:` followed by a block of `field: value` statements is `RecordBlock`. Element construction is the same three forms with a qualified name: `Ui.Button(label="OK")`, `Ui.Button "OK"`, `Ui.Button:` block. A tag with no fields is a bare qualified name, `Clock`, and parses as `QVar`.
 
@@ -574,6 +582,7 @@ pub enum TExpr {
     Array(Vec<TExpr>, Type), MapLit(Vec<(TExpr, TExpr)>, Type), Tuple(Vec<TExpr>),
     TextCat(Vec<TExpr>),                                       // interpolation, all parts Text
     Trait { which: TraitOp, at: Type, args: Vec<TExpr> },      // Num.Add[Int] a, b; Eq[Text] a, b
+    Bool  { op: BoolOp, args: Vec<TExpr> },                    // Bool.Not a; Bool.And a, b; Bool.Or a, b (operands are Bool)
     Dict  { which: Trait, at: Type },                          // the hidden argument for a bound
     Maybe { over: Vec<TExpr>, body: Box<TExpr> },              // ? lifting at the plain layer
     // the lifts: every one explicit
@@ -625,7 +634,7 @@ The elaborator's walk is bidirectional in exactly one place, the kind of a lambd
 
 ### The sigil lattice and lifting
 
-Every operation and application is lifted by a rule read off its operands' outermost sigils, and the elaborator applies that rule as a table lookup, producing one node per lift:
+Every operation and application is lifted by a rule read off its operands' outermost sigils, and the elaborator applies that rule as a table lookup, producing one node per lift. The boolean operators are operations like `+`: `not $done` is a `DMap` over `[$done]` with the body `\|d| Bool.Not d`, and `$a and !b` is a `Tag`.
 
 | Operands' outer kinds | Result | Node |
 |---|---|---|
@@ -639,11 +648,11 @@ The body is the plain operation with the lifted operands replaced by lambda para
 
 `match` lifts like application: `match $x:` with plain arms is a `DMap` over `[$x]` with the match as its body; `match !e:` is a `Map`; dynamics mentioned in the arms join the `dyns` of a `Tag`. A `match` with a widget arm requires a plain scrutinee, and the error points at `dyn`.
 
-`?` lifts at the plain layer, inside the time functors, and the node is `Maybe { over, body }`: `a / b + 1` is `Maybe { over: [Num.Div a, b], body: \|q| Num.Add q, 1 }` of type `?Nat`. The elaborator finds a `?` operand where a plain one is wanted, wraps, and continues; the `?` propagates outward until a binding names it or a `match` eliminates it. `$a / $b` is `DMap { over: [$a, $b], body: \|a, b| Num.Div a, b }` of type `$?Nat`, since the time functor lifts first and the `?` is in the body's result. `?$x + 1` is a type error: an optional dynamic is matched, not lifted.
+`?` lifts at the plain layer, inside the time functors, and the node is `Maybe { over, body }`: `a / b + 1` is `Maybe { over: [Num.Div a, b], body: \|q| Num.Add q, 1 }` of type `?Nat`; the `?` comes from `/` at `Nat` and `Int`, which fails on a zero divisor. At `Float` the same `/` is plain and follows IEEE (infinities and NaN, never failing), so `x / y` over two `Float`s has no `Maybe` and `Num.Div[Float] x, y` is an ordinary node. The elaborator finds a `?` operand where a plain one is wanted, wraps, and continues; the `?` propagates outward until a binding names it or a `match` eliminates it. `$a / $b` is `DMap { over: [$a, $b], body: \|a, b| Num.Div a, b }` of type `$?Nat`, since the time functor lifts first and the `?` is in the body's result. `?$x + 1` is a type error: an optional dynamic is matched, not lifted.
 
 **Field access and indexing lift like application.** `$slot.element` is `DMap { over: [$slot], body: \|s| s.element }`; `!!panes.!inbox` is `Map { event: !!panes, body: \|p| p.!inbox }` of type `!!Mail` when `inbox` is `!Mail`; `$items[3]` is `DMap` with an `Index` body, of type `$?Item`. The parser has already written the pronoun shorthand `\.x` and `\[i]` as accesses on `_`, so they lift like any other.
 
-**Interpolation lifts.** A text literal with parts is `TextCat` over its parts, each converted to `Text` by the canonical rendering of its type (`ToText[Int]` for an `Int`, the identity for `Text`, an error for anything else), and the whole is lifted by the table: `"Count: $count"` is `DMap { over: [$count], body: \|c| TextCat ["Count: ", ToText[Int] c] }`, `"Got $!line"` is a `Map`, and `$"Increment"` is `Const "Increment"`, a constant dynamic with nothing to lift over. The sigil on the literal is checked against the lifted kind, so `$"Got $!line"` is the sigil error.
+**Interpolation lifts.** A text literal with parts is `TextCat` over its parts, each converted to `Text` by the canonical rendering of its type (`ToText[Int]` for an `Int`, the identity for `Text`, an error for anything else), and the whole is lifted by the table: `"Count: {$count}"` is `DMap { over: [$count], body: \|c| TextCat ["Count: ", ToText[Int] c] }` and `"Got {!line}"` is a `Map`: a literal that interpolates a dynamic is a dynamic, and one that interpolates an event is an event, with no sigil written on the literal. Two interpolations of different functor kinds follow the lifting rules (a dynamic and an event is an event, two events an error). `$"Increment"` is a free `$` applied to a literal with nothing to interpolate, `Const "Increment"`, a constant dynamic; the `$` is the prefix operator, not part of the token, and `$"Got {!line}"` is the sigil error because the literal is an event.
 
 **Lifting over `@`.** A widget operand is built, not computed over, and the one case with a meaning is the application of a widget function to a dynamic where the function wants a plain value. Take a button declared over plain text, `@Button: fn Text -> @!Click`. `@Button $label` is then an application of a widget function to a dynamic argument, and its type by the table would be `$@!Click`, a dynamic of widgets. Binding a dynamic of widgets with `<-` lifts to `dyn`, and the elaborator inserts the node:
 
@@ -675,7 +684,7 @@ An element whose field is a dynamic is the same rule one level down: `@Element U
 
 `Eq`, `Ord` and `Num` are resolved by inference and nothing else is overloaded. The elaborator keeps a constraint set alongside unification: `Num t` for every arithmetic operator and every numeric literal, `Eq t` for every use of `==`, `!=` and `$Distinct`, `Ord t` for every comparison operator (`lt`, `le`, `gt`, `ge`), every `Sort`, and every map key. Constraints are solved when their type variable is resolved:
 
-- At a concrete type, the constraint is checked against the fixed table (`Num`: `Nat`, `Int`, `Float`; `Eq`: every plain type with no function and no functor, structurally; `Ord`: primitives, text, chars, tuples and arrays of ordered types, declared types whose parts are ordered, and extensible-variant values by tag name then fields) and the operation node records the type: `Trait { which: Add, at: Int, args }`. The closure compiler then picks the one implementation for that type, and nothing is looked up at runtime.
+- At a concrete type, the constraint is checked against the fixed table (`Num`: `Nat`, `Int`, `Float`; `Eq`: every plain type with no function and no functor, structurally; `Ord`: primitives (`Float` by IEEE totalOrder, so it can key a map), text, chars, tuples and arrays of ordered types, closed choices by declaration order, declared types whose parts are ordered, and extensible-variant values by tag name then fields) and the operation node records the type: `Trait { which: Add, at: Int, args }`. The closure compiler then picks the one implementation for that type, and nothing is looked up at runtime.
 - At a type variable that is generalised with a bound, `let Max<a: Ord>: fn a, a -> a`, the constraint becomes a hidden parameter of the function: the scheme is `forall a. Ord a => ...`, the body's `x lt y` is `Trait { which: Lt, at: a, args }` whose implementation is the hidden argument `Dict { Ord, a }`, and every call to `Max` at a concrete type passes `Dict { Ord, Text }` first. This is dictionary passing for three dictionaries, and the dictionary is an ordinary function value, erased like everything else.
 - At a type variable with no bound in scope, the error names the operation and the variable: "`lt` needs `Ord a`; add the bound `<a: Ord>` to `Max`".
 - At a type variable that is never resolved and never generalised, which is the case of an integer-spelled literal nothing pins, the variable defaults to `Int` at the end of the item, and the text form prints the literal as `Int` like any other.
@@ -706,7 +715,7 @@ Over an array the same node has `keyed: false` and `K = Nat`. Outside a widget b
 
 ### Build-time and occurrence-time marks
 
-Every binding of a widget block gets a `Mark`. The rule is one line: a binding is `Occ` when the root node of its definition is a lift (`DMap`, `Map`, `Tag`, `Leftmost`, `Switch`, `Join`, `Updated`, `Distinct`, `HoldFirst`, or a `For` with `Event` or `Dynamic` consolidation); it is `Build` otherwise (a `Bind`, a `Hold`, a `Placeholder`, a `Let` of a plain value, of a `Const`, of a widget, of a function). A `Build` binding's step runs once when the node is built; an `Occ` binding is a graph node the runtime recomputes. A `Build` binding may contain `Occ` subexpressions, as `@Label $"Count: $count"` contains a `DMap` as its argument; the mark is on the binding and says when the binding's own step runs, and the nested lift is a node the closure compiler constructs on the way.
+Every binding of a widget block gets a `Mark`. The rule is one line: a binding is `Occ` when the root node of its definition is a lift (`DMap`, `Map`, `Tag`, `Leftmost`, `Switch`, `Join`, `Updated`, `Distinct`, `HoldFirst`, or a `For` with `Event` or `Dynamic` consolidation); it is `Build` otherwise (a `Bind`, a `Hold`, a `Placeholder`, a `Let` of a plain value, of a `Const`, of a widget, of a function). A `Build` binding's step runs once when the node is built; an `Occ` binding is a graph node the runtime recomputes. A `Build` binding may contain `Occ` subexpressions, as `@Label "Count: {$count}"` contains a `DMap` as its argument; the mark is on the binding and says when the binding's own step runs, and the nested lift is a node the closure compiler constructs on the way.
 
 Why the mark is on the tree and not left for the compiler to recompute: it is a meaning. `let x = ExpensiveF a` runs once per build and `let $y = ExpensiveF $a` runs once per change, and a reader of the text form should see which without re-deriving the lifting rule. A binding that moves between marks is the kind of regression a golden catches and a reviewer reads.
 
@@ -925,7 +934,7 @@ One `Step` per typed-AST node kind, each one call on the builder or one construc
 | `Switch { events }` | `Switch` | `events.switch_hold()`: non-prompt; adopts the new inner at commit |
 | `Join { dyns }` | `Join` | `dyns.join()`: prompt on both outer and inner |
 | `Updated { dynamic }` | `Updated` | `dynamic.event()`: the change event is a value the dynamic already has; no node is built |
-| `Distinct { dynamic, eq }` | `Distinct` | a derived dynamic whose change event is the source's filtered by `!eq(old, new)` against the value before the occurrence; one node, with the equality closure |
+| `Distinct { dynamic, eq }` | `Distinct` | a derived dynamic whose change event is the source's filtered by `eq old, new` against the value before the occurrence; one node, with the equality closure |
 | `Started` | `Started` | the builder's done event filtered to `unit`: fires once at `height + 1` in the build occurrence |
 | `Dyn { dynamic, block }` | `Dyn` | `dynamic.map(|v| IrWidget { block, captures: captures + [v] }).dynamic_widget()`: a dynamic of compiled widgets handed to the runtime's `dynamic_widget`; its event is the `dyn`'s result event |
 | `For { coll, block, kind }` | `For` | `coll.list_widget(|key, per_key| IrWidget { block, captures: captures + [key, per_key] }, kind)`: one child node per key, consolidated by `kind` |
@@ -1041,7 +1050,7 @@ expr  := atom
        | 'switch' expr | 'join' expr | 'updated' expr | 'distinct' expr expr
        | 'hold_first' expr
        | 'dyn' expr lambda                             # lambda's body is a widget block
-       | 'for' expr kind lambda                        # kind: plain | event | dynamic
+       | 'for' expr kind birth lambda                  # kind: plain | event | dynamic; birth: birth | no_birth, the can-fire-at-birth flag
        | 'element' (tag '{' fields '}' | expr) parts (expr)?   # parts: the tag's, or 'generic'; then the request if any
        | 'intercept' expr expr expr
        | 'started' | 'kind' expr
@@ -1052,6 +1061,7 @@ expr  := atom
        | 'if' expr expr expr
        | name '(' exprs ')' | name '{' field '=' expr, ... '}'  # application; constructor or element
        | trait '[' type ']' exprs                      # Num.Add[Int] c, d   Eq[Text] a, b   dict[Ord a]
+       | 'Bool.Not' expr | ('Bool.And' | 'Bool.Or') expr ',' expr   # not a, a and b, a or b
        | 'cat' '[' exprs ']'                           # text interpolation
        | expr '.' field | expr '[' expr ']'
        | lambda
@@ -1060,7 +1070,9 @@ lambda:= '\' captures? '|' params '|' expr            # captures: '[' names ']' 
        | '\' captures? '|' params '|' '@widget:' block
 ```
 
-Application prints with parentheses and commas, `Insert(items, id, todo)`, because the text form has no precedence and no paren-less calls: one syntax per node, read by a parser with no table. Literals print with their type, `0:Int`, `1.5:Float`, `"ok"` (text needs none). A `Trait` node prints the operation, the type in brackets, and the arguments, so that `+` resolved at `Int` and `+` resolved at `Float` are visibly different lines.
+Application prints with parentheses and commas, `Insert(items, id, todo)`, because the text form has no precedence and no paren-less calls: one syntax per node, read by a parser with no table. Literals print with their type, `0:Int`, `1.5:Float`, `"ok"` (text needs none). A `Trait` node prints the operation, the type in brackets, and the arguments, so that `+` resolved at `Int` and `+` resolved at `Float` are visibly different lines. The boolean operators have no type to resolve and print as `Bool.Not b`, `Bool.And a, b` and `Bool.Or a, b`.
+
+The `for` node prints the elaborator's can-fire-at-birth flag (the `birth_firing` field of the node) between the consolidation kind and the block: `birth` when the row block can fire in the occurrence its key appears, `no_birth` when it cannot, and `no_birth` on a `plain` kind, whose rows build nothing. The flag is a line of the dump and not a note beside it because the Haskell evaluator chooses its `coincidence` from it and the cycle check reads it; a frontend that computed a different flag would otherwise differ only in an invisible field.
 
 ### The counter, dumped
 
@@ -1082,7 +1094,7 @@ The source, with the two library widgets it uses:
     !decrement <- @Button $"Decrement"
     let !delta = -1 on !decrement | +1 on !increment
     $count <- 0 <= $count + !delta
-    @Label $"Count: $count"
+    @Label "Count: {$count}"
 ```
 
 `prism dump counter.prism` after elaboration:
@@ -1120,6 +1132,28 @@ After closure conversion, the same dump with `--converted` adds the capture list
 ```
 
 A program whose lift reads a sibling would show it: `\[$total]|d| Num.Add[Int] d, $total` says the leaf captures `$total` from the environment, and the lint has checked that `$total` is bound earlier in group order.
+
+### The `for` flag, dumped
+
+A `for` is the one node whose line says something the source does not: whether its row block can fire in the occurrence a key appears. Two programs differ only in that, and their dumps differ in one word.
+
+```prism
+@deletes: fn $(Nat ==> Text) -> @!(Nat ==> Click) = \|$items| @widget:
+    !rows <- for $items:
+        !delete <- @Button $"Delete"
+        @ delete
+    @ !rows
+```
+
+```
+@deletes: fn $(Nat ==> Text) -> @!(Nat ==> Click) = \|$items| @widget:                  @1:1
+  !rows: !(Nat ==> Click) [occ] g1 = for $items event no_birth \|_| @widget:             @2:5
+    !delete: !Click [build] g1 = bind @Button(const "Delete")                            @3:9
+    @ !delete
+  @ !rows
+```
+
+The row's result is an element's response, which the runtime routes against the list as the occurrence opened, so a new row cannot fire it at birth and the flag is `no_birth`. Replace the `@Button` with a widget that is a parameter of `@deletes`, whose body the elaborator cannot see, and the same line reads `for $items event birth \|_| @widget:`; so does a row that returns the event of a `dyn` or an `@started`-derived event. The flag is also what the cycle check reads for the edge from the collection to the consolidated event.
 
 ### The dynamic-of-widgets lift, dumped
 
