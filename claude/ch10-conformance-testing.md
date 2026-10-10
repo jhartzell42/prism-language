@@ -197,20 +197,22 @@ test unsupplied_state_fails_at_creation: Test @needs_secret: array:
     Errors Error(kind=UnsuppliedState, element=Secret, ..)
 ```
 
-That script has no `State Secret` before the build, and `Secret` declares no default, so the slot's creation in occurrence 0 is the error and turn 0 is the turn that ends in it.
+That script has no `State Secret` before the build, so the slot's creation in occurrence 0 is the error and turn 0 is the turn that ends in it. The same script with `State Secret, "open"` as its first line builds a label showing `open`.
 
-### Declared defaults
+### Every state element needs a `State` first
 
-A state element with no `State` step has the value its tag declares as a default, if it declares one; otherwise the slot's creation is the unsupplied-state error above. The declaration adds one line to the tag:
+A tag declaration says what an element means and nothing else, so a state element has no value until someone supplies one. In the Test World the supplier is the script: a program that creates a `Clock` at build has `State Clock, Instant 0` as the first line of its test, and a program that creates one later, say on a click, has the step before the `Send`. Without it the slot's creation is the unsupplied-state error above.
 
 ```prism
-tag Fs.Contents of Element:
-    path: Text
-    state: Contents
-    default: Unavailable
+test a_clock_needs_a_value_before_the_build: Test @stopwatch: array:
+    Errors Error(kind=UnsuppliedState, element=Clock, ..)
+
+test and_has_one_after_it: Test @stopwatch: array:
+    State Clock, Instant 0
+    Expect Ui.Label(text="0 ms")
 ```
 
-A default is a convenience for the Test World and nothing else reads it; a real World answers its oracle from its own knowledge and a tag with a default is not thereby answerable by a World that lacks the component. The reason to have it is that most tests of a program with a clock are not about the clock, and `State Clock, Instant 0` at the top of every one of them would be noise. The spelling is tentative because it is the only thing in a tag declaration that is not about the element's meaning; if it ends up elsewhere, say in the test file as `Default Clock, Instant 0`, the scripts change by one line each.
+The line is noise in a test that is not about the clock, and it is also the honest line: a real World answers its oracle from its own knowledge, a World without the component cannot answer at all, and the script says which of those it is pretending to be. Suppose instead each tag could declare a default value. Every test would then pass without a line that a real World has to earn, and a program that works under the Test World would fail on the first World without the component, which is a bug the suite exists to catch before it ships.
 
 ### Depth: the GUI library's convention
 
@@ -263,7 +265,6 @@ tag Ui.Button of Element:
 
 tag Clock of Element:
     state: Instant
-    default: Instant 0
 
 tag Defer of Element:
     requests: !unit
@@ -288,7 +289,6 @@ tag Fs.File of Element:
 tag Fs.Contents of Element:
     path: Text
     state: Contents
-    default: Unavailable
 
 @Label: fn $Text -> @unit = \@widget:
     @Element Ui.Label(text=$_)
@@ -309,13 +309,13 @@ tag Fs.Contents of Element:
     !inc <- @Button $"Inc"
     !dec <- @Button $"Dec"
     $n <- 0 <= $n + (-1 on !dec | +1 on !inc)
-    @Label $"n=$n"
+    @Label "n={$n}"
 
 @right_wins:
     !inc <- @Button $"Inc"
     !dec <- @Button $"Dec"
     $n <- 0 <= $n + (+1 on !inc | -1 on !dec)
-    @Label $"n=$n"
+    @Label "n={$n}"
 
 test leftmost_takes_the_left: Test @left_wins: array:
     Together:
@@ -339,7 +339,7 @@ Two programs that differ in the order of two operands give two answers, and the 
     !b <- @Button $"Go"
     $left <- 0 <= $left + 1 on (!never | !b)
     $right <- 0 <= $right + 1 on (!b | !never)
-    @Label $"$left $right"
+    @Label "{$left} {$right}"
 
 test never_is_the_identity: Test @never_identity: array:
     Send Ui.Button(label="Go"), click
@@ -370,7 +370,7 @@ The `Push` is a turn with no click in it, which is the only way a script gets a 
     !b <- @Button $"Go"
     $n <- 0 <= $n + 1 on !b
     $seen <- 0 <= $n on !b
-    @Label $"n=$n seen=$seen"
+    @Label "n={$n} seen={$seen}"
 
 test a_tag_reads_the_value_before: Test @tag_reads_before: array:
     Send Ui.Button(label="Go"), click
@@ -391,7 +391,7 @@ test a_tag_reads_the_value_before: Test @tag_reads_before: array:
     $n <- 0 <= $n + 1 on !b
     let $a = $n + 1
     let $b = $a * 2
-    @Label $"$a $b"
+    @Label "{$a} {$b}"
 
 test derived_dynamics_are_prompt: Test @derived_prompt: array:
     Expect Ui.Label(text="1 2")
@@ -409,7 +409,7 @@ test derived_dynamics_are_prompt: Test @derived_prompt: array:
     !built <- dyn $sum:
         @ unit
     $k <- 0 <= $k + 1 on !built
-    @Label $"builds=$k"
+    @Label "builds={$k}"
 
 test a_diamond_changes_once: Test @diamond: array:
     Expect Ui.Label(text="builds=1")
@@ -426,7 +426,7 @@ test a_diamond_changes_once: Test @diamond: array:
     !started <- @started
     $x <- 0 <= 1 on !started
     $y <- 0 <= $x on !started
-    @Label $"x=$x y=$y"
+    @Label "x={$x} y={$y}"
 
 test a_hold_adopts_a_build_occurrence_firing: Test @hold_adopts: array:
     Expect Ui.Label(text="x=1 y=0")
@@ -443,7 +443,7 @@ test a_hold_adopts_a_build_occurrence_firing: Test @hold_adopts: array:
     !built <- dyn $v:
         @ unit
     $k <- 0 <= $k + 1 on !built
-    @Label $"builds=$k"
+    @Label "builds={$k}"
 
 test an_equal_value_is_still_a_change: Test @same_value: array:
     Send Ui.Button(label="Same"), click
@@ -462,7 +462,7 @@ This pins a sentence that is easy to get the wrong way round when an implementat
     $keys <- {} <= (Insert $keys, Size $keys, unit) on !add
     for $keys:
         $hits <- 0 <= $hits + 1 on !add
-        @Label $"$key: $hits"
+        @Label "{$key}: {$hits}"
 
 test a_new_block_sees_the_event_that_made_it: Test @sees_all_of_n: array:
     Send Ui.Button(label="Add"), click
@@ -484,7 +484,7 @@ The click that inserts key 0 is the click that key 0's block counts: the block b
     dyn $n:
         let outer = _
         dyn $tens:
-            @Label $"outer=$outer inner=$_"
+            @Label "outer={$outer} inner={$_}"
         @ unit
     @ unit
 
@@ -504,7 +504,7 @@ The outer `dyn` rebuilds on the click; the inner one is built inside the new blo
 @clicker:
     !c <- @Button $label
     $count <- 0 <= $count + 1 on !c
-    let $label = $"Clicked $count times"
+    let $label = "Clicked {$count} times"
 
 test a_button_is_clicked_under_its_old_label: Test @clicker: array:
     Send Ui.Button(label="Clicked 0 times"), click
@@ -536,7 +536,7 @@ test a_pure_widget_builds_nothing: Test @pure_five: array:
     let @counted = @widget:
         !c <- @Button $"Hit"
         $n <- 0 <= $n + 1 on !c
-        @Label $"n=$n"
+        @Label "n={$n}"
     @counted
     @counted
 
@@ -556,7 +556,7 @@ A `Send Ui.Button(label="Hit")` here would fail, since two slots match, and that
     dyn $gen:
         !hit <- @Button $"Hit"
         $n <- 0 <= $n + 1 on !hit
-        @Label $"gen $_: $n"
+        @Label "gen {$_}: {$n}"
     @ unit
 
 test a_rebuild_resets_the_holds_inside: Test @reset_on_rebuild: array:
@@ -574,7 +574,7 @@ test a_rebuild_resets_the_holds_inside: Test @reset_on_rebuild: array:
 @starter:
     !started <- @started
     $n <- 0 <= $n + 1 on !started
-    @Label $"started $n"
+    @Label "started {$n}"
 
 @started_result:
     @started
@@ -622,7 +622,7 @@ test a_rebuild_restarts: Test @restarter: array:
     !vals <- dyn $n:
         @ _ * 100
     $last <- -1 <= !vals
-    @Label $"last=$last"
+    @Label "last={$last}"
 
 test dyn_fires_with_each_build_result: Test @dyn_values: array:
     Expect Ui.Label(text="last=0")
@@ -640,7 +640,7 @@ test dyn_fires_with_each_build_result: Test @dyn_values: array:
         !started <- @started
         @ !started
     $heard <- 0 <= $heard + 1 on !Switch !!starts
-    @Label $"heard=$heard"
+    @Label "heard={$heard}"
 
 test a_switch_does_not_hear_the_birth: Test @swallowed: array:
     Expect Ui.Label(text="heard=0")
@@ -655,7 +655,7 @@ Each generation fires `!started` in the occurrence it is born, and `!Switch` ado
 ```prism
 @toggle:
     !flip <- @Button $"Flip"
-    $on <- False <= (Not $on) on !flip
+    $on <- False <= (not $on) on !flip
     !!pressed <- dyn $on:
         if _:
             @Label $"On"
@@ -663,7 +663,7 @@ Each generation fires `!started` in the occurrence it is born, and `!Switch` ado
         else:
             @Button $"Press me"
     $presses <- 0 <= $presses + 1 on !Switch !!pressed
-    @Label $"presses=$presses"
+    @Label "presses={$presses}"
 
 test a_rebuilt_slot_is_heard_from_the_next_occurrence: Test @toggle: array:
     Send Ui.Button(label="Press me"), click
@@ -686,7 +686,7 @@ test a_rebuilt_slot_is_heard_from_the_next_occurrence: Test @toggle: array:
         $n <- _ * 100 <= $n + 1 on !hit
         @ $n
     $$cur <- $ 0 <= !$inner
-    @Label $"cur=${$Join $$cur}"
+    @Label "cur={$Join $$cur}"
 
 test join_follows_inner_and_outer_changes: Test @join_prompt: array:
     Expect Ui.Label(text="cur=0")
@@ -709,7 +709,7 @@ The hit changes the inner dynamic; the join changes in that occurrence. The flip
         !h <- @Button ($ key)
         @ key on !h
     $last <- 0 <= Size !hits
-    @Label $"fired $last"
+    @Label "fired {$last}"
 
 test for_consolidates_simultaneous_firings: Test @for_events: array:
     Together:
@@ -731,7 +731,7 @@ test for_consolidates_simultaneous_firings: Test @for_events: array:
         @ $n
     $caps <- for $m:
         @ Upper key
-    @Label $"total=${Fold $counts, 0, \|acc, k, v| acc + v} ${Fold $caps, "", \|acc, k, v| Concat [[acc, v]]}"
+    @Label "total={Fold $counts, 0, \|acc, k, v| acc + v} {Fold $caps, "", \|acc, k, v| Concat [[acc, v]]}"
 
 test for_consolidates_dynamics_and_values: Test @for_dynamics: array:
     Expect Ui.Label(text="total=0 AB")
@@ -747,7 +747,7 @@ test for_consolidates_dynamics_and_values: Test @for_dynamics: array:
 @Tally: fn $Text -> @unit = \@widget:
     !hit <- @Button $_
     $n <- 0 <= $n + 1 on !hit
-    @Label $"$_: $n"
+    @Label "{$_}: {$n}"
 
 @tallies:
     !add <- @Button $"Add c"
@@ -780,7 +780,7 @@ test state_survives_a_neighbours_removal: Test @tallies: array:
         !started <- @started
         @ key on !started
     $seen <- 0 <= $seen + Size !starts
-    @Label $"seen=$seen"
+    @Label "seen={$seen}"
 
 test a_parent_sees_a_new_key_at_once: Test @new_key_seen: array:
     Expect Ui.Label(text="seen=0")
@@ -801,7 +801,7 @@ test a_parent_sees_a_new_key_at_once: Test @new_key_seen: array:
     for $xs:
         !h <- @Button $_
         $n <- 0 <= $n + 1 on !h
-        @Label $"$key: $n"
+        @Label "{$key}: {$n}"
 
 test an_array_block_keeps_state_by_position: Test @indexed: array:
     Send Ui.Button(label="b"), click
@@ -823,7 +823,7 @@ After the insertion at the front, the block at index 1 holds `"a"` and still has
     !started <- @started
     !r <- @Element Fs.File(path="/f", requests=(Read on !started))
     $got <- "none" <= "some" on !r
-    @Label $"got=$got"
+    @Label "got={$got}"
 
 test a_request_is_answered_later: Test @requester: array:
     Requested Fs.File(path="/f"), Read
@@ -875,7 +875,7 @@ The child's buttons are created in occurrence 0; `@Eager`'s blocks for them are 
 ```prism
 @clock_label:
     $t <- @Element Clock
-    @Label $"t=${$t.value}"
+    @Label "t={$t.value}"
 
 test state_is_there_at_creation: Test @clock_label: array:
     State Clock, Instant 5
@@ -891,7 +891,7 @@ test state_is_there_at_creation: Test @clock_label: array:
     dyn $shown:
         if _:
             $t <- @Element Clock
-            @Label $"t=${$t.value}"
+            @Label "t={$t.value}"
         else:
             @Label $"hidden"
     @ unit
@@ -913,7 +913,7 @@ The `State` before the `Send` makes the `Send`'s turn a turn with a push and a r
 @two_clocks:
     $a <- @Element Clock
     $b <- @Element Clock
-    @Label $"${$a.value} ${$b.value}"
+    @Label "{$a.value} {$b.value}"
 
 test equal_elements_share_one_state: Test @two_clocks: array:
     State Clock, Instant 1
@@ -937,7 +937,7 @@ test equal_elements_share_one_state: Test @two_clocks: array:
     $t <- @Element Clock
     !inc <- @Button $"Inc"
     $n <- 0 <= $n + 1 on !inc
-    @Label $"n=$n t=${$t.value}"
+    @Label "n={$n} t={$t.value}"
 
 test forwarding_is_the_identity: Test (@Transparent (@Transparent @counter_with_clock)): array:
     State Clock, Instant 1
@@ -991,7 +991,7 @@ test a_supplier_asks_the_outer_world: Test (@Sandbox "/jail", @peek_home): array
 @two_readers:
     $a <- @Element Fs.Contents(path="/x")
     $b <- @Element Fs.Contents(path="/x")
-    @Label $"${ShowContents $a} ${ShowContents $b}"
+    @Label "{ShowContents $a} {ShowContents $b}"
 
 test equal_slots_share_a_supplier: Test (@Supplied @two_readers): array:
     State Fs.Contents(path="/x"), Known "v1"
@@ -1104,7 +1104,7 @@ let UiOnly: fn (Path ==> Slot) -> Path ==> Element = \|slots|
     MapValues (Filter slots, \IsUi _.element), \_.element
 
 let NonUi: fn (Path ==> Slot) -> Path ==> Slot = \|slots|
-    Filter slots, \Not (IsUi _.element)
+    Filter slots, \not (IsUi _.element)
 
 let ToMap: fn ChildInput -> Path ==> Response = \|c|
     {c.path: c.response}
@@ -1186,7 +1186,7 @@ test element_roundtrip: Test @echo: array:
     !decrement <- @Button $"Decrement"
     let !delta = -1 on !decrement | +1 on !increment
     $count <- 0 <= $count + !delta
-    @Label $"Count: $count"
+    @Label "Count: {$count}"
 
 test counter: Test @counter: array:
     Expect Ui.Label(text="Count: 0")
@@ -1237,7 +1237,7 @@ test accumulator: Test @accumulator: array:
 @counted:
     !increment <- @Button $"Increment"
     $count <- 0 <= $count + 1 on !increment
-    @Label $"Count: $count"
+    @Label "Count: {$count}"
     @ $count
 
 @Swallow: fn @a -> @a = \|@child| @widget:
@@ -1301,7 +1301,7 @@ tag Net.Listener of Element:
         @ ((!b, !l))
     $oks <- 0 <= $oks + 1 on !ok
     $conns <- 0 <= $conns + 1 on !conn
-    @Label $"ok=$oks conns=$conns"
+    @Label "ok={$oks} conns={$conns}"
 
 test vbox_wraps_gui: Test @panel: array:
     ExpectTop Ui.VBox(..)
@@ -1432,7 +1432,7 @@ There is no test here for a field of the wrong type falling through to the next 
     $as <- 0 <= $as + 1 on !a
     $bs <- 0 <= $bs + 1 on !b
     $last <- "" <= "A" on !a | "B" on !b
-    @Label $"$as $bs $last"
+    @Label "{$as} {$bs} {$last}"
 
 test together_delivers_all: Test @pair: array:
     Together:
@@ -1496,10 +1496,10 @@ The last script looks trivial and is the creation rule in its everyday form. The
         !started <- @started
         !resp <- @Element Fs.File(path="/data", requests=(Read on !started))
         $got <- "none" <= "some" on !resp
-        @Label $"gen $_: $got"
+        @Label "gen {$_}: {$got}"
         @ !started
     $heard <- 0 <= $heard + 1 on !Switch !!births
-    @Label $"heard=$heard"
+    @Label "heard={$heard}"
 
 test birth_is_swallowed_but_the_request_is_not: Test @reloader: array:
     Expect Ui.Label(text="heard=0")
@@ -1529,11 +1529,11 @@ type Change = choice:
     $items <- {} <= (Insert $items, $next, False) on !add
     !events <- for $items:
         !started <- @started
-        !toggle <- @Button $"Toggle $key"
+        !toggle <- @Button "Toggle {$key}"
         @ Opened on !started | Toggled on !toggle
     $opened <- 0 <= $opened + Size (Filter !events, \_ == Opened)
     $toggled <- 0 <= $toggled + Size (Filter !events, \_ == Toggled)
-    @Label $"opened=$opened toggled=$toggled"
+    @Label "opened={$opened} toggled={$toggled}"
 
 test a_new_key_reports_in_its_birth_occurrence: Test @registry_count: array:
     Send Ui.Button(label="Add"), click
@@ -1572,9 +1572,11 @@ test state_is_sampled_when_the_slot_is_made: Test @watcher: array:
     Send Ui.Button(label="Open"), click
     Expect Ui.Label(text="v1")
 
-test the_default_answers_when_nothing_was_set: Test @watcher: array:
+test a_slot_made_with_no_value_set_is_the_error: Test @watcher: array:
+    Expect Ui.Label(text="closed")
     Send Ui.Button(label="Open"), click
-    Expect Ui.Label(text="-")
+    Errors Error(kind=UnsuppliedState, element=Fs.Contents(path="/cfg"), ..)
+    Expect Ui.Label(text="closed")
 
 test a_snapshot_set_while_closed_is_seen_on_open: Test @watcher: array:
     State Fs.Contents(path="/cfg"), Known "v1"
@@ -1583,7 +1585,7 @@ test a_snapshot_set_while_closed_is_seen_on_open: Test @watcher: array:
     Expect Ui.Label(text="v2")
 ```
 
-The third script sets the snapshot twice before one turn. The oracle answers `v1`, the previous snapshot; the push in the same occurrence is to `v2`; the slot ends the turn at `v2`. A reader who expected `v1` has the order of oracle and push backwards, and a reader who expected the second `State` to be lost has forgotten that a World gathers everything that changed into one snapshot per occurrence.
+The second script is the negative space: the build needs no `State` because no `Fs.Contents` exists yet, and the click that creates one fails with the unsupplied-state error, the turn aborts, and the list is the closed one it was before. The third script sets the snapshot twice before one turn. The oracle answers `v1`, the previous snapshot; the push in the same occurrence is to `v2`; the slot ends the turn at `v2`. A reader who expected `v1` has the order of oracle and push backwards, and a reader who expected the second `State` to be lost has forgotten that a World gathers everything that changed into one snapshot per occurrence.
 
 **17. A push reaches a slot created in the push's occurrence, and every slot alike.**
 
@@ -1617,7 +1619,7 @@ test every_gauge_reads_one_clock: Test @gauges: array:
 @two_files:
     $home <- @Element Fs.Contents(path="/home/me/a")
     $etc <- @Element Fs.Contents(path="/etc/b")
-    @Label $"home=${Show $home} etc=${Show $etc}"
+    @Label "home={Show $home} etc={Show $etc}"
 
 test a_sandbox_rewrites_state_paths: Test (@Sandbox "/jail", @two_files): array:
     State Fs.Contents(path="/jail/home/me/a"), Known "A"
@@ -1641,7 +1643,7 @@ The supplied widget for the confined path made an `Fs.Contents` with the rewritt
     $a <- @Element Fs.Contents(path="/cfg")
     $b <- @Element Fs.Contents(path="/cfg")
     $c <- @Element Fs.Contents(path="/other")
-    @Label $"${Show $a} ${Show $b} ${Show $c}"
+    @Label "{Show $a} {Show $b} {Show $c}"
 
 test equal_readers_share_one_cache_entry: Test (@Cached @readers): array:
     State Fs.Contents(path="/cfg"), Known "v1"
@@ -1668,7 +1670,7 @@ test equal_readers_share_one_cache_entry: Test (@Cached @readers): array:
     !r4 <- @Element Defer(requests=(unit on !r3))
     !r5 <- @Element Defer(requests=(unit on !r4))
     $steps <- 0 <= $steps + 1 on (!r1 | !r2 | !r3 | !r4 | !r5)
-    @Label $"steps=$steps"
+    @Label "steps={$steps}"
 
 @fan5:
     !started <- @started
@@ -1678,7 +1680,7 @@ test equal_readers_share_one_cache_entry: Test (@Cached @readers): array:
     !r4 <- @Element Defer(requests=(unit on !started))
     !r5 <- @Element Defer(requests=(unit on !started))
     $steps <- 0 <= $steps + 1 on (!r1 | !r2 | !r3 | !r4 | !r5)
-    @Label $"steps=$steps"
+    @Label "steps={$steps}"
 
 test a_chain_of_five_is_six_occurrences: Test @chain5: array:
     Expect Ui.Label(text="steps=5")
@@ -1774,6 +1776,20 @@ ident(@w) colon <open> kw(let) ident(m) eq lbrace text("a") colon nat(1) comma t
 
 Layout is suspended inside the braces: the line break and the indentation before `"b"` are whitespace, and the colons are key separators, not block openers. The comment after `@w:` is whitespace too, so the colon is still the last token on its line and opens the block.
 
+**Interpolation, nested braces and a literal `$`.** A text literal is one token whose parts are literal text and `interp` groups; each group holds the tokens of its expression, lexed with layout suspended up to the matching `}`.
+
+```prism
+@w:
+    @Label "n={Size {"a": 1}}, \{ok\}"
+    let p = "cost: $5, {$n} left"
+```
+
+```
+ident(@w) colon <open> ident(@Label) text("n=", interp(ident(Size) lbrace text("a") colon nat(1) rbrace), ", {ok}") <sep> kw(let) ident(p) eq text("cost: $5, ", interp(ident($n)), " left") <close>
+```
+
+The braces inside the interpolation nest, so the first `}` after `1` closes the map and the second closes the interpolation; the colon inside them is a key separator, not a block opener; the nested `"a"` is a text token inside the group. `\{` and `\}` are literal braces and join the surrounding literal part, which is why the last part is `", {ok}"`. The `$` in `$5` is text, and the `$` before `n` belongs to the name inside the group. A lexer that treated `$` in text as the start of an interpolation would split the first literal of the second line at the dollar sign.
+
 **`F -1` against `F - 1`, and `\F .x` against `a.x`.**
 
 ```prism
@@ -1820,7 +1836,7 @@ kw(let) ident(t) eq sigil($) lparen ident(x) plus nat(1) rparen
 
 Both are the free sigil: a sigil is attached only when the next character is a name character, an underscore, a quote or another sigil, and `(` is none of those. The two lines produce the same tokens, which is the entry's point.
 
-The corpus has about forty entries, the eight kinds above and their variants: a block opened mid-statement by `for $x:` and closed by the next statement; an `else` at the column of its `if`; a `match` whose arms are all inline; a text literal with an interpolated `${expr}` containing a colon; a line with only a comment inside a block, which neither opens nor closes nor continues anything; a tab in leading whitespace, which is an error with a span. The corpus is also the first differential test: the Rust and Haskell lexers are run over every entry and the token files diffed, before either implementation has a parser.
+The corpus has about forty entries, the eight kinds above and their variants: a block opened mid-statement by `for $x:` and closed by the next statement; an `else` at the column of its `if`; a `match` whose arms are all inline; a text literal with an interpolated `{expr}` containing a colon, and one with an interpolation that holds another text literal; a line with only a comment inside a block, which neither opens nor closes nor continues anything; a tab in leading whitespace, which is an error with a span. The corpus is also the first differential test: the Rust and Haskell lexers are run over every entry and the token files diffed, before either implementation has a parser.
 
 ## Typed-AST goldens and negative goldens
 
@@ -1828,26 +1844,54 @@ The frontends are tested by what they decide. Elaboration's output is the typed 
 
 ### The text form
 
-One binding per line: the group, the name with its sigil, its type, its mark, and the expression with every lift explicit, followed by the span. Here is the counter's dump, which is the first golden and the one every reader of the compiler should be able to write by hand:
+One binding per line: the name with its sigil, its type, its mark (`[build]` or `[occ]`), its group, and the expression with every lift explicit, followed by the span. The format is chapter 12's, spelled the same here because the goldens are the same files. Here is the counter, with the two library widgets it uses, which is the first golden and the one every reader of the compiler should be able to write by hand:
+
+```prism
+@Button: fn $Text -> @!Click = \|$label| @widget:
+    !!clicks <- dyn $label:
+        @Element Ui.Button(label=_)
+    @ !Switch !!clicks
+
+@Label: fn $Text -> @unit = \|$text| @widget:
+    dyn $text:
+        @Element Ui.Label(text=_)
+    @ unit
+
+@counter:
+    !increment <- @Button "Increment"
+    !decrement <- @Button "Decrement"
+    let !delta = -1 on !decrement | +1 on !increment
+    $count <- 0 <= $count + !delta
+    @Label "Count: {$count}"
+```
 
 ```
-@counter : @unit                                                     @1:1-6:31
-  g0  !increment : !Click   build  = bind @Button (const $Text "Increment")   @2:5-2:38
-  g1  !decrement : !Click   build  = bind @Button (const $Text "Decrement")   @3:5-3:38
-  g2  !delta : !Int         occ    = leftmost [map !decrement (\_ -> int -1),
-                                               map !increment (\_ -> int +1)] @4:9-4:52
-  g3  $count : $Int         placeholder                                       @5:5-5:11
-  g3  $count : $Int         build  = hold (int 0) (tag $count !delta (\c d -> add.Int c d))
-                                                                              @5:5-5:34
-  g3  close $count
-  g4  _ : unit              build  = bind @Label (map $count (\c -> text ["Count: ", show.Int c]))
-                                                                              @6:5-6:31
-  result = g4
+@Button: fn $Text -> @!Click = \|$label| @widget:                                   @1:1
+  !!clicks: !!Click [build] g1 = dyn $label \|label| @widget:                          @2:5
+    _: !Click [build] g1 = element Ui.Button{label=label} responds                     @3:9
+    @ _
+  @ switch !!clicks
+
+@Label: fn $Text -> @unit = \|$text| @widget:                                        @6:1
+  _: unit [build] g1 = dyn $text \|text| @widget:                                      @7:5
+    _: unit [build] g1 = element Ui.Label{text=text}                                   @8:9
+    @ unit
+  @ unit
+
+@counter: @unit                                                                       @11:1
+  !increment: !Click [build] g1 = bind @Button(const "Increment")                     @12:5
+  !decrement: !Click [build] g2 = bind @Button(const "Decrement")                     @13:5
+  !delta: !Int [occ] g3 = leftmost [map !decrement \|ignore| -1:Int, map !increment \|ignore| +1:Int]   @14:9
+  $count: $Int [build] g4 = placeholder                                               @15:5
+  $count.hold: $Int [build] g4 = hold 0:Int (tag !delta [$count] \|d, c| Num.Add[Int] c, d)   @15:5
+  close $count $count.hold                                                            @15:5
+  _: unit [build] g5 = bind @Label(dmap [$count] \|c| cat ["Count: ", ToText[Int] c])   @16:5
+  @ _
 ```
 
-Everything the compiler chose is on the page. `-1 on !decrement` became a `map` over the event yielding a signed literal, because `on` returns its left operand and lifting did the rest. `|` became `leftmost`. `$count + !delta` became a `tag`, which is the one window onto the value before the occurrence, applied with `add.Int`, because `!delta` is `Int` and inference flowed from the literal `-1` through the merge into the hold. `$count` is a cycle through that tag, so its group has a placeholder and a close. The two binds, the hold and the label bind are build-time; the merge is occurrence-time, and so are the closures inside `map`, `tag` and the label's `map`, whose marks are implied by their position. The label's text interpolation is a `map` over `$count` producing a `text` of parts. Nothing below this line decides anything about meaning, which is the sentence the golden pins.
+Everything the compiler chose is on the page. `-1 on !decrement` became a `map` over the event yielding an `Int` literal, because `on` returns its left operand and lifting did the rest. `|` became `leftmost`. `$count + !delta` became a `tag`, which is the one window onto the value before the occurrence, applied with `Num.Add[Int]`, because `!delta` is `Int` and inference flowed from the literal `-1` through the merge into the hold. `$count` is a cycle through that tag, so its group has a placeholder, the hold under the name `$count.hold`, and a close. The two binds, the hold and the label bind are `[build]`; the merge is `[occ]`, and so are the closures inside `map`, `tag` and `dmap`, whose marks are implied by their position. The label's interpolation is a `cat` of parts over a `dmap` of `$count`, with `ToText[Int]` rendering the number. `@Button` and `@Label` are library widgets whose single `dyn` is the programmer's; the `element` lines are the only place a tag appears. Nothing below this line decides anything about meaning, which is the sentence the golden pins.
 
-The exact spellings, `leftmost`, `tag`, `hold`, `map`, `const`, `bind`, `int`, `add.Int`, `show.Int`, `text`, `placeholder`, `close`, are the printer's and are frozen by the goldens; the Haskell frontend must print the same characters for the same source. Elements print as `slot Ui.Button {label: ...}` with the tag's kind, `dyn` as `dyn $x (\x -> block)` with the block's own bindings indented beneath it, `for` as `for $m (\key $_ -> block) : consolidate !` with the consolidation kind, and `intercept` as `intercept child responses supplier`. A closure after conversion prints its capture list, `(\c d -> ...) captures [$count]`, and that form is the one the lint checks.
+The spellings, `leftmost`, `tag`, `hold`, `map`, `dmap`, `const`, `bind`, `element`, `placeholder`, `close`, `cat`, `Num.Add[Int]`, `ToText[Int]` and literals as `0:Int`, are the printer's and are frozen by the goldens; the Haskell frontend must print the same characters for the same source. Elements print as `element Ui.Button{label=label}` followed by `responds` when the tag responds, `dyn` as `dyn $x \|x| @widget:` with the block's bindings indented beneath it, `for` with its kind and whether the block can fire at birth, and `intercept` as `intercept child responses supplier`. A closure after conversion prints its capture list, `\[$total]|d| ...`, and that form is the one the lint checks.
 
 ### What the goldens are
 

@@ -14,7 +14,7 @@ A World is small because the language can do nothing to it. It never registers a
 
 The goals this serves are the two that pull hardest against each other. The language has no effects, so IO must be impossible from inside it; and the language must be enough, so layout, focus, text editing, sandboxes, mocks and even a World that hosts other programs must be writable in Prism. A fat World would satisfy the first by taking everything; a leaky boundary would satisfy the second by letting the program reach out. The thin World satisfies both: it does only what touches hardware, and everything above the hardware is Prism, under the same laws as the rest of the program.
 
-What a World is not: a renderer, a widget toolkit, a scheduler, a thread pool. A GUI World may contain a renderer, and a server World may contain a thread pool, but those are components inside it, and the language sees only tags. In particular a World never reads `Gui.*` elements in order to lay them out or decide focus. It reads a draw list and delivers keys and pointers to focusable regions; which region is focused, where the caret is and what a tab key does are holds in a Prism library.
+What a World is not: a renderer, a widget toolkit, a scheduler, a thread pool. A GUI World may contain a renderer, and a server World may contain a thread pool, but those are components inside it, and the language sees only tags. In particular a World never reads `Gui.*` elements in order to lay them out or decide focus. It reads a scene and delivers pointer events to the window and keys to the one focusable; which field is focused, what is under the pointer, where the caret is and what a tab key does are holds in a Prism library.
 
 ## The run call
 
@@ -901,23 +901,13 @@ The CLI World runs its turn loop on the main thread and uses tokio, or plain thr
 
 GUI is not a language concept, and not a World concept either. Some Worlds can put pixels on a screen and read a pointer and a keyboard, and they offer tags for that. Layout, hit-testing, focus traversal, text editing, buttons, lists and scrolling are Prism, written as interceptors over those tags, in a library that runs unchanged under any World that offers them and under the Test World, which offers everything. The language has an opinion only about structure: leaves are elements, containment is interception, a World draws what it is given and delivers what it sees.
 
-You have lost a cursor to a native text box, and you have fought a toolkit's focus manager for a field it insisted on focusing. Both happened because the toolkit owned state the program also had, and the two copies disagreed. The vocabulary below has no state in it that a program could also hold. A `Gui.Focusable` is a region that may be focused and responds with keys; where the caret is, which field is focused and what Tab does are holds in Prism, and there is no second copy.
+You have lost a cursor to a native text box, and you have fought a toolkit's focus manager for a field it insisted on focusing. Both happened because the toolkit owned state the program also had, and the two copies disagreed. The vocabulary below has no state in it that a program could also hold. A `Gui.Focusable` is a name that responds with keys; where the caret is, which field is focused and what Tab does are holds in Prism, and there is no second copy.
 
 ### The vocabulary
 
+Five tags. A window, the picture in it, the one place keys go, a way to measure text, and a tick per frame.
+
 ```prism
-type Draw = choice:
-    Rect Rect, Color
-    Text Point, Text, Style
-    Image Rect, ImageId
-    Clip Rect, [Draw]
-
-tag Gui.Window of Element:
-    title: Text
-    size: Size
-    draws: [Draw]
-    responds: WindowEvent          # Resized Size | CloseRequested | Pointer Pointer
-
 type Pointer = choice:
     Moved Point
     Down Point, Button
@@ -929,60 +919,111 @@ type Key = choice:
     Named NamedKey                 # Left | Right | Backspace | Tab | Enter | ...
     Composition CompositionEvent   # IME: Start | Update Text, Nat | Commit Text | End
 
-tag Gui.Region of Element:
-    rect: Rect
-    cursor: Cursor
-    responds: Pointer
+type WindowEvent = choice:
+    Resized Size
+    CloseRequested
+    Pointer Pointer
+
+tag Gui.Window of Element:
+    title: Text
+    size: Size                     # the size the program asks for when the window opens
+    responds: WindowEvent
+
+tag Gui.Scene of Element:
+    window: Text                   # the title of the window it paints
+    draw: [Draw]
 
 tag Gui.Focusable of Element:
     name: Text
-    rect: Rect                     # where the IME candidate window goes
     responds: Key
 
-tag Gui.Clipboard of Element:
-    requests: !ClipRequest         # Read | Write Text
-    responds: ClipResponse         # Contents Text | Empty
+tag Gui.Metrics of Element:
+    text: Text
+    font: Font
+    state: TextMetrics             # advances and line height; answered synchronously
 
-tag Gui.Fonts of Element:
-    state: FontSet                 # an opaque plain value; shaping is a pure function over it
+type Frame = record:
+    now: Instant
+
+tag Gui.Frames of Element:
+    responds: Frame                # a GUI World fires this before it paints
 ```
 
-A window has a title, a size the program asked for, and a draw list, all plain fields, so a program with a dynamic draw list has a fresh `Gui.Window` slot per frame it changes, at the same tree position, and the World diffs or redraws. The window responds with its own events: the size the platform gave it, a close request, and pointer events over the whole window for a library that hit-tests itself. A region is a rectangle that responds with pointer events; the World delivers a pointer event to the region whose rectangle contains the point, topmost in list order, which is the one piece of hit-testing the World does, because only it knows where the pointer is. A focusable is a rectangle that responds with keys; the World delivers keys to the focusable the program has told it is focused, and it is told by the library emitting exactly one `Gui.Focusable` at a time to the World and routing inward itself, or by a `focused: Bool` field the World honours. Composition events from an input method arrive as keys, and the field tells the World where to put the candidate window through its `rect`, which is description: the World reads it from the committed list when the platform asks.
+The draw commands are not tags. They are plain values in the scene's `draw` list, and the list order is the paint order.
 
-Fonts are a state element whose value is an opaque plain token, and text shaping is a pure function `Shape: fn FontSet, Text, Style -> [Glyph]` the World provides natively, with no time in it. That is the "batch work is called out to" pattern: shaping depends on installed fonts, which is state, and on the text, which is data, and there is no occurrence between asking and knowing. A request element `Text.Shape` answering next turn would draw one frame with stale glyphs per keystroke; a pure function over a state element does not.
+```prism
+type Draw.Rect = record:
+    rect: Rect
+    color: Color
+
+type Draw.Text = record:
+    origin: Point
+    text: Text
+    font: Font
+    color: Color
+    ime_at: ?Nat                   # an offset into text where an input method's candidate window goes
+
+type Draw.Image = record:
+    rect: Rect
+    image: ImageId
+
+type Draw.Clip = record:
+    rect: Rect
+    draw: [Draw]
+
+type Draw = Draw.Rect | Draw.Text | Draw.Image | Draw.Clip
+```
+
+A `Draw.Rect` is a rectangle on the screen and nothing else: it has no events, no name, no identity. A button's background is a `Draw.Rect` and the button is a library widget that knows where that rectangle is. The last line is a union of the four records and has no constructors of its own, which is why a draw command is never an element and never needs a path.
+
+A window has a title and a size, both plain fields that rarely change, so its slot is stable for the life of the program. The World has one path to send pointer events and resizes to. The picture is a separate presence element, `Gui.Scene`, which is replaced whenever the picture changes: a fresh slot per frame is right for something nobody is waiting on, and keeping the picture out of the window is what lets `Gui.Window(title="Counter", ..)` stay one fact. The World diffs the new scene against the committed one, or redraws it whole. It decides which, because the language cannot see the difference.
+
+The window answers with three things: the size the platform gave it, a close request, and every pointer event over the whole window. The World does no hit-testing, and the reason is that a World that did would need to know what is clickable. Suppose it hit-tested against rectangles the program declared. Then every clickable thing would exist twice, once as the pixels the library drew and once as the rectangle the World matches, and the two would disagree on the frame where a button moves and its rectangle has not, which is the toolkit bug from the start of this section in a new place. It would also need an answer for overlap, for a scrolled list clipping a half-visible row, for a disabled button and for a pointer capture. The library has the layout and the clip regions and every one of those answers already, so the library hit-tests: the pointer position goes in, the widget path comes out, and the World needs only to know where the pointer is, which only it knows.
+
+Keys go to the `Gui.Focusable` in the list. A focusable has a name and nothing else, and the library emits at most one at a time, the one it holds as focused, so the World has one place to send keys and no focus order to keep. Which field is focused, what Tab does and where the caret is stay holds in the library, and focus is by name: the library's focus hold is a `Text`, and a rebuild that keeps the name keeps the focus. Composition events from an input method arrive as keys. The World puts the candidate window at the `ime_at` offset of the focused `Draw.Text` run, which it finds in the committed scene when the platform asks; the World shapes text itself and so can turn an offset into a position, and the library does not tell it twice.
+
+`Gui.Metrics` is the one state element in the vocabulary, and it answers the question every layout asks: how wide is this text? You cannot place a caret or centre a label without it, and only the thing that has the fonts knows. As a request it would answer next turn and the text field would paint one frame with stale positions per keystroke. As state, its oracle is synchronous, the slot has its metrics in the occurrence that creates it, and the layout that depends on them is right in that occurrence. Value identity keeps it cheap: every slot asking about `("Start", Default)` shares one measurement. The font is a plain `Font` value in `Draw.Text` and in `Gui.Metrics`, and the World resolves it.
+
+`Gui.Frames` responds with the time once per frame while a slot exists, for animation, and the World requests continuous redraw only while there is one.
+
+Two things a GUI program seems to need are not in the vocabulary, a clipboard and a font set. A clipboard is a request and a response, `Clipboard` with `Read` and `Write Text`, offered as a bare tag by any World that has one. It is separate from `Gui.*` because it has nothing to do with drawing: a terminal World with access to the system clipboard offers it, and a GUI World on a platform without one does not, and `Unsupported` already says so. Installed fonts are not a tag at all. A program names a font in the value it draws, the World resolves the name, and anything that wants to enumerate fonts for a picker asks a separate state tag, which a World may offer and the five-tag vocabulary does not need. Both stay out for the same reason: each tag in `Gui.*` is something every World that draws pixels must implement, and these two are not.
 
 ### The GUI library
 
-Above those tags, in Prism: `@Button` is a `Gui.Region` and a label; `@TextInput` is a `Gui.Focusable`, a hold with the text and cursor, and draw commands (chapter 2's version is the whole thing); `@VBox` is an interceptor that captures its children's draw lists and regions, offsets them, and re-emits them (chapter 2's version routes clicks by row); `@Window` is the interceptor at the top that captures everything, lays it out, emits one `Gui.Window` with the whole draw list, and routes the window's events inward. Focus is a hold in `@Window` moved by Tab and by clicks, and the library emits only the focused child's `Gui.Focusable` upward, so the World has one place to send keys. Scrolling is a `Clip` and an offset. An accessibility tree, where a World can use one, is a field the library builds from the same element list it already holds, with node identities taken from `for` keys so that focus survives a rebuild that keeps the data's identity.
+Above those tags, in Prism. The library has its own tags under `Ui`: `Ui.Label`, `Ui.Button` (responds `Click`), `Ui.TextInput`, `Ui.VBox`, and so on. They never reach a World; the library's interceptors claim them. `@Button` is a `Ui.Button` that the enclosing box turns into a `Draw.Rect` and a `Draw.Text` at the place it chose; `@TextInput` is a hold with the text and cursor, `Draw.Text` runs and a caret rectangle placed with a `Gui.Metrics` reading (chapter 2's version is the whole thing); `@VBox` is an interceptor that captures its children's `Ui.*` elements, assigns them rows, and re-emits one `Ui.VBox` with the layout; `@Window` is the interceptor at the top. It captures everything, lays it out using the metrics it asked for, emits one `Gui.Window` and one `Gui.Scene` with the whole draw list, hit-tests the window's pointer events against the layout it holds, and routes each hit inward as a `Click` or a key. Focus is a hold in `@Window` moved by Tab and by clicks, and the library emits only the focused child's `Gui.Focusable` upward. Scrolling is a `Draw.Clip` and an offset. An accessibility tree, where a World can use one, is a field the library builds from the same element list it already holds, with node identities taken from `for` keys so that focus survives a rebuild that keeps the data's identity.
 
-None of this reaches the World except as `Gui.Window` and `Gui.Focusable` elements, and that is the division of labour: the World rasterises and delivers; the library decides.
+None of this reaches the World except as `Gui.Window`, `Gui.Scene`, `Gui.Focusable` and `Gui.Metrics` elements, and that is the division of labour: the World rasterises and delivers; the library decides.
 
 ### A GUI turn, end to end
 
-The counter of chapter 2 under `@Window @VBox @counter`, where `@Window` lays out the box, emits one `Gui.Window`, and routes pointer events by the layout it computed. The World is the software rasteriser.
+The counter of chapter 2 under `@Window @VBox @counter`. `@Window` lays out the box, emits the window and the scene, and hit-tests pointer events by the layout it computed. The World is the software rasteriser, and its font has 8-pixel advances.
 
-**Occurrence 0.** The counter builds its two buttons and a label; `@VBox` captures them and emits a `Ui.VBox` with the three as children; `@Window` captures that, computes a layout (three rows of 24 pixels), and emits:
+**Occurrence 0.** The counter builds its two buttons and a label; `@VBox` captures them and emits a `Ui.VBox` with the three as children; `@Window` captures that and asks for the width of the label's text with a `Gui.Metrics` slot, which has its value in this occurrence. It computes a layout (three rows of 24 pixels, the label centred) and emits:
 
 ```
-0/#0/0: Gui.Window(title="Counter", size=((200, 72)), draws=[[
-          (Rect ((0, 0, 200, 24)), grey), (Text ((4, 4)), "Increment", ..),
-          (Rect ((0, 24, 200, 24)), grey), (Text ((4, 28)), "Decrement", ..),
-          (Text ((4, 52)), "Count: 0", ..)]])
+0/0:        Gui.Window(title="Counter", size=((200, 72)))
+0/1/#0/0:   Gui.Metrics(text="Count: 0", font=Default)
+0/2/#0/0:   Gui.Scene(window="Counter", draw=[[
+              Draw.Rect(rect=((0, 0, 200, 24)), color=grey),
+              Draw.Text(origin=((4, 4)), text="Increment", font=Default, color=black, ime_at=Nil),
+              Draw.Rect(rect=((0, 24, 200, 24)), color=grey),
+              Draw.Text(origin=((4, 28)), text="Decrement", font=Default, color=black, ime_at=Nil),
+              Draw.Text(origin=((68, 52)), text="Count: 0", font=Default, color=black, ime_at=Nil)]])
 ```
 
-The World reads the list, sees a window it has not opened, opens a 200×72 window, rasterises the draw list into it, presents, and waits. There are no `Gui.Region` elements in the list: this `@Window` hit-tests itself, so the window's own pointer events are all it needs. A library that preferred the World to do the first level of hit-testing would emit a region per row instead, and the World would deliver to the region; both are conforming.
+The World reads the list, sees a window it has not opened, opens a 200×72 window, answers the metrics slot from its font (64 pixels wide), rasterises the scene into the window, presents, and waits. There are no regions in the list and no button anywhere in it: the World has a window to deliver pointers to and a picture to paint.
 
-**Turn 1.** The user clicks at (50, 10). The World delivers `Pointer (Down ((50, 10)), Left)` as a response to `0/#0/0`. `@Window`'s slot fires; the window interceptor hit-tests the point against the layout it holds, read through a tag, which is the layout as the occurrence opened, the one the user saw; row 0 is the `Ui.VBox`'s first child, the Increment button's path; it fires `{vbox_path: Pointer(row=0)}` down; `@VBox` hit-tests the row against its children's list as the occurrence opened and fires `{0/#0/0: click}` down; the counter's `!increment` fires; `$count` becomes 1; the label rebuilds; the VBox's children change; the VBox rebuilds its element; `@Window` relays out and emits a fresh `Gui.Window` slot at generation `#1` with the new draw list. One occurrence, no `Defer`. The World diffs the list, sees the window element replaced at the same position, rasterises the new draw list, presents.
+**Turn 1.** The user clicks at (50, 10). The World delivers `Pointer (Down ((50, 10)), Left)` as a response to `0/0`. `@Window`'s slot fires; the window interceptor hit-tests the point against the layout it holds, read through a tag, which is the layout as the occurrence opened, the one the user saw; row 0 is the `Ui.VBox`'s first child, the Increment button's path; it fires `{vbox_path: Pointer(row=0)}` down; `@VBox` hit-tests the row against its children's list as the occurrence opened and fires `{0/#0/0: Click}` down; the counter's `!increment` fires; `$count` becomes 1; the label rebuilds; the VBox's children change; the VBox rebuilds its element; `@Window` relays out. The label text is a plain field of the metrics slot, so the metrics are a fresh slot at generation `#1`, and its value (still 64) is in the oracle in this occurrence, so the new scene at generation `#1` has the right label position. One occurrence, no `Defer`. The window slot is untouched. The World diffs the scene, rasterises the new draw list, presents.
 
-**Turn 2.** The user drags the window edge; the platform reports a new size. The World delivers `Resized ((300, 72))` to `0/#1/0`. `@Window` holds the size, relays out with wider rows, emits generation `#2`. The World resizes its buffer and presents. On a platform that expects the paint before the resize callback returns, the World runs this turn inside the callback and presents before returning; one turn per input makes that a non-event.
+**Turn 2.** The user drags the window edge; the platform reports a new size. The World delivers `Resized ((300, 72))` to `0/0`. `@Window` holds the size, relays out with wider rows and the label at x=118, and emits a scene at generation `#2`; the metrics are unchanged, so their slot stays. The World resizes its buffer and presents. On a platform that expects the paint before the resize callback returns, the World runs this turn inside the callback and presents before returning; one turn per input makes that a non-event.
 
-**Turn 3.** The user presses a key. There is no `Gui.Focusable` in the list, because the counter has nothing to type into, so the World has nowhere to deliver it and drops it. Had there been a text input, `@Window` would have emitted its `Gui.Focusable` upward (the one it holds as focused), the World would have delivered `Char 'x'` to that path, and the input's hold would have moved its cursor, with the World knowing nothing about cursors.
+**Turn 3.** The user presses a key. There is no `Gui.Focusable` in the list, because the counter has nothing to type into, so the World has nowhere to deliver it and drops it. Had there been a text input, `@Window` would have emitted `Gui.Focusable(name="input")` upward, the focused name it holds; the World would have delivered `Char 'x'` to that path; and the input's hold would have moved its cursor, asked `Gui.Metrics` for the width of the text up to the cursor, and drawn the caret there. The World knows nothing about cursors.
 
 Three turns, three occurrences, and the World's whole job was: open a window, rasterise a list, deliver a point and a size to a path. Everything that looked like a toolkit was Prism, and ran unchanged under the Test World when `Send Gui.Window(..), Pointer (Down ((50, 10)), Left)` drove it.
 
 ### Software rasteriser
 
-The smallest GUI World: one window, one draw list, a pointer and a keyboard. The World opens a platform window, and after each turn takes the `Gui.Window` element's draw list, rasterises it into a buffer (with the native `Shape` for text), and presents it. Pointer events are matched against `Gui.Region` rectangles in the committed list and delivered by path; keys go to the `Gui.Focusable` in the list. It is a few hundred lines over a windowing library and a rasteriser, and it is the World the conformance suite's GUI programs run under first, because it has nothing in it that could be wrong except the obligations.
+The smallest GUI World: one window, one scene, a pointer and a keyboard. The World opens a platform window, and after each turn takes the `Gui.Scene` element's draw list, rasterises it into a buffer with its own text rasteriser, and presents it. It answers `Gui.Metrics` from the same font, delivers every pointer event to the window's slot, and delivers keys to the `Gui.Focusable` in the list. It is a few hundred lines over a windowing library and a rasteriser, and it is the World the conformance suite's GUI programs run under first, because it has nothing in it that could be wrong except the obligations.
 
 ### A native toolkit wrapper
 
@@ -994,13 +1035,13 @@ Which is better, native widgets or a Prism library over draw primitives, is a li
 
 ### HTML and the web
 
-The browser is the proof that the vocabulary works, because the DOM is it. A DOM node is a plain record with a tag and attributes; the browser diffs what you give it against what it has, lays it out, paints it, runs the input method and the screen reader, and delivers events addressed to nodes. A web World offers `Dom.Node(tag, attrs, text, children)` as its one container element, responding with `DomEvent(name, detail)`, and the whole GUI library of the previous sections becomes a different library that emits nodes instead of draw commands. Text editing keeps its state in Prism and puts out an editable node as its bridge: the browser's `beforeinput` and composition events (from memory) arrive as responses, Prism decides what they do to the text, and the World writes the node's text and selection back only when Prism's state differs from what the node last reported, and never during a composition, so there are no echo writes and no caret fights.
+The browser is the proof that the vocabulary works, because the DOM is it. A DOM node is a plain record with a tag and attributes; the browser diffs what you give it against what it has, lays it out, paints it, runs the input method and the screen reader, and delivers events addressed to nodes. A web World offers `Dom.Node(tag, attrs, text, children)` as its one container element, responding with `DomEvent(name, detail)`, and the whole GUI library of the previous sections becomes a different library that emits nodes instead of a `Gui.Scene`. Text editing keeps its state in Prism and puts out an editable node as its bridge: the browser's `beforeinput` and composition events (from memory) arrive as responses, Prism decides what they do to the text, and the World writes the node's text and selection back only when Prism's state differs from what the node last reported, and never during a composition, so there are no echo writes and no caret fights.
 
 There are no threads in a browser page, and no loop to own. Each DOM listener, each `requestAnimationFrame` tick, each completed `fetch` is a callback, and each callback runs one turn. The World's input queue is the browser's event loop; the World's "block for input" is returning from the callback. Nothing about the run call changes, because it was synchronous and single-threaded from the World's view all along.
 
 ### A native Prism system: X11 over a socket
 
-Take the vocabulary to its end. The World is a socket system: it accepts `Net.Socket` and nothing else, and it has never heard of a window. The program connects to `unix:/tmp/.X11-unix/X0`, and everything from there up is Prism: an interceptor that captures the GUI library's `Gui.Window` and `Gui.Region` elements and emits bytes.
+Take the vocabulary to its end. The World is a socket system: it accepts `Net.Socket` and nothing else, and it has never heard of a window. The program connects to `unix:/tmp/.X11-unix/X0`, and everything from there up is Prism: an interceptor that captures the GUI library's `Gui.Window`, `Gui.Scene` and `Gui.Focusable` elements, answers its `Gui.Metrics` slots, and emits bytes.
 
 ```prism
 @X11: fn @a -> @a = \|@app| @widget:
@@ -1008,19 +1049,19 @@ Take the vocabulary to its end. The World is a socket system: it accepts `Net.So
     ((!rx, $link)) <- @Element Net.Socket(address="unix:/tmp/.X11-unix/X0", requests=!tx)
     $conn <- Handshaking <= StepX11 $conn, !rx               # parse replies and events
     let !tx = Encode $conn, $slots, !rx                       # CreateWindow, PutImage, ...
-    let !events = DecodeEvents $conn, $slots, !rx             # ButtonPress → Pointer to a region's path
+    let !events = DecodeEvents $conn, $slots, !rx             # ButtonPress → Pointer to the window's path
     !fwd <- @Forward (NonGui $slots)
     let !down = !Union !events, !fwd
     @ result
 ```
 
-`Encode` is a plain function from the connection state, the current element list and the latest bytes to the bytes to send: on the first list with a `Gui.Window`, a `CreateWindow` and `MapWindow`; on each change of the draw list, a `PutImage` of the rasterised buffer, where the rasteriser is a pure native function `Rasterise: fn [Draw], FontSet -> Image` with no time in it; on a region's rectangle changing, nothing, because hit-testing is done here against `$slots`. `DecodeEvents` turns a `ButtonPress` at a point into a `Pointer` response addressed to the region under it, read against `$slots` as the occurrence opened, which is the same routing law every interceptor obeys. The World below knows it is writing bytes to a socket and reading bytes back.
+`Encode` is a plain function from the connection state, the current element list and the latest bytes to the bytes to send: on the first list with a `Gui.Window`, a `CreateWindow` and `MapWindow`; on each change of the scene's draw list, a `PutImage` of the rasterised buffer, where the rasteriser is a pure native function `Rasterise: fn [Draw] -> Image` with its own font data and no time in it. `DecodeEvents` turns a `ButtonPress` at a point into a `Pointer` response addressed to the window's slot, and a key into a response addressed to the `Gui.Focusable`'s slot, both read against `$slots` as the occurrence opened, which is the same routing law every interceptor obeys. The point is not hit-tested here, because the library above does that. The interceptor also supplies the `Gui.Metrics` slots the application asked for, from the same font data the rasteriser uses, so a label is measured with the glyphs it will be painted with. The World below knows it is writing bytes to a socket and reading bytes back.
 
 This is not the way to build a desktop; it is the demonstration that the GUI vocabulary does not depend on the World having one, and that "the things that are native are the things that touch hardware" means what it says. A compositor, a terminal emulator and a window manager are each this interceptor with more state, and each can be tested under the Test World by sending it the bytes an X server would.
 
 ### IME and accessibility queries
 
-A platform sometimes asks a question and blocks on the answer: where is the caret, so the candidate window can be placed; what is the text of this node, for a screen reader. The World answers from the committed list, where the GUI library keeps the answer current as a field: the focusable's `rect`, the accessibility tree. That is the right answer for a query about inputs the platform already delivered, because each of those ran its own turn and the committed list reflects all of them. A World that wants the answer to include an input it has not yet delivered may run a turn inside the callback, delivering the query as a response to the window slot and reading the reply field afterwards; nothing forbids a World from running a turn whenever it likes, and the program sees an ordinary occurrence. A callback that arrives *during* a turn (the platform calling back from inside a frame change) is answered from the last committed list without starting anything, because the World never runs a turn inside a turn.
+A platform sometimes asks a question and blocks on the answer: where is the caret, so the candidate window can be placed; what is the text of this node, for a screen reader. The World answers from the committed list, where the GUI library keeps the answer current: the `ime_at` offset of the focused text run in the scene, the accessibility tree. That is the right answer for a query about inputs the platform already delivered, because each of those ran its own turn and the committed list reflects all of them. A World that wants the answer to include an input it has not yet delivered may run a turn inside the callback, delivering the query as a response to the window slot and reading the reply field afterwards; nothing forbids a World from running a turn whenever it likes, and the program sees an ordinary occurrence. A callback that arrives *during* a turn (the platform calling back from inside a frame change) is answered from the last committed list without starting anything, because the World never runs a turn inside a turn.
 
 ## Networks in depth
 
@@ -1150,14 +1191,14 @@ The general components, `Fs`, `Time`, `Clock`, `Process`, `Net`, `Http`, `Errors
 
 ### What a program sees
 
-A request on a tag the World lacks gets `Unsupported` in the next turn, which the program matches on: a `Gui.Clipboard` under a CLI World, a `Process.Spawn` in a browser. A state tag the World lacks is a build error in the creation occurrence, because a dynamic cannot exist without a value. That asymmetry makes a portable program's job clear: it may fire optimistically and handle `Unsupported`, but it must not create a state element it is not sure of. The way to be sure is a state element every World provides, alongside `Defer`:
+A request on a tag the World lacks gets `Unsupported` in the next turn, which the program matches on: a `Clipboard` under a World with no system clipboard, a `Process.Spawn` in a browser. A state tag the World lacks is a build error in the creation occurrence, because a dynamic cannot exist without a value. That asymmetry makes a portable program's job clear: it may fire optimistically and handle `Unsupported`, but it must not create a state element it is not sure of. The way to be sure is a state element every World provides, alongside `Defer`:
 
 ```prism
 tag World.Tags of Element:
     state: [Text]                  # the tags this World accepts, by name
 ```
 
-A program reads it in occurrence zero (it is state, so it has a value then) and builds under a `dyn` over it, choosing a `Gui.Clipboard` path or a fallback by a plain `match`. An interceptor can supply a child a narrower `World.Tags`, which is what a sandbox should do so that the child never tries. The Test World's `World.Tags` is everything, and a test that wants to exercise the fallback sets it narrower with a `State` step. This is the one component that is about the World itself, and it is state rather than a request because the question "what can I ask" has to be answerable before anything is asked.
+A program reads it in occurrence zero (it is state, so it has a value then) and builds under a `dyn` over it, choosing a `Clipboard` path or a fallback by a plain `match`. An interceptor can supply a child a narrower `World.Tags`, which is what a sandbox should do so that the child never tries. The Test World's `World.Tags` is everything, and a test that wants to exercise the fallback sets it narrower with a `State` step. This is the one component that is about the World itself, and it is state rather than a request because the question "what can I ask" has to be answerable before anything is asked.
 
 ### Platforms
 
@@ -1257,7 +1298,7 @@ The producer's write is captured by the first `for` (it never reaches the World)
 
 ### A window manager
 
-The shell with a screen. Each application is an `intercept` whose `Gui.Window` is held back and replaced by a region of one big window: the manager offsets the application's draw list, clips it, and routes pointer events whose point falls in that region to the application's window slot with the point translated. Focus is a hold in the manager moved by clicks and a key chord; keys go to the focused application's `Gui.Focusable`. The manager emits one `Gui.Window` to the World below, and the World below is the software rasteriser, or the X11 interceptor over a socket World, or a native toolkit wrapper showing one native window. None of them knows there are several applications.
+The shell with a screen. Each application is an `intercept` whose `Gui.Window` and `Gui.Scene` are held back and replaced by a part of one big scene: the manager wraps the application's draw list in a `Draw.Clip` at the application's offset, and the manager's own hit-test routes pointer events whose point falls in that frame to the application's window slot with the point translated. Focus is a hold in the manager moved by clicks and a key chord; keys go to the focused application's `Gui.Focusable`. The manager emits one `Gui.Window` and one `Gui.Scene` to the World below, and the World below is the software rasteriser, or the X11 interceptor over a socket World, or a native toolkit wrapper showing one native window. None of them knows there are several applications.
 
 ### Sandboxing third-party widgets
 
@@ -1307,7 +1348,7 @@ The conformance suite tests the language under the Test World and says nothing a
 
 ### A platform World
 
-Each World adds the tests only its platform can run. For the CLI World: golden runs with fixed arguments and standard input (an echo, the line counter, a program that writes to both streams in one occurrence with the order kept, `Process.Exit` fired in the same turn as writes with the writes landing first, `SIGINT` with and without a `Cli.Signals` slot, a closed standard-output pipe producing `WriteFailed`, a program with no live sources exiting zero). For a GUI World: a scripted click at a point reaching the right region, a resize turn that paints before the callback returns, a composition sequence reaching a focusable as `Composition` keys with the candidate rectangle read from the committed list, a `Gui.Frames` slot inside a `dyn` starting and stopping frame requests. For a server World: concurrent requests under one `for`, one of them waiting on an outgoing call, with the replies landing under the right ids, and a routing World with two shards that never deliver each other's connections.
+Each World adds the tests only its platform can run. For the CLI World: golden runs with fixed arguments and standard input (an echo, the line counter, a program that writes to both streams in one occurrence with the order kept, `Process.Exit` fired in the same turn as writes with the writes landing first, `SIGINT` with and without a `Cli.Signals` slot, a closed standard-output pipe producing `WriteFailed`, a program with no live sources exiting zero). For a GUI World: a scripted click at a point reaching the right widget through the library's hit-test, a resize turn that paints before the callback returns, a composition sequence reaching a focusable as `Composition` keys with the candidate window placed at the `ime_at` offset read from the committed scene, a `Gui.Frames` slot inside a `dyn` starting and stopping frame requests. For a server World: concurrent requests under one `for`, one of them waiting on an outgoing call, with the replies landing under the right ids, and a routing World with two shards that never deliver each other's connections.
 
 What none of them tests: the language. A World test never asserts on a hold or a widget's result; it asserts on what crossed the boundary, in both directions, and on what the World did with it.
 

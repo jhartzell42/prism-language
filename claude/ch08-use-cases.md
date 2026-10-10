@@ -6,7 +6,7 @@ Eight programs that are not toys, each taken far enough that the hard moment sho
 
 Occurrences are numbered from zero; occurrence zero is the build. Paths are written as in the worked examples: bind positions from the root separated by `/`, `#n` for a `dyn` generation, `[k]` for a `for` key, and `s/n` for a slot that an interceptor's supplier built. Element lists are written one slot per line as `path: element`, with `requested: [..]` after a slot that fired its request in that occurrence.
 
-The GUI vocabulary is the two-level one. `Gui.*` is what a World that draws pixels accepts: `Gui.Window(title)` responds with pointer, key and resize events and has the window's size as state; `Gui.Scene(window, ops)` is the draw list for a window, a presence element replaced whenever the picture changes; `Gui.Focusable(name)` responds with keys; `Gui.Metrics(text, font)` is text measurement as state; `Gui.Frames` responds once per frame while a slot exists. `Ui.*` is the Prism GUI library's own vocabulary (`Ui.Button`, `Ui.Label`, `Ui.TextInput`, `Ui.VBox`, …), claimed by the library's interceptors on the way out and reaching a World only when that World accepts them, which the Test World does. Programs in this chapter are written against `Ui.*` and assume `@Window` from the GUI library around them where a screen is involved; `@Button`, `@Label` and `@TextInput` are the library widgets over `Ui.Button`, `Ui.Label` and `Ui.Focusable`, and `Ui.Button` responds `Click`, a unit type.
+The GUI vocabulary is the two-level one. `Gui.*` is what a World that draws pixels accepts, five tags: `Gui.Window(title)` responds with pointer, key and resize events and has the window's size as state; `Gui.Scene(window, draw)` is the picture for a window, a presence element whose `draw` field is a plain list of `Draw.*` values (`Draw.Rect`, `Draw.Text`, `Draw.Image`, `Draw.Clip`), replaced whenever the picture changes; `Gui.Focusable(name)` responds with keys; `Gui.Metrics(text, font)` is text measurement as state; `Gui.Frames` responds `Frame(now: Instant)` once per frame while a slot exists. The World does no geometry and no hit-testing. `Ui.*` is the Prism GUI library's own vocabulary (`Ui.Button`, `Ui.Label`, `Ui.TextInput`, `Ui.VBox`, …), claimed by the library's interceptors on the way out, which hit-test against their own layout and focus by name, and reaching a World only when that World accepts them, which the Test World does. Programs in this chapter are written against `Ui.*` and assume `@Window` from the GUI library around them where a screen is involved; `@Button`, `@Label` and `@TextInput` are the library widgets over `Ui.Button`, `Ui.Label` and `Gui.Focusable`, and `Ui.Button` responds `Click`, a unit type.
 
 ```prism
 type Click = click
@@ -19,7 +19,7 @@ tag Ui.Button of Element:
     label: Text
     responds: Click
 
-tag Ui.Focusable of Element:
+tag Gui.Focusable of Element:
     name: Text
     responds: Key
 
@@ -77,7 +77,7 @@ tag Fs.File of Element:           # request: reads and writes, answered later
     responds: FsResponse
 ```
 
-Three elements talk to the outside for each buffer. `Ui.Focusable(name)` hears keys when it is focused; which buffer is focused is the window interceptor's business, and the buffer never knows. `Fs.Watch(path)` is the watcher, as *state*: its value is the file's modification stamp, pushed when the file changes. `Fs.File(path)` is the one-shot conversation: a `Read` or a `Write` fires, and `Contents`, `Written`, `Missing` or `Denied` comes back addressed to this slot, later. The watcher is state and not a stream for the reason the Worlds chapter gives: a slot built in the occurrence of a change sees the push, while a slot built in the occurrence of a stream's firing would miss it. An editor that opens a file in the moment it changes wants the change.
+Three elements talk to the outside for each buffer. `Gui.Focusable(name)` hears keys when it is focused; which buffer is focused is the window interceptor's business, and the buffer never knows. `Fs.Watch(path)` is the watcher, as *state*: its value is the file's modification stamp, pushed when the file changes. `Fs.File(path)` is the one-shot conversation: a `Read` or a `Write` fires, and `Contents`, `Written`, `Missing` or `Denied` comes back addressed to this slot, later. The watcher is state and not a stream for the reason the Worlds chapter gives: a slot built in the occurrence of a change sees the push, while a slot built in the occurrence of a stream's firing would miss it. An editor that opens a file in the moment it changes wants the change.
 
 ### The structure
 
@@ -131,7 +131,7 @@ let Title: fn Text, Bool -> Text = \|path, dirty|
 
 @Buffer: fn Text -> @!unit = \|path| @widget:
     !started <- @started
-    !key <- @Element Ui.Focusable(name=path)
+    !key <- @Element Gui.Focusable(name=path)
     !undo <- @Button $"Undo"
     !redo <- @Button $"Redo"
     !save <- @Button $"Save"
@@ -207,7 +207,7 @@ One way to change anything, written next to the thing: `$hist`'s line is the com
 
 Simultaneity defined by the program: occurrence 11 is the whole of this section, and its outcome is read off one line.
 
-"Not yet" as a type: a buffer under a slow disk shows an empty document and `Missing` from the watcher until the World has looked, and the `match` arms for that exist because the types made the program write them. There is no spinner state that has to be cleared on three different paths.
+"Not yet" as a type: a buffer under a slow disk shows an empty document until the first `Contents` arrives, and the arms for `Missing` and `Denied` exist because the response type made the program write them. The watcher is not part of that wait: it is answered from a real stat as its slot is created, so it says `Missing` only for a file that is not there. There is no spinner state that has to be cleared on three different paths.
 
 The language is enough: the undo stack, the dirty flag, the echo suppression and the search are plain data and plain functions; the only things native are the focusable region, the file and the watcher.
 
@@ -462,9 +462,10 @@ let Pitch: fn ImuState -> ?Float = ...        # Nil while NoReading
 
 let Control: fn Gains, Loop, Sample -> ((Loop, Float)) = \|g, l, s|
     let err = s.setpoint - s.measured
-    let dt = Or (ToFloat s.now - l.last_t) / 1000.0, 0.01
+    let first = l.last_t == 0 or s.now le l.last_t
+    let dt = if first: 0.01 else: (ToFloat (s.now - l.last_t)) / 1000.0
     let integral = l.integral + err * dt
-    let deriv = Or (err - l.last_err) / dt, 0.0
+    let deriv = if first: 0.0 else: (err - l.last_err) / dt
     (((Loop integral, err, s.now), g.kp * err + g.ki * integral + g.kd * deriv))
 
 let IfTrue: fn Bool -> ?unit = \|b| if b: Some unit else: Nil
@@ -490,7 +491,7 @@ let Unless: fn Bool, Float -> ?Float = \|stopped, t| if stopped: Nil else: Some 
     @ $stop
 ```
 
-`SampleOf` is a plain function that returns `Nil` while the IMU has no reading, so `!sample` fires on a tick only when there is something to control on, and the loop's state is untouched on the ticks before the first reading. `Control` is the whole control law and has no time in it beyond the timestamps it is handed: `dt` comes from the clock the World pushed, not from the nominal period, because a World skips missed ticks rather than delivering two at once, and a loop that assumed ten milliseconds per tick would integrate wrongly after every hiccup. Division returns an optional and the `Or` says what to do on the first tick, when `last_t` is zero and `dt` is nonsense: the `?` on `/` made the program say so rather than divide by a stale interval and hope.
+`SampleOf` is a plain function that returns `Nil` while the IMU has no reading, so `!sample` fires on a tick only when there is something to control on, and the loop's state is untouched on the ticks before the first reading. `Control` is the whole control law and has no time in it beyond the timestamps it is handed: `dt` comes from the clock the World pushed, not from the nominal period, because a World skips missed ticks rather than delivering two at once, and a loop that assumed ten milliseconds per tick would integrate wrongly after every hiccup. `Float` division follows IEEE and never fails, so nothing would warn about the first tick: with `last_t` zero, `dt` would be the whole clock reading since power-on, and the derivative would be an error divided by seconds-since-epoch. `first` says what the first tick is. It is true when `last_t` is zero, and also when the clock has not advanced, because a zero `dt` would make the derivative an infinity that drives a motor. On those ticks `dt` is the nominal period and the derivative is zero.
 
 `!cmd` is the only thing that reaches the motors and its merge is the safety policy in one line: a stop asserted or a fault reported drives zero torque, and that wins over the control law in the same occurrence; otherwise the law's output goes out, unless the stop was already asserted as the occurrence opened. Read it as three cases and you have read the program's answer to every ordering of tick, stop and fault.
 
@@ -648,7 +649,7 @@ let IsClosed: fn SocketEvent -> ?unit = \|ev| match ev:
     Closed: Some unit
     ignore: Nil
 
-let SendAll: fn [Text] -> [ConnRequest] = \|lines| for lines: Send (Concat [[_, "\r\n"]])
+let SendAll: fn [Text] -> [ConnRequest] = \|lines| Map lines, \Send (Concat [[_, "\r\n"]])
 
 let HasLeave: fn [Cmd] -> Bool = ...
 
@@ -943,7 +944,7 @@ tag Gui.Window of Element:
 
 tag Gui.Scene of Element:
     window: Text
-    ops: [Op]
+    draw: [Draw]
 
 type Code = Code Int
 
@@ -1021,7 +1022,7 @@ let StepDesk: fn Desk, Text ==> DeskCmd -> Desk = ...      # fold in key order; 
 
 type FrameOut = record:
     !quit: DeskCmd
-    $ops: [Op]
+    $draw: [Draw]
 ```
 
 A frame is an interceptor around one application. It supplies the application's window its size from the frame's rectangle, holds the application's scene back and offers it upward as a dynamic, holds `Process.Exit` back and reports the exit as a result, delivers the pointer and key events the compositor addresses to it, and forwards everything else:
@@ -1033,7 +1034,7 @@ let IsFramed: fn Element -> Bool = \|e| match e:
     Process.Exit(..): True
     ignore: False
 
-@Frame: fn App, $Rect, !WindowInput -> @((!Code, $[Op])) = \|app, $rect, !input| @widget:
+@Frame: fn App, $Rect, !WindowInput -> @((!Code, $[Draw])) = \|app, $rect, !input| @widget:
     ((ignore, $slots)) <- intercept (Launch app), !down, $ supply
     let supply = \|e| match e:
         Gui.Window(..): @ (SizeOf $rect)
@@ -1044,14 +1045,14 @@ let IsFramed: fn Element -> Bool = \|e| match e:
                 Process.Exit(..): @ _.!request
                 ignore: @ !never
     let !exit = !Filter (AnyValue !held)
-    let $ops = SceneOf $slots
-    !fwd <- @Forward (Filter $slots, \Not (IsFramed _.element))
+    let $draw = SceneOf $slots
+    !fwd <- @Forward (Filter $slots, \not IsFramed _.element)
     let !to_window = !Filter (Addressed $slots, !input)
     let !down = !Union !to_window, !fwd
-    @ ((!exit, $ops))
+    @ ((!exit, $draw))
 ```
 
-`Addressed` is the plain function that turns an input into a one-entry map keyed by the application's `Gui.Window` slot path, read from `$slots` through a tag, or `Nil` if the application has no window yet; `SceneOf` is the plain function that finds the application's `Gui.Scene` element in the list and takes its `ops`, or `[[]]`; both read the application's list, and an application that draws two windows is an application the frame draws as one, which is a policy the frame could change. `AnyValue` takes the first value of a map, if there is one, so `!exit` fires with the code of whichever exit slot fired; the frame does not know its own id, so it reports a code and the desktop turns it into a `Quit` of the right frame.
+`Addressed` is the plain function that turns an input into a one-entry map keyed by the application's `Gui.Window` slot path, read from `$slots` through a tag, or `Nil` if the application has no window yet; `SceneOf` is the plain function that finds the application's `Gui.Scene` element in the list and takes its `draw` list, or `[[]]`; both read the application's list, and an application that draws two windows is an application the frame draws as one, which is a policy the frame could change. `AnyValue` takes the first value of a map, if there is one, so `!exit` fires with the code of whichever exit slot fired; the frame does not know its own id, so it reports a code and the desktop turns it into a `Quit` of the right frame.
 
 The desktop is a `for` over frames, a hit-test, and a fold:
 
@@ -1067,21 +1068,21 @@ The desktop is a `for` over frames, a hit-test, and a fold:
             out <- @Frame _, $_.rect, !own
             @ out
         let !quit = (Quit key) on (!Switch (First !gen))
-        $$ops <- $ [[]] <= Second !gen
-        @ FrameOut !quit, ($Join $$ops)
+        $$draw <- $ [[]] <= Second !gen
+        @ FrameOut !quit, ($Join $$draw)
 
     let !system = !Union ({"open": Open Counter} on !Filter (IsLaunchChord !keys)), {"raise": RaiseOf !hit}
     let !cmds = !Union !system, (Prefixed "quit:", frames.!quit)
     $desk <- Desk {}, [[]], Nil, 0 <= StepDesk $desk, !cmds
 
-    let $scene = Compose $desk, frames.$ops
-    @Element Gui.Scene(window="Desktop", ops=$scene)
+    let $scene = Compose $desk, frames.$draw
+    @Element Gui.Scene(window="Desktop", draw=$scene)
     @ unit
 ```
 
-`dyn $_.app` builds the frame once per key, since an application never changes for a key, and is there only to get `_` as a plain `App`; its result crosses the `dyn` by the usual two routes, `!Switch` for the quit and a hold joined for the ops. `frames` is a plain record of consolidated results: `frames.!quit` is `!(Nat ==> DeskCmd)`, firing with exactly the frames that quit in an occurrence, and `frames.$ops` is `$(Nat ==> [Op])`, every frame's picture. And `!cmds` is a `!Union` of everything that can change the desk, keyed by text so that a frame's quit and a raise from the same click are two entries folded in key order, never one winning.
+`dyn $_.app` builds the frame once per key, since an application never changes for a key, and is there only to get `_` as a plain `App`; its result crosses the `dyn` by the usual two routes, `!Switch` for the quit and a hold joined for the draw lists. `frames` is a plain record of consolidated results: `frames.!quit` is `!(Nat ==> DeskCmd)`, firing with exactly the frames that quit in an occurrence, and `frames.$draw` is `$(Nat ==> [Draw])`, every frame's picture. And `!cmds` is a `!Union` of everything that can change the desk, keyed by text so that a frame's quit and a raise from the same click are two entries folded in key order, never one winning.
 
-Focus and layering are nothing but `$desk.focus` and `$desk.order`, read through tags. `HitFrame` walks `order` from the top and finds the first frame whose rectangle contains the point, against the desk as the occurrence opened: the user clicked on the stacking they saw. `WhenFocused` passes a key to the frame whose id is `focus` as the occurrence opened. `Compose` translates each frame's ops by its rectangle and concatenates them in `order`, bottom to top, so the scene the World draws after the occurrence is the stacking after the occurrence. There is no z-buffer, no focus manager and no event capture: three fields of one record, one function that moves them, and the tag law.
+Focus and layering are nothing but `$desk.focus` and `$desk.order`, read through tags. `HitFrame` walks `order` from the top and finds the first frame whose rectangle contains the point, against the desk as the occurrence opened: the user clicked on the stacking they saw. `WhenFocused` passes a key to the frame whose id is `focus` as the occurrence opened. `Compose` wraps each frame's draw list in a `Draw.Clip` at its rectangle and concatenates them in `order`, bottom to top, so the scene the World draws after the occurrence is the stacking after the occurrence. There is no z-buffer, no focus manager and no event capture: three fields of one record, one function that moves them, and the tag law.
 
 ### The hard moment
 
@@ -1091,11 +1092,11 @@ Frames 5 and 9 overlap, 9 on top, 5 focused. The user clicks the visible corner 
 
 Inside application 5, the library's `@Window` hit-tests the point against its layout as the occurrence opened, finds the Quit button, and fires its click; the application's `Process.Exit(requests=(Code 0 on !quit))` fires `Code 0`. Back in the frame, `!held`'s block for the exit slot sees `_.!request` fire; `!held` fires with `{p: Code 0}`; `!exit` fires; it crosses the `dyn` through `!Switch`, which has been listening to this generation since the frame was built; block `[5]`'s `!quit` fires with `Quit 5`; in the desktop, `frames.!quit` fires with `{5: Quit 5}`, and `!cmds` fires with `{"quit:5": Quit 5, "raise": Raise 5}`.
 
-`StepDesk` reads `$desk` through a tag and folds in key order. `"quit:5"` first: frame 5 leaves `frames`, `order` becomes `[[9]]`, `focus` becomes `Nil`. Then `"raise"`: `Raise 5` on a desk with no frame 5 is a no-op, as `StepDesk` was written. `$desk` changes; `$desk.frames` changes promptly; the `for` sees key 5 gone and tears block `[5]` down at commit, with the whole application under it: its holds, its timers, its sockets, every slot, each cancelled by the World under its obligations when the next list arrives without them. `frames.$ops` changes promptly to a map without 5; `Compose $desk, frames.$ops` is a derived dynamic over the new desk and the new ops, and it is glitch-free: there is no instant in which the scene has 5's ops with 5 missing from `order`, or `order` naming a frame with no ops. The scene rebuilds, the World draws a desktop with one window. The application's own `Gui.Scene` also rebuilt in 70 (its button drew pressed), in a node that is dropped at commit, and nobody saw it. Nothing about the exit reached the World below, because the frame held `Process.Exit` back and it was never in the compositor's list.
+`StepDesk` reads `$desk` through a tag and folds in key order. `"quit:5"` first: frame 5 leaves `frames`, `order` becomes `[[9]]`, `focus` becomes `Nil`. Then `"raise"`: `Raise 5` on a desk with no frame 5 is a no-op, as `StepDesk` was written. `$desk` changes; `$desk.frames` changes promptly; the `for` sees key 5 gone and tears block `[5]` down at commit, with the whole application under it: its holds, its timers, its sockets, every slot, each cancelled by the World under its obligations when the next list arrives without them. `frames.$draw` changes promptly to a map without 5; `Compose $desk, frames.$draw` is a derived dynamic over the new desk and the new ops, and it is glitch-free: there is no instant in which the scene has 5's draw list with 5 missing from `order`, or `order` naming a frame with no draw list. The scene rebuilds, the World draws a desktop with one window. The application's own `Gui.Scene` also rebuilt in 70 (its button drew pressed), in a node that is dropped at commit, and nobody saw it. Nothing about the exit reached the World below, because the frame held `Process.Exit` back and it was never in the compositor's list.
 
 ```
 0:        Gui.Window(title="Desktop")
-2/#41/0:  Gui.Scene(window="Desktop", ops=[[... frame 9 only ...]])
+2/#41/0:  Gui.Scene(window="Desktop", draw=[[... frame 9 only ...]])
 ```
 
 Now the two ways to get this wrong, each a line. If `!cmds` were `!system | (Prefixed ..)`, the raise would win and the quit would be lost: application 5 fired its exit, nothing happened, and it cannot fire again, since the firing was a click's consequence and the click is over. A program with a dead application in a frame that cannot quit. If `StepDesk` had applied `"raise"` before `"quit:5"`, by sorting its commands the other way, the result would be the same desk, because the fold applies both; the only order that matters is that both are applied, and that is what `!Union` promises.
@@ -1116,7 +1117,7 @@ The spec is the thing: the hard moment is a Test World script with `Send Gui.Win
 
 Every application runs in the compositor's runtime, in the same occurrence. One application's prompt cycle or overflow aborts the occurrence for all of them, and the Errors chapter's quarantine is the answer within one runtime: the World quarantines the failing subtree on its next run call, and the desk shows a dead frame. That is containment, not isolation. Real isolation means real processes, and then the application is a `Process.Spawn`ed program speaking the GUI vocabulary over a socket, with the compositor as the X11 interceptor's mirror image: an interceptor that turns `Net.Conn` bytes into a `Gui.Scene` and pointer events back into bytes. That is the design for untrusted applications, and this section's design is for trusted ones, which is most of what a desktop runs.
 
-`Compose` concatenates every frame's ops on every change of any frame, and the World rasterises the whole scene. There are no damage regions, no retained layers, and no GPU textures the compositor could blit instead of redrawing. A scene of ten thousand ops at sixty frames a second is fine; a browser window's worth of content behind a terminal is not, and the fix is in the World (retained layers keyed by frame id, which the ops can name) and in the vocabulary (an `Op` that references an image the World already holds), not in the language.
+`Compose` concatenates every frame's draw list on every change of any frame, and the World rasterises the whole scene. There are no damage regions, no retained layers, and no GPU textures the compositor could blit instead of redrawing. A scene of ten thousand draw values at sixty frames a second is fine; a browser window's worth of content behind a terminal is not, and the fix is in the World (retained layers keyed by frame id, which the draw values can name) and in the vocabulary (a `Draw` value that references an image the World already holds), not in the language.
 
 Images and video are opaque handles the World allocates (`ImageId`), which means an application that decodes a video frame does so natively and hands the compositor a handle, and the compositor never sees pixels. That is right, and it means the compositor cannot do a pixel effect without asking the World for one.
 ## 7. A game
@@ -1126,7 +1127,8 @@ A game loop is the one program every programmer has written as a mutable loop an
 ### The vocabulary
 
 ```prism
-type Frame = frame
+type Frame = record:
+    now: Instant
 
 tag Gui.Window of Element:
     title: Text
@@ -1135,13 +1137,10 @@ tag Gui.Window of Element:
 
 tag Gui.Scene of Element:
     window: Text
-    ops: [Op]
+    draw: [Draw]
 
 tag Gui.Frames of Element:
-    responds: Frame                    # once per frame the World is about to draw, while a slot exists
-
-tag Clock of Element:
-    state: Instant
+    responds: Frame                    # Frame(now: Instant), once per frame the World is about to draw, while a slot exists
 
 type Sound = choice Jump | Land | Hit
 
@@ -1188,32 +1187,31 @@ let Step: fn Game, Nat ==> Msg -> ((Game, [Effect])) = \|g, msgs|
 
 @game:
     ((!raw, $size)) <- @Element Gui.Window(title="Jump")
-    $clock <- @Element Clock
     !!frames <- dyn $paused:
         if _: @ !never
         else: @Element Gui.Frames
     let !frame = !Switch !!frames
     let !key = !Filter (KeyOf !raw)
-    $paused <- False <= (Not $paused) on !Filter (IsPause !key)
+    $paused <- False <= (not $paused) on !Filter (IsPause !key)
 
-    let !msgs = !Union {0: !Filter (KeyMsg !key)}, {1: Tick ($clock on !frame)}
+    let !msgs = !Union {0: !Filter (KeyMsg !key)}, {1: Tick !frame.now}
     let !stepped = Step $game, !msgs
     $game <- Initial <= First !stepped
     @Element Audio.Play(requests=(!Filter (FirstSound (Second !stepped))))
 
     $sprites <- for $game.entities:
         $phase <- 0 <= ($phase + 1) on !frame
-        @ Draw $_, $phase
-    @Element Gui.Scene(window="Jump", ops=(Concat (Values $sprites)))
-    @Element Ui.Label(text=$"Score: ${$game.score}")
+        @ Sprite $_, $phase
+    @Element Gui.Scene(window="Jump", draw=(Concat (Values $sprites)))
+    @Element Ui.Label(text="Score: {$game.score}")
     @ unit
 ```
 
 `Step` is the game. It folds the occurrence's messages in key order: key edges first (key `0`), then the tick (key `1`), so a press that lands with a frame is applied before the frame integrates. `Press` and `Release` set the held flags; `Integrate` advances every entity by the time since `last_t`, resolves collisions, scores, and appends an `Effect` for each thing that should make a sound. It has no time in it beyond the timestamps it is handed, and it is the function a replay runs.
 
-The tick's timestamp is `$clock` read through a tag on `!frame`: the clock as the occurrence opened. A World that pushes the clock in the same occurrence as the frame gives the step the previous frame's time, one frame behind, constantly; the differences between consecutive ticks are still the frame intervals, so `Integrate` is right, and a program that wants the frame's own time asks for `Gui.Frames` to respond with it instead. The tag law is not a bug here; it is a fixed, stated lag, which is more than a game loop's `now()` ever promised.
+The tick's timestamp is the frame's own: the program asks `Gui.Frames` to respond with the time, and `Frame(now: Instant)` says when the World is about to draw. Nothing reads a clock through a tag, so there is no lag to state, and the differences between consecutive ticks are the frame intervals `Integrate` needs. A World that stalls delivers a late `now`, not two frames.
 
-`$sprites` is a `for` over the entities, which looks like more than a draw loop needs, and is: `Draw` over `$game.entities` as one derived dynamic would do for a picture. The `for` earns its keep when an entity has *widgets*: a `$phase` of its own that survives other entities spawning and dying, a `Time.After` for a death animation that must outlive the entity's removal from physics, a particle emitter with holds. A key is an identity, and an entity's local state belongs to its key. The consolidated `$(Nat ==> [Op])` is concatenated in key order into one `Gui.Scene`, and that scene is the entire output of the program: a presence element, replaced every frame, drawn by the World after the turn. There is no `render()`; there is a dynamic whose value is the picture.
+`$sprites` is a `for` over the entities, which looks like more than a draw loop needs, and is: `Sprite` over `$game.entities` as one derived dynamic would do for a picture. The `for` earns its keep when an entity has *widgets*: a `$phase` of its own that survives other entities spawning and dying, a `Time.After` for a death animation that must outlive the entity's removal from physics, a particle emitter with holds. A key is an identity, and an entity's local state belongs to its key. The consolidated `$(Nat ==> [Draw])` is concatenated in key order into one `Gui.Scene`, and that scene is the entire output of the program: a presence element, replaced every frame, drawn by the World after the turn. There is no `render()`; there is a dynamic whose value is the picture.
 
 Sounds are requests. `Integrate` cannot play a sound, because nothing in Prism can; it returns `Play Jump` in its effects, and the `Audio.Play` slot fires it. One request per occurrence per slot, so a frame with two sounds either fires an array (make the request type `[Sound]`) or picks the first, as `FirstSound` does here; the program said which.
 
@@ -1221,30 +1219,30 @@ Sounds are requests. `Integrate` cannot play a sound, because nothing in Prism c
 
 The player is on the ground. They press Space in the instant the next frame is due.
 
-**Occurrence 1200.** The World, which batches between frames, delivers `Pressed Space` to the window slot and `Frame` to the frames slot in one occurrence, with a push of the clock. `!key` fires with `Space`; `KeyMsg` turns it into `Down Space`; `{0: Down Space}` fires. `!frame` fires; `Tick ($clock on !frame)` fires with the clock before the occurrence; `{1: Tick ..}` fires. `!Union` fires with both. `Step` reads `$game` through a tag and folds: `Down Space` sets `held.jump`; then `Tick` integrates, and `Integrate` sees `held.jump` true with the player grounded, sets a vertical velocity, clears `grounded`, and appends `Play Jump`. `$game` changes; the player's `$_` in the `for` changes; `Draw` draws the player one step into the air; the scene rebuilds; `Audio.Play` fires `Jump`. After the turn the World draws the frame with the player already rising and plays the sound. The press was applied in the frame it arrived in.
+**Occurrence 1200.** The World, which batches between frames, delivers `Pressed Space` to the window slot and `Frame` to the frames slot in one occurrence. `!key` fires with `Space`; `KeyMsg` turns it into `Down Space`; `{0: Down Space}` fires. `!frame` fires with `Frame(now: Instant 20000)`; `Tick !frame.now` fires with that time; `{1: Tick ..}` fires. `!Union` fires with both. `Step` reads `$game` through a tag and folds: `Down Space` sets `held.jump`; then `Tick` integrates, and `Integrate` sees `held.jump` true with the player grounded, sets a vertical velocity, clears `grounded`, and appends `Play Jump`. `$game` changes; the player's `$_` in the `for` changes; `Sprite` draws the player one step into the air; the scene rebuilds; `Audio.Play` fires `Jump`. After the turn the World draws the frame with the player already rising and plays the sound. The press was applied in the frame it arrived in.
 
 Here is the version everyone writes first:
 
 ```prism
     $held <- Held False, False, False <= (Press $held, (!Filter (DownOf !key))) | (Release $held, (!Filter (UpOf !key)))
-    let !stepped = Integrate $game, $held, ($clock on !frame)
+    let !stepped = Integrate $game, $held, !frame.now
 ```
 
 A hold for the keys, updated by key events, read by the frame step through a tag. In occurrence 1200, `$held` changes to `jump = True` and `Integrate` reads `$held` through a tag, *before* the occurrence: `jump = False`. The player does not jump this frame. In 1201 the tag reads `True` and the jump happens, one frame late, sixteen milliseconds after the press. That is the input lag that game programmers measure with high-speed cameras (from memory), and here it is a consequence of one line that could be read: the step reads the keys as they stood before this frame. The `!Union` version reads them as the fold has them, with this occurrence's edges applied, and the difference between the two programs is visible in their text rather than in a frame counter.
 
 And the version with `|`: `(KeyMsg !key) | (Tick ..)` loses the tick when a key lands with it, which is a dropped frame on every keypress, or loses the key, which is a stuck or missed input depending on whether it was a press or a release. Neither is a race; both are the program saying the wrong thing, and the two-events-in-one-operation error is what stops the third version, `Integrate $game, !key, !frame`, from ever being written.
 
-Now the same press under a World that gives every input its own turn. Occurrence 1200 has the key alone: `!msgs` fires with `{0: Down Space}`, `Step` sets `held.jump`, nothing integrates, the scene rebuilds with the same picture (derived dynamics do not dedupe, and the World diffs or redraws; a `$Distinct` on the ops would spare it). Occurrence 1201 has the frame: `Integrate` sees `jump` held and the player rises. Same result, one occurrence later in numbering and the same frame on screen. The program covered both policies because it said what a key means and what a frame means, separately, and let `!Union` say what both together mean.
+Now the same press under a World that gives every input its own turn. Occurrence 1200 has the key alone: `!msgs` fires with `{0: Down Space}`, `Step` sets `held.jump`, nothing integrates, the scene rebuilds with the same picture (derived dynamics do not dedupe, and the World diffs or redraws; a `$Distinct` on the draw list would spare it). Occurrence 1201 has the frame: `Integrate` sees `jump` held and the player rises. Same result, one occurrence later in numbering and the same frame on screen. The program covered both policies because it said what a key means and what a frame means, separately, and let `!Union` say what both together mean.
 
 ### Replay, for free
 
-The sequence of inputs the World delivered, with their occurrence numbers and the clock pushes, is the entire session. Given the same transcript, the program's sequence of scenes is bit-identical, because there is no `now()`, no random source that is not a state element, no scheduling, and no float that depends on which thread ran first. A replay file is a transcript; a demo is a replay; a test of a level is a replay with an `Expect` at the end. Lockstep networking is two peers running the same `Step` over the same transcript, exchanging inputs rather than state, and the thing lockstep netcode spends its life fighting, nondeterminism between the two simulations, cannot happen between two Prism runtimes running one program, and the differential test between the two implementations is the guarantee that it cannot happen between a Rust client and a Haskell server either.
+The sequence of inputs the World delivered, with their occurrence numbers and the frame times, is the entire session. Given the same transcript, the program's sequence of scenes is bit-identical, because there is no `now()`, no random source that is not a state element, no scheduling, and no float that depends on which thread ran first. A replay file is a transcript; a demo is a replay; a test of a level is a replay with an `Expect` at the end. Lockstep networking is two peers running the same `Step` over the same transcript, exchanging inputs rather than state, and the thing lockstep netcode spends its life fighting, nondeterminism between the two simulations, cannot happen between two Prism runtimes running one program, and the differential test between the two implementations is the guarantee that it cannot happen between a Rust client and a Haskell server either.
 
 ### What the goals buy
 
 Simultaneity is the program's: a key and a frame in one instant is the `!Union` and the fold order, which is the first thing a game programmer wants to be able to state and the last thing a loop lets them.
 
-No clock: the step is a function of the clock the World pushed, so a slow-motion mode is a World that pushes a slower clock, and a test runs a thousand frames in no time.
+No clock: the step is a function of the frame times the World delivered, so a slow-motion mode is a World that delivers slower times, and a test runs a thousand frames in no time.
 
 You can see what moves: `Step $game, !msgs` is the whole loop, and `$sprites` reads as a picture derived from state, which is what rendering is.
 
@@ -1254,9 +1252,9 @@ Nothing is chosen for the implementer's comfort: the `for` over entities with pe
 
 `Integrate` is a computation over every entity every frame, and it builds a new map each time. A persistent map makes an unchanged entity free and a changed one a path copy, which for a few thousand entities at sixty frames a second is fine. Fifty thousand bullets is not this; it is an array of structs updated in place by a loop, which is the kind of code that wants an `update` block and, until then, native code the program calls with the map and gets a map back. The physics engine, the navigation mesh, the particle system: computations, called out to, with the Prism program owning when they run and what their results mean.
 
-Fifty thousand entities is also fifty thousand `for` blocks, each rebuilding a sprite per frame, and the first implementation recomputes the element list per occurrence. For a picture alone, do not use the `for`; derive the ops from the map in one plain function and keep the `for` for the entities that have widgets, which is a few.
+Fifty thousand entities is also fifty thousand `for` blocks, each rebuilding a sprite per frame, and the first implementation recomputes the element list per occurrence. For a picture alone, do not use the `for`; derive the draw list from the map in one plain function and keep the `for` for the entities that have widgets, which is a few.
 
-The GPU is the World's. An `Op` can name a mesh or a texture by a handle the World allocated, and a shader is a World component with a request element for its parameters; a program that wants to write a shader in Prism is writing a computation in the wrong language. The vocabulary of `Op` for a real game is a retained scene graph with handles, not a list of rectangles, and that vocabulary is a World's to offer; the language only fixes that it is plain data and that it is drawn after the turn.
+The GPU is the World's. A `Draw` value can name a mesh or a texture by a handle the World allocated, and a shader is a World component with a request element for its parameters; a program that wants to write a shader in Prism is writing a computation in the wrong language. The `Draw` vocabulary for a real game is a retained scene graph with handles, not a list of rectangles, and that vocabulary is a World's to offer; the language only fixes that it is plain data and that it is drawn after the turn.
 
 Fixed-timestep integration with an accumulator, the standard advice for stable physics, is a loop inside `Integrate`, in the plain function, where it belongs. Audio latency is the turn: a sound requested in a frame plays after it, which at sixty frames a second is under a frame of lag, and a rhythm game that wants better schedules sounds ahead through a request with a timestamp, which is a World policy.
 
@@ -1329,7 +1327,7 @@ let Loading: fn QueryState -> Bool = \|s| match s:
 @Chart: fn Text, $Query -> @unit = \|title, $query| @widget:
     $live <- @Element Query.Result(query=$query)
     $shown <- Unavailable <= !Filter (IsKnown (!Updated $live))
-    @Element Gui.Scene(window=title, ops=(Plot title, $shown, (Loading $live)))
+    @Element Gui.Scene(window=title, draw=(Plot title, $shown, (Loading $live)))
     @ unit
 ```
 
@@ -1392,7 +1390,7 @@ The order matters and is readable: the cache is outermost, so it sees the poller
 
 The dashboard shows the last hour of `cpu`. A poll for that range is in flight. The user drags the range picker to the last day, and the poll's answer arrives in the same instant.
 
-**Occurrence 90.** The World delivers `Answered ..` to the poller's `Http.Fetch` slot for the hour query, at `s/0/3`, and a key to the range picker's focusable, in one occurrence. The range picker's hold changes; `$range` changes; both `cpu` charts' `$q "cpu"` change promptly to the day query; each chart's `dyn` rebuilds: generation `#1` is built with a `Query.Result(query=(Query "cpu", (Range day), 60))` slot. The runtime asks the poller's supplier for that element, finds no supplied widget for it, applies `supply`, and builds one now: `@started` fires, the fetch for the day query fires at birth, `$latest` is `Unavailable`. Both charts' new slots get that `$latest`, since the second chart's slot, created in the same occurrence with an equal element, joins the widget already built. In each chart, `$live`'s hold of dynamics changes to the new generation's dynamic, and `$Join` changes to `Unavailable`; `!Updated $live` fires with `Unavailable`; `IsKnown` drops it; `$shown` keeps the hour's rows. The scenes rebuild with the hour's rows and the loading badge.
+**Occurrence 90.** The World delivers `Answered ..` to the poller's `Http.Fetch` slot for the hour query, at `s/0/3`, and a key to the range picker's focusable, in one occurrence. The range picker's hold changes; `$range` changes; both `cpu` charts' `q "cpu"` change promptly to the day query; each chart's `dyn` rebuilds: generation `#1` is built with a `Query.Result(query=(Query "cpu", (Range day), 60))` slot. The runtime asks the poller's supplier for that element, finds no supplied widget for it, applies `supply`, and builds one now: `@started` fires, the fetch for the day query fires at birth, `$latest` is `Unavailable`. Both charts' new slots get that `$latest`, since the second chart's slot, created in the same occurrence with an equal element, joins the widget already built. In each chart, `$live`'s hold of dynamics changes to the new generation's dynamic, and `$Join` changes to `Unavailable`; `!Updated $live` fires with `Unavailable`; `IsKnown` drops it; `$shown` keeps the hour's rows. The scenes rebuild with the hour's rows and the loading badge.
 
 Meanwhile the answer. It was addressed to `s/0/3`, the hour widget's fetch slot, which existed as the occurrence opened, so it is routed: `!res` fires, `Decode` fires, the hour widget's `$latest` changes to `Known`. Whose dynamic is that? The two `#0` generations' slots, which are being torn down at commit, and nothing else. `$Join` in each chart has already switched to the `#1` inner; its change event fires on the outer change with the new inner's value, and the old inner's change in the same occurrence is not heard, because the outer changed. So `!Updated $live` fired once, with `Unavailable`, and the hour's fresh rows reached no chart. At commit, the `#0` generations go, the hour's slots go, the hour's supplied widget has no slot left and goes too, with its fetch slot and its timer.
 

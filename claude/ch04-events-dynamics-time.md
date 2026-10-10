@@ -36,7 +36,7 @@ This is why `!a + !b` is a compile error and not an event of sums. At an occurre
 
 This is liveable because simultaneity is rare, and when it happens the program has already said what it wants. A click and a keystroke in one frame; a network response and a timer in one turn; two buttons the user mashed together. In every framework you have used, these cases were resolved by registration order and you found out which order when a bug report arrived. Here they are resolved by the line that merges the two events, and reading that line is reading the resolution.
 
-The refusal is about two *events*. An optional inside an event is a different matter and raises no error: `!?a` is an event that sometimes fires with `Nil`, and `?` lifts inside it at the plain layer, so `!?a + 1` is an `!?Nat` that fires whenever `!?a` fires, with `Nil` when it did. The same holds under `$`: `$a / $b` is a `$?Nat`. The time functor is always outermost and lifts first; `?` lifts second, inside it; and `match` on the optional is how you get back out. `!Filter` is that `match` packaged for events: it takes an `!?A` and gives the `!A` that fires only on `Some`. The precedence between `?` and the time sigils, and `?$x` as the thing that does not lift, are chapter 3's; here it is enough that a `?` never makes two events coincide, because it never adds a second event.
+The refusal is about two *events*. An optional inside an event is a different matter and raises no error: `!?a` is an event that sometimes fires with `Nil`, and `?` lifts inside it at the plain layer, so `!?a + 1` is an `!?Nat` that fires whenever `!?a` fires, with `Nil` when it did. The same holds under `$`: `$a / $b` over `Nat`s is a `$?Nat`, because `/` on `Nat` and `Int` returns `?`; on `Float` it follows IEEE and never fails, so the same line over `Float`s is a plain `$Float`. The time functor is always outermost and lifts first; `?` lifts second, inside it; and `match` on the optional is how you get back out. `!Filter` is that `match` packaged for events: it takes an `!?A` and gives the `!A` that fires only on `Some`. The precedence between `?` and the time sigils, and `?$x` as the thing that does not lift, are chapter 3's; here it is enough that a `?` never makes two events coincide, because it never adds a second event.
 
 ### `!never`, and why there is no `!always`
 
@@ -78,7 +78,7 @@ The third one is the common case in which the bias is irrelevant because both si
 
 `v on !e` fires exactly when `!e` fires, with the value `v`. When `v` is a dynamic, the value is the dynamic's value *before* the occurrence, which is the tag law of the next section applied here. `on` is how a click becomes "a click while the label was X" and a keystroke becomes "Enter, with the text as it stood".
 
-`on` has no semantics of its own. It is a plain function that returns its left operand, `\|v, e| v`, and the lifting rule gives it its meaning: an operation with one event operand fires when that event fires, with the operation applied to the event's value and the dynamics' old values. The whole of `on` is that lifting rule plus a function that ignores its second argument. This matters because it means there is nothing to learn: `$text on !enter` and `Length $text on !enter` and `(Submit $text, $user) on !enter` are all the same mechanism, and in the last one the name `on` could be dropped in favour of a three-argument function and nothing would change.
+`on` has no semantics of its own. It is a plain function that returns its left operand, `\|v, e| v`, and the lifting rule gives it its meaning: an operation with one event operand fires when that event fires, with the operation applied to the event's value and the dynamics' old values. The whole of `on` is that lifting rule plus a function that ignores its second argument. This matters because it means there is nothing to learn: `$text on !enter` and `(Length $text) on !enter` and `(Submit $text, $user) on !enter` are all the same mechanism, and in the last one the name `on` could be dropped in favour of a three-argument function and nothing would change.
 
 Three uses you will write constantly:
 
@@ -182,7 +182,7 @@ The tag law is also where the "before" in a stopwatch comes from. A Start click 
 
 A lifted operation over dynamics and no event is a dynamic whose value at every occurrence is the operation applied to the operands' values at that occurrence, and whose change event fires at n, once, with the new value, if any operand's change event fires at n.
 
-So `1 + $x` is a dynamic that is one more than `$x` at every occurrence, before and after. `"Count: $count"` is a dynamic text. `$items[$cursor]` is a dynamic optional, changing when either changes. `Total $watch, $clock` changes with the clock while the watch runs. A derived dynamic is never stale: in the occurrence its input changes, it changes.
+So `1 + $x` is a dynamic that is one more than `$x` at every occurrence, before and after. `"Count: {$count}"` is a dynamic text. `$items[$cursor]` is a dynamic optional, changing when either changes. `Total $watch, $clock` changes with the clock while the watch runs. A derived dynamic is never stale: in the occurrence its input changes, it changes.
 
 That is promptness, and it is the point. Suppose derived dynamics lagged: `$x` changes at n, `1 + $x` changes at n+1. Then at the end of n, after commit, `$x` is 5 and `1 + $x` is 5, and anything that reads both, a label showing "x is 5 and x+1 is 5", sees a state that was never true. That is a glitch, and it is the checkbox afternoon in miniature. A derived dynamic that changes in the occurrence its input changes cannot show such a state, because there is no occurrence in which the input has changed and the derivation has not.
 
@@ -260,7 +260,7 @@ The one place promptness remains is construction, and it is deliberate. `dyn $x:
 
 `$ v` is the constant dynamic: `$ "Increment"` is a dynamic text that never changes, and `$"Increment"` is the same with the sigil attached. A function that takes `$Text` can be given a constant this way, and since a constant dynamic's change event is `!never`, deriving from it costs nothing.
 
-`$x` inside a text literal interpolates by lifting: `"Count: $count"` is a dynamic text, changing with `$count`, and `$"Count: $count"` means the same with the sigil made explicit. An event interpolated with `${!line}` makes the literal an event, firing once per line.
+`{$x}` inside a text literal interpolates by lifting: `"Count: {$count}"` is a dynamic text, changing with `$count`, with no sigil on the literal, because a literal that interpolates a dynamic is a dynamic. An event interpolated with `{!line}` makes the literal an event, firing once per line. A `$` in text is always an ordinary character, so `"costs $5"` says what it looks like, and a literal brace is written `\{` or `\}`.
 
 `$$x` is a dynamic of dynamics, and `$Join` flattens it: `$Join $$x` at n is the value after n of the inner that `$$x` holds after n, so it is prompt in the outer and in the inner, including when both change at n. Chapter 5 owns the rest of switching; the law has its script in "Laws as tests" below. `?$x` is an optional dynamic, a plain value that is `Nil` or holds a dynamic; `$?x` is a dynamic whose value is sometimes `Nil`. They are different types, and the order of the sigils is the order you would say it.
 
@@ -274,7 +274,7 @@ An occurrence is that transaction, written once, for everything. It is opened by
 
 The two handlers above become one occurrence with two inputs, a click and a tick. The program's text says what a click and a tick together mean, through a merge, and the write request is one event firing once. There is no flag because there is no second handler to see it.
 
-Holds committing at the end makes the rest possible. Because no write happens until commit, all writes in an occurrence can be buffered, and an occurrence can be aborted by dropping the buffer: a cycle found halfway through, an overflow in a closure, a protocol error from a World, and the occurrence simply did not happen. Nothing half-done survives, because nothing is done until the end. The error chapter builds on this; here it is enough that the transaction was already there, and it was there because the language has no assignment.
+Holds committing at the end makes the rest possible. Because no write happens until commit, all writes in an occurrence can be buffered, and an occurrence can be aborted by dropping the buffer: a cycle found halfway through, an overflow in arithmetic (kind `Overflow`; programs that want a different answer use the `Checked.*` and `Wrap.*` prelude functions), a protocol error from a World, and the occurrence simply did not happen. Nothing half-done survives, because nothing is done until the end. The error chapter builds on this; here it is enough that the transaction was already there, and it was there because the language has no assignment.
 
 Occurrence zero is the build of `@main`. It has no inputs; it exists so that everything built at the start has an occurrence to have been built in, so that holds have a before-value and a build occurrence like any other hold, and so that `@started` fires at the start the way it fires in any rebuild. There is nothing else special about it. A program that behaves differently in occurrence zero than in a rebuild of its root is a program with a bug, not a program using a feature.
 
@@ -351,7 +351,7 @@ The structure that looks like the cycle above is also the structure of every lis
 @todos:
     !add <- @Button $"Add"
     $next <- 0 <= $next + 1 on !add
-    let !adds = {$next: Add $"item $next"} on !add
+    let !adds = {$next: Add "item {$next}"} on !add
     !rows <- for $items:
         !delete <- @Button $"Delete"
         @ Delete on !delete
@@ -385,9 +385,9 @@ Everything else is a consequence. The rule binds the runtime and nothing else: a
 @pages:
     !next <- @Button $"Next"
     $page <- 0 <= $page + 1 on !next
-    let $title = $"Page $page"
+    let $title = "Page {$page}"
     dyn $page:
-        @Label $"body of $_"
+        @Label $"body of {_}"
         dyn $title:
             @Element Ui.Label(text=_)
     @ unit
@@ -503,7 +503,7 @@ Two clicks in one occurrence are the left one. The `!never` on the right is ther
     !bump <- @Button $"Bump"
     $n <- 0 <= $n + 1 on !bump
     $seen <- -1 <= $n on !bump
-    @Label $"n=$n seen=$seen"
+    @Label "n={$n} seen={$seen}"
 
 test tag_reads_before: Test @tag_law: array:
     Expect Ui.Label(text="n=0 seen=-1")
@@ -522,7 +522,7 @@ test tag_reads_before: Test @tag_law: array:
     !started <- @started
     $phase <- "starting" <= "started" on !started
     $before <- "?" <= $phase on !started
-    @Label $"$phase / $before"
+    @Label "{$phase} / {$before}"
 
 test hold_in_build_occurrence: Test @hold_law: array:
     Expect Ui.Label(text="started / starting")
@@ -541,7 +541,7 @@ One step, two facts. `$phase` adopted the firing of `!started` in occurrence zer
     let $d = $b + $c
     let !d_changed = !Updated $d
     $fires <- 0 <= $fires + 1 on !d_changed
-    @Label $"d=$d fires=$fires"
+    @Label "d={$d} fires={$fires}"
 
 test diamond_changes_once: Test @diamond: array:
     Expect Ui.Label(text="d=1 fires=0")
@@ -560,8 +560,8 @@ test diamond_changes_once: Test @diamond: array:
     $n <- 0 <= $n + 1 on !bump
     $x <- -1 <= $n on (!bump | !other)
     $y <- -1 <= $n on (!other | !bump)
-    @Label $"$n $n"
-    @Label $"$x $y"
+    @Label "{$n} {$n}"
+    @Label "{$x} {$y}"
 
 test readings_agree: Test @equal_readings: array:
     Together:
@@ -578,7 +578,7 @@ The cross-World half of the law needs a state element, and the script needs a `S
 ```prism
 @Stamp: fn Text -> @unit = \|name| @widget:
     $clock <- @Element Clock
-    @Label $"$name=${Ms $clock}"
+    @Label "{name}={Ms $clock}"
     @ unit
 
 @clock_readings:
@@ -587,7 +587,7 @@ The cross-World half of the law needs a state element, and the script needs a `S
     @Stamp "b"
     $clock <- @Element Clock
     $stamped <- -1 <= Ms $clock on !bump
-    @Label $"stamped=$stamped"
+    @Label "stamped={$stamped}"
 
 test clock_readings_agree: Test @clock_readings: array:
     State Clock, Instant 0
@@ -618,7 +618,7 @@ Three slots in three widgets that have never met bind `Clock`, and `Clock` has n
     $heard <- -1 <= !Switch !!born
     let !built = !Updated $gen
     $built <- -1 <= !built
-    @Label $"heard=$heard built=$built"
+    @Label "heard={$heard} built={$built}"
 
 test switch_swallows_birth: Test @switch_law: array:
     Expect Ui.Label(text="heard=-1 built=-1")
@@ -633,10 +633,10 @@ Each generation fires `@started` in the occurrence it is born, and `!Switch` nev
     !rebuild <- @Button $"Rebuild"
     $gen <- 0 <= $gen + 1 on !rebuild
     !!clicks <- dyn $gen:
-        !c <- @Element Ui.Button(label="gen ${_}")
+        !c <- @Element Ui.Button(label="gen {_}")
         @ _ on !c
     $clicked <- -1 <= !Switch !!clicks
-    @Label $"clicked=$clicked"
+    @Label "clicked={$clicked}"
 
 test switch_follows_generations: Test @switch_follows: array:
     Send Ui.Button(label="gen 0"), click
@@ -662,11 +662,11 @@ The `Together` is the case that matters: a click on generation 1 in the occurren
     !bump <- @Button $"Bump"
     $a <- 0 <= $a + 1 on !bump
     $b <- 100 <= $b + 1 on !bump
-    $use_b <- False <= (Not $use_b) on !swap
+    $use_b <- False <= (not $use_b) on !swap
     !$chosen <- dyn $use_b:
         @ (if _: $b else: $a)
     $$current <- $ $a <= !$chosen
-    @Label $"${$Join $$current}"
+    @Label "{$Join $$current}"
 
 test join_is_prompt: Test @join_law: array:
     Expect Ui.Label(text="0")
@@ -690,11 +690,11 @@ The third case is the outer switching to an inner that does not change in that o
     !bump_a <- @Button $"Bump A"
     $a <- 0 <= $a + 1 on !bump_a
     $b <- 100 <= !never
-    $use_b <- False <= (Not $use_b) on !swap
+    $use_b <- False <= (not $use_b) on !swap
     !$chosen <- dyn $use_b:
         @ (if _: $b else: $a)
     $$current <- $ $a <= !$chosen
-    @Label $"${$Join $$current}"
+    @Label "{$Join $$current}"
 
 test join_follows_quiet_inner: Test @join_quiet_inner: array:
     Send Ui.Button(label="Bump A"), click
@@ -715,7 +715,7 @@ test join_follows_quiet_inner: Test @join_quiet_inner: array:
 @nested_law:
     !next <- @Button $"Next"
     $page <- 0 <= $page + 1 on !next
-    let $title = $"Page $page"
+    let $title = "Page {$page}"
     dyn $page:
         dyn $title:
             !started <- @started
@@ -743,7 +743,7 @@ The inner `dyn` is built partway through the click's occurrence, after `$title` 
     $gen <- 0 <= $gen + 1 on !rebuild
     dyn $gen:
         $n <- 0 <= $n + 1 on !bump
-        @Label $"n=$n"
+        @Label "n={$n}"
     @ unit
 
 test hold_resets_and_catches_up: Test @reset_law: array:
@@ -892,7 +892,7 @@ To drop firings on a condition, lift a function that returns an optional and fil
 
 ```prism
 let When = \|!e, $open| !Filter ((\|x, g| if g: Some x else: Nil) !e, $open)
-let !accepted = When !submitted, (Not $busy)
+let !accepted = When !submitted, not $busy
 ```
 
 `When` is a plain function that happens to take an event and a dynamic, so its name has no sigil; the sigil goes on what it returns, and `!accepted` is an event because `!Filter` returns one.
@@ -935,7 +935,7 @@ Occurrence by occurrence, with a 300 ms delay: a keystroke at occurrence 4 reque
     $query <- "" <= !typed
     !settled <- @Debounce 300, !typed
     $shown <- "" <= !settled
-    @Label $"searching: $shown"
+    @Label "searching: {$shown}"
 
 test debounce_waits_for_the_last: Test @debounced_search: array:
     Send Ui.TextInput(name="query"), "a"
@@ -966,7 +966,7 @@ let Bump: fn Text ==> Nat, Text -> Text ==> Nat = \|m, w| match m[w]:
     !word <- @Element Words
     $counts <- {} <= Bump $counts, !word
     for $counts:
-        @Label $"$key: $_"
+        @Label "{key}: {$_}"
     @ unit
 ```
 
@@ -980,10 +980,10 @@ Two refinements that are both one line. Several words in one occurrence, if the 
 let Mark: fn Bool -> Text = \|m| if m: " *" else: ""
 
     for $counts:
-        !click <- @Button $"$key"
-        $marked <- False <= (Not $marked) on !click
-        @Label $"$key: $_${Mark $marked}"
+        !click <- @Button $"{key}"
+        $marked <- False <= (not $marked) on !click
+        @Label "{key}: {$_}{Mark $marked}"
 ```
 
-`$"$key"` is a constant dynamic of the key, which `@Button` takes as its label. Nothing about `$counts` changed to make room for it. That is the whole experience of the language in miniature: state is a hold, it lives where it is written, and the structure of the program is the structure of the data.
+`$"{key}"` is a constant dynamic of the key, which `@Button` takes as its label. Nothing about `$counts` changed to make room for it. That is the whole experience of the language in miniature: state is a hold, it lives where it is written, and the structure of the program is the structure of the data.
 

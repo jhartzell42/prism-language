@@ -6,9 +6,9 @@ Fourteen programs, from a counter to a shell that hosts other programs, each one
 
 Occurrences are numbered from zero. Occurrence 0 is the build of the program; nothing is delivered to it. From then on every occurrence is opened by the World with a set of inputs, each one addressed to a slot by its path, all simultaneous. A walkthrough says, for each occurrence: the inputs; the events that fire and the derived dynamics that change, in dependency order, which is the only order the language promises; the holds that commit at the end; and the element list the World reads afterwards.
 
-Paths are opaque to a World and the chapter needs a way to write them down, so here is one. A path is the chain of bind positions from the root, written with `/`: the first widget bound in `@main` is `0`, the second is `1`; a `dyn` adds its generation as `#n`, starting at `#0` for the first build; a `for` adds its key as `[k]`. The Increment button of the counter below ends up at `0/#0/0`: the first bind in `@counter`, generation zero of the `dyn` inside `@Button`, the first slot in that generation. Holds and `let`s do not take a bind position; only widgets do, and `@started` is a widget, so it takes one even though it creates no slot. A slot created by a widget that an interceptor's supplier built is written `s`, because its position in the interceptor's node is the runtime's business.
+Paths are opaque to a World and the chapter needs a way to write them down, so here is one. A path is the chain of bind positions from the root, written with `/`: the first widget bound in `@main` is `0`, the second is `1`; a `dyn` adds its generation as `#n`, starting at `#0` for the first build; a `for` adds its key as `[k]`. The Increment button of the counter below ends up at `0/#0/0`: the first bind in `@counter`, generation zero of the `dyn` inside `@Button`, the first slot in that generation. Holds and `let`s do not take a bind position; only widgets do, and `@started` is a widget, so it takes one even though it creates no slot. A slot created by a widget that an interceptor's supplier built is written `s/n`, with `n` counting the supplier-built widgets in creation order in the interceptor's node, followed by the supplied widget's own segments; its position in the node is the runtime's business, and only its existence is a law.
 
-Element lists are written one slot per line as `path: element`. A tag with no `responds` and no `state` is a presence element, there to be seen and nothing else.
+Element lists are written one slot per line as `path: element`. A tag with no `responds` and no `state` is a presence element, there to be seen and nothing else. A slot whose request fired in the occurrence has `requested:` after it, then the fired values in firing order, each written as the Prism literal it is and separated by `; `, with no brackets of the transcript's own: `requested: Read`, `requested: [[Send "ok", Close]]`, `requested: "a"; "b"`. An array request is already an array literal, so wrapping the list in brackets would stack three of them; the separator keeps every bracket in the line meaning an array.
 
 The chapter assumes a small prelude of plain functions. None of them does anything with time; they are listed so that nothing in a program is a mystery:
 
@@ -18,7 +18,6 @@ The chapter assumes a small prelude of plain functions. None of them does anythi
 !Leftmost: fn [!a] -> !a
 First:  fn ((a, b)) -> a
 Second: fn ((a, b)) -> b
-Not:    fn Bool -> Bool
 Len:    fn Text -> Nat
 Prefix: fn Text, Nat -> Text                            # the first n characters
 Suffix: fn Text, Nat -> Text                            # everything from character n on
@@ -37,7 +36,7 @@ MapValues: fn k ==> v, (fn v -> w) -> k ==> w
 Fold:   fn k ==> v, a, (fn a, k, v -> a) -> a           # in key order
 ```
 
-Every operation over these lifts by the rule of the sigils: a plain function applied to a dynamic is a dynamic, applied to a dynamic and an event is an event with the dynamic read through a tag, applied to two events is a compile error. Comparisons are the infix operators `==`, `!=`, `lt`, `le`, `gt` and `ge` (`a lt b`), through the equality and ordering traits, and lift the same way. So `Append $log, !line` is an event of arrays, and `(Insert $items, $next, todo) on !add` is an event that fires with the click and reads both dynamics as they stood before it.
+Every operation over these lifts by the rule of the sigils: a plain function applied to a dynamic is a dynamic, applied to a dynamic and an event is an event with the dynamic read through a tag, applied to two events is a compile error. Comparisons are the infix operators `==`, `!=`, `lt`, `le`, `gt` and `ge` (`a lt b`), through the equality and ordering traits, and lift the same way. Boolean logic is the keyword operators `not`, `and` and `or`, looser than comparison and tighter than `on` and `|`, and they lift the same way too. So `Append $log, !line` is an event of arrays, and `(Insert $items, $next, todo) on !add` is an event that fires with the click and reads both dynamics as they stood before it.
 
 ### Shared declarations
 
@@ -80,14 +79,14 @@ Inside the `dyn` block `_` is the label as a plain value, because inside one bui
     !decrement <- @Button $"Decrement"
     let !delta = -1 on !decrement | +1 on !increment
     $count <- 0 <= $count + !delta
-    @Label $"Count: $count"
+    @Label "Count: {$count}"
 ```
 
 You have written this program in every framework you have used and in each one the interesting question was never the increment; it was what happens when two things land at once. Here that question has an answer you can read off the third line, and it is the only thing the program has to say about it.
 
 Nothing in the five lines says which numeric type `$count` is. `-1` is a signed literal, so `!delta` is an event of `Int`, so `$count + !delta` is `Int` addition, so the `0` that starts the hold is an `Int`. Had the deltas been `+1` and `+2`, nothing would pin the type, and an integer literal nothing constrains is an `Int`, so the program would mean the same thing; a `Nat` counter says so with an annotation.
 
-**Occurrence 0 (build).** The World calls the run call with no inputs. `@counter` is built. The first `@Button` builds its `dyn`, whose block builds generation `#0` with one slot, `Ui.Button(label="Increment")` at `0/#0/0`; the `dyn`'s event `!!clicks` fires in this occurrence with the slot's click event, and `!Switch` records it as the inner event to listen to from occurrence 1. The second button does the same at `1/#0/0`. `$count` has its initial value, `0`. `$"Count: $count"` is a derived dynamic whose value is `"Count: 0"`, and `@Label` builds generation `#0` of its `dyn` with `Ui.Label(text="Count: 0")` at `2/#0/0`. Nothing fires at `!increment`, `!decrement` or `!delta`: a `!Switch` is subscribed to nothing in the occurrence it is given its first inner event. The occurrence commits: `$count` is `0`, and the two `!Switch` holds now point at their slots' events.
+**Occurrence 0 (build).** The World calls the run call with no inputs. `@counter` is built. The first `@Button` builds its `dyn`, whose block builds generation `#0` with one slot, `Ui.Button(label="Increment")` at `0/#0/0`; the `dyn`'s event `!!clicks` fires in this occurrence with the slot's click event, and `!Switch` records it as the inner event to listen to from occurrence 1. The second button does the same at `1/#0/0`. `$count` has its initial value, `0`. `"Count: {$count}"` is a derived dynamic whose value is `"Count: 0"`, and `@Label` builds generation `#0` of its `dyn` with `Ui.Label(text="Count: 0")` at `2/#0/0`. Nothing fires at `!increment`, `!decrement` or `!delta`: a `!Switch` is subscribed to nothing in the occurrence it is given its first inner event. The occurrence commits: `$count` is `0`, and the two `!Switch` holds now point at their slots' events.
 
 ```
 0/#0/0: Ui.Button(label="Increment")
@@ -95,7 +94,7 @@ Nothing in the five lines says which numeric type `$count` is. `-1` is a signed 
 2/#0/0: Ui.Label(text="Count: 0")
 ```
 
-**Occurrence 1.** The World sends `click` to `0/#0/0`. Routing looks the path up in the list as the occurrence opened and finds the Increment slot; its click event fires. `!Switch` is listening to exactly that event, so `!increment` fires. `!delta` is a merge; its left side is quiet and its right side fires with `+1`, so `!delta` fires with `+1`. `$count + !delta` is an operation over a dynamic and an event: it fires with `0 + 1`, where `0` is `$count` read through a tag, the value before this occurrence. That is the hold's change event, so the derived `$"Count: $count"` changes promptly to `"Count: 1"`, which is the dynamic the label's `dyn` watches, so the `dyn` rebuilds: generation `#0` of the label is torn down at commit and generation `#1` is built now, with a new slot. Commit: `$count` is `1`.
+**Occurrence 1.** The World sends `click` to `0/#0/0`. Routing looks the path up in the list as the occurrence opened and finds the Increment slot; its click event fires. `!Switch` is listening to exactly that event, so `!increment` fires. `!delta` is a merge; its left side is quiet and its right side fires with `+1`, so `!delta` fires with `+1`. `$count + !delta` is an operation over a dynamic and an event: it fires with `0 + 1`, where `0` is `$count` read through a tag, the value before this occurrence. That is the hold's change event, so the derived `"Count: {$count}"` changes promptly to `"Count: 1"`, which is the dynamic the label's `dyn` watches, so the `dyn` rebuilds: generation `#0` of the label is torn down at commit and generation `#1` is built now, with a new slot. Commit: `$count` is `1`.
 
 ```
 0/#0/0: Ui.Button(label="Increment")
@@ -128,7 +127,7 @@ type Key = choice:
     Right
     Backspace
 
-tag Gui.Focusable of Element:
+tag Ui.Focusable of Element:
     name: Text
     responds: Key
 
@@ -138,7 +137,7 @@ type Edit = record:
 
 let Apply: fn Edit, Key -> Edit = \|e, k| match k:
     Char c:
-        Edit (Concat [[(Prefix e.text, e.cursor), ToText c, (Suffix e.text, e.cursor)]]), e.cursor + 1
+        Edit (Concat [[(Prefix e.text, e.cursor), (ToText c), (Suffix e.text, e.cursor)]]), e.cursor + 1
     Left:
         if (e.cursor == 0): e
         else: Edit e.text, e.cursor - 1
@@ -152,8 +151,8 @@ let Apply: fn Edit, Key -> Edit = \|e, k| match k:
 let Render: fn Edit -> Text = \|e|
     Concat [[(Prefix e.text, e.cursor), "|", (Suffix e.text, e.cursor)]]
 
-@TextInput: fn Text -> @$Text = \|initial| @widget:
-    !key <- @Element Gui.Focusable(name="input")
+@TextInput: fn Text, Text -> @$Text = \|name, initial| @widget:
+    !key <- @Element Ui.Focusable(name=name)
     $edit <- Edit initial, (Len initial) <= Apply $edit, !key
     @Label (Render $edit)
     @ $edit.text
@@ -161,34 +160,34 @@ let Render: fn Edit -> Text = \|e|
 
 Everyone who has wrapped a native text box has lost the cursor. The box is a widget the toolkit owns; its value is a property you set; you set it from your model on every change; and the toolkit, seeing a new value, puts the cursor at the end. The fix is some version of "only set it if it differs", and that fix has a race in it. Here the text box is not native and the cursor is not the toolkit's. It is a hold, and it lives outside any `dyn`.
 
-The element that talks to the World is `Gui.Focusable(name="input")`: a region that can have focus and responds with keys. It has no dynamic fields, so its slot is created once and lives as long as the widget, and the World knows one stable path to send keystrokes to. Everything that changes per keystroke, the text and the cursor, is in `$edit`, and `Apply` is a plain function from the old state and a key to the new state. The label is a draw command: a fresh `Ui.Label` slot per keystroke, which is right, because nothing is in flight on a label and the World diffs lists.
+The element that receives keys is `Ui.Focusable(name=name)`: a named region that can have focus and responds with keys. It has no dynamic fields, so its slot is created once and lives as long as the widget, and whoever delivers keystrokes has one stable path to send them to. Everything that changes per keystroke, the text and the cursor, is in `$edit`, and `Apply` is a plain function from the old state and a key to the new state. The label is a presence element: a fresh `Ui.Label` slot per keystroke, which is right, because nothing is in flight on a label and whatever draws the list diffs it.
 
-**Occurrence 0 (build).** `@TextInput "ab"` is built. The focusable's slot is at `0`; `$edit` is `Edit "ab", 2`; `Render $edit` is `"ab|"`; the label's `dyn` builds generation `#0` at `1/#0/0`. The result dynamic `$edit.text` is a derived dynamic with value `"ab"`.
+**Occurrence 0 (build).** `@TextInput "input", "ab"` is built. The focusable's slot is at `0`; `$edit` is `Edit "ab", 2`; `Render $edit` is `"ab|"`; the label's `dyn` builds generation `#0` at `1/#0/0`. The result dynamic `$edit.text` is a derived dynamic with value `"ab"`.
 
 ```
-0:      Gui.Focusable(name="input")
+0:      Ui.Focusable(name="input")
 1/#0/0: Ui.Label(text="ab|")
 ```
 
 **Occurrence 1.** The user presses Left. The World sends `Left` to `0`. `!key` fires with `Left`; `Apply $edit, !key` fires with `Apply (Edit "ab", 2), Left`, with `$edit` read through a tag, so the cursor moves from 2 to 1. The hold's change event is that firing; `Render $edit` changes promptly to `"a|b"`; the label rebuilds to `#1`. Commit: `$edit` is `Edit "ab", 1`. The result dynamic `$edit.text` did not change in this occurrence, because `"ab"` is `"ab"`; a derived dynamic fires its change event when an operand changes, and the operand here is the record, so the change event fires with `"ab"` again. Whoever holds the result sees a change event with an equal value, which is fine: a dynamic's change event is allowed to fire with the value it already had, and nothing downstream can tell the difference except a tag, which gives the same answer either way.
 
 ```
-0:      Gui.Focusable(name="input")
+0:      Ui.Focusable(name="input")
 1/#1/0: Ui.Label(text="a|b")
 ```
 
 **Occurrence 2.** The user types `x`. The World sends `Char 'x'` to `0`. `Apply` fires with `Edit "axb", 2`. The label rebuilds to `#2` with `"ax|b"`. Commit: `$edit` is `Edit "axb", 2`. The result dynamic changes to `"axb"`.
 
 ```
-0:      Gui.Focusable(name="input")
+0:      Ui.Focusable(name="input")
 1/#2/0: Ui.Label(text="ax|b")
 ```
 
 **Occurrence 3.** The World sends `Backspace` to `0`. `Apply` deletes the character before the cursor: `Edit "ab", 1`. The label is `"a|b"` again at generation `#3`.
 
-Nothing in these four occurrences involved the World knowing what a cursor is. The World knows a focusable region and a label. If a World wraps a native toolkit and wants to use the toolkit's own text box, it can offer a `Gtk.Entry` tag and a different `@TextInput` targets it; but the one above runs under any World that can draw text and deliver a key, and its cursor cannot be lost because there is no second copy of it anywhere. This is the goal that the language is enough: text editing is not a native capability, it is a hold and a function.
+Nothing in these four occurrences involved a World knowing what a cursor is. Under a GUI World the library's window interceptor turns the label into a `Draw.Text` in the window's `Gui.Scene` and delivers the window's key events to the focusable's slot; the World sees draw commands and keys, never a cursor. Under the Test World a script sends `Left` to the focusable directly. If a World wraps a native toolkit and wants to use the toolkit's own text box, it can offer a `Gtk.Entry` tag and a different `@TextInput` targets it; but the one above runs under any World that can draw and deliver a key, and its cursor cannot be lost because there is no second copy of it anywhere. This is the goal that the language is enough: text editing is not a native capability, it is a hold and a function.
 
-Focus is not in this program either. A form with three inputs has three `Gui.Focusable` slots, and the World needs to know which one a keystroke is for. The simplest World answer is that the World keeps the focus: it tracks which focusable region was last clicked and addresses keys to it, which is what a windowing system does for native widgets. The Prism answer is an interceptor between the form and the World, like the VBox of example 8: it holds back the children's `Gui.Focusable` elements, emits one of its own, holds the focused child's path in a hold moved by Tab and by clicks, and routes each key down to that path. Under that interceptor the form above is unchanged, and the World's only job is to send keys to the one focusable it can see. The `name` field exists so that a World or a test can tell inputs apart; two inputs with the same name in one widget are two slots with two paths all the same.
+Focus is not in this program either. A form with three inputs has three `Ui.Focusable` slots, and something has to decide which one a keystroke is for. That is the library's window interceptor, not the World. It holds the focused name in a hold moved by Tab and by clicks (hit-tested against the layout the library computed), announces each focusable to the World as a `Gui.Focusable(name=...)`, so that a World with a notion of focus of its own, such as an input-method layer, knows the names, and delivers each key from `Gui.Window` to the slot whose name is focused. Under that interceptor the form above is unchanged. Focus is by name, which is why `@TextInput` takes one: two inputs in one form with the same name would be one focus target with two slots.
 
 One thing the program does *not* do is react to its own label. The label is a fresh slot per keystroke, and if slots appearing were events, the program would have a loop in it. They are not; the diode holds: inputs cause list changes and list changes never cause inputs.
 
@@ -207,7 +206,7 @@ type Change = choice:
 let Step: fn Nat ==> Todo, Nat, Change -> Nat ==> Todo = \|items, id, change| match change:
     Add label: Insert items, id, (Todo label, False)
     Toggle: match items[id]:
-        Some t: Insert items, id, (Todo t.label, (Not t.done))
+        Some t: Insert items, id, (Todo t.label, (not t.done))
         Nil: items
     Delete: Remove items, id
 
@@ -220,12 +219,12 @@ let Describe: fn Todo, Bool -> Text = \|t, starred|
 @todos:
     !add <- @Button $"Add"
     $next <- 0 <= $next + 1 on !add
-    let !adds = {$next: Add $"item $next"} on !add
+    let !adds = {$next: Add "item {$next}"} on !add
     !rows <- for $items:
         !toggle <- @Button $"Toggle"
         !delete <- @Button $"Delete"
         !star <- @Button $"Star"
-        $starred <- False <= (Not $starred) on !star
+        $starred <- False <= (not $starred) on !star
         @Label (Describe $_, $starred)
         @ Toggle on !toggle | Delete on !delete
     let !changes = !Union !adds, !rows
@@ -256,7 +255,7 @@ Each row's block returns an event of `Change`, and `for` consolidates those into
 
 **Occurrence 2.** `click` to `0/#0/0` again. The same steps with `$next` read as `1`; row `[1]` is built. Keys are ordered, so the list has row `[0]` before row `[1]`.
 
-**Occurrence 3.** `click` to `1/[0]/2/#0/0`, the Star button of row 0. Inside that row's block, `!star` fires, `(Not $starred) on !star` fires with `True`, and `Describe $_, $starred` changes to `"[ ] item 0 *"`, rebuilding the row's label to `#1`. The row's result event is quiet, so `!rows` is quiet, `!changes` is quiet, and `$items` does not change. Commit: row 0's `$starred` is `True`.
+**Occurrence 3.** `click` to `1/[0]/2/#0/0`, the Star button of row 0. Inside that row's block, `!star` fires, `(not $starred) on !star` fires with `True`, and `Describe $_, $starred` changes to `"[ ] item 0 *"`, rebuilding the row's label to `#1`. The row's result event is quiet, so `!rows` is quiet, `!changes` is quiet, and `$items` does not change. Commit: row 0's `$starred` is `True`.
 
 **Occurrence 4.** `click` to `1/[0]/0/#0/0` and `click` to `0/#0/0` in one occurrence: toggle row 0 and add at once. Row 0's block fires `Toggle`; `!rows` fires with `{0: Toggle}`. `!adds` fires with `{2: Add "item 2"}`. `!Union` fires with `{0: Toggle, 2: Add "item 2"}`. `StepAll` folds in key order: row 0 becomes done, row 2 is inserted. `for` sees key 2 appear and builds its block; row 0's `$_` changes, which is the row's entry *as a dynamic*, so its label rebuilds to `"[x] item 0 *"` without the row being rebuilt, and `$starred` stays `True`. Commit.
 
@@ -288,7 +287,7 @@ What this prevents: the afternoon where deleting item 3 cleared the expanded sta
     let !click = !Switch !!clicks
     !reset <- @Button $"Reset"
     $count <- 0 <= $count + 1 on !click | 0 on !reset
-    let $label = $"Clicked $count times"
+    let $label = "Clicked {$count} times"
     @Label $label
 ```
 
@@ -312,7 +311,7 @@ This is `@Button` unrolled, with the label depending on the click. The `dyn` wat
 
 **Occurrence 2.** `click` to `0/#1/0` and `click` to `1/#0/0` together: the user clicked the button and Reset in the same frame. Both slots' events fire. `$count + 1 on !click | 0 on !reset` takes the left: `$count` becomes `2`, and the reset is lost. The program said so; if reset should win, the merge is written the other way round. `$label` changes, the `dyn` rebuilds to `#2`.
 
-**Occurrence 3.** Suppose the World has a click for `0/#1/0` queued from before it read the list after occurrence 2. It must not send it: `0/#1/0` is not in the list it last received, and sending to a path not in the opened list is an error. A conforming World discards it. The click was for a button that no longer exists.
+**Occurrence 3.** Suppose the World has a click for `0/#1/0` queued from before it read the list after occurrence 2. It must not send it: `0/#1/0` is not in the list it last received, and sending to a path not in the opened list is an error of kind `UnknownPath`. A conforming World discards it. The click was for a button that no longer exists.
 
 **Occurrence 4.** `click` to `1/#0/0` alone: Reset. `0 on !reset` fires; the merge's left side is quiet; `$count` becomes `0`; `$label` changes to `"Clicked 0 times"`; the `dyn` rebuilds to generation `#3` with a button whose label is the same text generation `#0` had. It is a different slot with a different path. A World that cached something about the first button by its path would find the cache useless, which is right: it is a new button. A World that keys native widgets by tree position and tag can reuse what it had, and the program cannot tell.
 
@@ -359,7 +358,7 @@ let ShowContents: fn Contents -> Text = \|c| match c:
     $motd <- Nil <= Some !motd
     @Label (ShowResponse $motd)
 
-    $path <- @TextInput "/etc/hostname"
+    $path <- @TextInput "path", "/etc/hostname"
     !$contents <- dyn $path:
         @Element Fs.Contents(path=_)
     $$current <- $ Unavailable <= !$contents
@@ -372,12 +371,12 @@ The top half is where "no request on creation" shows. Creating the `Fs.File` slo
 
 The bottom half is where dynamic fields show. `Fs.Contents(path=_)` has a plain path, but the `dyn` over `$path` means a fresh slot per path: a new path is a new file, and the new slot's state is sampled in the occurrence of the change. The `dyn`'s result is `!$Contents`, an event of dynamics, one per build; a hold with a constant initial dynamic and a `$Join` turn that into the current file's contents as one dynamic. The specification lets you write `@Element Fs.Contents(path=$path)` for exactly this, and this chapter spells it out once.
 
-**Occurrence 0 (build).** `!started` fires. `Read on !started` fires, which is the `Fs.File` slot's request; the World will see it after the occurrence. `!motd` does not fire: nothing addressed to a slot arrives in the occurrence the slot was created. `$motd` is `Nil`, so the first label is `"(reading...)"`. `@TextInput` builds with `"/etc/hostname"`; the `dyn` builds generation `#0` with an `Fs.Contents(path="/etc/hostname")` slot, and the runtime asks the World's oracle for that element's value as this occurrence opened. The World has never been asked about it; it answers from its snapshot, which for a file it has not looked at is `Unavailable`. `!$contents` fires with the new slot's dynamic; `$$current` changes to it in this same occurrence (a hold adopts a firing in its build occurrence); `$Join $$current` is `Unavailable`; the second label is `"(unavailable)"`. Commit.
+**Occurrence 0 (build).** `!started` fires. `Read on !started` fires, which is the `Fs.File` slot's request; the World will see it after the occurrence. `!motd` does not fire: nothing addressed to a slot arrives in the occurrence the slot was created. `$motd` is `Nil`, so the first label is `"(reading...)"`. `@TextInput` builds with name `"path"` and text `"/etc/hostname"`; the `dyn` builds generation `#0` with an `Fs.Contents(path="/etc/hostname")` slot, and the runtime asks the World's oracle for that element's value as this occurrence opened. The World has never been asked about it; it answers from its snapshot, which for a file it has not looked at is `Unavailable`. `!$contents` fires with the new slot's dynamic; `$$current` changes to it in this same occurrence (a hold adopts a firing in its build occurrence); `$Join $$current` is `Unavailable`; the second label is `"(unavailable)"`. Commit.
 
 ```
-1:          Fs.File(path="/etc/motd")             requested: [Read]
+1:          Fs.File(path="/etc/motd")             requested: Read
 2/#0/0:     Ui.Label(text="(reading...)")
-3/0:        Gui.Focusable(name="input")
+3/0:        Ui.Focusable(name="path")
 3/1/#0/0:   Ui.Label(text="/etc/hostname|")
 4/#0/0:     Fs.Contents(path="/etc/hostname")
 5/#0/0:     Ui.Label(text="(unavailable)")
@@ -394,7 +393,7 @@ The World reads the list, sees a `Read` fired on slot `1`, and starts reading `/
 ```
 1:          Fs.File(path="/etc/motd")
 2/#2/0:     Ui.Label(text="Welcome")
-3/0:        Gui.Focusable(name="input")
+3/0:        Ui.Focusable(name="path")
 3/1/#1/0:   Ui.Label(text="/etc/hostnam|")
 4/#1/0:     Fs.Contents(path="/etc/hostnam")
 5/#2/0:     Ui.Label(text="(unavailable)")
@@ -451,7 +450,7 @@ let Total: fn Watch, Instant -> Int = \|w, now| w.base + Since w.run, now
     !reset <- @Button $"Reset"
     let !action = Start on !start | Stop on !stop | Reset on !reset
     $watch <- Watch 0, Stopped <= Step $watch, $clock, !action
-    @Label $"${Total $watch, $clock} ms"
+    @Label "{Total $watch, $clock} ms"
 ```
 
 There is no `now()`. The clock is a state element like the contents of a file: it has a value in the occurrence the slot is created, and the World pushes a new one when it feels like it, which for a CLI or GUI World is at most once per turn. `Time.Every(period=100)` is bound as a statement and its tick event is discarded; the element exists to make the World come back every hundred milliseconds, and each time it comes back it opens an occurrence and pushes the clock. The label is derived from `$clock`, so it changes in that occurrence, and the stopwatch runs.
@@ -537,15 +536,15 @@ The response loop is a `for` over the child's slots. A slot never changes, so th
 
 Take the child to be the viewer of example 5, with its motd path changed to `/home/me/motd` and its default input path to `/home/me/hostname`, under `@Sandbox "/jail", @viewer`.
 
-**Occurrence 0 (build).** The sandbox's node builds the child. The child's `Fs.File(path="/home/me/motd")` slot is created at child path `1`; the child's `Fs.Contents(path="/home/me/hostname")` slot at child path `4/#0/0`, and the runtime asks `supply` for it, which returns `@Element Fs.Contents(path="/jail/home/me/hostname")`, built in the sandbox's node; the outer World's oracle answers `Unavailable`. The child's `!started` fires, so its `Read` request fires. Now the sandbox's `for $slots` builds a block per child slot; the `Fs.File` block makes `Fs.File(path="/jail/home/me/motd", requests=...)` at a sandbox path, and since the child's request event fired in this occurrence and a widget built in an occurrence sees all of it, the rewritten element's request fires too. The Gui slots of the child are re-emitted as elements of the sandbox. What the outer World sees:
+**Occurrence 0 (build).** The sandbox's node builds the child. The child's `Fs.File(path="/home/me/motd")` slot is created at child path `1`; the child's `Fs.Contents(path="/home/me/hostname")` slot at child path `4/#0/0`, and the runtime asks `supply` for it, which returns `@Element Fs.Contents(path="/jail/home/me/hostname")`, built in the sandbox's node; the outer World's oracle answers `Unavailable`. The child's `!started` fires, so its `Read` request fires. Now the sandbox's `for $slots` builds a block per child slot; the `Fs.File` block makes `Fs.File(path="/jail/home/me/motd", requests=...)` at a sandbox path, and since the child's request event fired in this occurrence and a widget built in an occurrence sees all of it, the rewritten element's request fires too. The child's other slots, the focusable and the labels, go through the catch-all arm and are re-emitted as elements of the sandbox. What the outer World sees:
 
 ```
-1/[1]/#0/0:        Fs.File(path="/jail/home/me/motd")             requested: [Read]
+1/[1]/#0/0:        Fs.File(path="/jail/home/me/motd")             requested: Read
 1/[2/#0/0]/#0/0:   Ui.Label(text="(reading...)")
-1/[3/0]/#0/0:      Gui.Focusable(name="input")
+1/[3/0]/#0/0:      Ui.Focusable(name="path")
 1/[3/1/#0/0]/#0/0: Ui.Label(text="/home/me/hostname|")
 1/[5/#0/0]/#0/0:   Ui.Label(text="(unavailable)")
-s:                 Fs.Contents(path="/jail/home/me/hostname")
+s/0:               Fs.Contents(path="/jail/home/me/hostname")
 ```
 
 The path prefix `1/[child path]/#0/0` is the sandbox's `for` (its second bind, after the intercept), keyed by the child's path, then the `dyn` generation, then the slot. The child's own paths are not visible outside; the outer World addresses the sandbox's slots, and the sandbox routes inward.
@@ -563,53 +562,44 @@ The child cannot tell the difference between the sandbox and a World that happen
 ## 8. A vertical box
 
 ```prism
-type Pointer = record:
-    row: Nat
+type ChildInput = record:
+    path: Path
+    response: Response
 
 tag Ui.VBox of Element:
     children: Path ==> Element
-    responds: Pointer
+    responds: ChildInput
 
-let IsGui: fn Element -> Bool = \|e| match e:
+let IsUi: fn Element -> Bool = \|e| match e:
     Ui.*(..): True
-    Gui.*(..): True
     ignore: False
 
-let GuiOnly: fn (Path ==> Slot) -> Path ==> Element = \|slots|
-    MapValues (Filter slots, \IsGui _.element), \_.element
+let UiOnly: fn (Path ==> Slot) -> Path ==> Element = \|slots|
+    MapValues (Filter slots, \IsUi _.element), \_.element
 
-let NonGui: fn (Path ==> Slot) -> Path ==> Slot = \|slots|
-    Filter slots, \Not (IsGui _.element)
+let NonUi: fn (Path ==> Slot) -> Path ==> Slot = \|slots|
+    Filter slots, \not (IsUi _.element)
 
-# Which child, if any, is at this row and takes clicks.
-let HitTest: fn Path ==> Slot, Pointer -> ?Path = \|slots, p|
-    match (Keys (GuiOnly slots))[p.row]:
-        Some path: match slots[path]:
-            Some Slot(element=Ui.Button(..), ..): Some path
-            ignore: Nil
-        Nil: Nil
+let ToMap: fn ChildInput -> Path ==> Response = \|c|
+    {c.path: c.response}
 
 @VBox: fn @a -> @a = \|@child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
-    let $kids = GuiOnly $slots
-    !!pointers <- dyn $kids:
-        @Element Ui.VBox(children=_)
-    let !pointer = !Switch !!pointers
-    let !click = {!Filter (HitTest $slots, !pointer): click}
-    !fwd <- @Forward (NonGui $slots)
-    let !down = !Union !click, !fwd
+    !child_in <- @Element Ui.VBox(children=(UiOnly $slots))
+    !fwd <- @Forward (NonUi $slots)
+    let !down = !Union (ToMap !child_in), !fwd
     @ result
 ```
 
-Layout is not something the language knows about, and this is the smallest demonstration of why it does not need to. A VBox is an interceptor: it captures its child's elements, holds back the GUI ones, and puts out a single `Ui.VBox` whose `children` field holds them as data, in key order, which is tree order, which is top to bottom. The World, whatever it is, draws a box with rows. When the user clicks on the box, the World sends a `Pointer` with the row; the VBox works out which child that is and sends it a `click`. Everything the child made that is not GUI is forwarded untouched.
+Layout is not something the language knows about, and this is the smallest demonstration of why it does not need to. A VBox is an interceptor: it captures its child's elements, holds back the library's (`Ui.*`), and puts out a single `Ui.VBox` whose `children` field holds them as data, in key order, which is tree order, which is top to bottom. The box does no geometry, and neither does any World. Further out, the library's window interceptor reads the `children` data, computes the layout, draws it as `Draw.*` values in a `Gui.Scene`, and hit-tests each pointer event from `Gui.Window` against the rectangles it computed. A pointer that lands on a row becomes a `ChildInput` holding that child's path and a `click`, delivered to the box's slot. The box turns it into a one-entry response map and `intercept` routes it. Everything the child made that is not a library element is forwarded untouched, by the `@Forward` of example 7.
 
-The children field is a map that changes whenever the child's list changes, and a field is plain data. So the `Ui.VBox` element is rebuilt, a fresh slot per change of `$kids`, and the pointer the program listens to is a `!Switch` over the generations. A World that diffs lists sees a VBox replaced by a VBox at the same position with different children.
+The `children` field is a map that changes whenever the child's list changes, and a field is plain data. So the `Ui.VBox` element is rebuilt, a fresh slot per change of the child's list, and the input the box listens to is a `!Switch` over the generations: that is what binding an element with a dynamic field means. A layer that diffs lists sees a VBox replaced by a VBox at the same position with different children.
 
-Hit-testing is a lifted operation over a dynamic and an event: `HitTest $slots, !pointer` reads `$slots` through a tag, which is the child's list *as the occurrence opened*. That is the routing rule falling out of the tag law. The World addressed its pointer to a VBox slot that existed as the occurrence opened, whose `children` field was built from exactly that list, so the row the user saw and the row the hit-test uses are the same list. There is no way for the VBox to hit-test against a list the user has not seen yet.
+Routing falls out of the tag law. `intercept` delivers `!down` against the child's list as the occurrence opened. The user clicked a row of a layout drawn from the `children` field of the VBox slot that existed as the occurrence opened, and that field was built from exactly that list. The path in the `ChildInput` therefore names a slot in the list `intercept` routes against, and there is no way for a hit-test to pick a row the user has not seen.
 
 Take the child to be the counter of example 1 wrapped as `@VBox @counter`. The counter's own paths are `0/#0/0`, `1/#0/0` and `2/#0/0`.
 
-**Occurrence 0 (build).** The child is built under the intercept; `$slots` has three entries. `$kids` is the same three as elements. The `dyn` builds generation `#0` with one `Ui.VBox` whose children are the three; `!!pointers` fires with its pointer event, adopted by `!Switch` for occurrence 1. `NonGui $slots` is empty, so `@Forward` builds nothing. What the World sees is one element:
+**Occurrence 0 (build).** The child is built under the intercept; `$slots` has three entries, all library elements. The box's bind builds generation `#0` with one `Ui.VBox` whose children are the three; `!child_in` fires with its input event, adopted by `!Switch` for occurrence 1. `NonUi $slots` is empty, so `@Forward` builds nothing. What the library above sees is one element:
 
 ```
 1/#0/0: Ui.VBox(children={0/#0/0: Ui.Button(label="Increment"),
@@ -617,7 +607,7 @@ Take the child to be the counter of example 1 wrapped as `@VBox @counter`. The c
                            2/#0/0: Ui.Label(text="Count: 0")})
 ```
 
-**Occurrence 1.** The user clicks the first row. The World sends `Pointer(row=0)` to `1/#0/0`. The slot's event fires; `!Switch` delivers `!pointer`; `HitTest` reads `$slots` as it opened, finds the first Gui key `0/#0/0`, sees it is a button, and fires `Some 0/#0/0`; `!click` fires with `{0/#0/0: click}`; `!down` fires with the same, since `!fwd` is quiet. `intercept` routes `click` to the child's slot at `0/#0/0`; from there it is occurrence 1 of example 1: `!increment`, `!delta`, the count, the label rebuilt to `2/#1/0`. The child's list changes, so `$slots` and `$kids` change promptly, the VBox's `dyn` rebuilds to generation `#1` with the new children, and `!!pointers` fires with the new slot's pointer event. Commit: `!Switch` adopts it.
+**Occurrence 1.** The user clicks the first row. The library above hit-tests the pointer against the layout it drew from that list, finds the first child, and sends `ChildInput(path=0/#0/0, response=click)` to `1/#0/0`. (Under the Test World, `Send Ui.Button(label="Increment"), click` produces the same input, by the convention at the end of this example.) The slot's event fires; `!Switch` delivers `!child_in`; `ToMap` makes `{0/#0/0: click}`; `!down` fires with the same, since `!fwd` is quiet. `intercept` routes `click` to the child's slot at `0/#0/0`; from there it is occurrence 1 of example 1: `!increment`, `!delta`, the count, the label rebuilt to `2/#1/0`. The child's list changes, so `$slots` changes promptly, the box's `dyn` rebuilds to generation `#1` with the new children, and the new slot's input event is adopted at commit.
 
 ```
 1/#1/0: Ui.VBox(children={0/#0/0: Ui.Button(label="Increment"),
@@ -625,17 +615,19 @@ Take the child to be the counter of example 1 wrapped as `@VBox @counter`. The c
                            2/#1/0: Ui.Label(text="Count: 1")})
 ```
 
-**Occurrence 2.** The user clicks the third row. `Pointer(row=2)` to `1/#1/0`. `HitTest` finds `2/#1/0`, a label, and fires `Nil`; `!Filter` drops it; `!click` is quiet; `!down` is quiet. Nothing happens, which is what clicking a label does.
+**Occurrence 2.** The user clicks the third row. The library finds a label, which responds to nothing, and sends the box nothing. No occurrence happens, which is what clicking a label does.
 
-**Occurrence 3.** The user clicks row 0 and, in the same frame, the child's count changes for some other reason (say, a second counter wrapped in the same VBox whose button was also clicked; or just suppose it). The pointer is delivered to the VBox slot that existed as the occurrence opened, the hit-test reads the list as it opened, the click goes to the button at that row in that list. The new VBox slot built in this occurrence takes over from the next one. A click can never land on a row the user had not seen.
+**Occurrence 3.** The user clicks row 0 and, in the same frame, the child's list changes for some other reason (say, a second counter wrapped in the same VBox whose button was also clicked; or just suppose it). The `ChildInput` is delivered to the VBox slot that existed as the occurrence opened, and the click goes to the button at that path in the list as it opened. The new VBox slot built in this occurrence takes over from the next one. A click can never land on a row the user had not seen.
 
-Had the child created a `Net.Listener` or an `Fs.File`, `NonGui $slots` would have had it, `@Forward` would have re-emitted it in the VBox's list beside the box, and its responses would have come back through `!fwd` under the child's path. A GUI container and a sandbox are the same program with different arms.
+Had the child created a `Net.Listener` or an `Fs.File`, `NonUi $slots` would have had it, `@Forward` would have re-emitted it in the VBox's list beside the box, and its responses would have come back through `!fwd` under the child's path. A container and a sandbox are the same program with different arms.
 
-The convention of a `children` field holding elements as data is the library's, not the language's. A test World that wants `Expect Ui.Button(label="Increment")` to find a button inside a box looks inside `children` fields because the library and the test suite agree to, and a different library could nest differently. The language fixes only three things: leaves are elements, containment is interception, and routing is against the opened list.
+The convention of a `children` field holding elements as data, and a `ChildInput` holding a path and a response, is the library's, not the language's. A Test World that wants `Expect Ui.Button(label="Increment")` to find a button inside a box looks inside `children` fields, and its `Send` wraps the response in one `ChildInput` per container, because the library and the test suite agree to; a different library could nest differently. The language fixes only three things: leaves are elements, containment is interception, and routing is against the opened list.
 
 ## 9. A cache
 
 ```prism
+let Freeze: fn a -> $a = \|v| $ v
+
 @Cached: fn @a -> @a = \|@child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- @Forward $slots
@@ -644,29 +636,29 @@ The convention of a `children` field holding elements as data is the library's, 
         Fs.Contents(path=p): @widget:
             $live <- @Element Fs.Contents(path=p)
             !started <- @started
-            $cached <- Unavailable <= $live on (!started | !refresh)
-            @ $cached
+            $$shown <- $live <= (Freeze $live) on (!started | !refresh)
+            @ $Join $$shown
         ignore: @Element e
     @ result
 ```
 
-A child that watches a file sees every change the World pushes. Sometimes that is not what you want: a config file the program should read at start and again only when the user asks. This interceptor forwards every response and every element unchanged, and supplies `Fs.Contents` state through a hold.
+A child that watches a file sees every change the World pushes. Sometimes that is not what you want: a config file the program should read at start and again only when the user asks. This interceptor forwards every response and every element unchanged, and supplies `Fs.Contents` state through a hold of dynamics.
 
-The supplier returns a widget, and that is the point: a widget can have state. For an `Fs.Contents` element it builds, in the interceptor's node, an `Fs.Contents` slot of its own asking the outer World for the live value, and a hold `$cached` that copies the live value at two moments: when the supplied widget starts and when the Refresh button is clicked. `$live on (!started | !refresh)` reads `$live` through a tag, the value before the occurrence. The child's slot gets `$cached`.
+The supplier returns a widget, and that is the point: a widget can have state. For an `Fs.Contents` element it builds, in the interceptor's node, an `Fs.Contents` slot of its own asking the outer World for the live value, and a hold `$$shown` whose value is a dynamic: initially `$live` itself, then a frozen constant of the live value (`Freeze $live`, the constant dynamic of whatever `$live` holds) each time the supplied widget starts or the Refresh button is clicked. `(Freeze $live) on (!started | !refresh)` reads `$live` through a tag, the value before the occurrence. The child's slot gets `$Join $$shown`: the value of whichever dynamic the hold currently has.
 
 Shared by value: the runtime builds a supplied widget once per distinct element value per interceptor. If the child has two slots for `Fs.Contents(path="/etc/app.conf")`, in two different widgets that have never heard of each other, there is one supplied widget, one live slot, one hold, and both child slots observe it. That is the equality law inside an interceptor for free, and it is also a cache in the ordinary sense: the outer World is asked once.
 
 Take a child with two readers of `/etc/app.conf` and one of `/etc/motd`, each a label over the state.
 
-**Occurrence 0 (build).** The child's first `Fs.Contents(path="/etc/app.conf")` slot is created; the runtime applies `supply` and builds the widget: a live slot in the cache's node, whose oracle answer is, say, `Known "v1"`, and `$cached` with initial `Unavailable`. `!started` fires; `$live on !started` fires with `Known "v1"`, the live value before the occurrence, which is what the oracle answered; `$cached` changes to `Known "v1"` in this occurrence. The child's slot's dynamic is `$cached`, so the child's label, derived from it, is `"v1"`. The child's second `app.conf` slot is created; the runtime finds a supplied widget for that value already built and hands it the same `$cached`. The motd slot gets its own supplied widget. The World sees two `Fs.Contents` elements and a Refresh button, plus the forwarded labels.
+**Occurrence 0 (build).** The child's first `Fs.Contents(path="/etc/app.conf")` slot is created; the runtime applies `supply` and builds the widget: a live slot in the cache's node, whose oracle answer is, say, `Known "v1"`, and `$$shown`, whose initial value is `$live`. `!started` fires; `(Freeze $live) on !started` fires with the constant dynamic of `$live`'s value before the occurrence, which is what the oracle answered, `$ Known "v1"`; the hold adopts it in this occurrence. `$Join $$shown` has `Known "v1"` before the adoption, from `$live`, and `Known "v1"` after it, from the frozen constant. The child's slot's dynamic is that join, so the child's label is `"v1"`. The child's second `app.conf` slot is created; the runtime finds a supplied widget for that value already built and hands it the same join. The motd slot gets its own supplied widget. The World sees two `Fs.Contents` elements and a Refresh button, plus the forwarded labels.
 
-**Occurrence 1.** The file changes on disk; the World pushes `Known "v2"` for `Fs.Contents(path="/etc/app.conf")`. The cache's live slot is identified by that value, so its dynamic changes. `$cached` does not: nothing fired at it. Both child labels still say `"v1"`. Commit.
+**Occurrence 1.** The file changes on disk; the World pushes `Known "v2"` for `Fs.Contents(path="/etc/app.conf")`. The cache's live slot is identified by that value, so `$live` changes. `$$shown` holds the frozen constant and nothing fired at it, so the join does not change. Both child labels still say `"v1"`. Commit.
 
-**Occurrence 2.** `click` on Refresh. `!refresh` fires; `$live on (!started | !refresh)` fires with `Known "v2"`; `$cached` changes; both child labels rebuild to `"v2"` in this occurrence.
+**Occurrence 2.** `click` on Refresh. `!refresh` fires; `(Freeze $live) on (!started | !refresh)` fires with the constant dynamic of `Known "v2"`; `$$shown` changes; the join changes promptly to `Known "v2"`; both child labels rebuild to `"v2"` in this occurrence.
 
-**Occurrence 3.** The World pushes `Known "v3"` and, in the same occurrence, the user clicks Refresh. `$live` changes to `"v3"` in this occurrence, but `$live on !refresh` reads it through a tag and gets `"v2"`. The cache shows `"v2"`; the next refresh will show `"v3"`. This is the tag law doing what it always does, and a cache that wants the pushed value in the same occurrence as the click cannot have it, because the only window onto a dynamic at an event is the value before.
+**Occurrence 3.** The World pushes `Known "v3"` and, in the same occurrence, the user clicks Refresh. `$live` changes to `"v3"` in this occurrence, but `Freeze $live` on `!refresh` reads it through a tag and gets `"v2"`. The cache shows `"v2"`; the next refresh will show `"v3"`. This is the tag law doing what it always does, and a cache that wants the pushed value in the same occurrence as the click cannot have it, because the only window onto a dynamic at an event is the value before.
 
-There is one hiccup worth seeing. In the supplied widget's build occurrence, `$cached` has the value `Unavailable` *before* the occurrence and `Known "v1"` after, and a tag inside the child reading it in that occurrence would see `Unavailable`. Derived dynamics, which is what a label is, see the change promptly and show `"v1"`. The child's slot therefore satisfies the law that a state element has a value in its creation occurrence; it is `Unavailable` for the length of one tag read that no sensible program makes, and `Known` by commit. A cache that wanted to avoid even that would hold the live dynamic itself and `$Join` it, choosing between the live dynamic and a frozen one; this version is kept because it shows the hold around the forwarded query in the plainest way.
+The child's slot has its value in its creation occurrence and nothing less, which is the law for state elements. Suppose the supplier held plain values instead, `$cached <- Unavailable <= $live on (!started | !refresh)`. Then `$cached` would be `Unavailable` before the build occurrence and `Known "v1"` after it, and a tag in the child reading it in that occurrence would see `Unavailable`, a value the oracle never gave. The hold of dynamics has no such gap, because `$Join` switches to the new inner's current value in the occurrence of the switch instead of waiting for the new inner to fire, and the hold starts as `$live`, which has the oracle's value from the first instant.
 
 The goal served is the one that says the language is enough. A cache is not a feature of the runtime, a flag on the element, or a mode of `intercept`. It is a hold, in a widget, returned by a function, and anything else you want between a child and the World is the same construction with a different body.
 
@@ -702,8 +694,8 @@ let Status: fn Link -> Text = \|link| match link:
     Disconnected why: Concat [["disconnected: ", why]]
 
 @chat:
-    $address <- @TextInput "chat.example:7000"
-    $draft <- @TextInput ""
+    $address <- @TextInput "address", "chat.example:7000"
+    $draft <- @TextInput "draft", ""
     !send <- @Button $"Send"
     !conns <- dyn $address:
         let !out = !Filter (WhenConnected $link, $draft on !send)
@@ -724,9 +716,9 @@ One element, three parts. `Net.Socket` takes a request event, the text to send; 
 **Occurrence 0 (build).** Two text inputs and a button are built. The `dyn` builds generation `#0`: an `Net.Socket(address="chat.example:7000")` slot. The oracle is asked for `Link` of that element; the World has no such connection and answers `Connecting`. `!conns` fires with the tuple; `$$link` changes to the new `$link` in this occurrence; the join is `Connecting`; the status label says `"connecting..."`. `!send` did not fire, so nothing was requested.
 
 ```
-0/0:        Gui.Focusable(name="input")
+0/0:        Ui.Focusable(name="address")
 0/1/#0/0:   Ui.Label(text="chat.example:7000|")
-1/0:        Gui.Focusable(name="input")
+1/0:        Ui.Focusable(name="draft")
 1/1/#0/0:   Ui.Label(text="|")
 2/#0/0:     Ui.Button(label="Send")
 3/#0/0:     Net.Socket(address="chat.example:7000")
@@ -738,7 +730,7 @@ The World reads the list, sees a socket element for an address it has no connect
 
 **Occurrence 1.** The connection comes up. The World pushes `Connected` for `Net.Socket(address="chat.example:7000")`. The slot's `$link` changes; the join changes; the status label rebuilds to `"connected"`.
 
-**Occurrence 2.** The user has typed `hello` into the draft (several occurrences, each a keystroke to `1/0`, omitted) and clicks Send. `click` to `2/#0/0`. `!send` fires; `$draft on !send` fires with `"hello"`; `WhenConnected` reads `$link` as `Connected` and passes it; `!out` fires, which is the slot's request. The World sees `requested: ["hello"]` on `3/#0/0` after the occurrence and writes it to the connection.
+**Occurrence 2.** The user has typed `hello` into the draft (several occurrences, each a keystroke to `1/0`, omitted) and clicks Send. `click` to `2/#0/0`. `!send` fires; `$draft on !send` fires with `"hello"`; `WhenConnected` reads `$link` as `Connected` and passes it; `!out` fires, which is the slot's request. The World sees `requested: "hello"` on `3/#0/0` after the occurrence and writes it to the connection.
 
 **Occurrence 3.** A line arrives. The World sends `Received "hi back"` to `3/#0/0`. The slot's response event fires; `!Switch` delivers it as `!rx`; `Line` passes it; `Append $log, !line` fires with `[["hi back"]]`; the log label rebuilds.
 
@@ -792,7 +784,7 @@ let IsEnd: fn StdinEvent -> ?unit = \|ev| match ev:
     let !chunk = !Filter (ChunkOf !in)
     let !end = !Filter (IsEnd !in)
     $lines <- 0 <= $lines + Count !chunk, '\n'
-    !werr <- @Element Cli.Stdout(requests=($"$lines\n" on !end))
+    !werr <- @Element Cli.Stdout(requests=("{$lines}\n" on !end))
     @Element Process.Exit(requests=(Code 0 on !end))
     @ unit
 ```
@@ -815,7 +807,7 @@ The World sees a `Cli.Stdin` slot and starts reading standard input.
 
 **Occurrence 2.** `Chunk "ee\n"` to `0`. `$lines` becomes `3`.
 
-**Occurrence 3.** `End` to `0`. `!end` fires; `$"$lines\n" on !end` fires with `"3\n"`, reading `$lines` through a tag as `3`; `Code 0 on !end` fires. After the occurrence the World sees `requested: ["3\n"]` on `1` and `requested: [Code 0]` on `2`. It performs request firings in list order, so the write happens, then the exit.
+**Occurrence 3.** `End` to `0`. `!end` fires; `"{$lines}\n" on !end` fires with `"3\n"`, reading `$lines` through a tag as `3`; `Code 0 on !end` fires. After the occurrence the World sees `requested: "3\n"` on `1` and `requested: Code 0` on `2`. It performs request firings in list order, so the write happens, then the exit.
 
 `$lines on !end` is the count *before* the occurrence in which the end arrived. That is right because the end arrives alone: a slot receives at most one response per occurrence, so the last chunk and the end are always in different occurrences, and by the time `End` arrives every chunk has been counted and committed. A World that put the last chunk and the end into one occurrence could not, because they are both responses to the same slot. Had the program instead read a stream where the final chunk and the end were different slots, it would have had to count the chunk in the same expression as the output, and the type system would not have warned it; the walkthrough is the warning.
 
@@ -921,7 +913,7 @@ The World binds port 8080 because a listener element exists in the list, and sta
 
 The World sees a connection element for id 7, which it has, and will deliver its bytes to `1/[7]/0`.
 
-**Occurrence 2.** The request arrives. `Received "GET / HTTP/1.1\r\n..."` to `1/[7]/0`. `!ev` fires in block `[7]`; `RequestLine` passes it; `Respond` builds the response; `!reply` fires with `[[Send "HTTP/1.1 200 OK...", Close]]`, which is the slot's request. `IsClosed` is `Nil`; the block's result is quiet; `$conns` is unchanged. After the occurrence the World sees `requested: [[[Send "...", Close]]]` on `1/[7]/0`, writes the response and closes the connection.
+**Occurrence 2.** The request arrives. `Received "GET / HTTP/1.1\r\n..."` to `1/[7]/0`. `!ev` fires in block `[7]`; `RequestLine` passes it; `Respond` builds the response; `!reply` fires with `[[Send "HTTP/1.1 200 OK...", Close]]`, which is the slot's request. `IsClosed` is `Nil`; the block's result is quiet; `$conns` is unchanged. After the occurrence the World sees `requested: [[Send "...", Close]]` on `1/[7]/0`, writes the response and closes the connection.
 
 **Occurrence 3.** Two things at once: the World has closed connection 7 and reports it, and a new client has connected. `Closed` to `1/[7]/0` and `Accepted 8` to `0`, together. Block `[7]` fires `Shut`; `!closes` fires with `{7: Shut}`. `!opens` fires with `{8: Opened}`. `!Union` fires with `{7: Shut, 8: Opened}`; `ApplyDeltas` removes 7 and inserts 8; `$conns` changes; the `for` builds `[8]` now and tears `[7]` down at commit. The World sees one connection element replaced by another and, because it already closed 7, has nothing to cancel.
 
@@ -1053,13 +1045,10 @@ let OnlyFor: fn App, App, Path ==> Response -> ?(Path ==> Response) = \|want, ha
     !next <- @Button $"Next app"
     $active <- A <= Other $active on !next
     let $shown = Pick $active, $sa, $sb
-    let $kids = GuiOnly $shown
-    !!pointers <- dyn $kids:
-        @Element Ui.VBox(children=_)
-    let !pointer = !Switch !!pointers
-    let !click = {!Filter (HitTest $shown, !pointer): click}
-    !fwd_a <- @Forward (NonGui $sa)
-    !fwd_b <- @Forward (NonGui $sb)
+    !child_in <- @Element Ui.VBox(children=(UiOnly $shown))
+    !fwd_a <- @Forward (NonUi $sa)
+    !fwd_b <- @Forward (NonUi $sb)
+    let !click = ToMap !child_in
     let !down_a = !Union (!Filter (OnlyFor A, $active, !click)), !fwd_a
     let !down_b = !Union (!Filter (OnlyFor B, $active, !click)), !fwd_b
     @ unit
@@ -1070,9 +1059,9 @@ let OnlyFor: fn App, App, Path ==> Response -> ?(Path ==> Response) = \|want, ha
 
 A World can be written in Prism, and this is one: a program that runs two other programs as its children, shows one of them on the screen at a time, and routes the user's clicks to the one that is showing. From the children's side, `@Shell` is their World. The counter asks for buttons and a label and gets clicks; the stopwatch asks for a clock, a timer and buttons and gets pushes, ticks and clicks; neither knows the other exists or that the screen is shared. From the outer World's side, the shell is one program with a box, a button, a clock and a timer.
 
-Two intercepts, one per child, each with its own response event and the forwarding supplier. The screen is example 8's VBox over whichever child is active, with `Pick` lifted over three dynamics choosing the list, and the hit-test against `$shown` as the occurrence opened. The click goes down to the active child only, with `$active` read through a tag so that a click in the same occurrence as a switch of apps goes to the app the user was looking at. Everything that is not GUI from either child is forwarded unchanged, and the responses come back under the child's own paths through `!fwd_a` and `!fwd_b`. The inactive child keeps running: its holds persist, its `Time.Every` is still in the outer list, its clock still gets pushes. It is simply not drawn and not clickable.
+Two intercepts, one per child, each with its own response event and the forwarding supplier. The screen is example 8's VBox over whichever child is active, with `Pick` lifted over three dynamics choosing the list; the `ChildInput` the box receives names a path in `$shown` as the occurrence opened. The click goes down to the active child only, with `$active` read through a tag so that a click in the same occurrence as a switch of apps goes to the app the user was looking at. Everything that is not a library element, from either child, is forwarded unchanged, and the responses come back under the child's own paths through `!fwd_a` and `!fwd_b`. The inactive child keeps running: its holds persist, its `Time.Every` is still in the outer list, its clock still gets pushes. It is simply not drawn and not clickable.
 
-**Occurrence 0 (build).** Both children are built. `$sa` has the counter's three slots; `$sb` has the stopwatch's six, of which `Clock` and `Time.Every` are not GUI. The oracle for `Clock` is asked through the shell's supplier, which makes an outer `Clock` element in the shell's node, built once because there is one value, and the outer World answers `Instant 5000`. `$active` is `A`; `$shown` is `$sa`; the VBox's `dyn` builds generation `#0` with the counter's three GUI elements as children. `@Forward (NonGui $sa)` builds nothing; `@Forward (NonGui $sb)` builds a `Clock` and a `Time.Every(period=100)` in the shell's node. The outer World sees:
+**Occurrence 0 (build).** Both children are built. `$sa` has the counter's three slots; `$sb` has the stopwatch's six, of which `Clock` and `Time.Every` are not library elements. The oracle for `Clock` is asked through the shell's supplier, which makes an outer `Clock` element in the shell's node, built once because there is one value, and the outer World answers `Instant 5000`. `$active` is `A`; `$shown` is `$sa`; the box's element is built as generation `#0` with the counter's three library elements as children. `@Forward (NonGui $sa)` builds nothing; `@Forward (NonGui $sb)` builds a `Clock` and a `Time.Every(period=100)` in the shell's node. The outer World sees:
 
 ```
 2/#0/0:               Ui.Button(label="Next app")
@@ -1081,16 +1070,16 @@ Two intercepts, one per child, each with its own response event and the forwardi
                                          2/#0/0: Ui.Label(text="Count: 0")})
 5/0/[0]/#0/0:         Clock
 5/0/[1]/#0/0:         Time.Every(period=100)
-s:                    Clock
+s/0:                  Clock
 ```
 
 Two `Clock` elements, the supplier's and the forwarder's, and that is fine: state is identified by value, so the outer World has one clock and both slots observe it. The stopwatch's own `Clock` slot gets its dynamic from the supplied widget, and the forwarded `Clock` slot's result is bound to nothing. A shell that minded the duplicate would not forward state elements, since the supplier already answers them; this one forwards everything that is not GUI because it is the shortest correct program, and the duplicate costs nothing.
 
 **Occurrence 1.** A tick: `tick` to `5/0/[1]/#0/0` and a push of `Instant 5100` for `Clock`. The forwarded `Time.Every` slot's response is routed by `!fwd_b` to the stopwatch's slot at its path `1`; nothing listens there. The push reaches the supplied `Clock` widget's slot, whose dynamic is the stopwatch's `$clock`; the stopwatch's label, derived from it, rebuilds with the same text. `$sb` changes, but `$shown` is `$sa`, so nothing on screen changes.
 
-**Occurrence 2.** The user clicks the first row of the box: `Pointer(row=0)` to `3/#0/0`. `HitTest $shown, !pointer` reads `$shown`, the counter's list as it opened, finds `0/#0/0`, a button; `!click` fires with `{0/#0/0: click}`; `OnlyFor A, $active, !click` reads `$active` as `A` and passes it; `!down_a` fires; the counter's Increment slot gets its click. The counter's label rebuilds; `$sa` changes; `$shown` and `$kids` change; the VBox rebuilds to generation `#1`. `OnlyFor B` drops the click and `!down_b` is quiet, apart from `!fwd_b`, which is also quiet.
+**Occurrence 2.** The user clicks the first row of the box. The library above hit-tests the pointer against the layout it drew from `$shown`, the counter's list as it opened, finds the button, and sends `ChildInput(path=0/#0/0, response=click)` to `3/#0/0`. `!click` fires with `{0/#0/0: click}`; `OnlyFor A, $active, !click` reads `$active` as `A` and passes it; `!down_a` fires; the counter's Increment slot gets its click. The counter's label rebuilds; `$sa` changes; `$shown` and `$kids` change; the box rebuilds to generation `#1`. `OnlyFor B` drops the click and `!down_b` is quiet, apart from `!fwd_b`, which is also quiet.
 
-**Occurrence 3.** `click` to `2/#0/0`, Next app, together with a tick and a push. `$active` changes to `B`; `Pick` changes `$shown` to `$sb`; the VBox rebuilds with the stopwatch's buttons and label. In the same occurrence the tick and push go where they always go.
+**Occurrence 3.** `click` to `2/#0/0`, Next app, together with a tick and a push. `$active` changes to `B`; `Pick` changes `$shown` to `$sb`; the box rebuilds with the stopwatch's buttons and label. In the same occurrence the tick and push go where they always go.
 
 ```
 2/#0/0:               Ui.Button(label="Next app")
@@ -1100,14 +1089,14 @@ Two `Clock` elements, the supplier's and the forwarder's, and that is fine: stat
                                          5/#2/0: Ui.Label(text="0 ms")})
 5/0/[0]/#0/0:         Clock
 5/0/[1]/#0/0:         Time.Every(period=100)
-s:                    Clock
+s/0:                  Clock
 ```
 
-**Occurrence 4.** The user clicks the first row, and in the same frame hits Next app again. `Pointer(row=0)` to `3/#2/0` and `click` to `2/#0/0`. `HitTest` reads `$shown` as it opened, the stopwatch's list, and finds the Start button at `2/#0/0`. `OnlyFor A, $active, !click` reads `$active` as `B`, before the occurrence, and drops it; `OnlyFor B` passes it; the stopwatch starts. `$active` becomes `A` at commit and the screen shows the counter from the next occurrence. The click went to the app the user was looking at when they clicked, which is the only answer routing allows and the one the user meant.
+**Occurrence 4.** The user clicks the first row, and in the same frame hits Next app again. `ChildInput(path=2/#0/0, response=click)` to `3/#2/0` and `click` to `2/#0/0`. The library hit-tested against the layout of `$shown` as it opened, the stopwatch's list, and found the Start button at `2/#0/0`. `OnlyFor A, $active, !click` reads `$active` as `B`, before the occurrence, and drops it; `OnlyFor B` passes it; the stopwatch starts. `$active` becomes `A` at commit and the screen shows the counter from the next occurrence. The click went to the app the user was looking at when they clicked, which is the only answer routing allows and the one the user meant.
 
 **Occurrences 5 and on.** Ticks keep coming; the stopwatch keeps counting behind the counter; when the user switches back, the box shows the elapsed time it reached while hidden.
 
-A shell, a window manager and a compositor are this program with more arms: a process table is a `for` over a keyed collection of programs, a window is a region of a bigger box, focus is which child gets the keys. None of it is in the language. The language supplies two things: an interceptor that re-emits everything and supplies by forwarding is observably not there, so each layer can be put in and taken out without the children knowing; and routing is always against the opened list, so no layer can send an input to something the user has not seen. The outer World below the shell is small, because the shell did the multiplexing; it could be the software rasteriser of a Prism-native system, or a test World that says `Send Ui.VBox(..), Pointer(row=0)` and checks what the box contains afterwards.
+A shell, a window manager and a compositor are this program with more arms: a process table is a `for` over a keyed collection of programs, a window is a region of a bigger box, focus is which child gets the keys. None of it is in the language. The language supplies two things: an interceptor that re-emits everything and supplies by forwarding is observably not there, so each layer can be put in and taken out without the children knowing; and routing is always against the opened list, so no layer can send an input to something the user has not seen. The outer World below the shell is small, because the shell did the multiplexing; it could be the software rasteriser of a Prism-native system, or a Test World that says `Send Ui.Button(label="Increment"), click`, which reaches the button through the box's `children` field by the library's convention, and checks what the box contains afterwards.
 
 ## What the fourteen have in common
 

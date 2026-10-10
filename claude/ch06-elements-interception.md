@@ -58,12 +58,12 @@ A tag declares any subset, including none. The subsets that occur are the kinds 
 
 | requests | responds | state | what it is | examples |
 | --- | --- | --- | --- | --- |
-| | | | presence: the element being in the list is the whole message | `Ui.Label`, `Gui.Scene` |
+| | | | presence: the element being in the list is the whole message | `Ui.Label`, `Gui.Scene`, `Gui.Focusable` |
 | ✓ | | | sink: firings go out, nothing comes back | `Process.Exit`, `Log.Line` |
-| | ✓ | | stream: things arrive for as long as the slot lives | `Cli.Stdin`, `Net.Listener`, `Time.Every`, `Ui.Button` |
+| | ✓ | | stream: things arrive for as long as the slot lives | `Cli.Stdin`, `Net.Listener`, `Time.Every`, `Ui.Button`, `Gui.Window` |
 | ✓ | ✓ | | request: one firing in, some number of answers later | `Fs.File`, `Net.Http`, `Time.After`, `Cli.Stdout`, `Defer` |
 | | | ✓ | state: a value that is simply true, pushed when it changes | `Clock`, `Process.Args`, `Fs.Contents` |
-| | ✓ | ✓ | a watched thing that also talks | `Gui.Window` (size as state, pointer and keys as responses) |
+| | ✓ | ✓ | a watched thing that also talks | a feed that is up or down and delivers messages: `Net.Socket` without the send |
 | ✓ | | ✓ | a thing you drive and observe | `Process.Child` without its output |
 | ✓ | ✓ | ✓ | the full conversation | `Net.Socket`, `Process.Child` |
 
@@ -87,21 +87,20 @@ tag Ui.Button of Element:                    # stream: clicks arrive
     label: Text
     responds: Click
 
-tag Gui.Focusable of Element:                # stream: keys arrive, when focused
-    name: Text
-    responds: Key
-
-tag Gui.Window of Element:                   # the World-facing GUI elements, later in the chapter
+tag Gui.Window of Element:                   # stream: pointer, keys and resizes arrive
     title: Text
+    size: Extent                             # the size the program asks for
     responds: WindowInput
-    state: Size
 
-tag Gui.Scene of Element:
+tag Gui.Scene of Element:                    # presence: the picture, as data
     window: Text
-    ops: [Op]
+    draw: [Draw]
+
+tag Gui.Focusable of Element:                # presence: the name of the region that has focus
+    name: Text
 ```
 
-A label asks for nothing and hears nothing; it is on the screen because it is in the list and off it because it is not. A button hears clicks. A focusable region hears keys, and which region hears them is chosen by something between it and the World, not by the tag. The last two are the only GUI elements a World that draws pixels needs to accept: a window, whose size is a fact about the world and whose pointer and key events are a stream, and a scene, a list of draw commands for that window, which is a presence element like a label and is replaced whenever the picture changes. Everything between a program's buttons and those two tags is Prism, and the long section on the GUI library builds it.
+A label asks for nothing and hears nothing; it is on the screen because it is in the list and off it because it is not. A button hears clicks. The three `Gui` tags are three of the five that a World drawing pixels accepts; the GUI section declares the other two, text measurement and frame ticks. A window is a stream: the pointer, the keys and the platform's resizes arrive as responses, and nothing in the window decides who gets them. A scene is a presence element like a label, the list of draw commands for that window, replaced whenever the picture changes. A focusable is a presence element too: it names the region the library considers focused, so that a World can show the platform's focus ring, place an input method's candidate window or tell a screen reader, and it hears nothing, because which region gets a key is decided in Prism by name. Everything between a program's buttons and those tags is Prism, and the long section on the GUI library builds it.
 
 ```prism
 type FsRequest = choice Read | Write Text
@@ -411,23 +410,23 @@ The worry about this design is that a slot is destroyed and recreated for every 
 | `Net.Socket(address)` | the address | right | Reconnect. The old generation's send in the occurrence of the change goes on the old connection, which is the only connection that is up. |
 | `Time.Every(period)` | the period | acceptable | The phase restarts. A World that wants phase continuity keys its timer on tree position, which the path exposes; nothing in the program can tell. |
 | `Process.Child(command)` | the command | right | A different command is a different process. The old one is stopped when its element leaves the list. |
-| `Gui.TextInput(value)` native | the value | the hard case | A native text box has cursor and selection state. Per keystroke, a fresh slot loses it. |
-| `Gui.Window(title)` as a container | the title | a non-problem | Containment is by interception, not by fields. The window's children are widgets under an interceptor; the window element is a leaf whose rebuild touches nothing else. |
+| `Gtk.Entry(value)` native | the value | the hard case | A native text box has cursor and selection state. Per keystroke, a fresh slot loses it. |
+| `Gui.Window(title)` as a container | the title | a non-problem | Containment is by interception, not by fields. The window's children are widgets under an interceptor; the window element is a leaf with no children field, so its rebuild touches nothing else. |
 
-The hard case is the native text input, and the answer is that in Prism the text input is not native. The GUI library is Prism, so the cursor is a hold in `@TextInput` outside any `dyn`; the keystrokes arrive at a `Ui.Focusable` leaf whose only field is a name, which never changes; and what the World sees is a focusable region and a label, each a leaf with plain fields. The worked example with a cursor is four occurrences of exactly this, and no cursor is lost because there is no second copy of it anywhere. A World that wraps a native toolkit and wants continuity for a native widget keys it by tree position and tag, which the path exposes; that is a World's policy, and the language promises nothing about it.
+The hard case is the native text input, and the answer is that in Prism the text input is not native. The GUI library is Prism, so the cursor is a hold in `@TextInput` outside any `dyn`; the keystrokes arrive at the window, and the library routes each one to the input whose name is the focus, a name that does not change when you type into it; and what the World sees is a scene of draw commands and, for the focused input, a `Gui.Focusable` with that name. The worked example with a cursor is four occurrences of exactly this, and no cursor is lost because there is no second copy of it anywhere. A World that wraps a native toolkit and wants continuity for a native widget keys it by tree position and tag, which the path exposes; that is a World's policy, and the language promises nothing about it.
 
 ### The declared-dynamic-field alternative
 
 Suppose a tag could declare a field as `$Text`:
 
 ```prism
-tag Gui.TextBox of Element:
+tag Gtk.TextBox of Element:
     value: $Text
 ```
 
 meaning the slot persists across changes of the value and the outside sees the list's value change at the same path. This is the sample-plus-update form: the World reads the field at creation and is told each change. It would make the native text box a language-level non-problem, and it is the first thing a reader who has written a toolkit binding asks for.
 
-What it costs. Elements would contain a sigil, so the list would no longer be plain data: a World would hold a dynamic, which is a runtime object, and the rule that no runtime object crosses the boundary would have an exception. Value identity would have to pick a moment, because two `Gui.TextBox` elements with equal values now may differ next occurrence, and the oracle, the push map and the supplier would each need a rule for which moment. A response to a slot whose field changed would need a second rule for what it answers: the slot as it was when the request fired, or as it is now. And interceptors would have two kinds of element to forward, the ones whose fields are fixed and the ones whose fields move, and forwarding the second kind means forwarding a dynamic, which is a subscription, which is the thing the boundary was designed not to have.
+What it costs. Elements would contain a sigil, so the list would no longer be plain data: a World would hold a dynamic, which is a runtime object, and the rule that no runtime object crosses the boundary would have an exception. Value identity would have to pick a moment, because two `Gtk.TextBox` elements with equal values now may differ next occurrence, and the oracle, the push map and the supplier would each need a rule for which moment. A response to a slot whose field changed would need a second rule for what it answers: the slot as it was when the request fired, or as it is now. And interceptors would have two kinds of element to forward, the ones whose fields are fixed and the ones whose fields move, and forwarding the second kind means forwarding a dynamic, which is a subscription, which is the thing the boundary was designed not to have.
 
 The table above is the argument that the cost is not yet paid for. Every case but one is right or acceptable with fresh slots, and the one hard case has a better answer in the library than in the language. If a use case appears that the leaf-plus-interceptor pattern cannot express, a declared dynamic field is the escape hatch, and the costs above are what it would cost; until then the boundary never sees a sigil, and that single fact is what makes a World diff lists of plain data instead of subscribing to anything.
 
@@ -603,23 +602,23 @@ Stated once, with who is bound and what enforces each:
 
 ## Recapitulation and depth
 
-An interceptor's own elements are what the next layer out sees, and a layer that wants to present several of its child's elements as one thing puts them inside a field of its own element, as data. A container's element then holds its children's elements; the outside addresses the container; and the container routes inward through its response argument. This is how depth works, and the convention a library adopts for it, a `children` field holding a `Path ==> Element` and an `Into ((path, input))` case of the response type, is the library's, not the language's. The language guarantees only the two laws, routing against the opened list, and transparency of the forwarding interceptor; what a container looks like is up to whoever writes containers.
+An interceptor's own elements are what the next layer out sees, and a layer that wants to present several of its child's elements as one thing puts them inside a field of its own element, as data. A container's element then holds its children's elements; the outside addresses the container; and the container routes inward through its response argument. This is how depth works, and the convention a library adopts for it, a `children` field holding a `Path ==> Element` and a `ChildInput` response naming a path and a response for the slot there, is the library's, not the language's. The language guarantees only the two laws, routing against the opened list, and transparency of the forwarding interceptor; what a container looks like is up to whoever writes containers.
 
-The convention has a consequence for tests. A Test World that wants `Expect Ui.Button(label="OK")` to find a button inside a box looks inside `children` fields because the library and the suite agree to, and `Send` to a nested slot wraps the input in one `Into` per level, so that delivery takes the path a real World's input would. The suite knows the convention because the library is part of the suite, not because the language does. The next section builds that library.
+The convention has a consequence for tests. A Test World that wants `Expect Ui.Button(label="OK")` to find a button inside a box looks inside `children` fields because the library and the suite agree to, and `Send` to a nested slot wraps the input in one `ChildInput` per level, so that delivery takes the path a real World's input would. The suite knows the convention because the library is part of the suite, not because the language does. The next section builds that library.
 
 ## A GUI library as interceptors
 
-Every toolkit you have used had layout, focus and hit-testing inside it, in the host language, next to the pixels, and the consequence was that a button was a native object: it had a position the toolkit assigned, a focus flag the toolkit set, and a click handler the toolkit called, and the three were visible to your program only through whatever accessors the toolkit chose to expose. The text box of the worked examples lost its cursor because the cursor was the toolkit's. This section builds the whole of a small toolkit, labels, buttons, text inputs, vertical and horizontal boxes, scrolling, focus and hit-testing, as Prism interceptors over two World-facing tags, so that there is nothing native between a program's button and the pixel except the drawing of the pixel. The library is the demonstration that the language is enough, and it is also the convention the conformance suite's Test World uses to look inside containers.
+Every toolkit you have used had layout, focus and hit-testing inside it, in the host language, next to the pixels, and the consequence was that a button was a native object: it had a position the toolkit assigned, a focus flag the toolkit set, and a click handler the toolkit called, and the three were visible to your program only through whatever accessors the toolkit chose to expose. The text box of the worked examples lost its cursor because the cursor was the toolkit's. This section builds the whole of a small toolkit, labels, buttons, text inputs, vertical and horizontal boxes, scrolling, focus and hit-testing, as Prism interceptors over five World-facing tags, so that there is nothing native between a program's button and the pixel except the drawing of the pixel. The library is the demonstration that the language is enough, and it is also the convention the conformance suite's Test World uses to look inside containers.
 
-### The two primitives
+### The five tags
 
-A World that draws accepts a window and a scene:
+A World that draws accepts a window, a scene, a focusable, a text measurer and a frame clock. The first three are declared in the section on tags above. The other two, and the plain values all five use, are these:
 
 ```prism
 type Point = record:
     x: Int
     y: Int
-type Size = record:
+type Extent = record:
     w: Int
     h: Int
 type Rect = record:
@@ -629,10 +628,11 @@ type Rect = record:
     h: Int
 type Color = choice White | Grey | Blue | Black
 
-type Op = choice:
-    Fill ((Rect, Color))
+type Draw = choice:
+    Rect ((Rect, Color))
     Text ((Point, Text))
-    Clip ((Rect, [Op]))
+    Image ((Rect, Text))
+    Clip ((Rect, [Draw]))
 
 type Key = choice:
     Char Char
@@ -646,94 +646,80 @@ type WindowInput = choice:
     Pointer Point
     Pressed Key
     Wheel ((Point, Int))
+    Resized Extent
 
-tag Gui.Window of Element:
-    title: Text
-    responds: WindowInput
-    state: Size
+type Frame = record:
+    now: Instant
 
-tag Gui.Scene of Element:
-    window: Text
-    ops: [Op]
+tag Gui.Metrics of Element:                  # state: the size of a text, answered synchronously
+    text: Text
+    state: Extent
+
+tag Gui.Frames of Element:                   # stream: one Frame per displayed frame while a slot exists
+    responds: Frame
 ```
 
-The window has no dynamic field, so its slot is stable for the life of the program: the World has one path to send pointer and key events to, and the window's size is a state element, a fact the World pushes when the user resizes. The scene is a presence element whose `ops` is the picture; a change to the picture is a fresh `Gui.Scene` slot, which the World draws, and nothing is in flight on a picture, so a fresh slot per frame is right. Keeping the two apart is what lets the window's state be identified by a value that does not change every frame: `Gui.Window(title="Editor")` is one fact, and a scene that changes sixty times a second is sixty presence elements.
+The window has no dynamic field, so its slot is stable for the life of the program: the World has one path to send pointer, key, wheel and resize events to. Its `size` field is the size the program asks for at the start; the size the platform actually gives arrives as `Resized`, like any other input. The scene is a presence element whose `draw` field is the picture. A change to the picture is a fresh `Gui.Scene` slot, which the World draws, and nothing is in flight on a picture, so a fresh slot per change is right. Keeping the window and the scene apart is what lets the window have one path while a scene that changes sixty times a second is sixty presence elements.
 
-A World that offers these two tags can run every program in this section. A software rasteriser, a GTK-backed World that paints into a drawing area, a web World that turns `Op`s into a canvas, and a native Prism system that speaks X11 over a socket are all the same World as far as the library is concerned. A World that would rather offer native widgets offers `Gtk.Button` and friends, and a different library targets it; the program above both libraries is the same program.
+Draw commands are values inside the scene, not elements. Suppose each rectangle and each run of text were a slot of its own: a window of two thousand glyph runs would be two thousand paths, each with an identity nobody addresses, and a redraw would be two thousand teardowns and builds. As one field, the scene is one slot, the World reads the list in order, which is paint order, and `Draw.Clip` nests a list inside a rectangle. A command has no response and no state, so nothing about it needs a slot.
+
+The measurer is a state element for the reason the whole second half of this chapter gives. A layout needs the width of a text in the occurrence it lays out. As a request, the width would arrive a turn later, and the scene would be drawn once with the wrong width and once with the right one. As state, `Gui.Metrics(text="Ada")` has its `Extent` in the occurrence the slot is created, and every slot asking about the same text shares one answer. The World owns the fonts and the library never sees them.
+
+A World that offers these five can run every program in this section. A software rasteriser, a GTK-backed World that paints into a drawing area, a web World that turns `Draw` values into canvas calls, and a native Prism system that speaks X11 over a socket are all the same World as far as the library is concerned. A World that would rather offer native widgets accepts `Ui.*` tags or `Gtk.Button` and friends directly, and a different library targets it; the program above both libraries is the same program.
 
 ### The library's own tags
 
-Between a program and the window, the library has elements of its own. They never reach a World; the window interceptor at the top claims every one of them. They are declared under `Ui` to keep that fact visible.
+Between a program and the window, the library has elements of its own, declared under `Ui` to keep visible whose they are. `Ui.Label` and `Ui.Button` are declared above. The rest:
 
 ```prism
-type Input = choice:
-    Clicked
-    Keyed Key
-    Scrolled Int
-    Into ((Path, Input))
+type ChildInput = record:
+    path: Path
+    response: Response
 
-tag Ui.Label of Element:
-    text: Text
-
-tag Ui.Button of Element:
-    label: Text
-    responds: Input
-
-tag Ui.Focusable of Element:
+tag Ui.TextInput of Element:
     name: Text
-    children: Path ==> Element
-    responds: Input
+    text: Text
+    cursor: Nat
+    responds: Key
 
 tag Ui.VBox of Element:
     children: Path ==> Element
-    responds: Input
+    responds: ChildInput
 
 tag Ui.HBox of Element:
     children: Path ==> Element
-    responds: Input
+    responds: ChildInput
 
 tag Ui.Scroll of Element:
-    children: Path ==> Element
-    offset: Int
+    name: Text
     height: Int
-    responds: Input
+    children: Path ==> Element
+    responds: ChildInput
 ```
 
-Every tag that responds, responds with the one type `Input`. A button only ever receives `Clicked` and a focusable only ever `Clicked` or `Keyed`, and each library widget filters to what it wants. The reason for one type is the containers. A container receives `Into ((p, i))` and must deliver `i` to its child at `p`, whatever that child is. Suppose instead each leaf had its own response type, `Click` for buttons and `Key` for focusables: then a container, which handles children in a catch-all arm, would have to convert a generic input into the right per-tag type for each child, which means knowing every leaf tag, which means a container written before a new leaf is declared cannot hold it. With one type, routing is one line, and the leaf is the one place that knows what it accepts. The `Into` case is recursive so that a chain of containers is a chain of `Into`s, and the response arrives at the leaf after each container has peeled one layer.
+The window interceptor claims every one of these. A World that accepts them natively could take them directly, and the Test World accepts every tag, which is how the suite looks inside the library.
 
-Containers hold their children as data in a `children` field, keyed by the child's path, which is the *children convention*. A `Ui.VBox`'s value is the list of its children's elements, in tree order, and a container two levels up sees the whole subtree as one value. That is what the window needs to lay the tree out, and it is why the convention is a field and not an interceptor-to-interceptor protocol: the tree is plain data, and layout is a plain function over it.
+Containers hold their children as data in a `children` field, keyed by the child's path, which is the *children convention*. A `Ui.VBox`'s `children` is the map of its children's elements, in tree order, and a container two levels up sees the whole subtree as one value. That is what the window needs to lay the tree out, and it is why the convention is a field and not an interceptor-to-interceptor protocol: the tree is plain data, and layout is a plain function over it.
+
+Every container responds with `ChildInput`: a path in the child's list and a response for the slot there. `Response` is the generic type of `intercept`'s response argument, so a container delivers whatever it is given without knowing what the child is, and a value of any tag's response type is a `Response`, checked against the slot's tag when it arrives. A button's slot gets a `Click`, a text input's a `Key`, another container's a `ChildInput`. Suppose instead a container named the response types of its children: a union of every leaf's type, or one type for all leaves that each leaf filters. A container written before a new leaf tag exists could not hold it, and every leaf would see inputs meant for others. With the generic `Response`, routing is one line per container, and the leaf is the one place that knows what it accepts.
 
 ### Leaves
 
 ```prism
-let ClickOf: fn Input -> ?Click = \|i| match i:
-    Clicked: Some click
-    ignore: Nil
-
-let KeyOf: fn Input -> ?Key = \|i| match i:
-    Keyed k: Some k
-    ignore: Nil
-
-let IntoOf: fn Input -> ?((Path, Input)) = \|i| match i:
-    Into ((p, j)): Some ((p, j))
-    ignore: Nil
-
-let Single: fn ((Path, Input)) -> Path ==> Input = \|((p, i))| {p: i}
-
 @Label: fn $Text -> @unit = \@widget:
     @Element Ui.Label(text=$_)
     @ unit
 
 @Button: fn $Text -> @!Click = \@widget:
-    !in <- @Element Ui.Button(label=$_)
-    @ !Filter (ClickOf !in)
+    !click <- @Element Ui.Button(label=$_)
+    @ !click
 ```
 
-A label is one element with a dynamic text, which is a `dyn` with a fresh slot per change. A button is the same with a response, which is a `!Switch` over the generations, filtered to clicks. There is nothing else in a leaf; everything a leaf does belongs to the layers above it.
+A label is one element with a dynamic text, which is a `dyn` with a fresh slot per change. A button is the same with a response, which is a `!Switch` over the generations. There is nothing else in a leaf; everything a leaf does belongs to the layers above it.
 
 ### Containers
 
-A container is an interceptor. It captures its child's list, puts the library elements into a `children` field of one element of its own, forwards everything else unchanged, and routes `Into` inputs down to the child at the named path:
+A container is an interceptor. It captures its child's list, puts the library elements into a `children` field of one element of its own, forwards everything else unchanged, and routes `ChildInput` down to the child at the named path:
 
 ```prism
 let IsUi: fn Element -> Bool = \|e| match e:
@@ -744,162 +730,145 @@ let UiOnly: fn Path ==> Slot -> Path ==> Element = \|slots|
     MapValues (Filter slots, \IsUi _.element), \_.element
 
 let NonUi: fn Path ==> Slot -> Path ==> Slot = \|slots|
-    Filter slots, \Not (IsUi _.element)
+    Filter slots, \not (IsUi _.element)
+
+let Inward: fn ChildInput -> Path ==> Response = \|c| {c.path: c.response}
 
 @VBox: fn @a -> @a = \|@child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !in <- @Element Ui.VBox(children=(UiOnly $slots))
-    let !own = Single (!Filter (IntoOf !in))
     !fwd <- @Forward (NonUi $slots)
-    let !down = !Union !own, !fwd
+    let !down = !Union (Inward !in), !fwd
     @ result
 
-@HBox: fn @a -> @a = \|@child| @widget:
+@Scroll: fn Text, Int, @a -> @a = \|name, height, @child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
-    !in <- @Element Ui.HBox(children=(UiOnly $slots))
-    let !own = Single (!Filter (IntoOf !in))
+    !in <- @Element Ui.Scroll(name=name, height=height, children=(UiOnly $slots))
     !fwd <- @Forward (NonUi $slots)
-    let !down = !Union !own, !fwd
+    let !down = !Union (Inward !in), !fwd
     @ result
 ```
 
-`UiOnly $slots` is a derived dynamic of the child's library elements, kept current by the change law. `Ui.VBox(children=...)` with a dynamic field is a `dyn`, a fresh box per change of the children, and `!in` is the `!Switch` over its generations. When the window sends `Into ((p, i))` to the box, `!own` is the one-entry map `{p: i}`, `!down` is that map merged with whatever the forwarded non-library elements received, and `intercept` delivers `i` to the child's slot at `p`, against the child's list as the occurrence opened. The child at `p` is a leaf, which fires, or another container, which peels the next `Into`.
+`@HBox` is `@VBox` with `Ui.HBox`. `UiOnly $slots` is a derived dynamic of the child's library elements, kept current by the change law. `Ui.VBox(children=...)` with a dynamic field is a `dyn`, a fresh box per change of the children, and `!in` is the `!Switch` over its generations. When the window sends a `ChildInput` to the box, `Inward !in` is the one-entry map from the named path to the response, `!down` is that map merged with whatever the forwarded non-library elements received, and `intercept` delivers the response to the child's slot at that path, against the child's list as the occurrence opened. The child at that path is a leaf, which fires, or another container, which peels the next `ChildInput`.
 
-`!own` and `!fwd` never share a key, because `!own`'s keys are library paths and `!fwd`'s are the others; `!Union` is there so that a click into the box and a file response to a forwarded `Fs.File` can land in one occurrence without one losing the other.
+The two maps never share a key, because `Inward !in` has library paths and `!fwd` has the others; `!Union` is there so that a click into the box and a file response to a forwarded `Fs.File` can land in one occurrence without one losing the other.
 
 The supplier is `\|e| @Element e`: a box has no opinion about state and forwards a child's `Clock` or `Fs.Contents` by asking the outside for the same thing. A box that wanted to give its children a different clock would be a different interceptor with the same first line and a different third argument.
 
-### Focusable regions and the text input
+### Text input and focus
 
-A focusable region is a container with a name:
-
-```prism
-let LeafOf: fn Input -> ?Input = \|i| match i:
-    Into ignore: Nil
-    ignore: Some i
-
-@Focusable: fn Text, @a -> @((a, !Input)) = \|name, @child| @widget:
-    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
-    !in <- @Element Ui.Focusable(name=name, children=(UiOnly $slots))
-    let !own = Single (!Filter (IntoOf !in))
-    !fwd <- @Forward (NonUi $slots)
-    let !down = !Union !own, !fwd
-    @ ((result, !Filter (LeafOf !in)))
-```
-
-It routes `Into` like a box and returns the inputs addressed to itself: the clicks that focused it and the keys delivered while it was focused. The text input is a focusable around a label, with the editing state in a hold outside both:
+A text input is a leaf with a name, and the editing state sits in a hold outside the element:
 
 ```prism
-@TextInput: fn Text -> @$Text = \|initial| @widget:
-    ((ignore, !in)) <- @Focusable "input", (@Label (Render $edit))
-    $edit <- Edit initial, (Len initial) <= Apply $edit, !Filter (KeyOf !in)
+@TextInput: fn Text, Text -> @$Text = \|name, initial| @widget:
+    !key <- @Element Ui.TextInput(name=name, text=$edit.text, cursor=$edit.cursor)
+    $edit <- (Edit initial, (Len initial)) <= Apply $edit, !key
     @ $edit.text
 ```
 
-`Apply` and `Render` are the plain functions of the worked example with a cursor: one takes the old edit state and a key and returns the new state, the other draws the text with a bar at the cursor. The hold `$edit` is referenced by the label's argument before the line that defines it, which a widget block allows, and the cycle passes through the hold's value side.
+`Apply` is the plain function of the worked example with a cursor: it takes the old edit state and a key and returns the new state. The hold `$edit` is referenced by the element's fields before the line that defines it, which a widget block allows, and the cycle passes through the hold's value side.
 
-Look at what changes per keystroke and what does not. The label's text changes, so the label is a fresh slot; the focusable's `children` field therefore changes, so the focusable is a fresh slot too; and `$edit`, with the cursor in it, is in neither, so it persists. The focusable's slot being fresh per keystroke is why focus, in the window below, is keyed by the focusable's `name` and not by its path: the name is the one thing about a text input that does not change when you type into it. That is the same move as identifying state by value rather than by path, for the same reason. A path names a slot; a name names the thing the user is looking at.
+Look at what changes per keystroke and what does not. The element's text and cursor change, so the element is a fresh slot; the hold `$edit`, with the cursor in it, is outside the `dyn`, so it persists. The slot being fresh per keystroke is why focus, in the window below, is keyed by the input's `name` and not by its path: the name is the one thing about a text input that does not change when you type into it. That is the same move as identifying state by value rather than by path, for the same reason. A path names a slot; a name names the thing the user is looking at.
+
+Focus is a hold of an optional name in the window, and only there. Tab has to walk every input in tree order, and a click has to move focus from one input to another, so one owner sees all of them; an input that asked "am I focused" would need the window's answer anyway.
 
 ### Scrolling
 
-A scroll region holds an offset, which its own wheel events move:
-
-```prism
-let Clamp: fn Int, Int, Int -> Int = \|lo, hi, v|
-    if v lt lo: lo else: if hi lt v: hi else: v
-
-let ScrollOf: fn Input -> ?Int = \|i| match i:
-    Scrolled d: Some d
-    ignore: Nil
-
-@Scroll: fn Int, @a -> @a = \|height, @child| @widget:
-    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
-    let $kids = UiOnly $slots
-    $offset <- 0 <= Clamp 0, (Measure Ui.VBox(children=$kids)).h - height, ($offset + !Filter (ScrollOf !in))
-    !in <- @Element Ui.Scroll(children=$kids, offset=$offset, height=height)
-    let !own = Single (!Filter (IntoOf !in))
-    !fwd <- @Forward (NonUi $slots)
-    let !down = !Union !own, !fwd
-    @ result
-```
-
-The offset is a hold, so it lists the one thing that can change it: a `Scrolled` delivered to this region, clamped against the content height as the occurrence opened. The `Ui.Scroll` element has two dynamic fields and is a fresh slot per wheel tick or per change of its children; the window draws it clipped and translated. The hold is outside the `dyn`, so scrolling survives the children changing, which is what you want from a list whose items come and go.
+A scroll region needs an offset, which wheel events move, and the layout needs the offset to place the children. The offset is state that no child reads, so the window holds it, in a map keyed by the region's `name` for the reason focus is: a `Ui.Scroll` is a fresh slot whenever its children change, and a list whose items come and go must not jump back to the top. `Ui.Scroll` is therefore a container like `Ui.VBox` with a name and a height. The next sections show where the offset is applied and where it is moved.
 
 ### Layout and hit-testing as plain functions
 
-Layout is a function from an element tree and a rectangle to a list of draw ops and a list of hit regions:
+Layout is a function from an element tree, a rectangle and what the layout needs to know to a draw list and a list of hit regions. It needs the measured size of each text, the scroll offsets and the focus, bundled as `Env`:
 
 ```prism
+type Env = record:
+    sizes: Text ==> Extent       # one Gui.Metrics answer per distinct text
+    offsets: Text ==> Int        # scroll offsets, by region name
+    focus: ?Text
+
 type HitKind = choice:
     Clickable
     Focus Text
-    Scrollable
+    Scrollable ((Text, Int))     # region name, largest offset
+
 type Hit = record:
     rect: Rect
-    chain: [Path]        # from the window's child down to this element
+    chain: [Path]                # from the window's child down to this element
     kind: HitKind
+
 type Placed = record:
-    ops: [Op]
+    draw: [Draw]
     hits: [Hit]
 
-let Measure: fn Element -> Size = \|e| match e:
-    Ui.Label(text=t): Size 8 * (Len t) + 8, 24
-    Ui.Button(label=l): Size 8 * (Len l) + 16, 28
-    Ui.VBox(children=cs): Fold cs, (Size 0, 0), \|acc, ignore, c| Stacked acc, (Measure c)
-    Ui.HBox(children=cs): Fold cs, (Size 0, 0), \|acc, ignore, c| Beside acc, (Measure c)
-    Ui.Focusable(children=cs, ..): Padded (Measure Ui.VBox(children=cs)), 2
-    Ui.Scroll(children=cs, height=h, ..): Size (Measure Ui.VBox(children=cs)).w, h
-    ignore: Size 0, 0
+let TextExtent: fn Env, Text -> Extent = \|env, t|
+    Or env.sizes[t], (Extent 0, 0)
 
-let Place: fn Element, Rect, [Path] -> Placed = \|e, r, chain| match e:
+let Measure: fn Env, Element -> Extent = \|env, e| match e:
+    Ui.Label(text=t): Padded (TextExtent env, t), 4
+    Ui.Button(label=l): Padded (TextExtent env, l), 8
+    Ui.TextInput(text=t, ..): Padded (TextExtent env, t), 4
+    Ui.VBox(children=cs): Fold cs, (Extent 0, 0), \|acc, ignore, c| Stacked acc, (Measure env, c)
+    Ui.HBox(children=cs): Fold cs, (Extent 0, 0), \|acc, ignore, c| Beside acc, (Measure env, c)
+    Ui.Scroll(children=cs, height=h, ..): Extent (Measure env, Ui.VBox(children=cs)).w, h
+    ignore: Extent 0, 0
+
+let Place: fn Env, Element, Rect, [Path] -> Placed = \|env, e, r, chain| match e:
     Ui.Label(text=t):
-        Placed [[(Text (((Point r.x + 4, r.y + 4), t)))]], [[]]
+        Placed [[(Draw.Text (((Point r.x + 4, r.y + 4), t)))]], [[]]
     Ui.Button(label=l):
-        Placed [[(Fill ((r, Grey))), (Text (((Point r.x + 8, r.y + 6), l)))]], [[(Hit r, chain, Clickable)]]
+        Placed [[(Draw.Rect ((r, Grey))), (Draw.Text (((Point r.x + 8, r.y + 8), l)))]], [[(Hit r, chain, Clickable)]]
+    Ui.TextInput(name=n, text=t, cursor=c):
+        Placed (InputDraw env, r, n, t, c), [[(Hit r, chain, (Focus n))]]
     Ui.VBox(children=cs):
-        PlaceStacked cs, r, chain, True
+        PlaceStacked env, cs, r, chain, True
     Ui.HBox(children=cs):
-        PlaceStacked cs, r, chain, False
-    Ui.Focusable(name=n, children=cs):
-        Framed (PlaceStacked cs, (Inset r, 2), chain, True), r, [[(Hit r, chain, (Focus n))]]
-    Ui.Scroll(children=cs, offset=o, ..):
-        Clipped (PlaceStacked cs, (Shifted r, -o), chain, True), r, [[(Hit r, chain, Scrollable)]]
+        PlaceStacked env, cs, r, chain, False
+    Ui.Scroll(name=n, children=cs, height=h):
+        Clipped (PlaceStacked env, cs, (Up r, (Offset env, n)), chain, True), r, [[(Hit r, chain, (Scrollable ((n, (MaxOffset env, cs, h)))))]]
     ignore:
         Placed [[]], [[]]
 
-# PlaceStacked: fn Path ==> Element, Rect, [Path], Bool -> Placed   children in key order, down or across
-# Framed, Clipped: fn Placed, Rect, [Hit] -> Placed                 a border; a Clip op and hits cut to the rect
+# TextsIn: fn Path ==> Element -> Text ==> unit      every text the layout measures: labels, button labels, input texts, and each input's text up to its cursor
+# PlaceStacked: fn Env, Path ==> Element, Rect, [Path], Bool -> Placed    children in key order, down or across
+# InputDraw: fn Env, Rect, Text, Text, Nat -> [Draw]  a white box, the text, and a caret bar when the name is the focus
+# Clipped: fn Placed, Rect, [Hit] -> Placed           a Draw.Clip around the draw list; hits cut to the rect, the region's own last
+# Offset, MaxOffset, Up, Stacked, Beside, Padded: the arithmetic on offsets, sizes and rectangles their names say
 ```
 
-`PlaceStacked` walks the children in key order, which is tree order, which is top to bottom or left to right, allotting each its measured height or width, placing it with its path appended to the chain, and concatenating the ops and hits with the children's hits *before* the container's own, so that the innermost region at a point is found first. `Framed` adds a border. `Clipped` wraps the ops in a `Clip` and discards hits outside the clip rect. `Stacked`, `Beside`, `Padded`, `Inset` and `Shifted` are the arithmetic on sizes and rectangles their names say. None of this touches time: `Measure` and `Place` are functions on plain values, testable without a World, and when they are applied to a dynamic tree they lift to a dynamic picture.
+`Or ?x, d`, as in `TextExtent`, is the optional default: `x` if there is one and `d` otherwise. Boolean or is the keyword `or`.
 
-Hit-testing is a lookup in the hit list:
+`PlaceStacked` walks the children in key order, which is tree order, which is top to bottom or left to right, allotting each its measured extent, placing it with its path appended to the chain, and concatenating the draw lists and hits with the children's hits *before* the container's own, so that the innermost region at a point is found first. `InputDraw` finds the caret's x by measuring the text up to the cursor, `TextExtent env, (Take t, c)`, which is why `TextsIn` lists that prefix: the library asks the World for the width of every text it will need, and `Gui.Metrics` answers all of them in the occurrence of the question. `Clipped` wraps the draw list in a `Draw.Clip` and discards hits outside the clip rect. `Stacked`, `Beside`, `Padded`, `Up` and the rest are the arithmetic their names say. None of this touches time: `Measure` and `Place` are functions on plain values, testable without a World, and when they are applied to a dynamic tree they lift to a dynamic picture.
+
+Hit-testing is a lookup in the hit list, and turning a hit into an input is a fold over its chain:
 
 ```prism
 let Contains: fn Rect, Point -> Bool = \|r, p|
-    And (And (r.x le p.x), (p.x lt r.x + r.w)), (And (r.y le p.y), (p.y lt r.y + r.h))
+    r.x le p.x and p.x lt r.x + r.w and r.y le p.y and p.y lt r.y + r.h
 
 let HitAt: fn [Hit], Point -> ?Hit = \|hits, p|
     FirstWhere hits, \Contains _.rect, p
 
-let Wrap: fn [Path], Input -> ?((Path, Input)) = \|chain, i|
-    match chain[0]:
-        Some head: Some ((head, (WrapRest (Rest chain), i)))
-        Nil: Nil
+let Nest: fn [Path], Response -> Response = \|chain, r| match chain[0]:
+    Some head: ChildInput(path=head, response=(Nest (Rest chain), r))     # Rest: the array without its first element
+    Nil: r
 
-let WrapRest: fn [Path], Input -> Input = \|chain, i|      # Rest: the array without its first element
-    match chain[0]:
-        Some head: Into ((head, (WrapRest (Rest chain), i)))
-        Nil: i
+let Deliver: fn [Path], Response -> Path ==> Response = \|chain, r| match chain[0]:
+    Some head: {head: (Nest (Rest chain), r)}
+    Nil: {}
 ```
 
-`Wrap` turns a chain `[[box, row, button]]` and an input into `((box, Into ((row, Into ((button, Clicked))))))`: a response to the box, which the box peels and sends to the row, which the row peels and sends to the button. The first element of the chain is a path in the window's child's list, which is the key `!down` needs.
+`Deliver` turns a chain `[[box, row, button]]` and a `click` into `{box: ChildInput(path=row, response=ChildInput(path=button, response=click))}`: a response to the box, which the box peels and sends to the row, which the row peels and sends to the button. The map's one key is the first element of the chain, a path in the window's child's list, which is the key `!down` needs.
 
 ### The window
 
-The window interceptor claims every library element, lays the tree out, draws it, hit-tests the pointer, keeps focus, and routes keys and wheel events:
+The window interceptor claims every library element, lays the tree out, draws it, hit-tests the pointer, keeps focus and scroll offsets, and routes keys and wheel events:
 
 ```prism
+type Wheeled = record:
+    name: Text
+    most: Int
+    by: Int
+
 let PointerOf: fn WindowInput -> ?Point = \|w| match w:
     Pointer p: Some p
     ignore: Nil
@@ -917,55 +886,72 @@ let WheelOf: fn WindowInput -> ?((Point, Int)) = \|w| match w:
     Wheel ((p, d)): Some ((p, d))
     ignore: Nil
 
-let ClickFor: fn Hit -> ?((Path, Input)) = \|h| match h.kind:
-    Clickable: Wrap h.chain, Clicked
-    Focus ignore: Wrap h.chain, Clicked
-    Scrollable: Nil
+let ResizeOf: fn WindowInput -> ?Extent = \|w| match w:
+    Resized x: Some x
+    ignore: Nil
+
+let ClickFor: fn Hit -> ?(Path ==> Response) = \|h| match h.kind:
+    Clickable: Some (Deliver h.chain, click)
+    Focus ignore: Nil
+    Scrollable ignore: Nil
 
 let FocusOf: fn Hit -> ?Text = \|h| match h.kind:
     Focus n: Some n
     ignore: Nil
 
-let FocusNames: fn [Hit] -> [Text] = \|hits|
-    Collect hits, FocusOf                    # in hit order, which is tree order
-
 let NextFocus: fn [Hit], ?Text -> ?Text = \|hits, current|
-    After (FocusNames hits), current         # the name after current, wrapping; Nil if none
+    After (Collect hits, FocusOf), current   # the name after current in hit order, wrapping; Nil if none
 
-let RouteKey: fn [Hit], ?Text, Key -> ?((Path, Input)) = \|hits, focus, k|
+let RouteKey: fn [Hit], ?Text, Key -> ?(Path ==> Response) = \|hits, focus, k|
     match focus:
         Nil: Nil
         Some n: match (FirstWhere hits, \(FocusOf _) == Some n):
-            Some h: Wrap h.chain, (Keyed k)
+            Some h: Some (Deliver h.chain, k)
             Nil: Nil
 
-let ScrollAt: fn [Hit], ((Point, Int)) -> ?((Path, Input)) = \|hits, ((p, d))|
-    match (FirstWhere hits, \And (Contains _.rect, p), (IsScrollable _.kind)):
-        Some h: Wrap h.chain, (Scrolled d)
-        Nil: Nil
+let WheelTarget: fn Hit, Point, Int -> ?Wheeled = \|h, p, d| match h.kind:
+    Scrollable ((n, most)): if Contains h.rect, p: Some (Wheeled n, most, d) else: Nil
+    ignore: Nil
 
-@Window: fn Text, @a -> @a = \|title, @app| @widget:
+let WheelAt: fn [Hit], ((Point, Int)) -> ?Wheeled = \|hits, ((p, d))|
+    (Collect hits, \WheelTarget _, p, d)[0]  # hits are in tree order, children first: the innermost region under the pointer
+
+let Clamp: fn Int, Int, Int -> Int = \|lo, hi, v|
+    if v lt lo: lo else: if hi lt v: hi else: v
+
+let Scrolled: fn Text ==> Int, Wheeled -> Text ==> Int = \|offsets, w|
+    Insert offsets, w.name, (Clamp 0, w.most, (Or offsets[w.name], 0) + w.by)
+
+@Window: fn Text, Extent, @a -> @a = \|title, size0, @app| @widget:
     ((result, $slots)) <- intercept @app, !down, $ \|e| @Element e
-    ((!raw, $size)) <- @Element Gui.Window(title=title)
-    let $root = Ui.VBox(children=(UiOnly $slots))
-    let $placed = Place $root, (Rect 0, 0, $size.w, $size.h), [[]]
-    @Element Gui.Scene(window=title, ops=$placed.ops)
+    !raw <- @Element Gui.Window(title=title, size=size0)
+    let $kids = UiOnly $slots
+    $sizes <- for (TextsIn $kids):               # a Gui.Metrics slot per distinct text
+        $m <- @Element Gui.Metrics(text=key)
+        @ $m
+    $size <- size0 <= !Filter (ResizeOf !raw)
+    let $root = Ui.VBox(children=$kids)
+    let $placed = Place (Env $sizes, $offsets, $focus), $root, (Rect 0, 0, $size.w, $size.h), [[]]
+    @Element Gui.Scene(window=title, draw=$placed.draw)
 
     let !hit = !Filter (HitAt $placed.hits, !Filter (PointerOf !raw))
-    let !clicks = !Filter (ClickFor !hit)
     $focus <- Nil <= (Some !Filter (FocusOf !hit)) | (NextFocus $placed.hits, $focus) on !Filter (IsTab !raw)
-    let !keys = !Filter (RouteKey $placed.hits, $focus, !Filter (PressedOf !raw))
-    let !wheel = !Filter (ScrollAt $placed.hits, !Filter (WheelOf !raw))
+    $offsets <- {} <= Scrolled $offsets, !Filter (WheelAt $placed.hits, !Filter (WheelOf !raw))
+    dyn $focus:
+        match _:
+            Some n: @Element Gui.Focusable(name=n)
+            Nil: @ unit
 
-    let !own = Single (!clicks | !keys | !wheel)
+    let !clicks = !Filter (ClickFor !hit)
+    let !keys = !Filter (RouteKey $placed.hits, $focus, !Filter (PressedOf !raw))
     !fwd <- @Forward (NonUi $slots)
-    let !down = !Union !own, !fwd
+    let !down = !Union (!clicks | !keys), !fwd
     @ result
 ```
 
-Walk the lines. `$root` is the app's library elements as one tree, a derived dynamic. `$placed` is the layout of that tree in the window's current size, a derived dynamic that changes when the tree or the size changes. The scene element draws its ops, a fresh slot per change. The window's raw input is split three ways by plain filters. A pointer is hit-tested against `$placed.hits` *read through a tag*, the layout as the occurrence opened, which is the layout the user was looking at when they clicked; the hit, if any, is wrapped into an `Into` chain addressed to the app's slot at the head of the chain. Focus is a hold of an optional name, moved by a click on a focusable region or by Tab, which steps through the focusable names in tree order; the hold lists both. A key is routed to the focusable whose name matches the focus as the occurrence opened, again through tags, and a wheel event to the innermost scrollable region under the pointer. The three cannot fire in one occurrence because the window delivers one `WindowInput` per occurrence, so `|` loses nothing. Everything that is not a library element is forwarded, and `!down` is the union.
+Walk the lines. `$kids` is the app's library elements, and `$root` is those elements as one tree, a derived dynamic. The `for` over the texts in the tree builds one `Gui.Metrics` slot per distinct text and consolidates their answers into `$sizes`; a text that appears in this occurrence has its slot built in this occurrence, and its answer is there too, so `$placed`, the layout of the tree at the window's current size with the current sizes, offsets and focus, is consistent in every occurrence in which anything changed. The scene element draws its list, a fresh slot per change. The window's raw input is split by plain filters. A pointer is hit-tested against `$placed.hits` *read through a tag*, the layout as the occurrence opened, which is the layout the user was looking at when they clicked. A hit on a button becomes a `Deliver` addressed to the app's slot at the head of the chain; a hit on an input moves focus and delivers nothing, since an input responds only to keys. Focus is a hold of an optional name, moved by a click on an input or by Tab, which steps through the input names in tree order. A key is routed to the input whose name matches the focus as the occurrence opened, again through tags. A wheel event moves the offset of the innermost scroll region under the pointer, clamped to the largest offset that region's content allows. The `Gui.Focusable` is the window telling the World which name has focus, rebuilt whenever the hold changes. The window delivers one `WindowInput` per occurrence, so `!clicks | !keys` loses nothing. Everything that is not a library element is forwarded, and `!down` is the union.
 
-There is no second pass, no layout phase, no deferred focus. Hit-testing is a lifted operation over a dynamic and an event, so it runs in the input's occurrence, against the list the user saw, which is the routing rule. The scene is derived, so it changes promptly in any occurrence in which anything on the screen changed, and the World draws it after the turn. Focus moving to a field built in this occurrence cannot happen in this occurrence, because that field's name is not in `$placed.hits` as the occurrence opened; it happens the next time the user presses Tab or clicks, which is the only time focus moves anyway. A program that wants a field focused as soon as it appears puts the field's name into the window's focus through a request element, which the window answers with a `Defer`, and that is a few more lines in the same language.
+There is no second pass, no layout phase, no deferred focus. Hit-testing is a lifted operation over a dynamic and an event, so it runs in the input's occurrence, against the list the user saw, which is the routing rule. The scene is derived, so it changes promptly in any occurrence in which anything on the screen changed, and the World draws it after the turn. Focus moving to an input built in this occurrence cannot happen in this occurrence, because that input's name is not in `$placed.hits` as the occurrence opened; it happens the next time the user presses Tab or clicks, which is the only time focus moves anyway. A program that wants an input focused as soon as it appears puts the name into the window's focus through a request element, which the window answers with a `Defer`, and that is a few more lines in the same language.
 
 ### A form, occurrence by occurrence
 
@@ -973,60 +959,78 @@ Take a small form under the window:
 
 ```prism
 @form:
-    $name <- @TextInput "Ada"
+    $name <- @TextInput "name", "Ada"
     !ok <- @HBox @widget:
-        !ok <- @Button $"OK"
-        !cancel <- @Button $"Cancel"
+        !ok <- @Button $ "OK"
+        !cancel <- @Button $ "Cancel"
         @ !ok
-    @Label $"Hello, $name"
+    @Label "Hello, {$name}"
     @ unit
 
 @main:
-    @Window "Form", (@VBox @form)
+    @Window "Form", (Extent 400, 300), (@VBox @form)
 ```
 
-Paths, from the window's child down. The outer `@VBox` is the window's child, so the app's list has one library element at the window's level, the box, at the window's path `0`... but the window's child *is* the box, so from the window's point of view the app's list is the box's list: a `Ui.VBox` at `1/#0/0` (the box's second bind, generation zero, first slot), and nothing else, since the box held everything back. Inside the box, the form's elements: the text input's focusable at `0/0/1/#0/0`, the HBox's element at `1/1/#0/0`, the greeting label at `2/#0/0`. Inside the HBox, two buttons at `0/#0/0` and `1/#0/0`. Inside the focusable, the edit label at `0/#0/0`.
+Paths, from the window's child down. The `@VBox` is the window's child, and it holds everything back, so the app's list has one library element, the box's `Ui.VBox`, at `1/#0/0`. Inside the box, the form's elements: the text input at `0/#0/0`, the HBox's element at `1/#0/0`, the greeting label at `2/#0/0`. Inside the HBox, the two buttons at `0/#0/0` and `1/#0/0`. A path is only a key in the list of the interceptor that reads it, so the same string names different slots at different levels.
 
-**Occurrence 0 (build).** Everything is built. The window's `Gui.Window(title="Form")` slot is created and the oracle answers its size, say `Size 400, 300`. `$root` is a `Ui.VBox` holding the box's element, which holds the form's three, which hold theirs. `Place` lays it out: the focusable at the top with the text `Ada|` inside it, the two buttons side by side below, the greeting below that. The scene slot is created with those ops. `$focus` is `Nil`. The World sees two elements:
+The World's text measurement is fixed-width in this walk: eight pixels per character and sixteen per line. A label pads its text by 4 on each side, a button by 8, an input by 4, which puts the input at the top left with width 32 and height 24, the two buttons below it from y = 24, `OK` from x = 0 to 32 and `Cancel` from x = 32 to 96, each 32 high, and the greeting at y = 56, 88 wide.
+
+**Occurrence 0 (build).** Everything is built. The `Gui.Window` slot is created. `TextsIn` finds four distinct texts, `Ada` (the input's text and its text up to the cursor), `Cancel`, `Hello, Ada` and `OK`, and the `for` builds a `Gui.Metrics` slot for each; the oracle answers `Extent 24, 16` for `Ada` and so on, in this occurrence. `Place` lays the tree out with those sizes, and the scene slot is created with the draw list. `$focus` is `Nil`, so no focusable. The World sees:
 
 ```
-1:       Gui.Window(title="Form")
-2/#0/0:  Gui.Scene(window="Form", ops=[...])
+1:               Gui.Window(title="Form", size=Extent(w=400, h=300))
+2/[Ada]/0:       Gui.Metrics(text="Ada")
+2/[Cancel]/0:    Gui.Metrics(text="Cancel")
+2/[Hello, Ada]/0: Gui.Metrics(text="Hello, Ada")
+2/[OK]/0:        Gui.Metrics(text="OK")
+4/#0/0:          Gui.Scene(window="Form", draw=[[...]])
 ```
 
 It draws the scene and waits.
 
-**Occurrence 1.** The user clicks on the OK button. The World sends `Pointer (Point 60, 50)` to `1`. `!raw` fires; `PointerOf` passes the point; `HitAt` reads `$placed.hits` through a tag, finds the button's region first (leaves before containers), and fires the hit with chain `[[1/#0/0, 1/1/#0/0, 0/#0/0]]`: the box in the app's list, the HBox in the box's list, the OK button in the HBox's list. `ClickFor` wraps it: `((1/#0/0, Into ((1/1/#0/0, Into ((0/#0/0, Clicked))))))`. `!own` is that one entry; `!down` fires with it; `intercept` delivers to the box's slot at `1/#0/0` in the app's list as opened. The box's `!in` fires; `IntoOf` peels one layer; the box's `!down` fires with `{1/1/#0/0: Into ((0/#0/0, Clicked))}`; the HBox's `!in` fires; it peels again; its `!down` fires with `{0/#0/0: Clicked}`; the OK button's `!in` fires with `Clicked`; `ClickOf` passes it; `!ok` fires in the form. Nothing on the screen changes, so no scene is rebuilt. Four interceptors and one leaf, in one occurrence, each one line of routing.
+**Occurrence 1.** The user clicks on the OK button. The World sends `Pointer (Point 12, 40)` to `1`. `PointerOf` passes the point; `HitAt` reads `$placed.hits` through a tag and finds the button's region first (leaves before containers), with chain `[[1/#0/0, 1/#0/0, 0/#0/0]]`: the box in the app's list, the HBox in the box's list, the OK button in the HBox's list. `ClickFor` turns it into `{1/#0/0: ChildInput(path=1/#0/0, response=ChildInput(path=0/#0/0, response=click))}`. `!down` fires with it; `intercept` delivers to the box's slot at `1/#0/0` in the app's list as opened. The box's `!in` fires; `Inward` turns the `ChildInput` into `{1/#0/0: ChildInput(path=0/#0/0, response=click)}`; the box's `!down` delivers it to the HBox's slot; the HBox peels again and delivers `{0/#0/0: click}`; the OK button's `!in` fires with `click`; `!ok` fires in the form. Nothing on the screen changes, so no scene is rebuilt. Three interceptors and one leaf, in one occurrence, each one line of routing.
 
-**Occurrence 2.** The user clicks in the text field. `Pointer (Point 30, 12)` to `1`. `HitAt` finds the label's region? No: labels have no hit region, so the focusable's own region is the first containing the point, with kind `Focus "input"`. `ClickFor` wraps a `Clicked` down the chain `[[1/#0/0, 0/0/1/#0/0]]`; `FocusOf` fires `Some "input"`; `$focus` changes to `Some "input"`. The click reaches the focusable's `!in`, `LeafOf` passes it, and `@TextInput` ignores it, since it only filters keys. Commit: focus is the input.
+**Occurrence 2.** The user clicks in the text field. `Pointer (Point 12, 10)` to `1`. `HitAt` finds the input's own region, with kind `Focus "name"`. `ClickFor` gives `Nil`, since an input responds only to keys, and `FocusOf` fires `Some "name"`; `$focus` changes to `Some "name"`. The layout depends on the focus, so `$placed` changes promptly and the scene rebuilds to `4/#1/0`, now with a caret bar after `Ada`; and the focus dyn builds `Gui.Focusable(name="name")` at `7/#1/0`. Commit: focus is the input, and the World can show the platform's focus for it.
 
-**Occurrence 3.** The user types `!`. `Pressed (Char '!')` to `1`. `PressedOf` passes it; `RouteKey` reads `$placed.hits` and `$focus` through tags, finds the hit whose kind is `Focus "input"`, and wraps `Keyed (Char '!')` down its chain. The box peels; the focusable's `!in` fires; `KeyOf` passes the key; `Apply $edit, !key` fires with `Edit "Ada!", 4`; `$edit` changes. `Render $edit` changes promptly, the edit label rebuilds to generation `#1`, the focusable's `children` changes, the focusable rebuilds to a fresh slot at a new path `0/0/1/#1/0`, the box's `children` changes, the box rebuilds, `$root` changes, `$placed` changes, the scene rebuilds. The greeting label changes too, since `$name` is `$edit.text`. The World sees a new `Gui.Scene` and draws it. Commit: `$edit` is `Edit "Ada!", 4`, and `$focus` is still `Some "input"`, which names the new focusable slot as well as it named the old one.
+**Occurrence 3.** The user types `!`. `Pressed (Char '!')` to `1`. `PressedOf` passes it; `RouteKey` reads `$placed.hits` and `$focus` through tags, finds the hit whose kind is `Focus "name"`, and `Deliver` addresses `Char '!'` down its chain `[[1/#0/0, 0/#0/0]]`. The box peels; the input's `!key` fires; `Apply $edit, !key` fires with `Edit "Ada!", 4`; `$edit` changes. The input element is a fresh slot at `0/#1/0`; the box's `children` changes and the box is a fresh slot at `1/#1/0`; `$kids` changes; the greeting label changes too, since `$name` is `$edit.text`. Now the measurer: `TextsIn` finds `Ada!`, `Cancel`, `Hello, Ada!` and `OK`. The `for` builds `Gui.Metrics` slots for `Ada!` and `Hello, Ada!` in this occurrence and the oracle answers them in this occurrence; `Ada` and `Hello, Ada` are torn down at commit. `$sizes` has the new widths before the occurrence ends, `$placed` is laid out with them, and the scene is rebuilt at `4/#2/0`. There is no occurrence in which the text has changed and its width has not. Commit: `$edit` is `Edit "Ada!", 4`, and `$focus` is still `Some "name"`, which names the new input slot as well as it named the old one.
 
-**Occurrence 4.** The user presses Tab. `IsTab` passes; `NextFocus` reads the hit list and the focus through tags; there is one focusable, so the name after `"input"`, wrapping, is `"input"` again; `$focus` is unchanged. A form with two fields would move to the second here, and Tab on the last would wrap to the first, which is what `After` does; a library that wants Shift-Tab adds a key and a `Before`.
+**Occurrence 4.** The user presses Tab. `IsTab` passes; `NextFocus` reads the hit list and the focus through tags; there is one input, so the name after `"name"`, wrapping, is `"name"` again. A hold set to the value it already has still changes, so the scene and the focusable are rebuilt with equal contents; the World's diff finds nothing different, and `$Distinct` on `$focus` would suppress the rebuild. A form with two inputs would move to the second here, and Tab on the last would wrap to the first, which is what `After` does; a library that wants Shift-Tab adds a key and a `Before`.
 
-**Occurrence 5.** The user resizes the window. The World pushes `Size 600, 300` for `Gui.Window(title="Form")`. `$size` changes; `$placed` changes promptly; the scene rebuilds with the new rectangles. No input was delivered, nothing in the form ran, and the next click is hit-tested against the new layout because the next occurrence opens with it.
+**Occurrence 5.** The user resizes the window. The World sends `Resized (Extent 600, 300)` to `1`. `$size` changes; `$placed` changes promptly; the scene rebuilds with the new rectangles. Nothing in the form ran, and the next click is hit-tested against the new layout because the next occurrence opens with it.
 
-What this prevents is the afternoon where the click landed on the button that had just moved, because layout ran after the event was dispatched and the hit-test used the new positions while the user had seen the old ones. Here the hit-test reads the layout the user saw, by the tag law, and no layout pass can get between a click and the thing it was aimed at.
+This prevents the afternoon where the click landed on the button that had just moved, because layout ran after the event was dispatched and the hit-test used the new positions while the user had seen the old ones. Here the hit-test reads the layout the user saw, by the tag law, and no layout pass can get between a click and the thing it was aimed at.
 
-### The children convention, and tests that look inside
+### Tests that look inside
 
-A `Ui.VBox` holds its children as data, so the Test World can look inside it. `Expect Ui.Button(label="OK")` matches a slot at any depth because the suite's matcher descends into `children` fields, and `Send Ui.Button(label="OK"), Clicked` wraps `Clicked` in one `Into` per level and delivers it to the outermost slot on the chain, which is the same delivery a window would make after a hit-test. The Test World knows the convention because the library is part of the suite, not because the language does; a library that nested differently would ship a different matcher.
+A `Ui.VBox` holds its children as data, so the Test World can look inside it. `Expect Ui.Button(label="OK")` matches a slot at any depth because the suite's matcher descends into `children` fields, and `Send Ui.Button(label="OK"), click` wraps `click` in one `ChildInput` per level and delivers it to the outermost slot on the chain, which is the same delivery a window would make after a hit-test. The Test World knows the convention because the library is part of the suite, not because the language does; a library that nested differently would ship a different matcher.
 
 A library test of the form above, with no window at all:
 
 ```prism
 test form_greets: Test (@VBox @form): array:
     Expect Ui.Label(text="Hello, Ada")
-    Send Ui.Focusable(name="input", ..), Keyed (Char '!')
+    Send Ui.TextInput(name="name", ..), Char '!'
     Expect Ui.Label(text="Hello, Ada!")
-    Send Ui.Button(label="OK"), Clicked
+    Send Ui.Button(label="OK"), click
 ```
 
-The test drives the library below the window, so it checks routing through the boxes and the focusable without any layout. A test of the window is a test of `Place` against a scene, and `Place` is a plain function, so most of it is a unit test.
+The test drives the library below the window, so it checks routing through the boxes and the input without any layout. A test of the window adds the measurer, which the Test World has no answers for. The window creates its `Gui.Metrics` slots at build, so the script gives each one a value before the build:
+
+```prism
+test window_focus: Test (@Window "Form", (Extent 400, 300), (@VBox @form)): array:
+    State Gui.Metrics(text="Ada"), Extent 24, 16
+    State Gui.Metrics(text="Cancel"), Extent 48, 16
+    State Gui.Metrics(text="Hello, Ada"), Extent 80, 16
+    State Gui.Metrics(text="OK"), Extent 16, 16
+    Send Gui.Window(..), Pointer (Point 12, 10)
+    Expect Gui.Focusable(name="name")
+```
+
+`Place` is a plain function, so most of the window's behaviour is a unit test of `Place` and `HitAt` against a tree and a map of sizes.
 
 ### What the library does not do, yet
 
-Text shaping with a real font, so that `Measure` is not eight pixels per character, is a request element: the text input fires a `Text.Shape` request when its contents change and holds the glyph positions when they come back, drawing with the last known ones until then. Size feedback, where a child wants to be a different size because of the size it was given, is a cycle through the layout and needs a `Defer` to break it; the library above has no such child. An accessibility tree is a derived dynamic over the same element tree the layout uses, with the focus names as node ids, written into a field of the window element for a World that speaks to a screen reader. Each is more Prism over the same two tags, and none is a new primitive.
+Text longer than its box needs wrapping, which is line breaking over widths: the library asks `Gui.Metrics` for the prefixes it needs, as `InputDraw` does for the caret, and breaks where the widths say. A World with more than one font adds a `font` field to `Gui.Metrics` and to the draw commands, and the library passes a font name along. Size feedback, where a child wants to be a different size because of the size it was given, is a cycle through the layout and needs a `Defer` to break it; the library above has no such child. An accessibility tree is a derived dynamic over the same element tree the layout uses, with the input names as node ids, emitted as an element of its own for a World that speaks to a screen reader. Animation is a `Gui.Frames` slot inside a `dyn` over whether anything is moving, so that a window at rest asks the World for no frames, and each `Frame` is an input to a hold. Each is more Prism over the same five tags, and none is a new primitive.
 
 ## Worked interceptors
 
@@ -1228,7 +1232,7 @@ tag Log.Line of Element:
     !down <- for $slots:
         dyn $_:
             ((!resp, ignore)) <- @Element _.element
-            @Element Log.Line(requests=("${ShowPath key} asked ${ToText _.!request}" | "${ShowPath key} got ${ToText !resp}"))
+            @Element Log.Line(requests=("{ShowPath key} asked {ToText _.!request}" | "{ShowPath key} got {ToText !resp}"))
             @ !resp
     @ result
 ```
@@ -1255,7 +1259,7 @@ let Refusal: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
             match _.element:
                 Net.Http(..): @ _.!request
                 ignore: @ !never
-    $used <- 0 <= $used + Size !asked
+    $used <- 0 <= $used + Size !asked           # Size: the prelude's count of a map's entries
     !down <- for $slots:
         dyn $_:
             match _.element:
@@ -1298,6 +1302,9 @@ tag Remote.Store of Element:
     host: Text
     key: Text
     state: ?Text
+
+let IfLocal: fn Backend, Text -> ?Text = \|b, r| if b == Local: Some r else: Nil
+let IfRemote: fn Backend, Text -> ?Text = \|b, r| if b == Remote: Some r else: Nil
 
 @Migrate: fn $Backend, Text, @a -> @a = \|$backend, host, @child| @widget:
     ((result, $slots)) <- intercept @child, !down, $supply

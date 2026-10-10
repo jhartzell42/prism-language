@@ -152,7 +152,7 @@ What you lose, said plainly: you cannot write the line that peeks. What replaces
 
 ```prism
 @main:
-    let $label = $"Clicked $count times"
+    let $label = "Clicked {$count} times"
     !!clicks <- dyn $label:
         @Element Ui.Button(label=_)
     let !click = !Switch !!clicks
@@ -258,7 +258,7 @@ tag Ui.Label of Element:
     !decrement <- @Element Ui.Button(label="Decrement")
     let !delta = -1 on !decrement | +1 on !increment
     $count <- 0 <= $count + !delta
-    @Element Ui.Label(text=$"Count: $count")
+    @Element Ui.Label(text="Count: {$count}")
 ```
 
 `Ui.Button` and `Ui.Label` are tags of the GUI library: a button has a label and responds with a click; a label has a text and does nothing. `@Element` makes a slot for an element and gives back what it responds with, so `!increment` is the Increment button's clicks. `on` takes a value at an event, so `-1 on !decrement` fires `-1` whenever Decrement is clicked. `|` merges two events, the left one winning when both fire in one occurrence. `<=` holds: `$count` starts at `0` and becomes `$count + !delta` whenever `!delta` fires, with `$count` on the right read through a tag, the count before the click. Bindings in a block are recursive, so `$count` can appear on both sides. The label's text is a dynamic, and a dynamic where a plain field goes lifts the element into a `dyn`: a fresh label slot each time the count changes. The block is a description. Nothing happens until a World builds it.

@@ -48,7 +48,7 @@ This is what makes the question "what happens when this widget is built" always 
 
 ### Why the archetype is a GUI, and why the word stops meaning that
 
-A button is the smallest thing that has every property above at once. It has a lifetime (it is on the screen or it is not). It has a little state (pressed). It has an element in the world (a draw command, a hit region). It has an identity distinct from its twin (two OK buttons are two buttons). And it has a parent that can remove it. Once a button is understood as "the thing with all of these", the next step is noticing that a socket has all of them too: it is opened and closed, it has state (connecting, connected), it has an element (an address the World dials), it has identity (two connections to the same host are two connections), and it has an owner that can drop it. So does a file read in flight. So does a timer. So does an entire application hosted by a shell.
+A button is the smallest thing that has every property above at once. It has a lifetime (it is on the screen or it is not). It has a little state (pressed). It has an element in the world (something to draw, something to click). It has an identity distinct from its twin (two OK buttons are two buttons). And it has a parent that can remove it. Once a button is understood as "the thing with all of these", the next step is noticing that a socket has all of them too: it is opened and closed, it has state (connecting, connected), it has an element (an address the World dials), it has identity (two connections to the same host are two connections), and it has an owner that can drop it. So does a file read in flight. So does a timer. So does an entire application hosted by a shell.
 
 That is why the sigil is called "widget" and why, a few pages in, the word has nothing to do with screens. Anything with a lifetime is a widget; everything without one is a value. The claim of the language is that this division is universal, and the test is whether anything ever needs to be neither. Nothing in this book is.
 
@@ -70,7 +70,7 @@ A widget block is the body of a widget. `@counter:` at top level defines a widge
     @ !click
 ```
 
-A widget block is a Reflex `do` block with the monad left out: the statements are the sequence, `<-` is bind, `@` is `return`, and there is no `m` to name because there is only one. `@Button` takes a `$Text`, and the dynamic in the `label` field is what makes the button follow its label: the library's `@Button` is where the `dyn` lives, so a caller writing `@Button $"Count: $count"` has no lift at the call site. The section on lifting over `@` spells out what that `dyn` is.
+A widget block is a Reflex `do` block with the monad left out: the statements are the sequence, `<-` is bind, `@` is `return`, and there is no `m` to name because there is only one. `@Button` takes a `$Text`, and the dynamic in the `label` field is what makes the button follow its label: the library's `@Button` is where the `dyn` lives, so a caller writing `@Button "Count: {$count}"` has no lift at the call site. The section on lifting over `@` spells out what that `dyn` is.
 
 ### Every statement form
 
@@ -83,13 +83,13 @@ The forms, in the order a reader meets them, each with what it builds:
 TextInput(!changed, $value) <- @TextInput "hello"
 ```
 
-`widget` alone, as a statement, builds it and discards the result. `@Label $"Count: $count"` on a line by itself is the common case; `@Element Time.Every(period=100)` is another, where the element exists to make the World come back and nobody wants the tick.
+`widget` alone, as a statement, builds it and discards the result. `@Label "Count: {$count}"` on a line by itself is the common case; `@Element Time.Every(period=100)` is another, where the element exists to make the World come back and nobody wants the tick.
 
 `pattern <- @Element e` is the bind form of the one widget that reaches outside: it creates a slot in this block's node, with a path under the node's, and its result is whatever the tag declares, `!Response`, `$State`, a pair of both, or `unit` for a presence element. `!click <- @Element Ui.Button(label="OK")` and `$args <- @Element Process.Args` are the two usual spellings; in a catch-all arm of an interceptor, where the tag is not statically known, the result is the generic `((!resp, ignore)) <- @Element _.element` and the types are checked per slot at runtime. The slot lives as long as the node and the element's fields are fixed for the slot's life; a dynamic in a field lifts the whole `@Element` into a `dyn`, which the lifting section below covers.
 
 `pattern <- intercept @child, !responses, $supplier` binds an interceptor, which is a widget like any other: it builds `@child` in its own node and its result is the pair of the child's result and the child's element list, `((result, $list)) <- intercept @inner, !down, $supply`. Everything about what an interceptor can do with the list is chapter 6's; here it is one more bound statement whose child is owned by this node.
 
-`let pattern = expression` binds a value of any kind without building anything. `let !delta = -1 on !decrement | +1 on !increment` names an event; `let $label = $"Clicked $count times"` names a derived dynamic; `let @b = @Button $"OK"` names a widget, which is a value until bound. A `let`-bound widget can be bound later any number of times, and builds that many nodes.
+`let pattern = expression` binds a value of any kind without building anything. `let !delta = -1 on !decrement | +1 on !increment` names an event; `let $label = "Clicked {$count} times"` names a derived dynamic; `let @b = @Button $"OK"` names a widget, which is a value until bound. A `let`-bound widget can be bound later any number of times, and builds that many nodes.
 
 `$x <- v <= !e` is a hold. Its value before the first firing of `!e` is `v`; its change event is `!e`; its value after any occurrence in which `!e` fired is that firing's value. In the occurrence the block is built, `$x` is `v`, and if `!e` fires in that same occurrence `$x` changes to it then, which is what makes `@started`-driven initialisation behave the way it looks. Holds are statements, not expressions, because a hold is owned, and the `<-` makes the owner visible: the node whose block this is.
 
@@ -126,7 +126,7 @@ Every binding in a widget block is one of two things, and the compiler marks whi
     let summary = Summarise data            # once, at build
     let $live = Summarise $feed             # once per change of $feed
     let !each = Summarise !chunk            # once per firing of !chunk
-    @Label $"$summary / $live"
+    @Label "{summary} / {$live}"
 ```
 
 `Summarise data` with plain `data` runs once per build of `@report`, and never again, because nothing in it can change. `Summarise $feed` is a derived dynamic, recomputed in the occurrence `$feed` changes. `Summarise !chunk` runs per firing. There is no annotation to get wrong and no dependency array to maintain: the kinds of the operands are the dependency list.
@@ -157,7 +157,7 @@ A widget function can take a widget, and the sigil on the parameter says so:
 @Framed: fn Text, @a -> @a = \|title, @child| @widget:
     @Label $title
     result <- @child
-    @Label $"end of $title"
+    @Label $"end of {title}"
     @ result
 ```
 
@@ -252,7 +252,7 @@ A timeline makes the rule concrete. Take `@clicker` from the worked examples, a 
         @Element Ui.Button(label=_)
     let !click = !Switch !!clicks
     $count <- 0 <= $count + 1 on !click
-    let $label = $"Clicked $count times"
+    let $label = "Clicked {$count} times"
     @ unit
 ```
 
@@ -287,7 +287,7 @@ The mistake every newcomer makes once is putting a hold inside a `dyn` and expec
     dyn $_:
         !inc <- @Button $(Styled _, "+")
         $count <- 0 <= $count + 1 on !inc          # resets on every theme change
-        @Label (Styled _, $"$count")
+        @Label (Styled _, "{$count}")
     @ unit
 ```
 
@@ -301,7 +301,7 @@ Change the theme and the count is zero. The `dyn` is over the theme; the block i
     let !inc = !Switch !!incs
     $count <- 0 <= $count + 1 on !inc
     dyn $_:
-        @Label (Styled _, $"$count")
+        @Label (Styled _, "{$count}")
     @ unit
 ```
 
@@ -311,7 +311,7 @@ Now the button is rebuilt per theme and the count is not. `$count` is read insid
 
 A rebuild costs what the block builds, and nothing else: no diff against the old generation, no reconciliation, no patching of a retained tree. The old node is dropped and the new one is built. For a label this is one slot; for a pane with a hundred rows it is a hundred blocks, and a `dyn` around that pane over a dynamic that changes per keystroke is a hundred blocks per keystroke. The program says what the `dyn` is over, so the program says what the cost is, and the way to make it smaller is always the same: narrow the dynamic. A `dyn` over `$state` rebuilds on every change of any field; a `dyn` over `$state.mode` rebuilds on mode changes and reads the rest live.
 
-Fresh paths are the other cost, and the one a World notices. Every slot under a rebuilt generation has a new path, so a World that keeps anything by path, a native widget, a focus ring, an in-flight request, loses it. The label-button in this chapter shows the sharp edge: a button whose label is a `dyn` is a new slot per label change, and focus, if the World tracks focus by path, does not follow it. The construction that keeps focus is the one the worked examples use for a text input: a `Gui.Focusable` leaf with no dynamic fields, created once and never rebuilt, beside a label that is rebuilt as often as it likes. The thing that must keep its identity across changes is given no dynamic fields; the thing whose fields change is made a separate element that nobody needs to address. That split is available for every element and it is the reason dynamic fields are allowed to mean "a fresh slot" rather than something more complicated.
+Fresh paths are the other cost, and the one a World notices. Every slot under a rebuilt generation has a new path, so a World that keeps anything by path, a native toolkit widget or an in-flight request, loses it. Focus is the exception by design: a `Gui.Focusable` has a `name` and no other field, and the GUI library holds which name is focused, so a button whose label is a `dyn` is a new slot per label change and keeps focus, provided its name does not change with the label. Where a native widget really must keep its identity, the same split applies: the element that must keep its identity is given no dynamic fields and is created once, and the thing whose fields change is a separate element that nobody needs to address. That split is available for every element and it is the reason dynamic fields are allowed to mean "a fresh slot" rather than something more complicated.
 
 ### A `dyn` built in the middle of an occurrence
 
@@ -524,7 +524,7 @@ A key that appears in occurrence n is built in n, and anything its block fires i
 ```prism
 !requests <- for $watched:
     !started <- @started
-    @ Watch key on !started
+    @ (Watch key) on !started
 ```
 
 A key added in n makes `!requests` fire in n with `{new_key: Watch new_key}`, consolidated with whatever other blocks fired, and the parent, which perhaps feeds `!requests` into an element's `requests` field, sends it out in n. The new block, had it been able to see `!requests`, would see its own birth; it cannot, because nothing in the block is downstream of the block's result, and a program that passes `!requests` back into the `for` has to close that cycle through a delayed edge like every other.
@@ -537,11 +537,11 @@ Take the todo list from the worked examples, reduced to what matters for `for`. 
 @todos:
     !add <- @Button $"Add"
     $next <- 0 <= $next + 1 on !add
-    let !adds = {$next: Add $"item $next"} on !add
+    let !adds = {$next: Add "item {$next}"} on !add
     !rows <- for $items:
         !delete <- @Button $"Delete"
         !star <- @Button $"Star"
-        $starred <- False <= (Not $starred) on !star
+        $starred <- False <= (not $starred) on !star
         @Label (Describe $_, $starred)
         @ Delete on !delete
     let !changes = !Union !adds, !rows
@@ -694,7 +694,7 @@ type TabEvents = record:
     !to_inbox <- @Button $"Inbox"
     !to_drafts <- @Button $"Drafts"
     $tab <- Inbox <= Inbox on !to_inbox | Drafts on !to_drafts
-    $inbox <- InboxState 0, Nil <= switched.!inbox
+    $inbox <- (InboxState 0, Nil) <= switched.!inbox
     $drafts <- DraftsState "" <= switched.!drafts
     !!panes <- dyn $tab:
         match _:
@@ -725,7 +725,7 @@ IsUi: fn Element -> Bool                       # chapter 6's: True for every Ui.
     $tab <- Inbox <= Inbox on !to_inbox | Drafts on !to_drafts | Settings on !to_settings
     ((ignore, $slots)) <- intercept @all_panes, !down, $ \|e| @Element e
     !down <- for $slots:                                   # key is the child's path
-        let $shown = Or (Not (IsUi $_.element)), (PaneOf key) == Some $tab
+        let $shown = not (IsUi $_.element) or (PaneOf key) == Some $tab
         !!resps <- dyn ((slot, shown)) <- Pair $_, $shown:
             if shown:
                 ((!resp, ignore)) <- @Element slot.element
@@ -741,9 +741,9 @@ IsUi: fn Element -> Bool                       # chapter 6's: True for every Ui.
     @ unit
 ```
 
-`$shown` is true for every non-`Ui.*` slot and for the `Ui.*` slots of the active pane, so a pane's sockets, file reads and timers reach the World whether the pane is showing or not, and its buttons and labels reach it only while it is. A slot never changes, so `Pair $_, $shown` changes only when `$shown` does, and the `dyn` over it rebuilds a row exactly when its slot becomes shown or hidden: the hidden row's element leaves the interceptor's list, the shown row's arrives, and the World sees one pane's buttons go and another's come. Each forwarded element's response is the row's result through `!Switch`, consolidated into `!down : !(Path ==> Response)`, which `intercept` routes to the child by path; the one-occurrence lag of the switch costs nothing, since a freshly forwarded slot cannot be answered in the occurrence it was created anyway. The supplier is the transparent one, since no pane here has a state element the interceptor wants to answer. This is chapter 6's `@Forward` with one `dyn` added per row, and chapter 6's library containers are the same construction with layout as the policy instead of "shown".
+`$shown` is true for every non-`Ui.*` slot and for the `Ui.*` slots of the active pane, so a pane's sockets, file reads and timers reach the World whether the pane is showing or not, and its buttons and labels reach it only while it is. A slot never changes, so `Pair $_, $shown` changes only when `$shown` does, and the `dyn` over it rebuilds a row exactly when its slot becomes shown or hidden: the hidden row's element leaves the interceptor's list, the shown row's arrives, and the World sees one pane's buttons go and another's come. Each forwarded element's response is the row's result through `!Switch`, consolidated into `!down : !(Path ==> Response)`, which `intercept` routes to the child by path; the one-occurrence lag of the switch costs nothing, since a freshly forwarded slot cannot be answered in the occurrence it was created anyway. The supplier is the transparent one, since no pane here has a state element the interceptor wants to answer. This is chapter 6's `@Forward` with one `dyn` added per row, and chapter 6's library containers are the same construction with layout as the policy instead of "shown". In the `$shown` line, `(PaneOf key)` and `(IsUi $_.element)` are parenthesised because a paren-less call takes the rest of its expression: `PaneOf key == Some $tab` would hand `PaneOf` the comparison as its argument.
 
-Every pane's slots, requests and state then exist all the time; the World sees only the active pane's draw commands; an inbox whose socket should stay open while you edit settings is this version. The cost is that every pane exists, which is a cost you pay knowingly, in a line that says `intercept`.
+Every pane's slots, requests and state then exist all the time; the World sees only the active pane's drawing; an inbox whose socket should stay open while you edit settings is this version. The cost is that every pane exists, which is a cost you pay knowingly, in a line that says `intercept`.
 
 ### A modal dialog
 
@@ -753,13 +753,13 @@ A dialog is a widget that exists for a while and whose result is the answer. The
 type Answer = choice Confirmed | Cancelled
 
 @delete_with_confirm: fn Text -> @!unit = \|what| @widget:
-    !open <- @Button $"Delete $what"
-    $dialog <- Nil <= Some unit on !open | Nil on !answer
+    !open <- @Button $"Delete {what}"
+    $dialog <- Nil <= (Some unit) on !open | Nil on !answer
     !!answers <- dyn $dialog:
         match _:
             Nil: @ !never
             Some ignore:
-                @Label $"Really delete $what?"
+                @Label $"Really delete {what}?"
                 !yes <- @Button $"Confirm"
                 !no <- @Button $"Cancel"
                 @ (Confirmed on !yes | Cancelled on !no)
@@ -773,7 +773,7 @@ type Answer = choice Confirmed | Cancelled
 
 **Occurrence 0.** `$dialog` is `Nil`; generation `#0` is the `!never` block, which has no slots; `!!answers` fires with `!never`; `!Switch` adopts it. The list has one button.
 
-**Occurrence 1, click Delete.** `!open` fires; `Some unit on !open` fires; the merge's left wins (its right is quiet); `$dialog`'s change event fires with `Some unit`. The `dyn` rebuilds: generation `#1` is built with a label and two buttons, at `1/#1/0/#0/0`, `1/#1/1/#0/0`, `1/#1/2/#0/0`; `!!answers` fires with the new block's answer event. `!Switch` is still on `!never` for this occurrence. Commit: `$dialog` is `Some unit`, the switch adopts generation `#1`'s event. The World draws the dialog.
+**Occurrence 1, click Delete.** `!open` fires; `(Some unit) on !open` fires; the merge's left wins (its right is quiet); `$dialog`'s change event fires with `Some unit`. The `dyn` rebuilds: generation `#1` is built with a label and two buttons, at `1/#1/0/#0/0`, `1/#1/1/#0/0`, `1/#1/2/#0/0`; `!!answers` fires with the new block's answer event. `!Switch` is still on `!never` for this occurrence. Commit: `$dialog` is `Some unit`, the switch adopts generation `#1`'s event. The World draws the dialog.
 
 **Occurrence 2, click Cancel.** The World sends `click` to `1/#1/2/#0/0`. `!no` fires; the answer event fires with `Cancelled`; `!Switch` delivers it as `!answer`; `Nil on !answer` fires; `$dialog`'s merge: `Some unit on !open` is quiet, so `Nil` wins; the change event fires with `Nil`; the `dyn` rebuilds to generation `#2`, the empty block; `!!answers` fires with `!never`. Generation `#1` keeps propagating until commit, which is how its `Cancelled` reached the switch at all, and is dropped at commit. `IsConfirmed` says no, the result is quiet.
 
@@ -790,7 +790,7 @@ What the program does not have: a dialog manager, a z-order stack, a `showModal(
 Master-detail had the selection outside the list and the detail outside the list. The variant where the rows themselves show the selection is the one that tests whether you have the ownership right, because the easy version rebuilds every row on every click.
 
 ```prism
-let Mark: fn Text, Bool -> Text = \|t, sel| if sel: "> $t" else: "  $t"
+let Mark: fn Text, Bool -> Text = \|t, sel| if sel: "> {t}" else: "  {t}"
 
 @selectable: fn $(Nat ==> Item) -> @$?Nat = \|$items| @widget:
     !picks <- for $items:
@@ -855,13 +855,13 @@ let IfDone: fn Nav -> ?Answers = \|n| if n.done: Some n.answers else: Nil
                 let $edited = Answers answers.name, $address
                 @ (Nav Name, $edited, False) on !back | (Nav Review, $edited, False) on !next
             Review:
-                @Label $"${answers.name}, ${answers.address}"
+                @Label $"{answers.name}, {answers.address}"
                 !back <- @Button $"Back"
                 !finish <- @Button $"Finish"
                 @ (Nav Address, answers, False) on !back | (Nav Review, answers, True) on !finish
     let !nav = !Switch !!navs
     $step <- Name <= !nav.step
-    $answers <- Answers "", "" <= !nav.answers
+    $answers <- (Answers "", "") <= !nav.answers
     @ !Filter (IfDone !nav)
 ```
 
