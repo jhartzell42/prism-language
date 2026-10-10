@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language name="Prism" version="1" kateversion="5.0" section="Sources" extensions="*.prism" author="" license="MIT">
+  <highlighting>
+    <list name="keywords">
+      <item>let</item><item>match</item><item>if</item><item>else</item><item>for</item><item>dyn</item>
+      <item>type</item><item>tag</item><item>of</item><item>record</item><item>choice</item><item>fn</item>
+      <item>on</item><item>test</item><item>state</item><item>requests</item><item>responds</item>
+      <item>lt</item><item>le</item><item>gt</item><item>ge</item><item>empty</item><item>ignore</item>
+      <item>read</item><item>update</item><item>map</item><item>array</item><item>key</item>
+    </list>
+    <list name="constants">
+      <item>unit</item><item>true</item><item>false</item>
+    </list>
+    <contexts>
+      <context name="Normal" attribute="Normal" lineEndContext="#stay">
+        <DetectChar attribute="Comment" context="Comment" char="#"/>
+        <DetectChar attribute="String" context="String" char="&quot;"/>
+        <keyword attribute="Keyword" context="#stay" String="keywords"/>
+        <keyword attribute="Constant" context="#stay" String="constants"/>
+        <RegExpr attribute="Event" context="#stay" String="![A-Za-z_][A-Za-z_0-9.]*"/>
+        <RegExpr attribute="Dynamic" context="#stay" String="\$[A-Za-z_][A-Za-z_0-9.]*"/>
+        <RegExpr attribute="Widget" context="#stay" String="@[A-Za-z_][A-Za-z_0-9.]*"/>
+        <RegExpr attribute="Type" context="#stay" String="\b[A-Z][A-Za-z_0-9]*(\.[A-Z][A-Za-z_0-9]*)*"/>
+        <RegExpr attribute="Number" context="#stay" String="\b[0-9]+(\.[0-9]+)?\b"/>
+        <StringDetect attribute="Operator" context="#stay" String="==&gt;"/>
+        <StringDetect attribute="Operator" context="#stay" String="&lt;="/>
+        <StringDetect attribute="Operator" context="#stay" String="&lt;-"/>
+        <StringDetect attribute="Operator" context="#stay" String="-&gt;"/>
+      </context>
+      <context name="Comment" attribute="Comment" lineEndContext="#pop"/>
+      <context name="String" attribute="String" lineEndContext="#pop">
+        <Detect2Chars attribute="String" context="#stay" char="\" char1="&quot;"/>
+        <DetectChar attribute="String" context="#pop" char="&quot;"/>
+      </context>
+    </contexts>
+    <itemDatas>
+      <itemData name="Normal" defStyleNum="dsNormal"/>
+      <itemData name="Keyword" defStyleNum="dsKeyword"/>
+      <itemData name="Constant" defStyleNum="dsConstant"/>
+      <itemData name="Event" defStyleNum="dsFunction"/>
+      <itemData name="Dynamic" defStyleNum="dsVariable"/>
+      <itemData name="Widget" defStyleNum="dsControlFlow"/>
+      <itemData name="Type" defStyleNum="dsDataType"/>
+      <itemData name="Number" defStyleNum="dsDecVal"/>
+      <itemData name="Operator" defStyleNum="dsOperator"/>
+      <itemData name="String" defStyleNum="dsString"/>
+      <itemData name="Comment" defStyleNum="dsComment"/>
+    </itemDatas>
+  </highlighting>
+</language>

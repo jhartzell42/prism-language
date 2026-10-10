@@ -2,6 +2,7 @@
 
 The specification and plan for Prism live in [`claude/`](claude/), one chapter per file:
 
+0. [Introduction](claude/ch00-introduction.md)
 1. [A language whose only subject is time](claude/ch01-why-prism.md)
 2. [Worked examples](claude/ch02-worked-examples.md)
 3. [The language: sigils, lexical structure, values and types, expressions](claude/ch03-language-core.md)
