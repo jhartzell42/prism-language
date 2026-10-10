@@ -1,4 +1,4 @@
-# Chapter 7 — Use cases in depth
+# Chapter 8 — Use cases in depth
 
 Eight programs that are not toys, each taken far enough that the hard moment shows up: the file that changes on disk in the occurrence the user presses undo, the fill that lands with the book update that would have re-quoted it, the emergency stop that arrives with the tick, the member who leaves the room in the moment someone speaks to it, the source file that changes while its compile is finishing, the window that quits under the click that raised it, the jump pressed on the frame boundary, the time range that changes while the old range's data is arriving. For each: the element vocabulary it needs, declared as tags; the widget structure, as code that could compile; the walkthrough of that one moment at the occurrence level; what the goals buy that you would otherwise pay for by hand; and the part of the problem where Prism is slow, awkward, or the wrong tool, said plainly. The chapter ends with the programs Prism is the wrong language for, and what a Prism program does with them instead of being them.
 
@@ -100,10 +100,10 @@ type Cmd = choice:
     FindNext
     Edit Key
 
-let Apply: fn (Doc, Key) -> Doc = ...          # the text input of chapter 1, plus Enter
+let Apply: fn Doc, Key -> Doc = ...          # the text input of chapter 2, plus Enter
 
-let Step: fn (History, Text, Cmd) -> History = \|h, query, c| match c:
-    Reload t: History [], (Doc t, (Min h.now.cursor, (Len t))), []
+let Step: fn History, Text, Cmd -> History = \|h, query, c| match c:
+    Reload t: History [[]], (Doc t, (Min h.now.cursor, (Len t))), [[]]
     Undo: match (Last h.past):
         Some d: History (Init h.past), d, (Prepend h.now, h.future)
         Nil: h
@@ -113,7 +113,7 @@ let Step: fn (History, Text, Cmd) -> History = \|h, query, c| match c:
     FindNext: match (NextMatch h.now.text, query, h.now.cursor):
         Some i: History h.past, (Doc h.now.text, i), h.future
         Nil: h
-    Edit k: History (Append h.past, h.now), (Apply h.now, k), []
+    Edit k: History (Append h.past, h.now), (Apply h.now, k), [[]]
 ```
 
 `Step` is where every decision about the document lives, and it has no time in it: it can be tested with a list of commands and nothing else. The buffer widget is the time around it:
@@ -123,11 +123,11 @@ let ContentsOf: fn FsResponse -> ?Text = \|r| match r:
     Contents t: Some t
     ignore: Nil
 
-let Unless: fn (Text, Text) -> ?Text = \|saved, t|
+let Unless: fn Text, Text -> ?Text = \|saved, t|
     if saved == t: Nil else: Some t
 
-let Title: fn (Text, Bool) -> Text = \|path, dirty|
-    if dirty: Concat [path, " *"] else: path
+let Title: fn Text, Bool -> Text = \|path, dirty|
+    if dirty: Concat [[path, " *"]] else: path
 
 @Buffer: fn Text -> @!unit = \|path| @widget:
     !started <- @started
@@ -143,11 +143,11 @@ let Title: fn (Text, Bool) -> Text = \|path, dirty|
     !resp <- @Element Fs.File(path=path, requests=!io)
     let !io = (Read on (!started | !Updated $stamp)) | (Write $doc.text on !save)
     let !loaded = !Filter (ContentsOf !resp)
-    let !reload = !Filter (Unless ($saved, !loaded))
+    let !reload = !Filter (Unless $saved, !loaded)
     $saved <- "" <= ($doc.text on !save) | !reload
 
     let !cmd = (Reload !reload) | Undo on !undo | Redo on !redo | FindNext on !next | (Edit !key)
-    $hist <- History [], (Doc "", 0), [] <= Step $hist, $query, !cmd
+    $hist <- History [[]], (Doc "", 0), [[]] <= Step $hist, $query, !cmd
     let $doc = $hist.now
     $dirty <- False <= True on !key | False on (!save | !reload)
 
@@ -167,7 +167,7 @@ Buffers are a map keyed by path, so opening a path twice is one buffer, and clos
 ```prism
 type Change = choice Open | Close
 
-let ApplyChanges: fn (Text ==> unit, Text ==> Change) -> Text ==> unit = \|bs, cs|
+let ApplyChanges: fn Text ==> unit, Text ==> Change -> Text ==> unit = \|bs, cs|
     Fold cs, bs, \|acc, p, c| match c:
         Open: Insert acc, p, unit
         Close: Remove acc, p
@@ -179,7 +179,7 @@ let ApplyChanges: fn (Text ==> unit, Text ==> Change) -> Text ==> unit = \|bs, c
     !closes <- for $buffers:
         !closed <- @Buffer key
         @ Close on !closed
-    $buffers <- {} <= ApplyChanges ($buffers, !Union (!opens, !closes))
+    $buffers <- {} <= ApplyChanges $buffers, (!Union !opens, !closes)
     @ unit
 ```
 
@@ -252,7 +252,7 @@ type Book = record:
 type BookState = choice:
     Buffering [Increment]        # no snapshot yet
     Live Book
-    Resyncing (Book, [Increment])   # a gap was seen; the last good book stays visible
+    Resyncing ((Book, [Increment]))   # a gap was seen; the last good book stays visible
 
 tag Md.Feed of Element:
     symbol: Text
@@ -280,7 +280,7 @@ type OrderRequest = choice:
 type OrderEvent = choice:
     Acked
     Rejected Text
-    Filled (Nat, Int)            # quantity, price
+    Filled ((Nat, Int))          # quantity, price
     Cancelled
 
 tag Om.Order of Element:
@@ -301,7 +301,7 @@ type Msg = choice:
     OrderEvents (Nat ==> OrderEvent)
 
 type Action = choice:
-    Place (Nat, NewOrder)        # a fresh id and the order
+    Place ((Nat, NewOrder))      # a fresh id and the order
     Pull Nat                     # cancel by id
 
 type Strategy = record:
@@ -310,33 +310,33 @@ type Strategy = record:
     next_id: Nat
     book: BookState
 
-let Desired: fn (BookState, Int, Params) -> ?(NewOrder, NewOrder) = ...   # the bid and ask we want, if the book is Live
-let Reconcile: fn (Strategy, Params) -> (Strategy, [Action]) = ...        # diff desired against working
+let Desired: fn BookState, Int, Params -> ?((NewOrder, NewOrder)) = ...   # the bid and ask we want, if the book is Live
+let Reconcile: fn Strategy, Params -> ((Strategy, [Action])) = ...        # diff desired against working
 
-let ApplyMsg: fn (Strategy, Msg) -> Strategy = \|s, m| match m:
+let ApplyMsg: fn Strategy, Msg -> Strategy = \|s, m| match m:
     BookChanged b: Strategy s.position, s.working, s.next_id, b
     OrderEvents evs: Fold evs, s, \|acc, id, ev| match ev:
         Acked: acc
         Rejected ignore: Strategy acc.position, (Remove acc.working, id), acc.next_id, acc.book
         Cancelled: Strategy acc.position, (Remove acc.working, id), acc.next_id, acc.book
-        Filled (q, ignore): match acc.working[id]:
+        Filled ((q, ignore)): match acc.working[id]:
             Some o: Strategy (acc.position + (Signed o.side, q)), (Remove acc.working, id), acc.next_id, acc.book
             Nil: acc
 
-let Step: fn (Strategy, Params, Nat ==> Msg) -> (Strategy, [Action]) = \|s, params, msgs|
+let Step: fn Strategy, Params, Nat ==> Msg -> ((Strategy, [Action])) = \|s, params, msgs|
     Reconcile (Fold msgs, s, \|acc, ignore, m| ApplyMsg acc, m), params
 
-@MarketMaker: fn (Text, Params) -> @$Int = \|sym, params| @widget:
+@MarketMaker: fn Text, Params -> @$Int = \|sym, params| @widget:
     $book <- @Element Md.Book(symbol=sym)
-    let !msgs = !Union ({0: BookChanged (!Updated $book)}, {1: OrderEvents !events})
+    let !msgs = !Union {0: BookChanged (!Updated $book)}, {1: OrderEvents !events}
     let !stepped = Step $state, params, !msgs
-    $state <- Strategy 0, {}, 0, Buffering [] <= First !stepped
+    $state <- Strategy 0, {}, 0, Buffering [[]] <= First !stepped
     let !actions = Second !stepped
 
     !events <- for $state.working:
         !started <- @started
         let !place = Submit $_ on !started
-        let !pull = Cancel on !Filter (PullOf (key, !actions))
+        let !pull = Cancel on !Filter (PullOf key, !actions)
         !ev <- @Element Om.Order(id=key, requests=(!place | !pull))
         @ !ev
 
@@ -361,9 +361,9 @@ That is the thing the hand-built loop is for, and it is cheaper here because the
 
 The book is `Live` at sequence 1041. The strategy has one working bid, id 7, for 100 at 9995, placed on sequence 1040. The exchange fills it, and in the same instant the book moves.
 
-**Occurrence 20.** The World delivers two things it had waiting: a push for `Md.Book(symbol="XYZ")` with `Live (Book 1042, ..)`, and `Filled (100, 9995)` to `Om.Order(id=7)` at path `1/[7]/1`. They address different slots, so one occurrence is legal, and under a World whose book builder and order gateway share a loop it is the common case.
+**Occurrence 20.** The World delivers two things it had waiting: a push for `Md.Book(symbol="XYZ")` with `Live (Book 1042, ..)`, and `Filled ((100, 9995))` to `Om.Order(id=7)` at path `1/[7]/1`. They address different slots, so one occurrence is legal, and under a World whose book builder and order gateway share a loop it is the common case.
 
-`$book` changes; `!Updated $book` fires with the new state; `{0: BookChanged ..}` fires. Block `[7]`'s `!ev` fires with the fill; `!events` fires with `{7: Filled (100, 9995)}`; `{1: OrderEvents ..}` fires. `!Union` fires with both entries. `Step` reads `$state` through a tag, the state before 20: position 0, working `{7: ..}`, book at 1041. It folds: the book becomes 1042; then the fill: position becomes +100 and 7 leaves `working`. `Reconcile` now wants a bid at the new best less one tick, say 9993, and an ask at 9998, and finds nothing working, so it returns `[Place (8, NewOrder Bid 9993, 100, 1042), Place (9, NewOrder Ask 9998, 100, 1042)]` and a state with `next_id` 10 and both orders in `working`.
+`$book` changes; `!Updated $book` fires with the new state; `{0: BookChanged ..}` fires. Block `[7]`'s `!ev` fires with the fill; `!events` fires with `{7: Filled ((100, 9995))}`; `{1: OrderEvents ..}` fires. `!Union` fires with both entries. `Step` reads `$state` through a tag, the state before 20: position 0, working `{7: ..}`, book at 1041. It folds: the book becomes 1042; then the fill: position becomes +100 and 7 leaves `working`. `Reconcile` now wants a bid at the new best less one tick, say 9993, and an ask at 9998, and finds nothing working, so it returns `[[Place ((8, (NewOrder Bid, 9993, 100, 1042))), Place ((9, (NewOrder Ask, 9998, 100, 1042)))]]` and a state with `next_id` 10 and both orders in `working`.
 
 `$state`'s change event fires with that state. `$state.working` changes promptly, so the `for` sees key 7 gone and keys 8 and 9 appear. Blocks `[8]` and `[9]` are built now, in 20; each `@started` fires; each `Submit` fires at birth. Block `[7]` is torn down at commit. `!actions` fires with the two `Place`s, which nothing in `[8]` or `[9]` listens to (`PullOf` wants `Pull`). Commit. After the turn the World sees:
 
@@ -376,7 +376,7 @@ and sends both, each stamped with the sequence it was decided on.
 
 **Occurrence 21.** `Acked` to `1/[8]/1` and `Acked` to `1/[9]/1`. `ApplyMsg` leaves the state alone; `Reconcile` finds desired and working equal and returns no actions. `!stepped` fires, the hold changes to an equal value, `$state.working` changes to an equal map, the `for` rebuilds nothing because no key appeared or vanished. The position is 100, from occurrence 20, and nothing was ever 100 with order 7 still working.
 
-Now suppose the World had delivered the fill and the book update as two occurrences, fill first. In 20 the fill removes 7, position goes to 100, `Reconcile` places replacements on the 1041 book. In 21 the book moves to 1042, `Reconcile` finds the working bid one tick off from desired, returns `[Pull 8, Place (10, ..)]`, and block `[8]`'s `!pull` fires `Cancel` while block `[10]` is born. One more cancel than before, on a book the program fully applied. The program did not depend on the batching; the World's policy decided how many occurrences the instant took and the program's text said what each one meant. A test under the Test World writes both orders, `Together` and not, and the second implementation must agree on each.
+Now suppose the World had delivered the fill and the book update as two occurrences, fill first. In 20 the fill removes 7, position goes to 100, `Reconcile` places replacements on the 1041 book. In 21 the book moves to 1042, `Reconcile` finds the working bid one tick off from desired, returns `[[Pull 8, Place ((10, ..))]]`, and block `[8]`'s `!pull` fires `Cancel` while block `[10]` is born. One more cancel than before, on a book the program fully applied. The program did not depend on the batching; the World's policy decided how many occurrences the instant took and the program's text said what each one meant. A test under the Test World writes both orders, `Together` and not, and the second implementation must agree on each.
 
 The merge version is what gets written first, and the walkthrough of 20 under it is short: `(BookChanged ..) | (OrderEvents ..)` fires with the book, the fill is never applied, `Reconcile` sees 7 still working at 9995 on a book whose best bid has moved to 9994, pulls it, and places a new bid. The cancel reaches the exchange for an order that no longer exists and is rejected; the position is 0 in the program and 100 at the clearing house. Nothing crashed. That is the bug every one of these systems has had once, and the reason the `!Union` line is the most important one in the program.
 
@@ -403,12 +403,12 @@ Sensors are state: the latest reading as the occurrence opened. Actuators are re
 
 ```prism
 type Imu = record:
-    gyro: (Float, Float, Float)
-    accel: (Float, Float, Float)
+    gyro: ((Float, Float, Float))
+    accel: ((Float, Float, Float))
 
 type ImuState = choice:
     NoReading
-    Reading (Instant, Imu)
+    Reading ((Instant, Imu))
 
 tag Sensor.Imu of Element:
     bus: Text
@@ -460,24 +460,24 @@ type Sample = record:
 
 let Pitch: fn ImuState -> ?Float = ...        # Nil while NoReading
 
-let Control: fn (Gains, Loop, Sample) -> (Loop, Float) = \|g, l, s|
-    let err = s.setpoint -. s.measured
-    let dt = Or ((ToFloat (s.now - l.last_t)) /. 1000.0), 0.01
-    let integral = l.integral +. err *. dt
-    let deriv = Or ((err -. l.last_err) /. dt), 0.0
-    (Loop integral, err, s.now), (g.kp *. err +. g.ki *. integral +. g.kd *. deriv)
+let Control: fn Gains, Loop, Sample -> ((Loop, Float)) = \|g, l, s|
+    let err = s.setpoint - s.measured
+    let dt = Or (ToFloat s.now - l.last_t) / 1000.0, 0.01
+    let integral = l.integral + err * dt
+    let deriv = Or (err - l.last_err) / dt, 0.0
+    (((Loop integral, err, s.now), g.kp * err + g.ki * integral + g.kd * deriv))
 
 let IfTrue: fn Bool -> ?unit = \|b| if b: Some unit else: Nil
 
-let Unless: fn (Bool, Float) -> ?Float = \|stopped, t| if stopped: Nil else: Some t
+let Unless: fn Bool, Float -> ?Float = \|stopped, t| if stopped: Nil else: Some t
 
-@Balance: fn (Gains, $Float) -> @$Bool = \|gains, $setpoint| @widget:
+@Balance: fn Gains, $Float -> @$Bool = \|gains, $setpoint| @widget:
     !tick <- @Element Time.Every(period=10)
     $clock <- @Element Clock
     $imu <- @Element Sensor.Imu(bus="i2c-1")
     $stop <- @Element Safety.Stop
 
-    let !sample = !Filter ((SampleOf $setpoint, (Pitch $imu), $clock) on !tick)
+    let !sample = !Filter (SampleOf $setpoint, (Pitch $imu), $clock) on !tick
     let !stepped = Control gains, $loop, !sample
     $loop <- Loop 0.0, 0.0, 0 <= First !stepped
     let !torque = Second !stepped
@@ -490,7 +490,7 @@ let Unless: fn (Bool, Float) -> ?Float = \|stopped, t| if stopped: Nil else: Som
     @ $stop
 ```
 
-`SampleOf` is a plain function that returns `Nil` while the IMU has no reading, so `!sample` fires on a tick only when there is something to control on, and the loop's state is untouched on the ticks before the first reading. `Control` is the whole control law and has no time in it beyond the timestamps it is handed: `dt` comes from the clock the World pushed, not from the nominal period, because a World skips missed ticks rather than delivering two at once, and a loop that assumed ten milliseconds per tick would integrate wrongly after every hiccup. Division returns an optional and the `Or` says what to do on the first tick, when `last_t` is zero and `dt` is nonsense: the `?` on `/.` made the program say so rather than divide by a stale interval and hope.
+`SampleOf` is a plain function that returns `Nil` while the IMU has no reading, so `!sample` fires on a tick only when there is something to control on, and the loop's state is untouched on the ticks before the first reading. `Control` is the whole control law and has no time in it beyond the timestamps it is handed: `dt` comes from the clock the World pushed, not from the nominal period, because a World skips missed ticks rather than delivering two at once, and a loop that assumed ten milliseconds per tick would integrate wrongly after every hiccup. Division returns an optional and the `Or` says what to do on the first tick, when `last_t` is zero and `dt` is nonsense: the `?` on `/` made the program say so rather than divide by a stale interval and hope.
 
 `!cmd` is the only thing that reaches the motors and its merge is the safety policy in one line: a stop asserted or a fault reported drives zero torque, and that wins over the control law in the same occurrence; otherwise the law's output goes out, unless the stop was already asserted as the occurrence opened. Read it as three cases and you have read the program's answer to every ordering of tick, stop and fault.
 
@@ -501,7 +501,7 @@ Here is the Lustre you would write for the integral term (Lustre syntax from mem
 ```
 integral = 0.0 -> pre integral + inc
 
-$integral <- 0.0 <= $integral +. !inc
+$integral <- 0.0 <= $integral + !inc
 ```
 
 `->` is the hold's initial value; `pre` is the tag; the clock on which the equation runs is the event the hold's change is lifted over. A Lustre node is a widget; a Lustre program's static causality analysis, which rejects `x = x + 1` with no `pre` (from memory), is the static cycle check, which rejects a hold whose change event reads the hold promptly. The two are the same model with two differences.
@@ -627,7 +627,7 @@ type Model = record:
 
 # Apply every command that landed in this occurrence, in key order, and say what
 # each connection should be sent as a result. One function, one result, no "after".
-let StepAndRoute: fn (Model, Nat ==> [Cmd]) -> (Model, Nat ==> [Text], Text ==> [Text]) = ...
+let StepAndRoute: fn Model, Nat ==> [Cmd] -> ((Model, Nat ==> [Text], Text ==> [Text])) = ...
 
 let Presence: fn Model -> Text ==> [Text] = \|m|
     MapValues m.rooms, \|members| Sorted (Names m.nicks, members)
@@ -648,7 +648,7 @@ let IsClosed: fn SocketEvent -> ?unit = \|ev| match ev:
     Closed: Some unit
     ignore: Nil
 
-let SendAll: fn [Text] -> [ConnRequest] = \|lines| for lines: Send (Concat [_, "\r\n"])
+let SendAll: fn [Text] -> [ConnRequest] = \|lines| for lines: Send (Concat [[_, "\r\n"]])
 
 let HasLeave: fn [Cmd] -> Bool = ...
 
@@ -657,11 +657,11 @@ let HasLeave: fn [Cmd] -> Bool = ...
     let !opens = {IdOf !accepted: Opened}
 
     !cmds <- for $conns:
-        (!ev, $link) <- @Element Net.Conn(id=key, requests=!out)
-        let !split = SplitLines (Concat [$rest, !Filter (TextOf !ev)])
+        ((!ev, $link)) <- @Element Net.Conn(id=key, requests=!out)
+        let !split = SplitLines (Concat [[$rest, !Filter (TextOf !ev)]])
         $rest <- "" <= Second !split
         let !parsed = ParseAll (First !split)
-        let !gone = [Leave] on !Filter (IsClosed !ev)
+        let !gone = [[Leave]] on !Filter (IsClosed !ev)
         let !out = SendAll (!Filter (!owed[key]))
         @ !parsed | !gone
 
@@ -670,8 +670,8 @@ let HasLeave: fn [Cmd] -> Bool = ...
     let !owed = Second !stepped
     let !said = Third !stepped
 
-    let !closes = MapValues (Filter (!cmds, HasLeave)), \|ignore| Shut
-    $conns <- {} <= ApplyDeltas ($conns, !Union (!opens, !closes))
+    let !closes = MapValues (Filter !cmds, HasLeave), \|ignore| Shut
+    $conns <- {} <= ApplyDeltas $conns, (!Union !opens, !closes)
 
     let $presence = Presence $model
     @ $presence
@@ -693,8 +693,8 @@ A room's history is a state element per room, and an append is a request per lin
 
 ```prism
     $histories <- for $model.rooms:
-        $h <- @Element Store.Value(key=(Concat ["room:", key]))
-        @Element Store.Append(key=(Concat ["room:", key]), requests=(!Filter (!said[key])))
+        $h <- @Element Store.Value(key=(Concat [["room:", key]]))
+        @Element Store.Append(key=(Concat [["room:", key]]), requests=(!Filter (!said[key])))
         @ $h
 ```
 
@@ -706,16 +706,16 @@ The store is also the sharding seam. Two rooms share nothing but the listener, s
 
 Connections 5, 9 and 12 are in `lobby`. Connection 5's client disconnects, and in the same instant connection 9 says "hi".
 
-**Occurrence 300.** The World delivers `Closed` to `1/[5]/0` and `Received "hi\r\n"` to `1/[9]/0`: two slots, one occurrence, which the World may do and a busy server often will. In block `[5]`, `!gone` fires with `[Leave]`. In block `[9]`, the chunk is split, `ParseAll` gives `[Say "hi"]`, `!parsed` fires. `!cmds` fires with `{5: [Leave], 9: [Say "hi"]}`. `StepAndRoute` reads `$model` through a tag and folds in key order: 5 first. `Leave` removes 5 from `lobby` and from `member_of`, and owes 9 and 12 the line `"five left"`. Then 9: `Say "hi"` is routed to `lobby`'s members *as the fold now has them*, 9 and 12, so each is owed `"<nine> hi"` as well. `!owed` fires with `{9: ["five left", "<nine> hi"], 12: ["five left", "<nine> hi"]}`. Block `[9]`'s `!out` fires with two `Send`s; block `[12]`'s likewise; block `[5]`'s `!owed[5]` is `Nil` and nothing fires there. `!closes` fires with `{5: Shut}`; `$conns` loses key 5; block `[5]` is torn down at commit. After the turn the World writes two lines to 9 and two to 12 and sees the `Net.Conn(id=5)` element gone, which it already knew.
+**Occurrence 300.** The World delivers `Closed` to `1/[5]/0` and `Received "hi\r\n"` to `1/[9]/0`: two slots, one occurrence, which the World may do and a busy server often will. In block `[5]`, `!gone` fires with `[[Leave]]`. In block `[9]`, the chunk is split, `ParseAll` gives `[[Say "hi"]]`, `!parsed` fires. `!cmds` fires with `{5: [[Leave]], 9: [[Say "hi"]]}`. `StepAndRoute` reads `$model` through a tag and folds in key order: 5 first. `Leave` removes 5 from `lobby` and from `member_of`, and owes 9 and 12 the line `"five left"`. Then 9: `Say "hi"` is routed to `lobby`'s members *as the fold now has them*, 9 and 12, so each is owed `"<nine> hi"` as well. `!owed` fires with `{9: [["five left", "<nine> hi"]], 12: [["five left", "<nine> hi"]]}`. Block `[9]`'s `!out` fires with two `Send`s; block `[12]`'s likewise; block `[5]`'s `!owed[5]` is `Nil` and nothing fires there. `!closes` fires with `{5: Shut}`; `$conns` loses key 5; block `[5]` is torn down at commit. After the turn the World writes two lines to 9 and two to 12 and sees the `Net.Conn(id=5)` element gone, which it already knew.
 
 Nothing was sent to 5, and the reason is that the leave and the say were folded by one function in one pass with one model, so the say saw the leave. Now the other way to write it, which is the way the first version always gets written: a `Step` that updates the model and a separate `Route` lifted over `$model` and `!cmds`:
 
 ```prism
     $model <- ... <= Step $model, !cmds
-    let !owed = Route ($model, !cmds)
+    let !owed = Route $model, !cmds
 ```
 
-`Route` reads `$model` through a tag, the model before 300, in which 5 is still in `lobby`. `!owed` fires with 5 owed `"<nine> hi"`. Block `[5]`'s `!out` fires `[Send "<nine> hi\r\n"]` in the occurrence block `[5]` is torn down. The runtime reports that firing to the World with its path, `1/[5]/0`, because the program asked; the World performs it if it can, which for a closed socket it cannot, and discards any response, since the slot is gone. The user never sees the message and nothing crashes. The program paid one wasted send and one line in the World's diagnostics; the callback version would have paid a write on a closed descriptor from a handler that still held the connection object, and the exception that goes with it.
+`Route` reads `$model` through a tag, the model before 300, in which 5 is still in `lobby`. `!owed` fires with 5 owed `"<nine> hi"`. Block `[5]`'s `!out` fires `[[Send "<nine> hi\r\n"]]` in the occurrence block `[5]` is torn down. The runtime reports that firing to the World with its path, `1/[5]/0`, because the program asked; the World performs it if it can, which for a closed socket it cannot, and discards any response, since the slot is gone. The user never sees the message and nothing crashes. The program paid one wasted send and one line in the World's diagnostics; the callback version would have paid a write on a closed descriptor from a handler that still held the connection object, and the exception that goes with it.
 
 Key order is doing work in 300. Within an occurrence there is no order of arrival; the leave and the say are simultaneous, and the program chose to apply them in key order, which here means 5 before 9. Had the leaver been 12, the fold would have routed the say to 12 first and removed 12 after, and 12's block would have fired a send on its own teardown. A program that wants leaves applied before says regardless of id sorts the occurrence's commands by kind inside `StepAndRoute` before folding, and that is one line and a stated policy. The point is that the policy is in the program's text, and that in the callback version it was in the order two sockets happened to become readable.
 
@@ -812,30 +812,30 @@ type Job = record:
     id: Nat
     on: Text ==> Stamp          # input stamps as they stood when the job was spawned
 
-let AllKnown: fn (Text ==> Stamp) -> Bool = ...     # no input Missing
-let Newer: fn (Text ==> Stamp, Text ==> Stamp) -> Bool = ...
+let AllKnown: fn Text ==> Stamp -> Bool = ...     # no input Missing
+let Newer: fn Text ==> Stamp, Text ==> Stamp -> Bool = ...
 
-@Target: fn (Rule, $(Text ==> Nat)) -> @$Nat = \|rule, $versions| @widget:
+@Target: fn Rule, $(Text ==> Nat) -> @$Nat = \|rule, $versions| @widget:
     $stamps <- for $ (KeyBy rule.inputs):
         $s <- @Element Fs.Watch(path=key)
         @ $s
     let $deps = Project $versions, rule.deps           # dependency versions, as a map
     let $want = $Distinct (Wanted $stamps, $deps)      # the (stamps, dep versions) this build is a function of
 
-    !sp <- @Element Process.Spawn(requests=(rule.command on !Filter (ReadyFor ($job, !Updated $want))))
+    !sp <- @Element Process.Spawn(requests=(rule.command on !Filter (ReadyFor $job, (!Updated $want))))
     $job <- Nil <= (Some (Job (!Filter (IdOf !sp)), $stamps)) | Nil on !done
     !child <- dyn $job:
         match _:
             Some j:
-                (!out, $st) <- @Element Process.Child(id=j.id, requests=!never)
-                @ (!Filter (ExitOf !out), $st)
+                ((!out, $st)) <- @Element Process.Child(id=j.id, requests=!never)
+                @ ((!Filter (ExitOf !out), $st))
             Nil:
-                @ (!never, $ Gone)
+                @ ((!never, $ Gone))
     let !done = !Switch (First !child)
     $version <- 0 <= $version + 1 on !Filter (IsZero !done)
     @ $version
 
-@build: fn (Text ==> Rule) -> @unit = \|graph| @widget:
+@build: fn Text ==> Rule -> @unit = \|graph| @widget:
     $versions <- for $ graph:
         $v <- match graph[key]:
             Some rule: @Target rule, $versions
@@ -861,7 +861,7 @@ Target `lib` has one input, `lib.c`, and target `app` depends on `lib`. The user
 
 **Occurrence 42.** The compile finishes and the user's second save lands in the same instant. The World delivers `Exited 0` to the child slot at `0/[lib]/2/#1/0` and pushes `Modified (Instant 1300)` for `lib.c`. In `lib`: `!out` fires; `ExitOf` passes `0`; `!child`'s current generation fires its exit; `!Switch` delivers `!done` with `0`; `$version + 1 on ..` fires with `1`; `$version` changes. In the same occurrence `$stamps` changes to `{lib.c: Modified 1300}`, `$want` changes, `!Updated $want` fires. `ReadyFor` is the function that decides whether to spawn now, and it reads `$job` through a tag: `Some (Job 77, {lib.c: Modified 1000})`, a job still running as the occurrence opened. The program has to say what a change during a running job means, and this program's `ReadyFor` says: spawn, since the stamp the job was spawned on is older than the stamp now. So the spawn request fires again in 42. `$job`'s change event has two sides: the left is lifted over `!sp`, the spawn's *response*, which did not fire in 42 (the request did; the answer comes later), and the right is `Nil on !done`, which did. `$job` becomes `Nil`; the `dyn` rebuilds to the `Nil` arm; the child slot for 77 is torn down at commit, which is fine because 77 has exited.
 
-Meanwhile `$versions` changed, so `app`'s `$deps` changed, `app`'s `$want` changed, and `app` fires its own spawn in 42, against the `lib` that was just built from the 1000 stamp. That is correct and wasteful: `app` will be built from the old `lib`, then `lib` will be rebuilt from the 1300 stamp, then `app` again. The program could avoid the first `app` build by having `lib` not bump `$version` when its stamps have moved past the job's: `IsZero !done` becomes `Fresh ($job, $stamps, !done)`, reading both through tags, and the job's recorded stamps are exactly what that test needs. The decision to record the stamps at spawn time, by the tag law in `Some (Job .., $stamps) on !sp`, is what makes either policy expressible; a build tool that records nothing cannot tell a compile that finished on time from one that finished stale.
+Meanwhile `$versions` changed, so `app`'s `$deps` changed, `app`'s `$want` changed, and `app` fires its own spawn in 42, against the `lib` that was just built from the 1000 stamp. That is correct and wasteful: `app` will be built from the old `lib`, then `lib` will be rebuilt from the 1300 stamp, then `app` again. The program could avoid the first `app` build by having `lib` not bump `$version` when its stamps have moved past the job's: `IsZero !done` becomes `Fresh $job, $stamps, !done`, reading both through tags, and the job's recorded stamps are exactly what that test needs. The decision to record the stamps at spawn time, by the tag law in `Some (Job .., $stamps) on !sp`, is what makes either policy expressible; a build tool that records nothing cannot tell a compile that finished on time from one that finished stale.
 
 **Occurrence 43.** `Spawned 78` to `lib`'s spawn slot. `$job` becomes `Some (Job 78, {lib.c: Modified 1300})`. Everything proceeds. Had the second save and the exit been separate occurrences, the walkthrough is the same with the steps in two places, and the program never cared which.
 
@@ -878,7 +878,7 @@ So the sheet's values are one derived dynamic over the sheet's formulas:
     !edits <- for $ (Grid 26, 100):       # one block per cell reference, "A1" to "Z100"
         $text <- @TextInput ""
         @ !Updated $text
-    $formulas <- {} <= Union ($formulas, !edits)
+    $formulas <- {} <= Union $formulas, !edits
     let $values = Evaluate $formulas      # topological order, cycle detection, all inside
     for $values:
         @Label (Show $_)
@@ -978,11 +978,11 @@ type Entry = record:
     !sp <- @Element Process.Spawn(requests=!spawn)
     let !opens = {!Filter (IdOf !sp): Opened}
     $table <- for $jobs:
-        (!out, $status) <- @Element Process.Child(id=key, requests=!never)
+        ((!out, $status)) <- @Element Process.Child(id=key, requests=!never)
         @Element Cli.Stdout(requests=(!Filter (StdoutOf !out)))
         @ $status
-    let !closes = MapValues (Filter (!Updated $table, IsExited)), \|ignore| Shut
-    $jobs <- {} <= ApplyDeltas ($jobs, !Union (!opens, !closes))
+    let !closes = MapValues (Filter (!Updated $table), IsExited), \|ignore| Shut
+    $jobs <- {} <= ApplyDeltas $jobs, (!Union !opens, !closes)
     @Element Cli.Stdout(requests=(Render (!Updated $table)))
     @ unit
 ```
@@ -1015,9 +1015,9 @@ type DeskCmd = choice:
     Open App
     Raise Nat
     Quit Nat
-    Move (Nat, Rect)
+    Move ((Nat, Rect))
 
-let StepDesk: fn (Desk, Text ==> DeskCmd) -> Desk = ...      # fold in key order; a Raise or Move of a missing id is a no-op
+let StepDesk: fn Desk, Text ==> DeskCmd -> Desk = ...      # fold in key order; a Raise or Move of a missing id is a no-op
 
 type FrameOut = record:
     !quit: DeskCmd
@@ -1033,8 +1033,8 @@ let IsFramed: fn Element -> Bool = \|e| match e:
     Process.Exit(..): True
     ignore: False
 
-@Frame: fn (App, $Rect, !WindowInput) -> @(!Code, $[Op]) = \|app, $rect, !input| @widget:
-    (ignore, $slots) <- intercept (Launch app), !down, $ supply
+@Frame: fn App, $Rect, !WindowInput -> @((!Code, $[Op])) = \|app, $rect, !input| @widget:
+    ((ignore, $slots)) <- intercept (Launch app), !down, $ supply
     let supply = \|e| match e:
         Gui.Window(..): @ (SizeOf $rect)
         ignore: @Element e
@@ -1046,19 +1046,19 @@ let IsFramed: fn Element -> Bool = \|e| match e:
     let !exit = !Filter (AnyValue !held)
     let $ops = SceneOf $slots
     !fwd <- @Forward (Filter $slots, \Not (IsFramed _.element))
-    let !to_window = !Filter (Addressed ($slots, !input))
-    let !down = !Union (!to_window, !fwd)
-    @ (!exit, $ops)
+    let !to_window = !Filter (Addressed $slots, !input)
+    let !down = !Union !to_window, !fwd
+    @ ((!exit, $ops))
 ```
 
-`Addressed` is the plain function that turns an input into a one-entry map keyed by the application's `Gui.Window` slot path, read from `$slots` through a tag, or `Nil` if the application has no window yet; `SceneOf` is the plain function that finds the application's `Gui.Scene` element in the list and takes its `ops`, or `[]`; Both read the application's list, and an application that draws two windows is an application the frame draws as one, which is a policy the frame could change. `AnyValue` takes the first value of a map, if there is one, so `!exit` fires with the code of whichever exit slot fired; the frame does not know its own id, so it reports a code and the desktop turns it into a `Quit` of the right frame.
+`Addressed` is the plain function that turns an input into a one-entry map keyed by the application's `Gui.Window` slot path, read from `$slots` through a tag, or `Nil` if the application has no window yet; `SceneOf` is the plain function that finds the application's `Gui.Scene` element in the list and takes its `ops`, or `[[]]`; both read the application's list, and an application that draws two windows is an application the frame draws as one, which is a policy the frame could change. `AnyValue` takes the first value of a map, if there is one, so `!exit` fires with the code of whichever exit slot fired; the frame does not know its own id, so it reports a code and the desktop turns it into a `Quit` of the right frame.
 
 The desktop is a `for` over frames, a hit-test, and a fold:
 
 ```prism
 @Desktop: @widget:
-    (!raw, $size) <- @Element Gui.Window(title="Desktop")
-    let !hit = !Filter (HitFrame ($desk, !Filter (PointerOf !raw)))      # (id, local point), topmost first
+    ((!raw, $size)) <- @Element Gui.Window(title="Desktop")
+    let !hit = !Filter (HitFrame $desk, (!Filter (PointerOf !raw)))      # ((id, local point)), topmost first
     let !keys = !Filter (KeyOf !raw)
 
     frames <- for $desk.frames:
@@ -1067,12 +1067,12 @@ The desktop is a `for` over frames, a hit-test, and a fold:
             out <- @Frame _, $_.rect, !own
             @ out
         let !quit = (Quit key) on (!Switch (First !gen))
-        $$ops <- $ [] <= Second !gen
+        $$ops <- $ [[]] <= Second !gen
         @ FrameOut !quit, ($Join $$ops)
 
-    let !system = !Union ({"open": Open Counter} on !Filter (IsLaunchChord !keys), {"raise": RaiseOf !hit})
-    let !cmds = !Union (!system, (Prefixed "quit:", frames.!quit))
-    $desk <- Desk {}, [], Nil, 0 <= StepDesk $desk, !cmds
+    let !system = !Union ({"open": Open Counter} on !Filter (IsLaunchChord !keys)), {"raise": RaiseOf !hit}
+    let !cmds = !Union !system, (Prefixed "quit:", frames.!quit)
+    $desk <- Desk {}, [[]], Nil, 0 <= StepDesk $desk, !cmds
 
     let $scene = Compose $desk, frames.$ops
     @Element Gui.Scene(window="Desktop", ops=$scene)
@@ -1087,15 +1087,15 @@ Focus and layering are nothing but `$desk.focus` and `$desk.order`, read through
 
 Frames 5 and 9 overlap, 9 on top, 5 focused. The user clicks the visible corner of 5, on the spot where 5's application has drawn its Quit button.
 
-**Occurrence 70.** The World delivers `Pointer (Point 40, 300)` to `0`, the desktop window. `HitFrame` reads `$desk` through a tag: `order` is `[5, 9]`, 9's rectangle does not contain the point, 5's does, so `!hit` fires with `(5, Point 12, 20)`, the point in 5's coordinates. Two things follow from one firing. `RaiseOf !hit` fires `Raise 5`, so `!system` fires with `{"raise": Raise 5}`. And block `[5]`'s `!own` fires with `Pointer (Point 12, 20)`, so `@Frame` for 5 fires `!to_window` with `{w: Pointer (Point 12, 20)}` where `w` is the application's window path, and `intercept` delivers it to the application's `Gui.Window` slot against the application's list as the occurrence opened.
+**Occurrence 70.** The World delivers `Pointer (Point 40, 300)` to `0`, the desktop window. `HitFrame` reads `$desk` through a tag: `order` is `[[5, 9]]`, 9's rectangle does not contain the point, 5's does, so `!hit` fires with `((5, (Point 12, 20)))`, the point in 5's coordinates. Two things follow from one firing. `RaiseOf !hit` fires `Raise 5`, so `!system` fires with `{"raise": Raise 5}`. And block `[5]`'s `!own` fires with `Pointer (Point 12, 20)`, so `@Frame` for 5 fires `!to_window` with `{w: Pointer (Point 12, 20)}` where `w` is the application's window path, and `intercept` delivers it to the application's `Gui.Window` slot against the application's list as the occurrence opened.
 
 Inside application 5, the library's `@Window` hit-tests the point against its layout as the occurrence opened, finds the Quit button, and fires its click; the application's `Process.Exit(requests=(Code 0 on !quit))` fires `Code 0`. Back in the frame, `!held`'s block for the exit slot sees `_.!request` fire; `!held` fires with `{p: Code 0}`; `!exit` fires; it crosses the `dyn` through `!Switch`, which has been listening to this generation since the frame was built; block `[5]`'s `!quit` fires with `Quit 5`; in the desktop, `frames.!quit` fires with `{5: Quit 5}`, and `!cmds` fires with `{"quit:5": Quit 5, "raise": Raise 5}`.
 
-`StepDesk` reads `$desk` through a tag and folds in key order. `"quit:5"` first: frame 5 leaves `frames`, `order` becomes `[9]`, `focus` becomes `Nil`. Then `"raise"`: `Raise 5` on a desk with no frame 5 is a no-op, as `StepDesk` was written. `$desk` changes; `$desk.frames` changes promptly; the `for` sees key 5 gone and tears block `[5]` down at commit, with the whole application under it: its holds, its timers, its sockets, every slot, each cancelled by the World under its obligations when the next list arrives without them. `frames.$ops` changes promptly to a map without 5; `Compose $desk, frames.$ops` is a derived dynamic over the new desk and the new ops, and it is glitch-free: there is no instant in which the scene has 5's ops with 5 missing from `order`, or `order` naming a frame with no ops. The scene rebuilds, the World draws a desktop with one window. The application's own `Gui.Scene` also rebuilt in 70 (its button drew pressed), in a node that is dropped at commit, and nobody saw it. Nothing about the exit reached the World below, because the frame held `Process.Exit` back and it was never in the compositor's list.
+`StepDesk` reads `$desk` through a tag and folds in key order. `"quit:5"` first: frame 5 leaves `frames`, `order` becomes `[[9]]`, `focus` becomes `Nil`. Then `"raise"`: `Raise 5` on a desk with no frame 5 is a no-op, as `StepDesk` was written. `$desk` changes; `$desk.frames` changes promptly; the `for` sees key 5 gone and tears block `[5]` down at commit, with the whole application under it: its holds, its timers, its sockets, every slot, each cancelled by the World under its obligations when the next list arrives without them. `frames.$ops` changes promptly to a map without 5; `Compose $desk, frames.$ops` is a derived dynamic over the new desk and the new ops, and it is glitch-free: there is no instant in which the scene has 5's ops with 5 missing from `order`, or `order` naming a frame with no ops. The scene rebuilds, the World draws a desktop with one window. The application's own `Gui.Scene` also rebuilt in 70 (its button drew pressed), in a node that is dropped at commit, and nobody saw it. Nothing about the exit reached the World below, because the frame held `Process.Exit` back and it was never in the compositor's list.
 
 ```
 0:        Gui.Window(title="Desktop")
-2/#41/0:  Gui.Scene(window="Desktop", ops=[... frame 9 only ...])
+2/#41/0:  Gui.Scene(window="Desktop", ops=[[... frame 9 only ...]])
 ```
 
 Now the two ways to get this wrong, each a line. If `!cmds` were `!system | (Prefixed ..)`, the raise would win and the quit would be lost: application 5 fired its exit, nothing happened, and it cannot fire again, since the firing was a click's consequence and the click is over. A program with a dead application in a frame that cannot quit. If `StepDesk` had applied `"raise"` before `"quit:5"`, by sorting its commands the other way, the result would be the same desk, because the fold applies both; the only order that matters is that both are applied, and that is what `!Union` promises.
@@ -1157,8 +1157,8 @@ tag Audio.Play of Element:
 ```prism
 type Entity = record:
     kind: Kind
-    pos: (Float, Float)
-    vel: (Float, Float)
+    pos: ((Float, Float))
+    vel: ((Float, Float))
     grounded: Bool
 
 type Held = record:
@@ -1180,14 +1180,14 @@ type Msg = choice:
 type Effect = choice:
     Play Sound
 
-let Step: fn (Game, Nat ==> Msg) -> (Game, [Effect]) = \|g, msgs|
-    Fold msgs, (g, []), \|st, ignore, m| match m:
-        Down k: ((Press (First st), k), (Second st))
-        Up k: ((Release (First st), k), (Second st))
+let Step: fn Game, Nat ==> Msg -> ((Game, [Effect])) = \|g, msgs|
+    Fold msgs, ((g, [[]])), \|st, ignore, m| match m:
+        Down k: (((Press (First st), k), Second st))
+        Up k: (((Release (First st), k), Second st))
         Tick now: Integrate (First st), now, (Second st)     # physics, collisions, scoring; appends effects
 
 @game:
-    (!raw, $size) <- @Element Gui.Window(title="Jump")
+    ((!raw, $size)) <- @Element Gui.Window(title="Jump")
     $clock <- @Element Clock
     !!frames <- dyn $paused:
         if _: @ !never
@@ -1196,7 +1196,7 @@ let Step: fn (Game, Nat ==> Msg) -> (Game, [Effect]) = \|g, msgs|
     let !key = !Filter (KeyOf !raw)
     $paused <- False <= (Not $paused) on !Filter (IsPause !key)
 
-    let !msgs = !Union ({0: !Filter (KeyMsg !key)}, {1: Tick ($clock on !frame)})
+    let !msgs = !Union {0: !Filter (KeyMsg !key)}, {1: Tick ($clock on !frame)}
     let !stepped = Step $game, !msgs
     $game <- Initial <= First !stepped
     @Element Audio.Play(requests=(!Filter (FirstSound (Second !stepped))))
@@ -1227,12 +1227,12 @@ Here is the version everyone writes first:
 
 ```prism
     $held <- Held False, False, False <= (Press $held, (!Filter (DownOf !key))) | (Release $held, (!Filter (UpOf !key)))
-    let !stepped = Integrate ($game, $held, ($clock on !frame))
+    let !stepped = Integrate $game, $held, ($clock on !frame)
 ```
 
 A hold for the keys, updated by key events, read by the frame step through a tag. In occurrence 1200, `$held` changes to `jump = True` and `Integrate` reads `$held` through a tag, *before* the occurrence: `jump = False`. The player does not jump this frame. In 1201 the tag reads `True` and the jump happens, one frame late, sixteen milliseconds after the press. That is the input lag that game programmers measure with high-speed cameras (from memory), and here it is a consequence of one line that could be read: the step reads the keys as they stood before this frame. The `!Union` version reads them as the fold has them, with this occurrence's edges applied, and the difference between the two programs is visible in their text rather than in a frame counter.
 
-And the version with `|`: `(KeyMsg !key) | (Tick ..)` loses the tick when a key lands with it, which is a dropped frame on every keypress, or loses the key, which is a stuck or missed input depending on whether it was a press or a release. Neither is a race; both are the program saying the wrong thing, and the two-events-in-one-operation error is what stops the third version, `Integrate ($game, !key, !frame)`, from ever being written.
+And the version with `|`: `(KeyMsg !key) | (Tick ..)` loses the tick when a key lands with it, which is a dropped frame on every keypress, or loses the key, which is a stuck or missed input depending on whether it was a press or a release. Neither is a race; both are the program saying the wrong thing, and the two-events-in-one-operation error is what stops the third version, `Integrate $game, !key, !frame`, from ever being written.
 
 Now the same press under a World that gives every input its own turn. Occurrence 1200 has the key alone: `!msgs` fires with `{0: Down Space}`, `Step` sets `held.jump`, nothing integrates, the scene rebuilds with the same picture (derived dynamics do not dedupe, and the World diffs or redraws; a `$Distinct` on the ops would spare it). Occurrence 1201 has the frame: `Integrate` sees `jump` held and the player rises. Same result, one occurrence later in numbering and the same frame on screen. The program covered both policies because it said what a key means and what a frame means, separately, and let `!Union` say what both together mean.
 
@@ -1298,7 +1298,7 @@ type Query = record:
 
 type QueryState = choice:
     Unavailable
-    Known (Instant, [(Int, Float)])       # fetched when, and the rows
+    Known ((Instant, [((Int, Float))]))   # fetched when, and the rows
     Errored Text
 
 tag Query.Result of Element:
@@ -1326,7 +1326,7 @@ let Loading: fn QueryState -> Bool = \|s| match s:
     Unavailable: True
     ignore: False
 
-@Chart: fn (Text, $Query) -> @unit = \|title, $query| @widget:
+@Chart: fn Text, $Query -> @unit = \|title, $query| @widget:
     $live <- @Element Query.Result(query=$query)
     $shown <- Unavailable <= !Filter (IsKnown (!Updated $live))
     @Element Gui.Scene(window=title, ops=(Plot title, $shown, (Loading $live)))
@@ -1354,12 +1354,12 @@ A dashboard is charts over a shared range:
 
 ```prism
 let Encode: fn Query -> HttpRequest = ...
-let Decode: fn (Instant, HttpResult) -> QueryState = \|now, r| match r:
-    Answered a: if a.status == 200: Known (now, (ParseRows a.body)) else: Errored (ToText a.status)
+let Decode: fn Instant, HttpResult -> QueryState = \|now, r| match r:
+    Answered a: if a.status == 200: Known ((now, ParseRows a.body)) else: Errored (ToText a.status)
     Failed why: Errored why
 
-@Poller: fn (Nat, @a) -> @a = \|period, @dash| @widget:
-    (result, $slots) <- intercept @dash, !down, $ supply
+@Poller: fn Nat, @a -> @a = \|period, @dash| @widget:
+    ((result, $slots)) <- intercept @dash, !down, $ supply
     !down <- @Forward $slots
     let supply = \|e| match e:
         Query.Result(query=q): @widget:
@@ -1367,7 +1367,7 @@ let Decode: fn (Instant, HttpResult) -> QueryState = \|now, r| match r:
             !tick <- @Element Time.Every(period=period)
             $clock <- @Element Clock
             !res <- @Element Http.Fetch(requests=((Encode q) on (!started | !tick)))
-            $latest <- Unavailable <= Decode ($clock, !res)
+            $latest <- Unavailable <= Decode $clock, !res
             @ $latest
         ignore: @Element e
     @ result
@@ -1392,15 +1392,15 @@ The order matters and is readable: the cache is outermost, so it sees the poller
 
 The dashboard shows the last hour of `cpu`. A poll for that range is in flight. The user drags the range picker to the last day, and the poll's answer arrives in the same instant.
 
-**Occurrence 90.** The World delivers `Answered ..` to the poller's `Http.Fetch` slot for the hour query, at `s/0/3`, and a key to the range picker's focusable, in one occurrence. The range picker's hold changes; `$range` changes; both `cpu` charts' `$q "cpu"` change promptly to the day query; each chart's `dyn` rebuilds: generation `#1` is built with a `Query.Result(query=Query "cpu", (Range day), 60)` slot. The runtime asks the poller's supplier for that element, finds no supplied widget for it, applies `supply`, and builds one now: `@started` fires, the fetch for the day query fires at birth, `$latest` is `Unavailable`. Both charts' new slots get that `$latest`, since the second chart's slot, created in the same occurrence with an equal element, joins the widget already built. In each chart, `$live`'s hold of dynamics changes to the new generation's dynamic, and `$Join` changes to `Unavailable`; `!Updated $live` fires with `Unavailable`; `IsKnown` drops it; `$shown` keeps the hour's rows. The scenes rebuild with the hour's rows and the loading badge.
+**Occurrence 90.** The World delivers `Answered ..` to the poller's `Http.Fetch` slot for the hour query, at `s/0/3`, and a key to the range picker's focusable, in one occurrence. The range picker's hold changes; `$range` changes; both `cpu` charts' `$q "cpu"` change promptly to the day query; each chart's `dyn` rebuilds: generation `#1` is built with a `Query.Result(query=(Query "cpu", (Range day), 60))` slot. The runtime asks the poller's supplier for that element, finds no supplied widget for it, applies `supply`, and builds one now: `@started` fires, the fetch for the day query fires at birth, `$latest` is `Unavailable`. Both charts' new slots get that `$latest`, since the second chart's slot, created in the same occurrence with an equal element, joins the widget already built. In each chart, `$live`'s hold of dynamics changes to the new generation's dynamic, and `$Join` changes to `Unavailable`; `!Updated $live` fires with `Unavailable`; `IsKnown` drops it; `$shown` keeps the hour's rows. The scenes rebuild with the hour's rows and the loading badge.
 
 Meanwhile the answer. It was addressed to `s/0/3`, the hour widget's fetch slot, which existed as the occurrence opened, so it is routed: `!res` fires, `Decode` fires, the hour widget's `$latest` changes to `Known`. Whose dynamic is that? The two `#0` generations' slots, which are being torn down at commit, and nothing else. `$Join` in each chart has already switched to the `#1` inner; its change event fires on the outer change with the new inner's value, and the old inner's change in the same occurrence is not heard, because the outer changed. So `!Updated $live` fired once, with `Unavailable`, and the hour's fresh rows reached no chart. At commit, the `#0` generations go, the hour's slots go, the hour's supplied widget has no slot left and goes too, with its fetch slot and its timer.
 
 The dashboard's list, as the poller sees it, with the poller's own supplied slot beside it:
 
 ```
-1/0/#1/0:   Query.Result(query=Query "cpu", (Range day), 60)
-2/0/#1/0:   Query.Result(query=Query "cpu", (Range day), 60)
+1/0/#1/0:   Query.Result(query=(Query "cpu", (Range day), 60))
+2/0/#1/0:   Query.Result(query=(Query "cpu", (Range day), 60))
 s/1/3:      Http.Fetch                                  requested: [GET .../cpu?range=day]
 ```
 

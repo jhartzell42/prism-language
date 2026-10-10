@@ -1,4 +1,4 @@
-# Introduction: a language whose only subject is time
+# Chapter 1 — A language whose only subject is time
 
 The bugs you chase in an interactive program look like many bugs and are one: a value whose writers are not a fact about its type. Functional reactive programming has two types that make the writers a fact, a value that happens and a value that holds, tied by a law: a held value changes only through the events named in its definition, and only when the moment ends. A law like that holds only where the language keeps it. A library can offer it, and cannot stop the code around it from breaking it. Prism is a language that keeps that law and no other, and the list of what it refuses is the evidence that it had to be a language.
 
@@ -218,7 +218,7 @@ The queue is not the point. The point is what comes with it. No sampling and no 
 
 ```prism
 @WithNotes: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ supply
+    ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- @Forward $slots
     let supply = \|e| match e:
         Fs.Contents(..): @ $ Known "hello"

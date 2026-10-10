@@ -1,4 +1,4 @@
-# Chapter 15 — Future work and research
+# Chapter 16 — Future work and research
 
 Nothing in this chapter is part of the specification, and nothing in it may change a transcript. That second sentence is the whole discipline of the chapter: every item below is either a representation or scheduling choice behind semantics that are already fixed, or a language extension that adds programs without changing what any existing program means. Each item says what it is, the afternoon that makes someone want it, its design as far as it has been taken, the things it must leave alone, and what would make it worth starting. The order is roughly the order in which the pressure to do each one will arrive: a profile first, then a large record, then a binary to ship, then a cycle found in production, then a program too big for one file.
 
@@ -214,7 +214,7 @@ You have a record with a record in it with a map in it, and you need to add one 
 
 Three pieces, each small on its own.
 
-A `read` block gives the pronoun over a value. `\read _:` opens a block in which `_` is the lambda's argument, `.x` reads a field of it, and `[k]` indexes it; `read v:` does the same for any value `v`, and `read p <- v:` binds a pattern. Only `let` statements and one result statement are allowed. The point is not saving characters. A function over a large value should read like a description of the value:
+A `read` block gives the pronoun over a value. `\read _:` opens a block in which `_` is the lambda's argument, `.x` reads a field of it, and `[k]` indexes it, as in any lambda or `for` body; `read v:` gives the same prefix `.x` and `[k]` over any value `v`, and an `update` block gives them over the value being updated, and `read p <- v:` binds a pattern. Only `let` statements and one result statement are allowed. The point is not saving characters. A function over a large value should read like a description of the value:
 
 ```prism
 type Vector = record:
@@ -232,7 +232,7 @@ let Magnitude: fn Vector -> Float = \read _:
 An `update` block is an expression that evaluates to an updated copy of a value. Inside it, `&_` is a reference to the value being updated and `&_.x`, `&_[k]` are references into it. A reference can be set with `<=`, or combined with an operator: `+=`, `-=`, and so on for every operator the type has:
 
 ```prism
-let Add: fn (Vector, Vector) -> Vector = \|a, b| update a:
+let Add: fn Vector, Vector -> Vector = \|a, b| update a:
     &_.x += b.x
     &_.y <= .y + b.y      # the same thing, spelled out
     .z += b.z             # the pronoun is implicit on the left too
@@ -242,10 +242,10 @@ The original `a` is unchanged. The block's value is the updated copy. Statements
 
 References, `&T`, exist only inside an `update` block. A function may take a reference and return one, `fn &Vector -> &Float`, and that is a lens: it says where inside a `Vector` a `Float` lives, and applied inside an `update` it gives a reference you can set. A function may not take two references, return a reference it did not derive from its argument, or store one anywhere; a reference is a path into the value being updated, and a path only means something while the update is happening. `*r` dereferences for reading and gives the current value at the path.
 
-Two conveniences fall out. A function whose result type is its first argument's type, `fn (Vector, Vector) -> Vector`, is an *update function*, and inside an `update` block it may be used as a statement with its first argument implied: `Add b` inside `update a:` means `&_ <= Add _ b`. And `for` inside an `update` block over a reference to an array or map yields a reference per element:
+Two conveniences fall out. A function whose result type is its first argument's type, `fn Vector, Vector -> Vector`, is an *update function*, and inside an `update` block it may be used as a statement with its first argument implied: `Add b` inside `update a:` means `&_ <= Add _, b`. And `for` inside an `update` block over a reference to an array or map yields a reference per element:
 
 ```prism
-let AddByElement: fn ([Float], [Float]) -> [Float] = \|a, b| update a:
+let AddByElement: fn [Float], [Float] -> [Float] = \|a, b| update a:
     for &_:               # `&_` inside the loop is a reference to a[ix]
         &_ += b[ix]
 ```
@@ -262,7 +262,7 @@ type Doc = record:
     cursor: Cursor
     dirty: Bool
 
-let Insert: fn (Doc, Edit) -> Doc = \|doc, e|
+let Insert: fn Doc, Edit -> Doc = \|doc, e|
     Doc(
         lines = Set doc.lines, e.line, (Splice doc.lines[e.line], e.col, e.text),
         cursor = Cursor(line = e.line, col = e.col + Len e.text),
@@ -272,7 +272,7 @@ let Insert: fn (Doc, Edit) -> Doc = \|doc, e|
 Every field has to be named even when two of them are unchanged, the nested `Splice` is hidden inside the `Set`, and adding a field to `Doc` touches every function that builds one. The same function as an update:
 
 ```prism
-let Insert: fn (Doc, Edit) -> Doc = \|doc, e| update doc:
+let Insert: fn Doc, Edit -> Doc = \|doc, e| update doc:
     &_.lines[e.line] <= Splice .lines[e.line], e.col, e.text
     &_.cursor <= Cursor(line = e.line, col = e.col + Len e.text)
     &_.dirty <= True
@@ -398,7 +398,7 @@ A function type gains, for each sigiled result, the set of arguments it depends 
 
 ```prism
 @Button: fn $Text -> @!Click                       # result depends promptly on nothing
-Scale:   fn (!Int, $Int) -> !Int  prompt !_1       # result fires promptly on the first argument, reads the second through a tag
+Scale:   fn !Int, $Int -> !Int    prompt !_1       # result fires promptly on the first argument, reads the second through a tag
 @Pack:   fn [$Size] -> @$[Pos]  prompt $_1         # positions change promptly when any size changes
 ```
 
@@ -407,7 +407,7 @@ The default, with no annotation, is that the compiler infers the set from the bo
 At a call site the elaborator then adds, for each argument the result depends on promptly, a prompt edge from that argument to the binding of the result, and the group check runs as before. The layout cycle becomes:
 
 ```prism
-$positions <- @Pack [$size]          # prompt on $size, by @Pack's type
+$positions <- @Pack [[$size]]        # prompt on $size, by @Pack's type
 $size <- @Child (First $positions)   # prompt on $positions, by @Child's type
 ```
 
@@ -427,7 +427,7 @@ A child writes `$pos <- @Element Ui.Placed(size=$size)`, and a dynamic in a fiel
 
 Three places where the small version stops being small.
 
-*Higher-order functions.* `Map: fn (fn a -> b, !a) -> !b` is prompt on its event argument, and whether it is prompt on anything else depends on the function passed in, which has no sigiled arguments and so no dependency set of its own. The clean answer is that a plain function's dependency is empty, since a plain value has no time in it, and the only prompt dependencies come from sigiled arguments. That holds for every prelude function. It breaks when a function argument is a widget function, `fn (fn $A -> @!B, $A) -> @!B`, whose dependency set is a variable the caller fills in. That is dependency polymorphism, and it is the point at which the annotation becomes an effect system with variables and inference becomes unification over sets. It is tractable; it is also where the design has to stop being a reachability pass and become a type system, and the payoff should be measured against how often widget functions take widget functions in real libraries.
+*Higher-order functions.* `Map: fn (fn a -> b), !a -> !b` is prompt on its event argument, and whether it is prompt on anything else depends on the function passed in, which has no sigiled arguments and so no dependency set of its own. The clean answer is that a plain function's dependency is empty, since a plain value has no time in it, and the only prompt dependencies come from sigiled arguments. That holds for every prelude function. It breaks when a function argument is a widget function, `fn (fn $A -> @!B), $A -> @!B`, whose dependency set is a variable the caller fills in. That is dependency polymorphism, and it is the point at which the annotation becomes an effect system with variables and inference becomes unification over sets. It is tractable; it is also where the design has to stop being a reachability pass and become a type system, and the payoff should be measured against how often widget functions take widget functions in real libraries.
 
 *Switching.* A `dyn` over `$x` returns an event that fires promptly on `$x`'s change; the block's result is built fresh each time, and what the result depends on inside the block is the block's business and acyclic by the block check. So `dyn` contributes exactly one prompt edge, from its dynamic to its event, and the block's dependency on captured outer dynamics is prompt through them as well. `!Switch` is delayed by definition and contributes nothing. `for` is prompt on its map and its consolidated result is prompt on whatever the block's result is prompt on, through the per-key `$_`. None of these needs the annotation to say anything new, but the inference pass has to understand them, and the construction-in-the-middle rule means a cycle formed by a rebuild is a cycle the new block's result makes at the `dyn`'s call site, which the annotation on the block's captured names covers.
 
@@ -447,7 +447,7 @@ Two pieces of ordinary language work, with no bearing on the semantics of time, 
 
 ### Traits
 
-You have a `Money` type, or a `Vector`, and every sum in the program is spelled `Add a, b` where you would write `a + b`, and every comparison `Less a, b` where you would write `a lt b`, because the operators reach only the types the built-in traits already cover. The language has three built-in traits, equality, ordering and numeric, which the checker resolves at each use to the implementation for the operand type and passes as a hidden argument where a generic bound needs one. That mechanism is a trait system with no syntax for declaring a trait or adding a type to one. User-defined traits are the syntax.
+You have a `Money` type, or a `Vector`, and every sum in the program is spelled `Add a, b` where you would write `a + b`, because the numeric trait reaches only the built-in number types. Comparison is already there: a record is ordered by its fields in declaration order, so `a lt b` on two `Money` values works today, with the derived order rather than one the type's author chose. The language has three built-in traits, equality, ordering and numeric, which the checker resolves at each use to the implementation for the operand type and passes as a hidden argument where a generic bound needs one. That mechanism is a trait system with no syntax for declaring a trait or adding a type to one. User-defined traits are the syntax.
 
 ```prism
 trait Show a:
@@ -457,7 +457,7 @@ impl Show Vector:
     Show = \read _: "(${.x}, ${.y}, ${.z})"
 
 impl <a: Show> Show [a]:
-    Show = \|xs| Concat ["[", (JoinText ", ", (for xs: Show _)), "]"]
+    Show = \|xs| Concat [["[", (JoinText ", ", (for xs: Show _)), "]"]]
 ```
 
 The elaborator treats a trait as a record of functions, an `impl` as a value of that record, and a bound `<A: Show>` on a generic function as a hidden record argument, resolved at each call site by the operand's type. That is dictionary passing, the same thing the three built-ins do, and it is why generic code stays erased under the one-word representation: a trait method on a type variable is a call through the dictionary, which is a plain record of closures, and the value itself needs no descriptor.
@@ -586,7 +586,7 @@ tag Dev.Code of Element:
 A library widget, in two layers. The inner one is the reload itself:
 
 ```prism
-@Live: fn (Text, @a) -> @!a = \|name, @fallback| @widget:
+@Live: fn Text, @a -> @!a = \|name, @fallback| @widget:
     $code <- @Element Dev.Code(name=name)
     !built <- dyn $code:
         match _:
@@ -600,7 +600,7 @@ A library widget, in two layers. The inner one is the reload itself:
 The outer layer is what makes the same program run under a production World, and it cannot be left to tolerance. A World that does not accept a state tag reports an unknown state tag as an error at the slot's creation, which is the obligation that keeps a misspelled tag from being quietly `Unavailable` forever; so a production World handed `Dev.Code` would abort the build, and `@Live` on its own is a development-only widget. The library therefore asks first. `World.Tags` is the core-provided state element listing the tags the World accepts, valued in its first occurrence like any state element, and `@Reloadable` reads it before it creates anything:
 
 ```prism
-@Reloadable: fn (Text, @a) -> @!a = \|name, @fallback| @widget:
+@Reloadable: fn Text, @a -> @!a = \|name, @fallback| @widget:
     $tags <- @Element World.Tags
     !gen <- dyn $tags:
         match Accepts _, "Dev.Code":
@@ -613,7 +613,7 @@ The outer layer is what makes the same program run under a production World, and
     @ !built
 ```
 
-`Accepts: fn ([Text], Text) -> Bool` is a plain function over the tag list. Under a production World `$tags` lacks `Dev.Code`, the `dyn` builds the `False` arm, and `Dev.Code` is never created, so no obligation is tested and nothing is tolerated: the production path is the fallback compiled into the program, built once and never rebuilt. Under the development World the `True` arm builds `@Live`, and the `!Switch` over the outer `dyn`'s event flattens the two layers so the parent sees one `!a` either way. The tag list does not change during a run, so the outer `dyn` builds once; it is a `dyn` and not a `match` on a plain value only because `World.Tags` is a state element and its value arrives as a dynamic.
+`Accepts: fn [Text], Text -> Bool` is a plain function over the tag list. Under a production World `$tags` lacks `Dev.Code`, the `dyn` builds the `False` arm, and `Dev.Code` is never created, so no obligation is tested and nothing is tolerated: the production path is the fallback compiled into the program, built once and never rebuilt. Under the development World the `True` arm builds `@Live`, and the `!Switch` over the outer `dyn`'s event flattens the two layers so the parent sees one `!a` either way. The tag list does not change during a run, so the outer `dyn` builds once; it is a `dyn` and not a `match` on a plain value only because `World.Tags` is a state element and its value arrives as a dynamic.
 
 The typing is the part that needs a sentence. `@Build c` returns `@a` for whatever `a` the handle's widget returns, and the handle is opaque, so the check is at runtime: the World knows the compiled widget's result type from the typed AST, the `Reloadable` site knows the `a` it expects, and a mismatch is a build error in the occurrence of the push, reported like any build error, with the program continuing to run the old subtree. That is the construction abort from the errors chapter doing its job for a subtree that was being reborn.
 
@@ -640,7 +640,7 @@ Close the program and open it again and everything is gone: the document, the sc
 A hold that should persist is a hold whose initial value comes from outside and whose changes go outside. Both halves are elements, and the worlds chapter declares them: `Store.Value(key)` is a state element whose state is `Stored`, `Absent | Present Bytes`, and `Store.Put(key, requests=!Bytes)` is a request element responding `PutResult`. A `Store.Value` slot has, in the occurrence it is created, the value the store holds for that key, because it is a state element and state is there in its first occurrence; a `Store.Put` firing writes a new value and is answered in a later occurrence. A library widget makes a persistent hold out of the pair:
 
 ```prism
-@Persisted: fn (Text, a, !a) -> @$a = \|key, default, !change| @widget:
+@Persisted: fn Text, a, !a -> @$a = \|key, default, !change| @widget:
     $stored <- @Element Store.Value(key=key)
     !written <- @Element Store.Put(key=key, requests=!write)
     let $loaded = match $stored:            # lifts over $; valued in occurrence zero

@@ -1,4 +1,4 @@
-# Chapter 5 — Elements and interception
+# Chapter 6 — Elements and interception
 
 An element is the only thing a Prism program can say to the outside, and the only thing the outside can address when it speaks back. This chapter defines that one channel in full: what an element is and how its tag declares what it does; the rule that nothing an element asks for can be answered in the occurrence it asked; the two identities a slot has and why they are different; the element list as an ordinary dynamic that an interceptor or a World reads; and `intercept`, the one primitive that lets a Prism widget stand where the World stands, so that a GUI toolkit, a sandbox, a cache, a mock, a tracer and a program that hosts other programs are all written in the language rather than under it. The chapter is long because everything about the boundary is here, and because the boundary is where every other framework keeps a second set of rules.
 
@@ -240,7 +240,7 @@ Equality is structural, tag then fields. Two `Fs.Contents(path="/etc/motd")` val
 | nothing | `@unit` |
 | `responds: R` | `@!R` |
 | `state: S` | `@$S` |
-| `responds: R` and `state: S` | `@(!R, $S)` |
+| `responds: R` and `state: S` | `@((!R, $S))` |
 
 The slot exists from the occurrence in which the widget is built until its node is torn down, and its element never changes: a field is read once, when the slot is created, and anything that looks like changing a field is creating another slot. `@Element` is therefore the only place where the program's text meets the outside, and a reader who wants to know everything a widget asks of the world greps for one word.
 
@@ -256,12 +256,12 @@ The slot exists from the occurrence in which the widget is built until its node 
     @Label $text
     @ unit
 
-(!rx, $link) <- @Element Net.Socket(address="chat.example:7000", requests=!out)
+((!rx, $link)) <- @Element Net.Socket(address="chat.example:7000", requests=!out)
 ```
 
 The three statements show the three return forms. A button returns its click. A file read returns its response event, and the request is wired in at creation: `Read on !started` is an event that fires once, in the build occurrence, and that firing is the one read this widget will ever make unless it fires the event again. A socket returns a tuple, and the pattern on the left takes it apart.
 
-When the tag of `e` is not statically known, as in a catch-all arm of a `match` inside an interceptor, `@Element e` has the generic type `@(!Response, $State)`, and the response and state types are checked at the slot at runtime, per tag. In a tag-specific arm the types are the tag's, and the checker knows them. This is the one place in the language where a type is refined by a `match` on a tag, and it is what lets an interceptor forward an element it has never heard of while still being typed when it handles one it has.
+When the tag of `e` is not statically known, as in a catch-all arm of a `match` inside an interceptor, `@Element e` has the generic type `@((!Response, $State))`, and the response and state types are checked at the slot at runtime, per tag. In a tag-specific arm the types are the tag's, and the checker knows them. This is the one place in the language where a type is refined by a `match` on a tag, and it is what lets an interceptor forward an element it has never heard of while still being typed when it handles one it has.
 
 One thing `@Element` does not take is a dynamic where a field goes. `@Element Ui.Label(text=$text)` is not a label whose text changes; it is an application to a dynamic, which lifts, so it is `$(@Element Ui.Label(text=text))`, a dynamic of widgets. Binding a dynamic of widgets lifts to `dyn`: `@Element Ui.Label(text=$text)` as a statement means `dyn $text: @Element Ui.Label(text=_)`, a fresh slot per change of the text, and a bound name on the left is the `!Switch` of the `dyn`'s event when the element responds, or a hold of dynamics joined with `$Join` when it has state, with the first build's result as the hold's initial value. The chapter says this once here and uses the short form from now on; the section on dynamic fields says what it costs and why it is the right cost.
 
@@ -487,7 +487,7 @@ An interceptor stands between a child and everything outside it. From the child'
 That last sentence is the test the design has to pass. Every policy an interceptor could have must be writable by hand in the language, because if some policy needs a mode of the primitive, the semantics are incomplete and the mode is hiding it. `intercept` is a low-level call for framework writers; it is not meant to be convenient, and the library wraps it.
 
 ```prism
-intercept: fn (@a, !(Path ==> Response), $(fn Element -> @$State)) -> @(a, $(Path ==> Slot))
+intercept: fn @a, !(Path ==> Response), $(fn Element -> @$State) -> @((a, $(Path ==> Slot)))
 
 type Slot = record:
     element: Element
@@ -504,11 +504,11 @@ type Slot = record:
 @Forward: fn $(Path ==> Slot) -> @!(Path ==> Response) = \|$slots| @widget:
     for $slots:                      # key is the child's path
         dyn $_:                      # a slot never changes, so this builds once
-            (!resp, ignore) <- @Element _.element
+            ((!resp, ignore)) <- @Element _.element
             @ !resp
 
 @Transparent: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- @Forward $slots
     @ result
 ```
@@ -564,7 +564,7 @@ The alternative is a primitive that does nothing but expose the two directions, 
 
 ### Typing
 
-Inside a `match` arm on tag `T`, `_.!request` has `T`'s declared request type, `@Element` of an element built from `T` returns `T`'s declared types, and a widget the supplier returns for `T` must return `T`'s declared state type. In the catch-all arm, `_.!request` is the generic `Request`, `@Element _.element` is the generic `@(!Response, $State)`, and the runtime checks the per-slot types at the slot. The refinement is a rule of the checker and not a runtime structure: the extensible variant with per-tag payload types is what makes it natural, and the alternative, a runtime check everywhere, is what elements get in the generic arm anyway.
+Inside a `match` arm on tag `T`, `_.!request` has `T`'s declared request type, `@Element` of an element built from `T` returns `T`'s declared types, and a widget the supplier returns for `T` must return `T`'s declared state type. In the catch-all arm, `_.!request` is the generic `Request`, `@Element _.element` is the generic `@((!Response, $State))`, and the runtime checks the per-slot types at the slot. The refinement is a rule of the checker and not a runtime structure: the extensible variant with per-tag payload types is what makes it natural, and the alternative, a runtime check everywhere, is what elements get in the generic arm anyway.
 
 An interceptor that wants to be typed therefore writes one arm per tag it handles and a catch-all for the rest. An interceptor that handles a namespace, `Gui.*(..)`, is in the generic case inside that arm, which is right, since it does not know which tag it has.
 
@@ -603,7 +603,7 @@ Stated once, with who is bound and what enforces each:
 
 ## Recapitulation and depth
 
-An interceptor's own elements are what the next layer out sees, and a layer that wants to present several of its child's elements as one thing puts them inside a field of its own element, as data. A container's element then holds its children's elements; the outside addresses the container; and the container routes inward through its response argument. This is how depth works, and the convention a library adopts for it, a `children` field holding a `Path ==> Element` and an `Into (path, input)` case of the response type, is the library's, not the language's. The language guarantees only the two laws, routing against the opened list, and transparency of the forwarding interceptor; what a container looks like is up to whoever writes containers.
+An interceptor's own elements are what the next layer out sees, and a layer that wants to present several of its child's elements as one thing puts them inside a field of its own element, as data. A container's element then holds its children's elements; the outside addresses the container; and the container routes inward through its response argument. This is how depth works, and the convention a library adopts for it, a `children` field holding a `Path ==> Element` and an `Into ((path, input))` case of the response type, is the library's, not the language's. The language guarantees only the two laws, routing against the opened list, and transparency of the forwarding interceptor; what a container looks like is up to whoever writes containers.
 
 The convention has a consequence for tests. A Test World that wants `Expect Ui.Button(label="OK")` to find a button inside a box looks inside `children` fields because the library and the suite agree to, and `Send` to a nested slot wraps the input in one `Into` per level, so that delivery takes the path a real World's input would. The suite knows the convention because the library is part of the suite, not because the language does. The next section builds that library.
 
@@ -630,9 +630,9 @@ type Rect = record:
 type Color = choice White | Grey | Blue | Black
 
 type Op = choice:
-    Fill (Rect, Color)
-    Text (Point, Text)
-    Clip (Rect, [Op])
+    Fill ((Rect, Color))
+    Text ((Point, Text))
+    Clip ((Rect, [Op]))
 
 type Key = choice:
     Char Char
@@ -645,7 +645,7 @@ type Key = choice:
 type WindowInput = choice:
     Pointer Point
     Pressed Key
-    Wheel (Point, Int)
+    Wheel ((Point, Int))
 
 tag Gui.Window of Element:
     title: Text
@@ -670,7 +670,7 @@ type Input = choice:
     Clicked
     Keyed Key
     Scrolled Int
-    Into (Path, Input)
+    Into ((Path, Input))
 
 tag Ui.Label of Element:
     text: Text
@@ -699,7 +699,7 @@ tag Ui.Scroll of Element:
     responds: Input
 ```
 
-Every tag that responds, responds with the one type `Input`. A button only ever receives `Clicked` and a focusable only ever `Clicked` or `Keyed`, and each library widget filters to what it wants. The reason for one type is the containers. A container receives `Into (p, i)` and must deliver `i` to its child at `p`, whatever that child is. Suppose instead each leaf had its own response type, `Click` for buttons and `Key` for focusables: then a container, which handles children in a catch-all arm, would have to convert a generic input into the right per-tag type for each child, which means knowing every leaf tag, which means a container written before a new leaf is declared cannot hold it. With one type, routing is one line, and the leaf is the one place that knows what it accepts. The `Into` case is recursive so that a chain of containers is a chain of `Into`s, and the response arrives at the leaf after each container has peeled one layer.
+Every tag that responds, responds with the one type `Input`. A button only ever receives `Clicked` and a focusable only ever `Clicked` or `Keyed`, and each library widget filters to what it wants. The reason for one type is the containers. A container receives `Into ((p, i))` and must deliver `i` to its child at `p`, whatever that child is. Suppose instead each leaf had its own response type, `Click` for buttons and `Key` for focusables: then a container, which handles children in a catch-all arm, would have to convert a generic input into the right per-tag type for each child, which means knowing every leaf tag, which means a container written before a new leaf is declared cannot hold it. With one type, routing is one line, and the leaf is the one place that knows what it accepts. The `Into` case is recursive so that a chain of containers is a chain of `Into`s, and the response arrives at the leaf after each container has peeled one layer.
 
 Containers hold their children as data in a `children` field, keyed by the child's path, which is the *children convention*. A `Ui.VBox`'s value is the list of its children's elements, in tree order, and a container two levels up sees the whole subtree as one value. That is what the window needs to lay the tree out, and it is why the convention is a field and not an interceptor-to-interceptor protocol: the tree is plain data, and layout is a plain function over it.
 
@@ -714,11 +714,11 @@ let KeyOf: fn Input -> ?Key = \|i| match i:
     Keyed k: Some k
     ignore: Nil
 
-let IntoOf: fn Input -> ?(Path, Input) = \|i| match i:
-    Into (p, j): Some (p, j)
+let IntoOf: fn Input -> ?((Path, Input)) = \|i| match i:
+    Into ((p, j)): Some ((p, j))
     ignore: Nil
 
-let Single: fn (Path, Input) -> Path ==> Input = \|(p, i)| {p: i}
+let Single: fn ((Path, Input)) -> Path ==> Input = \|((p, i))| {p: i}
 
 @Label: fn $Text -> @unit = \@widget:
     @Element Ui.Label(text=$_)
@@ -740,30 +740,30 @@ let IsUi: fn Element -> Bool = \|e| match e:
     Ui.*(..): True
     ignore: False
 
-let UiOnly: fn (Path ==> Slot) -> Path ==> Element = \|slots|
+let UiOnly: fn Path ==> Slot -> Path ==> Element = \|slots|
     MapValues (Filter slots, \IsUi _.element), \_.element
 
-let NonUi: fn (Path ==> Slot) -> Path ==> Slot = \|slots|
+let NonUi: fn Path ==> Slot -> Path ==> Slot = \|slots|
     Filter slots, \Not (IsUi _.element)
 
 @VBox: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !in <- @Element Ui.VBox(children=(UiOnly $slots))
     let !own = Single (!Filter (IntoOf !in))
     !fwd <- @Forward (NonUi $slots)
-    let !down = !Union (!own, !fwd)
+    let !down = !Union !own, !fwd
     @ result
 
 @HBox: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !in <- @Element Ui.HBox(children=(UiOnly $slots))
     let !own = Single (!Filter (IntoOf !in))
     !fwd <- @Forward (NonUi $slots)
-    let !down = !Union (!own, !fwd)
+    let !down = !Union !own, !fwd
     @ result
 ```
 
-`UiOnly $slots` is a derived dynamic of the child's library elements, kept current by the change law. `Ui.VBox(children=...)` with a dynamic field is a `dyn`, a fresh box per change of the children, and `!in` is the `!Switch` over its generations. When the window sends `Into (p, i)` to the box, `!own` is the one-entry map `{p: i}`, `!down` is that map merged with whatever the forwarded non-library elements received, and `intercept` delivers `i` to the child's slot at `p`, against the child's list as the occurrence opened. The child at `p` is a leaf, which fires, or another container, which peels the next `Into`.
+`UiOnly $slots` is a derived dynamic of the child's library elements, kept current by the change law. `Ui.VBox(children=...)` with a dynamic field is a `dyn`, a fresh box per change of the children, and `!in` is the `!Switch` over its generations. When the window sends `Into ((p, i))` to the box, `!own` is the one-entry map `{p: i}`, `!down` is that map merged with whatever the forwarded non-library elements received, and `intercept` delivers `i` to the child's slot at `p`, against the child's list as the occurrence opened. The child at `p` is a leaf, which fires, or another container, which peels the next `Into`.
 
 `!own` and `!fwd` never share a key, because `!own`'s keys are library paths and `!fwd`'s are the others; `!Union` is there so that a click into the box and a file response to a forwarded `Fs.File` can land in one occurrence without one losing the other.
 
@@ -778,20 +778,20 @@ let LeafOf: fn Input -> ?Input = \|i| match i:
     Into ignore: Nil
     ignore: Some i
 
-@Focusable: fn (Text, @a) -> @(a, !Input) = \|name, @child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+@Focusable: fn Text, @a -> @((a, !Input)) = \|name, @child| @widget:
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !in <- @Element Ui.Focusable(name=name, children=(UiOnly $slots))
     let !own = Single (!Filter (IntoOf !in))
     !fwd <- @Forward (NonUi $slots)
-    let !down = !Union (!own, !fwd)
-    @ (result, !Filter (LeafOf !in))
+    let !down = !Union !own, !fwd
+    @ ((result, !Filter (LeafOf !in)))
 ```
 
 It routes `Into` like a box and returns the inputs addressed to itself: the clicks that focused it and the keys delivered while it was focused. The text input is a focusable around a label, with the editing state in a hold outside both:
 
 ```prism
 @TextInput: fn Text -> @$Text = \|initial| @widget:
-    (ignore, !in) <- @Focusable "input", (@Label (Render $edit))
+    ((ignore, !in)) <- @Focusable "input", (@Label (Render $edit))
     $edit <- Edit initial, (Len initial) <= Apply $edit, !Filter (KeyOf !in)
     @ $edit.text
 ```
@@ -805,21 +805,21 @@ Look at what changes per keystroke and what does not. The label's text changes, 
 A scroll region holds an offset, which its own wheel events move:
 
 ```prism
-let Clamp: fn (Int, Int, Int) -> Int = \|lo, hi, v|
+let Clamp: fn Int, Int, Int -> Int = \|lo, hi, v|
     if v lt lo: lo else: if hi lt v: hi else: v
 
 let ScrollOf: fn Input -> ?Int = \|i| match i:
     Scrolled d: Some d
     ignore: Nil
 
-@Scroll: fn (Int, @a) -> @a = \|height, @child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+@Scroll: fn Int, @a -> @a = \|height, @child| @widget:
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     let $kids = UiOnly $slots
     $offset <- 0 <= Clamp 0, (Measure Ui.VBox(children=$kids)).h - height, ($offset + !Filter (ScrollOf !in))
     !in <- @Element Ui.Scroll(children=$kids, offset=$offset, height=height)
     let !own = Single (!Filter (IntoOf !in))
     !fwd <- @Forward (NonUi $slots)
-    let !down = !Union (!own, !fwd)
+    let !down = !Union !own, !fwd
     @ result
 ```
 
@@ -851,24 +851,24 @@ let Measure: fn Element -> Size = \|e| match e:
     Ui.Scroll(children=cs, height=h, ..): Size (Measure Ui.VBox(children=cs)).w, h
     ignore: Size 0, 0
 
-let Place: fn (Element, Rect, [Path]) -> Placed = \|e, r, chain| match e:
+let Place: fn Element, Rect, [Path] -> Placed = \|e, r, chain| match e:
     Ui.Label(text=t):
-        Placed [(Text ((Point r.x + 4, r.y + 4), t))], []
+        Placed [[(Text (((Point r.x + 4, r.y + 4), t)))]], [[]]
     Ui.Button(label=l):
-        Placed [(Fill (r, Grey)), (Text ((Point r.x + 8, r.y + 6), l))], [(Hit r, chain, Clickable)]
+        Placed [[(Fill ((r, Grey))), (Text (((Point r.x + 8, r.y + 6), l)))]], [[(Hit r, chain, Clickable)]]
     Ui.VBox(children=cs):
         PlaceStacked cs, r, chain, True
     Ui.HBox(children=cs):
         PlaceStacked cs, r, chain, False
     Ui.Focusable(name=n, children=cs):
-        Framed (PlaceStacked cs, (Inset r, 2), chain, True), r, [(Hit r, chain, (Focus n))]
+        Framed (PlaceStacked cs, (Inset r, 2), chain, True), r, [[(Hit r, chain, (Focus n))]]
     Ui.Scroll(children=cs, offset=o, ..):
-        Clipped (PlaceStacked cs, (Shifted r, 0 - o), chain, True), r, [(Hit r, chain, Scrollable)]
+        Clipped (PlaceStacked cs, (Shifted r, -o), chain, True), r, [[(Hit r, chain, Scrollable)]]
     ignore:
-        Placed [], []
+        Placed [[]], [[]]
 
-# PlaceStacked: fn (Path ==> Element, Rect, [Path], Bool) -> Placed   children in key order, down or across
-# Framed, Clipped: fn (Placed, Rect, [Hit]) -> Placed                 a border; a Clip op and hits cut to the rect
+# PlaceStacked: fn Path ==> Element, Rect, [Path], Bool -> Placed   children in key order, down or across
+# Framed, Clipped: fn Placed, Rect, [Hit] -> Placed                 a border; a Clip op and hits cut to the rect
 ```
 
 `PlaceStacked` walks the children in key order, which is tree order, which is top to bottom or left to right, allotting each its measured height or width, placing it with its path appended to the chain, and concatenating the ops and hits with the children's hits *before* the container's own, so that the innermost region at a point is found first. `Framed` adds a border. `Clipped` wraps the ops in a `Clip` and discards hits outside the clip rect. `Stacked`, `Beside`, `Padded`, `Inset` and `Shifted` are the arithmetic on sizes and rectangles their names say. None of this touches time: `Measure` and `Place` are functions on plain values, testable without a World, and when they are applied to a dynamic tree they lift to a dynamic picture.
@@ -876,24 +876,24 @@ let Place: fn (Element, Rect, [Path]) -> Placed = \|e, r, chain| match e:
 Hit-testing is a lookup in the hit list:
 
 ```prism
-let Contains: fn (Rect, Point) -> Bool = \|r, p|
+let Contains: fn Rect, Point -> Bool = \|r, p|
     And (And (r.x le p.x), (p.x lt r.x + r.w)), (And (r.y le p.y), (p.y lt r.y + r.h))
 
-let HitAt: fn ([Hit], Point) -> ?Hit = \|hits, p|
+let HitAt: fn [Hit], Point -> ?Hit = \|hits, p|
     FirstWhere hits, \Contains _.rect, p
 
-let Wrap: fn ([Path], Input) -> ?(Path, Input) = \|chain, i|
+let Wrap: fn [Path], Input -> ?((Path, Input)) = \|chain, i|
     match chain[0]:
-        Some head: Some (head, (WrapRest (Rest chain), i))
+        Some head: Some ((head, (WrapRest (Rest chain), i)))
         Nil: Nil
 
-let WrapRest: fn ([Path], Input) -> Input = \|chain, i|      # Rest: the array without its first element
+let WrapRest: fn [Path], Input -> Input = \|chain, i|      # Rest: the array without its first element
     match chain[0]:
-        Some head: Into (head, (WrapRest (Rest chain), i))
+        Some head: Into ((head, (WrapRest (Rest chain), i)))
         Nil: i
 ```
 
-`Wrap` turns a chain `[box, row, button]` and an input into `(box, Into (row, Into (button, Clicked)))`: a response to the box, which the box peels and sends to the row, which the row peels and sends to the button. The first element of the chain is a path in the window's child's list, which is the key `!down` needs.
+`Wrap` turns a chain `[[box, row, button]]` and an input into `((box, Into ((row, Into ((button, Clicked))))))`: a response to the box, which the box peels and sends to the row, which the row peels and sends to the button. The first element of the chain is a path in the window's child's list, which is the key `!down` needs.
 
 ### The window
 
@@ -913,11 +913,11 @@ let IsTab: fn WindowInput -> ?unit = \|w| match w:
     Pressed Tab: Some unit
     ignore: Nil
 
-let WheelOf: fn WindowInput -> ?(Point, Int) = \|w| match w:
-    Wheel (p, d): Some (p, d)
+let WheelOf: fn WindowInput -> ?((Point, Int)) = \|w| match w:
+    Wheel ((p, d)): Some ((p, d))
     ignore: Nil
 
-let ClickFor: fn Hit -> ?(Path, Input) = \|h| match h.kind:
+let ClickFor: fn Hit -> ?((Path, Input)) = \|h| match h.kind:
     Clickable: Wrap h.chain, Clicked
     Focus ignore: Wrap h.chain, Clicked
     Scrollable: Nil
@@ -929,37 +929,37 @@ let FocusOf: fn Hit -> ?Text = \|h| match h.kind:
 let FocusNames: fn [Hit] -> [Text] = \|hits|
     Collect hits, FocusOf                    # in hit order, which is tree order
 
-let NextFocus: fn ([Hit], ?Text) -> ?Text = \|hits, current|
+let NextFocus: fn [Hit], ?Text -> ?Text = \|hits, current|
     After (FocusNames hits), current         # the name after current, wrapping; Nil if none
 
-let RouteKey: fn ([Hit], ?Text, Key) -> ?(Path, Input) = \|hits, focus, k|
+let RouteKey: fn [Hit], ?Text, Key -> ?((Path, Input)) = \|hits, focus, k|
     match focus:
         Nil: Nil
         Some n: match (FirstWhere hits, \(FocusOf _) == Some n):
             Some h: Wrap h.chain, (Keyed k)
             Nil: Nil
 
-let ScrollAt: fn ([Hit], (Point, Int)) -> ?(Path, Input) = \|hits, (p, d)|
+let ScrollAt: fn [Hit], ((Point, Int)) -> ?((Path, Input)) = \|hits, ((p, d))|
     match (FirstWhere hits, \And (Contains _.rect, p), (IsScrollable _.kind)):
         Some h: Wrap h.chain, (Scrolled d)
         Nil: Nil
 
-@Window: fn (Text, @a) -> @a = \|title, @app| @widget:
-    (result, $slots) <- intercept @app, !down, $ \|e| @Element e
-    (!raw, $size) <- @Element Gui.Window(title=title)
+@Window: fn Text, @a -> @a = \|title, @app| @widget:
+    ((result, $slots)) <- intercept @app, !down, $ \|e| @Element e
+    ((!raw, $size)) <- @Element Gui.Window(title=title)
     let $root = Ui.VBox(children=(UiOnly $slots))
-    let $placed = Place $root, (Rect 0, 0, $size.w, $size.h), []
+    let $placed = Place $root, (Rect 0, 0, $size.w, $size.h), [[]]
     @Element Gui.Scene(window=title, ops=$placed.ops)
 
-    let !hit = !Filter (HitAt ($placed.hits, !Filter (PointerOf !raw)))
+    let !hit = !Filter (HitAt $placed.hits, !Filter (PointerOf !raw))
     let !clicks = !Filter (ClickFor !hit)
-    $focus <- Nil <= (Some !Filter (FocusOf !hit)) | (NextFocus ($placed.hits, $focus) on !Filter (IsTab !raw))
-    let !keys = !Filter (RouteKey ($placed.hits, $focus, !Filter (PressedOf !raw)))
-    let !wheel = !Filter (ScrollAt ($placed.hits, !Filter (WheelOf !raw)))
+    $focus <- Nil <= (Some !Filter (FocusOf !hit)) | (NextFocus $placed.hits, $focus) on !Filter (IsTab !raw)
+    let !keys = !Filter (RouteKey $placed.hits, $focus, !Filter (PressedOf !raw))
+    let !wheel = !Filter (ScrollAt $placed.hits, !Filter (WheelOf !raw))
 
     let !own = Single (!clicks | !keys | !wheel)
     !fwd <- @Forward (NonUi $slots)
-    let !down = !Union (!own, !fwd)
+    let !down = !Union !own, !fwd
     @ result
 ```
 
@@ -996,9 +996,9 @@ Paths, from the window's child down. The outer `@VBox` is the window's child, so
 
 It draws the scene and waits.
 
-**Occurrence 1.** The user clicks on the OK button. The World sends `Pointer (Point 60, 50)` to `1`. `!raw` fires; `PointerOf` passes the point; `HitAt` reads `$placed.hits` through a tag, finds the button's region first (leaves before containers), and fires the hit with chain `[1/#0/0, 1/1/#0/0, 0/#0/0]`: the box in the app's list, the HBox in the box's list, the OK button in the HBox's list. `ClickFor` wraps it: `(1/#0/0, Into (1/1/#0/0, Into (0/#0/0, Clicked)))`. `!own` is that one entry; `!down` fires with it; `intercept` delivers to the box's slot at `1/#0/0` in the app's list as opened. The box's `!in` fires; `IntoOf` peels one layer; the box's `!down` fires with `{1/1/#0/0: Into (0/#0/0, Clicked)}`; the HBox's `!in` fires; it peels again; its `!down` fires with `{0/#0/0: Clicked}`; the OK button's `!in` fires with `Clicked`; `ClickOf` passes it; `!ok` fires in the form. Nothing on the screen changes, so no scene is rebuilt. Four interceptors and one leaf, in one occurrence, each one line of routing.
+**Occurrence 1.** The user clicks on the OK button. The World sends `Pointer (Point 60, 50)` to `1`. `!raw` fires; `PointerOf` passes the point; `HitAt` reads `$placed.hits` through a tag, finds the button's region first (leaves before containers), and fires the hit with chain `[[1/#0/0, 1/1/#0/0, 0/#0/0]]`: the box in the app's list, the HBox in the box's list, the OK button in the HBox's list. `ClickFor` wraps it: `((1/#0/0, Into ((1/1/#0/0, Into ((0/#0/0, Clicked))))))`. `!own` is that one entry; `!down` fires with it; `intercept` delivers to the box's slot at `1/#0/0` in the app's list as opened. The box's `!in` fires; `IntoOf` peels one layer; the box's `!down` fires with `{1/1/#0/0: Into ((0/#0/0, Clicked))}`; the HBox's `!in` fires; it peels again; its `!down` fires with `{0/#0/0: Clicked}`; the OK button's `!in` fires with `Clicked`; `ClickOf` passes it; `!ok` fires in the form. Nothing on the screen changes, so no scene is rebuilt. Four interceptors and one leaf, in one occurrence, each one line of routing.
 
-**Occurrence 2.** The user clicks in the text field. `Pointer (Point 30, 12)` to `1`. `HitAt` finds the label's region? No: labels have no hit region, so the focusable's own region is the first containing the point, with kind `Focus "input"`. `ClickFor` wraps a `Clicked` down the chain `[1/#0/0, 0/0/1/#0/0]`; `FocusOf` fires `Some "input"`; `$focus` changes to `Some "input"`. The click reaches the focusable's `!in`, `LeafOf` passes it, and `@TextInput` ignores it, since it only filters keys. Commit: focus is the input.
+**Occurrence 2.** The user clicks in the text field. `Pointer (Point 30, 12)` to `1`. `HitAt` finds the label's region? No: labels have no hit region, so the focusable's own region is the first containing the point, with kind `Focus "input"`. `ClickFor` wraps a `Clicked` down the chain `[[1/#0/0, 0/0/1/#0/0]]`; `FocusOf` fires `Some "input"`; `$focus` changes to `Some "input"`. The click reaches the focusable's `!in`, `LeafOf` passes it, and `@TextInput` ignores it, since it only filters keys. Commit: focus is the input.
 
 **Occurrence 3.** The user types `!`. `Pressed (Char '!')` to `1`. `PressedOf` passes it; `RouteKey` reads `$placed.hits` and `$focus` through tags, finds the hit whose kind is `Focus "input"`, and wraps `Keyed (Char '!')` down its chain. The box peels; the focusable's `!in` fires; `KeyOf` passes the key; `Apply $edit, !key` fires with `Edit "Ada!", 4`; `$edit` changes. `Render $edit` changes promptly, the edit label rebuilds to generation `#1`, the focusable's `children` changes, the focusable rebuilds to a fresh slot at a new path `0/0/1/#1/0`, the box's `children` changes, the box rebuilds, `$root` changes, `$placed` changes, the scene rebuilds. The greeting label changes too, since `$name` is `$edit.text`. The World sees a new `Gui.Scene` and draws it. Commit: `$edit` is `Edit "Ada!", 4`, and `$focus` is still `Some "input"`, which names the new focusable slot as well as it named the old one.
 
@@ -1039,12 +1039,12 @@ Each of the following is a complete interceptor with a short walkthrough. They a
 ### A path-rewriting sandbox
 
 ```prism
-let Confine: fn (Text, Text) -> ?Text = \|root, p|
-    if (StartsWith p, "/home/"): Some (Concat [root, p])
+let Confine: fn Text, Text -> ?Text = \|root, p|
+    if (StartsWith p, "/home/"): Some (Concat [[root, p]])
     else: Nil
 
-@Jail: fn (Text, @a) -> @a = \|root, @child| @widget:
-    (result, $slots) <- intercept @child, !down, $ supply
+@Jail: fn Text, @a -> @a = \|root, @child| @widget:
+    ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- for $slots:
         dyn $_:
             match _.element:
@@ -1059,7 +1059,7 @@ let Confine: fn (Text, Text) -> ?Text = \|root, p|
                 Fs.Dir(..):
                     @ !never                            # a state element: supplied below, not forwarded here
                 ignore:
-                    (!resp, ignore) <- @Element _.element
+                    ((!resp, ignore)) <- @Element _.element
                     @ !resp
     let supply = \|e| match e:
         Fs.Contents(path=p): match Confine root, p:
@@ -1086,7 +1086,7 @@ let Forbidden: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
     Nil: Nil
 
 @NoNetwork: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ supply
+    ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- for $slots:
         dyn $_:
             match _.element:
@@ -1097,7 +1097,7 @@ let Forbidden: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
                 Net.Socket(..):
                     @ !never
                 ignore:
-                    (!resp, ignore) <- @Element _.element
+                    ((!resp, ignore)) <- @Element _.element
                     @ !resp
     let supply = \|e| match e:
         Net.Socket(..): @ $ Disconnected "sandboxed"
@@ -1116,8 +1116,8 @@ A child that watches a file sees every change the World pushes. A cache shows it
 ```prism
 let Freeze: fn a -> $a = \|v| $ v
 
-@Cached: fn (!unit, @a) -> @a = \|!refresh, @child| @widget:
-    (result, $slots) <- intercept @child, !down, $ supply
+@Cached: fn !unit, @a -> @a = \|!refresh, @child| @widget:
+    ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- @Forward $slots
     let supply = \|e| match e:
         Fs.Contents(path=p): @widget:
@@ -1140,15 +1140,15 @@ The tag law shows up when a push and a refresh land in one occurrence: `(Freeze 
 A request cache remembers answers and serves repeats without going outside:
 
 ```prism
-let Lookup: fn (Text ==> HttpResponse, HttpRequest) -> ?HttpResponse = \|memo, r|
+let Lookup: fn Text ==> HttpResponse, HttpRequest -> ?HttpResponse = \|memo, r|
     if r.method == "GET": memo[r.url] else: Nil
 
-let Missing: fn (Text ==> HttpResponse, HttpRequest) -> ?HttpRequest = \|memo, r|
+let Missing: fn Text ==> HttpResponse, HttpRequest -> ?HttpRequest = \|memo, r|
     match Lookup memo, r:
         Some ignore: Nil
         Nil: Some r
 
-let Remember: fn (Text ==> HttpResponse, Path ==> HttpResponse) -> Text ==> HttpResponse = \|memo, answers|
+let Remember: fn Text ==> HttpResponse, Path ==> HttpResponse -> Text ==> HttpResponse = \|memo, answers|
     Fold answers, memo, \|acc, ignore, a| Insert acc, a.request.url, a
 
 type CacheOut = record:
@@ -1156,7 +1156,7 @@ type CacheOut = record:
     !learned: HttpResponse                       # what came back from outside
 
 @HttpCache: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     out <- for $slots:
         dyn $_:
             match _.element:
@@ -1168,7 +1168,7 @@ type CacheOut = record:
                     $pending <- Nil <= Some !hit
                     @ CacheOut (!fetched | !Filter ($pending on !later)), !fetched
                 ignore:
-                    (!resp, ignore) <- @Element _.element
+                    ((!resp, ignore)) <- @Element _.element
                     @ CacheOut !resp, !never
     let !down = out.!resp
     $memo <- {} <= Remember $memo, out.!learned
@@ -1184,8 +1184,8 @@ The conformance suite's `cache_hit_no_request` test puts two identical GETs in t
 ### A mock for tests
 
 ```prism
-@MockHttp: fn (fn HttpRequest -> HttpResponse, @a) -> @a = \|answer, @child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+@MockHttp: fn (fn HttpRequest -> HttpResponse), @a -> @a = \|answer, @child| @widget:
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- for $slots:
         dyn $_:
             match _.element:
@@ -1194,7 +1194,7 @@ The conformance suite's `cache_hit_no_request` test puts two identical GETs in t
                     $asked <- Nil <= Some _.!request
                     @ !Filter (answer $asked on !later)
                 ignore:
-                    (!resp, ignore) <- @Element _.element
+                    ((!resp, ignore)) <- @Element _.element
                     @ !resp
     @ result
 ```
@@ -1204,8 +1204,8 @@ Every HTTP request in the subtree is answered from a pure function, through a `D
 A mock for state is the supplier alone:
 
 ```prism
-@MockFs: fn (Text ==> Text, @a) -> @a = \|files, @child| @widget:
-    (result, $slots) <- intercept @child, !down, $ supply
+@MockFs: fn Text ==> Text, @a -> @a = \|files, @child| @widget:
+    ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- @Forward $slots
     let supply = \|e| match e:
         Fs.Contents(path=p): match files[p]:
@@ -1224,10 +1224,10 @@ tag Log.Line of Element:
     requests: !Text
 
 @Traced: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- for $slots:
         dyn $_:
-            (!resp, ignore) <- @Element _.element
+            ((!resp, ignore)) <- @Element _.element
             @Element Log.Line(requests=("${ShowPath key} asked ${ToText _.!request}" | "${ShowPath key} got ${ToText !resp}"))
             @ !resp
     @ result
@@ -1238,18 +1238,18 @@ Forward everything and, per slot, fire a log line for each request and each resp
 ### A quota
 
 ```prism
-let IfUnder: fn (Nat, Nat, HttpRequest) -> ?HttpRequest = \|used, limit, r|
+let IfUnder: fn Nat, Nat, HttpRequest -> ?HttpRequest = \|used, limit, r|
     if used lt limit: Some r else: Nil
 
-let IfOver: fn (Nat, Nat, HttpRequest) -> ?HttpRequest = \|used, limit, r|
+let IfOver: fn Nat, Nat, HttpRequest -> ?HttpRequest = \|used, limit, r|
     if used lt limit: Nil else: Some r
 
 let Refusal: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
     Some r: Some (HttpResponse r, 429, "quota")
     Nil: Nil
 
-@Quota: fn (Nat, @a) -> @a = \|limit, @child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+@Quota: fn Nat, @a -> @a = \|limit, @child| @widget:
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !asked <- for $slots:                        # every HTTP request fired this occurrence, by path
         dyn $_:
             match _.element:
@@ -1267,7 +1267,7 @@ let Refusal: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
                     $held <- Nil <= Some !refused
                     @ !fetched | !Filter (Refusal $held on !later)
                 ignore:
-                    (!resp, ignore) <- @Element _.element
+                    ((!resp, ignore)) <- @Element _.element
                     @ !resp
     @ result
 ```
@@ -1299,8 +1299,8 @@ tag Remote.Store of Element:
     key: Text
     state: ?Text
 
-@Migrate: fn ($Backend, Text, @a) -> @a = \|$backend, host, @child| @widget:
-    (result, $slots) <- intercept @child, !down, $supply
+@Migrate: fn $Backend, Text, @a -> @a = \|$backend, host, @child| @widget:
+    ((result, $slots)) <- intercept @child, !down, $supply
     !down <- for $slots:
         dyn $_:
             match _.element:
@@ -1311,12 +1311,12 @@ tag Remote.Store of Element:
                     !b <- @Element Remote.Get(host=host, requests=!remote)
                     @ !a | !b
                 ignore:
-                    (!resp, ignore) <- @Element _.element
+                    ((!resp, ignore)) <- @Element _.element
                     @ !resp
     let $supply = Supplier $backend, host
     @ result
 
-let Supplier: fn (Backend, Text) -> fn Element -> @$State = \|backend, host| \|e| match e:
+let Supplier: fn Backend, Text -> (fn Element -> @$State) = \|backend, host| \|e| match e:
     Kv.Store(key=k): match backend:
         Local: @Element Kv.Store(key=k)
         Remote: @Element Remote.Store(host=host, key=k)
@@ -1336,22 +1336,22 @@ type Launch = choice:
     Start Text
     Stop Text
 
-let ApplyLaunch: fn (Text ==> unit, Launch) -> Text ==> unit = \|table, l| match l:
+let ApplyLaunch: fn Text ==> unit, Launch -> Text ==> unit = \|table, l| match l:
     Start name: Insert table, name, unit
     Stop name: Remove table, name
 
-@Host: fn (Text ==> @unit) -> @unit = \|programs| @widget:
+@Host: fn Text ==> @unit -> @unit = \|programs| @widget:
     $clock <- @Element Clock
     let supply = \|e| match e:
         Clock: @ $clock
-        Process.Args(..): @ $ []
+        Process.Args(..): @ $ [[]]
         ignore: @Element e
     !launch <- @Launcher (Keys programs)              # a menu returning Start name or Stop name
     $table <- {} <= ApplyLaunch $table, !launch
     $lists <- for $table:                             # key is the program's name
         match programs[key]:
             Some @app:
-                (ignore, $slots) <- intercept @app, !down, $ supply
+                ((ignore, $slots)) <- intercept @app, !down, $ supply
                 !down <- @Forward (NonUi $slots)
                 @ $slots
             Nil:

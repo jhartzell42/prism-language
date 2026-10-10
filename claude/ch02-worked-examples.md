@@ -1,4 +1,4 @@
-# Chapter 1 — Worked examples
+# Chapter 2 — Worked examples
 
 Fourteen programs, from a counter to a shell that hosts other programs, each one followed by what happens occurrence by occurrence: what the World sends in, what fires and in what order, what commits, and what the element list looks like afterwards. The programs are the language; the walkthroughs are the laws applied to them. If you have read the specification once and want to know whether you understood it, read the programs, predict the walkthroughs, and check. If you are coming to the language cold, the walkthroughs are where every rule in the later chapters is first seen doing work, and each example ends by saying which afternoon it prevents: the checkbox that un-checks itself, the fetch on mount that fires twice, the native text box that loses its cursor, the click that lands on a button that has already been replaced.
 
@@ -14,30 +14,30 @@ The chapter assumes a small prelude of plain functions. None of them does anythi
 
 ```prism
 !Filter: fn !?a -> !a                                   # fires x when the input fires Some x
-!Union:  fn (!(k ==> a), !(k ==> a)) -> !(k ==> a)      # the union of the maps that fired; the left wins a shared key
+!Union:  fn !(k ==> a), !(k ==> a) -> !(k ==> a)        # the union of the maps that fired; the left wins a shared key
 !Leftmost: fn [!a] -> !a
-First:  fn (a, b) -> a
-Second: fn (a, b) -> b
+First:  fn ((a, b)) -> a
+Second: fn ((a, b)) -> b
 Not:    fn Bool -> Bool
 Len:    fn Text -> Nat
-Prefix: fn (Text, Nat) -> Text                          # the first n characters
-Suffix: fn (Text, Nat) -> Text                          # everything from character n on
+Prefix: fn Text, Nat -> Text                            # the first n characters
+Suffix: fn Text, Nat -> Text                            # everything from character n on
 Concat: fn [Text] -> Text
-JoinText: fn (Text, [Text]) -> Text                     # separator first
-Count:  fn (Text, Char) -> Nat
-StartsWith: fn (Text, Text) -> Bool
+JoinText: fn Text, [Text] -> Text                       # separator first
+Count:  fn Text, Char -> Nat
+StartsWith: fn Text, Text -> Bool
 ToText: fn a -> Text                                    # a: a primitive with a canonical rendering
-Append: fn ([a], a) -> [a]
-Insert: fn (k ==> v, k, v) -> k ==> v
-Remove: fn (k ==> v, k) -> k ==> v
+Append: fn [a], a -> [a]
+Insert: fn k ==> v, k, v -> k ==> v
+Remove: fn k ==> v, k -> k ==> v
 Size:   fn (k ==> v) -> Nat
 Keys:   fn (k ==> v) -> [k]
-Filter: fn (k ==> v, fn v -> Bool) -> k ==> v
-MapValues: fn (k ==> v, fn v -> w) -> k ==> w
-Fold:   fn (k ==> v, a, fn (a, k, v) -> a) -> a         # in key order
+Filter: fn k ==> v, (fn v -> Bool) -> k ==> v
+MapValues: fn k ==> v, (fn v -> w) -> k ==> w
+Fold:   fn k ==> v, a, (fn a, k, v -> a) -> a           # in key order
 ```
 
-Every operation over these lifts by the rule of the sigils: a plain function applied to a dynamic is a dynamic, applied to a dynamic and an event is an event with the dynamic read through a tag, applied to two events is a compile error. Comparisons are the infix operators `==`, `!=`, `lt`, `le`, `gt` and `ge` (`a lt b`), through the equality and ordering traits, and lift the same way. So `Append $log, !line` is an event of arrays, and `Insert ($items, $next, todo) on !add` is an event that fires with the click and reads both dynamics as they stood before it.
+Every operation over these lifts by the rule of the sigils: a plain function applied to a dynamic is a dynamic, applied to a dynamic and an event is an event with the dynamic read through a tag, applied to two events is a compile error. Comparisons are the infix operators `==`, `!=`, `lt`, `le`, `gt` and `ge` (`a lt b`), through the equality and ordering traits, and lift the same way. So `Append $log, !line` is an event of arrays, and `(Insert $items, $next, todo) on !add` is an event that fires with the click and reads both dynamics as they stood before it.
 
 ### Shared declarations
 
@@ -85,7 +85,7 @@ Inside the `dyn` block `_` is the label as a plain value, because inside one bui
 
 You have written this program in every framework you have used and in each one the interesting question was never the increment; it was what happens when two things land at once. Here that question has an answer you can read off the third line, and it is the only thing the program has to say about it.
 
-Nothing in the five lines says which numeric type `$count` is. `-1` is a signed literal, so `!delta` is an event of `Int`, so `$count + !delta` is `Int` addition, so the `0` that starts the hold is an `Int`. Had the deltas been `+1` and `+2`, nothing would pin the type and the program would be rejected rather than defaulted; `0 <= $count +~ !delta` would then say `Int` outright.
+Nothing in the five lines says which numeric type `$count` is. `-1` is a signed literal, so `!delta` is an event of `Int`, so `$count + !delta` is `Int` addition, so the `0` that starts the hold is an `Int`. Had the deltas been `+1` and `+2`, nothing would pin the type, and an integer literal nothing constrains is an `Int`, so the program would mean the same thing; a `Nat` counter says so with an annotation.
 
 **Occurrence 0 (build).** The World calls the run call with no inputs. `@counter` is built. The first `@Button` builds its `dyn`, whose block builds generation `#0` with one slot, `Ui.Button(label="Increment")` at `0/#0/0`; the `dyn`'s event `!!clicks` fires in this occurrence with the slot's click event, and `!Switch` records it as the inner event to listen to from occurrence 1. The second button does the same at `1/#0/0`. `$count` has its initial value, `0`. `$"Count: $count"` is a derived dynamic whose value is `"Count: 0"`, and `@Label` builds generation `#0` of its `dyn` with `Ui.Label(text="Count: 0")` at `2/#0/0`. Nothing fires at `!increment`, `!decrement` or `!delta`: a `!Switch` is subscribed to nothing in the occurrence it is given its first inner event. The occurrence commits: `$count` is `0`, and the two `!Switch` holds now point at their slots' events.
 
@@ -136,9 +136,9 @@ type Edit = record:
     text: Text
     cursor: Nat
 
-let Apply: fn (Edit, Key) -> Edit = \|e, k| match k:
+let Apply: fn Edit, Key -> Edit = \|e, k| match k:
     Char c:
-        Edit (Concat [(Prefix e.text, e.cursor), ToText c, (Suffix e.text, e.cursor)]), e.cursor + 1
+        Edit (Concat [[(Prefix e.text, e.cursor), ToText c, (Suffix e.text, e.cursor)]]), e.cursor + 1
     Left:
         if (e.cursor == 0): e
         else: Edit e.text, e.cursor - 1
@@ -147,10 +147,10 @@ let Apply: fn (Edit, Key) -> Edit = \|e, k| match k:
         else: Edit e.text, e.cursor + 1
     Backspace:
         if (e.cursor == 0): e
-        else: Edit (Concat [(Prefix e.text, e.cursor - 1), (Suffix e.text, e.cursor)]), e.cursor - 1
+        else: Edit (Concat [[(Prefix e.text, e.cursor - 1), (Suffix e.text, e.cursor)]]), e.cursor - 1
 
 let Render: fn Edit -> Text = \|e|
-    Concat [(Prefix e.text, e.cursor), "|", (Suffix e.text, e.cursor)]
+    Concat [[(Prefix e.text, e.cursor), "|", (Suffix e.text, e.cursor)]]
 
 @TextInput: fn Text -> @$Text = \|initial| @widget:
     !key <- @Element Gui.Focusable(name="input")
@@ -204,18 +204,18 @@ type Change = choice:
     Toggle
     Delete
 
-let Step: fn (Nat ==> Todo, Nat, Change) -> Nat ==> Todo = \|items, id, change| match change:
+let Step: fn Nat ==> Todo, Nat, Change -> Nat ==> Todo = \|items, id, change| match change:
     Add label: Insert items, id, (Todo label, False)
     Toggle: match items[id]:
         Some t: Insert items, id, (Todo t.label, (Not t.done))
         Nil: items
     Delete: Remove items, id
 
-let StepAll: fn (Nat ==> Todo, Nat ==> Change) -> Nat ==> Todo = \|items, changes|
+let StepAll: fn Nat ==> Todo, Nat ==> Change -> Nat ==> Todo = \|items, changes|
     Fold changes, items, \|acc, id, c| Step acc, id, c
 
-let Describe: fn (Todo, Bool) -> Text = \|t, starred|
-    Concat [(if t.done: "[x] " else: "[ ] "), t.label, (if starred: " *" else: "")]
+let Describe: fn Todo, Bool -> Text = \|t, starred|
+    Concat [[(if t.done: "[x] " else: "[ ] "), t.label, (if starred: " *" else: "")]]
 
 @todos:
     !add <- @Button $"Add"
@@ -228,8 +228,8 @@ let Describe: fn (Todo, Bool) -> Text = \|t, starred|
         $starred <- False <= (Not $starred) on !star
         @Label (Describe $_, $starred)
         @ Toggle on !toggle | Delete on !delete
-    let !changes = !Union (!adds, !rows)
-    $items <- {} <= StepAll ($items, !changes)
+    let !changes = !Union !adds, !rows
+    $items <- {} <= StepAll $items, !changes
 ```
 
 The list is a map from an allocated id to a todo, not an array. The id is the identity: it decides which row survives a change, which paths stay stable, and which `$starred` keeps its value when the row above it is deleted. An array keyed by position would rebuild every row after an insertion at the front and reset every star; that is why `for` over an array is second class and why the ids are allocated from `$next` rather than taken from a position.
@@ -244,7 +244,7 @@ Each row's block returns an event of `Change`, and `for` consolidates those into
 0/#0/0: Ui.Button(label="Add")
 ```
 
-**Occurrence 1.** `click` to `0/#0/0`. `!add` fires. Two things read `$next` through a tag, and both read `0`: `$next + 1 on !add` fires with `1`, and `!adds` fires with `{0: Add "item 0"}`. `!Union` fires with the same map, since `!rows` is quiet. `StepAll ($items, !changes)` fires with `{0: Todo "item 0", False}`, reading `$items` as `{}`. That is `$items`'s change event, so `for $items` sees a key appear in this occurrence and builds row `[0]` now: three buttons at `1/[0]/0/#0/0`, `1/[0]/1/#0/0` and `1/[0]/2/#0/0`, a hold `$starred` at `False`, and a label at `1/[0]/3/#0/0` with `"[ ] item 0"`. Commit: `$next` is `1`, `$items` has one entry.
+**Occurrence 1.** `click` to `0/#0/0`. `!add` fires. Two things read `$next` through a tag, and both read `0`: `$next + 1 on !add` fires with `1`, and `!adds` fires with `{0: Add "item 0"}`. `!Union` fires with the same map, since `!rows` is quiet. `StepAll $items, !changes` fires with `{0: Todo "item 0", False}`, reading `$items` as `{}`. That is `$items`'s change event, so `for $items` sees a key appear in this occurrence and builds row `[0]` now: three buttons at `1/[0]/0/#0/0`, `1/[0]/1/#0/0` and `1/[0]/2/#0/0`, a hold `$starred` at `False`, and a label at `1/[0]/3/#0/0` with `"[ ] item 0"`. Commit: `$next` is `1`, `$items` has one entry.
 
 ```
 0/#0/0:        Ui.Button(label="Add")
@@ -275,7 +275,7 @@ Each row's block returns an event of `Change`, and `for` consolidates those into
 
 **Occurrence 5.** `click` to `1/[1]/1/#0/0`, Delete on row 1. `!rows` fires with `{1: Delete}`; `$items` loses key 1; `for` tears row `[1]` down at commit. Row 0's star is still set and row 2's paths are what they were. Nothing was renumbered.
 
-The program is a cycle: `$items` is defined from `!changes`, `!changes` comes from `!rows`, and `!rows` is the result of `for $items`. It is legal because it passes through delayed edges. `StepAll ($items, !changes)` reads `$items` through a tag, and the consolidated event of a `for` merges the blocks that existed as the occurrence opened, the way `!Switch` picks its inner event: a block born in an occurrence has its own events heard from the next one. Nothing is lost by that, because a row's events are clicks, and a click cannot arrive at a slot in the occurrence the slot was created.
+The program is a cycle: `$items` is defined from `!changes`, `!changes` comes from `!rows`, and `!rows` is the result of `for $items`. It is legal because it passes through delayed edges. `StepAll $items, !changes` reads `$items` through a tag, and the consolidated event of a `for` merges the blocks that existed as the occurrence opened, the way `!Switch` picks its inner event: a block born in an occurrence has its own events heard from the next one. Nothing is lost by that, because a row's events are clicks, and a click cannot arrive at a slot in the occurrence the slot was created.
 
 What this prevents: the afternoon where deleting item 3 cleared the expanded state of item 4, because the list was an array and the framework matched rows by position. Keys are identities, `for` keeps a node per key, and the state that belongs to a key is torn down with it and only with it.
 
@@ -430,18 +430,18 @@ type Watch = record:
 
 type Action = choice Start | Stop | Reset
 
-let Since: fn (Run, Instant) -> Int = \|run, now| match run:
+let Since: fn Run, Instant -> Int = \|run, now| match run:
     Stopped: 0
     Running from: now.value - from.value
 
-let Step: fn (Watch, Instant, Action) -> Watch = \|w, now, a| match a:
+let Step: fn Watch, Instant, Action -> Watch = \|w, now, a| match a:
     Start: match w.run:
         Running ignore: w
         Stopped: Watch w.base, (Running now)
     Stop: Watch (w.base + Since w.run, now), Stopped
     Reset: Watch 0, Stopped
 
-let Total: fn (Watch, Instant) -> Int = \|w, now| w.base + Since w.run, now
+let Total: fn Watch, Instant -> Int = \|w, now| w.base + Since w.run, now
 
 @stopwatch:
     $clock <- @Element Clock
@@ -493,18 +493,18 @@ tag Defer of Element:
     responds: unit
 
 # Map a path under the sandbox root, or refuse it.
-let Confine: fn (Text, Text) -> ?Text = \|root, p|
-    if (StartsWith p, "/home/"): Some (Concat [root, p])
+let Confine: fn Text, Text -> ?Text = \|root, p|
+    if (StartsWith p, "/home/"): Some (Concat [[root, p]])
     else: Nil
 
 @Forward: fn $(Path ==> Slot) -> @!(Path ==> Response) = \|$slots| @widget:
     for $slots:
         dyn $_:
-            (!resp, ignore) <- @Element _.element
+            ((!resp, ignore)) <- @Element _.element
             @ resp
 
-@Sandbox: fn (Text, @a) -> @a = \|root, @child| @widget:
-    (result, $slots) <- intercept @child, !down, $ supply
+@Sandbox: fn Text, @a -> @a = \|root, @child| @widget:
+    ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- for $slots:
         dyn $_:
             match _.element:
@@ -517,7 +517,7 @@ let Confine: fn (Text, Text) -> ?Text = \|root, p|
                             !later <- @Element Defer(requests=(unit on _.!request))
                             @ Denied on !later
                 ignore:
-                    (!resp, ignore) <- @Element _.element
+                    ((!resp, ignore)) <- @Element _.element
                     @ resp
     let supply = \|e| match e:
         Fs.Contents(path=p): match Confine root, p:
@@ -582,7 +582,7 @@ let NonGui: fn (Path ==> Slot) -> Path ==> Slot = \|slots|
     Filter slots, \Not (IsGui _.element)
 
 # Which child, if any, is at this row and takes clicks.
-let HitTest: fn (Path ==> Slot, Pointer) -> ?Path = \|slots, p|
+let HitTest: fn Path ==> Slot, Pointer -> ?Path = \|slots, p|
     match (Keys (GuiOnly slots))[p.row]:
         Some path: match slots[path]:
             Some Slot(element=Ui.Button(..), ..): Some path
@@ -590,14 +590,14 @@ let HitTest: fn (Path ==> Slot, Pointer) -> ?Path = \|slots, p|
         Nil: Nil
 
 @VBox: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     let $kids = GuiOnly $slots
     !!pointers <- dyn $kids:
         @Element Ui.VBox(children=_)
     let !pointer = !Switch !!pointers
-    let !click = {!Filter (HitTest ($slots, !pointer)): click}
+    let !click = {!Filter (HitTest $slots, !pointer): click}
     !fwd <- @Forward (NonGui $slots)
-    let !down = !Union (!click, !fwd)
+    let !down = !Union !click, !fwd
     @ result
 ```
 
@@ -605,7 +605,7 @@ Layout is not something the language knows about, and this is the smallest demon
 
 The children field is a map that changes whenever the child's list changes, and a field is plain data. So the `Ui.VBox` element is rebuilt, a fresh slot per change of `$kids`, and the pointer the program listens to is a `!Switch` over the generations. A World that diffs lists sees a VBox replaced by a VBox at the same position with different children.
 
-Hit-testing is a lifted operation over a dynamic and an event: `HitTest ($slots, !pointer)` reads `$slots` through a tag, which is the child's list *as the occurrence opened*. That is the routing rule falling out of the tag law. The World addressed its pointer to a VBox slot that existed as the occurrence opened, whose `children` field was built from exactly that list, so the row the user saw and the row the hit-test uses are the same list. There is no way for the VBox to hit-test against a list the user has not seen yet.
+Hit-testing is a lifted operation over a dynamic and an event: `HitTest $slots, !pointer` reads `$slots` through a tag, which is the child's list *as the occurrence opened*. That is the routing rule falling out of the tag law. The World addressed its pointer to a VBox slot that existed as the occurrence opened, whose `children` field was built from exactly that list, so the row the user saw and the row the hit-test uses are the same list. There is no way for the VBox to hit-test against a list the user has not seen yet.
 
 Take the child to be the counter of example 1 wrapped as `@VBox @counter`. The counter's own paths are `0/#0/0`, `1/#0/0` and `2/#0/0`.
 
@@ -637,7 +637,7 @@ The convention of a `children` field holding elements as data is the library's, 
 
 ```prism
 @Cached: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ supply
+    ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- @Forward $slots
     !refresh <- @Button $"Refresh"
     let supply = \|e| match e:
@@ -688,7 +688,7 @@ tag Net.Socket of Element:
     responds: SocketEvent
     state: Link
 
-let WhenConnected: fn (Link, Text) -> ?Text = \|link, msg| match link:
+let WhenConnected: fn Link, Text -> ?Text = \|link, msg| match link:
     Connected: Some msg
     ignore: Nil
 
@@ -699,7 +699,7 @@ let Line: fn SocketEvent -> ?Text = \|ev| match ev:
 let Status: fn Link -> Text = \|link| match link:
     Connecting: "connecting..."
     Connected: "connected"
-    Disconnected why: Concat ["disconnected: ", why]
+    Disconnected why: Concat [["disconnected: ", why]]
 
 @chat:
     $address <- @TextInput "chat.example:7000"
@@ -707,12 +707,12 @@ let Status: fn Link -> Text = \|link| match link:
     !send <- @Button $"Send"
     !conns <- dyn $address:
         let !out = !Filter (WhenConnected $link, $draft on !send)
-        (!rx, $link) <- @Element Net.Socket(address=_, requests=!out)
-        @ (!rx, $link)
+        ((!rx, $link)) <- @Element Net.Socket(address=_, requests=!out)
+        @ ((!rx, $link))
     let !rx = !Switch (First !conns)
     $$link <- $ Connecting <= Second !conns
     let $link = $Join $$link
-    $log <- [] <= Append $log, !Filter (Line !rx)
+    $log <- [[]] <= Append $log, !Filter (Line !rx)
     @Label (Status $link)
     @Label (JoinText "\n", $log)
 ```
@@ -740,7 +740,7 @@ The World reads the list, sees a socket element for an address it has no connect
 
 **Occurrence 2.** The user has typed `hello` into the draft (several occurrences, each a keystroke to `1/0`, omitted) and clicks Send. `click` to `2/#0/0`. `!send` fires; `$draft on !send` fires with `"hello"`; `WhenConnected` reads `$link` as `Connected` and passes it; `!out` fires, which is the slot's request. The World sees `requested: ["hello"]` on `3/#0/0` after the occurrence and writes it to the connection.
 
-**Occurrence 3.** A line arrives. The World sends `Received "hi back"` to `3/#0/0`. The slot's response event fires; `!Switch` delivers it as `!rx`; `Line` passes it; `Append $log, !line` fires with `["hi back"]`; the log label rebuilds.
+**Occurrence 3.** A line arrives. The World sends `Received "hi back"` to `3/#0/0`. The slot's response event fires; `!Switch` delivers it as `!rx`; `Line` passes it; `Append $log, !line` fires with `[["hi back"]]`; the log label rebuilds.
 
 **Occurrence 4.** The user edits the address to `chat.example:7001` and, in the same frame, clicks Send with `"bye"` in the draft. The keystroke goes to `0/0` and the click to `2/#0/0`. `$address` changes; the `dyn` rebuilds: generation `#1` is built with a slot for the new address, whose oracle answer is `Connecting`, since the World has no such connection. Now both generations propagate in this occurrence. In generation `#0`, `$draft on !send` fires with `"bye"`, `WhenConnected` reads that generation's `$link` as `Connected`, and the old slot's request fires. In generation `#1`, which sees all of the occurrence including the click, `$draft on !send` fires too, but `WhenConnected` reads the new slot's `$link` as `Connecting` and drops it. Exactly one send, on the old connection. `!conns` fires with the new tuple; `$$link` changes to the new `$link`; the join is `Connecting`; the status label says `"connecting..."`. At commit generation `#0` is dropped. `!Switch` adopts the new `!rx`.
 
@@ -841,7 +841,7 @@ tag Process.Args of Element:
 
 The `match` inside the `dyn` chooses between two widgets by a plain value, which is the one form a `match` with widget arms may take.
 
-`$args` has a value in occurrence 0, from the oracle, and the `dyn` over it builds once with that value; a World that cannot observe a change to the arguments never pushes one and the `dyn` never rebuilds. Arguments are not parameters of `@main` because of the sandbox of example 7: an interceptor can supply a child a different `Process.Args`, and a test can set them with `State Process.Args, ["notes.txt"]`, and neither needs a second way to start a program. A `Process.Env` is the same again.
+`$args` has a value in occurrence 0, from the oracle, and the `dyn` over it builds once with that value; a World that cannot observe a change to the arguments never pushes one and the `dyn` never rebuilds. Arguments are not parameters of `@main` because of the sandbox of example 7: an interceptor can supply a child a different `Process.Args`, and a test can set them with `State Process.Args, [["notes.txt"]]`, and neither needs a second way to start a program. A `Process.Env` is the same again.
 
 The World that runs this is the same one that runs example 5's viewer, and `Fs.File` is not a CLI tag: a GUI program reads files the same way. The CLI World adds only standard input, standard output, standard error and signals, four tags; exit, like the arguments, is a process tag.
 
@@ -880,9 +880,9 @@ let IsClosed: fn ConnEvent -> ?unit = \|ev| match ev:
     ignore: Nil
 
 let Respond: fn Text -> Text = \|request_line|
-    Concat ["HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, world\n"]
+    Concat [["HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, world\n"]]
 
-let ApplyDeltas: fn (Nat ==> unit, Nat ==> Delta) -> Nat ==> unit = \|conns, deltas|
+let ApplyDeltas: fn Nat ==> unit, Nat ==> Delta -> Nat ==> unit = \|conns, deltas|
     Fold deltas, conns, \|acc, id, d| match d:
         Opened: Insert acc, id, unit
         Shut: Remove acc, id
@@ -892,9 +892,9 @@ let ApplyDeltas: fn (Nat ==> unit, Nat ==> Delta) -> Nat ==> unit = \|conns, del
     let !opens = {IdOf !accepted: Opened}
     !closes <- for $conns:
         !ev <- @Element Net.Conn(id=key, requests=!reply)
-        let !reply = [Send (Respond !Filter (RequestLine !ev)), Close]
+        let !reply = [[Send (Respond !Filter (RequestLine !ev)), Close]]
         @ Shut on !Filter (IsClosed !ev)
-    $conns <- {} <= ApplyDeltas ($conns, !Union (!opens, !closes))
+    $conns <- {} <= ApplyDeltas $conns, (!Union !opens, !closes)
     @ unit
 ```
 
@@ -921,7 +921,7 @@ The World binds port 8080 because a listener element exists in the list, and sta
 
 The World sees a connection element for id 7, which it has, and will deliver its bytes to `1/[7]/0`.
 
-**Occurrence 2.** The request arrives. `Received "GET / HTTP/1.1\r\n..."` to `1/[7]/0`. `!ev` fires in block `[7]`; `RequestLine` passes it; `Respond` builds the response; `!reply` fires with `[Send "HTTP/1.1 200 OK...", Close]`, which is the slot's request. `IsClosed` is `Nil`; the block's result is quiet; `$conns` is unchanged. After the occurrence the World sees `requested: [[Send "...", Close]]` on `1/[7]/0`, writes the response and closes the connection.
+**Occurrence 2.** The request arrives. `Received "GET / HTTP/1.1\r\n..."` to `1/[7]/0`. `!ev` fires in block `[7]`; `RequestLine` passes it; `Respond` builds the response; `!reply` fires with `[[Send "HTTP/1.1 200 OK...", Close]]`, which is the slot's request. `IsClosed` is `Nil`; the block's result is quiet; `$conns` is unchanged. After the occurrence the World sees `requested: [[[Send "...", Close]]]` on `1/[7]/0`, writes the response and closes the connection.
 
 **Occurrence 3.** Two things at once: the World has closed connection 7 and reports it, and a new client has connected. `Closed` to `1/[7]/0` and `Accepted 8` to `0`, together. Block `[7]` fires `Shut`; `!closes` fires with `{7: Shut}`. `!opens` fires with `{8: Opened}`. `!Union` fires with `{7: Shut, 8: Opened}`; `ApplyDeltas` removes 7 and inserts 8; `$conns` changes; the `for` builds `[8]` now and tears `[7]` down at commit. The World sees one connection element replaced by another and, because it already closed 7, has nothing to cancel.
 
@@ -937,13 +937,13 @@ A server that read real requests would need to collect the bytes until the blank
 ```prism
     !closes <- for $conns:
         !ev <- @Element Net.Conn(id=key, requests=!reply)
-        $buf <- "" <= Concat [$buf, !Filter (RequestLine !ev)]
-        let !head = !Filter (CompleteHead (Concat [$buf, !Filter (RequestLine !ev)]))
-        let !reply = [Send (Respond !head), Close]
+        $buf <- "" <= Concat [[$buf, !Filter (RequestLine !ev)]]
+        let !head = !Filter (CompleteHead (Concat [[$buf, !Filter (RequestLine !ev)]]))
+        let !reply = [[Send (Respond !head), Close]]
         @ Shut on !Filter (IsClosed !ev)
 ```
 
-`$buf` lives as long as key `key` does and is torn down with it; two connections have two buffers that cannot see each other; and `Concat [$buf, !chunk]` reads the buffer before the chunk by the tag law, which is the right buffer to append to. `CompleteHead: fn Text -> ?Text` is a plain function that returns the head once the blank line is in. The second `Concat` repeats the first rather than reading `$buf` after it changed, because there is no "after" inside an occurrence: a program that wants the new buffer and the test on it in the same occurrence writes the expression once and uses it twice, or writes a derived `let`.
+`$buf` lives as long as key `key` does and is torn down with it; two connections have two buffers that cannot see each other; and `Concat [[$buf, !chunk]]` reads the buffer before the chunk by the tag law, which is the right buffer to append to. `CompleteHead: fn Text -> ?Text` is a plain function that returns the head once the blank line is in. The second `Concat` repeats the first rather than reading `$buf` after it changed, because there is no "after" inside an occurrence: a program that wants the new buffer and the test on it in the same occurrence writes the expression once and uses it twice, or writes a derived `let`.
 
 What this prevents: the server where a connection object is kept in a map by hand, removed in a close callback that sometimes runs after the next read callback, so the map has a dead entry that the next write crashes on. Here the map is the only model, its definition lists every event that changes it, the slot's life is the key's life, and a write to a dead connection is impossible because a dead connection has no slot.
 
@@ -1039,17 +1039,17 @@ let Other: fn App -> App = \|app| match app:
     A: B
     B: A
 
-let Pick: fn (App, Path ==> Slot, Path ==> Slot) -> Path ==> Slot = \|app, sa, sb| match app:
+let Pick: fn App, Path ==> Slot, Path ==> Slot -> Path ==> Slot = \|app, sa, sb| match app:
     A: sa
     B: sb
 
-let OnlyFor: fn (App, App, Path ==> Response) -> ?(Path ==> Response) = \|want, have, m|
+let OnlyFor: fn App, App, Path ==> Response -> ?(Path ==> Response) = \|want, have, m|
     if (want == have): Some m
     else: Nil
 
-@Shell: fn (@unit, @unit) -> @unit = \|@a, @b| @widget:
-    (ignore, $sa) <- intercept @a, !down_a, $ \|e| @Element e
-    (ignore, $sb) <- intercept @b, !down_b, $ \|e| @Element e
+@Shell: fn @unit, @unit -> @unit = \|@a, @b| @widget:
+    ((ignore, $sa)) <- intercept @a, !down_a, $ \|e| @Element e
+    ((ignore, $sb)) <- intercept @b, !down_b, $ \|e| @Element e
     !next <- @Button $"Next app"
     $active <- A <= Other $active on !next
     let $shown = Pick $active, $sa, $sb
@@ -1057,11 +1057,11 @@ let OnlyFor: fn (App, App, Path ==> Response) -> ?(Path ==> Response) = \|want, 
     !!pointers <- dyn $kids:
         @Element Ui.VBox(children=_)
     let !pointer = !Switch !!pointers
-    let !click = {!Filter (HitTest ($shown, !pointer)): click}
+    let !click = {!Filter (HitTest $shown, !pointer): click}
     !fwd_a <- @Forward (NonGui $sa)
     !fwd_b <- @Forward (NonGui $sb)
-    let !down_a = !Union (!Filter (OnlyFor A, $active, !click), !fwd_a)
-    let !down_b = !Union (!Filter (OnlyFor B, $active, !click), !fwd_b)
+    let !down_a = !Union (!Filter (OnlyFor A, $active, !click)), !fwd_a
+    let !down_b = !Union (!Filter (OnlyFor B, $active, !click)), !fwd_b
     @ unit
 
 @main:
@@ -1088,7 +1088,7 @@ Two `Clock` elements, the supplier's and the forwarder's, and that is fine: stat
 
 **Occurrence 1.** A tick: `tick` to `5/0/[1]/#0/0` and a push of `Instant 5100` for `Clock`. The forwarded `Time.Every` slot's response is routed by `!fwd_b` to the stopwatch's slot at its path `1`; nothing listens there. The push reaches the supplied `Clock` widget's slot, whose dynamic is the stopwatch's `$clock`; the stopwatch's label, derived from it, rebuilds with the same text. `$sb` changes, but `$shown` is `$sa`, so nothing on screen changes.
 
-**Occurrence 2.** The user clicks the first row of the box: `Pointer(row=0)` to `3/#0/0`. `HitTest ($shown, !pointer)` reads `$shown`, the counter's list as it opened, finds `0/#0/0`, a button; `!click` fires with `{0/#0/0: click}`; `OnlyFor A, $active, !click` reads `$active` as `A` and passes it; `!down_a` fires; the counter's Increment slot gets its click. The counter's label rebuilds; `$sa` changes; `$shown` and `$kids` change; the VBox rebuilds to generation `#1`. `OnlyFor B` drops the click and `!down_b` is quiet, apart from `!fwd_b`, which is also quiet.
+**Occurrence 2.** The user clicks the first row of the box: `Pointer(row=0)` to `3/#0/0`. `HitTest $shown, !pointer` reads `$shown`, the counter's list as it opened, finds `0/#0/0`, a button; `!click` fires with `{0/#0/0: click}`; `OnlyFor A, $active, !click` reads `$active` as `A` and passes it; `!down_a` fires; the counter's Increment slot gets its click. The counter's label rebuilds; `$sa` changes; `$shown` and `$kids` change; the VBox rebuilds to generation `#1`. `OnlyFor B` drops the click and `!down_b` is quiet, apart from `!fwd_b`, which is also quiet.
 
 **Occurrence 3.** `click` to `2/#0/0`, Next app, together with a tick and a push. `$active` changes to `B`; `Pick` changes `$shown` to `$sb`; the VBox rebuilds with the stopwatch's buttons and label. In the same occurrence the tick and push go where they always go.
 

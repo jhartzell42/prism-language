@@ -1,4 +1,4 @@
-# Chapter 3 — Events, dynamics, and time
+# Chapter 4 — Events, dynamics, and time
 
 Everything a Prism program does happens in an occurrence, and an occurrence is a transaction: it has a before, an after, and no inside that anything can see. This chapter is the definition of the two kinds of value that live against that clock, events and dynamics, and of the clock itself. Each is given the same way: the afternoon you lost to the problem it solves, the ordinary-language meaning, the denotation, the laws, and a few lines of code that show the law doing work. The laws are small and there are not many of them, and the claim is that they are enough: the tag law alone turns a cyclic definition into a definition, the change law alone rules out glitches, and the rule for what a widget built in the middle of an occurrence sees is one sentence with five consequences. The chapter ends with each law restated as a Test World script, the things deliberately left out of this part of the language and what each absence buys, and four idioms that are what writing against these laws feels like day to day.
 
@@ -36,7 +36,7 @@ This is why `!a + !b` is a compile error and not an event of sums. At an occurre
 
 This is liveable because simultaneity is rare, and when it happens the program has already said what it wants. A click and a keystroke in one frame; a network response and a timer in one turn; two buttons the user mashed together. In every framework you have used, these cases were resolved by registration order and you found out which order when a bug report arrived. Here they are resolved by the line that merges the two events, and reading that line is reading the resolution.
 
-The refusal is about two *events*. An optional inside an event is a different matter and raises no error: `!?a` is an event that sometimes fires with `Nil`, and `?` lifts inside it at the plain layer, so `!?a + 1` is an `!?Nat` that fires whenever `!?a` fires, with `Nil` when it did. The same holds under `$`: `$a / $b` is a `$?Nat`. The time functor is always outermost and lifts first; `?` lifts second, inside it; and `match` on the optional is how you get back out. `!Filter` is that `match` packaged for events: it takes an `!?A` and gives the `!A` that fires only on `Some`. The precedence between `?` and the time sigils, and `?$x` as the thing that does not lift, are chapter 2's; here it is enough that a `?` never makes two events coincide, because it never adds a second event.
+The refusal is about two *events*. An optional inside an event is a different matter and raises no error: `!?a` is an event that sometimes fires with `Nil`, and `?` lifts inside it at the plain layer, so `!?a + 1` is an `!?Nat` that fires whenever `!?a` fires, with `Nil` when it did. The same holds under `$`: `$a / $b` is a `$?Nat`. The time functor is always outermost and lifts first; `?` lifts second, inside it; and `match` on the optional is how you get back out. `!Filter` is that `match` packaged for events: it takes an `!?A` and gives the `!A` that fires only on `Some`. The precedence between `?` and the time sigils, and `?$x` as the thing that does not lift, are chapter 3's; here it is enough that a `?` never makes two events coincide, because it never adds a second event.
 
 ### `!never`, and why there is no `!always`
 
@@ -48,7 +48,7 @@ Everything you wanted `!always` for is available some other way. A value that sh
 
 ### Merge, and why the left wins
 
-`a | b` fires at n if either fires at n; its value is `a`'s if `a` fires, else `b`'s. It is associative, and `!never` is its identity on both sides. `!Leftmost [e1, e2, ...]` is the same over an array, taking the first in array order that fires.
+`a | b` fires at n if either fires at n; its value is `a`'s if `a` fires, else `b`'s. It is associative, and `!never` is its identity on both sides. `!Leftmost [[e1, e2, ...]]` is the same over an array, taking the first in array order that fires.
 
 The left bias is the answer to "what if both buttons are clicked at once", and it is an answer the program gives by choosing which one to write on the left. In the counter,
 
@@ -78,7 +78,7 @@ The third one is the common case in which the bias is irrelevant because both si
 
 `v on !e` fires exactly when `!e` fires, with the value `v`. When `v` is a dynamic, the value is the dynamic's value *before* the occurrence, which is the tag law of the next section applied here. `on` is how a click becomes "a click while the label was X" and a keystroke becomes "Enter, with the text as it stood".
 
-`on` has no semantics of its own. It is a plain function that returns its left operand, `\|v, e| v`, and the lifting rule gives it its meaning: an operation with one event operand fires when that event fires, with the operation applied to the event's value and the dynamics' old values. The whole of `on` is that lifting rule plus a function that ignores its second argument. This matters because it means there is nothing to learn: `$text on !enter` and `Length $text on !enter` and `Submit ($text, $user) on !enter` are all the same mechanism, and in the last one the name `on` could be dropped in favour of a three-argument function and nothing would change.
+`on` has no semantics of its own. It is a plain function that returns its left operand, `\|v, e| v`, and the lifting rule gives it its meaning: an operation with one event operand fires when that event fires, with the operation applied to the event's value and the dynamics' old values. The whole of `on` is that lifting rule plus a function that ignores its second argument. This matters because it means there is nothing to learn: `$text on !enter` and `Length $text on !enter` and `(Submit $text, $user) on !enter` are all the same mechanism, and in the last one the name `on` could be dropped in favour of a three-argument function and nothing would change.
 
 Three uses you will write constantly:
 
@@ -88,7 +88,7 @@ let !tick_at = $clock on !tick                 # the time before the tick
 let !selected = $items[$cursor] on !choose     # a lookup, lifted over two dynamics and one event
 ```
 
-One thing `on` does not do is pair an event's own value with a dynamic; it discards the event's value. To keep both, apply a function: `(\|k, n| (k, n)) !key, $count` is an event of pairs, the key that fired and the count before it. Everyone reaches for `($count, !key)` once and finds that a tuple with an event inside it is a plain tuple, not an event; the sigil's position says what moves, and in `(!a, $b)` nothing does.
+One thing `on` does not do is pair an event's own value with a dynamic; it discards the event's value. To keep both, apply a function: `(\|k, n| ((k, n))) !key, $count` is an event of pairs, the key that fired and the count before it. Everyone reaches for `(($count, !key))` once and finds that a tuple with an event inside it is a plain tuple, not an event; the sigil's position says what moves, and in `((!a, $b))` nothing does.
 
 ### Lifting over one event
 
@@ -128,7 +128,7 @@ With a non-prompt switch, every node's height is fixed by its sources as they st
 let !loaded = !Switch !!loads
 ```
 
-`Fs.File` is chapter 6's one-shot file conversation, `requests: !FsRequest` and `responds: FsResponse`. Here `@started` fires in the block's build occurrence, the `Read` fires in that occurrence, the response comes in a later one, and by then `!Switch` is listening to the new block's `!resp`. Nothing is lost, because nothing a block could want to say to its parent on the occurrence of its birth is something the parent did not already know from building it.
+`Fs.File` is chapter 7's one-shot file conversation, `requests: !FsRequest` and `responds: FsResponse`. Here `@started` fires in the block's build occurrence, the `Read` fires in that occurrence, the response comes in a later one, and by then `!Switch` is listening to the new block's `!resp`. Nothing is lost, because nothing a block could want to say to its parent on the occurrence of its birth is something the parent did not already know from building it.
 
 In the button above, a click in the same occurrence as a relabel is delivered from the old button, under the old label. That is the only answer consistent with routing, since the click was addressed to a slot in the element list as the occurrence opened, and the old button is what was there. The old block keeps propagating until the occurrence commits, so its click reaches the switch, which is still listening to it; at commit the switch adopts the new inner, and from n+1 the new button's clicks are the ones heard. There is no moment at which a button is on screen and nothing is listening to it, and no moment at which two are listened to at once.
 
@@ -200,7 +200,7 @@ There is the whole story of `$checked`. It starts false. A toggle sets it to the
 
 Formally: `$x <- v <= !e`, allowed only as a statement in a widget block, defines `$x` whose value before the first firing of `!e` is `v`, whose change event is `!e`, and whose value after any occurrence where `!e` fired is `!e`'s value there. Hold is the only way to make a dynamic that is not derived from another. Every piece of state in a Prism program is a hold, so every piece of state has a line that names its initial value and the one event that can move it, and reading that line is reading everything that will ever happen to it.
 
-The value `v` is plain, or a dynamic if `$x` is a dynamic of dynamics. It is not an expression re-evaluated on each firing; it is the value before the first firing and nothing else. A hold is a statement rather than an expression because it has an owner, the node of the widget block it is written in, and there is no hold outside a widget block because that would be state nothing owns. Which node owns which hold, what a `dyn` rebuild and a `for` key's departure do to the holds inside them, and where state that must survive a rebuild lives are chapter 4's; the one fact this chapter needs is that a hold inside a rebuilt block is a new hold, starting at `v`, and it obeys the construction rule below like any widget built mid-occurrence.
+The value `v` is plain, or a dynamic if `$x` is a dynamic of dynamics. It is not an expression re-evaluated on each firing; it is the value before the first firing and nothing else. A hold is a statement rather than an expression because it has an owner, the node of the widget block it is written in, and there is no hold outside a widget block because that would be state nothing owns. Which node owns which hold, what a `dyn` rebuild and a `for` key's departure do to the holds inside them, and where state that must survive a rebuild lives are chapter 5's; the one fact this chapter needs is that a hold inside a rebuilt block is a new hold, starting at `v`, and it obeys the construction rule below like any widget built mid-occurrence.
 
 In the occurrence in which the widget is built, `$x`'s value is `v`, and if `!e` fires in that same occurrence, `$x` changes to it then. This is the build occurrence behaving like every other occurrence: the hold has a before-value, `v`, and a change event, which fires or does not. It is how `@started` kicks things off:
 
@@ -228,7 +228,7 @@ When `$a` changes from 0 to 5 at n, `$d` changes from 1 to 16, once. It does not
 
 The at-most-once half is the half that keeps the first half honest. If `$d`'s change event could fire twice at n, once per input, then "the value at n" would be ambiguous, and a hold fed by `$d`'s change event would have to pick. One firing, one value, one commit.
 
-Who is bound: the runtime, for every derived dynamic, and the World, for every state element. A state element is a dynamic the World feeds, and a World that pushed two values for one element value in one occurrence would be making that dynamic change twice at n, which is the at-most-once half broken from outside. The runtime enforces its own half by firing each node once after its prompt sources (heights, below), and enforces the World's half at the boundary: a second push for the same element value in one run call is rejected as a `Component` error, like a duplicate response to one path, and the occurrence does not open. The script form of the law is the diamond test in "Laws as tests"; the boundary half has its test in chapter 9, where the run call is specified.
+Who is bound: the runtime, for every derived dynamic, and the World, for every state element. A state element is a dynamic the World feeds, and a World that pushed two values for one element value in one occurrence would be making that dynamic change twice at n, which is the at-most-once half broken from outside. The runtime enforces its own half by firing each node once after its prompt sources (heights, below), and enforces the World's half at the boundary: a second push for the same element value in one run call is rejected as a `Component` error, like a duplicate response to one path, and the occurrence does not open. The script form of the law is the diamond test in "Laws as tests"; the boundary half has its test in chapter 10, where the run call is specified.
 
 ### Equality of readings
 
@@ -262,7 +262,7 @@ The one place promptness remains is construction, and it is deliberate. `dyn $x:
 
 `$x` inside a text literal interpolates by lifting: `"Count: $count"` is a dynamic text, changing with `$count`, and `$"Count: $count"` means the same with the sigil made explicit. An event interpolated with `${!line}` makes the literal an event, firing once per line.
 
-`$$x` is a dynamic of dynamics, and `$Join` flattens it: `$Join $$x` at n is the value after n of the inner that `$$x` holds after n, so it is prompt in the outer and in the inner, including when both change at n. Chapter 4 owns the rest of switching; the law has its script in "Laws as tests" below. `?$x` is an optional dynamic, a plain value that is `Nil` or holds a dynamic; `$?x` is a dynamic whose value is sometimes `Nil`. They are different types, and the order of the sigils is the order you would say it.
+`$$x` is a dynamic of dynamics, and `$Join` flattens it: `$Join $$x` at n is the value after n of the inner that `$$x` holds after n, so it is prompt in the outer and in the inner, including when both change at n. Chapter 5 owns the rest of switching; the law has its script in "Laws as tests" below. `?$x` is an optional dynamic, a plain value that is `Nil` or holds a dynamic; `$?x` is a dynamic whose value is sometimes `Nil`. They are different types, and the order of the sigils is the order you would say it.
 
 ## Time
 
@@ -355,13 +355,13 @@ The structure that looks like the cycle above is also the structure of every lis
     !rows <- for $items:
         !delete <- @Button $"Delete"
         @ Delete on !delete
-    let !changes = !Union (!adds, !rows)
-    $items <- {} <= StepAll ($items, !changes)
+    let !changes = !Union !adds, !rows
+    $items <- {} <= StepAll $items, !changes
 ```
 
 (`!Union` merges two maps of firings, the left winning a shared key; `StepAll` folds a map of changes into the items in key order. Both are plain library functions.) `$items` is defined from `!changes`, which comes from `!rows`, which is the consolidation of `for $items`. The row's result is `Delete on !delete`, and `!delete` is a `!Switch` inside `@Button`, which reads before. A row born at n fires nothing at n. The cycle is legal, and would be a compile error with `@ Delete on !started` as the row's result, which is right: that program adds a row and immediately deletes it, in the same occurrence, in which the deletion rebuilds the `for`, which builds nothing, which changes `$items` again. For a `for` whose blocks return plain values or dynamics, the consolidated `$(K ==> A)` changes at n whenever a key appears at n, so the edge from the collection to the consolidation is always prompt and a hold fed from it that feeds the collection is always a cycle.
 
-The check can only see what is in front of it. The todo list is legal because the row's body is written in the same block as the hold it feeds; the compiler reads `@ Delete on !delete`, finds a switch, and knows the row is silent at birth. Write the same list with the row passed in, `for $items: @Row _` where `@Row` is a parameter of the enclosing widget function, and the body is not visible, so the compiler assumes the worst: a row might fire at birth, the edge from `$items` to `!rows` is taken as prompt, and `$items <- {} <= StepAll ($items, !changes)` is rejected as a cycle even if every `@Row` ever passed is silent. The elaborator records "can fire at birth" on every `for` node, from the body when it can see one and conservatively when it cannot, and the typed AST prints the flag; the Haskell implementation reads it to decide whether the consolidation needs Reflex's `coincidence` over the membership change, which is the one place that combinator is permitted. A program that wants a parameterised row and the closed loop breaks the loop with a delayed edge the compiler can see: the rows feed a hold, and the collection is stepped from that hold through a tag at some other event, so the cycle passes through a read of before-state wherever the rows came from.
+The check can only see what is in front of it. The todo list is legal because the row's body is written in the same block as the hold it feeds; the compiler reads `@ Delete on !delete`, finds a switch, and knows the row is silent at birth. Write the same list with the row passed in, `for $items: @Row _` where `@Row` is a parameter of the enclosing widget function, and the body is not visible, so the compiler assumes the worst: a row might fire at birth, the edge from `$items` to `!rows` is taken as prompt, and `$items <- {} <= StepAll $items, !changes` is rejected as a cycle even if every `@Row` ever passed is silent. The elaborator records "can fire at birth" on every `for` node, from the body when it can see one and conservatively when it cannot, and the typed AST prints the flag; the Haskell implementation reads it to decide whether the consolidation needs Reflex's `coincidence` over the membership change, which is the one place that combinator is permitted. A program that wants a parameterised row and the closed loop breaks the loop with a delayed edge the compiler can see: the rows feed a hold, and the collection is stepped from that hold through a tag at some other event, so the cycle passes through a read of before-state wherever the rows came from.
 
 **Across widget functions and through switching**, not every cycle can be found statically. `!out <- @Echo !out` is a cycle if `@Echo`'s result depends promptly on its argument and not if `@Echo` holds the argument first, and the block that binds it does not see `@Echo`'s body. A `dyn` may choose, at runtime, between a block whose result is prompt in some input and one whose result is not, and the cycle exists only when the first is chosen. An implementation must detect these when they occur and treat them as an error: it must not deadlock, must not loop, and must not fire a node twice. In a height-ordered runtime the moment is precise: a node that tries to schedule at or below the current height is a node that was already supposed to have fired, and that is the cycle, reported with the chain of nodes that led to it. What happens next, abort of the occurrence or quarantine of the subtree, is the error chapter's subject; what this chapter promises is that the occurrence in which a cycle is found commits nothing.
 
@@ -405,7 +405,7 @@ Suppose a late subscriber were hidden from earlier firings: a widget built at n 
 
 Suppose instead that each late subscriber re-ran the closures it needed: the new widget, on subscribing, computes the event's value afresh from its inputs. Now a closure runs once for the original subscribers and once more for each late one. A closure that is pure gives the same value each time, which hides the problem until the value is used for something that counts, a request fired from a lifted operation that now fires twice, or a cost that is now proportional to subscribers. At-most-once is a law, and this breaks it.
 
-Suppose instead the `dyn` built with the old value and then, hearing the change, rebuilt in the same occurrence. The World sees one generation after n, so the transcript looks right. But the first build happened: its `@started` fired, and any request it fired from `@started` fired, so the World is handed two requests, one for a page that never existed. Its holds were created and discarded. Its elements were in the list for a moment nobody saw, and its paths were minted and dropped, which chapter 4's path rules make visible in every later path. Two builds in one occurrence cost twice the work and leave a visible trace in the request log, and the request log is what the conformance suite compares.
+Suppose instead the `dyn` built with the old value and then, hearing the change, rebuilt in the same occurrence. The World sees one generation after n, so the transcript looks right. But the first build happened: its `@started` fired, and any request it fired from `@started` fired, so the World is handed two requests, one for a page that never existed. Its holds were created and discarded. Its elements were in the list for a moment nobody saw, and its paths were minted and dropped, which chapter 5's path rules make visible in every later path. Two builds in one occurrence cost twice the work and leave a visible trace in the request log, and the request log is what the conformance suite compares.
 
 Suppose instead that construction were deferred: the `dyn` notes the change at n and builds at n+1, in an occurrence the runtime opens itself. Now the parent's `dyn` event fires one occurrence late, so a hold on the block's result lags its cause; the element list's change event fires one occurrence after the dynamic that caused it; a World that batched inputs sees an occurrence it did not open; and the runtime has gained a scheduler, a queue, and a budget for how many self-opened occurrences a turn may contain. Every one of these is a mechanism the language was designed not to need, and the only thing bought is a simpler rebuild path.
 
@@ -633,7 +633,7 @@ Each generation fires `@started` in the occurrence it is born, and `!Switch` nev
     !rebuild <- @Button $"Rebuild"
     $gen <- 0 <= $gen + 1 on !rebuild
     !!clicks <- dyn $gen:
-        !c <- @Element Ui.Button(label=(Concat ["gen ", ToText _]))
+        !c <- @Element Ui.Button(label="gen ${_}")
         @ _ on !c
     $clicked <- -1 <= !Switch !!clicks
     @Label $"clicked=$clicked"
@@ -707,7 +707,7 @@ test join_follows_quiet_inner: Test @join_quiet_inner: array:
     Expect Ui.Label(text="2")
 ```
 
-`$b` never changes: its hold is fed by `!never`. Swapping to it shows its current value, 100, in the swap's occurrence, with no change event from the inner to help; an implementation that only updated the join on the inner's change would keep showing 1. Bumping `$a` while `$b` is chosen changes nothing visible, and swapping back shows the 2 that `$a` reached while it was not being watched: the join reads the inner's current value when it adopts it, and that value is whatever the inner's own history made it. Chapter 4 says how `$Join` is built from a hold of the inner's change events and a prompt read of the inner at the swap; that construction has to pass this script.
+`$b` never changes: its hold is fed by `!never`. Swapping to it shows its current value, 100, in the swap's occurrence, with no change event from the inner to help; an implementation that only updated the join on the inner's change would keep showing 1. Bumping `$a` while `$b` is chosen changes nothing visible, and swapping back shows the 2 that `$a` reached while it was not being watched: the join reads the inner's current value when it adopts it, and that value is whatever the inner's own history made it. Chapter 5 says how `$Join` is built from a hold of the inner's change events and a prompt read of the inner at the swap; that construction has to pass this script.
 
 ### A nested `dyn` built in the occurrence its dynamic changed builds once, with the new value
 
@@ -853,9 +853,9 @@ A fold is a hold whose change event reads the hold through a tag. The initial va
 
 ```prism
 $total <- 0 <= $total + !amount
-$history <- [] <= Append $history, !line
+$history <- [[]] <= Append $history, !line
 $state <- Idle <= Step $state, !action
-$best <- Nil <= Better $best, !score            # Better: fn (?Int, Int) -> ?Int
+$best <- Nil <= Better $best, !score            # Better: fn ?Int, Int -> ?Int
 ```
 
 When more than one event moves the state, the merge picks who wins when they coincide, and the hold is still one line:
@@ -869,7 +869,7 @@ A reset in the same occurrence as an increment is a reset, and the next person t
 When the step needs another dynamic, it goes in the operation and is read through a tag:
 
 ```prism
-$watch <- Watch 0, Stopped <= Step $watch, $clock, !action
+$watch <- (Watch 0, Stopped) <= Step $watch, $clock, !action
 ```
 
 The clock is the clock before the occurrence. If the same occurrence pushes a new clock, the stamp is still the old one; that is the tag law, and a program that wants the newer time cannot have it, because at an event there is one version.
@@ -883,10 +883,10 @@ The habit to acquire: when you want state, write the hold first and let its line
 ```prism
 let !submitted = $text on !enter              # the text, as it stood, when Enter was pressed
 let !chosen = $items[$cursor] on !choose      # an optional, since the index might be out of range
-let !stamped = (\|k, t| (k, t)) !key, $clock  # the key that fired, paired with the clock before it
+let !stamped = (\|k, t| ((k, t))) !key, $clock  # the key that fired, paired with the clock before it
 ```
 
-The third line is the one everyone first writes as `($clock, !key)`, which is a plain tuple holding a dynamic and an event, and does not fire. The sigil's position says what moves, and in a tuple nothing does.
+The third line is the one everyone first writes as `(($clock, !key))`, which is a plain tuple holding a dynamic and an event, and does not fire. The sigil's position says what moves, and in a tuple nothing does.
 
 To drop firings on a condition, lift a function that returns an optional and filter:
 
@@ -915,7 +915,7 @@ tag Time.After of Element:
     requests: !Nat                 # a token; the World answers with the same token after `delay`
     responds: Nat
 
-@Debounce: fn (Int, !a) -> @!a = \|delay, !in| @widget:
+@Debounce: fn Int, !a -> @!a = \|delay, !in| @widget:
     $gen <- 0 <= $gen + 1 on !in
     !back <- @Element Time.After(delay=delay, requests=($gen + 1 on !in))
     $latest <- Nil <= Some !in
@@ -958,7 +958,7 @@ A stream of words, and you want a count per word, shown as a list that updates i
 tag Words of Element:
     responds: Text
 
-let Bump: fn (Text ==> Nat, Text) -> Text ==> Nat = \|m, w| match m[w]:
+let Bump: fn Text ==> Nat, Text -> Text ==> Nat = \|m, w| match m[w]:
     Some n: Insert m, w, (n + 1)
     Nil: Insert m, w, 1
 

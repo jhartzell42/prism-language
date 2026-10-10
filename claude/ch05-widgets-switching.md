@@ -1,4 +1,4 @@
-# Chapter 4 — Widgets and switching
+# Chapter 5 — Widgets and switching
 
 A widget is the one thing in Prism with a lifetime, and this chapter is about what that buys. Events and dynamics describe the whole of time and never need to be born or die; a widget is built in one occurrence, lives through some, and is torn down in another, and so every piece of the language that needs a beginning and an end (state, IO, identity, cycles, subscriptions) is owned by one. Three constructs let a program change its own structure while it runs, `dyn`, `for` and the lifting that quietly spells `dyn` for you, and two primitives, `!Switch` and `$Join`, bring results across the boundary of a part that was replaced. The underlying claim is that one ownership tree, with rebuilds as ordinary consequences of dynamics changing in the occurrence they change, replaces reconciliation, lifecycle and garbage collection at once.
 
@@ -29,7 +29,7 @@ A widget is a recipe; a node is a dish. The recipe is a value: you can store it 
     let @b = @Button $"OK"
     !x <- @b
     !y <- @b
-    @ (!x, !y)
+    @ ((!x, !y))
 ```
 
 Two buttons, two paths, two click events, and `@b` is neither of them. If you have used a UI framework where a component instance was a value you could hand around, this is the thing to unlearn: `@b` cannot be clicked, because `@b` is not on the screen. Only its nodes are, and a node is not something you can name.
@@ -56,7 +56,7 @@ That is why the sigil is called "widget" and why, a few pages in, the word has n
 
 A node holds its children, its holds, its cyclic placeholders, its element slots (each with a path, an element value, a response trigger, a state dynamic and a request event) and the graph nodes its occurrence-time bindings compile to. The target node has no backend channel: no public event table, no `backend_data`, no delegate. The run call is the only boundary, and a node is told nothing and tells nothing except through the element list.
 
-Ownership points one way, parent to child, through `Rc`. Subscriber lists in the graph hold `Weak` references. A closure compiled from an occurrence-time expression captures the graph objects it reads through the node that owns it, as indices into that node's environment, never as a strong pointer to a sibling's shared object. Those three rules together are the whole reason there is no collector: the tree owns the nodes, the nodes own their closures, the closures reach the graph through the tree, and nothing points back up. The runtime is bound by all three and the compiler by the third; chapter 10 has the `WidgetBuilder` that makes the first two true by construction and the test, `dropping_a_widget_frees_its_cyclic_loops`, that checks the one place a node could own itself.
+Ownership points one way, parent to child, through `Rc`. Subscriber lists in the graph hold `Weak` references. A closure compiled from an occurrence-time expression captures the graph objects it reads through the node that owns it, as indices into that node's environment, never as a strong pointer to a sibling's shared object. Those three rules together are the whole reason there is no collector: the tree owns the nodes, the nodes own their closures, the closures reach the graph through the tree, and nothing points back up. The runtime is bound by all three and the compiler by the third; chapter 11 has the `WidgetBuilder` that makes the first two true by construction and the test, `dropping_a_widget_frees_its_cyclic_loops`, that checks the one place a node could own itself.
 
 ## Widget blocks
 
@@ -79,21 +79,21 @@ The forms, in the order a reader meets them, each with what it builds:
 `pattern <- widget` builds the widget as a child of this block's node and binds its result to the pattern. The pattern is usually a sigiled name. It may be a tuple or record pattern over a bundle:
 
 ```prism
-(!lines, !eof) <- @Lines
+((!lines, !eof)) <- @Lines
 TextInput(!changed, $value) <- @TextInput "hello"
 ```
 
 `widget` alone, as a statement, builds it and discards the result. `@Label $"Count: $count"` on a line by itself is the common case; `@Element Time.Every(period=100)` is another, where the element exists to make the World come back and nobody wants the tick.
 
-`pattern <- @Element e` is the bind form of the one widget that reaches outside: it creates a slot in this block's node, with a path under the node's, and its result is whatever the tag declares, `!Response`, `$State`, a pair of both, or `unit` for a presence element. `!click <- @Element Ui.Button(label="OK")` and `$args <- @Element Process.Args` are the two usual spellings; in a catch-all arm of an interceptor, where the tag is not statically known, the result is the generic `(!resp, ignore) <- @Element _.element` and the types are checked per slot at runtime. The slot lives as long as the node and the element's fields are fixed for the slot's life; a dynamic in a field lifts the whole `@Element` into a `dyn`, which the lifting section below covers.
+`pattern <- @Element e` is the bind form of the one widget that reaches outside: it creates a slot in this block's node, with a path under the node's, and its result is whatever the tag declares, `!Response`, `$State`, a pair of both, or `unit` for a presence element. `!click <- @Element Ui.Button(label="OK")` and `$args <- @Element Process.Args` are the two usual spellings; in a catch-all arm of an interceptor, where the tag is not statically known, the result is the generic `((!resp, ignore)) <- @Element _.element` and the types are checked per slot at runtime. The slot lives as long as the node and the element's fields are fixed for the slot's life; a dynamic in a field lifts the whole `@Element` into a `dyn`, which the lifting section below covers.
 
-`pattern <- intercept @child, !responses, $supplier` binds an interceptor, which is a widget like any other: it builds `@child` in its own node and its result is the pair of the child's result and the child's element list, `(result, $list) <- intercept @inner, !down, $supply`. Everything about what an interceptor can do with the list is chapter 5's; here it is one more bound statement whose child is owned by this node.
+`pattern <- intercept @child, !responses, $supplier` binds an interceptor, which is a widget like any other: it builds `@child` in its own node and its result is the pair of the child's result and the child's element list, `((result, $list)) <- intercept @inner, !down, $supply`. Everything about what an interceptor can do with the list is chapter 6's; here it is one more bound statement whose child is owned by this node.
 
 `let pattern = expression` binds a value of any kind without building anything. `let !delta = -1 on !decrement | +1 on !increment` names an event; `let $label = $"Clicked $count times"` names a derived dynamic; `let @b = @Button $"OK"` names a widget, which is a value until bound. A `let`-bound widget can be bound later any number of times, and builds that many nodes.
 
 `$x <- v <= !e` is a hold. Its value before the first firing of `!e` is `v`; its change event is `!e`; its value after any occurrence in which `!e` fired is that firing's value. In the occurrence the block is built, `$x` is `v`, and if `!e` fires in that same occurrence `$x` changes to it then, which is what makes `@started`-driven initialisation behave the way it looks. Holds are statements, not expressions, because a hold is owned, and the `<-` makes the owner visible: the node whose block this is.
 
-The last statement is the block's result. If it is a widget, the block's result is that widget's result. `@ v` makes a plain value the result; `@ (!a, $b)` returns a bundle; `@ !never` is a block that returns an event which never fires, which the modal pattern below uses.
+The last statement is the block's result. If it is a widget, the block's result is that widget's result. `@ v` makes a plain value the result; `@ ((!a, $b))` returns a bundle; `@ !never` is a block that returns an event which never fires, which the modal pattern below uses.
 
 `match v:` with a widget in its arms is a statement when `v` is plain and every arm is a widget block, and it chooses which of several widgets this node builds. It is legal only where the scrutinee is plain, which inside a `dyn` or `for` block means the value the block was built for: `match mode: Browse: @BrowsePane … Edit: @EditPane …` under `dyn $state:` is the common form, and `match step:` in the wizard below is another. A `match` over a dynamic with a widget in an arm is rejected, for the reason the lifting section gives: choosing a widget by a changing value is construction, and construction over a dynamic is spelled `dyn`. `if c: @a else: @b` with plain `c` is the two-arm case of the same statement.
 
@@ -101,7 +101,7 @@ Two more things are statements in a widget block and are the subject of the rest
 
 ### Recursive bindings and groups
 
-Bindings in a widget block are mutually recursive: a name may be used before the statement that binds it. The counter uses `$count` on the right of its own definition, and the todo list of the worked examples defines `$items` from `!changes`, `!changes` from `!rows`, and `!rows` from `for $items`. The restriction is the one time imposes: the cycle has to pass through a delayed edge, a tag, a `!Switch`'s hold of inner events, or a hold's value side. A cycle of prompt edges alone is a compile error that lists every binding in it. Plain values cannot be cyclic at all; a cycle among `let`s with no functor in it is an error, because there is no occurrence for the cycle to be resolved across.
+Bindings in a widget block are mutually recursive: a name may be used before the statement that binds it. The counter uses `$count` on the right of its own definition, and the todo list of the worked examples defines `$items` from `!changes`, `!changes` from `!rows`, and `!rows` from `for $items`. The restriction is the one time imposes: the cycle has to pass through a delayed edge, a tag, a `!Switch`'s hold of inner events, or a hold's value side. A cycle of prompt edges alone is a compile error that lists every binding in it. A `let`-bound function may call itself or its neighbours, because a call is not a cyclic value. Other plain values cannot be cyclic at all; a cycle among `let`s of plain non-function values is an error, because there is no occurrence for the cycle to be resolved across.
 
 An implementation resolves the block into strongly connected groups and builds them in dependency order. A group with a cycle is built with placeholders for the forward references, which are closed once the group is built. The runtime's builder exposes this directly: `add_cyclic_event(name)` returns a forward event that fires when the event it is later closed with fires, and `close_cyclic_event_by_name(name, event)` closes it; `add_cyclic_dynamic` and its close are the same for a dynamic whose behavior is a computation that reads through the placeholder once set. The runtime's own `fold_dyn` is written this way and is a good picture of what the compiler emits for a self-referential hold:
 
@@ -154,7 +154,7 @@ Returning a widget from a widget (`@@A`) is legal and means the inner one is not
 A widget function can take a widget, and the sigil on the parameter says so:
 
 ```prism
-@Framed: fn (Text, @a) -> @a = \|title, @child| @widget:
+@Framed: fn Text, @a -> @a = \|title, @child| @widget:
     @Label $title
     result <- @child
     @Label $"end of $title"
@@ -184,7 +184,7 @@ The program is a widget `@main` taking no arguments. The World builds it in occu
 
 A `dyn` over a constant dynamic builds its block once and fires its result event in that build occurrence; the block returns `unit`; the `dyn`'s event is an `!unit` that fires exactly then. The prelude provides `@started` as a primitive because it is used everywhere, and the runtime implements it as a filter over the builder's done event rather than by building a `dyn`, but it needs no semantics of its own.
 
-The conformance suite checks the law, not the implementation: `@started` fires once, in the occurrence the node is built, after the block is built, and never again. The two spellings have to agree on the one observable that follows from "after the block is built": the firing lands at `height + 1` of the build, so a hold in the same block driven by it, `$x <- v <= w on !started`, changes in the build occurrence, and anything in the block that reads `$x` through a tag in that occurrence sees `v`, while anything derived from `$x` sees `w`. A runtime whose done event fired at the build's own height, or in the next occurrence, would pass a test that only asked "did it fire once" and fail the one that holds on it; chapter 9's law test for `@started` holds on it.
+The conformance suite checks the law, not the implementation: `@started` fires once, in the occurrence the node is built, after the block is built, and never again. The two spellings have to agree on the one observable that follows from "after the block is built": the firing lands at `height + 1` of the build, so a hold in the same block driven by it, `$x <- v <= w on !started`, changes in the build occurrence, and anything in the block that reads `$x` through a tag in that occurrence sees `v`, while anything derived from `$x` sees `w`. A runtime whose done event fired at the build's own height, or in the next occurrence, would pass a test that only asked "did it fire once" and fail the one that holds on it; chapter 10's law test for `@started` holds on it.
 
 Its use is kicking off a request as soon as a widget exists:
 
@@ -214,7 +214,7 @@ You have written the view that is replaced when the mode changes, and you have w
 The pattern form is for structure:
 
 ```prism
-!!views <- dyn (mode, selected) <- $state:
+!!views <- dyn ((mode, selected)) <- $state:
     match mode:
         Browse: @BrowsePane selected
         Edit: @EditPane selected
@@ -276,11 +276,11 @@ The `for` case is the same rule per key: a key whose block fails to build is tor
 
 Why keep the old generation on a cycle and drop it on a build failure, rather than one rule for both? Suppose the old generation stayed on a `Build` failure. Then its slots would be in the list under a path whose generation the program has moved past, with holds reading a dynamic that has changed, drawing a value that is no longer the one the `dyn` is over: a screen showing yesterday's selection with today's model behind it. The block that failed was the program's statement of what should be there for the new value, and nothing else can be put there truthfully; a hole is the truthful thing. Suppose instead a cycle were contained. Then the occurrence would have to commit with half its propagation done, since the cycle is found mid-propagation and the actions already run cannot be unrun without rollback, which is exactly what aborting is. The two rules are one rule, "commit what is true or commit nothing," applied to a failure that can be isolated to a node and one that cannot.
 
-Bound by this: the runtime, which must not fire the `dyn`'s event for a failed build and must tear the old generation down anyway; the World, which must report what the run call returns and may pass back `quarantine` paths on its next call if it wants a failing subtree held out of further rebuilds; and the program, which cannot observe a failed build except through `Errors` and the list, because there is no event for it. Chapter 8 has the error type and the quarantine protocol in full.
+Bound by this: the runtime, which must not fire the `dyn`'s event for a failed build and must tear the old generation down anyway; the World, which must report what the run call returns and may pass back `quarantine` paths on its next call if it wants a failing subtree held out of further rebuilds; and the program, which cannot observe a failed build except through `Errors` and the list, because there is no event for it. Chapter 9 has the error type and the quarantine protocol in full.
 
 ### State that must survive goes outside
 
-The mistake every newcomer makes once is putting a hold inside a `dyn` and expecting it to persist. `Styled: fn (Theme, Text) -> Text` here is a plain function that decorates a label for a theme:
+The mistake every newcomer makes once is putting a hold inside a `dyn` and expecting it to persist. `Styled: fn Theme, Text -> Text` here is a plain function that decorates a label for a theme:
 
 ```prism
 @wrong: fn $Theme -> @unit = \@widget:
@@ -318,10 +318,10 @@ Fresh paths are the other cost, and the one a World notices. Every slot under a 
 A widget built in occurrence n behaves as though it had been built immediately before n's inputs arrived. For a nested `dyn` this has one consequence that an implementation can get wrong and the specification pins: a `dyn` built in n, over a dynamic that changed in n, builds *once*, with the new value. It does not build with the old value and then rebuild.
 
 ```prism
-@outer: fn ($Mode, $Text) -> @unit = \|$mode, $text| @widget:
+@outer: fn $Mode, $Text -> @unit = \|$mode, $text| @widget:
     dyn $mode:
         dyn $text:
-            @Label $(Render _, mode)       # mode is plain here; _ is the text; Render: fn (Text, Mode) -> Text
+            @Label $(Render _, mode)       # mode is plain here; _ is the text; Render: fn Text, Mode -> Text
     @ unit
 ```
 
@@ -331,7 +331,7 @@ The runtime does this with the Spider-style catch-up: every event caches its cur
 
 ### What the runtime promises for `dyn`
 
-Three promises, each the runtime's, each with the test that pins it; chapter 10 has the `DynamicWidget` that keeps them.
+Three promises, each the runtime's, each with the test that pins it; chapter 11 has the `DynamicWidget` that keeps them.
 
 The rebuild is an ordinary action at an ordinary height, one above the dynamic's change event, and the new generation is built at a height above that, so that everything the new block fires at birth fires after the block exists. A cycle through a `dyn` is therefore caught by the same comparison as any other cycle, an action scheduled at or below the current height, and no second detector exists for rebuilds.
 
@@ -383,7 +383,7 @@ let $contents = $Join $$current
 
 The hold needs an initial dynamic, and the first build's result is available for it because the first build happens in the occurrence the `dyn` is built: the `dyn`'s event fires then, the hold adopts the firing in its build occurrence, and `$Join` sees the adopted inner in that same occurrence. The constant `$ Unavailable` is the value for the length of one tag read in the build occurrence and nothing else. A library may spell the three lines as one word; it needs no semantics of its own, and the clarification on lifting below is that word.
 
-This is also the canonical cache idiom: a hold of dynamics, chosen between a live one and a frozen one, joined. A hold of plain values copied out of the live dynamic is the simpler construction, and it has a one-occurrence gap at creation that the join version does not, because a join switches to the new inner's *current* value in the occurrence of the switch rather than waiting for the new inner to fire. Chapter 1's cache is written in the plain form because it shows the hold around the forwarded query most plainly; the join form is the one a library ships.
+This is also the canonical cache idiom: a hold of dynamics, chosen between a live one and a frozen one, joined. A hold of plain values copied out of the live dynamic is the simpler construction, and it has a one-occurrence gap at creation that the join version does not, because a join switches to the new inner's *current* value in the occurrence of the switch rather than waiting for the new inner to fire. Chapter 2's cache is written in the plain form because it shows the hold around the forwarded query most plainly; the join form is the one a library ships.
 
 ### The asymmetry
 
@@ -393,7 +393,7 @@ The two together, then: results that are events cross a `dyn` with a one-occurre
 
 ### What the runtime promises for the two
 
-`!Switch` reads its inner event from a hold's value side, before the occurrence; its height is fixed at one above the outer's. `$Join`'s change event is the leftmost of the outer's change mapped to the new inner's value after n and the non-prompt switch over the current inner's change event; its height is dynamic, since inner events have arbitrary heights. Both are the runtime's to keep, and chapter 10 has `switch_hold` and `Dynamic::join`.
+`!Switch` reads its inner event from a hold's value side, before the occurrence; its height is fixed at one above the outer's. `$Join`'s change event is the leftmost of the outer's change mapped to the new inner's value after n and the non-prompt switch over the current inner's change event; its height is dynamic, since inner events have arbitrary heights. Both are the runtime's to keep, and chapter 11 has `switch_hold` and `Dynamic::join`.
 
 The harness tests three cases for join: the inner changes alone; the outer swaps to an inner that changed in the same occurrence, where the change event must deliver the new inner's *new* value and the behavior must agree afterwards; and the outer swaps to an inner that does not change, where the change event must still fire, with the new inner's current value, because the joined dynamic changed even though nothing inside it did. The third is the one an implementation that only listens to the inner's change event gets wrong. For the switch, the law test is the swallowed birth: a block that fires at its parent through `!Switch` in its creation occurrence is not heard, and is heard from the next occurrence on.
 
@@ -413,7 +413,7 @@ The lifting rule says that an operation over dynamics is a dynamic. What is a wi
 let !x = !Switch !!xs
 ```
 
-The lift happens only where the parameter wants a plain value and gets a dynamic. The library's `@Button: fn $Text -> @!Click` takes the dynamic itself and holds the `dyn` inside its body, which is why `@Button $label` has no lift at the call site and the same node structure as the expansion above; the two spellings differ only in which widget's block the `dyn` is written in, and chapter 10 states the canonical node structure both compile to.
+The lift happens only where the parameter wants a plain value and gets a dynamic. The library's `@Button: fn $Text -> @!Click` takes the dynamic itself and holds the `dyn` inside its body, which is why `@Button $label` has no lift at the call site and the same node structure as the expansion above; the two spellings differ only in which widget's block the `dyn` is written in, and chapter 11 states the canonical node structure both compile to.
 
 For a widget whose result is a dynamic, the bound name is the hold-of-dynamics joined, with the first build's result as the hold's initial value:
 
@@ -427,7 +427,7 @@ $s <- @Status $url
 let $s = $Join (HoldFirst !$ss)
 ```
 
-`HoldFirst` is the compiler's: a hold whose initial value is the firing of `!$ss` in the occurrence the hold is built, which exists because a `dyn` fires in its build occurrence and a widget built in n sees all of n. No program can spell a hold seeded that way with `<=`, since a hold's initial value is an expression and the first build's result is not in scope until the `dyn` has been bound; the compiler emits the runtime's `hold_first` over the `dyn`'s event, and chapter 11 prints it as `HoldFirst` in the typed AST.
+`HoldFirst` is the compiler's: a hold whose initial value is the firing of `!$ss` in the occurrence the hold is built, which exists because a `dyn` fires in its build occurrence and a widget built in n sees all of n. No program can spell a hold seeded that way with `<=`, since a hold's initial value is an expression and the first build's result is not in scope until the `dyn` has been bound; the compiler emits the runtime's `hold_first` over the `dyn`'s event, and chapter 12 prints it as `HoldFirst` in the typed AST.
 
 For a plain result, binding gives a dynamic: `$x <- @W $d` is `HoldFirst` over the `dyn`'s `!A`, so `$x` is the current generation's result, held from the first build's value and changing in every rebuild occurrence. A plain result of a rebuilt widget is a value per generation, and a value per generation held is a dynamic. For a bundle, field by field by the kind of each field: an event field switches, a dynamic field joins, a plain field holds.
 
@@ -435,7 +435,7 @@ An element with a dynamic where a field goes is the same thing one level down: `
 
 Walkthroughs write the expansion out only when the generations are the point.
 
-One thing that does not lift on its own is a tuple. Functor values nest inside plain aggregates, so `($step, $answers)` is a plain pair holding two dynamics, not a `$(Step, Answers)`, and `dyn` over it is a type error. To make one dynamic of two, lift a plain function over them: `Pair: fn (a, b) -> (a, b)` is in the prelude, and `Pair $step, $answers` is a `$(Step, Answers)` that changes when either does, once per occurrence however many of its operands moved. The wizard and the tabs interceptor below both write it.
+One thing that does not lift on its own is a tuple. Functor values nest inside plain aggregates, so `(($step, $answers))` is a plain pair holding two dynamics, not a `$((Step, Answers))`, and `dyn` over it is a type error. To make one dynamic of two, lift a plain function over them: `Pair: fn a, b -> ((a, b))` is in the prelude, and `Pair $step, $answers` is a `$((Step, Answers))` that changes when either does, once per occurrence however many of its operands moved. The wizard and the tabs interceptor below both write it.
 
 What does *not* lift. A widget over an event is not a `dyn` and not anything else: `@Button !label` is a type error. A widget per firing of an event would be a node with no owner's decision to replace it, built in the occurrence of the firing and torn down when? Never, or at the next firing, and both answers are a lifecycle rule the language does not have. The program that wants a widget per event holds the event into a dynamic first, which says when the old one goes. Likewise `match $x:` with a widget in any arm is rejected: choosing a widget by a changing value is construction, and construction over a dynamic is spelled `dyn`, so that the rebuild is visible where it happens.
 
@@ -507,13 +507,13 @@ A `unit` result is the common case of a row that only draws, `for $items: @Label
 A dynamic result:
 
 ```prism
-$texts <- for $fields:                        # $fields : $((Nat, Text) ==> Field): id and initial text in the key
-    let (id, initial) = key                    # plain, for the life of the block
+$texts <- for $fields:                        # $fields : $(((Nat, Text)) ==> Field): id and initial text in the key
+    let ((id, initial)) = key                   # plain, for the life of the block
     TextInput(ignore, $v) <- @TextInput initial
     @ $v
 ```
 
-`$texts : $((Nat, Text) ==> Text)`, the current text of every input, changing when any input's text changes or a field is added or removed.
+`$texts : $(((Nat, Text)) ==> Text)`, the current text of every input, changing when any input's text changes or a field is added or removed.
 
 The mistake to make once is in that last example. Had the initial text been in the entry, `@TextInput $_.initial` would apply a widget function that takes plain text to a dynamic, which lifts to a `dyn`, and the input would be rebuilt, cursor and all, every time the entry changed. The compiler accepts it, because it is a meaningful program; it is just not the one you wanted. The question "is this plain, dynamic or an event inside my `for`" is the one the sigils answer: `key` is plain for the life of the block, `$_` is live, and anything that should be fixed at the block's birth belongs in the key or is read once through a hold that nothing else moves.
 
@@ -531,7 +531,7 @@ A key added in n makes `!requests` fire in n with `{new_key: Watch new_key}`, co
 
 ### A walkthrough
 
-Take the todo list from the worked examples, reduced to what matters for `for`. `Describe: fn (Item, Bool) -> Text` renders a row's label from the item and its star, and `StepAll: fn (Nat ==> Item, Nat ==> Change) -> Nat ==> Item` applies a map of changes to the items; `!Union: fn (!(k ==> v), !(k ==> v)) -> !(k ==> v)` merges two map events entry-wise, firing when either does:
+Take the todo list from the worked examples, reduced to what matters for `for`. `Describe: fn Item, Bool -> Text` renders a row's label from the item and its star, and `StepAll: fn Nat ==> Item, Nat ==> Change -> Nat ==> Item` applies a map of changes to the items; `!Union: fn !(k ==> v), !(k ==> v) -> !(k ==> v)` merges two map events entry-wise, firing when either does:
 
 ```prism
 @todos:
@@ -544,8 +544,8 @@ Take the todo list from the worked examples, reduced to what matters for `for`. 
         $starred <- False <= (Not $starred) on !star
         @Label (Describe $_, $starred)
         @ Delete on !delete
-    let !changes = !Union (!adds, !rows)
-    $items <- {} <= StepAll ($items, !changes)
+    let !changes = !Union !adds, !rows
+    $items <- {} <= StepAll $items, !changes
 ```
 
 **Occurrence 0.** `$items` is `{}`; `for $items` builds no blocks. The list has one button.
@@ -566,13 +566,13 @@ Nothing in this walkthrough involved the program telling the `for` which rows ha
 
 `for` over a dynamic array `$[V]` is keyed by index, and the index is the key in every sense: the block's `key` is a `Nat`, the path segment prints as `[3]` exactly as a `Nat ==> V` map's key `3` would, and a transcript does not distinguish the two, because there is nothing to distinguish; a `for` over an array is a `for` over the map from index to element, and the paths say so. It is allowed, and it is the wrong tool for anything with identity: an insertion at the front changes every later key, which rebuilds every later block and resets its state, and the World sees every later path vanish and reappear. That is the array-index-as-key bug, built in, and the language keeps it only because positional data exists, a row of three fixed columns, a list of coordinates, where the index is the identity and nothing else is.
 
-Programs that need positional display of identified items keep a map with allocated ids and sort for display. The idiom, with `Insert: fn (k ==> v, k, v) -> k ==> v` and `NewItem: Item` a blank item:
+Programs that need positional display of identified items keep a map with allocated ids and sort for display. The idiom, with `Insert: fn k ==> v, k, v -> k ==> v` and `NewItem: Item` a blank item:
 
 ```prism
 @list:
     !add <- @Button $"Add"
     $next <- 0 <= $next + 1 on !add                        # the id allocator
-    $items <- {} <= Insert ($items, $next, NewItem) on !add  # Nat ==> Item, keyed by id
+    $items <- {} <= (Insert $items, $next, NewItem) on !add  # Nat ==> Item, keyed by id
     !rows <- for $items:
         ...
     @ unit
@@ -580,12 +580,12 @@ Programs that need positional display of identified items keep a map with alloca
 
 `$next` is a counter that only goes up; an id is never reused, so a key that returns is a new key, which is right. That is the program's half of an invariant whose other half is the runtime's: a key that leaves a `for` and comes back gets a new node, with fresh holds and fresh paths under `[k]`, however short the absence, because the old node was torn down at the commit of the occurrence the key left, and the runtime keeps no table of departed keys to revive. The program's allocator makes the two halves agree: with ids that never repeat, "the same key came back" cannot happen, and the question of whether a returning key should keep its state never arises. A program that reuses keys gets a new node per return anyway, and the runtime's promise is what makes that predictable rather than dependent on how long the key was gone.
 
-When the display order is not id order, make a map whose keys sort the way the display should, with `ReKey: fn (k ==> v, fn (k, v) -> j) -> j ==> v`:
+When the display order is not id order, make a map whose keys sort the way the display should, with `ReKey: fn k ==> v, (fn k, v -> j) -> j ==> v`:
 
 ```prism
-let $ordered = ReKey $items, \|id, item| (item.rank, id)    # $((Nat, Nat) ==> Item)
+let $ordered = ReKey $items, \|id, item| ((item.rank, id))    # $(((Nat, Nat)) ==> Item)
 !rows <- for $ordered:
-    let (rank, id) = key
+    let ((rank, id)) = key
     ...
 ```
 
@@ -597,7 +597,7 @@ Suppose instead the language gave arrays an opaque per-element identity, minted 
 
 A `for` inside a `for` has its own `key` and its own `$_`, and the outer ones are shadowed. Both are the block's, like `_` in a lambda. Over plain collections, the expression form of `for` binds `ix`, `jx` and `kx` for nesting depth; over dynamic maps in a widget block, `key` is the identity and nesting is by naming the outer key with `let` before the inner `for`.
 
-The runtime's promise for `for` is the `dyn`'s promise per key: a key that appears is built in the occurrence of the change, at a height above the map's change event, and a key that disappears is torn down at commit by the same keep-until-the-end action; `$_` is a per-key dynamic projected from the map, so a change to an entry that keeps its key reaches its block without rebuilding it; and the consolidated event's membership is the blocks as the occurrence opened plus the blocks built in it. Chapter 10 has the keyed list widget that keeps all three.
+The runtime's promise for `for` is the `dyn`'s promise per key: a key that appears is built in the occurrence of the change, at a height above the map's change event, and a key that disappears is torn down at commit by the same keep-until-the-end action; `$_` is a per-key dynamic projected from the map, so a change to an entry that keeps its key reaches its block without rebuilding it; and the consolidated event's membership is the blocks as the occurrence opened plus the blocks built in it. Chapter 11 has the keyed list widget that keeps all three.
 
 ## What switching may not do
 
@@ -620,10 +620,10 @@ type Item = record:
     title: Text
     body: Text
 
-Keys: fn (k ==> v) -> [k]                      # in key order
-FirstKey: fn (k ==> v) -> ?k = \|m| (Keys m)[0]  # Nil on an empty map
-LastKey: fn (k ==> v) -> ?k
-Gone: fn (k ==> v, ?k) -> ?unit                 # Some unit when the key is Some and absent from the map
+Keys: fn k ==> v -> [k]                        # in key order
+FirstKey: fn k ==> v -> ?k = \|m| (Keys m)[0]    # Nil on an empty map
+LastKey: fn k ==> v -> ?k
+Gone: fn k ==> v, ?k -> ?unit                   # Some unit when the key is Some and absent from the map
 
 let ShowBody: fn ?Item -> Text = \|i| match i:
     Some item: item.body
@@ -649,7 +649,7 @@ Three things are live and they are at three different places. `$items` is the mo
 
 **Occurrence 0.** `$items` has, say, keys 1, 2, 3. The `for` builds three blocks, a button each. `$selected` is `Nil`; the `dyn` builds generation `#0`, the "Select an item" label.
 
-**Occurrence 1, click row 2.** Row 2's block fires `2`; `!picks` fires with `{2: 2}`; `FirstKey` gives `Some 2`; `!Filter` passes `2`; `$selected`'s change event fires with `Some 2`. The `dyn` rebuilds: generation `#1` is built with `id = 2`, `$items[2]` is `Some (Item "Two" "...")`, `@Detail` builds a label with the body. Generation `#0` is dropped at commit. What rebuilt: the detail, once. What did not: the three rows.
+**Occurrence 1, click row 2.** Row 2's block fires `2`; `!picks` fires with `{2: 2}`; `FirstKey` gives `Some 2`; `!Filter` passes `2`; `$selected`'s change event fires with `Some 2`. The `dyn` rebuilds: generation `#1` is built with `id = 2`, `$items[2]` is `Some (Item "Two", "...")`, `@Detail` builds a label with the body. Generation `#0` is dropped at commit. What rebuilt: the detail, once. What did not: the three rows.
 
 **Occurrence 2, the model changes item 2's body.** `$items` changes; key 2 is still there, so row 2's `$_` changes and its button's label slot rebuilds (the derived title fires its change event even when the text is equal; the World diffs and draws nothing new). No other row is touched. Inside the detail's generation `#1`, `$items[2]` changes promptly, `ShowBody` changes, and the label's slot rebuilds to the new body. The detail node itself, generation `#1`, is untouched: the `dyn` is over `$selected`, and `$selected` did not change.
 
@@ -700,10 +700,10 @@ type TabEvents = record:
         match _:
             Inbox:
                 !ch <- @InboxPane $inbox
-                @ TabEvents ch, !never
+                @ TabEvents !ch, !never
             Drafts:
                 !ch <- @DraftsPane $drafts
-                @ TabEvents !never, ch
+                @ TabEvents !never, !ch
     let switched = TabEvents (!Switch !!panes.!inbox), (!Switch !!panes.!drafts)
     @ unit
 ```
@@ -716,19 +716,19 @@ There is a third version, which keeps every pane built and shows only one. The l
 
 ```prism
 PaneOf: fn Path -> ?Tab                        # which pane's subtree a path is under, by its first segment
-IsUi: fn Element -> Bool                       # chapter 5's: True for every Ui.* tag
+IsUi: fn Element -> Bool                       # chapter 6's: True for every Ui.* tag
 
 @tabs_all: @unit = @widget:
     !to_inbox <- @Button $"Inbox"
     !to_drafts <- @Button $"Drafts"
     !to_settings <- @Button $"Settings"
     $tab <- Inbox <= Inbox on !to_inbox | Drafts on !to_drafts | Settings on !to_settings
-    (ignore, $slots) <- intercept @all_panes, !down, $ \|e| @Element e
+    ((ignore, $slots)) <- intercept @all_panes, !down, $ \|e| @Element e
     !down <- for $slots:                                   # key is the child's path
-        let $shown = Or (Not (IsUi $_.element)), (PaneOf key == Some $tab)
-        !!resps <- dyn (slot, shown) <- Pair $_, $shown:
+        let $shown = Or (Not (IsUi $_.element)), (PaneOf key) == Some $tab
+        !!resps <- dyn ((slot, shown)) <- Pair $_, $shown:
             if shown:
-                (!resp, ignore) <- @Element slot.element
+                ((!resp, ignore)) <- @Element slot.element
                 @ !resp
             else: @ !never
         @ !Switch !!resps
@@ -741,7 +741,7 @@ IsUi: fn Element -> Bool                       # chapter 5's: True for every Ui.
     @ unit
 ```
 
-`$shown` is true for every non-`Ui.*` slot and for the `Ui.*` slots of the active pane, so a pane's sockets, file reads and timers reach the World whether the pane is showing or not, and its buttons and labels reach it only while it is. A slot never changes, so `Pair $_, $shown` changes only when `$shown` does, and the `dyn` over it rebuilds a row exactly when its slot becomes shown or hidden: the hidden row's element leaves the interceptor's list, the shown row's arrives, and the World sees one pane's buttons go and another's come. Each forwarded element's response is the row's result through `!Switch`, consolidated into `!down : !(Path ==> Response)`, which `intercept` routes to the child by path; the one-occurrence lag of the switch costs nothing, since a freshly forwarded slot cannot be answered in the occurrence it was created anyway. The supplier is the transparent one, since no pane here has a state element the interceptor wants to answer. This is chapter 5's `@Forward` with one `dyn` added per row, and chapter 5's library containers are the same construction with layout as the policy instead of "shown".
+`$shown` is true for every non-`Ui.*` slot and for the `Ui.*` slots of the active pane, so a pane's sockets, file reads and timers reach the World whether the pane is showing or not, and its buttons and labels reach it only while it is. A slot never changes, so `Pair $_, $shown` changes only when `$shown` does, and the `dyn` over it rebuilds a row exactly when its slot becomes shown or hidden: the hidden row's element leaves the interceptor's list, the shown row's arrives, and the World sees one pane's buttons go and another's come. Each forwarded element's response is the row's result through `!Switch`, consolidated into `!down : !(Path ==> Response)`, which `intercept` routes to the child by path; the one-occurrence lag of the switch costs nothing, since a freshly forwarded slot cannot be answered in the occurrence it was created anyway. The supplier is the transparent one, since no pane here has a state element the interceptor wants to answer. This is chapter 6's `@Forward` with one `dyn` added per row, and chapter 6's library containers are the same construction with layout as the policy instead of "shown".
 
 Every pane's slots, requests and state then exist all the time; the World sees only the active pane's draw commands; an inbox whose socket should stay open while you edit settings is this version. The cost is that every pane exists, which is a cost you pay knowingly, in a line that says `intercept`.
 
@@ -790,7 +790,7 @@ What the program does not have: a dialog manager, a z-order stack, a `showModal(
 Master-detail had the selection outside the list and the detail outside the list. The variant where the rows themselves show the selection is the one that tests whether you have the ownership right, because the easy version rebuilds every row on every click.
 
 ```prism
-let Mark: fn (Text, Bool) -> Text = \|t, sel| if sel: "> $t" else: "  $t"
+let Mark: fn Text, Bool -> Text = \|t, sel| if sel: "> $t" else: "  $t"
 
 @selectable: fn $(Nat ==> Item) -> @$?Nat = \|$items| @widget:
     !picks <- for $items:
@@ -841,7 +841,7 @@ let IfDone: fn Nav -> ?Answers = \|n| if n.done: Some n.answers else: Nil
 
 @wizard: @!Answers = @widget:
     let $page = Pair $step, $answers
-    !!navs <- dyn (step, answers) <- $page:
+    !!navs <- dyn ((step, answers)) <- $page:
         match step:
             Name:
                 TextInput(ignore, $name) <- @TextInput answers.name
@@ -871,9 +871,9 @@ The `dyn` is over `Pair $step, $answers`, one dynamic of the pair, and the patte
 
 **Occurrences 1 through 5, typing.** Each keystroke changes `$name` inside the page: the text input's own label slot rebuilds, `$forward` changes, nothing else. `$page` does not change, because neither `$step` nor `$answers` did. The page is not rebuilt.
 
-**Occurrence 6, Next.** `!next` fires; `$forward on !next` fires with `Nav Address, (Answers "Ada" ""), False`; the switch delivers it as `!nav`; `!nav.step` fires with `Address` and `!nav.answers` with the record; both holds' change events fire in this occurrence; `$page`, a derived dynamic over both, changes once (glitch freedom: one change event per occurrence however many operands moved); the `dyn` rebuilds to the Address page with `answers.name = "Ada"` plain, and an address input initialised from `""`. The Name page is dropped at commit, and `$name` with it; the name is safe in `$answers`, which is outside.
+**Occurrence 6, Next.** `!next` fires; `$forward on !next` fires with `Nav Address, (Answers "Ada", ""), False`; the switch delivers it as `!nav`; `!nav.step` fires with `Address` and `!nav.answers` with the record; both holds' change events fire in this occurrence; `$page`, a derived dynamic over both, changes once (glitch freedom: one change event per occurrence however many operands moved); the `dyn` rebuilds to the Address page with `answers.name = "Ada"` plain, and an address input initialised from `""`. The Name page is dropped at commit, and `$name` with it; the name is safe in `$answers`, which is outside.
 
-**Occurrence 7, Back.** The Address page's `!back` fires with `Nav Name, (Answers "Ada" "..."), False`, whatever had been typed so far; both holds move; the `dyn` rebuilds the Name page with `answers.name = "Ada"` as the input's initial. The text is there. It did not survive in the page; it went out and came back in, and the line that says so is the hold for `$answers`.
+**Occurrence 7, Back.** The Address page's `!back` fires with `Nav Name, (Answers "Ada", "..."), False`, whatever had been typed so far; both holds move; the `dyn` rebuilds the Name page with `answers.name = "Ada"` as the input's initial. The text is there. It did not survive in the page; it went out and came back in, and the line that says so is the hold for `$answers`.
 
 **Occurrence 8, Finish.** `done` is `True`; `!Filter (IfDone !nav)` fires with the answers; the widget's result fires. The holds also move (to the same step and the same answers), so `$page` changes with an equal value and the Review page is rebuilt, which is harmless and could be stopped with `$Distinct` if the review page were expensive.
 
@@ -897,7 +897,7 @@ Everything above rests on a short list of promises, each with a party bound by i
 
 *A `for` key that returns is a new key.* Bound: the runtime, which has no table of departed keys and builds a returning key's block from scratch; and the program, whose allocator decides whether keys can return at all. Enforced on the runtime's side by the keyed list widget owning exactly the nodes of the keys currently present; on the program's side by nothing but the allocator's line, `$next <- 0 <= $next + 1 on !add`, which is why the idiom is written that way.
 
-*A failed build fires no event and leaves a hole.* Bound: the runtime and the World. Enforced: the rebuild action, on a contained failure, tears the old generation down at commit, installs no child, and does not notify the `dyn`'s subscribers; the error is returned from the run call as kind `Build` with the `dyn` node's path as its owner, and offered through `Errors` if the program subscribed. A cycle found during the build is kind `Cycle` and aborts the occurrence instead, which keeps the old generation by rolling everything back. The World is bound to report what it is returned and may send `quarantine` paths on its next call. Chapter 8 has the type and the protocol; chapter 9's `Errors` step is the check.
+*A failed build fires no event and leaves a hole.* Bound: the runtime and the World. Enforced: the rebuild action, on a contained failure, tears the old generation down at commit, installs no child, and does not notify the `dyn`'s subscribers; the error is returned from the run call as kind `Build` with the `dyn` node's path as its owner, and offered through `Errors` if the program subscribed. A cycle found during the build is kind `Cycle` and aborts the occurrence instead, which keeps the old generation by rolling everything back. The World is bound to report what it is returned and may send `quarantine` paths on its next call. Chapter 9 has the type and the protocol; chapter 10's `Errors` step is the check.
 
 *A `for` keeps a node per key; a key that appears is built in its occurrence and a key that disappears is torn down at commit; consolidation is by result kind and is prompt.* Bound: the runtime and the compiler (which states the result kind). Enforced: the keyed list widget projects a per-key dynamic and defers builds like a `dyn`; the merge for an event result includes blocks built in the occurrence.
 

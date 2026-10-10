@@ -1,4 +1,4 @@
-# Chapter 9 — Conformance and testing
+# Chapter 10 — Conformance and testing
 
 A specification that only one implementation can check is a description of that implementation, and the way out is to test the language from the only place where two implementations must look identical: the World's side of the boundary. Every test in this chapter sends plain data to elements and reads plain data back, the way a real World does, and never names a node, a path, a hold or a runtime object. That choice decides everything else here: the Test World that accepts every tag and has no effects; the script language that drives a program one turn at a time; the law tests, one short script per sentence of the chapters on the functors, on time, on widgets and switching, and on elements and Worlds; the integration programs that each pin one piece of meaning; the layout corpus and the typed-AST goldens that pin the frontends; the runtime's own unit tests and the invariant they check after every occurrence; the World tests against the world core; and the differential test that runs all of it under both implementations and diffs the output. The chapter ends with the one rule every test obeys: it is quotable, and if it cannot be stated as a sentence about the language, it is deleted.
 
@@ -45,7 +45,7 @@ turn 1  responses: {0/#0/0: click}
 
 A turn header names the turn and its inputs: `responses` by path, `pushes` by element value. The list is one slot per line, `path: element`, in tree order. A slot that fired its request in the turn gets a `requested` line after it, with the values in firing order; an occurrence boundary inside a turn, which only `Defer` causes, is marked `occurrence 2` between the parts of a turn so that a reader can see which occurrence a request fired in. The result is printed when the widget's result is a plain value or a dynamic (by its current value) and as `fired: v` or `quiet` when it is an event. An aborted occurrence prints `error: Error(kind=UnknownPath, path=0/#1/0, occurrence=1)` and no list, since the list did not change.
 
-Paths are opaque to Worlds, and the transcript still has to print them, so the transcript fixes a spelling that both implementations use: bind positions from the root joined by `/`, a `dyn` generation as `#n` from `#0`, a `for` key as `[k]` with the key printed as a value. That spelling is the chapter-1 convention and it is part of the interchange format. An implementation may represent paths however it likes inside, and the Haskell runtime's paths are nothing like the Rust runtime's, but what they print must match character for character or the differential test fails. This is a real constraint, deliberately taken: two implementations that agree on every element but number bind positions differently would be two readings of the sentence "its position in the widget tree, made of the bind positions, `for` keys and `dyn` generations", and the point of the differential test is to find exactly that kind of difference. Slots created by widgets that an interceptor's supplier built print as `s/n`, numbered in creation order within the interceptor's node, because their position is the runtime's business and only their existence is a law.
+Paths are opaque to Worlds, and the transcript still has to print them, so the transcript fixes a spelling that both implementations use: bind positions from the root joined by `/`, a `dyn` generation as `#n` from `#0`, a `for` key as `[k]` with the key printed as a value. That spelling is the chapter-2 convention and it is part of the interchange format. An implementation may represent paths however it likes inside, and the Haskell runtime's paths are nothing like the Rust runtime's, but what they print must match character for character or the differential test fails. This is a real constraint, deliberately taken: two implementations that agree on every element but number bind positions differently would be two readings of the sentence "its position in the widget tree, made of the bind positions, `for` keys and `dyn` generations", and the point of the differential test is to find exactly that kind of difference. Slots created by widgets that an interceptor's supplier built print as `s/n`, numbered in creation order within the interceptor's node, because their position is the runtime's business and only their existence is a law.
 
 Element values print as their constructor with named fields in declaration order; `Path ==> Element` fields print with their keys as paths, which is how a `Ui.VBox`'s children appear. Plain values print as Prism literals. Nothing in the transcript is implementation-specific, which is the test of whether it belongs there.
 
@@ -70,7 +70,7 @@ Response and state values in a step are plain Prism expressions of the tag's dec
 
 ### The steps
 
-Each step is a check between turns or an action that runs a turn. Here is every one, with its meaning and a script that uses it. The counter, the viewer and the stopwatch are chapter 1's; `@probe` and the rest are defined where they appear.
+Each step is a check between turns or an action that runs a turn. Here is every one, with its meaning and a script that uses it. The counter, the viewer and the stopwatch are chapter 2's; `@probe` and the rest are defined where they appear.
 
 **`Expect pattern`.** Some slot in the current list, at any depth, matches. Depth means inside container elements by the GUI library's convention, below.
 
@@ -181,7 +181,7 @@ test started_requests_in_turn_zero: Test @viewer: array:
     Unrequested Fs.File(..)
 ```
 
-(Chapter 1's viewer has no Refresh button; the script is illustrating the step and a version with the button is in the law tests.)
+(Chapter 2's viewer has no Refresh button; the script is illustrating the step and a version with the button is in the law tests.)
 
 **`Errors pattern`.** The last turn ended in a runtime error matching the pattern. Errors are `Error` values with a `kind`, so the patterns are record patterns on the kind and the fields the test cares about: `Error(kind=UnknownPath, ..)`, `Error(kind=DeferBackwards, ..)`, `Error(kind=Cycle, ..)`, `Error(kind=UnsuppliedState, element=Clock, ..)`, `Error(kind=Overflow, ..)`. When an occurrence aborts, its holds do not commit, its new nodes are dropped, the element list is what it was before the occurrence, and the turn ends there; a check after an `Errors` step sees the list as it stood before the failed turn. A turn that ends in an error with no `Errors` step following fails the script, so a test cannot pass by accident through a crash. The tags and fields of `Error` are tentative in the way the whole error story is: if the unit of failure becomes a quarantined subtree rather than the occurrence, `Errors` will still match the error and a later `Expect Error(..)` will see the quarantine element in the list, and nothing else in the script language changes.
 
@@ -238,9 +238,9 @@ The build is turn 0. It is a real turn: occurrence 0 plus any `Defer` occurrence
 
 Those sentences have consequences a reader gets wrong the first time, and the suite has a test for each one. A check never sees the inside of a turn: there is no step that observes occurrence 1 of a two-occurrence turn, because no World can. A `Defer` answered in a turn is answered before the next check, so a sandbox's denial is visible in the first `Expect` after the request, not one step later. `Fired` and `Quiet` are about the whole turn, so a result event that fires in a `Defer` occurrence counts. And the number of occurrences in a turn is bounded by the number of `Defer` slots plus one, so a script never hangs: a turn that would run forever is a deferring-backwards error, which `Errors` catches.
 
-Chapter 1's sandbox script is the worked case: a reader who expects to see `"(reading...)"` after the build has the turn wrong, because the denial came back through a `Defer` inside turn 0. The corrected script is in the law tests below, under the `Defer` laws.
+Chapter 2's sandbox script is the worked case: a reader who expects to see `"(reading...)"` after the build has the turn wrong, because the denial came back through a `Defer` inside turn 0. The corrected script is in the law tests below, under the `Defer` laws.
 
-One more rule about what a turn contains. A `Send` whose response reaches a slot that was torn down in the same occurrence, because the input rebuilt the `dyn` around it, is delivered: the slot existed as the occurrence opened, which is what routing requires, and the old node keeps propagating until commit. The script sees the consequences in the list after the turn, and chapter 1's relabelling button is the program that shows it.
+One more rule about what a turn contains. A `Send` whose response reaches a slot that was torn down in the same occurrence, because the input rebuilt the `dyn` around it, is delivered: the slot existed as the occurrence opened, which is what routing requires, and the old node keeps propagating until commit. The script sees the consequences in the list after the turn, and chapter 2's relabelling button is the program that shows it.
 
 ## The law tests
 
@@ -298,7 +298,7 @@ tag Fs.Contents of Element:
     @Element Ui.Button(label=$_)
 ```
 
-`@Label` and `@Button` use the shorthand: a dynamic where a field goes lifts the element into a `dyn`, one fresh slot per change, with the button's click the `!Switch` over the generations. Chapter 1 unrolls both.
+`@Label` and `@Button` use the shorthand: a dynamic where a field goes lifts the element into a `dyn`, one fresh slot per change, with the button's click the `!Switch` over the generations. Chapter 2 unrolls both.
 
 ### Events
 
@@ -459,7 +459,7 @@ This pins a sentence that is easy to get the wrong way round when an implementat
 ```prism
 @sees_all_of_n:
     !add <- @Button $"Add"
-    $keys <- {} <= Insert ($keys, Size $keys, unit) on !add
+    $keys <- {} <= (Insert $keys, Size $keys, unit) on !add
     for $keys:
         $hits <- 0 <= $hits + 1 on !add
         @Label $"$key: $hits"
@@ -731,7 +731,7 @@ test for_consolidates_simultaneous_firings: Test @for_events: array:
         @ $n
     $caps <- for $m:
         @ Upper key
-    @Label $"total=${Fold $counts, 0, \|acc, k, v| acc + v} ${Fold $caps, "", \|acc, k, v| Concat [acc, v]}"
+    @Label $"total=${Fold $counts, 0, \|acc, k, v| acc + v} ${Fold $caps, "", \|acc, k, v| Concat [[acc, v]]}"
 
 test for_consolidates_dynamics_and_values: Test @for_dynamics: array:
     Expect Ui.Label(text="total=0 AB")
@@ -752,7 +752,7 @@ test for_consolidates_dynamics_and_values: Test @for_dynamics: array:
 @tallies:
     !add <- @Button $"Add c"
     !drop <- @Button $"Drop a"
-    $names <- {"a": "a", "b": "b"} <= (Insert ($names, "c", "c") on !add) | (Remove ($names, "a") on !drop)
+    $names <- {"a": "a", "b": "b"} <= ((Insert $names, "c", "c") on !add) | ((Remove $names, "a") on !drop)
     for $names:
         @Tally $_
 
@@ -775,7 +775,7 @@ test state_survives_a_neighbours_removal: Test @tallies: array:
 ```prism
 @new_key_seen:
     !add <- @Button $"Add"
-    $keys <- {} <= Insert ($keys, Size $keys, unit) on !add
+    $keys <- {} <= (Insert $keys, Size $keys, unit) on !add
     !starts <- for $keys:
         !started <- @started
         @ key on !started
@@ -797,7 +797,7 @@ test a_parent_sees_a_new_key_at_once: Test @new_key_seen: array:
 ```prism
 @indexed:
     !front <- @Button $"Push front"
-    $xs <- ["a", "b"] <= Prepend ($xs, "z") on !front
+    $xs <- [["a", "b"]] <= (Prepend $xs, "z") on !front
     for $xs:
         !h <- @Button $_
         $n <- 0 <= $n + 1 on !h
@@ -812,7 +812,7 @@ test an_array_block_keeps_state_by_position: Test @indexed: array:
     Expect Ui.Label(text="2: 0")
 ```
 
-After the insertion at the front, the block at index 1 holds `"a"` and still has the count that was given to `"b"`. A program that wants the count to follow the item keeps a map with allocated ids, which is chapter 1's todo list. If arrays ever get a stable per-element identity, this test is the one that changes, and it would then say `Expect Ui.Label(text="2: 1")`.
+After the insertion at the front, the block at index 1 holds `"a"` and still has the count that was given to `"b"`. A program that wants the count to follow the item keeps a map with allocated ids, which is chapter 2's todo list. If arrays ever get a stable per-element identity, this test is the one that changes, and it would then say `Expect Ui.Label(text="2: 1")`.
 
 ### Elements and interception
 
@@ -851,7 +851,7 @@ This is the shortest test in the suite and the one that guards the most. A World
 
 ```prism
 @Eager: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- for $slots:
         dyn $_:
             match _.element:
@@ -860,7 +860,7 @@ This is the shortest test in the suite and the one that guards the most. A World
                     !resp <- @Element _.element
                     @ !resp | click on !started
                 ignore:
-                    (!resp, ignore) <- @Element _.element
+                    ((!resp, ignore)) <- @Element _.element
                     @ resp
     @ result
 
@@ -926,10 +926,10 @@ test equal_elements_share_one_state: Test @two_clocks: array:
 
 ```prism
 @Transparent: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- for $slots:
         dyn $_:
-            (!resp, ignore) <- @Element _.element
+            ((!resp, ignore)) <- @Element _.element
             @ resp
     @ result
 
@@ -950,7 +950,7 @@ test forwarding_is_the_identity: Test (@Transparent (@Transparent @counter_with_
 
 The transcript of this test is compared, by the harness, with the transcript of the same script run on `@counter_with_clock` alone, element by element. Paths differ, because the forwarder's slots are at the forwarder's paths; everything else must be identical. The `Clock` appears more than once in the outer list, once per forwarder's supplier and once per forwarded slot, and each is the same state by value. A forwarder that minded the duplicates would not forward state slots; this one is the shortest correct program.
 
-**A sandbox supplies `Unavailable`, and nothing confined reaches the World.** `@Sandbox` and `ShowContents` are chapter 1's.
+**A sandbox supplies `Unavailable`, and nothing confined reaches the World.** `@Sandbox` and `ShowContents` are chapter 2's.
 
 ```prism
 @peek:
@@ -985,7 +985,7 @@ test a_supplier_asks_the_outer_world: Test (@Sandbox "/jail", @peek_home): array
 
 ```prism
 @Supplied: fn @a -> @a = \|@child| @widget:
-    (result, ignore) <- intercept @child, !never, $ \|e| @Element e
+    ((result, ignore)) <- intercept @child, !never, $ \|e| @Element e
     @ result
 
 @two_readers:
@@ -1024,7 +1024,7 @@ test a_sandbox_denies_within_the_turn: Test (@Sandbox "/jail", @probe): array:
     Expect Ui.Label(text="(permission denied)")
 ```
 
-Turn 0 is two occurrences: the build, in which the probe requests and the sandbox fires its `Defer`, and the answer, in which the sandbox fires `Denied` into the probe. The script's first check runs after both. A reader who writes `Expect Ui.Label(text="(reading...)")` here has the turn wrong, which is why chapter 1 shows that version failing.
+Turn 0 is two occurrences: the build, in which the probe requests and the sandbox fires its `Defer`, and the answer, in which the sandbox fires `Denied` into the probe. The script's first check runs after both. A reader who writes `Expect Ui.Label(text="(reading...)")` here has the turn wrong, which is why chapter 2 shows that version failing.
 
 **Deferring backwards is an error.** A `Defer` slot that fires again after being answered in the same turn.
 
@@ -1047,14 +1047,14 @@ Occurrence 0 fires the request; occurrence 1 of the same turn answers it, and th
     !started <- @started
     !r1 <- @Element Defer(requests=(unit on !started))
     !r2 <- @Element Defer(requests=(unit on !r1))
-    $log <- [] <= (Append $log, "a" on !r1) | (Append $log, "b" on !r2)
+    $log <- [[]] <= (Append $log, "a" on !r1) | (Append $log, "b" on !r2)
     @Label (JoinText ",", $log)
 
 @fan:
     !started <- @started
     !r1 <- @Element Defer(requests=(unit on !started))
     !r2 <- @Element Defer(requests=(unit on !started))
-    $log <- [] <= (Append $log, "a" on !r1) | (Append $log, "b" on !r2)
+    $log <- [[]] <= (Append $log, "a" on !r1) | (Append $log, "b" on !r2)
     @Label (JoinText ",", $log)
 
 test chained_defers_are_three_occurrences: Test @chain: array:
@@ -1113,15 +1113,15 @@ let ToMap: fn ChildInput -> Path ==> Response = \|c|
 @Forward: fn $(Path ==> Slot) -> @!(Path ==> Response) = \|$slots| @widget:
     for $slots:
         dyn $_:
-            (!resp, ignore) <- @Element _.element
+            ((!resp, ignore)) <- @Element _.element
             @ resp
 
 # Hold the GUI children back as data in one VBox; forward everything else.
 @VBox: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !child_in <- @Element Ui.VBox(children=(UiOnly $slots))
     !fwd <- @Forward (NonUi $slots)
-    let !down = !Union (ToMap !child_in, !fwd)
+    let !down = !Union (ToMap !child_in), !fwd
     @ result
 ```
 
@@ -1241,7 +1241,7 @@ test accumulator: Test @accumulator: array:
     @ $count
 
 @Swallow: fn @a -> @a = \|@child| @widget:
-    (result, ignore) <- intercept @child, !never, $ \|e| @Element e
+    ((result, ignore)) <- intercept @child, !never, $ \|e| @Element e
     @ result
 
 test swallow_hides_elements: Test (@Swallow @counted): array:
@@ -1249,7 +1249,7 @@ test swallow_hides_elements: Test (@Swallow @counted): array:
     Returns 0
 
 @CountSlots: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- @Forward $slots
     @Element Test.SlotCount(count=(Size $slots))
     @ result
@@ -1270,7 +1270,7 @@ The child under `@Swallow` is built and its result is live, and nothing it made 
 
 ```prism
 @Forwarded: fn @a -> @a = \|@child| @widget:
-    (result, $slots) <- intercept @child, !down, $ \|e| @Element e
+    ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- @Forward $slots
     @ result
 
@@ -1294,11 +1294,11 @@ tag Net.Listener of Element:
     responds: Accepted
 
 @panel:
-    (!ok, !conn) <- @VBox @widget:
+    ((!ok, !conn)) <- @VBox @widget:
         @Label $"Hello"
         !b <- @Button $"OK"
         !l <- @Element Net.Listener(port=8080)
-        @ (!b, !l)
+        @ ((!b, !l))
     $oks <- 0 <= $oks + 1 on !ok
     $conns <- 0 <= $conns + 1 on !conn
     @Label $"ok=$oks conns=$conns"
@@ -1526,7 +1526,7 @@ type Change = choice:
 @registry_count:
     !add <- @Button $"Add"
     $next <- 0 <= $next + 1 on !add
-    $items <- {} <= Insert ($items, $next, False) on !add
+    $items <- {} <= (Insert $items, $next, False) on !add
     !events <- for $items:
         !started <- @started
         !toggle <- @Button $"Toggle $key"
@@ -1611,7 +1611,7 @@ test every_gauge_reads_one_clock: Test @gauges: array:
 
 `Range n` is the map `{0: unit, ..., n-1: unit}`. The second gauge is created in the occurrence of the `11` push and shows `11` with the first. The third is created with no push in its occurrence and shows the snapshot. Every reading in every occurrence is the same, which is the equality law stated as a label.
 
-**18. A supplied widget's elements appear in the interceptor's list.** `@Sandbox` of chapter 1, which re-emits the child's GUI elements so that the labels are readable at the top, with a child that reads a confined path and an unconfined one:
+**18. A supplied widget's elements appear in the interceptor's list.** `@Sandbox` of chapter 2, which re-emits the child's GUI elements so that the labels are readable at the top, with a child that reads a confined path and an unconfined one:
 
 ```prism
 @two_files:
@@ -1634,7 +1634,7 @@ test a_sandbox_rewrites_state_paths: Test (@Sandbox "/jail", @two_files): array:
 
 The supplied widget for the confined path made an `Fs.Contents` with the rewritten path in the sandbox's node, and that is what the top sees. The supplied widget for the refused path is `@ $ Unavailable`, with no element, and a push to the real `/etc/b` goes nowhere because nothing in the list asked for it.
 
-**19. Two equal slots share one supplier.** Chapter 1's `@Cached`, which supplies `Fs.Contents` through a hold refreshed by a button, with a child that has two readers of one path and one of another:
+**19. Two equal slots share one supplier.** Chapter 2's `@Cached`, which supplies `Fs.Contents` through a hold refreshed by a button, with a child that has two readers of one path and one of another:
 
 ```prism
 @readers:
@@ -1774,23 +1774,23 @@ ident(@w) colon <open> kw(let) ident(m) eq lbrace text("a") colon nat(1) comma t
 
 Layout is suspended inside the braces: the line break and the indentation before `"b"` are whitespace, and the colons are key separators, not block openers. The comment after `@w:` is whitespace too, so the colon is still the last token on its line and opens the block.
 
-**`F -1` against `F - 1`, and `F .x` against `a.x`.**
+**`F -1` against `F - 1`, and `\F .x` against `a.x`.**
 
 ```prism
 let a = F -1
 let b = F - 1
-let c = F .x
+let c = \F .x
 let d = a.x
 ```
 
 ```
 kw(let) ident(a) eq ident(F) int(-1) <sep>
 kw(let) ident(b) eq ident(F) minus nat(1) <sep>
-kw(let) ident(c) eq ident(F) dot ident(x) <sep>
+kw(let) ident(c) eq lambda ident(F) dot ident(x) <sep>
 kw(let) ident(d) eq ident(a) field(x)
 ```
 
-The spacing rule decides at the lexer: a `-` preceded by whitespace and followed immediately by a non-space is a prefix sign and the literal is signed; `-` with space on both sides is binary. A `.` in prefix position is the pronoun's field access, printed as `dot` then the name, and a `.` attached to a name is a `field` token. The lexer is where this lives because it needs the whitespace, and the parser never sees it.
+The spacing rule decides at the lexer: a `-` preceded by whitespace and followed immediately by a non-space is a prefix sign and the literal is signed; `-` with space on both sides is binary. A `.` in prefix position is printed as `dot` then the name, and a `.` attached to a name is a `field` token. The lexer is where this lives because it needs the whitespace. The parser then gives a prefix `.x` its meaning: wherever `_` is in scope it is the pronoun's field, `_.x`, so `c` is `\F _.x`; at the start of a continuation line it is a method-chain step. A sibling entry pins that `F .x` is a call of `F` on `_.x` when `_` is in scope, and an unbound-pronoun error, with that error's span, when it is not.
 
 **`|` as merge against `|a, b|` as lambda bars.**
 
@@ -1867,7 +1867,7 @@ error: two events in one operation
    |                ^^   ^^
    |
    = both `!a` and `!b` fire; an operation lifts over at most one event
-   = help: merge them with `!a | !b` or `!Leftmost [!a, !b]`, or hold one and read it through a tag
+   = help: merge them with `!a | !b` or `!Leftmost [[!a, !b]]`, or hold one and read it through a tag
 ```
 
 ```
@@ -1897,15 +1897,16 @@ error: cycle without a delay
 The third is the sentence "dyn is not a delay" as a negative golden; the cycle is legal with `!Switch` between `!!r` and the hold, and a sibling positive golden has exactly that program with the switch.
 
 ```
-error: cannot decide the numeric type
-  --> ambiguous.prism:3:5
+error: `+~` is `Int` addition
+  --> suffix.prism:3:23
    |
- 3 |     $n <- 0 <= $n + 1 on !tick
-   |           ^      ^
+ 3 |     let $mean = $sum +~ 0.5
+   |                      ^^ both operands are `Float`
    |
-   = nothing in scope pins `0` and `1` to `Nat`, `Int` or `Float`
-   = help: write `+~` for `Int` or `+.` for `Float`, or give the hold a type
+   = help: use `+.` or `+`
 ```
+
+There is deliberately no golden for an integer literal nothing pins: `$n <- 0 <= $n + 1 on !tick` is an `Int` counter, because an unconstrained integer-spelled literal defaults to `Int`, and a positive golden pins that.
 
 ```
 error: `a -1` is a call
@@ -1964,7 +1965,7 @@ error: `update` is reserved for future work
    = `read`, `update` and `&` are not part of this version of the language
 ```
 
-Runtime errors have negative goldens too, through the `Errors` step, and their text form is the error value as the transcript prints it: `Error(kind=UnknownPath, path=0/#1/0, turn=1)`, `Error(kind=DeferBackwards, path=1/[3]/#0/1, turn=0, occurrence=2)`, `Error(kind=Cycle, spans=[...])` with the spans of every binding in the cycle in order, `Error(kind=UnsuppliedState, element=Secret, path=0)`. The compiler names every cyclic slot after its source span so that a runtime cycle through two widget functions, which no static check can see, reports Prism source and not runtime internals; the golden for that case is a program with two widget functions whose results feed each other's arguments promptly, and its expected error lists both.
+Runtime errors have negative goldens too, through the `Errors` step, and their text form is the error value as the transcript prints it: `Error(kind=UnknownPath, path=0/#1/0, turn=1)`, `Error(kind=DeferBackwards, path=1/[3]/#0/1, turn=0, occurrence=2)`, `Error(kind=Cycle, spans=[[...]])` with the spans of every binding in the cycle in order, `Error(kind=UnsuppliedState, element=Secret, path=0)`. The compiler names every cyclic slot after its source span so that a runtime cycle through two widget functions, which no static check can see, reports Prism source and not runtime internals; the golden for that case is a program with two widget functions whose results feed each other's arguments promptly, and its expected error lists both.
 
 ## Runtime unit tests and the invariant
 
@@ -2056,7 +2057,7 @@ The harness runs the binary with the given stdin delivered chunk by chunk with a
 
 The transcripts, each with what it pins:
 
-- *Line counting*, chapter 1's `@wc`, on empty input, one line, many lines, and lines split across chunks. Pins one turn per chunk, the partial line held to the next chunk, output written after the turn, and exit by `Process.Exit`'s request.
+- *Line counting*, chapter 2's `@wc`, on empty input, one line, many lines, and lines split across chunks. Pins one turn per chunk, the partial line held to the next chunk, output written after the turn, and exit by `Process.Exit`'s request.
 - *Falling off the end*: a program that prints and never fires `Process.Exit`. Pins exit 0 when nothing can cause another occurrence: no stdin slot, no signal slot, no request in flight, no timer; args, env, clock and watch slots do not keep a run alive.
 - *Exit codes*: a computed nonzero code; two `Process.Exit` slots firing in one turn, where the first in occurrence-then-list order is the code the process exits with; a code outside 0–255, which is an error.
 - *Output order*: two `Cli.Stdout` slots firing in one occurrence, written in list order; stdout and stderr interleaved across turns, in turn order; writes and an exit in one turn, with the writes landing first.
