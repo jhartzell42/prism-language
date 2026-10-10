@@ -108,7 +108,7 @@ $"Count: {$count}"           # attached to a text literal: a constant-or-lifted 
 !$contents                   # attached twice: an event of dynamics
 $_                           # attached to the pronoun
 @ unit                       # free: the widget returning unit
-@ ChecklistUpdate key, !checked   # free: lifts the whole constructed record into a widget
+@ ChecklistUpdate ix, !checked   # free: lifts the whole constructed record into a widget
 $ supply                     # free: the constant dynamic of the function supply
 @ ((!a, $b))                 # free, before a bracket: a widget returning a pair
 @((!a, $b))                  # same tokens: `((` is not a name character, so the sigil is free
@@ -117,17 +117,17 @@ $ Unavailable                # free: the constant dynamic of a unit value
 
 The attached and free forms mean the same thing when both are possible: `$"Increment"` and `$ "Increment"` are the same expression. The attachment rule exists for the token stream, not for the semantics, and it is chosen so that the common spellings are the attached ones and the free form reads as an operator with a space after it. A sigil followed by whitespace is always free. A sigil followed by `(`, `[`, `{` or a double bracket is free and applies to the bracketed expression, which is the same thing as if it were attached, so `@((!a, $b))` and `@ ((!a, $b))` have identical token streams: a free sigil then a bracket.
 
-Suppose instead the sigil were always attached to whatever token followed it. Then `@ ChecklistUpdate key, !checked` would be `(@ChecklistUpdate) key, !checked`: a call to a function named `@ChecklistUpdate`, which does not exist. The free form lets a sigil act as `return` on a whole expression, and the space says so. The alternative of a separate keyword for lifting, `pure x` or `return x`, would spell the same thing with a word that does not say which functor is meant; `@ x` and `$ x` say it.
+Suppose instead the sigil were always attached to whatever token followed it. Then `@ ChecklistUpdate ix, !checked` would be `(@ChecklistUpdate) ix, !checked`: a call to a function named `@ChecklistUpdate`, which does not exist. The free form lets a sigil act as `return` on a whole expression, and the space says so. The alternative of a separate keyword for lifting, `pure x` or `return x`, would spell the same thing with a word that does not say which functor is meant; `@ x` and `$ x` say it.
 
 ### Keywords
 
-`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `not` `and` `or` `lt` `le` `gt` `ge` `key` `empty`.
+`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `not` `and` `or` `lt` `le` `gt` `ge` `key` `ix` `jx` `kx` `empty`.
 
 Reserved for future work and rejected with a message saying so: `read` `update` and the sigil `&`.
 
 Not keywords, though they look like them: `never`, `started`, `main`, `Switch`, `Leftmost`, `Join`, `HoldFirst`, `Element`, `Some`, `Nil`, `True`, `False`, and the optional default `Or`. These are ordinary names in the prelude, written with their sigils where they have one (`!never`, `@started`, `@main`, `!Switch`, `!Leftmost`, `$Join`, `@Element`, `@HoldFirst`). A program may shadow them, which is a bad idea the compiler does not stop. `unit` is a keyword because it is both a type and the only value of that type, and letting it be shadowed would let `@ unit` mean something else.
 
-`key` is a keyword rather than a name because the shorthand `for` binds it without it appearing in the loop's syntax, and a keyword cannot be shadowed by an outer binding by accident. It may be used as a record field name (`Entry(key=k, value=v)`) because a field name is never an expression on its own. Keywords are reserved everywhere; no word is a keyword in one position and a name in another.
+`key` is a keyword rather than a name because the shorthand `for` binds it without it appearing in the loop's syntax, and `ix`, `jx` and `kx` are keywords because the loops of an `update` block bind them without their appearing in its syntax (the first for the innermost loop, `jx` and `kx` for the next two levels of nesting); a keyword cannot be shadowed by an outer binding by accident. They may be used as record field names (`ChecklistUpdate ix, !checked` is a record whose first field is named `ix`; `Entry(key=k, value=v)`) because a field name is never an expression on its own. Keywords are reserved everywhere; no word is a keyword in one position and a name in another.
 
 ### Literals
 
@@ -562,21 +562,19 @@ b = match(xs;
 
 The guard is part of the arm and runs from `if` to the colon. `a` is exhaustive by its second and third arms alone; `b` is exhaustive by its two arms, the empty array and the non-empty one.
 
-**13. `if` without `else`, and `for` with named binders.**
+**13. `for` with named binders.**
 
 ```prism
-let a = if c: x
 let b = for k, item <- xs: F k, item
 let c = for xs: F key, _
 ```
 
 ```
-a = if(c, x)
 b = for(k, item <- xs, F(k, item))
 c = for(key, _ <- xs, F(key, _))
 ```
 
-`a` has type `?T` for `x : T`. `c` is the shorthand and the same tree as `for key, _ <- xs:`, so the two spellings are one program.
+`c` is the shorthand and the same tree as `for key, _ <- xs:`, so the two spellings are one program.
 
 ### What a conforming lexer must get right
 
@@ -868,7 +866,7 @@ Binary operators at one level associate to the left, except `<=`, which does not
 
 `on` tighter than `|` lets a merge of samples read without parentheses, which is the form of every "what happened" event in the worked examples. `on` looser than arithmetic makes `$count + 1 on !click` mean "the count plus one, at the click" rather than "the count, plus (one at the click)", which would be a two-event error waiting to happen. Under both choices the first program anyone writes needs no parentheses, and a rule that made the counter uglier would need a better reason than any of these. Comparison sits between `on` and arithmetic, so `$count + 1 gt limit on !click` compares the sum and samples the answer at the click. The boolean operators sit between `on` and comparison, so a condition reads the way it is said: `$done or $count gt limit on !click` is `($done or ($count gt limit)) on !click`, `a lt b and c lt d` is `(a lt b) and (c lt d)`, and `x or y and z` is `x or (y and z)`. Sampling still wraps the whole condition without parentheses, which is what `on` being looser than every value operator buys. `not` sits between `and` and comparison, so it negates a whole comparison: `not a == b` is `not (a == b)`, `not $n + 1 gt limit` is `not (($n + 1) gt limit)`, and `not done and ready` is `(not done) and ready`, because `and` is looser. The operand of `not` is everything tighter than it, which is why `not $done` and `not a.ready` also read as expected. Suppose `not` bound tighter than comparison, as the unary minus does. Then `not a == b` would be `(not a) == b`, a type error in nearly every program that writes it, since the writer meant the negated comparison; the precedence that makes the line mean what it says is the one to choose. `not` is a prefix operator, so it cannot be the right operand of a tighter operator: `a == not b` is a parse error whose message asks for `a == (not b)`.
 
-A free sigil at level 12 applies to everything to its right up to the end of the enclosing call or bracket, because it is prefix and nothing at level 12 or looser follows it: `@ ChecklistUpdate key, !checked` is `@ (ChecklistUpdate key, !checked)` since the call at level 3 is looser and extends under it. The free sigil and the paren-less call therefore nest the obvious way: the sigil wraps the call. `$ x + 1` is `$ (x + 1)` by the same reading.
+A free sigil at level 12 applies to everything to its right up to the end of the enclosing call or bracket, because it is prefix and nothing at level 12 or looser follows it: `@ ChecklistUpdate ix, !checked` is `@ (ChecklistUpdate ix, !checked)` since the call at level 3 is looser and extends under it. The free sigil and the paren-less call therefore nest the obvious way: the sigil wraps the call. `$ x + 1` is `$ (x + 1)` by the same reading.
 
 A `.Method` that starts a continuation line stands outside the table. It closes everything open on the lines above, back to the statement's `=`, `<-` or `<=`, and takes that whole expression as its receiver; level 13 covers only a `.` written against the expression before it.
 
@@ -1015,14 +1013,7 @@ let !line = match !ev:
     Closed: Nil
 ```
 
-`if c: a` then `else: b`, on one line or on two lines with `else` at the column of `if`, is `match c:` on `Bool`, with `True: a` and `False: b`. It lifts the same way: `if $done: "x" else: " "` is a dynamic text. An `if` without an `else` is an optional. You have written a condition whose false branch was nothing and had to invent a value, an empty string or a zero, so the caller could tell nothing from something. `if c: x` has type `?T` when `x` has type `T`: it is `Some x` when the condition holds and `Nil` otherwise, and it is `?unit` when `x` is `unit`. It lifts as `if` does, so over a dynamic condition it is a `$?T`:
-
-```prism
-let $warning = if $count gt 10: "Too many"      # $?Text
-@Label (Or $warning, "")                        # `Or` supplies the text when there is no warning
-```
-
-An `else` makes the value plain, and the optional is the form when the absence matters to the reader of the result.
+`if c: a` then `else: b`, on one line or on two lines with `else` at the column of `if`, is `match c:` on `Bool`, with `True: a` and `False: b`. It lifts the same way: `if $done: "x" else: " "` is a dynamic text. An `if` without an `else` is an error, because every expression has a value and there is no `unit` to fall back on silently; a program that wants "do nothing" says `unit` in the `else`, and one that wants "nothing" says `Nil` in it: `if n == 1: Some unit else: Nil` is a `?unit`.
 
 ### Text interpolation
 
@@ -1220,9 +1211,11 @@ error: cannot interpolate a `Todo` into text
 
 **`for` over a dynamic outside a widget block.** "`for` over a dynamic collection builds widgets and must be inside a widget block"; with a plain collection inside a widget block it is the plain mapping and needs no message.
 
+**`ix` outside a `for`.** "`ix` is bound only inside a `for` in an `update` block"; likewise `jx` and `kx`, and `jx` inside a single loop says "`jx` is the index of the second-nested `for`; this loop's index is `ix`".
+
 **`key` outside a shorthand `for`.** "`key` is bound only inside a `for` written without `<-`; name the key in `for k, x <- xs:`". The same message applies inside a loop with named binders, where `key` is not bound.
 
-**An `if` without `else` where a plain value is required.** "`if` without `else` is `?Text` here, and a `Text` is required; add an `else`, or give a default: `Or (if c: x), y`". The optional is legal wherever an optional is; the message appears at the boundary, in the way the `?Nat` message does.
+**An `if` without `else`.** "every `if` has an `else`; this one has no value when the condition is False".
 
 **A guarded arm in an exhaustiveness check.** "match does not cover `Nil`; the arm `Some t if t.done` has a guard and does not count". The message names the guard so that a program that thought the guarded arm covered its case finds out why it did not.
 
@@ -1526,6 +1519,6 @@ The language's refusals are listed with the whole design in the first part of th
 
 **No symbol with two meanings.** Comparisons are the operators `lt le gt ge == !=`; `<=` is hold and nothing else, and `<-` is bind and nothing else. What this buys: the line that defines a program's state never looks like a comparison.
 
-**No explicit-brace layout, no block comments, no tabs.** Each of these removes a second way to write something, and each second way is one more case on which two parsers can disagree. The spec is the thing, and the thing is shorter for it.
+**No explicit-brace layout, no block comments, no tabs, no `else`-less `if`.** Each of these removes a second way to write something, and each second way is one more case on which two parsers can disagree. The spec is the thing, and the thing is shorter for it.
 
 **No `read` and `update` blocks, no `&` references, no lenses.** These are future work and are not in this specification. Plain values are built, never modified; a function that "updates" a record builds a new one. What this buys now: the value layer has one operation on a record, construction, and the question of how mutation inside a plain value interacts with sharing does not arise. If they come, they come as sugar over construction, and nothing in this chapter changes meaning.

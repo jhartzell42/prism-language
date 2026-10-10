@@ -246,11 +246,11 @@ Two conveniences fall out. A function whose result type is its first argument's 
 
 ```prism
 let AddByElement: fn [Float], [Float] -> [Float] = \|a, b| update a:
-    for i, &x <- &_:      # `i` is the index, `&x` a reference to a[i]
-        &x += b[i]
+    for &_:               # `&_` inside the loop is a reference to a[ix]
+        &_ += b[ix]
 ```
 
-The loop names its index. `for i, &x <- &_:` is the same `for` form widget blocks use for a key and its per-key dynamic (`for k, $item <- $items:`), with a reference in the second position, and the shorthand `for &_:` binds `key` and `&_` the way `for $items:` binds `key` and `$_`. Nested loops name their own indices, so there is no limit on depth and no reserved index names.
+`ix` is the index of the current iteration; nested loops get `jx` and `kx`, and past that a helper function is better than another keyword.
 
 ### Why it is wanted
 
@@ -308,11 +308,9 @@ The Haskell implementation interprets the typed AST, and a lens in Haskell is a 
 
 A program in the suite, or a library, whose fold functions are more plumbing than logic. The text editor is the likeliest first case, because its buffer is a map of lines and every keystroke is a nested update. Before that, functional update is adequate and the feature would be a guess about ergonomics.
 
-### Loop indices and what the check can refuse
+### What the check can refuse
 
-A programmer who has written `enumerate` expects to name the index and to nest as deep as the problem does, so the loop names it: `for i, &x <- &_:` binds the index `i` and a reference `&x` to the element, in the same form as a widget block's `for k, $item <- $items:`. A reader who knows one `for` knows the other, and an inner loop's `j` cannot collide with an outer `i` because each loop binds its own. An index is an ordinary value, so `b[i]` on the right of `&x += b[i]` reads like any index expression.
-
-The borrowing check has a similar question. The sketch rejects two references whose keys are variables, a reference held across the arms of an `if`, and a function taking two references. All three have a meaning in the functional reading of the block, since swapping `a[i]` and `a[j]` is a well-defined fold of two lens applications. The rules are there so that the in-place implementation is safe and so that the check stays one pass over the block. A static check for the cases it can prove, with a runtime comparison of keys for the cases it cannot, gives programs the meaning the functional reading gives them: when the two keys are equal, the statements run in sequence on a copy at that level, or the occurrence aborts the way an out-of-range write does. Which of the two is right depends on whether a program that swaps an element with itself should be a no-op or a mistake, and the text editor's buffer is the first place the question will come up.
+The borrowing check has a question of its own. The sketch rejects two references whose keys are variables, a reference held across the arms of an `if`, and a function taking two references. All three have a meaning in the functional reading of the block, since swapping `a[i]` and `a[j]` is a well-defined fold of two lens applications. The rules are there so that the in-place implementation is safe and so that the check stays one pass over the block. A static check for the cases it can prove, with a runtime comparison of keys for the cases it cannot, gives programs the meaning the functional reading gives them: when the two keys are equal, the statements run in sequence on a copy at that level, or the occurrence aborts the way an out-of-range write does. Which of the two is right depends on whether a program that swaps an element with itself should be a no-op or a mistake, and the text editor's buffer is the first place the question will come up.
 
 ## Native backends
 

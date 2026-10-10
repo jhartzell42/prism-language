@@ -1865,19 +1865,6 @@ kw(let) ident(f) eq lambda kw(match) ident(_) colon <open> ident(n) kw(if) ident
 
 The `if` in an arm's head is a keyword token and opens nothing; the one colon after the guard is the arm's, and its block is the rest of the line. A lexer that opened a block at `if` would have two `open`s before `"big"`. Chapter 12's grammar for arms is what reads `pattern if cond:` out of this stream.
 
-**An `if` with no `else`.**
-
-```prism
-let m = if c: x
-let n = 1
-```
-
-```
-kw(let) ident(m) eq kw(if) ident(c) colon <open> ident(x) <close> <sep> kw(let) ident(n) eq nat(1)
-```
-
-The inline block ends at the end of its line and there is no `else` to wait for, so the next line is a new statement at the block's column. A sibling entry puts `else:` at the column of the `if` on the following line and expects the continuation, which is what makes the two cases tell a lexer whether it looks ahead for `else`: it does not, the parser does.
-
 **A `for` with named binders.**
 
 ```prism
@@ -1975,7 +1962,7 @@ let same: fn Int, Int -> Bool = \|a, b| not a == b
 same: fn Int, Int -> Bool [build] g1 = \|a, b| Bool.Not (Eq[Int] a, b)               @1:1
 ```
 
-The guard on a `match` arm and the `if` with no `else` have goldens too, each as a node of the dump: the guard is a field of the arm, and the `else`-less `if` is an optional built from the branch, `Some` when the condition holds and `None` otherwise.
+The guard on a `match` arm has a golden too, as a node of the dump: the guard is a field of the arm.
 
 What a golden catches, in the order these have bitten: a lift that changed kind, say a dynamic read promptly where it should be a tag, which is a glitch that no script may notice for months; a literal or operator that resolved to a different numeric type; a binding that moved between build-time and occurrence-time, which changes how often an expensive function runs; a recursive group split or placed differently, which changes build order; a `for` consolidating to the wrong kind.
 
