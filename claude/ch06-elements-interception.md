@@ -264,6 +264,8 @@ When the tag of `e` is not statically known, as in a catch-all arm of a `match` 
 
 One thing `@Element` does not take is a dynamic where a field goes. `@Element Ui.Label(text=$text)` is not a label whose text changes; it is an application to a dynamic, which lifts, so it is `$(@Element Ui.Label(text=text))`, a dynamic of widgets. Binding a dynamic of widgets lifts to `dyn`: `@Element Ui.Label(text=$text)` as a statement means `dyn $text: @Element Ui.Label(text=_)`, a fresh slot per change of the text, and a bound name on the left is the `!Switch` of the `dyn`'s event when the element responds, or a hold of dynamics joined with `$Join` when it has state, with the first build's result as the hold's initial value. The chapter says this once here and uses the short form from now on; the section on dynamic fields says what it costs and why it is the right cost.
 
+A program rarely spells this out for library widgets. Library widgets take dynamic arguments: `@Button` takes a `$Text` label, and a button whose label changes is written `@Button $label`. The fresh slot per change belongs to the library's interceptor, which builds a new `Ui.Button` slot when the label changes and answers to the program through the one `!Click` event it returns; a World never sees it, because a World sees only the `Gui.*` elements the interceptor emits. The rule that a field change is a fresh slot holds in full for every element that reaches a World, and the `dyn` forms above are that rule written out, not the way a program normally labels a button.
+
 ## The creation rule
 
 > **Elements never fire in the occurrence they were created. Firing within the same occurrence implies they could have been pure functions. Instead, elements with request-like semantics take an input event and fire their output event in a different occurrence.**
@@ -616,16 +618,16 @@ A World that draws accepts a window, a scene, a focusable, a text measurer and a
 
 ```prism
 type Point = record:
-    x: Int
-    y: Int
+    x: Float
+    y: Float
 type Extent = record:
-    w: Int
-    h: Int
+    w: Float
+    h: Float
 type Rect = record:
-    x: Int
-    y: Int
-    w: Int
-    h: Int
+    x: Float
+    y: Float
+    w: Float
+    h: Float
 type Color = choice White | Grey | Blue | Black
 
 type Draw = choice:
@@ -645,7 +647,7 @@ type Key = choice:
 type WindowInput = choice:
     Pointer Point
     Pressed Key
-    Wheel ((Point, Int))
+    Wheel ((Point, Float))
     Resized Extent
 
 type Frame = record:
@@ -693,7 +695,7 @@ tag Ui.HBox of Element:
 
 tag Ui.Scroll of Element:
     name: Text
-    height: Int
+    height: Float
     children: Path ==> Element
     responds: ChildInput
 ```
@@ -731,7 +733,7 @@ let UiOnly: fn Path ==> Slot -> Path ==> Element = \|slots|
     MapValues (Filter slots, \IsUi _.element), \_.element
 
 let NonUi: fn Path ==> Slot -> Path ==> Slot = \|slots|
-    Filter slots, \not (IsUi _.element)
+    Filter slots, \not IsUi _.element
 
 let Inward: fn ChildInput -> Path ==> Response = \|c| {c.path: c.response}
 
@@ -742,7 +744,7 @@ let Inward: fn ChildInput -> Path ==> Response = \|c| {c.path: c.response}
     let !down = !Union (Inward !in), !fwd
     @ result
 
-@Scroll: fn Text, Int, @a -> @a = \|name, height, @child| @widget:
+@Scroll: fn Text, Float, @a -> @a = \|name, height, @child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !in <- @Element Ui.Scroll(name=name, height=height, children=(UiOnly $slots))
     !fwd <- @Forward (NonUi $slots)
@@ -784,13 +786,13 @@ Layout is a function from an element tree, a rectangle and what the layout needs
 ```prism
 type Env = record:
     sizes: Text ==> Extent       # one Gui.Metrics answer per distinct text
-    offsets: Text ==> Int        # scroll offsets, by region name
+    offsets: Text ==> Float        # scroll offsets, by region name
     focus: ?Text
 
 type HitKind = choice:
     Clickable
     Focus Text
-    Scrollable ((Text, Int))     # region name, largest offset
+    Scrollable ((Text, Float))     # region name, largest offset
 
 type Hit = record:
     rect: Rect
@@ -802,22 +804,22 @@ type Placed = record:
     hits: [Hit]
 
 let TextExtent: fn Env, Text -> Extent = \|env, t|
-    Or env.sizes[t], (Extent 0, 0)
+    Or env.sizes[t], (Extent 0.0, 0.0)
 
 let Measure: fn Env, Element -> Extent = \|env, e| match e:
-    Ui.Label(text=t): Padded (TextExtent env, t), 4
-    Ui.Button(label=l): Padded (TextExtent env, l), 8
-    Ui.TextInput(text=t, ..): Padded (TextExtent env, t), 4
-    Ui.VBox(children=cs): Fold cs, (Extent 0, 0), \|acc, ignore, c| Stacked acc, (Measure env, c)
-    Ui.HBox(children=cs): Fold cs, (Extent 0, 0), \|acc, ignore, c| Beside acc, (Measure env, c)
+    Ui.Label(text=t): Padded (TextExtent env, t), 4.0
+    Ui.Button(label=l): Padded (TextExtent env, l), 8.0
+    Ui.TextInput(text=t, ..): Padded (TextExtent env, t), 4.0
+    Ui.VBox(children=cs): Fold cs, (Extent 0.0, 0.0), \|acc, ignore, c| Stacked acc, (Measure env, c)
+    Ui.HBox(children=cs): Fold cs, (Extent 0.0, 0.0), \|acc, ignore, c| Beside acc, (Measure env, c)
     Ui.Scroll(children=cs, height=h, ..): Extent (Measure env, Ui.VBox(children=cs)).w, h
-    ignore: Extent 0, 0
+    ignore: Extent 0.0, 0.0
 
 let Place: fn Env, Element, Rect, [Path] -> Placed = \|env, e, r, chain| match e:
     Ui.Label(text=t):
-        Placed [[(Draw.Text (((Point r.x + 4, r.y + 4), t)))]], [[]]
+        Placed [[(Draw.Text (((Point r.x + 4.0, r.y + 4.0), t)))]], [[]]
     Ui.Button(label=l):
-        Placed [[(Draw.Rect ((r, Grey))), (Draw.Text (((Point r.x + 8, r.y + 8), l)))]], [[(Hit r, chain, Clickable)]]
+        Placed [[(Draw.Rect ((r, Grey))), (Draw.Text (((Point r.x + 8.0, r.y + 8.0), l)))]], [[(Hit r, chain, Clickable)]]
     Ui.TextInput(name=n, text=t, cursor=c):
         Placed (InputDraw env, r, n, t, c), [[(Hit r, chain, (Focus n))]]
     Ui.VBox(children=cs):
@@ -867,8 +869,8 @@ The window interceptor claims every library element, lays the tree out, draws it
 ```prism
 type Wheeled = record:
     name: Text
-    most: Int
-    by: Int
+    most: Float
+    by: Float
 
 let PointerOf: fn WindowInput -> ?Point = \|w| match w:
     Pointer p: Some p
@@ -883,7 +885,7 @@ let IsTab: fn WindowInput -> ?unit = \|w| match w:
     Pressed Tab: Some unit
     ignore: Nil
 
-let WheelOf: fn WindowInput -> ?((Point, Int)) = \|w| match w:
+let WheelOf: fn WindowInput -> ?((Point, Float)) = \|w| match w:
     Wheel ((p, d)): Some ((p, d))
     ignore: Nil
 
@@ -910,18 +912,18 @@ let RouteKey: fn [Hit], ?Text, Key -> ?(Path ==> Response) = \|hits, focus, k|
             Some h: Some (Deliver h.chain, k)
             Nil: Nil
 
-let WheelTarget: fn Hit, Point, Int -> ?Wheeled = \|h, p, d| match h.kind:
+let WheelTarget: fn Hit, Point, Float -> ?Wheeled = \|h, p, d| match h.kind:
     Scrollable ((n, most)): if Contains h.rect, p: Some (Wheeled n, most, d) else: Nil
     ignore: Nil
 
-let WheelAt: fn [Hit], ((Point, Int)) -> ?Wheeled = \|hits, ((p, d))|
+let WheelAt: fn [Hit], ((Point, Float)) -> ?Wheeled = \|hits, ((p, d))|
     (Collect hits, \WheelTarget _, p, d)[0]  # hits are in tree order, children first: the innermost region under the pointer
 
-let Clamp: fn Int, Int, Int -> Int = \|lo, hi, v|
+let Clamp: fn Float, Float, Float -> Float = \|lo, hi, v|
     if v lt lo: lo else: if hi lt v: hi else: v
 
-let Scrolled: fn Text ==> Int, Wheeled -> Text ==> Int = \|offsets, w|
-    Insert offsets, w.name, (Clamp 0, w.most, (Or offsets[w.name], 0) + w.by)
+let Scrolled: fn Text ==> Float, Wheeled -> Text ==> Float = \|offsets, w|
+    Insert offsets, w.name, (Clamp 0.0, w.most, (Or offsets[w.name], 0.0) + w.by)
 
 @Window: fn Text, Extent, @a -> @a = \|title, size0, @app| @widget:
     ((result, $slots)) <- intercept @app, !down, $ \|e| @Element e
@@ -932,7 +934,7 @@ let Scrolled: fn Text ==> Int, Wheeled -> Text ==> Int = \|offsets, w|
         @ $m
     $size <- size0 <= !Filter (ResizeOf !raw)
     let $root = Ui.VBox(children=$kids)
-    let $placed = Place (Env $sizes, $offsets, $focus), $root, (Rect 0, 0, $size.w, $size.h), [[]]
+    let $placed = Place (Env $sizes, $offsets, $focus), $root, (Rect 0.0, 0.0, $size.w, $size.h), [[]]
     @Element Gui.Scene(window=title, draw=$placed.draw)
 
     let !hit = !Filter (HitAt $placed.hits, !Filter (PointerOf !raw))
@@ -969,17 +971,17 @@ Take a small form under the window:
     @ unit
 
 @main:
-    @Window "Form", (Extent 400, 300), (@VBox @form)
+    @Window "Form", (Extent 400.0, 300.0), (@VBox @form)
 ```
 
 Paths, from the window's child down. The `@VBox` is the window's child, and it holds everything back, so the app's list has one library element, the box's `Ui.VBox`, at `1/#0/0`. Inside the box, the form's elements: the text input at `0/#0/0`, the HBox's element at `1/#0/0`, the greeting label at `2/#0/0`. Inside the HBox, the two buttons at `0/#0/0` and `1/#0/0`. A path is only a key in the list of the interceptor that reads it, so the same string names different slots at different levels.
 
 The World's text measurement is fixed-width in this walk: eight pixels per character and sixteen per line. A label pads its text by 4 on each side, a button by 8, an input by 4, which puts the input at the top left with width 32 and height 24, the two buttons below it from y = 24, `OK` from x = 0 to 32 and `Cancel` from x = 32 to 96, each 32 high, and the greeting at y = 56, 88 wide.
 
-**Occurrence 0 (build).** Everything is built. The `Gui.Window` slot is created. `TextsIn` finds four distinct texts, `Ada` (the input's text and its text up to the cursor), `Cancel`, `Hello, Ada` and `OK`, and the `for` builds a `Gui.Metrics` slot for each; the oracle answers `Extent 24, 16` for `Ada` and so on, in this occurrence. `Place` lays the tree out with those sizes, and the scene slot is created with the draw list. `$focus` is `Nil`, so no focusable. The World sees:
+**Occurrence 0 (build).** Everything is built. The `Gui.Window` slot is created. `TextsIn` finds four distinct texts, `Ada` (the input's text and its text up to the cursor), `Cancel`, `Hello, Ada` and `OK`, and the `for` builds a `Gui.Metrics` slot for each; the oracle answers `Extent 24.0, 16.0` for `Ada` and so on, in this occurrence. `Place` lays the tree out with those sizes, and the scene slot is created with the draw list. `$focus` is `Nil`, so no focusable. The World sees:
 
 ```
-1:               Gui.Window(title="Form", size=Extent(w=400, h=300))
+1:               Gui.Window(title="Form", size=Extent(w=400.0, h=300.0))
 2/[Ada]/0:       Gui.Metrics(text="Ada", font=Default)
 2/[Cancel]/0:    Gui.Metrics(text="Cancel", font=Default)
 2/[Hello, Ada]/0: Gui.Metrics(text="Hello, Ada", font=Default)
@@ -989,15 +991,15 @@ The World's text measurement is fixed-width in this walk: eight pixels per chara
 
 It draws the scene and waits.
 
-**Occurrence 1.** The user clicks on the OK button. The World sends `Pointer (Point 12, 40)` to `1`. `PointerOf` passes the point; `HitAt` reads `$placed.hits` through a tag and finds the button's region first (leaves before containers), with chain `[[1/#0/0, 1/#0/0, 0/#0/0]]`: the box in the app's list, the HBox in the box's list, the OK button in the HBox's list. `ClickFor` turns it into `{1/#0/0: ChildInput(path=1/#0/0, response=ChildInput(path=0/#0/0, response=click))}`. `!down` fires with it; `intercept` delivers to the box's slot at `1/#0/0` in the app's list as opened. The box's `!in` fires; `Inward` turns the `ChildInput` into `{1/#0/0: ChildInput(path=0/#0/0, response=click)}`; the box's `!down` delivers it to the HBox's slot; the HBox peels again and delivers `{0/#0/0: click}`; the OK button's `!in` fires with `click`; `!ok` fires in the form. Nothing on the screen changes, so no scene is rebuilt. Three interceptors and one leaf, in one occurrence, each one line of routing.
+**Occurrence 1.** The user clicks on the OK button. The World sends `Pointer (Point 12.0, 40.0)` to `1`. `PointerOf` passes the point; `HitAt` reads `$placed.hits` through a tag and finds the button's region first (leaves before containers), with chain `[[1/#0/0, 1/#0/0, 0/#0/0]]`: the box in the app's list, the HBox in the box's list, the OK button in the HBox's list. `ClickFor` turns it into `{1/#0/0: ChildInput(path=1/#0/0, response=ChildInput(path=0/#0/0, response=click))}`. `!down` fires with it; `intercept` delivers to the box's slot at `1/#0/0` in the app's list as opened. The box's `!in` fires; `Inward` turns the `ChildInput` into `{1/#0/0: ChildInput(path=0/#0/0, response=click)}`; the box's `!down` delivers it to the HBox's slot; the HBox peels again and delivers `{0/#0/0: click}`; the OK button's `!in` fires with `click`; `!ok` fires in the form. Nothing on the screen changes, so no scene is rebuilt. Three interceptors and one leaf, in one occurrence, each one line of routing.
 
-**Occurrence 2.** The user clicks in the text field. `Pointer (Point 12, 10)` to `1`. `HitAt` finds the input's own region, with kind `Focus "name"`. `ClickFor` gives `Nil`, since an input responds only to keys, and `FocusOf` fires `Some "name"`; `$focus` changes to `Some "name"`. The layout depends on the focus, so `$placed` changes promptly and the scene rebuilds to `4/#1/0`, now with a caret bar after `Ada`; and the focus dyn builds `Gui.Focusable(name="name")` at `7/#1/0`. Commit: focus is the input, and the World can show the platform's focus for it.
+**Occurrence 2.** The user clicks in the text field. `Pointer (Point 12.0, 10.0)` to `1`. `HitAt` finds the input's own region, with kind `Focus "name"`. `ClickFor` gives `Nil`, since an input responds only to keys, and `FocusOf` fires `Some "name"`; `$focus` changes to `Some "name"`. The layout depends on the focus, so `$placed` changes promptly and the scene rebuilds to `4/#1/0`, now with a caret bar after `Ada`; and the focus dyn builds `Gui.Focusable(name="name")` at `7/#1/0`. Commit: focus is the input, and the World can show the platform's focus for it.
 
 **Occurrence 3.** The user types `!`. `Pressed (Char '!')` to `1`. `PressedOf` passes it; `RouteKey` reads `$placed.hits` and `$focus` through tags, finds the hit whose kind is `Focus "name"`, and `Deliver` addresses `Char '!'` down its chain `[[1/#0/0, 0/#0/0]]`. The box peels; the input's `!key` fires; `Apply $edit, !key` fires with `Edit "Ada!", 4`; `$edit` changes. The input element is a fresh slot at `0/#1/0`; the box's `children` changes and the box is a fresh slot at `1/#1/0`; `$kids` changes; the greeting label changes too, since `$name` is `$edit.text`. Now the measurer: `TextsIn` finds `Ada!`, `Cancel`, `Hello, Ada!` and `OK`. The `for` builds `Gui.Metrics` slots for `Ada!` and `Hello, Ada!` in this occurrence and the oracle answers them in this occurrence; `Ada` and `Hello, Ada` are torn down at commit. `$sizes` has the new widths before the occurrence ends, `$placed` is laid out with them, and the scene is rebuilt at `4/#2/0`. There is no occurrence in which the text has changed and its width has not. Commit: `$edit` is `Edit "Ada!", 4`, and `$focus` is still `Some "name"`, which names the new input slot as well as it named the old one.
 
 **Occurrence 4.** The user presses Tab. `IsTab` passes; `NextFocus` reads the hit list and the focus through tags; there is one input, so the name after `"name"`, wrapping, is `"name"` again. A hold set to the value it already has still changes, so the scene and the focusable are rebuilt with equal contents; the World's diff finds nothing different, and `$Distinct` on `$focus` would suppress the rebuild. A form with two inputs would move to the second here, and Tab on the last would wrap to the first, which is what `After` does; a library that wants Shift-Tab adds a key and a `Before`.
 
-**Occurrence 5.** The user resizes the window. The World sends `Resized (Extent 600, 300)` to `1`. `$size` changes; `$placed` changes promptly; the scene rebuilds with the new rectangles. Nothing in the form ran, and the next click is hit-tested against the new layout because the next occurrence opens with it.
+**Occurrence 5.** The user resizes the window. The World sends `Resized (Extent 600.0, 300.0)` to `1`. `$size` changes; `$placed` changes promptly; the scene rebuilds with the new rectangles. Nothing in the form ran, and the next click is hit-tested against the new layout because the next occurrence opens with it.
 
 This prevents the afternoon where the click landed on the button that had just moved, because layout ran after the event was dispatched and the hit-test used the new positions while the user had seen the old ones. Here the hit-test reads the layout the user saw, by the tag law, and no layout pass can get between a click and the thing it was aimed at.
 
@@ -1018,12 +1020,12 @@ test form_greets: Test (@VBox @form): array:
 The test drives the library below the window, so it checks routing through the boxes and the input without any layout. A test of the window adds the measurer, which the Test World has no answers for. The window creates its `Gui.Metrics` slots at build, so the script gives each one a value before the build:
 
 ```prism
-test window_focus: Test (@Window "Form", (Extent 400, 300), (@VBox @form)): array:
-    State Gui.Metrics(text="Ada", font=Default), Extent 24, 16
-    State Gui.Metrics(text="Cancel", font=Default), Extent 48, 16
-    State Gui.Metrics(text="Hello, Ada", font=Default), Extent 80, 16
-    State Gui.Metrics(text="OK", font=Default), Extent 16, 16
-    Send Gui.Window(..), Pointer (Point 12, 10)
+test window_focus: Test (@Window "Form", (Extent 400.0, 300.0), (@VBox @form)): array:
+    State Gui.Metrics(text="Ada", font=Default), Extent 24.0, 16.0
+    State Gui.Metrics(text="Cancel", font=Default), Extent 48.0, 16.0
+    State Gui.Metrics(text="Hello, Ada", font=Default), Extent 80.0, 16.0
+    State Gui.Metrics(text="OK", font=Default), Extent 16.0, 16.0
+    Send Gui.Window(..), Pointer (Point 12.0, 10.0)
     Expect Gui.Focusable(name="name")
 ```
 

@@ -138,3 +138,17 @@ Write the chapter file. At the top, a one-paragraph lead stating the chapter's p
 - `a -1` stays a call-versus-subtraction question decided by the spacing rule, as chapter 3 states it.
 - Text interpolation is only `{expr}`: `"count: {$count}"`, `"hi {name}"`; a literal brace is `\{` and `\}`; `$` in text is always literal. `"$count"` is no longer an interpolation. A literal that interpolates a dynamic is a dynamic.
 - `/` on `Float` follows IEEE (infinities and NaN) and never fails; on `Nat` and `Int` it returns `?`. `Float` has a total order (IEEE totalOrder) so it can key a map; closed `choice`s are ordered by declaration order.
+
+## Decision: boolean precedence, guards, optional if, for binders, patterns, small gaps
+
+- Precedence, loosest to tightest around the boolean level: `on` / `|`, `or`, `and`, `not`, comparison (`lt le gt ge == !=`), arithmetic. So `not a == b` is `not (a == b)` and `a lt b and c lt d` needs no parentheses. Plain `and` / `or` short-circuit (an overflow in the operand that was not needed does not abort); lifted `and` / `or` over dynamics and events are lifts of the same function and fire per the lifting rule.
+- `match` arms may have guards: `pattern if cond:`. A guarded arm does not count toward exhaustiveness. The typed AST has a guard on the arm.
+- `if c: x` without `else` is an expression of type `?T`: `Some x` when the condition holds and `None` otherwise (`?unit` when `x` is `unit`). Lifting follows the usual rules, so over a dynamic condition it is a `$?T`.
+- `for` has named binders: `for k, $item <- $items:` binds the key and the per-key dynamic; the shorthand `for $items:` binds `key` and `$_` as before. The form is the same in widget blocks and in `update` blocks: `for i, &x <- &_:`. Loop indices in `update` are named by the loop; the reserved `ix`, `jx`, `kx` do not exist.
+- Array patterns mirror the literals: `[[]]` matches empty, `[[head, ..rest]]` matches a non-empty array, `[[a, b]]` matches exactly two. Exhaustiveness covers them.
+- The prelude has `@HoldFirst: fn !a -> @$a`, a dynamic that holds its event's value with the first firing's value as the initial value (the `$Join`/`hold_first` idiom).
+- camelCase in a value name is a lint warning, not a compile error. Keywords stay reserved (no contextual keywords).
+- `Fs.Contents` answers `Unavailable(reason)` with a reason from a closed `FsError` choice (`NotFound`, `Denied`, `TooLarge`, `Other(text)`); a reader on `Cli.Stdin` whose slot is dropped delivers nothing further and the World keeps the partial chunk with the stream.
+- Library widgets take dynamic arguments: `@Button` takes a `$Text` label. A relabelled `Ui.Button` is a fresh slot in the library's interceptor, which the World never sees (it sees only `Gui.*`); the fresh-slot-per-change rule holds for elements that reach a World. The book's "button that relabels itself" is an illustration of the rule, not the way a program normally labels a button.
+- `Extent` is `record: w: Float; h: Float` and is the only size type (no separate `Size`). Transcripts print request firings bare and `; `-separated, as chapter 2's conventions say.
+- `update` blocks sit outside the chapters' "no assignment" statements without caveat: the statements stand for the language the book specifies, and `update` is a separate piece of design in chapter 16 that the rest of the book does not depend on.

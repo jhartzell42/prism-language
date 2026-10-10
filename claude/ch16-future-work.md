@@ -208,7 +208,7 @@ Nothing here may change a transcript, a type, or the meaning of overflow. The tr
 
 ## `&` references, `read` and `update` blocks
 
-You have a record with a record in it with a map in it, and you need to add one to a counter three levels down. In an imperative language it is a line. In a pure language it is a `let` per level, each one rebuilding the enclosing record with one field replaced, and the line that does the work is at the bottom of a staircase of plumbing. This is the one place a pure language is worse to write than an imperative one, and it is the one `update` blocks exist to fix. They are future work because nothing in the specification needs them, and because the semantics of references under erasure and copy-on-write are the part that has to be designed before the Rust implementation can commit to a representation.
+You have a record with a record in it with a map in it, and you need to add one to a counter three levels down. In an imperative language it is a line. In a pure language it is a `let` per level, each one rebuilding the enclosing record with one field replaced, and the line that does the work is at the bottom of a staircase of plumbing. This is the one place a pure language is worse to write than an imperative one, and it is the one `update` blocks exist to fix. An `update` block sits beside the book's statements that the language has no assignment without contradicting the language the rest of the book specifies: it is a separate block form inside plain code, its value is an updated copy of a value, nothing outside the block sees a write, and nothing else in the book depends on it. They are future work because nothing in the specification needs them, and because the semantics of references under erasure and copy-on-write are the part that has to be designed before the Rust implementation can commit to a representation.
 
 ### What the feature is
 
@@ -246,11 +246,11 @@ Two conveniences fall out. A function whose result type is its first argument's 
 
 ```prism
 let AddByElement: fn [Float], [Float] -> [Float] = \|a, b| update a:
-    for &_:               # `&_` inside the loop is a reference to a[ix]
-        &_ += b[ix]
+    for i, &x <- &_:      # `i` is the index, `&x` a reference to a[i]
+        &x += b[i]
 ```
 
-`ix` is the index of the current iteration; nested loops get `jx` and `kx`, and past that a helper function is better than another keyword.
+The loop names its index. `for i, &x <- &_:` is the same `for` form widget blocks use for a key and its per-key dynamic (`for k, $item <- $items:`), with a reference in the second position, and the shorthand `for &_:` binds `key` and `&_` the way `for $items:` binds `key` and `$_`. Nested loops name their own indices, so there is no limit on depth and no reserved index names.
 
 ### Why it is wanted
 
@@ -308,11 +308,11 @@ The Haskell implementation interprets the typed AST, and a lens in Haskell is a 
 
 A program in the suite, or a library, whose fold functions are more plumbing than logic. The text editor is the likeliest first case, because its buffer is a map of lines and every keystroke is a nested update. Before that, functional update is adequate and the feature would be a guess about ergonomics.
 
-### Index names and what the check can refuse
+### Loop indices and what the check can refuse
 
-The sketch above reserves `ix`, `jx` and `kx` as the loop indices and stops at three nested loops. Nothing in the semantics asks for that. It follows from spelling the index as a keyword where an ordinary binding would do, and a programmer who has written `enumerate` expects to name the index and nest as deep as the problem does. A loop that binds its own index, `for &_ |i|:` or `for ((i, &x)) <- &_:`, removes the limit and the reserved names, and `ix` survives, if at all, as the default when no name is given.
+A programmer who has written `enumerate` expects to name the index and to nest as deep as the problem does, so the loop names it: `for i, &x <- &_:` binds the index `i` and a reference `&x` to the element, in the same form as a widget block's `for k, $item <- $items:`. A reader who knows one `for` knows the other, and an inner loop's `j` cannot collide with an outer `i` because each loop binds its own. An index is an ordinary value, so `b[i]` on the right of `&x += b[i]` reads like any index expression.
 
-The same question arises for the borrowing check. The sketch rejects two references whose keys are variables, a reference held across the arms of an `if`, and a function taking two references. All three have a meaning in the functional reading of the block, since swapping `a[i]` and `a[j]` is a well-defined fold of two lens applications. The rules are there so that the in-place implementation is safe and so that the check stays one pass over the block. A static check for the cases it can prove, with a runtime comparison of keys for the cases it cannot, gives programs the meaning the functional reading gives them: when the two keys are equal, the statements run in sequence on a copy at that level, or the occurrence aborts the way an out-of-range write does. Which of the two is right depends on whether a program that swaps an element with itself should be a no-op or a mistake, and the text editor's buffer is the first place the question will come up.
+The borrowing check has a similar question. The sketch rejects two references whose keys are variables, a reference held across the arms of an `if`, and a function taking two references. All three have a meaning in the functional reading of the block, since swapping `a[i]` and `a[j]` is a well-defined fold of two lens applications. The rules are there so that the in-place implementation is safe and so that the check stays one pass over the block. A static check for the cases it can prove, with a runtime comparison of keys for the cases it cannot, gives programs the meaning the functional reading gives them: when the two keys are equal, the statements run in sequence on a copy at that level, or the occurrence aborts the way an out-of-range write does. Which of the two is right depends on whether a program that swaps an element with itself should be a no-op or a mistake, and the text editor's buffer is the first place the question will come up.
 
 ## Native backends
 
@@ -405,7 +405,7 @@ A function type gains, for each sigiled result, the set of arguments it depends 
 ```prism
 @Button: fn $Text -> @!Click                       # result depends promptly on nothing
 Scale:   fn !Int, $Int -> !Int    prompt !_1       # result fires promptly on the first argument, reads the second through a tag
-@Pack:   fn [$Size] -> @$[Pos]  prompt $_1         # positions change promptly when any size changes
+@Pack:   fn [$Extent] -> @$[Pos]  prompt $_1         # positions change promptly when any size changes
 ```
 
 The default, with no annotation, is that the compiler infers the set from the body: a function's result depends promptly on an argument if there is a path of prompt edges from the argument to the result inside the body. Inference is a reachability pass over the same labelled graph the cycle check already builds, so it costs nothing new. Written annotations are for signatures the author wants to pin, the way a type annotation pins an inferred type, and the body is checked against them.
@@ -423,7 +423,7 @@ The same cycle through an element is the case the annotation has to be exact abo
 
 ```prism
 tag Ui.Placed of Element:
-    size: Size
+    size: Extent
     state: Pos
 ```
 
@@ -482,7 +482,7 @@ module Ui.Layout
 import Draw (Rect, Color)
 import Ui.Focus as Focus
 
-export @HBox, @VBox, Size, Pos
+export @HBox, @VBox, Extent, Pos
 ```
 
 A file is a module and names it on its first line. Imports bring in a module's exports, optionally renamed; exports list what is visible outside. Tags are already namespaced, `Ui.Button`, and a module's tag declarations live in its namespace, so `tag Button of Element` inside `module Ui` declares `Ui.Button`, which makes the tag namespaces and the module namespaces one thing. Instances are exported with their trait or their type, whichever the module defines, and the overlap check runs at import.

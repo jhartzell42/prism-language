@@ -81,6 +81,8 @@ pub enum Delivery {
     Response { path: Path, value: Value },
     /// A new value for a state element, keyed by element value.
     Push { element: ElementValue, value: Value },
+    /// No payload: a thread sends it only to wake the loop, and the harness drops it.
+    Wake,
 }
 
 /// Which occurrence of which turn, for error reports and transcripts.
@@ -91,11 +93,13 @@ pub struct When {
 }
 ```
 
+`Wake` carries nothing into the program; a component's thread sends it into the inbox so that the loop wakes and asks `has_gatherable`.
+
 The compiled program brings its tag table with it, so the core knows for any tag whether it requests, responds or has state. That table lets the core decide, for an element nobody accepts, which of the three `Unsupported` behaviours applies.
 
 ### The Component trait
 
-A component is a thing that accepts some tags and does, in Rust, what those tags mean. Its contract with the core is six methods, and each one follows from an obligation in the specification.
+A component is a thing that accepts some tags and does, in Rust, what those tags mean. Its contract with the core is eight methods, and each one follows from an obligation in the specification.
 
 ```rust
 pub trait Component {
@@ -125,11 +129,18 @@ pub trait Component {
     /// else it has ready. A clock pushes here, once per turn.
     fn gather(&mut self, cx: &mut Cx);
 
+    /// True when `gather` would produce something that should start a turn on
+    /// its own: a watch that saw a change, a timer that expired, held stdin
+    /// input. A clock answers false. The default is false.
+    fn has_gatherable(&self) -> bool { false }
+
     /// True when nothing this component does can ever deliver again:
     /// no stream running, no operation in flight, no timer set.
     fn quiescent(&self) -> bool;
 }
 ```
+
+`has_gatherable` lets the core ask, before it opens a turn with an empty batch, whether any component has pending work for `gather` to collect, so a component whose input arrives from a thread (standard input, a file watch) can cause a turn without a delivery of its own.
 
 `Cx` is the component's one way to say anything to the core, and it is write-only:
 
@@ -165,13 +176,13 @@ pub trait Wake: Send + Sync {
 }
 ```
 
-Why a trait with these six methods and not something else?
+Why a trait with these eight methods and not something else?
 
 Suppose a component were an async trait: `async fn perform(...) -> Value`, and the core awaited it. Then the core would be an async function, and the turn would hold the runtime across an await. Every GUI main thread forbids that, and even where it is allowed it means the runtime's state is live while the World is doing something else, which is the door again by another name. The split here is that `perform` returns at once, having started the operation, and the result comes back through the inbox as a `Delivery` for a later turn. A component that wants async machinery, and the tokio World does, spawns a task and hands it the inbox. The core never waits.
 
 Suppose instead the core were table-driven: a component registers, per tag, a closure for requests and a closure for the oracle, and the core calls closures. This is the same trait with the names erased and the state scattered. The trait wins because a component has state that spans the methods (the stdin reader's thread handle is created in `slot_created` and joined in `slot_removed`; the timer wheel is written by `perform` and read by `gather`), and a struct with methods is the Rust way to say that.
 
-`oracle` most needs its contract spelled out. It is called by the core from inside the runtime's run call, because the runtime asks for a state element's value at the instant a slot is created, mid-build. So `oracle` must be synchronous and must not block for long. A file watch component answers `Fs.Contents(path)` by reading the file, which is a blocking syscall, and that is accepted: a read of a local file is the kind of blocking a GUI thread does anyway, and the alternative, answering `Unavailable` and pushing the contents next turn, makes every program's first occurrence see a value it will never see again. The rule a component follows: answer from what it has if it has it, read synchronously if the read is cheap, and answer the type's unavailable case only when the real answer cannot be had without waiting on something outside the machine.
+`oracle` most needs its contract spelled out. It is called by the core from inside the runtime's run call, because the runtime asks for a state element's value at the instant a slot is created, mid-build. So `oracle` must be synchronous and must not block for long. A file watch component answers `Fs.Contents(path)` by reading the file, which is a blocking syscall, and that is accepted: a read of a local file is the kind of blocking a GUI thread does anyway, and the alternative, answering `Unavailable` and pushing the contents next turn, makes every program's first occurrence see a value it will never see again. The rule a component follows: answer from what it has if it has it, read synchronously if the read is cheap (a local file under a size cap), and answer the type's unavailable case, with its reason, when the real answer cannot be had without waiting on something outside the machine or is past the cap.
 
 ### Registering components and the World struct
 
@@ -989,65 +1000,115 @@ Standard input is a stream element: it responds with chunks and then an end, and
 ```rust
 pub struct Stdio {
     inbox: Inbox,
-    reader: Option<Reader>,                // the stdin thread, while a slot exists
+    stream: Arc<StdinStream>,              // outlives any slot; shared with the reader thread
+    slot: Option<Path>,                    // the Cli.Stdin slot that is listening, if any
+    reader: Option<JoinHandle<()>>,        // one thread, started by the first slot
     out: BufWriter<std::io::Stdout>,
     err: BufWriter<std::io::Stderr>,
     out_failed: bool,
     chunk: usize,                          // max bytes per chunk; a flag for goldens
 }
 
-struct Reader { path: Path, stop: Arc<AtomicBool>, join: JoinHandle<()> }
+/// What stdin has produced that no slot has taken. The stream owns it, so a slot
+/// that goes away leaves it where the next slot will find it.
+struct StdinStream { state: Mutex<StdinState>, changed: Condvar }
+struct StdinState {
+    listening: bool,                       // a Cli.Stdin slot exists
+    held: VecDeque<Held>,                  // read and not yet delivered, in order
+    ended: bool,                           // End has been read
+}
+enum Held { Chunk(String), End }
+
+fn read_loop(stream: Arc<StdinStream>, inbox: Inbox, chunk: usize) {
+    let mut stdin = std::io::stdin().lock();
+    let mut buf = vec![0u8; chunk];
+    let mut pending = Vec::new();                  // bytes of a character the last read split
+    loop {
+        {   // read only for a listening slot, and only once the last read has been taken
+            let mut st = stream.state.lock().unwrap();
+            while !(st.listening && st.held.is_empty()) { st = stream.changed.wait(st).unwrap(); }
+        }
+        let n = stdin.read(&mut buf).unwrap_or(0);  // blocks; cannot be interrupted portably
+        let mut st = stream.state.lock().unwrap();
+        if n == 0 {
+            if !pending.is_empty() { st.held.push_back(Held::Chunk(lossy(&pending))); }
+            st.held.push_back(Held::End);
+            st.ended = true;
+        } else {
+            pending.extend_from_slice(&buf[..n]);
+            let cut = complete_utf8_prefix(&pending);    // up to the last whole character
+            let text = lossy(&pending[..cut]);
+            pending.drain(..cut);
+            if !text.is_empty() { st.held.push_back(Held::Chunk(text)); }
+        }
+        let done = n == 0;
+        drop(st);
+        inbox.send(Delivery::Wake);                // a turn may be due; the chunk waits in `held`
+        if done { return; }
+    }
+}
 
 impl Component for Stdio {
     fn slot_created(&mut self, path: &Path, el: &ElementValue, cx: &mut Cx) {
         if el.tag != Tag::CLI_STDIN { return; }
-        if self.reader.is_some() {
+        if self.slot.is_some() {
             cx.diagnostic(Diagnostic::Component { tag: el.tag,
                 message: "a second Cli.Stdin slot; stdin is one stream and goes to the first".into() });
             return;
         }
-        let stop = Arc::new(AtomicBool::new(false));
-        let (inbox, p, chunk, stop2) = (self.inbox.clone(), path.clone(), self.chunk, stop.clone());
-        let join = std::thread::spawn(move || {
-            let mut stdin = std::io::stdin().lock();
-            let mut buf = vec![0u8; chunk];
-            let mut pending = Vec::new();             // bytes of a character the last read split
-            loop {
-                let n = match stdin.read(&mut buf) { Ok(n) => n, Err(_) => 0 };
-                if stop2.load(Ordering::Relaxed) { return; }
-                if n == 0 {
-                    if !pending.is_empty() {
-                        let text = String::from_utf8_lossy(&pending).into_owned();
-                        inbox.send(Delivery::Response { path: p.clone(), value: stdin_chunk(text) });
-                    }
-                    inbox.send(Delivery::Response { path: p, value: stdin_end() });
-                    return;
-                }
-                pending.extend_from_slice(&buf[..n]);
-                let cut = complete_utf8_prefix(&pending);    // up to the last whole character
-                let text = String::from_utf8_lossy(&pending[..cut]).into_owned();
-                pending.drain(..cut);
-                inbox.send(Delivery::Response { path: p.clone(), value: stdin_chunk(text) });
-            }
-        });
-        self.reader = Some(Reader { path: path.clone(), stop, join });
+        self.slot = Some(path.clone());
+        let waiting = {
+            let mut st = self.stream.state.lock().unwrap();
+            st.listening = true;
+            !st.held.is_empty()                    // something was read while no slot listened
+        };
+        self.stream.changed.notify_all();
+        if self.reader.is_none() {
+            let (stream, inbox, chunk) = (self.stream.clone(), self.inbox.clone(), self.chunk);
+            self.reader = Some(std::thread::spawn(move || read_loop(stream, inbox, chunk)));
+        }
+        if waiting { self.inbox.send(Delivery::Wake); }
     }
 
     fn slot_removed(&mut self, path: &Path, el: &ElementValue, _: &mut Cx) {
-        if el.tag == Tag::CLI_STDIN {
-            if let Some(r) = self.reader.take_if(|r| &r.path == path) {
-                r.stop.store(true, Ordering::Relaxed);
-                // The thread is blocked in read(2) and will notice `stop` after its
-                // next chunk, which the core then discards as a late result.
-                drop(r.join);
+        if el.tag == Tag::CLI_STDIN && self.slot.as_ref() == Some(path) {
+            self.slot = None;
+            self.stream.state.lock().unwrap().listening = false;
+            // A read already blocked in read(2) still completes. Its chunk goes into `held`
+            // and stays there for the next slot; nothing is sent to this path again.
+        }
+    }
+
+    fn gather(&mut self, cx: &mut Cx) {
+        if let Some(path) = &self.slot {
+            let mut st = self.stream.state.lock().unwrap();
+            if let Some(ev) = st.held.pop_front() {      // one event per turn, to the slot that listens now
+                cx.respond(path, ev.into_value());
+                self.stream.changed.notify_all();
             }
+        }
+        // ... flush stdout and stderr, as below
+    }
+
+    fn has_gatherable(&self) -> bool {
+        self.slot.is_some() && !self.stream.state.lock().unwrap().held.is_empty()
+    }
+
+    fn quiescent(&self) -> bool {
+        // No slot: nothing will be asked for, and whatever is held is discarded at exit.
+        // A slot: alive until End has been read and delivered.
+        self.slot.is_none() || {
+            let st = self.stream.state.lock().unwrap();
+            st.ended && st.held.is_empty()
         }
     }
     ...
 }
 ```
 
-Two things here are the OS being the OS, and the design accepts both rather than hiding them. A thread blocked in `read(2)` cannot be interrupted portably; so when the slot goes, the reader is told to stop and the next chunk it reads is lost, delivered to a path the core no longer knows, and reported as a late result. A program that drops its `Cli.Stdin` slot and later creates another one gets a fresh stream from wherever the descriptor is now, which is what `cat` would get too. And a `Chunk` is bytes as the OS handed them, which means a line can be split across chunks; the program's `@Lines` library widget keeps the partial line in a hold, as chapter 2's line counter does. The World does not reassemble lines, because a program that wants bytes should get bytes, and lines are a pure function over chunks.
+Two things here are the OS being the OS, and the design accepts both rather than hiding them. A thread blocked in `read(2)` cannot be interrupted portably, so the read in flight when a slot goes will complete. Its chunk is not sent to the dropped slot and not lost. Every read goes into `held`, which belongs to the stream, and `gather` hands one held event per turn to the slot that is listening at that moment; a chunk that arrives after the slot went waits there, and the next `Cli.Stdin` slot, however much later, receives it first, then whatever is read afterwards, in order. A program that drops its `Cli.Stdin` slot and later creates another therefore picks the stream up exactly where the first left it. If no slot ever asks again, the held chunk is discarded when the process ends, the same as the rest of an input nobody read.
+
+Delivering from `gather` and not from the thread makes the drop safe. A thread that sent to the inbox would race the slot's removal: the send could land after `slot_removed`, and the core would discard the chunk as a late result. Here the thread only fills `held` and wakes the loop, and the component, which knows which slot is live, is the only sender. The reader also does not read ahead. It reads only while a slot listens and only when `held` is empty, so a program that drops its slot stops consuming the descriptor after the one read already blocked, and a pipeline behind it is not drained. The second thing is that a `Chunk` is bytes as the OS handed them, which means a line can be split across chunks; the program's `@Lines` library widget keeps the partial line in a hold, as chapter 2's line counter does. The World does not reassemble lines, because a program that wants bytes should get bytes, and lines are a function over chunks.
 
 Text is `from_utf8_lossy`, applied only up to the last whole character: a read that ends in the middle of a multi-byte character keeps those bytes for the next chunk, so `"é"` split across two reads arrives as `"é"` and not as two replacement characters. Without that, the text a program saw would depend on where the OS cut the pipe, which is an accident of buffering and not something the program chose; invalid bytes are still replaced. A `Cli.StdinBytes` tag responding with `Bytes` is the version for programs that want the raw stream, and the only difference is the conversion.
 
@@ -1130,11 +1191,12 @@ A `Cli.Signals` slot keeps the program alive (`quiescent` is false while it exis
 
 ### `Fs.File` and `Fs.Contents`: a thread pool and a watcher
 
-`Fs.File(path, requests: !FsRequest, responds: FsResponse)` is the request element for one-shot operations; `Fs.Contents(path, state: Unavailable | Known Text)` is the state element for a file's current contents. They are one component because they share the path and, on platforms with a watch, the watcher.
+`Fs.File(path, requests: !FsRequest, responds: FsResponse)` is the request element for one-shot operations; `Fs.Contents(path, state: Unavailable FsError | Known Text)` is the state element for a file's current contents, where `FsError` is the closed choice `NotFound | Denied | TooLarge | Other Text`. They are one component because they share the path and, on platforms with a watch, the watcher.
 
 ```rust
 pub struct Files {
     inbox: Inbox,
+    cap: u64,                                           // bytes an Fs.Contents read may return; a flag for goldens
     pool: threadpool::ThreadPool,                       // for Fs.File operations (crate API from memory)
     inflight: BTreeMap<Path, Arc<AtomicBool>>,          // per slot: a cancel flag
     watched: BTreeMap<ElementValue, Watched>,           // per Fs.Contents value: the watch and the last value
@@ -1189,7 +1251,7 @@ impl Component for Files {
     fn oracle(&mut self, el: &ElementValue, cx: &mut Cx) -> Value {
         // Fs.Contents only. Read synchronously; start the watch.
         let file = el.field("path").as_text().to_owned();
-        let value = match std::fs::read_to_string(&file) { Ok(t) => known(t), Err(_) => unavailable() };
+        let value = contents_of(&file, self.cap);
         if let Err(e) = self.watcher.watch(Path::new(&file), NonRecursive) {
             cx.diagnostic(Diagnostic::Component { tag: el.tag, message: format!("watch {file}: {e}") });
         }
@@ -1202,7 +1264,7 @@ impl Component for Files {
             for p in ev.paths {
                 let el = fs_contents_element(&p);
                 if let Some(w) = self.watched.get_mut(&el) {
-                    let now = match std::fs::read_to_string(&p) { Ok(t) => known(t), Err(_) => unavailable() };
+                    let now = contents_of(&p, self.cap);
                     if now != w.value { w.value = now.clone(); cx.push(&el, now); }
                 }
             }
@@ -1212,9 +1274,30 @@ impl Component for Files {
     fn quiescent(&self) -> bool { self.inflight.is_empty() }
     ...
 }
+
+/// What an Fs.Contents slot holds for this path: the text, or the reason there is none.
+fn contents_of(path: impl AsRef<std::path::Path>, cap: u64) -> Value {
+    let mut bytes = Vec::new();
+    match std::fs::File::open(path).and_then(|f| f.take(cap + 1).read_to_end(&mut bytes)) {
+        Err(e) => unavailable(fs_error(&e)),
+        Ok(_) if bytes.len() as u64 > cap => unavailable(FsError::TooLarge),
+        Ok(_) => match String::from_utf8(bytes) {
+            Ok(t) => known(t),
+            Err(e) => unavailable(FsError::Other(e.to_string())),
+        },
+    }
+}
+
+fn fs_error(e: &std::io::Error) -> FsError {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => FsError::NotFound,
+        std::io::ErrorKind::PermissionDenied => FsError::Denied,
+        _ => FsError::Other(e.to_string()),
+    }
+}
 ```
 
-The synchronous read in `oracle` is the whole reason a file viewer shows the file in its first occurrence instead of flashing "unavailable" for one frame. The watch is started in the same call, so that a change between the read and the first turn is not lost: `notify` delivers it to the channel (from memory), `gather` picks it up at the next turn, re-reads, and pushes if the contents differ. On a platform without a usable watch the component falls back to a stat-and-reread in `gather`, comparing modification times; the program cannot tell, except that changes arrive at the next turn rather than causing one.
+The synchronous read in `oracle` is the whole reason a file viewer shows the file in its first occurrence instead of flashing "unavailable" for one frame. The watch is started in the same call, so that a change between the read and the first turn is not lost: `notify` delivers it to the channel (from memory), `gather` picks it up at the next turn, re-reads, and pushes if the contents differ. The read stops at `cap + 1` bytes, so a huge file costs one capped read and not its size, and every failure maps to one of the four reasons: a missing path is `NotFound`, `PermissionDenied` is `Denied`, a file past the cap is `TooLarge`, and anything else (a directory, bytes that are not text, a device that errors) is `Other` with the operating system's message. The reason is a value like any other, so a file that is deleted pushes `Unavailable NotFound`, one that is created pushes `Known`, and a program that shows "permission denied" differently from "no such file" matches on the reason. On a platform without a usable watch the component falls back to a stat-and-reread in `gather`, comparing modification times; the program cannot tell, except that changes arrive at the next turn rather than causing one.
 
 Whether a changed file should *cause* a turn is the `has_gatherable` question: yes for a watch, because a program showing a file should update when the file changes even if nothing else is happening, so `Files` reports `true` whenever the change channel has something. The main loop's `wait` is then woken by the inbox, which the watcher thread also sends a no-op `Delivery` into for exactly that purpose; a `Delivery::Wake` variant with no payload is the cleanest spelling and the harness drops it after waking.
 
@@ -1304,7 +1387,7 @@ A `Time.Every` tick that was missed, because the process was stopped or a turn t
 
 ### Exit when nothing can happen
 
-A CLI run ends on `Process.Exit`, or when nothing can ever cause another occurrence. The second is `Step::Quiescent`, and it is a conjunction over components: the inbox is empty, no reader thread is running (no `Cli.Stdin` slot, or `End` has been delivered), no signal slot exists, no `Fs.File` operation is in flight, no timer is set. A program with none of those has a graph with no sources left, and a graph with no sources cannot change, so ending it with code 0 is not a policy; it is reading the situation correctly. The alternative, waiting for an explicit `Process.Exit` forever, turns a forgotten exit into a hang, and the forgotten exit is the common bug.
+A CLI run ends on `Process.Exit`, or when nothing can ever cause another occurrence. The second is `Step::Quiescent`, and it is a conjunction over components: the inbox is empty, stdin has nothing more to deliver (no `Cli.Stdin` slot, or `End` has been delivered), no signal slot exists, no `Fs.File` operation is in flight, no timer is set. A program with none of those has a graph with no sources left, and a graph with no sources cannot change, so ending it with code 0 is not a policy; it is reading the situation correctly. The alternative, waiting for an explicit `Process.Exit` forever, turns a forgotten exit into a hang, and the forgotten exit is the common bug.
 
 The one judgment call in the conjunction is which slots count as sources, and it was made per component above: stdin, signals, in-flight requests and timers keep a program alive; arguments, environment, the clock and file watches do not. Each is a line in a component's `quiescent`, and changing one is changing one line.
 
@@ -1312,11 +1395,11 @@ The one judgment call in the conjunction is which slots count as sources, and it
 
 Chapter 2 walked the line counter occurrence by occurrence under a hypothetical World. Here is what the CLI World does with it, with `printf 'one\ntwo\nthree\n' | wc_prism` and the reader's chunk size left at the default.
 
-Occurrence 0 builds three slots. `start` performs no requests (nothing fired) and diffs the list against nothing: `slot_created` for `0: Cli.Stdin` starts the reader thread, and the other two are request elements with nothing to start. The loop calls `step`: nothing queued, not quiescent (a reader is running), `Idle`; `wait` blocks on the inbox with no deadline.
+Occurrence 0 builds three slots. `start` performs no requests (nothing fired) and diffs the list against nothing: `slot_created` for `0: Cli.Stdin` starts the reader thread, and the other two are request elements with nothing to start. The loop calls `step`: nothing queued, not quiescent (a slot is listening and `End` has not come), `Idle`; `wait` blocks on the inbox with no deadline.
 
-The reader thread reads 14 bytes in one `read(2)`, because `printf` wrote them in one `write(2)` and the pipe delivered them together, and sends `Chunk "one\ntwo\nthree\n"`. `wait` returns; `step` takes it under `OneAtATime`; turn 1 runs occurrence 1 with that one response; `$lines` becomes `3`. No requests. The list is unchanged; nothing to start or stop. `Idle` again.
+The reader thread reads 14 bytes in one `read(2)`, because `printf` wrote them in one `write(2)` and the pipe delivered them together, and puts `Chunk "one\ntwo\nthree\n"` in `held`, then wakes the loop. `wait` returns; `step` finds the held chunk gatherable and turn 1 opens with it as one response under `OneAtATime`; occurrence 1 runs; `$lines` becomes `3`. No requests. The list is unchanged; nothing to start or stop. `Idle` again.
 
-The reader reads 0 bytes and sends `End`. Turn 2, occurrence 2: `!end` fires; `Cli.Stdout` fires `"3\n"`; `Process.Exit` fires `Code 0`. The core performs them in list order: `Stdio::perform` writes `"3\n"` to the buffer, then records exit 0. `step` returns `Exit(0)`; main flushes and exits.
+The reader reads 0 bytes and holds `End`. Turn 2, occurrence 2: `!end` fires; `Cli.Stdout` fires `"3\n"`; `Process.Exit` fires `Code 0`. The core performs them in list order: `Stdio::perform` writes `"3\n"` to the buffer, then records exit 0. `step` returns `Exit(0)`; main flushes and exits.
 
 Had the input been typed at a terminal, each line would have been its own chunk and the run would have had four turns before `End`, and the output would be the same, which is the point of the chunk-independence a stream program has to have and chapter 2's `@Lines` provides.
 
@@ -1431,8 +1514,8 @@ Chapter 7 declares the vocabulary and the event types, and the Rust side reads t
 ```prism
 tag Gui.Window of Element:
     title: Text
-    size: Size                     # asked for when the window opens
-    responds: WindowEvent          # Resized Size | CloseRequested | Pointer Pointer | Pressed Key
+    size: Extent                   # asked for when the window opens
+    responds: WindowEvent          # Resized Extent | CloseRequested | Pointer Pointer | Pressed Key
 
 tag Gui.Scene of Element:
     window: Text                   # the title of the window it paints
@@ -1492,7 +1575,7 @@ impl Component for Screen {
             Tag::GUI_WINDOW => {
                 self.window_slots += 1;
                 self.window_path = Some(path.clone());
-                self.ensure_window(el.field("title").as_text(), el.field("size").as_size());
+                self.ensure_window(el.field("title").as_text(), el.field("size").as_extent());
             }
             Tag::GUI_FOCUSABLE => self.focusable = Some(path.clone()),
             Tag::GUI_FRAMES => { self.frame_slots.insert(path.clone()); self.request_redraw(); }
@@ -1669,7 +1752,7 @@ The World is the tokio skeleton of the previous section with the `Sockets` compo
 
 The `Defer` is there for the reason every interceptor needs one: an event arrives on the socket in occurrence n, and the response to a child is a response, which cannot be in the same occurrence as the event that caused it. The interceptor fires `Defer` and routes when it comes back, in n+1 of the same turn; from the outside World's view, one chunk arrived and one turn happened.
 
-Everything else is encoding and decoding bytes, which is pure, and which is the kind of code the language is bad at only in the sense that any pure language is tedious at byte-twiddling. The library is long and the interceptor is short, and that is the right proportion.
+Everything else is encoding and decoding bytes, which is a pure function over `Bytes` and so well within the language. The library is longer than it should be because the prelude's `Bytes` operations are thin today: fixed-width integer packing, slicing and padding are written by hand where a fuller `Bytes` module would give them as one call each. That gap is in the prelude, not a limit of purity. The library is long and the interceptor is short, and that is the right proportion.
 
 ### What it proves, and what it does not
 
@@ -1878,6 +1961,7 @@ tests/cli/line_counter_many/
     env             # KEY=VALUE per line, replaces the environment
     stdin           # bytes
     chunk           # optional: max bytes per stdin chunk, for the --stdin-chunk flag
+    fs_cap          # optional: max bytes an Fs.Contents read returns, for the --fs-cap flag
     expected.stdout
     expected.stderr
     expected.code
@@ -1903,6 +1987,8 @@ The cases, and what each pins:
 | `signal_handled` | a `Cli.Signals` slot; the harness sends `SIGINT` after reading a `ready` line from stdout; the program prints `interrupted` and exits 3 |
 | `signal_default` | no `Cli.Signals` slot; `SIGINT` kills the process with the OS's status |
 | `closed_pipe` | stdout piped to a reader that closes early; `EPIPE` is a `note:`, the program keeps running and exits by its own `Process.Exit` |
+| `stdin_slot_dropped` | a `Cli.Stdin` slot removed after the first line and rebuilt after a file read; the chunk read in between reaches the new slot first and no line is lost or repeated |
+| `fs_contents_reasons` | `Fs.Contents` on a missing path, an unreadable one, a directory and a file past `--fs-cap`: `NotFound`, `Denied`, `Other` and `TooLarge` printed from the build turn |
 | `fs_contents_watch` | an `Fs.Contents` viewer; the harness rewrites the file after reading a `ready` line; the program prints the new contents and exits |
 | `cycle_at_runtime` | a program that forms a cycle on the second line of input; the error on stderr with both spans, exit nonzero, the first line's output present |
 

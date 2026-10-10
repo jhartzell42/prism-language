@@ -16,7 +16,7 @@ The exclusions are as deliberate as the inclusions. The suite does not test perf
 
 The Test World is a World with no effects, written once per host language on top of the world core, with one component that answers to a script instead of to an operating system. Three properties make it the suite's World.
 
-**It accepts every tag at the root.** A program that creates a `Net.Listener` is tested without a network; one that creates a `Ui.Button` is tested without a screen; one that creates a tag nobody has heard of is tested all the same. The Test World does not know what any tag means. It knows that a `requests` field fires values it records, that a `responds` field is an event it can deliver to by path, and that a `state` field is a dynamic it answers from a snapshot the script sets. That is everything a World does with an element, and it is why the Test World can be written before any real World exists: it is the obligations of a World and nothing else. Suppose instead the Test World had components, a fake filesystem with files the script writes, a fake clock that ticks. The tests would then be about those fakes: a fake filesystem that answers reads has an opinion about what a read is, and a program that expects `Missing` for an absent file is testing the fake's opinion. With the script as the only source of inputs, the program's expectation is the script's expectation, written next to the program, and a reader can see both.
+**It accepts every tag at the root.** A program that creates a `Net.Listener` is tested without a network; one that creates a `Ui.Button` is tested without a screen; one that creates a tag nobody has heard of is tested all the same. The Test World does not know what any tag means. It knows that a `requests` field fires values it records, that a `responds` field is an event it can deliver to by path, and that a `state` field is a dynamic it answers from a snapshot the script sets. That is everything a World does with an element, and it is why the Test World can be written before any real World exists: it is the obligations of a World and nothing else. Suppose instead the Test World had components, a fake filesystem with files the script writes, a fake clock that ticks. The tests would then be about those fakes: a fake filesystem that answers reads has an opinion about what a read is, and a program that expects `Unavailable(NotFound)` for an absent file is testing the fake's opinion. With the script as the only source of inputs, the program's expectation is the script's expectation, written next to the program, and a reader can see both.
 
 **Its snapshot is whatever the script says.** A state element's value in its creation occurrence comes from the oracle, and the oracle answers from the previous snapshot; the script's `State` steps are that snapshot. There is no clock in the Test World except the one the script pushes, which is the goal that there is no clock, applied to testing: a debounce, a timeout, a stopwatch are tested by setting an `Instant` and pushing another, and a transcript replays them exactly.
 
@@ -43,7 +43,7 @@ turn 1  responses: {0/#0/0: click}
   result: unit
 ```
 
-A turn header names the turn and its inputs: `responses` by path, `pushes` by element value. The list is one slot per line, `path: element`, in tree order. A slot that fired its request in the turn gets a `requested` line after it, with the values in firing order; an occurrence boundary inside a turn, which only `Defer` causes, is marked `occurrence 2` between the parts of a turn so that a reader can see which occurrence a request fired in. The result is printed when the widget's result is a plain value or a dynamic (by its current value) and as `fired: v` or `quiet` when it is an event. An aborted occurrence prints `error: Error(kind=UnknownPath, path=0/#1/0, occurrence=1)` and no list, since the list did not change.
+A turn header names the turn and its inputs: `responses` by path, `pushes` by element value. The list is one slot per line, `path: element`, in tree order. A slot that fired its request in the turn has `requested:` after its element, then the fired values bare, in firing order, separated by `; `: `requested: Read`, `requested: "a"; "b"`, `requested: [[Send "ok", Close]]`. An array request is already an array literal, so the transcript adds no brackets of its own and every bracket in the line means an array; an occurrence boundary inside a turn, which only `Defer` causes, is marked `occurrence 2` between the parts of a turn so that a reader can see which occurrence a request fired in. The result is printed when the widget's result is a plain value or a dynamic (by its current value) and as `fired: v` or `quiet` when it is an event. An aborted occurrence prints `error: Error(kind=UnknownPath, path=0/#1/0, occurrence=1)` and no list, since the list did not change.
 
 Paths are opaque to Worlds, and the transcript still has to print them, so the transcript fixes a spelling that both implementations use: bind positions from the root joined by `/`, a `dyn` generation as `#n` from `#0`, a `for` key as `[k]` with the key printed as a value. That spelling is the chapter-2 convention and it is part of the interchange format. An implementation may represent paths however it likes inside, and the Haskell runtime's paths are nothing like the Rust runtime's, but what they print must match character for character or the differential test fails. This is a real constraint, deliberately taken: two implementations that agree on every element but number bind positions differently would be two readings of the sentence "its position in the widget tree, made of the bind positions, `for` keys and `dyn` generations", and the point of the differential test is to find exactly that kind of difference. Slots created by widgets that an interceptor's supplier built print as `s/n`, numbered in creation order within the interceptor's node, because their position is the runtime's business and only their existence is a law.
 
@@ -272,13 +272,18 @@ tag Defer of Element:
 
 type FsRequest = choice Read | Write Text
 
+type FsError = choice:
+    NotFound
+    Denied
+    TooLarge
+    Other Text
+
 type FsResponse = choice:
     Contents Text
-    Missing
-    Denied
+    Unavailable FsError
 
 type Contents = choice:
-    Unavailable
+    Unavailable FsError
     Known Text
 
 tag Fs.File of Element:
@@ -655,7 +660,7 @@ Each generation fires `!started` in the occurrence it is born, and `!Switch` ado
 ```prism
 @toggle:
     !flip <- @Button $"Flip"
-    $on <- False <= (not $on) on !flip
+    $on <- False <= not $on on !flip
     !!pressed <- dyn $on:
         if _:
             @Label $"On"
@@ -950,7 +955,7 @@ test forwarding_is_the_identity: Test (@Transparent (@Transparent @counter_with_
 
 The transcript of this test is compared, by the harness, with the transcript of the same script run on `@counter_with_clock` alone, element by element. Paths differ, because the forwarder's slots are at the forwarder's paths; everything else must be identical. The `Clock` appears more than once in the outer list, once per forwarder's supplier and once per forwarded slot, and each is the same state by value. A forwarder that minded the duplicates would not forward state slots; this one is the shortest correct program.
 
-**A sandbox supplies `Unavailable`, and nothing confined reaches the World.** `@Sandbox` and `ShowContents` are chapter 2's.
+**A sandbox supplies `Unavailable(Denied)`, and nothing confined reaches the World.** `@Sandbox` and `ShowContents` are chapter 2's, with a refusal spelled `Unavailable(Denied)` and `ShowContents` matching `Unavailable why`.
 
 ```prism
 @peek:
@@ -963,7 +968,7 @@ test a_sandbox_denies_state: Test (@Sandbox "/jail", @peek): array:
     ExpectNone Fs.Contents(path="/etc/secret")
 ```
 
-The script sets the real value and the child never sees it: the supplier returned `@ $ Unavailable`, which is a widget with no elements, so nothing about `/etc/secret` is in the outer list.
+The script sets the real value and the child never sees it: the supplier returned `@ $ Unavailable(Denied)`, which is a widget with no elements, so nothing about `/etc/secret` is in the outer list.
 
 **A supplied widget's own elements appear in the interceptor's list.**
 
@@ -1009,8 +1014,9 @@ test equal_slots_share_a_supplier: Test (@Supplied @two_readers): array:
 let ShowResponse: fn ?FsResponse -> Text = \|r| match r:
     Nil: "(reading...)"
     Some (Contents t): t
-    Some Missing: "(no such file)"
-    Some Denied: "(permission denied)"
+    Some Unavailable(NotFound): "(no such file)"
+    Some Unavailable(Denied): "(permission denied)"
+    Some Unavailable(why): "(unreadable)"
 
 @probe:
     !started <- @started
@@ -1476,7 +1482,7 @@ test refresh_requests_again: Test @motd: array:
     Send Ui.Button(label="Refresh"), click
     Requested Fs.File(path="/etc/motd"), Read
     Expect Ui.Label(text="Welcome")
-    Send Fs.File(path="/etc/motd"), Missing
+    Send Fs.File(path="/etc/motd"), Unavailable(NotFound)
     Expect Ui.Label(text="(no such file)")
 
 test a_response_in_the_request_turn_is_impossible: Test @motd: array:
@@ -1552,7 +1558,7 @@ In the `Together`, key 1 is born and reports `Opened` while key 0 reports `Toggl
 
 ```prism
 let Show: fn Contents -> Text = \|c| match c:
-    Unavailable: "-"
+    Unavailable why: "-"
     Known t: t
 
 @watcher:
@@ -1571,6 +1577,15 @@ test state_is_sampled_when_the_slot_is_made: Test @watcher: array:
     Expect Ui.Label(text="closed")
     Send Ui.Button(label="Open"), click
     Expect Ui.Label(text="v1")
+
+test an_unavailable_state_has_its_reason: Test @watcher: array:
+    State Fs.Contents(path="/cfg"), Unavailable(NotFound)
+    Send Ui.Button(label="Open"), click
+    Expect Ui.Label(text="-")
+    Push Fs.Contents(path="/cfg"), Known "v1"
+    Expect Ui.Label(text="v1")
+    Push Fs.Contents(path="/cfg"), Unavailable(TooLarge)
+    Expect Ui.Label(text="-")
 
 test a_slot_made_with_no_value_set_is_the_error: Test @watcher: array:
     Expect Ui.Label(text="closed")
@@ -1634,7 +1649,7 @@ test a_sandbox_rewrites_state_paths: Test (@Sandbox "/jail", @two_files): array:
     Expect Ui.Label(text="home=A2 etc=-")
 ```
 
-The supplied widget for the confined path made an `Fs.Contents` with the rewritten path in the sandbox's node, and that is what the top sees. The supplied widget for the refused path is `@ $ Unavailable`, with no element, and a push to the real `/etc/b` goes nowhere because nothing in the list asked for it.
+The supplied widget for the confined path made an `Fs.Contents` with the rewritten path in the sandbox's node, and that is what the top sees. The supplied widget for the refused path is `@ $ Unavailable(Denied)`, with no element, and a push to the real `/etc/b` goes nowhere because nothing in the list asked for it.
 
 **19. Two equal slots share one supplier.** Chapter 2's `@Cached`, which supplies `Fs.Contents` through a hold refreshed by a button, with a child that has two readers of one path and one of another:
 
@@ -1836,6 +1851,61 @@ kw(let) ident(t) eq sigil($) lparen ident(x) plus nat(1) rparen
 
 Both are the free sigil: a sigil is attached only when the next character is a name character, an underscore, a quote or another sigil, and `(` is none of those. The two lines produce the same tokens, which is the entry's point.
 
+**A guard on a `match` arm.**
+
+```prism
+let f = \match _:
+    n if n gt 3: "big"
+    ignore: "small"
+```
+
+```
+kw(let) ident(f) eq lambda kw(match) ident(_) colon <open> ident(n) kw(if) ident(n) kw(gt) nat(3) colon <open> text("big") <close> <sep> ident(ignore) colon <open> text("small") <close> <close>
+```
+
+The `if` in an arm's head is a keyword token and opens nothing; the one colon after the guard is the arm's, and its block is the rest of the line. A lexer that opened a block at `if` would have two `open`s before `"big"`. Chapter 12's grammar for arms is what reads `pattern if cond:` out of this stream.
+
+**An `if` with no `else`.**
+
+```prism
+let m = if c: x
+let n = 1
+```
+
+```
+kw(let) ident(m) eq kw(if) ident(c) colon <open> ident(x) <close> <sep> kw(let) ident(n) eq nat(1)
+```
+
+The inline block ends at the end of its line and there is no `else` to wait for, so the next line is a new statement at the block's column. A sibling entry puts `else:` at the column of the `if` on the following line and expects the continuation, which is what makes the two cases tell a lexer whether it looks ahead for `else`: it does not, the parser does.
+
+**A `for` with named binders.**
+
+```prism
+@w:
+    !done <- for k, $item <- $items:
+        @ unit
+```
+
+```
+ident(@w) colon <open> ident(!done) bind kw(for) ident(k) comma ident($item) bind ident($items) colon <open> sigil(@) kw(unit) <close> <close>
+```
+
+Both `<-` are `bind` tokens, the comma is a `comma`, and only the final colon opens a block. The entry pins that the binder list does not end the statement and that the second `bind` is not read as starting a new one.
+
+**An array pattern.**
+
+```prism
+let g = \match _:
+    [[head, ..rest]]: head
+    [[]]: 0
+```
+
+```
+kw(let) ident(g) eq lambda kw(match) ident(_) colon <open> arrayopen ident(head) comma dotdot ident(rest) arrayclose colon <open> ident(head) <close> <sep> arrayopen arrayclose colon <open> nat(0) <close> <close>
+```
+
+`[[` and `]]` are one token each, as in the array literal, and `[[]]` is an `arrayopen` and an `arrayclose` with nothing between. `..rest` is `dotdot` and a name, not a field access and not two `dot`s. A sibling entry pins that `a[b[0]]` ends in two `rbracket`s, because `]]` is an array close only when an `arrayopen` is open.
+
 The corpus has about forty entries, the eight kinds above and their variants: a block opened mid-statement by `for $x:` and closed by the next statement; an `else` at the column of its `if`; a `match` whose arms are all inline; a text literal with an interpolated `{expr}` containing a colon, and one with an interpolation that holds another text literal; a line with only a comment inside a block, which neither opens nor closes nor continues anything; a tab in leading whitespace, which is an error with a span. The corpus is also the first differential test: the Rust and Haskell lexers are run over every entry and the token files diffed, before either implementation has a parser.
 
 ## Typed-AST goldens and negative goldens
@@ -1895,13 +1965,23 @@ The spellings, `leftmost`, `tag`, `hold`, `map`, `dmap`, `const`, `bind`, `eleme
 
 ### What the goldens are
 
-The counter. The GUI library, whose dump shows the `dyn` under a dynamic field, the `for` in `@Forward` consolidating to an event, and the `intercept` in `@VBox`. Every integration program. And one small file per rule of the chapters on the lexical structure and on expressions: the comma rule, including `intercept @_, !Union !kid_ins, !fwd_ins` with its golden showing it parsing as `intercept(@_, Union(!kid_ins), !fwd_ins)`, which is the reason the library writes the parentheses; the precedence table, one file per adjacent pair of levels; the spacing rule; a lambda with a sigiled underscore taking that kind; an unannotated `let` lambda lifted at two call sites with different kinds; a `match` on a dynamic becoming a dynamic of the arms; `for` as an expression over a plain map; text interpolation of each primitive; a hold whose literal type is pinned only by an operand three lines away.
+The counter. The GUI library, whose dump shows the `dyn` under a dynamic field, the `for` in `@Forward` consolidating to an event, and the `intercept` in `@VBox`. Every integration program. And one small file per rule of the chapters on the lexical structure and on expressions: the comma rule, including `intercept @_, !Union !kid_ins, !fwd_ins` with its golden showing it parsing as `intercept(@_, Union(!kid_ins), !fwd_ins)`, which is the reason the library writes the parentheses; the precedence table, one file per adjacent pair of levels; the spacing rule; a lambda with a sigiled underscore taking that kind; an unannotated `let` lambda lifted at two call sites with different kinds; a `match` on a dynamic becoming a dynamic of the arms; `for` as an expression over a plain map; text interpolation of each primitive; a hold whose literal type is pinned only by an operand three lines away; and `not a == b`, which parses as `not (a == b)` because comparison binds tighter than `not`, so the dump is a `Bool.Not` around an `Eq` and a reader who expected `(not a) == b` sees at once that no such tree exists:
+
+```prism
+let same: fn Int, Int -> Bool = \|a, b| not a == b
+```
+
+```
+same: fn Int, Int -> Bool [build] g1 = \|a, b| Bool.Not (Eq[Int] a, b)               @1:1
+```
+
+The guard on a `match` arm and the `if` with no `else` have goldens too, each as a node of the dump: the guard is a field of the arm, and the `else`-less `if` is an optional built from the branch, `Some` when the condition holds and `None` otherwise.
 
 What a golden catches, in the order these have bitten: a lift that changed kind, say a dynamic read promptly where it should be a tag, which is a glitch that no script may notice for months; a literal or operator that resolved to a different numeric type; a binding that moved between build-time and occurrence-time, which changes how often an expensive function runs; a recursive group split or placed differently, which changes build order; a `for` consolidating to the wrong kind.
 
 ### Negative goldens
 
-A rejected program and its exact error, spans included. These exist because an error can get worse silently: the program is still rejected, the test that checks "rejected" still passes, and the message that used to name both events now says "type error". Each negative golden is the message, so a worse message is a diff.
+A rejected program and its exact error, spans included; a lint warning has a golden of the same kind, with the program accepted. These exist because an error can get worse silently: the program is still rejected, the test that checks "rejected" still passes, and the message that used to name both events now says "type error". Each negative golden is the message, so a worse message is a diff.
 
 ```
 error: two events in one operation
@@ -1992,12 +2072,14 @@ error: sigil disagrees with the kind
 ```
 
 ```
-error: a lowercase name is snake_case
+warning: a lowercase name is snake_case
   --> naming.prism:1:5
    |
  1 | let myValue = 3
-   |     ^^^^^^^
+   |     ^^^^^^^ help: rename to `my_value`
 ```
+
+This one is a warning, so the golden's expected output also records that the program compiled: the lint pass reports camelCase and the build goes on. The sibling positive golden is the same file with the name fixed and no diagnostics at all.
 
 ```
 error: `update` is reserved for future work

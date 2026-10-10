@@ -107,7 +107,7 @@ pub enum TokenKind {
     Char(char),
     // keywords
     Let, Type, Tag, Of, Fn, Match, If, Else, For, Dyn, Intercept, Widget,
-    Record, Choice, Map, Array, Unit, Test, Ignore, On, Key, Ix, Jx, Kx, Empty,
+    Record, Choice, Map, Array, Unit, Test, Ignore, On, Key, Empty,
     Lt, Le, Gt, Ge,                 // the comparison keywords: a lt b
     Not, And, Or,                   // the boolean keywords: not a, a and b, a or b
     // operators and punctuation
@@ -158,7 +158,7 @@ A text literal is one token holding a list of parts, and each interpolation part
 
 The corpus prints a text token as `text(` followed by its parts separated by commas: a literal part as the quoted string with `\{` and `\}` replaced by the braces themselves and `\"` kept, and an interpolation as `interp(` followed by the tokens of its expression in the corpus's own notation, then `)`. A text without interpolation has one part, `text("a")`; the empty text is `text("")`; adjacent literal pieces are one part, so `"n={x}, \{ok\}"` is `text("n=", interp(ident(x)), ", {ok}")`, and a leading or trailing interpolation has no empty literal beside it, so `"{x}"` is `text(interp(ident(x)))`. Name tokens print their sigils inside the parentheses, `ident($n)`. This is the one notation for text tokens: the conformance chapter's layout corpus and the Haskell lexer's output use it unchanged.
 
-Names are checked for their convention at lex time: `isClick` is an error token with the message the language chapter gives, and a lexer that let it through would make the resolver report it later against a worse span. A qualified name is one token only when there is no whitespace anywhere in it and every part is uppercase; `Gui.*` is three tokens, `Upper(Gui)`, `Dot(binary)`, `Star`, which the parser recognises as the wildcard pattern.
+Names are classified by their first character at lex time, and a name the lexer cannot classify is an error token with the message the language chapter gives, reported against the right span. A lowercase-first name with a capital inside, `isClick`, classifies as a value name and lexes as an ordinary `Lower` token; the lexer attaches a warning (`Level::Warning`, rendered like any diagnostic, below) that says to write `is_click`, and compilation continues. The warning is a lint of the source and the lexer is the only stage that sees the spelling, so it is raised there. A qualified name is one token only when there is no whitespace anywhere in it and every part is uppercase; `Gui.*` is three tokens, `Upper(Gui)`, `Dot(binary)`, `Star`, which the parser recognises as the wildcard pattern.
 
 ### The layout algorithm
 
@@ -288,21 +288,22 @@ pub enum Expr {
     Index  { e: Box<Expr>, i: Box<Expr> },                   // e[i]
     Lambda { params: Vec<Pat>, body: Box<Expr> },            // \body  (params = [_])  or  \|a, b| body
     Match  { scrutinee: Box<Expr>, arms: Vec<Arm> },
-    If     { c: Box<Expr>, t: Box<Expr>, e: Box<Expr> },
-    For    { coll: Box<Expr>, body: Block },
+    If     { c: Box<Expr>, t: Box<Expr>, e: Option<Box<Expr>> },   // e is None for `if c: x` with no else
+    For    { key: Option<Pat>, item: Option<Pat>, coll: Box<Expr>, body: Block },   // for k, $item <- $items; both None is the shorthand
     Dyn    { dynamic: Box<Expr>, body: Block },
     Intercept { child: Box<Expr>, responses: Box<Expr>, supplier: Box<Expr> },
     WidgetBlock(Block),                                      // @widget: ...
     LetIn  { stmts: Vec<Stmt>, value: Box<Expr> },           // a layout block of lets ending in a value
     Ascribe{ e: Box<Expr>, ty: Type },
 }
-pub struct Arm { pub pat: Pat, pub body: Expr, pub span: Span }
+pub struct Arm { pub pat: Pat, pub guard: Option<Expr>, pub body: Expr, pub span: Span }   // pat if guard: body
 
 pub enum Pat {
     Wild,                                   // ignore
     Bind(SName),                            // x, $x, _
     Lit(Lit), Unit,
     Tuple(Vec<Pat>),                        // ((a, b))
+    Array  { elems: Vec<Pat>, rest: Option<Box<Pat>> },   // [[]]  [[a, b]]  [[head, ..rest]]; rest is a binding or `ignore`
     Some(Box<Pat>), Nil,
     Ctor   { name: QName, payload: Option<Box<Pat>> },                 // Circle r, Stopped, Clock
     Record { name: QName, fields: Vec<(Name, Pat)>, positional: Vec<Pat>, rest: bool }, // T(f=p, ..)
@@ -351,9 +352,9 @@ expr(chain) := expr(merge) (ChainDot Upper call_args?)*            # a chain ste
 expr(merge) := expr(on) ('|' expr(on))*
 expr(on)    := expr(or) ('on' expr(or))*
 expr(or)    := expr(and) ('or' expr(and))*
-expr(and)   := expr(cmp) ('and' expr(cmp))*
-expr(cmp)   := expr(not) (cmpop expr(not))?                       # cmpop: lt le gt ge == !=
-expr(not)   := 'not' expr(not) | expr(add)                        # tighter than comparison: its operand reaches over arithmetic only
+expr(and)   := expr(not) ('and' expr(not))*
+expr(not)   := 'not' expr(not) | expr(cmp)                        # looser than comparison: `not a == b` is `not (a == b)`
+expr(cmp)   := expr(add) (cmpop expr(add))?                       # cmpop: lt le gt ge == !=
 expr(add)   := expr(mul) (addop expr(mul))*
 expr(mul)   := expr(prefix) (mulop expr(prefix))*
 expr(prefix):= prefixop expr(prefix) | freesigil expr(postfix) | expr(postfix)
@@ -362,14 +363,15 @@ expr(postfix) := atom ('.' sname | '[' expr ']' | '.' Upper call_args?)*   # fie
 atom        := callable call_args?                                 # a paren-less call, see below
              | literal | '(' expr(hold) ')' | '((' expr (',' expr)+ '))'
              | '[[' (expr (',' expr)*)? ']]' | '{' map '}'
-             | lambda | 'match' expr block | 'if' expr block 'else' block
-             | 'for' expr block | 'dyn' expr block | 'intercept' expr ',' expr ',' expr
+             | lambda | 'match' expr block | 'if' expr block ('else' block)?
+             | 'for' binders? expr block | 'dyn' expr block | 'intercept' expr ',' expr ',' expr
              | '@' 'widget' block | ctor_named | ctor_block
 callable    := sname | qname
 call_args   := expr(merge) (',' expr(merge))*                      # the ',' repeats only when in_args is clear
 
 lambda      := '\' body | '\' '|' pat (',' pat)* '|' body
              where body := expr(hold) running to the end of the enclosing expression
+binders     := (pat ',')? pat '<-'                                 # for k, $item <- $items:  or  for $item <- $items:
 ctor_named  := qname '(' (lower '=' expr) (',' lower '=' expr)* ')'
 ctor_block  := qname block                                         # Vector: x: 0.0 ...
 
@@ -379,8 +381,9 @@ ptype       := sigil ptype | qname ('<' type (',' type)* '>')? | lower | 'unit'
              | ptype '==>' ptype | '[' type ']' | '((' type (',' type)+ '))'
              | '(' type ')'                                        # grouping: fn (fn A -> B), [A] -> [B]
 
-arm         := pat block
+arm         := pat ('if' expr)? block                              # a guard: pat if cond: body
 pat         := 'ignore' | sname | literal | 'unit' | '((' pat (',' pat)+ '))' | '(' pat ')'
+             | '[[' (pat (',' pat)* (',' '..' pat)? | '..' pat)? ']]'     # [[]]  [[a, b]]  [[head, ..rest]]
              | 'Some' pat | 'Nil' | qname pat? | qname '(' fieldpats ')' | qname '.' '*' '(' '..' ')'
              | pat ':' type
 fieldpats   := (lower '=' pat | pat | lower) (',' ...)* (',' '..')?
@@ -410,9 +413,9 @@ A step's own arguments are parsed as a call's and end at the next `ChainDot`. In
 
 **Trailing lambdas.** A `\` in argument position begins a lambda whose body runs to the end of the enclosing expression, including any commas: `Fold changes, items, \|acc, id, c| Step acc, id, c` gives `Step` three arguments inside the lambda and `Fold` three arguments outside it. The body is parsed with `in_args` cleared and at the `hold` level, and if it ends in a line-final colon the layout block belongs to the body (`\@widget:` and `\match _:` are this). A lambda that is not the last argument is parenthesised, and the parser's error for `F \x, y` where `y` was meant for `F` says so: "a trailing lambda takes the rest of the line; parenthesise it to pass more arguments".
 
-**A free sigil applies to the whole call after it.** `expr(prefix)` on a `FreeSigil` parses its operand at the `postfix` level, where a callable name takes its arguments, so `@ ChecklistUpdate ix, !checked` is `@ (ChecklistUpdate ix, !checked)` and `$ x + 1` is `$ (x + 1)`. An attached sigil is part of the name token and never reaches this rule.
+**A free sigil applies to the whole call after it.** `expr(prefix)` on a `FreeSigil` parses its operand at the `postfix` level, where a callable name takes its arguments, so `@ ChecklistUpdate i, !checked` is `@ (ChecklistUpdate i, !checked)` and `$ x + 1` is `$ (x + 1)`. An attached sigil is part of the name token and never reaches this rule.
 
-**Boolean operators.** `not` is a prefix keyword that takes an `expr(not)`, so its operand reaches over arithmetic and stops at comparison: `not $n + 1 gt limit` is `(not ($n + 1)) gt limit`, and `not a == b` is `(not a) == b`. `and` and `or` are left-associative and sit between comparison and `on`, with `and` tighter, so `x or y and z` is `x or (y and z)` and `$done or $n gt limit on !click` is `($done or ($n gt limit)) on !click`. The parser builds `Binary` and `Prefix` nodes and stops there; a non-`Bool` operand is the checker's error, whose message for the common slip says to write `not (a == b)`.
+**Boolean operators.** `not` is a prefix keyword that takes an `expr(not)`, so it sits between `and` and comparison: its operand is a whole comparison, and `not a == b` is `not (a == b)`. `and` and `or` are left-associative and sit between `not` and `on`, with `and` tighter, so `x or y and z` is `x or (y and z)`, `a lt b and c lt d` needs no parentheses, and `$done or $n gt limit on !click` is `($done or ($n gt limit)) on !click`. `not $done and $n gt limit` is `(not $done) and ($n gt limit)`, since `not` binds tighter than `and`. The parser builds `Binary` and `Prefix` nodes and stops there; a non-`Bool` operand is the checker's error.
 
 **Hold does not associate.** `expr(hold)` takes at most one `<=`; a second is the error "`<=` does not associate; a hold has one initial value and one event".
 
@@ -422,7 +425,13 @@ A step's own arguments are parsed as a call's and end at the next `ChainDot`. In
 
 **Record forms.** `Vector 1.0, 2.0` is an ordinary `Call` and the elaborator learns that `Vector` is a constructor. `Vector(x=1.0, y=2.0)` is `Named`, recognised because a qualified or uppercase name is followed immediately (no whitespace) by `(` and the first thing inside is `lower =`. `Vector:` followed by a block of `field: value` statements is `RecordBlock`. Element construction is the same three forms with a qualified name: `Ui.Button(label="OK")`, `Ui.Button "OK"`, `Ui.Button:` block. A tag with no fields is a bare qualified name, `Clock`, and parses as `QVar`.
 
-**`if` and `else`.** `if c` takes a block, then expects `Else`, then a block. After an inline `if c: a`, the `else` ends the inline block and is the next token; after a layout block, the lexer has emitted `Sep` before `else` at the block's column, and the `if` routine consumes the separator when the token after it is `Else`. An `if` with no `else` is the error the language chapter gives.
+**`if` and `else`.** `if c` takes a block, then takes `else` and a second block when the next token is `Else`. After an inline `if c: a`, the `else` ends the inline block and is the next token; after a layout block, the lexer has emitted `Sep` before `else` at the block's column, and the `if` routine consumes the separator only when the token after it is `Else`, so a `Sep` followed by anything else is the next statement. An `else` belongs to the nearest `if` that has none yet; a layout `else` finds its `if` by column, because the dedent has already closed every block between them. The parser records the missing branch as `e: None` and decides nothing about its type: the elaborator makes it `?T`.
+
+**`match` guards.** An arm is `pat`, then optionally `if` and an expression, then the block. The guard is parsed at the `hold` level up to the arm's colon, which the lexer has left as `Colon` (inline arm) or turned into `BlockOpen` (layout arm), so `Some n if n gt limit: ...` needs no lookahead. The guard is stored on the `Arm`, not wrapped around the body, so that exhaustiveness can see it.
+
+**`for` binders.** After `for`, the parser scans ahead on the line for a `<-` at bracket depth zero before the line-final or inline colon. If there is one, the tokens before it are one pattern or two comma-separated patterns, the key and the item (`for k, $item <- $items:`; with one pattern, `for $item <- $items:`, it is the item). If not, the line is the shorthand `for $items:` and `key` and `_` are bound by the loop. The scan is a token walk with no grammar, and it is sound because a `<-` can appear in an expression only inside a block, which the scan does not enter.
+
+**Array patterns.** `[[` in a pattern is `ArrayOpen`: `[[]]` is empty, `[[a, b]]` is exactly two elements, and `[[head, ..rest]]` is a first element and the remainder. `..` takes a pattern after it, a name or `ignore`, and may only be last; the parser reports a second `..` or one in the middle ("`..` takes the rest of the array, so it comes last").
 
 **Widget definitions.** `@counter:` at top level is `Item::Widget`; `@Button: fn $Text -> @!Click = \@widget:` is `Item::Let` with a lambda value whose body is a `WidgetBlock`. Both forms exist because the first reads as a declaration and the second as a function, and the parse trees differ only in whether there is a lambda around the block.
 
@@ -456,8 +465,8 @@ pub struct Resolved { pub module: Module, pub refs: HashMap<NodeId, Binding>, pu
 pub enum Binding {
     Local  { block: BlockId, index: usize, kind: Sigils },   // a statement of a widget block
     Param  { lambda: NodeId, index: usize },                 // a lambda argument
-    Pronoun{ binder: NodeId },                               // _ in a lambda, dyn, for or match
-    Loop   { for_node: NodeId, which: LoopVar },             // ix jx kx key
+    Pronoun{ binder: NodeId },                               // _ in a lambda, dyn, for (shorthand) or match
+    Binder { for_node: NodeId, which: ForVar },              // a for's key or item: named by the loop, or `key` / `_` in the shorthand
     LetSeq { stmt: NodeId },                                 // a let in a sequential block
     Top    { item: ItemId },                                 // a module-level definition
     Prelude{ name: &'static str, intrinsic: Option<Intrinsic> },
@@ -472,7 +481,7 @@ Scopes nest the obvious way: module, then each item, then blocks and lambdas ins
 
 *The pronoun.* `_` is bound by the nearest enclosing lambda (`\body`), `dyn` block, `for` block or `match` arm pattern that binds it, and its sigiled forms `$_`, `!_`, `@_` name the same binder read at that kind. Inside `for $m:`, `_` is the entry's value as a plain name and `$_` is the entry as a dynamic; which of them the body uses is recorded on the binder, because the lambda rule of the language chapter says a body that mentions `$_` takes a dynamic and the elaborator reads that from the resolver's note. Only one pronoun is in scope at a time; an inner binder shadows an outer one and a program that needs both names one of them. `.x`, `.F` and `[i]` in prefix position are references to the pronoun and resolve the same way, in any of these binders; where none is in scope, they are the error the parser section gives.
 
-*Loop variables.* `ix`, `jx`, `kx` and `key` are keywords, and the resolver binds them by nesting depth: `ix` is the index of the innermost `for`, `jx` the next out, `kx` the next; `key` is the innermost `for` over a map. Using `jx` in a single `for` is the error the language chapter gives. They are keywords so that an outer binding cannot capture them, and the resolver's only work is counting.
+*Loop binders.* `for k, $item <- $items:` names the key and the per-key dynamic, and the resolver binds each as `Binder { for_node, which }` with `ForVar` `Key` or `Item`; with one pattern before `<-` only the item is named. The shorthand `for $items:` binds `key`, a keyword, to the key, and `_` and `$_` (the pronoun) to the item. An inner shorthand `for` shadows an outer one's `key` and `_`, as inner pronoun binders always do; a body that needs both names the binders of one of them. There are no index variables to count: a loop's variables are the names the program gave it, so an outer binding cannot be captured by accident and a nested loop reads like the nesting it is. Over an array the key binder is the index.
 
 Top-level names are visible throughout the module; the prelude is an outer scope the module shadows. Shadowing a prelude name is allowed and not warned about, except for the intrinsics below, where shadowing is an error, because a program that rebinds `@Element` has made a program nobody can read.
 
@@ -491,6 +500,7 @@ Some prelude names are not functions the compiler calls but nodes the elaborator
 | `!Leftmost` | `leftmost` over an array of events |
 | `!never` | `never` |
 | `@started` | `started` (a `dyn` over a constant, built as one node) |
+| `@HoldFirst` | `hold_first`: `fn !a -> @$a`, a dynamic seeded by the event's firing in the occurrence it is built |
 | `@Element` | `element`, with the tag's kind |
 | `!Updated` | `updated`: a dynamic's change event |
 | `$Distinct` | `distinct`: a derived dynamic that drops equal-valued changes, equality bound |
@@ -578,11 +588,12 @@ pub enum TExpr {
     Field { e: Box<TExpr>, index: usize, ty: Type },
     Index { e: Box<TExpr>, i: Box<TExpr>, ty: Type },          // returns ?T
     Match { scrutinee: Box<TExpr>, arms: Vec<TArm>, ty: Type, dispatch: Dispatch },
+    If    { c: Box<TExpr>, t: Box<TExpr>, e: Box<TExpr>, ty: Type },   // `if c: x` with no else is If { c, Some x, None }
     Let   { pat: TPat, value: Box<TExpr>, body: Box<TExpr> },  // a sequential let in a lambda, for or arm body
     Array(Vec<TExpr>, Type), MapLit(Vec<(TExpr, TExpr)>, Type), Tuple(Vec<TExpr>),
     TextCat(Vec<TExpr>),                                       // interpolation, all parts Text
     Trait { which: TraitOp, at: Type, args: Vec<TExpr> },      // Num.Add[Int] a, b; Eq[Text] a, b
-    Bool  { op: BoolOp, args: Vec<TExpr> },                    // Bool.Not a; Bool.And a, b; Bool.Or a, b (operands are Bool)
+    Bool  { op: BoolOp, args: Vec<TExpr> },                    // Bool.Not a; Bool.And a, b; Bool.Or a, b (operands are Bool; And and Or short-circuit)
     Dict  { which: Trait, at: Type },                          // the hidden argument for a bound
     Maybe { over: Vec<TExpr>, body: Box<TExpr> },              // ? lifting at the plain layer
     // the lifts: every one explicit
@@ -609,7 +620,8 @@ pub enum TExpr {
 }
 pub enum Consolidation { Plain, Event, Dynamic, Widget }
 pub enum ElemKind { Known(TagId), Generic }
-pub enum Dispatch { Choice(TypeId), Tag, Optional, Literal }
+pub struct TArm { pub pat: TPat, pub guard: Option<TExpr>, pub body: TExpr, pub span: Span }   // the guard is a plain Bool over the pattern's bindings
+pub enum Dispatch { Choice(TypeId), Tag, Optional, Array, Literal }
 ```
 
 `Type` is the plain type with its sigils as constructors: `Type::Dyn(Box<Type>)`, `Type::Event(..)`, `Type::Widget(..)`, `Type::Opt(..)` over `Nat`, `Int`, `Float`, `Text`, `Char`, `Unit`, `Fn`, `Map`, `Array`, `Tuple`, `Named`, `Var`. A `Scheme` is a `Type` with quantified variables and their bounds. The lifts are nodes, not annotations: a `Tag` node says "this is an event that fires with `event`, with the dynamics in `dyns` read through tags, and the body applied to the firing and the readings". The closure compiler maps each one to one runtime constructor, and the text form prints each one by name, which is what "every lift explicit" means in practice.
@@ -634,7 +646,7 @@ The elaborator's walk is bidirectional in exactly one place, the kind of a lambd
 
 ### The sigil lattice and lifting
 
-Every operation and application is lifted by a rule read off its operands' outermost sigils, and the elaborator applies that rule as a table lookup, producing one node per lift. The boolean operators are operations like `+`: `not $done` is a `DMap` over `[$done]` with the body `\|d| Bool.Not d`, and `$a and !b` is a `Tag`.
+Every operation and application is lifted by a rule read off its operands' outermost sigils, and the elaborator applies that rule as a table lookup, producing one node per lift. The boolean operators are operations like `+`: `not $done` is a `DMap` over `[$done]` with the body `\|d| Bool.Not d`, and `$a and !b` is a `Tag`. A lifted `and` or `or` is a lift of the same function: the dynamics are all read and the body is the plain `Bool.And a, b`, which evaluates `b` only when `a` holds, so the lifted node fires and changes by the lifting rule and not by any extra laziness.
 
 | Operands' outer kinds | Result | Node |
 |---|---|---|
@@ -646,7 +658,9 @@ Every operation and application is lifted by a rule read off its operands' outer
 
 The body is the plain operation with the lifted operands replaced by lambda parameters: `$count + !delta` becomes `Tag { event: !delta, dyns: [$count], body: \|d, c| Num.Add[Int] c, d }`. The elaborator builds the body as a plain `TExpr` over fresh parameters, types it at the plain layer (where `+` is resolved by the numeric trait), and wraps it. One lifted expression becomes one node: `$a * 2 + 1` is one `DMap` over `[$a]` with the body `\|a| Num.Add[Int] (Num.Mul[Int] a, 2), 1`, not a node per operator, because the elaborator lifts the maximal plain subtree, which is found by walking down until an operand is itself sigiled. `on` needs no rule: it is a binary operator returning its left operand, so `v on !e` is `Map { event: !e, body: \|_| v }` and `$v on !e` is `Tag { event: !e, dyns: [$v], body: \|_, v| v }`, by the table.
 
-`match` lifts like application: `match $x:` with plain arms is a `DMap` over `[$x]` with the match as its body; `match !e:` is a `Map`; dynamics mentioned in the arms join the `dyns` of a `Tag`. A `match` with a widget arm requires a plain scrutinee, and the error points at `dyn`.
+`match` lifts like application: `match $x:` with plain arms is a `DMap` over `[$x]` with the match as its body; `match !e:` is a `Map`; dynamics mentioned in the arms, in their guards included, join the `dyns` of a `Tag`. A `match` with a widget arm requires a plain scrutinee, and the error points at `dyn`.
+
+`if` lifts the same way, as a `DMap` or `Map` or `Tag` around a plain `If` body. An `if c: x` with no `else` is typed `?T` where `x: T`, and the elaborator writes it as `If { c, Ctor Some [x], Ctor Nil }`: `?unit` when `x` is `unit`, and over a dynamic condition a `DMap` whose result is `$?T`. Nothing about it is special to later stages. The plain `If` is also what a conditional with both branches elaborates to, and the optional form is that `If` with a constructor in each branch, so the checker has one rule for `if` (both branches unify) and the missing branch is filled in before it applies.
 
 `?` lifts at the plain layer, inside the time functors, and the node is `Maybe { over, body }`: `a / b + 1` is `Maybe { over: [Num.Div a, b], body: \|q| Num.Add q, 1 }` of type `?Nat`; the `?` comes from `/` at `Nat` and `Int`, which fails on a zero divisor. At `Float` the same `/` is plain and follows IEEE (infinities and NaN, never failing), so `x / y` over two `Float`s has no `Maybe` and `Num.Div[Float] x, y` is an ordinary node. The elaborator finds a `?` operand where a plain one is wanted, wraps, and continues; the `?` propagates outward until a binding names it or a `match` eliminates it. `$a / $b` is `DMap { over: [$a, $b], body: \|a, b| Num.Div a, b }` of type `$?Nat`, since the time functor lifts first and the `?` is in the body's result. `?$x + 1` is a type error: an optional dynamic is matched, not lifted.
 
@@ -672,7 +686,7 @@ elaborates as the binding `!click: !Click [occ] = Switch { events: Dyn { dynamic
 
 A *bundle* is a widget result that is a tuple or record with sigiled components: `intercept`'s `@((a, $(Path ==> Slot)))`, `@Focusable`'s `@((a, !Input))`, a panel's `@((!Click, $Text))`. Functor values nest inside plain aggregates, so the result is one plain value with an event and a dynamic inside it, and a pattern bind takes it apart: `((result, $slots)) <- intercept ...` binds the bundle and then projects each component into its own name, which the text form prints as one line for the bundle, named by the pattern, and one line per component. Through the dynamic-of-widgets lift the projections are what get lifted: `((!click, $text)) <- @Panel $cfg` with `@Panel: fn Text -> @((!Click, $Text))` becomes one `Dyn` over `$cfg` whose event fires with the bundle, then `!click` is `Switch (Map dyn \|b| b.0)` and `$text` is `Join (HoldFirst (Map dyn \|b| b.1))`, each component by its own row of the table. The `intercept` dump in the text form section shows the unlifted case.
 
-`HoldFirst` is a hold whose initial value is the event's firing in the occurrence the hold is built, which exists because a `dyn` fires in its build occurrence and a widget built in n sees all of n; the runtime constructs it as a hold that takes its initial value from the catch-up read of the event it holds. The second row is the canonical cache idiom with the first build as the initial value and no one-occurrence hiccup. The elaborator inserts the `dyn` when the application's argument is a dynamic and the function's parameter is plain; an argument that is a dynamic where the parameter is `$T` is an ordinary application with no lift, which is how the book's `@Button: fn $Text -> @!Click`, written with a `dyn` inside, takes `$"Increment"` with no lift at the call site. The rule is the same for either signature: lift only where the parameter wants a plain value and gets a dynamic.
+`HoldFirst` is a hold whose initial value is the event's firing in the occurrence the hold is built, which exists because a `dyn` fires in its build occurrence and a widget built in n sees all of n; the runtime constructs it as a hold that takes its initial value from the catch-up read of the event it holds. A program reaches the same node by name: the prelude's `@HoldFirst: fn !a -> @$a` is an intrinsic the resolver maps to the `HoldFirst` node, so `$latest <- @HoldFirst !reading` elaborates to the binding `$latest: $T [occ] = hold_first !reading`, the same line the inserted lift prints inside `join (hold_first ...)`. The second row is the canonical cache idiom with the first build as the initial value and no one-occurrence hiccup. The elaborator inserts the `dyn` when the application's argument is a dynamic and the function's parameter is plain; an argument that is a dynamic where the parameter is `$T` is an ordinary application with no lift, which is how the book's `@Button: fn $Text -> @!Click`, written with a `dyn` inside, takes `$"Increment"` with no lift at the call site. The rule is the same for either signature: lift only where the parameter wants a plain value and gets a dynamic.
 
 An element whose field is a dynamic is the same rule one level down: `@Element Ui.Button(label=$l)` is `@Element` applied to `Elem { tag: Ui.Button, fields: [$l] }`, the element construction is a plain record build applied to a dynamic argument, so it lifts to a `DMap` giving a `$Element`, and `@Element` applied to a `$Element` is a widget function applied to a dynamic where it wanted a plain value, so it lifts to `dyn`, which is what "a dynamic where a field goes lifts into a `dyn`, fresh slot per change" means.
 
@@ -701,7 +715,7 @@ The counter's numbers in this light: `-1` is `Int`; `+1 on !increment` has the v
 
 ### `for`
 
-`for $m: block` in a widget block is `For { coll: $m, block: \|key, $v| @widget: ..., kind, keyed }`, where `kind` is the consolidation read off the block's result:
+`for k, $v <- $m: block` in a widget block is `For { coll: $m, block: \|k, $v| @widget: ..., kind, keyed }`, where the block's parameters are the loop's binders (the shorthand `for $m:` is the same node with the parameters `key` and `$_`), and `kind` is the consolidation read off the block's result:
 
 | Block result | Consolidation | Type |
 |---|---|---|
@@ -711,7 +725,7 @@ The counter's numbers in this light: `-1` is `Int`; `+1 on !increment` has the v
 | `@R` | `Widget` | an error: a block returns a built widget's result, not an unbuilt widget |
 | a bundle | one `For` per field kind | the block is split into projections, as for `dyn` |
 
-Over an array the same node has `keyed: false` and `K = Nat`. Outside a widget block, `for` over a plain collection is a plain mapping and elaborates to an ordinary `App` of the prelude's `MapValues` or `Map`, with `ix`, `jx`, `kx` and `key` as parameters of the body lambda; over a dynamic collection outside a widget block it is the error the language chapter gives.
+Over an array the same node has `keyed: false` and `K = Nat`. Outside a widget block, `for` over a plain collection is a plain mapping and elaborates to an ordinary `App` of the prelude's `MapValues` or `Map`, with the binders (or `key` and `_` for the shorthand) as parameters of the body lambda; over a dynamic collection outside a widget block it is the error the language chapter gives.
 
 ### Build-time and occurrence-time marks
 
@@ -745,7 +759,11 @@ Suppose there were no static check and every cycle were left to the runtime. The
 
 ### Exhaustiveness and the catch-all
 
-A `match` on a closed `choice` must cover every alternative or end in a catch-all; one on `?T` must have `Some` and `Nil` or a catch-all; one on a literal type must end in a catch-all; one on an extensible variant must end in a catch-all arm, `ignore:` or a bare name, because the set of tags is open. The elaborator records `Dispatch` on the `Match` node so that the closure compiler knows which test to emit, and checks coverage with the usual matrix algorithm for nested patterns (`Some (Circle r)` under `?Shape`), reporting the first missing constructor by name. Arms after a catch-all are "unreachable arm" errors rather than warnings, because an unreachable arm is a bug the reader will otherwise trust. Record patterns without `..` must name every field; `..` is required when they do not, and an element pattern `Ns.*(..)` always has it.
+A `match` on a closed `choice` must cover every alternative or end in a catch-all; one on `?T` must have `Some` and `Nil` or a catch-all; one on an array must cover every length (see below); one on a literal type must end in a catch-all; one on an extensible variant must end in a catch-all arm, `ignore:` or a bare name, because the set of tags is open. The elaborator records `Dispatch` on the `Match` node so that the closure compiler knows which test to emit, and checks coverage with the usual matrix algorithm for nested patterns (`Some (Circle r)` under `?Shape`), reporting the first missing constructor by name. Arms after a catch-all are "unreachable arm" errors rather than warnings, because an unreachable arm is a bug the reader will otherwise trust.
+
+A guarded arm does not count toward coverage. The matrix is built from the unguarded arms only, because the elaborator cannot know the guard will hold; the guarded arms are still typed and still checked for reachability against the unguarded arms above them. So `Some n if n gt 0:` followed by `Nil:` is a missing-`Some` error, the message names the guarded arm ("this arm has a guard, so `Some _` is still uncovered; add an arm without one"), and a guarded catch-all, `ignore if c:`, is not a catch-all: a `match` on an extensible variant or a literal type must end in an unguarded one.
+
+Array patterns enter the matrix as constructors by length. `[[]]` is length 0, `[[a, b]]` is exactly 2, and `[[head, ..rest]]` is at least 1 (at least *k* for *k* elements before the `..`). Coverage is checked at the lengths 0 up to one past the longest pattern and then at "longer than that", where only a `..` pattern can match, so `[[]]` with `[[head, ..rest]]` covers every array and `[[a, b]]` with `[[]]` is missing the lengths 1 and 3 and up, reported as the first missing one. Element patterns inside are specialised in the usual way, and the `Dispatch::Array` the match records tells the closure compiler to emit length tests. Record patterns without `..` must name every field; `..` is required when they do not, and an element pattern `Ns.*(..)` always has it.
 
 ### The tag-indexed refinement
 
@@ -828,7 +846,7 @@ A compiler with one intermediate form and several passes over it needs one check
 
 **Every node has a span.** *What breaks:* an error at runtime says "in `<unknown>`", which is the worst message a compiler can produce, and the one a careless pass produces by constructing a node with a default.
 
-**Every `Element` node names a declared tag or is `Generic`,** and a `Known` tag's fields match its declaration in number and type. **Every `Match` with `Dispatch::Tag` ends in a catch-all.** **Every `Trait` node is at a concrete type or has a `Dict` in scope.** Each is a restatement of an elaboration rule, and each exists because a later pass could drop the annotation the rule produced.
+**Every `Element` node names a declared tag or is `Generic`,** and a `Known` tag's fields match its declaration in number and type. **Every `Match` with `Dispatch::Tag` ends in an unguarded catch-all,** and every guard is a plain `Bool`. **Every `Trait` node is at a concrete type or has a `Dict` in scope.** Each is a restatement of an elaboration rule, and each exists because a later pass could drop the annotation the rule produced.
 
 The lint runs in every test of the compiler and after every pass in `prism dump --lint`; it has negative fixtures of its own, hand-edited converted trees that it must reject, one per check, because a checker nobody has seen fail is a checker nobody knows is on. The checks are cheap: one walk, with a map from binding to type and a stack of placeholder states. A checker that was expensive would be run only sometimes, and a checker run sometimes is where the bug it would have caught waits.
 
@@ -925,7 +943,7 @@ One `Step` per typed-AST node kind, each one call on the builder or one construc
 |---|---|---|
 | `Bind` of a widget | `Bind` | `builder.bind(&widget)`; the child's node is pushed onto this node's children; the result goes into `dst` |
 | `Hold { init, event }` | `Hold` | `Dynamic::hold(init, event)`: value `init` until the event fires, commits at the end of each occurrence the event fires |
-| `HoldFirst` | `HoldFirst` | a hold whose initial value is the event's catch-up value in the build occurrence; the compiler inserted it for a dynamic-of-widgets bind |
+| `HoldFirst` | `HoldFirst` | a hold whose initial value is the event's catch-up value in the build occurrence; from `@HoldFirst` written in a program, or inserted for a dynamic-of-widgets bind |
 | `Map { event, body }` | `Map` | `event.filter_map(closure)` with a closure that always returns `Some` (one node; `filter_map` is the runtime's primitive and `map` its special case) |
 | `Tag { event, dyns, body }` | `Tag` | `event.tag_map_n(dyns, closure)`: the closure receives the firing and each dynamic's value *before* the occurrence; n-ary over the dynamics so that `$a + $b + !e` is one node |
 | `DMap { over, body }` | `DMap` | `Dynamic::map_n(dyns, closure)`: a derived dynamic, prompt, one node for any arity |
@@ -963,7 +981,7 @@ pub struct Frame<'a> {
 }
 ```
 
-Compilation of a leaf is the closure-generation technique in its plainest form: each typed-AST node becomes a closure that calls its children's closures and combines their results, so that evaluation is a tree of calls with no dispatch loop and no instruction stream. `Var(Capture(i))` compiles to `|f| f.captures[i].clone()`; `Var(Param(i))` to `|f| f.args[i].clone()`; `Trait { Add, Int, [a, b] }` to `|f| box_int(unbox_int(a(f)) + unbox_int(b(f)))` with overflow checked and reported as an `Overflow` error; `App { f, args }` to a call through the program table; `Match` to the dispatch the node records, each arm compiled with its pattern as a test-and-bind; `Ctor`, `Elem`, `Field`, `Index`, `TextCat`, `Maybe`, `Array`, `MapLit` to the obvious thing over the value representation. Numbers stay unboxed inside a leaf where the Rust compiler can see them, and box at the leaf's boundary. A node whose static type is a type variable moves the one-word value without looking at it, which is erasure, below.
+Compilation of a leaf is the closure-generation technique in its plainest form: each typed-AST node becomes a closure that calls its children's closures and combines their results, so that evaluation is a tree of calls with no dispatch loop and no instruction stream. `Var(Capture(i))` compiles to `|f| f.captures[i].clone()`; `Var(Param(i))` to `|f| f.args[i].clone()`; `Trait { Add, Int, [a, b] }` to `|f| box_int(unbox_int(a(f)) + unbox_int(b(f)))` with overflow checked and reported as an `Overflow` error; `App { f, args }` to a call through the program table; `Match` to the dispatch the node records, each arm compiled with its pattern as a test-and-bind followed, when the arm has a guard, by the guard evaluated with the pattern's bindings in the frame, so that a false guard falls through to the next arm; `Bool.And` and `Bool.Or` to a closure that calls its second operand's closure only when the first does not decide the result, so an overflow in an operand that was not needed aborts nothing; `If` to a test of the condition that calls only the branch it takes; `Ctor`, `Elem`, `Field`, `Index`, `TextCat`, `Maybe`, `Array`, `MapLit` to the obvious thing over the value representation. Numbers stay unboxed inside a leaf where the Rust compiler can see them, and box at the leaf's boundary. A node whose static type is a type variable moves the one-word value without looking at it, which is erasure, below.
 
 A lambda value inside a leaf is a closure record `(FunId, captures)` built by evaluating the capture operands into a vector; applying it is `program.functions[id]` called with the record's captures as `captures` and the arguments as `args`. The record is a plain value and may be stored in a map, returned from a function or passed to `Fold`. It holds values, never nodes, and so can be copied anywhere a value can.
 
@@ -1057,20 +1075,22 @@ expr  := atom
        | 'bind' expr                                   # in a Bind line: the widget being built
        | 'hold' expr expr                              # in a Hold line: initial, event
        | 'maybe' '[' exprs ']' lambda                  # ? lifting at the plain layer
-       | 'match' expr dispatch '{' arm (';' arm)* '}'
-       | 'if' expr expr expr
+       | 'match' expr dispatch '{' arm (';' arm)* '}'   # dispatch: choice | tag | optional | array | literal
+       | 'if' expr expr expr                           # an `if` with no else prints with Some(x) and Nil in its branches
        | name '(' exprs ')' | name '{' field '=' expr, ... '}'  # application; constructor or element
        | trait '[' type ']' exprs                      # Num.Add[Int] c, d   Eq[Text] a, b   dict[Ord a]
-       | 'Bool.Not' expr | ('Bool.And' | 'Bool.Or') expr ',' expr   # not a, a and b, a or b
+       | 'Bool.Not' expr | ('Bool.And' | 'Bool.Or') expr ',' expr   # not a, a and b, a or b (And, Or short-circuit)
        | 'cat' '[' exprs ']'                           # text interpolation
        | expr '.' field | expr '[' expr ']'
        | lambda
 atom  := name | literal ':' type | '"' text '"' | 'unit' | '[[' exprs ']]' | '{' pairs '}' | '((' exprs '))'
 lambda:= '\' captures? '|' params '|' expr            # captures: '[' names ']' after conversion
        | '\' captures? '|' params '|' '@widget:' block
+arm   := pat ('if' expr)? '->' expr                    # the guard, if any, is part of the arm
+pat   := the source patterns in prefix form, array patterns as '[[' pats ('..' pat)? ']]'
 ```
 
-Application prints with parentheses and commas, `Insert(items, id, todo)`, because the text form has no precedence and no paren-less calls: one syntax per node, read by a parser with no table. Literals print with their type, `0:Int`, `1.5:Float`, `"ok"` (text needs none). A `Trait` node prints the operation, the type in brackets, and the arguments, so that `+` resolved at `Int` and `+` resolved at `Float` are visibly different lines. The boolean operators have no type to resolve and print as `Bool.Not b`, `Bool.And a, b` and `Bool.Or a, b`.
+Application prints with parentheses and commas, `Insert(items, id, todo)`, because the text form has no precedence and no paren-less calls: one syntax per node, read by a parser with no table. Literals print with their type, `0:Int`, `1.5:Float`, `"ok"` (text needs none). A `Trait` node prints the operation, the type in brackets, and the arguments, so that `+` resolved at `Int` and `+` resolved at `Float` are visibly different lines. The boolean operators have no type to resolve and print as `Bool.Not b`, `Bool.And a, b` and `Bool.Or a, b`. A guard prints after its pattern, so `match n optional {Some(m) if Ord.Gt[Int] m, limit -> m; Nil -> 0:Int}` is a guarded arm and an unguarded one, and `if c Some(x) Nil` is what `if c: x` prints as.
 
 The `for` node prints the elaborator's can-fire-at-birth flag (the `birth_firing` field of the node) between the consolidation kind and the block: `birth` when the row block can fire in the occurrence its key appears, `no_birth` when it cannot, and `no_birth` on a `plain` kind, whose rows build nothing. The flag is a line of the dump and not a note beside it because the Haskell evaluator chooses its `coincidence` from it and the cycle check reads it; a frontend that computed a different flag would otherwise differ only in an invisible field.
 
@@ -1245,6 +1265,7 @@ pub enum Dispatch {
     Choice(TypeId),    // a jump table over the alternative index
     Tag,               // see below
     Optional,          // Some / Nil
+    Array,             // length tests: empty, exactly n, at least n
     Literal,           // sequential tests
 }
 ```
@@ -1361,7 +1382,7 @@ error: no supplier for the state element `Fs.Contents` under this interceptor
    = the child builds `Fs.Contents` at build.prism:4:5; supply it, or forward it: `ignore: @Element e`
 ```
 
-**A match on an extensible variant without a catch-all**, **a non-exhaustive match on a closed choice**, **a match on a dynamic with a widget arm**, **a hold outside a widget block**, **lifting across a sigil boundary**, **an optional where a plain value is required at a boundary**, **a type variable in a tag's field**, **interpolating something without a rendering**, **the layout errors**, **reserved words**, **`for` over a dynamic outside a widget block**, **`ix` outside a `for`**, **an `if` without `else`**: each renders in the format above with the content the language chapter gives, and each has a negative golden. Two more the compiler adds because its own stages make them possible:
+**A match on an extensible variant without a catch-all**, **a non-exhaustive match on a closed choice**, **a match on a dynamic with a widget arm**, **a hold outside a widget block**, **lifting across a sigil boundary**, **an optional where a plain value is required at a boundary**, **a type variable in a tag's field**, **interpolating something without a rendering**, **the layout errors**, **reserved words**, **`for` over a dynamic outside a widget block**, **a guarded arm that leaves a case uncovered**, **a `..` that is not last in an array pattern**, **a camelCase value name** (the one warning in the list, rendered with `warning:` and the suggested spelling): each renders in the format above with the content the language chapter gives, and each has a negative golden. Two more the compiler adds because its own stages make them possible:
 
 **A trailing lambda that was not last.**
 
@@ -1384,9 +1405,9 @@ Six kinds of test cover the crate, and every one of them is a text file someone 
 
 ### Goldens
 
-Each golden is a Prism file and its typed-AST dump after elaboration, and after conversion with `--converted`. Any change to elaboration shows up as a diff a reviewer reads. The set: the counter; each program of the conformance corpus; the GUI library; the worked examples of the first chapter; and one small file per rule of the lexical and expression chapters, including the paren-less call cases (`F a, G b, c`, `F a, (G b, c)`, `G(b, c)`), tuples and arrays (`((G b, c))`, `(((G b, c), d))`, `((Size $elems) + 1)`, `[[]]`), function types (`fn (fn A -> B), [A] -> [B]`, `fn ((A, B)) -> C`), a three-step chain on continuation lines, `;` in an inline `record:` and an inline `if`, the lambda shorthand (`\.done`, `\[0]`), the spacing cases, the dynamic-of-widgets lift in both forms, `for` in each consolidation, a cyclic group cut at a switch, an interceptor with a tag-specific arm and a catch-all, a generic function with a bound, and a `test` item. What they catch, by name: a lift that changed kind (a dynamic read promptly where it should go through a tag); a literal or operator that resolved to a different numeric type; a binding that moved between `[build]` and `[occ]`; a group split or cut differently; a `for` consolidating to the wrong kind; a capture list that gained or lost an entry; a `dyn` inserted or not inserted at a widget application.
+Each golden is a Prism file and its typed-AST dump after elaboration, and after conversion with `--converted`. Any change to elaboration shows up as a diff a reviewer reads. The set: the counter; each program of the conformance corpus; the GUI library; the worked examples of the first chapter; and one small file per rule of the lexical and expression chapters, including the paren-less call cases (`F a, G b, c`, `F a, (G b, c)`, `G(b, c)`), tuples and arrays (`((G b, c))`, `(((G b, c), d))`, `((Size $elems) + 1)`, `[[]]`), function types (`fn (fn A -> B), [A] -> [B]`, `fn ((A, B)) -> C`), a three-step chain on continuation lines, the boolean levels (`not a == b`, `a lt b and c lt d`, `x or y and z`), a guarded arm and an exhaustiveness failure caused by one, an `if` with no `else`, `for` with named binders and with the shorthand, array patterns of each form, `@HoldFirst` written in a program, `;` in an inline `record:` and an inline `if`, the lambda shorthand (`\.done`, `\[0]`), the spacing cases, the dynamic-of-widgets lift in both forms, `for` in each consolidation, a cyclic group cut at a switch, an interceptor with a tag-specific arm and a catch-all, a generic function with a bound, and a `test` item. What they catch, by name: a lift that changed kind (a dynamic read promptly where it should go through a tag); a literal or operator that resolved to a different numeric type; a binding that moved between `[build]` and `[occ]`; a group split or cut differently; a `for` consolidating to the wrong kind; a capture list that gained or lost an entry; a `dyn` inserted or not inserted at a widget application.
 
-The layout corpus of the language chapter is the lexer's golden: a program in, its token stream out, one token per line, compared exactly, for both lexers.
+The layout corpus of the language chapter is the lexer's golden: a program in, its token stream out, a program's whole stream printed on one line in the conformance chapter's corpus notation, compared exactly, for both lexers.
 
 ### Negative goldens
 

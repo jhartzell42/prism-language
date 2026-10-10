@@ -4,7 +4,7 @@ Eight programs that are not toys, each taken far enough that the hard moment sho
 
 ## Conventions
 
-Occurrences are numbered from zero; occurrence zero is the build. Paths are written as in the worked examples: bind positions from the root separated by `/`, `#n` for a `dyn` generation, `[k]` for a `for` key, and `s/n` for a slot that an interceptor's supplier built. Element lists are written one slot per line as `path: element`, with `requested: [..]` after a slot that fired its request in that occurrence.
+Occurrences are numbered from zero; occurrence zero is the build. Paths are written as in the worked examples: bind positions from the root separated by `/`, `#n` for a `dyn` generation, `[k]` for a `for` key, and `s/n` for a slot that an interceptor's supplier built. Element lists are written one slot per line as `path: element`, with `requested:` after a slot that fired its request in that occurrence, then the fired values bare, in firing order, separated by `; `.
 
 The GUI vocabulary is the two-level one. `Gui.*` is what a World that draws pixels accepts, five tags: `Gui.Window(title)` responds with pointer, key and resize events and has the window's size as state; `Gui.Scene(window, draw)` is the picture for a window, a presence element whose `draw` field is a plain list of `Draw.*` values (`Draw.Rect`, `Draw.Text`, `Draw.Image`, `Draw.Clip`), replaced whenever the picture changes; `Gui.Focusable(name)` responds with keys; `Gui.Metrics(text, font)` is text measurement as state; `Gui.Frames` responds `Frame(now: Instant)` once per frame while a slot exists. The World does no geometry and no hit-testing. `Ui.*` is the Prism GUI library's own vocabulary (`Ui.Button`, `Ui.Label`, `Ui.TextInput`, `Ui.VBox`, …), claimed by the library's interceptors on the way out, which hit-test against their own layout and focus by name, and reaching a World only when that World accepts them, which the Test World does. Programs in this chapter are written against `Ui.*` and assume `@Window` from the GUI library around them where a screen is involved; `@Button`, `@Label` and `@TextInput` are the library widgets over `Ui.Button`, `Ui.Label` and `Gui.Focusable`, and `Ui.Button` responds `Click`, a unit type.
 
@@ -54,18 +54,23 @@ type Key = choice:
 type Instant = Instant Int
 
 type Stamp = choice:
-    Missing
+    NoStamp
     Modified Instant
 
 type FsRequest = choice:
     Read
     Write Text
 
+type FsError = choice:
+    NotFound
+    Denied
+    TooLarge
+    Other Text
+
 type FsResponse = choice:
     Contents Text
     Written
-    Missing
-    Denied
+    Unavailable FsError
 
 tag Fs.Watch of Element:          # state: the file's modification stamp
     path: Text
@@ -77,7 +82,7 @@ tag Fs.File of Element:           # request: reads and writes, answered later
     responds: FsResponse
 ```
 
-Three elements talk to the outside for each buffer. `Gui.Focusable(name)` hears keys when it is focused; which buffer is focused is the window interceptor's business, and the buffer never knows. `Fs.Watch(path)` is the watcher, as *state*: its value is the file's modification stamp, pushed when the file changes. `Fs.File(path)` is the one-shot conversation: a `Read` or a `Write` fires, and `Contents`, `Written`, `Missing` or `Denied` comes back addressed to this slot, later. The watcher is state and not a stream for the reason the Worlds chapter gives: a slot built in the occurrence of a change sees the push, while a slot built in the occurrence of a stream's firing would miss it. An editor that opens a file in the moment it changes wants the change.
+Three elements talk to the outside for each buffer. `Gui.Focusable(name)` hears keys when it is focused; which buffer is focused is the window interceptor's business, and the buffer never knows. `Fs.Watch(path)` is the watcher, as *state*: its value is the file's modification stamp, pushed when the file changes. `Fs.File(path)` is the one-shot conversation: a `Read` or a `Write` fires, and `Contents`, `Written` or `Unavailable` with a reason comes back addressed to this slot, later. The watcher is state and not a stream for the reason the Worlds chapter gives: a slot built in the occurrence of a change sees the push, while a slot built in the occurrence of a stream's firing would miss it. An editor that opens a file in the moment it changes wants the change.
 
 ### The structure
 
@@ -123,6 +128,17 @@ let ContentsOf: fn FsResponse -> ?Text = \|r| match r:
     Contents t: Some t
     ignore: Nil
 
+let ReasonOf: fn FsResponse -> ?FsError = \|r| match r:
+    Unavailable why: Some why
+    ignore: Nil
+
+let Problem: fn ?FsError -> Text = \|p| match p:
+    Some NotFound: "no such file"
+    Some Denied: "not allowed to read it"
+    Some TooLarge: "too large to open"
+    Some (Other t): t
+    Nil: ""
+
 let Unless: fn Text, Text -> ?Text = \|saved, t|
     if saved == t: Nil else: Some t
 
@@ -144,6 +160,8 @@ let Title: fn Text, Bool -> Text = \|path, dirty|
     let !io = (Read on (!started | !Updated $stamp)) | (Write $doc.text on !save)
     let !loaded = !Filter (ContentsOf !resp)
     let !reload = !Filter (Unless $saved, !loaded)
+    let !failed = !Filter (ReasonOf !resp)
+    $problem <- Nil <= (Some !failed) | Nil on !loaded
     $saved <- "" <= ($doc.text on !save) | !reload
 
     let !cmd = (Reload !reload) | Undo on !undo | Redo on !redo | FindNext on !next | (Edit !key)
@@ -152,6 +170,7 @@ let Title: fn Text, Bool -> Text = \|path, dirty|
     $dirty <- False <= True on !key | False on (!save | !reload)
 
     @Label (Title path, $dirty)
+    @Label (Problem $problem)
     @Label (Render $doc)
     @ !close
 ```
@@ -207,7 +226,7 @@ One way to change anything, written next to the thing: `$hist`'s line is the com
 
 Simultaneity defined by the program: occurrence 11 is the whole of this section, and its outcome is read off one line.
 
-"Not yet" as a type: a buffer under a slow disk shows an empty document until the first `Contents` arrives, and the arms for `Missing` and `Denied` exist because the response type made the program write them. The watcher is not part of that wait: it is answered from a real stat as its slot is created, so it says `Missing` only for a file that is not there. There is no spinner state that has to be cleared on three different paths.
+"Not yet" as a type: a buffer under a slow disk shows an empty document until the first `Contents` arrives, and the arm for `Unavailable` and its reasons exists because the response type made the program write them. The watcher is not part of that wait: it is answered from a real stat as its slot is created, so it says `NoStamp` only for a file that is not there. There is no spinner state that has to be cleared on three different paths.
 
 The language is enough: the undo stack, the dirty flag, the echo suppression and the search are plain data and plain functions; the only things native are the focusable region, the file and the watcher.
 
@@ -368,8 +387,8 @@ The book is `Live` at sequence 1041. The strategy has one working bid, id 7, for
 `$state`'s change event fires with that state. `$state.working` changes promptly, so the `for` sees key 7 gone and keys 8 and 9 appear. Blocks `[8]` and `[9]` are built now, in 20; each `@started` fires; each `Submit` fires at birth. Block `[7]` is torn down at commit. `!actions` fires with the two `Place`s, which nothing in `[8]` or `[9]` listens to (`PullOf` wants `Pull`). Commit. After the turn the World sees:
 
 ```
-1/[8]/1:  Om.Order(id=8)    requested: [Submit (NewOrder Bid, 9993, 100, 1042)]
-1/[9]/1:  Om.Order(id=9)    requested: [Submit (NewOrder Ask, 9998, 100, 1042)]
+1/[8]/1:  Om.Order(id=8)    requested: Submit (NewOrder Bid, 9993, 100, 1042)
+1/[9]/1:  Om.Order(id=9)    requested: Submit (NewOrder Ask, 9998, 100, 1042)
 ```
 
 and sends both, each stamped with the sequence it was decided on.
@@ -527,8 +546,8 @@ The loop is running. The stop button is pressed, and the World, which batches wh
 **Occurrence 500.** Inputs: `Tick` to the `Time.Every` slot, a push of `Instant 5000` for `Clock`, a push of `Reading (..)` for `Sensor.Imu(bus="i2c-1")`, and a push of `True` for `Safety.Stop`. `!tick` fires. `SampleOf` reads `$setpoint`, `$imu` and `$clock` through tags: the setpoint, the IMU reading and the clock *before* the occurrence, the ones the previous tick also saw as "latest" plus whatever was pushed in occurrences since. `Control` fires with a torque, say `0.31`. `$stop` changes to `True`; `!Updated $stop` fires with `True`; `!halt` fires. Now `!cmd`: the left side, `0.0 on (!halt | !fault)`, fires, so `!cmd` fires with `0.0`, and the `0.31` from the right side is not heard. Both motor slots fire `0.0`. Commit: `$loop` has integrated the error (the law ran; its output was overridden), `$stop` is `True`.
 
 ```
-4:  Actuator.Motor(id="left")     requested: [0.0]
-5:  Actuator.Motor(id="right")    requested: [0.0]
+4:  Actuator.Motor(id="left")     requested: 0.0
+5:  Actuator.Motor(id="right")    requested: 0.0
 ```
 
 **Occurrence 501.** The next tick, with the usual pushes. `Control` fires `0.29`. `Unless $stop, !torque` reads `$stop` through a tag, `True`, and returns `Nil`; `!Filter` drops it; the left side of the merge is quiet (`!Updated $stop` did not fire; the stop did not change). `!cmd` is quiet. Nothing is sent, and the motors hold the zero they were given. The loop keeps integrating, which is the wind-up problem and a product decision: a program that wants the integral frozen while stopped puts `$stop` into `Sample` and lets `Control` see it.
@@ -749,7 +768,7 @@ Every build tool is an incremental computation with a file watcher bolted on aft
 
 ```prism
 type Stamp = choice:
-    Missing
+    NoStamp
     Modified Instant
 
 tag Fs.Watch of Element:
@@ -813,7 +832,7 @@ type Job = record:
     id: Nat
     on: Text ==> Stamp          # input stamps as they stood when the job was spawned
 
-let AllKnown: fn Text ==> Stamp -> Bool = ...     # no input Missing
+let AllKnown: fn Text ==> Stamp -> Bool = ...     # no input NoStamp
 let Newer: fn Text ==> Stamp, Text ==> Stamp -> Bool = ...
 
 @Target: fn Rule, $(Text ==> Nat) -> @$Nat = \|rule, $versions| @widget:
@@ -894,9 +913,9 @@ The division of labour is the one this chapter keeps finding. Between files and 
 
 One way to change anything: a target's `$version` moves on one event, its child's exit, and nothing can bump it because a file was touched or a sibling finished.
 
-No request on creation: a target built in occurrence zero spawns nothing until `$want` changes, and a `$Distinct` over it makes "changes" mean what the build means by it. The build that runs on startup because the tool was restarted is not a thing here, and the one that runs because an input is `Missing` is a line the program wrote (`AllKnown`).
+No request on creation: a target built in occurrence zero spawns nothing until `$want` changes, and a `$Distinct` over it makes "changes" mean what the build means by it. The build that runs on startup because the tool was restarted is not a thing here, and the one that runs because an input is `NoStamp` is a line the program wrote (`AllKnown`).
 
-"Not yet" as a type: a target whose input is `Missing` is a target the program had to write an arm for; there is no rebuild loop against a file that does not exist.
+"Not yet" as a type: a target whose input is `NoStamp` is a target the program had to write an arm for; there is no rebuild loop against a file that does not exist.
 
 The language is enough: the dependency graph, the dirty tracking, the stale-job detection and the scheduling are all the hold-and-`for` structure of the program. The native things are the watcher, the spawn and the child.
 
@@ -918,9 +937,9 @@ A shell is a World written in Prism that hosts programs; a compositor is the sam
 The compositor speaks the primitive GUI vocabulary downward to the World and, upward to the applications it hosts, the same vocabulary again. From an application's side the compositor *is* a World that accepts `Gui.Window` and `Gui.Scene`; from the real World's side the compositor is one program with one window.
 
 ```prism
-type Size = record:
-    w: Int
-    h: Int
+type Extent = record:
+    w: Float
+    h: Float
 
 type Point = record:
     x: Int
@@ -940,7 +959,7 @@ type WindowInput = choice:
 tag Gui.Window of Element:
     title: Text
     responds: WindowInput
-    state: Size
+    state: Extent
 
 tag Gui.Scene of Element:
     window: Text
@@ -1133,7 +1152,7 @@ type Frame = record:
 tag Gui.Window of Element:
     title: Text
     responds: WindowInput              # Pointer, Pressed, Released
-    state: Size
+    state: Extent
 
 tag Gui.Scene of Element:
     window: Text
@@ -1192,7 +1211,7 @@ let Step: fn Game, Nat ==> Msg -> ((Game, [Effect])) = \|g, msgs|
         else: @Element Gui.Frames
     let !frame = !Switch !!frames
     let !key = !Filter (KeyOf !raw)
-    $paused <- False <= (not $paused) on !Filter (IsPause !key)
+    $paused <- False <= not $paused on !Filter (IsPause !key)
 
     let !msgs = !Union {0: !Filter (KeyMsg !key)}, {1: Tick !frame.now}
     let !stepped = Step $game, !msgs
@@ -1399,7 +1418,7 @@ The dashboard's list, as the poller sees it, with the poller's own supplied slot
 ```
 1/0/#1/0:   Query.Result(query=(Query "cpu", (Range day), 60))
 2/0/#1/0:   Query.Result(query=(Query "cpu", (Range day), 60))
-s/1/3:      Http.Fetch                                  requested: [GET .../cpu?range=day]
+s/1/3:      Http.Fetch                                  requested: GET .../cpu?range=day
 ```
 
 The old range's fresh data did not flash under the new range's title, and the reason is not a guard; it is that the chart's `dyn` rebuilt in the occurrence the query changed, and a widget built in an occurrence sees the occurrence from the start, so the new generation's `$live` was never the old slot's dynamic. There is no instant in which the chart has the day's query and the hour's rows as its live value. It has the hour's rows as `$shown`, which it chose to keep, labelled as loading.

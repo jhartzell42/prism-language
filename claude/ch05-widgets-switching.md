@@ -313,6 +313,8 @@ A rebuild costs what the block builds, and nothing else: no diff against the old
 
 Fresh paths are the other cost, and the one a World notices. Every slot under a rebuilt generation has a new path, so a World that keeps anything by path, a native toolkit widget or an in-flight request, loses it. Focus is the exception by design: a `Gui.Focusable` has a `name` and no other field, and the GUI library holds which name is focused, so a button whose label is a `dyn` is a new slot per label change and keeps focus, provided its name does not change with the label. Where a native widget really must keep its identity, the same split applies: the element that must keep its identity is given no dynamic fields and is created once, and the thing whose fields change is a separate element that nobody needs to address. That split is available for every element and it is the reason dynamic fields are allowed to mean "a fresh slot" rather than something more complicated.
 
+Library widgets take dynamic arguments, so a program normally writes `@Button $label` and never spells the `dyn` or the fresh slot. The fresh slot per change belongs to the library: `@Button` builds a `Ui.Button` element, the library's interceptor answers it, and a relabelled button is a new slot in that interceptor's list, which a World that sees `Gui.*` only never observes. The fresh-slot-per-change rule holds for elements that reach a World; `Gui.Window` or `Fs.Contents` with a dynamic field is a new slot in the World's list, and a `Ui.Button` with one is a new slot in the interceptor's. The button that relabels itself in this chapter's examples illustrates the rule and is not how a program normally labels a button.
+
 ### A `dyn` built in the middle of an occurrence
 
 A widget built in occurrence n behaves as though it had been built immediately before n's inputs arrived. For a nested `dyn` this has one consequence that an implementation can get wrong and the specification pins: a `dyn` built in n, over a dynamic that changed in n, builds *once*, with the new value. It does not build with the old value and then rebuild.
@@ -375,15 +377,15 @@ A file viewer has a path the user edits and wants to show the file's contents. `
 ```prism
 !$contents <- dyn $path:
     @Element Fs.Contents(path=_)
-$$current <- $ Unavailable <= !$contents
+$$current <- @HoldFirst !$contents
 let $contents = $Join $$current
 ```
 
 `$Join: fn $$A -> $A`. At occurrence n its value before n is the value before n of the inner dynamic current before n. Its change event fires at n, with the value after n, if the outer dynamic changes at n (to a new inner, whose value after n is taken) or if the current inner changes at n. It is prompt, like every derived dynamic.
 
-The hold needs an initial dynamic, and the first build's result is available for it because the first build happens in the occurrence the `dyn` is built: the `dyn`'s event fires then, the hold adopts the firing in its build occurrence, and `$Join` sees the adopted inner in that same occurrence. The constant `$ Unavailable` is the value for the length of one tag read in the build occurrence and nothing else. A library may spell the three lines as one word; it needs no semantics of its own, and the clarification on lifting below is that word.
+The hold needs an initial dynamic, and the first build's result is the one to use, because the first build happens in the occurrence the `dyn` is built: the `dyn`'s event fires then, the hold adopts the firing in its build occurrence, and `$Join` sees the adopted inner in that same occurrence. `@HoldFirst: fn !a -> @$a` is the prelude's name for that hold, and it is the idiom: a hold written by hand with a placeholder initial dynamic, `$ Unavailable <= !$contents`, has the placeholder as its value for the length of one tag read in the build occurrence, and nothing is gained by having a value there that no build produced. `@HoldFirst` has no semantics beyond what it expands to, a hold whose initial value is the first firing of its event in the occurrence the hold is built, and the lifting section below uses it for exactly that.
 
-This is also the canonical cache idiom: a hold of dynamics, chosen between a live one and a frozen one, joined. A hold of plain values copied out of the live dynamic is the simpler construction, and it has a one-occurrence gap at creation that the join version does not, because a join switches to the new inner's *current* value in the occurrence of the switch rather than waiting for the new inner to fire. Chapter 2's cache is written in the plain form because it shows the hold around the forwarded query most plainly; the join form is the one a library ships.
+This is also the canonical cache idiom: a hold of dynamics, chosen between a live one and a frozen one, joined. A hold of plain values copied out of the live dynamic is the simpler construction, and it has a one-occurrence gap at creation that the join version does not, because a join switches to the new inner's *current* value in the occurrence of the switch rather than waiting for the new inner to fire. Chapter 2's cache is the join form, with the hold of dynamics around the forwarded query.
 
 ### The asymmetry
 
@@ -424,12 +426,13 @@ $s <- @Status $url
 
 !$ss <- dyn $url:
     @Status _
-let $s = $Join (HoldFirst !$ss)
+$$cur <- @HoldFirst !$ss
+let $s = $Join $$cur
 ```
 
-`HoldFirst` is the compiler's: a hold whose initial value is the firing of `!$ss` in the occurrence the hold is built, which exists because a `dyn` fires in its build occurrence and a widget built in n sees all of n. No program can spell a hold seeded that way with `<=`, since a hold's initial value is an expression and the first build's result is not in scope until the `dyn` has been bound; the compiler emits the runtime's `hold_first` over the `dyn`'s event, and chapter 12 prints it as `HoldFirst` in the typed AST.
+`@HoldFirst` is a hold whose initial value is the firing of `!$ss` in the occurrence the hold is built, which exists because a `dyn` fires in its build occurrence and a widget built in n sees all of n. No hold written with `<=` can be seeded that way, since a hold's initial value is an expression and the first build's result is not in scope until the `dyn` has been bound; this is why the prelude has it, and why it is the idiom wherever a program holds a `dyn`'s event. It expands to the runtime's `hold_first` over the event, and chapter 12 prints it as `HoldFirst` in the typed AST.
 
-For a plain result, binding gives a dynamic: `$x <- @W $d` is `HoldFirst` over the `dyn`'s `!A`, so `$x` is the current generation's result, held from the first build's value and changing in every rebuild occurrence. A plain result of a rebuilt widget is a value per generation, and a value per generation held is a dynamic. For a bundle, field by field by the kind of each field: an event field switches, a dynamic field joins, a plain field holds.
+For a plain result, binding gives a dynamic: `$x <- @W $d` is `@HoldFirst` over the `dyn`'s `!A`, so `$x` is the current generation's result, held from the first build's value and changing in every rebuild occurrence. A plain result of a rebuilt widget is a value per generation, and a value per generation held is a dynamic. For a bundle, field by field by the kind of each field: an event field switches, a dynamic field joins, a plain field holds.
 
 An element with a dynamic where a field goes is the same thing one level down: `@Element Fs.Contents(path=$p)` is `$(@Element Fs.Contents(path=p))`, a dynamic of widgets, which is a `dyn` with a fresh slot per change of `$p`. This is why the element list never contains a sigil and why the World never diffs anything but plain data: a label whose text changes is, to the World, a new label at the same tree position, and the generation in its path says so.
 
@@ -444,12 +447,12 @@ What does *not* lift. A widget over an event is not a `dyn` and not anything els
 You have had the afternoon where deleting item 3 cleared the expanded state of item 4. The list was an array; the framework matched rows to data by position; when item 3 went, item 4 was now at position 3, and the row that had been at position 3, with its expanded flag set, was handed item 4's data. The fix was a `key` prop, and the fix after that was a lint rule telling you not to use the index as the key, and the one after that was a conversation about where keys come from. The language's answer is that there is one collection for anything that matters, it is a map, and its keys are the identities.
 
 ```prism
-!updates <- for $items:
-    !checked <- @Checkbox $_.checked
-    @ ItemUpdate key, !checked
+!updates <- for id, $item <- $items:
+    !checked <- @Checkbox $item.checked
+    @ ItemUpdate id, !checked
 ```
 
-`for $m:` over a dynamic map `$(K ==> V)` builds one copy of the block per key. Inside, `key` is the key, plain, because a key never changes for the life of its block; and `$_` is the entry's value *as a dynamic*: a change to a value that keeps its key updates `$_` and does not rebuild the block. `$_.checked` is ordinary lifting over that dynamic. A key that appears in occurrence n has its block built in n, under the rule for mid-occurrence construction; a key that disappears in n has its block torn down at n's commit, like a `dyn`'s old generation. The parent sees the new key's result in n; the new block does not see itself.
+`for k, $v <- $m:` over a dynamic map `$(K ==> V)` builds one copy of the block per key. Inside, `k` is the key, plain, because a key never changes for the life of its block; and `$v` is the entry's value *as a dynamic*: a change to a value that keeps its key updates `$v` and does not rebuild the block. `$item.checked` is ordinary lifting over that dynamic. The binders are ordinary patterns, named by the loop, and `update` blocks use the same form (`for i, &x <- &_:`). Most blocks need no names, so the shorthand `for $m:` binds `key` and `$_`, and the examples below use it unless the names help. A key that appears in occurrence n has its block built in n, under the rule for mid-occurrence construction; a key that disappears in n has its block torn down at n's commit, like a `dyn`'s old generation. The parent sees the new key's result in n; the new block does not see itself.
 
 That last clause is the same fact as `!Switch` swallowing a block's birth, seen from the collection side. The consolidated event of a `for` is a merge over the blocks; a block born in n contributes to the merge from n, and so its parent can hear it in n if it fires in n, which only pure code can make it do; but nothing inside the block is downstream of the consolidation, because the consolidation is the block's own result.
 
@@ -541,7 +544,7 @@ Take the todo list from the worked examples, reduced to what matters for `for`. 
     !rows <- for $items:
         !delete <- @Button $"Delete"
         !star <- @Button $"Star"
-        $starred <- False <= (not $starred) on !star
+        $starred <- False <= not $starred on !star
         @Label (Describe $_, $starred)
         @ Delete on !delete
     let !changes = !Union !adds, !rows
@@ -595,7 +598,7 @@ Suppose instead the language gave arrays an opaque per-element identity, minted 
 
 ### Nested `for`
 
-A `for` inside a `for` has its own `key` and its own `$_`, and the outer ones are shadowed. Both are the block's, like `_` in a lambda. Over plain collections, the expression form of `for` binds `ix`, `jx` and `kx` for nesting depth; over dynamic maps in a widget block, `key` is the identity and nesting is by naming the outer key with `let` before the inner `for`.
+A `for` inside a `for` written with the shorthand has its own `key` and its own `$_`, and the outer ones are shadowed, like `_` in a nested lambda. Nesting reads better with named binders, `for row, $r <- $rows:` around `for col, $cell <- $r.cells:`, because both keys stay in scope and the path says `[row]/[col]`. With the shorthand, name the outer key with `let` before the inner `for`.
 
 The runtime's promise for `for` is the `dyn`'s promise per key: a key that appears is built in the occurrence of the change, at a height above the map's change event, and a key that disappears is torn down at commit by the same keep-until-the-end action; `$_` is a per-key dynamic projected from the map, so a change to an entry that keeps its key reaches its block without rebuilding it; and the consolidated event's membership is the blocks as the occurrence opened plus the blocks built in it. Chapter 11 has the keyed list widget that keeps all three.
 

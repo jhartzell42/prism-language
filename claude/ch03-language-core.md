@@ -90,7 +90,7 @@ An identifier is an optional sigil prefix followed by a name. There are two name
 - Lowercase names are `snake_case` and denote values: `count`, `next_id`, `is_done`. The pronoun `_` is a lowercase name.
 - Uppercase names are `UpperCamelCase` and denote functions, constructors and types: `Button`, `IsClick`, `TodoItem`.
 
-A name that mixes the two conventions, `isClick`, `Todo_item`, `Count2Label`, is an error, not a warning. The reason is the one from the first section: a reader decides what a token is from its first character, and a convention with exceptions is not a convention a lexer can enforce. Digits are allowed after the first character in both forms: `item2`, `Vec2`.
+The first character alone decides which kind a name is, so a name that strays from its convention is still understood. A lowercase name with a capital in it, `isClick`, is a value, and the compiler reports a lint warning suggesting `is_click`; the program compiles and runs. An uppercase name with an underscore in it, `Todo_item`, is an error, because a capital first letter promises a function, constructor or type, and `Todo_item` follows neither convention. The first case is a warning because nothing downstream depends on the spelling: the lexer, the checker and the reader all classify `isClick` correctly from its first letter, and refusing to compile a program over a style the compiler sees through would cost a build for a rename. Digits are allowed after the first character in both forms: `item2`, `Vec2`.
 
 A qualified name is an uppercase name followed by `.` and another uppercase name, with no whitespace anywhere in it, repeated as needed: `Ui.Button`, `Fs.File`, `Net.Socket`. It is one token. The namespace part is how extensible variants (next section) spread their tags across modules. A `.` followed by a lowercase name is never part of a qualified name; it is field access, and `Ui.Button.label` would be field access on the constructor, which is a type error, not a lexing question.
 
@@ -108,7 +108,7 @@ $"Count: {$count}"           # attached to a text literal: a constant-or-lifted 
 !$contents                   # attached twice: an event of dynamics
 $_                           # attached to the pronoun
 @ unit                       # free: the widget returning unit
-@ ChecklistUpdate ix, !checked   # free: lifts the whole constructed record into a widget
+@ ChecklistUpdate key, !checked   # free: lifts the whole constructed record into a widget
 $ supply                     # free: the constant dynamic of the function supply
 @ ((!a, $b))                 # free, before a bracket: a widget returning a pair
 @((!a, $b))                  # same tokens: `((` is not a name character, so the sigil is free
@@ -117,17 +117,17 @@ $ Unavailable                # free: the constant dynamic of a unit value
 
 The attached and free forms mean the same thing when both are possible: `$"Increment"` and `$ "Increment"` are the same expression. The attachment rule exists for the token stream, not for the semantics, and it is chosen so that the common spellings are the attached ones and the free form reads as an operator with a space after it. A sigil followed by whitespace is always free. A sigil followed by `(`, `[`, `{` or a double bracket is free and applies to the bracketed expression, which is the same thing as if it were attached, so `@((!a, $b))` and `@ ((!a, $b))` have identical token streams: a free sigil then a bracket.
 
-Suppose instead the sigil were always attached to whatever token followed it. Then `@ ChecklistUpdate ix, !checked` would be `(@ChecklistUpdate) ix, !checked`: a call to a function named `@ChecklistUpdate`, which does not exist. The free form lets a sigil act as `return` on a whole expression, and the space says so. The alternative of a separate keyword for lifting, `pure x` or `return x`, would spell the same thing with a word that does not say which functor is meant; `@ x` and `$ x` say it.
+Suppose instead the sigil were always attached to whatever token followed it. Then `@ ChecklistUpdate key, !checked` would be `(@ChecklistUpdate) key, !checked`: a call to a function named `@ChecklistUpdate`, which does not exist. The free form lets a sigil act as `return` on a whole expression, and the space says so. The alternative of a separate keyword for lifting, `pure x` or `return x`, would spell the same thing with a word that does not say which functor is meant; `@ x` and `$ x` say it.
 
 ### Keywords
 
-`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `not` `and` `or` `lt` `le` `gt` `ge` `key` `ix` `jx` `kx` `empty`.
+`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `not` `and` `or` `lt` `le` `gt` `ge` `key` `empty`.
 
 Reserved for future work and rejected with a message saying so: `read` `update` and the sigil `&`.
 
-Not keywords, though they look like them: `never`, `started`, `main`, `Switch`, `Leftmost`, `Join`, `Element`, `Some`, `Nil`, `True`, `False`, and the optional default `Or`. These are ordinary names in the prelude, written with their sigils where they have one (`!never`, `@started`, `@main`, `!Switch`, `!Leftmost`, `$Join`, `@Element`). A program may shadow them, which is a bad idea the compiler does not stop. `unit` is a keyword because it is both a type and the only value of that type, and letting it be shadowed would let `@ unit` mean something else.
+Not keywords, though they look like them: `never`, `started`, `main`, `Switch`, `Leftmost`, `Join`, `HoldFirst`, `Element`, `Some`, `Nil`, `True`, `False`, and the optional default `Or`. These are ordinary names in the prelude, written with their sigils where they have one (`!never`, `@started`, `@main`, `!Switch`, `!Leftmost`, `$Join`, `@Element`, `@HoldFirst`). A program may shadow them, which is a bad idea the compiler does not stop. `unit` is a keyword because it is both a type and the only value of that type, and letting it be shadowed would let `@ unit` mean something else.
 
-`ix`, `jx`, `kx` and `key` are keywords rather than names because they are bound by `for` without appearing in its syntax, and a keyword cannot be shadowed by an outer binding by accident. They may be used as record field names (`ChecklistUpdate ix, !checked` is a record whose first field is named `ix`) because a field name is never an expression on its own.
+`key` is a keyword rather than a name because the shorthand `for` binds it without it appearing in the loop's syntax, and a keyword cannot be shadowed by an outer binding by accident. It may be used as a record field name (`Entry(key=k, value=v)`) because a field name is never an expression on its own. Keywords are reserved everywhere; no word is a keyword in one position and a name in another.
 
 ### Literals
 
@@ -149,7 +149,7 @@ The operator tokens, grouped by what they are for:
 
 - Statement: `<-` bind, `=` definition, `<=` hold.
 - Event: `|` merge, `on` sample (a keyword used as an operator).
-- Boolean: `not` (prefix), `and`, `or`, keywords used as operators like `on`, over `Bool`. `not` binds tighter than comparison; `and` binds tighter than `or`; `and` and `or` are looser than comparison and tighter than `on` and `|`.
+- Boolean: `not` (prefix), `and`, `or`, keywords used as operators like `on`, over `Bool`. `and` binds tighter than `or`, `not` binds tighter than `and`, and comparison binds tighter than `not`; all of them are tighter than `on` and `|`.
 - Comparison: `lt le gt ge` (keywords used as operators, like `on`), resolved through `Ord`, and `==` `!=`, resolved through `Eq`.
 - Arithmetic: `+ - * /`, which resolve by inference, and the suffixed spellings `+~ -~ *~ /~` for `Int` and `+. -. *. /.` for `Float`, each one token, for when inference cannot decide. `/` and `/~` return `?` on the integers and `/.` returns a plain `Float`.
 - Conversion: prefix `+?`, one token, converting an `Int` to a `?Nat`.
@@ -177,7 +177,7 @@ Adjacency is the whole test, and it is the same test the spacing rule already ap
 
 `a lt b` is less-than, `le`, `gt` and `ge` follow, and `a == b` and `a != b` are equality; every program compares things, and `if e.cursor == 0:` is what a reader expects to find there. The spelling of the ordering operators needs further study. `<` and `>` are the obvious choice and probably workable, because the lexer already tells `<`, `<-`, `<=`, `->` and `==>` apart by taking the longest token. What has not been worked through is the interaction with `<=` as hold: once `<` means less-than, a reader will take `$count <= 3` for less-or-equal, and the line that defines a program's state has to mean one thing at a glance. The keywords sidestep that collision at the cost of looking unlike other languages.
 
-**Boolean operators.** You have written `!(a && b) || c` and counted parentheses, or written `or(and(a, b), c)` in a language whose booleans are functions and read the line from the inside out. `not`, `and` and `or` are words, as `lt` and `on` are, so a condition reads as it is said: `if not done and $count gt limit:`. They take `Bool` operands and lift like every other operation: `$a and $b` is a `$Bool`, and `not !flag` is an event. Both operands of `and` and `or` are always evaluated; a Prism expression has no effects, so skipping the right operand would be invisible except as speed, and there is no short-circuit to reason about. There are no prelude functions with these names, and the one prelude `Or` is the optional default (`Or xs[i], 0`), which takes a `?T` and a `T` and has nothing to do with `Bool`.
+**Boolean operators.** You have written `!(a && b) || c` and counted parentheses, or written `or(and(a, b), c)` in a language whose booleans are functions and read the line from the inside out. `not`, `and` and `or` are words, as `lt` and `on` are, so a condition reads as it is said: `if not done and $count gt limit:`. They take `Bool` operands and lift like every other operation: `$a and $b` is a `$Bool`, and `not !flag` is an event. On plain operands, `and` and `or` short-circuit: when the left operand decides the answer, the right one is not evaluated. The reason is overflow, which aborts the occurrence. A guard like `a lt 3_000_000 and a * a * a lt limit` is only a guard if the cube is never computed for a large `a`; without short-circuit the left test would protect nothing, and the program would need a nested `if` to say what the operator says. Over dynamics and events, `and` and `or` are the same function lifted by the lifting rule below, so `$a and $b` is a dynamic that is recomputed when either changes and an `and` with one event fires when the event does; the short-circuit applies to each evaluation of the plain function inside. There are no prelude functions with these names, and the one prelude `Or` is the optional default (`Or xs[i], 0`), which takes a `?T` and a `T` and has nothing to do with `Bool`.
 
 **The argument bars.** A `|` immediately after `\` opens an argument list, which closes at the next `|`. The lexer distinguishes the bars from the merge operator by position, not by spacing: `\|a, b| a | b` is a lambda of two arguments whose body merges them. Inside the bars only patterns appear, so there is no merge to confuse them with.
 
@@ -524,17 +524,59 @@ let b = not done and $n gt limit
 let c = $done or $n gt limit on !click
 let d = not a == b
 let e = not $n + 1 gt limit
+let f = not done and ready
 ```
 
 ```
 a = x or (y and z)
 b = (not done) and ($n gt limit)
 c = ($done or ($n gt limit)) on !click
-d = (not a) == b
-e = (not ($n + 1)) gt limit
+d = not (a == b)
+e = not (($n + 1) gt limit)
+f = (not done) and ready
 ```
 
-`and` binds tighter than `or`, both bind looser than comparison and tighter than `on`, and `not` binds tighter than comparison, so its operand reaches over arithmetic only. Cases `d` and `e` parse and then fail in the type checker, whose message says to write `not (a == b)` or `not ($n + 1 gt limit)`.
+`and` binds tighter than `or`, both bind looser than comparison and tighter than `on`, and `not` sits between `and` and comparison, so its operand is a whole comparison: cases `d` and `e` negate the comparison, and case `f` negates `done` alone because `and` is looser than `not`.
+
+**12. Guards and array patterns.**
+
+```prism
+let a = match items[id]:
+    Some t if t.done: 1
+    Some t: 2
+    Nil: 3
+let b = match xs:
+    [[]]: 0
+    [[head, ..rest]]: head
+```
+
+```
+a = match(index(items, id);
+      arm(Some(t) if field(t, done) => 1),
+      arm(Some(t) => 2),
+      arm(Nil => 3))
+b = match(xs;
+      arm(array() => 0),
+      arm(array(head, ..rest) => head))
+```
+
+The guard is part of the arm and runs from `if` to the colon. `a` is exhaustive by its second and third arms alone; `b` is exhaustive by its two arms, the empty array and the non-empty one.
+
+**13. `if` without `else`, and `for` with named binders.**
+
+```prism
+let a = if c: x
+let b = for k, item <- xs: F k, item
+let c = for xs: F key, _
+```
+
+```
+a = if(c, x)
+b = for(k, item <- xs, F(k, item))
+c = for(key, _ <- xs, F(key, _))
+```
+
+`a` has type `?T` for `x : T`. `c` is the shorthand and the same tree as `for key, _ <- xs:`, so the two spellings are one program.
 
 ### What a conforming lexer must get right
 
@@ -600,7 +642,7 @@ Generic code may be bounded by a trait, `let Max<a: Ord>: fn a, a -> a`, and is 
 
 - **Arrays** `[T]`: homogeneous, written `[[a, b, c]]`, `[[]]` or `empty`, or as an `array:` block with one element per statement. Indexed by `Nat` with `a[i]`, which returns `?T`. `Len`, `Append`, `Concat` and friends are prelude functions.
 - **Maps** `K ==> V`: sorted by key, and the key type must be `Ord`. Written `{k: v, ...}` on one line, `{}` when empty, or as a `map:` block with one `k: v` per statement. `m[k]` returns `?V`. Iteration order is key order, always.
-- **Tuples** `((A, B))`: heterogeneous, comma-separated, in double parentheses as values, types and patterns alike. A one-tuple is `((a,))`. The empty tuple is `unit`.
+- **Tuples** `((A, B))`: heterogeneous, comma-separated, in double parentheses as values, types and patterns alike. A one-tuple is `((a,))`. The empty tuple is `unit`. Arrays are written in double brackets as values and as patterns alike (the `match` section gives the array patterns).
 
 ```prism
 let some_map = map:
@@ -780,7 +822,13 @@ means
 let !click = !Switch !!clicks
 ```
 
-The bound name is the `!Switch` of the `dyn`'s event when the widget's result is an event; for a result that is a dynamic, it is a hold of dynamics joined with `$Join`, with the first build's result as the hold's initial value, which exists because the first build happens in the occurrence the `dyn` is built; for a plain result it is a hold of the plain value with the first build's value as initial, so the bound name is a `$`; for a `unit` result, nothing is bound; for a bundle, each field is treated by its own kind. The shorthand is used freely from here on and means exactly the expansion; a program that wants the `dyn`'s event or a different initial value writes the expansion.
+The bound name is the `!Switch` of the `dyn`'s event when the widget's result is an event; for a result that is a dynamic, it is `$Join` of `@HoldFirst` of the `dyn`'s event, and for a plain result it is `@HoldFirst` of that event, so the bound name is a `$`; for a `unit` result, nothing is bound; for a bundle, each field is treated by its own kind. `@HoldFirst` is the prelude's answer to a hold with nothing to start from. A hold needs an initial value, and an event has none until it fires; `@HoldFirst: fn !a -> @$a` is a dynamic that holds its event's value, with the value of the first firing as its initial value, and the first firing of a `dyn`'s event is in the occurrence of the first build, so the dynamic always has a value when anything reads it:
+
+```prism
+$label <- @HoldFirst !labels        # $label is the latest label, starting with the first one
+```
+
+The shorthand is used freely from here on and means exactly the expansion; a program that wants the `dyn`'s event or a different initial value writes the expansion.
 
 ### Application
 
@@ -809,8 +857,8 @@ Loosest to tightest:
 | 5 | `on` | sample |
 | 6 | `or` | boolean or |
 | 7 | `and` | boolean and |
-| 8 | `lt` `le` `gt` `ge` `==` `!=` | comparison |
-| 9 | prefix `not` | boolean negation |
+| 8 | prefix `not` | boolean negation |
+| 9 | `lt` `le` `gt` `ge` `==` `!=` | comparison |
 | 10 | `+` `-` and `+~` `-~` `+.` `-.` | additive |
 | 11 | `*` `/` and `*~` `/~` `*.` `/.` | multiplicative |
 | 12 | prefix `+` `-` `+?` and free sigils `!` `$` `@` `?` | prefix |
@@ -818,9 +866,9 @@ Loosest to tightest:
 
 Binary operators at one level associate to the left, except `<=`, which does not associate: `a <= b <= c` is an error. The counter's lines are the test of the table: `$count <- 0 <= $count + !delta` is `$count <- (0 <= ($count + !delta))`; `-1 on !decrement | +1 on !increment` is `(-1 on !decrement) | (+1 on !increment)`; `$count + 1 on !click | 0 on !reset` is `(($count + 1) on !click) | (0 on !reset)`.
 
-`on` tighter than `|` lets a merge of samples read without parentheses, which is the form of every "what happened" event in the worked examples. `on` looser than arithmetic makes `$count + 1 on !click` mean "the count plus one, at the click" rather than "the count, plus (one at the click)", which would be a two-event error waiting to happen. Under both choices the first program anyone writes needs no parentheses, and a rule that made the counter uglier would need a better reason than any of these. Comparison sits between `on` and arithmetic, so `$count + 1 gt limit on !click` compares the sum and samples the answer at the click. The boolean operators sit between `on` and comparison, so a condition reads the way it is said: `$done or $count gt limit on !click` is `($done or ($count gt limit)) on !click`, `a == b and not c` is `(a == b) and (not c)`, and `x or y and z` is `x or (y and z)`. Sampling still wraps the whole condition without parentheses, which is what `on` being looser than every value operator buys. `not` binds tighter than comparison, so its operand is an additive expression: `not $done` and `not a.ready` read as expected, and `not a == b` is `(not a) == b`, a type error whose message says to write `not (a == b)` or `a != b`.
+`on` tighter than `|` lets a merge of samples read without parentheses, which is the form of every "what happened" event in the worked examples. `on` looser than arithmetic makes `$count + 1 on !click` mean "the count plus one, at the click" rather than "the count, plus (one at the click)", which would be a two-event error waiting to happen. Under both choices the first program anyone writes needs no parentheses, and a rule that made the counter uglier would need a better reason than any of these. Comparison sits between `on` and arithmetic, so `$count + 1 gt limit on !click` compares the sum and samples the answer at the click. The boolean operators sit between `on` and comparison, so a condition reads the way it is said: `$done or $count gt limit on !click` is `($done or ($count gt limit)) on !click`, `a lt b and c lt d` is `(a lt b) and (c lt d)`, and `x or y and z` is `x or (y and z)`. Sampling still wraps the whole condition without parentheses, which is what `on` being looser than every value operator buys. `not` sits between `and` and comparison, so it negates a whole comparison: `not a == b` is `not (a == b)`, `not $n + 1 gt limit` is `not (($n + 1) gt limit)`, and `not done and ready` is `(not done) and ready`, because `and` is looser. The operand of `not` is everything tighter than it, which is why `not $done` and `not a.ready` also read as expected. Suppose `not` bound tighter than comparison, as the unary minus does. Then `not a == b` would be `(not a) == b`, a type error in nearly every program that writes it, since the writer meant the negated comparison; the precedence that makes the line mean what it says is the one to choose. `not` is a prefix operator, so it cannot be the right operand of a tighter operator: `a == not b` is a parse error whose message asks for `a == (not b)`.
 
-A free sigil at level 12 applies to everything to its right up to the end of the enclosing call or bracket, because it is prefix and nothing at level 12 or looser follows it: `@ ChecklistUpdate ix, !checked` is `@ (ChecklistUpdate ix, !checked)` since the call at level 3 is looser and extends under it. The free sigil and the paren-less call therefore nest the obvious way: the sigil wraps the call. `$ x + 1` is `$ (x + 1)` by the same reading.
+A free sigil at level 12 applies to everything to its right up to the end of the enclosing call or bracket, because it is prefix and nothing at level 12 or looser follows it: `@ ChecklistUpdate key, !checked` is `@ (ChecklistUpdate key, !checked)` since the call at level 3 is looser and extends under it. The free sigil and the paren-less call therefore nest the obvious way: the sigil wraps the call. `$ x + 1` is `$ (x + 1)` by the same reading.
 
 A `.Method` that starts a continuation line stands outside the table. It closes everything open on the lines above, back to the statement's `=`, `<-` or `<=`, and takes that whole expression as its receiver; level 13 covers only a `.` written against the expression before it.
 
@@ -860,7 +908,7 @@ Statements in a widget block are mutually recursive and may be written in any or
 ```prism
 \IsGui _.element                      # a predicate on slots
 \_.element                            # a projection
-\not (IsGui _.element)                # the complement
+\not IsGui _.element                  # the complement; the call takes the rest of the body
 \Test.Box(value=_)                    # a constructor
 \Sqrt (_.x *. _.x +. _.y *. _.y)      # a magnitude
 ```
@@ -908,7 +956,7 @@ match todo:
     TodoItem(..): Nil
 
 match items[id]:
-    Some t: Insert items, id, (Todo t.label, (not t.done))
+    Some t: Insert items, id, (Todo t.label, not t.done)
     Nil: items
 
 match element:
@@ -917,7 +965,7 @@ match element:
     ignore: ...
 ```
 
-A `match` has a scrutinee and a block of arms, each `pattern: expression` or `pattern:` followed by a layout block. Arms are tried in order and the first that matches is taken. A `match` on a closed `choice` must be exhaustive; one on an extensible variant must end in a catch-all arm; one on `?T` is the eliminator for optionals and must have both a `Some` and a `Nil` arm (or a catch-all).
+A `match` has a scrutinee and a block of arms, each `pattern: expression` or `pattern:` followed by a layout block, and optionally a guard between the pattern and the colon (below). Arms are tried in order and the first that matches is taken. A `match` on a closed `choice` must be exhaustive; one on an extensible variant must end in a catch-all arm; one on `?T` is the eliminator for optionals and must have both a `Some` and a `Nil` arm (or a catch-all); one on an array must cover every length (the array patterns, below). A guarded arm does not count toward any of these.
 
 **Patterns:**
 
@@ -928,11 +976,32 @@ A `match` has a scrutinee and a block of arms, each `pattern: expression` or `pa
 - `Some p` and `Nil`.
 - `Type p` for a newtype or a choice alternative with a payload: `Circle r`, `Running from`.
 - `Type` alone for a unit alternative: `Stopped`, `Backspace`.
+- `[[]]` for the empty array; `[[p, q]]` for an array of exactly two elements; `[[head, ..rest]]` for a non-empty array, with `head` the first element and `rest` the array of the others. The patterns mirror the literals: `[[p1, ..., pn]]` matches exactly `n` elements, and `[[p1, ..., pn, ..rest]]` matches `n` or more, binding the remainder (`..` alone leaves it unbound). The `..rest` comes last.
 - `Type(p1, p2)` for a record, matched positionally; `Type(f=p, g=q)` by field name; `Type(f, g)` as shorthand for `Type(f=f, g=g)`, binding each field to a name of its own; `..` allowing the remaining fields to go unmatched. A record pattern that names every field needs no `..`.
 - `Ns.Tag(...)` for a tag of an extensible variant, with the same record forms; `Ns.*(..)` for any tag under a namespace; a bare `Ns.Tag` for a tag with no fields.
 - `p: Type` ascribes a type to a pattern.
 
-There is no guard syntax (`Some x if x gt 3`). A guard is a nested `match` or an `if` in the arm; the cost is a line, and the saving is a pattern language with one way to say each thing.
+**Array patterns.** You have walked an array by hand: check the length, index the front with `xs[0]`, get an `?T` back for an element you just proved was there, and match it anyway. An array pattern asks the question once. The empty case and the non-empty case are the two arms that cover every array, and the non-empty one hands over the first element and the rest:
+
+```prism
+let Summary: fn [Text] -> Text = \match _:
+    [[]]: "nothing"
+    [[only]]: only
+    [[first, ..rest]]: "{first} and {Len rest} more"
+```
+
+The arms cover every length: none, exactly one, and one or more. The middle arm only picks out a case of the last one, and a program with just the first and the last is exhaustive too. A `match` on an array is exhaustive when its unguarded arms cover every length; `[[a, b]]` alone leaves out every other length, and the missing-case message names a length it does not cover.
+
+**Guards.** You have written an arm that matches a pattern and then immediately checks a condition on what it bound, and had to repeat the fall-through case because the nested `if` cannot send control back to the next arm. A guard sits between the pattern and the colon, `pattern if condition:`, and the arm is taken only when the pattern matches and the condition, with the pattern's bindings in scope, is `True`. Otherwise the next arm is tried:
+
+```prism
+match items[id]:
+    Some t if t.done: Insert items, id, (Todo t.label, False)
+    Some t: items
+    Nil: items
+```
+
+Without the guard, the second arm's work would be inside the first as an `if` and the `Some t: items` case would be written twice. The condition runs from `if` to the arm's colon, so an `if` expression inside a guard takes parentheses. A guarded arm does not count toward exhaustiveness: the compiler does not reason about conditions, so `Some t if t.done` covers nothing, and the `match` above is exhaustive only because the unguarded `Some t` and `Nil` follow. A guarded `ignore if c:` is not a catch-all for an extensible variant. A guard on a dynamic scrutinee is lifted with the rest of the arm, and dynamics it mentions are read as the arm body's are.
 
 **`match` lifts like application.** With all arms plain, `match $x: ...` is a dynamic of the arms' results, changing when `$x` does, and `match !e: ...` is an event firing when `!e` does, with the taken arm's value. Dynamics mentioned in the arms are lifted by the same rule as any operation: in `match !e: Some v: v + $offset`, the `$offset` is read through a tag. When any arm is a widget, the scrutinee must be plain, because choosing a widget by a changing value is construction and is spelled `dyn`; the error says so and points at it.
 
@@ -946,7 +1015,14 @@ let !line = match !ev:
     Closed: Nil
 ```
 
-`if c: a` then `else: b`, on one line or on two lines with `else` at the column of `if`, is `match c:` on `Bool`, with `True: a` and `False: b`. It lifts the same way: `if $done: "x" else: " "` is a dynamic text. An `if` without an `else` is an error, because every expression has a value and there is no `unit` to fall back on silently; a program that wants "do nothing" says `unit` in the `else`.
+`if c: a` then `else: b`, on one line or on two lines with `else` at the column of `if`, is `match c:` on `Bool`, with `True: a` and `False: b`. It lifts the same way: `if $done: "x" else: " "` is a dynamic text. An `if` without an `else` is an optional. You have written a condition whose false branch was nothing and had to invent a value, an empty string or a zero, so the caller could tell nothing from something. `if c: x` has type `?T` when `x` has type `T`: it is `Some x` when the condition holds and `Nil` otherwise, and it is `?unit` when `x` is `unit`. It lifts as `if` does, so over a dynamic condition it is a `$?T`:
+
+```prism
+let $warning = if $count gt 10: "Too many"      # $?Text
+@Label (Or $warning, "")                        # `Or` supplies the text when there is no warning
+```
+
+An `else` makes the value plain, and the optional is the form when the absence matters to the reader of the result.
 
 ### Text interpolation
 
@@ -966,18 +1042,26 @@ Text has one interpolation marker, `{`, and an escape for it. A `$` in text is n
 
 ### `for` as an expression
 
-Outside a widget block, `for xs: body` maps `body` over a plain array or map. Inside the block, `_` is the element, `ix` the index (`jx` and `kx` for the next two levels of nesting), and `key` the map key:
+Outside a widget block, `for xs: body` maps `body` over a plain array or map. In the shorthand, `_` is the element and `key` is the key of the entry: the map key for a map, and the position, a `Nat`, for an array:
 
 ```prism
 let squares = for [[1, 2, 3]]: _ * _
-let labelled = for names: "{ix}: {_}"
 let ids = for todos: .id                       # prefix .id is _.id
 let doubled = for prices: _ *. 2.0             # a map, keyed as the input
+let labelled = for names: "{key}: {_}"         # key is the position in an array
 ```
 
-It evaluates to an array when the input is an array and a map when the input is a map, in key order. The body is one expression or a layout block of `let`s ending in a value. Over a dynamic collection it is the construct of the switching chapter and is only allowed in a widget block, because it builds nodes; the error for `for $m:` outside a widget block says so.
+You have nested two loops and needed the outer index inside the inner one, and found the inner loop had taken the name. The shorthand binds the same `_` and `key` at every level, so an inner loop hides the outer one. Named binders say which is which: `for k, item <- xs: body` binds `k` to the key and `item` to the element, and binds nothing else, so an enclosing loop's `_` and `key` stay visible:
 
-Nesting deeper than three levels has no fourth index name on purpose: a loop four deep is a helper function waiting to be written.
+```prism
+let cells = for r, row <- grid:
+    for c, cell <- row:
+        "{r},{c}: {cell}"
+```
+
+The binder before `<-` is a pattern, so it takes the sigil of what it is bound to. Over a plain collection both are plain, `for k, item <- xs:`. Over a dynamic collection in a widget block the key is plain, since it is the identity of the block, and the element is the per-key dynamic, written `for k, $item <- $items:`; its body sees `$item` in the way the shorthand's body sees `$_`, and the key `k` where the shorthand sees `key`. `for $items:` is the shorthand for `for key, $_ <- $items:`. Writing `for k, item <- $items:` is an error that asks for `$item`, because the per-key value is a dynamic. There is no binder for a third thing: a loop that wants more than the key and the element takes them from the element.
+
+It evaluates to an array when the input is an array and a map when the input is a map, in key order. The body is one expression or a layout block of `let`s ending in a value. Over a dynamic collection it is the construct of the switching chapter and is only allowed in a widget block, because it builds nodes; the error for `for $m:` outside a widget block says so.
 
 ## Diagnostics
 
@@ -1027,8 +1111,6 @@ error: `a` is not a function
 
 **A suffixed operator against known types.** A program using `+~` on two values already known to be `Float`, or `+.` on `Int`s, gets "operator `+~` is Int addition, but both operands are Float; use `+.` or `+`".
 
-**`not` against a comparison.** `not a == b` parses as `(not a) == b`, and the checker reports "`not` binds tighter than `==`, and `a` is not a Bool; did you mean `not (a == b)` or `a != b`?" when `a` is not a `Bool`. When `a` is a `Bool`, the line type-checks and means what it parses as.
-
 **A name whose sigil does not match its type.**
 
 ```
@@ -1042,13 +1124,15 @@ error: `count` is bound to a dynamic, but its name has no sigil
 
 The reverse, `let $x = 3` with a plain right side, says "a plain value must be named without a sigil, or lifted: `$ 3`". A name with the wrong sigil, `!x` bound to a dynamic, says which it is and which it should be.
 
-**A name that mixes conventions.**
+**A name that strays from its convention.**
 
 ```
-error: `isClick` mixes snake_case and UpperCamelCase
+warning: `isClick` is a value name that is not snake_case
   --> gui.prism:2:5
    = values are snake_case (`is_click`); functions and types are UpperCamelCase (`IsClick`)
 ```
+
+The lint is a warning. `Todo_item`, an uppercase name with an underscore, is an error with the same two lines of explanation.
 
 **A match on an extensible variant without a catch-all.**
 
@@ -1136,9 +1220,13 @@ error: cannot interpolate a `Todo` into text
 
 **`for` over a dynamic outside a widget block.** "`for` over a dynamic collection builds widgets and must be inside a widget block"; with a plain collection inside a widget block it is the plain mapping and needs no message.
 
-**`ix` outside a `for`.** "`ix` is bound only inside a `for`"; likewise `key`, and `jx` inside a single `for` says "`jx` is the index of the second-nested `for`; this loop's index is `ix`".
+**`key` outside a shorthand `for`.** "`key` is bound only inside a `for` written without `<-`; name the key in `for k, x <- xs:`". The same message applies inside a loop with named binders, where `key` is not bound.
 
-**An `if` without `else`.** "every `if` has an `else`; this one has no value when the condition is False".
+**An `if` without `else` where a plain value is required.** "`if` without `else` is `?Text` here, and a `Text` is required; add an `else`, or give a default: `Or (if c: x), y`". The optional is legal wherever an optional is; the message appears at the boundary, in the way the `?Nat` message does.
+
+**A guarded arm in an exhaustiveness check.** "match does not cover `Nil`; the arm `Some t if t.done` has a guard and does not count". The message names the guard so that a program that thought the guarded arm covered its case finds out why it did not.
+
+**A match on an array that misses a length.** "match does not cover arrays of length 0; add `[[]]` or `ignore:`".
 
 **Unknown path and other runtime errors** belong to the error chapter; the compiler's job is the ones above, and the test for each is that the message contains the fix.
 
@@ -1438,6 +1526,6 @@ The language's refusals are listed with the whole design in the first part of th
 
 **No symbol with two meanings.** Comparisons are the operators `lt le gt ge == !=`; `<=` is hold and nothing else, and `<-` is bind and nothing else. What this buys: the line that defines a program's state never looks like a comparison.
 
-**No guards in patterns, no explicit-brace layout, no block comments, no tabs, no `else`-less `if`.** Each of these removes a second way to write something, and each second way is one more case on which two parsers can disagree. The spec is the thing, and the thing is shorter for it.
+**No explicit-brace layout, no block comments, no tabs.** Each of these removes a second way to write something, and each second way is one more case on which two parsers can disagree. The spec is the thing, and the thing is shorter for it.
 
 **No `read` and `update` blocks, no `&` references, no lenses.** These are future work and are not in this specification. Plain values are built, never modified; a function that "updates" a record builds a new one. What this buys now: the value layer has one operation on a record, construction, and the question of how mutation inside a plain value interacts with sharing does not arise. If they come, they come as sugar over construction, and nothing in this chapter changes meaning.

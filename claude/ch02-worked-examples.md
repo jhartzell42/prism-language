@@ -206,7 +206,7 @@ type Change = choice:
 let Step: fn Nat ==> Todo, Nat, Change -> Nat ==> Todo = \|items, id, change| match change:
     Add label: Insert items, id, (Todo label, False)
     Toggle: match items[id]:
-        Some t: Insert items, id, (Todo t.label, (not t.done))
+        Some t: Insert items, id, (Todo t.label, not t.done)
         Nil: items
     Delete: Remove items, id
 
@@ -224,7 +224,7 @@ let Describe: fn Todo, Bool -> Text = \|t, starred|
         !toggle <- @Button $"Toggle"
         !delete <- @Button $"Delete"
         !star <- @Button $"Star"
-        $starred <- False <= (not $starred) on !star
+        $starred <- False <= not $starred on !star
         @Label (Describe $_, $starred)
         @ Toggle on !toggle | Delete on !delete
     let !changes = !Union !adds, !rows
@@ -255,7 +255,7 @@ Each row's block returns an event of `Change`, and `for` consolidates those into
 
 **Occurrence 2.** `click` to `0/#0/0` again. The same steps with `$next` read as `1`; row `[1]` is built. Keys are ordered, so the list has row `[0]` before row `[1]`.
 
-**Occurrence 3.** `click` to `1/[0]/2/#0/0`, the Star button of row 0. Inside that row's block, `!star` fires, `(not $starred) on !star` fires with `True`, and `Describe $_, $starred` changes to `"[ ] item 0 *"`, rebuilding the row's label to `#1`. The row's result event is quiet, so `!rows` is quiet, `!changes` is quiet, and `$items` does not change. Commit: row 0's `$starred` is `True`.
+**Occurrence 3.** `click` to `1/[0]/2/#0/0`, the Star button of row 0. Inside that row's block, `!star` fires, `not $starred on !star` fires with `True`, and `Describe $_, $starred` changes to `"[ ] item 0 *"`, rebuilding the row's label to `#1`. The row's result event is quiet, so `!rows` is quiet, `!changes` is quiet, and `$items` does not change. Commit: row 0's `$starred` is `True`.
 
 **Occurrence 4.** `click` to `1/[0]/0/#0/0` and `click` to `0/#0/0` in one occurrence: toggle row 0 and add at once. Row 0's block fires `Toggle`; `!rows` fires with `{0: Toggle}`. `!adds` fires with `{2: Add "item 2"}`. `!Union` fires with `{0: Toggle, 2: Add "item 2"}`. `StepAll` folds in key order: row 0 becomes done, row 2 is inserted. `for` sees key 2 appear and builds its block; row 0's `$_` changes, which is the row's entry *as a dynamic*, so its label rebuilds to `"[x] item 0 *"` without the row being rebuilt, and `$starred` stays `True`. Commit.
 
@@ -291,7 +291,7 @@ What this prevents: the afternoon where deleting item 3 cleared the expanded sta
     @Label $label
 ```
 
-This is `@Button` unrolled, with the label depending on the click. The `dyn` watches `$label`; every change to the label tears the button's slot down and builds a new one; `!!clicks` fires in every build with the new slot's click event; and `!Switch` turns that into the one `!click` the rest of the program uses. The cycle is the thing to look at: `$count` depends on `!click`, `!click` on `!!clicks`, `!!clicks` on the `dyn`, the `dyn` on `$label`, and `$label` on `$count`. The `dyn` is not a delay: its event fires in the occurrence of the rebuild. `!Switch` makes the cycle legal: it chooses its inner event from before the occurrence, and the tag on `$count` in `$count + 1` does the rest.
+This is `@Button` unrolled, with the label depending on the click; it illustrates the fresh-slot rule and is not how a program normally labels a button, since the library's buttons take a dynamic label (`@Button $label`) and the fresh slot per change stays inside the library's interceptor. The `dyn` watches `$label`; every change to the label tears the button's slot down and builds a new one; `!!clicks` fires in every build with the new slot's click event; and `!Switch` turns that into the one `!click` the rest of the program uses. The cycle is the thing to look at: `$count` depends on `!click`, `!click` on `!!clicks`, `!!clicks` on the `dyn`, the `dyn` on `$label`, and `$label` on `$count`. The `dyn` is not a delay: its event fires in the occurrence of the rebuild. `!Switch` makes the cycle legal: it chooses its inner event from before the occurrence, and the tag on `$count` in `$count + 1` does the rest.
 
 **Occurrence 0 (build).** `$count` is `0`; `$label` is `"Clicked 0 times"`; the `dyn` builds generation `#0` with a button at `0/#0/0`; `!!clicks` fires with its click event; `!Switch` has it from occurrence 1. Reset is at `1/#0/0`; the label at `2/#0/0`.
 
@@ -324,13 +324,18 @@ The question this example answers is what a click means in the occurrence the bu
 ```prism
 type FsRequest = choice Read | Write Text
 
+type FsError = choice:
+    NotFound
+    Denied
+    TooLarge
+    Other Text
+
 type FsResponse = choice:
     Contents Text
-    Missing
-    Denied
+    Unavailable FsError
 
 type Contents = choice:
-    Unavailable
+    Unavailable FsError
     Known Text
 
 tag Fs.File of Element:
@@ -345,11 +350,16 @@ tag Fs.Contents of Element:
 let ShowResponse: fn ?FsResponse -> Text = \|r| match r:
     Nil: "(reading...)"
     Some (Contents t): t
-    Some Missing: "(no such file)"
-    Some Denied: "(permission denied)"
+    Some (Unavailable why): ShowError why
+
+let ShowError: fn FsError -> Text = \|e| match e:
+    NotFound: "(no such file)"
+    Denied: "(permission denied)"
+    TooLarge: "(too large)"
+    Other t: "({t})"
 
 let ShowContents: fn Contents -> Text = \|c| match c:
-    Unavailable: "(unavailable)"
+    Unavailable why: ShowError why
     Known t: t
 
 @viewer:
@@ -361,7 +371,7 @@ let ShowContents: fn Contents -> Text = \|c| match c:
     $path <- @TextInput "path", "/etc/hostname"
     !$contents <- dyn $path:
         @Element Fs.Contents(path=_)
-    $$current <- $ Unavailable <= !$contents
+    $$current <- $ (Unavailable NotFound) <= !$contents
     @Label (ShowContents ($Join $$current))
 ```
 
@@ -371,7 +381,7 @@ The top half is where "no request on creation" shows. Creating the `Fs.File` slo
 
 The bottom half is where dynamic fields show. `Fs.Contents(path=_)` has a plain path, but the `dyn` over `$path` means a fresh slot per path: a new path is a new file, and the new slot's state is sampled in the occurrence of the change. The `dyn`'s result is `!$Contents`, an event of dynamics, one per build; a hold with a constant initial dynamic and a `$Join` turn that into the current file's contents as one dynamic. The specification lets you write `@Element Fs.Contents(path=$path)` for exactly this, and this chapter spells it out once.
 
-**Occurrence 0 (build).** `!started` fires. `Read on !started` fires, which is the `Fs.File` slot's request; the World will see it after the occurrence. `!motd` does not fire: nothing addressed to a slot arrives in the occurrence the slot was created. `$motd` is `Nil`, so the first label is `"(reading...)"`. `@TextInput` builds with name `"path"` and text `"/etc/hostname"`; the `dyn` builds generation `#0` with an `Fs.Contents(path="/etc/hostname")` slot, and the runtime asks the World's oracle for that element's value as this occurrence opened. The World has never been asked about it; it answers from its snapshot, which for a file it has not looked at is `Unavailable`. `!$contents` fires with the new slot's dynamic; `$$current` changes to it in this same occurrence (a hold adopts a firing in its build occurrence); `$Join $$current` is `Unavailable`; the second label is `"(unavailable)"`. Commit.
+**Occurrence 0 (build).** `!started` fires. `Read on !started` fires, which is the `Fs.File` slot's request; the World will see it after the occurrence. `!motd` does not fire: nothing addressed to a slot arrives in the occurrence the slot was created. `$motd` is `Nil`, so the first label is `"(reading...)"`. `@TextInput` builds with name `"path"` and text `"/etc/hostname"`; the `dyn` builds generation `#0` with an `Fs.Contents(path="/etc/hostname")` slot, and the runtime asks the World's oracle for that element's value as this occurrence opened. The World has never been asked about it; this is the first ask for a local file, so it reads the file once under its size cap, records the result in its snapshot, and answers `Known "box"`. `!$contents` fires with the new slot's dynamic; `$$current` changes to it in this same occurrence (a hold adopts a firing in its build occurrence); `$Join $$current` is `Known "box"`; the second label is `"box"`. Commit.
 
 ```
 1:          Fs.File(path="/etc/motd")             requested: Read
@@ -379,16 +389,16 @@ The bottom half is where dynamic fields show. `Fs.Contents(path=_)` has a plain 
 3/0:        Ui.Focusable(name="path")
 3/1/#0/0:   Ui.Label(text="/etc/hostname|")
 4/#0/0:     Fs.Contents(path="/etc/hostname")
-5/#0/0:     Ui.Label(text="(unavailable)")
+5/#0/0:     Ui.Label(text="box")
 ```
 
-The World reads the list, sees a `Read` fired on slot `1`, and starts reading `/etc/motd`. It also sees an `Fs.Contents` slot for `/etc/hostname` and, since it supplied `Unavailable` for it, starts reading that file and watching it.
+The World reads the list, sees a `Read` fired on slot `1`, and starts reading `/etc/motd`. It also sees an `Fs.Contents` slot for `/etc/hostname`, which it already holds, and starts watching that file.
 
-**Occurrence 1.** The hostname read finishes first. The World has a new snapshot in which `Fs.Contents(path="/etc/hostname")` is `Known "box"`, and the difference from the previous snapshot is one push. It opens an occurrence with that push and no responses. The slot at `4/#0/0` is identified for state by its element value, not its path, so the push reaches it: its dynamic changes to `Known "box"`; `$Join $$current` changes promptly; the label at `5` rebuilds to `#1` with `"box"`.
+**Occurrence 1.** The machine is renamed. The World's watch sees `/etc/hostname` change, so it has a new snapshot in which `Fs.Contents(path="/etc/hostname")` is `Known "crate"`, and the difference from the previous snapshot is one push. It opens an occurrence with that push and no responses. The slot at `4/#0/0` is identified for state by its element value, not its path, so the push reaches it: its dynamic changes to `Known "crate"`; `$Join $$current` changes promptly; the label at `5` rebuilds to `#1` with `"crate"`.
 
 **Occurrence 2.** The motd read finishes. The World sends `Contents "Welcome"` to path `1`. `!motd` fires; `Some !motd` is `$motd`'s change event; the label at `2` rebuilds to `"Welcome"`. Commit: `$motd` is `Some (Contents "Welcome")`.
 
-**Occurrence 3.** The user presses Backspace in the path input: `Backspace` to `3/0`. `$path` changes to `"/etc/hostnam"`; the `dyn` rebuilds: generation `#1` is built with `Fs.Contents(path="/etc/hostnam")`, and the oracle is asked for it. The World has never seen that path and answers `Unavailable`. `!$contents` fires with the new slot's dynamic; `$$current` changes; the join changes to `Unavailable`; the label rebuilds to `"(unavailable)"`. At commit generation `#0` is dropped, and with it the only slot for `/etc/hostname`; the World stops watching that file.
+**Occurrence 3.** The user presses Backspace in the path input: `Backspace` to `3/0`. `$path` changes to `"/etc/hostnam"`; the `dyn` rebuilds: generation `#1` is built with `Fs.Contents(path="/etc/hostnam")`, and the oracle is asked for it. The World has never seen that path, reads it once under its cap, and answers `Unavailable NotFound`. `!$contents` fires with the new slot's dynamic; `$$current` changes; the join changes to `Unavailable NotFound`; the label rebuilds to `"(no such file)"`. At commit generation `#0` is dropped, and with it the only slot for `/etc/hostname`; the World stops watching that file.
 
 ```
 1:          Fs.File(path="/etc/motd")
@@ -396,14 +406,14 @@ The World reads the list, sees a `Read` fired on slot `1`, and starts reading `/
 3/0:        Ui.Focusable(name="path")
 3/1/#1/0:   Ui.Label(text="/etc/hostnam|")
 4/#1/0:     Fs.Contents(path="/etc/hostnam")
-5/#2/0:     Ui.Label(text="(unavailable)")
+5/#2/0:     Ui.Label(text="(no such file)")
 ```
 
-**Occurrence 4.** The World's read of `/etc/hostnam` fails. Its snapshot for that element stays `Unavailable`, so there is no push, and no occurrence happens at all. The program showed the truth the whole time.
+**Occurrence 4.** Nothing arrives: the World's snapshot for `/etc/hostnam` is `Unavailable NotFound` and stays that way, so there is no push, and no occurrence happens at all. If the file ever appeared, the push would be `Known`. The program showed the truth the whole time.
 
 If two widgets in a program ask for `Fs.Contents(path="/etc/hostname")`, there is one state, supplied once, pushed to both, and both see the same value in every occurrence: that is the equality law across the boundary, and it is why state is identified by value and responses by path. A response is a conversation with one slot; a state is a fact about the world.
 
-This is the "not yet is a type" goal in both of its forms. The request form has a `?` that the program must match on. The state form has `Unavailable` as a case of the state's type, so a file you have not read yet is no different from a file that does not exist, and in neither case is there a placeholder, a `Pending`, a retry loop, or a value that is wrong for one occurrence.
+This is the "not yet is a type" goal in both of its forms. The request form has a `?` that the program must match on. The state form has `Unavailable` with a reason as a case of the state's type, so a file that cannot be had says why in the type, and in no case is there a placeholder, a `Pending`, a retry loop, or a value that is wrong for one occurrence.
 
 ## 6. A stopwatch
 
@@ -514,14 +524,14 @@ let Confine: fn Text, Text -> ?Text = \|root, p|
                             @ resp
                         Nil:
                             !later <- @Element Defer(requests=(unit on _.!request))
-                            @ Denied on !later
+                            @ Unavailable Denied on !later
                 ignore:
                     ((!resp, ignore)) <- @Element _.element
                     @ resp
     let supply = \|e| match e:
         Fs.Contents(path=p): match Confine root, p:
             Some q: @Element Fs.Contents(path=q)
-            Nil: @ $ Unavailable
+            Nil: @ $ Unavailable Denied
         ignore: @Element e
     @ result
 ```
@@ -532,18 +542,18 @@ You want to run a widget you did not write and be sure it cannot read your files
 
 The response loop is a `for` over the child's slots. A slot never changes, so the `dyn` inside builds once per slot and `_` is the plain slot. An `Fs.File` under `/home/` is forwarded with its path rewritten: the sandbox makes its *own* `Fs.File` element, with the child's request event wired straight into it, and the response the outer World sends back is this block's result, which `for` consolidates into `!(Path ==> Response)` keyed by the child's path, which is `!down`. Any other `Fs.File` is denied, and denial is the interesting case. The sandbox cannot answer a request in the occurrence it was made, and it cannot start an occurrence of its own. So it fires a `Defer`, which the World answers in a later occurrence of the same turn, and answers `Denied` then. The catch-all arm forwards everything else unchanged.
 
-`supply` is a function from an element to a widget that returns the state's dynamic. When the child creates an `Fs.Contents` slot, the runtime applies `supply` to the element and builds the returned widget as a child of the sandbox's node, in the same build pass, so the slot has its value in its creation occurrence. For a confined path the widget is the sandbox's own `Fs.Contents` element with the rewritten path, which asks the outer World; for a refused one it is the constant `$ Unavailable`. A sandbox that wants to deny must say what denial is in the state's type, and `Unavailable` is a case of it.
+`supply` is a function from an element to a widget that returns the state's dynamic. When the child creates an `Fs.Contents` slot, the runtime applies `supply` to the element and builds the returned widget as a child of the sandbox's node, in the same build pass, so the slot has its value in its creation occurrence. For a confined path the widget is the sandbox's own `Fs.Contents` element with the rewritten path, which asks the outer World; for a refused one it is the constant `$ Unavailable Denied`. A sandbox that wants to deny must say what denial is in the state's type, and `Unavailable FsError` is a case of it.
 
 Take the child to be the viewer of example 5, with its motd path changed to `/home/me/motd` and its default input path to `/home/me/hostname`, under `@Sandbox "/jail", @viewer`.
 
-**Occurrence 0 (build).** The sandbox's node builds the child. The child's `Fs.File(path="/home/me/motd")` slot is created at child path `1`; the child's `Fs.Contents(path="/home/me/hostname")` slot at child path `4/#0/0`, and the runtime asks `supply` for it, which returns `@Element Fs.Contents(path="/jail/home/me/hostname")`, built in the sandbox's node; the outer World's oracle answers `Unavailable`. The child's `!started` fires, so its `Read` request fires. Now the sandbox's `for $slots` builds a block per child slot; the `Fs.File` block makes `Fs.File(path="/jail/home/me/motd", requests=...)` at a sandbox path, and since the child's request event fired in this occurrence and a widget built in an occurrence sees all of it, the rewritten element's request fires too. The child's other slots, the focusable and the labels, go through the catch-all arm and are re-emitted as elements of the sandbox. What the outer World sees:
+**Occurrence 0 (build).** The sandbox's node builds the child. The child's `Fs.File(path="/home/me/motd")` slot is created at child path `1`; the child's `Fs.Contents(path="/home/me/hostname")` slot at child path `4/#0/0`, and the runtime asks `supply` for it, which returns `@Element Fs.Contents(path="/jail/home/me/hostname")`, built in the sandbox's node; the outer World's oracle answers `Unavailable NotFound`, since nothing is at that path under the jail. The child's `!started` fires, so its `Read` request fires. Now the sandbox's `for $slots` builds a block per child slot; the `Fs.File` block makes `Fs.File(path="/jail/home/me/motd", requests=...)` at a sandbox path, and since the child's request event fired in this occurrence and a widget built in an occurrence sees all of it, the rewritten element's request fires too. The child's other slots, the focusable and the labels, go through the catch-all arm and are re-emitted as elements of the sandbox. What the outer World sees:
 
 ```
 1/[1]/#0/0:        Fs.File(path="/jail/home/me/motd")             requested: Read
 1/[2/#0/0]/#0/0:   Ui.Label(text="(reading...)")
 1/[3/0]/#0/0:      Ui.Focusable(name="path")
 1/[3/1/#0/0]/#0/0: Ui.Label(text="/home/me/hostname|")
-1/[5/#0/0]/#0/0:   Ui.Label(text="(unavailable)")
+1/[5/#0/0]/#0/0:   Ui.Label(text="(no such file)")
 s/0:               Fs.Contents(path="/jail/home/me/hostname")
 ```
 
@@ -551,11 +561,11 @@ The path prefix `1/[child path]/#0/0` is the sandbox's `for` (its second bind, a
 
 **Occurrence 1.** The outer World answers the motd read: `Contents "hi"` to `1/[1]/#0/0`. That slot's response event fires; it is the `for` block's result for key `1`; `!down` fires with `{1: Contents "hi"}`; `intercept` routes it to the child's slot at path `1`, against the child's list as the occurrence opened. The child's `!motd` fires; its label rebuilds. The sandbox re-emits the new label in the same occurrence: the child's list changed, `$slots` changed, the `for` built a block for the new label's path and tore down the old one.
 
-**Occurrence 2.** The user, inside the child, edits the path input to `/etc/passwd`. The child's `dyn` rebuilds its `Fs.Contents` slot with that path; the runtime applies `supply`, which returns `@ $ Unavailable`, so the slot's dynamic is constantly `Unavailable` and no element reaches the World. The old supplied widget is torn down at commit when its last slot goes.
+**Occurrence 2.** The user, inside the child, edits the path input to `/etc/passwd`. The child's `dyn` rebuilds its `Fs.Contents` slot with that path; the runtime applies `supply`, which returns `@ $ Unavailable Denied`, so the slot's dynamic is constantly `Unavailable Denied` and no element reaches the World. The old supplied widget is torn down at commit when its last slot goes.
 
 **Occurrence 3.** Suppose the child, in some other part of it, builds `Fs.File(path="/etc/shadow", requests=(Read on !started))`. Its `@started` fires and so does its request, in the occurrence the slot is created. The sandbox's `for` builds a block for it: the `Nil` arm of `Confine`. `unit on _.!request` fires, so the `Defer` slot's request fires. Nothing else happens; from the child's view, it asked and is waiting, as it would be for a real read.
 
-**Occurrence 4, same turn.** The World, after occurrence 3, found a fired `Defer` request and opened another occurrence delivering `unit` to it. `!later` fires; `Denied on !later` fires; the `for` consolidates it as `{p: Denied}`; `!down` fires; the child's slot receives `Denied` and matches on it. From the outer World's view, occurrences 3 and 4 were one turn, and nothing it did was involved except answering a `Defer`.
+**Occurrence 4, same turn.** The World, after occurrence 3, found a fired `Defer` request and opened another occurrence delivering `unit` to it. `!later` fires; `Unavailable Denied on !later` fires; the `for` consolidates it as `{p: Unavailable Denied}`; `!down` fires; the child's slot receives `Unavailable Denied` and matches on it. From the outer World's view, occurrences 3 and 4 were one turn, and nothing it did was involved except answering a `Defer`.
 
 The child cannot tell the difference between the sandbox and a World that happens to have a filesystem rooted at `/jail`. That is the test of the primitive: from inside, an interceptor is indistinguishable from the real thing. It is also why forwarding is manual. Suppose `intercept` took a table of tags to forward and did it itself; then the rewrite would be a mode of the table, the denial another, the `Defer` another, and before long the table is a second language. Here forwarding is the shortest program an interceptor can write, `@Forward` above, and rewriting, denying and holding back are longer programs in the same language. Nothing the child makes reaches the outside unless some Prism code chose to send it; there is no channel the sandbox does not see, because the language has no ambient anything.
 
@@ -578,7 +588,7 @@ let UiOnly: fn (Path ==> Slot) -> Path ==> Element = \|slots|
     MapValues (Filter slots, \IsUi _.element), \_.element
 
 let NonUi: fn (Path ==> Slot) -> Path ==> Slot = \|slots|
-    Filter slots, \not (IsUi _.element)
+    Filter slots, \not IsUi _.element
 
 let ToMap: fn ChildInput -> Path ==> Response = \|c|
     {c.path: c.response}
@@ -658,7 +668,7 @@ Take a child with two readers of `/etc/app.conf` and one of `/etc/motd`, each a 
 
 **Occurrence 3.** The World pushes `Known "v3"` and, in the same occurrence, the user clicks Refresh. `$live` changes to `"v3"` in this occurrence, but `Freeze $live` on `!refresh` reads it through a tag and gets `"v2"`. The cache shows `"v2"`; the next refresh will show `"v3"`. This is the tag law doing what it always does, and a cache that wants the pushed value in the same occurrence as the click cannot have it, because the only window onto a dynamic at an event is the value before.
 
-The child's slot has its value in its creation occurrence and nothing less, which is the law for state elements. Suppose the supplier held plain values instead, `$cached <- Unavailable <= $live on (!started | !refresh)`. Then `$cached` would be `Unavailable` before the build occurrence and `Known "v1"` after it, and a tag in the child reading it in that occurrence would see `Unavailable`, a value the oracle never gave. The hold of dynamics has no such gap, because `$Join` switches to the new inner's current value in the occurrence of the switch instead of waiting for the new inner to fire, and the hold starts as `$live`, which has the oracle's value from the first instant.
+The child's slot has its value in its creation occurrence and nothing less, which is the law for state elements. Suppose the supplier held plain values instead, `$cached <- Unavailable NotFound <= $live on (!started | !refresh)`. Then `$cached` would be `Unavailable NotFound` before the build occurrence and `Known "v1"` after it, and a tag in the child reading it in that occurrence would see `Unavailable NotFound`, a value the oracle never gave. The hold of dynamics has no such gap, because `$Join` switches to the new inner's current value in the occurrence of the switch instead of waiting for the new inner to fire, and the hold starts as `$live`, which has the oracle's value from the first instant.
 
 The goal served is the one that says the language is enough. A cache is not a feature of the runtime, a flag on the element, or a mode of `intercept`. It is a hold, in a widget, returned by a function, and anything else you want between a child and the World is the same construction with a different body.
 
@@ -1014,7 +1024,7 @@ test sandbox_denies_outside_root: Test (@Sandbox "/jail", @probe): array:
     Expect Ui.Label(text="(permission denied)")
 ```
 
-**Turn 0 (build).** The probe's `Fs.File` slot is created and its request fires; the sandbox's `for` builds the `Nil` arm for it, which fires the `Defer`. The outer list has no `Fs.File` in it, which `ExpectNone` checks: the sandbox held it back. The label says `"(reading...)"`. But the turn is not over: the Test World, like every World, checks for fired `Defer` requests after each occurrence and runs another occurrence delivering the answer. In that second occurrence, still turn 0, the sandbox fires `Denied` into the probe, and the probe's label rebuilds. So by the time the script's first step runs, the label already says `"(permission denied)"`, and the second `Expect` above fails.
+**Turn 0 (build).** The probe's `Fs.File` slot is created and its request fires; the sandbox's `for` builds the `Nil` arm for it, which fires the `Defer`. The outer list has no `Fs.File` in it, which `ExpectNone` checks: the sandbox held it back. The label says `"(reading...)"`. But the turn is not over: the Test World, like every World, checks for fired `Defer` requests after each occurrence and runs another occurrence delivering the answer. In that second occurrence, still turn 0, the sandbox fires `Unavailable Denied` into the probe, and the probe's label rebuilds. So by the time the script's first step runs, the label already says `"(permission denied)"`, and the second `Expect` above fails.
 
 That is the point of the script as written: a reader who expects `"(reading...)"` has the turn wrong. The build turn is the build occurrence plus any `Defer` occurrences it causes, and a check between turns sees the end of the turn. The corrected script deletes the second `Expect` and the `Push`, which was only there to make a turn pass, and keeps `Requested Defer, unit`, which holds because the `Defer` slot fired in turn 0, and the final `Expect`. A test that wanted to see the request before the denial would need a World that delivered `Defer` answers lazily, and there is no such World, because the `Defer` rule is what bounds a turn.
 

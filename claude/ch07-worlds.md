@@ -96,12 +96,12 @@ The payoff is the test World. A test is a script of inputs and expectations, and
 
 ### Occurrence zero
 
-The first call is occurrence zero, with no responses and no pushes: it builds `@main` and returns the initial list. That is how a World learns what the program wants before anything has happened. The oracle is live during occurrence zero, because the build creates state slots and they need values. A `Clock` slot built in occurrence zero gets the World's clock as of the start; `Process.Args` gets the arguments; `Fs.Contents` of a file the World has never looked at gets `Unavailable`, and the World, reading the list afterwards, sees that someone wants that file and starts reading it.
+The first call is occurrence zero, with no responses and no pushes: it builds `@main` and returns the initial list. That is how a World learns what the program wants before anything has happened. The oracle is live during occurrence zero, because the build creates state slots and they need values. A `Clock` slot built in occurrence zero gets the World's clock as of the start; `Process.Args` gets the arguments; `Fs.Contents` of a small readable file gets its contents, and of a file the World cannot give (missing, unreadable, over its size cap) gets `Unavailable` with the reason; the World, reading the list afterwards, sees that someone wants that file and starts watching it.
 
 Here is the file viewer of chapter 2 as one run call, so that the pieces have names. The program fires a `Read` on `/etc/motd` from `@started` and watches `Fs.Contents` of whatever path is in a text input, initially `/etc/hostname`.
 
 ```
-run(Inputs { responses: [], pushes: [], oracle: |e| snapshot.get(e).unwrap_or(unavailable_for(e)) })
+run(Inputs { responses: [], pushes: [], oracle: |e| snapshot.get(e).unwrap_or_else(|| first_answer(e)) })
 → Outcome {
     list: [
       (1,        Fs.File(path="/etc/motd")),
@@ -109,14 +109,14 @@ run(Inputs { responses: [], pushes: [], oracle: |e| snapshot.get(e).unwrap_or(un
       (3/0,      Gui.Focusable(name="input")),
       (3/1/#0/0, Ui.Label(text="/etc/hostname|")),
       (4/#0/0,   Fs.Contents(path="/etc/hostname")),
-      (5/#0/0,   Ui.Label(text="(unavailable)")),
+      (5/#0/0,   Ui.Label(text="box")),
     ],
     requests: [(1, [Read])],
     result: unit,
   }
 ```
 
-The World now knows three things: there is a `Read` to perform on `/etc/motd`, addressed back to path `1` when it completes; someone is watching `/etc/hostname`, which it answered `Unavailable` and should now read and watch; and there is a screen to draw. It performs the read on a thread, reads and watches the file, draws, and waits. When the hostname read completes, the next call has one push, `(Fs.Contents(path="/etc/hostname"), Known "box")`, and no responses. When the motd read completes, the call after has one response, `(1, Contents "Welcome")`. The order in which they complete is the order of the calls, and the program's text says what each order means.
+The World now knows three things: there is a `Read` to perform on `/etc/motd`, addressed back to path `1` when it completes; someone is watching `/etc/hostname`, which `first_answer` read for the oracle (`Known "box"`, so the label already shows it) and which the World should now keep watching; and there is a screen to draw. It performs the read on a thread, sets the watch, draws, and waits. When the motd read completes, the next call has one response, `(1, Contents "Welcome")`. When someone renames the host, the call after has one push, `(Fs.Contents(path="/etc/hostname"), Known "crate")`, and no responses. The order in which they happen is the order of the calls, and the program's text says what each order means.
 
 ## Snapshots, the oracle and pushes
 
@@ -141,7 +141,7 @@ Why pushes by value rather than by path? Because two slots asking for the same s
 
 ### The oracle cannot fail
 
-A state tag the World accepts is always answerable, because the state's type says what unavailable looks like: `Unavailable | Known Text`, `Connecting | Connected | Disconnected Reason`, `Missing | Modified Instant`. A World that has never looked at a file answers `Unavailable` and goes to look; a World asked for a socket it has not opened answers `Connecting` and opens it. There is no `Pending`, no `null`, no "ask again later," because a dynamic without a value is not a dynamic, and the program's `match` on the state type has an arm for the not-yet case or it does not compile.
+A state tag the World accepts is always answerable, because the state's type says what unavailable looks like: `Unavailable FsError | Known Text`, `Connecting | Connected | Disconnected Reason`, `NoStamp | Modified Instant`. A World that cannot give a file's contents says why, in the type (`Unavailable NotFound`, `Unavailable Denied`, `Unavailable TooLarge`), and goes on watching it; a World asked for a socket it has not opened answers `Connecting` and opens it. There is no `Pending`, no `null`, no "ask again later," because a dynamic without a value is not a dynamic, and the program's `match` on the state type has an arm for the not-yet case or it does not compile.
 
 A state tag the World does *not* accept is an error in the occurrence the slot is created, reported with the element, the span and the interceptor chain it came through, because nothing later can give it a value. This is deliberately harsher than the `Unsupported` response an unknown request tag gets. A request with no answer is a program-visible fact in a later occurrence: the program fired and got `Unsupported` back and can match on it. A state element with no value has nowhere to put the fact; its dynamic would have to hold something in the occurrence it was born, and the World has nothing to offer. The build error is the right answer, and the way for a portable program to avoid it is below, under cross-platform.
 
@@ -180,7 +180,7 @@ A push is the World saying "as occurrence n opens, this value is now this." It i
 
 How many pushes per occurrence, and whether a change on disk gets its own occurrence or rides along with a click, is the World's business. A CLI World pushes `Clock` at most once per turn. A GUI World coalesces three resize reports that arrived between frames into one push of the last size, which promises the program no less than the platform promised the World. A World must never coalesce two responses to one slot, because responses are edges and the program may be counting them; it may coalesce state, because state is a level and the last value is the truth.
 
-Every push must satisfy the equality law: in one occurrence, every slot with equal elements sees one value. The runtime guarantees it structurally, by giving equal elements one dynamic; the World guarantees it by answering the oracle and computing the pushes from one snapshot. A World that answered the oracle by calling `stat` would break it, because two calls could straddle a write; that is why the oracle reads the snapshot map, never the disk, and a value not yet in the map is the tag's unavailable case.
+Every push must satisfy the equality law: in one occurrence, every slot with equal elements sees one value. The runtime guarantees it structurally, by giving equal elements one dynamic; the World guarantees it by answering the oracle and computing the pushes from one snapshot. A World that answered the oracle by calling `stat` would break it, because two calls could straddle a write; that is why the oracle answers from the snapshot map, and why a value not yet in the map is filled once, by the component, and recorded before the answer is given twice.
 
 ### The directory listing, stitched
 
@@ -479,12 +479,16 @@ type FsRequest = choice:
     Append Text
     Delete
 
+type FsError = choice:
+    NotFound
+    Denied
+    TooLarge
+    Other Text
+
 type FsResponse = choice:
     Contents Text
     Written
-    Missing
-    Denied
-    Failed Text
+    Unavailable FsError
 
 tag Fs.File of Element:
     path: Text
@@ -492,7 +496,7 @@ tag Fs.File of Element:
     responds: FsResponse
 
 type Contents = choice:
-    Unavailable
+    Unavailable FsError           # the reason the contents cannot be had
     Known Text
 
 tag Fs.Contents of Element:
@@ -518,7 +522,7 @@ tag Fs.Dir of Element:
     state: Listing
 
 type Stamp = choice:
-    Missing
+    NoStamp
     Modified Instant
 
 tag Fs.Watch of Element:
@@ -526,7 +530,7 @@ tag Fs.Watch of Element:
     state: Stamp
 ```
 
-`Fs.File` is the one-shot conversation: fire a `Read`, get `Contents` or `Missing` or `Denied` back, addressed to this slot, in a later occurrence. The path is a field, fixed for the slot's life; a program with a dynamic path has a `dyn`, a fresh slot per path, and the World drops any response to the old slot because the slot is gone. One slot can read now and write later, and a program that wants two reads in flight at once has one slot and two firings, or two slots.
+`Fs.File` is the one-shot conversation: fire a `Read`, get `Contents`, `Written` or `Unavailable` with an `FsError` reason back, addressed to this slot, in a later occurrence. The path is a field, fixed for the slot's life; a program with a dynamic path has a `dyn`, a fresh slot per path, and the World drops any response to the old slot because the slot is gone. One slot can read now and write later, and a program that wants two reads in flight at once has one slot and two firings, or two slots.
 
 ```prism
 @SaveButton: fn Text, $Text -> @$Text = \|path, $draft| @widget:
@@ -534,14 +538,14 @@ tag Fs.Watch of Element:
     !r <- @Element Fs.File(path=path, requests=(Write $draft on !save))
     $status <- "" <= match !r:
         Written: "saved"
-        Denied: "permission denied"
+        Unavailable Denied: "permission denied"
         ignore: "failed"
     @ $status
 ```
 
 One click, one write, and `$draft on !save` reads the draft as it stood before the click, which is the draft the user was looking at.
 
-`Fs.Contents` is the file as a value that is simply true: the World answers the oracle from its snapshot (`Unavailable` until the first read lands), then reads and watches, and pushes `Known` each time the file changes. Two widgets watching one path share one dynamic. The World stops watching when the last slot for that path is gone.
+`Fs.Contents` is the file as a value that is simply true: the World answers the oracle from its snapshot, filling an entry it has never held by reading the file once under a size cap, and then watches and pushes each time the file changes. A file that cannot be had is `Unavailable` with one of four reasons from a closed choice: `NotFound`, `Denied`, `TooLarge` (past the cap, where a program that wants the file asks `Fs.File`), or `Other` with the operating system's text. The reason is part of the level, so a file that appears is a push from `Unavailable NotFound` to `Known`, and one that vanishes is the push back. Two widgets watching one path share one dynamic. The World stops watching when the last slot for that path is gone.
 
 `Fs.Dir` is the same for a directory listing. A directory is where the stitch earns its keep: the World sets the watch, scans, reconciles what the watch reported during the scan, and only then puts the listing in its snapshot; on an inotify overflow it rescans and the program sees one ordinary change. A program sees `Known [[..]]` and never a partial listing.
 
@@ -559,7 +563,7 @@ One click, one write, and `$draft on !save` reads the draft as it stood before t
 
 Every change of the stamp rebuilds the block, whose `@started` fires a fresh `Read`. That is a watch delivered as a level and consumed as edges, by the program's choice, and it is why the watch is not a stream. A stream element `Fs.Changed(path)` responding with `unit` would be the same information as an event, with one difference: a slot created in the same occurrence as a change would miss it, because a response cannot reach a slot born this occurrence, while a state slot created in the push's occurrence sees the push. Watches as state lose nothing at the edges; watches as streams can.
 
-The negative space in Fs: no `Fs.Exists`, because `Fs.Contents` answers it with `Unavailable` and a program that wants to distinguish absent from unreadable asks `Fs.File` and matches `Missing` against `Denied`. No streaming reads; a World that wants to offer them offers `Fs.Stream(path)` responding with chunks, like standard input, and the first version does not.
+The negative space in Fs: no `Fs.Exists`, because `Fs.Contents` answers it with `Unavailable NotFound` against `Unavailable Denied` or `Known`, and the reason is in the type, so a program that wants to tell absent from unreadable matches on it. No streaming reads; a World that wants to offer them offers `Fs.Stream(path)` responding with chunks, like standard input, and the first version does not.
 
 ### Time and Clock
 
@@ -840,7 +844,7 @@ tag Cli.Signals of Element:
     responds: Signal
 ```
 
-Standard input is a stream: chunks, then `End`, delivered only while a `Cli.Stdin` slot exists, each in its own occurrence. Standard output and standard error are requests: a firing is a write, and nothing is written for any other reason. Exit is a request. Signals are a stream, and the World installs a handler only while a `Cli.Signals` slot exists; without one the process keeps the operating system's defaults, so Ctrl-C still kills a program that never asked to be told about it.
+Standard input is a stream: chunks, then `End`, delivered only while a `Cli.Stdin` slot exists, each in its own occurrence. The stream belongs to the World, not to the slot. A read that is already blocked when the slot goes cannot be taken back, so when it returns its chunk is not delivered to the dropped slot or anywhere else; the World keeps it with the stream, and the next `Cli.Stdin` slot receives it first, ahead of anything read afterwards. A chunk nobody asks for by the time the process ends is discarded with it. Standard output and standard error are requests: a firing is a write, and nothing is written for any other reason. Exit is a request. Signals are a stream, and the World installs a handler only while a `Cli.Signals` slot exists; without one the process keeps the operating system's defaults, so Ctrl-C still kills a program that never asked to be told about it.
 
 ### One turn per input
 
@@ -920,14 +924,18 @@ type Key = choice:
     Composition CompositionEvent   # IME: Start | Update Text, Nat | Commit Text | End
 
 type WindowEvent = choice:
-    Resized Size
+    Resized Extent
     CloseRequested
     Pointer Pointer
     Pressed Key
 
+type Extent = record:
+    w: Float
+    h: Float
+
 tag Gui.Window of Element:
     title: Text
-    size: Size                     # the size the program asks for when the window opens
+    size: Extent                   # the size the program asks for when the window opens
     responds: WindowEvent
 
 tag Gui.Scene of Element:
@@ -942,11 +950,8 @@ tag Gui.Metrics of Element:
     font: Font
     state: Extent                  # width and height of the text; answered synchronously
 
-type Frame = record:
-    now: Instant
-
 tag Gui.Frames of Element:
-    responds: Frame                # a GUI World fires this before it paints
+    responds: Frame                # `Frame` is the record declared in the Time section
 ```
 
 The draw commands are not tags. They are plain values in the scene's `draw` list, and the list order is the paint order.
@@ -1001,7 +1006,7 @@ The counter of chapter 2 under `@Window @VBox @counter`. `@Window` lays out the 
 **Occurrence 0.** The counter builds its two buttons and a label; `@VBox` captures them and emits a `Ui.VBox` with the three as children; `@Window` captures that and asks for the width of the label's text with a `Gui.Metrics` slot, which has its value in this occurrence. It computes a layout (three rows of 24 pixels, the label centred) and emits:
 
 ```
-0/0:        Gui.Window(title="Counter", size=((200, 72)))
+0/0:        Gui.Window(title="Counter", size=Extent(w=200.0, h=72.0))
 0/1/#0/0:   Gui.Metrics(text="Count: 0", font=Default)
 0/2/#0/0:   Gui.Scene(window="Counter", draw=[[
               Draw.Rect(rect=((0, 0, 200, 24)), color=grey),
@@ -1015,7 +1020,7 @@ The World reads the list, sees a window it has not opened, opens a 200×72 windo
 
 **Turn 1.** The user clicks at (50, 10). The World delivers `Pointer (Down ((50, 10)), Left)` as a response to `0/0`. `@Window`'s slot fires; the window interceptor hit-tests the point against the layout it holds, read through a tag, which is the layout as the occurrence opened, the one the user saw; row 0 is the `Ui.VBox`'s first child, the Increment button's path; it fires `{vbox_path: Pointer(row=0)}` down; `@VBox` hit-tests the row against its children's list as the occurrence opened and fires `{0/#0/0: Click}` down; the counter's `!increment` fires; `$count` becomes 1; the label rebuilds; the VBox's children change; the VBox rebuilds its element; `@Window` relays out. The label text is a plain field of the metrics slot, so the metrics are a fresh slot at generation `#1`, and its value (still 64) is in the oracle in this occurrence, so the new scene at generation `#1` has the right label position. One occurrence, no `Defer`. The window slot is untouched. The World diffs the scene, rasterises the new draw list, presents.
 
-**Turn 2.** The user drags the window edge; the platform reports a new size. The World delivers `Resized ((300, 72))` to `0/0`. `@Window` holds the size, relays out with wider rows and the label at x=118, and emits a scene at generation `#2`; the metrics are unchanged, so their slot stays. The World resizes its buffer and presents. On a platform that expects the paint before the resize callback returns, the World runs this turn inside the callback and presents before returning; one turn per input makes that a non-event.
+**Turn 2.** The user drags the window edge; the platform reports a new size. The World delivers `Resized Extent(w=300.0, h=72.0)` to `0/0`. `@Window` holds the size, relays out with wider rows and the label at x=118, and emits a scene at generation `#2`; the metrics are unchanged, so their slot stays. The World resizes its buffer and presents. On a platform that expects the paint before the resize callback returns, the World runs this turn inside the callback and presents before returning; one turn per input makes that a non-event.
 
 **Turn 3.** The user presses a key. The World delivers `Pressed (Char 'x')` to the window at `0/0`, like any other input. There is no `Gui.Focusable` in the list, because the counter has nothing to type into, and `@Window` has no focused input to route the key to, so it drops it. Had there been a text input, `@Window` would have emitted `Gui.Focusable(name="input")` upward, the focused name it holds, so the World could show a focus ring; the key would still have arrived at `0/0`; `@Window` would have routed it to the input named `input`; and the input's hold would have moved its cursor, asked `Gui.Metrics` for the width of the text up to the cursor, and drawn the caret there. The World knows nothing about cursors.
 
@@ -1175,9 +1180,9 @@ Some things block and have no asynchronous form worth using: `getaddrinfo` on so
 
 *Not inside the runtime*, because the run call is one thread doing one transaction, and a block there stalls every input behind it; in a GUI World it stalls the frame. A component that needs to block spawns a thread (tokio's `spawn_blocking`, from memory, or a plain `std::thread`) and sends the result on the channel like any completion.
 
-*Not inside the oracle*, for a sharper reason. The oracle is the snapshot as a function, and it must answer the same value to every slot that asks in one occurrence. A World that implemented `Fs.Contents`'s oracle by reading the file on demand would give two slots created in one occurrence two different values if the file changed between the reads, which breaks the equality law; and it would block propagation on disk. So the oracle reads the snapshot map, a value not yet in the map is the tag's unavailable case, and the component starts the read after the turn, when it sees the slot in the list. The program sees `Unavailable` for one turn and `Known` after, which is the truth: the World had not looked yet.
+*Not inside the oracle*, with one bounded exception. The oracle is the snapshot as a function, and it must answer the same value to every slot that asks in one occurrence. A World that implemented `Fs.Contents`'s oracle by reading the file on every ask would give two slots created in one occurrence two different values if the file changed between the reads, which breaks the equality law. So the oracle reads the snapshot map, and the one exception is the first ask for a local file: the component reads it then, under a size cap, and records the result in the snapshot before answering, so every later ask in every occurrence gets the recorded value and the change arrives as a push. Past the cap the answer is `Unavailable TooLarge`. Anything that waits on something outside the machine (a socket, a DNS lookup, a database) is never read in the oracle: its answer is the tag's unavailable case, and the component starts the work after the turn, when it sees the slot in the list.
 
-The tempting alternative is to let the oracle block once, on first ask, so that a program sees `Known` from its first occurrence and never draws an "unavailable" frame. It costs the latency inside the occurrence, the equality law if the source moves, and the Test World's ability to model it, since a test cannot say "the World will take 40 ms here." The frame of `Unavailable` is the true frame, and a program that minds draws the previous state instead, with a hold.
+The cap keeps the exception honest. Without it, the oracle would block on whatever size of file a program named, and the latency would land inside the occurrence; with it, the read is the kind of blocking a main thread does anyway, and a file past the cap gets the true frame, `Unavailable TooLarge`, and a program that minds draws the previous state instead, with a hold. The Test World has no disk, so it models the oracle with `State` steps, including `State Fs.Contents(path="/big"), Unavailable TooLarge`.
 
 The same discipline applies to `Process.Spawn`: the spawn happens on a thread after the turn, the `Spawned id` comes back as a response, and the program that fired from `@started` sees it a turn later, never in the build.
 
@@ -1348,7 +1353,7 @@ The conformance suite tests the language under the Test World and says nothing a
 
 ### A platform World
 
-Each World adds the tests only its platform can run. For the CLI World: golden runs with fixed arguments and standard input (an echo, the line counter, a program that writes to both streams in one occurrence with the order kept, `Process.Exit` fired in the same turn as writes with the writes landing first, `SIGINT` with and without a `Cli.Signals` slot, a closed standard-output pipe producing `WriteFailed`, a program with no live sources exiting zero). For a GUI World: a scripted click at a point reaching the right widget through the library's hit-test, a resize turn that paints before the callback returns, a composition sequence reaching the window as `Composition` keys with the candidate window placed at the `ime_at` offset read from the committed scene, a `Gui.Frames` slot inside a `dyn` starting and stopping frame requests. For a server World: concurrent requests under one `for`, one of them waiting on an outgoing call, with the replies landing under the right ids, and a routing World with two shards that never deliver each other's connections.
+Each World adds the tests only its platform can run. For the CLI World: golden runs with fixed arguments and standard input (an echo, the line counter, a program that writes to both streams in one occurrence with the order kept, `Process.Exit` fired in the same turn as writes with the writes landing first, `SIGINT` with and without a `Cli.Signals` slot, a closed standard-output pipe producing `WriteFailed`, a `Cli.Stdin` slot dropped mid-read and rebuilt, with the chunk read in between delivered to the new slot first, a program with no live sources exiting zero). For a GUI World: a scripted click at a point reaching the right widget through the library's hit-test, a resize turn that paints before the callback returns, a composition sequence reaching the window as `Composition` keys with the candidate window placed at the `ime_at` offset read from the committed scene, a `Gui.Frames` slot inside a `dyn` starting and stopping frame requests. For a server World: concurrent requests under one `for`, one of them waiting on an outgoing call, with the replies landing under the right ids, and a routing World with two shards that never deliver each other's connections.
 
 What none of them tests: the language. A World test never asserts on a hold or a widget's result; it asserts on what crossed the boundary, in both directions, and on what the World did with it.
 

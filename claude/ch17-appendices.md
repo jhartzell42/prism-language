@@ -300,11 +300,11 @@ Each of these contributed one idea, named here so the reference says why and not
 | `?` | an optional | returns an optional | `?A`, `Nil` or `Some a` |
 | none | a plain value | returns a plain value | a plain type |
 
-Sigils nest leftmost-outermost: `?$user`, `!!rendered`, `@!unit`, `$@a`, `$(Key ==> $Item)`. A sigil is attached (part of the token) when followed by a name character, `_`, `"` or another sigil; otherwise it is a prefix operator over the whole expression to the end of the call: `$ x` is the constant dynamic, `@ v` the widget returning `v`, `@ ((!a, $b))` a bundle. `$_`, `!_`, `@_` are the pronoun at that kind. `&` is reserved for future work; `%` does not exist. Names: `snake_case` for values, `UpperCamelCase` for functions and types; mixing is an error. A dotted name such as `Gui.Button` lexes as name, `.`, name, and `Gui.*` in a pattern as name, `.`, `*`.
+Sigils nest leftmost-outermost: `?$user`, `!!rendered`, `@!unit`, `$@a`, `$(Key ==> $Item)`. A sigil is attached (part of the token) when followed by a name character, `_`, `"` or another sigil; otherwise it is a prefix operator over the whole expression to the end of the call: `$ x` is the constant dynamic, `@ v` the widget returning `v`, `@ ((!a, $b))` a bundle. `$_`, `!_`, `@_` are the pronoun at that kind. `&` is reserved for future work; `%` does not exist. Names: `snake_case` for values, `UpperCamelCase` for functions and types; a camelCase value name such as `isClick` is a lint warning (write `is_click`), not a compile error. A dotted name such as `Gui.Button` lexes as name, `.`, name, and `Gui.*` in a pattern as name, `.`, `*`.
 
 ### Lexical
 
-Comments `#` to end of line. UTF-8 source. Layout is the offside rule with `:` as the block opener: a `:` ending a line opens a block on the next, more-indented line; a `:` with tokens after it on the same line opens an inline block of that line, and `else` terminates an inline block, so `if c: a else: b` is one line with two inline blocks; inside `( ) (( )) [ ] [[ ]] { }` layout is suspended and `:` is the map key separator. Inline `:` is a plain token the parser interprets, not a layout token. `;` separates statements in an inline block: `type Pair<a, b> = record: first: a; second: b`, `if c: Log x; Log y else: Log z`; a layout block never needs it. `((` and `))` open and close a tuple, `[[` and `]]` an array literal; single `( )` is grouping and single `[ ]` is indexing or an array type. A trailing lambda as the last argument absorbs the rest of the line, so `MapValues !xs, \|x| x + 1` needs no parentheses around the lambda. Keywords: `let type tag of fn match if else for dyn intercept widget record choice map array unit test ignore on not and or lt le gt ge key ix jx kx empty`; `read` and `update` are reserved for future work. `never started main Switch Leftmost Join Filter Updated Distinct Element Kind` are prelude names written with their sigils where they have one: `!never`, `@started`, `@main`, `!Switch: fn !!A -> !A`, `!Leftmost: fn [!A] -> !A`, `$Join: fn $$A -> $A`, `!Filter: fn !?A -> !A`, `!Updated: fn $A -> !A` (fires with the new value in every occurrence the dynamic changes; never at build), `$Distinct: fn $A -> $A` (needs equality; suppresses equal-valued changes, which nothing else does), `@Element`, `Kind: fn Element -> Kind`, and the optional default `Or: fn ?A, A -> A` (`Or ?x, default`; a function, unrelated to the keyword operator `or`). There are no prelude `Not`, `And` or boolean `Or` functions: `not`, `and`, `or` are operators. `Wrap.*` and `Checked.*` are the prelude's wrapping and checked arithmetic (`Wrap.Add: fn Nat, Nat -> Nat`, `Checked.Add: fn Nat, Nat -> ?Nat`, and likewise `Sub`, `Mul` and the `Int` forms); the bare operators abort the occurrence with an `Overflow` error.
+Comments `#` to end of line. UTF-8 source. Layout is the offside rule with `:` as the block opener: a `:` ending a line opens a block on the next, more-indented line; a `:` with tokens after it on the same line opens an inline block of that line, and `else` terminates an inline block, so `if c: a else: b` is one line with two inline blocks; inside `( ) (( )) [ ] [[ ]] { }` layout is suspended and `:` is the map key separator. Inline `:` is a plain token the parser interprets, not a layout token. `;` separates statements in an inline block: `type Pair<a, b> = record: first: a; second: b`, `if c: Log x; Log y else: Log z`; a layout block never needs it. `((` and `))` open and close a tuple, `[[` and `]]` an array literal; single `( )` is grouping and single `[ ]` is indexing or an array type. A trailing lambda as the last argument absorbs the rest of the line, so `MapValues !xs, \|x| x + 1` needs no parentheses around the lambda. Keywords: `let type tag of fn match if else for dyn intercept widget record choice map array unit test ignore on not and or lt le gt ge key empty`; keywords are reserved everywhere (none is contextual), and there are no index variables `ix`, `jx`, `kx`: a loop names its own; `read` and `update` are reserved for future work. `never started main Switch Leftmost Join Filter Updated Distinct Element Kind` are prelude names written with their sigils where they have one: `!never`, `@started`, `@main`, `!Switch: fn !!A -> !A`, `!Leftmost: fn [!A] -> !A`, `$Join: fn $$A -> $A`, `!Filter: fn !?A -> !A`, `!Updated: fn $A -> !A` (fires with the new value in every occurrence the dynamic changes; never at build), `$Distinct: fn $A -> $A` (needs equality; suppresses equal-valued changes, which nothing else does), `@HoldFirst: fn !A -> @$A` (a dynamic that holds its event's value, with the first firing's value, in the build occurrence, as its initial value), `@Element`, `Kind: fn Element -> Kind`, and the optional default `Or: fn ?A, A -> A` (`Or ?x, default`; a function, unrelated to the keyword operator `or`). There are no prelude `Not`, `And` or boolean `Or` functions: `not`, `and`, `or` are operators. `Wrap.*` and `Checked.*` are the prelude's wrapping and checked arithmetic (`Wrap.Add: fn Nat, Nat -> Nat`, `Checked.Add: fn Nat, Nat -> ?Nat`, and likewise `Sub`, `Mul` and the `Int` forms); the bare operators abort the occurrence with an `Overflow` error.
 
 Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` when nothing constrains it (`$n <- 0 <= $n + 1 on !tick` is an `Int` counter); `-1` is an `Int`; a `Nat` is pinned by annotation; a decimal-spelled literal is `Float`. `"text"` with the escapes `\\ \" \n \t \{ \} \u{hex}` and interpolation `{expr}` only (`"hi {name}"`, `"count: {$count}"`); a `$` in text is always a literal `$`, so `"$count"` is plain text, and a literal brace is `\{` or `\}`. Interpolating a dynamic or an event lifts the whole literal (`"Count: {$count}"` is a `$Text`; `"got {!line}"` is a `!Text`). `'c'`, `unit`; `[[1, 2, 3]]` for an array, `[[]]` or `empty` for the empty one; `{k: v}` for a map, `{}` for the empty one; `((a, b))` for a tuple. The spacing rule: a token that can be prefix or binary is prefix when preceded by whitespace and followed immediately by a non-space (`F -1` passes negative one; `F - 1` subtracts). Wherever `_` is in scope (a `\` body, a `for` body, any pronoun-binding construct) a prefix `.x` is `_.x` and a prefix `[i]` is `_[i]`; with no `_` in scope it is an unbound-pronoun error, and a `.Method` that starts a continuation line is a chain step.
 
@@ -318,11 +318,12 @@ Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` w
 | `$x <- v <= !e` | hold: `$x` is `v` until `!e` fires, then `!e`'s value; owned by this node; a hold set to the value it already has still changes |
 | `!!r <- dyn $x: block` | rebuild the block on each change of `$x`; `_` is the plain value; event fires in every build occurrence |
 | `!!r <- dyn p <- $x: block` | the same, destructuring `$x`'s value with pattern `p` |
-| `r <- for $m: block` | one block per key of `$(K ==> V)`; `key` is the key, `$_` the value as a dynamic; consolidated by result kind, promptly |
+| `r <- for k, $v <- $m: block` | one block per key of `$(K ==> V)`; `k` is the key and `$v` the value as a dynamic; consolidated by result kind, promptly |
+| `r <- for $m: block` | the shorthand: `key` is the key and `$_` the value as a dynamic; `for $v <- $m:` names only the value |
 | `((r, $slots)) <- intercept @child, !responses, $supplier` | the interceptor primitive (below) |
 | last statement | the block's result; `@ v` returns a plain value |
 
-Bindings in a block are mutually recursive; a cycle must pass through a delayed edge (a tag, `!Switch`'s hold, a hold's value side). A block body is `@name:` at top level, `let @w = @widget:` inline, or `\@widget:` as a lambda body. A plain `for xs: body` outside a widget block maps over a plain array or map and is an expression.
+Bindings in a block are mutually recursive; a cycle must pass through a delayed edge (a tag, `!Switch`'s hold, a hold's value side). A block body is `@name:` at top level, `let @w = @widget:` inline, or `\@widget:` as a lambda body. A plain `for k, x <- xs: body` (or `for xs: body`) outside a widget block maps over a plain array or map and is an expression; over an array the key is the index.
 
 A top-level definition is `name: type = expr`, with the annotation required and the name's sigil saying what kind of thing it is: `@Button: fn $Text -> @!Click = \|$label| @widget: ...`, `IsOne: fn Int -> ?unit = \|n| ...`, `@main: @unit = @widget: ...`. The shorthand `@name:` opens the widget block of a definition of type `@unit` that takes nothing. `let` is the binding form inside a block and never appears at top level.
 
@@ -335,16 +336,16 @@ A top-level definition is `name: type = expr`, with the annotation required and 
 | 3 | paren-less application | extends to the end of the expression: `F a + 1` is `F(a + 1)`, and `(F a) + 1` is the other grouping; commas belong to the outermost call on the line or in the enclosing single-paren group; a trailing lambda absorbs the rest of the line |
 | 4 | `\|` | leftmost merge of events; associative; `!never` is its identity |
 | 5 | `on` | `v on !e` fires with `!e`, value `v` (dynamic `v` read before the occurrence) |
-| 6 | `or` | boolean or; associates left |
-| 7 | `and` | boolean and; binds tighter than `or`: `x or y and z` is `x or (y and z)` |
-| 8 | `lt le gt ge`, `== !=` | comparison; `a lt b` through the ordering trait, `a == b` through the equality trait; `Bool` result |
-| 9 | prefix `not` | boolean negation; binds tighter than comparison, so its operand is an additive expression, and `not a == b` is `(not a) == b` (write `not (a == b)` or `a != b`) |
+| 6 | `or` | boolean or; associates left; short-circuits when plain |
+| 7 | `and` | boolean and; binds tighter than `or`: `x or y and z` is `x or (y and z)`; short-circuits when plain |
+| 8 | prefix `not` | boolean negation; looser than comparison, so `not a == b` is `not (a == b)` and `not a lt b and c` is `(not (a lt b)) and c` |
+| 9 | `lt le gt ge`, `== !=` | comparison; `a lt b` through the ordering trait, `a == b` through the equality trait; `Bool` result; does not associate |
 | 10 | `+ -` and `+~ -~` (Int), `+. -.` (Float) | suffixed spellings only when inference cannot decide between `Int` and `Float`; there are no suffixed `Nat` spellings, a `Nat` is pinned by annotation |
 | 11 | `* /` and suffixed | `/` on `Nat` and `Int` returns `?`; on `Float` it follows IEEE (infinities, NaN) and never fails |
 | 12 | prefix `+ -`, free sigils `! $ @ ?`, `+?` | prefix `+` is numeric identity; `+?: fn Int -> ?Nat` converts, `Nil` below zero |
 | 13 | `.field`, `[index]`, attached sigils, `.F args` method form | `x.F y` is `F x, y`; chains associate left, so `x.F.G` is `G (F x)`; a `.F` that starts a continuation line closes the call above it and takes it as receiver; `a[i]` and `m[k]` return `?` |
 
-`not`, `and` and `or` are keywords over `Bool`, lifted by the sigils like any operator: `$done or $count gt limit on !click` is `($done or ($count gt limit)) on !click`.
+`not`, `and` and `or` are keywords over `Bool`, lifted by the sigils like any operator: `$done or $count gt limit on !click` is `($done or ($count gt limit)) on !click`, and `a lt b and c lt d` needs no parentheses. Plain `and` and `or` short-circuit, so an overflow in the operand that was not needed aborts nothing; lifted over dynamics or events they are lifts of the same function and fire by the lifting rule.
 
 Parentheses: a single-paren group whose head is a call is that call with all its commas, so `(F a, b)` is `F(a, b)` and `G x, (F a, b)` gives `F` two arguments. Tuples are double parens: `((a, b))` is a pair, `((F a, b))` the pair of `F a` and `b`, and a multi-argument call inside a tuple takes its own single parens, `(((F a, b), c))`. Array literals are double brackets, `[[1, 2, 3]]`; single `[i]` is always indexing. A chain is written one step per line, and indentation decides where each call ends:
 
@@ -365,7 +366,7 @@ Binding a widget application lifts by the result: `!x <- @Button $label` is `dyn
 
 `\body` takes `_` (or the sigiled pronoun its body uses); `\|a, b| body` names arguments; `\|((x, y)), k| body` destructures a pair argument; `\@widget:` opens a widget block. `ignore` as an argument discards it. Wherever `_` is in scope (a `\` body, a `for` body, any pronoun-binding construct) a prefix `.x` is `_.x` and a prefix `[i]` is `_[i]`, so `\.done` and `\[0]` are lambdas.
 
-Patterns: a literal; a name (binds); `ignore`; `((p, q))` for a tuple; `Some p`, `Nil`; `Type p` for a newtype or payload alternative, `Alt p, q` for an alternative with several payloads, comma-separated as in its construction; `Type(f1, f2=p, ..)` for a record, positional or by name, `..` for the rest; `Ns.Tag(field=p, ..)` for an element by tag; `Ns.*(..)` for any tag in a namespace. `match` arms are tried in order and have no guards; a closed choice must be exhaustive; an extensible variant must end in a catch-all. `if c: a else: b` is `match` on `Bool`, and there is no `else`-less `if`.
+Patterns: a literal; a name (binds); `ignore`; `((p, q))` for a tuple; `Some p`, `Nil`; `Type p` for a newtype or payload alternative, `Alt p, q` for an alternative with several payloads, comma-separated as in its construction; `Type(f1, f2=p, ..)` for a record, positional or by name, `..` for the rest; `Ns.Tag(field=p, ..)` for an element by tag; `Ns.*(..)` for any tag in a namespace. `[[]]` matches the empty array, `[[a, b]]` exactly two elements, and `[[head, ..rest]]` a non-empty one (`..` takes the rest and comes last). `match` arms are tried in order; an arm may have a guard, `pattern if cond: body`, and a guarded arm does not count toward exhaustiveness (an extensible variant needs an unguarded catch-all). A closed choice must be exhaustive, arrays included. `if c: a else: b` is `match` on `Bool`, and `if c: a` with no `else` is `?T`: `Some a` when `c` holds and `Nil` otherwise (`?unit` when `a` is `unit`), a `$?T` over a dynamic condition.
 
 ### Types
 
@@ -489,11 +490,7 @@ type Vector = record:
     x: Float
     y: Float
 
-type Size = record:
-    w: Float
-    h: Float
-
-type Extent = record:                      # the width and height of a text; what Gui.Metrics answers
+type Extent = record:                      # a width and height, the only size type: a window's size, a text's measure (what Gui.Metrics answers)
     w: Float
     h: Float
 
@@ -537,7 +534,7 @@ type Key = choice:
     Composition CompositionEvent
 
 type WindowEvent = choice:                 # what a Gui.Window responds with
-    Resized Size
+    Resized Extent
     CloseRequested
     Pointer Pointer
     Pressed Key
@@ -570,8 +567,10 @@ type ChildInput = record:                  # what a Ui container responds with
     path: Path
     response: Response
 
+type FsError = choice NotFound | Denied | TooLarge | Other Text
+
 type Contents = choice:
-    Unavailable
+    Unavailable FsError                    # the reason
     Known Text
 
 type FsRequest = choice:
@@ -580,19 +579,23 @@ type FsRequest = choice:
     Append Text
     Delete
 
+type FsError = choice:
+    NotFound
+    Denied
+    TooLarge
+    Other Text
+
 type FsResponse = choice:
     Contents Text
     Written
-    Missing
-    Denied
-    Failed Text
+    Unavailable FsError
 
 type Listing = choice:
     Unavailable
     Known [Text]
 
 type Stamp = choice:                       # a file's modification stamp as state
-    Missing
+    NoStamp
     Modified Instant
 
 type Link = choice:
@@ -685,7 +688,7 @@ GUI is not a World concept. `Gui.*` is the primitive vocabulary every GUI World 
 
 | Tag | Fields | Requests | Responds | State | Identity | Meaning |
 | --- | --- | --- | --- | --- | --- | --- |
-| `Gui.Window` | `title: Text`, `size: Size` | | `WindowEvent` | | path | *Primitive.* One top-level window per slot; `size` is what the program asks for when it opens. Every pointer event over the window arrives here, and every key (`Pressed`), as does the size the platform gave (`Resized`) and `CloseRequested`, which the program answers by tearing the window down, or not. The library hit-tests against its own layout, routes pointer hits inward, and routes each key to the input whose name is the focus. |
+| `Gui.Window` | `title: Text`, `size: Extent` | | `WindowEvent` | | path | *Primitive.* One top-level window per slot; `size` is what the program asks for when it opens. Every pointer event over the window arrives here, and every key (`Pressed`), as does the size the platform gave (`Resized`) and `CloseRequested`, which the program answers by tearing the window down, or not. The library hit-tests against its own layout, routes pointer hits inward, and routes each key to the input whose name is the focus. |
 | `Gui.Scene` | `window: Text`, `draw: [Draw]` | | | | path | *Primitive. Presence.* The draw list for the window of that title, as data in paint order, read by the World from the committed list after each turn. A picture that changes is a fresh slot per change, at the same tree position; nothing is in flight on a picture, so that is right. |
 | `Gui.Focusable` | `name: Text` | | | | path | *Primitive. Presence.* The name of the focused region and nothing else; keys do not go here but to `Gui.Window`. It lets a World show the platform focus ring, place an input method candidate window and inform a screen reader. Which name is focused, what Tab does and where the caret is are holds in the library, which emits at most one `Gui.Focusable` at a time. No rectangle: the World does no geometry. |
 | `Gui.Metrics` | `text: Text`, `font: Font` | | | `Extent` | value | *Primitive.* The width and height of a text in a font, answered synchronously from the oracle, so a layout has its measurement in the occurrence that asks. Every slot asking about the same text and font shares one answer. |
@@ -704,9 +707,9 @@ A `Gui.Scene` appearing is a description the World draws; a `Ui.Button` disappea
 | Tag | Fields | Requests | Responds | State | Identity | Meaning |
 | --- | --- | --- | --- | --- | --- | --- |
 | `Fs.File` | `path: Text` | `!FsRequest` | `FsResponse` | | path | One file handle's conversation: each request firing is one operation; each response answers one, in a later occurrence, in order. |
-| `Fs.Contents` | `path: Text` | | | `Contents` | value | The file's contents as a value over time. `Unavailable` when it does not exist, cannot be read, or is larger than the World's synchronous size cap; pushed when the World sees a change. Shared by every slot with the same path. |
+| `Fs.Contents` | `path: Text` | | | `Contents` | value | The file's contents as a value over time. `Unavailable(reason)` with a reason from the closed `FsError`: `NotFound` when it does not exist, `Denied` when it cannot be read, `TooLarge` when it is larger than the World's synchronous size cap, `Other(text)` for any other failure; pushed when the World sees a change. Shared by every slot with the same path. |
 | `Fs.Dir` | `path: Text` | | | `Listing` | value | A directory's entries, sorted, as state. |
-| `Fs.Watch` | `path: Text` | | | `Stamp` | value | The file's modification stamp as state: a real stat answers the oracle at creation (`Missing` or `Modified` with the time), so there is no unknown case; pushed when the World sees a change. A program that wants the contents re-reads through `Fs.Contents` or `Fs.File` when the stamp changes, so the World never needs to say it lost changes. |
+| `Fs.Watch` | `path: Text` | | | `Stamp` | value | The file's modification stamp as state: a real stat answers the oracle at creation (`NoStamp` or `Modified` with the time), so there is no unknown case; pushed when the World sees a change. A program that wants the contents re-reads through `Fs.Contents` or `Fs.File` when the stamp changes, so the World never needs to say it lost changes. |
 
 `Fs.Contents` and `Fs.Watch` are both levels: one is the file, the other is the fact that it changed, and a program that only wants to know *that* something changed watches the stamp rather than holding the contents in memory.
 
@@ -749,7 +752,7 @@ The `Cli` tags are what a process has when it was started from a shell, and noth
 
 | Tag | Fields | Requests | Responds | State | Identity | Meaning |
 | --- | --- | --- | --- | --- | --- | --- |
-| `Cli.Stdin` | | | `StdinEvent` | | path | Chunks then `End`; read only while a slot exists. A chunk and the end are always in different occurrences, since a slot gets at most one response per occurrence. |
+| `Cli.Stdin` | | | `StdinEvent` | | path | Chunks then `End`; read only while a slot exists. A chunk and the end are always in different occurrences, since a slot gets at most one response per occurrence. A slot that is dropped delivers nothing further, and the World keeps the partial chunk with the stream. |
 | `Cli.Stdout` | | `!Text` | `WriteFailed` | | path | Each firing is written after the turn, in occurrence order then list order, then flushed. A write the World could not complete comes back as `WriteFailed` in a later occurrence. |
 | `Cli.Stderr` | | `!Text` | `WriteFailed` | | path | As `Cli.Stdout`, to the error stream. |
 | `Cli.Signals` | | | `Signal` | | path | Each signal received while a slot exists; with no slot, the OS defaults apply. |

@@ -662,7 +662,7 @@ The `Together` is the case that matters: a click on generation 1 in the occurren
     !bump <- @Button $"Bump"
     $a <- 0 <= $a + 1 on !bump
     $b <- 100 <= $b + 1 on !bump
-    $use_b <- False <= (not $use_b) on !swap
+    $use_b <- False <= not $use_b on !swap
     !$chosen <- dyn $use_b:
         @ (if _: $b else: $a)
     $$current <- $ $a <= !$chosen
@@ -690,7 +690,7 @@ The third case is the outer switching to an inner that does not change in that o
     !bump_a <- @Button $"Bump A"
     $a <- 0 <= $a + 1 on !bump_a
     $b <- 100 <= !never
-    $use_b <- False <= (not $use_b) on !swap
+    $use_b <- False <= not $use_b on !swap
     !$chosen <- dyn $use_b:
         @ (if _: $b else: $a)
     $$current <- $ $a <= !$chosen
@@ -981,7 +981,7 @@ let Mark: fn Bool -> Text = \|m| if m: " *" else: ""
 
     for $counts:
         !click <- @Button $"{key}"
-        $marked <- False <= (not $marked) on !click
+        $marked <- False <= not $marked on !click
         @Label "{key}: {$_}{Mark $marked}"
 ```
 
