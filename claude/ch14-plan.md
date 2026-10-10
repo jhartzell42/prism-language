@@ -14,7 +14,7 @@ A milestone has five parts, and a model should be able to find each one without 
 - *What it proves.* Which claim of the design the milestone makes true in code. Every refusal in the design (no scheduler, no collector, no locks, no callbacks across the boundary, no sampling) is a claim that something is unnecessary, and the only proof is a working implementation without it.
 - *Risks.* Where the work is likely to bend the design to fit the code, and what to watch for.
 
-Sizes are given as a rough count of files touched and tests added, not days. The runtime milestones are each a few hundred to a couple of thousand lines of Rust against a crate of five thousand; the frontend milestones are larger; the Haskell milestones are smaller than their Rust counterparts because Reflex is most of the runtime.
+Sizes are given as a rough count of files touched and tests added, not days. The runtime milestones are each a few hundred to a couple of thousand lines of Rust against a crate of five thousand (from memory); the frontend milestones are larger; the Haskell milestones are smaller than their Rust counterparts because Reflex is most of the runtime.
 
 ## The two tracks and where they meet
 
@@ -46,7 +46,7 @@ The runtime today has locks whose only job is to detect re-entry, thread-locals 
 
 *Step 1: `Rc` and `RefCell`.* Mechanical, touches every file, done first and alone so that nothing else is in the diff. `Arc` becomes `Rc`, `Weak` stays `Weak` (the `rc` one), `Mutex` becomes `RefCell` or `Cell`. The `Send + Sync` bounds go from `Widget`, `EventImpl`, `BehaviorImpl`, `ValueType`, `Action`, `HeapValue` and the closure bounds on every combinator; `'static` stays. The three thread-locals in `runtime/mod.rs` (`CURRENT_HEIGHT`, `DEFERRED`, `CLEAR_AT_END`) become fields of `RuntimeInner`, and `defer` becomes a method. `Runtime` becomes `Runtime { inner: RefCell<RuntimeInner> }` and is `Send + !Sync`: the test `runtime_send` is replaced by one named `a_runtime_can_be_moved_to_a_thread_and_driven_there`, which builds a graph, moves the runtime into `std::thread::spawn`, runs an occurrence, and joins. If `Runtime` ends up `!Send` because something inside holds an `Rc` to a thread-local, that is a bug in this step, not a reason to add `unsafe impl Send`.
 
-*Step 2: re-entry is a cycle, reported.* Every place a lock served as a re-entry guard (`SwitchHold::height` re-locking its own mutex is the known one; the `try_lock` panics "event cycle" are the others) becomes a `Cell<bool>` on the node, set on entry and cleared on exit, and a set flag on entry is a cycle. The runtime's `schedule` keeps its height comparison. Both report through one path: `RuntimeInner::fail(RuntimeError)`, which records the first error of the occurrence; propagation stops at the next action boundary. The test `a_cycle_closed_through_a_cyclic_event_is_reported_not_hung` closes an event in terms of itself through `add_cyclic_event`, runs under a timeout, and expects `Err(RuntimeError::Cycle { .. })`.
+*Step 2: re-entry is a cycle, reported.* Every place a lock served as a re-entry guard (`SwitchHold::height` re-locking its own mutex is the known one; the `try_lock` panics "event cycle" are the others) becomes a `Cell<bool>` on the node, set on entry and cleared on exit, and a set flag on entry is a cycle. The runtime's `schedule` keeps its height comparison. Both report through one path: `RuntimeInner::fail(RuntimeError)`, which records the first error of the occurrence; propagation stops at the next action boundary. The test `a_cycle_closed_through_a_cyclic_event_is_reported_not_hung` closes an event in terms of itself through `add_cyclic_event`, runs under a timeout, and expects `Err` with `kind == ErrorKind::Cycle`.
 
 *Step 3: the occurrence as a transaction.* `Runtime::propagate` becomes `Runtime::run_occurrence(&mut self) -> Result<(), RuntimeError>` (the public `run` with `Inputs` and `Outcome` is milestone 2; here the inputs are still triggers scheduled by the test). Inside: open (reset per-occurrence state), propagate by height, commit at `usize::MAX`, clear, close. The error path is a rollback, and a rollback needs three things the code does not keep today: a *commit list* (every hold write, switch retarget and child replacement is already deferred to commit time; collect them in one `Vec<Box<dyn Commit>>` on the runtime instead of as actions at `usize::MAX`), a *build journal* (every node built during the occurrence is pushed to `RuntimeInner::built_this_occurrence: Vec<Rc<WidgetNode>>`, so that on error they are dropped and their parents' child lists restored), and the *fired marks* (the per-event `SubscriptionManager.occurrence` cache is already keyed by occurrence number; bumping the number is the clear). On `Err`, drop the commit list, unwind the journal, bump the occurrence number, return. A panic inside an action is caught with `catch_unwind` and becomes `RuntimeError::Panic { message, node: Option<NodeId> }`; nothing resumes it.
 
@@ -102,7 +102,7 @@ A World, after this milestone, drives the runtime through one call with plain da
 
 *Step 3: slots and the element list.* On `WidgetNode`: `slots: Vec<Slot>` where `Slot { path: Path, element: ElementValue, response: Option<EventTrigger<AnyValue>>, state: Option<Dynamic<AnyValue>>, request: Option<Event<AnyValue>> }`. `WidgetBuilder::element(&mut self, e: ElementValue, request: Option<Event<AnyValue>>) -> SlotHandles { response: Option<Event<AnyValue>>, state: Option<Dynamic<AnyValue>> }` creates one, assigning the path and asking the state supplier (step 5) for the dynamic if the tag has state. The node's element list is a derived dynamic `Dynamic<Rc<BTreeMap<Path, ElementValue>>>`, the union of its own slots and its children's lists; rebuild it whole on any child-list change for now, with a comment that an incremental version is an optimisation and must not change a transcript. The root node's list is what the run call returns.
 
-*Step 4: routing and the request collector.* At open, the runtime snapshots the root list's current value into `RuntimeInner::routing: BTreeMap<Path, EventTrigger<AnyValue>>` (the response triggers of every slot in the list as the occurrence opened). A response to a path not in the snapshot is `RuntimeError::UnknownPath { path }` and aborts the occurrence before any trigger fires. Every slot with a request event subscribes it, at creation, to a per-occurrence collector on the runtime: `RuntimeInner::requests: Vec<(Path, AnyValue)>`, in firing order. A slot torn down in the occurrence still has its firings collected, with its path; the World discards them if it wants.
+*Step 4: routing and the request collector.* At open, the runtime snapshots the root list's current value into `RuntimeInner::routing: BTreeMap<Path, EventTrigger<AnyValue>>` (the response triggers of every slot in the list as the occurrence opened). A response to a path not in the snapshot is a `RuntimeError` of kind `UnknownPath` naming the path, and aborts the occurrence before any trigger fires. Every slot with a request event subscribes it, at creation, to a per-occurrence collector on the runtime: `RuntimeInner::requests: Vec<(Path, AnyValue)>`, in firing order. A slot torn down in the occurrence still has its firings collected, with its path; the World discards them if it wants.
 
 *Step 5: state supply at the root.* `RuntimeInner::root_supplier: BTreeMap<ElementValue, (Dynamic<AnyValue>, EventTrigger<AnyValue>)>`. When a slot with state is created and no interceptor encloses it (milestone 3 adds the enclosing case), the runtime looks the element value up; on a miss it calls the oracle (the run call's `&dyn Fn(&ElementValue) -> AnyValue`), builds a hold from the answer whose change event is a fresh external trigger, and memoises. Pushes at the start of an occurrence fire the trigger for each pushed value. The hold's value in the creation occurrence is the oracle's answer, which is the snapshot as the occurrence opened; the push arrives in the same occurrence and commits at its end, so a slot created in n ends n holding the pushed value exactly as an older slot does. An entry is dropped when the last slot with that value is torn down (a count on the entry, decremented at teardown).
 
@@ -110,20 +110,20 @@ A World, after this milestone, drives the runtime through one call with plain da
 
 ```
 pub struct Inputs<'a> {
-    pub responses: Vec<(Path, AnyValue)>,
-    pub pushes: Vec<(ElementValue, AnyValue)>,
-    pub oracle: &'a dyn Fn(&ElementValue) -> AnyValue,
+    pub responses: Vec<(Path, Value)>,
+    pub pushes: Vec<(ElementValue, Value)>,
+    pub oracle: &'a dyn Fn(&ElementValue) -> Value,
 }
 pub struct Outcome {
     pub list: Vec<(Path, ElementValue)>,
-    pub requests: Vec<(Path, AnyValue)>,
-    pub result: AnyValue,
+    pub requests: Vec<(Path, Value)>,
+    pub result: Value,
 }
 ```
 
 Inside: open (routing snapshot, reset the collector), fire the pushes and then the responses at height 0, propagate, commit, read the root list and the result, close. The first call builds the root: `Runtime::build_root<W: Widget>(&mut self, w: &W)` runs occurrence zero with no inputs; make it the same code path as `run` with empty inputs, so there is one occurrence loop and not two.
 
-*Step 7: the counter by hand, and the harness.* In `prism_runtime/src/harness/`: `Harness { runtime, snapshot: BTreeMap<ElementValue, AnyValue>, last_list }` with `turn(&mut self, responses, pushes) -> Transcript` and `set_state(&mut self, e, v)`; a `Transcript` with a `Display` that prints the list one slot per line as `path: Tag(field=value, ..)`, then `requested path: value` lines, then `result: value`, in the format the conformance chapter freezes. The harness is not yet the world core: it runs one occurrence per turn and has no `Defer`, which arrives in milestone 3. Then `harness/counter.rs`: `Button`, `Label` and `Counter` as Rust `Widget`s against the new builder, `Button` creating a `Gui.Button` slot inside a `dynamic_widget` over its label dynamic and switching its click events, `Label` the same with no response, `Counter` the five lines of the Prism counter in builder calls. This is the fixture milestone 5 has to match, so write it to look like the compiler's output would: one node per bind, a `dyn` per lifted widget application, a cyclic dynamic for the hold.
+*Step 7: the counter by hand, and the harness.* In `prism_runtime/src/harness/`: `Harness { runtime, snapshot: BTreeMap<ElementValue, AnyValue>, last_list }` with `turn(&mut self, responses, pushes) -> Transcript` and `set_state(&mut self, e, v)`; a `Transcript` with a `Display` that prints the list one slot per line as `path: Tag(field=value, ..)`, then `requested path: value` lines, then `result: value`, in the format the conformance chapter freezes. The harness is not yet the world core: it runs one occurrence per turn and has no `Defer`, which arrives in milestone 3. Then `harness/counter.rs`: `Button`, `Label` and `Counter` as Rust `Widget`s against the new builder, `Button` creating a `Ui.Button` slot inside a `dynamic_widget` over its label dynamic and switching its click events, `Label` the same with no response, `Counter` the five lines of the Prism counter in builder calls. This is the fixture milestone 5 has to match, so write it to look like the compiler's output would: one node per bind, a `dyn` per lifted widget application, a cyclic dynamic for the hold.
 
 *Step 8: delete.* `backends/`, `WidgetDelegate`, `WidgetDelegateContext`, `backend_data`, `add_public_event`, `add_public_dynamic`, the public-slot views on `WidgetNode`, `query_for_tag`, the `__rebuilt__` event, `schedule_trigger` as a public function. `Slots` becomes an `IndexMap` or goes. The tests that used the backend move to the harness, with their names re-stated as sentences.
 
@@ -133,19 +133,19 @@ Every milestone 1 test still passes. The harness drives the hand-written counter
 
 ```
 turn 0
-  0/#0/0: Gui.Button(label="Increment")
-  1/#0/0: Gui.Button(label="Decrement")
-  2/#0/0: Gui.Label(text="Count: 0")
+  0/#0/0: Ui.Button(label="Increment")
+  1/#0/0: Ui.Button(label="Decrement")
+  2/#0/0: Ui.Label(text="Count: 0")
   result: unit
-turn 1  responses: {0/#0/0: Click}
-  0/#0/0: Gui.Button(label="Increment")
-  1/#0/0: Gui.Button(label="Decrement")
-  2/#1/0: Gui.Label(text="Count: 1")
+turn 1  responses: {0/#0/0: click}
+  0/#0/0: Ui.Button(label="Increment")
+  1/#0/0: Ui.Button(label="Decrement")
+  2/#1/0: Ui.Label(text="Count: 1")
   result: unit
-turn 2  responses: {0/#0/0: Click, 1/#0/0: Click}
-  0/#0/0: Gui.Button(label="Increment")
-  1/#0/0: Gui.Button(label="Decrement")
-  2/#2/0: Gui.Label(text="Count: 0")
+turn 2  responses: {0/#0/0: click, 1/#0/0: click}
+  0/#0/0: Ui.Button(label="Increment")
+  1/#0/0: Ui.Button(label="Decrement")
+  2/#2/0: Ui.Label(text="Count: 0")
   result: unit
 ```
 
@@ -194,7 +194,7 @@ With the boundary in place the runtime can be driven from outside but not from i
 
 *Step 3: the keyed list widget.* In `widget/keyed.rs`: `Dynamic<Rc<BTreeMap<K, V>>>::keyed_widget(f: impl Fn(&K, Dynamic<V>) -> W) -> impl Widget<Output = ...>` where the output is chosen by a `Consolidate` parameter the compiler states: `Dynamic<Rc<BTreeMap<K, O>>>` for dynamic results, `Event<Rc<BTreeMap<K, O>>>` for event results (the entries that fired, in one occurrence), and `()` for unit. One child node per key, path segment `Key(k as ElementValue)`, with a per-key `Dynamic<V>` projected from the map (a `map` over the map dynamic filtered to the key, with the change event dropped when the value is unchanged, so a change to a neighbour does not reach a child). Keys that appear in occurrence n build in n, deferred to `max(height, current + 1)` like a `dyn` rebuild, and their first results are in the consolidated output in n: the consolidation is prompt, which means the consolidated dynamic or event is rebuilt at the point in n after the new children exist. Keys that disappear are torn down at commit. `DynamicWidget` is generalised at the same time: its rebuild replaces a named child rather than child index 0, and `keyed_widget` and `dynamic_widget` share the deferred-build code.
 
-*Step 4: `Defer` in the harness.* The harness grows a turn loop: run the occurrence; for every entry in `requests` whose slot's tag is `Defer`, record the path; if any, run another occurrence with `Click`-like unit responses to those paths and no pushes; repeat. A path answered twice in one turn is `HarnessError::DeferredBackwards { path }`. This is the seed of the world core and should be written to lift out: a function `turn(runtime, inputs, &mut defer_state) -> Vec<Outcome>` with no harness state in it.
+*Step 4: `Defer` in the harness.* The harness grows a turn loop: run the occurrence; for every entry in `requests` whose slot's tag is `Defer`, record the path; if any, run another occurrence with `Click`-like unit responses to those paths and no pushes; repeat. A path answered twice in one turn is an error of kind `DeferBackwards` naming the path. This is the seed of the world core and should be written to lift out: a function `turn(runtime, inputs, &mut defer_state) -> Vec<Outcome>` with no harness state in it.
 
 *Step 5: three hand-written interceptors.* In `harness/interceptors.rs`, as Rust widgets: `Forward` (a keyed list over the captured list, each entry re-creating the element with the same request event and returning its response; supplier forwards by creating the same element), `Sandbox` (holds back every `Fs.*`, answers each request with `Denied` through a `Defer`, supplies `Unavailable` for every state tag), and `Rewrite` (forwards with a path prefix on `Fs.*` elements). These are fixtures for milestone 5 as the counter was for milestone 2: the compiled `@Forward` from the GUI library must match the hand-written one's transcript.
 
@@ -212,7 +212,7 @@ All earlier tests pass. The new tests:
 - `two_child_slots_of_equal_value_share_one_supplied_widget` (count builds)
 - `a_supplied_widget_lives_until_the_last_slot_with_its_value_is_torn_down`
 - `a_slot_keeps_the_supplier_it_was_created_under_when_the_supplier_changes`
-- `a_state_tag_the_root_cannot_answer_is_an_error_in_the_creation_occurrence` (the harness's oracle has no answer for the tag; `RuntimeError::UnsuppliedState { tag, path }`)
+- `a_state_tag_the_root_cannot_answer_is_an_error_in_the_creation_occurrence` (the harness's oracle has no answer for the tag; a `RuntimeError` of kind `UnsuppliedState` with the tag and path in its report)
 - `for_builds_one_child_per_key`
 - `for_keeps_a_childs_state_across_an_insert_and_a_neighbours_removal` (each child holds a count; click one, insert before it, remove after it, click again: 2)
 - `for_consolidates_a_new_keys_result_in_the_creation_occurrence_and_the_new_child_does_not_see_itself`
@@ -263,13 +263,13 @@ The layout corpus passes. `prism dump` of the counter is this, or the frozen equ
 
 ```
 @counter: @unit [build] =
-  !increment: !Click [build] g1 = switch (dyn (map (const "Increment") \l -> element Gui.Button(label=l)))   @2:5
-  !decrement: !Click [build] g2 = switch (dyn (map (const "Decrement") \l -> element Gui.Button(label=l)))   @3:5
+  !increment: !Click [build] g1 = switch (dyn (map (const "Increment") \|l| element Ui.Button{label=l}))     @2:5
+  !decrement: !Click [build] g2 = switch (dyn (map (const "Decrement") \|l| element Ui.Button{label=l}))     @3:5
   !delta: !Int [occ] g3 = leftmost [tag (const -1) !decrement, tag (const +1) !increment]                   @4:9
   $count: $Int [build] g4 = placeholder                                                                       @5:5
   $count.hold: $Int [build] g4 = hold 0 (map2 (+ : Int) (tag $count !delta))                                  @5:5
   close $count $count.hold                                                                                    @5:5
-  _: unit [build] g5 = dyn (map (fmt "Count: ") $count) \t -> element Gui.Label(text=t)                       @6:5
+  _: unit [build] g5 = dyn (map (fmt "Count: ") $count) \|t| element Ui.Label{text=t}                         @6:5
 ```
 
 Every golden and negative golden is in and passes; the printer and parser round-trip every fixture; the four diagnostics read as the implementation chapter specifies. The crate has no dependency on `prism_runtime`.
@@ -298,7 +298,7 @@ This is where the tracks meet. The closure compiler walks the converted typed AS
 
 *Step 2: lint.* `lint.rs`: every node's type agrees with its children's; every placeholder has exactly one close; nothing samples a placeholder before its close; every capture names a free variable of the lambda; build order respects the groups; every occurrence-time expression is reachable only from a graph node's closure; no build-time binding reads an occurrence-time one. Run after every conversion and in every test. It has its own negative fixtures: hand-edited converted trees that it must reject.
 
-*Step 3: `IrWidget` and the program.* `ir/`: `Program { functions: Vec<Function>, tags: Tags, steps: Vec<Step> }`, `IrWidget { program: Rc<Program>, function: FunId, captures: Vec<AnyValue> }` implementing `PolymorphicWidget<AnyValue>`. Plain-value expressions compile to closures over an environment `Vec<AnyValue>`; occurrence-time expressions compile to the closure the corresponding graph node calls. One module, `boxing.rs`, is the only place a Rust `i64`, `f64`, `bool`, `Text` or record becomes an `AnyValue` or comes back, so the representation can change behind it later.
+*Step 3: `IrWidget` and the program.* `ir/`: `Program { functions, blocks, tags, constants }`, `IrWidget { program, block, captures, span }` implementing `PolymorphicWidget<AnyValue>`. Plain-value expressions compile to closures over an environment `Vec<AnyValue>`; occurrence-time expressions compile to the closure the corresponding graph node calls. One module, `boxing.rs`, is the only place a Rust `i64`, `f64`, `bool`, `Text` or record becomes an `AnyValue` or comes back, so the representation can change behind it later.
 
 *Step 4: the steps.* One `Step` per typed-AST node kind, each one a call into the builder: `map`, `tag`, `hold`, `leftmost`, `switch_hold`, `join`, `dynamic_widget` over a dynamic of `IrWidget`s, `keyed_widget`, `element` with the tag's kind, `intercept`, `placeholder`/`close` with the typed cyclic handles, `bind` of a nested `IrWidget`, and `started` as a `dyn` over a constant. Generic code is erased: a step whose type is a type variable moves the one-word value.
 
@@ -325,7 +325,7 @@ Heap cycles through closures. The runtime has no collector because nodes own the
 
 The build-time versus occurrence-time split. A model will compile a plain expression that mentions a dynamic as a build-time read of the dynamic's current value, which is sampling, which the language does not have. The typed AST's marks make this a lint error if the lint checks reachability (step 2's last two rules); make sure it does.
 
-Matching the hand-written counter means the hand-written counter has to be shaped like compiler output, which is why milestone 2 said to write it that way. If the transcripts differ only in generation numbers or bind positions, the hand-written one is at fault as often as the compiler.
+Matching the hand-written counter means the hand-written counter has to have the structure of compiler output, which is why milestone 2 said to write it that way. If the transcripts differ only in generation numbers or bind positions, the hand-written one is at fault as often as the compiler.
 
 ## Milestone 6: the conformance suite in full
 
@@ -337,30 +337,30 @@ Everything so far was tested from Rust. This milestone makes the specification t
 
 *Step 1: the script language.* `test name: Test @widget: array:` blocks parsed by `prism_lang` (the parser from milestone 4 already accepts them) with the steps `Expect`, `ExpectTop`, `ExpectNone`, `ExpectCount`, `Send`, `Together`, `State`, `Push`, `Returns`, `Fired`, `Quiet`, `Requested`, `Errors`. Patterns are element patterns: a tag with named fields and `..`, or `Ns.*(..)`; a value in a pattern is compared structurally. `prism test foo.prism` runs every test block in the file.
 
-*Step 2: the Test World.* In the worlds crate from milestone 7's core half: `TestWorld` is the world core plus one component, `Script`, that accepts every tag. Its oracle answers from the `State` steps and fails the slot's creation with the unsupplied-state error if a state element has no `State` and its tag declares no default; its responses are the `Send`s; it records request firings, results and errors for `Requested`, `Fired`, `Quiet` and `Errors`. Depth: `Expect` and `Send` reach into containers by the GUI library's convention (a `children` field holding the keyed element list; a `Gui.Children(envelopes=…)` response to route inward), and the Test World knows the convention because the library is part of the suite.
+*Step 2: the Test World.* In the worlds crate from milestone 7's core half: `TestWorld` is the world core plus one component, `Script`, that accepts every tag. Its oracle answers from the `State` steps and fails the slot's creation with the unsupplied-state error if a state element has no `State` and its tag declares no default; its responses are the `Send`s; it records request firings, results and errors for `Requested`, `Fired`, `Quiet` and `Errors`. Depth: `Expect` and `Send` reach into containers by the GUI library's convention (a `children` field holding the keyed element list; a `ChildInput(path, response)` response to route inward), and the Test World knows the convention because the library is part of the suite.
 
 *Step 3: the transcript.* The printer moves from the harness to the world core, prints a turn as its occurrences (each with its inputs, list, request firings and result, and an error if any), and the format is frozen in `transcript.md` beside it with one example per feature. `prism test --transcript` prints it; the suite stores one per test and diffs. Nothing after this milestone changes the format without changing the file and every stored transcript.
 
 *Step 4: the law tests.* One short Prism program and script per sentence the conformance chapter lists: leftmost merge; the tag law; a hold's initial value and adoption in the build occurrence; derived dynamics prompt and at most once; `dyn` firing in its build occurrence and every rebuild; `!Switch` non-prompt including the swallowed creation-occurrence firing; `$Join` prompt on both changes; the mid-occurrence construction rule including a nested `dyn` over a dynamic that changed in the same occurrence building once with the new value; `for` consolidation per result kind, state kept across an insert and a neighbour's removal, a new key's result seen in the creation occurrence; the creation rule and `@started`; routing against the opened list; unknown path is an error; a state element's creation-occurrence value, a push reaching a new slot, two equal slots agreeing; the forwarding identity; the sandbox supplying `Unavailable`; a supplied widget's elements in the interceptor's list; two equal child slots sharing one supplied widget; `Defer` later in the turn, backwards is an error, two `Defer`s are three occurrences. Each file is named after its sentence.
 
-*Step 5: the programs.* The twelve integration programs brought to the current syntax (numbers by inference, `tag` declarations for the `Gui` set, `Click` as a unit type, the `intercept` signature with its three arguments) and three more: `@started` kicking a request answered in a later turn; a `dyn` child whose creation-occurrence output is swallowed at the boundary; a `for` whose parent sees a new key's output in the creation occurrence. Each with its transcript stored.
+*Step 5: the programs.* The twelve integration programs brought to the current syntax (numbers by inference, `tag` declarations for the `Ui` set, `Click` as a unit type, the `intercept` signature with its three arguments) and three more: `@started` kicking a request answered in a later turn; a `dyn` child whose creation-occurrence output is swallowed at the boundary; a `for` whose parent sees a new key's output in the creation occurrence. Each with its transcript stored.
 
 *Step 6: the GUI library in Prism.* `lib/gui.prism` as the suite's library: the tag declarations
 
 ```prism
-tag Gui.Label of Element:
+tag Ui.Label of Element:
     text: Text
 
-tag Gui.Button of Element:
+tag Ui.Button of Element:
     label: Text
     responds: Click
 
-tag Gui.VBox of Element:
+tag Ui.VBox of Element:
     children: Path ==> Element
-    responds: Gui.ChildInput
+    responds: ChildInput
 ```
 
-and `@Button`, `@Label`, `@VBox`, `@Forward`, `@HBox`, with `@VBox` as the interceptor of the elements chapter: capture the children's list, re-emit the `Gui.*` ones inside one `Gui.VBox` element, forward the rest unchanged, route `Gui.ChildInput(path, response)` inward. This is the library the GUI Worlds of milestone 10 run, and it is written now, under a World with no screen, so that layout and routing are tested before any pixel exists.
+and `@Button`, `@Label`, `@VBox`, `@Forward`, `@HBox`, with `@VBox` as the interceptor of the elements chapter: capture the children's list, re-emit the `Ui.*` ones inside one `Ui.VBox` element, forward the rest unchanged, route `ChildInput(path, response)` inward. This is the library the GUI Worlds of milestone 10 run, and it is written now, under a World with no screen, so that layout and routing are tested before any pixel exists.
 
 ### Done
 
@@ -402,9 +402,9 @@ Tests, with a fake component: `a_turn_is_the_occurrences_before_the_world_acts`;
 A crate `prism_cli` with a binary `prism`:
 
 - The loop: a `std::sync::mpsc` queue of inputs; the main thread blocks on it, runs one turn per input, performs the turn's requests, and repeats. Reader threads (stdin, signals, file IO, timers, sockets) push inputs; `tokio` is not needed for this and should not be pulled in until a component needs it.
-- Components, with the kinds the language fixes and the names from the Worlds chapter: `Cli.Args` and `Cli.Env` (state, constant after start); `Cli.Stdin` (responds with `Chunk Text` then `Eof`; read only while a slot exists); `Cli.Stdout` and `Cli.Stderr` (requests, written after the turn in occurrence order then list order, then flushed; `WriteFailed` as a response); `Cli.Exit` (`requests: !Code`; ends the run after the turn's writes); `Cli.Signals` (responds; with no slot, OS defaults); `Fs.File` (requests, responds), `Fs.Contents` (state, stat-and-reread, or a watch where one exists); `Time.After` (requests, responds), `Time.Every` (responds), `Clock` (state, pushed once per turn at most); `Net.Socket` (requests `!Bytes`, responds `Received Bytes | Closed`, state `Connecting | Connected | Disconnected Reason`), which milestone 10's X11 proof needs; `Defer` from the core.
-- Exit: on `Cli.Exit`'s request, after the turn; and with code 0 when nothing can cause another occurrence (no stdin slot or its `Eof` delivered, no request outstanding, no stream slot that can fire); subscriptions to args and env do not keep a program alive. This is a consequence of the graph having no sources left, and the test for it is a program that prints and falls off the end.
-- Golden transcripts: program, args, env and stdin in; stdout, stderr and exit code out, run against the real binary: the line counter on empty input, one line, many lines, lines split across chunks; falling off the end; a computed nonzero exit code; two `Cli.Stdout` slots firing in one occurrence and stdout interleaved with stderr across turns; args and env; a file read with `@started` before stdin is built inside a `dyn`; a `Gui.Button` at the root getting `Unsupported`; SIGINT with and without a `Cli.Signals` slot. Timers are faked through the Test World, so no golden depends on the clock.
+- Components, with the kinds the language fixes and the names from the Worlds chapter: `Process.Args` and `Process.Env` (state, constant after start); `Cli.Stdin` (responds with `Chunk Text` then `Eof`; read only while a slot exists); `Cli.Stdout` and `Cli.Stderr` (requests, written after the turn in occurrence order then list order, then flushed; `WriteFailed` as a response); `Process.Exit` (`requests: !Code`; ends the run after the turn's writes); `Cli.Signals` (responds; with no slot, OS defaults); `Fs.File` (requests, responds), `Fs.Contents` (state, stat-and-reread, or a watch where one exists); `Time.After` (requests, responds), `Time.Every` (responds), `Clock` (state, pushed once per turn at most); `Net.Socket` (requests `!Bytes`, responds `Received Bytes | Closed`, state `Connecting | Connected | Disconnected Reason`), which milestone 10's X11 proof needs; `Defer` from the core.
+- Exit: on `Process.Exit`'s request, after the turn; and with code 0 when nothing can cause another occurrence (no stdin slot or its `Eof` delivered, no request outstanding, no stream slot that can fire); subscriptions to args and env do not keep a program alive. This is a consequence of the graph having no sources left, and the test for it is a program that prints and falls off the end.
+- Golden transcripts: program, args, env and stdin in; stdout, stderr and exit code out, run against the real binary: the line counter on empty input, one line, many lines, lines split across chunks; falling off the end; a computed nonzero exit code; two `Cli.Stdout` slots firing in one occurrence and stdout interleaved with stderr across turns; args and env; a file read with `@started` before stdin is built inside a `dyn`; a `Ui.Button` at the root getting `Unsupported`; SIGINT with and without a `Cli.Signals` slot. Timers are faked through the Test World, so no golden depends on the clock.
 
 ### Done
 
@@ -454,7 +454,7 @@ The Haskell runtime is Reflex plus a thin layer that gives it slots and the run 
 
 ### The work
 
-- `Prism.Eval`: `PrismM t` as `ReaderT Env (DynamicWriterT t [Slot] (PerformEventT ... (SpiderHost)))` or the equivalent, with the correspondence table from the Haskell chapter as the implementation: `!A` is `Event t A`; `$A` is `Dynamic t A` with `current` used only where the typed AST says `tag`; `|` is `leftmost`; `v on !e` is `tag (current v) e`; hold is `holdDyn`; `dyn` is `dyn (f <$> x)`; `!Switch` is `switchHold never`; `$Join` is `join`; `for` is `listWithKey`; `@started` is a `dyn` over a constant and never `getPostBuild`; the element list is the writer; `intercept` runs the child's writer and passes the supplier and the outer `tell` down in the reader; state supply runs the supplied widget in the outer context at slot creation, memoised per interceptor by element value; the run call is `runSpiderHost` with `fireEventsAndRead` over trigger refs from `newEventWithTriggerRef`.
+- `Prism.Eval`: `PrismM t` as `ReaderT Env (DynamicWriterT t [Slot] (PerformEventT ... (SpiderHost)))` (the transformer names from memory) or the equivalent, with the correspondence table from the Haskell chapter as the implementation: `!A` is `Event t A`; `$A` is `Dynamic t A` with `current` used only where the typed AST says `tag`; `|` is `leftmost`; `v on !e` is `tag (current v) e`; hold is `holdDyn`; `dyn` is `dyn (f <$> x)`; `!Switch` is `switchHold never`; `$Join` is `join`; `for` is `listWithKey`; `@started` is a `dyn` over a constant and never `getPostBuild`; the element list is the writer; `intercept` runs the child's writer and passes the supplier and the outer `tell` down in the reader; state supply runs the supplied widget in the outer context at slot creation, memoised per interceptor by element value; the run call is `runSpiderHost` with `fireEventsAndRead` over trigger refs from `newEventWithTriggerRef` (both names from memory).
 - `Prism.World`: the world core in Haskell, a few hundred lines: turn loop, `Defer`, snapshot, slot tracking, `Unsupported`, the transcript printer in the frozen format.
 - `Prism.World.Test`: the Test World over the script language, parsed by `Prism.Parse`.
 - `prism-hs test foo.prism`, and `tools/diff-transcripts.sh` over the whole suite.
@@ -511,7 +511,7 @@ A `Text.Measure` is state because a layout needs the width of a string in the oc
 
 ### The software rasteriser World
 
-A crate `prism_gui_soft`: `winit` for the window and input, `softbuffer` for the pixels, a small rasteriser for rects and clipped text with a bitmap or `fontdue` font for `Text.Measure`. Components: `Gui.Window`, `Gui.Draw` (after each turn, the draw lists in list order are rasterised into the buffer and presented), `Gui.Focusable` (pointer and key events from `winit`, routed to the region under the pointer or the focused region; a turn per event), `Gui.Frame` (a turn per frame while a slot exists), `Text.Measure`, plus the CLI World's general components. Which drawing backend is used has no language consequence; `softbuffer` is chosen because it has no GPU dependency and its output can be screenshotted into a golden PNG in a test.
+A crate `prism_gui_soft`: `winit` for the window and input, `softbuffer` for the pixels, a small rasteriser for rects and clipped text with a bitmap or `fontdue` font for `Text.Measure`. Components: `Gui.Window`, `Gui.Draw` (after each turn, the draw lists in list order are rasterised into the buffer and presented), `Gui.Focusable` (pointer and key events from `winit`, routed to the region under the pointer or the focused region; a turn per event), `Gui.Frame` (a turn per frame while a slot exists), `Text.Measure`, plus the CLI World's general components. Which drawing backend is used has no language consequence; `softbuffer` is chosen because it has no GPU dependency and its output can be screenshotted into a golden PNG in a test (from memory).
 
 ### The reflex-dom World
 
@@ -519,11 +519,11 @@ In `prism-hs`: the same tags rendered to the DOM. `Gui.Draw` becomes absolutely 
 
 ### The X11-over-sockets proof
 
-A Prism program, under the CLI World, with no GUI World at all. `lib/x11.prism` is an interceptor `@X11` over the GUI vocabulary: it opens a `Net.Socket` to the X server, speaks the X11 wire protocol (connection setup, `CreateWindow`, `MapWindow`, `PolyFillRectangle`, `ImageText8`, event reads for `ButtonPress`, `KeyPress`, `Expose`, `ConfigureNotify`), turns its children's `Gui.Draw` lists into request bytes on the socket's `!request` event, and turns `Received` bytes into `Pointer` and `Key` responses routed to its children's `Gui.Focusable` slots. Text measurement uses a fixed-width font so that `Text.Measure` is pure. The counter runs on an X display with the CLI World as the only host code, and the CLI World knows nothing about windows.
+A Prism program, under the CLI World, with no GUI World at all. `lib/x11.prism` is an interceptor `@X11` over the GUI vocabulary: it opens a `Net.Socket` to the X server, speaks the X11 wire protocol (connection setup, `CreateWindow`, `MapWindow`, `PolyFillRectangle`, `ImageText8`, event reads for `ButtonPress`, `KeyPress`, `Expose`, `ConfigureNotify`; request and event names from memory), turns its children's `Gui.Draw` lists into request bytes on the socket's `!request` event, and turns `Received` bytes into `Pointer` and `Key` responses routed to its children's `Gui.Focusable` slots. Text measurement uses a fixed-width font so that `Text.Measure` is pure. The counter runs on an X display with the CLI World as the only host code, and the CLI World knows nothing about windows.
 
 ### Done
 
-The counter and a text input, from the same `lib/gui.prism`, run on a screen under each of the three, and the library's layout, hit-testing and focus tests pass under the Test World. For the software rasteriser: a golden PNG of the counter after two clicks, compared pixel for pixel. For reflex-dom: a headless-browser test that clicks the button and reads the label. For X11: run under `Xvfb`, take a screenshot with `xwd`, compare to the golden; and the transcript of the `Net.Socket` requests for the first three turns is stored and diffed, which pins the protocol bytes without a display.
+The counter and a text input, from the same `lib/gui.prism`, run on a screen under each of the three, and the library's layout, hit-testing and focus tests pass under the Test World. For the software rasteriser: a golden PNG of the counter after two clicks, compared pixel for pixel. For reflex-dom: a headless-browser test that clicks the button and reads the label. For X11: run under `Xvfb`, take a screenshot with `xwd` (both from memory), compare to the golden; and the transcript of the `Net.Socket` requests for the first three turns is stored and diffed, which pins the protocol bytes without a display.
 
 ### What it proves
 
@@ -541,7 +541,7 @@ The X11 interceptor is a few thousand lines of Prism and will find holes in the 
 
 **Waits on** milestone 3. It can be slotted anywhere after; it is last here because nothing above needs it, and the Test World's `Errors` step is the only thing in the suite that reads it.
 
-The transaction from milestone 1 already makes an occurrence abortable. This milestone decides what the World is told, adds the one containment that is clearly right, and gives the Test World its `Errors` step.
+The transaction from milestone 1 already makes an occurrence abortable. This milestone decides what the World is told, adds the construction-abort, and gives the Test World its `Errors` step.
 
 ### The work
 

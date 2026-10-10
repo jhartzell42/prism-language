@@ -34,9 +34,9 @@ tag Ui.Focusable of Element:
 
 A dynamic where a field goes lifts the element into a `dyn`, a fresh slot per change, and a bound event is the `!Switch` over the generations; a bound state is a hold of dynamics joined with `$Join`, starting from the first build's value. The chapter uses that shorthand throughout and spells the `dyn` out only where the generations matter to the walkthrough.
 
-The prelude of plain functions from the worked examples is assumed (`!Filter`, `!Union`, `!Leftmost`, `Insert`, `Remove`, `Fold`, `MapValues`, `Keys`, `Values`, `Concat`, `Eq`, `Lt`, `Len`, and the rest), plus two that this chapter leans on: `!Updated: fn $a -> !a`, the change event of a dynamic, firing with the new value in every occurrence the dynamic changes and never at build; and `$Distinct: fn $a -> $a`, which suppresses a change to an equal value, since derived dynamics and holds never do that on their own. Every other function a program uses is defined before its first use, or is so plainly a pure function of its arguments (`Mid`, `Pid`, `Render`) that its body would say nothing about time.
+The prelude of plain functions from the worked examples is assumed (`!Filter`, `!Union`, `!Leftmost`, `Insert`, `Remove`, `Fold`, `MapValues`, `Keys`, `Values`, `Concat`, `Len`, and the rest; comparisons are the infix operators `lt`, `le`, `gt`, `ge`, `==` and `!=`), plus two that this chapter leans on: `!Updated: fn $a -> !a`, the change event of a dynamic, firing with the new value in every occurrence the dynamic changes and never at build; and `$Distinct: fn $a -> $a`, which suppresses a change to an equal value, since derived dynamics and holds never do that on their own. Every other function a program uses is defined before its first use, or is so plainly a pure function of its arguments (`Mid`, `Pid`, `Render`) that its body would say nothing about time.
 
-One rule from the worked examples is worth restating because every deep dive below hits it: an operation over one event and any number of dynamics fires with the event and reads each dynamic through a tag, as it stood before the occurrence; an operation over two events is a compile error. When a program wants two things that can land together to both count, it says so, with `!Union` over maps or with one event of a record, and the walkthroughs below are mostly about moments where that choice is the whole bug.
+Every deep dive below hits one rule from the worked examples: an operation over one event and any number of dynamics fires with the event and reads each dynamic through a tag, as it stood before the occurrence; an operation over two events is a compile error. When a program wants two things that can land together to both count, it says so, with `!Union` over maps or with one event of a record, and the walkthroughs below are mostly about moments where that choice is the whole bug.
 ## 1. A text editor
 
 You have used an editor that lost an undo step because the file changed on disk at the wrong moment, and one that marked a buffer clean after a save that had not finished, and one that asked "reload from disk?" about a change it had made itself. Every one of those is a state with more than one writer and no rule about which write wins. An editor is a good first deep dive because it has exactly the states a GUI framework claims to handle for you (the text, the cursor, the undo stack, the dirty flag, the search) and exactly the outside events that it does not (a file changing under you, a save completing), and because the hard moment is where the two meet.
@@ -124,7 +124,7 @@ let ContentsOf: fn FsResponse -> ?Text = \|r| match r:
     ignore: Nil
 
 let Unless: fn (Text, Text) -> ?Text = \|saved, t|
-    if (Eq saved, t): Nil else: Some t
+    if saved == t: Nil else: Some t
 
 let Title: fn (Text, Bool) -> Text = \|path, dirty|
     if dirty: Concat [path, " *"] else: path
@@ -156,9 +156,9 @@ let Title: fn (Text, Bool) -> Text = \|path, dirty|
     @ !close
 ```
 
-Read the holds first, because they are the whole specification of what can happen to a buffer. `$hist` moves on `!cmd` and nothing else, and `!cmd` is a merge whose order is the program's answer to every "what if two of these land together": a reload beats an undo, an undo beats a redo, a search beats a keystroke. `$saved` is the text the buffer last knows to be on disk: what it wrote, or what it loaded. `$dirty` is set by a keystroke and cleared by a save or a reload, and the merge there is worth a second look: a keystroke and a save in one occurrence leave the buffer dirty, which is right, because `Write $doc.text on !save` wrote the text *before* the keystroke by the tag law, and the document after the occurrence has one more character than the disk.
+The holds are the whole specification of what can happen to a buffer. `$hist` moves on `!cmd` and nothing else, and `!cmd` is a merge whose order is the program's answer to every "what if two of these land together": a reload beats an undo, an undo beats a redo, a search beats a keystroke. `$saved` is the text the buffer last knows to be on disk: what it wrote, or what it loaded. `$dirty` is set by a keystroke and cleared by a save or a reload, and the merge there matters: a keystroke and a save in one occurrence leave the buffer dirty, which is right, because `Write $doc.text on !save` wrote the text *before* the keystroke by the tag law, and the document after the occurrence has one more character than the disk.
 
-`!io` is the only way the buffer talks to the file, and it has three sources. `@started` reads the file once when the buffer is built; a change of the stamp reads it again; a click on Save writes it. The read on `@started` and the read on the first stamp push may both happen in a program's first few occurrences (the World answers the oracle `Missing` for a file it has not looked at, looks, and pushes `Modified`), so a freshly opened buffer is sometimes read twice. That costs a read and nothing else; the second `Contents` equals the first and `Unless` drops it, since the first set `$saved`.
+`!io` is the only way the buffer talks to the file, and it has three sources. `@started` reads the file once when the buffer is built; a change of the stamp reads it again; a click on Save writes it. The watcher's value at creation comes from a real stat, so `@started` reads the file once and the stamp's first push is a real change.
 
 `Unless` is the line that stops the editor asking about its own saves. A `Write` lands on disk; the watcher pushes a new stamp; the buffer reads; the contents come back equal to `$saved`; the reload is dropped. A change by another program comes back different and is applied. There is no "ignore the next watch event" flag, which is the fix you have written and the fix that has a race in it, because the next event is not always yours. Comparing contents is the test that cannot be wrong about whose change it is.
 
@@ -211,11 +211,11 @@ Simultaneity defined by the program: occurrence 11 is the whole of this section,
 
 The language is enough: the undo stack, the dirty flag, the echo suppression and the search are plain data and plain functions; the only things native are the focusable region, the file and the watcher.
 
-The spec is the thing: the Test World runs this editor with `State Fs.Watch(path="notes.txt"), Modified (Instant 7000)` and `Send Fs.File(path="notes.txt"), Contents "v2"` inside a `Together` with the Undo click, and the test for occurrence 11 is four lines that a second implementation must agree with.
+The spec is the thing: the Test World runs this editor with `Push Fs.Watch(path="notes.txt"), Modified (Instant 7000)` and `Send Fs.File(path="notes.txt"), Contents "v2"` inside a `Together` with the Undo click, and the test for occurrence 11 is four lines that a second implementation must agree with.
 
 ### Where it is awkward
 
-The text is a `Text`, a plain value, and `Apply` builds a new one per keystroke. For a file of a few thousand lines that is a copy per keystroke and nobody notices; for a hundred-megabyte log it is the whole problem. The answer is a rope or a piece table, which is a plain data structure the prelude can provide and `Apply` can be written over, with no change to anything that has time in it. Until there is an `update` block (future work), writing that structure in Prism is the same functional-update ceremony as in any pure language, and the recommendation is that the rope is native code the program calls, like text shaping.
+The text is a `Text`, a plain value, and `Apply` builds a new one per keystroke. For a file of a few thousand lines that is a copy per keystroke and nobody notices; for a hundred-megabyte log it is the whole problem. The answer is a rope or a piece table, which is a plain data structure the prelude can provide and `Apply` can be written over, with no change to anything that has time in it. Until there is an `update` block (future work), writing that structure in Prism is the same functional-update ceremony as in any pure language, and the rope is native code the program calls, like text shaping.
 
 Search is a derived dynamic over the whole text and the whole query, recomputed on every change of either. That is right for a query box and wrong for a hundred-megabyte log, and the fix is the same: an index that is a plain value, updated incrementally by a plain function, with the derived dynamic reading the index. Nothing about occurrences changes.
 
@@ -289,7 +289,7 @@ tag Om.Order of Element:
     responds: OrderEvent
 ```
 
-`Md.Book` is supplied either natively, by a World with a book builder next to the exchange socket, or by the `@BookBuilder` interceptor of the Worlds chapter, which holds `Md.Feed` increments, asks `Md.Snapshot` from `@started` and again on a gap, folds the exchange's own recovery procedure into a `BookState`, and supplies that hold to every `Md.Book(symbol)` slot beneath it. The strategy below cannot tell which it is under, and that is the substitutability test from the other direction. What it can tell, because the type makes it say so, is whether the book is `Live`; a strategy with no arm for `Resyncing` does not compile.
+`Md.Book` is supplied either natively, by a World with a book builder next to the exchange socket, or by the `@BookBuilder` interceptor of the Worlds chapter, which holds `Md.Feed` increments, asks `Md.Snapshot` from `@started` and again on a gap, folds the exchange's own recovery procedure into a `BookState`, and supplies that hold to every `Md.Book(symbol)` slot beneath it. The strategy below cannot tell which it is under, and that is the substitutability test from the other direction. It can tell whether the book is `Live`, because the type makes it say so; a strategy with no arm for `Resyncing` does not compile.
 
 ### The structure
 
@@ -338,12 +338,12 @@ let Step: fn (Strategy, Params, Nat ==> Msg) -> (Strategy, [Action]) = \|s, para
         let !place = Submit $_ on !started
         let !pull = Cancel on !Filter (PullOf (key, !actions))
         !ev <- @Element Om.Order(id=key, requests=(!place | !pull))
-        @ ev
+        @ !ev
 
     @ $state.position
 ```
 
-Four things to read. `!msgs` is a `!Union` of two one-entry maps, so a book change and a batch of order events in one occurrence make one firing with both entries, folded in key order: book first, then order events, then `Reconcile`. Had it been `(BookChanged (!Updated $book)) | (OrderEvents !events)`, a fill landing with a book update would be lost, and the position would be wrong for the rest of the session; the compiler does not catch that, but it does refuse `Step $state, params, (!Updated $book), !events`, two events in one operation, and the refusal is what makes you write the map.
+`!msgs` is a `!Union` of two one-entry maps, so a book change and a batch of order events in one occurrence make one firing with both entries, folded in key order: book first, then order events, then `Reconcile`. Had it been `(BookChanged (!Updated $book)) | (OrderEvents !events)`, a fill landing with a book update would be lost, and the position would be wrong for the rest of the session; the compiler does not catch that, but it does refuse `Step $state, params, (!Updated $book), !events`, two events in one operation, and the refusal is what makes you write the map.
 
 `!stepped` is one event whose value is a pair, and the hold and the actions are its two halves. The alternative, a hold for the state and a separate lifted call for the actions, would read the state twice through tags and could not see the fold's result in the same occurrence. One expression, used twice: there is no "after" inside an occurrence.
 
@@ -374,7 +374,7 @@ The book is `Live` at sequence 1041. The strategy has one working bid, id 7, for
 
 and sends both, each stamped with the sequence it was decided on.
 
-**Occurrence 21.** `Acked` to `2/[8]/2` and `Acked` to `2/[9]/2`. `ApplyMsg` leaves the state alone; `Reconcile` finds desired and working equal and returns no actions. `!stepped` fires, the hold changes to an equal value, `$state.working` changes to an equal map, the `for` rebuilds nothing because no key appeared or vanished. The position is 100, from occurrence 20, and nothing was ever 100 with order 7 still working.
+**Occurrence 21.** `Acked` to `1/[8]/1` and `Acked` to `1/[9]/1`. `ApplyMsg` leaves the state alone; `Reconcile` finds desired and working equal and returns no actions. `!stepped` fires, the hold changes to an equal value, `$state.working` changes to an equal map, the `for` rebuilds nothing because no key appeared or vanished. The position is 100, from occurrence 20, and nothing was ever 100 with order 7 still working.
 
 Now suppose the World had delivered the fill and the book update as two occurrences, fill first. In 20 the fill removes 7, position goes to 100, `Reconcile` places replacements on the 1041 book. In 21 the book moves to 1042, `Reconcile` finds the working bid one tick off from desired, returns `[Pull 8, Place (10, ..)]`, and block `[8]`'s `!pull` fires `Cancel` while block `[10]` is born. One more cancel than before, on a book the program fully applied. The program did not depend on the batching; the World's policy decided how many occurrences the instant took and the program's text said what each one meant. A test under the Test World writes both orders, `Together` and not, and the second implementation must agree on each.
 
@@ -392,10 +392,10 @@ The spec is the thing: the entire session is a transcript of pushes and response
 
 ### Latency, as an implementation question
 
-The specification does not claim a latency, and here is what the Rust runtime as described costs. An occurrence is one synchronous run call: fire the inputs, propagate by height through a height-ordered action map, commit the holds, rebuild the element list, return. Values are boxed except small integers; the state record is cloned on every step (a persistent map inside it makes that cheap, a plain array does not); the element list is recomputed in full after each occurrence in the first implementation; and before any of that, the feed's bytes crossed from the socket thread to the World's loop through a queue. For a graph the size of the one above that is microseconds to tens of microseconds per increment on ordinary hardware, which is three orders of magnitude slower than a tuned kernel-bypass loop and one or two orders faster than it needs to be for a strategy that thinks in milliseconds. Every increment is its own occurrence, because increments are responses and responses to one slot never share an occurrence; a World that offers the book as native state instead coalesces, and a strategy that reads `Md.Book` gets one occurrence per batch the World chose. The knobs that would move the number are all in the implementation chapters and none in the language: values representation, an incremental element list, arena allocation per node, a runtime per symbol on its own thread. A system whose whole budget is five microseconds from packet to wire is not this program; it is a loop in C++ that this program supervises, through a state element for the loop's status and a request element for its parameters, with the strategy's decisions taken out of the hot path on purpose.
+The specification does not claim a latency, and here is what the Rust runtime as described costs. An occurrence is one synchronous run call: fire the inputs, propagate by height through a height-ordered action map, commit the holds, rebuild the element list, return. Values are boxed except small integers; the state record is cloned on every step (a persistent map inside it makes that cheap, a plain array does not); the element list is recomputed in full after each occurrence in the first implementation; and before any of that, the feed's bytes crossed from the socket thread to the World's loop through a queue. For a graph the size of the one above that is on the order of microseconds to tens of microseconds per increment on ordinary hardware, which is three orders of magnitude slower than a tuned kernel-bypass loop and one or two orders faster than it needs to be for a strategy that thinks in milliseconds (an estimate, not a measurement; the runtime chapter's measurements replace it). Every increment is its own occurrence, because increments are responses and responses to one slot never share an occurrence; a World that offers the book as native state instead coalesces, and a strategy that reads `Md.Book` gets one occurrence per batch the World chose. The knobs that would move the number are all in the implementation chapters and none in the language: values representation, an incremental element list, arena allocation per node, a runtime per symbol on its own thread. A system whose whole budget is five microseconds from packet to wire is not this program; it is a loop in C++ that this program supervises, through a state element for the loop's status and a request element for its parameters, with the strategy's decisions taken out of the hot path on purpose.
 ## 3. A control loop
 
-A controller is the oldest reactive program there is: read the sensors, compute, drive the actuators, wait for the next tick. The synchronous languages (Esterel, Lustre, Lucid Synchrone) were built for exactly this and got the law right thirty years ago: an instant is atomic, every signal has one value per instant, and `pre` is the only way to see the previous one. Prism has the same law with a different clock: the tick is an occurrence the World opens, `pre` is the tag law, and the controller is a hold whose change event is the control law applied on the tick. What Prism adds is that the structure can change while the loop runs, and what it owes the synchronous tradition is honesty about timing, which the last part of this section pays.
+A controller is the oldest reactive program there is: read the sensors, compute, drive the actuators, wait for the next tick. The synchronous languages (Esterel, Lustre, Lucid Synchrone) were built for exactly this and got the law right decades ago: an instant is atomic, every signal has one value per instant, and `pre` is the only way to see the previous one. Prism has the same law with a different clock: the tick is an occurrence the World opens, `pre` is the tag law, and the controller is a hold whose change event is the control law applied on the tick. Prism adds that the structure can change while the loop runs, and it owes the synchronous tradition a plain statement about timing, which the last part of this section gives.
 
 ### The vocabulary
 
@@ -496,7 +496,7 @@ let Unless: fn (Bool, Float) -> ?Float = \|stopped, t| if stopped: Nil else: Som
 
 ### The synchronous view
 
-Here is the Lustre you would write for the integral term, with `inc` the increment computed on the same clock, and the Prism beside it:
+Here is the Lustre you would write for the integral term (Lustre syntax from memory), with `inc` the increment computed on the same clock, and the Prism beside it:
 
 ```
 integral = 0.0 -> pre integral + inc
@@ -504,7 +504,7 @@ integral = 0.0 -> pre integral + inc
 $integral <- 0.0 <= $integral +. !inc
 ```
 
-`->` is the hold's initial value; `pre` is the tag; the clock on which the equation runs is the event the hold's change is lifted over. A Lustre node is a widget; a Lustre program's static causality analysis, which rejects `x = x + 1` with no `pre`, is the static cycle check, which rejects a hold whose change event reads the hold promptly. The two are the same model with two differences.
+`->` is the hold's initial value; `pre` is the tag; the clock on which the equation runs is the event the hold's change is lifted over. A Lustre node is a widget; a Lustre program's static causality analysis, which rejects `x = x + 1` with no `pre` (from memory), is the static cycle check, which rejects a hold whose change event reads the hold promptly. The two are the same model with two differences.
 
 The first is the clock. In Lustre the base clock is the program's and every instant is a tick. In Prism an occurrence is whatever the World opened, and a push with no tick, say the stop being asserted between ticks, is an instant in which `on !tick` expressions are silent and everything else runs. That is why `!halt` is derived from `!Updated $stop` rather than from reading `$stop` on the tick: the stop acts in the occurrence it arrives, tick or no tick, and under a World that gives it its own turn the motors get their zero before the next sample. A synchronous program would have to poll the stop on its clock and wait up to a period.
 
@@ -554,7 +554,7 @@ Prism promises nothing about *when* an occurrence runs. The tick is a `Time.Ever
 
 A World skips missed ticks rather than delivering them late, which is the right policy for a controller and the wrong one for a program counting ticks; such a program counts the clock instead.
 
-Estimation is a computation. A Kalman filter over a six-by-six covariance is a plain function called on the tick, and writing it in Prism means writing matrix code in a language with no mutable arrays and no `update` block yet; the recommendation is that it is native code the prelude exposes, like text shaping, and the Prism program is the thing that decides when to call it and what to do with the result.
+Estimation is a computation. A Kalman filter over a six-by-six covariance is a plain function called on the tick, and writing it in Prism means writing matrix code in a language with no mutable arrays and no `update` block yet; it is native code the prelude exposes, like text shaping, and the Prism program decides when to call it and what to do with the result.
 
 And the innermost loop is not here. A motor driver's current loop at twenty kilohertz, with a deadline measured in microseconds, lives in firmware, and `Actuator.Motor` is the interface to it: the Prism program sets a torque target at a hundred hertz and the driver closes the fast loop itself. The synchronous-language view is the whole justification for Prism in this domain, and the synchronous languages themselves were never used for the fastest loop either; they were used for the layer that decides.
 ## 4. A chat server
@@ -627,7 +627,7 @@ type Model = record:
 
 # Apply every command that landed in this occurrence, in key order, and say what
 # each connection should be sent as a result. One function, one result, no "after".
-let StepAndRoute: fn (Model, Nat ==> [Cmd]) -> (Model, Nat ==> [Text]) = ...
+let StepAndRoute: fn (Model, Nat ==> [Cmd]) -> (Model, Nat ==> [Text], Text ==> [Text]) = ...
 
 let Presence: fn Model -> Text ==> [Text] = \|m|
     MapValues m.rooms, \|members| Sorted (Names m.nicks, members)
@@ -638,7 +638,7 @@ let Presence: fn Model -> Text ==> [Text] = \|m|
 The widget around it:
 
 ```prism
-let IdOf: fn Accepted -> Nat = \|a| a.value
+let IdOf: fn Accepted -> Nat = \|a| match a: Accepted n: n
 
 let TextOf: fn SocketEvent -> ?Text = \|ev| match ev:
     Received t: Some t
@@ -668,6 +668,7 @@ let HasLeave: fn [Cmd] -> Bool = ...
     let !stepped = StepAndRoute $model, !cmds
     $model <- Model {}, {}, {} <= First !stepped
     let !owed = Second !stepped
+    let !said = Third !stepped
 
     let !closes = MapValues (Filter (!cmds, HasLeave)), \|ignore| Shut
     $conns <- {} <= ApplyDeltas ($conns, !Union (!opens, !closes))
@@ -693,11 +694,11 @@ A room's history is a state element per room, and an append is a request per lin
 ```prism
     $histories <- for $model.rooms:
         $h <- @Element Store.Value(key=(Concat ["room:", key]))
-        !put <- @Element Store.Append(key=(Concat ["room:", key]), requests=!Filter (!said[key]))
+        @Element Store.Append(key=(Concat ["room:", key]), requests=(!Filter (!said[key])))
         @ $h
 ```
 
-`for $model.rooms` is keyed by room name, so a room's history slot and append slot live as long as the room has members and go when it empties; `!said` is a second output of `StepAndRoute` (make its result a triple), the lines to persist per room. `$histories` is `$(Text ==> Stored)`, with a value in the occurrence each room appears, from the oracle, which is `Absent` until the World has loaded the key and `Present` after; a join that wants to send the last twenty lines reads `$histories` through a tag in `StepAndRoute` and gets what was known as the occurrence opened. A `Failed` from the append is a response the block can hold and retry behind a `Time.After`, and the retry policy is the block's text.
+`for $model.rooms` is keyed by room name, so a room's history slot and append slot live as long as the room has members and go when it empties; `!said` is the third output of `StepAndRoute`, the lines to persist per room. `$histories` is `$(Text ==> Stored)`, with a value in the occurrence each room appears, from the oracle, which is `Absent` until the World has loaded the key and `Present` after; a join that wants to send the last twenty lines reads `$histories` through a tag in `StepAndRoute` and gets what was known as the occurrence opened. A `Failed` from the append is a response the block can hold and retry behind a `Time.After`, and the retry policy is the block's text.
 
 The store is also the sharding seam. Two rooms share nothing but the listener, so a World that owns the listener can route each accepted connection to one of several runtimes, each running this program, with the store as the only thing they share; the Worlds chapter has the router. Nothing in `@server` changes between one runtime and ten.
 
@@ -714,9 +715,9 @@ Nothing was sent to 5, and the reason is that the leave and the say were folded 
     let !owed = Route ($model, !cmds)
 ```
 
-`Route` reads `$model` through a tag, the model before 300, in which 5 is still in `lobby`. `!owed` fires with 5 owed `"<nine> hi"`. Block `[5]`'s `!out` fires `[Send "<nine> hi\r\n"]` in the occurrence block `[5]` is torn down. The runtime reports that firing to the World with its path, `1/[5]/0`, because the program asked; the World performs it if it can, which for a closed socket it cannot, and discards any response, since the slot is gone. The user never sees the message and nothing crashes. What the program paid is one wasted send and one line in the World's diagnostics; what it would have paid in the callback version is a write on a closed descriptor from a handler that still held the connection object, and the exception that goes with it.
+`Route` reads `$model` through a tag, the model before 300, in which 5 is still in `lobby`. `!owed` fires with 5 owed `"<nine> hi"`. Block `[5]`'s `!out` fires `[Send "<nine> hi\r\n"]` in the occurrence block `[5]` is torn down. The runtime reports that firing to the World with its path, `1/[5]/0`, because the program asked; the World performs it if it can, which for a closed socket it cannot, and discards any response, since the slot is gone. The user never sees the message and nothing crashes. The program paid one wasted send and one line in the World's diagnostics; the callback version would have paid a write on a closed descriptor from a handler that still held the connection object, and the exception that goes with it.
 
-Key order is doing work in 300 and it is worth being clear about what. Within an occurrence there is no order of arrival; the leave and the say are simultaneous, and the program chose to apply them in key order, which here means 5 before 9. Had the leaver been 12, the fold would have routed the say to 12 first and removed 12 after, and 12's block would have fired a send on its own teardown. A program that wants leaves applied before says regardless of id sorts the occurrence's commands by kind inside `StepAndRoute` before folding, and that is one line and a stated policy. The point is that the policy is in the program's text, and that in the callback version it was in the order two sockets happened to become readable.
+Key order is doing work in 300. Within an occurrence there is no order of arrival; the leave and the say are simultaneous, and the program chose to apply them in key order, which here means 5 before 9. Had the leaver been 12, the fold would have routed the say to 12 first and removed 12 after, and 12's block would have fired a send on its own teardown. A program that wants leaves applied before says regardless of id sorts the occurrence's commands by kind inside `StepAndRoute` before folding, and that is one line and a stated policy. The point is that the policy is in the program's text, and that in the callback version it was in the order two sockets happened to become readable.
 
 ### What the goals buy
 
@@ -732,16 +733,16 @@ The spec is the thing: the Test World accepts `Net.Listener` and `Net.Conn`, so 
 
 Every message is an occurrence, and every occurrence recomputes the element list in the first implementation, which with a hundred thousand connections is a hundred thousand entries per message. The incremental element list is the fix and it is an implementation item, not a language one; until it exists, the server that needs that scale is several runtimes with fewer connections each, which the sharding seam allows anyway.
 
-Fan-out to a room of five thousand is a map with five thousand entries in `!owed`, five thousand request firings, and five thousand performs by the World after the turn. That is the right amount of work and it is done on the World's side, where the write buffers are; what the program cannot do is stream it, because a request firing is atomic per occurrence. A room that large wants its fan-out in the World, as a `Net.Multicast(group)` element the program sends to once, and a World can offer that without the language knowing.
+Fan-out to a room of five thousand is a map with five thousand entries in `!owed`, five thousand request firings, and five thousand performs by the World after the turn. That is the right amount of work and it is done on the World's side, where the write buffers are; the program cannot stream it, because a request firing is atomic per occurrence. A room that large wants its fan-out in the World, as a `Net.Multicast(group)` element the program sends to once, and a World can offer that without the language knowing.
 
 Backpressure is `$link`'s `Connected n`, readable through a tag at the moment of sending, and a block that drops or queues when `n` is large has a policy in its text. A block that ignores it works until a slow client fills the World's buffer, which is the same as every other server, and the difference is that the fix is one `match` in the block rather than a writable-callback dance.
 
 Parsing a wire protocol is string work in a pure language with no mutable buffers. It is fine for lines and tedious for anything with length prefixes and binary fields; the prelude should offer the usual codec functions natively, and the program should call them.
 
-TLS, as always, is the World's: `tls://` in the address and a `Disconnected "certificate .."` in the link type is all the program sees.
+TLS is the World's: `tls://` in the address and a `Disconnected "certificate .."` in the link type is all the program sees.
 ## 5. A build system
 
-Every build tool is an incremental computation with a file watcher bolted on afterwards, and the bolt is where it leaks: the rebuild that ran twice because the editor wrote the file in two syscalls, the stale object that survived because the watcher fired while the compiler was still writing, the dependency the tool did not know about because it was discovered inside a compile. A dynamic *is* an incrementally maintained value, and a `for` over a map *is* an incrementally maintained collection, so a build system in Prism is the thing itself rather than a graph the tool maintains by hand. What it is not is a fast compiler, and the end of this section says where the line is.
+Every build tool is an incremental computation with a file watcher bolted on afterwards, and the bolt is where it leaks: the rebuild that ran twice because the editor wrote the file in two syscalls, the stale object that survived because the watcher fired while the compiler was still writing, the dependency the tool did not know about because it was discovered inside a compile. A dynamic *is* an incrementally maintained value, and a `for` over a map *is* an incrementally maintained collection, so a build system in Prism is the thing itself rather than a graph the tool maintains by hand. It is not a fast compiler, and the end of this section says where the line is.
 
 ### The vocabulary
 
@@ -846,7 +847,7 @@ let Newer: fn (Text ==> Stamp, Text ==> Stamp) -> Bool = ...
 
 Take it from the bottom. `$versions` is `$(Text ==> Nat)`, one entry per target, each target's count of successful builds, and it is passed back into every `@Target` as a dynamic. A target derives `$want` from its input stamps and its dependencies' versions; when `$want` changes to a new value (`$Distinct`, because a stamp push with an equal value is not a reason to rebuild), the target spawns its command. The spawn's response is an id; the `dyn` over `$job` builds a `Process.Child(id)` slot for it; the child's `Exited 0` bumps `$version`; and the bump reaches every target that depends on this one through `$versions`, promptly, in the same occurrence. A chain of three targets whose root input changed rebuilds in three turns separated by two compiles, because each spawn is a request answered later, and never rebuilds a target before its dependency has finished, because `$deps` cannot change until the dependency's `$version` does.
 
-The read of `$versions` inside the `for` that produces `$versions` is a cycle, and it is legal for a reason worth spelling out. `$version` in a target is a hold; its change event fires on `!done`, which is a response from a `Process.Child` slot, and a slot's response has no edge from anything the program did. So the loop from `$versions` into a target and back out to `$versions` passes through the World, which is the delay that makes every build system's dependency graph acyclic in time even when the tool's own data structure is not: a dependency's new version arrives in an occurrence after the dependency was spawned, which is after the dependent read the old version. Had `$version` been a derived dynamic over `$versions` with no response in between, the cycle would be prompt and the compiler would refuse it, which is the spreadsheet case below.
+The read of `$versions` inside the `for` that produces `$versions` is a cycle, and it is legal. `$version` in a target is a hold; its change event fires on `!done`, which is a response from a `Process.Child` slot, and a slot's response has no edge from anything the program did. So the loop from `$versions` into a target and back out to `$versions` passes through the World, which is the delay that makes every build system's dependency graph acyclic in time even when the tool's own data structure is not: a dependency's new version arrives in an occurrence after the dependency was spawned, which is after the dependent read the old version. Had `$version` been a derived dynamic over `$versions` with no response in between, the cycle would be prompt and the compiler would refuse it, which is the spreadsheet case below.
 
 `Job` records the input stamps as they stood when the job was spawned. That is the line that makes the hard moment come out right.
 
@@ -864,7 +865,7 @@ Meanwhile `$versions` changed, so `app`'s `$deps` changed, `app`'s `$want` chang
 
 **Occurrence 43.** `Spawned 78` to `lib`'s spawn slot. `$job` becomes `Some (Job 78, {lib.c: Modified 1300})`. Everything proceeds. Had the second save and the exit been separate occurrences, the walkthrough is the same with the steps in two places, and the program never cared which.
 
-What the version of this with a watcher-as-stream and a mutable dirty set does in occurrence 42 is the bug in the first paragraph: the exit handler clears the dirty flag, the watch handler sets it, and whichever ran second decides whether `lib` is rebuilt. Here there is no second; there is one occurrence, and `ReadyFor` saw both facts.
+The version with a watcher-as-stream and a mutable dirty set does, in occurrence 42, the bug from the first paragraph: the exit handler clears the dirty flag, the watch handler sets it, and whichever ran second decides whether `lib` is rebuilt. Here there is no second; there is one occurrence, and `ReadyFor` saw both facts.
 
 ### A spreadsheet is the same thing, until it is not
 
@@ -986,7 +987,7 @@ type Entry = record:
     @ unit
 ```
 
-`$table` is `$(Nat ==> ChildStatus)`: one entry per child, each a state element the World answers `Running` for from the oracle and pushes `Exited n` on. `jobs` is a rendering of `$table` on each change; a child leaves the table when its status says it exited, which is a `for` whose membership is a hold moved by the consolidated state's own change, legal because `ApplyDeltas` reads `$jobs` through a tag and a child's exit is a push. Piping one child's output into another's input is the `Defer`-per-chunk pattern in the Worlds chapter, and a `Signal Term` on a `Process.Child` is a request like any other. A shell that spawns a child and is itself torn down kills the child, because the World's cancel-on-teardown obligation covers `Process.Child` slots; a shell that wants the child to outlive it says so with a `detach` field, and a World that supports one leaves the process alone.
+`$table` is `$(Nat ==> ChildStatus)`: one entry per child, each a state element the World answers `Running` for from the oracle and pushes `Exited n` on. `jobs` is a rendering of `$table` on each change; a child leaves the table when its status says it exited, which is a `for` whose membership is a hold moved by the consolidated state's own change, legal because `ApplyDeltas` reads `$jobs` through a tag and a child's exit is a push. Piping one child's output into another's input is the `Defer`-per-chunk pattern in the Worlds chapter, and a `Signal Term` on a `Process.Child` is a request like any other. A shell that spawns a child and is itself torn down kills the child, because the World's cancel-on-teardown obligation covers `Process.Child` slots.
 
 ### The compositor
 
@@ -1078,7 +1079,7 @@ The desktop is a `for` over frames, a hit-test, and a fold:
     @ unit
 ```
 
-Three things to read. `dyn $_.app` builds the frame once per key, since an application never changes for a key, and is there only to get `_` as a plain `App`; its result crosses the `dyn` by the usual two routes, `!Switch` for the quit and a hold joined for the ops. `frames` is a plain record of consolidated results: `frames.!quit` is `!(Nat ==> DeskCmd)`, firing with exactly the frames that quit in an occurrence, and `frames.$ops` is `$(Nat ==> [Op])`, every frame's picture. And `!cmds` is a `!Union` of everything that can change the desk, keyed by text so that a frame's quit and a raise from the same click are two entries folded in key order, never one winning.
+`dyn $_.app` builds the frame once per key, since an application never changes for a key, and is there only to get `_` as a plain `App`; its result crosses the `dyn` by the usual two routes, `!Switch` for the quit and a hold joined for the ops. `frames` is a plain record of consolidated results: `frames.!quit` is `!(Nat ==> DeskCmd)`, firing with exactly the frames that quit in an occurrence, and `frames.$ops` is `$(Nat ==> [Op])`, every frame's picture. And `!cmds` is a `!Union` of everything that can change the desk, keyed by text so that a frame's quit and a raise from the same click are two entries folded in key order, never one winning.
 
 Focus and layering are nothing but `$desk.focus` and `$desk.order`, read through tags. `HitFrame` walks `order` from the top and finds the first frame whose rectangle contains the point, against the desk as the occurrence opened: the user clicked on the stacking they saw. `WhenFocused` passes a key to the frame whose id is `focus` as the occurrence opened. `Compose` translates each frame's ops by its rectangle and concatenates them in `order`, bottom to top, so the scene the World draws after the occurrence is the stacking after the occurrence. There is no z-buffer, no focus manager and no event capture: three fields of one record, one function that moves them, and the tag law.
 
@@ -1109,7 +1110,7 @@ Nothing happens because an element appeared: an application appears on the desk 
 
 No node values: an application cannot keep a reference to its frame, and the compositor cannot keep a reference to an application. When frame 5 is removed from the map, everything under it is gone, and there is no listener somewhere holding the dead subtree alive.
 
-The spec is the thing: the hard moment is a Test World script with `Send Gui.Window(title="Desktop"), Pointer (Point 40, 300)` and an `ExpectNone` on frame 5's label afterwards, and the same script runs with the desktop under a `@VBox` or under nothing.
+The spec is the thing: the hard moment is a Test World script with `Send Gui.Window(title="Desktop"), Pointer (Point 40, 300)` and an `ExpectTopNone` for frame 5's label afterwards, and the same script runs with the desktop under a `@VBox` or under nothing.
 
 ### Where it is awkward, and where it is wrong
 
@@ -1120,7 +1121,7 @@ Every application runs in the compositor's runtime, in the same occurrence. One 
 Images and video are opaque handles the World allocates (`ImageId`), which means an application that decodes a video frame does so natively and hands the compositor a handle, and the compositor never sees pixels. That is right, and it means the compositor cannot do a pixel effect without asking the World for one.
 ## 7. A game
 
-A game loop is the one program every programmer has written as a mutable loop and knows is wrong in the same place: input is polled at the top, physics is integrated in the middle, rendering reads the result at the bottom, and the press that arrived between the poll and the render is either dropped, applied a frame late, or applied to half-integrated state, depending on where the input callback happened to run. A tick is an occurrence, the world state is a dynamic, and the press on the frame boundary is the hard moment. What a game also shows better than anything else is that rendering is a description: the element list is the draw list, and the World draws it after the turn, so there is no render call anywhere in the program.
+A game loop is the one program every programmer has written as a mutable loop and knows is wrong in the same place: input is polled at the top, physics is integrated in the middle, rendering reads the result at the bottom, and the press that arrived between the poll and the render is either dropped, applied a frame late, or applied to half-integrated state, depending on where the input callback happened to run. A tick is an occurrence, the world state is a dynamic, and the press on the frame boundary is the hard moment. A game also shows, better than anything else, that rendering is a description: the element list is the draw list, and the World draws it after the turn, so there is no render call anywhere in the program.
 
 ### The vocabulary
 
@@ -1229,7 +1230,7 @@ Here is the version everyone writes first:
     let !stepped = Integrate ($game, $held, ($clock on !frame))
 ```
 
-A hold for the keys, updated by key events, read by the frame step through a tag. In occurrence 1200, `$held` changes to `jump = True` and `Integrate` reads `$held` through a tag, *before* the occurrence: `jump = False`. The player does not jump this frame. In 1201 the tag reads `True` and the jump happens, one frame late, sixteen milliseconds after the press. That is the input lag that game programmers measure with high-speed cameras, and here it is a consequence of one line that could be read: the step reads the keys as they stood before this frame. The `!Union` version reads them as the fold has them, with this occurrence's edges applied, and the difference between the two programs is visible in their text rather than in a frame counter.
+A hold for the keys, updated by key events, read by the frame step through a tag. In occurrence 1200, `$held` changes to `jump = True` and `Integrate` reads `$held` through a tag, *before* the occurrence: `jump = False`. The player does not jump this frame. In 1201 the tag reads `True` and the jump happens, one frame late, sixteen milliseconds after the press. That is the input lag that game programmers measure with high-speed cameras (from memory), and here it is a consequence of one line that could be read: the step reads the keys as they stood before this frame. The `!Union` version reads them as the fold has them, with this occurrence's edges applied, and the difference between the two programs is visible in their text rather than in a frame counter.
 
 And the version with `|`: `(KeyMsg !key) | (Tick ..)` loses the tick when a key lands with it, which is a dropped frame on every keypress, or loses the key, which is a stuck or missed input depending on whether it was a press or a release. Neither is a race; both are the program saying the wrong thing, and the two-events-in-one-operation error is what stops the third version, `Integrate ($game, !key, !frame)`, from ever being written.
 
@@ -1354,7 +1355,7 @@ A dashboard is charts over a shared range:
 ```prism
 let Encode: fn Query -> HttpRequest = ...
 let Decode: fn (Instant, HttpResult) -> QueryState = \|now, r| match r:
-    Answered a: if (Eq a.status, 200): Known (now, (ParseRows a.body)) else: Errored (ToText a.status)
+    Answered a: if a.status == 200: Known (now, (ParseRows a.body)) else: Errored (ToText a.status)
     Failed why: Errored why
 
 @Poller: fn (Nat, @a) -> @a = \|period, @dash| @widget:
@@ -1403,7 +1404,7 @@ The dashboard's list, as the poller sees it, with the poller's own supplied slot
 s/1/3:      Http.Fetch                                  requested: [GET .../cpu?range=day]
 ```
 
-The old range's fresh data did not flash under the new range's title, and the reason is not a guard; it is that the chart's `dyn` rebuilt in the occurrence the query changed, and a widget built in an occurrence sees the occurrence from the start, so the new generation's `$live` was never the old slot's dynamic. There is no instant in which the chart has the day's query and the hour's rows as its live value. What it has is the hour's rows as `$shown`, which it chose to keep, labelled as loading.
+The old range's fresh data did not flash under the new range's title, and the reason is not a guard; it is that the chart's `dyn` rebuilt in the occurrence the query changed, and a widget built in an occurrence sees the occurrence from the start, so the new generation's `$live` was never the old slot's dynamic. There is no instant in which the chart has the day's query and the hour's rows as its live value. It has the hour's rows as `$shown`, which it chose to keep, labelled as loading.
 
 **Occurrence 91.** The cache. The day fetch fired at `s/1/3` in 90, and the `@HttpCache` around the poller has a block for that slot, built in 90 when the slot appeared, which saw the request fire in 90 under the mid-occurrence construction rule. If the user had looked at the day range in the last TTL, the cache's `$cache` has it: `!hit` fired in 90, the cache's `Defer` fired in 90, and 91 is the second occurrence of the same turn, delivering the `Defer`'s answer; the cache fires the cached answer down to `s/1/3`; `!res` fires; `$latest` becomes `Known`; both charts' `$Join` change; `!Updated $live` fires with a `Known`; `$shown` moves to the day's rows; the badge clears. The user sees the day's chart before the World has drawn the loading state, because the turn was not over. If the cache had nothing, 91 does not happen; the World performs the fetch after the turn, and the answer lands in a later turn by the ordinary route.
 
@@ -1440,7 +1441,7 @@ A compiler, a numerical solver, a log cruncher, a video encoder. There is no tim
 
 What a Prism program does with batch work: it fires it as a request on a process or a native component and receives the result as a response, or it calls a plain function that is native. `Shape` for text, `Rasterise` for a draw list, `ParseRows` for a body, `Evaluate` for a spreadsheet: each is a plain function from plain data to plain data with no occurrence between asking and knowing, and that is the foreign function interface, which is also the whole of it. A plain function has no way to touch time and so needs no rules about it; the program is still deterministic, still a transcript, and the function is a black box the transcript records the results of.
 
-The honest cost is latency inside the occurrence: a plain function runs on the runtime's thread, between the inputs arriving and the holds committing, and a slow one stalls every input behind it. The dashboard's ten-megabyte parse and the game's fifty thousand entities were the examples. A computation that takes longer than the program can afford to pause belongs behind a request, in a process or a World thread, with "not yet" in the response type and a turn of latency.
+The cost is latency inside the occurrence: a plain function runs on the runtime's thread, between the inputs arriving and the holds committing, and a slow one stalls every input behind it. The dashboard's ten-megabyte parse and the game's fifty thousand entities were the examples. A computation that takes longer than the program can afford to pause belongs behind a request, in a process or a World thread, with "not yet" in the response type and a turn of latency.
 
 ### Sequential algorithms
 
@@ -1448,7 +1449,7 @@ Anything naturally written as a loop with a cursor: a parser over a token stream
 
 The first way is as a recursive plain function, which is fine and is not Prism; it is the functional language Prism has as its value layer, and the closure compiler's recursion depth guard is the only thing the implementation adds. A backtracking search with a mutable visited set wants an `update` block, which is future work, and until then it is the same ceremony as in any pure language. Use the plain function when the algorithm fits in one; it has no time in it and should not pretend to.
 
-The second way is as a chain of `Defer`s: each step of the loop an occurrence, the cursor a hold, the loop body the hold's change event lifted over the `Defer`'s answer. It runs, one occurrence per step, inside one turn, and it is wrong twice over. Each `Defer` slot is answered at most once per turn, so the loop needs a fresh `Defer` per step, which means a `dyn` rebuilding per step, which the world core treats as the same `Defer` reborn and reports as deferring backwards. That rule exists to stop exactly this, because a loop through the turn mechanism is a loop that freezes the program's output while it spins, and the right place for an iteration to a fixed point is a plain function.
+The second way is as a chain of `Defer`s: each step of the loop an occurrence, the cursor a hold, the loop body the hold's change event lifted over the `Defer`'s answer. It runs, one occurrence per step, inside one turn, and it is wrong twice over. Each `Defer` slot is answered at most once per turn, so the loop needs a fresh `Defer` per step, which means a `dyn` rebuilding per step, which the world core treats as the same `Defer` reborn, so the second firing in the turn exceeds the once-per-turn bound and is an error. That rule exists to stop exactly this, because a loop through the turn mechanism is a loop that freezes the program's output while it spins, and the right place for an iteration to a fixed point is a plain function.
 
 The third way is as a chain of `Time.After`s, one step per turn, so that the World gets to run in between. That is not wrong; it is an animation, or a protocol handshake, or a retry schedule, and those are things that happen over time and belong here. The test is whether a step waits for something outside the program. A handshake waits for the peer; an animation waits for the frame; a sort waits for nothing, and a sort written this way is a sort that takes a frame per comparison.
 
@@ -1470,13 +1471,13 @@ TLS is on the World's side of the boundary, and so is anything else that wants r
 
 ### Large mutable structures
 
-A rope, a matrix, a spatial index, a B-tree. The value layer is immutable and eager, and functional update of a large structure is the one place a pure language is worse to write than an imperative one, which is why `update` blocks and `&` references are the first item of future work. Until they exist, a large structure that changes a little per occurrence is either a persistent data structure the prelude provides (maps already are) or native code the program calls with the old value and gets the new value back. The editor's text, the controller's covariance and the game's entities were the three examples, and in each the recommendation was the same: the structure is a plain value from the program's side, whatever it is inside.
+A rope, a matrix, a spatial index, a B-tree. The value layer is immutable and eager, and functional update of a large structure is the one place a pure language is worse to write than an imperative one, which is why `update` blocks and `&` references are the first item of future work. Until they exist, a large structure that changes a little per occurrence is either a persistent data structure the prelude provides (maps already are) or native code the program calls with the old value and gets the new value back. The editor's text, the controller's covariance and the game's entities were the three examples, and in each the answer was the same: the structure is a plain value from the program's side, whatever it is inside.
 
 ### Programs whose structure is a call stack
 
 Recursive descent, backtracking, coroutines, anything where "where am I" is a position in code rather than a value in state. Prism has no call stack at occurrence time; a widget block is built once, and what runs afterwards is a graph. An algorithm whose natural state is a stack frame has to make the stack a value, which is the continuation-passing transformation done by hand, and the result is correct and unreadable. Write it as a plain function, where the value layer's ordinary recursion gives the stack back.
 
-### What the first bucket is, then
+### The first bucket
 
 Interactive interfaces, market data and order flow, control, stateful services, incremental computation over things that arrive at different times, simulations and games, shells and compositors. Each of the eight deep dives found the same structure under its problem: a model, a closed set of things that can happen to it, and a boundary where the outside sends and receives plain data. In each, the hard moment was two of those things in one instant, and the answer was a line of the program. And in each, the parts that were not that structure were sent out through a plain function or a request, which is the foreign function interface and the only one the language needs.
 

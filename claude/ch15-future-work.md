@@ -447,7 +447,7 @@ Two pieces of ordinary language work, with no bearing on the semantics of time, 
 
 ### Traits
 
-You have a `Money` type, or a `Vector`, and every sum in the program is spelled `Add a, b` where you would write `a + b`, and every comparison `Less a, b`, and the one place a reader's eye wants an operator is the one place the language will not give it one. The language has three built-in traits, equality, ordering and numeric, which the checker resolves at each use to the implementation for the operand type and passes as a hidden argument where a generic bound needs one. That mechanism is a trait system with no syntax for declaring a trait or adding a type to one. User-defined traits are the syntax.
+You have a `Money` type, or a `Vector`, and every sum in the program is spelled `Add a, b` where you would write `a + b`, and every comparison `Less a, b` where you would write `a lt b`, because the operators reach only the types the built-in traits already cover. The language has three built-in traits, equality, ordering and numeric, which the checker resolves at each use to the implementation for the operand type and passes as a hidden argument where a generic bound needs one. That mechanism is a trait system with no syntax for declaring a trait or adding a type to one. User-defined traits are the syntax.
 
 ```prism
 trait Show a:

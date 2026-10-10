@@ -14,9 +14,9 @@ The second is that the toolkit, the sandbox and the mock must be writable in Pri
 
 The third is that a widget which asks for state must get a type that tells the truth. The file that has not been read is `Unavailable`, as a case of the type, and the `match` that draws it has an arm for that. But a dynamic has a value at every occurrence, so a widget that asks for the contents of a file as a dynamic must get a value in the occurrence it asks. That forces a question most systems never put to themselves: when does outside state exist for a program? The answer here, in the occurrence the slot is created, is the only one under which a widget built in the middle of an occurrence is consistent with everything else built then, and the second half of this chapter is the reasoning for it.
 
-An element is what satisfies all three. It is a plain value of the extensible variant `Element`: a tag and some fields, `Gui.Button { label: "Increment" }`, `Fs.File { path: "/etc/motd" }`, nothing else. A widget puts one in its element list by calling `@Element`, which creates a *slot*: a position in the widget tree where that element sits for as long as the widget's node lives. Whoever is outside, a World in the host language or an interceptor in Prism, reads the list, does whatever the element means to it, and sends back responses addressed to the slot and state keyed by the element's value. That is the entire protocol. There is no handle, no callback, no promise, no context object; there is a list of plain data going out and a map of plain data coming in, once per occurrence.
+An element is what satisfies all three. It is a plain value of the extensible variant `Element`: a tag and some fields, `Ui.Button { label: "Increment" }`, `Fs.File { path: "/etc/motd" }`, nothing else. A widget puts one in its element list by calling `@Element`, which creates a *slot*: a position in the widget tree where that element sits for as long as the widget's node lives. Whoever is outside, a World in the host language or an interceptor in Prism, reads the list, does whatever the element means to it, and sends back responses addressed to the slot and state keyed by the element's value. That is the entire protocol. There is no handle, no callback, no promise, no context object; there is a list of plain data going out and a map of plain data coming in, once per occurrence.
 
-The consequence that takes getting used to is that an element does nothing. A `Gui.Button` is not a button; it is a request to whoever is outside to show one and to say when it is clicked. An `Fs.File` is not an open file; it is a declaration that this widget may ask for reads and writes of that path and wants the answers. Whether anything happens is up to the outside, and the program's only way to find out is a response arriving. This is what makes the same program run under a test World with no screen and no disk: the program never did anything, it only ever said what it wanted, and the World that says "done" without doing is as conforming as the one that does.
+The consequence that takes getting used to is that an element does nothing. A `Ui.Button` is not a button; it is a request to whoever is outside to show one and to say when it is clicked. An `Fs.File` is not an open file; it is a declaration that this widget may ask for reads and writes of that path and wants the answers. Whether anything happens is up to the outside, and the program's only way to find out is a response arriving. This is what makes the same program run under a test World with no screen and no disk: the program never did anything, it only ever said what it wanted, and the World that says "done" without doing is as conforming as the one that does.
 
 ## Tags
 
@@ -25,10 +25,10 @@ A tag is the declaration of one kind of element: its name, its fields, and which
 ```prism
 type Element = choice ..
 
-tag Gui.Label of Element:
+tag Ui.Label of Element:
     text: Text
 
-tag Gui.Button of Element:
+tag Ui.Button of Element:
     label: Text
     responds: Click
 
@@ -45,7 +45,7 @@ tag Clock of Element:
     state: Instant
 ```
 
-`type Element = choice ..` declares an extensible variant: a choice whose alternatives are added by `tag` declarations across modules rather than listed in one place. `Gui.Label` and `Fs.File` are constructors of it, namespaced, and a value built from one is a plain value with structural equality like any record. The constructor is called the way a record is, positionally or with named fields: `Gui.Button(label="OK")`, `Fs.File(path=p, requests=!reqs)`.
+`type Element = choice ..` declares an extensible variant: a choice whose alternatives are added by `tag` declarations across modules rather than listed in one place. `Ui.Label` and `Fs.File` are constructors of it, namespaced, and a value built from one is a plain value with structural equality like any record. The constructor is called the way a record is, positionally or with named fields: `Ui.Button(label="OK")`, `Fs.File(path=p, requests=!reqs)`.
 
 The three parts a tag may declare, in the order a reader meets them:
 
@@ -54,15 +54,15 @@ The three parts a tag may declare, in the order a reader meets them:
 - `responds: R` declares that the element returns an event `!R`. Its firings come from outside, addressed to this slot by path, in occurrences after the one in which the slot was created.
 - `state: S` declares that the element returns a dynamic `$S`, supplied from outside, with a value in the occurrence the slot is created and a change whenever the outside pushes one. State is keyed by the element's value, not its path, which is the subject of the section on identity.
 
-A tag declares any subset, including none. The subsets that occur are the kinds of element you have met under other names elsewhere, and it is worth seeing them as combinations of three parts rather than as five different mechanisms:
+A tag declares any subset, including none. The subsets that occur are the kinds of element you have met under other names elsewhere, and they are combinations of three parts, not five different mechanisms:
 
 | requests | responds | state | what it is | examples |
 | --- | --- | --- | --- | --- |
-| | | | presence: the element being in the list is the whole message | `Gui.Label`, `Gui.Scene` |
-| ✓ | | | sink: firings go out, nothing comes back | `Cli.Stdout`, `Cli.Exit`, `Log.Line` |
-| | ✓ | | stream: things arrive for as long as the slot lives | `Cli.Stdin`, `Net.Listener`, `Time.Every`, `Gui.Button` |
-| ✓ | ✓ | | request: one firing in, some number of answers later | `Fs.File`, `Net.Http`, `Time.After`, `Defer` |
-| | | ✓ | state: a value that is simply true, pushed when it changes | `Clock`, `Cli.Args`, `Fs.Contents` |
+| | | | presence: the element being in the list is the whole message | `Ui.Label`, `Gui.Scene` |
+| ✓ | | | sink: firings go out, nothing comes back | `Process.Exit`, `Log.Line` |
+| | ✓ | | stream: things arrive for as long as the slot lives | `Cli.Stdin`, `Net.Listener`, `Time.Every`, `Ui.Button` |
+| ✓ | ✓ | | request: one firing in, some number of answers later | `Fs.File`, `Net.Http`, `Time.After`, `Cli.Stdout`, `Defer` |
+| | | ✓ | state: a value that is simply true, pushed when it changes | `Clock`, `Process.Args`, `Fs.Contents` |
 | | ✓ | ✓ | a watched thing that also talks | `Gui.Window` (size as state, pointer and keys as responses) |
 | ✓ | | ✓ | a thing you drive and observe | `Process.Child` without its output |
 | ✓ | ✓ | ✓ | the full conversation | `Net.Socket`, `Process.Child` |
@@ -80,10 +80,10 @@ type Click = click
 type Tick = tick
 type Instant = Instant Int                   # milliseconds since the World's epoch
 
-tag Gui.Label of Element:                    # presence: a draw command
+tag Ui.Label of Element:                     # presence: a draw command
     text: Text
 
-tag Gui.Button of Element:                   # stream: clicks arrive
+tag Ui.Button of Element:                    # stream: clicks arrive
     label: Text
     responds: Click
 
@@ -168,11 +168,9 @@ tag Net.Http of Element:                     # request: one firing, one answer, 
 A socket has all three parts because a connection is all three things: you send on it, you receive from it, and it is up or not. `Net.Http` has no fields at all: the URL is in the request, so one slot can fetch many things over its life, and the response says which request it answers so that two in flight can be told apart. A listener is the stream of accepted connections; each accepted connection is its own `Net.Conn` element keyed by the id the World allocated, built under a `for`, which is the server of the worked examples.
 
 ```prism
-type Duration = Duration Int
-
-tag Time.After of Element:                   # request: fires back once, after the duration
-    requests: !Duration
-    responds: Instant
+tag Time.After of Element:                   # request: a delay in milliseconds, echoed back once it has passed
+    requests: !Nat
+    responds: Nat
 
 tag Time.Every of Element:                   # stream: a tick per period
     period: Int
@@ -201,16 +199,17 @@ tag Process.Child of Element:                # the full conversation again: a su
     responds: ChildEvent
     state: Status
 
-tag Cli.Args of Element:                     # state: the arguments, which an interceptor may replace
+tag Process.Args of Element:                 # state: the arguments, which an interceptor may replace
     state: [Text]
 
 tag Cli.Stdin of Element:                    # stream
     responds: StdinEvent
 
-tag Cli.Stdout of Element:                   # sink
+tag Cli.Stdout of Element:                   # request: a write that fails comes back
     requests: !Text
+    responds: WriteFailed
 
-tag Cli.Exit of Element:                     # sink: the firing is the exit
+tag Process.Exit of Element:                 # sink: the firing is the exit
     requests: !Code
 
 tag Defer of Element:                        # request: answered in a later occurrence of the same turn
@@ -247,7 +246,7 @@ The slot exists from the occurrence in which the widget is built until its node 
 
 ```prism
 @Button: fn Text -> @!Click = \|label| @widget:
-    !click <- @Element Gui.Button(label=label)
+    !click <- @Element Ui.Button(label=label)
     @ !click
 
 @viewer: fn Text -> @unit = \|path| @widget:
@@ -264,7 +263,7 @@ The three statements show the three return forms. A button returns its click. A 
 
 When the tag of `e` is not statically known, as in a catch-all arm of a `match` inside an interceptor, `@Element e` has the generic type `@(!Response, $State)`, and the response and state types are checked at the slot at runtime, per tag. In a tag-specific arm the types are the tag's, and the checker knows them. This is the one place in the language where a type is refined by a `match` on a tag, and it is what lets an interceptor forward an element it has never heard of while still being typed when it handles one it has.
 
-One thing `@Element` does not take is a dynamic where a field goes. `@Element Gui.Label(text=$text)` is not a label whose text changes; it is an application to a dynamic, which lifts, so it is `$(@Element Gui.Label(text=text))`, a dynamic of widgets. Binding a dynamic of widgets lifts to `dyn`: `@Element Gui.Label(text=$text)` as a statement means `dyn $text: @Element Gui.Label(text=_)`, a fresh slot per change of the text, and a bound name on the left is the `!Switch` of the `dyn`'s event when the element responds, or a hold of dynamics joined with `$Join` when it has state, with the first build's result as the hold's initial value. The chapter says this once here and uses the short form from now on; the section on dynamic fields says what it costs and why it is the right cost.
+One thing `@Element` does not take is a dynamic where a field goes. `@Element Ui.Label(text=$text)` is not a label whose text changes; it is an application to a dynamic, which lifts, so it is `$(@Element Ui.Label(text=text))`, a dynamic of widgets. Binding a dynamic of widgets lifts to `dyn`: `@Element Ui.Label(text=$text)` as a statement means `dyn $text: @Element Ui.Label(text=_)`, a fresh slot per change of the text, and a bound name on the left is the `!Switch` of the `dyn`'s event when the element responds, or a hold of dynamics joined with `$Join` when it has state, with the first build's result as the hold's initial value. The chapter says this once here and uses the short form from now on; the section on dynamic fields says what it costs and why it is the right cost.
 
 ## The creation rule
 
@@ -360,26 +359,26 @@ Together they say what an occurrence is at the boundary: a snapshot in and a lis
 
 Fields are plain data. A label's text, a file's path, a socket's address: each is read once when the slot is created and never again. The question every reader asks next is what happens to the label whose text changes, and the answer is that the language already has a construct for building something afresh when a dynamic changes, and uses it.
 
-An element with a dynamic where a field goes is an application to a dynamic, which lifts: `Gui.Label(text=$text)` is `$(Gui.Label(text=text))`, a dynamic of elements, and `@Element` of it is a dynamic of widgets. Binding a dynamic of widgets is `dyn`. So
+An element with a dynamic where a field goes is an application to a dynamic, which lifts: `Ui.Label(text=$text)` is `$(Ui.Label(text=text))`, a dynamic of elements, and `@Element` of it is a dynamic of widgets. Binding a dynamic of widgets is `dyn`. So
 
 ```prism
-@Element Gui.Label(text=$text)
+@Element Ui.Label(text=$text)
 ```
 
 means
 
 ```prism
 dyn $text:
-    @Element Gui.Label(text=_)
+    @Element Ui.Label(text=_)
 ```
 
 a fresh slot per change of `$text`, with the old slot torn down at the commit of the occurrence in which the text changed and the new one in the list from that occurrence. For an element that responds, the bound name is the `!Switch` over the generations:
 
 ```prism
-!click <- @Element Gui.Button(label=$label)
+!click <- @Element Ui.Button(label=$label)
 # is
 !!clicks <- dyn $label:
-    @Element Gui.Button(label=_)
+    @Element Ui.Button(label=_)
 let !click = !Switch !!clicks
 ```
 
@@ -404,8 +403,8 @@ The worry about this design is that a slot is destroyed and recreated for every 
 
 | Element | Dynamic field | Fresh slot per change is | Why |
 | --- | --- | --- | --- |
-| `Gui.Label(text)` | the text | right | A draw command. The World diffs lists; nothing is in flight; a new label at the same position is what a redraw is. |
-| `Gui.Button(label)` | the label | right | A click in the occurrence of the relabel goes to the old slot, under the old label, which is what the user clicked. From the next occurrence the new slot's clicks are heard. There is no moment with two buttons listened to or none. |
+| `Ui.Label(text)` | the text | right | A draw command. The World diffs lists; nothing is in flight; a new label at the same position is what a redraw is. |
+| `Ui.Button(label)` | the label | right | A click in the occurrence of the relabel goes to the old slot, under the old label, which is what the user clicked. From the next occurrence the new slot's clicks are heard. There is no moment with two buttons listened to or none. |
 | `Fs.Contents(path)` | the path | right | A new path is a new file. The new slot samples the new file's state in the occurrence of the change; the old slot's watch is released when the World sees it gone. |
 | `Fs.File(path, requests)` | the path | right | Responses to the old path's requests are for the old file. The World drops them because the slot is gone, and the program could not have told them apart from the new file's anyway. |
 | `Net.Http` | none | n/a | The URL is in the request, so the element has no field to change and one slot serves many fetches. This is the design to reach for when a field would change per request. |
@@ -415,7 +414,7 @@ The worry about this design is that a slot is destroyed and recreated for every 
 | `Gui.TextInput(value)` native | the value | the hard case | A native text box has cursor and selection state. Per keystroke, a fresh slot loses it. |
 | `Gui.Window(title)` as a container | the title | a non-problem | Containment is by interception, not by fields. The window's children are widgets under an interceptor; the window element is a leaf whose rebuild touches nothing else. |
 
-The hard case is the native text input, and the answer is that in Prism the text input is not native. The GUI library is Prism, so the cursor is a hold in `@TextInput` outside any `dyn`; the keystrokes arrive at a `Gui.Focusable` leaf whose only field is a name, which never changes; and what the World sees is a focusable region and a label, each a leaf with plain fields. The worked example with a cursor is four occurrences of exactly this, and no cursor is lost because there is no second copy of it anywhere. A World that wraps a native toolkit and wants continuity for a native widget keys it by tree position and tag, which the path exposes; that is a World's policy, and the language promises nothing about it.
+The hard case is the native text input, and the answer is that in Prism the text input is not native. The GUI library is Prism, so the cursor is a hold in `@TextInput` outside any `dyn`; the keystrokes arrive at a `Ui.Focusable` leaf whose only field is a name, which never changes; and what the World sees is a focusable region and a label, each a leaf with plain fields. The worked example with a cursor is four occurrences of exactly this, and no cursor is lost because there is no second copy of it anywhere. A World that wraps a native toolkit and wants continuity for a native widget keys it by tree position and tag, which the path exposes; that is a World's policy, and the language promises nothing about it.
 
 ### The declared-dynamic-field alternative
 
@@ -465,7 +464,7 @@ The residue is the captured dynamic. `$theme` is not the child's; it is lexicall
 
 ### Suppose a placeholder
 
-The third design admits the wait and gives it a name: the state type gets a `NotYet` case, the World answers next occurrence, and every `match` on the state has a `NotYet` arm. This is what the first design is with a nicer type, and it fails the same way, but it is worth separating because its failure looks like a feature. A `NotYet` arm in every consumer is the `if (data)` guard you have written a thousand times and forgotten once, except that here forgetting it is a compile error, so the design feels safe. What it hides is that `NotYet` is not a value the World ever held. `Unavailable` is: the World looked and the file was not there, or had not been read. `NotYet` is the runtime's constant before anyone looked, and a program that draws it is drawing something that was never true of the world. The language has a goal that "not yet" is a type, and this is the case that shows the goal needs the *World's* not-yet, not the runtime's.
+The third design admits the wait and gives it a name: the state type gets a `NotYet` case, the World answers next occurrence, and every `match` on the state has a `NotYet` arm. It is the first design with a nicer type, and it fails the same way; its failure looks like a feature, which is why it gets its own paragraph. A `NotYet` arm in every consumer is the `if (data)` guard you have written a thousand times and forgotten once, except that here forgetting it is a compile error, so the design feels safe. What it hides is that `NotYet` is not a value the World ever held. `Unavailable` is: the World looked and the file was not there, or had not been read. `NotYet` is the runtime's constant before anyone looked, and a program that draws it is drawing something that was never true of the world. The language has a goal that "not yet" is a type, and this is the case that shows the goal needs the *World's* not-yet, not the runtime's.
 
 ### What the oracle is
 
@@ -589,7 +588,7 @@ A `Defer` slot is answered at most once per turn. A slot that fires again after 
 
 The supplier's type says it returns a widget for every element. An interceptor that wants to deny a state element cannot return nothing; it must say what denial is, in the state's type, `@ $ Unavailable` for a file, `@ $ Disconnected "sandboxed"` for a socket. That is not an inconvenience. It is the rule that unavailability lives in the type, enforced at the one place it could be dodged: a child under a sandbox is shown a value the World could have shown it, and the child's `match` already has the arm.
 
-A state tag no supplier and no World accepts is an error at the creation of the slot, because nothing later can give it a value. A request tag no World accepts gets `Unsupported` as its response in the next turn, so a `Gui.Button` under a CLI World is a program-visible fact rather than a silent nothing; an interceptor that forwards it unchanged forwards the `Unsupported` back down.
+A state tag no supplier and no World accepts is an error at the creation of the slot, because nothing later can give it a value. A request tag no World accepts gets `Unsupported` as its response in the next turn, so a `Ui.Button` under a CLI World is a program-visible fact rather than a silent nothing; an interceptor that forwards it unchanged forwards the `Unsupported` back down.
 
 ### Invariants
 
@@ -606,7 +605,7 @@ Stated once, with who is bound and what enforces each:
 
 An interceptor's own elements are what the next layer out sees, and a layer that wants to present several of its child's elements as one thing puts them inside a field of its own element, as data. A container's element then holds its children's elements; the outside addresses the container; and the container routes inward through its response argument. This is how depth works, and the convention a library adopts for it, a `children` field holding a `Path ==> Element` and an `Into (path, input)` case of the response type, is the library's, not the language's. The language guarantees only the two laws, routing against the opened list, and transparency of the forwarding interceptor; what a container looks like is up to whoever writes containers.
 
-The convention has a consequence for tests. A Test World that wants `Expect Gui.Button(label="OK")` to find a button inside a box looks inside `children` fields because the library and the suite agree to, and `Send` to a nested slot wraps the input in one `Into` per level, so that delivery takes the path a real World's input would. The suite knows the convention because the library is part of the suite, not because the language does. The next section builds that library.
+The convention has a consequence for tests. A Test World that wants `Expect Ui.Button(label="OK")` to find a button inside a box looks inside `children` fields because the library and the suite agree to, and `Send` to a nested slot wraps the input in one `Into` per level, so that delivery takes the path a real World's input would. The suite knows the convention because the library is part of the suite, not because the language does. The next section builds that library.
 
 ## A GUI library as interceptors
 
@@ -807,7 +806,7 @@ A scroll region holds an offset, which its own wheel events move:
 
 ```prism
 let Clamp: fn (Int, Int, Int) -> Int = \|lo, hi, v|
-    if (Lt v, lo): lo else: if (Lt hi, v): hi else: v
+    if v lt lo: lo else: if hi lt v: hi else: v
 
 let ScrollOf: fn Input -> ?Int = \|i| match i:
     Scrolled d: Some d
@@ -878,7 +877,7 @@ Hit-testing is a lookup in the hit list:
 
 ```prism
 let Contains: fn (Rect, Point) -> Bool = \|r, p|
-    And (And (Le r.x, p.x), (Lt p.x, r.x + r.w)), (And (Le r.y, p.y), (Lt p.y, r.y + r.h))
+    And (And (r.x le p.x), (p.x lt r.x + r.w)), (And (r.y le p.y), (p.y lt r.y + r.h))
 
 let HitAt: fn ([Hit], Point) -> ?Hit = \|hits, p|
     FirstWhere hits, \Contains _.rect, p
@@ -936,7 +935,7 @@ let NextFocus: fn ([Hit], ?Text) -> ?Text = \|hits, current|
 let RouteKey: fn ([Hit], ?Text, Key) -> ?(Path, Input) = \|hits, focus, k|
     match focus:
         Nil: Nil
-        Some n: match (FirstWhere hits, \Eq (FocusOf _), (Some n)):
+        Some n: match (FirstWhere hits, \(FocusOf _) == Some n):
             Some h: Wrap h.chain, (Keyed k)
             Nil: Nil
 
@@ -1142,7 +1141,7 @@ A request cache remembers answers and serves repeats without going outside:
 
 ```prism
 let Lookup: fn (Text ==> HttpResponse, HttpRequest) -> ?HttpResponse = \|memo, r|
-    if (Eq r.method, "GET"): memo[r.url] else: Nil
+    if r.method == "GET": memo[r.url] else: Nil
 
 let Missing: fn (Text ==> HttpResponse, HttpRequest) -> ?HttpRequest = \|memo, r|
     match Lookup memo, r:
@@ -1178,9 +1177,9 @@ type CacheOut = record:
 
 Each child `Net.Http` slot gets a block. When its request fires, the block reads `$memo` through a tag, the cache as the occurrence opened. A miss goes out on the block's own `Net.Http` element and comes back as `!fetched`, under the child's path. A hit is remembered in `$pending` and answered through a `Defer`, so that it arrives in a later occurrence like a real answer would. The block returns a record, which `for` consolidates field by field: `out.!resp` is the map of responses going down, and `out.!learned` the map of answers that came from outside, from which `$memo` is held.
 
-`$memo` is read by the blocks whose answers define it, and that is a legal cycle because the read is a tag. The consequence is one you should expect by now: two identical GETs in one occurrence from two child slots both miss, because neither sees the other's answer before the occurrence, and both go out. A cache that wanted to coalesce them would key an outstanding-requests hold by URL and attach the second slot to the first's answer, which is a longer program in the same language.
+`$memo` is read by the blocks whose answers define it, and that is a legal cycle because the read is a tag. Two identical GETs in one occurrence from two child slots both miss, because neither sees the other's answer before the occurrence, and both go out. A cache that wanted to coalesce them would key an outstanding-requests hold by URL and attach the second slot to the first's answer, which is a longer program in the same language.
 
-The conformance suite's `cache_hit_no_request` test puts two identical GETs in two turns under this interceptor and checks that the second turn has `NotRequested Net.Http(..)` at the top and that the child still received an answer, in a later occurrence than its request.
+The conformance suite's `cache_hit_no_request` test puts two identical GETs in two turns under this interceptor and checks that the second turn has `Unrequested Net.Http(..)` at the top and that the child still received an answer, in a later occurrence than its request.
 
 ### A mock for tests
 
@@ -1200,7 +1199,7 @@ The conformance suite's `cache_hit_no_request` test puts two identical GETs in t
     @ result
 ```
 
-Every HTTP request in the subtree is answered from a pure function, through a `Defer`, and nothing in `Net` reaches the outside. `answer $asked on !later` lifts the plain function over a dynamic and an event: it fires when the `Defer` answers, with the function applied to the remembered request. The mock is for previews and for tests of a widget's request logic that should not depend on a Test World's fake network. Because the answer goes through a `Defer`, a widget under the mock sees the timing it would see in production: never in the occurrence it asked. The suite's `mock_timing` test checks exactly that, and it is the test that catches the class of mock that hides a timing bug the real World would have shown.
+Every HTTP request in the subtree is answered from a pure function, through a `Defer`, and nothing in `Net` reaches the outside. `answer $asked on !later` lifts the plain function over a dynamic and an event: it fires when the `Defer` answers, with the function applied to the remembered request. The mock is for previews and for tests of a widget's request logic that should not depend on a Test World's fake network. Because the answer goes through a `Defer`, a widget under the mock sees the timing it would see in production: never in the occurrence it asked. The suite's `mock_timing` test checks exactly that; it catches the mocks that hide a timing bug the real World would have shown.
 
 A mock for state is the supplier alone:
 
@@ -1240,10 +1239,10 @@ Forward everything and, per slot, fire a log line for each request and each resp
 
 ```prism
 let IfUnder: fn (Nat, Nat, HttpRequest) -> ?HttpRequest = \|used, limit, r|
-    if (Lt used, limit): Some r else: Nil
+    if used lt limit: Some r else: Nil
 
 let IfOver: fn (Nat, Nat, HttpRequest) -> ?HttpRequest = \|used, limit, r|
-    if (Lt used, limit): Nil else: Some r
+    if used lt limit: Nil else: Some r
 
 let Refusal: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
     Some r: Some (HttpResponse r, 429, "quota")
@@ -1345,7 +1344,7 @@ let ApplyLaunch: fn (Text ==> unit, Launch) -> Text ==> unit = \|table, l| match
     $clock <- @Element Clock
     let supply = \|e| match e:
         Clock: @ $clock
-        Cli.Args(..): @ $ []
+        Process.Args(..): @ $ []
         ignore: @Element e
     !launch <- @Launcher (Keys programs)              # a menu returning Start name or Stop name
     $table <- {} <= ApplyLaunch $table, !launch

@@ -899,7 +899,7 @@ let !accepted = When !submitted, (Not $busy)
 
 `$busy` is read through a tag, so a submit in the same occurrence as the response that clears `$busy` is dropped: the program was busy before that occurrence, and the submit sees before. If that is the wrong answer for your program, the fix is visible: fold `$busy` from a merge in which the clearing wins, and gate the *next* submit, or make the gate a dynamic the response sets promptly and read it one occurrence later. Either way the choice is in the text.
 
-A gate that depends on the event's own value is just a function: `!Filter (\|n| if (Lt n, 10): Some n else: Nil) !n` keeps the small ones. A gate on a dynamic and the value together is one lifted function with both as arguments. There is no separate `when`, `gate` or `filterWhen` to learn; there is lifting, `on`, and `!Filter`.
+A gate that depends on the event's own value is just a function: `!Filter (\|n| if n lt 10: Some n else: Nil) !n` keeps the small ones. A gate on a dynamic and the value together is one lifted function with both as arguments. There is no separate `when`, `gate` or `filterWhen` to learn; there is lifting, `on`, and `!Filter`.
 
 ### Debouncing with a Time element
 
@@ -919,7 +919,7 @@ tag Time.After of Element:
     $gen <- 0 <= $gen + 1 on !in
     !back <- @Element Time.After(delay=delay, requests=($gen + 1 on !in))
     $latest <- Nil <= Some !in
-    let Settle = \|token, gen, latest| if (Eq token, gen): latest else: Nil
+    let Settle = \|token, gen, latest| if token == gen: latest else: Nil
     @ !Filter (Settle !back, $gen, $latest)
 ```
 

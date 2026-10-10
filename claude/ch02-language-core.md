@@ -14,9 +14,9 @@ Prism makes the hint mandatory, uniform, and checked. A name's first character s
 - `@x` is a widget. It is a description of something that can be built, that then exists for a while, talks to the outside, and is torn down.
 - `?x` is a plain value that may be absent.
 
-The sigil is part of the name, the compiler checks it against the type, and that is the whole idea. `$count + !delta` tells you, before you know what a count or a delta is, that one of them is live and one of them happens, and so it tells you that the expression is an event, firing when the delta does, with the count read as it stood before. No inference over functors is needed to know that; a lexer could classify it. The goal served is the one that says you can see what moves. The other goal it serves is less obvious: because the time structure of an expression is readable off the names, the compiler never has to guess it, so the lifting rule in the last section of this chapter is a lookup table rather than a search, and the two implementations cannot disagree about it.
+The sigil is part of the name, the compiler checks it against the type, and that is the whole idea. `$count + !delta` tells you, before you know what a count or a delta is, that one of them is live and one of them happens, and so it tells you that the expression is an event, firing when the delta does, with the count read as it stood before. No inference over functors is needed to know that; a lexer could classify it. This serves the goal that you can see what moves. The other goal it serves is less obvious: because the time structure of an expression is readable off the names, the compiler never has to guess it, so the lifting rule in the last section of this chapter is a lookup table rather than a search, and the two implementations cannot disagree about it.
 
-### Composition
+### Stacking
 
 The sigils stack, leftmost outermost, in the order you would say the thing out loud:
 
@@ -41,7 +41,7 @@ A sigil names a kind, not a place where the value is permitted. Functor values s
 - A record with fields `!changed` and `$value` is a plain record and is the ordinary way a widget returns two things at once.
 - `Path ==> Slot`, where a `Slot` holds an `!request`, is a plain map of records each holding an event.
 
-The array and the record are plain in the sense that *they* do not move: their membership and their field set are fixed. What they hold is whatever it is. That is why `!Leftmost [!a, !b, !c]` is an ordinary function from a plain array to an event, and why a widget's result bundle is a record and not some special "result" construct.
+The array and the record are plain in the sense that *they* do not move: their membership and their field set are fixed. That is why `!Leftmost [!a, !b, !c]` is an ordinary function from a plain array to an event, and why a widget's result bundle is a record and not some special "result" construct.
 
 So the sigil's *position* says what changes, and the three ways to write a list of items mean three different things:
 
@@ -53,9 +53,9 @@ These are different types with different operations. You cannot append to `[$Ite
 
 ### Where time lives
 
-`!` and `$` are defined against *occurrences*: the discrete, atomic moments at which anything happens. An occurrence has a before and an after and no inside anyone can see. An event fires at an occurrence or does not; a dynamic has one value before an occurrence and one after. A widget's lifetime is measured in occurrences too: built in one, alive through some, torn down in one. The laws are in the chapter on the functors; what this chapter needs is only that the sigils are the names of those three relations to time, and that plain values and optionals have no relation to time at all, which is what makes them plain.
+`!` and `$` are defined against *occurrences*: the discrete, atomic moments at which anything happens. An occurrence has a before and an after and no inside anyone can see. An event fires at an occurrence or does not; a dynamic has one value before an occurrence and one after. A widget's lifetime is measured in occurrences too: built in one, alive through some, torn down in one. The laws are in the chapter on the functors; this chapter needs only that the sigils name those three relations to time, and that plain values and optionals have no relation to time at all, which is what makes them plain.
 
-That last point is the one that makes the aggregate rule above work. A plain array of events is plain because arrays have no relation to time: the array was built once and is what it is. The events inside have their own relation to time, each on its own. Nothing about "an array" needs a notion of "now". If it did, if arrays were somehow live, then every container would be a dynamic and every lifted operation would have to say which layer it lifted over. Instead there is one plain layer, which is timeless, and three time functors that sit on top of it or inside it, and lifting only ever looks at the outermost layer of each operand.
+That last point makes the aggregate rule above work. A plain array of events is plain because arrays have no relation to time: the array was built once and is what it is. The events inside have their own relation to time, each on its own. Nothing about "an array" needs a notion of "now". If it did, if arrays were somehow live, then every container would be a dynamic and every lifted operation would have to say which layer it lifted over. Instead there is one plain layer, which is timeless, and three time functors that sit on top of it or inside it, and lifting only ever looks at the outermost layer of each operand.
 
 ### Functions and return sigils
 
@@ -71,7 +71,7 @@ They are not Hungarian notation. Hungarian notation is a convention a reviewer e
 
 They are also not types. `$count` says that `count` is a dynamic; its type, `$Int`, says of what. The sigil is the part of the type that governs lifting and the part a reader needs at every use; the rest is for the checker. A program that annotates every binding with its full type is allowed and not expected.
 
-Consider the alternative, where a function's name said nothing about its result and `Button $"OK"` returned a widget by inference. Every call site would then need the type to be read before the line could be understood: does `Label text` draw a label or return the text of one? The rule that a name says what it returns is the rule that a call site can be read without the callee. It costs one character per function, and the character is one the reader was going to want anyway.
+Consider the alternative, where a function's name said nothing about its result and `Button $"OK"` returned a widget by inference. Every call site would then need the type to be read before the line could be understood: does `Label text` draw a label or return the text of one? Because a name says what it returns, a call site can be read without the callee. It costs one character per function, and the character is one the reader was going to want anyway.
 
 ## Lexical structure and layout
 
@@ -92,15 +92,13 @@ An identifier is an optional sigil prefix followed by a name. There are two name
 
 A name that mixes the two conventions, `isClick`, `Todo_item`, `Count2Label`, is an error, not a warning. The reason is the one from the first section: a reader decides what a token is from its first character, and a convention with exceptions is not a convention a lexer can enforce. Digits are allowed after the first character in both forms: `item2`, `Vec2`.
 
-A qualified name is an uppercase name followed by `.` and another uppercase name, with no whitespace anywhere in it, repeated as needed: `Gui.Button`, `Fs.File`, `Net.Socket`. It is one token. The namespace part is how extensible variants (next section) spread their tags across modules. A `.` followed by a lowercase name is never part of a qualified name; it is field access, and `Gui.Button.label` would be field access on the constructor, which is a type error, not a lexing question.
+A qualified name is an uppercase name followed by `.` and another uppercase name, with no whitespace anywhere in it, repeated as needed: `Ui.Button`, `Fs.File`, `Net.Socket`. It is one token. The namespace part is how extensible variants (next section) spread their tags across modules. A `.` followed by a lowercase name is never part of a qualified name; it is field access, and `Ui.Button.label` would be field access on the constructor, which is a type error, not a lexing question.
 
 The sigils are `!` `$` `@` `?`. (`&` is reserved for future work and is rejected with a message saying so; `%` does not exist.) The meaning of a sigil depends on what it is attached to:
 
 - On a value's name, it states the value's kind: `!delta` is an event.
 - On a function's name, it states the kind of the function's result: `@Button` returns a widget.
-- On a type, it is the type constructor: `!Text`, `$[Item]`, `@!Click`.
-
-Sigils stack leftmost-outermost in all three positions, as the first section describes.
+- On a type, it is the type constructor: `!Text`, `$[Item]`, `@!Click`; sigils stack leftmost-outermost here as elsewhere.
 
 **Attachment.** The lexer has to decide whether a sigil is part of the next token or a prefix operator standing on its own. The rule: a sigil is *attached*, and part of the token, when the character after it is a name character (letter, digit), `_`, `"`, or another sigil. Otherwise it is *free*: a prefix operator that applies to the whole expression after it, to the end of the enclosing call.
 
@@ -119,11 +117,11 @@ $ Unavailable                # free: the constant dynamic of a unit value
 
 The attached and free forms mean the same thing when both are possible: `$"Increment"` and `$ "Increment"` are the same expression. The attachment rule exists for the token stream, not for the semantics, and it is chosen so that the common spellings are the attached ones and the free form reads as an operator with a space after it. A sigil followed by whitespace is always free. A sigil followed by `(`, `[` or `{` is free and applies to the bracketed expression, which is the same thing as if it were attached, so `@(!a, $b)` and `@ (!a, $b)` have identical token streams: a free sigil then a bracket.
 
-Suppose instead the sigil were always attached to whatever token followed it, as Perl does. Then `@ ChecklistUpdate ix, !checked` would be `(@ChecklistUpdate) ix, !checked`: a call to a function named `@ChecklistUpdate`, which does not exist. The free form is what lets a sigil act as `return` on a whole expression, and the space is what says so. The alternative of a separate keyword for lifting, `pure x` or `return x`, would spell the same thing with a word that does not say which functor is meant; `@ x` and `$ x` say it.
+Suppose instead the sigil were always attached to whatever token followed it. Then `@ ChecklistUpdate ix, !checked` would be `(@ChecklistUpdate) ix, !checked`: a call to a function named `@ChecklistUpdate`, which does not exist. The free form lets a sigil act as `return` on a whole expression, and the space says so. The alternative of a separate keyword for lifting, `pure x` or `return x`, would spell the same thing with a word that does not say which functor is meant; `@ x` and `$ x` say it.
 
 ### Keywords
 
-`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `key` `ix` `jx` `kx` `empty`.
+`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `lt` `le` `gt` `ge` `key` `ix` `jx` `kx` `empty`.
 
 Reserved for future work and rejected with a message saying so: `read` `update` and the sigil `&`.
 
@@ -151,6 +149,7 @@ The operator tokens, grouped by what they are for:
 
 - Statement: `<-` bind, `=` definition, `<=` hold.
 - Event: `|` merge, `on` sample (a keyword used as an operator).
+- Comparison: `lt le gt ge` (keywords used as operators, like `on`), resolved through `Ord`, and `==` `!=`, resolved through `Eq`.
 - Arithmetic: `+ - * /`, which resolve by inference, and the suffixed spellings `+~ -~ *~ /~` for `Int` and `+. -. *. /.` for `Float`, each one token, for when inference cannot decide.
 - Conversion: prefix `+?`, one token, converting an `Int` to a `?Nat`.
 - Types: `->` function, `==>` map, `:` ascription.
@@ -158,7 +157,7 @@ The operator tokens, grouped by what they are for:
 - Lambda: `\` and the argument bars `|a, b|`.
 - Layout: `:` as a block opener.
 
-There are no comparison operators. `<=` is hold everywhere, and the language has no less-or-equal spelled that way; `Eq`, `Ne`, `Lt`, `Le`, `Gt` and `Ge` are prelude functions. The reasoning: `<-`, `<=`, `=` and `==>` already use most of the characters a comparison would, and `$count <= 3` has to mean one thing to a reader. A spelling like `.<` for less-than was considered and rejected because a program with `<=` meaning hold and `<` meaning less-than is a program whose most important line looks like a typo. Comparisons through named functions are not pretty, and the suffixed arithmetic is not pretty either; both are honest about a design that gives the common symbols to time.
+`a lt b` is less-than, `le`, `gt` and `ge` follow, and `a == b` and `a != b` are equality; every program compares things, and `if e.cursor == 0:` is what a reader expects to find there. The spelling of the ordering operators needs further study. `<` and `>` are the obvious choice and probably workable, because the lexer already tells `<`, `<-`, `<=`, `->` and `==>` apart by taking the longest token. What has not been worked through is the interaction with `<=` as hold: once `<` means less-than, a reader will take `$count <= 3` for less-or-equal, and the line that defines a program's state has to mean one thing at a glance. The keywords sidestep that collision at the cost of looking unlike other languages.
 
 **The argument bars.** A `|` immediately after `\` opens an argument list, which closes at the next `|`. The lexer distinguishes the bars from the merge operator by position, not by spacing: `\|a, b| a | b` is a lambda of two arguments whose body merges them. Inside the bars only patterns appear, so there is no merge to confuse them with.
 
@@ -176,7 +175,7 @@ Size $elems   # the sigil is attached to the name
 
 The tokens the rule applies to are `+`, `-`, `.`, and `+?`. The sigils are not subject to it because they are never binary; `*` and `/` are never prefix. When `a -1` parses as a call and `a` turns out not to be a function, the type error says: "`a` is not a function; did you mean `a - 1`?" That diagnostic exists because the spacing rule is the one rule in the lexer that a newcomer will trip on, and the trip has to be a soft landing.
 
-Why a spacing rule at all, rather than Haskell's approach, where `-` after an expression is always binary and a negative argument is written `F (-1)`? Because paren-less calls (below) make argument lists the most common thing in a program, and an argument list where a negative number needs parentheses while a positive one does not reads as a trap. The counter writes `-1 on !decrement | +1 on !increment`, and both literals look alike. The cost is that `F -1` and `F - 1` differ by a space, and the diagnostic above is the price paid for that cost. A second alternative, making spacing matter only for sigils and requiring parentheses around negative arguments, would make the counter's third line `(-1) on !decrement | (+1) on !increment`, which is the trap again with extra characters.
+Why a spacing rule at all, rather than Haskell's approach (from memory), where `-` after an expression is always binary and a negative argument is written `F (-1)`? Because paren-less calls (below) make argument lists the most common thing in a program, and an argument list where a negative number needs parentheses while a positive one does not reads as a trap. The counter writes `-1 on !decrement | +1 on !increment`, and both literals look alike. The cost is that `F -1` and `F - 1` differ by a space, and the diagnostic above is the price paid for that cost. A second alternative, making spacing matter only for sigils and requiring parentheses around negative arguments, would make the counter's third line `(-1) on !decrement | (+1) on !increment`, which is the trap again with extra characters.
 
 ### Layout
 
@@ -202,7 +201,7 @@ Layout is the offside rule, with `:` as the block opener. Everything below is th
 
 10. End of file closes every open block.
 
-There is no explicit-brace form of a layout block. Programs that need one line use the inline form or brackets. The alternative, Haskell's `{ ; }` fallback, exists there so that generated code and one-liners can avoid layout; here generated code writes newlines, and one-liners have the inline form, and the saving is that no parser has to merge two block grammars.
+There is no explicit-brace form of a layout block. Programs that need one line use the inline form or brackets. The alternative, Haskell's `{ ; }` fallback (from memory), exists there so that generated code and one-liners can avoid layout; here generated code writes newlines, and one-liners have the inline form, and the saving is that no parser has to merge two block grammars.
 
 **The ugly cases, each with its answer.**
 
@@ -316,7 +315,7 @@ Describe $_, $starred                          # two arguments, lifted over the 
 
 The method form `x.F y, z` is `F x, y, z`: the receiver becomes the first argument. There is no distinction between functions and methods; the form exists because `slots.Filter IsGui` reads better than `Filter slots, IsGui` in a chain, and chains read left to right: `items.Filter IsDone .MapValues Label` is `MapValues (Filter items, IsDone), Label`. The spacing rule applies to the `.`: `x.F` is method form, `x .F` is `x` applied to `_.F`.
 
-Suppose instead that the innermost call took the trailing commas, so that `F a, G b, c` meant `F(a, G(b, c))`. Then `Insert items, id, Todo label, False` would give `Todo` three arguments and `Insert` two, and the reader would have to know `Todo`'s arity to see it. Or suppose a paren-less call could not be an argument at all, as in OCaml, so that every nested call needed parentheses: `Insert items, id, (Todo (label), (False))` is where that ends up. The outermost rule is the one under which the common case, a call whose arguments are values and one-argument calls, needs no parentheses, and the uncommon case, a nested multi-argument call, needs exactly one pair.
+Suppose instead that the innermost call took the trailing commas, so that `F a, G b, c` meant `F(a, G(b, c))`. Then `Insert items, id, Todo label, False` would give `Todo` three arguments and `Insert` two, and the reader would have to know `Todo`'s arity to see it. Or suppose a paren-less call could not be an argument at all, as in OCaml, so that every nested call needed parentheses: `Insert items, id, (Todo (label), (False))` is where that ends up. Under the outermost rule the common case, a call whose arguments are values and one-argument calls, needs no parentheses, and the uncommon case, a nested multi-argument call, needs exactly one pair.
 
 ### What a conforming lexer must get right
 
@@ -330,8 +329,8 @@ A plain value is immutable, eager, and cheap to copy or alias; the program canno
 
 ### Primitives
 
-- `Nat`: unsigned, machine width. Indexes arrays. Has no negation.
-- `Int`: signed, machine width.
+- `Nat`: unsigned, 64-bit. Indexes arrays. Has no negation.
+- `Int`: signed, 64-bit.
 - `Float`: IEEE double.
 - `Text`: Unicode text. Indexed by character position through prelude functions, never by byte.
 - `Char`: one code point.
@@ -345,7 +344,7 @@ Overflow in `Nat` or `Int` arithmetic is a runtime error that aborts the occurre
 Three things are overloaded in Prism and nothing else is: equality, ordering, and arithmetic. They are traits, in the Rust sense: a named set of operations that a type implements, with the operation resolved by inference from the operand types. The three are `Eq`, `Ord` and `Num`.
 
 - `Eq`: every plain value whose type contains no function and no functor value. Structural: two records are equal when their fields are, two maps when their entries are, two values of an extensible variant when their tags and fields are.
-- `Ord`: primitives, text, chars, tuples and arrays of ordered types, and declared types whose parts are all ordered (a `choice` in declaration order, then by payload). Map keys must be `Ord`.
+- `Ord`: primitives, text, chars, tuples and arrays of ordered types, and a `choice` whose payloads are ordered (declaration order, then payload). Records have no ordering. Map keys must be `Ord`.
 - `Num`: `Nat`, `Int` and `Float`, with `+ - * /`. Prefix `-` is `Int` and `Float` only.
 
 Values that hold a function, an event, a dynamic or a widget have none of these. Equality on events would have to mean something, and the only thing it could mean is identity, which the language does not give events; equality on functions is undecidable; equality on widgets would be equality on descriptions, which is close to structural but would make two different closures compare unequal in a way the program cannot predict. Ruling them out keeps `Eq` meaning "the same value" and nothing subtler.
@@ -361,20 +360,21 @@ let third = total / 3                                 # ?Nat, if total is a Nat
 
 Numeric literals are polymorphic over `Nat`, `Int` and `Float` and take their type the same way. An integer-spelled literal is a `Nat` or an `Int`; a decimal-spelled literal is a `Float`; the negation of a literal is not a `Nat`. So `-1` is an `Int` by its spelling alone, `1.5` is a `Float`, and `0` is whatever the context says. When inference cannot decide, because nothing in scope pins the type, the program is rejected rather than defaulted, with a message naming the literal or the operator and the candidates. The suffixed spellings `+~ -~ *~ /~` (`Int`) and `+. -. *. /.` (`Float`) are there to pin it in place: `0 <= $count +~ !delta` says `Int` outright. `Nat` has no suffixed spelling; a program that needs to pin a `Nat` annotates it, `let n: Nat = 0`. Prefix `+` is the identity on any numeric type and exists so that `+1` and `-1` can sit next to each other in a merge. `+?` converts an `Int` to a `?Nat`, and `Abs` to a `Nat`.
 
-Why inference rather than one operator per type, as OCaml does? A program full of `+~` reads as a program about its own numeric representation, and the counter, the first program anyone writes, would have one on its most important line. Why inference rather than a default, as Haskell's `Integer` default? Because a default picks silently, and the wrong pick for a count is `Float`, which is the pick that makes `n / 2` into something that is not what a count means. An error at the one literal nothing pins is cheap, and the fix is one character. The suffixed forms exist because inference has to fail somewhere, and when it does the program should be able to say the type at the operator rather than add an annotation three lines away.
+Why inference rather than one operator per type, as OCaml does (from memory)? A program full of `+~` reads as a program about its own numeric representation, and the counter, the first program anyone writes, would have one on its most important line. Why inference rather than a default, as Haskell's `Integer` default (from memory)? Because a default picks silently, and the wrong pick for a count is `Float`, which is the pick that makes `n / 2` into something that is not what a count means. An error at the one literal nothing pins is cheap, and the fix is one character. The suffixed forms exist because inference has to fail somewhere, and when it does the program should be able to say the type at the operator rather than add an annotation three lines away.
 
 Equality and ordering in use look like this:
 
 ```prism
-if (Eq e.cursor, 0): e else: Edit e.text, e.cursor - 1
+if e.cursor == 0: e else: Edit e.text, e.cursor - 1
 let sorted = Sort names                    # Text is Ord
 let by_id = Insert items, id, todo         # Nat is Ord, so Nat ==> Todo is a map
-let same = Eq slot_a.element, slot_b.element   # structural, on an extensible variant
+let same = slot_a.element == slot_b.element    # structural, on an extensible variant
+let later = a.at gt b.at                   # Ord, through the gt operator
 ```
 
 `Eq` on `Float` is IEEE equality, so a NaN is not equal to itself, and `Ord` on `Float` puts NaN after every number so that a sort terminates and a map with `Float` keys has a defined order; a program that wants something else wraps the float in a newtype and compares through a function. Equality on `Text` is by code points, not by any normalisation; two texts that look the same and are encoded differently are different, and a program that cares normalises first. These are the dull answers, chosen because the alternatives are a choice of locale or a choice of normalisation form, and either one is a dependency on something outside the program.
 
-Generic code may be bounded by a trait, `let Max<a: Ord>: fn (a, a) -> a`, and is still erased: the trait implementation is passed where the bound is, not looked up at runtime. What this is not: it is not a general trait system. There are no user-defined traits, no associated types, no instances declared away from the type. The checker is written so that those can be added, and the chapter on the compiler says how; for this specification the three are the whole of it, and they are enough for sorting, map keys, element identity, and arithmetic that reads as arithmetic.
+Generic code may be bounded by a trait, `let Max<a: Ord>: fn (a, a) -> a`, and is still erased: the trait implementation is passed where the bound is, not looked up at runtime. It is not a general trait system. There are no user-defined traits, no associated types, no instances declared away from the type. The checker is written so that those can be added, and the chapter on the compiler says how; for this specification the three are the whole of it, and they are enough for sorting, map keys, element identity, and arithmetic that reads as arithmetic.
 
 ### Aggregates
 
@@ -434,7 +434,7 @@ Records are the one place a widget returns several things at once, and the `Text
 
 **Choices.** A `choice` lists alternatives, inline with `|` or one per statement in a block. An alternative with a payload declares a newtype on the spot: after `type Shape = choice: Circle Float ...`, `Circle` is both a type and a one-argument constructor, and `Circle 2.0` is a `Shape`. An alternative without a payload is a unit type (below). Two choices may not declare the same alternative name in one scope; `Circle` means one thing.
 
-**Newtypes.** `type Meters = Meters Float` declares a type and a one-argument constructor of the same name, unwrapped with `.value`. `Meters 3.0` is not a `Float` and `Meters 3.0 +. 1.0` is a type error, which is what a newtype is for. Newtypes over tuples make lightweight records, `type Pair = Pair (Nat, Nat)`, but records are preferred because fields have names.
+**Newtypes.** `type Meters = Meters Float` declares a type and a one-argument constructor of the same name, unwrapped with `.value`. `Meters 3.0` is not a `Float` and `(Meters 3.0) +. 1.0` is a type error, which is what a newtype is for. Newtypes over tuples make lightweight records, `type Pair = Pair (Nat, Nat)`, but records are preferred because fields have names.
 
 **Unit types.** `type Click = click` declares a type with exactly one value, spelled in lowercase. A unit type is the type of a response that has no data: a click, a tick, an end-of-input. The lowercase value is a plain name and follows the value naming rule; the uppercase type follows the type rule. A `choice` alternative with no payload, `Stopped` in `choice: Stopped | Running Instant`, is the same construction, with the uppercase name serving as both the alternative and its value, because inside a choice the alternative name is the thing you match on.
 
@@ -446,7 +446,7 @@ Generic code is erased. It runs on values whose types it does not know and never
 
 `?T` is `Nil` or `Some x`. It is a plain-value type with a sigil, not a time functor: a `?Nat` has no relation to occurrences. It is a sigil rather than a type constructor spelled `Option` for the same reason the others are: so that a name says what it is. `?user` reads as "maybe a user" at the point of use, and a function that returns one says so in its name.
 
-`?` lifts, at the plain layer. A plain operation applied to a `?T` where it wants a `T` gives a `?` result, `Nil` if any operand was `Nil` and `Some` of the operation otherwise, which is the applicative `Maybe` you know. So `a / b + 1` is `?Nat`, `Len ?name` is `?Nat`, and `Eq ?x, 3` is `?Bool`. `match` is the eliminator: the only way to get from `?T` back to `T` is a `match` with a `Nil` arm, or a prelude function that is one, `Or ?x, default`.
+`?` lifts, at the plain layer. A plain operation applied to a `?T` where it wants a `T` gives a `?` result, `Nil` if any operand was `Nil` and `Some` of the operation otherwise, which is the applicative `Maybe` you know. So `a / b + 1` is `?Nat`, `Len ?name` is `?Nat`, and `?x == 3` is `?Bool`. `match` is the eliminator: the only way to get from `?T` back to `T` is a `match` with a `Nil` arm, or a prelude function that is one, `Or ?x, default`.
 
 The worry about lifting `?` is the division case: `a / b + 1` quietly becomes optional, and the reader of the line might not notice. Look at where the result goes. It is bound to a name, and that name must be `?total`, because the sigil is part of the name and checked against the type; it is passed to a function wanting a `Nat`, and the function gets a `?Nat` instead, so that application lifts too and its result is optional, and so on until some binding is forced to show the `?` or some `match` eliminates it. The `?` cannot be lost; it can only move outward, and it stops at the first name. The alternative, no lifting, so that `a / b + 1` is a type error and every optional needs a `match` at the site of its first use, puts the `match` where the division is rather than where the decision about absence is made, and in the todo list that is the difference between one `match` in `Describe` and five in the arithmetic above it. Lifting `?` is the same decision as lifting `!` and `$`: the structure is in the names, so the operations can be plain.
 
@@ -457,7 +457,7 @@ Lifting over `?` happens at the plain layer, which means *inside* the time funct
 ```prism
 type Element = choice ..
 
-tag Gui.Button of Element:
+tag Ui.Button of Element:
     label: Text
     responds: Click
 
@@ -466,18 +466,18 @@ tag Fs.Contents of Element:
     state: Contents
 ```
 
-An extensible variant is a `choice` whose alternatives are declared across modules rather than in one place: `type Element = choice ..` opens it, and each `tag` declaration adds an alternative. A tag's name is qualified, `Gui.Button`, and the namespace is the module's way of saying whose tag it is. A tag declaration states its fields with their types, and, for the one extensible variant the language relies on, up to three parts that say what the element does: `requests`, `responds` and `state`. The parts are specified in the elements chapter, where they mean something; here the variant is a type like any other.
+An extensible variant is a `choice` whose alternatives are declared across modules rather than in one place: `type Element = choice ..` opens it, and each `tag` declaration adds an alternative. A tag's name is qualified, `Ui.Button`, and the namespace is the module's way of saying whose tag it is. A tag declaration states its fields with their types, and, for the one extensible variant the language relies on, up to three parts that say what the element does: `requests`, `responds` and `state`. The parts are specified in the elements chapter, where they mean something; here the variant is a type like any other.
 
 The rules:
 
 - **Field types are concrete.** A tag declaration may not mention a type variable. The reason is erasure: generic code never knows the type of a value it holds, and a tag whose field could be "whatever `a` is" would need a runtime type descriptor to match on. With concrete fields, every value of an extensible variant has fully known field types where it is built, and generic code cannot build one except at a type it knows. The cost: a generic library cannot wrap its own type parameter in an element. It takes elements already built, or is written at a concrete type. A generic function that tries, `let Wrap: fn a -> Element = \Test.Box(value=_)`, is rejected with a message naming the field and the type variable.
-- **Construction** is the record forms: `Gui.Button(label="OK")` with named arguments, `Gui.Button "OK"` positionally, or a block. A tag with no fields is bare: `Clock`.
-- **Matching** is by tag, with the fields bound by name or position as for a record: `Gui.Button(label=l)` binds `l : Text`. There is no matching on field *types*, because every field's type is fixed by its tag; what you match on is which tag, and the fields follow.
-- **`Ns.*`** in a pattern matches any tag declared under that namespace: `Gui.*(..)` is every GUI element. The `*` is the pattern's and appears nowhere else; a namespace alone, `Gui`, is not a pattern, so that adding a tag `Gui.Window` to a library cannot change which arm an existing `Gui` match takes. Nested namespaces match by prefix: `Gui.*` includes `Gui.Text.Input` if someone declares one.
-- **The catch-all rule.** A `match` on an extensible variant must end in a catch-all arm, `ignore: ...` or a bare name, because the set of alternatives is open and no match can be exhaustive by listing. In an interceptor the catch-all is the forwarding case, and the rule is what makes forgetting to forward a compile error rather than a silently dropped element.
-- **Equality** is structural, tag then fields, and is `Eq` when every field is; `Ord` is by tag name then fields. State identity across the World boundary uses this equality, so two `Fs.Contents(path="/etc/motd")` values are one state wherever they are built.
+- **Construction** is the record forms: `Ui.Button(label="OK")` with named arguments, `Ui.Button "OK"` positionally, or a block. A tag with no fields is bare: `Clock`.
+- **Matching** is by tag, with the fields bound by name or position as for a record: `Ui.Button(label=l)` binds `l : Text`. There is no matching on field *types*, because every field's type is fixed by its tag; what you match on is which tag, and the fields follow.
+- **`Ns.*`** in a pattern matches any tag declared under that namespace: `Ui.*(..)` is every element of the GUI library. The `*` is the pattern's and appears nowhere else; a namespace alone, `Ui`, is not a pattern, so that adding a tag `Ui.Window` to a library cannot change which arm an existing `Ui` match takes. Nested namespaces match by prefix: `Ui.*` includes `Ui.Text.Input` if someone declares one.
+- **The catch-all rule.** A `match` on an extensible variant must end in a catch-all arm, `ignore: ...` or a bare name, because the set of alternatives is open and no match can be exhaustive by listing. In an interceptor the catch-all is the forwarding case, and the rule makes forgetting to forward a compile error rather than a silently dropped element.
+- **Equality** is structural, tag then plain fields, with the `requests` event excluded, and is `Eq` when every plain field is. There is no `Ord` on an extensible variant. State identity across the World boundary uses this equality, so two `Fs.Contents(path="/etc/motd")` values are one state wherever they are built.
 
-Suppose instead that elements were ordinary records with a tag field, `Element(tag="Gui.Button", fields=...)`, and matching compared tag strings. Then a misspelled tag would match nothing and fall to the catch-all, silently, and a field's type would be whatever the record said that time. Tags as declared alternatives of a declared type get the checker involved: an undeclared tag is an error at the construction, a field of the wrong type is an error there too, and a `match` arm for a tag that does not exist is an error rather than dead code.
+Suppose instead that elements were ordinary records with a tag field, `Element(tag="Ui.Button", fields=...)`, and matching compared tag strings. Then a misspelled tag would match nothing and fall to the catch-all, silently, and a field's type would be whatever the record said that time. Tags as declared alternatives of a declared type get the checker involved: an undeclared tag is an error at the construction, a field of the wrong type is an error there too, and a `match` arm for a tag that does not exist is an error rather than dead code.
 
 ### Type annotations and inference
 
@@ -487,7 +487,7 @@ Types are inferred by Hindley–Milner over the value layer, with the functor la
 let Magnitude: fn Vector -> Float = \Sqrt (_.x *. _.x +. _.y *. _.y)
 @Button: fn $Text -> @!Click = \@widget:
     !!clicks <- dyn $_:
-        @Element Gui.Button(label=_)
+        @Element Ui.Button(label=_)
     @ !Switch !!clicks
 ```
 
@@ -495,11 +495,11 @@ Function types are written `fn A, B -> C`, with the arguments comma-separated th
 
 Local annotations are allowed anywhere a pattern is: `let n: Nat = 0`, `\|e: Element| ...`, `$x: $Int <- 0 <= ...`. On a sigiled name the annotation gives the plain type under the sigil or the full type with it; both spellings are accepted and mean the same thing.
 
-The split between the value layer and the functor layer is the thing to understand about inference here. Hindley–Milner runs on plain types and stays principal: the type of `Insert items, id, todo` is found by unification over `k ==> v`, `k`, `v`, exactly as it would be in ML. The functor layer is not unified at all; it is *read*. `$items` is a dynamic because its name says so, and the application `Insert $items, $next, todo` is a dynamic because the operands say so and the lifting rule says what a plain function over dynamics is. No unification variable ever stands for "some functor"; the sigils have already answered the question. That is why a value's kind is readable from its spelling and why the lifting rule can be a table.
+Inference here splits into a value layer and a functor layer. Hindley–Milner runs on plain types and stays principal: the type of `Insert items, id, todo` is found by unification over `k ==> v`, `k`, `v`, exactly as it would be in ML. The functor layer is not unified at all; it is *read*. `$items` is a dynamic because its name says so, and the application `Insert $items, $next, todo` is a dynamic because the operands say so and the lifting rule says what a plain function over dynamics is. No unification variable ever stands for "some functor"; the sigils have already answered the question. That is why a value's kind is readable from its spelling and why the lifting rule can be a table.
 
 ## Expressions
 
-Lifting is what the sigils buy. You have written `zipWith (+) counts deltas` and `fmap render model` and `combineLatest([a$, b$]).pipe(map(([a, b]) => a + b))`, and in each case the interesting part was the `+`, which was buried under a word that said how to apply it. Because every operand in Prism says what kind it is, the compiler can apply a plain function across events and dynamics without being told, and the common case, `$count + !delta`, is written as arithmetic. The goal is that the program reads as what it computes and the time structure is inferred from the names, never the other way round: nothing in this section requires inference to decide whether something is an event. The second goal is one way to do each thing, so that two readers reach one parse; the precedence and application rules exist for that and nothing else.
+The sigils buy lifting. You have written `zipWith (+) counts deltas` and `fmap render model` and `combineLatest([a$, b$]).pipe(map(([a, b]) => a + b))` (RxJS, from memory), and in each case the interesting part was the `+`, which was buried under a word that said how to apply it. Because every operand in Prism says what kind it is, the compiler can apply a plain function across events and dynamics without being told, and the common case, `$count + !delta`, is written as arithmetic. The goal is that the program reads as what it computes and the time structure is inferred from the names, never the other way round: nothing in this section requires inference to decide whether something is an event. The second goal is one way to do each thing, so that two readers reach one parse; the precedence and application rules exist for that and nothing else.
 
 ### Lifting
 
@@ -529,7 +529,8 @@ Describe $_, $starred     # a dynamic text, inside a for block
 Append $log, !line        # an event of arrays
 a / b + 1                 # ?Nat: the ? from division lifts through the +
 $a / $b                   # $?Nat
-Eq ?x, 3                  # ?Bool
+?x == 3                   # ?Bool
+$count gt limit           # $Bool: a comparison, lifted like any operation
 "Count: $count"           # $Text
 "Got $!line"              # !Text
 $"Increment"              # a constant dynamic: nothing to lift over
@@ -537,33 +538,33 @@ v on !e                   # an event with v's value when !e fires
 $v on !e                  # an event with $v's old value when !e fires
 ```
 
-`on` has no semantics of its own. It is a binary operator that returns its left operand, and the rule above makes `v on !e` an event that fires with `e` and has the value `v`, and `$v on !e` an event whose value is the tag read of `$v`. That one operator and the lifting rule together are what Reflex spells as `tag`, `tagPromptlyDyn`, `attach`, `attachWith` and `<@`: the dynamics are always read as they stood before, so there is one `on` and no choice to make.
+`on` has no semantics of its own. It is a binary operator that returns its left operand, and the rule above makes `v on !e` an event that fires with `e` and has the value `v`, and `$v on !e` an event whose value is the tag read of `$v`. Reflex spells that one operator plus the lifting rule as `tag`, `tagPromptlyDyn`, `attachWith`, and (from memory) `attach` and `<@`: the dynamics are always read as they stood before, so there is one `on` and no choice to make.
 
 The two-events error is the rule most worth defending, because the alternative looks friendly. Suppose `!a + !b` meant "fire when either fires, using the other's most recent value". Then every event would need a most-recent value, which is a hold, which is state nobody declared, with an initial value nobody chose. Suppose instead it meant "fire when both fire in one occurrence". That is a real operation, and it is spelled by hand: `!a` and `!b` both fire in some occurrence exactly when both sides of a merge of them fire, and the program that wants that writes it with `|` and a tuple, or holds one and samples it at the other. The error exists because there are three things `!a + !b` could mean and the program has to say which.
 
-The tag read in the third case is the whole of the language's mutation policy in one rule. `$count + !delta` reads the count *before* the click. That is what turns the counter's `$count <- 0 <= $count + !delta` from an equation into a definition: the cycle passes through a read of the old value. It is also why there is no "which version of `$count` did the handler see": at an event there is one version, the one before. If you have debugged a Reflex program where `tagPromptlyDyn` and `tag . current` were both in use, you know which afternoon this prevents.
+The tag read in the third case is the whole of the language's mutation policy in one rule. `$count + !delta` reads the count *before* the click. That turns the counter's `$count <- 0 <= $count + !delta` from an equation into a definition: the cycle passes through a read of the old value. It is also why there is no "which version of `$count` did the handler see": at an event there is one version, the one before. If you have debugged a Reflex program where `tagPromptlyDyn` and `tag . current` were both in use, you know which afternoon this prevents.
 
 **Lifting never crosses a sigil boundary.** A function on `A` lifts over `$A` but not over the inner layer of `$$A`; `$$a + 1` is a type error, and `$Join $$a + 1` is what the program meant. Likewise a function on `!A` does not lift over `!!A`. Flattening is `!Switch` and `$Join`, in the switching chapter, and it has laws of its own that a lifted `+` could not keep.
 
-**Lifting over `@`.** A widget operand is not computed over, but a widget-returning function applied to a dynamic where it wanted a plain value is a common thing to write, and it has one meaning. `@Element Gui.Button(label=$l)` applies `@Element` to a dynamic, and by the rule above the result is `$@!Click`: a dynamic of widgets, one per value of `$l`. Binding a dynamic of widgets with `<-` lifts to `dyn`:
+**Lifting over `@`.** A widget operand is not computed over, but a widget-returning function applied to a dynamic where it wanted a plain value is a common thing to write, and it has one meaning. `@Element Ui.Button(label=$l)` applies `@Element` to a dynamic, and by the rule above the result is `$@!Click`: a dynamic of widgets, one per value of `$l`. Binding a dynamic of widgets with `<-` lifts to `dyn`:
 
 ```prism
-!click <- @Element Gui.Button(label=$l)
+!click <- @Element Ui.Button(label=$l)
 ```
 
 means
 
 ```prism
 !!clicks <- dyn $l:
-    @Element Gui.Button(label=_)
+    @Element Ui.Button(label=_)
 let !click = !Switch !!clicks
 ```
 
-The bound name is the `!Switch` of the `dyn`'s event when the widget's result is an event; for a result that is a dynamic, it is a hold of dynamics joined with `$Join`, with the first build's result as the hold's initial value, which exists because the first build happens in the occurrence the `dyn` is built; for a plain result it is a hold of the plain value with the first build's value as initial, so the bound name is a `$`; for a `unit` result, nothing is bound; for a bundle, each field is treated by its own kind. The shorthand is used freely from here on and means exactly the expansion. The expansion is the real thing: anything the shorthand does, the hand version does with the same primitives, and the hand version is what a program writes when it wants the `dyn`'s event or a different initial value.
+The bound name is the `!Switch` of the `dyn`'s event when the widget's result is an event; for a result that is a dynamic, it is a hold of dynamics joined with `$Join`, with the first build's result as the hold's initial value, which exists because the first build happens in the occurrence the `dyn` is built; for a plain result it is a hold of the plain value with the first build's value as initial, so the bound name is a `$`; for a `unit` result, nothing is bound; for a bundle, each field is treated by its own kind. The shorthand is used freely from here on and means exactly the expansion; a program that wants the `dyn`'s event or a different initial value writes the expansion.
 
 ### Application
 
-A function is applied by juxtaposition with comma-separated arguments, under the outermost-comma rule of the previous section. The thing to know about application in the precedence order is where it sits: **a paren-less call extends to the end of the expression it sits in.** Its arguments are whole expressions, so `F a + 1` is `F(a + 1)` and `F a | G b` is `F(a | G(b))`, while `1 + F a` is `1 + F(a)`, because nothing precedes a call's name that the call could absorb. Parentheses make any other grouping.
+A function is applied by juxtaposition with comma-separated arguments, under the outermost-comma rule of the previous section. Application sits at one place in the precedence order: **a paren-less call extends to the end of the expression it sits in.** Its arguments are whole expressions, so `F a + 1` is `F(a + 1)` and `F a | G b` is `F(a | G(b))`, while `1 + F a` is `1 + F(a)`, because nothing precedes a call's name that the call could absorb. Parentheses make any other grouping.
 
 ```prism
 @Label $"Count: $count"                       # one argument
@@ -575,7 +576,7 @@ $live on (!started | !refresh)                # on binds tighter than |, so the 
 {!Filter (HitTest ($slots, !pointer)): Click} # a one-entry map with a lifted key
 ```
 
-This placement follows from the outermost-comma rule: if a call's arguments are whole expressions up to the next comma, then `F a + 1, b` can only be `F(a + 1, b)`, and consistency says the last argument runs to the end as well. It is also what makes `@Label $"Count: $count"` and `intercept @_, (!Union !kid_ins, !fwd_ins)` read the way they look. The alternative, application binding tighter than every operator as in Haskell, would make `Size $elems + 1` mean `(Size $elems) + 1`, which is the more common intent in arithmetic, at the cost of parentheses around most arguments: `@Label ($"Count: $count")`, `Not ($on)`, `!Filter (HitTest ($slots, !pointer))` is the same either way, and `@Button ($"OK")` on the first line anyone writes. The language's programs are mostly calls with structured arguments and rarely arithmetic over a call's result, and the rule follows the programs. When arithmetic over a result is what you want, `let` it or parenthesise it, and the lint that flags `F a + 1` with a call on the left of an arithmetic operator is cheap.
+This placement follows from the outermost-comma rule: if a call's arguments are whole expressions up to the next comma, then `F a + 1, b` can only be `F(a + 1, b)`, and consistency says the last argument runs to the end as well. It also makes `@Label $"Count: $count"` and `intercept @_, (!Union !kid_ins, !fwd_ins)` read the way they look. The alternative, application binding tighter than every operator as in Haskell (from memory), would make `Size $elems + 1` mean `(Size $elems) + 1`, which is the more common intent in arithmetic, at the cost of parentheses around most arguments: `@Label ($"Count: $count")`, `Not ($on)`, `!Filter (HitTest ($slots, !pointer))` is the same either way, and `@Button ($"OK")` on the first line anyone writes. The language's programs are mostly calls with structured arguments and rarely arithmetic over a call's result, and the rule follows the programs. When arithmetic over a result is what you want, `let` it or parenthesise it, and the lint that flags `F a + 1` with a call on the left of an arithmetic operator is cheap.
 
 Method form: `x.F y, z` is `F x, y, z`. The receiver is one expression up to the `.`, so `a.b.F c` is `F (a.b), c`.
 
@@ -590,16 +591,17 @@ Loosest to tightest:
 | 3 | paren-less application | to the right, to the end of the expression |
 | 4 | `\|` | merge |
 | 5 | `on` | sample |
-| 6 | `+` `-` and `+~` `-~` `+.` `-.` | additive |
-| 7 | `*` `/` and `*~` `/~` `*.` `/.` | multiplicative |
-| 8 | prefix `+` `-` `+?` and free sigils `!` `$` `@` `?` | prefix |
-| 9 | `.field`, `[index]`, `.Method`, attached sigils | postfix |
+| 6 | `lt` `le` `gt` `ge` `==` `!=` | comparison |
+| 7 | `+` `-` and `+~` `-~` `+.` `-.` | additive |
+| 8 | `*` `/` and `*~` `/~` `*.` `/.` | multiplicative |
+| 9 | prefix `+` `-` `+?` and free sigils `!` `$` `@` `?` | prefix |
+| 10 | `.field`, `[index]`, `.Method`, attached sigils | postfix |
 
 Binary operators at one level associate to the left, except `<=`, which does not associate: `a <= b <= c` is an error. The counter's lines are the test of the table: `$count <- 0 <= $count + !delta` is `$count <- (0 <= ($count + !delta))`; `-1 on !decrement | +1 on !increment` is `(-1 on !decrement) | (+1 on !increment)`; `$count + 1 on !click | 0 on !reset` is `(($count + 1) on !click) | (0 on !reset)`.
 
-`on` tighter than `|` is the choice that makes a merge of samples read without parentheses, which is the form of every "what happened" event in the worked examples. `on` looser than arithmetic is the choice that makes `$count + 1 on !click` mean "the count plus one, at the click" rather than "the count, plus (one at the click)", which would be a two-event error waiting to happen. Both choices are the ones under which the first program anyone writes needs no parentheses, and a rule that made the counter uglier would need a better reason than any that has turned up.
+`on` tighter than `|` lets a merge of samples read without parentheses, which is the form of every "what happened" event in the worked examples. `on` looser than arithmetic makes `$count + 1 on !click` mean "the count plus one, at the click" rather than "the count, plus (one at the click)", which would be a two-event error waiting to happen. Under both choices the first program anyone writes needs no parentheses, and a rule that made the counter uglier would need a better reason than any of these. Comparison sits between `on` and arithmetic, so `$count + 1 gt limit on !click` compares the sum and samples the answer at the click.
 
-A free sigil at level 8 applies to everything to its right up to the end of the enclosing call or bracket, because it is prefix and nothing at level 8 or looser follows it: `@ ChecklistUpdate ix, !checked` is `@ (ChecklistUpdate ix, !checked)` since the call at level 3 is looser and extends under it. The free sigil and the paren-less call therefore nest the obvious way: the sigil wraps the call. `$ x + 1` is `$ (x + 1)` by the same reading.
+A free sigil at level 9 applies to everything to its right up to the end of the enclosing call or bracket, because it is prefix and nothing at level 9 or looser follows it: `@ ChecklistUpdate ix, !checked` is `@ (ChecklistUpdate ix, !checked)` since the call at level 3 is looser and extends under it. The free sigil and the paren-less call therefore nest the obvious way: the sigil wraps the call. `$ x + 1` is `$ (x + 1)` by the same reading.
 
 ### Statements
 
@@ -657,14 +659,14 @@ Fold changes, items, \|acc, id, c| Step acc, id, c
 ```prism
 @Button: fn $Text -> @!Click = \@widget:
     !!clicks <- dyn $_:
-        @Element Gui.Button(label=_)
+        @Element Ui.Button(label=_)
     @ !Switch !!clicks
 
 @Forward: fn $(Path ==> Slot) -> @!(Path ==> Response) = \|$slots| @widget:
     for $slots:
         dyn $_:
-            !resp <- @Element _.element
-            @ resp
+            (!resp, ignore) <- @Element _.element
+            @ !resp
 ```
 
 **The argument's kind.** A lambda's argument has a sigil like any name, and the rule is this: a body that mentions a sigiled pronoun, `$_`, `!_` or `@_`, takes an argument of that kind and is not lifted over it. `@Button`'s body says `dyn $_:`, so it takes a dynamic; a lambda whose body says `intercept @_, ...` takes a widget. A named argument has the sigil it is written with. A body with no sigiled pronoun and no annotation takes a plain argument, and the lambda is a plain function.
@@ -689,8 +691,8 @@ match items[id]:
     Nil: items
 
 match element:
-    Gui.Button(label=l): ...
-    Gui.*(..): ...
+    Ui.Button(label=l): ...
+    Ui.*(..): ...
     ignore: ...
 ```
 
@@ -709,7 +711,7 @@ A `match` has a scrutinee and a block of arms, each `pattern: expression` or `pa
 - `Ns.Tag(...)` for a tag of an extensible variant, with the same record forms; `Ns.*(..)` for any tag under a namespace; a bare `Ns.Tag` for a tag with no fields.
 - `p: Type` ascribes a type to a pattern.
 
-There is no guard syntax (`Some x if x > 3`). A guard is a nested `match` or an `if` in the arm; the cost is a line, and the saving is a pattern language with one way to say each thing.
+There is no guard syntax (`Some x if x gt 3`). A guard is a nested `match` or an `if` in the arm; the cost is a line, and the saving is a pattern language with one way to say each thing.
 
 **`match` lifts like application.** With all arms plain, `match $x: ...` is a dynamic of the arms' results, changing when `$x` does, and `match !e: ...` is an event firing when `!e` does, with the taken arm's value. Dynamics mentioned in the arms are lifted by the same rule as any operation: in `match !e: Some v: v + $offset`, the `$offset` is read through a tag. When any arm is a widget, the scrutinee must be plain, because choosing a widget by a changing value is construction and is spelled `dyn`; the error says so and points at it.
 
@@ -747,7 +749,7 @@ Outside a widget block, `for xs: body` maps `body` over a plain array or map. In
 ```prism
 let squares = for [1, 2, 3]: _ * _
 let labelled = for names: "$ix: $_"
-let doubled = for prices: key, _ *. 2.0        # a map, keyed as the input
+let doubled = for prices: _ *. 2.0             # a map, keyed as the input
 ```
 
 It evaluates to an array when the input is an array and a map when the input is a map, in key order. The body is one expression or a layout block of `let`s ending in a value. Over a dynamic collection it is the construct of the switching chapter and is only allowed in a widget block, because it builds nodes; the error for `for $m:` outside a widget block says so.
@@ -889,7 +891,7 @@ error: `+` cannot lift into the inner layer of `$$a`
 error: `?Nat` where `Nat` is required
   --> idx.prism:4:21
    |
- 4 |     @Element Gui.Row(height=xs[i])
+ 4 |     @Element Ui.Row(height=xs[i])
    |                             ^^^^^ indexing returns ?Nat
    = element fields are plain; match on it, or give a default: `Or xs[i], 0`
 ```
@@ -915,9 +917,9 @@ error: cannot interpolate a `Todo` into text
    = text interpolation takes Text, Nat, Int, Float and Char; render it: `${Describe t}`
 ```
 
-**Layout.** "expected an indented block after `:`", with the span of the colon and the line that was found instead; "unindent does not match any open block", with the line's column and the columns currently open (`open blocks are at columns 0, 4, 8; this line is at 6`); "tab character in indentation", with position. The second message's list of open columns is what turns a layout error from a puzzle into a one-keystroke fix.
+**Layout.** "expected an indented block after `:`", with the span of the colon and the line that was found instead; "unindent does not match any open block", with the line's column and the columns currently open (`open blocks are at columns 0, 4, 8; this line is at 6`); "tab character in indentation", with position. The second message's list of open columns turns a layout error from a puzzle into a one-keystroke fix.
 
-**Reserved words.** `read`, `update` and `&` each say "reserved for a future version of the language; not available", so that a reader of an older description who tries one learns that it is intended rather than misspelled. `%` is reported as an unknown character.
+**Reserved words.** `read`, `update` and `&` each say "reserved for a future version of the language; not available", so that a reader who tries one learns that it is intended rather than misspelled. `%` is reported as an unknown character.
 
 **`for` over a dynamic outside a widget block.** "`for` over a dynamic collection builds widgets and must be inside a widget block"; with a plain collection inside a widget block it is the plain mapping and needs no message.
 
@@ -1085,13 +1087,13 @@ Identical streams.
 
 ```prism
 test counter: Test @counter: array:
-    Expect Gui.Label(text="Count: 0")
-    Send Gui.Button(label="Increment"), Click
+    Expect Ui.Label(text="Count: 0")
+    Send Ui.Button(label="Increment"), click
 ```
 
 ```
-test counter : Test @counter : array ⟨ Expect Gui.Label ( text = TEXT("Count: 0") )
-; Send Gui.Button ( label = TEXT("Increment") ) , Click ⟩
+test counter : Test @counter : array ⟨ Expect Ui.Label ( text = TEXT("Count: 0") )
+; Send Ui.Button ( label = TEXT("Increment") ) , click ⟩
 ```
 
 The first two colons are inline colon tokens; only the last, line-final, opens a block.
@@ -1179,16 +1181,16 @@ The separator before `else` is emitted by the lexer, since `else` is at the bloc
 
 ```prism
 match e:
-    Gui.Text.Input(..): 1
-    Gui.*(..): 2
+    Ui.Text.Input(..): 1
+    Ui.*(..): 2
     ignore: 3
 ```
 
 ```
-match e ⟨ Gui.Text.Input ( .. ) : 1 ; Gui . * ( .. ) : 2 ; ignore : 3 ⟩
+match e ⟨ Ui.Text.Input ( .. ) : 1 ; Ui . * ( .. ) : 2 ; ignore : 3 ⟩
 ```
 
-`Gui.Text.Input` is one qualified-name token. `Gui.*` lexes as the name `Gui`, a binary `.`, and `*`; the parser recognises the three as the wildcard pattern.
+`Ui.Text.Input` is one qualified-name token. `Ui.*` lexes as the name `Ui`, a binary `.`, and `*`; the parser recognises the three as the wildcard pattern.
 
 Both implementations keep this corpus as a golden test: the source on one side, the stream on the other, diffed. A new ugly case found in the field is added here first and to the lexers second.
 
@@ -1208,7 +1210,7 @@ The language's refusals are listed with the whole design in the first part of th
 
 **No reified identifiers, no introspection.** There is no way to name a binding as data, reach into a widget node, list a block's bindings, or ask a value for its type. A test drives a program through its elements, the way a World does, and reads its element list and its result. What this buys: a test that passes under the Test World passes under any World, since it used only the boundary; a name can be renamed without breaking anything but the program; and generic code can be erased, because nothing can ask a value what it is.
 
-**No comparison operators.** `Eq`, `Lt` and friends are functions. What this buys: `<=` is hold and nothing else, `<-` is bind and nothing else, and the line that defines a program's state never looks like a comparison.
+**No symbol with two meanings.** Comparisons are the operators `lt le gt ge == !=`; `<=` is hold and nothing else, and `<-` is bind and nothing else. What this buys: the line that defines a program's state never looks like a comparison.
 
 **No guards in patterns, no explicit-brace layout, no block comments, no tabs, no default numeric type, no `else`-less `if`.** Each of these removes a second way to write something, and each second way is one more case on which two parsers can disagree. The spec is the thing, and the thing is shorter for it.
 

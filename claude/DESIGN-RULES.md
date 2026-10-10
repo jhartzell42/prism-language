@@ -111,3 +111,8 @@ Write the chapter file. At the top, a one-paragraph lead stating the chapter's p
 - `Store.*` is as chapter 6 declares it; other chapters conform.
 - The world core's turn loop: pushes are applied after the turn's first occurrence commits; a failed first occurrence re-queues them; later occurrences of a turn are `Defer` occurrences with no new pushes; on an abort inside a turn the loop stops, performs the requests of the occurrences that committed, and reports. `DeferTable` keys by path with `dyn` generations stripped.
 - A plain-result widget application binds as a `$` holding the first build's value (chapter 4's "cannot be bound" is wrong).
+
+## Decision: comparison operators
+
+- Comparisons are infix keyword operators `lt`, `le`, `gt`, `ge` (`a lt b`), resolved through the ordering trait, at the comparison precedence level (between `|`/`on` and arithmetic); equality is `==` and `!=` through the equality trait. There are no `Lt`/`Le` prelude functions as the only way to compare. Chapter 2 carries a short note that the spelling needs further study: `<` and `>` are the obvious choice and probably workable (the lexer can tell `<`, `<-`, `<=`, `->`, `==>` apart), but the interaction with `<=` as hold has not been worked through.
+- General rule: never give up something ordinary programmers expect unless the loss follows from the semantics or the goals. A sacrifice caused by a token collision, parser convenience or an implementation detail is a design bug.

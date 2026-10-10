@@ -725,7 +725,7 @@ IsUi: fn Element -> Bool                       # chapter 5's: True for every Ui.
     $tab <- Inbox <= Inbox on !to_inbox | Drafts on !to_drafts | Settings on !to_settings
     (ignore, $slots) <- intercept @all_panes, !down, $ \|e| @Element e
     !down <- for $slots:                                   # key is the child's path
-        let $shown = Or (Not (IsUi $_.element)), (Eq (PaneOf key), (Some $tab))
+        let $shown = Or (Not (IsUi $_.element)), (PaneOf key == Some $tab)
         !!resps <- dyn (slot, shown) <- Pair $_, $shown:
             if shown:
                 (!resp, ignore) <- @Element slot.element
@@ -794,21 +794,21 @@ let Mark: fn (Text, Bool) -> Text = \|t, sel| if sel: "> $t" else: "  $t"
 
 @selectable: fn $(Nat ==> Item) -> @$?Nat = \|$items| @widget:
     !picks <- for $items:
-        let $is_selected = Eq $selected, (Some key)
+        let $is_selected = $selected == Some key
         !click <- @Button (Mark $_.title, $is_selected)
         @ key on !click
     $selected <- Nil <= Some (!Filter (FirstKey !picks))
     @ $selected
 ```
 
-`$selected` is outside the `for`, and each row reads it through a lifted `Eq`. The button's label is a dynamic, so inside each row the button is a `dyn` over its label.
+`$selected` is outside the `for`, and each row reads it through a lifted `==`. The button's label is a dynamic, so inside each row the button is a `dyn` over its label.
 
 **Occurrence 1, click row 2.** `$selected` changes to `Some 2`. In row 2, `$is_selected` changes to `True`, the label changes, and the button's `dyn` rebuilds its slot to generation `#1`. In every other row `$is_selected` is recomputed, since `$selected` changed, and is `False` as before; its change event fires with the same value; the label is recomputed to the same text; the label's change event fires with the same text; and the button's `dyn` rebuilds, because a `dyn` rebuilds when its dynamic's change event fires, and equality of the value is not something a derived dynamic checks for you. Every row's button gets a new slot.
 
 That is correct and it is wasteful. Correct, because the World diffs plain data and will draw nothing differently for the rows that did not change. Wasteful, because every row rebuilt a slot, and because every row's button lost its path, which a World keying native widgets by path would notice. The fix is a prelude function that stops change events with equal values, applied where the fan-out is:
 
 ```prism
-        let $is_selected = $Distinct (Eq $selected, (Some key))
+        let $is_selected = $Distinct ($selected == Some key)
 ```
 
 `$Distinct: fn $a -> $a` for `a: Eq`, a derived dynamic whose change event fires only when the value differs from the value before. With it, clicking row 2 changes `$is_selected` in exactly two rows, the one that was selected and the one that now is, and two buttons rebuild their slots. The rest of the rows see no change event and do nothing.

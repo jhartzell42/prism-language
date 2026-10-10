@@ -108,8 +108,10 @@ pub enum TokenKind {
     // keywords
     Let, Type, Tag, Of, Fn, Match, If, Else, For, Dyn, Intercept, Widget,
     Record, Choice, Map, Array, Unit, Test, Ignore, On, Key, Ix, Jx, Kx, Empty,
+    Lt, Le, Gt, Ge,                 // the comparison keywords: a lt b
     // operators and punctuation
     Bind, Define, Hold,             // <-  =  <=
+    EqEq, NotEq,                    // ==  !=
     Merge,                          // |   (never the lambda bars)
     Plus, Minus, Star, Slash,       // + - * /     (Plus/Minus take the `prefix` flag)
     PlusInt, MinusInt, StarInt, SlashInt,       // +~ -~ *~ /~
@@ -119,7 +121,7 @@ pub enum TokenKind {
     Comma, Dot, DotDot, Backslash,  // ,  .  ..  \      (Dot takes the `prefix` flag)
     LambdaOpen, LambdaClose,        // the bars of \|a, b|
     LParen, RParen, LBracket, RBracket, LBrace, RBrace,
-    Lt, Gt,                         // only inside generic parameter lists
+    LAngle, RAngle,                 // < >  only inside generic parameter lists
     // free sigils: a sigil not attached to the following token
     FreeSigil(Sigil),
     // layout
@@ -258,9 +260,9 @@ pub enum Expr {
     Text(Sigils, Vec<TextPartAst>),
     Array(Vec<Expr>), MapLit(Vec<(Expr, Expr)>), Tuple(Vec<Expr>),
     Call   { f: Box<Expr>, args: Vec<Expr> },                // F a, b    and    x.F a, b
-    Named  { ctor: Box<Expr>, args: Vec<(Name, Expr)> },     // Vector(x=1.0, y=2.0), Gui.Button(label="OK")
+    Named  { ctor: Box<Expr>, args: Vec<(Name, Expr)> },     // Vector(x=1.0, y=2.0), Ui.Button(label="OK")
     RecordBlock { ctor: Box<Expr>, fields: Vec<(Name, Expr)> }, // Vector: x: 0.0 ...
-    Binary { op: BinOp, l: Box<Expr>, r: Box<Expr> },        // + - * / +~ ... |  on
+    Binary { op: BinOp, l: Box<Expr>, r: Box<Expr> },        // + - * / +~ ... lt le gt ge == != |  on
     Prefix { op: PrefixOp, e: Box<Expr> },                   // + - +? and free sigils
     Field  { e: Box<Expr>, field: SName },                   // e.x  e.!changed
     Index  { e: Box<Expr>, i: Box<Expr> },                   // e[i]
@@ -326,7 +328,8 @@ block_stmt  := pat '<-' expr '<=' expr                            # hold: pat mu
 
 expr(hold)  := expr(merge) ('<=' expr(merge))?                    # does not associate
 expr(merge) := expr(on) ('|' expr(on))*
-expr(on)    := expr(add) ('on' expr(add))*
+expr(on)    := expr(cmp) ('on' expr(cmp))*
+expr(cmp)   := expr(add) (cmpop expr(add))?                       # cmpop: lt le gt ge == !=
 expr(add)   := expr(mul) (addop expr(mul))*
 expr(mul)   := expr(prefix) (mulop expr(prefix))*
 expr(prefix):= prefixop expr(prefix) | freesigil expr(postfix) | expr(postfix)
@@ -626,11 +629,11 @@ An element whose field is a dynamic is the same rule one level down: `@Element U
 
 ### The three traits
 
-`Eq`, `Ord` and `Num` are resolved by inference and nothing else is overloaded. The elaborator keeps a constraint set alongside unification: `Num t` for every arithmetic operator and every numeric literal, `Eq t` for every use of `Eq`, `Ne` and `$Distinct`, `Ord t` for every ordering function, every `Sort`, and every map key. Constraints are solved when their type variable is resolved:
+`Eq`, `Ord` and `Num` are resolved by inference and nothing else is overloaded. The elaborator keeps a constraint set alongside unification: `Num t` for every arithmetic operator and every numeric literal, `Eq t` for every use of `==`, `!=` and `$Distinct`, `Ord t` for every comparison operator (`lt`, `le`, `gt`, `ge`), every `Sort`, and every map key. Constraints are solved when their type variable is resolved:
 
 - At a concrete type, the constraint is checked against the fixed table (`Num`: `Nat`, `Int`, `Float`; `Eq`: every plain type with no function and no functor, structurally; `Ord`: primitives, text, chars, tuples and arrays of ordered types, declared types whose parts are ordered, and extensible-variant values by tag name then fields) and the operation node records the type: `Trait { which: Add, at: Int, args }`. The closure compiler then picks the one implementation for that type, and nothing is looked up at runtime.
-- At a type variable that is generalised with a bound, `let Max<a: Ord>: fn (a, a) -> a`, the constraint becomes a hidden parameter of the function: the scheme is `forall a. Ord a => ...`, the body's `Lt x, y` is `Trait { which: Lt, at: a, args }` whose implementation is the hidden argument `Dict { Ord, a }`, and every call to `Max` at a concrete type passes `Dict { Ord, Text }` first. This is dictionary passing for three dictionaries, and the dictionary is an ordinary function value, erased like everything else.
-- At a type variable with no bound in scope, the error names the operation and the variable: "`Lt` needs `Ord a`; add the bound `<a: Ord>` to `Max`".
+- At a type variable that is generalised with a bound, `let Max<a: Ord>: fn (a, a) -> a`, the constraint becomes a hidden parameter of the function: the scheme is `forall a. Ord a => ...`, the body's `x lt y` is `Trait { which: Lt, at: a, args }` whose implementation is the hidden argument `Dict { Ord, a }`, and every call to `Max` at a concrete type passes `Dict { Ord, Text }` first. This is dictionary passing for three dictionaries, and the dictionary is an ordinary function value, erased like everything else.
+- At a type variable with no bound in scope, the error names the operation and the variable: "`lt` needs `Ord a`; add the bound `<a: Ord>` to `Max`".
 - At a type variable that is never resolved and never generalised, which is the case of a literal nothing pins, the error is "cannot decide the numeric type".
 
 Equality on records exists when all fields have it and there is no ordering on records; tuples, arrays, primitives and text are ordered; element equality is tag plus plain fields, excluding any request event, so that two `Fs.Contents(path="/etc/motd")` are equal whatever events they hold, which is the identity the World's oracle keys on. The elaborator computes these per type once, memoised in `Types`, and the answer for a declared type is derived from its parts.
@@ -699,7 +702,7 @@ A `match` on a closed `choice` must cover every alternative or end in a catch-al
 - Inside a catch-all arm, or a `Ns.*(..)` arm, `_.!request` is the generic `!Request`, and `@Element _.element` is the generic `@(!Response, $State)`, with `ElemKind::Generic` on the node so the closure compiler emits the slot creation that checks the per-slot types at runtime. The pattern `(!resp, ignore) <- @Element _.element` in every forwarding interceptor is this case.
 - A supplier lambda `\|e| ...` is checked at `fn Element -> @$State` generically, and inside a `match e:` arm on `T` with `state: S`, the arm's widget must return `@$S`; the catch-all arm returns the generic `@$State`, which `@Element e` provides.
 
-The refinement is a checker rule, not a runtime structure: the typed AST records `ElemKind::Known(T)` or `Generic` on each `Element` node, and the runtime's slot creation takes the tag's parts from the table either way. What the refinement buys is that an interceptor with one arm per tag it handles is typed at those tags, and an interceptor that forwards what it does not know is typed generically and checked at the slot, which is what the elements chapter asks for and no more.
+The refinement is a checker rule, not a runtime structure: the typed AST records `ElemKind::Known(T)` or `Generic` on each `Element` node, and the runtime's slot creation takes the tag's parts from the table either way. The refinement buys this: an interceptor with one arm per tag it handles is typed at those tags, and one that forwards what it does not know is typed generically and checked at the slot.
 
 `Kind` is a prelude function `fn Element -> Kind` where `type Kind = record: requests: Bool; responds: Bool; state: Bool`, elaborated to a `Kind` node, which the closure compiler turns into a table lookup on the interned tag; a program that wants to know whether it is safe to read a generic slot's state asks `Kind` rather than matching every tag.
 
@@ -736,7 +739,7 @@ The pass walks each item, assigns ids depth-first, and for each lambda computes 
 
 ### Captures through the owning node's environment
 
-A widget block compiles to a node, and the node has an environment: one slot per binding of the block, in group order, holding whatever the binding produced (an event handle, a dynamic handle, a plain value, a widget value, a function value). An occurrence-time closure compiled from `$count + !delta` needs `$count`, and it gets it as `Env(3)`, say: at build, the closure compiler resolves the index against the node's environment and copies the handle into the closure. The closure then holds an `Rc` to `$count`'s dynamic, and that is fine, for a reason that is worth being exact about: the dynamic's node does not hold the closure. The closure is held by the *event node* that `Tag` constructs, which is subscribed to `!delta` and to `$count`'s behavior through *weak* subscriber entries. The strong edges run from the tag node to its inputs; the inputs reach the tag node only weakly. Dropping the widget's node drops the environment, which drops the tag node, which drops the closure, which drops its `Rc` to `$count`; and `$count`'s hold, which was the thing that could have kept the loop alive, holds only a weak reference to the tag node in its subscriber list.
+A widget block compiles to a node, and the node has an environment: one slot per binding of the block, in group order, holding whatever the binding produced (an event handle, a dynamic handle, a plain value, a widget value, a function value). An occurrence-time closure compiled from `$count + !delta` needs `$count`, and it gets it as `Env(3)`, say: at build, the closure compiler resolves the index against the node's environment and copies the handle into the closure. The closure then holds an `Rc` to `$count`'s dynamic, and that is fine: the dynamic's node does not hold the closure. The closure is held by the *event node* that `Tag` constructs, which is subscribed to `!delta` and to `$count`'s behavior through *weak* subscriber entries. The strong edges run from the tag node to its inputs; the inputs reach the tag node only weakly. Dropping the widget's node drops the environment, which drops the tag node, which drops the closure, which drops its `Rc` to `$count`; and `$count`'s hold, which was the thing that could have kept the loop alive, holds only a weak reference to the tag node in its subscriber list.
 
 The rule, then, is about direction: a closure captures things bound *earlier* in group order, which are things built earlier, and the graph's reverse edges are weak. Every strong edge points from later to earlier in build order, so there is no strong cycle. The one exception is a cyclic group, where a later binding is referenced by an earlier one, and that is exactly where the resolver placed a placeholder; a placeholder is a weak forward reference owned by the node as a unit, closed to the real node after the group, so the loop's only strong roots are the node's placeholder slots and the loop dies with the node.
 
@@ -752,9 +755,9 @@ The output is the same typed AST with three annotations: `captures` filled on ev
 
 ## The lint pass
 
-A compiler with one intermediate form and several passes over it needs one checker, run after every pass and in every test, so that the pass that breaks the form is the pass that gets blamed. The lint is Prism's `-dcore-lint`. It is a walk over the converted typed AST that re-derives what each pass claimed and compares. Each check is an invariant with a stated consequence, because an invariant without a consequence is a comment, and a checker that enforces comments is one that gets switched off the first time it is inconvenient.
+A compiler with one intermediate form and several passes over it needs one checker, run after every pass and in every test, so that the pass that breaks the form is the pass that gets blamed. The lint is Prism's `-dcore-lint` (GHC's Core-lint flag, from memory). It is a walk over the converted typed AST that re-derives what each pass claimed and compares. Each check is an invariant with a stated consequence, because an invariant without a consequence is a comment, and a checker that enforces comments is one that gets switched off the first time it is inconvenient.
 
-**Types agree.** Every node's type is the type its children and the typing rules give it: a `Tag`'s type is `!` of its body's result; a `DMap`'s is `$` of its body's; a `Hold`'s is `$` of its initial's type and its event is `!` of that; an `App`'s is the function type's result after unifying the arguments; a `Switch`'s input is `!!T` and its output `!T`; a `Join`'s input is `$$T`. *What breaks if it fails:* the closure compiler emits a step whose operand kinds do not match the runtime constructor's, and the runtime's `Value<T>` downcast panics in the middle of an occurrence with a message about `AnyValue`. The lint reports the node and both types before anything is built.
+**Types agree.** Every node's type is the type its children and the typing rules give it: a `Tag`'s type is `!` of its body's result; a `DMap`'s is `$` of its body's; a `Hold`'s is `$` of its initial's type and its event is `!` of that; an `App`'s is the function type's result after unifying the arguments; a `Switch`'s input is `!!T` and its output `!T`; a `Join`'s input is `$$T`. *What breaks if it fails:* the closure compiler emits a step whose operand kinds do not match the runtime constructor's, and the runtime's `Typed<T>` downcast panics in the middle of an occurrence. The lint reports the node and both types before anything is built.
 
 **Every lift is explicit.** No `App`, `Trait`, `Field`, `Index`, `TextCat` or `Match` has an operand whose outermost type is `!` or `$` unless the node is itself the body of a lift and the operand is a parameter of that body. *What breaks:* a dynamic reaches the closure compiler as a plain operand, and the compiled leaf tries to add a `Dynamic` handle to an integer. The lint says "unlifted dynamic operand" with the node.
 
@@ -789,8 +792,7 @@ pub struct Program {
     pub functions: Vec<CompiledFunction>,    // by FunId
     pub blocks: Vec<CompiledBlock>,          // by BlockId: the widget blocks
     pub tags: Rc<Tags>,                      // the interned tag table, handed to the runtime at build
-    pub constants: Vec<AnyValue>,            // literals and other plain constants, boxed once
-    pub main: BlockId,
+    pub constants: Vec<Value>,               // literals and other plain constants, boxed once
 }
 
 pub struct CompiledBlock {
@@ -803,14 +805,14 @@ pub struct CompiledBlock {
 pub struct IrWidget {
     pub program: Rc<Program>,
     pub block: BlockId,
-    pub captures: Rc<[AnyValue]>,            // the values the block captured from its enclosing node
+    pub captures: Rc<[Value]>,               // the values the block captured from its enclosing node
     pub span: Span,
 }
 
-impl PolymorphicWidget<AnyValue> for IrWidget {
-    fn build(&self, builder: &mut WidgetBuilder) -> AnyValue {
+impl PolymorphicWidget<Value> for IrWidget {
+    fn build(&self, builder: &mut WidgetBuilder) -> Value {
         let block = &self.program.blocks[self.block];
-        let mut env: Vec<Option<AnyValue>> = vec![None; block.env_size];
+        let mut env: Vec<Option<Value>> = vec![None; block.env_size];
         for step in block.steps.iter() {
             run_step(step, &self.program, &self.captures, &mut env, builder, self.span);
         }
@@ -819,13 +821,13 @@ impl PolymorphicWidget<AnyValue> for IrWidget {
 }
 ```
 
-`IrWidget` is one Rust type for every compiled widget: the root `@main`, a `\@widget:` function's body once applied, the block of a `dyn`, the block of a `for`, the widget a supplier returns. It implements the runtime's `dyn`-compatible widget trait at `AnyValue`, so a `dyn` can rebuild into a different block on each rebuild and compiled widgets and Rust widgets sit side by side in one node tree. The runtime builds it by calling `build` with a builder for a fresh node, which is what it does for every widget, and gets back the block's result as a value. The two things that distinguish a compiled widget from a hand-written one, the program table and the environment vector, are inside `build` and invisible outside it.
+`IrWidget` is one Rust type for every compiled widget: the root `@main`, a `\@widget:` function's body once applied, the block of a `dyn`, the block of a `for`, the widget a supplier returns. It implements the runtime's `dyn`-compatible widget trait at `Value`, so a `dyn` can rebuild into a different block on each rebuild and compiled widgets and Rust widgets sit side by side in one node tree. The runtime builds it by calling `build` with a builder for a fresh node, which is what it does for every widget, and gets back the block's result as a value. The two things that distinguish a compiled widget from a hand-written one, the program table and the environment vector, are inside `build` and invisible outside it.
 
-A widget *value* in the language (a `let @b = @Button $"OK"`, the result of applying a widget function, the thing a supplier returns) is an `IrWidget` boxed as `Rc<dyn PolymorphicWidget<AnyValue>>` and stored as a plain value; binding it twice builds two nodes because `build` is called twice with two builders, which is exactly what "a widget is a description, a node is what one bind builds" asks for.
+A widget *value* in the language (a `let @b = @Button $"OK"`, the result of applying a widget function, the thing a supplier returns) is an `IrWidget` boxed as `Rc<dyn PolymorphicWidget<Value>>` and stored as a plain value; binding it twice builds two nodes because `build` is called twice with two builders, which is exactly what "a widget is a description, a node is what one bind builds" asks for.
 
 ### The environment
 
-A block's environment is a `Vec<Option<AnyValue>>` with one slot per binding of the block, indexed in group order, plus the captures vector for what the block sees from outside. Every operand in a step is an `Operand`:
+A block's environment is a `Vec<Option<Value>>` with one slot per binding of the block, indexed in group order, plus the captures vector for what the block sees from outside. Every operand in a step is an `Operand`:
 
 ```rust
 pub enum Operand { Env(usize), Capture(usize), Const(usize), Global(ItemId) }
@@ -833,7 +835,7 @@ pub enum Operand { Env(usize), Capture(usize), Const(usize), Global(ItemId) }
 
 `Env(i)` is a binding of this block, filled by an earlier step (or a placeholder, filled at the group's start); `Capture(i)` is an entry of the `IrWidget`'s captures; `Const(i)` is a boxed literal in the program's constant pool; `Global(i)` is a top-level definition, a function value or a plain constant computed once per program. The `Option` is there so that a read of an unfilled slot is a panic with the step's span in debug builds, rather than a wrong value; the lint's build-order check is what makes the panic unreachable, and the `Option` is what makes a lint bug loud instead of quiet.
 
-The values in the environment are the runtime's `AnyValue`: events and dynamics as handles (heap values holding an `Rc` to the runtime object), plain data as plain data, widgets as boxed `IrWidget`s, functions as closure records. Everything a step produces goes into the environment; everything a step consumes comes from it. There is no stack, no register file and no frame for construction code, because construction code runs once and its locals are the node's values.
+The values in the environment are the runtime's `Value`: events and dynamics as handles (heap values holding an `Rc` to the runtime object), plain data as plain data, widgets as boxed `IrWidget`s, functions as closure records. Everything a step produces goes into the environment; everything a step consumes comes from it. There is no stack, no register file and no frame for construction code, because construction code runs once and its locals are the node's values.
 
 ### Steps
 
@@ -872,7 +874,7 @@ One `Step` per typed-AST node kind, each one call on the builder or one construc
 | `Hold { init, event }` | `Hold` | `Dynamic::hold(init, event)`: value `init` until the event fires, commits at the end of each occurrence the event fires |
 | `HoldFirst` | `HoldFirst` | a hold whose initial value is the event's catch-up value in the build occurrence; the compiler inserted it for a dynamic-of-widgets bind |
 | `Map { event, body }` | `Map` | `event.filter_map(closure)` with a closure that always returns `Some` (one node; `filter_map` is the runtime's primitive and `map` its special case) |
-| `Tag { event, dyns, body }` | `Tag` | `event.tag_map(dyns, closure)`: the closure receives the firing and each dynamic's value *before* the occurrence; n-ary over the dynamics so that `$a + $b + !e` is one node |
+| `Tag { event, dyns, body }` | `Tag` | `event.tag_map_n(dyns, closure)`: the closure receives the firing and each dynamic's value *before* the occurrence; n-ary over the dynamics so that `$a + $b + !e` is one node |
 | `DMap { over, body }` | `DMap` | `Dynamic::map_n(dyns, closure)`: a derived dynamic, prompt, one node for any arity |
 | `Leftmost` | `Leftmost` | `Event::leftmost(vec)` |
 | `Never` | `Never` | `Event::never()` |
@@ -889,7 +891,7 @@ One `Step` per typed-AST node kind, each one call on the builder or one construc
 | `Close` | `Close` | `handle.close(real)`: the one write to a placeholder |
 | `Kind { elem }` | a `Let` whose leaf reads the tag table | `tags[elem.tag]`'s three flags as a record |
 
-Three of the runtime constructors in the table are ones the previous chapter gives the runtime for the compiler's sake: `hold_first`, `map_n` over any number of dynamics (so that a lift over three dynamics is one node and not a tree of `map2`s that allocate pairs), and `tag_map` over a vector of dynamics for the same reason. Each is a small generalisation of what exists and each exists because the compiler would otherwise emit several nodes for one lift, and the text form, which prints one node per lift, would then be a lie about the graph.
+The runtime's target API has three constructors in the table for the compiler's sake: `hold_first`, `map_n` over any number of dynamics (so that a lift over three dynamics is one node and not a tree of `map2`s that allocate pairs), and `tag_map_n` over a vector of dynamics for the same reason. Each is a small generalisation of what exists and each exists because the compiler would otherwise emit several nodes for one lift, and the text form, which prints one node per lift, would then be a lie about the graph.
 
 **Build-time versus occurrence-time, in the steps.** A `Build` binding is a step that runs once inside `build` and writes its slot: `Let`, `Const`, `Bind`, `Hold`, `Placeholder`, `Close`, `Element`, `Intercept`, and the constructors that make a node without a closure. An `Occ` binding is a step that constructs a graph node holding a closure, and the closure is the thing that runs at occurrence time: `Map`, `Tag`, `DMap`, `Distinct`. The step itself still runs once, at build, to make the node; what runs per occurrence is the closure inside it. The marks on the typed AST and the two kinds of step line up one to one, and the lint's mark check is what guarantees that a `Build` binding never ends up as a closure the graph calls.
 
@@ -898,11 +900,11 @@ Three of the runtime constructors in the table are ones the previous chapter giv
 An occurrence-time closure, and a plain expression computed once at build, are both *leaves*: pure code over values. The closure compiler compiles each leaf once, when the program is compiled, into a tree of Rust closures, and the step that needs it refers to it by `LeafId`:
 
 ```rust
-pub type Leaf = Rc<dyn Fn(&Frame) -> AnyValue>;
+pub type Leaf = Rc<dyn Fn(&Frame) -> Value>;
 
 pub struct Frame<'a> {
-    pub args: &'a [AnyValue],        // the closure's arguments: the firing, the dynamics' readings
-    pub captures: &'a [AnyValue],    // resolved at build from the node's environment
+    pub args: &'a [Value],           // the closure's arguments: the firing, the dynamics' readings
+    pub captures: &'a [Value],       // resolved at build from the node's environment
     pub program: &'a Program,
     pub depth: Cell<u32>,            // the recursion guard
 }
@@ -915,13 +917,13 @@ A lambda value inside a leaf is a closure record `(FunId, captures)` built by ev
 The closure the runtime receives for a `Map` step is the one closure type for all of Prism:
 
 ```rust
-move |firing: Value<AnyValue>| -> Option<Value<AnyValue>> {
+move |firing: Typed<Value>| -> Option<Typed<Value>> {
     let frame = Frame { args: &[firing.into()], captures: &captures, program: &program, depth: Cell::new(0) };
     Some(leaf(&frame).into())
 }
 ```
 
-It holds an `Rc<Program>`, a `LeafId` and an `Rc<[AnyValue]>` of captures, all counted at build and only borrowed per occurrence. With the runtime single-threaded there is no `Send + Sync` bound and no `Arc`; a compiled closure captures `Rc`s the way a hand-written widget's closure does.
+It holds an `Rc<Program>`, a `LeafId` and an `Rc<[Value]>` of captures, all counted at build and only borrowed per occurrence. With the runtime single-threaded there is no `Send + Sync` bound and no `Arc`; a compiled closure captures `Rc`s the way a hand-written widget's closure does.
 
 ### The recursion depth guard
 
@@ -929,7 +931,7 @@ A plain function that calls itself without end is exhaustion, not an error, and 
 
 ### Boxing
 
-One module, `boxing.rs`, is the only place a Rust `u64`, `i64`, `f64`, `bool`, `char`, `Text`, record or closure record becomes an `AnyValue` or comes back. Every leaf's arithmetic goes through `unbox_int`/`box_int` and friends, every element field through `box_plain`, every pattern test through `unbox_ctor`. Today's `AnyValue` has inline `U32`, `I32` and `Unit` and boxes everything else behind an `Rc`; the values chapter's one-word representation puts 63-bit integers and more inline; and because the module is the only one that knows which, the representation changes behind it with no change to the compiler's walk. A compiled program that reached into `AnyValue` from anywhere else would be a program that had to be rewritten when the representation changed, and the representation is going to change.
+One module, `boxing.rs`, is the only place a Rust `u64`, `i64`, `f64`, `bool`, `char`, `Text`, record or closure record becomes a `Value` or comes back. Every leaf's arithmetic goes through `unbox_int`/`box_int` and friends, every element field through `box_plain`, every pattern test through `unbox_ctor`. Today the representation behind `Value` is the runtime's `AnyValue`, which has inline `U32`, `I32` and `Unit` and boxes everything else behind an `Rc`; the values chapter's one-word representation puts 63-bit integers and more inline; and because the module is the only one that knows which, the representation changes behind it with no change to the compiler's walk. A compiled program that reached into `Value`'s representation from anywhere else would be a program that had to be rewritten when the representation changed, and the representation is going to change.
 
 ### Attaching spans
 
@@ -952,7 +954,7 @@ step 4  Map     env[4] = env[3].filter_map(leaf: \ignore -> -1)
 step 5  Map     env[5] = env[1].filter_map(leaf: \ignore -> +1)
 step 6  Leftmost env[6] = Event::leftmost([env[4], env[5]])            -> !delta
 step 7  Placeholder env[7] = builder.add_cyclic_dynamic("count @15:5") -> $count (open)
-step 8  Tag     env[8] = env[6].tag_map([env[7]], leaf: \d, c -> c + d)
+step 8  Tag     env[8] = env[6].tag_map_n([env[7]], leaf: \d, c -> c + d)
 step 9  Hold    env[9] = Dynamic::hold(0:Int, env[8])                  -> $count.hold
 step 10 Close   handle(env[7]).close(env[9])                           -> $count is the hold
 step 11 DMap    env[11] = Dynamic::map_n([env[9]], leaf: \c -> "Count: " ++ ToText c)
@@ -1125,8 +1127,8 @@ pub struct Tags { pub by_id: Vec<TagInfo>, pub by_name: HashMap<Vec<Name>, TagId
 
 pub struct TagInfo {
     pub id: TagId,                    // interned: a u32, dense, assigned in declaration order
-    pub name: Vec<Name>,              // ["Gui", "Button"]
-    pub namespace: Vec<Name>,         // ["Gui"]: the prefix, for Ns.* tests
+    pub name: Vec<Name>,              // ["Ui", "Button"]
+    pub namespace: Vec<Name>,         // ["Ui"]: the prefix, for Ns.* tests
     pub of: TypeId,                   // the extensible variant it belongs to
     pub fields: Vec<(Name, Type)>,    // concrete types only
     pub requests: Option<Type>,
@@ -1137,7 +1139,7 @@ pub struct TagInfo {
 }
 ```
 
-`tag Gui.Button of Element:` with `label: Text` and `responds: Click` becomes one row. The elaborator checks, at declaration: every field type is concrete (no type variable, with the diagnostic naming the field and the variable); every field type has equality, which plain types always do, so that element equality is structural; the three parts are each at most once and their types are plain data (a `requests: !R` is written with its sigil in the declaration and stored as `R`, the event being implied); and no two tags share a name. The table is interned once per program, and the ids are what the runtime's `ElementValue { tag, fields }` holds. The same table, as `Rc<Tags>`, is handed to the runtime at `build`, which consults it for which parts a tag has and the response and state types to check at the boundary, and a World's `World.Tags` state element is made from it by the world core.
+`tag Ui.Button of Element:` with `label: Text` and `responds: Click` becomes one row. The elaborator checks, at declaration: every field type is concrete (no type variable, with the diagnostic naming the field and the variable); every field type has equality, which plain types always do, so that element equality is structural; the three parts are each at most once and their types are plain data (a `requests: !R` is written with its sigil in the declaration and stored as `R`, the event being implied); and no two tags share a name. The table is interned once per program, and the ids are what the runtime's `ElementValue { tag, fields }` holds. The same table, as `Rc<Tags>`, is handed to the runtime at `build`, which consults it for which parts a tag has and the response and state types to check at the boundary, and a World's `World.Tags` state element is made from it by the world core.
 
 There is one tag table per program because there is one program: modules beyond one file plus the prelude are deferred, and until they exist every tag is declared where the compiler can see it. The design does not depend on that. Ids are dense in declaration order so that a later module system can intern across files with an offset, and `namespace` is stored as data rather than expanded into sets, so that a `Ns.*` test compiled before a module added a tag still matches the new tag. The alternative, assigning ids by hashing the name so that separately compiled modules agree, is the thing to do when separate compilation arrives, and nothing in the compiled form would change but the `by_id` vector.
 
@@ -1145,7 +1147,7 @@ There is one tag table per program because there is one program: modules beyond 
 
 `Ui.Button(label="OK")`, `Ui.Button "OK"` and the block form all elaborate to `Elem { tag, fields, request }`: a plain record build with the tag id, fields in declaration order (named arguments reordered, positional checked for count), each field checked against its declared type with lifting over `?` stopped at the field (an element's field is plain, and `Ui.Row(height=xs[i])` is the diagnostic). A `requests` part, if the tag has one, is given as a field named `requests` holding an event, `Cli.Stdout(requests=!line)`, and is stored separately on the node because it is the one part of an element that is not plain data: it is the program's event, which the slot subscribes to, and it is excluded from the element's equality. The compiled leaf builds an `ElementValue { tag, fields: Rc<[Plain]> }` through the boxing module and pairs it with the request event handle.
 
-A tag with no fields is a bare name, `Clock`, and constructs the same way with an empty field vector. A field whose argument is a dynamic lifts the construction into a `DMap`, and `@Element` over the result lifts into a `dyn`, as the elaboration section describes; the compiled element inside the `dyn`'s block is `Generic`, since the block sees a plain `Element`.
+A tag with no fields is a bare name, `Clock`, and constructs the same way with an empty field vector. A field whose argument is a dynamic lifts the construction into a `DMap`, and `@Element` over the result lifts into a `dyn`; the compiled element inside the `dyn`'s block is `Generic`, since the block sees a plain `Element`.
 
 ### `@Element`
 
@@ -1175,7 +1177,7 @@ Why arms test in order rather than by a hash of the tag: a `match` with two tag 
 
 ### `Ns.*`
 
-A namespace wildcard compiles to a prefix test on the interned tag's namespace path, as above. It appears only in patterns, so there is no value of "a namespace" at runtime and no `Gui` that could be passed around; the test is compiled into the `match` that wrote it. Nested namespaces match by prefix: `Gui.*` matches `Gui.Text.Input` because `["Gui"]` is a prefix of `["Gui", "Text"]`.
+A namespace wildcard compiles to a prefix test on the interned tag's namespace path. It appears only in patterns, so there is no value of "a namespace" at runtime and no `Ui` that could be passed around; the test is compiled into the `match` that wrote it. Nested namespaces match by prefix: `Ui.*` matches a hypothetical `Ui.Text.Input` because `["Ui"]` is a prefix of `["Ui", "Text"]`.
 
 ### `Kind`
 
@@ -1334,7 +1336,7 @@ Print every golden's tree, parse the printed text, compare the trees; parse ever
 
 ### End to end: the counter against the hand-written counter
 
-The test where the frontend and the runtime meet. The runtime chapter has the counter written in Rust against the builder by hand, driven by the harness through three turns (build; click Increment; click Decrement), with its transcript under `harness/goldens/counter.txt`. The compiled counter is built from `counter.prism` through every stage of this chapter into an `IrWidget`, handed to the same harness, driven through the same three turns, and its transcript must be byte-identical: the same element list with the same paths (`0/#0/0: Ui.Button(label="Increment")`, `1/#0/0`, `2/#0/0: Ui.Label(text="Count: 0")` after build; `2/#1/0: Ui.Label(text="Count: 1")` after the first click), the same request firings (none), the same results. If the paths differ, the compiler's node structure is not the canonical one; if the label's text differs, a lift or a literal is wrong; if the transcript has an extra turn, something fired at build that should not have. One comparison proves that the two tracks were built against the same reading of the design, and it is the milestone that ends the compiler's first phase.
+The test where the frontend and the runtime meet. The runtime chapter has the counter written in Rust against the builder by hand, driven by the harness through three turns (build; click Increment; click Decrement), with its transcript. The compiled counter is built from `counter.prism` through every stage of this chapter into an `IrWidget`, handed to the same harness, driven through the same three turns, and its transcript must be byte-identical: the same element list with the same paths (`0/#0/0: Ui.Button(label="Increment")`, `1/#0/0`, `2/#0/0: Ui.Label(text="Count: 0")` after build; `2/#1/0: Ui.Label(text="Count: 1")` after the first click), the same request firings (none), the same results. If the paths differ, the compiler's node structure is not the canonical one; if the label's text differs, a lift or a literal is wrong; if the transcript has an extra turn, something fired at build that should not have. One comparison proves that the two tracks were built against the same reading of the design, and it is the milestone that ends the compiler's first phase.
 
 After the counter, the same harness runs the compiled `@Forward` from the GUI library wrapped around the counter against the hand-written `Forward` fixture, which exercises `intercept`, `for`, `dyn`, generic `@Element` and the supplier; and then the twelve programs of the conformance corpus under the Test World with their scripts, which is the conformance chapter's test and not this one's, but is the first time most of the compiler's node kinds are exercised with real inputs.
 
@@ -1346,13 +1348,13 @@ The Haskell frontend dumps every golden's program in the same text form, and the
 
 ## Deep in: a flat register listing as an alternative lowering
 
-A native backend, if one is ever wanted, would not want a tree. Cranelift's input is SSA with block parameters; emitted Rust is made of expressions, but a code generator that is also doing register allocation wants its values named and its construction order flat. The lowering such a backend would take from the converted typed AST is worth writing down once, so that its relation to the closure compiler is clear and so that nobody mistakes it for a stage the compiler needs now.
+A native backend, if one is ever wanted, would not want a tree. Cranelift's input is SSA with block parameters (from memory); emitted Rust is made of expressions, but a code generator that is also doing register allocation wants its values named and its construction order flat. The lowering such a backend would take from the converted typed AST is worth writing down once, so that its relation to the closure compiler is clear and so that nobody mistakes it for a stage the compiler needs now.
 
 The lowering names every intermediate value in a typed register, flattens each widget block into the build order the groups already give, keeps `match` structured, and keeps closure records as the converter produced them. The counter's knot in that form:
 
 ```
 %count: $Int  = cyc.dyn "count @15:5"
-%next:  !Int  = ev.tag_map %delta, [%count], @add_int
+%next:  !Int  = ev.tag_map_n %delta, [%count], @add_int
 %held:  $Int  = dyn.hold 0, %next
 cyc.close %count, %held
 %label: $Text = dyn.map [%count], @fmt_count
@@ -1368,7 +1370,7 @@ fn @add_int(d: Int, c: Int) -> Int:
 
 Read the two listings against the dump in the text form section: every line of the listing is a line of the dump with the nesting removed and a register name added. The listing adds no information, because the dump already has the lifts explicit, the captures explicit, the placeholders placed and the order fixed; it adds a syntax, and a syntax is a printer, a parser, a fixture set, a verifier and a golden set that every new node kind has to be added to after it has been added to the typed AST. For a backend that emits machine code, the syntax pays, because the backend's own input is flat and typed registers are what its allocator wants. For an evaluator that compiles to closures, the syntax is a second form saying the same thing flat, with its own verifier to keep it honest against the first, and the lint already does that job on the first.
 
-What the listing is good at, said plainly: it is readable as a work order, it can be hand-written as a fixture before any parser exists, it is checkable in one pass, and an SSA backend is a short step from it. The closure compiler keeps the first three on the typed AST's text form (readable, hand-writable, linted) and gives up the fourth until a backend wants it. When one does, the lowering is a function from the converted typed AST to the listing, the listing's verifier is the lint restated over registers, and the differential test between the two backends is the transcript comparison the Test World already does: the counter compiled through the closure compiler and the counter compiled through the listing must produce one transcript. A bytecode, likewise, is a packed encoding of this listing with a version and a loader, wanted the day compiled code has to outlive the process that compiled it, and not before.
+The listing is readable as a work order, can be hand-written as a fixture before any parser exists, is checkable in one pass, and is a short step from an SSA backend. The closure compiler keeps the first three on the typed AST's text form (readable, hand-writable, linted) and gives up the fourth until a backend wants it. When one does, the lowering is a function from the converted typed AST to the listing, the listing's verifier is the lint restated over registers, and the differential test between the two backends is the transcript comparison the Test World already does: the counter compiled through the closure compiler and the counter compiled through the listing must produce one transcript. A bytecode, likewise, is a packed encoding of this listing with a version and a loader, wanted the day compiled code has to outlive the process that compiled it, and not before.
 
 The one thing the listing would change in the compiler proper is nothing: it consumes the converted typed AST, and the converted typed AST is what the closure compiler consumes. That is why the line between elaboration and everything below it sits where it does.
 
@@ -1376,7 +1378,7 @@ The one thing the listing would change in the compiler proper is nothing: it con
 
 Each of these is absent on purpose, with what its absence buys now and what adding it would touch.
 
-*Register code and native backends.* Above. Nothing in the typed AST changes; a backend is a consumer.
+*Register code and native backends.* A consumer of the converted typed AST; the typed AST does not change.
 
 *`read` and `update` blocks, `&` references, lenses.* The value layer has one operation on a record, construction, so the question of mutation inside a plain value never arises in the compiler: no aliasing analysis, no borrow rules, no in-place update in the leaves. When they come, they come as sugar over construction with an out-of-range write aborting the occurrence, and the leaves gain a few operations.
 
@@ -1386,7 +1388,7 @@ Each of these is absent on purpose, with what its absence buys now and what addi
 
 *Incremental compilation.* The frontend compiles a program in one pass and the goldens are whole programs. A program large enough to need an incremental frontend is a program with modules, and that line comes first.
 
-*Optimisation.* No inlining, no constant folding beyond what the Rust compiler does inside a leaf, no fusion of adjacent maps into one node, no dead-binding elimination. Per-occurrence cost sits at the runtime boundary where values cross into `AnyValue`, and no evaluator avoids that; a pass that fused `map (map !e f) g` into one node would change the graph a reader sees in the dump, and until a profile says the boundary is cheap and the extra node is not, the dump should be the graph.
+*Optimisation.* No inlining, no constant folding beyond what the Rust compiler does inside a leaf, no fusion of adjacent maps into one node, no dead-binding elimination. Per-occurrence cost sits at the runtime boundary where values cross into `Value`, and no evaluator avoids that; a pass that fused `map (map !e f) g` into one node would change the graph a reader sees in the dump, and until a profile says the boundary is cheap and the extra node is not, the dump should be the graph.
 
 *A packed encoding of compiled code.* When something reads compiled code it did not compile: precompiled libraries, cached builds, a browser bundle without the frontend, a World receiving programs. A serialisation of the typed AST with a version and a load-time check, decoded into the tree the closure compiler takes; one more printer and parser from the same definition.
 

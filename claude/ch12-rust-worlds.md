@@ -6,7 +6,7 @@ A World is the only part of a Prism system with effects, and it is written in Ru
 
 You have had the year where the framework handed you a context object. You stashed it in a static, or threaded it through every constructor, and it worked, and then a test needed to run without a browser and could not, because half the program had learned to reach into that object whenever it wanted something. The context was a door, and once there is a door, everything walks through it.
 
-Prism has no door. A program describes what it wants as elements, plain values in a list; the outside sends plain values back, addressed by path; and the only thing that ever happens between them is one function call. The World calls the runtime; the runtime never calls the World. The World holds no runtime object apart from the runtime itself, and the runtime holds nothing of the World's. This is what makes the one-way-ness of the language real at the edge: a program cannot reach the World because there is nothing to reach, and a World cannot reach into a program because the run call takes values and returns values.
+Prism has no door. A program describes what it wants as elements, plain values in a list; the outside sends plain values back, addressed by path; and the only thing that ever happens between them is one function call. The World calls the runtime; the runtime never calls the World. The World holds no runtime object apart from the runtime itself, and the runtime holds nothing of the World's. This makes the one-way-ness of the language real at the edge: a program cannot reach the World because there is nothing to reach, and a World cannot reach into a program because the run call takes values and returns values.
 
 The run call, as the Rust runtime exposes it, is the whole surface a World sees:
 
@@ -50,7 +50,7 @@ The shortest way to say what `prism_world` is for is to say what it leaves out, 
 
 *No callbacks into the runtime.* A component is called by the core; it never calls the runtime, never holds a `Runtime`, never holds a `Path` beyond the turn in which it was told the slot exists, except to address a delivery. The trait makes this structural: nothing in a component's signature mentions the runtime.
 
-*No phases.* A turn is an input occurrence followed by whatever `Defer` occurrences it causes, and nothing else. Named stages of a turn for layout, focus and painting were considered and left out; they would be a second ordering mechanism with its own rules for who runs when, and everything they buy is expressible with `Defer` and ordinary dynamics. A GUI library that wants "layout, then focus" writes two `Defer`s in sequence.
+*No phases.* A turn is an input occurrence followed by whatever `Defer` occurrences it causes, and nothing else. A turn has no named stages for layout, focus and painting: they would be a second ordering mechanism with its own rules for who runs when, and everything they buy is expressible with `Defer` and ordinary dynamics. A GUI library that wants "layout, then focus" writes two `Defer`s in sequence.
 
 *No budget.* A turn is bounded by the `Defer` rule, not by a counter. There is no runaway report to design, no partial-commit policy, no "yield to the platform and continue next frame," because a turn cannot run away: each `Defer` slot answers at most once per turn, so a turn runs at most one occurrence more than there are `Defer` slots.
 
@@ -91,7 +91,7 @@ pub struct When {
 }
 ```
 
-The compiled program brings its tag table with it, so the core knows for any tag whether it requests, responds or has state. That table is what lets the core decide, for an element nobody accepts, which of the three `Unsupported` behaviours applies.
+The compiled program brings its tag table with it, so the core knows for any tag whether it requests, responds or has state. That table lets the core decide, for an element nobody accepts, which of the three `Unsupported` behaviours applies.
 
 ### The Component trait
 
@@ -160,17 +160,18 @@ pub trait Wake: Send + Sync {
     /// Called from any thread after a delivery is queued. A CLI World's waker
     /// does nothing (the loop blocks on the channel); a winit World's calls
     /// `EventLoopProxy::send_event`; a tokio World's notifies a `Notify`.
+    /// (winit and tokio API names from memory.)
     fn wake(&self);
 }
 ```
 
-Why a trait with these six methods and not something else? Two alternatives are worth holding up against it.
+Why a trait with these six methods and not something else?
 
 Suppose a component were an async trait: `async fn perform(...) -> Value`, and the core awaited it. Then the core would be an async function, and the turn would hold the runtime across an await. Every GUI main thread forbids that, and even where it is allowed it means the runtime's state is live while the World is doing something else, which is the door again by another name. The split here is that `perform` returns at once, having started the operation, and the result comes back through the inbox as a `Delivery` for a later turn. A component that wants async machinery, and the tokio World does, spawns a task and hands it the inbox. The core never waits.
 
 Suppose instead the core were table-driven: a component registers, per tag, a closure for requests and a closure for the oracle, and the core calls closures. This is the same trait with the names erased and the state scattered. The trait wins because a component has state that spans the methods (the stdin reader's thread handle is created in `slot_created` and joined in `slot_removed`; the timer wheel is written by `perform` and read by `gather`), and a struct with methods is the Rust way to say that.
 
-The `oracle` method is the one that most needs its contract spelled out. It is called by the core from inside the runtime's run call, because the runtime asks for a state element's value at the instant a slot is created, mid-build. So `oracle` must be synchronous and must not block for long. A file watch component answers `Fs.Contents(path)` by reading the file, which is a blocking syscall, and that is accepted: a read of a local file is the kind of blocking a GUI thread does anyway, and the alternative, answering `Unavailable` and pushing the contents next turn, makes every program's first occurrence see a value it will never see again. The rule a component follows: answer from what it has if it has it, read synchronously if the read is cheap, and answer the type's unavailable case only when the real answer cannot be had without waiting on something outside the machine.
+`oracle` most needs its contract spelled out. It is called by the core from inside the runtime's run call, because the runtime asks for a state element's value at the instant a slot is created, mid-build. So `oracle` must be synchronous and must not block for long. A file watch component answers `Fs.Contents(path)` by reading the file, which is a blocking syscall, and that is accepted: a read of a local file is the kind of blocking a GUI thread does anyway, and the alternative, answering `Unavailable` and pushing the contents next turn, makes every program's first occurrence see a value it will never see again. The rule a component follows: answer from what it has if it has it, read synchronously if the read is cheap, and answer the type's unavailable case only when the real answer cannot be had without waiting on something outside the machine.
 
 ### Registering components and the World struct
 
@@ -293,8 +294,6 @@ impl<R: Runtime> World<R> {
 }
 ```
 
-Three things about the order deserve a sentence each, because each is an obligation made concrete.
-
 Slot removal is told to components before slot creation. A `dyn` rebuild tears down a slot at one path and creates another at a fresh path in the same occurrence; if the component were told about the creation first, a stdin reader would briefly have two slots and start a second reader thread before stopping the first. Removals first means a component never sees two of a thing that should be one.
 
 Requests are performed after the slot diff. A request fired by a slot that was torn down in the same occurrence is still in `requests`, with its path, and `perform` is called for it. The component does the operation if it can, because the program asked, and discards the response, because the slot is gone; `slot_removed` was already called, so the component knows. This is the rule that a write fired in the occurrence that removed the writer still lands.
@@ -350,7 +349,7 @@ The error is the interesting half. Picture a sandbox that denies a request by fi
 
 A `Defer` that fires in the occurrence that tore down its slot is skipped, which is the general rule for request firings from gone slots applied to a request the core itself answers: nothing to answer, nothing to report. The sandbox of chapter 1 does this when its child is removed in the same occurrence that the child asked for something.
 
-Why `Defer` is a request element with a response rather than, say, a state element the World toggles, is answered by the creation rule. A request fires in n and is answered in a later occurrence; that is exactly the gap an interceptor needs, and it is the gap every other request has, so `Defer` costs the language nothing new. The one thing special about it is that every World must provide it, because an interceptor cannot start an occurrence and there has to be some way to get one.
+The creation rule says why `Defer` is a request element with a response and not, say, a state element the World toggles. A request fires in n and is answered in a later occurrence; that is exactly the gap an interceptor needs, and it is the gap every other request has, so `Defer` costs the language nothing new. The one thing special about it is that every World must provide it, because an interceptor cannot start an occurrence and there has to be some way to get one.
 
 ### Snapshots, the oracle and pushes
 
@@ -455,7 +454,7 @@ impl SlotTable {
 }
 ```
 
-A late result is not an error. The World started a read because a slot asked for it; the slot went away before the read finished; the result arrives. Nobody is listening, and that is the correct outcome of the program's decision to stop listening. What the core does is make it visible: `Diagnostic::LateResult` goes to the report, where a developer can see that a read was wasted, and the World cancels the operation at `slot_removed` time if the OS lets it. What the core does not do is deliver it, because delivering a response to a path the program's list does not have is the one protocol error the runtime would reject with an abort, and the core's job is to never let a World commit it.
+A late result is not an error. The World started a read because a slot asked for it; the slot went away before the read finished; the result arrives. Nobody is listening, and that is the correct outcome of the program's decision to stop listening. The core makes it visible: `Diagnostic::LateResult` goes to the report, where a developer can see that a read was wasted, and the World cancels the operation at `slot_removed` time if the OS lets it. The core does not deliver it, because delivering a response to a path the program's list does not have is the one protocol error the runtime would reject with an abort, and the core's job is to never let a World commit it.
 
 Paths are never reused, so a late result cannot be mistaken for a result to a new slot at the same position. A `dyn` that rebuilds gives the new slot a fresh generation in its path, and a result for the old generation is late by construction.
 
@@ -463,7 +462,7 @@ The "two to one path" case is the other half of routing. A reader thread that de
 
 ### Unsupported
 
-A program that was written for a GUI World and run under a CLI World has `Gui.Button` slots at the root, and no component accepts `Gui`. Three things can be in that position, and they get three answers, each chosen so that the program sees a fact rather than silence.
+A program that was written for a GUI World and run under a CLI World has `Ui.Button` slots at the root, and no component accepts `Ui`. Three things can be in that position, and they get three answers, each chosen so that the program sees a fact rather than silence.
 
 ```rust
 impl<R: Runtime> World<R> {
@@ -492,9 +491,9 @@ impl<R: Runtime> World<R> {
 
 *A request tag* nobody accepts gets an `Unsupported` response in the next turn, if the tag responds. `Unsupported` is a value of every response type, which the compiler arranges: every `responds: R` declaration is checked as `R | Unsupported`, and a `match` on a response needs an arm for it or a catch-all. A program under the wrong World therefore sees its request answered, with a value that says so, and can show "not available here" rather than wait forever. The response is in the next turn and not the same occurrence, because it is a response, and the creation rule binds the core like anyone else.
 
-*A presence tag* nobody accepts, `Gui.Label` under the CLI World, is reported once per slot at `slot_created`, through the `nobody` component, and otherwise ignored. There is nothing to respond to and nothing to deny. The report names the path, the tag and the chain of interceptors the element came through, so that the developer sees "a `Gui.Label` reached the CLI World from `@vbox` inside `@main`" and not a bare tag name.
+*A presence tag* nobody accepts, `Ui.Label` under the CLI World, is reported once per slot at `slot_created`, through the `nobody` component, and otherwise ignored. There is nothing to respond to and nothing to deny. The report names the path, the tag and the chain of interceptors the element came through, so that the developer sees "a `Ui.Label` reached the CLI World from `@vbox` inside `@main`" and not a bare tag name.
 
-*A state tag* nobody accepts is the one that cannot be deferred to the next turn, because a state element has a value in the occurrence it is created, and no value is available. The oracle closure in `run_occurrence` returns `None` for it, and the runtime aborts the occurrence with `RuntimeError::UnsuppliedState { element, span }`. The transaction rolls back; the World reports the error with the slot's source span; the inputs that opened the occurrence are lost. That is harsh and it is right: a program that reads a state the World does not have cannot run under that World, and the earliest honest moment to say so is the moment the slot would have been born.
+*A state tag* nobody accepts cannot be deferred to the next turn, because a state element has a value in the occurrence it is created, and no value is available. The oracle closure in `run_occurrence` returns `None` for it, and the runtime aborts the occurrence with `RuntimeError { kind: ErrorKind::UnsuppliedState, spans, .. }`. The transaction rolls back; the World reports the error with the slot's source span; the inputs that opened the occurrence are lost. That is harsh and it is right: a program that reads a state the World does not have cannot run under that World, and the earliest honest moment to say so is the moment the slot would have been born.
 
 The interceptor chain in these reports comes from the path. A path is the chain of bind positions from the root, and the compiled program's binding table maps each position to a source span and the name of the widget function it is in; `chain_of` walks the path and collects the widget names. It is the same walk that gives a cycle error its spans.
 
@@ -549,7 +548,7 @@ What the World does with an error is the World's policy, and the core leaves it 
 
 ### The harness: driving a runtime from any event loop
 
-Every World has a loop, and no two have the same one: a CLI World blocks on a channel, a winit World is called back by the platform, a tokio World selects over futures, a browser World is a callback with no loop at all. The harness is what the core offers so that each of those can drive the same turn with the same four lines.
+Every World has a loop, and no two have the same one: a CLI World blocks on a channel, a winit World is called back by the platform, a tokio World selects over futures, a browser World is a callback with no loop at all. The core offers the harness so that each of those can drive the same turn with the same four lines.
 
 ```rust
 pub struct Harness<R: Runtime> {
@@ -620,7 +619,7 @@ impl<R: Runtime> Harness<R> {
 }
 ```
 
-`step` never blocks and never waits, so it can be called from inside a platform callback: a winit `window_event` handler pushes the event into the inbox as a `Delivery` and calls `step` before returning. `wait` is for Worlds that own their thread, and takes a deadline so that a timer component can say when it next needs a turn. The `Wake` trait is what connects a thread that delivered something to the loop that should call `step`: a CLI World's waker does nothing, because the loop is blocked on the channel and the send wakes it; a winit World's calls the event loop proxy; a tokio World's notifies a `Notify` that the select is waiting on.
+`step` never blocks and never waits, so it can be called from inside a platform callback: a winit `window_event` handler pushes the event into the inbox as a `Delivery` and calls `step` before returning. `wait` is for Worlds that own their thread, and takes a deadline so that a timer component can say when it next needs a turn. The `Wake` trait connects a thread that delivered something to the loop that should call `step`: a CLI World's waker does nothing, because the loop is blocked on the channel and the send wakes it; a winit World's calls the event loop proxy; a tokio World's notifies a `Notify` that the select is waiting on.
 
 The CLI World's whole main is then:
 
@@ -629,7 +628,7 @@ fn main() -> ExitCode {
     let program = prism_lang::compile_file(&path)?;
     let mut world = World::new(program, Box::new(report::Text::stderr()), Arc::new(NoWake));
     let inbox = world.inbox();
-    world.add(cli::Process::new(args, env))
+    world.add(process::Process::new(args, env))
          .add(cli::Stdio::new(inbox.clone()))
          .add(cli::Signals::new(inbox.clone()))
          .add(fs::Files::new(inbox.clone()))
@@ -650,7 +649,7 @@ fn main() -> ExitCode {
 
 That is the entire difference between the CLI World and any other at the level of the loop. Everything that makes it a CLI World is in the components.
 
-`has_gatherable` deserves a word. A turn is caused by a delivery, and a push gathered from a component is a delivery the core finds by asking. The clock pushes once per turn, but a clock alone never causes a turn, because a program that only looks at the clock has nothing to react to; the turn that reads the clock is caused by something else. So `has_gatherable` asks components whether they have something that should start a turn on its own (a file watch that saw a change, a timer that expired), and the clock answers no. The distinction keeps a program with a `Clock` slot from spinning.
+A turn is caused by a delivery, and a push gathered from a component is a delivery the core finds by asking. The clock pushes once per turn, but a clock alone never causes a turn, because a program that only looks at the clock has nothing to react to; the turn that reads the clock is caused by something else. So `has_gatherable` asks components whether they have something that should start a turn on its own (a file watch that saw a change, a timer that expired), and the clock answers no. The distinction keeps a program with a `Clock` slot from spinning.
 
 ## The Test World
 
@@ -662,14 +661,14 @@ A test is an item in a Prism file, parsed by the `lang` crate like any other:
 
 ```prism
 test counter_counts: Test @counter: array:
-    Expect Gui.Label(text="Count: 0")
-    Send Gui.Button(label="Increment"), Click
-    Send Gui.Button(label="Increment"), Click
-    Expect Gui.Label(text="Count: 2")
+    Expect Ui.Label(text="Count: 0")
+    Send Ui.Button(label="Increment"), click
+    Send Ui.Button(label="Increment"), click
+    Expect Ui.Label(text="Count: 2")
     Together:
-        Send Gui.Button(label="Increment"), Click
-        Send Gui.Button(label="Decrement"), Click
-    Expect Gui.Label(text="Count: 1")
+        Send Ui.Button(label="Increment"), click
+        Send Ui.Button(label="Decrement"), click
+    Expect Ui.Label(text="Count: 1")
 ```
 
 The parser produces a `TestItem { name, widget: Expr, steps: Vec<Step> }` where the widget expression is elaborated and compiled as if it were `@main`, and each step is one of:
@@ -692,7 +691,7 @@ pub enum Step {
 }
 ```
 
-A `Pattern` here is an element pattern as the language already has it for `match`: a tag with named fields, each field a value pattern or `..`, or `Ns.*(..)`. The value in a `Send` or `State` is an ordinary plain expression, type-checked against the tag's declared response or state type, so `Send Gui.Button(..), "hello"` is a compile error in the test file. This is why the script lives in `lang` and not in a separate test language: it reuses the pattern grammar, the type checker, and the error messages, and a test file is a Prism file.
+A `Pattern` here is an element pattern as the language already has it for `match`: a tag with named fields, each field a value pattern or `..`, or `Ns.*(..)`. The value in a `Send` or `State` is an ordinary plain expression, type-checked against the tag's declared response or state type, so `Send Ui.Button(..), "hello"` is a compile error in the test file. This is why the script lives in `lang` and not in a separate test language: it reuses the pattern grammar, the type checker, and the error messages, and a test file is a Prism file.
 
 The `Requested` step's second argument is a pattern over the request value rather than a value, so that `Requested Time.Every(..), ignore` can say "it fired, I do not care with what".
 
@@ -808,11 +807,11 @@ Each of the four steps that the walkthroughs in chapter 1 lean on has one source
 
 `Fired` and `Quiet` are the `result` view of the same records: `Fired` passes if the widget's result event fired in any occurrence of the turn with a matching value, `Quiet` if it fired in none. `Returns` compares the current value after the turn.
 
-`Errors` is the `Err` from `turn`. The runner keeps running after an error, with the runtime unchanged (the occurrence rolled back), so that `Errors Cycle(..)` followed by `Expect Gui.Label(text="Count: 2")` can assert that the label still shows what it showed before the bad occurrence. The pattern matches on the error's kind and, optionally, on the paths and spans in it, so a conformance test for "deferring backwards is an error" is:
+`Errors` is the `Err` from `turn`. The runner keeps running after an error, with the runtime unchanged (the occurrence rolled back), so that `Errors Cycle(..)` followed by `Expect Ui.Label(text="Count: 2")` can assert that the label still shows what it showed before the bad occurrence. The pattern matches on the error's kind and, optionally, on the paths and spans in it, so a conformance test for "deferring backwards is an error" is:
 
 ```prism
 test defer_backwards: Test @retry_forever_under_sandbox: array:
-    Send Gui.Button(label="Read"), Click
+    Send Ui.Button(label="Read"), click
     Errors DeferBackwards(..)
 ```
 
@@ -824,25 +823,25 @@ The transcript is what the conformance suite compares and what the differential 
 turn 0
   occurrence 0
     list
-      0/#0/0: Gui.Button(label="Increment")
-      1/#0/0: Gui.Button(label="Decrement")
-      2/#0/0: Gui.Label(text="Count: 0")
+      0/#0/0: Ui.Button(label="Increment")
+      1/#0/0: Ui.Button(label="Decrement")
+      2/#0/0: Ui.Label(text="Count: 0")
     result: unit
-turn 1  response 0/#0/0 Click
+turn 1  response 0/#0/0 click
   occurrence 1
     list
-      0/#0/0: Gui.Button(label="Increment")
-      1/#0/0: Gui.Button(label="Decrement")
-      2/#1/0: Gui.Label(text="Count: 1")
+      0/#0/0: Ui.Button(label="Increment")
+      1/#0/0: Ui.Button(label="Decrement")
+      2/#1/0: Ui.Label(text="Count: 1")
     result: unit
-turn 2  response 0/#0/0 Click
+turn 2  response 0/#0/0 click
   ...
 turn 5  push Clock Instant 5100
   occurrence 7
-    requested 3/#0/1: Time.Every(period=100) <- Tick
+    requested 3/#0/1: Time.Every(period=100) <- tick
     list
       ...
-turn 6  response 0/2/0 Click
+turn 6  response 0/2/0 click
   occurrence 8
     requested 0/2/0: Fs.File(path="/etc/shadow", requests=..) <- Read
     requested 0/3/1: Defer <- unit
@@ -851,7 +850,7 @@ turn 6  response 0/2/0 Click
   occurrence 9  answering Defer 0/3/1
     list
       ...
-turn 7  response 0/#0/0 Click
+turn 7  response 0/#0/0 click
   error[cycle] at occurrence 10
     --> counter.prism:12:5 `!delta`
 ```
@@ -878,8 +877,8 @@ The components, with the tags each accepts:
 
 | Component | Tags | Kinds |
 | --- | --- | --- |
-| `cli::Process` | `Cli.Args`, `Cli.Env` | state |
-| `cli::Stdio` | `Cli.Stdin`, `Cli.Stdout`, `Cli.Stderr`, `Cli.Exit` | responds; requests; requests; requests |
+| `process::Process` | `Process.Args`, `Process.Env` | state |
+| `cli::Stdio` | `Cli.Stdin`, `Cli.Stdout`, `Cli.Stderr`, `Process.Exit` | responds; requests+responds; requests+responds; requests |
 | `cli::Signals` | `Cli.Signals` | responds |
 | `fs::Files` | `Fs.File`, `Fs.Contents` | requests+responds; state |
 | `time::Timers` | `Time.After`, `Time.Every`, `Clock` | requests+responds; responds; state |
@@ -897,19 +896,25 @@ type Code = Code Int
 tag Cli.Stdin of Element:
     responds: StdinEvent
 
+type WriteFailed = choice:
+    Closed
+    Failed Text
+
 tag Cli.Stdout of Element:
     requests: !Text
+    responds: WriteFailed
 
 tag Cli.Stderr of Element:
     requests: !Text
+    responds: WriteFailed
 
-tag Cli.Exit of Element:
+tag Process.Exit of Element:
     requests: !Code
 
-tag Cli.Args of Element:
+tag Process.Args of Element:
     state: [Text]
 
-tag Cli.Env of Element:
+tag Process.Env of Element:
     state: Text ==> Text
 
 type Signal = choice Interrupt | Terminate | Hangup | Other Int
@@ -918,17 +923,17 @@ tag Cli.Signals of Element:
     responds: Signal
 ```
 
-The names are sketches until the library is written; the kinds are what the language fixes, and the reasoning for each kind is below with its component.
+The kinds are what the language fixes, and the reasoning for each is below with its component; the field names follow the library.
 
-### `Cli.Args` and `Cli.Env`: state, constant after start
+### `Process.Args` and `Process.Env`: state, constant after start
 
 ```rust
 pub struct Process { args: Value, env: Value }
 
 impl Component for Process {
-    fn tags(&self) -> Vec<Tag> { vec![Tag::CLI_ARGS, Tag::CLI_ENV] }
+    fn tags(&self) -> Vec<Tag> { vec![Tag::PROCESS_ARGS, Tag::PROCESS_ENV] }
     fn oracle(&mut self, e: &ElementValue, _: &mut Cx) -> Value {
-        if e.tag == Tag::CLI_ARGS { self.args.clone() } else { self.env.clone() }
+        if e.tag == Tag::PROCESS_ARGS { self.args.clone() } else { self.env.clone() }
     }
     fn gather(&mut self, _: &mut Cx) {}            // never pushes
     fn quiescent(&self) -> bool { true }           // an Args slot keeps nothing alive
@@ -936,9 +941,9 @@ impl Component for Process {
 }
 ```
 
-Arguments and environment are state elements rather than parameters of `@main` so that an interceptor can give a subtree different ones and a test can set them with `State Cli.Args, ["notes.txt"]`, with no second way to start a program. On a process that cannot observe a change to its arguments the component never pushes, and the `dyn` a program puts over `$args` builds once. A World that can observe a change (a shell World hosting other programs, where "arguments" is something the shell decides) pushes, and the same program rebuilds; nothing in the program says which World it is under.
+Arguments and environment are state elements rather than parameters of `@main` so that an interceptor can give a subtree different ones and a test can set them with `State Process.Args, ["notes.txt"]`, with no second way to start a program. On a process that cannot observe a change to its arguments the component never pushes, and the `dyn` a program puts over `$args` builds once. A World that can observe a change (a shell World hosting other programs, where "arguments" is something the shell decides) pushes, and the same program rebuilds; nothing in the program says which World it is under.
 
-`quiescent` is `true` because a program whose only slot is `Cli.Args` is a program that has nothing left to do, and the run should end with code 0 rather than wait forever for a push that never comes.
+`quiescent` is `true` because a program whose only slot is `Process.Args` is a program that has nothing left to do, and the run should end with code 0 rather than wait forever for a push that never comes.
 
 ### `Cli.Stdin`: a reader thread, started and stopped by the slot
 
@@ -996,7 +1001,7 @@ impl Component for Stdio {
 
 Two things here are the OS being the OS, and the design accepts both rather than hiding them. A thread blocked in `read(2)` cannot be interrupted portably; so when the slot goes, the reader is told to stop and the next chunk it reads is lost, delivered to a path the core no longer knows, and reported as a late result. A program that drops its `Cli.Stdin` slot and later creates another one gets a fresh stream from wherever the descriptor is now, which is what `cat` would get too. And a `Chunk` is bytes as the OS handed them, which means a line can be split across chunks; the program's `@Lines` library widget keeps the partial line in a hold, as chapter 1's line counter does. The World does not reassemble lines, because a program that wants bytes should get bytes, and lines are a pure function over chunks.
 
-Text is `from_utf8_lossy` for now; a `Cli.StdinBytes` tag responding with `Bytes` is the version for programs that want the raw stream, and the only difference is the conversion.
+Text is `from_utf8_lossy`; a `Cli.StdinBytes` tag responding with `Bytes` is the version for programs that want the raw stream, and the only difference is the conversion.
 
 The second `Cli.Stdin` slot is a diagnostic and not an error, because it is the program's business if two widgets both want stdin and only one gets it; the value-identity rule does not apply, since `Cli.Stdin` is a stream element identified by path, and two paths are two conversations on one descriptor, which cannot be made to work. A library that wants to share stdin between two widgets does it in Prism, with one `Cli.Stdin` slot and an interceptor that fans out.
 
@@ -1010,11 +1015,11 @@ impl Component for Stdio {
                 if self.out_failed { return; }
                 if let Err(e) = self.out.write_all(request.as_text().as_bytes()) {
                     self.out_failed = true;
-                    cx.diagnostic(Diagnostic::Component { tag: el.tag, message: e.to_string() });
+                    cx.respond(path, write_failed(e));     // reaches the program next turn
                 }
             }
             Tag::CLI_STDERR => { let _ = self.err.write_all(request.as_text().as_bytes()); }
-            Tag::CLI_EXIT => cx.exit(request.as_code()),
+            Tag::PROCESS_EXIT => cx.exit(request.as_code()),
             _ => {}
         }
     }
@@ -1033,15 +1038,15 @@ Writes are performed in occurrence order and then list order, which is the core'
 
 Two `Cli.Stdout` slots in one program both write to the one descriptor, in list order within an occurrence. That is right: two widgets that both print are two widgets that both print, and the interleaving is the one the program's structure gives. A program that wants a single ordered log puts one `Cli.Stdout` under an interceptor that merges.
 
-A failed write (the reader of a pipe went away, `EPIPE`) is a diagnostic and a flag, not a response, because `Cli.Stdout` as declared does not respond. A variant tag that does, `Cli.StdoutChecked(requests: !Text, responds: WriteResult)`, is a few lines more in this component and is the version a program that cares about `EPIPE` uses; most do not, and a `print` that returns a result nobody reads is the kind of noise the language avoids. `SIGPIPE` is left at the OS default of being ignored, so that the failed write is seen as `EPIPE` and reported, instead of killing the process silently.
+A failed write (the reader of a pipe went away, `EPIPE`) sets the flag and comes back to the writing slot as a `WriteFailed` response through `cx.respond`, in a later turn, as the creation rule requires of any response. `SIGPIPE` is left as the Rust runtime leaves it, ignored (from memory; verify), so that the failed write is seen as `EPIPE` and reported, instead of killing the process silently.
 
-### `Cli.Exit`: a request, acted on after the turn
+### `Process.Exit`: a request, acted on after the turn
 
 Exit is a request element with `requests: !Code`, and the firing is the whole instruction. The component's `perform` records the code with `cx.exit(code)`; the core finishes performing the turn's other requests, which means every write that fired in the same turn lands first, in order; then `Harness::step` returns `Step::Exit(code)` and main flushes and returns it.
 
-Why exit is a request and not a presence was argued in chapter 1 from the program's side: nothing in the language happens because an element appears, and an exit that happened because a `Cli.Exit` element was in the list would be a trigger by existence. From the World's side the argument is about ordering. A request firing has a position in the turn, after some writes and before others; a presence has only a list position, and "exit after this turn's writes but not before the writes of a widget later in the list" would have no meaning. With a request, `Cli.Exit` fired in the same occurrence as a `Cli.Stdout` write lands after that write if the stdout slot is earlier in the list, which is the order the program's structure gives, and a program that wants its goodbye message before exit puts the stdout slot first or fires the exit from a later occurrence.
+Chapter 1 argued from the program's side why exit is a request and not a presence: nothing in the language happens because an element appears, and an exit that happened because a `Process.Exit` element was in the list would be a trigger by existence. From the World's side the argument is about ordering. A request firing has a position in the turn, after some writes and before others; a presence has only a list position, and "exit after this turn's writes but not before the writes of a widget later in the list" would have no meaning. With a request, `Process.Exit` fired in the same occurrence as a `Cli.Stdout` write lands after that write if the stdout slot is earlier in the list, which is the order the program's structure gives, and a program that wants its goodbye message before exit puts the stdout slot first or fires the exit from a later occurrence.
 
-Two `Cli.Exit` firings in one turn: the first in occurrence-then-list order wins, and the second gets a diagnostic. Two programs under a shell World both exiting is the shell's business and it intercepts `Cli.Exit` before the real World sees it, as chapter 1's shell does.
+Two `Process.Exit` firings in one turn: the first in occurrence-then-list order wins, and the second gets a diagnostic. Two programs under a shell World both exiting is the shell's business and it intercepts `Process.Exit` before the real World sees it, as chapter 1's shell does.
 
 A code outside 0–255 is clamped and reported, because that is what the OS will do anyway and reporting it is better than letting a program think it exited with 256.
 
@@ -1052,7 +1057,7 @@ pub struct Signals { inbox: Inbox, slot: Option<Path>, handle: Option<signal_hoo
 
 impl Component for Signals {
     fn slot_created(&mut self, path: &Path, _: &ElementValue, _: &mut Cx) {
-        let mut signals = signal_hook::iterator::Signals::new([SIGINT, SIGTERM, SIGHUP]).unwrap();
+        let mut signals = signal_hook::iterator::Signals::new([SIGINT, SIGTERM, SIGHUP]).unwrap();   // signal_hook API from memory
         self.handle = Some(signals.handle());
         let (inbox, p) = (self.inbox.clone(), path.clone());
         std::thread::spawn(move || {
@@ -1063,7 +1068,7 @@ impl Component for Signals {
         self.slot = Some(path.clone());
     }
     fn slot_removed(&mut self, _: &Path, _: &ElementValue, _: &mut Cx) {
-        if let Some(h) = self.handle.take() { h.close(); }      // restores the OS default
+        if let Some(h) = self.handle.take() { h.close(); }      // restores the OS default (from memory)
         self.slot = None;
     }
     fn quiescent(&self) -> bool { self.slot.is_none() }
@@ -1071,9 +1076,9 @@ impl Component for Signals {
 }
 ```
 
-With no `Cli.Signals` slot, `SIGINT` does what the OS does: kills the process. With one, the signal arrives as a response and the program decides, typically by firing `Cli.Exit`. The handler is installed when the slot appears and removed when it goes, so a program that handles `Ctrl-C` only during a critical section has a `Cli.Signals` slot only during it. This is the rule that a stream lives as long as its slot, applied to something that is not a stream of data but a stream of OS events.
+With no `Cli.Signals` slot, `SIGINT` does what the OS does: kills the process. With one, the signal arrives as a response and the program decides, typically by firing `Process.Exit`. The handler is installed when the slot appears and removed when it goes, so a program that handles `Ctrl-C` only during a critical section has a `Cli.Signals` slot only during it. This is the rule that a stream lives as long as its slot, applied to something that is not a stream of data but a stream of OS events.
 
-A `Cli.Signals` slot keeps the program alive (`quiescent` is false while it exists), because a program waiting for a signal is waiting for something that can happen. That is the difference from `Cli.Args`.
+A `Cli.Signals` slot keeps the program alive (`quiescent` is false while it exists), because a program waiting for a signal is waiting for something that can happen. That is the difference from `Process.Args`.
 
 ### `Fs.File` and `Fs.Contents`: a thread pool and a watcher
 
@@ -1082,10 +1087,10 @@ A `Cli.Signals` slot keeps the program alive (`quiescent` is false while it exis
 ```rust
 pub struct Files {
     inbox: Inbox,
-    pool: threadpool::ThreadPool,                       // for Fs.File operations
+    pool: threadpool::ThreadPool,                       // for Fs.File operations (crate API from memory)
     inflight: BTreeMap<Path, Arc<AtomicBool>>,          // per slot: a cancel flag
     watched: BTreeMap<ElementValue, Watched>,           // per Fs.Contents value: the watch and the last value
-    watcher: notify::RecommendedWatcher,
+    watcher: notify::RecommendedWatcher,                // notify's API from memory
     changes: std::sync::mpsc::Receiver<notify::Event>,  // from the watcher's thread
 }
 
@@ -1161,13 +1166,13 @@ impl Component for Files {
 }
 ```
 
-The read in `oracle` is the synchronous read discussed under the trait, and it is the whole reason a file viewer shows the file in its first occurrence instead of flashing "unavailable" for one frame. The watch is started in the same call, so that a change between the read and the first turn is not lost: `notify` delivers it to the channel, `gather` picks it up at the next turn, re-reads, and pushes if the contents differ. On a platform without a usable watch the component falls back to a stat-and-reread in `gather`, comparing modification times; the program cannot tell, except that changes arrive at the next turn rather than causing one.
+The synchronous read in `oracle` is the whole reason a file viewer shows the file in its first occurrence instead of flashing "unavailable" for one frame. The watch is started in the same call, so that a change between the read and the first turn is not lost: `notify` delivers it to the channel (from memory), `gather` picks it up at the next turn, re-reads, and pushes if the contents differ. On a platform without a usable watch the component falls back to a stat-and-reread in `gather`, comparing modification times; the program cannot tell, except that changes arrive at the next turn rather than causing one.
 
 Whether a changed file should *cause* a turn is the `has_gatherable` question: yes for a watch, because a program showing a file should update when the file changes even if nothing else is happening, so `Files` reports `true` whenever the change channel has something. The main loop's `wait` is then woken by the inbox, which the watcher thread also sends a no-op `Delivery` into for exactly that purpose; a `Delivery::Wake` variant with no payload is the cleanest spelling and the harness drops it after waking.
 
 `Fs.Contents` value identity shows up as the `slots` count: two widgets viewing the same path share one watch, one read, and one push, and the watch stops when the last of them goes. The core's snapshot already shares the value; the component shares the OS resource.
 
-The cancel flag for `Fs.File` is the "cancel if the World can" obligation. A `std::fs::read_to_string` on a pool thread cannot be interrupted, so what cancellation means here is that the result is not delivered; the core would have discarded it anyway as a late result, and the flag only saves the send. A World on an OS with cancellable IO does better; nothing in the contract changes.
+The cancel flag for `Fs.File` is the "cancel if the World can" obligation. A `std::fs::read_to_string` on a pool thread cannot be interrupted, so cancellation here means only that the result is not delivered; the core would have discarded it anyway as a late result, and the flag only saves the send. A World on an OS with cancellable IO does better; nothing in the contract changes.
 
 `quiescent` is `false` while an `Fs.File` operation is in flight, so a program that fired a read and is waiting for the answer is not ended. A watch does not keep a program alive on its own, which is a choice: a program whose only live thing is a file watch is like a program whose only live thing is a signal handler, and the two could reasonably go either way. The reasoning for the difference is that a program that wants to run until a file changes is rare, and a program that forgot to exit after reading a file is common, and the second should end with code 0.
 
@@ -1176,7 +1181,7 @@ The cancel flag for `Fs.File` is the "cancel if the World can" obligation. A `st
 ```rust
 pub struct Timers {
     inbox: Inbox,
-    after: BTreeMap<(Instant, u64), Path>,          // Time.After deadlines, keyed by time then sequence
+    after: BTreeMap<(Instant, u64), (Path, u64)>,   // Time.After deadlines, keyed by time then sequence; the token
     every: BTreeMap<Path, Every>,                   // Time.Every slots: period and next deadline
     seq: u64,
     turn_now: Instant,                              // sampled once per turn
@@ -1198,9 +1203,10 @@ impl Component for Timers {
     fn tags(&self) -> Vec<Tag> { vec![Tag::TIME_AFTER, Tag::TIME_EVERY, Tag::CLOCK] }
 
     fn perform(&mut self, path: &Path, _: &ElementValue, request: Value, _: &mut Cx) {
-        // Time.After(requests: !Duration, responds: Elapsed)
+        // Time.After(requests: !Nat, responds: Nat): milliseconds in, the same Nat echoed back
         self.seq += 1;
-        self.after.insert((self.turn_now + request.as_duration(), self.seq), path.clone());
+        let ms = request.as_nat();
+        self.after.insert((self.turn_now + Duration::from_millis(ms), self.seq), (path.clone(), ms));
     }
 
     fn slot_created(&mut self, path: &Path, el: &ElementValue, _: &mut Cx) {
@@ -1212,7 +1218,7 @@ impl Component for Timers {
     fn slot_removed(&mut self, path: &Path, el: &ElementValue, _: &mut Cx) {
         match el.tag {
             Tag::TIME_EVERY => { self.every.remove(path); }
-            Tag::TIME_AFTER => { self.after.retain(|_, p| p != path); }
+            Tag::TIME_AFTER => { self.after.retain(|_, (p, _)| p != path); }
             _ => {}
         }
     }
@@ -1224,8 +1230,8 @@ impl Component for Timers {
         cx.push(&ElementValue::nullary(Tag::CLOCK), instant(self.turn_now - self.epoch));
         // Every expired Time.After fires; the earliest Time.Every per slot fires, once.
         while let Some((&(t, s), _)) = self.after.first_key_value().filter(|((t, _), _)| *t <= self.turn_now) {
-            let path = self.after.remove(&(t, s)).unwrap();
-            cx.respond(&path, elapsed());
+            let (path, ms) = self.after.remove(&(t, s)).unwrap();
+            cx.respond(&path, Value::nat(ms));
         }
         for (path, e) in &mut self.every {
             if e.next <= self.turn_now {
@@ -1250,7 +1256,7 @@ A `Time.Every` tick that was missed, because the process was stopped or a turn t
 
 ### Exit when nothing can happen
 
-A CLI run ends on `Cli.Exit`, or when nothing can ever cause another occurrence. The second is `Step::Quiescent`, and it is a conjunction over components: the inbox is empty, no reader thread is running (no `Cli.Stdin` slot, or `End` has been delivered), no signal slot exists, no `Fs.File` operation is in flight, no timer is set. A program with none of those has a graph with no sources left, and a graph with no sources cannot change, so ending it with code 0 is not a policy; it is reading the situation correctly. The alternative, waiting for an explicit `Cli.Exit` forever, turns a forgotten exit into a hang, and the forgotten exit is the common bug.
+A CLI run ends on `Process.Exit`, or when nothing can ever cause another occurrence. The second is `Step::Quiescent`, and it is a conjunction over components: the inbox is empty, no reader thread is running (no `Cli.Stdin` slot, or `End` has been delivered), no signal slot exists, no `Fs.File` operation is in flight, no timer is set. A program with none of those has a graph with no sources left, and a graph with no sources cannot change, so ending it with code 0 is not a policy; it is reading the situation correctly. The alternative, waiting for an explicit `Process.Exit` forever, turns a forgotten exit into a hang, and the forgotten exit is the common bug.
 
 The one judgment call in the conjunction is which slots count as sources, and it was made per component above: stdin, signals, in-flight requests and timers keep a program alive; arguments, environment, the clock and file watches do not. Each is a line in a component's `quiescent`, and changing one is changing one line.
 
@@ -1262,7 +1268,7 @@ Occurrence 0 builds three slots. `start` performs no requests (nothing fired) an
 
 The reader thread reads 14 bytes in one `read(2)`, because `printf` wrote them in one `write(2)` and the pipe delivered them together, and sends `Chunk "one\ntwo\nthree\n"`. `wait` returns; `step` takes it under `OneAtATime`; turn 1 runs occurrence 1 with that one response; `$lines` becomes `3`. No requests. The list is unchanged; nothing to start or stop. `Idle` again.
 
-The reader reads 0 bytes and sends `End`. Turn 2, occurrence 2: `!end` fires; `Cli.Stdout` fires `"3\n"`; `Cli.Exit` fires `Code 0`. The core performs them in list order: `Stdio::perform` writes `"3\n"` to the buffer, then records exit 0. `step` returns `Exit(0)`; main flushes and exits.
+The reader reads 0 bytes and sends `End`. Turn 2, occurrence 2: `!end` fires; `Cli.Stdout` fires `"3\n"`; `Process.Exit` fires `Code 0`. The core performs them in list order: `Stdio::perform` writes `"3\n"` to the buffer, then records exit 0. `step` returns `Exit(0)`; main flushes and exits.
 
 Had the input been typed at a terminal, each line would have been its own chunk and the run would have had four turns before `End`, and the output would be the same, which is the point of the chunk-independence a stream program has to have and chapter 1's `@Lines` provides.
 
@@ -1270,7 +1276,7 @@ Had the input been typed at a terminal, each line would have been its own chunk 
 
 A CLI World can get by with threads because it has four blocking things. A World with a thousand sockets cannot, and the Rust answer to a thousand sockets is tokio. The question is where tokio goes, and the answer is: on the IO side, never on the propagation side.
 
-The wrong design is seductive, so it is worth seeing why it is wrong. Suppose the turn loop were an `async fn`, components were `async`, and `perform` awaited the operation and returned the response. Then a turn would be suspended, with the runtime's state live, while a socket was read; a second input arriving in the meantime would either wait (serialising all IO behind the slowest operation) or start a second turn (two turns in flight on one runtime, which the transaction model forbids). And on any platform with a GUI main thread, there is no awaiting inside a callback at all. The design that avoids both is the one the CLI World already has: a turn is synchronous and brief; an IO task is a future that ends by sending a `Delivery` to the inbox; the loop waits on the inbox and on nothing else.
+Suppose the turn loop were an `async fn`, components were `async`, and `perform` awaited the operation and returned the response. Then a turn would be suspended, with the runtime's state live, while a socket was read; a second input arriving in the meantime would either wait (serialising all IO behind the slowest operation) or start a second turn (two turns in flight on one runtime, which the transaction model forbids). And on any platform with a GUI main thread, there is no awaiting inside a callback at all. The CLI World's design avoids both: a turn is synchronous and brief; an IO task is a future that ends by sending a `Delivery` to the inbox; the loop waits on the inbox and on nothing else.
 
 ```rust
 pub async fn run_tokio<R: Runtime>(mut harness: Harness<R>,
@@ -1356,13 +1362,13 @@ impl Component for Sockets {
 }
 ```
 
-The `inbox.send` here is the tokio channel's `blocking_send` or an unbounded send, and that choice is backpressure. If the inbox is bounded and a reader task blocks on sending, the socket is not read until the loop drains, which is the correct behaviour for a program that is slower than its input: the kernel's receive buffer fills, TCP's window closes, and the sender slows down. That is what backpressure means and the bounded inbox is how a Prism World gets it for free. The outbound channel in `perform` is bounded too, and `try_send` failing means the program is writing faster than the socket drains; the component's choice above is to drop with a diagnostic, and a World that wants to tell the program would use a tag whose response includes `Backpressured`, at which point the program's own hold is the buffer and the program decides what to drop. Buffering unboundedly inside the World is the one option not taken, because an unbounded buffer is a memory leak with a delay.
+The `inbox.send` here is the tokio channel's `blocking_send` (from memory) or an unbounded send, and that choice is backpressure. If the inbox is bounded and a reader task blocks on sending, the socket is not read until the loop drains, which is the correct behaviour for a program that is slower than its input: the kernel's receive buffer fills, TCP's window closes, and the sender slows down. That is backpressure, and a bounded inbox gives a Prism World it for free. The outbound channel in `perform` is bounded too, and `try_send` failing means the program is writing faster than the socket drains; the component's choice above is to drop with a diagnostic, and a World that wants to tell the program would use a tag whose response includes `Backpressured`, at which point the program's own hold is the buffer and the program decides what to drop. Buffering unboundedly inside the World is the one option not taken, because an unbounded buffer is a memory leak with a delay.
 
-Batching in step 2 is where "simultaneous inputs" is decided. Two deliveries that were both ready when the loop woke are, as far as the World can know, simultaneous; delivering them in one occurrence tells the program they were, and the program's `|` merges and `Together`-style reasoning apply. Delivering them in two turns tells the program one came first, which the World does not know either. Both are honest; the skeleton batches because a server that gets two requests at once should see two requests at once, while the CLI World does not because its programs are written one input at a time. The rule that one slot gets one response per occurrence is enforced either way, and the skeleton stops batching at the first repeat rather than skipping over it, so that the order of deliveries to one path is kept.
+Step 2's batching decides what "simultaneous inputs" means. Two deliveries that were both ready when the loop woke are, as far as the World can know, simultaneous; delivering them in one occurrence tells the program they were, and the program's `|` merges and `Together`-style reasoning apply. Delivering them in two turns tells the program one came first, which the World does not know either. Both are honest; the skeleton batches because a server that gets two requests at once should see two requests at once, while the CLI World does not because its programs are written one input at a time. The rule that one slot gets one response per occurrence is enforced either way, and the skeleton stops batching at the first repeat rather than skipping over it, so that the order of deliveries to one path is kept.
 
 The `Deadlines` object is the tokio spelling of the CLI World's `next_deadline`: the `Timers` component writes its earliest deadline into it, and `sleep_until_next` is a `tokio::time::sleep_until` that is recreated whenever the earliest changes. Nothing else about `Timers` changes.
 
-A World that mixes a GUI main thread and tokio IO, which a desktop World does, runs this loop's select on a tokio thread that does nothing but forward: it receives from the inbox and calls the platform's wake (winit's `EventLoopProxy::send_event`), and the main thread's event handler calls `step`. The turn runs on the main thread, where the platform wants it; tokio never touches the runtime.
+A World that mixes a GUI main thread and tokio IO, which a desktop World does, runs this loop's select on a tokio thread that does nothing but forward: it receives from the inbox and calls the platform's wake (winit's `EventLoopProxy::send_event`, from memory), and the main thread's event handler calls `step`. The turn runs on the main thread, where the platform wants it; tokio never touches the runtime.
 
 ## The GUI World
 
@@ -1440,22 +1446,22 @@ tag Gui.Frame of Element:
 
 The draw primitives are presence elements: a `Gui.Rect` in the list is a rectangle on the screen, in list order, which is paint order. Nothing is drawn because an element appeared; the list *is* the description, and the World paints what the list describes after each turn, the way a CLI World writes what the requests said. A label whose text changes is a `dyn` with a fresh slot, because `text` is a plain field and a dynamic there lifts into a `dyn`; the World diffs lists by path and element, sees one slot gone and one new, and damages the union of their rects.
 
-`Gui.Region` is where input enters. It has a rect, which the World uses for pointer hit-testing (the last region in list order whose rect contains the point gets the event), it responds with pointer, key and IME events, and it requests focus, pointer capture, an IME cursor area and a cursor icon. Keys go to the focused region, and focus is something a region asked for with `TakeFocus`, which the World grants and reports with `FocusGained` in a later occurrence. A region's rect is a plain field, so a region that moves is a fresh slot; focus is therefore keyed by the World on the element value plus tree position, so that a `Gui.Region` rebuilt at the same tree position with a new rect keeps focus. That is a World policy and the language promises nothing about it; the GUI library keeps its own idea of focus in a hold and re-requests when a rebuild loses it, which is the robust version.
+Input enters through `Gui.Region`. It has a rect, which the World uses for pointer hit-testing (the last region in list order whose rect contains the point gets the event), it responds with pointer, key and IME events, and it requests focus, pointer capture, an IME cursor area and a cursor icon. Keys go to the focused region, and focus is something a region asked for with `TakeFocus`, which the World grants and reports with `FocusGained` in a later occurrence. A region's rect is a plain field, so a region that moves is a fresh slot; focus is therefore keyed by the World on the element value plus tree position, so that a `Gui.Region` rebuilt at the same tree position with a new rect keeps focus. That is a World policy and the language promises nothing about it; the GUI library keeps its own idea of focus in a hold and re-requests when a rebuild loses it, which is the robust version.
 
-`Gui.Metrics` is the one state element in the vocabulary, and it is the answer to the problem every text layout has: you cannot place a caret without knowing how wide the text is, and you cannot know how wide the text is without asking the thing that has the fonts. As a request it would be answered next turn, and the text field would draw one frame with stale glyph positions; as a state element its oracle is synchronous, the component shapes the text when asked, and the slot has its metrics in the occurrence it is created, so the layout that depends on them is right in the same occurrence. The push for it fires only when the installed fonts change, which is almost never. Value identity makes this cheap: every slot asking for the metrics of `("Start", Default)` shares one shaping, and the component's cache is keyed by the same element value the core's snapshot is.
+`Gui.Metrics` is the one state element in the vocabulary, and it is the answer to the problem every text layout has: you cannot place a caret without knowing how wide the text is, and you cannot know how wide the text is without asking the thing that has the fonts. As a request it would be answered next turn, and the text field would draw one frame with stale glyph positions; as a state element its oracle is synchronous, the component lays out the glyphs when asked, and the slot has its metrics in the occurrence it is created, so the layout that depends on them is right in the same occurrence. The push for it fires only when the installed fonts change, which is almost never. Value identity makes this cheap: every slot asking for the metrics of `("Start", Default)` shares one glyph layout, and the component's cache is keyed by the same element value the core's snapshot is.
 
 `Gui.Frame` responds with a tick per displayed frame while a slot exists, for animation, and the World requests continuous redraw only while there is one.
 
 ### A software rasteriser first
 
-The first GUI World draws into a pixel buffer on the CPU and blits it to a window. The choice is deliberate: a software rasteriser has no GPU state, no shader pipeline and no driver, so every bug is a Rust bug, and the whole World is a few hundred lines on top of `winit` for the window and input, `softbuffer` for the blit, and a text rasteriser for glyphs. wgpu is a drawing backend with no language consequence and can replace the rasteriser when something is measured to be slow.
+The first GUI World draws into a pixel buffer on the CPU and blits it to a window. The choice is deliberate: a software rasteriser has no GPU state, no shader pipeline and no driver, so every bug is a Rust bug, and the whole World is a few hundred lines on top of `winit` for the window and input, `softbuffer` for the blit (its API from memory), and a text rasteriser for glyphs. wgpu (from memory) is a drawing backend with no language consequence and can replace the rasteriser when something is measured to be slow.
 
 ```rust
 pub struct Screen {
     inbox: Inbox,
     window: Option<Arc<winit::window::Window>>,
     surface: Option<softbuffer::Surface<..>>,
-    fonts: FontCache,                               // shaping and glyph rasterising
+    fonts: FontCache,                               // glyph layout and rasterising
     scene: Vec<(Path, ElementValue)>,               // the draw list as of the last turn
     regions: Vec<(Path, Rect)>,                     // Gui.Region slots in list order
     focused: Option<Path>,
@@ -1518,7 +1524,7 @@ impl Component for Screen {
 }
 ```
 
-The World's half of the loop is winit's `ApplicationHandler`. Each platform event becomes a delivery and a `step`, and after each turn the component rebuilds its scene from the turn's list and asks for a redraw if anything was damaged:
+The World's half of the loop is winit's `ApplicationHandler` (the winit names below are from memory). Each platform event becomes a delivery and a `step`, and after each turn the component rebuilds its scene from the turn's list and asks for a redraw if anything was damaged:
 
 ```rust
 impl ApplicationHandler<Delivery> for App {
@@ -1588,7 +1594,7 @@ tag Gtk.Entry of Element:
     state: Text                    # what the native entry holds right now
 ```
 
-What differs in the World is the whole middle. There is no draw list and no rasteriser; instead the component keeps a map from path to native widget, and `after_turn` becomes a reconciliation: a slot created makes a native widget, a slot removed destroys one, and because fields are fixed for a slot's life, a changed label is a removed slot and a created slot, which the component may recognise as the same tree position and the same tag and turn into a `set_label` on the existing native widget rather than a destroy-and-create, keeping the native widget's own state (cursor, selection, scroll position). That is the continuity-by-tree-position policy the specification leaves to Worlds, and here is where it earns its keep: a native entry has state the program cannot see, and the World keeps it across rebuilds by keying on position and tag.
+The whole middle of the World differs. There is no draw list and no rasteriser; instead the component keeps a map from path to native widget, and `after_turn` becomes a reconciliation: a slot created makes a native widget, a slot removed destroys one, and because fields are fixed for a slot's life, a changed label is a removed slot and a created slot, which the component may recognise as the same tree position and the same tag and turn into a `set_label` on the existing native widget rather than a destroy-and-create, keeping the native widget's own state (cursor, selection, scroll position). That is the continuity-by-tree-position policy the specification leaves to Worlds, and here is where it earns its keep: a native entry has state the program cannot see, and the World keeps it across rebuilds by keying on position and tag.
 
 `Gtk.Entry` shows why the native route is the harder one for the language. Its text is state the native widget owns, so the tag has both a `state: Text` the World pushes on every keystroke and a `requests: !EntryRequest` for the program to set it, and the program has two sources of truth to reconcile, which is exactly the situation the Prism text field of chapter 1 avoids by owning the text itself and letting the World see only draw primitives. The native wrapper is the right World for a program that wants the platform's own widgets, and it is a different World with a different library, and which is better is a library question. The language has an opinion only about the structure: leaves are elements, containment is interception, and `Gtk.Window(children=[...])` holding its children as data is the container convention the Test World's depth rule already understands.
 
@@ -1619,7 +1625,7 @@ tag Net.Socket of Element:
     state: SocketState
 ```
 
-The World is the tokio skeleton of the previous section with the `Sockets` component (extended to connect to a Unix socket when the address says so) and the `Files` component, for reading `~/.Xauthority`. Its entire component list is those two plus the core's `Defer`. It has never heard of `Gui`.
+The World is the tokio skeleton of the previous section with the `Sockets` component (extended to connect to a Unix socket when the address says so) and the `Files` component, for reading `~/.Xauthority` (that path, and the socket path `/tmp/.X11-unix/X0` below, from memory). Its entire component list is those two plus the core's `Defer`. It has never heard of `Gui`.
 
 ### What the library does
 
@@ -1699,18 +1705,18 @@ The programs under test are hand-written `IrWidget`s or compiled from Prism sour
 fn a_defer_fired_in_an_occurrence_is_answered_in_the_next_occurrence_of_the_same_turn() {
     let (mut h, fake) = world_with(r#"
         @main:
-            !b <- @Element Gui.Button(label="go")
+            !b <- @Element Ui.Button(label="go")
             !later <- @Element Defer(requests=(unit on !b))
             $text <- "waiting" <= "done" on !later
-            @Element Gui.Label(text=$text)                 # lifts to a dyn: a fresh label slot per change
+            @Element Ui.Label(text=$text)                 # lifts to a dyn: a fresh label slot per change
             @ unit
     "#);
     h.start();
-    send(&mut h, "Gui.Button(label=\"go\")", click());
+    send(&mut h, "Ui.Button(label=\"go\")", click());
     let out = ran(h.step());
     assert_eq!(out.occurrences.len(), 2);
     assert!(out.occurrences[0].requests.iter().any(|(_, e, _)| e.tag == Tag::DEFER));
-    assert!(out.list.iter().any(|(_, e)| e.matches("Gui.Label(text=\"done\")")));
+    assert!(out.list.iter().any(|(_, e)| e.matches("Ui.Label(text=\"done\")")));
 }
 
 #[test]
@@ -1720,12 +1726,12 @@ fn a_turn_with_two_defers_runs_three_occurrences() { /* two independent Defer ch
 fn a_defer_that_fires_again_after_being_answered_is_an_error() {
     let (mut h, _) = world_with(r#"
         @main:
-            !b <- @Element Gui.Button(label="go")
+            !b <- @Element Ui.Button(label="go")
             !later <- @Element Defer(requests=(unit on !b | unit on !later))
             @ unit
     "#);
     h.start();
-    send(&mut h, "Gui.Button(label=\"go\")", click());
+    send(&mut h, "Ui.Button(label=\"go\")", click());
     match h.step() {
         Step::Error(WorldError::DeferBackwards { when, .. }) => assert_eq!(when.occurrence, 3),
         other => panic!("{other:?}"),
@@ -1736,7 +1742,7 @@ fn a_defer_that_fires_again_after_being_answered_is_an_error() {
 fn a_late_result_for_a_gone_slot_is_discarded_with_a_diagnostic() {
     let (mut h, fake) = world_with(r#"
         @main:
-            !b <- @Element Gui.Button(label="drop")
+            !b <- @Element Ui.Button(label="drop")
             $show <- True <= False on !b
             dyn $show:
                 match _:
@@ -1749,7 +1755,7 @@ fn a_late_result_for_a_gone_slot_is_discarded_with_a_diagnostic() {
     "#);
     h.start();
     let read = fake.perform_calls().remove(0);           // Perform(path, Fs.File(..), Read)
-    send(&mut h, "Gui.Button(label=\"drop\")", click());  // tears the slot down
+    send(&mut h, "Ui.Button(label=\"drop\")", click());  // tears the slot down
     ran(h.step());
     assert!(fake.calls().contains(&Call::Removed(read.0.clone(), read.1.clone())));
     h.push(Delivery::Response { path: read.0.clone(), value: contents("late") });
@@ -1763,22 +1769,22 @@ fn a_slot_created_in_the_push_occurrence_reads_the_previous_snapshot_and_receive
     let (mut h, fake) = world_with(r#"
         @main:
             $t <- @Element Clock
-            !b <- @Element Gui.Button(label="new")
+            !b <- @Element Ui.Button(label="new")
             $n <- 0 <= $n + 1 on !b
             dyn $n:
                 !s <- @started
                 $t2 <- @Element Clock
                 $first <- Instant 0 <= $t2 on !s            # the tag law: the value before this occurrence
-                @Element Gui.Label(text=$"first=$first now=$t2")
+                @Element Ui.Label(text=$"first=$first now=$t2")
                 @ unit
             @ unit
     "#);
     fake.answer(clock(), instant(5000));
     h.start();
     fake.push_next(clock(), instant(5100));
-    h.push(Delivery::Response { path: find(&h, "Gui.Button(label=\"new\")"), value: click() });
+    h.push(Delivery::Response { path: find(&h, "Ui.Button(label=\"new\")"), value: click() });
     let out = ran(h.step());
-    assert!(out.list.iter().any(|(_, e)| e.matches("Gui.Label(text=\"first=5000 now=5100\")")));
+    assert!(out.list.iter().any(|(_, e)| e.matches("Ui.Label(text=\"first=5000 now=5100\")")));
     assert_eq!(fake.oracle_calls(), vec![clock()]);   // asked once, shared by value
 }
 
@@ -1789,21 +1795,20 @@ fn a_request_on_a_tag_no_component_accepts_gets_unsupported_in_the_next_turn() {
             !s <- @started
             !r <- @Element Http.Get(url="x", requests=(Go on !s))
             $msg <- "" <= Describe !r                       # Describe: Unsupported -> "nope", else "ok"
-            @Element Gui.Label(text=$msg)
+            @Element Ui.Label(text=$msg)
             @ unit
     "#);
     let out0 = ran(h.start());
-    assert!(!out0.list.iter().any(|(_, e)| e.matches("Gui.Label(text=\"nope\")")));
+    assert!(!out0.list.iter().any(|(_, e)| e.matches("Ui.Label(text=\"nope\")")));
     let out1 = ran(h.step());                               // the Unsupported response, delivered in the next turn
-    assert!(out1.list.iter().any(|(_, e)| e.matches("Gui.Label(text=\"nope\")")));
+    assert!(out1.list.iter().any(|(_, e)| e.matches("Ui.Label(text=\"nope\")")));
 }
 
 #[test]
 fn a_state_tag_no_component_accepts_is_an_error_in_the_occurrence_the_slot_is_created() {
-    let (mut h, _) = world_with_tags(&[], "@main:\n    $v <- @Element Cli.Args\n    @ unit");
+    let (mut h, _) = world_with_tags(&[], "@main:\n    $v <- @Element Process.Args\n    @ unit");
     match h.start() {
-        Step::Error(WorldError::Runtime { error: RuntimeError::UnsuppliedState { element, .. }, .. }) =>
-            assert_eq!(element.tag, Tag::CLI_ARGS),
+        Step::Error(WorldError::Runtime { error: RuntimeError { kind: ErrorKind::UnsuppliedState, .. }, .. }) => {}
         other => panic!("{other:?}"),
     }
 }
@@ -1841,7 +1846,7 @@ fn an_aborted_occurrence_leaves_the_list_and_the_snapshot_as_they_were() {
 }
 ```
 
-Each of these is a sentence from the specification, and the body is short enough to read in the failure message. The last one is the rollback obligation seen from the World: the core does not touch `snapshot.prev` until the occurrence succeeds (`swap` is after `run_occurrence` returns `Ok`), and `slots.last_list` is likewise updated only on success, so a failed occurrence leaves the World's view of the program exactly where it was, and the next turn addresses the list the program still has.
+The body of each is short enough to read in the failure message. The last one is the rollback obligation seen from the World: the core does not touch `snapshot.prev` until the occurrence succeeds (`swap` is after `run_occurrence` returns `Ok`), and `slots.last_list` is likewise updated only on success, so a failed occurrence leaves the World's view of the program exactly where it was, and the next turn addresses the list the program still has.
 
 A second group tests the harness: `OneAtATime` takes one delivery per `step`; `Drain` takes all; `wait` returns at the deadline with nothing queued; `Exit` is returned only after the turn's performs; the waker is called once per delivery from another thread. Each is a few lines.
 
@@ -1867,24 +1872,24 @@ The cases, and what each pins:
 
 | Case | Pins |
 | --- | --- |
-| `line_counter_{empty,one,many}` | one turn per chunk; output after the turn; exit by `Cli.Exit` with code 0 |
+| `line_counter_{empty,one,many}` | one turn per chunk; output after the turn; exit by `Process.Exit` with code 0 |
 | `line_counter_split` (`chunk=4`) | the partial line held across chunks; the count is chunk-independent |
 | `falls_off_the_end` | a program that prints and never exits ends with code 0 when stdin ends and nothing is in flight |
-| `exit_code` | `Cli.Exit` with a computed nonzero code; a code over 255 clamped and reported on stderr |
+| `exit_code` | `Process.Exit` with a computed nonzero code; a code over 255 clamped and reported on stderr |
 | `two_exits` | the first firing in occurrence-then-list order wins; the second is a `note:` on stderr |
 | `output_order` | two `Cli.Stdout` slots firing in one occurrence, in list order; stdout then stderr across turns, each flushed per turn |
 | `stdout_before_exit` | a write and an exit fired in one occurrence: the write lands |
-| `args_env` | `Cli.Args` and `Cli.Env` printed from the build turn, with no args, several args, and an empty environment |
+| `args_env` | `Process.Args` and `Process.Env` printed from the build turn, with no args, several args, and an empty environment |
 | `file_then_stdin` | `Fs.File` read on `@started`, then `Cli.Stdin` built inside a `dyn`; stdin is not read until the slot exists (the harness checks the pipe is still full after the file read's turn) |
-| `unsupported` | a `Gui.Button` at the root: `note:` on stderr naming the chain, and the `Unsupported` response reaching a `Cli.Stdout` write |
+| `unsupported` | a `Ui.Button` at the root: `note:` on stderr naming the chain, and the `Unsupported` response reaching a `Cli.Stdout` write |
 | `unsupplied_state` | a `Gui.Window` state element at the root: the error on stderr with span, exit nonzero, nothing on stdout |
 | `signal_handled` | a `Cli.Signals` slot; the harness sends `SIGINT` after reading a `ready` line from stdout; the program prints `interrupted` and exits 3 |
 | `signal_default` | no `Cli.Signals` slot; `SIGINT` kills the process with the OS's status |
-| `closed_pipe` | stdout piped to a reader that closes early; `EPIPE` is a `note:`, the program keeps running and exits by its own `Cli.Exit` |
+| `closed_pipe` | stdout piped to a reader that closes early; `EPIPE` is a `note:`, the program keeps running and exits by its own `Process.Exit` |
 | `fs_contents_watch` | an `Fs.Contents` viewer; the harness rewrites the file after reading a `ready` line; the program prints the new contents and exits |
 | `cycle_at_runtime` | a program that forms a cycle on the second line of input; the error on stderr with both spans, exit nonzero, the first line's output present |
 
-Timers are not in the goldens. A test that waits on wall-clock time is a test that fails on a loaded machine, and everything a timer does to a program is tested under the Test World with `Send Time.Every(..), Tick` and `Push Clock, ...`. What the CLI World's timer component does with the OS, that `wait` returns at the deadline, is one of the harness tests above with a deadline of a few milliseconds and a generous tolerance.
+Timers are not in the goldens. A test that waits on wall-clock time is a test that fails on a loaded machine, and everything a timer does to a program is tested under the Test World with `Send Time.Every(..), tick` and `Push Clock, ...`. What the CLI World's timer component does with the OS, that `wait` returns at the deadline, is one of the harness tests above with a deadline of a few milliseconds and a generous tolerance.
 
 The `ready`-line handshake in the signal and watch cases is the one place the goldens synchronise with the program, and it is a handshake the program is written to perform: print `ready` after the slot exists. The harness reads stdout until it sees the line, then acts. That is deterministic because stdout is flushed per turn, and the turn that created the slot is the turn that printed the line.
 

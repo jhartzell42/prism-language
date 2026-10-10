@@ -10,13 +10,13 @@ So the suite is written against the run call. A test is a program and a script; 
 
 This has a consequence the language already chose for other reasons. There are no reified identifiers, no `Inspect $count`, no way to poke a hold. Suppose there were: a step `Peek $count, 2` that read a named dynamic inside the widget under test. Convenient for the counter. Then the counter is rewritten with the count held inside a `dyn`, and `$count` is now a name in a block the step cannot reach; or the count becomes a field of a record held under another name; or the implementation under test is the Haskell one, in which a name is a `Dynamic t Int` in an evaluator environment, and the step needs a second evaluator feature to find it. Each of those is work, and none of it tests the language. Worse, every test that peeks is a test that passes under the Test World and says nothing about any other World, because no other World can peek. A test that clicks the button and reads the label passes under the Test World and under the GUI World and under a shell written in Prism, because every one of them clicks and reads the same way. The suite tests the language, not a program's private names.
 
-What that excludes is as deliberate as what it includes. The suite does not test performance or memory; a slow implementation that produces the right transcripts conforms. It does not test any World other than the Test World; a CLI World's obligations are tested per World, in the host language, in a later section. It does not test the order in which an implementation fires nodes within an occurrence, because the language only promises the observable consequences of that order: each event at most once, each dynamic changed at most once, no node seeing a prompt source before it settles. And it does not test diagnostics' wording except in the negative goldens, which are a frontend concern and say so.
+The exclusions are as deliberate as the inclusions. The suite does not test performance or memory; a slow implementation that produces the right transcripts conforms. It does not test any World other than the Test World; a CLI World's obligations are tested per World, in the host language, in a later section. It does not test the order in which an implementation fires nodes within an occurrence, because the language only promises the observable consequences of that order: each event at most once, each dynamic changed at most once, no node seeing a prompt source before it settles. And it does not test diagnostics' wording except in the negative goldens, which are a frontend concern and say so.
 
 ## The Test World
 
 The Test World is a World with no effects, written once per host language on top of the world core, with one component that answers to a script instead of to an operating system. Three properties make it the suite's World.
 
-**It accepts every tag at the root.** A program that creates a `Net.Listener` is tested without a network; one that creates a `Gui.Button` is tested without a screen; one that creates a tag nobody has heard of is tested all the same. The Test World does not know what any tag means. It knows that a `requests` field fires values it records, that a `responds` field is an event it can deliver to by path, and that a `state` field is a dynamic it answers from a snapshot the script sets. That is everything a World does with an element, and it is why the Test World can be written before any real World exists: it is the obligations of a World and nothing else. Suppose instead the Test World had components, a fake filesystem with files the script writes, a fake clock that ticks. The tests would then be about those fakes: a fake filesystem that answers reads has an opinion about what a read is, and a program that expects `Missing` for an absent file is testing the fake's opinion. With the script as the only source of inputs, the program's expectation is the script's expectation, written next to the program, and a reader can see both.
+**It accepts every tag at the root.** A program that creates a `Net.Listener` is tested without a network; one that creates a `Ui.Button` is tested without a screen; one that creates a tag nobody has heard of is tested all the same. The Test World does not know what any tag means. It knows that a `requests` field fires values it records, that a `responds` field is an event it can deliver to by path, and that a `state` field is a dynamic it answers from a snapshot the script sets. That is everything a World does with an element, and it is why the Test World can be written before any real World exists: it is the obligations of a World and nothing else. Suppose instead the Test World had components, a fake filesystem with files the script writes, a fake clock that ticks. The tests would then be about those fakes: a fake filesystem that answers reads has an opinion about what a read is, and a program that expects `Missing` for an absent file is testing the fake's opinion. With the script as the only source of inputs, the program's expectation is the script's expectation, written next to the program, and a reader can see both.
 
 **Its snapshot is whatever the script says.** A state element's value in its creation occurrence comes from the oracle, and the oracle answers from the previous snapshot; the script's `State` steps are that snapshot. There is no clock in the Test World except the one the script pushes, which is the goal that there is no clock, applied to testing: a debounce, a timeout, a stopwatch are tested by setting an `Instant` and pushing another, and a transcript replays them exactly.
 
@@ -31,23 +31,23 @@ Everything the Test World sees is printed, turn by turn, in one canonical text f
 ```
 turn 0
   list:
-    0/#0/0: Gui.Button(label="Increment")
-    1/#0/0: Gui.Button(label="Decrement")
-    2/#0/0: Gui.Label(text="Count: 0")
+    0/#0/0: Ui.Button(label="Increment")
+    1/#0/0: Ui.Button(label="Decrement")
+    2/#0/0: Ui.Label(text="Count: 0")
   result: unit
 turn 1  responses: {0/#0/0: click}
   list:
-    0/#0/0: Gui.Button(label="Increment")
-    1/#0/0: Gui.Button(label="Decrement")
-    2/#1/0: Gui.Label(text="Count: 1")
+    0/#0/0: Ui.Button(label="Increment")
+    1/#0/0: Ui.Button(label="Decrement")
+    2/#1/0: Ui.Label(text="Count: 1")
   result: unit
 ```
 
-A turn header names the turn and its inputs: `responses` by path, `pushes` by element value. The list is one slot per line, `path: element`, in tree order. A slot that fired its request in the turn gets a `requested` line after it, with the values in firing order; an occurrence boundary inside a turn, which only `Defer` causes, is marked `occurrence 2` between the parts of a turn so that a reader can see which occurrence a request fired in. The result is printed when the widget's result is a plain value or a dynamic (by its current value) and as `fired: v` or `quiet` when it is an event. An aborted occurrence prints `error: Error.UnknownPath(path=0/#1/0)` and no list, since the list did not change.
+A turn header names the turn and its inputs: `responses` by path, `pushes` by element value. The list is one slot per line, `path: element`, in tree order. A slot that fired its request in the turn gets a `requested` line after it, with the values in firing order; an occurrence boundary inside a turn, which only `Defer` causes, is marked `occurrence 2` between the parts of a turn so that a reader can see which occurrence a request fired in. The result is printed when the widget's result is a plain value or a dynamic (by its current value) and as `fired: v` or `quiet` when it is an event. An aborted occurrence prints `error: Error(kind=UnknownPath, path=0/#1/0, occurrence=1)` and no list, since the list did not change.
 
 Paths are opaque to Worlds, and the transcript still has to print them, so the transcript fixes a spelling that both implementations use: bind positions from the root joined by `/`, a `dyn` generation as `#n` from `#0`, a `for` key as `[k]` with the key printed as a value. That spelling is the chapter-1 convention and it is part of the interchange format. An implementation may represent paths however it likes inside, and the Haskell runtime's paths are nothing like the Rust runtime's, but what they print must match character for character or the differential test fails. This is a real constraint, deliberately taken: two implementations that agree on every element but number bind positions differently would be two readings of the sentence "its position in the widget tree, made of the bind positions, `for` keys and `dyn` generations", and the point of the differential test is to find exactly that kind of difference. Slots created by widgets that an interceptor's supplier built print as `s/n`, numbered in creation order within the interceptor's node, because their position is the runtime's business and only their existence is a law.
 
-Element values print as their constructor with named fields in declaration order; `Path ==> Element` fields print with their keys as paths, which is how a `Gui.VBox`'s children appear. Plain values print as Prism literals. Nothing in the transcript is implementation-specific, which is the test of whether it belongs there.
+Element values print as their constructor with named fields in declaration order; `Path ==> Element` fields print with their keys as paths, which is how a `Ui.VBox`'s children appear. Plain values print as Prism literals. Nothing in the transcript is implementation-specific, which is the test of whether it belongs there.
 
 ## The script language
 
@@ -55,16 +55,16 @@ A test is a top-level statement:
 
 ```prism
 test counter: Test @counter: array:
-    Expect Gui.Label(text="Count: 0")
-    Send Gui.Button(label="Increment"), click
-    Expect Gui.Label(text="Count: 1")
+    Expect Ui.Label(text="Count: 0")
+    Send Ui.Button(label="Increment"), click
+    Expect Ui.Label(text="Count: 1")
 ```
 
 `test name:` opens a block whose one statement is `Test widget: array:` followed by the steps, one per line. The widget is any widget expression; most tests name a top-level widget, and an interceptor test wraps one: `Test (@Sandbox "/jail", @probe): array:`. The steps are the `array:` block's elements, and that is not an accident of syntax: a script is a plain array of step values, parsed by the frontend as part of a Prism file, and the harness is a function from a widget and an array of steps to a transcript and a verdict. The `test` form exists so that the frontend can check the patterns against the tag declarations in scope, which it could not do for a string.
 
 ### Patterns
 
-A pattern is what `match` accepts for an element, written where the step wants one: a tag with named fields and `..` for the rest, `Gui.Button(label="OK", ..)`; a tag with every field, `Gui.Label(text="Count: 0")`; a bare tag for a tag with no fields, `Clock`; `Ns.*(..)` for any tag in a namespace; `ignore` for anything. Field patterns are value patterns: a literal, a nested element pattern, `..` inside a record, `ignore`. Because element fields are plain data fixed for the slot's life, there is no "current value" of a field to compare; a label whose text changed is a different slot with a different element, and a pattern that matched the old one does not match the new one. That is why `Expect Gui.Label(text="Count: 1")` after a click is a complete check: the old label is gone from the list and the new one is in it.
+A pattern is what `match` accepts for an element, written where the step wants one: a tag with named fields and `..` for the rest, `Ui.Button(label="OK", ..)`; a tag with every field, `Ui.Label(text="Count: 0")`; a bare tag for a tag with no fields, `Clock`; `Ns.*(..)` for any tag in a namespace; `ignore` for anything. Field patterns are value patterns: a literal, a nested element pattern, `..` inside a record, `ignore`. Because element fields are plain data fixed for the slot's life, there is no "current value" of a field to compare; a label whose text changed is a different slot with a different element, and a pattern that matched the old one does not match the new one. That is why `Expect Ui.Label(text="Count: 1")` after a click is a complete check: the old label is gone from the list and the new one is in it.
 
 Response and state values in a step are plain Prism expressions of the tag's declared type: `click`, `Contents "hi"`, `Instant 5100`, `{3: Toggle}`. The frontend checks them against the declaration of the tag the pattern names, so a `Send` of a `Tick` to a button is a compile error in the test file rather than a runtime surprise. When the pattern is `ignore` or `Ns.*(..)`, the value is checked at the slot when the step runs.
 
@@ -76,43 +76,43 @@ Each step is a check between turns or an action that runs a turn. Here is every 
 
 ```prism
 test expect_sees_the_built_program: Test @counter: array:
-    Expect Gui.Label(text="Count: 0")
-    Expect Gui.Button(label="Increment")
+    Expect Ui.Label(text="Count: 0")
+    Expect Ui.Button(label="Increment")
 ```
 
 **`ExpectTop pattern`.** Some root-level slot matches: one the Test World itself received, not one found inside a container's `children` field. The difference is what a container test is about:
 
 ```prism
 test vbox_holds_its_children: Test (@VBox @counter): array:
-    ExpectTop Gui.VBox(..)
-    ExpectTopNone Gui.Button(..)
-    Expect Gui.Button(label="Increment")
+    ExpectTop Ui.VBox(..)
+    ExpectTopNone Ui.Button(..)
+    Expect Ui.Button(label="Increment")
 ```
 
 **`ExpectNone pattern`** and **`ExpectTopNone pattern`.** No slot at any depth, or no root-level slot, matches. `ExpectNone` is how a test says that something is gone, which is the half of a rebuild that a positive check cannot see:
 
 ```prism
 test rebuild_removes_the_old_label: Test @counter: array:
-    Send Gui.Button(label="Increment"), click
-    Expect Gui.Label(text="Count: 1")
-    ExpectNone Gui.Label(text="Count: 0")
+    Send Ui.Button(label="Increment"), click
+    Expect Ui.Label(text="Count: 1")
+    ExpectNone Ui.Label(text="Count: 0")
 ```
 
 **`ExpectCount pattern, n`.** Exactly `n` slots at any depth match. `ExpectCount p, 0` is `ExpectNone p`; `ExpectCount p, 1` is the step to use when the test needs there to be one of something, which `Expect` does not say.
 
 ```prism
 test one_row_per_key: Test @tallies: array:
-    ExpectCount Gui.Label(text="a: 0"), 1
-    ExpectCount Gui.Label(text="b: 0"), 1
-    ExpectCount Gui.Button(..), 4
+    ExpectCount Ui.Label(text="a: 0"), 1
+    ExpectCount Ui.Label(text="b: 0"), 1
+    ExpectCount Ui.Button(..), 4
 ```
 
 **`Send pattern, response`.** Exactly one slot must match the pattern; otherwise the step fails before anything is delivered, with the count it found. The response is delivered to that slot's path as the sole input of a new occurrence, and a turn is run: that occurrence plus any `Defer` occurrences it causes. The requirement that exactly one slot match is what keeps a test from sending a click into an ambiguity: two buttons labelled "OK" need a pattern that tells them apart, or a `Together`.
 
 ```prism
 test send_runs_a_turn: Test @counter: array:
-    Send Gui.Button(label="Increment"), click
-    Expect Gui.Label(text="Count: 1")
+    Send Ui.Button(label="Increment"), click
+    Expect Ui.Label(text="Count: 1")
 ```
 
 **`Together:`** block of `Send`s. All of them are delivered in one occurrence, which the program sees as simultaneous. Two `Send`s that resolve to the same slot fail the step, because a slot receives at most one response per occurrence; a World that has two things for one slot delivers them in two occurrences, and a script says that by writing two `Send`s in a row. The block is the only way a script makes two inputs simultaneous, and it is how every simultaneity law is tested:
@@ -120,9 +120,9 @@ test send_runs_a_turn: Test @counter: array:
 ```prism
 test together_is_one_occurrence: Test @counter: array:
     Together:
-        Send Gui.Button(label="Increment"), click
-        Send Gui.Button(label="Decrement"), click
-    Expect Gui.Label(text="Count: -1")
+        Send Ui.Button(label="Increment"), click
+        Send Ui.Button(label="Decrement"), click
+    Expect Ui.Label(text="Count: -1")
 ```
 
 **`State pattern, value`.** Sets the snapshot value for the state element whose *value* matches the pattern. The pattern here is matched against element values, not slots: `State Clock, Instant 5000` sets the snapshot entry for the element `Clock` whether or not any slot has asked for it yet, and `State Fs.Contents(path="/etc/motd"), Known "hi"` sets the entry for that one path. A pattern with `..` or `ignore` in it is a script error, because a snapshot entry is keyed by a whole value. The step runs no turn. Its effect is the next turn's: as that turn's occurrence opens, the oracle answers from the snapshot *before* this `State`, and the difference between that and the snapshot after it is the push. A `State` before the first turn is the snapshot the build occurrence's oracle answers from, which is how a test gives a clock a starting value:
@@ -130,7 +130,7 @@ test together_is_one_occurrence: Test @counter: array:
 ```prism
 test state_before_build_is_the_oracle: Test @stopwatch: array:
     State Clock, Instant 5000
-    Expect Gui.Label(text="0 ms")
+    Expect Ui.Label(text="0 ms")
 ```
 
 Two `State`s for one element before a turn: the second replaces the first, and the push is the difference between the previous turn's snapshot and the final one, since a World gathers everything that changed into one snapshot per occurrence.
@@ -140,9 +140,9 @@ Two `State`s for one element before a turn: the second replaces the first, and t
 ```prism
 test push_moves_the_clock: Test @stopwatch: array:
     State Clock, Instant 5000
-    Send Gui.Button(label="Start"), click
+    Send Ui.Button(label="Start"), click
     Push Clock, Instant 5100
-    Expect Gui.Label(text="100 ms")
+    Expect Ui.Label(text="100 ms")
 ```
 
 A `State` followed by a `Send` makes a turn with both a push and a response, which is the only way a script puts a state change and an input in one occurrence, and it is what the law about a push reaching a slot created in the push's occurrence needs.
@@ -164,7 +164,7 @@ test returns_reads_a_dynamic: Test @accumulator: array:
     @ "ok" on !b
 
 test fired_and_quiet: Test @ok_button: array:
-    Send Gui.Button(label="OK"), click
+    Send Ui.Button(label="OK"), click
     Fired "ok"
     Push Clock, Instant 0
     Quiet
@@ -177,13 +177,13 @@ Before any turn, `Quiet` holds and `Fired` fails: turn 0 is the build, and the r
 ```prism
 test started_requests_in_turn_zero: Test @viewer: array:
     Requested Fs.File(path="/etc/motd"), Read
-    Send Gui.Button(label="Refresh"), click
+    Send Ui.Button(label="Refresh"), click
     Unrequested Fs.File(..)
 ```
 
 (Chapter 1's viewer has no Refresh button; the script is illustrating the step and a version with the button is in the law tests.)
 
-**`Errors pattern`.** The last turn ended in a runtime error matching the pattern. Errors are values of an extensible variant `Error`, so the patterns are element-style patterns: `Error.UnknownPath(..)`, `Error.DeferBackwards(..)`, `Error.Cycle(..)`, `Error.UnsuppliedState(element=Clock)`, `Error.Overflow`. When an occurrence aborts, its holds do not commit, its new nodes are dropped, the element list is what it was before the occurrence, and the turn ends there; a check after an `Errors` step sees the list as it stood before the failed turn. A turn that ends in an error with no `Errors` step following fails the script, so a test cannot pass by accident through a crash. The tags and fields of `Error` are tentative in the way the whole error story is: if the unit of failure becomes a quarantined subtree rather than the occurrence, `Errors` will still match the error and a later `Expect Error.*(..)` will see the quarantine element in the list, and nothing else in the script language changes.
+**`Errors pattern`.** The last turn ended in a runtime error matching the pattern. Errors are `Error` values with a `kind`, so the patterns are record patterns on the kind and the fields the test cares about: `Error(kind=UnknownPath, ..)`, `Error(kind=DeferBackwards, ..)`, `Error(kind=Cycle, ..)`, `Error(kind=UnsuppliedState, element=Clock, ..)`, `Error(kind=Overflow, ..)`. When an occurrence aborts, its holds do not commit, its new nodes are dropped, the element list is what it was before the occurrence, and the turn ends there; a check after an `Errors` step sees the list as it stood before the failed turn. A turn that ends in an error with no `Errors` step following fails the script, so a test cannot pass by accident through a crash. The tags and fields of `Error` are tentative in the way the whole error story is: if the unit of failure becomes a quarantined subtree rather than the occurrence, `Errors` will still match the error and a later `Expect Error(..)` will see the quarantine element in the list, and nothing else in the script language changes.
 
 ```prism
 tag Secret of Element:
@@ -194,7 +194,7 @@ tag Secret of Element:
     @Label $s
 
 test unsupplied_state_fails_at_creation: Test @needs_secret: array:
-    Errors Error.UnsuppliedState(element=Secret)
+    Errors Error(kind=UnsuppliedState, element=Secret, ..)
 ```
 
 That script has no `State Secret` before the build, and `Secret` declares no default, so the slot's creation in occurrence 0 is the error and turn 0 is the turn that ends in it.
@@ -221,14 +221,14 @@ type ChildInput = record:
     path: Path
     response: Response
 
-tag Gui.VBox of Element:
+tag Ui.VBox of Element:
     children: Path ==> Element
     responds: ChildInput
 ```
 
 `Expect` searches every `children` field recursively, so a pattern matches a slot at any depth. When `Send` resolves to a slot inside one or more containers, the Test World wraps the response in one `ChildInput` per level, innermost first, and delivers the result to the outermost container's path, which is the only path it has. The delivery then takes the route a real World's input would: the container's `@VBox` receives a `ChildInput`, routes its response to the child path through its `intercept`, and if that child is itself a container, the same again. A test cannot bypass the library's routing, which is the point; the law that routing is against the opened list applies at every level and a test of a nested button tests all of them.
 
-The library is part of the suite, which is why the Test World can know its convention without the language knowing it. A different library with a different convention, say children in a `rows` field, would ship its own depth rule with it, and a Test World knows the convention of the library it was built with. What the language fixes is that leaves are elements and containment is interception; how the children of a container are spelled is the library's.
+The library is part of the suite, which is why the Test World can know its convention without the language knowing it. A different library with a different convention, say children in a `rows` field, would ship its own depth rule with it, and a Test World knows the convention of the library it was built with. The language fixes only that leaves are elements and containment is interception; the spelling of a container's children belongs to the library.
 
 The suite's library is small and written out in full later in this chapter, because the integration programs are built on it and because its own typed-AST dump is one of the goldens.
 
@@ -254,10 +254,10 @@ type Click = click
 type Tick = tick
 type Instant = Instant Int
 
-tag Gui.Label of Element:
+tag Ui.Label of Element:
     text: Text
 
-tag Gui.Button of Element:
+tag Ui.Button of Element:
     label: Text
     responds: Click
 
@@ -291,11 +291,11 @@ tag Fs.Contents of Element:
     default: Unavailable
 
 @Label: fn $Text -> @unit = \@widget:
-    @Element Gui.Label(text=$_)
+    @Element Ui.Label(text=$_)
     @ unit
 
 @Button: fn $Text -> @!Click = \@widget:
-    @Element Gui.Button(label=$_)
+    @Element Ui.Button(label=$_)
 ```
 
 `@Label` and `@Button` use the shorthand: a dynamic where a field goes lifts the element into a `dyn`, one fresh slot per change, with the button's click the `!Switch` over the generations. Chapter 1 unrolls both.
@@ -319,15 +319,15 @@ tag Fs.Contents of Element:
 
 test leftmost_takes_the_left: Test @left_wins: array:
     Together:
-        Send Gui.Button(label="Inc"), click
-        Send Gui.Button(label="Dec"), click
-    Expect Gui.Label(text="n=-1")
+        Send Ui.Button(label="Inc"), click
+        Send Ui.Button(label="Dec"), click
+    Expect Ui.Label(text="n=-1")
 
 test leftmost_is_the_program_choice: Test @right_wins: array:
     Together:
-        Send Gui.Button(label="Inc"), click
-        Send Gui.Button(label="Dec"), click
-    Expect Gui.Label(text="n=1")
+        Send Ui.Button(label="Inc"), click
+        Send Ui.Button(label="Dec"), click
+    Expect Ui.Label(text="n=1")
 ```
 
 Two programs that differ in the order of two operands give two answers, and the test says which is which. The second test is there so that nobody can make the first pass by always taking the decrement.
@@ -342,8 +342,8 @@ Two programs that differ in the order of two operands give two answers, and the 
     @Label $"$left $right"
 
 test never_is_the_identity: Test @never_identity: array:
-    Send Gui.Button(label="Go"), click
-    Expect Gui.Label(text="1 1")
+    Send Ui.Button(label="Go"), click
+    Expect Ui.Label(text="1 1")
 ```
 
 **`v on !e` fires exactly when `e` fires, with the value `v`.**
@@ -355,7 +355,7 @@ test never_is_the_identity: Test @never_identity: array:
 
 test on_fires_with_its_event: Test @on_button: array:
     Quiet
-    Send Gui.Button(label="OK"), click
+    Send Ui.Button(label="OK"), click
     Fired "ok"
     Push Clock, Instant 1
     Quiet
@@ -373,10 +373,10 @@ The `Push` is a turn with no click in it, which is the only way a script gets a 
     @Label $"n=$n seen=$seen"
 
 test a_tag_reads_the_value_before: Test @tag_reads_before: array:
-    Send Gui.Button(label="Go"), click
-    Expect Gui.Label(text="n=1 seen=0")
-    Send Gui.Button(label="Go"), click
-    Expect Gui.Label(text="n=2 seen=1")
+    Send Ui.Button(label="Go"), click
+    Expect Ui.Label(text="n=1 seen=0")
+    Send Ui.Button(label="Go"), click
+    Expect Ui.Label(text="n=2 seen=1")
 ```
 
 `$n on !b` and `$n + 1 on !b` fire in the same occurrence and both read `$n` through a tag; the first sees the count before the click, the second computes the count after. Any implementation that let `$seen` see `1` after one click has let a tag read a half-finished occurrence.
@@ -394,9 +394,9 @@ test a_tag_reads_the_value_before: Test @tag_reads_before: array:
     @Label $"$a $b"
 
 test derived_dynamics_are_prompt: Test @derived_prompt: array:
-    Expect Gui.Label(text="1 2")
-    Send Gui.Button(label="Go"), click
-    Expect Gui.Label(text="2 4")
+    Expect Ui.Label(text="1 2")
+    Send Ui.Button(label="Go"), click
+    Expect Ui.Label(text="2 4")
 ```
 
 **At most once.** Within one occurrence a dynamic's change event fires at most once, however many paths lead to it.
@@ -412,9 +412,9 @@ test derived_dynamics_are_prompt: Test @derived_prompt: array:
     @Label $"builds=$k"
 
 test a_diamond_changes_once: Test @diamond: array:
-    Expect Gui.Label(text="builds=1")
-    Send Gui.Button(label="Go"), click
-    Expect Gui.Label(text="builds=2")
+    Expect Ui.Label(text="builds=1")
+    Send Ui.Button(label="Go"), click
+    Expect Ui.Label(text="builds=2")
 ```
 
 `$sum` depends on `$n` by two routes. A `dyn` over it rebuilds once per change event, and the `dyn`'s own event counts the builds: one for the first build, one per click. An implementation with a glitch, where `$sum` changed once per route, would show `builds=3` after one click. This is the only way a script can count a dynamic's changes, and it is deliberately indirect: there is no step that observes a change event, because no World can.
@@ -429,7 +429,7 @@ test a_diamond_changes_once: Test @diamond: array:
     @Label $"x=$x y=$y"
 
 test a_hold_adopts_a_build_occurrence_firing: Test @hold_adopts: array:
-    Expect Gui.Label(text="x=1 y=0")
+    Expect Ui.Label(text="x=1 y=0")
 ```
 
 `$x` adopts `1` in occurrence 0 because its source fired there. `$y` reads `$x` through a tag in the same occurrence and gets the initial value, `0`, which is the tag law and the hold's "value before the first firing" in one line.
@@ -446,8 +446,8 @@ test a_hold_adopts_a_build_occurrence_firing: Test @hold_adopts: array:
     @Label $"builds=$k"
 
 test an_equal_value_is_still_a_change: Test @same_value: array:
-    Send Gui.Button(label="Same"), click
-    Expect Gui.Label(text="builds=2")
+    Send Ui.Button(label="Same"), click
+    Expect Ui.Label(text="builds=2")
 ```
 
 This pins a sentence that is easy to get the wrong way round when an implementation adds a short-circuit on equality as an optimisation. A `dyn` over a hold rebuilds when the hold's event fires, and a program that does not want that filters the event.
@@ -465,11 +465,11 @@ This pins a sentence that is easy to get the wrong way round when an implementat
         @Label $"$key: $hits"
 
 test a_new_block_sees_the_event_that_made_it: Test @sees_all_of_n: array:
-    Send Gui.Button(label="Add"), click
-    Expect Gui.Label(text="0: 1")
-    Send Gui.Button(label="Add"), click
-    Expect Gui.Label(text="0: 2")
-    Expect Gui.Label(text="1: 1")
+    Send Ui.Button(label="Add"), click
+    Expect Ui.Label(text="0: 1")
+    Send Ui.Button(label="Add"), click
+    Expect Ui.Label(text="0: 2")
+    Expect Ui.Label(text="1: 1")
 ```
 
 The click that inserts key 0 is the click that key 0's block counts: the block behaves as though it had been built just before the click arrived. The alternative, hiding earlier firings from late subscribers, would show `0: 0` and the block would be one click behind for its whole life.
@@ -489,14 +489,14 @@ The click that inserts key 0 is the click that key 0's block counts: the block b
     @ unit
 
 test a_nested_dyn_builds_once_with_the_new_value: Test @nested_dyn: array:
-    Expect Gui.Label(text="outer=0 inner=0")
-    Send Gui.Button(label="Go"), click
-    Expect Gui.Label(text="outer=1 inner=10")
-    ExpectNone Gui.Label(text="outer=1 inner=0")
-    ExpectCount Gui.Label(..), 1
+    Expect Ui.Label(text="outer=0 inner=0")
+    Send Ui.Button(label="Go"), click
+    Expect Ui.Label(text="outer=1 inner=10")
+    ExpectNone Ui.Label(text="outer=1 inner=0")
+    ExpectCount Ui.Label(..), 1
 ```
 
-The outer `dyn` rebuilds on the click; the inner one is built inside the new block, in the same occurrence, over `$tens`, which changed in that occurrence. It sees the change event and builds with `10`. An implementation that built it with the old value and then rebuilt it would leave a `Gui.Label(text="outer=1 inner=0")` in some intermediate list, and although no script can see an intermediate list, it would also have fired the inner `dyn`'s event twice in one occurrence, which the diamond test's technique catches; this test keeps the direct form because the sentence is about the value.
+The outer `dyn` rebuilds on the click; the inner one is built inside the new block, in the same occurrence, over `$tens`, which changed in that occurrence. It sees the change event and builds with `10`. An implementation that built it with the old value and then rebuilt it would leave a `Ui.Label(text="outer=1 inner=0")` in some intermediate list, and although no script can see an intermediate list, it would also have fired the inner `dyn`'s event twice in one occurrence, which the diamond test's technique catches; this test keeps the direct form because the sentence is about the value.
 
 **Routing against the opened list.** An input addressed to a path in occurrence n is delivered to the slot at that path in the list as n opened; the old node keeps propagating until commit.
 
@@ -507,11 +507,11 @@ The outer `dyn` rebuilds on the click; the inner one is built inside the new blo
     let $label = $"Clicked $count times"
 
 test a_button_is_clicked_under_its_old_label: Test @clicker: array:
-    Send Gui.Button(label="Clicked 0 times"), click
-    Expect Gui.Button(label="Clicked 1 times")
-    ExpectNone Gui.Button(label="Clicked 0 times")
-    Send Gui.Button(label="Clicked 1 times"), click
-    Expect Gui.Button(label="Clicked 2 times")
+    Send Ui.Button(label="Clicked 0 times"), click
+    Expect Ui.Button(label="Clicked 1 times")
+    ExpectNone Ui.Button(label="Clicked 0 times")
+    Send Ui.Button(label="Clicked 1 times"), click
+    Expect Ui.Button(label="Clicked 2 times")
 ```
 
 The button the script clicks is the one in the list as the turn opened. Its click moves the count, the label changes, the `dyn` inside `@Button` rebuilds, and the new slot is the one the next `Send` finds. The cycle through `$label`, the `dyn`, `!Switch` and `$count` is legal because `!Switch` chooses its inner event from before the occurrence and `$count + 1` reads through a tag.
@@ -541,11 +541,11 @@ test a_pure_widget_builds_nothing: Test @pure_five: array:
     @counted
 
 test a_widget_bound_twice_is_two_nodes: Test @twice: array:
-    ExpectCount Gui.Button(label="Hit"), 2
-    ExpectCount Gui.Label(text="n=0"), 2
+    ExpectCount Ui.Button(label="Hit"), 2
+    ExpectCount Ui.Label(text="n=0"), 2
 ```
 
-A `Send Gui.Button(label="Hit")` here would fail, since two slots match, and that failure is itself a check that there are two. The independence of the two holds is the `for` test below, where keys tell the twins apart.
+A `Send Ui.Button(label="Hit")` here would fail, since two slots match, and that failure is itself a check that there are two. The independence of the two holds is the `for` test below, where keys tell the twins apart.
 
 **Holds are owned by the node and torn down with it.** A rebuild replaces the node; holds inside the block are new holds with their initial values.
 
@@ -560,12 +560,12 @@ A `Send Gui.Button(label="Hit")` here would fail, since two slots match, and tha
     @ unit
 
 test a_rebuild_resets_the_holds_inside: Test @reset_on_rebuild: array:
-    Send Gui.Button(label="Hit"), click
-    Send Gui.Button(label="Hit"), click
-    Expect Gui.Label(text="gen 0: 2")
-    Send Gui.Button(label="Flip"), click
-    Expect Gui.Label(text="gen 1: 0")
-    ExpectNone Gui.Label(text="gen 0: 2")
+    Send Ui.Button(label="Hit"), click
+    Send Ui.Button(label="Hit"), click
+    Expect Ui.Label(text="gen 0: 2")
+    Send Ui.Button(label="Flip"), click
+    Expect Ui.Label(text="gen 1: 0")
+    ExpectNone Ui.Label(text="gen 0: 2")
 ```
 
 **`@started` fires once, in the build occurrence.**
@@ -580,9 +580,9 @@ test a_rebuild_resets_the_holds_inside: Test @reset_on_rebuild: array:
     @started
 
 test started_fires_once_at_build: Test @starter: array:
-    Expect Gui.Label(text="started 1")
+    Expect Ui.Label(text="started 1")
     Push Clock, Instant 1
-    Expect Gui.Label(text="started 1")
+    Expect Ui.Label(text="started 1")
 
 test started_is_visible_as_a_result: Test @started_result: array:
     Fired unit
@@ -605,7 +605,7 @@ The second script is the one case where `Fired` holds before any `Send`: the wid
 
 test a_rebuild_restarts: Test @restarter: array:
     Requested Fs.File(path="/f"), Read
-    Send Gui.Button(label="Flip"), click
+    Send Ui.Button(label="Flip"), click
     Requested Fs.File(path="/f"), Read
     Push Clock, Instant 1
     Unrequested Fs.File(..)
@@ -625,9 +625,9 @@ test a_rebuild_restarts: Test @restarter: array:
     @Label $"last=$last"
 
 test dyn_fires_with_each_build_result: Test @dyn_values: array:
-    Expect Gui.Label(text="last=0")
-    Send Gui.Button(label="Go"), click
-    Expect Gui.Label(text="last=100")
+    Expect Ui.Label(text="last=0")
+    Send Ui.Button(label="Go"), click
+    Expect Ui.Label(text="last=100")
 ```
 
 **`!Switch` is not prompt: a creation-occurrence firing is swallowed.**
@@ -643,9 +643,9 @@ test dyn_fires_with_each_build_result: Test @dyn_values: array:
     @Label $"heard=$heard"
 
 test a_switch_does_not_hear_the_birth: Test @swallowed: array:
-    Expect Gui.Label(text="heard=0")
-    Send Gui.Button(label="Flip"), click
-    Expect Gui.Label(text="heard=0")
+    Expect Ui.Label(text="heard=0")
+    Send Ui.Button(label="Flip"), click
+    Expect Ui.Label(text="heard=0")
 ```
 
 Each generation fires `!started` in the occurrence it is born, and `!Switch` adopts the generation's event at commit, so it never hears it. A block that needs its own start uses `@started` inside the block, as `@restarter` does.
@@ -666,13 +666,13 @@ Each generation fires `!started` in the occurrence it is born, and `!Switch` ado
     @Label $"presses=$presses"
 
 test a_rebuilt_slot_is_heard_from_the_next_occurrence: Test @toggle: array:
-    Send Gui.Button(label="Press me"), click
-    Expect Gui.Label(text="presses=1")
-    Send Gui.Button(label="Flip"), click
-    ExpectNone Gui.Button(label="Press me")
-    Send Gui.Button(label="Flip"), click
-    Send Gui.Button(label="Press me"), click
-    Expect Gui.Label(text="presses=2")
+    Send Ui.Button(label="Press me"), click
+    Expect Ui.Label(text="presses=1")
+    Send Ui.Button(label="Flip"), click
+    ExpectNone Ui.Button(label="Press me")
+    Send Ui.Button(label="Flip"), click
+    Send Ui.Button(label="Press me"), click
+    Expect Ui.Label(text="presses=2")
 ```
 
 **`$Join` is prompt on both the outer and the inner change.**
@@ -689,13 +689,13 @@ test a_rebuilt_slot_is_heard_from_the_next_occurrence: Test @toggle: array:
     @Label $"cur=${$Join $$cur}"
 
 test join_follows_inner_and_outer_changes: Test @join_prompt: array:
-    Expect Gui.Label(text="cur=0")
-    Send Gui.Button(label="Hit"), click
-    Expect Gui.Label(text="cur=1")
-    Send Gui.Button(label="Flip"), click
-    Expect Gui.Label(text="cur=100")
-    Send Gui.Button(label="Hit"), click
-    Expect Gui.Label(text="cur=101")
+    Expect Ui.Label(text="cur=0")
+    Send Ui.Button(label="Hit"), click
+    Expect Ui.Label(text="cur=1")
+    Send Ui.Button(label="Flip"), click
+    Expect Ui.Label(text="cur=100")
+    Send Ui.Button(label="Hit"), click
+    Expect Ui.Label(text="cur=101")
 ```
 
 The hit changes the inner dynamic; the join changes in that occurrence. The flip changes the outer: a new block, a new inner with initial `100`, and the join shows `100` in the occurrence of the flip, not one later. This is the asymmetry with `!Switch` written as two `Expect`s.
@@ -713,11 +713,11 @@ The hit changes the inner dynamic; the join changes in that occurrence. The flip
 
 test for_consolidates_simultaneous_firings: Test @for_events: array:
     Together:
-        Send Gui.Button(label="a"), click
-        Send Gui.Button(label="b"), click
-    Expect Gui.Label(text="fired 2")
-    Send Gui.Button(label="a"), click
-    Expect Gui.Label(text="fired 1")
+        Send Ui.Button(label="a"), click
+        Send Ui.Button(label="b"), click
+    Expect Ui.Label(text="fired 2")
+    Send Ui.Button(label="a"), click
+    Expect Ui.Label(text="fired 1")
 ```
 
 **`for` consolidates dynamics into a dynamic map, and plain values into a dynamic map.**
@@ -734,11 +734,11 @@ test for_consolidates_simultaneous_firings: Test @for_events: array:
     @Label $"total=${Fold $counts, 0, \|acc, k, v| acc + v} ${Fold $caps, "", \|acc, k, v| Concat [acc, v]}"
 
 test for_consolidates_dynamics_and_values: Test @for_dynamics: array:
-    Expect Gui.Label(text="total=0 AB")
-    Send Gui.Button(label="a"), click
-    Send Gui.Button(label="a"), click
-    Send Gui.Button(label="b"), click
-    Expect Gui.Label(text="total=3 AB")
+    Expect Ui.Label(text="total=0 AB")
+    Send Ui.Button(label="a"), click
+    Send Ui.Button(label="a"), click
+    Send Ui.Button(label="b"), click
+    Expect Ui.Label(text="total=3 AB")
 ```
 
 **A key's block keeps its state across an insert and a neighbour's removal.**
@@ -757,17 +757,17 @@ test for_consolidates_dynamics_and_values: Test @for_dynamics: array:
         @Tally $_
 
 test state_survives_an_insert: Test @tallies: array:
-    Send Gui.Button(label="a"), click
-    Send Gui.Button(label="a"), click
-    Send Gui.Button(label="Add c"), click
-    Expect Gui.Label(text="a: 2")
-    Expect Gui.Label(text="c: 0")
+    Send Ui.Button(label="a"), click
+    Send Ui.Button(label="a"), click
+    Send Ui.Button(label="Add c"), click
+    Expect Ui.Label(text="a: 2")
+    Expect Ui.Label(text="c: 0")
 
 test state_survives_a_neighbours_removal: Test @tallies: array:
-    Send Gui.Button(label="b"), click
-    Send Gui.Button(label="Drop a"), click
-    ExpectNone Gui.Button(label="a")
-    Expect Gui.Label(text="b: 1")
+    Send Ui.Button(label="b"), click
+    Send Ui.Button(label="Drop a"), click
+    ExpectNone Ui.Button(label="a")
+    Expect Ui.Label(text="b: 1")
 ```
 
 **The parent sees a new key's result in the creation occurrence; the new block does not see itself.**
@@ -783,11 +783,11 @@ test state_survives_a_neighbours_removal: Test @tallies: array:
     @Label $"seen=$seen"
 
 test a_parent_sees_a_new_key_at_once: Test @new_key_seen: array:
-    Expect Gui.Label(text="seen=0")
-    Send Gui.Button(label="Add"), click
-    Expect Gui.Label(text="seen=1")
-    Send Gui.Button(label="Add"), click
-    Expect Gui.Label(text="seen=2")
+    Expect Ui.Label(text="seen=0")
+    Send Ui.Button(label="Add"), click
+    Expect Ui.Label(text="seen=1")
+    Send Ui.Button(label="Add"), click
+    Expect Ui.Label(text="seen=2")
 ```
 
 `for` consolidation is prompt where `!Switch` is not: a block born in n is in the consolidated event in n. Only pure code can fire in a block's birth occurrence, and `@started` is the pure code that does.
@@ -804,15 +804,15 @@ test a_parent_sees_a_new_key_at_once: Test @new_key_seen: array:
         @Label $"$key: $n"
 
 test an_array_block_keeps_state_by_position: Test @indexed: array:
-    Send Gui.Button(label="b"), click
-    Expect Gui.Label(text="1: 1")
-    Send Gui.Button(label="Push front"), click
-    Expect Gui.Button(label="z")
-    Expect Gui.Label(text="1: 1")
-    Expect Gui.Label(text="2: 0")
+    Send Ui.Button(label="b"), click
+    Expect Ui.Label(text="1: 1")
+    Send Ui.Button(label="Push front"), click
+    Expect Ui.Button(label="z")
+    Expect Ui.Label(text="1: 1")
+    Expect Ui.Label(text="2: 0")
 ```
 
-After the insertion at the front, the block at index 1 holds `"a"` and still has the count that was given to `"b"`. A program that wants the count to follow the item keeps a map with allocated ids, which is chapter 1's todo list. If arrays ever get a stable per-element identity, this test is the one that changes, and it would then say `Expect Gui.Label(text="2: 1")`.
+After the insertion at the front, the block at index 1 holds `"a"` and still has the count that was given to `"b"`. A program that wants the count to follow the item keeps a map with allocated ids, which is chapter 1's todo list. If arrays ever get a stable per-element identity, this test is the one that changes, and it would then say `Expect Ui.Label(text="2: 1")`.
 
 ### Elements and interception
 
@@ -827,9 +827,9 @@ After the insertion at the front, the block at index 1 holds `"a"` and still has
 
 test a_request_is_answered_later: Test @requester: array:
     Requested Fs.File(path="/f"), Read
-    Expect Gui.Label(text="got=none")
+    Expect Ui.Label(text="got=none")
     Send Fs.File(path="/f"), Contents "x"
-    Expect Gui.Label(text="got=some")
+    Expect Ui.Label(text="got=some")
 ```
 
 **Creating an element requests nothing.**
@@ -845,7 +845,7 @@ test creation_requests_nothing: Test @silent: array:
     Unrequested Fs.File(..)
 ```
 
-This is the shortest test in the suite and the one that guards the most. A World component that performed a read because an `Fs.File` appeared would not fail this test, since the Test World has no components; it is the Test World's own script component that is checked here, and the real Worlds are checked against the same sentence in their own tests.
+This is the shortest test in the suite and the one that guards the most. A World component that performed a read because an `Fs.File` appeared would not fail this test, since the Test World has no components; this test checks the Test World's own script component, and the real Worlds are checked against the same sentence in their own tests.
 
 **A response to a path not in the opened list is an error.** No script can send to an unknown path, because `Send` resolves against the current list; the only way to make the error is an interceptor that answers a slot in the occurrence the slot was created.
 
@@ -855,7 +855,7 @@ This is the shortest test in the suite and the one that guards the most. A World
     !down <- for $slots:
         dyn $_:
             match _.element:
-                Gui.Button(..):
+                Ui.Button(..):
                     !started <- @started
                     !resp <- @Element _.element
                     @ !resp | click on !started
@@ -865,7 +865,7 @@ This is the shortest test in the suite and the one that guards the most. A World
     @ result
 
 test answering_at_creation_is_an_unknown_path: Test (@Eager @left_wins): array:
-    Errors Error.UnknownPath(..)
+    Errors Error(kind=UnknownPath, ..)
 ```
 
 The child's buttons are created in occurrence 0; `@Eager`'s blocks for them are built in the same occurrence, fire `click` from `@started`, and `!down` fires with paths that are not in the list as the occurrence opened, which for occurrence 0 is empty. The build aborts. This is also the law that an interceptor answers requests only in a later occurrence, from the other side: the one way to answer a slot is a `Defer`, and `@Eager` did not use one.
@@ -879,7 +879,7 @@ The child's buttons are created in occurrence 0; `@Eager`'s blocks for them are 
 
 test state_is_there_at_creation: Test @clock_label: array:
     State Clock, Instant 5
-    Expect Gui.Label(text="t=5")
+    Expect Ui.Label(text="t=5")
 ```
 
 **A push reaches a slot created in the push's occurrence.**
@@ -898,11 +898,11 @@ test state_is_there_at_creation: Test @clock_label: array:
 
 test a_push_reaches_a_slot_born_in_its_occurrence: Test @late_clock: array:
     State Clock, Instant 1
-    Expect Gui.Label(text="hidden")
+    Expect Ui.Label(text="hidden")
     State Clock, Instant 2
-    Send Gui.Button(label="Show"), click
-    Expect Gui.Label(text="t=2")
-    ExpectNone Gui.Label(text="t=1")
+    Send Ui.Button(label="Show"), click
+    Expect Ui.Label(text="t=2")
+    ExpectNone Ui.Label(text="t=1")
 ```
 
 The `State` before the `Send` makes the `Send`'s turn a turn with a push and a response. The `Clock` slot is created by the click, reads the oracle, which answers from the previous snapshot, `1`, and then receives the push to `2` in the same occurrence, ending it holding what every other slot holds. A test that showed `t=1` would be an implementation that sampled the oracle and forgot the push, which is a slot one occurrence behind the world for its whole life.
@@ -917,9 +917,9 @@ The `State` before the `Send` makes the `Send`'s turn a turn with a push and a r
 
 test equal_elements_share_one_state: Test @two_clocks: array:
     State Clock, Instant 1
-    Expect Gui.Label(text="1 1")
+    Expect Ui.Label(text="1 1")
     Push Clock, Instant 2
-    Expect Gui.Label(text="2 2")
+    Expect Ui.Label(text="2 2")
 ```
 
 **An interceptor that forwards everything is observably not there.**
@@ -941,11 +941,11 @@ test equal_elements_share_one_state: Test @two_clocks: array:
 
 test forwarding_is_the_identity: Test (@Transparent (@Transparent @counter_with_clock)): array:
     State Clock, Instant 1
-    ExpectCount Gui.*(..), 2
-    Expect Gui.Label(text="n=0 t=1")
-    Send Gui.Button(label="Inc"), click
+    ExpectCount Ui.*(..), 2
+    Expect Ui.Label(text="n=0 t=1")
+    Send Ui.Button(label="Inc"), click
     Push Clock, Instant 2
-    Expect Gui.Label(text="n=1 t=2")
+    Expect Ui.Label(text="n=1 t=2")
 ```
 
 The transcript of this test is compared, by the harness, with the transcript of the same script run on `@counter_with_clock` alone, element by element. Paths differ, because the forwarder's slots are at the forwarder's paths; everything else must be identical. The `Clock` appears more than once in the outer list, once per forwarder's supplier and once per forwarded slot, and each is the same state by value. A forwarder that minded the duplicates would not forward state slots; this one is the shortest correct program.
@@ -959,7 +959,7 @@ The transcript of this test is compared, by the harness, with the transcript of 
 
 test a_sandbox_denies_state: Test (@Sandbox "/jail", @peek): array:
     State Fs.Contents(path="/etc/secret"), Known "hunter2"
-    Expect Gui.Label(text="(unavailable)")
+    Expect Ui.Label(text="(unavailable)")
     ExpectNone Fs.Contents(path="/etc/secret")
 ```
 
@@ -976,9 +976,9 @@ test a_supplier_asks_the_outer_world: Test (@Sandbox "/jail", @peek_home): array
     State Fs.Contents(path="/jail/home/me/notes"), Known "hi"
     ExpectTop Fs.Contents(path="/jail/home/me/notes")
     ExpectNone Fs.Contents(path="/home/me/notes")
-    Expect Gui.Label(text="hi")
+    Expect Ui.Label(text="hi")
     Push Fs.Contents(path="/jail/home/me/notes"), Known "bye"
-    Expect Gui.Label(text="bye")
+    Expect Ui.Label(text="bye")
 ```
 
 **Two child slots of equal value share one supplied widget.**
@@ -996,7 +996,7 @@ test a_supplier_asks_the_outer_world: Test (@Sandbox "/jail", @peek_home): array
 test equal_slots_share_a_supplier: Test (@Supplied @two_readers): array:
     State Fs.Contents(path="/x"), Known "v1"
     ExpectCount Fs.Contents(path="/x"), 1
-    ExpectNone Gui.*(..)
+    ExpectNone Ui.*(..)
     Push Fs.Contents(path="/x"), Known "v2"
     Returns unit
 ```
@@ -1021,10 +1021,10 @@ let ShowResponse: fn ?FsResponse -> Text = \|r| match r:
 test a_sandbox_denies_within_the_turn: Test (@Sandbox "/jail", @probe): array:
     ExpectNone Fs.File(..)
     Requested Defer, unit
-    Expect Gui.Label(text="(permission denied)")
+    Expect Ui.Label(text="(permission denied)")
 ```
 
-Turn 0 is two occurrences: the build, in which the probe requests and the sandbox fires its `Defer`, and the answer, in which the sandbox fires `Denied` into the probe. The script's first check runs after both. A reader who writes `Expect Gui.Label(text="(reading...)")` here has the turn wrong, which is why chapter 1 shows that version failing.
+Turn 0 is two occurrences: the build, in which the probe requests and the sandbox fires its `Defer`, and the answer, in which the sandbox fires `Denied` into the probe. The script's first check runs after both. A reader who writes `Expect Ui.Label(text="(reading...)")` here has the turn wrong, which is why chapter 1 shows that version failing.
 
 **Deferring backwards is an error.** A `Defer` slot that fires again after being answered in the same turn.
 
@@ -1035,7 +1035,7 @@ Turn 0 is two occurrences: the build, in which the probe requests and the sandbo
     @ unit
 
 test deferring_backwards_is_an_error: Test @backwards: array:
-    Errors Error.DeferBackwards(..)
+    Errors Error(kind=DeferBackwards, ..)
 ```
 
 Occurrence 0 fires the request; occurrence 1 of the same turn answers it, and the answer fires the request again. The World refuses to open a third occurrence for it, the turn ends in the error, and there is no turn that runs forever. This is the only bound on a turn and it needs no cap.
@@ -1058,10 +1058,10 @@ Occurrence 0 fires the request; occurrence 1 of the same turn answers it, and th
     @Label (JoinText ",", $log)
 
 test chained_defers_are_three_occurrences: Test @chain: array:
-    Expect Gui.Label(text="a,b")
+    Expect Ui.Label(text="a,b")
 
 test independent_defers_are_answered_together: Test @fan: array:
-    Expect Gui.Label(text="a")
+    Expect Ui.Label(text="a")
 ```
 
 In `@chain`, `r2`'s request fires only when `r1` is answered, so the turn is three occurrences and the log has both entries. In `@fan`, both requests fire in occurrence 0, the World answers both in occurrence 1, both `Append`s fire in that one occurrence, and the leftmost wins: the log has one entry. The second script is also a test that the World does not answer `Defer`s one per occurrence, which would be a turn length that depended on the World's mood.
@@ -1070,11 +1070,11 @@ In `@chain`, `r2`'s request fires only when `r1` is answered, so the turn is thr
 
 ```prism
 test an_unsupplied_state_fails_at_creation: Test @needs_secret: array:
-    Errors Error.UnsuppliedState(element=Secret)
+    Errors Error(kind=UnsuppliedState, element=Secret, ..)
 
 test a_supplied_state_is_fine: Test @needs_secret: array:
     State Secret, "shh"
-    Expect Gui.Label(text="shh")
+    Expect Ui.Label(text="shh")
 ```
 
 That is forty-four scripts. Each one is short enough to appear whole in a failure message, each is named by its sentence, and each would be the first thing to change if its sentence changed.
@@ -1092,19 +1092,19 @@ type ChildInput = record:
     path: Path
     response: Response
 
-tag Gui.VBox of Element:
+tag Ui.VBox of Element:
     children: Path ==> Element
     responds: ChildInput
 
-let IsGui: fn Element -> Bool = \|e| match e:
-    Gui.*(..): True
+let IsUi: fn Element -> Bool = \|e| match e:
+    Ui.*(..): True
     ignore: False
 
-let GuiOnly: fn (Path ==> Slot) -> Path ==> Element = \|slots|
-    MapValues (Filter slots, \IsGui _.element), \_.element
+let UiOnly: fn (Path ==> Slot) -> Path ==> Element = \|slots|
+    MapValues (Filter slots, \IsUi _.element), \_.element
 
-let NonGui: fn (Path ==> Slot) -> Path ==> Slot = \|slots|
-    Filter slots, \Not (IsGui _.element)
+let NonUi: fn (Path ==> Slot) -> Path ==> Slot = \|slots|
+    Filter slots, \Not (IsUi _.element)
 
 let ToMap: fn ChildInput -> Path ==> Response = \|c|
     {c.path: c.response}
@@ -1119,13 +1119,13 @@ let ToMap: fn ChildInput -> Path ==> Response = \|c|
 # Hold the GUI children back as data in one VBox; forward everything else.
 @VBox: fn @a -> @a = \|@child| @widget:
     (result, $slots) <- intercept @child, !down, $ \|e| @Element e
-    !child_in <- @Element Gui.VBox(children=(GuiOnly $slots))
-    !fwd <- @Forward (NonGui $slots)
+    !child_in <- @Element Ui.VBox(children=(UiOnly $slots))
+    !fwd <- @Forward (NonUi $slots)
     let !down = !Union (ToMap !child_in, !fwd)
     @ result
 ```
 
-`@Element Gui.VBox(children=(GuiOnly $slots))` has a dynamic where a field goes, so it is a `dyn` with a fresh `Gui.VBox` slot per change of the child's GUI list, and `!child_in` is the `!Switch` over the generations. The supplier `\|e| @Element e` forwards every state element to the outer context; the `for` in `@Forward` builds one block per non-GUI child slot, each re-emitting the element and returning the response the outer context sends to it, consolidated under the child's path. `ToMap` turns a `ChildInput` into a one-entry response map, and `!Union` merges it with the forwarded responses, so a click routed through the box and a file response for a forwarded slot can land in one occurrence.
+`@Element Ui.VBox(children=(UiOnly $slots))` has a dynamic where a field goes, so it is a `dyn` with a fresh `Ui.VBox` slot per change of the child's `Ui.*` list, and `!child_in` is the `!Switch` over the generations. The supplier `\|e| @Element e` forwards every state element to the outer context; the `for` in `@Forward` builds one block per non-`Ui.*` child slot, each re-emitting the element and returning the response the outer context sends to it, consolidated under the child's path. `ToMap` turns a `ChildInput` into a one-entry response map, and `!Union` merges it with the forwarded responses, so a click routed through the box and a file response for a forwarded slot can land in one occurrence.
 
 The library's own typed-AST dump is a golden, and `@VBox` under the Test World, with a counter inside, is program 06.
 
@@ -1138,7 +1138,7 @@ The library's own typed-AST dump is a golden, and `@VBox` under the Test World, 
 | `03_hold_cycle` | A hold whose dynamic appears in its own update, read through a tag; `Returns` on a dynamic result. |
 | `04_intercept_consumes` | What an interceptor does not re-emit never reaches the World, while the child stays live. |
 | `05_forward_transparent` | Wrapping in a forwarder twice is observably the identity. |
-| `06_vbox_routing` | A click routed down through a container; a non-GUI response bypassing it; both in one occurrence. |
+| `06_vbox_routing` | A click routed down through a container; a non-`Ui.*` response bypassing it; both in one occurrence. |
 | `07_dyn_rebuild` | A rebuild swaps slots, new slots get fresh paths, and a rebuilt slot receives input from the next occurrence. |
 | `08_for_keyed` | One child per key, with state kept across an insert and a neighbour's removal. |
 | `09_non_prompt` | Routing against the list as the occurrence opened: a button clicked under its old label. |
@@ -1189,19 +1189,19 @@ test element_roundtrip: Test @echo: array:
     @Label $"Count: $count"
 
 test counter: Test @counter: array:
-    Expect Gui.Label(text="Count: 0")
-    Send Gui.Button(label="Increment"), click
-    Send Gui.Button(label="Increment"), click
-    Expect Gui.Label(text="Count: 2")
-    Send Gui.Button(label="Decrement"), click
-    Send Gui.Button(label="Decrement"), click
-    Expect Gui.Label(text="Count: 0")
+    Expect Ui.Label(text="Count: 0")
+    Send Ui.Button(label="Increment"), click
+    Send Ui.Button(label="Increment"), click
+    Expect Ui.Label(text="Count: 2")
+    Send Ui.Button(label="Decrement"), click
+    Send Ui.Button(label="Decrement"), click
+    Expect Ui.Label(text="Count: 0")
 
 test counter_same_occurrence_left_wins: Test @counter: array:
     Together:
-        Send Gui.Button(label="Increment"), click
-        Send Gui.Button(label="Decrement"), click
-    Expect Gui.Label(text="Count: -1")
+        Send Ui.Button(label="Increment"), click
+        Send Ui.Button(label="Decrement"), click
+    Expect Ui.Label(text="Count: -1")
 ```
 
 **03. A hold in its own update.**
@@ -1245,7 +1245,7 @@ test accumulator: Test @accumulator: array:
     @ result
 
 test swallow_hides_elements: Test (@Swallow @counted): array:
-    ExpectNone Gui.*(..)
+    ExpectNone Ui.*(..)
     Returns 0
 
 @CountSlots: fn @a -> @a = \|@child| @widget:
@@ -1259,8 +1259,8 @@ tag Test.SlotCount of Element:
 
 test count_and_forward: Test (@CountSlots @counted): array:
     ExpectTop Test.SlotCount(count=2)
-    Send Gui.Button(label="Increment"), click
-    Expect Gui.Label(text="Count: 1")
+    Send Ui.Button(label="Increment"), click
+    Expect Ui.Label(text="Count: 1")
     Returns 1
 ```
 
@@ -1275,10 +1275,10 @@ The child under `@Swallow` is built and its result is live, and nothing it made 
     @ result
 
 test forward_is_identity: Test (@Forwarded (@Forwarded @counted)): array:
-    ExpectCount Gui.*(..), 2
-    Send Gui.Button(label="Increment"), click
-    Send Gui.Button(label="Increment"), click
-    ExpectTop Gui.Label(text="Count: 2")
+    ExpectCount Ui.*(..), 2
+    Send Ui.Button(label="Increment"), click
+    Send Ui.Button(label="Increment"), click
+    ExpectTop Ui.Label(text="Count: 2")
     Returns 2
 ```
 
@@ -1304,50 +1304,50 @@ tag Net.Listener of Element:
     @Label $"ok=$oks conns=$conns"
 
 test vbox_wraps_gui: Test @panel: array:
-    ExpectTop Gui.VBox(..)
-    ExpectTopNone Gui.Button(..)
-    Expect Gui.Button(label="OK")
-    Expect Gui.Label(text="Hello")
-    ExpectTop Gui.Label(text="ok=0 conns=0")
+    ExpectTop Ui.VBox(..)
+    ExpectTopNone Ui.Button(..)
+    Expect Ui.Button(label="OK")
+    Expect Ui.Label(text="Hello")
+    ExpectTop Ui.Label(text="ok=0 conns=0")
 
 test vbox_forwards_non_gui: Test @panel: array:
     ExpectTop Net.Listener(port=8080)
     ExpectCount Net.Listener(..), 1
 
 test click_routes_through_vbox: Test @panel: array:
-    Send Gui.Button(label="OK"), click
-    ExpectTop Gui.Label(text="ok=1 conns=0")
+    Send Ui.Button(label="OK"), click
+    ExpectTop Ui.Label(text="ok=1 conns=0")
 
 test forwarded_response_bypasses_vbox: Test @panel: array:
     Send Net.Listener(port=8080), Accepted 7
-    ExpectTop Gui.Label(text="ok=0 conns=1")
+    ExpectTop Ui.Label(text="ok=0 conns=1")
 
 test both_in_one_occurrence: Test @panel: array:
     Together:
-        Send Gui.Button(label="OK"), click
+        Send Ui.Button(label="OK"), click
         Send Net.Listener(port=8080), Accepted 7
-    ExpectTop Gui.Label(text="ok=1 conns=1")
+    ExpectTop Ui.Label(text="ok=1 conns=1")
 ```
 
-The `Send` to the button is delivered by the Test World as `ChildInput(path=p, response=click)` to the `Gui.VBox` slot, where `p` is the button's key in the box's `children`; `@VBox` turns it into `{p: click}` and `intercept` routes it. The listener's `Accepted` goes to the forwarded slot at the top and comes back under the child's path through `!fwd`. In the last test both arrive in one occurrence and `!Union` delivers both.
+The `Send` to the button is delivered by the Test World as `ChildInput(path=p, response=click)` to the `Ui.VBox` slot, where `p` is the button's key in the box's `children`; `@VBox` turns it into `{p: click}` and `intercept` routes it. The listener's `Accepted` goes to the forwarded slot at the top and comes back under the child's path through `!fwd`. In the last test both arrive in one occurrence and `!Union` delivers both.
 
 **07. A rebuild swaps slots.** The `@toggle` widget of the law tests, with the original two scripts:
 
 ```prism
 test dyn_swaps_slots: Test @toggle: array:
-    Expect Gui.Button(label="Press me")
-    ExpectNone Gui.Label(text="On")
-    Send Gui.Button(label="Flip"), click
-    ExpectNone Gui.Button(label="Press me")
-    Expect Gui.Label(text="On")
-    Send Gui.Button(label="Flip"), click
-    Expect Gui.Button(label="Press me")
+    Expect Ui.Button(label="Press me")
+    ExpectNone Ui.Label(text="On")
+    Send Ui.Button(label="Flip"), click
+    ExpectNone Ui.Button(label="Press me")
+    Expect Ui.Label(text="On")
+    Send Ui.Button(label="Flip"), click
+    Expect Ui.Button(label="Press me")
 
 test rebuilt_slot_receives_input: Test @toggle: array:
-    Send Gui.Button(label="Flip"), click
-    Send Gui.Button(label="Flip"), click
-    Send Gui.Button(label="Press me"), click
-    Expect Gui.Label(text="presses=1")
+    Send Ui.Button(label="Flip"), click
+    Send Ui.Button(label="Flip"), click
+    Send Ui.Button(label="Press me"), click
+    Expect Ui.Label(text="presses=1")
 ```
 
 The transcript shows the "Press me" button at `2/#0/0` in turn 0 and at `2/#2/0` after the second flip: a fresh path per generation, never reused, which is the sentence the transcript pins and the script cannot.
@@ -1356,9 +1356,9 @@ The transcript shows the "Press me" button at `2/#0/0` in turn 0 and at `2/#2/0`
 
 ```prism
 test one_child_per_key: Test @tallies: array:
-    ExpectCount Gui.Label(text="a: 0"), 1
-    ExpectCount Gui.Label(text="b: 0"), 1
-    ExpectNone Gui.Label(text="c: 0")
+    ExpectCount Ui.Label(text="a: 0"), 1
+    ExpectCount Ui.Label(text="b: 0"), 1
+    ExpectNone Ui.Label(text="c: 0")
 ```
 
 **09. Clicked under the old label.** `@clicker` of the law tests, as written there.
@@ -1373,17 +1373,17 @@ tag Test.Box of Element:
     inner: Inner
 
 let Describe: fn Element -> Text = \|e| match e:
-    Gui.Button(..): "button"
-    Gui.*(..): "other gui"
+    Ui.Button(..): "button"
+    Ui.*(..): "other ui"
     Test.Box(value=3, ..): "box with 3"
     Test.Box(..): "some box"
     ignore: "unknown"
 
 @describe_button:
-    @ Describe Gui.Button(label="x")
+    @ Describe Ui.Button(label="x")
 
 @describe_label:
-    @ Describe Gui.Label(text="x")
+    @ Describe Ui.Label(text="x")
 
 @describe_box_3:
     @ Describe Test.Box(value=3, inner=(Inner "i"))
@@ -1398,7 +1398,7 @@ test tag_match: Test @describe_button: array:
     Returns "button"
 
 test namespace_match: Test @describe_label: array:
-    Returns "other gui"
+    Returns "other ui"
 
 test field_value_match: Test @describe_box_3: array:
     Returns "box with 3"
@@ -1436,16 +1436,16 @@ There is no test here for a field of the wrong type falling through to the next 
 
 test together_delivers_all: Test @pair: array:
     Together:
-        Send Gui.Button(label="A"), click
-        Send Gui.Button(label="B"), click
-    Expect Gui.Label(text="1 1 A")
+        Send Ui.Button(label="A"), click
+        Send Ui.Button(label="B"), click
+    Expect Ui.Label(text="1 1 A")
 
 test separate_occurrences: Test @pair: array:
-    Send Gui.Button(label="B"), click
-    Send Gui.Button(label="A"), click
-    Expect Gui.Label(text="1 1 A")
-    Send Gui.Button(label="B"), click
-    Expect Gui.Label(text="1 2 B")
+    Send Ui.Button(label="B"), click
+    Send Ui.Button(label="A"), click
+    Expect Ui.Label(text="1 1 A")
+    Send Ui.Button(label="B"), click
+    Expect Ui.Label(text="1 2 B")
 ```
 
 **12. A result event.** `@on_button` of the law tests, with `Fired "ok"` after a click and `Quiet` after a push.
@@ -1466,22 +1466,22 @@ Nine programs for the sentences the first twelve do not reach. Each is a program
 
 test started_requests_and_waits: Test @motd: array:
     Requested Fs.File(path="/etc/motd"), Read
-    Expect Gui.Label(text="(reading...)")
+    Expect Ui.Label(text="(reading...)")
     Send Fs.File(path="/etc/motd"), Contents "Welcome"
-    Expect Gui.Label(text="Welcome")
+    Expect Ui.Label(text="Welcome")
     Unrequested Fs.File(..)
 
 test refresh_requests_again: Test @motd: array:
     Send Fs.File(path="/etc/motd"), Contents "Welcome"
-    Send Gui.Button(label="Refresh"), click
+    Send Ui.Button(label="Refresh"), click
     Requested Fs.File(path="/etc/motd"), Read
-    Expect Gui.Label(text="Welcome")
+    Expect Ui.Label(text="Welcome")
     Send Fs.File(path="/etc/motd"), Missing
-    Expect Gui.Label(text="(no such file)")
+    Expect Ui.Label(text="(no such file)")
 
 test a_response_in_the_request_turn_is_impossible: Test @motd: array:
-    Send Gui.Button(label="Refresh"), click
-    Expect Gui.Label(text="(reading...)")
+    Send Ui.Button(label="Refresh"), click
+    Expect Ui.Label(text="(reading...)")
 ```
 
 The last script looks trivial and is the creation rule in its everyday form. The refresh turn fires a request; the label is still `"(reading...)"` after it because no World can answer in the request's occurrence and the script has not answered yet. The trigger is a value, `!started | !refresh`, which a test, a mock or a gate can replace without touching the element; that is what `@started` buys over an element that loaded itself.
@@ -1502,15 +1502,15 @@ The last script looks trivial and is the creation rule in its everyday form. The
     @Label $"heard=$heard"
 
 test birth_is_swallowed_but_the_request_is_not: Test @reloader: array:
-    Expect Gui.Label(text="heard=0")
+    Expect Ui.Label(text="heard=0")
     Requested Fs.File(path="/data"), Read
-    Expect Gui.Label(text="gen 0: none")
+    Expect Ui.Label(text="gen 0: none")
     Send Fs.File(path="/data"), Contents "x"
-    Expect Gui.Label(text="gen 0: some")
-    Send Gui.Button(label="Flip"), click
-    Expect Gui.Label(text="heard=0")
-    Expect Gui.Label(text="gen 1: none")
-    ExpectNone Gui.Label(text="gen 0: some")
+    Expect Ui.Label(text="gen 0: some")
+    Send Ui.Button(label="Flip"), click
+    Expect Ui.Label(text="heard=0")
+    Expect Ui.Label(text="gen 1: none")
+    ExpectNone Ui.Label(text="gen 0: some")
     Requested Fs.File(path="/data"), Read
 ```
 
@@ -1531,19 +1531,19 @@ type Change = choice:
         !started <- @started
         !toggle <- @Button $"Toggle $key"
         @ Opened on !started | Toggled on !toggle
-    $opened <- 0 <= $opened + Size (Filter !events, \Eq _, Opened)
-    $toggled <- 0 <= $toggled + Size (Filter !events, \Eq _, Toggled)
+    $opened <- 0 <= $opened + Size (Filter !events, \_ == Opened)
+    $toggled <- 0 <= $toggled + Size (Filter !events, \_ == Toggled)
     @Label $"opened=$opened toggled=$toggled"
 
 test a_new_key_reports_in_its_birth_occurrence: Test @registry_count: array:
-    Send Gui.Button(label="Add"), click
-    Expect Gui.Label(text="opened=1 toggled=0")
-    Send Gui.Button(label="Toggle 0"), click
-    Expect Gui.Label(text="opened=1 toggled=1")
+    Send Ui.Button(label="Add"), click
+    Expect Ui.Label(text="opened=1 toggled=0")
+    Send Ui.Button(label="Toggle 0"), click
+    Expect Ui.Label(text="opened=1 toggled=1")
     Together:
-        Send Gui.Button(label="Add"), click
-        Send Gui.Button(label="Toggle 0"), click
-    Expect Gui.Label(text="opened=2 toggled=2")
+        Send Ui.Button(label="Add"), click
+        Send Ui.Button(label="Toggle 0"), click
+    Expect Ui.Label(text="opened=2 toggled=2")
 ```
 
 In the `Together`, key 1 is born and reports `Opened` while key 0 reports `Toggled`, and the consolidated event has both: a map with two entries, one from a block that existed as the occurrence opened and one from a block that did not. The parent's two holds each count what they count. The new block does not see itself, which is why its own `Opened` is in the parent's event and not in anything inside key 1.
@@ -1568,19 +1568,19 @@ let Show: fn Contents -> Text = \|c| match c:
 
 test state_is_sampled_when_the_slot_is_made: Test @watcher: array:
     State Fs.Contents(path="/cfg"), Known "v1"
-    Expect Gui.Label(text="closed")
-    Send Gui.Button(label="Open"), click
-    Expect Gui.Label(text="v1")
+    Expect Ui.Label(text="closed")
+    Send Ui.Button(label="Open"), click
+    Expect Ui.Label(text="v1")
 
 test the_default_answers_when_nothing_was_set: Test @watcher: array:
-    Send Gui.Button(label="Open"), click
-    Expect Gui.Label(text="-")
+    Send Ui.Button(label="Open"), click
+    Expect Ui.Label(text="-")
 
 test a_snapshot_set_while_closed_is_seen_on_open: Test @watcher: array:
     State Fs.Contents(path="/cfg"), Known "v1"
     State Fs.Contents(path="/cfg"), Known "v2"
-    Send Gui.Button(label="Open"), click
-    Expect Gui.Label(text="v2")
+    Send Ui.Button(label="Open"), click
+    Expect Ui.Label(text="v2")
 ```
 
 The third script sets the snapshot twice before one turn. The oracle answers `v1`, the previous snapshot; the push in the same occurrence is to `v2`; the slot ends the turn at `v2`. A reader who expected `v1` has the order of oracle and push backwards, and a reader who expected the second `State` to be lost has forgotten that a World gathers everything that changed into one snapshot per occurrence.
@@ -1599,14 +1599,14 @@ The third script sets the snapshot twice before one turn. The oracle answers `v1
 
 test every_gauge_reads_one_clock: Test @gauges: array:
     State Clock, Instant 10
-    Expect Gui.Label(text="10")
+    Expect Ui.Label(text="10")
     State Clock, Instant 11
-    Send Gui.Button(label="More"), click
-    Expect Gui.Label(text="11,11")
+    Send Ui.Button(label="More"), click
+    Expect Ui.Label(text="11,11")
     Push Clock, Instant 12
-    Expect Gui.Label(text="12,12")
-    Send Gui.Button(label="More"), click
-    Expect Gui.Label(text="12,12,12")
+    Expect Ui.Label(text="12,12")
+    Send Ui.Button(label="More"), click
+    Expect Ui.Label(text="12,12,12")
 ```
 
 `Range n` is the map `{0: unit, ..., n-1: unit}`. The second gauge is created in the occurrence of the `11` push and shows `11` with the first. The third is created with no push in its occurrence and shows the snapshot. Every reading in every occurrence is the same, which is the equality law stated as a label.
@@ -1625,11 +1625,11 @@ test a_sandbox_rewrites_state_paths: Test (@Sandbox "/jail", @two_files): array:
     ExpectTop Fs.Contents(path="/jail/home/me/a")
     ExpectNone Fs.Contents(path="/home/me/a")
     ExpectNone Fs.Contents(path="/etc/b")
-    Expect Gui.Label(text="home=A etc=-")
+    Expect Ui.Label(text="home=A etc=-")
     Push Fs.Contents(path="/jail/home/me/a"), Known "A2"
-    Expect Gui.Label(text="home=A2 etc=-")
+    Expect Ui.Label(text="home=A2 etc=-")
     Push Fs.Contents(path="/etc/b"), Known "B2"
-    Expect Gui.Label(text="home=A2 etc=-")
+    Expect Ui.Label(text="home=A2 etc=-")
 ```
 
 The supplied widget for the confined path made an `Fs.Contents` with the rewritten path in the sandbox's node, and that is what the top sees. The supplied widget for the refused path is `@ $ Unavailable`, with no element, and a push to the real `/etc/b` goes nowhere because nothing in the list asked for it.
@@ -1648,11 +1648,11 @@ test equal_readers_share_one_cache_entry: Test (@Cached @readers): array:
     State Fs.Contents(path="/other"), Known "o1"
     ExpectCount Fs.Contents(path="/cfg"), 1
     ExpectCount Fs.Contents(path="/other"), 1
-    Expect Gui.Label(text="v1 v1 o1")
+    Expect Ui.Label(text="v1 v1 o1")
     Push Fs.Contents(path="/cfg"), Known "v2"
-    Expect Gui.Label(text="v1 v1 o1")
-    Send Gui.Button(label="Refresh"), click
-    Expect Gui.Label(text="v2 v2 o1")
+    Expect Ui.Label(text="v1 v1 o1")
+    Send Ui.Button(label="Refresh"), click
+    Expect Ui.Label(text="v2 v2 o1")
 ```
 
 `@Cached` forwards every slot, so the child's own `Fs.Contents` slots are re-emitted by `@Forward` and would count too; the `ExpectCount` of `1` therefore says that `@Cached` here is the variant that forwards responses for request slots only, `@Forward (NonState $slots)`, with `NonState` filtering by the tag's declared kind. That variant is the one in the suite, because the count is the point. Both readers show `v1` after the push and `v2` after the refresh, in the same occurrence, because they observe one hold.
@@ -1681,10 +1681,10 @@ test equal_readers_share_one_cache_entry: Test (@Cached @readers): array:
     @Label $"steps=$steps"
 
 test a_chain_of_five_is_six_occurrences: Test @chain5: array:
-    Expect Gui.Label(text="steps=5")
+    Expect Ui.Label(text="steps=5")
 
 test a_fan_of_five_is_two_occurrences: Test @fan5: array:
-    Expect Gui.Label(text="steps=1")
+    Expect Ui.Label(text="steps=1")
 ```
 
 `$steps + 1 on (...)` moves once per occurrence in which any `Defer` answered, so it counts occurrences after the first. Five in the chain, one in the fan. The transcript marks each occurrence inside turn 0, and the differential test checks that both implementations agree on how many there were, which is a check on the world core as much as on the runtime.
@@ -1703,7 +1703,7 @@ let IsDenied: fn FsResponse -> ?unit = \|r| match r:
     ignore: Nil
 
 test an_immediate_retry_is_deferring_backwards: Test (@Sandbox "/jail", @retrier): array:
-    Errors Error.DeferBackwards(..)
+    Errors Error(kind=DeferBackwards, ..)
 ```
 
 Occurrence 0: the request; the sandbox fires its `Defer`. Occurrence 1: the denial; the child retries; the sandbox's `for` block for that slot fires `unit on _.!request` again, and the `Defer` slot it owns has already been answered this turn. The error names the `Defer`'s path and the interceptor it belongs to. This is a program that in a callback framework would spin forever, and here it is a reported error in turn 0 with no turn that ran long. A retry belongs behind a `Time.After`, where the World's clock separates the attempts, and a second version of `@retrier` in the same file does that and passes.
@@ -1847,7 +1847,7 @@ One binding per line: the group, the name with its sigil, its type, its mark, an
 
 Everything the compiler chose is on the page. `-1 on !decrement` became a `map` over the event yielding a signed literal, because `on` returns its left operand and lifting did the rest. `|` became `leftmost`. `$count + !delta` became a `tag`, which is the one window onto the value before the occurrence, applied with `add.Int`, because `!delta` is `Int` and inference flowed from the literal `-1` through the merge into the hold. `$count` is a cycle through that tag, so its group has a placeholder and a close. The two binds, the hold and the label bind are build-time; the merge is occurrence-time, and so are the closures inside `map`, `tag` and the label's `map`, whose marks are implied by their position. The label's text interpolation is a `map` over `$count` producing a `text` of parts. Nothing below this line decides anything about meaning, which is the sentence the golden pins.
 
-The exact spellings, `leftmost`, `tag`, `hold`, `map`, `const`, `bind`, `int`, `add.Int`, `show.Int`, `text`, `placeholder`, `close`, are the printer's and are frozen by the goldens; what matters is that the Haskell frontend prints the same characters for the same source. Elements print as `slot Gui.Button {label: ...}` with the tag's kind, `dyn` as `dyn $x (\x -> block)` with the block's own bindings indented beneath it, `for` as `for $m (\key $_ -> block) : consolidate !` with the consolidation kind, and `intercept` as `intercept child responses supplier`. A closure after conversion prints its capture list, `(\c d -> ...) captures [$count]`, and that form is the one the lint checks.
+The exact spellings, `leftmost`, `tag`, `hold`, `map`, `const`, `bind`, `int`, `add.Int`, `show.Int`, `text`, `placeholder`, `close`, are the printer's and are frozen by the goldens; the Haskell frontend must print the same characters for the same source. Elements print as `slot Ui.Button {label: ...}` with the tag's kind, `dyn` as `dyn $x (\x -> block)` with the block's own bindings indented beneath it, `for` as `for $m (\key $_ -> block) : consolidate !` with the consolidation kind, and `intercept` as `intercept child responses supplier`. A closure after conversion prints its capture list, `(\c d -> ...) captures [$count]`, and that form is the one the lint checks.
 
 ### What the goldens are
 
@@ -1931,7 +1931,7 @@ error: `match` on an extensible variant needs a catch-all
    |
  1 | let IsButton = \|e| match e:
    |                     ^^^^^
- 2 |     Gui.Button(..): True
+ 2 |     Ui.Button(..): True
    |
    = `Element` is open; add an `ignore:` arm
 ```
@@ -1964,7 +1964,7 @@ error: `update` is reserved for future work
    = `read`, `update` and `&` are not part of this version of the language
 ```
 
-Runtime errors have negative goldens too, through the `Errors` step, and their text form is the error value as the transcript prints it: `Error.UnknownPath(path=0/#1/0, turn=1)`, `Error.DeferBackwards(path=1/[3]/#0/1, turn=0, occurrence=2)`, `Error.Cycle(spans=[...])` with the spans of every binding in the cycle in order, `Error.UnsuppliedState(element=Secret, path=0)`. The compiler names every cyclic slot after its source span so that a runtime cycle through two widget functions, which no static check can see, reports Prism source and not runtime internals; the golden for that case is a program with two widget functions whose results feed each other's arguments promptly, and its expected error lists both.
+Runtime errors have negative goldens too, through the `Errors` step, and their text form is the error value as the transcript prints it: `Error(kind=UnknownPath, path=0/#1/0, turn=1)`, `Error(kind=DeferBackwards, path=1/[3]/#0/1, turn=0, occurrence=2)`, `Error(kind=Cycle, spans=[...])` with the spans of every binding in the cycle in order, `Error(kind=UnsuppliedState, element=Secret, path=0)`. The compiler names every cyclic slot after its source span so that a runtime cycle through two widget functions, which no static check can see, reports Prism source and not runtime internals; the golden for that case is a program with two widget functions whose results feed each other's arguments promptly, and its expected error lists both.
 
 ## Runtime unit tests and the invariant
 
@@ -2056,13 +2056,13 @@ The harness runs the binary with the given stdin delivered chunk by chunk with a
 
 The transcripts, each with what it pins:
 
-- *Line counting*, chapter 1's `@wc`, on empty input, one line, many lines, and lines split across chunks. Pins one turn per chunk, the partial line held to the next chunk, output written after the turn, and exit by `Cli.Exit`'s request.
-- *Falling off the end*: a program that prints and never fires `Cli.Exit`. Pins exit 0 when nothing can cause another occurrence, with no stdin slot and no request outstanding. This is the tentative rule about ending a run; if a run instead waits for an explicit exit, the transcript changes to a timeout and the sentence changes with it.
-- *Exit codes*: a computed nonzero code; two `Cli.Exit` slots firing in one occurrence, which is an error; a code outside 0–255, which is an error.
+- *Line counting*, chapter 1's `@wc`, on empty input, one line, many lines, and lines split across chunks. Pins one turn per chunk, the partial line held to the next chunk, output written after the turn, and exit by `Process.Exit`'s request.
+- *Falling off the end*: a program that prints and never fires `Process.Exit`. Pins exit 0 when nothing can cause another occurrence: no stdin slot, no signal slot, no request in flight, no timer; args, env, clock and watch slots do not keep a run alive.
+- *Exit codes*: a computed nonzero code; two `Process.Exit` slots firing in one turn, where the first in occurrence-then-list order is the code the process exits with; a code outside 0–255, which is an error.
 - *Output order*: two `Cli.Stdout` slots firing in one occurrence, written in list order; stdout and stderr interleaved across turns, in turn order; writes and an exit in one turn, with the writes landing first.
-- *Args and env*: a program that prints `Cli.Args` and `Cli.Env` from their state elements, with no arguments, several arguments, and an empty environment. Pins that both have their value in occurrence 0 from the oracle and that nothing is requested to get them.
+- *Args and env*: a program that prints `Process.Args` and `Process.Env` from their state elements, with no arguments, several arguments, and an empty environment. Pins that both have their value in occurrence 0 from the oracle and that nothing is requested to get them.
 - *File first, then stdin*: a program that reads a file from `@started` and builds its `Cli.Stdin` slot inside a `dyn` after the response. Pins that stdin is not read until the slot exists, which also keeps the transcript free of a race.
-- *Unsupported*: a `Gui.Button` at the root. Pins the World's error on stderr naming the interceptors the element came through, the `Unsupported` response reaching the program's slot in the next turn, and the program continuing.
+- *Unsupported*: a `Ui.Button` at the root. Pins the World's error on stderr naming the interceptors the element came through, the `Unsupported` response reaching the program's slot in the next turn, and the program continuing.
 - *Signals*: with and without a `Cli.Signals` slot, by sending the process a signal from the harness. Pins OS defaults without a slot and the signal arriving as a response with one.
 - *A closed pipe*: stdout closed by the harness before a write. Pins that the write's failure comes back as a response rather than killing the process.
 
@@ -2074,7 +2074,7 @@ Everything above runs under both implementations, and the differential test is `
 
 An empty diff is the claim that both implementations read the specification the same way, for every program in the suite, at the level of what a World sees and at the level of what the compiler chose. It is not a claim that either implementation is right; the conformance scripts make that claim, and the differential test adds the second reader.
 
-A divergence means one of two things, and telling them apart is the whole value of the exercise. Either one implementation has a bug, which the law test that pins the sentence will usually have caught already and the diff localises to a construct; or two careful readers read a sentence of the specification differently, and the sentence is ambiguous. The second kind is the more valuable find, and the procedure for it is fixed: the sentence gets rewritten so that it admits one reading, a law test is added that pins that reading, and both implementations are brought to it. What is never done is resolving a divergence by making one implementation copy the other's behaviour without a sentence to point at, because that turns the second reading back into the first and the specification into a description of the Rust runtime.
+A divergence means one of two things, and telling them apart is the whole value of the exercise. Either one implementation has a bug, which the law test that pins the sentence will usually have caught already and the diff localises to a construct; or two careful readers read a sentence of the specification differently, and the sentence is ambiguous. The second kind is the more valuable find, and the procedure for it is fixed: the sentence gets rewritten so that it admits one reading, a law test is added that pins that reading, and both implementations are brought to it. A divergence is never resolved by making one implementation copy the other's behaviour without a sentence to point at, because that turns the second reading back into the first and the specification into a description of the Rust runtime.
 
 Three kinds of divergence have been anticipated and have a place to land. A path printed differently is a reading of "its position in the widget tree" and is fixed in the transcript format's definition, not in either runtime. A typed-AST dump that differs in a lift or a numeric type is a reading of the lifting rule or the inference rule, and the goldens, which both frontends must match, decide it before the transcripts can. A transcript that differs in which occurrence of a turn a request fired in is a reading of the `Defer` rule or the creation rule, and the world core tests decide it. Anything else is new, and new is what the test is for.
 
