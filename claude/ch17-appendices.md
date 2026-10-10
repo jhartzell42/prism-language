@@ -579,12 +579,6 @@ type FsRequest = choice:
     Append Text
     Delete
 
-type FsError = choice:
-    NotFound
-    Denied
-    TooLarge
-    Other Text
-
 type FsResponse = choice:
     Contents Text
     Written
