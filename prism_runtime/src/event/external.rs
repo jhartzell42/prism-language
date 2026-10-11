@@ -99,9 +99,9 @@ struct EventTriggerInner<T: ValueType> {
 }
 
 impl<T: ValueType> EventImpl<T> for EventTriggerInner<T> {
-    fn subscribe(&self, cb: Weak<dyn EventCallback<T>>) -> Option<Value<T>> {
+    fn subscribe(&self, runtime: &Runtime, cb: Weak<dyn EventCallback<T>>) -> Option<Value<T>> {
         self.subscribers
-            .add_subscriber(self.weak_self.clone(), None, cb)
+            .add_subscriber(runtime, self.weak_self.clone(), None, cb)
     }
 
     fn height(&self) -> usize {
@@ -128,7 +128,7 @@ impl<T: ValueType> SubscriptionEvent<T> for EventTriggerInner<T> {
         unreachable!("external events have no outgoing subscription edge")
     }
 
-    fn handle_already_fired(&self, _: Value<Self::Inner>, _: ()) {
+    fn handle_already_fired(&self, _: &Runtime, _: Value<Self::Inner>, _: ()) {
         unreachable!("external events have no outgoing subscription edge")
     }
 }

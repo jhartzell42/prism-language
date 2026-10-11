@@ -23,6 +23,12 @@ pub struct WidgetBuilder<'a> {
 }
 
 impl WidgetBuilder<'_> {
+    /// The runtime this widget is being built in: the occurrence a hold or
+    /// switch made during the build is created in.
+    pub fn runtime(&self) -> &Runtime {
+        self.runtime
+    }
+
     /// Call from outside (e.g. a backend) to create a root widget.
     /// This is used at the top level to build the initial tree with `height = 0`.
     ///
@@ -115,7 +121,7 @@ impl WidgetBuilder<'_> {
         let (lock, forward) = self.node.cyclic_dynamics[ix]
             .downcast_ref::<(OnceLock<Dynamic<T>>, Arc<ForwardEvent<T>>)>()
             .expect("cyclic dynamic closed with the wrong type");
-        forward.close(&dynamic.event());
+        forward.close(self.runtime, &dynamic.event());
         lock.set(dynamic).expect("set cyclic dynamic twice");
     }
 
@@ -156,7 +162,7 @@ impl WidgetBuilder<'_> {
         let (forward, target) = self.node.cyclic_events[index]
             .downcast_ref::<(Arc<ForwardEvent<T>>, OnceLock<Event<T>>)>()
             .expect("cyclic event closed with the wrong type");
-        forward.close(&event);
+        forward.close(self.runtime, &event);
         target.set(event).expect("cyclic event closed twice");
     }
 

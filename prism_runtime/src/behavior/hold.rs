@@ -3,19 +3,21 @@ use std::sync::{Arc, Mutex, Weak};
 use crate::{
     behavior::{Behavior, BehaviorDependent, BehaviorImpl},
     event::{Event, EventCallback},
-    runtime::{Action, Runtime, defer},
+    runtime::{Action, Runtime},
     value::{Value, ValueType},
 };
-
-// TODO: I think Reflex requires a widget context for this operation.
-// Do we want to require that? Why does it require that? How's it doing that sort
-// of thing anyway?
 
 impl<T: ValueType> Behavior<T> {
     /// Creates a behavior that has the value from this event
     /// from the last occurrence in which the event was fired.
     /// If it has never fired, it will have the `initial` value.
-    pub fn hold(initial: Value<T>, event: Event<T>) -> Self {
+    ///
+    /// A hold sees only the occurrences from its creation on, which is why
+    /// creating one needs the runtime: if `event` already fired in the
+    /// occurrence now propagating, the hold takes that value at commit.
+    /// This is Reflex's `hold` in `MonadHold`, with the runtime standing in
+    /// for the monad.
+    pub fn hold(runtime: &Runtime, initial: Value<T>, event: Event<T>) -> Self {
         let hold = Arc::new_cyclic(|weak| HoldBehavior {
             value: Mutex::new(initial),
             _event: event.clone(),
@@ -23,8 +25,8 @@ impl<T: ValueType> Behavior<T> {
             dependents: Mutex::new(vec![]),
         });
         let hold2: Arc<dyn EventCallback<T>> = hold.clone();
-        if let Some(value) = event.0.subscribe(Arc::downgrade(&hold2)) {
-            defer(
+        if let Some(value) = event.0.subscribe(runtime, Arc::downgrade(&hold2)) {
+            runtime.schedule(
                 usize::MAX,
                 HoldAction {
                     hold: hold.clone(),
@@ -65,11 +67,11 @@ impl<T: ValueType> EventCallback<T> for HoldBehavior<T> {
         runtime.schedule(usize::MAX, HoldAction { hold: this, value })
     }
 
-    fn already_fired(&self, value: Value<T>) {
+    fn already_fired(&self, runtime: &Runtime, value: Value<T>) {
         let Some(this) = self.weak_self.upgrade() else {
             return;
         };
-        defer(usize::MAX, HoldAction { hold: this, value })
+        runtime.schedule(usize::MAX, HoldAction { hold: this, value })
     }
 
     // Heights of a behavior are always `usize::MAX`.

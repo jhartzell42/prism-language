@@ -11,7 +11,7 @@ impl<T: ValueType> Event<T> {
         struct Never;
 
         impl<T: ValueType> EventImpl<T> for Never {
-            fn subscribe(&self, _: std::sync::Weak<dyn super::EventCallback<T>>) -> Option<Value<T>> {
+            fn subscribe(&self, _: &crate::runtime::Runtime, _: std::sync::Weak<dyn super::EventCallback<T>>) -> Option<Value<T>> {
                 None
             }
 

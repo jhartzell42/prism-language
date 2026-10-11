@@ -23,6 +23,7 @@ mod tests;
 use std::sync::Arc;
 
 use crate::{
+    runtime::Runtime,
     behavior::Behavior,
     event::{Event, OneOrBoth},
     value::{Value, ValueType},
@@ -73,9 +74,11 @@ impl<T: ValueType> Dynamic<T> {
 
     /// Create a [`Dynamic`] that always has the last value of `event`,
     /// starting with the value `initial`.
-    pub fn hold(initial: Value<T>, event: Event<T>) -> Dynamic<T> {
+    ///
+    /// Needs the runtime for the same reason [`Behavior::hold`] does.
+    pub fn hold(runtime: &Runtime, initial: Value<T>, event: Event<T>) -> Dynamic<T> {
         Self {
-            behavior: Behavior::hold(initial, event.clone()),
+            behavior: Behavior::hold(runtime, initial, event.clone()),
             event,
         }
     }

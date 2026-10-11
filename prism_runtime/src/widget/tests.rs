@@ -25,7 +25,7 @@ fn fold_dyn_cyclic_dyn() {
                 .add_cyclic_dynamic::<i32>("accumulator".to_string())
                 .1;
             let new_accumulator = increment.tag_map(|a, b| Some(Value::from(*a + *b)), accumulator);
-            let accumulator = Dynamic::hold(Value::from(0i32), new_accumulator);
+            let accumulator = Dynamic::hold(builder.runtime(), Value::from(0i32), new_accumulator);
             builder.close_cyclic_dynamic_by_name("accumulator", accumulator.clone());
 
             // This tests the behavior
@@ -134,7 +134,7 @@ fn dynamic_widget() {
             }
 
             let rebuild = builder.add_external_event::<Arc<String>>("rebuild".into());
-            let d_widget = Dynamic::hold(
+            let d_widget = Dynamic::hold(builder.runtime(), 
                 PrismArc::new(Inner("initial".to_string())),
                 rebuild.filter_map(|s| Some(PrismArc::new(Inner(s.extract())))),
             );
@@ -167,12 +167,12 @@ impl Widget for Leaf {
 fn dyn_rebuilds_without_a_backend_delegate() {
     let mut runtime = Runtime::new();
     let (input, trigger) = Event::<u32>::external();
-    let widgets = Dynamic::hold(
+    let widgets = Dynamic::hold(&runtime, 
         PrismArc::new(Leaf(0)),
         input.map(|x| PrismArc::new(Leaf(*x))),
     );
     let (_node, built) = WidgetBuilder::build_root(&runtime, &widgets.dynamic_widget(), 0);
-    let latest = Dynamic::hold(PrismArc::new(0u32), (*built).clone());
+    let latest = Dynamic::hold(&runtime, PrismArc::new(0u32), (*built).clone());
     runtime.propagate();
 
     runtime.schedule_trigger(&trigger, 5u32.into()).unwrap();
@@ -185,12 +185,12 @@ fn dyn_rebuilds_without_a_backend_delegate() {
 fn dyn_rebuilds_when_its_input_arrives_in_occurrence_zero() {
     let mut runtime = Runtime::new();
     let (input, trigger) = Event::<u32>::external();
-    let widgets = Dynamic::hold(
+    let widgets = Dynamic::hold(&runtime, 
         PrismArc::new(Leaf(0)),
         input.map(|x| PrismArc::new(Leaf(*x))),
     );
     let (_node, built) = WidgetBuilder::build_root(&runtime, &widgets.dynamic_widget(), 0);
-    let latest = Dynamic::hold(PrismArc::new(0u32), (*built).clone());
+    let latest = Dynamic::hold(&runtime, PrismArc::new(0u32), (*built).clone());
 
     runtime.schedule_trigger(&trigger, 5u32.into()).unwrap();
     runtime.propagate();
@@ -207,7 +207,7 @@ fn nested_dyn_rebuilds_in_the_same_occurrence_as_its_parent() {
         type Output = Arc<Event<Arc<u32>>>;
 
         fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
-            let leaves = Dynamic::hold(
+            let leaves = Dynamic::hold(builder.runtime(), 
                 PrismArc::new(Leaf(0)),
                 self.0.map(|x| PrismArc::new(Leaf(*x))),
             );
@@ -218,9 +218,9 @@ fn nested_dyn_rebuilds_in_the_same_occurrence_as_its_parent() {
     let mut runtime = Runtime::new();
     let (input, trigger) = Event::<u32>::external();
     let deep = input.map(|x| x).map(|x| x).map(|x| x).map(|x| x);
-    let _deep_is_observed = Dynamic::hold(0u32.into(), deep.clone());
+    let _deep_is_observed = Dynamic::hold(&runtime, 0u32.into(), deep.clone());
     let initial_middle = PrismArc::new(Middle(deep.clone()));
-    let middles = Dynamic::hold(
+    let middles = Dynamic::hold(&runtime, 
         initial_middle,
         input.map(move |_| PrismArc::new(Middle(deep.clone()))),
     );
@@ -241,14 +241,14 @@ fn cyclic_dynamic_event_fires_when_its_value_changes_in_the_build_occurrence() {
         fn build(&self, builder: &mut WidgetBuilder) -> Dynamic<u32> {
             let (index, cyclic) = builder.add_cyclic_dynamic::<u32>("value".into());
             let started = builder.done_event().map(|_| Value::from(7u32));
-            builder.close_cyclic_dynamic_by_index(index, Dynamic::hold(0u32.into(), started));
+            builder.close_cyclic_dynamic_by_index(index, Dynamic::hold(builder.runtime(), 0u32.into(), started));
             cyclic
         }
     }
 
     let mut runtime = Runtime::new();
     let (_node, cyclic) = WidgetBuilder::build_root(&runtime, &StartedAtSeven, 0);
-    let last_event_value = Dynamic::hold(0u32.into(), cyclic.event());
+    let last_event_value = Dynamic::hold(&runtime, 0u32.into(), cyclic.event());
     runtime.propagate();
 
     assert_eq!(*cyclic.behavior().0.query_for_tag(), 7);
@@ -294,7 +294,7 @@ fn a_same_occurrence_cycle_through_a_cyclic_event_is_reported_instead_of_hanging
                 looped_back.map(|x| Value::from(*x + 1)),
             ]);
             builder.close_cyclic_event_by_index(index, next.clone());
-            Dynamic::hold(0u32.into(), next)
+            Dynamic::hold(builder.runtime(), 0u32.into(), next)
         }
     }
 
@@ -353,10 +353,10 @@ fn a_widget_built_mid_occurrence_sees_the_same_events_at_any_depth() {
     impl Widget for Child {
         type Output = ();
 
-        fn build(&self, _: &mut WidgetBuilder) {
+        fn build(&self, builder: &mut WidgetBuilder) {
             self.built.lock().unwrap().push((
-                Dynamic::hold(0u32.into(), self.shallow.clone()),
-                Dynamic::hold(0u32.into(), self.deep.clone()),
+                Dynamic::hold(builder.runtime(), 0u32.into(), self.shallow.clone()),
+                Dynamic::hold(builder.runtime(), 0u32.into(), self.deep.clone()),
             ));
         }
     }
@@ -364,13 +364,13 @@ fn a_widget_built_mid_occurrence_sees_the_same_events_at_any_depth() {
     let mut runtime = Runtime::new();
     let (input, trigger) = Event::<u32>::external();
     let deep = input.map(|x| x).map(|x| x).map(|x| x).map(|x| x).map(|x| x);
-    let _deep_is_observed = Dynamic::hold(0u32.into(), deep.clone());
+    let _deep_is_observed = Dynamic::hold(&runtime, 0u32.into(), deep.clone());
     let built = Arc::new(Mutex::new(vec![]));
     let new_child = {
         let (input, deep, built) = (input.clone(), deep.clone(), built.clone());
         move || PrismArc::new(Child { shallow: input.clone(), deep: deep.clone(), built: built.clone() })
     };
-    let children = Dynamic::hold(new_child(), input.map(move |_| new_child()));
+    let children = Dynamic::hold(&runtime, new_child(), input.map(move |_| new_child()));
     let (_node, _output) = WidgetBuilder::build_root(&runtime, &children.dynamic_widget(), 0);
     runtime.propagate();
 
@@ -414,7 +414,7 @@ fn dropping_a_widget_frees_its_cyclic_loops() {
             builder.close_cyclic_event_by_index(event_index, looped.clone());
 
             let (dynamic_index, total) = builder.add_cyclic_dynamic::<u32>("total".into());
-            let next_total = Dynamic::hold(
+            let next_total = Dynamic::hold(builder.runtime(), 
                 0u32.into(),
                 self.0.tag_map(|step, total: Value<u32>| Some(Value::from(*step + *total)), total),
             );
@@ -448,7 +448,7 @@ fn a_replaced_child_keeps_working_until_its_last_occurrence_ends() {
 
         fn build(&self, builder: &mut WidgetBuilder) -> Event<u32> {
             let (index, total) = builder.add_cyclic_dynamic::<u32>("total".into());
-            let next_total = Dynamic::hold(
+            let next_total = Dynamic::hold(builder.runtime(), 
                 0u32.into(),
                 self.0.tag_map(|step, total: Value<u32>| Some(Value::from(*step + *total)), total.clone()),
             );
@@ -462,7 +462,7 @@ fn a_replaced_child_keeps_working_until_its_last_occurrence_ends() {
     let (tick, tick_trigger) = Event::<u32>::external();
     let deep_tick = tick.map(|x| x).map(|x| x).map(|x| x).map(|x| x).map(|x| x);
     let tick_for_new_counters = deep_tick.clone();
-    let counters = Dynamic::hold(
+    let counters = Dynamic::hold(&runtime, 
         PrismArc::new(Counter(deep_tick)),
         rebuild.map(move |_| PrismArc::new(Counter(tick_for_new_counters.clone()))),
     );
@@ -470,7 +470,7 @@ fn a_replaced_child_keeps_working_until_its_last_occurrence_ends() {
     let current_output = (*built)
         .clone()
         .map(|output: Value<Arc<Event<u32>>>| Value::from((*output).clone()));
-    let latest = Dynamic::hold(0u32.into(), current_output.switch_hold());
+    let latest = Dynamic::hold(&runtime, 0u32.into(), current_output.switch_hold(&runtime));
     runtime.propagate();
     runtime.schedule_trigger(&tick_trigger, 1u32.into()).unwrap();
     runtime.propagate();
@@ -516,9 +516,9 @@ fn a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value(
         let shown = shown.clone();
         move |text: u32| PrismArc::new(Title { text, shown: shown.clone() })
     };
-    let title = Dynamic::hold(new_title(0), input.map(move |text| new_title(*text)));
+    let title = Dynamic::hold(&runtime, new_title(0), input.map(move |text| new_title(*text)));
     let title_for_pages = title.clone();
-    let page = Dynamic::hold(
+    let page = Dynamic::hold(&runtime, 
         PrismArc::new(Page(title)),
         input.map(move |_| PrismArc::new(Page(title_for_pages.clone()))),
     );
@@ -542,8 +542,8 @@ fn a_widget_built_mid_occurrence_gets_the_mapped_value_of_an_event_that_already_
     impl Widget for Tens {
         type Output = ();
 
-        fn build(&self, _: &mut WidgetBuilder) {
-            let tens = Dynamic::hold(0u32.into(), self.input.map(|x| Value::from(*x * 10)));
+        fn build(&self, builder: &mut WidgetBuilder) {
+            let tens = Dynamic::hold(builder.runtime(), 0u32.into(), self.input.map(|x| Value::from(*x * 10)));
             self.built.lock().unwrap().push(tens);
         }
     }
@@ -555,7 +555,7 @@ fn a_widget_built_mid_occurrence_gets_the_mapped_value_of_an_event_that_already_
         let (input, built) = (input.clone(), built.clone());
         move || PrismArc::new(Tens { input: input.clone(), built: built.clone() })
     };
-    let widgets = Dynamic::hold(new_tens(), input.map(move |_| new_tens()));
+    let widgets = Dynamic::hold(&runtime, new_tens(), input.map(move |_| new_tens()));
     let (_node, _output) = WidgetBuilder::build_root(&runtime, &widgets.dynamic_widget(), 0);
     runtime.propagate();
 
@@ -577,10 +577,10 @@ fn a_closure_runs_once_per_occurrence_even_when_late_subscribers_read_it() {
     impl Widget for TwoReaders {
         type Output = ();
 
-        fn build(&self, _: &mut WidgetBuilder) {
+        fn build(&self, builder: &mut WidgetBuilder) {
             self.built.lock().unwrap().push((
-                Dynamic::hold(0u32.into(), self.counted.clone()),
-                Dynamic::hold(0u32.into(), self.counted.clone()),
+                Dynamic::hold(builder.runtime(), 0u32.into(), self.counted.clone()),
+                Dynamic::hold(builder.runtime(), 0u32.into(), self.counted.clone()),
             ));
         }
     }
@@ -600,7 +600,7 @@ fn a_closure_runs_once_per_occurrence_even_when_late_subscribers_read_it() {
         let built = built.clone();
         move |counted: Event<u32>| PrismArc::new(TwoReaders { counted, built: built.clone() })
     };
-    let widgets = Dynamic::hold(
+    let widgets = Dynamic::hold(&runtime, 
         new_readers(Event::never()),
         input.map(move |_| new_readers(counted.clone())),
     );
