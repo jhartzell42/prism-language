@@ -25,10 +25,10 @@ The sigils stack, leftmost outermost, in the order you would say the thing out l
 - `!!rendered` is an event of events: what a `dyn` returns, one inner event per build.
 - `!$contents` is an event of dynamics: what a `dyn` returns when its block returns state.
 - `$$current` is a dynamic of dynamics: what you hold an `!$contents` into, before `$Join` flattens it.
-- `@!click` is a widget whose result is an event: the type of a button.
-- `@$text` is a widget whose result is a dynamic: the type of a text input.
-- `$@a` is a dynamic of widgets: what a `dyn` consumes.
-- `@@a` is a widget that returns a widget, unbuilt: a widget factory.
+- `@!click` is a blueprint whose result is an event: the type of a button.
+- `@$text` is a blueprint whose result is a dynamic: the type of a text input.
+- `$@a` is a dynamic of blueprints: what a `dyn` consumes.
+- `@@a` is a blueprint that returns a blueprint, unbuilt: a widget factory.
 
 Two of these deserve a second look, because the difference between them is the kind of difference the sigils exist to make visible. `?$user` and `$?user` are not two spellings of one thing. The first says that the *existence* of the dynamic is in question and fixed: you match on it once, and either you have a dynamic forever or you never did. The second says the dynamic exists and its *value* is sometimes absent: a logged-in user who may log out. A chat client's current connection is the second; a widget's optional parent callback is the first. Writing one when you meant the other is a type error at the first use, which is where you want to find out.
 
@@ -59,11 +59,11 @@ That last point makes the aggregate rule above work. A plain array of events is 
 
 ### Functions and return sigils
 
-Functions and types are `UpperCamelCase`; values are `snake_case`. A function's name takes the sigil of what it *returns*: `@Button` returns a widget, `!Leftmost` returns an event, `$Join` returns a dynamic, `IsClick` returns a plain value. The sigil on a function is a promise about its result, not about its arguments, and it is checked against the annotation.
+Functions and types are `UpperCamelCase`; values are `snake_case`. A function's name takes the sigil of what it *returns*: `@Button` returns a blueprint, `!Leftmost` returns an event, `$Join` returns a dynamic, `IsClick` returns a plain value. The sigil on a function is a promise about its result, not about its arguments, and it is checked against the annotation.
 
 A function is a plain value when it is passed around. `$(fn Element -> @$State)` is a dynamic whose value is a function; the function itself is plain, it is the dynamic that changes. A function held in a record field, an array or a map is plain. There is no "function that moves": if you want a computation that changes over time, you have a dynamic of a function, and the sigil on the dynamic says so. This is the same rule as for every other value, and it means that `\|e| @Element e` passed as the supplier to `intercept` is a plain lambda, wrapped in `$` by the caller because the parameter wants a dynamic.
 
-A function takes at least one argument. A function of nothing is spelled as taking `unit`, and a widget function of nothing is not a function: it is a widget. `@counter` is a value you bind, not something you call. The distinction matters for the reader more than for the checker: `@Button $"OK"` is an application and builds nothing until bound, and `@counter` is a description you bind as it is. Both are plain values until a `<-` builds them.
+A function takes at least one argument. A function of nothing is spelled as taking `unit`, and a widget function of nothing is not a function: it is a blueprint. `@counter` is a value you bind, not something you call. The distinction matters for the reader more than for the checker: `@Button $"OK"` is an application and builds nothing until bound, and `@counter` is a description you bind as it is. Both are plain values until a `<-` builds them.
 
 ### What the sigils are not
 
@@ -71,7 +71,7 @@ They are not Hungarian notation. Hungarian notation is a convention a reviewer e
 
 They are also not types. `$count` says that `count` is a dynamic; its type, `$Int`, says of what. The sigil is the part of the type that governs lifting and the part a reader needs at every use; the rest is for the checker. A program that annotates every binding with its full type is allowed and not expected.
 
-Consider the alternative, where a function's name said nothing about its result and `Button $"OK"` returned a widget by inference. Every call site would then need the type to be read before the line could be understood: does `Label text` draw a label or return the text of one? Because a name says what it returns, a call site can be read without the callee. It costs one character per function, and the character is one the reader was going to want anyway.
+Consider the alternative, where a function's name said nothing about its result and `Button $"OK"` returned a blueprint by inference. Every call site would then need the type to be read before the line could be understood: does `Label text` draw a label or return the text of one? Because a name says what it returns, a call site can be read without the callee. It costs one character per function, and the character is one the reader was going to want anyway.
 
 ## Lexical structure and layout
 
@@ -97,7 +97,7 @@ A qualified name is an uppercase name followed by `.` and another uppercase name
 The sigils are `!` `$` `@` `?`. (`&` is reserved for references, chapter 16, and is rejected with a message saying so; `%` does not exist.) The meaning of a sigil depends on what it is attached to:
 
 - On a value's name, it states the value's kind: `!delta` is an event.
-- On a function's name, it states the kind of the function's result: `@Button` returns a widget.
+- On a function's name, it states the kind of the function's result: `@Button` returns a blueprint.
 - On a type, it is the type constructor: `!Text`, `$[Item]`, `@!Click`; sigils stack leftmost-outermost here as elsewhere.
 
 **Attachment.** The lexer has to decide whether a sigil is part of the next token or a prefix operator standing on its own. The rule: a sigil is *attached*, and part of the token, when the character after it is a name character (letter, digit), `_`, `"`, or another sigil. Otherwise it is *free*: a prefix operator that applies to the whole expression after it, to the end of the enclosing call.
@@ -633,7 +633,7 @@ Three things are overloaded in Prism and nothing else is: equality, ordering, an
 - `Ord`: primitives (`Float` included, by the total order described below), text, chars, tuples and arrays of ordered types (lexicographic), a `choice` whose payloads are ordered (declaration order of the alternatives, then payload; a closed `choice` of bare alternatives is ordered by declaration order alone, so `type Size = choice Small | Medium | Large` has `Small < Large`), a record whose fields are all ordered (lexicographic in field declaration order, like Rust's derived `Ord`), and an extensible variant whose plain fields are ordered (tag name, then plain fields in declaration order, `requests` excluded). Map keys must be `Ord`, so a record or an element can key a sorted map.
 - `Num`: `Nat`, `Int` and `Float`, with `+ - * /`. Prefix `-` is `Int` and `Float` only. `/` is `?Nat` and `?Int` on the integers and plain `Float` on `Float`.
 
-Values that hold a function, an event, a dynamic or a widget have none of these. Equality on events would have to mean something, and the only thing it could mean is identity, which the language does not give events; equality on functions is undecidable; equality on widgets would be equality on descriptions, which is close to structural but would make two different closures compare unequal in a way the program cannot predict. Ruling them out keeps `Eq` meaning "the same value" and nothing subtler.
+Values that hold a function, an event, a dynamic or a blueprint have none of these. Equality on events would have to mean something, and the only thing it could mean is identity, which the language does not give events; equality on functions is undecidable; equality on blueprints would be equality on descriptions, which is close to structural but would make two different closures compare unequal in a way the program cannot predict. Ruling them out keeps `Eq` meaning "the same value" and nothing subtler.
 
 Arithmetic is written `+ - * /` and the type of each operation is found by inference from its operands:
 
@@ -778,7 +778,7 @@ let Magnitude: fn Vector -> Float = \Sqrt (_.x *. _.x +. _.y *. _.y)
     @ !Switch !!clicks
 ```
 
-Function types are written `fn A, B -> C`, with the arguments comma-separated the way a call is; a function takes at least one argument, and a function of nothing takes `unit`. A function-typed argument or result is parenthesised, `fn (fn A -> B), [A] -> [B]` and `fn A -> (fn B -> C)`, so the commas and arrow of the inner type never run into the outer one's. A function of one pair is `fn ((A, B)) -> C`, written with the tuple's double parentheses, and differs from `fn A, B -> C` in the way `F ((a, b))` differs from `F a, b`. The `intercept` signature reads with all three rules at once: `fn @a, !(Path ==> Response), $(fn Element -> @$State) -> @((a, $(Path ==> Slot)))`, a function of three arguments, the third a dynamic of functions, returning a widget whose result is a pair. The annotation requirement at top level keeps every error local to one definition, since the checker never has to guess a signature from uses in another module, and it makes the typed form of a module readable at its boundary. It is kept rather than relaxed because the cost is one line per definition, and the line is the one a reader of the module wants first. If experience shows that small helper definitions make the cost real, the relaxation is to infer unannotated top-level `let`s that are used only within their module.
+Function types are written `fn A, B -> C`, with the arguments comma-separated the way a call is; a function takes at least one argument, and a function of nothing takes `unit`. A function-typed argument or result is parenthesised, `fn (fn A -> B), [A] -> [B]` and `fn A -> (fn B -> C)`, so the commas and arrow of the inner type never run into the outer one's. A function of one pair is `fn ((A, B)) -> C`, written with the tuple's double parentheses, and differs from `fn A, B -> C` in the way `F ((a, b))` differs from `F a, b`. The `intercept` signature reads with all three rules at once: `fn @a, !(Path ==> Response), $(fn Element -> @$State) -> @((a, $(Path ==> Slot)))`, a function of three arguments, the third a dynamic of functions, returning a blueprint whose result is a pair. The annotation requirement at top level keeps every error local to one definition, since the checker never has to guess a signature from uses in another module, and it makes the typed form of a module readable at its boundary. It is kept rather than relaxed because the cost is one line per definition, and the line is the one a reader of the module wants first. If experience shows that small helper definitions make the cost real, the relaxation is to infer unannotated top-level `let`s that are used only within their module.
 
 Local annotations are allowed anywhere a pattern is: `let n: Nat = 0`, `\|e: Element| ...`, `$x: $Int <- 0 then ...`. On a sigiled name the annotation gives the plain type under the sigil or the full type with it; both spellings are accepted and mean the same thing.
 
@@ -796,7 +796,7 @@ Every operation and every function application is lifted over the time functors.
 - **Some dynamics, no event:** the result is a dynamic, recomputed whenever any operand changes, in the occurrence of the change. It is prompt: there is no occurrence in which an operand has changed and the result has not.
 - **Some dynamics and exactly one event:** the result is an event that fires when the event fires, with the value of the operation applied to the event's value and the dynamics' *old* values. Each dynamic is read through a tag, which is the one window onto "before".
 - **Two or more events in one operation:** a compile error naming both and pointing at `|` and `!Leftmost`.
-- **A widget operand:** not lifted by this rule. Widgets are built, not computed over. What happens to a widget-returning application with a dynamic argument is below.
+- **A blueprint operand:** not lifted by this rule. Widgets are built, not computed over. What happens to a widget-returning application with a dynamic argument is below.
 - **An optional operand** where a plain one is wanted: lifted at the plain layer, giving `?` of the result, as the previous section describes. When an operand has both, `$?x`, the time functor is outermost and lifts first; `?$x` does not lift and must be matched.
 
 Small examples, each the whole of what it says:
@@ -833,7 +833,7 @@ The tag read in the third case is the whole of the language's mutation policy in
 
 **Lifting never crosses a sigil boundary.** A function on `A` lifts over `$A` but not over the inner layer of `$$A`; `$$a + 1` is a type error, and `$Join $$a + 1` is what the program meant. Likewise a function on `!A` does not lift over `!!A`. Flattening is `!Switch` and `$Join`, in the switching chapter, and it has laws of its own that a lifted `+` could not keep.
 
-**Lifting over `@`.** A widget operand is not computed over, but a widget-returning function applied to a dynamic where it wanted a plain value is a common thing to write, and it has one meaning. `@Element Ui.Button(label=$l)` applies `@Element` to a dynamic, and by the rule above the result is `$@!Click`: a dynamic of widgets, one per value of `$l`. Binding a dynamic of widgets with `<-` lifts to `dyn`:
+**Lifting over `@`.** A blueprint operand is not computed over, but a widget-returning function applied to a dynamic where it wanted a plain value is a common thing to write, and it has one meaning. `@Element Ui.Button(label=$l)` applies `@Element` to a dynamic, and by the rule above the result is `$@!Click`: a dynamic of blueprints, one per value of `$l`. Binding a dynamic of blueprints with `<-` lifts to `dyn`:
 
 ```prism
 !click <- @Element Ui.Button(label=$l)
@@ -899,7 +899,7 @@ A `.Method` that starts a continuation line stands outside the table. It closes 
 
 ### Statements
 
-Three statement forms exist, and they are the only places where the sigil-level structure of a program is built rather than computed. They are statements, not expressions, because each one does something an expression cannot: a bind builds a node, a hold owns state, and a `let` introduces a name that later statements in the same block can see.
+Three statement forms exist, and they are the only places where the sigil-level structure of a program is built rather than computed. They are statements, not expressions, because each one does something an expression cannot: a bind builds a widget, a hold owns state, and a `let` introduces a name that later statements in the same block can see.
 
 ```prism
 !click <- @Button $"OK"                  # bind: build the widget, name its result
@@ -912,7 +912,7 @@ $count <- 0 then $count + !delta           # hold
 $$current <- $ Unavailable then !$contents # hold of dynamics, for a $Join
 ```
 
-A bind's left side is a pattern, and every name in it takes the sigil of what it is bound to. A `let` is the same, with no building: `let @b = @Button $"OK"` followed by `!x <- @b` and `!y <- @b` builds two buttons, because a widget is a description and each bind of it is a node. A hold's left side is a single sigiled name, because a hold is one piece of state with one definition; a program that wants two holds writes two.
+A bind's left side is a pattern, and every name in it takes the sigil of what it is bound to. A `let` is the same, with no building: `let @b = @Button $"OK"` followed by `!x <- @b` and `!y <- @b` builds two buttons, because a blueprint is a description and each bind of it is a widget. A hold's left side is a single sigiled name, because a hold is one piece of state with one definition; a program that wants two holds writes two.
 
 Outside a widget block, only `let` exists, and a sequence of `let`s ending in an expression is how a lambda body or a `for` body with intermediate names is written:
 
@@ -963,7 +963,7 @@ Fold changes, items, \|acc, id, c| Step acc, id, c
             @ !resp
 ```
 
-**The argument's kind.** A lambda's argument has a sigil like any name, and the rule is this: a body that mentions a sigiled pronoun, `$_`, `!_` or `@_`, takes an argument of that kind and is not lifted over it. `@Button`'s body says `dyn $_:`, so it takes a dynamic; a lambda whose body says `intercept @_, ...` takes a widget. A named argument has the sigil it is written with. A body with no sigiled pronoun and no annotation takes a plain argument, and the lambda is a plain function.
+**The argument's kind.** A lambda's argument has a sigil like any name, and the rule is this: a body that mentions a sigiled pronoun, `$_`, `!_` or `@_`, takes an argument of that kind and is not lifted over it. `@Button`'s body says `dyn $_:`, so it takes a dynamic; a lambda whose body says `intercept @_, ...` takes a blueprint. A named argument has the sigil it is written with. A body with no sigiled pronoun and no annotation takes a plain argument, and the lambda is a plain function.
 
 A plain function is lifted afresh at each application: one definition serves a plain argument and a dynamic one, so `IsGui` written once over a plain `Element` is applied to `$kids` and to `!in` without a second definition. That is why the prelude's `Len` and `Insert` are written at plain types and used over everything, and the operators `not`, `and`, `or` and `+` lift the same way. The alternative, inferring a lambda's binder sigil from its uses, would mean a lambda applied to a dynamic takes `$_` and cannot also take a plain value, so the prelude would need two of everything.
 
@@ -1028,7 +1028,7 @@ match items[id]:
 
 Without the guard, the second arm's work would be inside the first as an `if` and the `Some t: items` case would be written twice. The condition runs from `if` to the arm's colon, so an `if` expression inside a guard takes parentheses. A guarded arm does not count toward exhaustiveness: the compiler does not reason about conditions, so `Some t if t.done` covers nothing, and the `match` above is exhaustive only because the unguarded `Some t` and `Nil` follow. A guarded `ignore if c:` is not a catch-all for an extensible variant. A guard on a dynamic scrutinee is lifted with the rest of the arm, and dynamics it mentions are read as the arm body's are.
 
-**`match` lifts like application.** With all arms plain, `match $x: ...` is a dynamic of the arms' results, changing when `$x` does, and `match !e: ...` is an event firing when `!e` does, with the taken arm's value. Dynamics mentioned in the arms are lifted by the same rule as any operation: in `match !e: Some v: v + $offset`, the `$offset` is read through a tag. When any arm is a widget, the scrutinee must be plain, because choosing a widget by a changing value is construction and is spelled `dyn`; the error says so and points at it.
+**`match` lifts like application.** With all arms plain, `match $x: ...` is a dynamic of the arms' results, changing when `$x` does, and `match !e: ...` is an event firing when `!e` does, with the taken arm's value. Dynamics mentioned in the arms are lifted by the same rule as any operation: in `match !e: Some v: v + $offset`, the `$offset` is read through a tag. When any arm is a blueprint, the scrutinee must be plain, because choosing a blueprint by a changing value is construction and is spelled `dyn`; the error says so and points at it.
 
 ```prism
 let $text = match $contents:
@@ -1079,7 +1079,7 @@ let cells = for r, row <- grid:
 
 The binder before `<-` is a pattern, so it takes the sigil of what it is bound to. Over a plain collection both are plain, `for k, item <- xs:`. Over a dynamic collection in a widget block the key is plain, since it is the identity of the block, and the element is the per-key dynamic, written `for k, $item <- $items:`; its body sees `$item` in the way the shorthand's body sees `$_`, and the key `k` where the shorthand sees `key`. `for $items:` is the shorthand for `for key, $_ <- $items:`. Writing `for k, item <- $items:` is an error that asks for `$item`, because the per-key value is a dynamic. There is no binder for a third thing: a loop that wants more than the key and the element takes them from the element.
 
-It evaluates to an array when the input is an array and a map when the input is a map, in key order. The body is one expression or a layout block of `let`s ending in a value. Over a dynamic collection it is the construct of the switching chapter and is only allowed in a widget block, because it builds nodes; the error for `for $m:` outside a widget block says so.
+It evaluates to an array when the input is an array and a map when the input is a map, in key order. The body is one expression or a layout block of `let`s ending in a value. Over a dynamic collection it is the construct of the switching chapter and is only allowed in a widget block, because it builds widgets; the error for `for $m:` outside a widget block says so.
 
 ## Diagnostics
 
@@ -1171,7 +1171,7 @@ error: match does not cover `Backspace`
    = `Key` has alternatives Char, Left, Right, Backspace; add an arm or `ignore:`
 ```
 
-**A match on a dynamic with a widget arm.**
+**A match on a dynamic with a blueprint arm.**
 
 ```
 error: choosing a widget by a changing value
@@ -1544,7 +1544,7 @@ The language's refusals are listed with the whole design in the first part of th
 
 **No implicit conversions.** `Nat` does not become `Int`, `Int` does not become `Float`, `Text` does not become anything, a newtype does not become its payload and a `?T` does not become a `T`. Conversions are functions (`+?`, `Abs`, `ToText`, `.value`) and the one lifting over `?` is visible in the result's sigil. What this buys: the type of every expression is the type of its parts, and a count never becomes a float because it was divided; a line of arithmetic has one numeric type and the reader can find it at the nearest annotation or suffixed operator.
 
-**No reified identifiers, no introspection.** There is no way to name a binding as data, reach into a widget node, list a block's bindings, or ask a value for its type. A test drives a program through its elements, the way a World does, and reads its element list and its result. What this buys: a test that passes under the Test World passes under any World, since it used only the boundary; a name can be renamed without breaking anything but the program; and generic code can be erased, because nothing can ask a value what it is.
+**No reified identifiers, no introspection.** There is no way to name a binding as data, reach into a widget, list a block's bindings, or ask a value for its type. A test drives a program through its elements, the way a World does, and reads its element list and its result. What this buys: a test that passes under the Test World passes under any World, since it used only the boundary; a name can be renamed without breaking anything but the program; and generic code can be erased, because nothing can ask a value what it is.
 
 **No symbol with two meanings.** `<=` is less-or-equal and nothing else, `then` is hold and nothing else, and `<-` is bind and nothing else. What this buys: the line that defines a program's state never looks like a comparison, and a comparison never looks like state.
 

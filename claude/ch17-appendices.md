@@ -296,11 +296,11 @@ Each of these contributed one idea, named here so the reference says why and not
 | --- | --- | --- | --- |
 | `!` | an event | returns an event | `!A`, event of `A` |
 | `$` | a dynamic | returns a dynamic | `$A`, dynamic of `A` |
-| `@` | a widget | returns a widget | `@A`, widget returning `A` |
+| `@` | a blueprint | returns a blueprint | `@A`, blueprint returning `A` |
 | `?` | an optional | returns an optional | `?A`, `Nil` or `Some a` |
 | none | a plain value | returns a plain value | a plain type |
 
-Sigils nest leftmost-outermost: `?$user`, `!!rendered`, `@!unit`, `$@a`, `$(Key ==> $Item)`. A sigil is attached (part of the token) when followed by a name character, `_`, `"` or another sigil; otherwise it is a prefix operator over the whole expression to the end of the call: `$ x` is the constant dynamic, `@ v` the widget returning `v`, `@ ((!a, $b))` a bundle. `$_`, `!_`, `@_` are the pronoun at that kind. `&` is reserved for references (chapter 16); `%` does not exist. Names: `snake_case` for values, `UpperCamelCase` for functions and types; a camelCase value name such as `isClick` is a lint warning (write `is_click`), not a compile error. A dotted name such as `Gui.Button` lexes as name, `.`, name, and `Gui.*` in a pattern as name, `.`, `*`.
+Sigils nest leftmost-outermost: `?$user`, `!!rendered`, `@!unit`, `$@a`, `$(Key ==> $Item)`. A sigil is attached (part of the token) when followed by a name character, `_`, `"` or another sigil; otherwise it is a prefix operator over the whole expression to the end of the call: `$ x` is the constant dynamic, `@ v` the blueprint returning `v`, `@ ((!a, $b))` a bundle. `$_`, `!_`, `@_` are the pronoun at that kind. `&` is reserved for references (chapter 16); `%` does not exist. Names: `snake_case` for values, `UpperCamelCase` for functions and types; a camelCase value name such as `isClick` is a lint warning (write `is_click`), not a compile error. A dotted name such as `Gui.Button` lexes as name, `.`, name, and `Gui.*` in a pattern as name, `.`, `*`.
 
 ### Lexical
 
@@ -312,10 +312,10 @@ Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` w
 
 | Form | Meaning |
 | --- | --- |
-| `pattern <- widget` | build the widget as a child of this node; bind its result |
-| `widget` | build it; discard the result |
+| `pattern <- blueprint` | build the widget as a child of this widget; bind its result |
+| `blueprint` | build it; discard the result |
 | `let pattern = expr` | bind a value of any kind; builds nothing |
-| `$x <- v then !e` | hold: `$x` is `v` until `!e` fires, then `!e`'s value; owned by this node; a hold set to the value it already has still changes |
+| `$x <- v then !e` | hold: `$x` is `v` until `!e` fires, then `!e`'s value; owned by this widget; a hold set to the value it already has still changes |
 | `!!r <- dyn $x: block` | rebuild the block on each change of `$x`; `_` is the plain value; event fires in every build occurrence |
 | `!!r <- dyn p <- $x: block` | the same, destructuring `$x`'s value with pattern `p` |
 | `r <- for k, $v <- $m: block` | one block per key of `$(K ==> V)`; `k` is the key and `$v` the value as a dynamic; consolidated by result kind, promptly |
@@ -358,7 +358,7 @@ On one line, `x.F y` is method form and a spaced `.F` is not a chain step. Compa
 
 ### Lifting
 
-Read off the operands' sigils at every operation and application. All plain: plain. Some `$`, no `!`: a dynamic, prompt. Some `$` and one `!`: an event firing with the `!`, the dynamics read before the occurrence (tag law). Two `!` in one operation: an error naming both. Field access and indexing lift like application: `!!panes.!inbox` and `$users[id]` are fine. `@` operands are not lifted; `@` as a prefix lifts a plain value into a widget. `?` lifts at the plain layer like an applicative `Maybe` (`a / b + 1` is `?Nat` for `Nat` operands; `Float` division has no `?`), and `match` on a `?` is its eliminator. Lifting never crosses a sigil boundary; `!Switch` (non-prompt) and `$Join` (prompt) do. `match $x:` and `match !e:` lift like application when all arms are plain; when any arm is a widget the scrutinee must be plain. A derived dynamic recomputed to an equal value still changes; `$Distinct` is the one place equal values are suppressed.
+Read off the operands' sigils at every operation and application. All plain: plain. Some `$`, no `!`: a dynamic, prompt. Some `$` and one `!`: an event firing with the `!`, the dynamics read before the occurrence (tag law). Two `!` in one operation: an error naming both. Field access and indexing lift like application: `!!panes.!inbox` and `$users[id]` are fine. `@` operands are not lifted; `@` as a prefix lifts a plain value into a blueprint. `?` lifts at the plain layer like an applicative `Maybe` (`a / b + 1` is `?Nat` for `Nat` operands; `Float` division has no `?`), and `match` on a `?` is its eliminator. Lifting never crosses a sigil boundary; `!Switch` (non-prompt) and `$Join` (prompt) do. `match $x:` and `match !e:` lift like application when all arms are plain; when any arm is a blueprint the scrutinee must be plain. A derived dynamic recomputed to an equal value still changes; `$Distinct` is the one place equal values are suppressed.
 
 Binding a widget application lifts by the result: `!x <- @Button $label` is `dyn $label:` around the build with `!x` as the `!Switch` of the result; a state-returning element under a `dyn` binds as a hold of dynamics joined with `$Join`, with the first build's result as the hold's initial value; a widget application whose result is plain binds as a `$` holding the first build's value. An unannotated `let` lambda is a plain function lifted afresh at each application; a lambda mentioning `$_`, `!_` or `@_` takes that kind and is not lifted over it.
 
@@ -425,7 +425,7 @@ type Slot = record:
     !request: Request        # typed by the tag inside a match arm on element
 ```
 
-Builds `@a` as a child and captures its element list. Down: `!responses` by path, routed against the list as the occurrence opened; the supplier, read at each state slot's creation, applied to the element, its widget built in the interceptor's node once per distinct element value, its result the slot's dynamic. A new child slot whose element value already has a live supplied widget joins it, whatever the supplier dynamic holds now. Up: whatever the interceptor makes with `@Element`. Forwarding is `\|e| @Element e`. Answering a request yourself goes through `Defer`. Pure code firing at a path created in the same occurrence is an `UnknownPath` error.
+Builds `@a` as a child and captures its element list. Down: `!responses` by path, routed against the list as the occurrence opened; the supplier, read at each state slot's creation, applied to the element, its widget built in the interceptor's widget once per distinct element value, its result the slot's dynamic. A new child slot whose element value already has a live supplied widget joins it, whatever the supplier dynamic holds now. Up: whatever the interceptor makes with `@Element`. Forwarding is `\|e| @Element e`. Answering a request yourself goes through `Defer`. Pure code firing at a path created in the same occurrence is an `UnknownPath` error.
 
 ### Test scripts
 
@@ -460,7 +460,7 @@ test name, @widget:
 
 The build is turn zero. Each input line is one turn including its `Defer` occurrences; independent `Defer`s fired in one occurrence are answered together. `with` may appear before the build and must for every state tag the program creates at build, since the oracle has to answer in occurrence zero. Patterns are element patterns; `errors` patterns are `Error(kind=Cycle, ..)` and the like.
 
-Transcripts and `send` targets spell paths canonically: a slot or child by its index in the parent's child list, a `dyn` generation as `#n`, a `for` key as `[k]`, and a supplier-built slot as `s/n/...` with the supplied widget's own segments after the prefix. Only slots, `dyn` generations, `for` keys and intercept children take segments; a plain widget-function application makes a node but adds no segment, so a `@Button` whose body holds the `dyn` prints as `0/#0/0`, and the third row of a keyed list's second generation prints as `1/#1/[3]/0`.
+Transcripts and `send` targets spell paths canonically: a slot or child by its index in the parent's child list, a `dyn` generation as `#n`, a `for` key as `[k]`, and a supplier-built slot as `s/n/...` with the supplied widget's own segments after the prefix. Only slots, `dyn` generations, `for` keys and intercept children take segments; a plain widget-function application makes a widget but adds no segment, so a `@Button` whose body holds the `dyn` prints as `0/#0/0`, and the third row of a keyed list's second generation prints as `1/#1/[3]/0`.
 ## D. The element vocabulary
 
 Every tag the design uses, in one place, so that a chapter, a test, a World and a library agree on the names. The language fixes the kinds (which parts a tag has) and the laws (creation rule, routing by path, identity by value); the names and fields are the vocabulary the book's examples and Worlds speak. A World accepts a subset of these natively and says which through `World.Tags`; everything else under it is Prism, as interceptors over the tags it does accept, or an `Unsupported` response.

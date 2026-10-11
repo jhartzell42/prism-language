@@ -1,6 +1,6 @@
 # Chapter 11 — The Rust runtime
 
-The Rust runtime turns a built graph into occurrences. It holds events, behaviors and dynamics as nodes with heights; it runs one occurrence per call by popping heights in order; it commits every hold at the end; and it owns the tree of widget nodes that is the whole of a program's state. The whole of it is a height-ordered action map, a commit list, weak subscriber lists and one synchronous call; everything else here is either the code that exists or the consequences of that boundary.
+The Rust runtime turns a built graph into occurrences. It holds events, behaviors and dynamics as nodes with heights; it runs one occurrence per call by popping heights in order; it commits every hold at the end; and it owns the tree of nodes that is the whole of a program's state. The whole of it is a height-ordered action map, a commit list, weak subscriber lists and one synchronous call; everything else here is either the code that exists or the consequences of that boundary.
 
 ## What the runtime does not need
 
@@ -37,8 +37,8 @@ src/event/        Event<T>, EventImpl, EventCallback, SubscriptionManager,
                   forward, never, trace
 src/behavior/     Behavior<T>, BehaviorImpl, hold, compute (map, map2, join), constant
 src/dynamic/      Dynamic<T>
-src/widget/       Widget, PolymorphicWidget, WidgetBuilder, WidgetNode, Slots,
-                  WidgetReadyEvent, DynamicWidget, fold_dyn, AnyEvent/AnyDynamic,
+src/widget/       Blueprint, PolymorphicBlueprint, WidgetBuilder, Widget, Slots,
+                  WidgetReadyEvent, DynamicBlueprint, fold_dyn, AnyEvent/AnyDynamic,
                   WidgetDelegate
 src/backends/     test_backend
 tests/            runtime_send.rs
@@ -83,7 +83,7 @@ pub trait PrismValueInner: Debug + Clone + Sync + Send + 'static {
 }
 ```
 
-Implementations exist for `()`, `u32`, `i32`, `AnyValue` itself (so an erased value is a value), `Arc<T>` for any `T: HeapValue` (`HeapValue` is `Any + Sync + Send + Debug + 'static`, blanket-implemented, with a `type_string` for diagnostics), and three runtime objects as heap values: `Event<T>`, `Dynamic<T>` and `AnyEvent`. The last three make an event of events or a dynamic of widgets expressible as ordinary values, which `switch_hold` and `dynamic_widget` need. A `Value<Event<T>>` is an `Arc<Event<T>>` underneath and `Event<T>` is itself an `Arc<dyn EventImpl<T>>`, so there is a double indirection there that the one-word representation of the values chapter removes. The enum is two words plus a tag (the crate has no `size_of` assertion pinning it), and the representation is deliberately behind the trait so that the rest of the runtime does not notice when it changes.
+Implementations exist for `()`, `u32`, `i32`, `AnyValue` itself (so an erased value is a value), `Arc<T>` for any `T: HeapValue` (`HeapValue` is `Any + Sync + Send + Debug + 'static`, blanket-implemented, with a `type_string` for diagnostics), and three runtime objects as heap values: `Event<T>`, `Dynamic<T>` and `AnyEvent`. The last three make an event of events or a dynamic of blueprints expressible as ordinary values, which `switch_hold` and `dynamic_widget` need. A `Value<Event<T>>` is an `Arc<Event<T>>` underneath and `Event<T>` is itself an `Arc<dyn EventImpl<T>>`, so there is a double indirection there that the one-word representation of the values chapter removes. The enum is two words plus a tag (the crate has no `size_of` assertion pinning it), and the representation is deliberately behind the trait so that the rest of the runtime does not notice when it changes.
 
 ### The runtime core
 
@@ -393,37 +393,37 @@ impl<T: ValueType> Dynamic<T> {
 
 ### Widgets
 
-A widget is a description with a `build` method; a node is what `build` produces through the builder. One widget value bound twice is two nodes, and a `dyn` that rebuilds into a widget of another kind needs the two kinds to be one Rust type to the runtime, which is what the polymorphic form is for.
+A blueprint is a description with a `build` method; a node is what `build` produces through the builder. One blueprint value bound twice is two nodes, and a `dyn` that rebuilds into a widget of another kind needs the two kinds to be one Rust type to the runtime, which is what the polymorphic form is for.
 
 ```rust
-pub trait Widget: Send + Sync {
+pub trait Blueprint: Send + Sync {
     type Output: ValueType;
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output;
 }
 
-pub trait PolymorphicWidget<O: ValueType>: Sync + Send {
+pub trait PolymorphicBlueprint<O: ValueType>: Sync + Send {
     fn build(&self, builder: &mut WidgetBuilder) -> O;
 }
-pub struct PolymorphicWidgetAdapter<O: ValueType, W: Widget<Output = O>>(W);
-impl<O: ValueType> Widget for Arc<dyn PolymorphicWidget<O>> { type Output = O; ... }
+pub struct PolymorphicBlueprintAdapter<O: ValueType, W: Blueprint<Output = O>>(W);
+impl<O: ValueType> Blueprint for Arc<dyn PolymorphicBlueprint<O>> { type Output = O; ... }
 ```
 
-`PolymorphicWidget` is the `dyn`-compatible form, and `Arc<dyn PolymorphicWidget<O>>` implementing `Widget` is what lets every compiled widget block be one Rust type to the runtime and lets a `dyn` rebuild into a widget of a different kind. The adapter has a private field and no constructor, so nothing outside its module can make one; the blanket `impl<W: Widget> PolymorphicWidget<W::Output> for W` replaces it and compiles.
+`PolymorphicBlueprint` is the `dyn`-compatible form, and `Arc<dyn PolymorphicBlueprint<O>>` implementing `Blueprint` is what lets every compiled widget block be one Rust type to the runtime and lets a `dyn` rebuild into a widget of a different kind. The adapter has a private field and no constructor, so nothing outside its module can make one; the blanket `impl<W: Blueprint> PolymorphicBlueprint<W::Output> for W` replaces it and compiles.
 
 **The builder.**
 
 ```rust
 pub struct WidgetBuilder<'a> {
-    node: WidgetNode,
-    children: Vec<Arc<WidgetNode>>,
+    node: Widget,
+    children: Vec<Arc<Widget>>,
     pub(super) done_event: Arc<WidgetReadyEvent>,
     runtime: &'a Runtime,
 }
 
 impl WidgetBuilder<'_> {
-    pub fn build_root<W: Widget>(runtime: &Runtime, widget: &W, height: usize) -> (Arc<WidgetNode>, W::Output);
-    pub fn bind<W: Widget>(&mut self, widget: &W) -> W::Output;
-    pub fn done_event(&self) -> Event<Arc<WidgetNode>>;
+    pub fn build_root<W: Blueprint>(runtime: &Runtime, widget: &W, height: usize) -> (Arc<Widget>, W::Output);
+    pub fn bind<W: Blueprint>(&mut self, widget: &W) -> W::Output;
+    pub fn done_event(&self) -> Event<Arc<Widget>>;
     pub fn add_cyclic_dynamic<T: ValueType>(&mut self, name: String) -> (usize, Dynamic<T>);
     pub fn close_cyclic_dynamic_by_index<T: ValueType>(&mut self, ix: usize, dynamic: Dynamic<T>);
     pub fn close_cyclic_dynamic_by_name<T: ValueType>(&mut self, name: &str, dynamic: Dynamic<T>);
@@ -483,8 +483,8 @@ Here is the ownership arrangement in full, because it does the collector's job. 
 **The node.**
 
 ```rust
-pub struct WidgetNode {
-    pub children: Mutex<Vec<Arc<WidgetNode>>>,
+pub struct Widget {
+    pub children: Mutex<Vec<Arc<Widget>>>,
     pub public_dynamics: Slots<AnyDynamic>,
     pub public_events: Slots<AnyEvent>,
     pub _public_event_callbacks: OnceLock<Vec<Arc<DelegateCallback>>>,
@@ -501,12 +501,12 @@ A node owns its children, its cyclic loops, and (today) its public outputs, trig
 **`dyn`.**
 
 ```rust
-impl<T: Widget + 'static + Send + Sync + Debug> Dynamic<Arc<T>> {
-    pub fn dynamic_widget(&self) -> impl Widget<Output = Arc<Event<Arc<T::Output>>>>;
+impl<T: Blueprint + 'static + Send + Sync + Debug> Dynamic<Arc<T>> {
+    pub fn dynamic_widget(&self) -> impl Blueprint<Output = Arc<Event<Arc<T::Output>>>>;
 }
 ```
 
-`dynamic_widget` on a dynamic of widgets is `dyn`: a widget whose node holds one child, the build of the dynamic's current widget, replaced whenever the dynamic changes, with an output event that fires in every build occurrence with the built widget's output. Its `build`:
+`dynamic_widget` on a dynamic of blueprints is `dyn`: a blueprint whose node holds one child, the build of the dynamic's current widget, replaced whenever the dynamic changes, with an output event that fires in every build occurrence with the built widget's output. Its `build`:
 
 ```rust
 fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
@@ -528,14 +528,14 @@ fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
 }
 ```
 
-Four things happen here. The `DynamicWidgetEvent` subscribes to the dynamic's change event; if the dynamic already changed earlier in this occurrence, `subscribe` returns the new widget and the first build uses it, which is the "builds once with the new value" clause of the construction rule and the test `a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value` (a page `dyn` with a title `dyn` inside it and one input changing both; the rebuilt page's title shows 7, not 0). Otherwise the first build samples the behavior. The initial widget is bound as child 0. The first build's output is delivered through a `filter_map` on the done event, so it fires at the done height of the build occurrence. And the output is `leftmost` of the rebuild event and the first-build event, with the rebuild listed first: in an occurrence where both fire (occurrence zero with a trigger that changes the dynamic), the rebuild's output wins, which is the output of the widget that is in the tree at commit.
+Four things happen here. The `DynamicWidgetEvent` subscribes to the dynamic's change event; if the dynamic already changed earlier in this occurrence, `subscribe` returns the new blueprint and the first build uses it, which is the "builds once with the new value" clause of the construction rule and the test `a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value` (a page `dyn` with a title `dyn` inside it and one input changing both; the rebuilt page's title shows 7, not 0). Otherwise the first build samples the behavior. The initial blueprint is bound as child 0. The first build's output is delivered through a `filter_map` on the done event, so it fires at the done height of the build occurrence. And the output is `leftmost` of the rebuild event and the first-build event, with the rebuild listed first: in an occurrence where both fire (occurrence zero with a trigger that changes the dynamic), the rebuild's output wins, which is the output of the widget that is in the tree at commit.
 
 The `add_public_event("__rebuilt__", ..)` line is a keep-alive. `DynamicWidgetEvent` is the subscriber to the dynamic's change; if nobody held the `dyn`'s output event, the only strong reference to it would be gone and the `dyn` would stop rebuilding. Registering it as a public event stores an `Arc` in the node. A private keep-alive list on the node is the right home, a known issue.
 
 The rebuild is `DWAction`, scheduled at the `DynamicWidgetEvent`'s height, which is the dynamic's change height plus one:
 
 ```rust
-impl<T: 'static + Widget + Debug> Action for DWAction<T> {
+impl<T: 'static + Blueprint + Debug> Action for DWAction<T> {
     fn act(self: Box<Self>, runtime: &Runtime) {
         let parent_node = self.event.ready.node.get().unwrap().clone();
         let (child_node, output) = WidgetBuilder::build_root(runtime, &*self.value, self.height + 1);
@@ -561,9 +561,9 @@ The `DynamicWidgetEvent` implements `SubscriptionEvent` with `Inner = ()` and `u
 ### The test backend
 
 ```rust
-pub struct TestBackend { node: Arc<WidgetNode>, runtime: Runtime, delegate: Arc<TestDelegate>, event_rx: mpsc::Receiver<EventRecord> }
+pub struct TestBackend { node: Arc<Widget>, runtime: Runtime, delegate: Arc<TestDelegate>, event_rx: mpsc::Receiver<EventRecord> }
 impl TestBackend {
-    pub fn build_tree<W: Widget>(widget: &W) -> (W::Output, TestBackend);
+    pub fn build_tree<W: Blueprint>(widget: &W) -> (W::Output, TestBackend);
     pub fn main_loop(&mut self, script: TestScript) -> Result<(), ScriptError>;
 }
 pub fn script<const N: usize>(steps: [TestStep; N]) -> TestScript;
@@ -573,8 +573,8 @@ pub fn event<..>(node_path, name, v) -> TestStep;      // expect the next record
 pub fn dynamic<..>(node_path, name, v) -> TestStep;    // read a public dynamic now
 pub fn crickets() -> TestStep;                          // nothing recorded
 impl TestScript {
-    pub fn run<W: Widget>(self, widget: &W) -> Result<W::Output, ScriptError>;
-    pub fn test<W: Widget>(self, widget: &W) -> W::Output;
+    pub fn run<W: Blueprint>(self, widget: &W) -> Result<W::Output, ScriptError>;
+    pub fn test<W: Blueprint>(self, widget: &W) -> W::Output;
 }
 ```
 
@@ -612,21 +612,21 @@ Every hold in a Prism program commits this way, and the whole of the tag law is 
 
 **A widget built in the middle.** The test builds an external `E`, a five-deep chain `D1..D5 = E.map(id)` five times (heights 1 to 5), a hold on `D5` so the chain is subscribed, and a `dyn` over `children = Dynamic::hold(new_child(), E.map(new_child))` whose block makes a child with two holds, one on `E` and one on `D5`. The `DynamicWidgetEvent` subscribes to `children`' change event `M = E.map(..)` (height 1), so its own height is 2. Occurrence zero builds the first child, whose holds subscribe to `E` and `D5` and get `None` back, since nothing has fired.
 
-Occurrence one is `42` on `E`. Height 0: `E` fires; its subscribers are `M` (scheduled at 1), `D1` (at 1), and the first child's shallow hold (a hold action at the top). Height 1: `M` computes a new child widget and delivers it to the `DynamicWidgetEvent`, which schedules a `DWAction` at 2; `D1` fires and schedules `D2` at 2. Height 2: `D2` fires, scheduling `D3` at 3; the `DWAction` runs `build_root(child, 3)`. Inside that build, `Dynamic::hold(0, E)` subscribes to `E` and `subscribe` returns `Some(42)` from `E`'s cache, so `Behavior::hold` defers a `HoldAction` with 42 to the top: this hold has caught up. `Dynamic::hold(0, D5)` subscribes to `D5`, which is already connected and has no cached value yet, because height 5 has not run; `subscribe` returns `None`, and the hold waits like any subscriber. The action schedules the new node's ready trigger at 3, delivers the new child's output, swaps the node in at child 0, and hands the old node to a `KeepUntilOccurrenceEnds` at the top; then `propagate` drains the deferred list and schedules the caught-up hold action. Heights 3 and 4: `D3`, `D4`, and the done events. Height 5: `D5` fires 42 to three holds: the test's own, the old child's, and the new child's, each scheduling at the top. Height `usize::MAX`: five hold actions write 42, and the old node is dropped. Both of the new child's holds read 42.
+Occurrence one is `42` on `E`. Height 0: `E` fires; its subscribers are `M` (scheduled at 1), `D1` (at 1), and the first child's shallow hold (a hold action at the top). Height 1: `M` computes a new child blueprint and delivers it to the `DynamicWidgetEvent`, which schedules a `DWAction` at 2; `D1` fires and schedules `D2` at 2. Height 2: `D2` fires, scheduling `D3` at 3; the `DWAction` runs `build_root(child, 3)`. Inside that build, `Dynamic::hold(0, E)` subscribes to `E` and `subscribe` returns `Some(42)` from `E`'s cache, so `Behavior::hold` defers a `HoldAction` with 42 to the top: this hold has caught up. `Dynamic::hold(0, D5)` subscribes to `D5`, which is already connected and has no cached value yet, because height 5 has not run; `subscribe` returns `None`, and the hold waits like any subscriber. The action schedules the new node's ready trigger at 3, delivers the new child's output, swaps the node in at child 0, and hands the old node to a `KeepUntilOccurrenceEnds` at the top; then `propagate` drains the deferred list and schedules the caught-up hold action. Heights 3 and 4: `D3`, `D4`, and the done events. Height 5: `D5` fires 42 to three holds: the test's own, the old child's, and the new child's, each scheduling at the top. Height `usize::MAX`: five hold actions write 42, and the old node is dropped. Both of the new child's holds read 42.
 
 There is a third branch the test does not take and the mechanism covers. Had nobody subscribed to `D5` before the new child did, `D5` would have had no connection and no cache; the child's `subscribe` would run `connect`, which resubscribes up the chain to `E`, finds `E`'s cached 42, and hands it to `D1.handle_already_fired`, which computes `id(42)` once through `record_once` and `deliver_already_fired`s it to `D2`, and so on to `D5`, which returns it to the new hold. The chain catches up on demand, each link computing once, and a later subscriber reads the caches. That is the whole of Spider's `subscribeAndRead`, and it is why a closure runs at most once per occurrence whoever asks and whenever.
 ## The target
 
-The runtime is a library a World calls. Its public surface is the run call and the handful of plain-data types that cross it; the graph types are public for compiled widgets, which are the only other client, and for nothing else. Everything in this section is a consequence of the boundary (one synchronous call per occurrence, plain data both ways, nothing shared) applied to the core that exists.
+The runtime is a library a World calls. Its public surface is the run call and the handful of plain-data types that cross it; the graph types are public for compiled blueprints, which are the only other client, and for nothing else. Everything in this section is a consequence of the boundary (one synchronous call per occurrence, plain data both ways, nothing shared) applied to the core that exists.
 
 ### Single-threaded
 
-Every lock in the current code is taken by the one thread that is propagating; the locks are uncontended by construction, and the only work they do beyond locking is the re-entry check that the height comparison already makes. So the pointer and cell types become `Rc`, `Weak`, `RefCell` and `Cell`. The `send + Sync` bounds on `Widget`, `PolymorphicWidget`, `EventImpl`, `EventCallback`, `BehaviorImpl`, `HeapValue`, `Action` and every closure parameter go, which also lets a compiled closure capture an `Rc` without a wrapper. The occurrence state moves into one shared core that every node points at:
+Every lock in the current code is taken by the one thread that is propagating; the locks are uncontended by construction, and the only work they do beyond locking is the re-entry check that the height comparison already makes. So the pointer and cell types become `Rc`, `Weak`, `RefCell` and `Cell`. The `send + Sync` bounds on `Blueprint`, `PolymorphicBlueprint`, `EventImpl`, `EventCallback`, `BehaviorImpl`, `HeapValue`, `Action` and every closure parameter go, which also lets a compiled closure capture an `Rc` without a wrapper. The occurrence state moves into one shared core that every node points at:
 
 ```rust
 pub struct Runtime {
     core: Rc<Core>,
-    root: Option<Rc<WidgetNode>>,          // the root InterceptWidget's node
+    root: Option<Rc<Widget>>,          // the root InterceptWidget's node
     tags: Rc<TagTable>,
 }
 
@@ -648,7 +648,7 @@ unsafe impl Send for Runtime {}            // sound: see below
 
 The runtime is a parameter of every constructor that subscribes when it is made and of `subscribe` itself, so an occurrence's state never leaves the runtime. What a parameter cannot do is stop a caller from passing the wrong runtime: an event built against one runtime and subscribed in another is a bug nothing catches. The target closes that by giving every graph object an `Rc<Core>`, taken from the upstream it is built from: `filter_map` copies its source's, `hold` copies its event's, `combine` and `leftmost` check that their sources agree. The only constructors with no upstream are `never` and `constant`, and they schedule nothing, so they need none. The root of every chain is an event the builder made, and the builder has the core. A `subscribe` then asserts that the runtime it was handed is the one its source belongs to, and the mix is a panic at the call rather than a silent misdelivery. The cost is one pointer per node.
 
-`Runtime` is `send` and not `Sync`. It cannot be `send` by derivation, since it holds `Rc`s, so the impl is written by hand, and it is sound because the runtime is the unique owner of every `Rc` in its graph: no handle to any of them crosses the boundary, by the rule that nothing in `Inputs` or `Outcome` is a runtime object, and compiled widgets live inside the graph they are built into. Moving all the clones of an `Rc` to one other thread together is the one case `Rc`'s non-`send`-ness does not cover, and it is this case. A World may build the runtime on one thread, move it to another and drive it there; no two threads can touch it at once because `run` takes `&mut self` and nothing shares it. The `runtime_send` test becomes "build a graph on one thread, move the runtime, run an occurrence on the other."
+`Runtime` is `send` and not `Sync`. It cannot be `send` by derivation, since it holds `Rc`s, so the impl is written by hand, and it is sound because the runtime is the unique owner of every `Rc` in its graph: no handle to any of them crosses the boundary, by the rule that nothing in `Inputs` or `Outcome` is a runtime object, and compiled blueprints live inside the graph they are built into. Moving all the clones of an `Rc` to one other thread together is the one case `Rc`'s non-`send`-ness does not cover, and it is this case. A World may build the runtime on one thread, move it to another and drive it there; no two threads can touch it at once because `run` takes `&mut self` and nothing shares it. The `runtime_send` test becomes "build a graph on one thread, move the runtime, run an occurrence on the other."
 
 The `try_lock` re-entry checks become a `Cell<bool>` per cached height and per behavior cache, set while computing and cleared after, with the same effect and a message that names the node: "event cycle: `name` depends on itself in one occurrence", where `name` is the source span the compiler attaches to every placeholder and slot. The eager detection of the error chapter, below, means this flag is reached only by a runtime bug once the walks at edge creation are in; it stays as the assertion it is.
 
@@ -687,7 +687,7 @@ pub struct RuntimeError {
 }
 
 impl Runtime {
-    pub fn build(main: Rc<dyn PolymorphicWidget<Value>>, tags: Rc<TagTable>, oracle: &dyn Fn(&ElementValue) -> Value)
+    pub fn build(main: Rc<dyn PolymorphicBlueprint<Value>>, tags: Rc<TagTable>, oracle: &dyn Fn(&ElementValue) -> Value)
         -> Result<(Runtime, Outcome), RuntimeError>;
     pub fn run(&mut self, inputs: Inputs<'_>) -> Result<Outcome, RuntimeError>;
     pub fn list(&self) -> ElementList;     // the committed root list: an Rc clone, constant time
@@ -696,7 +696,7 @@ impl Runtime {
 
 The outcome reports the list as a patch because a GUI changes a label and keeps a thousand rows, and a `Defer` occurrence often changes nothing at all; a full list per call would charge every turn the program's size. A World that wants the whole list, at startup or to rebuild its own tables, asks `list()`, which hands out the persistent map the runtime already holds.
 
-`Value` at the boundary is the runtime's untyped value, today's `AnyValue`, restricted to plain data: no event, dynamic or widget inside, which the compiler guarantees for element fields, responses, pushes and results and which a debug build asserts at the slot. The typed wrapper that is `Value<T>` today is renamed `Typed<T>` so that the boundary can use the plain name; nothing else about it changes. `Value` holds `I64` and `U64` immediates, since `Int` is 64-bit signed and `Nat` 64-bit unsigned; the 32-bit variants go in step 1. `Path`, `ElementValue` and `TagTable` are below. `build` is occurrence zero: it constructs `@main` under a root node and returns the runtime with the initial list as a patch of insertions; a cycle found there, or a state tag the oracle cannot answer, is an `Err` and no runtime. `run` is every occurrence after that. Nothing else a World needs is public; `Event::external`, `schedule_trigger`, `build_root` and `propagate` become `pub(crate)`.
+`Value` at the boundary is the runtime's untyped value, today's `AnyValue`, restricted to plain data: no event, dynamic or blueprint inside, which the compiler guarantees for element fields, responses, pushes and results and which a debug build asserts at the slot. The typed wrapper that is `Value<T>` today is renamed `Typed<T>` so that the boundary can use the plain name; nothing else about it changes. `Value` holds `I64` and `U64` immediates, since `Int` is 64-bit signed and `Nat` 64-bit unsigned; the 32-bit variants go in step 1. `Path`, `ElementValue` and `TagTable` are below. `build` is occurrence zero: it constructs `@main` under a root node and returns the runtime with the initial list as a patch of insertions; a cycle found there, or a state tag the oracle cannot answer, is an `Err` and no runtime. `run` is every occurrence after that. Nothing else a World needs is public; `Event::external`, `schedule_trigger`, `build_root` and `propagate` become `pub(crate)`.
 
 `RuntimeError` is one record with a kind rather than one variant per kind because the World core prints every error the same way and the `Error` element a program can match on has a closed `kind` field; a Rust enum per kind would be unpacked into this record at the boundary anyway. Of the seven kinds, the runtime raises five: `Cycle`, `Overflow`, `UnknownPath`, `UnsuppliedState` and `Build`. `DeferBackwards` is raised by the World core, which is the only thing that knows what a turn is. `Component` is raised by the World for its own components' failures, and by the runtime for one thing: a panic inside propagation whose payload is not the runtime's own, which can only come from native code a World or a library put inside a closure. Two further protocol failures, a response of a type the slot's tag does not declare and two responses to one path in one occurrence, are the World's bugs rather than the program's; `run` refuses them before scheduling anything, as `Component` errors naming the path, and the core treats them as its own fault.
 
@@ -724,13 +724,13 @@ Why rollback is cheap rather than merely possible: every write a program can obs
 
 The truncation is why the four lists are plain vectors with push at the end: a build is synchronous and nothing else appends while it runs, so "everything after the recorded length belongs to this build" is exact. A hold built inside the failed build may have deferred its catch-up write onto the commit list; the truncation removes it, and with it the only strong reference to the half-built hold.
 
-**Eager cycle detection.** A prompt cycle has one property: no consistent assignment of heights. The runtime finds one by the height walk, and the choice that decides which unit of failure a cycle lands in is *when* the walk runs. The target runs it at the moment an edge is created, in three places: when a placeholder is closed (`ForwardEvent::close` computes the target's height through `height_checked`, which walks upstream with a per-node in-progress flag and returns the loop's spans when it meets a node already in progress); when a switch adopts a new inner at commit (the retarget computes the new inner's height the same way, and the walk reaches the switch itself exactly when the inner depends on it, because every cached height below the switch was invalidated by the retarget and the walk stops only at cached heights, which are the nodes not downstream of it); and when `Dynamic::join` or the list widget retargets, which are the same operation. A cycle found at a close during a build is a build failure, contained as above. A cycle found at a switch adoption is found in the commit batch, after propagation and before any hold write, and aborts the occurrence with the loop's spans and the owner's path. The owner is the lowest common owning node of the nodes on the loop, found by walking each node's owner chain, which every graph object has as a `Weak<WidgetNode>` set by the builder. The cost is a walk upstream per edge creation, bounded by the cache: the walk stops at any node whose height is cached, and a cached height is valid exactly as long as nothing below it has been invalidated, which is the rule every event type keeps. The runtime check that a node never schedules at or below the current height stays as an assertion against the runtime's own bugs; with eager detection it should never fire for a program's cycle.
+**Eager cycle detection.** A prompt cycle has one property: no consistent assignment of heights. The runtime finds one by the height walk, and the choice that decides which unit of failure a cycle lands in is *when* the walk runs. The target runs it at the moment an edge is created, in three places: when a placeholder is closed (`ForwardEvent::close` computes the target's height through `height_checked`, which walks upstream with a per-node in-progress flag and returns the loop's spans when it meets a node already in progress); when a switch adopts a new inner at commit (the retarget computes the new inner's height the same way, and the walk reaches the switch itself exactly when the inner depends on it, because every cached height below the switch was invalidated by the retarget and the walk stops only at cached heights, which are the nodes not downstream of it); and when `Dynamic::join` or the list widget retargets, which are the same operation. A cycle found at a close during a build is a build failure, contained as above. A cycle found at a switch adoption is found in the commit batch, after propagation and before any hold write, and aborts the occurrence with the loop's spans and the owner's path. The owner is the lowest common owning node of the nodes on the loop, found by walking each node's owner chain, which every graph object has as a `Weak<Widget>` set by the builder. The cost is a walk upstream per edge creation, bounded by the cache: the walk stops at any node whose height is cached, and a cached height is valid exactly as long as nothing below it has been invalidated, which is the rule every event type keeps. The runtime check that a node never schedules at or below the current height stays as an assertion against the runtime's own bugs; with eager detection it should never fire for a program's cycle.
 
 **Quarantine.** At open, for each path in `quarantine`: look it up among the owners the runtime named in its last error (it keeps them in `pending_quarantine: BTreeMap<Path, RuntimeError>` until the next successful `run`); find the node at that path; replace it in its parent with an error node holding `Error(error=that report)` at the same position; drop the subtree, which drops its slots, its supplied widgets' interest and its loops. The replacement is in the parent's children map under the same segment, so the parent's list changes in this occurrence like any other child replacement and the World sees the `Error` element in the outcome. Responses in this same call addressed to paths under the quarantined node were legal addresses, since those paths were in the list the World last received; they are delivered to nothing and reported with their paths in `requests` as firings-to-nothing are, so the World can discard them. What the parent held of the quarantined node's results stays as handles to a dropped subtree: an event that never fires again, a dynamic at its last value.
 
 ### The graph API
 
-The compiler emits one node per lift. `$a + $b + $c` is one derived dynamic, not a tree of `map2`s allocating pairs, and `$a + $b + !e` is one tag reading two behaviors, because the typed-AST text form prints one node per lift and the graph should not be a lie about the text form. So the target's combinators are n-ary where the current ones are binary, and three constructors exist for the compiler's sake: `hold_first`, for a dynamic-of-widgets bind whose initial value is the first build's result; `map_n`, a derived dynamic over any number of dynamics; and `tag_map_n`, a tag reading any number of behaviors. The whole of the target's graph surface, with the fate of today's public entry points:
+The compiler emits one node per lift. `$a + $b + $c` is one derived dynamic, not a tree of `map2`s allocating pairs, and `$a + $b + !e` is one tag reading two behaviors, because the typed-AST text form prints one node per lift and the graph should not be a lie about the text form. So the target's combinators are n-ary where the current ones are binary, and three constructors exist for the compiler's sake: `hold_first`, for a dynamic-of-blueprints bind whose initial value is the first build's result; `map_n`, a derived dynamic over any number of dynamics; and `tag_map_n`, a tag reading any number of behaviors. The whole of the target's graph surface, with the fate of today's public entry points:
 
 ```rust
 impl<T: ValueType> Event<T> {
@@ -766,19 +766,19 @@ impl<T: ValueType> Dynamic<T> {
 impl<A: ValueType> Dynamic<Dynamic<A>> {
     pub fn join(&self) -> Dynamic<A>;                            // $Join, prompt on both
 }
-impl<W: PolymorphicWidget<O>, O: ValueType> Dynamic<Rc<W>> {
-    pub fn dynamic_widget(&self) -> DynamicWidget<W, O>;         // dyn: Output = (Event<O>, O), the event and the first build's result
+impl<W: PolymorphicBlueprint<O>, O: ValueType> Dynamic<Rc<W>> {
+    pub fn dynamic_widget(&self) -> DynamicBlueprint<W, O>;         // dyn: Output = (Event<O>, O), the event and the first build's result
 }
 impl<K: ValueType + Ord, V: ValueType> Dynamic<PMap<K, V>> {
-    pub fn list_widget<W: Widget>(&self, kind: Consolidation, block: impl Fn(&K, Dynamic<V>) -> W + 'static) -> ListWidget<K, V, W>;
+    pub fn list_widget<W: Blueprint>(&self, kind: Consolidation, block: impl Fn(&K, Dynamic<V>) -> W + 'static) -> ListWidget<K, V, W>;
 }
 impl WidgetBuilder<'_> {
-    pub fn bind<W: Widget>(&mut self, widget: &W) -> W::Output;
+    pub fn bind<W: Blueprint>(&mut self, widget: &W) -> W::Output;
     pub fn started(&mut self) -> Event<()>;                      // @started: a dyn over a constant, takes a position
     pub fn element(&mut self, element: ElementValue, request: Option<Event<Value>>) -> Result<ElementResult, RuntimeError>;
     pub fn add_cyclic_event<T: ValueType>(&mut self, span: Span) -> (CyclicEvent<T>, Event<T>);
     pub fn add_cyclic_dynamic<T: ValueType>(&mut self, span: Span) -> (CyclicDynamic<T>, Dynamic<T>);
-    pub(crate) fn build_root<W: Widget>(..) -> ..;               // called by dyn, for and the supplier only
+    pub(crate) fn build_root<W: Blueprint>(..) -> ..;               // called by dyn, for and the supplier only
 }
 impl<T: ValueType> CyclicEvent<T>   { pub fn close(self, event: Event<T>) -> Result<(), RuntimeError>; }
 impl<T: ValueType> CyclicDynamic<T> { pub fn close(self, dynamic: Dynamic<T>) -> Result<(), RuntimeError>; }
@@ -788,7 +788,7 @@ impl Runtime {
 }
 ```
 
-`hold_first` is a hold with no initial argument: it subscribes to its event in the build occurrence, takes the catch-up value `subscribe` returns as the initial value, and from then on is an ordinary hold. The compiler emits it for one thing only, the plain-result lift under the canonical node structure, below, where the event is a `dyn`'s output and has always fired by the time the hold is built (the first build is inside the `dyn`'s own build, and its output is the `dyn`'s second result, so the catch-up value exists by construction); a `hold_first` over an event that has not fired is a build error, since there is no value to hold, and the compiler never emits one. `map_n` is the change law for any arity: its behavior is a computation over every operand's behavior, and its event is a single merge node that fires at n with every operand's value after n if any operand changed at n, once however many did, which is glitch freedom with no pair allocation in the middle. `tag_map_n` reads every behavior with `query_for_tag` at the event's firing, which is the tag law; the behaviors are untyped at the signature because the compiler has already checked them and the closure reads them by position. `map2` and `tag_map` stay as the two-operand cases that hand-written widgets and the join use. `distinct` is `$Distinct`: a derived dynamic whose event is the source's filtered by `eq old, new` against the value before the occurrence, one node, which is why dedupe is a prelude function and not a runtime policy.
+`hold_first` is a hold with no initial argument: it subscribes to its event in the build occurrence, takes the catch-up value `subscribe` returns as the initial value, and from then on is an ordinary hold. The compiler emits it for one thing only, the plain-result lift under the canonical node structure, below, where the event is a `dyn`'s output and has always fired by the time the hold is built (the first build is inside the `dyn`'s own build, and its output is the `dyn`'s second result, so the catch-up value exists by construction); a `hold_first` over an event that has not fired is a build error, since there is no value to hold, and the compiler never emits one. `map_n` is the change law for any arity: its behavior is a computation over every operand's behavior, and its event is a single merge node that fires at n with every operand's value after n if any operand changed at n, once however many did, which is glitch freedom with no pair allocation in the middle. `tag_map_n` reads every behavior with `query_for_tag` at the event's firing, which is the tag law; the behaviors are untyped at the signature because the compiler has already checked them and the closure reads them by position. `map2` and `tag_map` stay as the two-operand cases that hand-written blueprints and the join use. `distinct` is `$Distinct`: a derived dynamic whose event is the source's filtered by `eq old, new` against the value before the occurrence, one node, which is why dedupe is a prelude function and not a runtime policy.
 
 The one thing the signatures hide is `Rc<Core>`. Every constructor takes it from its first operand, `never` and `constant` take none because they schedule nothing, and the builder hands it to `external`, `started` and the placeholders, which are the roots of every chain.
 
@@ -867,7 +867,7 @@ A todo list with a half-typed edit in row three must keep that edit when a row i
 
 ```rust
 impl<K: ValueType + Ord, V: ValueType> Dynamic<PMap<K, V>> {
-    pub fn list_widget<W: Widget>(&self, kind: Consolidation,
+    pub fn list_widget<W: Blueprint>(&self, kind: Consolidation,
                                   block: impl Fn(&K, Dynamic<V>) -> W + 'static) -> ListWidget<K, V, W>;
 }
 pub enum Consolidation { Plain, Event, Dynamic }   // the compiler states the result kind
@@ -977,7 +977,7 @@ pub struct ResponseFan {
     table: Behavior<ElementList>,                // the captured child's list, value side
     born: u64,                                   // the occurrence the fan was built in
     outputs: RefCell<BTreeMap<Path, Weak<FanOutput>>>,
-    owner: Weak<WidgetNode>,                     // the interceptor's node, named in errors
+    owner: Weak<Widget>,                     // the interceptor's node, named in errors
 }
 ```
 
@@ -1018,19 +1018,19 @@ Every node knows its nearest enclosing *supply context*, a field set by the buil
 pub struct SupplyContext {
     supplier: Supplier,
     memo: RefCell<BTreeMap<ElementValue, Weak<Supplied>>>,
-    owner: Weak<WidgetNode>,                      // the interceptor's node, or the root
+    owner: Weak<Widget>,                      // the interceptor's node, or the root
     next_supplied: Cell<u32>,                     // the Supplied(n) counter
 }
 enum Supplier {
-    Widget(Dynamic<Rc<dyn Fn(&ElementValue) -> Rc<dyn PolymorphicWidget<Dynamic<Value>>>>>),
+    Widget(Dynamic<Rc<dyn Fn(&ElementValue) -> Rc<dyn PolymorphicBlueprint<Dynamic<Value>>>>>),
     Oracle,
 }
-pub struct Supplied { node: Option<Rc<WidgetNode>>, dynamic: Dynamic<Value>, trigger: Option<EventTrigger<Value>> }
+pub struct Supplied { node: Option<Rc<Widget>>, dynamic: Dynamic<Value>, trigger: Option<EventTrigger<Value>> }
 ```
 
 When `element` is called for a tag with state, it asks the context for the slot's dynamic by element value. The context looks in its memo first: if a `Supplied` for an equal value is alive, it returns it, the slot takes a strong reference, and *the supplier is not consulted*. A new slot whose value already has a live supplied widget joins that widget whatever the supplier dynamic says at that moment; the supplier is read only for a value no live supplied widget serves. This is value identity inside an interceptor held by construction, and it is what the migration interceptor relies on: two child slots for one key never disagree, and a key migrates to a new backend only when its last reader is gone and a new one arrives.
 
-On a miss under an interceptor, supplying means reading the supplier function from its dynamic right now (`query_for_tag`, the value as the occurrence opened, which is what "a slot's policy is fixed at creation" means), applying it to the element, and building the returned widget as a child of the interceptor's node, then and there, in the same build pass, as a journaled build with the nested-transaction boundary. The widget takes the next `Supplied(n)` position in the interceptor's node, and its slots take their own segments under it. The order is build, then memoise: the supplied widget is built to completion under the nested-transaction boundary, and only when its build returns with a result dynamic is the `Supplied` record made, memoised weakly, and handed to the asking slot strongly. A supplier build that fails (a cycle at a placeholder close inside it, a state tag it asks for that the next context out cannot answer, a panic in one of its build-time closures) is truncated like any failed build, leaves nothing in the memo, and surfaces to the asking slot as the `Err` of `element`, with the supplier's error as the cause: the asking slot's own build then fails, and the failure is contained or fatal by the ordinary rule, under a `dyn` as an error node and in occurrence zero as the `Err` of `build`. The slot never sees a half-built `Supplied`, and a later slot with the same value asks the supplier again, since the memo has no entry for it. Because the supplied widget is built in the interceptor's node, its own elements go into the interceptor's list and its own state slots ask the *next* context out, which is how `\|e| @Element e` forwards a state element one level: the supplied widget is one `@Element` with the same value, whose slot asks the outer context, and so on up to the root. A supplied widget's result dynamic is read by the child's slot in the child's creation occurrence, and it has a value then by the same rule applied one level up.
+On a miss under an interceptor, supplying means reading the supplier function from its dynamic right now (`query_for_tag`, the value as the occurrence opened, which is what "a slot's policy is fixed at creation" means), applying it to the element, and building the returned blueprint as a child of the interceptor's node, then and there, in the same build pass, as a journaled build with the nested-transaction boundary. The widget takes the next `Supplied(n)` position in the interceptor's node, and its slots take their own segments under it. The order is build, then memoise: the supplied widget is built to completion under the nested-transaction boundary, and only when its build returns with a result dynamic is the `Supplied` record made, memoised weakly, and handed to the asking slot strongly. A supplier build that fails (a cycle at a placeholder close inside it, a state tag it asks for that the next context out cannot answer, a panic in one of its build-time closures) is truncated like any failed build, leaves nothing in the memo, and surfaces to the asking slot as the `Err` of `element`, with the supplier's error as the cause: the asking slot's own build then fails, and the failure is contained or fatal by the ordinary rule, under a `dyn` as an error node and in occurrence zero as the `Err` of `build`. The slot never sees a half-built `Supplied`, and a later slot with the same value asks the supplier again, since the memo has no entry for it. Because the supplied widget is built in the interceptor's node, its own elements go into the interceptor's list and its own state slots ask the *next* context out, which is how `\|e| @Element e` forwards a state element one level: the supplied widget is one `@Element` with the same value, whose slot asks the outer context, and so on up to the root. A supplied widget's result dynamic is read by the child's slot in the child's creation occurrence, and it has a value then by the same rule applied one level up.
 
 At the root the supplier is the oracle. Supplying is: call the oracle with the element value to get the value before this occurrence; make a *root state cell*, an external trigger and a hold of it initialised from the oracle's answer; memoise it by element value in the same memo. The run call's pushes are deliveries to these triggers at height 0. A slot created in n reads the oracle (the value before n, from the World's previous snapshot) and then, if n's pushes include its value, receives the push in n and ends n holding the new snapshot, exactly like a slot that existed before n. Two slots with equal values share one cell and therefore one dynamic. A state tag the World does not answer is a build error, `UnsuppliedState`, raised at the slot's creation with the element and the slot's span; the oracle's signature cannot express refusal because the specification says it cannot fail, so the world core checks the tag against its table before the call and the runtime checks the answer's type after it, and either failure is the error in the occurrence the slot is created, contained to a `dyn` build when it happens in one and fatal to `build` when it happens in occurrence zero.
 
@@ -1041,12 +1041,12 @@ The memo holds `Weak<Supplied>` and the slots hold strong references, so the tea
 Forwarding is manual, so the interceptor has no policy to implement: `@Forward`, the sandbox, the VBox and the cache are Prism programs over `intercept`, `for` and `@Element`, and the runtime does not know they exist. The runtime keeps a fan, a supply context, a captured child and its list, and nothing else.
 
 ```rust
-pub struct InterceptWidget<W: Widget> {
+pub struct InterceptWidget<W: Blueprint> {
     child: W,
     responses: Event<Rc<[(Path, Value)]>>,
-    supplier: Dynamic<Rc<dyn Fn(&ElementValue) -> Rc<dyn PolymorphicWidget<Dynamic<Value>>>>>,
+    supplier: Dynamic<Rc<dyn Fn(&ElementValue) -> Rc<dyn PolymorphicBlueprint<Dynamic<Value>>>>>,
 }
-impl<W: Widget> Widget for InterceptWidget<W> {
+impl<W: Blueprint> Blueprint for InterceptWidget<W> {
     type Output = (W::Output, Dynamic<ElementList>);
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output;
 }
@@ -1058,7 +1058,7 @@ That is the entire mechanism.
 
 The root is an `InterceptWidget` the runtime makes itself in `build`: its child is `@main`, its responses event is the run call's input trigger, its supply context is the oracle, and its captured list is the one the run call returns.
 
-Two alternatives show what this buys. Suppose state supply were a table: the runtime keeps, per interceptor, a map from tag to supplier, and a slot walks outward through the interceptors until a table answers. Then an interceptor that wants to forward a state element with a rewritten path needs a rewrite entry, one that wants to cache needs a memo entry, one that wants to supply from a dynamic needs a dynamic entry, and the table has become the second language the specification refuses. With the supplier being a function to a widget, the rewrite is `@Element (Rewrite e)`, the cache is a hold around `@Element e`, the dynamic supplier is the dynamic the interceptor was given, and the runtime implements one thing: build the widget here, now, and memoise by value. Suppose, instead, that responses were routed by the runtime walking the tree: an interceptor registers a filter, the runtime applies filters as it descends. Then an input the interceptor wanted to rewrite or hold back would need a mode, and simultaneity between the interceptor's own responses and the forwarded ones would need a rule the runtime chose. With one responses event per interceptor, the merge is `|` in the interceptor's own code, the rule is the one the language already has, and the runtime routes against one snapshot and does nothing else.
+Two alternatives show what this buys. Suppose state supply were a table: the runtime keeps, per interceptor, a map from tag to supplier, and a slot walks outward through the interceptors until a table answers. Then an interceptor that wants to forward a state element with a rewritten path needs a rewrite entry, one that wants to cache needs a memo entry, one that wants to supply from a dynamic needs a dynamic entry, and the table has become the second language the specification refuses. With the supplier being a function to a blueprint, the rewrite is `@Element (Rewrite e)`, the cache is a hold around `@Element e`, the dynamic supplier is the dynamic the interceptor was given, and the runtime implements one thing: build the widget here, now, and memoise by value. Suppose, instead, that responses were routed by the runtime walking the tree: an interceptor registers a filter, the runtime applies filters as it descends. Then an input the interceptor wanted to rewrite or hold back would need a mode, and simultaneity between the interceptor's own responses and the forwarded ones would need a rule the runtime chose. With one responses event per interceptor, the merge is `|` in the interceptor's own code, the rule is the one the language already has, and the runtime routes against one snapshot and does nothing else.
 
 ### The canonical node structure of a lifted application
 
@@ -1066,18 +1066,18 @@ A hand-written widget in the harness and the compiled form of the same Prism mus
 
 `!x <- @Button $label`, where `@Button` takes a plain label, is `dyn $label: @Button _` with `!x` the `!Switch` of the `dyn`'s event. It builds, in the enclosing node:
 
-1. A `DynamicWidget` node at the next `Bind` position, over the dynamic `label.map(|l| button_widget(l))`, where `button_widget` is the widget function's body closed over the plain label. The generation `#g` is the body's node; the body's own position-takers are numbered inside it from 0.
+1. A `DynamicBlueprint` node at the next `Bind` position, over the dynamic `label.map(|l| button_widget(l))`, where `button_widget` is the widget function's body closed over the plain label. The generation `#g` is the body's node; the body's own position-takers are numbered inside it from 0.
 2. In the enclosing node's values, `x = dyn_event.map(|out| out.event).switch_hold()`, owned by the enclosing node through its environment vector.
 
-For a widget whose result is a dynamic, step 2 is `Dynamic::hold(first, dyn_event.map(|out| out.dynamic)).join()`, where `first` is the first build's result, which the builder has in hand because the first build happens inside the `DynamicWidget`'s own build and its output is returned from it (the `dyn` returns both its event and the first build's output, as a pair, for exactly this use). For a widget whose result is plain, `$x <- @Label $text` binds a `$` holding the first build's value, and step 2 is `Dynamic::hold_first(dyn_event.map(|out| out.value))`: a hold whose initial value is the first firing, which has happened by the time the hold is built, and which changes to each rebuild's value in the rebuild's occurrence. A hold built from `first` and the event would be the same thing with a second copy of the value; `hold_first` exists so that the compiler emits one step and the text form prints one node. For a bundle, field by field by the kind of each field. For an element with a dynamic where a field goes, the same with `@Element` inside the generation: `@Element Ui.Label(text=$t)` is a `DynamicWidget` over `t.map(|t| element_widget(Ui.Label { text: t }))`, and its generation's node has one slot at position 0, which is why the label is `2/#g/0`.
+For a widget whose result is a dynamic, step 2 is `Dynamic::hold(first, dyn_event.map(|out| out.dynamic)).join()`, where `first` is the first build's result, which the builder has in hand because the first build happens inside the `DynamicBlueprint`'s own build and its output is returned from it (the `dyn` returns both its event and the first build's output, as a pair, for exactly this use). For a widget whose result is plain, `$x <- @Label $text` binds a `$` holding the first build's value, and step 2 is `Dynamic::hold_first(dyn_event.map(|out| out.value))`: a hold whose initial value is the first firing, which has happened by the time the hold is built, and which changes to each rebuild's value in the rebuild's occurrence. A hold built from `first` and the event would be the same thing with a second copy of the value; `hold_first` exists so that the compiler emits one step and the text form prints one node. For a bundle, field by field by the kind of each field. For an element with a dynamic where a field goes, the same with `@Element` inside the generation: `@Element Ui.Label(text=$t)` is a `DynamicBlueprint` over `t.map(|t| element_widget(Ui.Label { text: t }))`, and its generation's node has one slot at position 0, which is why the label is `2/#g/0`.
 
-The path consequence is the same in all three cases, because the `dyn` is the same: a lifted application takes one position, its generation holds the body's slots from 0, and the bound name, whether `!x`, `$x` or a plain-valued `$x`, takes none. A harness fixture for `@Label $text` with a plain result is a `DynamicWidget` over the label whose generation makes one slot and returns `unit`, and the transcript shows `n/#g/0` with a fresh `g` on every text change.
+The path consequence is the same in all three cases, because the `dyn` is the same: a lifted application takes one position, its generation holds the body's slots from 0, and the bound name, whether `!x`, `$x` or a plain-valued `$x`, takes none. A harness fixture for `@Label $text` with a plain result is a `DynamicBlueprint` over the label whose generation makes one slot and returns `unit`, and the transcript shows `n/#g/0` with a fresh `g` on every text change.
 
-A hand-written `Button` in the harness that wants to match this must therefore not be "a node with a slot and a `dyn` inside it"; it must be the `DynamicWidget` itself, built with `dynamic_widget` over the label, with the slot made inside the generation. The harness's fixtures are written that way, and the compiled `@Button` from the GUI library must match their transcript byte for byte.
+A hand-written `Button` in the harness that wants to match this must therefore not be "a node with a slot and a `dyn` inside it"; it must be the `DynamicBlueprint` itself, built with `dynamic_widget` over the label, with the slot made inside the generation. The harness's fixtures are written that way, and the compiled `@Button` from the GUI library must match their transcript byte for byte.
 
 ### Compiled widgets
 
-Three places build widgets at occurrence time: a `dyn` rebuilding, a `for` key appearing, and a supplier answering a state slot. Each hands the runtime a widget it has never seen, and the rebuild path must not care whether it got a block of `@main`, a widget function's body, or something a hand-written Rust World made. So every compiled widget block is one Rust type, `IrWidget`, implementing `PolymorphicWidget<Value>` (or `PolymorphicWidget<O>` for the typed result the block declares), and `Rc<dyn PolymorphicWidget<Value>>` is what all three places take. An `IrWidget` is a reference into the compiled program plus the values it captured:
+Three places build widgets at occurrence time: a `dyn` rebuilding, a `for` key appearing, and a supplier answering a state slot. Each hands the runtime a blueprint it has never seen, and the rebuild path must not care whether it got a block of `@main`, a widget function's body, or something a hand-written Rust World made. So every compiled widget block is one Rust type, `IrWidget`, implementing `PolymorphicBlueprint<Value>` (or `PolymorphicBlueprint<O>` for the typed result the block declares), and `Rc<dyn PolymorphicBlueprint<Value>>` is what all three places take. An `IrWidget` is a reference into the compiled program plus the values it captured:
 
 ```rust
 pub struct IrWidget {
@@ -1088,7 +1088,7 @@ pub struct IrWidget {
 }
 ```
 
-Its `build` walks `program.blocks[block]`'s steps in the group order the resolver computed, with an environment vector for the block's values. The steps are the block's, not the widget's: two `IrWidget`s over one block with different captures are two nodes from one description, which is what "a widget is a description" means at the Rust level.
+Its `build` walks `program.blocks[block]`'s steps in the group order the resolver computed, with an environment vector for the block's values. The steps are the block's, not the widget's: two `IrWidget`s over one block with different captures are two nodes from one description, which is what "a blueprint is a description" means at the Rust level.
 
 ```rust
 enum Step {
@@ -1115,7 +1115,7 @@ enum Step {
 }
 ```
 
-Every step is one call on the builder or one constructor on an event or dynamic, with operands resolved to environment indices. Occurrence-time expressions compile to closures that the corresponding graph node calls, and a closure is a function id into `program.functions` plus a capture list resolved to indices into `captures`, which is copied into the node at build. A `Dyn` or `For` step makes its child widgets as `IrWidget { program, block, captures: this node's values at the listed indices plus the rebuild value, span }`, so the three occurrence-time build sites and the compiler agree on one constructor. Typed-result blocks (a supplier's, returning `Dynamic<Value>`) are `PolymorphicWidget<Dynamic<Value>>` and are downcast nowhere, because the compiler chose the type at the call site. The adapter goes; the blanket impl stands in for it.
+Every step is one call on the builder or one constructor on an event or dynamic, with operands resolved to environment indices. Occurrence-time expressions compile to closures that the corresponding graph node calls, and a closure is a function id into `program.functions` plus a capture list resolved to indices into `captures`, which is copied into the node at build. A `Dyn` or `For` step makes its child widgets as `IrWidget { program, block, captures: this node's values at the listed indices plus the rebuild value, span }`, so the three occurrence-time build sites and the compiler agree on one constructor. Typed-result blocks (a supplier's, returning `Dynamic<Value>`) are `PolymorphicBlueprint<Dynamic<Value>>` and are downcast nowhere, because the compiler chose the type at the call site. The adapter goes; the blanket impl stands in for it.
 
 ### Closures and ownership
 
@@ -1141,7 +1141,7 @@ Take the counter from the worked examples, built as `@main`, and take occurrence
 
 *Fire.* `responses = [(0/#0/0, click)]`. The path is in the committed root list; the tag `Ui.Button` responds with `Click`; the value is a `Click`; the path has not been given a response yet. The root fan is scheduled at height 0 with the one entry. No pushes.
 
-*Propagate.* Height 0: the fan fires; its output for `0/#0/0` is the response event of generation 0 of the `dyn` that is `@Button $"Increment"`, and it has a subscriber, the `switch_hold` that is `!increment`, which adopted this inner at occurrence 0's commit; the output fires at 1 and the switch at 2. `!delta` is `leftmost` over two maps of the two buttons' clicks, at 3, and fires with `+1`. `$count + !delta` is a `tag_map` over `!delta` reading `$count`'s behavior, which is 0, the value before the occurrence; it fires `1` at 4. `$count` is `Dynamic::hold(0, that)`, so its change event is that event, and the derived `"Count: {$count}"` is a `map` of it at 5, firing `"Count: 1"`. The `@Label`'s `DynamicWidget` subscribes to that map; its `DynamicWidgetEvent` schedules a rebuild at 6. Height 6: the rebuild builds generation 1 of the label block at 7, journaled under the `dyn` node at `Gen(1)`: the block's one step is `element(Ui.Label { text: "Count: 1" }, None)`, which mints path `2/#1/0`, creates no response output and no state, and pushes the slot. The `dyn` node's list recomputes at 8 and emits the patch: remove `2/#0/0`, insert `2/#1/0`. `@main`'s node is the root interceptor's captured child; its list emits the same patch, and that list is the one the root captured. The old generation's node goes onto the commit list. The request collector has recorded nothing, because no slot in this program requests.
+*Propagate.* Height 0: the fan fires; its output for `0/#0/0` is the response event of generation 0 of the `dyn` that is `@Button $"Increment"`, and it has a subscriber, the `switch_hold` that is `!increment`, which adopted this inner at occurrence 0's commit; the output fires at 1 and the switch at 2. `!delta` is `leftmost` over two maps of the two buttons' clicks, at 3, and fires with `+1`. `$count + !delta` is a `tag_map` over `!delta` reading `$count`'s behavior, which is 0, the value before the occurrence; it fires `1` at 4. `$count` is `Dynamic::hold(0, that)`, so its change event is that event, and the derived `"Count: {$count}"` is a `map` of it at 5, firing `"Count: 1"`. The `@Label`'s `DynamicBlueprint` subscribes to that map; its `DynamicWidgetEvent` schedules a rebuild at 6. Height 6: the rebuild builds generation 1 of the label block at 7, journaled under the `dyn` node at `Gen(1)`: the block's one step is `element(Ui.Label { text: "Count: 1" }, None)`, which mints path `2/#1/0`, creates no response output and no state, and pushes the slot. The `dyn` node's list recomputes at 8 and emits the patch: remove `2/#0/0`, insert `2/#1/0`. `@main`'s node is the root interceptor's captured child; its list emits the same patch, and that list is the one the root captured. The old generation's node goes onto the commit list. The request collector has recorded nothing, because no slot in this program requests.
 
 *Commit.* The hold writes `1`. The old label node is dropped, which drops its slot. The list patch is applied at every node it passed through: the root list's value is now the three entries with `2/#1/0: Ui.Label(text="Count: 1")`, and `2/#0/0` is gone from it, which is why a later response to that path is `UnknownPath`.
 
@@ -1170,7 +1170,7 @@ A runtime with no scheduler, no dirty tracking and no collector is held together
 
 **Equality of state.** Two slots with equal element values under one supply context hold the same dynamic. *Bound:* the runtime and every supplier. *Enforced:* memoisation by element value in every supply context, consulted before the supplier, with the root cell shared the same way. The checker walks the list and asserts that equal-valued state slots under one context share a dynamic by pointer.
 
-**Ownership is a tree.** Every event, behavior, dynamic and node is owned, directly or through handles, by exactly one node, and the root owns everything. *Bound:* the runtime, the compiler and every widget written in Rust. *Enforced:* the direction rules on captures, weak subscriber lists, weak placeholders, the compiler's lint on capture lists. The checker, in tests that drop a subtree, takes weak pointers into it beforehand and asserts none upgrades afterwards.
+**Ownership is a tree.** Every event, behavior, dynamic and node is owned, directly or through handles, by exactly one node, and the root owns everything. *Bound:* the runtime, the compiler and every blueprint written in Rust. *Enforced:* the direction rules on captures, weak subscriber lists, weak placeholders, the compiler's lint on capture lists. The checker, in tests that drop a subtree, takes weak pointers into it beforehand and asserts none upgrades afterwards.
 
 **Stale caches are unreadable.** No per-occurrence cache written in occurrence n is read in any later occurrence, on success or on error. *Bound:* the runtime. *Enforced:* the occurrence stamp on every cache, compared against the core's counter on every read; the counter is incremented at every open, including after a failed occurrence. The checker asserts after every occurrence that no manager's stamp is ahead of the counter.
 
@@ -1212,7 +1212,7 @@ The runtime is tested at two levels, and the levels test different things. The u
 | An injected panic at height 4 of a six-height occurrence, then a normal occurrence | Rollback leaving a hold written, a node built, or a cache readable | suite's runtime-test list; injected from Rust |
 | A `dyn` build that fails at the close of a placeholder, inside an occurrence that otherwise succeeds | The occurrence aborted instead of continuing; the `dyn`'s event firing; the `Error` element missing; a commit or a collector entry from the failed build surviving | harness |
 | A quarantine instruction after a switch cycle, with a response to a path under the owner in the same call | The owner not replaced; the error element absent; the response reported as unknown instead of discarded | harness (quarantine scripts are Rust-only) |
-| A plain `Widget` boxed as `Rc<dyn PolymorphicWidget<_>>`, and a `dyn` that rebuilds into a different widget type | The erased widget path | harness |
+| A plain `Blueprint` boxed as `Rc<dyn PolymorphicBlueprint<_>>`, and a `dyn` that rebuilds into a different blueprint type | The erased blueprint path | harness |
 | Several `run` calls in a row, counting occurrences | The runtime opening an occurrence on its own | suite |
 | A function recursing past the depth limit in an occurrence-time closure, and in a build-time one | The process dying instead of an `Overflow` error; a build failure not contained | harness |
 
@@ -1236,7 +1236,7 @@ In the order worth closing. Each step keeps the suite green and adds the law tes
 5. **Elements, slots, paths, the element list, request collection, `build` and `run`.** `ElementValue`, `TagId`, `TagTable`, `Path`, `Segment`, `SlotRec`, `element`, the position rule, `PMap` and `PSet`, interned elements and paths, the per-node list with patches on its change event, `Runtime::list`, the root fan, the collector, `Inputs` without `quarantine`, `Outcome`, `RuntimeError`, `Runtime::build` and `Runtime::run`. The test backend is deleted and the harness written at this step, with the counter as the first fixture in the canonical structure. Closes "`WidgetDelegate` exposes live slots", "The test backend reads behaviors directly", "`backend_data` cannot be set" and "`__rebuilt__` as a keep-alive". *Done when:* the eight script tests run as harness scripts reading only the outcome; the counter's transcript matches the conformance chapter's golden byte for byte; routing against the opened list, unknown path as error, a slot created in n addressable from n+1, request firings from a slot torn down in the same occurrence reported with its path, `dyn` generations giving fresh paths, and one call per occurrence each have a test; a benchmark with a thousand slots shows a label rebuild costing time independent of the thousand.
 6. **State at the root.** The oracle supply context, root cells, pushes, the `UnsuppliedState` error. *Done when:* a state slot has its value in its creation occurrence from the oracle; a push reaches a slot created in the push's occurrence; two slots of equal value share one cell and cost one oracle call; an unsupplied tag is an error at creation, contained under a `dyn` and fatal in occurrence zero.
 7. **`InterceptWidget`.** The fan per interceptor, the supply context per interceptor, `Supplied(n)` positions, the captured list, `Defer` in the harness turn loop (as a seed of the world core, in a function with no harness state in it). *Done when:* an interceptor that forwards everything is observably absent (transcript identical with and without it, and with two); a sandbox supplying `Unavailable` works; a supplied widget's elements appear in the interceptor's list under `s/n/`; two child slots of equal value share one supplied widget regardless of a supplier change between them; a supplied widget lives until the last slot with its value goes; the interceptor's loop over its own child's list builds without a cycle error; pure code firing at a path under an interceptor built in the same occurrence is `UnknownPath`.
-8. **The list widget.** `list_widget` with the three prompt consolidations, sharing the deferred-build code with `DynamicWidget`, and the key diff by shared subtrees. Closes "`DWAction` replaces child index 0" and "`dyn` builds twice when its dynamic changes later in the occurrence". *Done when:* each consolidation kind has a test; state survives an insert and a neighbour's removal; a value change updates in place; a key's block is torn down at commit; a key born in n is in all three consolidations in n; `@ Delete on !started` as a row result is reported as a cycle at the membership change.
+8. **The list widget.** `list_widget` with the three prompt consolidations, sharing the deferred-build code with `DynamicBlueprint`, and the key diff by shared subtrees. Closes "`DWAction` replaces child index 0" and "`dyn` builds twice when its dynamic changes later in the occurrence". *Done when:* each consolidation kind has a test; state survives an insert and a neighbour's removal; a value change updates in place; a key's block is torn down at commit; a key born in n is in all three consolidations in n; `@ Delete on !started` as a row result is reported as a cycle at the membership change.
 9. **Quarantine.** `pending_quarantine`, the `quarantine` input, the replacement, the discarded responses. *Done when:* the quarantine scenario passes; a quarantine for a path no error named is refused.
 10. **Benchmarks for the costs that are not semantics.** Three programs, each pinned to the cost the performance notes give it: a window of nested boxes with a thousand labels under `Gui.Frames`, one label changing per frame; chapter 5's selectable list with a thousand rows and `$Distinct` on the selection test, one click; a thousand-key map with one `Insert` under `for`. The changes they call for land here, each with no transcript change: shared draw lists with pointer-equality diffs and damage rectangles in the GUI library and the world core, the `$Distinct` warning in the compiler, and native versions of the prelude functions the benchmarks show hot. *Done when:* every transcript is unchanged and each benchmark's cost grows with what changed, not with the thousand.
 11. **Small debts.** Every known issue no step above names: `trace`, the `unreachable!()` stubs, the cyclic dynamic sampled after its node is dropped, the `combine`/`leftmost` height caches, `leftmost`'s subscriber lists, the dependents scan, the two source events that record only when subscribed, the copied doc comments, the misnamed file. *Done when:* the list below is empty.
@@ -1251,17 +1251,17 @@ Every loose end in the current code, concretely, with its fix. Most are small; t
 
 **Scheduling at `usize::MAX` while at `usize::MAX`.** The commit batch runs at the greatest height, so an action in it that needs to defer to commit has no height above it, and `DynamicWidgetEvent::already_fired`'s `current + 1` overflows there. Nothing in the commit batch builds or subscribes today, so the case is not reached, but it is one new commit action away. *Fix:* the separate commit list of step 2; `defer_commit(entry)` pushes onto it, and the action map never contains the commit height.
 
-**`DWAction` replaces child index 0.** A `dyn`'s node has exactly one child, so the index is right for `dyn`, but the replacement is by position, the delegate is told index 0, and the same code cannot serve a list widget. *Fix:* `WidgetNode::children` becomes `BTreeMap<Segment, Rc<WidgetNode>>` for addressable children plus a `Vec` for plain ones; a `dyn` replaces at `Gen(g)` and a list widget at `Key(k)`, and the element list's prefixes come from the same keys.
+**`DWAction` replaces child index 0.** A `dyn`'s node has exactly one child, so the index is right for `dyn`, but the replacement is by position, the delegate is told index 0, and the same code cannot serve a list widget. *Fix:* `Widget::children` becomes `BTreeMap<Segment, Rc<Widget>>` for addressable children plus a `Vec` for plain ones; a `dyn` replaces at `Gen(g)` and a list widget at `Key(k)`, and the element list's prefixes come from the same keys.
 
 **`WidgetDelegate` exposes live slots.** `TestDelegate::for_node` clones `node.public_dynamics` and `node.triggers`, so the backend holds `AnyDynamic` and `AnyEventTrigger` handles outside the runtime for the life of the test, reads behaviors through them with `query_for_tag`, and fires triggers through them by name. A World holding runtime objects is what the boundary forbids, and it is also why the delegate has to be told about every new child. *Fix:* delete `WidgetDelegate`, `WidgetDelegateContext`, `DelegateCallback`, `set_delegate`, `prepare_destruction`, `_public_event_callbacks`, `public_events`, `public_dynamics`, `triggers`, `add_external_event`, `add_public_event`, `add_public_dynamic`, `AnyEvent`, `AnyDynamic`, `AnyEventTrigger` and `backends/test_backend`; the harness over `run` replaces all of it, and the eight script tests are rewritten against the outcome.
 
-**`backend_data` cannot be set.** `WidgetNode::backend_data: serde_json::Value` is initialised to `Null`, no builder method writes it, and the node is behind an `Arc` by the time anyone could. It is the only use of `serde_json`. *Fix:* delete the field and the dependency. Its purpose, telling a backend what a node means, is served by the element list.
+**`backend_data` cannot be set.** `Widget::backend_data: serde_json::Value` is initialised to `Null`, no builder method writes it, and the node is behind an `Arc` by the time anyone could. It is the only use of `serde_json`. *Fix:* delete the field and the dependency. Its purpose, telling a backend what a node means, is served by the element list.
 
 **`Arc`/`Mutex` everywhere.** Covered by step 1. The places where the locks do more than lock: the `try_lock` re-entry checks in `FilterMapEvent::height`, `Tag::height`, `SwitchHold::height`, `ForwardEvent::height` and `DependentBehavior::query_for_*`; `TriggerAction` holding and releasing the trigger's `scheduled` lock around notification. *Fix:* `Cell<bool>` re-entry flags; the `scheduled` flag disappears with public triggers.
 
 **The test backend reads behaviors directly.** `TestAction::ExpectDynamic` calls `query_for_tag` on a public dynamic from outside the runtime, a read a World cannot make. *Fix:* the harness reads the outcome; a test that wants a dynamic's value makes the program put it in an element.
 
-**`__rebuilt__` as a keep-alive.** The `DynamicWidgetEvent` is kept alive by registering it as a public event, which also means a backend sees a firing it was not meant to see (the comment notes the delegate attaches after the first one). *Fix:* a private `keep_alive: Vec<Rc<dyn Any>>` on `WidgetNode`, written by the builder.
+**`__rebuilt__` as a keep-alive.** The `DynamicWidgetEvent` is kept alive by registering it as a public event, which also means a backend sees a firing it was not meant to see (the comment notes the delegate attaches after the first one). *Fix:* a private `keep_alive: Vec<Rc<dyn Any>>` on `Widget`, written by the builder.
 
 **Cyclic handles are bare `usize` plus a name.** `add_cyclic_*` returns an index and takes a name; closing by the wrong index with the right type is accepted; two `fold_dyn`s with the same name in one node panic on the duplicate; a wrong-typed close is a runtime panic rather than a compile error. *Fix:* `CyclicEvent<T>` and `CyclicDynamic<T>` handles returned by `add_cyclic_*`, closed by a method that consumes the handle; no names; a `compile_fail` doc test. The compiler, which already names every placeholder by span for diagnostics, keeps the span in the handle, and the span is what the cycle report prints.
 
@@ -1283,11 +1283,11 @@ Every loose end in the current code, concretely, with its fix. Most are small; t
 
 **`dyn` and done events record a firing only if subscribed.** A `dyn`'s output event and a done event fire through a manager that records only when it has subscribers, so a widget built after the firing, in the same occurrence, cannot catch up on it. Nothing today needs to. *Fix:* record unconditionally in those two sources, which costs one clone.
 
-**The `DynamicWidgetEvent` has no height cache and no owner.** Its height is recomputed from the dynamic's event on every call, which is fine, but it has nothing the eager walk can hang an in-progress flag or an owner on. *Fix:* the same `height: Cell<Option<usize>>`, flag and `owner: Weak<WidgetNode>` every other node gets in step 3.
+**The `DynamicWidgetEvent` has no height cache and no owner.** Its height is recomputed from the dynamic's event on every call, which is fine, but it has nothing the eager walk can hang an in-progress flag or an owner on. *Fix:* the same `height: Cell<Option<usize>>`, flag and `owner: Weak<Widget>` every other node gets in step 3.
 
 **Copied doc comments.** `Event::combine` and `Event::leftmost` have `filter_map`'s doc, with a "Some(vague)" typo. *Fix:* write them.
 
-**`widget/runtime.rs` is misnamed.** The file holds `PolymorphicWidget` and reads like the crate's runtime module. *Fix:* `widget/polymorphic.rs`.
+**`widget/runtime.rs` is misnamed.** The file holds `PolymorphicBlueprint` and reads like the crate's runtime module. *Fix:* `widget/polymorphic.rs`.
 
 ## Performance notes
 

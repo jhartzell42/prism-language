@@ -84,11 +84,11 @@ That is the entire surface a World needs. The runtime's graph types exist and ar
 
 *The result* is the root widget's result, which most Worlds ignore (a CLI World runs `@main : @unit`) and a test World reads for `returns` and `fired`.
 
-*The error* says the occurrence did not happen. Because every write during an occurrence is buffered to commit time, the error path is a rollback: the hold values, the switch targets, the nodes built during the occurrence are dropped, and the graph is as it was before the call. The inputs that opened the occurrence are lost, and the World decides what that means for it: a CLI World prints the error and exits nonzero, a GUI World might show it and keep going, a test World records it for an `errors` step.
+*The error* says the occurrence did not happen. Because every write during an occurrence is buffered to commit time, the error path is a rollback: the hold values, the switch targets, the widgets built during the occurrence are dropped, and the graph is as it was before the call. The inputs that opened the occurrence are lost, and the World decides what that means for it: a CLI World prints the error and exits nonzero, a GUI World might show it and keep going, a test World records it for an `errors` step.
 
 ### What never crosses
 
-Nothing in `Inputs` or `Outcome` is an event, a dynamic, a widget, a node, a closure over the graph, or a reference into the runtime. The oracle is the nearest thing to an exception and it is not one: it is a function the World owns, over the World's own data, that the runtime calls and forgets. The runtime never calls the World at any other time, never calls it after `run` returns, and never calls it from a thread the World did not call `run` on.
+Nothing in `Inputs` or `Outcome` is an event, a dynamic, a blueprint, a widget, a closure over the graph, or a reference into the runtime. The oracle is the nearest thing to an exception and it is not one: it is a function the World owns, over the World's own data, that the runtime calls and forgets. The runtime never calls the World at any other time, never calls it after `run` returns, and never calls it from a thread the World did not call `run` on.
 
 Suppose instead the runtime called the World back during propagation, "a response just fired, do your thing." The World's code would then run inside an occurrence, where holds have not committed and the element list is half built, and it would have to be told what it may and may not read. Every framework with a `componentDidUpdate` (from memory) has that table of rules, and every table has a footnote. Here there is nothing to put in the table because there is no call. Or suppose the World held a handle to the socket slot's response event and fired it directly. Then the World would have to know the event's lifetime, and when the `dyn` around the socket rebuilt, the World's handle would be stale, and the stale handle is exactly the leaked DOM subtree the language was built to make impossible. Addressing by path, against a list the World was given, means the World can only ever name what the program told it exists.
 
@@ -208,7 +208,7 @@ Two alternatives deserve a hearing, because each is what you would build first.
 
 *Dynamics across.* The World hands the program a dynamic. A dynamic is not plain data; it is a runtime object with a lifetime, and a World holding one is a World coupled to the runtime. Written out as plain data, "a dynamic from the World" is an initial value plus a sequence of changes keyed to occurrences, which is a snapshot plus pushes, which is this design. The oracle is how the initial value gets in without being a firing; the pushes are the changes; the occurrence is the key.
 
-An interceptor, which shares the program's clock, can hand a child a dynamic it already holds, and the supplier mechanism is exactly that: a widget returning the state's dynamic, built in the interceptor's node. The World cannot, so its supplier is a function over data, and the two look identical from below.
+An interceptor, which shares the program's clock, can hand a child a dynamic it already holds, and the supplier mechanism is exactly that: a widget returning the state's dynamic, built in the interceptor's widget. The World cannot, so its supplier is a function over data, and the two look identical from below.
 
 ## Turns and `Defer`
 
@@ -308,7 +308,7 @@ What the child saw in turn 3 is a response one occurrence after its request, whi
 
 A conforming World keeps the list below. Every item is stated with the party it protects, because an obligation nobody would miss is a rule for its own sake, and there are none of those here.
 
-**Send responses only to paths in the list it last received.** *Protects the program.* A slot that is gone has no node to receive, and a response to it is a response to nothing; the runtime reports it as `UnknownPath`. The World is the only party that knows an operation is still in flight after its slot was torn down, so the World discards the late result and cancels the operation if the transport allows. The program never has to defend against an answer to a question it stopped asking.
+**Send responses only to paths in the list it last received.** *Protects the program.* A slot that is gone has no widget to receive, and a response to it is a response to nothing; the runtime reports it as `UnknownPath`. The World is the only party that knows an operation is still in flight after its slot was torn down, so the World discards the late result and cancels the operation if the transport allows. The program never has to defend against an answer to a question it stopped asking.
 
 **Never deliver a response in the occurrence of its request.** *Protects the program's reasoning and the creation rule.* Request firings come out of `run` after the occurrence commits; the earliest they can be answered is the next call. A widget may therefore assume that in the occurrence it asked, nothing it asked for has happened, which is what lets it fire from `@started` without a guard. The runtime enforces this by construction; the obligation is that a World not offer an element that "responds merely because it was created," which it could do by sending a response in the first occurrence after a slot appears with no request having fired. A World may do that only for a tag that declares `responds` without `requests`, a stream, where the response is an observation and not an answer.
 
@@ -1363,7 +1363,7 @@ What a World may not do, and what each refusal buys. The list is the design.
 
 **No callbacks across the boundary.** The runtime never calls the World, and the World never hands the runtime a function (the oracle is called during one run call and forgotten). What it buys: the World runs on whatever thread the platform dictates, with IO wherever it likes, because nothing can reach the runtime from the wrong thread; a World is replaceable without the program noticing; a session is a transcript of plain data and replays exactly; the Test World exists.
 
-**No runtime objects in a World.** No event handle, no dynamic, no node, no slot. What it buys: a World written in an afternoon, with no lifetime to track and nothing to leak; a World that cannot address what the program has not told it exists, because it has only paths from a list it was given; the sharded server, where a runtime moves to a thread and nothing follows it.
+**No runtime objects in a World.** No event handle, no dynamic, no widget, no slot. What it buys: a World written in an afternoon, with no lifetime to track and nothing to leak; a World that cannot address what the program has not told it exists, because it has only paths from a list it was given; the sharded server, where a runtime moves to a thread and nothing follows it.
 
 **No phases.** One "later," the next occurrence of this turn, through `Defer`. What it buys: a turn bounded by the program's own structure rather than a configured cap; no ordering table for stages; no stage-dependent behaviour that differs between Worlds; a GUI library that runs the same under a test.
 

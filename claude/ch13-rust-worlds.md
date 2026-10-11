@@ -718,7 +718,7 @@ test counter_counts, @counter:
         => expect Ui.Label(text="Count: 1")
 ```
 
-The parser produces a `TestItem { name, widget: Expr, turns: Vec<Turn> }` where the widget expression is elaborated and compiled as if it were `@main`, and each turn is one line of the script with its `=>` lines:
+The parser produces a `TestItem { name, widget: Expr, turns: Vec<Turn> }` where the blueprint expression is elaborated and compiled as if it were `@main`, and each turn is one line of the script with its `=>` lines:
 
 ```rust
 pub struct Turn {

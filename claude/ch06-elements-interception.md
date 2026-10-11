@@ -14,7 +14,7 @@ The second is that the toolkit, the sandbox and the mock must be writable in Pri
 
 The third is that a widget which asks for state must get a type that tells the truth. The file that has not been read is `Unavailable`, as a case of the type, and the `match` that draws it has an arm for that. But a dynamic has a value at every occurrence, so a widget that asks for the contents of a file as a dynamic must get a value in the occurrence it asks. That forces a question most systems never put to themselves: when does outside state exist for a program? The answer here, in the occurrence the slot is created, is the only one under which a widget built in the middle of an occurrence is consistent with everything else built then, and the second half of this chapter is the reasoning for it.
 
-An element is what satisfies all three. It is a plain value of the extensible variant `Element`: a tag and some fields, `Ui.Button { label: "Increment" }`, `Fs.File { path: "/etc/motd" }`, nothing else. A widget puts one in its element list by calling `@Element`, which creates a *slot*: a position in the widget tree where that element sits for as long as the widget's node lives. Whoever is outside reads the list, does whatever the element means to it, and sends back responses addressed to the slot and state keyed by the element's value. The book calls that outside a *context*: the World is the external context, written in the host language, and an interceptor is an inner context, written in Prism, and a subtree cannot tell which one is answering it. That is the entire protocol. There is no handle, no callback, no promise, no context object; there is a list of plain data going out and a map of plain data coming in, once per occurrence.
+An element is what satisfies all three. It is a plain value of the extensible variant `Element`: a tag and some fields, `Ui.Button { label: "Increment" }`, `Fs.File { path: "/etc/motd" }`, nothing else. A widget puts one in its element list by calling `@Element`, which creates a *slot*: a position in the widget tree where that element sits for as long as the widget lives. Whoever is outside reads the list, does whatever the element means to it, and sends back responses addressed to the slot and state keyed by the element's value. The book calls that outside a *context*: the World is the external context, written in the host language, and an interceptor is an inner context, written in Prism, and a subtree cannot tell which one is answering it. That is the entire protocol. There is no handle, no callback, no promise, no context object; there is a list of plain data going out and a map of plain data coming in, once per occurrence.
 
 The consequence that takes getting used to is that an element does nothing. A `Ui.Button` is not a button; it is a request to whoever is outside to show one and to say when it is clicked. An `Fs.File` is not an open file; it is a declaration that this widget may ask for reads and writes of that path and wants the answers. Whether anything happens is up to the outside, and the program's only way to find out is a response arriving. This is what makes the same program run under a test World with no screen and no disk: the program never did anything, it only ever said what it wanted, and the World that says "done" without doing is as conforming as the one that does.
 
@@ -232,7 +232,7 @@ Equality is structural, tag then fields. Two `Fs.Contents(path="/etc/motd")` val
 
 ## `@Element`
 
-`@Element e` is a widget. Binding it in a widget block creates a slot for `e` in the enclosing node and returns what `e`'s tag declares:
+`@Element e` is a blueprint. Binding it in a widget block creates a slot for `e` in the enclosing widget and returns what `e`'s tag declares:
 
 | tag declares | `@Element e` has type |
 | --- | --- |
@@ -241,7 +241,7 @@ Equality is structural, tag then fields. Two `Fs.Contents(path="/etc/motd")` val
 | `state: S` | `@$S` |
 | `responds: R` and `state: S` | `@((!R, $S))` |
 
-The slot exists from the occurrence in which the widget is built until its node is torn down, and its element never changes: a field is read once, when the slot is created, and anything that looks like changing a field is creating another slot. `@Element` is therefore the only place where the program's text meets the outside, and a reader who wants to know everything a widget asks of the world greps for one word.
+The slot exists from the occurrence in which the widget is built until its widget is torn down, and its element never changes: a field is read once, when the slot is created, and anything that looks like changing a field is creating another slot. `@Element` is therefore the only place where the program's text meets the outside, and a reader who wants to know everything a widget asks of the world greps for one word.
 
 ```prism
 @Button: fn Text -> @!Click = \|label| @widget:
@@ -262,7 +262,7 @@ The three statements show the three return forms. A button returns its click. A 
 
 When the tag of `e` is not statically known, as in a catch-all arm of a `match` inside an interceptor, `@Element e` has the generic type `@((!Response, $State))`, and the response and state types are checked at the slot at runtime, per tag. In a tag-specific arm the types are the tag's, and the checker knows them. This is the one place in the language where a type is refined by a `match` on a tag, and it is what lets an interceptor forward an element it has never heard of while still being typed when it handles one it has.
 
-One thing `@Element` does not take is a dynamic where a field goes. `@Element Ui.Label(text=$text)` is not a label whose text changes; it is an application to a dynamic, which lifts, so it is `$(@Element Ui.Label(text=text))`, a dynamic of widgets. Binding a dynamic of widgets lifts to `dyn`: `@Element Ui.Label(text=$text)` as a statement means `dyn $text: @Element Ui.Label(text=_)`, a fresh slot per change of the text, and a bound name on the left is the `!Switch` of the `dyn`'s event when the element responds, or a hold of dynamics joined with `$Join` when it has state, with the first build's result as the hold's initial value. The chapter says this once here and uses the short form from now on; the section on dynamic fields says what it costs and why it is the right cost.
+One thing `@Element` does not take is a dynamic where a field goes. `@Element Ui.Label(text=$text)` is not a label whose text changes; it is an application to a dynamic, which lifts, so it is `$(@Element Ui.Label(text=text))`, a dynamic of blueprints. Binding a dynamic of blueprints lifts to `dyn`: `@Element Ui.Label(text=$text)` as a statement means `dyn $text: @Element Ui.Label(text=_)`, a fresh slot per change of the text, and a bound name on the left is the `!Switch` of the `dyn`'s event when the element responds, or a hold of dynamics joined with `$Join` when it has state, with the first build's result as the hold's initial value. The chapter says this once here and uses the short form from now on; the section on dynamic fields says what it costs and why it is the right cost.
 
 A program rarely spells this out for library widgets. Library widgets take dynamic arguments: `@Button` takes a `$Text` label, and a button whose label changes is written `@Button $label`. The fresh slot per change belongs to the library's interceptor, which builds a new `Ui.Button` slot when the label changes and answers to the program through the one `!Click` event it returns; a World never sees it, because a World sees only the `Gui.*` elements the interceptor emits. The rule that a field change is a fresh slot holds in full for every element that reaches a World, and the `dyn` forms above are that rule written out, not the way a program normally labels a button.
 
@@ -284,7 +284,7 @@ The practical statement is in three parts, one per party.
 
 A World could offer an element that acts because it exists: an `Fs.Load(path)` that reads the file when the slot appears and responds with the contents next turn. It would save a line in every file viewer, and it is what most toolkits do, and it is not offered, for three reasons that are the same three reasons `@started` exists.
 
-Building stops being pure. Today building a widget adds nodes and slots and nothing else; with act-on-creation, every rebuild of a `dyn` and every new key of a `for` is also an effect, at a moment the program's text does not show. The fetch-on-mount that fired twice was exactly this.
+Building stops being pure. Today building a widget adds widgets and slots and nothing else; with act-on-creation, every rebuild of a `dyn` and every new key of a `for` is also an effect, at a moment the program's text does not show. The fetch-on-mount that fired twice was exactly this.
 
 The trigger stops being a value. With `Read on !started` the program can merge the start with a refresh button, `Read on (!started | !refresh)`, gate it on a setting, or replace it with a click, without touching the element. A test sees the request fire as an ordinary event and can assert `requested Fs.File(..), Read`. With act-on-creation the trigger is the slot's existence, which is not an event and cannot be merged with anything.
 
@@ -360,7 +360,7 @@ Together they say what an occurrence is at the boundary: a snapshot in and a lis
 
 Fields are plain data. A label's text, a file's path, a socket's address: each is read once when the slot is created and never again. The question every reader asks next is what happens to the label whose text changes, and the answer is that the language already has a construct for building something afresh when a dynamic changes, and uses it.
 
-An element with a dynamic where a field goes is an application to a dynamic, which lifts: `Ui.Label(text=$text)` is `$(Ui.Label(text=text))`, a dynamic of elements, and `@Element` of it is a dynamic of widgets. Binding a dynamic of widgets is `dyn`. So
+An element with a dynamic where a field goes is an application to a dynamic, which lifts: `Ui.Label(text=$text)` is `$(Ui.Label(text=text))`, a dynamic of elements, and `@Element` of it is a dynamic of blueprints. Binding a dynamic of blueprints is `dyn`. So
 
 ```prism
 @Element Ui.Label(text=$text)
@@ -495,7 +495,7 @@ type Slot = record:
     !request: Request          # typed by the tag, once `element` has been matched
 ```
 
-`intercept @child, !responses, $supplier` builds `@child` as a child widget of the interceptor's node and captures its element list. It returns the child's result and that list, keyed by path. The two other arguments are the two downward supplies: responses by path, and state by value through the supplier.
+`intercept @child, !responses, $supplier` builds `@child` as a child widget of the interceptor's widget and captures its element list. It returns the child's result and that list, keyed by path. The two other arguments are the two downward supplies: responses by path, and state by value through the supplier.
 
 ### Downward: responses by path
 
@@ -514,7 +514,7 @@ type Slot = record:
     @ result
 ```
 
-Read `@Forward` slowly, because every interceptor in this chapter is a variation on it. `for $slots` builds one block per slot in the child's list, keyed by the child's path; a block is built in the occurrence its slot appears and torn down at the commit of the occurrence its slot leaves. Inside, `$_` is the slot as a dynamic, and since a slot never changes, `dyn $_:` builds exactly once and gives `_` as the plain slot. `@Element _.element` makes an element of the interceptor's own with the same value, in the interceptor's node; its tag is not statically known, so it returns the generic pair of a response event and a state dynamic, and the pattern keeps the event and discards the dynamic, which nothing needs because the child's state slots are answered by the supplier, not by this loop. The block returns the event, and `for` consolidates the blocks' events into `!(Path ==> Response)`, firing in any occurrence in which at least one outer response arrived, with exactly the entries that did. That map is `!down`, and `intercept` delivers each entry to the child's slot at that path.
+Read `@Forward` slowly, because every interceptor in this chapter is a variation on it. `for $slots` builds one block per slot in the child's list, keyed by the child's path; a block is built in the occurrence its slot appears and torn down at the commit of the occurrence its slot leaves. Inside, `$_` is the slot as a dynamic, and since a slot never changes, `dyn $_:` builds exactly once and gives `_` as the plain slot. `@Element _.element` makes an element of the interceptor's own with the same value, in the interceptor's widget; its tag is not statically known, so it returns the generic pair of a response event and a state dynamic, and the pattern keeps the event and discards the dynamic, which nothing needs because the child's state slots are answered by the supplier, not by this loop. The block returns the event, and `for` consolidates the blocks' events into `!(Path ==> Response)`, firing in any occurrence in which at least one outer response arrived, with exactly the entries that did. That map is `!down`, and `intercept` delivers each entry to the child's slot at that path.
 
 The request side forwards itself. The child's request event is in the slot, `_.!request`, and `@Element _.element` makes an element whose `requests` field is that very event, so when the child's request fires, the interceptor's element's request fires in the same occurrence, and the outside sees it after the occurrence with no delay. A widget built in occurrence n sees all of n, so even a request fired from `@started` in a slot's creation occurrence is seen by the block built for that slot in the same occurrence and goes out that turn.
 
@@ -524,7 +524,7 @@ The request side forwards itself. The child's request event is in the slot, `_.!
 
 ### Downward: state by value, through the supplier
 
-The third argument is a dynamic of a function from an element to *a widget returning the state's dynamic*. When the child creates a state slot for element `e`, and no supplied widget for a value equal to `e` is alive in this interceptor, the runtime reads the function (the supplier dynamic's current value at that instant), applies it to `e`, and builds the widget it returns, then and there, as a child of the interceptor's node, in the same build pass as the child's slot. The widget's result dynamic is the slot's dynamic from that instant on: its value before the occurrence is the slot's value in its creation occurrence, and its changes are the slot's changes. The slot therefore has its value in its creation occurrence, exactly as it would from a World's oracle.
+The third argument is a dynamic of a function from an element to *a blueprint returning the state's dynamic*. When the child creates a state slot for element `e`, and no supplied widget for a value equal to `e` is alive in this interceptor, the runtime reads the function (the supplier dynamic's current value at that instant), applies it to `e`, and builds the blueprint it returns, then and there, as a child of the interceptor's widget, in the same build pass as the child's slot. The widget's result dynamic is the slot's dynamic from that instant on: its value before the occurrence is the slot's value in its creation occurrence, and its changes are the slot's changes. The slot therefore has its value in its creation occurrence, exactly as it would from a World's oracle.
 
 The widget runs in the interceptor's context, so its own elements go into the interceptor's list. It can ask the outer context for the same element, a rewritten one, two of them, or nothing:
 
@@ -565,7 +565,7 @@ The alternative is a primitive that does nothing but expose the two directions, 
 
 ### Typing
 
-Inside a `match` arm on tag `T`, `_.!request` has `T`'s declared request type, `@Element` of an element built from `T` returns `T`'s declared types, and a widget the supplier returns for `T` must return `T`'s declared state type. In the catch-all arm, `_.!request` is the generic `Request`, `@Element _.element` is the generic `@((!Response, $State))`, and the runtime checks the per-slot types at the slot. The refinement is a rule of the checker and not a runtime structure: the extensible variant with per-tag payload types is what makes it natural, and the alternative, a runtime check everywhere, is what elements get in the generic arm anyway.
+Inside a `match` arm on tag `T`, `_.!request` has `T`'s declared request type, `@Element` of an element built from `T` returns `T`'s declared types, and a blueprint the supplier returns for `T` must return `T`'s declared state type. In the catch-all arm, `_.!request` is the generic `Request`, `@Element _.element` is the generic `@((!Response, $State))`, and the runtime checks the per-slot types at the slot. The refinement is a rule of the checker and not a runtime structure: the extensible variant with per-tag payload types is what makes it natural, and the alternative, a runtime check everywhere, is what elements get in the generic arm anyway.
 
 An interceptor that wants to be typed therefore writes one arm per tag it handles and a catch-all for the rest. An interceptor that handles a namespace, `Gui.*(..)`, is in the generic case inside that arm, which is right, since it does not know which tag it has.
 
@@ -587,7 +587,7 @@ A `Defer` slot is answered at most once per turn. A slot that fires again after 
 
 ### What an interceptor may not do
 
-The supplier's type says it returns a widget for every element. An interceptor that wants to deny a state element cannot return nothing; it must say what denial is, in the state's type, `@ $ Unavailable` for a file, `@ $ Disconnected "sandboxed"` for a socket. That is not an inconvenience. It is the rule that unavailability lives in the type, enforced at the one place it could be dodged: a child under a sandbox is shown a value the World could have shown it, and the child's `match` already has the arm.
+The supplier's type says it returns a blueprint for every element. An interceptor that wants to deny a state element cannot return nothing; it must say what denial is, in the state's type, `@ $ Unavailable` for a file, `@ $ Disconnected "sandboxed"` for a socket. That is not an inconvenience. It is the rule that unavailability lives in the type, enforced at the one place it could be dodged: a child under a sandbox is shown a value the World could have shown it, and the child's `match` already has the arm.
 
 A state tag no supplier and no World accepts is an error at the creation of the slot, because nothing later can give it a value. A request tag no World accepts gets `Unsupported` as its response in the next turn, so a `Ui.Button` under a CLI World is a program-visible fact rather than a silent nothing; an interceptor that forwards it unchanged forwards the `Unsupported` back down.
 
@@ -597,10 +597,10 @@ Stated once, with who is bound and what enforces each:
 
 - *Nothing reaches past an interceptor unless Prism code sends it.* Bound: the runtime. Enforced by the structure of `intercept`: the child's list is returned as a value and read by nothing else. A scoped interceptor, one written as `intercept Ui.*` that claims a namespace, is this law's special case and not an exception to it: it is sugar for a full interceptor whose body forwards every element outside the namespace with `@Element e`, and forwarding is Prism code sending it. The runtime may route the forwarded namespaces without materialising the forwarding slots, because nothing can tell the difference from doing it the long way, which is what makes it an optimisation and not a hole.
 - *Responses reach a child's slot only through the interceptor's response argument, routed against the opened list.* Bound: the interceptor. Enforced by the runtime's unknown-path check.
-- *A state slot has its value in its creation occurrence, equal for every slot of that value under this interceptor.* Bound: the interceptor's supplier, which must return a widget for every element. Enforced by the runtime building one supplied widget per value and handing its dynamic to every slot.
+- *A state slot has its value in its creation occurrence, equal for every slot of that value under this interceptor.* Bound: the interceptor's supplier, which must return a blueprint for every element. Enforced by the runtime building one supplied widget per value and handing its dynamic to every slot.
 - *No response in the occurrence of its request.* Bound: the interceptor. Enforced by routing for slots created this occurrence, and by convention, with `Defer` as the only tool, for older ones; the conformance suite's `mock_timing` test is the check.
 - *An interceptor that forwards everything and supplies by forwarding is observably not there.* Bound: the runtime. Enforced by the differential test against `@Transparent`.
-- *A supplied widget lives exactly as long as some child slot with its value.* Bound: the runtime. Enforced by ownership: the supplied widget is a child of the interceptor's node, keyed by value.
+- *A supplied widget lives exactly as long as some child slot with its value.* Bound: the runtime. Enforced by ownership: the supplied widget is a child of the interceptor's widget, keyed by value.
 
 ## Recapitulation and depth
 
@@ -1136,7 +1136,7 @@ let Freeze: fn a -> $a = \|v| $ v
     @ result
 ```
 
-The supplier returns a widget, and the widget has state. For an `Fs.Contents` element it builds, in the cache's node, a live slot for the same path, asking the outer context; and a hold of dynamics `$$shown`, initially the live dynamic itself, replaced by a frozen constant of the live value at start and at each refresh. `(Freeze $live) on !started` fires in the supplied widget's build occurrence with the constant dynamic of `$live`'s value before that occurrence, which is the oracle's answer; the hold adopts it in that occurrence; `$Join $$shown` has, before the occurrence, `$live`'s value, and after it, the frozen constant with the same value. The child's slot sees one value in its creation occurrence and no hiccup. From then on pushes move `$live` and not `$$shown`, until a refresh freezes the live value again.
+The supplier returns a blueprint, and the widget has state. For an `Fs.Contents` element it builds, in the cache's widget, a live slot for the same path, asking the outer context; and a hold of dynamics `$$shown`, initially the live dynamic itself, replaced by a frozen constant of the live value at start and at each refresh. `(Freeze $live) on !started` fires in the supplied widget's build occurrence with the constant dynamic of `$live`'s value before that occurrence, which is the oracle's answer; the hold adopts it in that occurrence; `$Join $$shown` has, before the occurrence, `$live`'s value, and after it, the frozen constant with the same value. The child's slot sees one value in its creation occurrence and no hiccup. From then on pushes move `$live` and not `$$shown`, until a refresh freezes the live value again.
 
 The cache is also a cache in the ordinary sense. The supplied widget is built once per distinct value, so two child slots for `/etc/app.conf`, in two widgets that have never heard of each other, read one `$Join $$shown` from one live slot, and the outer World is asked once. That is the equality law inside an interceptor and the sharing of interest in one mechanism.
 
@@ -1283,7 +1283,7 @@ Forward until a count is reached and refuse after. Two `for`s over the same list
 
 ### Migration between two outer contexts
 
-An interceptor has one outer context, its own node's list, but that list can hold elements of two kinds, and a dynamic can choose between them:
+An interceptor has one outer context, its own widget's list, but that list can hold elements of two kinds, and a dynamic can choose between them:
 
 ```prism
 type Backend = choice Local | Remote
@@ -1370,7 +1370,7 @@ let ApplyLaunch: fn Text ==> unit, Launch -> Text ==> unit = \|table, l| match l
     @ unit
 ```
 
-Each entry in the process table is a `for` block, keyed by the program's name, that builds the named program under an `intercept`, forwards everything that is not GUI, and returns the program's element list as a dynamic; the `for` consolidates those into `$lists : $(Text ==> (Path ==> Slot))`, one list per running program, which a tiling interceptor lays out side by side and routes clicks into by the same `Into` convention as a box. The `match` inside the block chooses between two widgets by a plain value, `programs[key]`, which is the one form a `match` with widget arms may take. The supplier gives every program the host's own clock, so there is one clock across the host and all its guests, and an empty argument list; everything else is forwarded. A `Stop` removes the key, the block is torn down, the program's slots leave the outer list, and the World below releases whatever it was doing for them.
+Each entry in the process table is a `for` block, keyed by the program's name, that builds the named program under an `intercept`, forwards everything that is not GUI, and returns the program's element list as a dynamic; the `for` consolidates those into `$lists : $(Text ==> (Path ==> Slot))`, one list per running program, which a tiling interceptor lays out side by side and routes clicks into by the same `Into` convention as a box. The `match` inside the block chooses between two blueprints by a plain value, `programs[key]`, which is the one form a `match` with blueprint arms may take. The supplier gives every program the host's own clock, so there is one clock across the host and all its guests, and an empty argument list; everything else is forwarded. A `Stop` removes the key, the block is torn down, the program's slots leave the outer list, and the World below releases whatever it was doing for them.
 
 From a guest's side, the host is its World: it sees buttons and labels answered, a clock with a value, files it asked for. From the World below, the host is one program with a window, a clock and some forwarded file reads. A guest that wants to escape has no way to: it cannot name the host, cannot reach another guest, cannot find a global, and every element it makes passes through `supply` or the `for` block's `match` before anything outside knows it exists. That is what a World is, and the only difference between this one and the Rust one below it is that this one has an outside to forward to.
 
@@ -1394,7 +1394,7 @@ The boundary is defined as much by what it refuses as by what it offers. Each re
 
 **No placeholder for state.** A state element has the value the outside held, from its first occurrence. What it buys: a widget built mid-occurrence is consistent with everything it captured; `NotYet` does not exist, so no `match` has an arm for a value the world never held; and the equality law is a fact about one key rather than a promise made per slot.
 
-**No node values, no reified paths in the program.** A program cannot hold a path, compare two, or address a slot by one; only the outside addresses paths, and the program sees them only as the keys of an interceptor's list. What it buys: ownership is a tree, a path is never reused, and a program cannot keep a stale reference to a slot that its parent chose to remove.
+**No widget values, no reified paths in the program.** A program cannot hold a path, compare two, or address a slot by one; only the outside addresses paths, and the program sees them only as the keys of an interceptor's list. What it buys: ownership is a tree, a path is never reused, and a program cannot keep a stale reference to a slot that its parent chose to remove.
 
 The pattern repeats from the rest of the language: a feature that looks essential is removed, the removal closes a hole, and the same removal lets the World be a loop that reads a map and writes a map.
 

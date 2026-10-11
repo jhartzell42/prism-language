@@ -181,7 +181,7 @@ The holds are the whole specification of what can happen to a buffer. `$hist` mo
 
 `Unless` is the line that stops the editor asking about its own saves. A `Write` lands on disk; the watcher pushes a new stamp; the buffer reads; the contents come back equal to `$saved`; the reload is dropped. A change by another program comes back different and is applied. There is no "ignore the next watch event" flag, which is the fix you have written and the fix that has a race in it, because the next event is not always yours. Comparing contents is the test that cannot be wrong about whose change it is.
 
-Buffers are a map keyed by path, so opening a path twice is one buffer, and closing one tears its node down with its history, its watcher and its pending reads:
+Buffers are a map keyed by path, so opening a path twice is one buffer, and closing one tears its widget down with its history, its watcher and its pending reads:
 
 ```prism
 type Change = choice Open | Close
@@ -411,7 +411,7 @@ The spec is the thing: the entire session is a transcript of pushes and response
 
 ### Latency, as an implementation question
 
-The specification does not claim a latency, and here is what the Rust runtime as described costs. An occurrence is one synchronous run call: fire the inputs, propagate by height through a height-ordered action map, commit the holds, rebuild the element list, return. Values are boxed except small integers; the state record is cloned on every step (a persistent map inside it makes that cheap, a plain array does not); the element list is recomputed in full after each occurrence in the first implementation; and before any of that, the feed's bytes crossed from the socket thread to the World's loop through a queue. For a graph the size of the one above that is on the order of microseconds to tens of microseconds per increment on ordinary hardware, which is three orders of magnitude slower than a tuned kernel-bypass loop and one or two orders faster than it needs to be for a strategy that thinks in milliseconds (an estimate, not a measurement; the runtime chapter's measurements replace it). Every increment is its own occurrence, because increments are responses and responses to one slot never share an occurrence; a World that offers the book as native state instead coalesces, and a strategy that reads `Md.Book` gets one occurrence per batch the World chose. The knobs that would move the number are all in the implementation chapters and none in the language: values representation, an incremental element list, arena allocation per node, a runtime per symbol on its own thread. A system whose whole budget is five microseconds from packet to wire is not this program; it is a loop in C++ that this program supervises, through a state element for the loop's status and a request element for its parameters, with the strategy's decisions taken out of the hot path on purpose.
+The specification does not claim a latency, and here is what the Rust runtime as described costs. An occurrence is one synchronous run call: fire the inputs, propagate by height through a height-ordered action map, commit the holds, rebuild the element list, return. Values are boxed except small integers; the state record is cloned on every step (a persistent map inside it makes that cheap, a plain array does not); the element list is recomputed in full after each occurrence in the first implementation; and before any of that, the feed's bytes crossed from the socket thread to the World's loop through a queue. For a graph the size of the one above that is on the order of microseconds to tens of microseconds per increment on ordinary hardware, which is three orders of magnitude slower than a tuned kernel-bypass loop and one or two orders faster than it needs to be for a strategy that thinks in milliseconds (an estimate, not a measurement; the runtime chapter's measurements replace it). Every increment is its own occurrence, because increments are responses and responses to one slot never share an occurrence; a World that offers the book as native state instead coalesces, and a strategy that reads `Md.Book` gets one occurrence per batch the World chose. The knobs that would move the number are all in the implementation chapters and none in the language: values representation, an incremental element list, arena allocation per widget, a runtime per symbol on its own thread. A system whose whole budget is five microseconds from packet to wire is not this program; it is a loop in C++ that this program supervises, through a state element for the loop's status and a request element for its parameters, with the strategy's decisions taken out of the hot path on purpose.
 ## 3. A control loop
 
 A controller is the oldest reactive program there is: read the sensors, compute, drive the actuators, wait for the next tick. The synchronous languages (Esterel, Lustre, Lucid Synchrone) were built for exactly this and got the law right decades ago: an instant is atomic, every signal has one value per instant, and `pre` is the only way to see the previous one. Prism has the same law with a different clock: the tick is an occurrence the World opens, `pre` is the tag law, and the controller is a hold whose change event is the control law applied on the tick. Prism adds that the structure can change while the loop runs, and it owes the synchronous tradition a plain statement about timing, which the last part of this section gives.
@@ -528,7 +528,7 @@ $integral <- 0.0 then $integral + !inc
 
 The first is the clock. In Lustre the base clock is the program's and every instant is a tick. In Prism an occurrence is whatever the World opened, and a push with no tick, say the stop being asserted between ticks, is an instant in which `on !tick` expressions are silent and everything else runs. That is why `!halt` is derived from `!Updated $stop` rather than from reading `$stop` on the tick: the stop acts in the occurrence it arrives, tick or no tick, and under a World that gives it its own turn the motors get their zero before the next sample. A synchronous program would have to poll the stop on its clock and wait up to a period.
 
-The second is structure. A Lustre program's topology is fixed at compile time. Here the gain schedule can be a `dyn` over a mode, and a mode change tears down one controller's node and builds another, in the occurrence of the change, with the new one seeing all of it:
+The second is structure. A Lustre program's topology is fixed at compile time. Here the gain schedule can be a `dyn` over a mode, and a mode change tears down one controller's widget and builds another, in the occurrence of the change, with the new one seeing all of it:
 
 ```prism
     !$halted <- dyn $mode:
@@ -537,7 +537,7 @@ The second is structure. A Lustre program's topology is fixed at compile time. H
             Carry: @Balance carry_gains, $setpoint
 ```
 
-The new node's `$loop` starts from zero, which is the bumpless-transfer problem in a sentence: a controller that must keep its integral across a mode change keeps the hold outside the `dyn` and passes it in, and the program's text says which it does.
+The new widget's `$loop` starts from zero, which is the bumpless-transfer problem in a sentence: a controller that must keep its integral across a mode change keeps the hold outside the `dyn` and passes it in, and the program's text says which it does.
 
 ### The hard moment
 
@@ -745,7 +745,7 @@ One way to change anything: `$model` has one change event, and `StepAndRoute` is
 
 Simultaneity: occurrence 300 is a `!Union` and a fold order, both visible.
 
-No node values: there is no connection object to keep in a map and forget to remove. A dead connection has no slot, and a write to it is impossible to express.
+No widget values: there is no connection object to keep in a map and forget to remove. A dead connection has no slot, and a write to it is impossible to express.
 
 The spec is the thing: the Test World accepts `Net.Listener` and `Net.Conn`, so the whole server, including the race above, is a script of `send Net.Conn(id=5), Closed` on one line with `send Net.Conn(id=9), Received "hi\r\n"` and a `requested` step per recipient. The server you tested is the server you shipped.
 
@@ -1111,7 +1111,7 @@ Frames 5 and 9 overlap, 9 on top, 5 focused. The user clicks the visible corner 
 
 Inside application 5, the library's `@Window` hit-tests the point against its layout as the occurrence opened, finds the Quit button, and fires its click; the application's `Process.Exit(requests=(Code 0 on !quit))` fires `Code 0`. Back in the frame, `!held`'s block for the exit slot sees `_.!request` fire; `!held` fires with `{p: Code 0}`; `!exit` fires; it crosses the `dyn` through `!Switch`, which has been listening to this generation since the frame was built; block `[5]`'s `!quit` fires with `Quit 5`; in the desktop, `frames.!quit` fires with `{5: Quit 5}`, and `!cmds` fires with `{"quit:5": Quit 5, "raise": Raise 5}`.
 
-`StepDesk` reads `$desk` through a tag and folds in key order. `"quit:5"` first: frame 5 leaves `frames`, `order` becomes `[[9]]`, `focus` becomes `Nil`. Then `"raise"`: `Raise 5` on a desk with no frame 5 is a no-op, as `StepDesk` was written. `$desk` changes; `$desk.frames` changes promptly; the `for` sees key 5 gone and tears block `[5]` down at commit, with the whole application under it: its holds, its timers, its sockets, every slot, each cancelled by the World under its obligations when the next list arrives without them. `frames.$draw` changes promptly to a map without 5; `Compose $desk, frames.$draw` is a derived dynamic over the new desk and the new ops, and it is glitch-free: there is no instant in which the scene has 5's draw list with 5 missing from `order`, or `order` naming a frame with no draw list. The scene rebuilds, the World draws a desktop with one window. The application's own `Gui.Scene` also rebuilt in 70 (its button drew pressed), in a node that is dropped at commit, and nobody saw it. Nothing about the exit reached the World below, because the frame held `Process.Exit` back and it was never in the compositor's list.
+`StepDesk` reads `$desk` through a tag and folds in key order. `"quit:5"` first: frame 5 leaves `frames`, `order` becomes `[[9]]`, `focus` becomes `Nil`. Then `"raise"`: `Raise 5` on a desk with no frame 5 is a no-op, as `StepDesk` was written. `$desk` changes; `$desk.frames` changes promptly; the `for` sees key 5 gone and tears block `[5]` down at commit, with the whole application under it: its holds, its timers, its sockets, every slot, each cancelled by the World under its obligations when the next list arrives without them. `frames.$draw` changes promptly to a map without 5; `Compose $desk, frames.$draw` is a derived dynamic over the new desk and the new ops, and it is glitch-free: there is no instant in which the scene has 5's draw list with 5 missing from `order`, or `order` naming a frame with no draw list. The scene rebuilds, the World draws a desktop with one window. The application's own `Gui.Scene` also rebuilt in 70 (its button drew pressed), in a widget that is dropped at commit, and nobody saw it. Nothing about the exit reached the World below, because the frame held `Process.Exit` back and it was never in the compositor's list.
 
 ```
 0:        Gui.Window(title="Desktop")
@@ -1128,7 +1128,7 @@ The language is enough: a window manager is an interceptor, a process table is a
 
 Nothing happens because an element appeared: an application appears on the desk because `Open` was folded into `$desk`, and leaves because `Quit` was. The World below never sees an application's exit, and the compositor's own run ends only if the compositor fires `Process.Exit` itself.
 
-No node values: an application cannot keep a reference to its frame, and the compositor cannot keep a reference to an application. When frame 5 is removed from the map, everything under it is gone, and there is no listener somewhere holding the dead subtree alive.
+No widget values: an application cannot keep a reference to its frame, and the compositor cannot keep a reference to an application. When frame 5 is removed from the map, everything under it is gone, and there is no listener somewhere holding the dead subtree alive.
 
 The spec is the thing: the hard moment is a Test World script with `send Gui.Window(title="Desktop"), Pointer (Point 40, 300)` and an `expect_top_none` for frame 5's label afterwards, and the same script runs with the desktop under a `@VBox` or under nothing.
 
@@ -1390,7 +1390,7 @@ let Decode: fn Instant, HttpResult -> QueryState = \|now, r| match r:
     @ result
 ```
 
-The supplier returns a widget for each `Query.Result` element, and the runtime builds it once per distinct element value, in the poller's node, when the first slot with that value is created, and keeps it until the last such slot is gone. So the two `cpu` charts share one timer and one fetch per period, by value identity, without the poller counting anything. The widget fires a fetch at birth and on every tick, decodes the answer with the clock as it stood, and holds the result; the hold is the slot's dynamic, with `Unavailable` as its value in the occurrence the first slot was created, which is the truth: nobody has asked yet.
+The supplier returns a blueprint for each `Query.Result` element, and the runtime builds it once per distinct element value, in the poller's widget, when the first slot with that value is created, and keeps it until the last such slot is gone. So the two `cpu` charts share one timer and one fetch per period, by value identity, without the poller counting anything. The widget fires a fetch at birth and on every tick, decodes the answer with the clock as it stood, and holds the result; the hold is the slot's dynamic, with `Unavailable` as its value in the occurrence the first slot was created, which is the truth: nobody has asked yet.
 
 Under a World that accepts `Query.Result` natively, pushing a new value whenever the server sends one, the program is `@dashboard` with no `@Poller` around it, and nothing in `@Chart` changes. Polling versus pushes is, from the chart's side, no difference at all; from the World's side it is the difference between a request element and a state element, and the interceptor is the adapter between them.
 
@@ -1472,7 +1472,7 @@ The third way is as a chain of `Time.After`s, one step per turn, so that the Wor
 
 ### Data-parallel pipelines
 
-Map a function over a billion elements, reduce, repeat. The parallelism Prism has is between occurrences and across heights within one, and neither is across the elements of one big array. A `for` over a map with a million keys builds a million nodes, and the runtime visits each one per occurrence that touches it; a lifted `MapValues` over a million-entry dynamic recomputes the map in one closure on one thread. The game's bullets and the chat server's fan-out were the small versions of this. The place for data parallelism is a native function that uses the machine's cores, or a World component that runs the pipeline and offers its progress as a state element; the Prism program is the thing that knows when the pipeline should start and what to show while it runs.
+Map a function over a billion elements, reduce, repeat. The parallelism Prism has is between occurrences and across heights within one, and neither is across the elements of one big array. A `for` over a map with a million keys builds a million widgets, and the runtime visits each one per occurrence that touches it; a lifted `MapValues` over a million-entry dynamic recomputes the map in one closure on one thread. The game's bullets and the chat server's fan-out were the small versions of this. The place for data parallelism is a native function that uses the machine's cores, or a World component that runs the pipeline and offers its progress as a state element; the Prism program is the thing that knows when the pipeline should start and what to show while it runs.
 
 ### Programs that are one pure function
 
