@@ -30,7 +30,11 @@ impl<T: ValueType> Event<T> {
 
 impl Runtime {
     /// Schedule an event to trigger in the next propagation stage of the runtime.
-    pub fn schedule_trigger<T: ValueType>(&self, trigger: &EventTrigger<T>, value: Value<T>) {
+    pub fn schedule_trigger<T: ValueType>(
+        &self,
+        trigger: &EventTrigger<T>,
+        value: Value<T>,
+    ) -> Result<(), ScheduleError> {
         struct TriggerAction<T: ValueType> {
             trigger: EventTrigger<T>,
             value: Value<T>,
@@ -41,22 +45,24 @@ impl Runtime {
                 let Some(trigger) = self.trigger.0.upgrade() else {
                     return;
                 };
-                let mut scheduled = trigger.scheduled.lock().unwrap();
-                *scheduled = false;
+                *trigger.scheduled.lock().unwrap() = false;
                 trigger
                     .subscribers
                     .notify(self.trigger.0.clone(), None, runtime, || Some(self.value));
             }
         }
 
+        if self.0.lock().unwrap().height.is_some() {
+            return Err(ScheduleError::DuringPropagation);
+        }
         {
             let Some(trigger) = trigger.0.upgrade() else {
-                return;
+                return Ok(());
             };
 
             let mut scheduled = trigger.scheduled.lock().unwrap();
             if *scheduled {
-                panic!("can't schedule the same event twice before propagating");
+                return Err(ScheduleError::AlreadyScheduled);
             }
             *scheduled = true;
         }
@@ -68,7 +74,17 @@ impl Runtime {
                 value,
             },
         );
+        Ok(())
     }
+}
+
+#[allow(missing_docs)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+pub enum ScheduleError {
+    #[error("can't schedule a trigger while the runtime is propagating")]
+    DuringPropagation,
+    #[error("this trigger is already scheduled for the next propagation")]
+    AlreadyScheduled,
 }
 
 struct EventTriggerInner<T: ValueType> {

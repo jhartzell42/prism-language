@@ -11,7 +11,11 @@
 //! events. Those events don't actually do anything until propagation
 //! begins.
 
-use std::{collections::BTreeMap, sync::Mutex};
+use std::{
+    collections::BTreeMap,
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
+    sync::Mutex,
+};
 
 #[cfg(test)]
 mod tests;
@@ -19,14 +23,14 @@ mod tests;
 // TODO: Should we have any guarantees that we don't mix runtimes?
 
 /// This represents an instance of a reactive graph.
-pub struct Runtime(Mutex<RuntimeInner>);
+pub struct Runtime(pub(crate) Mutex<RuntimeInner>);
 
-struct RuntimeInner {
+pub(crate) struct RuntimeInner {
     actions: BTreeMap<usize, Vec<Box<dyn Action>>>,
-    height: Option<usize>,
+    pub(crate) height: Option<usize>,
 }
 
-pub(crate) trait Action {
+pub(crate) trait Action: Send {
     fn act(self: Box<Self>, runtime: &Runtime);
 }
 
@@ -86,7 +90,13 @@ impl Runtime {
                 actions
             };
             for action in actions {
-                action.act(self);
+                if let Err(panic) = catch_unwind(AssertUnwindSafe(|| action.act(self))) {
+                    let mut this = self.0.lock().unwrap();
+                    this.actions.clear();
+                    this.height = None;
+                    drop(this);
+                    resume_unwind(panic);
+                }
             }
         }
     }
