@@ -646,6 +646,20 @@ It is the first Prism on a screen. The reflex-dom World is a few hundred lines o
 
 And it is the oracle when the Rust runtime is wrong in a way no script anticipated. The hard bugs in a height-ordered runtime are the ones around construction in the middle of an occurrence: a nested `dyn` rebuilt in the occurrence its parent is rebuilt in, a late subscriber's view of a firing earlier in the same occurrence, a cycle that closes only after a switch adopts a new inner. Each of those is a question Spider has an answer to, and reading Spider's source to find the answer is slow and error-prone. With the Haskell implementation, the reading is a run: write the script, diff the transcripts, and the sentence the Rust runtime got wrong is the one the law test names.
 
+## The smallest version that pays for itself
+
+The whole chapter describes the finished implementation. The smallest one that earns a differential test is a fraction of it, and the order in which the rest arrives is set by which law tests it can run.
+
+*Skip the frontend.* The Rust frontend already prints the typed AST in the text form, and `Prism.Typed.Text` has to parse that form anyway. So the first Haskell binary reads the text form and nothing else: no lexer, no layout, no parser, no elaborator. The differential test still runs, Rust frontend into both evaluators, and every law test exercises the Reflex evaluator from day one. The Haskell frontend is a second project with its own diff, added when the evaluator is believed.
+
+*The evaluator for the counter.* Values are one `Value` sum type, as in the runtime chapter; `Event t Value`, `Dynamic t Value`, `Behavior t Value`. The counter needs five nodes: `hold` is `holdDyn`, `tag` is `attachWith` on `current`, `leftmost` is `leftmost`, lifted application over a dynamic is `fmap`, and `@Element` with a response is a `newTriggerEvent` keyed by path plus a `DynamicWriter` entry for the element list. A widget block is a `RecursiveDo` block, because the counter's hold refers to itself, and the resolver's binding groups say which bindings go in one `rec`. That is enough for the tag law, the leftmost law, the hold-in-build-occurrence law, and the glitch-freedom diamond.
+
+*The Test World.* `runSpiderHost`, one trigger per response path and one per state element, a turn is `fireEventsAndRead` over the turn's triggers, and the transcript printer reads the element list `Dynamic` and the collected request firings after each turn. `Defer` is a loop: after a turn, read the `Defer` firings, fire their triggers, repeat until none. That is the whole World, and it is under two hundred lines.
+
+*Then, in this order, because each unlocks a block of law tests.* `switchHold` for `!Switch` and `join` for `$Join`, which unlock the switching laws. `networkView` for `dyn`, with the rebuild's element list substituted in the parent's `DynamicWriter`, which unlocks the construction-in-the-middle laws. `listWithKey` over a `Dynamic (Map Key Value)` for `for`, with consolidation as `mergeMap` on the blocks' results, which unlocks the keyed-list laws. `intercept` last, as `runDynamicWriterT` on the child plus a `fanMap` of the responses by path, which unlocks the element laws. Errors and the replay-based rollback come after all of that, because until then a failing test is a bug in the evaluator and not a rollback question.
+
+What this leaves for the day the evaluator is believed: the frontend, `reflex-dom`, and the replay log's memory. None of them is needed to find a disagreement between the two readings of chapters 3 through 7, which is the only reason the implementation exists.
+
 ## What the Haskell implementation leaves out
 
 The negative space, in one place, with what each exclusion buys.
