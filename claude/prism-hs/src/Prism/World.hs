@@ -1,26 +1,36 @@
--- | The Test World: runs a test's turns against a blueprint, prints the transcript, checks.
+{-# LANGUAGE RankNTypes, ScopedTypeVariables, GADTs, FlexibleContexts, TypeFamilies #-}
+-- | The Test World: runs a test's turns against a blueprint on a Spider timeline of its own,
+-- prints the transcript, checks. Each turn is one frame: responses by path and pushes by
+-- element value go in as trigger firings, the request firings and the result come out of the
+-- read phase, and the list is read after the frame.
 module Prism.World where
 
+import Reflex hiding (apply)
+import Reflex.Spider
+import Reflex.Host.Class
 import Prism.Syntax
 import Prism.Value
-import Prism.Runtime
 import Prism.Eval
 import Data.IORef
-import qualified Data.Map.Strict as M
+import qualified Data.Map as M
 import Data.List (intercalate)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
+import Data.Functor.Identity
+import Data.Dependent.Sum (DSum(..))
 import Control.Monad
 import Control.Exception
+import Reflex.Spider.Internal (EventLoopException(..), HasSpiderTimeline, SpiderTimelineEnv)
+import GHC.IO.Exception (FixIOException(..))
 
-data TurnRecord = TurnRecord
+data TurnRecord t = TurnRecord
   { trIndex     :: Int
-  , trResponses :: [([Seg], Value)]
-  , trPushes    :: [(Value, Value)]
-  , trList      :: [Slot]
-  , trRequests  :: M.Map String [Value]        -- by path spelling
-  , trResult    :: Maybe (Either (Maybe Value) Value)   -- Left: event (fired/quiet); Right: value
+  , trResponses :: [(Path t, Value t)]
+  , trPushes    :: [(Value t, Value t)]
+  , trList      :: [Slot t]
+  , trRequests  :: M.Map String [Value t]        -- by path spelling
+  , trResult    :: Maybe (Either (Maybe (Value t)) (Value t))   -- Left: event (fired/quiet); Right: value
   , trError     :: Maybe PrismError
-  , trDeparted  :: [Slot]                       -- slots torn down in the turn that fired a request
+  , trDeparted  :: [Slot t]                       -- slots torn down in the turn that fired a request
   }
 
 data TestOutcome = TestOutcome
@@ -29,54 +39,85 @@ data TestOutcome = TestOutcome
   , toVerdict    :: Either String ()
   }
 
--- | Build the top-level environment: tags, types, functions and blueprints.
-topLevel :: Program -> IO (M.Map String TagDecl, M.Map String TypeDecl, RT -> IORef (M.Map Value Value) -> IO (Ctx, Env))
-topLevel prog = do
-  let tags = M.fromList [(tdName t, t) | ITag t <- prog]
-      types = M.fromList [(n, t) | IType t <- prog, let n = typeName t]
+-- | The top-level environment: a lazy knot, so functions can refer to each other and to
+-- themselves in any order.
+topEnv :: Rx t => Ctx t -> Program -> Env t
+topEnv ctx prog = env
+  where
+    env = M.fromList (concatMap item prog)
+    item (IFun (Name s n) e) = let v = evalPure ctx env e in [(s ++ n, v), (n, v)]
+    item (IBlueprint (Name s n) stmts) =
+      let v = VBlueprint (Blueprint (\sc -> buildBlock ctx env sc stmts) False) in [(s ++ n, v), (n, v)]
+    item _ = []
+
+runTest :: Program -> Item -> IO TestOutcome
+runTest prog t = withSpiderTimeline (runTestOn prog t)
+
+-- | Everything the turn loop needs from the host side of one test.
+data Host x = Host
+  { hRun       :: forall a. SpiderHost x a -> IO a
+  , hCtx       :: Ctx (SpiderTimeline x)
+  , hEnv       :: Env (SpiderTimeline x)
+  , hSnap      :: IORef (M.Map (Value (SpiderTimeline x)) (Value (SpiderTimeline x)))
+  , hList      :: Dynamic (SpiderTimeline x) (ListMap (SpiderTimeline x))
+  , hResult    :: IORef (Value (SpiderTimeline x))
+  , hRespRef   :: IORef (Maybe (EventTrigger (SpiderTimeline x) (M.Map (Path (SpiderTimeline x)) (Value (SpiderTimeline x)))))
+  , hPushRef   :: IORef (Maybe (EventTrigger (SpiderTimeline x) (M.Map (Value (SpiderTimeline x)) (Value (SpiderTimeline x)))))
+  , hBuildRef  :: IORef (Maybe (EventTrigger (SpiderTimeline x) ()))
+  , hReqH      :: EventHandle (SpiderTimeline x) (Requests (SpiderTimeline x))
+  , hResH      :: EventHandle (SpiderTimeline x) (Value (SpiderTimeline x))
+  , hRootH     :: EventHandle (SpiderTimeline x) (Value (SpiderTimeline x))
+  }
+
+runTestOn :: forall x. HasSpiderTimeline x => Program -> Item -> SpiderTimelineEnv x -> IO TestOutcome
+runTestOn prog (ITest name wExpr turns) tl = do
+  let host :: forall a. SpiderHost x a -> IO a
+      host act = runSpiderHostForTimeline act tl
+      tags = M.fromList [(tdName t, t) | ITag t <- prog]
+      types = M.fromList [(typeName t, t) | IType t <- prog]
       typeName (TDRecord n _) = n
       typeName (TDChoice n _) = n
       typeName (TDOther n) = n
-      mk rt snapRef = do
-        let ctx = Ctx rt tags types (\e -> M.lookup e <$> readIORef snapRef)
-        -- every top-level definition is a thunk over the final environment, so functions can
-        -- refer to each other and to themselves in any order
-        envRef <- newIORef M.empty
-        entries <- forM prog $ \item -> case item of
-          IFun (Name s n) e -> do
-            ref <- newIORef (Left (readIORef envRef >>= \env -> eval ctx env e))
-            return [(s ++ n, VThunk ref), (n, VThunk ref)]
-          IBlueprint (Name s n) stmts -> do
-            ref <- newIORef (Left (readIORef envRef >>= \env -> return (VBlueprint (Blueprint (\sc -> buildBlock ctx env sc stmts) False))))
-            return [(s ++ n, VThunk ref), (n, VThunk ref)]
-          _ -> return []
-        let env = M.fromList (concat entries)
-        writeIORef envRef env
-        return (ctx, env)
-  return (tags, types, mk)
-
-runTest :: Program -> Item -> IO TestOutcome
-runTest prog (ITest name wExpr turns) = do
-  (_, _, mk) <- topLevel prog
-  rt <- newRT
   snapRef <- newIORef M.empty
-  (ctx, env) <- mk rt snapRef
-  root <- newScope []
+  cells <- newIORef M.empty
+  (respE, respRef) <- host newEventWithTriggerRef
+  (pushE, pushRef) <- host newEventWithTriggerRef
+  (buildE, buildRef) <- host newEventWithTriggerRef
+  let ctx = Ctx tags types (\e -> M.lookup e <$> readIORef snapRef) (fanMap respE) pushE cells
+      env = topEnv ctx prog
+      -- the root is a generation built when the build trigger fires: occurrence zero
+      rootE :: Event (SpiderTimeline x) (Gen (SpiderTimeline x))
+      rootE = flip push buildE $ \() -> do
+        root <- newScope []
+        wv <- eval atBuild ctx env wExpr
+        r <- case wv of
+          VBlueprint bp -> bpBuild bp root
+          _ -> prismError "Build" "the test's subject is not a blueprint"
+        (l, q) <- closeScope root
+        return (Just (Gen r l q))
+      resultEvent (VEvent e) = e
+      resultEvent _ = never
+  listH <- host (holdDyn (constDyn M.empty) (genList <$> rootE))
+  reqH <- host (holdDyn never (genReqs <$> rootE))
+  resH <- host (holdDyn never (resultEvent . genResult <$> rootE))
+  let listD = join listH
+      reqE = mergeWith (++) [switch (current reqH), registerBirth (genReqs <$> rootE)]
+      resE = leftmost [switch (current resH), registerBirth (resultEvent . genResult <$> rootE)]
+  reqHandle <- host (subscribeEvent reqE)
+  resHandle <- host (subscribeEvent resE)
+  rootHandle <- host (subscribeEvent (genResult <$> rootE))
   resultRef <- newIORef VUnit
-  wv <- eval ctx env wExpr
-  bp <- case wv of
-    VBlueprint b -> return b
-    _ -> throwIO (PrismError "Build" "the test's subject is not a blueprint")
-  let loop _ [] acc = return (reverse acc, Right ())
+  let h = Host host ctx env snapRef listD resultRef respRef pushRef buildRef reqHandle resHandle rootHandle
+      loop _ [] acc = return (reverse acc, Right ())
       loop i (t : rest) acc = do
-        r <- try (runTurn ctx env rt root resultRef snapRef bp i t)
+        r <- try (runTurn h i t)
         case r of
           Left (PrismError "Script" d) -> return (reverse acc, Left ("turn " ++ show i ++ ": script error: " ++ d))
           Left e -> throwIO e
           Right rec -> step i t rest acc rec
       step i t rest acc rec = do
         let acc' = rec : acc
-        case checkTurn ctx env rec t of
+        case checkTurn ctx rec t of
           Left err -> return (reverse acc', Left ("turn " ++ show i ++ ": " ++ err))
           Right () -> case (trError rec, any isErrorsCheck (tChecks t)) of
             (Just e, False) -> return (reverse acc', Left ("turn " ++ show i ++ " ended in an error with no `errors` check: " ++ peKind e ++ " " ++ peDetail e))
@@ -86,17 +127,21 @@ runTest prog (ITest name wExpr turns) = do
   where
     isErrorsCheck (CErrors _) = True
     isErrorsCheck _ = False
-runTest _ _ = error "not a test"
+runTestOn _ _ _ = error "not a test"
 
-runTurn :: Ctx -> Env -> RT -> Scope -> IORef Value -> IORef (M.Map Value Value) -> Blueprint -> Int -> Turn -> IO TurnRecord
-runTurn ctx env rt root resultRef snapRef bp i (Turn withs inputs _) = do
-  list0 <- slotsOf root
+runTurn :: forall x. HasSpiderTimeline x => Host x -> Int -> Turn -> IO (TurnRecord (SpiderTimeline x))
+runTurn h i (Turn withs inputs _) = do
+  let ctx = hCtx h
+      env = hEnv h
+      host :: forall a. SpiderHost x a -> IO a
+      host = hRun h
+  list0 <- M.elems <$> host (sample (current (hList h)))
   -- withs: snapshot entries for this turn; a changed entry is this turn's push for it
   withPushes <- fmap catMaybes $ forM withs $ \(p, e) -> do
-    v <- eval ctx env e
-    let k = patValue p
-    old <- M.lookup k <$> readIORef snapRef
-    modifyIORef' snapRef (M.insert k v)
+    let v = evalPure ctx env e
+        k = patValue p
+    old <- M.lookup k <$> readIORef (hSnap h)
+    modifyIORef' (hSnap h) (M.insert k v)
     return (if old == Just v then Nothing else Just (k, v))
   -- resolve the inputs against the list as the turn opens
   resolved <- forM inputs $ \inp -> case inp of
@@ -107,60 +152,73 @@ runTurn ctx env rt root resultRef snapRef bp i (Turn withs inputs _) = do
       return (Right (Right (Just (s, VCons "click" []))))
     ISend p e -> do
       s <- findOne ctx list0 p
-      v <- eval ctx env e
-      return (Right (Right (Just (s, v))))
+      return (Right (Right (Just (s, evalPure ctx env e))))
     IPush p e -> do
-      v <- eval ctx env e
-      let elemV = patValue p
-      modifyIORef' snapRef (M.insert elemV v)
+      let v = evalPure ctx env e
+          elemV = patValue p
+      modifyIORef' (hSnap h) (M.insert elemV v)
       return (Left (elemV, v))
   let isBuild = not (null [() | Right (Left ()) <- resolved])
       deliveries = [sv | Right (Right (Just sv)) <- resolved]
       pushes = withPushes ++ [ev | Left ev <- resolved]
-  outcome <- try $ runOccurrence rt $ do
-    when isBuild $ do
-      r <- bpBuild bp root
-      writeIORef resultRef r
-    forM_ deliveries $ \(s, v) -> case slotResponds s of
-      Just e -> fire rt e v
-      Nothing -> throwIO (PrismError "Build" ("slot " ++ showPath (slotPath s) ++ " has no responds"))
-    forM_ pushes $ \(elemV, v) ->
-      forM_ list0 $ \s -> when (slotElement s == elemV) $
-        case slotPush s of
-          Just p -> fire rt p v
-          Nothing -> return ()
-  case outcome of
-    Left err -> return (TurnRecord i [(slotPath s, v) | (s, v) <- deliveries] pushes list0 M.empty Nothing (Just err) [])
-    Right () -> do
-      list1 <- slotsOf root
-      -- requests are collected from the slots that existed as the turn opened as well as those
-      -- that exist as it closes: a slot torn down in the turn still fired what it fired
-      let paths1 = map (showPath . slotPath) list1
-          departed = [s | s <- list0, showPath (slotPath s) `notElem` paths1]
-      reqs <- fmap (M.fromList . catMaybes) $ forM (list1 ++ departed) $ \s -> case slotRequests s of
-        Just e -> do
-          f <- firingOf rt e
-          return (fmap (\v -> (showPath (slotPath s), [v])) f)
-        Nothing -> return Nothing
-      r <- readIORef resultRef
-      res <- case r of
-        VDyn d -> Right <$> beforeOf d
-        VEvent e -> Left <$> firingOf rt e
-        v -> return (Right v)
-      return (TurnRecord i [(slotPath s, v) | (s, v) <- deliveries] pushes list1 reqs (Just res) Nothing [s | s <- departed, M.member (showPath (slotPath s)) reqs])
+      responses = [(slotPath s, v) | (s, v) <- deliveries]
+      failed err = return (TurnRecord i responses pushes list0 M.empty Nothing (Just err) [])
+  case [s | (s, _) <- deliveries, not (slotResponds s)] of
+    (s : _) -> failed (PrismError "Build" ("slot " ++ showPath (slotPath s) ++ " has no responds"))
+    [] -> do
+      mBuild <- readIORef (hBuildRef h)
+      mResp <- readIORef (hRespRef h)
+      mPush <- readIORef (hPushRef h)
+      let triggers = catMaybes
+            [ if isBuild then fmap (\t -> t :=> Identity ()) mBuild else Nothing
+            , if null deliveries then Nothing else fmap (\t -> t :=> Identity (M.fromList responses)) mResp
+            , if null pushes then Nothing else fmap (\t -> t :=> Identity (M.fromList pushes)) mPush ]
+      outcome <- try $ host $ fireEventsAndRead triggers $ do
+        reqs <- readEvent (hReqH h) >>= sequence
+        res <- readEvent (hResH h) >>= sequence
+        root <- readEvent (hRootH h) >>= sequence
+        return (fromMaybe [] reqs, res, root)
+      case outcome of
+        Left err -> failed (classify err)
+        Right (reqs, resFired, root) -> do
+          forM_ root (writeIORef (hResult h))
+          list1 <- M.elems <$> host (sample (current (hList h)))
+          r <- readIORef (hResult h)
+          res <- case r of
+            VDyn d -> Right <$> host (sample (current d))
+            VEvent _ -> return (Left resFired)
+            v -> return (Right v)
+          let reqMap = M.fromListWith (flip (++)) [(showPath p, [v]) | (p, v) <- reqs]
+              paths1 = map (showPath . slotPath) list1
+              -- requests are collected from the slots that existed as the turn opened as well
+              -- as those that exist as it closes: a slot torn down in the turn still fired
+              departed = [s | s <- list0, showPath (slotPath s) `notElem` paths1]
+          return (TurnRecord i responses pushes list1 reqMap (Just res) Nothing
+                    [s | s <- departed, M.member (showPath (slotPath s)) reqMap])
 
-findOne :: Ctx -> [Slot] -> Pat -> IO Slot
+-- | An exception that escaped the frame, as the error kind the transcript prints.
+classify :: SomeException -> PrismError
+classify e
+  | Just pe <- fromException e = pe
+  | Just (le :: EventLoopException) <- fromException e = PrismError "Cycle" (takeWhile (/= '\n') (show le))
+  | Just StackOverflow <- fromException e = PrismError "Cycle" "Spider recursed without bound while subscribing: a prompt cycle"
+  | Just FixIOException <- fromException e = PrismError "Cycle" "a binding was used at build time before its line"
+  | Just BlockedIndefinitelyOnMVar <- fromException e = PrismError "Cycle" "a binding was used at build time before its line"
+  | Just (ErrorCall m) <- fromException e = PrismError "Build" m
+  | otherwise = PrismError "Build" (show e)
+
+findOne :: Ctx t -> [Slot t] -> Pat -> IO (Slot t)
 findOne ctx list p = case filter (matches ctx p) list of
   [s] -> return s
   ss -> throwIO (PrismError "Script" ("pattern matches " ++ show (length ss) ++ " slots, expected 1"))
 
-matches :: Ctx -> Pat -> Slot -> Bool
+matches :: Ctx t -> Pat -> Slot t -> Bool
 matches ctx p s = case matchPat ctx p (slotElement s) of
   Just _ -> True
   Nothing -> False
 
 -- | A snapshot key from a pattern: the whole element value it names.
-patValue :: Pat -> Value
+patValue :: Pat -> Value t
 patValue p = case p of
   PCons n [] -> VRec n []
   PCons n ps -> VCons n (map patValue ps)
@@ -173,8 +231,8 @@ patValue p = case p of
 -- ---------------------------------------------------------------------------
 -- Checks
 
-checkTurn :: Ctx -> Env -> TurnRecord -> Turn -> Either String ()
-checkTurn ctx env rec (Turn _ _ checks) = mapM_ one checks
+checkTurn :: Ctx t -> TurnRecord t -> Turn -> Either String ()
+checkTurn ctx rec (Turn _ _ checks) = mapM_ one checks
   where
     list = trList rec
     one c = case c of
@@ -198,7 +256,7 @@ checkTurn ctx env rec (Turn _ _ checks) = mapM_ one checks
         _ -> Left "quiet: the result is not an event"
       CRequested p vp ->
         let hits = [v | s <- list ++ trDeparted rec, matches ctx p s, Just vs <- [M.lookup (showPath (slotPath s)) (trRequests rec)], v <- vs, matchesV vp v]
-        in require (not (null hits)) ("requested: no matching slot fired a matching request")
+        in require (not (null hits)) "requested: no matching slot fired a matching request"
       CUnrequested p ->
         let hits = [() | s <- list, matches ctx p s, M.member (showPath (slotPath s)) (trRequests rec)]
         in require (null hits) "unrequested: a matching slot fired its request"
@@ -215,7 +273,7 @@ checkTurn ctx env rec (Turn _ _ checks) = mapM_ one checks
 -- ---------------------------------------------------------------------------
 -- Transcript
 
-printTurn :: TurnRecord -> [String]
+printTurn :: TurnRecord t -> [String]
 printTurn rec =
   [ "turn " ++ show (trIndex rec) ++ inputs ] ++
   case trError rec of

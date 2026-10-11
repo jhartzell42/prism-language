@@ -1,17 +1,28 @@
 cabal-version:      2.4
 name:               prism-hs
-version:            0.1.0.0
+version:            0.2.0.0
+synopsis:           A Prism interpreter on Reflex: parser, evaluator, Test World
 build-type:         Simple
 
-library
-    exposed-modules:  Prism.Syntax, Prism.Lexer, Prism.Parser, Prism.Value, Prism.Runtime, Prism.Eval, Prism.World, Prism.Test
-    hs-source-dirs:   src
-    build-depends:    base, containers, mtl, text
+common shared
     default-language: Haskell2010
-    ghc-options:      -Wall -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -Wno-incomplete-patterns -Wno-incomplete-uni-patterns
+    ghc-options:      -Wall -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind
+                      -Wno-incomplete-patterns -Wno-incomplete-uni-patterns -Wno-unused-imports
+                      -Wno-type-defaults -Wno-x-partial
+
+library
+    import:           shared
+    exposed-modules:  Prism.Syntax, Prism.Lexer, Prism.Parser, Prism.Value, Prism.Eval,
+                      Prism.World, Prism.Test
+    hs-source-dirs:   src
+    build-depends:    base >=4.14 && <5, containers, mtl, reflex >=0.9, dependent-sum, ref-tf
 
 executable prism-hs
+    import:           shared
     main-is:          Main.hs
     hs-source-dirs:   app
-    build-depends:    base, prism-hs, containers, text
-    default-language: Haskell2010
+    build-depends:    base, prism-hs
+    -- A prompt cycle makes Spider recurse without bound while subscribing (it does not throw
+    -- its EventLoopException for a cycle through a switch), so the stack is bounded and the
+    -- overflow is reported as the Cycle error.
+    ghc-options:      -rtsopts "-with-rtsopts=-K64m"

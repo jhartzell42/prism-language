@@ -1,110 +1,114 @@
--- | Runtime values and the graph's node types.
+{-# LANGUAGE RankNTypes #-}
+-- | Runtime values over Reflex: a plain value, or an `Event t`, a `Dynamic t`, or a blueprint
+-- that builds in the push monad. Also paths, slots and the scope a block builds into.
 module Prism.Value where
 
+import Reflex
 import Data.IORef
-import qualified Data.Map.Strict as M
-import Prism.Syntax (Name, Expr, Block)
+import qualified Data.Map as M
+import Control.Exception (Exception)
+import Prism.Syntax (Name, Expr)
 import Data.List (intercalate)
 
-data Value
+data Value t
   = VInt Integer
   | VFloat Double
   | VBool Bool
   | VText String
   | VUnit
-  | VCons String [Value]               -- choice constructors and positional records: Instant 5000
-  | VRec String [(String, Value)]      -- named records and elements: Ui.Button(label="x")
-  | VArray [Value]
-  | VMap (M.Map Value Value)
-  | VSome Value
+  | VCons String [Value t]               -- choice constructors and positional records: Instant 5000
+  | VRec String [(String, Value t)]      -- named records and elements: Ui.Button(label="x")
+  | VArray [Value t]
+  | VMap (M.Map (Value t) (Value t))
+  | VSome (Value t)
   | VNil
-  | VTuple [Value]
-  | VFn Closure
-  | VPrim String                       -- a prelude function by name
-  | VEvent Ev
-  | VDyn Dyn
-  | VBlueprint Blueprint
-  | VThunk (IORef (Either (IO Value) Value))   -- a later `let`, forced on first use
+  | VTuple [Value t]
+  | VFn (Closure t)
+  | VPrim String                         -- a prelude function by name
+  | VEvent (Event t (Value t))           -- `!A`
+  | VDyn (Dynamic t (Value t))           -- `$A`
+  | VBlueprint (Blueprint t)             -- `@A`
 
-data Closure = Closure { cParams :: [Name], cBody :: Expr, cEnv :: Env }
+data Closure t = Closure { cParams :: [Name], cBody :: Expr, cEnv :: Env t }
 
-type Env = M.Map String Value
+-- | Environments are lazy maps: a block's forward references are knots tied with `mdo`, and a
+-- strict map would force them while the block is still being built.
+type Env t = M.Map String (Value t)
 
--- | A blueprint: builds into a scope and returns the block's result. `bpOwnPos` says whether
--- binding it takes a position of its own in the parent's path (a widget-function body does;
--- rebuild, for and @Element allocate their own positions while building).
-data Blueprint = Blueprint { bpBuild :: Scope -> IO Value, bpOwnPos :: Bool }
+-- | A blueprint builds into a scope, in the push monad, and returns the block's result.
+-- `bpOwnPos` says whether binding it takes a position of its own in the parent's path (a
+-- widget-function body does; rebuild, for and @Element allocate their own positions while
+-- building).
+data Blueprint t = Blueprint { bpBuild :: Scope t -> PushM t (Value t), bpOwnPos :: Bool }
 
--- | An event node. `evFiring` holds (occurrence id, value) of the last firing.
-data Ev = Ev
-  { evId      :: Int
-  , evSubs    :: IORef [Node]
-  , evFiring  :: IORef (Maybe (Int, Value))
-  , evSources :: IORef (IO [Ev])        -- prompt sources, for the height (may change: switch)
-  , evLabel   :: String
-  }
-
--- | A node is the thing the scheduler runs: it recomputes an event from its sources.
-data Node = Node
-  { nodeId      :: Int
-  , nodeEvent   :: Ev                   -- the event this node fires
-  , nodeCompute :: IO (Maybe Value)
-  , nodeRan     :: IORef Int            -- the occurrence id in which it last ran
-  }
-
--- | A dynamic: a committed current value and its change event.
-data Dyn = Dyn
-  { dynId     :: Int
-  , dynCur    :: IORef Value
-  , dynChange :: Ev
-  }
+data PrismError = PrismError { peKind :: String, peDetail :: String }
+  deriving Show
+instance Exception PrismError
 
 -- | Path segments as chapter 2 spells them.
-data Seg = SPos Int | SGen Int | SKey Value
+data Seg t = SPos Int | SGen Int | SKey (Value t)
 
-instance Show Seg where
+instance Show (Seg t) where
   show (SPos i) = show i
   show (SGen g) = '#' : show g
   show (SKey k) = "[" ++ showValue k ++ "]"
 
-showPath :: [Seg] -> String
+instance Eq (Seg t) where
+  a == b = compare a b == EQ
+
+-- | Lexicographic order on paths is tree order: a slot's path extends its parent's, positions
+-- are numbered in bind order, and the keys of a `for` sort by value.
+instance Ord (Seg t) where
+  compare (SPos i) (SPos j) = compare i j
+  compare (SGen i) (SGen j) = compare i j
+  compare (SKey a) (SKey b) = compare a b
+  compare a b = compare (segRank a) (segRank b)
+    where segRank :: Seg t -> Int
+          segRank (SPos _) = 0
+          segRank (SGen _) = 1
+          segRank (SKey _) = 2
+
+type Path t = [Seg t]
+
+showPath :: Path t -> String
 showPath = intercalate "/" . map show
 
--- | A slot: an element in the list with its three possible parts.
-data Slot = Slot
-  { slotPath     :: [Seg]
-  , slotElement  :: Value
-  , slotResponds :: Maybe Ev            -- fired by the World
-  , slotRequests :: Maybe Ev            -- the program's request event
-  , slotState    :: Maybe Dyn
-  , slotPush     :: Maybe Ev            -- fired by the World when the snapshot changes
+-- | A slot: an element in the list. Its response event is selected from the root fan by path,
+-- its request event is told to the enclosing scope, its state is a cell keyed by element value.
+data Slot t = Slot
+  { slotPath     :: Path t
+  , slotElement  :: Value t
+  , slotResponds :: Bool
   }
 
-data Child = CSlot Slot | CScope (IORef (Maybe Scope)) | CKeyed (IORef (M.Map Value Scope))
+type ListMap t = M.Map (Path t) (Slot t)
+type Requests t = [(Path t, Value t)]
 
--- | A scope: where slots and child scopes are created, with the path they get.
-data Scope = Scope
-  { scPath     :: [Seg]
-  , scPos      :: IORef Int
-  , scChildren :: IORef [Child]
+-- | A scope: where a block's slots and child blocks register. The list is the union of the
+-- children's list dynamics; the requests are the merge of the children's request events.
+data Scope t = Scope
+  { scPath  :: Path t
+  , scPos   :: IORef Int
+  , scLists :: IORef [Dynamic t (ListMap t)]
+  , scReqs  :: IORef [Event t (Requests t)]
   }
 
 -- ---------------------------------------------------------------------------
--- Equality and ordering on plain values (functor values compare by id)
+-- Equality and ordering on plain values (functor values compare by rank only)
 
-instance Eq Value where
+instance Eq (Value t) where
   a == b = compare a b == EQ
 
-instance Ord Value where
+instance Ord (Value t) where
   compare = cmpV
 
-rank :: Value -> Int
+rank :: Value t -> Int
 rank v = case v of
   VInt _ -> 0; VFloat _ -> 1; VBool _ -> 2; VText _ -> 3; VUnit -> 4; VCons _ _ -> 5
   VRec _ _ -> 6; VArray _ -> 7; VMap _ -> 8; VSome _ -> 9; VNil -> 10; VTuple _ -> 11
-  VFn _ -> 12; VPrim _ -> 13; VEvent _ -> 14; VDyn _ -> 15; VBlueprint _ -> 16; VThunk _ -> 17
+  VFn _ -> 12; VPrim _ -> 13; VEvent _ -> 14; VDyn _ -> 15; VBlueprint _ -> 16
 
-cmpV :: Value -> Value -> Ordering
+cmpV :: Value t -> Value t -> Ordering
 cmpV a b = case (a, b) of
   (VInt x, VInt y) -> compare x y
   (VInt x, VFloat y) -> compare (fromIntegral x) y
@@ -120,13 +124,27 @@ cmpV a b = case (a, b) of
   (VSome x, VSome y) -> compare x y
   (VNil, VNil) -> EQ
   (VTuple xs, VTuple ys) -> compare xs ys
-  (VEvent x, VEvent y) -> compare (evId x) (evId y)
-  (VDyn x, VDyn y) -> compare (dynId x) (dynId y)
   (VPrim x, VPrim y) -> compare x y
   _ -> compare (rank a) (rank b)
 
+-- | Force a plain value fully, so that an error inside it surfaces where the value is made (in
+-- the occurrence) and not where the transcript prints it. Functor values are left alone.
+forceValue :: Value t -> ()
+forceValue v = case v of
+  VInt n -> n `seq` ()
+  VFloat d -> d `seq` ()
+  VBool b -> b `seq` ()
+  VText s -> length s `seq` ()
+  VCons n xs -> length n `seq` foldr (seq . forceValue) () xs
+  VRec n fs -> length n `seq` foldr (\(f, x) r -> length f `seq` forceValue x `seq` r) () fs
+  VArray xs -> foldr (seq . forceValue) () xs
+  VMap m -> foldr (\(k, x) r -> forceValue k `seq` forceValue x `seq` r) () (M.toList m)
+  VSome x -> forceValue x
+  VTuple xs -> foldr (seq . forceValue) () xs
+  _ -> ()
+
 -- | Print a plain value as a Prism literal (chapter 10's transcript spelling).
-showValue :: Value -> String
+showValue :: Value t -> String
 showValue v = case v of
   VInt n -> show n
   VFloat d -> show d
@@ -145,10 +163,9 @@ showValue v = case v of
   VTuple xs -> "((" ++ intercalate ", " (map showValue xs) ++ "))"
   VFn _ -> "<fn>"
   VPrim n -> "<" ++ n ++ ">"
-  VEvent e -> "<event " ++ evLabel e ++ ">"
+  VEvent _ -> "<event>"
   VDyn _ -> "<dynamic>"
   VBlueprint _ -> "<blueprint>"
-  VThunk _ -> "<thunk>"
   where
     showArg x = case x of
       VCons _ (_:_) -> "(" ++ showValue x ++ ")"
@@ -156,6 +173,6 @@ showValue v = case v of
       _ -> showValue x
 
 -- | Text of a value inside an interpolation: text is inserted raw.
-textOf :: Value -> String
+textOf :: Value t -> String
 textOf (VText s) = s
 textOf v = showValue v
