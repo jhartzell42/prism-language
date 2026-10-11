@@ -548,7 +548,7 @@ The World works the same way, and the parallel is deliberate: its supplier is a 
 
 ### Upward: elements, or nothing
 
-An interceptor's own elements are made with `@Element`, and those are what the next interceptor out, or the World, sees. There is no third way. The child's list is a dynamic the interceptor holds; nothing in the runtime reads it on the interceptor's behalf and re-emits it. If the interceptor's code does not make an element for a child's slot, that slot is invisible outside, and the child waits for an answer that never comes unless the interceptor gives one. Holding back is therefore the default and forwarding is a choice, which is the right way round for a sandbox and the only way round under which "what an inner context does not forward, nothing above it sees" can be a law.
+An interceptor's own elements are made with `@Element`, and those are what the next interceptor out, or the World, sees. There is no third way. The child's list is a dynamic the interceptor holds; nothing in the runtime reads it on the interceptor's behalf and re-emits it. If the interceptor's code does not make an element for a child's slot, that slot is invisible outside, and the child waits for an answer that never comes unless the interceptor gives one. Holding back is therefore the default and forwarding is a choice, which is the right way round for a sandbox and the only way round under which "nothing reaches past an interceptor unless Prism code sends it" can be a law.
 
 ### Why forwarding is manual
 
@@ -595,7 +595,7 @@ A state tag no supplier and no World accepts is an error at the creation of the 
 
 Stated once, with who is bound and what enforces each:
 
-- *An inner context sees and answers its subtree's elements, and what it does not forward, nothing above it sees.* Bound: the runtime. Enforced by the structure of `intercept`: the child's list is returned as a value and read by nothing else. This is a statement about interceptors; the World's components reach everything by definition, and a scoped interceptor (one that claims a namespace and forwards the rest) forwards by construction.
+- *Nothing reaches past an interceptor unless Prism code sends it.* Bound: the runtime. Enforced by the structure of `intercept`: the child's list is returned as a value and read by nothing else. A scoped interceptor, one written as `intercept Ui.*` that claims a namespace, is this law's special case and not an exception to it: it is sugar for a full interceptor whose body forwards every element outside the namespace with `@Element e`, and forwarding is Prism code sending it. The runtime may route the forwarded namespaces without materialising the forwarding slots, because nothing can tell the difference from doing it the long way, which is what makes it an optimisation and not a hole.
 - *Responses reach a child's slot only through the interceptor's response argument, routed against the opened list.* Bound: the interceptor. Enforced by the runtime's unknown-path check.
 - *A state slot has its value in its creation occurrence, equal for every slot of that value under this interceptor.* Bound: the interceptor's supplier, which must return a widget for every element. Enforced by the runtime building one supplied widget per value and handing its dynamic to every slot.
 - *No response in the occurrence of its request.* Bound: the interceptor. Enforced by routing for slots created this occurrence, and by convention, with `Defer` as the only tool, for older ones; the conformance suite's `mock_timing` test is the check.
