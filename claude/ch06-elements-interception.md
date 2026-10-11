@@ -286,7 +286,7 @@ A World could offer an element that acts because it exists: an `Fs.Load(path)` t
 
 Building stops being pure. Today building a widget adds nodes and slots and nothing else; with act-on-creation, every rebuild of a `dyn` and every new key of a `for` is also an effect, at a moment the program's text does not show. The fetch-on-mount that fired twice was exactly this.
 
-The trigger stops being a value. With `Read on !started` the program can merge the start with a refresh button, `Read on (!started | !refresh)`, gate it on a setting, or replace it with a click, without touching the element. A test sees the request fire as an ordinary event and can assert `Requested Fs.File(..), Read`. With act-on-creation the trigger is the slot's existence, which is not an event and cannot be merged with anything.
+The trigger stops being a value. With `Read on !started` the program can merge the start with a refresh button, `Read on (!started | !refresh)`, gate it on a setting, or replace it with a click, without touching the element. A test sees the request fire as an ordinary event and can assert `requested Fs.File(..), Read`. With act-on-creation the trigger is the slot's existence, which is not an event and cannot be merged with anything.
 
 There would be two kinds of request element, the ones that act on build and the ones that act on events, and every interceptor between a widget and the World would have to handle both: a sandbox would deny some requests by answering their events and others by refusing to forward their elements, and a cache would memoise two protocols. With one kind, an interceptor answers requests and nothing else.
 
@@ -314,7 +314,7 @@ Two examples show the distinction, and they are the two the worked examples walk
 
 **The socket.** `Net.Socket(address="chat.example:7000")` has a request, a response and a state. Its sends and receives are its own: addressed by path, a conversation between this slot and the connection. Its link state is shared with every other socket element of the same address in the program, because there is one connection, and whether it is up is a fact about the world and not about any slot. Two chat panes to one server are two conversations on one link. If the user types the old address back while a second slot still has it, the connection stays up through the change, which is either a feature or a surprise depending on what the program wanted, and either way it is in the program's text. Whether the World keeps one OS socket per address or per slot is the World's business and is invisible so long as it keeps the equality law.
 
-**The clock.** `Clock` has no fields, so every clock element in the program is one clock. A stopwatch, a status bar and a log stamp each bind `@Element Clock` without knowing about each other, and in every occurrence all three read the same instant, because there is one value and the World pushes it once. A test sets it once, `State Clock, Instant 5000`, and all three see it. Had state been identified by path, the three would be three subscriptions the World had to answer identically, and the equality law would be a promise the World made three times per occurrence instead of a fact about one key.
+**The clock.** `Clock` has no fields, so every clock element in the program is one clock. A stopwatch, a status bar and a log stamp each bind `@Element Clock` without knowing about each other, and in every occurrence all three read the same instant, because there is one value and the World pushes it once. A test sets it once, `with Clock = Instant 5000`, and all three see it. Had state been identified by path, the three would be three subscriptions the World had to answer identically, and the equality law would be a promise the World made three times per occurrence instead of a fact about one key.
 
 The two identities are not in tension. A slot with all three parts has a path for its responses and a value for its state, and the two never cross: a response never reaches a slot because its value matched, and a push never reaches a slot because its path matched. The alternative, state by path, is worth imagining for a paragraph. Each `Fs.Contents` slot would be its own watch; a hundred rows reading one file would be a hundred watches at the World; the World would be obliged to push the same value to all hundred in one occurrence and to answer the oracle identically for each; and an interceptor that wanted to share one outer query among many inner slots would need a table from value to supplied dynamic, which is the table the runtime keeps anyway under value identity. Identity by value puts the sharing where it is free.
 
@@ -606,7 +606,7 @@ Stated once, with who is bound and what enforces each:
 
 An interceptor's own elements are what the next layer out sees, and a layer that wants to present several of its child's elements as one thing puts them inside a field of its own element, as data. A container's element then holds its children's elements; the outside addresses the container; and the container routes inward through its response argument. This is how depth works, and the convention a library adopts for it, a `children` field holding a `Path ==> Element` and a `ChildInput` response naming a path and a response for the slot there, is the library's, not the language's. The language guarantees only the two laws, routing against the opened list, and transparency of the forwarding interceptor; what a container looks like is up to whoever writes containers.
 
-The convention has a consequence for tests. A Test World that wants `Expect Ui.Button(label="OK")` to find a button inside a box looks inside `children` fields because the library and the suite agree to, and `Send` to a nested slot wraps the input in one `ChildInput` per level, so that delivery takes the path a real World's input would. The suite knows the convention because the library is part of the suite, not because the language does. The next section builds that library.
+The convention has a consequence for tests. A Test World that wants `expect Ui.Button(label="OK")` to find a button inside a box looks inside `children` fields because the library and the suite agree to, and `send` to a nested slot wraps the input in one `ChildInput` per level, so that delivery takes the path a real World's input would. The suite knows the convention because the library is part of the suite, not because the language does. The next section builds that library.
 
 ## A GUI library as interceptors
 
@@ -1005,28 +1005,28 @@ This prevents the afternoon where the click landed on the button that had just m
 
 ### Tests that look inside
 
-A `Ui.VBox` holds its children as data, so the Test World can look inside it. `Expect Ui.Button(label="OK")` matches a slot at any depth because the suite's matcher descends into `children` fields, and `Send Ui.Button(label="OK"), click` wraps `click` in one `ChildInput` per level and delivers it to the outermost slot on the chain, which is the same delivery a window would make after a hit-test. The Test World knows the convention because the library is part of the suite, not because the language does; a library that nested differently would ship a different matcher.
+A `Ui.VBox` holds its children as data, so the Test World can look inside it. `expect Ui.Button(label="OK")` matches a slot at any depth because the suite's matcher descends into `children` fields, and `click Ui.Button(label="OK")` wraps `click` in one `ChildInput` per level and delivers it to the outermost slot on the chain, which is the same delivery a window would make after a hit-test. The Test World knows the convention because the library is part of the suite, not because the language does; a library that nested differently would ship a different matcher.
 
 A library test of the form above, with no window at all:
 
 ```prism
-test form_greets: Test (@VBox @form): array:
-    Expect Ui.Label(text="Hello, Ada")
-    Send Ui.TextInput(name="name", ..), Char '!'
-    Expect Ui.Label(text="Hello, Ada!")
-    Send Ui.Button(label="OK"), click
+test form_greets, (@VBox @form):
+    build
+        => expect Ui.Label(text="Hello, Ada")
+    send Ui.TextInput(name="name", ..), Char '!'
+        => expect Ui.Label(text="Hello, Ada!")
+    click Ui.Button(label="OK")
+        => settles
 ```
 
 The test drives the library below the window, so it checks routing through the boxes and the input without any layout. A test of the window adds the measurer, which the Test World has no answers for. The window creates its `Gui.Metrics` slots at build, so the script gives each one a value before the build:
 
 ```prism
-test window_focus: Test (@Window "Form", (Extent 400.0, 300.0), (@VBox @form)): array:
-    State Gui.Metrics(text="Ada", font=Default), Extent 24.0, 16.0
-    State Gui.Metrics(text="Cancel", font=Default), Extent 48.0, 16.0
-    State Gui.Metrics(text="Hello, Ada", font=Default), Extent 80.0, 16.0
-    State Gui.Metrics(text="OK", font=Default), Extent 16.0, 16.0
-    Send Gui.Window(..), Pointer (Point 12.0, 10.0)
-    Expect Gui.Focusable(name="name")
+test window_focus, (@Window "Form", (Extent 400.0, 300.0), (@VBox @form)):
+    with Gui.Metrics(text="Ada", font=Default), Extent 24.0 = 16.0, with Gui.Metrics(text="Cancel", font=Default), Extent 48.0 = 16.0, with Gui.Metrics(text="Hello, Ada", font=Default), Extent 80.0 = 16.0, with Gui.Metrics(text="OK", font=Default), Extent 16.0 = 16.0, build
+        => settles
+    send Gui.Window(..), Pointer (Point 12.0, 10.0)
+        => expect Gui.Focusable(name="name")
 ```
 
 `Place` is a plain function, so most of the window's behaviour is a unit test of `Place` and `HitAt` against a tree and a map of sizes.
@@ -1186,7 +1186,7 @@ Each child `Net.Http` slot gets a block. When its request fires, the block reads
 
 `$memo` is read by the blocks whose answers define it, and that is a legal cycle because the read is a tag. Two identical GETs in one occurrence from two child slots both miss, because neither sees the other's answer before the occurrence, and both go out. A cache that wanted to coalesce them would key an outstanding-requests hold by URL and attach the second slot to the first's answer, which is a longer program in the same language.
 
-The conformance suite's `cache_hit_no_request` test puts two identical GETs in two turns under this interceptor and checks that the second turn has `Unrequested Net.Http(..)` at the top and that the child still received an answer, in a later occurrence than its request.
+The conformance suite's `cache_hit_no_request` test puts two identical GETs in two turns under this interceptor and checks that the second turn has `unrequested Net.Http(..)` at the top and that the child still received an answer, in a later occurrence than its request.
 
 ### A mock for tests
 

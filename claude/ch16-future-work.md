@@ -539,7 +539,7 @@ What has to change for it to be safe:
 - Buffered commits stay buffered. Holds and switch targets commit at `usize::MAX`, which is one height and runs after the join, so every write that could conflict is already serialised by the design that makes occurrences transactions.
 - Construction mid-occurrence is the hard case. A `dyn` rebuilding at height h builds nodes that schedule at heights above h, and building writes subscriber lists. Two `dyn`s at the same height building at once would both write the action map. The simple rule: an action that builds takes a global build lock for the length of its build, and the catch-up logic that gives the new nodes the occurrence's earlier firings runs under the same lock. Builds are rare compared with propagation, so the lock is cheap; and a World whose occurrences are all rebuilds is not the World that wanted parallel propagation.
 - The scheduling check, a node scheduling at or below the current height is a cycle, stays as is: the current height is a shared atomic read, and the comparison is the same.
-- Closures are `Send + Sync` in this variant, and values use atomic counts, or the per-object sharing mark described under the representation above, which is the one place the two variants' value modules differ.
+- Closures are `send + Sync` in this variant, and values use atomic counts, or the per-object sharing mark described under the representation above, which is the one place the two variants' value modules differ.
 
 The cost is a second runtime crate or a feature flag over the first, with the suite run under both. The payoff exists only when heights are wide: a program with a thousand independent nodes at one height, which is a large `for` over a list whose entries each do a little work. A form with forty fields has heights of width two or three, and a thread pool would make it slower. That is why this is a variant and not the runtime: it has to be measured on the program that wants it.
 
@@ -663,7 +663,7 @@ A hold's identity is its path, and paths change when code changes: insert a bind
 
 Nothing happens because a widget exists. A tree snapshot taken by the World "when the program exits" is an effect caused by the program's structure, which is the thing the language refuses. A `Store.Put` write is a request fired by an event the program named.
 
-Persistence is a World policy. Whether `Store` is a file, a browser's local storage, a database or a test fixture is the World's business, and a sandbox interceptor can give a subtree a different store or no store by supplying `Store.Value` itself, which is how a test runs a program against a known saved state: the Test World's script sets the oracle's answer for `Store.Value(key="doc")` with a `State` step before the build, the program starts from it, and a `Requested` step checks the `Store.Put` firing after an edit.
+Persistence is a World policy. Whether `Store` is a file, a browser's local storage, a database or a test fixture is the World's business, and a sandbox interceptor can give a subtree a different store or no store by supplying `Store.Value` itself, which is how a test runs a program against a known saved state: the Test World's script sets the oracle's answer for `Store.Value(key="doc")` with a `with` step before the build, the program starts from it, and a `requested` step checks the `Store.Put` firing after an edit.
 
 ### Whole-program snapshots
 

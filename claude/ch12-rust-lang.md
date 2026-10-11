@@ -225,7 +225,7 @@ inline terminator: a Sep, a BlockClose, an Else, a closing bracket at this depth
 
 A `Semi` belongs to the innermost block open where it appears. `if c: Log x; Log y` is an `if` whose inline block has two statements, and `type Pair<a, b> = record: first: a; second: b` is a record whose inline block has two fields. A field's `name: type` is not a block: in a `record` or `tag` block the parser reads a statement as a field, and the colon in it as the field's separator, so the `;` after `first: a` belongs to the record. A `match` arm's colon does open a block, so `match x: A: 1; B: 2` puts `B: 2` inside the first arm, where it is an error; a match on one line with several arms is written with layout. A layout block accepts `;` too, as a second way to start a statement on the same line, and never needs it.
 
-The same `Colon` token therefore means a one-statement block after `match` arms, `if c`, `dyn $x`, `for $m`, `@widget`, `test name`, a `map:` key or a `record:` field, and means a type ascription after a pattern or inside parentheses: `let n: Nat = 0`, `Pair (x: Nat), y`. The parser knows which from what it was parsing when it met the colon, and never from spacing or position. If the inline statement itself ends in a line-final colon, the lexer has already turned that into a `BlockOpen`, and the parser's `statement` consumes the layout block as part of the inline statement, which is how `test counter: Test @counter: array:` works: `test counter` then `Colon` opens an inline block whose statement is `Test @counter` then `Colon` opens an inline block whose statement is `array` then `BlockOpen`, the steps, `BlockClose`, which closes the two inline blocks because the terminator of an inline block includes a `BlockClose` it did not open.
+The same `Colon` token therefore means a one-statement block after `match` arms, `if c`, `dyn $x`, `for $m`, `@widget`, a `map:` key or a `record:` field, and means a type ascription after a pattern or inside parentheses: `let n: Nat = 0`, `Pair (x: Nat), y`. The parser knows which from what it was parsing when it met the colon, and never from spacing or position. If the inline statement itself ends in a line-final colon, the lexer has already turned that into a `BlockOpen`, and the parser's `statement` consumes the layout block as part of the inline statement, which is how `x: match y: Some v: dyn $v:` with a block under it works: each `Colon` opens an inline block whose statement ends in the next, the last is a `BlockOpen`, and the `BlockClose` after the layout block closes every inline block above it, because the terminator of an inline block includes a `BlockClose` it did not open.
 
 `else` terminates an inline block and nothing else does besides line structure, so `if c: 3 else: 4` inside parentheses parses as two inline blocks, and `if c: match x:` followed by a layout block of arms and then `else:` at the column of `if` is legal, defined, and in the corpus.
 
@@ -332,7 +332,7 @@ item        := 'let' sname tparams? ':' type '=' expr
              | sname ':' block                                    # a widget definition: @counter: ... (the @ is the name's sigil)
              | 'type' Upper tparams? '=' typedef
              | 'tag' qname 'of' Upper block                       # fields and parts, one per statement
-             | 'test' lower block                                  # test counter: Test @counter: array: ...
+             | 'test' lower ',' expr block                         # test counter, @counter: one turn per statement
 
 typedef     := 'record' block | 'choice' ('..' | alt ('|' alt)* | block)
              | Upper type                                          # newtype: Meters Float
@@ -781,7 +781,7 @@ The refinement is a checker rule, not a runtime structure: the typed AST records
 
 ### `test` items
 
-A `test counter: Test @counter: array: ...` item is typed as an application of the prelude's `Test: fn @a, [Step] -> TestCase` where `Step` is the suite's closed choice (`Expect`, `Send`, `Together`, `State`, `Push`, `Returns`, `Fired`, `Quiet`, `Requested`, `Unrequested`, `Errors`, `ExpectTopNone`) and the patterns inside steps are element patterns typed like any `match` pattern. The elaborated test is a `TItem::Test` the harness of the conformance chapter collects; nothing about it is special to elaboration beyond the prelude types, and that is the point of spelling tests in the language.
+A `test counter, @counter: ...` form is typed as a widget and a list of turns, each turn a list of inputs (`click`, `send`, `with`, `push`, `build`, `idle`) and a list of checks (`expect`, `expect_top`, `expect_none`, `expect_top_none`, `expect_count`, `returns`, `fired`, `quiet`, `requested`, `unrequested`, `errors`, `settles`), and the patterns inside them are element patterns typed like any `match` pattern. The elaborated test is a `TItem::Test` the harness of the conformance chapter collects; nothing about it is special to elaboration beyond the prelude types, and that is the point of spelling tests in the language.
 
 ## Closure conversion
 
@@ -996,7 +996,7 @@ move |firing: Typed<Value>| -> Option<Typed<Value>> {
 }
 ```
 
-It holds an `Rc<Program>`, a `LeafId` and an `Rc<[Value]>` of captures, all counted at build and only borrowed per occurrence. With the runtime single-threaded there is no `Send + Sync` bound and no `Arc`; a compiled closure captures `Rc`s the way a hand-written widget's closure does.
+It holds an `Rc<Program>`, a `LeafId` and an `Rc<[Value]>` of captures, all counted at build and only borrowed per occurrence. With the runtime single-threaded there is no `send + Sync` bound and no `Arc`; a compiled closure captures `Rc`s the way a hand-written widget's closure does.
 
 ### The recursion depth guard
 

@@ -230,7 +230,7 @@ Simultaneity defined by the program: occurrence 11 is the whole of this section,
 
 The language is enough: the undo stack, the dirty flag, the echo suppression and the search are plain data and plain functions; the only things native are the focusable region, the file and the watcher.
 
-The spec is the thing: the Test World runs this editor with `Push Fs.Watch(path="notes.txt"), Modified (Instant 7000)` and `Send Fs.File(path="notes.txt"), Contents "v2"` inside a `Together` with the Undo click, and the test for occurrence 11 is four lines that a second implementation must agree with.
+The spec is the thing: the Test World runs this editor with `push Fs.Watch(path="notes.txt"), Modified (Instant 7000)` and `send Fs.File(path="notes.txt"), Contents "v2"` on one line with the Undo click, and the test for occurrence 11 is four lines that a second implementation must agree with.
 
 ### Where it is awkward
 
@@ -240,7 +240,7 @@ Search is a derived dynamic over the whole text and the whole query, recomputed 
 
 Syntax highlighting is the same story told the other way: `Highlight $doc.text` is a derived dynamic, prompt, glitch-free, and the whole document is re-highlighted per keystroke. The incremental version is a plain function with a memo keyed on unchanged regions, which is a computation, which is the kind of thing Prism calls out to.
 
-And the cursor blink. A blink is a `Time.Every` and a hold that toggles, and a buffer that is not focused should not blink, so the timer is inside a `dyn` over whether it is focused, which the buffer learns from the window interceptor as a state element or a response. That is right and it is slightly more ceremony than a toolkit's `cursor_visible` property; the ceremony is what makes the blink testable with `Push`.
+And the cursor blink. A blink is a `Time.Every` and a hold that toggles, and a buffer that is not focused should not blink, so the timer is inside a `dyn` over whether it is focused, which the buffer learns from the window interceptor as a state element or a response. That is right and it is slightly more ceremony than a toolkit's `cursor_visible` property; the ceremony is what makes the blink testable with `push`.
 ## 2. A market-data consumer
 
 A trading system is the program that builds the occurrence-as-transaction rule by hand, every time, badly. It holds a book, applies updates in sequence order, decides on the book it has, sends an order, and then has to answer a question no framework helps with: when the fill comes back, which book was the decision made on, and has anything happened to the position since? The teams that get this right keep a single-threaded loop, a sequence number on everything, and a rule that nothing reads the book while it is being updated. That is an occurrence with a sequence number, written in C++. Here it is as the language's own rule, with a plain paragraph about speed at the end.
@@ -395,7 +395,7 @@ and sends both, each stamped with the sequence it was decided on.
 
 **Occurrence 21.** `Acked` to `1/[8]/1` and `Acked` to `1/[9]/1`. `ApplyMsg` leaves the state alone; `Reconcile` finds desired and working equal and returns no actions. `!stepped` fires, the hold changes to an equal value, `$state.working` changes to an equal map, the `for` rebuilds nothing because no key appeared or vanished. The position is 100, from occurrence 20, and nothing was ever 100 with order 7 still working.
 
-Now suppose the World had delivered the fill and the book update as two occurrences, fill first. In 20 the fill removes 7, position goes to 100, `Reconcile` places replacements on the 1041 book. In 21 the book moves to 1042, `Reconcile` finds the working bid one tick off from desired, returns `[[Pull 8, Place ((10, ..))]]`, and block `[8]`'s `!pull` fires `Cancel` while block `[10]` is born. One more cancel than before, on a book the program fully applied. The program did not depend on the batching; the World's policy decided how many occurrences the instant took and the program's text said what each one meant. A test under the Test World writes both orders, `Together` and not, and the second implementation must agree on each.
+Now suppose the World had delivered the fill and the book update as two occurrences, fill first. In 20 the fill removes 7, position goes to 100, `Reconcile` places replacements on the 1041 book. In 21 the book moves to 1042, `Reconcile` finds the working bid one tick off from desired, returns `[[Pull 8, Place ((10, ..))]]`, and block `[8]`'s `!pull` fires `Cancel` while block `[10]` is born. One more cancel than before, on a book the program fully applied. The program did not depend on the batching; the World's policy decided how many occurrences the instant took and the program's text said what each one meant. A test under the Test World writes both orders, on one line and on two, and the second implementation must agree on each.
 
 The merge version is what gets written first, and the walkthrough of 20 under it is short: `(BookChanged ..) | (OrderEvents ..)` fires with the book, the fill is never applied, `Reconcile` sees 7 still working at 9995 on a book whose best bid has moved to 9994, pulls it, and places a new bid. The cancel reaches the exchange for an order that no longer exists and is rejected; the position is 0 in the program and 100 at the clearing house. Nothing crashed. That is the bug every one of these systems has had once, and the reason the `!Union` line is the most important one in the program.
 
@@ -407,7 +407,7 @@ Simultaneity is the program's: the `!Union` and the fold order are the specifica
 
 "Not yet" as a type: `Buffering`, `Live` and `Resyncing` are arms the strategy must write, so there is no strategy that quotes on a book that is being rebuilt, and nothing that returns an empty book while waiting for the snapshot.
 
-The spec is the thing: the entire session is a transcript of pushes and responses, and a transcript replays exactly. A bad fill from last Tuesday is a test, with the `Together` written where the World batched.
+The spec is the thing: the entire session is a transcript of pushes and responses, and a transcript replays exactly. A bad fill from last Tuesday is a test, with the inputs on one line where the World batched.
 
 ### Latency, as an implementation question
 
@@ -564,7 +564,7 @@ One way to change anything: `$loop` moves on `!stepped` and nothing else; `!cmd`
 
 Simultaneity: the stop-and-tick instant is a line of the program, under either World policy.
 
-No clock: `dt` is from a state element the test sets. The step response of the controller is a test with `Push Clock` and `Push Sensor.Imu(..)` per tick and `Requested Actuator.Motor(id="left"), 0.31` as the assertion, and it runs in no time at all, because there is no timer in it.
+No clock: `dt` is from a state element the test sets. The step response of the controller is a test with `push Clock` and `push Sensor.Imu(..)` per tick and `requested Actuator.Motor(id="left"), 0.31` as the assertion, and it runs in no time at all, because there is no timer in it.
 
 The language is enough: the control law, the safety policy, the mode switch and the anti-windup are all Prism. The native things are the bus, the motor driver and the timer, which is the list of things that touch hardware.
 
@@ -726,7 +726,7 @@ The store is also the sharding seam. Two rooms share nothing but the listener, s
 
 Connections 5, 9 and 12 are in `lobby`. Connection 5's client disconnects, and in the same instant connection 9 says "hi".
 
-**Occurrence 300.** The World delivers `Closed` to `1/[5]/0` and `Received "hi\r\n"` to `1/[9]/0`: two slots, one occurrence, which the World may do and a busy server often will. In block `[5]`, `!gone` fires with `[[Leave]]`. In block `[9]`, the chunk is split, `ParseAll` gives `[[Say "hi"]]`, `!parsed` fires. `!cmds` fires with `{5: [[Leave]], 9: [[Say "hi"]]}`. `StepAndRoute` reads `$model` through a tag and folds in key order: 5 first. `Leave` removes 5 from `lobby` and from `member_of`, and owes 9 and 12 the line `"five left"`. Then 9: `Say "hi"` is routed to `lobby`'s members *as the fold now has them*, 9 and 12, so each is owed `"<nine> hi"` as well. `!owed` fires with `{9: [["five left", "<nine> hi"]], 12: [["five left", "<nine> hi"]]}`. Block `[9]`'s `!out` fires with two `Send`s; block `[12]`'s likewise; block `[5]`'s `!owed[5]` is `Nil` and nothing fires there. `!closes` fires with `{5: Shut}`; `$conns` loses key 5; block `[5]` is torn down at commit. After the turn the World writes two lines to 9 and two to 12 and sees the `Net.Conn(id=5)` element gone, which it already knew.
+**Occurrence 300.** The World delivers `Closed` to `1/[5]/0` and `Received "hi\r\n"` to `1/[9]/0`: two slots, one occurrence, which the World may do and a busy server often will. In block `[5]`, `!gone` fires with `[[Leave]]`. In block `[9]`, the chunk is split, `ParseAll` gives `[[Say "hi"]]`, `!parsed` fires. `!cmds` fires with `{5: [[Leave]], 9: [[Say "hi"]]}`. `StepAndRoute` reads `$model` through a tag and folds in key order: 5 first. `Leave` removes 5 from `lobby` and from `member_of`, and owes 9 and 12 the line `"five left"`. Then 9: `Say "hi"` is routed to `lobby`'s members *as the fold now has them*, 9 and 12, so each is owed `"<nine> hi"` as well. `!owed` fires with `{9: [["five left", "<nine> hi"]], 12: [["five left", "<nine> hi"]]}`. Block `[9]`'s `!out` fires with two `send`s; block `[12]`'s likewise; block `[5]`'s `!owed[5]` is `Nil` and nothing fires there. `!closes` fires with `{5: Shut}`; `$conns` loses key 5; block `[5]` is torn down at commit. After the turn the World writes two lines to 9 and two to 12 and sees the `Net.Conn(id=5)` element gone, which it already knew.
 
 Nothing was sent to 5, and the reason is that the leave and the say were folded by one function in one pass with one model, so the say saw the leave. Now the other way to write it, which is the way the first version always gets written: a `Step` that updates the model and a separate `Route` lifted over `$model` and `!cmds`:
 
@@ -747,7 +747,7 @@ Simultaneity: occurrence 300 is a `!Union` and a fold order, both visible.
 
 No node values: there is no connection object to keep in a map and forget to remove. A dead connection has no slot, and a write to it is impossible to express.
 
-The spec is the thing: the Test World accepts `Net.Listener` and `Net.Conn`, so the whole server, including the race above, is a script of `Send Net.Conn(id=5), Closed` inside a `Together` with `Send Net.Conn(id=9), Received "hi\r\n"` and a `Requested` step per recipient. The server you tested is the server you shipped.
+The spec is the thing: the Test World accepts `Net.Listener` and `Net.Conn`, so the whole server, including the race above, is a script of `send Net.Conn(id=5), Closed` on one line with `send Net.Conn(id=9), Received "hi\r\n"` and a `requested` step per recipient. The server you tested is the server you shipped.
 
 ### Where it is awkward
 
@@ -919,7 +919,7 @@ No request on creation: a target built in occurrence zero spawns nothing until `
 
 The language is enough: the dependency graph, the dirty tracking, the stale-job detection and the scheduling are all the hold-and-`for` structure of the program. The native things are the watcher, the spawn and the child.
 
-The spec is the thing: the build system's race in occurrence 42 is a `Together` of a `Send Process.Child(id=77), Exited 0` and a `Push Fs.Watch(path="lib.c"), Modified (Instant 1300)`, and the expected `Requested Process.Spawn, ..` after it.
+The spec is the thing: the build system's race in occurrence 42 is one turn line with a `send Process.Child(id=77), Exited 0` and a `push Fs.Watch(path="lib.c"), Modified (Instant 1300)`, and the expected `requested Process.Spawn, ..` after it.
 
 ### Where it is awkward, and where it is wrong
 
@@ -1130,7 +1130,7 @@ Nothing happens because an element appeared: an application appears on the desk 
 
 No node values: an application cannot keep a reference to its frame, and the compositor cannot keep a reference to an application. When frame 5 is removed from the map, everything under it is gone, and there is no listener somewhere holding the dead subtree alive.
 
-The spec is the thing: the hard moment is a Test World script with `Send Gui.Window(title="Desktop"), Pointer (Point 40, 300)` and an `ExpectTopNone` for frame 5's label afterwards, and the same script runs with the desktop under a `@VBox` or under nothing.
+The spec is the thing: the hard moment is a Test World script with `send Gui.Window(title="Desktop"), Pointer (Point 40, 300)` and an `expect_top_none` for frame 5's label afterwards, and the same script runs with the desktop under a `@VBox` or under nothing.
 
 ### Where it is awkward, and where it is wrong
 
@@ -1255,7 +1255,7 @@ Now the same press under a World that gives every input its own turn. Occurrence
 
 ### Replay, for free
 
-The sequence of inputs the World delivered, with their occurrence numbers and the frame times, is the entire session. Given the same transcript, the program's sequence of scenes is bit-identical, because there is no `now()`, no random source that is not a state element, no scheduling, and no float that depends on which thread ran first. A replay file is a transcript; a demo is a replay; a test of a level is a replay with an `Expect` at the end. Lockstep networking is two peers running the same `Step` over the same transcript, exchanging inputs rather than state, and the thing lockstep netcode spends its life fighting, nondeterminism between the two simulations, cannot happen between two Prism runtimes running one program, and the differential test between the two implementations is the guarantee that it cannot happen between a Rust client and a Haskell server either.
+The sequence of inputs the World delivered, with their occurrence numbers and the frame times, is the entire session. Given the same transcript, the program's sequence of scenes is bit-identical, because there is no `now()`, no random source that is not a state element, no scheduling, and no float that depends on which thread ran first. A replay file is a transcript; a demo is a replay; a test of a level is a replay with an `expect` at the end. Lockstep networking is two peers running the same `Step` over the same transcript, exchanging inputs rather than state, and the thing lockstep netcode spends its life fighting, nondeterminism between the two simulations, cannot happen between two Prism runtimes running one program, and the differential test between the two implementations is the guarantee that it cannot happen between a Rust client and a Haskell server either.
 
 ### What the goals buy
 
@@ -1330,7 +1330,7 @@ tag Clock of Element:
     state: Instant
 ```
 
-`Http.Fetch` is the World's: fire a request, get an answer later. `Query.Result` is the dashboard's own tag, a state element whose value is the latest result of a query, and the point of the section is that nothing in the chart says who supplies it. A World with a push channel to the server can accept it natively and push each new result; a World that has only HTTP needs an interceptor to supply it by polling; a test supplies it with `State`. State is identified by value, so two charts with equal queries observe one dynamic wherever it comes from.
+`Http.Fetch` is the World's: fire a request, get an answer later. `Query.Result` is the dashboard's own tag, a state element whose value is the latest result of a query, and the point of the section is that nothing in the chart says who supplies it. A World with a push channel to the server can accept it natively and push each new result; a World that has only HTTP needs an interceptor to supply it by polling; a test supplies it with `with`. State is identified by value, so two charts with equal queries observe one dynamic wherever it comes from.
 
 ### The chart
 
@@ -1429,7 +1429,7 @@ Had the answer for the hour arrived one turn later instead of in 90, its path `s
 
 ### What the goals buy
 
-The boundary nests: polling, caching and the push World are three suppliers of one tag, stacked or swapped without touching a chart. The chart you tested with `State Query.Result(..), Known ..` is the chart you ship under the poller, and the poller you tested with `Send Http.Fetch, Answered ..` is the poller you ship under the cache.
+The boundary nests: polling, caching and the push World are three suppliers of one tag, stacked or swapped without touching a chart. The chart you tested with `with Query.Result(..) = Known ..` is the chart you ship under the poller, and the poller you tested with `send Http.Fetch, Answered ..` is the poller you ship under the cache.
 
 "Not yet" as a type: `Unavailable` is a case the chart matched on, and `$shown` is the chart's explicit decision about what to draw then. There is no undefined series and no chart that renders an empty array as a flat line.
 

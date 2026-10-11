@@ -200,7 +200,7 @@ There is the whole story of `$checked`. It starts false. A toggle sets it to the
 
 Formally: `$x <- v then !e`, allowed only as a statement in a widget block, defines `$x` whose value before the first firing of `!e` is `v`, whose change event is `!e`, and whose value after any occurrence where `!e` fired is `!e`'s value there. Hold is the only way to make a dynamic that is not derived from another. Every piece of state in a Prism program is a hold, so every piece of state has a line that names its initial value and the one event that can move it, and reading that line is reading everything that will ever happen to it.
 
-The value `v` is plain, or a dynamic if `$x` is a dynamic of dynamics. It is not an expression re-evaluated on each firing; it is the value before the first firing and nothing else. A hold is a statement rather than an expression because it has an owner, the node of the widget block it is written in, and there is no hold outside a widget block because that would be state nothing owns. Owner is the wrong word for what the node does; the node *coordinates* the hold, and it has to for two concrete reasons. The first is birth. A widget built in occurrence n sees all of n (the construction rule in the time section), so a hold born in n after its event fired in n has to adopt that firing at commit, and to do that it has to ask the occurrence in progress whether the event fired. That is the one thing a hold needs from the moment it is made, and it is the only thing: two holds of the same event made in different occurrences differ until the event's next firing, and that difference needs no bookkeeping, it falls out of subscribing when made. The second is death. A hold has to stop subscribing when its node goes, has to be dropped by a rollback, and has to be a fresh hold after a `dyn` rebuild, and all three are events of the node, not of the hold. A hold outside a widget block would have no occurrence to ask and no node to die with. The Haskell implementation runs on Reflex, where both are spelled as the `MonadHold` constraint: the monad is how the frame reaches `hold` for the same-frame read, and a `hold` outside it does not type-check. The runtime spells it as a parameter: `Behavior::hold` takes the runtime, which only a build or a World holds. Which node owns which hold, what a `dyn` rebuild and a `for` key's departure do to the holds inside them, and where state that must survive a rebuild lives are chapter 5's; the one fact this chapter needs is that a hold inside a rebuilt block is a new hold, starting at `v`, and it obeys the construction rule below like any widget built mid-occurrence.
+The value `v` is plain, or a dynamic if `$x` is a dynamic of dynamics. It is not an expression re-evaluated on each firing; it is the value before the first firing and nothing else. A hold is a statement rather than an expression because it has an owner, the node of the widget block it is written in, and there is no hold outside a widget block because that would be state nothing owns. Owner is the wrong word for what the node does; the node *coordinates* the hold, and it has to for two concrete reasons. The first is birth. A widget built in occurrence n sees all of n (the construction rule in the time section), so a hold born in n after its event fired in n has to adopt that firing at commit, and to do that it has to ask the occurrence in progress whether the event fired. That is the one thing a hold needs from the moment it is made, and it is the only thing: two holds of the same event made in different occurrences differ until the event's next firing, and that difference needs no bookkeeping, it falls out of subscribing when made. The second is rollback. An occurrence that aborts has to drop everything it built, and the node's journal is the list of what that was; a hold made outside any node would survive an abort that should have unmade it. What the node does not do is kill the hold: a hold keeps holding as long as anything refers to its dynamic, which may be longer than the node that made it lives, since a block's result can be passed up and kept. A `dyn` rebuild makes a fresh hold because the rebuilt block's code runs again, not because the old one was destroyed. A hold outside a widget block would have no occurrence to ask and no journal to be in. The Haskell implementation runs on Reflex, where both are spelled as the `MonadHold` constraint: the monad is how the frame reaches `hold` for the same-frame read, and a `hold` outside it does not type-check. The runtime spells it as a parameter: `Behavior::hold` takes the runtime, which only a build or a World holds. Which node owns which hold, what a `dyn` rebuild and a `for` key's departure do to the holds inside them, and where state that must survive a rebuild lives are chapter 5's; the one fact this chapter needs is that a hold inside a rebuilt block is a new hold, starting at `v`, and it obeys the construction rule below like any widget built mid-occurrence.
 
 In the occurrence in which the widget is built, `$x`'s value is `v`, and if `!e` fires in that same occurrence, `$x` changes to it then. This is the build occurrence behaving like every other occurrence: the hold has a before-value, `v`, and a change event, which fires or does not. It is how `@started` kicks things off:
 
@@ -484,14 +484,13 @@ let Ms: fn Instant -> Int = \|i| match i:
     $last <- "none" then "a" on !a | "b" on !b | !never
     @Label $last
 
-test merge_left_wins: Test @merge_law: array:
-    Expect Ui.Label(text="none")
-    Send Ui.Button(label="B"), click
-    Expect Ui.Label(text="b")
-    Together:
-        Send Ui.Button(label="A"), click
-        Send Ui.Button(label="B"), click
-    Expect Ui.Label(text="a")
+test merge_left_wins, @merge_law:
+    build
+        => expect Ui.Label(text="none")
+    click Ui.Button(label="B")
+        => expect Ui.Label(text="b")
+    click Ui.Button(label="A"), click Ui.Button(label="B")
+        => expect Ui.Label(text="a")
 ```
 
 Two clicks in one occurrence are the left one. The `!never` on the right is there to pin its identity law in passing: merging it changes nothing.
@@ -505,12 +504,13 @@ Two clicks in one occurrence are the left one. The `!never` on the right is ther
     $seen <- -1 then $n on !bump
     @Label "n={$n} seen={$seen}"
 
-test tag_reads_before: Test @tag_law: array:
-    Expect Ui.Label(text="n=0 seen=-1")
-    Send Ui.Button(label="Bump"), click
-    Expect Ui.Label(text="n=1 seen=0")
-    Send Ui.Button(label="Bump"), click
-    Expect Ui.Label(text="n=2 seen=1")
+test tag_reads_before, @tag_law:
+    build
+        => expect Ui.Label(text="n=0 seen=-1")
+    click Ui.Button(label="Bump")
+        => expect Ui.Label(text="n=1 seen=0")
+    click Ui.Button(label="Bump")
+        => expect Ui.Label(text="n=2 seen=1")
 ```
 
 `$n on !bump` and `$n + 1 on !bump` read the same `$n` at the same event, and both read the value before the click. An implementation that read the new value for either would show `seen=1` after the first click.
@@ -524,8 +524,9 @@ test tag_reads_before: Test @tag_law: array:
     $before <- "?" then $phase on !started
     @Label "{$phase} / {$before}"
 
-test hold_in_build_occurrence: Test @hold_law: array:
-    Expect Ui.Label(text="started / starting")
+test hold_in_build_occurrence, @hold_law:
+    build
+        => expect Ui.Label(text="started / starting")
 ```
 
 One step, two facts. `$phase` adopted the firing of `!started` in occurrence zero, so the label shows `started` after the build. The tag on `$phase` at that same firing read `starting`, the initial value, because a tag reads before the occurrence even in occurrence zero.
@@ -543,10 +544,11 @@ One step, two facts. `$phase` adopted the firing of `!started` in occurrence zer
     $fires <- 0 then $fires + 1 on !d_changed
     @Label "d={$d} fires={$fires}"
 
-test diamond_changes_once: Test @diamond: array:
-    Expect Ui.Label(text="d=1 fires=0")
-    Send Ui.Button(label="Set"), click
-    Expect Ui.Label(text="d=16 fires=1")
+test diamond_changes_once, @diamond:
+    build
+        => expect Ui.Label(text="d=1 fires=0")
+    click Ui.Button(label="Set")
+        => expect Ui.Label(text="d=16 fires=1")
 ```
 
 `fires` is 0 after the build: `!Updated` never fires at build, and `$d` has not changed. After the click `$fires` is 1: `$d` changed exactly once at that occurrence, from 1 to 16. An implementation that let `$d` change per input would show `fires=2`; one that lagged `$d` by an occurrence would show `d=1` after the click. The script does not and cannot see the intermediate values 6 and 11. The count is what makes their absence checkable.
@@ -563,17 +565,17 @@ test diamond_changes_once: Test @diamond: array:
     @Label "{$n} {$n}"
     @Label "{$x} {$y}"
 
-test readings_agree: Test @equal_readings: array:
-    Together:
-        Send Ui.Button(label="Bump"), click
-        Send Ui.Button(label="Other"), click
-    Expect Ui.Label(text="1 1")
-    Expect Ui.Label(text="0 0")
+test readings_agree, @equal_readings:
+    build
+        => settles
+    click Ui.Button(label="Bump"), click Ui.Button(label="Other")
+        => expect Ui.Label(text="1 1")
+        => expect Ui.Label(text="0 0")
 ```
 
 Two tags on `$n` at two different events in one occurrence, and two interpolations of `$n` in one label, agree. The second label pins that the order of the merge does not change what the tag reads.
 
-The cross-World half of the law needs a state element, and the script needs a `State` step before the build, because the program creates a `Clock` slot in occurrence zero and the oracle must have something to answer; a state tag the program creates at build with no `State` step before it is a script error, not a default.
+The cross-World half of the law needs a state element, and the script needs a `with` step before the build, because the program creates a `Clock` slot in occurrence zero and the oracle must have something to answer; a state tag the program creates at build with no `with` step before it is a script error, not a default.
 
 ```prism
 @Stamp: fn Text -> @unit = \|name| @widget:
@@ -589,22 +591,21 @@ The cross-World half of the law needs a state element, and the script needs a `S
     $stamped <- -1 then Ms $clock on !bump
     @Label "stamped={$stamped}"
 
-test clock_readings_agree: Test @clock_readings: array:
-    State Clock, Instant 0
-    Expect Ui.Label(text="a=0")
-    Expect Ui.Label(text="b=0")
-    Push Clock, Instant 5000
-    Expect Ui.Label(text="a=5000")
-    Expect Ui.Label(text="b=5000")
-    ExpectNone Ui.Label(text="a=0")
-    State Clock, Instant 5100
-    Send Ui.Button(label="Bump"), click
-    Expect Ui.Label(text="a=5100")
-    Expect Ui.Label(text="b=5100")
-    Expect Ui.Label(text="stamped=5000")
+test clock_readings_agree, @clock_readings:
+    with Clock = Instant 0, build
+        => expect Ui.Label(text="a=0")
+        => expect Ui.Label(text="b=0")
+    push Clock = Instant 5000
+        => expect Ui.Label(text="a=5000")
+        => expect Ui.Label(text="b=5000")
+        => expect_none Ui.Label(text="a=0")
+    with Clock = Instant 5100, click Ui.Button(label="Bump")
+        => expect Ui.Label(text="a=5100")
+        => expect Ui.Label(text="b=5100")
+        => expect Ui.Label(text="stamped=5000")
 ```
 
-Three slots in three widgets that have never met bind `Clock`, and `Clock` has no fields, so the three are one dynamic; the Test World pushes one value for it and all three labels move in the same occurrence, which the `ExpectNone` pins. The last three steps are the stopwatch's "before" from the tag law section: a `State` step runs no turn, so the click's turn opens with the new clock as its push and the click as its response, in one occurrence. The two stamp labels show `5100`, because a state element changes promptly like any dynamic, and `stamped` shows `5000`, because a tag reads before the occurrence even when the same occurrence pushes a new value. A World that answered `a` and `b` differently in one occurrence would have broken this program, and this is the script that says so.
+Three slots in three widgets that have never met bind `Clock`, and `Clock` has no fields, so the three are one dynamic; the Test World pushes one value for it and all three labels move in the same occurrence, which the `expect_none` pins. The last three steps are the stopwatch's "before" from the tag law section: a `with` step runs no turn, so the click's turn opens with the new clock as its push and the click as its response, in one occurrence. The two stamp labels show `5100`, because a state element changes promptly like any dynamic, and `stamped` shows `5000`, because a tag reads before the occurrence even when the same occurrence pushes a new value. A World that answered `a` and `b` differently in one occurrence would have broken this program, and this is the script that says so.
 
 ### `!Switch` is not prompt, and swallows a block's birth
 
@@ -620,10 +621,11 @@ Three slots in three widgets that have never met bind `Clock`, and `Clock` has n
     $built <- -1 then !built
     @Label "heard={$heard} built={$built}"
 
-test switch_swallows_birth: Test @switch_law: array:
-    Expect Ui.Label(text="heard=-1 built=-1")
-    Send Ui.Button(label="Rebuild"), click
-    Expect Ui.Label(text="heard=-1 built=1")
+test switch_swallows_birth, @switch_law:
+    build
+        => expect Ui.Label(text="heard=-1 built=-1")
+    click Ui.Button(label="Rebuild")
+        => expect Ui.Label(text="heard=-1 built=1")
 ```
 
 Each generation fires `@started` in the occurrence it is born, and `!Switch` never hears it, because the switch adopts the new inner at commit and the firing was before commit. The parent still knows the block was built: `!!born`, the `dyn`'s own event, fired in occurrence zero and again at the click, with each generation's `@started`-tagged event as its value, and a parent that wants to count generations counts that. `built` is `-1` after the build, since `!Updated $gen` does not fire at build, and `1` after the click. `heard` never moves in this program, and that is the law.
@@ -638,21 +640,21 @@ Each generation fires `@started` in the occurrence it is born, and `!Switch` nev
     $clicked <- -1 then !Switch !!clicks
     @Label "clicked={$clicked}"
 
-test switch_follows_generations: Test @switch_follows: array:
-    Send Ui.Button(label="gen 0"), click
-    Expect Ui.Label(text="clicked=0")
-    Send Ui.Button(label="Rebuild"), click
-    ExpectNone Ui.Button(label="gen 0")
-    Together:
-        Send Ui.Button(label="Rebuild"), click
-        Send Ui.Button(label="gen 1"), click
-    Expect Ui.Label(text="clicked=1")
-    Expect Ui.Button(label="gen 2")
-    Send Ui.Button(label="gen 2"), click
-    Expect Ui.Label(text="clicked=2")
+test switch_follows_generations, @switch_follows:
+    build
+        => settles
+    click Ui.Button(label="gen 0")
+        => expect Ui.Label(text="clicked=0")
+    click Ui.Button(label="Rebuild")
+        => expect_none Ui.Button(label="gen 0")
+    click Ui.Button(label="Rebuild"), click Ui.Button(label="gen 1")
+        => expect Ui.Label(text="clicked=1")
+        => expect Ui.Button(label="gen 2")
+    click Ui.Button(label="gen 2")
+        => expect Ui.Label(text="clicked=2")
 ```
 
-The `Together` is the case that matters: a click on generation 1 in the occurrence generation 1 is replaced is delivered from generation 1, under its own number, because routing is against the list as the occurrence opened and the switch is still listening to the old inner. From the next occurrence the new button is the one heard.
+The two-input line is the case that matters: a click on generation 1 in the occurrence generation 1 is replaced is delivered from generation 1, under its own number, because routing is against the list as the occurrence opened and the switch is still listening to the old inner. From the next occurrence the new button is the one heard.
 
 ### `$Join` is prompt on the outer and on the inner, including both at once
 
@@ -668,16 +670,15 @@ The `Together` is the case that matters: a click on generation 1 in the occurren
     $$current <- $ $a then !$chosen
     @Label "{$Join $$current}"
 
-test join_is_prompt: Test @join_law: array:
-    Expect Ui.Label(text="0")
-    Send Ui.Button(label="Bump"), click
-    Expect Ui.Label(text="1")
-    Send Ui.Button(label="Swap"), click
-    Expect Ui.Label(text="101")
-    Together:
-        Send Ui.Button(label="Swap"), click
-        Send Ui.Button(label="Bump"), click
-    Expect Ui.Label(text="2")
+test join_is_prompt, @join_law:
+    build
+        => expect Ui.Label(text="0")
+    click Ui.Button(label="Bump")
+        => expect Ui.Label(text="1")
+    click Ui.Button(label="Swap")
+        => expect Ui.Label(text="101")
+    click Ui.Button(label="Swap"), click Ui.Button(label="Bump")
+        => expect Ui.Label(text="2")
 ```
 
 The last step is the hard case. The outer changes (back to `$a`) and the new inner changes (`$a` goes to 2) in the same occurrence, and the join shows 2: the new inner's value *after* the occurrence. An implementation built from a non-prompt switch plus a sample at swap time shows 1, the new inner's value before, and its label disagrees with its holds from then on.
@@ -696,15 +697,17 @@ The third case is the outer switching to an inner that does not change in that o
     $$current <- $ $a then !$chosen
     @Label "{$Join $$current}"
 
-test join_follows_quiet_inner: Test @join_quiet_inner: array:
-    Send Ui.Button(label="Bump A"), click
-    Expect Ui.Label(text="1")
-    Send Ui.Button(label="Swap"), click
-    Expect Ui.Label(text="100")
-    Send Ui.Button(label="Bump A"), click
-    Expect Ui.Label(text="100")
-    Send Ui.Button(label="Swap"), click
-    Expect Ui.Label(text="2")
+test join_follows_quiet_inner, @join_quiet_inner:
+    build
+        => settles
+    click Ui.Button(label="Bump A")
+        => expect Ui.Label(text="1")
+    click Ui.Button(label="Swap")
+        => expect Ui.Label(text="100")
+    click Ui.Button(label="Bump A")
+        => expect Ui.Label(text="100")
+    click Ui.Button(label="Swap")
+        => expect Ui.Label(text="2")
 ```
 
 `$b` never changes: its hold is fed by `!never`. Swapping to it shows its current value, 100, in the swap's occurrence, with no change event from the inner to help; an implementation that only updated the join on the inner's change would keep showing 1. Bumping `$a` while `$b` is chosen changes nothing visible, and swapping back shows the 2 that `$a` reached while it was not being watched: the join reads the inner's current value when it adopts it, and that value is whatever the inner's own history made it. Chapter 5 says how `$Join` is built from a hold of the inner's change events and a prompt read of the inner at the swap; that construction has to pass this script.
@@ -723,16 +726,17 @@ test join_follows_quiet_inner: Test @join_quiet_inner: array:
             @Element Ui.Label(text=_)
     @ unit
 
-test nested_dyn_builds_once: Test @nested_law: array:
-    Expect Ui.Label(text="Page 0")
-    Requested Test.Log, "Page 0"
-    Send Ui.Button(label="Next"), click
-    Expect Ui.Label(text="Page 1")
-    ExpectNone Ui.Label(text="Page 0")
-    Requested Test.Log, "Page 1"
+test nested_dyn_builds_once, @nested_law:
+    build
+        => expect Ui.Label(text="Page 0")
+        => requested Test.Log, "Page 0"
+    click Ui.Button(label="Next")
+        => expect Ui.Label(text="Page 1")
+        => expect_none Ui.Label(text="Page 0")
+        => requested Test.Log, "Page 1"
 ```
 
-The inner `dyn` is built partway through the click's occurrence, after `$title` has changed. An implementation that hid the earlier change from it would leave `Page 0` in the list, and the `ExpectNone` catches that. An implementation that built `Page 0` and then rebuilt would fire `Test.Log` twice in that turn, and the turn's transcript, which lists every request firing per slot, shows two where the law says one; the differential test compares transcripts, so the doubled firing is visible even though the script's `Requested` step only asks whether the right one fired.
+The inner `dyn` is built partway through the click's occurrence, after `$title` has changed. An implementation that hid the earlier change from it would leave `Page 0` in the list, and the `expect_none` catches that. An implementation that built `Page 0` and then rebuilt would fire `Test.Log` twice in that turn, and the turn's transcript, which lists every request firing per slot, shows two where the law says one; the differential test compares transcripts, so the doubled firing is visible even though the script's `requested` step only asks whether the right one fired.
 
 ### A hold inside a rebuilt block starts over, and sees the occurrence it was born in
 
@@ -746,19 +750,20 @@ The inner `dyn` is built partway through the click's occurrence, after `$title` 
         @Label "n={$n}"
     @ unit
 
-test hold_resets_and_catches_up: Test @reset_law: array:
-    Send Ui.Button(label="Bump"), click
-    Send Ui.Button(label="Bump"), click
-    Expect Ui.Label(text="n=2")
-    Send Ui.Button(label="Rebuild"), click
-    Expect Ui.Label(text="n=0")
-    Together:
-        Send Ui.Button(label="Rebuild"), click
-        Send Ui.Button(label="Bump"), click
-    Expect Ui.Label(text="n=1")
+test hold_resets_and_catches_up, @reset_law:
+    build
+        => settles
+    click Ui.Button(label="Bump")
+        => settles
+    click Ui.Button(label="Bump")
+        => expect Ui.Label(text="n=2")
+    click Ui.Button(label="Rebuild")
+        => expect Ui.Label(text="n=0")
+    click Ui.Button(label="Rebuild"), click Ui.Button(label="Bump")
+        => expect Ui.Label(text="n=1")
 ```
 
-`!bump` is captured from outside the `dyn`; the hold is inside it. A rebuild makes a new hold at 0. The `Together` builds a new block in an occurrence in which `!bump` has already fired, and the new hold adopts it: `n=1`, exactly what a hold that had existed from the start of the occurrence would show.
+`!bump` is captured from outside the `dyn`; the hold is inside it. A rebuild makes a new hold at 0. The two-input line builds a new block in an occurrence in which `!bump` has already fired, and the new hold adopts it: `n=1`, exactly what a hold that had existed from the start of the occurrence would show.
 
 ### Nothing answers in the occurrence it was asked
 
@@ -769,14 +774,15 @@ test hold_resets_and_catches_up: Test @reset_law: array:
     $got <- "nothing" then !back
     @Label $got
 
-test no_answer_in_the_request_occurrence: Test @creation_law: array:
-    Expect Ui.Label(text="nothing")
-    Requested Echo, "hi"
-    Send Echo, "hi"
-    Expect Ui.Label(text="hi")
+test no_answer_in_the_request_occurrence, @creation_law:
+    build
+        => expect Ui.Label(text="nothing")
+        => requested Echo, "hi"
+    send Echo, "hi"
+        => expect Ui.Label(text="hi")
 ```
 
-The request fired in the build occurrence, from `@started`, which is pure; the label after the build still says `nothing`, because no response can arrive in the occurrence of its request. The script answers by hand in the next turn. This is also the test that there are no events from nothing: without the `Send`, the label never changes, however many turns the script runs.
+The request fired in the build occurrence, from `@started`, which is pure; the label after the build still says `nothing`, because no response can arrive in the occurrence of its request. The script answers by hand in the next turn. This is also the test that there are no events from nothing: without the `send`, the label never changes, however many turns the script runs.
 
 ### A prompt cycle formed through a widget function is reported, not run
 
@@ -789,8 +795,9 @@ The request fired in the build occurrence, from `@started`, which is pure; the l
     !out <- @Echo !out
     @ unit
 
-test cycle_is_an_error: Test @runtime_cycle: array:
-    Errors Error(kind=Cycle, ..)
+test cycle_is_an_error, @runtime_cycle:
+    build
+        => errors Error(kind=Cycle, ..)
 ```
 
 The block that binds `!out` cannot see that `@Echo`'s result is prompt in its argument, so the compiler lets it through. In occurrence zero `@started` fires, `!out` fires with 0, `!in + 1` fires with 1, which is `!out` again, in the same occurrence. The runtime reports a cycle and the build turn ends in an error: one `Error` value with `kind=Cycle`, the spans of the nodes in the chain, and the occurrence number. What the World does with it, an aborted occurrence or a subtree in quarantine, is the error chapter's. The step says only that the turn ended in a cycle error and that the implementation did not hang.
@@ -829,7 +836,7 @@ There is no `now()`. Time is a state element, `Clock`, like the contents of a fi
 
 What it closes: the untestable debounce. Anyone who has tried to unit-test a timeout with a real timer knows what a clock that a script can set is worth. It also closes the program whose behaviour depends on how long an occurrence took to compute, which is a program whose bugs appear only under load.
 
-What it buys the program: `Step $watch, $clock, !action` has every input it needs in its arguments. The stopwatch's state machine is a plain function, and it runs identically under a GUI World, a server World and a test that says `Push Clock, Instant 5100`.
+What it buys the program: `Step $watch, $clock, !action` has every input it needs in its arguments. The stopwatch's state machine is a plain function, and it runs identically under a GUI World, a server World and a test that says `push Clock = Instant 5100`.
 
 What it buys the implementation: nothing in the runtime knows what time it is, so nothing in the runtime has to be told, and two implementations cannot disagree about it. Determinism would be false the moment a program could read a wall clock; with the clock as data, it is a theorem.
 
@@ -937,15 +944,17 @@ Occurrence by occurrence, with a 300 ms delay: a keystroke at occurrence 4 reque
     $shown <- "" then !settled
     @Label "searching: {$shown}"
 
-test debounce_waits_for_the_last: Test @debounced_search: array:
-    Send Ui.TextInput(name="query"), "a"
-    Requested Time.After(delay=300), 1
-    Send Ui.TextInput(name="query"), "ab"
-    Requested Time.After(delay=300), 2
-    Send Time.After(delay=300), 1
-    Expect Ui.Label(text="searching: ")
-    Send Time.After(delay=300), 2
-    Expect Ui.Label(text="searching: ab")
+test debounce_waits_for_the_last, @debounced_search:
+    build
+        => settles
+    send Ui.TextInput(name="query"), "a"
+        => requested Time.After(delay=300), 1
+    send Ui.TextInput(name="query"), "ab"
+        => requested Time.After(delay=300), 2
+    send Time.After(delay=300), 1
+        => expect Ui.Label(text="searching: ")
+    send Time.After(delay=300), 2
+        => expect Ui.Label(text="searching: ab")
 ```
 
 The test owns the timer. It can answer the tokens in any order, together, or never, and each choice is a case the program handles by the same three lines. Under a real World the text input is the library's `@TextInput` over `Ui.TextInput`, fed by `Gui.Window`'s key events through the library's focus routing; the debounce does not know and does not need to. This is the "no clock" absence paying for itself: a debounce is testable without waiting, and the program that was tested is the program that ships.

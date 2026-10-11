@@ -66,7 +66,7 @@ impl Runtime {
 }
 ```
 
-That is the entire surface a World needs. The runtime's graph types exist and are public, because compiled widgets are built from them, but a World never names one. `Runtime` is `Send` and not `Sync`: it can be moved onto a thread and driven there by one owner, and never shared.
+That is the entire surface a World needs. The runtime's graph types exist and are public, because compiled widgets are built from them, but a World never names one. `Runtime` is `send` and not `Sync`: it can be moved onto a thread and driven there by one owner, and never shared.
 
 ### What goes in
 
@@ -82,9 +82,9 @@ That is the entire surface a World needs. The runtime's graph types exist and ar
 
 *The request firings* are the one-shot instructions: a write to standard output, a `Read` on a file, bytes on a socket, a `Code 0` on `Process.Exit`. Each is listed under its slot's path in the order it fired. The World performs them after the turn, in occurrence order and, within an occurrence, in list order. A firing from a slot that was torn down in the same occurrence is still reported, with its path; the World performs it if it can and discards any response, since there is no slot to address. The program asked, and the World does not second-guess that the asker is gone; what it cannot do is answer.
 
-*The result* is the root widget's result, which most Worlds ignore (a CLI World runs `@main : @unit`) and a test World reads for `Returns` and `Fired`.
+*The result* is the root widget's result, which most Worlds ignore (a CLI World runs `@main : @unit`) and a test World reads for `returns` and `fired`.
 
-*The error* says the occurrence did not happen. Because every write during an occurrence is buffered to commit time, the error path is a rollback: the hold values, the switch targets, the nodes built during the occurrence are dropped, and the graph is as it was before the call. The inputs that opened the occurrence are lost, and the World decides what that means for it: a CLI World prints the error and exits nonzero, a GUI World might show it and keep going, a test World records it for an `Errors` step.
+*The error* says the occurrence did not happen. Because every write during an occurrence is buffered to commit time, the error path is a rollback: the hold values, the switch targets, the nodes built during the occurrence are dropped, and the graph is as it was before the call. The inputs that opened the occurrence are lost, and the World decides what that means for it: a CLI World prints the error and exits nonzero, a GUI World might show it and keep going, a test World records it for an `errors` step.
 
 ### What never crosses
 
@@ -262,7 +262,7 @@ From the World's side: one input (or a batch it chose to deliver together), one 
 
 From the program's side: an occurrence with inputs from outside, possibly followed by occurrences with inputs only from `Defer` slots, each a full occurrence under the ordinary laws. The program cannot tell where a turn ends, and must not care; a program that behaves differently depending on whether two inputs were one turn or two is depending on the World's batching, which the language leaves to the World. What the program *can* rely on is that a `Defer` fired in occurrence k is answered before any new outside input arrives, which is what makes a sandbox's denial land before the user's next keystroke.
 
-From a test's side: `Send` runs a whole turn, including the `Defer` occurrences, and `Expect` sees the end of it. A script that expects `"(reading...)"` after a sandbox denial would fail: by the end of turn zero the denial has landed.
+From a test's side: `send` runs a whole turn, including the `Defer` occurrences, and `expect` sees the end of it. A script that expects `"(reading...)"` after a sandbox denial would fail: by the end of turn zero the denial has landed.
 
 ### A turn with a cache, occurrence by occurrence
 
@@ -300,7 +300,7 @@ Take a child that fires `GET /a` in one turn and, later, `GET /a` again, under a
 
 **Turn 3, occurrence 1.** Another click. The child fires `GET /a` again. The cache's block reads `$cache` through a tag: it has `/a`. `!hit` fires with the answer; the `Defer` slot's request fires. `!miss` is quiet. `run` returns with `requests: [(cache/../defer, [unit])]`.
 
-**Turn 3, occurrence 2.** The world core sees the fired `Defer` in the list it just received, records its path as answered, and calls `run` again with `responses: [(defer_path, unit)]`, no pushes, the same oracle. `!later` fires; `$hit on !later` reads the hold through a tag and gets the answer committed in occurrence 1; `!Filter` passes it; `!down` fires; the child's slot gets its answer. No `Defer` fired in this occurrence. The turn is over: two occurrences, one input. The World performed no fetch, and the transcript shows `Requested Http.Fetch(..)` for turn 1 and nothing for turn 3, which is what `cache_hit_no_request` asserts.
+**Turn 3, occurrence 2.** The world core sees the fired `Defer` in the list it just received, records its path as answered, and calls `run` again with `responses: [(defer_path, unit)]`, no pushes, the same oracle. `!later` fires; `$hit on !later` reads the hold through a tag and gets the answer committed in occurrence 1; `!Filter` passes it; `!down` fires; the child's slot gets its answer. No `Defer` fired in this occurrence. The turn is over: two occurrences, one input. The World performed no fetch, and the transcript shows `requested Http.Fetch(..)` for turn 1 and nothing for turn 3, which is what `cache_hit_no_request` asserts.
 
 What the child saw in turn 3 is a response one occurrence after its request, which is the earliest any World could have answered, so a child tested under the cache sees the same timing as one tested without it. A mock built the same way has the same property, and that is why mocks go through `Defer` rather than answering "immediately": there is no immediately, and a mock that pretended there was would hide timing bugs production would show.
 
@@ -590,7 +590,7 @@ tag Gui.Frames of Element:
     responds: Frame                # a GUI World fires this before it paints
 ```
 
-There is no `now()`. `Clock` is a state element: a value in the creation occurrence, pushed when the World chooses, at most once per turn for the Worlds in this chapter. `Clock` has no fields, so every clock in a program is one clock and every reading in one occurrence agrees. A test sets it with `State Clock, Instant 5000` and moves it with `Push`, which is why a debounce is testable here and nowhere else.
+There is no `now()`. `Clock` is a state element: a value in the creation occurrence, pushed when the World chooses, at most once per turn for the Worlds in this chapter. `Clock` has no fields, so every clock in a program is one clock and every reading in one occurrence agrees. A test sets it with `with Clock = Instant 5000` and moves it with `push`, which is why a debounce is testable here and nowhere else.
 
 `Time.After` is a request: fire a delay in milliseconds, get the same number back after at least that long. Each firing is its own timer, and a slot with two firings in flight gets two answers. A debounce is this element and a counter:
 
@@ -606,7 +606,7 @@ let IsOne: fn Int -> ?unit = \|n| if n == 1: Some unit else: Nil
     @ !Filter ($last on !settled)
 ```
 
-Every input starts a timer and bumps a pending count; every expiry decrements it; the output fires with the last input when an expiry finds the count at one, meaning the timer that just expired was the only one alive, so no input arrived during its life. Under a test World the timer is `Send Time.After(..), d`, and the program's text is the whole specification of what "quiet for d" means, including the case the merge decides: an input and an expiry in one occurrence count as an input, and the lost decrement makes the next expiry too early by one. A program that minds sums the two with a `!Union` over a map instead of a merge, and the point is that it had to say so.
+Every input starts a timer and bumps a pending count; every expiry decrements it; the output fires with the last input when an expiry finds the count at one, meaning the timer that just expired was the only one alive, so no input arrived during its life. Under a test World the timer is `send Time.After(..), d`, and the program's text is the whole specification of what "quiet for d" means, including the case the merge decides: an input and an expiry in one occurrence count as an input, and the lost decrement makes the next expiry too early by one. A program that minds sums the two with a `!Union` over a map instead of a merge, and the point is that it had to say so.
 
 `Time.Every` is a stream: a tick per period while the slot exists. Its period is a field, so a dynamic period is a `dyn` and a fresh slot, and the phase restarts; a World that wants phase continuity across the rebuild keys its timer on tree position and tag, and no program can tell. Ticks are responses, so they never coalesce: a World that fell behind skips the missed ticks and delivers the next one; it never delivers two in one occurrence.
 
@@ -686,7 +686,7 @@ tag Process.Env of Element:
     state: Text ==> Text
 ```
 
-They are state rather than parameters of `@main` for the sake of the sandbox: an interceptor can supply a child a different `Process.Args`, a test can `State Process.Args, [["notes.txt"]]`, and neither needs a second way to start a program. A World that cannot observe a change to the environment never pushes one; a World that can (a shell that lets the user set a variable) pushes it, and the program's `dyn $args` rebuilds, which is what you want.
+They are state rather than parameters of `@main` for the sake of the sandbox: an interceptor can supply a child a different `Process.Args`, a test can `with Process.Args = [["notes.txt"]]`, and neither needs a second way to start a program. A World that cannot observe a change to the environment never pushes one; a World that can (a shell that lets the user set a variable) pushes it, and the program's `dyn $args` rebuilds, which is what you want.
 
 ### Net
 
@@ -803,7 +803,7 @@ tag Errors of Element:
     responds: RuntimeError
 ```
 
-A World may offer `Errors`: a stream element that fires, in a later turn, with each runtime error the World received. A program subscribes to it like any stream, and what it does with the information is its own business: show it, log it through `Cli.Stderr`, count it. A program cannot *catch* an error, because the occurrence it happened in did not happen and nothing in the language can observe a rollback from inside; what it can do is learn, afterwards, that one occurred. For a World that quarantines a failing subtree (replacing it with an `Error(span, message)` presence element in the list), the stream and the element say the same thing from two sides: the stream is the edge, the element is the level.
+A World may offer `errors`: a stream element that fires, in a later turn, with each runtime error the World received. A program subscribes to it like any stream, and what it does with the information is its own business: show it, log it through `Cli.Stderr`, count it. A program cannot *catch* an error, because the occurrence it happened in did not happen and nothing in the language can observe a rollback from inside; what it can do is learn, afterwards, that one occurred. For a World that quarantines a failing subtree (replacing it with an `Error(span, message)` presence element in the list), the stream and the element say the same thing from two sides: the stream is the edge, the element is the level.
 
 The alternative is a `catch` that lets a parent widget react to a child's runtime error in the occurrence it happens. That is an effect handler in disguise, and it would make a hold's value depend on whether some unrelated subtree threw, which is the back door the language closed. Errors a program is meant to handle are values with types; errors the language cannot make into values are visible as elements and nowhere else.
 
@@ -878,7 +878,7 @@ turn 3:  end of input                   → responses [(0, End)]
          perform in list order: write "3\n" to stdout; exit 0
 ```
 
-Three turns, three occurrences, and the exit code is the last thing the World did. A golden test for the CLI World is exactly this transcript: program, arguments, environment and standard input in; standard output, standard error and exit code out. Anything involving timers is tested under the Test World instead, with `Push Clock` and `Send Time.After(..), 30000`, because a golden test with a real clock is a flaky test.
+Three turns, three occurrences, and the exit code is the last thing the World did. A golden test for the CLI World is exactly this transcript: program, arguments, environment and standard input in; standard output, standard error and exit code out. Anything involving timers is tested under the Test World instead, with `push Clock` and `send Time.After(..), 30000`, because a golden test with a real clock is a flaky test.
 
 ### A REPL with a timeout
 
@@ -895,7 +895,7 @@ Three turns, three occurrences, and the exit code is the last thing the World di
     @ unit
 ```
 
-The timeout restarts on every line, since each firing is a new timer. An old timer's response still arrives, and the program exits on it, which is a bug: the fix is the debounce pattern, a pending count, and the point of writing it this way first is that the bug is in the program's text, where a test under the Test World (`Send Time.After(..), 30000` after a line) finds it, and not in a race between a signal handler and a read loop.
+The timeout restarts on every line, since each firing is a new timer. An old timer's response still arrives, and the program exits on it, which is a bug: the fix is the debounce pattern, a pending count, and the point of writing it this way first is that the bug is in the program's text, where a test under the Test World (`send Time.After(..), 30000` after a line) finds it, and not in a race between a signal handler and a read loop.
 
 ### Where tokio goes
 
@@ -1024,7 +1024,7 @@ The World reads the list, sees a window it has not opened, opens a 200×72 windo
 
 **Turn 3.** The user presses a key. The World delivers `Pressed (Char 'x')` to the window at `0/0`, like any other input. There is no `Gui.Focusable` in the list, because the counter has nothing to type into, and `@Window` has no focused input to route the key to, so it drops it. Had there been a text input, `@Window` would have emitted `Gui.Focusable(name="input")` upward, the focused name it holds, so the World could show a focus ring; the key would still have arrived at `0/0`; `@Window` would have routed it to the input named `input`; and the input's hold would have moved its cursor, asked `Gui.Metrics` for the width of the text up to the cursor, and drawn the caret there. The World knows nothing about cursors.
 
-Three turns, three occurrences, and the World's whole job was: open a window, rasterise a list, deliver a point, a key and a size to a path. Everything that looked like a toolkit was Prism, and ran unchanged under the Test World when `Send Gui.Window(..), Pointer (Down ((50, 10)), Left)` drove it.
+Three turns, three occurrences, and the World's whole job was: open a window, rasterise a list, deliver a point, a key and a size to a path. Everything that looked like a toolkit was Prism, and ran unchanged under the Test World when `send Gui.Window(..), Pointer (Down ((50, 10)), Left)` drove it.
 
 ### Software rasteriser
 
@@ -1156,13 +1156,13 @@ The run call is synchronous and single-threaded from the World's view, and it is
 
 Suppose the run call were `async`, awaiting inside propagation when a response was needed. Then an occurrence could be suspended with holds uncommitted while another input arrived, and either the second input waits (so the await bought nothing) or it opens a second occurrence inside the first (which the transaction forbids). An occurrence is a transaction, and a transaction that yields halfway is the checkbox bug with a scheduler attached. And suppose the runtime were driven from several tokio worker threads. Then two occurrences could run at once, which is the parallelism the model allows across occurrences, but as transactional concurrency with read-set checking and retry, not as "whichever worker got there first." That is a runtime variant, described in the last section, and nothing a World does.
 
-So the runtime is `Send + !Sync`: one owner, one thread, and the World's choice of which thread. A GUI World's main thread, because the platform says so. A CLI World's main thread, because there is no reason not to. A server World's one thread per shard, because that is the parallelism that costs nothing. tokio is the IO side of every World, never the propagation side. A World grown with tokio as its propagation loop would learn to await inside a turn and hold graph state across an await, and no GUI main thread allows either, so the World that was developed would not be the one users got.
+So the runtime is `send + !Sync`: one owner, one thread, and the World's choice of which thread. A GUI World's main thread, because the platform says so. A CLI World's main thread, because there is no reason not to. A server World's one thread per shard, because that is the parallelism that costs nothing. tokio is the IO side of every World, never the propagation side. A World grown with tokio as its propagation loop would learn to await inside a turn and hold graph state across an await, and no GUI main thread allows either, so the World that was developed would not be the one users got.
 
 ### One occurrence per readiness event, or a batch
 
 A readiness event (a socket readable, a timer expired, a read completed) becomes one input on the channel. When the loop wakes, several may be queued, and the World chooses. Responses to different slots that were waiting together may be one occurrence: the program sees them as simultaneous, which the World is entitled to claim, and a program whose text has a merge in it has already said what simultaneity means. Responses to one slot are always separate occurrences, in arrival order. State changes are coalesced to the last value per element and ride with the next turn, because state is a level.
 
-Two policies are both conforming and feel different. *One turn per input* gives the program the finest view of order and the most occurrences; it is right for a CLI World and for anything with a transcript, because the transcript is unambiguous. *Batch what is queued* gives fewer occurrences and lower latency under load; it is right for a GUI World between frames, and for a server. A test World does what the script says, and the `Together` step is how a script says "batch these."
+Two policies are both conforming and feel different. *One turn per input* gives the program the finest view of order and the most occurrences; it is right for a CLI World and for anything with a transcript, because the transcript is unambiguous. *Batch what is queued* gives fewer occurrences and lower latency under load; it is right for a GUI World between frames, and for a server. A test World does what the script says, and two deliveries on one line is how a script says "batch these."
 
 ### Completions become responses, and vanished slots cancel
 
@@ -1182,7 +1182,7 @@ Some things block and have no asynchronous form worth using: `getaddrinfo` on so
 
 *Not inside the oracle*, with one bounded exception. The oracle is the snapshot as a function, and it must answer the same value to every slot that asks in one occurrence. A World that implemented `Fs.Contents`'s oracle by reading the file on every ask would give two slots created in one occurrence two different values if the file changed between the reads, which breaks the equality law. So the oracle reads the snapshot map, and the one exception is the first ask for a local file: the component reads it then, under a size cap, and records the result in the snapshot before answering, so every later ask in every occurrence gets the recorded value and the change arrives as a push. Past the cap the answer is `Unavailable TooLarge`. Anything that waits on something outside the machine (a socket, a DNS lookup, a database) is never read in the oracle: its answer is the tag's unavailable case, and the component starts the work after the turn, when it sees the slot in the list.
 
-The cap keeps the exception honest. Without it, the oracle would block on whatever size of file a program named, and the latency would land inside the occurrence; with it, the read is the kind of blocking a main thread does anyway, and a file past the cap gets the true frame, `Unavailable TooLarge`, and a program that minds draws the previous state instead, with a hold. The Test World has no disk, so it models the oracle with `State` steps, including `State Fs.Contents(path="/big"), Unavailable TooLarge`.
+The cap keeps the exception honest. Without it, the oracle would block on whatever size of file a program named, and the latency would land inside the occurrence; with it, the read is the kind of blocking a main thread does anyway, and a file past the cap gets the true frame, `Unavailable TooLarge`, and a program that minds draws the previous state instead, with a hold. The Test World has no disk, so it models the oracle with `with` steps, including `with Fs.Contents(path="/big"), Unavailable TooLarge`.
 
 The same discipline applies to `Process.Spawn`: the spawn happens on a thread after the turn, the `Spawned id` comes back as a response, and the program that fired from `@started` sees it a turn later, never in the build.
 
@@ -1192,7 +1192,7 @@ A World is per platform; a program is not, if it stays inside the general compon
 
 ### Which components are per platform
 
-The general components, `Fs`, `Time`, `Clock`, `Process`, `Net`, `Http`, `Errors`, `Defer`, and the GUI vocabulary, are offered by every World that can, with one meaning. Raw access is per platform and named so: `Sys.Posix` on Linux and macOS, `Sys.Win32` on Windows, `Sys.Wasi` on a WASI host, nothing on the web. A shared `Sys` that meant different things in different places would only pretend to port, and a program that uses `Sys.Posix` has said in its text that it runs on POSIX.
+The general components, `Fs`, `Time`, `Clock`, `Process`, `Net`, `Http`, `errors`, `Defer`, and the GUI vocabulary, are offered by every World that can, with one meaning. Raw access is per platform and named so: `Sys.Posix` on Linux and macOS, `Sys.Win32` on Windows, `Sys.Wasi` on a WASI host, nothing on the web. A shared `Sys` that meant different things in different places would only pretend to port, and a program that uses `Sys.Posix` has said in its text that it runs on POSIX.
 
 ### What a program sees
 
@@ -1203,7 +1203,7 @@ tag World.Tags of Element:
     state: [Text]                  # the tags this World accepts, by name
 ```
 
-A program reads it in occurrence zero (it is state, so it has a value then) and builds under a `dyn` over it, choosing a `Clipboard` path or a fallback by a plain `match`. An interceptor can supply a child a narrower `World.Tags`, which is what a sandbox should do so that the child never tries. The Test World's `World.Tags` is everything, and a test that wants to exercise the fallback sets it narrower with a `State` step. This is the one component that is about the World itself, and it is state rather than a request because the question "what can I ask" has to be answerable before anything is asked.
+A program reads it in occurrence zero (it is state, so it has a value then) and builds under a `dyn` over it, choosing a `Clipboard` path or a fallback by a plain `match`. An interceptor can supply a child a narrower `World.Tags`, which is what a sandbox should do so that the child never tries. The Test World's `World.Tags` is everything, and a test that wants to exercise the fallback sets it narrower with a `with` step. This is the one component that is about the World itself, and it is state rather than a request because the question "what can I ask" has to be answerable before anything is asked.
 
 ### Platforms
 
@@ -1336,7 +1336,7 @@ The conformance suite tests the language under the Test World and says nothing a
 | Test | What it catches |
 | --- | --- |
 | A response to a path not in the last list is dropped and logged, never passed to `run`. | A World addressing something the program does not have. |
-| A `Defer` fired in occurrence k is answered in k+1 of the same turn; `Fired` on the child's side shows the answer in the turn. | `Defer` answered in its own occurrence, or deferred to the next turn. |
+| A `Defer` fired in occurrence k is answered in k+1 of the same turn; `fired` on the child's side shows the answer in the turn. | `Defer` answered in its own occurrence, or deferred to the next turn. |
 | A `Defer` that fires again after being answered ends the turn with an error naming its path. | Deferring backwards passing as a loop. |
 | A `dyn` rebuilt by a `Defer` answer that fires a new `Defer` from `@started`, three times. | The generation rule not holding; a turn that never ends. |
 | Random programs with D `Defer` slots: every turn runs at most 1 + D occurrences. | Any path to an unbounded turn. |
@@ -1377,7 +1377,7 @@ What a World may not do, and what each refusal buys. The list is the design.
 
 **No scheduler, no priorities, no budget.** The World performs firings in the order the program fired them and runs occurrences in the order inputs arrived. What it buys: two Worlds reading one outcome do the same things; the transcript is the specification of the run.
 
-**No clock inside.** Time is a state element the World pushes. What it buys: a debounce is a test with a `Push`; a transcript replays with the same timestamps; a program cannot ask for a finer time than the World gave it and so cannot depend on one.
+**No clock inside.** Time is a state element the World pushes. What it buys: a debounce is a test with a `push`; a transcript replays with the same timestamps; a program cannot ask for a finer time than the World gave it and so cannot depend on one.
 
 The pattern is the language's own: each thing a World cannot do is a thing that would have made the boundary a second set of rules, and each removal is also a mechanism the World never has to build. A World is small because the list above is long.
 

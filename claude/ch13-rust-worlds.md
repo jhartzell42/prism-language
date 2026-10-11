@@ -234,7 +234,7 @@ pub struct OccurrenceRecord {
 }
 ```
 
-A CLI World looks at `exit` and nothing else. A Test World reads all of it. The records exist so that the transcript printer and the `Requested`, `Fired` and `Errors` steps have a single source, the same one the differential test diffs.
+A CLI World looks at `exit` and nothing else. A Test World reads all of it. The records exist so that the transcript printer and the `requested`, `fired` and `errors` steps have a single source, the same one the differential test diffs.
 
 ### The turn loop as code
 
@@ -505,7 +505,7 @@ A late result is not an error. The World started a read because a slot asked for
 
 Paths are never reused, so a late result cannot be mistaken for a result to a new slot at the same position. A `dyn` that rebuilds gives the new slot a fresh generation in its path, and a result for the old generation is late by construction.
 
-The "two to one path" case is the other half of routing. A reader thread that delivered two chunks of stdin before the loop woke up has produced two responses for one slot. They cannot share an occurrence: a slot receives one response per occurrence, and the runtime enforces that with an error. The core holds the second for the next turn, which is what a World that ran a turn per chunk would have done anyway. A World that wants two inputs in one occurrence, a `Together`, has to address two different slots, and the Test World's `Together` step checks exactly this before it delivers.
+The "two to one path" case is the other half of routing. A reader thread that delivered two chunks of stdin before the loop woke up has produced two responses for one slot. They cannot share an occurrence: a slot receives one response per occurrence, and the runtime enforces that with an error. The core holds the second for the next turn, which is what a World that ran a turn per chunk would have done anyway. A World that wants two inputs in one occurrence, a the comma, has to address two different slots, and the Test World's the comma step checks exactly this before it delivers.
 
 ### Unsupported
 
@@ -546,7 +546,7 @@ The interceptor chain in these reports comes from the path. A path is the chain 
 
 ### Error reporting
 
-An error from the run call is a value, and the core turns it into text in one format, so that every World's errors read the same and a transcript's `Errors` step has one thing to match.
+An error from the run call is a value, and the core turns it into text in one format, so that every World's errors read the same and a transcript's `errors` step has one thing to match.
 
 ```rust
 pub enum WorldError {
@@ -591,7 +591,7 @@ Spans come from the compiled program: the runtime names every cyclic placeholder
 
 Diagnostics are printed in a shorter form, one line each, to the same sink, prefixed `note:`. A CLI World sends both to stderr; a GUI World could show them in a window; the Test World keeps them in the transcript.
 
-What the World does with an error is the World's policy, and the core leaves it to the caller of `turn`: the `Err` comes back after the firings of every occurrence that committed before the abort have been performed, the aborted occurrence has rolled back, its responses are gone and any pushes it was opened with are re-queued, and the caller decides whether to log and continue, or exit. A CLI World exits nonzero. A GUI World might keep running, because the window is still there and the next click is a fresh occurrence. A Test World records it for the `Errors` step and continues the script, so that one test can check both the error and what the program does after it.
+What the World does with an error is the World's policy, and the core leaves it to the caller of `turn`: the `Err` comes back after the firings of every occurrence that committed before the abort have been performed, the aborted occurrence has rolled back, its responses are gone and any pushes it was opened with are re-queued, and the caller decides whether to log and continue, or exit. A CLI World exits nonzero. A GUI World might keep running, because the window is still there and the next click is a fresh occurrence. A Test World records it for the `errors` step and continues the script, so that one test can check both the error and what the program does after it.
 
 ### The harness: driving a runtime from any event loop
 
@@ -707,46 +707,59 @@ The Test World is the world core plus one component that answers to a script. It
 A test is an item in a Prism file, parsed by the `lang` crate like any other:
 
 ```prism
-test counter_counts: Test @counter: array:
-    Expect Ui.Label(text="Count: 0")
-    Send Ui.Button(label="Increment"), click
-    Send Ui.Button(label="Increment"), click
-    Expect Ui.Label(text="Count: 2")
-    Together:
-        Send Ui.Button(label="Increment"), click
-        Send Ui.Button(label="Decrement"), click
-    Expect Ui.Label(text="Count: 1")
+test counter_counts, @counter:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment")
+        => settles
+    click Ui.Button(label="Increment")
+        => expect Ui.Label(text="Count: 2")
+    click Ui.Button(label="Increment"), click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: 1")
 ```
 
-The parser produces a `TestItem { name, widget: Expr, steps: Vec<Step> }` where the widget expression is elaborated and compiled as if it were `@main`, and each step is one of:
+The parser produces a `TestItem { name, widget: Expr, turns: Vec<Turn> }` where the widget expression is elaborated and compiled as if it were `@main`, and each turn is one line of the script with its `=>` lines:
 
 ```rust
-pub enum Step {
+pub struct Turn {
+    pub withs: Vec<(Pattern, Expr)>,     // `with p = v`, applied before the inputs
+    pub inputs: Vec<Input>,              // `build`, `idle`, or one or more deliveries
+    pub checks: Vec<Check>,              // one per `=>` line
+}
+
+pub enum Input {
+    Build,
+    Idle,
+    Click(Pattern),
+    Send(Pattern, Expr),                 // Expr: a plain value, evaluated at test time
+    Push(Pattern, Expr),
+}
+
+pub enum Check {
     Expect(Pattern),
     ExpectTop(Pattern),
     ExpectNone(Pattern),
+    ExpectTopNone(Pattern),
     ExpectCount(Pattern, usize),
-    Send(Pattern, Expr),                 // Expr: a plain value, evaluated at test time
-    Together(Vec<(Pattern, Expr)>),
-    State(Pattern, Expr),
-    Push(Pattern, Expr),
     Returns(Pattern),
     Fired(Pattern),
     Quiet,
     Requested(Pattern, Pattern),
+    Unrequested(Pattern),
     Errors(Pattern),
+    Settles,
 }
 ```
 
-A `Pattern` here is an element pattern as the language already has it for `match`: a tag with named fields, each field a value pattern or `..`, or `Ns.*(..)`. The value in a `Send` or `State` is an ordinary plain expression, type-checked against the tag's declared response or state type, so `Send Ui.Button(..), "hello"` is a compile error in the test file. This is why the script lives in `lang` and not in a separate test language: it reuses the pattern grammar, the type checker, and the error messages, and a test file is a Prism file.
+A `Pattern` here is an element pattern as the language already has it for `match`: a tag with named fields, each field a value pattern or `..`, or `Ns.*(..)`. The value in a `send` or `with` is an ordinary plain expression, type-checked against the tag's declared response or state type, so `send Ui.Button(..), "hello"` is a compile error in the test file. This is why the script lives in `lang` and not in a separate test language: it reuses the pattern grammar, the type checker, and the error messages, and a test file is a Prism file.
 
-The `Requested` step's second argument is a pattern over the request value rather than a value, so that `Requested Time.Every(..), ignore` can say "it fired, I do not care with what".
+The `requested` step's second argument is a pattern over the request value rather than a value, so that `requested Time.Every(..), ignore` can say "it fired, I do not care with what".
 
 ### Execution
 
 ```rust
 pub struct ScriptComponent {
-    snapshot: BTreeMap<ElementValue, Value>,     // from State steps; nothing else supplies state
+    snapshot: BTreeMap<ElementValue, Value>,     // from `with` entries; nothing else supplies state
     accepted: Vec<Tag>,                           // every tag the program declares
 }
 
@@ -767,9 +780,9 @@ impl Component for ScriptComponent {
 }
 ```
 
-The component is almost empty, and that is the design: a Test World does nothing, so its component does nothing, and everything the steps need is in the `TurnOutcome` the core already returns. `Value::missing()` is a sentinel the core turns into an `UnsuppliedState` error, so a state element with no `State` step fails the test at the slot's creation with the same error a real World gives for a state tag it does not accept. Tag declarations carry no default state value, so there is nothing to fall back on: a program that creates `Clock` or `Gui.Metrics` while it builds needs a `State` step for that element before the build, and a test that forgets one fails with an error that names the element instead of running against a value nobody chose.
+The component is almost empty, and that is the design: a Test World does nothing, so its component does nothing, and everything the steps need is in the `TurnOutcome` the core already returns. `Value::missing()` is a sentinel the core turns into an `UnsuppliedState` error, so a state element with no `with` step fails the test at the slot's creation with the same error a real World gives for a state tag it does not accept. Tag declarations carry no default state value, so there is nothing to fall back on: a program that creates `Clock` or `Gui.Metrics` while it builds needs a `with` step for that element before the build, and a test that forgets one fails with an error that names the element instead of running against a value nobody chose.
 
-The runner holds the harness and the script and walks the steps:
+The runner holds the harness and the script and walks the turns:
 
 ```rust
 pub struct TestRun {
@@ -781,50 +794,57 @@ pub struct TestRun {
 }
 
 impl TestRun {
-    pub fn run(mut self, steps: &[Step]) -> Result<Transcript, Failure> {
-        let lead = steps.iter().take_while(|s| matches!(s, Step::State(..))).count();
-        for (i, step) in steps[..lead].iter().enumerate() { self.step(step).map_err(|why| Failure { step: i, why })?; }
-        self.record(self.harness.start());                  // the build reads the leading State steps
-        for (i, step) in steps.iter().enumerate().skip(lead) {
-            self.step(step).map_err(|why| Failure { step: i, why })?;
+    pub fn run(mut self, turns: &[Turn]) -> Result<Transcript, Failure> {
+        for (i, t) in turns.iter().enumerate() {
+            self.turn_line(t).map_err(|why| Failure { turn: i, why })?;
         }
         Ok(self.transcript)
     }
 
-    fn step(&mut self, step: &Step) -> Result<(), String> {
-        let list = &self.last_list();
-        match step {
-            Step::Expect(p)      => (find_all(list, p).len() >= 1).then_some(()).ok_or(no_match(p)),
-            Step::ExpectTop(p)   => (list.iter().any(|(_, e)| p.matches(e))).then_some(()).ok_or(no_match(p)),
-            Step::ExpectNone(p)  => find_all(list, p).is_empty().then_some(()).ok_or(unexpected(p)),
-            Step::ExpectCount(p, n) => (find_all(list, p).len() == *n).then_some(()).ok_or(count(p, *n)),
-            Step::Send(p, v)     => {
-                let path = find_one(list, p)?;
-                self.turn(vec![Delivery::Response { path, value: eval(v) }])
-            }
-            Step::Together(sends) => {
-                let mut batch = Vec::new();
-                let mut seen = BTreeSet::new();
-                for (p, v) in sends {
-                    let path = find_one(list, p)?;
+    fn turn_line(&mut self, t: &Turn) -> Result<(), String> {
+        for (p, v) in &t.withs { self.script.set(find_state(p)?, eval(v)); }
+        let list = self.last_list();
+        let mut batch = Vec::new();
+        let mut seen = BTreeSet::new();
+        for input in &t.inputs {
+            match input {
+                Input::Build => self.record(self.harness.start()),      // the build reads this line's withs
+                Input::Idle  => {}
+                Input::Click(p) | Input::Send(p, _) => {
+                    let path = find_one(&list, p)?;
                     if !seen.insert(path.clone()) {
-                        return Err(format!("Together sends twice to {}", path));
+                        return Err(format!("two deliveries to {} on one line", path));
                     }
-                    batch.push(Delivery::Response { path, value: eval(v) });
+                    let value = match input { Input::Send(_, v) => eval(v), _ => Value::unit() };
+                    batch.push(Delivery::Response { path, value });
                 }
-                self.turn(batch)
+                Input::Push(p, v) => {
+                    let e = find_state(p)?;
+                    self.script.set(e.clone(), eval(v));
+                    batch.push(Delivery::Push { element: e, value: eval(v) });
+                }
             }
-            Step::State(p, v)    => { self.script.set(find_state(p)?, eval(v)); Ok(()) }
-            Step::Push(p, v)     => {
-                let e = find_state(p)?;
-                self.script.set(e.clone(), eval(v));
-                self.turn(vec![Delivery::Push { element: e, value: eval(v) }])
-            }
-            Step::Returns(p)     => p.matches_result(&self.last_result()).then_some(()).ok_or(..),
-            Step::Fired(p)       => self.last_turn_fired(p).then_some(()).ok_or(..),
-            Step::Quiet          => (!self.last_turn_fired_any()).then_some(()).ok_or(..),
-            Step::Requested(p, vp) => self.last_turn_requested(p, vp).then_some(()).ok_or(..),
-            Step::Errors(p)      => self.last_error.as_ref().filter(|e| p.matches_error(e)).map(|_| ()).ok_or(..),
+        }
+        if !matches!(t.inputs[..], [Input::Build]) { self.turn(batch)?; }
+        for c in &t.checks { self.check(c)?; }
+        Ok(())
+    }
+
+    fn check(&mut self, c: &Check) -> Result<(), String> {
+        let list = &self.last_list();
+        match c {
+            Check::Expect(p)        => (find_all(list, p).len() >= 1).then_some(()).ok_or(no_match(p)),
+            Check::ExpectTop(p)     => (list.iter().any(|(_, e)| p.matches(e))).then_some(()).ok_or(no_match(p)),
+            Check::ExpectNone(p)    => find_all(list, p).is_empty().then_some(()).ok_or(unexpected(p)),
+            Check::ExpectTopNone(p) => (!list.iter().any(|(_, e)| p.matches(e))).then_some(()).ok_or(unexpected(p)),
+            Check::ExpectCount(p, n) => (find_all(list, p).len() == *n).then_some(()).ok_or(count(p, *n)),
+            Check::Returns(p)       => p.matches_result(&self.last_result()).then_some(()).ok_or(..),
+            Check::Fired(p)         => self.last_turn_fired(p).then_some(()).ok_or(..),
+            Check::Quiet            => (!self.last_turn_fired_any()).then_some(()).ok_or(..),
+            Check::Requested(p, vp) => self.last_turn_requested(p, vp).then_some(()).ok_or(..),
+            Check::Unrequested(p)   => (!self.last_turn_requested_any(p)).then_some(()).ok_or(..),
+            Check::Errors(p)        => self.last_error.as_ref().filter(|e| p.matches_error(e)).map(|_| ()).ok_or(..),
+            Check::Settles          => self.last_error.is_none().then_some(()).ok_or("the turn ended in an error".into()),
         }
     }
 
@@ -843,24 +863,26 @@ The Test World's harness uses `BatchPolicy::Drain`, because a script says exactl
 
 `find_all` is the depth rule. It walks every slot in the list, matches the pattern against the element, and then descends into any field whose value is an element or a collection of elements, because that is the convention a GUI library uses to hold children as data in a container element. The Test World knows the convention as a structural fact about values, not as a tag name: a field of type `Element`, `[Element]` or `k ==> Element` is descended into. `Send` to a nested element delivers to the containing root slot's path with the nested index attached in the response, following the same library convention the other way; chapter 2's vertical box shows the Prism side of it.
 
-The `State` step takes effect "as the next turn's push and oracle": the `State` steps at the head of a script run before the build, and the build occurrence reads them; `set` writes the script's snapshot, which the oracle reads for values not yet asked about, and the next turn's `gather` reports the changed values as pushes for values already asked about. `Push` is `State` plus a turn with the push as its only delivery.
+A `with` takes effect as its own line's push and oracle: the `with`s on the `build` line run before the build, and the build occurrence reads them; `set` writes the script's snapshot, which the oracle reads for values not yet asked about, and the next turn's `gather` reports the changed values as pushes for values already asked about. `push` is `with` plus a turn with the push as its only delivery.
 
-### How `State`, `Push`, `Requested` and `Errors` are implemented
+### How `with`, `push`, `requested` and `errors` are implemented
 
-Each of the four steps that the walkthroughs in chapter 2 lean on has one source of truth in the core.
+Each of the four that the walkthroughs in chapter 2 lean on has one source of truth in the core.
 
-`State` and `Push` are the snapshot. A `State Clock, Instant 5000` before the first turn means the oracle answers `5000` the first time any `Clock` slot asks, in occurrence zero, so a stopwatch built in the build occurrence has its clock in the build occurrence, which is the rule that state is there in its first occurrence. A `Push Clock, Instant 5100` later is a `Delivery::Push`, which `apply_pushes` keeps because `Clock` is in `prev`, and which the runtime fires on the shared state dynamic for that value, reaching every `Clock` slot in the program and any `Clock` slot created in the push's occurrence. The script does not know how many slots there are; it sets one value for one element, which is value identity made visible.
+`with` and `push` are the snapshot. A `with Clock = Instant 5000` before the first turn means the oracle answers `5000` the first time any `Clock` slot asks, in occurrence zero, so a stopwatch built in the build occurrence has its clock in the build occurrence, which is the rule that state is there in its first occurrence. A `push Clock = Instant 5100` later is a `Delivery::Push`, which `apply_pushes` keeps because `Clock` is in `prev`, and which the runtime fires on the shared state dynamic for that value, reaching every `Clock` slot in the program and any `Clock` slot created in the push's occurrence. The script does not know how many slots there are; it sets one value for one element, which is value identity made visible.
 
-`Requested` is the `requests` vector of the last turn's occurrence records. `Requested Time.Every(..), ignore` finds a slot in any occurrence of the last turn whose element matches and whose firings contain a value matching the second pattern. It looks at the whole turn because a request fired in a `Defer` occurrence is part of what the World saw after the turn, and a script that could only see the first occurrence would be seeing something no World sees. A request from a slot torn down in the same occurrence is in the records too, with its path, so a test can check that a write fired by a widget on its way out was performed.
+`requested` is the `requests` vector of the last turn's occurrence records. `requested Time.Every(..), ignore` finds a slot in any occurrence of the last turn whose element matches and whose firings contain a value matching the second pattern. It looks at the whole turn because a request fired in a `Defer` occurrence is part of what the World saw after the turn, and a script that could only see the first occurrence would be seeing something no World sees. A request from a slot torn down in the same occurrence is in the records too, with its path, so a test can check that a write fired by a widget on its way out was performed.
 
-`Fired` and `Quiet` are the `result` view of the same records: `Fired` passes if the widget's result event fired in any occurrence of the turn with a matching value, `Quiet` if it fired in none. `Returns` compares the current value after the turn.
+`fired` and `quiet` are the `result` view of the same records: `fired` passes if the widget's result event fired in any occurrence of the turn with a matching value, `quiet` if it fired in none. `returns` compares the current value after the turn.
 
-`Errors` is the `Err` from `turn`. The runner keeps running after an error, with the runtime unchanged (the occurrence rolled back), so that `Errors Cycle(..)` followed by `Expect Ui.Label(text="Count: 2")` can assert that the label still shows what it showed before the bad occurrence. The pattern matches on the error's kind and, optionally, on the paths and spans in it, so a conformance test for "deferring backwards is an error" is:
+`errors` is the `Err` from `turn`. The runner keeps running after an error, with the runtime unchanged (the occurrence rolled back), so that `errors Cycle(..)` followed by `expect Ui.Label(text="Count: 2")` can assert that the label still shows what it showed before the bad occurrence. The pattern matches on the error's kind and, optionally, on the paths and spans in it, so a conformance test for "deferring backwards is an error" is:
 
 ```prism
-test defer_backwards: Test @retry_forever_under_sandbox: array:
-    Send Ui.Button(label="Read"), click
-    Errors DeferBackwards(..)
+test defer_backwards, @retry_forever_under_sandbox:
+    build
+        => settles
+    click Ui.Button(label="Read")
+        => errors DeferBackwards(..)
 ```
 
 ### The transcript printer
@@ -989,7 +1011,7 @@ impl Component for Process {
 }
 ```
 
-Arguments and environment are state elements rather than parameters of `@main` so that an interceptor can give a subtree different ones and a test can set them with `State Process.Args, [["notes.txt"]]`, with no second way to start a program. On a process that cannot observe a change to its arguments the component never pushes, and the `dyn` a program puts over `$args` builds once. A World that can observe a change (a shell World hosting other programs, where "arguments" is something the shell decides) pushes, and the same program rebuilds; nothing in the program says which World it is under.
+Arguments and environment are state elements rather than parameters of `@main` so that an interceptor can give a subtree different ones and a test can set them with `with Process.Args = [["notes.txt"]]`, with no second way to start a program. On a process that cannot observe a change to its arguments the component never pushes, and the `dyn` a program puts over `$args` builds once. A World that can observe a change (a shell World hosting other programs, where "arguments" is something the shell decides) pushes, and the same program rebuilds; nothing in the program says which World it is under.
 
 `quiescent` is `true` because a program whose only slot is `Process.Args` is a program that has nothing left to do, and the run should end with code 0 rather than wait forever for a push that never comes.
 
@@ -1495,7 +1517,7 @@ impl Component for Sockets {
 
 The `inbox.send` here is the tokio channel's `blocking_send` (from memory) or an unbounded send, and that choice is backpressure. If the inbox is bounded and a reader task blocks on sending, the socket is not read until the loop drains, which is the correct behaviour for a program that is slower than its input: the kernel's receive buffer fills, TCP's window closes, and the sender slows down. That is backpressure, and a bounded inbox gives a Prism World it for free. The outbound channel in `perform` is bounded too, and `try_send` failing means the program is writing faster than the socket drains; the component's choice above is to drop with a diagnostic, and a World that wants to tell the program would use a tag whose response includes `Backpressured`, at which point the program's own hold is the buffer and the program decides what to drop. Buffering unboundedly inside the World is the one option not taken, because an unbounded buffer is a memory leak with a delay.
 
-Step 2's batching decides what "simultaneous inputs" means. Two deliveries that were both ready when the loop woke are, as far as the World can know, simultaneous; delivering them in one occurrence tells the program they were, and the program's `|` merges and `Together`-style reasoning apply. Delivering them in two turns tells the program one came first, which the World does not know either. Both are honest; the skeleton batches because a server that gets two requests at once should see two requests at once, while the CLI World does not because its programs are written one input at a time. The rule that one slot gets one response per occurrence is enforced either way, and the skeleton stops batching at the first repeat rather than skipping over it, so that the order of deliveries to one path is kept.
+Step 2's batching decides what "simultaneous inputs" means. Two deliveries that were both ready when the loop woke are, as far as the World can know, simultaneous; delivering them in one occurrence tells the program they were, and the program's `|` merges and the comma-style reasoning apply. Delivering them in two turns tells the program one came first, which the World does not know either. Both are honest; the skeleton batches because a server that gets two requests at once should see two requests at once, while the CLI World does not because its programs are written one input at a time. The rule that one slot gets one response per occurrence is enforced either way, and the skeleton stops batching at the first repeat rather than skipping over it, so that the order of deliveries to one path is kept.
 
 The `Deadlines` object is the tokio spelling of the CLI World's `next_deadline`: the `Timers` component writes its earliest deadline into it, and `sleep_until_next` is a `tokio::time::sleep_until` that is recreated whenever the earliest changes. Nothing else about `Timers` changes.
 
@@ -1992,7 +2014,7 @@ The cases, and what each pins:
 | `fs_contents_watch` | an `Fs.Contents` viewer; the harness rewrites the file after reading a `ready` line; the program prints the new contents and exits |
 | `cycle_at_runtime` | a program that forms a cycle on the second line of input; the error on stderr with both spans, exit nonzero, the first line's output present |
 
-Timers are not in the goldens. A test that waits on wall-clock time is a test that fails on a loaded machine, and everything a timer does to a program is tested under the Test World with `Send Time.Every(..), tick` and `Push Clock, ...`. What the CLI World's timer component does with the OS, that `wait` returns at the deadline, is one of the harness tests above with a deadline of a few milliseconds and a generous tolerance.
+Timers are not in the goldens. A test that waits on wall-clock time is a test that fails on a loaded machine, and everything a timer does to a program is tested under the Test World with `Send Time.Every(..), tick` and `push Clock = ...`. What the CLI World's timer component does with the OS, that `wait` returns at the deadline, is one of the harness tests above with a deadline of a few milliseconds and a generous tolerance.
 
 The `ready`-line handshake in the signal and watch cases is the one place the goldens synchronise with the program, and it is a handshake the program is written to perform: print `ready` after the slot exists. The harness reads stdout until it sees the line, then acts. That is deterministic because stdout is flushed per turn, and the turn that created the slot is the turn that printed the line.
 

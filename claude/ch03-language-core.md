@@ -11,7 +11,7 @@ Prism makes the hint mandatory, uniform, and checked. A name's first character s
 - `x` is a plain value. It is true, now and always. It cannot change, it cannot happen, it cannot be torn down.
 - `!x` is an event. It happens at some occurrences, with a value each time, and between them there is nothing to look at.
 - `$x` is a dynamic. It is true now, and it will be different later, at some occurrence.
-- `@x` is a widget. It is a description of something that can be built, that then exists for a while, talks to the outside, and is torn down.
+- `@x` is a blueprint. It describes a widget: something that can be built from it, that then exists for a while, talks to the outside, and is torn down. The book says "widget" for the built thing, the way everyone does, and "blueprint" for the value of type `@a` whenever the difference matters.
 - `?x` is a plain value that may be absent.
 
 The sigil is part of the name, the compiler checks it against the type, and that is the whole idea. `$count + !delta` tells you, before you know what a count or a delta is, that one of them is live and one of them happens, and so it tells you that the expression is an event, firing when the delta does, with the count read as it stood before. No inference over functors is needed to know that; a lexer could classify it. This serves the goal that you can see what moves. The other goal it serves is less obvious: because the time structure of an expression is readable off the names, the compiler never has to guess it, so the lifting rule in the last section of this chapter is a lookup table rather than a search, and the two implementations cannot disagree about it.
@@ -227,7 +227,7 @@ Nothing is lost, and what is gone was never information. A widget block is a lis
 
 The real reason is the one about seeing what moves. The counter's block is four lines of definitions, and a reader is meant to take it in as a table: left column the names, right column what they are. Braces and semicolons put punctuation in the table; a `dyn` or a `for` with a nested block puts a closing brace on a line by itself, which is a line the reader has to skip. The nested forms are where the difference is biggest: `dyn $path:` followed by its block reads as "while the path is this, these," and the block is over when the indentation returns, which is exactly when the reader's attention does.
 
-Suppose instead the language took braces and ignored whitespace, as Rust does. The cost would be the separators on every line and the dangling closers, and the benefit would be that a formatter could reflow code and that a line could be split anywhere. Prism gets the second from rule 3 below (an indented continuation line continues the statement) and does not want the first, since a block whose lines are equations has no reason to reflow. The price of the offside rule is that it has to be specified exactly, with its ugly cases, so that two lexers agree; that specification is the rest of this section, and it is short.
+Rust made the same decision from the other side: an `if` body must have braces, with no brace-less form, so that there is one way to write a block and no dangling `else`. One channel, chosen in the other direction. Suppose instead the language took braces and ignored whitespace, as Rust does. The cost would be the separators on every line and the dangling closers, and the benefit would be that a formatter could reflow code and that a line could be split anywhere. Prism gets the second from rule 3 below (an indented continuation line continues the statement) and does not want the first, since a block whose lines are equations has no reason to reflow. The price of the offside rule is that it has to be specified exactly, with its ugly cases, so that two lexers agree; that specification is the rest of this section, and it is short.
 
 Layout is the offside rule, with `:` as the block opener. Everything below is the contract. The intuition is Python's: a colon at the end of a line opens a block, the block is the lines indented under it, and the block ends when the indentation comes back. The difference from Python is in what a line *inside* a block means when it is indented more than its neighbours: it continues the statement above it, as in Haskell, rather than being an error.
 
@@ -309,7 +309,7 @@ None of these colons opens a block. The first two are map key separators; the `i
 
 Comments are whitespace, so the `:` is still the last token on its line and opens a layout block.
 
-*A block that is the whole of a statement.* `@counter:` at top level, `type Vector = record:`, `test counter: Test @counter: array:`. In the last one, two colons on one line are not two block openers: the first is an inline block (rule 4) containing `Test @counter: array:`, whose last `:` opens the layout block, which belongs to the `Test` call inside the inline block. A reader sees "the test named counter is `Test @counter` applied to the array below".
+*A block that is the whole of a statement.* `@counter:` at top level, `type Vector = record:`, `test counter, @counter:`. In the last one the block holds one statement per turn, and each turn's `=>` lines are continuations of it by rule 3.
 
 *A bracket spanning lines inside a block.*
 
@@ -1404,20 +1404,22 @@ let m = \| a , b |) a | b ; let n = !x | !y
 
 Identical streams.
 
-**11. Two colons on one line: a test definition.**
+**11. A test definition: the `=>` continuation lines.**
 
 ```prism
-test counter: Test @counter: array:
-    Expect Ui.Label(text="Count: 0")
-    Send Ui.Button(label="Increment"), click
+test counter, @counter:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment")
+        => expect Ui.Label(text="Count: 1")
 ```
 
 ```
-test counter : Test @counter : array ⟨ Expect Ui.Label ( text = TEXT("Count: 0") )
-; Send Ui.Button ( label = TEXT("Increment") ) , click ⟩
+test counter , @counter ⟨ build => expect Ui.Label ( text = TEXT("Count: 0") )
+; click Ui.Button ( label = TEXT("Increment") ) => expect Ui.Label ( text = TEXT("Count: 1") ) ⟩
 ```
 
-The first two colons are inline colon tokens; only the last, line-final, opens a block.
+The line-final colon opens the block; the `=>` lines are indented more than the block's column, so by rule 3 they continue the turn line above them, and the `test` form reads each `=>` as one check of that turn. Two `=>` lines under one turn are two continuations of one statement.
 
 **12. The `for`-then-merge error.**
 
@@ -1536,7 +1538,7 @@ The language's refusals are listed with the whole design in the first part of th
 
 **No sampling.** There is no `.current`, `.value` or `sample` on a dynamic. The only reads are a tag (in a lifted operation with an event), a derived dynamic (prompt), and `dyn` (rebuild). What this buys: there is no "which version" question, since each of the three reads has one defined answer, and the implementation is free to propagate in any dependency-respecting order because nothing can observe the difference.
 
-**No custom monads, no effect system.** One block type per functor, and the set is fixed: widget blocks, `dyn`, `for`, `match`. There is no `do`, no transformer stack, no way to define a fourth functor with its own bind. What this buys: the lifting rule is a table over four sigils; a name's kind is readable from its spelling because the set of kinds is closed; and the compiler's elaboration is a lookup, not a search through instances. A program that wants a `Reader` passes an argument; one that wants a `State` has a hold; one that wants `IO` has an element.
+**No custom monads, no effect system.** One block type per functor, and the set is fixed: widget blocks, `dyn`, `for`, `match`. There is no `do`, no transformer stack, no way to define a fourth functor with its own bind. What this buys: the lifting rule is a table over four sigils; a name's kind is readable from its spelling because the set of kinds is closed; and the compiler's elaboration is a lookup, not a search through instances. A program that wants a `Reader` passes an argument; one that wants a `with` has a hold; one that wants `IO` has an element.
 
 **No overloading beyond the three traits.** `Eq`, `Ord` and `Num` are resolved by inference; nothing else is. There are no user-defined traits, no instances, no operator definitions, no implicit coercions through a class. What this buys: a call site names one function, and the reader can find it; inference stays Hindley–Milner on the value layer with three well-understood exceptions, and the checker's error messages stay local. The three are the ones without which sorting, map keys, element identity and arithmetic cannot be written; everything else has a name.
 

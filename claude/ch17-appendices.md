@@ -413,7 +413,7 @@ tag Ns.Name of Element:                  # a tag, in any module
     state: S                             # optional: the element returns $S; a value from creation
 ```
 
-Construction spells the request event as a named field: `Cli.Stdout(requests=!line)`, `Fs.File(path=p, requests=(Read on !started))`. The request event is excluded from equality, so two slots differing only in their request events are equal elements and share state. `@Element e` returns `@unit` (fields only, or requests only), `@!R` (responds), `@$S` (state, with or without requests), `@((!R, $S))` (responds and state); in a catch-all arm the result is the generic `@((!Response, $State))`, checked per slot at runtime, and inside a tag-specific arm `@Element _.element` has that tag's types. A dynamic where a field goes lifts to a `dyn` with a fresh slot per change. An event where a field goes is an error unless the field is `requests`. Responses are addressed by path; state is shared by element value. Elements never fire in the occurrence they were created; a state element has a value in it. There is no `default:` line in a tag: a World that cannot answer the oracle for a state tag makes the slot's creation an `UnsuppliedState` error, and a test gives the value with a `State` step before the build.
+Construction spells the request event as a named field: `Cli.Stdout(requests=!line)`, `Fs.File(path=p, requests=(Read on !started))`. The request event is excluded from equality, so two slots differing only in their request events are equal elements and share state. `@Element e` returns `@unit` (fields only, or requests only), `@!R` (responds), `@$S` (state, with or without requests), `@((!R, $S))` (responds and state); in a catch-all arm the result is the generic `@((!Response, $State))`, checked per slot at runtime, and inside a tag-specific arm `@Element _.element` has that tag's types. A dynamic where a field goes lifts to a `dyn` with a fresh slot per change. An event where a field goes is an error unless the field is `requests`. Responses are addressed by path; state is shared by element value. Elements never fire in the occurrence they were created; a state element has a value in it. There is no `default:` line in a tag: a World that cannot answer the oracle for a state tag makes the slot's creation an `UnsuppliedState` error, and a test gives the value with a `with` step before the build.
 
 ### `intercept`
 
@@ -429,32 +429,38 @@ Builds `@a` as a child and captures its element list. Down: `!responses` by path
 
 ### Test scripts
 
-A test is a top-level statement that the suite's harness runs: a function from a widget and an array of steps to a transcript and a verdict, under the Test World, which accepts every tag.
+A test is a top-level form the suite's harness runs under the Test World, which accepts every tag. One line per turn; inputs on the line, checks on indented `=>` lines under it; no side is ever empty.
 
 ```prism
-test name: Test @widget: array:
-    Expect pattern                  # some slot at any depth matches
-    ExpectTop pattern               # some root-level slot matches
-    ExpectNone pattern              # no slot matches
-    ExpectTopNone pattern           # no root-level slot matches
-    ExpectCount pattern, n          # exactly n match
-    Send pattern, response          # exactly one slot matches; deliver; run a turn
-    Together:                       # several Sends in one occurrence
-        Send pattern, response
-        Send pattern, response
-    State pattern, value            # set the snapshot for a state element; next turn's oracle and push
-    Push pattern, value             # State, then a turn with no other input
-    Returns pattern                 # the widget's result matches (a dynamic by current value); on an event result, a script error (use Fired/Quiet)
-    Fired pattern                   # the result event fired in the last turn with a matching value
-    Quiet                           # the result event did not fire in the last turn
-    Requested pattern, value        # a matching slot fired its request with a matching value
-    Unrequested pattern             # no matching slot fired its request in the last turn
-    Errors pattern                  # the last turn ended in a matching runtime error
+test name, @widget:
+    build
+        => expect pattern    # some slot at any depth matches
+        => expect_top pattern    # some root-level slot matches
+        => expect_none pattern    # no slot matches
+        => expect_top_none pattern    # no root-level slot matches
+        => expect_count pattern, n    # exactly n match
+    click pattern    # exactly one slot matches; deliver a click; run a turn
+        => settles    # the turn ran, its Defers were answered, no error
+    send pattern, response    # any other response
+        => settles
+    click pattern, send pattern, response    # several deliveries in one occurrence
+        => settles
+    with pattern = value, click pattern    # set a snapshot entry for this turn, then deliver
+        => settles
+    push pattern = value    # a turn whose only input is the snapshot change
+        => settles
+    idle    # a turn with no inputs
+        => returns pattern    # the widget's result matches (a dynamic by current value); on an event result, a script error (use `fired`/`quiet`)
+        => fired pattern    # the result event fired in the last turn with a matching value
+        => quiet    # the result event did not fire in the last turn
+        => requested pattern, value    # a matching slot fired its request with a matching value
+        => unrequested pattern    # no matching slot fired its request in the last turn
+        => errors pattern    # the last turn ended in a matching runtime error
 ```
 
-The build is turn zero. Each `Send`, `Together` or `Push` is one turn including its `Defer` occurrences; independent `Defer`s fired in one occurrence are answered together. `State` may appear before the build and must for every state tag the program creates at build, since the oracle has to answer in occurrence zero. Patterns are element patterns; `Errors` patterns are `Error(kind=Cycle, ..)` and the like.
+The build is turn zero. Each input line is one turn including its `Defer` occurrences; independent `Defer`s fired in one occurrence are answered together. `with` may appear before the build and must for every state tag the program creates at build, since the oracle has to answer in occurrence zero. Patterns are element patterns; `errors` patterns are `Error(kind=Cycle, ..)` and the like.
 
-Transcripts and `Send` targets spell paths canonically: a slot or child by its index in the parent's child list, a `dyn` generation as `#n`, a `for` key as `[k]`, and a supplier-built slot as `s/n/...` with the supplied widget's own segments after the prefix. Only slots, `dyn` generations, `for` keys and intercept children take segments; a plain widget-function application makes a node but adds no segment, so a `@Button` whose body holds the `dyn` prints as `0/#0/0`, and the third row of a keyed list's second generation prints as `1/#1/[3]/0`.
+Transcripts and `send` targets spell paths canonically: a slot or child by its index in the parent's child list, a `dyn` generation as `#n`, a `for` key as `[k]`, and a supplier-built slot as `s/n/...` with the supplied widget's own segments after the prefix. Only slots, `dyn` generations, `for` keys and intercept children take segments; a plain widget-function application makes a node but adds no segment, so a `@Button` whose body holds the `dyn` prints as `0/#0/0`, and the third row of a keyed list's second generation prints as `1/#1/[3]/0`.
 ## D. The element vocabulary
 
 Every tag the design uses, in one place, so that a chapter, a test, a World and a library agree on the names. The language fixes the kinds (which parts a tag has) and the laws (creation rule, routing by path, identity by value); the names and fields are the vocabulary the book's examples and Worlds speak. A World accepts a subset of these natively and says which through `World.Tags`; everything else under it is Prism, as interceptors over the tags it does accept, or an `Unsupported` response.
@@ -674,7 +680,7 @@ type Span = record:
 type Unsupported = unsupported
 ```
 
-`Bytes` is the byte-string primitive. `Response` and `State` are the generic response and state types an interceptor sees in a catch-all arm; `Path` is the position type. `ErrorKind` is a closed choice on purpose: a program that matches on `Error`'s `kind` is exhaustive, and a new kind of failure is a change to the language, not to a World. `Error` itself is a tag (the last table below), so one value serves as the presence element a failed build leaves and as the response `Errors` delivers; `RuntimeError { kind, spans, occurrence, .. }` is the same record at the Rust boundary, where the runtime's `Outcome` lists the contained build failures.
+`Bytes` is the byte-string primitive. `Response` and `with` are the generic response and state types an interceptor sees in a catch-all arm; `Path` is the position type. `ErrorKind` is a closed choice on purpose: a program that matches on `Error`'s `kind` is exhaustive, and a new kind of failure is a change to the language, not to a World. `Error` itself is a tag (the last table below), so one value serves as the presence element a failed build leaves and as the response `errors` delivers; `RuntimeError { kind, spans, occurrence, .. }` is the same record at the Rust boundary, where the runtime's `Outcome` lists the contained build failures.
 
 ### Screen: `Gui.*` and `Ui.*`
 
@@ -760,16 +766,16 @@ Chapter 7 declares the persistence vocabulary; the rows are repeated here so the
 | `Store.Value` | `key: Text` | | | `Stored` | value | A stored value as state: `Absent` or `Present` with the bytes, loaded into the World's snapshot when the key is first asked about, pushed when any writer changes it. |
 | `Store.Put` | `key: Text` | `!Bytes` | `PutResult` | | path | Writes are requests; each firing stores one value under the key and is answered `Stored` or `Failed` in a later occurrence. |
 
-### Every World: `Defer`, `Errors`, `World.Tags`
+### Every World: `Defer`, `errors`, `World.Tags`
 
 | Tag | Fields | Requests | Responds | State | Identity | Meaning |
 | --- | --- | --- | --- | --- | --- | --- |
 | `Defer` | | `!unit` | `unit` | | path | Answered in a later occurrence of the same turn, at most once per slot per turn; firing again after being answered in the same turn is a `DeferBackwards` error. A `Defer` reborn by a `dyn` at the same tree position counts as the same `Defer` for the once-per-turn bound; independent `Defer`s fired in one occurrence are answered together. How an interceptor answers a request itself. Every World provides it. |
-| `Error` | `kind: ErrorKind`, `spans: [Span]`, `occurrence: Nat`, `turn: Nat`, `message: Text`, `owner: ?Path`, `path: ?Path` | | | | path | *Presence.* The error value: what a failed build or a quarantined subtree leaves in the element list, and what `Errors` delivers, so one `match` reads both. One tag with the kind as a field. |
-| `Errors` | | | `Error` | | path | A stream a program may subscribe to: each runtime error the World would otherwise only report, with its kind, spans and occurrence. A failed `dyn` build does not fire the `dyn`'s event and is reported here. A program cannot catch an error any other way. |
+| `Error` | `kind: ErrorKind`, `spans: [Span]`, `occurrence: Nat`, `turn: Nat`, `message: Text`, `owner: ?Path`, `path: ?Path` | | | | path | *Presence.* The error value: what a failed build or a quarantined subtree leaves in the element list, and what `errors` delivers, so one `match` reads both. One tag with the kind as a field. |
+| `errors` | | | `Error` | | path | A stream a program may subscribe to: each runtime error the World would otherwise only report, with its kind, spans and occurrence. A failed `dyn` build does not fire the `dyn`'s event and is reported here. A program cannot catch an error any other way. |
 | `World.Tags` | | | | `[Text]` | value | The tags this World accepts natively, as state, so a program can read it in occurrence zero and build under a `dyn` over it; what a library consults before deciding which interceptors to install. An interceptor supplies a sandboxed child a narrower one. The Test World's lists every tag. |
 
-`Unsupported` is not a tag; it is the response a World gives, in the next turn, to a request on a tag it does not accept, so that a `Ui.Button` under a CLI World is a program-visible fact. A World component that crashes is a `Component` error through `Errors`, never an `Unsupported` response. A state tag the World does not accept is an `UnsuppliedState` error raised by the runtime at the slot's creation, on the oracle's refusal, since nothing later can give it a value; a presence tag it does not accept is reported and ignored.
+`Unsupported` is not a tag; it is the response a World gives, in the next turn, to a request on a tag it does not accept, so that a `Ui.Button` under a CLI World is a program-visible fact. A World component that crashes is a `Component` error through `errors`, never an `Unsupported` response. A state tag the World does not accept is an `UnsuppliedState` error raised by the runtime at the slot's creation, on the oracle's refusal, since nothing later can give it a value; a presence tag it does not accept is reported and ignored.
 
 ### What the vocabulary excludes
 

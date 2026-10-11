@@ -492,7 +492,7 @@ The stamp is `5100` and not `5200`, by the tag law, and the push in the same occ
 
 **Occurrence 20.** `click` to `4/#0/0`: Reset. `Watch 0, Stopped`; `"0 ms"`.
 
-To test this program, a script sets the clock: `State Clock, Instant 5000`, a click, `Push Clock, Instant 5100`, an assertion. Anyone who has tried to unit-test a debounce with a real timer knows what that is worth, and it falls out of the clock being a state element rather than a function. The goal served is "no clock": time is data the World supplies, the program cannot ask for a finer one, and a transcript of pushes replays it exactly.
+To test this program, a script sets the clock: `with Clock = Instant 5000`, a click, `push Clock = Instant 5100`, an assertion. Anyone who has tried to unit-test a debounce with a real timer knows what that is worth, and it falls out of the clock being a state element rather than a function. The goal served is "no clock": time is data the World supplies, the program cannot ask for a finer one, and a transcript of pushes replays it exactly.
 
 ## 7. A sandbox
 
@@ -617,7 +617,7 @@ Take the child to be the counter of example 1 wrapped as `@VBox @counter`. The c
                            2/#0/0: Ui.Label(text="Count: 0")})
 ```
 
-**Occurrence 1.** The user clicks the first row. The library above hit-tests the pointer against the layout it drew from that list, finds the first child, and sends `ChildInput(path=0/#0/0, response=click)` to `1/#0/0`. (Under the Test World, `Send Ui.Button(label="Increment"), click` produces the same input, by the convention at the end of this example.) The slot's event fires; `!Switch` delivers `!child_in`; `ToMap` makes `{0/#0/0: click}`; `!down` fires with the same, since `!fwd` is quiet. `intercept` routes `click` to the child's slot at `0/#0/0`; from there it is occurrence 1 of example 1: `!increment`, `!delta`, the count, the label rebuilt to `2/#1/0`. The child's list changes, so `$slots` changes promptly, the box's `dyn` rebuilds to generation `#1` with the new children, and the new slot's input event is adopted at commit.
+**Occurrence 1.** The user clicks the first row. The library above hit-tests the pointer against the layout it drew from that list, finds the first child, and sends `ChildInput(path=0/#0/0, response=click)` to `1/#0/0`. (Under the Test World, `click Ui.Button(label="Increment")` produces the same input, by the convention at the end of this example.) The slot's event fires; `!Switch` delivers `!child_in`; `ToMap` makes `{0/#0/0: click}`; `!down` fires with the same, since `!fwd` is quiet. `intercept` routes `click` to the child's slot at `0/#0/0`; from there it is occurrence 1 of example 1: `!increment`, `!delta`, the count, the label rebuilt to `2/#1/0`. The child's list changes, so `$slots` changes promptly, the box's `dyn` rebuilds to generation `#1` with the new children, and the new slot's input event is adopted at commit.
 
 ```
 1/#1/0: Ui.VBox(children={0/#0/0: Ui.Button(label="Increment"),
@@ -631,7 +631,7 @@ Take the child to be the counter of example 1 wrapped as `@VBox @counter`. The c
 
 Had the child created a `Net.Listener` or an `Fs.File`, `NonUi $slots` would have had it, `@Forward` would have re-emitted it in the VBox's list beside the box, and its responses would have come back through `!fwd` under the child's path. A container and a sandbox are the same program with different arms.
 
-The convention of a `children` field holding elements as data, and a `ChildInput` holding a path and a response, is the library's, not the language's. A Test World that wants `Expect Ui.Button(label="Increment")` to find a button inside a box looks inside `children` fields, and its `Send` wraps the response in one `ChildInput` per container, because the library and the test suite agree to; a different library could nest differently. The language fixes only three things: leaves are elements, containment is interception, and routing is against the opened list.
+The convention of a `children` field holding elements as data, and a `ChildInput` holding a path and a response, is the library's, not the language's. A Test World that wants `expect Ui.Button(label="Increment")` to find a button inside a box looks inside `children` fields, and its `send` wraps the response in one `ChildInput` per container, because the library and the test suite agree to; a different library could nest differently. The language fixes only three things: leaves are elements, containment is interception, and routing is against the opened list.
 
 ## 9. A cache
 
@@ -843,7 +843,7 @@ tag Process.Args of Element:
 
 The `match` inside the `dyn` chooses between two widgets by a plain value, which is the one form a `match` with widget arms may take.
 
-`$args` has a value in occurrence 0, from the oracle, and the `dyn` over it builds once with that value; a World that cannot observe a change to the arguments never pushes one and the `dyn` never rebuilds. Arguments are not parameters of `@main` because of the sandbox of example 7: an interceptor can supply a child a different `Process.Args`, and a test can set them with `State Process.Args, [["notes.txt"]]`, and neither needs a second way to start a program. A `Process.Env` is the same again.
+`$args` has a value in occurrence 0, from the oracle, and the `dyn` over it builds once with that value; a World that cannot observe a change to the arguments never pushes one and the `dyn` never rebuilds. Arguments are not parameters of `@main` because of the sandbox of example 7: an interceptor can supply a child a different `Process.Args`, and a test can set them with `with Process.Args = [["notes.txt"]]`, and neither needs a second way to start a program. A `Process.Env` is the same again.
 
 The World that runs this is the same one that runs example 5's viewer, and `Fs.File` is not a CLI tag: a GUI program reads files the same way. The CLI World adds only standard input, standard output, standard error and signals, four tags; exit, like the arguments, is a process tag.
 
@@ -952,61 +952,65 @@ What this prevents: the server where a connection object is kept in a map by han
 ## 13. Testing the counter
 
 ```prism
-test counter_counts: Test @counter: array:
-    Expect Ui.Label(text="Count: 0")
-    Send Ui.Button(label="Increment"), click
-    Send Ui.Button(label="Increment"), click
-    Expect Ui.Label(text="Count: 2")
-    Send Ui.Button(label="Decrement"), click
-    Expect Ui.Label(text="Count: 1")
-    ExpectNone Ui.Label(text="Count: 2")
+test counter_counts, @counter:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment")
+        => settles
+    click Ui.Button(label="Increment")
+        => expect Ui.Label(text="Count: 2")
+    click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: 1")
+        => expect_none Ui.Label(text="Count: 2")
 
-test counter_left_wins: Test @counter: array:
-    Together:
-        Send Ui.Button(label="Increment"), click
-        Send Ui.Button(label="Decrement"), click
-    Expect Ui.Label(text="Count: -1")
+test counter_left_wins, @counter:
+    build
+        => settles
+    click Ui.Button(label="Increment"), click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: -1")
 
-test counter_is_quiet: Test @counter: array:
-    Send Ui.Button(label="Increment"), click
-    Quiet
-    Returns unit
+test counter_is_quiet, @counter:
+    build
+        => settles
+    click Ui.Button(label="Increment")
+        => quiet
+        => returns unit
 
-test stopwatch_banks_time: Test @stopwatch: array:
-    State Clock, Instant 5000
-    Expect Ui.Label(text="0 ms")
-    Send Ui.Button(label="Start"), click
-    Push Clock, Instant 5100
-    Expect Ui.Label(text="100 ms")
-    Push Clock, Instant 5600
-    Together:
-        Send Ui.Button(label="Stop"), click
-        Send Time.Every(period=100), tick
-    Expect Ui.Label(text="600 ms")
-    Push Clock, Instant 9000
-    Expect Ui.Label(text="600 ms")
-    Unrequested Time.Every(..)
+test stopwatch_banks_time, @stopwatch:
+    with Clock = Instant 5000, build
+        => expect Ui.Label(text="0 ms")
+    click Ui.Button(label="Start")
+        => settles
+    push Clock = Instant 5100
+        => expect Ui.Label(text="100 ms")
+    push Clock = Instant 5600
+        => settles
+    click Ui.Button(label="Stop"), send Time.Every(period=100), tick
+        => expect Ui.Label(text="600 ms")
+    push Clock = Instant 9000
+        => expect Ui.Label(text="600 ms")
+        => unrequested Time.Every(..)
 ```
 
 A test is a World. The Test World accepts every tag, has no effects, is the only source of inputs, and its snapshot is whatever the script says. A script drives the program the way a user would, by sending inputs to elements, and reads what a user would read, the element list. It cannot reach into `@counter` and poke `$count`, because nothing can: there are no reified names, and a test that passes under this World passes under any World that delivers the same inputs.
 
-Each step is a turn or a check between turns. The build is turn zero, so the first `Expect` sees the built program. `Send` finds exactly one slot matching the pattern, delivers the value, and runs a turn, including any `Defer` occurrences the program causes. `Together` delivers several in one occurrence; two to the same slot fail the step, because a slot receives one response per occurrence. `State` sets the snapshot value a state element will see, from the next turn's oracle and push; `Push` is `State` followed by a turn with nothing else in it. `Quiet` and `Returns` look at the widget's result over the last turn.
+Each step is a turn or a check between turns. The build is turn zero, so the first `expect` sees the built program. `send` finds exactly one slot matching the pattern, delivers the value, and runs a turn, including any `Defer` occurrences the program causes. Several deliveries on one line go in one occurrence; two to the same slot fail the step, because a slot receives one response per occurrence. `with` sets the snapshot value a state element will see, from the next turn's oracle and push; `push` is `with` followed by a turn with nothing else in it. `quiet` and `returns` look at the widget's result over the last turn.
 
 Here is the first script as the Test World sees it, turn by turn.
 
-**Turn 0 (build).** The list is example 1's after occurrence 0. `Expect Ui.Label(text="Count: 0")`: some slot at any depth matches; `2/#0/0` does. Pass.
+**Turn 0 (build).** The list is example 1's after occurrence 0. `expect Ui.Label(text="Count: 0")`: some slot at any depth matches; `2/#0/0` does. Pass.
 
-**Turn 1.** `Send Ui.Button(label="Increment"), click`: one slot matches, `0/#0/0`; the World runs an occurrence with `{0/#0/0: click}` as its responses. Occurrence 1 of example 1. The list now has `2/#1/0: Ui.Label(text="Count: 1")`.
+**Turn 1.** `click Ui.Button(label="Increment")`: one slot matches, `0/#0/0`; the World runs an occurrence with `{0/#0/0: click}` as its responses. Occurrence 1 of example 1. The list now has `2/#1/0: Ui.Label(text="Count: 1")`.
 
-**Turn 2.** The same. `"Count: 2"`. The `Expect` passes.
+**Turn 2.** The same. `"Count: 2"`. The `expect` passes.
 
-**Turn 3.** `Send` to the Decrement slot. `"Count: 1"`. `Expect` passes; `ExpectNone Ui.Label(text="Count: 2")` passes because the generation-`#2` label was dropped at commit and is not in the list.
+**Turn 3.** `send` to the Decrement slot. `"Count: 1"`. `expect` passes; `expect_none Ui.Label(text="Count: 2")` passes because the generation-`#2` label was dropped at commit and is not in the list.
 
-The second script is the tag law and the leftmost merge in four lines. `Together` makes one occurrence with two responses to two slots; `!delta` fires with `-1`; the label says `"Count: -1"`. A test that wanted the other answer would be testing a different program.
+The second script is the tag law and the leftmost merge in four lines. the comma makes one occurrence with two responses to two slots; `!delta` fires with `-1`; the label says `"Count: -1"`. A test that wanted the other answer would be testing a different program.
 
-The third script says something about the result. `@counter`'s last statement is `@Label ...`, whose result is `unit`, so the widget's result is `unit` and `Returns unit` holds; `Quiet` holds trivially because the result is not an event. A widget that returned `!delta` would make `Fired +1` the interesting step.
+The third script says something about the result. `@counter`'s last statement is `@Label ...`, whose result is `unit`, so the widget's result is `unit` and `returns unit` holds; `quiet` holds trivially because the result is not an event. A widget that returned `!delta` would make `fired +1` the interesting step.
 
-The fourth script is example 6 under a clock the script owns. `State Clock, Instant 5000` sets the snapshot before the build, so the oracle answers it in occurrence 0. `Push Clock, Instant 5100` is a turn with one push and no responses; the label counts. The `Together` delivers a Stop click and a tick in one occurrence, as a real World might: `Step` reads `$clock` as `5600` through a tag and banks `600`. A later push does not move the label, because the watch is stopped.
+The fourth script is example 6 under a clock the script owns. `with Clock = Instant 5000` sets the snapshot before the build, so the oracle answers it in occurrence 0. `push Clock = Instant 5100` is a turn with one push and no responses; the label counts. The line with both delivers a Stop click and a tick in one occurrence, as a real World might: `Step` reads `$clock` as `5600` through a tag and banks `600`. A later push does not move the label, because the watch is stopped.
 One more script, for the sandbox of example 7, because it shows a turn that is more than one occurrence:
 
 ```prism
@@ -1016,17 +1020,18 @@ One more script, for the sandbox of example 7, because it shows a turn that is m
     $seen <- Nil then Some !r
     @Label (ShowResponse $seen)
 
-test sandbox_denies_outside_root: Test (@Sandbox "/jail", @probe): array:
-    ExpectNone Fs.File(..)
-    Expect Ui.Label(text="(reading...)")
-    Requested Defer, unit
-    Push Clock, Instant 0
-    Expect Ui.Label(text="(permission denied)")
+test sandbox_denies_outside_root, (@Sandbox "/jail", @probe):
+    build
+        => expect_none Fs.File(..)
+        => expect Ui.Label(text="(reading...)")
+        => requested Defer, unit
+    push Clock = Instant 0
+        => expect Ui.Label(text="(permission denied)")
 ```
 
-**Turn 0 (build).** The probe's `Fs.File` slot is created and its request fires; the sandbox's `for` builds the `Nil` arm for it, which fires the `Defer`. The outer list has no `Fs.File` in it, which `ExpectNone` checks: the sandbox held it back. The label says `"(reading...)"`. But the turn is not over: the Test World, like every World, checks for fired `Defer` requests after each occurrence and runs another occurrence delivering the answer. In that second occurrence, still turn 0, the sandbox fires `Unavailable Denied` into the probe, and the probe's label rebuilds. So by the time the script's first step runs, the label already says `"(permission denied)"`, and the second `Expect` above fails.
+**Turn 0 (build).** The probe's `Fs.File` slot is created and its request fires; the sandbox's `for` builds the `Nil` arm for it, which fires the `Defer`. The outer list has no `Fs.File` in it, which `expect_none` checks: the sandbox held it back. The label says `"(reading...)"`. But the turn is not over: the Test World, like every World, checks for fired `Defer` requests after each occurrence and runs another occurrence delivering the answer. In that second occurrence, still turn 0, the sandbox fires `Unavailable Denied` into the probe, and the probe's label rebuilds. So by the time the script's first step runs, the label already says `"(permission denied)"`, and the second `expect` above fails.
 
-That is the point of the script as written: a reader who expects `"(reading...)"` has the turn wrong. The build turn is the build occurrence plus any `Defer` occurrences it causes, and a check between turns sees the end of the turn. The corrected script deletes the second `Expect` and the `Push`, which was only there to make a turn pass, and keeps `Requested Defer, unit`, which holds because the `Defer` slot fired in turn 0, and the final `Expect`. A test that wanted to see the request before the denial would need a World that delivered `Defer` answers lazily, and there is no such World, because the `Defer` rule is what bounds a turn.
+That is the point of the script as written: a reader who expects `"(reading...)"` has the turn wrong. The build turn is the build occurrence plus any `Defer` occurrences it causes, and a check between turns sees the end of the turn. The corrected script deletes the second `expect` and the `push`, which was only there to make a turn pass, and keeps `requested Defer, unit`, which holds because the `Defer` slot fired in turn 0, and the final `expect`. A test that wanted to see the request before the denial would need a World that delivered `Defer` answers lazily, and there is no such World, because the `Defer` rule is what bounds a turn.
 
 The transcript the Test World prints for each turn, the element list, the request firings per slot, the result and any error, is what the conformance suite compares between the two implementations. A difference is a bug in one or an ambiguity in the specification, and the second kind is the more valuable find.
 
@@ -1106,7 +1111,7 @@ s/0:                  Clock
 
 **Occurrences 5 and on.** Ticks keep coming; the stopwatch keeps counting behind the counter; when the user switches back, the box shows the elapsed time it reached while hidden.
 
-A shell, a window manager and a compositor are this program with more arms: a process table is a `for` over a keyed collection of programs, a window is a region of a bigger box, focus is which child gets the keys. None of it is in the language. The language supplies two things: an interceptor that re-emits everything and supplies by forwarding is observably not there, so each layer can be put in and taken out without the children knowing; and routing is always against the opened list, so no layer can send an input to something the user has not seen. The outer World below the shell is small, because the shell did the multiplexing; it could be the software rasteriser of a Prism-native system, or a Test World that says `Send Ui.Button(label="Increment"), click`, which reaches the button through the box's `children` field by the library's convention, and checks what the box contains afterwards.
+A shell, a window manager and a compositor are this program with more arms: a process table is a `for` over a keyed collection of programs, a window is a region of a bigger box, focus is which child gets the keys. None of it is in the language. The language supplies two things: an interceptor that re-emits everything and supplies by forwarding is observably not there, so each layer can be put in and taken out without the children knowing; and routing is always against the opened list, so no layer can send an input to something the user has not seen. The outer World below the shell is small, because the shell did the multiplexing; it could be the software rasteriser of a Prism-native system, or a Test World that says `click Ui.Button(label="Increment")`, which reaches the button through the box's `children` field by the library's convention, and checks what the box contains afterwards.
 
 ## What the fourteen have in common
 
