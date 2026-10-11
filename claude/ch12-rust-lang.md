@@ -16,7 +16,7 @@ Three consequences fall out of the thesis, and each one is a thing the compiler 
 
 *The compiler never decides when anything runs.* The occurrence, the height order, the commit, catch-up for a widget built mid-occurrence: all of that is the runtime's, and a compiled widget gets it by being a widget. A `rebuild` block compiled to an `IrBlueprint` is rebuilt by the runtime's `rebuild` at the right height in the right occurrence, and the block's code does not know whether this is its first build or its hundredth. A leaf does not know what height it runs at. The compiler emits no scheduling code because there is nothing to schedule.
 
-*Construction is a value.* A widget function plus its captures is a thing the runtime can build from at any time: at the first build, at every `rebuild` rebuild, at every `for` key's appearance, at every state supply. The compiler therefore produces blueprints as values, `IrBlueprint { program, block, captures }`, and the same value type serves every one of those places. This is why a `rebuild` can rebuild into a blueprint of a different kind, why a supplier is a function from an element to a blueprint, and why compiled and hand-written blueprints sit side by side in one node tree.
+*Construction is a value.* A widget function plus its captures is a thing the runtime can build from at any time: at the first build, at every `rebuild` firing, at every `for` key's appearance, at every state supply. The compiler therefore produces blueprints as values, `IrBlueprint { program, block, captures }`, and the same value type serves every one of those places. This is why a `rebuild` can rebuild into a blueprint of a different kind, why a supplier is a function from an element to a blueprint, and why compiled and hand-written blueprints sit side by side in one node tree.
 
 *Construction ties knots.* Prism allows recursive bindings in a widget block and the language is strict, so a knot cannot be tied with laziness the way a Haskell `mdo` ties one. The knot is explicit: open a placeholder, build what refers to it, close it to the real node, and never sample it while it is open. The compiler's job is to place the placeholders, and the resolver's dependency analysis says exactly where: at the delayed edges, which every legal cycle has at least one of. Nothing else in the compiler is about recursion.
 
@@ -111,7 +111,7 @@ pub enum TokenKind {
     Not, And, Or,                   // the boolean keywords: not a, a and b, a or b
     // operators and punctuation
     Bind, Define,                   // <-  =      (`then`, the hold operator, is the keyword above)
-    Lt, Le, Gt, Ge, EqEq, NotEq,    // <  <=  >  >=  ==  !=   (longest match: `<-` and `<=` are two tokens, `<` `<=`)
+    Lt, Le, Gt, Ge, EqEq, NotEq,    // <  <=  >  >=  ==  !=   (longest match: `<-` and `<=` are single tokens)
     Merge,                          // |   (never the lambda bars)
     Plus, Minus, Star, Slash,       // + - * /     (Plus/Minus take the `prefix` flag)
     PlusInt, MinusInt, StarInt, SlashInt,       // +~ -~ *~ /~
@@ -438,7 +438,7 @@ A step's own arguments are parsed as a call's and end at the next `ChainDot`. In
 
 **`intercept`.** Three arguments, comma-separated, parsed as an atom so that the whole call is one expression: `((result, $slots)) <- intercept @child, !down, $ \|e| @Element e`. The third argument begins with a free `$`, which takes the lambda, which takes the rest of the line.
 
-**Tests.** `test counter:` opens a block whose single statement is an expression, in practice `Test @counter: array:` with the steps as array elements. The parser keeps it as `Item::Test { body: Expr }` and the elaborator types the body against the conformance suite's `Test` function and step constructors from the prelude; a test is therefore ordinary Prism with one keyword to mark it, and a module's tests are collected by the harness without a second syntax.
+**Tests.** `test counter, @counter:` opens a block with one line per turn and indented `=>` checks under it. The parser keeps it as `Item::Test { body: Expr }` and the elaborator types the body against the conformance suite's `Test` function and step constructors from the prelude; a test is therefore ordinary Prism with one keyword to mark it, and a module's tests are collected by the harness without a second syntax.
 
 **Patterns.** `Type(f, g)` as shorthand for `Type(f=f, g=g)` is recognised when every item inside the parentheses is a bare lowercase name; `Type(p, q)` with any non-name pattern is positional. A mix is an error: "name every field or none". `Ns.*(..)` is `Upper Dot(binary) Star` followed by `( .. )`, and the `..` is mandatory because the arm cannot know the fields. `p: Type` ascribes.
 

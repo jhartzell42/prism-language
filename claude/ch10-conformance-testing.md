@@ -115,7 +115,7 @@ test one_row_per_key, @tallies:
         => expect_count Ui.Button(..), 4
 ```
 
-**`send pattern, response`.** Exactly one slot must match the pattern; otherwise the step fails before anything is delivered, with the count it found. The response is delivered to that slot's path as the sole input of a new occurrence, and a turn is run: that occurrence plus any `Defer` occurrences it causes. The requirement that exactly one slot match is what keeps a test from sending a click into an ambiguity: two buttons labelled "OK" need a pattern that tells them apart, or a `Together`.
+**`send pattern, response`.** Exactly one slot must match the pattern; otherwise the step fails before anything is delivered, with the count it found. The response is delivered to that slot's path as the sole input of a new occurrence, and a turn is run: that occurrence plus any `Defer` occurrences it causes. The requirement that exactly one slot match is what keeps a test from sending a click into an ambiguity: two buttons labelled "OK" need a pattern that tells them apart, or one input line that delivers both.
 
 ```prism
 test send_runs_a_turn, @counter:

@@ -164,7 +164,7 @@ impl Cx {
 #[derive(Clone)]
 pub struct Inbox {
     tx: std::sync::mpsc::Sender<Delivery>,
-    wake: std::sync::Arc<rebuild Wake>,
+    wake: std::sync::Arc<dyn Wake>,
 }
 
 pub trait Wake: Send + Sync {
@@ -190,7 +190,7 @@ Suppose instead the core were table-driven: a component registers, per tag, a cl
 pub struct World<R: Runtime> {
     runtime: R,
     program: Program,                  // compiled widget plus tag table
-    components: Vec<Box<rebuild Component>>,
+    components: Vec<Box<dyn Component>>,
     by_tag: HashMap<Tag, usize>,       // which component accepts which tag
     snapshot: Snapshots,
     slots: SlotTable,
@@ -198,11 +198,11 @@ pub struct World<R: Runtime> {
     when: When,
     inbox_rx: std::sync::mpsc::Receiver<Delivery>,
     cx: Cx,
-    report: Box<rebuild Report>,           // where errors and diagnostics go
+    report: Box<dyn Report>,           // where errors and diagnostics go
 }
 
 impl<R: Runtime> World<R> {
-    pub fn new(program: Program, report: Box<rebuild Report>, wake: Arc<rebuild Wake>) -> Self;
+    pub fn new(program: Program, report: Box<dyn Report>, wake: Arc<dyn Wake>) -> Self;
     pub fn add(&mut self, component: impl Component + 'static) -> &mut Self;
     /// Occurrence zero. Returns the initial list.
     pub fn start(&mut self) -> Result<TurnOutcome, WorldError>;
@@ -314,7 +314,7 @@ impl<R: Runtime> World<R> {
 }
 ```
 
-Slot removal is told to components before slot creation. A `rebuild` rebuild tears down a slot at one path and creates another at a fresh path in the same occurrence; if the component were told about the creation first, a stdin reader would briefly have two slots and start a second reader thread before stopping the first. Removals first means a component never sees two of a thing that should be one.
+Slot removal is told to components before slot creation. A `rebuild` firing tears down a slot at one path and creates another at a fresh path in the same occurrence; if the component were told about the creation first, a stdin reader would briefly have two slots and start a second reader thread before stopping the first. Removals first means a component never sees two of a thing that should be one.
 
 Requests are performed after the slot diff. A request fired by a slot that was torn down in the same occurrence is still in `requests`, with its path, and `perform` is called for it. The component does the operation if it can, because the program asked, and discards the response, because the slot is gone; `slot_removed` was already called, so the component knows. This is the rule that a write fired in the occurrence that removed the writer still lands.
 
@@ -527,7 +527,7 @@ impl<R: Runtime> World<R> {
         }
     }
 
-    fn route(&mut self, el: &ElementValue) -> &mut rebuild Component {
+    fn route(&mut self, el: &ElementValue) -> &mut dyn Component {
         match self.by_tag.get(&el.tag) {
             Some(&ix) => &mut *self.components[ix],
             None => &mut self.nobody,     // a component that records and does nothing

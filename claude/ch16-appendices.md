@@ -50,7 +50,7 @@ You have written the Reflex program where a `Dynamic` was sampled with `current`
 
 ### The behavior half is hidden
 
-Reflex exposes `current`, `updated` and `sample` on every `Dynamic`; Prism's `$` has no `current`, and the only way to turn a dynamic into a plain value is `dyn`, which rebuilds on change. Chapter 4 ("No sampling, and what it buys", "The hidden behavior") owns the argument; `current` survives in exactly one place, the Haskell implementation's evaluator, where a typed-AST tag node is `tag (current d) e`.
+Reflex exposes `current`, `updated` and `sample` on every `Dynamic`; Prism's `$` has no `current`, and the only way to turn a dynamic into a plain value is `rebuild`, which rebuilds on change. Chapter 4 ("No sampling, and what it buys", "The hidden behavior") owns the argument; `current` survives in exactly one place, the Haskell implementation's evaluator, where a typed-AST tag node is `tag (current d) e`.
 
 The spelling that costs the afternoon, and what replaces it:
 

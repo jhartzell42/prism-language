@@ -74,7 +74,7 @@ A widget block is the body of a widget. `@counter:` at top level defines a widge
     @ !click
 ```
 
-A widget block is a Reflex `do` block with the monad left out: the statements are the sequence, `<-` is bind, `@` is `return`, and there is no `m` to name because there is only one. `@Button` takes a `$Text`, and the dynamic in the `label` field is what makes the button follow its label: the library's `@Button` is where the `dyn` lives, so a caller writing `@Button "Count: {$count}"` has no lift at the call site. The section on lifting over `@` spells out what that `dyn` is.
+A widget block is a Reflex `do` block with the monad left out: the statements are the sequence, `<-` is bind, `@` is `return`, and there is no `m` to name because there is only one. `@Button` takes a `$Text`, and the dynamic in the `label` field is what makes the button follow its label: the library's `@Button` is where the `rebuild` lives, so a caller writing `@Button "Count: {$count}"` has no lift at the call site. The section on lifting over `@` spells out what that `dyn` is.
 
 ### Every statement form
 
@@ -232,7 +232,7 @@ The result of a `rebuild` is an event of the block's result: `!A` for a block re
 
 So `!!rendered` above is an event of events: each firing is a new build's `!Text`. In occurrence zero it fires with generation `#0`'s click-with-label; when the label changes in occurrence n it fires with generation `#1`'s. The parent needs one click event for all generations, and that is what `!Switch` is for, below.
 
-Why does the result go up rather than being something the block owns? Because the parent is what persists across rebuilds and the block is what does not. A block that could see its own `dyn`'s event would be seeing an event whose firings include its own death; the parent, which outlives every generation, is the only thing in a position to hold the stream of generations as one value. Reflex's `dyn` and `networkView` return an `Event t a` to the caller for the same reason.
+Why does the result go up rather than being something the block owns? Because the parent is what persists across rebuilds and the block is what does not. A block that could see its own `rebuild`'s event would be seeing an event whose firings include its own death; the parent, which outlives every generation, is the only thing in a position to hold the stream of generations as one value. Reflex's `dyn` and `networkView` return an `Event t a` to the caller for the same reason.
 
 ### What a rebuild resets
 
@@ -387,7 +387,7 @@ let $contents = $Join $$current
 
 `$Join: fn $$A -> $A`. At occurrence n its value before n is the value before n of the inner dynamic current before n. Its change event fires at n, with the value after n, if the outer dynamic changes at n (to a new inner, whose value after n is taken) or if the current inner changes at n. It is prompt, like every derived dynamic.
 
-The hold needs an initial dynamic, and the first build's result is the one to use, because the first build happens in the occurrence the `rebuild` is built: the `rebuild`'s event fires then, the hold adopts the firing in its build occurrence, and `$Join` sees the adopted inner in that same occurrence. `@HoldFirst: fn !a -> @$a` is the prelude's name for that hold, and it is the idiom: a hold written by hand with a placeholder initial dynamic, `$ Unavailable <= !$contents`, has the placeholder as its value for the length of one tag read in the build occurrence, and nothing is gained by having a value there that no build produced. `@HoldFirst` has no semantics beyond what it expands to, a hold whose initial value is the first firing of its event in the occurrence the hold is built, and the lifting section below uses it for exactly that.
+The hold needs an initial dynamic, and the first build's result is the one to use, because the first build happens in the occurrence the `rebuild` is built: the `rebuild`'s event fires then, the hold adopts the firing in its build occurrence, and `$Join` sees the adopted inner in that same occurrence. `@HoldFirst: fn !a -> @$a` is the prelude's name for that hold, and it is the idiom: a hold written by hand with a placeholder initial dynamic, `$ Unavailable then !$contents`, has the placeholder as its value for the length of one tag read in the build occurrence, and nothing is gained by having a value there that no build produced. `@HoldFirst` has no semantics beyond what it expands to, a hold whose initial value is the first firing of its event in the occurrence the hold is built, and the lifting section below uses it for exactly that.
 
 This is also the canonical cache idiom: a hold of dynamics, chosen between a live one and a frozen one, joined. A hold of plain values copied out of the live dynamic is the simpler construction, and it has a one-occurrence gap at creation that the join version does not, because a join switches to the new inner's *current* value in the occurrence of the switch rather than waiting for the new inner to fire. Chapter 2's cache is the join form, with the hold of dynamics around the forwarded query.
 

@@ -570,7 +570,7 @@ The language is enough: the control law, the safety policy, the mode switch and 
 
 ### Where it is awkward, and where it is wrong
 
-Prism promises nothing about *when* an occurrence runs. The tick is a `Time.Every` the World delivers when its loop gets to it; the run call takes as long as the graph takes; a `rebuild` rebuild in the tick path (the mode switch above, in the same occurrence as a tick) takes as long as the build takes. A controller with a deadline needs the World to run the loop on a thread with real-time priority, to keep its own IO off that thread, and to measure the occurrence; the language gives it a deterministic amount of work per occurrence and nothing more. Structural changes belong outside the tick path or inside the jitter budget, and the advice is to measure the rebuild under the Test World and decide.
+Prism promises nothing about *when* an occurrence runs. The tick is a `Time.Every` the World delivers when its loop gets to it; the run call takes as long as the graph takes; a `rebuild` firing in the tick path (the mode switch above, in the same occurrence as a tick) takes as long as the build takes. A controller with a deadline needs the World to run the loop on a thread with real-time priority, to keep its own IO off that thread, and to measure the occurrence; the language gives it a deterministic amount of work per occurrence and nothing more. Structural changes belong outside the tick path or inside the jitter budget, and the advice is to measure the rebuild under the Test World and decide.
 
 A World skips missed ticks rather than delivering them late, which is the right policy for a controller and the wrong one for a program counting ticks; such a program counts the clock instead.
 
@@ -1480,7 +1480,7 @@ A request-response handler with no state between requests: a function from an HT
 
 ### Hard real time
 
-The control loop said this plainly. Prism gives a deterministic amount of work per occurrence and no bound on how long it takes; a `rebuild` rebuild in the tick path is a build of unknown size, an occurrence runs on whatever thread the World chose at whatever priority the platform gave it, and the runtime has no notion of a deadline. A controller with a deadline measured in milliseconds runs under a World that pins the loop to a real-time thread and measures the occurrence, and keeps structural changes out of the tick. A controller with a deadline measured in microseconds is firmware, and Prism is the layer that sets its targets.
+The control loop said this plainly. Prism gives a deterministic amount of work per occurrence and no bound on how long it takes; a `rebuild` firing in the tick path is a build of unknown size, an occurrence runs on whatever thread the World chose at whatever priority the platform gave it, and the runtime has no notion of a deadline. A controller with a deadline measured in milliseconds runs under a World that pins the loop to a real-time thread and measures the occurrence, and keeps structural changes out of the tick. A controller with a deadline measured in microseconds is firmware, and Prism is the layer that sets its targets.
 
 ### Cryptography and secrets
 

@@ -74,7 +74,7 @@ That is the entire surface a World needs. The runtime's graph types exist and ar
 
 *Pushes* are addressed by element value, not path, because state is identified by value: every slot whose element equals `Fs.Contents(path="/etc/hostname")` observes one and the same dynamic, and a push for that value reaches all of them, including a slot created in the push's occurrence. One push per value per occurrence, for the same reason as responses.
 
-*The oracle* is the World's snapshot as a function. When the runtime creates a slot for a state element during the occurrence, whether in the build occurrence or in a `rebuild` rebuild halfway through propagation, it asks the oracle for that element's value and the slot's dynamic starts there. The oracle is a function rather than a map because the World cannot know in advance which values will be asked: a `rebuild` over a text input creates `Fs.Contents(path=whatever the user typed)` and the World learns the path by being asked. The answer must come from the World's snapshot as the occurrence opened and nowhere else; the next section is about why.
+*The oracle* is the World's snapshot as a function. When the runtime creates a slot for a state element during the occurrence, whether in the build occurrence or in a `rebuild` firing halfway through propagation, it asks the oracle for that element's value and the slot's dynamic starts there. The oracle is a function rather than a map because the World cannot know in advance which values will be asked: a `rebuild` over a text input creates `Fs.Contents(path=whatever the user typed)` and the World learns the path by being asked. The answer must come from the World's snapshot as the occurrence opened and nowhere else; the next section is about why.
 
 ### What comes out
 
@@ -340,7 +340,7 @@ pub struct Core {
     snapshot: BTreeMap<ElementValue, Value>,   // S_{n-1}: what the program last saw
     incoming: BTreeMap<ElementValue, Value>,   // changes components reported since
     last_list: BTreeMap<Path, ElementValue>,   // the list the World last received
-    components: Vec<Box<rebuild Component>>,
+    components: Vec<Box<dyn Component>>,
     turn_no: u64,
 }
 
@@ -1168,7 +1168,7 @@ Two policies are both conforming and feel different. *One turn per input* gives 
 
 A task that completes sends `Input::Response(path, value)`. The core, at the start of the next turn, checks the path against the list it last received; if the slot is gone, the response is dropped and logged. The task itself does not know the slot is gone, so the World keeps, per in-flight operation, an abort handle keyed by path, and `reconcile` aborts the handle when the slot vanishes: an in-flight `fetch` is cancelled, a `sleep` is dropped, a socket is closed after its queued writes drain. A write that already landed stays landed; the World cannot un-write.
 
-The same mechanism is why a `rebuild` rebuild "reloads": the old slot's read is cancelled with the old slot and the new slot's `@started` fires a new one. Guessing that the two are the same read, by position, is how a half-typed draft ends up on the wrong row; the World does not guess.
+The same mechanism is why a `rebuild` firing "reloads": the old slot's read is cancelled with the old slot and the new slot's `@started` fires a new one. Guessing that the two are the same read, by position, is how a half-typed draft ends up on the wrong row; the World does not guess.
 
 ### The browser, where there is no loop
 
@@ -1439,13 +1439,13 @@ The typing is the part that needs a sentence. `@Build c` returns `@a` for whatev
 
 ### What survives and what does not
 
-Holds inside the reloaded subtree reset, because a `rebuild` rebuild makes new holds with their initial values. That is the semantics, and it is the honest answer: the new code may have changed what the holds mean. State that should survive a reload lives outside the `rebuild`, which is where state that should survive any rebuild already lives, and a program written for reload keeps its model above its views for the same reason a program written for `rebuild` does. A `$Join` over a hold of the subtree's result dynamic gives the parent a continuous value across reloads.
+Holds inside the reloaded subtree reset, because a `rebuild` firing makes new holds with their initial values. That is the semantics, and it is the honest answer: the new code may have changed what the holds mean. State that should survive a reload lives outside the `rebuild`, which is where state that should survive any rebuild already lives, and a program written for reload keeps its model above its views for the same reason a program written for `rebuild` does. A `$Join` over a hold of the subtree's result dynamic gives the parent a continuous value across reloads.
 
 Suppose instead the runtime tried to migrate holds by name across the rebuild, matching the old widget's holds to the new widget's by binding name and copying values where the types agree. It would make reload feel better in the common case, and it would make it lie in the uncommon one: a hold whose meaning changed but whose name and type did not would start the new code in a state the new code never produced. Reload is `rebuild`, nothing more, and that is a feature: the behaviour is the one the program already has and the test suite already checks.
 
 ### What it must not change
 
-Nothing in the language; a program with `@Reloadable` in it is an ordinary program with a `rebuild` over `World.Tags` and, under a World that lists `Dev.Code`, a second `rebuild` over a state element; under any other World it is the fallback, built through `@Once`, and `Dev.Code` is never created. The production World core need not know `Dev.Code` exists, because the library never asks it to; a World that wanted to accept the tag and always answer `Unavailable` could, and `@Live` would then run under it with the fallback, but nothing requires that and the library does not rely on it. Paths are the other thing to say once: a reload is a `rebuild` rebuild, so every slot under it gets a fresh generation segment and a fresh path, and a World holding a native widget keyed by path (a GTK button for a `Ui.Button` it accepted directly) sees a teardown of the old path and a creation at the new one, exactly as it does for any rebuild. The World discards late responses for the old paths under its obligation for gone slots, and nothing about reload asks it to recognise the new slot as the old one.
+Nothing in the language; a program with `@Reloadable` in it is an ordinary program with a `rebuild` over `World.Tags` and, under a World that lists `Dev.Code`, a second `rebuild` over a state element; under any other World it is the fallback, built through `@Once`, and `Dev.Code` is never created. The production World core need not know `Dev.Code` exists, because the library never asks it to; a World that wanted to accept the tag and always answer `Unavailable` could, and `@Live` would then run under it with the fallback, but nothing requires that and the library does not rely on it. Paths are the other thing to say once: a reload is a `rebuild` firing, so every slot under it gets a fresh generation segment and a fresh path, and a World holding a native widget keyed by path (a GTK button for a `Ui.Button` it accepted directly) sees a teardown of the old path and a creation at the new one, exactly as it does for any rebuild. The World discards late responses for the old paths under its obligation for gone slots, and nothing about reload asks it to recognise the new slot as the old one.
 
 ### The fact it waits on
 
