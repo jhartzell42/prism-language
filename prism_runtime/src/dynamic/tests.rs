@@ -17,7 +17,7 @@ fn hold_map2_test() {
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
             let update = builder.add_external_event::<u32>("update".to_string());
             let tag = builder.add_external_event::<()>("query".to_string());
-            let d_hold = Dynamic::hold(builder.runtime(), 0u32.into(), update);
+            let d_hold = Dynamic::hold(builder.runtime, 0u32.into(), update);
             let d_const = Dynamic::constant(10u32.into());
             let d_combo =
                 Dynamic::map2(d_hold.clone(), d_const, |a, b| Value::<u32>::from(*a + *b));

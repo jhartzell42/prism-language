@@ -25,7 +25,7 @@ fn fold_dyn_cyclic_dyn() {
                 .add_cyclic_dynamic::<i32>("accumulator".to_string())
                 .1;
             let new_accumulator = increment.tag_map(|a, b| Some(Value::from(*a + *b)), accumulator);
-            let accumulator = Dynamic::hold(builder.runtime(), Value::from(0i32), new_accumulator);
+            let accumulator = Dynamic::hold(builder.runtime, Value::from(0i32), new_accumulator);
             builder.close_cyclic_dynamic_by_name("accumulator", accumulator.clone());
 
             // This tests the behavior
@@ -134,7 +134,7 @@ fn dynamic_widget() {
             }
 
             let rebuild = builder.add_external_event::<Arc<String>>("rebuild".into());
-            let d_widget = Dynamic::hold(builder.runtime(), 
+            let d_widget = Dynamic::hold(builder.runtime, 
                 PrismArc::new(Inner("initial".to_string())),
                 rebuild.filter_map(|s| Some(PrismArc::new(Inner(s.extract())))),
             );
@@ -207,7 +207,7 @@ fn nested_dyn_rebuilds_in_the_same_occurrence_as_its_parent() {
         type Output = Arc<Event<Arc<u32>>>;
 
         fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
-            let leaves = Dynamic::hold(builder.runtime(), 
+            let leaves = Dynamic::hold(builder.runtime, 
                 PrismArc::new(Leaf(0)),
                 self.0.map(|x| PrismArc::new(Leaf(*x))),
             );
@@ -241,7 +241,7 @@ fn cyclic_dynamic_event_fires_when_its_value_changes_in_the_build_occurrence() {
         fn build(&self, builder: &mut WidgetBuilder) -> Dynamic<u32> {
             let (index, cyclic) = builder.add_cyclic_dynamic::<u32>("value".into());
             let started = builder.done_event().map(|_| Value::from(7u32));
-            builder.close_cyclic_dynamic_by_index(index, Dynamic::hold(builder.runtime(), 0u32.into(), started));
+            builder.close_cyclic_dynamic_by_index(index, Dynamic::hold(builder.runtime, 0u32.into(), started));
             cyclic
         }
     }
@@ -294,7 +294,7 @@ fn a_same_occurrence_cycle_through_a_cyclic_event_is_reported_instead_of_hanging
                 looped_back.map(|x| Value::from(*x + 1)),
             ]);
             builder.close_cyclic_event_by_index(index, next.clone());
-            Dynamic::hold(builder.runtime(), 0u32.into(), next)
+            Dynamic::hold(builder.runtime, 0u32.into(), next)
         }
     }
 
@@ -355,8 +355,8 @@ fn a_widget_built_mid_occurrence_sees_the_same_events_at_any_depth() {
 
         fn build(&self, builder: &mut WidgetBuilder) {
             self.built.lock().unwrap().push((
-                Dynamic::hold(builder.runtime(), 0u32.into(), self.shallow.clone()),
-                Dynamic::hold(builder.runtime(), 0u32.into(), self.deep.clone()),
+                Dynamic::hold(builder.runtime, 0u32.into(), self.shallow.clone()),
+                Dynamic::hold(builder.runtime, 0u32.into(), self.deep.clone()),
             ));
         }
     }
@@ -414,7 +414,7 @@ fn dropping_a_widget_frees_its_cyclic_loops() {
             builder.close_cyclic_event_by_index(event_index, looped.clone());
 
             let (dynamic_index, total) = builder.add_cyclic_dynamic::<u32>("total".into());
-            let next_total = Dynamic::hold(builder.runtime(), 
+            let next_total = Dynamic::hold(builder.runtime, 
                 0u32.into(),
                 self.0.tag_map(|step, total: Value<u32>| Some(Value::from(*step + *total)), total),
             );
@@ -448,7 +448,7 @@ fn a_replaced_child_keeps_working_until_its_last_occurrence_ends() {
 
         fn build(&self, builder: &mut WidgetBuilder) -> Event<u32> {
             let (index, total) = builder.add_cyclic_dynamic::<u32>("total".into());
-            let next_total = Dynamic::hold(builder.runtime(), 
+            let next_total = Dynamic::hold(builder.runtime, 
                 0u32.into(),
                 self.0.tag_map(|step, total: Value<u32>| Some(Value::from(*step + *total)), total.clone()),
             );
@@ -543,7 +543,7 @@ fn a_widget_built_mid_occurrence_gets_the_mapped_value_of_an_event_that_already_
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) {
-            let tens = Dynamic::hold(builder.runtime(), 0u32.into(), self.input.map(|x| Value::from(*x * 10)));
+            let tens = Dynamic::hold(builder.runtime, 0u32.into(), self.input.map(|x| Value::from(*x * 10)));
             self.built.lock().unwrap().push(tens);
         }
     }
@@ -579,8 +579,8 @@ fn a_closure_runs_once_per_occurrence_even_when_late_subscribers_read_it() {
 
         fn build(&self, builder: &mut WidgetBuilder) {
             self.built.lock().unwrap().push((
-                Dynamic::hold(builder.runtime(), 0u32.into(), self.counted.clone()),
-                Dynamic::hold(builder.runtime(), 0u32.into(), self.counted.clone()),
+                Dynamic::hold(builder.runtime, 0u32.into(), self.counted.clone()),
+                Dynamic::hold(builder.runtime, 0u32.into(), self.counted.clone()),
             ));
         }
     }

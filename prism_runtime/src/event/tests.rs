@@ -62,7 +62,7 @@ fn switch_hold_test2() {
                         .into(),
                 )
             });
-            let event = outer_event.switch_hold(builder.runtime());
+            let event = outer_event.switch_hold(builder.runtime);
             builder.add_public_event("output".into(), event);
         }
     }

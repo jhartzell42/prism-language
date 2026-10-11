@@ -55,7 +55,7 @@ impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
             .dynamic
             .event()
             .0
-            .subscribe(builder.runtime(), Arc::downgrade(
+            .subscribe(builder.runtime, Arc::downgrade(
                 &(next_event.clone() as Arc<dyn EventCallback<Arc<T>>>),
             ))
             .unwrap_or_else(|| self.dynamic.behavior().0.query_for_tag());
