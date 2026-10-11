@@ -202,6 +202,33 @@ Why a spacing rule at all, rather than Haskell's approach (from memory), where `
 
 ### Layout
 
+You have read a widget block before you knew it was one. Here is the counter with braces, the way a C-family language would have it:
+
+```
+@counter {
+    !inc <- @Button($"Increment");
+    !dec <- @Button($"Decrement");
+    $count <- 0 then $count + (-1 on !dec | +1 on !inc);
+    @Label("Count: {$count}");
+}
+```
+
+and here it is as Prism writes it:
+
+```prism
+@counter:
+    !inc <- @Button $"Increment"
+    !dec <- @Button $"Decrement"
+    $count <- 0 then $count + (-1 on !dec | +1 on !inc)
+    @Label "Count: {$count}"
+```
+
+Nothing is lost, and what is gone was never information. A widget block is a list of equations, one per line, and the thing that tells you where one equation ends and the next begins is the line; a `;` says it again, and a brace says a third time what the indentation already said. The habit of reading indentation as structure is one every programmer already has, because every program is indented whether or not its language reads the indentation, and the languages that do not read it have to lint for the case where the braces and the indentation disagree, which is the one case a reader is guaranteed to get wrong. A language in which the two cannot disagree has removed a whole class of bug from the reader rather than from the compiler, which is where the bug lived.
+
+The real reason is the one about seeing what moves. The counter's block is four lines of definitions, and a reader is meant to take it in as a table: left column the names, right column what they are. Braces and semicolons put punctuation in the table; a `dyn` or a `for` with a nested block puts a closing brace on a line by itself, which is a line the reader has to skip. The nested forms are where the difference is biggest: `dyn $path:` followed by its block reads as "while the path is this, these," and the block is over when the indentation returns, which is exactly when the reader's attention does.
+
+Suppose instead the language took braces and ignored whitespace, as Rust does. The cost would be the separators on every line and the dangling closers, and the benefit would be that a formatter could reflow code and that a line could be split anywhere. Prism gets the second from rule 3 below (an indented continuation line continues the statement) and does not want the first, since a block whose lines are equations has no reason to reflow. The price of the offside rule is that it has to be specified exactly, with its ugly cases, so that two lexers agree; that specification is the rest of this section, and it is short.
+
 Layout is the offside rule, with `:` as the block opener. Everything below is the contract. The intuition is Python's: a colon at the end of a line opens a block, the block is the lines indented under it, and the block ends when the indentation comes back. The difference from Python is in what a line *inside* a block means when it is indented more than its neighbours: it continues the statement above it, as in Haskell, rather than being an error.
 
 1. The lexer keeps a stack of block columns, initially `[0]`. The top of the stack is the current block's column.

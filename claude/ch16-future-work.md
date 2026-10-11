@@ -736,6 +736,18 @@ The runtime chapter's performance notes say what is proportional to what. This s
 
 A profile of the text editor or the thousand-row todo list under the software World. Both exist in the book's examples, and both hit the first four items at once, so the order above is the order of the likely wins: shared draw lists, distinct dynamics, persistent maps, then the fixed per-occurrence walks.
 
+## Real time: a tick World and a bounded occurrence
+
+A motor controller reads three sensors every millisecond and writes one duty cycle, and the one question its author has is whether the step can ever take longer than a millisecond. In Lustre or Esterel the answer is a number: the program is a fixed graph, a step is one pass over it, and the compiler can add up the pass. Prism's occurrence is the same pass with the same order, heights within a block, and the question is what has to be true of a program for the same number to exist.
+
+Three things, each a restriction a World can impose rather than a change to the language. Closures are total: no general recursion in plain code, or recursion with a fuel the type states, so that every leaf has a bound. `Defer` is off: a turn is one occurrence, and the World refuses a program that creates a `Defer` slot, so a turn's work is one pass. The tree is fixed: no `dyn` and no `for`, or a `for` whose key count has a stated maximum, so that the set of nodes an occurrence can touch is known before it runs. Under those three the work of an occurrence is the sum over the prompt cone of its inputs of the leaves' bounds, which a tool can compute from the typed AST, because the typed AST already has every node's height and every lift explicit.
+
+The World that fits is a tick World. It pushes a snapshot of its state elements every tick (the sensors as `state`, read through the oracle) and delivers no responses at all, because a controller has no edges, only levels: it does not react to a sensor changing, it reads every sensor every time. That is the level-versus-edge story from the Worlds chapter with the edge half removed, and it is how every control loop already works. Outputs are requests on a sink element, fired every tick, and the World performs them after the pass. There is no `Clock` to push, since the tick is the clock.
+
+What this buys is the synchronous languages' guarantee with Prism's type system, and one thing they do not have: the same program, unrestricted, runs under the Test World and the GUI World, so a controller's logic is tested by script and shown on a screen without a second implementation. What it costs is that the program cannot build structure while running, which is the thing Prism adds to the synchronous family and the thing a hard-real-time program does not want anyway.
+
+It needs work in two places. A fuel-bounded recursion form, or a total-functions lint, does not exist, and without it "closures are total" is a promise the author makes rather than one the compiler checks. And the bound itself needs a tool that walks the typed AST and prints the worst-case node count per input, which is small once the restrictions hold and does not exist.
+
 ## What the list has in common
 
 Every item above waits on a fact. None of the facts exists yet, and the specification is complete without any of the items, which is the test each had to pass to be in this chapter rather than in the specification chapters.
