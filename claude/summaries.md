@@ -34,7 +34,7 @@ The values section is boring on purpose so that nothing competes with time. Prim
 
 Expressions finish the chapter: lifting read off operand sigils at every application (all plain stays plain, dynamics give a prompt dynamic, dynamics plus one event give an event with the dynamics read before the occurrence, two events are an error), `?` lifting as an applicative at the plain layer, application and precedence, statements, lambdas with `_` as pronoun and `\|a, b|` for named arguments, `match` and `if` with no guards and no `else`-less `if`, text interpolation, and `for` as an expression over plain collections. A diagnostics section and the layout corpus, the lines both lexers must tokenise identically, follow.
 
-The negative space is explicit: no introspection, no symbol with two meanings (`<=` is only less-or-equal, `then` only hold, `<-` only bind), no guards, no explicit braces, no block comments, no tabs, no `else`-less `if`, and no `read`/`update` blocks or `&` references, which belong to future work. Each removes a second way to write something and a case on which parsers could disagree. The chapter hands the meaning of `!` and `$` to the next chapter, where events, dynamics and the occurrence get their laws.
+The negative space is explicit: no introspection, no symbol with two meanings (`<=` is only less-or-equal, `then` only hold, `<-` only bind), no guards, no explicit braces, no block comments, no tabs, no `else`-less `if`, and no `read`/`update` blocks or `&` references, which are chapter 16's. Each removes a second way to write something and a case on which parsers could disagree. The chapter hands the meaning of `!` and `$` to the next chapter, where events, dynamics and the occurrence get their laws.
 
 ## 4. Events, dynamics, and time
 
@@ -180,7 +180,7 @@ Milestones 8 and 9 build the Haskell frontend, with Hindley–Milner choices as 
 
 "What is not on the plan" names each exclusion and what it buys, so it can be revisited when the price changes. Milestones 10 and 11 describe the GUI vocabulary and error kinds in terms (`Gui.Draw`, `Text.Measure`, `WrongResponseType`, `Panic`) that differ from the book's final vocabulary and need conforming. Everything excluded here is collected in the next chapter.
 
-## 16. Future work and research
+## 16. Designs that wait on a fact
 
 The chapter opens with its discipline: nothing here is part of the specification, and nothing here may change a transcript. Every item is either a representation or scheduling choice behind fixed semantics, or an extension that adds programs without changing what existing ones mean. Each item gives the afternoon that makes someone want it, its design as far as it goes, what it must leave alone, and the fact that would make it worth starting, and the test every item must pass first is that the differential test still comes out empty.
 

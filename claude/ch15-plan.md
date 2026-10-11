@@ -661,7 +661,7 @@ Each exclusion buys something, and the thing it buys is named so that the exclus
 
 *Register code and native backends.* The closure compiler is the only backend. What this buys: one intermediate form, one lint, no verifier between two forms, and no instruction set to keep in step with the runtime's constructors. When something has to ship compiled, register code is a lowering from the converted typed AST, checked against the closure compiler by the differential test, and the target (Cranelift or emitted Rust) is picked then. There is no LLVM.
 
-*`&` references, `read` and `update` blocks.* Future work with its own constraints (an `update` block is an expression with a value; no reference escapes it; nothing about occurrences is involved). What this buys: no interaction between references and erasure to design before the language exists. It belongs in the Haskell implementation first, where lens libraries make the experiment cheap.
+*`&` references, `read` and `update` blocks.* Chapter 16's, with its own constraints (an `update` block is an expression with a value; no reference escapes it; nothing about occurrences is involved). What this buys: no interaction between references and erasure to design before the language exists. It belongs in the Haskell implementation first, where lens libraries make the experiment cheap.
 
 *User-defined traits and modules beyond one file plus the prelude.* Ordinary language work with no bearing on time. What this buys: the elaborator of milestone 4 is HM plus three built-in traits, which a model can write in one pass.
 

@@ -2183,7 +2183,7 @@ warning: a lowercase name is snake_case
 This one is a warning, so the golden's expected output also records that the program compiled: the lint pass reports camelCase and the build goes on. The sibling positive golden is the same file with the name fixed and no diagnostics at all.
 
 ```
-error: `update` is reserved for future work
+error: `update` is reserved; see the chapter on references
   --> future.prism:3:5
    |
  3 |     update $items:

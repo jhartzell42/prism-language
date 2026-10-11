@@ -118,7 +118,7 @@ The chapter opens on the plan that was a list of features, where the first week 
 
 Each milestone follows one frame: what it waits on, the work in steps, a done criterion, what it proves, and its risks. Milestone 1 makes the runtime single-threaded and transactional, with `Rc`/`RefCell` first and alone, a re-entry flag reporting `Cycle` instead of a double borrow, and `Dynamic::join`. Milestone 2 adds the boundary: element values, tags, slots, paths as values in tree order and never reused, and the run call, proven by a harness printing the counter's transcript. Milestone 3 adds `InterceptWidget`, state supply and `for`, with the risk that a supplied widget built mid-grandchild must sit under the right parent.
 
-### 16. Future work and research
+### 16. Designs that wait on a fact
 
 The chapter opens with its discipline: nothing here is part of the specification, and nothing here may change a transcript. Every item is either a representation or scheduling choice behind fixed semantics, or an extension that adds programs without changing what existing ones mean. Each item gives the afternoon that makes someone want it, its design as far as it goes, what it must leave alone, and the fact that would make it worth starting, and the test every item must pass first is that the differential test still comes out empty.
 

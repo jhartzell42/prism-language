@@ -1,8 +1,8 @@
-# Chapter 16 — Future work and research
+# Chapter 16 — Designs that wait on a fact
 
-Nothing in this chapter is part of the specification, and nothing in it may change a transcript. That second sentence is the whole discipline of the chapter: every item below is either a representation or scheduling choice behind semantics that are already fixed, or a language extension that adds programs without changing what any existing program means. Each item says what it is, the afternoon that makes someone want it, its design as far as it has been taken, the things it must leave alone, and what would make it worth starting. The order is roughly the order in which the pressure to do each one will arrive: a profile first, then a large record, then a binary to ship, then a cycle found in production, then a program too big for one file.
+Nothing in this chapter may change a transcript. That sentence is the whole discipline of the chapter: every design below is either a representation or scheduling choice behind semantics the other chapters fix, or a language extension that adds programs without changing what any existing program means. Each one says what it is, the afternoon that makes someone want it, its design as far as it has been taken, the things it must leave alone, and the fact that has to exist before it is worth building. The order is roughly the order in which the pressure to do each one will arrive: a profile first, then a large record, then a binary to ship, then a cycle found in production, then a program too big for one file.
 
-## How to read a future-work item
+## What every design here has to answer
 
 A reactive language with two implementations and a conformance suite has one asset that nothing here may spend: the transcript. A Prism program under the Test World produces a sequence of element lists, request firings and results, determined by its inputs and nothing else. The Rust runtime and the Haskell evaluator are checked against each other by diffing those transcripts, and the suite is what makes "the spec is the thing" more than a slogan. So the test every item below has to pass before any other is: does the differential test still come out empty? For the representation and backend items the answer must be yes by construction, since Prism values have no identity and a program cannot tell whether a value was copied, shared, interned or reused. For the language extensions the answer must be yes for every program that compiled before.
 
@@ -208,7 +208,7 @@ Nothing here may change a transcript, a type, or the meaning of overflow. The tr
 
 ## `&` references, `read` and `update` blocks
 
-You have a record with a record in it with a map in it, and you need to add one to a counter three levels down. In an imperative language it is a line. In a pure language it is a `let` per level, each one rebuilding the enclosing record with one field replaced, and the line that does the work is at the bottom of a staircase of plumbing. This is the one place a pure language is worse to write than an imperative one, and it is the one `update` blocks exist to fix. An `update` block sits beside the book's statements that the language has no assignment without contradicting the language the rest of the book specifies: it is a separate block form inside plain code, its value is an updated copy of a value, nothing outside the block sees a write, and nothing else in the book depends on it. They are future work because nothing in the specification needs them, and because the semantics of references under erasure and copy-on-write are the part that has to be designed before the Rust implementation can commit to a representation.
+You have a record with a record in it with a map in it, and you need to add one to a counter three levels down. In an imperative language it is a line. In a pure language it is a `let` per level, each one rebuilding the enclosing record with one field replaced, and the line that does the work is at the bottom of a staircase of plumbing. This is the one place a pure language is worse to write than an imperative one, and it is the one `update` blocks exist to fix. An `update` block sits beside the book's statements that the language has no assignment without contradicting the language the rest of the book specifies: it is a separate block form inside plain code, its value is an updated copy of a value, nothing outside the block sees a write, and nothing else in the book depends on it. Nothing in the other chapters needs them, and the semantics of references under erasure and copy-on-write are the part that has to be designed before the Rust implementation can commit to a representation.
 
 ### What the feature is
 
@@ -304,7 +304,7 @@ The erasure question is the one that is not yet answered and is why the item is 
 
 The Haskell implementation interprets the typed AST, and a lens in Haskell is a first-class value with exactly the getter-setter semantics above: two lenses nest the way two functions do, and reading through one, writing through one and mapping through one are the three operations an `update` block needs (the `lens` library is the implementation choice; the form of its API is from memory). Adding `update` to the Haskell evaluator is adding an elaboration case that turns a block into a fold of lens applications, and the library does the rest. That makes the experiment cheap: the syntax, the pronoun rules, the typing of `&`, the borrowing check and the `for` form can all be tried on real programs and tested through the conformance suite before the Rust implementation commits to copy-on-write along paths and the compiler to a borrow pass. If the semantics change during the experiment, nothing in Rust has to change back. Once the suite has `update` programs with golden transcripts, the Rust implementation has an oracle, and the differential test says when its in-place version is right.
 
-### Trigger
+### The fact it waits on
 
 A program in the suite, or a library, whose fold functions are more plumbing than logic. The text editor is the likeliest first case, because its buffer is a map of lines and every keystroke is a nested update. Before that, functional update is adequate and the feature would be a guess about ergonomics.
 
@@ -441,7 +441,7 @@ Three places where the small version stops being small.
 
 No program that was legal and never hit a runtime cycle becomes illegal, which is soundness in the direction that matters, and it holds wherever the inference can see a body: there the annotation only adds prompt edges that exist, so a rejected program is one that would have aborted on the first occurrence to exercise the cycle. Where the inference cannot see a body it over-approximates, and the two places are named so a reader knows where a rejection may be of a program that would never have aborted. A widget parameter, `@child` in `fn @a -> @a`, has no body at the call site, so its result is treated as prompt on every sigiled argument the caller passed it. A `for` over a widget parameter whose body is not visible is treated as able to fire at birth, which is the rule the static cycle check has already and this pass inherits: that adds a prompt edge from the collection's change to the consolidated result that may not exist. In both cases the written annotation on the parameter is what the author writes to get the program accepted: `fn (@a prompt nothing) -> @a` says the child's result depends promptly on nothing, the elaborator checks the argument's inferred set against it at the call site, and the body of the function is checked under that assumption. That is the same bargain a type annotation on a higher-order parameter makes, and it keeps the default conservative without making it final. The runtime's detection stays, because a cycle formed through a path the type system does not track, a function value stored in a record and applied later, for instance, still has to be found and still has to abort the occurrence rather than loop. The typed AST gains a field on function types and nothing else changes in it; the Haskell implementation can ignore the field, because Reflex finds the cycle at runtime the same way the Rust runtime does, and the differential test is unaffected because an accepted program means the same under both.
 
-### Trigger
+### The fact it waits on
 
 Runtime cycle errors in practice: a library whose users hit the abort at call sites and have to read two function bodies to understand it. The GUI library's layout widgets are where it will happen first if it happens. Until then the block check plus the runtime backstop is the design, and the annotation is a note about where the type system would go next.
 
@@ -489,7 +489,7 @@ What the typed AST needs: qualified names. Every binding in the text form is alr
 
 The thing deliberately left out: no module-level state and no module initialisation. A module is a set of definitions, a program is `@main`, and the first thing that happens is occurrence zero building it. A module that wanted to "run something at load" would be a widget being built by nothing, which the language does not have, and this is the same rule as "nothing happens because an element appears" applied to source structure.
 
-### Trigger
+### The fact it waits on
 
 A program that does not fit in one file, or a library (the GUI library is the candidate) that a second program wants to import. Both will arrive during the conformance work, because the GUI library in Prism is a module the twelve programs share, and the moment it is shared it needs a name. Traits come when the second user-defined numeric type appears.
 
@@ -521,7 +521,7 @@ The cross-cutting checks are the part that needs care. Exhaustiveness and the cy
 
 The output: the typed AST of an incrementally built program is byte-identical to a clean build's, and the goldens check it, since the golden test is exactly "elaborate this program and diff the dump." A test that builds every suite program clean and then incrementally after a no-op edit, a body edit and a signature edit, and diffs the dumps, is the whole correctness test. Transcripts cannot change because the typed AST did not.
 
-### Trigger
+### The fact it waits on
 
 An edit loop someone notices. Not before, because the memoisation adds a fingerprint to every stage and a cache to every build, and a frontend that is fast enough clean is simpler without them.
 
@@ -565,7 +565,7 @@ Communication between shards is the interesting part and it falls out of interce
 
 The transcript, the laws, the run call. A program cannot tell which variant it runs under, and the suite run under every variant is the test. The language has no threads, no priorities and no phases, and none of these variants adds one.
 
-### Trigger
+### The fact it waits on
 
 Fork-join: a profile under a GUI World showing wide heights, which means a large `for`. Optimistic: a server World with a deep input queue and occurrences that rarely conflict, which is a server whose connections are independent, which is most servers, and which is also served by shards with no runtime work at all, so shards first. Shards: the first World that hosts more than one program or serves more than one connection, which is the shell in the examples chapter and a server World after it.
 
@@ -631,7 +631,7 @@ Suppose instead the runtime tried to migrate holds by name across the rebuild, m
 
 Nothing in the language; a program with `@Reloadable` in it is an ordinary program with a `dyn` over `World.Tags` and, under a World that lists `Dev.Code`, a second `dyn` over a state element; under any other World it is the fallback, built through `@Once`, and `Dev.Code` is never created. The production World core need not know `Dev.Code` exists, because the library never asks it to; a World that wanted to accept the tag and always answer `Unavailable` could, and `@Live` would then run under it with the fallback, but nothing requires that and the library does not rely on it. Paths are the other thing to say once: a reload is a `dyn` rebuild, so every slot under it gets a fresh generation segment and a fresh path, and a World holding a native widget keyed by path (a GTK button for a `Ui.Button` it accepted directly) sees a teardown of the old path and a creation at the new one, exactly as it does for any rebuild. The World discards late responses for the old paths under its obligation for gone slots, and nothing about reload asks it to recognise the new slot as the old one.
 
-### Trigger
+### The fact it waits on
 
 A GUI World and a program big enough that the restart is noticed. The whole thing is a World component, a prelude widget and one native, so it can be done the week the GUI World works.
 
@@ -677,7 +677,7 @@ Its constraints are the ones the path-keyed design has: the typed AST must be th
 
 The creation rule: a `Store.Put` slot does not write in the occurrence it is created, and a `Store.Value` slot's state is the oracle's answer, never a value the program pushed in that occurrence. No hold persists without a line saying so. A whole-program snapshot is a World feature that produces a runtime indistinguishable, to the program, from one that never stopped.
 
-### Trigger
+### The fact it waits on
 
 Element-level persistence: the first program with a document. It needs a `Store` component in the CLI World and the GUI World and a prelude widget, which is an afternoon once the world core exists. Whole-program snapshots: a World that hosts programs and wants to migrate or debug them, which is far off and is listed so that nothing done before it makes it impossible.
 
@@ -710,7 +710,7 @@ Resolution is the ordinary thing: a lockfile with exact versions, semantic versi
 
 The language, the typed AST beyond qualified names, the laws. A program with packages is a program with more modules.
 
-### Trigger
+### The fact it waits on
 
 The second program that wants the GUI library, from a different repository. Before that, a module system and a path on disk are enough.
 
@@ -732,7 +732,7 @@ The runtime chapter's performance notes say what is proportional to what. This s
 
 *Replay in the Haskell implementation.* Rollback by replay keeps the log of every committed run call, so memory grows with the length of a run. It is adequate for the differential test, which is the only use the plan gives that implementation.
 
-### Trigger
+### The fact it waits on
 
 A profile of the text editor or the thousand-row todo list under the software World. Both exist in the book's examples, and both hit the first four items at once, so the order above is the order of the likely wins: shared draw lists, distinct dynamics, persistent maps, then the fixed per-occurrence walks.
 
@@ -748,8 +748,8 @@ What this buys is the synchronous languages' guarantee with Prism's type system,
 
 It needs work in two places. A fuel-bounded recursion form, or a total-functions lint, does not exist, and without it "closures are total" is a promise the author makes rather than one the compiler checks. And the bound itself needs a tool that walks the typed AST and prints the worst-case node count per input, which is small once the restrictions hold and does not exist.
 
-## What the list has in common
+## What the designs have in common
 
 Every item above waits on a fact. None of the facts exists yet, and the specification is complete without any of the items, which is the test each had to pass to be in this chapter rather than in the specification chapters.
 
-What no Trigger subsection says is the order the facts are likely to arrive in and which items block which, and that is worth one paragraph, because an item started out of order is designed against a guess. The world core comes first and is on the plan already; persistence needs it, since `Store.*` is a component the core hosts, and hot reload needs the GUI World built on it. Modules come before packages, because a package is a namespace of modules and has nothing to name without them; traits come beside modules, since coherence is checked at import. The value representation's urgent subset can go in at any time; its full design needs the threading decision made as a feature flag, because the non-atomic count and the per-site caches both assume one thread, and fork-join needs that same flag decided the other way, so the two are one decision with two builds. `update` reuse needs the value representation, since copy-on-write along a path is a property of the heap object's count and layout. Native backends need nothing above them but a consumer, and that consumer is the likeliest to be a World that ships without the frontend, which is a GUI World. Causality in types needs only the GUI library's layout widgets to exist and be used, and is the one item here whose trigger is a bug report. Incremental compilation needs modules, because the unit of invalidation is a definition and a definition's dependencies cross files. Shards need nothing; optimistic occurrences need shards to have been tried first. So the likely sequence is: world core, persistence, modules and traits, the urgent subset, a GUI World, hot reload, and only then anything that needs a profile.
+What none of those subsections says is the order the facts are likely to arrive in and which items block which, and that is worth one paragraph, because an item started out of order is designed against a guess. The world core comes first and is on the plan already; persistence needs it, since `Store.*` is a component the core hosts, and hot reload needs the GUI World built on it. Modules come before packages, because a package is a namespace of modules and has nothing to name without them; traits come beside modules, since coherence is checked at import. The value representation's urgent subset can go in at any time; its full design needs the threading decision made as a feature flag, because the non-atomic count and the per-site caches both assume one thread, and fork-join needs that same flag decided the other way, so the two are one decision with two builds. `update` reuse needs the value representation, since copy-on-write along a path is a property of the heap object's count and layout. Native backends need nothing above them but a consumer, and that consumer is the likeliest to be a World that ships without the frontend, which is a GUI World. Causality in types needs only the GUI library's layout widgets to exist and be used, and is the one item here whose trigger is a bug report. Incremental compilation needs modules, because the unit of invalidation is a definition and a definition's dependencies cross files. Shards need nothing; optimistic occurrences need shards to have been tried first. So the likely sequence is: world core, persistence, modules and traits, the urgent subset, a GUI World, hot reload, and only then anything that needs a profile.

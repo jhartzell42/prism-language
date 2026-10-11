@@ -94,7 +94,7 @@ The first character alone decides which kind a name is, so a name that strays fr
 
 A qualified name is an uppercase name followed by `.` and another uppercase name, with no whitespace anywhere in it, repeated as needed: `Ui.Button`, `Fs.File`, `Net.Socket`. It is one token. The namespace part is how extensible variants (next section) spread their tags across modules. A `.` followed by a lowercase name is never part of a qualified name; it is field access, and `Ui.Button.label` would be field access on the constructor, which is a type error, not a lexing question.
 
-The sigils are `!` `$` `@` `?`. (`&` is reserved for future work and is rejected with a message saying so; `%` does not exist.) The meaning of a sigil depends on what it is attached to:
+The sigils are `!` `$` `@` `?`. (`&` is reserved for references, chapter 16, and is rejected with a message saying so; `%` does not exist.) The meaning of a sigil depends on what it is attached to:
 
 - On a value's name, it states the value's kind: `!delta` is an event.
 - On a function's name, it states the kind of the function's result: `@Button` returns a widget.
@@ -123,7 +123,7 @@ Suppose instead the sigil were always attached to whatever token followed it. Th
 
 `let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `then` `not` `and` `or` `key` `ix` `jx` `kx` `empty`.
 
-Reserved for future work and rejected with a message saying so: `read` `update` and the sigil `&`.
+Reserved for the `update` blocks of chapter 16 and rejected with a message saying so: `read` `update` and the sigil `&`.
 
 Not keywords, though they look like them: `never`, `started`, `main`, `Switch`, `Leftmost`, `Join`, `HoldFirst`, `Element`, `Some`, `Nil`, `True`, `False`, and the optional default `Or`. These are ordinary names in the prelude, written with their sigils where they have one (`!never`, `@started`, `@main`, `!Switch`, `!Leftmost`, `$Join`, `@Element`, `@HoldFirst`). A program may shadow them, which is a bad idea the compiler does not stop. `unit` is a keyword because it is both a type and the only value of that type, and letting it be shadowed would let `@ unit` mean something else.
 
@@ -1550,4 +1550,4 @@ The language's refusals are listed with the whole design in the first part of th
 
 **No explicit-brace layout, no block comments, no tabs, no `else`-less `if`.** Each of these removes a second way to write something, and each second way is one more case on which two parsers can disagree. The spec is the thing, and the thing is shorter for it.
 
-**No `read` and `update` blocks, no `&` references, no lenses.** These are future work and are not in this specification. Plain values are built, never modified; a function that "updates" a record builds a new one. What this buys now: the value layer has one operation on a record, construction, and the question of how mutation inside a plain value interacts with sharing does not arise. If they come, they come as sugar over construction, and nothing in this chapter changes meaning.
+**No `read` and `update` blocks, no `&` references, no lenses.** These are chapter 16's, and no transcript depends on them. Plain values are built, never modified; a function that "updates" a record builds a new one. What this buys now: the value layer has one operation on a record, construction, and the question of how mutation inside a plain value interacts with sharing does not arise. If they come, they come as sugar over construction, and nothing in this chapter changes meaning.
