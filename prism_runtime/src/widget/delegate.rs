@@ -1,4 +1,4 @@
-use crate::{runtime::Runtime, value::AnyValue, widget::WidgetNode};
+use crate::{runtime::Runtime, value::AnyValue, widget::Widget};
 use std::sync::Arc;
 
 /// This is an event handler that the backend installs on a widget node.  It
@@ -19,7 +19,7 @@ pub trait WidgetDelegate: Send + Sync {
         &self,
         ctxt: WidgetDelegateContext,
         index: usize,
-        child: &WidgetNode,
+        child: &Widget,
     ) -> Arc<dyn WidgetDelegate>;
     /// The node we're a delegate for is about to be destroyed by a node reconstruction
     /// or else the termination of the application. If you're singly owned, you will
@@ -35,5 +35,5 @@ pub struct WidgetDelegateContext<'a> {
     /// Current runtime.
     pub runtime: &'a Runtime,
     /// Node we're dealing with.
-    pub node: &'a WidgetNode,
+    pub node: &'a Widget,
 }

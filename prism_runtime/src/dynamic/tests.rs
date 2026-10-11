@@ -4,14 +4,14 @@ use crate::{
     backends::test_backend::{crickets, delay_trigger, dynamic, event, script, trigger},
     dynamic::Dynamic,
     value::Value,
-    widget::Widget,
+    widget::Blueprint,
 };
 
 #[test]
 fn hold_map2_test() {
     struct TestWidget;
 
-    impl Widget for TestWidget {
+    impl Blueprint for TestWidget {
         type Output = ();
 
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {

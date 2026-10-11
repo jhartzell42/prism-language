@@ -7,7 +7,7 @@ use crate::{
     runtime::Runtime,
     value::{Value, ValueType},
     widget::{
-        AnyDynamic, Widget, WidgetNode,
+        AnyDynamic, Blueprint, Widget,
         any::{AnyEvent, AnyEventTrigger},
         widget_ready::WidgetReadyEvent,
     },
@@ -16,8 +16,8 @@ use crate::{
 /// Passed into widgets to allow them to create subwidgets, cyclic events and dynamics,
 /// and publicly exposed material.
 pub struct WidgetBuilder<'a> {
-    node: WidgetNode,
-    children: Vec<Arc<WidgetNode>>,
+    node: Widget,
+    children: Vec<Arc<Widget>>,
     pub(super) done_event: Arc<WidgetReadyEvent>,
     /// The runtime this widget is being built in: the occurrence a hold or
     /// switch made during the build is created in.
@@ -38,14 +38,14 @@ impl WidgetBuilder<'_> {
     /// fire at a height 1 higher than the height you pass.
     ///
     /// The caller is responsible for setting the delegate.
-    pub fn build_root<W: Widget>(
+    pub fn build_root<W: Blueprint>(
         runtime: &Runtime,
         widget: &W,
         height: usize,
-    ) -> (Arc<WidgetNode>, W::Output) {
+    ) -> (Arc<Widget>, W::Output) {
         let (done_event, trigger) = WidgetReadyEvent::new_with_trigger(height + 1);
         let mut this = WidgetBuilder {
-            node: WidgetNode::new(),
+            node: Widget::new(),
             children: vec![],
             done_event,
             runtime,
@@ -62,9 +62,9 @@ impl WidgetBuilder<'_> {
     }
 
     /// Call from a widget to create a subwidget.
-    pub fn bind<W: Widget>(&mut self, widget: &W) -> W::Output {
+    pub fn bind<W: Blueprint>(&mut self, widget: &W) -> W::Output {
         let mut sub = WidgetBuilder {
-            node: WidgetNode::new(),
+            node: Widget::new(),
             children: vec![],
             done_event: WidgetReadyEvent::new(self.done_event.clone()),
             runtime: self.runtime,
@@ -80,8 +80,8 @@ impl WidgetBuilder<'_> {
         res
     }
 
-    /// This event fires and provides the `WidgetNode` when it's actually done being built.
-    pub fn done_event(&self) -> Event<Arc<WidgetNode>> {
+    /// This event fires and provides the `Widget` when it's actually done being built.
+    pub fn done_event(&self) -> Event<Arc<Widget>> {
         Event(self.done_event.clone())
     }
 

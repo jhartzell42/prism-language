@@ -2,28 +2,28 @@ use std::sync::Arc;
 
 use crate::{
     value::ValueType,
-    widget::{Widget, WidgetBuilder},
+    widget::{Blueprint, WidgetBuilder},
 };
 
-/// `dyn`-compatible version of [`Widget`] trait.
-pub trait PolymorphicWidget<O: ValueType>: Sync + Send {
-    /// Equivalent to [`Widget::build`]
+/// `dyn`-compatible version of [`Blueprint`] trait.
+pub trait PolymorphicBlueprint<O: ValueType>: Sync + Send {
+    /// Equivalent to [`Blueprint::build`]
     fn build(&self, builder: &mut WidgetBuilder) -> O;
 }
 
 /// Newtype adapter to get widgets to implement `dyn`-compatible version.
-pub struct PolymorphicWidgetAdapter<O: ValueType, W: Widget<Output = O>>(W);
+pub struct PolymorphicWidgetAdapter<O: ValueType, W: Blueprint<Output = O>>(W);
 
-impl<O: ValueType, W: Widget<Output = O>> PolymorphicWidget<O> for PolymorphicWidgetAdapter<O, W> {
+impl<O: ValueType, W: Blueprint<Output = O>> PolymorphicBlueprint<O> for PolymorphicWidgetAdapter<O, W> {
     fn build(&self, builder: &mut WidgetBuilder) -> O {
-        Widget::build(&self.0, builder)
+        Blueprint::build(&self.0, builder)
     }
 }
 
-impl<O: ValueType> Widget for Arc<dyn PolymorphicWidget<O>> {
+impl<O: ValueType> Blueprint for Arc<dyn PolymorphicBlueprint<O>> {
     type Output = O;
 
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
-        PolymorphicWidget::build(&**self, builder)
+        PolymorphicBlueprint::build(&**self, builder)
     }
 }

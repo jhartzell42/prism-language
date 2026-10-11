@@ -16,13 +16,14 @@ use crate::{
     },
 };
 
-/// A [`WidgetNode`] is a widget in a form that it's already present
-/// in an app. A tree of [`WidgetNode`]s represents the state of
-/// a running app. All ownership of FRP state in the app comes from
-/// a tree of widget nodes.
-pub struct WidgetNode {
+/// A [`Widget`] is a built, live widget: what one bind of a
+/// [`Blueprint`](super::Blueprint) produces. A tree of [`Widget`]s is the
+/// state of a running app, and all ownership of FRP state in the app comes
+/// from that tree. Inside the runtime a widget is also called a node, since
+/// it is the node of that tree.
+pub struct Widget {
     /// Tracks current children of the node.
-    pub children: Mutex<Vec<Arc<WidgetNode>>>,
+    pub children: Mutex<Vec<Arc<Widget>>>,
     /// Exposed dynamics for backends to read and subscribe to.
     pub public_dynamics: Slots<AnyDynamic>,
     /// Exposed events for backends to subscribe to.
@@ -43,9 +44,9 @@ pub struct WidgetNode {
     pub delegate: OnceLock<Arc<dyn WidgetDelegate>>,
 }
 
-impl WidgetNode {
-    pub(crate) fn new() -> WidgetNode {
-        WidgetNode {
+impl Widget {
+    pub(crate) fn new() -> Widget {
+        Widget {
             children: Mutex::new(vec![]),
             public_dynamics: Slots::default(),
             public_events: Slots::default(),
@@ -104,9 +105,9 @@ impl WidgetNode {
     }
 }
 
-impl Debug for WidgetNode {
+impl Debug for Widget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WidgetNode")
+        f.debug_struct("Widget")
             .field("children", &self.children)
             .field("dynamics", &self.public_dynamics)
             .field("events", &self.public_events)

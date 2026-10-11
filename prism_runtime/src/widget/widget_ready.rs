@@ -4,12 +4,12 @@ use crate::event::subscriber_list::{SubscriptionEvent, SubscriptionManager};
 use crate::event::{EventCallback, EventImpl};
 use crate::runtime::{Action, Runtime};
 use crate::value::Value;
-use crate::widget::WidgetNode;
+use crate::widget::Widget;
 
 pub(super) struct WidgetReadyEvent {
-    pub(super) node: OnceLock<Arc<WidgetNode>>,
+    pub(super) node: OnceLock<Arc<Widget>>,
     trigger: Arc<WidgetReadyTrigger>,
-    subscribers: SubscriptionManager<Arc<WidgetNode>, Self>,
+    subscribers: SubscriptionManager<Arc<Widget>, Self>,
     weak_self: Weak<Self>,
 }
 
@@ -62,19 +62,19 @@ impl WidgetReadyEvent {
         res
     }
 
-    pub(super) fn set_node(&self, node: Arc<WidgetNode>) {
+    pub(super) fn set_node(&self, node: Arc<Widget>) {
         let Ok(_) = self.node.set(node) else {
             panic!("tried to set node for `WidgetReadyEvent` twice")
         };
     }
 }
 
-impl EventImpl<Arc<WidgetNode>> for WidgetReadyEvent {
+impl EventImpl<Arc<Widget>> for WidgetReadyEvent {
     fn subscribe(
         &self,
         runtime: &Runtime,
-        cb: Weak<dyn EventCallback<Arc<WidgetNode>>>,
-    ) -> Option<Value<Arc<WidgetNode>>> {
+        cb: Weak<dyn EventCallback<Arc<Widget>>>,
+    ) -> Option<Value<Arc<Widget>>> {
         self.subscribers
             .add_subscriber(runtime, self.weak_self.clone(), None, cb)
     }
@@ -84,7 +84,7 @@ impl EventImpl<Arc<WidgetNode>> for WidgetReadyEvent {
     }
 }
 
-impl SubscriptionEvent<Arc<WidgetNode>> for WidgetReadyEvent {
+impl SubscriptionEvent<Arc<Widget>> for WidgetReadyEvent {
     type Inner = ();
     type Tag = ();
 

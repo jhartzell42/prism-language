@@ -10,31 +10,31 @@ use crate::{
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
     runtime::{Action, Runtime},
-    widget::{Widget, WidgetDelegateContext, WidgetNode, builder::WidgetBuilder},
+    widget::{Blueprint, WidgetDelegateContext, Widget, builder::WidgetBuilder},
 };
 
-impl<T: Widget + 'static + Send + Sync + Debug> Dynamic<Arc<T>> {
+impl<T: Blueprint + 'static + Send + Sync + Debug> Dynamic<Arc<T>> {
     /// Create a dynamic widget that starts out by building current value of `self`,
     /// and then replaces it with whatever widget `self` updates to.
-    pub fn dynamic_widget(&self) -> impl Widget<Output = Arc<Event<Arc<T::Output>>>> {
-        DynamicWidget {
+    pub fn dynamic_widget(&self) -> impl Blueprint<Output = Arc<Event<Arc<T::Output>>>> {
+        DynamicBlueprint {
             dynamic: self.clone(),
         }
     }
 }
 
-struct DynamicWidget<T: 'static + Widget + Send + Sync + Debug> {
+struct DynamicBlueprint<T: 'static + Blueprint + Send + Sync + Debug> {
     dynamic: Dynamic<Arc<T>>,
 }
 
-struct DynamicWidgetEvent<T: 'static + Widget + Send + Sync + Debug> {
-    widget: DynamicWidget<T>,
+struct DynamicWidgetEvent<T: 'static + Blueprint + Send + Sync + Debug> {
+    widget: DynamicBlueprint<T>,
     weak_self: Weak<Self>,
     ready: Arc<WidgetReadyEvent>,
     subscribers: SubscriptionManager<Arc<T::Output>, Self>,
 }
 
-impl<T: 'static + Widget + Debug + Send + Sync> Clone for DynamicWidget<T> {
+impl<T: 'static + Blueprint + Debug + Send + Sync> Clone for DynamicBlueprint<T> {
     fn clone(&self) -> Self {
         Self {
             dynamic: self.dynamic.clone(),
@@ -42,7 +42,7 @@ impl<T: 'static + Widget + Debug + Send + Sync> Clone for DynamicWidget<T> {
     }
 }
 
-impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
+impl<T: 'static + Blueprint + Debug + Send + Sync> Blueprint for DynamicBlueprint<T> {
     type Output = Arc<Event<Arc<T::Output>>>;
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
         let next_event = Arc::new_cyclic(|weak_self| DynamicWidgetEvent {
@@ -77,7 +77,7 @@ impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
     }
 }
 
-impl<T: 'static + Widget + Debug> EventImpl<Arc<T::Output>> for DynamicWidgetEvent<T> {
+impl<T: 'static + Blueprint + Debug> EventImpl<Arc<T::Output>> for DynamicWidgetEvent<T> {
     fn subscribe(
         &self,
         runtime: &Runtime,
@@ -92,7 +92,7 @@ impl<T: 'static + Widget + Debug> EventImpl<Arc<T::Output>> for DynamicWidgetEve
     }
 }
 
-impl<T: 'static + Widget + Debug> EventCallback<Arc<T>> for DynamicWidgetEvent<T> {
+impl<T: 'static + Blueprint + Debug> EventCallback<Arc<T>> for DynamicWidgetEvent<T> {
     fn event_fired(&self, runtime: &crate::runtime::Runtime, value: PrismArc<T>) {
         let Some(this) = self.weak_self.upgrade() else {
             // The outer widget's been destroyed lol, guess we can be done.
@@ -133,13 +133,13 @@ impl<T: 'static + Widget + Debug> EventCallback<Arc<T>> for DynamicWidgetEvent<T
     }
 }
 
-struct DWAction<T: 'static + Widget + Debug> {
+struct DWAction<T: 'static + Blueprint + Debug> {
     event: Arc<DynamicWidgetEvent<T>>,
     value: Arc<T>,
     height: usize,
 }
 
-impl<T: 'static + Widget + Debug> Action for DWAction<T> {
+impl<T: 'static + Blueprint + Debug> Action for DWAction<T> {
     fn act(self: Box<Self>, runtime: &Runtime) {
         let parent_node = self.event.ready.node.get().unwrap().clone();
         let (child_node, output) =
@@ -171,7 +171,7 @@ impl<T: 'static + Widget + Debug> Action for DWAction<T> {
     }
 }
 
-struct KeepUntilOccurrenceEnds(Arc<WidgetNode>);
+struct KeepUntilOccurrenceEnds(Arc<Widget>);
 
 impl Action for KeepUntilOccurrenceEnds {
     fn act(self: Box<Self>, _: &Runtime) {
@@ -179,7 +179,7 @@ impl Action for KeepUntilOccurrenceEnds {
     }
 }
 
-impl<T: 'static + Widget + Debug> SubscriptionEvent<Arc<T::Output>> for DynamicWidgetEvent<T> {
+impl<T: 'static + Blueprint + Debug> SubscriptionEvent<Arc<T::Output>> for DynamicWidgetEvent<T> {
     type Inner = ();
 
     type Tag = ();
