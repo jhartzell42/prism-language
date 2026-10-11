@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-/// A [`Widget`] is a component of a Prism app. Widgets aren't Prism values, since they aren't
+/// A [`Widget`] is a component of a Prism app. They aren't Prism values, since they aren't
 /// referentially transparent and represent lifetimes and connections between other components.
 /// Prism programmers, instead, must merely deal with widget [`Blueprint`](super::Blueprint)s.
 ///
