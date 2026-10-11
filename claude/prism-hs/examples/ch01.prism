@@ -1,0 +1,121 @@
+tag Net.Counts of Element:
+    responds: Int
+
+tag Fs.Contents of Element:
+    path: Text
+    state: Contents
+
+tag Process.Exit of Element:
+    requests: !Code
+
+type Contents = choice:
+    Unavailable
+    Known Text
+
+type Code = Code Int
+
+@main:
+    !increment <- @Element Ui.Button(label="Increment")
+    !decrement <- @Element Ui.Button(label="Decrement")
+    let !delta = -1 on !decrement | +1 on !increment
+    $count <- 0 then $count + !delta
+    @Element Ui.Label(text="Count: {$count}")
+
+test counter_counts, @main:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment")
+        => expect Ui.Label(text="Count: 1")
+        => expect_none Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment"), click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: 0")
+
+@diamond:
+    !go <- @Element Ui.Button(label="Go")
+    $a <- 0 then $a + 1 on !go
+    let $b = $a * 2
+    let $c = $a * 3
+    let $d = $b + $c
+    @Element Ui.Label(text="d={$d}")
+
+test diamond_changes_once, @diamond:
+    build
+        => expect Ui.Label(text="d=0")
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="d=5")
+        => expect_none Ui.Label(text="d=2")
+        => expect_none Ui.Label(text="d=3")
+
+@counter:
+    !increment <- @Element Ui.Button(label="Increment")
+    !reset <- @Element Ui.Button(label="Reset")
+    !server <- @Element Net.Counts
+    $count <- 0 then $count + 1 on !increment | !server | 0 on !reset
+    @Element Ui.Label(text="Count: {$count}")
+
+test server_beats_reset, @counter:
+    build
+    send Net.Counts, 9, click Ui.Button(label="Reset")
+        => expect Ui.Label(text="Count: 9")
+
+@reads_before:
+    !go <- @Element Ui.Button(label="Go")
+    $n <- 0 then $n + 1 on !go
+    $seen <- 0 then $n on !go
+    @Element Ui.Label(text="n={$n} seen={$seen}")
+
+test tag_reads_before, @reads_before:
+    build
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="n=1 seen=0")
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="n=2 seen=1")
+
+@clicker:
+    let $label = "Clicked {$count} times"
+    !!clicks <- rebuild $label:
+        @Element Ui.Button(label=_)
+    let !click = !Switch !!clicks
+    $count <- 0 then $count + 1 on !click
+    @ $count
+
+test clicker_relabels, @clicker:
+    build
+        => expect Ui.Button(label="Clicked 0 times")
+    click Ui.Button(label="Clicked 0 times")
+        => expect Ui.Button(label="Clicked 1 times")
+        => expect_none Ui.Button(label="Clicked 0 times")
+    click Ui.Button(label="Clicked 1 times")
+        => expect Ui.Button(label="Clicked 2 times")
+
+@two:
+    let @b = @Element Ui.Button(label="OK")
+    !x <- @b
+    !y <- @b
+    @ unit
+
+test two_buttons, @two:
+    build
+        => expect_count Ui.Button(label="OK"), 2
+
+let Show: fn Contents -> Text = \|c| match c:
+    Unavailable: "(nothing to show yet)"
+    Known text: text
+
+@ShowFile: fn Text -> @unit = \|path| @widget:
+    $contents <- @Element Fs.Contents(path=path)
+    @Element Ui.Label(text=(Show $contents))
+    @ unit
+
+@viewer:
+    @ShowFile "notes.txt"
+    !quit <- @Element Ui.Button(label="Quit")
+    @Element Process.Exit(requests=(Code 0 on !quit))
+
+test viewer_follows_the_file, @viewer:
+    with Fs.Contents(path="notes.txt") = Unavailable, build
+        => expect Ui.Label(text="(nothing to show yet)")
+    push Fs.Contents(path="notes.txt") = Known "hello"
+        => expect Ui.Label(text="hello")
+    click Ui.Button(label="Quit")
+        => requested Process.Exit(..), Code 0
