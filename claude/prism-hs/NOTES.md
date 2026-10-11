@@ -84,3 +84,75 @@ Started 2026-10-11 07:00. Jimmy asleep. Local repo only.
   Suffix, Split, Reverse, First/Second/Third on tuples, First/Last on arrays, Upper/Lower,
   Prepend, Take/Drop/DropLast. The book's prelude list (chapter 8's assumption) needs writing down.
 - 08:10 Stopped here. 53 tests across 10 example files pass (`./test.sh`, one file at a time: the top level is one namespace, and chapter 2's programs reuse names like `Clock` and `Show`, so loading all files at once makes three tests fail on the wrong definition). Left as is: PRISM_TRACE debugging in Runtime.hs; the unused cabal file (Hackage is unreachable from this machine, so the build is `ghc --make` over the apt GHC 9.4.7); dynamic typing throughout, so the places where the book's type checker decides a lift (array literals, result kinds of `for`) are guesses from the last statement. The experience report sent to Jimmy summarises the book findings above.
+
+## The Reflex port (branch `claude-reflex`, 2026-10-11, afternoon)
+
+A second session, on Jimmy's Mac with Hackage reachable. GHC 9.10.3 and cabal 3.16.1 through
+ghcup; `reflex` 0.9.4.1 from Hackage. `Runtime.hs` is gone; `Eval.hs` and `World.hs` are rewritten
+on Reflex, `Value.hs` holds `Event t`/`Dynamic t` values; parser, lexer, syntax, `Test.hs`,
+`Main.hs`, the examples and `test.sh` are as they were. The 53 scripts pass in 1.4 s, and the
+transcripts are character for character those of the push-graph prototype, with two exceptions
+noted at the end.
+
+- 12:50 `./test.sh` on the old prototype, GHC 9.10.3: 53 pass, with `-Wx-partial` warnings on
+  `head`. The branch is `claude-reflex`, not `claude/reflex`: git refuses a branch `claude/reflex`
+  while a branch `claude` exists (one is a file, the other a directory under `refs/heads`).
+- 13:05 The shape of the port, decided from the Spider source before writing code. Chapter 14
+  puts `PerformEventT` at the bottom of the stack "for its `Adjustable` instance" and says a
+  `rebuild` built in n sees n through `subscribeAndRead`. The instance does not do that:
+  `PerformEventT`'s `runWithReplace` is `requestingIdentity` over the replacement event, and
+  `hostPerformEventT` performs the requested builds between frames and fires their results as a
+  follow-up frame. A block replaced in n would be built in n+1, where the event that caused it
+  is not firing, and `a_new_block_sees_the_event_that_made_it`, `a_parent_sees_a_new_key_at_once`
+  and `a_nested_dyn_builds_once_with_the_new_value` would fail. There is no `Adjustable` instance
+  for `SpiderHostFrame` or `PushM`. So the evaluator uses no `Adjustable` at all: a `rebuild`
+  is `push build (leftmost [updated d, tag (current d) now])`, `networkView`'s trigger with the
+  block built inside the push closure, in the frame of the change; the generation's list is a
+  `holdDyn` of the generations' list dynamics, joined; its requests are `switch (current held)`
+  for the members as the occurrence opened plus one `coincidence` for the newborn. The root is
+  the same thing over the build trigger. `for` is the same with a map of rows diffed by key
+  inside the push, `joinDynThroughMap` for the list and for `$`/plain results, `mergeMap` under
+  `switch` for event results. `PushM` has `MonadHold`, `MonadFix`, `MonadIO` and `now`, which is
+  all a block needs. This is a finding for chapter 14: the stack it describes would not pass the
+  chapter 10 laws on Reflex 0.9.4.1.
+- 13:20 Forward references are `mdo` over the block's environment, as chapter 14 says, with one
+  wrinkle. The evaluator is dynamically typed, so it pattern-matches a value to decide whether
+  to lift; a name bound later in the block has to have a known constructor before its line.
+  The pre-pass binds each later `!` name to `VEvent (switch (constant real))` and each `$` name
+  to `VDyn (join (constDyn real))`, with `real` the knot. The wrapper matters: `leftmost` is
+  `mergeInt` over a strict `IntMap`, which forces each event to weak head normal form, and a bare
+  knot thunk there is `<<loop>>`; a `switch` over a constant behavior is already a value and
+  Spider reads the behavior only when it subscribes, after the block has returned. Plain names
+  bound later are the bare thunk; forcing one at build time is `FixIOException`, reported as
+  `Cycle`.
+- 13:25 Lifting is pure. One event and some dynamics is `attachWith` over the dynamics'
+  behaviors (the tag law); dynamics only is `distributeListOverDynWith`; both take a closure
+  that runs the evaluator in `Identity`, where a hold or a `!Switch` is an error. The evaluator
+  is written once over a `Build t m` dictionary that says how a statement reaches the push
+  monad. `!Switch` is `switchHold never`, `$Join` is `join`, `!Updated` is `updated`,
+  `$Distinct` is `holdUniqDyn` (the prototype returned the dynamic unchanged), `@started` is `now`.
+- 13:30 First full build: counter, clicker, editor, viewer, chat, cli, stopwatch and all 28
+  chapter 10 laws pass at once. Two files hang.
+- 13:40 Both hangs are Spider recursing without bound while subscribing a prompt cycle. The todo
+  list was mine: the `for` birth term (`coincidence` over the patch event) makes the
+  consolidated event prompt on the collection's change, and the collection is a hold fed by the
+  consolidated event. Chapter 14 says the elaborator leaves the birth term out when the block
+  cannot fire at birth; without an elaborator, `canFireAtBirth` reads it off the syntax (the
+  block mentions `@started`, a `rebuild`, `!Updated`, or an event bound outside it). The other
+  hang is `cycle_is_an_error`, which is meant to hang: `!out <- @Echo !out`. Chapter 14 says
+  Spider throws `EventLoopException` for a prompt cycle; a standalone experiment
+  (`rec e = leftmost [fmap (+1) (switch (constant e)), 0 <$ now]`, held and fired) shows it
+  does not, it recurses until the stack is gone. The binary runs with `-K64m` and a
+  `StackOverflow` escaping the frame is reported as `Cycle`. That is a bounded-stack detector,
+  not a check; the check is the type checker's (TODO.md). Named `!` bindings are pinned with a
+  throwaway `hold` at the end of a block so that an unused cyclic event is subscribed at all,
+  since Spider builds nothing nobody subscribes to.
+- 13:45 Every test runs on its own timeline (`withSpiderTimeline`), so an aborted frame cannot
+  leak into the next test. After an error the timeline is not trusted and the test ends;
+  chapter 14's rollback by replay is not written, and no script needs it.
+- 13:50 Transcript diff against the old binary, all ten files: identical except two lines.
+  `cycle_is_an_error` prints a different `detail` (the prototype named its own graph node).
+  `state_survives_a_neighbours_removal`, turn 2, result: the prototype printed
+  `{"a": unit, "b": unit}` after dropping `a`, because its consolidated dynamic ran before the
+  row was dropped at commit; this build prints `{"b": unit}`, which is chapter 14's rule for
+  `for` with plain results (changes promptly when a key disappears). The old line was a bug.

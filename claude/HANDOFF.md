@@ -60,17 +60,18 @@ and write his designs under `design/`, not to write notes to Claude.
 
 ## How to build and test
 
-Prototype, on any machine with GHC (built with 9.4.7; the code uses no extension newer than
-`LambdaCase`, so older GHCs should work; no packages beyond base, containers, mtl):
+Prototype, on branch `claude-reflex` (git refuses `claude/reflex` next to the branch `claude`):
+GHC and cabal from ghcup (built with GHC 9.10.3, cabal 3.16.1, reflex 0.9.4.1), Hackage reachable
+for the first build:
 
     cd claude/prism-hs
-    ./test.sh                       # builds with ghc --make, runs each example file against the prelude
+    ./test.sh                       # cabal build, then runs each example file against the prelude
     ./prism-hs -v examples/prelude.prism examples/counter.prism   # -v prints the transcript
 
-With Hackage reachable, `prism-hs.cabal` is there but has never been built (the session could
-not reach Hackage); expect to fix its `build-depends` (base, containers, mtl) before `cabal build`
-works. Example files share one namespace, so run them one
-at a time (chapter 2's programs reuse `Clock` and `Show`).
+`build.sh` runs `cabal build` and copies the binary next to `test.sh`. Example files share one
+namespace, so run them one at a time (chapter 2's programs reuse `Clock` and `Show`). On branch
+`claude` the prototype is the older push-graph one, built with `ghc --make` and no packages
+beyond base, containers, mtl.
 
 Book: `cd claude/build && ./build.sh .. ../prism-book.pdf` (pandoc + xelatex; the session had
 them in its container). Commit the PDF with the chapters.
@@ -79,11 +80,16 @@ Rust runtime: `cargo test` at the root; 37 tests.
 
 ## What the prototype is and is not
 
-It is an independent reading of chapters 2, 4 and 10 on a Spider-shaped graph, not chapter 14's
-"interpret on Reflex" (Hackage was unreachable from the session's container). It has no type
-checker, no `intercept`, no World but Test, no prompt-cycle check, no `update`/`&`. Chapter 17 of
-the book is the report; `prism-hs/TODO.md` is the full list with the type checker's open
-questions. Everything in `TODO.md` under "corners cut" makes a passing test conditional.
+On branch `claude` it is an independent reading of chapters 2, 4 and 10 on a Spider-shaped graph,
+not chapter 14's "interpret on Reflex" (Hackage was unreachable from the session's container).
+On branch `claude-reflex` the same parser, Test World and 53 scripts run on an evaluator over
+Reflex 0.9.4.1 (step 2 below); `prism-hs/NOTES.md`, last section, is the port's log and names
+two places where chapter 14's map of Reflex is wrong (`PerformEventT`'s `Adjustable` builds in a
+follow-up frame; Spider does not throw on a prompt cycle through a `switch`). Either way it has
+no type checker, no `intercept`, no World but Test, no prompt-cycle check, no `update`/`&`.
+Chapter 17 of the book is the report; `prism-hs/TODO.md` is the full list with the type
+checker's open questions. Everything in `TODO.md` under "corners cut" makes a passing test
+conditional.
 
 ## The next burst (Jimmy's goal: a runnable chess demo on reflex-dom, plus a folder of test cases)
 

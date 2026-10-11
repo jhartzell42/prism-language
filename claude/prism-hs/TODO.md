@@ -20,23 +20,39 @@ Chapter references are to the book in `../ch*.md`.
 - **No prompt-cycle check (ch04 "Cycles", P8).** A prompt cycle is not an error; it either hangs
   the scheduler or reads a stale cached firing. No chapter 9 cycle test can be written against
   this prototype, and a program that passes here may be rejected by a conforming implementation.
-- **Holds pre-created before the block's other statements.** A hold can be used above its line,
-  but its initial value is evaluated in the pre-pass and so cannot mention a later block-local
-  `let` or bind. The book's binding groups (ch03) allow it. A test that puts a hold's initial
-  value after a `let` it uses fails here for the wrong reason.
+- **Forward references by sigil, not by binding group.** A block is one `mdo` knot: a name bound
+  later in the block is a placeholder whose constructor comes from its sigil (`!` an event, `$`
+  a dynamic, anything else the bare knot). A later plain `let` used at build time above its line
+  is reported as `Cycle` (the knot is forced), which the book's binding groups (ch03) would
+  accept or reject by the group's shape, not by the sigil.
+- **The `for` birth term is syntactic.** Chapter 14 leaves the prompt birth term out of a
+  `for`'s consolidation when the typed AST says the block cannot fire at birth; here
+  `canFireAtBirth` says so when the block mentions no `@started`, `rebuild`, `!Updated` or
+  outer event. A block that can fire at birth and feeds the collection is a prompt cycle, and
+  hangs (reported as `Cycle` by the stack bound below) instead of being rejected at compile time.
+- **Cycle is a bounded stack, not a check.** A prompt cycle makes Spider recurse without bound
+  while subscribing; the binary runs with `-K64m` and reports the overflow as `Cycle`. Chapter
+  14's claim that Spider throws `EventLoopException` does not hold for a cycle through a
+  `switch`. A legitimate program that needed more than 64 MB of stack would be reported as a
+  cycle too.
 - **State answered from the script, not from a snapshot taken as the occurrence opened.** The
   Test World's `with`/`push` entries are the oracle. The book (ch06, ch10 "Every state element
   needs a `with` first") has the oracle answer from the snapshot *before* n and then deliver n's
   push; the prototype does both in one step, which agrees for every script in the book but not
   for a state element created in n whose entry changed in n by `push` and was read by a tag in
   the same occurrence.
-- **Errors.** Only "no match arm" during a build is reported, as an aborted turn. Overflow does
-  not abort (Haskell `Integer`, unbounded); division by zero, indexing out of range and a missing
-  map key all return `Nil`, which is the book's `?` dynamically and would be a typed `?T` with a
-  checker. No quarantine, no contained build
-  failures, no `Error` values a program can hold (ch09).
-- **Equality.** `Value`'s `Ord` compares functor values by id, so a map keyed by an event is
-  legal here and not in the book. Equal-valued changes are not deduplicated, which matches the
+- **Errors.** An exception escaping the frame is the turn's error (`UnsuppliedState` at slot
+  creation, `Build` for a bad match or operands, `Cycle` as above). An error inside a derived
+  dynamic is lazy: it surfaces when the value is used (a `rebuild` forces the value it builds
+  with, so most reach the turn), not necessarily in the occurrence that computed it. After an
+  error the timeline is not trusted and the test ends; chapter 14's rollback by replay is not
+  written. Overflow does not abort (Haskell `Integer`, unbounded); division by zero, indexing
+  out of range and a missing map key all return `Nil`, which is the book's `?` dynamically and
+  would be a typed `?T` with a checker. No quarantine, no contained build failures, no `Error`
+  values a program can hold (ch09).
+- **Equality.** `Value`'s `Ord` compares all events as equal and all dynamics as equal (Reflex
+  gives them no identity), so a map keyed by events collapses to one entry; the book forbids the
+  key. Equal-valued changes are not deduplicated, which matches the
   book (`$Distinct` is the opt-in), so every generation count in a test is right by the book's
   rule and would change if the rule changed.
 - **One global namespace.** Top-level names from every loaded file share one environment, so
@@ -46,9 +62,13 @@ Chapter references are to the book in `../ch*.md`.
 - **Text interpolation** is parsed by matching braces inside the string at lex time, so a `}`
   inside a nested string literal inside `{...}` breaks it.
 - **Paths of supplier-built slots** (`s/n`) do not exist because `intercept` does not.
-- **`@started` fires through the pending queue**, which is right, but its event has no height of
-  its own; a program that depends on `@started` ordering against a rebuild's event in the build
-  occurrence is relying on queue order.
+- **`@started` is Reflex's `now`**, not chapter 14's `rebuild` over a constant; the two are one
+  frame and one firing, but the chapter's reason for the spelling (one code path for both laws)
+  is not taken.
+- **`@HoldFirst`** is a hold from `Nil` that adopts the build occurrence's firing at commit; the
+  book's "the event did not fire in the build occurrence" error is not raised.
+- **A dynamic element's tag is read off the syntax** (`@Element Ui.Button(label=_)`); a dynamic
+  element whose expression is not a constructor application gets no response event or state.
 
 ## Missing outright
 
