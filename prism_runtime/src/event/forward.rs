@@ -26,16 +26,16 @@ impl<T: ValueType> ForwardEvent<T> {
         })
     }
 
-    pub(crate) fn close(&self, event: &Event<T>) {
+    pub(crate) fn close(&self, runtime: &Runtime, event: &Event<T>) {
         if self.inner.set(Arc::downgrade(&event.0)).is_err() {
             panic!("cyclic event closed twice");
         }
         if !self.subscriber_list.consolidate().is_empty()
             && let Some(value) = self
                 .subscriber_list
-                .resubscribe(self.weak_self.clone(), event)
+                .resubscribe(runtime, self.weak_self.clone(), event)
         {
-            self.handle_already_fired(value, ());
+            self.handle_already_fired(runtime, value, ());
         }
     }
 
@@ -45,9 +45,9 @@ impl<T: ValueType> ForwardEvent<T> {
 }
 
 impl<T: ValueType> EventImpl<T> for ForwardEvent<T> {
-    fn subscribe(&self, cb: Weak<dyn EventCallback<T>>) -> Option<Value<T>> {
+    fn subscribe(&self, runtime: &Runtime, cb: Weak<dyn EventCallback<T>>) -> Option<Value<T>> {
         self.subscriber_list
-            .add_subscriber(self.weak_self.clone(), self.target().as_ref(), cb)
+            .add_subscriber(runtime, self.weak_self.clone(), self.target().as_ref(), cb)
     }
 
     fn height(&self) -> usize {
@@ -82,9 +82,9 @@ impl<T: ValueType> SubscriptionEvent<T> for ForwardEvent<T> {
             .notify(self.weak_self.clone(), self.target().as_ref(), runtime, || Some(value));
     }
 
-    fn handle_already_fired(&self, value: Value<T>, _: ()) {
-        if let Some(value) = self.subscriber_list.record_once(|| Some(value)) {
-            self.subscriber_list.deliver_already_fired(value);
+    fn handle_already_fired(&self, runtime: &Runtime, value: Value<T>, _: ()) {
+        if let Some(value) = self.subscriber_list.record_once(runtime, || Some(value)) {
+            self.subscriber_list.deliver_already_fired(runtime, value);
         }
     }
 }

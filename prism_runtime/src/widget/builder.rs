@@ -19,7 +19,9 @@ pub struct WidgetBuilder<'a> {
     node: WidgetNode,
     children: Vec<Arc<WidgetNode>>,
     pub(super) done_event: Arc<WidgetReadyEvent>,
-    runtime: &'a Runtime,
+    /// The runtime this widget is being built in: the occurrence a hold or
+    /// switch made during the build is created in.
+    pub(crate) runtime: &'a Runtime,
 }
 
 impl WidgetBuilder<'_> {
@@ -115,7 +117,7 @@ impl WidgetBuilder<'_> {
         let (lock, forward) = self.node.cyclic_dynamics[ix]
             .downcast_ref::<(OnceLock<Dynamic<T>>, Arc<ForwardEvent<T>>)>()
             .expect("cyclic dynamic closed with the wrong type");
-        forward.close(&dynamic.event());
+        forward.close(self.runtime, &dynamic.event());
         lock.set(dynamic).expect("set cyclic dynamic twice");
     }
 
@@ -156,7 +158,7 @@ impl WidgetBuilder<'_> {
         let (forward, target) = self.node.cyclic_events[index]
             .downcast_ref::<(Arc<ForwardEvent<T>>, OnceLock<Event<T>>)>()
             .expect("cyclic event closed with the wrong type");
-        forward.close(&event);
+        forward.close(self.runtime, &event);
         target.set(event).expect("cyclic event closed twice");
     }
 

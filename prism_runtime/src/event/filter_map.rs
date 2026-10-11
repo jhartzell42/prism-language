@@ -73,18 +73,18 @@ impl<O: ValueType, T: ValueType, F: 'static + Send + Sync + Fn(Value<T>) -> Opti
             });
     }
 
-    fn handle_already_fired(&self, value: Value<Self::Inner>, _: ()) {
-        if let Some(value) = self.subscriber_list.record_once(|| (self.f)(value)) {
-            self.subscriber_list.deliver_already_fired(value);
+    fn handle_already_fired(&self, runtime: &Runtime, value: Value<Self::Inner>, _: ()) {
+        if let Some(value) = self.subscriber_list.record_once(runtime, || (self.f)(value)) {
+            self.subscriber_list.deliver_already_fired(runtime, value);
         }
     }
 }
 impl<O: ValueType, T: ValueType, F: 'static + Send + Sync + Fn(Value<T>) -> Option<Value<O>>>
     EventImpl<O> for FilterMapEvent<O, T, F>
 {
-    fn subscribe(&self, cb: std::sync::Weak<dyn super::EventCallback<O>>) -> Option<Value<O>> {
+    fn subscribe(&self, runtime: &Runtime, cb: std::sync::Weak<dyn super::EventCallback<O>>) -> Option<Value<O>> {
         self.subscriber_list
-            .add_subscriber(self.weak_self.clone(), Some(&self.inner), cb)
+            .add_subscriber(runtime, self.weak_self.clone(), Some(&self.inner), cb)
     }
 
     fn height(&self) -> usize {

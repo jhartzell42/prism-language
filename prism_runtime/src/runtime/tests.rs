@@ -12,7 +12,7 @@ use crate::{
 fn runtime_keeps_working_after_a_closure_panics() {
     let mut runtime = Runtime::new();
     let (event, trigger) = Event::<u32>::external();
-    let held = Dynamic::hold(
+    let held = Dynamic::hold(&runtime, 
         0u32.into(),
         event.map(|x| if *x == 1 { panic!("closure panicked") } else { x }),
     );
@@ -32,7 +32,7 @@ impl EventCallback<u32> for PanicOnFire {
         panic!("subscriber panicked")
     }
 
-    fn already_fired(&self, _: Value<u32>) {}
+    fn already_fired(&self, _: &Runtime, _: Value<u32>) {}
 
     fn invalidate_height(&self) {}
 }
@@ -42,9 +42,9 @@ fn a_trigger_dropped_by_a_panic_accepts_values_again() {
     let mut runtime = Runtime::new();
     let (panicking, panicking_trigger) = Event::<u32>::external();
     let (other, other_trigger) = Event::<u32>::external();
-    let held_other = Dynamic::hold(0u32.into(), other);
+    let held_other = Dynamic::hold(&runtime, 0u32.into(), other);
     let callback: Arc<dyn EventCallback<u32>> = Arc::new(PanicOnFire);
-    panicking.0.subscribe(Arc::downgrade(&callback));
+    panicking.0.subscribe(&runtime, Arc::downgrade(&callback));
 
     runtime.schedule_trigger(&panicking_trigger, 1u32.into()).unwrap();
     runtime.schedule_trigger(&other_trigger, 1u32.into()).unwrap();

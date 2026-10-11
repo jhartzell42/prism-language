@@ -5,7 +5,7 @@ use crate::{
         Event, EventCallback, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::{Action, Runtime, defer},
+    runtime::{Action, Runtime},
     value::{Value, ValueType},
 };
 
@@ -18,7 +18,7 @@ impl<T: ValueType> Event<Event<T>> {
     /// This means the outer event has to fire in one occurrence, and then the
     /// inner event in a separate occurrence, in order for the resulting event
     /// to ever fire.
-    pub fn switch_hold(&self) -> Event<T> {
+    pub fn switch_hold(&self, runtime: &Runtime) -> Event<T> {
         let switch = Arc::new_cyclic(|weak| SwitchHold::<T> {
             subscriber_list: SubscriptionManager::new(()),
             inner_event: Mutex::new(None),
@@ -28,8 +28,8 @@ impl<T: ValueType> Event<Event<T>> {
             height: Mutex::new(None),
         });
         let outer_sub: Arc<dyn EventCallback<Event<T>>> = switch._outer_sub.clone();
-        if let Some(event) = self.0.subscribe(Arc::downgrade(&outer_sub)) {
-            defer(
+        if let Some(event) = self.0.subscribe(runtime, Arc::downgrade(&outer_sub)) {
+            runtime.schedule(
                 usize::MAX,
                 SwitchHoldOuterAction {
                     this: switch.clone(),
@@ -51,10 +51,10 @@ struct SwitchHold<T: ValueType> {
 }
 
 impl<T: ValueType> EventImpl<T> for SwitchHold<T> {
-    fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) -> Option<Value<T>> {
+    fn subscribe(&self, runtime: &Runtime, cb: Weak<dyn super::EventCallback<T>>) -> Option<Value<T>> {
         let event = self.inner_event.lock().unwrap().clone();
         self.subscriber_list
-            .add_subscriber(self.weak_self.clone(), event.as_ref(), cb)
+            .add_subscriber(runtime, self.weak_self.clone(), event.as_ref(), cb)
     }
 
     fn height(&self) -> usize {
@@ -99,9 +99,9 @@ impl<T: ValueType> SubscriptionEvent<T> for SwitchHold<T> {
             });
     }
 
-    fn handle_already_fired(&self, value: Value<Self::Inner>, _: ()) {
-        if let Some(value) = self.subscriber_list.record_once(|| Some(value)) {
-            self.subscriber_list.deliver_already_fired(value);
+    fn handle_already_fired(&self, runtime: &Runtime, value: Value<Self::Inner>, _: ()) {
+        if let Some(value) = self.subscriber_list.record_once(runtime, || Some(value)) {
+            self.subscriber_list.deliver_already_fired(runtime, value);
         }
     }
 }
@@ -120,11 +120,11 @@ impl<T: ValueType> EventCallback<Event<T>> for SwitchHoldOuterCallback<T> {
         runtime.schedule(usize::MAX, SwitchHoldOuterAction { this, event });
     }
 
-    fn already_fired(&self, value: Value<Event<T>>) {
+    fn already_fired(&self, runtime: &Runtime, value: Value<Event<T>>) {
         let Some(this) = self.this.upgrade() else {
             return;
         };
-        defer(
+        runtime.schedule(
             usize::MAX,
             SwitchHoldOuterAction {
                 this,
@@ -147,7 +147,7 @@ struct SwitchHoldOuterAction<T: ValueType> {
 }
 
 impl<T: ValueType> Action for SwitchHoldOuterAction<T> {
-    fn act(self: Box<Self>, _: &Runtime) {
+    fn act(self: Box<Self>, runtime: &Runtime) {
         let Self { this, event } = *self;
         *this.inner_event.lock().unwrap() = Some(event.clone());
 
@@ -163,7 +163,7 @@ impl<T: ValueType> Action for SwitchHoldOuterAction<T> {
             this.subscriber_list.clear_subscriber();
         } else {
             this.subscriber_list
-                .resubscribe(this.weak_self.clone(), &event);
+                .resubscribe(runtime, this.weak_self.clone(), &event);
         }
 
         for cb in cbs {

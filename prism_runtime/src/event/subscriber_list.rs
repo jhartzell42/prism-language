@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     event::{Event, EventCallback, EventImpl},
-    runtime::{Action, CLEAR_AT_END, CURRENT_HEIGHT, Runtime},
+    runtime::{Action, Runtime},
     value::{Value, ValueType},
 };
 
@@ -35,9 +35,9 @@ pub trait SubscriptionEvent<T: ValueType>: EventImpl<T> + 'static {
         // Do nothing by default.
     }
 
-    fn handle_already_fired(&self, value: Value<Self::Inner>, tag: Self::Tag);
+    fn handle_already_fired(&self, runtime: &Runtime, value: Value<Self::Inner>, tag: Self::Tag);
 
-    fn finish_already_fired(&self) {}
+    fn finish_already_fired(&self, _: &Runtime) {}
 }
 
 impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
@@ -52,11 +52,12 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
 
     pub fn add_subscriber(
         &self,
+        runtime: &Runtime,
         this: Weak<E>,
         event: Option<&Event<E::Inner>>,
         cb: Weak<dyn EventCallback<T>>,
     ) -> Option<Value<T>> {
-        self.connect(this, event);
+        self.connect(runtime, this, event);
         self.push_subscriber(cb);
         self.current()
     }
@@ -77,22 +78,23 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         }
     }
 
-    pub(crate) fn connect(&self, this: Weak<E>, event: Option<&Event<E::Inner>>) {
+    pub(crate) fn connect(&self, runtime: &Runtime, this: Weak<E>, event: Option<&Event<E::Inner>>) {
         let Some(event) = event else {
             return;
         };
         if self.subscription.lock().unwrap().is_some() {
             return;
         }
-        if let Some(value) = self.resubscribe(this.clone(), event)
+        if let Some(value) = self.resubscribe(runtime, this.clone(), event)
             && let Some(this) = this.upgrade()
         {
-            this.handle_already_fired(value, self.tag.clone());
+            this.handle_already_fired(runtime, value, self.tag.clone());
         }
     }
 
     pub(crate) fn resubscribe(
         &self,
+        runtime: &Runtime,
         this: Weak<E>,
         event: &Event<E::Inner>,
     ) -> Option<Value<E::Inner>> {
@@ -103,7 +105,7 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         });
         *self.subscription.lock().unwrap() = Some(new_sub.clone());
         let new_sub: Arc<dyn EventCallback<E::Inner>> = new_sub;
-        event.0.subscribe(Arc::downgrade(&new_sub))
+        event.0.subscribe(runtime, Arc::downgrade(&new_sub))
     }
 
     pub(crate) fn clear_subscriber(&self) {
@@ -130,9 +132,10 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
 
     pub(crate) fn record_once(
         &self,
+        runtime: &Runtime,
         compute: impl FnOnce() -> Option<Value<T>>,
     ) -> Option<Value<T>> {
-        if self.occurrence.lock().unwrap().is_some() || CURRENT_HEIGHT.get().is_none() {
+        if self.occurrence.lock().unwrap().is_some() || runtime.current_height().is_none() {
             return None;
         }
         let value = compute();
@@ -142,23 +145,21 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
         }
         *occurrence = Some(value.clone());
         let cleared = self.occurrence.clone();
-        CLEAR_AT_END.with_borrow_mut(|clears| {
-            clears.push(Box::new(move || *cleared.lock().unwrap() = None))
-        });
+        runtime.clear_at_end(move || *cleared.lock().unwrap() = None);
         value
     }
 
     pub(crate) fn fire(&self, runtime: &Runtime, value: Value<T>) {
-        if let Some(value) = self.record_once(|| Some(value)) {
+        if let Some(value) = self.record_once(runtime, || Some(value)) {
             for subscriber in self.consolidate() {
                 subscriber.event_fired(runtime, value.clone())
             }
         }
     }
 
-    pub(crate) fn deliver_already_fired(&self, value: Value<T>) {
+    pub(crate) fn deliver_already_fired(&self, runtime: &Runtime, value: Value<T>) {
         for subscriber in self.consolidate() {
-            subscriber.already_fired(value.clone())
+            subscriber.already_fired(runtime, value.clone())
         }
     }
 
@@ -180,13 +181,13 @@ impl<T: ValueType, E: SubscriptionEvent<T>> SubscriptionManager<T, E> {
             self.clear_subscriber();
             return false;
         }
-        if let Some(value) = self.record_once(value) {
+        if let Some(value) = self.record_once(runtime, value) {
             for subscriber in subscribers {
                 subscriber.event_fired(runtime, value.clone())
             }
         }
 
-        self.connect(this, event);
+        self.connect(runtime, this, event);
 
         true
     }
@@ -205,21 +206,21 @@ impl<T: ValueType, E: SubscriptionEvent<T>> EventCallback<E::Inner> for MainSubs
         };
         let height = this.height();
         let tag = self.tag.clone();
-        if CURRENT_HEIGHT.get().is_some_and(|current| height <= current) {
-            this.handle_already_fired(value, tag);
-            this.finish_already_fired();
+        if runtime.current_height().is_some_and(|current| height <= current) {
+            this.handle_already_fired(runtime, value, tag);
+            this.finish_already_fired(runtime);
             return;
         }
         this.handle_early_subscription(runtime, value.clone(), tag.clone());
         runtime.schedule(height, MainAction { this, value, tag })
     }
 
-    fn already_fired(&self, value: Value<E::Inner>) {
+    fn already_fired(&self, runtime: &Runtime, value: Value<E::Inner>) {
         let Some(this) = self.this.upgrade() else {
             return;
         };
-        this.handle_already_fired(value, self.tag.clone());
-        this.finish_already_fired();
+        this.handle_already_fired(runtime, value, self.tag.clone());
+        this.finish_already_fired(runtime);
     }
 
     fn invalidate_height(&self) {

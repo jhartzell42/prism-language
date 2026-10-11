@@ -11,7 +11,7 @@ impl<T: ValueType> Event<T> {
     ///
     /// It's strictly for debugging purposes as it leaks memory and violates
     /// many design principles.
-    pub fn trace(&self, label: String) {
+    pub fn trace(&self, runtime: &Runtime, label: String) {
         struct Tracer<T: ValueType> {
             label: String,
             phantom: PhantomData<T>,
@@ -22,7 +22,7 @@ impl<T: ValueType> Event<T> {
                 log::trace!("{}: {value:?}", self.label)
             }
 
-            fn already_fired(&self, value: Value<T>) {
+            fn already_fired(&self, _: &Runtime, value: Value<T>) {
                 log::trace!("{}: {value:?}", self.label)
             }
 
@@ -33,8 +33,8 @@ impl<T: ValueType> Event<T> {
             label,
             phantom: PhantomData,
         });
-        if let Some(value) = self.0.subscribe(Arc::downgrade(&tracer)) {
-            tracer.already_fired(value);
+        if let Some(value) = self.0.subscribe(runtime, Arc::downgrade(&tracer)) {
+            tracer.already_fired(runtime, value);
         }
 
         // Leak tracer. Continue subscribing for rest of the program.

@@ -72,7 +72,7 @@ impl WidgetNode {
                 self.public_events.values[ix]
                     .as_any_event()
                     .0
-                    .subscribe(Arc::downgrade(
+                    .subscribe(runtime, Arc::downgrade(
                         &(cb.clone() as Arc<dyn EventCallback<AnyValue>>),
                     ));
                 cbs.push(cb);
@@ -127,7 +127,7 @@ impl EventCallback<AnyValue> for DelegateCallback {
         self.delegate.event_fired(&self.name, value.into());
     }
 
-    fn already_fired(&self, value: Value<AnyValue>) {
+    fn already_fired(&self, _: &Runtime, value: Value<AnyValue>) {
         self.delegate.event_fired(&self.name, value.into());
     }
 
