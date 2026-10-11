@@ -60,12 +60,12 @@ impl Runtime {
         }))
     }
 
-    /// The height currently propagating, or `None` between occurrences.
+    /// The height of the current occurrence, or `None` if we're not in an occurrence.
     pub(crate) fn current_height(&self) -> Option<usize> {
         self.0.lock().unwrap().height
     }
 
-    /// Register a reset to run when the current occurrence ends.
+    /// Schedule a reset for the end of the current occurrence.
     pub(crate) fn clear_at_end(&self, clear: impl FnOnce() + Send + 'static) {
         self.0.lock().unwrap().clear_at_end.push(Box::new(clear));
     }

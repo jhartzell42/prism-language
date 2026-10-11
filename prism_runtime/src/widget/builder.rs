@@ -28,7 +28,7 @@ impl WidgetBuilder<'_> {
     /// Call from outside (e.g. a backend) to create a root widget.
     /// This is used at the top level to build the initial tree with `height = 0`.
     ///
-    /// Call from a rebuilding primitive (like `dynamic_widget` or `dynamic_list_widget`).
+    /// Call from a rebuilding primitive (like `rebuilding` or `dynamic_list_widget`).
     /// In that case, it'll be in an event processing context, and the height will
     /// be the height of the input event.
     ///
