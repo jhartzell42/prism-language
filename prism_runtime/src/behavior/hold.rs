@@ -15,7 +15,7 @@ impl<T: ValueType> Behavior<T> {
     /// We need a runtime in case we subscribe to an event that's already fired this
     /// occurrence, because otherwise we'll miss seeing the event, and semantically we
     /// need it because that event was supposed to give us a new value, and the fact
-    /// that it fired before us in an occurrence isn't semantically relevant—semantically,
+    /// that it fired before us in an occurrence isn't semantically relevant. Semantically,
     /// occurrences represent an instant.
     pub fn hold(runtime: &Runtime, initial: Value<T>, event: Event<T>) -> Self {
         let hold = Arc::new_cyclic(|weak| HoldBehavior {
