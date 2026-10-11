@@ -167,7 +167,7 @@ This is the one window onto *before*, and it is deliberately the only one.
 The tag law makes a cyclic definition a definition. Look at the counter's hold:
 
 ```prism
-$count <- 0 <= $count + !delta
+$count <- 0 then $count + !delta
 ```
 
 `$count` appears on both sides. In a language with assignment this is `count = count + delta`, an equation whose solution is "whatever the last write was". Here it is not an equation: the `$count` on the right is a read through a tag, which by the law is the count *before* the click, and the hold on the left is the count *after*. The line reads "the count after a click is the count before it plus the delta", which is a definition, and the cycle in the graph passes through a read of before-state, so nothing in the occurrence depends on itself.
@@ -193,12 +193,12 @@ A derived dynamic fires its change event when an operand's change event fires, w
 ### Hold
 
 ```prism
-$checked <- False <= !toggle | !reset
+$checked <- False then !toggle | !reset
 ```
 
 There is the whole story of `$checked`. It starts false. A toggle sets it to the toggle's value, a reset sets it to the reset's, a toggle and a reset together are a toggle, and nothing else in the program can touch it, because nothing else in the program has a way to. You have searched a codebase for every assignment to a flag, found eleven, and still missed the one behind a reflection call; here the search is one line long and it is the line that declares the thing. That is the goal of one way to change anything, written next to the thing, and the hold statement is where it is syntax.
 
-Formally: `$x <- v <= !e`, allowed only as a statement in a widget block, defines `$x` whose value before the first firing of `!e` is `v`, whose change event is `!e`, and whose value after any occurrence where `!e` fired is `!e`'s value there. Hold is the only way to make a dynamic that is not derived from another. Every piece of state in a Prism program is a hold, so every piece of state has a line that names its initial value and the one event that can move it, and reading that line is reading everything that will ever happen to it.
+Formally: `$x <- v then !e`, allowed only as a statement in a widget block, defines `$x` whose value before the first firing of `!e` is `v`, whose change event is `!e`, and whose value after any occurrence where `!e` fired is `!e`'s value there. Hold is the only way to make a dynamic that is not derived from another. Every piece of state in a Prism program is a hold, so every piece of state has a line that names its initial value and the one event that can move it, and reading that line is reading everything that will ever happen to it.
 
 The value `v` is plain, or a dynamic if `$x` is a dynamic of dynamics. It is not an expression re-evaluated on each firing; it is the value before the first firing and nothing else. A hold is a statement rather than an expression because it has an owner, the node of the widget block it is written in, and there is no hold outside a widget block because that would be state nothing owns. Which node owns which hold, what a `dyn` rebuild and a `for` key's departure do to the holds inside them, and where state that must survive a rebuild lives are chapter 5's; the one fact this chapter needs is that a hold inside a rebuilt block is a new hold, starting at `v`, and it obeys the construction rule below like any widget built mid-occurrence.
 
@@ -206,7 +206,7 @@ In the occurrence in which the widget is built, `$x`'s value is `v`, and if `!e`
 
 ```prism
 !started <- @started
-$phase <- Starting <= Loading on !started | Loaded on !resp
+$phase <- Starting then Loading on !started | Loaded on !resp
 ```
 
 `$phase` is `Starting` before occurrence zero and `Loading` after it, because `!started` fired in zero. A tag reading `$phase` in occurrence zero reads `Starting`; a label derived from it shows `Loading` from the end of zero. There is no special first-occurrence rule, and no special "initial render" during which holds are frozen.
@@ -218,7 +218,7 @@ No operation observes a derived dynamic with some operands updated and others no
 The diamond is the test:
 
 ```prism
-$a <- 0 <= !set
+$a <- 0 then !set
 let $b = $a + 1
 let $c = $a * 2
 let $d = $b + $c
@@ -280,7 +280,7 @@ Occurrence zero is the build of `@main`. It has no inputs; it exists so that eve
 
 ### The dependency graph
 
-The program defines a graph over its events and dynamics. Each event or dynamic is a node; an edge runs from a source to a target when the target's firing or change at an occurrence is determined by the source's. The graph is what the program's text is: `let !delta = -1 on !decrement | +1 on !increment` draws two edges into `!delta`; `$count <- 0 <= $count + !delta` draws one from `!delta` into the hold's change event and one, of a different kind, from the hold's value back into the addition. The whole program is this graph, the World feeds inputs into its leaves, and an occurrence is a wave through it.
+The program defines a graph over its events and dynamics. Each event or dynamic is a node; an edge runs from a source to a target when the target's firing or change at an occurrence is determined by the source's. The graph is what the program's text is: `let !delta = -1 on !decrement | +1 on !increment` draws two edges into `!delta`; `$count <- 0 then $count + !delta` draws one from `!delta` into the hold's change event and one, of a different kind, from the hold's value back into the addition. The whole program is this graph, the World feeds inputs into its leaves, and an occurrence is a wave through it.
 
 Every edge is one of two kinds, and the distinction is the single most useful thing to be able to see in a Prism program.
 
@@ -339,7 +339,7 @@ and the error names `!a` and `!b` and points at both lines.
 @also_broken:
     !gen <- dyn $n:
         @ _ + 1                         # the block's result is plain, so the dyn's event is !Nat
-    $n <- 0 <= !gen                     # the hold's change event is !gen
+    $n <- 0 then !gen                     # the hold's change event is !gen
     @ unit
 ```
 
@@ -350,18 +350,18 @@ The structure that looks like the cycle above is also the structure of every lis
 ```prism
 @todos:
     !add <- @Button $"Add"
-    $next <- 0 <= $next + 1 on !add
+    $next <- 0 then $next + 1 on !add
     let !adds = {$next: Add "item {$next}"} on !add
     !rows <- for $items:
         !delete <- @Button $"Delete"
         @ Delete on !delete
     let !changes = !Union !adds, !rows
-    $items <- {} <= StepAll $items, !changes
+    $items <- {} then StepAll $items, !changes
 ```
 
 (`!Union` merges two maps of firings, the left winning a shared key; `StepAll` folds a map of changes into the items in key order. Both are plain library functions.) `$items` is defined from `!changes`, which comes from `!rows`, which is the consolidation of `for $items`. The row's result is `Delete on !delete`, and `!delete` is a `!Switch` inside `@Button`, which reads before. A row born at n fires nothing at n. The cycle is legal, and would be a compile error with `@ Delete on !started` as the row's result, which is right: that program adds a row and immediately deletes it, in the same occurrence, in which the deletion rebuilds the `for`, which builds nothing, which changes `$items` again. For a `for` whose blocks return plain values or dynamics, the consolidated `$(K ==> A)` changes at n whenever a key appears at n, so the edge from the collection to the consolidation is always prompt and a hold fed from it that feeds the collection is always a cycle.
 
-The check can only see what is in front of it. The todo list is legal because the row's body is written in the same block as the hold it feeds; the compiler reads `@ Delete on !delete`, finds a switch, and knows the row is silent at birth. Write the same list with the row passed in, `for $items: @Row _` where `@Row` is a parameter of the enclosing widget function, and the body is not visible, so the compiler assumes the worst: a row might fire at birth, the edge from `$items` to `!rows` is taken as prompt, and `$items <- {} <= StepAll $items, !changes` is rejected as a cycle even if every `@Row` ever passed is silent. The elaborator records "can fire at birth" on every `for` node, from the body when it can see one and conservatively when it cannot, and the typed AST prints the flag; the Haskell implementation reads it to decide whether the consolidation needs Reflex's `coincidence` over the membership change, which is the one place that combinator is permitted. A program that wants a parameterised row and the closed loop breaks the loop with a delayed edge the compiler can see: the rows feed a hold, and the collection is stepped from that hold through a tag at some other event, so the cycle passes through a read of before-state wherever the rows came from.
+The check can only see what is in front of it. The todo list is legal because the row's body is written in the same block as the hold it feeds; the compiler reads `@ Delete on !delete`, finds a switch, and knows the row is silent at birth. Write the same list with the row passed in, `for $items: @Row _` where `@Row` is a parameter of the enclosing widget function, and the body is not visible, so the compiler assumes the worst: a row might fire at birth, the edge from `$items` to `!rows` is taken as prompt, and `$items <- {} then StepAll $items, !changes` is rejected as a cycle even if every `@Row` ever passed is silent. The elaborator records "can fire at birth" on every `for` node, from the body when it can see one and conservatively when it cannot, and the typed AST prints the flag; the Haskell implementation reads it to decide whether the consolidation needs Reflex's `coincidence` over the membership change, which is the one place that combinator is permitted. A program that wants a parameterised row and the closed loop breaks the loop with a delayed edge the compiler can see: the rows feed a hold, and the collection is stepped from that hold through a tag at some other event, so the cycle passes through a read of before-state wherever the rows came from.
 
 **Across widget functions and through switching**, not every cycle can be found statically. `!out <- @Echo !out` is a cycle if `@Echo`'s result depends promptly on its argument and not if `@Echo` holds the argument first, and the block that binds it does not see `@Echo`'s body. A `dyn` may choose, at runtime, between a block whose result is prompt in some input and one whose result is not, and the cycle exists only when the first is chosen. An implementation must detect these when they occur and treat them as an error: it must not deadlock, must not loop, and must not fire a node twice. In a height-ordered runtime the moment is precise: a node that tries to schedule at or below the current height is a node that was already supposed to have fired, and that is the cycle, reported with the chain of nodes that led to it. What happens next, abort of the occurrence or quarantine of the subtree, is the error chapter's subject; what this chapter promises is that the occurrence in which a cycle is found commits nothing.
 
@@ -375,7 +375,7 @@ A note on what is *not* a cycle, because the form fools people. An interceptor's
 
 Everything else is a consequence. The rule binds the runtime and nothing else: a program cannot break it and a World cannot see it being broken except through the transcript. The Haskell implementation gets it from Spider, whose subscriptions read the current frame's value on connection; the Rust runtime must build the catch-up cache sketched at the end of this section. The scripts that check it are `nested_dyn_builds_once` and `hold_resets_and_catches_up` in "Laws as tests", and the differential test between the two implementations catches the half the scripts cannot see, the doubled request firing.
 
-**It sees every firing of n.** An event that fired at n, at any point in the order, is seen as having fired by anything the new widget subscribes to it. A lifted operation over such an event, inside the new widget, fires at n. A hold built at n whose source fired at n adopts that value at commit. If the new block contains `$seen <- Nil <= Some !input` and `!input` fired at n before the block was built, `$seen` is `Some` after n. This holds at any depth: an event three combinators down from an input that fired is seen as fired, exactly as it would be by a subscriber that had been there all along.
+**It sees every firing of n.** An event that fired at n, at any point in the order, is seen as having fired by anything the new widget subscribes to it. A lifted operation over such an event, inside the new widget, fires at n. A hold built at n whose source fired at n adopts that value at commit. If the new block contains `$seen <- Nil then Some !input` and `!input` fired at n before the block was built, `$seen` is `Some` after n. This holds at any depth: an event three combinators down from an input that fired is seen as fired, exactly as it would be by a subscriber that had been there all along.
 
 **Its tags read before n.** A tag inside the new widget reads values before n, like every tag. The new widget is not a privileged observer of the middle of the occurrence; it is an ordinary widget that happens to have been built at a particular moment, and the moment is "before the inputs", so before-state is what it reads.
 
@@ -384,7 +384,7 @@ Everything else is a consequence. The rule binds the runtime and nothing else: a
 ```prism
 @pages:
     !next <- @Button $"Next"
-    $page <- 0 <= $page + 1 on !next
+    $page <- 0 then $page + 1 on !next
     let $title = "Page {$page}"
     dyn $page:
         @Label $"body of {_}"
@@ -481,7 +481,7 @@ let Ms: fn Instant -> Int = \|i| match i:
 @merge_law:
     !a <- @Button $"A"
     !b <- @Button $"B"
-    $last <- "none" <= "a" on !a | "b" on !b | !never
+    $last <- "none" then "a" on !a | "b" on !b | !never
     @Label $last
 
 test merge_left_wins: Test @merge_law: array:
@@ -501,8 +501,8 @@ Two clicks in one occurrence are the left one. The `!never` on the right is ther
 ```prism
 @tag_law:
     !bump <- @Button $"Bump"
-    $n <- 0 <= $n + 1 on !bump
-    $seen <- -1 <= $n on !bump
+    $n <- 0 then $n + 1 on !bump
+    $seen <- -1 then $n on !bump
     @Label "n={$n} seen={$seen}"
 
 test tag_reads_before: Test @tag_law: array:
@@ -520,8 +520,8 @@ test tag_reads_before: Test @tag_law: array:
 ```prism
 @hold_law:
     !started <- @started
-    $phase <- "starting" <= "started" on !started
-    $before <- "?" <= $phase on !started
+    $phase <- "starting" then "started" on !started
+    $before <- "?" then $phase on !started
     @Label "{$phase} / {$before}"
 
 test hold_in_build_occurrence: Test @hold_law: array:
@@ -535,12 +535,12 @@ One step, two facts. `$phase` adopted the firing of `!started` in occurrence zer
 ```prism
 @diamond:
     !set <- @Button $"Set"
-    $a <- 0 <= 5 on !set
+    $a <- 0 then 5 on !set
     let $b = $a + 1
     let $c = $a * 2
     let $d = $b + $c
     let !d_changed = !Updated $d
-    $fires <- 0 <= $fires + 1 on !d_changed
+    $fires <- 0 then $fires + 1 on !d_changed
     @Label "d={$d} fires={$fires}"
 
 test diamond_changes_once: Test @diamond: array:
@@ -557,9 +557,9 @@ test diamond_changes_once: Test @diamond: array:
 @equal_readings:
     !bump <- @Button $"Bump"
     !other <- @Button $"Other"
-    $n <- 0 <= $n + 1 on !bump
-    $x <- -1 <= $n on (!bump | !other)
-    $y <- -1 <= $n on (!other | !bump)
+    $n <- 0 then $n + 1 on !bump
+    $x <- -1 then $n on (!bump | !other)
+    $y <- -1 then $n on (!other | !bump)
     @Label "{$n} {$n}"
     @Label "{$x} {$y}"
 
@@ -586,7 +586,7 @@ The cross-World half of the law needs a state element, and the script needs a `S
     @Stamp "a"
     @Stamp "b"
     $clock <- @Element Clock
-    $stamped <- -1 <= Ms $clock on !bump
+    $stamped <- -1 then Ms $clock on !bump
     @Label "stamped={$stamped}"
 
 test clock_readings_agree: Test @clock_readings: array:
@@ -611,13 +611,13 @@ Three slots in three widgets that have never met bind `Clock`, and `Clock` has n
 ```prism
 @switch_law:
     !rebuild <- @Button $"Rebuild"
-    $gen <- 0 <= $gen + 1 on !rebuild
+    $gen <- 0 then $gen + 1 on !rebuild
     !!born <- dyn $gen:
         !started <- @started
         @ _ on !started
-    $heard <- -1 <= !Switch !!born
+    $heard <- -1 then !Switch !!born
     let !built = !Updated $gen
-    $built <- -1 <= !built
+    $built <- -1 then !built
     @Label "heard={$heard} built={$built}"
 
 test switch_swallows_birth: Test @switch_law: array:
@@ -631,11 +631,11 @@ Each generation fires `@started` in the occurrence it is born, and `!Switch` nev
 ```prism
 @switch_follows:
     !rebuild <- @Button $"Rebuild"
-    $gen <- 0 <= $gen + 1 on !rebuild
+    $gen <- 0 then $gen + 1 on !rebuild
     !!clicks <- dyn $gen:
         !c <- @Element Ui.Button(label="gen {_}")
         @ _ on !c
-    $clicked <- -1 <= !Switch !!clicks
+    $clicked <- -1 then !Switch !!clicks
     @Label "clicked={$clicked}"
 
 test switch_follows_generations: Test @switch_follows: array:
@@ -660,12 +660,12 @@ The `Together` is the case that matters: a click on generation 1 in the occurren
 @join_law:
     !swap <- @Button $"Swap"
     !bump <- @Button $"Bump"
-    $a <- 0 <= $a + 1 on !bump
-    $b <- 100 <= $b + 1 on !bump
-    $use_b <- False <= not $use_b on !swap
+    $a <- 0 then $a + 1 on !bump
+    $b <- 100 then $b + 1 on !bump
+    $use_b <- False then not $use_b on !swap
     !$chosen <- dyn $use_b:
         @ (if _: $b else: $a)
-    $$current <- $ $a <= !$chosen
+    $$current <- $ $a then !$chosen
     @Label "{$Join $$current}"
 
 test join_is_prompt: Test @join_law: array:
@@ -688,12 +688,12 @@ The third case is the outer switching to an inner that does not change in that o
 @join_quiet_inner:
     !swap <- @Button $"Swap"
     !bump_a <- @Button $"Bump A"
-    $a <- 0 <= $a + 1 on !bump_a
-    $b <- 100 <= !never
-    $use_b <- False <= not $use_b on !swap
+    $a <- 0 then $a + 1 on !bump_a
+    $b <- 100 then !never
+    $use_b <- False then not $use_b on !swap
     !$chosen <- dyn $use_b:
         @ (if _: $b else: $a)
-    $$current <- $ $a <= !$chosen
+    $$current <- $ $a then !$chosen
     @Label "{$Join $$current}"
 
 test join_follows_quiet_inner: Test @join_quiet_inner: array:
@@ -714,7 +714,7 @@ test join_follows_quiet_inner: Test @join_quiet_inner: array:
 ```prism
 @nested_law:
     !next <- @Button $"Next"
-    $page <- 0 <= $page + 1 on !next
+    $page <- 0 then $page + 1 on !next
     let $title = "Page {$page}"
     dyn $page:
         dyn $title:
@@ -740,9 +740,9 @@ The inner `dyn` is built partway through the click's occurrence, after `$title` 
 @reset_law:
     !rebuild <- @Button $"Rebuild"
     !bump <- @Button $"Bump"
-    $gen <- 0 <= $gen + 1 on !rebuild
+    $gen <- 0 then $gen + 1 on !rebuild
     dyn $gen:
-        $n <- 0 <= $n + 1 on !bump
+        $n <- 0 then $n + 1 on !bump
         @Label "n={$n}"
     @ unit
 
@@ -766,7 +766,7 @@ test hold_resets_and_catches_up: Test @reset_law: array:
 @creation_law:
     !started <- @started
     !back <- @Element Echo(requests=("hi" on !started))
-    $got <- "nothing" <= !back
+    $got <- "nothing" then !back
     @Label $got
 
 test no_answer_in_the_request_occurrence: Test @creation_law: array:
@@ -846,22 +846,22 @@ The laws are the whole language, and after a few programs they stop being laws a
 All state has the form of the counter's line:
 
 ```prism
-$count <- 0 <= $count + !delta
+$count <- 0 then $count + !delta
 ```
 
 A fold is a hold whose change event reads the hold through a tag. The initial value on the left, the step on the right, the dynamic on both sides. Anything a `reduce` can express is this line with a different function:
 
 ```prism
-$total <- 0 <= $total + !amount
-$history <- [[]] <= Append $history, !line
-$state <- Idle <= Step $state, !action
-$best <- Nil <= Better $best, !score            # Better: fn ?Int, Int -> ?Int
+$total <- 0 then $total + !amount
+$history <- [[]] then Append $history, !line
+$state <- Idle then Step $state, !action
+$best <- Nil then Better $best, !score            # Better: fn ?Int, Int -> ?Int
 ```
 
 When more than one event moves the state, the merge picks who wins when they coincide, and the hold is still one line:
 
 ```prism
-$count <- 0 <= 0 on !reset | $count + !delta
+$count <- 0 then 0 on !reset | $count + !delta
 ```
 
 A reset in the same occurrence as an increment is a reset, and the next person to read the line knows it. When two events should *both* apply, the merge is wrong and the right tool is a map through `for`'s consolidation or a library `!Union`, folded in key order, as in the todo list; the hold is still one line, and the step function says what it means to apply several changes at once.
@@ -869,7 +869,7 @@ A reset in the same occurrence as an increment is a reset, and the next person t
 When the step needs another dynamic, it goes in the operation and is read through a tag:
 
 ```prism
-$watch <- (Watch 0, Stopped) <= Step $watch, $clock, !action
+$watch <- (Watch 0, Stopped) then Step $watch, $clock, !action
 ```
 
 The clock is the clock before the occurrence. If the same occurrence pushes a new clock, the stamp is still the old one; that is the tag law, and a program that wants the newer time cannot have it, because at an event there is one version.
@@ -891,15 +891,15 @@ The third line is the one everyone first writes as `(($clock, !key))`, which is 
 To drop firings on a condition, lift a function that returns an optional and filter:
 
 ```prism
-let When = \|!e, $open| !Filter ((\|x, g| if g: Some x else: Nil) !e, $open)
-let !accepted = When !submitted, not $busy
+let !When = \|!e, $open| !Filter ((\|x, g| if g: Some x else: Nil) !e, $open)
+let !accepted = !When !submitted, not $busy
 ```
 
-`When` is a plain function that happens to take an event and a dynamic, so its name has no sigil; the sigil goes on what it returns, and `!accepted` is an event because `!Filter` returns one.
+`!When` takes an event and a dynamic and returns an event, so its name has the `!`: a function's sigil is a promise about its result, and this one's result is the `!Filter`. It is not a plain function lifted over its arguments; a plain function in that position would be lifted over `!e` and would build an `!Filter` inside every firing, which is an event of events and not `!accepted`.
 
 `$busy` is read through a tag, so a submit in the same occurrence as the response that clears `$busy` is dropped: the program was busy before that occurrence, and the submit sees before. If that is the wrong answer for your program, the fix is visible: fold `$busy` from a merge in which the clearing wins, and gate the *next* submit, or make the gate a dynamic the response sets promptly and read it one occurrence later. Either way the choice is in the text.
 
-A gate that depends on the event's own value is just a function: `!Filter (\|n| if n lt 10: Some n else: Nil) !n` keeps the small ones. A gate on a dynamic and the value together is one lifted function with both as arguments. There is no separate `when`, `gate` or `filterWhen` to learn; there is lifting, `on`, and `!Filter`.
+A gate that depends on the event's own value is just a function: `!Filter (\|n| if n < 10: Some n else: Nil) !n` keeps the small ones. A gate on a dynamic and the value together is one lifted function with both as arguments. There is no separate `when`, `gate` or `filterWhen` to learn; there is lifting, `on`, and `!Filter`.
 
 ### Debouncing with a Time element
 
@@ -916,9 +916,9 @@ tag Time.After of Element:
     responds: Nat
 
 @Debounce: fn Int, !a -> @!a = \|delay, !in| @widget:
-    $gen <- 0 <= $gen + 1 on !in
+    $gen <- 0 then $gen + 1 on !in
     !back <- @Element Time.After(delay=delay, requests=($gen + 1 on !in))
-    $latest <- Nil <= Some !in
+    $latest <- Nil then Some !in
     let Settle = \|token, gen, latest| if token == gen: latest else: Nil
     @ !Filter (Settle !back, $gen, $latest)
 ```
@@ -932,9 +932,9 @@ Occurrence by occurrence, with a 300 ms delay: a keystroke at occurrence 4 reque
 ```prism
 @debounced_search:
     !typed <- @Element Ui.TextInput(name="query")        # the text as it stands after each edit
-    $query <- "" <= !typed
+    $query <- "" then !typed
     !settled <- @Debounce 300, !typed
-    $shown <- "" <= !settled
+    $shown <- "" then !settled
     @Label "searching: {$shown}"
 
 test debounce_waits_for_the_last: Test @debounced_search: array:
@@ -964,7 +964,7 @@ let Bump: fn Text ==> Nat, Text -> Text ==> Nat = \|m, w| match m[w]:
 
 @word_counts:
     !word <- @Element Words
-    $counts <- {} <= Bump $counts, !word
+    $counts <- {} then Bump $counts, !word
     for $counts:
         @Label "{key}: {$_}"
     @ unit
@@ -974,14 +974,14 @@ The hold is the fold-with-hold habit over a map: one line, one event, one step f
 
 This program uses a map because the key is an identity. An array of pairs would make every row's position its identity, and a new word sorting into the middle would rebuild every row after it. Keys are ordered, so the labels appear in word order, which is what a map is for.
 
-Two refinements that are both one line. Several words in one occurrence, if the element delivered chunks: make the response a `[Text]` and the step a fold over it, `$counts <- {} <= Fold !words, $counts, Bump`, where `Fold` is the plain function and `$counts` is read once, before. And a per-row piece of state that is not in the model, a highlight toggled by clicking the row: a hold inside the `for` block, owned by the key, which survives every other key's arrival and departure and dies with its own:
+Two refinements that are both one line. Several words in one occurrence, if the element delivered chunks: make the response a `[Text]` and the step a fold over it, `$counts <- {} then Fold !words, $counts, Bump`, where `Fold` is the plain function and `$counts` is read once, before. And a per-row piece of state that is not in the model, a highlight toggled by clicking the row: a hold inside the `for` block, owned by the key, which survives every other key's arrival and departure and dies with its own:
 
 ```prism
 let Mark: fn Bool -> Text = \|m| if m: " *" else: ""
 
     for $counts:
         !click <- @Button $"{key}"
-        $marked <- False <= not $marked on !click
+        $marked <- False then not $marked on !click
         @Label "{key}: {$_}{Mark $marked}"
 ```
 

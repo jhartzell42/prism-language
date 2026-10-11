@@ -60,7 +60,7 @@ test counter: Test @counter: array:
     Expect Ui.Label(text="Count: 1")
 ```
 
-`test name:` opens a block whose one statement is `Test widget: array:` followed by the steps, one per line. The widget is any widget expression; most tests name a top-level widget, and an interceptor test wraps one: `Test (@Sandbox "/jail", @probe): array:`. The steps are the `array:` block's elements, and that is not an accident of syntax: a script is a plain array of step values, parsed by the frontend as part of a Prism file, and the harness is a function from a widget and an array of steps to a transcript and a verdict. The `test` form exists so that the frontend can check the patterns against the tag declarations in scope, which it could not do for a string.
+`test name:` opens a block whose one statement is `Test widget: array:` followed by the steps, one per line. The widget is any widget expression; most tests name a top-level widget, and an interceptor test wraps one: `Test (@Sandbox "/jail", @probe): array:`. `test` is a form of its own and not a function call, for two reasons. The steps hold patterns, `Ui.Button(label="OK", ..)` and `ignore`, which are not values, so the frontend checks them against the tag declarations in scope the way it checks a `match`, and a `Send` of a `Tick` to a button is a compile error in the test file rather than a runtime surprise. And the build system treats the two differently: `prism test` collects every `test` form and `prism build` strips them, which is the same reason Rust marks tests with an attribute rather than a naming convention. The `Test widget: array:` spelling inside the form is there so that a test reads like the call it is morally equivalent to, a function from a widget and a list of steps to a transcript and a verdict.
 
 ### Patterns
 
@@ -175,13 +175,20 @@ Before any turn, `Quiet` holds and `Fired` fails: turn 0 is the build, and the r
 **`Requested pattern, value`.** Some slot matching the pattern fired its request during the last turn with a value matching the value pattern. `ignore` as the value matches any firing. A slot whose tag has no `requests` field fails the step with a message saying so, rather than quietly never matching. The counterpart is **`Unrequested pattern`**: no slot matching the pattern fired its request during the last turn. The negative form is in the language because the most important law in the suite, that creating an element requests nothing, cannot be stated without it.
 
 ```prism
-test started_requests_in_turn_zero: Test @viewer: array:
+@viewer_with_refresh:
+    !started <- @started
+    !refresh <- @Button $"Refresh"
+    !motd <- @Element Fs.File(path="/etc/motd", requests=(Read on !started))
+    $motd <- Nil then Some !motd
+    @Label (ShowResponse $motd)
+
+test started_requests_in_turn_zero: Test @viewer_with_refresh: array:
     Requested Fs.File(path="/etc/motd"), Read
     Send Ui.Button(label="Refresh"), click
     Unrequested Fs.File(..)
 ```
 
-(Chapter 2's viewer has no Refresh button; the script is illustrating the step and a version with the button is in the law tests.)
+The button is wired to nothing on purpose. The read is requested on `!started` and on nothing else, so the test is that a click which no request listens to requests nothing, which `Unrequested` is the only way to say.
 
 **`Errors pattern`.** The last turn ended in a runtime error matching the pattern. Errors are `Error` values with a `kind`, so the patterns are record patterns on the kind and the fields the test cares about: `Error(kind=UnknownPath, ..)`, `Error(kind=DeferBackwards, ..)`, `Error(kind=Cycle, ..)`, `Error(kind=UnsuppliedState, element=Clock, ..)`, `Error(kind=Overflow, ..)`. When an occurrence aborts, its holds do not commit, its new nodes are dropped, the element list is what it was before the occurrence, and the turn ends there; a check after an `Errors` step sees the list as it stood before the failed turn. A turn that ends in an error with no `Errors` step following fails the script, so a test cannot pass by accident through a crash. The tags and fields of `Error` are tentative in the way the whole error story is: if the unit of failure becomes a quarantined subtree rather than the occurrence, `Errors` will still match the error and a later `Expect Error(..)` will see the quarantine element in the list, and nothing else in the script language changes.
 
@@ -313,13 +320,13 @@ tag Fs.Contents of Element:
 @left_wins:
     !inc <- @Button $"Inc"
     !dec <- @Button $"Dec"
-    $n <- 0 <= $n + (-1 on !dec | +1 on !inc)
+    $n <- 0 then $n + (-1 on !dec | +1 on !inc)
     @Label "n={$n}"
 
 @right_wins:
     !inc <- @Button $"Inc"
     !dec <- @Button $"Dec"
-    $n <- 0 <= $n + (+1 on !inc | -1 on !dec)
+    $n <- 0 then $n + (+1 on !inc | -1 on !dec)
     @Label "n={$n}"
 
 test leftmost_takes_the_left: Test @left_wins: array:
@@ -342,8 +349,8 @@ Two programs that differ in the order of two operands give two answers, and the 
 ```prism
 @never_identity:
     !b <- @Button $"Go"
-    $left <- 0 <= $left + 1 on (!never | !b)
-    $right <- 0 <= $right + 1 on (!b | !never)
+    $left <- 0 then $left + 1 on (!never | !b)
+    $right <- 0 then $right + 1 on (!b | !never)
     @Label "{$left} {$right}"
 
 test never_is_the_identity: Test @never_identity: array:
@@ -373,8 +380,8 @@ The `Push` is a turn with no click in it, which is the only way a script gets a 
 ```prism
 @tag_reads_before:
     !b <- @Button $"Go"
-    $n <- 0 <= $n + 1 on !b
-    $seen <- 0 <= $n on !b
+    $n <- 0 then $n + 1 on !b
+    $seen <- 0 then $n on !b
     @Label "n={$n} seen={$seen}"
 
 test a_tag_reads_the_value_before: Test @tag_reads_before: array:
@@ -393,7 +400,7 @@ test a_tag_reads_the_value_before: Test @tag_reads_before: array:
 ```prism
 @derived_prompt:
     !b <- @Button $"Go"
-    $n <- 0 <= $n + 1 on !b
+    $n <- 0 then $n + 1 on !b
     let $a = $n + 1
     let $b = $a * 2
     @Label "{$a} {$b}"
@@ -409,11 +416,11 @@ test derived_dynamics_are_prompt: Test @derived_prompt: array:
 ```prism
 @diamond:
     !b <- @Button $"Go"
-    $n <- 0 <= $n + 1 on !b
+    $n <- 0 then $n + 1 on !b
     let $sum = ($n + 1) + ($n * 2)
     !built <- dyn $sum:
         @ unit
-    $k <- 0 <= $k + 1 on !built
+    $k <- 0 then $k + 1 on !built
     @Label "builds={$k}"
 
 test a_diamond_changes_once: Test @diamond: array:
@@ -424,13 +431,13 @@ test a_diamond_changes_once: Test @diamond: array:
 
 `$sum` depends on `$n` by two routes. A `dyn` over it rebuilds once per change event, and the `dyn`'s own event counts the builds: one for the first build, one per click. An implementation with a glitch, where `$sum` changed once per route, would show `builds=3` after one click. This is the only way a script can count a dynamic's changes, and it is deliberately indirect: there is no step that observes a change event, because no World can.
 
-**A hold's initial value, and adoption in the build occurrence.** `$x <- v <= !e` has the value `v` before the first firing of `e`; if `e` fires in the occurrence the widget is built, `$x` changes to it then.
+**A hold's initial value, and adoption in the build occurrence.** `$x <- v then !e` has the value `v` before the first firing of `e`; if `e` fires in the occurrence the widget is built, `$x` changes to it then.
 
 ```prism
 @hold_adopts:
     !started <- @started
-    $x <- 0 <= 1 on !started
-    $y <- 0 <= $x on !started
+    $x <- 0 then 1 on !started
+    $y <- 0 then $x on !started
     @Label "x={$x} y={$y}"
 
 test a_hold_adopts_a_build_occurrence_firing: Test @hold_adopts: array:
@@ -444,10 +451,10 @@ test a_hold_adopts_a_build_occurrence_firing: Test @hold_adopts: array:
 ```prism
 @same_value:
     !b <- @Button $"Same"
-    $v <- 7 <= 7 on !b
+    $v <- 7 then 7 on !b
     !built <- dyn $v:
         @ unit
-    $k <- 0 <= $k + 1 on !built
+    $k <- 0 then $k + 1 on !built
     @Label "builds={$k}"
 
 test an_equal_value_is_still_a_change: Test @same_value: array:
@@ -464,9 +471,9 @@ This pins a sentence that is easy to get the wrong way round when an implementat
 ```prism
 @sees_all_of_n:
     !add <- @Button $"Add"
-    $keys <- {} <= (Insert $keys, Size $keys, unit) on !add
+    $keys <- {} then (Insert $keys, Size $keys, unit) on !add
     for $keys:
-        $hits <- 0 <= $hits + 1 on !add
+        $hits <- 0 then $hits + 1 on !add
         @Label "{$key}: {$hits}"
 
 test a_new_block_sees_the_event_that_made_it: Test @sees_all_of_n: array:
@@ -484,7 +491,7 @@ The click that inserts key 0 is the click that key 0's block counts: the block b
 ```prism
 @nested_dyn:
     !b <- @Button $"Go"
-    $n <- 0 <= $n + 1 on !b
+    $n <- 0 then $n + 1 on !b
     let $tens = $n * 10
     dyn $n:
         let outer = _
@@ -508,7 +515,7 @@ The outer `dyn` rebuilds on the click; the inner one is built inside the new blo
 ```prism
 @clicker:
     !c <- @Button $label
-    $count <- 0 <= $count + 1 on !c
+    $count <- 0 then $count + 1 on !c
     let $label = "Clicked {$count} times"
 
 test a_button_is_clicked_under_its_old_label: Test @clicker: array:
@@ -540,7 +547,7 @@ test a_pure_widget_builds_nothing: Test @pure_five: array:
 @twice:
     let @counted = @widget:
         !c <- @Button $"Hit"
-        $n <- 0 <= $n + 1 on !c
+        $n <- 0 then $n + 1 on !c
         @Label "n={$n}"
     @counted
     @counted
@@ -557,10 +564,10 @@ A `Send Ui.Button(label="Hit")` here would fail, since two slots match, and that
 ```prism
 @reset_on_rebuild:
     !flip <- @Button $"Flip"
-    $gen <- 0 <= $gen + 1 on !flip
+    $gen <- 0 then $gen + 1 on !flip
     dyn $gen:
         !hit <- @Button $"Hit"
-        $n <- 0 <= $n + 1 on !hit
+        $n <- 0 then $n + 1 on !hit
         @Label "gen {$_}: {$n}"
     @ unit
 
@@ -578,7 +585,7 @@ test a_rebuild_resets_the_holds_inside: Test @reset_on_rebuild: array:
 ```prism
 @starter:
     !started <- @started
-    $n <- 0 <= $n + 1 on !started
+    $n <- 0 then $n + 1 on !started
     @Label "started {$n}"
 
 @started_result:
@@ -602,7 +609,7 @@ The second script is the one case where `Fired` holds before any `Send`: the wid
 ```prism
 @restarter:
     !flip <- @Button $"Flip"
-    $gen <- 0 <= $gen + 1 on !flip
+    $gen <- 0 then $gen + 1 on !flip
     dyn $gen:
         !started <- @started
         @Element Fs.File(path="/f", requests=(Read on !started))
@@ -623,10 +630,10 @@ test a_rebuild_restarts: Test @restarter: array:
 ```prism
 @dyn_values:
     !b <- @Button $"Go"
-    $n <- 0 <= $n + 1 on !b
+    $n <- 0 then $n + 1 on !b
     !vals <- dyn $n:
         @ _ * 100
-    $last <- -1 <= !vals
+    $last <- -1 then !vals
     @Label "last={$last}"
 
 test dyn_fires_with_each_build_result: Test @dyn_values: array:
@@ -640,11 +647,11 @@ test dyn_fires_with_each_build_result: Test @dyn_values: array:
 ```prism
 @swallowed:
     !flip <- @Button $"Flip"
-    $gen <- 0 <= $gen + 1 on !flip
+    $gen <- 0 then $gen + 1 on !flip
     !!starts <- dyn $gen:
         !started <- @started
         @ !started
-    $heard <- 0 <= $heard + 1 on !Switch !!starts
+    $heard <- 0 then $heard + 1 on !Switch !!starts
     @Label "heard={$heard}"
 
 test a_switch_does_not_hear_the_birth: Test @swallowed: array:
@@ -660,14 +667,14 @@ Each generation fires `!started` in the occurrence it is born, and `!Switch` ado
 ```prism
 @toggle:
     !flip <- @Button $"Flip"
-    $on <- False <= not $on on !flip
+    $on <- False then not $on on !flip
     !!pressed <- dyn $on:
         if _:
             @Label $"On"
             @ !never
         else:
             @Button $"Press me"
-    $presses <- 0 <= $presses + 1 on !Switch !!pressed
+    $presses <- 0 then $presses + 1 on !Switch !!pressed
     @Label "presses={$presses}"
 
 test a_rebuilt_slot_is_heard_from_the_next_occurrence: Test @toggle: array:
@@ -685,12 +692,12 @@ test a_rebuilt_slot_is_heard_from_the_next_occurrence: Test @toggle: array:
 ```prism
 @join_prompt:
     !flip <- @Button $"Flip"
-    $gen <- 0 <= $gen + 1 on !flip
+    $gen <- 0 then $gen + 1 on !flip
     !$inner <- dyn $gen:
         !hit <- @Button $"Hit"
-        $n <- _ * 100 <= $n + 1 on !hit
+        $n <- _ * 100 then $n + 1 on !hit
         @ $n
-    $$cur <- $ 0 <= !$inner
+    $$cur <- $ 0 then !$inner
     @Label "cur={$Join $$cur}"
 
 test join_follows_inner_and_outer_changes: Test @join_prompt: array:
@@ -713,7 +720,7 @@ The hit changes the inner dynamic; the join changes in that occurrence. The flip
     !hits <- for $m:
         !h <- @Button ($ key)
         @ key on !h
-    $last <- 0 <= Size !hits
+    $last <- 0 then Size !hits
     @Label "fired {$last}"
 
 test for_consolidates_simultaneous_firings: Test @for_events: array:
@@ -732,7 +739,7 @@ test for_consolidates_simultaneous_firings: Test @for_events: array:
     let $m = $ {"a": unit, "b": unit}
     $counts <- for $m:
         !h <- @Button ($ key)
-        $n <- 0 <= $n + 1 on !h
+        $n <- 0 then $n + 1 on !h
         @ $n
     $caps <- for $m:
         @ Upper key
@@ -751,13 +758,13 @@ test for_consolidates_dynamics_and_values: Test @for_dynamics: array:
 ```prism
 @Tally: fn $Text -> @unit = \@widget:
     !hit <- @Button $_
-    $n <- 0 <= $n + 1 on !hit
+    $n <- 0 then $n + 1 on !hit
     @Label "{$_}: {$n}"
 
 @tallies:
     !add <- @Button $"Add c"
     !drop <- @Button $"Drop a"
-    $names <- {"a": "a", "b": "b"} <= ((Insert $names, "c", "c") on !add) | ((Remove $names, "a") on !drop)
+    $names <- {"a": "a", "b": "b"} then ((Insert $names, "c", "c") on !add) | ((Remove $names, "a") on !drop)
     for $names:
         @Tally $_
 
@@ -780,11 +787,11 @@ test state_survives_a_neighbours_removal: Test @tallies: array:
 ```prism
 @new_key_seen:
     !add <- @Button $"Add"
-    $keys <- {} <= (Insert $keys, Size $keys, unit) on !add
+    $keys <- {} then (Insert $keys, Size $keys, unit) on !add
     !starts <- for $keys:
         !started <- @started
         @ key on !started
-    $seen <- 0 <= $seen + Size !starts
+    $seen <- 0 then $seen + Size !starts
     @Label "seen={$seen}"
 
 test a_parent_sees_a_new_key_at_once: Test @new_key_seen: array:
@@ -802,10 +809,10 @@ test a_parent_sees_a_new_key_at_once: Test @new_key_seen: array:
 ```prism
 @indexed:
     !front <- @Button $"Push front"
-    $xs <- [["a", "b"]] <= (Prepend $xs, "z") on !front
+    $xs <- [["a", "b"]] then (Prepend $xs, "z") on !front
     for $xs:
         !h <- @Button $_
-        $n <- 0 <= $n + 1 on !h
+        $n <- 0 then $n + 1 on !h
         @Label "{$key}: {$n}"
 
 test an_array_block_keeps_state_by_position: Test @indexed: array:
@@ -827,7 +834,7 @@ After the insertion at the front, the block at index 1 holds `"a"` and still has
 @requester:
     !started <- @started
     !r <- @Element Fs.File(path="/f", requests=(Read on !started))
-    $got <- "none" <= "some" on !r
+    $got <- "none" then "some" on !r
     @Label "got={$got}"
 
 test a_request_is_answered_later: Test @requester: array:
@@ -892,7 +899,7 @@ test state_is_there_at_creation: Test @clock_label: array:
 ```prism
 @late_clock:
     !show <- @Button $"Show"
-    $shown <- False <= True on !show
+    $shown <- False then True on !show
     dyn $shown:
         if _:
             $t <- @Element Clock
@@ -941,7 +948,7 @@ test equal_elements_share_one_state: Test @two_clocks: array:
 @counter_with_clock:
     $t <- @Element Clock
     !inc <- @Button $"Inc"
-    $n <- 0 <= $n + 1 on !inc
+    $n <- 0 then $n + 1 on !inc
     @Label "n={$n} t={$t.value}"
 
 test forwarding_is_the_identity: Test (@Transparent (@Transparent @counter_with_clock)): array:
@@ -1021,7 +1028,7 @@ let ShowResponse: fn ?FsResponse -> Text = \|r| match r:
 @probe:
     !started <- @started
     !r <- @Element Fs.File(path="/etc/shadow", requests=(Read on !started))
-    $seen <- Nil <= Some !r
+    $seen <- Nil then Some !r
     @Label (ShowResponse $seen)
 
 test a_sandbox_denies_within_the_turn: Test (@Sandbox "/jail", @probe): array:
@@ -1053,14 +1060,14 @@ Occurrence 0 fires the request; occurrence 1 of the same turn answers it, and th
     !started <- @started
     !r1 <- @Element Defer(requests=(unit on !started))
     !r2 <- @Element Defer(requests=(unit on !r1))
-    $log <- [[]] <= (Append $log, "a" on !r1) | (Append $log, "b" on !r2)
+    $log <- [[]] then (Append $log, "a" on !r1) | (Append $log, "b" on !r2)
     @Label (JoinText ",", $log)
 
 @fan:
     !started <- @started
     !r1 <- @Element Defer(requests=(unit on !started))
     !r2 <- @Element Defer(requests=(unit on !started))
-    $log <- [[]] <= (Append $log, "a" on !r1) | (Append $log, "b" on !r2)
+    $log <- [[]] then (Append $log, "a" on !r1) | (Append $log, "b" on !r2)
     @Label (JoinText ",", $log)
 
 test chained_defers_are_three_occurrences: Test @chain: array:
@@ -1172,7 +1179,7 @@ let SetValue: fn Poke -> ?Nat = \|p| match p:
 
 @echo:
     !in <- @Element Test.Probe(name="echo", value=$v)
-    $v <- 0 <= !Filter (SetValue !in)
+    $v <- 0 then !Filter (SetValue !in)
 
 test element_roundtrip: Test @echo: array:
     ExpectTop Test.Probe(name="echo", value=0)
@@ -1191,7 +1198,7 @@ test element_roundtrip: Test @echo: array:
     !increment <- @Button $"Increment"
     !decrement <- @Button $"Decrement"
     let !delta = -1 on !decrement | +1 on !increment
-    $count <- 0 <= $count + !delta
+    $count <- 0 then $count + !delta
     @Label "Count: {$count}"
 
 test counter: Test @counter: array:
@@ -1221,7 +1228,7 @@ tag Test.Accumulator of Element:
 
 @accumulator:
     !inc <- @Element Test.Accumulator(total=$total)
-    $total <- 0 <= $total + !inc.value
+    $total <- 0 then $total + !inc.value
     @ $total
 
 test accumulator: Test @accumulator: array:
@@ -1242,7 +1249,7 @@ test accumulator: Test @accumulator: array:
 ```prism
 @counted:
     !increment <- @Button $"Increment"
-    $count <- 0 <= $count + 1 on !increment
+    $count <- 0 then $count + 1 on !increment
     @Label "Count: {$count}"
     @ $count
 
@@ -1305,8 +1312,8 @@ tag Net.Listener of Element:
         !b <- @Button $"OK"
         !l <- @Element Net.Listener(port=8080)
         @ ((!b, !l))
-    $oks <- 0 <= $oks + 1 on !ok
-    $conns <- 0 <= $conns + 1 on !conn
+    $oks <- 0 then $oks + 1 on !ok
+    $conns <- 0 then $conns + 1 on !conn
     @Label "ok={$oks} conns={$conns}"
 
 test vbox_wraps_gui: Test @panel: array:
@@ -1417,7 +1424,7 @@ test catch_all: Test @describe_other: array:
 
 @nested:
     !in <- @Element Test.Probe(name="outer", value=$n)
-    $n <- 0 <= 1 on !in
+    $n <- 0 then 1 on !in
     @Element Test.Box(value=$n, inner=(Inner "i"))
     @ unit
 
@@ -1435,9 +1442,9 @@ There is no test here for a field of the wrong type falling through to the next 
 @pair:
     !a <- @Button $"A"
     !b <- @Button $"B"
-    $as <- 0 <= $as + 1 on !a
-    $bs <- 0 <= $bs + 1 on !b
-    $last <- "" <= "A" on !a | "B" on !b
+    $as <- 0 then $as + 1 on !a
+    $bs <- 0 then $bs + 1 on !b
+    $last <- "" then "A" on !a | "B" on !b
     @Label "{$as} {$bs} {$last}"
 
 test together_delivers_all: Test @pair: array:
@@ -1467,7 +1474,7 @@ Nine programs for the sentences the first twelve do not reach. Each is a program
     !started <- @started
     !refresh <- @Button $"Refresh"
     !resp <- @Element Fs.File(path="/etc/motd", requests=(Read on (!started | !refresh)))
-    $shown <- Nil <= Some !resp
+    $shown <- Nil then Some !resp
     @Label (ShowResponse $shown)
 
 test started_requests_and_waits: Test @motd: array:
@@ -1497,14 +1504,14 @@ The last script looks trivial and is the creation rule in its everyday form. The
 ```prism
 @reloader:
     !flip <- @Button $"Flip"
-    $gen <- 0 <= $gen + 1 on !flip
+    $gen <- 0 then $gen + 1 on !flip
     !!births <- dyn $gen:
         !started <- @started
         !resp <- @Element Fs.File(path="/data", requests=(Read on !started))
-        $got <- "none" <= "some" on !resp
+        $got <- "none" then "some" on !resp
         @Label "gen {$_}: {$got}"
         @ !started
-    $heard <- 0 <= $heard + 1 on !Switch !!births
+    $heard <- 0 then $heard + 1 on !Switch !!births
     @Label "heard={$heard}"
 
 test birth_is_swallowed_but_the_request_is_not: Test @reloader: array:
@@ -1531,14 +1538,14 @@ type Change = choice:
 
 @registry_count:
     !add <- @Button $"Add"
-    $next <- 0 <= $next + 1 on !add
-    $items <- {} <= (Insert $items, $next, False) on !add
+    $next <- 0 then $next + 1 on !add
+    $items <- {} then (Insert $items, $next, False) on !add
     !events <- for $items:
         !started <- @started
         !toggle <- @Button "Toggle {$key}"
         @ Opened on !started | Toggled on !toggle
-    $opened <- 0 <= $opened + Size (Filter !events, \_ == Opened)
-    $toggled <- 0 <= $toggled + Size (Filter !events, \_ == Toggled)
+    $opened <- 0 then $opened + Size (Filter !events, \_ == Opened)
+    $toggled <- 0 then $toggled + Size (Filter !events, \_ == Toggled)
     @Label "opened={$opened} toggled={$toggled}"
 
 test a_new_key_reports_in_its_birth_occurrence: Test @registry_count: array:
@@ -1563,7 +1570,7 @@ let Show: fn Contents -> Text = \|c| match c:
 
 @watcher:
     !open <- @Button $"Open"
-    $open <- False <= True on !open
+    $open <- False then True on !open
     dyn $open:
         if _:
             $c <- @Element Fs.Contents(path="/cfg")
@@ -1607,7 +1614,7 @@ The second script is the negative space: the build needs no `State` because no `
 ```prism
 @gauges:
     !more <- @Button $"More"
-    $n <- 1 <= $n + 1 on !more
+    $n <- 1 then $n + 1 on !more
     let $keys = Range $n
     $readings <- for $keys:
         $t <- @Element Clock
@@ -1684,7 +1691,7 @@ test equal_readers_share_one_cache_entry: Test (@Cached @readers): array:
     !r3 <- @Element Defer(requests=(unit on !r2))
     !r4 <- @Element Defer(requests=(unit on !r3))
     !r5 <- @Element Defer(requests=(unit on !r4))
-    $steps <- 0 <= $steps + 1 on (!r1 | !r2 | !r3 | !r4 | !r5)
+    $steps <- 0 then $steps + 1 on (!r1 | !r2 | !r3 | !r4 | !r5)
     @Label "steps={$steps}"
 
 @fan5:
@@ -1694,7 +1701,7 @@ test equal_readers_share_one_cache_entry: Test (@Cached @readers): array:
     !r3 <- @Element Defer(requests=(unit on !started))
     !r4 <- @Element Defer(requests=(unit on !started))
     !r5 <- @Element Defer(requests=(unit on !started))
-    $steps <- 0 <= $steps + 1 on (!r1 | !r2 | !r3 | !r4 | !r5)
+    $steps <- 0 then $steps + 1 on (!r1 | !r2 | !r3 | !r4 | !r5)
     @Label "steps={$steps}"
 
 test a_chain_of_five_is_six_occurrences: Test @chain5: array:
@@ -1735,7 +1742,7 @@ A corpus entry is a source file and a token file. Tokens are printed one per lin
 
 ```prism
 @w:
-    $count <- 0 <= $count
+    $count <- 0 then $count
         + !delta
 ```
 
@@ -1855,12 +1862,12 @@ Both are the free sigil: a sigil is attached only when the next character is a n
 
 ```prism
 let f = \match _:
-    n if n gt 3: "big"
+    n if n > 3: "big"
     ignore: "small"
 ```
 
 ```
-kw(let) ident(f) eq lambda kw(match) ident(_) colon <open> ident(n) kw(if) ident(n) kw(gt) nat(3) colon <open> text("big") <close> <sep> ident(ignore) colon <open> text("small") <close> <close>
+kw(let) ident(f) eq lambda kw(match) ident(_) colon <open> ident(n) kw(if) ident(n) op(>) nat(3) colon <open> text("big") <close> <sep> ident(ignore) colon <open> text("small") <close> <close>
 ```
 
 The `if` in an arm's head is a keyword token and opens nothing; the one colon after the guard is the arm's, and its block is the rest of the line. A lexer that opened a block at `if` would have two `open`s before `"big"`. Chapter 12's grammar for arms is what reads `pattern if cond:` out of this stream.
@@ -1918,7 +1925,7 @@ One binding per line: the name with its sigil, its type, its mark (`[build]` or 
     !increment <- @Button "Increment"
     !decrement <- @Button "Decrement"
     let !delta = -1 on !decrement | +1 on !increment
-    $count <- 0 <= $count + !delta
+    $count <- 0 then $count + !delta
     @Label "Count: {$count}"
 ```
 
@@ -1999,7 +2006,7 @@ error: cycle without a delay
    |
  2 |     !!r <- dyn $x:
    |     ^^^ `!!r` depends on `$x`
- 4 |     $x <- 0 <= !Switch !!r
+ 4 |     $x <- 0 then !Switch !!r
    |     ^^ `$x` depends on `!!r`
    |
    = `dyn` is not a delay: its event fires in the occurrence of the rebuild
@@ -2017,7 +2024,7 @@ error: `+~` is `Int` addition
    = help: use `+.` or `+`
 ```
 
-There is deliberately no golden for an integer literal nothing pins: `$n <- 0 <= $n + 1 on !tick` is an `Int` counter, because an unconstrained integer-spelled literal defaults to `Int`, and a positive golden pins that.
+There is deliberately no golden for an integer literal nothing pins: `$n <- 0 then $n + 1 on !tick` is an `Int` counter, because an unconstrained integer-spelled literal defaults to `Int`, and a positive golden pins that.
 
 ```
 error: `a -1` is a call

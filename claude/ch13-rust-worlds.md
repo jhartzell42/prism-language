@@ -386,7 +386,7 @@ The bound above counts slots, and a program can make new `Defer` slots faster th
     @ !later
 
 @main:
-    $n <- 0 <= $n + 1 on !later
+    $n <- 0 then $n + 1 on !later
     !later <- @Pulse $n
     @ unit
 ```
@@ -1728,7 +1728,7 @@ The World is the tokio skeleton of the previous section with the `Sockets` compo
     ((!sock, $state)) <- @Element Net.Socket(address=(Unix "/tmp/.X11-unix/X0"), requests=!out)
 
     # The connection: a hold of the parser's state across chunks.
-    $conn <- X11.Initial <= X11.Step $conn, $auth, $slots, !sock
+    $conn <- X11.Initial then X11.Step $conn, $auth, $slots, !sock
     let !events = X11.Events $conn, !sock                  # parsed Expose, KeyPress, ButtonPress, ...
 
     # Up: the setup request first (the World queues bytes until the socket connects),
@@ -1795,7 +1795,7 @@ fn a_defer_fired_in_an_occurrence_is_answered_in_the_next_occurrence_of_the_same
         @main:
             !b <- @Element Ui.Button(label="go")
             !later <- @Element Defer(requests=(unit on !b))
-            $text <- "waiting" <= "done" on !later
+            $text <- "waiting" then "done" on !later
             @Element Ui.Label(text=$text)                 # lifts to a dyn: a fresh label slot per change
             @ unit
     "#);
@@ -1831,7 +1831,7 @@ fn a_late_result_for_a_gone_slot_is_discarded_with_a_diagnostic() {
     let (mut h, fake) = world_with(r#"
         @main:
             !b <- @Element Ui.Button(label="drop")
-            $show <- True <= False on !b
+            $show <- True then False on !b
             dyn $show:
                 match _:
                     True:
@@ -1858,11 +1858,11 @@ fn a_slot_created_in_the_push_occurrence_reads_the_previous_snapshot_and_receive
         @main:
             $t <- @Element Clock
             !b <- @Element Ui.Button(label="new")
-            $n <- 0 <= $n + 1 on !b
+            $n <- 0 then $n + 1 on !b
             dyn $n:
                 !s <- @started
                 $t2 <- @Element Clock
-                $first <- (Instant 0) <= $t2 on !s            # the tag law: the value before this occurrence
+                $first <- (Instant 0) then $t2 on !s            # the tag law: the value before this occurrence
                 @Element Ui.Label(text=$"first=$first now=$t2")
                 @ unit
             @ unit
@@ -1882,7 +1882,7 @@ fn a_request_on_a_tag_no_component_accepts_gets_unsupported_in_the_next_turn() {
         @main:
             !s <- @started
             !r <- @Element Http.Get(url="x", requests=(Go on !s))
-            $msg <- "" <= Describe !r                       # Describe: Unsupported -> "nope", else "ok"
+            $msg <- "" then Describe !r                       # Describe: Unsupported -> "nope", else "ok"
             @Element Ui.Label(text=$msg)
             @ unit
     "#);

@@ -10,9 +10,9 @@ Prism's answer is that exactly one kind of thing has a lifetime, and everything 
 
 **Widgets do IO.** All IO is elements, and an element is created by a widget with `@Element`. The slot lives as long as the node that created it and not one occurrence longer. When the node is torn down the element leaves the list, the World sees it go, and whatever the World was doing on its behalf is cancelled or discarded. A file read, a socket, a button, a timer: each is a widget, because each has a beginning and an end, and the thing you reached for in every other framework, a handle you could stash in a field and forget to close, does not exist.
 
-**Widgets own holds.** `$x <- v <= !e` is a statement in a widget block and nowhere else, because the hold's value has to belong to something that can be torn down. When a `dyn` rebuilds its block the state inside it resets; when a `for` removes a key the state of that key's block is freed. A hold outside any widget would be state that nothing owns, which is a leak by construction, and the language refuses to write one.
+**Widgets own holds.** `$x <- v then !e` is a statement in a widget block and nowhere else, because the hold's value has to belong to something that can be torn down. When a `dyn` rebuilds its block the state inside it resets; when a `for` removes a key the state of that key's block is freed. A hold outside any widget would be state that nothing owns, which is a leak by construction, and the language refuses to write one.
 
-**Widgets own their cycles.** `$count <- 0 <= $count + !delta` refers to itself. Something has to hold the placeholder that stands in for `$count` before its definition is complete and the closure that completes it, and that something is the node. A cyclic subgraph is then reachable only through its node and dies with it, rather than keeping itself alive by referring to itself, which is the one kind of leak reference counting cannot collect and the one the ownership tree makes impossible.
+**Widgets own their cycles.** `$count <- 0 then $count + !delta` refers to itself. Something has to hold the placeholder that stands in for `$count` before its definition is complete and the closure that completes it, and that something is the node. A cyclic subgraph is then reachable only through its node and dies with it, rather than keeping itself alive by referring to itself, which is the one kind of leak reference counting cannot collect and the one the ownership tree makes impossible.
 
 **Widgets own subscriptions.** Every occurrence-time binding in a block, every `$count + !delta`, is a node in the propagation graph subscribed to its inputs. The subscription is held weakly from the input's side and owned by the widget's node from the subscriber's side. When the node is torn down its graph nodes stop being reachable and the inputs stop delivering to them. There is no `unsubscribe` in the language and no `removeEventListener` to forget; there is teardown.
 
@@ -91,7 +91,7 @@ TextInput(!changed, $value) <- @TextInput "hello"
 
 `let pattern = expression` binds a value of any kind without building anything. `let !delta = -1 on !decrement | +1 on !increment` names an event; `let $label = "Clicked {$count} times"` names a derived dynamic; `let @b = @Button $"OK"` names a widget, which is a value until bound. A `let`-bound widget can be bound later any number of times, and builds that many nodes.
 
-`$x <- v <= !e` is a hold. Its value before the first firing of `!e` is `v`; its change event is `!e`; its value after any occurrence in which `!e` fired is that firing's value. In the occurrence the block is built, `$x` is `v`, and if `!e` fires in that same occurrence `$x` changes to it then, which is what makes `@started`-driven initialisation behave the way it looks. Holds are statements, not expressions, because a hold is owned, and the `<-` makes the owner visible: the node whose block this is.
+`$x <- v then !e` is a hold. Its value before the first firing of `!e` is `v`; its change event is `!e`; its value after any occurrence in which `!e` fired is that firing's value. In the occurrence the block is built, `$x` is `v`, and if `!e` fires in that same occurrence `$x` changes to it then, which is what makes `@started`-driven initialisation behave the way it looks. Holds are statements, not expressions, because a hold is owned, and the `<-` makes the owner visible: the node whose block this is.
 
 The last statement is the block's result. If it is a widget, the block's result is that widget's result. `@ v` makes a plain value the result; `@ ((!a, $b))` returns a bundle; `@ !never` is a block that returns an event which never fires, which the modal pattern below uses.
 
@@ -184,7 +184,7 @@ The program is a widget `@main` taking no arguments. The World builds it in occu
 
 A `dyn` over a constant dynamic builds its block once and fires its result event in that build occurrence; the block returns `unit`; the `dyn`'s event is an `!unit` that fires exactly then. The prelude provides `@started` as a primitive because it is used everywhere, and the runtime implements it as a filter over the builder's done event rather than by building a `dyn`, but it needs no semantics of its own.
 
-The conformance suite checks the law, not the implementation: `@started` fires once, in the occurrence the node is built, after the block is built, and never again. The two spellings have to agree on the one observable that follows from "after the block is built": the firing lands at `height + 1` of the build, so a hold in the same block driven by it, `$x <- v <= w on !started`, changes in the build occurrence, and anything in the block that reads `$x` through a tag in that occurrence sees `v`, while anything derived from `$x` sees `w`. A runtime whose done event fired at the build's own height, or in the next occurrence, would pass a test that only asked "did it fire once" and fail the one that holds on it; chapter 10's law test for `@started` holds on it.
+The conformance suite checks the law, not the implementation: `@started` fires once, in the occurrence the node is built, after the block is built, and never again. The two spellings have to agree on the one observable that follows from "after the block is built": the firing lands at `height + 1` of the build, so a hold in the same block driven by it, `$x <- v then w on !started`, changes in the build occurrence, and anything in the block that reads `$x` through a tag in that occurrence sees `v`, while anything derived from `$x` sees `w`. A runtime whose done event fired at the build's own height, or in the next occurrence, would pass a test that only asked "did it fire once" and fail the one that holds on it; chapter 10's law test for `@started` holds on it.
 
 Its use is kicking off a request as soon as a widget exists:
 
@@ -234,7 +234,7 @@ Why does the result go up rather than being something the block owns? Because th
 
 A rebuild replaces the node. Everything the old node owned is new in the new one:
 
-Holds inside the block are new holds with their initial values. A `$count <- 0 <= ...` in a `dyn` block starts at `0` again on every rebuild; this is either what you want (the pane's scroll position should reset when the item changes) or it is not, and the next subsection is about the second case.
+Holds inside the block are new holds with their initial values. A `$count <- 0 then ...` in a `dyn` block starts at `0` again on every rebuild; this is either what you want (the pane's scroll position should reset when the item changes) or it is not, and the next subsection is about the second case.
 
 Slots are new slots with fresh paths. A `dyn` adds a generation to the path of everything under it, `#0`, `#1`, `#2`, and a path is never reused: the generation counter belongs to the `dyn` node, only goes up, and is not reset by anything short of the `dyn` node itself being torn down and rebuilt by its own parent, at which point every path under it has a new generation of the parent's in front of it anyway. A World that was doing something on behalf of an old slot stops, because the slot is gone from the list; a response it had in flight for the old path is discarded, because the path is not in the list it last received.
 
@@ -251,7 +251,7 @@ A timeline makes the rule concrete. Take `@clicker` from the worked examples, a 
     !!clicks <- dyn $label:
         @Element Ui.Button(label=_)
     let !click = !Switch !!clicks
-    $count <- 0 <= $count + 1 on !click
+    $count <- 0 then $count + 1 on !click
     let $label = "Clicked {$count} times"
     @ unit
 ```
@@ -286,7 +286,7 @@ The mistake every newcomer makes once is putting a hold inside a `dyn` and expec
 @wrong: fn $Theme -> @unit = \@widget:
     dyn $_:
         !inc <- @Button $(Styled _, "+")
-        $count <- 0 <= $count + 1 on !inc          # resets on every theme change
+        $count <- 0 then $count + 1 on !inc          # resets on every theme change
         @Label (Styled _, "{$count}")
     @ unit
 ```
@@ -299,7 +299,7 @@ Change the theme and the count is zero. The `dyn` is over the theme; the block i
         !inc <- @Button $(Styled _, "+")
         @ !inc
     let !inc = !Switch !!incs
-    $count <- 0 <= $count + 1 on !inc
+    $count <- 0 then $count + 1 on !inc
     dyn $_:
         @Label (Styled _, "{$count}")
     @ unit
@@ -349,7 +349,7 @@ A cycle through `dyn` alone is rejected. The `dyn`'s event fires in the occurren
 @bad:
     !r <- dyn $x:
         @ _ + 1
-    $x <- 0 <= !r                  # error: the cycle through dyn has no delayed edge
+    $x <- 0 then !r                  # error: the cycle through dyn has no delayed edge
 ```
 
 has no delayed edge anywhere: `$x` changes, the `dyn` rebuilds in that occurrence, its event fires in that occurrence, the hold's change event fires in that occurrence, which is `$x` changing again, in the same occurrence. The compiler rejects it with both bindings named. The reason `dyn` is not made a delay, which would make this legal and a tick behind, is that every other rebuild would then be a tick behind too, and the new node would see the occurrence it was born in as the past. The delayed edges are reads of a dynamic as it stood when the occurrence opened, and there are three of them; a rebuild is not a read.
@@ -430,7 +430,7 @@ $$cur <- @HoldFirst !$ss
 let $s = $Join $$cur
 ```
 
-`@HoldFirst` is a hold whose initial value is the firing of `!$ss` in the occurrence the hold is built, which exists because a `dyn` fires in its build occurrence and a widget built in n sees all of n. No hold written with `<=` can be seeded that way, since a hold's initial value is an expression and the first build's result is not in scope until the `dyn` has been bound; this is why the prelude has it, and why it is the idiom wherever a program holds a `dyn`'s event. It expands to the runtime's `hold_first` over the event, and chapter 12 prints it as `HoldFirst` in the typed AST.
+`@HoldFirst` is a hold whose initial value is the firing of `!$ss` in the occurrence the hold is built, which exists because a `dyn` fires in its build occurrence and a widget built in n sees all of n. No hold written with `then` can be seeded that way, since a hold's initial value is an expression and the first build's result is not in scope until the `dyn` has been bound; this is why the prelude has it, and why it is the idiom wherever a program holds a `dyn`'s event. It expands to the runtime's `hold_first` over the event, and chapter 12 prints it as `HoldFirst` in the typed AST.
 
 For a plain result, binding gives a dynamic: `$x <- @W $d` is `@HoldFirst` over the `dyn`'s `!A`, so `$x` is the current generation's result, held from the first build's value and changing in every rebuild occurrence. A plain result of a rebuilt widget is a value per generation, and a value per generation held is a dynamic. For a bundle, field by field by the kind of each field: an event field switches, a dynamic field joins, a plain field holds.
 
@@ -539,16 +539,16 @@ Take the todo list from the worked examples, reduced to what matters for `for`. 
 ```prism
 @todos:
     !add <- @Button $"Add"
-    $next <- 0 <= $next + 1 on !add
+    $next <- 0 then $next + 1 on !add
     let !adds = {$next: Add "item {$next}"} on !add
     !rows <- for $items:
         !delete <- @Button $"Delete"
         !star <- @Button $"Star"
-        $starred <- False <= not $starred on !star
+        $starred <- False then not $starred on !star
         @Label (Describe $_, $starred)
         @ Delete on !delete
     let !changes = !Union !adds, !rows
-    $items <- {} <= StepAll $items, !changes
+    $items <- {} then StepAll $items, !changes
 ```
 
 **Occurrence 0.** `$items` is `{}`; `for $items` builds no blocks. The list has one button.
@@ -574,8 +574,8 @@ Programs that need positional display of identified items keep a map with alloca
 ```prism
 @list:
     !add <- @Button $"Add"
-    $next <- 0 <= $next + 1 on !add                        # the id allocator
-    $items <- {} <= (Insert $items, $next, NewItem) on !add  # Nat ==> Item, keyed by id
+    $next <- 0 then $next + 1 on !add                        # the id allocator
+    $items <- {} then (Insert $items, $next, NewItem) on !add  # Nat ==> Item, keyed by id
     !rows <- for $items:
         ...
     @ unit
@@ -640,7 +640,7 @@ let ShowBody: fn ?Item -> Text = \|i| match i:
     !picks <- for $items:
         !click <- @Button $_.title
         @ key on !click
-    $selected <- Nil <= Some (!Filter (FirstKey !picks))
+    $selected <- Nil then Some (!Filter (FirstKey !picks))
     dyn $selected:
         match _:
             Nil: @Label $"Select an item"
@@ -675,7 +675,7 @@ type Tab = choice Inbox | Drafts | Settings
     !to_inbox <- @Button $"Inbox"
     !to_drafts <- @Button $"Drafts"
     !to_settings <- @Button $"Settings"
-    $tab <- Inbox <= Inbox on !to_inbox | Drafts on !to_drafts | Settings on !to_settings
+    $tab <- Inbox then Inbox on !to_inbox | Drafts on !to_drafts | Settings on !to_settings
     dyn $tab:
         match _:
             Inbox: @inbox_pane
@@ -696,9 +696,9 @@ type TabEvents = record:
 @tabs_kept: @unit = @widget:
     !to_inbox <- @Button $"Inbox"
     !to_drafts <- @Button $"Drafts"
-    $tab <- Inbox <= Inbox on !to_inbox | Drafts on !to_drafts
-    $inbox <- (InboxState 0, Nil) <= switched.!inbox
-    $drafts <- DraftsState "" <= switched.!drafts
+    $tab <- Inbox then Inbox on !to_inbox | Drafts on !to_drafts
+    $inbox <- (InboxState 0, Nil) then switched.!inbox
+    $drafts <- DraftsState "" then switched.!drafts
     !!panes <- dyn $tab:
         match _:
             Inbox:
@@ -725,7 +725,7 @@ IsUi: fn Element -> Bool                       # chapter 6's: True for every Ui.
     !to_inbox <- @Button $"Inbox"
     !to_drafts <- @Button $"Drafts"
     !to_settings <- @Button $"Settings"
-    $tab <- Inbox <= Inbox on !to_inbox | Drafts on !to_drafts | Settings on !to_settings
+    $tab <- Inbox then Inbox on !to_inbox | Drafts on !to_drafts | Settings on !to_settings
     ((ignore, $slots)) <- intercept @all_panes, !down, $ \|e| @Element e
     !down <- for $slots:                                   # key is the child's path
         let $shown = not (IsUi $_.element) or (PaneOf key) == Some $tab
@@ -757,7 +757,7 @@ type Answer = choice Confirmed | Cancelled
 
 @delete_with_confirm: fn Text -> @!unit = \|what| @widget:
     !open <- @Button $"Delete {what}"
-    $dialog <- Nil <= (Some unit) on !open | Nil on !answer
+    $dialog <- Nil then (Some unit) on !open | Nil on !answer
     !!answers <- dyn $dialog:
         match _:
             Nil: @ !never
@@ -800,7 +800,7 @@ let Mark: fn Text, Bool -> Text = \|t, sel| if sel: "> {t}" else: "  {t}"
         let $is_selected = $selected == Some key
         !click <- @Button (Mark $_.title, $is_selected)
         @ key on !click
-    $selected <- Nil <= Some (!Filter (FirstKey !picks))
+    $selected <- Nil then Some (!Filter (FirstKey !picks))
     @ $selected
 ```
 
@@ -863,8 +863,8 @@ let IfDone: fn Nav -> ?Answers = \|n| if n.done: Some n.answers else: Nil
                 !finish <- @Button $"Finish"
                 @ (Nav Address, answers, False) on !back | (Nav Review, answers, True) on !finish
     let !nav = !Switch !!navs
-    $step <- Name <= !nav.step
-    $answers <- (Answers "", "") <= !nav.answers
+    $step <- Name then !nav.step
+    $answers <- (Answers "", "") then !nav.answers
     @ !Filter (IfDone !nav)
 ```
 
@@ -898,7 +898,7 @@ Everything above rests on a short list of promises, each with a party bound by i
 
 *A path is never reused.* Bound: the runtime. Enforced: each `dyn` node keeps a generation counter that only goes up, incremented on every rebuild and never reset while the node lives; each `for` node's key segment is the key itself, and a key's node is dropped when the key leaves, so a returning key is a new node under the same segment with fresh generations beneath it. A quarantine does not touch the counters: a quarantined subtree is held out of rebuilds, and when the World lifts the quarantine the next rebuild takes the next generation, not `#0`. A World may therefore remember anything by path and be sure that a path it has seen leave the list will not come back meaning something else.
 
-*A `for` key that returns is a new key.* Bound: the runtime, which has no table of departed keys and builds a returning key's block from scratch; and the program, whose allocator decides whether keys can return at all. Enforced on the runtime's side by the keyed list widget owning exactly the nodes of the keys currently present; on the program's side by nothing but the allocator's line, `$next <- 0 <= $next + 1 on !add`, which is why the idiom is written that way.
+*A `for` key that returns is a new key.* Bound: the runtime, which has no table of departed keys and builds a returning key's block from scratch; and the program, whose allocator decides whether keys can return at all. Enforced on the runtime's side by the keyed list widget owning exactly the nodes of the keys currently present; on the program's side by nothing but the allocator's line, `$next <- 0 then $next + 1 on !add`, which is why the idiom is written that way.
 
 *A failed build fires no event and leaves a hole.* Bound: the runtime and the World. Enforced: the rebuild action, on a contained failure, tears the old generation down at commit, installs no child, and does not notify the `dyn`'s subscribers; the error is returned from the run call as kind `Build` with the `dyn` node's path as its owner, and offered through `Errors` if the program subscribed. A cycle found during the build is kind `Cycle` and aborts the occurrence instead, which keeps the old generation by rolling everything back. The World is bound to report what it is returned and may send `quarantine` paths on its next call. Chapter 9 has the type and the protocol; chapter 10's `Errors` step is the check.
 

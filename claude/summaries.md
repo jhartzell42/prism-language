@@ -34,7 +34,7 @@ The values section is boring on purpose so that nothing competes with time. Prim
 
 Expressions finish the chapter: lifting read off operand sigils at every application (all plain stays plain, dynamics give a prompt dynamic, dynamics plus one event give an event with the dynamics read before the occurrence, two events are an error), `?` lifting as an applicative at the plain layer, application and precedence, statements, lambdas with `_` as pronoun and `\|a, b|` for named arguments, `match` and `if` with no guards and no `else`-less `if`, text interpolation, and `for` as an expression over plain collections. A diagnostics section and the layout corpus, the lines both lexers must tokenise identically, follow.
 
-The negative space is explicit: no introspection, no comparison operators (so `<=` is only hold and `<-` only bind), no guards, no explicit braces, no block comments, no tabs, no `else`-less `if`, and no `read`/`update` blocks or `&` references, which belong to future work. Each removes a second way to write something and a case on which parsers could disagree. The chapter hands the meaning of `!` and `$` to the next chapter, where events, dynamics and the occurrence get their laws.
+The negative space is explicit: no introspection, no symbol with two meanings (`<=` is only less-or-equal, `then` only hold, `<-` only bind), no guards, no explicit braces, no block comments, no tabs, no `else`-less `if`, and no `read`/`update` blocks or `&` references, which belong to future work. Each removes a second way to write something and a case on which parsers could disagree. The chapter hands the meaning of `!` and `$` to the next chapter, where events, dynamics and the occurrence get their laws.
 
 ## 4. Events, dynamics, and time
 

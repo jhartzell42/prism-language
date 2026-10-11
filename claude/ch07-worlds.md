@@ -162,7 +162,7 @@ type BookState = choice:
     !started <- @started
     !snap <- @Element Md.Snapshot(symbol=sym, requests=(unit on (!started | !gap)))
     let !msg = Snapshot !snap | Update !incr
-    $book <- Buffering [[]] <= StepBook $book, !msg
+    $book <- Buffering [[]] then StepBook $book, !msg
     let !gap = !Filter (NewGap $book, !msg)
     ((result, $slots)) <- intercept @strategy, !down, $ supply
     !down <- @Forward $slots
@@ -278,7 +278,7 @@ An HTTP cache is the interceptor that shows every part of a turn, because it ans
                     let !get = !Filter (CacheKey _.!request)            # Some url for a GET, else Nil
                     let !hit = !Filter (Lookup $cache, !get)             # Some answer if cached
                     let !miss = !Filter (NotCached $cache, _.!request)
-                    $hit <- Nil <= Some !hit
+                    $hit <- Nil then Some !hit
                     !later <- @Element Defer(requests=(unit on !hit))
                     !fetched <- @Element Http.Fetch(requests=!miss)
                     @ !Filter ($hit on !later) | !fetched
@@ -286,7 +286,7 @@ An HTTP cache is the interceptor that shows every part of a turn, because it ans
                     ((!resp, ignore)) <- @Element _.element
                     @ !resp
     let !answers = !Filter (Cacheable !down)        # ((url, answer)) for GETs that passed through; an answer names its request
-    $cache <- {} <= InsertPair $cache, !answers
+    $cache <- {} then InsertPair $cache, !answers
     @ result
 ```
 
@@ -536,7 +536,7 @@ tag Fs.Watch of Element:
 @SaveButton: fn Text, $Text -> @$Text = \|path, $draft| @widget:
     !save <- @Button $"Save"
     !r <- @Element Fs.File(path=path, requests=(Write $draft on !save))
-    $status <- "" <= match !r:
+    $status <- "" then match !r:
         Written: "saved"
         Unavailable Denied: "permission denied"
         ignore: "failed"
@@ -598,10 +598,10 @@ There is no `now()`. `Clock` is a state element: a value in the creation occurre
 let IsOne: fn Int -> ?unit = \|n| if n == 1: Some unit else: Nil
 
 @Debounced: fn Nat, !a -> @!a = \|d, !in| @widget:
-    $last <- Nil <= Some !in
+    $last <- Nil then Some !in
     !done <- @Element Time.After(requests=(d on !in))
     let !delta = +1 on !in | -1 on !done
-    $pending <- 0 <= $pending + !delta
+    $pending <- 0 then $pending + !delta
     let !settled = !Filter (IsOne $pending on !done)
     @ !Filter ($last on !settled)
 ```
@@ -660,7 +660,7 @@ Spawning is a request, because starting a process is a one-shot effect with a re
 @RunOnce: fn Command -> @$ProcStatus = \|cmd| @widget:
     !started <- @started
     !sp <- @Element Process.Spawn(requests=(cmd on !started))
-    $id <- Nil <= match !sp:
+    $id <- Nil then match !sp:
         Spawned i: Some i
         ignore: Nil
     !$status <- dyn $id:
@@ -670,7 +670,7 @@ Spawning is a request, because starting a process is a one-shot effect with a re
                 @ $st
             Nil:
                 @ $ Gone
-    $$status <- $ Gone <= !$status
+    $$status <- $ Gone then !$status
     @ $Join $$status
 ```
 
@@ -754,7 +754,7 @@ Backpressure is state. `Connected n` says how many bytes the World has accepted 
     let !out = !Filter (WhenRoom $link, $draft on !send)
 
 let WhenRoom: fn Link, Text -> ?Text = \|link, msg| match link:
-    Connected queued: if queued lt 65536: Some msg else: Nil
+    Connected queued: if queued < 65536: Some msg else: Nil
     ignore: Nil
 ```
 
@@ -785,7 +785,7 @@ let Apply: fn ReqId ==> HttpRequest, ReqId ==> Change -> ReqId ==> HttpRequest =
             Failed why: BadGateway why
         !sent <- @Element Http.Reply(id=key, requests=!answer)
         @ Close on !sent
-    $pending <- {} <= Apply $pending, (!Union !opens, !dones)
+    $pending <- {} then Apply $pending, (!Union !opens, !dones)
     @ unit
 ```
 
@@ -889,7 +889,7 @@ Three turns, three occurrences, and the exit code is the last thing the World di
     !started <- @started
     let !line = !Filter (ChunkOf !in)
     let !end = !Filter (IsEnd !in)
-    $n <- 0 <= $n + 1 on !line
+    $n <- 0 then $n + 1 on !line
     @Element Cli.Stdout(requests=((Reply $n, !line) | "bye\n" on (!end | !idle)))
     @Element Process.Exit(requests=(Code 0 on (!end | !idle)))
     @ unit
@@ -1052,7 +1052,7 @@ Take the vocabulary to its end. The World is a socket system: it accepts `Net.So
 @X11: fn @a -> @a = \|@app| @widget:
     ((result, $slots)) <- intercept @app, !down, $ \|e| @Element e
     ((!rx, $link)) <- @Element Net.Socket(address="unix:/tmp/.X11-unix/X0", requests=!tx)
-    $conn <- Handshaking <= StepX11 $conn, !rx               # parse replies and events
+    $conn <- Handshaking then StepX11 $conn, !rx               # parse replies and events
     let !tx = Encode $conn, $slots, !rx                       # CreateWindow, PutImage, ...
     let !events = DecodeEvents $conn, $slots, !rx             # ButtonPress → Pointer to the window's path
     !fwd <- @Forward (NonGui $slots)
@@ -1083,7 +1083,7 @@ let SplitLines: fn Text -> (([Text], Text)) = ...    # complete lines, and the r
     ((!rx, $link)) <- @Element Net.Socket(address=address, requests=(Encode !send))
     let !chunk = !Filter (TextOf !rx)
     let !split = SplitLines (Concat [[$rest, !chunk]])
-    $rest <- "" <= Second !split
+    $rest <- "" then Second !split
     @ First !split
 ```
 
@@ -1280,13 +1280,13 @@ A process table is a `for` over a keyed map of programs. Each entry is an `inter
                 Cli.Stdout(..): @ _.!request
                 ignore: @ !never
     let !out = JoinText "", (Values !writes)
-    $seq <- 0 <= $seq + 1 on !out
+    $seq <- 0 then $seq + 1 on !out
     !delivered <- for $queue:                    # one Defer slot per queued chunk
         !started <- @started
         !later <- @Element Defer(requests=(unit on !started))
         @ $_ on !later
     let !changes = !Union {$seq: Enqueue !out}, (MapValues !delivered, \|ignore| Dequeue)
-    $queue <- {} <= StepQueue $queue, !changes
+    $queue <- {} then StepQueue $queue, !changes
     let !down_c = {StdinPath $cs: Chunk (JoinText "", (Values !delivered))}
     !fwd_p <- @Forward (Except (\|e| match e:
         Cli.Stdout(..): True

@@ -172,7 +172,7 @@ A program subscribes to its own runtime errors the way it subscribes to anything
 ```prism
 @with_error_bar: fn @a -> @a = \|@child| @widget:
     !err <- @Element Errors
-    $last <- Nil <= Some !err
+    $last <- Nil then Some !err
     result <- @child
     @Label (ShowError $last)
     @ result
@@ -189,7 +189,7 @@ IsError: fn Element -> Bool = \|e| match e:
 
 @Supervise: fn @a -> @unit = \|@child| @widget:
     !restart <- @Button $"Restart"
-    $gen <- 0 <= $gen + 1 on !restart
+    $gen <- 0 then $gen + 1 on !restart
     dyn $gen:
         ((ignore, $slots)) <- intercept @child, !down, $ (\|e| @Element e)
         !down <- @Forward $slots
@@ -379,13 +379,13 @@ Six programs, each with one error in it, each followed by what happens occurrenc
 
 @relay:
     !tick <- @Element Time.Every(period=1000)
-    $mode <- Plain <= Toggle $mode on !tick
+    $mode <- Plain then Toggle $mode on !tick
     !!inner <- dyn $mode:
         match _:
             Plain: @ !never
             Double: @Double !out
     let !out = !Switch !!inner | !tick
-    $last <- 0 <= !out
+    $last <- 0 then !out
     @Label $"last: $last"
 ```
 
@@ -413,7 +413,7 @@ Now `@relay`, where the cycle only exists in one mode. The block check sees `!!i
 
 **Occurrence 2, under a GUI World that does not quarantine.** Every tick toggles `$mode`, every toggle is aborted, every tick is lost, and the program sits at `last: 0` forever with an error on stderr per second. Nothing is inconsistent; the program is stuck in an honest way. The `Errors` stream tells any subscriber so.
 
-The fix in the program is to say what the program meant. If `Double` mode was meant to double the tick, `@Double !tick` instead of `@Double !out` has no cycle. If it was meant to feed back, the feedback has to pass through a delayed edge that is not the switch's choice, which means a hold: `$prev <- 0 <= !out` and `@Double ($prev on !tick)`, which doubles the previous value at each tick and is what feedback means in a language without prompt loops.
+The fix in the program is to say what the program meant. If `Double` mode was meant to double the tick, `@Double !tick` instead of `@Double !out` has no cycle. If it was meant to feed back, the feedback has to pass through a delayed edge that is not the switch's choice, which means a hold: `$prev <- 0 then !out` and `@Double ($prev on !tick)`, which doubles the previous value at each tick and is what feedback means in a language without prompt loops.
 
 ### An overflow in a derived dynamic
 
@@ -421,7 +421,7 @@ The fix in the program is to say what the program meant. If `Double` mode was me
 @totals:
     !add <- @Button $"Add a disk image"
     let image_size: Nat = 4611686018427387904
-    $count <- 0 <= $count + image_size on !add
+    $count <- 0 then $count + image_size on !add
     let $doubled = $count * 2
     @Label $"bytes: $doubled"
 ```
@@ -449,7 +449,7 @@ The relabelling button of the worked examples:
     !!clicks <- dyn $label:
         @Element Ui.Button(label=_)
     let !click = !Switch !!clicks
-    $count <- 0 <= $count + 1 on !click
+    $count <- 0 then $count + 1 on !click
     let $label = $"Clicked $count times"
     @Label $label
 ```
@@ -529,7 +529,7 @@ The server of the worked examples, with a handler chosen per connection, and one
 
 @server:
     !accepted <- @Element Net.Listener(address=":7000")
-    $n <- 0 <= $n + 1 on !accepted
+    $n <- 0 then $n + 1 on !accepted
     !closes <- for $conns:
         !ev <- @Element Net.Conn(id=key, requests=!reply)
         !out <- match _:
@@ -537,7 +537,7 @@ The server of the worked examples, with a handler chosen per connection, and one
             Mirror: @Mirror (!Filter (Received !ev))
         let !reply = [[Send !out]]
         @ Shut on !Filter (IsClosed !ev)
-    $conns <- {} <= ApplyDeltas $conns, (!Union (Open !accepted, ModeFor $n), !closes)
+    $conns <- {} then ApplyDeltas $conns, (!Union (Open !accepted, ModeFor $n), !closes)
     @ unit
 ```
 
@@ -553,7 +553,7 @@ The server of the worked examples, with a handler chosen per connection, and one
 
 **Occurrence 8.** `Accepted 8`. `ModeFor 8` is `Echo`; the key builds and serves. The seventh connection's failure left no trace in the eighth's build, which is the property the scenario exists to pin: a `for` block's build failure is that key's and no other's.
 
-The fix is in `@Mirror`, as in the first scenario: the feedback needs a delayed edge, `$prev <- Empty <= !b` and `@Join !in, ($prev on !in)`, which mirrors the previous reply into the next one and is what the handler presumably meant.
+The fix is in `@Mirror`, as in the first scenario: the feedback needs a delayed edge, `$prev <- Empty then !b` and `@Join !in, ($prev on !in)`, which mirrors the previous reply into the next one and is what the handler presumably meant.
 
 ## The invariants, collected
 

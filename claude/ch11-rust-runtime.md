@@ -31,7 +31,7 @@ The remainder is small. A graph of nodes with heights; one per-occurrence map fr
 ```
 src/lib.rs
 src/value/        Value<T>, AnyValue, PrismValueInner, HeapValue, TypeMismatch
-src/runtime/      Runtime, Action, schedule, propagate, the three thread-locals
+src/runtime/      Runtime, Action, schedule, propagate, the occurrence's state
 src/event/        Event<T>, EventImpl, EventCallback, SubscriptionManager,
                   external, filter_map, tag, combine, leftmost, switch_hold,
                   forward, never, trace
@@ -101,13 +101,16 @@ pub(crate) trait Action: Send {
     fn act(self: Box<Self>, runtime: &Runtime);
 }
 
-thread_local! {
-    pub(crate) static CURRENT_HEIGHT: Cell<Option<usize>>;
-    static DEFERRED: RefCell<Vec<(usize, Box<dyn Action>)>>;
-    pub(crate) static CLEAR_AT_END: RefCell<Vec<Box<dyn FnOnce()>>>;
+pub(crate) struct RuntimeInner {
+    actions: BTreeMap<usize, Vec<Box<dyn Action>>>,
+    pub(crate) height: Option<usize>,
+    clear_at_end: Vec<Box<dyn FnOnce() + Send>>,
 }
 
-pub(crate) fn defer(height: usize, action: impl Action + 'static);
+impl Runtime {
+    pub(crate) fn current_height(&self) -> Option<usize>;
+    pub(crate) fn clear_at_end(&self, clear: impl FnOnce() + Send + 'static);
+}
 
 impl Runtime {
     pub fn new() -> Self;
@@ -128,21 +131,18 @@ if let Some(current_height) = this.height && height <= current_height {
 
 Outside propagation `height` is `None` and anything may be scheduled; inside it, an action may be scheduled only strictly above the height being run. Every derived event schedules itself at its own height, which is above all of its sources, so a scheduling at or below the current height means a node has been reached from above itself: a cycle. `propagate` makes the same check when it pops a height that is not greater than the last, which cannot happen if `schedule` holds and is kept as belt to the braces.
 
-The two thread-locals beside the current height exist because most of the code that needs the runtime has no handle to it. `Behavior::hold(initial, event)` takes no `&Runtime`, nor does `switch_hold`, nor `subscribe`; they are called from inside `Widget::build` and from inside other constructors, and when one of them needs to schedule something it pushes onto `DEFERRED` through `defer(height, action)`, and after each action returns `propagate` drains the list through `schedule`. `CLEAR_AT_END` is a list of closures run when the map is empty; every event that caches a value for the current occurrence registers one to clear that cache, so the next occurrence starts clean.
+The occurrence's state lives in `RuntimeInner` beside the action map: the current height, and a `clear_at_end` list of closures run when the occurrence ends, one per event that cached a value for this occurrence, so the next occurrence starts clean. Everything that needs that state takes `&Runtime`. `EventImpl::subscribe(runtime, cb)` and `EventCallback::already_fired(runtime, value)` take it because subscribing mid-occurrence has to know which occurrence it is in and schedule its catch-up into it; `Behavior::hold(runtime, initial, event)`, `Dynamic::hold`, `switch_hold` and `trace` take it because they subscribe when they are made. `map`, `filter_map`, `tag`, `leftmost` and `combine` do not take it: they subscribe lazily, when something subscribes to them, and until then they are descriptions with no creation time. That split is Reflex's split exactly. The operations whose meaning depends on when they are made are the ones in `MonadHold` (`hold`, `holdDyn`, `switchHold`, `headE`, `now`); the ones that are pure functions of their inputs are plain functions there too. In Haskell the monad is forced, because a `hold` written as a pure function would be floated and shared by the optimizer and would then mean the wrong thing; in Rust a call happens where it is written, so the parameter is only there to say which runtime and which occurrence. The parameter is also what makes `Runtime` honestly `Send`: an occurrence's state travels with the runtime, not with the thread that happens to be driving it.
 
-Holds commit at `usize::MAX`. Every hold, every `switch_hold` retarget, and the drop of a replaced node schedules its action at `usize::MAX`, so the commit batch is the last thing `propagate` runs and runs only after every event that could fire has fired. Nothing samples a new value early because nothing is new until then. The exit path, when the map is empty, sets the height back to `None`, clears `CURRENT_HEIGHT`, and runs the clear-at-end list.
+Widgets get the handle from `WidgetBuilder::runtime()`, which is why, from the language's side, a hold is written only in a widget block. A hold has a creation occurrence; the only Prism construct with one is a build; and the Haskell implementation runs the typed AST on Reflex, where a hold outside `MonadHold` cannot be typed at all. So `$count <- 0 then $count + !delta` is a statement of a widget block and not an expression that could appear in a `let` at top level, and the runtime API is now shaped so that the Rust side can make the same mistake only by holding a `&Runtime`, which a build or a World has and a leaf closure does not.
 
-The panic path is the transaction's abort. Each action runs under `catch_unwind`; on a panic the map is cleared, the height reset, the deferred list and clear-at-end list drained, and the panic resumed:
+Holds commit at `usize::MAX`. Every hold, every `switch_hold` retarget, and the drop of a replaced node schedules its action at `usize::MAX`, so the commit batch is the last thing `propagate` runs and runs only after every event that could fire has fired. Nothing samples a new value early because nothing is new until then. The exit path, when the map is empty, sets the height back to `None` and runs the clear-at-end list.
+
+The panic path is the transaction's abort. Each action runs under `catch_unwind`; on a panic the map is cleared, the height reset, the clear-at-end list drained, and the panic resumed:
 
 ```rust
 if let Err(panic) = outcome {
-    let mut this = self.0.lock().unwrap();
-    this.actions.clear();
-    this.height = None;
-    drop(this);
-    DEFERRED.take();
-    CURRENT_HEIGHT.set(None);
-    for clear in CLEAR_AT_END.take() { clear(); }
+    self.0.lock().unwrap().actions.clear();
+    self.finish_occurrence();          // height = None; run and drain clear_at_end
     resume_unwind(panic);
 }
 ```
@@ -210,9 +210,9 @@ fn event_fired(&self, runtime: &Runtime, value: Value<E::Inner>) {
     let Some(this) = self.this.upgrade() else { return };
     let height = this.height();
     let tag = self.tag.clone();
-    if CURRENT_HEIGHT.get().is_some_and(|current| height <= current) {
-        this.handle_already_fired(value, tag);
-        this.finish_already_fired();
+    if runtime.current_height().is_some_and(|current| height <= current) {
+        this.handle_already_fired(runtime, value, tag);
+        this.finish_already_fired(runtime);
         return;
     }
     this.handle_early_subscription(runtime, value.clone(), tag.clone());
@@ -355,14 +355,14 @@ impl<T: ValueType> EventCallback<T> for HoldBehavior<T> {
     fn event_fired(&self, runtime: &Runtime, value: Value<T>) {
         runtime.schedule(usize::MAX, HoldAction { hold: this, value })
     }
-    fn already_fired(&self, value: Value<T>) {
-        defer(usize::MAX, HoldAction { hold: this, value })
+    fn already_fired(&self, runtime: &Runtime, value: Value<T>) {
+        runtime.schedule(usize::MAX, HoldAction { hold: this, value })
     }
     fn invalidate_height(&self) {}          // a behavior's height is always usize::MAX
 }
 ```
 
-`Behavior::hold` subscribes the hold to its event; if `subscribe` returns an already-fired value (the hold was built mid-occurrence after its event fired) it defers a `HoldAction` to `usize::MAX` at once. Either way the write happens in the commit batch: `HoldAction::act` stores the value and invalidates every dependent, which drops their caches so that the next query recomputes. Between the firing and the commit every `query_for_tag` sees the old value, which is the tag law; after the commit every query sees the new one, which is the change law on the behavior side. A hold built in the occurrence its event fires adopts the value at that occurrence's commit, which is the last clause of the hold law and the test `fold_dyn_counts_an_event_from_the_build_occurrence`: a count that starts at 0, folds the widget's done event, and reads 1 after occurrence zero.
+`Behavior::hold(runtime, initial, event)` subscribes the hold to its event; if `subscribe` returns an already-fired value (the hold was built mid-occurrence after its event fired) it schedules a `HoldAction` at `usize::MAX` at once. Either way the write happens in the commit batch: `HoldAction::act` stores the value and invalidates every dependent, which drops their caches so that the next query recomputes. Between the firing and the commit every `query_for_tag` sees the old value, which is the tag law; after the commit every query sees the new one, which is the change law on the behavior side. A hold built in the occurrence its event fires adopts the value at that occurrence's commit, which is the last clause of the hold law and the test `fold_dyn_counts_an_event_from_the_build_occurrence`: a count that starts at 0, folds the widget's done event, and reads 1 after occurrence zero.
 
 *Computed* behaviors, `DependentBehavior<O, C>`, hold a `BehaviorComputation` and a `cache: Mutex<Option<(Value<O>, Dependents)>>`. On a query with an empty cache they run `compute`, which queries the computation's own behaviors with a tracker pointing back at this one, so each upstream records this behavior as a dependent; the result and the dependents that asked for it are cached together. `invalidate` takes the cache and invalidates the cached dependents. `map` and `map2` are two small computations; `join` is a third, which queries the outer for the current inner and then the inner. The seven `joined_behavior_*` tests pin the behavior half of `$Join`: it starts at the initial inner's value; follows a new inner and ignores the old one afterwards; takes the new inner's new value when the swap and the change land in one occurrence; ignores the old inner changing in the swap occurrence; shows the previous value when sampled mid-occurrence; follows a computed inner; and keeps its dependents bounded across five hundred swaps.
 
@@ -621,7 +621,7 @@ The runtime is a library a World calls. Its public surface is the run call and t
 
 ### Single-threaded
 
-Every lock in the current code is taken by the one thread that is propagating; the locks are uncontended by construction, and the only work they do beyond locking is the re-entry check that the height comparison already makes. So the pointer and cell types become `Rc`, `Weak`, `RefCell` and `Cell`. The `Send + Sync` bounds on `Widget`, `PolymorphicWidget`, `EventImpl`, `EventCallback`, `BehaviorImpl`, `HeapValue`, `Action` and every closure parameter go, which also lets a compiled closure capture an `Rc` without a wrapper. The three thread-locals become fields of one shared core:
+Every lock in the current code is taken by the one thread that is propagating; the locks are uncontended by construction, and the only work they do beyond locking is the re-entry check that the height comparison already makes. So the pointer and cell types become `Rc`, `Weak`, `RefCell` and `Cell`. The `Send + Sync` bounds on `Widget`, `PolymorphicWidget`, `EventImpl`, `EventCallback`, `BehaviorImpl`, `HeapValue`, `Action` and every closure parameter go, which also lets a compiled closure capture an `Rc` without a wrapper. The occurrence state moves into one shared core that every node points at:
 
 ```rust
 pub struct Runtime {
@@ -646,7 +646,7 @@ pub(crate) struct Core {
 unsafe impl Send for Runtime {}            // sound: see below
 ```
 
-The thread-locals exist today because constructors like `Behavior::hold` and `switch_hold` have no runtime handle. The target gives every graph object an `Rc<Core>`, taken from the upstream it is built from: `filter_map` copies its source's, `hold` copies its event's, `combine` and `leftmost` check that their sources agree. The only constructors with no upstream are `never` and `constant`, and they schedule nothing, so they need none. The root of every chain is an event the builder made, and the builder has the core. This threads the runtime through the graph without a parameter on every call, and it answers a question the current code leaves open, which is whether an event built against one runtime can be scheduled in another: it cannot, because it does not know the other one exists. The cost is one pointer per node.
+The runtime is a parameter of every constructor that subscribes when it is made and of `subscribe` itself, so an occurrence's state never leaves the runtime. What a parameter cannot do is stop a caller from passing the wrong runtime: an event built against one runtime and subscribed in another is a bug nothing catches. The target closes that by giving every graph object an `Rc<Core>`, taken from the upstream it is built from: `filter_map` copies its source's, `hold` copies its event's, `combine` and `leftmost` check that their sources agree. The only constructors with no upstream are `never` and `constant`, and they schedule nothing, so they need none. The root of every chain is an event the builder made, and the builder has the core. A `subscribe` then asserts that the runtime it was handed is the one its source belongs to, and the mix is a panic at the call rather than a silent misdelivery. The cost is one pointer per node.
 
 `Runtime` is `Send` and not `Sync`. It cannot be `Send` by derivation, since it holds `Rc`s, so the impl is written by hand, and it is sound because the runtime is the unique owner of every `Rc` in its graph: no handle to any of them crosses the boundary, by the rule that nothing in `Inputs` or `Outcome` is a runtime object, and compiled widgets live inside the graph they are built into. Moving all the clones of an `Rc` to one other thread together is the one case `Rc`'s non-`Send`-ness does not cover, and it is this case. A World may build the runtime on one thread, move it to another and drive it there; no two threads can touch it at once because `run` takes `&mut self` and nothing shares it. The `runtime_send` test becomes "build a graph on one thread, move the runtime, run an occurrence on the other."
 
@@ -1229,7 +1229,7 @@ A click the World sends in n was aimed at `k1`, because the World read the list 
 
 In the order worth closing. Each step keeps the suite green and adds the law tests it enables; none is sized larger than a model can be handed with this chapter and the previous step's code.
 
-1. **`Rc`/`RefCell`, the shared core, re-entry flags.** Mechanical, touching every file, so done first and alone, with no behaviour change. Every graph object gains its `Rc<Core>`; the three thread-locals become fields; `Runtime` gets its hand-written `Send`; `Value` gains `I64` and `U64` and loses the 32-bit variants. Closes the known issues "`Arc`/`Mutex` everywhere", "Events are not tied to a runtime" and "`Dynamic::new` is `unsafe` for a logical invariant". *Done when:* no `Arc`, `Mutex`, `Send` bound or `Sync` bound remains in `src/` outside the one `unsafe impl`; the cycle tests assert the new messages; a graph built on one thread runs on another after the runtime is moved; `Dynamic::new` is `pub(crate)`.
+1. **`Rc`/`RefCell`, the shared core, re-entry flags.** Mechanical, touching every file, so done first and alone, with no behaviour change. Every graph object gains its `Rc<Core>`; `Runtime` gets its hand-written `Send`; `Value` gains `I64` and `U64` and loses the 32-bit variants. Closes the known issues "`Arc`/`Mutex` everywhere", "Events are not tied to a runtime" and "`Dynamic::new` is `unsafe` for a logical invariant". *Done when:* no `Arc`, `Mutex`, `Send` bound or `Sync` bound remains in `src/` outside the one `unsafe impl`; the cycle tests assert the new messages; a graph built on one thread runs on another after the runtime is moved; `Dynamic::new` is `pub(crate)`.
 2. **The commit list, the journal, stamped caches, and rollback.** `propagate` becomes `pub(crate) fn run_occurrence(&mut self) -> Result<(), RuntimeError>` with the panic path returning `Err` and the stale-cache clear replaced by the stamp; nodes built during propagation are journaled. Closes "Scheduling at `usize::MAX` while at `usize::MAX`". The invariant checker lands here and runs in every test from now on. *Done when:* an injected panic returns `Err` with the graph unchanged, as the checker asserts; a `dyn` rebuild in a failing occurrence leaves the old child in place and the new one gone; `a_trigger_dropped_by_a_panic_accepts_values_again` still passes with no trigger flag involved; no clear-at-end list exists.
 3. **Eager cycle detection and the build boundary.** `height_checked`, the in-progress flags collecting spans, the walk at placeholder close and at switch retarget, the nested-transaction truncation in `bind` and `build_root`, the error node. Closes "Cyclic handles are bare `usize` plus a name", "Unclosed placeholders are found at the first propagate" and "The `DynamicWidgetEvent` has no height cache and no owner". *Done when:* the two cycle tests assert `Cycle` with the loop's spans; a cycle closed inside a `dyn` build is contained and the `dyn`'s event does not fire; a cycle at a switch adoption aborts the switching occurrence with an owner path; the `schedule` check is reached by no test.
 4. **`Dynamic::join`, `hold_first`, `map_n`, `tag_map_n`.** `JoinOuterEvent` with its dynamic height; `switch_hold_seeded`; the three law tests and `join_is_prompt`; the n-ary constructors with one test each that a three-operand lift is one node. *Done when:* the seven behavior tests have event twins; the swap-and-change case in both height orders agrees in both halves under the checker; a hold of dynamics plus join builds the cache idiom with no hiccup.

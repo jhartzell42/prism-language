@@ -19,7 +19,7 @@ You have written the Reflex program where a `Dynamic` was sampled with `current`
 | `v on !e` (plain `v`) | `e $> v`, `v <$ e` | the same thing |
 | `a \| b`, `!Leftmost [[..]]` | `leftmost [a, b]` | the same thing |
 | `!never` | `never` | the same thing |
-| `$x <- v <= !e` | `holdDyn v e` | a statement, so it has an owner |
+| `$x <- v then !e` | `holdDyn v e` | a statement, so it has an owner |
 | `!Updated $x` | `updated x` | a prelude function; never fires at build |
 | `$Distinct $x` | `holdUniqDyn` | the only deduplication; holds never dedupe |
 | `match $x:` with plain arms | `ffor x $ \case ..` | lifted `match` |
@@ -77,7 +77,7 @@ count' <- holdDyn 0 $ attachWith (+) (current count) delta
 
 ```prism
 # Prism: the tag law is the reading of a dynamic at an event
-$count <- 0 <= $count + !delta
+$count <- 0 then $count + !delta
 ```
 
 ### Only one switch, and it is not prompt
@@ -304,9 +304,9 @@ Sigils nest leftmost-outermost: `?$user`, `!!rendered`, `@!unit`, `$@a`, `$(Key 
 
 ### Lexical
 
-Comments `#` to end of line. UTF-8 source. Layout is the offside rule with `:` as the block opener: a `:` ending a line opens a block on the next, more-indented line; a `:` with tokens after it on the same line opens an inline block of that line, and `else` terminates an inline block, so `if c: a else: b` is one line with two inline blocks; inside `( ) (( )) [ ] [[ ]] { }` layout is suspended and `:` is the map key separator. Inline `:` is a plain token the parser interprets, not a layout token. `;` separates statements in an inline block: `type Pair<a, b> = record: first: a; second: b`, `if c: Log x; Log y else: Log z`; a layout block never needs it. `((` and `))` open and close a tuple, `[[` and `]]` an array literal; single `( )` is grouping and single `[ ]` is indexing or an array type. A trailing lambda as the last argument absorbs the rest of the line, so `MapValues !xs, \|x| x + 1` needs no parentheses around the lambda. Keywords: `let type tag of fn match if else for dyn intercept widget record choice map array unit test ignore on not and or lt le gt ge key ix jx kx empty`; keywords are reserved everywhere (none is contextual); `read` and `update` are reserved for future work. `never started main Switch Leftmost Join Filter Updated Distinct Element Kind` are prelude names written with their sigils where they have one: `!never`, `@started`, `@main`, `!Switch: fn !!A -> !A`, `!Leftmost: fn [!A] -> !A`, `$Join: fn $$A -> $A`, `!Filter: fn !?A -> !A`, `!Updated: fn $A -> !A` (fires with the new value in every occurrence the dynamic changes; never at build), `$Distinct: fn $A -> $A` (needs equality; suppresses equal-valued changes, which nothing else does), `@HoldFirst: fn !A -> @$A` (a dynamic that holds its event's value, with the first firing's value, in the build occurrence, as its initial value), `@Element`, `Kind: fn Element -> Kind`, and the optional default `Or: fn ?A, A -> A` (`Or ?x, default`; a function, unrelated to the keyword operator `or`). There are no prelude `Not`, `And` or boolean `Or` functions: `not`, `and`, `or` are operators. `Wrap.*` and `Checked.*` are the prelude's wrapping and checked arithmetic (`Wrap.Add: fn Nat, Nat -> Nat`, `Checked.Add: fn Nat, Nat -> ?Nat`, and likewise `Sub`, `Mul` and the `Int` forms); the bare operators abort the occurrence with an `Overflow` error.
+Comments `#` to end of line. UTF-8 source. Layout is the offside rule with `:` as the block opener: a `:` ending a line opens a block on the next, more-indented line; a `:` with tokens after it on the same line opens an inline block of that line, and `else` terminates an inline block, so `if c: a else: b` is one line with two inline blocks; inside `( ) (( )) [ ] [[ ]] { }` layout is suspended and `:` is the map key separator. Inline `:` is a plain token the parser interprets, not a layout token. `;` separates statements in an inline block: `type Pair<a, b> = record: first: a; second: b`, `if c: Log x; Log y else: Log z`; a layout block never needs it. `((` and `))` open and close a tuple, `[[` and `]]` an array literal; single `( )` is grouping and single `[ ]` is indexing or an array type. A trailing lambda as the last argument absorbs the rest of the line, so `MapValues !xs, \|x| x + 1` needs no parentheses around the lambda. Keywords: `let type tag of fn match if else for dyn intercept widget record choice map array unit test ignore on then not and or key ix jx kx empty`; keywords are reserved everywhere (none is contextual); `read` and `update` are reserved for future work. `never started main Switch Leftmost Join Filter Updated Distinct Element Kind` are prelude names written with their sigils where they have one: `!never`, `@started`, `@main`, `!Switch: fn !!A -> !A`, `!Leftmost: fn [!A] -> !A`, `$Join: fn $$A -> $A`, `!Filter: fn !?A -> !A`, `!Updated: fn $A -> !A` (fires with the new value in every occurrence the dynamic changes; never at build), `$Distinct: fn $A -> $A` (needs equality; suppresses equal-valued changes, which nothing else does), `@HoldFirst: fn !A -> @$A` (a dynamic that holds its event's value, with the first firing's value, in the build occurrence, as its initial value), `@Element`, `Kind: fn Element -> Kind`, and the optional default `Or: fn ?A, A -> A` (`Or ?x, default`; a function, unrelated to the keyword operator `or`). There are no prelude `Not`, `And` or boolean `Or` functions: `not`, `and`, `or` are operators. `Wrap.*` and `Checked.*` are the prelude's wrapping and checked arithmetic (`Wrap.Add: fn Nat, Nat -> Nat`, `Checked.Add: fn Nat, Nat -> ?Nat`, and likewise `Sub`, `Mul` and the `Int` forms); the bare operators abort the occurrence with an `Overflow` error.
 
-Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` when nothing constrains it (`$n <- 0 <= $n + 1 on !tick` is an `Int` counter); `-1` is an `Int`; a `Nat` is pinned by annotation; a decimal-spelled literal is `Float`. `"text"` with the escapes `\\ \" \n \t \{ \} \u{hex}` and interpolation `{expr}` only (`"hi {name}"`, `"count: {$count}"`); a `$` in text is always a literal `$`, so `"$count"` is plain text, and a literal brace is `\{` or `\}`. Interpolating a dynamic or an event lifts the whole literal (`"Count: {$count}"` is a `$Text`; `"got {!line}"` is a `!Text`). `'c'`, `unit`; `[[1, 2, 3]]` for an array, `[[]]` or `empty` for the empty one; `{k: v}` for a map, `{}` for the empty one; `((a, b))` for a tuple. The spacing rule: a token that can be prefix or binary is prefix when preceded by whitespace and followed immediately by a non-space (`F -1` passes negative one; `F - 1` subtracts). Wherever `_` is in scope (a `\` body, a `for` body, any pronoun-binding construct) a prefix `.x` is `_.x` and a prefix `[i]` is `_[i]`; with no `_` in scope it is an unbound-pronoun error, and a `.Method` that starts a continuation line is a chain step.
+Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` when nothing constrains it (`$n <- 0 then $n + 1 on !tick` is an `Int` counter); `-1` is an `Int`; a `Nat` is pinned by annotation; a decimal-spelled literal is `Float`. `"text"` with the escapes `\\ \" \n \t \{ \} \u{hex}` and interpolation `{expr}` only (`"hi {name}"`, `"count: {$count}"`); a `$` in text is always a literal `$`, so `"$count"` is plain text, and a literal brace is `\{` or `\}`. Interpolating a dynamic or an event lifts the whole literal (`"Count: {$count}"` is a `$Text`; `"got {!line}"` is a `!Text`). `'c'`, `unit`; `[[1, 2, 3]]` for an array, `[[]]` or `empty` for the empty one; `{k: v}` for a map, `{}` for the empty one; `((a, b))` for a tuple. The spacing rule: a token that can be prefix or binary is prefix when preceded by whitespace and followed immediately by a non-space (`F -1` passes negative one; `F - 1` subtracts). Wherever `_` is in scope (a `\` body, a `for` body, any pronoun-binding construct) a prefix `.x` is `_.x` and a prefix `[i]` is `_[i]`; with no `_` in scope it is an unbound-pronoun error, and a `.Method` that starts a continuation line is a chain step.
 
 ### Statements in a widget block
 
@@ -315,7 +315,7 @@ Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` w
 | `pattern <- widget` | build the widget as a child of this node; bind its result |
 | `widget` | build it; discard the result |
 | `let pattern = expr` | bind a value of any kind; builds nothing |
-| `$x <- v <= !e` | hold: `$x` is `v` until `!e` fires, then `!e`'s value; owned by this node; a hold set to the value it already has still changes |
+| `$x <- v then !e` | hold: `$x` is `v` until `!e` fires, then `!e`'s value; owned by this node; a hold set to the value it already has still changes |
 | `!!r <- dyn $x: block` | rebuild the block on each change of `$x`; `_` is the plain value; event fires in every build occurrence |
 | `!!r <- dyn p <- $x: block` | the same, destructuring `$x`'s value with pattern `p` |
 | `r <- for k, $v <- $m: block` | one block per key of `$(K ==> V)`; `k` is the key and `$v` the value as a dynamic; consolidated by result kind, promptly |
@@ -332,20 +332,20 @@ A top-level definition is `name: type = expr`, with the annotation required and 
 | Level | Operators | Notes |
 | --- | --- | --- |
 | 1 | `<-`, `let ... =` | statement level |
-| 2 | `<=` | hold |
+| 2 | `then` | hold |
 | 3 | paren-less application | extends to the end of the expression: `F a + 1` is `F(a + 1)`, and `(F a) + 1` is the other grouping; commas belong to the outermost call on the line or in the enclosing single-paren group; a trailing lambda absorbs the rest of the line |
 | 4 | `\|` | leftmost merge of events; associative; `!never` is its identity |
 | 5 | `on` | `v on !e` fires with `!e`, value `v` (dynamic `v` read before the occurrence) |
 | 6 | `or` | boolean or; associates left; short-circuits when plain |
 | 7 | `and` | boolean and; binds tighter than `or`: `x or y and z` is `x or (y and z)`; short-circuits when plain |
-| 8 | prefix `not` | boolean negation; looser than comparison, so `not a == b` is `not (a == b)` and `not a lt b and c` is `(not (a lt b)) and c` |
-| 9 | `lt le gt ge`, `== !=` | comparison; `a lt b` through the ordering trait, `a == b` through the equality trait; `Bool` result; does not associate |
+| 8 | prefix `not` | boolean negation; looser than comparison, so `not a == b` is `not (a == b)` and `not a < b and c` is `(not (a < b)) and c` |
+| 9 | `< <= > >=`, `== !=` | comparison; `a < b` through the ordering trait, `a == b` through the equality trait; `Bool` result; does not associate |
 | 10 | `+ -` and `+~ -~` (Int), `+. -.` (Float) | suffixed spellings only when inference cannot decide between `Int` and `Float`; there are no suffixed `Nat` spellings, a `Nat` is pinned by annotation |
 | 11 | `* /` and suffixed | `/` on `Nat` and `Int` returns `?`; on `Float` it follows IEEE (infinities, NaN) and never fails |
 | 12 | prefix `+ -`, free sigils `! $ @ ?`, `+?` | prefix `+` is numeric identity; `+?: fn Int -> ?Nat` converts, `Nil` below zero |
 | 13 | `.field`, `[index]`, attached sigils, `.F args` method form | `x.F y` is `F x, y`; chains associate left, so `x.F.G` is `G (F x)`; a `.F` that starts a continuation line closes the call above it and takes it as receiver; `a[i]` and `m[k]` return `?` |
 
-`not`, `and` and `or` are keywords over `Bool`, lifted by the sigils like any operator: `$done or $count gt limit on !click` is `($done or ($count gt limit)) on !click`, and `a lt b and c lt d` needs no parentheses. Plain `and` and `or` short-circuit, so an overflow in the operand that was not needed aborts nothing; lifted over dynamics or events they are lifts of the same function and fire by the lifting rule.
+`not`, `and` and `or` are keywords over `Bool`, lifted by the sigils like any operator: `$done or $count > limit on !click` is `($done or ($count > limit)) on !click`, and `a < b and c < d` needs no parentheses. Plain `and` and `or` short-circuit, so an overflow in the operand that was not needed aborts nothing; lifted over dynamics or events they are lifts of the same function and fire by the lifting rule.
 
 Parentheses: a single-paren group whose head is a call is that call with all its commas, so `(F a, b)` is `F(a, b)` and `G x, (F a, b)` gives `F` two arguments. Tuples are double parens: `((a, b))` is a pair, `((F a, b))` the pair of `F a` and `b`, and a multi-argument call inside a tuple takes its own single parens, `(((F a, b), c))`. Array literals are double brackets, `[[1, 2, 3]]`; single `[i]` is always indexing. A chain is written one step per line, and indentation decides where each call ends:
 
@@ -354,7 +354,7 @@ items.Filter IsDone
     .MapValues Label            # MapValues (Filter items, IsDone), Label
 ```
 
-On one line, `x.F y` is method form and a spaced `.F` is not a chain step. Comparisons are the infix keywords `lt`, `le`, `gt`, `ge` (`a lt b`), resolved through the ordering trait, and `==`, `!=`, resolved through the equality trait. Arithmetic, equality and ordering are the three built-in traits; nothing else is overloaded. Records have equality when every field does, and ordering, lexicographic in field declaration order, when every field is ordered; tuples, arrays, primitives and text are ordered; `Float` has a total order (IEEE totalOrder) and can key a map; the alternatives of a closed `choice` are ordered by declaration order; element equality is the tag plus the plain fields, never the request event, and elements are ordered by tag name then plain fields, so they can key sorted maps.
+On one line, `x.F y` is method form and a spaced `.F` is not a chain step. Comparisons are `<`, `<=`, `>`, `>=`, resolved through the ordering trait, and `==`, `!=`, resolved through the equality trait. Arithmetic, equality and ordering are the three built-in traits; nothing else is overloaded. Records have equality when every field does, and ordering, lexicographic in field declaration order, when every field is ordered; tuples, arrays, primitives and text are ordered; `Float` has a total order (IEEE totalOrder) and can key a map; the alternatives of a closed `choice` are ordered by declaration order; element equality is the tag plus the plain fields, never the request event, and elements are ordered by tag name then plain fields, so they can key sorted maps.
 
 ### Lifting
 

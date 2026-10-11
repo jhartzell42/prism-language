@@ -121,7 +121,7 @@ Suppose instead the sigil were always attached to whatever token followed it. Th
 
 ### Keywords
 
-`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `not` `and` `or` `lt` `le` `gt` `ge` `key` `ix` `jx` `kx` `empty`.
+`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `then` `not` `and` `or` `key` `ix` `jx` `kx` `empty`.
 
 Reserved for future work and rejected with a message saying so: `read` `update` and the sigil `&`.
 
@@ -147,10 +147,10 @@ The lexer produces a text literal as one token with a list of parts: plain text 
 
 The operator tokens, grouped by what they are for:
 
-- Statement: `<-` bind, `=` definition, `<=` hold.
+- Statement: `<-` bind, `=` definition, `then` hold (a keyword used as an operator: `0 then $count + !delta`).
 - Event: `|` merge, `on` sample (a keyword used as an operator).
 - Boolean: `not` (prefix), `and`, `or`, keywords used as operators like `on`, over `Bool`. `and` binds tighter than `or`, `not` binds tighter than `and`, and comparison binds tighter than `not`; all of them are tighter than `on` and `|`.
-- Comparison: `lt le gt ge` (keywords used as operators, like `on`), resolved through `Ord`, and `==` `!=`, resolved through `Eq`.
+- Comparison: `< <= > >=`, resolved through `Ord`, and `==` `!=`, resolved through `Eq`.
 - Arithmetic: `+ - * /`, which resolve by inference, and the suffixed spellings `+~ -~ *~ /~` for `Int` and `+. -. *. /.` for `Float`, each one token, for when inference cannot decide. `/` and `/~` return `?` on the integers and `/.` returns a plain `Float`.
 - Conversion: prefix `+?`, one token, converting an `Int` to a `?Nat`.
 - Types: `->` function, `==>` map, `:` ascription.
@@ -175,9 +175,9 @@ xs[ys[0]]           # two indexings: the opens are apart, though the closes touc
 
 Adjacency is the whole test, and it is the same test the spacing rule already applies: what touches what. One case costs something: an index whose index expression is itself a pronoun index, `xs[_[0]]`, cannot drop the `_` to `xs[[0]]`, since that is `xs` followed by an array literal. Writing the `_` is the fix, and the case is rare enough that the price is right.
 
-`a lt b` is less-than, `le`, `gt` and `ge` follow, and `a == b` and `a != b` are equality; every program compares things, and `if e.cursor == 0:` is what a reader expects to find there. The spelling of the ordering operators needs further study. `<` and `>` are the obvious choice and probably workable, because the lexer already tells `<`, `<-`, `<=`, `->` and `==>` apart by taking the longest token. What has not been worked through is the interaction with `<=` as hold: once `<` means less-than, a reader will take `$count <= 3` for less-or-equal, and the line that defines a program's state has to mean one thing at a glance. The keywords sidestep that collision at the cost of looking unlike other languages.
+`a < b` is less-than, `<=`, `>` and `>=` follow, and `a == b` and `a != b` are equality; every program compares things, and `if e.cursor == 0:` is what a reader expects to find there. The lexer tells `<`, `<-`, `<=`, `->` and `==>` apart by taking the longest token. Hold is the keyword `then`, so that `$count <= 3` means what it means in every other language and the line that defines a program's state reads as a timeline: `$count <- 0 then $count + !delta` is zero, then the sum whenever the event fires. Suppose instead hold were spelled `<=`, as the arrow suggests. Then `0 <= !e` would be a hold and `n <= !e` a lifted comparison, two different types from one spelling, told apart only by whether the left operand's type matches the event's payload; the one line a reader most needs to read aloud would be the one line that needed a type checker to read.
 
-**Boolean operators.** You have written `!(a && b) || c` and counted parentheses, or written `or(and(a, b), c)` in a language whose booleans are functions and read the line from the inside out. `not`, `and` and `or` are words, as `lt` and `on` are, so a condition reads as it is said: `if not done and $count gt limit:`. They take `Bool` operands and lift like every other operation: `$a and $b` is a `$Bool`, and `not !flag` is an event. On plain operands, `and` and `or` short-circuit: when the left operand decides the answer, the right one is not evaluated. The reason is overflow, which aborts the occurrence. A guard like `a lt 3_000_000 and a * a * a lt limit` is only a guard if the cube is never computed for a large `a`; without short-circuit the left test would protect nothing, and the program would need a nested `if` to say what the operator says. Over dynamics and events, `and` and `or` are the same function lifted by the lifting rule below, so `$a and $b` is a dynamic that is recomputed when either changes and an `and` with one event fires when the event does; the short-circuit applies to each evaluation of the plain function inside. There are no prelude functions with these names, and the one prelude `Or` is the optional default (`Or xs[i], 0`), which takes a `?T` and a `T` and has nothing to do with `Bool`.
+**Boolean operators.** You have written `!(a && b) || c` and counted parentheses, or written `or(and(a, b), c)` in a language whose booleans are functions and read the line from the inside out. `not`, `and` and `or` are words, as `<` and `on` are, so a condition reads as it is said: `if not done and $count > limit:`. They take `Bool` operands and lift like every other operation: `$a and $b` is a `$Bool`, and `not !flag` is an event. On plain operands, `and` and `or` short-circuit: when the left operand decides the answer, the right one is not evaluated. The reason is overflow, which aborts the occurrence. A guard like `a < 3_000_000 and a * a * a < limit` is only a guard if the cube is never computed for a large `a`; without short-circuit the left test would protect nothing, and the program would need a nested `if` to say what the operator says. Over dynamics and events, `and` and `or` are the same function lifted by the lifting rule below, so `$a and $b` is a dynamic that is recomputed when either changes and an `and` with one event fires when the event does; the short-circuit applies to each evaluation of the plain function inside. There are no prelude functions with these names, and the one prelude `Or` is the optional default (`Or xs[i], 0`), which takes a `?T` and a `T` and has nothing to do with `Bool`.
 
 **The argument bars.** A `|` immediately after `\` opens an argument list, which closes at the next `|`. The lexer distinguishes the bars from the merge operator by position, not by spacing: `\|a, b| a | b` is a lambda of two arguments whose body merges them. Inside the bars only patterns appear, so there is no merge to confuse them with.
 
@@ -233,7 +233,7 @@ There is no explicit-brace form of a layout block. Programs that need one line u
 ```prism
 @form:
     $edit <- Edit initial, (Len initial)
-        <= Apply $edit, !key
+        then Apply $edit, !key
     @Label (Render $edit)
 ```
 
@@ -364,7 +364,7 @@ let done = items.Filter IsDone
     .Values                     # Values (MapValues ..., Label)
 ```
 
-The receiver runs back to the start of the statement's right-hand side, after its `=`, `<-` or `<=`; inside brackets, where lines are whitespace, it runs back to the open bracket or the nearest comma at that bracket's depth. On one line, `x.F y` is method form and a spaced `.F` is not a chain step: `items.Filter IsDone .MapValues Label` is an error whose message says to put the step on its own line. Indentation decides because the alternative rules each give the parse to something a reader cannot see. Suppose a spaced `.F` on one line closed the call before it: then `F a .G b` and `F a.G b` would be different programs, distinguished by a space in the middle of a line, and the paren-less call would end somewhere other than at a comma or the end of the expression. A line break is the one boundary that is obvious from across the room, and one step per line is how a chain is written in every language that has them.
+The receiver runs back to the start of the statement's right-hand side, after its `=`, `<-` or `then`; inside brackets, where lines are whitespace, it runs back to the open bracket or the nearest comma at that bracket's depth. On one line, `x.F y` is method form and a spaced `.F` is not a chain step: `items.Filter IsDone .MapValues Label` is an error whose message says to put the step on its own line. Indentation decides because the alternative rules each give the parse to something a reader cannot see. Suppose a spaced `.F` on one line closed the call before it: then `F a .G b` and `F a.G b` would be different programs, distinguished by a space in the middle of a line, and the paren-less call would end somewhere other than at a comma or the end of the expression. A line break is the one boundary that is obvious from across the room, and one step per line is how a chain is written in every language that has them.
 
 ### Parse corpus
 
@@ -520,19 +520,19 @@ The program writes the step on its own line, as in case 4.
 
 ```prism
 let a = x or y and z
-let b = not done and $n gt limit
-let c = $done or $n gt limit on !click
+let b = not done and $n > limit
+let c = $done or $n > limit on !click
 let d = not a == b
-let e = not $n + 1 gt limit
+let e = not $n + 1 > limit
 let f = not done and ready
 ```
 
 ```
 a = x or (y and z)
-b = (not done) and ($n gt limit)
-c = ($done or ($n gt limit)) on !click
+b = (not done) and ($n > limit)
+c = ($done or ($n > limit)) on !click
 d = not (a == b)
-e = not (($n + 1) gt limit)
+e = not (($n + 1) > limit)
 f = (not done) and ready
 ```
 
@@ -603,7 +603,7 @@ Overflow in `Nat` or `Int` arithmetic is a runtime error that aborts the occurre
 Three things are overloaded in Prism and nothing else is: equality, ordering, and arithmetic. They are traits, in the Rust sense: a named set of operations that a type implements, with the operation resolved by inference from the operand types. The three are `Eq`, `Ord` and `Num`.
 
 - `Eq`: every plain value whose type contains no function and no functor value. Structural: two records are equal when their fields are, two maps when their entries are, two values of an extensible variant when their tags and plain fields are (an element's `requests` event is excluded).
-- `Ord`: primitives (`Float` included, by the total order described below), text, chars, tuples and arrays of ordered types (lexicographic), a `choice` whose payloads are ordered (declaration order of the alternatives, then payload; a closed `choice` of bare alternatives is ordered by declaration order alone, so `type Size = choice Small | Medium | Large` has `Small lt Large`), a record whose fields are all ordered (lexicographic in field declaration order, like Rust's derived `Ord`), and an extensible variant whose plain fields are ordered (tag name, then plain fields in declaration order, `requests` excluded). Map keys must be `Ord`, so a record or an element can key a sorted map.
+- `Ord`: primitives (`Float` included, by the total order described below), text, chars, tuples and arrays of ordered types (lexicographic), a `choice` whose payloads are ordered (declaration order of the alternatives, then payload; a closed `choice` of bare alternatives is ordered by declaration order alone, so `type Size = choice Small | Medium | Large` has `Small < Large`), a record whose fields are all ordered (lexicographic in field declaration order, like Rust's derived `Ord`), and an extensible variant whose plain fields are ordered (tag name, then plain fields in declaration order, `requests` excluded). Map keys must be `Ord`, so a record or an element can key a sorted map.
 - `Num`: `Nat`, `Int` and `Float`, with `+ - * /`. Prefix `-` is `Int` and `Float` only. `/` is `?Nat` and `?Int` on the integers and plain `Float` on `Float`.
 
 Values that hold a function, an event, a dynamic or a widget have none of these. Equality on events would have to mean something, and the only thing it could mean is identity, which the language does not give events; equality on functions is undecidable; equality on widgets would be equality on descriptions, which is close to structural but would make two different closures compare unequal in a way the program cannot predict. Ruling them out keeps `Eq` meaning "the same value" and nothing subtler.
@@ -612,15 +612,15 @@ Arithmetic is written `+ - * /` and the type of each operation is found by infer
 
 ```prism
 let !delta = -1 on !decrement | +1 on !increment     # -1 is signed, so !delta : !Int
-$count <- 0 <= $count + !delta                        # Int addition; the 0 is an Int because the hold is
+$count <- 0 then $count + !delta                        # Int addition; the 0 is an Int because the hold is
 let area = w *. h                                     # Float, said directly
 let third = total / 3                                 # ?Nat, if total is a Nat
 let half = width / 2.0                                # Float, if width is a Float; never Nil
 ```
 
-Numeric literals are polymorphic over `Nat`, `Int` and `Float` and take their type the same way. An integer-spelled literal is a `Nat` or an `Int`; a decimal-spelled literal is a `Float`; the negation of a literal is not a `Nat`. So `-1` is an `Int` by its spelling alone, `1.5` is a `Float`, and `0` is whatever the context says. When nothing constrains an integer-spelled literal, it is an `Int`: `$n <- 0 <= $n + 1 on !tick` is an `Int` counter with no annotation anywhere. The suffixed spellings `+~ -~ *~ /~` (`Int`) and `+. -. *. /.` (`Float`) pin the type at the operator when a program wants to say it there: `0 <= $count +~ !delta` says `Int` outright. `Nat` has no suffixed spelling; a program that needs to pin a `Nat` annotates it, `let n: Nat = 0`. Prefix `+` is the identity on any numeric type and exists so that `+1` and `-1` can sit next to each other in a merge. `+?` converts an `Int` to a `?Nat`, and `Abs` to a `Nat`.
+Numeric literals are polymorphic over `Nat`, `Int` and `Float` and take their type the same way. An integer-spelled literal is a `Nat` or an `Int`; a decimal-spelled literal is a `Float`; the negation of a literal is not a `Nat`. So `-1` is an `Int` by its spelling alone, `1.5` is a `Float`, and `0` is whatever the context says. When nothing constrains an integer-spelled literal, it is an `Int`: `$n <- 0 then $n + 1 on !tick` is an `Int` counter with no annotation anywhere. The suffixed spellings `+~ -~ *~ /~` (`Int`) and `+. -. *. /.` (`Float`) pin the type at the operator when a program wants to say it there: `0 then $count +~ !delta` says `Int` outright. `Nat` has no suffixed spelling; a program that needs to pin a `Nat` annotates it, `let n: Nat = 0`. Prefix `+` is the identity on any numeric type and exists so that `+1` and `-1` can sit next to each other in a merge. `+?` converts an `Int` to a `?Nat`, and `Abs` to a `Nat`.
 
-Why inference rather than one operator per type, as OCaml does (from memory)? A program full of `+~` reads as a program about its own numeric representation, and the counter, the first program anyone writes, would have one on its most important line. Why `Int` when nothing decides? An integer literal that nothing pins is almost always a count, an offset or a step, and `Int` is the type under which all three behave: it goes below zero without an overflow abort, and it never turns `n / 2` into a fraction the way a `Float` default would. Suppose instead an unpinned literal were an error. Then the counter without its `!delta` line, `$n <- 0 <= $n + 1 on !tick`, would be rejected, and the first program anyone writes would end in an annotation it does not need. The suffixed forms exist for the program that wants the type stated at the operator rather than in an annotation three lines away.
+Why inference rather than one operator per type, as OCaml does (from memory)? A program full of `+~` reads as a program about its own numeric representation, and the counter, the first program anyone writes, would have one on its most important line. Why `Int` when nothing decides? An integer literal that nothing pins is almost always a count, an offset or a step, and `Int` is the type under which all three behave: it goes below zero without an overflow abort, and it never turns `n / 2` into a fraction the way a `Float` default would. Suppose instead an unpinned literal were an error. Then the counter without its `!delta` line, `$n <- 0 then $n + 1 on !tick`, would be rejected, and the first program anyone writes would end in an annotation it does not need. The suffixed forms exist for the program that wants the type stated at the operator rather than in an annotation three lines away.
 
 Equality and ordering in use look like this:
 
@@ -629,10 +629,10 @@ if e.cursor == 0: e else: Edit e.text, e.cursor - 1
 let sorted = Sort names                    # Text is Ord
 let by_id = Insert items, id, todo         # Nat is Ord, so Nat ==> Todo is a map
 let same = slot_a.element == slot_b.element    # structural, on an extensible variant
-let later = a.at gt b.at                   # Ord, through the gt operator
+let later = a.at > b.at                   # Ord, through the > operator
 ```
 
-`Eq` on `Float` is IEEE equality, so a NaN is not equal to itself and `-0.0 == 0.0`. `Ord` on `Float` is the IEEE totalOrder: negative NaN, then negative infinity, the negative numbers, `-0.0`, `0.0`, the positive numbers, positive infinity, positive NaN. `lt le gt ge`, `Sort` and map keys all use it, so a sort of floats terminates, a map with `Float` keys has a defined order and can hold a NaN key, and `-0.0 lt 0.0` is `True` while `-0.0 == 0.0` is also `True`. The two relations disagree only on zeros and NaN, and a total order that agreed with `==` there would have to call a NaN equal to itself; a program that wants something else wraps the float in a newtype and compares through a function. Equality on `Text` is by code points, not by any normalisation; two texts that look the same and are encoded differently are different, and a program that cares normalises first. These are the dull answers, chosen because the alternatives are a choice of locale or a choice of normalisation form, and either one is a dependency on something outside the program.
+`Eq` on `Float` is IEEE equality, so a NaN is not equal to itself and `-0.0 == 0.0`. `Ord` on `Float` is the IEEE totalOrder: negative NaN, then negative infinity, the negative numbers, `-0.0`, `0.0`, the positive numbers, positive infinity, positive NaN. `< <= > >=`, `Sort` and map keys all use it, so a sort of floats terminates, a map with `Float` keys has a defined order and can hold a NaN key, and `-0.0 < 0.0` is `True` while `-0.0 == 0.0` is also `True`. The two relations disagree only on zeros and NaN, and a total order that agreed with `==` there would have to call a NaN equal to itself; a program that wants something else wraps the float in a newtype and compares through a function. Equality on `Text` is by code points, not by any normalisation; two texts that look the same and are encoded differently are different, and a program that cares normalises first. These are the dull answers, chosen because the alternatives are a choice of locale or a choice of normalisation form, and either one is a dependency on something outside the program.
 
 Generic code may be bounded by a trait, `let Max<a: Ord>: fn a, a -> a`, and is still erased: the trait implementation is passed where the bound is, not looked up at runtime. It is not a general trait system. There are no user-defined traits, no associated types, no instances declared away from the type. The checker is written so that those can be added, and the chapter on the compiler says how; for this specification the three are the whole of it, and they are enough for sorting, map keys, element identity, and arithmetic that reads as arithmetic.
 
@@ -753,7 +753,7 @@ let Magnitude: fn Vector -> Float = \Sqrt (_.x *. _.x +. _.y *. _.y)
 
 Function types are written `fn A, B -> C`, with the arguments comma-separated the way a call is; a function takes at least one argument, and a function of nothing takes `unit`. A function-typed argument or result is parenthesised, `fn (fn A -> B), [A] -> [B]` and `fn A -> (fn B -> C)`, so the commas and arrow of the inner type never run into the outer one's. A function of one pair is `fn ((A, B)) -> C`, written with the tuple's double parentheses, and differs from `fn A, B -> C` in the way `F ((a, b))` differs from `F a, b`. The `intercept` signature reads with all three rules at once: `fn @a, !(Path ==> Response), $(fn Element -> @$State) -> @((a, $(Path ==> Slot)))`, a function of three arguments, the third a dynamic of functions, returning a widget whose result is a pair. The annotation requirement at top level keeps every error local to one definition, since the checker never has to guess a signature from uses in another module, and it makes the typed form of a module readable at its boundary. It is kept rather than relaxed because the cost is one line per definition, and the line is the one a reader of the module wants first. If experience shows that small helper definitions make the cost real, the relaxation is to infer unannotated top-level `let`s that are used only within their module.
 
-Local annotations are allowed anywhere a pattern is: `let n: Nat = 0`, `\|e: Element| ...`, `$x: $Int <- 0 <= ...`. On a sigiled name the annotation gives the plain type under the sigil or the full type with it; both spellings are accepted and mean the same thing.
+Local annotations are allowed anywhere a pattern is: `let n: Nat = 0`, `\|e: Element| ...`, `$x: $Int <- 0 then ...`. On a sigiled name the annotation gives the plain type under the sigil or the full type with it; both spellings are accepted and mean the same thing.
 
 Inference here splits into a value layer and a functor layer. Hindley–Milner runs on plain types and stays principal: the type of `Insert items, id, todo` is found by unification over `k ==> v`, `k`, `v`, exactly as it would be in ML. The functor layer is not unified at all; it is *read*. `$items` is a dynamic because its name says so, and the application `Insert $items, $next, todo` is a dynamic because the operands say so and the lifting rule says what a plain function over dynamics is. No unification variable ever stands for "some functor"; the sigils have already answered the question. That is why a value's kind is readable from its spelling and why the lifting rule can be a table.
 
@@ -790,7 +790,7 @@ Append $log, !line        # an event of arrays
 a / b + 1                 # ?Nat: the ? from division lifts through the +
 $a / $b                   # $?Nat
 ?x == 3                   # ?Bool
-$count gt limit           # $Bool: a comparison, lifted like any operation
+$count > limit           # $Bool: a comparison, lifted like any operation
 "Count: {$count}"         # $Text
 "Got {!line}"            # !Text
 $"Increment"              # a constant dynamic: nothing to lift over
@@ -802,7 +802,7 @@ $v on !e                  # an event with $v's old value when !e fires
 
 The two-events error is the rule most worth defending, because the alternative looks friendly. Suppose `!a + !b` meant "fire when either fires, using the other's most recent value". Then every event would need a most-recent value, which is a hold, which is state nobody declared, with an initial value nobody chose. Suppose instead it meant "fire when both fire in one occurrence". That is a real operation, and it is spelled by hand: `!a` and `!b` both fire in some occurrence exactly when both sides of a merge of them fire, and the program that wants that writes it with `|` and a tuple, or holds one and samples it at the other. The error exists because there are three things `!a + !b` could mean and the program has to say which.
 
-The tag read in the third case is the whole of the language's mutation policy in one rule. `$count + !delta` reads the count *before* the click. That turns the counter's `$count <- 0 <= $count + !delta` from an equation into a definition: the cycle passes through a read of the old value. It is also why there is no "which version of `$count` did the handler see": at an event there is one version, the one before. If you have debugged a Reflex program where `tagPromptlyDyn` and `tag . current` were both in use, you know which afternoon this prevents.
+The tag read in the third case is the whole of the language's mutation policy in one rule. `$count + !delta` reads the count *before* the click. That turns the counter's `$count <- 0 then $count + !delta` from an equation into a definition: the cycle passes through a read of the old value. It is also why there is no "which version of `$count` did the handler see": at an event there is one version, the one before. If you have debugged a Reflex program where `tagPromptlyDyn` and `tag . current` were both in use, you know which afternoon this prevents.
 
 **Lifting never crosses a sigil boundary.** A function on `A` lifts over `$A` but not over the inner layer of `$$A`; `$$a + 1` is a type error, and `$Join $$a + 1` is what the program meant. Likewise a function on `!A` does not lift over `!!A`. Flattening is `!Switch` and `$Join`, in the switching chapter, and it has laws of its own that a lifted `+` could not keep.
 
@@ -849,26 +849,26 @@ Loosest to tightest:
 | | Operator | Reads as |
 |---|---|---|
 | 1 | `<-`, `let ... =` | statement level, not expressions |
-| 2 | `<=` | hold |
+| 2 | `then` | hold |
 | 3 | paren-less application | to the right, to the end of the expression |
 | 4 | `\|` | merge |
 | 5 | `on` | sample |
 | 6 | `or` | boolean or |
 | 7 | `and` | boolean and |
 | 8 | prefix `not` | boolean negation |
-| 9 | `lt` `le` `gt` `ge` `==` `!=` | comparison |
+| 9 | `<` `<=` `>` `>=` `==` `!=` | comparison |
 | 10 | `+` `-` and `+~` `-~` `+.` `-.` | additive |
 | 11 | `*` `/` and `*~` `/~` `*.` `/.` | multiplicative |
 | 12 | prefix `+` `-` `+?` and free sigils `!` `$` `@` `?` | prefix |
 | 13 | `.field`, `[index]`, `.Method`, attached sigils | postfix |
 
-Binary operators at one level associate to the left, except `<=`, which does not associate: `a <= b <= c` is an error. The counter's lines are the test of the table: `$count <- 0 <= $count + !delta` is `$count <- (0 <= ($count + !delta))`; `-1 on !decrement | +1 on !increment` is `(-1 on !decrement) | (+1 on !increment)`; `$count + 1 on !click | 0 on !reset` is `(($count + 1) on !click) | (0 on !reset)`.
+Binary operators at one level associate to the left, except `then`, which does not associate: `a then b then c` is an error. The counter's lines are the test of the table: `$count <- 0 then $count + !delta` is `$count <- (0 then ($count + !delta))`; `-1 on !decrement | +1 on !increment` is `(-1 on !decrement) | (+1 on !increment)`; `$count + 1 on !click | 0 on !reset` is `(($count + 1) on !click) | (0 on !reset)`.
 
-`on` tighter than `|` lets a merge of samples read without parentheses, which is the form of every "what happened" event in the worked examples. `on` looser than arithmetic makes `$count + 1 on !click` mean "the count plus one, at the click" rather than "the count, plus (one at the click)", which would be a two-event error waiting to happen. Under both choices the first program anyone writes needs no parentheses, and a rule that made the counter uglier would need a better reason than any of these. Comparison sits between `on` and arithmetic, so `$count + 1 gt limit on !click` compares the sum and samples the answer at the click. The boolean operators sit between `on` and comparison, so a condition reads the way it is said: `$done or $count gt limit on !click` is `($done or ($count gt limit)) on !click`, `a lt b and c lt d` is `(a lt b) and (c lt d)`, and `x or y and z` is `x or (y and z)`. Sampling still wraps the whole condition without parentheses, which is what `on` being looser than every value operator buys. `not` sits between `and` and comparison, so it negates a whole comparison: `not a == b` is `not (a == b)`, `not $n + 1 gt limit` is `not (($n + 1) gt limit)`, and `not done and ready` is `(not done) and ready`, because `and` is looser. The operand of `not` is everything tighter than it, which is why `not $done` and `not a.ready` also read as expected. Suppose `not` bound tighter than comparison, as the unary minus does. Then `not a == b` would be `(not a) == b`, a type error in nearly every program that writes it, since the writer meant the negated comparison; the precedence that makes the line mean what it says is the one to choose. `not` is a prefix operator, so it cannot be the right operand of a tighter operator: `a == not b` is a parse error whose message asks for `a == (not b)`.
+`on` tighter than `|` lets a merge of samples read without parentheses, which is the form of every "what happened" event in the worked examples. `on` looser than arithmetic makes `$count + 1 on !click` mean "the count plus one, at the click" rather than "the count, plus (one at the click)", which would be a two-event error waiting to happen. Under both choices the first program anyone writes needs no parentheses, and a rule that made the counter uglier would need a better reason than any of these. Comparison sits between `on` and arithmetic, so `$count + 1 > limit on !click` compares the sum and samples the answer at the click. The boolean operators sit between `on` and comparison, so a condition reads the way it is said: `$done or $count > limit on !click` is `($done or ($count > limit)) on !click`, `a < b and c < d` is `(a < b) and (c < d)`, and `x or y and z` is `x or (y and z)`. Sampling still wraps the whole condition without parentheses, which is what `on` being looser than every value operator buys. `not` sits between `and` and comparison, so it negates a whole comparison: `not a == b` is `not (a == b)`, `not $n + 1 > limit` is `not (($n + 1) > limit)`, and `not done and ready` is `(not done) and ready`, because `and` is looser. The operand of `not` is everything tighter than it, which is why `not $done` and `not a.ready` also read as expected. Suppose `not` bound tighter than comparison, as the unary minus does. Then `not a == b` would be `(not a) == b`, a type error in nearly every program that writes it, since the writer meant the negated comparison; the precedence that makes the line mean what it says is the one to choose. `not` is a prefix operator, so it cannot be the right operand of a tighter operator: `a == not b` is a parse error whose message asks for `a == (not b)`.
 
 A free sigil at level 12 applies to everything to its right up to the end of the enclosing call or bracket, because it is prefix and nothing at level 12 or looser follows it: `@ ChecklistUpdate ix, !checked` is `@ (ChecklistUpdate ix, !checked)` since the call at level 3 is looser and extends under it. The free sigil and the paren-less call therefore nest the obvious way: the sigil wraps the call. `$ x + 1` is `$ (x + 1)` by the same reading.
 
-A `.Method` that starts a continuation line stands outside the table. It closes everything open on the lines above, back to the statement's `=`, `<-` or `<=`, and takes that whole expression as its receiver; level 13 covers only a `.` written against the expression before it.
+A `.Method` that starts a continuation line stands outside the table. It closes everything open on the lines above, back to the statement's `=`, `<-` or `then`, and takes that whole expression as its receiver; level 13 covers only a `.` written against the expression before it.
 
 ### Statements
 
@@ -881,8 +881,8 @@ Three statement forms exist, and they are the only places where the sigil-level 
 TextInput(!changed, $value) <- @TextInput ""   # bind with a record pattern
 let !delta = -1 on !decrement | +1 on !increment   # let: name a value, build nothing
 let @b = @Button $"OK"                   # let of a widget: a description, unbuilt
-$count <- 0 <= $count + !delta           # hold
-$$current <- $ Unavailable <= !$contents # hold of dynamics, for a $Join
+$count <- 0 then $count + !delta           # hold
+$$current <- $ Unavailable then !$contents # hold of dynamics, for a $Join
 ```
 
 A bind's left side is a pattern, and every name in it takes the sigil of what it is bound to. A `let` is the same, with no building: `let @b = @Button $"OK"` followed by `!x <- @b` and `!y <- @b` builds two buttons, because a widget is a description and each bind of it is a node. A hold's left side is a single sigiled name, because a hold is one piece of state with one definition; a program that wants two holds writes two.
@@ -1161,7 +1161,7 @@ error: choosing a widget by a changing value
 error: a hold must be inside a widget block
   --> helper.prism:3:5
    |
- 3 |     $n <- 0 <= $n + !e
+ 3 |     $n <- 0 then $n + !e
    |     ^^^^^^^^^^^^^^^^^^ holds are owned by a widget's node
 ```
 
@@ -1233,14 +1233,14 @@ The programs on which the two lexers must produce identical token streams. Each 
 @counter:
     !increment <- @Button $"Increment"
     let !delta = -1 on !decrement | +1 on !increment
-    $count <- 0 <= $count + !delta
+    $count <- 0 then $count + !delta
     @Label $"Count: {$count}"
 ```
 
 ```
 @counter ⟨ !increment <- @Button $TEXT("Increment")
 ; let !delta = -pre 1 on !decrement | +pre 1 on !increment
-; $count <- 0 <= $count +bin !delta
+; $count <- 0 then $count +bin !delta
 ; @Label $TEXT("Count: ", { $count }) ⟩
 ```
 
@@ -1251,12 +1251,12 @@ Note `$"Increment"` is an attached sigil on the text token, and `$"Count: {$coun
 ```prism
 @form:
     $edit <- Edit initial, (Len initial)
-        <= Apply $edit, !key
+        then Apply $edit, !key
     @Label (Render $edit)
 ```
 
 ```
-@form ⟨ $edit <- Edit initial , ( Len initial ) <= Apply $edit , !key
+@form ⟨ $edit <- Edit initial , ( Len initial ) then Apply $edit , !key
 ; @Label ( Render $edit ) ⟩
 ```
 
@@ -1517,7 +1517,7 @@ The language's refusals are listed with the whole design in the first part of th
 
 **No reified identifiers, no introspection.** There is no way to name a binding as data, reach into a widget node, list a block's bindings, or ask a value for its type. A test drives a program through its elements, the way a World does, and reads its element list and its result. What this buys: a test that passes under the Test World passes under any World, since it used only the boundary; a name can be renamed without breaking anything but the program; and generic code can be erased, because nothing can ask a value what it is.
 
-**No symbol with two meanings.** Comparisons are the operators `lt le gt ge == !=`; `<=` is hold and nothing else, and `<-` is bind and nothing else. What this buys: the line that defines a program's state never looks like a comparison.
+**No symbol with two meanings.** `<=` is less-or-equal and nothing else, `then` is hold and nothing else, and `<-` is bind and nothing else. What this buys: the line that defines a program's state never looks like a comparison, and a comparison never looks like state.
 
 **No explicit-brace layout, no block comments, no tabs, no `else`-less `if`.** Each of these removes a second way to write something, and each second way is one more case on which two parsers can disagree. The spec is the thing, and the thing is shorter for it.
 

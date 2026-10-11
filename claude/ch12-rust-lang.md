@@ -107,12 +107,11 @@ pub enum TokenKind {
     Char(char),
     // keywords
     Let, Type, Tag, Of, Fn, Match, If, Else, For, Dyn, Intercept, Widget,
-    Record, Choice, Map, Array, Unit, Test, Ignore, On, Key, Ix, Jx, Kx, Empty,
-    Lt, Le, Gt, Ge,                 // the comparison keywords: a lt b
+    Record, Choice, Map, Array, Unit, Test, Ignore, On, Then, Key, Ix, Jx, Kx, Empty,
     Not, And, Or,                   // the boolean keywords: not a, a and b, a or b
     // operators and punctuation
-    Bind, Define, Hold,             // <-  =  <=
-    EqEq, NotEq,                    // ==  !=
+    Bind, Define,                   // <-  =      (`then`, the hold operator, is the keyword above)
+    Lt, Le, Gt, Ge, EqEq, NotEq,    // <  <=  >  >=  ==  !=   (longest match: `<-` and `<=` are two tokens, `<` `<=`)
     Merge,                          // |   (never the lambda bars)
     Plus, Minus, Star, Slash,       // + - * /     (Plus/Minus take the `prefix` flag)
     PlusInt, MinusInt, StarInt, SlashInt,       // +~ -~ *~ /~
@@ -266,7 +265,7 @@ pub enum Stmt {
     Bind   { pat: Pat, widget: Expr, span: Span },      // pat <- widget
     Build  { widget: Expr, span: Span },                // widget          (result discarded, or the block's result)
     Let    { pat: Pat, value: Expr, span: Span },       // let pat = value
-    Hold   { name: SName, init: Expr, event: Expr, span: Span },   // $x <- init <= event
+    Hold   { name: SName, init: Expr, event: Expr, span: Span },   // $x <- init then event
     Result { value: Expr, span: Span },                 // @ value   (a free @ on the last statement)
     Expr   { value: Expr, span: Span },                 // in non-widget blocks: the value
 }
@@ -282,7 +281,7 @@ pub enum Expr {
     Call   { f: Box<Expr>, args: Vec<Expr> },                // F a, b   (F a, b)   x.F a, b   and a chain step
     Named  { ctor: Box<Expr>, args: Vec<(Name, Expr)> },     // Vector(x=1.0, y=2.0), Ui.Button(label="OK")
     RecordBlock { ctor: Box<Expr>, fields: Vec<(Name, Expr)> }, // Vector: x: 0.0 ...
-    Binary { op: BinOp, l: Box<Expr>, r: Box<Expr> },        // + - * / +~ ... lt le gt ge == != and or |  on
+    Binary { op: BinOp, l: Box<Expr>, r: Box<Expr> },        // + - * / +~ ... < <= > >= == != and or |  on
     Prefix { op: PrefixOp, e: Box<Expr> },                   // + - +? not and free sigils
     Field  { e: Box<Expr>, field: SName },                   // e.x  e.!changed
     Index  { e: Box<Expr>, i: Box<Expr> },                   // e[i]
@@ -341,20 +340,20 @@ typedef     := 'record' block | 'choice' ('..' | alt ('|' alt)* | block)
 tag_stmt    := lower ':' type                                      # a field
              | 'requests' ':' type | 'responds' ':' type | 'state' ':' type
 
-block_stmt  := pat '<-' expr '<=' expr                            # hold: pat must be one sigiled name
+block_stmt  := pat '<-' expr 'then' expr                          # hold: pat must be one sigiled name
              | pat '<-' expr                                       # bind
              | 'let' pat '=' expr
              | '@' expr                                            # result, only as the last statement
              | expr                                                # build and discard, or the block's result
 
-expr(hold)  := expr(chain) ('<=' expr(chain))?                    # does not associate
+expr(hold)  := expr(chain) ('then' expr(chain))?                  # does not associate
 expr(chain) := expr(merge) (ChainDot Upper call_args?)*            # a chain step on a continuation line
 expr(merge) := expr(on) ('|' expr(on))*
 expr(on)    := expr(or) ('on' expr(or))*
 expr(or)    := expr(and) ('or' expr(and))*
 expr(and)   := expr(not) ('and' expr(not))*
 expr(not)   := 'not' expr(not) | expr(cmp)                        # looser than comparison: `not a == b` is `not (a == b)`
-expr(cmp)   := expr(add) (cmpop expr(add))?                       # cmpop: lt le gt ge == !=
+expr(cmp)   := expr(add) (cmpop expr(add))?                       # cmpop: < <= > >= == !=
 expr(add)   := expr(mul) (addop expr(mul))*
 expr(mul)   := expr(prefix) (mulop expr(prefix))*
 expr(prefix):= prefixop expr(prefix) | freesigil expr(postfix) | expr(postfix)
@@ -415,9 +414,9 @@ A step's own arguments are parsed as a call's and end at the next `ChainDot`. In
 
 **A free sigil applies to the whole call after it.** `expr(prefix)` on a `FreeSigil` parses its operand at the `postfix` level, where a callable name takes its arguments, so `@ ChecklistUpdate ix, !checked` is `@ (ChecklistUpdate ix, !checked)` and `$ x + 1` is `$ (x + 1)`. An attached sigil is part of the name token and never reaches this rule.
 
-**Boolean operators.** `not` is a prefix keyword that takes an `expr(not)`, so it sits between `and` and comparison: its operand is a whole comparison, and `not a == b` is `not (a == b)`. `and` and `or` are left-associative and sit between `not` and `on`, with `and` tighter, so `x or y and z` is `x or (y and z)`, `a lt b and c lt d` needs no parentheses, and `$done or $n gt limit on !click` is `($done or ($n gt limit)) on !click`. `not $done and $n gt limit` is `(not $done) and ($n gt limit)`, since `not` binds tighter than `and`. The parser builds `Binary` and `Prefix` nodes and stops there; a non-`Bool` operand is the checker's error.
+**Boolean operators.** `not` is a prefix keyword that takes an `expr(not)`, so it sits between `and` and comparison: its operand is a whole comparison, and `not a == b` is `not (a == b)`. `and` and `or` are left-associative and sit between `not` and `on`, with `and` tighter, so `x or y and z` is `x or (y and z)`, `a < b and c < d` needs no parentheses, and `$done or $n > limit on !click` is `($done or ($n > limit)) on !click`. `not $done and $n > limit` is `(not $done) and ($n > limit)`, since `not` binds tighter than `and`. The parser builds `Binary` and `Prefix` nodes and stops there; a non-`Bool` operand is the checker's error.
 
-**Hold does not associate.** `expr(hold)` takes at most one `<=`; a second is the error "`<=` does not associate; a hold has one initial value and one event".
+**Hold does not associate.** `expr(hold)` takes at most one `then`; a second is the error "`then` does not associate; a hold has one initial value and one event".
 
 **Method form.** `x.F y, z` is parsed at the postfix level: `x`, then `.` with the binary flag, then an uppercase name, then arguments as for a call, and the tree is `Call { f: F, args: [x, y, z] }`. Method form associates left: `x.F.G` is `G (F x)`.
 
@@ -427,7 +426,7 @@ A step's own arguments are parsed as a call's and end at the next `ChainDot`. In
 
 **`if` and `else`.** `if c` takes a block, then expects `Else`, then a block. After an inline `if c: a`, the `else` ends the inline block and is the next token; after a layout block, the lexer has emitted `Sep` before `else` at the block's column, and the `if` routine consumes the separator when the token after it is `Else`. An `else` belongs to the nearest `if` that has none yet; a layout `else` finds its `if` by column, because the dedent has already closed every block between them. An `if` with no `else` is the error the language chapter gives.
 
-**`match` guards.** An arm is `pat`, then optionally `if` and an expression, then the block. The guard is parsed at the `hold` level up to the arm's colon, which the lexer has left as `Colon` (inline arm) or turned into `BlockOpen` (layout arm), so `Some n if n gt limit: ...` needs no lookahead. The guard is stored on the `Arm`, not wrapped around the body, so that exhaustiveness can see it.
+**`match` guards.** An arm is `pat`, then optionally `if` and an expression, then the block. The guard is parsed at the `hold` level up to the arm's colon, which the lexer has left as `Colon` (inline arm) or turned into `BlockOpen` (layout arm), so `Some n if n > limit: ...` needs no lookahead. The guard is stored on the `Arm`, not wrapped around the body, so that exhaustiveness can see it.
 
 **`for` binders.** After `for`, the parser scans ahead on the line for a `<-` at bracket depth zero before the line-final or inline colon. If there is one, the tokens before it are one pattern or two comma-separated patterns, the key and the item (`for k, $item <- $items:`; with one pattern, `for $item <- $items:`, it is the item). If not, the line is the shorthand `for $items:` and `key` and `_` are bound by the loop. The scan is a token walk with no grammar, and it is sound because a `<-` can appear in an expression only inside a block, which the scan does not enter.
 
@@ -529,7 +528,7 @@ A group with one member and no self-edge is acyclic and is built in one step. A 
 The resolver labels edges from syntax alone, which it can do because lifting is read off sigils and sigils are syntax:
 
 - A reference to a dynamic `$x` as an operand of an operation or application that also has exactly one event operand is a *tag* read: `Delayed(Tag)`. `$count + !delta`, `$v on !e`, `(Insert $items, $next, todo) on !add` all read their dynamics this way.
-- A reference to a dynamic anywhere in the event expression of a hold `$y <- v <= e` is a tag read for the same reason: the event expression is an event, and dynamics inside it are read through tags.
+- A reference to a dynamic anywhere in the event expression of a hold `$y <- v then e` is a tag read for the same reason: the event expression is an event, and dynamics inside it are read through tags.
 - The argument of `!Switch` is `Delayed(Switch)`: the switch adopts a new inner at commit.
 - A reference to the child's element list, the second result of `intercept`, from the responses argument of the same `intercept` is `Delayed(Intercept)`: routing consults the list as the occurrence opened.
 - Every other reference is `Prompt`: a dynamic in an operation with no event (a derived dynamic reads its change event), the dynamic of a `dyn` or a `for` (rebuilt in the occurrence of the change), the argument of `$Join`, the event side of anything, a plain value.
@@ -699,11 +698,11 @@ An element whose field is a dynamic is the same rule one level down: `@Element U
 
 ### The three traits
 
-`Eq`, `Ord` and `Num` are resolved by inference and nothing else is overloaded. The elaborator keeps a constraint set alongside unification: `Num t` for every arithmetic operator and every numeric literal, `Eq t` for every use of `==`, `!=` and `$Distinct`, `Ord t` for every comparison operator (`lt`, `le`, `gt`, `ge`), every `Sort`, and every map key. Constraints are solved when their type variable is resolved:
+`Eq`, `Ord` and `Num` are resolved by inference and nothing else is overloaded. The elaborator keeps a constraint set alongside unification: `Num t` for every arithmetic operator and every numeric literal, `Eq t` for every use of `==`, `!=` and `$Distinct`, `Ord t` for every comparison operator (`<`, `<=`, `>`, `>=`), every `Sort`, and every map key. Constraints are solved when their type variable is resolved:
 
 - At a concrete type, the constraint is checked against the fixed table (`Num`: `Nat`, `Int`, `Float`; `Eq`: every plain type with no function and no functor, structurally; `Ord`: primitives (`Float` by IEEE totalOrder, so it can key a map), text, chars, tuples and arrays of ordered types, closed choices by declaration order, declared types whose parts are ordered, and extensible-variant values by tag name then fields) and the operation node records the type: `Trait { which: Add, at: Int, args }`. The closure compiler then picks the one implementation for that type, and nothing is looked up at runtime.
-- At a type variable that is generalised with a bound, `let Max<a: Ord>: fn a, a -> a`, the constraint becomes a hidden parameter of the function: the scheme is `forall a. Ord a => ...`, the body's `x lt y` is `Trait { which: Lt, at: a, args }` whose implementation is the hidden argument `Dict { Ord, a }`, and every call to `Max` at a concrete type passes `Dict { Ord, Text }` first. This is dictionary passing for three dictionaries, and the dictionary is an ordinary function value, erased like everything else.
-- At a type variable with no bound in scope, the error names the operation and the variable: "`lt` needs `Ord a`; add the bound `<a: Ord>` to `Max`".
+- At a type variable that is generalised with a bound, `let Max<a: Ord>: fn a, a -> a`, the constraint becomes a hidden parameter of the function: the scheme is `forall a. Ord a => ...`, the body's `x < y` is `Trait { which: Lt, at: a, args }` whose implementation is the hidden argument `Dict { Ord, a }`, and every call to `Max` at a concrete type passes `Dict { Ord, Text }` first. This is dictionary passing for three dictionaries, and the dictionary is an ordinary function value, erased like everything else.
+- At a type variable with no bound in scope, the error names the operation and the variable: "`<` needs `Ord a`; add the bound `<a: Ord>` to `Max`".
 - At a type variable that is never resolved and never generalised, which is the case of an integer-spelled literal nothing pins, the variable defaults to `Int` at the end of the item, and the text form prints the literal as `Int` like any other.
 
 Records have equality when all fields do, and ordering when all fields are ordered, lexicographic in field declaration order, as Rust's derived `Ord` is; tuples, arrays, primitives and text are ordered; extensible variants are ordered by tag name, then by plain fields, with any request event excluded as it is from equality, so elements can key sorted maps; element equality is tag plus plain fields, excluding any request event, so that two `Fs.Contents(path="/etc/motd")` are equal whatever events they hold, which is the identity the World's oracle keys on. The elaborator computes these per type once, memoised in `Types`, and the answer for a declared type is derived from its parts.
@@ -758,13 +757,13 @@ Under this rule the ordinary todo list is legal: its rows return events derived 
 
 The check itself: for each cyclic group, take the subgraph of its members with every edge labelled, remove the delayed edges, and look for a cycle among what remains with a depth-first search. A cycle found is the error; its members are reported in the order the search met them, starting from the member whose span is earliest. Cycles that pass through other widget functions, where a widget binds a child whose result feeds back into something the child was given, are not visible to a per-block check and are reported by the runtime's re-entry check with the spans the compiler attached to every cyclic placeholder, which is the division of labour the specification states.
 
-Suppose there were no static check and every cycle were left to the runtime. The runtime does find them, and names the node; the cost is that the counter's author who writes `$count <- 0 <= $count + 1` (no event: a derived dynamic reading itself promptly) learns about it at the first occurrence instead of at compile time, and learns the name of one node instead of the list of bindings. The static check is cheap because the resolver already computed the groups and the elaborator already placed the lifts, and a per-block check is the whole of what the typed AST can see.
+Suppose there were no static check and every cycle were left to the runtime. The runtime does find them, and names the node; the cost is that the counter's author who writes `$count <- 0 then $count + 1` (no event: a derived dynamic reading itself promptly) learns about it at the first occurrence instead of at compile time, and learns the name of one node instead of the list of bindings. The static check is cheap because the resolver already computed the groups and the elaborator already placed the lifts, and a per-block check is the whole of what the typed AST can see.
 
 ### Exhaustiveness and the catch-all
 
 A `match` on a closed `choice` must cover every alternative or end in a catch-all; one on `?T` must have `Some` and `Nil` or a catch-all; one on an array must cover every length (see below); one on a literal type must end in a catch-all; one on an extensible variant must end in a catch-all arm, `ignore:` or a bare name, because the set of tags is open. The elaborator records `Dispatch` on the `Match` node so that the closure compiler knows which test to emit, and checks coverage with the usual matrix algorithm for nested patterns (`Some (Circle r)` under `?Shape`), reporting the first missing constructor by name. Arms after a catch-all are "unreachable arm" errors rather than warnings, because an unreachable arm is a bug the reader will otherwise trust.
 
-A guarded arm does not count toward coverage. The matrix is built from the unguarded arms only, because the elaborator cannot know the guard will hold; the guarded arms are still typed and still checked for reachability against the unguarded arms above them. So `Some n if n gt 0:` followed by `Nil:` is a missing-`Some` error, the message names the guarded arm ("this arm has a guard, so `Some _` is still uncovered; add an arm without one"), and a guarded catch-all, `ignore if c:`, is not a catch-all: a `match` on an extensible variant or a literal type must end in an unguarded one.
+A guarded arm does not count toward coverage. The matrix is built from the unguarded arms only, because the elaborator cannot know the guard will hold; the guarded arms are still typed and still checked for reachability against the unguarded arms above them. So `Some n if n > 0:` followed by `Nil:` is a missing-`Some` error, the message names the guarded arm ("this arm has a guard, so `Some _` is still uncovered; add an arm without one"), and a guarded catch-all, `ignore if c:`, is not a catch-all: a `match` on an extensible variant or a literal type must end in an unguarded one.
 
 Array patterns enter the matrix as constructors by length. `[[]]` is length 0, `[[a, b]]` is exactly 2, and `[[head, ..rest]]` is at least 1 (at least *k* for *k* elements before the `..`). Coverage is checked at the lengths 0 up to one past the longest pattern and then at "longer than that", where only a `..` pattern can match, so `[[]]` with `[[head, ..rest]]` covers every array and `[[a, b]]` with `[[]]` is missing the lengths 1 and 3 and up, reported as the first missing one. Element patterns inside are specialised in the usual way, and the `Dispatch::Array` the match records tells the closure compiler to emit length tests. Record patterns without `..` must name every field; `..` is required when they do not, and an element pattern `Ns.*(..)` always has it.
 
@@ -918,7 +917,7 @@ pub enum Step {
     Let       { dst: usize, expr: LeafId },                                  // a plain value, computed once at build
     Const     { dst: usize, value: Operand },                                // Dynamic::constant
     Bind      { dst: usize, widget: Operand, pat: Option<PatId> },           // builder.bind(&widget)
-    Hold      { dst: usize, init: Operand, event: Operand },                 // Dynamic::hold(init, event)
+    Hold      { dst: usize, init: Operand, event: Operand },                 // Dynamic::hold(runtime, init, event)
     HoldFirst { dst: usize, event: Operand },                                // Dynamic::hold_first(event)
     Map       { dst: usize, event: Operand, f: LeafId, captures: Vec<Operand> },
     Tag       { dst: usize, event: Operand, dyns: Vec<Operand>, f: LeafId, captures: Vec<Operand> },
@@ -1116,7 +1115,7 @@ The source, with the two library widgets it uses:
     !increment <- @Button $"Increment"
     !decrement <- @Button $"Decrement"
     let !delta = -1 on !decrement | +1 on !increment
-    $count <- 0 <= $count + !delta
+    $count <- 0 then $count + !delta
     @Label "Count: {$count}"
 ```
 
@@ -1357,7 +1356,7 @@ error: `a` is not a function
    = did you mean `a - 1`?
 ```
 
-**A numeric operator at the wrong type.** There is no "cannot decide the numeric type" error: an integer-spelled literal that nothing pins is an `Int` at the end of its item, so `$n <- 0 <= $n + 1 on !tick` is an `Int` counter, and a decimal-spelled literal is a `Float` from the start. What remains is the wrong suffixed operator: `+~` on two `Float`s is "operator `+~` is Int addition, but both operands are Float; use `+.` or `+`"; a bare literal in `Int` arithmetic where the other operand is pinned `Int` resolves silently (the literal unifies), and the message appears only when the literal is a `Nat` by annotation: "`+` on a Nat and an Int; write `+?` to convert, or make the literal an Int: `+1`".
+**A numeric operator at the wrong type.** There is no "cannot decide the numeric type" error: an integer-spelled literal that nothing pins is an `Int` at the end of its item, so `$n <- 0 then $n + 1 on !tick` is an `Int` counter, and a decimal-spelled literal is a `Float` from the start. What remains is the wrong suffixed operator: `+~` on two `Float`s is "operator `+~` is Int addition, but both operands are Float; use `+.` or `+`"; a bare literal in `Int` arithmetic where the other operand is pinned `Int` resolves silently (the literal unifies), and the message appears only when the literal is a `Nat` by annotation: "`+` on a Nat and an Int; write `+?` to convert, or make the literal an Int: `+1`".
 
 **A sigil that disagrees with the inferred kind.** Detected when a binding's inferred type is compared with its written sigils.
 
@@ -1408,7 +1407,7 @@ Six kinds of test cover the crate, and every one of them is a text file someone 
 
 ### Goldens
 
-Each golden is a Prism file and its typed-AST dump after elaboration, and after conversion with `--converted`. Any change to elaboration shows up as a diff a reviewer reads. The set: the counter; each program of the conformance corpus; the GUI library; the worked examples of the first chapter; and one small file per rule of the lexical and expression chapters, including the paren-less call cases (`F a, G b, c`, `F a, (G b, c)`, `G(b, c)`), tuples and arrays (`((G b, c))`, `(((G b, c), d))`, `((Size $elems) + 1)`, `[[]]`), function types (`fn (fn A -> B), [A] -> [B]`, `fn ((A, B)) -> C`), a three-step chain on continuation lines, the boolean levels (`not a == b`, `a lt b and c lt d`, `x or y and z`), a guarded arm and an exhaustiveness failure caused by one, `for` with named binders and with the shorthand, array patterns of each form, `@HoldFirst` written in a program, `;` in an inline `record:` and an inline `if`, the lambda shorthand (`\.done`, `\[0]`), the spacing cases, the dynamic-of-widgets lift in both forms, `for` in each consolidation, a cyclic group cut at a switch, an interceptor with a tag-specific arm and a catch-all, a generic function with a bound, and a `test` item. What they catch, by name: a lift that changed kind (a dynamic read promptly where it should go through a tag); a literal or operator that resolved to a different numeric type; a binding that moved between `[build]` and `[occ]`; a group split or cut differently; a `for` consolidating to the wrong kind; a capture list that gained or lost an entry; a `dyn` inserted or not inserted at a widget application.
+Each golden is a Prism file and its typed-AST dump after elaboration, and after conversion with `--converted`. Any change to elaboration shows up as a diff a reviewer reads. The set: the counter; each program of the conformance corpus; the GUI library; the worked examples of the first chapter; and one small file per rule of the lexical and expression chapters, including the paren-less call cases (`F a, G b, c`, `F a, (G b, c)`, `G(b, c)`), tuples and arrays (`((G b, c))`, `(((G b, c), d))`, `((Size $elems) + 1)`, `[[]]`), function types (`fn (fn A -> B), [A] -> [B]`, `fn ((A, B)) -> C`), a three-step chain on continuation lines, the boolean levels (`not a == b`, `a < b and c < d`, `x or y and z`), a guarded arm and an exhaustiveness failure caused by one, `for` with named binders and with the shorthand, array patterns of each form, `@HoldFirst` written in a program, `;` in an inline `record:` and an inline `if`, the lambda shorthand (`\.done`, `\[0]`), the spacing cases, the dynamic-of-widgets lift in both forms, `for` in each consolidation, a cyclic group cut at a switch, an interceptor with a tag-specific arm and a catch-all, a generic function with a bound, and a `test` item. What they catch, by name: a lift that changed kind (a dynamic read promptly where it should go through a tag); a literal or operator that resolved to a different numeric type; a binding that moved between `[build]` and `[occ]`; a group split or cut differently; a `for` consolidating to the wrong kind; a capture list that gained or lost an entry; a `dyn` inserted or not inserted at a widget application.
 
 The layout corpus of the language chapter is the lexer's golden: a program in, its token stream out, a program's whole stream printed on one line in the conformance chapter's corpus notation, compared exactly, for both lexers.
 

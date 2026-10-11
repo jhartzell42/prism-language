@@ -21,7 +21,7 @@ One reader: Jimmy, the language's author, who already knows the language, for re
 9. Banned words and habits: "carry/carries" (as in carries state, carries a value — say has/holds/provides/brings); "shape" (say structure/form/or be specific); "compose/composes/composable" as a vague verb (say what nests in what); cleft sentences ("What X does is…", "It is X that…"); heavy relative clauses; non-default word order ("A map is the collection the language prefers" → "This language prefers maps"); "genuinely", "honestly", "straightforward"; "leverage"; numbered pedagogical point lists explaining things the reader knows.
 10. No "Jimmy's rule" or reverent attribution. No "as noted above"-style scaffolding. No "In this section we will". Section openers state the point.
 11. Nothing is ever triggered by a widget being dropped or an element merely appearing or disappearing. If a program wants something done, it fires a request event. (The draw list a GUI World reads is description, not a trigger; exit is a request element `Process.Exit` with `requests: !Code`.)
-12. Prism code must be consistent with the syntax in spec-v1 Part II (sigils `! $ @ ?`, `<-` bind, `<=` hold, `|` leftmost merge, `on`, `dyn`, `for`, `intercept`, `@Element`, tag declarations). Every example should be something that could plausibly compile.
+12. Prism code must be consistent with the syntax in spec-v1 Part II (sigils `! $ @ ?`, `<-` bind, `then` hold, `|` leftmost merge, `on`, `dyn`, `for`, `intercept`, `@Element`, tag declarations). Every example should be something that could plausibly compile.
 
 ## Settled design you must not contradict (summary; details in spec-v1)
 
@@ -114,7 +114,7 @@ Write the chapter file. At the top, a one-paragraph lead stating the chapter's p
 
 ## Decision: comparison operators
 
-- Comparisons are infix keyword operators `lt`, `le`, `gt`, `ge` (`a lt b`), resolved through the ordering trait, at the comparison precedence level (between `|`/`on` and arithmetic); equality is `==` and `!=` through the equality trait. There are no `Lt`/`Le` prelude functions as the only way to compare. Chapter 3 carries a short note that the spelling needs further study: `<` and `>` are the obvious choice and probably workable (the lexer can tell `<`, `<-`, `<=`, `->`, `==>` apart), but the interaction with `<=` as hold has not been worked through.
+- Comparisons are the ordinary symbols `<`, `<=`, `>`, `>=`, resolved through the ordering trait, at the comparison precedence level (between `|`/`on` and arithmetic); equality is `==` and `!=` through the equality trait. Hold is the keyword operator `then`: `$count <- 0 then $count + !delta`, at the precedence `<=` used to have (loosest expression operator, does not associate). `<=` is less-or-equal and nothing else.
 - General rule: never give up something ordinary programmers expect unless the loss follows from the semantics or the goals. A sacrifice caused by a token collision, parser convenience or an implementation detail is a design bug.
 
 ## Decision: calls, tuples, function types, ordering
@@ -141,7 +141,7 @@ Write the chapter file. At the top, a one-paragraph lead stating the chapter's p
 
 ## Decision: boolean precedence, guards, optional if, for binders, patterns, small gaps
 
-- Precedence, loosest to tightest around the boolean level: `on` / `|`, `or`, `and`, `not`, comparison (`lt le gt ge == !=`), arithmetic. So `not a == b` is `not (a == b)` and `a lt b and c lt d` needs no parentheses. Plain `and` / `or` short-circuit (an overflow in the operand that was not needed does not abort); lifted `and` / `or` over dynamics and events are lifts of the same function and fire per the lifting rule.
+- Precedence, loosest to tightest around the boolean level: `on` / `|`, `or`, `and`, `not`, comparison (`< <= > >= == !=`), arithmetic. So `not a == b` is `not (a == b)` and `a lt b and c lt d` needs no parentheses. Plain `and` / `or` short-circuit (an overflow in the operand that was not needed does not abort); lifted `and` / `or` over dynamics and events are lifts of the same function and fire per the lifting rule.
 - `match` arms may have guards: `pattern if cond:`. A guarded arm does not count toward exhaustiveness. The typed AST has a guard on the arm.
 - `if` always has an `else`; there is no else-less `if` (in a pure language an `if` is an expression and both branches have a value).
 - Widget-level `for` has named binders: `for k, $item <- $items:` binds the key and the per-key dynamic; the shorthand `for $items:` binds `key` and `$_` as before. In `update` blocks `for &_:` binds the reserved loop indices `ix`, then `jx` and `kx` for nested loops, exactly as chapter 16 specified; the indices are not named by the program.
@@ -152,3 +152,10 @@ Write the chapter file. At the top, a one-paragraph lead stating the chapter's p
 - Library widgets take dynamic arguments: `@Button` takes a `$Text` label. A relabelled `Ui.Button` is a fresh slot in the library's interceptor, which the World never sees (it sees only `Gui.*`); the fresh-slot-per-change rule holds for elements that reach a World. The book's "button that relabels itself" is an illustration of the rule, not the way a program normally labels a button.
 - `Extent` is `record: w: Float; h: Float` and is the only size type (no separate `Size`). Transcripts print request firings bare and `; `-separated, as chapter 2's conventions say.
 - `update` blocks sit outside the chapters' "no assignment" statements without caveat: the statements stand for the language the book specifies, and `update` is a separate piece of design in chapter 16 that the rest of the book does not depend on.
+
+## Decision: hold is `then`, comparisons are symbols, holds live in widgets
+
+- Hold is the keyword operator `then`: `$count <- 0 then $count + !delta`. It has the precedence `<=` used to have (loosest expression operator, does not associate). `<=` is less-or-equal and nothing else; comparisons are `< <= > >= == !=`. `then` is a keyword. The `update`-block setter `&p <= v` in chapter 16 is unchanged for now and is a known second meaning of `<=` to resolve when `&` is written up properly.
+- A hold is written only in a widget block, and the runtime API matches: `Behavior::hold`, `Dynamic::hold`, `switch_hold`, `trace`, `subscribe` and `already_fired` take `&Runtime`; lazy combinators (`map`, `filter_map`, `tag`, `leftmost`, `combine`) do not. The reason is the Haskell implementation: it runs the typed AST on Reflex, where a hold outside `MonadHold` cannot be typed, so every hold must have a creation occurrence, and a build is the only Prism construct with one. The runtime keeps no thread-local state; `WidgetBuilder::runtime()` is how a build gets the handle.
+- `test` is a top-level form, not a function call: its steps hold patterns (not values), and `prism test` collects it while `prism build` strips it. The book does not claim a script is a plain array.
+- Functions named with a sigil return that kind; `!When` (chapter 4) is an event-returning function, not a plain function.

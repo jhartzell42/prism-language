@@ -36,7 +36,7 @@ Every language answers three questions about a value: who may write it, from whe
 
 There is a fourth answer. A value changes only through the events named in its definition, and only when the moment ends.
 
-`$checked <- False <= !toggle | !reset`
+`$checked <- False then !toggle | !reset`
 
 Read it as a sentence. `$checked` starts `False`. It moves when `!toggle` fires or when `!reset` fires. Nothing else moves it: no setter, no notification, no other file. A rule like this needs a noun, and the plain one is *mutation policy*: a rule about who may write a value, from where and when, which the language keeps on every expression, so a program that breaks it does not compile. A policy is in force whether or not anyone wrote it down, and every program in the first section had one: C's, in a framework's clothes.
 
@@ -108,7 +108,7 @@ The problem comes back in two places. The first: there are no events as values. 
 
 Everything that happens is a stream, and a program is a pipeline over streams. Rx has events as values and a rich set of operators over them, which is the other half of FRP, found from the other side. The problem comes back because there are no behaviors as a law. The current state is a stream you remember yourself, through a `BehaviorSubject` that has "a notion of 'the current value'", built by hand. Each subscriber to a plain observable "owns an independent execution of the Observable", so two observers of one source can disagree about what happened. And "Observables are able to deliver values either synchronously or asynchronously", so time is whatever the subscription order makes it.
 
-At scale the missing half gets rediscovered in prose. Kafka's documentation has a section on the duality of streams and tables: "A stream is thus a table in disguise", and "A table is thus a stream in disguise". A table is a hold, `<=`, and its changelog is the hold's change event, `!Updated`. Kafka had to write the documentation because its types did not say it.
+At scale the missing half gets rediscovered in prose. Kafka's documentation has a section on the duality of streams and tables: "A stream is thus a table in disguise", and "A table is thus a stream in disguise". A table is a hold, `then`, and its changelog is the hold's change event, `!Updated`. Kafka had to write the documentation because its types did not say it.
 
 ### Elm
 
@@ -130,7 +130,7 @@ Esterel, Lustre and their family have Prism's law, earlier, with a clock. Time i
 
 Every goal below is a promise that some version of that afternoon cannot happen.
 
-- **There is one way to change anything, and it is written next to the thing.** A hold's definition lists every event that can move it. Read `$checked <- False <= !toggle | !reset` and you have read everything that will ever happen to `$checked`. The second checkbox observer has nowhere to live.
+- **There is one way to change anything, and it is written next to the thing.** A hold's definition lists every event that can move it. Read `$checked <- False then !toggle | !reset` and you have read everything that will ever happen to `$checked`. The second checkbox observer has nowhere to live.
 - **Two things in one moment are simultaneous, and the program says what that means.** Reset and the server's message in one occurrence? The merge says which wins: `|` takes the left. Not registration order, not luck, and if you want the other answer you swap the operands and the program says so.
 - **You can see what moves.** `$count + !delta` tells you that one name is live and one happens, and so does the compiler, which lifts the addition for you. No `map`, no `zipWith`, no dependency array to drift from the code.
 - **"Not yet" is a type, not a feeling.** The file that has not loaded is `Unavailable`, a case of its type, and the compiler makes you say what to draw then. Nothing is `null` while you wait, and no render is thrown away and retried.
@@ -156,7 +156,7 @@ What you lose, said plainly: you cannot write the line that peeks. What replaces
     !!clicks <- dyn $label:
         @Element Ui.Button(label=_)
     let !click = !Switch !!clicks
-    $count <- 0 <= $count + 1 on !click
+    $count <- 0 then $count + 1 on !click
     @ $count
 ```
 
@@ -257,11 +257,11 @@ tag Ui.Label of Element:
     !increment <- @Element Ui.Button(label="Increment")
     !decrement <- @Element Ui.Button(label="Decrement")
     let !delta = -1 on !decrement | +1 on !increment
-    $count <- 0 <= $count + !delta
+    $count <- 0 then $count + !delta
     @Element Ui.Label(text="Count: {$count}")
 ```
 
-`Ui.Button` and `Ui.Label` are tags of the GUI library: a button has a label and responds with a click; a label has a text and does nothing. `@Element` makes a slot for an element and gives back what it responds with, so `!increment` is the Increment button's clicks. `on` takes a value at an event, so `-1 on !decrement` fires `-1` whenever Decrement is clicked. `|` merges two events, the left one winning when both fire in one occurrence. `<=` holds: `$count` starts at `0` and becomes `$count + !delta` whenever `!delta` fires, with `$count` on the right read through a tag, the count before the click. Bindings in a block are recursive, so `$count` can appear on both sides. The label's text is a dynamic, and a dynamic where a plain field goes lifts the element into a `dyn`: a fresh label slot each time the count changes. The block is a description. Nothing happens until a World builds it.
+`Ui.Button` and `Ui.Label` are tags of the GUI library: a button has a label and responds with a click; a label has a text and does nothing. `@Element` makes a slot for an element and gives back what it responds with, so `!increment` is the Increment button's clicks. `on` takes a value at an event, so `-1 on !decrement` fires `-1` whenever Decrement is clicked. `|` merges two events, the left one winning when both fire in one occurrence. `then` holds: `$count` starts at `0` and becomes `$count + !delta` whenever `!delta` fires, with `$count` on the right read through a tag, the count before the click. Bindings in a block are recursive, so `$count` can appear on both sides. The label's text is a dynamic, and a dynamic where a plain field goes lifts the element into a `dyn`: a fresh label slot each time the count changes. The block is a description. Nothing happens until a World builds it.
 
 Ask it the questions from six in the evening. What can change `$count`? Read one line: `!delta`, and nothing else. If both buttons fire in one occurrence, which wins? Read another: `|` takes the left, so the decrement. Is there a setter somewhere else, in another file, registered by next week's feature? There cannot be. The language has no sentence for it.
 

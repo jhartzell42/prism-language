@@ -36,7 +36,7 @@ MapValues: fn k ==> v, (fn v -> w) -> k ==> w
 Fold:   fn k ==> v, a, (fn a, k, v -> a) -> a           # in key order
 ```
 
-Every operation over these lifts by the rule of the sigils: a plain function applied to a dynamic is a dynamic, applied to a dynamic and an event is an event with the dynamic read through a tag, applied to two events is a compile error. Comparisons are the infix operators `==`, `!=`, `lt`, `le`, `gt` and `ge` (`a lt b`), through the equality and ordering traits, and lift the same way. Boolean logic is the keyword operators `not`, `and` and `or`, looser than comparison and tighter than `on` and `|`, and they lift the same way too. So `Append $log, !line` is an event of arrays, and `(Insert $items, $next, todo) on !add` is an event that fires with the click and reads both dynamics as they stood before it.
+Every operation over these lifts by the rule of the sigils: a plain function applied to a dynamic is a dynamic, applied to a dynamic and an event is an event with the dynamic read through a tag, applied to two events is a compile error. Comparisons are the infix operators `==`, `!=`, `<`, `<=`, `>` and `>=`, through the equality and ordering traits, and lift the same way. Boolean logic is the keyword operators `not`, `and` and `or`, looser than comparison and tighter than `on` and `|`, and they lift the same way too. So `Append $log, !line` is an event of arrays, and `(Insert $items, $next, todo) on !add` is an event that fires with the click and reads both dynamics as they stood before it.
 
 ### Shared declarations
 
@@ -78,7 +78,7 @@ Inside the `dyn` block `_` is the label as a plain value, because inside one bui
     !increment <- @Button $"Increment"
     !decrement <- @Button $"Decrement"
     let !delta = -1 on !decrement | +1 on !increment
-    $count <- 0 <= $count + !delta
+    $count <- 0 then $count + !delta
     @Label "Count: {$count}"
 ```
 
@@ -114,9 +114,9 @@ The World diffs the two lists, sees a label gone and a label arrived at the same
 
 Between occurrences 1 and 2 the World did what Worlds do: it read the list, drew it, and waited. Nothing in the program ran. There is no render loop inside a Prism program and no idle callback; an occurrence happens because the World opened one, and between them the program is a data structure. That is why the same program can be driven by a test World with no screen (example 13), and why the World can batch two clicks into one occurrence or deliver them as two, and the program's text says what each choice means.
 
-Suppose the program wanted a count per button as well as the total. The hold is the only state, so there would be two more holds, `$ups <- 0 <= $ups + 1 on !increment` and `$downs <- 0 <= $downs + 1 on !decrement`, each listing its one event, and in occurrence 2 both would move while `$count` moved by the leftmost. Nothing about the first hold changes, and nothing anywhere else has to know the new ones exist.
+Suppose the program wanted a count per button as well as the total. The hold is the only state, so there would be two more holds, `$ups <- 0 then $ups + 1 on !increment` and `$downs <- 0 then $downs + 1 on !decrement`, each listing its one event, and in occurrence 2 both would move while `$count` moved by the leftmost. Nothing about the first hold changes, and nothing anywhere else has to know the new ones exist.
 
-The tag law decides that `$count` on the right of `<=` means the count *before* the click, which is what turns a line that looks like an equation into a definition: there is no "which version of `$count` did the handler see" because there is only one version at an event. The merge decides simultaneity: two clicks in one moment are one `!delta`, the leftmost, and if you want the other answer you write `+1 on !increment | -1 on !decrement` and the program says so. And the hold's definition is the complete list of what can move the count. There is no setter, no second file, no reset handler registered somewhere else that wins or loses depending on registration order. That is the goal of one way to change anything, written next to the thing, in five lines.
+The tag law decides that `$count` on the right of `then` means the count *before* the click, which is what turns a line that looks like an equation into a definition: there is no "which version of `$count` did the handler see" because there is only one version at an event. The merge decides simultaneity: two clicks in one moment are one `!delta`, the leftmost, and if you want the other answer you write `+1 on !increment | -1 on !decrement` and the program says so. And the hold's definition is the complete list of what can move the count. There is no setter, no second file, no reset handler registered somewhere else that wins or loses depending on registration order. That is the goal of one way to change anything, written next to the thing, in five lines.
 
 ## 2. A text input with a cursor
 
@@ -153,7 +153,7 @@ let Render: fn Edit -> Text = \|e|
 
 @TextInput: fn Text, Text -> @$Text = \|name, initial| @widget:
     !key <- @Element Ui.Focusable(name=name)
-    $edit <- Edit initial, (Len initial) <= Apply $edit, !key
+    $edit <- Edit initial, (Len initial) then Apply $edit, !key
     @Label (Render $edit)
     @ $edit.text
 ```
@@ -218,17 +218,17 @@ let Describe: fn Todo, Bool -> Text = \|t, starred|
 
 @todos:
     !add <- @Button $"Add"
-    $next <- 0 <= $next + 1 on !add
+    $next <- 0 then $next + 1 on !add
     let !adds = {$next: Add "item {$next}"} on !add
     !rows <- for $items:
         !toggle <- @Button $"Toggle"
         !delete <- @Button $"Delete"
         !star <- @Button $"Star"
-        $starred <- False <= not $starred on !star
+        $starred <- False then not $starred on !star
         @Label (Describe $_, $starred)
         @ Toggle on !toggle | Delete on !delete
     let !changes = !Union !adds, !rows
-    $items <- {} <= StepAll $items, !changes
+    $items <- {} then StepAll $items, !changes
 ```
 
 The list is a map from an allocated id to a todo, not an array. The id is the identity: it decides which row survives a change, which paths stay stable, and which `$starred` keeps its value when the row above it is deleted. An array keyed by position would rebuild every row after an insertion at the front and reset every star; that is why `for` over an array is second class and why the ids are allocated from `$next` rather than taken from a position.
@@ -286,7 +286,7 @@ What this prevents: the afternoon where deleting item 3 cleared the expanded sta
         @Element Ui.Button(label=_)
     let !click = !Switch !!clicks
     !reset <- @Button $"Reset"
-    $count <- 0 <= $count + 1 on !click | 0 on !reset
+    $count <- 0 then $count + 1 on !click | 0 on !reset
     let $label = "Clicked {$count} times"
     @Label $label
 ```
@@ -365,13 +365,13 @@ let ShowContents: fn Contents -> Text = \|c| match c:
 @viewer:
     !started <- @started
     !motd <- @Element Fs.File(path="/etc/motd", requests=(Read on !started))
-    $motd <- Nil <= Some !motd
+    $motd <- Nil then Some !motd
     @Label (ShowResponse $motd)
 
     $path <- @TextInput "path", "/etc/hostname"
     !$contents <- dyn $path:
         @Element Fs.Contents(path=_)
-    $$current <- $ (Unavailable NotFound) <= !$contents
+    $$current <- $ (Unavailable NotFound) then !$contents
     @Label (ShowContents ($Join $$current))
 ```
 
@@ -459,7 +459,7 @@ let Total: fn Watch, Instant -> Int = \|w, now| w.base + Since w.run, now
     !stop <- @Button $"Stop"
     !reset <- @Button $"Reset"
     let !action = Start on !start | Stop on !stop | Reset on !reset
-    $watch <- Watch 0, Stopped <= Step $watch, $clock, !action
+    $watch <- Watch 0, Stopped then Step $watch, $clock, !action
     @Label "{Total $watch, $clock} ms"
 ```
 
@@ -646,7 +646,7 @@ let Freeze: fn a -> $a = \|v| $ v
         Fs.Contents(path=p): @widget:
             $live <- @Element Fs.Contents(path=p)
             !started <- @started
-            $$shown <- $live <= (Freeze $live) on (!started | !refresh)
+            $$shown <- $live then (Freeze $live) on (!started | !refresh)
             @ $Join $$shown
         ignore: @Element e
     @ result
@@ -668,7 +668,7 @@ Take a child with two readers of `/etc/app.conf` and one of `/etc/motd`, each a 
 
 **Occurrence 3.** The World pushes `Known "v3"` and, in the same occurrence, the user clicks Refresh. `$live` changes to `"v3"` in this occurrence, but `Freeze $live` on `!refresh` reads it through a tag and gets `"v2"`. The cache shows `"v2"`; the next refresh will show `"v3"`. This is the tag law doing what it always does, and a cache that wants the pushed value in the same occurrence as the click cannot have it, because the only window onto a dynamic at an event is the value before.
 
-The child's slot has its value in its creation occurrence and nothing less, which is the law for state elements. Suppose the supplier held plain values instead, `$cached <- Unavailable NotFound <= $live on (!started | !refresh)`. Then `$cached` would be `Unavailable NotFound` before the build occurrence and `Known "v1"` after it, and a tag in the child reading it in that occurrence would see `Unavailable NotFound`, a value the oracle never gave. The hold of dynamics has no such gap, because `$Join` switches to the new inner's current value in the occurrence of the switch instead of waiting for the new inner to fire, and the hold starts as `$live`, which has the oracle's value from the first instant.
+The child's slot has its value in its creation occurrence and nothing less, which is the law for state elements. Suppose the supplier held plain values instead, `$cached <- Unavailable NotFound then $live on (!started | !refresh)`. Then `$cached` would be `Unavailable NotFound` before the build occurrence and `Known "v1"` after it, and a tag in the child reading it in that occurrence would see `Unavailable NotFound`, a value the oracle never gave. The hold of dynamics has no such gap, because `$Join` switches to the new inner's current value in the occurrence of the switch instead of waiting for the new inner to fire, and the hold starts as `$live`, which has the oracle's value from the first instant.
 
 The goal served is the one that says the language is enough. A cache is not a feature of the runtime, a flag on the element, or a mode of `intercept`. It is a hold, in a widget, returned by a function, and anything else you want between a child and the World is the same construction with a different body.
 
@@ -712,9 +712,9 @@ let Status: fn Link -> Text = \|link| match link:
         ((!rx, $link)) <- @Element Net.Socket(address=_, requests=!out)
         @ ((!rx, $link))
     let !rx = !Switch (First !conns)
-    $$link <- $ Connecting <= Second !conns
+    $$link <- $ Connecting then Second !conns
     let $link = $Join $$link
-    $log <- [[]] <= Append $log, !Filter (Line !rx)
+    $log <- [[]] then Append $log, !Filter (Line !rx)
     @Label (Status $link)
     @Label (JoinText "\n", $log)
 ```
@@ -793,7 +793,7 @@ let IsEnd: fn StdinEvent -> ?unit = \|ev| match ev:
     !in <- @Element Cli.Stdin
     let !chunk = !Filter (ChunkOf !in)
     let !end = !Filter (IsEnd !in)
-    $lines <- 0 <= $lines + Count !chunk, '\n'
+    $lines <- 0 then $lines + Count !chunk, '\n'
     !werr <- @Element Cli.Stdout(requests=("{$lines}\n" on !end))
     @Element Process.Exit(requests=(Code 0 on !end))
     @ unit
@@ -896,7 +896,7 @@ let ApplyDeltas: fn Nat ==> unit, Nat ==> Delta -> Nat ==> unit = \|conns, delta
         !ev <- @Element Net.Conn(id=key, requests=!reply)
         let !reply = [[Send (Respond !Filter (RequestLine !ev)), Close]]
         @ Shut on !Filter (IsClosed !ev)
-    $conns <- {} <= ApplyDeltas $conns, (!Union !opens, !closes)
+    $conns <- {} then ApplyDeltas $conns, (!Union !opens, !closes)
     @ unit
 ```
 
@@ -939,7 +939,7 @@ A server that read real requests would need to collect the bytes until the blank
 ```prism
     !closes <- for $conns:
         !ev <- @Element Net.Conn(id=key, requests=!reply)
-        $buf <- "" <= Concat [[$buf, !Filter (RequestLine !ev)]]
+        $buf <- "" then Concat [[$buf, !Filter (RequestLine !ev)]]
         let !head = !Filter (CompleteHead (Concat [[$buf, !Filter (RequestLine !ev)]]))
         let !reply = [[Send (Respond !head), Close]]
         @ Shut on !Filter (IsClosed !ev)
@@ -1013,7 +1013,7 @@ One more script, for the sandbox of example 7, because it shows a turn that is m
 @probe:
     !started <- @started
     !r <- @Element Fs.File(path="/etc/shadow", requests=(Read on !started))
-    $seen <- Nil <= Some !r
+    $seen <- Nil then Some !r
     @Label (ShowResponse $seen)
 
 test sandbox_denies_outside_root: Test (@Sandbox "/jail", @probe): array:
@@ -1053,7 +1053,7 @@ let OnlyFor: fn App, App, Path ==> Response -> ?(Path ==> Response) = \|want, ha
     ((ignore, $sa)) <- intercept @a, !down_a, $ \|e| @Element e
     ((ignore, $sb)) <- intercept @b, !down_b, $ \|e| @Element e
     !next <- @Button $"Next app"
-    $active <- A <= Other $active on !next
+    $active <- A then Other $active on !next
     let $shown = Pick $active, $sa, $sb
     !child_in <- @Element Ui.VBox(children=(UiOnly $shown))
     !fwd_a <- @Forward (NonUi $sa)

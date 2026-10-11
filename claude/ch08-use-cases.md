@@ -34,7 +34,7 @@ tag Gui.Focusable of Element:
 
 A dynamic where a field goes lifts the element into a `dyn`, a fresh slot per change, and a bound event is the `!Switch` over the generations; a bound state is a hold of dynamics joined with `$Join`, starting from the first build's value. The chapter uses that shorthand throughout and spells the `dyn` out only where the generations matter to the walkthrough.
 
-The prelude of plain functions from the worked examples is assumed (`!Filter`, `!Union`, `!Leftmost`, `Insert`, `Remove`, `Fold`, `MapValues`, `Keys`, `Values`, `Concat`, `Len`, and the rest; comparisons are the infix operators `lt`, `le`, `gt`, `ge`, `==` and `!=`), plus two that this chapter leans on: `!Updated: fn $a -> !a`, the change event of a dynamic, firing with the new value in every occurrence the dynamic changes and never at build; and `$Distinct: fn $a -> $a`, which suppresses a change to an equal value, since derived dynamics and holds never do that on their own. Every other function a program uses is defined before its first use, or is so plainly a pure function of its arguments (`Mid`, `Pid`, `Render`) that its body would say nothing about time.
+The prelude of plain functions from the worked examples is assumed (`!Filter`, `!Union`, `!Leftmost`, `Insert`, `Remove`, `Fold`, `MapValues`, `Keys`, `Values`, `Concat`, `Len`, and the rest; comparisons are the infix operators `<`, `<=`, `>`, `>=`, `==` and `!=`), plus two that this chapter leans on: `!Updated: fn $a -> !a`, the change event of a dynamic, firing with the new value in every occurrence the dynamic changes and never at build; and `$Distinct: fn $a -> $a`, which suppresses a change to an equal value, since derived dynamics and holds never do that on their own. Every other function a program uses is defined before its first use, or is so plainly a pure function of its arguments (`Mid`, `Pid`, `Render`) that its body would say nothing about time.
 
 Every deep dive below hits one rule from the worked examples: an operation over one event and any number of dynamics fires with the event and reads each dynamic through a tag, as it stood before the occurrence; an operation over two events is a compile error. When a program wants two things that can land together to both count, it says so, with `!Union` over maps or with one event of a record, and the walkthroughs below are mostly about moments where that choice is the whole bug.
 ## 1. A text editor
@@ -161,13 +161,13 @@ let Title: fn Text, Bool -> Text = \|path, dirty|
     let !loaded = !Filter (ContentsOf !resp)
     let !reload = !Filter (Unless $saved, !loaded)
     let !failed = !Filter (ReasonOf !resp)
-    $problem <- Nil <= (Some !failed) | Nil on !loaded
-    $saved <- "" <= ($doc.text on !save) | !reload
+    $problem <- Nil then (Some !failed) | Nil on !loaded
+    $saved <- "" then ($doc.text on !save) | !reload
 
     let !cmd = (Reload !reload) | Undo on !undo | Redo on !redo | FindNext on !next | (Edit !key)
-    $hist <- History [[]], (Doc "", 0), [[]] <= Step $hist, $query, !cmd
+    $hist <- History [[]], (Doc "", 0), [[]] then Step $hist, $query, !cmd
     let $doc = $hist.now
-    $dirty <- False <= True on !key | False on (!save | !reload)
+    $dirty <- False then True on !key | False on (!save | !reload)
 
     @Label (Title path, $dirty)
     @Label (Problem $problem)
@@ -198,7 +198,7 @@ let ApplyChanges: fn Text ==> unit, Text ==> Change -> Text ==> unit = \|bs, cs|
     !closes <- for $buffers:
         !closed <- @Buffer key
         @ Close on !closed
-    $buffers <- {} <= ApplyChanges $buffers, (!Union !opens, !closes)
+    $buffers <- {} then ApplyChanges $buffers, (!Union !opens, !closes)
     @ unit
 ```
 
@@ -349,7 +349,7 @@ let Step: fn Strategy, Params, Nat ==> Msg -> ((Strategy, [Action])) = \|s, para
     $book <- @Element Md.Book(symbol=sym)
     let !msgs = !Union {0: BookChanged (!Updated $book)}, {1: OrderEvents !events}
     let !stepped = Step $state, params, !msgs
-    $state <- Strategy 0, {}, 0, Buffering [[]] <= First !stepped
+    $state <- Strategy 0, {}, 0, Buffering [[]] then First !stepped
     let !actions = Second !stepped
 
     !events <- for $state.working:
@@ -481,7 +481,7 @@ let Pitch: fn ImuState -> ?Float = ...        # Nil while NoReading
 
 let Control: fn Gains, Loop, Sample -> ((Loop, Float)) = \|g, l, s|
     let err = s.setpoint - s.measured
-    let first = l.last_t == 0 or s.now le l.last_t
+    let first = l.last_t == 0 or s.now <= l.last_t
     let dt = if first: 0.01 else: (ToFloat (s.now - l.last_t)) / 1000.0
     let integral = l.integral + err * dt
     let deriv = if first: 0.0 else: (err - l.last_err) / dt
@@ -499,7 +499,7 @@ let Unless: fn Bool, Float -> ?Float = \|stopped, t| if stopped: Nil else: Some 
 
     let !sample = !Filter (SampleOf $setpoint, (Pitch $imu), $clock) on !tick
     let !stepped = Control gains, $loop, !sample
-    $loop <- Loop 0.0, 0.0, 0 <= First !stepped
+    $loop <- Loop 0.0, 0.0, 0 then First !stepped
     let !torque = Second !stepped
 
     let !halt = !Filter (IfTrue (!Updated $stop))
@@ -521,7 +521,7 @@ Here is the Lustre you would write for the integral term (Lustre syntax from mem
 ```
 integral = 0.0 -> pre integral + inc
 
-$integral <- 0.0 <= $integral + !inc
+$integral <- 0.0 then $integral + !inc
 ```
 
 `->` is the hold's initial value; `pre` is the tag; the clock on which the equation runs is the event the hold's change is lifted over. A Lustre node is a widget; a Lustre program's static causality analysis, which rejects `x = x + 1` with no `pre` (from memory), is the static cycle check, which rejects a hold whose change event reads the hold promptly. The two are the same model with two differences.
@@ -679,19 +679,19 @@ let HasLeave: fn [Cmd] -> Bool = ...
     !cmds <- for $conns:
         ((!ev, $link)) <- @Element Net.Conn(id=key, requests=!out)
         let !split = SplitLines (Concat [[$rest, !Filter (TextOf !ev)]])
-        $rest <- "" <= Second !split
+        $rest <- "" then Second !split
         let !parsed = ParseAll (First !split)
         let !gone = [[Leave]] on !Filter (IsClosed !ev)
         let !out = SendAll (!Filter (!owed[key]))
         @ !parsed | !gone
 
     let !stepped = StepAndRoute $model, !cmds
-    $model <- Model {}, {}, {} <= First !stepped
+    $model <- Model {}, {}, {} then First !stepped
     let !owed = Second !stepped
     let !said = Third !stepped
 
     let !closes = MapValues (Filter !cmds, HasLeave), \|ignore| Shut
-    $conns <- {} <= ApplyDeltas $conns, (!Union !opens, !closes)
+    $conns <- {} then ApplyDeltas $conns, (!Union !opens, !closes)
 
     let $presence = Presence $model
     @ $presence
@@ -731,7 +731,7 @@ Connections 5, 9 and 12 are in `lobby`. Connection 5's client disconnects, and i
 Nothing was sent to 5, and the reason is that the leave and the say were folded by one function in one pass with one model, so the say saw the leave. Now the other way to write it, which is the way the first version always gets written: a `Step` that updates the model and a separate `Route` lifted over `$model` and `!cmds`:
 
 ```prism
-    $model <- ... <= Step $model, !cmds
+    $model <- ... then Step $model, !cmds
     let !owed = Route $model, !cmds
 ```
 
@@ -843,7 +843,7 @@ let Newer: fn Text ==> Stamp, Text ==> Stamp -> Bool = ...
     let $want = $Distinct (Wanted $stamps, $deps)      # the (stamps, dep versions) this build is a function of
 
     !sp <- @Element Process.Spawn(requests=(rule.command on !Filter (ReadyFor $job, (!Updated $want))))
-    $job <- Nil <= (Some (Job (!Filter (IdOf !sp)), $stamps)) | Nil on !done
+    $job <- Nil then (Some (Job (!Filter (IdOf !sp)), $stamps)) | Nil on !done
     !child <- dyn $job:
         match _:
             Some j:
@@ -852,7 +852,7 @@ let Newer: fn Text ==> Stamp, Text ==> Stamp -> Bool = ...
             Nil:
                 @ ((!never, $ Gone))
     let !done = !Switch (First !child)
-    $version <- 0 <= $version + 1 on !Filter (IsZero !done)
+    $version <- 0 then $version + 1 on !Filter (IsZero !done)
     @ $version
 
 @build: fn Text ==> Rule -> @unit = \|graph| @widget:
@@ -898,7 +898,7 @@ So the sheet's values are one derived dynamic over the sheet's formulas:
     !edits <- for $ (Grid 26, 100):       # one block per cell reference, "A1" to "Z100"
         $text <- @TextInput ""
         @ !Updated $text
-    $formulas <- {} <= Union $formulas, !edits
+    $formulas <- {} then Union $formulas, !edits
     let $values = Evaluate $formulas      # topological order, cycle detection, all inside
     for $values:
         @Label (Show $_)
@@ -1002,7 +1002,7 @@ type Entry = record:
         @Element Cli.Stdout(requests=(!Filter (StdoutOf !out)))
         @ $status
     let !closes = MapValues (Filter (!Updated $table), IsExited), \|ignore| Shut
-    $jobs <- {} <= ApplyDeltas $jobs, (!Union !opens, !closes)
+    $jobs <- {} then ApplyDeltas $jobs, (!Union !opens, !closes)
     @Element Cli.Stdout(requests=(Render (!Updated $table)))
     @ unit
 ```
@@ -1087,12 +1087,12 @@ The desktop is a `for` over frames, a hit-test, and a fold:
             out <- @Frame _, $_.rect, !own
             @ out
         let !quit = (Quit key) on (!Switch (First !gen))
-        $$draw <- $ [[]] <= Second !gen
+        $$draw <- $ [[]] then Second !gen
         @ FrameOut !quit, ($Join $$draw)
 
     let !system = !Union ({"open": Open Counter} on !Filter (IsLaunchChord !keys)), {"raise": RaiseOf !hit}
     let !cmds = !Union !system, (Prefixed "quit:", frames.!quit)
-    $desk <- Desk {}, [[]], Nil, 0 <= StepDesk $desk, !cmds
+    $desk <- Desk {}, [[]], Nil, 0 then StepDesk $desk, !cmds
 
     let $scene = Compose $desk, frames.$draw
     @Element Gui.Scene(window="Desktop", draw=$scene)
@@ -1211,15 +1211,15 @@ let Step: fn Game, Nat ==> Msg -> ((Game, [Effect])) = \|g, msgs|
         else: @Element Gui.Frames
     let !frame = !Switch !!frames
     let !key = !Filter (KeyOf !raw)
-    $paused <- False <= not $paused on !Filter (IsPause !key)
+    $paused <- False then not $paused on !Filter (IsPause !key)
 
     let !msgs = !Union {0: !Filter (KeyMsg !key)}, {1: Tick !frame.now}
     let !stepped = Step $game, !msgs
-    $game <- Initial <= First !stepped
+    $game <- Initial then First !stepped
     @Element Audio.Play(requests=(!Filter (FirstSound (Second !stepped))))
 
     $sprites <- for $game.entities:
-        $phase <- 0 <= ($phase + 1) on !frame
+        $phase <- 0 then ($phase + 1) on !frame
         @ Sprite $_, $phase
     @Element Gui.Scene(window="Jump", draw=(Concat (Values $sprites)))
     @Element Ui.Label(text="Score: {$game.score}")
@@ -1243,7 +1243,7 @@ The player is on the ground. They press Space in the instant the next frame is d
 Here is the version everyone writes first:
 
 ```prism
-    $held <- Held False, False, False <= (Press $held, (!Filter (DownOf !key))) | (Release $held, (!Filter (UpOf !key)))
+    $held <- Held False, False, False then (Press $held, (!Filter (DownOf !key))) | (Release $held, (!Filter (UpOf !key)))
     let !stepped = Integrate $game, $held, !frame.now
 ```
 
@@ -1345,7 +1345,7 @@ let Loading: fn QueryState -> Bool = \|s| match s:
 
 @Chart: fn Text, $Query -> @unit = \|title, $query| @widget:
     $live <- @Element Query.Result(query=$query)
-    $shown <- Unavailable <= !Filter (IsKnown (!Updated $live))
+    $shown <- Unavailable then !Filter (IsKnown (!Updated $live))
     @Element Gui.Scene(window=title, draw=(Plot title, $shown, (Loading $live)))
     @ unit
 ```
@@ -1384,7 +1384,7 @@ let Decode: fn Instant, HttpResult -> QueryState = \|now, r| match r:
             !tick <- @Element Time.Every(period=period)
             $clock <- @Element Clock
             !res <- @Element Http.Fetch(requests=((Encode q) on (!started | !tick)))
-            $latest <- Unavailable <= Decode $clock, !res
+            $latest <- Unavailable then Decode $clock, !res
             @ $latest
         ignore: @Element e
     @ result

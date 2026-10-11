@@ -251,7 +251,7 @@ The slot exists from the occurrence in which the widget is built until its node 
 @viewer: fn Text -> @unit = \|path| @widget:
     !started <- @started
     !resp <- @Element Fs.File(path=path, requests=(Read on !started))
-    $text <- "(reading...)" <= ShowResponse !resp
+    $text <- "(reading...)" then ShowResponse !resp
     @Label $text
     @ unit
 
@@ -390,7 +390,7 @@ $contents <- @Element Fs.Contents(path=$path)
 # is
 !$each <- dyn $path:
     @Element Fs.Contents(path=_)
-$$current <- $first <= !$each        # $first: the dynamic the first build returned
+$$current <- $first then !$each        # $first: the dynamic the first build returned
 let $contents = $Join $$current
 ```
 
@@ -449,7 +449,7 @@ tag Fs.Query of Element:                     # not the design
 @Contents: fn Text -> @$?Contents = \|path| @widget:
     !started <- @started
     !msg <- @Element Fs.Query(path=path, requests=(unit on !started))
-    $contents <- Nil <= Some !msg
+    $contents <- Nil then Some !msg
     @ $contents
 ```
 
@@ -765,7 +765,7 @@ A text input is a leaf with a name, and the editing state sits in a hold outside
 ```prism
 @TextInput: fn Text, Text -> @$Text = \|name, initial| @widget:
     !key <- @Element Ui.TextInput(name=name, text=$edit.text, cursor=$edit.cursor)
-    $edit <- (Edit initial, (Len initial)) <= Apply $edit, !key
+    $edit <- (Edit initial, (Len initial)) then Apply $edit, !key
     @ $edit.text
 ```
 
@@ -846,7 +846,7 @@ Hit-testing is a lookup in the hit list, and turning a hit into an input is a fo
 
 ```prism
 let Contains: fn Rect, Point -> Bool = \|r, p|
-    r.x le p.x and p.x lt r.x + r.w and r.y le p.y and p.y lt r.y + r.h
+    r.x <= p.x and p.x < r.x + r.w and r.y <= p.y and p.y < r.y + r.h
 
 let HitAt: fn [Hit], Point -> ?Hit = \|hits, p|
     FirstWhere hits, \Contains _.rect, p
@@ -920,7 +920,7 @@ let WheelAt: fn [Hit], ((Point, Float)) -> ?Wheeled = \|hits, ((p, d))|
     (Collect hits, \WheelTarget _, p, d)[0]  # hits are in tree order, children first: the innermost region under the pointer
 
 let Clamp: fn Float, Float, Float -> Float = \|lo, hi, v|
-    if v lt lo: lo else: if hi lt v: hi else: v
+    if v < lo: lo else: if hi < v: hi else: v
 
 let Scrolled: fn Text ==> Float, Wheeled -> Text ==> Float = \|offsets, w|
     Insert offsets, w.name, (Clamp 0.0, w.most, (Or offsets[w.name], 0.0) + w.by)
@@ -932,14 +932,14 @@ let Scrolled: fn Text ==> Float, Wheeled -> Text ==> Float = \|offsets, w|
     $sizes <- for (TextsIn $kids):               # a Gui.Metrics slot per distinct text
         $m <- @Element Gui.Metrics(text=key, font=Default)
         @ $m
-    $size <- size0 <= !Filter (ResizeOf !raw)
+    $size <- size0 then !Filter (ResizeOf !raw)
     let $root = Ui.VBox(children=$kids)
     let $placed = Place (Env $sizes, $offsets, $focus), $root, (Rect 0.0, 0.0, $size.w, $size.h), [[]]
     @Element Gui.Scene(window=title, draw=$placed.draw)
 
     let !hit = !Filter (HitAt $placed.hits, !Filter (PointerOf !raw))
-    $focus <- Nil <= (Some !Filter (FocusOf !hit)) | (NextFocus $placed.hits, $focus) on !Filter (IsTab !raw)
-    $offsets <- {} <= Scrolled $offsets, !Filter (WheelAt $placed.hits, !Filter (WheelOf !raw))
+    $focus <- Nil then (Some !Filter (FocusOf !hit)) | (NextFocus $placed.hits, $focus) on !Filter (IsTab !raw)
+    $offsets <- {} then Scrolled $offsets, !Filter (WheelAt $placed.hits, !Filter (WheelOf !raw))
     dyn $focus:
         match _:
             Some n: @Element Gui.Focusable(name=n)
@@ -1099,7 +1099,7 @@ let Forbidden: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
             match _.element:
                 Net.Http(..):
                     !later <- @Element Defer(requests=(unit on _.!request))
-                    $asked <- Nil <= Some _.!request
+                    $asked <- Nil then Some _.!request
                     @ !Filter (Forbidden $asked on !later)
                 Net.Socket(..):
                     @ !never
@@ -1130,7 +1130,7 @@ let Freeze: fn a -> $a = \|v| $ v
         Fs.Contents(path=p): @widget:
             $live <- @Element Fs.Contents(path=p)
             !started <- @started
-            $$shown <- $live <= (Freeze $live) on (!started | !refresh)
+            $$shown <- $live then (Freeze $live) on (!started | !refresh)
             @ $Join $$shown
         ignore: @Element e
     @ result
@@ -1172,13 +1172,13 @@ type CacheOut = record:
                     let !miss = !Filter (Missing $memo, _.!request)
                     !fetched <- @Element Net.Http(requests=!miss)
                     !later <- @Element Defer(requests=(unit on !hit))
-                    $pending <- Nil <= Some !hit
+                    $pending <- Nil then Some !hit
                     @ CacheOut (!fetched | !Filter ($pending on !later)), !fetched
                 ignore:
                     ((!resp, ignore)) <- @Element _.element
                     @ CacheOut !resp, !never
     let !down = out.!resp
-    $memo <- {} <= Remember $memo, out.!learned
+    $memo <- {} then Remember $memo, out.!learned
     @ result
 ```
 
@@ -1198,7 +1198,7 @@ The conformance suite's `cache_hit_no_request` test puts two identical GETs in t
             match _.element:
                 Net.Http(..):
                     !later <- @Element Defer(requests=(unit on _.!request))
-                    $asked <- Nil <= Some _.!request
+                    $asked <- Nil then Some _.!request
                     @ !Filter (answer $asked on !later)
                 ignore:
                     ((!resp, ignore)) <- @Element _.element
@@ -1246,10 +1246,10 @@ Forward everything and, per slot, fire a log line for each request and each resp
 
 ```prism
 let IfUnder: fn Nat, Nat, HttpRequest -> ?HttpRequest = \|used, limit, r|
-    if used lt limit: Some r else: Nil
+    if used < limit: Some r else: Nil
 
 let IfOver: fn Nat, Nat, HttpRequest -> ?HttpRequest = \|used, limit, r|
-    if used lt limit: Nil else: Some r
+    if used < limit: Nil else: Some r
 
 let Refusal: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
     Some r: Some (HttpResponse r, 429, "quota")
@@ -1262,7 +1262,7 @@ let Refusal: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
             match _.element:
                 Net.Http(..): @ _.!request
                 ignore: @ !never
-    $used <- 0 <= $used + Size !asked           # Size: the prelude's count of a map's entries
+    $used <- 0 then $used + Size !asked           # Size: the prelude's count of a map's entries
     !down <- for $slots:
         dyn $_:
             match _.element:
@@ -1271,7 +1271,7 @@ let Refusal: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
                     let !refused = !Filter (IfOver $used, limit, _.!request)
                     !fetched <- @Element Net.Http(requests=!allowed)
                     !later <- @Element Defer(requests=(unit on !refused))
-                    $held <- Nil <= Some !refused
+                    $held <- Nil then Some !refused
                     @ !fetched | !Filter (Refusal $held on !later)
                 ignore:
                     ((!resp, ignore)) <- @Element _.element
@@ -1357,7 +1357,7 @@ let ApplyLaunch: fn Text ==> unit, Launch -> Text ==> unit = \|table, l| match l
         Process.Args(..): @ $ [[]]
         ignore: @Element e
     !launch <- @Launcher (Keys programs)              # a menu returning Start name or Stop name
-    $table <- {} <= ApplyLaunch $table, !launch
+    $table <- {} then ApplyLaunch $table, !launch
     $lists <- for $table:                             # key is the program's name
         match programs[key]:
             Some @app:
