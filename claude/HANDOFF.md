@@ -21,8 +21,9 @@ said it in chat.
 - The Rust runtime at the repo root is Jimmy's, with the on-fire fixes from this session already
   in it (occurrence state in `RuntimeInner`, `Blueprint`/`Widget`/`Rebuild<T>`/`DynBlueprint`
   renames, 37 tests). Doc comments there are in Jimmy's voice; do not rewrite them.
-- Branch `claude` is PR #2, "claude work". PRs #3–#9 are one book fix each, based on `claude`,
-  found by the prototype; Jimmy reviews and rewrites them himself, so do not merge them.
+- Branch `claude` is PR #2, "Claude: everything (do not merge)". The runtime changes are also
+  split into their own `Claude: … (do not merge)` PRs for Jimmy to review and rewrite as his own;
+  never merge a PR whose title ends in "(do not merge)".
 - Not in the repo: `/home/claude/book/` (the session's working copy of the book with `sync.sh`,
   the essay stage files under `essay-purity/`, lint and steelman files under `lint/`), and
   `/home/claude/jimmy-log/` (Jimmy's private calendar and notes repo). A new session on another
@@ -130,5 +131,5 @@ touch the Rust runtime for this.
 - The chapter 1 steelman's points 3–5 (piecewise-constant chosen for implementability; the
   relabelling button losing a fast second click and focus; Safe Haskell as a counterexample to
   "it had to be a language"). The file is not in the repo; ask him for it or redo it.
-- Whether `click at path` (PR #7) and `torn down:` (PR #6) are the spellings he wants.
+- Whether `click at path` and `torn down:` (chapter 10) are the spellings he wants.
 - `~T` for faults, fault policy by contexts, and whether `update`/`&` stay in chapter 3.
