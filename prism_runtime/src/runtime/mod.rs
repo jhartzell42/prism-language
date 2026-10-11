@@ -12,15 +12,25 @@
 //! begins.
 
 use std::{
+    cell::Cell,
     collections::BTreeMap,
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 #[cfg(test)]
 mod tests;
 
 // TODO: Should we have any guarantees that we don't mix runtimes?
+
+thread_local! {
+    pub(crate) static CURRENT_OCCURRENCE: Cell<Option<u64>> = const { Cell::new(None) };
+}
+
+static NEXT_OCCURRENCE: AtomicU64 = AtomicU64::new(0);
 
 /// This represents an instance of a reactive graph.
 pub struct Runtime(pub(crate) Mutex<RuntimeInner>);
@@ -65,6 +75,7 @@ impl Runtime {
     /// Propagate scheduled events.
     pub fn propagate(&mut self) {
         let mut first_round = true;
+        CURRENT_OCCURRENCE.set(Some(NEXT_OCCURRENCE.fetch_add(1, Ordering::Relaxed)));
         loop {
             let actions = {
                 let mut this = self.0.lock().unwrap();
@@ -77,6 +88,7 @@ impl Runtime {
                 let Some((height, actions)) = this.actions.pop_first() else {
                     // Done propagating
                     this.height = None;
+                    CURRENT_OCCURRENCE.set(None);
                     return;
                 };
                 if let Some(this_height) = this.height
@@ -95,6 +107,7 @@ impl Runtime {
                     this.actions.clear();
                     this.height = None;
                     drop(this);
+                    CURRENT_OCCURRENCE.set(None);
                     resume_unwind(panic);
                 }
             }

@@ -39,6 +39,7 @@ struct HoldBehavior<T: ValueType> {
 impl<T: ValueType> BehaviorImpl<T> for HoldBehavior<T> {
     fn query_for_behavior(&self, dep: Weak<dyn BehaviorDependent>) -> Value<T> {
         let mut deps = self.dependents.lock().unwrap();
+        deps.retain(|existing| existing.strong_count() > 0 && !existing.ptr_eq(&dep));
         deps.push(dep);
         self.value.lock().unwrap().clone()
     }

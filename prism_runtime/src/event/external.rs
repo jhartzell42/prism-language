@@ -45,10 +45,19 @@ impl Runtime {
                 let Some(trigger) = self.trigger.0.upgrade() else {
                     return;
                 };
-                *trigger.scheduled.lock().unwrap() = false;
                 trigger
                     .subscribers
-                    .notify(self.trigger.0.clone(), None, runtime, || Some(self.value));
+                    .notify(self.trigger.0.clone(), None, runtime, || {
+                        Some(self.value.clone())
+                    });
+            }
+        }
+
+        impl<T: ValueType> Drop for TriggerAction<T> {
+            fn drop(&mut self) {
+                if let Some(trigger) = self.trigger.0.upgrade() {
+                    *trigger.scheduled.lock().unwrap() = false;
+                }
             }
         }
 
