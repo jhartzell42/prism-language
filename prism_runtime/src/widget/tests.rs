@@ -378,10 +378,8 @@ fn a_widget_built_mid_occurrence_sees_the_same_events_at_any_depth() {
     runtime.propagate();
 
     let (shallow_held, deep_held) = built.lock().unwrap().last().unwrap().clone();
-    assert_eq!(
-        *shallow_held.behavior().0.query_for_tag(),
-        *deep_held.behavior().0.query_for_tag()
-    );
+    assert_eq!(*shallow_held.behavior().0.query_for_tag(), 42);
+    assert_eq!(*deep_held.behavior().0.query_for_tag(), 42);
 }
 
 #[test]
@@ -401,4 +399,219 @@ fn closing_a_cyclic_dynamic_with_the_wrong_type_fails_while_building() {
     let build = catch_unwind(|| WidgetBuilder::build_root(&runtime, &WrongType, 0));
 
     assert!(build.is_err());
+}
+
+#[test]
+fn dropping_a_widget_frees_its_cyclic_loops() {
+    struct Loops(Event<u32>);
+
+    impl Widget for Loops {
+        type Output = Arc<(Dynamic<u32>, Event<u32>)>;
+
+        fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
+            let (event_index, looped_back) = builder.add_cyclic_event::<u32>("event".into());
+            let looped = Event::leftmost(vec![self.0.clone(), looped_back.map(|x| x)]);
+            builder.close_cyclic_event_by_index(event_index, looped.clone());
+
+            let (dynamic_index, total) = builder.add_cyclic_dynamic::<u32>("total".into());
+            let next_total = Dynamic::hold(
+                0u32.into(),
+                self.0.tag_map(|step, total: Value<u32>| Some(Value::from(*step + *total)), total),
+            );
+            builder.close_cyclic_dynamic_by_index(dynamic_index, next_total.clone());
+
+            Arc::new((next_total, looped))
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (input, _trigger) = Event::<u32>::external();
+    let (node, loops) = WidgetBuilder::build_root(&runtime, &Loops(input), 0);
+    runtime.propagate();
+    let event_in_loop = Arc::downgrade(&loops.1.0);
+    let dynamic_in_loop = Arc::downgrade(&loops.0.behavior().0);
+
+    drop(loops);
+    drop(node);
+
+    assert!(event_in_loop.upgrade().is_none());
+    assert!(dynamic_in_loop.upgrade().is_none());
+}
+
+#[test]
+fn a_replaced_child_keeps_working_until_its_last_occurrence_ends() {
+    #[derive(Debug)]
+    struct Counter(Event<u32>);
+
+    impl Widget for Counter {
+        type Output = Event<u32>;
+
+        fn build(&self, builder: &mut WidgetBuilder) -> Event<u32> {
+            let (index, total) = builder.add_cyclic_dynamic::<u32>("total".into());
+            let next_total = Dynamic::hold(
+                0u32.into(),
+                self.0.tag_map(|step, total: Value<u32>| Some(Value::from(*step + *total)), total.clone()),
+            );
+            builder.close_cyclic_dynamic_by_index(index, next_total);
+            self.0.tag_map(|_, total: Value<u32>| Some(total), total)
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (rebuild, rebuild_trigger) = Event::<u32>::external();
+    let (tick, tick_trigger) = Event::<u32>::external();
+    let deep_tick = tick.map(|x| x).map(|x| x).map(|x| x).map(|x| x).map(|x| x);
+    let tick_for_new_counters = deep_tick.clone();
+    let counters = Dynamic::hold(
+        PrismArc::new(Counter(deep_tick)),
+        rebuild.map(move |_| PrismArc::new(Counter(tick_for_new_counters.clone()))),
+    );
+    let (_node, built) = WidgetBuilder::build_root(&runtime, &counters.dynamic_widget(), 0);
+    let current_output = (*built)
+        .clone()
+        .map(|output: Value<Arc<Event<u32>>>| Value::from((*output).clone()));
+    let latest = Dynamic::hold(0u32.into(), current_output.switch_hold());
+    runtime.propagate();
+    runtime.schedule_trigger(&tick_trigger, 1u32.into()).unwrap();
+    runtime.propagate();
+
+    runtime.schedule_trigger(&tick_trigger, 1u32.into()).unwrap();
+    runtime.schedule_trigger(&rebuild_trigger, 1u32.into()).unwrap();
+    runtime.propagate();
+
+    assert_eq!(*latest.behavior().0.query_for_tag(), 1);
+}
+
+#[test]
+fn a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value() {
+    #[derive(Debug)]
+    struct Title {
+        text: u32,
+        shown: Arc<Mutex<Vec<u32>>>,
+    }
+
+    impl Widget for Title {
+        type Output = ();
+
+        fn build(&self, _: &mut WidgetBuilder) {
+            self.shown.lock().unwrap().push(self.text);
+        }
+    }
+
+    #[derive(Debug)]
+    struct Page(Dynamic<Arc<Title>>);
+
+    impl Widget for Page {
+        type Output = ();
+
+        fn build(&self, builder: &mut WidgetBuilder) {
+            builder.bind(&self.0.dynamic_widget());
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (input, trigger) = Event::<u32>::external();
+    let shown = Arc::new(Mutex::new(vec![]));
+    let new_title = {
+        let shown = shown.clone();
+        move |text: u32| PrismArc::new(Title { text, shown: shown.clone() })
+    };
+    let title = Dynamic::hold(new_title(0), input.map(move |text| new_title(*text)));
+    let title_for_pages = title.clone();
+    let page = Dynamic::hold(
+        PrismArc::new(Page(title)),
+        input.map(move |_| PrismArc::new(Page(title_for_pages.clone()))),
+    );
+    let (_node, _output) = WidgetBuilder::build_root(&runtime, &page.dynamic_widget(), 0);
+    runtime.propagate();
+
+    runtime.schedule_trigger(&trigger, 7u32.into()).unwrap();
+    runtime.propagate();
+
+    assert_eq!(shown.lock().unwrap().last(), Some(&7));
+}
+
+#[test]
+fn a_widget_built_mid_occurrence_gets_the_mapped_value_of_an_event_that_already_fired() {
+    #[derive(Debug)]
+    struct Tens {
+        input: Event<u32>,
+        built: Arc<Mutex<Vec<Dynamic<u32>>>>,
+    }
+
+    impl Widget for Tens {
+        type Output = ();
+
+        fn build(&self, _: &mut WidgetBuilder) {
+            let tens = Dynamic::hold(0u32.into(), self.input.map(|x| Value::from(*x * 10)));
+            self.built.lock().unwrap().push(tens);
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (input, trigger) = Event::<u32>::external();
+    let built = Arc::new(Mutex::new(vec![]));
+    let new_tens = {
+        let (input, built) = (input.clone(), built.clone());
+        move || PrismArc::new(Tens { input: input.clone(), built: built.clone() })
+    };
+    let widgets = Dynamic::hold(new_tens(), input.map(move |_| new_tens()));
+    let (_node, _output) = WidgetBuilder::build_root(&runtime, &widgets.dynamic_widget(), 0);
+    runtime.propagate();
+
+    runtime.schedule_trigger(&trigger, 7u32.into()).unwrap();
+    runtime.propagate();
+
+    let tens = built.lock().unwrap().last().unwrap().clone();
+    assert_eq!(*tens.behavior().0.query_for_tag(), 70);
+}
+
+#[test]
+fn a_closure_runs_once_per_occurrence_even_when_late_subscribers_read_it() {
+    #[derive(Debug)]
+    struct TwoReaders {
+        counted: Event<u32>,
+        built: Arc<Mutex<Vec<(Dynamic<u32>, Dynamic<u32>)>>>,
+    }
+
+    impl Widget for TwoReaders {
+        type Output = ();
+
+        fn build(&self, _: &mut WidgetBuilder) {
+            self.built.lock().unwrap().push((
+                Dynamic::hold(0u32.into(), self.counted.clone()),
+                Dynamic::hold(0u32.into(), self.counted.clone()),
+            ));
+        }
+    }
+
+    let mut runtime = Runtime::new();
+    let (input, trigger) = Event::<u32>::external();
+    let runs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = {
+        let runs = runs.clone();
+        input.map(move |x| {
+            runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Value::from(*x * 10)
+        })
+    };
+    let built = Arc::new(Mutex::new(vec![]));
+    let new_readers = {
+        let built = built.clone();
+        move |counted: Event<u32>| PrismArc::new(TwoReaders { counted, built: built.clone() })
+    };
+    let widgets = Dynamic::hold(
+        new_readers(Event::never()),
+        input.map(move |_| new_readers(counted.clone())),
+    );
+    let (_node, _output) = WidgetBuilder::build_root(&runtime, &widgets.dynamic_widget(), 0);
+    runtime.propagate();
+
+    runtime.schedule_trigger(&trigger, 7u32.into()).unwrap();
+    runtime.propagate();
+
+    let (first, second) = built.lock().unwrap().last().unwrap().clone();
+    assert_eq!(*first.behavior().0.query_for_tag(), 70);
+    assert_eq!(*second.behavior().0.query_for_tag(), 70);
+    assert_eq!(runs.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

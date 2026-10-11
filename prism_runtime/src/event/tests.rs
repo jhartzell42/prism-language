@@ -234,6 +234,8 @@ impl<F: Fn(&Runtime) + Send + Sync> EventCallback<u32> for CallOnFire<F> {
         (self.0)(runtime)
     }
 
+    fn already_fired(&self, _: Value<u32>) {}
+
     fn invalidate_height(&self) {}
 }
 

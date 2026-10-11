@@ -5,7 +5,7 @@ use crate::{
         Event, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::Runtime,
+    runtime::{Action, CURRENT_HEIGHT, Runtime, defer},
     value::{Value, ValueType},
 };
 
@@ -54,18 +54,54 @@ impl<T: ValueType> SubscriptionEvent<T> for LeftmostEvent<T> {
     }
 
     fn handle_main_subscription(&self, runtime: &Runtime, _: Value<Self::Inner>, _: usize) {
-        let Some((winner, tag)) = self.winning_value.lock().unwrap().take() else {
+        self.fire(runtime);
+    }
+
+    fn handle_early_subscription(&self, _: &Runtime, value: Value<Self::Inner>, tag: Self::Tag) {
+        self.compete(value, tag);
+    }
+
+    fn handle_already_fired(&self, value: Value<Self::Inner>, tag: Self::Tag) {
+        self.compete(value, tag);
+    }
+
+    fn finish_already_fired(&self) {
+        let Some(current) = CURRENT_HEIGHT.get() else {
             return;
         };
-        self.subscription_managers[tag].notify(
+        if self.winning_value.lock().unwrap().is_none() {
+            return;
+        }
+        let height = self.height();
+        if height > current {
+            if let Some(this) = self.weak_self.upgrade() {
+                defer(height, FireLeftmost(this));
+            }
+            return;
+        }
+        let Some((winner, _)) = self.winning_value.lock().unwrap().take() else {
+            return;
+        };
+        if let Some(value) = self.subscription_managers[0].record_once(|| Some(winner)) {
+            self.subscription_managers[0].deliver_already_fired(value);
+        }
+    }
+}
+
+impl<T: ValueType> LeftmostEvent<T> {
+    fn fire(&self, runtime: &Runtime) {
+        let Some((winner, _)) = self.winning_value.lock().unwrap().take() else {
+            return;
+        };
+        self.subscription_managers[0].notify(
             self.weak_self.clone(),
-            Some(&self.events[tag]),
+            Some(&self.events[0]),
             runtime,
             || Some(winner),
         );
     }
 
-    fn handle_early_subscription(&self, _: &Runtime, value: Value<Self::Inner>, tag: Self::Tag) {
+    fn compete(&self, value: Value<T>, tag: usize) {
         let mut winner = self.winning_value.lock().unwrap();
         if let Some((_, current_tag)) = *winner
             && current_tag < tag
@@ -76,11 +112,24 @@ impl<T: ValueType> SubscriptionEvent<T> for LeftmostEvent<T> {
     }
 }
 
+struct FireLeftmost<T: ValueType>(Arc<LeftmostEvent<T>>);
+
+impl<T: ValueType> Action for FireLeftmost<T> {
+    fn act(self: Box<Self>, runtime: &Runtime) {
+        self.0.fire(runtime);
+    }
+}
+
 impl<T: ValueType> EventImpl<T> for LeftmostEvent<T> {
-    fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) {
+    fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) -> Option<Value<T>> {
         for (ix, man) in self.subscription_managers.iter().enumerate() {
-            man.add_subscriber(self.weak_self.clone(), Some(&self.events[ix]), cb.clone());
+            man.connect(self.weak_self.clone(), Some(&self.events[ix]));
         }
+        self.finish_already_fired();
+        for man in &self.subscription_managers {
+            man.push_subscriber(cb.clone());
+        }
+        self.subscription_managers.first()?.current()
     }
 
     fn height(&self) -> usize {

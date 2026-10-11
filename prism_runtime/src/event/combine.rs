@@ -5,7 +5,7 @@ use crate::{
         Event, EventCallback, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::Runtime,
+    runtime::{Action, CURRENT_HEIGHT, Runtime, defer},
     value::{PrismArc, Value, ValueType},
 };
 
@@ -91,6 +91,51 @@ impl<
     }
 
     fn handle_main_subscription(&self, runtime: &Runtime, _: Value<Self::Inner>, _: ()) {
+        self.fire(runtime);
+    }
+
+    fn handle_early_subscription(&self, _: &Runtime, value: Value<Self::Inner>, _: ()) {
+        self.accumulate(value);
+    }
+
+    fn handle_already_fired(&self, value: Value<Self::Inner>, _: ()) {
+        self.accumulate(value);
+    }
+
+    fn finish_already_fired(&self) {
+        let Some(current) = CURRENT_HEIGHT.get() else {
+            return;
+        };
+        if self.one_or_both.lock().unwrap().is_none() {
+            return;
+        }
+        let height = self.height();
+        if height > current {
+            if let Some(this) = self.weak_self.upgrade() {
+                defer(height, FireCombine(this));
+            }
+            return;
+        }
+        let Some(one_or_both) = self.one_or_both.lock().unwrap().take() else {
+            return;
+        };
+        if let Some(value) = self
+            .manager_a
+            .record_once(|| (self.function)(one_or_both))
+        {
+            self.manager_a.deliver_already_fired(value);
+        }
+    }
+}
+
+impl<
+    A: ValueType,
+    B: ValueType,
+    F: Sync + Send + 'static + Fn(OneOrBoth<A, B>) -> Option<Value<O>>,
+    O: ValueType,
+> CombineEvent<A, B, F, O>
+{
+    fn fire(&self, runtime: &Runtime) {
         let Some(one_or_both) = self.one_or_both.lock().unwrap().take() else {
             return;
         };
@@ -101,7 +146,7 @@ impl<
         self.manager_b.consolidate();
     }
 
-    fn handle_early_subscription(&self, _: &Runtime, value: Value<Self::Inner>, _: ()) {
+    fn accumulate(&self, value: Value<Arc<OneOrBoth<A, B>>>) {
         let mut acc = self.one_or_both.lock().unwrap();
         let old = acc.take();
         *acc = match (value.extract(), old) {
@@ -113,6 +158,25 @@ impl<
     }
 }
 
+struct FireCombine<
+    A: ValueType,
+    B: ValueType,
+    F: Sync + Send + 'static + Fn(OneOrBoth<A, B>) -> Option<Value<O>>,
+    O: ValueType,
+>(Arc<CombineEvent<A, B, F, O>>);
+
+impl<
+    A: ValueType,
+    B: ValueType,
+    F: Sync + Send + 'static + Fn(OneOrBoth<A, B>) -> Option<Value<O>>,
+    O: ValueType,
+> Action for FireCombine<A, B, F, O>
+{
+    fn act(self: Box<Self>, runtime: &Runtime) {
+        self.0.fire(runtime);
+    }
+}
+
 impl<
     A: ValueType,
     B: ValueType,
@@ -120,11 +184,13 @@ impl<
     O: ValueType,
 > EventImpl<O> for CombineEvent<A, B, F, O>
 {
-    fn subscribe(&self, cb: Weak<dyn EventCallback<O>>) {
-        self.manager_a
-            .add_subscriber(self.weak_self.clone(), Some(&self.a), cb.clone());
-        self.manager_b
-            .add_subscriber(self.weak_self.clone(), Some(&self.b), cb.clone());
+    fn subscribe(&self, cb: Weak<dyn EventCallback<O>>) -> Option<Value<O>> {
+        self.manager_a.connect(self.weak_self.clone(), Some(&self.a));
+        self.manager_b.connect(self.weak_self.clone(), Some(&self.b));
+        self.finish_already_fired();
+        self.manager_a.push_subscriber(cb.clone());
+        self.manager_b.push_subscriber(cb);
+        self.manager_a.current()
     }
 
     fn height(&self) -> usize {

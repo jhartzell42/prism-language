@@ -45,11 +45,7 @@ impl Runtime {
                 let Some(trigger) = self.trigger.0.upgrade() else {
                     return;
                 };
-                trigger
-                    .subscribers
-                    .notify(self.trigger.0.clone(), None, runtime, || {
-                        Some(self.value.clone())
-                    });
+                trigger.subscribers.fire(runtime, self.value.clone());
             }
         }
 
@@ -103,9 +99,9 @@ struct EventTriggerInner<T: ValueType> {
 }
 
 impl<T: ValueType> EventImpl<T> for EventTriggerInner<T> {
-    fn subscribe(&self, cb: Weak<dyn EventCallback<T>>) {
+    fn subscribe(&self, cb: Weak<dyn EventCallback<T>>) -> Option<Value<T>> {
         self.subscribers
-            .add_subscriber(self.weak_self.clone(), None, cb);
+            .add_subscriber(self.weak_self.clone(), None, cb)
     }
 
     fn height(&self) -> usize {
@@ -129,6 +125,10 @@ impl<T: ValueType> SubscriptionEvent<T> for EventTriggerInner<T> {
     }
 
     fn handle_main_subscription(&self, _: &Runtime, _: Value<Self::Inner>, _: ()) {
+        unreachable!("external events have no outgoing subscription edge")
+    }
+
+    fn handle_already_fired(&self, _: Value<Self::Inner>, _: ()) {
         unreachable!("external events have no outgoing subscription edge")
     }
 }

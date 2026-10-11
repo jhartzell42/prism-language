@@ -127,6 +127,10 @@ impl EventCallback<AnyValue> for DelegateCallback {
         self.delegate.event_fired(&self.name, value.into());
     }
 
+    fn already_fired(&self, value: Value<AnyValue>) {
+        self.delegate.event_fired(&self.name, value.into());
+    }
+
     fn invalidate_height(&self) {
         // We don't care.
     }
