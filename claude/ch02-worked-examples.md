@@ -6,7 +6,7 @@ Fourteen programs, from a counter to a shell that hosts other programs, each one
 
 Occurrences are numbered from zero. Occurrence 0 is the build of the program; nothing is delivered to it. From then on every occurrence is opened by the World with a set of inputs, each one addressed to a slot by its path, all simultaneous. A walkthrough says, for each occurrence: the inputs; the events that fire and the derived dynamics that change, in dependency order, which is the only order the language promises; the holds that commit at the end; and the element list the World reads afterwards.
 
-Paths are opaque to a World and the chapter needs a way to write them down, so here is one. A path is the chain of bind positions from the root, written with `/`: the first widget bound in `@main` is `0`, the second is `1`; a `dyn` adds its generation as `#n`, starting at `#0` for the first build; a `for` adds its key as `[k]`. The Increment button of the counter below ends up at `0/#0/0`: the first bind in `@counter`, generation zero of the `dyn` inside `@Button`, the first slot in that generation. Holds and `let`s do not take a bind position; only widgets do, and `@started` is a widget, so it takes one even though it creates no slot. A slot created by a widget that an interceptor's supplier built is written `s/n`, with `n` counting the supplier-built widgets in creation order in the interceptor's widget, followed by the supplied widget's own segments; its position in the widget is the runtime's business, and only its existence is a law.
+Paths are opaque to a World and the chapter needs a way to write them down, so here is one. A path is the chain of bind positions from the root, written with `/`: the first widget bound in `@main` is `0`, the second is `1`; a `rebuild` adds its generation as `#n`, starting at `#0` for the first build; a `for` adds its key as `[k]`. The Increment button of the counter below ends up at `0/#0/0`: the first bind in `@counter`, generation zero of the `rebuild` inside `@Button`, the first slot in that generation. Holds and `let`s do not take a bind position; only widgets do, and `@started` is a widget, so it takes one even though it creates no slot. A slot created by a widget that an interceptor's supplier built is written `s/n`, with `n` counting the supplier-built widgets in creation order in the interceptor's widget, followed by the supplied widget's own segments; its position in the widget is the runtime's business, and only its existence is a law.
 
 Element lists are written one slot per line as `path: element`. A tag with no `responds` and no `state` is a presence element, there to be seen and nothing else. A slot whose request fired in the occurrence has `requested:` after it, then the fired values in firing order, each written as the Prism literal it is and separated by `; `, with no brackets of the transcript's own: `requested: Read`, `requested: [[Send "ok", Close]]`, `requested: "a"; "b"`. An array request is already an array literal, so wrapping the list in brackets would stack three of them; the separator keeps every bracket in the line meaning an array.
 
@@ -55,21 +55,21 @@ tag Ui.Button of Element:
     responds: Click
 ```
 
-A label has a text and does nothing; a button has a label and responds with a click. Both have plain fields, fixed for the life of the slot, which is the rule for every element: a label whose text changes is, to the World, a new label at the same spot. The two library widgets below are how a program with a dynamic label gets one anyway. The dynamic lifts the element into a `dyn`, which builds a fresh slot per change, and the click a button returns is a `!Switch` over the generations:
+A label has a text and does nothing; a button has a label and responds with a click. Both have plain fields, fixed for the life of the slot, which is the rule for every element: a label whose text changes is, to the World, a new label at the same spot. The two library widgets below are how a program with a dynamic label gets one anyway. The dynamic lifts the element into a `rebuild`, which builds a fresh slot per change, and the click a button returns is a `!Switch` over the generations:
 
 ```prism
 @Label: fn $Text -> @unit = \@widget:
-    dyn $_:
+    rebuild $_:
         @Element Ui.Label(text=_)
     @ unit
 
 @Button: fn $Text -> @!Click = \@widget:
-    !!clicks <- dyn $_:
+    !!clicks <- rebuild $_:
         @Element Ui.Button(label=_)
     @ !Switch !!clicks
 ```
 
-Inside the `dyn` block `_` is the label as a plain value, because inside one build it never changes; a change rebuilds the block. These two widgets are written out in full here so that nothing in the walkthroughs is hidden; the specification lets you write `@Element Ui.Button(label=$_)` directly and means exactly this. Example 4 is the same construction unrolled with a cycle through it.
+Inside the `rebuild` block `_` is the label as a plain value, because inside one build it never changes; a change rebuilds the block. These two widgets are written out in full here so that nothing in the walkthroughs is hidden; the specification lets you write `@Element Ui.Button(label=$_)` directly and means exactly this. Example 4 is the same construction unrolled with a cycle through it.
 
 ## 1. The counter
 
@@ -86,7 +86,7 @@ You have written this program in every framework you have used and in each one t
 
 Nothing in the five lines says which numeric type `$count` is. `-1` is a signed literal, so `!delta` is an event of `Int`, so `$count + !delta` is `Int` addition, so the `0` that starts the hold is an `Int`. Had the deltas been `+1` and `+2`, nothing would pin the type, and an integer literal nothing constrains is an `Int`, so the program would mean the same thing; a `Nat` counter says so with an annotation.
 
-**Occurrence 0 (build).** The World calls the run call with no inputs. `@counter` is built. The first `@Button` builds its `dyn`, whose block builds generation `#0` with one slot, `Ui.Button(label="Increment")` at `0/#0/0`; the `dyn`'s event `!!clicks` fires in this occurrence with the slot's click event, and `!Switch` records it as the inner event to listen to from occurrence 1. The second button does the same at `1/#0/0`. `$count` has its initial value, `0`. `"Count: {$count}"` is a derived dynamic whose value is `"Count: 0"`, and `@Label` builds generation `#0` of its `dyn` with `Ui.Label(text="Count: 0")` at `2/#0/0`. Nothing fires at `!increment`, `!decrement` or `!delta`: a `!Switch` is subscribed to nothing in the occurrence it is given its first inner event. The occurrence commits: `$count` is `0`, and the two `!Switch` holds now point at their slots' events.
+**Occurrence 0 (build).** The World calls the run call with no inputs. `@counter` is built. The first `@Button` builds its `rebuild`, whose block builds generation `#0` with one slot, `Ui.Button(label="Increment")` at `0/#0/0`; the `rebuild`'s event `!!clicks` fires in this occurrence with the slot's click event, and `!Switch` records it as the inner event to listen to from occurrence 1. The second button does the same at `1/#0/0`. `$count` has its initial value, `0`. `"Count: {$count}"` is a derived dynamic whose value is `"Count: 0"`, and `@Label` builds generation `#0` of its `rebuild` with `Ui.Label(text="Count: 0")` at `2/#0/0`. Nothing fires at `!increment`, `!decrement` or `!delta`: a `!Switch` is subscribed to nothing in the occurrence it is given its first inner event. The occurrence commits: `$count` is `0`, and the two `!Switch` holds now point at their slots' events.
 
 ```
 0/#0/0: Ui.Button(label="Increment")
@@ -94,7 +94,7 @@ Nothing in the five lines says which numeric type `$count` is. `-1` is a signed 
 2/#0/0: Ui.Label(text="Count: 0")
 ```
 
-**Occurrence 1.** The World sends `click` to `0/#0/0`. Routing looks the path up in the list as the occurrence opened and finds the Increment slot; its click event fires. `!Switch` is listening to exactly that event, so `!increment` fires. `!delta` is a merge; its left side is quiet and its right side fires with `+1`, so `!delta` fires with `+1`. `$count + !delta` is an operation over a dynamic and an event: it fires with `0 + 1`, where `0` is `$count` read through a tag, the value before this occurrence. That is the hold's change event, so the derived `"Count: {$count}"` changes promptly to `"Count: 1"`, which is the dynamic the label's `dyn` watches, so the `dyn` rebuilds: generation `#0` of the label is torn down at commit and generation `#1` is built now, with a new slot. Commit: `$count` is `1`.
+**Occurrence 1.** The World sends `click` to `0/#0/0`. Routing looks the path up in the list as the occurrence opened and finds the Increment slot; its click event fires. `!Switch` is listening to exactly that event, so `!increment` fires. `!delta` is a merge; its left side is quiet and its right side fires with `+1`, so `!delta` fires with `+1`. `$count + !delta` is an operation over a dynamic and an event: it fires with `0 + 1`, where `0` is `$count` read through a tag, the value before this occurrence. That is the hold's change event, so the derived `"Count: {$count}"` changes promptly to `"Count: 1"`, which is the dynamic the label's `rebuild` watches, so the `rebuild` rebuilds: generation `#0` of the label is torn down at commit and generation `#1` is built now, with a new slot. Commit: `$count` is `1`.
 
 ```
 0/#0/0: Ui.Button(label="Increment")
@@ -158,11 +158,11 @@ let Render: fn Edit -> Text = \|e|
     @ $edit.text
 ```
 
-Everyone who has wrapped a native text box has lost the cursor. The box is a widget the toolkit owns; its value is a property you set; you set it from your model on every change; and the toolkit, seeing a new value, puts the cursor at the end. The fix is some version of "only set it if it differs", and that fix has a race in it. Here the text box is not native and the cursor is not the toolkit's. It is a hold, and it lives outside any `dyn`.
+Everyone who has wrapped a native text box has lost the cursor. The box is a widget the toolkit owns; its value is a property you set; you set it from your model on every change; and the toolkit, seeing a new value, puts the cursor at the end. The fix is some version of "only set it if it differs", and that fix has a race in it. Here the text box is not native and the cursor is not the toolkit's. It is a hold, and it lives outside any `rebuild`.
 
 The element that receives keys is `Ui.Focusable(name=name)`: a named region that can have focus and responds with keys. It has no dynamic fields, so its slot is created once and lives as long as the widget, and whoever delivers keystrokes has one stable path to send them to. Everything that changes per keystroke, the text and the cursor, is in `$edit`, and `Apply` is a plain function from the old state and a key to the new state. The label is a presence element: a fresh `Ui.Label` slot per keystroke, which is right, because nothing is in flight on a label and whatever draws the list diffs it.
 
-**Occurrence 0 (build).** `@TextInput "input", "ab"` is built. The focusable's slot is at `0`; `$edit` is `Edit "ab", 2`; `Render $edit` is `"ab|"`; the label's `dyn` builds generation `#0` at `1/#0/0`. The result dynamic `$edit.text` is a derived dynamic with value `"ab"`.
+**Occurrence 0 (build).** `@TextInput "input", "ab"` is built. The focusable's slot is at `0`; `$edit` is `Edit "ab", 2`; `Render $edit` is `"ab|"`; the label's `rebuild` builds generation `#0` at `1/#0/0`. The result dynamic `$edit.text` is a derived dynamic with value `"ab"`.
 
 ```
 0:      Ui.Focusable(name="input")
@@ -282,7 +282,7 @@ What this prevents: the afternoon where deleting item 3 cleared the expanded sta
 
 ```prism
 @clicker:
-    !!clicks <- dyn $label:
+    !!clicks <- rebuild $label:
         @Element Ui.Button(label=_)
     let !click = !Switch !!clicks
     !reset <- @Button $"Reset"
@@ -291,9 +291,9 @@ What this prevents: the afternoon where deleting item 3 cleared the expanded sta
     @Label $label
 ```
 
-This is `@Button` unrolled, with the label depending on the click; it illustrates the fresh-slot rule and is not how a program normally labels a button, since the library's buttons take a dynamic label (`@Button $label`) and the fresh slot per change stays inside the library's interceptor. The `dyn` watches `$label`; every change to the label tears the button's slot down and builds a new one; `!!clicks` fires in every build with the new slot's click event; and `!Switch` turns that into the one `!click` the rest of the program uses. The cycle is the thing to look at: `$count` depends on `!click`, `!click` on `!!clicks`, `!!clicks` on the `dyn`, the `dyn` on `$label`, and `$label` on `$count`. The `dyn` is not a delay: its event fires in the occurrence of the rebuild. `!Switch` makes the cycle legal: it chooses its inner event from before the occurrence, and the tag on `$count` in `$count + 1` does the rest.
+This is `@Button` unrolled, with the label depending on the click; it illustrates the fresh-slot rule and is not how a program normally labels a button, since the library's buttons take a dynamic label (`@Button $label`) and the fresh slot per change stays inside the library's interceptor. The `rebuild` watches `$label`; every change to the label tears the button's slot down and builds a new one; `!!clicks` fires in every build with the new slot's click event; and `!Switch` turns that into the one `!click` the rest of the program uses. The cycle is the thing to look at: `$count` depends on `!click`, `!click` on `!!clicks`, `!!clicks` on the `rebuild`, the `rebuild` on `$label`, and `$label` on `$count`. The `rebuild` is not a delay: its event fires in the occurrence of the rebuild. `!Switch` makes the cycle legal: it chooses its inner event from before the occurrence, and the tag on `$count` in `$count + 1` does the rest.
 
-**Occurrence 0 (build).** `$count` is `0`; `$label` is `"Clicked 0 times"`; the `dyn` builds generation `#0` with a button at `0/#0/0`; `!!clicks` fires with its click event; `!Switch` has it from occurrence 1. Reset is at `1/#0/0`; the label at `2/#0/0`.
+**Occurrence 0 (build).** `$count` is `0`; `$label` is `"Clicked 0 times"`; the `rebuild` builds generation `#0` with a button at `0/#0/0`; `!!clicks` fires with its click event; `!Switch` has it from occurrence 1. Reset is at `1/#0/0`; the label at `2/#0/0`.
 
 ```
 0/#0/0: Ui.Button(label="Clicked 0 times")
@@ -301,7 +301,7 @@ This is `@Button` unrolled, with the label depending on the click; it illustrate
 2/#0/0: Ui.Label(text="Clicked 0 times")
 ```
 
-**Occurrence 1.** `click` to `0/#0/0`. The generation-`#0` slot's event fires; `!Switch` delivers it as `!click`; `$count + 1 on !click` fires with `1`; `$label` changes promptly to `"Clicked 1 times"`; the `dyn` rebuilds: generation `#1` is built with a slot at `0/#1/0`, and `!!clicks` fires with the new slot's click event. `!Switch` does not deliver anything from the new slot in this occurrence, and could not anyway, since no input was addressed to a slot that did not exist as the occurrence opened. At commit `!Switch` adopts the new inner event, generation `#0` is dropped, and `$count` is `1`. The label rebuilds too.
+**Occurrence 1.** `click` to `0/#0/0`. The generation-`#0` slot's event fires; `!Switch` delivers it as `!click`; `$count + 1 on !click` fires with `1`; `$label` changes promptly to `"Clicked 1 times"`; the `rebuild` rebuilds: generation `#1` is built with a slot at `0/#1/0`, and `!!clicks` fires with the new slot's click event. `!Switch` does not deliver anything from the new slot in this occurrence, and could not anyway, since no input was addressed to a slot that did not exist as the occurrence opened. At commit `!Switch` adopts the new inner event, generation `#0` is dropped, and `$count` is `1`. The label rebuilds too.
 
 ```
 0/#1/0: Ui.Button(label="Clicked 1 times")
@@ -309,11 +309,11 @@ This is `@Button` unrolled, with the label depending on the click; it illustrate
 2/#1/0: Ui.Label(text="Clicked 1 times")
 ```
 
-**Occurrence 2.** `click` to `0/#1/0` and `click` to `1/#0/0` together: the user clicked the button and Reset in the same frame. Both slots' events fire. `$count + 1 on !click | 0 on !reset` takes the left: `$count` becomes `2`, and the reset is lost. The program said so; if reset should win, the merge is written the other way round. `$label` changes, the `dyn` rebuilds to `#2`.
+**Occurrence 2.** `click` to `0/#1/0` and `click` to `1/#0/0` together: the user clicked the button and Reset in the same frame. Both slots' events fire. `$count + 1 on !click | 0 on !reset` takes the left: `$count` becomes `2`, and the reset is lost. The program said so; if reset should win, the merge is written the other way round. `$label` changes, the `rebuild` rebuilds to `#2`.
 
 **Occurrence 3.** Suppose the World has a click for `0/#1/0` queued from before it read the list after occurrence 2. It must not send it: `0/#1/0` is not in the list it last received, and sending to a path not in the opened list is an error of kind `UnknownPath`. A conforming World discards it. The click was for a button that no longer exists.
 
-**Occurrence 4.** `click` to `1/#0/0` alone: Reset. `0 on !reset` fires; the merge's left side is quiet; `$count` becomes `0`; `$label` changes to `"Clicked 0 times"`; the `dyn` rebuilds to generation `#3` with a button whose label is the same text generation `#0` had. It is a different slot with a different path. A World that cached something about the first button by its path would find the cache useless, which is right: it is a new button. A World that keys native widgets by tree position and tag can reuse what it had, and the program cannot tell.
+**Occurrence 4.** `click` to `1/#0/0` alone: Reset. `0 on !reset` fires; the merge's left side is quiet; `$count` becomes `0`; `$label` changes to `"Clicked 0 times"`; the `rebuild` rebuilds to generation `#3` with a button whose label is the same text generation `#0` had. It is a different slot with a different path. A World that cached something about the first button by its path would find the cache useless, which is right: it is a new button. A World that keys native widgets by tree position and tag can reuse what it had, and the program cannot tell.
 
 The question this example answers is what a click means in the occurrence the button is replaced. Routing says: the click is delivered to the slot at that path in the list as the occurrence opened, which is the old button, under the old label. The old widget keeps propagating until commit, so its click reaches `!Switch`, which is still listening to it. Then the new button exists, and from the next occurrence its clicks are the ones heard. There is no moment in which the program has a button on screen that nothing is listening to, and no moment in which two buttons are listened to at once.
 
@@ -369,7 +369,7 @@ let ShowContents: fn Contents -> Text = \|c| match c:
     @Label (ShowResponse $motd)
 
     $path <- @TextInput "path", "/etc/hostname"
-    !$contents <- dyn $path:
+    !$contents <- rebuild $path:
         @Element Fs.Contents(path=_)
     $$current <- $ (Unavailable NotFound) then !$contents
     @Label (ShowContents ($Join $$current))
@@ -377,11 +377,11 @@ let ShowContents: fn Contents -> Text = \|c| match c:
 
 Two ways to get a file, because there are two things you might mean. The top half wants the message of the day once, now, and is content to wait: it fires a `Read` request from `@started` and holds the response when it comes. The bottom half wants whatever file the user has typed the path of, as a value that is simply true: it asks for `Fs.Contents` state, which has a value in the occurrence it is created and is pushed when the file changes.
 
-The top half is where "no request on creation" shows. Creating the `Fs.File` slot does nothing; the `Read` fires because `!started` fired, and `!started` fires exactly once, in the build occurrence, and it is pure. Compare the fetch-on-mount you have written, where every re-mount was a surprise network call and every test needed the mock before the first render. Here, if `@viewer` is rebuilt by some `dyn` around it, the read happens again because `@started` fires again, and that is visible in the program's text rather than in a lifecycle table. Until the response arrives `$motd` is `Nil`, and its type says so: the `match` in `ShowResponse` has an arm for not-yet, and leaving it out is a compile error.
+The top half is where "no request on creation" shows. Creating the `Fs.File` slot does nothing; the `Read` fires because `!started` fired, and `!started` fires exactly once, in the build occurrence, and it is pure. Compare the fetch-on-mount you have written, where every re-mount was a surprise network call and every test needed the mock before the first render. Here, if `@viewer` is rebuilt by some `rebuild` around it, the read happens again because `@started` fires again, and that is visible in the program's text rather than in a lifecycle table. Until the response arrives `$motd` is `Nil`, and its type says so: the `match` in `ShowResponse` has an arm for not-yet, and leaving it out is a compile error.
 
-The bottom half is where dynamic fields show. `Fs.Contents(path=_)` has a plain path, but the `dyn` over `$path` means a fresh slot per path: a new path is a new file, and the new slot's state is sampled in the occurrence of the change. The `dyn`'s result is `!$Contents`, an event of dynamics, one per build; a hold with a constant initial dynamic and a `$Join` turn that into the current file's contents as one dynamic. The specification lets you write `@Element Fs.Contents(path=$path)` for exactly this, and this chapter spells it out once.
+The bottom half is where dynamic fields show. `Fs.Contents(path=_)` has a plain path, but the `rebuild` over `$path` means a fresh slot per path: a new path is a new file, and the new slot's state is sampled in the occurrence of the change. The `rebuild`'s result is `!$Contents`, an event of dynamics, one per build; a hold with a constant initial dynamic and a `$Join` turn that into the current file's contents as one dynamic. The specification lets you write `@Element Fs.Contents(path=$path)` for exactly this, and this chapter spells it out once.
 
-**Occurrence 0 (build).** `!started` fires. `Read on !started` fires, which is the `Fs.File` slot's request; the World will see it after the occurrence. `!motd` does not fire: nothing addressed to a slot arrives in the occurrence the slot was created. `$motd` is `Nil`, so the first label is `"(reading...)"`. `@TextInput` builds with name `"path"` and text `"/etc/hostname"`; the `dyn` builds generation `#0` with an `Fs.Contents(path="/etc/hostname")` slot, and the runtime asks the World's oracle for that element's value as this occurrence opened. The World has never been asked about it; this is the first ask for a local file, so it reads the file once under its size cap, records the result in its snapshot, and answers `Known "box"`. `!$contents` fires with the new slot's dynamic; `$$current` changes to it in this same occurrence (a hold adopts a firing in its build occurrence); `$Join $$current` is `Known "box"`; the second label is `"box"`. Commit.
+**Occurrence 0 (build).** `!started` fires. `Read on !started` fires, which is the `Fs.File` slot's request; the World will see it after the occurrence. `!motd` does not fire: nothing addressed to a slot arrives in the occurrence the slot was created. `$motd` is `Nil`, so the first label is `"(reading...)"`. `@TextInput` builds with name `"path"` and text `"/etc/hostname"`; the `rebuild` builds generation `#0` with an `Fs.Contents(path="/etc/hostname")` slot, and the runtime asks the World's oracle for that element's value as this occurrence opened. The World has never been asked about it; this is the first ask for a local file, so it reads the file once under its size cap, records the result in its snapshot, and answers `Known "box"`. `!$contents` fires with the new slot's dynamic; `$$current` changes to it in this same occurrence (a hold adopts a firing in its build occurrence); `$Join $$current` is `Known "box"`; the second label is `"box"`. Commit.
 
 ```
 1:          Fs.File(path="/etc/motd")             requested: Read
@@ -398,7 +398,7 @@ The World reads the list, sees a `Read` fired on slot `1`, and starts reading `/
 
 **Occurrence 2.** The motd read finishes. The World sends `Contents "Welcome"` to path `1`. `!motd` fires; `Some !motd` is `$motd`'s change event; the label at `2` rebuilds to `"Welcome"`. Commit: `$motd` is `Some (Contents "Welcome")`.
 
-**Occurrence 3.** The user presses Backspace in the path input: `Backspace` to `3/0`. `$path` changes to `"/etc/hostnam"`; the `dyn` rebuilds: generation `#1` is built with `Fs.Contents(path="/etc/hostnam")`, and the oracle is asked for it. The World has never seen that path, reads it once under its cap, and answers `Unavailable NotFound`. `!$contents` fires with the new slot's dynamic; `$$current` changes; the join changes to `Unavailable NotFound`; the label rebuilds to `"(no such file)"`. At commit generation `#0` is dropped, and with it the only slot for `/etc/hostname`; the World stops watching that file.
+**Occurrence 3.** The user presses Backspace in the path input: `Backspace` to `3/0`. `$path` changes to `"/etc/hostnam"`; the `rebuild` rebuilds: generation `#1` is built with `Fs.Contents(path="/etc/hostnam")`, and the oracle is asked for it. The World has never seen that path, reads it once under its cap, and answers `Unavailable NotFound`. `!$contents` fires with the new slot's dynamic; `$$current` changes; the join changes to `Unavailable NotFound`; the label rebuilds to `"(no such file)"`. At commit generation `#0` is dropped, and with it the only slot for `/etc/hostname`; the World stops watching that file.
 
 ```
 1:          Fs.File(path="/etc/motd")
@@ -478,7 +478,7 @@ The state machine is one hold and one plain function. `Step` takes the watch, th
 5/#0/0:  Ui.Label(text="0 ms")
 ```
 
-**Occurrence 1.** A hundred milliseconds pass. The World opens an occurrence with a `tick` to `1` and a push for `Clock` of `Instant 5100`. The tick's event fires and nothing listens. `$clock` changes to `5100`; `Total $watch, $clock` is still `0`, since the watch is stopped; the derived label text changes, with the same value, and the label's `dyn` rebuilds to generation `#1` with the same text. A World that diffs lists sees no difference.
+**Occurrence 1.** A hundred milliseconds pass. The World opens an occurrence with a `tick` to `1` and a push for `Clock` of `Instant 5100`. The tick's event fires and nothing listens. `$clock` changes to `5100`; `Total $watch, $clock` is still `0`, since the watch is stopped; the derived label text changes, with the same value, and the label's `rebuild` rebuilds to generation `#1` with the same text. A World that diffs lists sees no difference.
 
 Rebuilding a label every tick with the same text is wasteful and the program could avoid it, by deriving the label from `$watch` alone while stopped; it stays because correctness does not depend on it. The rebuild is a description, not a draw call.
 
@@ -508,14 +508,14 @@ let Confine: fn Text, Text -> ?Text = \|root, p|
 
 @Forward: fn $(Path ==> Slot) -> @!(Path ==> Response) = \|$slots| @widget:
     for $slots:
-        dyn $_:
+        rebuild $_:
             ((!resp, ignore)) <- @Element _.element
             @ resp
 
 @Sandbox: fn Text, @a -> @a = \|root, @child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Fs.File(path=p):
                     match Confine root, p:
@@ -540,7 +540,7 @@ You want to run a widget you did not write and be sure it cannot read your files
 
 `intercept @child, !down, $ supply` builds the child and captures its element list as `$slots`, a map from the child's paths to its slots. Nothing in `$slots` goes further out by itself. The two other arguments are the two directions down: `!down` is the responses the sandbox delivers to the child's slots, by path; `supply` is how the sandbox answers the child's state elements.
 
-The response loop is a `for` over the child's slots. A slot never changes, so the `dyn` inside builds once per slot and `_` is the plain slot. An `Fs.File` under `/home/` is forwarded with its path rewritten: the sandbox makes its *own* `Fs.File` element, with the child's request event wired straight into it, and the response the outer World sends back is this block's result, which `for` consolidates into `!(Path ==> Response)` keyed by the child's path, which is `!down`. Any other `Fs.File` is denied, and denial is the interesting case. The sandbox cannot answer a request in the occurrence it was made, and it cannot start an occurrence of its own. So it fires a `Defer`, which the World answers in a later occurrence of the same turn, and answers `Denied` then. The catch-all arm forwards everything else unchanged.
+The response loop is a `for` over the child's slots. A slot never changes, so the `rebuild` inside builds once per slot and `_` is the plain slot. An `Fs.File` under `/home/` is forwarded with its path rewritten: the sandbox makes its *own* `Fs.File` element, with the child's request event wired straight into it, and the response the outer World sends back is this block's result, which `for` consolidates into `!(Path ==> Response)` keyed by the child's path, which is `!down`. Any other `Fs.File` is denied, and denial is the interesting case. The sandbox cannot answer a request in the occurrence it was made, and it cannot start an occurrence of its own. So it fires a `Defer`, which the World answers in a later occurrence of the same turn, and answers `Denied` then. The catch-all arm forwards everything else unchanged.
 
 `supply` is a function from an element to a blueprint that returns the state's dynamic. When the child creates an `Fs.Contents` slot, the runtime applies `supply` to the element and builds the returned blueprint as a child of the sandbox's widget, in the same build pass, so the slot has its value in its creation occurrence. For a confined path the blueprint is the sandbox's own `Fs.Contents` element with the rewritten path, which asks the outer World; for a refused one it is the constant `$ Unavailable Denied`. A sandbox that wants to deny must say what denial is in the state's type, and `Unavailable FsError` is a case of it.
 
@@ -557,11 +557,11 @@ Take the child to be the viewer of example 5, with its motd path changed to `/ho
 s/0:               Fs.Contents(path="/jail/home/me/hostname")
 ```
 
-The path prefix `1/[child path]/#0/0` is the sandbox's `for` (its second bind, after the intercept), keyed by the child's path, then the `dyn` generation, then the slot. The child's own paths are not visible outside; the outer World addresses the sandbox's slots, and the sandbox routes inward.
+The path prefix `1/[child path]/#0/0` is the sandbox's `for` (its second bind, after the intercept), keyed by the child's path, then the `rebuild` generation, then the slot. The child's own paths are not visible outside; the outer World addresses the sandbox's slots, and the sandbox routes inward.
 
 **Occurrence 1.** The outer World answers the motd read: `Contents "hi"` to `1/[1]/#0/0`. That slot's response event fires; it is the `for` block's result for key `1`; `!down` fires with `{1: Contents "hi"}`; `intercept` routes it to the child's slot at path `1`, against the child's list as the occurrence opened. The child's `!motd` fires; its label rebuilds. The sandbox re-emits the new label in the same occurrence: the child's list changed, `$slots` changed, the `for` built a block for the new label's path and tore down the old one.
 
-**Occurrence 2.** The user, inside the child, edits the path input to `/etc/passwd`. The child's `dyn` rebuilds its `Fs.Contents` slot with that path; the runtime applies `supply`, which returns `@ $ Unavailable Denied`, so the slot's dynamic is constantly `Unavailable Denied` and no element reaches the World. The old supplied widget is torn down at commit when its last slot goes.
+**Occurrence 2.** The user, inside the child, edits the path input to `/etc/passwd`. The child's `rebuild` rebuilds its `Fs.Contents` slot with that path; the runtime applies `supply`, which returns `@ $ Unavailable Denied`, so the slot's dynamic is constantly `Unavailable Denied` and no element reaches the World. The old supplied widget is torn down at commit when its last slot goes.
 
 **Occurrence 3.** Suppose the child, in some other part of it, builds `Fs.File(path="/etc/shadow", requests=(Read on !started))`. Its `@started` fires and so does its request, in the occurrence the slot is created. The sandbox's `for` builds a block for it: the `Nil` arm of `Confine`. `unit on _.!request` fires, so the `Defer` slot's request fires. Nothing else happens; from the child's view, it asked and is waiting, as it would be for a real read.
 
@@ -617,7 +617,7 @@ Take the child to be the counter of example 1 wrapped as `@VBox @counter`. The c
                            2/#0/0: Ui.Label(text="Count: 0")})
 ```
 
-**Occurrence 1.** The user clicks the first row. The library above hit-tests the pointer against the layout it drew from that list, finds the first child, and sends `ChildInput(path=0/#0/0, response=click)` to `1/#0/0`. (Under the Test World, `click Ui.Button(label="Increment")` produces the same input, by the convention at the end of this example.) The slot's event fires; `!Switch` delivers `!child_in`; `ToMap` makes `{0/#0/0: click}`; `!down` fires with the same, since `!fwd` is quiet. `intercept` routes `click` to the child's slot at `0/#0/0`; from there it is occurrence 1 of example 1: `!increment`, `!delta`, the count, the label rebuilt to `2/#1/0`. The child's list changes, so `$slots` changes promptly, the box's `dyn` rebuilds to generation `#1` with the new children, and the new slot's input event is adopted at commit.
+**Occurrence 1.** The user clicks the first row. The library above hit-tests the pointer against the layout it drew from that list, finds the first child, and sends `ChildInput(path=0/#0/0, response=click)` to `1/#0/0`. (Under the Test World, `click Ui.Button(label="Increment")` produces the same input, by the convention at the end of this example.) The slot's event fires; `!Switch` delivers `!child_in`; `ToMap` makes `{0/#0/0: click}`; `!down` fires with the same, since `!fwd` is quiet. `intercept` routes `click` to the child's slot at `0/#0/0`; from there it is occurrence 1 of example 1: `!increment`, `!delta`, the count, the label rebuilt to `2/#1/0`. The child's list changes, so `$slots` changes promptly, the box's `rebuild` rebuilds to generation `#1` with the new children, and the new slot's input event is adopted at commit.
 
 ```
 1/#1/0: Ui.VBox(children={0/#0/0: Ui.Button(label="Increment"),
@@ -707,7 +707,7 @@ let Status: fn Link -> Text = \|link| match link:
     $address <- @TextInput "address", "chat.example:7000"
     $draft <- @TextInput "draft", ""
     !send <- @Button $"Send"
-    !conns <- dyn $address:
+    !conns <- rebuild $address:
         let !out = !Filter (WhenConnected $link, $draft on !send)
         ((!rx, $link)) <- @Element Net.Socket(address=_, requests=!out)
         @ ((!rx, $link))
@@ -719,11 +719,11 @@ let Status: fn Link -> Text = \|link| match link:
     @Label (JoinText "\n", $log)
 ```
 
-One element, three parts. `Net.Socket` takes a request event, the text to send; responds with what arrives; and has state, whether the connection is up. The address is a dynamic, so the whole element lives inside a `dyn`: a new address is a new socket, and reconnecting is typing. The `dyn` returns a tuple, an event and a dynamic, and the two halves cross the `dyn` boundary differently because they are different kinds of thing: the event through `!Switch`, which is not prompt, and the dynamic through a hold and `$Join`, which is.
+One element, three parts. `Net.Socket` takes a request event, the text to send; responds with what arrives; and has state, whether the connection is up. The address is a dynamic, so the whole element lives inside a `rebuild`: a new address is a new socket, and reconnecting is typing. The `rebuild` returns a tuple, an event and a dynamic, and the two halves cross the `rebuild` boundary differently because they are different kinds of thing: the event through `!Switch`, which is not prompt, and the dynamic through a hold and `$Join`, which is.
 
-`!out` is the send, filtered by the link state: `WhenConnected $link, $draft on !send` reads both dynamics through tags and fires only when the link was `Connected` before the occurrence. `$link` inside the `dyn` block is the socket's own state, the one from this generation, and `!out` is bound before the element that produces it, which is fine in a widget block: bindings are recursive, and there is no prompt edge from a request event to a response event or to the state, since those come from outside in later occurrences.
+`!out` is the send, filtered by the link state: `WhenConnected $link, $draft on !send` reads both dynamics through tags and fires only when the link was `Connected` before the occurrence. `$link` inside the `rebuild` block is the socket's own state, the one from this generation, and `!out` is bound before the element that produces it, which is fine in a widget block: bindings are recursive, and there is no prompt edge from a request event to a response event or to the state, since those come from outside in later occurrences.
 
-**Occurrence 0 (build).** Two text inputs and a button are built. The `dyn` builds generation `#0`: an `Net.Socket(address="chat.example:7000")` slot. The oracle is asked for `Link` of that element; the World has no such connection and answers `Connecting`. `!conns` fires with the tuple; `$$link` changes to the new `$link` in this occurrence; the join is `Connecting`; the status label says `"connecting..."`. `!send` did not fire, so nothing was requested.
+**Occurrence 0 (build).** Two text inputs and a button are built. The `rebuild` builds generation `#0`: an `Net.Socket(address="chat.example:7000")` slot. The oracle is asked for `Link` of that element; the World has no such connection and answers `Connecting`. `!conns` fires with the tuple; `$$link` changes to the new `$link` in this occurrence; the join is `Connecting`; the status label says `"connecting..."`. `!send` did not fire, so nothing was requested.
 
 ```
 0/0:        Ui.Focusable(name="address")
@@ -744,7 +744,7 @@ The World reads the list, sees a socket element for an address it has no connect
 
 **Occurrence 3.** A line arrives. The World sends `Received "hi back"` to `3/#0/0`. The slot's response event fires; `!Switch` delivers it as `!rx`; `Line` passes it; `Append $log, !line` fires with `[["hi back"]]`; the log label rebuilds.
 
-**Occurrence 4.** The user edits the address to `chat.example:7001` and, in the same frame, clicks Send with `"bye"` in the draft. The keystroke goes to `0/0` and the click to `2/#0/0`. `$address` changes; the `dyn` rebuilds: generation `#1` is built with a slot for the new address, whose oracle answer is `Connecting`, since the World has no such connection. Now both generations propagate in this occurrence. In generation `#0`, `$draft on !send` fires with `"bye"`, `WhenConnected` reads that generation's `$link` as `Connected`, and the old slot's request fires. In generation `#1`, which sees all of the occurrence including the click, `$draft on !send` fires too, but `WhenConnected` reads the new slot's `$link` as `Connecting` and drops it. Exactly one send, on the old connection. `!conns` fires with the new tuple; `$$link` changes to the new `$link`; the join is `Connecting`; the status label says `"connecting..."`. At commit generation `#0` is dropped. `!Switch` adopts the new `!rx`.
+**Occurrence 4.** The user edits the address to `chat.example:7001` and, in the same frame, clicks Send with `"bye"` in the draft. The keystroke goes to `0/0` and the click to `2/#0/0`. `$address` changes; the `rebuild` rebuilds: generation `#1` is built with a slot for the new address, whose oracle answer is `Connecting`, since the World has no such connection. Now both generations propagate in this occurrence. In generation `#0`, `$draft on !send` fires with `"bye"`, `WhenConnected` reads that generation's `$link` as `Connected`, and the old slot's request fires. In generation `#1`, which sees all of the occurrence including the click, `$draft on !send` fires too, but `WhenConnected` reads the new slot's `$link` as `Connecting` and drops it. Exactly one send, on the old connection. `!conns` fires with the new tuple; `$$link` changes to the new `$link`; the join is `Connecting`; the status label says `"connecting..."`. At commit generation `#0` is dropped. `!Switch` adopts the new `!rx`.
 
 ```
 3/#1/0:     Net.Socket(address="chat.example:7001")
@@ -756,7 +756,7 @@ The World sees the old socket element gone and the new one present. It closes th
 
 A second `Net.Socket` element for `chat.example:7000` somewhere else in the program would share the first's `Link` state, because state is identified by value, and its sends and receives would be its own, because responses are identified by path. One connection, two conversations. If the user had typed the old address back, a second slot with that value would keep the connection alive through the change, which is either a feature or a surprise depending on what the program wanted, and either way it is in the program's text.
 
-What this prevents: the socket handler that writes to a connection object captured by a closure that outlived the reconnect. There is no connection object. There is an element with an address, a request event that is the program's only way to send, and a slot that lives exactly as long as the `dyn` generation does.
+What this prevents: the socket handler that writes to a connection object captured by a closure that outlived the reconnect. There is no connection object. There is an element with an address, a request event that is the program's only way to send, and a slot that lives exactly as long as the `rebuild` generation does.
 
 ## 11. A line counter
 
@@ -801,7 +801,7 @@ let IsEnd: fn StdinEvent -> ?unit = \|ev| match ev:
 
 `wc -l`, under a World with no screen. Standard input is a stream element: it responds with chunks and then with an end, and the program never asks it for anything. Standard output and exit are request elements: nothing happens until their request events fire, and the firing is the whole instruction. There is no `print`, and there is no `exit()`; there is an element whose request fired, read by the World after the occurrence.
 
-Exit is a request and not a presence. If exiting were "a `Process.Exit` element is in the list", the program would have to arrange for the element to appear at the right moment, with a `dyn` over some flag, and the World would have to watch for appearances, which is a trigger by existence and the language has none. Instead the element is always there and fires `Code 0` when the input ends.
+Exit is a request and not a presence. If exiting were "a `Process.Exit` element is in the list", the program would have to arrange for the element to appear at the right moment, with a `rebuild` over some flag, and the World would have to watch for appearances, which is a trigger by existence and the language has none. Instead the element is always there and fires `Code 0` when the input ends.
 
 **Occurrence 0 (build).** Three slots. `$lines` is `0`. Nothing fires.
 
@@ -829,7 +829,7 @@ tag Process.Args of Element:
 
 @wc_file:
     $args <- @Element Process.Args
-    !!resps <- dyn $args:
+    !!resps <- rebuild $args:
         !started <- @started
         match _[0]:
             Some path:
@@ -841,9 +841,9 @@ tag Process.Args of Element:
     ...
 ```
 
-The `match` inside the `dyn` chooses between two blueprints by a plain value, which is the one form a `match` with blueprint arms may take.
+The `match` inside the `rebuild` chooses between two blueprints by a plain value, which is the one form a `match` with blueprint arms may take.
 
-`$args` has a value in occurrence 0, from the oracle, and the `dyn` over it builds once with that value; a World that cannot observe a change to the arguments never pushes one and the `dyn` never rebuilds. Arguments are not parameters of `@main` because of the sandbox of example 7: an interceptor can supply a child a different `Process.Args`, and a test can set them with `with Process.Args = [["notes.txt"]]`, and neither needs a second way to start a program. A `Process.Env` is the same again.
+`$args` has a value in occurrence 0, from the oracle, and the `rebuild` over it builds once with that value; a World that cannot observe a change to the arguments never pushes one and the `rebuild` never rebuilds. Arguments are not parameters of `@main` because of the sandbox of example 7: an interceptor can supply a child a different `Process.Args`, and a test can set them with `with Process.Args = [["notes.txt"]]`, and neither needs a second way to start a program. A `Process.Env` is the same again.
 
 The World that runs this is the same one that runs example 5's viewer, and `Fs.File` is not a CLI tag: a GUI program reads files the same way. The CLI World adds only standard input, standard output, standard error and signals, four tags; exit, like the arguments, is a process tag.
 

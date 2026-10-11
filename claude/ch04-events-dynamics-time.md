@@ -94,34 +94,34 @@ One thing `on` does not do is pair an event's own value with a dynamic; it disca
 
 A lifted operation with exactly one event operand fires exactly when that operand fires, with the operation applied to the event's value and the dynamics' values before the occurrence. `IsClick !in` filters nothing; it is an event of booleans that fires with every `!in`. `!Filter` turns an `!?A` into an `!A` that fires only on `Some`, and it is the one plain combinator a program needs to drop firings; everything else is a function applied to an event.
 
-The rule has a consequence that is easy to miss: nothing inside the language makes an event fire from nothing. A lifted operation fires when its event operand fires; a merge fires when a side fires; `!Switch` fires when its chosen inner fires; `dyn`'s event fires when its block is built, which happens when its dynamic changes or when the `dyn` itself is built, which happens because something above it was built, and so on up to the root in occurrence zero. Every firing in a program is traceable to an input the World delivered or to the build. The World owns time, the runtime has one entry point, and the same inputs give the same occurrences every time, which is why a transcript is a test.
+The rule has a consequence that is easy to miss: nothing inside the language makes an event fire from nothing. A lifted operation fires when its event operand fires; a merge fires when a side fires; `!Switch` fires when its chosen inner fires; `rebuild`'s event fires when its block is built, which happens when its dynamic changes or when the `rebuild` itself is built, which happens because something above it was built, and so on up to the root in occurrence zero. Every firing in a program is traceable to an input the World delivered or to the build. The World owns time, the runtime has one entry point, and the same inputs give the same occurrences every time, which is why a transcript is a test.
 
 ### `!Switch`
 
-A button whose label is dynamic is rebuilt when the label changes, and each build has its own click event. The parent does not want a new `!click` per label; it wants one `!click`, for the button, whichever label it happens to show. A view that is replaced when a mode changes has a submit event per view, and the model wants one `!submit`. A connection that is reopened has a received-bytes event per socket, and the protocol wants one `!received`. In every case there is a `dyn` whose block returns an event, the `dyn`'s result is an event of events, one per build, and the rest of the program wants the one event that is "whichever is current".
+A button whose label is dynamic is rebuilt when the label changes, and each build has its own click event. The parent does not want a new `!click` per label; it wants one `!click`, for the button, whichever label it happens to show. A view that is replaced when a mode changes has a submit event per view, and the model wants one `!submit`. A connection that is reopened has a received-bytes event per socket, and the protocol wants one `!received`. In every case there is a `rebuild` whose block returns an event, the `rebuild`'s result is an event of events, one per build, and the rest of the program wants the one event that is "whichever is current".
 
 `!Switch: fn !!A -> !A` is that event. At occurrence n it delivers the firing, if any, of the inner event that the outer event most recently delivered *before* n. It starts subscribed to nothing. An inner event delivered at n is heard from n+1.
 
 ```prism
 @DynLabelButton: fn $Text -> @!Text = \@widget:
-    !!rendered <- dyn $_:
+    !!rendered <- rebuild $_:
         !click <- @Button _
         @ _ on !click
     @ !Switch !!rendered
 ```
 
-Inside the `dyn` block, `_` is the label as a plain value, because within one build it never changes; a change rebuilds the block. `!!rendered` fires in every build with the new block's click event, tagged with the label. `!Switch` turns the generations into one event.
+Inside the `rebuild` block, `_` is the label as a plain value, because within one build it never changes; a change rebuilds the block. `!!rendered` fires in every build with the new block's click event, tagged with the label. `!Switch` turns the generations into one event.
 
-This pattern is so common that binding over `@` does it for you. `!click <- @Button $label`, with a dynamic where the widget wants a plain label, means exactly the five lines above: a `dyn $label:` around the build, and `!click` is the `!Switch` of the `dyn`'s event. A widget function applied to a dynamic argument lifts to `dyn`, and the bound name is the switch of the generations. When the widget's result is a dynamic rather than an event, the bound name is a hold of the generations' dynamics, `$Join`ed, with the first build's result as the hold's initial value; when the result is plain, the bound name is a `$` holding the first build's value. The rule is stated here once; every later example in this book writes `!a <- @Button $"A"` and means the switch. One consequence to keep in mind: a `!click` bound this way is non-prompt in the label, so a relabel and a click in one occurrence deliver the click from the old button, as the next paragraphs explain.
+This pattern is so common that binding over `@` does it for you. `!click <- @Button $label`, with a dynamic where the widget wants a plain label, means exactly the five lines above: a `rebuild $label:` around the build, and `!click` is the `!Switch` of the `rebuild`'s event. A widget function applied to a dynamic argument lifts to `rebuild`, and the bound name is the switch of the generations. When the widget's result is a dynamic rather than an event, the bound name is a hold of the generations' dynamics, `$Join`ed, with the first build's result as the hold's initial value; when the result is plain, the bound name is a `$` holding the first build's value. The rule is stated here once; every later example in this book writes `!a <- @Button $"A"` and means the switch. One consequence to keep in mind: a `!click` bound this way is non-prompt in the label, so a relabel and a click in one occurrence deliver the click from the old button, as the next paragraphs explain.
 
 **Why it is not prompt.** Suppose it were: an inner event delivered at n would be heard at n. Then a block built at n could fire at its parent at n, through the switch, and the parent could react, and the reaction could change the dynamic the `dyn` watches, which would rebuild the block at n, which would fire again. Reflex has `coincidence` and `switchPromptlyDyn` for exactly this, and anyone who has used them has debugged them. The height of a prompt switch's output depends on which inner event it is currently listening to, and the inner event can be chosen *in the same occurrence* by something downstream of the output, which is a cycle that only shows up when a particular inner is chosen. The runtime has to re-enter propagation to handle it, and the program has to reason about what a freshly built thing can and cannot do in its first occurrence.
 
 With a non-prompt switch, every node's height is fixed by its sources as they stood when the occurrence opened. A `!Switch` reads which inner to listen to from a hold, and the hold's value side is a read of before-state, so the switch's output is below nothing that fires at n through it. A cycle through a switch is one comparison at the moment the switch changes inners, not a re-entrant search. And propagation never has to re-enter itself: once a node has fired at n, nothing at n can make it fire again.
 
-**What it costs.** A freshly built block cannot fire at its parent in the occurrence it was born, through the switch. The switch swallows whatever the new block fired at n before it was adopted. Under the rule that elements never fire in the occurrence they were created, the only things a new block can fire at n are pure consequences of its own construction, `@started` and the events of any `dyn` inside it, and a parent that wants to know the block was built already knows: the `dyn`'s own event fired at n with the block's result. If a block needs to act on its own birth, it uses `@started` inside the block, where there is no switch in the way:
+**What it costs.** A freshly built block cannot fire at its parent in the occurrence it was born, through the switch. The switch swallows whatever the new block fired at n before it was adopted. Under the rule that elements never fire in the occurrence they were created, the only things a new block can fire at n are pure consequences of its own construction, `@started` and the events of any `rebuild` inside it, and a parent that wants to know the block was built already knows: the `rebuild`'s own event fired at n with the block's result. If a block needs to act on its own birth, it uses `@started` inside the block, where there is no switch in the way:
 
 ```prism
-!!loads <- dyn $path:
+!!loads <- rebuild $path:
     !started <- @started
     !resp <- @Element Fs.File(path=_, requests=(Read on !started))
     @ !resp
@@ -188,7 +188,7 @@ That is promptness, and it is the point. Suppose derived dynamics lagged: `$x` c
 
 The change law and the tag law meet at a lifted operation with both kinds of operand. `$count + !delta` is an event, and its dynamics are read through tags. `$a + $b` is a dynamic, and its change event is prompt. The sigils decide which law applies, which is why you can read it off the line: an event in the operands means a tag; no event means promptness.
 
-A derived dynamic fires its change event when an operand's change event fires, with the new value, *even if the new value equals the old one*. `$edit.text` changes when `$edit` changes, and if only the cursor moved the text is the same text. A dynamic's change event is allowed to fire with the value it already had. Nothing downstream can tell the difference except by comparing, and the comparison is a plain function the program can apply if it wants to; a derived `dyn` over `$edit.text` will rebuild on a cursor move, and a program that minds writes `dyn ($Distinct $edit.text):`. `$Distinct` is a prelude function that needs equality on the value and passes on only the changes that differ from the value before; it is the one place equal values are suppressed, and it is opt-in. The alternative, in which the change law compared values and suppressed equal ones, would need equality on every type a dynamic can hold, including types that have none, and would make the number of firings depend on the representation of values, which the implementation chapter wants to be free to choose.
+A derived dynamic fires its change event when an operand's change event fires, with the new value, *even if the new value equals the old one*. `$edit.text` changes when `$edit` changes, and if only the cursor moved the text is the same text. A dynamic's change event is allowed to fire with the value it already had. Nothing downstream can tell the difference except by comparing, and the comparison is a plain function the program can apply if it wants to; a derived `rebuild` over `$edit.text` will rebuild on a cursor move, and a program that minds writes `rebuild ($Distinct $edit.text):`. `$Distinct` is a prelude function that needs equality on the value and passes on only the changes that differ from the value before; it is the one place equal values are suppressed, and it is opt-in. The alternative, in which the change law compared values and suppressed equal ones, would need equality on every type a dynamic can hold, including types that have none, and would make the number of firings depend on the representation of values, which the implementation chapter wants to be free to choose.
 
 ### Hold
 
@@ -224,7 +224,7 @@ let $c = $a * 2
 let $d = $b + $c
 ```
 
-When `$a` changes from 0 to 5 at n, `$d` changes from 1 to 16, once. It does not pass through 6 (new `$b`, old `$c`) or 11 (old `$b`, new `$c`). Nothing that reads `$d`, a label, a `dyn`, a tag at some event, can see either intermediate, because there is no occurrence in which either is `$d`'s value. A signals library has to work for this property, with a topological scheduler or a two-phase mark-and-sweep, and the schedulers are where its edge cases live. Here it is a law: the change law says `$d`'s value at every occurrence is the sum at that occurrence, and "at that occurrence" has no sub-steps. An implementation that fires each node once, after all of its prompt sources, satisfies it; heights (below) are the standard way.
+When `$a` changes from 0 to 5 at n, `$d` changes from 1 to 16, once. It does not pass through 6 (new `$b`, old `$c`) or 11 (old `$b`, new `$c`). Nothing that reads `$d`, a label, a `rebuild`, a tag at some event, can see either intermediate, because there is no occurrence in which either is `$d`'s value. A signals library has to work for this property, with a topological scheduler or a two-phase mark-and-sweep, and the schedulers are where its edge cases live. Here it is a law: the change law says `$d`'s value at every occurrence is the sum at that occurrence, and "at that occurrence" has no sub-steps. An implementation that fires each node once, after all of its prompt sources, satisfies it; heights (below) are the standard way.
 
 The at-most-once half is the half that keeps the first half honest. If `$d`'s change event could fire twice at n, once per input, then "the value at n" would be ambiguous, and a hold fed by `$d`'s change event would have to pick. One firing, one value, one commit.
 
@@ -234,11 +234,11 @@ Who is bound: the runtime, for every derived dynamic, and the World, for every s
 
 Two widgets that have never met both ask for `Fs.Contents(path="/etc/app.conf")`. One shows the file, the other parses it for a setting. The file changes on disk. You have seen the version of this where the parser ran on the new file and the viewer still showed the old one, for a frame or for a minute, because two caches with two expiry policies were between the disk and the two readers. Here the two slots are one dynamic, because state is identified by element value, and two results of it in one occurrence must match: the viewer and the parser change in the same occurrence or in neither.
 
-The law: two readings of one dynamic in one occurrence, by any means, give the same value. A tag at `!click` and a tag at `!key`, both reading `$count` in occurrence n, read the same `$count`. Two labels derived from `$count` show the same number in every occurrence. A `dyn` over `$count` and a tag on `$count` in the same occurrence agree about what the value was before and what it is after. This is the tag law and the change law stated as a property of the reader rather than of the operation, and it is listed separately because it is the law that extends across the World boundary. The occurrence is the version, for everything. The program is bound to read only through the laws, which the language enforces by having no other way to read. The World is bound to answer one value per element value per occurrence, through its oracle and its pushes, and the runtime enforces that by delivering one snapshot value to every slot that asks and one push to all of them; a World that answered the same value differently to two slots in one occurrence would have broken the program, not merely the World, and the `clock_readings_agree` script below is the check.
+The law: two readings of one dynamic in one occurrence, by any means, give the same value. A tag at `!click` and a tag at `!key`, both reading `$count` in occurrence n, read the same `$count`. Two labels derived from `$count` show the same number in every occurrence. A `rebuild` over `$count` and a tag on `$count` in the same occurrence agree about what the value was before and what it is after. This is the tag law and the change law stated as a property of the reader rather than of the operation, and it is listed separately because it is the law that extends across the World boundary. The occurrence is the version, for everything. The program is bound to read only through the laws, which the language enforces by having no other way to read. The World is bound to answer one value per element value per occurrence, through its oracle and its pushes, and the runtime enforces that by delivering one snapshot value to every slot that asks and one push to all of them; a World that answered the same value differently to two slots in one occurrence would have broken the program, not merely the World, and the `clock_readings_agree` script below is the check.
 
 ### No sampling, and what it buys
 
-You cannot ask a dynamic what it is right now. There is no `sample`, no `.current`, no `.value`, no way to write a plain function that takes a dynamic and returns its contents. You can read it through a tag, at an event, and get the value before the occurrence. You can rebuild on it with `dyn` and get the value as a plain `_` inside a block that is replaced when it changes. You can derive from it and get another dynamic. That is the whole list.
+You cannot ask a dynamic what it is right now. There is no `sample`, no `.current`, no `.value`, no way to write a plain function that takes a dynamic and returns its contents. You can read it through a tag, at an event, and get the value before the occurrence. You can rebuild on it with `rebuild` and get the value as a plain `_` inside a block that is replaced when it changes. You can derive from it and get another dynamic. That is the whole list.
 
 This is the restriction that feels like a missing feature until the checkbox. Every "read it right now" in that story was a read of something half-updated, and the reason it was half-updated is that "right now" was an instant in the middle of a cascade. With no sampling there is no instant. A read is either at an event (and gets before-state, defined) or is a derivation (and gets the current value at every occurrence, prompt and glitch-free). There is nothing in between to get wrong.
 
@@ -246,7 +246,7 @@ The program gains this: every read of state is visible as such. `Step $state, !i
 
 The implementation gains freedom of order. Since no read can land in the middle, the middle can be anything. Nodes can fire in any order consistent with prompt dependencies. A value nobody reads need not be computed. Later, independent nodes at one height can run in parallel, and nothing in any program has to change, because no program could tell the difference. A language with sampling has to define what a sample in the middle of propagation returns, and whatever it defines becomes a constraint on every optimisation.
 
-The thing you reach for sampling to do is almost always one of two things. "Get the value when this happens" is a tag: `$x on !e`. "Do something different depending on the value" is `dyn`: build the block for this value, and rebuild when it changes. The one thing neither covers is "get the value *after* this occurrence's changes, at this event", and that is the thing the design refuses, because it is the thing that depends on propagation order.
+The thing you reach for sampling to do is almost always one of two things. "Get the value when this happens" is a tag: `$x on !e`. "Do something different depending on the value" is `rebuild`: build the block for this value, and rebuild when it changes. The one thing neither covers is "get the value *after* this occurrence's changes, at this event", and that is the thing the design refuses, because it is the thing that depends on propagation order.
 
 ### The hidden behavior
 
@@ -254,7 +254,7 @@ Reflex's `Dynamic` is a pair of a `Behavior` and an `Event`, and both halves are
 
 Prism keeps the pair and hides the behavior half. Every operation that would read it, a tag, `!Switch`'s choice of inner, a hold's own value, `$Join`'s choice of inner before the swap, does so non-promptly, as before-state, and no operation in the language can do otherwise. There is one `tag`, not two, and it is spelled by putting a dynamic in an operation with an event.
 
-The one place promptness remains is construction, and it is deliberate. `dyn $x:` sees the new value of `$x` in the occurrence it changes, and the block it builds sees all of that occurrence (the construction rule, below). Derived dynamics are prompt. `$Join` is prompt. You can always trust that a dynamic's change event has the new value in any occurrence it fires, and that the value after the occurrence is exactly that. What you cannot do is read that new value at an event in the same occurrence, and that is the whole restriction.
+The one place promptness remains is construction, and it is deliberate. `rebuild $x:` sees the new value of `$x` in the occurrence it changes, and the block it builds sees all of that occurrence (the construction rule, below). Derived dynamics are prompt. `$Join` is prompt. You can always trust that a dynamic's change event has the new value in any occurrence it fires, and that the value after the occurrence is exactly that. What you cannot do is read that new value at an event in the same occurrence, and that is the whole restriction.
 
 ### Small things
 
@@ -270,7 +270,7 @@ The one place promptness remains is construction, and it is deliberate. `dyn $x:
 
 You have a save button and an autosave timer, and one day they fire in the same frame. The button handler serialises the document and starts a write; the timer handler, running second, sees the dirty flag still set (the button handler clears it when the write completes, asynchronously), serialises again, and starts a second write, and the two writes race on disk. The fix is a lock, or an `isSaving` flag, or a queue, and whichever you pick is a transaction you are writing by hand around two handlers that each believed it was alone.
 
-An occurrence is that transaction, written once, for everything. It is opened by the World with a set of inputs, each addressed to an element slot, all simultaneous. The program propagates: every event that fires as a consequence fires, every derived dynamic changes, every `dyn` and `for` that must rebuild rebuilds. Then the occurrence commits: every hold takes its new value, every element list and every result takes its new value, and the World reads the outcome. Then it is closed. Between open and commit nothing outside the program observes anything, and nothing inside the program observes a state that mixes before and after except through the tag law, which is the one deliberate window onto *before*.
+An occurrence is that transaction, written once, for everything. Think of it as a virtual instant: a moment at which changes happen, all of them at once, coordinated, because that is cleaner than giving every change its own timestamp and then arguing about the order. It is opened by the World with a set of inputs, each addressed to an element slot, all simultaneous. The program propagates: every event that fires as a consequence fires, every derived dynamic changes, every `rebuild` and `for` that must rebuild rebuilds. Then the occurrence commits: every hold takes its new value, every element list and every result takes its new value, and the World reads the outcome. Then it is closed. Between open and commit nothing outside the program observes anything, and nothing inside the program observes a state that mixes before and after except through the tag law, which is the one deliberate window onto *before*.
 
 The two handlers above become one occurrence with two inputs, a click and a tick. The program's text says what a click and a tick together mean, through a merge, and the write request is one event firing once. There is no flag because there is no second handler to see it.
 
@@ -286,7 +286,7 @@ Every edge is one of two kinds, and the distinction is the single most useful th
 
 ### Prompt and delayed edges
 
-An edge is *prompt* when the target's firing or change at n depends on the source's firing or change *at n*. These are the edges that make the wave: lifting over an event (`F !e` fires at n because `!e` did), lifting over dynamics (the change law: `$a + $b` changes at n because `$a` did), merge (`!a | !b` fires at n because a side did), `for`'s consolidation (the map fires at n because a block's event did), `$Join` (changes at n because the outer or the current inner did), and construction (`dyn $x:` rebuilds at n because `$x` changed at n, and its event fires at n with the new block's result).
+An edge is *prompt* when the target's firing or change at n depends on the source's firing or change *at n*. These are the edges that make the wave: lifting over an event (`F !e` fires at n because `!e` did), lifting over dynamics (the change law: `$a + $b` changes at n because `$a` did), merge (`!a | !b` fires at n because a side did), `for`'s consolidation (the map fires at n because a block's event did), `$Join` (changes at n because the outer or the current inner did), and construction (`rebuild $x:` rebuilds at n because `$x` changed at n, and its event fires at n with the new block's result).
 
 An edge is *delayed* when the target reads the source's value *before* n, which is to say its behavior side. There are three such edges, and they are the same thing seen from three places:
 
@@ -333,19 +333,19 @@ A cycle in the prompt graph is a definition that depends on itself in one occurr
 
 and the error names `!a` and `!b` and points at both lines.
 
-`dyn` is not a delay. Its event fires in the occurrence of the rebuild, with the new block's result, and the block it builds sees the occurrence it was built in. So a cycle through a `dyn` alone, in which the dynamic a `dyn` watches is derived from the `dyn`'s own event, is a prompt cycle and is rejected:
+`rebuild` is not a delay. Its event fires in the occurrence of the rebuild, with the new block's result, and the block it builds sees the occurrence it was built in. So a cycle through a `rebuild` alone, in which the dynamic a `rebuild` watches is derived from the `rebuild`'s own event, is a prompt cycle and is rejected:
 
 ```prism
 @also_broken:
-    !gen <- dyn $n:
-        @ _ + 1                         # the block's result is plain, so the dyn's event is !Nat
+    !gen <- rebuild $n:
+        @ _ + 1                         # the block's result is plain, so the rebuild's event is !Nat
     $n <- 0 then !gen                     # the hold's change event is !gen
     @ unit
 ```
 
-`$n` changes at n because `!gen` fired; the `dyn` rebuilds at n because `$n` changed; `!gen` fires at n because the `dyn` rebuilt. If this were allowed it would rebuild forever within one occurrence. The fix, if something like it is wanted, is to read `$n` through a tag at some event that is not the `dyn`'s own, or to put a `!Switch` in the loop, which reads its inner from before.
+`$n` changes at n because `!gen` fired; the `rebuild` rebuilds at n because `$n` changed; `!gen` fires at n because the `rebuild` rebuilt. If this were allowed it would rebuild forever within one occurrence. The fix, if something like it is wanted, is to read `$n` through a tag at some event that is not the `rebuild`'s own, or to put a `!Switch` in the loop, which reads its inner from before.
 
-The structure that looks like the cycle above is also the structure of every list program, so `for` needs its own rule. The consolidated event of a `for` over `!A` blocks fires at n with the entries of every block that fired at n, including a block built at n. The edge from a block's event to the consolidated event is prompt. The edge from the collection's change event to a *new* block's event exists only through whatever that block fires in the occurrence it is born, and the only things a block can fire then are pure consequences of its own construction: `@started`, and the events of `dyn`s inside it. Elements cannot fire in the occurrence they are created, so a button inside the block cannot. The compiler has the block's body and can see whether its result depends promptly on anything that fires at build; if it does not, the collection's change is not promptly upstream of the consolidated event, and the usual list program is legal:
+The structure that looks like the cycle above is also the structure of every list program, so `for` needs its own rule. The consolidated event of a `for` over `!A` blocks fires at n with the entries of every block that fired at n, including a block built at n. The edge from a block's event to the consolidated event is prompt. The edge from the collection's change event to a *new* block's event exists only through whatever that block fires in the occurrence it is born, and the only things a block can fire then are pure consequences of its own construction: `@started`, and the events of `rebuild`s inside it. Elements cannot fire in the occurrence they are created, so a button inside the block cannot. The compiler has the block's body and can see whether its result depends promptly on anything that fires at build; if it does not, the collection's change is not promptly upstream of the consolidated event, and the usual list program is legal:
 
 ```prism
 @todos:
@@ -363,13 +363,13 @@ The structure that looks like the cycle above is also the structure of every lis
 
 The check can only see what is in front of it. The todo list is legal because the row's body is written in the same block as the hold it feeds; the compiler reads `@ Delete on !delete`, finds a switch, and knows the row is silent at birth. Write the same list with the row passed in, `for $items: @Row _` where `@Row` is a parameter of the enclosing widget function, and the body is not visible, so the compiler assumes the worst: a row might fire at birth, the edge from `$items` to `!rows` is taken as prompt, and `$items <- {} then StepAll $items, !changes` is rejected as a cycle even if every `@Row` ever passed is silent. The elaborator records "can fire at birth" on every `for` node, from the body when it can see one and conservatively when it cannot, and the typed AST prints the flag; the Haskell implementation reads it to decide whether the consolidation needs Reflex's `coincidence` over the membership change, which is the one place that combinator is permitted. A program that wants a parameterised row and the closed loop breaks the loop with a delayed edge the compiler can see: the rows feed a hold, and the collection is stepped from that hold through a tag at some other event, so the cycle passes through a read of before-state wherever the rows came from.
 
-**Across widget functions and through switching**, not every cycle can be found statically. `!out <- @Echo !out` is a cycle if `@Echo`'s result depends promptly on its argument and not if `@Echo` holds the argument first, and the block that binds it does not see `@Echo`'s body. A `dyn` may choose, at runtime, between a block whose result is prompt in some input and one whose result is not, and the cycle exists only when the first is chosen. An implementation must detect these when they occur and treat them as an error: it must not deadlock, must not loop, and must not fire a node twice. In a height-ordered runtime the moment is precise: a node that tries to schedule at or below the current height is a node that was already supposed to have fired, and that is the cycle, reported with the chain of nodes that led to it. What happens next, abort of the occurrence or quarantine of the subtree, is the error chapter's subject; what this chapter promises is that the occurrence in which a cycle is found commits nothing.
+**Across widget functions and through switching**, not every cycle can be found statically. `!out <- @Echo !out` is a cycle if `@Echo`'s result depends promptly on its argument and not if `@Echo` holds the argument first, and the block that binds it does not see `@Echo`'s body. A `rebuild` may choose, at runtime, between a block whose result is prompt in some input and one whose result is not, and the cycle exists only when the first is chosen. An implementation must detect these when they occur and treat them as an error: it must not deadlock, must not loop, and must not fire a node twice. In a height-ordered runtime the moment is precise: a node that tries to schedule at or below the current height is a node that was already supposed to have fired, and that is the cycle, reported with the chain of nodes that led to it. What happens next, abort of the occurrence or quarantine of the subtree, is the error chapter's subject; what this chapter promises is that the occurrence in which a cycle is found commits nothing.
 
 A note on what is *not* a cycle, because the form fools people. An interceptor's response event is defined from a `for` over its child's element list, and the child's element list is produced by the `intercept` that consumes the response event. That is a loop in the text. It is legal because routing reads the list as the occurrence opened, which is a tag, and the slots a new input could reach are the ones that existed before it. Hit-testing is the same: a VBox tags a click with its layout as it stood when the occurrence opened, and no cycle exists in the heights. Anything that reads the list to route an input reads before, by the routing rule, and the routing rule is the tag law applied to the list.
 
 ### Construction in the middle of an occurrence
 
-`dyn` and `for` build widgets while an occurrence is in progress. The new widget subscribes to events that may already have fired at n, derives from dynamics that may already have changed at n, and contains holds, `dyn`s and `@started`s of its own. The question is what it sees, and the answer is one sentence:
+`rebuild` and `for` build widgets while an occurrence is in progress. The new widget subscribes to events that may already have fired at n, derives from dynamics that may already have changed at n, and contains holds, `rebuild`s and `@started`s of its own. The question is what it sees, and the answer is one sentence:
 
 **A widget built in occurrence n behaves as though it had been built immediately before n's inputs arrived.**
 
@@ -379,39 +379,39 @@ Everything else is a consequence. The rule binds the runtime and nothing else: a
 
 **Its tags read before n.** A tag inside the new widget reads values before n, like every tag. The new widget is not a privileged observer of the middle of the occurrence; it is an ordinary widget that happens to have been built at a particular moment, and the moment is "before the inputs", so before-state is what it reads.
 
-**A `dyn` built at n over a dynamic that changed at n builds once, with the new value.** This is the consequence with teeth. Picture a page whose title is derived from the page number, with an outer `dyn` over the page and an inner `dyn` over the title:
+**A `rebuild` built at n over a dynamic that changed at n builds once, with the new value.** This is the consequence with teeth. Picture a page whose title is derived from the page number, with an outer `rebuild` over the page and an inner `rebuild` over the title:
 
 ```prism
 @pages:
     !next <- @Button $"Next"
     $page <- 0 then $page + 1 on !next
     let $title = "Page {$page}"
-    dyn $page:
+    rebuild $page:
         @Label $"body of {_}"
-        dyn $title:
+        rebuild $title:
             @Element Ui.Label(text=_)
     @ unit
 ```
 
-A click at n changes `$page` and, promptly, `$title`. The outer `dyn` rebuilds at n. Its block builds an inner `dyn` over `$title`, which has already changed at n. The inner `dyn` builds its block once, with `"Page 1"`, because it sees `$title`'s change event as having fired at n. It does not build `"Page 0"` and then rebuild. The label the World sees after n is `"Page 1"` and there was never a `"Page 0"` slot in this generation.
+A click at n changes `$page` and, promptly, `$title`. The outer `rebuild` rebuilds at n. Its block builds an inner `rebuild` over `$title`, which has already changed at n. The inner `rebuild` builds its block once, with `"Page 1"`, because it sees `$title`'s change event as having fired at n. It does not build `"Page 0"` and then rebuild. The label the World sees after n is `"Page 1"` and there was never a `"Page 0"` slot in this generation.
 
-**Every computation runs at most once per occurrence**, regardless of how many late subscribers read it. If the inner `dyn` and a tag and a hold all read the same derived event at n, the closure behind that event ran once, and all three got its one value.
+**Every computation runs at most once per occurrence**, regardless of how many late subscribers read it. If the inner `rebuild` and a tag and a hold all read the same derived event at n, the closure behind that event ran once, and all three got its one value.
 
 **Its elements exist from n, and nothing can reach them at n.** A slot the new widget creates is in the element list after n, but no input addressed to it can arrive at n (routing is against the list as n opened), and nothing it requests can answer at n (the creation rule). A state element it creates has, at n, the value before n, which is what the World's snapshot for n holds, and receives n's push like every other slot; so it ends n holding the same value a slot that had existed before n would hold.
 
 **Why the alternatives are wrong.** Each rule an implementation might have adopted instead fails in a way you would otherwise meet in production.
 
-Suppose a late subscriber were hidden from earlier firings: a widget built at n sees only what fires *after* it is built. The nested `dyn` above is then built after `$title` changed, sees no change, builds with the value its dynamic had before n, `"Page 0"`, and stays wrong until the next time the title changes. The outer page says 1 and the inner title says 0, and nothing in the program is wrong except the runtime. This is the stale nested `dyn`, and it is the first bug anyone writing this runtime meets, because it is what the obvious implementation does.
+Suppose a late subscriber were hidden from earlier firings: a widget built at n sees only what fires *after* it is built. The nested `rebuild` above is then built after `$title` changed, sees no change, builds with the value its dynamic had before n, `"Page 0"`, and stays wrong until the next time the title changes. The outer page says 1 and the inner title says 0, and nothing in the program is wrong except the runtime. This is the stale nested `rebuild`, and it is the first bug anyone writing this runtime meets, because it is what the obvious implementation does.
 
 Suppose instead that each late subscriber re-ran the closures it needed: the new widget, on subscribing, computes the event's value afresh from its inputs. Now a closure runs once for the original subscribers and once more for each late one. A closure that is pure gives the same value each time, which hides the problem until the value is used for something that counts, a request fired from a lifted operation that now fires twice, or a cost that is now proportional to subscribers. At-most-once is a law, and this breaks it.
 
-Suppose instead the `dyn` built with the old value and then, hearing the change, rebuilt in the same occurrence. The World sees one generation after n, so the transcript looks right. But the first build happened: its `@started` fired, and any request it fired from `@started` fired, so the World is handed two requests, one for a page that never existed. Its holds were created and discarded. Its elements were in the list for a moment nobody saw, and its paths were minted and dropped, which chapter 5's path rules make visible in every later path. Two builds in one occurrence cost twice the work and leave a visible trace in the request log, and the request log is what the conformance suite compares.
+Suppose instead the `rebuild` built with the old value and then, hearing the change, rebuilt in the same occurrence. The World sees one generation after n, so the transcript looks right. But the first build happened: its `@started` fired, and any request it fired from `@started` fired, so the World is handed two requests, one for a page that never existed. Its holds were created and discarded. Its elements were in the list for a moment nobody saw, and its paths were minted and dropped, which chapter 5's path rules make visible in every later path. Two builds in one occurrence cost twice the work and leave a visible trace in the request log, and the request log is what the conformance suite compares.
 
-Suppose instead that construction were deferred: the `dyn` notes the change at n and builds at n+1, in an occurrence the runtime opens itself. Now the parent's `dyn` event fires one occurrence late, so a hold on the block's result lags its cause; the element list's change event fires one occurrence after the dynamic that caused it; a World that batched inputs sees an occurrence it did not open; and the runtime has gained a scheduler, a queue, and a budget for how many self-opened occurrences a turn may contain. Every one of these is a mechanism the language was designed not to need, and the only thing bought is a simpler rebuild path.
+Suppose instead that construction were deferred: the `rebuild` notes the change at n and builds at n+1, in an occurrence the runtime opens itself. Now the parent's `rebuild` event fires one occurrence late, so a hold on the block's result lags its cause; the element list's change event fires one occurrence after the dynamic that caused it; a World that batched inputs sees an occurrence it did not open; and the runtime has gained a scheduler, a queue, and a budget for how many self-opened occurrences a turn may contain. Every one of these is a mechanism the language was designed not to need, and the only thing bought is a simpler rebuild path.
 
 The rule as stated is the only one consistent with the change law for a widget that would have existed from the start of n, and the change law is not negotiable. It is also the rule Reflex's Spider implements, under the name `subscribeAndRead`: subscribing to an event returns its value for the current frame if it has one, and a `hold` subscribed mid-frame adopts that value at the frame's end. Both halves are in `Spider.hs`: `subscribeAndRead` returns a `SubscribeResult` with the occurrence alongside the subscription, and `hold` queues a `SomeHoldInit` whose initialisation calls `subscribeAndRead` and, when an occurrence comes back, defers a `SomeAssignment` to the end of the frame.
 
-**How an implementation honours it.** The realisation is simpler than the consequences suggest. Every event caches its value for the current occurrence; whoever computes it first records it, and the cache is cleared at commit. Subscribing to an event mid-occurrence returns its cached value if it already fired. A derived event subscribed mid-occurrence connects to its sources, takes any already-fired values, computes its own value once, caches it, and delivers it to its new subscriber. A hold subscribed late defers its adoption to commit. A `dyn` built late reads its dynamic's value *as of now*: the change event's value if it has fired at n, else the current value, and if the change fires later at n the `dyn` hears it by the ordinary push. Because every closure is pure and every delayed read is of before-state, a value pulled early is the same value the push would have delivered, and the cache ensures it is computed once however it was asked for. Heights still give the push order; the cache lets a late arrival catch up without disturbing it.
+**How an implementation honours it.** The realisation is simpler than the consequences suggest. Every event caches its value for the current occurrence; whoever computes it first records it, and the cache is cleared at commit. Subscribing to an event mid-occurrence returns its cached value if it already fired. A derived event subscribed mid-occurrence connects to its sources, takes any already-fired values, computes its own value once, caches it, and delivers it to its new subscriber. A hold subscribed late defers its adoption to commit. A `rebuild` built late reads its dynamic's value *as of now*: the change event's value if it has fired at n, else the current value, and if the change fires later at n the `rebuild` hears it by the ordinary push. Because every closure is pure and every delayed read is of before-state, a value pulled early is the same value the push would have delivered, and the cache ensures it is computed once however it was asked for. Heights still give the push order; the cache lets a late arrival catch up without disturbing it.
 
 ### Determinism
 
@@ -460,12 +460,12 @@ tag Echo of Element:                  # a request the script answers by hand
     responds: Text
 
 @Label: fn $Text -> @unit = \@widget:
-    dyn $_:
+    rebuild $_:
         @Element Ui.Label(text=_)
     @ unit
 
 @Button: fn $Text -> @!Click = \@widget:
-    !!clicks <- dyn $_:
+    !!clicks <- rebuild $_:
         @Element Ui.Button(label=_)
     @ !Switch !!clicks
 
@@ -613,7 +613,7 @@ Three slots in three widgets that have never met bind `Clock`, and `Clock` has n
 @switch_law:
     !rebuild <- @Button $"Rebuild"
     $gen <- 0 then $gen + 1 on !rebuild
-    !!born <- dyn $gen:
+    !!born <- rebuild $gen:
         !started <- @started
         @ _ on !started
     $heard <- -1 then !Switch !!born
@@ -628,13 +628,13 @@ test switch_swallows_birth, @switch_law:
         => expect Ui.Label(text="heard=-1 built=1")
 ```
 
-Each generation fires `@started` in the occurrence it is born, and `!Switch` never hears it, because the switch adopts the new inner at commit and the firing was before commit. The parent still knows the block was built: `!!born`, the `dyn`'s own event, fired in occurrence zero and again at the click, with each generation's `@started`-tagged event as its value, and a parent that wants to count generations counts that. `built` is `-1` after the build, since `!Updated $gen` does not fire at build, and `1` after the click. `heard` never moves in this program, and that is the law.
+Each generation fires `@started` in the occurrence it is born, and `!Switch` never hears it, because the switch adopts the new inner at commit and the firing was before commit. The parent still knows the block was built: `!!born`, the `rebuild`'s own event, fired in occurrence zero and again at the click, with each generation's `@started`-tagged event as its value, and a parent that wants to count generations counts that. `built` is `-1` after the build, since `!Updated $gen` does not fire at build, and `1` after the click. `heard` never moves in this program, and that is the law.
 
 ```prism
 @switch_follows:
     !rebuild <- @Button $"Rebuild"
     $gen <- 0 then $gen + 1 on !rebuild
-    !!clicks <- dyn $gen:
+    !!clicks <- rebuild $gen:
         !c <- @Element Ui.Button(label="gen {_}")
         @ _ on !c
     $clicked <- -1 then !Switch !!clicks
@@ -665,7 +665,7 @@ The two-input line is the case that matters: a click on generation 1 in the occu
     $a <- 0 then $a + 1 on !bump
     $b <- 100 then $b + 1 on !bump
     $use_b <- False then not $use_b on !swap
-    !$chosen <- dyn $use_b:
+    !$chosen <- rebuild $use_b:
         @ (if _: $b else: $a)
     $$current <- $ $a then !$chosen
     @Label "{$Join $$current}"
@@ -692,7 +692,7 @@ The third case is the outer switching to an inner that does not change in that o
     $a <- 0 then $a + 1 on !bump_a
     $b <- 100 then !never
     $use_b <- False then not $use_b on !swap
-    !$chosen <- dyn $use_b:
+    !$chosen <- rebuild $use_b:
         @ (if _: $b else: $a)
     $$current <- $ $a then !$chosen
     @Label "{$Join $$current}"
@@ -712,15 +712,15 @@ test join_follows_quiet_inner, @join_quiet_inner:
 
 `$b` never changes: its hold is fed by `!never`. Swapping to it shows its current value, 100, in the swap's occurrence, with no change event from the inner to help; an implementation that only updated the join on the inner's change would keep showing 1. Bumping `$a` while `$b` is chosen changes nothing visible, and swapping back shows the 2 that `$a` reached while it was not being watched: the join reads the inner's current value when it adopts it, and that value is whatever the inner's own history made it. Chapter 5 says how `$Join` is built from a hold of the inner's change events and a prompt read of the inner at the swap; that construction has to pass this script.
 
-### A nested `dyn` built in the occurrence its dynamic changed builds once, with the new value
+### A nested `rebuild` built in the occurrence its dynamic changed builds once, with the new value
 
 ```prism
 @nested_law:
     !next <- @Button $"Next"
     $page <- 0 then $page + 1 on !next
     let $title = "Page {$page}"
-    dyn $page:
-        dyn $title:
+    rebuild $page:
+        rebuild $title:
             !started <- @started
             @Element Test.Log(requests=(_ on !started))
             @Element Ui.Label(text=_)
@@ -736,7 +736,7 @@ test nested_dyn_builds_once, @nested_law:
         => requested Test.Log, "Page 1"
 ```
 
-The inner `dyn` is built partway through the click's occurrence, after `$title` has changed. An implementation that hid the earlier change from it would leave `Page 0` in the list, and the `expect_none` catches that. An implementation that built `Page 0` and then rebuilt would fire `Test.Log` twice in that turn, and the turn's transcript, which lists every request firing per slot, shows two where the law says one; the differential test compares transcripts, so the doubled firing is visible even though the script's `requested` step only asks whether the right one fired.
+The inner `rebuild` is built partway through the click's occurrence, after `$title` has changed. An implementation that hid the earlier change from it would leave `Page 0` in the list, and the `expect_none` catches that. An implementation that built `Page 0` and then rebuilt would fire `Test.Log` twice in that turn, and the turn's transcript, which lists every request firing per slot, shows two where the law says one; the differential test compares transcripts, so the doubled firing is visible even though the script's `requested` step only asks whether the right one fired.
 
 ### A hold inside a rebuilt block starts over, and sees the occurrence it was born in
 
@@ -745,7 +745,7 @@ The inner `dyn` is built partway through the click's occurrence, after `$title` 
     !rebuild <- @Button $"Rebuild"
     !bump <- @Button $"Bump"
     $gen <- 0 then $gen + 1 on !rebuild
-    dyn $gen:
+    rebuild $gen:
         $n <- 0 then $n + 1 on !bump
         @Label "n={$n}"
     @ unit
@@ -763,7 +763,7 @@ test hold_resets_and_catches_up, @reset_law:
         => expect Ui.Label(text="n=1")
 ```
 
-`!bump` is captured from outside the `dyn`; the hold is inside it. A rebuild makes a new hold at 0. The two-input line builds a new block in an occurrence in which `!bump` has already fired, and the new hold adopts it: `n=1`, exactly what a hold that had existed from the start of the occurrence would show.
+`!bump` is captured from outside the `rebuild`; the hold is inside it. A rebuild makes a new hold at 0. The two-input line builds a new block in an occurrence in which `!bump` has already fired, and the new hold adopts it: `n=1`, exactly what a hold that had existed from the start of the occurrence would show.
 
 ### Nothing answers in the occurrence it was asked
 
@@ -814,11 +814,11 @@ Four things are missing from this part of the language, and each absence is a fe
 
 ### No sampling
 
-No `sample`, no `.current`, no plain function from `$A` to `A`; a dynamic is read through a tag, through `dyn`, or by derivation, and "No sampling, and what it buys" above has the reasoning. What it closes: the read in the middle of the cascade. What it buys the program: every read of state is visible as a tag. What it buys the implementation: freedom of order, and no definition of "a sample in the middle" that every later optimisation would have to honour.
+No `sample`, no `.current`, no plain function from `$A` to `A`; a dynamic is read through a tag, through `rebuild`, or by derivation, and "No sampling, and what it buys" above has the reasoning. What it closes: the read in the middle of the cascade. What it buys the program: every read of state is visible as a tag. What it buys the implementation: freedom of order, and no definition of "a sample in the middle" that every later optimisation would have to honour.
 
 ### No prompt switching
 
-`!Switch` hears a new inner from the next occurrence; there is no `coincidence`, no `switchPromptly`, and no way to write one, for the reasons given under "`!Switch`" above. What it closes: the cycle that exists only when a particular inner is chosen, and the re-entrant propagation that handling it needs. What it costs: a block cannot fire at its parent through the switch in the occurrence of its birth, and the parent already knows of the birth from the `dyn`'s event. What it buys the implementation: heights fixed as the occurrence opened, one pass, no re-entry, no second node type for switching.
+`!Switch` hears a new inner from the next occurrence; there is no `coincidence`, no `switchPromptly`, and no way to write one, for the reasons given under "`!Switch`" above. What it closes: the cycle that exists only when a particular inner is chosen, and the re-entrant propagation that handling it needs. What it costs: a block cannot fire at its parent through the switch in the occurrence of its birth, and the parent already knows of the birth from the `rebuild`'s event. What it buys the implementation: heights fixed as the occurrence opened, one pass, no re-entry, no second node type for switching.
 
 ### No events from nothing
 

@@ -262,9 +262,9 @@ The three statements show the three return forms. A button returns its click. A 
 
 When the tag of `e` is not statically known, as in a catch-all arm of a `match` inside an interceptor, `@Element e` has the generic type `@((!Response, $State))`, and the response and state types are checked at the slot at runtime, per tag. In a tag-specific arm the types are the tag's, and the checker knows them. This is the one place in the language where a type is refined by a `match` on a tag, and it is what lets an interceptor forward an element it has never heard of while still being typed when it handles one it has.
 
-One thing `@Element` does not take is a dynamic where a field goes. `@Element Ui.Label(text=$text)` is not a label whose text changes; it is an application to a dynamic, which lifts, so it is `$(@Element Ui.Label(text=text))`, a dynamic of blueprints. Binding a dynamic of blueprints lifts to `dyn`: `@Element Ui.Label(text=$text)` as a statement means `dyn $text: @Element Ui.Label(text=_)`, a fresh slot per change of the text, and a bound name on the left is the `!Switch` of the `dyn`'s event when the element responds, or a hold of dynamics joined with `$Join` when it has state, with the first build's result as the hold's initial value. The chapter says this once here and uses the short form from now on; the section on dynamic fields says what it costs and why it is the right cost.
+One thing `@Element` does not take is a dynamic where a field goes. `@Element Ui.Label(text=$text)` is not a label whose text changes; it is an application to a dynamic, which lifts, so it is `$(@Element Ui.Label(text=text))`, a dynamic of blueprints. Binding a dynamic of blueprints lifts to `rebuild`: `@Element Ui.Label(text=$text)` as a statement means `rebuild $text: @Element Ui.Label(text=_)`, a fresh slot per change of the text, and a bound name on the left is the `!Switch` of the `rebuild`'s event when the element responds, or a hold of dynamics joined with `$Join` when it has state, with the first build's result as the hold's initial value. The chapter says this once here and uses the short form from now on; the section on dynamic fields says what it costs and why it is the right cost.
 
-A program rarely spells this out for library widgets. Library widgets take dynamic arguments: `@Button` takes a `$Text` label, and a button whose label changes is written `@Button $label`. The fresh slot per change belongs to the library's interceptor, which builds a new `Ui.Button` slot when the label changes and answers to the program through the one `!Click` event it returns; a World never sees it, because a World sees only the `Gui.*` elements the interceptor emits. The rule that a field change is a fresh slot holds in full for every element that reaches a World, and the `dyn` forms above are that rule written out, not the way a program normally labels a button.
+A program rarely spells this out for library widgets. Library widgets take dynamic arguments: `@Button` takes a `$Text` label, and a button whose label changes is written `@Button $label`. The fresh slot per change belongs to the library's interceptor, which builds a new `Ui.Button` slot when the label changes and answers to the program through the one `!Click` event it returns; a World never sees it, because a World sees only the `Gui.*` elements the interceptor emits. The rule that a field change is a fresh slot holds in full for every element that reaches a World, and the `rebuild` forms above are that rule written out, not the way a program normally labels a button.
 
 ## The creation rule
 
@@ -284,7 +284,7 @@ The practical statement is in three parts, one per party.
 
 A World could offer an element that acts because it exists: an `Fs.Load(path)` that reads the file when the slot appears and responds with the contents next turn. It would save a line in every file viewer, and it is what most toolkits do, and it is not offered, for three reasons that are the same three reasons `@started` exists.
 
-Building stops being pure. Today building a widget adds widgets and slots and nothing else; with act-on-creation, every rebuild of a `dyn` and every new key of a `for` is also an effect, at a moment the program's text does not show. The fetch-on-mount that fired twice was exactly this.
+Building stops being pure. Today building a widget adds widgets and slots and nothing else; with act-on-creation, every rebuild of a `rebuild` and every new key of a `for` is also an effect, at a moment the program's text does not show. The fetch-on-mount that fired twice was exactly this.
 
 The trigger stops being a value. With `Read on !started` the program can merge the start with a refresh button, `Read on (!started | !refresh)`, gate it on a setting, or replace it with a click, without touching the element. A test sees the request fire as an ordinary event and can assert `requested Fs.File(..), Read`. With act-on-creation the trigger is the slot's existence, which is not an event and cannot be merged with anything.
 
@@ -302,7 +302,7 @@ A slot has two identities, and they answer different questions.
 
 ### By path
 
-Every slot has a path: its position in the widget tree, made of the bind positions, `for` keys and `dyn` generations from the root down to it. The worked examples write a path as `0/#1/[7]/2`: the first bind in `@main`, generation one of the `dyn` there, key 7 of the `for` inside it, the third bind in that block. A path is unique for the life of its slot and is never reused: a `dyn` that rebuilds gives the new slot a new generation number, a `for` key that leaves and comes back gets a new path, and a World that keeps a stale path in a queue will find it refused rather than redirected. An implementation may represent paths as it likes provided the element list is in tree order and the outside can treat a path as an opaque key.
+Every slot has a path: its position in the widget tree, made of the bind positions, `for` keys and `rebuild` generations from the root down to it. The worked examples write a path as `0/#1/[7]/2`: the first bind in `@main`, generation one of the `rebuild` there, key 7 of the `for` inside it, the third bind in that block. A path is unique for the life of its slot and is never reused: a `rebuild` that rebuilds gives the new slot a new generation number, a `for` key that leaves and comes back gets a new path, and a World that keeps a stale path in a queue will find it refused rather than redirected. An implementation may represent paths as it likes provided the element list is in tree order and the outside can treat a path as an opaque key.
 
 Responses are addressed by path. A click is for *this* button, not for every button with this label; the answer to a read is for the slot that asked, not for every slot reading that file. A path is the identity of a conversation.
 
@@ -360,7 +360,7 @@ Together they say what an occurrence is at the boundary: a snapshot in and a lis
 
 Fields are plain data. A label's text, a file's path, a socket's address: each is read once when the slot is created and never again. The question every reader asks next is what happens to the label whose text changes, and the answer is that the language already has a construct for building something afresh when a dynamic changes, and uses it.
 
-An element with a dynamic where a field goes is an application to a dynamic, which lifts: `Ui.Label(text=$text)` is `$(Ui.Label(text=text))`, a dynamic of elements, and `@Element` of it is a dynamic of blueprints. Binding a dynamic of blueprints is `dyn`. So
+An element with a dynamic where a field goes is an application to a dynamic, which lifts: `Ui.Label(text=$text)` is `$(Ui.Label(text=text))`, a dynamic of elements, and `@Element` of it is a dynamic of blueprints. Binding a dynamic of blueprints is `rebuild`. So
 
 ```prism
 @Element Ui.Label(text=$text)
@@ -369,7 +369,7 @@ An element with a dynamic where a field goes is an application to a dynamic, whi
 means
 
 ```prism
-dyn $text:
+rebuild $text:
     @Element Ui.Label(text=_)
 ```
 
@@ -378,7 +378,7 @@ a fresh slot per change of `$text`, with the old slot torn down at the commit of
 ```prism
 !click <- @Element Ui.Button(label=$label)
 # is
-!!clicks <- dyn $label:
+!!clicks <- rebuild $label:
     @Element Ui.Button(label=_)
 let !click = !Switch !!clicks
 ```
@@ -388,13 +388,13 @@ and for an element with state it is a hold of dynamics joined:
 ```prism
 $contents <- @Element Fs.Contents(path=$path)
 # is
-!$each <- dyn $path:
+!$each <- rebuild $path:
     @Element Fs.Contents(path=_)
 $$current <- $first then !$each        # $first: the dynamic the first build returned
 let $contents = $Join $$current
 ```
 
-where the first build's result is available as the hold's initial value because the first build happens in the occurrence the `dyn` is built; the runtime has it in hand when it builds the hold, and a library spells the three lines as one word. An event where a field goes is a type error unless the field is the declared `requests` event, which is the one field whose type is an event.
+where the first build's result is available as the hold's initial value because the first build happens in the occurrence the `rebuild` is built; the runtime has it in hand when it builds the hold, and a library spells the three lines as one word. An event where a field goes is a type error unless the field is the declared `requests` event, which is the one field whose type is an event.
 
 The consequences, each of which some other part of the design depends on: the element list never contains a sigil, so a World and an interceptor read plain data; value identity never has to pick a moment, because a value is fixed for its slot's life; nothing about an element changes after creation, so "the same element with a new field" is not a case any reader has to handle; a response to the old slot is for the old slot, and the World drops it because the slot is gone; and the new slot's state is sampled in the occurrence of the change, under the rule for widgets built mid-occurrence, so a file viewer whose path changes shows the new file's state in the occurrence the path changed.
 
@@ -415,7 +415,7 @@ The worry about this design is that a slot is destroyed and recreated for every 
 | `Gtk.Entry(value)` native | the value | the hard case | A native text box has cursor and selection state. Per keystroke, a fresh slot loses it. |
 | `Gui.Window(title)` as a container | the title | a non-problem | Containment is by interception, not by fields. The window's children are widgets under an interceptor; the window element is a leaf with no children field, so its rebuild touches nothing else. |
 
-The hard case is the native text input, and the answer is that in Prism the text input is not native. The GUI library is Prism, so the cursor is a hold in `@TextInput` outside any `dyn`; the keystrokes arrive at the window, and the library routes each one to the input whose name is the focus, a name that does not change when you type into it; and what the World sees is a scene of draw commands and, for the focused input, a `Gui.Focusable` with that name. The worked example with a cursor is four occurrences of exactly this, and no cursor is lost because there is no second copy of it anywhere. A World that wraps a native toolkit and wants continuity for a native widget keys it by tree position and tag, which the path exposes; that is a World's policy, and the language promises nothing about it.
+The hard case is the native text input, and the answer is that in Prism the text input is not native. The GUI library is Prism, so the cursor is a hold in `@TextInput` outside any `rebuild`; the keystrokes arrive at the window, and the library routes each one to the input whose name is the focus, a name that does not change when you type into it; and what the World sees is a scene of draw commands and, for the focused input, a `Gui.Focusable` with that name. The worked example with a cursor is four occurrences of exactly this, and no cursor is lost because there is no second copy of it anywhere. A World that wraps a native toolkit and wants continuity for a native widget keys it by tree position and tag, which the path exposes; that is a World's policy, and the language promises nothing about it.
 
 ### The declared-dynamic-field alternative
 
@@ -455,7 +455,7 @@ tag Fs.Query of Element:                     # not the design
 
 The program holds a `?Contents` that is `Nil` for one occurrence. That is honest, in the sense that a type says the value may be absent, and it is cheap, in the sense that the World needs no oracle. The trouble is not the one occurrence of waiting. The trouble is that the wait is visible, and visible in a way no library can hide.
 
-Take a widget built in occurrence n by a `dyn` over `$selected`, which changed in n, and which also reads a dynamic `$theme` captured from its enclosing scope. Under the rule for widgets built mid-occurrence, the new widget sees all of n: it sees `$selected`'s new value (that is why it was built) and it sees `$theme`'s value as of n, including a change to `$theme` in n if there was one. Now give it a state request. Its `$contents` is `Nil` in n and `Some` in n+1. So there is an occurrence, n, in which the widget has the new `$selected`, the new `$theme`, and no contents; and if `$theme` changes again in n+1, there is no occurrence at all in which the widget has the contents and the `$theme` it was built under. The widget was supposed to be a function of three dynamics and it has been shown a combination of their values that never existed.
+Take a widget built in occurrence n by a `rebuild` over `$selected`, which changed in n, and which also reads a dynamic `$theme` captured from its enclosing scope. Under the rule for widgets built mid-occurrence, the new widget sees all of n: it sees `$selected`'s new value (that is why it was built) and it sees `$theme`'s value as of n, including a change to `$theme` in n if there was one. Now give it a state request. Its `$contents` is `Nil` in n and `Some` in n+1. So there is an occurrence, n, in which the widget has the new `$selected`, the new `$theme`, and no contents; and if `$theme` changes again in n+1, there is no occurrence at all in which the widget has the contents and the `$theme` it was built under. The widget was supposed to be a function of three dynamics and it has been shown a combination of their values that never existed.
 
 ### Suppose an interceptor hid the delay
 
@@ -504,7 +504,7 @@ type Slot = record:
 ```prism
 @Forward: fn $(Path ==> Slot) -> @!(Path ==> Response) = \|$slots| @widget:
     for $slots:                      # key is the child's path
-        dyn $_:                      # a slot never changes, so this builds once
+        rebuild $_:                      # a slot never changes, so this builds once
             ((!resp, ignore)) <- @Element _.element
             @ !resp
 
@@ -514,7 +514,7 @@ type Slot = record:
     @ result
 ```
 
-Read `@Forward` slowly, because every interceptor in this chapter is a variation on it. `for $slots` builds one block per slot in the child's list, keyed by the child's path; a block is built in the occurrence its slot appears and torn down at the commit of the occurrence its slot leaves. Inside, `$_` is the slot as a dynamic, and since a slot never changes, `dyn $_:` builds exactly once and gives `_` as the plain slot. `@Element _.element` makes an element of the interceptor's own with the same value, in the interceptor's widget; its tag is not statically known, so it returns the generic pair of a response event and a state dynamic, and the pattern keeps the event and discards the dynamic, which nothing needs because the child's state slots are answered by the supplier, not by this loop. The block returns the event, and `for` consolidates the blocks' events into `!(Path ==> Response)`, firing in any occurrence in which at least one outer response arrived, with exactly the entries that did. That map is `!down`, and `intercept` delivers each entry to the child's slot at that path.
+Read `@Forward` slowly, because every interceptor in this chapter is a variation on it. `for $slots` builds one block per slot in the child's list, keyed by the child's path; a block is built in the occurrence its slot appears and torn down at the commit of the occurrence its slot leaves. Inside, `$_` is the slot as a dynamic, and since a slot never changes, `rebuild $_:` builds exactly once and gives `_` as the plain slot. `@Element _.element` makes an element of the interceptor's own with the same value, in the interceptor's widget; its tag is not statically known, so it returns the generic pair of a response event and a state dynamic, and the pattern keeps the event and discards the dynamic, which nothing needs because the child's state slots are answered by the supplier, not by this loop. The block returns the event, and `for` consolidates the blocks' events into `!(Path ==> Response)`, firing in any occurrence in which at least one outer response arrived, with exactly the entries that did. That map is `!down`, and `intercept` delivers each entry to the child's slot at that path.
 
 The request side forwards itself. The child's request event is in the slot, `_.!request`, and `@Element _.element` makes an element whose `requests` field is that very event, so when the child's request fires, the interceptor's element's request fires in the same occurrence, and the outside sees it after the occurrence with no delay. A widget built in occurrence n sees all of n, so even a request fired from `@started` in a slot's creation occurrence is seen by the block built for that slot in the same occurrence and goes out that turn.
 
@@ -718,7 +718,7 @@ Every container responds with `ChildInput`: a path in the child's list and a res
     @ !click
 ```
 
-A label is one element with a dynamic text, which is a `dyn` with a fresh slot per change. A button is the same with a response, which is a `!Switch` over the generations. There is nothing else in a leaf; everything a leaf does belongs to the layers above it.
+A label is one element with a dynamic text, which is a `rebuild` with a fresh slot per change. A button is the same with a response, which is a `!Switch` over the generations. There is nothing else in a leaf; everything a leaf does belongs to the layers above it.
 
 ### Containers
 
@@ -752,7 +752,7 @@ let Inward: fn ChildInput -> Path ==> Response = \|c| {c.path: c.response}
     @ result
 ```
 
-`@HBox` is `@VBox` with `Ui.HBox`. `UiOnly $slots` is a derived dynamic of the child's library elements, kept current by the change law. `Ui.VBox(children=...)` with a dynamic field is a `dyn`, a fresh box per change of the children, and `!in` is the `!Switch` over its generations. When the window sends a `ChildInput` to the box, `Inward !in` is the one-entry map from the named path to the response, `!down` is that map merged with whatever the forwarded non-library elements received, and `intercept` delivers the response to the child's slot at that path, against the child's list as the occurrence opened. The child at that path is a leaf, which fires, or another container, which peels the next `ChildInput`.
+`@HBox` is `@VBox` with `Ui.HBox`. `UiOnly $slots` is a derived dynamic of the child's library elements, kept current by the change law. `Ui.VBox(children=...)` with a dynamic field is a `rebuild`, a fresh box per change of the children, and `!in` is the `!Switch` over its generations. When the window sends a `ChildInput` to the box, `Inward !in` is the one-entry map from the named path to the response, `!down` is that map merged with whatever the forwarded non-library elements received, and `intercept` delivers the response to the child's slot at that path, against the child's list as the occurrence opened. The child at that path is a leaf, which fires, or another container, which peels the next `ChildInput`.
 
 The two maps never share a key, because `Inward !in` has library paths and `!fwd` has the others; `!Union` is there so that a click into the box and a file response to a forwarded `Fs.File` can land in one occurrence without one losing the other.
 
@@ -771,7 +771,7 @@ A text input is a leaf with a name, and the editing state sits in a hold outside
 
 `Apply` is the plain function of the worked example with a cursor: it takes the old edit state and a key and returns the new state. The hold `$edit` is referenced by the element's fields before the line that defines it, which a widget block allows, and the cycle passes through the hold's value side.
 
-Look at what changes per keystroke and what does not. The element's text and cursor change, so the element is a fresh slot; the hold `$edit`, with the cursor in it, is outside the `dyn`, so it persists. The slot being fresh per keystroke is why focus, in the window below, is keyed by the input's `name` and not by its path: the name is the one thing about a text input that does not change when you type into it. That is the same move as identifying state by value rather than by path, for the same reason. A path names a slot; a name names the thing the user is looking at.
+Look at what changes per keystroke and what does not. The element's text and cursor change, so the element is a fresh slot; the hold `$edit`, with the cursor in it, is outside the `rebuild`, so it persists. The slot being fresh per keystroke is why focus, in the window below, is keyed by the input's `name` and not by its path: the name is the one thing about a text input that does not change when you type into it. That is the same move as identifying state by value rather than by path, for the same reason. A path names a slot; a name names the thing the user is looking at.
 
 Focus is a hold of an optional name in the window, and only there. Tab has to walk every input in tree order, and a click has to move focus from one input to another, so one owner sees all of them; an input that asked "am I focused" would need the window's answer anyway.
 
@@ -940,7 +940,7 @@ let Scrolled: fn Text ==> Float, Wheeled -> Text ==> Float = \|offsets, w|
     let !hit = !Filter (HitAt $placed.hits, !Filter (PointerOf !raw))
     $focus <- Nil then (Some !Filter (FocusOf !hit)) | (NextFocus $placed.hits, $focus) on !Filter (IsTab !raw)
     $offsets <- {} then Scrolled $offsets, !Filter (WheelAt $placed.hits, !Filter (WheelOf !raw))
-    dyn $focus:
+    rebuild $focus:
         match _:
             Some n: @Element Gui.Focusable(name=n)
             Nil: @ unit
@@ -993,7 +993,7 @@ It draws the scene and waits.
 
 **Occurrence 1.** The user clicks on the OK button. The World sends `Pointer (Point 12.0, 40.0)` to `1`. `PointerOf` passes the point; `HitAt` reads `$placed.hits` through a tag and finds the button's region first (leaves before containers), with chain `[[1/#0/0, 1/#0/0, 0/#0/0]]`: the box in the app's list, the HBox in the box's list, the OK button in the HBox's list. `ClickFor` turns it into `{1/#0/0: ChildInput(path=1/#0/0, response=ChildInput(path=0/#0/0, response=click))}`. `!down` fires with it; `intercept` delivers to the box's slot at `1/#0/0` in the app's list as opened. The box's `!in` fires; `Inward` turns the `ChildInput` into `{1/#0/0: ChildInput(path=0/#0/0, response=click)}`; the box's `!down` delivers it to the HBox's slot; the HBox peels again and delivers `{0/#0/0: click}`; the OK button's `!in` fires with `click`; `!ok` fires in the form. Nothing on the screen changes, so no scene is rebuilt. Three interceptors and one leaf, in one occurrence, each one line of routing.
 
-**Occurrence 2.** The user clicks in the text field. `Pointer (Point 12.0, 10.0)` to `1`. `HitAt` finds the input's own region, with kind `Focus "name"`. `ClickFor` gives `Nil`, since an input responds only to keys, and `FocusOf` fires `Some "name"`; `$focus` changes to `Some "name"`. The layout depends on the focus, so `$placed` changes promptly and the scene rebuilds to `4/#1/0`, now with a caret bar after `Ada`; and the focus dyn builds `Gui.Focusable(name="name")` at `7/#1/0`. Commit: focus is the input, and the World can show the platform's focus for it.
+**Occurrence 2.** The user clicks in the text field. `Pointer (Point 12.0, 10.0)` to `1`. `HitAt` finds the input's own region, with kind `Focus "name"`. `ClickFor` gives `Nil`, since an input responds only to keys, and `FocusOf` fires `Some "name"`; `$focus` changes to `Some "name"`. The layout depends on the focus, so `$placed` changes promptly and the scene rebuilds to `4/#1/0`, now with a caret bar after `Ada`; and the focus rebuild builds `Gui.Focusable(name="name")` at `7/#1/0`. Commit: focus is the input, and the World can show the platform's focus for it.
 
 **Occurrence 3.** The user types `!`. `Pressed (Char '!')` to `1`. `PressedOf` passes it; `RouteKey` reads `$placed.hits` and `$focus` through tags, finds the hit whose kind is `Focus "name"`, and `Deliver` addresses `Char '!'` down its chain `[[1/#0/0, 0/#0/0]]`. The box peels; the input's `!key` fires; `Apply $edit, !key` fires with `Edit "Ada!", 4`; `$edit` changes. The input element is a fresh slot at `0/#1/0`; the box's `children` changes and the box is a fresh slot at `1/#1/0`; `$kids` changes; the greeting label changes too, since `$name` is `$edit.text`. Now the measurer: `TextsIn` finds `Ada!`, `Cancel`, `Hello, Ada!` and `OK`. The `for` builds `Gui.Metrics` slots for `Ada!` and `Hello, Ada!` in this occurrence and the oracle answers them in this occurrence; `Ada` and `Hello, Ada` are torn down at commit. `$sizes` has the new widths before the occurrence ends, `$placed` is laid out with them, and the scene is rebuilt at `4/#2/0`. There is no occurrence in which the text has changed and its width has not. Commit: `$edit` is `Edit "Ada!", 4`, and `$focus` is still `Some "name"`, which names the new input slot as well as it named the old one.
 
@@ -1033,7 +1033,7 @@ test window_focus, (@Window "Form", (Extent 400.0, 300.0), (@VBox @form)):
 
 ### What the library does not do, yet
 
-Text longer than its box needs wrapping, which is line breaking over widths: the library asks `Gui.Metrics` for the prefixes it needs, as `InputDraw` does for the caret, and breaks where the widths say. A library with more than one font passes the font along: `Gui.Metrics` already has the `font` field, the draw commands gain one, and `$sizes` is keyed by text and font. Size feedback, where a child wants to be a different size because of the size it was given, is a cycle through the layout and needs a `Defer` to break it; the library above has no such child. An accessibility tree is a derived dynamic over the same element tree the layout uses, with the input names as node ids, emitted as an element of its own for a World that speaks to a screen reader. Animation is a `Gui.Frames` slot inside a `dyn` over whether anything is moving, so that a window at rest asks the World for no frames, and each `Frame` is an input to a hold. Each is more Prism over the same five tags, and none is a new primitive.
+Text longer than its box needs wrapping, which is line breaking over widths: the library asks `Gui.Metrics` for the prefixes it needs, as `InputDraw` does for the caret, and breaks where the widths say. A library with more than one font passes the font along: `Gui.Metrics` already has the `font` field, the draw commands gain one, and `$sizes` is keyed by text and font. Size feedback, where a child wants to be a different size because of the size it was given, is a cycle through the layout and needs a `Defer` to break it; the library above has no such child. An accessibility tree is a derived dynamic over the same element tree the layout uses, with the input names as node ids, emitted as an element of its own for a World that speaks to a screen reader. Animation is a `Gui.Frames` slot inside a `rebuild` over whether anything is moving, so that a window at rest asks the World for no frames, and each `Frame` is an input to a hold. Each is more Prism over the same five tags, and none is a new primitive.
 
 ## Worked interceptors
 
@@ -1053,7 +1053,7 @@ let Confine: fn Text, Text -> ?Text = \|root, p|
 @Jail: fn Text, @a -> @a = \|root, @child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Fs.File(path=p):
                     match Confine root, p:
@@ -1095,7 +1095,7 @@ let Forbidden: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
 @NoNetwork: fn @a -> @a = \|@child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ supply
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Net.Http(..):
                     !later <- @Element Defer(requests=(unit on _.!request))
@@ -1165,7 +1165,7 @@ type CacheOut = record:
 @HttpCache: fn @a -> @a = \|@child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     out <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Net.Http(..):
                     let !hit = !Filter (Lookup $memo, _.!request)
@@ -1194,7 +1194,7 @@ The conformance suite's `cache_hit_no_request` test puts two identical GETs in t
 @MockHttp: fn (fn HttpRequest -> HttpResponse), @a -> @a = \|answer, @child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Net.Http(..):
                     !later <- @Element Defer(requests=(unit on _.!request))
@@ -1233,7 +1233,7 @@ tag Log.Line of Element:
 @Traced: fn @a -> @a = \|@child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             ((!resp, ignore)) <- @Element _.element
             @Element Log.Line(requests=("{ShowPath key} asked {ToText _.!request}" | "{ShowPath key} got {ToText !resp}"))
             @ !resp
@@ -1258,13 +1258,13 @@ let Refusal: fn ?HttpRequest -> ?HttpResponse = \|asked| match asked:
 @Quota: fn Nat, @a -> @a = \|limit, @child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !asked <- for $slots:                        # every HTTP request fired this occurrence, by path
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Net.Http(..): @ _.!request
                 ignore: @ !never
     $used <- 0 then $used + Size !asked           # Size: the prelude's count of a map's entries
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Net.Http(..):
                     let !allowed = !Filter (IfUnder $used, limit, _.!request)
@@ -1312,7 +1312,7 @@ let IfRemote: fn Backend, Text -> ?Text = \|b, r| if b == Remote: Some r else: N
 @Migrate: fn $Backend, Text, @a -> @a = \|$backend, host, @child| @widget:
     ((result, $slots)) <- intercept @child, !down, $supply
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Kv.Get(..):
                     let !local = !Filter (IfLocal $backend, _.!request)

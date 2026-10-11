@@ -4,7 +4,7 @@ Eight programs that are not toys, each taken far enough that the hard moment sho
 
 ## Conventions
 
-Occurrences are numbered from zero; occurrence zero is the build. Paths are written as in the worked examples: bind positions from the root separated by `/`, `#n` for a `dyn` generation, `[k]` for a `for` key, and `s/n` for a slot that an interceptor's supplier built. Element lists are written one slot per line as `path: element`, with `requested:` after a slot that fired its request in that occurrence, then the fired values bare, in firing order, separated by `; `.
+Occurrences are numbered from zero; occurrence zero is the build. Paths are written as in the worked examples: bind positions from the root separated by `/`, `#n` for a `rebuild` generation, `[k]` for a `for` key, and `s/n` for a slot that an interceptor's supplier built. Element lists are written one slot per line as `path: element`, with `requested:` after a slot that fired its request in that occurrence, then the fired values bare, in firing order, separated by `; `.
 
 The GUI vocabulary is the two-level one. `Gui.*` is what a World that draws pixels accepts, five tags: `Gui.Window(title)` responds with pointer, key and resize events and has the window's size as state; `Gui.Scene(window, draw)` is the picture for a window, a presence element whose `draw` field is a plain list of `Draw.*` values (`Draw.Rect`, `Draw.Text`, `Draw.Image`, `Draw.Clip`), replaced whenever the picture changes; `Gui.Focusable(name)` responds with keys; `Gui.Metrics(text, font)` is text measurement as state; `Gui.Frames` responds `Frame(now: Instant)` once per frame while a slot exists. The World does no geometry and no hit-testing. `Ui.*` is the Prism GUI library's own vocabulary (`Ui.Button`, `Ui.Label`, `Ui.TextInput`, `Ui.VBox`, …), claimed by the library's interceptors on the way out, which hit-test against their own layout and focus by name, and reaching a World only when that World accepts them, which the Test World does. Programs in this chapter are written against `Ui.*` and assume `@Window` from the GUI library around them where a screen is involved; `@Button`, `@Label` and `@TextInput` are the library widgets over `Ui.Button`, `Ui.Label` and `Gui.Focusable`, and `Ui.Button` responds `Click`, a unit type.
 
@@ -32,7 +32,7 @@ tag Gui.Focusable of Element:
     @ !click
 ```
 
-A dynamic where a field goes lifts the element into a `dyn`, a fresh slot per change, and a bound event is the `!Switch` over the generations; a bound state is a hold of dynamics joined with `$Join`, starting from the first build's value. The chapter uses that shorthand throughout and spells the `dyn` out only where the generations matter to the walkthrough.
+A dynamic where a field goes lifts the element into a `rebuild`, a fresh slot per change, and a bound event is the `!Switch` over the generations; a bound state is a hold of dynamics joined with `$Join`, starting from the first build's value. The chapter uses that shorthand throughout and spells the `rebuild` out only where the generations matter to the walkthrough.
 
 The prelude of plain functions from the worked examples is assumed (`!Filter`, `!Union`, `!Leftmost`, `Insert`, `Remove`, `Fold`, `MapValues`, `Keys`, `Values`, `Concat`, `Len`, and the rest; comparisons are the infix operators `<`, `<=`, `>`, `>=`, `==` and `!=`), plus two that this chapter leans on: `!Updated: fn $a -> !a`, the change event of a dynamic, firing with the new value in every occurrence the dynamic changes and never at build; and `$Distinct: fn $a -> $a`, which suppresses a change to an equal value, since derived dynamics and holds never do that on their own. Every other function a program uses is defined before its first use, or is so plainly a pure function of its arguments (`Mid`, `Pid`, `Render`) that its body would say nothing about time.
 
@@ -234,13 +234,13 @@ The spec is the thing: the Test World runs this editor with `push Fs.Watch(path=
 
 ### Where it is awkward
 
-The text is a `Text`, a plain value, and `Apply` builds a new one per keystroke. For a file of a few thousand lines that is a copy per keystroke and nobody notices; for a hundred-megabyte log it is the whole problem. The answer is a rope or a piece table, which is a plain data structure the prelude can provide and `Apply` can be written over, with no change to anything that has time in it. Until there is an `update` block (chapter 16), writing that structure in Prism is the same functional-update ceremony as in any pure language, and the rope is native code the program calls, like text shaping.
+The text is a `Text`, a plain value, and `Apply` builds a new one per keystroke. For a file of a few thousand lines that is a copy per keystroke and nobody notices; for a hundred-megabyte log it is the whole problem. The answer is a rope or a piece table, which is a plain data structure the prelude can provide and `Apply` can be written over, with no change to anything that has time in it. Until there is an `update` block (chapter 3), writing that structure in Prism is the same functional-update ceremony as in any pure language, and the rope is native code the program calls, like text shaping.
 
 Search is a derived dynamic over the whole text and the whole query, recomputed on every change of either. That is right for a query box and wrong for a hundred-megabyte log, and the fix is the same: an index that is a plain value, updated incrementally by a plain function, with the derived dynamic reading the index. Nothing about occurrences changes.
 
 Syntax highlighting is the same story told the other way: `Highlight $doc.text` is a derived dynamic, prompt, glitch-free, and the whole document is re-highlighted per keystroke. The incremental version is a plain function with a memo keyed on unchanged regions, which is a computation, which is the kind of thing Prism calls out to.
 
-And the cursor blink. A blink is a `Time.Every` and a hold that toggles, and a buffer that is not focused should not blink, so the timer is inside a `dyn` over whether it is focused, which the buffer learns from the window interceptor as a state element or a response. That is right and it is slightly more ceremony than a toolkit's `cursor_visible` property; the ceremony is what makes the blink testable with `push`.
+And the cursor blink. A blink is a `Time.Every` and a hold that toggles, and a buffer that is not focused should not blink, so the timer is inside a `rebuild` over whether it is focused, which the buffer learns from the window interceptor as a state element or a response. That is right and it is slightly more ceremony than a toolkit's `cursor_visible` property; the ceremony is what makes the blink testable with `push`.
 ## 2. A market-data consumer
 
 A trading system is the program that builds the occurrence-as-transaction rule by hand, every time, badly. It holds a book, applies updates in sequence order, decides on the book it has, sends an order, and then has to answer a question no framework helps with: when the fill comes back, which book was the decision made on, and has anything happened to the position since? The teams that get this right keep a single-threaded loop, a sequence number on everything, and a rule that nothing reads the book while it is being updated. That is an occurrence with a sequence number, written in C++. Here it is as the language's own rule, with a plain paragraph about speed at the end.
@@ -528,16 +528,16 @@ $integral <- 0.0 then $integral + !inc
 
 The first is the clock. In Lustre the base clock is the program's and every instant is a tick. In Prism an occurrence is whatever the World opened, and a push with no tick, say the stop being asserted between ticks, is an instant in which `on !tick` expressions are silent and everything else runs. That is why `!halt` is derived from `!Updated $stop` rather than from reading `$stop` on the tick: the stop acts in the occurrence it arrives, tick or no tick, and under a World that gives it its own turn the motors get their zero before the next sample. A synchronous program would have to poll the stop on its clock and wait up to a period.
 
-The second is structure. A Lustre program's topology is fixed at compile time. Here the gain schedule can be a `dyn` over a mode, and a mode change tears down one controller's widget and builds another, in the occurrence of the change, with the new one seeing all of it:
+The second is structure. A Lustre program's topology is fixed at compile time. Here the gain schedule can be a `rebuild` over a mode, and a mode change tears down one controller's widget and builds another, in the occurrence of the change, with the new one seeing all of it:
 
 ```prism
-    !$halted <- dyn $mode:
+    !$halted <- rebuild $mode:
         match _:
             Hover: @Balance hover_gains, $setpoint
             Carry: @Balance carry_gains, $setpoint
 ```
 
-The new widget's `$loop` starts from zero, which is the bumpless-transfer problem in a sentence: a controller that must keep its integral across a mode change keeps the hold outside the `dyn` and passes it in, and the program's text says which it does.
+The new widget's `$loop` starts from zero, which is the bumpless-transfer problem in a sentence: a controller that must keep its integral across a mode change keeps the hold outside the `rebuild` and passes it in, and the program's text says which it does.
 
 ### The hard moment
 
@@ -570,7 +570,7 @@ The language is enough: the control law, the safety policy, the mode switch and 
 
 ### Where it is awkward, and where it is wrong
 
-Prism promises nothing about *when* an occurrence runs. The tick is a `Time.Every` the World delivers when its loop gets to it; the run call takes as long as the graph takes; a `dyn` rebuild in the tick path (the mode switch above, in the same occurrence as a tick) takes as long as the build takes. A controller with a deadline needs the World to run the loop on a thread with real-time priority, to keep its own IO off that thread, and to measure the occurrence; the language gives it a deterministic amount of work per occurrence and nothing more. Structural changes belong outside the tick path or inside the jitter budget, and the advice is to measure the rebuild under the Test World and decide.
+Prism promises nothing about *when* an occurrence runs. The tick is a `Time.Every` the World delivers when its loop gets to it; the run call takes as long as the graph takes; a `rebuild` rebuild in the tick path (the mode switch above, in the same occurrence as a tick) takes as long as the build takes. A controller with a deadline needs the World to run the loop on a thread with real-time priority, to keep its own IO off that thread, and to measure the occurrence; the language gives it a deterministic amount of work per occurrence and nothing more. Structural changes belong outside the tick path or inside the jitter budget, and the advice is to measure the rebuild under the Test World and decide.
 
 A World skips missed ticks rather than delivering them late, which is the right policy for a controller and the wrong one for a program counting ticks; such a program counts the clock instead.
 
@@ -844,7 +844,7 @@ let Newer: fn Text ==> Stamp, Text ==> Stamp -> Bool = ...
 
     !sp <- @Element Process.Spawn(requests=(rule.command on !Filter (ReadyFor $job, (!Updated $want))))
     $job <- Nil then (Some (Job (!Filter (IdOf !sp)), $stamps)) | Nil on !done
-    !child <- dyn $job:
+    !child <- rebuild $job:
         match _:
             Some j:
                 ((!out, $st)) <- @Element Process.Child(id=j.id, requests=!never)
@@ -865,7 +865,7 @@ let Newer: fn Text ==> Stamp, Text ==> Stamp -> Bool = ...
     @ unit
 ```
 
-Take it from the bottom. `$versions` is `$(Text ==> Nat)`, one entry per target, each target's count of successful builds, and it is passed back into every `@Target` as a dynamic. A target derives `$want` from its input stamps and its dependencies' versions; when `$want` changes to a new value (`$Distinct`, because a stamp push with an equal value is not a reason to rebuild), the target spawns its command. The spawn's response is an id; the `dyn` over `$job` builds a `Process.Child(id)` slot for it; the child's `Exited 0` bumps `$version`; and the bump reaches every target that depends on this one through `$versions`, promptly, in the same occurrence. A chain of three targets whose root input changed rebuilds in three turns separated by two compiles, because each spawn is a request answered later, and never rebuilds a target before its dependency has finished, because `$deps` cannot change until the dependency's `$version` does.
+Take it from the bottom. `$versions` is `$(Text ==> Nat)`, one entry per target, each target's count of successful builds, and it is passed back into every `@Target` as a dynamic. A target derives `$want` from its input stamps and its dependencies' versions; when `$want` changes to a new value (`$Distinct`, because a stamp push with an equal value is not a reason to rebuild), the target spawns its command. The spawn's response is an id; the `rebuild` over `$job` builds a `Process.Child(id)` slot for it; the child's `Exited 0` bumps `$version`; and the bump reaches every target that depends on this one through `$versions`, promptly, in the same occurrence. A chain of three targets whose root input changed rebuilds in three turns separated by two compiles, because each spawn is a request answered later, and never rebuilds a target before its dependency has finished, because `$deps` cannot change until the dependency's `$version` does.
 
 The read of `$versions` inside the `for` that produces `$versions` is a cycle, and it is legal. `$version` in a target is a hold; its change event fires on `!done`, which is a response from a `Process.Child` slot, and a slot's response has no edge from anything the program did. So the loop from `$versions` into a target and back out to `$versions` passes through the World, which is the delay that makes every build system's dependency graph acyclic in time even when the tool's own data structure is not: a dependency's new version arrives in an occurrence after the dependency was spawned, which is after the dependent read the old version. Had `$version` been a derived dynamic over `$versions` with no response in between, the cycle would be prompt and the compiler would refuse it, which is the spreadsheet case below.
 
@@ -877,9 +877,9 @@ Target `lib` has one input, `lib.c`, and target `app` depends on `lib`. The user
 
 **Occurrence 40.** The World pushes `Modified (Instant 1000)` for `Fs.Watch(path="lib.c")`. In `lib`, `$stamps` changes, `$want` changes, `!Updated $want` fires, `ReadyFor` passes it, `rule.command on ..` fires: the `Process.Spawn` slot's request. The World spawns after the turn.
 
-**Occurrence 41.** `Spawned 77` to the spawn slot. `$job` becomes `Some (Job 77, {lib.c: Modified 1000})`; the `dyn` rebuilds with a `Process.Child(id=77)` slot, whose oracle answer is `Running`.
+**Occurrence 41.** `Spawned 77` to the spawn slot. `$job` becomes `Some (Job 77, {lib.c: Modified 1000})`; the `rebuild` rebuilds with a `Process.Child(id=77)` slot, whose oracle answer is `Running`.
 
-**Occurrence 42.** The compile finishes and the user's second save lands in the same instant. The World delivers `Exited 0` to the child slot at `0/[lib]/2/#1/0` and pushes `Modified (Instant 1300)` for `lib.c`. In `lib`: `!out` fires; `ExitOf` passes `0`; `!child`'s current generation fires its exit; `!Switch` delivers `!done` with `0`; `$version + 1 on ..` fires with `1`; `$version` changes. In the same occurrence `$stamps` changes to `{lib.c: Modified 1300}`, `$want` changes, `!Updated $want` fires. `ReadyFor` is the function that decides whether to spawn now, and it reads `$job` through a tag: `Some (Job 77, {lib.c: Modified 1000})`, a job still running as the occurrence opened. The program has to say what a change during a running job means, and this program's `ReadyFor` says: spawn, since the stamp the job was spawned on is older than the stamp now. So the spawn request fires again in 42. `$job`'s change event has two sides: the left is lifted over `!sp`, the spawn's *response*, which did not fire in 42 (the request did; the answer comes later), and the right is `Nil on !done`, which did. `$job` becomes `Nil`; the `dyn` rebuilds to the `Nil` arm; the child slot for 77 is torn down at commit, which is fine because 77 has exited.
+**Occurrence 42.** The compile finishes and the user's second save lands in the same instant. The World delivers `Exited 0` to the child slot at `0/[lib]/2/#1/0` and pushes `Modified (Instant 1300)` for `lib.c`. In `lib`: `!out` fires; `ExitOf` passes `0`; `!child`'s current generation fires its exit; `!Switch` delivers `!done` with `0`; `$version + 1 on ..` fires with `1`; `$version` changes. In the same occurrence `$stamps` changes to `{lib.c: Modified 1300}`, `$want` changes, `!Updated $want` fires. `ReadyFor` is the function that decides whether to spawn now, and it reads `$job` through a tag: `Some (Job 77, {lib.c: Modified 1000})`, a job still running as the occurrence opened. The program has to say what a change during a running job means, and this program's `ReadyFor` says: spawn, since the stamp the job was spawned on is older than the stamp now. So the spawn request fires again in 42. `$job`'s change event has two sides: the left is lifted over `!sp`, the spawn's *response*, which did not fire in 42 (the request did; the answer comes later), and the right is `Nil on !done`, which did. `$job` becomes `Nil`; the `rebuild` rebuilds to the `Nil` arm; the child slot for 77 is torn down at commit, which is fine because 77 has exited.
 
 Meanwhile `$versions` changed, so `app`'s `$deps` changed, `app`'s `$want` changed, and `app` fires its own spawn in 42, against the `lib` that was just built from the 1000 stamp. That is correct and wasteful: `app` will be built from the old `lib`, then `lib` will be rebuilt from the 1300 stamp, then `app` again. The program could avoid the first `app` build by having `lib` not bump `$version` when its stamps have moved past the job's: `IsZero !done` becomes `Fresh $job, $stamps, !done`, reading both through tags, and the job's recorded stamps are exactly what that test needs. The decision to record the stamps at spawn time, by the tag law in `Some (Job .., $stamps) on !sp`, is what makes either policy expressible; a build tool that records nothing cannot tell a compile that finished on time from one that finished stale.
 
@@ -1059,7 +1059,7 @@ let IsFramed: fn Element -> Bool = \|e| match e:
         Gui.Window(..): @ (SizeOf $rect)
         ignore: @Element e
     !held <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Process.Exit(..): @ _.!request
                 ignore: @ !never
@@ -1083,7 +1083,7 @@ The desktop is a `for` over frames, a hit-test, and a fold:
 
     frames <- for $desk.frames:
         let !own = (Pointer (!Filter (ForFrame key, !hit))) | (Pressed (!Filter (WhenFocused $desk, key, !keys)))
-        !gen <- dyn $_.app:
+        !gen <- rebuild $_.app:
             out <- @Frame _, $_.rect, !own
             @ out
         let !quit = (Quit key) on (!Switch (First !gen))
@@ -1099,7 +1099,7 @@ The desktop is a `for` over frames, a hit-test, and a fold:
     @ unit
 ```
 
-`dyn $_.app` builds the frame once per key, since an application never changes for a key, and is there only to get `_` as a plain `App`; its result crosses the `dyn` by the usual two routes, `!Switch` for the quit and a hold joined for the draw lists. `frames` is a plain record of consolidated results: `frames.!quit` is `!(Nat ==> DeskCmd)`, firing with exactly the frames that quit in an occurrence, and `frames.$draw` is `$(Nat ==> [Draw])`, every frame's picture. And `!cmds` is a `!Union` of everything that can change the desk, keyed by text so that a frame's quit and a raise from the same click are two entries folded in key order, never one winning.
+`rebuild $_.app` builds the frame once per key, since an application never changes for a key, and is there only to get `_` as a plain `App`; its result crosses the `rebuild` by the usual two routes, `!Switch` for the quit and a hold joined for the draw lists. `frames` is a plain record of consolidated results: `frames.!quit` is `!(Nat ==> DeskCmd)`, firing with exactly the frames that quit in an occurrence, and `frames.$draw` is `$(Nat ==> [Draw])`, every frame's picture. And `!cmds` is a `!Union` of everything that can change the desk, keyed by text so that a frame's quit and a raise from the same click are two entries folded in key order, never one winning.
 
 Focus and layering are nothing but `$desk.focus` and `$desk.order`, read through tags. `HitFrame` walks `order` from the top and finds the first frame whose rectangle contains the point, against the desk as the occurrence opened: the user clicked on the stacking they saw. `WhenFocused` passes a key to the frame whose id is `focus` as the occurrence opened. `Compose` wraps each frame's draw list in a `Draw.Clip` at its rectangle and concatenates them in `order`, bottom to top, so the scene the World draws after the occurrence is the stacking after the occurrence. There is no z-buffer, no focus manager and no event capture: three fields of one record, one function that moves them, and the tag law.
 
@@ -1109,7 +1109,7 @@ Frames 5 and 9 overlap, 9 on top, 5 focused. The user clicks the visible corner 
 
 **Occurrence 70.** The World delivers `Pointer (Point 40, 300)` to `0`, the desktop window. `HitFrame` reads `$desk` through a tag: `order` is `[[5, 9]]`, 9's rectangle does not contain the point, 5's does, so `!hit` fires with `((5, (Point 12, 20)))`, the point in 5's coordinates. Two things follow from one firing. `RaiseOf !hit` fires `Raise 5`, so `!system` fires with `{"raise": Raise 5}`. And block `[5]`'s `!own` fires with `Pointer (Point 12, 20)`, so `@Frame` for 5 fires `!to_window` with `{w: Pointer (Point 12, 20)}` where `w` is the application's window path, and `intercept` delivers it to the application's `Gui.Window` slot against the application's list as the occurrence opened.
 
-Inside application 5, the library's `@Window` hit-tests the point against its layout as the occurrence opened, finds the Quit button, and fires its click; the application's `Process.Exit(requests=(Code 0 on !quit))` fires `Code 0`. Back in the frame, `!held`'s block for the exit slot sees `_.!request` fire; `!held` fires with `{p: Code 0}`; `!exit` fires; it crosses the `dyn` through `!Switch`, which has been listening to this generation since the frame was built; block `[5]`'s `!quit` fires with `Quit 5`; in the desktop, `frames.!quit` fires with `{5: Quit 5}`, and `!cmds` fires with `{"quit:5": Quit 5, "raise": Raise 5}`.
+Inside application 5, the library's `@Window` hit-tests the point against its layout as the occurrence opened, finds the Quit button, and fires its click; the application's `Process.Exit(requests=(Code 0 on !quit))` fires `Code 0`. Back in the frame, `!held`'s block for the exit slot sees `_.!request` fire; `!held` fires with `{p: Code 0}`; `!exit` fires; it crosses the `rebuild` through `!Switch`, which has been listening to this generation since the frame was built; block `[5]`'s `!quit` fires with `Quit 5`; in the desktop, `frames.!quit` fires with `{5: Quit 5}`, and `!cmds` fires with `{"quit:5": Quit 5, "raise": Raise 5}`.
 
 `StepDesk` reads `$desk` through a tag and folds in key order. `"quit:5"` first: frame 5 leaves `frames`, `order` becomes `[[9]]`, `focus` becomes `Nil`. Then `"raise"`: `Raise 5` on a desk with no frame 5 is a no-op, as `StepDesk` was written. `$desk` changes; `$desk.frames` changes promptly; the `for` sees key 5 gone and tears block `[5]` down at commit, with the whole application under it: its holds, its timers, its sockets, every slot, each cancelled by the World under its obligations when the next list arrives without them. `frames.$draw` changes promptly to a map without 5; `Compose $desk, frames.$draw` is a derived dynamic over the new desk and the new ops, and it is glitch-free: there is no instant in which the scene has 5's draw list with 5 missing from `order`, or `order` naming a frame with no draw list. The scene rebuilds, the World draws a desktop with one window. The application's own `Gui.Scene` also rebuilt in 70 (its button drew pressed), in a widget that is dropped at commit, and nobody saw it. Nothing about the exit reached the World below, because the frame held `Process.Exit` back and it was never in the compositor's list.
 
@@ -1168,7 +1168,7 @@ tag Audio.Play of Element:
     responds: Played
 ```
 
-`Gui.Frames` is a stream that exists only while a slot for it does; a paused game puts the slot inside a `dyn` over the pause flag and the World stops asking for frames. `Audio.Play` is a request: a sound happens because the program fired it, after the turn, which is the right time, since the turn is the frame.
+`Gui.Frames` is a stream that exists only while a slot for it does; a paused game puts the slot inside a `rebuild` over the pause flag and the World stops asking for frames. `Audio.Play` is a request: a sound happens because the program fired it, after the turn, which is the right time, since the turn is the frame.
 
 ### The structure
 
@@ -1206,7 +1206,7 @@ let Step: fn Game, Nat ==> Msg -> ((Game, [Effect])) = \|g, msgs|
 
 @game:
     ((!raw, $size)) <- @Element Gui.Window(title="Jump")
-    !!frames <- dyn $paused:
+    !!frames <- rebuild $paused:
         if _: @ !never
         else: @Element Gui.Frames
     let !frame = !Switch !!frames
@@ -1350,7 +1350,7 @@ let Loading: fn QueryState -> Bool = \|s| match s:
     @ unit
 ```
 
-`$query` is a dynamic and `query` is a field, so the element is inside a `dyn`: a new query is a new slot, and `$live` is the hold of the generations' dynamics joined, starting from the first build's value. `$shown` is the last `Known` the chart has seen, across every change of query: it moves only when `$live` changes to a `Known`, so a fresh slot's `Unavailable` leaves the old rows on screen with a loading badge drawn from `Loading $live`. That is the whole "show stale data while loading" policy, two lines, and it is in the chart because it is the chart's policy; a chart that would rather go blank omits `$shown`.
+`$query` is a dynamic and `query` is a field, so the element is inside a `rebuild`: a new query is a new slot, and `$live` is the hold of the generations' dynamics joined, starting from the first build's value. `$shown` is the last `Known` the chart has seen, across every change of query: it moves only when `$live` changes to a `Known`, so a fresh slot's `Unavailable` leaves the old rows on screen with a loading badge drawn from `Loading $live`. That is the whole "show stale data while loading" policy, two lines, and it is in the chart because it is the chart's policy; a chart that would rather go blank omits `$shown`.
 
 A dashboard is charts over a shared range:
 
@@ -1409,7 +1409,7 @@ The order matters and is readable: the cache is outermost, so it sees the poller
 
 The dashboard shows the last hour of `cpu`. A poll for that range is in flight. The user drags the range picker to the last day, and the poll's answer arrives in the same instant.
 
-**Occurrence 90.** The World delivers `Answered ..` to the poller's `Http.Fetch` slot for the hour query, at `s/0/3`, and a key to the range picker's focusable, in one occurrence. The range picker's hold changes; `$range` changes; both `cpu` charts' `q "cpu"` change promptly to the day query; each chart's `dyn` rebuilds: generation `#1` is built with a `Query.Result(query=(Query "cpu", (Range day), 60))` slot. The runtime asks the poller's supplier for that element, finds no supplied widget for it, applies `supply`, and builds one now: `@started` fires, the fetch for the day query fires at birth, `$latest` is `Unavailable`. Both charts' new slots get that `$latest`, since the second chart's slot, created in the same occurrence with an equal element, joins the widget already built. In each chart, `$live`'s hold of dynamics changes to the new generation's dynamic, and `$Join` changes to `Unavailable`; `!Updated $live` fires with `Unavailable`; `IsKnown` drops it; `$shown` keeps the hour's rows. The scenes rebuild with the hour's rows and the loading badge.
+**Occurrence 90.** The World delivers `Answered ..` to the poller's `Http.Fetch` slot for the hour query, at `s/0/3`, and a key to the range picker's focusable, in one occurrence. The range picker's hold changes; `$range` changes; both `cpu` charts' `q "cpu"` change promptly to the day query; each chart's `rebuild` rebuilds: generation `#1` is built with a `Query.Result(query=(Query "cpu", (Range day), 60))` slot. The runtime asks the poller's supplier for that element, finds no supplied widget for it, applies `supply`, and builds one now: `@started` fires, the fetch for the day query fires at birth, `$latest` is `Unavailable`. Both charts' new slots get that `$latest`, since the second chart's slot, created in the same occurrence with an equal element, joins the widget already built. In each chart, `$live`'s hold of dynamics changes to the new generation's dynamic, and `$Join` changes to `Unavailable`; `!Updated $live` fires with `Unavailable`; `IsKnown` drops it; `$shown` keeps the hour's rows. The scenes rebuild with the hour's rows and the loading badge.
 
 Meanwhile the answer. It was addressed to `s/0/3`, the hour widget's fetch slot, which existed as the occurrence opened, so it is routed: `!res` fires, `Decode` fires, the hour widget's `$latest` changes to `Known`. Whose dynamic is that? The two `#0` generations' slots, which are being torn down at commit, and nothing else. `$Join` in each chart has already switched to the `#1` inner; its change event fires on the outer change with the new inner's value, and the old inner's change in the same occurrence is not heard, because the outer changed. So `!Updated $live` fired once, with `Unavailable`, and the hour's fresh rows reached no chart. At commit, the `#0` generations go, the hour's slots go, the hour's supplied widget has no slot left and goes too, with its fetch slot and its timer.
 
@@ -1421,7 +1421,7 @@ The dashboard's list, as the poller sees it, with the poller's own supplied slot
 s/1/3:      Http.Fetch                                  requested: GET .../cpu?range=day
 ```
 
-The old range's fresh data did not flash under the new range's title, and the reason is not a guard; it is that the chart's `dyn` rebuilt in the occurrence the query changed, and a widget built in an occurrence sees the occurrence from the start, so the new generation's `$live` was never the old slot's dynamic. There is no instant in which the chart has the day's query and the hour's rows as its live value. It has the hour's rows as `$shown`, which it chose to keep, labelled as loading.
+The old range's fresh data did not flash under the new range's title, and the reason is not a guard; it is that the chart's `rebuild` rebuilt in the occurrence the query changed, and a widget built in an occurrence sees the occurrence from the start, so the new generation's `$live` was never the old slot's dynamic. There is no instant in which the chart has the day's query and the hour's rows as its live value. It has the hour's rows as `$shown`, which it chose to keep, labelled as loading.
 
 **Occurrence 91.** The cache. The day fetch fired at `s/1/3` in 90, and the `@HttpCache` around the poller has a block for that slot, built in 90 when the slot appeared, which saw the request fire in 90 under the mid-occurrence construction rule. If the user had looked at the day range in the last TTL, the cache's `$cache` has it: `!hit` fired in 90, the cache's `Defer` fired in 90, and 91 is the second occurrence of the same turn, delivering the `Defer`'s answer; the cache fires the cached answer down to `s/1/3`; `!res` fires; `$latest` becomes `Known`; both charts' `$Join` change; `!Updated $live` fires with a `Known`; `$shown` moves to the day's rows; the badge clears. The user sees the day's chart before the World has drawn the loading state, because the turn was not over. If the cache had nothing, 91 does not happen; the World performs the fetch after the turn, and the answer lands in a later turn by the ordinary route.
 
@@ -1464,9 +1464,9 @@ The cost is latency inside the occurrence: a plain function runs on the runtime'
 
 Anything naturally written as a loop with a cursor: a parser over a token stream, a graph search, a sort you wanted to write yourself, a state machine that walks through a protocol one step at a time with no outside input between steps. These can be written in Prism and the ways of writing them are instructive, because each is wrong in a way that shows what occurrences are for.
 
-The first way is as a recursive plain function, which is fine and is not Prism; it is the functional language Prism has as its value layer, and the closure compiler's recursion depth guard is the only thing the implementation adds. A backtracking search with a mutable visited set wants an `update` block (chapter 16), and until then it is the same ceremony as in any pure language. Use the plain function when the algorithm fits in one; it has no time in it and should not pretend to.
+The first way is as a recursive plain function, which is fine and is not Prism; it is the functional language Prism has as its value layer, and the closure compiler's recursion depth guard is the only thing the implementation adds. A backtracking search with a mutable visited set wants an `update` block (chapter 3), and until then it is the same ceremony as in any pure language. Use the plain function when the algorithm fits in one; it has no time in it and should not pretend to.
 
-The second way is as a chain of `Defer`s: each step of the loop an occurrence, the cursor a hold, the loop body the hold's change event lifted over the `Defer`'s answer. It runs, one occurrence per step, inside one turn, and it is wrong twice over. Each `Defer` slot is answered at most once per turn, so the loop needs a fresh `Defer` per step, which means a `dyn` rebuilding per step, which the world core treats as the same `Defer` reborn, so the second firing in the turn exceeds the once-per-turn bound and is an error. That rule exists to stop exactly this, because a loop through the turn mechanism is a loop that freezes the program's output while it spins, and the right place for an iteration to a fixed point is a plain function.
+The second way is as a chain of `Defer`s: each step of the loop an occurrence, the cursor a hold, the loop body the hold's change event lifted over the `Defer`'s answer. It runs, one occurrence per step, inside one turn, and it is wrong twice over. Each `Defer` slot is answered at most once per turn, so the loop needs a fresh `Defer` per step, which means a `rebuild` rebuilding per step, which the world core treats as the same `Defer` reborn, so the second firing in the turn exceeds the once-per-turn bound and is an error. That rule exists to stop exactly this, because a loop through the turn mechanism is a loop that freezes the program's output while it spins, and the right place for an iteration to a fixed point is a plain function.
 
 The third way is as a chain of `Time.After`s, one step per turn, so that the World gets to run in between. That is not wrong; it is an animation, or a protocol handshake, or a retry schedule, and those are things that happen over time and belong here. The test is whether a step waits for something outside the program. A handshake waits for the peer; an animation waits for the frame; a sort waits for nothing, and a sort written this way is a sort that takes a frame per comparison.
 
@@ -1480,7 +1480,7 @@ A request-response handler with no state between requests: a function from an HT
 
 ### Hard real time
 
-The control loop said this plainly. Prism gives a deterministic amount of work per occurrence and no bound on how long it takes; a `dyn` rebuild in the tick path is a build of unknown size, an occurrence runs on whatever thread the World chose at whatever priority the platform gave it, and the runtime has no notion of a deadline. A controller with a deadline measured in milliseconds runs under a World that pins the loop to a real-time thread and measures the occurrence, and keeps structural changes out of the tick. A controller with a deadline measured in microseconds is firmware, and Prism is the layer that sets its targets.
+The control loop said this plainly. Prism gives a deterministic amount of work per occurrence and no bound on how long it takes; a `rebuild` rebuild in the tick path is a build of unknown size, an occurrence runs on whatever thread the World chose at whatever priority the platform gave it, and the runtime has no notion of a deadline. A controller with a deadline measured in milliseconds runs under a World that pins the loop to a real-time thread and measures the occurrence, and keeps structural changes out of the tick. A controller with a deadline measured in microseconds is firmware, and Prism is the layer that sets its targets.
 
 ### Cryptography and secrets
 
@@ -1488,7 +1488,7 @@ TLS is on the World's side of the boundary, and so is anything else that wants r
 
 ### Large mutable structures
 
-A rope, a matrix, a spatial index, a B-tree. The value layer is immutable and eager, and functional update of a large structure is the one place a pure language is worse to write than an imperative one, which is why `update` blocks and `&` references are in chapter 16. Until they exist, a large structure that changes a little per occurrence is either a persistent data structure the prelude provides (maps already are) or native code the program calls with the old value and gets the new value back. The editor's text, the controller's covariance and the game's entities were the three examples, and in each the answer was the same: the structure is a plain value from the program's side, whatever it is inside.
+A rope, a matrix, a spatial index, a B-tree. The value layer is immutable and eager, and functional update of a large structure is the one place a pure language is worse to write than an imperative one, which is why `update` blocks and `&` references are in chapter 3. Until they exist, a large structure that changes a little per occurrence is either a persistent data structure the prelude provides (maps already are) or native code the program calls with the old value and gets the new value back. The editor's text, the controller's covariance and the game's entities were the three examples, and in each the answer was the same: the structure is a plain value from the program's side, whatever it is inside.
 
 ### Programs whose structure is a call stack
 

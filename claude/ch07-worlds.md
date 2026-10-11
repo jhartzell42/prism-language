@@ -74,7 +74,7 @@ That is the entire surface a World needs. The runtime's graph types exist and ar
 
 *Pushes* are addressed by element value, not path, because state is identified by value: every slot whose element equals `Fs.Contents(path="/etc/hostname")` observes one and the same dynamic, and a push for that value reaches all of them, including a slot created in the push's occurrence. One push per value per occurrence, for the same reason as responses.
 
-*The oracle* is the World's snapshot as a function. When the runtime creates a slot for a state element during the occurrence, whether in the build occurrence or in a `dyn` rebuild halfway through propagation, it asks the oracle for that element's value and the slot's dynamic starts there. The oracle is a function rather than a map because the World cannot know in advance which values will be asked: a `dyn` over a text input creates `Fs.Contents(path=whatever the user typed)` and the World learns the path by being asked. The answer must come from the World's snapshot as the occurrence opened and nowhere else; the next section is about why.
+*The oracle* is the World's snapshot as a function. When the runtime creates a slot for a state element during the occurrence, whether in the build occurrence or in a `rebuild` rebuild halfway through propagation, it asks the oracle for that element's value and the slot's dynamic starts there. The oracle is a function rather than a map because the World cannot know in advance which values will be asked: a `rebuild` over a text input creates `Fs.Contents(path=whatever the user typed)` and the World learns the path by being asked. The answer must come from the World's snapshot as the occurrence opened and nowhere else; the next section is about why.
 
 ### What comes out
 
@@ -90,7 +90,7 @@ That is the entire surface a World needs. The runtime's graph types exist and ar
 
 Nothing in `Inputs` or `Outcome` is an event, a dynamic, a blueprint, a widget, a closure over the graph, or a reference into the runtime. The oracle is the nearest thing to an exception and it is not one: it is a function the World owns, over the World's own data, that the runtime calls and forgets. The runtime never calls the World at any other time, never calls it after `run` returns, and never calls it from a thread the World did not call `run` on.
 
-Suppose instead the runtime called the World back during propagation, "a response just fired, do your thing." The World's code would then run inside an occurrence, where holds have not committed and the element list is half built, and it would have to be told what it may and may not read. Every framework with a `componentDidUpdate` (from memory) has that table of rules, and every table has a footnote. Here there is nothing to put in the table because there is no call. Or suppose the World held a handle to the socket slot's response event and fired it directly. Then the World would have to know the event's lifetime, and when the `dyn` around the socket rebuilt, the World's handle would be stale, and the stale handle is exactly the leaked DOM subtree the language was built to make impossible. Addressing by path, against a list the World was given, means the World can only ever name what the program told it exists.
+Suppose instead the runtime called the World back during propagation, "a response just fired, do your thing." The World's code would then run inside an occurrence, where holds have not committed and the element list is half built, and it would have to be told what it may and may not read. Every framework with a `componentDidUpdate` (from memory) has that table of rules, and every table has a footnote. Here there is nothing to put in the table because there is no call. Or suppose the World held a handle to the socket slot's response event and fired it directly. Then the World would have to know the event's lifetime, and when the `rebuild` around the socket rebuilt, the World's handle would be stale, and the stale handle is exactly the leaked DOM subtree the language was built to make impossible. Addressing by path, against a list the World was given, means the World can only ever name what the program told it exists.
 
 The payoff is the test World. A test is a script of inputs and expectations, and because the World interface is data, a script can be a World. The program you test under a transcript is the program you ship under a screen, with the same run call and the same laws, and a transcript of inputs replays a session exactly.
 
@@ -133,7 +133,7 @@ The World keeps, for every state-element value it has ever been asked about, the
 - answers the oracle from the *previous* snapshot Sₙ₋₁, and
 - passes the difference between Sₙ₋₁ and Sₙ as the pushes.
 
-So a slot that existed before n holds Sₙ₋₁'s value as n opens and receives n's push, ending n with Sₙ's value. A slot *created* in n reads the oracle, getting Sₙ₋₁'s value, and then receives n's push, and ends n with Sₙ's value. The two kinds of slot end in the same place by different routes, and nothing in the program can tell which route a slot took. That is the rebuild rule of the language applied at the boundary: a widget built mid-occurrence behaves as if built just before the occurrence's inputs, sees all of n, and a `dyn` built in n over a dynamic that changed in n builds once with the new value.
+So a slot that existed before n holds Sₙ₋₁'s value as n opens and receives n's push, ending n with Sₙ's value. A slot *created* in n reads the oracle, getting Sₙ₋₁'s value, and then receives n's push, and ends n with Sₙ's value. The two kinds of slot end in the same place by different routes, and nothing in the program can tell which route a slot took. That is the rebuild rule of the language applied at the boundary: a widget built mid-occurrence behaves as if built just before the occurrence's inputs, sees all of n, and a `rebuild` built in n over a dynamic that changed in n builds once with the new value.
 
 Why the previous snapshot and not the new one? Suppose the oracle answered from Sₙ. A slot created in n would start at Sₙ's value, and then the push for n, which also says Sₙ's value, would arrive and fire its change event with the value it already has. Harmless for the value, but now the slot's dynamic "changed" in n and the one that existed before n also changed in n, and anything derived from either fires in n. Still consistent. The real trouble is a tag read. A widget built in n that reads the new slot's state through a tag in the same occurrence should see the value *before* n, by the tag law, because that is what every other dynamic gives at a tag. Sₙ₋₁ is the value before n. Answering from Sₙ would make a freshly created state element the one dynamic in the language whose tag reads the after-value. Answering from Sₙ₋₁ keeps the law uniform: every dynamic, including one born this occurrence, has a before-value and a change event, and the before-value of a state element is what the World held as the occurrence opened.
 
@@ -244,11 +244,11 @@ That rule bounds a turn without anyone picking a number. A turn runs at most as 
 
 The classic version of the bug is caught early: a child that retries immediately on `Denied` makes its sandbox's `Defer` fire again in the same turn, which is deferring backwards, which the world core reports with the `Defer`'s path and the interceptor chain. A retry belongs behind `Time.After`, where the World's clock separates the attempts and each is its own turn.
 
-A `Defer` slot created in occurrence k of a turn, firing in k (from `@started`, say, or because the request it stands in for fired in k), is answered in k+1 of the same turn. The sandbox needs this: the child's slot and the sandbox's `Defer` for it are both born in k. The bound is then the number of `Defer` slots that exist at any point during the turn, which a program can inflate only by building a fresh `Defer` in every occurrence, with a `dyn` that rebuilds on the previous one's answer and fires the new one from `@started`. That is a loop the program wrote, through a rebuild instead of through one slot, and the world core treats it as deferring backwards too: a `Defer` at a path that differs from an already-answered `Defer`'s path only in its `dyn` generation is the same `Defer` reborn. The rule is stated this way because it makes the bound structural rather than counted; if a program turns up that needs a `Defer` per generation for a finite, legitimate cascade, the rule would loosen to counting generations, and the test would be that program.
+A `Defer` slot created in occurrence k of a turn, firing in k (from `@started`, say, or because the request it stands in for fired in k), is answered in k+1 of the same turn. The sandbox needs this: the child's slot and the sandbox's `Defer` for it are both born in k. The bound is then the number of `Defer` slots that exist at any point during the turn, which a program can inflate only by building a fresh `Defer` in every occurrence, with a `rebuild` that rebuilds on the previous one's answer and fires the new one from `@started`. That is a loop the program wrote, through a rebuild instead of through one slot, and the world core treats it as deferring backwards too: a `Defer` at a path that differs from an already-answered `Defer`'s path only in its `rebuild` generation is the same `Defer` reborn. The rule is stated this way because it makes the bound structural rather than counted; if a program turns up that needs a `Defer` per generation for a finite, legitimate cascade, the rule would loosen to counting generations, and the test would be that program.
 
 ### Deferring backwards, precisely
 
-Two things are errors, both reported with the path and the interceptor chain: a `Defer` slot firing after it was answered in this turn, and a `Defer` slot whose path matches an answered one up to `dyn` generation, as above. One thing that looks like a third is not: a `Defer` whose slot was torn down in the occurrence it fired. There is nothing to answer, so the world core answers nothing, and the turn ends if that was the last fired `Defer`.
+Two things are errors, both reported with the path and the interceptor chain: a `Defer` slot firing after it was answered in this turn, and a `Defer` slot whose path matches an answered one up to `rebuild` generation, as above. One thing that looks like a third is not: a `Defer` whose slot was torn down in the occurrence it fired. There is nothing to answer, so the world core answers nothing, and the turn ends if that was the last fired `Defer`.
 
 ### Why no phases
 
@@ -272,7 +272,7 @@ An HTTP cache is the interceptor that shows every part of a turn, because it ans
 @HttpCache: fn @a -> @a = \|@child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Http.Fetch(..):
                     let !get = !Filter (CacheKey _.!request)            # Some url for a GET, else Nil
@@ -340,7 +340,7 @@ pub struct Core {
     snapshot: BTreeMap<ElementValue, Value>,   // S_{n-1}: what the program last saw
     incoming: BTreeMap<ElementValue, Value>,   // changes components reported since
     last_list: BTreeMap<Path, ElementValue>,   // the list the World last received
-    components: Vec<Box<dyn Component>>,
+    components: Vec<Box<rebuild Component>>,
     turn_no: u64,
 }
 
@@ -530,7 +530,7 @@ tag Fs.Watch of Element:
     state: Stamp
 ```
 
-`Fs.File` is the one-shot conversation: fire a `Read`, get `Contents`, `Written` or `Unavailable` with an `FsError` reason back, addressed to this slot, in a later occurrence. The path is a field, fixed for the slot's life; a program with a dynamic path has a `dyn`, a fresh slot per path, and the World drops any response to the old slot because the slot is gone. One slot can read now and write later, and a program that wants two reads in flight at once has one slot and two firings, or two slots.
+`Fs.File` is the one-shot conversation: fire a `Read`, get `Contents`, `Written` or `Unavailable` with an `FsError` reason back, addressed to this slot, in a later occurrence. The path is a field, fixed for the slot's life; a program with a dynamic path has a `rebuild`, a fresh slot per path, and the World drops any response to the old slot because the slot is gone. One slot can read now and write later, and a program that wants two reads in flight at once has one slot and two firings, or two slots.
 
 ```prism
 @SaveButton: fn Text, $Text -> @$Text = \|path, $draft| @widget:
@@ -549,12 +549,12 @@ One click, one write, and `$draft on !save` reads the draft as it stood before t
 
 `Fs.Dir` is the same for a directory listing. A directory is where the stitch earns its keep: the World sets the watch, scans, reconciles what the watch reported during the scan, and only then puts the listing in its snapshot; on an inotify overflow it rescans and the program sees one ordinary change. A program sees `Known [[..]]` and never a partial listing.
 
-`Fs.Watch` is a watch *as state*: its value is the file's modification stamp, pushed when the file changes. A program that wants to do something on change derives it from the dynamic's change, and the idiom is a `dyn` whose block fires from `@started`:
+`Fs.Watch` is a watch *as state*: its value is the file's modification stamp, pushed when the file changes. A program that wants to do something on change derives it from the dynamic's change, and the idiom is a `rebuild` whose block fires from `@started`:
 
 ```prism
 @ReloadOnChange: fn Text -> @!FsResponse = \|path| @widget:
     $stamp <- @Element Fs.Watch(path=path)
-    !!reads <- dyn $stamp:
+    !!reads <- rebuild $stamp:
         !started <- @started
         !r <- @Element Fs.File(path=path, requests=(Read on !started))
         @ !r
@@ -608,9 +608,9 @@ let IsOne: fn Int -> ?unit = \|n| if n == 1: Some unit else: Nil
 
 Every input starts a timer and bumps a pending count; every expiry decrements it; the output fires with the last input when an expiry finds the count at one, meaning the timer that just expired was the only one alive, so no input arrived during its life. Under a test World the timer is `send Time.After(..), d`, and the program's text is the whole specification of what "quiet for d" means, including the case the merge decides: an input and an expiry in one occurrence count as an input, and the lost decrement makes the next expiry too early by one. A program that minds sums the two with a `!Union` over a map instead of a merge, and the point is that it had to say so.
 
-`Time.Every` is a stream: a tick per period while the slot exists. Its period is a field, so a dynamic period is a `dyn` and a fresh slot, and the phase restarts; a World that wants phase continuity across the rebuild keys its timer on tree position and tag, and no program can tell. Ticks are responses, so they never coalesce: a World that fell behind skips the missed ticks and delivers the next one; it never delivers two in one occurrence.
+`Time.Every` is a stream: a tick per period while the slot exists. Its period is a field, so a dynamic period is a `rebuild` and a fresh slot, and the phase restarts; a World that wants phase continuity across the rebuild keys its timer on tree position and tag, and no program can tell. Ticks are responses, so they never coalesce: a World that fell behind skips the missed ticks and delivers the next one; it never delivers two in one occurrence.
 
-`Gui.Frames` is a GUI World's "about to paint" stream, for animation. A program animating a transition puts the slot inside a `dyn` over whether it is animating, so that when nothing wants frames the World stops asking for them.
+`Gui.Frames` is a GUI World's "about to paint" stream, for animation. A program animating a transition puts the slot inside a `rebuild` over whether it is animating, so that when nothing wants frames the World stops asking for them.
 
 The stopwatch of chapter 2 is the worked example: `Clock` for the time, `Time.Every` to make the World come back, and a hold that stamps `Start` with the clock as it stood before the click, by the tag law.
 
@@ -663,7 +663,7 @@ Spawning is a request, because starting a process is a one-shot effect with a re
     $id <- Nil then match !sp:
         Spawned i: Some i
         ignore: Nil
-    !$status <- dyn $id:
+    !$status <- rebuild $id:
         match _:
             Some i:
                 ((!out, $st)) <- @Element Process.Child(id=i, requests=!never)
@@ -686,7 +686,7 @@ tag Process.Env of Element:
     state: Text ==> Text
 ```
 
-They are state rather than parameters of `@main` for the sake of the sandbox: an interceptor can supply a child a different `Process.Args`, a test can `with Process.Args = [["notes.txt"]]`, and neither needs a second way to start a program. A World that cannot observe a change to the environment never pushes one; a World that can (a shell that lets the user set a variable) pushes it, and the program's `dyn $args` rebuilds, which is what you want.
+They are state rather than parameters of `@main` for the sake of the sandbox: an interceptor can supply a child a different `Process.Args`, a test can `with Process.Args = [["notes.txt"]]`, and neither needs a second way to start a program. A World that cannot observe a change to the environment never pushes one; a World that can (a shell that lets the user set a variable) pushes it, and the program's `rebuild $args` rebuilds, which is what you want.
 
 ### Net
 
@@ -860,7 +860,7 @@ After a turn the World performs the turn's request firings in occurrence order, 
     @Element Process.Exit(requests=(Code 0 on !end))
 ```
 
-When `Process.Exit` fires in a turn, the World finishes the turn, performs every firing of that turn in order (so a write fired in the same occurrence as the exit lands first, and a write fired in a later occurrence of the same turn also lands first), and exits with the code. Exit is a request and not a presence for the reason chapter 2 gives: a presence would have to appear at the right moment, which means a `dyn` over a flag, and the World would have to act on an appearance, which is a trigger by existence. The element is always there, and firing it is the instruction.
+When `Process.Exit` fires in a turn, the World finishes the turn, performs every firing of that turn in order (so a write fired in the same occurrence as the exit lands first, and a write fired in a later occurrence of the same turn also lands first), and exits with the code. Exit is a request and not a presence for the reason chapter 2 gives: a presence would have to appear at the right moment, which means a `rebuild` over a flag, and the World would have to act on an appearance, which is a trigger by existence. The element is always there, and firing it is the instruction.
 
 A program that never fires `Process.Exit` exits with code 0 when nothing can ever cause another occurrence: the input queue is empty, no stream slot is live (no `Cli.Stdin` or it has delivered `End`, no `Cli.Signals`, no `Time.Every`, no `Net.Listener` or socket), and no request is in flight. That is not a policy so much as an observation: a graph with no sources left cannot change, and a process waiting on it would wait forever. The alternative, requiring an explicit exit, turns every forgotten exit into a hang. `Process.Args`, `Process.Env`, `Clock`, `Fs.Watch` and `Fs.Contents` watches do not keep a program alive; a live `Cli.Stdin`, a `Cli.Signals` slot, a `Time.Every` slot, an in-flight request or timer, and a listener or socket do. Args, env and the clock do not, because the CLI World never pushes them on its own; a `Clock` push arrives with some other input, and when no other input can come, neither can the clock.
 
@@ -1032,7 +1032,7 @@ The smallest GUI World: one window, one scene, a pointer and a keyboard. The Wor
 
 ### A native toolkit wrapper
 
-A World that wraps GTK, AppKit or Win32 offers higher tags: `Gtk.Button(label)` responding with `Clicked`, `Gtk.Entry(text)` responding with `Changed Text`, `Gtk.Box(children)`. The World diffs the list against the widget tree it keeps, creating, updating and removing native widgets. The same Prism program targets it through a different library: `@Button` becomes `@Element Gtk.Button(label=$_)` inside a `dyn`.
+A World that wraps GTK, AppKit or Win32 offers higher tags: `Gtk.Button(label)` responding with `Clicked`, `Gtk.Entry(text)` responding with `Changed Text`, `Gtk.Box(children)`. The World diffs the list against the widget tree it keeps, creating, updating and removing native widgets. The same Prism program targets it through a different library: `@Button` becomes `@Element Gtk.Button(label=$_)` inside a `rebuild`.
 
 The hard case is the native text entry. Its cursor and selection live in the toolkit, and a fresh slot per keystroke (which is what a dynamic `text` field means) would lose them. The World's answer is continuity by tree position: a `Gtk.Entry` slot replaced by a `Gtk.Entry` slot at the same bind position and `for` key is the same native widget with its text updated, and the World says so in its documentation. The program cannot tell, and the language promises nothing about it. The alternative, a tag field declared as `$Text` so that the slot persists and the World sees the field change, would make the boundary see a sigil, and the leaf-plus-interceptor pattern has not yet produced a case that needs it.
 
@@ -1099,7 +1099,7 @@ The incoming side has no backpressure in the tag, and that is deliberate. A `Rec
 
 ### Reconnect by address change
 
-The address is a field, so changing it is a `dyn` and a fresh slot, and the chat client of chapter 2 reconnects by typing. A reconnect *to the same address* is the interesting case: the state is shared by value, so a second slot with the old address keeps the old connection alive, and a program that wants a clean reconnect to the same host needs the element to differ. The field to add is a generation: `Net.Socket(address=a, attempt=n)`, with `n` bumped by the program on each retry, which is also where a retry policy lives, behind `Time.After`, in the program's text.
+The address is a field, so changing it is a `rebuild` and a fresh slot, and the chat client of chapter 2 reconnects by typing. A reconnect *to the same address* is the interesting case: the state is shared by value, so a second slot with the old address keeps the old connection alive, and a program that wants a clean reconnect to the same host needs the element to differ. The field to add is a generation: `Net.Socket(address=a, attempt=n)`, with `n` bumped by the program on each retry, which is also where a retry policy lives, behind `Time.After`, in the program's text.
 
 A World *may* reconnect on its own behind one address, since the link state has `Disconnected` and `Connecting` cases to tell the program about it, and the program's sends while `Disconnected` get `Closed` back. Whether it does is World policy; the tag's type makes either policy expressible to the program.
 
@@ -1113,7 +1113,7 @@ Two `Net.Socket(address="chat.example:7000")` slots in one program share one `Li
 
 ### A listener and its connections
 
-`Net.Listener(address)` is a stream of `Accepted id`, and `Net.Conn(id)` is the connection, created by the program under a `for` keyed by the ids it was given. The World binds the address when a listener slot exists after a turn and unbinds it when none does, and it accepts only while a listener slot exists, so a program that wants to stop accepting removes the element (a `dyn` over a flag) and the World stops. That is reconciliation, not a trigger: a listener in the list twice is one bound socket.
+`Net.Listener(address)` is a stream of `Accepted id`, and `Net.Conn(id)` is the connection, created by the program under a `for` keyed by the ids it was given. The World binds the address when a listener slot exists after a turn and unbinds it when none does, and it accepts only while a listener slot exists, so a program that wants to stop accepting removes the element (a `rebuild` over a flag) and the World stops. That is reconciliation, not a trigger: a listener in the list twice is one bound socket.
 
 A connection the World accepted for which the program never creates a `Net.Conn` slot is the World's to close, after a grace period it documents; a `Net.Conn(id)` slot for an id the World never allocated gets `Gone` as its state and `Closed` as its first response. The ids are the World's and the program only ever echoes them.
 
@@ -1168,7 +1168,7 @@ Two policies are both conforming and feel different. *One turn per input* gives 
 
 A task that completes sends `Input::Response(path, value)`. The core, at the start of the next turn, checks the path against the list it last received; if the slot is gone, the response is dropped and logged. The task itself does not know the slot is gone, so the World keeps, per in-flight operation, an abort handle keyed by path, and `reconcile` aborts the handle when the slot vanishes: an in-flight `fetch` is cancelled, a `sleep` is dropped, a socket is closed after its queued writes drain. A write that already landed stays landed; the World cannot un-write.
 
-The same mechanism is why a `dyn` rebuild "reloads": the old slot's read is cancelled with the old slot and the new slot's `@started` fires a new one. Guessing that the two are the same read, by position, is how a half-typed draft ends up on the wrong row; the World does not guess.
+The same mechanism is why a `rebuild` rebuild "reloads": the old slot's read is cancelled with the old slot and the new slot's `@started` fires a new one. Guessing that the two are the same read, by position, is how a half-typed draft ends up on the wrong row; the World does not guess.
 
 ### The browser, where there is no loop
 
@@ -1203,7 +1203,7 @@ tag World.Tags of Element:
     state: [Text]                  # the tags this World accepts, by name
 ```
 
-A program reads it in occurrence zero (it is state, so it has a value then) and builds under a `dyn` over it, choosing a `Clipboard` path or a fallback by a plain `match`. An interceptor can supply a child a narrower `World.Tags`, which is what a sandbox should do so that the child never tries. The Test World's `World.Tags` is everything, and a test that wants to exercise the fallback sets it narrower with a `with` step. This is the one component that is about the World itself, and it is state rather than a request because the question "what can I ask" has to be answerable before anything is asked.
+A program reads it in occurrence zero (it is state, so it has a value then) and builds under a `rebuild` over it, choosing a `Clipboard` path or a fallback by a plain `match`. An interceptor can supply a child a narrower `World.Tags`, which is what a sandbox should do so that the child never tries. The Test World's `World.Tags` is everything, and a test that wants to exercise the fallback sets it narrower with a `with` step. This is the one component that is about the World itself, and it is state rather than a request because the question "what can I ask" has to be answerable before anything is asked.
 
 ### Platforms
 
@@ -1258,7 +1258,7 @@ tag Store.Put of Element:
     responds: PutResult            # Stored | Failed Text
 ```
 
-A room's model is `Store.Value(key="room:lobby")`, a state element with a value in its first occurrence (the World's snapshot, loaded from the store when the World started or when the key was first asked) and pushed when any runtime writes it. Writes are `Store.Put` firings. A model held in Prism is then a hold whose initial value is a `dyn` over the stored value's first reading, and whose changes are written back by firing `Store.Put` on them, which is the cache pattern of chapter 2 with the direction reversed. Two runtimes watching one key see one value per occurrence, each, because each World core keeps the equality law within its own runtime; across runtimes, "the same occurrence" has no meaning and the store's own version is the clock.
+A room's model is `Store.Value(key="room:lobby")`, a state element with a value in its first occurrence (the World's snapshot, loaded from the store when the World started or when the key was first asked) and pushed when any runtime writes it. Writes are `Store.Put` firings. A model held in Prism is then a hold whose initial value is a `rebuild` over the stored value's first reading, and whose changes are written back by firing `Store.Put` on them, which is the cache pattern of chapter 2 with the direction reversed. Two runtimes watching one key see one value per occurrence, each, because each World core keeps the equality law within its own runtime; across runtimes, "the same occurrence" has no meaning and the store's own version is the clock.
 
 A host that instantiates a runtime per request (a WASI HTTP handler, from memory) is this with N equal to the number of requests and a lifetime of one turn. The program puts out `Http.Server`; the host delivers the request as the first response after the build; the program fires `Http.Reply`; the World sets the host's out-parameter and drops the runtime. State that outlives the request is in the store. A World whose life is one turn is still a World, because the turn was always the unit and the loop was always the platform's.
 
@@ -1275,7 +1275,7 @@ A process table is a `for` over a keyed map of programs. Each entry is an `inter
     ((ignore, $ps)) <- intercept @producer, !down_p, $ \|e| @Element e
     ((ignore, $cs)) <- intercept @consumer, !down_c, $ \|e| @Element e
     !writes <- for $ps:                          # the producer's stdout firings, by its path
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Cli.Stdout(..): @ _.!request
                 ignore: @ !never
@@ -1338,7 +1338,7 @@ The conformance suite tests the language under the Test World and says nothing a
 | A response to a path not in the last list is dropped and logged, never passed to `run`. | A World addressing something the program does not have. |
 | A `Defer` fired in occurrence k is answered in k+1 of the same turn; `fired` on the child's side shows the answer in the turn. | `Defer` answered in its own occurrence, or deferred to the next turn. |
 | A `Defer` that fires again after being answered ends the turn with an error naming its path. | Deferring backwards passing as a loop. |
-| A `dyn` rebuilt by a `Defer` answer that fires a new `Defer` from `@started`, three times. | The generation rule not holding; a turn that never ends. |
+| A `rebuild` rebuilt by a `Defer` answer that fires a new `Defer` from `@started`, three times. | The generation rule not holding; a turn that never ends. |
 | Random programs with D `Defer` slots: every turn runs at most 1 + D occurrences. | Any path to an unbounded turn. |
 | A turn with two `Defer`s that fire in occurrence 1 runs three occurrences, and both answers land in occurrence 2. | Deliveries split that should land together. |
 | Two components report changes to one value before a turn; the turn has one push with the last value. | State pushed twice in an occurrence; pushes not coalesced. |
@@ -1353,7 +1353,7 @@ The conformance suite tests the language under the Test World and says nothing a
 
 ### A platform World
 
-Each World adds the tests only its platform can run. For the CLI World: golden runs with fixed arguments and standard input (an echo, the line counter, a program that writes to both streams in one occurrence with the order kept, `Process.Exit` fired in the same turn as writes with the writes landing first, `SIGINT` with and without a `Cli.Signals` slot, a closed standard-output pipe producing `WriteFailed`, a `Cli.Stdin` slot dropped mid-read and rebuilt, with the chunk read in between delivered to the new slot first, a program with no live sources exiting zero). For a GUI World: a scripted click at a point reaching the right widget through the library's hit-test, a resize turn that paints before the callback returns, a composition sequence reaching the window as `Composition` keys with the candidate window placed at the `ime_at` offset read from the committed scene, a `Gui.Frames` slot inside a `dyn` starting and stopping frame requests. For a server World: concurrent requests under one `for`, one of them waiting on an outgoing call, with the replies landing under the right ids, and a routing World with two shards that never deliver each other's connections.
+Each World adds the tests only its platform can run. For the CLI World: golden runs with fixed arguments and standard input (an echo, the line counter, a program that writes to both streams in one occurrence with the order kept, `Process.Exit` fired in the same turn as writes with the writes landing first, `SIGINT` with and without a `Cli.Signals` slot, a closed standard-output pipe producing `WriteFailed`, a `Cli.Stdin` slot dropped mid-read and rebuilt, with the chunk read in between delivered to the new slot first, a program with no live sources exiting zero). For a GUI World: a scripted click at a point reaching the right widget through the library's hit-test, a resize turn that paints before the callback returns, a composition sequence reaching the window as `Composition` keys with the candidate window placed at the `ime_at` offset read from the committed scene, a `Gui.Frames` slot inside a `rebuild` starting and stopping frame requests. For a server World: concurrent requests under one `for`, one of them waiting on an outgoing call, with the replies landing under the right ids, and a routing World with two shards that never deliver each other's connections.
 
 What none of them tests: the language. A World test never asserts on a hold or a widget's result; it asserts on what crossed the boundary, in both directions, and on what the World did with it.
 
@@ -1384,3 +1384,127 @@ The pattern is the language's own: each thing a World cannot do is a thing that 
 ## What a World is, in one paragraph
 
 A World is a host-language program that owns a runtime and a loop. It builds `@main` in occurrence zero. It keeps a snapshot of every state value it has supplied and answers the oracle from it. It turns what the outside does into responses by path and pushes by value, runs one synchronous occurrence per turn plus one per fired `Defer`, performs the request firings in order, reconciles the world to the element list, and waits. It discards what it cannot address and reports what it cannot run. It accepts some tags and answers `Unsupported` for the rest. Everything else, from a button to a window manager, is Prism, and would be the same Prism under any other World that accepted the same tags.
+
+## Hot reload of a widget subtree
+
+You are tuning the padding on a dialog that takes six clicks to reach. Each change is edit, rebuild, restart, six clicks. You want to change the dialog's code and see the running program pick it up with its state intact. Prism has most of this already, because `rebuild` replaces a subtree when a dynamic changes and nothing in the language cares what the new subtree's code is. Hot reload is making the code a dynamic.
+
+### The design
+
+Two parts, neither of which touches the language.
+
+A World component. A development World offers a state tag whose value is compiled code:
+
+```prism
+tag Dev.Code of Element:
+    name: Text
+    state: Unavailable | Known Code
+```
+
+`Code` is an opaque plain value, a handle to a compiled `IrWidget` constructor, and `Dev.Code(name="Dialog")` is the current compiled form of the top-level widget named `Dialog`. When the file changes the World recompiles the definition (incrementally, if the frontend above exists; from scratch otherwise), and pushes the new `Code` as a state change in the next turn. It is a state element because it is a value that changes and whose current value every slot asking for it must see the same: two `@Reloadable "Dialog"` on screen reload together.
+
+A library widget, in two layers. The inner one is the reload itself:
+
+```prism
+@Live: fn Text, @a -> @!a = \|name, @fallback| @widget:
+    $code <- @Element Dev.Code(name=name)
+    !built <- rebuild $code:
+        match _:
+            Known c: @Build c
+            Unavailable: @fallback
+    @ !built
+```
+
+`@Build: fn Code -> @a` is a primitive that builds the compiled widget the handle names, and is the only new primitive, a native in the closure compiler's table. Under the development World, every save of the file rebuilds the subtree under the `rebuild`, in the occurrence of the push, with the new code, and `!built` hands the parent the new subtree's result each time; a parent that wants a continuous event or dynamic across reloads puts a `!Switch` or the hold-and-`$Join` idiom over it, as it would over any `rebuild`.
+
+The outer layer is what makes the same program run under a production World, and it cannot be left to tolerance. A World that does not accept a state tag reports an unknown state tag as an error at the slot's creation, which is the obligation that keeps a misspelled tag from being quietly `Unavailable` forever; so a production World handed `Dev.Code` would abort the build, and `@Live` on its own is a development-only widget. The library therefore asks first. `World.Tags` is the core-provided state element listing the tags the World accepts, valued in its first occurrence like any state element, and `@Reloadable` reads it before it creates anything:
+
+```prism
+@Reloadable: fn Text, @a -> @!a = \|name, @fallback| @widget:
+    $tags <- @Element World.Tags
+    !gen <- rebuild $tags:
+        match Accepts _, "Dev.Code":
+            True: @Live name, @fallback
+            False: @Once @fallback
+    @ !Switch !gen
+
+@Once: fn @a -> @!a = \|@w| @widget:
+    !built <- rebuild (Const unit): @w       # the construction @started is: a rebuild over a constant, built once
+    @ !built
+```
+
+`Accepts: fn [Text], Text -> Bool` is a plain function over the tag list. Under a production World `$tags` lacks `Dev.Code`, the `rebuild` builds the `False` arm, and `Dev.Code` is never created, so no obligation is tested and nothing is tolerated: the production path is the fallback compiled into the program, built once and never rebuilt. Under the development World the `True` arm builds `@Live`, and the `!Switch` over the outer `rebuild`'s event flattens the two layers so the parent sees one `!a` either way. The tag list does not change during a run, so the outer `rebuild` builds once; it is a `rebuild` and not a `match` on a plain value only because `World.Tags` is a state element and its value arrives as a dynamic.
+
+The typing is the part that needs a sentence. `@Build c` returns `@a` for whatever `a` the handle's widget returns, and the handle is opaque, so the check is at runtime: the World knows the compiled widget's result type from the typed AST, the `Reloadable` site knows the `a` it expects, and a mismatch is a build error in the occurrence of the push, reported like any build error, with the program continuing to run the old subtree. That is the construction abort from the errors chapter doing its job for a subtree that was being reborn.
+
+### What survives and what does not
+
+Holds inside the reloaded subtree reset, because a `rebuild` rebuild makes new holds with their initial values. That is the semantics, and it is the honest answer: the new code may have changed what the holds mean. State that should survive a reload lives outside the `rebuild`, which is where state that should survive any rebuild already lives, and a program written for reload keeps its model above its views for the same reason a program written for `rebuild` does. A `$Join` over a hold of the subtree's result dynamic gives the parent a continuous value across reloads.
+
+Suppose instead the runtime tried to migrate holds by name across the rebuild, matching the old widget's holds to the new widget's by binding name and copying values where the types agree. It would make reload feel better in the common case, and it would make it lie in the uncommon one: a hold whose meaning changed but whose name and type did not would start the new code in a state the new code never produced. Reload is `rebuild`, nothing more, and that is a feature: the behaviour is the one the program already has and the test suite already checks.
+
+### What it must not change
+
+Nothing in the language; a program with `@Reloadable` in it is an ordinary program with a `rebuild` over `World.Tags` and, under a World that lists `Dev.Code`, a second `rebuild` over a state element; under any other World it is the fallback, built through `@Once`, and `Dev.Code` is never created. The production World core need not know `Dev.Code` exists, because the library never asks it to; a World that wanted to accept the tag and always answer `Unavailable` could, and `@Live` would then run under it with the fallback, but nothing requires that and the library does not rely on it. Paths are the other thing to say once: a reload is a `rebuild` rebuild, so every slot under it gets a fresh generation segment and a fresh path, and a World holding a native widget keyed by path (a GTK button for a `Ui.Button` it accepted directly) sees a teardown of the old path and a creation at the new one, exactly as it does for any rebuild. The World discards late responses for the old paths under its obligation for gone slots, and nothing about reload asks it to recognise the new slot as the old one.
+
+### The fact it waits on
+
+A GUI World and a program big enough that the restart is noticed. The whole thing is a World component, a prelude widget and one native, so it can be done the week the GUI World works.
+
+## Persistence of holds
+
+Close the program and open it again and everything is gone: the document, the scroll position, the half-filled form. Every application solves this and most solve it twice, once for the real model and once for the dozen pieces of UI state nobody thought of until a user complained. In Prism all state is holds and every hold is owned by a widget with a path, so there is a temptation to snapshot the whole tree, write it out, and read it back. The right design is smaller than that and goes through the element list; the whole-tree snapshot is a different thing, a World feature for hosting programs, and is taken up after it.
+
+### Persistence through elements
+
+A hold that should persist is a hold whose initial value comes from outside and whose changes go outside. Both halves are elements, and the worlds chapter declares them: `Store.Value(key)` is a state element whose state is `Stored`, `Absent | Present Bytes`, and `Store.Put(key, requests=!Bytes)` is a request element responding `PutResult`. A `Store.Value` slot has, in the occurrence it is created, the value the store holds for that key, because it is a state element and state is there in its first occurrence; a `Store.Put` firing writes a new value and is answered in a later occurrence. A library widget makes a persistent hold out of the pair:
+
+```prism
+@Persisted: fn Text, a, !a -> @$a = \|key, default, !change| @widget:
+    $stored <- @Element Store.Value(key=key)
+    !written <- @Element Store.Put(key=key, requests=!write)
+    let $loaded = match $stored:            # lifts over $; valued in occurrence zero
+        Present b: Decode b
+        Absent: default
+    $$current <- $loaded then Const !change   # a hold of dynamics
+    let !write = Encode !change
+    @ $Join $$current
+```
+
+The hold is the cache idiom, a hold of dynamics joined with `$Join`, and the reason is occurrence zero. Suppose instead the widget held a plain value, `$value <- default then !loaded | !change`, with `!loaded` read from `$stored on !first` through a tag at `@started`. That reads the oracle's answer correctly, but the hold commits at the end of occurrence zero, so inside occurrence zero `$value` is `default`: a `rebuild` over `$value` in the parent builds under `default`, that slot is in the element list the World reads after occurrence zero, and the `rebuild` rebuilds in occurrence one with a fresh path. A one-occurrence hiccup, visible in the transcript as a slot that exists for one turn under the wrong value. With a hold of dynamics the initial value is `$loaded` itself, a derived dynamic that is prompt on `$stored` and so has the decoded stored value from the first instant of occurrence zero; `$Join` follows it, and nothing anywhere sees `default` unless the store was empty. `Const: fn a -> $a` is the prelude's constant dynamic, lifted over `!change`, so each change replaces the inner dynamic with a constant one holding the new value. The widget's contract is "start from what was saved, then follow the program's edits": before the first edit it follows the store, which is right for a document another program may be writing; after the first edit it is pinned to this program's values. A widget that wants to follow the store after edits too is a different widget, a `rebuild` over `$stored`, and a program that wants the one-shot stored value as an event still has `$stored on !first`, the tag read at `@started`. A program then writes `$doc <- @Persisted "doc", EmptyDoc, !edit` and the document survives a restart. `!written` is the `PutResult` stream; this widget ignores it, and a stricter one surfaces it. `Encode` and `Decode` are the program's; a `Show`-like trait pair would make them derivable once traits exist.
+
+Why this and not a tree snapshot. Three reasons, each a law.
+
+A hold's identity is its path, and paths change when code changes: insert a bind above the hold and its path moves. A snapshot keyed by path is invalid after any edit, and a program that persists state across versions of itself needs a stable key, which is what `key` is. The program names what persists, which is the goal about one way to change anything written next to the thing: the hold's line says it is persisted, under what key, and nothing else in the program can make a hold persist.
+
+Nothing happens because a widget exists. A tree snapshot taken by the World "when the program exits" is an effect caused by the program's structure, which is the thing the language refuses. A `Store.Put` write is a request fired by an event the program named.
+
+Persistence is a World policy. Whether `Store` is a file, a browser's local storage, a database or a test fixture is the World's business, and a sandbox interceptor can give a subtree a different store or no store by supplying `Store.Value` itself, which is how a test runs a program against a known saved state: the Test World's script sets the oracle's answer for `Store.Value(key="doc")` with a `with` step before the build, the program starts from it, and a `requested` step checks the `Store.Put` firing after an edit.
+
+### Whole-program snapshots
+
+There is a second thing the word means, and it is a World feature rather than a program one. A World that hosts programs, a shell, a server that migrates sessions between machines, a debugger, wants to freeze a running program and resume it later, code and all. That is a snapshot of the runtime: every node's state, every hold's value, every switch's target, the element list, keyed by path, plus the fingerprint of the typed AST that built it.
+
+It is possible because of what the runtime does not have. No threads, no pending effects, no closures with hidden state: between turns a runtime is a tree of nodes and plain values, and a hold's value is a plain value, an event or a dynamic, each of which is either data or a node reference that the tree also owns. Serialising the tree is a walk. Resuming is building the program's `@main` under a fresh runtime and overwriting every hold's value and every switch's target from the snapshot before the first occurrence, which is legal because occurrence zero has no inputs and the snapshot was taken between turns, when every commit was done.
+
+Its constraints are the ones the path-keyed design has: the typed AST must be the same, since paths are bind positions, and the snapshot is a World's artefact and not a program's, invisible to the program and not part of any transcript. Closures in values are the one representation question: a closure is a code id plus captures, and the code id is stable across runs of the same typed AST, which is one more reason the fingerprint is part of the snapshot.
+
+### What it must not change
+
+The creation rule: a `Store.Put` slot does not write in the occurrence it is created, and a `Store.Value` slot's state is the oracle's answer, never a value the program pushed in that occurrence. No hold persists without a line saying so. A whole-program snapshot is a World feature that produces a runtime indistinguishable, to the program, from one that never stopped.
+
+### The fact it waits on
+
+Element-level persistence: the first program with a document. It needs a `Store` component in the CLI World and the GUI World and a prelude widget, which is an afternoon once the world core exists. Whole-program snapshots: a World that hosts programs and wants to migrate or debug them, which is far off and is listed so that nothing done before it makes it impossible.
+
+## Real time: a tick World and a bounded occurrence
+
+A motor controller reads three sensors every millisecond and writes one duty cycle, and the one question its author has is whether the step can ever take longer than a millisecond. In Lustre or Esterel the answer is a number: the program is a fixed graph, a step is one pass over it, and the compiler can add up the pass. Prism's occurrence is the same pass with the same order, heights within a block, and the question is what has to be true of a program for the same number to exist.
+
+Three things, each a restriction a World can impose rather than a change to the language. Closures are total: no general recursion in plain code, or recursion with a fuel the type states, so that every leaf has a bound. `Defer` is off: a turn is one occurrence, and the World refuses a program that creates a `Defer` slot, so a turn's work is one pass. The tree is fixed: no `rebuild` and no `for`, or a `for` whose key count has a stated maximum, so that the set of nodes an occurrence can touch is known before it runs. Under those three the work of an occurrence is the sum over the prompt cone of its inputs of the leaves' bounds, which a tool can compute from the typed AST, because the typed AST already has every node's height and every lift explicit.
+
+The World that fits is a tick World. It pushes a snapshot of its state elements every tick (the sensors as `state`, read through the oracle) and delivers no responses at all, because a controller has no edges, only levels: it does not react to a sensor changing, it reads every sensor every time. That is the level-versus-edge story from the Worlds chapter with the edge half removed, and it is how every control loop already works. Outputs are requests on a sink element, fired every tick, and the World performs them after the pass. There is no `Clock` to push, since the tick is the clock.
+
+What this buys is the synchronous languages' guarantee with Prism's type system, and one thing they do not have: the same program, unrestricted, runs under the Test World and the GUI World, so a controller's logic is tested by script and shown on a screen without a second implementation. What it costs is that the program cannot build structure while running, which is the thing Prism adds to the synchronous family and the thing a hard-real-time program does not want anyway.
+
+It needs work in two places. A fuel-bounded recursion form, or a total-functions lint, does not exist, and without it "closures are total" is a promise the author makes rather than one the compiler checks. And the bound itself needs a tool that walks the typed AST and prints the worst-case node count per input, which is small once the restrictions hold and does not exist.

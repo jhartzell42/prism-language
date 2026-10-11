@@ -164,7 +164,7 @@ impl Cx {
 #[derive(Clone)]
 pub struct Inbox {
     tx: std::sync::mpsc::Sender<Delivery>,
-    wake: std::sync::Arc<dyn Wake>,
+    wake: std::sync::Arc<rebuild Wake>,
 }
 
 pub trait Wake: Send + Sync {
@@ -190,7 +190,7 @@ Suppose instead the core were table-driven: a component registers, per tag, a cl
 pub struct World<R: Runtime> {
     runtime: R,
     program: Program,                  // compiled widget plus tag table
-    components: Vec<Box<dyn Component>>,
+    components: Vec<Box<rebuild Component>>,
     by_tag: HashMap<Tag, usize>,       // which component accepts which tag
     snapshot: Snapshots,
     slots: SlotTable,
@@ -198,11 +198,11 @@ pub struct World<R: Runtime> {
     when: When,
     inbox_rx: std::sync::mpsc::Receiver<Delivery>,
     cx: Cx,
-    report: Box<dyn Report>,           // where errors and diagnostics go
+    report: Box<rebuild Report>,           // where errors and diagnostics go
 }
 
 impl<R: Runtime> World<R> {
-    pub fn new(program: Program, report: Box<dyn Report>, wake: Arc<dyn Wake>) -> Self;
+    pub fn new(program: Program, report: Box<rebuild Report>, wake: Arc<rebuild Wake>) -> Self;
     pub fn add(&mut self, component: impl Component + 'static) -> &mut Self;
     /// Occurrence zero. Returns the initial list.
     pub fn start(&mut self) -> Result<TurnOutcome, WorldError>;
@@ -314,7 +314,7 @@ impl<R: Runtime> World<R> {
 }
 ```
 
-Slot removal is told to components before slot creation. A `dyn` rebuild tears down a slot at one path and creates another at a fresh path in the same occurrence; if the component were told about the creation first, a stdin reader would briefly have two slots and start a second reader thread before stopping the first. Removals first means a component never sees two of a thing that should be one.
+Slot removal is told to components before slot creation. A `rebuild` rebuild tears down a slot at one path and creates another at a fresh path in the same occurrence; if the component were told about the creation first, a stdin reader would briefly have two slots and start a second reader thread before stopping the first. Removals first means a component never sees two of a thing that should be one.
 
 Requests are performed after the slot diff. A request fired by a slot that was torn down in the same occurrence is still in `requests`, with its path, and `perform` is called for it. The component does the operation if it can, because the program asked, and discards the response, because the slot is gone; `slot_removed` was already called, so the component knows. This is the rule that a write fired in the occurrence that removed the writer still lands.
 
@@ -391,13 +391,13 @@ The bound above counts slots, and a program can make new `Defer` slots faster th
     @ unit
 ```
 
-`@Pulse $n` lifts to a `dyn` over `$n`. The build fires the `Defer` at `1/#0/1`. The next occurrence answers it; `!later` fires; `$n` becomes 1; the `dyn` rebuilds in that same occurrence, and the new `@Pulse` fires its own `Defer` at birth, at `1/#1/1`. That path is not in `answered`, so the core answers it in the next occurrence, which rebuilds again and fires at `1/#2/1`. Every slot is answered once, exactly as the rule asks, and the turn never ends. The program is wrong in the same way the retrying sandbox child is wrong (it answers "later" by asking for "later" again), but `DeferTable` keys by full path, and a full path includes the generation, so the core never sees the repeat.
+`@Pulse $n` lifts to a `rebuild` over `$n`. The build fires the `Defer` at `1/#0/1`. The next occurrence answers it; `!later` fires; `$n` becomes 1; the `rebuild` rebuilds in that same occurrence, and the new `@Pulse` fires its own `Defer` at birth, at `1/#1/1`. That path is not in `answered`, so the core answers it in the next occurrence, which rebuilds again and fires at `1/#2/1`. Every slot is answered once, exactly as the rule asks, and the turn never ends. The program is wrong in the same way the retrying sandbox child is wrong (it answers "later" by asking for "later" again), but `DeferTable` keys by full path, and a full path includes the generation, so the core never sees the repeat.
 
 The candidate fix is to key `answered` by the path with its generation segments stripped, so that a `Defer` reborn at the same tree position counts as the same `Defer`. `1/#0/1` and `1/#1/1` both become `1/#/1`, the second firing is deferring backwards, and the error names both paths. The change is a few lines in `collect`, and it keeps the bound without a counter.
 
-What it might get wrong is a `Defer` that really is a different one. Picture a `dyn` over the selected tab, where each tab's widget puts a `Defer` at the same bind position: tab A's `Defer` is answered in occurrence 2, its answer switches to tab B, and tab B's `Defer`, born in occurrence 2 for a layout pass of its own, fires at birth. Stripped, the two keys are equal, and a program that ends after one more occurrence is reported as deferring backwards. The fix trades a turn that never ends for an error on a program that was fine, and the tab case is ordinary GUI code. Requiring the element value to match as well as the stripped path would separate tab A's `Defer` from tab B's only if their fields differ, and a `Defer` has no fields.
+What it might get wrong is a `Defer` that really is a different one. Picture a `rebuild` over the selected tab, where each tab's widget puts a `Defer` at the same bind position: tab A's `Defer` is answered in occurrence 2, its answer switches to tab B, and tab B's `Defer`, born in occurrence 2 for a layout pass of its own, fires at birth. Stripped, the two keys are equal, and a program that ends after one more occurrence is reported as deferring backwards. The fix trades a turn that never ends for an error on a program that was fine, and the tab case is ordinary GUI code. Requiring the element value to match as well as the stripped path would separate tab A's `Defer` from tab B's only if their fields differ, and a `Defer` has no fields.
 
-A `for` key is the other edge. Stripping removes generations and leaves `[k]` segments alone, so a queue whose rows are keyed by a fresh id, where each row's answered `Defer` appends the next row and removes itself, escapes the bound the same way the `dyn` did: `0/[1]/1`, `0/[2]/1`, and on. Stripping `[k]` too would close that and break something worse: ten rows that each defer once in one occurrence would share one key, and the second of them would be reported as deferring backwards in an occurrence where nothing went backwards.
+A `for` key is the other edge. Stripping removes generations and leaves `[k]` segments alone, so a queue whose rows are keyed by a fresh id, where each row's answered `Defer` appends the next row and removes itself, escapes the bound the same way the `rebuild` did: `0/[1]/1`, `0/[2]/1`, and on. Stripping `[k]` too would close that and break something worse: ten rows that each defer once in one occurrence would share one key, and the second of them would be reported as deferring backwards in an occurrence where nothing went backwards.
 
 Suppose instead the core capped a turn at some number of occurrences. That ends every one of these loops and is exactly the budget this crate refuses, with its runaway report and its question of what to do with the occurrences that did commit. The fix that belongs here identifies a reborn `Defer` the way a reader of the program would, by where it sits and what caused it, and neither full paths nor stripped paths capture that.
 
@@ -442,7 +442,7 @@ impl Snapshots {
 }
 ```
 
-Walk the rebuild rule through it. In turn n the clock component pushes `Clock ↦ Instant 5100`; `apply_pushes` puts it in `next` and, because `Clock` is in `prev` from an earlier ask, keeps it as a push. Occurrence n opens with that push. A stopwatch that was already running has a `Clock` slot; its dynamic fires with `5100` and its hold commits. A stopwatch built in n, inside a `dyn` that rebuilt because of a click in the same occurrence, creates a `Clock` slot mid-build; the runtime asks the oracle; `prev` says `5000`; the slot's dynamic starts at `5000`, then receives the push `5100` in the same occurrence, and ends n at `5100` like its older sibling. Both read `5000` through any tag in n, both are `5100` after. One snapshot per occurrence, answered the same to everyone, which is the equality law stated at the boundary.
+Walk the rebuild rule through it. In turn n the clock component pushes `Clock ↦ Instant 5100`; `apply_pushes` puts it in `next` and, because `Clock` is in `prev` from an earlier ask, keeps it as a push. Occurrence n opens with that push. A stopwatch that was already running has a `Clock` slot; its dynamic fires with `5100` and its hold commits. A stopwatch built in n, inside a `rebuild` that rebuilt because of a click in the same occurrence, creates a `Clock` slot mid-build; the runtime asks the oracle; `prev` says `5000`; the slot's dynamic starts at `5000`, then receives the push `5100` in the same occurrence, and ends n at `5100` like its older sibling. Both read `5000` through any tag in n, both are `5100` after. One snapshot per occurrence, answered the same to everyone, which is the equality law stated at the boundary.
 
 Now suppose the oracle answered from `next` instead. The new slot would start at `5100`, receive the push `5100`, and look fine; but a tag read in n by anything that depends on the new slot's dynamic would see `5100` while a tag read through the old slot would see `5000`. Two readings of one state element in one occurrence, different. The equality law is the reason the oracle answers from the previous snapshot, and the push is what brings the new slot up to date within the occurrence.
 
@@ -503,7 +503,7 @@ impl SlotTable {
 
 A late result is not an error. The World started a read because a slot asked for it; the slot went away before the read finished; the result arrives. Nobody is listening, and that is the correct outcome of the program's decision to stop listening. The core makes it visible: `Diagnostic::LateResult` goes to the report, where a developer can see that a read was wasted, and the World cancels the operation at `slot_removed` time if the OS lets it. The core does not deliver it, because delivering a response to a path the program's list does not have is the one protocol error the runtime would reject with an abort, and the core's job is to never let a World commit it.
 
-Paths are never reused, so a late result cannot be mistaken for a result to a new slot at the same position. A `dyn` that rebuilds gives the new slot a fresh generation in its path, and a result for the old generation is late by construction.
+Paths are never reused, so a late result cannot be mistaken for a result to a new slot at the same position. A `rebuild` that rebuilds gives the new slot a fresh generation in its path, and a result for the old generation is late by construction.
 
 The "two to one path" case is the other half of routing. A reader thread that delivered two chunks of stdin before the loop woke up has produced two responses for one slot. They cannot share an occurrence: a slot receives one response per occurrence, and the runtime enforces that with an error. The core holds the second for the next turn, which is what a World that ran a turn per chunk would have done anyway. A World that wants two inputs in one occurrence, a the comma, has to address two different slots, and the Test World's the comma step checks exactly this before it delivers.
 
@@ -527,7 +527,7 @@ impl<R: Runtime> World<R> {
         }
     }
 
-    fn route(&mut self, el: &ElementValue) -> &mut dyn Component {
+    fn route(&mut self, el: &ElementValue) -> &mut rebuild Component {
         match self.by_tag.get(&el.tag) {
             Some(&ix) => &mut *self.components[ix],
             None => &mut self.nobody,     // a component that records and does nothing
@@ -1011,13 +1011,13 @@ impl Component for Process {
 }
 ```
 
-Arguments and environment are state elements rather than parameters of `@main` so that an interceptor can give a subtree different ones and a test can set them with `with Process.Args = [["notes.txt"]]`, with no second way to start a program. On a process that cannot observe a change to its arguments the component never pushes, and the `dyn` a program puts over `$args` builds once. A World that can observe a change (a shell World hosting other programs, where "arguments" is something the shell decides) pushes, and the same program rebuilds; nothing in the program says which World it is under.
+Arguments and environment are state elements rather than parameters of `@main` so that an interceptor can give a subtree different ones and a test can set them with `with Process.Args = [["notes.txt"]]`, with no second way to start a program. On a process that cannot observe a change to its arguments the component never pushes, and the `rebuild` a program puts over `$args` builds once. A World that can observe a change (a shell World hosting other programs, where "arguments" is something the shell decides) pushes, and the same program rebuilds; nothing in the program says which World it is under.
 
 `quiescent` is `true` because a program whose only slot is `Process.Args` is a program that has nothing left to do, and the run should end with code 0 rather than wait forever for a push that never comes.
 
 ### `Cli.Stdin`: a reader thread, started and stopped by the slot
 
-Standard input is a stream element: it responds with chunks and then an end, and the program never asks it for anything. The World reads stdin only while a `Cli.Stdin` slot exists, which has a consequence a shell user will recognise: a program that builds its `Cli.Stdin` inside a `dyn` after reading a file first does not consume stdin until the file has arrived, so a pipeline behind it is not drained early.
+Standard input is a stream element: it responds with chunks and then an end, and the program never asks it for anything. The World reads stdin only while a `Cli.Stdin` slot exists, which has a consequence a shell user will recognise: a program that builds its `Cli.Stdin` inside a `rebuild` after reading a file first does not consume stdin until the file has arrived, so a pipeline behind it is not drained early.
 
 ```rust
 pub struct Stdio {
@@ -1818,7 +1818,7 @@ fn a_defer_fired_in_an_occurrence_is_answered_in_the_next_occurrence_of_the_same
             !b <- @Element Ui.Button(label="go")
             !later <- @Element Defer(requests=(unit on !b))
             $text <- "waiting" then "done" on !later
-            @Element Ui.Label(text=$text)                 # lifts to a dyn: a fresh label slot per change
+            @Element Ui.Label(text=$text)                 # lifts to a rebuild: a fresh label slot per change
             @ unit
     "#);
     h.start();
@@ -1854,7 +1854,7 @@ fn a_late_result_for_a_gone_slot_is_discarded_with_a_diagnostic() {
         @main:
             !b <- @Element Ui.Button(label="drop")
             $show <- True then False on !b
-            dyn $show:
+            rebuild $show:
                 match _:
                     True:
                         !s <- @started
@@ -1881,7 +1881,7 @@ fn a_slot_created_in_the_push_occurrence_reads_the_previous_snapshot_and_receive
             $t <- @Element Clock
             !b <- @Element Ui.Button(label="new")
             $n <- 0 then $n + 1 on !b
-            dyn $n:
+            rebuild $n:
                 !s <- @started
                 $t2 <- @Element Clock
                 $first <- (Instant 0) then $t2 on !s            # the tag law: the value before this occurrence
@@ -1931,13 +1931,13 @@ fn request_firings_are_performed_in_occurrence_order_then_list_order() {
 
 #[test]
 fn a_request_from_a_slot_torn_down_in_the_same_occurrence_is_performed_and_its_response_discarded() {
-    // a dyn child that fires Fs.File Write on the click that removes it:
+    // a rebuild child that fires Fs.File Write on the click that removes it:
     // Perform is called; the fake's response is a LateResult diagnostic
 }
 
 #[test]
 fn removals_are_reported_before_creations() {
-    // a dyn rebuild; assert the Removed call precedes the Created call in `calls`
+    // a rebuild rebuild; assert the Removed call precedes the Created call in `calls`
 }
 
 #[test]
@@ -2003,7 +2003,7 @@ The cases, and what each pins:
 | `output_order` | two `Cli.Stdout` slots firing in one occurrence, in list order; stdout then stderr across turns, each flushed per turn |
 | `stdout_before_exit` | a write and an exit fired in one occurrence: the write lands |
 | `args_env` | `Process.Args` and `Process.Env` printed from the build turn, with no args, several args, and an empty environment |
-| `file_then_stdin` | `Fs.File` read on `@started`, then `Cli.Stdin` built inside a `dyn`; stdin is not read until the slot exists (the harness checks the pipe is still full after the file read's turn) |
+| `file_then_stdin` | `Fs.File` read on `@started`, then `Cli.Stdin` built inside a `rebuild`; stdin is not read until the slot exists (the harness checks the pipe is still full after the file read's turn) |
 | `unsupported` | a `Ui.Button` at the root: `note:` on stderr naming the chain, and the `Unsupported` response reaching a `Cli.Stdout` write |
 | `unsupplied_state` | a `Gui.Metrics` state element at the root: the error on stderr with span, exit nonzero, nothing on stdout |
 | `signal_handled` | a `Cli.Signals` slot; the harness sends `SIGINT` after reading a `ready` line from stdout; the program prints `interrupted` and exits 3 |

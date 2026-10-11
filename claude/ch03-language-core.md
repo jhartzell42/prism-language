@@ -22,12 +22,12 @@ The sigils stack, leftmost outermost, in the order you would say the thing out l
 
 - `?$user` is an optional dynamic: maybe there is a live user, and if there is, it changes.
 - `$?user` is a dynamic optional: there is always a value here, and sometimes it is "nobody".
-- `!!rendered` is an event of events: what a `dyn` returns, one inner event per build.
-- `!$contents` is an event of dynamics: what a `dyn` returns when its block returns state.
+- `!!rendered` is an event of events: what a `rebuild` returns, one inner event per build.
+- `!$contents` is an event of dynamics: what a `rebuild` returns when its block returns state.
 - `$$current` is a dynamic of dynamics: what you hold an `!$contents` into, before `$Join` flattens it.
 - `@!click` is a blueprint whose result is an event: the type of a button.
 - `@$text` is a blueprint whose result is a dynamic: the type of a text input.
-- `$@a` is a dynamic of blueprints: what a `dyn` consumes.
+- `$@a` is a dynamic of blueprints: what a `rebuild` consumes.
 - `@@a` is a blueprint that returns a blueprint, unbuilt: a widget factory.
 
 Two of these deserve a second look, because the difference between them is the kind of difference the sigils exist to make visible. `?$user` and `$?user` are not two spellings of one thing. The first says that the *existence* of the dynamic is in question and fixed: you match on it once, and either you have a dynamic forever or you never did. The second says the dynamic exists and its *value* is sometimes absent: a logged-in user who may log out. A chat client's current connection is the second; a widget's optional parent callback is the first. Writing one when you meant the other is a type error at the first use, which is where you want to find out.
@@ -94,7 +94,7 @@ The first character alone decides which kind a name is, so a name that strays fr
 
 A qualified name is an uppercase name followed by `.` and another uppercase name, with no whitespace anywhere in it, repeated as needed: `Ui.Button`, `Fs.File`, `Net.Socket`. It is one token. The namespace part is how extensible variants (next section) spread their tags across modules. A `.` followed by a lowercase name is never part of a qualified name; it is field access, and `Ui.Button.label` would be field access on the constructor, which is a type error, not a lexing question.
 
-The sigils are `!` `$` `@` `?`. (`&` is reserved for references, chapter 16, and is rejected with a message saying so; `%` does not exist.) The meaning of a sigil depends on what it is attached to:
+The sigils are `!` `$` `@` `?`. (`&` is reserved for references, later in this chapter, and is rejected with a message saying so; `%` does not exist.) The meaning of a sigil depends on what it is attached to:
 
 - On a value's name, it states the value's kind: `!delta` is an event.
 - On a function's name, it states the kind of the function's result: `@Button` returns a blueprint.
@@ -121,9 +121,9 @@ Suppose instead the sigil were always attached to whatever token followed it. Th
 
 ### Keywords
 
-`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `dyn` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `then` `not` `and` `or` `key` `ix` `jx` `kx` `empty`.
+`let` `type` `tag` `of` `fn` `match` `if` `else` `for` `rebuild` `intercept` `widget` `record` `choice` `map` `array` `unit` `test` `ignore` `on` `then` `not` `and` `or` `key` `ix` `jx` `kx` `empty`.
 
-Reserved for the `update` blocks of chapter 16 and rejected with a message saying so: `read` `update` and the sigil `&`.
+Reserved for the `update` blocks later in this chapter and rejected with a message saying so: `read` `update` and the sigil `&`.
 
 Not keywords, though they look like them: `never`, `started`, `main`, `Switch`, `Leftmost`, `Join`, `HoldFirst`, `Element`, `Some`, `Nil`, `True`, `False`, and the optional default `Or`. These are ordinary names in the prelude, written with their sigils where they have one (`!never`, `@started`, `@main`, `!Switch`, `!Leftmost`, `$Join`, `@Element`, `@HoldFirst`). A program may shadow them, which is a bad idea the compiler does not stop. `unit` is a keyword because it is both a type and the only value of that type, and letting it be shadowed would let `@ unit` mean something else.
 
@@ -225,7 +225,7 @@ and here it is as Prism writes it:
 
 Nothing is lost, and what is gone was never information. A widget block is a list of equations, one per line, and the thing that tells you where one equation ends and the next begins is the line; a `;` says it again, and a brace says a third time what the indentation already said. The habit of reading indentation as structure is one every programmer already has, because every program is indented whether or not its language reads the indentation, and the languages that do not read it have to lint for the case where the braces and the indentation disagree, which is the one case a reader is guaranteed to get wrong. A language in which the two cannot disagree has removed a whole class of bug from the reader rather than from the compiler, which is where the bug lived.
 
-The real reason is the one about seeing what moves. The counter's block is four lines of definitions, and a reader is meant to take it in as a table: left column the names, right column what they are. Braces and semicolons put punctuation in the table; a `dyn` or a `for` with a nested block puts a closing brace on a line by itself, which is a line the reader has to skip. The nested forms are where the difference is biggest: `dyn $path:` followed by its block reads as "while the path is this, these," and the block is over when the indentation returns, which is exactly when the reader's attention does.
+The real reason is the one about seeing what moves. The counter's block is four lines of definitions, and a reader is meant to take it in as a table: left column the names, right column what they are. Braces and semicolons put punctuation in the table; a `rebuild` or a `for` with a nested block puts a closing brace on a line by itself, which is a line the reader has to skip. The nested forms are where the difference is biggest: `rebuild $path:` followed by its block reads as "while the path is this, these," and the block is over when the indentation returns, which is exactly when the reader's attention does.
 
 Rust made the same decision from the other side: an `if` body must have braces, with no brace-less form, so that there is one way to write a block and no dangling `else`. One channel, chosen in the other direction. Suppose instead the language took braces and ignored whitespace, as Rust does. The cost would be the separators on every line and the dangling closers, and the benefit would be that a formatter could reflow code and that a line could be split anywhere. Prism gets the second from rule 3 below (an indented continuation line continues the statement) and does not want the first, since a block whose lines are equations has no reason to reflow. The price of the offside rule is that it has to be specified exactly, with its ugly cases, so that two lexers agree; that specification is the rest of this section, and it is short.
 
@@ -270,13 +270,13 @@ The second line is indented more than the block's column (4), so it continues th
 
 ```prism
 @outer:
-    !x <- dyn $a:
+    !x <- rebuild $a:
         !y <- @Button $"B"
         @ !y
     @Label $"done"
 ```
 
-After `@ !y` the next line is at column 4. The stack is `[0, 4, 8]`; 4 is less than 8, so the `dyn` block closes and the stack is `[0, 4]`; 4 equals the top, so the line begins a statement of the outer block. Had the line been at column 0, two closes would have been emitted before the comparison matched. Had it been at column 6, the error in rule 3 fires: 6 is less than 8 and does not equal 4.
+After `@ !y` the next line is at column 4. The stack is `[0, 4, 8]`; 4 is less than 8, so the `rebuild` block closes and the stack is `[0, 4]`; 4 equals the top, so the line begins a statement of the outer block. Had the line been at column 0, two closes would have been emitted before the comparison matched. Had it been at column 6, the error in rule 3 fires: 6 is less than 8 and does not equal 4.
 
 *An inline arm followed by a layout arm in one match.*
 
@@ -773,7 +773,7 @@ Types are inferred by Hindley–Milner over the value layer, with the functor la
 ```prism
 let Magnitude: fn Vector -> Float = \Sqrt (_.x *. _.x +. _.y *. _.y)
 @Button: fn $Text -> @!Click = \@widget:
-    !!clicks <- dyn $_:
+    !!clicks <- rebuild $_:
         @Element Ui.Button(label=_)
     @ !Switch !!clicks
 ```
@@ -833,7 +833,7 @@ The tag read in the third case is the whole of the language's mutation policy in
 
 **Lifting never crosses a sigil boundary.** A function on `A` lifts over `$A` but not over the inner layer of `$$A`; `$$a + 1` is a type error, and `$Join $$a + 1` is what the program meant. Likewise a function on `!A` does not lift over `!!A`. Flattening is `!Switch` and `$Join`, in the switching chapter, and it has laws of its own that a lifted `+` could not keep.
 
-**Lifting over `@`.** A blueprint operand is not computed over, but a widget-returning function applied to a dynamic where it wanted a plain value is a common thing to write, and it has one meaning. `@Element Ui.Button(label=$l)` applies `@Element` to a dynamic, and by the rule above the result is `$@!Click`: a dynamic of blueprints, one per value of `$l`. Binding a dynamic of blueprints with `<-` lifts to `dyn`:
+**Lifting over `@`.** A blueprint operand is not computed over, but a widget-returning function applied to a dynamic where it wanted a plain value is a common thing to write, and it has one meaning. `@Element Ui.Button(label=$l)` applies `@Element` to a dynamic, and by the rule above the result is `$@!Click`: a dynamic of blueprints, one per value of `$l`. Binding a dynamic of blueprints with `<-` lifts to `rebuild`:
 
 ```prism
 !click <- @Element Ui.Button(label=$l)
@@ -842,18 +842,18 @@ The tag read in the third case is the whole of the language's mutation policy in
 means
 
 ```prism
-!!clicks <- dyn $l:
+!!clicks <- rebuild $l:
     @Element Ui.Button(label=_)
 let !click = !Switch !!clicks
 ```
 
-The bound name is the `!Switch` of the `dyn`'s event when the widget's result is an event; for a result that is a dynamic, it is `$Join` of `@HoldFirst` of the `dyn`'s event, and for a plain result it is `@HoldFirst` of that event, so the bound name is a `$`; for a `unit` result, nothing is bound; for a bundle, each field is treated by its own kind. `@HoldFirst` is the prelude's answer to a hold with nothing to start from. A hold needs an initial value, and an event has none until it fires; `@HoldFirst: fn !a -> @$a` is a dynamic that holds its event's value, with the value of the first firing as its initial value, and the first firing of a `dyn`'s event is in the occurrence of the first build, so the dynamic always has a value when anything reads it:
+The bound name is the `!Switch` of the `rebuild`'s event when the widget's result is an event; for a result that is a dynamic, it is `$Join` of `@HoldFirst` of the `rebuild`'s event, and for a plain result it is `@HoldFirst` of that event, so the bound name is a `$`; for a `unit` result, nothing is bound; for a bundle, each field is treated by its own kind. `@HoldFirst` is the prelude's answer to a hold with nothing to start from. A hold needs an initial value, and an event has none until it fires; `@HoldFirst: fn !a -> @$a` is a dynamic that holds its event's value, with the value of the first firing as its initial value, and the first firing of a `rebuild`'s event is in the occurrence of the first build, so the dynamic always has a value when anything reads it:
 
 ```prism
 $label <- @HoldFirst !labels        # $label is the latest label, starting with the first one
 ```
 
-The shorthand is used freely from here on and means exactly the expansion; a program that wants the `dyn`'s event or a different initial value writes the expansion.
+The shorthand is used freely from here on and means exactly the expansion; a program that wants the `rebuild`'s event or a different initial value writes the expansion.
 
 ### Application
 
@@ -952,22 +952,22 @@ Fold changes, items, \|acc, id, c| Step acc, id, c
 
 ```prism
 @Button: fn $Text -> @!Click = \@widget:
-    !!clicks <- dyn $_:
+    !!clicks <- rebuild $_:
         @Element Ui.Button(label=_)
     @ !Switch !!clicks
 
 @Forward: fn $(Path ==> Slot) -> @!(Path ==> Response) = \|$slots| @widget:
     for $slots:
-        dyn $_:
+        rebuild $_:
             ((!resp, ignore)) <- @Element _.element
             @ !resp
 ```
 
-**The argument's kind.** A lambda's argument has a sigil like any name, and the rule is this: a body that mentions a sigiled pronoun, `$_`, `!_` or `@_`, takes an argument of that kind and is not lifted over it. `@Button`'s body says `dyn $_:`, so it takes a dynamic; a lambda whose body says `intercept @_, ...` takes a blueprint. A named argument has the sigil it is written with. A body with no sigiled pronoun and no annotation takes a plain argument, and the lambda is a plain function.
+**The argument's kind.** A lambda's argument has a sigil like any name, and the rule is this: a body that mentions a sigiled pronoun, `$_`, `!_` or `@_`, takes an argument of that kind and is not lifted over it. `@Button`'s body says `rebuild $_:`, so it takes a dynamic; a lambda whose body says `intercept @_, ...` takes a blueprint. A named argument has the sigil it is written with. A body with no sigiled pronoun and no annotation takes a plain argument, and the lambda is a plain function.
 
 A plain function is lifted afresh at each application: one definition serves a plain argument and a dynamic one, so `IsGui` written once over a plain `Element` is applied to `$kids` and to `!in` without a second definition. That is why the prelude's `Len` and `Insert` are written at plain types and used over everything, and the operators `not`, `and`, `or` and `+` lift the same way. The alternative, inferring a lambda's binder sigil from its uses, would mean a lambda applied to a dynamic takes `$_` and cannot also take a plain value, so the prelude would need two of everything.
 
-When a lambda with no sigiled pronoun is written where the expected type says the argument is a dynamic, as in `dyn` blocks and the `intercept` supplier, the argument takes the kind the expected type says; with no expected type it is plain. This is bidirectional checking in the one place it is needed. It is tentative in exactly one respect: the alternative, inferring functor variables alongside Hindley–Milner so that a lambda's kind is unified from its uses, would make the rule uniform at the cost of the property that a value's kind is readable from its spelling, and if that cost turns out to be lower than it looks, this is the rule that would change.
+When a lambda with no sigiled pronoun is written where the expected type says the argument is a dynamic, as in `rebuild` blocks and the `intercept` supplier, the argument takes the kind the expected type says; with no expected type it is plain. This is bidirectional checking in the one place it is needed. It is tentative in exactly one respect: the alternative, inferring functor variables alongside Hindley–Milner so that a lambda's kind is unified from its uses, would make the rule uniform at the cost of the property that a value's kind is readable from its spelling, and if that cost turns out to be lower than it looks, this is the rule that would change.
 
 ### `match` and `if`
 
@@ -1028,7 +1028,7 @@ match items[id]:
 
 Without the guard, the second arm's work would be inside the first as an `if` and the `Some t: items` case would be written twice. The condition runs from `if` to the arm's colon, so an `if` expression inside a guard takes parentheses. A guarded arm does not count toward exhaustiveness: the compiler does not reason about conditions, so `Some t if t.done` covers nothing, and the `match` above is exhaustive only because the unguarded `Some t` and `Nil` follow. A guarded `ignore if c:` is not a catch-all for an extensible variant. A guard on a dynamic scrutinee is lifted with the rest of the arm, and dynamics it mentions are read as the arm body's are.
 
-**`match` lifts like application.** With all arms plain, `match $x: ...` is a dynamic of the arms' results, changing when `$x` does, and `match !e: ...` is an event firing when `!e` does, with the taken arm's value. Dynamics mentioned in the arms are lifted by the same rule as any operation: in `match !e: Some v: v + $offset`, the `$offset` is read through a tag. When any arm is a blueprint, the scrutinee must be plain, because choosing a blueprint by a changing value is construction and is spelled `dyn`; the error says so and points at it.
+**`match` lifts like application.** With all arms plain, `match $x: ...` is a dynamic of the arms' results, changing when `$x` does, and `match !e: ...` is an event firing when `!e` does, with the taken arm's value. Dynamics mentioned in the arms are lifted by the same rule as any operation: in `match !e: Some v: v + $offset`, the `$offset` is read through a tag. When any arm is a blueprint, the scrutinee must be plain, because choosing a blueprint by a changing value is construction and is spelled `rebuild`; the error says so and points at it.
 
 ```prism
 let $text = match $contents:
@@ -1111,10 +1111,10 @@ error: these bindings depend on each other in the same occurrence
  4 |     let $b = $a * 2
    |         ^^ depends on $a
    = a cycle in a widget block must pass through a hold's value, a tag, or a !Switch
-   = a `dyn` is not a delay: its event fires in the occurrence of the rebuild
+   = a `rebuild` is not a delay: its event fires in the occurrence of the rebuild
 ```
 
-Lists every binding in the cycle, in order, with spans. A cycle through `dyn` alone gets the same message with the last line as its reason.
+Lists every binding in the cycle, in order, with spans. A cycle through `rebuild` alone gets the same message with the last line as its reason.
 
 **A negative number where a subtraction was meant.**
 
@@ -1179,7 +1179,7 @@ error: choosing a widget by a changing value
    |
  4 |     match $mode:
    |           ^^^^^ the scrutinee is a dynamic and an arm is a widget
-   = building depends on the value; write `dyn $mode:` and match inside it
+   = building depends on the value; write `rebuild $mode:` and match inside it
 ```
 
 **A hold outside a widget block.**
@@ -1293,14 +1293,14 @@ The continuation line produces no separator and no block tokens.
 
 ```prism
 @outer:
-    !x <- dyn $a:
+    !x <- rebuild $a:
         !y <- @Button $"B"
         @ !y
     @Label $"done"
 ```
 
 ```
-@outer ⟨ !x <- dyn $a ⟨ !y <- @Button $TEXT("B") ; @free !y ⟩
+@outer ⟨ !x <- rebuild $a ⟨ !y <- @Button $TEXT("B") ; @free !y ⟩
 ; @Label $TEXT("done") ⟩
 ```
 
@@ -1308,14 +1308,14 @@ The continuation line produces no separator and no block tokens.
 
 ```prism
 @a:
-    !x <- dyn $b:
+    !x <- rebuild $b:
         @ unit
 @c:
     @ unit
 ```
 
 ```
-@a ⟨ !x <- dyn $b ⟨ @free unit ⟩ ⟩ ; @c ⟨ @free unit ⟩
+@a ⟨ !x <- rebuild $b ⟨ @free unit ⟩ ⟩ ; @c ⟨ @free unit ⟩
 ```
 
 Two closes, then the separator for the new top-level statement.
@@ -1536,9 +1536,9 @@ The language's refusals are listed with the whole design in the first part of th
 
 **No assignment.** `count = count + 1` cannot be written. Not in a handler, not in a helper, not in a `let`. The only state is a hold, and a hold moves only when its event fires. What this buys the core: every binding is an equation, so a widget block can be read in any order and the resolver can build it in dependency order; `let` is a definition and never an update, so two readers of a block agree on what a name means without tracing control flow; and because every write is a hold's commit, an occurrence is a transaction for free.
 
-**No sampling.** There is no `.current`, `.value` or `sample` on a dynamic. The only reads are a tag (in a lifted operation with an event), a derived dynamic (prompt), and `dyn` (rebuild). What this buys: there is no "which version" question, since each of the three reads has one defined answer, and the implementation is free to propagate in any dependency-respecting order because nothing can observe the difference.
+**No sampling.** There is no `.current`, `.value` or `sample` on a dynamic. The only reads are a tag (in a lifted operation with an event), a derived dynamic (prompt), and `rebuild` (rebuild). What this buys: there is no "which version" question, since each of the three reads has one defined answer, and the implementation is free to propagate in any dependency-respecting order because nothing can observe the difference.
 
-**No custom monads, no effect system.** One block type per functor, and the set is fixed: widget blocks, `dyn`, `for`, `match`. There is no `do`, no transformer stack, no way to define a fourth functor with its own bind. What this buys: the lifting rule is a table over four sigils; a name's kind is readable from its spelling because the set of kinds is closed; and the compiler's elaboration is a lookup, not a search through instances. A program that wants a `Reader` passes an argument; one that wants a `with` has a hold; one that wants `IO` has an element.
+**No custom monads, no effect system.** One block type per functor, and the set is fixed: widget blocks, `rebuild`, `for`, `match`. There is no `do`, no transformer stack, no way to define a fourth functor with its own bind. What this buys: the lifting rule is a table over four sigils; a name's kind is readable from its spelling because the set of kinds is closed; and the compiler's elaboration is a lookup, not a search through instances. A program that wants a `Reader` passes an argument; one that wants a `with` has a hold; one that wants `IO` has an element.
 
 **No overloading beyond the three traits.** `Eq`, `Ord` and `Num` are resolved by inference; nothing else is. There are no user-defined traits, no instances, no operator definitions, no implicit coercions through a class. What this buys: a call site names one function, and the reader can find it; inference stays Hindley–Milner on the value layer with three well-understood exceptions, and the checker's error messages stay local. The three are the ones without which sorting, map keys, element identity and arithmetic cannot be written; everything else has a name.
 
@@ -1550,4 +1550,191 @@ The language's refusals are listed with the whole design in the first part of th
 
 **No explicit-brace layout, no block comments, no tabs, no `else`-less `if`.** Each of these removes a second way to write something, and each second way is one more case on which two parsers can disagree. The spec is the thing, and the thing is shorter for it.
 
-**No `read` and `update` blocks, no `&` references, no lenses.** These are chapter 16's, and no transcript depends on them. Plain values are built, never modified; a function that "updates" a record builds a new one. What this buys now: the value layer has one operation on a record, construction, and the question of how mutation inside a plain value interacts with sharing does not arise. If they come, they come as sugar over construction, and nothing in this chapter changes meaning.
+**No `read` and `update` blocks, no `&` references, no lenses.** These are described at the end of this chapter, and no transcript depends on them. Plain values are built, never modified; a function that "updates" a record builds a new one. What this buys now: the value layer has one operation on a record, construction, and the question of how mutation inside a plain value interacts with sharing does not arise. If they come, they come as sugar over construction, and nothing in this chapter changes meaning.
+
+## `&` references, `read` and `update` blocks
+
+You have a record with a record in it with a map in it, and you need to add one to a counter three levels down. In an imperative language it is a line. In a pure language it is a `let` per level, each one rebuilding the enclosing record with one field replaced, and the line that does the work is at the bottom of a staircase of plumbing. This is the one place a pure language is worse to write than an imperative one, and it is the one `update` blocks exist to fix. An `update` block sits beside the book's statements that the language has no assignment without contradicting the language the rest of the book specifies: it is a separate block form inside plain code, its value is an updated copy of a value, nothing outside the block sees a write, and nothing else in the book depends on it. Nothing in the other chapters needs them, and the semantics of references under erasure and copy-on-write are the part that has to be designed before the Rust implementation can commit to a representation.
+
+### What the feature is
+
+Three pieces, each small on its own.
+
+A `read` block gives the pronoun over a value. `\read _:` opens a block in which `_` is the lambda's argument, `.x` reads a field of it, and `[k]` indexes it, as in any lambda or `for` body; `read v:` gives the same prefix `.x` and `[k]` over any value `v`, and an `update` block gives them over the value being updated, and `read p <- v:` binds a pattern. Only `let` statements and one result statement are allowed. The point is not saving characters. A function over a large value should read like a description of the value:
+
+```prism
+type Vector = record:
+    x: Float
+    y: Float
+    z: Float
+
+let Magnitude: fn Vector -> Float = \read _:
+    let x = .x
+    let y = .y
+    let z = .z
+    Sqrt (x * x + y * y + z * z)
+```
+
+An `update` block is an expression that evaluates to an updated copy of a value. Inside it, `&_` is a reference to the value being updated and `&_.x`, `&_[k]` are references into it. A reference can be set with `<=`, or combined with an operator: `+=`, `-=`, and so on for every operator the type has:
+
+```prism
+let Add: fn Vector, Vector -> Vector = \|a, b| update a:
+    &_.x += b.x
+    &_.y <= .y + b.y      # the same thing, spelled out
+    .z += b.z             # the pronoun is implicit on the left too
+```
+
+The original `a` is unchanged. The block's value is the updated copy. Statements run in sequence, and a later statement reads the value as earlier statements left it, which is what makes the block worth having: `&_.x += 1` followed by `let t = .x` sees the new `x`.
+
+References, `&T`, exist only inside an `update` block. A function may take a reference and return one, `fn &Vector -> &Float`, and that is a lens: it says where inside a `Vector` a `Float` lives, and applied inside an `update` it gives a reference you can set. A function may not take two references, return a reference it did not derive from its argument, or store one anywhere; a reference is a path into the value being updated, and a path only means something while the update is happening. `*r` dereferences for reading and gives the current value at the path.
+
+Two conveniences fall out. A function whose result type is its first argument's type, `fn Vector, Vector -> Vector`, is an *update function*, and inside an `update` block it may be used as a statement with its first argument implied: `Add b` inside `update a:` means `&_ <= Add _, b`. And `for` inside an `update` block over a reference to an array or map yields a reference per element:
+
+```prism
+let AddByElement: fn [Float], [Float] -> [Float] = \|a, b| update a:
+    for &_:               # `&_` inside the loop is a reference to a[ix]
+        &_ += b[ix]
+```
+
+`ix` is the index of the current iteration; nested loops get `jx` and `kx`, and past that a helper function is better than another keyword.
+
+### Why it is wanted
+
+The use cases are the ones where a program keeps a large value in a hold and folds small changes into it. A text editor's buffer, a spreadsheet's cell map, a drawing's list of strokes, a game's entity table, a form with forty fields. Each one is a hold whose event is a merge of small edits, and the fold is a function from the old value and an edit to the new value. Today that function is written with functional update at every level:
+
+```prism
+type Doc = record:
+    lines: Nat ==> Text
+    cursor: Cursor
+    dirty: Bool
+
+let Insert: fn Doc, Edit -> Doc = \|doc, e|
+    Doc(
+        lines = Set doc.lines, e.line, (Splice doc.lines[e.line], e.col, e.text),
+        cursor = Cursor(line = e.line, col = e.col + Len e.text),
+        dirty = True)
+```
+
+Every field has to be named even when two of them are unchanged, the nested `Splice` is hidden inside the `Set`, and adding a field to `Doc` touches every function that builds one. The same function as an update:
+
+```prism
+let Insert: fn Doc, Edit -> Doc = \|doc, e| update doc:
+    &_.lines[e.line] <= Splice .lines[e.line], e.col, e.text
+    &_.cursor <= Cursor(line = e.line, col = e.col + Len e.text)
+    &_.dirty <= True
+```
+
+The goal this serves is the one about seeing what moves. The hold's definition still lists every event that can change the document; nothing about that changes. What changes is that the function the hold applies says what it changes and nothing else, so reading it is reading the diff, which is what you wanted to read.
+
+The second reason is performance, and it is the same reason reuse is in the optimisations list above. A functional update that rebuilds a record of forty fields to change one copies forty words; a map insertion copies the map unless the map is persistent. An `update` block that knows which path it changed can, when the value's count is 1, change exactly those words in place. The feature and the optimisation are one design seen from two sides.
+
+### The semantics as far as they go
+
+Everything about references can be said without mutation, and should be, because that is what makes them safe to add to a language with no assignment. An `update` block is a function from a value to a value. A reference is a lens, a pair of a getter and a setter over the root value. A statement `&p <= v` is `root <- set_p root v`. A statement `&p += v` is `root <- set_p root (get_p root + v)`. A `let` inside the block reads the root as it is after the statements before it. The block's value is the root after the last statement. Under this reading an `update` block is a fold of lens applications over the root, every value is immutable, and the block could be elaborated into exactly the staircase of functional updates it replaces. That is the reference semantics, and the Haskell implementation runs it directly.
+
+Lenses nest. `&_.lines[e.line]` is the lens for `lines` followed by the lens for key `e.line`. A user function `fn &Doc -> &Text` is a lens written by hand, and inside an `update` it is applied like any lens: `&(CurrentLine _) <= "..."`. The map indexing lens has the insertion rule from the aggregate types: setting `&m[k]` on a map inserts if the key is absent, and reading `*&m[k]` gives a `?V`. The array indexing lens is a plain index, and setting it out of range is the same error as reading out of range would be, a `?` on the read side and an abort on the write side, which is the checked-arithmetic discipline applied to indexing.
+
+Then the borrowing rules, which exist for one reason: so that an implementation may mutate in place. If two live references could alias, an implementation that wrote through one would have to know whether the other would see it, and the only safe answer would be to copy. So, inside one block: a reference is live from its creation until its last use; two live references must be disjoint, and the compiler must be able to see that they are. Two different fields of a record are disjoint. Two different literal keys or indices are disjoint; two keys that are variables are not known to be, and the second reference is an error while the first is live. A reference obtained through a user lens function borrows the lens's whole argument for its life, because the compiler cannot see inside the function. These are Rust's rules for `&mut` reduced to a block with no loops but `for`, no conditionals that keep a reference across arms, and no escape, which is a small enough fragment that the check is a pass over the block and not a borrow checker.
+
+Copy-on-write is the implementation side, and the thing the Rust implementation has to get right. When the block starts, the root value has some reference count. If it is 1, which it is when the caller passed the block its last reference, the block owns it and every `<=` through a path with count 1 at each level writes in place. If any level's count is greater than 1, that level is copied once, the copy is written, and the parent is pointed at the copy; later writes through the same level find a count of 1. This is `Arc::make_mut` applied along a path. The observable behaviour is identical to the functional reading because no one else can see the write, and the borrowing rules are what guarantee that "no one else" includes the block itself.
+
+The hold case is the one the reuse entry above describes: one copy per occurrence per level touched, which is already far better than a functional update's copy per field, and the runtime hook that lets a hold hand over its value when its only reader this occurrence is its own update removes the last copy. Nothing about `update` depends on that hook existing.
+
+### What it must not change
+
+An `update` block is an expression with a value. No reference escapes it; a reference is not a value and has no type outside a block. Nothing about occurrences is involved: an `update` block that appears inside a lifted expression runs when that expression's node runs, once per occurrence, over the value it was given, and the block cannot see or touch a hold, an event or a dynamic. Widget blocks do not get mutation; the only state in a program is a hold and the only way to change one is its event. A program that compiles today compiles unchanged, because `&`, `read` and `update` are new syntax and no old program has them.
+
+The erasure question is the one that is not yet answered and is why the item is research: a lens through a type variable, `fn &[a] -> &a`, needs to write into a value whose layout generic code does not know. Under the one-word representation, where generic code clones and drops by tag bits and a record points at its layout, the setter can write a word into a field slot without knowing its type, so erasure and `update` are compatible, but the proof is a working implementation and not this paragraph.
+
+### Why it belongs in the Reflex implementation first
+
+The Haskell implementation interprets the typed AST, and a lens in Haskell is a first-class value with exactly the getter-setter semantics above: two lenses nest the way two functions do, and reading through one, writing through one and mapping through one are the three operations an `update` block needs (the `lens` library is the implementation choice; the form of its API is from memory). Adding `update` to the Haskell evaluator is adding an elaboration case that turns a block into a fold of lens applications, and the library does the rest. That makes the experiment cheap: the syntax, the pronoun rules, the typing of `&`, the borrowing check and the `for` form can all be tried on real programs and tested through the conformance suite before the Rust implementation commits to copy-on-write along paths and the compiler to a borrow pass. If the semantics change during the experiment, nothing in Rust has to change back. Once the suite has `update` programs with golden transcripts, the Rust implementation has an oracle, and the differential test says when its in-place version is right.
+
+### The fact it waits on
+
+A program in the suite, or a library, whose fold functions are more plumbing than logic. The text editor is the likeliest first case, because its buffer is a map of lines and every keystroke is a nested update. Before that, functional update is adequate and the feature would be a guess about ergonomics.
+
+### What the check can refuse
+
+The borrowing check has a question of its own. The sketch rejects two references whose keys are variables, a reference held across the arms of an `if`, and a function taking two references. All three have a meaning in the functional reading of the block, since swapping `a[i]` and `a[j]` is a well-defined fold of two lens applications. The rules are there so that the in-place implementation is safe and so that the check stays one pass over the block. A static check for the cases it can prove, with a runtime comparison of keys for the cases it cannot, gives programs the meaning the functional reading gives them: when the two keys are equal, the statements run in sequence on a copy at that level, or the occurrence aborts the way an out-of-range write does. Which of the two is right depends on whether a program that swaps an element with itself should be a no-op or a mistake, and the text editor's buffer is the first place the question will come up.
+
+## User-defined traits and modules
+
+Two pieces of ordinary language work, with no bearing on the semantics of time, deferred for exactly that reason: they can be added when a program needs them without any law changing, and a design that lands them early is a design that spends its attention on the wrong thing while the laws are still being tested. What follows is what each would look like, so that when the need arrives the work is known.
+
+### Traits
+
+You have a `Money` type, or a `Vector`, and every sum in the program is spelled `Add a, b` where you would write `a + b`, because the numeric trait reaches only the built-in number types. Comparison is already there: a record is ordered by its fields in declaration order, so `a < b` on two `Money` values works today, with the derived order rather than one the type's author chose. The language has three built-in traits, equality, ordering and numeric, which the checker resolves at each use to the implementation for the operand type and passes as a hidden argument where a generic bound needs one. That mechanism is a trait system with no syntax for declaring a trait or adding a type to one. User-defined traits are the syntax.
+
+```prism
+trait Show a:
+    Show: fn a -> Text
+
+impl Show Vector:
+    Show = \read _: "({.x}, {.y}, {.z})"
+
+impl <a: Show> Show [a]:
+    Show = \|xs| Concat [["[", (JoinText ", ", (for xs: Show _)), "]"]]
+```
+
+The elaborator treats a trait as a record of functions, an `impl` as a value of that record, and a bound `<A: Show>` on a generic function as a hidden record argument, resolved at each call site by the operand's type. That is dictionary passing, the same thing the three built-ins do, and it is why generic code stays erased under the one-word representation: a trait method on a type variable is a call through the dictionary, which is a plain record of closures, and the value itself needs no descriptor.
+
+What traits do not do, and the exclusion is the design: no traits over the functors. There is no `Functor` or `Monad` trait, no user-defined block kind, no instance that says how `!` lifts. The sigils fix the set of functors and the lifting rule is the language's; a trait that could change how `$a + !b` elaborates would make the sentence "you can see what moves" false, because what moves would depend on an instance in scope. Traits are over plain types only, and a sigiled type (`!Int`) may not be an instance. Coherence is the simple rule: one `impl` per trait per type in a program, and overlap is an error at the point both are in scope, which the module system below makes a concrete place.
+
+What traits buy, in order of how soon it will be wanted: `Show` for debugging and labels, `Default` for a record with many fields, a `Paint` trait in the GUI library so that a container can take a list of any types with a `Paint` instance, without a closed choice of what can be drawn, and the user-defined numeric types (a `Money`, a `Px`) that make `+` mean something for them without a suffix. The last is also the one place the deferral has a visible cost today: a program with a `Vector` type writes `Add a, b` where it would write `a + b`, which is where this section began.
+
+### Modules
+
+One file plus the prelude is the whole of the current module story. Anything larger than one file needs a way to split, and anything meant to be reused by another program needs a way to say what it exports.
+
+```prism
+module Ui.Layout
+
+import Draw (Rect, Color)
+import Ui.Focus as Focus
+
+export @HBox, @VBox, Extent, Pos
+```
+
+A file is a module and names it on its first line. Imports bring in a module's exports, optionally renamed; exports list what is visible outside. Tags are already namespaced, `Ui.Button`, and a module's tag declarations live in its namespace, so `tag Button of Element` inside `module Ui` declares `Ui.Button`, which makes the tag namespaces and the module namespaces one thing. Instances are exported with their trait or their type, whichever the module defines, and the overlap check runs at import.
+
+What the typed AST needs: qualified names. Every binding in the text form is already named; a module system makes the name `Gui.Layout.HBox` instead of `HBox`, and nothing else in the form changes. That is the test for whether modules are ordinary language work: if the typed-AST text form had to gain a construct, the deferral would be hiding a semantic question. It does not.
+
+The thing deliberately left out: no module-level state and no module initialisation. A module is a set of definitions, a program is `@main`, and the first thing that happens is occurrence zero building it. A module that wanted to "run something at load" would be a widget being built by nothing, which the language does not have, and this is the same rule as "nothing happens because an element appears" applied to source structure.
+
+### The fact it waits on
+
+A program that does not fit in one file, or a library (the GUI library is the candidate) that a second program wants to import. Both will arrive during the conformance work, because the GUI library in Prism is a module the twelve programs share, and the moment it is shared it needs a name. Traits come when the second user-defined numeric type appears.
+
+## A package system
+
+A second repository wants the GUI library. Someone copies the directory. Three weeks later the two copies disagree on `Ui.Button`'s fields, a program that imports one of them is handed elements by a widget written against the other, and the first sign is a `Build` error in a tag the author never touched. A module system says how one program is split into files. A package system says how code written by someone else gets into a program, with a version, and how a program says which versions it is compatible with, so that the disagreement is a version mismatch the loader reports and not an afternoon. It comes after modules and is the last item here because it is the one with the least to do with the language and the most to do with everything around it.
+
+### What a package is
+
+A named set of modules with a version, a manifest, and its own conformance scripts:
+
+```
+name    = "gui"
+version = "0.3.0"
+prism   = ">=1.0"           # the specification version the package is written against
+depends = { "draw" = "^0.2" }
+```
+
+Modules in a package live under its namespace, so a package `gui` provides `Gui.Layout`, `Gui.Focus`, and so on, and its tag declarations are in the `Gui` namespace. That makes the tag namespaces, the module namespaces and the package namespaces one thing, and it makes "who owns `Gui.Button`" a question with one answer. A World's components are packages too: the CLI World's tags are the `cli` package's declarations, and a program that imports `Cli` is declaring which World components it needs, which a World can check at load.
+
+Two things a package may not contain, and the loader is what enforces both. No native code: a package is Prism source and the manifest and nothing else, so that the Rust and Haskell implementations read the same package and the differential test covers it. Native code lives in Worlds, which are host-language programs, and a package that needs something native declares a tag and a World provides it. And no build scripts: a package is read, not run, which is the "nothing happens because something exists" rule applied once more. Each implementation's loader rejects a package containing any file that is not Prism source or the manifest, before any of it is parsed, and both loaders run the same check from the same rule, so a package that one implementation accepts and the other refuses is a differential-test failure like any other. The package author is bound by the rule; the loader checks it; nothing downstream of the loader needs to.
+
+### Versions and the conformance suite
+
+A package's version is a claim about its exported signatures and its behaviour, and the second half of that claim is testable. A package ships its own test scripts, written in the conformance suite's script language against the Test World, and a dependent program's build runs them under the implementation it uses. A package that passes its own scripts under both implementations is a package the differential test has checked; that is a stronger guarantee than most ecosystems offer, and it costs nothing beyond what the suite already is.
+
+Resolution is the ordinary thing: a lockfile with exact versions, semantic versioning on the manifest, one version of a package per program (no diamond with two versions, because tag declarations would collide and because the one-impl-per-trait-per-type rule has to hold program-wide). The compatibility question that is Prism's own is the `prism` field: the specification version. The typed-AST text form has a version, and a package compiled against one specification version has a dump that a later frontend can read or reject, which is the same mechanism incremental compilation's cache uses.
+
+### What it must not change
+
+The language, the typed AST beyond qualified names, the laws. A program with packages is a program with more modules.
+
+### The fact it waits on
+
+The second program that wants the GUI library, from a different repository. Before that, a module system and a path on disk are enough.

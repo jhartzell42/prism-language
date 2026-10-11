@@ -1,4 +1,4 @@
-# Chapter 17: Appendices
+# Chapter 16: Appendices
 
 Four reference tables, each for a reader who already knows the design and wants one page to check against. Appendix A sets Prism beside Reflex construct by construct, because Reflex is the direct ancestor and almost every choice in Part II is a choice to keep something of Reflex's or to remove it; the notes under the table name the Reflex construct, say what Prism does instead in one worked pair, and point at the chapter that owns the argument. Appendix B lists the prior art, one entry per system, with what each contributed and which claims are quoted from a source. Appendix C is the syntax on one page. Appendix D is the element vocabulary: every tag the design uses anywhere, with its fields, its parts, its identity, and one line of meaning, so that the names stay the same from chapter to chapter and from the specification to the Worlds that implement it.
 
@@ -27,12 +27,12 @@ You have written the Reflex program where a `Dynamic` was sampled with `current`
 | `!Switch !!ee` | `switchHold never ee` | the only switch; non-prompt |
 | (none) | `switchHoldPromptly`, `switchPromptlyDyn`, `coincidence` | removed |
 | `$Join $$dd` | `join` on `Dynamic` | the same thing, prompt |
-| `dyn $x: ..` | `dyn`, `networkView` | fires in every build occurrence incl. the first |
+| `rebuild $x: ..` | `dyn`, `networkView` | fires in every build occurrence incl. the first |
 | hold of `!$B` + `$Join` | `widgetHold`, `networkHold` | the cache idiom; no primitive |
-| (none; `dyn` covers it) | `runWithReplace`, `Adjustable` | the class under `dyn` |
+| (none; `rebuild` covers it) | `runWithReplace`, `Adjustable` | the class under `rebuild` |
 | `for $m:` | `listWithKey`, `listHoldWithKey` | keyed, prompt consolidation (the Haskell implementation's one `coincidence`) |
 | `for $array:` | `simpleList` | index-keyed, discouraged in both |
-| `@started` | `getPostBuild` | a `dyn` over a constant; same occurrence everywhere |
+| `@started` | `getPostBuild` | a `rebuild` over a constant; same occurrence everywhere |
 | recursive bindings in a block | `rec` / `mdo`, `MonadFix` | implicit; P8 checks the cycle |
 | prompt-cycle error | `EventLoopException` "causality loop detected" | the same failure, reported with spans |
 | request element (`requests` + `responds`) | `Requester`, `requesting` | plain data; routed by path |
@@ -61,8 +61,8 @@ el "span" $ text label0
 ```
 
 ```prism
-# Prism: the same intent is a dyn; the label is live, and a change rebuilds
-dyn $label:
+# Prism: the same intent is a rebuild; the label is live, and a change rebuilds
+rebuild $label:
     @Label _
 ```
 
@@ -86,18 +86,18 @@ Reflex has `switchHold`, `switchHoldPromptly`, `switch` and `coincidence`, with 
 
 ```haskell
 -- Reflex: the choice is per call site, and the prompt one is the trap
-clicks <- switchHoldPromptly never =<< dyn (button <$> label)
+clicks <- switchHoldPromptly never =<< rebuild (button <$> label)
 ```
 
 ```prism
-# Prism: binding a dynamic of widgets is the dyn plus the one switch
+# Prism: binding a dynamic of widgets is the rebuild plus the one switch
 !clicks <- @Button $label
 # the click of the occurrence that relabelled the button goes to the old slot, under the old label
 ```
 
 ### There is no PostBuild
 
-`getPostBuild` fires once after the enclosing action has finished building, and "finished" is the instance's to define, so the frame differs between the root and the inside of a `dyn`; `@started` is a `dyn` over a constant, so it fires in the build occurrence everywhere. Chapter 5 ("`@started`") owns the definition. `@started` serves the one use of post-build that survives the removal of sampling, firing a request as soon as a widget exists:
+`getPostBuild` fires once after the enclosing action has finished building, and "finished" is the instance's to define, so the frame differs between the root and the inside of a `rebuild`; `@started` is a `rebuild` over a constant, so it fires in the build occurrence everywhere. Chapter 5 ("`@started`") owns the definition. `@started` serves the one use of post-build that survives the removal of sampling, firing a request as soon as a widget exists:
 
 ```haskell
 -- Reflex: in a later frame at the root; in the rebuild frame inside dyn
@@ -192,7 +192,7 @@ Each entry says what the system contributed and sorts its claims into two tiers.
 
 ### Esterel, Lustre, Lucid Synchrone
 
-**Contribution.** The instant as the unit in which nothing half-done is observable. A synchronous program is a totally ordered sequence of logical instants; a signal is present or absent in an instant and has one value there; a signal's value may not be used in its own computation in the same instant, and the compiler rejects the attempt as a causality cycle. Prism's occurrence is that instant, its glitch-freedom law is the consistency the instant gives, and P8 is a small causality analysis: a cycle is legal only through a delayed edge, which is Lustre's `pre`. The synchronous languages are designed for controllers with fixed topology; Prism keeps the law and adds `dyn` and `for`.
+**Contribution.** The instant as the unit in which nothing half-done is observable. A synchronous program is a totally ordered sequence of logical instants; a signal is present or absent in an instant and has one value there; a signal's value may not be used in its own computation in the same instant, and the compiler rejects the attempt as a causality cycle. Prism's occurrence is that instant, its glitch-freedom law is the consistency the instant gives, and P8 is a small causality analysis: a cycle is legal only through a delayed edge, which is Lustre's `pre`. The synchronous languages are designed for controllers with fixed topology; Prism keeps the law and adds `rebuild` and `for`.
 
 **Verified.** Edwards, "The Synchronous Language Esterel", Columbia lecture notes (https://www.cs.columbia.edu/~sedwards/classes/2002/w4995-02/esterel.pdf): "Esterel's model of time is synchronous like that used in hardware. Threads march in lockstep to a global clock."; "Time divided into sequence of discrete instants"; "Each signal is either present or absent in each cycle"; "Can't take multiple values within a cycle"; "A signal emitted in a cycle is visible immediately"; contradictory programs "are erroneous; the Esterel compiler refuses to compile them."; causality is a "Dynamic concept: whether there's a "guess-free proof" that concludes a signal is absent". Von Hanxleden, Kiel "Synchronous Languages" lecture 2 (https://www.informatik.uni-kiel.de/~rvh/ss20/v-synch/lectures/lecture02.pdf): "Computations considered to take no time (synchrony hypothesis)"; "A system works in perfect synchrony, if all reactions of the system are executed in zero time."; "In practice, 'zero time' means before the next interaction"; "Each signal is only present or absent in a cycle, never both"; "All writers run before any readers do"; `present A else emit A end` is "an erroneous program."; "Fully deterministic behavior". Palshikar, "An Introduction to Esterel", embedded.com (https://www.embedded.com/?p=4024644): "the underlying machine is infinitely fast and, hence, the reaction of the system to an input event is instantaneous."; the "hypothesis of atomic reactions"; "Esterel has no facility to refer to any of the past or future instants."
 
@@ -300,11 +300,11 @@ Each of these contributed one idea, named here so the reference says why and not
 | `?` | an optional | returns an optional | `?A`, `Nil` or `Some a` |
 | none | a plain value | returns a plain value | a plain type |
 
-Sigils nest leftmost-outermost: `?$user`, `!!rendered`, `@!unit`, `$@a`, `$(Key ==> $Item)`. A sigil is attached (part of the token) when followed by a name character, `_`, `"` or another sigil; otherwise it is a prefix operator over the whole expression to the end of the call: `$ x` is the constant dynamic, `@ v` the blueprint returning `v`, `@ ((!a, $b))` a bundle. `$_`, `!_`, `@_` are the pronoun at that kind. `&` is reserved for references (chapter 16); `%` does not exist. Names: `snake_case` for values, `UpperCamelCase` for functions and types; a camelCase value name such as `isClick` is a lint warning (write `is_click`), not a compile error. A dotted name such as `Gui.Button` lexes as name, `.`, name, and `Gui.*` in a pattern as name, `.`, `*`.
+Sigils nest leftmost-outermost: `?$user`, `!!rendered`, `@!unit`, `$@a`, `$(Key ==> $Item)`. A sigil is attached (part of the token) when followed by a name character, `_`, `"` or another sigil; otherwise it is a prefix operator over the whole expression to the end of the call: `$ x` is the constant dynamic, `@ v` the blueprint returning `v`, `@ ((!a, $b))` a bundle. `$_`, `!_`, `@_` are the pronoun at that kind. `&` is reserved for references (chapter 3); `%` does not exist. Names: `snake_case` for values, `UpperCamelCase` for functions and types; a camelCase value name such as `isClick` is a lint warning (write `is_click`), not a compile error. A dotted name such as `Gui.Button` lexes as name, `.`, name, and `Gui.*` in a pattern as name, `.`, `*`.
 
 ### Lexical
 
-Comments `#` to end of line. UTF-8 source. Layout is the offside rule with `:` as the block opener: a `:` ending a line opens a block on the next, more-indented line; a `:` with tokens after it on the same line opens an inline block of that line, and `else` terminates an inline block, so `if c: a else: b` is one line with two inline blocks; inside `( ) (( )) [ ] [[ ]] { }` layout is suspended and `:` is the map key separator. Inline `:` is a plain token the parser interprets, not a layout token. `;` separates statements in an inline block: `type Pair<a, b> = record: first: a; second: b`, `if c: Log x; Log y else: Log z`; a layout block never needs it. `((` and `))` open and close a tuple, `[[` and `]]` an array literal; single `( )` is grouping and single `[ ]` is indexing or an array type. A trailing lambda as the last argument absorbs the rest of the line, so `MapValues !xs, \|x| x + 1` needs no parentheses around the lambda. Keywords: `let type tag of fn match if else for dyn intercept widget record choice map array unit test ignore on then not and or key ix jx kx empty`; keywords are reserved everywhere (none is contextual); `read` and `update` are reserved for chapter 16's blocks. `never started main Switch Leftmost Join Filter Updated Distinct Element Kind` are prelude names written with their sigils where they have one: `!never`, `@started`, `@main`, `!Switch: fn !!A -> !A`, `!Leftmost: fn [!A] -> !A`, `$Join: fn $$A -> $A`, `!Filter: fn !?A -> !A`, `!Updated: fn $A -> !A` (fires with the new value in every occurrence the dynamic changes; never at build), `$Distinct: fn $A -> $A` (needs equality; suppresses equal-valued changes, which nothing else does), `@HoldFirst: fn !A -> @$A` (a dynamic that holds its event's value, with the first firing's value, in the build occurrence, as its initial value), `@Element`, `Kind: fn Element -> Kind`, and the optional default `Or: fn ?A, A -> A` (`Or ?x, default`; a function, unrelated to the keyword operator `or`). There are no prelude `Not`, `And` or boolean `Or` functions: `not`, `and`, `or` are operators. `Wrap.*` and `Checked.*` are the prelude's wrapping and checked arithmetic (`Wrap.Add: fn Nat, Nat -> Nat`, `Checked.Add: fn Nat, Nat -> ?Nat`, and likewise `Sub`, `Mul` and the `Int` forms); the bare operators abort the occurrence with an `Overflow` error.
+Comments `#` to end of line. UTF-8 source. Layout is the offside rule with `:` as the block opener: a `:` ending a line opens a block on the next, more-indented line; a `:` with tokens after it on the same line opens an inline block of that line, and `else` terminates an inline block, so `if c: a else: b` is one line with two inline blocks; inside `( ) (( )) [ ] [[ ]] { }` layout is suspended and `:` is the map key separator. Inline `:` is a plain token the parser interprets, not a layout token. `;` separates statements in an inline block: `type Pair<a, b> = record: first: a; second: b`, `if c: Log x; Log y else: Log z`; a layout block never needs it. `((` and `))` open and close a tuple, `[[` and `]]` an array literal; single `( )` is grouping and single `[ ]` is indexing or an array type. A trailing lambda as the last argument absorbs the rest of the line, so `MapValues !xs, \|x| x + 1` needs no parentheses around the lambda. Keywords: `let type tag of fn match if else for rebuild intercept widget record choice map array unit test ignore on then not and or key ix jx kx empty`; keywords are reserved everywhere (none is contextual); `read` and `update` are reserved for chapter 3's `update` blocks. `never started main Switch Leftmost Join Filter Updated Distinct Element Kind` are prelude names written with their sigils where they have one: `!never`, `@started`, `@main`, `!Switch: fn !!A -> !A`, `!Leftmost: fn [!A] -> !A`, `$Join: fn $$A -> $A`, `!Filter: fn !?A -> !A`, `!Updated: fn $A -> !A` (fires with the new value in every occurrence the dynamic changes; never at build), `$Distinct: fn $A -> $A` (needs equality; suppresses equal-valued changes, which nothing else does), `@HoldFirst: fn !A -> @$A` (a dynamic that holds its event's value, with the first firing's value, in the build occurrence, as its initial value), `@Element`, `Kind: fn Element -> Kind`, and the optional default `Or: fn ?A, A -> A` (`Or ?x, default`; a function, unrelated to the keyword operator `or`). There are no prelude `Not`, `And` or boolean `Or` functions: `not`, `and`, `or` are operators. `Wrap.*` and `Checked.*` are the prelude's wrapping and checked arithmetic (`Wrap.Add: fn Nat, Nat -> Nat`, `Checked.Add: fn Nat, Nat -> ?Nat`, and likewise `Sub`, `Mul` and the `Int` forms); the bare operators abort the occurrence with an `Overflow` error.
 
 Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` when nothing constrains it (`$n <- 0 then $n + 1 on !tick` is an `Int` counter); `-1` is an `Int`; a `Nat` is pinned by annotation; a decimal-spelled literal is `Float`. `"text"` with the escapes `\\ \" \n \t \{ \} \u{hex}` and interpolation `{expr}` only (`"hi {name}"`, `"count: {$count}"`); a `$` in text is always a literal `$`, so `"$count"` is plain text, and a literal brace is `\{` or `\}`. Interpolating a dynamic or an event lifts the whole literal (`"Count: {$count}"` is a `$Text`; `"got {!line}"` is a `!Text`). `'c'`, `unit`; `[[1, 2, 3]]` for an array, `[[]]` or `empty` for the empty one; `{k: v}` for a map, `{}` for the empty one; `((a, b))` for a tuple. The spacing rule: a token that can be prefix or binary is prefix when preceded by whitespace and followed immediately by a non-space (`F -1` passes negative one; `F - 1` subtracts). Wherever `_` is in scope (a `\` body, a `for` body, any pronoun-binding construct) a prefix `.x` is `_.x` and a prefix `[i]` is `_[i]`; with no `_` in scope it is an unbound-pronoun error, and a `.Method` that starts a continuation line is a chain step.
 
@@ -316,8 +316,8 @@ Literals: an integer-spelled literal is `Nat` or `Int` by inference, and `Int` w
 | `blueprint` | build it; discard the result |
 | `let pattern = expr` | bind a value of any kind; builds nothing |
 | `$x <- v then !e` | hold: `$x` is `v` until `!e` fires, then `!e`'s value; owned by this widget; a hold set to the value it already has still changes |
-| `!!r <- dyn $x: block` | rebuild the block on each change of `$x`; `_` is the plain value; event fires in every build occurrence |
-| `!!r <- dyn p <- $x: block` | the same, destructuring `$x`'s value with pattern `p` |
+| `!!r <- rebuild $x: block` | rebuild the block on each change of `$x`; `_` is the plain value; event fires in every build occurrence |
+| `!!r <- rebuild p <- $x: block` | the same, destructuring `$x`'s value with pattern `p` |
 | `r <- for k, $v <- $m: block` | one block per key of `$(K ==> V)`; `k` is the key and `$v` the value as a dynamic; consolidated by result kind, promptly |
 | `r <- for $m: block` | the shorthand: `key` is the key and `$_` the value as a dynamic; `for $v <- $m:` names only the value |
 | `((r, $slots)) <- intercept @child, !responses, $supplier` | the interceptor primitive (below) |
@@ -360,7 +360,7 @@ On one line, `x.F y` is method form and a spaced `.F` is not a chain step. Compa
 
 Read off the operands' sigils at every operation and application. All plain: plain. Some `$`, no `!`: a dynamic, prompt. Some `$` and one `!`: an event firing with the `!`, the dynamics read before the occurrence (tag law). Two `!` in one operation: an error naming both. Field access and indexing lift like application: `!!panes.!inbox` and `$users[id]` are fine. `@` operands are not lifted; `@` as a prefix lifts a plain value into a blueprint. `?` lifts at the plain layer like an applicative `Maybe` (`a / b + 1` is `?Nat` for `Nat` operands; `Float` division has no `?`), and `match` on a `?` is its eliminator. Lifting never crosses a sigil boundary; `!Switch` (non-prompt) and `$Join` (prompt) do. `match $x:` and `match !e:` lift like application when all arms are plain; when any arm is a blueprint the scrutinee must be plain. A derived dynamic recomputed to an equal value still changes; `$Distinct` is the one place equal values are suppressed.
 
-Binding a widget application lifts by the result: `!x <- @Button $label` is `dyn $label:` around the build with `!x` as the `!Switch` of the result; a state-returning element under a `dyn` binds as a hold of dynamics joined with `$Join`, with the first build's result as the hold's initial value; a widget application whose result is plain binds as a `$` holding the first build's value. An unannotated `let` lambda is a plain function lifted afresh at each application; a lambda mentioning `$_`, `!_` or `@_` takes that kind and is not lifted over it.
+Binding a widget application lifts by the result: `!x <- @Button $label` is `rebuild $label:` around the build with `!x` as the `!Switch` of the result; a state-returning element under a `rebuild` binds as a hold of dynamics joined with `$Join`, with the first build's result as the hold's initial value; a widget application whose result is plain binds as a `$` holding the first build's value. An unannotated `let` lambda is a plain function lifted afresh at each application; a lambda mentioning `$_`, `!_` or `@_` takes that kind and is not lifted over it.
 
 ### Lambdas and patterns
 
@@ -413,7 +413,7 @@ tag Ns.Name of Element:                  # a tag, in any module
     state: S                             # optional: the element returns $S; a value from creation
 ```
 
-Construction spells the request event as a named field: `Cli.Stdout(requests=!line)`, `Fs.File(path=p, requests=(Read on !started))`. The request event is excluded from equality, so two slots differing only in their request events are equal elements and share state. `@Element e` returns `@unit` (fields only, or requests only), `@!R` (responds), `@$S` (state, with or without requests), `@((!R, $S))` (responds and state); in a catch-all arm the result is the generic `@((!Response, $State))`, checked per slot at runtime, and inside a tag-specific arm `@Element _.element` has that tag's types. A dynamic where a field goes lifts to a `dyn` with a fresh slot per change. An event where a field goes is an error unless the field is `requests`. Responses are addressed by path; state is shared by element value. Elements never fire in the occurrence they were created; a state element has a value in it. There is no `default:` line in a tag: a World that cannot answer the oracle for a state tag makes the slot's creation an `UnsuppliedState` error, and a test gives the value with a `with` step before the build.
+Construction spells the request event as a named field: `Cli.Stdout(requests=!line)`, `Fs.File(path=p, requests=(Read on !started))`. The request event is excluded from equality, so two slots differing only in their request events are equal elements and share state. `@Element e` returns `@unit` (fields only, or requests only), `@!R` (responds), `@$S` (state, with or without requests), `@((!R, $S))` (responds and state); in a catch-all arm the result is the generic `@((!Response, $State))`, checked per slot at runtime, and inside a tag-specific arm `@Element _.element` has that tag's types. A dynamic where a field goes lifts to a `rebuild` with a fresh slot per change. An event where a field goes is an error unless the field is `requests`. Responses are addressed by path; state is shared by element value. Elements never fire in the occurrence they were created; a state element has a value in it. There is no `default:` line in a tag: a World that cannot answer the oracle for a state tag makes the slot's creation an `UnsuppliedState` error, and a test gives the value with a `with` step before the build.
 
 ### `intercept`
 
@@ -460,14 +460,14 @@ test name, @widget:
 
 The build is turn zero. Each input line is one turn including its `Defer` occurrences; independent `Defer`s fired in one occurrence are answered together. `with` may appear before the build and must for every state tag the program creates at build, since the oracle has to answer in occurrence zero. Patterns are element patterns; `errors` patterns are `Error(kind=Cycle, ..)` and the like.
 
-Transcripts and `send` targets spell paths canonically: a slot or child by its index in the parent's child list, a `dyn` generation as `#n`, a `for` key as `[k]`, and a supplier-built slot as `s/n/...` with the supplied widget's own segments after the prefix. Only slots, `dyn` generations, `for` keys and intercept children take segments; a plain widget-function application makes a widget but adds no segment, so a `@Button` whose body holds the `dyn` prints as `0/#0/0`, and the third row of a keyed list's second generation prints as `1/#1/[3]/0`.
+Transcripts and `send` targets spell paths canonically: a slot or child by its index in the parent's child list, a `rebuild` generation as `#n`, a `for` key as `[k]`, and a supplier-built slot as `s/n/...` with the supplied widget's own segments after the prefix. Only slots, `rebuild` generations, `for` keys and intercept children take segments; a plain widget-function application makes a widget but adds no segment, so a `@Button` whose body holds the `rebuild` prints as `0/#0/0`, and the third row of a keyed list's second generation prints as `1/#1/[3]/0`.
 ## D. The element vocabulary
 
 Every tag the design uses, in one place, so that a chapter, a test, a World and a library agree on the names. The language fixes the kinds (which parts a tag has) and the laws (creation rule, routing by path, identity by value); the names and fields are the vocabulary the book's examples and Worlds speak. A World accepts a subset of these natively and says which through `World.Tags`; everything else under it is Prism, as interceptors over the tags it does accept, or an `Unsupported` response.
 
 Four things apply to every row.
 
-*Fields* are plain data fixed for the slot's life; a dynamic in a field position is a `dyn` with a fresh slot per change.
+*Fields* are plain data fixed for the slot's life; a dynamic in a field position is a `rebuild` with a fresh slot per change.
 
 *Identity* is by path for responses and by element value for state, and equality of elements is the tag and the plain fields, never the request event. Two slots with equal elements observe one state, supplied once. A tag with both parts has one slot and two identities: `Net.Socket(address="db:5432")` in two places is two conversations (each slot's sends and receives are addressed to its own path) over one connection (both slots read one `Link` state, because their elements are equal). The rule is the same for every row that has both a `responds` and a `state` column, and the Identity column says "path; value" for it.
 
@@ -692,7 +692,7 @@ GUI is not a World concept. `Gui.*` is the primitive vocabulary every GUI World 
 | `Gui.Scene` | `window: Text`, `draw: [Draw]` | | | | path | *Primitive. Presence.* The draw list for the window of that title, as data in paint order, read by the World from the committed list after each turn. A picture that changes is a fresh slot per change, at the same tree position; nothing is in flight on a picture, so that is right. |
 | `Gui.Focusable` | `name: Text` | | | | path | *Primitive. Presence.* The name of the focused region and nothing else; keys do not go here but to `Gui.Window`. It lets a World show the platform focus ring, place an input method candidate window and inform a screen reader. Which name is focused, what Tab does and where the caret is are holds in the library, which emits at most one `Gui.Focusable` at a time. No rectangle: the World does no geometry. |
 | `Gui.Metrics` | `text: Text`, `font: Font` | | | `Extent` | value | *Primitive.* The width and height of a text in a font, answered synchronously from the oracle, so a layout has its measurement in the occurrence that asks. Every slot asking about the same text and font shares one answer. |
-| `Gui.Frames` | | | `Frame` | | path | *Primitive.* One `Frame(now: Instant)` per displayed frame while the slot exists, for animation. Put the slot under a `dyn` over whether anything is animating, so that when nothing is, the World stops asking for frames. |
+| `Gui.Frames` | | | `Frame` | | path | *Primitive.* One `Frame(now: Instant)` per displayed frame while the slot exists, for animation. Put the slot under a `rebuild` over whether anything is animating, so that when nothing is, the World stops asking for frames. |
 | `Ui.Label` | `text: Text` | | | | path | *Library.* Text at the position layout gives it. |
 | `Ui.Button` | `label: Text` | | `Click` | | path | *Library.* A button; responds `click` in the occurrence the library routes the press to it, which is later than the press's own occurrence. |
 | `Ui.TextInput` | `name: Text`, `text: Text`, `cursor: Nat` | | `Key` | | path | *Library.* A focusable editing region; the text and cursor are holds in the Prism widget around it, mirrored into the fields for drawing, and there is no second copy in a World. |
@@ -744,7 +744,7 @@ The process tags are what every program has, a GUI program included: its own arg
 | `Process.Args` | | | | `[Text]` | value | The program's arguments as state; one value for the whole program; an interceptor may supply a subtree different ones. |
 | `Process.Env` | | | | `Text ==> Text` | value | The environment as state; pushed if the World can see it change. |
 
-A run-to-completion helper (`@Run: fn SpawnRequest -> @$ProcessState`) is a library widget over `Process.Spawn` and `Process.Child`: fire the spawn on `@started`, hold the id, and build the child under a `dyn` over it. It is not a tag.
+A run-to-completion helper (`@Run: fn SpawnRequest -> @$ProcessState`) is a library widget over `Process.Spawn` and `Process.Child`: fire the spawn on `@started`, hold the id, and build the child under a `rebuild` over it. It is not a tag.
 
 ### The shell: `Cli.*`
 
@@ -770,10 +770,10 @@ Chapter 7 declares the persistence vocabulary; the rows are repeated here so the
 
 | Tag | Fields | Requests | Responds | State | Identity | Meaning |
 | --- | --- | --- | --- | --- | --- | --- |
-| `Defer` | | `!unit` | `unit` | | path | Answered in a later occurrence of the same turn, at most once per slot per turn; firing again after being answered in the same turn is a `DeferBackwards` error. A `Defer` reborn by a `dyn` at the same tree position counts as the same `Defer` for the once-per-turn bound; independent `Defer`s fired in one occurrence are answered together. How an interceptor answers a request itself. Every World provides it. |
+| `Defer` | | `!unit` | `unit` | | path | Answered in a later occurrence of the same turn, at most once per slot per turn; firing again after being answered in the same turn is a `DeferBackwards` error. A `Defer` reborn by a `rebuild` at the same tree position counts as the same `Defer` for the once-per-turn bound; independent `Defer`s fired in one occurrence are answered together. How an interceptor answers a request itself. Every World provides it. |
 | `Error` | `kind: ErrorKind`, `spans: [Span]`, `occurrence: Nat`, `turn: Nat`, `message: Text`, `owner: ?Path`, `path: ?Path` | | | | path | *Presence.* The error value: what a failed build or a quarantined subtree leaves in the element list, and what `errors` delivers, so one `match` reads both. One tag with the kind as a field. |
-| `errors` | | | `Error` | | path | A stream a program may subscribe to: each runtime error the World would otherwise only report, with its kind, spans and occurrence. A failed `dyn` build does not fire the `dyn`'s event and is reported here. A program cannot catch an error any other way. |
-| `World.Tags` | | | | `[Text]` | value | The tags this World accepts natively, as state, so a program can read it in occurrence zero and build under a `dyn` over it; what a library consults before deciding which interceptors to install. An interceptor supplies a sandboxed child a narrower one. The Test World's lists every tag. |
+| `errors` | | | `Error` | | path | A stream a program may subscribe to: each runtime error the World would otherwise only report, with its kind, spans and occurrence. A failed `rebuild` build does not fire the `rebuild`'s event and is reported here. A program cannot catch an error any other way. |
+| `World.Tags` | | | | `[Text]` | value | The tags this World accepts natively, as state, so a program can read it in occurrence zero and build under a `rebuild` over it; what a library consults before deciding which interceptors to install. An interceptor supplies a sandboxed child a narrower one. The Test World's lists every tag. |
 
 `Unsupported` is not a tag; it is the response a World gives, in the next turn, to a request on a tag it does not accept, so that a `Ui.Button` under a CLI World is a program-visible fact. A World component that crashes is a `Component` error through `errors`, never an `Unsupported` response. A state tag the World does not accept is an `UnsuppliedState` error raised by the runtime at the slot's creation, on the oracle's refusal, since nothing later can give it a value; a presence tag it does not accept is reported and ignored.
 

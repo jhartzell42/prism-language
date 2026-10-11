@@ -8,7 +8,7 @@ You have written the test that reaches into a component and reads its private fi
 
 So the suite is written against the run call. A test is a program and a script; the script delivers responses and pushes, which is what a World does, and checks the element list, the request firings, the result and the errors, which is what a World sees. The spec promises that these are fully determined by the inputs and the snapshots, which is the determinism law of the chapter on time, and that promise is what makes a script a test: the same script gives the same transcript under every conforming implementation, and a transcript that differs is a bug or an ambiguity, never a matter of taste.
 
-This has a consequence the language already chose for other reasons. There are no reified identifiers, no `Inspect $count`, no way to poke a hold. Suppose there were: a step `Peek $count, 2` that read a named dynamic inside the blueprint under test. Convenient for the counter. Then the counter is rewritten with the count held inside a `dyn`, and `$count` is now a name in a block the step cannot reach; or the count becomes a field of a record held under another name; or the implementation under test is the Haskell one, in which a name is a `Dynamic t Int` in an evaluator environment, and the step needs a second evaluator feature to find it. Each of those is work, and none of it tests the language. Worse, every test that peeks is a test that passes under the Test World and says nothing about any other World, because no other World can peek. A test that clicks the button and reads the label passes under the Test World and under the GUI World and under a shell written in Prism, because every one of them clicks and reads the same way. The suite tests the language, not a program's private names.
+This has a consequence the language already chose for other reasons. There are no reified identifiers, no `Inspect $count`, no way to poke a hold. Suppose there were: a step `Peek $count, 2` that read a named dynamic inside the blueprint under test. Convenient for the counter. Then the counter is rewritten with the count held inside a `rebuild`, and `$count` is now a name in a block the step cannot reach; or the count becomes a field of a record held under another name; or the implementation under test is the Haskell one, in which a name is a `Dynamic t Int` in an evaluator environment, and the step needs a second evaluator feature to find it. Each of those is work, and none of it tests the language. Worse, every test that peeks is a test that passes under the Test World and says nothing about any other World, because no other World can peek. A test that clicks the button and reads the label passes under the Test World and under the GUI World and under a shell written in Prism, because every one of them clicks and reads the same way. The suite tests the language, not a program's private names.
 
 The exclusions are as deliberate as the inclusions. The suite does not test performance or memory; a slow implementation that produces the right transcripts conforms. It does not test any World other than the Test World; a CLI World's obligations are tested per World, in the host language, in a later section. It does not test the order in which an implementation fires nodes within an occurrence, because the language only promises the observable consequences of that order: each event at most once, each dynamic changed at most once, no node seeing a prompt source before it settles. And it does not test diagnostics' wording except in the negative goldens, which are a frontend concern and say so.
 
@@ -45,7 +45,7 @@ turn 1  responses: {0/#0/0: click}
 
 A turn header names the turn and its inputs: `responses` by path, `pushes` by element value. The list is one slot per line, `path: element`, in tree order. A slot that fired its request in the turn has `requested:` after its element, then the fired values bare, in firing order, separated by `; `: `requested: Read`, `requested: "a"; "b"`, `requested: [[Send "ok", Close]]`. An array request is already an array literal, so the transcript adds no brackets of its own and every bracket in the line means an array; an occurrence boundary inside a turn, which only `Defer` causes, is marked `occurrence 2` between the parts of a turn so that a reader can see which occurrence a request fired in. The result is printed when the widget's result is a plain value or a dynamic (by its current value) and as `fired: v` or `quiet` when it is an event. An aborted occurrence prints `error: Error(kind=UnknownPath, path=0/#1/0, occurrence=1)` and no list, since the list did not change.
 
-Paths are opaque to Worlds, and the transcript still has to print them, so the transcript fixes a spelling that both implementations use: bind positions from the root joined by `/`, a `dyn` generation as `#n` from `#0`, a `for` key as `[k]` with the key printed as a value. That spelling is the chapter-2 convention and it is part of the interchange format. An implementation may represent paths however it likes inside, and the Haskell runtime's paths are nothing like the Rust runtime's, but what they print must match character for character or the differential test fails. This is a real constraint, deliberately taken: two implementations that agree on every element but number bind positions differently would be two readings of the sentence "its position in the widget tree, made of the bind positions, `for` keys and `dyn` generations", and the point of the differential test is to find exactly that kind of difference. Slots created by widgets that an interceptor's supplier built print as `s/n`, numbered in creation order within the interceptor's widget, because their position is the runtime's business and only their existence is a law.
+Paths are opaque to Worlds, and the transcript still has to print them, so the transcript fixes a spelling that both implementations use: bind positions from the root joined by `/`, a `rebuild` generation as `#n` from `#0`, a `for` key as `[k]` with the key printed as a value. That spelling is the chapter-2 convention and it is part of the interchange format. An implementation may represent paths however it likes inside, and the Haskell runtime's paths are nothing like the Rust runtime's, but what they print must match character for character or the differential test fails. This is a real constraint, deliberately taken: two implementations that agree on every element but number bind positions differently would be two readings of the sentence "its position in the widget tree, made of the bind positions, `for` keys and `rebuild` generations", and the point of the differential test is to find exactly that kind of difference. Slots created by widgets that an interceptor's supplier built print as `s/n`, numbered in creation order within the interceptor's widget, because their position is the runtime's business and only their existence is a law.
 
 Element values print as their constructor with named fields in declaration order; `Path ==> Element` fields print with their keys as paths, which is how a `Ui.VBox`'s children appear. Plain values print as Prism literals. Nothing in the transcript is implementation-specific, which is the test of whether it belongs there.
 
@@ -267,7 +267,7 @@ Those sentences have consequences a reader gets wrong the first time, and the su
 
 Chapter 2's sandbox script is the worked case: a reader who expects to see `"(reading...)"` after the build has the turn wrong, because the denial came back through a `Defer` inside turn 0. The corrected script is in the law tests below, under the `Defer` laws.
 
-One more rule about what a turn contains. A `send` whose response reaches a slot that was torn down in the same occurrence, because the input rebuilt the `dyn` around it, is delivered: the slot existed as the occurrence opened, which is what routing requires, and the old widget keeps propagating until commit. The script sees the consequences in the list after the turn, and chapter 2's relabelling button is the program that shows it.
+One more rule about what a turn contains. A `send` whose response reaches a slot that was torn down in the same occurrence, because the input rebuilt the `rebuild` around it, is delivered: the slot existed as the occurrence opened, which is what routing requires, and the old widget keeps propagating until commit. The script sees the consequences in the list after the turn, and chapter 2's relabelling button is the program that shows it.
 
 ## The law tests
 
@@ -328,7 +328,7 @@ tag Fs.Contents of Element:
     @Element Ui.Button(label=$_)
 ```
 
-`@Label` and `@Button` use the shorthand: a dynamic where a field goes lifts the element into a `dyn`, one fresh slot per change, with the button's click the `!Switch` over the generations. Chapter 2 unrolls both.
+`@Label` and `@Button` use the shorthand: a dynamic where a field goes lifts the element into a `rebuild`, one fresh slot per change, with the button's click the `!Switch` over the generations. Chapter 2 unrolls both.
 
 ### Events
 
@@ -442,7 +442,7 @@ test derived_dynamics_are_prompt, @derived_prompt:
     !b <- @Button $"Go"
     $n <- 0 then $n + 1 on !b
     let $sum = ($n + 1) + ($n * 2)
-    !built <- dyn $sum:
+    !built <- rebuild $sum:
         @ unit
     $k <- 0 then $k + 1 on !built
     @Label "builds={$k}"
@@ -454,7 +454,7 @@ test a_diamond_changes_once, @diamond:
         => expect Ui.Label(text="builds=2")
 ```
 
-`$sum` depends on `$n` by two routes. A `dyn` over it rebuilds once per change event, and the `dyn`'s own event counts the builds: one for the first build, one per click. An implementation with a glitch, where `$sum` changed once per route, would show `builds=3` after one click. This is the only way a script can count a dynamic's changes, and it is deliberately indirect: there is no step that observes a change event, because no World can.
+`$sum` depends on `$n` by two routes. A `rebuild` over it rebuilds once per change event, and the `rebuild`'s own event counts the builds: one for the first build, one per click. An implementation with a glitch, where `$sum` changed once per route, would show `builds=3` after one click. This is the only way a script can count a dynamic's changes, and it is deliberately indirect: there is no step that observes a change event, because no World can.
 
 **A hold's initial value, and adoption in the build occurrence.** `$x <- v then !e` has the value `v` before the first firing of `e`; if `e` fires in the occurrence the widget is built, `$x` changes to it then.
 
@@ -478,7 +478,7 @@ test a_hold_adopts_a_build_occurrence_firing, @hold_adopts:
 @same_value:
     !b <- @Button $"Same"
     $v <- 7 then 7 on !b
-    !built <- dyn $v:
+    !built <- rebuild $v:
         @ unit
     $k <- 0 then $k + 1 on !built
     @Label "builds={$k}"
@@ -490,7 +490,7 @@ test an_equal_value_is_still_a_change, @same_value:
         => expect Ui.Label(text="builds=2")
 ```
 
-This pins a sentence that is easy to get the wrong way round when an implementation adds a short-circuit on equality as an optimisation. A `dyn` over a hold rebuilds when the hold's event fires, and a program that does not want that filters the event.
+This pins a sentence that is easy to get the wrong way round when an implementation adds a short-circuit on equality as an optimisation. A `rebuild` over a hold rebuilds when the hold's event fires, and a program that does not want that filters the event.
 
 ### Time
 
@@ -516,16 +516,16 @@ test a_new_block_sees_the_event_that_made_it, @sees_all_of_n:
 
 The click that inserts key 0 is the click that key 0's block counts: the block behaves as though it had been built just before the click arrived. The alternative, hiding earlier firings from late subscribers, would show `0: 0` and the block would be one click behind for its whole life.
 
-**A `dyn` built in n over a dynamic that changed in n builds once, with the new value.**
+**A `rebuild` built in n over a dynamic that changed in n builds once, with the new value.**
 
 ```prism
 @nested_dyn:
     !b <- @Button $"Go"
     $n <- 0 then $n + 1 on !b
     let $tens = $n * 10
-    dyn $n:
+    rebuild $n:
         let outer = _
-        dyn $tens:
+        rebuild $tens:
             @Label "outer={$outer} inner={$_}"
         @ unit
     @ unit
@@ -539,7 +539,7 @@ test a_nested_dyn_builds_once_with_the_new_value, @nested_dyn:
         => expect_count Ui.Label(..), 1
 ```
 
-The outer `dyn` rebuilds on the click; the inner one is built inside the new block, in the same occurrence, over `$tens`, which changed in that occurrence. It sees the change event and builds with `10`. An implementation that built it with the old value and then rebuilt it would leave a `Ui.Label(text="outer=1 inner=0")` in some intermediate list, and although no script can see an intermediate list, it would also have fired the inner `dyn`'s event twice in one occurrence, which the diamond test's technique catches; this test keeps the direct form because the sentence is about the value.
+The outer `rebuild` rebuilds on the click; the inner one is built inside the new block, in the same occurrence, over `$tens`, which changed in that occurrence. It sees the change event and builds with `10`. An implementation that built it with the old value and then rebuilt it would leave a `Ui.Label(text="outer=1 inner=0")` in some intermediate list, and although no script can see an intermediate list, it would also have fired the inner `rebuild`'s event twice in one occurrence, which the diamond test's technique catches; this test keeps the direct form because the sentence is about the value.
 
 **Routing against the opened list.** An input addressed to a path in occurrence n is delivered to the slot at that path in the list as n opened; the old widget keeps propagating until commit.
 
@@ -559,7 +559,7 @@ test a_button_is_clicked_under_its_old_label, @clicker:
         => expect Ui.Button(label="Clicked 2 times")
 ```
 
-The button the script clicks is the one in the list as the turn opened. Its click moves the count, the label changes, the `dyn` inside `@Button` rebuilds, and the new slot is the one the next `send` finds. The cycle through `$label`, the `dyn`, `!Switch` and `$count` is legal because `!Switch` chooses its inner event from before the occurrence and `$count + 1` reads through a tag.
+The button the script clicks is the one in the list as the turn opened. Its click moves the count, the label changes, the `rebuild` inside `@Button` rebuilds, and the new slot is the one the next `send` finds. The cycle through `$label`, the `rebuild`, `!Switch` and `$count` is legal because `!Switch` chooses its inner event from before the occurrence and `$count + 1` reads through a tag.
 
 ### Widgets
 
@@ -600,7 +600,7 @@ A `send Ui.Button(label="Hit")` here would fail, since two slots match, and that
 @reset_on_rebuild:
     !flip <- @Button $"Flip"
     $gen <- 0 then $gen + 1 on !flip
-    dyn $gen:
+    rebuild $gen:
         !hit <- @Button $"Hit"
         $n <- 0 then $n + 1 on !hit
         @Label "gen {$_}: {$n}"
@@ -644,13 +644,13 @@ test started_is_visible_as_a_result, @started_result:
 
 The second script is the one case where `fired` holds before any `send`: the widget's result is `@started`'s event directly, with no `!Switch` between, so turn 0 is a turn in which it fired.
 
-**`@started` inside a `dyn` fires again on every rebuild.** A rebuilt widget that loads on start loads again, visibly, in the program's text.
+**`@started` inside a `rebuild` fires again on every rebuild.** A rebuilt widget that loads on start loads again, visibly, in the program's text.
 
 ```prism
 @restarter:
     !flip <- @Button $"Flip"
     $gen <- 0 then $gen + 1 on !flip
-    dyn $gen:
+    rebuild $gen:
         !started <- @started
         @Element Fs.File(path="/f", requests=(Read on !started))
     @ unit
@@ -666,13 +666,13 @@ test a_rebuild_restarts, @restarter:
 
 ### Switching
 
-**`dyn` fires in every build occurrence, including the first.** The diamond test above counts those firings; this one checks the value.
+**`rebuild` fires in every build occurrence, including the first.** The diamond test above counts those firings; this one checks the value.
 
 ```prism
 @dyn_values:
     !b <- @Button $"Go"
     $n <- 0 then $n + 1 on !b
-    !vals <- dyn $n:
+    !vals <- rebuild $n:
         @ _ * 100
     $last <- -1 then !vals
     @Label "last={$last}"
@@ -690,7 +690,7 @@ test dyn_fires_with_each_build_result, @dyn_values:
 @swallowed:
     !flip <- @Button $"Flip"
     $gen <- 0 then $gen + 1 on !flip
-    !!starts <- dyn $gen:
+    !!starts <- rebuild $gen:
         !started <- @started
         @ !started
     $heard <- 0 then $heard + 1 on !Switch !!starts
@@ -705,13 +705,13 @@ test a_switch_does_not_hear_the_birth, @swallowed:
 
 Each generation fires `!started` in the occurrence it is born, and `!Switch` adopts the generation's event at commit, so it never hears it. A block that needs its own start uses `@started` inside the block, as `@restarter` does.
 
-**`!Switch` follows the new inner event from the next occurrence.** The `@clicker` script above shows it: the second `send` reaches the rebuilt button and its click is heard. This one shows the same through a `dyn` whose generations are different widgets:
+**`!Switch` follows the new inner event from the next occurrence.** The `@clicker` script above shows it: the second `send` reaches the rebuilt button and its click is heard. This one shows the same through a `rebuild` whose generations are different widgets:
 
 ```prism
 @toggle:
     !flip <- @Button $"Flip"
     $on <- False then not $on on !flip
-    !!pressed <- dyn $on:
+    !!pressed <- rebuild $on:
         if _:
             @Label $"On"
             @ !never
@@ -739,7 +739,7 @@ test a_rebuilt_slot_is_heard_from_the_next_occurrence, @toggle:
 @join_prompt:
     !flip <- @Button $"Flip"
     $gen <- 0 then $gen + 1 on !flip
-    !$inner <- dyn $gen:
+    !$inner <- rebuild $gen:
         !hit <- @Button $"Hit"
         $n <- _ * 100 then $n + 1 on !hit
         @ $n
@@ -927,7 +927,7 @@ This is the shortest test in the suite and the one that guards the most. A World
 @Eager: fn @a -> @a = \|@child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             match _.element:
                 Ui.Button(..):
                     !started <- @started
@@ -963,7 +963,7 @@ test state_is_there_at_creation, @clock_label:
 @late_clock:
     !show <- @Button $"Show"
     $shown <- False then True on !show
-    dyn $shown:
+    rebuild $shown:
         if _:
             $t <- @Element Clock
             @Label "t={$t.value}"
@@ -1002,7 +1002,7 @@ test equal_elements_share_one_state, @two_clocks:
 @Transparent: fn @a -> @a = \|@child| @widget:
     ((result, $slots)) <- intercept @child, !down, $ \|e| @Element e
     !down <- for $slots:
-        dyn $_:
+        rebuild $_:
             ((!resp, ignore)) <- @Element _.element
             @ resp
     @ result
@@ -1193,7 +1193,7 @@ let ToMap: fn ChildInput -> Path ==> Response = \|c|
 # Re-emit every slot unchanged; route each response back under the child's path.
 @Forward: fn $(Path ==> Slot) -> @!(Path ==> Response) = \|$slots| @widget:
     for $slots:
-        dyn $_:
+        rebuild $_:
             ((!resp, ignore)) <- @Element _.element
             @ resp
 
@@ -1206,7 +1206,7 @@ let ToMap: fn ChildInput -> Path ==> Response = \|c|
     @ result
 ```
 
-`@Element Ui.VBox(children=(UiOnly $slots))` has a dynamic where a field goes, so it is a `dyn` with a fresh `Ui.VBox` slot per change of the child's `Ui.*` list, and `!child_in` is the `!Switch` over the generations. The supplier `\|e| @Element e` forwards every state element to the outer context; the `for` in `@Forward` builds one block per non-`Ui.*` child slot, each re-emitting the element and returning the response the outer context sends to it, consolidated under the child's path. `ToMap` turns a `ChildInput` into a one-entry response map, and `!Union` merges it with the forwarded responses, so a click routed through the box and a file response for a forwarded slot can land in one occurrence.
+`@Element Ui.VBox(children=(UiOnly $slots))` has a dynamic where a field goes, so it is a `rebuild` with a fresh `Ui.VBox` slot per change of the child's `Ui.*` list, and `!child_in` is the `!Switch` over the generations. The supplier `\|e| @Element e` forwards every state element to the outer context; the `for` in `@Forward` builds one block per non-`Ui.*` child slot, each re-emitting the element and returning the response the outer context sends to it, consolidated under the child's path. `ToMap` turns a `ChildInput` into a one-entry response map, and `!Union` merges it with the forwarded responses, so a click routed through the box and a file response for a forwarded slot can land in one occurrence.
 
 The library's own typed-AST dump is a golden, and `@VBox` under the Test World, with a counter inside, is program 06.
 
@@ -1258,7 +1258,7 @@ test element_roundtrip, @echo:
         => expect_top Test.Probe(name="echo", value=5)
 ```
 
-`value=$v` lifts the element into a `dyn`, so `expect_top Test.Probe(name="echo", value=5)` after the `send` is a fresh slot at generation `#1`, and the `send` of `Other` is addressed to that one. The response type is declared, so a `send` of something that is not a `Poke` is a compile error in the test file; what the program ignores is a `Poke` it has no use for.
+`value=$v` lifts the element into a `rebuild`, so `expect_top Test.Probe(name="echo", value=5)` after the `send` is a fresh slot at generation `#1`, and the `send` of `Other` is addressed to that one. The response type is declared, so a `send` of something that is not a `Poke` is a compile error in the test file; what the program ignores is a `Poke` it has no use for.
 
 **02. The counter.**
 
@@ -1352,7 +1352,7 @@ test count_and_forward, (@CountSlots @counted):
         => returns 1
 ```
 
-The child under `@Swallow` is built and its result is live, and nothing it made is in the outer list. Under `@CountSlots` the count is a dynamic field, so `Test.SlotCount` is a `dyn`, one slot per change of the child's list; the count stays `2` across the click because the child replaces a label and keeps two slots.
+The child under `@Swallow` is built and its result is live, and nothing it made is in the outer list. Under `@CountSlots` the count is a dynamic field, so `Test.SlotCount` is a `rebuild`, one slot per change of the child's list; the count stays `2` across the click because the child replaces a label and keeps two slots.
 
 **05. Forwarding twice is the identity.**
 
@@ -1603,13 +1603,13 @@ test a_response_in_the_request_turn_is_impossible, @motd:
 
 The last script looks trivial and is the creation rule in its everyday form. The refresh turn fires a request; the label is still `"(reading...)"` after it because no World can answer in the request's occurrence and the script has not answered yet. The trigger is a value, `!started | !refresh`, which a test, a mock or a gate can replace without touching the element; that is what `@started` buys over an element that loaded itself.
 
-**14. A `dyn` child's creation-occurrence output is swallowed, and a request from inside is not.**
+**14. A `rebuild` child's creation-occurrence output is swallowed, and a request from inside is not.**
 
 ```prism
 @reloader:
     !flip <- @Button $"Flip"
     $gen <- 0 then $gen + 1 on !flip
-    !!births <- dyn $gen:
+    !!births <- rebuild $gen:
         !started <- @started
         !resp <- @Element Fs.File(path="/data", requests=(Read on !started))
         $got <- "none" then "some" on !resp
@@ -1676,7 +1676,7 @@ let Show: fn Contents -> Text = \|c| match c:
 @watcher:
     !open <- @Button $"Open"
     $open <- False then True on !open
-    dyn $open:
+    rebuild $open:
         if _:
             $c <- @Element Fs.Contents(path="/cfg")
             @Label (Show $c)
@@ -1863,17 +1863,17 @@ The second line of the statement is indented more than the block's column, so it
 
 ```prism
 @w:
-    dyn $x:
+    rebuild $x:
         @Label $"a"
 @v:
     @ unit
 ```
 
 ```
-ident(@w) colon <open> kw(dyn) ident($x) colon <open> ident(@Label) sigil($) text("a") <close> <close> <sep> ident(@v) colon <open> sigil(@) kw(unit) <close>
+ident(@w) colon <open> kw(rebuild) ident($x) colon <open> ident(@Label) sigil($) text("a") <close> <close> <sep> ident(@v) colon <open> sigil(@) kw(unit) <close>
 ```
 
-Two `close`s, then a `sep` at column 0 because the top level is itself a block, then `@v`. A lexer that emitted one `close` would leave the `dyn` block open across a top-level definition, and the parser's error would point at the wrong line.
+Two `close`s, then a `sep` at column 0 because the top level is itself a block, then `@v`. A lexer that emitted one `close` would leave the `rebuild` block open across a top-level definition, and the parser's error would point at the wrong line.
 
 **An inline block and a layout block in one `match`.**
 
@@ -2019,12 +2019,12 @@ One binding per line: the name with its sigil, its type, its mark (`[build]` or 
 
 ```prism
 @Button: fn $Text -> @!Click = \|$label| @widget:
-    !!clicks <- dyn $label:
+    !!clicks <- rebuild $label:
         @Element Ui.Button(label=_)
     @ !Switch !!clicks
 
 @Label: fn $Text -> @unit = \|$text| @widget:
-    dyn $text:
+    rebuild $text:
         @Element Ui.Label(text=_)
     @ unit
 
@@ -2038,13 +2038,13 @@ One binding per line: the name with its sigil, its type, its mark (`[build]` or 
 
 ```
 @Button: fn $Text -> @!Click = \|$label| @widget:                                   @1:1
-  !!clicks: !!Click [build] g1 = dyn $label \|label| @widget:                          @2:5
+  !!clicks: !!Click [build] g1 = rebuild $label \|label| @widget:                          @2:5
     _: !Click [build] g1 = element Ui.Button{label=label} responds                     @3:9
     @ _
   @ switch !!clicks
 
 @Label: fn $Text -> @unit = \|$text| @widget:                                        @6:1
-  _: unit [build] g1 = dyn $text \|text| @widget:                                      @7:5
+  _: unit [build] g1 = rebuild $text \|text| @widget:                                      @7:5
     _: unit [build] g1 = element Ui.Label{text=text}                                   @8:9
     @ unit
   @ unit
@@ -2060,13 +2060,13 @@ One binding per line: the name with its sigil, its type, its mark (`[build]` or 
   @ _
 ```
 
-Everything the compiler chose is on the page. `-1 on !decrement` became a `map` over the event yielding an `Int` literal, because `on` returns its left operand and lifting did the rest. `|` became `leftmost`. `$count + !delta` became a `tag`, which is the one window onto the value before the occurrence, applied with `Num.Add[Int]`, because `!delta` is `Int` and inference flowed from the literal `-1` through the merge into the hold. `$count` is a cycle through that tag, so its group has a placeholder, the hold under the name `$count.hold`, and a close. The two binds, the hold and the label bind are `[build]`; the merge is `[occ]`, and so are the closures inside `map`, `tag` and `dmap`, whose marks are implied by their position. The label's interpolation is a `cat` of parts over a `dmap` of `$count`, with `ToText[Int]` rendering the number. `@Button` and `@Label` are library widgets whose single `dyn` is the programmer's; the `element` lines are the only place a tag appears. Nothing below this line decides anything about meaning, which is the sentence the golden pins.
+Everything the compiler chose is on the page. `-1 on !decrement` became a `map` over the event yielding an `Int` literal, because `on` returns its left operand and lifting did the rest. `|` became `leftmost`. `$count + !delta` became a `tag`, which is the one window onto the value before the occurrence, applied with `Num.Add[Int]`, because `!delta` is `Int` and inference flowed from the literal `-1` through the merge into the hold. `$count` is a cycle through that tag, so its group has a placeholder, the hold under the name `$count.hold`, and a close. The two binds, the hold and the label bind are `[build]`; the merge is `[occ]`, and so are the closures inside `map`, `tag` and `dmap`, whose marks are implied by their position. The label's interpolation is a `cat` of parts over a `dmap` of `$count`, with `ToText[Int]` rendering the number. `@Button` and `@Label` are library widgets whose single `rebuild` is the programmer's; the `element` lines are the only place a tag appears. Nothing below this line decides anything about meaning, which is the sentence the golden pins.
 
-The spellings, `leftmost`, `tag`, `hold`, `map`, `dmap`, `const`, `bind`, `element`, `placeholder`, `close`, `cat`, `Num.Add[Int]`, `ToText[Int]` and literals as `0:Int`, are the printer's and are frozen by the goldens; the Haskell frontend must print the same characters for the same source. Elements print as `element Ui.Button{label=label}` followed by `responds` when the tag responds, `dyn` as `dyn $x \|x| @widget:` with the block's bindings indented beneath it, `for` with its kind and whether the block can fire at birth, and `intercept` as `intercept child responses supplier`. A closure after conversion prints its capture list, `\[$total]|d| ...`, and that form is the one the lint checks.
+The spellings, `leftmost`, `tag`, `hold`, `map`, `dmap`, `const`, `bind`, `element`, `placeholder`, `close`, `cat`, `Num.Add[Int]`, `ToText[Int]` and literals as `0:Int`, are the printer's and are frozen by the goldens; the Haskell frontend must print the same characters for the same source. Elements print as `element Ui.Button{label=label}` followed by `responds` when the tag responds, `rebuild` as `rebuild $x \|x| @widget:` with the block's bindings indented beneath it, `for` with its kind and whether the block can fire at birth, and `intercept` as `intercept child responses supplier`. A closure after conversion prints its capture list, `\[$total]|d| ...`, and that form is the one the lint checks.
 
 ### What the goldens are
 
-The counter. The GUI library, whose dump shows the `dyn` under a dynamic field, the `for` in `@Forward` consolidating to an event, and the `intercept` in `@VBox`. Every integration program. And one small file per rule of the chapters on the lexical structure and on expressions: the comma rule, including `intercept @_, !Union !kid_ins, !fwd_ins` with its golden showing it parsing as `intercept(@_, Union(!kid_ins), !fwd_ins)`, which is the reason the library writes the parentheses; the precedence table, one file per adjacent pair of levels; the spacing rule; a lambda with a sigiled underscore taking that kind; an unannotated `let` lambda lifted at two call sites with different kinds; a `match` on a dynamic becoming a dynamic of the arms; `for` as an expression over a plain map; text interpolation of each primitive; a hold whose literal type is pinned only by an operand three lines away; and `not a == b`, which parses as `not (a == b)` because comparison binds tighter than `not`, so the dump is a `Bool.Not` around an `Eq` and a reader who expected `(not a) == b` sees at once that no such tree exists:
+The counter. The GUI library, whose dump shows the `rebuild` under a dynamic field, the `for` in `@Forward` consolidating to an event, and the `intercept` in `@VBox`. Every integration program. And one small file per rule of the chapters on the lexical structure and on expressions: the comma rule, including `intercept @_, !Union !kid_ins, !fwd_ins` with its golden showing it parsing as `intercept(@_, Union(!kid_ins), !fwd_ins)`, which is the reason the library writes the parentheses; the precedence table, one file per adjacent pair of levels; the spacing rule; a lambda with a sigiled underscore taking that kind; an unannotated `let` lambda lifted at two call sites with different kinds; a `match` on a dynamic becoming a dynamic of the arms; `for` as an expression over a plain map; text interpolation of each primitive; a hold whose literal type is pinned only by an operand three lines away; and `not a == b`, which parses as `not (a == b)` because comparison binds tighter than `not`, so the dump is a `Bool.Not` around an `Eq` and a reader who expected `(not a) == b` sees at once that no such tree exists:
 
 ```prism
 let same: fn Int, Int -> Bool = \|a, b| not a == b
@@ -2111,15 +2111,15 @@ error: cycle without a delay
 error: cycle without a delay
   --> dyn_cycle.prism:2:5
    |
- 2 |     !!r <- dyn $x:
+ 2 |     !!r <- rebuild $x:
    |     ^^^ `!!r` depends on `$x`
  4 |     $x <- 0 then !Switch !!r
    |     ^^ `$x` depends on `!!r`
    |
-   = `dyn` is not a delay: its event fires in the occurrence of the rebuild
+   = `rebuild` is not a delay: its event fires in the occurrence of the rebuild
 ```
 
-The third is the sentence "dyn is not a delay" as a negative golden; the cycle is legal with `!Switch` between `!!r` and the hold, and a sibling positive golden has exactly that program with the switch.
+The third is the sentence "rebuild is not a delay" as a negative golden; the cycle is legal with `!Switch` between `!!r` and the hold, and a sibling positive golden has exactly that program with the switch.
 
 ```
 error: `+~` is `Int` addition
@@ -2244,7 +2244,7 @@ Every runtime test runs with an invariant check after every occurrence, failed o
 - The action map is empty and the current height is reset. A leftover action would run at the start of the next occurrence as if it were part of it.
 - The routing table the occurrence used equals the element list as the occurrence opened, and every input delivered went to a path in that table. This is the routing law stated as a check, and it catches both routing against the updated list mid-occurrence and tearing a slot down too early.
 - Every node built during the occurrence is owned by exactly one widget, and every node torn down during it is owned by none and has no strong references into it from any subscriber list. The second half is what makes "no collector" a fact rather than a hope; the check walks the tree and the subscriber lists.
-- After a failed occurrence: the element list, every hold's value, every switch's current inner and every `dyn`'s current generation are what they were before the occurrence opened. The test that injects a panic into a closure in the middle of propagation and then checks this is the rollback test, and it runs the same check as every other test; nothing special is needed because the invariant already says what "as it was" means.
+- After a failed occurrence: the element list, every hold's value, every switch's current inner and every `rebuild`'s current generation are what they were before the occurrence opened. The test that injects a panic into a closure in the middle of propagation and then checks this is the rollback test, and it runs the same check as every other test; nothing special is needed because the invariant already says what "as it was" means.
 
 The invariant is a function in the runtime crate, compiled in tests only, and it is the one place where the runtime's internals are tested as internals. That is allowed because the invariant's items are each a sentence of the chapter on time; the quotable-test rule, below, is satisfied by the list rather than by the function's name.
 
@@ -2289,7 +2289,7 @@ The transcripts, each with what it pins:
 - *Exit codes*: a computed nonzero code; two `Process.Exit` slots firing in one turn, where the first in occurrence-then-list order is the code the process exits with; a code outside 0–255, which is an error.
 - *Output order*: two `Cli.Stdout` slots firing in one occurrence, written in list order; stdout and stderr interleaved across turns, in turn order; writes and an exit in one turn, with the writes landing first.
 - *Args and env*: a program that prints `Process.Args` and `Process.Env` from their state elements, with no arguments, several arguments, and an empty environment. Pins that both have their value in occurrence 0 from the oracle and that nothing is requested to get them.
-- *File first, then stdin*: a program that reads a file from `@started` and builds its `Cli.Stdin` slot inside a `dyn` after the response. Pins that stdin is not read until the slot exists, which also keeps the transcript free of a race.
+- *File first, then stdin*: a program that reads a file from `@started` and builds its `Cli.Stdin` slot inside a `rebuild` after the response. Pins that stdin is not read until the slot exists, which also keeps the transcript free of a race.
 - *Unsupported*: a `Ui.Button` at the root. Pins the World's error on stderr naming the interceptors the element came through, the `Unsupported` response reaching the program's slot in the next turn, and the program continuing.
 - *Signals*: with and without a `Cli.Signals` slot, by sending the process a signal from the harness. Pins OS defaults without a slot and the signal arriving as a response with one.
 - *A closed pipe*: stdout closed by the harness before a write. Pins that the write's failure comes back as a response rather than killing the process.

@@ -14,9 +14,9 @@ That split is the whole architecture. Suppose a compiler for this language were 
 
 Three consequences fall out of the thesis, and each one is a thing the compiler can stop worrying about.
 
-*The compiler never decides when anything runs.* The occurrence, the height order, the commit, catch-up for a widget built mid-occurrence: all of that is the runtime's, and a compiled widget gets it by being a widget. A `dyn` block compiled to an `IrWidget` is rebuilt by the runtime's `dynamic_widget` at the right height in the right occurrence, and the block's code does not know whether this is its first build or its hundredth. A leaf does not know what height it runs at. The compiler emits no scheduling code because there is nothing to schedule.
+*The compiler never decides when anything runs.* The occurrence, the height order, the commit, catch-up for a widget built mid-occurrence: all of that is the runtime's, and a compiled widget gets it by being a widget. A `rebuild` block compiled to an `IrWidget` is rebuilt by the runtime's `dynamic_widget` at the right height in the right occurrence, and the block's code does not know whether this is its first build or its hundredth. A leaf does not know what height it runs at. The compiler emits no scheduling code because there is nothing to schedule.
 
-*Construction is a value.* A widget function plus its captures is a thing the runtime can build from at any time: at the first build, at every `dyn` rebuild, at every `for` key's appearance, at every state supply. The compiler therefore produces blueprints as values, `IrWidget { program, block, captures }`, and the same value type serves every one of those places. This is why a `dyn` can rebuild into a blueprint of a different kind, why a supplier is a function from an element to a blueprint, and why compiled and hand-written blueprints sit side by side in one node tree.
+*Construction is a value.* A widget function plus its captures is a thing the runtime can build from at any time: at the first build, at every `rebuild` rebuild, at every `for` key's appearance, at every state supply. The compiler therefore produces blueprints as values, `IrWidget { program, block, captures }`, and the same value type serves every one of those places. This is why a `rebuild` can rebuild into a blueprint of a different kind, why a supplier is a function from an element to a blueprint, and why compiled and hand-written blueprints sit side by side in one node tree.
 
 *Construction ties knots.* Prism allows recursive bindings in a widget block and the language is strict, so a knot cannot be tied with laziness the way a Haskell `mdo` ties one. The knot is explicit: open a placeholder, build what refers to it, close it to the real node, and never sample it while it is open. The compiler's job is to place the placeholders, and the resolver's dependency analysis says exactly where: at the delayed edges, which every legal cycle has at least one of. Nothing else in the compiler is about recursion.
 
@@ -26,7 +26,7 @@ The refusals that shrink the runtime shrink the compiler. What is absent, listed
 
 *No inference over functors.* The sigils say what every name is. `$count + !delta` is an event because its operands say so, and no unification variable ever stands for "some functor". Hindley–Milner runs on the value layer, where it is principal and well understood, and never sees time. The lifting rule is a table over the operands' outermost sigils, which the elaborator looks up; it is not a search through instances.
 
-*No effect system, no monad transformer machinery.* There is one block type per functor and the set is fixed: widget blocks, `dyn`, `for`, `match`. A widget block is a `do` block without the `m`, and the compiler knows which `m` it is by the sigil on the block.
+*No effect system, no monad transformer machinery.* There is one block type per functor and the set is fixed: widget blocks, `rebuild`, `for`, `match`. A widget block is a `do` block without the `m`, and the compiler knows which `m` it is by the sigil on the block.
 
 *No reconciliation, no lifecycle analysis.* Construction is ordinary code and teardown is ownership. The compiler emits no diffing, no keys for a reconciler to match on (the keys of a `for` are the program's own), and no mount or unmount hooks, because nothing is triggered by a widget being dropped or an element appearing.
 
@@ -205,7 +205,7 @@ at end of file:
 
 This is the whole of layout, and each piece of state answers to one rule of the language chapter by its content: the stack is the column rule (a block's column is its first statement's); `pending` is the line-final-colon rule; the three comparisons are the same-column, deeper and shallower cases of the next-line rule; `Colon` is the inline-block rule; `depth` is the brackets-suspend-layout rule; a block in the middle of a statement needs nothing special, because when its `BlockClose` is emitted the next line's column is compared against the enclosing block as usual; `else` is an ordinary token the parser attaches; top level is the initial stack; blank and comment-only lines are skipped before the comparison; end of file closes everything.
 
-Two of the corpus cases are the ones that catch a wrong implementation. A dedent of two levels at once (`@a:` containing `!x <- dyn $b:` containing `@ unit`, then `@c:` at column 0) must emit two `BlockClose` tokens and then a `Sep`, which the loop does because it pops until the column matches and then falls through to the separator. And a `for`-then-merge (`| !other` at column 6 under a block at 8 inside a block at 4) must be an error naming the open columns, which the loop does because after popping to 4 the column is still not equal. An implementation that treats "less than top" as "close one block and continue the statement" gets the second case wrong and silently parses a program the language rejects.
+Two of the corpus cases are the ones that catch a wrong implementation. A dedent of two levels at once (`@a:` containing `!x <- rebuild $b:` containing `@ unit`, then `@c:` at column 0) must emit two `BlockClose` tokens and then a `Sep`, which the loop does because it pops until the column matches and then falls through to the separator. And a `for`-then-merge (`| !other` at column 6 under a block at 8 inside a block at 4) must be an error naming the open columns, which the loop does because after popping to 4 the column is still not equal. An implementation that treats "less than top" as "close one block and continue the statement" gets the second case wrong and silently parses a program the language rejects.
 
 ### The inline colon
 
@@ -225,7 +225,7 @@ inline terminator: a Sep, a BlockClose, an Else, a closing bracket at this depth
 
 A `Semi` belongs to the innermost block open where it appears. `if c: Log x; Log y` is an `if` whose inline block has two statements, and `type Pair<a, b> = record: first: a; second: b` is a record whose inline block has two fields. A field's `name: type` is not a block: in a `record` or `tag` block the parser reads a statement as a field, and the colon in it as the field's separator, so the `;` after `first: a` belongs to the record. A `match` arm's colon does open a block, so `match x: A: 1; B: 2` puts `B: 2` inside the first arm, where it is an error; a match on one line with several arms is written with layout. A layout block accepts `;` too, as a second way to start a statement on the same line, and never needs it.
 
-The same `Colon` token therefore means a one-statement block after `match` arms, `if c`, `dyn $x`, `for $m`, `@widget`, a `map:` key or a `record:` field, and means a type ascription after a pattern or inside parentheses: `let n: Nat = 0`, `Pair (x: Nat), y`. The parser knows which from what it was parsing when it met the colon, and never from spacing or position. If the inline statement itself ends in a line-final colon, the lexer has already turned that into a `BlockOpen`, and the parser's `statement` consumes the layout block as part of the inline statement, which is how `x: match y: Some v: dyn $v:` with a block under it works: each `Colon` opens an inline block whose statement ends in the next, the last is a `BlockOpen`, and the `BlockClose` after the layout block closes every inline block above it, because the terminator of an inline block includes a `BlockClose` it did not open.
+The same `Colon` token therefore means a one-statement block after `match` arms, `if c`, `rebuild $x`, `for $m`, `@widget`, a `map:` key or a `record:` field, and means a type ascription after a pattern or inside parentheses: `let n: Nat = 0`, `Pair (x: Nat), y`. The parser knows which from what it was parsing when it met the colon, and never from spacing or position. If the inline statement itself ends in a line-final colon, the lexer has already turned that into a `BlockOpen`, and the parser's `statement` consumes the layout block as part of the inline statement, which is how `x: match y: Some v: rebuild $v:` with a block under it works: each `Colon` opens an inline block whose statement ends in the next, the last is a `BlockOpen`, and the `BlockClose` after the layout block closes every inline block above it, because the terminator of an inline block includes a `BlockClose` it did not open.
 
 `else` terminates an inline block and nothing else does besides line structure, so `if c: 3 else: 4` inside parentheses parses as two inline blocks, and `if c: match x:` followed by a layout block of arms and then `else:` at the column of `if` is legal, defined, and in the corpus.
 
@@ -363,7 +363,7 @@ atom        := callable call_args?                                 # a paren-les
              | literal | '(' expr(hold) ')' | '((' expr (',' expr)+ '))'
              | '[[' (expr (',' expr)*)? ']]' | '{' map '}'
              | lambda | 'match' expr block | 'if' expr block 'else' block
-             | 'for' binders? expr block | 'dyn' expr block | 'intercept' expr ',' expr ',' expr
+             | 'for' binders? expr block | 'rebuild' expr block | 'intercept' expr ',' expr ',' expr
              | '@' 'widget' block | ctor_named | ctor_block
 callable    := sname | qname
 call_args   := expr(merge) (',' expr(merge))*                      # the ',' repeats only when in_args is clear
@@ -420,7 +420,7 @@ A step's own arguments are parsed as a call's and end at the next `ChainDot`. In
 
 **Method form.** `x.F y, z` is parsed at the postfix level: `x`, then `.` with the binary flag, then an uppercase name, then arguments as for a call, and the tree is `Call { f: F, args: [x, y, z] }`. Method form associates left: `x.F.G` is `G (F x)`.
 
-**The pronoun shorthand applies wherever `_` is in scope.** A prefix `.` before a lowercase name is a field of the pronoun, before an uppercase name the method applied to the pronoun, and a prefix `[i]` indexes the pronoun: `\.done`, `\.Len`, `\[0]`, `\not .done`, and the same inside a `for` body or a `dyn` body or a `match` arm that binds `_`. All are `Field`, `Call` and `Index` nodes over `Var(_)`. The parser does not track which constructs bind `_`: it builds these nodes wherever the lexer set the `prefix` flag, and the resolver, which owns scopes, finds the binder. Where no `_` is in scope the resolver reports "no pronoun here; `.x` means `_.x`, so write `_.x`, or put a chain step on its own line", so a stray space never quietly turns a method call into a pronoun read. A `.Method` that starts a continuation line is a `ChainDot`, never a prefix `Dot`, so indentation separates the two readings.
+**The pronoun shorthand applies wherever `_` is in scope.** A prefix `.` before a lowercase name is a field of the pronoun, before an uppercase name the method applied to the pronoun, and a prefix `[i]` indexes the pronoun: `\.done`, `\.Len`, `\[0]`, `\not .done`, and the same inside a `for` body or a `rebuild` body or a `match` arm that binds `_`. All are `Field`, `Call` and `Index` nodes over `Var(_)`. The parser does not track which constructs bind `_`: it builds these nodes wherever the lexer set the `prefix` flag, and the resolver, which owns scopes, finds the binder. Where no `_` is in scope the resolver reports "no pronoun here; `.x` means `_.x`, so write `_.x`, or put a chain step on its own line", so a stray space never quietly turns a method call into a pronoun read. A `.Method` that starts a continuation line is a `ChainDot`, never a prefix `Dot`, so indentation separates the two readings.
 
 **Record forms.** `Vector 1.0, 2.0` is an ordinary `Call` and the elaborator learns that `Vector` is a constructor. `Vector(x=1.0, y=2.0)` is `Named`, recognised because a qualified or uppercase name is followed immediately (no whitespace) by `(` and the first thing inside is `lower =`. `Vector:` followed by a block of `field: value` statements is `RecordBlock`. Element construction is the same three forms with a qualified name: `Ui.Button(label="OK")`, `Ui.Button "OK"`, `Ui.Button:` block. A tag with no fields is a bare qualified name, `Clock`, and parses as `QVar`.
 
@@ -464,7 +464,7 @@ pub struct Resolved { pub module: Module, pub refs: HashMap<NodeId, Binding>, pu
 pub enum Binding {
     Local  { block: BlockId, index: usize, kind: Sigils },   // a statement of a widget block
     Param  { lambda: NodeId, index: usize },                 // a lambda argument
-    Pronoun{ binder: NodeId },                               // _ in a lambda, dyn, for (shorthand) or match
+    Pronoun{ binder: NodeId },                               // _ in a lambda, rebuild, for (shorthand) or match
     Binder { for_node: NodeId, which: ForVar },              // a for's key or item: named by the loop, or `key` / `_` in the shorthand
     Loop   { for_node: NodeId, which: LoopVar },             // ix jx kx: the indices of an update block's loops
     LetSeq { stmt: NodeId },                                 // a let in a sequential block
@@ -479,7 +479,7 @@ Scopes nest the obvious way: module, then each item, then blocks and lambdas ins
 
 *A widget block is one scope in which every statement's names are visible everywhere in the block,* including in statements above their definition and in their own definition. A name bound twice in one block is an error, "`$count` is bound twice in this block", because the block is a set of equations and a set has one equation per name. A `let` outside a widget block, in a lambda body or a `for` body, is sequential: it sees names above it and not below, and a reference to a later `let` is "`x` is used before its definition; plain bindings are sequential".
 
-*The pronoun.* `_` is bound by the nearest enclosing lambda (`\body`), `dyn` block, `for` block or `match` arm pattern that binds it, and its sigiled forms `$_`, `!_`, `@_` name the same binder read at that kind. Inside `for $m:`, `_` is the entry's value as a plain name and `$_` is the entry as a dynamic; which of them the body uses is recorded on the binder, because the lambda rule of the language chapter says a body that mentions `$_` takes a dynamic and the elaborator reads that from the resolver's note. Only one pronoun is in scope at a time; an inner binder shadows an outer one and a program that needs both names one of them. `.x`, `.F` and `[i]` in prefix position are references to the pronoun and resolve the same way, in any of these binders; where none is in scope, they are the error the parser section gives.
+*The pronoun.* `_` is bound by the nearest enclosing lambda (`\body`), `rebuild` block, `for` block or `match` arm pattern that binds it, and its sigiled forms `$_`, `!_`, `@_` name the same binder read at that kind. Inside `for $m:`, `_` is the entry's value as a plain name and `$_` is the entry as a dynamic; which of them the body uses is recorded on the binder, because the lambda rule of the language chapter says a body that mentions `$_` takes a dynamic and the elaborator reads that from the resolver's note. Only one pronoun is in scope at a time; an inner binder shadows an outer one and a program that needs both names one of them. `.x`, `.F` and `[i]` in prefix position are references to the pronoun and resolve the same way, in any of these binders; where none is in scope, they are the error the parser section gives.
 
 *Loop binders.* `for k, $item <- $items:` names the key and the per-key dynamic, and the resolver binds each as `Binder { for_node, which }` with `ForVar` `Key` or `Item`; with one pattern before `<-` only the item is named. The shorthand `for $items:` binds `key`, a keyword, to the key, and `_` and `$_` (the pronoun) to the item. An inner shorthand `for` shadows an outer one's `key` and `_`, as inner pronoun binders always do; a body that needs both names the binders of one of them. Over an array the key binder is the index. A widget-level `for` has no index variables to count: its variables are the names the program gave it, so an outer binding cannot be captured by accident.
 
@@ -501,7 +501,7 @@ Some prelude names are not functions the compiler calls but nodes the elaborator
 | `$Join` | `join` over a dynamic of dynamics |
 | `!Leftmost` | `leftmost` over an array of events |
 | `!never` | `never` |
-| `@started` | `started` (a `dyn` over a constant, built as one node) |
+| `@started` | `started` (a `rebuild` over a constant, built as one node) |
 | `@HoldFirst` | `hold_first`: `fn !a -> @$a`, a dynamic seeded by the event's firing in the occurrence it is built |
 | `@Element` | `element`, with the tag's kind |
 | `!Updated` | `updated`: a dynamic's change event |
@@ -514,7 +514,7 @@ Everything else in the prelude is an ordinary function with an ordinary annotati
 
 ### Dependency analysis into groups
 
-For each widget block, the resolver builds a graph whose vertices are the block's statements and whose edges are references: statement `s` depends on statement `t` when `s`'s right-hand side mentions a name `t` binds, at any depth, including inside lambdas, nested blocks and the `dyn` and `for` bodies that `s` contains. References inside a nested *widget* block (a `dyn` body, a `for` body, a `\@widget:` lambda) count as references of the statement that contains them, because the nested block is built by that statement and captures from its environment. The algorithm is Tarjan's strongly connected components, emitted in reverse topological order so that every group comes after every group it depends on:
+For each widget block, the resolver builds a graph whose vertices are the block's statements and whose edges are references: statement `s` depends on statement `t` when `s`'s right-hand side mentions a name `t` binds, at any depth, including inside lambdas, nested blocks and the `rebuild` and `for` bodies that `s` contains. References inside a nested *widget* block (a `rebuild` body, a `for` body, a `\@widget:` lambda) count as references of the statement that contains them, because the nested block is built by that statement and captures from its environment. The algorithm is Tarjan's strongly connected components, emitted in reverse topological order so that every group comes after every group it depends on:
 
 ```rust
 pub struct Group { pub members: Vec<usize>, pub cyclic: bool, pub edges: Vec<Edge> }
@@ -531,7 +531,7 @@ The resolver labels edges from syntax alone, which it can do because lifting is 
 - A reference to a dynamic anywhere in the event expression of a hold `$y <- v then e` is a tag read for the same reason: the event expression is an event, and dynamics inside it are read through tags.
 - The argument of `!Switch` is `Delayed(Switch)`: the switch adopts a new inner at commit.
 - A reference to the child's element list, the second result of `intercept`, from the responses argument of the same `intercept` is `Delayed(Intercept)`: routing consults the list as the occurrence opened.
-- Every other reference is `Prompt`: a dynamic in an operation with no event (a derived dynamic reads its change event), the dynamic of a `dyn` or a `for` (rebuilt in the occurrence of the change), the argument of `$Join`, the event side of anything, a plain value.
+- Every other reference is `Prompt`: a dynamic in an operation with no event (a derived dynamic reads its change event), the dynamic of a `rebuild` or a `for` (rebuilt in the occurrence of the change), the argument of `$Join`, the event side of anything, a plain value.
 
 One edge the resolver cannot label is the one from a `for`'s collection to its consolidated event, because its label depends on whether the block fires at birth, which is a property of the block's typed form. The resolver labels it `Prompt` provisionally and the elaborator's causality check, below, relabels it after the block is elaborated. The elaborator also checks every other label against the lift it actually inserted, and a disagreement is an internal error, since both were read from the same sigils.
 
@@ -541,9 +541,9 @@ Why the resolver and not the elaborator does the grouping: the elaborator types 
 
 A cyclic group's build order is found by cutting the cycle at its delayed edges. Every legal cycle has at least one delayed edge (the causality check rejects the others), so removing all delayed edges from a group's subgraph leaves it acyclic, and the remaining prompt edges give a topological order. The targets of the removed delayed edges are the names that need a placeholder: each is referenced before its definition is built, and each is referenced only in a position that *subscribes* (a tag subscribes to a behavior and samples it at occurrence time; a switch subscribes to an event of events; routing subscribes to a list) and never in one that *samples at build*. The placeholder is opened before the group, the group is built in the order found, and the placeholder is closed to the real node after its definition's step.
 
-The counter's group is `{ $count }` with one self-edge labelled `Delayed(Tag)`. Cut it: `$count` gets a placeholder; the hold is built with its tag reading the placeholder; the placeholder is closed to the hold. A group `{ !a, !b }` where `!a = F !b` and `!b = !Switch !!c` with `!!c <- dyn $d: ... !a ...`: the delayed edge is the switch's, so `!b` gets the placeholder, `!a` is built reading it, the `dyn` is built reading `!a`, the switch is built over the `dyn`'s event, and the placeholder is closed to the switch. In each case the thing that reads the placeholder at build is a subscription, which is what the runtime's cyclic slots support, and the thing that would need the real value at build (a `dyn` over the name) is on a prompt edge and therefore comes after the close. That is the property the lint checks under the name "nothing samples a placeholder before its close", and it holds by construction of the cut.
+The counter's group is `{ $count }` with one self-edge labelled `Delayed(Tag)`. Cut it: `$count` gets a placeholder; the hold is built with its tag reading the placeholder; the placeholder is closed to the hold. A group `{ !a, !b }` where `!a = F !b` and `!b = !Switch !!c` with `!!c <- rebuild $d: ... !a ...`: the delayed edge is the switch's, so `!b` gets the placeholder, `!a` is built reading it, the `rebuild` is built reading `!a`, the switch is built over the `rebuild`'s event, and the placeholder is closed to the switch. In each case the thing that reads the placeholder at build is a subscription, which is what the runtime's cyclic slots support, and the thing that would need the real value at build (a `rebuild` over the name) is on a prompt edge and therefore comes after the close. That is the property the lint checks under the name "nothing samples a placeholder before its close", and it holds by construction of the cut.
 
-Suppose instead the compiler opened a placeholder for every member of every cyclic group, as the simplest implementation would. Then `dyn $count` inside the group would read the placeholder at build, the runtime would report "cyclic dynamic never closed", and the program, which is legal, would fail at run time with an error that names the runtime's mechanism rather than the program's cycle. Cutting at the delayed edges is what makes every legal program build.
+Suppose instead the compiler opened a placeholder for every member of every cyclic group, as the simplest implementation would. Then `rebuild $count` inside the group would read the placeholder at build, the runtime would report "cyclic dynamic never closed", and the program, which is legal, would fail at run time with an error that names the runtime's mechanism rather than the program's cycle. Cutting at the delayed edges is what makes every legal program build.
 
 ## Elaboration
 
@@ -660,7 +660,7 @@ Every operation and application is lifted by a rule read off its operands' outer
 
 The body is the plain operation with the lifted operands replaced by lambda parameters: `$count + !delta` becomes `Tag { event: !delta, dyns: [$count], body: \|d, c| Num.Add[Int] c, d }`. The elaborator builds the body as a plain `TExpr` over fresh parameters, types it at the plain layer (where `+` is resolved by the numeric trait), and wraps it. One lifted expression becomes one node: `$a * 2 + 1` is one `DMap` over `[$a]` with the body `\|a| Num.Add[Int] (Num.Mul[Int] a, 2), 1`, not a node per operator, because the elaborator lifts the maximal plain subtree, which is found by walking down until an operand is itself sigiled. `on` needs no rule: it is a binary operator returning its left operand, so `v on !e` is `Map { event: !e, body: \|_| v }` and `$v on !e` is `Tag { event: !e, dyns: [$v], body: \|_, v| v }`, by the table.
 
-`match` lifts like application: `match $x:` with plain arms is a `DMap` over `[$x]` with the match as its body; `match !e:` is a `Map`; dynamics mentioned in the arms, in their guards included, join the `dyns` of a `Tag`. A `match` with a blueprint arm requires a plain scrutinee, and the error points at `dyn`.
+`match` lifts like application: `match $x:` with plain arms is a `DMap` over `[$x]` with the match as its body; `match !e:` is a `Map`; dynamics mentioned in the arms, in their guards included, join the `dyns` of a `Tag`. A `match` with a blueprint arm requires a plain scrutinee, and the error points at `rebuild`.
 
 `if` lifts the same way, as a `DMap` or `Map` or `Tag` around a plain `If` body.
 
@@ -670,13 +670,13 @@ The body is the plain operation with the lifted operands replaced by lambda para
 
 **Interpolation lifts.** A text literal with parts is `TextCat` over its parts, each converted to `Text` by the canonical rendering of its type (`ToText[Int]` for an `Int`, the identity for `Text`, an error for anything else), and the whole is lifted by the table: `"Count: {$count}"` is `DMap { over: [$count], body: \|c| TextCat ["Count: ", ToText[Int] c] }` and `"Got {!line}"` is a `Map`: a literal that interpolates a dynamic is a dynamic, and one that interpolates an event is an event, with no sigil written on the literal. Two interpolations of different functor kinds follow the lifting rules (a dynamic and an event is an event, two events an error). `$"Increment"` is a free `$` applied to a literal with nothing to interpolate, `Const "Increment"`, a constant dynamic; the `$` is the prefix operator, not part of the token, and `$"Got {!line}"` is the sigil error because the literal is an event.
 
-**Lifting over `@`.** A blueprint operand is built, not computed over, and the one case with a meaning is the application of a widget function to a dynamic where the function wants a plain value. Take a button declared over plain text, `@Button: fn Text -> @!Click`. `@Button $label` is then an application of a widget function to a dynamic argument, and its type by the table would be `$@!Click`, a dynamic of blueprints. Binding a dynamic of blueprints with `<-` lifts to `dyn`, and the elaborator inserts the node:
+**Lifting over `@`.** A blueprint operand is built, not computed over, and the one case with a meaning is the application of a widget function to a dynamic where the function wants a plain value. Take a button declared over plain text, `@Button: fn Text -> @!Click`. `@Button $label` is then an application of a widget function to a dynamic argument, and its type by the table would be `$@!Click`, a dynamic of blueprints. Binding a dynamic of blueprints with `<-` lifts to `rebuild`, and the elaborator inserts the node:
 
 ```
 !click <- @Button $label
 ```
 
-elaborates as the binding `!click: !Click [occ] = Switch { events: Dyn { dynamic: $label, block: \|l| @widget: bind (@Button l) } }`, marked `[occ]` because its root is a graph node, the switch. The inserted block applies `@Button` to the plain value, binds it, and returns its result; the `dyn`'s event is an event of the results of each build; and the bound name is what the result kind says:
+elaborates as the binding `!click: !Click [occ] = Switch { events: Dyn { dynamic: $label, block: \|l| @widget: bind (@Button l) } }`, marked `[occ]` because its root is a graph node, the switch. The inserted block applies `@Button` to the plain value, binds it, and returns its result; the `rebuild`'s event is an event of the results of each build; and the bound name is what the result kind says:
 
 | The widget's result | The bound name | Node |
 |---|---|---|
@@ -686,13 +686,13 @@ elaborates as the binding `!click: !Click [occ] = Switch { events: Dyn { dynamic
 | `unit` | nothing bound | `Dyn ...` as a discarded bind |
 | a bundle | each component by its own kind | one `Dyn` for the whole and one projection per component, each lifted by its row above |
 
-A *bundle* is a widget result that is a tuple or record with sigiled components: `intercept`'s `@((a, $(Path ==> Slot)))`, `@Focusable`'s `@((a, !Input))`, a panel's `@((!Click, $Text))`. Functor values nest inside plain aggregates, so the result is one plain value with an event and a dynamic inside it, and a pattern bind takes it apart: `((result, $slots)) <- intercept ...` binds the bundle and then projects each component into its own name, which the text form prints as one line for the bundle, named by the pattern, and one line per component. Through the dynamic-of-blueprints lift the projections are what get lifted: `((!click, $text)) <- @Panel $cfg` with `@Panel: fn Text -> @((!Click, $Text))` becomes one `Dyn` over `$cfg` whose event fires with the bundle, then `!click` is `Switch (Map dyn \|b| b.0)` and `$text` is `Join (HoldFirst (Map dyn \|b| b.1))`, each component by its own row of the table. The `intercept` dump in the text form section shows the unlifted case.
+A *bundle* is a widget result that is a tuple or record with sigiled components: `intercept`'s `@((a, $(Path ==> Slot)))`, `@Focusable`'s `@((a, !Input))`, a panel's `@((!Click, $Text))`. Functor values nest inside plain aggregates, so the result is one plain value with an event and a dynamic inside it, and a pattern bind takes it apart: `((result, $slots)) <- intercept ...` binds the bundle and then projects each component into its own name, which the text form prints as one line for the bundle, named by the pattern, and one line per component. Through the dynamic-of-blueprints lift the projections are what get lifted: `((!click, $text)) <- @Panel $cfg` with `@Panel: fn Text -> @((!Click, $Text))` becomes one `Dyn` over `$cfg` whose event fires with the bundle, then `!click` is `Switch (Map rebuild \|b| b.0)` and `$text` is `Join (HoldFirst (Map rebuild \|b| b.1))`, each component by its own row of the table. The `intercept` dump in the text form section shows the unlifted case.
 
-`HoldFirst` is a hold whose initial value is the event's firing in the occurrence the hold is built, which exists because a `dyn` fires in its build occurrence and a widget built in n sees all of n; the runtime constructs it as a hold that takes its initial value from the catch-up read of the event it holds. A program reaches the same node by name: the prelude's `@HoldFirst: fn !a -> @$a` is an intrinsic the resolver maps to the `HoldFirst` node, so `$latest <- @HoldFirst !reading` elaborates to the binding `$latest: $T [occ] = hold_first !reading`, the same line the inserted lift prints inside `join (hold_first ...)`. The second row is the canonical cache idiom with the first build as the initial value and no one-occurrence hiccup. The elaborator inserts the `dyn` when the application's argument is a dynamic and the function's parameter is plain; an argument that is a dynamic where the parameter is `$T` is an ordinary application with no lift, which is how the book's `@Button: fn $Text -> @!Click`, written with a `dyn` inside, takes `$"Increment"` with no lift at the call site. The rule is the same for either signature: lift only where the parameter wants a plain value and gets a dynamic.
+`HoldFirst` is a hold whose initial value is the event's firing in the occurrence the hold is built, which exists because a `rebuild` fires in its build occurrence and a widget built in n sees all of n; the runtime constructs it as a hold that takes its initial value from the catch-up read of the event it holds. A program reaches the same node by name: the prelude's `@HoldFirst: fn !a -> @$a` is an intrinsic the resolver maps to the `HoldFirst` node, so `$latest <- @HoldFirst !reading` elaborates to the binding `$latest: $T [occ] = hold_first !reading`, the same line the inserted lift prints inside `join (hold_first ...)`. The second row is the canonical cache idiom with the first build as the initial value and no one-occurrence hiccup. The elaborator inserts the `rebuild` when the application's argument is a dynamic and the function's parameter is plain; an argument that is a dynamic where the parameter is `$T` is an ordinary application with no lift, which is how the book's `@Button: fn $Text -> @!Click`, written with a `rebuild` inside, takes `$"Increment"` with no lift at the call site. The rule is the same for either signature: lift only where the parameter wants a plain value and gets a dynamic.
 
-An element whose field is a dynamic is the same rule one level down: `@Element Ui.Button(label=$l)` is `@Element` applied to `Elem { tag: Ui.Button, fields: [$l] }`, the element construction is a plain record build applied to a dynamic argument, so it lifts to a `DMap` giving a `$Element`, and `@Element` applied to a `$Element` is a widget function applied to a dynamic where it wanted a plain value, so it lifts to `dyn`, which is what "a dynamic where a field goes lifts into a `dyn`, fresh slot per change" means.
+An element whose field is a dynamic is the same rule one level down: `@Element Ui.Button(label=$l)` is `@Element` applied to `Elem { tag: Ui.Button, fields: [$l] }`, the element construction is a plain record build applied to a dynamic argument, so it lifts to a `DMap` giving a `$Element`, and `@Element` applied to a `$Element` is a widget function applied to a dynamic where it wanted a plain value, so it lifts to `rebuild`, which is what "a dynamic where a field goes lifts into a `rebuild`, fresh slot per change" means.
 
-**The kind of a lambda's binder.** A lambda whose body mentions a sigiled pronoun, `$_`, `!_` or `@_`, takes a binder of that kind and is not lifted over it; the resolver has recorded which forms the body uses, and two different sigiled forms of `_` in one body is the error "`_` is read as a dynamic and as an event in one lambda". A named argument has the sigil it is written with. A lambda with no sigiled pronoun and no annotation takes a plain binder and is a plain function, lifted afresh at each application, *unless* it is checked against an expected type whose parameter has a sigil: a lambda passed to a function whose annotation says `fn $Text -> @unit`, or bound by a `let` with an annotation, takes the sigil the annotation gives. The two blocks the language builds from lambdas need no push: a `dyn`'s block takes the plain value of its dynamic, and `intercept`'s supplier is `$(fn Element -> @$State)`, a plain function under a constant `$`. This is the one place `check` pushes a type into a lambda, and it is bidirectional checking in the smallest form that works.
+**The kind of a lambda's binder.** A lambda whose body mentions a sigiled pronoun, `$_`, `!_` or `@_`, takes a binder of that kind and is not lifted over it; the resolver has recorded which forms the body uses, and two different sigiled forms of `_` in one body is the error "`_` is read as a dynamic and as an event in one lambda". A named argument has the sigil it is written with. A lambda with no sigiled pronoun and no annotation takes a plain binder and is a plain function, lifted afresh at each application, *unless* it is checked against an expected type whose parameter has a sigil: a lambda passed to a function whose annotation says `fn $Text -> @unit`, or bound by a `let` with an annotation, takes the sigil the annotation gives. The two blocks the language builds from lambdas need no push: a `rebuild`'s block takes the plain value of its dynamic, and `intercept`'s supplier is `$(fn Element -> @$State)`, a plain function under a constant `$`. This is the one place `check` pushes a type into a lambda, and it is bidirectional checking in the smallest form that works.
 
 **Lifting never crosses a sigil boundary.** `$$a + 1` is the error "cannot lift into the inner layer"; the table looks at the outermost sigil of each operand only, and the body it builds is typed at the layer beneath, where `$a` is not a number. `$Join` and `!Switch` are the flatteners, and they are nodes of their own.
 
@@ -725,7 +725,7 @@ The counter's numbers in this light: `-1` is `Int`; `+1 on !increment` has the v
 | `!R` | `Event` | `!(K ==> R)`, firing with the entries that fired |
 | `$R` | `Dynamic` | `$(K ==> R)`, changing when any entry or the key set changes |
 | `@R` | `Widget` | an error: a block returns a built widget's result, not an unbuilt blueprint |
-| a bundle | one `For` per field kind | the block is split into projections, as for `dyn` |
+| a bundle | one `For` per field kind | the block is split into projections, as for `rebuild` |
 
 Over an array the same node has `keyed: false` and `K = Nat`. Outside a widget block, `for` over a plain collection is a plain mapping and elaborates to an ordinary `App` of the prelude's `MapValues` or `Map`, with the binders (or `key` and `_` for the shorthand) as parameters of the body lambda; over a dynamic collection outside a widget block it is the error the language chapter gives.
 
@@ -741,10 +741,10 @@ A cycle in a widget block is legal exactly when it passes through a delayed edge
 
 - a dynamic in the `dyns` of a `Tag` (read before the occurrence);
 - the `events` of a `Switch` (the new inner is adopted at commit);
-- a hold's value side, which is what a tag reads, so a hold referenced through a tag is the common case of the first; the hold's change *event*, which a `DMap`, a `dyn` or a `for` over the hold reads, is prompt;
+- a hold's value side, which is what a tag reads, so a hold referenced through a tag is the common case of the first; the hold's change *event*, which a `DMap`, a `rebuild` or a `for` over the hold reads, is prompt;
 - the child list consumed by the responses of the same `intercept` (routing against the opened list).
 
-Everything else is prompt, and three things are prompt that a careful programmer might hope were not: a `dyn`'s event (it fires in the occurrence of the rebuild); a `DMap` over a hold (it reads the change event); and the dynamic of a `dyn` or a `for` (the rebuild is in the occurrence of the change). The negative golden for a cycle through `dyn` alone pins the first.
+Everything else is prompt, and three things are prompt that a careful programmer might hope were not: a `rebuild`'s event (it fires in the occurrence of the rebuild); a `DMap` over a hold (it reads the change event); and the dynamic of a `rebuild` or a `for` (the rebuild is in the occurrence of the change). The negative golden for a cycle through `rebuild` alone pins the first.
 
 The `for` edge is the one the resolver could not label. The collection's change leads promptly to the consolidated event only through what a newly born block fires at birth, because a block that existed before the occurrence contributes to the merge on its own schedule and a block born in n cannot receive a response in n. So the edge from `coll` to a `For` with `Event` consolidation is `Prompt` if the block's result event is *birth-firing* and `Delayed` otherwise, and birth-firing is a syntactic property of the typed block, computed bottom-up:
 
@@ -806,7 +806,7 @@ pub enum FunKind { Leaf, Widget }
 
 The pass walks each item, assigns ids depth-first, and for each lambda computes its free variables: the names it mentions that are bound outside it. Each free variable becomes a capture, and the body's references to it are rewritten to `Var(Capture(i))`. A free variable that is itself a capture of the enclosing lambda is `Outer(j)`, so that a closure nested two deep reaches the block's environment through its parent's capture list rather than by its own path, which keeps the invariant that every capture is resolvable from the owning node's environment in one step. Top-level names and prelude names are not captures; they are `Global(ItemId)` references resolved from the program table. Constructors and tags are not captures.
 
-`FunKind::Widget` marks a lambda whose body is a widget block: a `\@widget:` function, the block of a `dyn` or a `for`, a supplier's result. Its captures are what the block's bindings can see from outside: the enclosing block's environment entries. `FunKind::Leaf` is everything else, and a leaf's body contains no `Bind`, `Hold` or `Element`, which the lint checks.
+`FunKind::Widget` marks a lambda whose body is a widget block: a `\@widget:` function, the block of a `rebuild` or a `for`, a supplier's result. Its captures are what the block's bindings can see from outside: the enclosing block's environment entries. `FunKind::Leaf` is everything else, and a leaf's body contains no `Bind`, `Hold` or `Element`, which the lint checks.
 
 **Recursive functions refer to each other by id.** Two top-level lambdas that call each other, or a lambda that calls itself, do not capture each other; a call to a function is `App { f: Global(id) }`, and the program table owns every function. A closure record at runtime is therefore `(FunId, captures)`, where the captures are values, and no closure holds another closure except as a captured *value*, which is a plain function value built from a function id and its own captures, pointing into the program table and never back at a node. There is no way to make two closures own each other because neither holds the other; they hold ids.
 
@@ -816,7 +816,7 @@ A widget block compiles to a node, and the node has an environment: one slot per
 
 The rule, then, is about direction: a closure captures things bound *earlier* in group order, which are things built earlier, and the graph's reverse edges are weak. Every strong edge points from later to earlier in build order, so there is no strong cycle. The one exception is a cyclic group, where a later binding is referenced by an earlier one, and that is exactly where the resolver placed a placeholder; a placeholder is a weak forward reference owned by the node as a unit, closed to the real node after the group, so the loop's only strong roots are the node's placeholder slots and the loop dies with the node.
 
-Two more rules keep this true for the constructs that build at occurrence time. A `dyn` or `for` block compiled as a widget function captures from the enclosing block's environment, and the child node it builds holds handles *up* into its parent's environment, which is the allowed direction, since the parent owns the child. A supplied widget is built in the interceptor's node and captures from the supplier closure, which was built in the interceptor's block; again up. A child never holds a strong handle into a sibling or into its own descendants, because nothing in the language can name those; the resolver's scoping guarantees it.
+Two more rules keep this true for the constructs that build at occurrence time. A `rebuild` or `for` block compiled as a widget function captures from the enclosing block's environment, and the child node it builds holds handles *up* into its parent's environment, which is the allowed direction, since the parent owns the child. A supplied widget is built in the interceptor's node and captures from the supplier closure, which was built in the interceptor's block; again up. A child never holds a strong handle into a sibling or into its own descendants, because nothing in the language can name those; the resolver's scoping guarantees it.
 
 Suppose instead the compiler let a closure capture a `Dynamic` handle directly from wherever it found it, including a sibling's node under a `for`. The handle is an `Rc`; the sibling's node holds the dynamic strongly; if the sibling's dynamic is ever subscribed to the capturing closure's node strongly, the pair is a cycle nothing frees. The runtime chapter lists the leak test that pins this: a widget whose occurrence-time closure reads a sibling dynamic, dropped, must free the dynamic's node, which it does only if the capture went through the environment and the subscription was weak.
 
@@ -894,7 +894,7 @@ impl PolymorphicBlueprint<Value> for IrWidget {
 }
 ```
 
-`IrWidget` is one Rust type for every compiled blueprint: the root `@main`, a `\@widget:` function's body once applied, the block of a `dyn`, the block of a `for`, the blueprint a supplier returns. It implements the runtime's `dyn`-compatible widget trait at `Value`, so a `dyn` can rebuild into a different block on each rebuild and compiled widgets and Rust widgets sit side by side in one node tree. The runtime builds it by calling `build` with a builder for a fresh node, which is what it does for every widget, and gets back the block's result as a value. The two things that distinguish a compiled widget from a hand-written one, the program table and the environment vector, are inside `build` and invisible outside it.
+`IrWidget` is one Rust type for every compiled blueprint: the root `@main`, a `\@widget:` function's body once applied, the block of a `rebuild`, the block of a `for`, the blueprint a supplier returns. It implements the runtime's `dyn`-compatible widget trait at `Value`, so a `rebuild` can rebuild into a different block on each rebuild and compiled widgets and Rust widgets sit side by side in one node tree. The runtime builds it by calling `build` with a builder for a fresh node, which is what it does for every widget, and gets back the block's result as a value. The two things that distinguish a compiled widget from a hand-written one, the program table and the environment vector, are inside `build` and invisible outside it.
 
 A blueprint *value* in the language (a `let @b = @Button $"OK"`, the result of applying a widget function, the thing a supplier returns) is an `IrWidget` boxed as `Rc<dyn PolymorphicBlueprint<Value>>` and stored as a plain value; binding it twice builds two nodes because `build` is called twice with two builders, which is exactly what "a blueprint is a description, a node is what one bind builds" asks for.
 
@@ -956,7 +956,7 @@ One `Step` per typed-AST node kind, each one call on the builder or one construc
 | `Updated { dynamic }` | `Updated` | `dynamic.event()`: the change event is a value the dynamic already has; no node is built |
 | `Distinct { dynamic, eq }` | `Distinct` | a derived dynamic whose change event is the source's filtered by `eq old, new` against the value before the occurrence; one node, with the equality closure |
 | `Started` | `Started` | the builder's done event filtered to `unit`: fires once at `height + 1` in the build occurrence |
-| `Dyn { dynamic, block }` | `Dyn` | `dynamic.map(|v| IrWidget { block, captures: captures + [v] }).dynamic_widget()`: a dynamic of compiled blueprints handed to the runtime's `dynamic_widget`; its event is the `dyn`'s result event |
+| `Dyn { dynamic, block }` | `Dyn` | `dynamic.map(|v| IrWidget { block, captures: captures + [v] }).dynamic_widget()`: a dynamic of compiled blueprints handed to the runtime's `dynamic_widget`; its event is the `rebuild`'s result event |
 | `For { coll, block, kind }` | `For` | `coll.list_widget(|key, per_key| IrWidget { block, captures: captures + [key, per_key] }, kind)`: one child node per key, consolidated by `kind` |
 | `Element { elem, kind }` | `Element` | `builder.element(elem_value, request)`: mints the path, creates the response output if the tag responds, asks the supply context for the state dynamic if it has state, stores the request event if it requests; returns what the tag's parts imply |
 | `Intercept` | `Intercept` | `builder.bind(&InterceptWidget { child, responses, supplier })`: the child's node is marked captured, its list is the second result |
@@ -1012,7 +1012,7 @@ Every node the compiler builds gets the span of the binding it came from, throug
 
 ### The canonical node structure
 
-A hand-written Rust blueprint and a compiled one must produce the same node structure for the same program, because the conformance suite's paths are built from that structure: `0/#1/0` is the first bind's `dyn`'s second generation's first slot, whichever language wrote the blueprint. The structure the runtime chapter states, and the compiler follows: each `Bind` is one child node, in step order, with the next `Bind(i)` segment; each `Element` is one slot, sharing the counter with child binds; each `Dyn` is one child node whose generations are `Gen(g)`; each `For` is one child node whose children are `Key(k)`; an `Intercept` is one child node holding the child as its own child; a supplied widget is a child of the interceptor's node under `s/n`. The counter compiled from source and the counter written against the builder by hand give the same list with the same paths, and the milestone that proves the two tracks met is a byte-identical transcript.
+A hand-written Rust blueprint and a compiled one must produce the same node structure for the same program, because the conformance suite's paths are built from that structure: `0/#1/0` is the first bind's `rebuild`'s second generation's first slot, whichever language wrote the blueprint. The structure the runtime chapter states, and the compiler follows: each `Bind` is one child node, in step order, with the next `Bind(i)` segment; each `Element` is one slot, sharing the counter with child binds; each `Dyn` is one child node whose generations are `Gen(g)`; each `For` is one child node whose children are `Key(k)`; an `Intercept` is one child node holding the child as its own child; a supplied widget is a child of the interceptor's node under `s/n`. The counter compiled from source and the counter written against the builder by hand give the same list with the same paths, and the milestone that proves the two tracks met is a byte-identical transcript.
 
 ### What a compiled blueprint looks like at runtime
 
@@ -1056,7 +1056,7 @@ name: type [mark] group = expr @span
 - `expr` is the expression with every lift explicit, in the node grammar below.
 - `span` is `@line:col` of the binding's start in the source file; a block's own line takes the block's span.
 
-A block is printed as its header line, its bindings indented by two spaces, and its result on a final line beginning `@`. Nested widget blocks (the block of a `dyn` or a `for`, a `\@widget:` body) indent again. A placeholder line is `name: type [build] gN = placeholder` and a close line is `close name name.hold` with no type, since it defines nothing. A top-level `let` is `name: scheme = expr @span` with the scheme's bounds in angle brackets where the annotation gave them.
+A block is printed as its header line, its bindings indented by two spaces, and its result on a final line beginning `@`. Nested widget blocks (the block of a `rebuild` or a `for`, a `\@widget:` body) indent again. A placeholder line is `name: type [build] gN = placeholder` and a close line is `close name name.hold` with no type, since it defines nothing. A top-level `let` is `name: scheme = expr @span` with the scheme's bounds in angle brackets where the annotation gave them.
 
 The expression grammar, which is the typed AST's node set in prefix form:
 
@@ -1069,7 +1069,7 @@ expr  := atom
        | 'leftmost' '[' events ']' | 'never'
        | 'switch' expr | 'join' expr | 'updated' expr | 'distinct' expr expr
        | 'hold_first' expr
-       | 'dyn' expr lambda                             # lambda's body is a widget block
+       | 'rebuild' expr lambda                             # lambda's body is a widget block
        | 'for' expr kind birth lambda                  # kind: plain | event | dynamic; birth: birth | no_birth, the can-fire-at-birth flag
        | 'element' (tag '{' fields '}' | expr) parts (expr)?   # parts: the tag's, or 'generic'; then the request if any
        | 'intercept' expr expr expr
@@ -1102,12 +1102,12 @@ The source, with the two library widgets it uses:
 
 ```prism
 @Button: fn $Text -> @!Click = \|$label| @widget:
-    !!clicks <- dyn $label:
+    !!clicks <- rebuild $label:
         @Element Ui.Button(label=_)
     @ !Switch !!clicks
 
 @Label: fn $Text -> @unit = \|$text| @widget:
-    dyn $text:
+    rebuild $text:
         @Element Ui.Label(text=_)
     @ unit
 
@@ -1123,13 +1123,13 @@ The source, with the two library widgets it uses:
 
 ```
 @Button: fn $Text -> @!Click = \|$label| @widget:                                   @1:1
-  !!clicks: !!Click [build] g1 = dyn $label \|label| @widget:                          @2:5
+  !!clicks: !!Click [build] g1 = rebuild $label \|label| @widget:                          @2:5
     _: !Click [build] g1 = element Ui.Button{label=label} responds                     @3:9
     @ _
   @ switch !!clicks
 
 @Label: fn $Text -> @unit = \|$text| @widget:                                        @6:1
-  _: unit [build] g1 = dyn $text \|text| @widget:                                      @7:5
+  _: unit [build] g1 = rebuild $text \|text| @widget:                                      @7:5
     _: unit [build] g1 = element Ui.Label{text=text}                                   @8:9
     @ unit
   @ unit
@@ -1145,9 +1145,9 @@ The source, with the two library widgets it uses:
   @ _
 ```
 
-Read it as the compiler's statement of what it made of the program. `@Button` takes a dynamic and the `dyn` inside it is the programmer's; its block has one slot, `element Ui.Button{label=label} responds`, whose tag responds and does nothing else, so the binding's type is `!Click`. In `@counter`, the two binds are build-time and in their own groups. `!delta` is occurrence-time: `on` with a plain left side became a `map` over the event, the two maps are merged leftmost, and `-1` and `+1` are both `Int` because the merge unified them. `$count` is a cyclic group of one, cut at the tag: the placeholder line, the hold line reading `$count` through `tag`, and the close. `+` resolved at `Int` and prints as `Num.Add[Int]`; the hold's `0` prints as `0:Int`. The last line is a discarded bind of `@Label` applied to a derived dynamic, so it is build-time with an occurrence-time node inside. Every line says where in the source it came from.
+Read it as the compiler's statement of what it made of the program. `@Button` takes a dynamic and the `rebuild` inside it is the programmer's; its block has one slot, `element Ui.Button{label=label} responds`, whose tag responds and does nothing else, so the binding's type is `!Click`. In `@counter`, the two binds are build-time and in their own groups. `!delta` is occurrence-time: `on` with a plain left side became a `map` over the event, the two maps are merged leftmost, and `-1` and `+1` are both `Int` because the merge unified them. `$count` is a cyclic group of one, cut at the tag: the placeholder line, the hold line reading `$count` through `tag`, and the close. `+` resolved at `Int` and prints as `Num.Add[Int]`; the hold's `0` prints as `0:Int`. The last line is a discarded bind of `@Label` applied to a derived dynamic, so it is build-time with an occurrence-time node inside. Every line says where in the source it came from.
 
-After closure conversion, the same dump with `--converted` adds the capture lists, which here are all empty except the `dyn` blocks', which capture nothing either, since their argument is the only thing they use:
+After closure conversion, the same dump with `--converted` adds the capture lists, which here are all empty except the `rebuild` blocks', which capture nothing either, since their argument is the only thing they use:
 
 ```
   $count.hold: $Int [build] g4 = hold 0:Int (tag !delta [$count] \[]|d, c| Num.Add[Int] c, d)   @15:5
@@ -1175,11 +1175,11 @@ A `for` is the one node whose line says something the source does not: whether i
   @ !rows
 ```
 
-The row's result is an element's response, which the runtime routes against the list as the occurrence opened, so a new row cannot fire it at birth and the flag is `no_birth`. Replace the `@Button` with a blueprint that is a parameter of `@deletes`, whose body the elaborator cannot see, and the same line reads `for $items event birth \|_| @widget:`; so does a row that returns the event of a `dyn` or an `@started`-derived event. The flag is also what the cycle check reads for the edge from the collection to the consolidated event.
+The row's result is an element's response, which the runtime routes against the list as the occurrence opened, so a new row cannot fire it at birth and the flag is `no_birth`. Replace the `@Button` with a blueprint that is a parameter of `@deletes`, whose body the elaborator cannot see, and the same line reads `for $items event birth \|_| @widget:`; so does a row that returns the event of a `rebuild` or an `@started`-derived event. The flag is also what the cycle check reads for the edge from the collection to the consolidated event.
 
 ### The dynamic-of-blueprints lift, dumped
 
-The one place the elaborator inserts a `dyn` the programmer did not write is worth a golden of its own, because its two forms are easy to get wrong:
+The one place the elaborator inserts a `rebuild` the programmer did not write is worth a golden of its own, because its two forms are easy to get wrong:
 
 ```prism
 @panel:
@@ -1189,22 +1189,22 @@ The one place the elaborator inserts a `dyn` the programmer did not write is wor
 
 ```
 @panel: @unit                                                                         @1:1
-  !click: !Click [occ] g1 = switch (dyn (dmap [$label] \|l| Ui.Button{label=l}) \|e| @widget:     @2:5
+  !click: !Click [occ] g1 = switch (rebuild (dmap [$label] \|l| Ui.Button{label=l}) \|e| @widget:     @2:5
     _: !Click [build] g1 = element e generic
     @ _)
-  $text: $Text [occ] g2 = join (hold_first (dyn $initial \|i| @widget:                @3:5
+  $text: $Text [occ] g2 = join (hold_first (rebuild $initial \|i| @widget:                @3:5
     _: $Text [build] g1 = bind @TextInput(i)
     @ _))
   @ unit
 ```
 
-The first line is the lift of a dynamic field: the element construction became a `dmap` giving a `$Element`, `@Element` over it became a `dyn`, and the bound event is the `switch` of the `dyn`'s event, which is a graph node and so marks the binding `[occ]` even though the `dyn` inside it is construction. The inserted block's `element` is `generic`, because inside the block `e` is a plain `Element` whose tag the checker cannot see through the `dmap`; the runtime checks the slot's types per tag, as it does for every generic element. The second line is a widget function returning a dynamic, applied to a dynamic: `join` of a `hold_first` of the `dyn`, with the first build's `$Text` as the hold's initial value. A frontend that printed `hold` with some other initial, or `switch` for the second line, has read the specification differently, and the golden is where the difference shows.
+The first line is the lift of a dynamic field: the element construction became a `dmap` giving a `$Element`, `@Element` over it became a `rebuild`, and the bound event is the `switch` of the `rebuild`'s event, which is a graph node and so marks the binding `[occ]` even though the `rebuild` inside it is construction. The inserted block's `element` is `generic`, because inside the block `e` is a plain `Element` whose tag the checker cannot see through the `dmap`; the runtime checks the slot's types per tag, as it does for every generic element. The second line is a widget function returning a dynamic, applied to a dynamic: `join` of a `hold_first` of the `rebuild`, with the first build's `$Text` as the hold's initial value. A frontend that printed `hold` with some other initial, or `switch` for the second line, has read the specification differently, and the golden is where the difference shows.
 
 ### One definition for printer and parser
 
 The printer and the parser of the text form are generated from one definition, so that the two cannot drift: a table that lists each node kind, its keyword, and its operand kinds in order, from which `print(&TExpr) -> String` and `parse(&str) -> TExpr` are both derived. In Rust the table is a `derive` on the typed AST enum with attributes naming each variant's keyword, and the two functions are the derive's output; in Haskell the same table is a datatype with a pretty-printer and a parser written from one `Grammar` value. The test is a round trip: print every fixture, parse the result, compare to the original tree; parse every golden, print it, compare to the file. A text form whose printer and parser were written separately would have cases the printer emits and the parser rejects, and the first such case would be found by the Haskell frontend's author, who would then not know whether the specification or the parser was wrong.
 
-The parser of the text form exists for two consumers: the round-trip test, and hand-written fixtures. A fixture is a typed AST written by hand in this syntax, before the frontend can produce it, to drive the closure compiler against the runtime: the counter's converted dump, a `dyn` button, a `match` on a choice, a `@started` request. They are the closure compiler's first tests, and when the frontend arrives the compiled counter has to dump identically to the hand-written one, which is the check that the two were built against one reading.
+The parser of the text form exists for two consumers: the round-trip test, and hand-written fixtures. A fixture is a typed AST written by hand in this syntax, before the frontend can produce it, to drive the closure compiler against the runtime: the counter's converted dump, a `rebuild` button, a `match` on a choice, a `@started` request. They are the closure compiler's first tests, and when the frontend arrives the compiled counter has to dump identically to the hand-written one, which is the check that the two were built against one reading.
 
 ### What the text form is not
 
@@ -1247,7 +1247,7 @@ There is one tag table per program because there is one program: modules beyond 
 
 `Ui.Button(label="OK")`, `Ui.Button "OK"` and the block form all elaborate to `Elem { tag, fields, request }`: a plain record build with the tag id, fields in declaration order (named arguments reordered, positional checked for count), each field checked against its declared type with lifting over `?` stopped at the field (an element's field is plain, and `Ui.Row(height=xs[i])` is the diagnostic). A `requests` part, if the tag has one, is given as a field named `requests` holding an event, `Cli.Stdout(requests=!line)`, and is stored separately on the node because it is the one part of an element that is not plain data: it is the program's event, which the slot subscribes to, and it is excluded from the element's equality. The compiled leaf builds an `ElementValue { tag, fields: Rc<[Plain]> }` through the boxing module and pairs it with the request event handle.
 
-A tag with no fields is a bare name, `Clock`, and constructs the same way with an empty field vector. A field whose argument is a dynamic lifts the construction into a `DMap`, and `@Element` over the result lifts into a `dyn`; the compiled element inside the `dyn`'s block is `Generic`, since the block sees a plain `Element`.
+A tag with no fields is a bare name, `Clock`, and constructs the same way with an empty field vector. A field whose argument is a dynamic lifts the construction into a `DMap`, and `@Element` over the result lifts into a `rebuild`; the compiled element inside the `rebuild`'s block is `Generic`, since the block sees a plain `Element`.
 
 ### `@Element`
 
@@ -1340,10 +1340,10 @@ error: these bindings depend on each other in the same occurrence
  4 |     let $b = $a * 2
    |         ^^ depends on $a
    = a cycle in a widget block must pass through a hold's value, a tag, or a !Switch
-   = a `dyn` is not a delay: its event fires in the occurrence of the rebuild
+   = a `rebuild` is not a delay: its event fires in the occurrence of the rebuild
 ```
 
-A cycle through `dyn` alone gets the same message with the last note as its reason, and a cycle through a `for` whose row fires at birth adds: "`!deletes` fires when a key appears, because its row's result is `Delete on !started`; a row that fires at birth is a prompt path from the collection".
+A cycle through `rebuild` alone gets the same message with the last note as its reason, and a cycle through a `for` whose row fires at birth adds: "`!deletes` fires when a key appears, because its row's result is `Delete on !started`; a row that fires at birth is a prompt path from the collection".
 
 **A negative number where a subtraction was meant.** Detected in elaboration when a `Call` whose head is a plain value fails to unify with a function type and the first argument is a prefix `-` literal. Needs: the parser's `prefix` flag preserved on the literal's sign and the argument's span.
 
@@ -1407,17 +1407,17 @@ Six kinds of test cover the crate, and every one of them is a text file someone 
 
 ### Goldens
 
-Each golden is a Prism file and its typed-AST dump after elaboration, and after conversion with `--converted`. Any change to elaboration shows up as a diff a reviewer reads. The set: the counter; each program of the conformance corpus; the GUI library; the worked examples of the first chapter; and one small file per rule of the lexical and expression chapters, including the paren-less call cases (`F a, G b, c`, `F a, (G b, c)`, `G(b, c)`), tuples and arrays (`((G b, c))`, `(((G b, c), d))`, `((Size $elems) + 1)`, `[[]]`), function types (`fn (fn A -> B), [A] -> [B]`, `fn ((A, B)) -> C`), a three-step chain on continuation lines, the boolean levels (`not a == b`, `a < b and c < d`, `x or y and z`), a guarded arm and an exhaustiveness failure caused by one, `for` with named binders and with the shorthand, array patterns of each form, `@HoldFirst` written in a program, `;` in an inline `record:` and an inline `if`, the lambda shorthand (`\.done`, `\[0]`), the spacing cases, the dynamic-of-blueprints lift in both forms, `for` in each consolidation, a cyclic group cut at a switch, an interceptor with a tag-specific arm and a catch-all, a generic function with a bound, and a `test` item. What they catch, by name: a lift that changed kind (a dynamic read promptly where it should go through a tag); a literal or operator that resolved to a different numeric type; a binding that moved between `[build]` and `[occ]`; a group split or cut differently; a `for` consolidating to the wrong kind; a capture list that gained or lost an entry; a `dyn` inserted or not inserted at a widget application.
+Each golden is a Prism file and its typed-AST dump after elaboration, and after conversion with `--converted`. Any change to elaboration shows up as a diff a reviewer reads. The set: the counter; each program of the conformance corpus; the GUI library; the worked examples of the first chapter; and one small file per rule of the lexical and expression chapters, including the paren-less call cases (`F a, G b, c`, `F a, (G b, c)`, `G(b, c)`), tuples and arrays (`((G b, c))`, `(((G b, c), d))`, `((Size $elems) + 1)`, `[[]]`), function types (`fn (fn A -> B), [A] -> [B]`, `fn ((A, B)) -> C`), a three-step chain on continuation lines, the boolean levels (`not a == b`, `a < b and c < d`, `x or y and z`), a guarded arm and an exhaustiveness failure caused by one, `for` with named binders and with the shorthand, array patterns of each form, `@HoldFirst` written in a program, `;` in an inline `record:` and an inline `if`, the lambda shorthand (`\.done`, `\[0]`), the spacing cases, the dynamic-of-blueprints lift in both forms, `for` in each consolidation, a cyclic group cut at a switch, an interceptor with a tag-specific arm and a catch-all, a generic function with a bound, and a `test` item. What they catch, by name: a lift that changed kind (a dynamic read promptly where it should go through a tag); a literal or operator that resolved to a different numeric type; a binding that moved between `[build]` and `[occ]`; a group split or cut differently; a `for` consolidating to the wrong kind; a capture list that gained or lost an entry; a `rebuild` inserted or not inserted at a widget application.
 
 The layout corpus of the language chapter is the lexer's golden: a program in, its token stream out, a program's whole stream printed on one line in the conformance chapter's corpus notation, compared exactly, for both lexers.
 
 ### Negative goldens
 
-Each is a rejected program and the exact rendered diagnostic, spans included. They catch errors that get worse silently, which nothing else notices: a message that lost its fix line, a span that moved to the wrong token, a diagnostic that stopped firing because a check moved to a stage that runs later. The set is every diagnostic above, with at least one program each, and for the four that need care from the start (two events, a rejected cycle, `a -1`, the numeric operators) several programs each, covering the variants: a cycle through `dyn` alone, a cycle through a `for` with a birth-firing row, `+~` on floats, `+` on a `Nat` and an `Int`.
+Each is a rejected program and the exact rendered diagnostic, spans included. They catch errors that get worse silently, which nothing else notices: a message that lost its fix line, a span that moved to the wrong token, a diagnostic that stopped firing because a check moved to a stage that runs later. The set is every diagnostic above, with at least one program each, and for the four that need care from the start (two events, a rejected cycle, `a -1`, the numeric operators) several programs each, covering the variants: a cycle through `rebuild` alone, a cycle through a `for` with a birth-firing row, `+~` on floats, `+` on a `Nat` and an `Int`.
 
 ### Lint fixtures
 
-Hand-edited converted trees in the text form that the lint must reject, one per check: a placeholder closed twice, a placeholder never closed, a sample before close (`dyn` over a placeholder inside its group), a capture of a later binding, a capture the body does not use, a leaf containing a `bind`, a `[build]` binding whose root is a `map`, a node with a mismatched type, a `match` on a tag with no catch-all. Each fixture is parsed by the text form's parser, which is why the parser exists for hand-written input, linted, and the lint's message compared. A checker nobody has seen fail is a checker nobody knows is on.
+Hand-edited converted trees in the text form that the lint must reject, one per check: a placeholder closed twice, a placeholder never closed, a sample before close (`rebuild` over a placeholder inside its group), a capture of a later binding, a capture the body does not use, a leaf containing a `bind`, a `[build]` binding whose root is a `map`, a node with a mismatched type, a `match` on a tag with no catch-all. Each fixture is parsed by the text form's parser, which is why the parser exists for hand-written input, linted, and the lint's message compared. A checker nobody has seen fail is a checker nobody knows is on.
 
 ### Round trip
 
@@ -1427,7 +1427,7 @@ Print every golden's tree, parse the printed text, compare the trees; parse ever
 
 The test where the frontend and the runtime meet. The runtime chapter has the counter written in Rust against the builder by hand, driven by the harness through three turns (build; click Increment; click Decrement), with its transcript. The compiled counter is built from `counter.prism` through every stage of this chapter into an `IrWidget`, handed to the same harness, driven through the same three turns, and its transcript must be byte-identical: the same element list with the same paths (`0/#0/0: Ui.Button(label="Increment")`, `1/#0/0`, `2/#0/0: Ui.Label(text="Count: 0")` after build; `2/#1/0: Ui.Label(text="Count: 1")` after the first click), the same request firings (none), the same results. If the paths differ, the compiler's node structure is not the canonical one; if the label's text differs, a lift or a literal is wrong; if the transcript has an extra turn, something fired at build that should not have. One comparison proves that the two tracks were built against the same reading of the design, and it is the milestone that ends the compiler's first phase.
 
-After the counter, the same harness runs the compiled `@Forward` from the GUI library wrapped around the counter against the hand-written `Forward` fixture, which exercises `intercept`, `for`, `dyn`, generic `@Element` and the supplier; and then the twelve programs of the conformance corpus under the Test World with their scripts, which is the conformance chapter's test and not this one's, but is the first time most of the compiler's node kinds are exercised with real inputs.
+After the counter, the same harness runs the compiled `@Forward` from the GUI library wrapped around the counter against the hand-written `Forward` fixture, which exercises `intercept`, `for`, `rebuild`, generic `@Element` and the supplier; and then the twelve programs of the conformance corpus under the Test World with their scripts, which is the conformance chapter's test and not this one's, but is the first time most of the compiler's node kinds are exercised with real inputs.
 
 The unit tests the closure compiler keeps beside the transcript tests pin the runtime facts compiled code depends on, each named for the sentence it checks: `a_compiled_hold_reads_its_own_old_value_through_a_tag`, `a_compiled_dyn_fires_its_event_in_the_build_occurrence_and_every_rebuild`, `a_compiled_switch_is_non_prompt`, `a_compiled_closure_captures_by_environment_index_and_not_by_rc` (a widget whose occurrence-time closure reads a sibling dynamic; drop the node; a `Weak` to the dynamic's node fails to upgrade), `compiled_and_hand_written_widgets_sit_in_one_tree` (a Rust `Button` bound inside a compiled widget and the reverse), `a_compiled_for_consolidates_a_birth_firing_promptly`, `the_depth_guard_aborts_a_runaway_recursion_with_its_span`.
 
@@ -1442,11 +1442,11 @@ A native backend, if one is ever wanted, would not want a tree. Cranelift's inpu
 The lowering names every intermediate value in a typed register, flattens each widget block into the build order the groups already give, keeps `match` structured, and keeps closure records as the converter produced them. The counter's knot in that form:
 
 ```
-%count: $Int  = cyc.dyn "count @15:5"
+%count: $Int  = cyc.rebuild "count @15:5"
 %next:  !Int  = ev.tag_map_n %delta, [%count], @add_int
-%held:  $Int  = dyn.hold 0, %next
+%held:  $Int  = rebuild.hold 0, %next
 cyc.close %count, %held
-%label: $Text = dyn.map [%count], @fmt_count
+%label: $Text = rebuild.map [%count], @fmt_count
 ```
 
 Open, use, hold, close, then read. Every line is one runtime call, and the whole widget block is a list of such lines, one per step of `CompiledBlock.steps`. Leaves become functions in the same syntax:
@@ -1484,3 +1484,111 @@ Each of these is absent on purpose, with what its absence buys now and what addi
 *Debug stepping through leaves.* A tree of closures shows nothing in a debugger, and that is a real loss against an interpreter with an instruction pointer. What the closure compiler offers instead is a span on every node and every closure, and the errors a Prism programmer meets (a cycle, a height violation, an unknown path) fire inside the runtime's propagation with no evaluator frame on the stack in either design. A tracing mode that logs each leaf's entry with its span is a flag on the `Frame`, and is where to start if stepping is wanted.
 
 None of these changes the typed AST, which is the point of putting the line there: the frontend can be finished, frozen and matched against a second reading while every one of them is still absent, and each one, when it comes, is a consumer of the tree or a row in a table.
+
+## Native backends
+
+A Prism program ships today as source plus the frontend, and runs through the closure compiler: a `Program { functions, blocks, tags, constants }`, a table of compiled blocks and leaf functions, and an `IrWidget { program, block, captures, span }` per widget whose `build` runs its block's steps in order against a builder, each step calling a runtime constructor and writing into an environment vector. That is the right first implementation because it has one intermediate form, the typed AST, and no second syntax. It stops being the right one in two situations. A World has to ship a program without a frontend in it: a browser bundle that should not include a parser, a device that cannot afford one, or a World that receives programs it did not compile and wants to check them before building. Or the closure compiler is measured to be the cost: a leaf that runs per occurrence through a tree walk and an environment lookup, when it should be three machine instructions. This item is what a native backend is, lowered from what, and what the differential test gives once there are two ways to run the same program.
+
+### Register code as a lowering
+
+The typed AST after closure conversion says what every binding means, with every lift explicit, every lambda a function id plus a capture list, every cyclic group with its placeholder and close nodes placed, and every binding marked build-time or occurrence-time. That is the one form the lint checks and the goldens diff. A native backend starts from it and nowhere else.
+
+The tree does not say one thing flat, and a backend needs it: order. A widget function is a work order to the runtime, bind this, hold that, open a placeholder, close it, and the order is meaning. Register code is the tree with the nesting taken out of widget bodies: per function, a flat list of steps, every intermediate value in one named, typed register, builder calls in the order the builder sees them, and `match` kept structured with arms as blocks the way WebAssembly keeps control flow structured. It is a flattening of a compiled block's step list, not of a closure tree: the closure compiler's `CompiledBlock` already has its steps in group order over an environment indexed by position, and register code gives each environment position a name and a type and each leaf a signature over machine values. The counter's knot, the part of its work order where order is everything:
+
+```
+%count: $Int  = cyc.rebuild "count"
+%next:  !Int  = ev.tag_map %delta, %count, @add_int
+%held:  $Int  = rebuild.hold 0, %next
+cyc.close %count, %held
+%label: $Text = rebuild.map %count, @fmt_count
+```
+
+Open, use, hold, close, then read. The tag reads the placeholder's old value, which is what keeps the hold from feeding on itself, and the listing shows it. Each register is named once and has one type, which is an SSA value; a widget function is a basic block; a leaf is a small function over typed registers that keeps `Int`, `Nat` and `Float` as plain machine values until they cross into the runtime as `Value`.
+
+The instruction families are the runtime's combinators one for one: `bind` on a native or compiled blueprint; `ev.map`, `ev.tag_map`, `ev.leftmost`; `rebuild.hold`, `rebuild.map`, `rebuild.map2`, `rebuild.join`; a switch over an event of events; `cyc.rebuild`, `cyc.event`, `cyc.close`; slot creation, the keyed list, `dynamic_widget` and `intercept` as natives by table index; `rec.make` and `rec.match` for elements, with layouts from the tag table. A text form prints and parses from the same instruction enum, so a person can write a fixture before the lowering exists and a golden can diff the lowering's output. A verifier runs after every lowering: register types agree, every open has one close, nothing is sampled while open, every capture names a free register. It is the lint of the closure compiler applied to the flat form, and it is what makes the lowering mechanical in the only sense that matters, that a mistake in it is caught before anything is built.
+
+Lowering is where the closure compiler and the native backend part ways and it is deliberately late. Everything upstream, elaboration, closure conversion, the lint, the typed-AST text form, is shared. A bug found by the differential test is therefore in the lowering or the backend, never in the meaning, because both executors got the same typed AST.
+
+### Cranelift
+
+Cranelift is the native option for a desktop or server World that wants machine code without a C toolchain. Its IR is SSA with block parameters in place of phi nodes (from memory), which is a short step from register code: each register is a Cranelift value, a widget function is one block of calls, and a structured `match` becomes a conditional branch or a jump table on the tag with one block per arm and a join block taking the arm's result as a parameter. The frontend builder crate does the SSA construction (from memory); the emitter never writes a phi.
+
+Every runtime call goes through a shim, one `extern` function per combinator, instantiated at `Value`:
+
+```rust
+pub type Leaf2 = unsafe extern "C-unwind" fn(
+    env: *const Value, a: *const Value, b: *const Value, out: *mut Value,
+) -> bool;
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C-unwind" fn prism_event_tag_map(
+    e: *const Event<Value>, d: *const Dynamic<Value>,
+    f: Leaf2, env: *const Rc<[Value]>,
+) -> *mut Event<Value> {
+    // clone env; call e.tag_map with a closure that calls f
+}
+```
+
+(The `"C-unwind"` ABI string and the `#[unsafe(no_mangle)]` attribute spelling are from memory; whichever spellings the toolchain in use takes, the requirement is the one below: a Rust panic must be able to cross the emitted frame.)
+
+The closure the shim builds holds a function pointer and a captures array, which is the closure record the typed AST already produces with the function id turned into an address. A compiled blueprint is a `Blueprint` whose `build` calls the emitted build function and whose output is `Value`, so it sits inside a `rebuild` beside closure-compiled and native blueprints and the runtime cannot tell them apart.
+
+The contract on emitted code is two rules, and the shim is the only place they are checked: emitted code borrows values through pointers and never owns one, so reference counts change only in Rust; and it initialises `out` exactly when it returns true. Emitted frames therefore own nothing and need unwind tables but no landing pads. A panic inside a leaf, an `Int` overflow, raises in Rust, unwinds through the emitted frame (which the unwinding ABI permits and the plain C ABI does not, from memory), and is caught by the runtime's `catch_unwind` like any other, which is what keeps the occurrence abort (the errors chapter) working unchanged under a native backend. Build-time handles that emitted code receives belong in an arena the Rust adapter owns for the length of `build`, so a panic mid-build drops them on the Rust side.
+
+Cranelift has no wasm backend (from memory; its targets are the common native architectures). A browser World runs the closure compiler, which it would anyway because a playground that compiles Prism in the page needs the frontend there. Cranelift also offers a JIT, which is what a REPL or the hot reload item later in this chapter would use if the closure compiler's build time were ever the thing in the way; it is not expected to be.
+
+### Emitted Rust
+
+The other native option is to print the register code as Rust: each register a `let`, each structured `match` a Rust `match`, each builder call the same call the closure compiler makes, and each widget function a `build` method on a generated type implementing the runtime's blueprint trait. The output compiles with the runtime into one binary, and `rustc` inlines across the boundary, so a leaf that adds two integers is an add with an overflow check and nothing else. This is the backend for shipping: one `cargo build` produces a World with its program inside it and no frontend.
+
+`rustc` checks the emitter's Rust and nothing else: that the generated code type-checks against the runtime's API. It does not check Prism's meaning. An emitter that writes `wrapping_add` where Prism means checked addition, or swaps the operands of a leftmost merge, produces Rust that compiles and a program that is wrong, and nothing in the Rust toolchain can say so. That is why emitted Rust is a differential backend and not an oracle: its correctness comes from running the suite and matching the closure compiler's transcripts, the same as Cranelift's.
+
+### Other targets
+
+LLVM is one possible target, and the only one that would reach every World including the browser, since the runtime's own wasm build goes through LLVM (from memory, by way of `rustc`). The form it would take is clear: the register code prints almost directly as LLVM IR, with each widget function a list of calls into the same unwinding shim and each leaf a function over `i64` and `double`. The pin on an LLVM version, the toolchain in the edit loop, and a second unsafe surface are costs that nothing yet justifies, and a program that has to be native on the desktop and also run in a browser is served by Cranelift for one and the closure compiler for the other. If a native backend is ever built, it starts from the register code and picks its target then; the choice of target is the last decision, not the first.
+
+Bytecode is a different question and a smaller one. If compiled code ever has to outlive the process that compiled it, cached builds, precompiled libraries, a World that loads programs, the format is a serialization of the converted typed AST with a version and a load-time lint, decoded back into the tree the closure compiler already takes. Nothing has to be designed for that beyond a version field.
+
+### What the differential test gives
+
+The conformance suite runs each program under the Test World and records its transcript. With two executors of the same typed AST, every program in the suite runs under both and the transcripts are diffed, exactly as they are between the Rust and Haskell implementations. This is the reason a second backend is cheap to trust.
+
+A mismatch between the closure compiler and a native backend is in the lowering, the emitter or the shim, because both executors share everything above the typed AST. A mismatch between the Rust implementation (either executor) and the Haskell one is in a frontend or in the semantics as one of them understood it. Those two diffs localise a bug to one of three places before anyone reads a line of code. And the suite's programs are the specification's programs, so a native backend that passes it has been checked against the laws, not against the closure compiler's accidents. The register code's text form adds a third, cheaper check: goldens on the lowering's output, compared through a normalising printer so that renamed registers do not show as diffs, catch a lowering change as a diff someone reads before any backend has run it.
+
+### What it must not change, and what triggers it
+
+The typed AST is the form everything is checked against, and no backend may need something from the frontend that the typed AST does not say. Transcripts are unchanged. The occurrence abort still works, which is the unwinding requirement on every shim. The runtime's API does not grow a second entry point for native code; the shim is a client of the API the closure compiler uses.
+
+The trigger is one of the two situations the section opened with: a World that has to ship without the frontend, or a profile under a real World where the closure compiler's leaves are the cost after the value representation has been fixed. The first is the likelier, and it points at emitted Rust. Until one of them arrives, register code is a stage with no consumer, and a stage with no consumer is a form that drifts.
+
+## Incremental compilation
+
+You change a label in one widget and wait for the whole program to be re-elaborated. For the suite's programs that wait is unmeasurable. For a program the size of a real application with a GUI library under it, it is the edit loop, and the edit loop is the thing a language is judged on by the people who use it every day. Incremental compilation is making the frontend redo only what the edit touched. It is deferred because the typed AST was designed so that it needs nothing new, and the argument that this is true is the item.
+
+### The unit
+
+The typed AST's text form is one binding per line: name, sigil, type, mark, group, expression with every lift explicit, span. A top-level definition elaborates to a set of such lines and depends on the types of the top-level names it uses and nothing else about them. That makes the top-level definition the unit of incremental work, and its interface the types of its free top-level names.
+
+The pipeline per definition is lex, parse, resolve, elaborate, convert, lint, compile. The first three are per file and cheap. Elaboration is per definition given the types of its dependencies, because Hindley–Milner on the value layer needs the type of each free name and the sigil of each is in the name. Conversion and the lint are per definition. The closure compiler produces one `CompiledBlock` per widget block and one `CompiledFunction` per leaf in the `Program`'s tables, indexed by position, which is per definition too once the tables are appended per definition and the indices are stable across an edit (a recompiled definition reuses its old slots and a new one appends). So the dependency graph of the incremental build is the dependency graph of top-level names, and it is already computed by the resolver for the group analysis.
+
+### The sketch
+
+A query-based build (the `salsa` crate is the implementation choice; that it and `rustc`'s own build work this way is from memory): every stage is a function from inputs to output, memoised by a fingerprint of its inputs, and an edit invalidates exactly the queries whose inputs changed.
+
+- `parse(file)` depends on the file's text.
+- `resolve(file)` depends on `parse(file)` and the export lists of imported modules.
+- `signature(name)` depends on the definition's annotation, which is why top-level annotations are required: the signature of a definition is readable without elaborating its body, so an edit to a body never invalidates its dependents.
+- `elaborate(name)` depends on `parse`, `resolve`, and `signature` of every free name.
+- `convert(name)`, `lint(name)`, `compile(name)` depend on the stage before.
+
+An edit to a widget's body re-elaborates that definition and recompiles its blocks and leaves in place, and nothing else, because its signature did not change. An edit to a signature re-elaborates its dependents, which the resolver's graph names. The typed-AST text form is the cache: each definition's elaborated lines are written beside the source with their fingerprint, so a cold start with an unchanged file reads the cache and skips to compile.
+
+The cross-cutting checks are the part that needs care. Exhaustiveness and the cycle check are per definition, since both work on one block's graph. Trait coherence and tag uniqueness are per program, but they are checks over tables that are themselves incremental (each module contributes its instances and tags; the check is over the union), and a violation is reported at the import that caused it. Nothing in the frontend needs whole-program information that cannot be expressed as a union of per-module tables, which is the property that makes the module design above and the incremental design here the same design.
+
+### What it must not change
+
+The output: the typed AST of an incrementally built program is byte-identical to a clean build's, and the goldens check it, since the golden test is exactly "elaborate this program and diff the dump." A test that builds every suite program clean and then incrementally after a no-op edit, a body edit and a signature edit, and diffs the dumps, is the whole correctness test. Transcripts cannot change because the typed AST did not.
+
+### The fact it waits on
+
+An edit loop someone notices. Not before, because the memoisation adds a fingerprint to every stage and a cache to every build, and a frontend that is fast enough clean is simpler without them.
