@@ -2005,7 +2005,7 @@ let g = \match _:
 kw(let) ident(g) eq lambda kw(match) ident(_) colon <open> arrayopen ident(head) comma dotdot ident(rest) arrayclose colon <open> ident(head) <close> <sep> arrayopen arrayclose colon <open> nat(0) <close> <close>
 ```
 
-`[[` and `]]` are one token each, as in the array literal, and `[[]]` is an `arrayopen` and an `arrayclose` with nothing between. `..rest` is `dotdot` and a name, not a field access and not two `dot`s. A sibling entry pins that `a[b[0]]` ends in two `rbracket`s, because `]]` is an array close only when an `arrayopen` is open.
+`[[` and `]]` are one token each, as in the array literal, and `[[]]` is an `arrayopen` and an `arrayclose` with nothing between. `..rest` is `dotdot` and a name, not a field access and not two `dot`s. A sibling entry pins that `a[b[0]]` ends in two `rbracket`s: its two opens do not touch, so by chapter 3's pairing rule its two closes are two closes, however they are spaced.
 
 The corpus has about forty entries, the eight kinds above and their variants: a block opened mid-statement by `for $x:` and closed by the next statement; an `else` at the column of its `if`; a `match` whose arms are all inline; a text literal with an interpolated `{expr}` containing a colon, and one with an interpolation that holds another text literal; a line with only a comment inside a block, which neither opens nor closes nor continues anything; a tab in leading whitespace, which is an error with a span. The corpus is also the first differential test: the Rust and Haskell lexers are run over every entry and the token files diffed, before either implementation has a parser.
 
