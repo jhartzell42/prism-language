@@ -6,7 +6,7 @@ Fourteen programs, from a counter to a shell that hosts other programs, each one
 
 Occurrences are numbered from zero. Occurrence 0 is the build of the program; nothing is delivered to it. From then on every occurrence is opened by the World with a set of inputs, each one addressed to a slot by its path, all simultaneous. A walkthrough says, for each occurrence: the inputs; the events that fire and the derived dynamics that change, in dependency order, which is the only order the language promises; the holds that commit at the end; and the element list the World reads afterwards.
 
-Paths are opaque to a World and the chapter needs a way to write them down, so here is one. A path is the chain of bind positions from the root, written with `/`: the first widget bound in `@main` is `0`, the second is `1`; a `rebuild` adds its generation as `#n`, starting at `#0` for the first build; a `for` adds its key as `[k]`. The Increment button of the counter below ends up at `0/#0/0`: the first bind in `@counter`, generation zero of the `rebuild` inside `@Button`, the first slot in that generation. Holds and `let`s do not take a bind position; only widgets do, and `@started` is a widget, so it takes one even though it creates no slot. A slot created by a widget that an interceptor's supplier built is written `s/n`, with `n` counting the supplier-built widgets in creation order in the interceptor's widget, followed by the supplied widget's own segments; its position in the widget is the runtime's business, and only its existence is a law.
+Paths are opaque to a World and the chapter needs a way to write them down, so here is one. A path is the chain of bind positions from the root, written with `/`: the first widget bound in `@main` is `0`, the second is `1`; a `rebuild` adds its generation as `#n`, starting at `#0` for the first build; a `for` adds its key as `[k]`. The Increment button of the counter below ends up at `0/#0/0`: the first bind in `@counter`, generation zero of the `rebuild` inside `@Button`, the first slot in that generation. Holds and `let`s do not take a bind position; only widgets do, and `@started` is a widget, so it takes one even though it creates no slot. A widget block bound at position `p` numbers its own binds under `p`, which is why `@TextInput`'s two parts below are `3/0` and `3/1/...`; a `rebuild`, a `for` or an `@Element` bound at `p` is one segment, `p/#0/0` or `p/[k]/...` or `p`, not two, because the position is the thing itself and not a block around it. So a widget function's insides can never renumber its caller's slots, and an interceptor's routing by path prefix is stable across any change inside a child. A slot created by a widget that an interceptor's supplier built is written `s/n`, with `n` counting the supplier-built widgets in creation order in the interceptor's widget, followed by the supplied widget's own segments; its position in the widget is the runtime's business, and only its existence is a law.
 
 Element lists are written one slot per line as `path: element`. A tag with no `responds` and no `state` is a presence element, there to be seen and nothing else. A slot whose request fired in the occurrence has `requested:` after it, then the fired values in firing order, each written as the Prism literal it is and separated by `; `, with no brackets of the transcript's own: `requested: Read`, `requested: [[Send "ok", Close]]`, `requested: "a"; "b"`. An array request is already an array literal, so wrapping the list in brackets would stack three of them; the separator keeps every bracket in the line meaning an array.
 
@@ -58,6 +58,14 @@ tag Ui.Button of Element:
 A label has a text and does nothing; a button has a label and responds with a click. Both have plain fields, fixed for the life of the slot, which is the rule for every element: a label whose text changes is, to the World, a new label at the same spot. The two library widgets below are how a program with a dynamic label gets one anyway. The dynamic lifts the element into a `rebuild`, which builds a fresh slot per change, and the click a button returns is a `!Switch` over the generations:
 
 ```prism
+@Label: fn $Text -> @unit = \@Element Ui.Label(text=$_)
+
+@Button: fn $Text -> @!Click = \@Element Ui.Button(label=$_)
+```
+
+A dynamic where a plain field goes lifts the element into a `rebuild`: a fresh slot per change, and for a button a `!Switch` over the generations' clicks. Written out, that is what each of these means:
+
+```prism
 @Label: fn $Text -> @unit = \@widget:
     rebuild $_:
         @Element Ui.Label(text=_)
@@ -69,7 +77,7 @@ A label has a text and does nothing; a button has a label and responds with a cl
     @ !Switch !!clicks
 ```
 
-Inside the `rebuild` block `_` is the label as a plain value, because inside one build it never changes; a change rebuilds the block. These two widgets are written out in full here so that nothing in the walkthroughs is hidden; the specification lets you write `@Element Ui.Button(label=$_)` directly and means exactly this. Example 4 is the same construction unrolled with a cycle through it.
+Inside the `rebuild` block `_` is the label as a plain value, because inside one build it never changes; a change rebuilds the block. The expansions are here so that nothing in the walkthroughs is hidden, and the library uses the one-line forms, which matters for paths: the shorthand is one bind and one position, so a `@Button` at position `0` prints `0/#0/0`, while the written-out block, bound yourself, would be a widget block at `0` with a `rebuild` as its first bind, `0/0/#0/0`. Example 4 is the same construction unrolled with a cycle through it.
 
 ## 1. The counter
 
