@@ -499,7 +499,7 @@ This pins a sentence that is easy to get the wrong way round when an implementat
 ```prism
 @sees_all_of_n:
     !add <- @Button $"Add"
-    $keys <- {} then (Insert $keys, Size $keys, unit) on !add
+    $keys <- {} then (Insert $keys, (Size $keys), unit) on !add
     for $keys:
         $hits <- 0 then $hits + 1 on !add
         @Label "{$key}: {$hits}"
@@ -844,7 +844,7 @@ test state_survives_a_neighbours_removal, @tallies:
 ```prism
 @new_key_seen:
     !add <- @Button $"Add"
-    $keys <- {} then (Insert $keys, Size $keys, unit) on !add
+    $keys <- {} then (Insert $keys, (Size $keys), unit) on !add
     !starts <- for $keys:
         !started <- @started
         @ key on !started
