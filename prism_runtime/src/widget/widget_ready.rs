@@ -72,10 +72,11 @@ impl WidgetReadyEvent {
 impl EventImpl<Arc<WidgetNode>> for WidgetReadyEvent {
     fn subscribe(
         &self,
+        runtime: &Runtime,
         cb: Weak<dyn EventCallback<Arc<WidgetNode>>>,
     ) -> Option<Value<Arc<WidgetNode>>> {
         self.subscribers
-            .add_subscriber(self.weak_self.clone(), None, cb)
+            .add_subscriber(runtime, self.weak_self.clone(), None, cb)
     }
 
     fn height(&self) -> usize {
@@ -100,7 +101,7 @@ impl SubscriptionEvent<Arc<WidgetNode>> for WidgetReadyEvent {
         unreachable!("WidgetReadyEvents have no outgoing subscription logic")
     }
 
-    fn handle_already_fired(&self, _: Value<Self::Inner>, _: Self::Tag) {
+    fn handle_already_fired(&self, _: &Runtime, _: Value<Self::Inner>, _: Self::Tag) {
         unreachable!("WidgetReadyEvents have no outgoing subscription logic")
     }
 }

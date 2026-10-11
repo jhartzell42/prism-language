@@ -18,7 +18,7 @@ impl WidgetBuilder<'_> {
         let (cycle_handle, both_event_in) = self.add_cyclic_event(name);
         let new_value = both_event_in
             .filter_map(move |x: PrismArc<(Value<A>, Value<B>)>| Some(f(x.0.clone(), x.1.clone())));
-        let dynamic = Dynamic::hold(initial, new_value);
+        let dynamic = Dynamic::hold(self.runtime(), initial, new_value);
         let both_event_out = update.tag_map(
             |update, old| Some(PrismArc::new((old, update))),
             dynamic.clone(),

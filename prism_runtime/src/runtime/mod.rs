@@ -12,7 +12,6 @@
 //! begins.
 
 use std::{
-    cell::{Cell, RefCell},
     collections::BTreeMap,
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::Mutex,
@@ -23,15 +22,6 @@ mod tests;
 
 // TODO: Should we have any guarantees that we don't mix runtimes?
 
-thread_local! {
-    pub(crate) static CURRENT_HEIGHT: Cell<Option<usize>> = const { Cell::new(None) };
-    static DEFERRED: RefCell<Vec<(usize, Box<dyn Action>)>> = const { RefCell::new(Vec::new()) };
-    pub(crate) static CLEAR_AT_END: RefCell<Vec<Box<dyn FnOnce()>>> = const { RefCell::new(Vec::new()) };
-}
-
-pub(crate) fn defer(height: usize, action: impl Action + 'static) {
-    DEFERRED.with_borrow_mut(|deferred| deferred.push((height, Box::new(action))));
-}
 
 /// This represents an instance of a reactive graph.
 pub struct Runtime(pub(crate) Mutex<RuntimeInner>);
@@ -39,6 +29,9 @@ pub struct Runtime(pub(crate) Mutex<RuntimeInner>);
 pub(crate) struct RuntimeInner {
     actions: BTreeMap<usize, Vec<Box<dyn Action>>>,
     pub(crate) height: Option<usize>,
+    /// Per-occurrence memos to reset once propagation ends, whether it
+    /// finishes or aborts.
+    clear_at_end: Vec<Box<dyn FnOnce() + Send>>,
 }
 
 pub(crate) trait Action: Send {
@@ -63,7 +56,29 @@ impl Runtime {
         Runtime(Mutex::new(RuntimeInner {
             actions: Default::default(),
             height: None,
+            clear_at_end: Vec::new(),
         }))
+    }
+
+    /// The height currently propagating, or `None` between occurrences.
+    pub(crate) fn current_height(&self) -> Option<usize> {
+        self.0.lock().unwrap().height
+    }
+
+    /// Register a reset to run when the current occurrence ends.
+    pub(crate) fn clear_at_end(&self, clear: impl FnOnce() + Send + 'static) {
+        self.0.lock().unwrap().clear_at_end.push(Box::new(clear));
+    }
+
+    fn finish_occurrence(&self) {
+        let clears = {
+            let mut this = self.0.lock().unwrap();
+            this.height = None;
+            std::mem::take(&mut this.clear_at_end)
+        };
+        for clear in clears {
+            clear();
+        }
     }
 
     pub(crate) fn schedule(&self, height: usize, action: impl Action + 'static) {
@@ -93,12 +108,8 @@ impl Runtime {
 
                 let Some((height, actions)) = this.actions.pop_first() else {
                     // Done propagating
-                    this.height = None;
                     drop(this);
-                    CURRENT_HEIGHT.set(None);
-                    for clear in CLEAR_AT_END.take() {
-                        clear();
-                    }
+                    self.finish_occurrence();
                     return;
                 };
                 if let Some(this_height) = this.height
@@ -109,26 +120,13 @@ impl Runtime {
                     );
                 }
                 this.height = Some(height);
-                CURRENT_HEIGHT.set(Some(height));
                 actions
             };
             for action in actions {
-                let outcome = catch_unwind(AssertUnwindSafe(|| {
-                    action.act(self);
-                    for (height, deferred) in DEFERRED.take() {
-                        self.schedule(height, deferred);
-                    }
-                }));
+                let outcome = catch_unwind(AssertUnwindSafe(|| action.act(self)));
                 if let Err(panic) = outcome {
-                    let mut this = self.0.lock().unwrap();
-                    this.actions.clear();
-                    this.height = None;
-                    drop(this);
-                    DEFERRED.take();
-                    CURRENT_HEIGHT.set(None);
-                    for clear in CLEAR_AT_END.take() {
-                        clear();
-                    }
+                    self.0.lock().unwrap().actions.clear();
+                    self.finish_occurrence();
                     resume_unwind(panic);
                 }
             }

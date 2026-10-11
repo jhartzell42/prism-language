@@ -9,8 +9,8 @@ fn a_behavior_that_never_changes_does_not_collect_dependents() {
     let (changing, changing_trigger) = Event::<u32>::external();
     let sum = Behavior::map2(
         |a: Value<u32>, b: Value<u32>| Value::from(*a + *b),
-        Behavior::hold(0u32.into(), unchanging),
-        Behavior::hold(0u32.into(), changing),
+        Behavior::hold(&runtime, 0u32.into(), unchanging),
+        Behavior::hold(&runtime, 0u32.into(), changing),
     );
 
     for value in 0..1000u32 {
@@ -27,8 +27,8 @@ fn joined_behavior_starts_at_and_follows_the_initial_inner() {
     let mut runtime = Runtime::new();
     let (first_changes, first_trigger) = Event::<u32>::external();
     let (outer_changes, _outer_trigger) = Event::<Arc<Behavior<u32>>>::external();
-    let first = Behavior::hold(0u32.into(), first_changes);
-    let joined = Behavior::hold(Value::from(Arc::new(first)), outer_changes).join();
+    let first = Behavior::hold(&runtime, 0u32.into(), first_changes);
+    let joined = Behavior::hold(&runtime, Value::from(Arc::new(first)), outer_changes).join();
     let plus_one = joined.map(|x| Value::from(*x + 1));
 
     assert_eq!(*plus_one.0.query_for_tag(), 1);
@@ -45,9 +45,9 @@ fn joined_behavior_follows_a_new_inner_and_ignores_the_old_one() {
     let (first_changes, first_trigger) = Event::<u32>::external();
     let (second_changes, second_trigger) = Event::<u32>::external();
     let (outer_changes, outer_trigger) = Event::<Arc<Behavior<u32>>>::external();
-    let first = Behavior::hold(0u32.into(), first_changes);
-    let second = Behavior::hold(100u32.into(), second_changes);
-    let joined = Behavior::hold(Value::from(Arc::new(first.clone())), outer_changes).join();
+    let first = Behavior::hold(&runtime, 0u32.into(), first_changes);
+    let second = Behavior::hold(&runtime, 100u32.into(), second_changes);
+    let joined = Behavior::hold(&runtime, Value::from(Arc::new(first.clone())), outer_changes).join();
 
     runtime.schedule_trigger(&outer_trigger, Value::from(Arc::new(second))).unwrap();
     runtime.propagate();
@@ -73,10 +73,10 @@ fn joined_behavior_takes_the_new_inner_value_when_it_changes_in_the_switch_occur
     let (second_changes, second_trigger) = Event::<u32>::external();
     let (outer_changes, outer_trigger) = Event::<Arc<Behavior<u32>>>::external();
     let (probe, probe_trigger) = Event::<()>::external();
-    let first = Behavior::hold(0u32.into(), first_changes);
-    let second = Behavior::hold(100u32.into(), second_changes);
-    let joined = Behavior::hold(Value::from(Arc::new(first)), outer_changes).join();
-    let sampled_during = Behavior::hold(
+    let first = Behavior::hold(&runtime, 0u32.into(), first_changes);
+    let second = Behavior::hold(&runtime, 100u32.into(), second_changes);
+    let joined = Behavior::hold(&runtime, Value::from(Arc::new(first)), outer_changes).join();
+    let sampled_during = Behavior::hold(&runtime, 
         9999u32.into(),
         probe.tag_map(|_, value: Value<u32>| Some(value), joined.clone()),
     );
@@ -96,9 +96,9 @@ fn joined_behavior_ignores_the_old_inner_changing_in_the_switch_occurrence() {
     let (first_changes, first_trigger) = Event::<u32>::external();
     let (second_changes, second_trigger) = Event::<u32>::external();
     let (outer_changes, outer_trigger) = Event::<Arc<Behavior<u32>>>::external();
-    let first = Behavior::hold(0u32.into(), first_changes);
-    let second = Behavior::hold(100u32.into(), second_changes);
-    let joined = Behavior::hold(Value::from(Arc::new(first)), outer_changes).join();
+    let first = Behavior::hold(&runtime, 0u32.into(), first_changes);
+    let second = Behavior::hold(&runtime, 100u32.into(), second_changes);
+    let joined = Behavior::hold(&runtime, Value::from(Arc::new(first)), outer_changes).join();
 
     runtime.schedule_trigger(&outer_trigger, Value::from(Arc::new(second))).unwrap();
     runtime.schedule_trigger(&first_trigger, 42u32.into()).unwrap();
@@ -116,9 +116,9 @@ fn joined_behavior_sampled_mid_occurrence_shows_the_previous_value() {
     let (first_changes, first_trigger) = Event::<u32>::external();
     let (outer_changes, _outer_trigger) = Event::<Arc<Behavior<u32>>>::external();
     let (probe, probe_trigger) = Event::<()>::external();
-    let first = Behavior::hold(0u32.into(), first_changes);
-    let joined = Behavior::hold(Value::from(Arc::new(first)), outer_changes).join();
-    let sampled_during = Behavior::hold(
+    let first = Behavior::hold(&runtime, 0u32.into(), first_changes);
+    let joined = Behavior::hold(&runtime, Value::from(Arc::new(first)), outer_changes).join();
+    let sampled_during = Behavior::hold(&runtime, 
         9999u32.into(),
         probe.tag_map(|_, value: Value<u32>| Some(value), joined),
     );
@@ -138,9 +138,9 @@ fn joined_behavior_follows_a_computed_inner() {
     let mut runtime = Runtime::new();
     let (first_changes, first_trigger) = Event::<u32>::external();
     let (outer_changes, outer_trigger) = Event::<Arc<Behavior<u32>>>::external();
-    let first = Behavior::hold(0u32.into(), first_changes);
+    let first = Behavior::hold(&runtime, 0u32.into(), first_changes);
     let times_ten = first.map(|x| Value::from(*x * 10));
-    let joined = Behavior::hold(Value::from(Arc::new(first)), outer_changes).join();
+    let joined = Behavior::hold(&runtime, Value::from(Arc::new(first)), outer_changes).join();
 
     runtime.schedule_trigger(&outer_trigger, Value::from(Arc::new(times_ten))).unwrap();
     runtime.propagate();
@@ -156,9 +156,9 @@ fn joined_behavior_dependents_stay_bounded_across_many_switches() {
     let (first_changes, first_trigger) = Event::<u32>::external();
     let (second_changes, _second_trigger) = Event::<u32>::external();
     let (outer_changes, outer_trigger) = Event::<Arc<Behavior<u32>>>::external();
-    let first = Behavior::hold(0u32.into(), first_changes);
-    let second = Behavior::hold(100u32.into(), second_changes);
-    let joined = Behavior::hold(Value::from(Arc::new(first.clone())), outer_changes).join();
+    let first = Behavior::hold(&runtime, 0u32.into(), first_changes);
+    let second = Behavior::hold(&runtime, 100u32.into(), second_changes);
+    let joined = Behavior::hold(&runtime, Value::from(Arc::new(first.clone())), outer_changes).join();
     let plus_one = joined.map(|x| Value::from(*x + 1));
 
     for step in 0..500u32 {

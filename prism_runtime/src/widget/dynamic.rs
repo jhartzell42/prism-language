@@ -9,7 +9,7 @@ use crate::{
         Event, EventCallback, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::{Action, CURRENT_HEIGHT, Runtime, defer},
+    runtime::{Action, Runtime},
     widget::{Widget, WidgetDelegateContext, WidgetNode, builder::WidgetBuilder},
 };
 
@@ -55,7 +55,7 @@ impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
             .dynamic
             .event()
             .0
-            .subscribe(Arc::downgrade(
+            .subscribe(builder.runtime(), Arc::downgrade(
                 &(next_event.clone() as Arc<dyn EventCallback<Arc<T>>>),
             ))
             .unwrap_or_else(|| self.dynamic.behavior().0.query_for_tag());
@@ -80,10 +80,11 @@ impl<T: 'static + Widget + Debug + Send + Sync> Widget for DynamicWidget<T> {
 impl<T: 'static + Widget + Debug> EventImpl<Arc<T::Output>> for DynamicWidgetEvent<T> {
     fn subscribe(
         &self,
+        runtime: &Runtime,
         cb: std::sync::Weak<dyn EventCallback<Arc<T::Output>>>,
     ) -> Option<Value<Arc<T::Output>>> {
         self.subscribers
-            .add_subscriber(self.weak_self.clone(), None, cb)
+            .add_subscriber(runtime, self.weak_self.clone(), None, cb)
     }
 
     fn height(&self) -> usize {
@@ -108,14 +109,14 @@ impl<T: 'static + Widget + Debug> EventCallback<Arc<T>> for DynamicWidgetEvent<T
         );
     }
 
-    fn already_fired(&self, value: PrismArc<T>) {
+    fn already_fired(&self, runtime: &Runtime, value: PrismArc<T>) {
         let Some(this) = self.weak_self.upgrade() else {
             return;
         };
-        let height = CURRENT_HEIGHT
-            .get()
+        let height = runtime
+            .current_height()
             .map_or(self.height(), |current| self.height().max(current + 1));
-        defer(
+        runtime.schedule(
             height,
             DWAction {
                 event: this,
@@ -196,7 +197,7 @@ impl<T: 'static + Widget + Debug> SubscriptionEvent<Arc<T::Output>> for DynamicW
         unreachable!()
     }
 
-    fn handle_already_fired(&self, _: Value<Self::Inner>, _: Self::Tag) {
+    fn handle_already_fired(&self, _: &Runtime, _: Value<Self::Inner>, _: Self::Tag) {
         unreachable!()
     }
 }

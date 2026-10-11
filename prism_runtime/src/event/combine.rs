@@ -5,7 +5,7 @@ use crate::{
         Event, EventCallback, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::{Action, CURRENT_HEIGHT, Runtime, defer},
+    runtime::{Action, Runtime},
     value::{PrismArc, Value, ValueType},
 };
 
@@ -98,12 +98,12 @@ impl<
         self.accumulate(value);
     }
 
-    fn handle_already_fired(&self, value: Value<Self::Inner>, _: ()) {
+    fn handle_already_fired(&self, _: &Runtime, value: Value<Self::Inner>, _: ()) {
         self.accumulate(value);
     }
 
-    fn finish_already_fired(&self) {
-        let Some(current) = CURRENT_HEIGHT.get() else {
+    fn finish_already_fired(&self, runtime: &Runtime) {
+        let Some(current) = runtime.current_height() else {
             return;
         };
         if self.one_or_both.lock().unwrap().is_none() {
@@ -112,7 +112,7 @@ impl<
         let height = self.height();
         if height > current {
             if let Some(this) = self.weak_self.upgrade() {
-                defer(height, FireCombine(this));
+                runtime.schedule(height, FireCombine(this));
             }
             return;
         }
@@ -121,9 +121,9 @@ impl<
         };
         if let Some(value) = self
             .manager_a
-            .record_once(|| (self.function)(one_or_both))
+            .record_once(runtime, || (self.function)(one_or_both))
         {
-            self.manager_a.deliver_already_fired(value);
+            self.manager_a.deliver_already_fired(runtime, value);
         }
     }
 }
@@ -184,10 +184,10 @@ impl<
     O: ValueType,
 > EventImpl<O> for CombineEvent<A, B, F, O>
 {
-    fn subscribe(&self, cb: Weak<dyn EventCallback<O>>) -> Option<Value<O>> {
-        self.manager_a.connect(self.weak_self.clone(), Some(&self.a));
-        self.manager_b.connect(self.weak_self.clone(), Some(&self.b));
-        self.finish_already_fired();
+    fn subscribe(&self, runtime: &Runtime, cb: Weak<dyn EventCallback<O>>) -> Option<Value<O>> {
+        self.manager_a.connect(runtime, self.weak_self.clone(), Some(&self.a));
+        self.manager_b.connect(runtime, self.weak_self.clone(), Some(&self.b));
+        self.finish_already_fired(runtime);
         self.manager_a.push_subscriber(cb.clone());
         self.manager_b.push_subscriber(cb);
         self.manager_a.current()

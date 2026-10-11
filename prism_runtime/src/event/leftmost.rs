@@ -5,7 +5,7 @@ use crate::{
         Event, EventImpl,
         subscriber_list::{SubscriptionEvent, SubscriptionManager},
     },
-    runtime::{Action, CURRENT_HEIGHT, Runtime, defer},
+    runtime::{Action, Runtime},
     value::{Value, ValueType},
 };
 
@@ -61,12 +61,12 @@ impl<T: ValueType> SubscriptionEvent<T> for LeftmostEvent<T> {
         self.compete(value, tag);
     }
 
-    fn handle_already_fired(&self, value: Value<Self::Inner>, tag: Self::Tag) {
+    fn handle_already_fired(&self, _: &Runtime, value: Value<Self::Inner>, tag: Self::Tag) {
         self.compete(value, tag);
     }
 
-    fn finish_already_fired(&self) {
-        let Some(current) = CURRENT_HEIGHT.get() else {
+    fn finish_already_fired(&self, runtime: &Runtime) {
+        let Some(current) = runtime.current_height() else {
             return;
         };
         if self.winning_value.lock().unwrap().is_none() {
@@ -75,15 +75,15 @@ impl<T: ValueType> SubscriptionEvent<T> for LeftmostEvent<T> {
         let height = self.height();
         if height > current {
             if let Some(this) = self.weak_self.upgrade() {
-                defer(height, FireLeftmost(this));
+                runtime.schedule(height, FireLeftmost(this));
             }
             return;
         }
         let Some((winner, _)) = self.winning_value.lock().unwrap().take() else {
             return;
         };
-        if let Some(value) = self.subscription_managers[0].record_once(|| Some(winner)) {
-            self.subscription_managers[0].deliver_already_fired(value);
+        if let Some(value) = self.subscription_managers[0].record_once(runtime, || Some(winner)) {
+            self.subscription_managers[0].deliver_already_fired(runtime, value);
         }
     }
 }
@@ -121,11 +121,11 @@ impl<T: ValueType> Action for FireLeftmost<T> {
 }
 
 impl<T: ValueType> EventImpl<T> for LeftmostEvent<T> {
-    fn subscribe(&self, cb: Weak<dyn super::EventCallback<T>>) -> Option<Value<T>> {
+    fn subscribe(&self, runtime: &Runtime, cb: Weak<dyn super::EventCallback<T>>) -> Option<Value<T>> {
         for (ix, man) in self.subscription_managers.iter().enumerate() {
-            man.connect(self.weak_self.clone(), Some(&self.events[ix]));
+            man.connect(runtime, self.weak_self.clone(), Some(&self.events[ix]));
         }
-        self.finish_already_fired();
+        self.finish_already_fired(runtime);
         for man in &self.subscription_managers {
             man.push_subscriber(cb.clone());
         }
