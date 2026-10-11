@@ -13,8 +13,10 @@ said it in chat.
   chapter. `claude/CLAUDE.md` is the book's bible: the rules every chapter obeys (sigils, paths,
   laws, vocabulary). `claude/prism-book.pdf` is the built book; `claude/build/` has the pandoc
   template, filter, syntax file and `build.sh` (`./build.sh <dir-with-ch*.md> out.pdf`).
-- `claude/prism-hs/`: a Haskell prototype of chapter 2's subset: parser, evaluator on a
-  hand-rolled push graph, Test World, 53 passing scripts. `NOTES.md` is the build log, `TODO.md`
+- `claude/prism-hs/`: a Haskell prototype of the language subset chapter 2's programs use:
+  parser, evaluator on a hand-rolled push graph, Test World. 53 scripts pass, transcribed
+  from chapters 2, 4 and 10 (chapter 10's own script files ran as written; chapters 2 and 4
+  had prose and walkthroughs, transcribed into `test` blocks by Sonnet agents). `NOTES.md` is the build log, `TODO.md`
   the list of corners cut and the type checker's open questions, `test.sh` runs everything.
 - The Rust runtime at the repo root is Jimmy's, with the on-fire fixes from this session already
   in it (occurrence state in `RuntimeInner`, `Blueprint`/`Widget`/`Rebuild<T>`/`DynBlueprint`
@@ -51,19 +53,22 @@ said it in chat.
   objections inside the text, no appended caveats; stage files are thinking aids, not for the
   repo.
 - Do not vibe-code in his repo. The Haskell work lives under `claude/`; the Rust runtime is his.
-- His own plan (TODO.md on `main`): read the book once as a resource, write his designs under
-  `design/`, not write notes to Claude.
+
+Context, not a rule: his own plan (TODO.md on `main`) is to read the book once as a resource
+and write his designs under `design/`, not to write notes to Claude.
 
 ## How to build and test
 
-Prototype, on any machine with GHC 9.4 or later (no packages beyond base, containers, mtl):
+Prototype, on any machine with GHC (built with 9.4.7; the code uses no extension newer than
+`LambdaCase`, so older GHCs should work; no packages beyond base, containers, mtl):
 
     cd claude/prism-hs
     ./test.sh                       # builds with ghc --make, runs each example file against the prelude
     ./prism-hs -v examples/prelude.prism examples/counter.prism   # -v prints the transcript
 
-With Hackage reachable, `prism-hs.cabal` is there but unused; `cabal build` should work with a
-`build-depends` of base, containers, mtl. Example files share one namespace, so run them one
+With Hackage reachable, `prism-hs.cabal` is there but has never been built (the session could
+not reach Hackage); expect to fix its `build-depends` (base, containers, mtl) before `cabal build`
+works. Example files share one namespace, so run them one
 at a time (chapter 2's programs reuse `Clock` and `Show`).
 
 Book: `cd claude/build && ./build.sh .. ../prism-book.pdf` (pandoc + xelatex; the session had
@@ -81,7 +86,7 @@ questions. Everything in `TODO.md` under "corners cut" makes a passing test cond
 
 ## The next burst (Jimmy's goal: a runnable chess demo on reflex-dom, plus a folder of test cases)
 
-Decided direction: port the evaluator to Reflex first, type checker second. Reasons: the port fits
+Direction Jimmy agreed to in chat: port the evaluator to Reflex first, type checker second. Reasons: the port fits
 one burst (parser, Test World, examples and scripts carry over; replace `src/Prism/Runtime.hs`
 and `src/Prism/Eval.hs`, about 1,100 lines), and it answers chapter 14's claim; typing is a
 design job before a coding job (TODO.md, last section).
@@ -99,17 +104,20 @@ Steps:
    the oracle, character for character.
 3. A `Dom` World over reflex-dom: elements to DOM (`Ui.Button`/`Label`/`Focusable`, plus an
    `Ui.Image(src, bg)` for chess), clicks and keys back as responses by path, state elements from
-   a snapshot per frame. Run it with `jsaddle-warp` for a native build served to a browser, or
-   inside Jimmy's existing Obelisk setup (see below); do not start with GHCJS.
+   a snapshot per frame. Preferred: run it inside Jimmy's existing Obelisk app (step 4), which
+   already builds reflex-dom; the fallback is `jsaddle-warp` for a native build served to a
+   browser. Do not start with GHCJS.
 4. Chess: Jimmy's `jhartzell42/reflex-chess` (Obelisk app; `common/src/Common/Chess.hs` is the
    272-line pure rule engine, `frontend/src/Frontend/Chess.hs` the 170-line UI). The rule engine
    ports to plain Prism functions mechanically (records, choices, lists, `match`). The UI is 64
    `Ui.Image` elements in a `for` over the board, a hold for the selected square, a hold for the
    game state fed by `move` on click, and labels; it uses `attachWith` on `current`, `foldDyn` and
-   `rec`, all of which are non-prompt and map directly onto tags and `then`. Since the app is
+   `rec`; `attachWith f (current d) e` is Reflex's non-prompt tag, Prism's `$d on !e`, and
+   `foldDyn` is a hold, so the whole UI maps onto `on` and `then`. (The ban on `sample` below is
+   on the interpreter's own code, not on what the Reflex app being ported used.) Since the app is
    already Obelisk-built, the Prism interpreter plus the Dom World can live in its `frontend`
    package and `ob run` serves it, which sidesteps the toolchain problem entirely.
-5. Test cases: chapter 10's scripts are the suite; add a `typecheck` form (a file expected to fail
+5. Test cases: chapter 10's script files are the suite (the 53 include them); add a `typecheck` form (a file expected to fail
    with a named error) and write the twelve pin files listed in `TODO.md` before the checker,
    so the checker is built to them.
 
@@ -117,7 +125,7 @@ What not to do: do not rebuild the push graph; do not use `switchPromptlyDyn`, `
 `sample` or `performEvent` inside the interpreter (chapter 14 "What must not be used"); do not
 touch the Rust runtime for this.
 
-## Open questions only Jimmy can answer
+## Things only Jimmy can answer
 
 - The chapter 1 steelman's points 3–5 (piecewise-constant chosen for implementability; the
   relabelling button losing a fast second click and focus; Safe Haskell as a counterexample to
