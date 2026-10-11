@@ -10,7 +10,7 @@ Prism's answer is that exactly one kind of thing has a lifetime, and everything 
 
 **Widgets do IO.** All IO is elements, and an element is created by a widget with `@Element`. The slot lives as long as the widget that created it and not one occurrence longer. When the widget is torn down the element leaves the list, the World sees it go, and whatever the World was doing on its behalf is cancelled or discarded. A file read, a socket, a button, a timer: each is a widget, because each has a beginning and an end, and the thing you reached for in every other framework, a handle you could stash in a field and forget to close, does not exist.
 
-**Widgets own holds.** `$x <- v then !e` is a statement in a widget block and nowhere else, because the hold's value has to belong to something that can be torn down. When a `rebuild` rebuilds its block the state inside it resets; when a `for` removes a key the state of that key's block is freed. A hold outside any widget would be state that nothing owns, which is a leak by construction, and the language refuses to write one.
+**Widgets own holds.** `$x <- v then !e` is a statement in a widget block and nowhere else, because the hold's value has to belong to something that can be torn down. When a `rebuild` builds anew its block the state inside it resets; when a `for` removes a key the state of that key's block is freed. A hold outside any widget would be state that nothing owns, which is a leak by construction, and the language refuses to write one.
 
 **Widgets own their cycles.** `$count <- 0 then $count + !delta` refers to itself. Something has to hold the placeholder that stands in for `$count` before its definition is complete and the closure that completes it, and that something is the widget. A cyclic subgraph is then reachable only through its widget and dies with it, rather than keeping itself alive by referring to itself, which is the one kind of leak reference counting cannot collect and the one the ownership tree makes impossible.
 
@@ -263,7 +263,7 @@ A timeline makes the rule concrete. Take `@clicker` from the worked examples, a 
 | Occurrence | Input | Inside | List after |
 | --- | --- | --- | --- |
 | 0 | build | generation `#0` built; `!!clicks` fires with its click; `!Switch` records it | `0/#0/0: Button("Clicked 0 times")` |
-| 1 | click to `0/#0/0` | `#0`'s click fires; `!Switch` delivers; `$count + 1` fires with 1; `$label` changes; `rebuild` rebuilds to `#1`; `!!clicks` fires with `#1`'s click; `!Switch` ignores it this occurrence; commit: `$count` is 1, `!Switch` adopts `#1`, `#0` dropped | `0/#1/0: Button("Clicked 1 times")` |
+| 1 | click to `0/#0/0` | `#0`'s click fires; `!Switch` delivers; `$count + 1` fires with 1; `$label` changes; `rebuild` builds anew to `#1`; `!!clicks` fires with `#1`'s click; `!Switch` ignores it this occurrence; commit: `$count` is 1, `!Switch` adopts `#1`, `#0` dropped | `0/#1/0: Button("Clicked 1 times")` |
 | 2 | click to `0/#1/0` | as above, to `#2` | `0/#2/0: Button("Clicked 2 times")` |
 
 In occurrence 1 both generations exist for the length of the occurrence: `#0` because it has not committed out yet, `#1` because it was just built. Only `#0` can be clicked, because only `#0`'s path was in the list the World addressed. Only `#1` will be in the list the World reads next. There is no occurrence in which a button is on the screen that nothing listens to, and none in which two are listened to at once.
@@ -309,7 +309,7 @@ Change the theme and the count is zero. The `rebuild` is over the theme; the blo
     @ unit
 ```
 
-Now the button is rebuilt per theme and the count is not. `$count` is read inside the second `rebuild` as a dynamic, because it is one from outside, and the label's `rebuild` rebuilds on the theme, while the label's text, derived from `$count`, changes live inside each generation (and, since a label's text is a plain field, lifts into a `rebuild` of its own per the rule below; the walkthroughs write that out). The rule of thumb: a `rebuild` block owns what should die with the value it was built for, and nothing else. If you find yourself wanting a hold to survive a rebuild, it is not the rebuild's hold.
+Now the button is rebuilt per theme and the count is not. `$count` is read inside the second `rebuild` as a dynamic, because it is one from outside, and the label's `rebuild` builds anew on the theme, while the label's text, derived from `$count`, changes live inside each generation (and, since a label's text is a plain field, lifts into a `rebuild` of its own per the rule below; the walkthroughs write that out). The rule of thumb: a `rebuild` block owns what should die with the value it was built for, and nothing else. If you find yourself wanting a hold to survive a rebuild, it is not the rebuild's hold.
 
 ### What a rebuild costs, and what to keep out of one
 
@@ -331,13 +331,13 @@ A widget built in occurrence n behaves as though it had been built immediately b
     @ unit
 ```
 
-Suppose `$mode` and `$text` both change in occurrence n, because one input moved both (a hold over a record, say, that the `rebuild`s project). The outer `rebuild` rebuilds in n. Its new block binds an inner `rebuild` over `$text`. That inner `rebuild`, at the moment it is built, subscribes to `$text`'s change event and finds that the event has already fired in this occurrence, with the new text; so it builds its block with the new text, once, and its result event fires in n with that build. Had it read `$text`'s value through its behavior side it would have seen the old text, built a label with it, and been wrong until the next change of `$text`, which might be never.
+Suppose `$mode` and `$text` both change in occurrence n, because one input moved both (a hold over a record, say, that the `rebuild`s project). The outer `rebuild` builds anew in n. Its new block binds an inner `rebuild` over `$text`. That inner `rebuild`, at the moment it is built, subscribes to `$text`'s change event and finds that the event has already fired in this occurrence, with the new text; so it builds its block with the new text, once, and its result event fires in n with that build. Had it read `$text`'s value through its behavior side it would have seen the old text, built a label with it, and been wrong until the next change of `$text`, which might be never.
 
-The runtime does this with the Spider-style catch-up: every event caches its current-occurrence value, `subscribe` returns it if the event has already fired, and the `DynamicBlueprint` takes the initial widget from that cached firing if there is one and from the behavior otherwise. The test `a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value` pins it. Its companion, `a_closure_runs_once_per_occurrence_even_when_late_subscribers_read_it`, pins the other half of the rule: a late subscriber reads the cached value, and the closure that produced it is not run a second time, so the at-most-once law holds for everything a mid-occurrence build touches.
+The runtime does this with the Spider-style catch-up: every event caches its current-occurrence value, `subscribe` returns it if the event has already fired, and the `Rebuild` takes the initial widget from that cached firing if there is one and from the behavior otherwise. The test `a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value` pins it. Its companion, `a_closure_runs_once_per_occurrence_even_when_late_subscribers_read_it`, pins the other half of the rule: a late subscriber reads the cached value, and the closure that produced it is not run a second time, so the at-most-once law holds for everything a mid-occurrence build touches.
 
 ### What the runtime promises for `rebuild`
 
-Three promises, each the runtime's, each with the test that pins it; chapter 11 has the `DynamicBlueprint` that keeps them.
+Three promises, each the runtime's, each with the test that pins it; chapter 11 has the `Rebuild` that keeps them.
 
 The rebuild is an ordinary action at an ordinary height, one above the dynamic's change event, and the new generation is built at a height above that, so that everything the new block fires at birth fires after the block exists. A cycle through a `rebuild` is therefore caught by the same comparison as any other cycle, an action scheduled at or below the current height, and no second detector exists for rebuilds.
 
@@ -356,7 +356,7 @@ A cycle through `rebuild` alone is rejected. The `rebuild`'s event fires in the 
     $x <- 0 then !r                  # error: the cycle through rebuild has no delayed edge
 ```
 
-has no delayed edge anywhere: `$x` changes, the `rebuild` rebuilds in that occurrence, its event fires in that occurrence, the hold's change event fires in that occurrence, which is `$x` changing again, in the same occurrence. The compiler rejects it with both bindings named. The reason `rebuild` is not made a delay, which would make this legal and a tick behind, is that every other rebuild would then be a tick behind too, and the new widget would see the occurrence it was born in as the past. The delayed edges are reads of a dynamic as it stood when the occurrence opened, and there are three of them; a rebuild is not a read.
+has no delayed edge anywhere: `$x` changes, the `rebuild` builds anew in that occurrence, its event fires in that occurrence, the hold's change event fires in that occurrence, which is `$x` changing again, in the same occurrence. The compiler rejects it with both bindings named. The reason `rebuild` is not made a delay, which would make this legal and a tick behind, is that every other rebuild would then be a tick behind too, and the new widget would see the occurrence it was born in as the past. The delayed edges are reads of a dynamic as it stood when the occurrence opened, and there are three of them; a rebuild is not a read.
 
 ## `!Switch`, `$Join`, and why they differ
 
@@ -561,7 +561,7 @@ Take the todo list from the worked examples, reduced to what matters for `for`. 
 
 **Occurrence 2, Add.** Key `1` appears; its block is built. Key `0`'s block is untouched: not rebuilt, not re-anything. Its `$starred` is whatever it was.
 
-**Occurrence 3, Star on row 0.** Inside row 0's block, `!star` fires and `$starred` becomes `True`; the label's text changes, so its `rebuild` rebuilds the label slot to `1/[0]/2/#1/0`. The row's result event, `Delete on !delete`, is quiet; `!rows` is quiet; `$items` does not change; the `for` does nothing at all.
+**Occurrence 3, Star on row 0.** Inside row 0's block, `!star` fires and `$starred` becomes `True`; the label's text changes, so its `rebuild` builds anew the label slot to `1/[0]/2/#1/0`. The row's result event, `Delete on !delete`, is quiet; `!rows` is quiet; `$items` does not change; the `for` does nothing at all.
 
 **Occurrence 4, an edit arrives for item 0 from elsewhere** (a push, say, or another button outside the `for` that changes the label). `$items` changes; key `0` is still present; so row 0's `$_` changes, its label text changes, the label rebuilds, and `$starred` is still `True`, because the block was not rebuilt. The row's buttons keep their paths.
 
@@ -656,7 +656,7 @@ Three things are live and they are at three different places. `$items` is the mo
 
 **Occurrence 0.** `$items` has, say, keys 1, 2, 3. The `for` builds three blocks, a button each. `$selected` is `Nil`; the `rebuild` builds generation `#0`, the "Select an item" label.
 
-**Occurrence 1, click row 2.** Row 2's block fires `2`; `!picks` fires with `{2: 2}`; `FirstKey` gives `Some 2`; `!Filter` passes `2`; `$selected`'s change event fires with `Some 2`. The `rebuild` rebuilds: generation `#1` is built with `id = 2`, `$items[2]` is `Some (Item "Two", "...")`, `@Detail` builds a label with the body. Generation `#0` is dropped at commit. What rebuilt: the detail, once. What did not: the three rows.
+**Occurrence 1, click row 2.** Row 2's block fires `2`; `!picks` fires with `{2: 2}`; `FirstKey` gives `Some 2`; `!Filter` passes `2`; `$selected`'s change event fires with `Some 2`. The `rebuild` builds anew: generation `#1` is built with `id = 2`, `$items[2]` is `Some (Item "Two", "...")`, `@Detail` builds a label with the body. Generation `#0` is dropped at commit. What rebuilt: the detail, once. What did not: the three rows.
 
 **Occurrence 2, the model changes item 2's body.** `$items` changes; key 2 is still there, so row 2's `$_` changes and its button's label slot rebuilds (the derived title fires its change event even when the text is equal; the World diffs and draws nothing new). No other row is touched. Inside the detail's generation `#1`, `$items[2]` changes promptly, `ShowBody` changes, and the label's slot rebuilds to the new body. The detail widget itself, generation `#1`, is untouched: the `rebuild` is over `$selected`, and `$selected` did not change.
 
@@ -780,15 +780,15 @@ type Answer = choice Confirmed | Cancelled
 
 **Occurrence 0.** `$dialog` is `Nil`; generation `#0` is the `!never` block, which has no slots; `!!answers` fires with `!never`; `!Switch` adopts it. The list has one button.
 
-**Occurrence 1, click Delete.** `!open` fires; `(Some unit) on !open` fires; the merge's left wins (its right is quiet); `$dialog`'s change event fires with `Some unit`. The `rebuild` rebuilds: generation `#1` is built with a label and two buttons, at `1/#1/0/#0/0`, `1/#1/1/#0/0`, `1/#1/2/#0/0`; `!!answers` fires with the new block's answer event. `!Switch` is still on `!never` for this occurrence. Commit: `$dialog` is `Some unit`, the switch adopts generation `#1`'s event. The World draws the dialog.
+**Occurrence 1, click Delete.** `!open` fires; `(Some unit) on !open` fires; the merge's left wins (its right is quiet); `$dialog`'s change event fires with `Some unit`. The `rebuild` builds anew: generation `#1` is built with a label and two buttons, at `1/#1/0/#0/0`, `1/#1/1/#0/0`, `1/#1/2/#0/0`; `!!answers` fires with the new block's answer event. `!Switch` is still on `!never` for this occurrence. Commit: `$dialog` is `Some unit`, the switch adopts generation `#1`'s event. The World draws the dialog.
 
-**Occurrence 2, click Cancel.** The World sends `click` to `1/#1/2/#0/0`. `!no` fires; the answer event fires with `Cancelled`; `!Switch` delivers it as `!answer`; `Nil on !answer` fires; `$dialog`'s merge: `Some unit on !open` is quiet, so `Nil` wins; the change event fires with `Nil`; the `rebuild` rebuilds to generation `#2`, the empty block; `!!answers` fires with `!never`. Generation `#1` keeps propagating until commit, which is how its `Cancelled` reached the switch at all, and is dropped at commit. `IsConfirmed` says no, the result is quiet.
+**Occurrence 2, click Cancel.** The World sends `click` to `1/#1/2/#0/0`. `!no` fires; the answer event fires with `Cancelled`; `!Switch` delivers it as `!answer`; `Nil on !answer` fires; `$dialog`'s merge: `Some unit on !open` is quiet, so `Nil` wins; the change event fires with `Nil`; the `rebuild` builds anew to generation `#2`, the empty block; `!!answers` fires with `!never`. Generation `#1` keeps propagating until commit, which is how its `Cancelled` reached the switch at all, and is dropped at commit. `IsConfirmed` says no, the result is quiet.
 
 **Occurrence 3, click Delete again.** As in occurrence 1: generation `#3` is built, with fresh paths `1/#3/...`, and the switch adopts its answer event at commit. The dialog that was cancelled is not "reopened"; a new one exists.
 
 **Occurrence 4, Delete and Cancel together.** The user clicks the Delete button behind the dialog and Cancel in the same frame, and the World delivers both. `!open` and `!answer` both fire. The hold's merge takes the left, `Some unit`, and the dialog stays open: generation `#4` is built because the change event fired, even with the same value as before, and generation `#3` is dropped. The user sees a dialog where there was a dialog. A program that finds that rebuild wasteful filters the hold's event so that opening an open dialog is not a change, and a program that wants Cancel to win writes the merge the other way round; either way the answer is on the hold's line.
 
-**Occurrence 5, Confirm.** `Confirmed` reaches the switch, the hold closes the dialog, the `rebuild` rebuilds to the empty block, and the widget's result fires `unit`. Whoever bound `@delete_with_confirm` gets one event, in the occurrence of the click, and the dialog is gone by commit.
+**Occurrence 5, Confirm.** `Confirmed` reaches the switch, the hold closes the dialog, the `rebuild` builds anew to the empty block, and the widget's result fires `unit`. Whoever bound `@delete_with_confirm` gets one event, in the occurrence of the click, and the dialog is gone by commit.
 
 What the program does not have: a dialog manager, a z-order stack, a `showModal()` that returns a promise, or any notion of the dialog "closing itself." The dialog's block returns an event; the parent's hold decides what the event means for the dialog's existence; and the cycle between them is the same cycle as the clicker's, closed through the switch. Where the dialog is drawn, over everything else, is a layout question for an interceptor that reads the element list and puts the dialog's elements last.
 
@@ -810,7 +810,7 @@ let Mark: fn Text, Bool -> Text = \|t, sel| if sel: "> {t}" else: "  {t}"
 
 `$selected` is outside the `for`, and each row reads it through a lifted `==`. The button's label is a dynamic, so inside each row the button is a `rebuild` over its label.
 
-**Occurrence 1, click row 2.** `$selected` changes to `Some 2`. In row 2, `$is_selected` changes to `True`, the label changes, and the button's `rebuild` rebuilds its slot to generation `#1`. In every other row `$is_selected` is recomputed, since `$selected` changed, and is `False` as before; its change event fires with the same value; the label is recomputed to the same text; the label's change event fires with the same text; and the button's `rebuild` rebuilds, because a `rebuild` rebuilds when its dynamic's change event fires, and equality of the value is not something a derived dynamic checks for you. Every row's button gets a new slot.
+**Occurrence 1, click row 2.** `$selected` changes to `Some 2`. In row 2, `$is_selected` changes to `True`, the label changes, and the button's `rebuild` builds anew its slot to generation `#1`. In every other row `$is_selected` is recomputed, since `$selected` changed, and is `False` as before; its change event fires with the same value; the label is recomputed to the same text; the label's change event fires with the same text; and the button's `rebuild` builds anew, because a `rebuild` builds anew when its dynamic's change event fires, and equality of the value is not something a derived dynamic checks for you. Every row's button gets a new slot.
 
 That is correct and it is wasteful. Correct, because the World diffs plain data and will draw nothing differently for the rows that did not change. Wasteful, because every row rebuilt a slot, and because every row's button lost its path, which a World keying native widgets by path would notice. The fix is a prelude function that stops change events with equal values, applied where the fan-out is:
 
@@ -878,9 +878,9 @@ The `rebuild` is over `Pair $step, $answers`, one dynamic of the pair, and the p
 
 **Occurrences 1 through 5, typing.** Each keystroke changes `$name` inside the page: the text input's own label slot rebuilds, `$forward` changes, nothing else. `$page` does not change, because neither `$step` nor `$answers` did. The page is not rebuilt.
 
-**Occurrence 6, Next.** `!next` fires; `$forward on !next` fires with `Nav Address, (Answers "Ada", ""), False`; the switch delivers it as `!nav`; `!nav.step` fires with `Address` and `!nav.answers` with the record; both holds' change events fire in this occurrence; `$page`, a derived dynamic over both, changes once (glitch freedom: one change event per occurrence however many operands moved); the `rebuild` rebuilds to the Address page with `answers.name = "Ada"` plain, and an address input initialised from `""`. The Name page is dropped at commit, and `$name` with it; the name is safe in `$answers`, which is outside.
+**Occurrence 6, Next.** `!next` fires; `$forward on !next` fires with `Nav Address, (Answers "Ada", ""), False`; the switch delivers it as `!nav`; `!nav.step` fires with `Address` and `!nav.answers` with the record; both holds' change events fire in this occurrence; `$page`, a derived dynamic over both, changes once (glitch freedom: one change event per occurrence however many operands moved); the `rebuild` builds anew to the Address page with `answers.name = "Ada"` plain, and an address input initialised from `""`. The Name page is dropped at commit, and `$name` with it; the name is safe in `$answers`, which is outside.
 
-**Occurrence 7, Back.** The Address page's `!back` fires with `Nav Name, (Answers "Ada", "..."), False`, whatever had been typed so far; both holds move; the `rebuild` rebuilds the Name page with `answers.name = "Ada"` as the input's initial. The text is there. It did not survive in the page; it went out and came back in, and the line that says so is the hold for `$answers`.
+**Occurrence 7, Back.** The Address page's `!back` fires with `Nav Name, (Answers "Ada", "..."), False`, whatever had been typed so far; both holds move; the `rebuild` builds anew the Name page with `answers.name = "Ada"` as the input's initial. The text is there. It did not survive in the page; it went out and came back in, and the line that says so is the hold for `$answers`.
 
 **Occurrence 8, Finish.** `done` is `True`; `!Filter (IfDone !nav)` fires with the answers; the widget's result fires. The holds also move (to the same step and the same answers), so `$page` changes with an equal value and the Review page is rebuilt, which is harmless and could be stopped with `$Distinct` if the review page were expensive.
 
@@ -894,7 +894,7 @@ Everything above rests on a short list of promises, each with a party bound by i
 
 *A replaced widget propagates until the commit of the occurrence that replaced it, and is dropped then.* Bound: the runtime. Enforced: the rebuild action replaces the child and schedules the old widget's drop at the commit height; nothing drops a widget from inside propagation. Checked by `a_replaced_child_keeps_working_until_its_last_occurrence_ends`.
 
-*A widget built in occurrence n sees all of n.* Bound: the runtime. Enforced: every event caches its current-occurrence value and `subscribe` returns it; holds, switches and `rebuild` rebuilds triggered by an already-fired event defer to `max(height, current + 1)`; closures run at most once per occurrence. Checked by the `_mid_occurrence_` tests and the nested-`rebuild` test.
+*A widget built in occurrence n sees all of n.* Bound: the runtime. Enforced: every event caches its current-occurrence value and `subscribe` returns it; holds, switches and `rebuild` builds anew triggered by an already-fired event defer to `max(height, current + 1)`; closures run at most once per occurrence. Checked by the `_mid_occurrence_` tests and the nested-`rebuild` test.
 
 *A `rebuild`'s event fires in every build occurrence, the first included, and goes to the caller.* Bound: the runtime. Enforced: the result is the leftmost of the rebuild event and the done-event-mapped first build, and the block has no name for it.
 

@@ -1,6 +1,6 @@
 # Chapter 12 — The Rust language implementation
 
-A Prism compiler does not emit code that computes. It emits code that, run once, calls the runtime's constructors in the right order with the right captures, and the product of running that code is a graph, which does the computing for the rest of the program's life. Everything in the `prism_lang` crate follows from taking that sentence seriously: the frontend's only job is to decide what every line means and write the decision down in one tree, the typed AST; a lint checks that the tree is consistent after every pass that touches it; and a closure compiler walks the tree once and hands the runtime an `IrWidget`, a value the runtime cannot tell from a blueprint written in Rust by hand. There is no instruction set, no bytecode, no second syntax and no verifier between two forms, because there is only one form. This chapter is that crate, stage by stage, with its data structures, its invariants, its text form, its diagnostics and its tests, written so that a reader who wants to change a decision can see what the decision costs.
+A Prism compiler does not emit code that computes. It emits code that, run once, calls the runtime's constructors in the right order with the right captures, and the product of running that code is a graph, which does the computing for the rest of the program's life. Everything in the `prism_lang` crate follows from taking that sentence seriously: the frontend's only job is to decide what every line means and write the decision down in one tree, the typed AST; a lint checks that the tree is consistent after every pass that touches it; and a closure compiler walks the tree once and hands the runtime an `IrBlueprint`, a value the runtime cannot tell from a blueprint written in Rust by hand. There is no instruction set, no bytecode, no second syntax and no verifier between two forms, because there is only one form. This chapter is that crate, stage by stage, with its data structures, its invariants, its text form, its diagnostics and its tests, written so that a reader who wants to change a decision can see what the decision costs.
 
 ## The thesis
 
@@ -14,9 +14,9 @@ That split is the whole architecture. Suppose a compiler for this language were 
 
 Three consequences fall out of the thesis, and each one is a thing the compiler can stop worrying about.
 
-*The compiler never decides when anything runs.* The occurrence, the height order, the commit, catch-up for a widget built mid-occurrence: all of that is the runtime's, and a compiled widget gets it by being a widget. A `rebuild` block compiled to an `IrWidget` is rebuilt by the runtime's `dynamic_widget` at the right height in the right occurrence, and the block's code does not know whether this is its first build or its hundredth. A leaf does not know what height it runs at. The compiler emits no scheduling code because there is nothing to schedule.
+*The compiler never decides when anything runs.* The occurrence, the height order, the commit, catch-up for a widget built mid-occurrence: all of that is the runtime's, and a compiled widget gets it by being a widget. A `rebuild` block compiled to an `IrBlueprint` is rebuilt by the runtime's `rebuild` at the right height in the right occurrence, and the block's code does not know whether this is its first build or its hundredth. A leaf does not know what height it runs at. The compiler emits no scheduling code because there is nothing to schedule.
 
-*Construction is a value.* A widget function plus its captures is a thing the runtime can build from at any time: at the first build, at every `rebuild` rebuild, at every `for` key's appearance, at every state supply. The compiler therefore produces blueprints as values, `IrWidget { program, block, captures }`, and the same value type serves every one of those places. This is why a `rebuild` can rebuild into a blueprint of a different kind, why a supplier is a function from an element to a blueprint, and why compiled and hand-written blueprints sit side by side in one node tree.
+*Construction is a value.* A widget function plus its captures is a thing the runtime can build from at any time: at the first build, at every `rebuild` rebuild, at every `for` key's appearance, at every state supply. The compiler therefore produces blueprints as values, `IrBlueprint { program, block, captures }`, and the same value type serves every one of those places. This is why a `rebuild` can rebuild into a blueprint of a different kind, why a supplier is a function from an element to a blueprint, and why compiled and hand-written blueprints sit side by side in one node tree.
 
 *Construction ties knots.* Prism allows recursive bindings in a widget block and the language is strict, so a knot cannot be tied with laziness the way a Haskell `mdo` ties one. The knot is explicit: open a placeholder, build what refers to it, close it to the real node, and never sample it while it is open. The compiler's job is to place the placeholders, and the resolver's dependency analysis says exactly where: at the delayed edges, which every legal cycle has at least one of. Nothing else in the compiler is about recursion.
 
@@ -61,7 +61,7 @@ typed AST  ──── print/parse ────  text form (goldens; the Haskel
 converted typed AST  ───  lint  (after every pass, in every test)
    │  compile             steps, closures, the tag table, boxing
    ▼
-IrWidget  ──────────────────────  the runtime's PolymorphicBlueprint
+IrBlueprint  ──────────────────────  the runtime's DynBlueprint
 ```
 
 One crate, `prism_lang`, with no dependency on `prism_runtime` until the last stage, which lives in its own module and is the only module that names a runtime type. The frontend up to the text form can be built, tested and frozen without a runtime, and the Haskell frontend of a later chapter reproduces it byte for byte from the same specification.
@@ -79,7 +79,7 @@ prism_lang/src/
   convert.rs      closure conversion
   lint.rs         the checker
   ir/             program.rs (Program, Step, Function), compile.rs (the walk),
-                  widget.rs (IrWidget), leaf.rs (the evaluator), boxing.rs
+                  widget.rs (IrBlueprint), leaf.rs (the evaluator), boxing.rs
   tags.rs         the tag table, shared by elaboration and ir
   diag.rs         Diagnostic, Span, rendering
 ```
@@ -664,7 +664,7 @@ The body is the plain operation with the lifted operands replaced by lambda para
 
 `if` lifts the same way, as a `DMap` or `Map` or `Tag` around a plain `If` body.
 
-`?` lifts at the plain layer, inside the time functors, and the node is `Maybe { over, body }`: `a / b + 1` is `Maybe { over: [Num.Div a, b], body: \|q| Num.Add q, 1 }` of type `?Nat`; the `?` comes from `/` at `Nat` and `Int`, which fails on a zero divisor. At `Float` the same `/` is plain and follows IEEE (infinities and NaN, never failing), so `x / y` over two `Float`s has no `Maybe` and `Num.Div[Float] x, y` is an ordinary node. The elaborator finds a `?` operand where a plain one is wanted, wraps, and continues; the `?` propagates outward until a binding names it or a `match` eliminates it. `$a / $b` is `DMap { over: [$a, $b], body: \|a, b| Num.Div a, b }` of type `$?Nat`, since the time functor lifts first and the `?` is in the body's result. `?$x + 1` is a type error: an optional dynamic is matched, not lifted.
+`?` lifts at the plain layer, inside the event functor, the dynamic functor and the widget monad, and the node is `Maybe { over, body }`: `a / b + 1` is `Maybe { over: [Num.Div a, b], body: \|q| Num.Add q, 1 }` of type `?Nat`; the `?` comes from `/` at `Nat` and `Int`, which fails on a zero divisor. At `Float` the same `/` is plain and follows IEEE (infinities and NaN, never failing), so `x / y` over two `Float`s has no `Maybe` and `Num.Div[Float] x, y` is an ordinary node. The elaborator finds a `?` operand where a plain one is wanted, wraps, and continues; the `?` propagates outward until a binding names it or a `match` eliminates it. `$a / $b` is `DMap { over: [$a, $b], body: \|a, b| Num.Div a, b }` of type `$?Nat`, since the time functor lifts first and the `?` is in the body's result. `?$x + 1` is a type error: an optional dynamic is matched, not lifted.
 
 **Field access and indexing lift like application.** `$slot.element` is `DMap { over: [$slot], body: \|s| s.element }`; `!!panes.!inbox` is `Map { event: !!panes, body: \|p| p.!inbox }` of type `!!Mail` when `inbox` is `!Mail`; `$items[3]` is `DMap` with an `Index` body, of type `$?Item`. The parser has already written the pronoun shorthand `\.x` and `\[i]` as accesses on `_`, so they lift like any other.
 
@@ -858,7 +858,7 @@ What the lint is not: a second elaborator. It does not infer; it compares what t
 
 The last stage is the one with the least to decide and the most to get exactly right, because it is where the compiler meets a runtime that was written without it. The runtime asks for two things from a language: builder calls at build time, and Rust closures the graph calls at occurrence time. A compiled blueprint has to be a blueprint the runtime cannot tell from one written by hand, a compiled closure has to meet the closure bounds the constructors state, and nothing the compiler produces may hold the runtime's objects in a way the ownership rules forbid. The closure compiler is one walk over the converted typed AST that turns each node into one of those two things, and what follows is the walk, node by node, with the Rust types it produces.
 
-### `IrWidget` and the program
+### `IrBlueprint` and the program
 
 ```rust
 pub struct Program {
@@ -875,14 +875,14 @@ pub struct CompiledBlock {
     pub span: Span,
 }
 
-pub struct IrWidget {
+pub struct IrBlueprint {
     pub program: Rc<Program>,
     pub block: BlockId,
     pub captures: Rc<[Value]>,               // the values the block captured from its enclosing node
     pub span: Span,
 }
 
-impl PolymorphicBlueprint<Value> for IrWidget {
+impl DynBlueprint<Value> for IrBlueprint {
     fn build(&self, builder: &mut WidgetBuilder) -> Value {
         let block = &self.program.blocks[self.block];
         let mut env: Vec<Option<Value>> = vec![None; block.env_size];
@@ -894,9 +894,9 @@ impl PolymorphicBlueprint<Value> for IrWidget {
 }
 ```
 
-`IrWidget` is one Rust type for every compiled blueprint: the root `@main`, a `\@widget:` function's body once applied, the block of a `rebuild`, the block of a `for`, the blueprint a supplier returns. It implements the runtime's `dyn`-compatible widget trait at `Value`, so a `rebuild` can rebuild into a different block on each rebuild and compiled widgets and Rust widgets sit side by side in one node tree. The runtime builds it by calling `build` with a builder for a fresh node, which is what it does for every widget, and gets back the block's result as a value. The two things that distinguish a compiled widget from a hand-written one, the program table and the environment vector, are inside `build` and invisible outside it.
+`IrBlueprint` is one Rust type for every compiled blueprint: the root `@main`, a `\@widget:` function's body once applied, the block of a `rebuild`, the block of a `for`, the blueprint a supplier returns. It implements the runtime's `dyn`-compatible widget trait at `Value`, so a `rebuild` can rebuild into a different block on each rebuild and compiled widgets and Rust widgets sit side by side in one node tree. The runtime builds it by calling `build` with a builder for a fresh node, which is what it does for every widget, and gets back the block's result as a value. The two things that distinguish a compiled widget from a hand-written one, the program table and the environment vector, are inside `build` and invisible outside it.
 
-A blueprint *value* in the language (a `let @b = @Button $"OK"`, the result of applying a widget function, the thing a supplier returns) is an `IrWidget` boxed as `Rc<dyn PolymorphicBlueprint<Value>>` and stored as a plain value; binding it twice builds two nodes because `build` is called twice with two builders, which is exactly what "a blueprint is a description, a node is what one bind builds" asks for.
+A blueprint *value* in the language (a `let @b = @Button $"OK"`, the result of applying a widget function, the thing a supplier returns) is an `IrBlueprint` boxed as `Rc<dyn DynBlueprint<Value>>` and stored as a plain value; binding it twice builds two nodes because `build` is called twice with two builders, which is exactly what "a blueprint is a description, a node is what one bind builds" asks for.
 
 ### The environment
 
@@ -906,9 +906,9 @@ A block's environment is a `Vec<Option<Value>>` with one slot per binding of the
 pub enum Operand { Env(usize), Capture(usize), Const(usize), Global(ItemId) }
 ```
 
-`Env(i)` is a binding of this block, filled by an earlier step (or a placeholder, filled at the group's start); `Capture(i)` is an entry of the `IrWidget`'s captures; `Const(i)` is a boxed literal in the program's constant pool; `Global(i)` is a top-level definition, a function value or a plain constant computed once per program. The `Option` is there so that a read of an unfilled slot is a panic with the step's span in debug builds, rather than a wrong value; the lint's build-order check is what makes the panic unreachable, and the `Option` is what makes a lint bug loud instead of quiet.
+`Env(i)` is a binding of this block, filled by an earlier step (or a placeholder, filled at the group's start); `Capture(i)` is an entry of the `IrBlueprint`'s captures; `Const(i)` is a boxed literal in the program's constant pool; `Global(i)` is a top-level definition, a function value or a plain constant computed once per program. The `Option` is there so that a read of an unfilled slot is a panic with the step's span in debug builds, rather than a wrong value; the lint's build-order check is what makes the panic unreachable, and the `Option` is what makes a lint bug loud instead of quiet.
 
-The values in the environment are the runtime's `Value`: events and dynamics as handles (heap values holding an `Rc` to the runtime object), plain data as plain data, blueprints as boxed `IrWidget`s, functions as closure records. Everything a step produces goes into the environment; everything a step consumes comes from it. There is no stack, no register file and no frame for construction code, because construction code runs once and its locals are the node's values.
+The values in the environment are the runtime's `Value`: events and dynamics as handles (heap values holding an `Rc` to the runtime object), plain data as plain data, blueprints as boxed `IrBlueprint`s, functions as closure records. Everything a step produces goes into the environment; everything a step consumes comes from it. There is no stack, no register file and no frame for construction code, because construction code runs once and its locals are the node's values.
 
 ### Steps
 
@@ -956,10 +956,10 @@ One `Step` per typed-AST node kind, each one call on the builder or one construc
 | `Updated { dynamic }` | `Updated` | `dynamic.event()`: the change event is a value the dynamic already has; no node is built |
 | `Distinct { dynamic, eq }` | `Distinct` | a derived dynamic whose change event is the source's filtered by `eq old, new` against the value before the occurrence; one node, with the equality closure |
 | `Started` | `Started` | the builder's done event filtered to `unit`: fires once at `height + 1` in the build occurrence |
-| `Dyn { dynamic, block }` | `Dyn` | `dynamic.map(|v| IrWidget { block, captures: captures + [v] }).dynamic_widget()`: a dynamic of compiled blueprints handed to the runtime's `dynamic_widget`; its event is the `rebuild`'s result event |
-| `For { coll, block, kind }` | `For` | `coll.list_widget(|key, per_key| IrWidget { block, captures: captures + [key, per_key] }, kind)`: one child node per key, consolidated by `kind` |
+| `Dyn { dynamic, block }` | `Dyn` | `dynamic.map(|v| IrBlueprint { block, captures: captures + [v] }).rebuild()`: a dynamic of compiled blueprints handed to the runtime's `rebuild`; its event is the `rebuild`'s result event |
+| `For { coll, block, kind }` | `For` | `coll.list_blueprint(|key, per_key| IrBlueprint { block, captures: captures + [key, per_key] }, kind)`: one child node per key, consolidated by `kind` |
 | `Element { elem, kind }` | `Element` | `builder.element(elem_value, request)`: mints the path, creates the response output if the tag responds, asks the supply context for the state dynamic if it has state, stores the request event if it requests; returns what the tag's parts imply |
-| `Intercept` | `Intercept` | `builder.bind(&InterceptWidget { child, responses, supplier })`: the child's node is marked captured, its list is the second result |
+| `Intercept` | `Intercept` | `builder.bind(&InterceptBlueprint { child, responses, supplier })`: the child's node is marked captured, its list is the second result |
 | `Placeholder` | `Placeholder` | `builder.add_cyclic_dynamic(name)` or `add_cyclic_event(name)`, returning a typed handle; the placeholder's dynamic or event goes into `dst` |
 | `Close` | `Close` | `handle.close(real)`: the one write to a placeholder |
 | `Kind { elem }` | a `Let` whose leaf reads the tag table | `tags[elem.tag]`'s three flags as a record |
@@ -1020,9 +1020,9 @@ Take the counter again and watch `build` run for the block of `@counter` (the `@
 
 ```
 step 0  Const   env[0] = Dynamic::constant("Increment")
-step 1  Bind    env[1] = builder.bind(&IrWidget{block: @Button, captures: [env[0]]})  -> the button's !Click (a switch)
+step 1  Bind    env[1] = builder.bind(&IrBlueprint{block: @Button, captures: [env[0]]})  -> the button's !Click (a switch)
 step 2  Const   env[2] = Dynamic::constant("Decrement")
-step 3  Bind    env[3] = builder.bind(&IrWidget{block: @Button, captures: [env[2]]})
+step 3  Bind    env[3] = builder.bind(&IrBlueprint{block: @Button, captures: [env[2]]})
 step 4  Map     env[4] = env[3].filter_map(leaf: \ignore -> -1)
 step 5  Map     env[5] = env[1].filter_map(leaf: \ignore -> +1)
 step 6  Leftmost env[6] = Event::leftmost([env[4], env[5]])            -> !delta
@@ -1031,7 +1031,7 @@ step 8  Tag     env[8] = env[6].tag_map_n([env[7]], leaf: \d, c -> c + d)
 step 9  Hold    env[9] = Dynamic::hold(0:Int, env[8])                  -> $count.hold
 step 10 Close   handle(env[7]).close(env[9])                           -> $count is the hold
 step 11 DMap    env[11] = Dynamic::map_n([env[9]], leaf: \c -> "Count: " ++ ToText c)
-step 12 Bind    env[12] = builder.bind(&IrWidget{block: @Label, captures: [env[11]]})
+step 12 Bind    env[12] = builder.bind(&IrBlueprint{block: @Label, captures: [env[11]]})
 result  env[12]  (unit)
 ```
 
@@ -1286,7 +1286,7 @@ A namespace wildcard compiles to a prefix test on the interned tag's namespace p
 
 ### `intercept`
 
-`intercept @child, !responses, $supplier` compiles to `Step::Intercept`, which binds an `InterceptWidget` holding the compiled child (an `IrWidget` value from the environment), the responses event handle and the supplier dynamic handle, and writes the pair `((child's result, child's element list))` into the environment, with the list as a `$(Path ==> Slot)`. The supplier is a `$(fn Element -> @$State)`: a dynamic whose value is a closure record; the runtime, when a state slot is created under this interceptor, reads the closure record from the dynamic, applies it to the element through the program's call entry point, and gets back an `IrWidget` (the `@$State` is a blueprint value), which it builds as a child of the interceptor's node. The compiler's part of that is to make sure a supplier lambda compiles to a `Leaf` that returns a blueprint value, which the lint's "leaves are pure" rule allows because returning an unbuilt widget is not building.
+`intercept @child, !responses, $supplier` compiles to `Step::Intercept`, which binds an `InterceptBlueprint` holding the compiled child (an `IrBlueprint` value from the environment), the responses event handle and the supplier dynamic handle, and writes the pair `((child's result, child's element list))` into the environment, with the list as a `$(Path ==> Slot)`. The supplier is a `$(fn Element -> @$State)`: a dynamic whose value is a closure record; the runtime, when a state slot is created under this interceptor, reads the closure record from the dynamic, applies it to the element through the program's call entry point, and gets back an `IrBlueprint` (the `@$State` is a blueprint value), which it builds as a child of the interceptor's node. The compiler's part of that is to make sure a supplier lambda compiles to a `Leaf` that returns a blueprint value, which the lint's "leaves are pure" rule allows because returning an unbuilt widget is not building.
 
 The tag-indexed refinement of `Slot` fields and supplier results is a checker rule and has no runtime structure: a `Slot` at runtime is a record of an `ElementValue` and an event handle, whatever arm it is read in.
 
@@ -1425,7 +1425,7 @@ Print every golden's tree, parse the printed text, compare the trees; parse ever
 
 ### End to end: the counter against the hand-written counter
 
-The test where the frontend and the runtime meet. The runtime chapter has the counter written in Rust against the builder by hand, driven by the harness through three turns (build; click Increment; click Decrement), with its transcript. The compiled counter is built from `counter.prism` through every stage of this chapter into an `IrWidget`, handed to the same harness, driven through the same three turns, and its transcript must be byte-identical: the same element list with the same paths (`0/#0/0: Ui.Button(label="Increment")`, `1/#0/0`, `2/#0/0: Ui.Label(text="Count: 0")` after build; `2/#1/0: Ui.Label(text="Count: 1")` after the first click), the same request firings (none), the same results. If the paths differ, the compiler's node structure is not the canonical one; if the label's text differs, a lift or a literal is wrong; if the transcript has an extra turn, something fired at build that should not have. One comparison proves that the two tracks were built against the same reading of the design, and it is the milestone that ends the compiler's first phase.
+The test where the frontend and the runtime meet. The runtime chapter has the counter written in Rust against the builder by hand, driven by the harness through three turns (build; click Increment; click Decrement), with its transcript. The compiled counter is built from `counter.prism` through every stage of this chapter into an `IrBlueprint`, handed to the same harness, driven through the same three turns, and its transcript must be byte-identical: the same element list with the same paths (`0/#0/0: Ui.Button(label="Increment")`, `1/#0/0`, `2/#0/0: Ui.Label(text="Count: 0")` after build; `2/#1/0: Ui.Label(text="Count: 1")` after the first click), the same request firings (none), the same results. If the paths differ, the compiler's node structure is not the canonical one; if the label's text differs, a lift or a literal is wrong; if the transcript has an extra turn, something fired at build that should not have. One comparison proves that the two tracks were built against the same reading of the design, and it is the milestone that ends the compiler's first phase.
 
 After the counter, the same harness runs the compiled `@Forward` from the GUI library wrapped around the counter against the hand-written `Forward` fixture, which exercises `intercept`, `for`, `rebuild`, generic `@Element` and the supplier; and then the twelve programs of the conformance corpus under the Test World with their scripts, which is the conformance chapter's test and not this one's, but is the first time most of the compiler's node kinds are exercised with real inputs.
 
@@ -1487,7 +1487,7 @@ None of these changes the typed AST, which is the point of putting the line ther
 
 ## Native backends
 
-A Prism program ships today as source plus the frontend, and runs through the closure compiler: a `Program { functions, blocks, tags, constants }`, a table of compiled blocks and leaf functions, and an `IrWidget { program, block, captures, span }` per widget whose `build` runs its block's steps in order against a builder, each step calling a runtime constructor and writing into an environment vector. That is the right first implementation because it has one intermediate form, the typed AST, and no second syntax. It stops being the right one in two situations. A World has to ship a program without a frontend in it: a browser bundle that should not include a parser, a device that cannot afford one, or a World that receives programs it did not compile and wants to check them before building. Or the closure compiler is measured to be the cost: a leaf that runs per occurrence through a tree walk and an environment lookup, when it should be three machine instructions. This item is what a native backend is, lowered from what, and what the differential test gives once there are two ways to run the same program.
+A Prism program ships today as source plus the frontend, and runs through the closure compiler: a `Program { functions, blocks, tags, constants }`, a table of compiled blocks and leaf functions, and an `IrBlueprint { program, block, captures, span }` per widget whose `build` runs its block's steps in order against a builder, each step calling a runtime constructor and writing into an environment vector. That is the right first implementation because it has one intermediate form, the typed AST, and no second syntax. It stops being the right one in two situations. A World has to ship a program without a frontend in it: a browser bundle that should not include a parser, a device that cannot afford one, or a World that receives programs it did not compile and wants to check them before building. Or the closure compiler is measured to be the cost: a leaf that runs per occurrence through a tree walk and an environment lookup, when it should be three machine instructions. This item is what a native backend is, lowered from what, and what the differential test gives once there are two ways to run the same program.
 
 ### Register code as a lowering
 
@@ -1505,7 +1505,7 @@ cyc.close %count, %held
 
 Open, use, hold, close, then read. The tag reads the placeholder's old value, which is what keeps the hold from feeding on itself, and the listing shows it. Each register is named once and has one type, which is an SSA value; a widget function is a basic block; a leaf is a small function over typed registers that keeps `Int`, `Nat` and `Float` as plain machine values until they cross into the runtime as `Value`.
 
-The instruction families are the runtime's combinators one for one: `bind` on a native or compiled blueprint; `ev.map`, `ev.tag_map`, `ev.leftmost`; `rebuild.hold`, `rebuild.map`, `rebuild.map2`, `rebuild.join`; a switch over an event of events; `cyc.rebuild`, `cyc.event`, `cyc.close`; slot creation, the keyed list, `dynamic_widget` and `intercept` as natives by table index; `rec.make` and `rec.match` for elements, with layouts from the tag table. A text form prints and parses from the same instruction enum, so a person can write a fixture before the lowering exists and a golden can diff the lowering's output. A verifier runs after every lowering: register types agree, every open has one close, nothing is sampled while open, every capture names a free register. It is the lint of the closure compiler applied to the flat form, and it is what makes the lowering mechanical in the only sense that matters, that a mistake in it is caught before anything is built.
+The instruction families are the runtime's combinators one for one: `bind` on a native or compiled blueprint; `ev.map`, `ev.tag_map`, `ev.leftmost`; `rebuild.hold`, `rebuild.map`, `rebuild.map2`, `rebuild.join`; a switch over an event of events; `cyc.rebuild`, `cyc.event`, `cyc.close`; slot creation, the keyed list, `rebuild` and `intercept` as natives by table index; `rec.make` and `rec.match` for elements, with layouts from the tag table. A text form prints and parses from the same instruction enum, so a person can write a fixture before the lowering exists and a golden can diff the lowering's output. A verifier runs after every lowering: register types agree, every open has one close, nothing is sampled while open, every capture names a free register. It is the lint of the closure compiler applied to the flat form, and it is what makes the lowering mechanical in the only sense that matters, that a mistake in it is caught before anything is built.
 
 Lowering is where the closure compiler and the native backend part ways and it is deliberately late. Everything upstream, elaboration, closure conversion, the lint, the typed-AST text form, is shared. A bug found by the differential test is therefore in the lowering or the backend, never in the meaning, because both executors got the same typed AST.
 

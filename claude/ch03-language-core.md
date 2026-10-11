@@ -14,6 +14,8 @@ Prism makes the hint mandatory, uniform, and checked. A name's first character s
 - `@x` is a blueprint. It describes a widget: something that can be built from it, that then exists for a while, talks to the outside, and is torn down. The book says "widget" for the built thing, the way everyone does, and "blueprint" for the value of type `@a` whenever the difference matters.
 - `?x` is a plain value that may be absent.
 
+The four have names, for when the book has to talk about them as a kind rather than as a value: `!` is the *event functor*, `$` the *dynamic functor*, `@` the *widget monad*, `?` the *optional*. The first two are functors because an operation lifts over them (`$count + 1`) and that is all; flattening them is `!Switch` and `$Join`, each with laws of its own, so neither is a monad in the sense that would let you treat `!!a` as an `!a`. The third is a monad in exactly that sense: `<-` is its bind, `@ v` is its return, and a widget block is a `do` block. The fourth lifts at the plain layer, inside the other three.
+
 The sigil is part of the name, the compiler checks it against the type, and that is the whole idea. `$count + !delta` tells you, before you know what a count or a delta is, that one of them is live and one of them happens, and so it tells you that the expression is an event, firing when the delta does, with the count read as it stood before. No inference over functors is needed to know that; a lexer could classify it. This serves the goal that you can see what moves. The other goal it serves is less obvious: because the time structure of an expression is readable off the names, the compiler never has to guess it, so the lifting rule in the last section of this chapter is a lookup table rather than a search, and the two implementations cannot disagree about it.
 
 ### Stacking
@@ -55,7 +57,7 @@ These are different types with different operations. You cannot append to `[$Ite
 
 `!` and `$` are defined against *occurrences*: the discrete, atomic moments at which anything happens. An occurrence has a before and an after and no inside anyone can see. An event fires at an occurrence or does not; a dynamic has one value before an occurrence and one after. A widget's lifetime is measured in occurrences too: built in one, alive through some, torn down in one. The laws are in the chapter on the functors; this chapter needs only that the sigils name those three relations to time, and that plain values and optionals have no relation to time at all, which is what makes them plain.
 
-That last point makes the aggregate rule above work. A plain array of events is plain because arrays have no relation to time: the array was built once and is what it is. The events inside have their own relation to time, each on its own. Nothing about "an array" needs a notion of "now". If it did, if arrays were somehow live, then every container would be a dynamic and every lifted operation would have to say which layer it lifted over. Instead there is one plain layer, which is timeless, and three time functors that sit on top of it or inside it, and lifting only ever looks at the outermost layer of each operand.
+That last point makes the aggregate rule above work. A plain array of events is plain because arrays have no relation to time: the array was built once and is what it is. The events inside have their own relation to time, each on its own. Nothing about "an array" needs a notion of "now". If it did, if arrays were somehow live, then every container would be a dynamic and every lifted operation would have to say which layer it lifted over. Instead there is one plain layer, which is timeless, and the event functor, the dynamic functor and the widget monad sitting on top of it or inside it, and lifting only ever looks at the outermost layer of each operand.
 
 ### Functions and return sigils
 
@@ -737,7 +739,7 @@ Generic code is erased. It runs on values whose types it does not know and never
 
 The worry about lifting `?` is the integer division case: `a / b + 1` quietly becomes optional, and the reader of the line might not notice. Look at where the result goes. It is bound to a name, and that name must be `?total`, because the sigil is part of the name and checked against the type; it is passed to a function wanting a `Nat`, and the function gets a `?Nat` instead, so that application lifts too and its result is optional, and so on until some binding is forced to show the `?` or some `match` eliminates it. The `?` cannot be lost; it can only move outward, and it stops at the first name. The alternative, no lifting, so that `a / b + 1` is a type error and every optional needs a `match` at the site of its first use, puts the `match` where the division is rather than where the decision about absence is made, and in the todo list that is the difference between one `match` in `Describe` and five in the arithmetic above it. Lifting `?` is the same decision as lifting `!` and `$`: the structure is in the names, so the operations can be plain.
 
-Lifting over `?` happens at the plain layer, which means *inside* the time functors. `$a / $b` is `$?Nat`: a dynamic whose value is sometimes `Nil`. `?$x + 1` does not lift and is a type error: an optional dynamic is a value you match on, once, to find out whether there is a dynamic, and only then can you lift over the dynamic. The sigil order says which it is, and the lifting rule in the next section states the precedence between `?` and the time functors in one line.
+Lifting over `?` happens at the plain layer, which means *inside* the event functor, the dynamic functor and the widget monad. `$a / $b` is `$?Nat`: a dynamic whose value is sometimes `Nil`. `?$x + 1` does not lift and is a type error: an optional dynamic is a value you match on, once, to find out whether there is a dynamic, and only then can you lift over the dynamic. The sigil order says which it is, and the lifting rule in the next section states the precedence between `?` and the time functors in one line.
 
 ### Extensible variants
 
@@ -790,7 +792,7 @@ The sigils buy lifting. You have written `zipWith (+) counts deltas` and `fmap r
 
 ### Lifting
 
-Every operation and every function application is lifted over the time functors. The rule is read off the operands' outermost sigils, not inferred:
+Every operation and every function application is lifted over the event functor, the dynamic functor and the widget monad. The rule is read off the operands' outermost sigils, not inferred:
 
 - **All operands plain:** the result is plain.
 - **Some dynamics, no event:** the result is a dynamic, recomputed whenever any operand changes, in the occurrence of the change. It is prompt: there is no occurrence in which an operand has changed and the result has not.
@@ -1189,7 +1191,7 @@ error: a hold must be inside a widget block
   --> helper.prism:3:5
    |
  3 |     $n <- 0 then $n + !e
-   |     ^^^^^^^^^^^^^^^^^^ holds are owned by a widget's node
+   |     ^^^^^^^^^^^^^^^^^^ holds belong to a widget
 ```
 
 **Lifting across a sigil boundary.**

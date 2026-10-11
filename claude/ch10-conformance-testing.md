@@ -539,7 +539,7 @@ test a_nested_dyn_builds_once_with_the_new_value, @nested_dyn:
         => expect_count Ui.Label(..), 1
 ```
 
-The outer `rebuild` rebuilds on the click; the inner one is built inside the new block, in the same occurrence, over `$tens`, which changed in that occurrence. It sees the change event and builds with `10`. An implementation that built it with the old value and then rebuilt it would leave a `Ui.Label(text="outer=1 inner=0")` in some intermediate list, and although no script can see an intermediate list, it would also have fired the inner `rebuild`'s event twice in one occurrence, which the diamond test's technique catches; this test keeps the direct form because the sentence is about the value.
+The outer `rebuild` builds anew on the click; the inner one is built inside the new block, in the same occurrence, over `$tens`, which changed in that occurrence. It sees the change event and builds with `10`. An implementation that built it with the old value and then rebuilt it would leave a `Ui.Label(text="outer=1 inner=0")` in some intermediate list, and although no script can see an intermediate list, it would also have fired the inner `rebuild`'s event twice in one occurrence, which the diamond test's technique catches; this test keeps the direct form because the sentence is about the value.
 
 **Routing against the opened list.** An input addressed to a path in occurrence n is delivered to the slot at that path in the list as n opened; the old widget keeps propagating until commit.
 

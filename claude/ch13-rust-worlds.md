@@ -391,7 +391,7 @@ The bound above counts slots, and a program can make new `Defer` slots faster th
     @ unit
 ```
 
-`@Pulse $n` lifts to a `rebuild` over `$n`. The build fires the `Defer` at `1/#0/1`. The next occurrence answers it; `!later` fires; `$n` becomes 1; the `rebuild` rebuilds in that same occurrence, and the new `@Pulse` fires its own `Defer` at birth, at `1/#1/1`. That path is not in `answered`, so the core answers it in the next occurrence, which rebuilds again and fires at `1/#2/1`. Every slot is answered once, exactly as the rule asks, and the turn never ends. The program is wrong in the same way the retrying sandbox child is wrong (it answers "later" by asking for "later" again), but `DeferTable` keys by full path, and a full path includes the generation, so the core never sees the repeat.
+`@Pulse $n` lifts to a `rebuild` over `$n`. The build fires the `Defer` at `1/#0/1`. The next occurrence answers it; `!later` fires; `$n` becomes 1; the `rebuild` builds anew in that same occurrence, and the new `@Pulse` fires its own `Defer` at birth, at `1/#1/1`. That path is not in `answered`, so the core answers it in the next occurrence, which rebuilds again and fires at `1/#2/1`. Every slot is answered once, exactly as the rule asks, and the turn never ends. The program is wrong in the same way the retrying sandbox child is wrong (it answers "later" by asking for "later" again), but `DeferTable` keys by full path, and a full path includes the generation, so the core never sees the repeat.
 
 The candidate fix is to key `answered` by the path with its generation segments stripped, so that a `Defer` reborn at the same tree position counts as the same `Defer`. `1/#0/1` and `1/#1/1` both become `1/#/1`, the second firing is deferring backwards, and the error names both paths. The change is a few lines in `collect`, and it keeps the bound without a counter.
 
@@ -1808,7 +1808,7 @@ enum Call {
 impl Component for Fake { /* records every call; answers from the maps */ }
 ```
 
-The programs under test are hand-written `IrWidget`s or compiled from Prism source where the frontend is available; the tests below assume source. Each test is a `World` with a `Fake`, a `Harness` with `Drain`, and assertions on `calls` and on `TurnOutcome`.
+The programs under test are hand-written `IrBlueprint`s or compiled from Prism source where the frontend is available; the tests below assume source. Each test is a `World` with a `Fake`, a `Harness` with `Drain`, and assertions on `calls` and on `TurnOutcome`.
 
 ```rust
 #[test]
@@ -1937,7 +1937,7 @@ fn a_request_from_a_slot_torn_down_in_the_same_occurrence_is_performed_and_its_r
 
 #[test]
 fn removals_are_reported_before_creations() {
-    // a rebuild rebuild; assert the Removed call precedes the Created call in `calls`
+    // a rebuild generation change; assert the Removed call precedes the Created call in `calls`
 }
 
 #[test]
