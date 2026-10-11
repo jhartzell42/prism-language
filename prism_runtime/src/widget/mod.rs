@@ -23,15 +23,7 @@ pub use slots::*;
 
 use crate::value::ValueType;
 
-/// A blueprint: a value a widget is built from. Binding a blueprint
-/// builds a [`Widget`]; binding it twice builds two. A blueprint stays in
-/// correspondence with the widget it built: its bindings are the widget's
-/// wiring for as long as the widget stands.
-///
-/// Implementers of this trait represent a Prism component that
-/// is implemented inside the context of the Prism runtime.
-/// This is distinct from backend components, which are implemented
-/// outside of the Prism runtime.
+/// An implementor of [`Blueprint`] can serve as a plan to build a [`Widget`].
 ///
 /// Implementers of this trait should only implement externally visible mutable
 /// state through the graph of events, dynamics, and behaviors they build in the
@@ -41,9 +33,9 @@ use crate::value::ValueType;
 /// or dynamics directly. They should instead build new events out of old ones,
 /// and new behaviors out of old ones, and express their logic in that way.
 ///
-/// If they want to do external stuff, that more appropriately belongs in the backend.
-/// Implementers of this trait can delegate such implementations to the backend by annotating
-/// the resulting widget with backend-relevant information.
+/// If they want to do external stuff, that more appropriately belongs in the World.
+/// Implementers of this trait can delegate such implementations to the World by annotating
+/// the resulting widget with World-relevant information.
 pub trait Blueprint: Send + Sync {
     // XXX: This might be too inflexible. Do we want this trait to be `dyn`-compatible??
     // I guess we'll find out whether that's necessary at some point.

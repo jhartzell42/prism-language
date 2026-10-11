@@ -12,11 +12,11 @@ impl<T: ValueType> Behavior<T> {
     /// from the last occurrence in which the event was fired.
     /// If it has never fired, it will have the `initial` value.
     ///
-    /// A hold sees only the occurrences from its creation on, which is why
-    /// creating one needs the runtime: if `event` already fired in the
-    /// occurrence now propagating, the hold takes that value at commit.
-    /// This is Reflex's `hold` in `MonadHold`, with the runtime standing in
-    /// for the monad.
+    /// We need a runtime in case we subscribe to an event that's already fired this
+    /// occurrence, because otherwise we'll miss seeing the event, and semantically we
+    /// need it because that event was supposed to give us a new value, and the fact
+    /// that it fired before us in an occurrence isn't semantically relevant—semantically,
+    /// occurrences represent an instant.
     pub fn hold(runtime: &Runtime, initial: Value<T>, event: Event<T>) -> Self {
         let hold = Arc::new_cyclic(|weak| HoldBehavior {
             value: Mutex::new(initial),

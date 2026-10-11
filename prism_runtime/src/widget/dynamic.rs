@@ -16,25 +16,25 @@ use crate::{
 impl<T: Blueprint + 'static + Send + Sync + Debug> Dynamic<Arc<T>> {
     /// Create a dynamic widget that starts out by building current value of `self`,
     /// and then replaces it with whatever widget `self` updates to.
-    pub fn dynamic_widget(&self) -> impl Blueprint<Output = Arc<Event<Arc<T::Output>>>> {
-        DynamicBlueprint {
+    pub fn rebuilding(&self) -> impl Blueprint<Output = Arc<Event<Arc<T::Output>>>> {
+        Rebuilding {
             dynamic: self.clone(),
         }
     }
 }
 
-struct DynamicBlueprint<T: 'static + Blueprint + Send + Sync + Debug> {
+struct Rebuilding<T: 'static + Blueprint + Send + Sync + Debug> {
     dynamic: Dynamic<Arc<T>>,
 }
 
-struct DynamicWidgetEvent<T: 'static + Blueprint + Send + Sync + Debug> {
-    widget: DynamicBlueprint<T>,
+struct RebuildingEvent<T: 'static + Blueprint + Send + Sync + Debug> {
+    widget: Rebuilding<T>,
     weak_self: Weak<Self>,
     ready: Arc<WidgetReadyEvent>,
     subscribers: SubscriptionManager<Arc<T::Output>, Self>,
 }
 
-impl<T: 'static + Blueprint + Debug + Send + Sync> Clone for DynamicBlueprint<T> {
+impl<T: 'static + Blueprint + Debug + Send + Sync> Clone for Rebuilding<T> {
     fn clone(&self) -> Self {
         Self {
             dynamic: self.dynamic.clone(),
@@ -42,10 +42,10 @@ impl<T: 'static + Blueprint + Debug + Send + Sync> Clone for DynamicBlueprint<T>
     }
 }
 
-impl<T: 'static + Blueprint + Debug + Send + Sync> Blueprint for DynamicBlueprint<T> {
+impl<T: 'static + Blueprint + Debug + Send + Sync> Blueprint for Rebuilding<T> {
     type Output = Arc<Event<Arc<T::Output>>>;
     fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
-        let next_event = Arc::new_cyclic(|weak_self| DynamicWidgetEvent {
+        let next_event = Arc::new_cyclic(|weak_self| RebuildingEvent {
             widget: self.clone(),
             weak_self: weak_self.clone(),
             ready: builder.done_event.clone(),
@@ -77,7 +77,7 @@ impl<T: 'static + Blueprint + Debug + Send + Sync> Blueprint for DynamicBlueprin
     }
 }
 
-impl<T: 'static + Blueprint + Debug> EventImpl<Arc<T::Output>> for DynamicWidgetEvent<T> {
+impl<T: 'static + Blueprint + Debug> EventImpl<Arc<T::Output>> for RebuildingEvent<T> {
     fn subscribe(
         &self,
         runtime: &Runtime,
@@ -92,7 +92,7 @@ impl<T: 'static + Blueprint + Debug> EventImpl<Arc<T::Output>> for DynamicWidget
     }
 }
 
-impl<T: 'static + Blueprint + Debug> EventCallback<Arc<T>> for DynamicWidgetEvent<T> {
+impl<T: 'static + Blueprint + Debug> EventCallback<Arc<T>> for RebuildingEvent<T> {
     fn event_fired(&self, runtime: &crate::runtime::Runtime, value: PrismArc<T>) {
         let Some(this) = self.weak_self.upgrade() else {
             // The outer widget's been destroyed lol, guess we can be done.
@@ -134,7 +134,7 @@ impl<T: 'static + Blueprint + Debug> EventCallback<Arc<T>> for DynamicWidgetEven
 }
 
 struct DWAction<T: 'static + Blueprint + Debug> {
-    event: Arc<DynamicWidgetEvent<T>>,
+    event: Arc<RebuildingEvent<T>>,
     value: Arc<T>,
     height: usize,
 }
@@ -179,7 +179,7 @@ impl Action for KeepUntilOccurrenceEnds {
     }
 }
 
-impl<T: 'static + Blueprint + Debug> SubscriptionEvent<Arc<T::Output>> for DynamicWidgetEvent<T> {
+impl<T: 'static + Blueprint + Debug> SubscriptionEvent<Arc<T::Output>> for RebuildingEvent<T> {
     type Inner = ();
 
     type Tag = ();

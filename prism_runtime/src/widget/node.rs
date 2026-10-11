@@ -16,11 +16,19 @@ use crate::{
     },
 };
 
-/// A [`Widget`] is a built, live widget: what one bind of a
-/// [`Blueprint`](super::Blueprint) produces. A tree of [`Widget`]s is the
-/// state of a running app, and all ownership of FRP state in the app comes
-/// from that tree. Inside the runtime a widget is also called a node, since
-/// it is the node of that tree.
+/// A [`Widget`] is a component of a Prism app. Widgets aren't Prism values, since they aren't
+/// referentially transparent and represent lifetimes and connections between other components.
+/// Prism programmers, instead, must merely deal with widget [`Blueprint`](super::Blueprint)s.
+///
+/// Stereotypically, a widget would be a button
+/// or a text view or even a full settings pane or window. It can also represent notional components,
+/// such as all the internal state and wiring of a particular HTTP request being handled on a server.
+/// The tree of widgets, growing from a root in the [`Runtime`](crate::runtime::Runtime), in fact represents the structure of a running app, and owns the entire
+/// heap.
+///
+/// Cycles are resolved by having some widget or another own the cycle. The lifecycle of the app is
+/// managed by gearing up and spinning down widgets. It's like an object, except that you can't request
+/// arbitrary mutation.
 pub struct Widget {
     /// Tracks current children of the node.
     pub children: Mutex<Vec<Arc<Widget>>>,
