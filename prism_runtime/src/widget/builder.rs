@@ -19,16 +19,12 @@ pub struct WidgetBuilder<'a> {
     node: WidgetNode,
     children: Vec<Arc<WidgetNode>>,
     pub(super) done_event: Arc<WidgetReadyEvent>,
-    runtime: &'a Runtime,
+    /// The runtime this widget is being built in: the occurrence a hold or
+    /// switch made during the build is created in.
+    pub(crate) runtime: &'a Runtime,
 }
 
 impl WidgetBuilder<'_> {
-    /// The runtime this widget is being built in: the occurrence a hold or
-    /// switch made during the build is created in.
-    pub fn runtime(&self) -> &Runtime {
-        self.runtime
-    }
-
     /// Call from outside (e.g. a backend) to create a root widget.
     /// This is used at the top level to build the initial tree with `height = 0`.
     ///
