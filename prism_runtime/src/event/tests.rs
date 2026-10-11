@@ -8,14 +8,14 @@ use crate::{
     event::{Event, EventCallback},
     runtime::Runtime,
     value::{PrismArc, Value},
-    widget::Widget,
+    widget::Blueprint,
 };
 
 #[test]
 fn event_filter_test() {
     struct TestWidget;
 
-    impl Widget for TestWidget {
+    impl Blueprint for TestWidget {
         type Output = ();
 
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
@@ -48,7 +48,7 @@ fn event_filter_test() {
 fn switch_hold_test2() {
     struct TestWidget;
 
-    impl Widget for TestWidget {
+    impl Blueprint for TestWidget {
         type Output = ();
 
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
@@ -102,7 +102,7 @@ fn switch_hold_test2() {
 fn leftmost_test() {
     struct TestWidget;
 
-    impl Widget for TestWidget {
+    impl Blueprint for TestWidget {
         type Output = ();
 
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {
@@ -146,7 +146,7 @@ fn leftmost_test() {
 fn combine_test() {
     struct TestWidget;
 
-    impl Widget for TestWidget {
+    impl Blueprint for TestWidget {
         type Output = ();
 
         fn build(&self, builder: &mut crate::widget::WidgetBuilder) -> Self::Output {

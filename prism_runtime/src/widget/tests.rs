@@ -9,14 +9,14 @@ use crate::{
     event::Event,
     runtime::Runtime,
     value::{PrismArc, Value},
-    widget::{Widget, WidgetBuilder},
+    widget::{Blueprint, WidgetBuilder},
 };
 
 #[test]
 fn fold_dyn_cyclic_dyn() {
     struct TestWidget;
 
-    impl Widget for TestWidget {
+    impl Blueprint for TestWidget {
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
@@ -67,7 +67,7 @@ fn fold_dyn_cyclic_dyn() {
 fn fold_dyn() {
     struct TestWidget;
 
-    impl Widget for TestWidget {
+    impl Blueprint for TestWidget {
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
@@ -117,14 +117,14 @@ fn fold_dyn() {
 fn dynamic_widget() {
     struct TestWidget;
 
-    impl Widget for TestWidget {
+    impl Blueprint for TestWidget {
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
             #[derive(Debug, Clone)]
             struct Inner(String);
 
-            impl Widget for Inner {
+            impl Blueprint for Inner {
                 type Output = ();
 
                 fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
@@ -155,7 +155,7 @@ fn dynamic_widget() {
 #[derive(Debug)]
 struct Leaf(u32);
 
-impl Widget for Leaf {
+impl Blueprint for Leaf {
     type Output = u32;
 
     fn build(&self, _: &mut WidgetBuilder) -> u32 {
@@ -203,7 +203,7 @@ fn nested_dyn_rebuilds_in_the_same_occurrence_as_its_parent() {
     #[derive(Debug)]
     struct Middle(Event<u32>);
 
-    impl Widget for Middle {
+    impl Blueprint for Middle {
         type Output = Arc<Event<Arc<u32>>>;
 
         fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
@@ -235,7 +235,7 @@ fn nested_dyn_rebuilds_in_the_same_occurrence_as_its_parent() {
 fn cyclic_dynamic_event_fires_when_its_value_changes_in_the_build_occurrence() {
     struct StartedAtSeven;
 
-    impl Widget for StartedAtSeven {
+    impl Blueprint for StartedAtSeven {
         type Output = Dynamic<u32>;
 
         fn build(&self, builder: &mut WidgetBuilder) -> Dynamic<u32> {
@@ -259,7 +259,7 @@ fn cyclic_dynamic_event_fires_when_its_value_changes_in_the_build_occurrence() {
 fn fold_dyn_counts_an_event_from_the_build_occurrence() {
     struct CountStarted;
 
-    impl Widget for CountStarted {
+    impl Blueprint for CountStarted {
         type Output = Dynamic<u32>;
 
         fn build(&self, builder: &mut WidgetBuilder) -> Dynamic<u32> {
@@ -284,7 +284,7 @@ fn fold_dyn_counts_an_event_from_the_build_occurrence() {
 fn a_same_occurrence_cycle_through_a_cyclic_event_is_reported_instead_of_hanging() {
     struct Loop(Event<u32>);
 
-    impl Widget for Loop {
+    impl Blueprint for Loop {
         type Output = Dynamic<u32>;
 
         fn build(&self, builder: &mut WidgetBuilder) -> Dynamic<u32> {
@@ -317,7 +317,7 @@ fn a_same_occurrence_cycle_through_a_cyclic_event_is_reported_instead_of_hanging
 fn a_dynamic_defined_as_a_function_of_itself_is_reported_instead_of_hanging() {
     struct SelfReferential;
 
-    impl Widget for SelfReferential {
+    impl Blueprint for SelfReferential {
         type Output = Dynamic<u32>;
 
         fn build(&self, builder: &mut WidgetBuilder) -> Dynamic<u32> {
@@ -350,7 +350,7 @@ fn a_widget_built_mid_occurrence_sees_the_same_events_at_any_depth() {
         built: Arc<Mutex<Vec<(Dynamic<u32>, Dynamic<u32>)>>>,
     }
 
-    impl Widget for Child {
+    impl Blueprint for Child {
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) {
@@ -386,7 +386,7 @@ fn a_widget_built_mid_occurrence_sees_the_same_events_at_any_depth() {
 fn closing_a_cyclic_dynamic_with_the_wrong_type_fails_while_building() {
     struct WrongType;
 
-    impl Widget for WrongType {
+    impl Blueprint for WrongType {
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) {
@@ -405,7 +405,7 @@ fn closing_a_cyclic_dynamic_with_the_wrong_type_fails_while_building() {
 fn dropping_a_widget_frees_its_cyclic_loops() {
     struct Loops(Event<u32>);
 
-    impl Widget for Loops {
+    impl Blueprint for Loops {
         type Output = Arc<(Dynamic<u32>, Event<u32>)>;
 
         fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
@@ -443,7 +443,7 @@ fn a_replaced_child_keeps_working_until_its_last_occurrence_ends() {
     #[derive(Debug)]
     struct Counter(Event<u32>);
 
-    impl Widget for Counter {
+    impl Blueprint for Counter {
         type Output = Event<u32>;
 
         fn build(&self, builder: &mut WidgetBuilder) -> Event<u32> {
@@ -490,7 +490,7 @@ fn a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value(
         shown: Arc<Mutex<Vec<u32>>>,
     }
 
-    impl Widget for Title {
+    impl Blueprint for Title {
         type Output = ();
 
         fn build(&self, _: &mut WidgetBuilder) {
@@ -501,7 +501,7 @@ fn a_nested_dyn_built_in_the_occurrence_its_dynamic_changes_shows_the_new_value(
     #[derive(Debug)]
     struct Page(Dynamic<Arc<Title>>);
 
-    impl Widget for Page {
+    impl Blueprint for Page {
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) {
@@ -539,7 +539,7 @@ fn a_widget_built_mid_occurrence_gets_the_mapped_value_of_an_event_that_already_
         built: Arc<Mutex<Vec<Dynamic<u32>>>>,
     }
 
-    impl Widget for Tens {
+    impl Blueprint for Tens {
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) {
@@ -574,7 +574,7 @@ fn a_closure_runs_once_per_occurrence_even_when_late_subscribers_read_it() {
         built: Arc<Mutex<Vec<(Dynamic<u32>, Dynamic<u32>)>>>,
     }
 
-    impl Widget for TwoReaders {
+    impl Blueprint for TwoReaders {
         type Output = ();
 
         fn build(&self, builder: &mut WidgetBuilder) {

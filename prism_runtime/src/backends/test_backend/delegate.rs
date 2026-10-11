@@ -4,7 +4,7 @@ use crate::{
     backends::test_backend::{Path, backend::EventRecord},
     value::AnyValue,
     widget::{
-        AnyDynamic, AnyEventTrigger, Slots, WidgetDelegate, WidgetDelegateContext, WidgetNode,
+        AnyDynamic, AnyEventTrigger, Slots, WidgetDelegate, WidgetDelegateContext, Widget,
     },
 };
 
@@ -19,13 +19,13 @@ pub(crate) struct TestDelegate {
 
 impl TestDelegate {
     pub(super) fn for_root_node(
-        node: &WidgetNode,
+        node: &Widget,
         event_tx: mpsc::Sender<EventRecord>,
     ) -> Arc<TestDelegate> {
         Self::for_node(vec![], node, event_tx)
     }
 
-    pub(super) fn for_child(&self, ix: usize, child: &WidgetNode) -> Arc<TestDelegate> {
+    pub(super) fn for_child(&self, ix: usize, child: &Widget) -> Arc<TestDelegate> {
         let path = {
             let mut path = self.path.clone();
             path.push(ix);
@@ -45,7 +45,7 @@ impl TestDelegate {
 
     fn for_node(
         path: Vec<usize>,
-        node: &WidgetNode,
+        node: &Widget,
         event_tx: mpsc::Sender<EventRecord>,
     ) -> Arc<TestDelegate> {
         Arc::new(TestDelegate {
@@ -63,7 +63,7 @@ impl WidgetDelegate for TestDelegate {
         &self,
         _: WidgetDelegateContext,
         ix: usize,
-        child: &WidgetNode,
+        child: &Widget,
     ) -> Arc<dyn WidgetDelegate> {
         self.for_child(ix, child)
     }

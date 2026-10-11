@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     backends::test_backend::{ScriptError, TestValue, backend::TestBackend},
-    widget::Widget,
+    widget::Blueprint,
 };
 
 /// Create a new script from an array of steps
@@ -123,9 +123,9 @@ pub enum TestAction {
     Crickets,
 }
 
-/// Where the actual event/dynamic/trigger is in the [`WidgetNode`] structure.
+/// Where the actual event/dynamic/trigger is in the [`Widget`] structure.
 ///
-/// [`WidgetNode`]: crate::widget::WidgetNode
+/// [`Widget`]: crate::widget::Widget
 #[derive(Clone, PartialEq)]
 pub struct Path {
     /// How to navigate from the root node.
@@ -151,14 +151,14 @@ impl Display for Path {
 
 impl TestScript {
     /// Run this test script on the following widget.
-    pub fn run<W: Widget>(self, widget: &W) -> Result<W::Output, ScriptError> {
+    pub fn run<W: Blueprint>(self, widget: &W) -> Result<W::Output, ScriptError> {
         let (output, mut backend) = TestBackend::build_tree(widget);
         backend.main_loop(self)?;
         Ok(output)
     }
 
     /// Run this test script on the following widget, panicking on failure
-    pub fn test<W: Widget>(self, widget: &W) -> W::Output {
+    pub fn test<W: Blueprint>(self, widget: &W) -> W::Output {
         match self.run(widget) {
             Ok(res) => res,
             Err(err) => panic!("{err}"),
