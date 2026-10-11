@@ -1,0 +1,97 @@
+# Chapter 2, example 10: a chat client. Uses the prelude's @TextInput (no cursor, Char Text).
+type SocketEvent = choice:
+    Received Text
+    Closed
+
+type Link = choice:
+    Connecting
+    Connected
+    Disconnected Text
+
+tag Net.Socket of Element:
+    address: Text
+    requests: !Text
+    responds: SocketEvent
+    state: Link
+
+let WhenConnected: fn Link, Text -> ?Text = \|link, msg| match link:
+    Connected: Some msg
+    ignore: Nil
+
+let Line: fn SocketEvent -> ?Text = \|ev| match ev:
+    Received t: Some t
+    Closed: Some "(closed)"
+
+let Status: fn Link -> Text = \|link| match link:
+    Connecting: "connecting..."
+    Connected: "connected"
+    Disconnected why: Concat [["disconnected: ", why]]
+
+# JoinText is not a prototype builtin and Fold does not accept a list here, so this stand-in
+# drops the separator (see FAILURES-ch2.md).
+let JoinText: fn Text, [Text] -> Text = \|sep, lines| Concat lines
+
+@chat:
+    $address <- @TextInput "address", "chat.example:7000"
+    $draft <- @TextInput "draft", ""
+    !send <- @Button $"Send"
+    !conns <- rebuild $address:
+        let !out = !Filter (WhenConnected $link, $draft on !send)
+        ((!rx, $link)) <- @Element Net.Socket(address=_, requests=!out)
+        @ ((!rx, $link))
+    let !rx = !Switch (First !conns)
+    $$link <- $ Connecting then Second !conns
+    let $link = $Join $$link
+    $log <- [[]] then Append $log, !Filter (Line !rx)
+    @Label (Status $link)
+    @Label (JoinText "\n", $log)
+
+test chat_walkthrough, @chat:
+    with Net.Socket(address="chat.example:7000") = Connecting, build
+        => expect Ui.Focusable(name="address")
+        => expect Ui.Label(text="chat.example:7000|")
+        => expect Ui.Label(text="|")
+        => expect Ui.Button(label="Send")
+        => expect Net.Socket(address="chat.example:7000")
+        => expect Ui.Label(text="connecting...")
+        => expect Ui.Label(text="")
+        => unrequested Net.Socket(..)
+    push Net.Socket(address="chat.example:7000") = Connected
+        => expect Ui.Label(text="connected")
+        => expect_none Ui.Label(text="connecting...")
+    send Ui.Focusable(name="draft"), Char "h"
+        => expect Ui.Label(text="h|")
+    send Ui.Focusable(name="draft"), Char "i"
+        => expect Ui.Label(text="hi|")
+    click Ui.Button(label="Send")
+        => requested Net.Socket(address="chat.example:7000"), "hi"
+    send Net.Socket(address="chat.example:7000"), Received "hi back"
+        => expect Ui.Label(text="hi back")
+        => unrequested Net.Socket(..)
+    send Net.Socket(address="chat.example:7000"), Closed
+        => expect Ui.Label(text="hi back(closed)")
+
+# Send while still connecting is dropped.
+test chat_drops_while_connecting, @chat:
+    with Net.Socket(address="chat.example:7000") = Connecting, build
+        => expect Ui.Label(text="connecting...")
+    send Ui.Focusable(name="draft"), Char "x"
+        => expect Ui.Label(text="x|")
+    click Ui.Button(label="Send")
+        => unrequested Net.Socket(..)
+
+# Occurrence 4: the address changes in the same frame as a Send of "bye".
+# (The prelude input has no cursor, so the edit appends "1": address "chat.example:70001".)
+test chat_reconnect_one_send, @chat:
+    with Net.Socket(address="chat.example:7000") = Connecting, build
+        => expect Net.Socket(address="chat.example:7000")
+    push Net.Socket(address="chat.example:7000") = Connected
+        => expect Ui.Label(text="connected")
+    send Ui.Focusable(name="draft"), Char "b"
+        => expect Ui.Label(text="b|")
+    with Net.Socket(address="chat.example:70001") = Connecting, send Ui.Focusable(name="address"), Char "1", click Ui.Button(label="Send")
+        => requested Net.Socket(address="chat.example:7000"), "b"
+        => unrequested Net.Socket(address="chat.example:70001")
+        => expect Net.Socket(address="chat.example:70001")
+        => expect_none Net.Socket(address="chat.example:7000")
+        => expect Ui.Label(text="connecting...")

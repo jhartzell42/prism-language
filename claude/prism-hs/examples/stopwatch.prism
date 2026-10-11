@@ -1,0 +1,64 @@
+type Instant = Instant Int
+type Tick = tick
+
+tag Clock of Element:
+    state: Instant
+
+tag Time.Every of Element:
+    period: Int
+    responds: Tick
+
+type Run = choice:
+    Stopped
+    Running Instant
+
+type Watch = record:
+    base: Int
+    run: Run
+
+type Action = choice Start | Stop | Reset
+
+let Since: fn Run, Instant -> Int = \|run, now| match run:
+    Stopped: 0
+    Running from: now.value - from.value
+
+let Step: fn Watch, Instant, Action -> Watch = \|w, now, a| match a:
+    Start: match w.run:
+        Running ignore: w
+        Stopped: Watch w.base, (Running now)
+    Stop: Watch (w.base + Since w.run, now), Stopped
+    Reset: Watch 0, Stopped
+
+let Total: fn Watch, Instant -> Int = \|w, now| w.base + Since w.run, now
+
+@stopwatch:
+    $clock <- @Element Clock
+    @Element Time.Every(period=100)
+    !start <- @Button $"Start"
+    !stop <- @Button $"Stop"
+    !reset <- @Button $"Reset"
+    let !action = Start on !start | Stop on !stop | Reset on !reset
+    $watch <- Watch 0, Stopped then Step $watch, $clock, !action
+    @Label "{Total $watch, $clock} ms"
+
+test stopwatch_runs, @stopwatch:
+    with Clock = Instant 5000, build
+        => expect Ui.Label(text="0 ms")
+        => expect Clock
+        => expect Time.Every(period=100)
+    click Ui.Button(label="Start")
+        => expect Ui.Label(text="0 ms")
+    push Clock = Instant 5100
+        => expect Ui.Label(text="100 ms")
+    push Clock = Instant 5250
+        => expect Ui.Label(text="250 ms")
+    with Clock = Instant 5300, click Ui.Button(label="Stop")
+        => expect Ui.Label(text="250 ms")
+    push Clock = Instant 9000
+        => expect Ui.Label(text="250 ms")
+    click Ui.Button(label="Reset")
+        => expect Ui.Label(text="0 ms")
+
+test clock_needs_a_value, @stopwatch:
+    build
+        => errors Error(kind=UnsuppliedState, ..)

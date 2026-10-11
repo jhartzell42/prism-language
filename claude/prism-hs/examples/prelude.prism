@@ -1,0 +1,35 @@
+# The suite's GUI library, as chapter 2 writes it out.
+
+type Element = choice ..
+
+type Click = click
+
+tag Ui.Label of Element:
+    text: Text
+
+tag Ui.Button of Element:
+    label: Text
+    responds: Click
+
+# The shorthand forms: a dynamic field lifts the element into a rebuild, one bind, one position.
+@Label: fn $Text -> @unit = \|$text| @Element Ui.Label(text=$text)
+
+@Button: fn $Text -> @!Click = \|$label| @Element Ui.Button(label=$label)
+
+type Key = choice:
+    Char Text
+    Backspace
+
+tag Ui.Focusable of Element:
+    name: Text
+    responds: Key
+
+let Apply: fn Text, Key -> Text = \|t, k| match k:
+    Char c: t + c
+    Backspace: DropLast t
+
+@TextInput: fn Text, Text -> @$Text = \|name, initial| @widget:
+    !key <- @Element Ui.Focusable(name=name)
+    $text <- initial then Apply $text, !key
+    @Label "{$text}|"
+    @ $text

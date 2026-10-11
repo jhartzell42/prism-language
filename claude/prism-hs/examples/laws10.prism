@@ -1,0 +1,468 @@
+# Law tests ported from book ch10 (Events, Dynamics, Time, Widgets, Switching).
+# Element, Click, @Label, @Button come from the prelude.
+type Instant = Instant Int
+type Tick = tick
+
+tag Clock of Element:
+    state: Instant
+
+type FsRequest = choice Read | Write Text
+type FsError = choice:
+    NotFound
+    Denied
+    TooLarge
+    Other Text
+type FsResponse = choice:
+    Contents Text
+    Unavailable FsError
+
+tag Fs.File of Element:
+    path: Text
+    requests: !FsRequest
+    responds: FsResponse
+
+# law: The leftmost wins
+@left_wins:
+    !inc <- @Button $"Inc"
+    !dec <- @Button $"Dec"
+    $n <- 0 then $n + (-1 on !dec | +1 on !inc)
+    @Label "n={$n}"
+
+@right_wins:
+    !inc <- @Button $"Inc"
+    !dec <- @Button $"Dec"
+    $n <- 0 then $n + (+1 on !inc | -1 on !dec)
+    @Label "n={$n}"
+
+test leftmost_takes_the_left, @left_wins:
+    build
+        => settles
+    click Ui.Button(label="Inc"), click Ui.Button(label="Dec")
+        => expect Ui.Label(text="n=-1")
+
+test leftmost_is_the_program_choice, @right_wins:
+    build
+        => settles
+    click Ui.Button(label="Inc"), click Ui.Button(label="Dec")
+        => expect Ui.Label(text="n=1")
+
+# law: `!never` is the identity of `|` on both sides
+@never_identity:
+    !b <- @Button $"Go"
+    $left <- 0 then $left + 1 on (!never | !b)
+    $right <- 0 then $right + 1 on (!b | !never)
+    @Label "{$left} {$right}"
+
+test never_is_the_identity, @never_identity:
+    build
+        => settles
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="1 1")
+
+# law: `v on !e` fires exactly when `e` fires, with the value `v`
+@on_button:
+    !b <- @Button $"OK"
+    @ "ok" on !b
+
+test on_fires_with_its_event, @on_button:
+    build
+        => quiet
+    click Ui.Button(label="OK")
+        => fired "ok"
+    push Clock = Instant 1
+        => quiet
+
+# law: The tag law
+@tag_reads_before:
+    !b <- @Button $"Go"
+    $n <- 0 then $n + 1 on !b
+    $seen <- 0 then $n on !b
+    @Label "n={$n} seen={$seen}"
+
+test a_tag_reads_the_value_before, @tag_reads_before:
+    build
+        => settles
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="n=1 seen=0")
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="n=2 seen=1")
+
+# law: The change law
+@derived_prompt:
+    !b <- @Button $"Go"
+    $n <- 0 then $n + 1 on !b
+    let $a = $n + 1
+    let $b = $a * 2
+    @Label "{$a} {$b}"
+
+test derived_dynamics_are_prompt, @derived_prompt:
+    build
+        => expect Ui.Label(text="1 2")
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="2 4")
+
+# law: At most once
+@diamond:
+    !b <- @Button $"Go"
+    $n <- 0 then $n + 1 on !b
+    let $sum = ($n + 1) + ($n * 2)
+    !built <- rebuild $sum:
+        @ unit
+    $k <- 0 then $k + 1 on !built
+    @Label "builds={$k}"
+
+test a_diamond_changes_once, @diamond:
+    build
+        => expect Ui.Label(text="builds=1")
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="builds=2")
+
+# law: A hold's initial value, and adoption in the build occurrence
+@hold_adopts:
+    !started <- @started
+    $x <- 0 then 1 on !started
+    $y <- 0 then $x on !started
+    @Label "x={$x} y={$y}"
+
+test a_hold_adopts_a_build_occurrence_firing, @hold_adopts:
+    build
+        => expect Ui.Label(text="x=1 y=0")
+
+# law: A hold set to the value it already has still changes
+@same_value:
+    !b <- @Button $"Same"
+    $v <- 7 then 7 on !b
+    !built <- rebuild $v:
+        @ unit
+    $k <- 0 then $k + 1 on !built
+    @Label "builds={$k}"
+
+test an_equal_value_is_still_a_change, @same_value:
+    build
+        => settles
+    click Ui.Button(label="Same")
+        => expect Ui.Label(text="builds=2")
+
+# law: A widget built in occurrence n sees all of n
+@sees_all_of_n:
+    !add <- @Button $"Add"
+    $keys <- {} then (Insert $keys, (Size $keys), unit) on !add
+    for $keys:
+        $hits <- 0 then $hits + 1 on !add
+        @Label "{$key}: {$hits}"
+
+test a_new_block_sees_the_event_that_made_it, @sees_all_of_n:
+    build
+        => settles
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="0: 1")
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="0: 2")
+        => expect Ui.Label(text="1: 1")
+
+# law: A `rebuild` built in n over a dynamic that changed in n builds once, with the new value
+@nested_dyn:
+    !b <- @Button $"Go"
+    $n <- 0 then $n + 1 on !b
+    let $tens = $n * 10
+    rebuild $n:
+        let outer = _
+        rebuild $tens:
+            @Label "outer={$outer} inner={$_}"
+        @ unit
+    @ unit
+
+test a_nested_dyn_builds_once_with_the_new_value, @nested_dyn:
+    build
+        => expect Ui.Label(text="outer=0 inner=0")
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="outer=1 inner=10")
+        => expect_none Ui.Label(text="outer=1 inner=0")
+        => expect_count Ui.Label(..), 1
+
+# law: Routing against the opened list
+@clicker:
+    !c <- @Button $label
+    $count <- 0 then $count + 1 on !c
+    let $label = "Clicked {$count} times"
+
+test a_button_is_clicked_under_its_old_label, @clicker:
+    build
+        => settles
+    click Ui.Button(label="Clicked 0 times")
+        => expect Ui.Button(label="Clicked 1 times")
+        => expect_none Ui.Button(label="Clicked 0 times")
+    click Ui.Button(label="Clicked 1 times")
+        => expect Ui.Button(label="Clicked 2 times")
+
+# law: `@ v` builds nothing and returns `v`
+@pure_five:
+    @ 5
+
+test a_pure_widget_builds_nothing, @pure_five:
+    build
+        => returns 5
+        => expect_none ignore
+
+# law: Each bind builds a separate widget
+# port deviation: prototype parser rejects `let @counted = @widget:`; @counted is hoisted to top level.
+@counted:
+    !c <- @Button $"Hit"
+    $n <- 0 then $n + 1 on !c
+    @Label "n={$n}"
+
+@twice:
+    @counted
+    @counted
+
+test a_widget_bound_twice_is_two_nodes, @twice:
+    build
+        => expect_count Ui.Button(label="Hit"), 2
+        => expect_count Ui.Label(text="n=0"), 2
+
+# law: Holds are owned by the widget and torn down with it
+@reset_on_rebuild:
+    !flip <- @Button $"Flip"
+    $gen <- 0 then $gen + 1 on !flip
+    rebuild $gen:
+        !hit <- @Button $"Hit"
+        $n <- 0 then $n + 1 on !hit
+        @Label "gen {$_}: {$n}"
+    @ unit
+
+test a_rebuild_resets_the_holds_inside, @reset_on_rebuild:
+    build
+        => settles
+    click Ui.Button(label="Hit")
+        => settles
+    click Ui.Button(label="Hit")
+        => expect Ui.Label(text="gen 0: 2")
+    click Ui.Button(label="Flip")
+        => expect Ui.Label(text="gen 1: 0")
+        => expect_none Ui.Label(text="gen 0: 2")
+
+# law: `@started` fires once, in the build occurrence
+@starter:
+    !started <- @started
+    $n <- 0 then $n + 1 on !started
+    @Label "started {$n}"
+
+@started_result:
+    @started
+
+test started_fires_once_at_build, @starter:
+    build
+        => expect Ui.Label(text="started 1")
+    push Clock = Instant 1
+        => expect Ui.Label(text="started 1")
+
+test started_is_visible_as_a_result, @started_result:
+    build
+        => fired unit
+    push Clock = Instant 1
+        => quiet
+
+# law: `@started` inside a `rebuild` fires again on every rebuild
+@restarter:
+    !flip <- @Button $"Flip"
+    $gen <- 0 then $gen + 1 on !flip
+    rebuild $gen:
+        !started <- @started
+        @Element Fs.File(path="/f", requests=(Read on !started))
+    @ unit
+
+test a_rebuild_restarts, @restarter:
+    build
+        => requested Fs.File(path="/f"), Read
+    click Ui.Button(label="Flip")
+        => requested Fs.File(path="/f"), Read
+    push Clock = Instant 1
+        => unrequested Fs.File(..)
+
+# law: `rebuild` fires in every build occurrence, including the first
+@dyn_values:
+    !b <- @Button $"Go"
+    $n <- 0 then $n + 1 on !b
+    !vals <- rebuild $n:
+        @ _ * 100
+    $last <- -1 then !vals
+    @Label "last={$last}"
+
+test dyn_fires_with_each_build_result, @dyn_values:
+    build
+        => expect Ui.Label(text="last=0")
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="last=100")
+
+# law: `!Switch` is not prompt: a creation-occurrence firing is swallowed
+@swallowed:
+    !flip <- @Button $"Flip"
+    $gen <- 0 then $gen + 1 on !flip
+    !!starts <- rebuild $gen:
+        !started <- @started
+        @ !started
+    $heard <- 0 then $heard + 1 on !Switch !!starts
+    @Label "heard={$heard}"
+
+test a_switch_does_not_hear_the_birth, @swallowed:
+    build
+        => expect Ui.Label(text="heard=0")
+    click Ui.Button(label="Flip")
+        => expect Ui.Label(text="heard=0")
+
+# law: `!Switch` follows the new inner event from the next occurrence
+@toggle:
+    !flip <- @Button $"Flip"
+    $on <- False then not $on on !flip
+    !!pressed <- rebuild $on:
+        if _:
+            @Label $"On"
+            @ !never
+        else:
+            @Button $"Press me"
+    $presses <- 0 then $presses + 1 on !Switch !!pressed
+    @Label "presses={$presses}"
+
+test a_rebuilt_slot_is_heard_from_the_next_occurrence, @toggle:
+    build
+        => settles
+    click Ui.Button(label="Press me")
+        => expect Ui.Label(text="presses=1")
+    click Ui.Button(label="Flip")
+        => expect_none Ui.Button(label="Press me")
+    click Ui.Button(label="Flip")
+        => settles
+    click Ui.Button(label="Press me")
+        => expect Ui.Label(text="presses=2")
+
+# law: `$Join` is prompt on both the outer and the inner change
+@join_prompt:
+    !flip <- @Button $"Flip"
+    $gen <- 0 then $gen + 1 on !flip
+    !$inner <- rebuild $gen:
+        !hit <- @Button $"Hit"
+        $n <- _ * 100 then $n + 1 on !hit
+        @ $n
+    $$cur <- $ 0 then !$inner
+    @Label "cur={$Join $$cur}"
+
+test join_follows_inner_and_outer_changes, @join_prompt:
+    build
+        => expect Ui.Label(text="cur=0")
+    click Ui.Button(label="Hit")
+        => expect Ui.Label(text="cur=1")
+    click Ui.Button(label="Flip")
+        => expect Ui.Label(text="cur=100")
+    click Ui.Button(label="Hit")
+        => expect Ui.Label(text="cur=101")
+
+# law: `for` consolidates events into one firing with exactly the entries that fired
+@for_events:
+    let $m = $ {"a": unit, "b": unit}
+    !hits <- for $m:
+        !h <- @Button ($ key)
+        @ key on !h
+    $last <- 0 then Size !hits
+    @Label "fired {$last}"
+
+test for_consolidates_simultaneous_firings, @for_events:
+    build
+        => settles
+    click Ui.Button(label="a"), click Ui.Button(label="b")
+        => expect Ui.Label(text="fired 2")
+    click Ui.Button(label="a")
+        => expect Ui.Label(text="fired 1")
+
+# (moved to end of file: the prototype crashes on this block, which aborts the run)
+
+# law: A key's block keeps its state across an insert and a neighbour's removal
+@Tally: fn $Text -> @unit = \@widget:
+    !hit <- @Button $_
+    $n <- 0 then $n + 1 on !hit
+    @Label "{$_}: {$n}"
+
+@tallies:
+    !add <- @Button $"Add c"
+    !drop <- @Button $"Drop a"
+# port deviation: `((` spaced to `( (` because the lexer reads `((` as a tuple open.
+    $names <- {"a": "a", "b": "b"} then ((Insert $names, "c", "c") on !add) | ((Remove $names, "a") on !drop)
+    for $names:
+        @Tally $_
+
+test state_survives_an_insert, @tallies:
+    build
+        => settles
+    click Ui.Button(label="a")
+        => settles
+    click Ui.Button(label="a")
+        => settles
+    click Ui.Button(label="Add c")
+        => expect Ui.Label(text="a: 2")
+        => expect Ui.Label(text="c: 0")
+
+test state_survives_a_neighbours_removal, @tallies:
+    build
+        => settles
+    click Ui.Button(label="b")
+        => settles
+    click Ui.Button(label="Drop a")
+        => expect_none Ui.Button(label="a")
+        => expect Ui.Label(text="b: 1")
+
+# law: The parent sees a new key's result in the creation occurrence; the new block does not see itself
+@new_key_seen:
+    !add <- @Button $"Add"
+    $keys <- {} then (Insert $keys, (Size $keys), unit) on !add
+    !starts <- for $keys:
+        !started <- @started
+        @ key on !started
+    $seen <- 0 then $seen + Size !starts
+    @Label "seen={$seen}"
+
+test a_parent_sees_a_new_key_at_once, @new_key_seen:
+    build
+        => expect Ui.Label(text="seen=0")
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="seen=1")
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="seen=2")
+
+# law: `for` over an array is keyed by index, and state follows the index
+@indexed:
+    !front <- @Button $"Push front"
+    $xs <- [["a", "b"]] then (Prepend $xs, "z") on !front
+    for $xs:
+        !h <- @Button $_
+        $n <- 0 then $n + 1 on !h
+        @Label "{$key}: {$n}"
+
+test an_array_block_keeps_state_by_position, @indexed:
+    build
+        => settles
+    click Ui.Button(label="b")
+        => expect Ui.Label(text="1: 1")
+    click Ui.Button(label="Push front")
+        => expect Ui.Button(label="z")
+        => expect Ui.Label(text="1: 1")
+        => expect Ui.Label(text="2: 0")
+
+# law: `for` consolidates dynamics into a dynamic map, and plain values into a dynamic map
+@for_dynamics:
+    let $m = $ {"a": unit, "b": unit}
+    $counts <- for $m:
+        !h <- @Button ($ key)
+        $n <- 0 then $n + 1 on !h
+        @ $n
+    $caps <- for $m:
+        @ Upper key
+    @Label "total={Fold $counts, 0, \|acc, k, v| acc + v} {Fold $caps, "", \|acc, k, v| Concat [[acc, v]]}"
+
+test for_consolidates_dynamics_and_values, @for_dynamics:
+    build
+        => expect Ui.Label(text="total=0 AB")
+    click Ui.Button(label="a")
+        => settles
+    click Ui.Button(label="a")
+        => settles
+    click Ui.Button(label="b")
+        => expect Ui.Label(text="total=3 AB")

@@ -1,0 +1,64 @@
+# Chapter 2, example 2: a text input with a cursor.
+# The prelude's Key/Ui.Focusable/Apply/@TextInput are replaced by the chapter's versions below.
+# (Prefix/Suffix/ToText are not in the prototype; Take/Drop and Show stand in for them.)
+type Key = choice:
+    Char Char
+    Left
+    Right
+    Backspace
+
+tag Ui.Focusable of Element:
+    name: Text
+    responds: Key
+
+type Edit = record:
+    text: Text
+    cursor: Nat
+
+let Apply: fn Edit, Key -> Edit = \|e, k| match k:
+    Char c:
+        Edit (Concat [[(Take e.text, e.cursor), (Show c), (Drop e.text, e.cursor)]]), e.cursor + 1
+    Left:
+        if (e.cursor == 0): e
+        else: Edit e.text, e.cursor - 1
+    Right:
+        if (e.cursor == Len e.text): e
+        else: Edit e.text, e.cursor + 1
+    Backspace:
+        if (e.cursor == 0): e
+        else: Edit (Concat [[(Take e.text, e.cursor - 1), (Drop e.text, e.cursor)]]), e.cursor - 1
+
+let Render: fn Edit -> Text = \|e|
+    Concat [[(Take e.text, e.cursor), "|", (Drop e.text, e.cursor)]]
+
+@TextInput: fn Text, Text -> @$Text = \|name, initial| @widget:
+    !key <- @Element Ui.Focusable(name=name)
+    $edit <- Edit initial, (Len initial) then Apply $edit, !key
+    @Label (Render $edit)
+    @ $edit.text
+
+@editor:
+    $t <- @TextInput "input", "ab"
+    @ unit
+
+test editor_walkthrough, @editor:
+    build
+        => expect Ui.Focusable(name="input")
+        => expect Ui.Label(text="ab|")
+    send Ui.Focusable(name="input"), Left
+        => expect Ui.Label(text="a|b")
+        => expect_none Ui.Label(text="ab|")
+    send Ui.Focusable(name="input"), Char "x"
+        => expect Ui.Label(text="ax|b")
+    send Ui.Focusable(name="input"), Backspace
+        => expect Ui.Label(text="a|b")
+    send Ui.Focusable(name="input"), Left
+        => expect Ui.Label(text="|ab")
+    send Ui.Focusable(name="input"), Backspace
+        => expect Ui.Label(text="|ab")
+    send Ui.Focusable(name="input"), Right
+        => expect Ui.Label(text="a|b")
+    send Ui.Focusable(name="input"), Right
+        => expect Ui.Label(text="ab|")
+    send Ui.Focusable(name="input"), Right
+        => expect Ui.Label(text="ab|")

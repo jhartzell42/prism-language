@@ -1,0 +1,277 @@
+# Laws as tests: ported from book ch04 "Laws as tests".
+# Element, Click, @Button, @Label come from the prelude.
+type Instant = Instant Int
+# Port deviations: Element/Click/@Button/@Label taken from the prelude; bare tag patterns written Test.Log(..), Echo(..).
+# No law was skipped.
+
+tag Clock of Element:
+    state: Instant
+
+tag Test.Log of Element:
+    requests: !Text
+
+tag Echo of Element:
+    requests: !Text
+    responds: Text
+
+let Ms: fn Instant -> Int = \|i| match i:
+    Instant n: n
+
+# law: The left wins
+@merge_law:
+    !a <- @Button $"A"
+    !b <- @Button $"B"
+    $last <- "none" then "a" on !a | "b" on !b | !never
+    @Label $last
+
+test merge_left_wins, @merge_law:
+    build
+        => expect Ui.Label(text="none")
+    click Ui.Button(label="B")
+        => expect Ui.Label(text="b")
+    click Ui.Button(label="A"), click Ui.Button(label="B")
+        => expect Ui.Label(text="a")
+
+# law: The tag reads before
+@tag_law:
+    !bump <- @Button $"Bump"
+    $n <- 0 then $n + 1 on !bump
+    $seen <- -1 then $n on !bump
+    @Label "n={$n} seen={$seen}"
+
+test tag_reads_before, @tag_law:
+    build
+        => expect Ui.Label(text="n=0 seen=-1")
+    click Ui.Button(label="Bump")
+        => expect Ui.Label(text="n=1 seen=0")
+    click Ui.Button(label="Bump")
+        => expect Ui.Label(text="n=2 seen=1")
+
+# law: A hold has its initial value in its build occurrence
+@hold_law:
+    !started <- @started
+    $phase <- "starting" then "started" on !started
+    $before <- "?" then $phase on !started
+    @Label "{$phase} / {$before}"
+
+test hold_in_build_occurrence, @hold_law:
+    build
+        => expect Ui.Label(text="started / starting")
+
+# law: Derived dynamics are prompt, change once, no glitch
+@diamond:
+    !set <- @Button $"Set"
+    $a <- 0 then 5 on !set
+    let $b = $a + 1
+    let $c = $a * 2
+    let $d = $b + $c
+    let !d_changed = !Updated $d
+    $fires <- 0 then $fires + 1 on !d_changed
+    @Label "d={$d} fires={$fires}"
+
+test diamond_changes_once, @diamond:
+    build
+        => expect Ui.Label(text="d=1 fires=0")
+    click Ui.Button(label="Set")
+        => expect Ui.Label(text="d=16 fires=1")
+
+# law: Two readings agree (tags)
+@equal_readings:
+    !bump <- @Button $"Bump"
+    !other <- @Button $"Other"
+    $n <- 0 then $n + 1 on !bump
+    $x <- -1 then $n on (!bump | !other)
+    $y <- -1 then $n on (!other | !bump)
+    @Label "{$n} {$n}"
+    @Label "{$x} {$y}"
+
+test readings_agree, @equal_readings:
+    build
+        => settles
+    click Ui.Button(label="Bump"), click Ui.Button(label="Other")
+        => expect Ui.Label(text="1 1")
+        => expect Ui.Label(text="0 0")
+
+# law: Two readings agree (Clock)
+@Stamp: fn Text -> @unit = \|name| @widget:
+    $clock <- @Element Clock
+    @Label "{name}={Ms $clock}"
+    @ unit
+
+@clock_readings:
+    !bump <- @Button $"Bump"
+    @Stamp "a"
+    @Stamp "b"
+    $clock <- @Element Clock
+    $stamped <- -1 then Ms $clock on !bump
+    @Label "stamped={$stamped}"
+
+test clock_readings_agree, @clock_readings:
+    with Clock = Instant 0, build
+        => expect Ui.Label(text="a=0")
+        => expect Ui.Label(text="b=0")
+    push Clock = Instant 5000
+        => expect Ui.Label(text="a=5000")
+        => expect Ui.Label(text="b=5000")
+        => expect_none Ui.Label(text="a=0")
+    with Clock = Instant 5100, click Ui.Button(label="Bump")
+        => expect Ui.Label(text="a=5100")
+        => expect Ui.Label(text="b=5100")
+        => expect Ui.Label(text="stamped=5000")
+
+# law: !Switch is not prompt, swallows a block's birth
+@switch_law:
+    !rebuild <- @Button $"Rebuild"
+    $gen <- 0 then $gen + 1 on !rebuild
+    !!born <- rebuild $gen:
+        !started <- @started
+        @ _ on !started
+    $heard <- -1 then !Switch !!born
+    let !built = !Updated $gen
+    $built <- -1 then !built
+    @Label "heard={$heard} built={$built}"
+
+test switch_swallows_birth, @switch_law:
+    build
+        => expect Ui.Label(text="heard=-1 built=-1")
+    click Ui.Button(label="Rebuild")
+        => expect Ui.Label(text="heard=-1 built=1")
+
+# law: !Switch follows generations
+@switch_follows:
+    !rebuild <- @Button $"Rebuild"
+    $gen <- 0 then $gen + 1 on !rebuild
+    !!clicks <- rebuild $gen:
+        !c <- @Element Ui.Button(label="gen {_}")
+        @ _ on !c
+    $clicked <- -1 then !Switch !!clicks
+    @Label "clicked={$clicked}"
+
+test switch_follows_generations, @switch_follows:
+    build
+        => settles
+    click Ui.Button(label="gen 0")
+        => expect Ui.Label(text="clicked=0")
+    click Ui.Button(label="Rebuild")
+        => expect_none Ui.Button(label="gen 0")
+    click Ui.Button(label="Rebuild"), click Ui.Button(label="gen 1")
+        => expect Ui.Label(text="clicked=1")
+        => expect Ui.Button(label="gen 2")
+    click Ui.Button(label="gen 2")
+        => expect Ui.Label(text="clicked=2")
+
+# law: $Join is prompt
+@join_law:
+    !swap <- @Button $"Swap"
+    !bump <- @Button $"Bump"
+    $a <- 0 then $a + 1 on !bump
+    $b <- 100 then $b + 1 on !bump
+    $use_b <- False then not $use_b on !swap
+    !$chosen <- rebuild $use_b:
+        @ (if _: $b else: $a)
+    $$current <- $ $a then !$chosen
+    @Label "{$Join $$current}"
+
+test join_is_prompt, @join_law:
+    build
+        => expect Ui.Label(text="0")
+    click Ui.Button(label="Bump")
+        => expect Ui.Label(text="1")
+    click Ui.Button(label="Swap")
+        => expect Ui.Label(text="101")
+    click Ui.Button(label="Swap"), click Ui.Button(label="Bump")
+        => expect Ui.Label(text="2")
+
+# law: $Join follows a quiet inner
+@join_quiet_inner:
+    !swap <- @Button $"Swap"
+    !bump_a <- @Button $"Bump A"
+    $a <- 0 then $a + 1 on !bump_a
+    $b <- 100 then !never
+    $use_b <- False then not $use_b on !swap
+    !$chosen <- rebuild $use_b:
+        @ (if _: $b else: $a)
+    $$current <- $ $a then !$chosen
+    @Label "{$Join $$current}"
+
+test join_follows_quiet_inner, @join_quiet_inner:
+    build
+        => settles
+    click Ui.Button(label="Bump A")
+        => expect Ui.Label(text="1")
+    click Ui.Button(label="Swap")
+        => expect Ui.Label(text="100")
+    click Ui.Button(label="Bump A")
+        => expect Ui.Label(text="100")
+    click Ui.Button(label="Swap")
+        => expect Ui.Label(text="2")
+
+# law: Nested rebuild builds once
+@nested_law:
+    !next <- @Button $"Next"
+    $page <- 0 then $page + 1 on !next
+    let $title = "Page {$page}"
+    rebuild $page:
+        rebuild $title:
+            !started <- @started
+            @Element Test.Log(requests=(_ on !started))
+            @Element Ui.Label(text=_)
+    @ unit
+
+test nested_dyn_builds_once, @nested_law:
+    build
+        => expect Ui.Label(text="Page 0")
+        => requested Test.Log(..), "Page 0"
+    click Ui.Button(label="Next")
+        => expect Ui.Label(text="Page 1")
+        => expect_none Ui.Label(text="Page 0")
+        => requested Test.Log(..), "Page 1"
+
+# law: A hold inside a rebuilt block starts over
+@reset_law:
+    !rebuild <- @Button $"Rebuild"
+    !bump <- @Button $"Bump"
+    $gen <- 0 then $gen + 1 on !rebuild
+    rebuild $gen:
+        $n <- 0 then $n + 1 on !bump
+        @Label "n={$n}"
+    @ unit
+
+test hold_resets_and_catches_up, @reset_law:
+    build
+        => settles
+    click Ui.Button(label="Bump")
+        => settles
+    click Ui.Button(label="Bump")
+        => expect Ui.Label(text="n=2")
+    click Ui.Button(label="Rebuild")
+        => expect Ui.Label(text="n=0")
+    click Ui.Button(label="Rebuild"), click Ui.Button(label="Bump")
+        => expect Ui.Label(text="n=1")
+
+# law: Nothing answers in the occurrence it was asked
+@creation_law:
+    !started <- @started
+    !back <- @Element Echo(requests=("hi" on !started))
+    $got <- "nothing" then !back
+    @Label $got
+
+test no_answer_in_the_request_occurrence, @creation_law:
+    build
+        => expect Ui.Label(text="nothing")
+        => requested Echo(..), "hi"
+    send Echo(..), "hi"
+        => expect Ui.Label(text="hi")
+
+# law: A prompt cycle through a widget function is reported
+@Echo: fn !Int -> @!Int = \|!in| @widget:
+    !started <- @started
+    @ (!in + 1 | 0 on !started)
+
+@runtime_cycle:
+    !out <- @Echo !out
+    @ unit
+
+test cycle_is_an_error, @runtime_cycle:
+    build
+        => errors Error(kind=Cycle, ..)

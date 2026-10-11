@@ -1,0 +1,18 @@
+@counter:
+    !increment <- @Button $"Increment"
+    !decrement <- @Button $"Decrement"
+    let !delta = -1 on !decrement | +1 on !increment
+    $count <- 0 then $count + !delta
+    @Label "Count: {$count}"
+
+test counter_counts, @counter:
+    build
+        => expect Ui.Label(text="Count: 0")
+        => expect Ui.Button(label="Increment")
+    click Ui.Button(label="Increment")
+        => expect Ui.Label(text="Count: 1")
+        => expect_none Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment"), click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: -1")

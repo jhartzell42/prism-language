@@ -1,0 +1,54 @@
+type Todo = record:
+    label: Text
+    done: Bool
+
+type Change = choice:
+    Add Text
+    Toggle
+    Delete
+
+let Step: fn Nat ==> Todo, Nat, Change -> Nat ==> Todo = \|items, id, change| match change:
+    Add label: Insert items, id, (Todo label, False)
+    Toggle: match items[id]:
+        Some t: Insert items, id, (Todo t.label, not t.done)
+        Nil: items
+    Delete: Remove items, id
+
+let StepAll: fn Nat ==> Todo, Nat ==> Change -> Nat ==> Todo = \|items, changes|
+    Fold changes, items, \|acc, id, c| Step acc, id, c
+
+let Describe: fn Todo, Bool -> Text = \|t, starred|
+    Concat [[(if t.done: "[x] " else: "[ ] "), t.label, (if starred: " *" else: "")]]
+
+@todos:
+    !add <- @Button $"Add"
+    $next <- 0 then $next + 1 on !add
+    let !adds = {$next: Add "item {$next}"} on !add
+    !rows <- for $items:
+        !toggle <- @Button $"Toggle"
+        !delete <- @Button $"Delete"
+        !star <- @Button $"Star"
+        $starred <- False then not $starred on !star
+        @Label (Describe $_, $starred)
+        @ Toggle on !toggle | Delete on !delete
+    let !changes = !Union !adds, !rows
+    $items <- {} then StepAll $items, !changes
+
+test todos_keep_their_rows, @todos:
+    build
+        => expect Ui.Button(label="Add")
+        => expect_none Ui.Label(..)
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="[ ] item 0")
+        => expect_count Ui.Button(..), 4
+    click Ui.Button(label="Star")
+        => expect Ui.Label(text="[ ] item 0 *")
+    click Ui.Button(label="Toggle")
+        => expect Ui.Label(text="[x] item 0 *")
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="[ ] item 1")
+        => expect Ui.Label(text="[x] item 0 *")
+        => expect_count Ui.Label(..), 2
+    click Ui.Button(label="Add")
+        => expect_count Ui.Label(..), 3
+

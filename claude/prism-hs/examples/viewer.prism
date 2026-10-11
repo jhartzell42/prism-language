@@ -1,0 +1,71 @@
+type FsRequest = choice Read | Write Text
+
+type FsError = choice:
+    NotFound
+    Denied
+    TooLarge
+    Other Text
+
+type FsResponse = choice:
+    Contents Text
+    Unavailable FsError
+
+type Contents = choice:
+    Unavailable FsError
+    Known Text
+
+tag Fs.File of Element:
+    path: Text
+    requests: !FsRequest
+    responds: FsResponse
+
+tag Fs.Contents of Element:
+    path: Text
+    state: Contents
+
+let ShowResponse: fn ?FsResponse -> Text = \|r| match r:
+    Nil: "(reading...)"
+    Some (Contents t): t
+    Some (Unavailable why): ShowError why
+
+let ShowError: fn FsError -> Text = \|e| match e:
+    NotFound: "(no such file)"
+    Denied: "(permission denied)"
+    TooLarge: "(too large)"
+    Other t: "({t})"
+
+let ShowContents: fn Contents -> Text = \|c| match c:
+    Unavailable why: ShowError why
+    Known t: t
+
+@viewer:
+    !started <- @started
+    !motd <- @Element Fs.File(path="/etc/motd", requests=(Read on !started))
+    $motd <- Nil then Some !motd
+    @Label (ShowResponse $motd)
+
+    $path <- @TextInput "path", "/etc/hostname"
+    !$contents <- rebuild $path:
+        @Element Fs.Contents(path=_)
+    $$current <- $ (Unavailable NotFound) then !$contents
+    @Label (ShowContents ($Join $$current))
+
+test viewer_reads_and_watches, @viewer:
+    with Fs.Contents(path="/etc/hostname") = Known "box", build
+        => expect Ui.Label(text="(reading...)")
+        => requested Fs.File(path="/etc/motd"), Read
+        => expect Ui.Label(text="/etc/hostname|")
+        => expect Fs.Contents(path="/etc/hostname")
+        => expect Ui.Label(text="box")
+    send Fs.File(path="/etc/motd"), Contents "hello"
+        => expect Ui.Label(text="hello")
+        => unrequested Fs.File(..)
+    push Fs.Contents(path="/etc/hostname") = Known "box2"
+        => expect Ui.Label(text="box2")
+    with Fs.Contents(path="/etc/hostnam") = Unavailable NotFound, send Ui.Focusable(name="path"), Backspace
+        => expect Ui.Label(text="/etc/hostnam|")
+        => expect Fs.Contents(path="/etc/hostnam")
+        => expect_none Fs.Contents(path="/etc/hostname")
+        => expect Ui.Label(text="(no such file)")
+    send Fs.File(path="/etc/motd"), Unavailable Denied
+        => expect Ui.Label(text="(permission denied)")

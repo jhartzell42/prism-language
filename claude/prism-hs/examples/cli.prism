@@ -1,0 +1,52 @@
+# Chapter 2, example 11: a line counter (wc -l) with no screen.
+type StdinEvent = choice:
+    Chunk Text
+    End
+
+type Code = Code Int
+
+type WriteFailed = choice:
+    Closed
+    Failed Text
+
+tag Cli.Stdin of Element:
+    responds: StdinEvent
+
+tag Cli.Stdout of Element:
+    requests: !Text
+    responds: WriteFailed
+
+tag Process.Exit of Element:
+    requests: !Code
+
+let ChunkOf: fn StdinEvent -> ?Text = \|ev| match ev:
+    Chunk t: Some t
+    End: Nil
+
+let IsEnd: fn StdinEvent -> ?unit = \|ev| match ev:
+    End: Some unit
+    ignore: Nil
+
+@wc:
+    !in <- @Element Cli.Stdin
+    let !chunk = !Filter (ChunkOf !in)
+    let !end = !Filter (IsEnd !in)
+    $lines <- 0 then $lines + Count !chunk, '\n'
+    !werr <- @Element Cli.Stdout(requests=("{$lines}\n" on !end))
+    @Element Process.Exit(requests=(Code 0 on !end))
+    @ unit
+
+test wc_walkthrough, @wc:
+    build
+        => expect Cli.Stdin
+        => expect Cli.Stdout
+        => expect Process.Exit
+        => unrequested Cli.Stdout
+        => unrequested Process.Exit
+    send Cli.Stdin, Chunk "one\ntwo\nthr"
+        => unrequested Cli.Stdout
+    send Cli.Stdin, Chunk "ee\n"
+        => unrequested Process.Exit
+    send Cli.Stdin, End
+        => requested Cli.Stdout, "3\n"
+        => requested Process.Exit, Code 0

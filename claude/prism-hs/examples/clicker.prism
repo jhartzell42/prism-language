@@ -1,0 +1,20 @@
+@clicker:
+    !!clicks <- rebuild $label:
+        @Element Ui.Button(label=_)
+    let !click = !Switch !!clicks
+    !reset <- @Button $"Reset"
+    $count <- 0 then $count + 1 on !click | 0 on !reset
+    let $label = "Clicked {$count} times"
+    @Label $label
+
+test clicker_relabels, @clicker:
+    build
+        => expect Ui.Button(label="Clicked 0 times")
+        => expect Ui.Button(label="Reset")
+    click Ui.Button(label="Clicked 0 times")
+        => expect Ui.Button(label="Clicked 1 times")
+        => expect_none Ui.Button(label="Clicked 0 times")
+    click Ui.Button(label="Clicked 1 times")
+        => expect Ui.Button(label="Clicked 2 times")
+    click Ui.Button(label="Reset")
+        => expect Ui.Button(label="Clicked 0 times")
