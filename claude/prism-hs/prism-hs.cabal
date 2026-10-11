@@ -26,3 +26,12 @@ executable prism-hs
     -- its EventLoopException for a cycle through a switch), so the stack is bounded and the
     -- overflow is reported as the Cycle error.
     ghc-options:      -rtsopts "-with-rtsopts=-K64m"
+
+-- Two claims chapter 14 makes about Reflex, measured; they fail, and that is the record.
+test-suite chapter14-claims
+    import:           shared
+    type:             exitcode-stdio-1.0
+    main-is:          Chapter14Claims.hs
+    hs-source-dirs:   test
+    build-depends:    base, reflex, dependent-sum
+    ghc-options:      -rtsopts "-with-rtsopts=-K16m"

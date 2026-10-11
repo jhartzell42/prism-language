@@ -156,3 +156,10 @@ noted at the end.
   `{"a": unit, "b": unit}` after dropping `a`, because its consolidated dynamic ran before the
   row was dropped at commit; this build prints `{"b": unit}`, which is chapter 14's rule for
   `for` with plain results (changes promptly when a key disappears). The old line was a bug.
+- 14:30 `test/Chapter14Claims.hs`, a cabal test-suite `chapter14-claims` that `test.sh` does not
+  run: chapter 14's two claims about Reflex, measured, plus the control the port relies on.
+  Claim 1 (`runWithReplace` under `PerformEventT` builds in the frame of the change): the run
+  call takes 2 frames and the newborn's hold over the click reads 0. Claim 2 (Spider throws
+  `EventLoopException` on a prompt cycle): it raises a stack overflow under `-K16m`. Control (the
+  block built inside `push`): one frame, the newborn reads 1. The suite fails on purpose; it is
+  the record for the book.
