@@ -149,7 +149,10 @@ impl<O: ValueType, C: 'static + BehaviorComputation<O>> BehaviorImpl<O>
     for DependentBehavior<O, C>
 {
     fn query_for_behavior(&self, dependent: Weak<dyn BehaviorDependent>) -> Value<O> {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self
+            .cache
+            .try_lock()
+            .unwrap_or_else(|_| panic!("behavior cycle: a behavior depends on itself"));
         if let Some((value, dependents)) = &mut *cache {
             dependents.push(dependent);
             return value.clone();
@@ -162,7 +165,10 @@ impl<O: ValueType, C: 'static + BehaviorComputation<O>> BehaviorImpl<O>
     }
 
     fn query_for_tag(&self) -> Value<O> {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self
+            .cache
+            .try_lock()
+            .unwrap_or_else(|_| panic!("behavior cycle: a behavior depends on itself"));
         if let Some((value, _)) = &mut *cache {
             return value.clone();
         }

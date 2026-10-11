@@ -43,7 +43,14 @@ impl<T: ValueType> SubscriptionEvent<T> for LeftmostEvent<T> {
     type Tag = usize;
 
     fn invalidate_height(&self) {
-        *self.height.lock().unwrap() = None;
+        if self.height.lock().unwrap().take().is_none() {
+            return;
+        }
+        for manager in &self.subscription_managers {
+            for subscriber in manager.consolidate() {
+                subscriber.invalidate_height();
+            }
+        }
     }
 
     fn handle_main_subscription(&self, runtime: &Runtime, _: Value<Self::Inner>, _: usize) {

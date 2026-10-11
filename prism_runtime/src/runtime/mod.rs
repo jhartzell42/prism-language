@@ -13,6 +13,9 @@
 
 use std::{collections::BTreeMap, sync::Mutex};
 
+#[cfg(test)]
+mod tests;
+
 // TODO: Should we have any guarantees that we don't mix runtimes?
 
 /// This represents an instance of a reactive graph.

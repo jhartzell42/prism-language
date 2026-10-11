@@ -7,7 +7,7 @@ use crate::value::Value;
 use crate::widget::WidgetNode;
 
 pub(super) struct WidgetReadyEvent {
-    node: OnceLock<Arc<WidgetNode>>,
+    pub(super) node: OnceLock<Arc<WidgetNode>>,
     trigger: Arc<WidgetReadyTrigger>,
     subscribers: SubscriptionManager<Arc<WidgetNode>, Self>,
     weak_self: Weak<Self>,

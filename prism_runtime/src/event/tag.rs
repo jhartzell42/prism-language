@@ -72,7 +72,12 @@ impl<
     type Tag = ();
 
     fn invalidate_height(&self) {
-        *self.height.lock().unwrap() = None;
+        if self.height.lock().unwrap().take().is_none() {
+            return;
+        }
+        for subscriber in self.subscriber_list.consolidate() {
+            subscriber.invalidate_height();
+        }
     }
 
     fn handle_main_subscription(&self, runtime: &Runtime, value: Value<Self::Inner>, _: ()) {
@@ -97,7 +102,10 @@ impl<
     }
 
     fn height(&self) -> usize {
-        let mut height = self.height.lock().unwrap();
+        let mut height = self
+            .height
+            .try_lock()
+            .unwrap_or_else(|_| panic!("event cycle: an event depends on itself in one occurrence"));
         if let Some(height) = *height {
             return height;
         }

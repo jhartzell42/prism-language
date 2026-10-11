@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -30,9 +31,9 @@ pub struct WidgetNode {
     /// the event and the delegate.
     pub _public_event_callbacks: OnceLock<Vec<Arc<DelegateCallback>>>,
     /// Cyclic events, rooted here in the widget.
-    pub cyclic_events: Slots<AnyEvent>,
+    pub cyclic_events: Slots<Arc<dyn Any + Send + Sync>>,
     /// Cyclic dynamics, rooted here in the widget.
-    pub cyclic_dynamics: Slots<Arc<OnceLock<AnyDynamic>>>,
+    pub cyclic_dynamics: Slots<Arc<dyn Any + Send + Sync>>,
     /// Exposed triggers for backends to provide data from the outside world
     pub triggers: Slots<AnyEventTrigger>,
     /// Backend data so the backend knows what (if anything) to do with this widget node.
@@ -97,7 +98,9 @@ impl WidgetNode {
             runtime,
             node: self,
         };
-        self.delegate.get().unwrap().will_be_destroyed(ctxt);
+        if let Some(delegate) = self.delegate.get() {
+            delegate.will_be_destroyed(ctxt);
+        }
     }
 }
 

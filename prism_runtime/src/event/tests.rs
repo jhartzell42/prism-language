@@ -1,9 +1,12 @@
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
+use std::time::Duration;
 use test_log::test;
 
 use crate::{
     backends::test_backend::{crickets, delay_trigger, event, script, trigger},
-    event::Event,
+    dynamic::Dynamic,
+    event::{Event, EventCallback},
+    runtime::Runtime,
     value::{PrismArc, Value},
     widget::Widget,
 };
@@ -201,4 +204,84 @@ fn combine_test() {
     if let Err(err) = result {
         panic!("{err}");
     }
+}
+
+#[test]
+fn switching_to_a_deeper_event_keeps_downstream_heights_valid() {
+    let mut runtime = Runtime::new();
+    let (outer, outer_trigger) = Event::<Event<u32>>::external();
+    let (shallow, shallow_trigger) = Event::<u32>::external();
+    let (deep_source, deep_trigger) = Event::<u32>::external();
+    let deep = deep_source.map(|x| x).map(|x| x).map(|x| x).map(|x| x);
+    let held = Dynamic::hold(0u32.into(), outer.switch_hold().map(|x| x).map(|x| x));
+
+    runtime.schedule_trigger(&outer_trigger, shallow.into());
+    runtime.propagate();
+    runtime.schedule_trigger(&shallow_trigger, 1u32.into());
+    runtime.propagate();
+    runtime.schedule_trigger(&outer_trigger, deep.into());
+    runtime.propagate();
+    runtime.schedule_trigger(&deep_trigger, 2u32.into());
+    runtime.propagate();
+
+    assert_eq!(*held.behavior().0.query_for_tag(), 2);
+}
+
+struct CallOnFire<F>(F);
+
+impl<F: Fn(&Runtime) + Send + Sync> EventCallback<u32> for CallOnFire<F> {
+    fn event_fired(&self, runtime: &Runtime, _: Value<u32>) {
+        (self.0)(runtime)
+    }
+
+    fn invalidate_height(&self) {}
+}
+
+#[test]
+fn scheduling_a_trigger_during_propagation_is_refused_without_a_panic() {
+    let mut runtime = Runtime::new();
+    let (first, first_trigger) = Event::<u32>::external();
+    let (second, second_trigger) = Event::<u32>::external();
+    let held_second = Dynamic::hold(0u32.into(), second);
+    let callback: Arc<dyn EventCallback<u32>> = Arc::new(CallOnFire(move |runtime: &Runtime| {
+        let _ = runtime.schedule_trigger(&second_trigger, 7u32.into());
+    }));
+    first.0.subscribe(Arc::downgrade(&callback));
+
+    runtime.schedule_trigger(&first_trigger, 1u32.into());
+    runtime.propagate();
+    runtime.propagate();
+
+    assert_eq!(*held_second.behavior().0.query_for_tag(), 0);
+}
+
+#[test]
+fn a_subscriber_rescheduling_its_own_trigger_does_not_hang() {
+    let (finished_sender, finished_receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut runtime = Runtime::new();
+        let (event, trigger) = Event::<u32>::external();
+        let same_trigger = trigger.clone();
+        let callback: Arc<dyn EventCallback<u32>> = Arc::new(CallOnFire(move |runtime: &Runtime| {
+            let _ = runtime.schedule_trigger(&same_trigger, 2u32.into());
+        }));
+        event.0.subscribe(Arc::downgrade(&callback));
+        runtime.schedule_trigger(&trigger, 1u32.into());
+        runtime.propagate();
+        finished_sender.send(()).unwrap();
+    });
+    assert_eq!(finished_receiver.recv_timeout(Duration::from_secs(5)), Ok(()));
+}
+
+#[test]
+fn a_second_value_on_one_trigger_before_propagating_is_refused() {
+    let mut runtime = Runtime::new();
+    let (event, trigger) = Event::<u32>::external();
+    let held = Dynamic::hold(0u32.into(), event);
+
+    let _ = runtime.schedule_trigger(&trigger, 1u32.into());
+    let _ = runtime.schedule_trigger(&trigger, 2u32.into());
+    runtime.propagate();
+
+    assert_eq!(*held.behavior().0.query_for_tag(), 1);
 }

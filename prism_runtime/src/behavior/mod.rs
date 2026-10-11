@@ -21,6 +21,8 @@ use std::{
 mod compute;
 mod constant;
 mod hold;
+#[cfg(test)]
+mod tests;
 
 pub use compute::*;
 
