@@ -6,12 +6,12 @@ use crate::{
     },
     runtime::Runtime,
     value::AnyValue,
-    widget::{Widget, WidgetBuilder, WidgetNode},
+    widget::{Blueprint, WidgetBuilder, Widget},
 };
 
 pub struct TestBackend {
     // Backend is responsible for keeping the application root node alive
-    node: Arc<WidgetNode>,
+    node: Arc<Widget>,
     // Backend is responsible for owning the runtime
     runtime: Runtime,
     // Backend is responsible for owning the test delegate.
@@ -27,7 +27,7 @@ pub struct EventRecord {
 }
 
 impl TestBackend {
-    pub fn build_tree<W: Widget>(widget: &W) -> (W::Output, TestBackend) {
+    pub fn build_tree<W: Blueprint>(widget: &W) -> (W::Output, TestBackend) {
         let runtime = Runtime::new();
         let (node, output) = WidgetBuilder::build_root(&runtime, widget, 0);
         let (event_tx, event_rx) = mpsc::channel();

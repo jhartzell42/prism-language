@@ -16,13 +16,22 @@ use crate::{
     },
 };
 
-/// A [`WidgetNode`] is a widget in a form that it's already present
-/// in an app. A tree of [`WidgetNode`]s represents the state of
-/// a running app. All ownership of FRP state in the app comes from
-/// a tree of widget nodes.
-pub struct WidgetNode {
+/// A [`Widget`] is a component of a Prism app. They aren't Prism values, since they aren't
+/// referentially transparent and represent lifetimes and connections between other components.
+/// Prism programmers, instead, must merely deal with widget [`Blueprint`](super::Blueprint)s.
+///
+/// Stereotypically, a widget would be a button
+/// or a text view or even a full settings pane or window. It can also represent notional components,
+/// such as all the internal state and wiring of a particular HTTP request being handled on a server.
+/// The tree of widgets, growing from a root in the [`Runtime`](crate::runtime::Runtime), in fact represents the structure of a running app, and owns the entire
+/// heap.
+///
+/// Cycles are resolved by having some widget or another own the cycle. The lifecycle of the app is
+/// managed by gearing up and spinning down widgets. It's like an object, except that you can't request
+/// arbitrary mutation.
+pub struct Widget {
     /// Tracks current children of the node.
-    pub children: Mutex<Vec<Arc<WidgetNode>>>,
+    pub children: Mutex<Vec<Arc<Widget>>>,
     /// Exposed dynamics for backends to read and subscribe to.
     pub public_dynamics: Slots<AnyDynamic>,
     /// Exposed events for backends to subscribe to.
@@ -43,9 +52,9 @@ pub struct WidgetNode {
     pub delegate: OnceLock<Arc<dyn WidgetDelegate>>,
 }
 
-impl WidgetNode {
-    pub(crate) fn new() -> WidgetNode {
-        WidgetNode {
+impl Widget {
+    pub(crate) fn new() -> Widget {
+        Widget {
             children: Mutex::new(vec![]),
             public_dynamics: Slots::default(),
             public_events: Slots::default(),
@@ -104,9 +113,9 @@ impl WidgetNode {
     }
 }
 
-impl Debug for WidgetNode {
+impl Debug for Widget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WidgetNode")
+        f.debug_struct("Widget")
             .field("children", &self.children)
             .field("dynamics", &self.public_dynamics)
             .field("events", &self.public_events)
