@@ -147,3 +147,51 @@ fn dynamic_widget() {
     ])
     .test(&TestWidget);
 }
+
+/// Q-G7 experiment: a widget torn down by a rebuild fires a request (a public event) later
+/// in the same tick. The short path fires it below the rebuild's height, the long path
+/// above it. Each generation names its event, so the old and new inner are told apart.
+fn torn_down_request(long_path: bool) -> Vec<String> {
+    use crate::event::Event;
+    #[derive(Debug, Clone)]
+    struct Inner(Event<i32>, bool, u32);
+    impl Widget for Inner {
+        type Output = ();
+        fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
+            let mut e = self.0.clone();
+            if self.1 {
+                for _ in 0..5 {
+                    e = e.filter_map(|x| Some(Value::from(*x)));
+                }
+            }
+            builder.add_public_event(format!("sends{}", self.2), e);
+        }
+    }
+    #[derive(Debug, Clone)]
+    struct Outer(bool);
+    impl Widget for Outer {
+        type Output = ();
+        fn build(&self, builder: &mut WidgetBuilder) -> Self::Output {
+            let hang_up = builder.add_external_event::<i32>("hangUp".into());
+            let long = self.0;
+            let h2 = hang_up.clone();
+            let d_widget = Dynamic::hold(
+                PrismArc::new(Inner(hang_up.clone(), long, 0)),
+                h2.filter_map(move |_| Some(PrismArc::new(Inner(hang_up.clone(), long, 1)))),
+            );
+            builder.bind(&d_widget.dynamic_widget());
+        }
+    }
+    let (_, mut backend) = crate::backends::test_backend::backend::TestBackend::build_tree(&Outer(long_path));
+    let _ = backend.drain_paths();
+    backend
+        .main_loop(crate::backends::test_backend::TestScript { steps: vec![trigger([], "hangUp", 7)] })
+        .unwrap();
+    backend.drain_paths()
+}
+
+#[test]
+fn q_g7_report() {
+    println!("short path: {:?}", torn_down_request(false));
+    println!("long path: {:?}", torn_down_request(true));
+}

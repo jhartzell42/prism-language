@@ -117,6 +117,15 @@ impl TestBackend {
         Ok(())
     }
 
+    /// Experiment helper: every event recorded so far, by path.
+    pub fn drain_paths(&self) -> Vec<String> {
+        let mut v = vec![];
+        while let Ok(e) = self.event_rx.try_recv() {
+            v.push(e.path.to_string());
+        }
+        v
+    }
+
     pub fn main_loop(&mut self, script: TestScript) -> Result<(), ScriptError> {
         for (index, step) in script.steps.into_iter().enumerate() {
             log::debug!("{index}: {step:?}");
