@@ -4,7 +4,7 @@
 //! ways to trigger it and give it expectations of what events will fire.
 //! It verifies that the test follows the script.
 
-mod backend;
+pub mod backend;
 mod delegate;
 mod test_value;
 pub use test_value::*;
