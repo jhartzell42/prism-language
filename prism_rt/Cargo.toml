@@ -1,0 +1,12 @@
+[package]
+name = "prism_rt"
+version = "0.1.0"
+edition = "2024"
+description = "The runtime library of the Prism language: values, the graph, the document, the tick, the collector, and the Worlds"
+license-file = "../LICENSE.md"
+
+[dependencies]
+im-rc = "15.1.0"
+num-bigint = "0.5.1"
+num-traits = "0.2.19"
+ropey = "1.6.1"
