@@ -137,3 +137,14 @@ arrays, suffixed operators; named lenses `&Home` and `Over` (the `update` block'
 paths stay in); POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`); the Prism
 World; live update; checkpoints; the template notation as a second syntax for element
 languages (code templates only); indexed choices/GADTs for user types.
+
+## D16. Statically checked, dynamically represented
+
+Emitted Rust uses `prism_rt`'s dynamic `Value` and the same apply-with-lifting layer the
+interpreter uses, so codegen needs no types: the checker is a gate that rejects
+ill-typed programs with Type System ch. 5's errors, and a program that passes it runs on
+the same runtime paths the interpreter runs. This is the "simplified codegen" of the
+plan: the checker is complete, the representation is not optimized. It also lets the
+checker and the back end be written in parallel, and makes the interpreter and compiled
+code share one implementation of the semantics. The refused alternative, typed
+monomorphic codegen, is the Compiler book's design and waits for a later pass.
