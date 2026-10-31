@@ -8,6 +8,7 @@ license-file = "../LICENSE.md"
 [dependencies]
 prism_rt = { path = "../prism_rt" }
 prism_syntax = { path = "../prism_syntax" }
+prism_world_canvas = { path = "../worlds/canvas" }
 im-rc = "15.1.0"
 num-bigint = "0.5.1"
 num-traits = "0.2.19"

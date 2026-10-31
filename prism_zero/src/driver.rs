@@ -1,10 +1,12 @@
 //! The three commands (docs/architecture.md, "The pipeline"):
 //!
-//! - **`prism_zero run <files...> [-- args...]`**: the program under the CLI World (`Fs`,
-//!   `Process`, `Time`), its root the `@main` of the one file with no `module` line.
-//!   Exit codes are the CLI World's policy (Semantics ch. 9): the code `Process.Exit`
-//!   asked for; 0 when nothing can cause another tick; 1 for a poisoned root or a failed
-//!   tick; 2 for a program that fails to load or check before tick 0.
+//! - **`prism_zero run [--world cli|canvas] <files...> [-- args...]`**: the program under
+//!   the CLI World (`Fs`, `Process`, `Time`) or, with `--world canvas`, under the canvas
+//!   World (`Gui`, `worlds/canvas`), its root the `@main` of the one file with no `module`
+//!   line. Exit codes are the CLI World's policy (Semantics ch. 9): the code `Process.Exit`
+//!   asked for; 0 when nothing can cause another tick (or, under the canvas World, when
+//!   the user closes a window); 1 for a poisoned root or a failed tick; 2 for a program
+//!   that fails to load or check before tick 0.
 //! - **`prism_zero test <files...> [script.prismtest...]`**: each script under the Test
 //!   World, printing its transcript to standard output. With no script named, each
 //!   `X.prism` given runs `X.prismtest` beside it if there is one, and its own `test` and
@@ -51,23 +53,82 @@ pub fn read_files(paths: &[String]) -> Result<Vec<(String, String)>, String> {
 /// The World's patience for `run`, in ticks.
 pub const RUN_PATIENCE: usize = 10_000_000;
 
-/// `prism_zero run`.
+/// The World `prism_zero run` runs a program under.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RunWorld {
+    /// The CLI World: `Fs`, `Process`, `Time`.
+    Cli,
+    /// The canvas World: `Gui`, one window per `Gui.Window`.
+    Canvas,
+}
+
+impl RunWorld {
+    /// `--world cli` or `--world canvas`.
+    pub fn named(name: &str) -> Option<RunWorld> {
+        match name {
+            "cli" => Some(RunWorld::Cli),
+            "canvas" => Some(RunWorld::Canvas),
+            _ => None,
+        }
+    }
+}
+
+/// The families the canvas World lets through the root's row check: its own `Gui`, the
+/// prelude's, which `UnwrapWorld` answers, and `Ui`, which the window library's `@Window`
+/// answers in Prism. This crate's row check does not subtract what a host document answers
+/// (`world::row_check`), so a root such as the chess board, whose `emit` line names `Ui.*`
+/// for the widgets its `@Window` hosts, would fail it otherwise; a bare `Ui` element that
+/// does reach the canvas World is reported by it at run time.
+const CANVAS_FAMILIES: &[&str] = &["Gui", "Prelude", "Ui"];
+
+/// `prism_zero run`, under the CLI World.
 pub fn run_files(files: &[(String, String)], args: Vec<String>) -> Outcome {
+    run_files_under(files, args, RunWorld::Cli)
+}
+
+/// `prism_zero run --world ..`. The canvas World takes no arguments (it answers no
+/// `Process.Args`), so `args` is for the CLI World only.
+pub fn run_files_under(files: &[(String, String)], args: Vec<String>, world: RunWorld) -> Outcome {
+    let (families, name) = match world {
+        RunWorld::Cli => (CLI_FAMILIES, "CLI"),
+        RunWorld::Canvas => (CANVAS_FAMILIES, "canvas"),
+    };
+    // `_interp` lives until the run ends: the program's blueprints hold it weakly.
+    let (program, _interp) = match main_program(files, families, name) {
+        Ok(p) => p,
+        Err(out) => return out,
+    };
+    let code = match world {
+        RunWorld::Cli => {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let mut world = UnwrapWorld::new(CliWorld::new(RealFs { root: cwd }, args));
+            drive(&mut world, &program, RUN_PATIENCE)
+        }
+        RunWorld::Canvas => prism_world_canvas::run(program, |w| Box::new(UnwrapWorld::new(w))),
+    };
+    Outcome { stdout: String::new(), stderr: String::new(), code }
+}
+
+/// Load the files and take the root file's `@main` as a program, checking the root's row
+/// against the families the World answers; an `Outcome` that exits 2 when that fails. The
+/// interpreter comes back with the program and must be kept until its last tick, since
+/// the program's blueprints hold it weakly.
+pub fn main_program(files: &[(String, String)], families: &[&str], world_name: &str) -> Result<(Program, Rc<Interp>), Outcome> {
     let loaded = match load(files) {
         Ok(l) => l,
-        Err(es) => return Outcome::failed(es.join("\n") + "\n", EXIT_UNCHECKED),
+        Err(es) => return Err(Outcome::failed(es.join("\n") + "\n", EXIT_UNCHECKED)),
     };
     let user_roots: Vec<&ModInfo> = loaded.modules.iter().filter(|m| m.is_root()).collect();
     let Some(root) = loaded.root else {
         let names: Vec<&str> = user_roots.iter().map(|m| m.file.as_str()).collect();
-        return Outcome::failed(
+        return Err(Outcome::failed(
             format!(
                 "prism run needs exactly one file with no `module` line, and was given {}: {} (Semantics ch. 6)\n",
                 names.len(),
                 if names.is_empty() { "none".to_string() } else { names.join(", ") }
             ),
             EXIT_UNCHECKED,
-        );
+        ));
     };
     let main = ["@main", "@$main", "@!main"]
         .iter()
@@ -75,24 +136,20 @@ pub fn run_files(files: &[(String, String)], args: Vec<String>) -> Outcome {
         .map(|n| n.to_string())
         .or_else(|| loaded.modules[root].decls.keys().find(|k| k.starts_with('@') && k.ends_with("main")).map(|k| k.to_string()));
     let Some(main) = main else {
-        return Outcome::failed(format!("{}: the root file has no `@main` (Semantics ch. 6)\n", loaded.modules[root].file), EXIT_UNCHECKED);
+        return Err(Outcome::failed(format!("{}: the root file has no `@main` (Semantics ch. 6)\n", loaded.modules[root].file), EXIT_UNCHECKED));
     };
-    if let Err(e) = row_check(&loaded, root, CLI_FAMILIES, "CLI") {
-        return Outcome::failed(e + "\n", EXIT_UNCHECKED);
+    if let Err(e) = row_check(&loaded, root, families, world_name) {
+        return Err(Outcome::failed(e + "\n", EXIT_UNCHECKED));
     }
     let interp = Interp::new(loaded);
     let loc = Loc { module: root, span: Default::default() };
     let g = interp.l.modules[root].decls[main.as_str()].clone();
     let bp = match interp.global(root, &main, &g, None, loc) {
         Ok(Value::Widget(bp)) => bp,
-        Ok(_) => return Outcome::failed(format!("{main} is not a blueprint\n"), EXIT_UNCHECKED),
-        Err(f) => return Outcome::failed(format!("{}\n", f.message), EXIT_UNCHECKED),
+        Ok(_) => return Err(Outcome::failed(format!("{main} is not a blueprint\n"), EXIT_UNCHECKED)),
+        Err(f) => return Err(Outcome::failed(format!("{}\n", f.message), EXIT_UNCHECKED)),
     };
-    let program = Program::new("main", bp);
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let mut world = UnwrapWorld::new(CliWorld::new(RealFs { root: cwd }, args));
-    let code = drive(&mut world, &program, RUN_PATIENCE);
-    Outcome { stdout: String::new(), stderr: String::new(), code }
+    Ok((Program::new("main", bp), interp))
 }
 
 /// `prism_zero check`.
