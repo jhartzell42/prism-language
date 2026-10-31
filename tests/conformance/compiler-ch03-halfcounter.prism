@@ -1,0 +1,8 @@
+# The Compiler book, ch. 3: half the counter, which has no merge.
+emit Ui.*
+
+@halfcounter:
+    !increment <- Ui.Button(label=$"Increment")
+    let !delta = +1 on !increment
+    $count <- 0 then $count + !delta
+    Ui.Label(text=$"Count: {$count}")

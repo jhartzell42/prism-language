@@ -1,0 +1,13 @@
+# The `Gui` family, reduced to what the Test World needs to resolve a click by path
+# (decisions.md D9; prism_rt/src/families.rs).
+module Gui
+emit Gui.*
+
+type Press = record:
+    x: Int
+    y: Int
+derive ^Eq, ^Show
+
+tag Gui.Window of Element !Press:
+    title: Text
+    scene: $[Draw]

@@ -1,0 +1,12 @@
+test the_prelude_bindings, @bindings:
+    build
+        => expect Ui.Label(text="0 0 0 none no []")
+    click Ui.Button(..)
+        => expect Ui.Label(text="0 1 0 ((0, click)) no 1")
+    compute
+        => expect Ui.Label(text="1 1 0 ((0, click)) no 1")
+    click Ui.Button(..)
+        => expect Ui.Label(text="1 1 1 ((1, click)) no 1")
+    compute
+    click Ui.Button(..)
+        => expect Ui.Label(text="2 1 2 ((2, click)) past 6 1")

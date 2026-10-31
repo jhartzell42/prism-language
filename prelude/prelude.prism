@@ -1,0 +1,275 @@
+# The prelude: Semantics Appendix B, the module every file implicitly `use`s with `*`
+# (Semantics ch. 6, "The prelude is used by every file"). Its functions and types come in
+# bare; its tags come with their family, `Prelude.Unwrap`.
+#
+# Written by Claude, 31 October 2026, for compiler zero (prism_zero) on the
+# claude-self-hosting branch. Subject to change; Jimmy rewrites it by hand.
+#
+# How to read this file: a signature line with `fn` clauses under it is a prelude
+# function written in Prism. A signature line with no clauses is a builtin: prism_zero
+# supplies its body in Rust (`prism_zero/src/builtins.rs`), registered by this name, and
+# lifts it by this signature (Type System ch. 4, "Where the table looks"). Each builtin's
+# cost promise is Appendix B's and is stated in its Rust doc comment.
+
+module Prelude
+emit r
+
+# ---------------------------------------------------------------------------------------
+# Types (Appendix B, Types)
+# ---------------------------------------------------------------------------------------
+
+# `Bool`, `unit`, `Char`, `Text`, `Nat`, `Int`, `U8`, `Duration`, `Path` are the
+# runtime's own (prism_rt's `Value`); they need no declaration here.
+
+# What `Compare` answers (Type System ch. 3, `^Ord`).
+type Ordering = choice:
+    Less
+    Equal
+    Greater
+derive ^Eq, ^Ord, ^Show
+
+# The row kinds (Type System ch. 2, Rows; Semantics ch. 10).
+type Element o = row
+type Fault = row
+
+# The one error value (Semantics ch. 10, "`~T`, `Error` and `Fault` as a row").
+type Error = record:
+    kind: Fault
+    message: Text
+derive ^Eq, ^Ord, ^Show
+
+# A widget giving up (Semantics ch. 10, "Exceptions: a widget giving up").
+type Exception = record:
+    kind: Fault
+    message: Text
+    spans: [Span]
+    path: ?Path
+derive ^Eq, ^Show
+
+# A source range: file, line, column, binding (Appendix B, Types).
+type Span = record:
+    file: Text
+    line: Nat
+    column: Nat
+    binding: Text
+derive ^Eq, ^Ord, ^Show
+
+# A position in a text, for `?Step` (Appendix B, Text; TD-V1). `Offset` is opaque in the
+# book; here it is the character index.
+type Cursor = record:
+    text: Text
+    at: Nat
+derive ^Eq, ^Ord, ^Show
+
+# What one cycle of a job gives (Appendix B, Types; Semantics ch. 7).
+type Turn b = choice:
+    More
+    Done b
+derive ^Eq, ^Show
+
+# The prelude's tags (Appendix B, Prelude tags; Semantics ch. 10).
+tag Prelude.Unwrap of Element !a where a: ^Show:
+    value: !~a
+
+tag Prelude.Exceptions of Element !Exception
+
+# A failed `require` or `forbid` under a `~` name (decisions.md D11): its message is the
+# guard's source text.
+tag Prelude.Unmet of Fault
+
+# `~ParseNat` on a text that is no number.
+tag Prelude.NotANumber of Fault
+
+# ---------------------------------------------------------------------------------------
+# Traits (Appendix B, Traits; Type System ch. 3)
+# ---------------------------------------------------------------------------------------
+
+# Derivable and structural. With no `impl`, prism_zero answers each method structurally
+# (Type System ch. 3, "Derive, out loud"); an `impl` for a type replaces it.
+trait ^Eq a:
+    ==: fn a, a -> Bool
+    !=: fn a, a -> Bool
+
+trait ^Ord a where a: ^Eq:
+    Compare: fn a, a -> Ordering
+    <: fn a, a -> Bool
+    <=: fn a, a -> Bool
+    >: fn a, a -> Bool
+    >=: fn a, a -> Bool
+
+trait ^Show a:
+    Show: fn a -> Text
+
+# `Nat` has `-?` and no `-` (round 47 NS); `/` gives `?` on the integers (doubt NN).
+trait ^Num a where a: ^Eq:
+    +: fn a, a -> a
+    -: fn a, a -> a
+    *: fn a, a -> a
+    /: fn a, a -> ?a
+    +?: fn a, a -> ?a
+    -?: fn a, a -> ?a
+    *?: fn a, a -> ?a
+
+# Derive only (Type System ch. 2, `^Pod`; Q-PD2).
+trait ^Pod t:
+    Children: fn t -> [[t]]
+
+# ---------------------------------------------------------------------------------------
+# Arrays (Appendix B, Arrays)
+# ---------------------------------------------------------------------------------------
+
+# One name for arrays, texts and maps (doubt LZ). Constant.
+Len: fn a -> Nat
+
+# Logarithmic.
+Append: fn [a], [a] -> [a]
+
+# Amortised constant.
+Push: fn [a], a -> [a]
+
+# `n·t`. Over a map, the step takes the key and the value: `\|acc, k, v|`.
+Fold: u fn [a], b, (u fn b, a -> b) -> b
+
+Each: u fn [a], (u fn a -> b) -> [b]
+fn Each xs, F = Fold xs, [[]], \|acc, x| Push acc, (F x)
+
+# Not in Appendix B, which is a slip: Semantics ch. 4's quiz and Type System ch. 4 use it.
+Filter: u fn [a], (u fn a -> Bool) -> [a]
+fn Filter xs, Keep = Fold xs, [[]], \|acc, x| if Keep x: Push acc, x else: acc
+
+Sum: fn [a] -> a where a: ^Num
+fn Sum xs = Fold xs, 0, \|s, x| s + x
+
+Max: fn a, a -> a where a: ^Ord
+fn Max a, b = if a < b: b else: a
+
+Min: fn a, a -> a where a: ^Ord
+fn Min a, b = if b < a: b else: a
+
+# Linear in the total length.
+Concat: fn [Text] -> Text
+
+# ---------------------------------------------------------------------------------------
+# Maps (Appendix B, Maps; names by round 47 PM)
+# ---------------------------------------------------------------------------------------
+
+Insert: fn (k ==> v), k, v -> (k ==> v)
+Remove: fn (k ==> v), k -> (k ==> v)
+?Get: fn (k ==> v), k -> ?v
+?First: fn (k ==> v) -> ?((k, v))
+Keys: fn (k ==> v) -> [k]
+Values: fn (k ==> v) -> [v]
+Size: fn (k ==> v) -> Nat
+Map: fn [((k, v))] -> (k ==> v)
+Union: fn (k ==> v), (k ==> v) -> (k ==> v)
+
+# ---------------------------------------------------------------------------------------
+# Text (Appendix B, Text)
+# ---------------------------------------------------------------------------------------
+
+# Logarithmic, by a rope. Over an array, the same cut.
+Take: fn a, Nat -> a
+Drop: fn a, Nat -> a
+Upper: fn Text -> Text
+Lower: fn Text -> Text
+Split: fn Text, Text -> [Text]
+?Step: fn Cursor -> ?((Char, Cursor))
+?ParseNat: fn Text -> ?Nat
+
+~ParseNat: fn Text -> ~Nat
+fn ~ParseNat text = match ?ParseNat text:
+    ? n: ~ n
+    nil: Error(kind=Prelude.NotANumber, message="not a number: {text}")
+
+# The POD printed form (Type System ch. 2): one top-level node per line.
+Print: fn [[t]] -> Text where t: ^Pod
+
+# ---------------------------------------------------------------------------------------
+# Numbers
+# ---------------------------------------------------------------------------------------
+
+# Widening and narrowing (Type System ch. 2, "No implicit widening").
+Int: fn Nat -> Int
+?Nat: fn Int -> ?Nat
+?U8: fn Int -> ?U8
+
+# Division and remainder as functions, `nil` for a zero divisor.
+?Div: fn a, a -> ?a
+?Mod: fn a, a -> ?a
+
+# ---------------------------------------------------------------------------------------
+# Optionals (Appendix B, Optionals and faults)
+# ---------------------------------------------------------------------------------------
+
+Or: fn ?a, a -> a
+fn Or nil, d = d
+fn Or (? x), ignore = x
+
+# ---------------------------------------------------------------------------------------
+# Events (Appendix B, Events): constant per firing, plus the function they apply
+# ---------------------------------------------------------------------------------------
+
+!Filter: fn !?a -> !a
+!Present: fn !?a -> !unit
+!Union: fn !(k ==> v), !(k ==> v) -> !(k ==> v)
+!MergeAll: fn [!a] -> ![a]
+!MergeWith: fn (fn a, a -> a), [!a] -> !a
+!Both: fn !a, !b -> !((a, b))
+!Except: fn !a, !b -> !a
+!Gate: fn $Bool, !a -> !a
+!Updated: fn $a -> !a
+
+# ---------------------------------------------------------------------------------------
+# Widgets (Appendix B, Widgets): each a widget binding, set up once per instance
+# ---------------------------------------------------------------------------------------
+
+@started: @!unit
+@Element: fn Element r o -> @o emit r
+@HostDocument: fn @a emit c, (fn Path, Element c o -> @o) -> @((a, $(Path ==> Elem c)))
+@HostSome: fn @a emit c, (fn Path, Element c o -> ?@o) -> @((a, $(Path ==> Elem c)))
+@HostList: fn @a emit c, !(Path ==> Answer c), (fn Path, Element c o -> @o) -> @((a, $(Path ==> Wired c)))
+@Switch: fn $!a -> @!a
+@Flatten: fn $$a -> @$a
+@Defer: fn !a -> @!a
+@Later: fn !a -> @!a
+@Machine: fn (fn s, a -> ((s, ?b))), s, !a -> @!b
+@Run: fn (unbounded fn a -> b), a -> @!b
+
+@Once: fn !a -> @!a
+fn @Once !e:
+    $done <- False then True on !e
+    @ !Gate (not $done), !e
+
+@AfterFirst: fn !a -> @!a
+fn @AfterFirst !e:
+    $done <- False then True on !e
+    @ !Gate $done, !e
+
+@Numbered: fn !a -> @!((Nat, a))
+fn @Numbered !e:
+    fn Paired k, v = ((k, v))
+    $n <- 0 then $n + 1 on !e
+    @ Paired $n, !e
+
+# ---------------------------------------------------------------------------------------
+# `&` blocks (Appendix B, `&` blocks; Semantics ch. 5)
+# ---------------------------------------------------------------------------------------
+
+# A `Buffer a` becomes `[a]`, a `Table k v` becomes `[((k, v))]` in insertion order;
+# constant. `Buffer.Numbered n` and `Table.Empty` are builtins reached by their
+# qualified names.
+Freeze: fn a -> b
+
+# ---------------------------------------------------------------------------------------
+# Float (decisions.md D14): IEEE double
+# ---------------------------------------------------------------------------------------
+
+# An integer as a `Float`; `ToFloat` is the same function under the name D14 gives.
+Float: fn Int -> Float
+ToFloat: fn Int -> Float
+Cos: fn Float -> Float
+Sin: fn Float -> Float
+
+# On any number: the magnitude, and -1, 0 or 1 of the same type.
+Abs: fn a -> a
+Sign: fn a -> a

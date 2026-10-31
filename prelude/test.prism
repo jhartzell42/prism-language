@@ -1,0 +1,6 @@
+# The `Test` family: what the Test World records (Semantics ch. 7's paged viewer).
+module Test
+emit Test.*
+
+tag Test.Log of Element:
+    requests: !Text

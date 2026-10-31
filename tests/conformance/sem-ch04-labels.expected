@@ -1,0 +1,49 @@
+# prism_zero's transcript; the book prints none for this program, and it was checked by hand against the book's rules.
+test a_row_never_hears_its_birth
+
+tick 0
+  added:
+    0: Ui.Button(label="Add a tag")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[1]/0: Ui.Label(text="tag 1")
+    1/[1]/1: Ui.Button(label="Remove")
+
+tick 2
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="tag 2")
+    1/[2]/1: Ui.Button(label="Remove")
+
+tick 3
+  in:
+    1/[1]/1: click
+  torn down:
+    1/[1]/0: Ui.Label(text="tag 1")
+    1/[1]/1: Ui.Button(label="Remove")
+
+test selling_from_the_shelf
+
+tick 0
+  added:
+    0/["Dune"]/0: Ui.Label(text="Dune: 2 left")
+    0/["Dune"]/1: Ui.Button(label="Sell one")
+    0/["Emma"]/0: Ui.Label(text="Emma: 0 left")
+    0/["Emma"]/1: Ui.Button(label="Sell one")
+
+tick 1
+  in:
+    0/["Dune"]/1: click
+  changed:
+    0/["Dune"]/0: Ui.Label(text="Dune: 1 left")
+
+tick 2
+  in:
+    0/["Dune"]/1: click
+    0/["Emma"]/1: click
+  changed:
+    0/["Dune"]/0: Ui.Label(text="Dune: 0 left")

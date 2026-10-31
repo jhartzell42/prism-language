@@ -1,0 +1,22 @@
+# The `Ui` family, as prism_rt's Worlds answer it (prism_rt/src/families.rs; Semantics
+# ch. 8). A library, not the prelude (Appendix B, Prelude tags); prism_zero supplies it
+# beside the prelude so a program can name `Ui.Button` without shipping the file.
+module Ui
+emit Ui.*
+
+# A button's answer (Type System ch. 2, "A unit type has one value, lowercase").
+type Click = click
+
+tag Ui.Button of Element !Click:
+    label: $Text
+
+tag Ui.Label of Element:
+    text: $Text
+
+# A key the box answers with; programs declare their own `Key` (Semantics ch. 8).
+tag Ui.TextInput of Element !Key:
+    name: Text
+    text: $Text
+
+tag Ui.Image of Element:
+    src: Text

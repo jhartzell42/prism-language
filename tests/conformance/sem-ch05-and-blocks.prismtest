@@ -1,0 +1,22 @@
+check steps_agree:
+    Step boot, (Add 3) => Vm(pc=1, regs=Regs(acc=3, x=5), steps=1)
+    (Step boot, (Add 3)) == (ByHand boot, (Add 3))
+    Step (Step boot, (Add 3)), Swap => Vm(pc=2, regs=Regs(acc=5, x=3), steps=2)
+    boot => Vm(pc=0, regs=Regs(acc=0, x=5), steps=0)
+
+check runs:
+    Run prog, boot, 0 => Vm(pc=0, regs=Regs(acc=0, x=5), steps=0)
+    Run prog, boot, 3 => Vm(pc=3, regs=Regs(acc=-5, x=3), steps=3)
+    (Run prog, boot, 100).steps => 100
+    Run [[Add 1]], boot, 100 => Vm(pc=1, regs=Regs(acc=1, x=5), steps=1)
+
+check idents:
+    Idents "" => 0
+    Idents "ab cd  e" => 3
+
+check union_find:
+    Components 4, [[((0, 1)), ((2, 3)), ((1, 3))]] => [[1, 3, 3, 3]]          # parent links, no compression
+    Components 3, [[]] => [[0, 1, 2]]
+
+check references:
+    Bump [[10, 10, 10]] => [[10, 11, 12]]

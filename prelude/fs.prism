@@ -1,0 +1,37 @@
+# The `Fs` family, as prism_rt's CLI World answers it (prism_rt/src/world/cli.rs;
+# Semantics ch. 8 and ch. 10; prism-reflex ch. 6). There is no directory listing (TD-W1).
+module Fs
+emit Fs.*
+
+type Contents = record:
+    text: Text
+derive ^Eq, ^Ord, ^Show
+
+type FileRequest = choice:
+    Read
+    Write Text
+derive ^Eq, ^Show
+
+type WriteState = choice:
+    Writing
+    Written
+    WriteFailed Error
+derive ^Eq, ^Show
+
+# A file's state: its text, or an `Error` while it is missing.
+tag Fs.Contents of Element $~Contents:
+    path: Text
+
+# One-shot reads and writes, each answered in a later tick.
+tag Fs.File of Element !~Contents:
+    path: Text
+    requests: !FileRequest
+
+# A file whose text is the field's: the World writes it whenever the text changes.
+tag Fs.Output of Element $WriteState:
+    path: Text
+    text: $Text
+
+tag Fs.NotFound of Fault
+tag Fs.Denied of Fault
+tag Fs.Failed of Fault

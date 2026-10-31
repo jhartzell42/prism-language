@@ -1,0 +1,8 @@
+test hold_starts_over, @rounds:
+    build
+        => expect Ui.Label(text="round 0: 0")
+    click Ui.Button(label="Score")
+        => expect Ui.Label(text="round 0: 1")
+    click Ui.Button(label="New round"), click Ui.Button(label="Score")
+        => expect Ui.Label(text="round 1: 0")
+        => expect_none Ui.Label(text="round 0: 2")

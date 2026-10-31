@@ -1,0 +1,5 @@
+test two_clicks_in_one_tick, @counter:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment"), click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: -1")

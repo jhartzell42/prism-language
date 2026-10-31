@@ -1,0 +1,22 @@
+# Semantics ch. 8's tick 0 and ch. 7's "tick n" and "tick n+1" (the Backspace and the label's lag), byte for byte; the book prints them apart.
+test the_label_lags_the_watch
+
+tick 0
+  added:
+    0: Ui.TextInput(name="path", text="/etc/hostname")
+    1/#0/0: Fs.Contents(path="/etc/hostname")
+    2: Ui.Label(text="box")
+
+tick 1
+  in:
+    0: Backspace
+  added:
+    1/#1/0: Fs.Contents(path="/etc/hostnam")
+  changed:
+    0: Ui.TextInput(name="path", text="/etc/hostnam")
+  torn down:
+    1/#0/0: Fs.Contents(path="/etc/hostname")
+
+tick 2
+  changed:
+    2: Ui.Label(text="(no such file)")

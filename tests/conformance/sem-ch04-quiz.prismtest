@@ -1,0 +1,13 @@
+test two_right_then_start_over, @quiz:
+    build
+        => expect Ui.Label(text="keep going")
+        => expect_count Ui.Button(label="True"), 2
+    click at 1/#0/1/[1]/1
+        => expect Ui.Label(text="keep going")
+    click at 1/#0/1/[2]/2
+        => expect Ui.Label(text="2 right")
+    click Ui.Button(label="Start over")
+        => expect Ui.Label(text="keep going")
+        => expect Ui.Label(text="Round 2")
+    click at 1/#1/1/[1]/2, click at 1/#1/1/[2]/2
+        => expect Ui.Label(text="1 right")

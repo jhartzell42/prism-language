@@ -1,0 +1,22 @@
+# prism_zero's transcript; the book prints none for this program, and it was checked by hand against the book's rules.
+test counting_birds
+
+tick 0
+  added:
+    0: Ui.Button(label="Robin: cheerily")
+    1: Ui.Button(label="Wren: tit-tit-tit")
+    2: Ui.Button(label="Heron: fraaank")
+    3: Ui.Label(text="0 birds")
+
+tick 1
+  in:
+    1: click
+  changed:
+    3: Ui.Label(text="1 birds, the last a Wren")
+
+tick 2
+  in:
+    0: click
+    2: click
+  changed:
+    3: Ui.Label(text="2 birds, the last a Robin")

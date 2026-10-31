@@ -1,0 +1,24 @@
+test the_change_law, @diamond:
+    build
+        => expect Ui.Label(text="1")
+    click Ui.Button(..)
+        => expect Ui.Label(text="16")
+
+test application_lifts, @doubles:
+    build
+        => expect Ui.Label(text="4 0 0 0")
+    click Ui.Button(..)
+        => expect Ui.Label(text="4 2 2 1")
+    click Ui.Button(..)
+        => expect Ui.Label(text="4 4 2 2")
+
+test scoreboard, @scores:
+    build
+        => expect Ui.Label(text="0 to 0, level, 0")
+    click Ui.Button(label="Home scores")
+        => expect Ui.Label(text="1 to 0, home, 1")
+    click Ui.Button(label="Home scores")
+        => expect Ui.Label(text="2 to 0, home, 1")
+    click Ui.Button(label="Away scores")
+    click Ui.Button(label="Away scores")
+        => expect Ui.Label(text="2 to 2, level, 1")

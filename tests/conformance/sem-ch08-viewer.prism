@@ -1,0 +1,28 @@
+# Semantics ch. 8's file viewer (and ch. 7's "viewer's lag"): a text box whose `text` is
+# live, a watch whose `path` is identity, rebuilt per path, and a label through
+# `@Flatten`, one tick behind the watch.
+emit Ui.* | Fs.*
+
+type Contents = record:
+    text: Text
+
+type Key = choice:
+    Letter Text
+    Backspace
+
+Edit: fn Text, Key -> Text
+fn Edit text, (Letter s) = "{text}{s}"
+fn Edit text, Backspace = Take text, (Or ((Len text) -? 1), 0)
+
+ShowResponse: fn ~Contents -> Text
+fn ShowResponse (~ c) = c.text
+fn ShowResponse (Error(kind=Fs.NotFound, ..)) = "(no such file)"
+fn ShowResponse (Error(..)) = "(cannot read)"
+
+@viewer:
+    !key <- Ui.TextInput(name="path", text=$path)           # 0
+    $path <- "/etc/hostname" then Edit $path, !key
+    $$~contents <- rebuild $path:                           # 1/#g
+        Fs.Contents(path=_)                                 # 1/#g/0
+    $~current <- @Flatten $$~contents
+    Ui.Label(text=ShowResponse $~current)                   # 2

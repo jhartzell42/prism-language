@@ -1,0 +1,9 @@
+# The World holds `box` for /etc/hostname and nothing for /etc/hostnam (ch. 8, ch. 7).
+test the_label_lags_the_watch, @viewer:
+    with Fs.Contents(path="/etc/hostname") = ~ Contents(text="box"), with Fs.Contents(path="/etc/hostnam") = Error(kind=Fs.NotFound, message="/etc/hostnam: no such file"), build
+        => expect Ui.Label(text="box")
+    send Ui.TextInput(..), Backspace
+        => expect Fs.Contents(path="/etc/hostnam")
+        => expect Ui.Label(text="box")
+    tick
+        => expect Ui.Label(text="(no such file)")

@@ -1,0 +1,90 @@
+# Semantics ch. 5: the toy machine's `Step` three ways (constructors, then the `&` block),
+# `Run` with fuel, `Idents` over a cursor, and union-find over a `Buffer`.
+type Regs = record:
+    acc: Int
+    x: Int
+derive ^Eq, ^Show
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+    steps: Nat
+derive ^Eq, ^Show
+
+type Op = choice:
+    Add Int
+    Swap
+    JumpIfNeg Nat
+derive ^Eq, ^Show
+
+# The first `Step`, with constructors.
+ByHand: fn Vm, Op -> Vm
+fn ByHand vm, (Add n) = Vm(pc=vm.pc + 1, regs=Regs(acc=vm.regs.acc + n, x=vm.regs.x), steps=vm.steps + 1)
+fn ByHand vm, op = vm
+
+Step: fn Vm, Op -> Vm
+fn Step vm, op = update vm:
+    &_.steps += 1
+    match op:
+        Add n:
+            &_.regs.acc += n
+            &_.pc += 1
+        Swap:
+            let a = &_.regs.acc
+            &_.regs.acc <= &_.regs.x
+            &_.regs.x <= a
+            &_.pc += 1
+        JumpIfNeg target:
+            if &_.regs.acc < 0:
+                &_.pc <= target
+            else:
+                &_.pc += 1
+
+Run: fn [Op], Vm, Nat -> Vm
+fn Run prog, vm, fuel = update vm:
+    let &fuel = fuel
+    while ? left <- &fuel -? 1:
+        &fuel <= left
+        match prog[&_.pc]:
+            ? op: &_ <= Step &_, op
+            nil: &fuel <= 0
+
+let boot = Vm(pc=0, regs=Regs(acc=0, x=5), steps=0)
+let prog = [[Add 3, Swap, Add -10, JumpIfNeg 0, Add 100]]
+
+IsLetter: fn Char -> Bool
+fn IsLetter c = c != ' '
+
+SkipWord: fn Cursor -> Cursor
+fn SkipWord c = update c:
+    while ? ((ch, next)) <- ?Step &_ if IsLetter ch:
+        &_ <= next
+
+Idents: fn Text -> Nat
+fn Idents src = update 0:
+    let &c = Cursor(text=src, at=0)
+    while ? ((ch, next)) <- ?Step &c:
+        if IsLetter ch:
+            &_ += 1
+            &c <= SkipWord next
+        else:
+            &c <= next
+
+Components: fn Nat, [((Nat, Nat))] -> [Nat]
+fn Components n, edges = update [[]]:
+    let &parent = Buffer.Numbered n
+    for ((a, b)) <- edges:
+        let &ra = a
+        while ? p <- &parent[&ra] if p != &ra:
+            &ra <= p
+        let &rb = b
+        while ? p <- &parent[&rb] if p != &rb:
+            &rb <= p
+        &parent[&ra] <= ? &rb
+    &_ <= Freeze &parent
+
+# `for &s <- &_.xs:` hands a reference per element.
+Bump: fn [Nat] -> [Nat]
+fn Bump xs = update xs:
+    for &s <- &_:
+        &s += ix

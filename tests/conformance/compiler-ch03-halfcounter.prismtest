@@ -1,0 +1,7 @@
+test half_counter_counts, @halfcounter:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment")
+        => expect Ui.Label(text="Count: 1")
+    click at 0
+        => expect Ui.Label(text="Count: 2")

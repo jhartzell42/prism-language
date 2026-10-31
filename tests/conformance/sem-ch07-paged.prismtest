@@ -1,0 +1,10 @@
+# Ticks 1 and 3 are the ticks the newborns are owed (Semantics ch. 7).
+test paged_viewer_builds_once, @loggedPages:
+    build
+    tick
+        => requested Test.Log, "page0.png"
+    click Ui.Button(label="Next")
+        => expect Ui.Image(src="page1.png")
+        => expect_none Ui.Image(src="page0.png")
+    tick
+        => requested Test.Log, "page1.png"

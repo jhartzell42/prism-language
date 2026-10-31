@@ -1,0 +1,33 @@
+# Semantics ch. 6: the library half of the bird counter, as the book writes it.
+module Birds
+emit Ui.*
+use Ui
+
+type Species = choice:
+    Robin
+    Wren
+    Heron
+derive ^Eq, ^Ord, ^Show
+
+Call: fn Species -> Text
+fn Call Robin = "cheerily"
+fn Call Wren = "tit-tit-tit"
+fn Call Heron = "fraaank"
+
+let flock = [[Robin, Wren, Heron]]
+
+@Spotter: fn Species -> @!Species
+fn @Spotter s:
+    !saw <- Ui.Button(label=$"{Show s}: {Call s}")
+    @ s on !saw
+
+check calls:
+    Call Heron => "fraaank"
+    Len flock => 3
+
+test spotting_a_wren, @Spotter Wren:
+    build
+        => expect Ui.Button(label="Wren: tit-tit-tit")
+        => quiet
+    click Ui.Button(..)
+        => fired Wren

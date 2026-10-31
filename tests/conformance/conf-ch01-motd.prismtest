@@ -1,0 +1,9 @@
+test reads_once_at_the_start, @motd:
+    build
+        => expect Ui.Label(text="(reading...)")
+        => unrequested Fs.File(..)
+    tick
+        => requested Fs.File(path="/etc/motd"), Read
+    send Fs.File(..), ~ Contents(text="hello")
+        => expect Ui.Label(text="hello")
+        => unrequested Fs.File(..)

@@ -1,0 +1,45 @@
+# Semantics ch. 9, "`@HostDocument` and its forms": a child that counts and watches a file,
+# hosted three ways. `@mocked` answers its `Fs.Contents` and forwards the rest; `@some`
+# says the same through `@HostSome`, `nil` meaning "forward it"; `@forwarded` forwards
+# everything and is observably not there: the same answers in the same ticks, under
+# deeper paths (`n/[p]/0`). The book prints no transcript for hosts.
+emit Ui.* | Fs.*
+use Fs.*
+
+ShowResponse: fn ~Contents -> Text
+fn ShowResponse (~ c) = c.text
+fn ShowResponse (Error(..)) = "(cannot read)"
+
+@child: @unit
+@child:
+    !inc <- Ui.Button(label=$"Increment")                   # 0
+    $count <- 0 then $count + 1 on !inc
+    $~motd <- Fs.Contents(path="/etc/motd")                 # 1
+    Ui.Label(text=$"{$count} {ShowResponse $~motd}")        # 2
+
+@mocked: @unit
+@mocked:
+    ((ignore, $doc)) <- @HostDocument @child, \|p, e| match e:   # 0/[p]
+        Fs.Contents(..): @ $ (~ Contents(text="mock"))
+        otherwise: @Element e
+    Ui.Label(text=$"{Size $doc} places")                    # 1
+
+?Give: fn Path, Element o -> ?@o
+fn ?Give p, e = match e:
+    Fs.Contents(..): ? (@ $ (~ Contents(text="given")))
+    otherwise: nil
+
+@some: @unit
+@some:
+    ((ignore, $doc)) <- @HostSome @child, ?Give
+    Ui.Label(text=$"{Size $doc} places")
+
+@forwarded: @unit
+@forwarded:
+    ignore <- @HostDocument @child, \|p, e| @Element e
+
+# The document a host holds is its child's, element by element.
+@watcher: @unit
+@watcher:
+    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e
+    Ui.Label(text=$"{Len (Keys $doc)} child places")

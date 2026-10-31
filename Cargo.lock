@@ -242,6 +242,17 @@ name = "prism_syntax"
 version = "0.1.0"
 
 [[package]]
+name = "prism_zero"
+version = "0.1.0"
+dependencies = [
+ "im-rc",
+ "num-bigint",
+ "num-traits",
+ "prism_rt",
+ "prism_syntax",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.105"
 source = "registry+https://github.com/rust-lang/crates.io-index"

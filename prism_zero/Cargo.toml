@@ -1,0 +1,17 @@
+[package]
+name = "prism_zero"
+version = "0.1.0"
+edition = "2024"
+description = "Compiler zero: a dynamic interpreter of Prism over prism_rt, scaffolding for the self-hosting bootstrap"
+license-file = "../LICENSE.md"
+
+[dependencies]
+prism_rt = { path = "../prism_rt" }
+prism_syntax = { path = "../prism_syntax" }
+im-rc = "15.1.0"
+num-bigint = "0.5.1"
+num-traits = "0.2.19"
+
+[[bin]]
+name = "prism_zero"
+path = "src/main.rs"

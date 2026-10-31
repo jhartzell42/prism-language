@@ -1,0 +1,12 @@
+# Semantics ch. 7, "a switch over a newborn hears the newborn's birth, one tick late".
+emit Ui.*
+
+@births:
+    !again <- Ui.Button(label=$"Again")                     # 0
+    $gen <- 0 then $gen + 1 on !again
+    $!born <- rebuild $gen:                                 # 1/#g
+        !started <- @started                                # 1/#g/0
+        @ unit on !started
+    !heard <- @Switch $!born
+    $count <- 0 then $count + 1 on !heard
+    Ui.Label(text=$"heard={$count}")                        # 2

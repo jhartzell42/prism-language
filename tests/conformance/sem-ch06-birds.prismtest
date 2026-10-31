@@ -1,0 +1,7 @@
+test counting_birds, @main:
+    build
+        => expect Ui.Label(text="0 birds")
+    click Ui.Button(label="Wren: tit-tit-tit")
+        => expect Ui.Label(text="1 birds, the last a Wren")
+    click Ui.Button(label="Robin: cheerily"), click Ui.Button(label="Heron: fraaank")
+        => expect Ui.Label(text="2 birds, the last a Robin")
