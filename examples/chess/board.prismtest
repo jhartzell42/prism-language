@@ -1,0 +1,62 @@
+# The board's tests: declarations of board.prism's root, as tests are declarations of their
+# module (Semantics chapter 6). Under `@$main` the window claims every Ui element, so the
+# document a test reads is the window's (Gui.Window at 1, a Gui.Metrics per word at
+# 2/[text]/0, Gui.Scene at 3, Gui.Focus at 4) and the board shows through `returns`; the
+# board's own elements are read under `@$board` alone (README, doubt EV). A square's place in
+# the grid's document is 0/[e2]/0, the square as its spot prints. Not yet run.
+
+test the_board_alone_shows_the_opening, @$board:
+    build
+        => expect_count Ui.Image(..), 64
+        => expect_count Ui.Image(src="examples/chess/pieces/blank.png", ..), 32
+        => expect Ui.Image(src="examples/chess/pieces/kl.png", paint=Grey)
+        => expect Ui.Image(src="examples/chess/pieces/ql.png", paint=Paper)      # d1, a light square
+        => expect Ui.Label(text="White's turn")
+        => returns "White's turn"
+
+# Pitch chapter 8's test: the pointer pressed at coordinates, through the window library's
+# own layout and hit testing
+test pawn_to_e4_by_pointer, @$main:
+    build
+        => returns "White's turn"
+    send Gui.Window(..), Press Point(x=280.0, y=400.0)        # the pawn on e2
+        => returns "White's turn"
+    send Gui.Window(..), Press Point(x=280.0, y=280.0)        # the square e4
+        => returns "Black's turn"
+        => expect Gui.Metrics(text="Black's")
+        => expect_none Gui.Metrics(text="White's")
+
+# A short game by path: each click is the Press the Test World finds from the scene's
+# Draw.Clickable for that square (Conformance chapter 1, D9)
+test fools_mate_by_path, @$main:
+    build
+        => returns "White's turn"
+        => expect_count Gui.Metrics(..), 3
+    click element 0/[f2]/0
+        => returns "White's turn"
+    click element 0/[f3]/0
+        => returns "Black's turn"
+    click element 0/[e7]/0
+        => returns "Black's turn"
+    click element 0/[e5]/0
+        => returns "White's turn"
+    click element 0/[g2]/0
+    click element 0/[g4]/0
+        => returns "Black's turn"
+    click element 0/[d8]/0
+        => settles
+    click element 0/[h4]/0
+        => returns "White has been checkmated"
+        => expect Gui.Metrics(text="checkmated")
+        => expect_count Gui.Metrics(..), 5
+
+test a_second_click_that_cannot_move_only_clears, @$main:
+    build
+        => returns "White's turn"
+    click element 0/[e2]/0                                  # selects the pawn
+        => returns "White's turn"
+    click element 0/[e5]/0                                  # three squares: no move, and the selection clears
+        => returns "White's turn"
+    click element 0/[e4]/0                                  # nothing selected, and an empty square
+        => returns "White's turn"
+        => expect Gui.Scene(..)

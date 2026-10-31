@@ -1,0 +1,42 @@
+# not yet run: written by hand from the books' rules
+test counter_counts
+
+tick 0
+  added:
+    0: Ui.Button(label="Increment")
+    1: Ui.Button(label="Decrement")
+    2: Ui.Label(text="Count: 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="Count: 1")
+
+tick 2
+  in:
+    0: click
+    1: click
+  changed:
+    2: Ui.Label(text="Count: 0")
+
+test two_clicks_at_once_keep_the_left
+
+tick 0
+  added:
+    0: Ui.Button(label="Increment")
+    1: Ui.Button(label="Decrement")
+    2: Ui.Label(text="Count: 0")
+
+tick 1
+  in:
+    0: click
+    1: click
+  changed:
+    2: Ui.Label(text="Count: -1")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="Count: -2")

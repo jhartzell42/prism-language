@@ -1,0 +1,890 @@
+# The window library: the Ui family's elements, the host documents that lay them out, and the
+# window that draws them, over the four tags a drawing World accepts (`Gui.Window`,
+# `Gui.Scene`, `Gui.Metrics`, `Gui.Focus`; Pitch chapters 5 and 6). Layout, hit testing and
+# focus are Prism, in the program's own document (Semantics chapter 9, a thin World; D9).
+# Ported from prism-reflex's examples/gui/window.prism into the books' spelling; the layout
+# is prism-reflex's seed layout.md, unchanged. General on purpose: chess uses the grid, the
+# card games will use rows, layers and turned frames. Work in progress, subject to change;
+# not yet run.
+module Window
+emit r | Ui.* | Gui.*
+
+# ---------------------------------------------------------------------------
+# Geometry and paint
+
+type Point = record:
+    x: Float
+    y: Float
+derive ^Eq, ^Show
+
+type Extent = record:
+    w: Float
+    h: Float
+derive ^Eq, ^Show
+
+type Rect = record:
+    x: Float
+    y: Float
+    w: Float
+    h: Float
+derive ^Eq, ^Show
+
+# `Paper` and `Ink`, not White and Black, which are chess's colors (README, doubt CO)
+type Paint = choice:
+    Paper
+    Grey
+    Blue
+    Ink
+    Yellow
+    Red
+    Green
+    Felt                       # a card table's green
+    Rgb Float, Float, Float
+derive ^Eq, ^Show
+
+# a turn about a pivot, then a scale: what a frame does to its child's drawing and hits
+type Turn = record:
+    x: Float
+    y: Float
+    angle: Float               # degrees, clockwise on the screen
+    scale: Float
+derive ^Eq, ^Show
+
+# ---------------------------------------------------------------------------
+# What a scene draws: a row kind with no output, as `Fault` is, so each command is a tag with
+# named fields and prints with its family (README, doubt DR)
+
+type Draw = row
+
+tag Draw.Rect of Draw:
+    rect: Rect
+    paint: Paint
+
+tag Draw.Text of Draw:
+    at: Point
+    text: Text
+
+tag Draw.Image of Draw:
+    rect: Rect
+    src: Text
+
+tag Draw.Clip of Draw:
+    rect: Rect
+    draws: [Draw]
+
+tag Draw.Group of Draw:
+    turn: Turn
+    draws: [Draw]
+
+# where the element at `path` of the window's own layout sits, so a test can click it by path
+# (D9); a World that paints ignores it
+tag Draw.Clickable of Draw:
+    rect: Rect
+    path: Path
+
+# ---------------------------------------------------------------------------
+# The drawing World's four tags: it needs to know nothing about buttons
+
+type Key = choice:
+    Char Char
+    Left
+    Right
+    Backspace
+    Tab
+    Enter
+derive ^Eq, ^Show
+
+type WindowInput = choice:
+    Press Point
+    Pressed Key
+    Resized Extent
+derive ^Eq, ^Show
+
+type WindowId = WindowId Text          # the World's handle for a window, answered once
+derive ^Eq, ^Show
+
+tag Gui.Window of Element ((WindowId, !WindowInput)):
+    title: $Text                       # live: retitling keeps the window
+    size: Extent                       # the first size
+
+tag Gui.Scene of Element unit:
+    window: WindowId
+    draw: $[Draw]                      # live: one place, a new picture per change
+
+tag Gui.Metrics of Element $Extent:    # the size of a text, a fact about fonts
+    text: Text
+
+tag Gui.Focus of Element unit:         # where the platform's focus and input method go
+    window: WindowId
+    at: $?Rect
+
+# ---------------------------------------------------------------------------
+# The Ui family: leaves answer the inputs routed to them; containers hold their children's
+# elements in a live field and answer with inputs addressed by a child's path
+
+type Click = click
+
+type Routed = record:                  # an input for the place at `path`
+    path: Path
+    input: Input
+derive ^Eq, ^Show
+
+type Input = choice:
+    Clicked
+    Typed Key
+    Inner Routed                       # for a place inside the container at `path`
+derive ^Eq, ^Show
+
+tag Ui.Label of Element unit:
+    text: $Text                        # live: new text, same label
+
+tag Ui.Button of Element !Click:
+    label: $Text
+
+tag Ui.TextInput of Element !Key:
+    name: Text                         # identity
+    text: $Text
+    cursor: $Nat
+
+tag Ui.Image of Element !Click:        # a picture on a painted cell, clickable: a chess square
+    src: $Text
+    paint: $Paint
+
+type Align = choice:
+    Start
+    Middle
+    End
+    Stretch
+derive ^Eq, ^Show
+
+tag Ui.VBox of Element !Routed:        # a column with no spacing
+    children: $(Path ==> Elem)
+
+tag Ui.HBox of Element !Routed:        # a row with no spacing
+    children: $(Path ==> Elem)
+
+tag Ui.Row of Element !Routed:
+    spacing: Float                     # negative overlaps: a hand of cards
+    align: Align                       # across the row
+    children: $(Path ==> Elem)
+
+tag Ui.Column of Element !Routed:
+    spacing: Float
+    align: Align
+    children: $(Path ==> Elem)
+
+tag Ui.Layers of Element !Routed:      # children on top of each other, each at its frame's anchor
+    children: $(Path ==> Elem)
+
+type FrameSpec = record:
+    pad: Float
+    width: ?Float
+    height: ?Float
+    aspect: ?Float                     # width over height
+    flex: Float                        # a share of a row's or column's free room; 0 takes its natural size
+    anchor: Point                      # in layers: where in the room, as fractions
+    offset: Point                      # in layers: and then how far, in points
+    turn: Float                        # degrees about the frame's centre
+    scale: Float
+    bg: ?Paint
+derive ^Eq, ^Show
+
+tag Ui.Frame of Element !Routed:
+    spec: FrameSpec
+    children: $(Path ==> Elem)
+
+tag Ui.Grid of Element !Routed:        # children in rows of `columns`, each cell the size of the largest child
+    columns: Nat
+    children: $(Path ==> Elem)
+
+let plain = FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil
+
+# ---------------------------------------------------------------------------
+# Hosting: a box claims its child's Ui elements and answers each with the inputs routed to its
+# path; anything else it declines, and the host forwards it
+
+IsUi: fn Elem -> Bool
+fn IsUi e = match e:
+    Ui.*: True
+    otherwise: False
+
+# the entries of a document a box claims: its library elements
+Claimed: fn (Path ==> Elem) -> (Path ==> Elem)
+fn Claimed m = Fold (Keys m), {}, \|acc, k| match m[k]:
+    ? e if IsUi e: Insert acc, k, e
+    otherwise: acc
+
+?ClickTo: fn Path, Routed -> ?Click
+fn ?ClickTo p, r = match r.input:
+    Clicked if r.path == p: ? click
+    otherwise: nil
+
+?KeyTo: fn Path, Routed -> ?Key
+fn ?KeyTo p, r = match r.input:
+    Typed k if r.path == p: ? k
+    otherwise: nil
+
+?InnerTo: fn Path, Routed -> ?Routed
+fn ?InnerTo p, r = match r.input:
+    Inner inner if r.path == p: ? inner
+    otherwise: nil
+
+# what a box answers one claimed element with: the inputs routed to its path, as that tag's own
+# answer; `nil`, not mine, for anything that is not the library's
+?Boxed: fn Path, Element o, !Routed -> ?@o
+fn ?Boxed p, e, !in = match e:
+    Ui.Label(..): ? @ unit
+    Ui.Button(..): ? @ !Filter (?ClickTo p, !in)
+    Ui.Image(..): ? @ !Filter (?ClickTo p, !in)
+    Ui.TextInput(..): ? @ !Filter (?KeyTo p, !in)
+    Ui.VBox(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.HBox(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Row(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Column(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Layers(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Frame(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Grid(..): ? @ !Filter (?InnerTo p, !in)
+    otherwise: nil
+
+# ---------------------------------------------------------------------------
+# The widget functions: each composes, keeping a hold or hosting its child (D10)
+
+type Edit = record:
+    text: Text
+    cursor: Nat
+derive ^Eq, ^Show
+
+Apply: fn Edit, Key -> Edit
+fn Apply e, k = match k:
+    Char c: Edit "{Take e.text, e.cursor}{c}{Drop e.text, e.cursor}", e.cursor + 1
+    Left: Edit e.text, (Or (e.cursor -? 1), 0)
+    Right: if e.cursor == (Len e.text): e else: Edit e.text, e.cursor + 1
+    Backspace: match e.cursor -? 1:
+        ? back: Edit "{Take e.text, back}{Drop e.text, e.cursor}", back
+        nil: e
+    Tab: e
+    Enter: e
+
+@TextInput: fn Text, Text -> @$Text
+fn @TextInput name, initial:
+    !key <- Ui.TextInput(name=name, text=$edit.text, cursor=$edit.cursor)
+    $edit <- Edit initial, (Len initial) then Apply $edit, !key
+    @ $edit.text
+
+@Grid: fn Nat, @a -> @a
+fn @Grid columns, @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Grid(columns=columns, children=Claimed $elems)
+    @ r
+
+@VBox: fn @a -> @a
+fn @VBox @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.VBox(children=Claimed $elems)
+    @ r
+
+@HBox: fn @a -> @a
+fn @HBox @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.HBox(children=Claimed $elems)
+    @ r
+
+@Row: fn Float, @a -> @a
+fn @Row spacing, @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Row(spacing=spacing, align=Start, children=Claimed $elems)
+    @ r
+
+@Column: fn Float, @a -> @a
+fn @Column spacing, @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Column(spacing=spacing, align=Start, children=Claimed $elems)
+    @ r
+
+@Layers: fn @a -> @a
+fn @Layers @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Layers(children=Claimed $elems)
+    @ r
+
+@Framed: fn FrameSpec, @a -> @a
+fn @Framed spec, @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Frame(spec=spec, children=Claimed $elems)
+    @ r
+
+# the modifiers: each is one frame around its child
+@Pad: fn Float, @a -> @a
+fn @Pad p, @child = @Framed (FrameSpec p, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
+
+@Fill: fn Float, @a -> @a
+fn @Fill f, @child = @Framed (FrameSpec 0.0, nil, nil, nil, f, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
+
+@Sized: fn Float, Float, @a -> @a
+fn @Sized w, h, @child = @Framed (FrameSpec 0.0, (? w), (? h), nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
+
+@Aspect: fn Float, @a -> @a
+fn @Aspect ratio, @child = @Framed (FrameSpec 0.0, nil, nil, (? ratio), 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
+
+@Anchor: fn Point, Point, @a -> @a
+fn @Anchor at, off, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, at, off, 0.0, 1.0, nil), @child
+
+@Turned: fn Float, @a -> @a
+fn @Turned deg, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), deg, 1.0, nil), @child
+
+@Backed: fn Paint, Float, @a -> @a
+fn @Backed c, p, @child = @Framed (FrameSpec p, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, (? c)), @child
+
+# ---------------------------------------------------------------------------
+# Layout and hit testing as plain functions (layout.md): room down, size up, placed by the
+# parent, in one function. `Lay` gives an element's size in a room and a placer that draws it
+# at an origin; the hits come from the same placement, through any turn above them.
+
+type Env = record:
+    sizes: Text ==> Extent             # one Gui.Metrics answer per distinct word or text
+    focus: ?[Path]                     # the focused place, by its chain of paths
+derive ^Eq, ^Show
+
+type HitKind = choice:
+    Clickable
+    Focus
+derive ^Eq, ^Show
+
+type Hit = record:
+    rect: Rect
+    chain: [Path]
+    kind: HitKind
+    turns: [Turn]                      # the turns of the frames above it, outermost first
+derive ^Eq, ^Show
+
+type Placed = record:
+    draw: [Draw]
+    hits: [Hit]
+
+type Room = record:
+    minW: Float
+    maxW: Float
+    minH: Float
+    maxH: Float
+derive ^Eq, ^Show
+
+type Laid = record:
+    size: Extent
+    at: fn Point -> Placed
+
+EnvOf: fn (Text ==> Extent), ?[Path] -> Env
+fn EnvOf sizes, ?focus = Env sizes, ?focus
+
+Merged: fn Placed, Placed -> Placed
+fn Merged a, b = Placed (Append a.draw, b.draw), (Append a.hits, b.hits)
+
+let nothing = Placed [[]], [[]]
+
+let unlaid = Laid (Extent 0.0, 0.0), \|p| nothing
+
+let huge = 1000000.0
+
+let cell = 64.0
+
+# 0 to n - 1
+Indices: fn Nat -> [Nat]
+fn Indices n = match n -? 1:
+    ? m: Push (Indices m), m
+    nil: [[]]
+
+Bounded: fn Float -> Bool
+fn Bounded x = x < huge
+
+Ratio: fn Float, Float -> Float
+fn Ratio a, b = if b == 0.0: 0.0 else: a / b
+
+Clamp: fn Float, Float, Float -> Float
+fn Clamp x, lo, hi = Max lo, (Min x, hi)
+
+Loose: fn Float, Float -> Room
+fn Loose w, h = Room 0.0, w, 0.0, h
+
+Tight: fn Extent -> Room
+fn Tight e = Room e.w, e.w, e.h, e.h
+
+Fit: fn Room, Extent -> Extent
+fn Fit r, e = Extent (Clamp e.w, r.minW, r.maxW), (Clamp e.h, r.minH, r.maxH)
+
+PlaceAt: fn Laid, Point -> Placed
+fn PlaceAt l, p = l.at p
+
+TextExtent: fn Env, Text -> Extent
+fn TextExtent env, t = Or env.sizes[t], (Extent 0.0, 0.0)
+
+Padded: fn Extent, Float -> Extent
+fn Padded e, p = Extent e.w + 2.0 * p, e.h + 2.0 * p
+
+Kids: fn (Path ==> Elem) -> [((Path, Elem))]
+fn Kids cs = Fold (Keys cs), [[]], \|acc, k| match cs[k]:
+    ? e: Push acc, ((k, e))
+    nil: acc
+
+# the place at the end of a chain, the path a test clicks by
+?Innermost: fn [Path] -> ?Path
+fn ?Innermost chain:
+    i <- (Len chain) -? 1
+    chain[i]
+
+ClickableAt: fn Rect, [Path] -> [Draw]
+fn ClickableAt r, chain = match ?Innermost chain:
+    ? p: [[Draw.Clickable(rect=r, path=p)]]
+    nil: [[]]
+
+# ---- what the World measures: each distinct word of a label and the space, each button's
+# label, each input's text and its text up to the cursor
+
+# a text split at its spaces, a character at a time
+Words: fn Text -> [Text]
+fn Words t:
+    let ((done, word)) = Fold (Indices (Len t)), (([[]], "")), \|acc, i| WordStep acc, (Take (Drop t, i), 1)
+    Finished done, word
+
+WordStep: fn (([Text], Text)), Text -> (([Text], Text))
+fn WordStep ((done, word)), c = if c == " ": (((Finished done, word), "")) else: ((done, "{word}{c}"))
+
+Finished: fn [Text], Text -> [Text]
+fn Finished done, word = if (Len word) > 0: Push done, word else: done
+
+Joined: fn [Text], Text -> Text
+fn Joined ws, sep = Fold ws, "", \|acc, w| if acc == "": w else: "{acc}{sep}{w}"
+
+WordSet: fn Text -> (Text ==> unit)
+fn WordSet t = Fold (Words t), {" ": unit}, \|acc, w| Insert acc, w, unit
+
+TextsIn: fn (Path ==> Elem) -> (Text ==> unit)
+fn TextsIn cs = Fold (Values cs), {}, \|acc, e| Union acc, (TextsOf e)
+
+TextsOf: fn Elem -> (Text ==> unit)
+fn TextsOf e = match e:
+    Ui.Label(text=t): WordSet t
+    Ui.Button(label=l): {l: unit}
+    Ui.TextInput(text=t, cursor=c, ..): {t: unit, (Take t, c): unit}
+    Ui.VBox(children=cs): TextsIn cs
+    Ui.HBox(children=cs): TextsIn cs
+    Ui.Row(children=cs, ..): TextsIn cs
+    Ui.Column(children=cs, ..): TextsIn cs
+    Ui.Layers(children=cs): TextsIn cs
+    Ui.Frame(children=cs, ..): TextsIn cs
+    Ui.Grid(children=cs, ..): TextsIn cs
+    otherwise: {}
+
+# ---- labels, wrapped by words at the room's width
+
+SpaceW: fn Env -> Float
+fn SpaceW env = (TextExtent env, " ").w
+
+LineH: fn Env -> Float
+fn LineH env = (TextExtent env, " ").h
+
+WordsW: fn Env, [Text] -> Float
+fn WordsW env, ws:
+    let gaps = Float (Or ((Max (Len ws), 1) -? 1), 0)
+    (Fold ws, 0.0, \|acc, w| acc + (TextExtent env, w).w) + (SpaceW env) * gaps
+
+type Lines = record:
+    done: [Text]
+    line: [Text]
+
+WrapStep: fn Env, Float, Lines, Text -> Lines
+fn WrapStep env, maxW, acc, w = if (Len acc.line) == 0 or (WordsW env, (Push acc.line, w)) <= maxW: Lines acc.done, (Push acc.line, w) else: Lines (Push acc.done, (Joined acc.line, " ")), [[w]]
+
+Wrap: fn Env, Text, Float -> [Text]
+fn Wrap env, t, maxW:
+    let r = Fold (Words t), (Lines [[]], [[]]), \|acc, w| WrapStep env, maxW, acc, w
+    if (Len r.line) == 0: r.done else: Push r.done, (Joined r.line, " ")
+
+LineAt: fn Env, Point, ((Float, [Draw])), Text -> ((Float, [Draw]))
+fn LineAt env, p, ((y, draws)), l:
+    let d = Draw.Text(at=(Point p.x + 4.0, p.y + 4.0 + y), text=l)
+    ((y + (LineH env), (Push draws, d)))
+
+LinesDraw: fn Env, [Text], Point -> [Draw]
+fn LinesDraw env, lines, p:
+    let ((ignore, draws)) = Fold lines, ((0.0, [[]])), \|acc, l| LineAt env, p, acc, l
+    draws
+
+LayLabel: fn Env, Text, Room -> Laid
+fn LayLabel env, t, room:
+    let natural = (WordsW env, (Words t)) + 8.0
+    let lines = if natural <= room.maxW: [[t]] else: Wrap env, t, room.maxW - 8.0
+    let width = (Fold lines, 0.0, \|m, l| Max m, (WordsW env, (Words l))) + 8.0
+    let size = Fit room, (Extent width, (LineH env) * (Float (Len lines)) + 8.0)
+    Laid size, \|p| Placed (LinesDraw env, lines, p), [[]]
+
+# ---- the other leaves
+
+ButtonAt: fn Point, Extent, Text, [Path] -> Placed
+fn ButtonAt p, size, l, chain:
+    let box = Rect p.x + 2.0, p.y + 2.0, size.w - 4.0, size.h - 4.0
+    let draws = [[Draw.Rect(rect=box, paint=Grey), Draw.Text(at=(Point p.x + 8.0, p.y + 8.0), text=l)]]
+    Placed (Append draws, (ClickableAt box, chain)), [[(Hit box, chain, Clickable, [[]])]]
+
+LayButton: fn Env, Text, Room, [Path] -> Laid
+fn LayButton env, l, room, chain:
+    let size = Fit room, (Padded (TextExtent env, l), 8.0)
+    Laid size, \|p| ButtonAt p, size, l, chain
+
+# a white box, the text, and a caret bar when the input has focus
+InputDraw: fn Env, Rect, [Path], Text, Nat -> [Draw]
+fn InputDraw env, r, chain, t, c:
+    let caretX = r.x + 4.0 + (TextExtent env, (Take t, c)).w
+    let caret = match env.?focus:
+        ? f if f == chain: [[Draw.Rect(rect=(Rect caretX, r.y + 3.0, 2.0, r.h - 6.0), paint=Ink)]]
+        otherwise: [[]]
+    let box = [[Draw.Rect(rect=r, paint=Blue), Draw.Rect(rect=(Rect r.x + 1.0, r.y + 1.0, r.w - 2.0, r.h - 2.0), paint=Paper), Draw.Text(at=(Point r.x + 4.0, r.y + 4.0), text=t)]]
+    Append (Append box, caret), (ClickableAt r, chain)
+
+InputAt: fn Env, Point, Extent, Text, Nat, [Path] -> Placed
+fn InputAt env, p, size, t, c, chain:
+    let r = Rect p.x, p.y, size.w, size.h
+    Placed (InputDraw env, r, chain, t, c), [[(Hit r, chain, Focus, [[]])]]
+
+LayInput: fn Env, Text, Nat, Room, [Path] -> Laid
+fn LayInput env, t, c, room, chain:
+    let te = TextExtent env, t
+    let size = Fit room, (Extent (Max te.w + 8.0, 200.0), te.h + 8.0)
+    Laid size, \|p| InputAt env, p, size, t, c, chain
+
+ImageAt: fn Rect, Text, Paint, [Path] -> Placed
+fn ImageAt r, src, paint, chain:
+    let draws = [[Draw.Rect(rect=r, paint=paint), Draw.Image(rect=r, src=src)]]
+    Placed (Append draws, (ClickableAt r, chain)), [[(Hit r, chain, Clickable, [[]])]]
+
+LayImage: fn Text, Paint, Room, [Path] -> Laid
+fn LayImage src, paint, room, chain:
+    let size = Fit room, (Extent cell, cell)
+    Laid size, \|p| ImageAt (Rect p.x, p.y, size.w, size.h), src, paint, chain
+
+# ---- rows and columns: natural and fixed children first, the free room shared by flex, then
+# placed one after another with the spacing, aligned across
+
+FlexOf: fn Elem -> Float
+fn FlexOf e = match e:
+    Ui.Frame(spec=s, ..): s.flex
+    otherwise: 0.0
+
+MainOf: fn Bool, Extent -> Float
+fn MainOf down, e = if down: e.h else: e.w
+
+CrossOf: fn Bool, Extent -> Float
+fn CrossOf down, e = if down: e.w else: e.h
+
+MainMax: fn Bool, Room -> Float
+fn MainMax down, r = if down: r.maxH else: r.maxW
+
+CrossMax: fn Bool, Room -> Float
+fn CrossMax down, r = if down: r.maxW else: r.maxH
+
+RoomFor: fn Bool, Float, Float, Float, Float -> Room
+fn RoomFor down, mlo, mhi, clo, chi = if down: Room clo, chi, mlo, mhi else: Room mlo, mhi, clo, chi
+
+ExtentOf: fn Bool, Float, Float -> Extent
+fn ExtentOf down, m, c = if down: Extent c, m else: Extent m, c
+
+PointOf: fn Bool, Point, Float, Float -> Point
+fn PointOf down, p, m, c = if down: Point p.x + c, p.y + m else: Point p.x + m, p.y + c
+
+FixedMain: fn Bool, [((Path, Elem))], [Laid], Nat -> Float
+fn FixedMain down, kids, natural, i = match kids[i]:
+    ? ((ignore, e)): if (FlexOf e) > 0.0: 0.0 else: MainOf down, (Or natural[i], unlaid).size
+    nil: 0.0
+
+Final: fn Env, [((Path, Elem))], [Laid], Nat, Bool, Float, Float, [Path], Room -> Laid
+fn Final env, kids, natural, i, down, free, weights, chain, room = match kids[i]:
+    ? ((k, e)) if (FlexOf e) > 0.0 and weights > 0.0:
+        let m = Ratio (free * (FlexOf e)), weights
+        Lay env, e, (RoomFor down, m, m, 0.0, (CrossMax down, room)), (Push chain, k)
+    ? ignore: Or natural[i], unlaid
+    nil: unlaid
+
+Restretch: fn Env, [((Path, Elem))], [Laid], Nat, Bool, Float, [Path] -> Laid
+fn Restretch env, kids, sized, i, down, crossSize, chain = match kids[i]:
+    ? ((k, e)):
+        let m = MainOf down, (Or sized[i], unlaid).size
+        Lay env, e, (RoomFor down, m, m, crossSize, crossSize), (Push chain, k)
+    nil: unlaid
+
+StackStep: fn Bool, Float, Align, Float, Point, ((Float, Placed)), Laid -> ((Float, Placed))
+fn StackStep down, spacing, align, crossSize, p, ((off, placed)), l:
+    let c = CrossOf down, l.size
+    let cOff = match align:
+        Middle: Ratio (crossSize - c), 2.0
+        End: crossSize - c
+        otherwise: 0.0
+    let here = PlaceAt l, (PointOf down, p, off, cOff)
+    ((off + (MainOf down, l.size) + spacing, (Merged placed, here)))
+
+StackAt: fn Bool, Float, Align, Float, [Laid], Point -> Placed
+fn StackAt down, spacing, align, crossSize, laids, p:
+    let ((ignore, placed)) = Fold laids, ((0.0, nothing)), \|acc, l| StackStep down, spacing, align, crossSize, p, acc, l
+    placed
+
+LayStack: fn Env, (Path ==> Elem), Room, [Path], Bool, Float, Align -> Laid
+fn LayStack env, cs, room, chain, down, spacing, align:
+    let kids = Kids cs
+    let idx = Indices (Len kids)
+    let gaps = spacing * (Max ((Float (Len kids)) - 1.0), 0.0)
+    let natural = Each kids, \|((k, e))| Lay env, e, (RoomFor down, 0.0, huge, 0.0, (CrossMax down, room)), (Push chain, k)
+    let fixed = Fold idx, 0.0, \|acc, i| acc + (FixedMain down, kids, natural, i)
+    let weights = Fold kids, 0.0, \|acc, ((ignore, e))| acc + (FlexOf e)
+    let free = if (Bounded (MainMax down, room)) and weights > 0.0: Max ((MainMax down, room) - fixed - gaps), 0.0 else: 0.0
+    let sized = Each idx, \|i| Final env, kids, natural, i, down, free, weights, chain, room
+    let crossSize = Fold sized, (if down: room.minW else: room.minH), \|m, l| Max m, (CrossOf down, l.size)
+    let laids = if align == Stretch: Each idx, \|i| Restretch env, kids, sized, i, down, crossSize, chain else: sized
+    let mainSize = (Fold laids, 0.0, \|acc, l| acc + (MainOf down, l.size)) + gaps
+    let size = Fit room, (ExtentOf down, mainSize, crossSize)
+    Laid size, \|p| StackAt down, spacing, align, (CrossOf down, size), laids, p
+
+# ---- layers: each child in the whole room, at its frame's anchor and offset; later is on top
+
+AnchorOf: fn Elem -> ((Point, Point))
+fn AnchorOf e = match e:
+    Ui.Frame(spec=s, ..): ((s.anchor, s.offset))
+    otherwise: (((Point 0.0, 0.0), (Point 0.0, 0.0)))
+
+LayerAt: fn [((Path, Elem))], [Laid], Extent, Point, Nat -> Placed
+fn LayerAt kids, laids, size, p, i = match kids[i]:
+    ? ((ignore, e)):
+        let l = Or laids[i], unlaid
+        let ((a, o)) = AnchorOf e
+        PlaceAt l, (Point p.x + (size.w - l.size.w) * a.x + o.x, p.y + (size.h - l.size.h) * a.y + o.y)
+    nil: nothing
+
+LayLayers: fn Env, (Path ==> Elem), Room, [Path] -> Laid
+fn LayLayers env, cs, room, chain:
+    let kids = Kids cs
+    let laids = Each kids, \|((k, e))| Lay env, e, (Loose room.maxW, room.maxH), (Push chain, k)
+    let biggest = Fold laids, (Extent 0.0, 0.0), \|m, l| Extent (Max m.w, l.size.w), (Max m.h, l.size.h)
+    let size = Fit room, (Extent (if (Bounded room.maxW): room.maxW else: biggest.w), (if (Bounded room.maxH): room.maxH else: biggest.h))
+    Laid size, \|p| Fold (Indices (Len kids)), nothing, \|acc, i| Merged acc, (LayerAt kids, laids, size, p, i)
+
+# ---- the frame: a fixed size or an aspect ratio, padding, a background, and a turn
+
+AspectRoom: fn Room, Float -> Room
+fn AspectRoom r, a:
+    let w0 = if (Bounded r.maxW): r.maxW else: r.maxH * a
+    let h0 = Ratio w0, a
+    let h = Min h0, r.maxH
+    let w = if h0 > r.maxH: h * a else: w0
+    Tight (Extent w, h)
+
+FrameRoom: fn FrameSpec, Room -> Room
+fn FrameRoom s, room:
+    let ?w = match s.?width:
+        ? x: ? (Clamp x, room.minW, room.maxW)
+        nil: nil
+    let ?h = match s.?height:
+        ? x: ? (Clamp x, room.minH, room.maxH)
+        nil: nil
+    let r1 = Room (Or ?w, room.minW), (Or ?w, room.maxW), (Or ?h, room.minH), (Or ?h, room.maxH)
+    match s.?aspect:
+        ? a: AspectRoom r1, a
+        nil: r1
+
+TurnPlaced: fn Turn, Placed -> Placed
+fn TurnPlaced t, pl = Placed [[Draw.Group(turn=t, draws=pl.draw)]], (Each pl.hits, \|h| Hit h.rect, h.chain, h.kind, (Append [[t]], h.turns))
+
+FrameAt: fn FrameSpec, Laid, Extent, Point -> Placed
+fn FrameAt s, child, size, p:
+    let bg = match s.?bg:
+        ? c: [[Draw.Rect(rect=(Rect p.x, p.y, size.w, size.h), paint=c)]]
+        nil: [[]]
+    let inner = PlaceAt child, (Point p.x + s.pad, p.y + s.pad)
+    let flat = Placed (Append bg, inner.draw), inner.hits
+    if s.turn == 0.0 and s.scale == 1.0: flat else: TurnPlaced (Turn p.x + size.w * 0.5, p.y + size.h * 0.5, s.turn, s.scale), flat
+
+LayFrame: fn Env, FrameSpec, (Path ==> Elem), Room, [Path] -> Laid
+fn LayFrame env, s, cs, room, chain:
+    let pad2 = 2.0 * s.pad
+    let outer = FrameRoom s, room
+    let inner = Room (Max (outer.minW - pad2), 0.0), (Max (outer.maxW - pad2), 0.0), (Max (outer.minH - pad2), 0.0), (Max (outer.maxH - pad2), 0.0)
+    let child = LayStack env, cs, inner, chain, True, 0.0, Stretch
+    let size = Fit outer, (Extent child.size.w + pad2, child.size.h + pad2)
+    Laid size, \|p| FrameAt s, child, size, p
+
+# ---- the grid: equal cells, each the size of the largest child, in the children's path order
+
+GridStep: fn Nat, Extent, Point, ((Nat, Placed)), Laid -> ((Nat, Placed))
+fn GridStep n, cellSize, p, ((i, placed)), l:
+    let column = Float (i mod n)
+    let down = Float (Or (i / n), 0)
+    let at = Point p.x + cellSize.w * column, p.y + cellSize.h * down
+    ((i + 1, (Merged placed, (PlaceAt l, at))))
+
+LayGrid: fn Env, Nat, (Path ==> Elem), Room, [Path] -> Laid
+fn LayGrid env, n, cs, room, chain:
+    let kids = Kids cs
+    let natural = Each kids, \|((k, e))| Lay env, e, (Loose huge, huge), (Push chain, k)
+    let cellSize = Fold natural, (Extent 0.0, 0.0), \|m, l| Extent (Max m.w, l.size.w), (Max m.h, l.size.h)
+    let rows = RowsFor (Len kids), n
+    let size = Fit room, (Extent cellSize.w * (Float n), cellSize.h * (Float rows))
+    let laids = Each kids, \|((k, e))| Lay env, e, (Tight cellSize), (Push chain, k)
+    Laid size, \|p| GridAt n, cellSize, laids, p
+
+# how many rows `count` children take, `n` to a row
+RowsFor: fn Nat, Nat -> Nat
+fn RowsFor count, n = Or ((Or (count + n -? 1), 0) / n), 0
+
+GridAt: fn Nat, Extent, [Laid], Point -> Placed
+fn GridAt n, cellSize, laids, p:
+    let ((ignore, placed)) = Fold laids, ((0, nothing)), \|acc, l| GridStep n, cellSize, p, acc, l
+    placed
+
+# ---- the one function
+
+Lay: fn Env, Elem, Room, [Path] -> Laid
+fn Lay env, e, room, chain = match e:
+    Ui.Label(text=t): LayLabel env, t, room
+    Ui.Button(label=l): LayButton env, l, room, chain
+    Ui.TextInput(text=t, cursor=c, ..): LayInput env, t, c, room, chain
+    Ui.Image(src=s, paint=b): LayImage s, b, room, chain
+    Ui.VBox(children=cs): LayStack env, cs, room, chain, True, 0.0, Start
+    Ui.HBox(children=cs): LayStack env, cs, room, chain, False, 0.0, Start
+    Ui.Column(spacing=g, align=a, children=cs): LayStack env, cs, room, chain, True, g, a
+    Ui.Row(spacing=g, align=a, children=cs): LayStack env, cs, room, chain, False, g, a
+    Ui.Layers(children=cs): LayLayers env, cs, room, chain
+    Ui.Frame(spec=s, children=cs): LayFrame env, s, cs, room, chain
+    Ui.Grid(columns=n, children=cs): LayGrid env, n, cs, room, chain
+    otherwise: unlaid
+
+# ---- hits: the pointer is taken back through each turn above a region; the topmost wins
+
+Contains: fn Rect, Point -> Bool
+fn Contains r, p = r.x <= p.x and p.x < r.x + r.w and r.y <= p.y and p.y < r.y + r.h
+
+let pi = 3.14159265358979
+
+# an angle in radians brought within half a turn either way, for angles up to three turns
+Within: fn Float -> Float
+fn Within a = WrapOnce (WrapOnce (WrapOnce a))
+
+WrapOnce: fn Float -> Float
+fn WrapOnce a = if a > pi: a - 2.0 * pi else: if a < -pi: a + 2.0 * pi else: a
+
+# sine and cosine by their series, in Horner's form, within half a turn
+Sine: fn Float -> Float
+fn Sine angle:
+    let x = Within angle
+    let s = x * x
+    x * (1.0 - s / 6.0 * (1.0 - s / 20.0 * (1.0 - s / 42.0 * (1.0 - s / 72.0 * (1.0 - s / 110.0 * (1.0 - s / 156.0 * (1.0 - s / 210.0)))))))
+
+Cosine: fn Float -> Float
+fn Cosine angle:
+    let x = Within angle
+    let s = x * x
+    1.0 - s / 2.0 * (1.0 - s / 12.0 * (1.0 - s / 30.0 * (1.0 - s / 56.0 * (1.0 - s / 90.0 * (1.0 - s / 132.0 * (1.0 - s / 182.0))))))
+
+Untransform: fn Point, Turn -> Point
+fn Untransform q, t:
+    let rad = Ratio (t.angle * pi), 180.0
+    let dx = Ratio (q.x - t.x), t.scale
+    let dy = Ratio (q.y - t.y), t.scale
+    Point t.x + dx * (Cosine rad) + dy * (Sine rad), t.y - dx * (Sine rad) + dy * (Cosine rad)
+
+Local: fn Hit, Point -> Point
+fn Local h, p = Fold h.turns, p, \|q, t| Untransform q, t
+
+# the window's root: a program's one top element gets the whole window; several stack in a column
+LayRoot: fn Env, (Path ==> Elem), Extent -> Laid
+fn LayRoot env, kids, size = match Kids kids:
+    [[((k, e))]]: Lay env, e, (Loose size.w, size.h), [[k]]
+    otherwise: LayStack env, kids, (Loose size.w, size.h), [[]], True, 0.0, Start
+
+# the topmost hit under the pointer: the last drawn wins
+?HitAt: fn [Hit], Point -> ?Hit
+fn ?HitAt hits, p = Fold hits, nil, \|?top, h| if Contains h.rect, (Local h, p): ? h else: ?top
+
+# the routed input for the place at the end of a chain: one Routed per container on the way,
+# addressed outermost first
+?Deliver: fn [Path], Input -> ?Routed
+fn ?Deliver chain, input:
+    let inward = Fold chain, [[]], \|acc, p| Append [[p]], acc
+    Fold inward, nil, \|?inner, p| ? Routed(path=p, input=(Wrapped ?inner, input))
+
+Wrapped: fn ?Routed, Input -> Input
+fn Wrapped ?inner, input = match ?inner:
+    ? r: Inner r
+    nil: input
+
+?ClickFor: fn Hit -> ?Routed
+fn ?ClickFor h = match h.kind:
+    Clickable: ?Deliver h.chain, Clicked
+    Focus: nil
+
+?RouteKey: fn ?[Path], Key -> ?Routed
+fn ?RouteKey ?focus, k = match ?focus:
+    ? chain: ?Deliver chain, (Typed k)
+    nil: nil
+
+# focus names the focused place by its chain of paths, which is its identity while it lives;
+# it moves by a click on a text input, or by Tab to the next input in drawing order
+?Refocus: fn [Hit], ?[Path], WindowInput -> ?[Path]
+fn ?Refocus hits, ?focus, w = match w:
+    Press p: match ?HitAt hits, p:
+        ? h if h.kind == Focus: ? h.chain
+        otherwise: ?focus
+    Pressed Tab: ?NextFocus hits, ?focus
+    otherwise: ?focus
+
+?NextFocus: fn [Hit], ?[Path] -> ?[Path]
+fn ?NextFocus hits, ?focus:
+    let inputs = Fold hits, [[]], \|acc, h| if h.kind == Focus: Push acc, h.chain else: acc
+    # the inputs after the focused one: a fold that starts keeping once it has passed it
+    let after = match ?focus:
+        ? c: AfterOne inputs, c
+        nil: inputs
+    match after[0]:
+        ? n: ? n
+        nil: inputs[0]
+
+AfterOne: fn [[Path]], [Path] -> [[Path]]
+fn AfterOne inputs, c:
+    let ((ignore, kept)) = Fold inputs, ((False, [[]])), \|((passed, acc)), x| if passed: ((True, (Push acc, x))) else: ((x == c, acc))
+    kept
+
+# where the focused place is, for the platform's focus ring and input method
+?FocusRect: fn [Hit], ?[Path] -> ?Rect
+fn ?FocusRect hits, ?focus:
+    chain <- ?focus
+    Fold hits, nil, \|?found, h| if ?found == nil and h.chain == chain: ? h.rect else: ?found
+
+?PressOf: fn WindowInput -> ?Point
+fn ?PressOf w = match w:
+    Press p: ? p
+    otherwise: nil
+
+?PressedOf: fn WindowInput -> ?Key
+fn ?PressedOf w = match w:
+    Pressed k: ? k
+    otherwise: nil
+
+?ResizeOf: fn WindowInput -> ?Extent
+fn ?ResizeOf w = match w:
+    Resized x: ? x
+    otherwise: nil
+
+# ---------------------------------------------------------------------------
+# The window (Pitch chapter 5's, with `EnvOf` for the constructor; README, doubt EN)
+
+@Window: fn $Text, Extent, @a -> @a
+fn @Window $title, start, @app:
+    ((result, $elems)) <- @HostSome @app, \|p, e| ?Boxed p, e, !route    # 0/[p]
+    ((id, !incoming)) <- Gui.Window(title=$title, size=start)                 # 1
+    let $kids = Claimed $elems
+    $sizes <- for text, ignore <- TextsIn $kids:                         # 2/[text]
+        Gui.Metrics(text=text)                                           # 2/[text]/0
+    $size <- start then !Filter (?ResizeOf !incoming)
+    $?focus <- nil then ?Refocus $placed.hits, $?focus, !incoming
+    let $placed = PlaceAt (LayRoot (EnvOf $sizes, $?focus), $kids, $size), (Point 0.0, 0.0)
+    Gui.Scene(window=id, draw=$placed.draw)                              # 3
+    Gui.Focus(window=id, at=(?FocusRect $placed.hits, $?focus))          # 4
+    let !hit = !Filter (?HitAt $placed.hits, !Filter (?PressOf !incoming))
+    let !clicks = !Filter (?ClickFor !hit)
+    let !keys = !Filter (?RouteKey $?focus, !Filter (?PressedOf !incoming))
+    let !route = !clicks <| !keys
+    @ result

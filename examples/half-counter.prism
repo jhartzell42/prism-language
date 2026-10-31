@@ -1,0 +1,11 @@
+# Half the counter, with no merge: the Compiler book's first example (Compiler chapter 3), the
+# program a static widget compiles to one class from. Its tests are in half-counter.prismtest.
+# Work in progress, subject to change; not yet run.
+emit Ui.*
+
+@halfcounter: @unit
+@halfcounter:
+    !increment <- Ui.Button(label=$"Increment")           # 0
+    let !delta = +1 on !increment
+    $count <- 0 then $count + !delta
+    Ui.Label(text=$"Count: {$count}")                     # 1
