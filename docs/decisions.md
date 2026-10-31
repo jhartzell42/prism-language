@@ -104,6 +104,18 @@ inference. A wrong mark is an error, never a different program.
 Both events fire; `<|` lets its left operand win. Semantics ch. 12's `Count: 0` was a
 slip, fixed in the book.
 
+## D14. `Float` is in
+
+The window library (layout, hit testing, the scene) is `Float` throughout, so chess
+cannot run without it. `Float` is IEEE double with shortest round-trip printing (Type
+System ch. 2). `Instant` and `Duration` arithmetic stay out.
+
+## D15. Guards take no second argument
+
+Follows D11: `require c` and `forbid c` have one form; the parser reads a comma after a
+guard as the guard's own argument list (`require Clear g, from, corner`), never as an
+error value.
+
 ## Features in and out
 
 In, complete and tested: records, choices, newtypes, unit types; maps, arrays, options,
@@ -115,12 +127,12 @@ variables, `otherwise:`; hosting (`@HostDocument`, `@HostSome`, `@HostList`), pa
 patches, first-value query; `Nat`/`Int` as bignums, `U8`; `~`, `Error`, `Fault`,
 `Prelude.Unwrap`/`Exceptions`, exit codes; `&` blocks with the borrow rule; code
 templates; `Pod`; `test`/`check`/`compute`; the shrink check, the `unbounded` color,
-`@Defer`, `@Run`; the prompt-cycle check; zombies; existentials (`any ^Show`, `Elem`);
+`@Defer`, `@Run`; `Float` (D14); the prompt-cycle check; zombies; existentials (`any ^Show`, `Elem`);
 `<<T>>` explicit instantiation; `@Later` via `Time.After`.
 
 Out for this compiler, each rejected with a diagnostic naming the feature, never
 silently: `T monad:` blocks and `^Monad`; higher-kinded traits; sized ints other than
-`U8`; `Float`, `Instant`, `Duration` arithmetic; sparse tuples, `!Align`, non-empty
+`U8`; `Instant`, `Duration` arithmetic; sparse tuples, `!Align`, non-empty
 arrays, suffixed operators; named lenses `&Home` and `Over` (the `update` block's lens
 paths stay in); POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`); the Prism
 World; live update; checkpoints; the template notation as a second syntax for element
