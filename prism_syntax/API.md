@@ -85,12 +85,13 @@ either for a file, then its diagnostics.
   `Tag`, `Derive`, `Trait`, `Impl` (items: signatures, `fn` clauses, associated types and
   rows), `Check`, `Test`, and `Stmt` from fragments.
 - `Stmt` / `StmtKind`: `Emit`, `Bind` (with `then`: a hold), `Ignore`, `Let`,
-  `Signature`, `Fn`, `Widget`, `Set` and `Accum` (`&r <= e`, `&r += e`), `Require`,
-  `Forbid`, `While`, `Return`, `Expr`.
+  `Signature`, `Fn`, `Widget`, `Set` and `Accum` (`&r <= e`, `&r += e`), `Require` and
+  `Forbid` (the condition alone, D15), `While`, `Return`, `Expr`.
 - `Block`: statements and whether it was written inline.
 - `Expr` / `ExprKind`: names (`SName`, with the sigil stack as written), literals with
   their marks, tuples, arrays, maps, groups (kept), calls (`parens` tells `F(a)` from
-  `F a`), binary and unary operators, free sigils, fields, indexes, topic fields and
+  `F a`), binary and unary operators, free sigils, fields (`Field { recv, sigils, name }`:
+  `g.?passed` keeps its stack, Type System ch. 1), indexes, topic fields and
   indexes, `.Method`, `<<T>>`, `as`, lambdas, `if` (with `Cond::Bind` for `p <- e`),
   `match` and its arms, `rebuild`, `for`, `given:`, `update`, `@widget:`, templates,
   `any`, lens values, and the out-of-scope forms (monad blocks, suffixed operators,
@@ -114,8 +115,10 @@ either for a file, then its diagnostics.
   `tests/book/EXPECTED`.
 - `tests/snapshots.rs`: fourteen trees, checked in as S-expressions.
 - `tests/roundtrip.rs`: print then parse gives the same tree, for every example that
-  parses and every program in `tests/programs/` (prism-reflex examples translated by
-  hand into the books' spelling).
+  parses, every program in `tests/programs/` (prism-reflex examples translated by hand
+  into the books' spelling), and every `.prism` and `.prismtest` file under the
+  workspace's `examples/`, read where they live; the examples must also parse with no
+  diagnostic.
 - `tests/errors.rs`: error positions and messages, recovery, and one case per
   out-of-scope feature.
 - `tests/api.rs`: the snippets above.
@@ -141,8 +144,19 @@ does. Each is Claude's, for Jimmy to overturn.
   module's values by `Name.value` is left to name resolution.
 - **AT Array types.** Both `[a]` and `[[a]]` are array types (the books write both); the
   tree keeps which.
-- **GU Guards' second argument.** `require c, e` and `forbid c, e` parse; see
-  Disagreements.
+- **GU Guards' commas.** A guard's condition is a whole expression, so `require Clear g,
+  from, corner` gives every comma to `Clear` (D15 and the comma rule); a comma left after
+  the condition (`forbid n > 65535, Error(..)`) is an error naming D15.
+- **FA Sigiled fields.** `g.?passed`, `input.!changed`, `a.$value.@?b`: a lowercase name
+  after a touching `.` is a field with the sigils as written ("A field access shows the
+  field's stack", Type System ch. 1). A field with sigils is applied like a bare one (pick
+  FA's `p.run input`). The topic's `.f` takes no stack yet.
+- **MS Sigiled methods.** `g.?Move a, b` is the `.Method` `?Move g, a, b`: a function's
+  name shows its sigil (D10), and the dot keeps it.
+- **SB A step's commas stop at a bracket.** Inside a test step no paren-less call takes a
+  comma (Conformance A.3), but only at bracket depth zero: in a group, an index or a
+  pattern's group the commas are Prism's, so `send p, Press (Point 280.0, 400.0)` and `=>
+  fired Press (Point x, y)` give their comma to `Point`.
 - **ME `.Method`.** `recv.Method a, b` means `Method recv, a, b`. Touching its receiver it
   is a postfix operator whose arguments take the rest, like a call's; at the start of a
   continuation line it takes everything above it back to the statement's `=`, `<-` or
@@ -205,16 +219,17 @@ does. Each is Claude's, for Jimmy to overturn.
   double is a literal whatever its spacing); a prefix `.` prints `.pre`; paths print
   `PATH(...)`, templates `TEMPLATE<lang>(...)`.
 - **OS Out-of-scope by name.** `!Align`, `@Collect`, `@View`, `@Edit`, `@Translate`,
-  `Over`, `^Monad`, and the type names `U16` to `U128`, `I8` to `I128`, `Float`, `Instant`
+  `Over`, `^Monad`, and the type names `U16` to `U128`, `I8` to `I128`, `Instant`
   are flagged wherever they are written; a shadowing program would be flagged wrongly,
   which a checker with scopes can fix.
 
 ## Disagreements
 
 - **GV Guards in a `~` block.** Semantics ch. 10 (doubt GV2) gives a guard its `Error` as a
-  second argument, `forbid n > 65535, Error(...)`; decisions.md D11 refuses the second
-  argument and raises `Prelude.Unmet` with the guard's text. The tree holds both forms; the
-  ruling is Jimmy's.
+  second argument, `forbid n > 65535, Error(...)`; decisions.md D11 and D15 refuse the
+  second argument, and a failed guard raises `Prelude.Unmet` with its text. The tree has
+  the one form, and the book's example (`tests/book/sem-ch10-03.prism`) is expected to be
+  the D15 error.
 - **MF Templates ch. 2's `Map FieldRs c.fields`.** By the books' comma rule ("`F G H x`
   is `F(G(H(x)))`") this is `Map (FieldRs c.fields)`; the parser reads it so. The intended
   reading is `Map c.fields, FieldRs` (as Type System ch. 3 writes `Map xs, Show`).

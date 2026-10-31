@@ -525,7 +525,7 @@ pub struct Literal {
 pub enum LitKind {
     /// Kept as written, `1_000_000`, `0xFF`; inference picks the type.
     Int(String),
-    /// Decimal-spelled: a `Float` (out of this compiler).
+    /// Decimal-spelled: a `Float` (decisions.md D14).
     Float(String),
     /// `250ms`: digits and a unit.
     Duration { digits: String, unit: String },
@@ -626,8 +626,10 @@ pub enum ExprKind {
     Suffixed { op: BinOp, ty: QualName, lhs: Box<Expr>, rhs: Box<Expr> },
     /// `@ v`, `$ v`, `? v`, `~ v`: a free sigil over the rest of its expression.
     FreeSigil { sigil: Sigil, operand: Box<Expr> },
-    /// `a.f`
-    Field { recv: Box<Expr>, name: Ident },
+    /// `a.f`, `g.?passed`, `input.!changed`: "A field access shows the field's stack: the
+    /// marks between the dot and the field name" (Type System ch. 1). `sigils` is that
+    /// stack as written; `name` is the bare label.
+    Field { recv: Box<Expr>, sigils: Vec<Sigil>, name: Ident },
     /// `xs[i]`
     Index { recv: Box<Expr>, index: Box<Expr> },
     /// `.f` with no receiver: `_.f` (the spacing rule's prefix `.`).
@@ -776,12 +778,11 @@ pub enum StmtKind {
     Set { target: Expr, value: Expr },
     /// `&r += e` and its kin.
     Accum { target: Expr, op: AccumOp, value: Expr },
-    /// `require c`, and `require c, e`: Semantics ch. 10's doubt GV2 gives a guard in a
-    /// `~` block its `Error` as a second argument; decisions.md D11 refuses the second
-    /// argument for `Prelude.Unmet`. The tree holds either; the checker rules.
-    Require(Expr, Option<Expr>),
-    /// `forbid c`, and `forbid c, e` (as `Require`).
-    Forbid(Expr, Option<Expr>),
+    /// `require c`. A guard takes no second argument (decisions.md D15): a comma after
+    /// `require` belongs to the condition's call, `require Clear g, from, corner`.
+    Require(Expr),
+    /// `forbid c` (as `Require`).
+    Forbid(Expr),
     /// `while c:` or `while p <- e if g:` in an `update` block.
     While { cond: Cond, body: Block },
     /// `return v`, ending a monad block (out of this compiler).

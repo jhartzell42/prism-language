@@ -22,7 +22,6 @@ pub const OUT_OF_SCOPE: &[Feature] = &[
     Feature { name: "`T monad:` blocks and `^Monad`", detected_by: "`T monad:` blocks, `return` statements, the trait reference `^Monad`" },
     Feature { name: "higher-kinded traits", detected_by: "a trait whose parameter is applied to arguments in its items' types (`f a`)" },
     Feature { name: "sized ints other than `U8`", detected_by: "the type names U16..U128 and I8..I128" },
-    Feature { name: "Float", detected_by: "decimal-spelled literals and the type name `Float`" },
     Feature { name: "`Instant`", detected_by: "the type name `Instant` (`Duration` arithmetic is the checker's to refuse)" },
     Feature { name: "sparse tuples", detected_by: "an absent component `-` in a tuple, pattern or type" },
     Feature { name: "`!Align`", detected_by: "the name `!Align`" },

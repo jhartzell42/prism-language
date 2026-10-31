@@ -83,7 +83,9 @@ impl Parser {
                     Ok(Pattern { kind: PatternKind::Tuple(elems), span: start.to(self.prev_span()) })
                 } else {
                     self.advance();
-                    let inner = self.pattern(Ctx::TOP)?;
+                    // A step's comma rule stops at the bracket (Conformance A.3), so
+                    // `=> fired Press (Point x, y)` gives its comma to `Point`.
+                    let inner = self.bracketed(|p| p.pattern(Ctx::TOP))?;
                     self.expect_close(BracketKind::Paren)?;
                     Ok(Pattern { kind: PatternKind::Group(Box::new(inner)), span: start.to(self.prev_span()) })
                 }

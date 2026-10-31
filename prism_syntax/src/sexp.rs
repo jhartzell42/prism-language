@@ -493,14 +493,10 @@ impl Dump {
                 self.expr(value);
                 self.close();
             }
-            StmtKind::Require(c, e) | StmtKind::Forbid(c, e) => {
+            StmtKind::Require(c) | StmtKind::Forbid(c) => {
                 self.open(if matches!(s.kind, StmtKind::Require(..)) { "require" } else { "forbid" });
                 self.sp();
                 self.expr(c);
-                if let Some(e) = e {
-                    self.sp();
-                    self.expr(e);
-                }
                 self.close();
             }
             StmtKind::While { cond, body } => {
@@ -660,11 +656,11 @@ impl Dump {
                 self.expr(operand);
                 self.close();
             }
-            ExprKind::Field { recv, name } => {
+            ExprKind::Field { recv, sigils, name } => {
                 self.open(".");
                 self.sp();
                 self.expr(recv);
-                self.w(&format!(" {}", name.name));
+                self.w(&format!(" {}{}", crate::token::sigils_str(sigils), name.name));
                 self.close();
             }
             ExprKind::Index { recv, index } => {

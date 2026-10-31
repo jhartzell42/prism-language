@@ -548,13 +548,9 @@ impl Printer {
                 self.w(" ");
                 self.rhs(value);
             }
-            StmtKind::Require(c, e) | StmtKind::Forbid(c, e) => {
+            StmtKind::Require(c) | StmtKind::Forbid(c) => {
                 self.w(if matches!(s.kind, StmtKind::Require(..)) { "require " } else { "forbid " });
-                self.expr(c);
-                if let Some(e) = e {
-                    self.w(", ");
-                    self.expr(e);
-                }
+                self.rhs(c);
             }
             StmtKind::While { cond, body } => {
                 self.w("while ");
@@ -683,9 +679,10 @@ impl Printer {
                 self.w(" ");
                 self.expr(operand);
             }
-            ExprKind::Field { recv, name } => {
+            ExprKind::Field { recv, sigils, name } => {
                 self.expr(recv);
                 self.w(".");
+                self.w(&crate::token::sigils_str(sigils));
                 self.w(&name.name);
             }
             ExprKind::Index { recv, index } => {

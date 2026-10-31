@@ -19,7 +19,7 @@ sem-ch02-05.prism lex
 sem-ch02-06.prism lex
 sem-ch02-07.prism fragment
 sem-ch02-08.prism fragment
-sem-ch02-09.prism out Float
+sem-ch02-09.prism module
 sem-ch02-10.prism module
 sem-ch02-11.prism module
 # Suffixed operators are out (decisions.md).
@@ -81,7 +81,8 @@ sem-ch09-03.prism module
 sem-ch09-04.prism module
 sem-ch10-01.prism module
 sem-ch10-02.prism module
-sem-ch10-03.prism module
+# Semantics ch. 10 (doubt GV2): `forbid n > 65535, Error(...)` gives a guard a second argument, which decisions.md D15 refuses; a known contradiction in the book, logged.
+sem-ch10-03.prism error 5:21: `forbid` takes its condition alone, with no error value after a comma (decisions.md D15): a failed guard under `~` raises `Prelude.Unmet` (D11), and a comma after a guard belongs to a call at the head of its condition, as in `require Clear g, from, corner`
 sem-ch10-04.prism module
 sem-ch10-05.prism module
 sem-ch10-06.prism module
@@ -111,8 +112,8 @@ ts-ch01-11.prism module
 ts-ch01-12.prism out named lenses `&Home` and `Over`
 ts-ch01-13.prism module
 ts-ch02-01.prism module
-ts-ch02-02.prism out Float
-ts-ch02-03.prism out Float
+ts-ch02-02.prism module
+ts-ch02-03.prism module
 ts-ch02-04.prism module
 ts-ch02-05.prism module
 ts-ch02-06.prism out indexed choices/GADTs for user types
@@ -124,7 +125,7 @@ ts-ch02-11.prism module
 ts-ch02-12.prism module
 ts-ch02-13.prism module
 ts-ch03-01.prism module
-ts-ch03-02.prism out Float
+ts-ch03-02.prism module
 ts-ch03-03.prism module
 ts-ch03-04.prism module
 ts-ch03-05.prism module

@@ -1,6 +1,8 @@
-//! Round trip: for every book example that parses, and every program in `tests/programs/`,
-//! printing the tree and parsing the print gives an equal tree (spans aside), and the
-//! print is a fixed point of printing.
+//! Round trip: for every book example that parses, every program in `tests/programs/`,
+//! and every `.prism` and `.prismtest` file under the workspace's `examples/` (chess, the
+//! counter, the half counter, the todo list), printing the tree and parsing the print
+//! gives an equal tree (spans aside), and the print is a fixed point of printing. The
+//! examples must also parse with no diagnostic at all.
 
 use prism_syntax::{Parsed, ast::Module, diag::render_all, parse_fragment, parse_module, pretty, sexp};
 use std::fs;
@@ -17,7 +19,47 @@ fn sources() -> Vec<(String, String)> {
             out.push((format!("{dir}/{}", p.file_name().unwrap().to_string_lossy()), fs::read_to_string(&p).unwrap()));
         }
     }
+    out.extend(examples());
     out
+}
+
+/// The workspace's `examples/`, read where they live so the corpus cannot drift from
+/// them: every `.prism` and `.prismtest` file, recursively.
+fn examples() -> Vec<(String, String)> {
+    fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(rd) = fs::read_dir(dir) else { return };
+        for e in rd.filter_map(|e| e.ok()) {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, out);
+            } else if p.extension().is_some_and(|x| x == "prism" || x == "prismtest") {
+                out.push(p);
+            }
+        }
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+    let mut paths = Vec::new();
+    walk(&root, &mut paths);
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|p| (format!("examples/{}", p.strip_prefix(&root).unwrap().to_string_lossy()), fs::read_to_string(&p).unwrap()))
+        .collect()
+}
+
+#[test]
+fn every_example_parses_clean() {
+    let ex = examples();
+    assert!(ex.iter().any(|(n, _)| n == "examples/chess/rules.prism"), "the chess example is missing: {:?}", ex.iter().map(|e| &e.0).collect::<Vec<_>>());
+    let mut failures = Vec::new();
+    for (name, src) in &ex {
+        let p = parse_module(src);
+        if !p.clean() {
+            failures.push(format!("{name}:\n{}", render_all(src, &p.diagnostics)));
+        }
+    }
+    println!("{} example files parsed", ex.len());
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 fn parse_either(src: &str) -> Option<(Parsed<Module>, bool)> {

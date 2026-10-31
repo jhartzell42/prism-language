@@ -155,7 +155,6 @@ fn recovery_reports_each_statement_and_parses_the_rest() {
 fn out_of_scope_features_are_named() {
     let cases: &[(&str, &str)] = &[
         ("fn Both pa, pb = Parser monad:\n    a <- pa\n    return a\n", "`T monad:` blocks and `^Monad`"),
-        ("let r = 0.75\n", "Float"),
         ("Size: fn U32 -> Nat\n", "sized ints other than `U8`"),
         ("let t = ((n, -))\n", "sparse tuples"),
         ("let x = !Align !a, !b\n", "`!Align`"),
@@ -173,4 +172,18 @@ fn out_of_scope_features_are_named() {
         assert!(p.parsed_ok(), "{src}: {:?}", p.diagnostics);
         assert!(p.diagnostics.iter().any(|d| d.feature == Some(feature)), "{src}: wanted `{feature}`, got {:?}", p.diagnostics);
     }
+}
+
+#[test]
+fn float_is_in() {
+    // decisions.md D14: `Float` is in, its literals and its name.
+    let p = parse_module("Half: fn Float -> Float\nfn Half x = x * 0.5\n");
+    assert!(p.clean(), "{:?}", p.diagnostics);
+}
+
+#[test]
+fn guard_takes_no_second_argument() {
+    // decisions.md D15, against Semantics ch. 10's `forbid n > 65535, Error(...)`.
+    check("fn ~Port text:\n    n <- ~ParseNat text\n    forbid n > 65535, Error(kind=Net.BadPort)\n    ~ n\n", 3, 21, "(decisions.md D15)");
+    check("fn F c:\n    require c, Error(kind=Bad)\n", 2, 14, "`require` takes its condition alone");
 }

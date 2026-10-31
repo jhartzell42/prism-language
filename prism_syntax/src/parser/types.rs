@@ -309,7 +309,8 @@ impl Parser {
         matches!(self.kind_at(1), TokenKind::Name(_) | TokenKind::Open { .. } | TokenKind::FamilyStar(_))
     }
 
-    /// Type names out of this compiler: sized integers other than `U8`, `Float`, `Instant`.
+    /// Type names out of this compiler: sized integers other than `U8`, and `Instant`
+    /// (`Float` is in, decisions.md D14).
     fn check_type_name_scope(&mut self, name: &SName) {
         if name.path.len() != 1 {
             return;
@@ -318,8 +319,6 @@ impl Parser {
         let sized = ["U16", "U32", "U64", "U128", "I8", "I16", "I32", "I64", "I128"];
         if sized.contains(&b) {
             self.out_of_scope(name.span, "sized ints other than `U8`", format!("`{b}` is out of this compiler: the sized integer it has is `U8`"));
-        } else if b == "Float" {
-            self.out_of_scope(name.span, "Float", "`Float` is out of this compiler");
         } else if b == "Instant" {
             self.out_of_scope(name.span, "`Instant`", "`Instant` is out of this compiler");
         }

@@ -184,10 +184,12 @@ impl Parser {
                 TokenKind::Dot { prefix: false } => {
                     let dot = self.advance();
                     match self.kind().clone() {
-                        TokenKind::Name(n) if n.sigils.is_empty() && n.path.len() == 1 && matches!(n.case, NameCase::Lower | NameCase::Topic) => {
+                        // "A field access shows the field's stack: the marks between the dot
+                        // and the field name" (Type System ch. 1): `g.?passed`, `input.!changed`.
+                        TokenKind::Name(n) if n.path.len() == 1 && matches!(n.case, NameCase::Lower | NameCase::Topic) => {
                             let t = self.advance();
                             let span = e.span.to(t.span);
-                            e = Expr { kind: ExprKind::Field { recv: Box::new(e), name: Ident { name: n.path[0].clone(), span: t.span } }, span };
+                            e = Expr { kind: ExprKind::Field { recv: Box::new(e), sigils: n.sigils.clone(), name: Ident { name: n.path[0].clone(), span: t.span } }, span };
                             // A field holding a function is applied like a callee: a field's
                             // name is lowercase, so `p.run input` is the only way to call one
                             // (Type System ch. 3's `Parser`; see API.md's picks).
@@ -201,9 +203,11 @@ impl Parser {
                             // "a record may still have a field named `key`".
                             let t = self.advance();
                             let span = e.span.to(t.span);
-                            e = Expr { kind: ExprKind::Field { recv: Box::new(e), name: Ident { name: kw.as_str().into(), span: t.span } }, span };
+                            e = Expr { kind: ExprKind::Field { recv: Box::new(e), sigils: Vec::new(), name: Ident { name: kw.as_str().into(), span: t.span } }, span };
                         }
-                        TokenKind::Name(n) if n.sigils.is_empty() && (n.case == NameCase::Upper || n.case == NameCase::ReservedCtor) => {
+                        // `.Method`, and `.?Move`: a function's name shows its sigil (D10), so a
+                        // method written after the dot keeps it (`g.?Move a` is `?Move g, a`).
+                        TokenKind::Name(n) if n.case == NameCase::Upper || n.case == NameCase::ReservedCtor => {
                             let method = self.sname()?;
                             let args = if self.arg_starts_here() { self.call_args(cx)? } else { Vec::new() };
                             let span = e.span.to(self.prev_span());
@@ -214,7 +218,7 @@ impl Parser {
                 }
                 TokenKind::Open { kind: BracketKind::Square, prefix: false } if self.peek().touches_prev && !self.at_double_open(BracketKind::Square) => {
                     self.advance();
-                    let index = self.expr()?;
+                    let index = self.bracketed(|p| p.expr())?;
                     self.expect_close(BracketKind::Square)?;
                     let span = e.span.to(self.prev_span());
                     e = Expr { kind: ExprKind::Index { recv: Box::new(e), index: Box::new(index) }, span };
@@ -249,6 +253,16 @@ impl Parser {
         } else {
             self.error_here("expected `>>` to close the type arguments")
         }
+    }
+
+    /// Runs `f` inside a bracket, where a test step's comma rule (Conformance A.3, "a comma
+    /// at bracket depth zero") does not reach: commas there are Prism's.
+    pub(crate) fn bracketed<T>(&mut self, f: impl FnOnce(&mut Parser) -> PResult<T>) -> PResult<T> {
+        let saved = self.step_mode;
+        self.step_mode = false;
+        let r = f(self);
+        self.step_mode = saved;
+        r
     }
 
     // ----- calls ----------------------------------------------------------------------------
@@ -422,7 +436,10 @@ impl Parser {
                     Ok((Expr { kind: ExprKind::Tuple(elems), span }, false))
                 } else {
                     self.advance();
-                    let inner = self.rhs_expr()?;
+                    // Inside a bracket the step's comma rule is over: Conformance A.3 splits a
+                    // step only at bracket depth zero, so `Press (Point 280.0, 400.0)` gives
+                    // its comma to `Point`, as `send p, (Min a, b)` gives its comma to `Min`.
+                    let inner = self.bracketed(|p| p.rhs_expr())?;
                     if self.at_comma() {
                         let span = self.span();
                         return self.error_at(span, "a group holds one expression: a comma here needs a call at the group's head, or `((` `))` for a tuple");
@@ -449,7 +466,7 @@ impl Parser {
                 } else {
                     // A prefix `[i]` applies to the topic (the spacing rule).
                     self.advance();
-                    let index = self.expr()?;
+                    let index = self.bracketed(|p| p.expr())?;
                     self.expect_close(BracketKind::Square)?;
                     let span = start.to(self.prev_span());
                     Ok((Expr { kind: ExprKind::TopicIndex(Box::new(index)), span }, false))
@@ -646,10 +663,7 @@ impl Parser {
         let span = tok.span;
         let (marks, kind) = match tok.kind {
             TokenKind::Int { sigils, num } => (sigils, LitKind::Int(num.text)),
-            TokenKind::Float { sigils, num } => {
-                self.out_of_scope(span, "Float", "`Float` is out of this compiler, and a decimal-spelled literal is a `Float`");
-                (sigils, LitKind::Float(num.text))
-            }
+            TokenKind::Float { sigils, num } => (sigils, LitKind::Float(num.text)),
             TokenKind::Duration { sigils, num, unit } => (sigils, LitKind::Duration { digits: num.text, unit }),
             TokenKind::Char { sigils, ch } => (sigils, LitKind::Char(ch)),
             TokenKind::Text { sigils, text } => {
@@ -982,15 +996,16 @@ impl Parser {
             }
             TokenKind::Kw(kw @ (Kw::Require | Kw::Forbid), s) if s.is_empty() => {
                 self.advance();
-                // The condition takes no commas, so a second argument can follow it.
-                let c = self.expr_ctx(Ctx::ARG)?;
-                let e = if self.at_comma() {
-                    self.advance();
-                    Some(self.expr()?)
-                } else {
-                    None
-                };
-                if kw == Kw::Require { StmtKind::Require(c, e) } else { StmtKind::Forbid(c, e) }
+                // A guard takes no second argument (decisions.md D15): its condition is a
+                // whole expression, so `require Clear g, from, corner` gives every comma to
+                // `Clear` (the comma rule); a comma left over begins no second argument.
+                let c = self.rhs_expr()?;
+                if self.at_comma() {
+                    let span = self.span();
+                    let word = kw.as_str();
+                    return self.error_at(span, format!("`{word}` takes its condition alone, with no error value after a comma (decisions.md D15): a failed guard under `~` raises `Prelude.Unmet` (D11), and a comma after a guard belongs to a call at the head of its condition, as in `require Clear g, from, corner`"));
+                }
+                if kw == Kw::Require { StmtKind::Require(c) } else { StmtKind::Forbid(c) }
             }
             TokenKind::Kw(Kw::While, s) if s.is_empty() => {
                 self.advance();
@@ -1095,12 +1110,12 @@ impl Parser {
                                 TokenKind::Name(f) if f.sigils.is_empty() && f.case == NameCase::Lower => {
                                     let t = self.advance();
                                     let span = e.span.to(t.span);
-                                    e = Expr { kind: ExprKind::Field { recv: Box::new(e), name: Ident { name: f.path[0].clone(), span: t.span } }, span };
+                                    e = Expr { kind: ExprKind::Field { recv: Box::new(e), sigils: Vec::new(), name: Ident { name: f.path[0].clone(), span: t.span } }, span };
                                 }
                                 TokenKind::Kw(Kw::Key, _) => {
                                     let t = self.advance();
                                     let span = e.span.to(t.span);
-                                    e = Expr { kind: ExprKind::Field { recv: Box::new(e), name: Ident { name: "key".into(), span: t.span } }, span };
+                                    e = Expr { kind: ExprKind::Field { recv: Box::new(e), sigils: Vec::new(), name: Ident { name: "key".into(), span: t.span } }, span };
                                 }
                                 _ => return Err(()),
                             }
