@@ -1,0 +1,110 @@
+# The front end's driver: `prism_zero run prismc/*.prism -- FILE [OUT]` reads FILE through
+# `Fs.Contents`, lexes and parses it, and writes its tree in `prism_syntax`'s S-expression
+# notation, then its diagnostics, through `Fs.Output` to OUT (`FILE.sexp` when OUT is not
+# given): byte for byte what `cargo run -p prism_syntax --example dump -- FILE` prints. With
+# `--tokens` it writes the tokens in the layout corpus's notation instead, as `dump --tokens`
+# does, and with `--fragment` it parses the file as a run of statements (`dump --fragment`).
+# A file with a lexical or parse error is written all the same, and then the program gives
+# up with the diagnostics, which the CLI World prints before it exits 1.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit Fs.* | Process.* | Prelude.*
+use Fs.*
+use Ast.*
+use Lexer.*
+use Parser.*
+use Sexp.*
+
+# What the driver asks of the front end, and what it hands back.
+type Job = record:
+    tokens: Bool
+    fragment: Bool
+    text: Text
+derive ^Eq, ^Show
+
+type Outcome = record:
+    text: Text
+    failed: Bool
+    report: Text
+derive ^Eq, ^Show
+
+# A file the front end refused: its diagnostics are the message.
+tag Prismc.Refused of Fault
+
+# The front end over one file, run through `@Run` (decisions.md D7: the parser is
+# `unbounded`).
+Front: unbounded fn Job -> Outcome
+fn Front job:
+    if job.tokens:
+        let lexed = LexFile job.text
+        let report = RenderDiags job.text, lexed.diags
+        Outcome(text="{RenderTokens lexed.tokens}{report}\n", failed=(AnyErrors lexed.diags), report=report)
+    else:
+        let parsed = if job.fragment: ParseFragment job.text else: ParseFile job.text
+        let report = RenderDiags job.text, parsed.diags
+        Outcome(text="{SexpModule parsed.tree}{report}\n", failed=(AnyErrors parsed.diags), report=report)
+
+# Whether a diagnostic is an error: out-of-scope features are reported and pass.
+AnyErrors: fn [Diag] -> Bool
+fn AnyErrors ds = Fold ds, False, \|seen, d| seen or d.stage != "out"
+
+# `line:col: message`, one-based, one per line (prism_syntax/src/diag.rs).
+RenderDiags: fn Text, [Diag] -> Text
+fn RenderDiags text, ds:
+    let starts = LineStarts text
+    Join (Each ds, \|d| RenderDiag starts, d), "\n"
+
+RenderDiag: fn [Nat], Diag -> Text
+fn RenderDiag starts, d:
+    let line = LineOf starts, d.span.start
+    let col = (Or (d.span.start -? (Or starts[line], 0)), 0) + 1
+    let at = "{line + 1}:{col}"
+    match d.feature:
+        ? f: "{at}: out of scope ({f}): {d.message}"
+        nil: "{at}: {d.message}"
+
+# Where each line begins, as a character offset.
+LineStarts: fn Text -> [Nat]
+fn LineStarts text:
+    let ((starts, ignore)) = Fold (Chars text), (([[0]], 0)), \|((acc, i)), c| if c == "\n": (((Push acc, i + 1), i + 1)) else: ((acc, i + 1))
+    starts
+
+# The zero-based line holding an offset: the last line that starts at or before it.
+LineOf: fn [Nat], Nat -> Nat
+fn LineOf starts, offset = Dec (Fold starts, 0, \|n, s| if s <= offset: n + 1 else: n)
+
+@main:
+    args <- Process.Args
+    let tokens = Fold args, False, \|seen, a| seen or a == "--tokens"
+    let fragment = Fold args, False, \|seen, a| seen or a == "--fragment"
+    let names = Fold args, [[]], \|acc, a| if (Take a, 2) == "--": acc else: Push acc, a
+    let file = Or names[0], ""
+    let out = Or names[1], "{file}.sexp"
+    $~source <- Fs.Contents(path=file)
+    ignore <- rebuild $~source:
+        @Compile Job(tokens=tokens, fragment=fragment, text=""), file, out, _
+
+# One file, once its contents are read.
+@Compile: fn Job, Text, Text, ~Contents -> @unit
+fn @Compile job, file, out, (~ c):
+    let full = update job:
+        &_.text <= c.text
+    !done <- @Run Front, full
+    $?outcome <- nil then ? !done
+    ignore <- rebuild $?outcome:
+        @Finish out, _
+fn @Compile job, file, out, (Error(message=m, ..)):
+    !started <- @started
+    let !~gaveUp = Error(kind=Prismc.Refused, message="cannot read {file}: {m}") on !started
+    ignore <- Prelude.Unwrap(value=!~gaveUp)
+
+# Writes the output, and gives up with the diagnostics when there was an error.
+@Finish: fn Text, ?Outcome -> @unit
+fn @Finish out, nil:
+    @ unit
+fn @Finish out, (? o):
+    ignore <- Fs.Output(path=out, text=$ o.text)
+    !started <- @started
+    let !~verdict = (if o.failed: Error(kind=Prismc.Refused, message=o.report) else: ~ unit) on !started
+    ignore <- Prelude.Unwrap(value=!~verdict)
