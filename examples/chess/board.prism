@@ -2,7 +2,7 @@
 # a hold for the selected square, a hold for the game fed by `?Move` on a click, and a status
 # label, in a window (Pitch chapter 11). Ported from prism-reflex's examples/gui/chess.prism
 # (the UI of jhartzell42/reflex-chess, Frontend/Chess.hs) into the books' spelling. Its tests
-# are in board.prismtest. Work in progress, subject to change; not yet run.
+# are in board.prismtest. Work in progress, subject to change.
 emit Ui.* | Gui.*
 use Chess.*
 use Window.*

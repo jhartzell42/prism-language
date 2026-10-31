@@ -33,7 +33,8 @@ prism_zero check <files.prism...>                  # parse and resolve only
 - `check`: load and resolve; 0, or 2 with `file:line:col: message` diagnostics.
 
 `cargo test -p prism_zero` runs `tests/conformance/` (one Rust test walks the directory),
-the examples' scripts, and the command tests.
+the examples' scripts (the chess board's under `@$main` among them), the binding-group
+tests, and the command tests.
 
 ## The prelude
 
@@ -62,14 +63,25 @@ what compiler zero does. Each is Claude's, for Jimmy to overturn.
   or more events (EL's gates) are refused with a diagnostic.
 - **RK What a `rebuild` or `for` hands back** is read off the binder's sigils (`$!`,
   `$$`, `!`, `$`, `ignore`); for a `$` binder or a builder on a block's last line, off the
-  rows' last line (`@ x on !e` an event, `@ $x` a dynamic).
+  rows' last line. A row ending on an element answers what its tag declares (`tag
+  Gui.Metrics of Element $Extent` is a dynamic, so `$sizes <- for ..: Gui.Metrics(..)`
+  gathers dynamics); any other last line is read off the page (`@ x on !e` an event, `@
+  $x` a dynamic).
 - **PF A plain `for` gathers its rows** as Semantics ch. 4's table says (events into
   `!(K ==> T)`, dynamics into `$(K ==> T)`); `prism_rt`'s plain `for` returns the raw map.
-- **BG Binding groups.** Positional statements run in line order (positions follow the
-  page); `let`s, holds' initial values and local functions are evaluated on first use;
-  holds' `then`s are wired after every line. An event read above its binding line is a
-  forward event; a dynamic read above its line is refused (prism_rt has no forward
-  dynamic; no book program does it).
+- **BG Binding groups.** A group's lines are ordered by prompt dependence, and positions
+  follow the page; prism_rt hands out positions in the order statements run, so:
+  - binds run in line order, and `let`s, holds' initial values and local functions are
+    evaluated on first use;
+  - an event bound by a later bind is a forward event, resolved when its line runs;
+  - an event `let` needed before a bind it depends on has run (directly or through other
+    `let`s, holds' initial values and local functions, read off the page) gets a forward
+    event per binder, and is evaluated after the lines: `@Window`'s supplier lambda at
+    line 0 reads `!route`, which needs `$sizes` (line 2) and `$elems` (line 0's own);
+  - a dynamic or plain value bound by a later bind runs that bind first, when it takes
+    no position (`@Switch`, `@Flatten`, a widget application that emits nothing), with
+    the position counter checked after;
+  - holds' `then`s are wired last, after the deferred `let`s.
 - **CP Cycle points without continuations.** `@Run` runs the unbounded function to its
   end once, counting cycle points (each call of an unbounded function from an unbounded
   function, each `while` turn inside one), and reports `More` for that many cycles, then
@@ -107,26 +119,32 @@ what compiler zero does. Each is Claude's, for Jimmy to overturn.
   Element` the families of the tags the reachable modules name; host documents'
   subtraction is not done.
 - **PC Prompt cycles** are caught only at run time, as a definition needed while it is
-  evaluated; a cycle through events is not found statically.
+  evaluated; a cycle through events is not found statically, and one that closes through
+  a forward event (a deferred `let` reading another deferred `let` that reads it) is not
+  found at all.
 - **TP Code templates** evaluate to text (runs, placeholders, brace blocks, calls); the
   POD form of a templated language (`templatetext`, `templateplaceholder`) is not built.
 
 ## What fails, and whose it is
 
-- **The chess board under `@$main`** (`tests/conformance.rs`, ignored) stops in tick 0,
-  in this crate's binding groups (pick BG) and result kinds (pick RK); prism_rt has
-  nothing missing for it, and the board alone (`@$board`) passes.
-  - `@Window`'s supplier lambda reads `!route`, a `let` bound below it, which BG
-    evaluates on first use: through `$placed` it reaches `$sizes` (bound by a later
-    line) and `$elems` (bound by the lambda's own line). An event `let` read above the
-    lines it depends on needs a forward event, resolved once the lines have run.
-  - `$sizes <- for text, ignore <- ..: Gui.Metrics(text=text)` ends its rows on an
-    element whose tag answers `$Extent`, which RK, reading the page, takes for a plain
-    row, so the rows are handed back ungathered.
+- **A dynamic read above a bind that takes a position** (an element, `rebuild`, `for`,
+  `@started`, a host document, or a widget application that emits) is refused, naming
+  both lines. That bind cannot run early without moving positions, and prism_rt has no
+  forward dynamic to stand in for its output (a node read through to its source once the
+  line runs, whose construction read before then is a fault). It is prism_rt's to add, as
+  `forward_event` is; `Def::Positional` in `src/block.rs` is where it plugs in. No book
+  program and no example does it.
+- **Stack.** The chess window's layout recurses about 3 MB deep in a debug build, past a
+  test thread's 2 MB; its Rust test runs on a thread with a 64 MB stack, and the binary's
+  8 MB main thread is enough.
 
 ## Doubts
 
-- The heuristics RK and LM read the page where a checker reads types; a program that
-  defeats them gets a wrong result kind rather than an error.
+- The heuristics RK (for a last line that is not an element) and LM read the page where a
+  checker reads types; a program that defeats them gets a wrong result kind rather than
+  an error. BG's deferral reads the page too, over-approximating what a `let` reads (a
+  lambda's parameters, an inner block's names), which can defer a `let` that did not
+  need it; a deferred event `let` is the same event, so nothing changes but the order
+  nodes are made in.
 - NQ changes the meaning of `-?` on an `Int` that a checker typed `Int`; no book program
   relies on `Int`'s `-?`.

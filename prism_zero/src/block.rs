@@ -5,34 +5,42 @@
 //! block's `let`s are groups: any line may use any name the block binds. `given:` is a
 //! sequence: a line sees only the lines above.
 //!
-//! A group runs in two passes, because **the order of a group's lines decides positions
-//! and nothing else**:
+//! A group's lines are unordered: what orders them is prompt dependence (Semantics ch. 7,
+//! "There are no cycles"), with a sample as a delayed edge. **The order of a group's lines
+//! decides positions and nothing else**, and `prism_rt` hands out positions in the order
+//! statements run, so the group runs in three passes:
 //!
-//! - **Its lines, in order.** Every statement that takes a position (an element, a
-//!   blueprint, `rebuild`, `for`, `@started`, a host document) runs at its line, so
+//! - **Its lines, in page order.** Every statement that can take a position (an element,
+//!   a blueprint, `rebuild`, `for`, `@started`, a host document) runs at its line, so
 //!   positions follow the page (Semantics ch. 3, "What takes a position"). A `let`, a
 //!   hold's initial value and a local function take no position, so each is evaluated
 //!   when a line first needs it, wherever it stands: a name is a [`Def`] until then.
-//! - **The holds' `then`s, last.** A hold exists from its first use (`Build::hold`), and
-//!   its `then` is wired after every line has run, so it may read a name bound anywhere
-//!   in the block. This is what lets `@labels` read `$tags` above the hold that defines
-//!   it (Reflex's `rec`, which Prism needs no annotation for).
+//! - **The deferred event `let`s.** A `let` of events needed before a line it depends on
+//!   has run gets one forward event per binder (`Build::forward_event`), and is evaluated
+//!   and resolved once every line has run. This is how `@Window`'s supplier lambda, at
+//!   line 0, reads `!route`, which depends on lines below it and on line 0's own output.
+//! - **The holds' `then`s.** A hold exists from its first use (`Build::hold`), and its
+//!   `then` is wired after every line, so it may read any name in the block: `@labels`
+//!   reads `$tags` above the hold that defines it (Reflex's `rec`, with no annotation).
 //!
-//! A line that reads an event bound by a later line gets a forward event, resolved when
-//! that line runs (`Build::forward_event`). A dynamic bound by a later line has no forward
-//! node in `prism_rt`, so reading one above its line is refused with a diagnostic; no
-//! book program does it. A definition that needs itself while it is being evaluated is
-//! a cycle: a hold's initial value naming itself, a cycle among plain values, or a bind
-//! whose right side reads its own binder (a prompt cycle), each refused naming the name
-//! (Semantics ch. 4; ch. 7, "There are no cycles"). The prompt-cycle check is only this
-//! run-time one: cycles through `let !a = ...` lines that close through forward events
-//! are not detected (README.md, doubts).
+//! A line that reads an event bound by a later bind gets a forward event, resolved when
+//! that line runs. A line that reads a dynamic or plain value bound by a later bind runs
+//! that bind first, out of page order, when the bind takes no position (a `@Switch`, a
+//! `@Flatten`, a widget application that emits nothing), and the position counter is
+//! checked after it. A later bind that takes a position cannot run early, and `prism_rt`
+//! has no forward dynamic to stand in for its output, so reading one of those above its
+//! line is refused with a diagnostic (README.md, "What fails"). A definition that needs
+//! itself while it is being evaluated is a cycle: a hold's initial value naming itself, a
+//! cycle among plain values, or a bind whose right side reads its own binder (a prompt
+//! cycle), each refused naming the name (Semantics ch. 4; ch. 7). The prompt-cycle check
+//! is only this run-time one: cycles that close through forward events are not detected
+//! (README.md, PC).
 
-use std::cell::RefCell;
-use std::collections::HashMap;
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use prism_rt::{Build, ResultKind, Value};
+use prism_rt::{Build, OutputKind, ResultKind, Value};
 use prism_syntax::ast::*;
 
 use crate::interp::{BlockKind, Bx, Code, Frame, Interp, Loc, Scopes};
@@ -66,6 +74,16 @@ pub struct Group {
     defs: HashMap<Rc<str>, Def>,
     state: RefCell<HashMap<Rc<str>, DefState>>,
     forwards: RefCell<HashMap<Rc<str>, Value>>,
+    /// The event `let`s needed before a line they depend on had run: statement indices,
+    /// evaluated after the lines, and the forward events standing in for their binders.
+    deferred: RefCell<Vec<usize>>,
+    let_forwards: RefCell<HashMap<Rc<str>, Value>>,
+    /// The binds already run out of page order, which the page-order pass skips.
+    ran: RefCell<HashSet<usize>>,
+    lines_done: Cell<bool>,
+    /// The address of the group's own `Build` while its lines run, so that a bind is run
+    /// early only into the widget it belongs to.
+    builder: Cell<usize>,
     /// The holds made so far, with their statement, to wire their `then`s.
     holds: RefCell<Vec<(usize, Value)>>,
     local_fns: HashMap<Rc<str>, (Option<&'static Signature>, Vec<&'static FnClause>)>,
@@ -122,6 +140,11 @@ impl Group {
             defs,
             state: RefCell::new(HashMap::new()),
             forwards: RefCell::new(HashMap::new()),
+            deferred: RefCell::new(Vec::new()),
+            let_forwards: RefCell::new(HashMap::new()),
+            ran: RefCell::new(HashSet::new()),
+            lines_done: Cell::new(false),
+            builder: Cell::new(0),
             holds: RefCell::new(Vec::new()),
             local_fns,
         }
@@ -135,76 +158,67 @@ impl Group {
     fn mark(&self, name: &str, s: DefState) {
         self.state.borrow_mut().insert(Rc::from(name), s);
     }
-}
 
-/// The result kind of a `rebuild` or `for` bound by `pattern`, read off the binder's
-/// sigils (prism_rt API.md, `ResultKind`; Semantics ch. 4's two tables). `None` when the
-/// right side is not a builder.
-fn bind_kind(pattern: &Pattern, value: &Expr) -> Option<ResultKind> {
-    let inner = match &value.kind {
-        ExprKind::Group(e) => &**e,
-        _ => value,
-    };
-    let sigils: Vec<Sigil> = match &pattern.kind {
-        PatternKind::Name(n) => n.sigils.clone(),
-        PatternKind::Ignore => return Some(ResultKind::Unit),
-        _ => vec![],
-    };
-    match &inner.kind {
-        // A `rebuild` hands back `$!a`, `$$a` or `$a`; prism_rt gives each the same node.
-        ExprKind::Rebuild { .. } => Some(match sigils.as_slice() {
-            [Sigil::Dollar, Sigil::Bang, ..] => ResultKind::Event,
-            [Sigil::Dollar, Sigil::Dollar, ..] => ResultKind::Dynamic,
-            [] => ResultKind::Unit,
-            _ => ResultKind::Plain,
-        }),
-        // A `for` hands back `!(K ==> T)` or `$(K ==> T)`; for `$`, the rows' last line
-        // says whether they end on dynamics.
-        ExprKind::For { body, .. } => Some(match sigils.first() {
-            Some(Sigil::Bang) => ResultKind::Event,
-            Some(Sigil::Dollar) => {
-                if ends_on_dynamic(body) {
-                    ResultKind::Dynamic
-                } else {
-                    ResultKind::Plain
-                }
-            }
-            None => ResultKind::Plain,
-            _ => ResultKind::Plain,
-        }),
-        _ => None,
+    fn done(&self, name: &str) -> bool {
+        self.state.borrow().get(name) == Some(&DefState::Done)
     }
 }
 
-/// Whether a row's last line looks like a dynamic: `@ $x`, `$ v`, a `$"..."` literal. A
-/// checker reads the type; compiler zero reads the page (D3).
-fn ends_on_dynamic(body: &Block) -> bool {
-    fn dynamic(e: &Expr) -> bool {
-        match &e.kind {
-            ExprKind::Name(n) => n.sigils.first() == Some(&Sigil::Dollar),
-            ExprKind::Lit(l) => l.marks.first() == Some(&Sigil::Dollar),
-            ExprKind::FreeSigil { sigil: Sigil::Dollar, .. } => true,
-            ExprKind::FreeSigil { sigil: Sigil::At, operand } => dynamic(operand),
-            ExprKind::Group(e) => dynamic(e),
-            ExprKind::Binary { lhs, rhs, op } if *op != BinOp::On => dynamic(lhs) || dynamic(rhs),
-            ExprKind::Call { args, .. } => args.iter().any(|a| dynamic(&a.value)),
-            ExprKind::Field { recv, .. } => dynamic(recv),
-            _ => false,
-        }
-    }
-    match body.stmts.last().map(|s| &s.kind) {
-        Some(StmtKind::Expr(e)) => dynamic(e),
-        _ => false,
-    }
+/// The address of a `Build`, to tell a group's own builder from an inner widget's.
+fn addr(b: &Build) -> usize {
+    b as *const Build as *const () as usize
 }
 
 impl Interp {
     /// Evaluate a group's definition of `name`, in the scopes up to frame `k`.
     pub fn force(&self, sc: &mut Scopes, k: usize, g: Rc<Group>, name: &str, b: Bx, loc: Loc) -> R<Value> {
         let inner = sc.frames.split_off(k + 1);
+        // A definition evaluated in the middle of a `rebuild` or `for` line must not take
+        // the result kind that line's binder set.
+        let kind = sc.bind_kind.take();
         let r = self.force_in(sc, &g, name, b, loc);
+        sc.bind_kind = kind;
         sc.frames.extend(inner);
         r
+    }
+
+    /// The first name bound by a bind of `g` that has not finished running, and is not an
+    /// event (an event has a forward node), which the definition of `name` reads, directly
+    /// or through the group's other definitions. A hold's `then` is not followed: it is
+    /// wired after every line.
+    fn blocker(&self, g: &Group, name: &str, seen: &mut HashSet<Rc<str>>) -> Option<Rc<str>> {
+        let def = *g.defs.get(name)?;
+        if g.done(name) || !seen.insert(Rc::from(name)) {
+            return None;
+        }
+        let stmt = |i: usize| &g.block.stmts[i];
+        let deps: Vec<Rc<str>> = match def {
+            Def::Positional(_) if name.starts_with('!') => return None,
+            Def::Positional(_) => return Some(Rc::from(name)),
+            Def::Let(i) => match &stmt(i).kind {
+                StmtKind::Let { value, .. } => (*self.free_names(value, crate::eval::walk_expr)).clone(),
+                _ => vec![],
+            },
+            Def::Hold(i) => match &stmt(i).kind {
+                StmtKind::Bind { value, .. } => (*self.free_names(value, crate::eval::walk_expr)).clone(),
+                _ => vec![],
+            },
+            Def::LocalFn => {
+                let mut out = Vec::new();
+                for c in &g.local_fns[name].1 {
+                    out.extend(self.free_names(*c, |c, o| match &c.body {
+                        FnBody::Expr(e) => crate::eval::walk_expr(e, o),
+                        FnBody::Block(bl) => crate::eval::walk_block(bl, o),
+                    }).iter().cloned());
+                }
+                out
+            }
+            Def::InnerWidget(i) => match &stmt(i).kind {
+                StmtKind::Widget(w) => (*self.free_names(&w.body, crate::eval::walk_block)).clone(),
+                _ => vec![],
+            },
+        };
+        deps.iter().find_map(|n| self.blocker(g, n, seen))
     }
 
     fn force_in(&self, sc: &mut Scopes, g: &Rc<Group>, name: &str, mut b: Bx, loc: Loc) -> R<Value> {
@@ -221,6 +235,25 @@ impl Interp {
         }
         let stmt = |i: usize| &g.block.stmts[i];
         match def {
+            // An event `let` that reads a bind not run yet: forward events now, the `let`
+            // after the lines.
+            Def::Let(i)
+                if !g.lines_done.get()
+                    && b.is_some()
+                    && matches!(&stmt(i).kind, StmtKind::Let { pattern, .. }
+                        if pattern_binders(pattern).iter().all(|n| n.starts_with('!')))
+                    && self.blocker(g, name, &mut HashSet::new()).is_some() =>
+            {
+                let StmtKind::Let { pattern, .. } = &stmt(i).kind else { unreachable!() };
+                let b = b.expect("checked");
+                for n in pattern_binders(pattern) {
+                    let fwd = b.forward_event();
+                    g.let_forwards.borrow_mut().insert(Rc::from(n.as_str()), fwd.clone());
+                    g.mark(&n, DefState::Done);
+                    sc.bind(Rc::from(n.as_str()), fwd);
+                }
+                g.deferred.borrow_mut().push(i);
+            }
             Def::Let(i) => {
                 let StmtKind::Let { pattern, value, .. } = &stmt(i).kind else { unreachable!() };
                 let binders = pattern_binders(pattern);
@@ -263,11 +296,28 @@ impl Interp {
                     // Bound now for the lines above; the line rebinds it to the event itself.
                     sc.bind(Rc::from(name), fwd);
                 } else {
+                    // A dynamic or a plain value: run its bind now, if it takes no position.
                     let line = self.l.modules[sc.module].at(stmt(i).span);
-                    return Err(self.fault(
-                        loc,
-                        format!("{name} is bound at {line}, below this line; compiler zero reads only events above the line that binds them (prism_rt has no forward dynamic)"),
-                    ));
+                    let refuse = |why: &str| {
+                        self.fault(
+                            loc,
+                            format!("{name} is bound at {line}, below this line, by a bind that {why}; reading it here needs a forward dynamic, which prism_rt does not have (README.md, \"What fails\")"),
+                        )
+                    };
+                    let StmtKind::Bind { value, .. } = &stmt(i).kind else { unreachable!() };
+                    if takes_a_position(self, value) {
+                        return Err(refuse("takes a position, so it runs at its line"));
+                    }
+                    let Some(b) = b.filter(|b| addr(b) == g.builder.get()) else {
+                        return Err(refuse("belongs to the enclosing widget, not the one reading it"));
+                    };
+                    let before = b.next_path();
+                    let span = stmt(i).span;
+                    self.run_bind(i, g, sc, b, Loc { module: sc.module, span })?;
+                    g.ran.borrow_mut().insert(i);
+                    if b.next_path() != before {
+                        return Err(refuse("took a position when it ran"));
+                    }
                 }
             }
             Def::LocalFn => {
@@ -325,9 +375,13 @@ impl Interp {
     fn widget_lines(&self, block: &'static Block, g: &Rc<Group>, sc: &mut Scopes, b: &mut Build) -> R<Value> {
         let n = block.stmts.len();
         let mut result = Value::Unit;
+        g.builder.set(addr(b));
         for (i, stmt) in block.stmts.iter().enumerate() {
             let last = i + 1 == n;
             let loc = Loc { module: sc.module, span: stmt.span };
+            if g.ran.borrow().contains(&i) {
+                continue;
+            }
             match &stmt.kind {
                 StmtKind::Emit(row) => {
                     if i != 0 {
@@ -346,28 +400,8 @@ impl Interp {
                         self.lookup_local(sc, &name, Some(&mut *b), loc)?;
                     }
                 }
-                StmtKind::Bind { pattern, value, then: None } => {
-                    let binders = pattern_binders(pattern);
-                    for n in &binders {
-                        g.mark(n, DefState::InProgress);
-                    }
-                    let v = self.statement_value(pattern_kind(pattern, value), value, sc, b, loc);
-                    for n in &binders {
-                        g.state.borrow_mut().remove(n.as_str());
-                    }
-                    let v = v?;
-                    let mut binds = Vec::new();
-                    if !crate::pattern::matches(self, sc.module, pattern, &v, &mut binds)? {
-                        return Err(self.fault(loc, format!("the bind's pattern does not match its output, {}", crate::ops::show_plain(&v))));
-                    }
-                    for (name, bv) in binds {
-                        let fwd = g.forwards.borrow_mut().remove(&name);
-                        if let Some(fwd) = fwd {
-                            b.resolve_event(&fwd, &bv).map_err(|f| self.wrap_fault(loc, f))?;
-                        }
-                        g.mark(&name, DefState::Done);
-                        sc.bind(name, bv);
-                    }
+                StmtKind::Bind { then: None, .. } => {
+                    self.run_bind(i, g, sc, b, loc)?;
                     if last {
                         result = Value::Unit;
                     }
@@ -391,6 +425,45 @@ impl Interp {
                 StmtKind::Return(_) => return Err(self.out_of_scope(loc, "`T monad:` blocks and `^Monad`")),
             }
         }
+        g.lines_done.set(true);
+        // The deferred event `let`s, once every line has run. Each binder's forward event
+        // is taken out of scope while its `let` is evaluated, so a `let` that reads itself
+        // is a cycle, as in the first pass.
+        loop {
+            let todo: Vec<usize> = std::mem::take(&mut *g.deferred.borrow_mut());
+            if todo.is_empty() {
+                break;
+            }
+            for i in todo {
+                let StmtKind::Let { pattern, value, .. } = &block.stmts[i].kind else { unreachable!() };
+                let loc = Loc { module: sc.module, span: block.stmts[i].span };
+                let binders = pattern_binders(pattern);
+                for n in &binders {
+                    sc.frames.last_mut().expect("the group's frame").vars.remove(n.as_str());
+                    g.mark(n, DefState::InProgress);
+                }
+                let v = self.eval(value, sc, Some(&mut *b));
+                for n in &binders {
+                    g.state.borrow_mut().remove(n.as_str());
+                }
+                let v = v?;
+                let mut binds = Vec::new();
+                if !crate::pattern::matches(self, sc.module, pattern, &v, &mut binds)? {
+                    return Err(self.fault(Loc { module: sc.module, span: pattern.span }, "the `let` pattern does not match its value"));
+                }
+                for (name, bv) in binds {
+                    let fwd = g.let_forwards.borrow_mut().remove(&name);
+                    if let Some(fwd) = fwd {
+                        if !matches!(bv, Value::Event(_)) {
+                            return Err(self.fault(loc, format!("{name} is an event, and its `let` gives {}", crate::ops::show_plain(&bv))));
+                        }
+                        b.resolve_event(&fwd, &bv).map_err(|f| self.wrap_fault(loc, f))?;
+                    }
+                    g.mark(&name, DefState::Done);
+                    sc.bind(name, bv);
+                }
+            }
+        }
         // The holds' `then`s, once every line has run.
         let holds: Vec<(usize, Value)> = g.holds.borrow().clone();
         for (i, h) in holds {
@@ -407,11 +480,41 @@ impl Interp {
                 }
             }
         }
-        let leftover: Vec<Rc<str>> = g.forwards.borrow().keys().cloned().collect();
+        let mut leftover: Vec<Rc<str>> = g.forwards.borrow().keys().cloned().collect();
+        leftover.extend(g.let_forwards.borrow().keys().cloned());
         if let Some(n) = leftover.first() {
             return Err(self.fault(Loc { module: sc.module, span: block.span }, format!("{n} was read but never bound")));
         }
         Ok(result)
+    }
+
+    /// Run the bind at statement `i` (`x <- e`, no `then`): at its line, or earlier when a
+    /// line above needs its dynamic and it takes no position.
+    fn run_bind(&self, i: usize, g: &Rc<Group>, sc: &mut Scopes, b: &mut Build, loc: Loc) -> R<()> {
+        let StmtKind::Bind { pattern, value, then: None } = &g.block.stmts[i].kind else { unreachable!() };
+        let binders = pattern_binders(pattern);
+        for n in &binders {
+            g.mark(n, DefState::InProgress);
+        }
+        let kind = self.bind_kind(pattern, value);
+        let v = self.statement_value(kind, value, sc, b, loc);
+        for n in &binders {
+            g.state.borrow_mut().remove(n.as_str());
+        }
+        let v = v?;
+        let mut binds = Vec::new();
+        if !crate::pattern::matches(self, sc.module, pattern, &v, &mut binds)? {
+            return Err(self.fault(loc, format!("the bind's pattern does not match its output, {}", crate::ops::show_plain(&v))));
+        }
+        for (name, bv) in binds {
+            let fwd = g.forwards.borrow_mut().remove(&name);
+            if let Some(fwd) = fwd {
+                b.resolve_event(&fwd, &bv).map_err(|f| self.wrap_fault(loc, f))?;
+            }
+            g.mark(&name, DefState::Done);
+            sc.bind(name, bv);
+        }
+        Ok(())
     }
 
     /// The value a statement's right side gives: a `match` or `if` over a plain
@@ -430,7 +533,7 @@ impl Interp {
             // A builder on the block's last line has no binder to say what it hands
             // back: its rows' last line says.
             let guessed = match &inner.kind {
-                ExprKind::For { body, .. } => row_kind(body),
+                ExprKind::For { body, .. } => self.row_kind(body),
                 _ => ResultKind::Plain,
             };
             sc.bind_kind = Some(kind.unwrap_or(guessed));
@@ -585,10 +688,6 @@ impl Interp {
     }
 }
 
-fn pattern_kind(pattern: &Pattern, value: &Expr) -> Option<ResultKind> {
-    bind_kind(pattern, value)
-}
-
 fn clone_fn_code(c: &Code) -> Code {
     match c {
         Code::Fn(f) => Code::Fn(crate::interp::FnCode {
@@ -606,20 +705,123 @@ fn clone_fn_code(c: &Code) -> Code {
     }
 }
 
-/// What a `for`'s rows end on, read off their last line: an event, a dynamic, or plain.
-fn row_kind(body: &Block) -> ResultKind {
-    fn event(e: &Expr) -> bool {
-        match &e.kind {
-            ExprKind::Name(n) => n.sigils.first() == Some(&Sigil::Bang),
-            ExprKind::Binary { op: BinOp::On | BinOp::Merge, .. } => true,
-            ExprKind::FreeSigil { sigil: Sigil::At, operand } => event(operand),
-            ExprKind::Group(e) => event(e),
-            _ => false,
+/// Whether a bind's right side certainly takes a position in its block (Semantics ch. 3,
+/// "What takes a position"): an element, `rebuild`, `for`, `@started`. A widget
+/// application may or may not; it is run, and the position counter checked.
+fn takes_a_position(interp: &Interp, e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Group(x) => takes_a_position(interp, x),
+        ExprKind::Rebuild { .. } | ExprKind::For { .. } => true,
+        ExprKind::Name(n) => n.path.len() == 1 && n.text() == "@started",
+        _ => interp.tag_called(e).is_some(),
+    }
+}
+
+impl Interp {
+    /// The tag an element expression names, `Gui.Metrics(text=t)` or a bare
+    /// `Ui.Label`, if it names one (not a fault kind).
+    fn tag_called(&self, e: &Expr) -> Option<&crate::load::TagInfo> {
+        let n = match &e.kind {
+            ExprKind::Call { callee, .. } => match &callee.kind {
+                ExprKind::Name(n) => n,
+                _ => return None,
+            },
+            ExprKind::Name(n) => n,
+            _ => return None,
+        };
+        if n.path.len() < 2 {
+            return None;
+        }
+        self.tag(&n.path.join(".")).filter(|t| !t.fault)
+    }
+
+    /// The result kind of a `rebuild` or `for` bound by `pattern`, read off the binder's
+    /// sigils (prism_rt API.md, `ResultKind`; Semantics ch. 4's two tables). `None` when
+    /// the right side is not a builder.
+    fn bind_kind(&self, pattern: &Pattern, value: &Expr) -> Option<ResultKind> {
+        let inner = match &value.kind {
+            ExprKind::Group(e) => &**e,
+            _ => value,
+        };
+        let sigils: Vec<Sigil> = match &pattern.kind {
+            PatternKind::Name(n) => n.sigils.clone(),
+            PatternKind::Ignore => return Some(ResultKind::Unit),
+            _ => vec![],
+        };
+        match &inner.kind {
+            // A `rebuild` hands back `$!a`, `$$a` or `$a`; prism_rt gives each the same node.
+            ExprKind::Rebuild { .. } => Some(match sigils.as_slice() {
+                [Sigil::Dollar, Sigil::Bang, ..] => ResultKind::Event,
+                [Sigil::Dollar, Sigil::Dollar, ..] => ResultKind::Dynamic,
+                [] => ResultKind::Unit,
+                _ => ResultKind::Plain,
+            }),
+            // A `for` hands back `!(K ==> T)` or `$(K ==> T)`; for `$`, what the rows end
+            // on says whether they are dynamics to gather.
+            ExprKind::For { body, .. } => Some(match sigils.first() {
+                Some(Sigil::Bang) => ResultKind::Event,
+                Some(Sigil::Dollar) if self.row_kind(body) == ResultKind::Dynamic => ResultKind::Dynamic,
+                _ => ResultKind::Plain,
+            }),
+            _ => None,
         }
     }
-    match body.stmts.last().map(|s| &s.kind) {
-        Some(StmtKind::Expr(e)) if event(e) => ResultKind::Event,
-        _ if ends_on_dynamic(body) => ResultKind::Dynamic,
-        _ => ResultKind::Plain,
+
+    /// What a `for`'s rows end on: an event, a dynamic, `unit` or plain. An element on the
+    /// last line answers what its tag declares (the families' `tag .. of Element T`
+    /// lines); otherwise the last line is read off the page, where a checker reads its
+    /// type (D3): `@ $x`, `$ v`, a `$"..."` literal, a call over a dynamic are dynamics,
+    /// `!e`, `x on !e` and a merge are events.
+    fn row_kind(&self, body: &Block) -> ResultKind {
+        let Some(StmtKind::Expr(e)) = body.stmts.last().map(|s| &s.kind) else {
+            return ResultKind::Plain;
+        };
+        self.expr_kind(e)
+    }
+
+    fn expr_kind(&self, e: &Expr) -> ResultKind {
+        fn event(e: &Expr) -> bool {
+            match &e.kind {
+                ExprKind::Name(n) => n.sigils.first() == Some(&Sigil::Bang),
+                ExprKind::Binary { op: BinOp::On | BinOp::Merge, .. } => true,
+                ExprKind::FreeSigil { sigil: Sigil::At, operand } => event(operand),
+                ExprKind::Group(e) => event(e),
+                _ => false,
+            }
+        }
+        fn dynamic(e: &Expr) -> bool {
+            match &e.kind {
+                ExprKind::Name(n) => n.sigils.first() == Some(&Sigil::Dollar),
+                ExprKind::Lit(l) => l.marks.first() == Some(&Sigil::Dollar),
+                ExprKind::FreeSigil { sigil: Sigil::Dollar, .. } => true,
+                ExprKind::FreeSigil { sigil: Sigil::At, operand } => dynamic(operand),
+                ExprKind::Group(e) => dynamic(e),
+                ExprKind::Binary { lhs, rhs, op } if *op != BinOp::On => dynamic(lhs) || dynamic(rhs),
+                ExprKind::Call { args, .. } => args.iter().any(|a| dynamic(&a.value)),
+                ExprKind::Field { recv, .. } => dynamic(recv),
+                _ => false,
+            }
+        }
+        match &e.kind {
+            ExprKind::Group(x) | ExprKind::FreeSigil { sigil: Sigil::At, operand: x } if self.tag_called(x).is_some() => {
+                return self.expr_kind(x);
+            }
+            _ => {}
+        }
+        if let Some(t) = self.tag_called(e) {
+            return match &t.decl.output {
+                OutputKind::Event => ResultKind::Event,
+                OutputKind::Dynamic => ResultKind::Dynamic,
+                OutputKind::Unit => ResultKind::Unit,
+                OutputKind::Plain | OutputKind::Bundle(_) => ResultKind::Plain,
+            };
+        }
+        if event(e) {
+            ResultKind::Event
+        } else if dynamic(e) {
+            ResultKind::Dynamic
+        } else {
+            ResultKind::Plain
+        }
     }
 }

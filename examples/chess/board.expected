@@ -1,4 +1,3 @@
-# not yet run: written by hand from the books' rules, the scenes computed by a script from a model of the rules and the window library's layout
 test the_board_alone_shows_the_opening
 
 tick 0

@@ -3,7 +3,7 @@
 # (Common/Chess.hs), into the books' spelling and the book's design: a board from squares to
 # pieces, castling rights as a list of unspent corners, one record of ranks per color, and a
 # move's manner as a value. Its checks are in rules.prismtest. Work in progress, subject to
-# change; not yet run.
+# change.
 module Chess
 emit r
 

@@ -2,7 +2,7 @@
 # with a Star, a hold of its own the model never sees, where identity goes wrong in other
 # languages. The `Todo` record is Type System chapter 2's; the rest is prism-reflex's
 # examples/todos.prism in the books' spelling. Its tests are in todos.prismtest. Work in
-# progress, subject to change; not yet run.
+# progress, subject to change.
 emit Ui.*
 
 type Todo = record:

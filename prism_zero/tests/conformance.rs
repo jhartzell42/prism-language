@@ -88,18 +88,23 @@ fn the_examples_pass_their_scripts() {
     }
 }
 
-/// The chess board's script. prism_rt now has what it needs (floats, `click element`,
-/// host documents of `Level`s, `^Show` in paths, bundle outputs); its first test passes.
-/// The three under `@$main` stop in compiler zero's binding groups before tick 0 ends
-/// (README.md, "What fails, and whose it is"), so it stays ignored until those are fixed.
+/// The chess board's script, through the window library under `@$main`: the binding
+/// group of `@Window` (a supplier lambda at line 0 reading `!route`, an event `let` that
+/// depends on lines below it) and its `for` of `Gui.Metrics` rows, gathered as dynamics
+/// because the tag answers `$Extent`. The transcript is compared with `board.expected`.
 #[test]
-#[ignore]
 fn the_chess_board_passes_its_script() {
-    let ex = root().join("examples/chess");
-    let paths: Vec<String> = ["rules.prism", "window.prism", "board.prism"].iter().map(|f| ex.join(f).to_string_lossy().to_string()).collect();
-    let files = read_files(&paths).unwrap();
-    let sp = ex.join("board.prismtest");
-    let s = vec![(sp.to_string_lossy().to_string(), std::fs::read_to_string(&sp).unwrap())];
-    let out = test_files(&files, &s);
+    // The window library's layout recurses deeper than a test thread's 2 MB stack in a
+    // debug build (it needs about 3 MB); the binary's main thread has 8 MB.
+    let run = std::thread::Builder::new().stack_size(64 << 20).spawn(|| {
+        let ex = root().join("examples/chess");
+        let paths: Vec<String> =
+            ["rules.prism", "window.prism", "board.prism"].iter().map(|f| ex.join(f).to_string_lossy().to_string()).collect();
+        let files = read_files(&paths).unwrap();
+        let sp = ex.join("board.prismtest");
+        let s = vec![(sp.to_string_lossy().to_string(), std::fs::read_to_string(&sp).unwrap())];
+        test_files(&files, &s)
+    });
+    let out = run.unwrap().join().unwrap();
     assert_eq!(out.code, 0, "{}{}", out.stdout, out.stderr);
 }
