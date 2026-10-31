@@ -1,0 +1,7 @@
+# 01-semantics/book/ch-04-blocks.md, line 352
+?Quote: fn (Text ==> Cabin), Text, Nat, Nat -> ?Nat
+fn ?Quote cabins, name, guests, nights:
+    cabin <- cabins[name]
+    require guests <= cabin.beds
+    forbid nights == 0
+    ? cabin.rate * nights

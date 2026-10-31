@@ -1,0 +1,5 @@
+# 02-type-system/book/ch-03-traits.md, line 241
+trait ^Ready w:
+    type ReadyState
+    Opened: fn w -> ReadyState w                     # fixed as the tick opens
+    First: fn ReadyState w, Level -> Level           # a new place's first value

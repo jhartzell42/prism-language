@@ -1,0 +1,11 @@
+# 03-templates/book/ch-01-the-notation.md, line 192
+emit Doc.* | Ui.* | Ledger.*
+@document:
+    $rate <- Ledger.Cell(name="rate")
+    $hours <- Ledger.Cell(name="hours")
+    let $total = $rate * $hours
+    Doc.Heading(level=1, text="Consulting agreement")
+    Doc.Paragraph(text=$"The rate is {$rate} an hour for {$hours} hours, ...")
+    Doc.Comment(text="legal asked for the payment terms here")
+    @Signature "Client"
+    !send <- Ui.Button(label=$"Send for signature")

@@ -1,0 +1,11 @@
+# 02-type-system/book/ch-01-names-and-sigils.md, line 274
+type Entry = record:
+    changed: !Text
+    value: $Text
+
+@EntryBox: fn Text -> @Entry
+fn @EntryBox start:
+    !key <- Ui.TextInput(name="entry", text=$value)
+    let !changed = Edit $value, !key
+    $value <- start then !changed
+    @ Entry(changed=!changed, value=$value)

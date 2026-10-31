@@ -1,0 +1,8 @@
+# Case is a mark; qualified names are one token; the names nobody wrote; `@widget:`
+module Birds.Field
+use Birds.*
+let a = [[Ui.Button, Time.Clock, cart.total, Rust.templatetext, templateplaceholder, _, _1, key, ix, jx, kx]]
+let b = @widget:
+    @ !key
+impl ^Timeline !_:
+    fn !Updates !e = !e

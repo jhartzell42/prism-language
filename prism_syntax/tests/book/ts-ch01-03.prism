@@ -1,0 +1,6 @@
+# 02-type-system/book/ch-01-names-and-sigils.md, line 119
+@session:
+    login <- login_form
+    logout <- Ui.Button(label=$"Log out")
+    user <- nil then (? login) <| nil on logout
+    let name = user.name

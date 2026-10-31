@@ -1,0 +1,3 @@
+let a = !delta , @$?draft , $TEXT(Count: {$count}) , $_ , &_ . regs . acc , &. score . home
+sep let b = free? total , free~ contents , free@ unit , free$ supply , free@ (·( !a , $b )·) , free@ (·( !a , $b )·)
+sep let c = $0 , !TEXT(Got {!line}) , p != q , x <- y

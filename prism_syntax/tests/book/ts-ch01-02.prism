@@ -1,0 +1,8 @@
+# 02-type-system/book/ch-01-names-and-sigils.md, line 27
+@session: @unit
+@session:
+    !login <- @!login_form
+    !logout <- Ui.Button(label=$"Log out")
+    $?user <- nil then (? !login) <| nil on !logout
+    let $?name = $?user.name
+    Ui.Label(text=$"Signed in: {Or $?name, "nobody"}")

@@ -1,0 +1,3 @@
+fn @RustText $m = output TEMPLATE<rust>("// generated from "{{$m . path}}"\n"BLOCK{ for name , $c <- $m . classes : open @ClassText $c close }{{Lines ( Map $m . items , Show )}}@col4"static const Entry table[] = {{f, g}, {h, k}};\n"<@VtableText c={$c} title={TEXT(x)}/>"\n")
+sep fn FieldRs f = inline_text TEMPLATE<rust>({{f . name}}": "{{f . ty}}",")
+sep let r = raw TEMPLATE<markdown>("# not a comment, {not a placeholder}\n")

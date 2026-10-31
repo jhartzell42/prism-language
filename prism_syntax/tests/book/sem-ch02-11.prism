@@ -1,0 +1,5 @@
+# 01-semantics/book/ch-02-lexical-structure.md, line 309
+let hello = "hi {name}, you have {Len mail} messages"
+let raw_braces = "set \{x\} to \"on\"\n"
+let cost = "cost: $5"                        # $ in text is a character
+let who = "{Or $?name, "nobody"} signed in"  # a text literal inside a placeholder

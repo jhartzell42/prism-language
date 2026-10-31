@@ -1,0 +1,10 @@
+# 02-type-system/book/ch-02-values-and-types.md, line 156
+tag Net.Socket of Element ((!SocketEvent, $Link)):
+    address: Text
+    sends: !Text
+
+@chat: @unit
+@chat:
+    !ping <- Ui.Button(label=$"Ping")
+    ((!rx, $link)) <- Net.Socket(address="chat.example:7000", sends=("ping" on !ping))
+    Ui.Label(text=Status $link)

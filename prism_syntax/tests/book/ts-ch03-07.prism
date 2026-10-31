@@ -1,0 +1,10 @@
+# 02-type-system/book/ch-03-traits.md, line 221
+trait ^Num a where a: ^Eq:
+    type Quotient
+    +: fn a, a -> a
+    *: fn a, a -> a
+    /: fn a, a -> Quotient a
+
+impl ^Num Int:
+    type Quotient = ?Int
+    ...

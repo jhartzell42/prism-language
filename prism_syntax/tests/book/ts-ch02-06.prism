@@ -1,0 +1,13 @@
+# 02-type-system/book/ch-02-values-and-types.md, line 258
+type Expr a = choice:                         # closed, and indexed
+    Lit: Int -> Expr Int
+    Add: Expr Int, Expr Int -> Expr Int
+    IsZero: Expr Int -> Expr Bool
+    If: Expr Bool, Expr a, Expr a -> Expr a
+
+Eval: fn Expr a -> a
+fn Eval e = match e:
+    Lit n: n
+    Add x, y: (Eval x) + (Eval y)
+    IsZero x: (Eval x) == 0
+    If c, t, f: if Eval c: Eval t else: Eval f

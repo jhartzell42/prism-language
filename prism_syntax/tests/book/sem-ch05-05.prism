@@ -1,0 +1,9 @@
+# 01-semantics/book/ch-05-and-blocks.md, line 66
+Run: fn [Op], Vm, Nat -> Vm
+fn Run prog, vm, fuel = update vm:
+    let &fuel = fuel
+    while ? left <- &fuel -? 1:
+        &fuel <= left
+        match prog[&_.pc]:
+            ? op: &_ <= Step &_, op
+            nil: &fuel <= 0

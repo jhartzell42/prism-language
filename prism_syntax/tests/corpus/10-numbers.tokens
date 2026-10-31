@@ -1,0 +1,4 @@
+let n = [·[ 1_000_000 , 0xFF , 0o17 , 0b1010 , 0.75 , 2e-3 , -pre 40 , 250ms , 1.3ms , -pre 2s , 2min , 3h ]·]
+sep let t = TEXT(hi {name}, you have {Len mail} messages)
+sep let r = TEXT(set \{x\} to \"on\"\n)
+sep let w = TEXT({Or $?name , TEXT(nobody)} signed in)

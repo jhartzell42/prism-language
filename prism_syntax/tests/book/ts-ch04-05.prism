@@ -1,0 +1,5 @@
+# 02-type-system/book/ch-04-expressions-and-lifting.md, line 179
+@adder:
+    !a <- Ui.Button(label=$"Add 1")
+    !b <- Ui.Button(label=$"Add 10")
+    let !total = (1 on !a) + (10 on !b)

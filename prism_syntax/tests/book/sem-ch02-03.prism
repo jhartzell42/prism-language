@@ -1,0 +1,2 @@
+# 01-semantics/book/ch-02-lexical-structure.md, line 80
+let price = "#4 costs $5"     # the first # is a character; this one begins a comment

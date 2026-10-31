@@ -1,0 +1,7 @@
+# 01-semantics/book/ch-02-lexical-structure.md, line 268
+let count = 1_000_000        # integer-spelled; underscores are ignored
+let mask = 0xFF              # hex; 0o17 is octal, 0b1010 binary
+let ratio = 0.75             # decimal-spelled: a Float
+let tiny = 2e-3              # an exponent makes it decimal-spelled
+let below = -40              # a prefix minus on the literal 40
+let byte: U8 = 255           # a sized type, chosen by the annotation

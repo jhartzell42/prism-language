@@ -1,0 +1,5 @@
+# 02-type-system/book/ch-02-values-and-types.md, line 207
+Countdown: fn Nat -> [Nat]
+fn Countdown n = match n -? 1:
+    ? m: Append [[n]], (Countdown m)
+    nil: [[n]]

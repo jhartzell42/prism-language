@@ -1,0 +1,6 @@
+# 01-semantics/book/ch-12-semantics-and-implementations.md, line 14
+@counter:
+    !inc <- Ui.Button(label=$"Increment")                 # 0
+    !dec <- Ui.Button(label=$"Decrement")                 # 1
+    $count <- 0 then $count + (-1 on !dec <| +1 on !inc)
+    Ui.Label(text=$"Count: {$count}")                     # 2

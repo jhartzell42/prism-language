@@ -1,0 +1,2 @@
+# 02-type-system/book/ch-02-values-and-types.md, line 369
+@Offline: fn @a emit Net.* | r -> @a      # result row omitted: the module's, r

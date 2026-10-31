@@ -1,0 +1,6 @@
+# 02-type-system/book/ch-04-expressions-and-lifting.md, line 459
+@editor:
+    !key <- Ui.TextInput(name="text", text=$buffer.text)
+    !clear <- Ui.Button(label=$"Clear")
+    let !changes = !MergeAll [[(Typed !key), Cleared on !clear]]
+    $buffer <- blank then ApplyAll $buffer, !changes

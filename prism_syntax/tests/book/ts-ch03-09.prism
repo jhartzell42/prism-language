@@ -1,0 +1,19 @@
+# 02-type-system/book/ch-03-traits.md, line 256
+trait ^Timeline f:
+    !Updates: fn f a -> !a                           # when it changes, and to what
+    @Following: fn f a, !a -> @(f a)                 # the same kind, driven by an event
+
+impl ^Timeline !_:
+    fn !Updates !e = !e
+    fn @Following !e, !later = @ !later
+
+impl ^Timeline $_:
+    fn !Updates $d = !Updated $d
+    fn @Following $d, !later:
+        $$current <- $d then $ !later                # the input until the first update
+        @Flatten $$current
+
+@Debounce: fn Duration, f a -> @(f a) where f: ^Timeline
+fn @Debounce d, x:
+    !quiet <- @Debounced d, (!Updates x)
+    @Following x, !quiet

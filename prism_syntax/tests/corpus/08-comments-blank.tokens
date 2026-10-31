@@ -1,0 +1,4 @@
+@w :
+open !a <- Ui.Button ( label = $TEXT(A) )
+sep free@ !a
+close

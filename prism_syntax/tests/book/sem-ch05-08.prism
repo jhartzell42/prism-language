@@ -1,0 +1,10 @@
+# 01-semantics/book/ch-05-and-blocks.md, line 265
+Bad: fn Vm, Buffer Int -> Vm                     # refused: a block-local type as a parameter
+&Pick: fn &Regs, &Regs -> &Int                   # refused: a lens takes one reference
+
+Clear: fn Fixture -> Fixture
+fn Clear f = update f:
+    for &s <- &_.stoppage:
+        &s += 1
+        &_.stoppage <= [[]]                      # refused: &_.stoppage is lent to the for
+        &_.score.home += 1                       # fine: &_.score does not overlap

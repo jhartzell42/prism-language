@@ -1,0 +1,20 @@
+# 02-type-system/book/ch-03-traits.md, line 293
+trait ^Monad m:
+    Return: fn a -> m a
+    Then: fn m a, (fn a -> m b) -> m b
+
+type Parser a = record:
+    run: fn Text -> ?((a, Text))
+
+impl ^Monad Parser:
+    fn Return x = Parser \|input| ? ((x, input))
+    fn Then p, K = Parser \|input| given:
+        ((x, rest)) <- p.run input
+        ((y, left)) <- (K x).run rest
+        ? ((y, left))
+
+Both: fn Parser a, Parser b -> Parser ((a, b))
+fn Both pa, pb = Parser monad:
+    a <- pa
+    b <- pb
+    return ((a, b))

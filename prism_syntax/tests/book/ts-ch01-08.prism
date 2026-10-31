@@ -1,0 +1,17 @@
+# 02-type-system/book/ch-01-names-and-sigils.md, line 296
+@Grid: fn Nat, $(Path ==> Elem) -> @!Routed       # the window library's grid, which chess nests
+@Switch: fn $!a -> @!a                            # the prelude's
+
+!Leftmost: fn [!a] -> !a
+fn !Leftmost events = Fold events, never, \|!acc, !e| !acc <| !e
+
+$Constant: fn a -> $a
+fn $Constant x = $ x
+
+?Move: fn Game, Sq, Sq -> ?Game
+fn ?Move g, from, to:
+    pc <- ?At g, from
+    require pc.color == g.turn
+    forbid from == to
+    let board = Insert (Remove g.board, from), to, pc
+    ? Game(board=board, turn=Opponent g.turn)

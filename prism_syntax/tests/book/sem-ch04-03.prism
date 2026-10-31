@@ -1,0 +1,3 @@
+# 01-semantics/book/ch-04-blocks.md, line 173
+@Switch: fn $!a -> @!a
+@Flatten: fn $$a -> @$a

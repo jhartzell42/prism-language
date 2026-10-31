@@ -1,0 +1,4 @@
+@w :
+open let !action = Save on !save <| Quit on !quit
+sep free@ !action
+close

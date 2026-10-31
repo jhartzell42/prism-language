@@ -1,0 +1,2 @@
+# 01-semantics/book/ch-05-and-blocks.md, line 32
+fn Step vm, (Add n) = Vm(pc=vm.pc + 1, regs=Regs(acc=vm.regs.acc + n, x=vm.regs.x), steps=vm.steps + 1)

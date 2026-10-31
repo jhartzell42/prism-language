@@ -1,0 +1,15 @@
+# 02-type-system/book/ch-05-inference.md, line 14
+module Tally
+emit r | Ui.*
+use Ui
+
+@Tally: fn Text, @a emit r | Ui.* -> @((a, $Nat))
+fn @Tally label, @child:
+    !add <- Ui.Button(label=$ label)
+    $n <- 0 then $n + 1 on !add
+    let Twice = \|x| x + x
+    let $shown = Twice $n
+    let big = Twice 21
+    Ui.Label(text=$"{$shown} of {big}")
+    x <- @child
+    @ ((x, $n))

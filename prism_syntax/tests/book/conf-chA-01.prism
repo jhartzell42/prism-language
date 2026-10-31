@@ -1,0 +1,6 @@
+# 04-conformance/book/ch-A-grammar-and-lexing.md, line 15
+test a_row_closes_its_file, @journal:
+    build
+        => expect Fs.File(path="page1.txt")
+    click at 0, click at 1/#0/0
+        => unrequested Fs.File(..)

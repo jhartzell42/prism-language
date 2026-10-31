@@ -1,0 +1,158 @@
+# Expected outcome of each book example; see tests/book_examples.rs.
+conf-ch01-01.prism module
+conf-ch01-02.prism module
+conf-ch01-03.prism module
+conf-ch01-04.prism module
+conf-ch01-05.prism module
+conf-ch01-06.prism module
+conf-ch01-07.prism module
+conf-chA-01.prism module
+sem-ch01-01.prism module
+sem-ch01-02.prism module
+sem-ch02-01.prism module
+sem-ch02-02.prism module
+sem-ch02-03.prism module
+sem-ch02-04.prism module
+# Semantics ch. 2, Qualified names: a list of five tokens (`Ui.*` alone is a pattern, not a statement). Book's illustration, not a program.
+sem-ch02-05.prism lex
+# Semantics ch. 2, The attachment rule: thirteen tokens, one per line (`^Ord` alone is no statement). Book's illustration.
+sem-ch02-06.prism lex
+sem-ch02-07.prism fragment
+sem-ch02-08.prism fragment
+sem-ch02-09.prism out Float
+sem-ch02-10.prism module
+sem-ch02-11.prism module
+# Suffixed operators are out (decisions.md).
+sem-ch02-12.prism out suffixed operators
+sem-ch02-13.prism fragment
+sem-ch02-14.prism fragment
+sem-ch02-15.prism module
+sem-ch02-16.prism module
+# Semantics ch. 2, Layout: the book's own error case, "error: unindent matches no block".
+sem-ch02-17.prism error 5:1: unindent does not match any open block
+sem-ch02-18.prism fragment
+sem-ch02-19.prism fragment
+# Semantics ch. 2, the corpus sample: the INPUT says `F -pre 1`, the notation's spelling, where the program must say `F -1`. Book's bug; tests/corpus/01-book-sample.prism uses `F -1` and gets the book's stream.
+sem-ch02-20.prism error 4:16: expected the end of the declaration, found `1`
+sem-ch03-01.prism fragment
+sem-ch03-02.prism module
+sem-ch03-03.prism module
+sem-ch03-04.prism fragment
+sem-ch03-05.prism module
+sem-ch03-06.prism module
+sem-ch04-01.prism module
+sem-ch04-02.prism module
+sem-ch04-03.prism module
+sem-ch04-04.prism module
+sem-ch04-05.prism module
+sem-ch04-06.prism module
+sem-ch04-07.prism module
+sem-ch04-08.prism module
+sem-ch04-09.prism module
+sem-ch05-01.prism module
+sem-ch05-02.prism module
+sem-ch05-03.prism out named lenses `&Home` and `Over`
+sem-ch05-04.prism module
+sem-ch05-05.prism module
+sem-ch05-06.prism out named lenses `&Home` and `Over`
+sem-ch05-07.prism module
+sem-ch05-08.prism out named lenses `&Home` and `Over`
+sem-ch05-09.prism module
+sem-ch05-10.prism module
+sem-ch06-01.prism module
+sem-ch06-02.prism module
+sem-ch06-03.prism module
+sem-ch07-01.prism module
+sem-ch07-02.prism module
+sem-ch07-03.prism fragment
+sem-ch07-04.prism module
+sem-ch07-05.prism module
+sem-ch07-06.prism module
+sem-ch07-07.prism module
+sem-ch07-08.prism module
+sem-ch07-09.prism module
+sem-ch07-10.prism module
+sem-ch08-01.prism module
+sem-ch08-02.prism module
+sem-ch08-03.prism module
+sem-ch09-01.prism module
+sem-ch09-02.prism module
+sem-ch09-03.prism module
+sem-ch09-04.prism module
+sem-ch10-01.prism module
+sem-ch10-02.prism module
+sem-ch10-03.prism module
+sem-ch10-04.prism module
+sem-ch10-05.prism module
+sem-ch10-06.prism module
+sem-ch11-01.prism out `!Align`
+sem-ch12-01.prism module
+tpl-ch01-01.prism module
+# A `<markdown>` template under `output`: the template notation is out (decisions.md).
+tpl-ch01-02.prism out the template notation
+tpl-ch01-03.prism module
+tpl-ch02-01.prism module
+tpl-ch02-02.prism module
+# Templates ch. 2: the tree of counter.rs printed as Prism, with `text=...` and a `...` line eliding the rest. Book's elision, not a program.
+tpl-ch02-03.prism error 3:1: expected a declaration (`fn`, `let`, `type`, `tag`, `derive`, `trait`, `impl`, `test`, `check`, or a signature `Name: type`), found the end of the line
+tpl-ch02-04.prism module
+# Type System ch. 1: a two-line diff (`-` and `+` lines) in a prism fence. Book's illustration, not a program.
+ts-ch01-01.prism error 2:1: expected a declaration (`fn`, `let`, `type`, `tag`, `derive`, `trait`, `impl`, `test`, `check`, or a signature `Name: type`), found `-`
+ts-ch01-02.prism module
+ts-ch01-03.prism module
+ts-ch01-04.prism module
+ts-ch01-05.prism module
+ts-ch01-06.prism module
+ts-ch01-07.prism module
+ts-ch01-08.prism module
+ts-ch01-09.prism module
+ts-ch01-10.prism module
+ts-ch01-11.prism module
+ts-ch01-12.prism out named lenses `&Home` and `Over`
+ts-ch01-13.prism module
+ts-ch02-01.prism module
+ts-ch02-02.prism out Float
+ts-ch02-03.prism out Float
+ts-ch02-04.prism module
+ts-ch02-05.prism module
+ts-ch02-06.prism out indexed choices/GADTs for user types
+ts-ch02-07.prism module
+ts-ch02-08.prism module
+ts-ch02-09.prism module
+ts-ch02-10.prism module
+ts-ch02-11.prism module
+ts-ch02-12.prism module
+ts-ch02-13.prism module
+ts-ch03-01.prism module
+ts-ch03-02.prism out Float
+ts-ch03-03.prism module
+ts-ch03-04.prism module
+ts-ch03-05.prism module
+ts-ch03-06.prism out higher-kinded traits
+# Type System ch. 3: `impl ^Num Int:` with `...` standing for the rest of its body. Book's elision; everything before it parses.
+ts-ch03-07.prism error 10:5: expected a name, found `..`
+ts-ch03-08.prism module
+ts-ch03-09.prism out higher-kinded traits
+# `^Monad` and `Parser monad:` are out (decisions.md); the rest parses, `p.run input` included.
+ts-ch03-10.prism out `T monad:` blocks and `^Monad`
+ts-ch03-11.prism module
+ts-ch03-12.prism out named lenses `&Home` and `Over`
+ts-ch03-13.prism module
+ts-ch04-01.prism module
+ts-ch04-02.prism module
+ts-ch04-03.prism module
+ts-ch04-04.prism module
+ts-ch04-05.prism module
+ts-ch04-06.prism module
+ts-ch04-07.prism module
+ts-ch04-08.prism module
+ts-ch04-09.prism module
+ts-ch04-10.prism module
+ts-ch04-11.prism module
+ts-ch04-12.prism module
+ts-ch04-13.prism module
+ts-ch04-14.prism module
+ts-ch04-15.prism module
+ts-ch04-16.prism module
+ts-ch04-17.prism out `!Align`
+ts-ch05-01.prism module

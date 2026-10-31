@@ -1,0 +1,4 @@
+# 02-type-system/book/ch-04-expressions-and-lifting.md, line 384
+@form:
+    let @picks = @Checklist [["tea", "coffee"]]
+    let n = Len @picks                            # error: not computed over

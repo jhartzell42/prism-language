@@ -1,0 +1,9 @@
+# 02-type-system/book/ch-03-traits.md, line 337
+type Watch = record:
+    label: Text
+    value: any ^Show
+
+let watches = [[
+    Watch(label="selected", value=any Sq(file=4, rank=3)),
+    Watch(label="score", value=any 21)
+]]

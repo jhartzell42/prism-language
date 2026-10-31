@@ -1,0 +1,9 @@
+# 01-semantics/book/ch-10-errors-and-faults.md, line 136
+type Fault = row                       # the prelude's: a row kind with no output
+
+type Error = record:                   # the prelude's
+    kind: Fault                        # what failed, in the reporter's terms
+    message: Text                      # the human form
+
+tag Fs.NotFound of Fault               # in the Fs module
+tag Fs.Denied of Fault

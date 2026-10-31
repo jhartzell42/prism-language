@@ -1,0 +1,5 @@
+# Rule 4: a line indented more continues the statement and emits nothing
+@w:
+    let !action = Save on !save
+        <| Quit on !quit
+    @ !action

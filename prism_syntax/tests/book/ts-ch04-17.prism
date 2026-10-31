@@ -1,0 +1,6 @@
+# 02-type-system/book/ch-04-expressions-and-lifting.md, line 476
+!Both: fn !a, !b -> !((a, b))
+fn !Both !x, !y = !Filter (?Joined (!Align !x, !y))
+
+!MergeWith: fn (fn a, a -> a), [!a] -> !a
+fn !MergeWith F, es = !Filter (?Fold1 (!MergeAll es), F)

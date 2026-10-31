@@ -1,0 +1,2 @@
+# 01-semantics/book/ch-05-and-blocks.md, line 38
+fn Step vm, (Add n) = Over &.steps, (Over &.pc, (Over &.regs.acc, vm, \|a| a + n), \|p| p + 1), \|s| s + 1

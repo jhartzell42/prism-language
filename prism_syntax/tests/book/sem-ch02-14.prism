@@ -1,0 +1,8 @@
+# 01-semantics/book/ch-02-lexical-structure.md, line 443
+((a, b))            # a tuple: the opens touch and so do their closes
+((x))               # the 1-tuple holding x
+(x)                 # x, grouped
+((a + b) * c)       # a group in a group: the inner ( closes after b, apart
+xs[ys[0]]           # two indexings: the opens are apart, though the closes touch
+[[ys[0]]]           # an array literal holding one indexing
+(((G b, c), d))     # a tuple whose first element is the call G(b, c)

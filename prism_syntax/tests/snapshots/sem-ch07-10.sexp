@@ -1,0 +1,11 @@
+(module
+  (sig Normalize (unbounded fn Term -> Term))
+  (fn Normalize (params t)
+    (match (call ?Step t)
+      (arm (free? t2) (inline (call Normalize t2)))
+      (arm nil (inline t))))
+  (sig @Normal (fn Term -> @unit))
+  (fn @Normal (params term)
+    (bind !done (call @Run Normalize term))
+    (hold $shown "working" then (call Describe !done))
+    (call() Ui.Label text=$shown)))

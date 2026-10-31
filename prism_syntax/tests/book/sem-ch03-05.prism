@@ -1,0 +1,7 @@
+# 01-semantics/book/ch-03-syntax.md, line 194
+?Reply: fn Mail -> ?Text
+fn ?Reply m:
+    addr <- m.reply_to
+    require not m.spam
+    forbid addr == m.from
+    ? addr

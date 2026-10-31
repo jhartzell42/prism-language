@@ -1,0 +1,5 @@
+# Rule 4's error: after the pops the column must equal the top of the stack
+@bad:
+    !x <- for $rows:
+        Ui.Button(label=$_)
+      <| !other

@@ -1,0 +1,14 @@
+# 01-semantics/book/ch-05-and-blocks.md, line 13
+type Regs = record:
+    acc: Int
+    x: Int
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+    steps: Nat
+
+type Op = choice:
+    Add Int
+    Swap
+    JumpIfNeg Nat

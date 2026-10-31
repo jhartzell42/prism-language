@@ -1,0 +1,16 @@
+test a_row_closes_its_file , @journal :
+open build
+open => expect Fs.File ( path = TEXT(page1.txt) )
+close
+sep click at PATH(0) , click at PATH(1/#0/0)
+open => unrequested Fs.File ( .. )
+close
+sep click element PATH(0/[e2]/0)
+sep compute until idle
+open => quiet
+close
+close
+sep check calls :
+open Call Heron => TEXT(fraaank)
+close
+sep let after = a = > b

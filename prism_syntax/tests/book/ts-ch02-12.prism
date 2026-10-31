@@ -1,0 +1,9 @@
+# 02-type-system/book/ch-02-values-and-types.md, line 476
+trait ^Pod t:
+    row Lang                               # t's constructors as tags, each answering unit
+    Save: fn t -> Elem (Lang t)
+    ~Restore: fn Elem r -> ~t              # an Error names the stranger and its path
+    ~Read: fn Text -> ~[[t]]               # a printed document back
+    Children: fn t -> [[t]]                # the nested documents, in field order
+
+Print: fn [[t]] -> Text where t: ^Pod      # the prelude's; not a method

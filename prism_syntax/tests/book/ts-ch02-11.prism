@@ -1,0 +1,9 @@
+# 02-type-system/book/ch-02-values-and-types.md, line 463
+module Ssa
+
+type Doc = choice:
+    Module Text, [[Doc]]
+    Block Text, [[Doc]]
+    Emit Nat, Text, [[Text]]
+    Hold Nat, Text, Text, Text
+derive ^Eq, ^Show, ^Pod

@@ -1,0 +1,8 @@
+# 02-type-system/book/ch-04-expressions-and-lifting.md, line 143
+@diamond:
+    !set <- Ui.Button(label=$"Set")
+    $a <- 0 then 5 on !set
+    let $b = $a + 1
+    let $c = $a * 2
+    let $d = $b + $c
+    Ui.Label(text=$"{$d}")

@@ -1,0 +1,7 @@
+[package]
+name = "prism_syntax"
+version = "0.1.0"
+edition = "2024"
+description = "Lexer, parser, AST and printer of the Prism language, as the Semantics, Templates and Conformance books specify them"
+
+[dependencies]

@@ -1,0 +1,10 @@
+# 01-semantics/book/ch-05-and-blocks.md, line 308
+Idents: fn Text -> Nat
+fn Idents src = update 0:
+    let &c = Start src
+    while ? ((ch, next)) <- ?Step &c:
+        if IsLetter ch:
+            &_ += 1
+            &c <= SkipWord next
+        else:
+            &c <= next

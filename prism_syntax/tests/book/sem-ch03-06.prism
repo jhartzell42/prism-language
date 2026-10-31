@@ -1,0 +1,25 @@
+# 01-semantics/book/ch-03-syntax.md, line 226
+module Counter
+emit Ui.*
+use Ui
+
+type Step = choice:
+    Up
+    Down
+derive ^Eq, ^Show
+
+Delta: fn Step -> Int
+fn Delta Up = +1
+fn Delta Down = -1
+
+let start = 0
+
+@counter: @unit
+@counter:
+    !inc <- Ui.Button(label=$"Increment")
+    !dec <- Ui.Button(label=$"Decrement")
+    $count <- start then $count + Delta (Up on !inc <| Down on !dec)
+    Ui.Label(text=$"Count: {$count}")
+
+check delta_cancels:
+    (Delta Up) + (Delta Down) == 0

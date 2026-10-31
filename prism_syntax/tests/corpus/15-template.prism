@@ -1,0 +1,15 @@
+# Templates ch. 2: doubled delimiters, a brace block, a placeholder alone on its line
+fn @RustText $m = output <rust>
+// generated from {{$m.path}}
+{{
+for name, $c <- $m.classes:
+    @ClassText $c
+}}
+    {{Lines (Map $m.items, Show)}}
+static const Entry table[] = \{{f, g}, {h, k}};
+<@VtableText c={{$c}} title="x"/>
+</rust>
+fn FieldRs f = inline_text <rust>{{f.name}}: {{f.ty}},</rust>
+let r = raw <markdown>
+# not a comment, {not a placeholder}
+</markdown>

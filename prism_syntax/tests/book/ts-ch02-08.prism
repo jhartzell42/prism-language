@@ -1,0 +1,6 @@
+# 02-type-system/book/ch-02-values-and-types.md, line 332
+type Element o = row             # the prelude's; each tag fixes o
+type Fault = row                 # the prelude's; no output
+tag Ui.Button of Element !Click:
+    label: $Text
+tag Fs.NotFound of Fault

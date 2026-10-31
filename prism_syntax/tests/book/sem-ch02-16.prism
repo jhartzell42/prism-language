@@ -1,0 +1,3 @@
+# 01-semantics/book/ch-02-lexical-structure.md, line 539 (dedented 4)
+let !action = Save on !save
+    <| Quit on !quit                 # a continuation

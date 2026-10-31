@@ -1,0 +1,7 @@
+# 02-type-system/book/ch-04-expressions-and-lifting.md, line 302
+@title_bar:
+    !opened <- @FilePicker
+    $$title <- $"untitled" then $TitleOf !opened  # $TitleOf: fn File -> $Text
+    $title <- @Flatten $$title
+    let $long = (Len $title) > 40                  # fine: one layer
+    let $bad = $$title + "!"                       # error: two layers

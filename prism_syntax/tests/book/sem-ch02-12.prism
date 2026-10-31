@@ -1,0 +1,4 @@
+# 01-semantics/book/ch-02-lexical-structure.md, line 382
+? (l >Int r)                 # > at Int
+total +Float tip             # + at Float
+crc *?U32 31                 # checked multiplication at U32

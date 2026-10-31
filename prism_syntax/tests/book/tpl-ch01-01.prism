@@ -1,0 +1,8 @@
+# 03-templates/book/ch-01-the-notation.md, line 29
+emit Doc.* | Ui.*
+@document:
+    $count <- 0 then $count + (-1 on !dec <| +1 on !inc)
+    Doc.Heading(level=1, text="Counter")
+    Doc.Paragraph(text=$"Clicked **{$count}** times.")
+    !inc <- Ui.Button(label=$"Increment")
+    !dec <- Ui.Button(label=$"Decrement")

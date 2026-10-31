@@ -1,0 +1,18 @@
+# 01-semantics/book/ch-05-and-blocks.md, line 44
+Step: fn Vm, Op -> Vm
+fn Step vm, op = update vm:
+    &_.steps += 1
+    match op:
+        Add n:
+            &_.regs.acc += n
+            &_.pc += 1
+        Swap:
+            let a = &_.regs.acc
+            &_.regs.acc <= &_.regs.x
+            &_.regs.x <= a
+            &_.pc += 1
+        JumpIfNeg target:
+            if &_.regs.acc < 0:
+                &_.pc <= target
+            else:
+                &_.pc += 1

@@ -1,0 +1,5 @@
+# 02-type-system/book/ch-04-expressions-and-lifting.md, line 393
+@Count: fn @[a] -> @Nat
+fn @Count @list:
+    items <- @list
+    @ Len items

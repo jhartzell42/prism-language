@@ -1,0 +1,5 @@
+# 01-semantics/book/ch-02-lexical-structure.md, line 530
+@outer:
+    !x <- rebuild $a:
+        Ui.Button(label=$"B")
+    Ui.Label(text=$"done")

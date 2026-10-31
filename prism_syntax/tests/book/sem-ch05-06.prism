@@ -1,0 +1,7 @@
+# 01-semantics/book/ch-05-and-blocks.md, line 171
+&Acc: fn &Vm -> &Int
+fn &Acc &vm = &vm.regs.acc
+
+Reset: fn Vm -> Vm
+fn Reset vm = update vm:
+    &Acc &_ <= 0

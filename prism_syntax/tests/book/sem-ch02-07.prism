@@ -1,0 +1,5 @@
+# 01-semantics/book/ch-02-lexical-structure.md, line 201
+@ Pair a, b                  # @ (Pair a, b)
+F a, ? b, c                  # F(a, ? b, c)
+? !login <| nil on !logout   # ? (!login <| nil on !logout)
+(? !login) <| nil on !logout # the injection, then the merge

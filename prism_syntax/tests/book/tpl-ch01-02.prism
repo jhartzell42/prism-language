@@ -1,0 +1,12 @@
+# 03-templates/book/ch-01-the-notation.md, line 144
+@Note: fn $Text, $Text -> @!Click
+fn @Note $title, $body:
+    emit Doc.* | Ui.*
+    output <markdown>
+## {$title}
+
+{$body}
+
+<Ui.Button label="Open" onClick=!open/>
+</markdown>
+    @ !open

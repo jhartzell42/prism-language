@@ -1,0 +1,313 @@
+# Translated by hand from prism-reflex's examples/chess.prism (older spelling) into the books' spelling:
+# one-line choices became blocks, `derive ^T for X` became `derive ^T` below X. `g.?phantom` became `g.phantom`.
+# Chess: the rule engine of jhartzell42/reflex-chess (Common/Chess.hs, 272 lines) as plain Prism
+# functions, with the tests that pin it. The board is a map from square to piece; an absent
+# key is an empty square. `examples/gui/chess.prism` is the board widget that plays it.
+type Side = choice:
+    White
+    Black
+derive ^Eq, ^Show
+
+type Piece = choice:
+    King
+    Queen
+    Rook
+    Bishop
+    Knight
+    Pawn
+derive ^Eq
+
+type Man = record:
+    color: Side
+    piece: Piece
+
+type Castle = record:
+    queen: Bool
+    king: Bool
+
+type Sq = record:
+    x: Int
+    y: Int
+derive ^Eq
+
+type Game = record:
+    board: Sq ==> Man
+    turn: Side
+    white: Castle
+    black: Castle
+    phantom: ?Sq
+    count: Int
+
+Opponent: fn Side -> Side
+fn Opponent c = match c:
+    White: Black
+    Black: White
+
+Squares: [Sq]
+let Squares = Flatten (Map (Range 0, 8), \|x| Map (Range 0, 8), \|y| Sq x, y)
+
+MainRow: fn Int -> Piece
+fn MainRow x = match x:
+    0: Rook
+    1: Knight
+    2: Bishop
+    3: Queen
+    4: King
+    5: Bishop
+    6: Knight
+    otherwise: Rook
+
+?InitialPiece: fn Int, Int -> ?Man
+fn ?InitialPiece x, y = match y:
+    0: ? Man(color=White, piece=(MainRow x))
+    1: ? Man(color=White, piece=Pawn)
+    6: ? Man(color=Black, piece=Pawn)
+    7: ? Man(color=Black, piece=(MainRow x))
+    otherwise: nil
+
+InitialBoard: Sq ==> Man
+let InitialBoard = Fold Squares, {}, \|b, p| match ?InitialPiece p.x, p.y:
+    ? pc: Insert b, p, pc
+    nil: b
+
+Initial: Game
+let Initial = Game(board=InitialBoard, turn=White, white=Castle(queen=True, king=True), black=Castle(queen=True, king=True), phantom=nil, count=0)
+
+Valid: fn Sq -> Bool
+fn Valid p = p.x >= 0 and p.x <= 7 and p.y >= 0 and p.y <= 7
+
+?At: fn Game, Sq -> ?Man
+fn ?At g, p = given: require Valid p; g.board[p]
+
+CastleOf: fn Game, Side -> Castle
+fn CastleOf g, c = match c:
+    White: g.white
+    Black: g.black
+
+# ? True: a capture; ? False: an empty square; nil: one's own piece
+?Dest: fn Game, Sq, Side -> ?Bool
+fn ?Dest g, new, turn = match ?At g, new:
+    nil: ? False
+    ? d: given: require d.color != turn; ? True
+
+# the squares strictly between two squares on a line (meaningless for a knight, and unused there)
+Steps: fn Sq, Sq -> [Sq]
+fn Steps old, new = Map (Range 1, (Max (Abs (new.x - old.x)), (Abs (new.y - old.y)))), \|i| Sq old.x + i * (Sign (new.x - old.x)), old.y + i * (Sign (new.y - old.y))
+
+Clear: fn Game, Sq, Sq -> Bool
+fn Clear g, old, new = All (Steps old, new), \|p| not (IsSome (?At g, p))
+
+# whether a piece of `by` standing on `from` attacks `sq`: geometry only, so that castling can ask
+# it without recursing into castling (a king never attacks two squares away)
+Attacks: fn Game, Man, Sq, Sq -> Bool
+fn Attacks g, pc, from, sq:
+    let dx = sq.x - from.x
+    let dy = sq.y - from.y
+    let line = not (dx == 0 and dy == 0) and Clear g, from, sq
+    match pc.piece:
+        Pawn: dy == (PawnDir pc.color) and (Abs dx) == 1
+        Knight: ((Abs dx) == 1 and (Abs dy) == 2) or ((Abs dx) == 2 and (Abs dy) == 1)
+        King: (Abs dx) <= 1 and (Abs dy) <= 1 and not (dx == 0 and dy == 0)
+        Bishop: (Abs dx) == (Abs dy) and line
+        Rook: (dx == 0 or dy == 0) and line
+        Queen: ((Abs dx) == (Abs dy) or dx == 0 or dy == 0) and line
+
+PawnDir: fn Side -> Int
+fn PawnDir c = match c:
+    White: 1
+    Black: -1
+
+Attacked: fn Game, Sq, Side -> Bool
+fn Attacked g, sq, by = Any Squares, \|from| match ?At g, from:
+    ? pc if pc.color == by: Attacks g, pc, from, sq
+    otherwise: False
+
+# castling toward the rook in column `rookX`: the right is unused, the rook is on its corner, every
+# square between king and rook is empty, and the king is not in check and does not cross an
+# attacked square (the square it lands on is the check test every move gets)
+CanCastle: fn Game, Side, Sq, Int, Bool -> Bool
+fn CanCastle g, turn, old, rookX, right:
+    let corner = (Sq rookX, old.y)
+    let crossed = Sq old.x + (Sign (rookX - old.x)), old.y
+    let rookHome = match ?At g, corner:
+        ? r: r.color == turn and r.piece == Rook
+        nil: False
+    right and rookHome and (Clear g, old, corner) and not (Attacked g, old, (Opponent turn)) and not (Attacked g, crossed, (Opponent turn))
+
+# the row of the pawn an en passant capture removes
+CapturedPawnRow: fn Side -> Int
+fn CapturedPawnRow c = match c:
+    White: 4
+    Black: 3
+
+# a move of `turn`'s piece at `old` to `new`, promoting a pawn to `promo`, without the check test
+?Basic: fn Piece, Game, Side, Sq, Sq -> ?Game
+fn ?Basic promo, g, turn, old, new:
+    mover <- ?At g, old
+    require mover.color == turn and not (old == new)
+    capture <- ?Dest g, new, turn
+    let dx = new.x - old.x
+    let dy = new.y - old.y
+    let dir = match turn:
+        White: 1
+        Black: -1
+    let startRow = match turn:
+        White: 1
+        Black: 6
+    let rookLike = dx == 0 or dy == 0
+    let bishopLike = (Abs dx) == (Abs dy)
+    let pawnLike = dx == 0 and (dy == dir or (dy == 2 * dir and old.y == startRow))
+    let pawnCapture = dy == dir and (Abs dx) == 1
+    let knightLike = ((Abs dx) == 1 and (Abs dy) == 2) or ((Abs dx) == 2 and (Abs dy) == 1)
+    let kingLike = (Abs dx) <= 1 and (Abs dy) <= 1
+    let clear = Clear g, old, new
+    let enPassant = match g.phantom:
+        ? ph if mover.piece == Pawn and pawnCapture and new == ph: [[ (Sq ph.x, (CapturedPawnRow turn)) ]]
+        otherwise: [[]]
+    let ?castleRook = match mover.piece:
+        King if dx == -2 and dy == 0 and CanCastle g, turn, old, 0, (CastleOf g, turn).queen: ? (((Sq 0, old.y), (Sq old.x - 1, old.y)))
+        King if dx == 2 and dy == 0 and CanCastle g, turn, old, 7, (CastleOf g, turn).king: ? (((Sq 7, old.y), (Sq old.x + 1, old.y)))
+        otherwise: nil
+    let legal = match mover.piece:
+        Pawn: match capture:
+            True: pawnCapture
+            False: (Size enPassant) > 0 or (pawnLike and clear)
+        Bishop: bishopLike and clear
+        Rook: rookLike and clear
+        Queen: (rookLike or bishopLike) and clear
+        Knight: knightLike
+        King: kingLike or IsSome ?castleRook
+    require legal
+    let promoted = match mover.piece == Pawn and ((turn == White and new.y == 7) or (turn == Black and new.y == 0)):
+        True: Man(color=turn, piece=promo)
+        False: mover
+    let b1 = Insert (Remove g.board, old), new, promoted
+    let b2 = Fold enPassant, b1, \|b, p| Remove b, p
+    let b3 = match ?castleRook:
+        ? rk: Insert (Remove b2, (First rk)), (Second rk), Man(color=turn, piece=Rook)
+        nil: b2
+    let castle0 = CastleOf g, turn
+    let castle1 = match mover.piece:
+        King: Castle(queen=False, king=False)
+        Rook if old.x == 0: Castle(queen=False, king=castle0.king)
+        Rook if old.x == 7: Castle(queen=castle0.queen, king=False)
+        otherwise: castle0
+    let homeRow = match turn:
+        White: 7
+        Black: 0
+    let theirs0 = CastleOf g, (Opponent turn)
+    let theirs1 = match new:
+        (Sq 0, r) if r == homeRow: Castle(queen=False, king=theirs0.king)
+        (Sq 7, r) if r == homeRow: Castle(queen=theirs0.queen, king=False)
+        otherwise: theirs0
+    let ?phantom = given: require mover.piece == Pawn and (Abs dy) == 2; ? (Sq old.x, old.y + dir)
+    let white = match turn:
+        White: castle1
+        Black: theirs1
+    let black = match turn:
+        Black: castle1
+        White: theirs1
+    ? Game(board=b3, turn=(Opponent turn), white=white, black=black, phantom=?phantom, count=g.count + 1)
+
+?KingSquare: fn Game, Side -> ?Sq
+fn ?KingSquare g, c = ?Find Squares, \|k| match ?At g, k:
+    ? pc: pc.color == c and pc.piece == King
+    nil: False
+
+InCheck: fn Game, Side -> Bool
+fn InCheck g, c = match ?KingSquare g, c:
+    nil: False
+    ? k: Attacked g, k, (Opponent c)
+
+?Move: fn Game, Sq, Sq, Piece -> ?Game
+fn ?Move g, old, new, promo:
+    g2 <- ?Basic promo, g, g.turn, old, new
+    require not (InCheck g2, g.turn)
+    ? g2
+
+OwnSquares: fn Game -> [Sq]
+fn OwnSquares g = Filter Squares, \|k| match ?At g, k:
+    ? pc: pc.color == g.turn
+    nil: False
+
+HasMove: fn Game -> Bool
+fn HasMove g = Any (OwnSquares g), \|old| Any Squares, \|new| IsSome (?Move g, old, new, Queen)
+
+InCheckmate: fn Game -> Bool
+fn InCheckmate g = (InCheck g, g.turn) and not (HasMove g)
+
+InStalemate: fn Game -> Bool
+fn InStalemate g = not (InCheck g, g.turn) and not (HasMove g)
+
+Scenario: fn Game -> Text
+fn Scenario g = match InCheckmate g:
+    True: " has been checkmated"
+    False: match InStalemate g:
+        True: " would be next, but it's a stalemate"
+        False: match InCheck g, g.turn:
+            True: "'s turn, to get out of check"
+            False: "'s turn"
+
+Status: fn Game -> Text
+fn Status g = Concat [[(Show g.turn), (Scenario g)]]
+
+# a position from pieces, with both castling rights, for the tests
+Setup: fn [((Sq, Man))], Side -> Game
+fn Setup ps, turn = Game(board=(Fold ps, {}, \|b, e| Insert b, (First e), (Second e)), turn=turn, white=Castle(queen=True, king=True), black=Castle(queen=True, king=True), phantom=nil, count=0)
+
+WK: Man
+let WK = Man(color=White, piece=King)
+WR: Man
+let WR = Man(color=White, piece=Rook)
+WN: Man
+let WN = Man(color=White, piece=Knight)
+BK: Man
+let BK = Man(color=Black, piece=King)
+BR: Man
+let BR = Man(color=Black, piece=Rook)
+Corners: [((Sq, Man))]
+let Corners = [[ (((Sq 4, 0), WK)), (((Sq 7, 0), WR)), (((Sq 0, 0), WR)), (((Sq 4, 7), BK)) ]]
+
+CastleOk: fn [((Sq, Man))], Sq -> Bool
+fn CastleOk extra, to = IsSome (?Move (Setup (Concat2 Corners, extra), White), (Sq 4, 0), to, Queen)
+Concat2: fn [((Sq, Man))], [((Sq, Man))] -> [((Sq, Man))]
+fn Concat2 a, b = Fold b, a, \|acc, x| Append acc, x
+
+# the white king steps up and back, and so does the black one: the right is gone
+?KingWalk: ?Game
+let ?KingWalk = ?Then (?Then (?Then (?Then (? (Setup Corners, White)), (Sq 4, 0), (Sq 4, 1)), (Sq 4, 7), (Sq 4, 6)), (Sq 4, 1), (Sq 4, 0)), (Sq 4, 6), (Sq 4, 7)
+
+# a sequence of moves for the tests
+?Then: fn ?Game, Sq, Sq -> ?Game
+fn ?Then mg, a, b = given: g <- mg; ?Move g, a, b, Queen
+
+
+check moves:
+    IsSome (?Move Initial, (Sq 4, 1), (Sq 4, 3), Queen) => True
+    IsSome (?Move Initial, (Sq 4, 1), (Sq 4, 4), Queen) => False
+    IsSome (?Move Initial, (Sq 6, 0), (Sq 5, 2), Queen) => True
+    IsSome (?Move Initial, (Sq 5, 0), (Sq 2, 3), Queen) => False
+    IsSome (?Move Initial, (Sq 4, 6), (Sq 4, 4), Queen) => False
+    Size Initial.board => 32
+
+check status:
+    Status Initial => "White's turn"
+    Status (Or (?Then (?Then (?Then (?Move Initial, (Sq 5, 1), (Sq 5, 2), Queen), (Sq 4, 6), (Sq 4, 4)), (Sq 6, 1), (Sq 6, 3)), (Sq 3, 7), (Sq 7, 3)), Initial) => "White has been checkmated"
+
+check castling:
+    CastleOk [[]], (Sq 6, 0) => True
+    CastleOk [[]], (Sq 2, 0) => True
+    CastleOk [[ (((Sq 5, 7), BR)) ]], (Sq 6, 0) => False
+    CastleOk [[ (((Sq 4, 5), BR)) ]], (Sq 6, 0) => False
+    CastleOk [[ (((Sq 6, 7), BR)) ]], (Sq 6, 0) => False
+    CastleOk [[ (((Sq 1, 0), WN)) ]], (Sq 2, 0) => False
+    CastleOk [[ (((Sq 1, 7), BR)) ]], (Sq 2, 0) => True
+    IsSome (?Move (Setup [[ (((Sq 4, 0), WK)), (((Sq 4, 7), BK)) ]], White), (Sq 4, 0), (Sq 6, 0), Queen) => False
+
+check castling_moves_the_rook:
+    (Or (?Move (Setup Corners, White), (Sq 4, 0), (Sq 6, 0), Queen), Initial).board[(Sq 5, 0)] => ? Man(color=White, piece=Rook)
+    (Or (?Move (Setup Corners, White), (Sq 4, 0), (Sq 6, 0), Queen), Initial).board[(Sq 7, 0)] => nil
+
+check no_castling_after_the_king_moved:
+    ?KingWalk => ? ignore
+    IsSome (?Move (Or ?KingWalk, Initial), (Sq 4, 0), (Sq 6, 0), Queen) => False

@@ -1,0 +1,10 @@
+# Rule 3: a closing lambda bar last on its line opens a block; rule 5: inline colons
+let total = Fold xs, 0, \|acc, x|
+    let y = x * 2
+    acc + y
+let badge = \|n| if n > 10: "star" else: "plain"
+fn F x:
+    if x:
+        1
+    else:
+        2

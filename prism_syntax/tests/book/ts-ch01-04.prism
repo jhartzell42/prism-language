@@ -1,0 +1,8 @@
+# 02-type-system/book/ch-01-names-and-sigils.md, line 190
+@profile: @unit
+@profile:
+    !login <- @!login_form
+    $?user <- nil then ? !login
+    let $?name = $?user.name                       # both marks
+    let $name = Or $?name, "nobody"                # the ? is gone, and so is its mark
+    Ui.Label(text=$"{$name}: {Len $name} letters")

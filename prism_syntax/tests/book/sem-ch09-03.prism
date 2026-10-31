@@ -1,0 +1,6 @@
+# 01-semantics/book/ch-09-hosting-and-worlds.md, line 110
+fn @HostSome @child, ?Give = @HostDocument @child, \|p, e| match ?Give p, e:
+    ? b: b
+    nil: @Element e                    # the generic arm, written once
+
+fn @HostDocument @child, @Give = @HostSome @child, \|p, e| ? (@Give p, e)
