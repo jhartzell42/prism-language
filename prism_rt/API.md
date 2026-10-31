@@ -40,23 +40,29 @@ let built = tick(&program, None, &Inputs::none());          // tick 0, the build
 
 | Item | What it is |
 | --- | --- |
-| `Value` | The dynamic value: `Unit`, `Bool`, `Nat(BigInt)`, `Int(BigInt)`, `U8`, `Char`, `Text`, `Duration`, `Record`, `Tuple`, `Choice`, `Map(OrdMap)`, `Array(Vector)`, `Opt` (`?`), `Fallible` (`~`, an `Error` record on failure), `Closure`, `Element`, `Path`, and the handles `Event(NodeId)` (`!`), `Dynamic(NodeId)` (`$`), `Widget(Blueprint)` (`@`), `Ref` (`&`). |
-| `Value::{nat, int, text, some, nil, ok, error, record, ctor, tuple, array, map, element, click}` | Constructors. `error(kind, message)` is a failed `~T`. |
-| `Value::{field, as_bool, as_i128, as_text, as_element, is_plain}` | Accessors. |
+| `Value` | The dynamic value: `Unit`, `Bool`, `Nat(BigInt)`, `Int(BigInt)`, `U8`, `Float(f64)`, `Char`, `Text`, `Duration`, `Record`, `Tuple`, `Choice`, `Map(OrdMap)`, `Array(Vector)`, `Opt` (`?`), `Fallible` (`~`, an `Error` record on failure), `Closure`, `Element`, `Path`, and the handles `Event(NodeId)` (`!`), `Dynamic(NodeId)` (`$`), `Widget(Blueprint)` (`@`), `Ref` (`&`). |
+| `Value::{nat, int, float, text, some, nil, ok, error, record, ctor, tuple, array, map, element, click}` | Constructors. `error(kind, message)` is a failed `~T`. |
+| `Value::{field, as_bool, as_i128, as_float, as_text, as_element, is_plain}` | Accessors. |
+| `value::{float_spelling, float_eq, float_op, FloatOp}` | `Float` (D14): the transcript's spelling (shortest round trip, always a point, `nan`, `inf`, `-inf`), IEEE `==` for a program's `==`, and `+ - * / mod` in IEEE double. As a `Value`, a float is ordered by IEEE's total order (so `nan` can key a map) and never equals an integer. |
 | `Text` | A rope: `len` constant; `take`, `drop_front`, `concat`, `char_at`. |
 | `Record`, `Choice` | Named fields in declaration order; a constructor and its payload. |
 | `Closure::new(name, captured, f)`, `Closure::pure(name, f)`, `.call(args)` | A function value: `f(captured, args) -> Result<Value, Fault>`. Captured values are explicit so the collector traces them. Compares by identity. |
 | `Blueprint::new(name, captured, f)`, `Blueprint::pure(name, f)` | An `@` value: `f(&mut Build, captured, args) -> Result<Value, Fault>`. |
 | `Ref::new(v)`, `.get()`, `.set(v)` | An `&` cell for `&` blocks. |
-| `TagDecl::new(name, fields, output)` | `tag Fam.Tag of Element o: fields`. `FieldKind::{Identity, Live, Request}`; `OutputKind::{Unit, Event, Dynamic, Plain}`. |
+| `TagDecl::new(name, fields, output)` | `tag Fam.Tag of Element o: fields`. `FieldKind::{Identity, Live, Request}`; `OutputKind::{Unit, Event, Dynamic, Plain, Bundle(parts)}`. |
+| `OutputKind::Bundle(parts)` | `((WindowId, !WindowInput))`: the place's output is a tuple, one handle or value per part. The plain and dynamic parts share one first-value query (the value alone for one such part, a tuple for several); an answer by path fires the event parts (its value for one, a tuple of `? v`/`nil` for several); a push writes the dynamic parts by the same rule. Parts do not nest. |
 | `Element::new(&decl, fields)` | An element of a declared tag; live fields take a `Value::Dynamic` or a plain value, request fields a `Value::Event` (or nothing, for `never`). |
 | `Path`, `Segment::{Pos, Gen, Key}` | Paths; ordered as the book orders them. |
 | `Fault { kind, message }` | A failure that escapes a tick: the tick never happened. Return it from a closure or a blueprint. |
 | `nat_checked_sub`, `is_zero` | `Nat`'s `-?`, and a zero test. |
 
-`families::{ui, fs, process, time, test, gui}` hold the tag declarations the Worlds answer
-(`ui::button()`, `fs::contents()`, `process::exit()`, ...) and the values of their answers
-(`fs::contents_value(text)`, `fs::read()`, `fs::write(text)`, `gui::press(x, y)`).
+`families::{ui, fs, process, time, test, gui, cards}` hold the tag declarations the Worlds
+answer (`ui::button()`, `fs::contents()`, `process::exit()`, ...) and the values of their
+answers (`fs::contents_value(text)`, `fs::read()`, `fs::write(text)`). `gui` is the four
+tags a drawing World accepts, as the window library declares them (`window()` with its
+bundle output, `scene()`, `metrics()`, `focus()`), with `window_id`, `point`, `extent`,
+`rect`, `press(x, y)` (`Press Point(x=.., y=..)`) and the Test World's font,
+`test_font_extent`. `cards` is `Cards.Deck` and the unshuffled deck.
 
 ## Building a widget (`widget::Build`)
 
@@ -89,7 +95,7 @@ takes one, and `call` is transparent.
 | `later(&e)` | `@Later !e`, through `Time.After`. |
 | `rebuild(&src, ResultKind, &bp)` | `rebuild $x:`; `bp` gets `_`. Returns `unit` or a dynamic of the current generation's result. |
 | `for_each(&src, ResultKind, &bp)` | Keyed `for`; `bp` gets the key, the row's value (a dynamic over a dynamic collection) and `ix`. Returns `unit`, `!(K ==> T)`, or `$(K ==> T)`. Over a plain collection, built once. |
-| `host_document(&child, args, &supplier)` | `@HostDocument`; `supplier` gets `(Path, Element)`. Returns `((result, $doc))`. |
+| `host_document(&child, args, &supplier)` | `@HostDocument`; `supplier` gets `(Path, Element)` as emitted. Returns `((result, $doc))`, where `$doc` holds each child place's `Level` and moves when any of their live fields does (Semantics ch. 8, "The element tree is a dynamic"). |
 | `host_some(&child, args, &give)`, `host_list(&child, args, &answers, &supplier)` | `@HostSome` (`give` returns `? @b` or `nil` to forward), `@HostList`. |
 | `tick()`, `next_path()` | The construction's tick, and the path the next positioned statement takes. |
 
@@ -124,19 +130,21 @@ sigil.
 | `world::drive(&mut dyn World, &Program, patience) -> u8` | Build, then tick while the World has inputs or the program is `pending`; collects after every tick. |
 | `world::{EXIT_FAILED, EXIT_UNCHECKED}` | 1 and 2, CLI World policy. |
 | `world::cli::{CliWorld, MemFs, RealFs, FileSystem}` | `Fs.Contents`, `Fs.Output`, `Fs.File`, `Process.Args`, `Process.Exit`, `Time.After`. |
-| `world::test_world::TestWorld::{new, program, evaluator, run, verify}` | Runs a test-language script; `verify` compares the transcript byte for byte. `Report { transcript, failures, exit_code }`. |
-| `world::test_world::print_tick` | One tick in the transcript's format. |
+| `world::test_world::TestWorld::{new, program, evaluator, run, verify}` | Runs a test-language script; `verify` compares the transcript byte for byte. `Report { transcript, failures, exit_code }`. Steps include `click element path` (D9), `answer p` (the seeded deck, with `seed n` on the test line), and `compute until idle` printed as `compute until idle: k ticks, n to m`. First values come from `with` entries, then Pitch ch. 6's policy (`Gui.Window` answered `WindowId title`, `Gui.Metrics` from a font of nine units a character, fourteen high). |
+| `world::test_world::{print_tick, XorShift}` | One tick in the transcript's format; the seeded deck's generator and shuffle. |
 
 ## `Pod` (`pod`)
 
 | Item | What it is |
 | --- | --- |
-| `pod::print(&Value)`, `pod::print_path(&Path)` | The transcript's spelling. |
+| `pod::print(&Value)`, `pod::print_path(&Path)` | The transcript's spelling. A one-argument choice as a field's value prints bare (`window=WindowId "Chess"`); elsewhere a choice with a payload inside a value is parenthesized. |
+| `pod::{set_show_hook, ShowHook, print_structural}` | A program's `impl ^Show`: the interpreter registers a closure from a record or choice value to `Some(text)` (or `None` for no impl of its own), and the transcript, path keys included, prints by it (`0/[e2]/0`). `print_structural` ignores the hook, as a saved POD form does. |
 | `pod::read(&str)`, `pod::read_path(&str)` | Reading it back. |
 | `pod::read_pattern(&str) -> Pattern`, `Pattern::matches(&Value)` | The test language's patterns: `ignore`, `..`, `Fam.*`. |
 
 ## Document helpers (`document`)
 
-`document::clickable(x, y, w, h, path)` makes the `Draw.Clickable` scene item (D9);
-`document::find_clickable` and `document::elements_within` are what the Test World uses
-to resolve clicks and match checks at any depth.
+`document::clickable(x, y, w, h, path)` makes the `Draw.Clickable` scene item (D9), in
+`Float`s; `document::find_clickables` finds every one naming a path in a document's
+`Gui.Scene`s, its centre taken out through any enclosing `Draw.Group` turns, and
+`document::elements_within` is what the Test World uses to match checks at any depth.

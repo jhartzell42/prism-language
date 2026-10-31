@@ -234,6 +234,12 @@ pub(crate) enum Kind {
     /// A `for` whose rows end on dynamics, gathered: `$(K ==> T)`. Reads its rows map
     /// and each row's dynamic.
     ForDyn { rows: NodeId, inputs: Vec<NodeId>, cache: Cache2 },
+    /// A host document's child document as its readers see it, `$(Path ==> Elem c)`:
+    /// each child place's `Level` (Semantics ch. 8, "The element tree is a dynamic").
+    /// `raw` is the `Written` map of the elements as emitted, live fields holding
+    /// dynamics; `inputs` are those dynamics, so a label whose text moves moves the
+    /// document, and a reader sees only its value after the tick.
+    HostDoc { raw: NodeId, inputs: Vec<NodeId>, cache: Cache2 },
     /// `$v <- @Flatten $$d`: a hold written by its current inner's update event; adopts a
     /// new inner at the end of a tick and moves to it in the next one (round 47 SW).
     Flatten { outer: NodeId, inner: NodeId, cell: Cell2, adopting: bool },
@@ -266,7 +272,7 @@ impl Kind {
             Kind::Switch { inner, .. } => vec![*inner],
             Kind::Hold { src: Some(s), .. } => vec![*s],
             Kind::Lift { inputs, .. } => inputs.clone(),
-            Kind::ForDyn { inputs, .. } => inputs.clone(),
+            Kind::ForDyn { inputs, .. } | Kind::HostDoc { inputs, .. } => inputs.clone(),
             Kind::Flatten { inner, .. } => vec![*inner],
             Kind::Place(p) => p.requests.iter().map(|(_, e)| *e).collect(),
             _ => vec![],
@@ -279,7 +285,7 @@ impl Kind {
         match self {
             Kind::Lift { inputs, .. } => inputs.clone(),
             Kind::MapEntry { src, .. } => vec![*src],
-            Kind::ForDyn { rows, inputs, .. } => {
+            Kind::ForDyn { rows, inputs, .. } | Kind::HostDoc { raw: rows, inputs, .. } => {
                 let mut v = vec![*rows];
                 v.extend(inputs.iter().copied());
                 v
@@ -300,7 +306,7 @@ impl Kind {
             Kind::Sample { dyns, .. } => v.extend(dyns.iter().copied()),
             Kind::Gate { cond, .. } => v.push(*cond),
             Kind::DeferIn { out, .. } => v.push(*out),
-            Kind::ForDyn { rows, .. } => v.push(*rows),
+            Kind::ForDyn { rows, .. } | Kind::HostDoc { raw: rows, .. } => v.push(*rows),
             Kind::Rebuild(r) => v.push(r.result),
             Kind::For(f) => v.extend(f.result_nodes()),
             Kind::Host(h) => v.push(h.doc),
@@ -329,7 +335,7 @@ impl Kind {
             _ => {}
         }
         match self {
-            Kind::Lift { cache, .. } | Kind::MapEntry { cache, .. } | Kind::ForDyn { cache, .. } => {
+            Kind::Lift { cache, .. } | Kind::MapEntry { cache, .. } | Kind::ForDyn { cache, .. } | Kind::HostDoc { cache, .. } => {
                 out.extend(cache.values());
             }
             _ => {}
@@ -613,7 +619,7 @@ impl Graph {
             let propagate = {
                 let node = self.node_mut(r);
                 let closed = match &mut node.kind {
-                    Kind::Lift { cache, .. } | Kind::MapEntry { cache, .. } | Kind::ForDyn { cache, .. } => {
+                    Kind::Lift { cache, .. } | Kind::MapEntry { cache, .. } | Kind::ForDyn { cache, .. } | Kind::HostDoc { cache, .. } => {
                         Some(cache.close(m))
                     }
                     _ => None,
@@ -718,12 +724,30 @@ impl Graph {
                 self.put_cache(id, v.clone(), asof, until);
                 Ok((v, until))
             }
+            Kind::HostDoc { raw, cache, .. } => {
+                if let Some(hit) = cache.get(asof) {
+                    return Ok(hit);
+                }
+                let raw = *raw;
+                let (rm, mut until) = self.read(raw, asof)?;
+                let mut out = OrdMap::new();
+                if let Value::Map(rm) = rm {
+                    for (k, e) in rm.iter() {
+                        let (lv, u) = crate::document::project(self, e, asof)?;
+                        until = until.min(u);
+                        out.insert(k.clone(), lv);
+                    }
+                }
+                let v = Value::Map(out);
+                self.put_cache(id, v.clone(), asof, until);
+                Ok((v, until))
+            }
             _ => Err(Fault::runtime("a sample of something that is not a dynamic")),
         }
     }
 
     fn put_cache(&mut self, id: NodeId, v: Value, from: Tick, until: Tick) {
-        if let Kind::Lift { cache, .. } | Kind::MapEntry { cache, .. } | Kind::ForDyn { cache, .. } = self.kind_mut(id)
+        if let Kind::Lift { cache, .. } | Kind::MapEntry { cache, .. } | Kind::ForDyn { cache, .. } | Kind::HostDoc { cache, .. } = self.kind_mut(id)
         {
             cache.put(v, from, until);
         }
@@ -864,7 +888,7 @@ impl Graph {
                 }
                 _ => None,
             },
-            Kind::Lift { .. } | Kind::MapEntry { .. } | Kind::ForDyn { .. } => {
+            Kind::Lift { .. } | Kind::MapEntry { .. } | Kind::ForDyn { .. } | Kind::HostDoc { .. } => {
                 let new = self.read(id, now)?.0;
                 let old = self.read(id, before)?.0;
                 if new != old { Some(new) } else { None }

@@ -222,8 +222,7 @@ pub enum FieldKind {
 }
 
 /// What a tag answers its place with, the output in `tag T of Element o`.
-/// Bundles (`((!a, $b))`) are not supported on this branch (see the crate report).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum OutputKind {
     /// No output parameter: every element is answered with `unit` (ch. 8, "Elements with
     /// no index").
@@ -234,6 +233,25 @@ pub enum OutputKind {
     Dynamic,
     /// A plain `o`: answered once, by the first-value query, when the place is made.
     Plain,
+    /// A bundle, `((WindowId, !WindowInput))`: a tuple whose components are each answered
+    /// as that kind alone is (Semantics ch. 8, "Elements cross as two projections": a type
+    /// with both inside becomes several channels, and the program never sees the split).
+    /// The place's output is the tuple of the components' handles and values.
+    ///
+    /// How a World addresses the components (the books leave it open; each is this
+    /// crate's pick, listed in API.md):
+    ///
+    /// - **The first-value query** answers the plain and dynamic components together: with
+    ///   one such component, the World gives its value; with several, a tuple of them in
+    ///   order.
+    /// - **An answer by path** fires the event components: with one, the answer is its
+    ///   value (`1: Press Point(..)`, doubt ED); with several, a tuple with `? v` or `nil`
+    ///   per event component.
+    /// - **A push** writes the dynamic components, by the same rule as the first value
+    ///   over the dynamic components alone.
+    ///
+    /// A component is `Event`, `Dynamic` or `Plain`; a bundle does not nest.
+    Bundle(Vec<OutputKind>),
 }
 
 /// A tag declaration: `tag Ui.Button of Element !Click: label: $Text`.
@@ -519,6 +537,11 @@ pub enum Value {
     Int(BigInt),
     /// `U8`, the one sized integer on this branch (decisions.md, Features in and out).
     U8(u8),
+    /// `Float`, IEEE double (decisions.md D14; Type System ch. 2, Numbers). Printed as the
+    /// shortest decimal that reads back ([`float_spelling`]). As a value it is ordered by
+    /// IEEE's total order, so it can key a map; `==` in a program is IEEE equality
+    /// ([`float_eq`]), which an interpreter asks for by name.
+    Float(f64),
     Char(char),
     Text(Text),
     /// A `Duration` in nanoseconds; only as data on this branch (no arithmetic), for
@@ -556,6 +579,9 @@ impl Value {
     }
     pub fn text(s: &str) -> Value {
         Value::Text(Text::new(s))
+    }
+    pub fn float(f: f64) -> Value {
+        Value::Float(f)
     }
     pub fn some(v: Value) -> Value {
         Value::Opt(Some(Rc::new(v)))
@@ -617,6 +643,13 @@ impl Value {
             _ => None,
         }
     }
+    /// A `Float`'s value.
+    pub fn as_float(&self) -> Option<f64> {
+        match self {
+            Value::Float(f) => Some(*f),
+            _ => None,
+        }
+    }
     pub fn as_text(&self) -> Option<&Text> {
         match self {
             Value::Text(t) => Some(t),
@@ -664,6 +697,7 @@ impl Value {
             Value::Unit => 0,
             Value::Bool(_) => 1,
             Value::Nat(_) | Value::Int(_) | Value::U8(_) => 2,
+            Value::Float(_) => 20,
             Value::Char(_) => 3,
             Value::Text(_) => 4,
             Value::Duration(_) => 5,
@@ -716,6 +750,7 @@ impl Ord for Value {
         match (self, other) {
             (Unit, Unit) => Ordering::Equal,
             (Bool(a), Bool(b)) => a.cmp(b),
+            (Float(a), Float(b)) => a.total_cmp(b),
             (Char(a), Char(b)) => a.cmp(b),
             (Text(a), Text(b)) => a.cmp(b),
             (Duration(a), Duration(b)) => a.cmp(b),
@@ -759,6 +794,58 @@ impl fmt::Display for Value {
     }
 }
 
+// ---------------------------------------------------------------------------------------
+// Float (decisions.md D14)
+// ---------------------------------------------------------------------------------------
+
+/// The transcript's spelling of a float (Type System ch. 2, "Plain values, and how they
+/// print"): the shortest decimal that reads back, always with a point, never with an
+/// exponent; `nan`, `inf`, `-inf`. Rust's `Display` for `f64` is the shortest round-trip
+/// decimal and never writes an exponent, so only the point is added.
+pub fn float_spelling(f: f64) -> String {
+    if f.is_nan() {
+        return "nan".into();
+    }
+    if f.is_infinite() {
+        return if f > 0.0 { "inf".into() } else { "-inf".into() };
+    }
+    let s = format!("{f}");
+    if s.contains('.') { s } else { format!("{s}.0") }
+}
+
+/// `==` on `Float`: IEEE equality, so `nan != nan` and `0.0 == -0.0` (Type System ch. 2).
+/// The value order ([`Ord`] on [`Value`]) is IEEE's total order instead, which `^Ord` is.
+pub fn float_eq(a: f64, b: f64) -> bool {
+    a == b
+}
+
+/// The arithmetic operators on `Float` (Type System ch. 2, Numbers; ch. 3, `Quotient`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FloatOp {
+    Add,
+    Sub,
+    Mul,
+    /// `/` on `Float` gives a `Float` (IEEE: `x / 0.0` is an infinity or `nan`, never a
+    /// failure; Semantics ch. 10, "Total operations").
+    Div,
+    /// `mod`: the remainder with the divisor's sign, as `mod` floors on integers.
+    Mod,
+}
+
+/// One `Float` operation, IEEE double throughout.
+pub fn float_op(op: FloatOp, x: f64, y: f64) -> f64 {
+    match op {
+        FloatOp::Add => x + y,
+        FloatOp::Sub => x - y,
+        FloatOp::Mul => x * y,
+        FloatOp::Div => x / y,
+        FloatOp::Mod => {
+            let r = x % y;
+            if r != 0.0 && (r < 0.0) != (y < 0.0) { r + y } else { r }
+        }
+    }
+}
+
 /// Integer helpers an interpreter needs for `Nat`'s `-?` (round 47 NS): `nil` below zero.
 pub fn nat_checked_sub(a: &BigInt, b: &BigInt) -> Value {
     let d = a - b;
@@ -783,6 +870,34 @@ mod tests {
         assert_eq!(Value::nat(3), Value::int(3));
         assert_eq!(Value::U8(3), Value::nat(3));
         assert!(Value::int(-1) < Value::nat(0));
+    }
+
+    #[test]
+    fn floats_print_shortest_with_a_point() {
+        for (f, s) in [
+            (280.0, "280.0"),
+            (0.1, "0.1"),
+            (-0.5, "-0.5"),
+            (1e21, "1000000000000000000000.0"),
+            (1e-7, "0.0000001"),
+            (-0.0, "-0.0"),
+            (f64::NAN, "nan"),
+            (f64::INFINITY, "inf"),
+            (f64::NEG_INFINITY, "-inf"),
+            (0.1 + 0.2, "0.30000000000000004"),
+        ] {
+            assert_eq!(float_spelling(f), s);
+        }
+    }
+
+    #[test]
+    fn floats_order_totally_and_compare_by_ieee() {
+        assert!(Value::float(-1.0) < Value::float(0.5));
+        assert_eq!(Value::float(f64::NAN), Value::float(f64::NAN));
+        assert!(!float_eq(f64::NAN, f64::NAN));
+        assert!(float_eq(0.0, -0.0));
+        assert_eq!(float_op(FloatOp::Mod, -1.0, 3.0), 2.0);
+        assert_eq!(float_op(FloatOp::Div, 1.0, 0.0), f64::INFINITY);
     }
 
     #[test]

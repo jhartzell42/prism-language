@@ -556,6 +556,10 @@ fn output_kind(t: &Type) -> OutputKind {
         (Some(Sigil::Bang), _) => OutputKind::Event,
         (Some(Sigil::Dollar), _) => OutputKind::Dynamic,
         (None, TypeKind::Unit(_)) => OutputKind::Unit,
+        // A bundle, `((WindowId, !WindowInput))`: each component by its own sigil.
+        (None, TypeKind::Tuple(parts)) if parts.iter().any(|p| outer_sigil(p).is_some()) => {
+            OutputKind::Bundle(parts.iter().map(output_kind).collect())
+        }
         _ => OutputKind::Plain,
     }
 }

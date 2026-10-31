@@ -27,7 +27,7 @@ use prism_syntax::ast::*;
 
 use crate::interp::{Interp, Loc, Scopes};
 use crate::load::{load, Loaded, ModId, ModInfo};
-use crate::world::{book_transcript, row_check, UnwrapWorld, CLI_FAMILIES};
+use crate::world::{row_check, UnwrapWorld, CLI_FAMILIES};
 
 /// What a command printed and the code it exits with.
 #[derive(Debug, Clone, Default)]
@@ -219,8 +219,20 @@ pub fn test_files(files: &[(String, String)], scripts: &[(String, String)]) -> O
                 Err(f) => Err(f.message),
             }
         }));
+        // A type with its own `^Show` prints by it in the transcript, a path's key
+        // included (Type System ch. 2): prism_rt asks the interpreter through its hook.
+        let i3 = interp.clone();
+        let hook: prism_rt::pod::ShowHook = Rc::new(move |v: &Value| {
+            let ty = crate::ops::type_name(&i3.l, v);
+            if !i3.has_impl("Show", &ty) {
+                return None;
+            }
+            i3.show(v, None, Loc { module: i3.l.prelude, span: Default::default() }).ok()
+        });
+        let before = prism_rt::pod::set_show_hook(Some(hook));
         let report = world.run(&s.text);
-        let transcript = book_transcript(&report.transcript);
+        prism_rt::pod::set_show_hook(before);
+        let transcript = report.transcript.clone();
         if !out.stdout.is_empty() {
             out.stdout.push('\n');
         }

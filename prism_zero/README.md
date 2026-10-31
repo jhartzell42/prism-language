@@ -82,10 +82,8 @@ what compiler zero does. Each is Claude's, for Jimmy to overturn.
   that is not negative is nearly always a literal a checker would have typed `Nat`.
 - **MD `mod`** gives a plain number (floor modulo); `x mod 0` is `x`. `/` gives `?` on
   integers, IEEE on `Float`.
-- **FL `Float` (D14)** is a payload-free choice whose constructor is the float's
-  transcript spelling (`280.0`, `nan`): `prism_rt::Value` has no float, and prism_zero
-  may not change prism_rt. `pod::print` then prints it as Type System ch. 2 spells it;
-  arithmetic, equality and order decode it; an integer literal meeting a float is a float.
+- **FL `Float` (D14)** is `prism_rt`'s `Value::Float`, with its arithmetic
+  (`value::float_op`); an integer literal meeting a float is a float.
 - **ER `Error(..)` is the failed `~T`**, one value for both (as `prism_rt::pod` reads it
   back); a field of a failed `~` passes the `Error` through unless the `Error` has that
   field.
@@ -110,23 +108,21 @@ what compiler zero does. Each is Claude's, for Jimmy to overturn.
   subtraction is not done.
 - **PC Prompt cycles** are caught only at run time, as a definition needed while it is
   evaluated; a cycle through events is not found statically.
-- **CT Compute ticks' transcript.** `prism_zero test` rewrites `prism_rt`'s `compute until
-  idle: k` and its empty ticks into Conformance ch. 1's `compute until idle: k ticks, n
-  to m` with the empty ticks dropped.
 - **TP Code templates** evaluate to text (runs, placeholders, brace blocks, calls); the
   POD form of a templated language (`templatetext`, `templateplaceholder`) is not built.
 
-## Gaps in prism_rt that prism_zero meets
+## What fails, and whose it is
 
-- No `Float` in `Value` or in `pod::read` (scripts cannot write `280.0`); no float in
-  the Test World's `Press` (it sends `Press(x=Int, y=Int)`).
-- The Test World has no `click element path` step (it has `click at path`, which falls
-  back to the scene), no `answer` policy (the seeded deck), and prints `compute until
-  idle: k` with every tick (fixed up here, CT).
-- `Level` does not project elements nested inside a live field (`Ui.Grid(children=..)`
-  prints raw handles), and paths and the transcript ignore a program's `impl ^Show`.
-- Outputs that are bundles (`Gui.Window of Element ((WindowId, !WindowInput))`) are not
-  supported (`OutputKind` has no bundle).
+- **The chess board under `@$main`** (`tests/conformance.rs`, ignored) stops in tick 0,
+  in this crate's binding groups (pick BG) and result kinds (pick RK); prism_rt has
+  nothing missing for it, and the board alone (`@$board`) passes.
+  - `@Window`'s supplier lambda reads `!route`, a `let` bound below it, which BG
+    evaluates on first use: through `$placed` it reaches `$sizes` (bound by a later
+    line) and `$elems` (bound by the lambda's own line). An event `let` read above the
+    lines it depends on needs a forward event, resolved once the lines have run.
+  - `$sizes <- for text, ignore <- ..: Gui.Metrics(text=text)` ends its rows on an
+    element whose tag answers `$Extent`, which RK, reading the page, takes for a plain
+    row, so the rows are handed back ungathered.
 
 ## Doubts
 

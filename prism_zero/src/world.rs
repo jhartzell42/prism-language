@@ -1,6 +1,5 @@
 //! The Worlds as compiler zero uses them: `prism_rt`'s CLI World with the
-//! `Prelude.Unwrap` policy on top, the Test World's transcript in the Conformance book's
-//! spelling, and the root's row check before tick 0.
+//! `Prelude.Unwrap` policy on top, and the root's row check before tick 0.
 
 use std::collections::{BTreeSet, HashSet};
 use std::rc::Rc;
@@ -127,61 +126,6 @@ impl<W: World> World for UnwrapWorld<W> {
     fn failed(&mut self, fault: &Fault) -> Option<u8> {
         self.inner.failed(fault)
     }
-}
-
-/// The Test World's transcript, with `compute until idle` in the Conformance book's
-/// spelling (ch. 1, "The transcript"): `compute until idle: k ticks, n to m`, then each of
-/// its ticks that has a section; a tick with every section empty prints only in the
-/// count. `prism_rt`'s Test World prints `compute until idle: k` and every tick; README.md
-/// lists the difference as prism_rt's.
-pub fn book_transcript(t: &str) -> String {
-    let lines: Vec<&str> = t.split('\n').collect();
-    let mut out: Vec<String> = Vec::new();
-    let mut i = 0;
-    let mut next_tick: i64 = 0;
-    while i < lines.len() {
-        let l = lines[i];
-        if let Some(n) = l.strip_prefix("tick ").and_then(|n| n.parse::<i64>().ok()) {
-            next_tick = n + 1;
-        }
-        if let Some(k) = l.strip_prefix("compute until idle: ").and_then(|k| k.parse::<i64>().ok()) {
-            let first = next_tick;
-            let last = first + k - 1;
-            out.push(match k {
-                0 => "compute until idle: 0 ticks".to_string(),
-                1 => format!("compute until idle: 1 tick, {first} to {last}"),
-                _ => format!("compute until idle: {k} ticks, {first} to {last}"),
-            });
-            i += 1;
-            // Its ticks: keep the ones with a section.
-            let mut seen = 0;
-            while seen < k && i < lines.len() {
-                if lines[i].is_empty() && lines.get(i + 1).is_some_and(|x| x.starts_with("tick ")) {
-                    let header = lines[i + 1];
-                    let mut j = i + 2;
-                    let mut body = Vec::new();
-                    while j < lines.len() && lines[j].starts_with("  ") {
-                        body.push(lines[j]);
-                        j += 1;
-                    }
-                    if !body.is_empty() {
-                        out.push(String::new());
-                        out.push(header.to_string());
-                        out.extend(body.iter().map(|s| s.to_string()));
-                    }
-                    seen += 1;
-                    i = j;
-                } else {
-                    break;
-                }
-            }
-            next_tick = last + 1;
-            continue;
-        }
-        out.push(l.to_string());
-        i += 1;
-    }
-    out.join("\n")
 }
 
 /// The families a module's expressions name by a tag: the families its widgets may emit.

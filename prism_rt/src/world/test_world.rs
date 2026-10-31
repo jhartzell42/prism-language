@@ -5,10 +5,17 @@
 //!
 //! - **One line is one tick** (`tick n` headers, numbered from 0), except `compute until
 //!   idle`, which opens as many no-input ticks as the program's `pending` asks for and
-//!   prints their count (decisions.md D6).
+//!   prints `compute until idle: k ticks, n to m`, then each of its ticks that has a
+//!   section; a tick with every section empty prints only in the count (decisions.md D6;
+//!   Conformance ch. 1, "The transcript"). With none to run it prints `compute until
+//!   idle: 0 ticks`, and with one, `1 tick, n to n` (spellings the book leaves open).
 //! - **Nothing arrives that the test did not write.** It never opens a tick on its own
-//!   (round 47 OT), never answers a request, and answers first-value queries only from
-//!   the ready state the test's `with` and `push` entries write.
+//!   (round 47 OT), never answers a request unless the test writes `answer`, and answers
+//!   first-value queries from the ready state the test's `with` and `push` entries
+//!   write, and by Pitch ch. 6's policy for pictures: `Gui.Window` with `WindowId title`
+//!   (README doubt WI), `Gui.Metrics` from its bundled font, nine units a character and
+//!   fourteen high (doubt TM), so a GUI test needs no `with` lines (doubt SW). A `with`
+//!   entry for either wins over the policy.
 //! - **The transcript's sections**, each omitted when empty, in this order: `in:`,
 //!   `added:`, `changed:`, `torn down:`, `requested:`, `result:`; `aborted` in place of
 //!   everything after `in:` for a tick that failed, followed by `| ...` lines that are
@@ -17,15 +24,21 @@
 //!   whose tick aborted with no `=> aborted` under it fails the test.
 //!
 //! The steps: `build`, `tick`, `compute`, `compute until idle`, `with E = v`, `push E =
-//! v`, `send p, v`, `click p`, `send at path, v`, `click at path`, several deliveries
-//! joined by commas. `answer` (the seeded deck's policy) is not supported here. Since
-//! there is no Prism parser yet, delivered values, `with` entries and patterns are read in
-//! the transcript's own spelling (`pod`), and a `check` block's lines are `value =>
-//! pattern` in that spelling unless the World is given an evaluator.
+//! v`, `send p, v`, `click p`, `send at path, v`, `click at path`, `click element path`,
+//! `answer p`, several deliveries joined by commas. Since the runtime has no Prism
+//! parser, delivered values, `with` entries and patterns are read in the transcript's own
+//! spelling (`pod`), and a `check` block's lines are `value => pattern` in that spelling
+//! unless the World is given an evaluator.
 //!
-//! `click at path` on a path where no place is, but where a window's scene carries
-//! `Draw.Clickable(rect, path)`, delivers a `Press` at the centre of the rectangle to the
-//! window (decisions.md D9).
+//! - **`click element path`** (decisions.md D9): the one `Draw.Clickable` naming `path`
+//!   in the windows' last scenes (the document as the tick opens) gives a `Press` at its
+//!   rectangle's centre, delivered to the `Gui.Window` place whose id the scene names. A
+//!   path is matched by its printed spelling, a key by its `^Show` (README doubt KY).
+//!   None found, or two, fails the line, naming every window searched.
+//! - **`answer p`** answers the pending `Cards.Deck` request of the one place matching
+//!   `p` with the next card of its shuffle (Conformance ch. 1, "The seeded deck"): one
+//!   xorshift64* generator per test, seeded by the test line's `seed n`; each new deck
+//!   place takes 51 outputs from it as it is built, path order within a tick.
 //!
 //! Exit codes, as the CLI's: 0 when every test passes, 1 when a check fails or a tick
 //! aborts unexpected, 2 when the script does not parse.
@@ -36,7 +49,8 @@ use std::rc::Rc;
 
 use im_rc::OrdMap;
 
-use crate::document::{elements_within, find_clickable, ReadyMap};
+use crate::document::{elements_within, find_clickables, ReadyState};
+use crate::families::{cards, gui};
 use crate::gc;
 use crate::pod::{self, Pattern};
 use crate::tick::{tick, Inputs, Outputs, Program, ResultReport, State};
@@ -150,7 +164,17 @@ impl TestWorld {
             failures.push(format!("test {}: no program named @{}", t.name, t.program));
             return;
         };
-        let mut run = Run { program, state: None, ready: OrdMap::new(), next_tick: 0, pending: false, last_result: None };
+        let mut run = Run {
+            program,
+            state: None,
+            ready: OrdMap::new(),
+            next_tick: 0,
+            pending: false,
+            last_result: None,
+            windows: BTreeMap::new(),
+            rng: t.seed.map(XorShift::new),
+            decks: BTreeMap::new(),
+        };
         for step in &t.steps {
             if let Err(e) = run.step(step, out, failures, &t.name) {
                 failures.push(format!("test {} line {}: {e}", t.name, step.line));
@@ -168,6 +192,67 @@ struct Run<'a> {
     next_tick: usize,
     pending: bool,
     last_result: Option<Value>,
+    /// Each `Gui.Window` place's id, as its first value answered it.
+    windows: BTreeMap<Path, Value>,
+    /// The test's generator, when its line names a seed.
+    rng: Option<XorShift>,
+    /// Each `Cards.Deck` place's shuffle and its requests not yet answered.
+    decks: BTreeMap<Path, Deck>,
+}
+
+/// A deck place's shuffle, the next position to draw, and its pending requests.
+struct Deck {
+    cards: Vec<Value>,
+    next: usize,
+    pending: usize,
+}
+
+/// xorshift64*, the generator every implementation shares (Conformance ch. 1, "The
+/// seeded deck"; round 47 SD).
+pub struct XorShift(u64);
+
+impl XorShift {
+    /// The state is the seed, or `0x9E3779B97F4A7C15` for the seed 0, since the state
+    /// must not be zero.
+    pub fn new(seed: u64) -> XorShift {
+        XorShift(if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed })
+    }
+    pub fn next_output(&mut self) -> u64 {
+        let mut x = self.0;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.0 = x;
+        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+    /// A deck shuffled by Fisher-Yates from the top: for `i` from 51 down to 1, `j` is
+    /// the next output modulo `i + 1`, and positions `i` and `j` swap.
+    pub fn shuffle(&mut self) -> Vec<Value> {
+        let mut deck = cards::unshuffled();
+        for i in (1..deck.len()).rev() {
+            let j = (self.next_output() % (i as u64 + 1)) as usize;
+            deck.swap(i, j);
+        }
+        deck
+    }
+}
+
+/// The Test World's ready state: the test's `with` entries, then Pitch ch. 6's policy for
+/// pictures.
+struct TestReady(OrdMap<Value, Value>);
+
+impl ReadyState for TestReady {
+    fn first_value(&self, element: &Value) -> Option<Value> {
+        if let Some(v) = self.0.get(element) {
+            return Some(v.clone());
+        }
+        let e = element.as_element()?;
+        match &*e.tag {
+            "Gui.Window" => Some(gui::window_id(&e.field("title").and_then(Value::as_text)?.to_string())),
+            "Gui.Metrics" => Some(gui::test_font_extent(&e.field("text").and_then(Value::as_text)?.to_string())),
+            _ => None,
+        }
+    }
 }
 
 /// What a step's last tick left, for its checks.
@@ -178,7 +263,7 @@ struct Outcome {
 
 impl Run<'_> {
     fn inputs(&self) -> Inputs {
-        Inputs::with_ready(Rc::new(ReadyMap(self.ready.clone())))
+        Inputs::with_ready(Rc::new(TestReady(self.ready.clone())))
     }
 
     fn step(&mut self, step: &Step, out: &mut String, failures: &mut Vec<String>, test: &str) -> Result<(), String> {
@@ -200,6 +285,7 @@ impl Run<'_> {
             }
             StepKind::ComputeUntilIdle => {
                 self.need_built()?;
+                let first = self.next_tick;
                 let mut ticks = String::new();
                 let mut count = 0;
                 let mut last = None;
@@ -208,7 +294,12 @@ impl Run<'_> {
                         return Err(format!("`compute until idle` ran out of patience after {count} ticks"));
                     }
                     let inputs = self.inputs();
-                    let o = self.one_tick(inputs, Vec::new(), &mut ticks);
+                    let mut one = String::new();
+                    let o = self.one_tick(inputs, Vec::new(), &mut one);
+                    // A tick with every section empty prints only in the count.
+                    if one.lines().count() > 2 {
+                        ticks.push_str(&one);
+                    }
                     count += 1;
                     let aborted = o.outputs.is_err();
                     last = Some(o);
@@ -216,7 +307,11 @@ impl Run<'_> {
                         break;
                     }
                 }
-                let _ = writeln!(out, "\ncompute until idle: {count}");
+                let _ = match count {
+                    0 => writeln!(out, "\ncompute until idle: 0 ticks"),
+                    1 => writeln!(out, "\ncompute until idle: 1 tick, {first} to {first}"),
+                    k => writeln!(out, "\ncompute until idle: {k} ticks, {first} to {}", first + k - 1),
+                };
                 out.push_str(&ticks);
                 match last {
                     Some(o) => o,
@@ -239,7 +334,11 @@ impl Run<'_> {
                 let mut inputs = self.inputs();
                 let mut seen: Vec<Path> = Vec::new();
                 for d in ds {
-                    let (path, value) = resolve(&doc, d)?;
+                    let (path, value) = match d {
+                        Delivery::Answer(p) => self.answer(&doc, p)?,
+                        Delivery::Element(target) => self.click_element(&doc, target)?,
+                        _ => resolve(&doc, d)?,
+                    };
                     if seen.contains(&path) {
                         return Err(format!("two deliveries to one place, {path}"));
                     }
@@ -253,6 +352,86 @@ impl Run<'_> {
         };
         self.check(step, &outcome, failures, test);
         Ok(())
+    }
+
+    /// `answer p`: the next card of the matching deck place's shuffle, for its pending
+    /// request.
+    fn answer(&mut self, doc: &crate::document::Document, p: &Pattern) -> Result<(Path, Value), String> {
+        let path = one_place(doc, p)?;
+        if self.rng.is_none() {
+            return Err("`answer` deals from the test's seed, and this test names none (`test name, @w, seed n:`)".into());
+        }
+        let Some(deck) = self.decks.get_mut(&path) else {
+            return Err(format!("{path} is not a Cards.Deck place: `answer` has a policy for decks only"));
+        };
+        if deck.pending == 0 {
+            return Err(format!("the deck at {path} has no pending request to answer"));
+        }
+        let Some(card) = deck.cards.get(deck.next).cloned() else {
+            return Err(format!("the deck at {path} has dealt all 52 cards"));
+        };
+        deck.next += 1;
+        deck.pending -= 1;
+        Ok((path, card))
+    }
+
+    /// `click element path`: a `Press` at the centre of the one `Draw.Clickable` naming
+    /// `path` in the windows' last scenes, to the window the scene draws.
+    fn click_element(&self, doc: &crate::document::Document, target: &str) -> Result<(Path, Value), String> {
+        let searched = || {
+            let ws: Vec<String> = self.windows.iter().map(|(p, id)| format!("{p} ({})", pod::print(id))).collect();
+            if ws.is_empty() { "no window".to_string() } else { ws.join(", ") }
+        };
+        let found = find_clickables(doc, target);
+        let c = match found.as_slice() {
+            [one] => one,
+            [] => return Err(format!("no Draw.Clickable names {target}; searched {}", searched())),
+            many => {
+                return Err(format!(
+                    "{} Draw.Clickables name {target}, in the scenes at {}; searched {}",
+                    many.len(),
+                    many.iter().map(|c| c.scene.to_string()).collect::<Vec<_>>().join(", "),
+                    searched()
+                ));
+            }
+        };
+        let windows: Vec<&Path> = self.windows.iter().filter(|(_, id)| **id == c.window).map(|(p, _)| p).collect();
+        match windows.as_slice() {
+            [w] => Ok(((*w).clone(), gui::press(c.x, c.y))),
+            [] => Err(format!("the scene at {} draws for {}, and no Gui.Window has that id; searched {}", c.scene, pod::print(&c.window), searched())),
+            _ => Err(format!("two windows have the id {}; searched {}", pod::print(&c.window), searched())),
+        }
+    }
+
+    /// What a tick's outputs tell the Test World's policies: new windows' ids, new decks'
+    /// shuffles, decks' requests, and places that left.
+    fn observe(&mut self, o: &Outputs) {
+        for (p, _) in &o.patch.removed {
+            self.windows.remove(p);
+            self.decks.remove(p);
+        }
+        let ready = TestReady(self.ready.clone());
+        for (p, e) in &o.patch.added {
+            let Some(el) = e.as_element() else { continue };
+            match &*el.tag {
+                "Gui.Window" => {
+                    if let Some(id) = ready.first_value(e) {
+                        self.windows.insert(p.clone(), id);
+                    }
+                }
+                "Cards.Deck" => {
+                    if let Some(rng) = self.rng.as_mut() {
+                        self.decks.insert(p.clone(), Deck { cards: rng.shuffle(), next: 0, pending: 0 });
+                    }
+                }
+                _ => {}
+            }
+        }
+        for r in &o.requests {
+            if let Some(d) = self.decks.get_mut(&r.path) {
+                d.pending += 1;
+            }
+        }
     }
 
     fn need_built(&self) -> Result<(), String> {
@@ -272,6 +451,7 @@ impl Run<'_> {
             if let Some(ResultReport::Value(v)) = &o.result {
                 self.last_result = Some(v.clone());
             }
+            self.observe(o);
         }
         if let Some(st) = self.state.as_mut() {
             gc::collect(st);
@@ -330,37 +510,34 @@ impl Run<'_> {
     }
 }
 
-/// Resolve a delivery to a path and a value, against the document as the tick opens.
+/// Resolve a `send` or `click` to a path and a value, against the document as the tick
+/// opens.
 fn resolve(doc: &crate::document::Document, d: &Delivery) -> Result<(Path, Value), String> {
     let (target, value) = match d {
         Delivery::Send(t, v) => (t, v.clone()),
         Delivery::Click(t) => (t, Value::click()),
-        Delivery::Answer => return Err("`answer` needs a policy this World does not have".into()),
+        Delivery::Answer(_) | Delivery::Element(_) => unreachable!("resolved by the run"),
     };
     match target {
-        Target::At(text) => {
-            if let Some(path) = doc.keys().find(|p| pod::print_path(p) == *text) {
-                return Ok((path.clone(), value));
-            }
-            if matches!(d, Delivery::Click(_)) {
-                if let Some((window, x, y)) = find_clickable(doc, text) {
-                    return Ok((window, crate::families::gui::press(x, y)));
-                }
-            }
-            Err(format!("no place at {text}"))
-        }
-        Target::Pattern(p) => {
-            let found: Vec<&Path> = doc.iter().filter(|(_, e)| p.matches(e)).map(|(path, _)| path).collect();
-            match found.as_slice() {
-                [one] => Ok(((*one).clone(), value)),
-                [] => Err(format!("no place matches {p:?}")),
-                many => Err(format!(
-                    "{} places match: {}",
-                    many.len(),
-                    many.iter().map(|p| pod::print_path(p)).collect::<Vec<_>>().join(", ")
-                )),
-            }
-        }
+        Target::At(text) => match doc.keys().find(|p| pod::print_path(p) == *text) {
+            Some(path) => Ok((path.clone(), value)),
+            None => Err(format!("no place at {text}")),
+        },
+        Target::Pattern(p) => Ok((one_place(doc, p)?, value)),
+    }
+}
+
+/// The one place of the document matching a pattern.
+fn one_place(doc: &crate::document::Document, p: &Pattern) -> Result<Path, String> {
+    let found: Vec<&Path> = doc.iter().filter(|(_, e)| p.matches(e)).map(|(path, _)| path).collect();
+    match found.as_slice() {
+        [one] => Ok((*one).clone()),
+        [] => Err(format!("no place matches {p:?}")),
+        many => Err(format!(
+            "{} places match: {}",
+            many.len(),
+            many.iter().map(|p| pod::print_path(p)).collect::<Vec<_>>().join(", ")
+        )),
     }
 }
 
@@ -453,6 +630,8 @@ enum Block {
 struct TestBlock {
     name: String,
     program: String,
+    /// `seed n` on the test line: the seeded deck's generator.
+    seed: Option<u64>,
     steps: Vec<Step>,
 }
 
@@ -480,8 +659,11 @@ enum StepKind {
 enum Delivery {
     Send(Target, Value),
     Click(Target),
-    /// `answer p`: a policy's answer, which this World does not have.
-    Answer,
+    /// `click element path`: the path as written, compared with the printed paths of the
+    /// scenes' `Draw.Clickable`s.
+    Element(String),
+    /// `answer p`: the seeded deck's answer to the matching place's pending request.
+    Answer(Pattern),
 }
 
 enum Target {
@@ -595,6 +777,13 @@ fn parse_test(no: usize, head: &str, body: &[(usize, &str)]) -> Result<TestBlock
     }
     let name = parts[0].trim().to_string();
     let program = parts[1].trim().strip_prefix('@').ok_or(format!("line {no}: the program is written @name"))?;
+    let mut seed = None;
+    for extra in &parts[2..] {
+        match extra.trim().strip_prefix("seed ") {
+            Some(n) => seed = Some(n.trim().parse::<u64>().map_err(|_| format!("line {no}: a seed is a whole number"))?),
+            None => return Err(format!("line {no}: after the program, a test line takes `seed n` only")),
+        }
+    }
     let mut steps: Vec<Step> = Vec::new();
     let step_col = body.first().map(|(_, l)| indent(l)).unwrap_or(4);
     for (n, l) in body {
@@ -615,7 +804,7 @@ fn parse_test(no: usize, head: &str, body: &[(usize, &str)]) -> Result<TestBlock
             return Err(format!("line {n}: indentation"));
         }
     }
-    Ok(TestBlock { name, program: program.trim().to_string(), steps })
+    Ok(TestBlock { name, program: program.trim().to_string(), seed, steps })
 }
 
 fn pattern(n: usize, s: &str) -> Result<Pattern, String> {
@@ -742,11 +931,14 @@ fn parse_step(n: usize, text: &str) -> Result<Step, String> {
                 let (e, v) = split_entry(n, rest)?;
                 kind = Some(StepKind::Push(e, v));
             }
-            "click" => deliveries.push(Delivery::Click(parse_target(n, rest)?)),
-            "answer" => {
-                parse_target(n, rest)?;
-                deliveries.push(Delivery::Answer);
-            }
+            "click" => match rest.strip_prefix("element ") {
+                Some(path) => {
+                    let p = pod::read_path(path.trim()).map_err(|e| format!("line {n}: {e}"))?;
+                    deliveries.push(Delivery::Element(pod::print_path(&p)));
+                }
+                None => deliveries.push(Delivery::Click(parse_target(n, rest)?)),
+            },
+            "answer" => deliveries.push(Delivery::Answer(pattern(n, rest)?)),
             "send" => {
                 let Some(v) = parts.get(i + 1) else { return Err(format!("line {n}: send p, v")) };
                 if DELIVERY_WORDS.contains(&first_word(v)) {
@@ -792,6 +984,23 @@ mod tests {
         assert!(matches!(s.kind, StepKind::Deliver(ref d) if d.len() == 1));
         assert!(matches!(parse_step(2, "compute until idle").unwrap().kind, StepKind::ComputeUntilIdle));
         assert!(parse_step(3, "send Ui.Button(label=\"x\"), Rect 1, 2").is_err());
+    }
+
+    #[test]
+    fn seed_seven_deals_the_four_of_spades_first() {
+        let deck = XorShift::new(7).shuffle();
+        assert_eq!(pod::print(&deck[0]), "Card(rank=Four, suit=Spades)");
+        let mut all: Vec<String> = deck.iter().map(pod::print).collect();
+        all.sort();
+        all.dedup();
+        assert_eq!(all.len(), 52);
+    }
+
+    #[test]
+    fn test_lines_take_a_seed() {
+        let b = parse_script("test t, @w, seed 7:\n    build\n").unwrap();
+        assert!(matches!(&b[0], Block::Test(t) if t.seed == Some(7)));
+        assert!(parse_script("test t, @w, sed 7:\n    build\n").is_err());
     }
 
     #[test]

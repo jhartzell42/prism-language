@@ -10,7 +10,9 @@
 //! (prism-reflex ch. 6), `Process.Exit(code=!U8)` (Platform ch. 1), `Process.Args`
 //! answered plain, `Time.After(wakes=!Wake)` (Pitch ch. 6), `Test.Log` (Semantics ch. 7).
 //! There is no directory listing in `Fs` (prism-reflex ch. 6, "No directory listing in
-//! `Fs`"; TD-W1).
+//! `Fs`"; TD-W1). `Gui` is the four tags a drawing World accepts, as the chess window
+//! library declares them (Pitch chapters 5 and 6); `Cards.Deck` is the card table's deck
+//! (Pitch ch. 11), which the Test World answers from a seed.
 
 use std::rc::Rc;
 
@@ -104,14 +106,82 @@ pub mod test {
 }
 
 pub mod gui {
+    //! The four tags a drawing World accepts (Pitch chapters 5 and 6), as the window
+    //! library (`examples/chess/window.prism`) declares them, and the values their answers
+    //! are made of. Geometry is `Float` throughout (D14).
     use super::*;
-    /// `tag Gui.Window of Element !Press: title: Text, scene: $[Draw]`: the canvas World's
-    /// window, reduced to what the Test World needs to resolve a click by path (D9).
+    /// `tag Gui.Window of Element ((WindowId, !WindowInput)): title: $Text, size: Extent`:
+    /// a bundle, the window's id answered once by the first-value query and its inputs
+    /// answered by path.
     pub fn window() -> Rc<TagDecl> {
-        TagDecl::new("Gui.Window", &[("title", Identity), ("scene", Live)], OutputKind::Event)
+        TagDecl::new(
+            "Gui.Window",
+            &[("title", Live), ("size", Identity)],
+            OutputKind::Bundle(vec![OutputKind::Plain, OutputKind::Event]),
+        )
     }
-    /// `Press(x=.., y=..)`, a window's answer.
-    pub fn press(x: i64, y: i64) -> Value {
-        Value::record("Press", vec![("x", Value::int(x)), ("y", Value::int(y))])
+    /// `tag Gui.Scene of Element unit: window: WindowId, draw: $[Draw]`.
+    pub fn scene() -> Rc<TagDecl> {
+        TagDecl::new("Gui.Scene", &[("window", Identity), ("draw", Live)], OutputKind::Unit)
+    }
+    /// `tag Gui.Metrics of Element $Extent: text: Text`: the size of a text.
+    pub fn metrics() -> Rc<TagDecl> {
+        TagDecl::new("Gui.Metrics", &[("text", Identity)], OutputKind::Dynamic)
+    }
+    /// `tag Gui.Focus of Element unit: window: WindowId, at: $?Rect`.
+    pub fn focus() -> Rc<TagDecl> {
+        TagDecl::new("Gui.Focus", &[("window", Identity), ("at", Live)], OutputKind::Unit)
+    }
+    /// `WindowId "Chess"`: the World's handle for a window.
+    pub fn window_id(title: &str) -> Value {
+        Value::ctor("WindowId", vec![Value::text(title)])
+    }
+    /// `Point(x=.., y=..)`.
+    pub fn point(x: f64, y: f64) -> Value {
+        Value::record("Point", vec![("x", Value::float(x)), ("y", Value::float(y))])
+    }
+    /// `Extent(w=.., h=..)`.
+    pub fn extent(w: f64, h: f64) -> Value {
+        Value::record("Extent", vec![("w", Value::float(w)), ("h", Value::float(h))])
+    }
+    /// `Rect(x=.., y=.., w=.., h=..)`.
+    pub fn rect(x: f64, y: f64, w: f64, h: f64) -> Value {
+        Value::record(
+            "Rect",
+            vec![("x", Value::float(x)), ("y", Value::float(y)), ("w", Value::float(w)), ("h", Value::float(h))],
+        )
+    }
+    /// `Press Point(x=.., y=..)`, a `WindowInput`: the pointer pressed at a point.
+    pub fn press(x: f64, y: f64) -> Value {
+        Value::ctor("Press", vec![point(x, y)])
+    }
+    /// The Test World's font (README doubt TM, prism-reflex's rule): nine units a
+    /// character and fourteen high, one line.
+    pub fn test_font_extent(text: &str) -> Value {
+        extent(9.0 * text.chars().count() as f64, 14.0)
+    }
+}
+
+pub mod cards {
+    //! The card table's deck (Pitch ch. 11, "The language of a card table"; Conformance
+    //! ch. 1, "The seeded deck").
+    use super::*;
+    /// `tag Cards.Deck of Cards.Element !Card: hand: Nat, draws: !unit`: a shuffled deck,
+    /// one card per request; a new `hand`, a new shuffle.
+    pub fn deck() -> Rc<TagDecl> {
+        TagDecl::new("Cards.Deck", &[("hand", Identity), ("draws", Request)], OutputKind::Event)
+    }
+    /// The suits in the order of the deck before shuffling.
+    pub const SUITS: [&str; 4] = ["Clubs", "Diamonds", "Hearts", "Spades"];
+    /// The ranks, Two to Ace.
+    pub const RANKS: [&str; 13] =
+        ["Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King", "Ace"];
+    /// `Card(rank=.., suit=..)`.
+    pub fn card(rank: &str, suit: &str) -> Value {
+        Value::record("Card", vec![("rank", Value::ctor(rank, vec![])), ("suit", Value::ctor(suit, vec![]))])
+    }
+    /// The deck before shuffling: position 0 the two of clubs, 51 the ace of spades.
+    pub fn unshuffled() -> Vec<Value> {
+        SUITS.iter().flat_map(|s| RANKS.iter().map(move |r| card(r, s))).collect()
     }
 }

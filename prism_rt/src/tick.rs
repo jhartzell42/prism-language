@@ -265,9 +265,41 @@ fn run(st: &mut State, inputs: &Inputs) -> Result<Outputs, Fault> {
     finish_tick(st, inputs, requests)
 }
 
-/// Deliver an answer to a place: an event output fires; a dynamic one is written.
+/// Deliver an answer to a place: an event output fires; a dynamic one is written. A
+/// bundle's event components fire: with one, the answer is its value; with several, a
+/// tuple with `? v` or `nil` per event component (`OutputKind::Bundle`).
 fn deliver(st: &mut State, place: NodeId, v: Value) -> Result<(), Fault> {
     let Kind::Place(data) = st.graph.kind(place) else { return Ok(()) };
+    let data = data.clone();
+    if let crate::value::OutputKind::Bundle(_) = data.kind {
+        let events = data.events();
+        let firings: Vec<(NodeId, Value)> = match (events.as_slice(), &v) {
+            ([], _) => vec![],
+            ([e], _) => vec![(*e, v.clone())],
+            (many, Value::Tuple(items)) if items.len() == many.len() => many
+                .iter()
+                .zip(items.iter())
+                .filter_map(|(e, x)| match x {
+                    Value::Opt(Some(x)) => Some((*e, (**x).clone())),
+                    _ => None,
+                })
+                .collect(),
+            (many, other) => {
+                return Err(Fault::runtime(format!(
+                    "{} has {} event components; an answer is a tuple of {} options, not {other}",
+                    data.element.tag,
+                    many.len(),
+                    many.len()
+                )));
+            }
+        };
+        for (e, x) in firings {
+            if matches!(st.graph.kind(e), Kind::Input) && st.graph.fired(e).is_none() {
+                st.graph.fire(e, x);
+            }
+        }
+        return Ok(());
+    }
     match data.output.clone() {
         Value::Event(e) if matches!(st.graph.kind(e), Kind::Input) => {
             if st.graph.fired(e).is_none() {
@@ -286,9 +318,16 @@ fn push(st: &mut State, fact: &Value, v: &Value) -> Result<(), Fault> {
     let before = st.graph.now - 1;
     for place in st.places.values().copied().collect::<Vec<_>>() {
         let Kind::Place(data) = st.graph.kind(place) else { continue };
-        let (Value::Dynamic(d), element) = (data.output.clone(), data.element.clone()) else { continue };
-        if level(&mut st.graph, &element, before)? == *fact {
-            write_external(st, d, v.clone())?;
+        let data = data.clone();
+        let dyns = data.dynamics();
+        if dyns.is_empty() {
+            continue;
+        }
+        if level(&mut st.graph, &data.element, before)? == *fact {
+            let parts = widget::split_parts(v.clone(), dyns.len(), &data.element.tag)?;
+            for (d, x) in dyns.into_iter().zip(parts) {
+                write_external(st, d, x)?;
+            }
         }
     }
     Ok(())

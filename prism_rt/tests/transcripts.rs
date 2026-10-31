@@ -9,7 +9,7 @@
 mod common;
 
 use common::*;
-use prism_rt::families::{gui, test, ui};
+use prism_rt::families::{cards, gui, test, ui};
 use prism_rt::world::test_world::TestWorld;
 use prism_rt::{Blueprint, Closure, Fault, Program, ResultKind, Value};
 
@@ -722,17 +722,13 @@ tick 0
   added:
     1: Ui.Label(text="working")
 
-compute until idle: 3
-
-tick 1
-
-tick 2
+compute until idle: 3 ticks, 1 to 3
 
 tick 3
   changed:
     1: Ui.Label(text="Lam (Var 0)")
 
-compute until idle: 0
+compute until idle: 0 ticks
 "#,
     );
 }
@@ -812,7 +808,7 @@ tick 2
   changed:
     1: Ui.Label(text="heard 1")
 
-compute until idle: 0
+compute until idle: 0 ticks
 "#,
     );
 }
@@ -1032,14 +1028,26 @@ fn an_unexpected_abort_fails_the_test() {
 // `Draw.Clickable(rect, path)` in a scene (decisions.md D9)
 // ---------------------------------------------------------------------------------------
 
+/// A window over the four `Gui` tags, as the window library draws one (Pitch ch. 5):
+///
+/// ```prism
+/// @window:
+///     ((id, !input)) <- Gui.Window(title=$"w", size=Extent 64.0, 64.0)       # 0
+///     Gui.Scene(window=id, draw=[[Draw.Clickable(rect=Rect 0.0, 0.0, 64.0, 32.0, path=1/#0/0)]])  # 1
+///     $last <- "none" then Show !input
+///     Ui.Label(text=$last)                                                  # 2
+/// ```
 fn window() -> Program {
     Program::new(
         "window",
         Blueprint::pure("@window", |b, _| {
+            let bundle = emit(b, gui::window(), vec![("title", Value::text("w")), ("size", gui::extent(64.0, 64.0))])?;
+            let Value::Tuple(parts) = &bundle else { unreachable!() };
+            let (id, input) = (parts[0].clone(), parts[1].clone());
             let target = prism_rt::pod::read_path("1/#0/0").unwrap();
-            let scene = Value::array(vec![prism_rt::document::clickable(0, 0, 10, 10, target)]);
-            let press = emit(b, gui::window(), vec![("title", Value::text("w")), ("scene", scene)])?;
-            let shown = b.map(&press, Closure::pure("Show", |a| Ok(Value::text(&a[0].to_string()))))?;
+            let scene = Value::array(vec![prism_rt::document::clickable(0.0, 0.0, 64.0, 32.0, target)]);
+            emit(b, gui::scene(), vec![("window", id), ("draw", scene)])?;
+            let shown = b.map(&input, Closure::pure("Show", |a| Ok(Value::text(&a[0].to_string()))))?;
             let last = b.hold_then(Value::text("none"), &shown)?;
             label(b, last)?;
             Ok(Value::Unit)
@@ -1048,27 +1056,195 @@ fn window() -> Program {
 }
 
 #[test]
-fn a_click_by_path_reaches_the_window_through_the_scene() {
+fn a_click_by_element_presses_the_window_at_the_centre() {
     verify(
         window(),
         r#"
 test click_through_the_scene, @window:
     build
-    click at 1/#0/0
-        => expect Ui.Label(text="Press(x=5, y=5)")
+    click element 1/#0/0
+        => expect Ui.Label(text="Press Point(x=32.0, y=16.0)")
+    send Gui.Window(..), Press Point(x=1.5, y=2.0)
+        => expect Ui.Label(text="Press Point(x=1.5, y=2.0)")
 "#,
         r#"test click_through_the_scene
 
 tick 0
   added:
-    0: Gui.Window(title="w", scene=[[Draw.Clickable(rect=Rect(x=0, y=0, w=10, h=10), path=1/#0/0)]])
-    1: Ui.Label(text="none")
+    0: Gui.Window(title="w", size=Extent(w=64.0, h=64.0))
+    1: Gui.Scene(window=WindowId "w", draw=[[Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=64.0, h=32.0), path=1/#0/0)]])
+    2: Ui.Label(text="none")
 
 tick 1
   in:
-    0: Press(x=5, y=5)
+    0: Press Point(x=32.0, y=16.0)
   changed:
-    1: Ui.Label(text="Press(x=5, y=5)")
+    2: Ui.Label(text="Press Point(x=32.0, y=16.0)")
+
+tick 2
+  in:
+    0: Press Point(x=1.5, y=2.0)
+  changed:
+    2: Ui.Label(text="Press Point(x=1.5, y=2.0)")
+"#,
+    );
+}
+
+#[test]
+fn a_click_by_element_that_names_nothing_fails_naming_the_windows() {
+    let r = TestWorld::new().program(window()).run("test t, @window:\n    build\n    click element 1/#0/1\n");
+    assert_eq!(r.exit_code, 1);
+    assert!(r.failures[0].contains("no Draw.Clickable names 1/#0/1; searched 0 (WindowId \"w\")"), "{:?}", r.failures);
+}
+
+#[test]
+fn a_with_entry_wins_over_the_window_policy() {
+    verify(
+        window(),
+        r#"
+test t, @window:
+    with Gui.Window(title="w", size=Extent(w=64.0, h=64.0)) = WindowId "mine", build
+"#,
+        r#"test t
+
+tick 0
+  added:
+    0: Gui.Window(title="w", size=Extent(w=64.0, h=64.0))
+    1: Gui.Scene(window=WindowId "mine", draw=[[Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=64.0, h=32.0), path=1/#0/0)]])
+    2: Ui.Label(text="none")
+"#,
+    );
+}
+
+// ---------------------------------------------------------------------------------------
+// The seeded deck (Conformance ch. 1)
+// ---------------------------------------------------------------------------------------
+
+/// ```prism
+/// @$?firstCard:
+///     !started <- @started                                          # 0
+///     !card <- Cards.Deck(hand=1, draws=(unit on !started))         # 1
+///     $?shown <- nil then ? !card
+///     @ $?shown
+/// ```
+fn first_card() -> Program {
+    Program::new(
+        "$?firstCard",
+        Blueprint::pure("@$?firstCard", |b, _| {
+            let started = b.started();
+            let draws = b.tag(&started, &Value::Unit)?;
+            let card = emit(b, cards::deck(), vec![("hand", Value::nat(1)), ("draws", draws)])?;
+            let some = b.map(&card, Closure::pure("?", |a| Ok(Value::some(a[0].clone()))))?;
+            b.hold_then(Value::nil(), &some)
+        }),
+    )
+}
+
+#[test]
+fn seed_seven_deals_the_four_of_spades() {
+    // The book's script and transcript, character for character.
+    verify(
+        first_card(),
+        r#"
+test seed_seven_deals_the_four_of_spades, @$?firstCard, seed 7:
+    build
+        => returns nil
+    tick
+        => requested Cards.Deck(hand=1), unit
+    answer Cards.Deck(hand=1)
+        => returns ? Card(rank=Four, suit=Spades)
+"#,
+        r#"test seed_seven_deals_the_four_of_spades
+
+tick 0
+  added:
+    1: Cards.Deck(hand=1)
+  result: nil
+
+tick 1
+  requested:
+    1: unit
+
+tick 2
+  in:
+    1: Card(rank=Four, suit=Spades)
+  result: ? Card(rank=Four, suit=Spades)
+"#,
+    );
+}
+
+#[test]
+fn an_answer_needs_a_seed_and_a_pending_request() {
+    let world = TestWorld::new().program(first_card());
+    let r = world.run("test t, @$?firstCard:\n    build\n    tick\n    answer Cards.Deck(hand=1)\n");
+    assert!(r.failures[0].contains("names none"), "{:?}", r.failures);
+    let r = world.run("test t, @$?firstCard, seed 7:\n    build\n    answer Cards.Deck(hand=1)\n");
+    assert!(r.failures[0].contains("no pending request"), "{:?}", r.failures);
+}
+
+// ---------------------------------------------------------------------------------------
+// A host's document holds its children's `Level`s (Semantics ch. 8, "The element tree is
+// a dynamic"), so a container that holds it in a field prints elements and moves with them
+// ---------------------------------------------------------------------------------------
+
+/// ```prism
+/// @column:
+///     ((ignore, $doc)) <- @HostSome @counter, \|p, e| match e:   # 0/[p]
+///         Ui.Label(..): ? @ unit
+///         otherwise: nil
+///     Ui.Column(children=$doc)                                    # 1
+/// ```
+fn column() -> Program {
+    Program::new(
+        "column",
+        Blueprint::pure("@column", |b, _| {
+            let child = Blueprint::pure("@counter", |b, _| {
+                let inc = button(b, "Increment")?;
+                let c = b.hold(Value::int(0));
+                let next = b.sample(&inc, &[c.clone()], ints("+1", |a| a[1] + 1))?;
+                b.hold_on(&c, &next)?;
+                let shown = b.lift(&[c], text("Count", |a| format!("Count: {}", show(&a[0]))));
+                label(b, shown)?;
+                Ok(Value::Unit)
+            });
+            let unit = Blueprint::pure("@unit", |_, _| Ok(Value::Unit));
+            let give = Closure::new("?Give", vec![Value::Widget(unit)], |cap, a| match &a[1] {
+                Value::Element(e) if &*e.tag == "Ui.Label" => Ok(Value::some(cap[0].clone())),
+                _ => Ok(Value::nil()),
+            });
+            let hosted = b.host_some(&child, &[], &give)?;
+            let Value::Tuple(pair) = hosted else { unreachable!() };
+            let decl = prism_rt::TagDecl::new("Ui.Column", &[("children", prism_rt::FieldKind::Live)], prism_rt::OutputKind::Unit);
+            emit(b, decl, vec![("children", pair[1].clone())])?;
+            Ok(Value::Unit)
+        }),
+    )
+}
+
+#[test]
+fn a_container_prints_its_hosted_children_and_moves_with_them() {
+    verify(
+        column(),
+        r#"
+test children_in_a_field, @column:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment")
+        => expect Ui.Label(text="Count: 1")
+        => expect_count Ui.*, 4
+"#,
+        r#"test children_in_a_field
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="Increment")
+    1: Ui.Column(children={0: Ui.Button(label="Increment"), 1: Ui.Label(text="Count: 0")})
+
+tick 1
+  in:
+    0/[0]/0: click
+  changed:
+    1: Ui.Column(children={0: Ui.Button(label="Increment"), 1: Ui.Label(text="Count: 1")})
 "#,
     );
 }

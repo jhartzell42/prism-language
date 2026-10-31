@@ -194,7 +194,11 @@ pub(crate) struct HostData {
     pub supplier: Value,
     pub child: Option<WidgetId>,
     pub instances: OrdMap<Path, WidgetId>,
-    /// The child's document, `$(Path ==> Elem c)`.
+    /// The child's places as emitted, by path: a `Written` map whose elements' live
+    /// fields hold dynamics.
+    pub raw: NodeId,
+    /// The child's document, `$(Path ==> Elem c)`: the `Level`s of `raw`'s elements, a
+    /// `HostDoc` node.
     pub doc: NodeId,
 }
 
@@ -350,7 +354,7 @@ impl<'a> Build<'a> {
             }
         }
         let now = self.tick();
-        let output = match decl.output {
+        let output = match &decl.output {
             OutputKind::Unit => Value::Unit,
             OutputKind::Event => Value::Event(self.own(Kind::Input)),
             OutputKind::Dynamic => {
@@ -362,11 +366,41 @@ impl<'a> Build<'a> {
                 let lv = level(&mut self.st.graph, &e, now)?;
                 self.first_value(&lv)?
             }
+            OutputKind::Bundle(parts) => {
+                // The plain and dynamic components share one first-value query: the
+                // value itself with one, a tuple of them with several (OutputKind::Bundle).
+                let asked = parts.iter().filter(|k| matches!(k, OutputKind::Plain | OutputKind::Dynamic)).count();
+                let firsts = if asked == 0 {
+                    vec![]
+                } else {
+                    let lv = level(&mut self.st.graph, &e, now)?;
+                    let first = self.first_value(&lv)?;
+                    split_parts(first, asked, &e.tag)?
+                };
+                let mut firsts = firsts.into_iter();
+                let mut items = Vec::with_capacity(parts.len());
+                for k in parts {
+                    items.push(match k {
+                        OutputKind::Event => Value::Event(self.own(Kind::Input)),
+                        OutputKind::Dynamic => {
+                            let first = firsts.next().unwrap_or_default();
+                            Value::Dynamic(self.own(Kind::External { cell: Cell2::new(first, now) }))
+                        }
+                        OutputKind::Plain => firsts.next().unwrap_or_default(),
+                        OutputKind::Unit => Value::Unit,
+                        OutputKind::Bundle(_) => {
+                            return Err(Fault::runtime(format!("{}: a bundle output does not nest", e.tag)));
+                        }
+                    });
+                }
+                Value::tuple(items)
+            }
         };
         let data = PlaceData {
             path: path.clone(),
             element: Rc::new(e),
             output: output.clone(),
+            kind: decl.output.clone(),
             requests,
             live,
             request_fields: decl.request_fields(),
@@ -389,9 +423,12 @@ impl<'a> Build<'a> {
         let places: Vec<NodeId> = self.st.places.values().copied().collect();
         for p in places {
             let Kind::Place(data) = self.st.graph.kind(p) else { continue };
-            let (Value::Dynamic(ext), element) = (data.output.clone(), data.element.clone()) else { continue };
-            if level(&mut self.st.graph, &element, now)? == *lv {
-                return self.st.graph.read_now(ext);
+            let data = data.clone();
+            if data.dynamics().is_empty() {
+                continue;
+            }
+            if level(&mut self.st.graph, &data.element, now)? == *lv {
+                return data.first_parts(&mut self.st.graph);
             }
         }
         self.inputs.ready.first_value(lv).ok_or_else(|| {
@@ -413,16 +450,16 @@ impl<'a> Build<'a> {
         if let Kind::Host(h) = self.st.graph.kind_mut(host) {
             h.instances.insert(path.clone(), instance);
         }
-        let doc = match self.st.graph.kind(host) {
-            Kind::Host(h) => h.doc,
+        let (raw, doc) = match self.st.graph.kind(host) {
+            Kind::Host(h) => (h.raw, h.doc),
             _ => unreachable!(),
         };
-        let mut map = match self.st.graph.read_now(doc)? {
+        let mut map = match self.st.graph.read_now(raw)? {
             Value::Map(m) => m,
             _ => OrdMap::new(),
         };
         map.insert(Value::Path(path.clone()), element);
-        self.st.graph.write_cell(doc, Value::Map(map));
+        rewrite_host_doc(&mut self.st.graph, raw, doc, map);
         self.st.widgets.get_mut(self.widget).hosted.push((host, path));
         Ok(out)
     }
@@ -784,7 +821,8 @@ impl<'a> Build<'a> {
     pub fn host_document(&mut self, child: &Blueprint, args: &[Value], supplier: &Blueprint) -> Result<Value, Fault> {
         let path = self.take_position();
         let now = self.tick();
-        let doc = self.own(Kind::Written { cell: Cell2::new(Value::Map(OrdMap::new()), now) });
+        let raw = self.own(Kind::Written { cell: Cell2::new(Value::Map(OrdMap::new()), now) });
+        let doc = self.own(Kind::HostDoc { raw, inputs: vec![], cache: Cache2::default() });
         let data = HostData {
             owner: self.widget,
             path,
@@ -793,6 +831,7 @@ impl<'a> Build<'a> {
             supplier: Value::Widget(supplier.clone()),
             child: None,
             instances: OrdMap::new(),
+            raw,
             doc,
         };
         let host = self.own(Kind::Host(Box::new(data)));
@@ -877,6 +916,42 @@ fn build_generation(st: &mut State, inputs: &Inputs, node: NodeId, v: Value) -> 
     }
     st.graph.write_cell(result, out);
     Ok(())
+}
+
+/// Write a host's map of child elements, and point its document at their live fields'
+/// dynamics, so the document moves when any of them does.
+fn rewrite_host_doc(graph: &mut crate::graph::Graph, raw: NodeId, doc: NodeId, map: OrdMap<Value, Value>) {
+    let mut inputs: Vec<NodeId> = Vec::new();
+    for e in map.values() {
+        if let Value::Element(e) = e {
+            for (name, v) in &e.fields {
+                let live = e.decl.as_ref().and_then(|d| d.field_kind(name)) == Some(crate::value::FieldKind::Live);
+                if let (true, Value::Dynamic(d)) = (live, v) {
+                    if !inputs.contains(d) {
+                        inputs.push(*d);
+                    }
+                }
+            }
+        }
+    }
+    graph.write_cell(raw, Value::Map(map));
+    graph.rewire(doc, |k| {
+        if let Kind::HostDoc { inputs: i, .. } = k {
+            *i = inputs;
+        }
+    });
+}
+
+/// A bundle's first value split into its `n` plain and dynamic components: the value
+/// itself for one, a tuple's items for several.
+pub(crate) fn split_parts(v: Value, n: usize, tag: &str) -> Result<Vec<Value>, Fault> {
+    if n == 1 {
+        return Ok(vec![v]);
+    }
+    match v {
+        Value::Tuple(items) if items.len() == n => Ok((*items).clone()),
+        other => Err(Fault::runtime(format!("{tag}'s answer has {n} components, and {other} is not a tuple of {n}"))),
+    }
 }
 
 /// The keys of a map, or the indices of an array.
@@ -1098,10 +1173,10 @@ pub(crate) fn detach(st: &mut State, w: WidgetId) {
             _ => None,
         };
         if let Kind::Host(h) = st.graph.kind(*host) {
-            let doc = h.doc;
-            if let Ok(Value::Map(mut m)) = st.graph.read_now(doc) {
+            let (raw, doc) = (h.raw, h.doc);
+            if let Ok(Value::Map(mut m)) = st.graph.read_now(raw) {
                 m.remove(&Value::Path(cp.clone()));
-                st.graph.write_cell(doc, Value::Map(m));
+                rewrite_host_doc(&mut st.graph, raw, doc, m);
             }
         }
         if let Some(i) = instance {

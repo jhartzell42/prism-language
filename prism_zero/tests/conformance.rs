@@ -88,9 +88,10 @@ fn the_examples_pass_their_scripts() {
     }
 }
 
-/// The chess board's script needs what prism_rt does not have yet: a float in the
-/// script's value reader, the projection of elements nested in a live field, and a
-/// `Show` impl in paths (prism_zero/README.md, "Book examples that fail").
+/// The chess board's script. prism_rt now has what it needs (floats, `click element`,
+/// host documents of `Level`s, `^Show` in paths, bundle outputs); its first test passes.
+/// The three under `@$main` stop in compiler zero's binding groups before tick 0 ends
+/// (README.md, "What fails, and whose it is"), so it stays ignored until those are fixed.
 #[test]
 #[ignore]
 fn the_chess_board_passes_its_script() {

@@ -7,6 +7,8 @@
 //! - text in double quotes with `\"`, `\\`, `\n`, `\t` escaped and other control
 //!   characters as `\u{hex}`;
 //! - integers in decimal;
+//! - a float as the shortest decimal that reads back, always with a point, never an
+//!   exponent; `nan`, `inf`, `-inf`;
 //! - a duration in its largest whole unit (`1300us` for 1.3ms);
 //! - a map as `{k: v}` in ascending key order;
 //! - a record with its fields named, in declaration order; a choice as its constructor
@@ -17,20 +19,74 @@
 //! crate report): a tuple prints `((a, b))` and an array `[[a, b]]`, as their literals
 //! are written; a `Char` prints `'c'`; `unit`, `True`, `False`; a choice with a payload
 //! is parenthesized wherever it is not the whole printed value, so `? (Letter "a")` and
-//! `Write "end"` both read back; a record with no fields prints `Name()`; a path value
+//! `Write "end"` both read back, except a choice of one argument as a field's value,
+//! which reads to the next comma as a named argument does in Prism
+//! (`Gui.Scene(window=WindowId "Chess", ..)`, `Fs.File(path=PageFile _, ..)`); a record with no fields prints `Name()`; a path value
 //! prints in the path notation, `1/#0/0`.
+//!
+//! **A type with its own `^Show` prints by it in transcripts** (Type System ch. 2), a
+//! key in a path included (`0/[e2]/0` for a `Spot` whose impl prints `e2`). The runtime
+//! cannot run a program's impl, so an interpreter registers a [`ShowHook`] with
+//! [`set_show_hook`]: given a record or choice value, it gives the impl's text, or `None`
+//! for a type with no impl of its own (a derived `^Show` is the structural spelling
+//! here). Printing with no hook registered is the structural spelling throughout, which is
+//! also the saved form (`Print` is not `^Show`). A value an impl is printing is not handed
+//! to the hook again while it prints, so an impl that falls back on the structural
+//! spelling of its own value ends.
 //!
 //! Reading is the inverse of printing, without type information: `Name(f=v)` is a record,
 //! `Family.Tag(f=v)` an element, `Name` or `Name a, b` a choice, a lowercase name other
 //! than `nil`, `unit` and `ignore` a unit type's value, and a number followed by `/` a
-//! path. Non-negative integers read as `Nat` and negative ones as `Int`; the value order
+//! path, a number with a point a `Float` (as `nan`, `inf` and `-inf` are). Non-negative
+//! integers read as `Nat` and negative ones as `Int`; the value order
 //! compares integers numerically across types, so either matches a program's integer.
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use num_bigint::BigInt;
 
-use crate::value::{Choice, Element, Path, Record, Segment, Value};
+use crate::value::{float_spelling, Choice, Element, Path, Record, Segment, Value};
+
+// ---------------------------------------------------------------------------------------
+// A program's `^Show`
+// ---------------------------------------------------------------------------------------
+
+/// A program's `impl ^Show`, as an interpreter registers it: the text the impl gives for
+/// a record or choice value, or `None` when its type has no impl of its own.
+pub type ShowHook = Rc<dyn Fn(&Value) -> Option<String>>;
+
+thread_local! {
+    static SHOW_HOOK: RefCell<Option<ShowHook>> = const { RefCell::new(None) };
+    static SHOWING: RefCell<Vec<Value>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Register the program's `^Show` for transcripts on this thread, or `None` to go back to
+/// the structural spelling. Returns the hook it replaces.
+pub fn set_show_hook(hook: Option<ShowHook>) -> Option<ShowHook> {
+    SHOW_HOOK.with(|h| std::mem::replace(&mut *h.borrow_mut(), hook))
+}
+
+/// The registered hook's text for `v`, unless `v` is being shown already.
+fn shown_by_impl(v: &Value) -> Option<String> {
+    let hook = SHOW_HOOK.with(|h| h.borrow().clone())?;
+    if SHOWING.with(|s| s.borrow().contains(v)) {
+        return None;
+    }
+    SHOWING.with(|s| s.borrow_mut().push(v.clone()));
+    let r = hook(v);
+    SHOWING.with(|s| s.borrow_mut().pop());
+    r
+}
+
+/// Print a value in its structural spelling, ignoring any `^Show` impl: the saved form
+/// of a POD document (Type System ch. 2, "`Print` is not `^Show`").
+pub fn print_structural(v: &Value) -> String {
+    let hook = set_show_hook(None);
+    let s = print(v);
+    set_show_hook(hook);
+    s
+}
 
 // ---------------------------------------------------------------------------------------
 // Printing
@@ -128,12 +184,24 @@ fn write_list<'a>(out: &mut String, items: impl Iterator<Item = &'a Value>) {
 }
 
 fn write_value(out: &mut String, v: &Value, whole: bool) {
+    write_at(out, v, whole, false)
+}
+
+/// `whole`: the value is all that is printed; `field`: it is a field's value, `f=v`.
+fn write_at(out: &mut String, v: &Value, whole: bool, field: bool) {
+    if matches!(v, Value::Record(_) | Value::Choice(_)) {
+        if let Some(text) = shown_by_impl(v) {
+            out.push_str(&text);
+            return;
+        }
+    }
     match v {
         Value::Unit => out.push_str("unit"),
         Value::Bool(true) => out.push_str("True"),
         Value::Bool(false) => out.push_str("False"),
         Value::Nat(n) | Value::Int(n) => out.push_str(&n.to_string()),
         Value::U8(n) => out.push_str(&n.to_string()),
+        Value::Float(f) => out.push_str(&float_spelling(*f)),
         Value::Char(c) => write_char(out, *c),
         Value::Text(t) => write_text(out, &t.to_string()),
         Value::Duration(ns) => write_duration(out, *ns),
@@ -152,13 +220,14 @@ fn write_value(out: &mut String, v: &Value, whole: bool) {
             if c.payload.is_empty() {
                 out.push_str(&c.ctor);
             } else {
-                if !whole {
+                let bare = whole || (field && c.payload.len() == 1);
+                if !bare {
                     out.push('(');
                 }
                 out.push_str(&c.ctor);
                 out.push(' ');
                 write_list(out, c.payload.iter());
-                if !whole {
+                if !bare {
                     out.push(')');
                 }
             }
@@ -189,7 +258,7 @@ fn write_value(out: &mut String, v: &Value, whole: bool) {
             out.push_str("~ ");
             write_value(out, x, false);
         }
-        Value::Fallible(Err(e)) => write_value(out, e, whole),
+        Value::Fallible(Err(e)) => write_at(out, e, whole, field),
         Value::Element(e) => {
             out.push_str(&e.tag);
             if !e.fields.is_empty() {
@@ -214,7 +283,7 @@ fn write_fields(out: &mut String, fields: &[(Rc<str>, Value)]) {
         }
         out.push_str(n);
         out.push('=');
-        write_value(out, v, false);
+        write_at(out, v, false, true);
     }
 }
 
@@ -392,6 +461,7 @@ enum Tok {
     Str(String),
     Char(char),
     Num(BigInt),
+    Float(f64),
     Dur(i128),
     Name(String),
     P(&'static str),
@@ -452,12 +522,28 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
             }
             continue;
         }
+        if c == '-' && cs[i + 1..].starts_with(&['i', 'n', 'f']) && !cs.get(i + 4).is_some_and(|d| d.is_alphanumeric() || *d == '_') {
+            out.push(Tok::Float(f64::NEG_INFINITY));
+            i += 4;
+            continue;
+        }
         let neg_num = c == '-' && cs.get(i + 1).is_some_and(|d| d.is_ascii_digit());
         if c.is_ascii_digit() || neg_num {
             let start = i;
             i += 1;
             while i < cs.len() && cs[i].is_ascii_digit() {
                 i += 1;
+            }
+            // A float: digits, a point, digits (Type System ch. 2 always prints the point
+            // with a digit on each side, and never an exponent).
+            if cs.get(i) == Some(&'.') && cs.get(i + 1).is_some_and(|d| d.is_ascii_digit()) {
+                i += 1;
+                while i < cs.len() && cs[i].is_ascii_digit() {
+                    i += 1;
+                }
+                let text: String = cs[start..i].iter().collect();
+                out.push(Tok::Float(text.parse().map_err(|_| format!("bad number {text}"))?));
+                continue;
             }
             let digits: String = cs[start..i].iter().collect();
             let n: BigInt = digits.parse().map_err(|_| format!("bad number {digits}"))?;
@@ -582,7 +668,7 @@ impl Parser {
 
     fn starts_atom(&self) -> bool {
         match self.peek() {
-            Some(Tok::Str(_) | Tok::Char(_) | Tok::Num(_) | Tok::Dur(_) | Tok::Name(_)) => true,
+            Some(Tok::Str(_) | Tok::Char(_) | Tok::Num(_) | Tok::Float(_) | Tok::Dur(_) | Tok::Name(_)) => true,
             Some(Tok::P(p)) => matches!(*p, "(" | "((" | "[[" | "{"),
             None => false,
         }
@@ -615,11 +701,30 @@ impl Parser {
         self.atom()
     }
 
+    /// A field's value: a value, or a constructor applied to one argument with no
+    /// parentheses, which ends at the next comma.
+    fn field_value(&mut self) -> Result<Pattern, String> {
+        if let Some(Tok::Name(n)) = self.peek().cloned() {
+            let upper = n.chars().next().is_some_and(|c| c.is_uppercase());
+            let next_is_paren = matches!(self.toks.get(self.at + 1), Some(Tok::P("call(")));
+            if upper && !n.contains('.') && !next_is_paren && n != "True" && n != "False" && !self.split_close {
+                self.next();
+                let mut payload = Vec::new();
+                if self.starts_atom() {
+                    payload.push(self.value(false)?);
+                }
+                return Ok(Pattern::Choice { ctor: n, payload });
+            }
+        }
+        self.value(false)
+    }
+
     fn atom(&mut self) -> Result<Pattern, String> {
         match self.next() {
             Some(Tok::Str(s)) => Ok(Pattern::Lit(Value::text(&s))),
             Some(Tok::Char(c)) => Ok(Pattern::Lit(Value::Char(c))),
             Some(Tok::Dur(d)) => Ok(Pattern::Lit(Value::Duration(d))),
+            Some(Tok::Float(f)) => Ok(Pattern::Lit(Value::Float(f))),
             Some(Tok::Num(n)) => {
                 if self.is("/") {
                     self.at -= 1;
@@ -679,6 +784,8 @@ impl Parser {
             "True" => return Ok(Pattern::Lit(Value::Bool(true))),
             "False" => return Ok(Pattern::Lit(Value::Bool(false))),
             "ignore" => return Ok(Pattern::Any),
+            "nan" => return Ok(Pattern::Lit(Value::Float(f64::NAN))),
+            "inf" => return Ok(Pattern::Lit(Value::Float(f64::INFINITY))),
             _ => {}
         }
         if let Some(fam) = n.strip_suffix(".*") {
@@ -698,7 +805,7 @@ impl Parser {
                         return Err(format!("expected a field name in {n}(..)"));
                     };
                     self.expect("=")?;
-                    let v = self.value(false)?;
+                    let v = self.field_value()?;
                     fields.push((f, v));
                     if !self.eat(",") {
                         break;
@@ -786,9 +893,52 @@ mod tests {
             "1300us",
             "0s",
             "Rect 1, 2",
+            "280.0",
+            "-0.5",
+            "0.30000000000000004",
+            "nan",
+            "inf",
+            "-inf",
+            "Press Point(x=280.0, y=400.0)",
+            "Extent(w=512.0, h=560.0)",
+            "Rgb 1.0, 0.5, -inf",
+            "Gui.Scene(window=WindowId \"Chess\", at=nil)",
+            "Box(paint=(Rgb 1.0, 0.5, 0.0), inner=Node (Leaf 1))",
+            "Card(rank=Four, suit=Spades)",
         ] {
             round_trip(s);
         }
+        assert_eq!(read("280.0").unwrap(), Value::float(280.0));
+        assert_ne!(read("280.0").unwrap(), Value::nat(280));
+    }
+
+    #[test]
+    fn a_show_impl_prints_values_and_path_keys() {
+        let spot = |d: u64, a: u64| Value::record("Spot", vec![("down", Value::nat(d)), ("across", Value::nat(a))]);
+        let hook: ShowHook = Rc::new(|v: &Value| match v {
+            Value::Record(r) if &*r.name == "Spot" => {
+                let n = |i: usize| r.fields[i].1.as_i128().unwrap();
+                Some(format!("{}{}", (b'a' + n(1) as u8) as char, 8 - n(0)))
+            }
+            _ => None,
+        });
+        let path = Path(vec![Segment::Pos(0), Segment::Key(spot(6, 4)), Segment::Pos(0)]);
+        assert_eq!(print_path(&path), "0/[Spot(down=6, across=4)]/0");
+        let old = set_show_hook(Some(hook));
+        assert_eq!(print_path(&path), "0/[e2]/0");
+        assert_eq!(print(&Value::tuple(vec![spot(0, 0), Value::text("x")])), "((a8, \"x\"))");
+        assert_eq!(print_structural(&spot(0, 0)), "Spot(down=0, across=0)");
+        assert_eq!(print(&spot(0, 0)), "a8");
+        set_show_hook(old);
+        assert_eq!(print(&spot(0, 0)), "Spot(down=0, across=0)");
+    }
+
+    #[test]
+    fn an_impl_that_prints_its_own_value_structurally_ends() {
+        let hook: ShowHook = Rc::new(|v: &Value| Some(format!("<{}>", print(v))));
+        let old = set_show_hook(Some(hook));
+        assert_eq!(print(&Value::ctor("A", vec![])), "<A>");
+        set_show_hook(old);
     }
 
     #[test]

@@ -172,7 +172,7 @@ pub fn negate(v: &Value) -> R<Value> {
 /// Structural equality (`^Eq`, derived): what `==` means for every type with no `impl`.
 pub fn equal(a: &Value, b: &Value) -> bool {
     match (num_f64(a), num_f64(b)) {
-        (Some(x), Some(y)) if as_float(a).is_some() || as_float(b).is_some() => x == y,
+        (Some(x), Some(y)) if as_float(a).is_some() || as_float(b).is_some() => prism_rt::value::float_eq(x, y),
         _ => a == b,
     }
 }
@@ -279,46 +279,15 @@ pub fn type_name(l: &Loaded, v: &Value) -> Rc<str> {
 // Float (decisions.md D14)
 // ---------------------------------------------------------------------------------------
 
-/// A `Float` value. `prism_rt::Value` has no float, and prism_zero may not change
-/// prism_rt, so a float is a payload-free choice whose constructor is the float's
-/// transcript spelling (`280.0`, `-0.5`, `nan`, `inf`): `pod::print` then prints it as
-/// Type System ch. 2 spells a float, and no Prism constructor can collide with it, since a
-/// constructor begins with a letter. The interpreter's arithmetic, equality and order
-/// decode it; `prism_rt`'s own order (map keys) compares the spelling. README.md lists
-/// this as a gap in prism_rt.
+/// A `Float` value: prism_rt's `Value::Float`, which prints and reads back in Type System
+/// ch. 2's spelling.
 pub fn float(f: f64) -> Value {
-    Value::ctor(&float_spelling(f), vec![])
-}
-
-/// The shortest decimal that reads back, always with a point, never with an exponent;
-/// `nan`, `inf`, `-inf` (Type System ch. 2, "Plain values, and how they print").
-pub fn float_spelling(f: f64) -> String {
-    if f.is_nan() {
-        return "nan".into();
-    }
-    if f.is_infinite() {
-        return if f > 0.0 { "inf".into() } else { "-inf".into() };
-    }
-    // Rust's `Display` for `f64` is the shortest round-trip decimal and never uses an
-    // exponent.
-    let s = format!("{f}");
-    if s.contains('.') { s } else { format!("{s}.0") }
+    Value::Float(f)
 }
 
 /// The float inside a float value.
 pub fn as_float(v: &Value) -> Option<f64> {
-    let Value::Choice(c) = v else { return None };
-    if !c.payload.is_empty() {
-        return None;
-    }
-    let s: &str = &c.ctor;
-    match s {
-        "nan" => Some(f64::NAN),
-        "inf" => Some(f64::INFINITY),
-        "-inf" => Some(f64::NEG_INFINITY),
-        _ if s.starts_with(|ch: char| ch.is_ascii_digit() || ch == '-') => s.parse().ok(),
-        _ => None,
-    }
+    v.as_float()
 }
 
 /// Any number as an `f64`: a literal `2` where a `Float` is wanted is a `Float` (a
@@ -328,20 +297,22 @@ pub fn num_f64(v: &Value) -> Option<f64> {
 }
 
 fn float_arith(op: BinOp, a: &Value, b: &Value) -> R<Value> {
+    use prism_rt::value::{float_op, FloatOp};
     use BinOp::*;
     let (Some(x), Some(y)) = (num_f64(a), num_f64(b)) else {
         return Err(type_err(format!("`{}` needs two numbers, and was given {} and {}", op.as_str(), show_plain(a), show_plain(b))));
     };
+    let f = |o: FloatOp| float(float_op(o, x, y));
     Ok(match op {
-        Add => float(x + y),
-        Sub => float(x - y),
-        Mul => float(x * y),
+        Add => f(FloatOp::Add),
+        Sub => f(FloatOp::Sub),
+        Mul => f(FloatOp::Mul),
         // IEEE division never fails (Semantics ch. 10, "Total operations").
-        Div => float(x / y),
-        Mod => float(x.rem_euclid(y)),
-        AddQ => Value::some(float(x + y)),
-        SubQ => Value::some(float(x - y)),
-        MulQ => Value::some(float(x * y)),
+        Div => f(FloatOp::Div),
+        Mod => f(FloatOp::Mod),
+        AddQ => Value::some(f(FloatOp::Add)),
+        SubQ => Value::some(f(FloatOp::Sub)),
+        MulQ => Value::some(f(FloatOp::Mul)),
         _ => unreachable!(),
     })
 }
