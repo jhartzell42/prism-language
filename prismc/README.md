@@ -256,254 +256,45 @@ an empty array's element), or one a local `let` quantified.
 
 ### Where it stands
 
-`tests/prismc/check/run.sh` checks every program of the corpus, the 51 negative cases and
-the two typed dumps. A program the books make wrong has its exact report in
-`tests/prismc/check/pos/NAME.expected`; each is listed here with the rule.
+End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
+`tests/compiled/run.sh`, whose default set is what passes:
 
-- **Clean:** `compiler-ch03-halfcounter`, `conf-ch01-counter`, `conf-ch01-journal`,
-  `sem-ch01-counter`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`, `sem-ch06-birds`,
-  `sem-ch07-births`, `sem-ch07-normalize`, `sem-ch07-paged`, `sem-ch07-rounds`,
-  `sem-ch09-hosts`, `ts-ch03-traits`, `ts-ch04-lifting`, `examples/counter`,
-  `examples/half-counter`, `chess`.
-- **`conf-ch01-motd`** (1): `!motd` holds a `!~Contents`, and a name shows its type's whole
-  stack (Type System ch. 1, "The whole stack, every time"; D12). Conformance ch. 1 writes
-  `!motd`, Pitch ch. 8 `!~motd` (doubt CF below).
-- **`sem-appB-widgets`** (1): `Shown !numbered` needs `^Show` of `Click`, which
-  `prelude/ui.prism` declares without `derive` ("Nothing is derived without the line",
-  Type System ch. 3).
-- **`sem-ch04-labels`** (1): the lambda's `left` is a `?Nat`, so its name shows `?` (ch. 1;
-  ch. 5, a lambda's marks declare its parameters' layers).
-- **`sem-ch05-and-blocks`** (2): `Components`' two `while`s follow parent links, which end
-  only by an invariant; the book says itself that `Components` as written is unbounded
-  (Semantics ch. 5, "`while` and every tick ends").
-- **`sem-ch08-viewer`** (1): the file declares its own `type Contents`, which is not
-  `Fs.Contents`, the type `Fs.Contents`'s tag answers (Type System ch. 2: a declared type is
-  its own; the book's listing has no `use Fs.*`, doubt VW below).
-- **`examples/todos`** (1): `Add "item {$next}"` passes a `$Text` to a constructor, which
-  takes every argument whole (Type System ch. 5, the application rule).
-- **`prelude`** (2): `gui.prism`'s `Turn` collides with `prelude.prism`'s `Turn b`
-  (Semantics ch. 6); `ui.prism`'s `Ui.TextInput` answers `!Key`, and `ui.prism` declares
-  no `Key`.
-- **`prismc`** (213, the headline: the checker over its own 14 thousand lines, in about
-  ten and a half minutes under compiler zero). The checker's own files (`check-*.prism`,
-  `typed.prism`, `front.prism`'s `--check` branch) check clean; everything reported is in
-  the files written before there was a checker: `lower.prism` 113, `emit.prism` 28,
-  `parser.prism` 27, `sexp.prism` 23, `lexer.prism` 19, `front.prism` 2 (the front end
-  proper), `templates/rust.prism` 1. By rule:
-  - `mark-stack` (168): names and field reads that hide a `?` (`let first = clauses[0]`,
-    `match arm.pattern:` for `arm.?pattern`; Type System ch. 1, "The whole stack, every
-    time" and "Sigils on fields", 54 of them field reads); `mark-function` (12): functions
-    returning `?T` named without `?` (D10).
-  - `mismatch` (13): `given:` blocks whose last line is a plain value, not `? v` (Semantics
-    ch. 4, "the last line is the answer"); `unit` used as a binder's name in `lower.prism`'s
-    duration code (it is the unit value), with `not-exhaustive` (2) following from it.
-  - `may-not-end` (11): `while &going:` loops and loops whose measure is a field
-    (`LayoutLine`), `HexOf` recursing on a quotient, `SexpType` through `Spaced` (gap CT),
-    `ZForceDeps` and `ZDeferredLets` over the program; each needs a measure or
-    `unbounded fn` (Semantics ch. 7).
-  - `calls-unbounded` (2): `PushOpSuffix` and the `u`-colored `LayoutItems` call unbounded
-    functions (ch. 5, The color).
-  - `local-escapes` (3): `Buffer.Numbered` used as an array outside an `&` block (Semantics
-    ch. 5).
-  - `emit-element` (1): `templates/rust.prism` writes no `emit` line (Semantics ch. 6).
-  - `ambiguous` (1): `front.prism`'s `@Compile` gives up with an `Error` whose `~T` nothing
-    decides (ch. 5, Defaulting).
+- **Pass (2):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
+  `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
+  has its shape (fields `count: Hold<Int>` and the merge's two `Stamped` inputs,
+  `inc`/`dec` recording and asking for the wake, `wake` deciding left first, `patch`
+  pulling the label; the half counter's `increment` calling `delta` calling the hold's
+  write, with no wake).
+- **The rest of the corpus** runs by name (`tests/compiled/run.sh sem-ch07-normalize`)
+  and is not in the default set until a chunk makes it pass: the lowering above reaches
+  `for` rows, `rebuild`, jobs, traits and modules, but nothing past the counters is
+  verified against the typed back end. Programs the checker refuses by the books
+  (`conf-ch01-motd`, `sem-ch04-labels`, `sem-ch05-and-blocks`, `sem-ch08-viewer`)
+  `compile` refuses too.
+- **Not yet:** hosting (`sem-ch09-hosts`, chess's window library), `@Machine`, `@Once`,
+  `!MergeAll`, local functions (`sem-appB-widgets`), functions lifted over time
+  parameters (`ts-ch04-lifting`), a generation reading its block's dynamic
+  (`sem-ch07-paged`).
+- **Speed:** a native prismc (stage 1) compiles the counter in 3 s and the half counter
+  in 2 s; cargo builds each in about 1 s against a shared target directory. Compiler zero
+  takes about 7 s and 4 s. prismc's `--check` of its own 16 files takes about 6.5
+  minutes natively.
+- **prismc itself** checks clean under `--check`.
 
-The negative cases (`neg/`, 51) give one diagnostic each, the error their name says, or a
-case of it (`live-field-bare` is a `mark-stack`; `values-not-shrinking` and
-`summary-not-parts` are `may-not-end`s that keep doubt TR's map rule and pick SM's
-summaries from accepting a cycle that grows). `refinement-escape` and `existential-escape`
-have no case, since the checker does not report them (gaps below).
+### The bootstrap
 
-### Checker picks
-
-The places where the checker had to choose. Each is Claude's, for Jimmy to overturn.
-
-- **TO The typed program is tables beside the tree.** Every annotation is keyed by file
-  and range, and the tree stays `Ast.Module`. *Refused:* a second tree with a type on
-  every node, which doubles ast.prism's forty expression forms and has to follow every
-  change to them.
-- **BG Check order in a block.** Holds first (a hold's start value is where a block most
-  often says what its names are), then `let`s and local functions, then the rest in page
-  order, every name pre-bound to its marked type. The dependency order is computed for the
-  typed program, not used for checking (gap DG).
-- **FD A field of a record nothing has decided yet waits.** When several records have the
-  field, its type is a fresh variable, read once a later line decides the record, and
-  `ambiguous` at the end of the definition (ch. 5's principle: defer what a later line can
-  decide). One record with the field decides it at once.
-- **MS A wrong mark reports once, at the binder,** and the name then has the type its
-  value has, so its uses do not report it again.
-- **CR A collision recovers** with the file's own declaration, else the first candidate,
-  after reporting both, so the rest of the line still checks.
-- **LU `layer-unknown` is asked at the end of the definition.** A free-headed argument
-  meeting a plain or variable parameter is taken whole there; at the end, if its layer is
-  still a variable, or turned out to be a dynamic or an event, it is `layer-unknown` at
-  the argument. *Refused for now:* deferring the application and retrying it (ch. 5's
-  text), which needs the environment kept with each deferral (gap LR).
-- **ER** An arm that is a bare `Error` waits for the other arms, so `if c: Error(..) else:
-  ~ unit` is a `~unit`.
-- **QD** The prelude's `/: fn a, a -> ?a` is read as Type System ch. 3 has it, `fn a, a ->
-  Quotient a`, with `Quotient` normalized for the built-in numbers only.
-- **TL0** Top-level `let`s without a signature are inferred first, in page order, and their
-  monomorphic variables default at the program's end.
-- **PS** In the prompt-cycle check a widget function is prompt in every argument, except
-  the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`).
-- **SM A function that returns parts of a parameter has a summary**, Semantics ch. 7's
-  size-change principle across the call, so a cycle may traverse what a helper returns.
-  A function is summarized on its first parameter `i` for which every clause's result is
-  within `i`:
-  - no larger than it: the parameter, a part, `Values` or `Keys` of one, an index on one;
-  - an array or map literal of parts;
-  - a `match` or `if` whose every arm is within `i`;
-  - a `Filter`, or an `Each` of parts, over a collection within `i`;
-  - a `Fold` over one, from a start within `i`, whose step returns its accumulator or the
-    accumulator with parts added by `Push` or `Insert`, or a within added by `Append`.
-
-  A part is strictly smaller than `i`, or a tuple of such (a tuple is not a recursive type,
-  so a cycle reaches only its pieces). A call of the function is no larger than its
-  argument `i`, and strictly smaller when that argument is. A summary is read without
-  other summaries, so none depends on itself or on a chain, and a name the calling clause
-  binds itself (a parameter, a pattern, a local `fn`) is not the summarized function
-  (`neg/summary-not-parts`: a function returning `[[Node m]]` gets no summary). Chess's
-  `Kids cs` is summarized on `cs`, which clears `LayStack`, `LayLayers` and `LayGrid`.
-  *Refused:* inlining `Kids` at its call sites, which bends the program to the checker;
-  summaries chained to a fixed point, which no program needs yet.
-
-### Checker doubts
-
-- **TR** An element a prelude traversal (`Fold`, `Each`, `Filter`) hands its closure is
-  strictly smaller than the collection, for the shrink check, and a named function passed
-  as the step is a call on an element. Semantics ch. 7 lists "a part ... taken apart by
-  `match`" and does not say this. *First ruling (Claude's):* as stated; prismc's tree
-  walks need it. *If otherwise:* every tree walk through `Fold` is `unbounded`.
-  - A map's children are its parts, as Semantics ch. 7 lists them ("a map's child"):
-    `Values m` and `Keys m` are no larger than `m`, so a traversal over them hands out
-    parts of `m`, and `m[k]` is no larger than `m`, so the `? e` of a match on it is a
-    part (an index on an array likewise, its element). This clears chess's `TextsOf` ->
-    `TextsIn` -> `TextsOf`, folding over `Values cs`. `Values` of a map built bigger than
-    the one given (`Values (Insert m, k, (Node m))`) is related to nothing
-    (`neg/values-not-shrinking`). *First ruling (Claude's):* as stated, the book's own
-    list. *If otherwise:* chess's `TextsIn` and `Kids` are `unbounded fn`, which stops
-    `PlaceAt` lifting over the window's dynamics.
-- **RP** A reference path writes its field steps bare (`&_.rootModule <= ? m`), and a field
-  after an index step names the element's field (`&_[ix].partner <= ? j` sets a `?Nat`).
-  Type System ch. 1 says a field access shows its stack; the parser reads a set only
-  through a bare path. *First ruling (Claude's):* bare steps in references. *If
-  otherwise:* the parser learns `&_.?rootModule <= ...`.
-- **CF** Conformance ch. 1 writes `!motd <- Fs.File(..)` for a `!~Contents`, Pitch ch. 8
-  `!~motd`. *First ruling (Claude's):* Pitch's; Conformance ch. 1 is the slip.
-- **VW** Semantics ch. 8's viewer writes `~Contents` with no `use Fs.*`, and the
-  conformance copy declares its own `Contents`. *First ruling (Claude's):* the listing
-  needs `use Fs.*`.
-- **UI** `prelude/ui.prism`'s `Click` derives nothing, so `^Show` of a click fails
-  (`sem-appB-widgets`), and its `Ui.TextInput` names a `Key` it does not declare.
-  *First ruling (Claude's):* `type Click = click` takes `derive ^Eq, ^Show`, and the tag
-  takes `Gui.Key` or a `Key` of its own.
-- **WL An element has two faces.** A blueprint's element, `Element r o` (what an element
-  expression or `emit` makes, and what a host's supplier receives live), keeps each
-  field's stack: a pattern binds `text: $Text` as `$t` (Type System ch. 1, "Sigils on
-  fields"), and a bare `text=t` there is `mark-stack` (`neg/live-field-bare`). An element
-  seen through a document, `Elem r` (an entry of the `$(Path ==> Elem r)` a host form
-  gives, sampled by a plain function), is that tick's snapshot, Semantics ch. 8's `Level`:
-  a document is a value per tick, and the transcript prints its elements with plain
-  fields (`Ui.Label(text="Count: 0")`). A pattern on it binds each `$` field's current
-  value, plain. So `TextsOf` and `Lay` are plain functions, as Pitch ch. 5 says ("Layout
-  is `PlaceAt`, a plain function from the tree"). The checker tells the faces apart by
-  the type alone, `Elem r` against `Element r o` (Type System ch. 2 already calls `Elem r`
-  the document's value type), with no marker added.
-  - The binder may be bare (`text=t`) or show the field's declared `$` (`text=$t`), which
-    the level drops: either name is a `Text`. Chess's `TextsOf` and `Lay` write `$t`, as
-    Pitch ch. 5's `Masked` writes `held=$n` on an entry of `(Path ==> Elem)`. The `$t`
-    spelling names a plain value with a `$`, against ch. 1's "the whole stack, every time".
-  - `Masked`'s other half, building a document's element from levels (`Cards.Hand(held=$n,
-    ..)` with `$n` now a `Nat`), does not check: a plain value where a `$` field goes is a
-    mismatch, and an `Element` does not pack into an `Elem`.
-  - An `!` field of a snapshot still binds as an event, though a `Level` drops events.
-  - *First ruling (Claude's), for Jimmy to confirm:* the two faces as stated, both binder
-    spellings on a snapshot. *If otherwise:* only `text=t` on a snapshot, and chess's
-    patterns go back to bare names; or fields keep their stacks everywhere, and `TextsOf`
-    and `Lay` are lifted functions, against Pitch ch. 5.
-
-### Gaps against ch. 5
-
-What the checker does not do yet, each with Claude's first ruling.
-
-- **LR Deferred applications.** No application is retried when a later line decides an
-  argument's layer (pick LU). *First ruling:* keep LU; retry when a program needs it.
-- **RE `refinement-escape`.** A tag arm over a rigid output substitutes the arm's equality
-  into the expected type, but outside variables are not made untouchable in the arm.
-  *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it, with the error, next.
-- **EE `existential-escape`.** `any e` solves its bounds at `e`'s type; an `any` meets only
-  an `any`, and is never unpacked into a rigid variable at a parameter (doubt EP).
-  *First ruling:* unpack at application, as ch. 5 says.
-- **R2 Suppliers' outputs are not rigid.** A host's supplier lambda gets a flexible `o`, not
-  one rigid per arm, so the dumps keep `o` as a variable. *First ruling:* rigid per arm
-  with the arm's equality, with RE.
-- **DG Binding groups.** Blocks are checked in BG's order, not dependency order, so a `let`
-  used above its line is used at its monomorphic pre-bound type, and mutually dependent
-  `let`s are not generalized together. *First ruling:* check in the dependency order the
-  typed program already computes.
-- **CT The shrink check's call test** for closures is not there: a closure passed to a
-  program's own higher-order function (`Spaced args, SexpType`) is a call with no
-  edges. *First ruling:* the call test, as Semantics ch. 7 has it.
-- **SU Prompt-cycle summaries** are per block, not computed bottom-up over the call graph
-  (pick PS). *First ruling:* summaries, as ch. 5's pass 1 has them.
-- **FM A field read through a waiting access** (pick FD) is not checked for its marks.
-  *First ruling:* check them when the record is decided.
-- **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
-  *First ruling:* read each impl's associated type into the normalizer.
-
-## Back end
-
-`compile` checks the program, lowers it to a core form and emits a typed Rust crate over
-`prism_rtl` through code templates. `docs/backend.md` is the contract: what Rust each
-construct becomes and which library call it makes. The old back end, which emitted
-`prism_rt` values and applied them through the dynamic layer (D16), is gone.
-
-```
-./prism run DIR [ARGS...]                 # compile, cargo build, run the root under its World
-./prism test DIR                          # compile, build, run the .prismtest scripts
-./prism compile DIR -o OUT                # the crate only
-prism_zero run prismc/*.prism prismc/templates/*.prism -- compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH]
-OUT/target/.../NAME [--world cli|canvas|test] [ARGS...]      # the root, under the World its row asks for
-OUT/target/.../NAME test [--print] [SCRIPTS.prismtest...]    # the Test World; compares with .expected
-tests/compiled/run.sh [NAMES...]          # every conformance program and example, byte-equal
-```
-
-The `prism` script uses the newest `target/stageN/prismc` and otherwise compiler zero;
-`make chess` is `./prism run examples/chess`.
-
-### Files
-
-- `lower.prism` (module `Lower`, 3,450 lines): the core form and lowering. It reads the
-  checker's environment (`CheckEnv.BuildG`: modules, types, constructors, tags, traits,
-  impls, every definition's clauses) and the typed tables (`TProgram`, indexed by place)
-  and decides everything: names, Rust types, borrows and clones, each widget's node (its
-  fields, event graph, heights, places, answers, hooks, rows and generations), each
-  unbounded function's job.
-- `emit.prism` (module `Emit`, 520 lines): the core form spelled; one function per
-  construct, nothing decided (K9).
-- `templates/rust.prism` (module `RustTemplates`, 490 lines): every item and every
-  multi-line expression as a function-form code template with doubled braces;
-  placeholders alone on a line indent to their column; doc comments quote the Prism
-  source through a `<@TmQuoted text={{..}}/>` call.
-- `templates/prelude.prism` (module `PreludeTemplate`, 640 lines): the prelude in Rust,
-  emitted as `src/prelude.rs` beside every program (pick PL).
-- `fs.prism` (module `Fs`): the prelude's `Fs` with `Fs.List`, which `compile DIR` reads
-  (pick FL).
-- `front.prism`: `@main`'s `compile` branch (`@CompileMain`, `CompileProgram`).
-
-The emitted crate: `Cargo.toml` (`prism_rtl`, `prism_world_cli`, and
-`prism_world_canvas_rtl` behind the `canvas` feature, on by default when the root emits
-`Gui`), `src/main.rs` (the programs, the Test World's registrations and compiled `check`
-blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
-
-### Where it stands
-
-End to end under compiler zero (compile, `cargo build`, transcript byte-equal to its
-`.expected`), by `tests/compiled/run.sh`:
-
-STATUS_LIST
+- **Stage 0** is a prismc binary of the old dynamic chain (its back end emitted
+  `prism_rt` values applied through `prism_dyn`; its sources are in git history, 2524e50
+  and before), kept at `target/keep/prismc-old-chain-1101-0619` (`STAGE0=` names another).
+  Compiler zero is not a stage: it is orders of magnitude slower than a native prismc,
+  and is the fallback only for a feature stage 0 refuses.
+- **Stage 1** (`tests/bootstrap/stage1.sh`): stage 0 compiles prismc's sources, and cargo
+  builds the crate (about 3.5 minutes, then 6) into `target/stage1/prismc`, a native
+  prismc with the typed back end. Development iterates with it.
+- **Stages 2 and 3**: each prismc before compiles the sources with the typed back end;
+  `tests/bootstrap/check.sh` wants their crates byte-equal.
+- **Stage 0's one quirk met so far:** it resolves a record type's name across modules, so
+  `Lower`'s environment record is `LoEnv`, not `Env` (which `CheckExpr` has).
 
 ### Back-end picks
 

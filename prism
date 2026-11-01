@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# The `prism` command (docs/architecture.md, "Single commands"), a thin shell over prismc:
+#
+#   ./prism run DIR [ARGS...]      compile DIR, build it, run its root under its World
+#   ./prism test DIR               compile DIR, build it, run its .prismtest scripts
+#   ./prism compile DIR -o OUT     compile DIR to the Rust crate OUT
+#
+# DIR is a directory of `.prism` and `.prismtest` files, or one `.prism` file (with the
+# `.prismtest` of its name, when there is one). prismc is the newest one built (stage 3,
+# 2, then 1); with none, compiler zero runs prismc's sources. Run from the repository
+# root. The crate goes to target/prism/NAME, the build to target/prism-build.
+#
+# Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change.
+set -eu
+cd "$(dirname "$0")"
+cmd=${1:-}
+src=${2:-}
+if [ -z "$cmd" ] || [ -z "$src" ]; then
+    sed -n '3,8p' "$0" | sed 's/^# //' >&2
+    exit 2
+fi
+shift 2
+ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
+prismc=""
+for stage in 3 2 1; do
+    if [ -x target/stage$stage/prismc ]; then prismc=target/stage$stage/prismc; break; fi
+done
+name=$(basename "${src%.prism}" | tr -c 'a-zA-Z0-9_\n' '_')
+case "$name" in [0-9]*) name="p_$name" ;; esac
+out=target/prism/$name
+if [ "$cmd" = compile ]; then
+    [ "${1:-}" = "-o" ] && out=$2
+fi
+# The sources: a directory as itself for a compiled prismc (Fs.List), as its files for
+# compiler zero, whose World answers no listing.
+sources=("$src")
+if [ -f "$src" ]; then
+    stem=${src%.prism}
+    if [ -f "$stem.prismtest" ]; then sources+=("$stem.prismtest"); fi
+elif [ -z "$prismc" ]; then
+    mapfile -t sources < <(find "$src" \( -name '*.prism' -o -name '*.prismtest' \) | sort)
+fi
+if [ -n "$prismc" ]; then
+    "$prismc" compile "${sources[@]}" -o "$out" --name "$name"
+else
+    cargo build --release -q -p prism_zero
+    target/release/prism_zero run prismc/*.prism prismc/templates/*.prism -- compile "${sources[@]}" -o "$out" --name "$name"
+fi
+[ "$cmd" = compile ] && exit 0
+(cd "$out" && CARGO_TARGET_DIR=../../prism-build cargo build --release -q)
+case "$cmd" in
+    run) exec target/prism-build/release/"$name" "$@" ;;
+    test) exec target/prism-build/release/"$name" test "$@" ;;
+    *) echo "prism: unknown command $cmd (run, test, compile)" >&2; exit 2 ;;
+esac

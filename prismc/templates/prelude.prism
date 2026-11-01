@@ -1,0 +1,639 @@
+# The prelude of every compiled program (Semantics Appendix B; prelude/prelude.prism):
+# its builtins and the functions it writes in Prism, as Rust over `prism_rtl`, emitted as
+# `src/prelude.rs` word for word. Every function takes its arguments by reference and
+# gives back a value, as emitted functions do (docs/backend.md); a closure parameter is
+# a `&dyn Fn`. Where one Prism name serves an array, a text and a map (doubt LZ), the
+# variants are `len`, `len_text`, `len_map`, and lowering picks by the argument's type.
+# The runner helpers `main` calls are here too.
+#
+# Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+module PreludeTemplate
+emit r
+
+TmPrelude: fn Text -> Text
+fn TmPrelude unused = inline_text <rust>
+//! The prelude (Semantics Appendix B), emitted by prismc beside every program: the
+//! builtins and the prelude's own functions as Rust over `prism_rtl`.
+
+use std::rc::Rc;
+
+use prism_rtl::*;
+
+// ---- Types ------------------------------------------------------------------------------
+
+/// `type Ordering = choice: Less | Equal | Greater; derive ^Eq, ^Ord, ^Show`.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Ordering {
+    Less,
+    Equal,
+    Greater,
+}
+
+impl Show for Ordering {
+    fn show(&self, p: &mut Printer) {
+        p.choice(match self { Ordering::Less => "Less", Ordering::Equal => "Equal", Ordering::Greater => "Greater" }, &[]);
+    }
+}
+
+impl ToPod for Ordering {
+    fn to_pod(&self) -> Pod {
+        Pod::name(match self { Ordering::Less => "Less", Ordering::Equal => "Equal", Ordering::Greater => "Greater" })
+    }
+}
+
+/// `type Span = record: file, line, column, binding`.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Span {
+    pub file: Text,
+    pub line: Nat,
+    pub column: Nat,
+    pub binding: Text,
+}
+
+/// `type Exception = record: kind, message, spans, path`.
+#[derive(Clone, PartialEq)]
+pub struct Exception {
+    pub kind: Text,
+    pub message: Text,
+    pub spans: Array<Span>,
+    pub path_: Option<Path>,
+}
+
+/// `type Cursor = record: text, at`: a position in a text, for `?Step`.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Cursor {
+    pub text: Text,
+    pub at: Nat,
+}
+
+/// `type Turn b = choice: More | Done b` (the prelude's; `prism_rtl::Turn` is the job's).
+#[derive(Clone, PartialEq, Eq)]
+pub enum PreludeTurn<B> {
+    More,
+    Done(B),
+}
+
+/// `tag Prelude.Unwrap of Element !a: value: !~a`.
+pub struct PreludeUnwrap {}
+
+impl ToPod for PreludeUnwrap {
+    fn to_pod(&self) -> Pod {
+        Pod::element("Prelude.Unwrap", vec![])
+    }
+}
+
+/// `tag Prelude.Exceptions of Element !Exception`.
+pub struct PreludeExceptions {}
+
+impl ToPod for PreludeExceptions {
+    fn to_pod(&self) -> Pod {
+        Pod::element("Prelude.Exceptions", vec![])
+    }
+}
+
+/// `Duration`: nanoseconds (D14 keeps its arithmetic out).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Duration(pub i128);
+
+impl Show for Duration {
+    fn show(&self, p: &mut Printer) {
+        p.duration(self.0);
+    }
+}
+
+impl ToPod for Duration {
+    fn to_pod(&self) -> Pod {
+        Pod::Duration(self.0)
+    }
+}
+
+impl FromPod for Duration {
+    fn from_pod(p: &Pod) -> Result<Duration, Fault> {
+        match p.structure() {
+            Pod::Duration(ns) => Ok(Duration(*ns)),
+            other => prism_rtl::pod::mismatch("a Duration", other),
+        }
+    }
+}
+
+// ---- Numbers ----------------------------------------------------------------------------
+
+/// `^Num` (Type System ch. 3) over a type variable: the operators by name.
+pub trait Num: Clone {
+    fn zero() -> Self;
+    fn add(a: &Self, b: &Self) -> Self;
+    fn sub(a: &Self, b: &Self) -> Self;
+    fn mul(a: &Self, b: &Self) -> Self;
+    fn div_opt(a: &Self, b: &Self) -> Option<Self>;
+    fn add_opt(a: &Self, b: &Self) -> Option<Self> {
+        Some(Self::add(a, b))
+    }
+    fn sub_opt(a: &Self, b: &Self) -> Option<Self> {
+        Some(Self::sub(a, b))
+    }
+    fn mul_opt(a: &Self, b: &Self) -> Option<Self> {
+        Some(Self::mul(a, b))
+    }
+}
+
+impl Num for Nat {
+    fn zero() -> Nat {
+        Nat::from(0u32)
+    }
+    fn add(a: &Nat, b: &Nat) -> Nat {
+        a + b
+    }
+    fn sub(a: &Nat, b: &Nat) -> Nat {
+        a.checked_sub(b).unwrap_or_else(|| Nat::from(0u32))
+    }
+    fn mul(a: &Nat, b: &Nat) -> Nat {
+        a * b
+    }
+    fn div_opt(a: &Nat, b: &Nat) -> Option<Nat> {
+        a.div(b)
+    }
+    fn sub_opt(a: &Nat, b: &Nat) -> Option<Nat> {
+        a.checked_sub(b)
+    }
+}
+
+impl Num for Int {
+    fn zero() -> Int {
+        Int::from(0)
+    }
+    fn add(a: &Int, b: &Int) -> Int {
+        a + b
+    }
+    fn sub(a: &Int, b: &Int) -> Int {
+        a - b
+    }
+    fn mul(a: &Int, b: &Int) -> Int {
+        a * b
+    }
+    fn div_opt(a: &Int, b: &Int) -> Option<Int> {
+        a.div(b)
+    }
+}
+
+impl Num for f64 {
+    fn zero() -> f64 {
+        0.0
+    }
+    fn add(a: &f64, b: &f64) -> f64 {
+        a + b
+    }
+    fn sub(a: &f64, b: &f64) -> f64 {
+        a - b
+    }
+    fn mul(a: &f64, b: &f64) -> f64 {
+        a * b
+    }
+    fn div_opt(a: &f64, b: &f64) -> Option<f64> {
+        Some(a / b)
+    }
+}
+
+impl Num for u8 {
+    fn zero() -> u8 {
+        0
+    }
+    fn add(a: &u8, b: &u8) -> u8 {
+        a.wrapping_add(*b)
+    }
+    fn sub(a: &u8, b: &u8) -> u8 {
+        a.wrapping_sub(*b)
+    }
+    fn mul(a: &u8, b: &u8) -> u8 {
+        a.wrapping_mul(*b)
+    }
+    fn div_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_div(*b)
+    }
+    fn add_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_add(*b)
+    }
+    fn sub_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_sub(*b)
+    }
+    fn mul_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_mul(*b)
+    }
+}
+
+/// A `Nat` as an index; one too large for memory indexes nothing.
+pub fn ix(n: &Nat) -> usize {
+    n.as_int().to_i64().map_or(usize::MAX, |i| i as usize)
+}
+
+fn nat_of(n: usize) -> Nat {
+    Nat::from_int(Int::from(n as i64)).unwrap_or_else(|| Nat::from(0u32))
+}
+
+/// `Int: fn Nat -> Int`.
+pub fn int(n: &Nat) -> Int {
+    n.as_int().clone()
+}
+
+/// `?Nat: fn Int -> ?Nat`.
+pub fn nat(i: &Int) -> Option<Nat> {
+    Nat::from_int(i.clone())
+}
+
+/// `?U8: fn Int -> ?U8`.
+pub fn u8_(i: &Int) -> Option<u8> {
+    i.to_i64().and_then(|n| u8::try_from(n).ok())
+}
+
+/// `?Div`, `?Mod`.
+pub fn div<A: Num>(a: &A, b: &A) -> Option<A> {
+    A::div_opt(a, b)
+}
+
+pub fn mod_(a: &Int, b: &Int) -> Option<Int> {
+    (b != &Int::from(0)).then(|| a.modulo(b))
+}
+
+/// `Float`, `ToFloat`: an `Int` as a double.
+pub fn float(i: &Int) -> f64 {
+    i.to_i64().map_or_else(|| i.to_string().parse().unwrap_or(f64::NAN), |n| n as f64)
+}
+
+pub fn to_float(i: &Int) -> f64 {
+    float(i)
+}
+
+pub fn cos(x: &f64) -> f64 {
+    x.cos()
+}
+
+pub fn sin(x: &f64) -> f64 {
+    x.sin()
+}
+
+pub fn abs<A: Num + PartialOrd>(a: &A) -> A {
+    if *a < A::zero() { A::sub(&A::zero(), a) } else { a.clone() }
+}
+
+pub fn sign<A: Num + PartialOrd + From<i8>>(a: &A) -> A {
+    if *a < A::zero() { A::from(-1) } else if *a > A::zero() { A::from(1) } else { A::zero() }
+}
+
+pub fn sum<A: Num>(xs: &Array<A>) -> A {
+    xs.iter().fold(A::zero(), |s, x| A::add(&s, x))
+}
+
+pub fn max<A: PartialOrd + Clone>(a: &A, b: &A) -> A {
+    if a < b { b.clone() } else { a.clone() }
+}
+
+pub fn min<A: PartialOrd + Clone>(a: &A, b: &A) -> A {
+    if b < a { b.clone() } else { a.clone() }
+}
+
+/// `Compare` of `^Ord`.
+pub fn compare<A: PartialOrd>(a: &A, b: &A) -> Ordering {
+    match a.partial_cmp(b) {
+        Some(std::cmp::Ordering::Less) => Ordering::Less,
+        Some(std::cmp::Ordering::Greater) => Ordering::Greater,
+        _ => Ordering::Equal,
+    }
+}
+
+// ---- Optionals --------------------------------------------------------------------------
+
+/// `Or: fn ?a, a -> a`.
+pub fn or<A: Clone>(o: &Option<A>, d: &A) -> A {
+    o.clone().unwrap_or_else(|| d.clone())
+}
+
+// ---- Arrays -----------------------------------------------------------------------------
+
+pub fn len<A: Clone>(xs: &Array<A>) -> Nat {
+    nat_of(xs.len())
+}
+
+pub fn len_text(t: &Text) -> Nat {
+    nat_of(t.len())
+}
+
+pub fn len_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Nat {
+    nat_of(m.len())
+}
+
+pub fn append<A: Clone>(a: &Array<A>, b: &Array<A>) -> Array<A> {
+    let mut out = a.clone();
+    out.append(b.clone());
+    out
+}
+
+pub fn push<A: Clone>(xs: &Array<A>, x: &A) -> Array<A> {
+    let mut out = xs.clone();
+    out.push_back(x.clone());
+    out
+}
+
+pub fn fold<A: Clone, B: Clone>(xs: &Array<A>, init: &B, f: &dyn Fn(&B, &A) -> B) -> B {
+    xs.iter().fold(init.clone(), |acc, x| f(&acc, x))
+}
+
+pub fn fold_map<K: Ord + Clone, V: Clone, B: Clone>(m: &Map<K, V>, init: &B, f: &dyn Fn(&B, &K, &V) -> B) -> B {
+    m.iter().fold(init.clone(), |acc, (k, v)| f(&acc, k, v))
+}
+
+pub fn each<A: Clone, B: Clone>(xs: &Array<A>, f: &dyn Fn(&A) -> B) -> Array<B> {
+    xs.iter().map(f).collect()
+}
+
+pub fn filter<A: Clone>(xs: &Array<A>, keep: &dyn Fn(&A) -> bool) -> Array<A> {
+    xs.iter().filter(|x| keep(x)).cloned().collect()
+}
+
+pub fn concat(xs: &Array<Text>) -> Text {
+    let mut s = String::new();
+    xs.iter().for_each(|t| s.push_str(&t.to_string()));
+    Text::from(s)
+}
+
+/// `xs[i]`.
+pub fn index<A: Clone>(xs: &Array<A>, i: &Nat) -> Option<A> {
+    xs.get(ix(i)).cloned()
+}
+
+/// `text[i]`.
+pub fn index_text(t: &Text, i: &Nat) -> Option<char> {
+    t.char_at(ix(i))
+}
+
+/// `&xs[i]` in an `&` block.
+pub fn at_mut<'a, A: Clone>(xs: &'a mut Array<A>, i: &Nat) -> &'a mut A {
+    &mut xs[ix(i)]
+}
+
+pub fn at_mut_map<'a, K: Ord + Clone, V: Clone>(m: &'a mut Map<K, V>, k: &K) -> &'a mut V {
+    m.get_mut(k).expect("an `&` path to a key the map does not hold")
+}
+
+pub fn take<A: Clone>(xs: &Array<A>, n: &Nat) -> Array<A> {
+    xs.take(ix(n).min(xs.len()))
+}
+
+pub fn take_text(t: &Text, n: &Nat) -> Text {
+    t.take(ix(n))
+}
+
+pub fn drop<A: Clone>(xs: &Array<A>, n: &Nat) -> Array<A> {
+    xs.skip(ix(n).min(xs.len()))
+}
+
+pub fn drop_text(t: &Text, n: &Nat) -> Text {
+    t.drop_front(ix(n))
+}
+
+// ---- Maps -------------------------------------------------------------------------------
+
+pub fn map_of<K: Ord + Clone, V: Clone>(entries: Vec<(K, V)>) -> Map<K, V> {
+    entries.into_iter().collect()
+}
+
+pub fn insert<K: Ord + Clone, V: Clone>(m: &Map<K, V>, k: &K, v: &V) -> Map<K, V> {
+    m.update(k.clone(), v.clone())
+}
+
+pub fn remove<K: Ord + Clone, V: Clone>(m: &Map<K, V>, k: &K) -> Map<K, V> {
+    m.without(k)
+}
+
+/// `?Get`, and `m[k]`.
+pub fn get<K: Ord + Clone, V: Clone>(m: &Map<K, V>, k: &K) -> Option<V> {
+    m.get(k).cloned()
+}
+
+/// `?First`.
+pub fn first<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Option<(K, V)> {
+    m.get_min().cloned()
+}
+
+pub fn keys<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Array<K> {
+    m.keys().cloned().collect()
+}
+
+pub fn values<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Array<V> {
+    m.values().cloned().collect()
+}
+
+pub fn size<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Nat {
+    nat_of(m.len())
+}
+
+pub fn map<K: Ord + Clone, V: Clone>(entries: &Array<(K, V)>) -> Map<K, V> {
+    entries.iter().cloned().collect()
+}
+
+pub fn union<K: Ord + Clone, V: Clone>(a: &Map<K, V>, b: &Map<K, V>) -> Map<K, V> {
+    b.clone().union(a.clone())
+}
+
+pub fn each_map<K: Ord + Clone, V: Clone, B: Clone>(m: &Map<K, V>, f: &dyn Fn(&K, &V) -> B) -> Array<B> {
+    m.iter().map(|(k, v)| f(k, v)).collect()
+}
+
+pub fn filter_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>, keep: &dyn Fn(&K, &V) -> bool) -> Map<K, V> {
+    m.iter().filter(|(k, v)| keep(k, v)).map(|(k, v)| (k.clone(), v.clone())).collect()
+}
+
+// ---- Text -------------------------------------------------------------------------------
+
+pub fn upper(t: &Text) -> Text {
+    Text::from(t.to_string().to_uppercase())
+}
+
+pub fn lower(t: &Text) -> Text {
+    Text::from(t.to_string().to_lowercase())
+}
+
+/// `Split t, sep`; with an empty separator, the characters, each a text.
+pub fn split(t: &Text, sep: &Text) -> Array<Text> {
+    let (s, sep) = (t.to_string(), sep.to_string());
+    if sep.is_empty() {
+        s.chars().map(|c| Text::from(c.to_string())).collect()
+    } else {
+        s.split(sep.as_str()).map(Text::from).collect()
+    }
+}
+
+/// `?Step: fn Cursor -> ?((Char, Cursor))`.
+pub fn step(c: &Cursor) -> Option<(char, Cursor)> {
+    let ch = c.text.char_at(ix(&c.at))?;
+    Some((ch, Cursor { text: c.text.clone(), at: &c.at + &Nat::from(1u32) }))
+}
+
+/// `?ParseNat`.
+pub fn parse_nat_opt(t: &Text) -> Option<Nat> {
+    let s = t.to_string();
+    if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    s.parse::<i64>().ok().and_then(|n| Nat::from_int(Int::from(n)))
+}
+
+/// `~ParseNat`.
+pub fn parse_nat_try(t: &Text) -> Result<Nat, Error> {
+    parse_nat_opt(t).ok_or_else(|| Error::new("Prelude.NotANumber", format!("not a number: {t}")))
+}
+
+/// `Freeze`: a `Buffer` is an array already.
+pub fn freeze<A: Clone>(a: &A) -> A {
+    a.clone()
+}
+
+/// A code template's placeholder (Templates ch. 2): alone on its line, its text's lines
+/// indented to its column, a final newline dropped, an empty text no line; sharing a line,
+/// the text as it is.
+pub fn place(out: &mut String, text: &Text, column: Option<usize>) {
+    let text = text.to_string();
+    match column {
+        Some(c) => {
+            let text = text.strip_suffix('\n').unwrap_or(&text);
+            if text.is_empty() {
+                return;
+            }
+            let pad = " ".repeat(c);
+            for l in text.split('\n') {
+                if !l.is_empty() {
+                    out.push_str(&pad);
+                }
+                out.push_str(l);
+                out.push('\n');
+            }
+        }
+        None => out.push_str(&text),
+    }
+}
+
+/// A derived `FromPod`'s field.
+pub fn field<'a>(p: &'a Pod, name: &str) -> Result<&'a Pod, Fault> {
+    p.field(name).ok_or_else(|| Fault::answer(format!("no field {name} in {p}")))
+}
+
+/// An array as the map from each index to its entry, for a `for` over an array.
+pub fn indexed<A: Clone>(xs: &Array<A>) -> Map<Nat, A> {
+    xs.iter().enumerate().map(|(i, x)| (nat_of(i), x.clone())).collect()
+}
+
+/// The heights a node with combinators at several heights asked for this tick: its wake
+/// runs the lowest one asked (`Node::wake` is not told its height, prismc/README.md WH).
+#[derive(Default)]
+pub struct Wakes(std::cell::RefCell<std::collections::BTreeSet<u32>>);
+
+impl Wakes {
+    pub fn ask(&self, h: u32) {
+        self.0.borrow_mut().insert(h);
+    }
+    pub fn next(&self) -> u32 {
+        self.0.borrow_mut().pop_first().unwrap_or(u32::MAX)
+    }
+}
+
+/// A row of a `for` or a generation of a `rebuild`: a node its builder tears down.
+pub trait Row: Node {
+    fn leave_row(&self, cx: &mut Cx);
+}
+
+/// A row subscribing to its block's port for one event: the row heard weakly, the handle
+/// kept for its leaving (docs/backend.md: `Port::subscribe`).
+pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &std::cell::Cell<Option<Handle>>) {
+    let Some(parent) = parent else { return };
+    let me = Rc::downgrade(node);
+    let h = port(&parent).subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
+        if let Some(n) = me.upgrade() {
+            call(&n, v, cx);
+        }
+        Ok(())
+    }));
+    slot.set(Some(h));
+}
+
+// ---- Running ----------------------------------------------------------------------------
+
+/// `--world NAME` among the arguments: the World, and the arguments without the option.
+pub fn world_option(args: &[String], default: &str) -> (String, Vec<String>) {
+    let mut world = default.to_string();
+    let mut rest = Vec::new();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--world" {
+            world = it.next().cloned().unwrap_or(world);
+        } else if let Some(w) = a.strip_prefix("--world=") {
+            world = w.to_string();
+        } else {
+            rest.push(a.clone());
+        }
+    }
+    (world, rest)
+}
+
+/// Run on a thread with a large stack: unbounded code runs direct-style within a cycle
+/// (doubt DS of prismc/README.md), and Rust's default stack is 8 MB.
+pub fn on_big_stack(f: impl FnOnce() -> u8 + Send + 'static) -> u8 {
+    std::thread::Builder::new().stack_size(1 << 30).spawn(f).map_or(1, |h| h.join().unwrap_or(1))
+}
+
+/// `test`: each script under the Test World. With `--print` the transcripts go to
+/// standard output as they are; otherwise each is compared byte for byte with the
+/// `.expected` beside it, and `ok` or the difference is printed.
+pub fn run_scripts(world: &TestWorld, given: &[String], compiled: &[&str]) -> u8 {
+    let print = given.iter().any(|a| a == "--print");
+    let mut paths: Vec<String> = given.iter().filter(|a| *a != "--print").cloned().collect();
+    if paths.is_empty() {
+        paths = compiled.iter().map(|s| s.to_string()).collect();
+    }
+    let mut code = 0;
+    for path in paths {
+        let script = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("{path}: {e}");
+                code = 2;
+                continue;
+            }
+        };
+        if print {
+            let report = world.run(&script);
+            print!("{}", report.transcript);
+            report.failures.iter().for_each(|f| eprintln!("{path}: {f}"));
+            code = code.max(report.exit_code);
+            continue;
+        }
+        let expected_path = format!("{}.expected", path.strip_suffix(".prismtest").unwrap_or(&path));
+        match std::fs::read_to_string(&expected_path) {
+            Ok(expected) => match world.verify(&script, &expected) {
+                Ok(_) => println!("ok {path}"),
+                Err(e) => {
+                    println!("FAILED {path}: {e}");
+                    code = 1;
+                }
+            },
+            Err(_) => {
+                let report = world.run(&script);
+                print!("{}", report.transcript);
+                report.failures.iter().for_each(|f| eprintln!("{path}: {f}"));
+                code = code.max(report.exit_code);
+            }
+        }
+    }
+    code
+}
+
+/// The canvas World, when the crate is built with it.
+#[cfg(feature = "canvas")]
+pub fn run_canvas<P: Program>() -> u8 {
+    prism_world_canvas_rtl::run::<P>()
+}
+
+#[cfg(not(feature = "canvas"))]
+pub fn run_canvas<P: Program>() -> u8 {
+    eprintln!("this program was built without the canvas World: cargo build --features canvas");
+    1
+}
+</rust>

@@ -1,334 +1,492 @@
 # The Rust template set (Templates ch. 2, code templates; Compiler ch. 4, "Templates, and
-# two template sets"): every multi-line piece of the emitted Rust, as a function-form
-# template with doubled braces. A placeholder alone on its line stands for whole lines,
-# indented to its column, so nested pieces come out indented as written. The templates
-# decide nothing (Compiler ch. 4, K9): lowering decided, emit.prism chose the template.
+# two template sets"): every item of the emitted Rust as a function-form template with
+# doubled braces. A placeholder alone on its line stands for whole lines indented to its
+# column, so a nested piece comes out indented as written. The templates decide nothing
+# (K9): lowering decided, emit.prism spelled each part and chose the template.
 #
-# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 module RustTemplates
+emit r
+
+# ---------------------------------------------------------------------------------------
+# Comments
+# ---------------------------------------------------------------------------------------
+
+# A doc comment: each line of `text` after `///`.
+TmDoc: fn Text -> Text
+fn TmDoc text = if text == "": "" else: Concat (Each (Split text, "\n"), \|l| if l == "": "///\n" else: "/// {l}\n")
+
+# A doc comment that quotes Prism source.
+TmSourceDoc: fn Text, Text -> Text
+fn TmSourceDoc lead, source = if lead == "": TmSourceOnly source else: TmSourceLed lead, source
+
+TmSourceOnly: fn Text -> Text
+fn TmSourceOnly source = inline_text <rust>
+/// ```prism
+<@TmQuoted text={{source}}/>
+/// ```
+</rust>
+
+TmSourceLed: fn Text, Text -> Text
+fn TmSourceLed lead, source = inline_text <rust>
+/// {{lead}}
+///
+/// ```prism
+<@TmQuoted text={{source}}/>
+/// ```
+</rust>
+
+TmQuoted: fn Text -> Text
+fn TmQuoted text = TmJoin (Each (Split text, "\n"), \|l| if l == "": "///" else: "/// {l}"), "\n"
+
+TmJoin: fn [Text], Text -> Text
+fn TmJoin xs, sep = Drop (Concat (Each xs, \|x| "{sep}{x}")), (Len sep)
 
 # ---------------------------------------------------------------------------------------
 # Files
 # ---------------------------------------------------------------------------------------
 
 # One Prism module's Rust module.
-RsModule: fn Text, Text, Text -> Text
-fn RsModule file, name, items = inline_text <rust>
-//! {{name}}, from `{{file}}`: emitted by prismc (decisions.md D16). Edit the Prism source,
-//! not this file.
-#![allow(non_snake_case, non_camel_case_types, unused_variables, unused_mut, unused_labels)]
-#![allow(unreachable_code, unused_parens, unused_braces, dead_code, unused_imports, clippy::all)]
+TmModule: fn Text, Text, Text, Text -> Text
+fn TmModule prism, path, uses, items = inline_text <rust>
+//! {{prism}}, from `{{path}}`, emitted by prismc: one Rust type per Prism type, a node
+//! per root widget (docs/backend.md). Edit the Prism source, not this file.
 
-use prism_dyn::rt::*;
+use std::cell::{Cell, RefCell};
+use std::rc::{Rc, Weak};
+
+use prism_rtl::*;
+use prism_rtl::pod::mismatch;
+
+use crate::prelude::*;
+{{uses}}
 
 {{items}}
 </rust>
 
-# The crate root: the modules, the program's tables, and `main`.
-RsMain: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
-fn RsMain name, mods, ctors, tags, impls, root, programs, checks = inline_text <rust>
-//! The program `{{name}}`, emitted by prismc (decisions.md D16): one Rust module per Prism
-//! module, every value a `prism_rt::Value`, every application through `prism_dyn`. Edit
-//! the Prism sources, not these files.
-#![allow(non_snake_case, unused_variables, unused_mut, unused_labels, unreachable_code, dead_code, unused_imports, clippy::all)]
-
-{{mods}}
-
-use prism_dyn::rt::*;
-use std::rc::Rc;
-
-/// The program's constructors, tags and `impl`s, which applications read at run time.
-fn install_tables() -> R<()> {
-    install(
-        vec![
-            {{ctors}}
-        ],
-        vec![
-            {{tags}}
-        ],
-    );
-    {{impls}}
-    Ok(())
-}
-
-/// The root: the root file's `@main`.
-fn root() -> R<Value> {
-    {{root}}
-}
-
-/// The blueprints a test script's `test name, @program:` line can name.
-fn programs() -> R<Vec<(&'static str, Value)>> {
-    let b: &mut Bx = &mut None;
-    Ok(vec![
-        {{programs}}
-    ])
-}
-
-/// The `check` lines of the test scripts compiled with the program, by their text.
-fn checks(line: &str) -> Option<R<Value>> {
-    let b: &mut Bx = &mut None;
-    match line {
-        {{checks}}
-        _ => None,
-    }
-}
-
-#[cfg(feature = "canvas")]
-fn canvas() -> Option<fn(Program) -> u8> {
-    Some(|p| prism_world_canvas::run(p, |w| Box::new(prism_dyn::world::UnwrapWorld::new(w))))
-}
-
-#[cfg(not(feature = "canvas"))]
-fn canvas() -> Option<fn(Program) -> u8> {
-    None
-}
-
-fn main() -> std::process::ExitCode {
-    if let Err(f) = install_tables() {
-        eprintln!("{}", f.message);
-        return std::process::ExitCode::from(2);
-    }
-    let code = main_with(root, programs, Rc::new(checks), canvas());
-    std::process::ExitCode::from(code)
-}
-</rust>
-
-RsCargo: fn Text, Text -> Text
-fn RsCargo name, runtime = inline_text <rust>
+# `Cargo.toml`: the library and the two Worlds, by path; the canvas World behind a feature,
+# on by default for a program whose root emits `Gui`.
+TmCargo: fn Text, Text, Text -> Text
+fn TmCargo name, runtime, defaults = inline_text <rust>
 # Emitted by prismc. Edit the Prism sources, not this file.
 [package]
 name = "{{name}}"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+
+[[bin]]
+name = "{{name}}"
+path = "src/main.rs"
+
 [dependencies]
-prism_rt = { path = "{{runtime}}/prism_rt" }
-prism_dyn = { path = "{{runtime}}/prism_dyn" }
-prism_world_canvas = { path = "{{runtime}}/worlds/canvas", optional = true }
+prism_rtl = { path = "{{runtime}}/prism_runtime_lib" }
+prism_world_cli = { path = "{{runtime}}/worlds/cli" }
+prism_world_canvas_rtl = { path = "{{runtime}}/worlds/canvas_rtl", optional = true }
 
 [features]
-canvas = ["dep:prism_world_canvas"]
-
-[profile.release]
-debug = false
-
-[workspace]
+default = [{{defaults}}]
+canvas = ["prism_world_canvas_rtl"]
 </rust>
 
-# ---------------------------------------------------------------------------------------
-# Items
-# ---------------------------------------------------------------------------------------
+# `main.rs`: the modules, the programs, the Test World's registrations, and `main`, which
+# picks the World (docs/backend.md: `Gui.*` at the root is the canvas, else the CLI;
+# `--world` overrides; `test` runs the scripts under the Test World).
+TmMain: fn Text, Text, Text, Text, Text, Text, Text -> Text
+fn TmMain name, mods, programs, registrations, scripts, runRoot, world = inline_text <rust>
+//! The program `{{name}}`, emitted by prismc from Prism (docs/backend.md): a crate over
+//! `prism_rtl`, run under the CLI World, the canvas World or the Test World. Edit the
+//! Prism sources, not these files.
+#![allow(dead_code, unused_variables, unused_imports, unused_mut, unused_parens, unused_braces)]
+#![allow(unreachable_patterns, unreachable_code, unused_labels, non_snake_case, non_camel_case_types)]
+#![allow(clippy::all)]
 
-# A global's getter: each global is made once per thread.
-RsGetter: fn Text, Text, Text, Text -> Text
-fn RsGetter doc, name, site, value = inline_text <rust>
-/// {{doc}}
-pub fn {{name}}() -> R<Value> {
-    global("{{site}}", || {
-        {{value}}
-    })
+{{mods}}
+
+use std::rc::Rc;
+
+use prism_rtl::*;
+
+use crate::prelude::*;
+
+{{programs}}
+
+/// The Test World with every root a test names, and the compiled `check` blocks.
+fn test_world() -> TestWorld {
+    TestWorld::new()
+        {{registrations}}
 }
-</rust>
 
-# A function's body: its clauses, the first whose patterns match.
-RsBodyFn: fn Text, Text, Text, Text, Text, Text -> Text
-fn RsBodyFn rs, within, loc, prologue, clauses, name = inline_text <rust>
-fn {{rs}}(cap: &[Value], args: Vec<Value>, b: &mut Bx) -> R<Value> {
-    {{within}}("{{loc}}", || {
-        {{prologue}}
-        {{clauses}}
-        Err(no_clause("{{name}}", &args))
-    })
-}
-</rust>
+/// The test scripts compiled with the program: `test` runs these when given none.
+const SCRIPTS: &[&str] = &[
+    {{scripts}}
+];
 
-# A widget block, or a widget function's clauses: built through `b`.
-RsBuildFn: fn Text, Text, Text, Text -> Text
-fn RsBuildFn rs, loc, prologue, body = inline_text <rust>
-fn {{rs}}(b: &mut Bx, cap: &[Value], args: &[Value]) -> R<Value> {
-    within("{{loc}}", || {
-        {{prologue}}
-        {{body}}
-    })
-}
-</rust>
+/// The World the root's row asks for.
+const WORLD: &str = "{{world}}";
 
-# A `match`'s or an `if`'s arms, over a plain scrutinee `s` and the locals in `env`.
-RsArmsFn: fn Text, Text, Text, Text -> Text
-fn RsArmsFn rs, prologue, arms, fallback = inline_text <rust>
-fn {{rs}}(b: &mut Bx, s: Value, env: &[Value]) -> R<Value> {
-    {{prologue}}
-    {{arms}}
-    {{fallback}}
-}
-</rust>
-
-# One clause: its patterns tested, its body the function's value.
-RsClause: fn Text, Text, Text, Text -> Text
-fn RsClause label, arity, patterns, body = inline_text <rust>
-'{{label}}: {
-    if args.len() != {{arity}} {
-        break '{{label}};
-    }
-    {{patterns}}
-    {{body}}
-}
-</rust>
-
-# One arm: its pattern and guard tested, its body the value.
-RsArm: fn Text, Text, Text -> Text
-fn RsArm label, tests, body = inline_text <rust>
-'{{label}}: {
-    {{tests}}
-    {{body}}
-}
-</rust>
-
-RsReturn: fn Text -> Text
-fn RsReturn x = inline_text <rust>
-return Ok(
-    {{x}}
-);
-</rust>
-
-RsGuard: fn Text, Text -> Text
-fn RsGuard x, fail = inline_text <rust>
-if !truth(&{{x}})? {
-    {{fail}}
-}
-</rust>
-
-RsTest: fn Text, Text -> Text
-fn RsTest cond, fail = inline_text <rust>
-if !{{cond}} {
-    {{fail}}
-}
-</rust>
-
-RsLetElse: fn Text, Text, Text -> Text
-fn RsLetElse v, value, fail = inline_text <rust>let Some({{v}}) = {{value}} else { {{fail}} };</rust>
-
-# ---------------------------------------------------------------------------------------
-# Blocks
-# ---------------------------------------------------------------------------------------
-
-RsBlock: fn Text, Text -> Text
-fn RsBlock lines, value = inline_text <rust>
-{
-    {{lines}}
-    {{value}}
-}
-</rust>
-
-# A function value: its body's `fn`, then the value.
-RsItemValue: fn Text, Text -> Text
-fn RsItemValue items, value = inline_text <rust>
-{
-    {{items}}
-    {{value}}
-}
-</rust>
-
-# A building `match` or `if`: over a handle, its arms as one lifted node; otherwise the
-# chosen arm's widget block, building here.
-RsBuilding: fn Text, Text, Text, Text, Text -> Text
-fn RsBuilding s, scrutinee, lifted, arms, fallback = inline_text <rust>
-{
-    let {{s}} = {{scrutinee}};
-    if is_handle(&{{s}}) {
-        {{lifted}}
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let (world, rest) = prelude::world_option(&args, WORLD);
+    let code = if args.first().map(String::as_str) == Some("test") || world == "test" {
+        let scripts: Vec<String> = rest.into_iter().filter(|a| a != "test").collect();
+        prelude::on_big_stack(move || prelude::run_scripts(&test_world(), &scripts, SCRIPTS))
     } else {
-        '{{s}}: {
-            {{arms}}
-            {{fallback}}
+        run_root(&world, rest)
+    };
+    std::process::exit(code as i32);
+}
+
+/// The root under the World `world`.
+fn run_root(world: &str, args: Vec<String>) -> u8 {
+    {{runRoot}}
+}
+</rust>
+
+# A `main` with no root: only the tests run.
+TmNoRoot: fn Text -> Text
+fn TmNoRoot name = inline_text <rust>
+let _ = (world, args);
+eprintln!("{{name}}: the program has no `@main`; `{{name}} test` runs its tests");
+2
+</rust>
+
+# A root under the World its row asks for, or the one `--world` names.
+TmRunRoot: fn Text -> Text
+fn TmRunRoot program = inline_text <rust>
+match world {
+    "canvas" => prelude::run_canvas::<{{program}}>(),
+    _ => prelude::on_big_stack(move || prism_world_cli::run::<{{program}}>(args)),
+}
+</rust>
+
+# ---------------------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------------------
+
+# A record as a struct.
+TmStruct: fn Text, Text, Text, Text -> Text
+fn TmStruct doc, derives, head, fields = inline_text <rust>
+{{doc}}
+#[derive({{derives}})]
+pub struct {{head}} {
+    {{fields}}
+}
+</rust>
+
+# A choice as an enum.
+TmEnum: fn Text, Text, Text, Text -> Text
+fn TmEnum doc, derives, head, cases = inline_text <rust>
+{{doc}}
+#[derive({{derives}})]
+pub enum {{head}} {
+    {{cases}}
+}
+</rust>
+
+# A newtype as a tuple struct, a unit type as a unit struct.
+TmTupleStruct: fn Text, Text, Text, Text -> Text
+fn TmTupleStruct doc, derives, head, fields = inline_text <rust>
+{{doc}}
+#[derive({{derives}})]
+pub struct {{head}}{{fields}};
+</rust>
+
+# An impl of a trait with one method.
+TmImpl: fn Text, Text, Text, Text, Text -> Text
+fn TmImpl generics, tr, ty, signature, body = inline_text <rust>
+impl{{generics}} {{tr}} for {{ty}} {
+    {{signature}} {
+        {{body}}
+    }
+}
+</rust>
+
+# A `match self` of one arm per case.
+TmMatchSelf: fn Text -> Text
+fn TmMatchSelf arms = inline_text <rust>
+match self {
+    {{arms}}
+}
+</rust>
+
+# A type with its own `^Show` crosses as its text and its structure (docs/backend.md,
+# "Printing"): a key prints `0/[e2]/0` and still matches structurally.
+TmShownPod: fn Text -> Text
+fn TmShownPod structure = inline_text <rust>
+let structure = {
+    {{structure}}
+};
+Pod::Shown(show(self).as_str().into(), Box::new(structure))
+</rust>
+
+# A derived `FromPod`: the structure matched case by case.
+TmFromPod: fn Text, Text -> Text
+fn TmFromPod arms, want = inline_text <rust>
+match p.structure() {
+    {{arms}}
+    other => mismatch("{{want}}", other),
+}
+</rust>
+
+# An element tag's `Level`.
+TmTag: fn Text, Text, Text, Text, Text -> Text
+fn TmTag doc, name, fields, tagName, pods = inline_text <rust>
+{{doc}}
+pub struct {{name}} {
+    {{fields}}
+}
+
+impl ToPod for {{name}} {
+    fn to_pod(&self) -> Pod {
+        Pod::element("{{tagName}}", vec![{{pods}}])
+    }
+}
+</rust>
+
+# ---------------------------------------------------------------------------------------
+# Functions and jobs
+# ---------------------------------------------------------------------------------------
+
+TmFn: fn Text, Text, Text -> Text
+fn TmFn doc, signature, body = inline_text <rust>
+{{doc}}
+{{signature}} {
+    {{body}}
+}
+</rust>
+
+# An unbounded function's step machine (D6): the job stopped at a cycle point, its
+# `cycle`, and its `Start`.
+TmJob: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn TmJob doc, head, generics, fields, ret, body, start, startBody = inline_text <rust>
+/// The step machine of `{{head}}`, stopped at a cycle point: the call about to be
+/// entered. A tail call leaves no frame, so the job needs no stack.
+///
+{{doc}}
+pub struct {{head}}{{generics}} {
+    {{fields}}
+}
+
+impl{{generics}} Job<{{ret}}> for {{head}}{{generics}} {
+    fn cycle(&self) -> Turn<{{ret}}> {
+        {{body}}
+    }
+}
+
+/// `Start {{head}}, x`: what the function value is when passed to `@Run`.
+{{start}} {
+    {{startBody}}
+}
+</rust>
+
+# ---------------------------------------------------------------------------------------
+# Nodes
+# ---------------------------------------------------------------------------------------
+
+# A widget block's node: the struct, its constructor and methods, and the `Node` hooks.
+TmNode: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn TmNode doc, name, fields, consts, build, methods, hooks, answer = inline_text <rust>
+{{doc}}
+pub struct {{name}} {
+    path: Path,
+    {{fields}}
+}
+
+impl {{name}} {
+    {{consts}}
+    {{build}}
+    {{methods}}
+}
+
+impl Node for {{name}} {
+    {{answer}}
+    {{hooks}}
+}
+</rust>
+
+TmBuild: fn Text, Text, Text, Text, Text, Text -> Text
+fn TmBuild name, params, ret, lets, inits, rest = inline_text <rust>
+/// Built after propagation: holds take their initial values, places go out with
+/// `cx.added`, and nothing fires.
+pub fn build(path: Path, {{params}}cx: &mut Cx) -> {{ret}} {
+    {{lets}}
+    let node = Rc::new({{name}} { {{inits}} });
+    {{rest}}
+}
+</rust>
+
+TmMethod: fn Text, Text, Text -> Text
+fn TmMethod doc, signature, body = inline_text <rust>
+{{doc}}
+{{signature}} {
+    {{body}}
+}
+</rust>
+
+# A `for`'s builder (docs/backend.md, "Dynamic structure"), run at the build and in the
+# build list after a tick that changed its source.
+TmForBuild: fn Text, Text, Text, Text, Text, Text -> Text
+fn TmForBuild name, pos, source, keyTy, valueTy, rowNode = inline_text <rust>
+/// The rows of the `for` at place {{pos}}: rows whose key left are torn down, new keys
+/// are built at `{{pos}}/[k]`, kept rows hear their entry; from the values after the tick.
+fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
+    let items: Map<{{keyTy}}, {{valueTy}}> = {{source}};
+    let old = self.{{name}}.borrow().clone();
+    for (k, row) in old.iter() {
+        if !items.contains_key(k) {
+            row.leave_row(cx);
+            cx.leave_later(row.clone());
         }
     }
-}
-</rust>
-
-RsGiven: fn Text, Text -> Text
-fn RsGiven steps, value = inline_text <rust>
-'given: {
-    {{steps}}
-    {{value}}
-}
-</rust>
-
-RsGivenBind: fn Text, Text -> Text
-fn RsGivenBind t, value = inline_text <rust>
-let {{t}} = match given_bind({{value}}) {
-    Ok(v) => v,
-    Err(gave_up) => break 'given gave_up,
-};
-</rust>
-
-RsUpdate: fn Text, Text, Text -> Text
-fn RsUpdate root, target, lines = inline_text <rust>
-{
-    let mut {{root}} = {{target}};
-    {{lines}}
-    {{root}}
-}
-</rust>
-
-RsWhile: fn Text, Text, Text -> Text
-fn RsWhile label, cond, body = inline_text <rust>
-'{{label}}: loop {
-    turn()?;
-    {{cond}}
-    {{body}}
-}
-</rust>
-
-RsIf: fn Text, Text, Text, Text -> Text
-fn RsIf label, cond, yes, fallback = inline_text <rust>
-'{{label}}: {
-    'then_{{label}}: {
-        {{cond}}
-        {{yes}}
-        break '{{label}};
+    let mut next = Map::new();
+    for (k, v) in items.iter() {
+        let row = match old.get(k) {
+            Some(row) => {
+                row.update(v.clone(), cx);
+                row.clone()
+            }
+            None => {{rowNode}}::build(self.path.at({{pos}}).child(Segment::Key(k.to_pod())), k.clone(), v.clone(), Rc::downgrade(self), cx)?,
+        };
+        next.insert(k.clone(), row);
     }
-    {{fallback}}
+    *self.{{name}}.borrow_mut() = next;
+    Ok(())
 }
 </rust>
 
-RsMatch: fn Text, Text, Text -> Text
-fn RsMatch label, scrutinee, arms = inline_text <rust>
-'{{label}}: {
-    let s_{{label}} = {{scrutinee}};
+# A `rebuild`'s builder: one generation at a time, at `{{pos}}/#g`.
+TmGenBuild: fn Text, Text, Text, Text, Text -> Text
+fn TmGenBuild name, pos, source, valueTy, select = inline_text <rust>
+/// The `rebuild` at place {{pos}}: the old generation torn down (it ran to the end of the
+/// tick), the next built at `{{pos}}/#g` from the source after the tick.
+fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
+    if let Some(old) = self.{{name}}.borrow_mut().take() {
+        old.leave_row(cx);
+        cx.leave_later(old);
+    }
+    let g = self.{{name}}_count.get();
+    self.{{name}}_count.set(g + 1);
+    let path = self.path.at({{pos}}).child(Segment::Gen(g));
+    let value: {{valueTy}} = {{source}};
+    let row: Rc<dyn Row> = {{select}};
+    *self.{{name}}.borrow_mut() = Some(row);
+    Ok(())
+}
+</rust>
+
+# A row's leaving.
+TmRowImpl: fn Text, Text -> Text
+fn TmRowImpl name, unsubscribe = inline_text <rust>
+impl Row for {{name}} {
+    fn leave_row(&self, cx: &mut Cx) {
+        self.remove_places(cx);
+        {{unsubscribe}}
+    }
+}
+</rust>
+
+TmAnswer: fn Text -> Text
+fn TmAnswer arms = inline_text <rust>
+fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
+    match at {
+        {{arms}}
+        _ => return Err(Fault::answer(format!("no answering place at {}", Path(at.to_vec())))),
+    }
+    Ok(())
+}
+</rust>
+
+TmHook: fn Text, Text -> Text
+fn TmHook name, body = inline_text <rust>
+fn {{name}}(self: Rc<Self>, cx: &mut Cx) -> Done {
+    {{body}}
+    Ok(())
+}
+</rust>
+
+# The program around a root node, as every World drives it.
+TmProgram: fn Text, Text, Text, Text, Text -> Text
+fn TmProgram name, prism, node, decode, call = inline_text <rust>
+/// The program of `@{{prism}}`: the root node and the runtime.
+pub struct {{name}} {
+    rt: Runtime,
+    root: Rc<{{node}}>,
+}
+
+impl Program for {{name}} {
+    fn build(args: &[Pod], ready: &dyn ReadyState) -> Result<(Self, TickOut), Fault> {
+        {{decode}}
+        let mut rt = Runtime::new();
+        let mut cx = rt.build(ready);
+        let root = {{call}};
+        let out = rt.close(cx)?;
+        Ok(({{name}} { rt, root }, out))
+    }
+    fn tick(&mut self, input: &TickIn, ready: &dyn ReadyState) -> Result<TickOut, Fault> {
+        let root: Rc<dyn Node> = self.root.clone();
+        self.rt.tick(&root, input, ready)
+    }
+    fn compact(&mut self) {
+        self.rt.compact();
+    }
+}
+</rust>
+
+# ---------------------------------------------------------------------------------------
+# Expressions and statements that take several lines
+# ---------------------------------------------------------------------------------------
+
+TmMatch: fn Text, Text -> Text
+fn TmMatch scrut, arms = inline_text <rust>
+match {{scrut}} {
     {{arms}}
-    return Err(no_arm(&s_{{label}}));
-}
-</rust>
+}</rust>
 
-RsFor: fn Text, Text, Text, Text -> Text
-fn RsFor label, collection, binds, body = inline_text <rust>
-for (ix_{{label}}, (k_{{label}}, v_{{label}})) in lens::entries(&{{collection}}).into_iter().enumerate() {
-    {{binds}}
+TmBlock: fn Text, Text -> Text
+fn TmBlock stmts, tail = inline_text <rust>
+{
+    {{stmts}}
+    {{tail}}
+}</rust>
+
+TmLabeled: fn Text, Text, Text -> Text
+fn TmLabeled label, stmts, tail = inline_text <rust>
+{{label}}: {
+    {{stmts}}
+    {{tail}}
+}</rust>
+
+TmIf: fn Text, Text, Text -> Text
+fn TmIf cond, thenX, elseX = inline_text <rust>
+if {{cond}} {
+    {{thenX}}
+} else {
+    {{elseX}}
+}</rust>
+
+TmIfStmt: fn Text, Text -> Text
+fn TmIfStmt head, body = inline_text <rust>
+{{head}} {
     {{body}}
-}
-</rust>
+}</rust>
 
-RsForRef: fn Text, Text, Text, Text, Text, Text, Text -> Text
-fn RsForRef label, root, steps, hide, binds, body, unhide = inline_text <rust>
-{
-    let st_{{label}}: Vec<Step> = vec![{{steps}}];
-    let keys_{{label}}: Vec<Value> = lens::entries(&lens::read(&{{root}}, &st_{{label}})?).into_iter().map(|(k, _)| k).collect();
-    {{hide}}
-    for (ix_{{label}}, k_{{label}}) in keys_{{label}}.into_iter().enumerate() {
-        {{binds}}
-        {{body}}
-    }
-    {{unhide}}
-}
-</rust>
+TmElse: fn Text -> Text
+fn TmElse body = inline_text <rust>
+ else {
+    {{body}}
+}</rust>
 
-RsTemplate: fn Text -> Text
-fn RsTemplate parts = inline_text <rust>
-{
-    let mut out = String::new();
-    {{parts}}
-    out
-}
-</rust>
+TmArmBlock: fn Text, Text -> Text
+fn TmArmBlock pat, body = inline_text <rust>
+{{pat}} => {
+    {{body}}
+}</rust>
+
+TmChainArm: fn Text, Text, Text -> Text
+fn TmChainArm head, label, body = inline_text <rust>
+if {{head}} {
+    break {{label}} {{body}};
+}</rust>

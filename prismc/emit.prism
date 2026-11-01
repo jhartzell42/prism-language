@@ -1,783 +1,523 @@
-# Emission: the core form (lower.prism) spelled as Rust through the template set
-# (templates/rust.prism; Templates ch. 2, Compiler ch. 4). One Rust module per Prism
-# module, one getter per declaration, one Rust `fn` per Prism function, a `main` that
-# installs the program's tables and runs the root under the World `--world` names, and a
-# `Cargo.toml` (decisions.md D1, D16).
+# Emission: the model lowering decided (lower.prism) spelled as a Rust crate through the
+# templates (templates/rust.prism, templates/prelude.prism): `Cargo.toml`, `src/main.rs`,
+# `src/prelude.rs` and one `src/NAME.rs` per Prism module. Each function here spells one
+# construct of the core form; nothing here decides (K9). An expression's text is
+# relative to the column it starts at, so a template's placeholder alone on its line
+# indents a piece of several lines as a person would.
 #
-# Every nested function (a lambda's body, a `match`'s arms, a widget block) is a Rust `fn`
-# item, hoisted to the top of the Rust function it stands in, so that the expression
-# where it is used stays on one line: `function("Lexer.lam312", "lambda", &[V], &[],
-# false, lam_312, vec![l_c.clone()])`. Emission decides nothing: lowering did.
-#
-# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 module Emit
 emit r
-use Ast.*
 use Lexer.*
-use Parser.*
+use CheckErrors.*
 use Lower.*
 use RustTemplates.*
-
-# A piece of Rust: the `fn` items it needs hoisted, and its code.
-type ZRs = record:
-    items: [Text]
-    code: Text
-derive ^Eq, ^Show
-
-ZjCode: fn Text -> ZRs
-fn ZjCode t = ZRs(items=[[]], code=t)
-
-ZjLines: fn [Text] -> Text
-fn ZjLines ls = Join (Filter ls, \|l| l != ""), "\n"
-
-ZjItems: fn [ZRs] -> [Text]
-fn ZjItems rs = Fold rs, [[]], \|acc, r| Append acc, r.items
-
-ZjCodes: fn [ZRs] -> Text
-fn ZjCodes rs = Join (Each rs, \|r| r.code), ", "
+use PreludeTemplate.*
 
 # ---------------------------------------------------------------------------------------
-# Literals
+# Types
 # ---------------------------------------------------------------------------------------
 
-ZjReplace: fn Text, Text, Text -> Text
-fn ZjReplace t, a, b = Join (Split t, a), b
+EmTy: unbounded fn RsTy -> Text
+fn EmTy t = match t:
+    RsNat: "Nat"
+    RsInt: "Int"
+    RsU8: "u8"
+    RsFloat: "f64"
+    RsBool: "bool"
+    RsChar: "char"
+    RsText: "Text"
+    RsUnit: "()"
+    RsPath: "Path"
+    RsDuration: "Duration"
+    RsError: "Error"
+    RsNamed n, [[]]: n
+    RsNamed n, args: "{n}<{EmTys args}>"
+    RsOpt i: "Option<{EmTy i}>"
+    RsRes i: "Result<{EmTy i}, Error>"
+    RsTuple ts: "({EmTys ts})"
+    RsArray e: "Array<{EmTy e}>"
+    RsMap k, v: "Map<{EmTy k}, {EmTy v}>"
+    RsFn ps, r: "Rc<dyn Fn({EmRefTys ps}) -> {EmTy r}>"
+    RsRef (RsFn ps, r): "&dyn Fn({EmRefTys ps}) -> {EmTy r}"
+    RsRef i: "&{EmTy i}"
+    RsJobFn a, b: "fn({EmTy a}) -> Rc<dyn Job<{EmTy b}>>"
+    RsJob b: "Rc<dyn Job<{EmTy b}>>"
+    RsEvent i: "Event<{EmTy i}>"
+    RsDyn i: "Dynamic<{EmTy i}>"
+    RsGen n: n
+    RsRc i: "Rc<{EmTy i}>"
+    RsPod: "Pod"
+    RsShowAny: "Rc<dyn Show>"
+    RsHold i: "Hold<{EmTy i}>"
+    RsStamped i: "Stamped<{EmTy i}>"
+    RsDefer i: "Defer<{EmTy i}>"
+    RsWeak n: "Weak<{n}>"
+    RsCell i: "RefCell<{EmTy i}>"
+    RsWakes: "Wakes"
+    RsPort i: "Port<{EmTy i}>"
+    RsUnknown what: "() /* {what} */"
 
-# A text as the inside of a Rust string literal.
-ZjEscape: fn Text -> Text
-fn ZjEscape t = ZjReplace (ZjReplace (ZjReplace (ZjReplace (ZjReplace (ZjReplace t, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n"), "\t", "\\t"), "\u{d}", "\\r"), "\u{0}", "\\0"
+EmTys: unbounded fn [RsTy] -> Text
+fn EmTys ts = Join (Each ts, \|t| EmTy t), ", "
 
-ZjStr: fn Text -> Text
-fn ZjStr t = "\"{ZjEscape t}\""
-
-ZjChar: fn Text -> Text
-fn ZjChar "'" = "'\\''"
-fn ZjChar "\\" = "'\\\\'"
-fn ZjChar "\n" = "'\\n'"
-fn ZjChar "\t" = "'\\t'"
-fn ZjChar "\u{d}" = "'\\r'"
-fn ZjChar "\u{0}" = "'\\0'"
-fn ZjChar c = "'{c}'"
-
-ZjInt: fn Text -> Text
-fn ZjInt s:
-    let digits = Concat (Filter (Chars s), \|c| c != "_")
-    let body = if (Take digits, 1) == "-": Drop digits, 1 else: digits
-    if (Len body) > 0 and (Len body) <= 17 and (AllChars body, IsDigit): "small({digits})" else: "int({ZjStr digits})"
-
-ZjFloat: fn Text -> Text
-fn ZjFloat s = if (Contains s, ".") or (Contains s, "e") or (Contains s, "E"): "float({s})" else: "float({s}.0)"
-
-ZjLayers: fn [Text] -> Text
-fn ZjLayers ls = "&[{Join ls, ", "}]"
-
-ZjNats: fn [Bool] -> Text
-fn ZjNats ns = "&[{Join (Each ns, \|n| if n: "true" else: "false"), ", "}]"
-
-ZjBool: fn Bool -> Text
-fn ZjBool True = "true"
-fn ZjBool False = "false"
-
-ZjOptStr: fn ?Text -> Text
-fn ZjOptStr nil = "None"
-fn ZjOptStr (? t) = "Some({ZjStr t})"
-
-ZjStrs: fn [Text] -> Text
-fn ZjStrs ts = "&[{Join (Each ts, ZjStr), ", "}]"
-
-# ---------------------------------------------------------------------------------------
-# Expressions: each one line of Rust of type `Value`, its nested functions hoisted
-# ---------------------------------------------------------------------------------------
-
-ZjX: fn ZExpr -> ZRs
-fn ZjX (ZLocal rs) = ZjCode "{rs}.clone()"
-fn ZjX (ZGlobal path) = ZjCode "{path}()?"
-fn ZjX (ZInt s) = ZjCode (ZjInt s)
-fn ZjX (ZFloat s) = ZjCode (ZjFloat s)
-fn ZjX (ZText s) = ZjCode "text({ZjStr s})"
-fn ZjX (ZChar c) = ZjCode "ch({ZjChar c})"
-fn ZjX (ZDuration n) = ZjCode "duration({n})"
-fn ZjX (ZBool v) = ZjCode "boolean({ZjBool v})"
-fn ZjX ZUnit = ZjCode "unit()"
-fn ZjX ZNil = ZjCode "nil()"
-fn ZjX ZNever = ZjCode "never(b)"
-fn ZjX (ZTag t) = ZjCode "tag({ZjStr t})?"
-fn ZjX (ZQualBuiltin n) = if (Take n, 1) == "@": ZjCode "builtin_value({ZjStr n})?" else: ZjCode "builtin({ZjStr n}, {ZjStr n}, &[], &[])"
-fn ZjX (ZApply f, args) = ZjCall "apply", (Append [[ZjRef f]], [[ZjVec args]])
-fn ZjX (ZApplyNamed f, args):
-    let vals = Each args, \|a| ZjX a.value
-    let named = Each (ZjZip args, vals), \|((a, v))| "({ZjOptStr a.name}, {v.code})"
-    let fr = ZjX f
-    ZRs(items=(Append fr.items, (ZjItems vals)), code="apply_named(&{fr.code}, vec![{Join named, ", "}], b)?")
-fn ZjX (ZApplyWith f, args, over):
-    let fr = ZjX f
-    let ar = ZjVec args
-    let os = Each over, \|o| if o == "": "None" else: "Some({o})"
-    ZRs(items=(Append fr.items, ar.items), code="apply_with(&{fr.code}, {ar.code}, &[{Join os, ", "}], b)?")
-fn ZjX (ZElement t, args):
-    let vals = Each args, \|a| ZjX a.value
-    let named = Each (ZjZip args, vals), \|((a, v))| "({ZjOptStr a.name}, {v.code})"
-    ZRs(items=(ZjItems vals), code="element({ZjStr t}, vec![{Join named, ", "}])?")
-fn ZjX (ZBin op, x, y) = ZjCall "binop", [[ZjCode "Op::{op}", ZjX x, ZjX y]]
-fn ZjX (ZAndOr op, x, y):
-    let xr = ZjX x
-    let yr = ZjX y
-    ZRs(items=(Append xr.items, yr.items), code="and_or(Op::{op}, {xr.code}, |b| Ok({yr.code}), b)?")
-fn ZjX (ZOn x, e) = ZjCall "on", [[ZjX x, ZjX e]]
-fn ZjX (ZMerge x, y) = ZjCall "merge", [[ZjX x, ZjX y]]
-fn ZjX (ZUn op, x) = ZjCall "unop", [[ZjCode "UnOp::{op}", ZjX x]]
-fn ZjX (ZField r, n) = ZjCall "field", [[ZjX r, ZjCode (ZjStr n)]]
-fn ZjX (ZIndex r, k) = ZjCall "index", [[ZjX r, ZjX k]]
-fn ZjX (ZSome x) = ZjCall "some", [[ZjX x]]
-fn ZjX (ZOk x) = ZjCall "okay", [[ZjX x]]
-fn ZjX (ZConst x):
-    let xr = ZjX x
-    ZRs(items=xr.items, code="constant({xr.code}, b)")
-fn ZjX (ZTuple xs):
-    let v = ZjVec xs
-    ZRs(items=v.items, code="tuple({v.code})")
-fn ZjX (ZArray xs):
-    let v = ZjVec xs
-    ZRs(items=v.items, code="array({v.code})")
-fn ZjX (ZMap xs) = ZjCall "map", [[ZjVec xs]]
-fn ZjX (ZInterp parts, vals):
-    let ps = Each parts, ZjOptStr
-    let v = ZjVec vals
-    ZRs(items=v.items, code="interpolate(&[{Join ps, ", "}], {v.code}, b)?")
-fn ZjX (ZFn f) = ZjFunc f
-fn ZjX (ZBlueprint bd) = ZjBuildValue bd
-fn ZjX (ZBranch arms) = ZjBranch arms, (ZjX arms.scrutinee)
-fn ZjX (ZBuildBranch bb) = ZjBuilding bb
-fn ZjX (ZBlock stmts, value):
-    let ss = ZjStmts stmts
-    let vr = ZjX value
-    if (Len stmts) == 0: vr
-    else: ZRs(items=(Append ss.items, vr.items), code=(RsBlock ss.code, vr.code))
-fn ZjX (ZGiven fallible, steps) = ZjGiven fallible, steps
-fn ZjX (ZUpdate root, target, ups):
-    let tr = ZjX target
-    let us = ZjUpds ups
-    ZRs(items=(Append tr.items, us.items), code=(RsUpdate root, tr.code, us.code))
-fn ZjX (ZTemplate parts):
-    let p = ZjParts parts
-    ZRs(items=p.items, code="text(&{p.code})")
-fn ZjX (ZRebuild src, kind, bd):
-    let sr = ZjX src
-    let br = ZjBuildValue bd
-    ZRs(items=(Append sr.items, br.items), code="rebuild({sr.code}, ResultKind::{kind}, {br.code}, b)?")
-fn ZjX (ZFor src, kind, bd):
-    let sr = ZjX src
-    let br = ZjBuildValue bd
-    ZRs(items=(Append sr.items, br.items), code="for_each({sr.code}, ResultKind::{kind}, {br.code}, b)?")
-fn ZjX (ZBindBuild x) = ZjCall "bind_build", [[ZjX x]]
-fn ZjX (ZRead root, steps):
-    let st = ZjSteps steps
-    ZRs(items=st.items, code="lens::read_element(&{root}, &[{st.code}])?")
-fn ZjX (ZFault msg) = ZjCode "fail({ZjStr msg})?"
-
-ZjZip: fn [a], [b] -> [((a, b))]
-fn ZjZip xs, ys:
-    let ((ignore, out)) = Fold xs, ((0, [[]])), \|((i, acc)), x| match ys[i]:
-        ? y: ((i + 1, (Push acc, ((x, y)))))
-        nil: ((i + 1, acc))
-    out
-
-# `&{f}`: a function value borrowed for an application.
-ZjRef: fn ZExpr -> ZRs
-fn ZjRef f:
-    let r = ZjX f
-    ZRs(items=r.items, code="&{r.code}")
-
-ZjVec: fn [ZExpr] -> ZRs
-fn ZjVec xs:
-    let rs = Each xs, ZjX
-    ZRs(items=(ZjItems rs), code="vec![{ZjCodes rs}]")
-
-# `name(args.., b)?`
-ZjCall: fn Text, [ZRs] -> ZRs
-fn ZjCall name, args = ZRs(items=(ZjItems args), code="{name}({ZjCodes args}, b)?")
-
-ZjSteps: fn [ZStep] -> ZRs
-fn ZjSteps steps:
-    let rs = Each steps, \|s| match s:
-        ZField1 n: ZjCode "step({ZjStr n})"
-        ZIndex1 k:
-            let kr = ZjX k
-            ZRs(items=kr.items, code="at_key({kr.code})")
-    ZRs(items=(ZjItems rs), code=(ZjCodes rs))
+EmRefTys: unbounded fn [RsTy] -> Text
+fn EmRefTys ts = Join (Each ts, \|t| "&{EmTy t}"), ", "
 
 # ---------------------------------------------------------------------------------------
-# Patterns: `let`-else steps over a subject, failing to `fail`
+# Expressions
 # ---------------------------------------------------------------------------------------
 
-ZjPat: fn ZPat, Text, Text, Text, [Text] -> [Text]
-fn ZjPat ZpIgnore, subj, fail, v, muts = [[]]
-fn ZjPat (ZpBind rs), subj, fail, v, muts = [["{ZjMut rs, muts}{rs} = {subj}.clone();"]]
-fn ZjPat (ZpBool x), subj, fail, v, muts = [[(RsTest "pat::is_bool(&{subj}, {ZjBool x})", fail)]]
-fn ZjPat ZpUnit, subj, fail, v, muts = [[(RsTest "pat::is_unit(&{subj})", fail)]]
-fn ZjPat ZpNil, subj, fail, v, muts = [[(RsTest "pat::is_nil(&{subj})", fail)]]
-fn ZjPat (ZpInt s), subj, fail, v, muts = [[(RsTest "pat_int(&{subj}, {ZjStr s})", fail)]]
-fn ZjPat (ZpChar c), subj, fail, v, muts = [[(RsTest "pat::char(&{subj}, {ZjChar c})", fail)]]
-fn ZjPat (ZpText t), subj, fail, v, muts = [[(RsTest "pat::text(&{subj}, {ZjStr t})", fail)]]
-fn ZjPat (ZpFloat f), subj, fail, v, muts = [[(RsTest "pat::float(&{subj}, {f})", fail)]]
-fn ZjPat ZpNever, subj, fail, v, muts = [[fail]]
-fn ZjPat (ZpCtorName n), subj, fail, v, muts = [[(RsTest "pat::is_ctor(&{subj}, {ZjStr n})", fail)]]
-fn ZjPat (ZpTagName n), subj, fail, v, muts = [[(RsTest "pat::is_tag(&{subj}, {ZjStr n})", fail)]]
-fn ZjPat (ZpFamily f), subj, fail, v, muts = [[(RsTest "pat::family(&{subj}, {ZjStr f})", fail)]]
-fn ZjPat (ZpCtor base, full, args), subj, fail, v, muts = ZjParts1 "pat::ctor(&{subj}, {ZjStr base}, {ZjOptStr full}, {Len args})", args, fail, v, muts
-fn ZjPat (ZpRecord full, base, names, rest, ps), subj, fail, v, muts = ZjParts1 "pat::record(&{subj}, {ZjStr full}, {ZjStr base}, &[{Join (Each names, ZjOptStr), ", "}], {ZjBool rest})", ps, fail, v, muts
-fn ZjPat (ZpTuple ps), subj, fail, v, muts = ZjParts1 "pat::tuple(&{subj}, {Len ps})", ps, fail, v, muts
-fn ZjPat (ZpArray ps), subj, fail, v, muts = ZjParts1 "pat::array(&{subj}, {Len ps})", ps, fail, v, muts
-fn ZjPat (ZpSome p), subj, fail, v, muts = Append [[(RsLetElse v, "pat::some(&{subj})", fail)]], (ZjPat p, v, fail, "{v}_0", muts)
-fn ZjPat (ZpOk p), subj, fail, v, muts = Append [[(RsLetElse v, "pat::ok(&{subj})", fail)]], (ZjPat p, v, fail, "{v}_0", muts)
+# Whether an expression must be parenthesized as an operand or a receiver.
+EmLoose: fn Ex -> Bool
+fn EmLoose x = match x:
+    XBin ignore, ignore, ignore: True
+    XUnary ignore, ignore: True
+    XClosure ignore, ignore, ignore: True
+    XIf ignore, ignore, ignore: True
+    XMatch ignore, ignore, ignore: True
+    XChain ignore, ignore, ignore: True
+    XCast ignore, ignore: True
+    otherwise: False
 
-ZjMut: fn Text, [Text] -> Text
-fn ZjMut rs, muts = if (Fold muts, False, \|q, m| q or m == rs): "let mut " else: "let "
+EmTight: unbounded fn Ex -> Text
+fn EmTight x = if EmLoose x: "({EmEx x})" else: EmEx x
 
-# A pattern with parts: the parts taken, each part's pattern on it.
-ZjParts1: fn Text, [ZPat], Text, Text, [Text] -> [Text]
-fn ZjParts1 probe, ps, fail, v, muts:
-    let anyPart = Fold ps, False, \|q, p| q or p != ZpIgnore
-    let head = if anyPart: RsLetElse v, probe, fail else: RsLetElse "_", probe, fail
-    let ((ignore, rest)) = Fold ps, ((0, [[]])), \|((i, acc)), p| ((i + 1, (Append acc, (ZjPat p, "{v}[{i}]", fail, "{v}_{i}", muts))))
-    Append [[head]], rest
+EmOperand: unbounded fn Ex -> Text
+fn EmOperand x = match x:
+    XBin ignore, ignore, ignore: "({EmEx x})"
+    XClosure ignore, ignore, ignore: "({EmEx x})"
+    XIf ignore, ignore, ignore: "({EmEx x})"
+    XCast ignore, ignore: "({EmEx x})"
+    otherwise: EmEx x
 
-# ---------------------------------------------------------------------------------------
-# Functions
-# ---------------------------------------------------------------------------------------
+EmArgs: unbounded fn [Ex] -> Text
+fn EmArgs xs = Join (Each xs, \|x| EmEx x), ", "
 
-ZjCaps: fn [ZCap], Text -> Text
-fn ZjCaps caps, from:
-    let ((ignore, out)) = Fold caps, ((0, [[]])), \|((i, acc)), c| ((i + 1, (Push acc, "let {c.rs} = {from}[{i}].clone();")))
-    ZjLines out
+EmEx: unbounded fn Ex -> Text
+fn EmEx x = match x:
+    XRaw t: t
+    XCall f, args: "{f}({EmArgs args})"
+    XApply f, args: "{EmTight f}({EmArgs args})"
+    XMethod r, m, args: "{EmTight r}.{m}({EmArgs args})"
+    XBin op, l, r: "{EmOperand l} {op} {EmOperand r}"
+    XUnary op, y: "{op}{EmOperand y}"
+    XCtor p, args: "{p}({EmArgs args})"
+    XRecord p, fs: "{p} \{ {Join (Each fs, \|((f, v))| EmFieldInit f, v), ", "} \}"
+    XTuple [[one]]: "({EmEx one},)"
+    XTuple xs: "({EmArgs xs})"
+    XVec xs: "vec![{EmArgs xs}]"
+    XText t: "Text::from(\"{LoEscape t}\")"
+    XFormat parts: EmFormat parts
+    XMatch s, arms, fallback: TmMatch (EmEx s), (EmArms arms, fallback)
+    XChain label, s, arms: EmChain (EmLabel label), s, arms
+    XIf c, t, e: EmIf c, t, e
+    XBlock [[]], e: EmEx e
+    XBlock dos, e: TmBlock (EmDos dos), (EmEx e)
+    XLabeled label, dos, e: TmLabeled (EmLabel label), (EmDos dos), (EmEx e)
+    XClosure mv, ps, body: "{if mv: "move " else: ""}|{Join (Each ps, \|p| EmPa p), ", "}| {EmEx body}"
+    XTry y: "{EmTight y}?"
+    XField r, f: "{EmTight r}.{f}"
+    XDecode t, y: "{EmDecodeHead t}::from_pod({EmEx y})?"
+    XCast y, t: "{EmTight y} as {EmTy t}"
 
-ZjCapValues: fn [ZCap] -> ZRs
-fn ZjCapValues caps:
-    let rs = Each caps, \|c| ZjX c.value
-    ZRs(items=(ZjItems rs), code=(ZjCodes rs))
+EmFieldInit: unbounded fn Text, Ex -> Text
+fn EmFieldInit f, (XRaw v) = if v == f: f else: "{f}: {v}"
+fn EmFieldInit f, v = "{f}: {EmEx v}"
 
-# A function value: its body's `fn` hoisted, and the value made from it.
-ZjFunc: fn ZFunc -> ZRs
-fn ZjFunc f:
-    let cv = ZjCapValues f.caps
-    let value = if f.isWidget: "widget_function({ZjStr f.site}, {ZjStr f.name}, {Len f.layers}, {f.rs}, vec![{cv.code}])"
-        else: "function({ZjStr f.site}, {ZjStr f.name}, {ZjLayers f.layers}, {ZjNats f.nat}, {ZjBool f.peel}, {f.rs}, vec![{cv.code}])"
-    ZRs(items=(Push cv.items, (ZjFuncItem f)), code=value)
+EmDecodeHead: unbounded fn RsTy -> Text
+fn EmDecodeHead t = match t:
+    RsNamed n, [[]]: n
+    RsNat: "Nat"
+    RsInt: "Int"
+    RsText: "Text"
+    otherwise: "<{EmTy t}>"
 
-# The Rust `fn` of a function: a body over `cap` and `args`, or for a widget function a
-# block built through `b`.
-ZjFuncItem: fn ZFunc -> Text
-fn ZjFuncItem f:
-    let selfLine = match f.selfName:
-        ? rs: "let {rs} = again({ZjStr f.site}, {ZjStr f.name}, cap);"
-        nil: ""
-    let clauses = Each f.clauses, \|c| ZjClause c, f.isWidget
-    let items = Join (ZjItems clauses), "\n"
-    let prologue = ZjLines [[items, (ZjCaps f.caps, "cap"), selfLine]]
-    let body = ZjLines (Each clauses, \|c| c.code)
-    if f.isWidget:
-        let rowLine = match f.families:
-            ? fams: "set_emit({ZjStrs fams}, b)?;"
-            nil: ""
-        RsBuildFn f.rs, f.loc, (ZjLines [[rowLine, prologue]]), (ZjLines [[body, "Err(no_clause({ZjStr f.name}, &args))"]])
-    else: RsBodyFn f.rs, (if f.isUnbounded: "within_unbounded" else: "within"), f.loc, prologue, body, f.name
+EmLabel: fn Text -> Text
+fn EmLabel l = if (Take l, 1) == "'": l else: "'{l}"
 
-ZjClause: fn ZClause, Bool -> ZRs
-fn ZjClause c, isWidget:
-    let ((ignore, pats)) = Fold c.params, ((0, [[]])), \|((i, acc)), p| ((i + 1, (Append acc, (ZjPat p, "args[{i}]", "break '{c.label};", "{c.label}_{i}", [[]]))))
-    let body = match c.body:
-        ZbExpr x: ZjReturn (ZjX x)
-        ZbWidgetExpr x: ZjReturn (ZjX (ZBindBuild x))
-        ZbWidget w: ZjWideReturn w
-    ZRs(items=body.items, code=(RsClause c.label, "{Len c.params}", (ZjLines pats), body.code))
+# `Text::from(format!(..))`: the literal runs with their braces doubled, a `{}` per value.
+EmFormat: unbounded fn [Ex] -> Text
+fn EmFormat parts:
+    let lit = Concat (Each parts, \|p| EmFormatPiece p)
+    let vals = Filter parts, \|p| not (EmIsText p)
+    if (Len vals) == 0: "Text::from(\"{lit}\")"
+    else: "Text::from(format!(\"{lit}\", {EmArgs vals}))"
 
-ZjReturn: fn ZRs -> ZRs
-fn ZjReturn r = ZRs(items=r.items, code=(if (Contains r.code, "\n"): RsReturn r.code else: "return Ok({r.code});"))
+EmIsText: fn Ex -> Bool
+fn EmIsText (XText ignore) = True
+fn EmIsText other = False
 
-# ---------------------------------------------------------------------------------------
-# A `match` or `if` as an expression
-# ---------------------------------------------------------------------------------------
+EmFormatPiece: fn Ex -> Text
+fn EmFormatPiece (XText t) = EmFormatEscape (LoEscape t)
+fn EmFormatPiece other = "\{\}"
 
-ZjBranch: fn ZArms, ZRs -> ZRs
-fn ZjBranch a, scrut:
-    let ev = ZjCapValues a.env
-    let arms = Each a.arms, ZjArm
-    let fallback = if a.exhaustive: "Err(no_arm(&s))" else: "Ok(unit())"
-    let prologue = ZjLines [[(Join (ZjItems arms), "\n"), (ZjCaps a.env, "env")]]
-    let item = RsArmsFn a.rs, prologue, (ZjLines (Each arms, \|r| r.code)), fallback
-    ZRs(items=(Push (Append scrut.items, ev.items), item), code="branch({scrut.code}, &[{ev.code}], {a.rs}, b)?")
+EmFormatEscape: fn Text -> Text
+fn EmFormatEscape t = Concat (Each (Chars t), \|c| if c == "\{": "\{\{" else: if c == "\}": "\}\}" else: c)
 
-ZjArm: fn ZArm -> ZRs
-fn ZjArm a:
-    let fail = "break '{a.label};"
-    let tests = ZjPat a.pattern, "s", fail, "{a.label}_p", [[]]
-    let guard = match a.guard:
-        ? g: ZjX g
-        nil: ZjCode ""
-    let gl = if guard.code == "": "" else: RsGuard guard.code, fail
-    let body = ZjReturn (ZjX a.body)
-    ZRs(items=(Append guard.items, body.items), code=(RsArm a.label, (ZjLines (Push tests, gl)), body.code))
+# `if c { a } else { b }` on one line when both sides are short.
+EmIf: unbounded fn Ex, Ex, Ex -> Text
+fn EmIf c, t, e:
+    let ct = EmEx c
+    let tt = EmEx t
+    let et = EmEx e
+    let short = not (Contains "{tt}{et}", "\n") and (Len "{ct}{tt}{et}") < 70
+    if short: "if {ct} \{ {tt} \} else \{ {et} \}" else: TmIf ct, tt, et
 
-# A building `match` or `if` in a widget block.
-ZjBuilding: fn ZBuilding -> ZRs
-fn ZjBuilding bb:
-    let s = "s_{bb.label}"
-    let scrut = ZjX bb.scrutinee
-    let lifted = ZjBranch bb.lifted, (ZjCode s)
-    let arms = Each bb.arms, \|a| ZjBArm a, s
-    let fallback = if bb.exhaustive: "return Err(no_arm(&{s}));" else: "unit()"
-    let items = Append (Append scrut.items, lifted.items), (ZjItems arms)
-    ZRs(items=items, code=(RsBuilding s, scrut.code, lifted.code, (ZjLines (Each arms, \|r| r.code)), fallback))
+# A `match`'s arms, guards joined; the fallback arm when a guard leaves the match open.
+EmArms: unbounded fn [XArm], Bool -> Text
+fn EmArms arms, fallback:
+    let lines = Each arms, \|a| EmArm a
+    let all = if fallback: Push lines, "_ => unreachable!(\"no arm matched\")," else: lines
+    Join all, "\n"
 
-ZjBArm: fn ZBArm, Text -> ZRs
-fn ZjBArm a, s:
-    let fail = "break '{a.label};"
-    let tests = ZjPat a.pattern, s, fail, "{a.label}_p", [[]]
-    let guard = match a.guard:
-        ? g: ZjX g
-        nil: ZjCode ""
-    let gl = if guard.code == "": "" else: RsGuard guard.code, fail
-    let w = ZjWide a.body
-    let r = ZjX a.body.result
-    ZRs(items=(Append (Append guard.items, w.items), r.items), code=(RsArm a.label, (ZjLines (Push tests, gl)), (ZjLines [[w.code, "break '{s} {r.code};"]])))
+EmArm: unbounded fn XArm -> Text
+fn EmArm a:
+    let guard = if (Len a.conds) == 0: "" else: " if {Join (Each a.conds, \|c| EmCond c), " && "}"
+    let body = EmEx a.body
+    "{EmPa a.pat}{guard} => {body},"
 
-# ---------------------------------------------------------------------------------------
-# Widget blocks
-# ---------------------------------------------------------------------------------------
+EmCond: unbounded fn Cc -> Text
+fn EmCond (CcIf x) = EmOperand x
+fn EmCond (CcLet p, x) = "let {EmPa p} = {EmEx x}"
 
-# A blueprint over a widget block: its `fn` hoisted, the blueprint made from it.
-ZjBuildValue: fn ZBuild -> ZRs
-fn ZjBuildValue bd:
-    let cv = ZjCapValues bd.caps
-    ZRs(items=(Push cv.items, (ZjBuildItem bd)), code="blueprint({ZjStr bd.name}, vec![{cv.code}], {bd.rs})")
-
-ZjBuildItem: fn ZBuild -> Text
-fn ZjBuildItem bd:
-    let rowLine = match bd.families:
-        ? fams: "set_emit({ZjStrs fams}, b)?;"
-        nil: ""
-    let w = ZjWideReturn bd.body
-    let prologue = ZjLines [[rowLine, (Join w.items, "\n"), (ZjCaps bd.caps, "cap"), (ZjBuildArgs bd.args)]]
-    RsBuildFn bd.rs, bd.loc, prologue, w.code
-
-ZjBuildArgs: fn ZBuildArgs -> Text
-fn ZjBuildArgs ZaNone = ""
-fn ZjBuildArgs ZaAt = ""
-fn ZjBuildArgs (ZaRebuild rs) = "let {rs} = row_arg(args, 0);"
-fn ZjBuildArgs (ZaFor kp, vp, ixRs, outerIx, outerJx):
-    let kxLine = match outerJx:
-        ? j: "let l_kx = {j}.clone();"
-        nil: ""
-    let jxLine = match outerIx:
-        ? i: "let l_jx = {i}.clone();"
-        nil: ""
-    let fail = "return Err(mismatch(\"for\", &row_value));"
-    let keyPat = match kp:
-        ? p: ZjPat p, "l_key", fail, "row_k", [[]]
-        nil: [[]]
-    let valuePat = match vp:
-        ? p: ZjPat p, "row_value", fail, "row_v", [[]]
-        nil: [["let l__ = row_value.clone();", "let ld__ = row_value.clone();"]]
-    ZjLines (Append (Append [[kxLine, jxLine, "let {ixRs} = row_arg(args, 2);", "let l_key = row_arg(args, 0);", "let row_value = row_arg(args, 1);"]], keyPat), valuePat)
-
-# A widget block's lines, then `return Ok(value);`.
-ZjWideReturn: fn ZWide -> ZRs
-fn ZjWideReturn w:
-    let lines = ZjWide w
-    let r = ZjReturn (ZjX w.result)
-    ZRs(items=(Append lines.items, r.items), code=(ZjLines [[lines.code, r.code]]))
-
-ZjWide: fn ZWide -> ZRs
-fn ZjWide w:
-    let ((ignore, rs)) = Fold w.lines, ((0, [[]])), \|((i, acc)), l| ((i + 1, (Push acc, (ZjLine l, i))))
-    ZRs(items=(ZjItems rs), code=(ZjLines (Each rs, \|r| r.code)))
-
-ZjLine: fn ZLine, Nat -> ZRs
-fn ZjLine (ZwRow fams), i = ZjCode "set_emit({ZjStrs fams}, b)?;"
-fn ZjLine (ZwLet p, x), i = ZjLetPat p, (ZjX x), "t{i}", [[]]
-fn ZjLine (ZwHold rs, x), i:
-    let xr = ZjX x
-    ZRs(items=xr.items, code="let {rs} = hold({xr.code}, b)?;")
-fn ZjLine (ZwForward rs), i = ZjCode "let {rs} = forward(b)?;"
-fn ZjLine (ZwBind p, x, resolves), i:
-    let bound = ZjLetPat p, (ZjX x), "t{i}", [[]]
-    let rl = Each resolves, \|((f, binder))| "resolve(&{f}, &{binder}, b)?;"
-    ZRs(items=bound.items, code=(ZjLines (Append [[bound.code]], rl)))
-fn ZjLine (ZwThen rs, t), i:
-    let tr = ZjX t
-    ZRs(items=tr.items, code="hold_on(&{rs}, &{tr.code}, b)?;")
-fn ZjLine (ZwDo x), i:
-    let xr = ZjX x
-    ZRs(items=xr.items, code="let _ = {xr.code};")
-fn ZjLine (ZwStmt s), i = ZjStmt s, i
-fn ZjLine (ZwFault msg), i = ZjCode "return Err(fault({ZjStr msg}));"
-
-# `let p = x;`: a binder at once, any other pattern through a temporary that must match.
-ZjLetPat: fn ZPat, ZRs, Text, [Text] -> ZRs
-fn ZjLetPat p, xr, t, muts = match p:
-    ZpBind rs: ZRs(items=xr.items, code="{ZjMut rs, muts}{rs} = {xr.code};")
-    otherwise:
-        let tests = ZjPat p, t, "return Err(mismatch(\"let\", &{t}));", "{t}_p", muts
-        ZRs(items=xr.items, code=(ZjLines (Append [["let {t} = {xr.code};"]], tests)))
-
-# ---------------------------------------------------------------------------------------
-# Expression blocks, `given:`
-# ---------------------------------------------------------------------------------------
-
-ZjStmts: fn [ZStmt] -> ZRs
-fn ZjStmts stmts:
-    let ((ignore, rs)) = Fold stmts, ((0, [[]])), \|((i, acc)), s| ((i + 1, (Push acc, (ZjStmt s, i))))
-    ZRs(items=(ZjItems rs), code=(ZjLines (Each rs, \|r| r.code)))
-
-ZjStmt: fn ZStmt, Nat -> ZRs
-fn ZjStmt (ZsLet p, x), i = ZjLetPat p, (ZjX x), "t{i}", [[]]
-fn ZjStmt (ZsDo x), i:
-    let xr = ZjX x
-    ZRs(items=xr.items, code="let _ = {xr.code};")
-fn ZjStmt (ZsFault msg), i = ZjCode "return Err(fault({ZjStr msg}));"
-
-ZjGiven: fn Bool, [ZGivenStep] -> ZRs
-fn ZjGiven fallible, steps:
-    let ((ignore, rs)) = Fold steps, ((0, [[]])), \|((i, acc)), s| ((i + 1, (Push acc, (ZjGivenStep fallible, s, i))))
-    ZRs(items=(ZjItems rs), code=(RsGiven (ZjLines (Each rs, \|r| r.code)), "unit()"))
-
-ZjGivenStep: fn Bool, ZGivenStep, Nat -> ZRs
-fn ZjGivenStep fallible, (ZgBind p, x, txt), i:
-    let xr = ZjX x
-    let t = "g{i}"
-    let tests = ZjPat p, t, "break 'given give_up({ZjBool fallible}, {ZjStr txt});", "{t}_p", [[]]
-    ZRs(items=xr.items, code=(ZjLines (Append [[(RsGivenBind t, xr.code)]], tests)))
-fn ZjGivenStep fallible, (ZgLet p, x), i = ZjLetPat p, (ZjX x), "g{i}", [[]]
-fn ZjGivenStep fallible, (ZgGuard want, c, txt), i:
-    let cr = ZjX c
-    ZRs(items=cr.items, code="if truth(&{cr.code})? != {ZjBool want} \{ break 'given give_up({ZjBool fallible}, {ZjStr txt}); \}")
-fn ZjGivenStep fallible, (ZgLet1 s), i = ZjStmt s, i
-fn ZjGivenStep fallible, (ZgAnswer x), i:
-    let xr = ZjX x
-    ZRs(items=xr.items, code="break 'given given_answer({ZjBool fallible}, {xr.code});")
-fn ZjGivenStep fallible, (ZgFault msg), i = ZjCode "return Err(fault({ZjStr msg}));"
-
-# ---------------------------------------------------------------------------------------
-# `&` blocks
-# ---------------------------------------------------------------------------------------
-
-ZjUpds: fn [ZUpd] -> ZRs
-fn ZjUpds ups:
-    let ((ignore, rs)) = Fold ups, ((0, [[]])), \|((i, acc)), u| ((i + 1, (Push acc, (ZjUpd u, i))))
-    ZRs(items=(ZjItems rs), code=(ZjLines (Each rs, \|r| r.code)))
-
-ZjUpd: fn ZUpd, Nat -> ZRs
-fn ZjUpd (ZuSet root, steps, v), i:
-    let vr = ZjX v
-    let st = ZjSteps steps
-    ZRs(items=(Append vr.items, st.items), code="\{ let v = {vr.code}; let st: Vec<Step> = vec![{st.code}]; lens::set_in(&mut {root}, &st, v)?; \}")
-fn ZjUpd (ZuAccum root, steps, op, v), i:
-    let vr = ZjX v
-    let st = ZjSteps steps
-    ZRs(items=(Append vr.items, st.items), code="\{ let v = {vr.code}; let st: Vec<Step> = vec![{st.code}]; let now = lens::read(&{root}, &st)?; let next = binop(Op::{op}, now, v, &mut None)?; lens::set_in(&mut {root}, &st, next)?; \}")
-fn ZjUpd (ZuLet p, x, amps), i = ZjLetPat p, (ZjX x), "u{i}", amps
-fn ZjUpd (ZuWhile c, body, label), i:
-    let chk = ZjCond c, "break '{label};", label
-    let b = ZjUpds body
-    ZRs(items=(Append chk.items, b.items), code=(RsWhile label, chk.code, b.code))
-fn ZjUpd (ZuIf c, yes, no, label), i:
-    let chk = ZjCond c, "break 'then_{label};", label
-    let y = ZjUpds yes
-    let n = ZjUpds no
-    ZRs(items=(Append (Append chk.items, y.items), n.items), code=(RsIf label, chk.code, y.code, n.code))
-fn ZjUpd (ZuMatch s, arms, label), i:
-    let sr = ZjX s
-    let ar = Each arms, \|a| ZjUArm a, label
-    ZRs(items=(Append sr.items, (ZjItems ar)), code=(RsMatch label, sr.code, (ZjLines (Each ar, \|r| r.code))))
-fn ZjUpd (ZuFor coll, kp, vp, body, label, outerIx, outerJx), i:
-    let cr = ZjX coll
-    let fail = "return Err(mismatch(\"for\", &v_{label}));"
-    let kpl = match kp:
-        ? p: ZjPat p, "k_{label}", fail, "kp_{label}", [[]]
-        nil: [[]]
-    let vpl = match vp:
-        ? p: ZjPat p, "v_{label}", fail, "vp_{label}", [[]]
-        nil: match kp:
-            ? ignore: [[]]
-            nil: [["let l__ = v_{label}.clone();"]]
-    let binds = ZjLines (Append (Append (ZjLoopNames label, outerIx, outerJx), kpl), vpl)
-    let b = ZjUpds body
-    ZRs(items=(Append cr.items, b.items), code=(RsFor label, cr.code, binds, b.code))
-fn ZjUpd (ZuForRef root, steps, body, label, hidden, outerIx, outerJx), i:
-    let st = ZjSteps steps
-    let hide = match hidden:
-        ? h: "let mut {h} = std::mem::take(&mut {root});"
-        nil: ""
-    let unhide = match hidden:
-        ? h: "{root} = {h};"
-        nil: ""
-    let b = ZjUpds body
-    ZRs(items=(Append st.items, b.items), code=(RsForRef label, root, st.code, hide, (ZjLines (ZjLoopNames label, outerIx, outerJx)), b.code, unhide))
-fn ZjUpd (ZuDo x), i:
-    let xr = ZjX x
-    ZRs(items=xr.items, code="let _ = {xr.code};")
-fn ZjUpd (ZuFault msg), i = ZjCode "return Err(fault({ZjStr msg}));"
-
-# A loop's `ix` and `key`, and the enclosing loops' as `jx` and `kx`.
-ZjLoopNames: fn Text, ?Text, ?Text -> [Text]
-fn ZjLoopNames label, outerIx, outerJx:
-    let kxLine = match outerJx:
-        ? j: "let l_kx = {j}.clone();"
-        nil: ""
-    let jxLine = match outerIx:
-        ? i: "let l_jx = {i}.clone();"
-        nil: ""
-    [[kxLine, jxLine, "let l_ix = nat(ix_{label});", "let l_key = k_{label}.clone();"]]
-
-ZjCond: fn ZCond, Text, Text -> ZRs
-fn ZjCond (ZcExpr x), fail, label:
-    let xr = ZjX x
-    ZRs(items=xr.items, code=(RsGuard xr.code, fail))
-fn ZjCond (ZcBind p, v, g), fail, label:
-    let vr = ZjX v
-    let t = "c_{label}"
-    let tests = ZjPat p, t, fail, "{t}_p", [[]]
-    let gr = match g:
-        ? x: ZjX x
-        nil: ZjCode ""
-    let gl = if gr.code == "": "" else: RsGuard gr.code, fail
-    ZRs(items=(Append vr.items, gr.items), code=(ZjLines (Push (Append [["let {t} = {vr.code};"]], tests), gl)))
-
-ZjUArm: fn ZUArm, Text -> ZRs
-fn ZjUArm a, label:
-    let fail = "break '{a.label};"
-    let tests = ZjPat a.pattern, "s_{label}", fail, "{a.label}_p", [[]]
-    let gr = match a.guard:
-        ? g: ZjX g
-        nil: ZjCode ""
-    let gl = if gr.code == "": "" else: RsGuard gr.code, fail
-    let b = ZjUpds a.body
-    ZRs(items=(Append gr.items, b.items), code=(RsArm a.label, (ZjLines (Push tests, gl)), (ZjLines [[b.code, "break '{label};"]])))
-
-# ---------------------------------------------------------------------------------------
-# Code templates: a `String` built part by part
-# ---------------------------------------------------------------------------------------
-
-ZjParts: fn [ZPart] -> ZRs
-fn ZjParts parts:
-    let rs = Each parts, ZjPart
-    ZRs(items=(ZjItems rs), code=(RsTemplate (ZjLines (Each rs, \|r| r.code))))
-
-ZjPart: fn ZPart -> ZRs
-fn ZjPart (ZtText t) = ZjCode "out.push_str({ZjStr t});"
-fn ZjPart (ZtPlace x, col):
-    let xr = ZjX x
-    let c = match col:
-        ? n: "Some({n})"
-        nil: "None"
-    ZRs(items=xr.items, code="place(&mut out, &{xr.code}, {c}, b)?;")
-fn ZjPart (ZtBlock x):
-    let xr = ZjX x
-    ZRs(items=xr.items, code="place_value(&mut out, &{xr.code}, b)?;")
-fn ZjPart (ZtCall f, args, body):
-    let fr = ZjX f
-    let ars = Each args, ZjX
-    let bodyArg = match body:
-        ? ps: ? (ZjParts ps)
-        nil: nil
-    let all = match bodyArg:
-        ? br: Push ars, ZRs(items=br.items, code="text(&{br.code})")
-        nil: ars
-    ZRs(items=(Append fr.items, (ZjItems all)), code="\{ let v = apply(&{fr.code}, vec![{ZjCodes all}], b)?; out.push_str(&display(&v, b)?); \}")
-
-# ---------------------------------------------------------------------------------------
-# Modules and the program
-# ---------------------------------------------------------------------------------------
-
-ZjModule: fn ZModOut -> Text
-fn ZjModule m:
-    let items = Each m.items, ZjItem
-    let label = if m.name == "": "The root" else: "Module `{m.name}`"
-    RsModule m.file, label, (Join items, "\n")
-
-ZjItem: fn ZItem -> Text
-fn ZjItem (ZiFn getter, name, f):
-    let fr = ZjFunc f
-    Join (Append [[(RsGetter "`{name}`, at {f.loc}.", getter, f.site, "Ok({fr.code})")]], fr.items), "\n"
-fn ZjItem (ZiImpl getter, f):
-    let fr = ZjFunc f
-    Join (Append [[(RsGetter "`{f.name}` of an `impl`, at {f.loc}.", getter, f.site, "Ok({fr.code})")]], fr.items), "\n"
-fn ZjItem (ZiLet getter, site, p, x, rs):
-    let xr = ZjX x
-    let body = match p:
-        ZpBind ignore: ZjLines [[(Join xr.items, "\n"), "let b: &mut Bx = &mut None;", "Ok({xr.code})"]]
-        otherwise:
-            let bound = ZjLetPat p, xr, "v", [[]]
-            ZjLines [[(Join bound.items, "\n"), "let b: &mut Bx = &mut None;", bound.code, "Ok({rs})"]]
-    RsGetter "A `let`.", getter, site, body
-fn ZjItem (ZiWidget getter, bd):
-    let item = ZjBuildItem bd
-    Join [[(RsGetter "`{bd.name}`, at {bd.loc}.", getter, "{bd.loc}.{bd.name}", "Ok(blueprint({ZjStr bd.name}, vec![], {bd.rs}))"), item]], "\n"
-fn ZjItem (ZiCtor getter, c) = RsGetter "The constructor `{c}`.", getter, "ctor.{c}", "ctor({ZjStr c})"
-fn ZjItem (ZiBuiltin getter, n, layers, nat, isValue):
-    let value = if isValue: "builtin_value({ZjStr n})" else: "Ok(builtin({ZjStr "builtin.{n}"}, {ZjStr n}, {ZjLayers layers}, {ZjNats nat}))"
-    RsGetter "`{n}`, written in Rust (prism_dyn::builtins).", getter, "builtin.{n}", value
-fn ZjItem (ZiMethod getter, m):
-    let dr = match m.default:
-        ? f: ? (ZjFunc f)
-        nil: nil
-    let defaultCode = match dr:
-        ? r: "Some({r.code})"
-        nil: "None"
-    let items = match dr:
-        ? r: r.items
-        nil: [[]]
-    let value = "Ok(method({ZjStr m.site}, MethodMeta \{ trait_name: {ZjStr m.traitName}.into(), name: {ZjStr m.name}.into(), dispatch: {m.dispatch}, default: {defaultCode}, prelude: {ZjBool m.prelude} \}, {ZjLayers m.layers}))"
-    Join (Append [[(RsGetter "`{m.name}`, a method of `^{m.traitName}`.", getter, m.site, value)]], items), "\n"
-
-# The files of the emitted crate: `Cargo.toml`, `src/main.rs`, a file per module.
-ZjProgram: fn ZProg, [ZModOut], Text, Text, [((Text, ZExpr))], [((Text, ZExpr))] -> [((Text, Text))]
-fn ZjProgram prog, mods, name, runtime, checks, named:
-    let modLines = Join (Each mods, \|m| "mod {m.rs};"), "\n"
-    let ctors = Join (Each prog.ctors, ZjCtorMeta), "\n"
-    let tagNames = Keys prog.tags
-    let tagLines = Fold tagNames, [[]], \|acc, n| match prog.tags[n]:
-        ? t: Push acc, (ZjTagDecl t)
-        nil: acc
-    let tags = Join tagLines, "\n"
-    let impls = Join (Each prog.impls, ZjImplLines), "\n"
-    let root = match prog.mods[""]:
-        ? m: match ZRootMain m:
-            ? main: "crate::m_main::{ZGlobalRs main}()"
-            nil: "fail(\"the root file has no `@main` (Semantics ch. 6)\")"
-        nil: "fail(\"prism run needs exactly one file with no `module` line (Semantics ch. 6)\")"
-    let declared = Each (ZTestPrograms prog), \|((n, path))| "({ZjStr n}, {path}()?),"
-    let written = Each (ZDedupChecks named), ZjNamedProgram
-    let programs = Join (Append declared, written), "\n"
-    let main = RsMain name, modLines, ctors, tags, impls, root, programs, (Join (Each (ZDedupChecks checks), ZjCheck), "\n")
-    let files = Each mods, \|m| (("src/{m.rs}.rs", ZjModule m))
-    Append [[(("Cargo.toml", (RsCargo name, runtime))), (("src/main.rs", main))]], files
-
-ZjCtorMeta: fn ZCtor -> Text
-fn ZjCtorMeta c = "ctor_meta({ZjStr c.name}, {ZjStr c.typeName}, {ZjBool c.isRecord}, {ZjStrs c.fields}, {ZjNats c.nat}, {ZjLayers c.layers}, {c.index}),"
-
-ZjTagDecl: fn ZTagInfo -> Text
-fn ZjTagDecl t:
-    let fields = Join (Each t.fields, \|((n, k))| "({ZjStr n}, FieldKind::{k})"), ", "
-    "tag_decl({ZjStr t.name}, &[{fields}], {t.outKind}, {ZjBool t.fault}),"
-
-ZjImplLines: fn ZImpl -> Text
-fn ZjImplLines i:
-    let head = "tables::add_impl({ZjStr i.traitName}, {ZjStr i.typeHead});"
-    let methods = Each i.methods, \|((n, ignore))| "tables::add_impl_method({ZjStr i.traitName}, {ZjStr i.typeHead}, {ZjStr n}, crate::{ZRsMod i.home}::gi_{ZMangle i.traitName}_{ZMangle i.typeHead}_{ZMangle n}()?);"
-    Join (Append [[head]], methods), "\n"
-
-# ---------------------------------------------------------------------------------------
-# The compile job, run through `@Run` (the parser is unbounded, D7)
-# ---------------------------------------------------------------------------------------
-
-type ZJob = record:
-    files: [((Text, Text))]                  # the program's files, path and text
-    prelude: [((Text, Text))]                # the prelude's files that were found
-    name: Text                               # the emitted crate's name
-    runtime: Text                            # where `prism_rt` and `prism_dyn` are, from the crate
-derive ^Eq, ^Show
-
-type ZOutcome = record:
-    files: [((Text, Text))]                  # each emitted file, its path in the crate
-    failed: Bool
-    report: Text
-derive ^Eq, ^Show
-
-# Parse every file, gather the program, lower each module, emit the crate. A file with a
-# lexical or parse error, or a program without exactly one root file, fails the job with
-# the diagnostics; out-of-scope features are reported by the code that reaches them.
-ZCompile: unbounded fn ZJob -> ZOutcome
-fn ZCompile job:
-    let tests = Filter job.files, \|((f, ignore))| ZIsScript f
-    let programFiles = Filter job.files, \|((f, ignore))| not (ZIsScript f)
-    let user = Each programFiles, \|((f, t))| ZParseSource f, t, False
-    let scripts = Each tests, \|((f, t))| ZParseSource f, t, False
-    let libs = Each job.prelude, \|((f, t))| ZParseSource f, t, True
-    let errors = Fold (Append (Append user, libs), scripts), [[]], \|acc, ((s, ds))| Append acc, (ZErrorsOf s, ds)
-    let userSources = Each user, \|((s, ignore))| s
-    let kept = Filter (Each libs, \|((s, ignore))| s), \|l| ZKeepBundled userSources, l
-    let roots = Filter userSources, \|s| (ZModName s.tree) == ""
-    if (Len errors) > 0: ZOutcome(files=[[]], failed=True, report=(Join errors, "\n"))
-    else: if (Len roots) != 1: ZOutcome(files=[[]], failed=True, report="prism run needs exactly one file with no `module` line (Semantics ch. 6), and was given {Len roots}: {Join (Each roots, \|s| s.file), ", "}")
-    else:
-        let prog = ZGather (Append userSources, kept)
-        let mods = Fold prog.order, [[]], \|acc, n| match prog.mods[n]:
-            ? m: Push acc, (ZLowerModule prog, m)
-            nil: acc
-        let checks = Fold scripts, [[]], \|acc, ((sc, ignore))| Append acc, (ZScriptChecks prog, sc)
-        let named = Fold scripts, [[]], \|acc, ((sc, ignore))| Append acc, (ZScriptPrograms prog, sc)
-        let files = ZjProgram prog, mods, job.name, job.runtime, checks, named
-        ZOutcome(files=files, failed=False, report=(Join prog.errors, "\n"))
-
-ZIsScript: fn Text -> Bool
-fn ZIsScript f = (Drop f, (Or ((Len f) -? 10), 0)) == ".prismtest"
-
-ZParseSource: unbounded fn Text, Text, Bool -> ((ZSource, [Diag]))
-fn ZParseSource file, text, bundled:
-    let parsed = ParseFile text
-    ((ZSource(file=file, text=text, tree=parsed.tree, bundled=bundled), parsed.diags))
-
-# The diagnostics that stop a compile, `file:line:col: message`; out-of-scope features
-# pass (the code that reaches one fails when it runs).
-ZErrorsOf: fn ZSource, [Diag] -> [Text]
-fn ZErrorsOf s, ds:
-    let env = ZTopEnv (ZModOf s)
-    Each (Filter ds, \|d| d.stage != "out"), \|d| "{ZLoc env, d.span}: {d.message}"
-
-# Where the runtime crates are from an emitted crate at `out`, a path under the current
-# directory: one `..` per directory.
-ZRuntimeFor: fn Text -> Text
-fn ZRuntimeFor out:
-    let parts = Filter (Split out, "/"), \|p| p != "" and p != "."
-    if (Len parts) == 0: "." else: Join (Each parts, \|ignore| ".."), "/"
-
-# A test script's `check` lines, each its expression's text and the expression lowered in
-# the script's module: the `.prism` file of its name, or else the root (Semantics ch. 6:
-# tests are declarations of their module).
-ZScriptChecks: fn ZProg, ZSource -> [((Text, ZExpr))]
-fn ZScriptChecks prog, sc:
-    let env = ZScriptEnv prog, sc
-    Fold sc.tree.decls, [[]], \|acc, d| match d.kind:
-        DCheck c: Fold c.lines, acc, \|a, l| Push a, (((Trim (ZSpanText env, l.expr.span)), (ZLx prog, env, l.expr)))
-        otherwise: acc
-
-ZjCheck: fn ((Text, ZExpr)) -> Text
-fn ZjCheck ((text, x)):
-    let xr = ZjX x
-    let items = Join xr.items, "\n"
-    "{ZjStr text} => Some((|| -> R<Value> \{ {items} Ok({xr.code}) \})()),"
-
-# One arm per expression text: the first of several identical lines.
-ZDedupChecks: fn [((Text, ZExpr))] -> [((Text, ZExpr))]
-fn ZDedupChecks cs:
-    let ((ignore, kept)) = Fold cs, (({}, [[]])), \|((seen, acc)), ((t, x))| match seen[t]:
-        ? ignore: ((seen, acc))
-        nil: (((Insert seen, t, True), (Push acc, ((t, x)))))
-    kept
-
-# A script's names resolve in its module: the `.prism` file of its name, or the root.
-ZScriptEnv: fn ZProg, ZSource -> ZEnv
-fn ZScriptEnv prog, sc:
-    let stem = Take sc.file, (Or ((Len sc.file) -? 10), 0)
-    let owners = Filter prog.order, \|n| match prog.mods[n]:
-        ? m: m.file == "{stem}.prism"
+# An if-let chain over arms in a labelled block: each arm breaks with its value; a last arm
+# that matches anything ends the block.
+EmChain: unbounded fn Text, Ex, [XArm] -> Text
+fn EmChain label, s, arms:
+    let ((bind, scrut)) = match s:
+        XRaw n: (([[]], n))
+        XUnary "&", (XRaw n): (([[]], "&{n}"))
+        otherwise: (([["let scrutinee = {EmEx s};"]], "scrutinee"))
+    let n = Len arms
+    let lines = Each (Range0 n), \|i|
+        let a = Or arms[i], (XArm(pat=PaWild, conds=[[]], body=(XRaw "()")))
+        let catchAll = (a.pat == PaWild) and (Len a.conds) == 0
+        if catchAll: EmEx a.body
+        else:
+            let head = Join (Append [["let {EmPa a.pat} = {scrut}"]], (Each a.conds, \|c| EmCond c)), " && "
+            TmChainArm head, label, (EmContinued (EmEx a.body), "    ")
+    let ends = match ?Last arms:
+        ? a: (a.pat == PaWild) and (Len a.conds) == 0
         nil: False
-    let home = Or owners[0], ""
-    ZEnv(home=home, file=sc.file, src=sc.text, starts=(ZLineStarts sc.text), locals={}, mark="", aliases={})
+    let tail = if ends: [[]] else: [["unreachable!(\"no clause matched\")"]]
+    "{label}: \{\n{Indent (Join (Append (Append bind, lines), tail), "\n")}\n\}"
 
-# The programs a script's `test name, @program:` lines name, by the text after the `@`, as
-# the Test World names them: `@counter`, or an application, `@Normal (App ..)`.
-ZScriptPrograms: fn ZProg, ZSource -> [((Text, ZExpr))]
-fn ZScriptPrograms prog, sc:
-    let env = ZScriptEnv prog, sc
-    Fold sc.tree.decls, [[]], \|acc, d| match d.kind:
-        DTest t: Push acc, (((Drop (Trim (ZSpanText env, t.blueprint.span)), 1), (ZLx prog, env, t.blueprint)))
-        otherwise: acc
+# A text placed after other text on an indented line: its later lines take the indent.
+EmContinued: fn Text, Text -> Text
+fn EmContinued t, pad:
+    let ls = Split t, "\n"
+    Join (Each (Range0 (Len ls)), \|i| if i == 0 or (Or ls[i], "") == "": Or ls[i], "" else: "{pad}{Or ls[i], ""}"), "\n"
 
-ZjNamedProgram: fn ((Text, ZExpr)) -> Text
-fn ZjNamedProgram ((name, x)):
-    let xr = ZjX x
-    let items = Join xr.items, "\n"
-    "({ZjStr name}, (|| -> R<Value> \{ {items} Ok({xr.code}) \})()?),"
+# A function's body: a block's statements and value without its braces.
+EmBody: unbounded fn Ex -> Text
+fn EmBody (XBlock dos, e) = if (Len dos) == 0: EmBody e else: "{EmDos dos}\n{EmBody e}"
+fn EmBody x = EmEx x
+
+# Every line of a text four spaces in.
+Indent: fn Text -> Text
+fn Indent t = Join (Each (Split t, "\n"), \|l| if l == "": "" else: "    {l}"), "\n"
+
+# ---------------------------------------------------------------------------------------
+# Patterns and statements
+# ---------------------------------------------------------------------------------------
+
+EmPa: unbounded fn Pa -> Text
+fn EmPa p = match p:
+    PaWild: "_"
+    PaBind n: n
+    PaCtor c, ps: "{c}({Join (Each ps, \|q| EmPa q), ", "})"
+    PaUnit c: c
+    PaRecord c, fs, rest:
+        let parts = Each fs, \|((f, q))| match q:
+            PaBind n: if n == f: f else: "{f}: {n}"
+            otherwise: "{f}: {EmPa q}"
+        let all = if rest: Push parts, ".." else: parts
+        "{c} \{ {Join all, ", "} \}"
+    PaTuple [[one]]: "({EmPa one},)"
+    PaTuple ps: "({Join (Each ps, \|q| EmPa q), ", "})"
+    PaLit t: t
+    PaTyped q, t: "{EmPa q}: {EmTy t}"
+
+EmDos: unbounded fn [Do] -> Text
+fn EmDos dos = Join (Each dos, \|d| EmDo d), "\n"
+
+EmDo: unbounded fn Do -> Text
+fn EmDo d = match d:
+    DoLet p, x: "let {EmPa p} = {EmEx x};"
+    DoLetElse p, x, e: "let {EmPa p} = {EmEx x} else \{ {EmEx e} \};"
+    DoAssign p, x: "{EmEx p} = {EmEx x};"
+    DoWhile c, body: TmIfStmt "while {EmEx c}", (EmDos body)
+    DoWhileLet p, x, body: TmIfStmt "while let {EmPa p} = {EmEx x}", (EmDos body)
+    DoExpr x: "{EmEx x};"
+    DoIf c, t, e: "{TmIfStmt "if {EmEx c}", (EmDos t)}{EmElse e}"
+    DoIfLet p, x, t, e: "{TmIfStmt "if let {EmPa p} = {EmEx x}", (EmDos t)}{EmElse e}"
+    DoMatch x, cases: TmMatch (EmEx x), (Join (Each cases, \|((p, body))| TmArmBlock (EmPa p), (EmDos body)), "\n")
+    DoReturn x: "return {EmEx x};"
+    DoNote t: "// {t}"
+
+# An `else`, `else if` for a lone `if` inside.
+EmElse: unbounded fn [Do] -> Text
+fn EmElse [[]] = ""
+fn EmElse [[(DoIf c, t, e)]] = " else {EmDo (DoIf c, t, e)}"
+fn EmElse [[(DoIfLet p, x, t, e)]] = " else {EmDo (DoIfLet p, x, t, e)}"
+fn EmElse body = TmElse (EmDos body)
+
+# ---------------------------------------------------------------------------------------
+# Items
+# ---------------------------------------------------------------------------------------
+
+EmGenerics: fn [((Text, [Text]))] -> Text
+fn EmGenerics [[]] = ""
+fn EmGenerics gs = "<{Join (Each gs, \|((g, bs))| if (Len bs) == 0: g else: "{g}: {Join bs, " + "}"), ", "}>"
+
+EmGenericNames: fn [Text] -> Text
+fn EmGenericNames [[]] = ""
+fn EmGenericNames ps = "<{Join ps, ", "}>"
+
+EmBounded: fn [Text], Text -> Text
+fn EmBounded [[]], ignore = ""
+fn EmBounded ps, tr = "<{Join (Each ps, \|p| "{p}: {tr}"), ", "}>"
+
+EmItem: unbounded fn Item -> Text
+fn EmItem it = match it:
+    ItTrait t: EmTraitDef t
+    ItImpl i: EmImplDef i
+    ItType t: EmTyDef t
+    ItTag t: EmTagDef t
+    ItFn f: EmFnDef f
+    ItJob j: EmJobDef j
+    ItNode n: EmNodeDef n
+    ItNote t: "// {t}\n"
+
+EmTraitDef: unbounded fn TraitDef -> Text
+fn EmTraitDef t:
+    let ms = Join (Each t.methods, \|f| EmTraitMethod f), "\n"
+    "{TmSourceDoc "", t.doc}pub trait {t.name} \{\n{Indent ms}\n\}\n"
+
+EmSig: unbounded fn FnDef, Text -> Text
+fn EmSig f, vis:
+    let params = Join (Each f.params, \|((n, t))| "{n}: {EmTy t}"), ", "
+    "{vis}fn {f.name}{EmGenerics f.generics}({params}) -> {EmTy f.ret}"
+
+EmTraitMethod: unbounded fn FnDef -> Text
+fn EmTraitMethod f = if f.public: TmFn "", (EmSig f, ""), (EmBody f.body) else: "{EmSig f, ""};"
+
+# An impl: a program's trait's methods inside it; `^Show`, `^Eq` and `^Ord` as Rust's
+# traits over the method, a function of its own.
+EmImplDef: unbounded fn ImplDef -> Text
+fn EmImplDef i:
+    let head = EmTy i.head
+    let gens = EmGenerics i.generics
+    if i.cls == "Prelude.Show":
+        let fns = Join (Each i.methods, \|f| EmFnDef f), "\n"
+        let shown = Or (Each i.methods, \|f| f.name)[0], "show"
+        "{fns}\n{TmImpl gens, "Show", head, "fn show(&self, p: &mut Printer)", "p.raw(&{shown}(self).to_string());"}"
+    else: if i.cls == "Prelude.Eq":
+        let fns = Join (Each i.methods, \|f| EmFnDef f), "\n"
+        let eq = Fold i.methods, "", \|acc, f| if (Take f.name, 2) != "ne" and acc == "": f.name else: acc
+        "{fns}\n{TmImpl gens, "PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}"
+    else: "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Each i.methods, \|f| TmFn "", (EmSig f, ""), (EmBody f.body)), "\n")}\n\}\n"
+
+EmFnDef: unbounded fn FnDef -> Text
+fn EmFnDef f:
+    let params = Join (Each f.params, \|((n, t))| "{n}: {EmTy t}"), ", "
+    let sig = "pub fn {f.name}{EmGenerics f.generics}({params}) -> {EmTy f.ret}"
+    TmFn (TmSourceDoc "", f.doc), sig, (EmBody f.body)
+
+EmJobDef: unbounded fn JobDef -> Text
+fn EmJobDef j:
+    let gnames = EmGenericNames (Each j.generics, \|((g, ignore))| g)
+    let fields = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t},"), "\n"
+    let params = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t}"), ", "
+    let start = "pub fn {j.start}{EmGenerics j.generics}({params}) -> Rc<dyn Job<{EmTy j.ret}>>"
+    let startBody = "Rc::new({j.name} \{ {Join (Each j.fields, \|((n, ignore))| n), ", "} \})"
+    TmJob (TmSourceDoc "", j.doc), j.name, gnames, fields, (EmTy j.ret), (EmBody j.body), start, startBody
+
+# A type, its derives, and its printer and plain-data impls (docs/backend.md, "Printing").
+EmTyDef: unbounded fn TyDef -> Text
+fn EmTyDef t:
+    let eq = t.eq and not t.floaty
+    let ord = t.ord and not t.floaty
+    let derives = Join (Filter [["Clone", (if t.eq or t.ord: "PartialEq" else: ""), (if eq or ord: "Eq" else: ""), (if t.ord: "PartialOrd" else: ""), (if ord: "Ord" else: "")]], \|d| d != ""), ", "
+    let head = "{t.name}{EmGenericNames t.params}"
+    let doc = TmSourceDoc "`{t.prism}`:", t.doc
+    let decl = match t.kind:
+        "record":
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
+            TmStruct doc, derives, head, (Join (Each c.fields, \|((f, ft))| "pub {f}: {EmTy ft},"), "\n")
+        "unit": TmTupleStruct doc, derives, head, ""
+        "newtype":
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
+            TmTupleStruct doc, derives, head, "({Join (Each c.fields, \|((ignore, ft))| "pub {EmTy ft}"), ", "})"
+        otherwise: TmEnum doc, derives, head, (Join (Each t.cases, \|c| EmCase c), "\n")
+    let show = if t.show == "derive": "\n{EmShowImpl t, head}" else: ""
+    let pod = if t.pod: "\n{EmToPodImpl t, head}\n{EmFromPodImpl t, head}" else: ""
+    "{decl}{show}{pod}"
+
+EmCase: unbounded fn CaseDef -> Text
+fn EmCase c = if (Len c.fields) == 0: "{c.name}," else: "{c.name}({Join (Each c.fields, \|((ignore, ft))| EmTy ft), ", "}),"
+
+# The bound variables of a case, `a0, a1`.
+EmBinders: fn Nat -> [Text]
+fn EmBinders n = Each (Range0 n), \|i| "a{i}"
+
+EmCasePattern: fn TyDef, CaseDef -> Text
+fn EmCasePattern t, c = match t.kind:
+    "newtype": "{t.name}({Join (EmBinders (Len c.fields)), ", "})"
+    "unit": t.name
+    otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}({Join (EmBinders (Len c.fields)), ", "})"
+
+# `derive ^Show`: one printer call per constructor; the printer decides the parentheses.
+EmShowImpl: unbounded fn TyDef, Text -> Text
+fn EmShowImpl t, head:
+    let body = match t.kind:
+        "record":
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
+            "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{EmPrismField f}\", &self.{f})"), ", "}]);"
+        otherwise: TmMatchSelf (Join (Each t.cases, \|c| "{EmCasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (EmBinders (Len c.fields)), ", "}]),"), "\n")
+    TmImpl (EmBounded t.params, "Show"), "Show", head, "fn show(&self, p: &mut Printer)", body
+
+# A field's Prism spelling: the Rust one without the `_` a keyword took.
+EmPrismField: fn Text -> Text
+fn EmPrismField f = if (Drop f, (Dec (Len f))) == "_": Take f, (Dec (Len f)) else: f
+
+EmToPodImpl: unbounded fn TyDef, Text -> Text
+fn EmToPodImpl t, head:
+    let body = match t.kind:
+        "record":
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
+            "Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{EmPrismField f}\", self.{f}.to_pod())"), ", "}])"
+        otherwise: TmMatchSelf (Join (Each t.cases, \|c| "{EmCasePattern t, c} => Pod::Choice(\"{c.prism}\".into(), vec![{Join (Each (EmBinders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"), "\n")
+    let shown = if t.show == "own": TmShownPod body else: body
+    TmImpl (EmBounded t.params, "ToPod"), "ToPod", head, "fn to_pod(&self) -> Pod", shown
+
+EmFromPodImpl: unbounded fn TyDef, Text -> Text
+fn EmFromPodImpl t, head:
+    let body = match t.kind:
+        "record":
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
+            "Ok({t.name} \{ {Join (Each c.fields, \|((f, ignore))| "{f}: FromPod::from_pod(field(p, \"{EmPrismField f}\")?)?"), ", "} \})"
+        otherwise:
+            let arms = Each t.cases, \|c|
+                let n = Len c.fields
+                let made = if n == 0: (if t.kind == "unit": t.name else: "{t.name}::{c.name}") else: "{if t.kind == "newtype": t.name else: "{t.name}::{c.name}"}({Join (Each (Range0 n), \|i| "FromPod::from_pod(&a[{i}])?"), ", "})"
+                "Pod::Choice(c, a) if &**c == \"{c.prism}\" && a.len() == {n} => Ok({made}),"
+            TmFromPod (Join arms, "\n"), "a {t.prism}"
+    TmImpl (EmBounded t.params, "FromPod"), "FromPod", head, "fn from_pod(p: &Pod) -> Result<Self, Fault>", body
+
+EmTagDef: unbounded fn TagDef -> Text
+fn EmTagDef t:
+    let fields = Join (Each t.fields, \|((ignore, f, ft))| "pub {f}: {EmTy ft},"), "\n"
+    let pods = Join (Each t.fields, \|((p, f, ignore))| "(\"{p}\", self.{f}.to_pod())"), ", "
+    TmTag (TmSourceDoc "The `Level` of `{t.tagName}`:", t.doc), t.name, fields, t.tagName, pods
+
+# ---------------------------------------------------------------------------------------
+# Nodes and programs
+# ---------------------------------------------------------------------------------------
+
+EmNodeDef: unbounded fn NodeDef -> Text
+fn EmNodeDef n:
+    let fields = Join (Each n.fields, \|((f, t, doc))| "{TmDoc doc}{f}: {EmTy t},"), "\n"
+    let consts = Concat (Each n.consts, \|((c, h, doc))| "{TmDoc "The {doc}."}const {c}: u32 = {h};\n")
+    let params = Concat (Each n.params, \|((p, t))| "{p}: {EmTy t}, ")
+    let ret = if n.fallible: "Result<Rc<{n.name}>, Fault>" else: "Rc<{n.name}>"
+    let computed = Filter n.inits, \|((ignore, v))| not (EmIsRaw v)
+    let moved = Filter n.inits, \|((ignore, v))| EmIsRaw v
+    let inits = Join (Append [["path"]], (Each (Append computed, moved), \|((f, v))| EmFieldInit f, v)), ", "
+    let tail = if n.fallible: "Ok(node)" else: "node"
+    let restText = if (Len n.build) == 0: tail else: "{EmDos n.build}\n{tail}"
+    let build = TmBuild n.name, params, ret, (EmDos n.lets), inits, restText
+    let methods = Join (Each n.methods, \|m| EmMethod m), "\n"
+    let answer = if (Len n.answers) == 0: "" else: TmAnswer (Join (Each n.answers, \|((pat, call))| "{pat} => {EmEx call},"), "\n")
+    let builders = Concat (Append (Each n.builders, \|b| "\n{EmForDef b}"), (Each n.gens, \|gd| "\n{EmGenDef gd}"))
+    let rowImpl = if n.rowKind == "": "" else: "\n{EmRowImpl n}"
+    let hooks = Join (Each n.hooks, \|((h, body))| TmHook h, (EmDos body)), "\n"
+    let doc = TmSourceDoc "`{n.prism}`: a node of its own (docs/backend.md, \"A widget block\").", n.doc
+    "{TmNode doc, n.name, fields, consts, build, "{methods}{builders}", hooks, answer}{rowImpl}"
+
+# A field initializer that moves a local: written last, after the ones that read it.
+EmIsRaw: fn Ex -> Bool
+fn EmIsRaw (XRaw ignore) = True
+fn EmIsRaw other = False
+
+# A `for`'s builder: rows that left torn down, new keys built, kept rows updated.
+EmForDef: unbounded fn ForDef -> Text
+fn EmForDef b = TmForBuild b.name, "{b.pos}", (EmEx b.source), (EmTy b.keyTy), (EmTy b.valueTy), b.rowNode
+
+# A `rebuild`'s builder: the old generation torn down, the next one built.
+EmGenDef: unbounded fn GenDef -> Text
+fn EmGenDef gd = TmGenBuild gd.name, "{gd.pos}", (EmEx gd.source), (EmTy gd.valueTy), (EmEx gd.select)
+
+# A row's leaving (prelude `Row`): its places torn down, its subscriptions let go.
+EmRowImpl: unbounded fn NodeDef -> Text
+fn EmRowImpl n = TmRowImpl n.name, (Join (Each n.subs, \|((ev, m, ignore))| "if let (Some(p), Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"), "\n")
+
+EmMethod: unbounded fn MethDef -> Text
+fn EmMethod m:
+    let recv = if m.recv == "rc": "self: &Rc<Self>" else: "&self"
+    let cx = if m.cx == "mut": ", cx: &mut Cx" else: if m.cx == "ref": ", cx: &Cx" else: ""
+    let params = Concat (Each m.params, \|((p, t))| ", {p}: {EmTy t}")
+    let ret = if m.ret == RsUnit: "" else: " -> {EmTy m.ret}"
+    let sig = "fn {m.name}({recv}{params}{cx}){ret}"
+    let body = if m.ret == RsUnit: EmDos m.body else: if (Len m.body) == 0: EmBody m.tail else: "{EmDos m.body}\n{EmBody m.tail}"
+    TmMethod (TmDoc m.doc), sig, body
+
+EmProgram: unbounded fn ProgDef, Bool -> Text
+fn EmProgram p, fallible:
+    let n = Len p.params
+    let names = Each p.params, \|((a, ignore))| a
+    let decode = if n == 0: "let _ = args;" else: EmDecodeArgs p, names
+    let call = "{p.node}::build(Path::root(), {Concat (Each names, \|a| "{a}, ")}&mut cx){if fallible: "?" else: ""}"
+    TmProgram p.name, p.prism, p.node, decode, call
+
+EmDecodeArgs: unbounded fn ProgDef, [Text] -> Text
+fn EmDecodeArgs p, names:
+    let n = Len names
+    let plural = if n == 1: "" else: "s"
+    let head = "let [{Join names, ", "}] = args else \{ return Err(Fault::answer(\"@{p.prism} takes {n} argument{plural}\")) \};"
+    Join (Append [[head]], (Each p.params, \|((a, t))| "let {a} = {EmDecodeHead t}::from_pod({a})?;")), "\n"
+
+# ---------------------------------------------------------------------------------------
+# The crate
+# ---------------------------------------------------------------------------------------
+
+EmModule: unbounded fn ModDef -> Text
+fn EmModule m:
+    let uses = if (Len m.uses) == 0: "" else: "#[allow(unused_imports)]\nuse crate::\{{Join m.uses, ", "}\};"
+    TmModule (if m.prism == "": "The root module" else: "The module `{m.prism}`"), m.path, uses, (Join (Each m.items, \|it| EmItem it), "\n")
+
+# Whether a node is built fallibly: the program's `?`.
+EmNodeFallible: fn Model, Text -> Bool
+fn EmNodeFallible model, path = Fold model.mods, False, \|f, m| Fold m.items, f, \|f2, it| match it:
+    ItNode n: f2 or ("{m.name}::{n.name}" == path and n.fallible)
+    otherwise: f2
+
+# The crate's files: path and text.
+EmitCrate: unbounded fn Model, Text, [Text] -> [((Text, Text))]
+fn EmitCrate model, runtime, scripts:
+    let gui = match model.?root:
+        ? r: r.world == "canvas"
+        nil: False
+    let cargo = TmCargo model.name, runtime, (if gui: "\"canvas\"" else: "")
+    let mods = Concat (Each model.mods, \|m| "mod {m.name};\n")
+    let programs = Join (Each (EmAllPrograms model), \|p| EmProgram p, (EmNodeFallible model, p.node)), "\n"
+    let regs = Concat (Each model.programs, \|p| ".program::<{p.name}>(\"{p.prism}\")\n")
+    let checks = Concat (Each model.checks, \|c| ".check(\"{c.name}\", || vec![{Join (Each c.lines, \|l| EmEx l), ", "}])\n")
+    let scriptList = Concat (Each scripts, \|s| "\"{LoEscape s}\",\n")
+    let runRoot = match model.?root:
+        ? r: TmRunRoot r.name
+        nil: TmNoRoot model.name
+    let world = match model.?root:
+        ? r: r.world
+        nil: "test"
+    let main = TmMain model.name, "mod prelude;\n{mods}", programs, "{regs}{checks}", scriptList, runRoot, world
+    let files = Each model.mods, \|m| (("src/{m.name}.rs", (EmModule m)))
+    Append [[(("Cargo.toml", cargo)), (("src/main.rs", main)), (("src/prelude.rs", (TmPrelude "")))]], files
+
+# Every program, the root's among them, once.
+EmAllPrograms: fn Model -> [ProgDef]
+fn EmAllPrograms model = match model.?root:
+    ? r: if Fold model.programs, False, \|f, p| f or p.name == r.name: model.programs else: Push model.programs, r
+    nil: model.programs

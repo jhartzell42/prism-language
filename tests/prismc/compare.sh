@@ -2,7 +2,7 @@
 # Diffs prismc's front end against prism_syntax's: for every `.prism` and `.prismtest` file
 # under examples/, tests/conformance/, prelude/ and prismc/ (or the files named on the
 # command line), the S-expression dump of `cargo run -p prism_syntax --example dump -- FILE`
-# and of `prism_zero run prismc/*.prism -- FILE OUT` must be byte-equal, diagnostics
+# and of `prism_zero run prismc/*.prism prismc/templates/*.prism -- FILE OUT` must be byte-equal, diagnostics
 # included. `--tokens` compares the two lexers instead (`dump --tokens`), and `--fragment`
 # parses each file as a run of statements (`dump --fragment`). Exits 1 and lists
 # the files that differ, 0 when every file diffs clean.
@@ -41,7 +41,7 @@ differ=()
 for f in "${files[@]}"; do
     "$dump" "${mode[@]}" "$f" > "$tmp/rust" 2>&1
     rm -f "$tmp/prismc"
-    "$zero" run prismc/*.prism -- "${mode[@]}" "$f" "$tmp/prismc" > "$tmp/log" 2>&1
+    "$zero" run prismc/*.prism prismc/templates/*.prism -- "${mode[@]}" "$f" "$tmp/prismc" > "$tmp/log" 2>&1
     if [ -f "$tmp/prismc" ] && cmp -s "$tmp/rust" "$tmp/prismc"; then
         clean=$((clean + 1))
     else
