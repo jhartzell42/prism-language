@@ -1,0 +1,2403 @@
+# Lowering: the tree of a whole program to its core form, the model emission spells as
+# Rust (Compiler ch. 3, "Translation", adapted: decisions.md D16 keeps every value
+# dynamic, so the core form carries no types). What lowering decides, and emission never
+# does:
+#
+# - **Names resolved.** Every name is a local (by its Rust name), a global (by its Rust
+#   path), a tag, or an error; a pattern's name is a binder or a constructor.
+# - **Sigils explicit.** A name's sigils are part of its Rust name (`$count` is
+#   `ld_count`), a parameter's layer is read off its declared type (or its pattern), and a
+#   `rebuild`'s or a `for`'s result kind off its binder (compiler zero's picks LA and RK).
+# - **Blocks as binding groups in their dependency order.** An expression block's `let`s
+#   come out in the order compiler zero forces them (each name before its first use); a
+#   widget block's lines in the order compiler zero runs them: positional lines in page
+#   order, every other definition when a line first needs it, forward events for events
+#   bound below, deferred event `let`s, and the holds' `then`s last (prism_zero/README.md,
+#   pick BG). Emission writes the lines in that order and decides nothing.
+# - **Cycle points.** An unbounded function's body runs under `rt::unbounded`, which
+#   counts the call when an unbounded function made it, and every `while` turn counts one
+#   (decisions.md D6, the canonical rule; prism_zero's pick CP, so both run one semantics).
+# - **Environments.** Every nested function (a lambda, a local function, the arms of a
+#   `match`, a widget block) names the locals it captures; its Rust `fn` takes them
+#   explicitly, so the collector sees every captured value (decisions.md D5).
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+# Every type and constructor here starts with `Z`, since constructors share one namespace
+# per program and the checker's modules grow beside this one.
+module Lower
+emit r
+use Ast.*
+use Lexer.*
+
+# ---------------------------------------------------------------------------------------
+# The core form
+# ---------------------------------------------------------------------------------------
+
+# An expression. Emission writes each as one Rust expression of type `Value`.
+type ZExpr = choice:
+    ZLocal Text                              # a local, by its Rust name
+    ZGlobal Text                             # a global's getter, by its Rust path
+    ZInt Text                                # an integer literal's digits, `-` first if negative
+    ZFloat Text
+    ZText Text
+    ZChar Text
+    ZDuration Text                           # nanoseconds
+    ZBool Bool
+    ZUnit
+    ZNil
+    ZNever
+    ZTag Text                                # a tag as a value
+    ZQualBuiltin Text                        # `Buffer.Empty`, `Table.Empty`, `Buffer.Numbered`
+    ZApply ZExpr, [ZExpr]
+    ZApplyNamed ZExpr, [ZArg]
+    ZApplyWith ZExpr, [ZExpr], [Text]        # explicit instantiation: a layer letter or ""
+    ZElement Text, [ZArg]
+    ZBin Text, ZExpr, ZExpr                  # an `rt::Op`, by its Rust name
+    ZAndOr Text, ZExpr, ZExpr
+    ZOn ZExpr, ZExpr
+    ZMerge ZExpr, ZExpr
+    ZUn Text, ZExpr
+    ZField ZExpr, Text
+    ZIndex ZExpr, ZExpr
+    ZSome ZExpr
+    ZOk ZExpr
+    ZConst ZExpr
+    ZTuple [ZExpr]
+    ZArray [ZExpr]
+    ZMap [ZExpr]                             # keys and values, alternating
+    ZInterp [?Text], [ZExpr]
+    ZFn ZFunc                                # a function value: a lambda or a local function
+    ZBlueprint ZBuild                        # a blueprint over a widget block
+    ZBranch ZArms                            # a `match` or `if` as an expression
+    ZBuildBranch ZBuilding                   # a `match` or `if` building in a widget block
+    ZBlock [ZStmt], ZExpr                    # an expression block: its lines, then its value
+    ZGiven Bool, [ZGivenStep]                # `given:`; True under a `~` name
+    ZUpdate Text, ZExpr, [ZUpd]              # `update v:`: its `&_`'s Rust name, `v`, its lines
+    ZTemplate [ZPart]
+    ZRebuild ZExpr, Text, ZBuild             # source, result kind, the block
+    ZFor ZExpr, Text, ZBuild
+    ZBindBuild ZExpr                         # a statement's value: emit an element, build a blueprint
+    ZRead Text, [ZStep]                      # an `&` alias's element: its root's Rust name, the path
+    ZFault Text                              # what fails when it runs
+derive ^Eq, ^Show
+
+type ZArg = record:
+    name: ?Text
+    value: ZExpr
+derive ^Eq, ^Show
+
+# A pattern, its names resolved.
+type ZPat = choice:
+    ZpIgnore
+    ZpBind Text                              # a binder, by its Rust name
+    ZpBool Bool
+    ZpUnit
+    ZpNil
+    ZpInt Text
+    ZpChar Text
+    ZpText Text
+    ZpFloat Text
+    ZpNever                                  # matches nothing
+    ZpCtorName Text                          # a constructor with no arguments
+    ZpTagName Text                           # a fault kind or a tag with no fields
+    ZpCtor Text, ?Text, [ZPat]               # bare name, the qualified spelling, the arguments
+    ZpRecord Text, Text, [?Text], Bool, [ZPat]   # qualified, bare, field names, `..`, patterns
+    ZpSome ZPat
+    ZpOk ZPat
+    ZpTuple [ZPat]
+    ZpArray [ZPat]
+    ZpFamily Text
+derive ^Eq, ^Show
+
+# A function: a top-level function, a lambda, a local function, a trait's default, an
+# `impl`'s method. `key` names its site (its meta is made once), `rs` its Rust `fn`.
+type ZFunc = record:
+    site: Text
+    name: Text
+    rs: Text
+    layers: [Text]
+    nat: [Bool]
+    peel: Bool
+    isWidget: Bool
+    isUnbounded: Bool
+    caps: [ZCap]
+    selfName: ?Text                          # a local function sees itself by this Rust name
+    clauses: [ZClause]
+    loc: Text
+    families: ?[Text]                        # a widget function's `emit` row
+derive ^Eq, ^Show
+
+# A captured local: its Rust name outside, the value captured.
+type ZCap = record:
+    rs: Text
+    value: ZExpr
+derive ^Eq, ^Show
+
+type ZClause = record:
+    params: [ZPat]
+    body: ZBody
+    label: Text
+derive ^Eq, ^Show
+
+type ZBody = choice:
+    ZbExpr ZExpr
+    ZbWidget ZWide                           # a widget function's block
+    ZbWidgetExpr ZExpr                       # a widget function's one line: bound, built
+derive ^Eq, ^Show
+
+# A `match` or `if` as one Rust `fn` of its scrutinee and the locals its arms read.
+type ZArms = record:
+    rs: Text
+    scrutinee: ZExpr
+    env: [ZCap]
+    arms: [ZArm]
+    exhaustive: Bool                         # an `if` with no `else` gives `unit`
+derive ^Eq, ^Show
+
+type ZArm = record:
+    pattern: ZPat
+    guard: ?ZExpr
+    body: ZExpr
+    label: Text
+derive ^Eq, ^Show
+
+# A building `match` or `if` in a widget block: over a plain scrutinee, its arms are
+# widget blocks building here; over a handle, `lifted` (expression arms) as one node.
+type ZBuilding = record:
+    label: Text
+    scrutinee: ZExpr
+    lifted: ZArms
+    arms: [ZBArm]
+    exhaustive: Bool
+derive ^Eq, ^Show
+
+type ZBArm = record:
+    pattern: ZPat
+    guard: ?ZExpr
+    body: ZWide
+    label: Text
+derive ^Eq, ^Show
+
+# A widget block as a blueprint's `fn`: what it captures, and how it binds its arguments.
+type ZBuild = record:
+    rs: Text
+    name: Text
+    caps: [ZCap]
+    args: ZBuildArgs
+    body: ZWide
+    loc: Text
+    families: ?[Text]                        # a top-level widget's `emit` row
+derive ^Eq, ^Show
+
+type ZBuildArgs = choice:
+    ZaNone
+    ZaRebuild Text                           # `_`'s Rust name
+    ZaFor ?ZPat, ?ZPat, Text, ?Text, ?Text   # key/value binders, `ix`, the outer `ix` and `jx`
+    ZaAt                                     # `@ v`: the block is one value
+derive ^Eq, ^Show
+
+# A widget block's lines, in the order they run, and its value.
+type ZWide = record:
+    lines: [ZLine]
+    result: ZExpr
+derive ^Eq, ^Show
+
+type ZLine = choice:
+    ZwRow [Text]
+    ZwLet ZPat, ZExpr
+    ZwHold Text, ZExpr
+    ZwForward Text
+    ZwBind ZPat, ZExpr, [((Text, Text))]     # pattern, value, (forward, binder) to resolve
+    ZwThen Text, ZExpr
+    ZwDo ZExpr
+    ZwStmt ZStmt
+    ZwFault Text
+derive ^Eq, ^Show
+
+# An expression block's line.
+type ZStmt = choice:
+    ZsLet ZPat, ZExpr
+    ZsDo ZExpr
+    ZsFault Text
+derive ^Eq, ^Show
+
+type ZGivenStep = choice:
+    ZgBind ZPat, ZExpr, Text                 # the pattern, the value, the line's text
+    ZgLet ZPat, ZExpr
+    ZgGuard Bool, ZExpr, Text                # `require` (True) or `forbid`
+    ZgLet1 ZStmt
+    ZgAnswer ZExpr
+    ZgFault Text
+derive ^Eq, ^Show
+
+# An `&` block's line.
+type ZUpd = choice:
+    ZuSet Text, [ZStep], ZExpr               # a local's Rust name, the path, the value
+    ZuAccum Text, [ZStep], Text, ZExpr       # ... the operator
+    ZuLet ZPat, ZExpr, [Text]                # the `&` binders to make mutable
+    ZuWhile ZCond, [ZUpd], Text
+    ZuIf ZCond, [ZUpd], [ZUpd], Text
+    ZuMatch ZExpr, [ZUArm], Text
+    ZuFor ZExpr, ?ZPat, ?ZPat, [ZUpd], Text, ?Text, ?Text
+    ZuForRef Text, [ZStep], [ZUpd], Text, ?Text, ?Text, ?Text   # root, path, body, label, hidden root, outer ix, jx
+    ZuDo ZExpr
+    ZuFault Text
+derive ^Eq, ^Show
+
+type ZCond = choice:
+    ZcExpr ZExpr
+    ZcBind ZPat, ZExpr, ?ZExpr
+derive ^Eq, ^Show
+
+type ZUArm = record:
+    pattern: ZPat
+    guard: ?ZExpr
+    body: [ZUpd]
+    label: Text
+derive ^Eq, ^Show
+
+type ZStep = choice:
+    ZField1 Text
+    ZIndex1 ZExpr
+derive ^Eq, ^Show
+
+# A code template's part.
+type ZPart = choice:
+    ZtText Text
+    ZtPlace ZExpr, ?Nat
+    ZtBlock ZExpr
+    ZtCall ZExpr, [ZExpr], ?[ZPart]
+derive ^Eq, ^Show
+
+# ---------------------------------------------------------------------------------------
+# The program: its modules and their declarations (Semantics ch. 6; prism_zero's load.rs)
+# ---------------------------------------------------------------------------------------
+
+# A source file and its tree.
+type ZSource = record:
+    file: Text
+    text: Text
+    tree: Module
+    bundled: Bool
+derive ^Eq, ^Show
+
+# A declaration a name resolves to.
+type ZDecl = choice:
+    ZdFn ?Signature, [FnClause]
+    ZdLet LetDecl
+    ZdWidget WidgetDecl
+    ZdCtor Text
+    ZdUnit Text
+    ZdBuiltin Signature
+    ZdMethod Text, Signature, [FnClause], Text     # trait, signature, default, the trait's variable
+derive ^Eq, ^Show
+
+type ZMod = record:
+    name: Text                               # "" for the root file
+    rs: Text                                 # its Rust module
+    file: Text
+    text: Text
+    tree: Module
+    bundled: Bool
+    decls: (Text ==> ZDecl)
+    scope: (Text ==> Text)                   # a bare name brought in by `use M.*`: M
+    qualified: [Text]
+    families: ?[Text]                        # the families of its `emit` line; nil for any
+derive ^Eq, ^Show
+
+type ZTagInfo = record:
+    name: Text
+    fields: [((Text, Text))]                 # name and kind: "Identity", "Live", "Request"
+    outKind: Text                            # an `rt::OutputKind`, spelled
+    kind: Text                               # "Event", "Dynamic", "Unit", "Plain": a row's result kind
+    fault: Bool
+derive ^Eq, ^Show
+
+type ZCtor = record:
+    name: Text
+    typeName: Text
+    isRecord: Bool
+    fields: [Text]
+    nat: [Bool]
+    layers: [Text]
+    index: Nat
+derive ^Eq, ^Show
+
+type ZImpl = record:
+    traitName: Text
+    typeHead: Text
+    home: Text
+    methods: [((Text, [FnClause]))]
+derive ^Eq, ^Show
+
+type ZProg = record:
+    mods: (Text ==> ZMod)
+    order: [Text]
+    tags: (Text ==> ZTagInfo)
+    ctors: [ZCtor]
+    impls: [ZImpl]
+    methods: (Text ==> Signature)            # "Trait.method": its signature
+    errors: [Text]
+derive ^Eq, ^Show
+
+# The Rust module of a Prism module.
+ZRsMod: fn Text -> Text
+fn ZRsMod "" = "m_main"
+fn ZRsMod name = "m_{Lower (Join (Split name, "."), "_")}"
+
+# A name's sigils as letters: `$` d, `!` e, `@` w, `?` q, `~` t, `&` r.
+ZSigilLetters: fn Text -> Text
+fn ZSigilLetters s = Concat (Each (Chars s), ZSigilLetter)
+
+ZSigilLetter: fn Text -> Text
+fn ZSigilLetter "$" = "d"
+fn ZSigilLetter "!" = "e"
+fn ZSigilLetter "@" = "w"
+fn ZSigilLetter "?" = "q"
+fn ZSigilLetter "~" = "t"
+fn ZSigilLetter "&" = "r"
+fn ZSigilLetter c = ZOpLetter c
+
+# An operator's characters as letters, for trait methods named by an operator.
+ZOpLetter: fn Text -> Text
+fn ZOpLetter "=" = "eq"
+fn ZOpLetter "<" = "lt"
+fn ZOpLetter ">" = "gt"
+fn ZOpLetter "+" = "add"
+fn ZOpLetter "-" = "sub"
+fn ZOpLetter "*" = "mul"
+fn ZOpLetter "/" = "div"
+fn ZOpLetter "|" = "bar"
+fn ZOpLetter c = if (IsIdentChar c): c else: "x"
+
+# A name with its sigils split off: `$?count` is (("$?", "count")).
+ZSplitName: fn Text -> ((Text, Text))
+fn ZSplitName n:
+    let k = LeadingIn n, "$!@?~&"
+    (((Take n, k), (Drop n, k)))
+
+# A Prism name as a Rust identifier, after a prefix: `$count` is `d_count`, `==` is
+# `op_eqeq`.
+ZMangle: fn Text -> Text
+fn ZMangle n:
+    let ((sig, base)) = ZSplitName n
+    if base != "" and (AllChars base, IsIdentChar): "{ZSigilLetters sig}_{base}"
+    else: "{ZSigilLetters sig}op_{Concat (Each (Chars base), ZOpLetter)}"
+
+ZLocalRs: fn Text -> Text
+fn ZLocalRs n = "l{ZMangle n}"
+
+ZGlobalRs: fn Text -> Text
+fn ZGlobalRs n = "g{ZMangle n}"
+
+ZNameText: fn SName -> Text
+fn ZNameText n = "{n.sigils}{Join n.path, "."}"
+
+ZBase: fn SName -> Text
+fn ZBase n = Or (?Last n.path), ""
+
+ZDefNameText: fn DefName -> Text
+fn ZDefNameText (DefSName n) = ZNameText n
+fn ZDefNameText (DefOp o, ignore) = o
+
+ZFirstSigil: fn Text -> Text
+fn ZFirstSigil s = Take s, 1
+
+# ---------------------------------------------------------------------------------------
+# Gathering the program (prism_zero's load.rs, steps 3 to 6)
+# ---------------------------------------------------------------------------------------
+
+# The bundled libraries a program keeps: each one unless a file of the program has its
+# module name or declares a tag of one of its families (the chess window library declares
+# `Ui` and `Gui`).
+ZKeepBundled: fn [ZSource], ZSource -> Bool
+fn ZKeepBundled user, lib:
+    let name = ZModName lib.tree
+    let families = Fold user, [[]], \|acc, s| Append acc, (ZTagFamilies s.tree)
+    let named = Fold user, False, \|seen, s| seen or (ZModName s.tree) == name
+    let declared = Fold (ZTagFamilies lib.tree), False, \|seen, f| seen or (Fold families, False, \|q, g| q or g == f)
+    not named and not declared
+
+ZModName: fn Module -> Text
+fn ZModName m = match m.name:
+    ? q: Join q.path, "."
+    nil: ""
+
+ZTagFamilies: fn Module -> [Text]
+fn ZTagFamilies m = Fold m.decls, [[]], \|acc, d| match d.kind:
+    DTag t: Push acc, (Join (Pop t.name.path), ".")
+    otherwise: acc
+
+# The program from its sources: modules, declarations, scopes, and the tables.
+ZGather: fn [ZSource] -> ZProg
+fn ZGather sources:
+    let mods0 = Fold sources, {}, \|acc, s| Insert acc, (ZModName s.tree), (ZModOf s)
+    let order = Each sources, \|s| ZModName s.tree
+    let tags = Fold sources, {}, \|acc, s| ZTagsOf acc, s.tree
+    let ctors = Fold sources, [[]], \|acc, s| Append acc, (ZCtorsOf s.tree)
+    let impls = Fold sources, [[]], \|acc, s| Append acc, (ZImplsOf s.tree)
+    let methods = Fold sources, {}, \|acc, s| ZMethodsOf acc, s.tree
+    let mods = Fold order, mods0, \|acc, n| ZResolveUses acc, n
+    let dups = ZDuplicateCtors ctors
+    ZProg(mods=mods, order=order, tags=tags, ctors=ctors, impls=impls, methods=methods, errors=dups)
+
+# Constructors share one namespace per program (prism_rt values carry their bare name).
+ZDuplicateCtors: fn [ZCtor] -> [Text]
+fn ZDuplicateCtors cs:
+    let ((ignore, out)) = Fold cs, (({}, [[]])), \|((seen, acc)), c| match seen[c.name]:
+        ? t: ((seen, (Push acc, "the constructor {c.name} is declared by {t} and by {c.typeName}; constructors share one namespace per program")))
+        nil: (((Insert seen, c.name, c.typeName), acc))
+    out
+
+ZModOf: fn ZSource -> ZMod
+fn ZModOf s:
+    let name = ZModName s.tree
+    let fams = match s.tree.emitRow:
+        ? r: ZRowOf r
+        nil: nil
+    ZMod(name=name, rs=(ZRsMod name), file=s.file, text=s.text, tree=s.tree, bundled=s.bundled, decls=(ZDeclsOf name, s.tree), scope={}, qualified=[[name]], families=fams)
+
+# The families of an `emit` line, or nil for any (a row variable, a row kind).
+ZRowOf: fn Row -> ?[Text]
+fn ZRowOf r = Fold r.terms, (? [[]]), \|acc, t| ZRowTerm acc, t
+
+ZRowTerm: fn ?[Text], RowTerm -> ?[Text]
+fn ZRowTerm nil, ignore = nil
+fn ZRowTerm (? fs), (RFamily q) = ? (ZInsertSorted fs, (Join q.path, "."))
+fn ZRowTerm (? fs), (RVar ignore) = nil
+fn ZRowTerm (? fs), (RType t) = match t.kind:
+    TName n, ignore if (Len n.path) > 1 and (ZBase n) == "Element": ? (ZInsertSorted fs, (Join (Pop n.path), "."))
+    otherwise: nil
+
+ZInsertSorted: fn [Text], Text -> [Text]
+fn ZInsertSorted xs, x:
+    if (Fold xs, False, \|seen, y| seen or y == x): xs
+    else:
+        let before = Filter xs, \|y| y < x
+        let after = Filter xs, \|y| y > x
+        Append (Push before, x), after
+
+# One module's declarations, by name with sigils (load.rs `gather`).
+ZDeclsOf: fn Text, Module -> (Text ==> ZDecl)
+fn ZDeclsOf modName, m:
+    let sigs = Fold m.decls, {}, \|acc, d| match d.kind:
+        DSignature s: Insert acc, (ZDefNameText s.name), s
+        otherwise: acc
+    let clauses = Fold m.decls, {}, \|acc, d| match d.kind:
+        DFn c: Insert acc, (ZDefNameText c.name), (Push (Or acc[ZDefNameText c.name], [[]]), c)
+        otherwise: acc
+    let others = Fold m.decls, {}, \|acc, d| ZDeclOf acc, d
+    let withFns = Fold clauses, others, \|acc, n, cs| Insert acc, n, (ZdFn sigs[n], cs)
+    # A signature with no clauses: in the prelude, a Rust builtin.
+    Fold sigs, withFns, \|acc, n, s| match acc[n]:
+        ? ignore: acc
+        nil: if modName == "Prelude": Insert acc, n, (ZdBuiltin s) else: acc
+
+ZDeclOf: fn (Text ==> ZDecl), Decl -> (Text ==> ZDecl)
+fn ZDeclOf acc, d = match d.kind:
+    DLet ld: Fold (ZBindersOfAny ld.pattern), acc, \|a, b| Insert a, b, (ZdLet ld)
+    DWidget w: Insert acc, (ZNameText w.name), (ZdWidget w)
+    DType t: ZTypeDecls acc, t
+    DTrait t: ZTraitDecls acc, t
+    otherwise: acc
+
+ZTypeDecls: fn (Text ==> ZDecl), TypeDecl -> (Text ==> ZDecl)
+fn ZTypeDecls acc, t:
+    let tname = Join t.name.path, "."
+    match t.body:
+        ? (TbRecord ignore): Insert acc, tname, (ZdCtor tname)
+        ? (TbChoice cases): Fold cases, acc, \|a, c| Insert a, (ZNameText c.name), (ZdCtor (ZNameText c.name))
+        ? (TbNewtype c): Insert acc, (ZNameText c.name), (ZdCtor (ZNameText c.name))
+        ? (TbUnit v): Insert acc, v.name, (ZdUnit v.name)
+        otherwise: acc
+
+ZTraitDecls: fn (Text ==> ZDecl), TraitDecl -> (Text ==> ZDecl)
+fn ZTraitDecls acc, t:
+    let tname = Join t.name.path, "."
+    let var = match t.params[0]:
+        ? p: p.name
+        nil: ""
+    let defaults = Fold t.items, {}, \|a, it| match it:
+        TiFn c: Insert a, (ZDefNameText c.name), (Push (Or a[ZDefNameText c.name], [[]]), c)
+        otherwise: a
+    Fold t.items, acc, \|a, it| match it:
+        TiSignature s: Insert a, (ZDefNameText s.name), (ZdMethod tname, s, (Or defaults[ZDefNameText s.name], [[]]), var)
+        otherwise: a
+
+# Every trait method's signature, by "Trait.method".
+ZMethodsOf: fn (Text ==> Signature), Module -> (Text ==> Signature)
+fn ZMethodsOf acc, m = Fold m.decls, acc, \|a, d| match d.kind:
+    DTrait t: Fold t.items, a, \|b, it| match it:
+        TiSignature s: Insert b, "{Join t.name.path, "."}.{ZDefNameText s.name}", s
+        otherwise: b
+    otherwise: a
+
+# A tag's fields and output (load.rs `tag_kind`, `output_kind`, `field_kind`).
+ZTagsOf: fn (Text ==> ZTagInfo), Module -> (Text ==> ZTagInfo)
+fn ZTagsOf acc, m = Fold m.decls, acc, \|a, d| match d.kind:
+    DTag t: Insert a, (Join t.name.path, "."), (ZTagOf t)
+    otherwise: a
+
+ZTagOf: fn TagDecl -> ZTagInfo
+fn ZTagOf t:
+    let name = Join t.name.path, "."
+    let fields = Each t.fields, \|f| ((f.name.name, ZFieldKind f.ty))
+    match t.ofType.kind:
+        TName n, ignore if (ZBase n) == "Fault": ZTagInfo(name=name, fields=fields, outKind="OutputKind::Unit", kind="Unit", fault=True)
+        TName n, args: match args[0]:
+            ? o: ZTagInfo(name=name, fields=fields, outKind=(ZOutputKind o), kind=(ZResultKindOfOutput o), fault=False)
+            nil: ZTagInfo(name=name, fields=fields, outKind="OutputKind::Unit", kind="Unit", fault=False)
+        otherwise: ZTagInfo(name=name, fields=fields, outKind="OutputKind::Unit", kind="Unit", fault=False)
+
+ZFieldKind: fn Type -> Text
+fn ZFieldKind t = match ZOuterSigil t:
+    "$": "Live"
+    "!": "Request"
+    otherwise: "Identity"
+
+ZOutputKind: fn Type -> Text
+fn ZOutputKind t = match ZOuterSigil t:
+    "!": "OutputKind::Event"
+    "$": "OutputKind::Dynamic"
+    otherwise: match t.kind:
+        TUnit ignore: "OutputKind::Unit"
+        TTuple parts if (Fold parts, False, \|q, p| q or (ZOuterSigil p) != ""): "OutputKind::Bundle(vec![{Join (Each parts, ZOutputKind), ", "}])"
+        otherwise: "OutputKind::Plain"
+
+ZResultKindOfOutput: fn Type -> Text
+fn ZResultKindOfOutput t = match ZOuterSigil t:
+    "!": "Event"
+    "$": "Dynamic"
+    otherwise: match t.kind:
+        TUnit ignore: "Unit"
+        otherwise: "Plain"
+
+# The outermost sigil of a type, or "".
+ZOuterSigil: fn Type -> Text
+fn ZOuterSigil t = match t.kind:
+    TName n, ignore: ZFirstSigil n.sigils
+    TSigiled s, ignore: ZFirstSigil s
+    TUnit s: ZFirstSigil s
+    THole n: ZFirstSigil n.sigils
+    TGroup inner: ZOuterSigil inner
+    TEmit inner, ignore: ZOuterSigil inner
+    otherwise: ""
+
+# Constructors (load.rs `gather`, the type arm).
+ZCtorsOf: fn Module -> [ZCtor]
+fn ZCtorsOf m = Fold m.decls, [[]], \|acc, d| match d.kind:
+    DType t: Append acc, (ZCtorsOfType t)
+    otherwise: acc
+
+ZCtorsOfType: fn TypeDecl -> [ZCtor]
+fn ZCtorsOfType t:
+    let tname = Join t.name.path, "."
+    let params = Each t.params, \|p| p.name
+    match t.body:
+        ? (TbRecord fs): [[ZCtor(name=tname, typeName=tname, isRecord=True, fields=(Each fs, \|f| f.name.name), nat=(Each fs, \|f| ZIsNatType f.ty), layers=(Each fs, \|f| ZFieldLayer params, f.ty), index=0)]]
+        ? (TbChoice cases):
+            let ((ignore, out)) = Fold cases, ((0, [[]])), \|((i, acc)), c| ((i + 1, (Push acc, (ZCaseCtor tname, params, c, i))))
+            out
+        ? (TbNewtype c): [[(ZCaseCtor tname, params, c, 0)]]
+        ? (TbUnit v): [[ZCtor(name=v.name, typeName=tname, isRecord=False, fields=[[]], nat=[[]], layers=[[]], index=0)]]
+        otherwise: [[]]
+
+ZCaseCtor: fn Text, [Text], Case, Nat -> ZCtor
+fn ZCaseCtor tname, params, c, i:
+    let ((ignore, names)) = Fold c.args, ((0, [[]])), \|((k, acc)), ignore| ((k + 1, (Push acc, "{k}")))
+    ZCtor(name=(ZNameText c.name), typeName=tname, isRecord=False, fields=names, nat=(Each c.args, ZIsNatType), layers=(Each c.args, \|a| ZFieldLayer params, a), index=i)
+
+# A constructor's field takes its argument whole when its type is one of the type's
+# parameters (Type System ch. 4, "Where the table looks").
+ZFieldLayer: fn [Text], Type -> Text
+fn ZFieldLayer params, t:
+    let l = ZLayerOf t
+    match t.kind:
+        TName n, ignore if l == "V" and (Fold params, False, \|q, p| q or p == (ZBase n)): "W"
+        otherwise: l
+
+# `impl ^T Type:` (load.rs, the impl arm).
+ZImplsOf: fn Module -> [ZImpl]
+fn ZImplsOf m = Fold m.decls, [[]], \|acc, d| match d.kind:
+    DImpl i:
+        let methods = Fold i.items, [[]], \|ms, it| match it:
+            TiFn c: ZAddClause ms, (ZDefNameText c.name), c
+            otherwise: ms
+        Push acc, ZImpl(traitName=(Join i.traitRef.path, "."), typeHead=(ZTypeHead i.ty), home=(ZModName m), methods=methods)
+    otherwise: acc
+
+ZAddClause: fn [((Text, [FnClause]))], Text, FnClause -> [((Text, [FnClause]))]
+fn ZAddClause ms, n, c:
+    let found = Fold ms, False, \|q, ((k, ignore))| q or k == n
+    if found: Each ms, \|((k, cs))| if k == n: ((k, (Push cs, c))) else: ((k, cs))
+    else: Push ms, ((n, [[c]]))
+
+# The head of an impl's type, as runtime values name their types.
+ZTypeHead: fn Type -> Text
+fn ZTypeHead t = match t.kind:
+    TName n, ignore: Join n.path, "."
+    TArray ignore, ignore: "[]"
+    TMap ignore, ignore: "==>"
+    TTuple ignore: "(())"
+    TGroup inner: ZTypeHead inner
+    TUnit ignore: "unit"
+    otherwise: "?"
+
+# `use` lines and the bare names they bring in; the prelude is used by every file.
+ZResolveUses: fn (Text ==> ZMod), Text -> (Text ==> ZMod)
+fn ZResolveUses mods, name:
+    let m = Or mods[name], (ZEmptyMod name)
+    let uses0 = Each m.tree.uses, \|u| (((Join u.target.path, "."), u.star))
+    let uses = if name == "Prelude": uses0 else: Append [[(("Prelude", True))]], uses0
+    let qualified = Fold uses, [[name]], \|acc, ((n, ignore))| Push acc, n
+    let scope = Fold uses, {}, \|acc, ((n, star))| if star and n != name: ZBringIn acc, mods, n else: acc
+    let resolved = update m:
+        &_.scope <= scope
+        &_.qualified <= qualified
+    Insert mods, name, resolved
+
+ZBringIn: fn (Text ==> Text), (Text ==> ZMod), Text -> (Text ==> Text)
+fn ZBringIn acc, mods, n = match mods[n]:
+    ? src: Fold src.decls, acc, \|a, k, ignore| match a[k]:
+        ? ignore: a
+        nil: Insert a, k, n
+    nil: acc
+
+ZEmptyMod: fn Text -> ZMod
+fn ZEmptyMod name = ZMod(name=name, rs=(ZRsMod name), file="", text="", tree=(Module(name=nil, emitRow=nil, uses=[[]], decls=[[]], template=nil, span=(Range(start=0, end=0)))), bundled=True, decls={}, scope={}, qualified=[[]], families=nil)
+
+# ---------------------------------------------------------------------------------------
+# Layers (prism_zero's `layer_of`, pick LA): `W` whole, `V` a variable, `C` concrete, `O`
+# an optional
+# ---------------------------------------------------------------------------------------
+
+ZLayerOf: fn Type -> Text
+fn ZLayerOf t = match ZOuterSigil t:
+    "$": "W"
+    "!": "W"
+    "@": "W"
+    "&": "W"
+    "?": "O"
+    "~": "O"
+    otherwise: match t.kind:
+        TName n, args if (Len n.path) == 1 and not (IsUpper (Take (ZBase n), 1)) and (Len args) == 0: "V"
+        THole ignore: "V"
+        TFn ignore, ignore, ignore: "V"
+        TGroup inner: ZLayerOf inner
+        otherwise: "C"
+
+# With no signature, a parameter pattern's sigil says.
+ZLayerOfPattern: fn Pattern -> Text
+fn ZLayerOfPattern p = match p.kind:
+    PName n: match ZFirstSigil n.sigils:
+        "": "V"
+        "$": "W"
+        "!": "W"
+        "@": "W"
+        "&": "W"
+        otherwise: "O"
+    PSigil ignore, ignore: "O"
+    otherwise: "V"
+
+ZIsNatType: fn Type -> Bool
+fn ZIsNatType t = match t.kind:
+    TName n, args: (Len args) == 0 and n.sigils == "" and (ZBase n) == "Nat" and (Len n.path) == 1
+    otherwise: False
+
+ZSigLayers: fn ?Signature -> (([Text], [Bool]))
+fn ZSigLayers nil = (([[]], [[]]))
+fn ZSigLayers (? s) = match s.ty.kind:
+    TFn ignore, params, ignore: (((Each params, ZLayerOf), (Each params, ZIsNatType)))
+    otherwise: (([[]], [[]]))
+
+ZIsUnbounded: fn ?Signature -> Bool
+fn ZIsUnbounded nil = False
+fn ZIsUnbounded (? s) = match s.ty.kind:
+    TFn Unbounded, ignore, ignore: True
+    otherwise: False
+
+# ---------------------------------------------------------------------------------------
+# Binders
+# ---------------------------------------------------------------------------------------
+
+# The names a pattern binds, constructors or not (load.rs `pattern_binders`): a group's
+# definitions.
+ZBindersOfAny: fn Pattern -> [Text]
+fn ZBindersOfAny p = match p.kind:
+    PName n if (Len n.path) == 1 and (ZBase n) != "nil" and (ZBase n) != "True" and (ZBase n) != "False": [[ZNameText n]]
+    PCtor ignore, args: Fold args, [[]], \|acc, a| Append acc, (ZBindersOfAny a)
+    PRecord ignore, fs, ignore: Fold fs, [[]], \|acc, f| Append acc, (ZBindersOfAny f.pattern)
+    PSigil ignore, inner: ZBindersOfAny inner
+    PTuple ps: Fold ps, [[]], \|acc, a| Append acc, (ZBindersOfAny a)
+    PArray ps: Fold ps, [[]], \|acc, a| Append acc, (ZBindersOfAny a)
+    PGroup inner: ZBindersOfAny inner
+    otherwise: [[]]
+
+# Whether a bare name is a constructor where it is written.
+ZIsCtor: fn ZProg, Text, Text -> Bool
+fn ZIsCtor prog, modName, name = match ZDeclOfName prog, modName, name:
+    ? ((ignore, (ZdCtor ignore))): True
+    ? ((ignore, (ZdUnit ignore))): True
+    otherwise: False
+
+# The names a pattern binds, constructors resolved.
+ZPatBinders: fn ZProg, Text, Pattern -> [Text]
+fn ZPatBinders prog, m, p = match p.kind:
+    PName n if (Len n.path) == 1 and (ZBase n) != "True" and (ZBase n) != "False" and not (ZIsCtor prog, m, (ZBase n)): [[ZNameText n]]
+    PCtor ignore, args: Fold args, [[]], \|acc, a| Append acc, (ZPatBinders prog, m, a)
+    PRecord ignore, fs, ignore: Fold fs, [[]], \|acc, f| Append acc, (ZPatBinders prog, m, f.pattern)
+    PSigil ignore, inner: ZPatBinders prog, m, inner
+    PTuple ps: Fold ps, [[]], \|acc, a| Append acc, (ZPatBinders prog, m, a)
+    PArray ps: Fold ps, [[]], \|acc, a| Append acc, (ZPatBinders prog, m, a)
+    PGroup inner: ZPatBinders prog, m, inner
+    otherwise: [[]]
+
+# A pattern in its core form.
+ZPatOf: fn ZProg, Text, Pattern -> ZPat
+fn ZPatOf prog, m, p = match p.kind:
+    PIgnore: ZpIgnore
+    PUnit: ZpUnit
+    PNil: ZpNil
+    PLit l: ZLitPat l, False
+    PNeg l: ZLitPat l, True
+    PGroup inner: ZPatOf prog, m, inner
+    PName n: ZNamePat prog, m, n
+    PCtor n, args:
+        let full = if (Len n.path) > 1: ? (Join n.path, ".") else: nil
+        ZpCtor (ZBase n), full, (Each args, \|a| ZPatOf prog, m, a)
+    PRecord n, fs, rest: ZpRecord (Join n.path, "."), (ZBase n), (Each fs, \|f| ZFieldPatName f), rest, (Each fs, \|f| ZPatOf prog, m, f.pattern)
+    PSigil "?", inner: ZpSome (ZPatOf prog, m, inner)
+    PSigil "~", inner: ZpOk (ZPatOf prog, m, inner)
+    PSigil ignore, ignore: ZpNever
+    PTuple ps: ZpTuple (Each ps, \|a| ZPatOf prog, m, a)
+    PArray ps: ZpArray (Each ps, \|a| ZPatOf prog, m, a)
+    PFamily q: ZpFamily (Join q.path, ".")
+
+ZFieldPatName: fn FieldPat -> ?Text
+fn ZFieldPatName f = match f.name:
+    ? i: ? i.name
+    nil: nil
+
+ZNamePat: fn ZProg, Text, SName -> ZPat
+fn ZNamePat prog, m, n:
+    let base = ZBase n
+    if (Len n.path) > 1:
+        let full = Join n.path, "."
+        match prog.tags[full]:
+            ? ignore: ZpTagName full
+            nil: ZpCtorName base
+    else:
+        match base:
+            "True": ZpBool True
+            "False": ZpBool False
+            otherwise: if ZIsCtor prog, m, base: ZpCtorName base else: ZpBind (ZLocalRs (ZNameText n))
+
+ZLitPat: fn Literal, Bool -> ZPat
+fn ZLitPat l, neg = match l.kind:
+    LInt s: ZpInt (if neg: "-{s}" else: s)
+    LFloat s: ZpFloat (if neg: "-{s}" else: s)
+    LChar c: ZpChar c
+    LText segs: ZpText (ZPlainText segs)
+    otherwise: ZpNever
+
+ZPlainText: fn [TextSeg] -> Text
+fn ZPlainText segs = Concat (Each segs, ZSegText)
+
+ZSegText: fn TextSeg -> Text
+fn ZSegText (SegPlain t) = t
+fn ZSegText (SegPlaceholder ignore) = ""
+
+# ---------------------------------------------------------------------------------------
+# Free names (prism_zero's `walk_expr`): every unqualified name a node writes, and the
+# names the language binds, an over-approximation as compiler zero's is
+# ---------------------------------------------------------------------------------------
+
+ZFreeExpr: fn Expr -> [Text]
+fn ZFreeExpr e = ZDedup (ZWalkExpr [[]], e)
+
+ZFreeBlock: fn Block -> [Text]
+fn ZFreeBlock b = ZDedup (ZWalkBlock [[]], b)
+
+ZDedup: fn [Text] -> [Text]
+fn ZDedup xs:
+    let ((ignore, out)) = Fold xs, (({}, [[]])), \|((seen, acc)), x| match seen[x]:
+        ? ignore: ((seen, acc))
+        nil: (((Insert seen, x, True), (Push acc, x)))
+    out
+
+ZWalkName: fn [Text], SName -> [Text]
+fn ZWalkName acc, n = if (Len n.path) == 1: Push acc, (ZNameText n) else: acc
+
+ZWalkExprs: fn [Text], [Expr] -> [Text]
+fn ZWalkExprs acc, es = Fold es, acc, ZWalkExpr
+
+ZWalkArgs: fn [Text], [Arg] -> [Text]
+fn ZWalkArgs acc, args = Fold args, acc, \|a, x| ZWalkExpr a, x.value
+
+ZWalkExpr: fn [Text], Expr -> [Text]
+fn ZWalkExpr acc, e = match e.kind:
+    EName n: ZWalkName acc, n
+    ELit l: ZWalkLit acc, l
+    EBound k: Push acc, k
+    ETuple xs: ZWalkExprs acc, xs
+    EArray xs: ZWalkExprs acc, xs
+    EMap kvs: Fold kvs, acc, \|a, ((k, v))| ZWalkExpr (ZWalkExpr a, k), v
+    EGroup x: ZWalkExpr acc, x
+    ENonEmpty x: ZWalkExpr acc, x
+    EAny x: ZWalkExpr acc, x
+    ECall callee, args, ignore, ignore: ZWalkArgs (ZWalkExpr acc, callee), args
+    EBinary ignore, l, r: ZWalkExpr (ZWalkExpr acc, l), r
+    ESuffixed ignore, ignore, l, r: ZWalkExpr (ZWalkExpr acc, l), r
+    EUnary ignore, x: ZWalkExpr acc, x
+    EFreeSigil ignore, x: ZWalkExpr acc, x
+    EField r, ignore, ignore: ZWalkExpr acc, r
+    EIndex r, i: ZWalkExpr (ZWalkExpr acc, r), i
+    ETopicField ignore: Push acc, "_"
+    ETopicIndex i: ZWalkExpr (Push acc, "_"), i
+    EMethod r, m, args: ZWalkArgs (ZWalkName (ZWalkExpr acc, r), m), args
+    ETypeArgs t, ignore: ZWalkExpr acc, t
+    ECast x, ignore, ignore: ZWalkExpr acc, x
+    ELambda ps, body: Append acc, (ZMinus (ZWalkLambdaBody body), (ZParamBinders ps))
+    EIf c, t, el:
+        let a1 = ZWalkCondThen acc, c, t
+        match el:
+            ? b: ZWalkBlock a1, b
+            nil: a1
+    EMatch s, arms: Fold arms, (ZWalkExpr acc, s), ZWalkArm
+    ERebuild s, b: Append (ZWalkExpr acc, s), (ZMinus (ZWalkBlock [[]], b), [["_"]])
+    EFor fb, s, b: Append (ZWalkExpr acc, s), (ZMinus (ZWalkBlock [[]], b), (Append [["_", "$_", "key", "ix"]], (ZForBinders fb)))
+    EGiven b: ZWalkBlock acc, b
+    EWidgetBlock b: ZWalkBlock acc, b
+    EUpdate t, b: Append (ZWalkExpr acc, t), (ZMinus (ZWalkBlock [[]], b), [["&_"]])
+    EMonad x, b: ZWalkBlock (ZWalkExpr acc, x), b
+    ETemplate t: ZWalkParts acc, t.parts
+    otherwise: acc
+
+ZWalkArm: fn [Text], Arm -> [Text]
+fn ZWalkArm acc, a:
+    let withGuard = match a.guard:
+        ? g: ZWalkExpr [[]], g
+        nil: [[]]
+    let bound = match a.pattern:
+        ? p: ZBindersOfAny p
+        nil: [[]]
+    Append acc, (ZMinus (ZWalkBlock withGuard, a.body), bound)
+
+# The names a scope reads that it does not bind itself.
+ZMinus: fn [Text], [Text] -> [Text]
+fn ZMinus names, bound:
+    let set = Fold bound, {}, \|m, n| Insert m, n, True
+    Filter names, \|n| set[n] == nil
+
+ZWalkLambdaBody: fn LambdaBody -> [Text]
+fn ZWalkLambdaBody (LbExpr x) = ZWalkExpr [[]], x
+fn ZWalkLambdaBody (LbBlock b) = ZWalkBlock [[]], b
+
+ZParamBinders: fn ?[Pattern] -> [Text]
+fn ZParamBinders nil = [["_"]]
+fn ZParamBinders (? ps) = Fold ps, [[]], \|acc, p| Append acc, (ZBindersOfAny p)
+
+ZForBinders: fn ?ForBinders -> [Text]
+fn ZForBinders nil = [[]]
+fn ZForBinders (? fb):
+    let second = match fb.second:
+        ? p: ZBindersOfAny p
+        nil: [[]]
+    Append (ZBindersOfAny fb.first), second
+
+# An `if`'s condition and its `then` block: a bind's pattern binds for its guard and block.
+ZWalkCondThen: fn [Text], Cond, Block -> [Text]
+fn ZWalkCondThen acc, (CondExpr x), t = ZWalkBlock (ZWalkExpr acc, x), t
+fn ZWalkCondThen acc, (CondBind p, v, g), t:
+    let a1 = ZWalkExpr acc, v
+    let inner = match g:
+        ? x: ZWalkExpr [[]], x
+        nil: [[]]
+    Append a1, (ZMinus (ZWalkBlock inner, t), (ZBindersOfAny p))
+
+# The names a lifted `match`'s or `if`'s arms read, without its scrutinee.
+ZFreeArms: fn Expr -> [Text]
+fn ZFreeArms e = ZDedup (ZWalkArms e)
+
+ZWalkArms: fn Expr -> [Text]
+fn ZWalkArms e = match e.kind:
+    EMatch ignore, arms: Fold arms, [[]], ZWalkArm
+    EIf c, t, el:
+        let a1 = match c:
+            CondBind p, ignore, g:
+                let inner = match g:
+                    ? x: ZWalkExpr [[]], x
+                    nil: [[]]
+                ZMinus (ZWalkBlock inner, t), (ZBindersOfAny p)
+            otherwise: ZWalkBlock [[]], t
+        match el:
+            ? b: ZWalkBlock a1, b
+            nil: a1
+    otherwise: ZWalkExpr [[]], e
+
+ZWalkParts: fn [Text], [TemplatePart] -> [Text]
+fn ZWalkParts acc, parts = Fold parts, acc, \|a, p| match p:
+    TpText ignore: a
+    TpPlaceholder x, ignore: ZWalkExpr a, x
+    TpBlock b: ZWalkBlock a, b
+    TpCall n, args, body, ignore:
+        let a1 = ZWalkArgs (ZWalkName a, n), args
+        match body:
+            ? ps: ZWalkParts a1, ps
+            nil: a1
+
+ZWalkLit: fn [Text], Literal -> [Text]
+fn ZWalkLit acc, l = match l.kind:
+    LText segs: Fold segs, acc, \|a, s| match s:
+        SegPlaceholder x: ZWalkExpr a, x
+        SegPlain ignore: a
+    otherwise: acc
+
+ZWalkCond: fn [Text], Cond -> [Text]
+fn ZWalkCond acc, (CondExpr x) = ZWalkExpr acc, x
+fn ZWalkCond acc, (CondBind ignore, v, g):
+    let a1 = ZWalkExpr acc, v
+    match g:
+        ? x: ZWalkExpr a1, x
+        nil: a1
+
+ZWalkBlock: fn [Text], Block -> [Text]
+fn ZWalkBlock acc, b = Append acc, (ZMinus (Fold b.stmts, [[]], ZWalkStmt), (ZBlockBinders b))
+
+# What a block binds: its `let`s and binds, local functions, inner widgets.
+ZBlockBinders: fn Block -> [Text]
+fn ZBlockBinders b = Fold b.stmts, [[]], \|acc, s| match s.kind:
+    SLet p, ignore, ignore: Append acc, (ZBindersOfAny p)
+    SBind p, ignore, ignore: Append acc, (ZBindersOfAny p)
+    SFn c: Push acc, (ZDefNameText c.name)
+    SWidget w: Push acc, (ZNameText w.name)
+    otherwise: acc
+
+ZWalkStmt: fn [Text], Stmt -> [Text]
+fn ZWalkStmt acc, s = match s.kind:
+    SBind ignore, v, (? t): ZWalkExpr (ZWalkExpr acc, v), t
+    SBind ignore, v, nil: ZWalkExpr acc, v
+    SIgnore x: ZWalkExpr acc, x
+    SReturn x: ZWalkExpr acc, x
+    SExpr x: ZWalkExpr acc, x
+    SLet ignore, ignore, v: ZWalkExpr acc, v
+    SFn c: ZWalkFnBody acc, c
+    SWidget w: ZWalkBlock acc, w.body
+    SSet t, v: ZWalkExpr (ZWalkExpr acc, t), v
+    SAccum t, ignore, v: ZWalkExpr (ZWalkExpr acc, t), v
+    SRequire x: ZWalkExpr acc, x
+    SForbid x: ZWalkExpr acc, x
+    SWhile c, b: ZWalkCondThen acc, c, b
+    otherwise: acc
+
+ZWalkFnBody: fn [Text], FnClause -> [Text]
+fn ZWalkFnBody acc, c:
+    let inner = match c.body:
+        BodyExpr x: ZWalkExpr [[]], x
+        BodyBlock b: ZWalkBlock [[]], b
+    Append acc, (ZMinus inner, (Fold c.params, [[]], \|a, p| Append a, (ZBindersOfAny p)))
+
+# ---------------------------------------------------------------------------------------
+# The environment, and names resolved
+# ---------------------------------------------------------------------------------------
+
+type ZEnv = record:
+    home: Text
+    file: Text
+    src: Text
+    starts: [Nat]
+    locals: (Text ==> Text)
+    mark: Text                               # the enclosing function's mark: "?", "~" or ""
+    aliases: (Text ==> ZAlias)               # in an `&` block, a `for &s <- &p:` element
+derive ^Eq, ^Show
+
+type ZAlias = record:
+    root: Text
+    steps: [ZStep]
+derive ^Eq, ^Show
+
+# Locals bound: each Prism name to its Rust name.
+ZWith: fn ZEnv, [Text] -> ZEnv
+fn ZWith env, names:
+    let locals = Fold names, env.locals, \|m, n| Insert m, n, (ZLocalRs n)
+    update env:
+        &_.locals <= locals
+
+# A local under a Rust name of its own (a forward event before its line).
+ZWithAs: fn ZEnv, Text, Text -> ZEnv
+fn ZWithAs env, name, rs:
+    let locals = Insert env.locals, name, rs
+    update env:
+        &_.locals <= locals
+
+# The declaration a bare name resolves to from a module: its own, then what its `use M.*`
+# lines and the prelude bring in.
+ZDeclOfName: fn ZProg, Text, Text -> ?((Text, ZDecl))
+fn ZDeclOfName prog, m, name:
+    given:
+        md <- prog.mods[m]
+        let owner = match md.decls[name]:
+            ? ignore: m
+            nil: Or md.scope[name], ""
+        om <- prog.mods[owner]
+        d <- om.decls[name]
+        ((owner, d))
+
+ZGlobalPath: fn ZProg, Text, Text -> Text
+fn ZGlobalPath prog, owner, name = "crate::{ZRsMod owner}::{ZGlobalRs name}"
+
+ZResolve: fn ZProg, ZEnv, SName -> ZExpr
+fn ZResolve prog, env, n = if (Len n.path) == 1: ZResolveBare prog, env, (ZNameText n) else: ZResolveQualified prog, env, n
+
+ZResolveBare: fn ZProg, ZEnv, Text -> ZExpr
+fn ZResolveBare prog, env, "True" = ZBool True
+fn ZResolveBare prog, env, "False" = ZBool False
+fn ZResolveBare prog, env, "never" = ZNever
+fn ZResolveBare prog, env, "!never" = ZNever
+fn ZResolveBare prog, env, text = match env.aliases[text]:
+    ? a: ZRead a.root, a.steps
+    nil: match env.locals[text]:
+        ? rs: ZLocal rs
+        nil: match ZDeclOfName prog, env.home, text:
+            ? ((owner, ignore)): ZGlobal (ZGlobalPath prog, owner, text)
+            nil: ZFault "unknown name {text}"
+
+ZQualifiedBuiltins: fn Text -> Bool
+fn ZQualifiedBuiltins n = n == "Buffer.Numbered" or n == "Buffer.Empty" or n == "Table.Empty"
+
+ZResolveQualified: fn ZProg, ZEnv, SName -> ZExpr
+fn ZResolveQualified prog, env, n:
+    let full = Join n.path, "."
+    match prog.tags[full]:
+        ? ignore: ZTag full
+        nil:
+            if ZQualifiedBuiltins full: ZQualBuiltin full
+            else:
+                let modName = Join (Pop n.path), "."
+                let base = "{n.sigils}{ZBase n}"
+                let here = Or prog.mods[env.home], (ZEmptyMod env.home)
+                let reachable = Fold here.qualified, False, \|q, x| q or x == modName
+                match prog.mods[modName]:
+                    ? target if not reachable: ZFault "{full}: module {modName} is not used here; write `use {modName}` (Semantics ch. 6)"
+                    ? target: match target.decls[base]:
+                        ? ignore: ZGlobal (ZGlobalPath prog, modName, base)
+                        nil: ZFault "module {modName} declares no {base}"
+                    nil: ZFault "unknown name {full}: no tag, and no module {modName} among the files"
+
+# `file:line:col` of an offset.
+ZLoc: fn ZEnv, Range -> Text
+fn ZLoc env, r:
+    let line = Dec (Fold env.starts, 0, \|n, s| if s <= r.start: n + 1 else: n)
+    let col = (Or (r.start -? (Or env.starts[line], 0)), 0) + 1
+    "{env.file}:{line + 1}:{col}"
+
+ZLineStarts: fn Text -> [Nat]
+fn ZLineStarts text:
+    let ((starts, ignore)) = Fold (Chars text), (([[0]], 0)), \|((acc, i)), c| if c == "\n": (((Push acc, i + 1), i + 1)) else: ((acc, i + 1))
+    starts
+
+# A source range's text.
+ZSpanText: fn ZEnv, Range -> Text
+fn ZSpanText env, r = Take (Drop env.src, r.start), (Or (r.end -? r.start), 0)
+
+# ---------------------------------------------------------------------------------------
+# Expressions (prism_zero's eval.rs)
+# ---------------------------------------------------------------------------------------
+
+# A feature decisions.md puts out of this compiler, reached when it runs.
+ZOut: fn Text -> ZExpr
+fn ZOut feature = ZFault "out of scope ({feature}): decisions.md puts this feature out of this compiler"
+
+ZLx: fn ZProg, ZEnv, Expr -> ZExpr
+fn ZLx prog, env, e = match e.kind:
+    EName n: ZResolve prog, env, n
+    ELit l: ZLitExpr prog, env, l
+    EUnit s: match ZFirstSigil s:
+        "$": ZConst ZUnit
+        "@": ZQualBuiltin "@unit"
+        otherwise: ZUnit
+    ENil s: if (ZFirstSigil s) == "$": ZConst ZNil else: ZNil
+    EBound k: ZResolveBare prog, env, k
+    ETuple xs: ZTuple (Each xs, \|x| ZLx prog, env, x)
+    EArray xs: ZArray (Each xs, \|x| ZLx prog, env, x)
+    EMap kvs: ZMap (Fold kvs, [[]], \|acc, ((k, v))| Push (Push acc, (ZLx prog, env, k)), (ZLx prog, env, v))
+    EGroup x: ZLx prog, env, x
+    ECall callee, args, ignore, rest: if rest: ZFault "`..` among a call's arguments belongs to a pattern" else: ZCallOf prog, env, callee, args
+    EBinary op, l, r: ZBinaryOf prog, env, op, l, r
+    EUnary op, x: ZUnaryOf prog, env, op, x
+    ESuffixed ignore, ignore, ignore, ignore: ZOut "suffixed operators"
+    EFreeSigil s, x: ZFreeSigilOf prog, env, e, s, x
+    EField r, ignore, name: ZField (ZLx prog, env, r), name.name
+    EIndex r, k: ZIndex (ZLx prog, env, r), (ZLx prog, env, k)
+    ETopicField name: ZField (ZResolveBare prog, env, "_"), name.name
+    ETopicIndex k: ZIndex (ZResolveBare prog, env, "_"), (ZLx prog, env, k)
+    EMethod r, m, args: ZApply (ZResolve prog, env, m), (Append [[(ZLx prog, env, r)]], (Each args, \|a| ZLx prog, env, a.value))
+    ETypeArgs t, ignore: ZLx prog, env, t
+    ECast x, ignore, checked: if checked: ZOut "non-empty arrays" else: ZLx prog, env, x
+    ENonEmpty ignore: ZOut "non-empty arrays"
+    EAbsent: ZOut "sparse tuples"
+    ERest: ZFault "`..` belongs to a pattern"
+    ELambda params, body: ZFn (ZLambdaOf prog, env, e, params, body)
+    EIf ignore, ignore, ignore: ZBranch (ZArmsOf prog, env, e)
+    EMatch ignore, ignore: ZBranch (ZArmsOf prog, env, e)
+    ERebuild s, b: ZRebuild (ZLx prog, env, s), "Plain", (ZBuildOf prog, env, "rebuild", b, (ZaRebuild (ZLocalRs "_")))
+    EFor binders, s, b: ZFor (ZLx prog, env, s), "Plain", (ZForBuild prog, env, binders, b)
+    EGiven b: ZGiven (env.mark == "~"), (ZGivenOf prog, env, b)
+    EUpdate t, b: ZUpdateOf prog, env, t, b
+    EWidgetBlock b: ZBlueprint (ZBuildOf prog, env, "@widget", b, ZaNone)
+    EMonad ignore, ignore: ZOut "`T monad:` blocks and `^Monad`"
+    ETemplate t: ZTemplate (ZPartsOf prog, env, t.parts)
+    EAny x: ZLx prog, env, x
+    ELens ignore: ZOut "named lenses `&Home` and `Over`"
+    EError: ZFault "this expression did not parse"
+
+ZLitExpr: fn ZProg, ZEnv, Literal -> ZExpr
+fn ZLitExpr prog, env, l:
+    let v = match l.kind:
+        LInt s: ZInt s
+        LFloat s: ZFloat (Concat (Filter (Chars s), \|c| c != "_"))
+        LDuration digits, unit: ZDuration (ZNanos digits, unit)
+        LChar c: ZChar c
+        LText segs: ZTextOf prog, env, segs
+    if (ZFirstSigil l.marks) == "$": ZConst v else: v
+
+ZTextOf: fn ZProg, ZEnv, [TextSeg] -> ZExpr
+fn ZTextOf prog, env, segs:
+    let plain = Fold segs, True, \|q, s| q and (ZIsPlainSeg s)
+    if plain: ZText (ZPlainText segs)
+    else:
+        let parts = Each segs, \|s| match s:
+            SegPlain t: ? t
+            SegPlaceholder ignore: nil
+        let vals = Fold segs, [[]], \|acc, s| match s:
+            SegPlaceholder x: Push acc, (ZLx prog, env, x)
+            SegPlain ignore: acc
+        ZInterp parts, vals
+
+ZIsPlainSeg: fn TextSeg -> Bool
+fn ZIsPlainSeg (SegPlain ignore) = True
+fn ZIsPlainSeg (SegPlaceholder ignore) = False
+
+ZNanos: fn Text, Text -> Text
+fn ZNanos digits, unit:
+    let n = Or (?ParseNat (Concat (Filter (Chars digits), \|c| c != "_"))), 0
+    let scale = match unit:
+        "ns": 1
+        "us": 1000
+        "ms": 1000000
+        "s": 1000000000
+        "min": 60000000000
+        "h": 3600000000000
+        otherwise: 1
+    "{n * scale}"
+
+# A call: an element, an application by the lifting table, or explicit instantiation.
+ZCallOf: fn ZProg, ZEnv, Expr, [Arg] -> ZExpr
+fn ZCallOf prog, env, callee, args:
+    let zargs = Each args, \|a| ZArg(name=(ZArgName a), value=(ZLx prog, env, a.value))
+    let named = Fold args, False, \|q, a| q or (ZArgName a) != nil
+    match ZElementTag prog, callee:
+        ? t: ZElement t, zargs
+        nil: match callee.kind:
+            ETypeArgs target, types: ZApplyWith (ZLx prog, env, target), (Each zargs, \|a| a.value), (ZInstantiation prog, env, target, types)
+            otherwise: if named: ZApplyNamed (ZLx prog, env, callee), zargs else: ZApply (ZLx prog, env, callee), (Each zargs, \|a| a.value)
+
+ZArgName: fn Arg -> ?Text
+fn ZArgName a = match a.name:
+    ? i: ? i.name
+    nil: nil
+
+# The tag an element expression names, if it names one that is not a fault kind.
+ZElementTag: fn ZProg, Expr -> ?Text
+fn ZElementTag prog, callee = match callee.kind:
+    EName n if (Len n.path) > 1:
+        let full = Join n.path, "."
+        match prog.tags[full]:
+            ? t if not t.fault: ? full
+            otherwise: nil
+    otherwise: nil
+
+# The layers `F<<T, ..>>` fixes (prism_zero's `instantiation`): a parameter whose declared
+# type is a variable given a sigiled type takes its argument whole.
+ZInstantiation: fn ZProg, ZEnv, Expr, [Type] -> [Text]
+fn ZInstantiation prog, env, target, types:
+    let sig = match target.kind:
+        EName n if (Len n.path) == 1: match ZDeclOfName prog, env.home, (ZNameText n):
+            ? ((ignore, (ZdFn s, ignore))): s
+            ? ((ignore, (ZdBuiltin s))): ? s
+            otherwise: nil
+        otherwise: nil
+    match sig:
+        ? s: match s.ty.kind:
+            TFn ignore, params, ignore:
+                let order = Fold params, [[]], ZTypeVars
+                Each params, \|p| match p.kind:
+                    TName n, args if (Len args) == 0 and n.sigils == "":
+                        let i = ZIndexOf order, (ZBase n)
+                        match i:
+                            ? k: match types[k]:
+                                ? t: ZLayerOf t
+                                nil: ""
+                            nil: ""
+                    otherwise: ""
+            otherwise: [[]]
+        nil: [[]]
+
+ZIndexOf: fn [Text], Text -> ?Nat
+fn ZIndexOf xs, x:
+    let ((ignore, found)) = Fold xs, ((0, nil)), \|((i, f)), y| match f:
+        ? k: ((i + 1, ? k))
+        nil: if y == x: ((i + 1, ? i)) else: ((i + 1, nil))
+    found
+
+ZTypeVars: fn [Text], Type -> [Text]
+fn ZTypeVars acc, t = match t.kind:
+    TName n, args:
+        let a1 = if (Len n.path) == 1 and not (IsUpper (Take (ZBase n), 1)) and (Len args) == 0 and not (Fold acc, False, \|q, v| q or v == (ZBase n)): Push acc, (ZBase n) else: acc
+        Fold args, a1, ZTypeVars
+    TArray elem, ignore: ZTypeVars acc, elem
+    TGroup inner: ZTypeVars acc, inner
+    TSigiled ignore, inner: ZTypeVars acc, inner
+    TTuple ts: Fold ts, acc, ZTypeVars
+    TMap k, v: ZTypeVars (ZTypeVars acc, k), v
+    otherwise: acc
+
+ZBinaryOf: fn ZProg, ZEnv, Text, Expr, Expr -> ZExpr
+fn ZBinaryOf prog, env, op, l, r:
+    let x = ZLx prog, env, l
+    let y = ZLx prog, env, r
+    match op:
+        "on": ZOn x, y
+        "<|": ZMerge x, y
+        "and": ZAndOr "And", x, y
+        "or": ZAndOr "Or", x, y
+        otherwise: ZBin (ZOpName op), x, y
+
+ZOpName: fn Text -> Text
+fn ZOpName "==" = "Eq"
+fn ZOpName "!=" = "NotEq"
+fn ZOpName "<" = "Lt"
+fn ZOpName "<=" = "Le"
+fn ZOpName ">" = "Gt"
+fn ZOpName ">=" = "Ge"
+fn ZOpName "+" = "Add"
+fn ZOpName "-" = "Sub"
+fn ZOpName "*" = "Mul"
+fn ZOpName "/" = "Div"
+fn ZOpName "mod" = "Mod"
+fn ZOpName "+?" = "AddQ"
+fn ZOpName "-?" = "SubQ"
+fn ZOpName "*?" = "MulQ"
+fn ZOpName "+=" = "Add"
+fn ZOpName "-=" = "Sub"
+fn ZOpName "*=" = "Mul"
+fn ZOpName "/=" = "Div"
+fn ZOpName other = "Eq"
+
+ZUnaryOf: fn ZProg, ZEnv, Text, Expr -> ZExpr
+fn ZUnaryOf prog, env, op, x = match x.kind:
+    ELit l if l.marks == "" and op != "not": match l.kind:
+        LInt s: if op == "neg": ZInt "-{s}" else: ZInt s
+        otherwise: ZUnaryOn prog, env, op, x
+    otherwise: ZUnaryOn prog, env, op, x
+
+ZUnaryOn: fn ZProg, ZEnv, Text, Expr -> ZExpr
+fn ZUnaryOn prog, env, "pos", x = ZLx prog, env, x
+fn ZUnaryOn prog, env, "neg", x = ZUn "Neg", (ZLx prog, env, x)
+fn ZUnaryOn prog, env, op, x = ZUn "Not", (ZLx prog, env, x)
+
+ZFreeSigilOf: fn ZProg, ZEnv, Expr, Text, Expr -> ZExpr
+fn ZFreeSigilOf prog, env, e, "@", x:
+    let ((caps, inner)) = ZCapture env, (ZFreeExpr x)
+    ZBlueprint ZBuild(rs="at_{e.span.start}", name="@", caps=caps, args=ZaAt, body=ZWide(lines=[[]], result=(ZLx prog, inner, x)), loc=(ZLoc env, e.span), families=nil)
+fn ZFreeSigilOf prog, env, e, "$", x = ZConst (ZLx prog, env, x)
+fn ZFreeSigilOf prog, env, e, "?", x = ZSome (ZLx prog, env, x)
+fn ZFreeSigilOf prog, env, e, "~", x = ZOk (ZLx prog, env, x)
+fn ZFreeSigilOf prog, env, e, "!", x = ZFault "a free `!` stands only before a type"
+fn ZFreeSigilOf prog, env, e, s, x = ZFault "a reference stands only in an `update` block"
+
+# The locals among `names` a nested function captures, and its environment inside: each
+# local under its own Rust name, an `&` alias's element as a value.
+ZCapture: fn ZEnv, [Text] -> (([ZCap], ZEnv))
+fn ZCapture env, names:
+    let ((caps, locals)) = Fold names, (([[]], {})), \|((cs, ls)), n| match env.aliases[n]:
+        ? a: (((Push cs, ZCap(rs=(ZLocalRs n), value=(ZRead a.root, a.steps))), (Insert ls, n, (ZLocalRs n))))
+        nil: match env.locals[n]:
+            ? rs: (((Push cs, ZCap(rs=rs, value=(ZLocal rs))), (Insert ls, n, rs)))
+            nil: ((cs, ls))
+    let inner = update env:
+        &_.locals <= locals
+        &_.aliases <= {}
+        &_.mark <= ""
+    ((caps, inner))
+
+ZLambdaOf: fn ZProg, ZEnv, Expr, ?[Pattern], LambdaBody -> ZFunc
+fn ZLambdaOf prog, env, e, params, body:
+    let ((caps, inner0)) = ZCapture env, (ZFreeExpr e)
+    let ps = Or params, [[Pattern(kind=(PName SName(sigils="", path=[["_"]], span=e.span)), span=e.span)]]
+    let binders = Fold ps, [[]], \|acc, p| Append acc, (ZPatBinders prog, env.home, p)
+    let inner = ZWith inner0, binders
+    let zbody = match body:
+        LbExpr x: ZLx prog, inner, x
+        LbBlock b: ZExprBlock prog, inner, b
+    let clause = ZClause(params=(Each ps, \|p| ZPatOf prog, env.home, p), body=(ZbExpr zbody), label="c")
+    ZFunc(site="{env.home}.lam{e.span.start}", name="lambda", rs="lam_{e.span.start}", layers=(Each ps, ZLayerOfPattern), nat=[[]], peel=False, isWidget=False, isUnbounded=False, caps=caps, selfName=nil, clauses=[[clause]], loc=(ZLoc env, e.span), families=nil)
+
+# A `match` or `if` as an expression: one Rust `fn` of its scrutinee and the locals its
+# arms read (pick LM).
+ZArmsOf: fn ZProg, ZEnv, Expr -> ZArms
+fn ZArmsOf prog, env, e:
+    let ((caps, inner)) = ZCapture env, (ZFreeArms e)
+    match e.kind:
+        EMatch s, arms:
+            let zarms = Each arms, \|a| ZArmOf prog, inner, a
+            ZArms(rs="br_{e.span.start}", scrutinee=(ZLx prog, env, s), env=caps, arms=zarms, exhaustive=True)
+        EIf c, t, el:
+            let ((scrut, first)) = match c:
+                CondExpr x: (((ZLx prog, env, x), ZArm(pattern=(ZpBool True), guard=nil, body=(ZExprBlock prog, inner, t), label="t")))
+                CondBind p, v, g:
+                    let inner2 = ZWith inner, (ZPatBinders prog, env.home, p)
+                    let guard = match g:
+                        ? x: ? (ZLx prog, inner2, x)
+                        nil: nil
+                    (((ZLx prog, env, v), ZArm(pattern=(ZPatOf prog, env.home, p), guard=guard, body=(ZExprBlock prog, inner2, t), label="t")))
+            let rest = match el:
+                ? b: [[ZArm(pattern=ZpIgnore, guard=nil, body=(ZExprBlock prog, inner, b), label="e")]]
+                nil: [[]]
+            let exhaustive = match el:
+                ? ignore: True
+                nil: False
+            ZArms(rs="br_{e.span.start}", scrutinee=scrut, env=caps, arms=(Append [[first]], rest), exhaustive=exhaustive)
+        otherwise: ZArms(rs="br_{e.span.start}", scrutinee=ZUnit, env=caps, arms=[[]], exhaustive=False)
+
+ZArmOf: fn ZProg, ZEnv, Arm -> ZArm
+fn ZArmOf prog, env, a:
+    let binders = match a.pattern:
+        ? p: ZPatBinders prog, env.home, p
+        nil: [[]]
+    let inner = ZWith env, binders
+    let pat = match a.pattern:
+        ? p: ZPatOf prog, env.home, p
+        nil: ZpIgnore
+    let guard = match a.guard:
+        ? g: ? (ZLx prog, inner, g)
+        nil: nil
+    ZArm(pattern=pat, guard=guard, body=(ZExprBlock prog, inner, a.body), label="a{a.span.start}")
+
+# ---------------------------------------------------------------------------------------
+# Expression blocks: their `let`s and local functions are one binding group (Semantics
+# ch. 4), forced in page order, each name before its first use
+# ---------------------------------------------------------------------------------------
+
+# A group's definitions: a statement for each `let` binder, a local function's clauses,
+# an inner widget.
+type ZDefs = record:
+    lets: (Text ==> Nat)
+    fns: (Text ==> [FnClause])
+    sigs: (Text ==> Signature)
+    widgets: (Text ==> Nat)
+    holds: (Text ==> Nat)
+    binds: (Text ==> Nat)
+derive ^Eq, ^Show
+
+ZDefsOf: fn Block -> ZDefs
+fn ZDefsOf b:
+    let ((ignore, d)) = Fold b.stmts, ((0, ZDefs(lets={}, fns={}, sigs={}, widgets={}, holds={}, binds={}))), \|((i, dd)), s| ((i + 1, (ZDefOf dd, i, s)))
+    d
+
+ZDefOf: fn ZDefs, Nat, Stmt -> ZDefs
+fn ZDefOf d, i, s = match s.kind:
+    SLet p, ignore, ignore:
+        let lets = Fold (ZBindersOfAny p), d.lets, \|m, n| Insert m, n, i
+        update d:
+            &_.lets <= lets
+    SBind p, ignore, (? ignore):
+        let holds = Fold (ZBindersOfAny p), d.holds, \|m, n| Insert m, n, i
+        update d:
+            &_.holds <= holds
+    SBind p, ignore, nil:
+        let binds = Fold (ZBindersOfAny p), d.binds, \|m, n| Insert m, n, i
+        update d:
+            &_.binds <= binds
+    SFn c:
+        let n = ZDefNameText c.name
+        let fns = Insert d.fns, n, (Push (Or d.fns[n], [[]]), c)
+        update d:
+            &_.fns <= fns
+    SSignature sig:
+        let sigs = Insert d.sigs, (ZDefNameText sig.name), sig
+        update d:
+            &_.sigs <= sigs
+    SWidget w:
+        let widgets = Insert d.widgets, (ZNameText w.name), i
+        update d:
+            &_.widgets <= widgets
+    otherwise: d
+
+ZDefNames: fn ZDefs -> [Text]
+fn ZDefNames d = Append (Append (Append (Append (Keys d.lets), (Keys d.fns)), (Keys d.widgets)), (Keys d.holds)), (Keys d.binds)
+
+ZDefines: fn ZDefs, Text -> Bool
+fn ZDefines d, n:
+    let inLets = match d.lets[n]:
+        ? ignore: True
+        nil: False
+    let inFns = match d.fns[n]:
+        ? ignore: True
+        nil: False
+    let inWidgets = match d.widgets[n]:
+        ? ignore: True
+        nil: False
+    let inHolds = match d.holds[n]:
+        ? ignore: True
+        nil: False
+    let inBinds = match d.binds[n]:
+        ? ignore: True
+        nil: False
+    inLets or inFns or inWidgets or inHolds or inBinds
+
+# The forcing of an expression block's group: what is done, what is in progress, and the
+# lines so far.
+type ZForce = record:
+    done: (Text ==> Bool)
+    busy: (Text ==> Bool)
+    out: [ZStmt]
+derive ^Eq, ^Show
+
+ZExprBlock: fn ZProg, ZEnv, Block -> ZExpr
+fn ZExprBlock prog, env, b:
+    let d = ZDefsOf b
+    let inner = ZWith env, (ZDefNames d)
+    let n = Len b.stmts
+    let ((f, result, ignore, ignore)) = Fold b.stmts, ((ZForce(done={}, busy={}, out=[[]]), ZUnit, 0, False)), \|((g, r, i, stop)), s|
+        if stop: ((g, r, i + 1, stop))
+        else: ZExprLine prog, inner, b, d, g, s, (i + 1 == n), i
+    ZBlock f.out, result
+
+# One line of an expression block: its definitions forced, an expression evaluated, a
+# statement that does not stand here a fault.
+ZExprLine: fn ZProg, ZEnv, Block, ZDefs, ZForce, Stmt, Bool, Nat -> ((ZForce, ZExpr, Nat, Bool))
+fn ZExprLine prog, env, b, d, f, s, last, i = match s.kind:
+    SLet p, ignore, ignore: (((Fold (ZBindersOfAny p), f, \|g, n| ZForceName prog, env, b, d, g, n), ZUnit, i + 1, False))
+    SSignature ignore: ((f, ZUnit, i + 1, False))
+    SFn ignore: ((f, ZUnit, i + 1, False))
+    SWidget ignore: ((f, ZUnit, i + 1, False))
+    SExpr x:
+        let g = ZForceDeps prog, env, b, d, f, (ZFreeExpr x)
+        let v = ZLx prog, env, x
+        if last: ((g, v, i + 1, False))
+        else: (((ZEmit g, (ZsDo v)), ZUnit, i + 1, False))
+    SBind ignore, ignore, ignore: (((ZEmit f, (ZsFault "a bind builds, and stands in a widget block or a `given:` block")), ZUnit, i + 1, True))
+    SIgnore ignore: (((ZEmit f, (ZsFault "a bind builds, and stands in a widget block or a `given:` block")), ZUnit, i + 1, True))
+    SEmit ignore: (((ZEmit f, (ZsFault "a bind builds, and stands in a widget block or a `given:` block")), ZUnit, i + 1, True))
+    SRequire ignore: (((ZEmit f, (ZsFault "`require` and `forbid` stand in a `given:` block (Semantics ch. 4)")), ZUnit, i + 1, True))
+    SForbid ignore: (((ZEmit f, (ZsFault "`require` and `forbid` stand in a `given:` block (Semantics ch. 4)")), ZUnit, i + 1, True))
+    SReturn ignore: (((ZEmit f, (ZsFault "out of scope (`T monad:` blocks and `^Monad`): decisions.md puts this feature out of this compiler")), ZUnit, i + 1, True))
+    otherwise: (((ZEmit f, (ZsFault "this statement stands in an `update` block (Semantics ch. 5)")), ZUnit, i + 1, True))
+
+ZEmit: fn ZForce, ZStmt -> ZForce
+fn ZEmit f, s:
+    let out = Push f.out, s
+    update f:
+        &_.out <= out
+
+ZIsDone: fn ZForce, Text -> Bool
+fn ZIsDone f, n = match f.done[n]:
+    ? ignore: True
+    nil: False
+
+ZIsBusy: fn ZForce, Text -> Bool
+fn ZIsBusy f, n = match f.busy[n]:
+    ? ignore: True
+    nil: False
+
+ZMark: fn ZForce, [Text], Bool -> ZForce
+fn ZMark f, names, done:
+    let busy = Fold names, f.busy, \|m, n| if done: Remove m, n else: Insert m, n, True
+    let dn = if done: Fold names, f.done, \|m, n| Insert m, n, True else: f.done
+    update f:
+        &_.busy <= busy
+        &_.done <= dn
+
+ZForceDeps: fn ZProg, ZEnv, Block, ZDefs, ZForce, [Text] -> ZForce
+fn ZForceDeps prog, env, b, d, f, names = Fold names, f, \|g, n| if (ZDefines d, n): ZForceName prog, env, b, d, g, n else: g
+
+# Evaluate a group's definition of `name`, its own definitions first.
+ZForceName: fn ZProg, ZEnv, Block, ZDefs, ZForce, Text -> ZForce
+fn ZForceName prog, env, b, d, f, name:
+    if ZIsDone f, name: f
+    else:
+        if ZIsBusy f, name: ZMark (ZEmit f, (ZsFault "{name} is defined in terms of itself: a cycle among plain values (Semantics ch. 4)")), [[name]], True
+        else: match d.lets[name]:
+            ? i: match b.stmts[i]:
+                ? s: match s.kind:
+                    SLet p, ignore, v:
+                        let binders = ZBindersOfAny p
+                        let g = ZForceDeps prog, env, b, d, (ZMark f, binders, False), (ZFreeExpr v)
+                        ZMark (ZEmit g, (ZsLet (ZPatOf prog, env.home, p), (ZLx prog, env, v))), binders, True
+                    otherwise: f
+                nil: f
+            nil: match d.fns[name]:
+                ? clauses:
+                    let deps = Filter (ZDedup (Fold clauses, [[]], ZWalkFnBody)), \|n| n != name
+                    let g = ZForceDeps prog, env, b, d, (ZMark f, [[name]], False), deps
+                    let fv = ZLocalFn prog, env, name, d.sigs[name], clauses
+                    ZMark (ZEmit g, (ZsLet (ZpBind (ZLocalRs name)), (ZFn fv))), [[name]], True
+                nil: match d.widgets[name]:
+                    ? i: match b.stmts[i]:
+                        ? s: match s.kind:
+                            SWidget w:
+                                let g = ZForceDeps prog, env, b, d, (ZMark f, [[name]], False), (ZFreeBlock w.body)
+                                let bp = ZBuildOf prog, env, name, w.body, ZaNone
+                                ZMark (ZEmit g, (ZsLet (ZpBind (ZLocalRs name)), (ZBlueprint bp))), [[name]], True
+                            otherwise: f
+                        nil: f
+                    nil: f
+
+# A local function: it captures the block's names it reads, and sees itself by name.
+ZLocalFn: fn ZProg, ZEnv, Text, ?Signature, [FnClause] -> ZFunc
+fn ZLocalFn prog, env, name, sig, clauses:
+    let deps = Filter (ZDedup (Fold clauses, [[]], ZWalkFnBody)), \|n| n != name
+    let ((caps, inner0)) = ZCapture env, deps
+    let inner = ZWithAs inner0, name, (ZLocalRs name)
+    let start = match clauses[0]:
+        ? c: c.span.start
+        nil: 0
+    ZFuncOf prog, inner, "{env.home}.lf{start}", name, "lf_{start}", sig, clauses, caps, (? (ZLocalRs name)), True
+
+# A function's clauses, as a `ZFunc`: its layers off its signature (or its first clause's
+# patterns), its mark off its name, `unbounded` off its signature's color.
+ZFuncOf: fn ZProg, ZEnv, Text, Text, Text, ?Signature, [FnClause], [ZCap], ?Text, Bool -> ZFunc
+fn ZFuncOf prog, env, site, name, rs, sig, clauses, caps, selfName, local:
+    let ((sl, nat)) = ZSigLayers sig
+    let first = clauses[0]
+    let mark = match first:
+        ? c: match c.name:
+            DefSName n: ZFirstSigil n.sigils
+            otherwise: ""
+        nil: ""
+    let layers0 = match sig:
+        ? ignore: sl
+        nil: match first:
+            ? c: Each c.params, ZLayerOfPattern
+            nil: [[]]
+    let arity = match first:
+        ? c: Len c.params
+        nil: Len layers0
+    let isWidget = mark == "@"
+    let layers = if isWidget: Each (Buffer.Numbered (Max arity, (Len layers0))), \|ignore| "W" else: layers0
+    let fams = if local: nil else: (Or prog.mods[env.home], (ZEmptyMod env.home)).families
+    let zclauses = Each clauses, \|c| ZClauseOf prog, env, c, mark
+    let loc = match first:
+        ? c: ZLoc env, c.span
+        nil: env.file
+    ZFunc(site=site, name=name, rs=rs, layers=layers, nat=(if isWidget: [[]] else: nat), peel=(not isWidget), isWidget=isWidget, isUnbounded=(ZIsUnbounded sig), caps=caps, selfName=selfName, clauses=zclauses, loc=loc, families=fams)
+
+ZClauseOf: fn ZProg, ZEnv, FnClause, Text -> ZClause
+fn ZClauseOf prog, env, c, mark:
+    let binders = Fold c.params, [[]], \|acc, p| Append acc, (ZPatBinders prog, env.home, p)
+    let inner0 = ZWith env, binders
+    let inner = update inner0:
+        &_.mark <= mark
+    let body = match c.body:
+        BodyExpr x: if mark == "@": ZbWidgetExpr (ZLx prog, inner, x) else: ZbExpr (ZLx prog, inner, x)
+        BodyBlock blk: match mark:
+            "@": ZbWidget (ZWideOf prog, inner, blk)
+            "?": ZbExpr (ZGiven False, (ZGivenOf prog, inner, blk))
+            "~": ZbExpr (ZGiven True, (ZGivenOf prog, inner, blk))
+            otherwise: ZbExpr (ZExprBlock prog, inner, blk)
+    ZClause(params=(Each c.params, \|p| ZPatOf prog, env.home, p), body=body, label="c{c.span.start}")
+
+# ---------------------------------------------------------------------------------------
+# `given:` (Semantics ch. 4, ch. 10): a sequence; a failed bind gives up into what it
+# bound, a failed guard into `nil` or `Prelude.Unmet`
+# ---------------------------------------------------------------------------------------
+
+ZGivenOf: fn ZProg, ZEnv, Block -> [ZGivenStep]
+fn ZGivenOf prog, env, b:
+    let n = Len b.stmts
+    let ((ignore, out, ignore)) = Fold b.stmts, ((env, [[]], 0)), \|((e, acc, i)), s| ZGivenLine prog, e, acc, s, (i + 1 == n), i
+    out
+
+ZGivenLine: fn ZProg, ZEnv, [ZGivenStep], Stmt, Bool, Nat -> ((ZEnv, [ZGivenStep], Nat))
+fn ZGivenLine prog, env, out, s, last, i = match s.kind:
+    SBind p, v, nil:
+        let e2 = ZWith env, (ZPatBinders prog, env.home, p)
+        ((e2, (Push out, (ZgBind (ZPatOf prog, env.home, p), (ZLx prog, env, v), (Trim (ZSpanText env, s.span)))), i + 1))
+    SLet p, ignore, v:
+        let e2 = ZWith env, (ZPatBinders prog, env.home, p)
+        ((e2, (Push out, (ZgLet (ZPatOf prog, env.home, p), (ZLx prog, env, v))), i + 1))
+    SRequire c: ((env, (Push out, (ZgGuard True, (ZLx prog, env, c), (Trim (ZSpanText env, s.span)))), i + 1))
+    SForbid c: ((env, (Push out, (ZgGuard False, (ZLx prog, env, c), (Trim (ZSpanText env, s.span)))), i + 1))
+    SFn c:
+        let name = ZDefNameText c.name
+        let fv = ZLocalFn prog, env, name, nil, [[c]]
+        (((ZWith env, [[name]]), (Push out, (ZgLet1 (ZsLet (ZpBind (ZLocalRs name)), (ZFn fv)))), i + 1))
+    SSignature ignore: ((env, out, i + 1))
+    SExpr x: if last: ((env, (Push out, (ZgAnswer (ZLx prog, env, x))), i + 1)) else: ((env, (Push out, (ZgLet1 (ZsDo (ZLx prog, env, x)))), i + 1))
+    otherwise: ((env, (Push out, (ZgFault "this statement does not stand in a `given:` block")), i + 1))
+
+# ---------------------------------------------------------------------------------------
+# `&` blocks (Semantics ch. 5; prism_zero's update.rs): `&_` and each `let &x` a mutable
+# Rust local, each statement replacing one part of one local
+# ---------------------------------------------------------------------------------------
+
+ZUpdateOf: fn ZProg, ZEnv, Expr, Block -> ZExpr
+fn ZUpdateOf prog, env, target, body:
+    let inner = ZWith env, [["&_"]]
+    ZUpdate (ZLocalRs "&_"), (ZLx prog, env, target), (ZUpds prog, inner, body.stmts)
+
+ZUpds: fn ZProg, ZEnv, [Stmt] -> [ZUpd]
+fn ZUpds prog, env, stmts:
+    let ((ignore, out)) = Fold stmts, ((env, [[]])), \|((e, acc)), s| ZUpdLine prog, e, acc, s
+    out
+
+ZUpdLine: fn ZProg, ZEnv, [ZUpd], Stmt -> ((ZEnv, [ZUpd]))
+fn ZUpdLine prog, env, out, s = match s.kind:
+    SSet t, v: ((env, (Push out, (ZSetOf prog, env, t, nil, v))))
+    SAccum t, op, v: ((env, (Push out, (ZSetOf prog, env, t, (? (ZOpName op)), v))))
+    SLet p, ignore, v:
+        let binders = ZPatBinders prog, env.home, p
+        let amps = Each (Filter binders, \|n| (Take n, 1) == "&"), ZLocalRs
+        (((ZWith env, binders), (Push out, (ZuLet (ZPatOf prog, env.home, p), (ZLx prog, env, v), amps))))
+    SWhile c, b:
+        let ((zc, e2)) = ZCondOf prog, env, c
+        ((env, (Push out, (ZuWhile zc, (ZUpds prog, e2, b.stmts), "w{s.span.start}"))))
+    SExpr x: ((env, (Push out, (ZUpdExpr prog, env, x))))
+    SFn ignore: ((env, out))
+    SSignature ignore: ((env, out))
+    otherwise: ((env, (Push out, (ZuFault "this statement does not stand in an `update` block (Semantics ch. 5)"))))
+
+ZCondOf: fn ZProg, ZEnv, Cond -> ((ZCond, ZEnv))
+fn ZCondOf prog, env, (CondExpr x) = ((ZcExpr (ZLx prog, env, x), env))
+fn ZCondOf prog, env, (CondBind p, v, g):
+    let e2 = ZWith env, (ZPatBinders prog, env.home, p)
+    let guard = match g:
+        ? x: ? (ZLx prog, e2, x)
+        nil: nil
+    (((ZcBind (ZPatOf prog, env.home, p), (ZLx prog, env, v), guard), e2))
+
+ZSetOf: fn ZProg, ZEnv, Expr, ?Text, Expr -> ZUpd
+fn ZSetOf prog, env, t, op, v = match ZLensOf prog, env, t:
+    ? ((root, steps)): match op:
+        ? o: ZuAccum root, steps, o, (ZLx prog, env, v)
+        nil: ZuSet root, steps, (ZLx prog, env, v)
+    nil: ZuFault "a reference is `&_`, a local `&x`, or a lens path of `.field` and `[index]` steps from one"
+
+# The lens a reference expression names: its root's Rust name and its path.
+ZLensOf: fn ZProg, ZEnv, Expr -> ?((Text, [ZStep]))
+fn ZLensOf prog, env, e = match e.kind:
+    EName n if (ZFirstSigil n.sigils) == "&" and (Len n.path) == 1:
+        let name = ZNameText n
+        match env.aliases[name]:
+            ? a: ? ((a.root, a.steps))
+            nil: match env.locals[name]:
+                ? rs: ? ((rs, [[]]))
+                nil: nil
+    EField r, ignore, f: given:
+        ((root, steps)) <- ZLensOf prog, env, r
+        ((root, (Push steps, (ZField1 f.name))))
+    EIndex r, k: given:
+        ((root, steps)) <- ZLensOf prog, env, r
+        ((root, (Push steps, (ZIndex1 (ZLx prog, env, k)))))
+    EGroup x: ZLensOf prog, env, x
+    otherwise: nil
+
+ZIsReference: fn Expr -> Bool
+fn ZIsReference e = match e.kind:
+    EName n: (ZFirstSigil n.sigils) == "&"
+    EField r, ignore, ignore: ZIsReference r
+    EIndex r, ignore: ZIsReference r
+    EGroup x: ZIsReference x
+    otherwise: False
+
+ZUpdExpr: fn ZProg, ZEnv, Expr -> ZUpd
+fn ZUpdExpr prog, env, x = match x.kind:
+    EIf c, t, el:
+        let ((zc, e2)) = ZCondOf prog, env, c
+        let elseUps = match el:
+            ? b: ZUpds prog, env, b.stmts
+            nil: [[]]
+        ZuIf zc, (ZUpds prog, e2, t.stmts), elseUps, "i{x.span.start}"
+    EMatch s, arms:
+        let zarms = Each arms, \|a| ZUArmOf prog, env, a
+        ZuMatch (ZLx prog, env, s), zarms, "m{x.span.start}"
+    EFor binders, src, body: ZUpdFor prog, env, x, binders, src, body
+    otherwise: ZuDo (ZLx prog, env, x)
+
+ZUArmOf: fn ZProg, ZEnv, Arm -> ZUArm
+fn ZUArmOf prog, env, a:
+    let binders = match a.pattern:
+        ? p: ZPatBinders prog, env.home, p
+        nil: [[]]
+    let inner = ZWith env, binders
+    let pat = match a.pattern:
+        ? p: ZPatOf prog, env.home, p
+        nil: ZpIgnore
+    let guard = match a.guard:
+        ? g: ? (ZLx prog, inner, g)
+        nil: nil
+    ZUArm(pattern=pat, guard=guard, body=(ZUpds prog, inner, a.body.stmts), label="a{a.span.start}")
+
+# `for x <- xs:` over a value, or `for &s <- &p:` lending a reference per element (the
+# bare `for &p:` rebinding `&_`).
+ZUpdFor: fn ZProg, ZEnv, Expr, ?ForBinders, Expr, Block -> ZUpd
+fn ZUpdFor prog, env, x, binders, src, body:
+    let outerIx = env.locals["ix"]
+    let outerJx = env.locals["jx"]
+    let loopEnv = ZWith env, [["ix", "key", "jx", "kx"]]
+    if not (ZIsReference src):
+        let ((kp, vp, bound)) = match binders:
+            ? fb: match fb.second:
+                ? second: ((? (ZPatOf prog, env.home, fb.first), ? (ZPatOf prog, env.home, second), (Append (ZPatBinders prog, env.home, fb.first), (ZPatBinders prog, env.home, second))))
+                nil: ((nil, ? (ZPatOf prog, env.home, fb.first), (ZPatBinders prog, env.home, fb.first)))
+            nil: ((nil, nil, [["_"]]))
+        ZuFor (ZLx prog, env, src), kp, vp, (ZUpds prog, (ZWith loopEnv, bound), body.stmts), "f{x.span.start}", outerIx, outerJx
+    else:
+        match ZLensOf prog, env, src:
+            ? ((root, steps)):
+                let name = match binders:
+                    ? fb: match fb.first.kind:
+                        PName n: ZNameText n
+                        otherwise: "&_"
+                    nil: "&_"
+                let bare = name == "&_"
+                let hidden = "lr__h{x.span.start}"
+                let base = if bare and root == (ZLocalRs "&_"): hidden else: root
+                let alias = ZAlias(root=base, steps=(Push steps, (ZIndex1 (ZLocal (ZLocalRs "key")))))
+                let aliases = Insert loopEnv.aliases, name, alias
+                let inner = update loopEnv:
+                    &_.aliases <= aliases
+                ZuForRef root, steps, (ZUpds prog, inner, body.stmts), "f{x.span.start}", (if bare: ? hidden else: nil), outerIx, outerJx
+            nil: ZuFault "a `for` over a reference binds a reference, `&s`"
+
+# ---------------------------------------------------------------------------------------
+# Code templates (Templates ch. 2): runs, placeholders, brace blocks, calls
+# ---------------------------------------------------------------------------------------
+
+ZPartsOf: fn ZProg, ZEnv, [TemplatePart] -> [ZPart]
+fn ZPartsOf prog, env, parts = Each parts, \|p| ZPartOf prog, env, p
+
+ZPartOf: fn ZProg, ZEnv, TemplatePart -> ZPart
+fn ZPartOf prog, env, (TpText t) = ZtText t
+fn ZPartOf prog, env, (TpPlaceholder x, col) = ZtPlace (ZLx prog, env, x), col
+fn ZPartOf prog, env, (TpBlock b) = ZtBlock (ZExprBlock prog, env, b)
+fn ZPartOf prog, env, (TpCall n, attrs, body, ignore):
+    let inner = match body:
+        ? ps: ? (ZPartsOf prog, env, ps)
+        nil: nil
+    ZtCall (ZTemplateCallee prog, env, n), (Each attrs, \|a| ZLx prog, env, a.value), inner
+
+# `<@Name ...>`: `@Name`, or in the function form, where no `@Name` is declared, the plain
+# function `Name` (README, pick TC).
+ZTemplateCallee: fn ZProg, ZEnv, SName -> ZExpr
+fn ZTemplateCallee prog, env, n = match ZResolve prog, env, n:
+    ZFault msg if n.sigils == "@" and (Len n.path) == 1: ZResolveBare prog, env, (ZBase n)
+    other: other
+
+# ---------------------------------------------------------------------------------------
+# Widget blocks (Semantics ch. 4; prism_zero's block.rs, pick BG): one binding group whose
+# lines run in the order compiler zero runs them
+#
+# - positional lines (a bind with no `then`, an element, an expression) in page order;
+# - a `let`, a hold's initial value, a local function, an inner widget when a line first
+#   needs it;
+# - an event read above the line that binds it through a forward event;
+# - an event `let` needed before a bind it depends on has run, through a forward event
+#   per binder, evaluated after the lines;
+# - the holds' `then`s last.
+# ---------------------------------------------------------------------------------------
+
+type ZGroup = record:
+    done: (Text ==> Bool)
+    busy: (Text ==> Bool)
+    ran: (Nat ==> Bool)
+    fwd: (Text ==> Text)
+    letFwd: (Text ==> Text)
+    deferred: [Nat]
+    holds: [((Nat, Text))]
+    out: [ZLine]
+    linesDone: Bool
+    stopped: Bool
+derive ^Eq, ^Show
+
+ZGOut: fn ZGroup, ZLine -> ZGroup
+fn ZGOut g, l:
+    let out = Push g.out, l
+    update g:
+        &_.out <= out
+
+ZGFault: fn ZGroup, Text -> ZGroup
+fn ZGFault g, msg:
+    let out = Push g.out, (ZwFault msg)
+    update g:
+        &_.out <= out
+        &_.stopped <= True
+
+ZGMark: fn ZGroup, [Text], Bool -> ZGroup
+fn ZGMark g, names, done:
+    let busy = Fold names, g.busy, \|m, n| if done: Remove m, n else: Insert m, n, True
+    let dn = if done: Fold names, g.done, \|m, n| Insert m, n, True else: g.done
+    update g:
+        &_.busy <= busy
+        &_.done <= dn
+
+ZGDone: fn ZGroup, Text -> Bool
+fn ZGDone g, n = match g.done[n]:
+    ? ignore: True
+    nil: False
+
+ZGBusy: fn ZGroup, Text -> Bool
+fn ZGBusy g, n = match g.busy[n]:
+    ? ignore: True
+    nil: False
+
+# The environment a line is lowered in: an event read before its line through its
+# forward event.
+ZGEnv: fn ZEnv, ZGroup -> ZEnv
+fn ZGEnv env, g:
+    let locals = Fold g.letFwd, (Fold g.fwd, env.locals, \|m, k, v| Insert m, k, v), \|m, k, v| Insert m, k, v
+    update env:
+        &_.locals <= locals
+
+ZFwdRs: fn Text -> Text
+fn ZFwdRs n = "fw{ZMangle n}"
+
+ZWideOf: fn ZProg, ZEnv, Block -> ZWide
+fn ZWideOf prog, env, b:
+    let d = ZDefsOf b
+    let genv = ZWith env, (ZDefNames d)
+    let n = Len b.stmts
+    let g0 = ZGroup(done={}, busy={}, ran={}, fwd={}, letFwd={}, deferred=[[]], holds=[[]], out=[[]], linesDone=False, stopped=False)
+    let ((g1, result, ignore)) = Fold b.stmts, ((g0, ZUnit, 0)), \|((g, r, i)), s|
+        if g.stopped: ((g, r, i + 1))
+        else: ZWideLine prog, genv, b, d, g, s, i, (i + 1 == n), r
+    if g1.stopped: ZWide(lines=g1.out, result=ZUnit)
+    else:
+        let g1d = update g1:
+            &_.linesDone <= True
+        let g2 = ZDeferredLets prog, genv, b, d, g1d
+        let g3 = Fold g2.holds, g2, \|g, ((i, name))| ZHoldThen prog, genv, b, d, g, i, name
+        let leftover = Append (Keys g3.fwd), (Keys g3.letFwd)
+        match leftover[0]:
+            ? name: ZWide(lines=(Push g3.out, (ZwFault "{name} was read but never bound")), result=ZUnit)
+            nil: ZWide(lines=g3.out, result=result)
+
+ZWideLine: fn ZProg, ZEnv, Block, ZDefs, ZGroup, Stmt, Nat, Bool, ZExpr -> ((ZGroup, ZExpr, Nat))
+fn ZWideLine prog, env, b, d, g, s, i, last, r:
+    let ran = match g.ran[i]:
+        ? ignore: True
+        nil: False
+    if ran: ((g, r, i + 1))
+    else: match s.kind:
+        SEmit rw:
+            if i != 0: (((ZGFault g, "`emit` stands first in its block (Semantics ch. 3)"), r, i + 1))
+            else: match ZRowOf rw:
+                ? fams: (((ZGOut g, (ZwRow fams)), r, i + 1))
+                nil: ((g, r, i + 1))
+        SLet p, ignore, ignore: (((Fold (ZBindersOfAny p), g, \|h, nm| ZWForce prog, env, b, d, h, nm), r, i + 1))
+        SSignature ignore: ((g, r, i + 1))
+        SFn ignore: ((g, r, i + 1))
+        SWidget ignore: ((g, r, i + 1))
+        SBind p, ignore, (? ignore): (((Fold (ZBindersOfAny p), g, \|h, nm| ZWForce prog, env, b, d, h, nm), r, i + 1))
+        SBind ignore, ignore, nil: (((ZRunBind prog, env, b, d, g, i), (if last: ZUnit else: r), i + 1))
+        SIgnore x:
+            let h = ZWForceDeps prog, env, b, d, g, (ZFreeExpr x)
+            (((ZGOut h, (ZwDo (ZStmtValue prog, (ZGEnv env, h), (? "Unit"), x))), r, i + 1))
+        SExpr x:
+            let h = ZWForceDeps prog, env, b, d, g, (ZFreeExpr x)
+            if last: ((h, (ZStmtValue prog, (ZGEnv env, h), nil, x), i + 1))
+            else: (((ZGOut h, (ZwDo (ZStmtValue prog, (ZGEnv env, h), (? "Unit"), x))), r, i + 1))
+        SRequire ignore: (((ZGFault g, "`require` and `forbid` stand in a `given:` block (Semantics ch. 4)"), r, i + 1))
+        SForbid ignore: (((ZGFault g, "`require` and `forbid` stand in a `given:` block (Semantics ch. 4)"), r, i + 1))
+        SReturn ignore: (((ZGFault g, "out of scope (`T monad:` blocks and `^Monad`): decisions.md puts this feature out of this compiler"), r, i + 1))
+        otherwise: (((ZGFault g, "this statement stands in an `update` block (Semantics ch. 5)"), r, i + 1))
+
+ZWForceDeps: fn ZProg, ZEnv, Block, ZDefs, ZGroup, [Text] -> ZGroup
+fn ZWForceDeps prog, env, b, d, g, names = Fold names, g, \|h, n| if (ZDefines d, n) and not h.stopped: ZWForce prog, env, b, d, h, n else: h
+
+ZHasFwd: fn ZGroup, Text -> Bool
+fn ZHasFwd g, n:
+    let a = match g.fwd[n]:
+        ? ignore: True
+        nil: False
+    let c = match g.letFwd[n]:
+        ? ignore: True
+        nil: False
+    a or c
+
+ZStmtOf: fn Block, Nat -> Stmt
+fn ZStmtOf b, i = Or b.stmts[i], Stmt(kind=(SExpr Expr(kind=EError, span=b.span)), span=b.span)
+
+# A group's definition of `name`, evaluated where a line first needs it.
+ZWForce: fn ZProg, ZEnv, Block, ZDefs, ZGroup, Text -> ZGroup
+fn ZWForce prog, env, b, d, g, name:
+    if (ZGDone g, name) or (ZHasFwd g, name) or g.stopped: g
+    else:
+        if ZGBusy g, name: ZGFault g, (ZCycleMessage d, name)
+        else: match d.lets[name]:
+            ? i: ZWForceLet prog, env, b, d, g, i, name
+            nil: match d.holds[name]:
+                ? i: ZWForceHold prog, env, b, d, g, i, name
+                nil: match d.binds[name]:
+                    ? i: ZWForceBind prog, env, b, d, g, i, name
+                    nil: match d.fns[name]:
+                        ? clauses:
+                            let deps = Filter (ZDedup (Fold clauses, [[]], ZWalkFnBody)), \|n| n != name
+                            let h = ZWForceDeps prog, env, b, d, (ZGMark g, [[name]], False), deps
+                            let fv = ZLocalFn prog, (ZGEnv env, h), name, d.sigs[name], clauses
+                            ZGMark (ZGOut h, (ZwStmt (ZsLet (ZpBind (ZLocalRs name)), (ZFn fv)))), [[name]], True
+                        nil: match d.widgets[name]:
+                            ? i: match (ZStmtOf b, i).kind:
+                                SWidget w:
+                                    let h = ZWForceDeps prog, env, b, d, (ZGMark g, [[name]], False), (ZFreeBlock w.body)
+                                    let bp = ZBuildOf prog, (ZGEnv env, h), name, w.body, ZaNone
+                                    ZGMark (ZGOut h, (ZwStmt (ZsLet (ZpBind (ZLocalRs name)), (ZBlueprint bp)))), [[name]], True
+                                otherwise: g
+                            nil: g
+
+ZCycleMessage: fn ZDefs, Text -> Text
+fn ZCycleMessage d, name:
+    let isHold = match d.holds[name]:
+        ? ignore: True
+        nil: False
+    let isBind = match d.binds[name]:
+        ? ignore: True
+        nil: False
+    if isHold: "{name}: a hold whose initial value names itself (Semantics ch. 4)"
+    else: if isBind: "{name} is read by the line that binds it: a cycle with no `then` in it is a prompt cycle (Semantics ch. 7)"
+    else: "{name} is defined in terms of itself: a cycle among plain values (Semantics ch. 4)"
+
+ZWForceLet: fn ZProg, ZEnv, Block, ZDefs, ZGroup, Nat, Text -> ZGroup
+fn ZWForceLet prog, env, b, d, g, i, name = match (ZStmtOf b, i).kind:
+    SLet p, ignore, v:
+        let binders = ZBindersOfAny p
+        let events = Fold binders, True, \|q, n| q and (Take n, 1) == "!"
+        let blocked = (not g.linesDone) and events and (ZBlocker d, b, g, name, {}) != nil
+        if blocked:
+            let h = Fold binders, g, ZLetForward
+            update h:
+                &_.deferred <= Push h.deferred, i
+        else:
+            let h = ZWForceDeps prog, env, b, d, (ZGMark g, binders, False), (ZFreeExpr v)
+            if h.stopped: h
+            else: ZGMark (ZGOut h, (ZwLet (ZPatOf prog, env.home, p), (ZLx prog, (ZGEnv env, h), v))), binders, True
+    otherwise: g
+
+ZLetForward: fn ZGroup, Text -> ZGroup
+fn ZLetForward k, n:
+    let k2 = update k:
+        &_.letFwd <= Insert k.letFwd, n, (ZFwdRs n)
+        &_.done <= Insert k.done, n, True
+    ZGOut k2, (ZwForward (ZFwdRs n))
+
+ZWForceHold: fn ZProg, ZEnv, Block, ZDefs, ZGroup, Nat, Text -> ZGroup
+fn ZWForceHold prog, env, b, d, g, i, name = match (ZStmtOf b, i).kind:
+    SBind ignore, v, ignore:
+        let h = ZWForceDeps prog, env, b, d, (ZGMark g, [[name]], False), (ZFreeExpr v)
+        if h.stopped: h
+        else:
+            let h2 = ZGOut h, (ZwHold (ZLocalRs name), (ZLx prog, (ZGEnv env, h), v))
+            let h3 = update h2:
+                &_.holds <= Push h2.holds, ((i, name))
+            ZGMark h3, [[name]], True
+    otherwise: g
+
+# A name a bind defines, read above its line: an event through a forward event; a
+# dynamic or plain value by running its bind now, when the bind takes no position.
+ZWForceBind: fn ZProg, ZEnv, Block, ZDefs, ZGroup, Nat, Text -> ZGroup
+fn ZWForceBind prog, env, b, d, g, i, name:
+    if (Take name, 1) == "!":
+        let h = ZGOut g, (ZwForward (ZFwdRs name))
+        update h:
+            &_.fwd <= Insert h.fwd, name, (ZFwdRs name)
+    else:
+        let s = ZStmtOf b, i
+        match s.kind:
+            SBind ignore, v, ignore:
+                if ZTakesAPosition prog, v: ZGFault g, "{name} is bound at {ZLoc env, s.span}, below this line, by a bind that takes a position, so it runs at its line; reading it here needs a forward dynamic, which prism_rt does not have (README.md, \"What fails\")"
+                else:
+                    let h = ZRunBind prog, env, b, d, g, i
+                    update h:
+                        &_.ran <= Insert h.ran, i, True
+            otherwise: g
+
+# The bind at statement `i`: its value bound (an element emitted, a blueprint built), its
+# pattern matched, the forward events of its binders resolved.
+ZRunBind: fn ZProg, ZEnv, Block, ZDefs, ZGroup, Nat -> ZGroup
+fn ZRunBind prog, env, b, d, g, i = match (ZStmtOf b, i).kind:
+    SBind p, v, nil:
+        let binders = ZBindersOfAny p
+        let h = ZWForceDeps prog, env, b, d, (ZGMark g, binders, False), (ZFreeExpr v)
+        if h.stopped: h
+        else:
+            let value = ZStmtValue prog, (ZGEnv env, h), (ZBindKind prog, p, v), v
+            let resolves = Fold binders, [[]], \|acc, n| match h.fwd[n]:
+                ? f: Push acc, ((f, ZLocalRs n))
+                nil: acc
+            let fwd = Fold binders, h.fwd, \|m, n| Remove m, n
+            let h2 = ZGOut h, (ZwBind (ZPatOf prog, env.home, p), value, resolves)
+            let h3 = update h2:
+                &_.fwd <= fwd
+            ZGMark h3, binders, True
+    otherwise: g
+
+# The first name bound by a bind of the group that has not run, and is not an event,
+# which the definition of `name` reads, directly or through the group's other
+# definitions. A hold's `then` is not followed.
+ZBlocker: fn ZDefs, Block, ZGroup, Text, (Text ==> Bool) -> ?Text
+fn ZBlocker d, b, g, name, seen:
+    let seenIt = match seen[name]:
+        ? ignore: True
+        nil: False
+    if (ZGDone g, name) or seenIt or not (ZDefines d, name): nil
+    else:
+        let seen2 = Insert seen, name, True
+        match d.binds[name]:
+            ? ignore: if (Take name, 1) == "!": nil else: ? name
+            nil:
+                let deps = match d.lets[name]:
+                    ? i: match (ZStmtOf b, i).kind:
+                        SLet ignore, ignore, v: ZFreeExpr v
+                        otherwise: [[]]
+                    nil: match d.holds[name]:
+                        ? i: match (ZStmtOf b, i).kind:
+                            SBind ignore, v, ignore: ZFreeExpr v
+                            otherwise: [[]]
+                        nil: match d.fns[name]:
+                            ? clauses: ZDedup (Fold clauses, [[]], ZWalkFnBody)
+                            nil: match d.widgets[name]:
+                                ? i: match (ZStmtOf b, i).kind:
+                                    SWidget w: ZFreeBlock w.body
+                                    otherwise: [[]]
+                                nil: [[]]
+                Fold deps, nil, \|found, n| match found:
+                    ? f: ? f
+                    nil: ZBlocker d, b, g, n, seen2
+
+# The deferred event `let`s, once every line has run: each binder's forward event out of
+# scope while its `let` is evaluated, so a `let` that reads itself is a cycle.
+ZDeferredLets: fn ZProg, ZEnv, Block, ZDefs, ZGroup -> ZGroup
+fn ZDeferredLets prog, env, b, d, g:
+    let todo = g.deferred
+    if (Len todo) == 0: g
+    else:
+        let g1 = update g:
+            &_.deferred <= [[]]
+        let g2 = Fold todo, g1, \|h, i| ZDeferredLet prog, env, b, d, h, i
+        if g2.stopped: g2 else: ZDeferredLets prog, env, b, d, g2
+
+ZDeferredLet: fn ZProg, ZEnv, Block, ZDefs, ZGroup, Nat -> ZGroup
+fn ZDeferredLet prog, env, b, d, g, i = match (ZStmtOf b, i).kind:
+    SLet p, ignore, v:
+        let binders = ZBindersOfAny p
+        let forwards = Fold binders, [[]], \|acc, n| match g.letFwd[n]:
+            ? f: Push acc, ((f, ZLocalRs n))
+            nil: acc
+        let letFwd = Fold binders, g.letFwd, \|m, n| Remove m, n
+        let dn = Fold binders, g.done, \|m, n| Remove m, n
+        let g1 = update g:
+            &_.letFwd <= letFwd
+            &_.done <= dn
+        let h = ZWForceDeps prog, env, b, d, (ZGMark g1, binders, False), (ZFreeExpr v)
+        if h.stopped: h
+        else: ZGMark (ZGOut h, (ZwBind (ZPatOf prog, env.home, p), (ZLx prog, (ZGEnv env, h), v), forwards)), binders, True
+    otherwise: g
+
+ZHoldThen: fn ZProg, ZEnv, Block, ZDefs, ZGroup, Nat, Text -> ZGroup
+fn ZHoldThen prog, env, b, d, g, i, name:
+    if g.stopped: g
+    else: match (ZStmtOf b, i).kind:
+        SBind ignore, ignore, (? t):
+            let h = ZWForceDeps prog, env, b, d, g, (ZFreeExpr t)
+            if h.stopped: h else: ZGOut h, (ZwThen (ZLocalRs name), (ZLx prog, (ZGEnv env, h), t))
+        otherwise: g
+
+# ---------------------------------------------------------------------------------------
+# A statement's value in a widget block (block.rs `statement_value`), and what a
+# `rebuild` or `for` hands back (pick RK)
+# ---------------------------------------------------------------------------------------
+
+ZUngroup: fn Expr -> Expr
+fn ZUngroup e = match e.kind:
+    EGroup x: x
+    otherwise: e
+
+ZStmtValue: fn ZProg, ZEnv, ?Text, Expr -> ZExpr
+fn ZStmtValue prog, env, kind, e:
+    let inner = ZUngroup e
+    match inner.kind:
+        EMatch ignore, ignore: ZBindBuild (ZBuildBranch (ZBuildingOf prog, env, inner))
+        EIf ignore, ignore, ignore: ZBindBuild (ZBuildBranch (ZBuildingOf prog, env, inner))
+        ERebuild s, blk: ZBindBuild (ZRebuild (ZLx prog, env, s), (Or kind, "Plain"), (ZBuildOf prog, env, "rebuild", blk, (ZaRebuild (ZLocalRs "_"))))
+        EFor binders, s, blk: ZBindBuild (ZFor (ZLx prog, env, s), (Or kind, (ZRowKind prog, blk)), (ZForBuild prog, env, binders, blk))
+        otherwise: ZBindBuild (ZLx prog, env, e)
+
+# A building `match` or `if`: its arms widget blocks; over a handle, the same arms as
+# expressions, one lifted node.
+ZBuildingOf: fn ZProg, ZEnv, Expr -> ZBuilding
+fn ZBuildingOf prog, env, e:
+    let lifted = ZArmsOf prog, env, e
+    let label = "m{e.span.start}"
+    match e.kind:
+        EMatch ignore, arms:
+            let barms = Each arms, \|a| ZBArmOf prog, env, a
+            ZBuilding(label=label, scrutinee=lifted.scrutinee, lifted=lifted, arms=barms, exhaustive=True)
+        EIf c, t, el:
+            let first = match c:
+                CondExpr ignore: ZBArm(pattern=(ZpBool True), guard=nil, body=(ZWideOf prog, env, t), label="t{e.span.start}")
+                CondBind p, ignore, g:
+                    let inner = ZWith env, (ZPatBinders prog, env.home, p)
+                    let guard = match g:
+                        ? x: ? (ZLx prog, inner, x)
+                        nil: nil
+                    ZBArm(pattern=(ZPatOf prog, env.home, p), guard=guard, body=(ZWideOf prog, inner, t), label="t{e.span.start}")
+            let rest = match el:
+                ? blk: [[ZBArm(pattern=ZpIgnore, guard=nil, body=(ZWideOf prog, env, blk), label="e{e.span.start}")]]
+                nil: [[]]
+            ZBuilding(label=label, scrutinee=lifted.scrutinee, lifted=lifted, arms=(Append [[first]], rest), exhaustive=lifted.exhaustive)
+        otherwise: ZBuilding(label=label, scrutinee=ZUnit, lifted=lifted, arms=[[]], exhaustive=False)
+
+ZBArmOf: fn ZProg, ZEnv, Arm -> ZBArm
+fn ZBArmOf prog, env, a:
+    let binders = match a.pattern:
+        ? p: ZPatBinders prog, env.home, p
+        nil: [[]]
+    let inner = ZWith env, binders
+    let pat = match a.pattern:
+        ? p: ZPatOf prog, env.home, p
+        nil: ZpIgnore
+    let guard = match a.guard:
+        ? g: ? (ZLx prog, inner, g)
+        nil: nil
+    ZBArm(pattern=pat, guard=guard, body=(ZWideOf prog, inner, a.body), label="b{a.span.start}")
+
+# A blueprint over a widget block: `@widget:`, an inner `@name:`, a `rebuild`'s block.
+ZBuildOf: fn ZProg, ZEnv, Text, Block, ZBuildArgs -> ZBuild
+fn ZBuildOf prog, env, name, b, args:
+    let ((caps, inner0)) = ZCapture env, (ZFreeBlock b)
+    let inner = match args:
+        ZaRebuild ignore: ZWith inner0, [["_"]]
+        otherwise: inner0
+    ZBuild(rs="blk_{b.span.start}", name=name, caps=caps, args=args, body=(ZWideOf prog, inner, b), loc=(ZLoc env, b.span), families=nil)
+
+# A `for`'s rows: the key, the row's value, `ix`, and the enclosing loops' `jx` and `kx`.
+ZForBuild: fn ZProg, ZEnv, ?ForBinders, Block -> ZBuild
+fn ZForBuild prog, env, binders, b:
+    let ((caps, inner0)) = ZCapture env, (ZDedup (Append (ZFreeBlock b), [["ix", "jx"]]))
+    let outerIx = match inner0.locals["ix"]:
+        ? rs: ? rs
+        nil: nil
+    let outerJx = match inner0.locals["jx"]:
+        ? rs: ? rs
+        nil: nil
+    let ((kp, vp, bound)) = match binders:
+        ? fb: match fb.second:
+            ? second: ((? (ZPatOf prog, env.home, fb.first), ? (ZPatOf prog, env.home, second), (Append (ZPatBinders prog, env.home, fb.first), (ZPatBinders prog, env.home, second))))
+            nil: ((nil, ? (ZPatOf prog, env.home, fb.first), (ZPatBinders prog, env.home, fb.first)))
+        nil: ((nil, nil, [["_", "$_"]]))
+    let jxkx = Append (if outerIx != nil: [["jx"]] else: [[]]), (if outerJx != nil: [["kx"]] else: [[]])
+    let inner = ZWith inner0, (Append (Append [["ix", "key"]], jxkx), bound)
+    ZBuild(rs="blk_{b.span.start}", name="for", caps=caps, args=(ZaFor kp, vp, (ZLocalRs "ix"), outerIx, outerJx), body=(ZWideOf prog, inner, b), loc=(ZLoc env, b.span), families=nil)
+
+ZBindKind: fn ZProg, Pattern, Expr -> ?Text
+fn ZBindKind prog, p, v:
+    let inner = ZUngroup v
+    let sigils = match p.kind:
+        PName n: n.sigils
+        otherwise: ""
+    let isIgnore = match p.kind:
+        PIgnore: True
+        otherwise: False
+    if isIgnore: ? "Unit"
+    else: match inner.kind:
+        ERebuild ignore, ignore:
+            if (Take sigils, 2) == "$!": ? "Event"
+            else: if (Take sigils, 2) == "$$": ? "Dynamic"
+            else: if sigils == "": ? "Unit"
+            else: ? "Plain"
+        EFor ignore, ignore, blk:
+            if (Take sigils, 1) == "!": ? "Event"
+            else: if (Take sigils, 1) == "$" and (ZRowKind prog, blk) == "Dynamic": ? "Dynamic"
+            else: ? "Plain"
+        otherwise: nil
+
+ZRowKind: fn ZProg, Block -> Text
+fn ZRowKind prog, b = match ?Last b.stmts:
+    ? s: match s.kind:
+        SExpr e: ZExprKind prog, e
+        otherwise: "Plain"
+    nil: "Plain"
+
+ZTagCalled: fn ZProg, Expr -> ?ZTagInfo
+fn ZTagCalled prog, e:
+    let n = match e.kind:
+        ECall callee, ignore, ignore, ignore: match callee.kind:
+            EName n: ? n
+            otherwise: nil
+        EName n: ? n
+        otherwise: nil
+    given:
+        name <- n
+        require (Len name.path) > 1
+        t <- prog.tags[Join name.path, "."]
+        require not t.fault
+        t
+
+ZExprKind: fn ZProg, Expr -> Text
+fn ZExprKind prog, e:
+    let through = match e.kind:
+        EGroup x if (ZTagCalled prog, x) != nil: ? x
+        EFreeSigil "@", x if (ZTagCalled prog, x) != nil: ? x
+        otherwise: nil
+    match through:
+        ? x: ZExprKind prog, x
+        nil: match ZTagCalled prog, e:
+            ? t: t.kind
+            nil: if ZIsEventExpr e: "Event" else: if ZIsDynamicExpr e: "Dynamic" else: "Plain"
+
+ZIsEventExpr: fn Expr -> Bool
+fn ZIsEventExpr e = match e.kind:
+    EName n: (ZFirstSigil n.sigils) == "!"
+    EBinary op, ignore, ignore: op == "on" or op == "<|"
+    EFreeSigil "@", x: ZIsEventExpr x
+    EGroup x: ZIsEventExpr x
+    otherwise: False
+
+ZIsDynamicExpr: fn Expr -> Bool
+fn ZIsDynamicExpr e = match e.kind:
+    EName n: (ZFirstSigil n.sigils) == "$"
+    ELit l: (ZFirstSigil l.marks) == "$"
+    EFreeSigil "$", ignore: True
+    EFreeSigil "@", x: ZIsDynamicExpr x
+    EGroup x: ZIsDynamicExpr x
+    EBinary op, l, r if op != "on": (ZIsDynamicExpr l) or (ZIsDynamicExpr r)
+    ECall ignore, args, ignore, ignore: Fold args, False, \|q, a| q or (ZIsDynamicExpr a.value)
+    EField r, ignore, ignore: ZIsDynamicExpr r
+    otherwise: False
+
+# Whether a bind's right side certainly takes a position (Semantics ch. 3).
+ZTakesAPosition: fn ZProg, Expr -> Bool
+fn ZTakesAPosition prog, e = match e.kind:
+    EGroup x: ZTakesAPosition prog, x
+    ERebuild ignore, ignore: True
+    EFor ignore, ignore, ignore: True
+    EName n if (Len n.path) == 1 and (ZNameText n) == "@started": True
+    otherwise: (ZTagCalled prog, e) != nil
+
+# ---------------------------------------------------------------------------------------
+# Modules: one getter per declaration (each global made once per thread, `rt::global`)
+# ---------------------------------------------------------------------------------------
+
+type ZItem = choice:
+    ZiFn Text, Text, ZFunc                   # getter, the declaration's text, the function
+    ZiLet Text, Text, ZPat, ZExpr, Text      # getter, site, pattern, value, the binder's Rust name
+    ZiWidget Text, ZBuild
+    ZiCtor Text, Text
+    ZiBuiltin Text, Text, [Text], [Bool], Bool   # getter, name, layers, `Nat`s, a value
+    ZiMethod Text, ZMethod
+    ZiImpl Text, ZFunc                       # an `impl`'s method, registered in `main`
+derive ^Eq, ^Show
+
+type ZMethod = record:
+    site: Text
+    traitName: Text
+    name: Text
+    dispatch: Nat
+    default: ?ZFunc
+    prelude: Bool
+    layers: [Text]
+derive ^Eq, ^Show
+
+type ZModOut = record:
+    name: Text
+    rs: Text
+    file: Text
+    items: [ZItem]
+derive ^Eq, ^Show
+
+# A module's top-level environment.
+ZTopEnv: fn ZMod -> ZEnv
+fn ZTopEnv m = ZEnv(home=m.name, file=m.file, src=m.text, starts=(ZLineStarts m.text), locals={}, mark="", aliases={})
+
+ZLowerModule: fn ZProg, ZMod -> ZModOut
+fn ZLowerModule prog, m:
+    let env = ZTopEnv m
+    let names = Keys m.decls
+    let items = Fold names, [[]], \|acc, n| match m.decls[n]:
+        ? d: Push acc, (ZItemOf prog, env, m, n, d)
+        nil: acc
+    let impls = Fold prog.impls, [[]], \|acc, i| if i.home == m.name: Append acc, (ZImplItems prog, env, i) else: acc
+    ZModOut(name=m.name, rs=m.rs, file=m.file, items=(Append items, impls))
+
+ZSite: fn Text, Text -> Text
+fn ZSite modName, n = "{modName}.{n}"
+
+ZItemOf: fn ZProg, ZEnv, ZMod, Text, ZDecl -> ZItem
+fn ZItemOf prog, env, m, n, (ZdFn sig, clauses) = ZiFn (ZGlobalRs n), n, (ZFuncOf prog, env, (ZSite m.name, n), n, "f{ZMangle n}", sig, clauses, [[]], nil, False)
+fn ZItemOf prog, env, m, n, (ZdLet ld):
+    ZiLet (ZGlobalRs n), (ZSite m.name, n), (ZPatOf prog, m.name, ld.pattern), (ZLx prog, env, ld.value), (ZLocalRs n)
+fn ZItemOf prog, env, m, n, (ZdWidget w):
+    let bd = ZBuildOf prog, env, n, w.body, ZaNone
+    let withRow = update bd:
+        &_.rs <= "w{ZMangle n}"
+        &_.families <= m.families
+    ZiWidget (ZGlobalRs n), withRow
+fn ZItemOf prog, env, m, n, (ZdCtor c) = ZiCtor (ZGlobalRs n), c
+fn ZItemOf prog, env, m, n, (ZdUnit c) = ZiCtor (ZGlobalRs n), c
+fn ZItemOf prog, env, m, n, (ZdBuiltin sig):
+    let ((layers, nat)) = ZSigLayers (? sig)
+    let isValue = match sig.ty.kind:
+        TFn ignore, ignore, ignore: False
+        otherwise: True
+    ZiBuiltin (ZGlobalRs n), n, layers, nat, isValue
+fn ZItemOf prog, env, m, n, (ZdMethod tr, sig, defaults, var):
+    let ((layers, ignore)) = ZSigLayers (? sig)
+    let default = if (Len defaults) == 0: nil else: ? (ZFuncOf prog, env, (ZSite m.name, "{n}.default"), n, "fd{ZMangle n}", (? sig), defaults, [[]], nil, False)
+    ZiMethod (ZGlobalRs n), ZMethod(site=(ZSite m.name, n), traitName=tr, name=n, dispatch=(ZDispatchIndex sig, var), default=default, prelude=(m.name == "Prelude"), layers=layers)
+
+# Which parameter of a method's signature carries the trait's type.
+ZDispatchIndex: fn Signature, Text -> Nat
+fn ZDispatchIndex sig, var = match sig.ty.kind:
+    TFn ignore, params, ignore:
+        let ((ignore, found)) = Fold params, ((0, nil)), \|((i, f)), p| match f:
+            ? k: ((i + 1, ? k))
+            nil: if ZMentions p, var: ((i + 1, ? i)) else: ((i + 1, nil))
+        Or found, 0
+    otherwise: 0
+
+ZMentions: fn Type, Text -> Bool
+fn ZMentions t, var = match t.kind:
+    TName n, args: ((Len n.path) == 1 and (ZBase n) == var) or (Fold args, False, \|q, a| q or (ZMentions a, var))
+    TArray elem, ignore: ZMentions elem, var
+    TGroup inner: ZMentions inner, var
+    TSigiled ignore, inner: ZMentions inner, var
+    TMap k, v: (ZMentions k, var) or (ZMentions v, var)
+    otherwise: False
+
+# An `impl`'s methods, each a function under the trait method's signature.
+ZImplItems: fn ZProg, ZEnv, ZImpl -> [ZItem]
+fn ZImplItems prog, env, i = Each i.methods, \|((n, clauses))|
+    let sig = prog.methods["{i.traitName}.{n}"]
+    let rsName = "gi_{ZMangle i.traitName}_{ZMangle i.typeHead}_{ZMangle n}"
+    let f = ZFuncOf prog, env, "{i.home}.impl.{i.traitName}.{i.typeHead}.{n}", n, "fi_{ZMangle i.traitName}_{ZMangle i.typeHead}_{ZMangle n}", sig, clauses, [[]], nil, False
+    ZiImpl rsName, f
+
+# The root's `@main`: `@main`, `@$main`, `@!main`, or any `@` name ending in `main`.
+ZRootMain: fn ZMod -> ?Text
+fn ZRootMain m:
+    let names = Keys m.decls
+    let exact = Filter [["@main", "@$main", "@!main"]], \|n| m.decls[n] != nil
+    match exact[0]:
+        ? n: ? n
+        nil: (Filter names, \|n| (Take n, 1) == "@" and (Drop n, (Or ((Len n) -? 4), 0)) == "main")[0]
+
+# The blueprints a test script's `test name, @program:` line can name: every top-level
+# widget with no parameters of the program's own files.
+ZTestPrograms: fn ZProg -> [((Text, Text))]
+fn ZTestPrograms prog = Fold prog.order, [[]], \|acc, name| match prog.mods[name]:
+    ? m if not m.bundled: Fold (Keys m.decls), acc, \|a, n| match m.decls[n]:
+        ? (ZdWidget ignore): Push a, (((Drop n, 1), (ZGlobalPath prog, name, n)))
+        otherwise: a
+    otherwise: acc

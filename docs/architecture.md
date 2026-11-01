@@ -24,6 +24,9 @@ serialization or checkpoints.
 prism_rt/        the runtime library every compiled program links: values, nodes,
                  heights, holds, keyed for, host suppliers, patches, first-value query,
                  @Defer and pending, the collector, the Test World, Fs and Process Worlds
+prism_dyn/       the dynamic layer of the semantics both run on: application with the
+                 lifting table, trait dispatch, builtins, patterns, `&` lens paths, the
+                 widget bindings, the Unwrap World; `rt`, what emitted code calls (D16)
 prism_zero/      compiler zero: a Rust interpreter of Prism (lexer, parser, dynamic
                  evaluator over prism_rt). Scaffolding: it runs prismc once, to compile
                  prismc; deleted when stage 3 lands. No type checker (decisions.md D3).

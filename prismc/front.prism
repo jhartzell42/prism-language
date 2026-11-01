@@ -7,6 +7,12 @@
 # A file with a lexical or parse error is written all the same, and then the program gives
 # up with the diagnostics, which the CLI World prints before it exits 1.
 #
+# With `--check FILE...` it parses every file of a program, adds the prelude's files from
+# `--prelude DIR` (`prelude` when not given) that the program does not replace, and runs
+# the checker (README, Checker): the diagnostics, then a count, go to `--out OUT` when
+# given, and the program gives up with them when there is an error. `--world FAM,FAM`
+# names the families a World answers, for the root row check.
+#
 # Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 emit Fs.* | Process.* | Prelude.*
@@ -15,6 +21,11 @@ use Ast.*
 use Lexer.*
 use Parser.*
 use Sexp.*
+use CheckErrors.*
+use CheckTypes.*
+use CheckEnv.*
+use CheckPasses.*
+use Emit
 
 # What the driver asks of the front end, and what it hands back.
 type Job = record:
@@ -74,8 +85,124 @@ fn LineStarts text:
 LineOf: fn [Nat], Nat -> Nat
 fn LineOf starts, offset = Dec (Fold starts, 0, \|n, s| if s <= offset: n + 1 else: n)
 
+# What the checker is asked to check: the program's files and the prelude's, by path and
+# text, and the World's families.
+type CheckJob = record:
+    files: [((Text, Text))]
+    prelude: [((Text, Text))]
+    world: [Text]
+derive ^Eq, ^Show
+
+# The prelude's files, as compiler zero supplies them beside the prelude.
+let preludeFiles = [["prelude.prism", "ui.prism", "fs.prism", "process.prism", "time.prism", "test.prism", "gui.prism"]]
+
+# The value an option takes: the argument after it.
+?OptionValue: fn [Text], Text -> ?Text
+fn ?OptionValue args, name = Fold (Range0 (Len args)), nil, \|?found, i| if args[i] == ? name: args[i + 1] else: ?found
+
+# The arguments that are neither options nor the values options take.
+PlainArgs: fn [Text] -> [Text]
+fn PlainArgs args:
+    let takesValue = [["--prelude", "--out", "--world"]]
+    let ((kept, ignore)) = Fold args, (([[]], False)), \|((acc, skip)), a|
+        if skip: ((acc, False))
+        else: if HasText takesValue, a: ((acc, True))
+        else: if (Take a, 2) == "--": ((acc, False))
+        else: (((Push acc, a), False))
+    kept
+
+# The checker over a program: every file parsed, the prelude's files the program does not
+# replace (a module of the same name, or a tag of its family, replaces one), then checked.
+CheckFiles: unbounded fn CheckJob -> Outcome
+fn CheckFiles job:
+    let parsed = Each job.files, \|((path, text))| ((path, text, (ParseFile text)))
+    let userMods = Fold parsed, [[]], \|acc, ((ignore, ignore, p))| Push acc, (ModName p.tree)
+    let userFams = Fold parsed, [[]], \|acc, ((ignore, ignore, p))| Append acc, (TagFamilies p.tree)
+    let preParsed = Each job.prelude, \|((path, text))| ((path, text, (ParseFile text)))
+    let kept = Filter preParsed, \|((ignore, ignore, p))| not (HasText userMods, (ModName p.tree)) and not (AnyIn (TagFamilies p.tree), userFams)
+    let all = Append parsed, kept
+    let parseDiags = Fold all, "", \|acc, ((path, text, p))| if AnyErrors p.diags: "{acc}{RenderParse path, text, p.diags}" else: acc
+    if parseDiags != "": Outcome(text="{parseDiags}parse errors\n", failed=True, report="{parseDiags}parse errors")
+    else:
+        let srcs = Each all, \|((path, text, ignore))| MkSrc path, text
+        let trees = Each all, \|((ignore, ignore, p))| p.tree
+        let report = CheckProgram srcs, trees, job.world, (Len parsed)
+        let summary = if report.errors == 0: "no errors\n" else: "{report.errors} error{if report.errors == 1: "" else: "s"}\n"
+        Outcome(text="{report.text}{summary}", failed=(report.errors > 0), report="{report.text}{summary}")
+
+TagFamilies: fn Module -> [Text]
+fn TagFamilies m = Fold m.decls, [[]], \|acc, d| match d.kind:
+    DTag t: Push acc, (Join (Take t.name.path, (Dec (Len t.name.path))), ".")
+    otherwise: acc
+
+AnyIn: fn [Text], [Text] -> Bool
+fn AnyIn xs, ys = Fold xs, False, \|seen, x| seen or HasText ys, x
+
+RenderParse: fn Text, Text, [Diag] -> Text
+fn RenderParse path, text, ds = Concat (Each (Filter ds, \|d| d.stage != "out"), \|d| "{path}:{RenderDiag (LineStarts text), d}\n")
+
 @main:
     args <- Process.Args
+    let checking = Fold args, False, \|seen, a| seen or a == "--check"
+    let compiling = (Or args[0], "") == "compile"
+    if compiling: @CompileMain (Drop args, 1)
+    else: if checking: @CheckMain args
+    else: @FrontMain args
+
+# `--check FILE...`: every file read, then the checker run through `@Run`.
+@CheckMain: fn [Text] -> @unit
+fn @CheckMain args:
+    let files = PlainArgs args
+    let dir = Or (?OptionValue args, "--prelude"), "prelude"
+    let ?out = ?OptionValue args, "--out"
+    let world = match ?OptionValue args, "--world":
+        ? w: Split w, ","
+        nil: [[]]
+    let prelude = Each preludeFiles, \|f| "{dir}/{f}"
+    let paths = Append files, prelude
+    $sources <- for p <- paths:
+        Fs.Contents(path=p)
+    ignore <- rebuild $sources:
+        @Check files, prelude, world, ?out, _
+
+# One run of the checker, once every file is read; a prelude file that is missing is left
+# out.
+@Check: fn [Text], [Text], [Text], ?Text, (Nat ==> ~Contents) -> @unit
+fn @Check files, prelude, world, ?out, contents:
+    let n = Len files
+    let texts = Each (Range0 (Len (Append files, prelude))), \|i| ContentsText (Or contents[i], (~ Contents(text="")))
+    let mine = Each (Range0 n), \|i| (((Or files[i], ""), (Or texts[i], "")))
+    let theirs = Each (Range0 (Len prelude)), \|i| (((Or prelude[i], ""), (Or texts[n + i], "")))
+    let present = Filter theirs, \|((ignore, t))| t != ""
+    let job = CheckJob(files=mine, prelude=present, world=world)
+    !done <- @Run CheckFiles, job
+    $?outcome <- nil then ? !done
+    ignore <- rebuild $?outcome:
+        @FinishCheck ?out, _
+
+ContentsText: fn ~Contents -> Text
+fn ContentsText (~ c) = c.text
+fn ContentsText (Error(..)) = ""
+
+@FinishCheck: fn ?Text, ?Outcome -> @unit
+fn @FinishCheck ?out, nil:
+    @ unit
+fn @FinishCheck ?out, (? o):
+    ignore <- @WriteOut ?out, o.text
+    !started <- @started
+    let !~verdict = (if o.failed: Error(kind=Prismc.Refused, message=o.report) else: ~ unit) on !started
+    ignore <- Prelude.Unwrap(value=!~verdict)
+
+@WriteOut: fn ?Text, Text -> @unit
+fn @WriteOut nil, ignore:
+    @ unit
+fn @WriteOut (? path), text:
+    ignore <- Fs.Output(path=path, text=$ text)
+    @ unit
+
+# The front end proper: the tree, the tokens or a fragment of one file.
+@FrontMain: fn [Text] -> @unit
+fn @FrontMain args:
     let tokens = Fold args, False, \|seen, a| seen or a == "--tokens"
     let fragment = Fold args, False, \|seen, a| seen or a == "--fragment"
     let names = Fold args, [[]], \|acc, a| if (Take a, 2) == "--": acc else: Push acc, a
@@ -108,3 +235,64 @@ fn @Finish out, (? o):
     !started <- @started
     let !~verdict = (if o.failed: Error(kind=Prismc.Refused, message=o.report) else: ~ unit) on !started
     ignore <- Prelude.Unwrap(value=!~verdict)
+
+# ---------------------------------------------------------------------------------------
+# `compile FILES... -o DIR`: the back end (emit.prism, lower.prism, templates/)
+# ---------------------------------------------------------------------------------------
+
+# `compile FILES... -o DIR [--name NAME] [--prelude DIR] [--runtime PATH]`: every file read,
+# the prelude's files from `--prelude DIR` (`prelude`) that the program does not replace,
+# then the program compiled through `@Run` to a Rust crate in DIR (`Cargo.toml`,
+# `src/main.rs`, a module per Prism module), whose dependencies on `prism_rt` and
+# `prism_dyn` are found at `--runtime PATH` from DIR (by default the current directory, as
+# `..` per directory of DIR). The type checker is not run yet: `Check` is not exposed by
+# check-passes.prism (README, Back end). Exit codes as `prism run`'s: 0, or 1 with the
+# diagnostics when a file does not parse.
+@CompileMain: fn [Text] -> @unit
+fn @CompileMain opts:
+    let files = CompileFiles opts
+    let out = Or (?OptionValue opts, "-o"), "prismc-out"
+    let dir = Or (?OptionValue opts, "--prelude"), "prelude"
+    let name = Or (?OptionValue opts, "--name"), "program"
+    let runtime = Or (?OptionValue opts, "--runtime"), (Emit.ZRuntimeFor out)
+    let prelude = Each preludeFiles, \|f| "{dir}/{f}"
+    let paths = Append files, prelude
+    $sources <- for p <- paths:
+        Fs.Contents(path=p)
+    ignore <- rebuild $sources:
+        @CompileAll files, prelude, out, name, runtime, _
+
+# The files of a `compile`: the arguments that are neither options nor their values.
+CompileFiles: fn [Text] -> [Text]
+fn CompileFiles args:
+    let takesValue = [["-o", "--prelude", "--name", "--runtime"]]
+    let ((kept, ignore)) = Fold args, (([[]], False)), \|((acc, skip)), a|
+        if skip: ((acc, False))
+        else: if HasText takesValue, a: ((acc, True))
+        else: if (Take a, 1) == "-": ((acc, False))
+        else: (((Push acc, a), False))
+    kept
+
+@CompileAll: fn [Text], [Text], Text, Text, Text, (Nat ==> ~Contents) -> @unit
+fn @CompileAll files, prelude, out, name, runtime, contents:
+    let n = Len files
+    let texts = Each (Range0 (Len (Append files, prelude))), \|i| ContentsText (Or contents[i], (~ Contents(text="")))
+    let mine = Each (Range0 n), \|i| (((Or files[i], ""), (Or texts[i], "")))
+    let theirs = Each (Range0 (Len prelude)), \|i| (((Or prelude[i], ""), (Or texts[n + i], "")))
+    let present = Filter theirs, \|((ignore, t))| t != ""
+    !done <- @Run Emit.ZCompile, Emit.ZJob(files=mine, prelude=present, name=name, runtime=runtime)
+    $?outcome <- nil then ? !done
+    ignore <- rebuild $?outcome:
+        @FinishCompile out, _
+
+# Writes the crate, and gives up with the diagnostics when the compile failed.
+@FinishCompile: fn Text, ?Emit.ZOutcome -> @unit
+fn @FinishCompile out, nil:
+    @ unit
+fn @FinishCompile out, (? o):
+    ignore <- for ((path, text)) <- o.files:
+        Fs.Output(path="{out}/{path}", text=$ text)
+    !started <- @started
+    let !~verdict = (if o.failed: Error(kind=Prismc.Refused, message=o.report) else: ~ unit) on !started
+    ignore <- Prelude.Unwrap(value=!~verdict)
+

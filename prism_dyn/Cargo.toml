@@ -1,0 +1,12 @@
+[package]
+name = "prism_dyn"
+version = "0.1.0"
+edition = "2024"
+description = "The dynamic layer of Prism's semantics over prism_rt: application with lifting, trait dispatch, builtins, patterns, & blocks; shared by compiler zero and compiled programs"
+license-file = "../LICENSE.md"
+
+[dependencies]
+prism_rt = { path = "../prism_rt" }
+im-rc = "15.1.0"
+num-bigint = "0.5.1"
+num-traits = "0.2.19"

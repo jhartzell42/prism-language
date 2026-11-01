@@ -1,0 +1,334 @@
+# The Rust template set (Templates ch. 2, code templates; Compiler ch. 4, "Templates, and
+# two template sets"): every multi-line piece of the emitted Rust, as a function-form
+# template with doubled braces. A placeholder alone on its line stands for whole lines,
+# indented to its column, so nested pieces come out indented as written. The templates
+# decide nothing (Compiler ch. 4, K9): lowering decided, emit.prism chose the template.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+module RustTemplates
+
+# ---------------------------------------------------------------------------------------
+# Files
+# ---------------------------------------------------------------------------------------
+
+# One Prism module's Rust module.
+RsModule: fn Text, Text, Text -> Text
+fn RsModule file, name, items = inline_text <rust>
+//! {{name}}, from `{{file}}`: emitted by prismc (decisions.md D16). Edit the Prism source,
+//! not this file.
+#![allow(non_snake_case, non_camel_case_types, unused_variables, unused_mut, unused_labels)]
+#![allow(unreachable_code, unused_parens, unused_braces, dead_code, unused_imports, clippy::all)]
+
+use prism_dyn::rt::*;
+
+{{items}}
+</rust>
+
+# The crate root: the modules, the program's tables, and `main`.
+RsMain: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn RsMain name, mods, ctors, tags, impls, root, programs, checks = inline_text <rust>
+//! The program `{{name}}`, emitted by prismc (decisions.md D16): one Rust module per Prism
+//! module, every value a `prism_rt::Value`, every application through `prism_dyn`. Edit
+//! the Prism sources, not these files.
+#![allow(non_snake_case, unused_variables, unused_mut, unused_labels, unreachable_code, dead_code, unused_imports, clippy::all)]
+
+{{mods}}
+
+use prism_dyn::rt::*;
+use std::rc::Rc;
+
+/// The program's constructors, tags and `impl`s, which applications read at run time.
+fn install_tables() -> R<()> {
+    install(
+        vec![
+            {{ctors}}
+        ],
+        vec![
+            {{tags}}
+        ],
+    );
+    {{impls}}
+    Ok(())
+}
+
+/// The root: the root file's `@main`.
+fn root() -> R<Value> {
+    {{root}}
+}
+
+/// The blueprints a test script's `test name, @program:` line can name.
+fn programs() -> R<Vec<(&'static str, Value)>> {
+    let b: &mut Bx = &mut None;
+    Ok(vec![
+        {{programs}}
+    ])
+}
+
+/// The `check` lines of the test scripts compiled with the program, by their text.
+fn checks(line: &str) -> Option<R<Value>> {
+    let b: &mut Bx = &mut None;
+    match line {
+        {{checks}}
+        _ => None,
+    }
+}
+
+#[cfg(feature = "canvas")]
+fn canvas() -> Option<fn(Program) -> u8> {
+    Some(|p| prism_world_canvas::run(p, |w| Box::new(prism_dyn::world::UnwrapWorld::new(w))))
+}
+
+#[cfg(not(feature = "canvas"))]
+fn canvas() -> Option<fn(Program) -> u8> {
+    None
+}
+
+fn main() -> std::process::ExitCode {
+    if let Err(f) = install_tables() {
+        eprintln!("{}", f.message);
+        return std::process::ExitCode::from(2);
+    }
+    let code = main_with(root, programs, Rc::new(checks), canvas());
+    std::process::ExitCode::from(code)
+}
+</rust>
+
+RsCargo: fn Text, Text -> Text
+fn RsCargo name, runtime = inline_text <rust>
+# Emitted by prismc. Edit the Prism sources, not this file.
+[package]
+name = "{{name}}"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+prism_rt = { path = "{{runtime}}/prism_rt" }
+prism_dyn = { path = "{{runtime}}/prism_dyn" }
+prism_world_canvas = { path = "{{runtime}}/worlds/canvas", optional = true }
+
+[features]
+canvas = ["dep:prism_world_canvas"]
+
+[profile.release]
+debug = false
+
+[workspace]
+</rust>
+
+# ---------------------------------------------------------------------------------------
+# Items
+# ---------------------------------------------------------------------------------------
+
+# A global's getter: each global is made once per thread.
+RsGetter: fn Text, Text, Text, Text -> Text
+fn RsGetter doc, name, site, value = inline_text <rust>
+/// {{doc}}
+pub fn {{name}}() -> R<Value> {
+    global("{{site}}", || {
+        {{value}}
+    })
+}
+</rust>
+
+# A function's body: its clauses, the first whose patterns match.
+RsBodyFn: fn Text, Text, Text, Text, Text, Text -> Text
+fn RsBodyFn rs, within, loc, prologue, clauses, name = inline_text <rust>
+fn {{rs}}(cap: &[Value], args: Vec<Value>, b: &mut Bx) -> R<Value> {
+    {{within}}("{{loc}}", || {
+        {{prologue}}
+        {{clauses}}
+        Err(no_clause("{{name}}", &args))
+    })
+}
+</rust>
+
+# A widget block, or a widget function's clauses: built through `b`.
+RsBuildFn: fn Text, Text, Text, Text -> Text
+fn RsBuildFn rs, loc, prologue, body = inline_text <rust>
+fn {{rs}}(b: &mut Bx, cap: &[Value], args: &[Value]) -> R<Value> {
+    within("{{loc}}", || {
+        {{prologue}}
+        {{body}}
+    })
+}
+</rust>
+
+# A `match`'s or an `if`'s arms, over a plain scrutinee `s` and the locals in `env`.
+RsArmsFn: fn Text, Text, Text, Text -> Text
+fn RsArmsFn rs, prologue, arms, fallback = inline_text <rust>
+fn {{rs}}(b: &mut Bx, s: Value, env: &[Value]) -> R<Value> {
+    {{prologue}}
+    {{arms}}
+    {{fallback}}
+}
+</rust>
+
+# One clause: its patterns tested, its body the function's value.
+RsClause: fn Text, Text, Text, Text -> Text
+fn RsClause label, arity, patterns, body = inline_text <rust>
+'{{label}}: {
+    if args.len() != {{arity}} {
+        break '{{label}};
+    }
+    {{patterns}}
+    {{body}}
+}
+</rust>
+
+# One arm: its pattern and guard tested, its body the value.
+RsArm: fn Text, Text, Text -> Text
+fn RsArm label, tests, body = inline_text <rust>
+'{{label}}: {
+    {{tests}}
+    {{body}}
+}
+</rust>
+
+RsReturn: fn Text -> Text
+fn RsReturn x = inline_text <rust>
+return Ok(
+    {{x}}
+);
+</rust>
+
+RsGuard: fn Text, Text -> Text
+fn RsGuard x, fail = inline_text <rust>
+if !truth(&{{x}})? {
+    {{fail}}
+}
+</rust>
+
+RsTest: fn Text, Text -> Text
+fn RsTest cond, fail = inline_text <rust>
+if !{{cond}} {
+    {{fail}}
+}
+</rust>
+
+RsLetElse: fn Text, Text, Text -> Text
+fn RsLetElse v, value, fail = inline_text <rust>let Some({{v}}) = {{value}} else { {{fail}} };</rust>
+
+# ---------------------------------------------------------------------------------------
+# Blocks
+# ---------------------------------------------------------------------------------------
+
+RsBlock: fn Text, Text -> Text
+fn RsBlock lines, value = inline_text <rust>
+{
+    {{lines}}
+    {{value}}
+}
+</rust>
+
+# A function value: its body's `fn`, then the value.
+RsItemValue: fn Text, Text -> Text
+fn RsItemValue items, value = inline_text <rust>
+{
+    {{items}}
+    {{value}}
+}
+</rust>
+
+# A building `match` or `if`: over a handle, its arms as one lifted node; otherwise the
+# chosen arm's widget block, building here.
+RsBuilding: fn Text, Text, Text, Text, Text -> Text
+fn RsBuilding s, scrutinee, lifted, arms, fallback = inline_text <rust>
+{
+    let {{s}} = {{scrutinee}};
+    if is_handle(&{{s}}) {
+        {{lifted}}
+    } else {
+        '{{s}}: {
+            {{arms}}
+            {{fallback}}
+        }
+    }
+}
+</rust>
+
+RsGiven: fn Text, Text -> Text
+fn RsGiven steps, value = inline_text <rust>
+'given: {
+    {{steps}}
+    {{value}}
+}
+</rust>
+
+RsGivenBind: fn Text, Text -> Text
+fn RsGivenBind t, value = inline_text <rust>
+let {{t}} = match given_bind({{value}}) {
+    Ok(v) => v,
+    Err(gave_up) => break 'given gave_up,
+};
+</rust>
+
+RsUpdate: fn Text, Text, Text -> Text
+fn RsUpdate root, target, lines = inline_text <rust>
+{
+    let mut {{root}} = {{target}};
+    {{lines}}
+    {{root}}
+}
+</rust>
+
+RsWhile: fn Text, Text, Text -> Text
+fn RsWhile label, cond, body = inline_text <rust>
+'{{label}}: loop {
+    turn()?;
+    {{cond}}
+    {{body}}
+}
+</rust>
+
+RsIf: fn Text, Text, Text, Text -> Text
+fn RsIf label, cond, yes, fallback = inline_text <rust>
+'{{label}}: {
+    'then_{{label}}: {
+        {{cond}}
+        {{yes}}
+        break '{{label}};
+    }
+    {{fallback}}
+}
+</rust>
+
+RsMatch: fn Text, Text, Text -> Text
+fn RsMatch label, scrutinee, arms = inline_text <rust>
+'{{label}}: {
+    let s_{{label}} = {{scrutinee}};
+    {{arms}}
+    return Err(no_arm(&s_{{label}}));
+}
+</rust>
+
+RsFor: fn Text, Text, Text, Text -> Text
+fn RsFor label, collection, binds, body = inline_text <rust>
+for (ix_{{label}}, (k_{{label}}, v_{{label}})) in lens::entries(&{{collection}}).into_iter().enumerate() {
+    {{binds}}
+    {{body}}
+}
+</rust>
+
+RsForRef: fn Text, Text, Text, Text, Text, Text, Text -> Text
+fn RsForRef label, root, steps, hide, binds, body, unhide = inline_text <rust>
+{
+    let st_{{label}}: Vec<Step> = vec![{{steps}}];
+    let keys_{{label}}: Vec<Value> = lens::entries(&lens::read(&{{root}}, &st_{{label}})?).into_iter().map(|(k, _)| k).collect();
+    {{hide}}
+    for (ix_{{label}}, k_{{label}}) in keys_{{label}}.into_iter().enumerate() {
+        {{binds}}
+        {{body}}
+    }
+    {{unhide}}
+}
+</rust>
+
+RsTemplate: fn Text -> Text
+fn RsTemplate parts = inline_text <rust>
+{
+    let mut out = String::new();
+    {{parts}}
+    out
+}
+</rust>

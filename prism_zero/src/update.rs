@@ -26,15 +26,9 @@ use std::rc::Rc;
 use prism_rt::Value;
 use prism_syntax::ast::*;
 
-use crate::interp::{Bx, Interp, Loc, OpKind, Scopes, CYCLE_BUDGET, UNBOUNDED};
+use crate::interp::{Bx, Interp, Loc, OpKind, Scopes};
+use prism_dyn::lens::{entries, Step};
 use crate::ops::R;
-
-/// One step of a lens path.
-#[derive(Clone, Debug)]
-enum Step {
-    Field(Rc<str>),
-    Index(Value),
-}
 
 /// A reference: a local and a lens path into it.
 #[derive(Clone, Debug)]
@@ -104,16 +98,7 @@ impl Interp {
             }
             StmtKind::While { cond, body } => {
                 loop {
-                    if UNBOUNDED.with(|u| u.depth.get() > 0) {
-                        let over = UNBOUNDED.with(|u| {
-                            let p = u.points.get() + 1;
-                            u.points.set(p);
-                            matches!(u.budget.get(), Some(budget) if p > budget)
-                        });
-                        if over {
-                            return Err(prism_rt::Fault::new(CYCLE_BUDGET, "the cycle budget ran out"));
-                        }
-                    }
+                    prism_dyn::unbounded::cycle_point()?;
                     let binds = match self.update_cond(cond, sc, b.as_deref_mut())? {
                         Some(binds) => binds,
                         None => break,
@@ -417,67 +402,7 @@ impl Interp {
 
     /// Set the part at `steps` inside `whole`, in place where nobody else holds it.
     fn set_path(&self, whole: Value, steps: &[Step], v: Value, loc: Loc) -> R<Value> {
-        // A part keeps its type: an `Int` literal set into a `Nat` part is a `Nat`, as a
-        // checker would have typed the literal (`&fuel <= 0`, then `&fuel -? 1`).
-        let Some((first, rest)) = steps.split_first() else { return Ok(keep_type(&whole, v)) };
-        match (whole, first) {
-            (Value::Record(mut r), Step::Field(f)) => {
-                let rec = Rc::make_mut(&mut r);
-                let slot = rec
-                    .fields
-                    .iter_mut()
-                    .find(|(n, _)| **n == **f)
-                    .ok_or_else(|| self.fault(loc, format!("{} has no field {f}", rec.name)))?;
-                let part = std::mem::take(&mut slot.1);
-                slot.1 = self.set_path(part, rest, v, loc)?;
-                Ok(Value::Record(r))
-            }
-            (t @ Value::Record(_), Step::Index(k)) => {
-                let cur = crate::builtins::table_get(&t, k)?;
-                let new = self.set_index_part(cur, rest, v, loc)?;
-                crate::builtins::table_set(t, k.clone(), new)
-            }
-            (Value::Map(mut m), Step::Index(k)) => {
-                let cur = m.get(k).cloned().map(Value::some).unwrap_or(Value::nil());
-                match self.set_index_part(cur, rest, v, loc)? {
-                    Value::Opt(Some(x)) => {
-                        m.insert(k.clone(), (*x).clone());
-                    }
-                    Value::Opt(None) => {
-                        m.remove(k);
-                    }
-                    other => {
-                        m.insert(k.clone(), other);
-                    }
-                }
-                Ok(Value::Map(m))
-            }
-            (Value::Array(mut a), Step::Index(k)) => {
-                let i = crate::ops::index_of(k).filter(|i| *i < a.len()).ok_or_else(|| {
-                    self.fault(loc, format!("index {} is past the end of an array of {}", crate::ops::show_plain(k), a.len()))
-                })?;
-                let cur = Value::some(a[i].clone());
-                match self.set_index_part(cur, rest, v, loc)? {
-                    Value::Opt(Some(x)) => a.set(i, (*x).clone()),
-                    Value::Opt(None) => return Err(self.fault(loc, "an array's element cannot be removed by setting `nil`")),
-                    other => a.set(i, other),
-                };
-                Ok(Value::Array(a))
-            }
-            (Value::Opt(Some(x)), _) => Ok(Value::some(self.set_path((*x).clone(), steps, v, loc)?)),
-            (other, _) => Err(self.fault(loc, format!("{} has no part here", crate::ops::show_plain(&other)))),
-        }
-    }
-
-    /// An index path's part is `?V` (Semantics ch. 5): a deeper step goes through the `?`.
-    fn set_index_part(&self, cur: Value, rest: &[Step], v: Value, loc: Loc) -> R<Value> {
-        if rest.is_empty() {
-            return Ok(v);
-        }
-        match cur {
-            Value::Opt(Some(x)) => Ok(Value::some(self.set_path((*x).clone(), rest, v, loc)?)),
-            _ => Err(self.fault(loc, "a path through a missing key")),
-        }
+        prism_dyn::lens::set(whole, steps, v).map_err(|f| self.wrap_fault(loc, f))
     }
 }
 
@@ -487,17 +412,6 @@ fn is_reference(e: &Expr) -> bool {
         ExprKind::Field { recv, .. } | ExprKind::Index { recv, .. } => is_reference(recv),
         ExprKind::Group(e) => is_reference(e),
         _ => false,
-    }
-}
-
-/// The keys and values of a collection, in order: an array's indices, a map's keys, a
-/// table's keys in insertion order.
-fn entries(v: &Value) -> Vec<(Value, Value)> {
-    match v {
-        Value::Array(a) => a.iter().enumerate().map(|(i, x)| (Value::nat(i as u64), x.clone())).collect(),
-        Value::Map(m) => m.iter().map(|(k, x)| (k.clone(), x.clone())).collect(),
-        Value::Record(r) if &*r.name == "Table" => crate::builtins::table_entries(v),
-        _ => vec![],
     }
 }
 
@@ -512,13 +426,3 @@ fn bind_loop_names(sc: &mut Scopes, ix: usize, key: &Value, outer_ix: Option<Val
     }
 }
 
-/// The value set into a part, with the part's integer type kept.
-fn keep_type(old: &Value, v: Value) -> Value {
-    match (old, &v) {
-        (Value::Nat(_), Value::Int(_)) => crate::interp::to_nat(v),
-        (Value::Opt(Some(o)), Value::Opt(Some(x))) if matches!((&**o, &**x), (Value::Nat(_), Value::Int(_))) => {
-            Value::some(crate::interp::to_nat((**x).clone()))
-        }
-        _ => v,
-    }
-}

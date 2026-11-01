@@ -608,10 +608,9 @@ impl Interp {
             match &stmt.kind {
                 StmtKind::Bind { pattern, value, then: None } => {
                     let v = self.eval(value, sc, b.as_deref_mut())?;
-                    let target = match &v {
-                        Value::Opt(None) | Value::Fallible(Err(_)) => return Ok(v),
-                        Value::Opt(Some(x)) | Value::Fallible(Ok(x)) => (**x).clone(),
-                        other => other.clone(),
+                    let target = match prism_dyn::widget::given_bind(v) {
+                        Ok(t) => t,
+                        Err(gave_up) => return Ok(gave_up),
                     };
                     let mut binds = Vec::new();
                     if !crate::pattern::matches(self, sc.module, pattern, &target, &mut binds)? {
@@ -661,11 +660,7 @@ impl Interp {
                     let v = self.eval(e, sc, b.as_deref_mut())?;
                     if i + 1 == n {
                         // The last line is the answer: `? v`, `~ v`, or a `?T` passing through.
-                        return Ok(match (&v, sc.mark) {
-                            (Value::Opt(_) | Value::Fallible(_), _) => v,
-                            (_, Some(Sigil::Tilde)) => Value::ok(v),
-                            _ => Value::some(v),
-                        });
+                        return Ok(prism_dyn::widget::given_answer(sc.mark == Some(Sigil::Tilde), v));
                     }
                 }
                 _ => return Err(self.fault(loc, "this statement does not stand in a `given:` block")),
@@ -675,16 +670,7 @@ impl Interp {
     }
 
     fn give_up(&self, sc: &Scopes, stmt: &Stmt) -> Value {
-        match sc.mark {
-            Some(Sigil::Tilde) => Value::Fallible(Err(Rc::new(Value::record(
-                "Error",
-                vec![
-                    ("kind", Value::ctor("Prelude.Unmet", vec![])),
-                    ("message", Value::text(self.l.modules[sc.module].text(stmt.span).trim())),
-                ],
-            )))),
-            _ => Value::nil(),
-        }
+        prism_dyn::widget::give_up(sc.mark == Some(Sigil::Tilde), self.l.modules[sc.module].text(stmt.span))
     }
 }
 

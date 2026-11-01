@@ -1196,6 +1196,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "prism_dyn"
+version = "0.1.0"
+dependencies = [
+ "im-rc",
+ "num-bigint",
+ "num-traits",
+ "prism_rt",
+]
+
+[[package]]
 name = "prism_rt"
 version = "0.1.0"
 dependencies = [
@@ -1237,6 +1247,7 @@ dependencies = [
  "im-rc",
  "num-bigint",
  "num-traits",
+ "prism_dyn",
  "prism_rt",
  "prism_syntax",
  "prism_world_canvas",

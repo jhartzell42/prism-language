@@ -1,45 +1,37 @@
 //! The interpreter's core: code objects, closures and blueprints over `prism_rt`, scopes,
-//! globals, application with the lifting table, and unbounded functions.
+//! globals, and the program's tables handed to `prism_dyn`.
 //!
-//! **Functions are `prism_rt` closures.** Every function value of a Prism program is a
-//! [`prism_rt::Closure`] (and every blueprint a [`prism_rt::Blueprint`]), so the runtime
-//! can call it from a node without knowing it came from an interpreter. Its behaviour is
-//! a [`Code`] in the interpreter's table, named by the number after the last `#` in the
-//! closure's name; its environment travels in the closure's `captured` values, which the
-//! collector traces (decisions.md D5: "Captured values are explicit so the collector
-//! traces them"). The layout of `captured` for code with an environment is
-//! `[names, extra, value...]`: an array of the captured names as texts, an array of extra
-//! values (a widget function's arguments), then one value per name.
+//! **Functions are `prism_dyn` function values.** Every function value of a Prism
+//! program is a [`prism_rt::Closure`] with a `prism_dyn` meta (and every blueprint a
+//! [`prism_rt::Blueprint`]), so the runtime can call it from a node without knowing it
+//! came from an interpreter, and compiled code and the interpreter apply it the same way.
+//! Its behaviour is a [`Code`] in the interpreter's table, the meta's `user` number; its
+//! environment travels in the closure's `captured` values, which the collector traces
+//! (decisions.md D5: "Captured values are explicit so the collector traces them"). The
+//! layout of `captured` for code with an environment is `[names, extra, value...]`: an
+//! array of the captured names as texts, an array of extra values (a widget function's
+//! arguments), then one value per name.
 //!
-//! **The lifting table at each application** (Type System ch. 4, "Where the table
-//! looks"; D3). At an application the interpreter compares each argument's runtime layer
-//! with the parameter's declared one ([`Layer`]):
+//! **The lifting table at each application** is `prism_dyn::func` (Type System ch. 4,
+//! "Where the table looks"; D3, D16): the interpreter supplies each code's layers, read
+//! off its declared types ([`layer_of`]), and the body; `prism_dyn` compares the
+//! arguments' runtime layers, builds the lift node, peels `?` and `~`.
 //!
-//! - the parameter already takes it (a `$Text` parameter, a `!a`, a blueprint, a tag's
-//!   field, a constructor's type-parameter field): ordinary application;
-//! - otherwise a `$` or `!` argument is peeled and the row is chosen: dynamics and no
-//!   event make a map over the dynamics (`Build::lift`, the change law); one event makes
-//!   a sample (`Build::sample`, the tag law); two events are refused, naming both;
-//! - under the time layer, a `?` or `~` argument at a concrete parameter is peeled at the
-//!   plain layer, `nil` or the leftmost `Error` moving outward (L5).
-//!
-//! A lifted application needs a widget to put its node in, so it is only possible while
-//! a blueprint builds; a lift inside a node's function (at propagation time) is the
-//! program asking for a node mid-tick, which the books refuse.
-//!
-//! **Unbounded functions** (Semantics ch. 7, "An unbounded function is a bounded body
-//! iterated"; D6) run in cycles under `@Run`: a cycle point is every call of an unbounded
-//! function from an unbounded function. See [`Unbounded`] for how prism_zero counts them
-//! without saving continuations.
+//! **Unbounded functions** (Semantics ch. 7; D6) count cycle points through
+//! `prism_dyn::unbounded`, without saving continuations.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 
-use num_traits::Signed;
-use prism_rt::{Blueprint, Build, Closure, Element, Fault, Value};
+use prism_dyn::func::FnMeta;
+use prism_dyn::values::MethodMeta;
+use prism_rt::{Blueprint, Build, Fault, Value};
 use prism_syntax::Span;
 use prism_syntax::ast::*;
+
+pub use prism_dyn::func::{to_nat, Layer};
+pub use prism_dyn::unbounded::{CYCLE_BUDGET, UNBOUNDED};
 
 use crate::load::{CtorInfo, Global, Loaded, MethodInfo, ModId};
 use crate::ops::{self, R};
@@ -49,34 +41,13 @@ pub type CodeId = usize;
 
 /// The build a statement runs in, if any: present while a blueprint builds, absent in a
 /// node's function at propagation time and in a `check` line.
-pub type Bx<'x, 'a> = Option<&'x mut Build<'a>>;
+pub type Bx<'x, 'a> = prism_dyn::Bx<'x, 'a>;
 
 /// Where an error is reported: a module and a span in it.
 #[derive(Clone, Copy, Debug)]
 pub struct Loc {
     pub module: ModId,
     pub span: Span,
-}
-
-/// What a parameter takes, read off its declared type (or, with no signature, off the
-/// sigils of its pattern).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Layer {
-    /// A sigiled parameter (`$Int`, `!a`, `@a`), a tag's field, a constructor's
-    /// type-parameter field: the argument goes in whole, sigils and all.
-    Whole,
-    /// A bare type variable: lifted over time afresh at each application, its `?` kept.
-    Var,
-    /// A concrete plain type: lifted over time, and `?`/`~` peeled at the plain layer.
-    Concrete,
-    /// A `?T` or `~T` parameter: lifted over time, its optional taken whole.
-    Opt,
-}
-
-impl Layer {
-    pub fn lifts_time(self) -> bool {
-        self != Layer::Whole
-    }
 }
 
 /// The layer of a parameter type.
@@ -114,14 +85,6 @@ pub fn is_nat_type(t: &Type) -> bool {
     matches!(&t.kind, TypeKind::Name { name, args } if args.is_empty() && name.sigils.is_empty() && name.base() == "Nat")
 }
 
-/// Convert an `Int` that a `Nat` parameter receives.
-pub fn to_nat(v: Value) -> Value {
-    match v {
-        Value::Int(n) if !n.is_negative() => Value::Nat(n),
-        other => other,
-    }
-}
-
 /// A function's code.
 pub struct FnCode {
     pub name: Rc<str>,
@@ -151,14 +114,13 @@ pub enum BlockKind {
     For(Option<&'static ForBinders>, bool),
 }
 
-/// A code object: what a closure or blueprint of the program does.
+/// A code object: what a closure or blueprint of the program does. Constructors, tags,
+/// operators, field access, indexing, interpolation and lifts are `prism_dyn`'s own.
 pub enum Code {
     Fn(FnCode),
     Lambda { params: Option<&'static [Pattern]>, body: &'static LambdaBody, module: ModId, layers: Vec<Layer> },
     Builtin { name: Rc<str>, sig: Option<&'static Signature>, layers: Vec<Layer>, nat: Vec<bool> },
-    Ctor(Rc<CtorInfo>, Vec<Layer>),
-    Tag(Rc<str>),
-    Method(Rc<MethodInfo>, Vec<Layer>),
+    Method(Rc<MethodMeta>, Vec<Layer>),
     /// A blueprint over a block, with its module and the row its module's `emit` sets.
     Block { block: &'static Block, kind: BlockKind, module: ModId, set_row: bool },
     /// A widget function applied: a blueprint of its arguments.
@@ -167,27 +129,10 @@ pub enum Code {
     WidgetBuiltin(Rc<str>),
     /// `@ v`: a blueprint whose result is `v`, evaluated when it builds.
     FreeAt { expr: &'static Expr, module: ModId },
-    /// An operator as a function, for lifting.
-    Op(OpKind),
-    /// A text literal's interpolation: the literal's plain parts, `None` where a
-    /// placeholder's value goes.
-    Interp(Rc<Vec<Option<String>>>),
-    /// Field access, `.f`.
-    Field(Rc<str>),
-    /// Indexing, `m[k]`.
-    Index,
-    /// `? v` and `~ v` as functions.
-    Wrap(Sigil),
-    /// A lifted application's node function: `captured = [f, args]`, the lifted
-    /// arguments in `slots`, in the order the node passes them.
-    Lifted { slots: Rc<Vec<usize>> },
     /// A `match` or `if` over a dynamic or an event with plain arms, as a lifted function
-    /// of its scrutinee and the handles its arms read (Type System ch. 4, "`match` and
-    /// `if` as lifting"). `captured = [names, extra, values]`; the node passes the
-    /// scrutinee's value and then the lifted names' values.
-    Arms { expr: &'static Expr, module: ModId, lifted: Rc<Vec<Rc<str>>>, filter: bool },
-    /// A map literal with handles inside, lifted (Claude's pick, see `eval`).
-    MapLit { keys: usize },
+    /// of its scrutinee and the values of the names its arms read (Type System ch. 4,
+    /// "`match` and `if` as lifting"; `prism_dyn::widget::lift_branch`).
+    Arms { expr: &'static Expr, module: ModId, names: Rc<Vec<Rc<str>>> },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -243,32 +188,6 @@ impl Scopes {
     }
 }
 
-/// The unbounded functions' bookkeeping, per thread (Semantics ch. 7, "Unbounded is a
-/// function color"; D6).
-///
-/// prism_zero does not save continuations. A cycle point is every call of an unbounded
-/// function from an unbounded function; the cycles of a job are the stretches between
-/// them. Since the function is pure, its run is the same whatever cycle it is replayed
-/// in, so `@Run` runs it once to the end, counting cycle points, and then reports `More`
-/// for as many cycles as the canonical rule gives and `Done` with the result in the last.
-/// The transcript (which tick the result fires in) is the canonical rule's; only the cost
-/// is front-loaded. A function that runs past the cycle budget is stopped at the budget's
-/// cycle point and resumed from its start, with twice the budget, in a later cycle, so a
-/// job that never ends (`Normalize` on omega) keeps `pending` set and every tick ends.
-#[derive(Default)]
-pub struct Unbounded {
-    pub depth: Cell<usize>,
-    pub budget: Cell<Option<u64>>,
-    pub points: Cell<u64>,
-}
-
-thread_local! {
-    pub static UNBOUNDED: Unbounded = Unbounded::default();
-}
-
-/// The kind of the fault that unwinds a run past its cycle budget.
-pub const CYCLE_BUDGET: &str = "prism_zero.CycleBudget";
-
 /// The interpreter.
 pub struct Interp {
     pub l: Loaded,
@@ -277,22 +196,65 @@ pub struct Interp {
     globals: RefCell<HashMap<(ModId, Rc<str>), Value>>,
     in_progress: RefCell<HashSet<(ModId, Rc<str>)>>,
     free: RefCell<HashMap<usize, Rc<Vec<Rc<str>>>>>,
-    ops: RefCell<Vec<(OpKind, CodeId)>>,
+    metas: RefCell<HashMap<CodeId, usize>>,
     me: Weak<Interp>,
 }
 
 impl Interp {
     pub fn new(l: Loaded) -> Rc<Interp> {
-        Rc::new_cyclic(|me| Interp {
+        let interp = Rc::new_cyclic(|me| Interp {
             l,
             codes: RefCell::new(Vec::new()),
             by_addr: RefCell::new(HashMap::new()),
             globals: RefCell::new(HashMap::new()),
             in_progress: RefCell::new(HashSet::new()),
             free: RefCell::new(HashMap::new()),
-            ops: RefCell::new(Vec::new()),
+            metas: RefCell::new(HashMap::new()),
             me: me.clone(),
-        })
+        });
+        interp.install();
+        interp
+    }
+
+    /// Hand the program's tables to `prism_dyn`: constructors, tags, and every `impl`'s
+    /// methods as function values.
+    fn install(&self) {
+        use prism_dyn::tables;
+        tables::reset();
+        for c in self.l.ctors.values() {
+            tables::add_ctor(ctor_meta(c));
+        }
+        for t in self.l.tags.values() {
+            tables::add_tag(t.decl.clone(), t.fault);
+        }
+        let mut infos: HashMap<(String, String), Rc<MethodInfo>> = HashMap::new();
+        for m in &self.l.modules {
+            for g in m.decls.values() {
+                if let Global::Method(info) = g {
+                    infos.insert((info.trait_name.to_string(), info.name.to_string()), info.clone());
+                }
+            }
+        }
+        for ((tr, ty), imp) in &self.l.impls {
+            tables::add_impl(tr, ty);
+            for (name, clauses) in &imp.methods {
+                let info = infos.get(&(tr.clone(), name.to_string()));
+                let sig = info.and_then(|i| i.sig);
+                let (layers, nat) = if sig.is_some() { sig_layers(sig) } else { (vec![Layer::Var, Layer::Var], vec![]) };
+                let id = self.add_code(Code::Fn(FnCode {
+                    name: name.clone(),
+                    sig,
+                    clauses: clauses.clone(),
+                    module: imp.module,
+                    mark: None,
+                    unbounded: false,
+                    layers,
+                    nat,
+                    local: false,
+                }));
+                tables::add_impl_method(tr, ty, name, self.closure(id, name, vec![]));
+            }
+        }
     }
 
     pub fn weak(&self) -> Weak<Interp> {
@@ -303,6 +265,10 @@ impl Interp {
 
     /// An error at a place in the program.
     pub fn fault(&self, loc: Loc, msg: impl Into<String>) -> Fault {
+        if loc.module == NOWHERE {
+            // No place known here: the application that reached it names its own.
+            return Fault::new("prism_zero.Eval", msg.into());
+        }
         Fault::new("prism_zero.Eval", format!("{}: {}", self.l.modules[loc.module].at(loc.span), msg.into()))
     }
 
@@ -340,18 +306,61 @@ impl Interp {
         id
     }
 
-    /// The code of a closure or a blueprint, by the number in its name.
-    pub fn code_id_of(name: &str) -> Option<CodeId> {
-        name.rsplit_once('#').and_then(|(_, n)| n.parse().ok())
+    /// The code of a function value the interpreter made.
+    pub fn code_of_value(&self, f: &Value) -> Option<Rc<Code>> {
+        let m = prism_dyn::func::meta_of_value(f)?;
+        if m.user == usize::MAX {
+            return None;
+        }
+        self.codes.borrow().get(m.user).cloned()
+    }
+
+    /// The `prism_dyn` meta of code `id`, registered on first use: the layers its
+    /// parameters declare, and a body that runs the code.
+    fn meta_id(&self, id: CodeId) -> usize {
+        if let Some(m) = self.metas.borrow().get(&id) {
+            return *m;
+        }
+        let code = self.code(id);
+        let (layers, nat, peel, name): (Vec<Layer>, Vec<bool>, bool, Rc<str>) = match &*code {
+            Code::Fn(fc) => {
+                if fc.mark == Some(Sigil::At) {
+                    (vec![Layer::Whole; fc.clauses.first().map(|c| c.params.len()).unwrap_or(0).max(fc.layers.len())], vec![], false, fc.name.clone())
+                } else {
+                    (fc.layers.clone(), fc.nat.clone(), true, fc.name.clone())
+                }
+            }
+            Code::Lambda { layers, .. } => (layers.clone(), vec![], false, Rc::from("lambda")),
+            Code::Builtin { name, layers, nat, .. } => {
+                if name.starts_with('@') {
+                    (vec![Layer::Whole; layers.len()], vec![], false, name.clone())
+                } else {
+                    (layers.clone(), nat.clone(), true, name.clone())
+                }
+            }
+            Code::Method(m, layers) => (layers.clone(), vec![], true, m.name.clone()),
+            _ => (vec![], vec![], false, Rc::from("code")),
+        };
+        let me = self.weak();
+        let mid = prism_dyn::func::register(FnMeta {
+            name,
+            layers,
+            nat,
+            peel,
+            ctor: None,
+            user: id,
+            body: Rc::new(move |cap, args, b| {
+                let interp = me.upgrade().ok_or_else(|| Fault::runtime("the interpreter is gone"))?;
+                interp.invoke(id, cap, args, b.as_deref_mut(), None)
+            }),
+        });
+        self.metas.borrow_mut().insert(id, mid);
+        mid
     }
 
     /// A function value over code `id`.
     pub fn closure(&self, id: CodeId, display: &str, captured: Vec<Value>) -> Value {
-        let me = self.weak();
-        Value::Closure(Closure::new(&format!("{display}#{id}"), captured, move |cap, args| {
-            let interp = me.upgrade().ok_or_else(|| Fault::runtime("the interpreter is gone"))?;
-            interp.invoke(id, cap, args.to_vec(), None, None)
-        }))
+        prism_dyn::func::closure(self.meta_id(id), display, captured)
     }
 
     /// A blueprint over code `id`.
@@ -363,25 +372,13 @@ impl Interp {
         }))
     }
 
-    /// The operator `op` as a function value, for lifting.
+    /// The operator `op` as a function value, for lifting (`prism_dyn`'s).
     pub fn op_value(&self, op: OpKind) -> Value {
-        let id = {
-            let found = self.ops.borrow().iter().find(|(o, _)| *o == op).map(|(_, id)| *id);
-            match found {
-                Some(id) => id,
-                None => {
-                    let id = self.add_code(Code::Op(op));
-                    self.ops.borrow_mut().push((op, id));
-                    id
-                }
-            }
-        };
-        let name = match op {
-            OpKind::Bin(b) => b.as_str(),
-            OpKind::Not => "not",
-            OpKind::Neg => "-",
-        };
-        self.closure(id, name, vec![])
+        match op {
+            OpKind::Bin(b) => prism_dyn::values::op_value(ops::op_of(b)),
+            OpKind::Neg => prism_dyn::values::unop_value(prism_dyn::values::UnOp::Neg),
+            OpKind::Not => prism_dyn::values::unop_value(prism_dyn::values::UnOp::Not),
+        }
     }
 
     // ----- environments -----
@@ -503,26 +500,7 @@ impl Interp {
                 let id = self.add_code(Code::Block { block: &decl.body, kind: BlockKind::Widget, module: owner, set_row: true });
                 self.blueprint(id, name, vec![Value::array(vec![]), Value::array(vec![])])
             }
-            Global::Ctor(info) => {
-                if info.fields.is_empty() {
-                    if info.record {
-                        Value::record(&info.name, vec![])
-                    } else {
-                        Value::ctor(&info.name, vec![])
-                    }
-                } else {
-                    let layers = info
-                        .fields
-                        .iter()
-                        .map(|(_, t)| match layer_of(t) {
-                            Layer::Var if info.params.iter().any(|p| matches!(&t.kind, TypeKind::Name{name,..} if name.base()==p)) => Layer::Whole,
-                            l => l,
-                        })
-                        .collect();
-                    let id = self.add_code(Code::Ctor(info.clone(), layers));
-                    self.closure(id, &info.name, vec![])
-                }
-            }
+            Global::Ctor(info) => prism_dyn::values::ctor_fn(Rc::new(ctor_meta(info))),
             Global::Unit(n) => Value::ctor(n, vec![]),
             Global::Builtin { sig } => {
                 if !matches!(sig.ty.kind, TypeKind::Fn { .. }) {
@@ -541,7 +519,31 @@ impl Interp {
             }
             Global::Method(info) => {
                 let (layers, _) = sig_layers(info.sig);
-                let id = self.add_code(Code::Method(info.clone(), layers));
+                let default = if info.default.is_empty() {
+                    None
+                } else {
+                    let (dl, dn) = sig_layers(info.sig);
+                    let id = self.add_code(Code::Fn(FnCode {
+                        name: info.name.clone(),
+                        sig: info.sig,
+                        clauses: info.default.clone(),
+                        module: info.module,
+                        mark: None,
+                        unbounded: false,
+                        layers: dl,
+                        nat: dn,
+                        local: false,
+                    }));
+                    Some(self.closure(id, &info.name, vec![]))
+                };
+                let meta = MethodMeta {
+                    trait_name: info.trait_name.clone(),
+                    name: info.name.clone(),
+                    dispatch: info.dispatch,
+                    default,
+                    prelude: info.module == self.l.prelude,
+                };
+                let id = self.add_code(Code::Method(Rc::new(meta), layers));
                 self.closure(id, name, vec![])
             }
         };
@@ -573,56 +575,10 @@ impl Interp {
     /// The value of a tag written as an expression: a fault kind is its own value; an
     /// element tag with fields is its constructor; with none, its element.
     pub fn tag_value(&self, name: &str, loc: Loc) -> R<Value> {
-        let t = self.tag(name).ok_or_else(|| self.fault(loc, format!("no tag {name}")))?;
-        if t.fault {
-            return Ok(Value::ctor(name, vec![]));
-        }
-        if t.decl.fields.is_empty() {
-            return Ok(Value::element(Element::new(&t.decl, vec![])?));
-        }
-        let id = self.code_at(t.ast, 0, || Code::Tag(Rc::from(name)));
-        Ok(self.closure(id, name, vec![]))
+        prism_dyn::values::tag_value(name).map_err(|f| self.wrap_fault(loc, f))
     }
 
     // ----- application -----
-
-    /// The layers a function value's parameters declare.
-    pub fn layers_of(&self, f: &Value) -> Option<(Rc<Code>, Vec<Layer>)> {
-        let Value::Closure(c) = f else { return None };
-        let id = Interp::code_id_of(c.name())?;
-        let code = self.code(id);
-        let layers = match &*code {
-            Code::Fn(fc) => {
-                if fc.mark == Some(Sigil::At) {
-                    vec![Layer::Whole; fc.clauses.first().map(|c| c.params.len()).unwrap_or(0).max(fc.layers.len())]
-                } else {
-                    fc.layers.clone()
-                }
-            }
-            Code::Lambda { layers, .. } => layers.clone(),
-            Code::Builtin { name, layers, .. } => {
-                if name.starts_with('@') {
-                    vec![Layer::Whole; layers.len()]
-                } else {
-                    layers.clone()
-                }
-            }
-            Code::Ctor(_, layers) | Code::Method(_, layers) => layers.clone(),
-            Code::Tag(_) => vec![],
-            Code::Op(OpKind::Bin(op)) => {
-                use BinOp::*;
-                match op {
-                    Add | Sub | Mul | Div | Mod | AddQ | SubQ | MulQ => vec![Layer::Concrete, Layer::Concrete],
-                    _ => vec![Layer::Var, Layer::Var],
-                }
-            }
-            Code::Op(OpKind::Neg) => vec![Layer::Concrete],
-            Code::Op(OpKind::Not) => vec![Layer::Var],
-            Code::Field(_) | Code::Index | Code::Wrap(_) | Code::Interp(_) | Code::MapLit { .. } => vec![],
-            _ => vec![],
-        };
-        Some((code, layers))
-    }
 
     /// Apply a function value to arguments, by the lifting table.
     pub fn apply(&self, f: &Value, args: Vec<Value>, b: Bx, loc: Loc) -> R<Value> {
@@ -631,78 +587,14 @@ impl Interp {
 
     /// Apply, with layers overridden by explicit instantiation (`Name<<$Int>> x`, Type
     /// System ch. 4: "`Twice<<$Int>> $x` asks for the other reading explicitly").
-    pub fn apply_with(&self, f: &Value, args: Vec<Value>, over: Option<&[Option<Layer>]>, b: Bx, loc: Loc) -> R<Value> {
-        let Value::Closure(c) = f else {
-            return Err(match f {
-                Value::Widget(_) => self.fault(loc, "a blueprint is applied by binding it with `<-`, never as a function (`@` never lifts)"),
-                other => self.fault(loc, format!("{} is not a function", ops::show_plain(other))),
-            });
-        };
-        let Some((_, mut layers)) = self.layers_of(f) else {
-            // A closure from outside the interpreter: called as it is.
-            return c.call(&args);
-        };
-        if let Some(over) = over {
-            for (i, o) in over.iter().enumerate() {
-                if let (Some(o), Some(l)) = (o, layers.get_mut(i)) {
-                    *l = *o;
-                }
-            }
-        }
-        let mut events = Vec::new();
-        let mut dyns = Vec::new();
-        for (i, a) in args.iter().enumerate() {
-            let layer = layers.get(i).copied().unwrap_or(Layer::Var);
-            if !layer.lifts_time() {
-                continue;
-            }
-            match a {
-                Value::Event(_) => events.push(i),
-                Value::Dynamic(_) => dyns.push(i),
-                _ => {}
-            }
-        }
-        if events.is_empty() && dyns.is_empty() {
-            let id = Interp::code_id_of(c.name()).unwrap();
-            return self.invoke(id, c.captured(), args, b, Some(loc));
-        }
-        self.lift(f.clone(), args, &events, &dyns, b, loc)
+    pub fn apply_with(&self, f: &Value, args: Vec<Value>, over: Option<&[Option<Layer>]>, mut b: Bx, loc: Loc) -> R<Value> {
+        prism_dyn::apply_with(&mut b, f, args, over).map_err(|e| self.wrap_fault(loc, e))
     }
 
-    /// Build the lift node for an application: a sample at one event, a map over
-    /// dynamics, or the refusal of two events (Type System ch. 4, the rows).
-    pub fn lift(&self, f: Value, args: Vec<Value>, events: &[usize], dyns: &[usize], b: Bx, loc: Loc) -> R<Value> {
-        if events.len() >= 2 {
-            return Err(self.fault(
-                loc,
-                "two events in one operation: in a tick where only one fires there is no value; merge them with `<|` to keep one, or use `!MergeAll` to keep both (Type System ch. 4)",
-            ));
-        }
-        let Some(b) = b else {
-            return Err(self.fault(
-                loc,
-                "this application lifts over a dynamic or an event, which makes a node, and there is no widget building here (a lift inside a node's function, or in a `check`)",
-            ));
-        };
-        let mut slots: Vec<usize> = events.to_vec();
-        slots.extend_from_slice(dyns);
-        let id = self.add_code(Code::Lifted { slots: Rc::new(slots.clone()) });
-        let mut plain_args = args.clone();
-        for &s in &slots {
-            plain_args[s] = Value::Unit;
-        }
-        let Value::Closure(node_fn) = self.closure(id, "lift", vec![f, Value::array(plain_args)]) else { unreachable!() };
-        let dyn_vals: Vec<Value> = dyns.iter().map(|&i| args[i].clone()).collect();
-        match events.first() {
-            Some(&e) => b.sample(&args[e], &dyn_vals, node_fn),
-            None => Ok(b.lift(&dyn_vals, node_fn)),
-        }
-    }
-
-    /// Run code `id` on plain arguments (or arguments its layers take whole).
-    pub fn invoke(&self, id: CodeId, cap: &[Value], args: Vec<Value>, mut b: Bx, loc: Option<Loc>) -> R<Value> {
+    /// Run code `id` on arguments its layers take (`prism_dyn` has lifted and peeled).
+    pub fn invoke(&self, id: CodeId, cap: &[Value], args: Vec<Value>, b: Bx, loc: Option<Loc>) -> R<Value> {
         let code = self.code(id);
-        let loc = loc.unwrap_or(Loc { module: self.l.prelude, span: Span::default() });
+        let loc = loc.unwrap_or(Loc { module: NOWHERE, span: Span::default() });
         match &*code {
             Code::Fn(fc) => {
                 if fc.mark == Some(Sigil::At) {
@@ -713,13 +605,7 @@ impl Interp {
                     c.extend(cap.iter().skip(2).cloned());
                     return Ok(self.blueprint(wid, &fc.name, c));
                 }
-                let (args, wrap) = match self.peel(&fc.layers, args) {
-                    Peeled::Short(v) => return Ok(v),
-                    Peeled::Args(a, w) => (a, w),
-                };
-                let args = convert_nat(&fc.nat, args);
-                let r = self.run_fn(fc, id, cap, args, b, loc)?;
-                Ok(wrap.apply(r))
+                self.run_fn(fc, id, cap, args, b, loc)
             }
             Code::Lambda { params, body, module, .. } => {
                 let (frame, _) = Interp::uncapture(cap);
@@ -746,98 +632,26 @@ impl Interp {
                     LambdaBody::Block(bl) => self.run_expr_block(bl, &mut sc, b),
                 }
             }
-            Code::Builtin { name, layers, nat, .. } => {
+            Code::Builtin { name, .. } => {
                 if name.starts_with('@') {
                     let wid = self.code_keyed(format!("wb:{name}"), || Code::WidgetBuiltin(name.clone()));
                     return Ok(self.blueprint(wid, name, vec![Value::array(vec![]), Value::array(args)]));
                 }
-                let (args, wrap) = match self.peel(layers, args) {
-                    Peeled::Short(v) => return Ok(v),
-                    Peeled::Args(a, w) => (a, w),
-                };
-                let args = convert_nat(nat, args);
-                let r = crate::builtins::call(self, name, &args, b, loc)?;
-                Ok(wrap.apply(r))
+                crate::builtins::call(self, name, &args, b, loc)
             }
-            Code::Ctor(info, _) => self.construct(info, args, loc),
-            Code::Tag(name) => {
-                let t = self.tag(name).unwrap();
-                let fields: Vec<(&str, Value)> =
-                    t.decl.fields.iter().map(|(n, _)| &**n).zip(args).collect();
-                self.element(name, fields, loc)
+            Code::Method(m, _) => {
+                let mut b = b;
+                prism_dyn::values::dispatch(m, args, &mut b).map_err(|f| self.wrap_fault(loc, f))
             }
-            Code::Method(info, layers) => {
-                let (args, wrap) = match self.peel(layers, args) {
-                    Peeled::Short(v) => return Ok(v),
-                    Peeled::Args(a, w) => (a, w),
-                };
-                let r = self.dispatch(info, args, b, loc)?;
-                Ok(wrap.apply(r))
-            }
-            Code::Op(op) => {
-                let (args, wrap) = match self.peel(&self.layers_of_op(*op), args) {
-                    Peeled::Short(v) => return Ok(v),
-                    Peeled::Args(a, w) => (a, w),
-                };
-                let r = match op {
-                    OpKind::Bin(op) => self.binop(*op, &args[0], &args[1], b.as_deref_mut(), loc)?,
-                    OpKind::Neg => ops::negate(&args[0])?,
-                    OpKind::Not => match &args[0] {
-                        Value::Bool(x) => Value::Bool(!x),
-                        other => return Err(self.fault(loc, format!("`not` needs a Bool, and was given {}", ops::show_plain(other)))),
-                    },
-                };
-                Ok(wrap.apply(r))
-            }
-            Code::Interp(parts) => {
-                let mut out = String::new();
-                let mut vals = args.into_iter();
-                for p in parts.iter() {
-                    match p {
-                        Some(s) => out.push_str(s),
-                        None => {
-                            let v = vals.next().unwrap_or(Value::Unit);
-                            out.push_str(&self.display(&v, b.as_deref_mut(), loc)?);
-                        }
-                    }
-                }
-                Ok(Value::text(&out))
-            }
-            Code::Field(name) => self.field(&args[0], name, loc),
-            Code::Index => self.index(&args[0], &args[1], loc),
-            Code::Wrap(Sigil::Question) => Ok(Value::some(args.into_iter().next().unwrap_or(Value::Unit))),
-            Code::Wrap(_) => Ok(Value::ok(args.into_iter().next().unwrap_or(Value::Unit))),
-            Code::Lifted { slots } => {
-                // `cap = [f, args]`; the node passes the lifted values in slot order.
-                let f = cap[0].clone();
-                let Value::Array(plain) = &cap[1] else { unreachable!() };
-                let mut full: Vec<Value> = plain.iter().cloned().collect();
-                for (k, &s) in slots.iter().enumerate() {
-                    full[s] = args.get(k).cloned().unwrap_or(Value::Unit);
-                }
-                self.apply(&f, full, None, loc)
-            }
-            Code::Arms { expr, module, lifted, filter } => {
+            Code::Arms { expr, module, names } => {
                 let (mut frame, _) = Interp::uncapture(cap);
                 let mut it = args.into_iter();
                 let scrut = it.next().unwrap_or(Value::Unit);
-                for (n, v) in lifted.iter().zip(it) {
+                for (n, v) in names.iter().zip(it) {
                     frame.vars.insert(n.clone(), v);
                 }
                 let mut sc = Scopes { module: *module, frames: vec![frame], mark: None, bind_kind: None };
-                let v = self.arms_with(expr, scrut, &mut sc, None)?;
-                if *filter {
-                    Ok(if crate::eval::is_never_marker(&v) { Value::nil() } else { Value::some(v) })
-                } else {
-                    Ok(v)
-                }
-            }
-            Code::MapLit { keys } => {
-                let mut m = im_rc::OrdMap::new();
-                for i in 0..*keys {
-                    m.insert(args[2 * i].clone(), args[2 * i + 1].clone());
-                }
-                Ok(Value::Map(m))
+                self.arms_with(expr, scrut, &mut sc, None)
             }
             Code::Block { .. } | Code::WidgetFn(_) | Code::WidgetBuiltin(_) | Code::FreeAt { .. } => {
                 Err(self.fault(loc, "a blueprint is not a function"))
@@ -845,76 +659,13 @@ impl Interp {
         }
     }
 
-    fn layers_of_op(&self, op: OpKind) -> Vec<Layer> {
-        use BinOp::*;
-        match op {
-            OpKind::Bin(Add | Sub | Mul | Div | Mod | AddQ | SubQ | MulQ) | OpKind::Neg => vec![Layer::Concrete, Layer::Concrete],
-            _ => vec![Layer::Var, Layer::Var],
-        }
-    }
-
-    /// Peel `?` and `~` at concrete parameters (Type System ch. 4, "`?` and `~` at the
-    /// plain layer"): `nil` or the leftmost `Error` short-circuits; otherwise the result
-    /// is wrapped once.
-    fn peel(&self, layers: &[Layer], mut args: Vec<Value>) -> Peeled {
-        let mut wrap = Wrap::default();
-        for (i, a) in args.iter_mut().enumerate() {
-            if layers.get(i).copied() != Some(Layer::Concrete) {
-                continue;
-            }
-            match a.clone() {
-                Value::Opt(None) => {
-                    wrap.nil = true;
-                }
-                Value::Opt(Some(x)) => {
-                    wrap.opt = true;
-                    *a = (*x).clone();
-                }
-                Value::Fallible(Err(e)) => {
-                    if wrap.err.is_none() {
-                        wrap.err = Some(Value::Fallible(Err(e)));
-                    }
-                }
-                Value::Fallible(Ok(x)) => {
-                    wrap.ok = true;
-                    *a = (*x).clone();
-                }
-                _ => {}
-            }
-        }
-        if let Some(e) = wrap.err.take() {
-            return Peeled::Short(e);
-        }
-        if wrap.nil {
-            return Peeled::Short(Value::nil());
-        }
-        Peeled::Args(args, wrap)
-    }
-
     /// Run a function's clauses: the first whose patterns match.
     fn run_fn(&self, fc: &FnCode, id: CodeId, cap: &[Value], args: Vec<Value>, b: Bx, loc: Loc) -> R<Value> {
         // A cycle point: a call of an unbounded function from an unbounded function.
-        let unbounded = fc.unbounded;
-        if unbounded {
-            let point = UNBOUNDED.with(|u| {
-                if u.depth.get() > 0 {
-                    let p = u.points.get() + 1;
-                    u.points.set(p);
-                    matches!(u.budget.get(), Some(budget) if p > budget)
-                } else {
-                    false
-                }
-            });
-            if point {
-                return Err(Fault::new(CYCLE_BUDGET, "the cycle budget ran out"));
-            }
-            UNBOUNDED.with(|u| u.depth.set(u.depth.get() + 1));
+        if fc.unbounded {
+            return prism_dyn::unbounded::unbounded(|| self.run_clauses(fc, id, cap, args, b, loc));
         }
-        let r = self.run_clauses(fc, id, cap, args, b, loc);
-        if unbounded {
-            UNBOUNDED.with(|u| u.depth.set(u.depth.get() - 1));
-        }
-        r
+        self.run_clauses(fc, id, cap, args, b, loc)
     }
 
     fn run_clauses(&self, fc: &FnCode, id: CodeId, cap: &[Value], args: Vec<Value>, b: Bx, loc: Loc) -> R<Value> {
@@ -1050,239 +801,48 @@ impl Interp {
     /// What a statement does with the value on its right: an element is emitted, a
     /// blueprint is built (transparently, Semantics ch. 8), anything else is the value.
     pub fn bind_build(&self, v: Value, b: &mut Build, loc: Loc) -> R<Value> {
-        match v {
-            Value::Element(e) => {
-                self.check_identity(&e, loc)?;
-                b.emit((*e).clone())
-            }
-            Value::Widget(bp) => b.call(&bp, &[]),
-            other => Ok(other),
-        }
-    }
-
-    /// A dynamic where an identity field goes is refused, naming `rebuild` (Semantics
-    /// ch. 8, "Fields: what each sigil promises"; Type System ch. 4, "`@` never lifts").
-    fn check_identity(&self, e: &Element, loc: Loc) -> R<()> {
-        let Some(decl) = &e.decl else { return Ok(()) };
-        for (n, v) in &e.fields {
-            if decl.field_kind(n) == Some(prism_rt::FieldKind::Identity) && !v.is_plain() {
-                return Err(self.fault(
-                    loc,
-                    format!(
-                        "a dynamic in the identity field `{n}` of {}: a new {n} is a new place; for a new element per value, write\n      rebuild $x:\n          {}({n}=_, ..)",
-                        e.tag, e.tag
-                    ),
-                ));
-            }
-        }
-        Ok(())
+        prism_dyn::widget::bind_build(&mut Some(b), v).map_err(|f| self.wrap_fault(loc, f))
     }
 
     /// Construct a record or a choice. A record's arguments come in field order.
     pub fn construct(&self, info: &CtorInfo, args: Vec<Value>, loc: Loc) -> R<Value> {
-        if args.len() != info.fields.len() {
-            return Err(self.fault(loc, format!("{} takes {} arguments and was given {}", info.name, info.fields.len(), args.len())));
-        }
-        let args: Vec<Value> =
-            args.into_iter().zip(info.fields.iter()).map(|(a, (_, t))| if is_nat_type(t) { to_nat(a) } else { a }).collect();
-        if info.record {
-            let fields = info.fields.iter().map(|(n, _)| &**n).zip(args).collect();
-            let v = Value::record(&info.name, fields);
-            // `Error(..)` is the failed `~T` (Semantics ch. 10), as the transcript reads it back.
-            if &*info.name == "Error" {
-                if let Value::Record(r) = v {
-                    return Ok(Value::Fallible(Err(Rc::new(Value::Record(r)))));
-                }
-            }
-            Ok(v)
-        } else {
-            Ok(Value::ctor(&info.name, args))
-        }
+        prism_dyn::values::construct(&ctor_meta(info), args).map_err(|f| self.wrap_fault(loc, f))
     }
 
     /// Construct an element of a declared tag, fields by name (Semantics ch. 8).
     pub fn element(&self, tag: &str, fields: Vec<(&str, Value)>, loc: Loc) -> R<Value> {
-        let t = self.tag(tag).ok_or_else(|| self.fault(loc, format!("no tag {tag}")))?;
-        if t.fault {
-            return Err(self.fault(loc, format!("{tag} is a fault kind, not an element")));
-        }
-        Element::new(&t.decl, fields).map(Value::element).map_err(|f| self.fault(loc, f.message))
-    }
-
-    /// A trait method, dispatched on the runtime type of its dispatch argument (Type
-    /// System ch. 3): the type's `impl`, else the trait's default, else the structural
-    /// answer of a derivable trait.
-    fn dispatch(&self, info: &MethodInfo, args: Vec<Value>, b: Bx, loc: Loc) -> R<Value> {
-        let recv = args.get(info.dispatch).cloned().unwrap_or(Value::Unit);
-        let recv = match &recv {
-            // An array or optional of the trait's type dispatches on its first element.
-            Value::Array(a) if !a.is_empty() && !self.has_impl(&info.trait_name, "[]") => a[0].clone(),
-            _ => recv,
-        };
-        let ty = ops::type_name(&self.l, &recv);
-        if let Some(imp) = self.l.impls.get(&(info.trait_name.to_string(), ty.to_string())) {
-            if let Some(clauses) = imp.methods.get(&info.name) {
-                let id = self.code_at(&clauses[0].span, 3, || {
-                    let (layers, nat) = sig_layers(info.sig);
-                    Code::Fn(FnCode {
-                        name: info.name.clone(),
-                        sig: info.sig,
-                        clauses: clauses.clone(),
-                        module: imp.module,
-                        mark: None,
-                        unbounded: false,
-                        layers,
-                        nat,
-                        local: false,
-                    })
-                });
-                return self.invoke(id, &[], args, b, Some(loc));
-            }
-        }
-        if !info.default.is_empty() {
-            let id = self.code_at(&info.default[0].span, 4, || {
-                let (layers, nat) = sig_layers(info.sig);
-                Code::Fn(FnCode {
-                    name: info.name.clone(),
-                    sig: info.sig,
-                    clauses: info.default.clone(),
-                    module: info.module,
-                    mark: None,
-                    unbounded: false,
-                    layers,
-                    nat,
-                    local: false,
-                })
-            });
-            return self.invoke(id, &[], args, b, Some(loc));
-        }
-        if info.module == self.l.prelude {
-            return crate::builtins::structural(self, &info.name, &args, loc);
-        }
-        Err(self.fault(loc, format!("^{} has no impl for {ty}, and {} has no default", info.trait_name, info.name)))
+        prism_dyn::values::element(tag, fields).map_err(|f| self.wrap_fault(loc, f))
     }
 
     pub fn has_impl(&self, trait_name: &str, ty: &str) -> bool {
-        self.l.impls.contains_key(&(trait_name.to_string(), ty.to_string()))
+        prism_dyn::tables::has_impl(trait_name, ty)
     }
 
     /// A binary operator: a user `impl` of the operator's trait method first (Type System
     /// ch. 3: "`==` is a method of `^Eq`"), then the built-in meaning.
-    pub fn binop(&self, op: BinOp, a: &Value, b2: &Value, b: Bx, loc: Loc) -> R<Value> {
-        let ty = ops::type_name(&self.l, a);
-        let tr = match op {
-            BinOp::Eq | BinOp::NotEq => "Eq",
-            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => "Ord",
-            _ => "Num",
-        };
-        if let Some(imp) = self.l.impls.get(&(tr.to_string(), ty.to_string())) {
-            if let Some(clauses) = imp.methods.get(op.as_str()) {
-                let id = self.code_at(&clauses[0].span, 5, || {
-                    Code::Fn(FnCode {
-                        name: Rc::from(op.as_str()),
-                        sig: None,
-                        clauses: clauses.clone(),
-                        module: imp.module,
-                        mark: None,
-                        unbounded: false,
-                        layers: vec![Layer::Var, Layer::Var],
-                        nat: vec![],
-                        local: false,
-                    })
-                });
-                return self.invoke(id, &[], vec![a.clone(), b2.clone()], b, Some(loc));
-            }
-            if tr == "Ord" {
-                if let Some(clauses) = imp.methods.get("Compare") {
-                    let _ = clauses;
-                    let o = self.compare_by_trait(a, b2, b, loc)?;
-                    return Ok(Value::Bool(match op {
-                        BinOp::Lt => o == std::cmp::Ordering::Less,
-                        BinOp::Le => o != std::cmp::Ordering::Greater,
-                        BinOp::Gt => o == std::cmp::Ordering::Greater,
-                        _ => o != std::cmp::Ordering::Less,
-                    }));
-                }
-            }
-        }
-        ops::binop(&self.l, op, a, b2).map_err(|f| self.fault(loc, f.message))
-    }
-
-    fn compare_by_trait(&self, a: &Value, b2: &Value, b: Bx, loc: Loc) -> R<std::cmp::Ordering> {
-        let Some((owner, g)) = self.resolve_bare(self.l.prelude, "Compare") else {
-            return Ok(ops::compare(&self.l, a, b2));
-        };
-        let f = self.global(owner, "Compare", &g, None, loc)?;
-        let r = self.apply(&f, vec![a.clone(), b2.clone()], b, loc)?;
-        Ok(match &r {
-            Value::Choice(c) if &*c.ctor == "Less" => std::cmp::Ordering::Less,
-            Value::Choice(c) if &*c.ctor == "Greater" => std::cmp::Ordering::Greater,
-            _ => std::cmp::Ordering::Equal,
-        })
+    pub fn binop(&self, op: BinOp, a: &Value, b2: &Value, mut b: Bx, loc: Loc) -> R<Value> {
+        prism_dyn::values::binop_plain(&mut b, ops::op_of(op), a, b2).map_err(|f| self.wrap_fault(loc, f))
     }
 
     /// How a placeholder's value enters a text: a text as it is, a character as itself,
     /// anything else by `Show` (Type System ch. 4, interpolation).
-    pub fn display(&self, v: &Value, b: Bx, loc: Loc) -> R<String> {
-        Ok(match v {
-            Value::Text(t) => t.to_string(),
-            Value::Char(c) => c.to_string(),
-            Value::Nat(n) | Value::Int(n) => n.to_string(),
-            Value::U8(n) => n.to_string(),
-            Value::Bool(x) => if *x { "True".into() } else { "False".into() },
-            other => self.show(other, b, loc)?,
-        })
+    pub fn display(&self, v: &Value, mut b: Bx, loc: Loc) -> R<String> {
+        prism_dyn::values::display(v, &mut b).map_err(|f| self.wrap_fault(loc, f))
     }
 
     /// `Show`: the type's `impl ^Show` if it has one, else the transcript's spelling.
-    pub fn show(&self, v: &Value, b: Bx, loc: Loc) -> R<String> {
-        let ty = ops::type_name(&self.l, v);
-        if self.has_impl("Show", &ty) {
-            if let Some((owner, g)) = self.resolve_bare(self.l.prelude, "Show") {
-                let f = self.global(owner, "Show", &g, None, loc)?;
-                if let Value::Text(t) = self.apply(&f, vec![v.clone()], b, loc)? {
-                    return Ok(t.to_string());
-                }
-            }
-        }
-        Ok(ops::show_plain(v))
+    pub fn show(&self, v: &Value, mut b: Bx, loc: Loc) -> R<String> {
+        prism_dyn::values::show(v, &mut b).map_err(|f| self.wrap_fault(loc, f))
     }
 
-    /// Field access, with `?` and `~` peeled at the plain layer (Type System ch. 4,
-    /// "Field access is a plain function"). A failed `~` passes through, except that an
-    /// `Error`'s own fields are read: a value of type `Error` and a failed `~T` are one
-    /// value in compiler zero.
+    /// Field access, with `?` and `~` peeled at the plain layer (`prism_dyn::values::field`).
     pub fn field(&self, v: &Value, name: &str, loc: Loc) -> R<Value> {
-        match v {
-            Value::Record(r) => r
-                .fields
-                .iter()
-                .find(|(n, _)| &**n == name)
-                .map(|(_, v)| v.clone())
-                .ok_or_else(|| self.fault(loc, format!("{} has no field {name}", r.name))),
-            Value::Element(e) => e.field(name).cloned().ok_or_else(|| self.fault(loc, format!("{} has no field {name}", e.tag))),
-            Value::Opt(None) => Ok(Value::nil()),
-            Value::Opt(Some(x)) => Ok(Value::some(self.field(x, name, loc)?)),
-            Value::Fallible(Ok(x)) => Ok(Value::ok(self.field(x, name, loc)?)),
-            Value::Fallible(Err(e)) => match self.field(e, name, loc) {
-                Ok(f) => Ok(f),
-                Err(_) => Ok(v.clone()),
-            },
-            other => Err(self.fault(loc, format!("{} has no field {name}", ops::show_plain(other)))),
-        }
+        prism_dyn::values::field(v, name).map_err(|f| self.wrap_fault(loc, f))
     }
 
     /// Indexing: `?v` (Semantics ch. 10, "Indexing returns `?V`").
     pub fn index(&self, v: &Value, k: &Value, loc: Loc) -> R<Value> {
-        match v {
-            Value::Map(m) => Ok(m.get(k).cloned().map(Value::some).unwrap_or(Value::nil())),
-            Value::Array(a) => Ok(ops::index_of(k).and_then(|i| a.get(i).cloned()).map(Value::some).unwrap_or(Value::nil())),
-            Value::Text(t) => Ok(ops::index_of(k).and_then(|i| t.char_at(i)).map(|c| Value::some(Value::Char(c))).unwrap_or(Value::nil())),
-            Value::Record(r) if &*r.name == "Table" => crate::builtins::table_get(v, k),
-            Value::Opt(None) => Ok(Value::nil()),
-            Value::Opt(Some(x)) => self.index(x, k, loc),
-            other => Err(self.fault(loc, format!("{} cannot be indexed", ops::show_plain(other)))),
-        }
+        prism_dyn::values::index(v, k).map_err(|f| self.wrap_fault(loc, f))
     }
 
     fn bind_for_row(&self, sc: &mut Scopes, binders: Option<&'static ForBinders>, dynamic: bool, args: &[Value], module: ModId) -> R<()> {
@@ -1328,30 +888,25 @@ impl Interp {
     }
 }
 
-/// What peeling left: a short-circuit value, or the arguments and how to wrap the result.
-enum Peeled {
-    Short(Value),
-    Args(Vec<Value>, Wrap),
-}
-
-#[derive(Default)]
-struct Wrap {
-    nil: bool,
-    opt: bool,
-    ok: bool,
-    err: Option<Value>,
-}
-
-impl Wrap {
-    fn apply(&self, r: Value) -> Value {
-        let mut r = r;
-        if self.opt && !matches!(r, Value::Opt(_)) {
-            r = Value::some(r);
-        }
-        if self.ok && !matches!(r, Value::Fallible(_)) {
-            r = Value::ok(r);
-        }
-        r
+/// A constructor's `prism_dyn` entry: a type-parameter field takes its argument whole
+/// (Type System ch. 4, "Where the table looks").
+fn ctor_meta(c: &CtorInfo) -> prism_dyn::tables::CtorMeta {
+    let layers = c
+        .fields
+        .iter()
+        .map(|(_, t)| match layer_of(t) {
+            Layer::Var if c.params.iter().any(|p| matches!(&t.kind, TypeKind::Name{name,..} if name.base()==p)) => Layer::Whole,
+            l => l,
+        })
+        .collect();
+    prism_dyn::tables::CtorMeta {
+        name: c.name.clone(),
+        type_name: c.type_name.clone(),
+        record: c.record,
+        fields: c.fields.iter().map(|(n, _)| n.clone()).collect(),
+        nat: c.fields.iter().map(|(_, t)| is_nat_type(t)).collect(),
+        layers,
+        index: c.index,
     }
 }
 
@@ -1363,6 +918,6 @@ pub fn sig_layers(sig: Option<&Signature>) -> (Vec<Layer>, Vec<bool>) {
     }
 }
 
-fn convert_nat(nat: &[bool], args: Vec<Value>) -> Vec<Value> {
-    args.into_iter().enumerate().map(|(i, a)| if nat.get(i).copied().unwrap_or(false) { to_nat(a) } else { a }).collect()
-}
+/// The module of a place no one knows: a fault there names no place, and the
+/// application that reached it names its own.
+pub const NOWHERE: ModId = usize::MAX;

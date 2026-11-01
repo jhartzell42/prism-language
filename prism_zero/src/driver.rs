@@ -278,15 +278,7 @@ pub fn test_files(files: &[(String, String)], scripts: &[(String, String)]) -> O
         }));
         // A type with its own `^Show` prints by it in the transcript, a path's key
         // included (Type System ch. 2): prism_rt asks the interpreter through its hook.
-        let i3 = interp.clone();
-        let hook: prism_rt::pod::ShowHook = Rc::new(move |v: &Value| {
-            let ty = crate::ops::type_name(&i3.l, v);
-            if !i3.has_impl("Show", &ty) {
-                return None;
-            }
-            i3.show(v, None, Loc { module: i3.l.prelude, span: Default::default() }).ok()
-        });
-        let before = prism_rt::pod::set_show_hook(Some(hook));
+        let before = prism_rt::pod::set_show_hook(Some(prism_dyn::values::show_hook()));
         let report = world.run(&s.text);
         prism_rt::pod::set_show_hook(before);
         let transcript = report.transcript.clone();

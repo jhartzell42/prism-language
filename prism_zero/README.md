@@ -10,7 +10,11 @@ below.*
 A dynamic interpreter of Prism over `prism_rt`, with no type checker (D3): lifting and
 trait dispatch are decided at each application from runtime values and the sigils on
 names and signatures. `src/lib.rs` describes the modules; each cites the book rules it
-keeps.
+keeps. The semantics an application needs at run time (the lifting table, peeling, trait
+dispatch, the builtins, pattern tests, lens paths, the widget bindings, the `Prelude.Unwrap`
+World) are `prism_dyn`'s, which the Rust that `prismc` emits calls too: compiler zero walks
+the tree and hands each code's layers and body to `prism_dyn`, so there is one
+implementation of the semantics (decisions.md D16).
 
 ## Usage
 

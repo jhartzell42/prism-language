@@ -36,21 +36,12 @@ use prism_rt::{ResultKind, Value};
 use prism_syntax::ast::*;
 
 use crate::interp::{BlockKind, Bx, Code, Interp, Loc, OpKind, Scopes};
+pub use prism_dyn::values::is_handle;
 use crate::load::Global;
 use crate::ops::R;
 use crate::pattern::parse_int;
 
-/// A dynamic or an event: a value the lifting table peels.
-pub fn is_handle(v: &Value) -> bool {
-    matches!(v, Value::Dynamic(_) | Value::Event(_))
-}
-
-/// What `never` is outside a build: the arm of a lifted `match` that fires nothing.
-const NEVER: &str = "prism_zero.never";
-
-pub fn is_never_marker(v: &Value) -> bool {
-    matches!(v, Value::Choice(c) if &*c.ctor == NEVER)
-}
+pub use prism_dyn::widget::{is_never_marker, NEVER};
 
 /// The names that decisions.md puts out of this compiler, by name (prism_syntax API.md,
 /// pick OS), with the feature each belongs to.
@@ -102,18 +93,8 @@ impl Interp {
                     vs.push(self.eval(k, sc, b.as_deref_mut())?);
                     vs.push(self.eval(v, sc, b.as_deref_mut())?);
                 }
-                if vs.iter().any(is_handle) {
-                    // Pick ML: the literal lifts over its handles.
-                    let id = self.code_at(e, 20, || Code::MapLit { keys: entries.len() });
-                    let f = self.closure(id, "{map}", vec![]);
-                    return self.apply(&f, vs, b, loc);
-                }
-                let mut m = im_rc::OrdMap::new();
-                let mut it = vs.into_iter();
-                while let (Some(k), Some(v)) = (it.next(), it.next()) {
-                    m.insert(k, v);
-                }
-                Ok(Value::Map(m))
+                // Pick ML: the literal lifts over its handles.
+                prism_dyn::values::map_literal(&mut b, vs).map_err(|f| self.wrap_fault(loc, f))
             }
             ExprKind::Group(inner) => self.eval(inner, sc, b),
             ExprKind::Call { callee, args, rest, .. } => {
@@ -159,13 +140,8 @@ impl Interp {
                 }
                 Sigil::Question | Sigil::Tilde => {
                     let v = self.eval(operand, sc, b.as_deref_mut())?;
-                    if is_handle(&v) {
-                        let key = if *sigil == Sigil::Question { 22 } else { 23 };
-                        let id = self.code_at(&(), key, || Code::Wrap(*sigil));
-                        let f = self.closure(id, if key == 22 { "?" } else { "~" }, vec![]);
-                        return self.apply(&f, vec![v], b, loc);
-                    }
-                    Ok(if *sigil == Sigil::Question { Value::some(v) } else { Value::ok(v) })
+                    let r = if *sigil == Sigil::Question { prism_dyn::values::wrap_some(&mut b, v) } else { prism_dyn::values::wrap_ok(&mut b, v) };
+                    r.map_err(|f| self.wrap_fault(loc, f))
                 }
                 Sigil::Bang => Err(self.fault(loc, "a free `!` stands only before a type")),
                 Sigil::Amp => Err(self.fault(loc, "a reference stands only in an `update` block")),
@@ -177,12 +153,7 @@ impl Interp {
             ExprKind::Index { recv, index } => {
                 let r = self.eval(recv, sc, b.as_deref_mut())?;
                 let k = self.eval(index, sc, b.as_deref_mut())?;
-                if is_handle(&r) || is_handle(&k) {
-                    let id = self.code_at(&(), 24, || Code::Index);
-                    let f = self.closure(id, "[]", vec![]);
-                    return self.apply(&f, vec![r, k], b, loc);
-                }
-                self.index(&r, &k, loc)
+                prism_dyn::values::get_index(&mut b, r, k).map_err(|f| self.wrap_fault(loc, f))
             }
             ExprKind::TopicField(name) => {
                 let r = self.lookup_local(sc, "_", b.as_deref_mut(), loc)?.ok_or_else(|| self.fault(loc, "no topic `_` here"))?;
@@ -284,7 +255,7 @@ impl Interp {
 
     /// A fault from `prism_rt`, placed at the statement that caused it.
     pub fn wrap_fault(&self, loc: Loc, f: prism_rt::Fault) -> prism_rt::Fault {
-        if f.kind == crate::interp::CYCLE_BUDGET || f.message.contains(".prism:") {
+        if f.kind == crate::interp::CYCLE_BUDGET || f.message.contains(".prism:") || loc.module == crate::interp::NOWHERE {
             return f;
         }
         prism_rt::Fault::new(f.kind.clone(), format!("{}: {}", self.l.modules[loc.module].at(loc.span), f.message))
@@ -302,13 +273,8 @@ impl Interp {
         }
     }
 
-    fn field_of(&self, e: &'static Expr, r: Value, name: &str, b: Bx, loc: Loc) -> R<Value> {
-        if is_handle(&r) {
-            let id = self.code_at(e, 31, || Code::Field(Rc::from(name)));
-            let f = self.closure(id, &format!(".{name}"), vec![]);
-            return self.apply(&f, vec![r], b, loc);
-        }
-        self.field(&r, name, loc)
+    fn field_of(&self, _e: &'static Expr, r: Value, name: &str, mut b: Bx, loc: Loc) -> R<Value> {
+        prism_dyn::values::get_field(&mut b, r, name).map_err(|f| self.wrap_fault(loc, f))
     }
 
     /// A name: a local, a global, a tag, a builtin reached by its qualified name.
@@ -390,24 +356,21 @@ impl Interp {
                 } else {
                     // Interpolation: the text-building function applied to every
                     // placeholder (Type System ch. 4), so it lifts like any other.
-                    let id = self.code_at(l, 33, || {
-                        Code::Interp(Rc::new(
-                            segs.iter()
-                                .map(|s| match s {
-                                    TextSeg::Plain(p) => Some(p.clone()),
-                                    TextSeg::Placeholder(_) => None,
-                                })
-                                .collect(),
-                        ))
-                    });
+                    let parts: Vec<Option<&str>> = segs
+                        .iter()
+                        .map(|s| match s {
+                            TextSeg::Plain(p) => Some(p.as_str()),
+                            TextSeg::Placeholder(_) => None,
+                        })
+                        .collect();
                     let mut vals = Vec::new();
                     for s in segs {
                         if let TextSeg::Placeholder(e) = s {
                             vals.push(self.eval(e, sc, b.as_deref_mut())?);
                         }
                     }
-                    let f = self.closure(id, "interpolate", vec![]);
-                    self.apply(&f, vals, b.as_deref_mut(), loc)?
+                    let mut bb = b.as_deref_mut();
+                    prism_dyn::values::interpolate(&mut bb, &parts, vals).map_err(|f| self.wrap_fault(loc, f))?
                 }
             }
         };
@@ -473,38 +436,14 @@ impl Interp {
 
     /// Named arguments of a record's constructor, put in field order.
     fn order_named(&self, f: &Value, named: Vec<(Option<&str>, Value)>, loc: Loc) -> R<Vec<Value>> {
-        let info = match self.layers_of(f).map(|(c, _)| c) {
-            Some(c) => match &*c {
-                Code::Ctor(info, _) => info.clone(),
-                _ => return Err(self.fault(loc, "named arguments are a record's or an element's")),
-            },
-            None => return Err(self.fault(loc, "named arguments are a record's or an element's")),
-        };
-        let mut out: Vec<Option<Value>> = vec![None; info.fields.len()];
-        for (i, (n, v)) in named.into_iter().enumerate() {
-            let slot = match n {
-                Some(n) => info
-                    .fields
-                    .iter()
-                    .position(|(f, _)| &**f == n)
-                    .ok_or_else(|| self.fault(loc, format!("{} has no field {n}", info.name)))?,
-                None => i,
-            };
-            if slot < out.len() {
-                out[slot] = Some(v);
-            }
-        }
-        out.into_iter()
-            .enumerate()
-            .map(|(i, v)| v.ok_or_else(|| self.fault(loc, format!("{} needs its field {}", info.name, info.fields[i].0))))
-            .collect()
+        prism_dyn::values::order_named(f, named).map_err(|e| self.wrap_fault(loc, e))
     }
 
     /// The layers `F<<T, ..>>` fixes: a parameter whose declared type is a variable given
     /// a sigiled type takes its argument whole. Variables in order of first appearance
     /// (Type System ch. 2, Inference).
     fn instantiation(&self, f: &Value, types: &[Type]) -> Vec<Option<crate::interp::Layer>> {
-        let sig = match self.layers_of(f).map(|(c, _)| c) {
+        let sig = match self.code_of_value(f) {
             Some(c) => match &*c {
                 Code::Fn(fc) => fc.sig,
                 Code::Builtin { sig, .. } => *sig,
@@ -716,45 +655,25 @@ impl Interp {
         }
     }
 
-    /// Pick LM: a `match` or `if` over a handle, as one lifted node.
+    /// Pick LM: a `match` or `if` over a handle, as one lifted node
+    /// (`prism_dyn::widget::lift_branch`): its arms read the locals they name, the
+    /// handles among them as node inputs.
     fn lift_arms(&self, e: &'static Expr, s: Value, sc: &mut Scopes, mut b: Bx, loc: Loc) -> R<Value> {
         let free = self.free_names(e, walk_arms);
-        let mut lifted_names: Vec<Rc<str>> = Vec::new();
-        let mut lifted_vals = Vec::new();
-        let mut plain_names: Vec<Rc<str>> = Vec::new();
+        let mut names: Vec<Rc<str>> = Vec::new();
+        let mut vals = Vec::new();
         for n in free.iter() {
             if let Some(v) = self.lookup_local(sc, n, b.as_deref_mut(), loc)? {
-                if is_handle(&v) {
-                    lifted_names.push(n.clone());
-                    lifted_vals.push(v);
-                } else {
-                    plain_names.push(n.clone());
-                }
+                names.push(n.clone());
+                vals.push(v);
             }
         }
-        let mut args = vec![s];
-        args.extend(lifted_vals);
-        let events: Vec<usize> = (0..args.len()).filter(|i| matches!(args[*i], Value::Event(_))).collect();
-        let dyns: Vec<usize> = (0..args.len()).filter(|i| matches!(args[*i], Value::Dynamic(_))).collect();
-        if events.len() >= 2 {
-            return Err(self.fault(
-                loc,
-                "this `match` reads several events in its arms; compiler zero lifts a `match` over one event at most (doubt EL's gates are not built); merge the arms' events with `<|` outside the `match`",
-            ));
-        }
-        let filter = !events.is_empty();
-        let key = format!("arms:{}:{}", e as *const Expr as usize, lifted_names.join(","));
+        let key = format!("arms:{}:{}", e as *const Expr as usize, names.join(","));
         let module = sc.module;
-        let lifted = Rc::new(lifted_names);
-        let id = self.code_keyed(key, || Code::Arms { expr: e, module, lifted: lifted.clone(), filter });
-        let cap = self.capture(sc, &plain_names, vec![], b.as_deref_mut(), loc)?;
-        let f = self.closure(id, "match", cap);
-        let node = self.lift(f, args, &events, &dyns, b.as_deref_mut(), loc)?;
-        if filter {
-            let b = b.ok_or_else(|| self.fault(loc, "a lifted `match` makes a node, and there is no widget building here"))?;
-            return b.filter(&node);
-        }
-        Ok(node)
+        let names = Rc::new(names);
+        let id = self.code_keyed(key, || Code::Arms { expr: e, module, names: names.clone() });
+        let f = self.closure(id, "match", vec![Value::array(vec![]), Value::array(vec![])]);
+        prism_dyn::widget::lift_branch(&mut b, s, vals, f).map_err(|f| self.wrap_fault(loc, f))
     }
 
     /// Code templates (Templates ch. 2) as text: each run as written, each placeholder by
@@ -782,23 +701,7 @@ impl Interp {
                         }
                         other => self.display(other, b.as_deref_mut(), loc)?,
                     };
-                    match column {
-                        // A placeholder alone on its line indents every line of its value.
-                        Some(c) => {
-                            let pad = " ".repeat(*c as usize);
-                            let lines: Vec<&str> = text.split('\n').collect();
-                            for (i, l) in lines.iter().enumerate() {
-                                if i > 0 {
-                                    out.push('\n');
-                                }
-                                if !l.is_empty() {
-                                    out.push_str(&pad);
-                                }
-                                out.push_str(l);
-                            }
-                        }
-                        None => out.push_str(&text),
-                    }
+                    prism_dyn::rt::place_text(out, &text, column.map(|c| c as usize));
                 }
                 TemplatePart::Block(block) => {
                     let v = self.run_expr_block(block, sc, b.as_deref_mut())?;
@@ -808,7 +711,7 @@ impl Interp {
                 }
                 TemplatePart::Call { name, attrs, body, span } => {
                     let cloc = Loc { module: sc.module, span: *span };
-                    let f = self.eval_name(name, sc, b.as_deref_mut(), cloc)?;
+                    let f = self.template_callee(name, sc, b.as_deref_mut(), cloc)?;
                     let mut args = Vec::new();
                     for a in attrs {
                         args.push(self.eval(&a.value, sc, b.as_deref_mut())?);
@@ -824,6 +727,26 @@ impl Interp {
             }
         }
         Ok(())
+    }
+
+    /// The function a template's `<@Name ...>` call applies: `@Name`, or, in the function
+    /// form, where no `@Name` is declared, the plain function `Name` (prismc/README.md,
+    /// pick TC: Templates ch. 2 gives `inline_text` no call form).
+    fn template_callee(&self, name: &'static SName, sc: &mut Scopes, mut b: Bx, loc: Loc) -> R<Value> {
+        match self.eval_name(name, sc, b.as_deref_mut(), loc) {
+            Ok(f) => Ok(f),
+            Err(e) if name.sigils.first() == Some(&Sigil::At) && name.path.len() == 1 => {
+                let bare = name.base();
+                if let Some(v) = self.lookup_local(sc, bare, b.as_deref_mut(), loc)? {
+                    return Ok(v);
+                }
+                match self.resolve_bare(sc.module, bare) {
+                    Some((owner, g)) => self.global(owner, bare, &g, b, loc),
+                    None => Err(e),
+                }
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// A code object made once per key.
@@ -1045,36 +968,4 @@ pub fn walk_stmt(s: &Stmt, out: &mut Vec<Rc<str>>) {
     }
 }
 
-/// A `for` over a plain collection gathers its rows' results as the table of Semantics
-/// ch. 4 says: rows ending on events give `!(K ==> T)`, firing with the rows that fired;
-/// rows ending on dynamics give `$(K ==> T)`. `prism_rt`'s plain `for` hands back the map
-/// of the rows' results as they are, so the interpreter gathers it.
-fn gather_plain_rows(r: Value, b: &mut prism_rt::Build) -> R<Value> {
-    let Value::Map(m) = &r else { return Ok(r) };
-    if m.is_empty() {
-        return Ok(r);
-    }
-    let keys: Vec<Value> = m.keys().cloned().collect();
-    let vals: Vec<Value> = m.values().cloned().collect();
-    if vals.iter().all(|v| matches!(v, Value::Event(_))) {
-        let f = prism_rt::Closure::new("for.rows", vec![Value::array(keys)], |cap, fired| {
-            let Value::Array(keys) = &cap[0] else { unreachable!() };
-            let mut out = im_rc::OrdMap::new();
-            for (k, v) in keys.iter().zip(fired) {
-                if let Value::Opt(Some(x)) = v {
-                    out.insert(k.clone(), (**x).clone());
-                }
-            }
-            Ok(if out.is_empty() { Value::nil() } else { Value::some(Value::Map(out)) })
-        });
-        return b.combine(&vals, f);
-    }
-    if vals.iter().all(|v| matches!(v, Value::Dynamic(_))) {
-        let f = prism_rt::Closure::new("for.rows", vec![Value::array(keys)], |cap, now| {
-            let Value::Array(keys) = &cap[0] else { unreachable!() };
-            Ok(Value::Map(keys.iter().cloned().zip(now.iter().cloned()).collect()))
-        });
-        return Ok(b.lift(&vals, f));
-    }
-    Ok(r)
-}
+use prism_dyn::widget::gather_plain_rows;

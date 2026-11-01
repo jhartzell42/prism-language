@@ -22,6 +22,8 @@ The lexer, parser and tree of Prism, written in Prism and run by compiler zero
   boundaries, out-of-scope diagnostics, and the test language.
 - `sexp.prism` (module `Sexp`): the S-expression printer, `prism_syntax/src/sexp.rs`
   exactly.
+- `check-errors.prism`, `check-types.prism`, `check-env.prism`, `check-expr.prism`,
+  `check-blocks.prism`, `check-passes.prism`: the checker (Checker, below).
 - `front.prism` (the root): `@main`.
 
 ## Running it
@@ -161,7 +163,99 @@ Places where compiler zero or the prelude lacks something, worked around in Pris
       Deep 1000 => 1000        # thread 'main' has overflowed its stack; aborted
   ```
 
+- **IB4 A placeholder alone on its line lost its line's newline** (fixed in
+  `prism_zero/src/eval.rs`, via `prism_dyn::rt::place_text`). Templates ch. 2: "the
+  placeholder's line is replaced by" its text's lines; compiler zero wrote the lines with no
+  final newline, so the next line of the template joined the placeholder's last line.
+
+  ```prism
+  F: fn Text -> Text
+  fn F body = inline_text <rust>
+  fn f() {
+      {{body}}
+  }
+  </rust>
+
+  check alone:
+      F "x" => "fn f() \{\n    x\n\}\n"      # was "fn f() {\n    x}\n"
+  ```
+
+- **IB5 Two modules declaring one constructor name** (a regression of the `prism_dyn`
+  extraction, fixed before it shipped): a constructor is built from its own declaration
+  (`prism_dyn::values::ctor_fn`), as it was before; the tables keep one entry per bare name,
+  which is what `^Ord` and trait dispatch read (they have always been program-wide).
+
+## Back end
+
+`compile` lowers the program to a core form and emits a Rust crate through code templates
+(decisions.md D1, D16):
+
+```
+prism_zero run prismc/*.prism prismc/templates/*.prism -- compile FILES... -o DIR [--name NAME]
+target/stage3/prismc -- compile FILES... -o DIR [--name NAME]       # the same, compiled
+(cd DIR && cargo build --release)                                     # add --features canvas for chess
+DIR/target/release/NAME [--world cli|test|canvas] [-- ARGS... | SCRIPTS.prismtest...]
+```
+
+- `lower.prism` (module `Lower`): the program (modules, declarations, `use` scopes, tags,
+  constructors, impls, trait methods) and the core form: names resolved to Rust locals and
+  global getters, layers read off signatures, patterns resolved, expression blocks' `let`s
+  in the order compiler zero forces them, widget blocks' lines in the order compiler zero
+  runs them (pick BG of prism_zero/README.md, done statically: positional lines in page
+  order, forward events, deferred event `let`s, the holds' `then`s last), captures explicit.
+- `emit.prism` (module `Emit`): the core form to Rust, the compile job (`ZCompile`, run
+  through `@Run`), `main.rs` and `Cargo.toml`. A nested function is a Rust `fn` item hoisted
+  to the top of the function it stands in, so an expression stays on one line.
+- `templates/rust.prism` (module `RustTemplates`): every multi-line piece of Rust, as
+  function-form templates with doubled braces; placeholders alone on their lines indent.
+- `front.prism`: `@main`'s `compile` branch, `@CompileMain`.
+- The emitted code is straight-line Rust over `prism_dyn::rt`: every value a
+  `prism_rt::Value`, every application `apply(&f, vec![..], b)?` through the lifting table
+  compiler zero uses. `.prismtest` files among FILES are compiled into the binary too: their
+  `check` lines and their `test name, @program:` blueprints, run by `--world test SCRIPTS`.
+- The checker is not called yet: `check-passes.prism` exposes no `Check` entry the back end
+  can call; `compile` does not run it.
+- Bootstrap: `tests/bootstrap/stage1.sh`, `stage2.sh`, `stage3.sh`, `check.sh` (stage 2 and 3
+  byte-equal), all from one snapshot of the sources (`target/bootstrap-src/`);
+  `compiled-tests.sh [PRISMC|zero]` compiles every conformance program and example and runs
+  its script under the compiled Test World against its `.expected`. `make bootstrap`,
+  `make test`, `make chess` at the root.
+
+### Back-end picks
+
+- **NM Names.** A Prism name's sigils become letters (`$` d, `!` e, `@` w, `?` q, `~` t, `&` r):
+  `$count` is the local `ld_count`, `@counter` the getter `gw_counter`; a Prism module is
+  the Rust module `m_<name>`, the root `m_main`. Refused: a table of numbered names, which
+  Jimmy could not read.
+- **GL Every global is a getter** made once per thread (`rt::global`), a function its
+  closure: applications are uniform, `apply(&crate::m_lexer::g_Join()?, ..)`. Refused:
+  direct Rust calls to known functions, which need the layers at the call site (a later
+  optimization, typed codegen's job).
+- **HI Hoisted items.** Lambdas, arms, widget blocks become `fn` items at the top of the
+  enclosing function, named by their source offset (`lam_312`), their environment passed
+  as `cap`/`env` slices. Refused: Rust closures capturing locals, which hide captured values
+  from the collector (D5).
+- **ST Static binding groups.** The order of a group's lines is decided at compile time by
+  simulating compiler zero's forcing; the free-name walk is scope-aware (compiler zero's
+  over-approximation, IB1, would make some `let`s cycles at compile time).
+- **CP Cycle points** at an unbounded function's entry, counted only when an unbounded
+  function is running (`rt::within_unbounded`), and per `while` turn: compiler zero's CP,
+  so a compiled `@Run` and an interpreted one take the same number of cycles.
+- **TC `<@Name ...>` in `inline_text`** calls the plain function `Name` (its attributes,
+  then its body's text) when no `@Name` is declared; compiler zero does the same now.
+  Templates ch. 2 gives the function form no call form, so this is an extension; doubt below.
+- **LO Locations.** Each emitted function places the faults inside it at its source
+  position (`within("prismc/lexer.prism:312:5", || ..)`), the innermost first.
+- **RT The runtime path.** `Cargo.toml` finds `prism_rt`, `prism_dyn` and `worlds/canvas`
+  at `--runtime PATH`, by default one `..` per directory of `-o DIR` (DIR under the repo
+  root), so stage 2 and stage 3 emit the same file.
+
 ## Doubts
+
+- **TC** `<@` calls in `inline_text` go past Templates ch. 2, which gives the function form
+  no call form ("a nested template is a function called in a placeholder"); the task asked
+  for `<@` calls. Jimmy rules which one stands; the emitter uses placeholders everywhere and
+  no `<@` call yet, so dropping TC costs nothing.
 
 - **PF** reads less like the books' recursive descent than a language with exceptions
   would; every step after a failure still runs, as a no-op. If Prism gains early exit from a
