@@ -22,9 +22,6 @@ by hand from the books' rules and starts with a `# not yet run` line.*
     of prism-reflex's `layout.md`, and `@Window`. It is general on purpose: the card games
     will use its rows, layers and turned frames.
   - `pieces/`: the thirteen 64-by-64 PNGs the squares show, from prism-reflex.
-- **`counter.prism`**: the counter (Semantics ch. 1 and 3, Pitch ch. 3).
-- **`half-counter.prism`**: half the counter, with no merge (Compiler ch. 3).
-- **`todos.prism`**: the comparison run's todo list (Pitch ch. 11), rows keyed by id, each
   with a Star that is the row's own hold.
 
 Each program `X.prism` has:
@@ -43,7 +40,6 @@ Each program `X.prism` has:
 
 - **Tests, now:** `prism_zero test examples/chess/rules.prism examples/chess/window.prism
   examples/chess/board.prism` runs each file's `.prismtest` under the Test World and
-  compares with its `.expected`. Likewise `prism_zero test examples/counter.prism`, and the
   same for the half counter and the todo list.
 - **Chess in a window, now:** `prism_zero run examples/chess/board.prism
   examples/chess/rules.prism examples/chess/window.prism`: `board.prism` is the one file with

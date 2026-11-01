@@ -250,7 +250,7 @@ fn the_conformance_counter_counts() {
 
 #[test]
 fn the_example_counter_keeps_the_left() {
-    verify(include_str!("../../examples/counter.prismtest"), include_str!("../../examples/counter.expected"));
+    verify(include_str!("../../tests/conformance/counter.prismtest"), include_str!("../../tests/conformance/counter.expected"));
 }
 
 #[test]

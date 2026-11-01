@@ -62,9 +62,9 @@ wanted() { [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" =
 declare -A programs
 for f in tests/conformance/*.prism; do programs[$(basename "$f" .prism)]="$f"; done
 programs[sem-ch06-birds]="tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds/birds.prism"
-programs[counter]=examples/counter.prism
-programs[half-counter]=examples/half-counter.prism
-programs[todos]=examples/todos.prism
+programs[counter]=tests/conformance/counter.prism
+programs[half-counter]=tests/conformance/half-counter.prism
+programs[todos]=tests/conformance/todos.prism
 programs[chess]="examples/chess/board.prism examples/chess/rules.prism examples/chess/window.prism"
 programs[prelude]="$(ls prelude/*.prism | tr '\n' ' ')"
 programs[prismc]="$(ls prismc/*.prism prismc/templates/*.prism | tr '\n' ' ')"

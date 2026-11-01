@@ -68,15 +68,12 @@ fn every_conformance_transcript_matches() {
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
 
-/// The examples committed beside this crate (examples/README.md): the counter, the half
-/// counter, the todo list, and the chess rules module's checks.
+/// The example committed beside this crate (examples/README.md): the chess rules module's
+/// checks. The counter, half counter and todo list are conformance transcripts above.
 #[test]
 fn the_examples_pass_their_scripts() {
     let ex = root().join("examples");
     for (files, script) in [
-        (vec!["counter.prism"], "counter.prismtest"),
-        (vec!["half-counter.prism"], "half-counter.prismtest"),
-        (vec!["todos.prism"], "todos.prismtest"),
         (vec!["chess/rules.prism"], "chess/rules.prismtest"),
     ] {
         let paths: Vec<String> = files.iter().map(|f| ex.join(f).to_string_lossy().to_string()).collect();
