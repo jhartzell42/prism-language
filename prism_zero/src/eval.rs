@@ -712,9 +712,26 @@ impl Interp {
                 TemplatePart::Call { name, attrs, body, span } => {
                     let cloc = Loc { module: sc.module, span: *span };
                     let f = self.template_callee(name, sc, b.as_deref_mut(), cloc)?;
+                    // Attributes are named arguments: each binds to the callee's parameter
+                    // of that name, whatever order they are written in (Templates ch. 2;
+                    // the checker reads them the same way). Written order is kept only when
+                    // the callee's parameters are not all plain names.
+                    let order: Vec<usize> = match self.template_param_names(&f) {
+                        Some(names) if names.len() == attrs.len() && attrs.iter().all(|a| a.name.is_some()) => {
+                            let mut idx = Vec::with_capacity(names.len());
+                            for n in &names {
+                                match attrs.iter().position(|a| a.name.as_ref().map(|i| i.name.as_str()) == Some(n.as_str())) {
+                                    Some(i) => idx.push(i),
+                                    None => return Err(self.fault(cloc, format!("template call <@{}> has no attribute for parameter {}", name.base(), n))),
+                                }
+                            }
+                            idx
+                        }
+                        _ => (0..attrs.len()).collect(),
+                    };
                     let mut args = Vec::new();
-                    for a in attrs {
-                        args.push(self.eval(&a.value, sc, b.as_deref_mut())?);
+                    for i in order {
+                        args.push(self.eval(&attrs[i].value, sc, b.as_deref_mut())?);
                     }
                     if let Some(body) = body {
                         let mut inner = String::new();
@@ -727,6 +744,25 @@ impl Interp {
             }
         }
         Ok(())
+    }
+
+    /// The callee's parameter names, when every clause parameter is a plain name, so a
+    /// template call's attributes can bind by name.
+    fn template_param_names(&self, f: &Value) -> Option<Vec<String>> {
+        let code = self.code_of_value(f)?;
+        let fc = match &*code {
+            crate::interp::Code::Fn(fc) => fc,
+            _ => return None,
+        };
+        let clause = fc.clauses.first()?;
+        let mut names = Vec::new();
+        for p in &clause.params {
+            match &p.kind {
+                prism_syntax::ast::PatternKind::Name(n) if n.sigils.is_empty() => names.push(n.base().to_string()),
+                _ => return None,
+            }
+        }
+        Some(names)
     }
 
     /// The function a template's `<@Name ...>` call applies: `@Name`, or, in the function
