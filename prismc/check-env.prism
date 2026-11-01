@@ -1280,22 +1280,29 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
             TyCon con, args:
                 if BuiltinHas w.cls, con: (([[]], (Solved st, w, t, "builtin")))
                 else: match ?FindImpl g, st, w.cls, t:
-                    ? ((im, s2, how)):
+                    ? ((im, s2, how, ch)):
                         let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
-                        ((wants, (Solved s2, w, t, how)))
+                        ((wants, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch)))
                     nil:
                         let fix = if bare == "Num" and con == "Text": "" else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
                         (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`", fix)))
             otherwise: (([[]], st))
 
 # The one impl whose header matches, by one-way matching (T1): its `where` bounds as
-# wanted constraints on the matched types.
-?FindImpl: unbounded fn G, St, Text, Ty -> ?(([((Ty, Text))], St, Text))
+# wanted constraints on the matched types, and the choice the shrink check reads
+# (`NoteChoice`).
+?FindImpl: unbounded fn G, St, Text, Ty -> ?(([((Ty, Text))], St, Text, Text))
 fn ?FindImpl g, st, cls, t = Fold (Or g.impls[cls], [[]]), nil, \|?found, im| match ?found:
     ? f: ? f
     nil: match ?MatchHead im.head, (Zonk st, t), {}:
-        ? m: ? (((Each im.bounds, \|((v, c))| (((Or m[v], TyErr), c))), st, (ImplHow g, im)))
+        ? m: ? (((Each im.bounds, \|((v, c))| (((Or m[v], TyErr), c))), st, (ImplHow g, im), (ImplChoice im)))
         nil: nil
+
+# An impl as a choice: a derived one by its type, a written one by where it stands.
+ImplChoice: fn ImplInfo -> Text
+fn ImplChoice im = match im.head:
+    TyCon n, ignore: if im.derived: "derived:{n}" else: "impl:{im.file}.{im.span.start}"
+    otherwise: if im.derived: "any" else: "impl:{im.file}.{im.span.start}"
 
 # Where an impl stands, for the typed output: `impl PATH:LINE` or `derived PATH:LINE`.
 ImplHow: fn G, ImplInfo -> Text
@@ -1303,9 +1310,15 @@ fn ImplHow g, im:
     let src = Or g.srcs[im.file], (MkSrc "?", "")
     "{if im.derived: "derived" else: "impl"} {src.path}:{(CLineOf src.starts, im.span.start) + 1}"
 
-# A constraint solved, noted for the typed output.
+# A constraint solved, noted for the typed output and, but for a written or derived impl
+# (`?FindImpl` notes those), as the shrink check's choice: a given, a packed value, a
+# quantified `let` may be any impl; a built-in type or a former's parts none.
 Solved: fn St, Want, Ty, Text -> St
-fn Solved st, w, t, how = NoteImpl st, w.file, w.span, w.cls, t, how
+fn Solved st, w, t, how:
+    let s2 = NoteImpl st, w.file, w.span, w.cls, t, how
+    if how == "given" or how == "packed" or how == "quantified": NoteChoice s2, w.file, w.span, w.cls, "any"
+    else: if how == "builtin" or how == "parts": NoteChoice s2, w.file, w.span, w.cls, "none"
+    else: s2
 
 # One-way matching of an impl head (with `TyQ` variables) against a type.
 ?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)

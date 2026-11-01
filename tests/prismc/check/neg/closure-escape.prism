@@ -1,0 +1,25 @@
+# `may-not-end`: a closure parameter that escapes is not cleared (pick CT). `Later` keeps
+# `F` in a lambda it returns, which may run after `Later` returned, so what `Later` hands
+# it says nothing: `Grow`'s cycle through it never ends; `AddUp` only calls its `F`, and
+# `Total` checks clean.
+type Tree = choice:
+    Leaf Nat
+    Node [Tree]
+
+Later: fn [Tree], (fn Tree -> Nat) -> (fn Nat -> Nat)
+fn Later ts, F = \|k| Fold ts, k, \|acc, t| acc + (F t)
+
+Grow: fn Tree -> Nat
+fn Grow (Leaf n):
+    let G = Later [[(Node [[Leaf n]])]], Grow
+    G n
+fn Grow (Node ts):
+    let G = Later ts, Grow
+    G 0
+
+AddUp: fn [Tree], (fn Tree -> Nat) -> Nat
+fn AddUp ts, F = Fold ts, 0, \|acc, t| acc + (F t)
+
+Total: fn Tree -> Nat
+fn Total (Leaf n) = n
+fn Total (Node ts) = AddUp ts, Total

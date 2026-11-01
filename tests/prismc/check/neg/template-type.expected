@@ -1,0 +1,4 @@
+tests/prismc/check/neg/template-type.prism:9: error[mismatch]: expected `Text`, found `Nat`
+    <@Quote text={{n}}/>
+                   ^
+1 error

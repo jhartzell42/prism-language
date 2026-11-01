@@ -1,0 +1,4 @@
+tests/prismc/check/neg/template-unknown.prism:8: error[unknown-name]: nothing declares `Nope` here
+    <@Nope x={{n}}/>
+    ^^^^^^^^^^^^^^^^
+1 error

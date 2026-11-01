@@ -1,0 +1,14 @@
+# `unknown-name`: a template call is a call like any (Templates ch. 2). `Broken`'s
+# `<@Nope ...>` names nothing; `Fine`'s `<@Quote ...>` calls `Quote`, and checks clean.
+Quote: fn Text -> Text
+fn Quote text = "> {text}"
+
+Broken: fn Nat -> Text
+fn Broken n = inline_text <txt>
+<@Nope x={{n}}/>
+</txt>
+
+Fine: fn Text -> Text
+fn Fine t = inline_text <txt>
+<@Quote text={{t}}/>
+</txt>

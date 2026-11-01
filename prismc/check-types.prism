@@ -121,10 +121,11 @@ type St = record:
     fieldQs: [FieldQ]
     recording: Bool
     typed: TProgram
+    choices: (Text ==> [Text])
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped)
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={})
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
@@ -211,6 +212,21 @@ fn NoteFn st, span, name, declared, body = if not st.recording: st else: update 
 NoteImpl: fn St, Nat, Range, Text, Ty, Text -> St
 fn NoteImpl st, file, span, cls, t, how = if not st.recording or (Take cls, 6) == "Range " or cls == "Prelude.Sub" or cls == "Prelude.Signed": st else: update st:
     &_.typed.impls <= Push &_.typed.impls, ImplNote(at=At(file=file, span=span), cls=cls, ty=t, how=how)
+
+# How the solver answered a constraint at a place, kept whether or not the typed program is
+# recorded, for the shrink check's operator and method calls (pick OP): `impl:FILE.START`
+# (a written impl, by where it stands), `derived:TYPE`, `any` (a variable under a bound, a
+# packed value, a quantified `let`: every impl may answer), `none` (built in, or through
+# its parts, each part noted at the same place).
+NoteChoice: fn St, Nat, Range, Text, Text -> St
+fn NoteChoice st, file, span, cls, ch:
+    let k = ChoiceKey file, span, cls
+    if (Take cls, 6) == "Range " or cls == "Prelude.Sub" or cls == "Prelude.Signed": st
+    else: update st:
+        &_.choices <= Insert &_.choices, k, (AddText (Or &_.choices[k], [[]]), ch)
+
+ChoiceKey: fn Nat, Range, Text -> Text
+fn ChoiceKey file, span, cls = "{file}:{span.start}:{span.end}:{cls}"
 
 NoteMethod: fn St, Range, Text, Text -> St
 fn NoteMethod st, span, method, cls = if not st.recording: st else: update st:

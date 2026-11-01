@@ -1,0 +1,11 @@
+# `may-not-end`: the shrink check reads a name as what it resolves to where it stands. In
+# `Grow` a local `fn Drop` shares the prelude's name and adds to the list, so `Drop xs, 1`
+# is bigger than `xs` and `Grow` never ends; `Shrink` calls the prelude's `Drop`, and
+# checks clean.
+Grow: fn [Nat] -> Nat
+fn Grow xs:
+    fn Drop ys, k = Push ys, k
+    if (Len xs) == 0: 0 else: Grow (Drop xs, 1)
+
+Shrink: fn [Nat] -> Nat
+fn Shrink xs = if (Len xs) == 0: 0 else: Shrink (Drop xs, 1)

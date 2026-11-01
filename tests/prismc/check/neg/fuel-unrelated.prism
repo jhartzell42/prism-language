@@ -17,9 +17,7 @@ Drain: fn Nat, Nat -> Nat
 fn Drain fuel, other = update 0:
     let &fuel = fuel
     let &other = other
-    while &fuel > 0:
+    while ? less <- &fuel -? 1:
         &_ += 1
-        match &fuel -? 1:
-            ? less: &fuel <= less
-            nil: &fuel <= 0
+        &fuel <= less
         &other <= other

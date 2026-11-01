@@ -917,8 +917,6 @@ ruling taken (Claude's).
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
   `Done` and calls `?`.
-- **TU Tuples beyond pairs** have no `Show` in `prism_rtl` and the orphan rule keeps a
-  program from adding one.
 - **DY Dynamics across nodes.** A row reads its block's events through ports, but not its
   block's holds or dynamic `let`s (`sem-ch07-paged`'s inner `rebuild $src`): the
   contract's `Dynamic` with its update port is not used yet.

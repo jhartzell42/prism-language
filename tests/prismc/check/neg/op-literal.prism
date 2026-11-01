@@ -1,0 +1,20 @@
+# `may-not-end`: an operator reaches the impl the solver chose at the call (pick OP), not
+# one guessed from how the argument is written. `2 * a` is `*` at `Money` (the literal is
+# a `Money`), so Money's `*` calls itself through `Times` and never ends; Bag's `*`
+# multiplies the `Nat`s inside, the built-in `*`, and checks clean.
+type Money = choice:
+    Cents Nat
+derive ^Eq, ^Show
+
+type Bag = choice:
+    Count Nat
+derive ^Eq, ^Show
+
+impl ^Num Money:
+    fn * a, b = Times a, b
+
+Times: fn Money, Money -> Money
+fn Times a, b = 2 * a
+
+impl ^Num Bag:
+    fn * (Count m), (Count n) = Count (m * n)

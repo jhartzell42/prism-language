@@ -1503,7 +1503,7 @@ fn WantsAbove st, t, lambda:
         let bounds = Fold mine, [[]], \|acc, w| match Walk st, w.ty:
             TyFlex n: if (Take w.cls, 6) == "Range ": acc else: Push acc, ((n, w.cls))
             otherwise: acc
-        let st1 = Fold mine, st, \|s, w| NoteImpl s, w.file, w.span, w.cls, w.ty, "quantified"
+        let st1 = Fold mine, st, \|s, w| NoteChoice (NoteImpl s, w.file, w.span, w.cls, w.ty, "quantified"), w.file, w.span, w.cls, "any"
         let st2 = update st1:
             &_.wants <= others
         (([[]], bounds, st2))
@@ -1623,10 +1623,75 @@ fn TemplatePartCheck env, st, part = match part:
     TpBlock b:
         let ((t, st2)) = InferExprBlock env, st, b
         st2
-    TpCall ignore, args, ?parts, ignore:
-        let st2 = Fold args, st, \|s, a|
-            let ((t, s2)) = Infer env, s, a.value
-            s2
-        match ?parts:
-            ? ps: Fold ps, st2, \|s, p| TemplatePartCheck env, s, p
-            nil: st2
+    TpCall n, args, ?parts, span: TemplateCallCheck env, st, n, args, ?parts, span
+
+# `<@Name attr={{v}}>body</@Name>` is a call like any (Templates ch. 2; lowering passes it
+# so): `@Name` if a declaration has that name, else `Name`; each attribute the parameter
+# of its name (the one place every clause naming it gives), the body, a text, the last
+# parameter; checked by the application rule against the callee's signature, its result
+# a text. An attribute no parameter has, a parameter left out, a name nothing declares
+# are errors.
+TemplateCallCheck: unbounded fn Env, St, SName, [Arg], ?[TemplatePart], Range -> St
+fn TemplateCallCheck env, st, n, args, ?parts, span:
+    let plain = SName(sigils=(Drop n.sigils, 1), path=n.path, span=n.span)
+    let ((?qk1, ignore)) = ResolveValue env.g, env.home, n
+    let callee = if ?qk1 != nil: n else: plain
+    let ((?qk, ignore2)) = ResolveValue env.g, env.home, callee
+    let cname = SNameKey plain
+    match ?qk:
+        nil:
+            let ((ignore3, st2)) = CallGlobal env, st, callee, [[]], span, [[]], callee.span
+            st2
+        ? qk:
+            let clauses = match env.g.fnAt[qk]:
+                ? i: match env.g.defs[i]:
+                    ? d: match d.body:
+                        DbFn cs: cs
+                        otherwise: [[]]
+                    nil: [[]]
+                nil: [[]]
+            let arity = match clauses[0]:
+                ? c: Len c.params
+                nil: 0
+            if (Len clauses) == 0: Err st, "mismatch", span, "`<@{cname}>` calls a function without clauses, which name no parameters for its attributes"
+            else:
+                let ((slots, st1)) = Fold args, (({}, st)), \|((m, s)), a| match a.?name:
+                    ? id: match ?TemplateSlot clauses, id.name:
+                        ? j: if HasKey m, "{j}": ((m, (Err s, "mismatch", a.span, "`{id.name}` is given twice"))) else: (((Insert m, "{j}", a.value), s))
+                        nil: ((m, (Err s, "mismatch", a.span, "`{cname}` has no parameter `{id.name}`")))
+                    nil: ((m, (Err s, "mismatch", a.span, "a template call names each argument: `name=\{\{value\}\}`")))
+                let ?body = match ?parts:
+                    ? ps: ? (Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span))
+                    nil: nil
+                let last = Dec arity
+                let st2 = match ?body:
+                    ? ignore4: if arity == 0 or HasKey slots, "{last}": Err st1, "mismatch", span, "`{cname}` has no parameter left for the call's body" else: st1
+                    nil: st1
+                let quiet = (Len st1.diags) > (Len st.diags)
+                let ((positional, st3)) = Fold (Range0 arity), (([[]], st2)), \|((acc, s)), j| match slots["{j}"]:
+                    ? v: (((Push acc, Arg(name=nil, value=v, span=v.span)), s))
+                    nil: match ?body:
+                        ? b: if j == last: (((Push acc, Arg(name=nil, value=b, span=span)), s)) else: TemplateMissing acc, s, clauses, j, cname, span, quiet
+                        nil: TemplateMissing acc, s, clauses, j, cname, span, quiet
+                let ((t, st4)) = CallGlobal env, st3, callee, positional, span, [[]], callee.span
+                Unify st4, tText, t, span
+
+# A parameter no attribute gives: an error (unless an attribute was already wrong, which
+# says it), and an error argument in its place.
+TemplateMissing: unbounded fn [Arg], St, [FnClause], Nat, Text, Range, Bool -> (([Arg], St))
+fn TemplateMissing acc, st, clauses, j, cname, span, quiet:
+    let pname = match clauses[0]:
+        ? c: match c.params[j]:
+            ? p: ParamNameOf p
+            nil: ""
+        nil: ""
+    let st2 = if quiet: st else: Err st, "mismatch", span, "`<@{cname}>` needs `{pname}=`"
+    (((Push acc, Arg(name=nil, value=Expr(kind=EError, span=span), span=span)), st2))
+
+# The parameter an attribute names: the one place every clause that names it gives.
+?TemplateSlot: unbounded fn [FnClause], Text -> ?Nat
+fn ?TemplateSlot clauses, name:
+    let found = Fold clauses, [[]], \|acc, c| Fold (Range0 (Len c.params)), acc, \|a2, i| match c.params[i]:
+        ? p: if (ParamNameOf p) == name: AddNat a2, i else: a2
+        nil: a2
+    if (Len found) == 1: found[0] else: nil

@@ -325,7 +325,9 @@ fn ClauseCoverage env, st, clauses, params, span:
 
 # The prelude's widget bindings whose result is not prompt in their argument: a deferral,
 # a later firing, a job's result (D6); every other widget function is taken as prompt in
-# everything it is given (the worst a blueprint parameter assumes, doubt PS).
+# everything it is given (the worst a blueprint parameter assumes, doubt PS). A name is
+# one of them only when it resolves to the prelude's own declaration, never to a local or
+# a program's own `@Defer`.
 IsDelayedWidget: fn Text -> Bool
 fn IsDelayedWidget n = HasText [["@Defer", "@Later", "@Run", "@Machine", "@started"]], n
 
@@ -378,40 +380,77 @@ fn ReadIsPrompt env, st, n, layer = match env.locals[n]:
             otherwise: (IsLowerText (Drop n, (Len (MarksOf n)))) and h == ""
     nil: False
 
+# What the prompt walk resolves names against: the program and the block's module.
+type PCx = record:
+    g: G
+    home: Text
+derive ^Eq, ^Show
+
 # The block's names a right side reads promptly, through the shrink check's one walk (pick
 # GH): every name it mentions at any depth, a guard's, a method call's, a cast's and a
 # template's included, except under a lambda, a local `fn` or a nested widget (a closure
 # or a blueprint is not read where it is written), inside a `rebuild` or `for` (construction
 # is never an edge), and in the arguments of a delayed widget binding. A traversal's step
-# is read: the walk gives its body, not the lambda, since the traversal calls it now.
+# is read: the walk gives its body, not the lambda, since the traversal calls it now; so
+# is a lambda passed to any function but a prelude widget function's, which may call it
+# now. A name bound again inside the right side (a lambda's parameter, an arm's binder, an
+# inner `let`) is not the block's. Every name is resolved: a delayed widget or a traversal
+# is the prelude's only when the name resolves to the prelude's declaration.
 PromptReads: unbounded fn Env, St, Expr, [Text] -> [Text]
-fn PromptReads env, st, e, defs = Filter (SpotsNames (PromptSpots e)), \|n| HasText defs, n
+fn PromptReads env, st, e, defs:
+    let cx = PCx(g=env.g, home=env.home)
+    let seeds = Fold (Keys (PreludeSeeds env.g, env.home)), (PreludeSeeds env.g, env.home), \|m, k| if HasKey env.locals, (Drop k, 4): Remove m, k else: m
+    let spots = PromptSpots cx, e, seeds
+    Fold spots, [[]], \|acc, sp| Fold (SpotSites sp), acc, \|a2, site| if (HasText defs, site.callee) and not (IsLocal site.rels, site.callee): AddText a2, site.callee else: a2
 
-PromptSpots: unbounded fn Expr -> [Spot]
-fn PromptSpots e = Fold (PromptKids e), [[(SpotExpr e, {})]], \|acc, k| Append acc, (PromptKidSpots k)
+PromptSpots: unbounded fn PCx, Expr, (Text ==> Rel) -> [Spot]
+fn PromptSpots cx, e, m = Fold (PromptKids cx, e, m), [[(SpotExpr e, m)]], \|acc, k| Append acc, (PromptKidSpots cx, k)
 
 # The walk's children of an expression, less the ones that are not read promptly.
-PromptKids: unbounded fn Expr -> [Kid]
-fn PromptKids e = match e.kind:
+PromptKids: unbounded fn PCx, Expr, (Text ==> Rel) -> [Kid]
+fn PromptKids cx, e, m = match e.kind:
     ELambda ignore, ignore: [[]]
     ERebuild ignore, ignore: [[]]
     EFor ignore, ignore, ignore: [[]]
     EWidgetBlock ignore: [[]]
-    ECall c, ignore, ignore, ignore: match ?CalleeName c:
-        ? n: if IsDelayedWidget n: [[]] else: ExprKids e, {}
-        nil: ExprKids e, {}
-    EMethod ignore, n, ignore: if IsDelayedWidget (SNameKey n): [[]] else: ExprKids e, {}
-    otherwise: ExprKids e, {}
+    ECall c, ignore, ignore, ignore: PromptCallKids cx, e, (?CalleeName c), m
+    EMethod ignore, n, ignore: PromptCallKids cx, e, (? (SNameKey n)), m
+    otherwise: ExprKids e, m
 
-PromptKidSpots: unbounded fn Kid -> [Spot]
-fn PromptKidSpots (KidExpr x, ignore) = PromptSpots x
-fn PromptKidSpots (KidStmts ss, ignore) = Fold ss, [[]], \|acc, s| Append acc, (PromptStmtSpots s)
+# A call's children: none under a delayed widget binding; a lambda argument's body when
+# the callee may call it now (anything but a prelude widget function).
+PromptCallKids: unbounded fn PCx, Expr, ?Text, (Text ==> Rel) -> [Kid]
+fn PromptCallKids cx, e, ?n, m = match ?n:
+    ? n:
+        if IsLocal m, n: OpenLambdas (ExprKids e, m)
+        else: match ?ResolveCallee cx.g, cx.home, n:
+            ? k:
+                if (IsPreludeKey cx.g, k) and (IsDelayedWidget (Drop k, 8)): [[]]
+                else: if (IsPreludeKey cx.g, k) and (Take (Drop k, 8), 1) == "@": ExprKids e, m
+                else: OpenLambdas (ExprKids e, m)
+            nil: OpenLambdas (ExprKids e, m)
+    nil: OpenLambdas (ExprKids e, m)
 
-PromptStmtSpots: unbounded fn Stmt -> [Spot]
-fn PromptStmtSpots s = match s.kind:
-    SFn ignore: [[(SpotStmt s, {})]]
-    SWidget ignore: [[(SpotStmt s, {})]]
-    otherwise: Fold (StmtKids s, {}), [[(SpotStmt s, {})]], \|acc, k| Append acc, (PromptKidSpots k)
+# A lambda among the children read through its body, its parameters bound there.
+OpenLambdas: unbounded fn [Kid] -> [Kid]
+fn OpenLambdas kids = Each kids, \|k| match k:
+    KidExpr x, m: match x.kind:
+        ELambda ?ps, body: LambdaKid body, (Hide m, (PatternsNames (Or ?ps, [[]])))
+        otherwise: k
+    otherwise: k
+
+PromptKidSpots: unbounded fn PCx, Kid -> [Spot]
+fn PromptKidSpots cx, k = match k:
+    KidExpr x, m: PromptSpots cx, x, m
+    KidStmts ss, m:
+        let bm = BlockRels ss, m
+        Fold ss, [[]], \|acc, s| Append acc, (PromptStmtSpots cx, s, bm)
+
+PromptStmtSpots: unbounded fn PCx, Stmt, (Text ==> Rel) -> [Spot]
+fn PromptStmtSpots cx, s, m = match s.kind:
+    SFn ignore: [[(SpotStmt s, m)]]
+    SWidget ignore: [[(SpotStmt s, m)]]
+    otherwise: Fold (StmtKids s, m), [[(SpotStmt s, m)]], \|acc, k| Append acc, (PromptKidSpots cx, k)
 
 # The first cycle among the edges, as its names in the order the block binds them.
 FindCycle: unbounded fn [Text], [((Text, Text))] -> [Text]
@@ -606,16 +645,18 @@ derive ^Eq, ^Show
 
 # What the shrink check reads of the program: its definitions with clauses (functions,
 # impls' methods, traits' default methods), each by its key; the definitions a trait
-# method's name calls, the parameter whose type chooses among them, and each impl's
-# trait parameter and head type (pick OP); the summaries (pick SM).
+# method's name calls, and each impl's definition of each method by where the impl stands
+# (pick OP); the solver's choices (`NoteChoice`); the summaries (pick SM); the seeds each
+# module's walks start from (`ModuleSeeds`).
 type Shrink = record:
     g: G
     fns: [Def]
     byKey: (Text ==> Def)
     targets: (Text ==> [Text])
-    dispatch: (Text ==> Nat)
-    heads: (Text ==> ((Text, Text)))
+    implDefs: (Text ==> Text)
+    choices: (Text ==> [Text])
     sums: (Text ==> Nat)
+    seeds: (Text ==> (Text ==> Rel))
 derive ^Eq, ^Show
 
 # The reference graph's cycles that the size-change principle cannot show end are
@@ -625,7 +666,13 @@ ShrinkCheck: unbounded fn G, St, [Def] -> St
 fn ShrinkCheck g, st, defs:
     let fns = Each (Filter defs, \|d| (Len (DefClauses d)) > 0), \|d| OwnKey d
     let byKey = Fold fns, {}, \|m, d| Insert m, d.qk, d
-    let sk = Shrink(g=g, fns=fns, byKey=byKey, targets=(MethodTargets g, fns), dispatch=(MethodDispatch g, fns), heads=(ImplHeads g, fns), sums=(PartsSummaries fns))
+    let homes = Fold fns, [[]], \|acc, d| AddText acc, d.home
+    let pre = Fold homes, {}, \|m, h| Insert m, h, (PreludeSeeds g, h)
+    let sk0 = Shrink(g=g, fns=fns, byKey=byKey, targets=(MethodTargets g, fns), implDefs=(ImplDefs g, fns), choices=st.choices, sums={}, seeds=pre)
+    let sk1 = update sk0:
+        &_.sums <= PartsSummaries sk0, fns
+    let sk = update sk1:
+        &_.seeds <= HofSeeds sk1, homes
     let refs = Each fns, \|d| ((d.qk, (DefRefs sk, d)))
     let keys = Each fns, \|d| d.qk
     let sccs = Sccs keys, refs
@@ -656,127 +703,100 @@ fn ?MethodOf g, d = match d.body:
     otherwise: nil
 
 # Pick OP: a trait method's name, an operator's spelling included, calls the definitions
-# of that method in the program, each impl's and the default; a call whose argument at
-# the method's trait parameter has a type the walk can tell reaches only that type's
-# impl (`DispatchTargets`).
+# of that method in the program, each impl's and the default (`DispatchTargets` narrows
+# them by the solver's choice at the call).
 MethodTargets: fn G, [Def] -> (Text ==> [Text])
 fn MethodTargets g, fns = Fold fns, {}, \|m, d| match ?MethodOf g, d:
     ? mk: Insert m, mk, (AddText (Or m[mk], [[]]), d.qk)
     nil: m
 
-# The parameter of each method whose type is its trait's parameter: the one the impl is
-# chosen by.
-MethodDispatch: fn G, [Def] -> (Text ==> Nat)
-fn MethodDispatch g, fns = Fold fns, {}, \|m, d| match ?TraitOf d:
-    ? cls: match ?MethodKey g, cls, d.name:
-        ? mk: match ?DispatchIndex g, cls, mk:
-            ? i: Insert m, mk, i
-            nil: m
-        nil: m
-    nil: m
-
-?TraitOf: fn Def -> ?Text
-fn ?TraitOf d = match d.body:
-    DbMethod ignore, cls, ignore: ? cls
-    DbDefault ignore, cls: ? cls
-    otherwise: nil
-
-?DispatchIndex: fn G, Text, Text -> ?Nat
-fn ?DispatchIndex g, cls, mk:
-    let param = (Or g.traits[cls], dummyTrait).param
-    match g.vals[mk]:
-        ? v: match v.scheme.ty:
-            TyFn ignore, ps, ignore: (Filter (Range0 (Len ps)), \|i| IsQ ps[i], param)[0]
-            otherwise: nil
-        nil: nil
-
-IsQ: fn ?Ty, Text -> Bool
-fn IsQ (? (TyQ q)), param = q == param
-fn IsQ ignore, ignore = False
-
-# Each impl's method: its trait's parameter, and the type its head names.
-ImplHeads: fn G, [Def] -> (Text ==> ((Text, Text)))
-fn ImplHeads g, fns = Fold fns, {}, \|m, d| match d.body:
-    DbMethod ignore, cls, im: match ?HeadKey im.head:
-        ? h: Insert m, d.qk, (((Or g.traits[cls], dummyTrait).param, h))
+# Each impl's definition of each method, by the method and where the impl stands, as the
+# solver's `impl:FILE.START` names it.
+ImplDefs: fn G, [Def] -> (Text ==> Text)
+fn ImplDefs g, fns = Fold fns, {}, \|m, d| match d.body:
+    DbMethod ignore, ignore, im: match ?MethodOf g, d:
+        ? mk: Insert m, "{mk}|{im.file}.{im.span.start}", d.qk
         nil: m
     otherwise: m
+
+# The trait a method belongs to, when the key is a trait method's.
+?MethodClass: fn G, Text -> ?Text
+fn ?MethodClass g, k = match g.vals[k]:
+    ? v: if v.sort != "method": nil else: match v.scheme.bounds[0]:
+        ? ((ignore, cls)): ? cls
+        nil: nil
+    nil: nil
+
+# The definitions a call of method `k` reaches, by what the solver chose at the call's
+# place for the method's trait (pick OP): a written impl's definition of the method, or the
+# trait's default when the impl has none; a derived impl reaches what its fields' types
+# choose; a type variable under a bound, a packed value or a quantified `let`, every
+# definition (sound); a built-in type, none of the program's. A call the solver noted
+# nothing for reaches every definition.
+DispatchTargets: unbounded fn Shrink, Def, Site, Text -> [Text]
+fn DispatchTargets sk, d, site, k:
+    let all = TargetsOf sk, k
+    match ?MethodClass sk.g, k:
+        nil: all
+        ? cls:
+            let ck = ChoiceKey d.file, site.span, cls
+            match sk.choices[ck]:
+                nil: all
+                ? cs: Fold cs, [[]], \|acc, ch| UnionTexts acc, (ChoiceTargets sk, k, cls, all, ch, [[]])
+
+ChoiceTargets: unbounded fn Shrink, Text, Text, [Text], Text, [Text] -> [Text]
+fn ChoiceTargets sk, k, cls, all, ch, seen:
+    if ch == "none": [[]]
+    else: if (Take ch, 5) == "impl:": match sk.implDefs["{k}|{Drop ch, 5}"]:
+        ? q: [[q]]
+        nil: Filter all, \|q| q == k
+    else: if (Take ch, 8) == "derived:": DerivedTargets sk, k, cls, all, (Drop ch, 8), seen
+    else: all
+
+# A derived impl calls the method on its fields: each field's type's own choice, a type
+# parameter's coming from the call's other constraints at the same place.
+DerivedTargets: unbounded fn Shrink, Text, Text, [Text], Text, [Text] -> [Text]
+fn DerivedTargets sk, k, cls, all, n, seen:
+    if HasText seen, n: [[]]
+    else:
+        let tys = match sk.g.types[n]:
+            ? ti: match ti.body:
+                BRecord fields: Each fields, \|((ignore, t))| t
+                BChoice cases: Fold cases, [[]], \|acc, ((ignore, args))| Append acc, args
+                BAlias t: [[t]]
+                otherwise: [[]]
+            nil: [[]]
+        let heads = Fold tys, [[]], \|acc, t| UnionTexts acc, (TyHeads t)
+        Fold heads, [[]], \|acc, h| UnionTexts acc, (HeadTargets sk, k, cls, all, h, (Push seen, n))
+
+# The named types a field's type holds at any depth (a type variable, a function, an
+# element hold none of the program's impls); `?` for one the walk cannot name.
+TyHeads: fn Ty -> [Text]
+fn TyHeads t = match t:
+    TyCon n, args: Fold args, [[n]], \|acc, a| UnionTexts acc, (TyHeads a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TyHeads a)
+    TyArray e: TyHeads e
+    TyMap a, b: UnionTexts (TyHeads a), (TyHeads b)
+    TySig ignore, i: TyHeads i
+    TyQ ignore: [[]]
+    TyRigid ignore: [[]]
+    TyFn ignore, ignore, ignore: [[]]
+    TyElem ignore, ignore: [[]]
+    TyElemAny ignore: [[]]
+    otherwise: [["?"]]
+
+HeadTargets: unbounded fn Shrink, Text, Text, [Text], Text, [Text] -> [Text]
+fn HeadTargets sk, k, cls, all, h, seen:
+    if h == "?": all
+    else: if (BuiltinHas cls, h) or IsPrimType h: [[]]
+    else: match (Filter (Or sk.g.impls[cls], [[]]), \|im| (?HeadKey im.head) == ? h)[0]:
+        ? im: ChoiceTargets sk, k, cls, all, (ImplChoice im), seen
+        nil: all
 
 # The type a type's head names, when it is a named type.
 ?HeadKey: fn Ty -> ?Text
 fn ?HeadKey (TyCon n, ignore) = ? n
 fn ?HeadKey ignore = nil
-
-# The definitions a call of method `k` reaches: its argument at the trait parameter of a
-# named type the walk can tell (`?ArgTypeKey`) reaches that type's impl, or the default
-# when the program defines none; any other call, every definition of the method.
-DispatchTargets: unbounded fn Shrink, Def, FnClause, [Text], Site, Text -> [Text]
-fn DispatchTargets sk, d, c, bound, site, k:
-    let all = TargetsOf sk, k
-    match sk.dispatch[k]:
-        nil: all
-        ? i: match site.args[i]:
-            ? a: match ?ArgTypeKey sk, d, c, bound, a.value:
-                ? t:
-                    let mine = Filter all, \|q| match sk.heads[q]:
-                        ? ((ignore, h)): h == t
-                        nil: False
-                    if (Len mine) > 0: mine else: Filter all, \|q| q == k
-                nil: all
-            nil: all
-
-# The named type an argument has, as far as the walk can tell without inference: a
-# literal's (built in, so no program impl); a constructor's; a call's of a function whose
-# signature returns a named type; a clause parameter's, by the definition's signature
-# (an impl's trait parameter is its head), when the body binds the name nowhere.
-?ArgTypeKey: unbounded fn Shrink, Def, FnClause, [Text], Expr -> ?Text
-fn ?ArgTypeKey sk, d, c, bound, e = match e.kind:
-    EGroup x: ?ArgTypeKey sk, d, c, bound, x
-    ELit ignore: ? "literal"
-    EName n:
-        let name = SNameKey n
-        match ?ParamAt c.params, name:
-            ? j: if HasText bound, name: nil else: ?ParamTypeKey sk, d, j
-            nil: if HasText bound, name: nil else: ?ValueTypeKey sk, d, name, False
-    otherwise: match ?CallOf e:
-        ? ((callee, ignore)): match ?CalleeName callee:
-            ? n: if HasText bound, n: nil else: ?ValueTypeKey sk, d, n, True
-            nil: nil
-        nil: nil
-
-# The place of the clause parameter a name is.
-?ParamAt: unbounded fn [Pattern], Text -> ?Nat
-fn ?ParamAt ps, name = (Filter (Range0 (Len ps)), \|j| IsParamNamed ps[j], name)[0]
-
-IsParamNamed: fn ?Pattern, Text -> Bool
-fn IsParamNamed (? p), name = match p.kind:
-    PName n: (SNameKey n) == name
-    otherwise: False
-fn IsParamNamed nil, ignore = False
-
-?ParamTypeKey: fn Shrink, Def, Nat -> ?Text
-fn ?ParamTypeKey sk, d, j = match sk.g.vals[SigKeyOf sk, d.qk]:
-    ? v: match v.scheme.ty:
-        TyFn ignore, ps, ignore: match ps[j]:
-            ? (TyQ q): match sk.heads[d.qk]:
-                ? ((param, h)): if q == param: ? h else: nil
-                nil: nil
-            ? t: ?HeadKey t
-            nil: nil
-        otherwise: nil
-    nil: nil
-
-# A global name's type when it is a constructor's or, called, a function's result.
-?ValueTypeKey: fn Shrink, Def, Text, Bool -> ?Text
-fn ?ValueTypeKey sk, d, n, called = match ?ResolveCallee sk.g, d.home, n:
-    ? k: match sk.g.ctors[k]:
-        ? ci: ? ci.owner
-        nil: if not called: nil else: match sk.g.vals[k]:
-            ? v: match v.scheme.ty:
-                TyFn ignore, ignore, res: ?HeadKey res
-                otherwise: nil
-            nil: nil
-    nil: nil
 
 TargetsOf: fn Shrink, Text -> [Text]
 fn TargetsOf sk, k = Or sk.targets[k], [[k]]
@@ -798,15 +818,176 @@ fn IsUnboundedKey g, k = match g.vals[k]:
         otherwise: False
     nil: False
 
-# The definitions a body mentions, resolved to their keys.
-DefRefs: unbounded fn Shrink, Def -> [Text]
-fn DefRefs sk, d:
-    let clauses = DefClauses d
-    let locals = Fold clauses, [[]], \|acc, c| UnionTexts acc, (PatternsNames c.params)
-    let names = Fold clauses, [[]], \|acc, c| UnionTexts acc, (SpotsNames (BodySpots c.body, {}))
-    Fold names, [[]], \|acc, n| if HasText locals, n: acc else: match ?ResolveCallee sk.g, d.home, n:
-        ? k: Fold (TargetsOf sk, k), acc, \|a2, t| if HasKey sk.byKey, t: AddText a2, t else: a2
+# ---- Pick CT, the call test for closures (Semantics ch. 7, "Finding the cycles"). A
+# closure passed to a program function is cleared when the function only calls it: the
+# parameter at that slot is, in every clause, the callee of calls (at any depth, but not
+# inside a closure that may run later, `Later`) or passed whole to another cleared slot,
+# and nothing else. Then the closure runs only inside that call, so its calls are read at
+# the call site that passed it, with what the function's summary says it is given: for
+# each of the closure's parameters `q`, the function's parameter it is no larger than (or
+# strictly smaller than) at every call of the closure. `Spaced xs, SexpType` is then a
+# call `SexpType x` with `x` a part of `xs`, as `Each xs, SexpType` is (doubt TR). A
+# closure at any other place is a call with no edges where it is written (the reference
+# graph). Both are greatest fixed points, each round read under the last round's seeds: a
+# slot stays cleared while what is passed to it stays cleared, by induction on how deep
+# the call that runs the closure is nested.
+
+# A closure slot: the function, the parameter's place, the closure's arity.
+type Slot = record:
+    owner: Text
+    at: Nat
+    arity: Nat
+derive ^Eq, ^Show
+
+# The seeds of each module's walks: the prelude's names (`PreludeSeeds`), and every
+# cleared slot's `acc:` and `sum:` entries.
+HofSeeds: unbounded fn Shrink, [Text] -> (Text ==> (Text ==> Rel))
+fn HofSeeds sk, homes:
+    let cands = HofCandidates sk
+    let cleared = ClearSlots sk, homes, cands, 0
+    let sums = SlotSums sk, homes, cleared, (TopSums cleared), 0
+    Fold homes, {}, \|m, h| Insert m, h, (SlotSeeds sk, h, cleared, sums, False)
+
+# The slots whose parameter's declared type is a function, every clause binding it by a
+# name (or `ignore`).
+HofCandidates: fn Shrink -> [Slot]
+fn HofCandidates sk = Fold sk.fns, [[]], \|acc, d| match d.body:
+    DbFn clauses: match sk.g.vals[d.qk]:
+        ? v: match v.scheme.ty:
+            TyFn ignore, ps, ignore: Fold (Range0 (Len ps)), acc, \|a2, j| match ps[j]:
+                ? (TyFn ignore, fps, ignore): if Fold clauses, True, \|ok, c| ok and SlotNamed c, j: Push a2, Slot(owner=d.qk, at=j, arity=(Len fps)) else: a2
+                otherwise: a2
+            otherwise: acc
         nil: acc
+    otherwise: acc
+
+SlotNamed: fn FnClause, Nat -> Bool
+fn SlotNamed c, j = match c.params[j]:
+    ? p: match p.kind:
+        PName ignore: True
+        PIgnore: True
+        otherwise: False
+    nil: False
+
+# The name a clause gives a slot's parameter, or `""` for `ignore`.
+SlotName: fn FnClause, Nat -> Text
+fn SlotName c, j = match c.params[j]:
+    ? p: match p.kind:
+        PName n: SNameKey n
+        otherwise: ""
+    nil: ""
+
+# The seeds of module `h` for these slots and summaries; `withTop` keeps the `⊤` entries
+# the fixed point reads (a slot not yet narrowed), which the final seeds drop.
+SlotSeeds: fn Shrink, Text, [Slot], (Text ==> Rel), Bool -> (Text ==> Rel)
+fn SlotSeeds sk, h, slots, sums, withTop:
+    let pre = Or sk.seeds[h], {}
+    let start = if withTop: Insert pre, "⊤", Rel(param=topParam, strict=False) else: pre
+    Fold slots, start, \|m, sl| Fold (Spellings sk.g, h, sl.owner), m, \|m2, sp|
+        let m3 = Insert m2, "acc:{sp}:{sl.at}", Rel(param=sl.arity, strict=False)
+        Fold (Range0 sl.arity), m3, \|m4, q| match sums["{sl.owner}:{sl.at}:{q}"]:
+            ? r: if r.param == topParam and not withTop: m4 else: Insert m4, "sum:{sp}:{sl.at}:{q}", r
+            nil: m4
+
+# The spellings of a global name that resolve to it from module `h`: bare, qualified.
+Spellings: fn G, Text, Text -> [Text]
+fn Spellings g, h, k = Filter (AddText [[BareName k]], k), \|sp| (?ResolveName g, h, sp) == ? k
+
+# Drop every slot whose parameter escapes, until none does.
+ClearSlots: unbounded fn Shrink, [Text], [Slot], Nat -> [Slot]
+fn ClearSlots sk, homes, slots, round:
+    let sks = SeedsFor sk, homes, slots, {}, False
+    let kept = Filter slots, \|sl| not (SlotEscapes sks, sl)
+    if (Len kept) == (Len slots): kept
+    else: if round > 20: [[]]
+    else: ClearSlots sk, homes, kept, round + 1
+
+SeedsFor: fn Shrink, [Text], [Slot], (Text ==> Rel), Bool -> Shrink
+fn SeedsFor sk, homes, slots, sums, withTop = update sk:
+    &_.seeds <= Fold homes, {}, \|m, h| Insert m, h, (SlotSeeds sk, h, slots, sums, withTop)
+
+# Whether a slot's parameter is used but as a callee or passed to a cleared slot: a name
+# that still means the parameter, read as a value; a call of it inside a closure that may
+# run later.
+SlotEscapes: unbounded fn Shrink, Slot -> Bool
+fn SlotEscapes sk, sl = match sk.byKey[sl.owner]:
+    ? d: Fold (DefClauses d), False, \|seen, c|
+        let n = SlotName c, sl.at
+        if seen or n == "": seen
+        else: Fold (BodySpots c.body, (ClauseBase sk, d, c)), False, \|esc, sp| esc or SpotEscapes sp, n, sl.at
+    nil: True
+
+SpotEscapes: unbounded fn Spot, Text, Nat -> Bool
+fn SpotEscapes sp, n, j = match sp:
+    SpotExpr e, m: match e.kind:
+        EName x: (SNameKey x) == n and IsSlotParam m, n, j
+        otherwise: Fold (SpotSites sp), False, \|seen, site| seen or (site.callee == n and (IsSlotParam site.rels, n, j) and HasKey site.rels, "lam:")
+    SpotStmt ignore, ignore: False
+
+# Whether a name, where it stands, still means parameter `j` (nothing bound it again).
+IsSlotParam: fn (Text ==> Rel), Text, Nat -> Bool
+fn IsSlotParam m, n, j = m[n] == ? Rel(param=j, strict=False)
+
+# Every summary entry `KEY:J:Q` at the start of the fixed point: anything (`⊤`).
+TopSums: fn [Slot] -> (Text ==> Rel)
+fn TopSums slots = Fold slots, {}, \|m, sl| Fold (Range0 sl.arity), m, \|m2, q| Insert m2, "{sl.owner}:{sl.at}:{q}", Rel(param=topParam, strict=False)
+
+# Each round: every call of a slot's parameter, a forward to a cleared slot included,
+# narrows what the summary says of each argument; a round that changes nothing ends it.
+# One that never settles keeps no summary (sound: the closure's parameters relate to
+# nothing).
+SlotSums: unbounded fn Shrink, [Text], [Slot], (Text ==> Rel), Nat -> (Text ==> Rel)
+fn SlotSums sk, homes, slots, sums, round:
+    let sks = SeedsFor sk, homes, slots, sums, True
+    let next = Fold slots, {}, \|m, sl|
+        let calls = SlotCalls sks, sl
+        Fold (Range0 sl.arity), m, \|m2, q| match ?MeetArgs calls, q:
+            ? r: Insert m2, "{sl.owner}:{sl.at}:{q}", r
+            nil: m2
+    if next == sums: next
+    else: if round > 12: {}
+    else: SlotSums sk, homes, slots, next, round + 1
+
+# The calls of a slot's parameter in every clause, read with the clause's summaries.
+SlotCalls: unbounded fn Shrink, Slot -> [Site]
+fn SlotCalls sk, sl = match sk.byKey[sl.owner]:
+    ? d: Fold (DefClauses d), [[]], \|acc, c|
+        let n = SlotName c, sl.at
+        if n == "": acc
+        else:
+            let base = ClauseBase sk, d, c
+            let rels = SummarySeeds sk, d, (BodySpots c.body, base), base
+            Fold (BodySpots c.body, rels), acc, \|a2, sp| match sp:
+                SpotExpr e, ignore: match e.kind:
+                    EName ignore: a2
+                    otherwise: Append a2, (Filter (SpotSites sp), \|site| site.callee == n and IsSlotParam site.rels, n, sl.at)
+                otherwise: a2
+    nil: [[]]
+
+# What every call passes as argument `q`: the one parameter all of them are no larger
+# than, strictly when all are strictly smaller; `⊤` when no call narrows it; `nil` when
+# two disagree or one relates to nothing.
+?MeetArgs: unbounded fn [Site], Nat -> ?Rel
+fn ?MeetArgs calls, q = Fold calls, (? Rel(param=topParam, strict=False)), \|?acc, site| match ?acc:
+    nil: nil
+    ? acc: match site.args[q]:
+        ? a: if a.?name != nil: nil else: match ?RelOf site.rels, a.value:
+            ? r: if r.param == topParam: ? acc else: if acc.param == topParam: ? r else: if acc.param == r.param: ? Rel(param=r.param, strict=(acc.strict and r.strict)) else: nil
+            nil: nil
+        nil: nil
+
+# The definitions a body mentions, resolved to their keys; a name bound where it stands
+# (a parameter, a `let`, a pattern, a local `fn`) is not a global.
+DefRefs: unbounded fn Shrink, Def -> [Text]
+fn DefRefs sk, d = Fold (DefClauses d), [[]], \|acc, c|
+    let spots = BodySpots c.body, (ClauseBase sk, d, c)
+    Fold spots, acc, \|a1, sp| Fold (SpotSites sp), a1, \|a2, site| if IsLocal site.rels, site.callee: a2 else: match ?ResolveCallee sk.g, d.home, site.callee:
+        ? k: Fold (TargetsOf sk, k), a2, \|a3, t| if HasKey sk.byKey, t: AddText a3, t else: a3
+        nil: a2
+
+# The relations a clause's walk starts from: its module's seeds, its parameters'.
+ClauseBase: unbounded fn Shrink, Def, FnClause -> (Text ==> Rel)
+fn ClauseBase sk, d, c = ParamRelsOn (Or sk.seeds[d.home], {}), c.params
 
 # The key a site's name calls: an operator by its spelling, as inference reads it; a
 # template call's `<@Name` as `@Name`, else `Name`, as lowering reads it.
@@ -890,14 +1071,12 @@ fn CallGraphs sk, d, comp = Fold (DefClauses d), [[]], \|acc, c| Append acc, (Cl
 
 ClauseGraphs: unbounded fn Shrink, Def, FnClause, [Text] -> [Sc]
 fn ClauseGraphs sk, d, c, comp:
-    let spots = BodySpots c.body, {}
-    let bound = Fold spots, [[]], \|a, sp| UnionTexts a, (SpotBinders sp)
-    let rels = SummarySeeds sk, d, c, spots, (ParamRels c.params)
-    let locals = Fold c.params, [[]], \|a2, p| UnionTexts a2, (PatternNames p)
+    let base = ClauseBase sk, d, c
+    let rels = SummarySeeds sk, d, (BodySpots c.body, base), base
     Fold (BodySites c.body, rels), [[]], \|acc, site|
-        if HasText locals, site.callee: acc
+        if IsLocal site.rels, site.callee: acc
         else: match ?ResolveCallee sk.g, d.home, site.callee:
-            ? k: Fold (DispatchTargets sk, d, c, bound, site, k), acc, \|acc2, t| if HasText comp, t: Push acc2, (SiteGraph sk, d, site, t) else: acc2
+            ? k: Fold (DispatchTargets sk, d, site, k), acc, \|acc2, t| if HasText comp, t: Push acc2, (SiteGraph sk, d, site, t) else: acc2
             nil: acc
 
 # One call as a size-change graph: an edge from what each argument is no larger than to
@@ -949,9 +1128,12 @@ fn ExprName e = match e.kind:
     otherwise: ""
 
 # A clause's parameters: a name is no larger than its parameter, a part taken apart by the
-# clause's pattern is strictly smaller.
+# clause's pattern is strictly smaller; each is a local where the clause stands.
 ParamRels: unbounded fn [Pattern] -> (Text ==> Rel)
-fn ParamRels ps = Fold (Range0 (Len ps)), {}, \|m, i| match ps[i]:
+fn ParamRels ps = ParamRelsOn {}, ps
+
+ParamRelsOn: unbounded fn (Text ==> Rel), [Pattern] -> (Text ==> Rel)
+fn ParamRelsOn base, ps = Fold (Range0 (Len ps)), (Hide base, (PatternsNames ps)), \|m, i| match ps[i]:
     ? p: match p.kind:
         PName n: Insert m, (SNameKey n), Rel(param=i, strict=False)
         otherwise: Fold (PatternNames p), m, \|m2, n| Insert m2, n, Rel(param=i, strict=True)
@@ -963,9 +1145,38 @@ fn ParamRels ps = Fold (Range0 (Len ps)), {}, \|m, i| match ps[i]:
 # bindings are seen only in that arm. A part is what a `match` takes apart in the arm that
 # took it (Semantics ch. 7), not a name another arm happens to share.
 
-# Forget what outer bindings said of these names.
+# Forget what outer bindings said of these names, and mark them local where they are
+# bound: a call of one is not a call of a global of the same name, a `Fold` bound here is
+# not the prelude's. The map's other entries have a `:` in their keys, which no name has:
+# `local:NAME`, `pre:NAME` (the name resolves to the prelude's declaration), `fn:NAME`
+# (a summary, pick SM), `acc:NAME:J` and `sum:NAME:J:Q` (a closure parameter, pick CT),
+# `lam:` (inside a closure that may run later).
 Hide: fn (Text ==> Rel), [Text] -> (Text ==> Rel)
-fn Hide m, names = Fold names, m, \|m2, n| Remove m2, n
+fn Hide m, names = Fold names, m, \|m2, n| Insert (Remove m2, n), "local:{n}", noRel
+
+let noRel = Rel(param=0, strict=False)
+
+IsLocal: fn (Text ==> Rel), Text -> Bool
+fn IsLocal m, n = HasKey m, "local:{n}"
+
+# Whether a name, where it stands, is the prelude's declaration `Prelude.BARE` (bare or
+# qualified).
+PreIs: fn (Text ==> Rel), Text, Text -> Bool
+fn PreIs m, n, bare = (n == bare or n == "Prelude.{bare}") and (HasKey m, "pre:{n}") and not (IsLocal m, n)
+
+# The prelude's names the checks read for what they mean, and the spellings of each that
+# resolve to the prelude's own declaration from module `h`: the module `Prelude`'s, never
+# a local's or a program module's of the same name.
+let preludeNames = [["Drop", "Take", "Filter", "Remove", "Min", "Values", "Keys", "?Step", "Fold", "Each", "Push", "Insert", "Append", "@Defer", "@Later", "@Run", "@Machine", "@started"]]
+
+PreludeSeeds: fn G, Text -> (Text ==> Rel)
+fn PreludeSeeds g, h = Fold preludeNames, {}, \|m, n|
+    let q = "Prelude.{n}"
+    if not (IsPreludeKey g, q): m
+    else: Fold [[n, q]], m, \|m2, sp| if (?ResolveName g, h, sp) == ? q: Insert m2, "pre:{sp}", noRel else: m2
+
+IsPreludeKey: fn G, Text -> Bool
+fn IsPreludeKey g, q = (Take q, 8) == "Prelude." and HasKey g.vals, q
 
 # A block is one binding group, so its names hide the outer ones on every line of it; then
 # each `let` and bind, in page order, relates its names from its subject.
@@ -1097,7 +1308,7 @@ fn ExprKids e, m = match e.kind:
             SegPlaceholder x: Push acc, (KidExpr x, m)
             otherwise: acc
         otherwise: [[]]
-    ELambda ?ps, body: [[(LambdaKid body, (Hide m, (PatternsNames (Or ?ps, [[]]))))]]
+    ELambda ?ps, body: [[(LambdaKid body, (Later (Hide m, (PatternsNames (Or ?ps, [[]])))))]]
     EIf c, t, ?el:
         let withThen = Push (CondKids c, m), (KidStmts t.stmts, (CondRels c, m))
         match ?el:
@@ -1106,7 +1317,7 @@ fn ExprKids e, m = match e.kind:
     EMatch s, arms: Fold arms, [[(KidExpr s, m)]], \|acc, a|
         let am = ArmPatRels s, a, m
         Push (Append acc, (OptKids a.?guard, am)), (KidStmts a.body.stmts, am)
-    ERebuild s, b: [[(KidExpr s, m), (KidStmts b.stmts, m)]]
+    ERebuild s, b: [[(KidExpr s, m), (KidStmts b.stmts, (Later m))]]
     EUpdate s, b: [[(KidExpr s, m), (KidStmts b.stmts, m)]]
     EMonad s, b: [[(KidExpr s, m), (KidStmts b.stmts, m)]]
     EFor ?fb, s, b:
@@ -1115,7 +1326,7 @@ fn ExprKids e, m = match e.kind:
             nil: [[]]
         [[(KidExpr s, m), (KidStmts b.stmts, (Hide m, names))]]
     EGiven b: [[(KidStmts b.stmts, m)]]
-    EWidgetBlock b: [[(KidStmts b.stmts, m)]]
+    EWidgetBlock b: [[(KidStmts b.stmts, (Later m))]]
     ETemplate t: TemplateKids t.parts, m
     otherwise: [[]]
 
@@ -1124,8 +1335,8 @@ fn StmtKids s, m = match s.kind:
     SBind ignore, e, ?t: Append [[(KidExpr e, m)]], (OptKids ?t, m)
     SIgnore e: [[(KidExpr e, m)]]
     SLet ignore, ignore, e: [[(KidExpr e, m)]]
-    SFn f: [[(BodyKid f.body, (Hide m, (PatternsNames f.params)))]]
-    SWidget w: [[(KidStmts w.body.stmts, m)]]
+    SFn f: [[(BodyKid f.body, (Later (Hide m, (PatternsNames f.params))))]]
+    SWidget w: [[(KidStmts w.body.stmts, (Later m))]]
     SSet t, v: ExprsKids [[t, v]], m
     SAccum t, ignore, v: ExprsKids [[t, v]], m
     SRequire c: [[(KidExpr c, m)]]
@@ -1144,14 +1355,18 @@ fn CondKids c, m = match c:
 # A call's children: its callee unless a name calls it (the call is that name's site),
 # and its arguments. A traversal hands its step the collection's elements, so a step
 # lambda's body reads them as parts (`StepRels`), and a named step is a call of its own
-# (`CallSites`).
+# (`CallSites`). A closure passed where a program function only calls it (pick CT,
+# `acc:` entries) is read the same way: a lambda's body with its parameters related as
+# the function's summary says, a named function as a call of its own.
 CallKids: unbounded fn Expr, [Arg], (Text ==> Rel) -> [Kid]
 fn CallKids c, args, m:
     let callee = match ?CalleeName c:
         ? ignore: [[]]
         nil: [[(KidExpr c, m)]]
-    match ?TraversalOf c, args:
-        nil: Append callee, (ExprsKids (Each args, \|a| a.value), m)
+    match ?TraversalOf m, c, args:
+        nil: match ?AccCallee m, c, args:
+            ? cn: Append callee, (Fold (Range0 (Len args)), [[]], \|acc, i| Append acc, (AccKids m, cn, args, i))
+            nil: Append callee, (ExprsKids (Each args, \|a| a.value), m)
         ? ((coll, step, at)):
             let others = Fold (Range0 (Len args)), callee, \|acc, i| if i == at + 1: acc else: match args[i]:
                 ? a: Push acc, (KidExpr a.value, m)
@@ -1160,6 +1375,52 @@ fn CallKids c, args, m:
                 ELambda (? ps), body: Push others, (LambdaKid body, (StepRels m, coll, ps, at))
                 EName ignore: others
                 otherwise: Push others, (KidExpr step, m)
+
+# Inside a closure that may run after the walk's function returned (a lambda but a
+# traversal's step or a closure argument pick CT clears, a local `fn`, a blueprint), for
+# pick CT's test that a closure parameter is only called.
+Later: fn (Text ==> Rel) -> (Text ==> Rel)
+fn Later m = Insert m, "lam:", noRel
+
+# The callee of a call with a closure slot pick CT clears: a global name, every argument
+# by position.
+?AccCallee: fn (Text ==> Rel), Expr, [Arg] -> ?Text
+fn ?AccCallee m, c, args = match ?CalleeName c:
+    ? cn:
+        if IsLocal m, cn: nil
+        else: if not (Fold args, True, \|ok, a| ok and a.?name == nil): nil
+        else: if Fold (Range0 (Len args)), False, \|seen, i| seen or HasKey m, "acc:{cn}:{i}": ? cn else: nil
+    nil: nil
+
+# An argument at a cleared closure slot: a lambda's body, its parameters related by the
+# summary; a name, nothing here (its call is `AccSites`').
+AccKids: unbounded fn (Text ==> Rel), Text, [Arg], Nat -> [Kid]
+fn AccKids m, cn, args, i:
+    let a = Or args[i], dummyArg
+    if not (HasKey m, "acc:{cn}:{i}"): [[(KidExpr a.value, m)]]
+    else: match a.value.kind:
+        ELambda ?ps, body: [[(LambdaKid body, (AccLambdaRels m, cn, i, (Or ?ps, [[]]), args))]]
+        EName ignore: [[]]
+        otherwise: [[(KidExpr a.value, m)]]
+
+# A lambda at slot `j` of `cn`: its parameter `q` is what the summary says the function
+# passes there, read from the call's own arguments (`sum:CN:J:Q` names the parameter of
+# `cn` it is no larger than, or strictly smaller than).
+AccLambdaRels: unbounded fn (Text ==> Rel), Text, Nat, [Pattern], [Arg] -> (Text ==> Rel)
+fn AccLambdaRels m, cn, j, ps, args:
+    let h = Hide m, (PatternsNames ps)
+    Fold (Range0 (Len ps)), h, \|m2, q| match ((m["sum:{cn}:{j}:{q}"], ps[q])):
+        ((? s, ? p)): if s.param == topParam: m2 else: match args[s.param]:
+            ? a: match ?RelOf m, a.value:
+                ? r: match p.kind:
+                    PName n: Insert m2, (SNameKey n), Rel(param=r.param, strict=(r.strict or s.strict))
+                    otherwise: Fold (PatternNames p), m2, \|m3, n| Insert m3, n, Rel(param=r.param, strict=True)
+                nil: m2
+            nil: m2
+        otherwise: m2
+
+# The summary of a closure parameter nothing has narrowed yet (pick CT's fixed point).
+let topParam = 9999
 
 TemplateKids: unbounded fn [TemplatePart], (Text ==> Rel) -> [Kid]
 fn TemplateKids parts, m = Fold parts, [[]], \|acc, p| match p:
@@ -1245,20 +1506,47 @@ fn IsCalledOp op = not (HasText [["and", "or", "on", "<|", "mod"]], op)
 
 # A call of a name, and a traversal's named step (doubt TR): `Fold xs, z, F` is a call
 # `F z, x` for each `x` of `xs`, an `Each` or a `Filter` `F x`, with the element written
-# `(xs).element` so the relation reads it as a part.
+# `(xs).element` so the relation reads it as a part. A named function at a closure slot
+# pick CT clears is a call of its own (`AccSites`).
 CallSites: unbounded fn Expr, [Arg], Range, (Text ==> Rel) -> [Site]
 fn CallSites c, args, span, m:
     let direct = match ?CalleeName c:
         ? n: [[Site(callee=n, args=args, span=span, rels=m)]]
         nil: [[]]
-    match ?TraversalOf c, args:
+    match ?TraversalOf m, c, args:
         ? ((coll, step, at)): match step.kind:
             EName n:
-                let part = Expr(kind=(EField coll, "", Ident(name="element", span=coll.span)), span=coll.span)
-                let callArgs = if at == 1: [[(Or args[1], dummyArg), (ArgOf part)]] else: [[ArgOf part]]
+                let callArgs = if at == 1: [[(Or args[1], dummyArg), (ArgOf (PartOf coll))]] else: [[ArgOf (PartOf coll)]]
                 Push direct, Site(callee=(SNameKey n), args=callArgs, span=step.span, rels=m)
             otherwise: direct
-        nil: direct
+        nil: match ?AccCallee m, c, args:
+            ? cn: Append direct, (AccSites m, cn, args)
+            nil: direct
+
+# `x.element`: a part of `x`, for the relations.
+PartOf: fn Expr -> Expr
+fn PartOf x = Expr(kind=(EField x, "", Ident(name="element", span=x.span)), span=x.span)
+
+# A name at a cleared closure slot of `cn` is called as the summary says: its argument `q`
+# is the call's argument the summary names, or a part of it.
+AccSites: fn (Text ==> Rel), Text, [Arg] -> [Site]
+fn AccSites m, cn, args = Fold (Range0 (Len args)), [[]], \|acc, j| match ((m["acc:{cn}:{j}"], args[j])):
+    ((? ar, ? a)): match a.value.kind:
+        EName f: Push acc, Site(callee=(SNameKey f), args=(Each (Range0 ar.param), \|q| AccArg m, cn, j, q, args), span=a.value.span, rels=m)
+        otherwise: acc
+    otherwise: acc
+
+AccArg: fn (Text ==> Rel), Text, Nat, Nat, [Arg] -> Arg
+fn AccArg m, cn, j, q, args = match m["sum:{cn}:{j}:{q}"]:
+    ? s:
+        if s.param == topParam: ArgOf topExpr
+        else: match args[s.param]:
+            ? a: ArgOf (if s.strict: PartOf a.value else: a.value)
+            nil: dummyArg
+    nil: dummyArg
+
+# What a slot not yet narrowed passes (pick CT's fixed point reads it as anything).
+let topExpr = Expr(kind=(EName (SName(sigils="", path=[["⊤"]], span=Range(start=0, end=0)))), span=Range(start=0, end=0))
 
 # The names a spot mentions: what it calls (an operator, a template call), a local
 # widget's name.
@@ -1274,44 +1562,17 @@ fn SpotNames sp:
             SWidget w: AddText called, (SNameKey w.name)
             otherwise: called
 
-# The names a spot binds: a lambda's (a traversal's step included) or an arm's pattern,
-# an `if`'s or a `while`'s `? x <- e`, a `for`'s binders, a `let`, a bind, a local `fn`
-# and its parameters.
-SpotBinders: unbounded fn Spot -> [Text]
-fn SpotBinders (SpotExpr e, ignore) = match e.kind:
-    ELambda ?ps, ignore: PatternsNames (Or ?ps, [[]])
-    EMatch ignore, arms: Fold arms, [[]], \|a, arm| UnionTexts a, (OptNames arm.?pattern)
-    EIf (CondBind p, ignore, ignore), ignore, ignore: PatternNames p
-    EFor (? fb), ignore, ignore: UnionTexts (PatternNames fb.first), (OptNames fb.?second)
-    ECall c, args, ignore, ignore: StepBinders c, args
-    EMethod r, n, args: StepBinders (MethodCallee n), (MethodArgs r, args)
-    otherwise: [[]]
-fn SpotBinders (SpotStmt s, ignore) = match s.kind:
-    SLet p, ignore, ignore: PatternNames p
-    SBind p, ignore, ignore: PatternNames p
-    SFn f: AddText (PatternsNames f.params), (DefNameText f.name)
-    SWhile (CondBind p, ignore, ignore), ignore: PatternNames p
-    otherwise: [[]]
-
-# A traversal's step lambda is walked through its body only (`CallKids`), so its
-# parameters are bound here.
-StepBinders: unbounded fn Expr, [Arg] -> [Text]
-fn StepBinders c, args = match ?TraversalOf c, args:
-    ? ((ignore, step, ignore)): match step.kind:
-        ELambda (? ps), ignore: PatternsNames ps
-        otherwise: [[]]
-    nil: [[]]
-
-# A call of `Fold`, `Each` or `Filter`: its collection, its step, and the position of the
-# step's first element parameter.
-?TraversalOf: fn Expr, [Arg] -> ?((Expr, Expr, Nat))
-fn ?TraversalOf c, args = match c.kind:
+# A call of the prelude's `Fold`, `Each` or `Filter` (by resolution, never a local or a
+# program's own): its collection, its step, and the position of the step's first element
+# parameter.
+?TraversalOf: fn (Text ==> Rel), Expr, [Arg] -> ?((Expr, Expr, Nat))
+fn ?TraversalOf m, c, args = match c.kind:
     EName n:
         let name = SNameKey n
-        if (name == "Fold" or name == "Prelude.Fold") and (Len args) == 3: match ((args[0], args[2])):
+        if (PreIs m, name, "Fold") and (Len args) == 3: match ((args[0], args[2])):
             ((? a, ? s)): ? ((a.value, s.value, 1))
             otherwise: nil
-        else: if (HasText [["Each", "Filter", "Prelude.Each", "Prelude.Filter"]], name) and (Len args) == 2: match ((args[0], args[1])):
+        else: if ((PreIs m, name, "Each") or (PreIs m, name, "Filter")) and (Len args) == 2: match ((args[0], args[1])):
             ((? a, ? s)): ? ((a.value, s.value, 0))
             otherwise: nil
         else: nil
@@ -1349,13 +1610,13 @@ fn ?RelOf m, e = match e.kind:
 fn ?RelOfCall m, c, args = match c.kind:
     EName n:
         let name = SNameKey n
-        if name == "Drop" and (Len args) == 2 and IsPositiveLit (Or args[1], dummyArg).value:
+        if (PreIs m, name, "Drop") and (Len args) == 2 and IsPositiveLit (Or args[1], dummyArg).value:
             match args[0]:
                 ? a: match ?RelOf m, a.value:
                     ? x: ? Rel(param=x.param, strict=True)
                     nil: nil
                 nil: nil
-        else: if (HasText [["Values", "Keys", "Prelude.Values", "Prelude.Keys"]], name) and (Len args) == 1: ?RelOf m, (Or args[0], dummyArg).value
+        else: if ((PreIs m, name, "Values") or (PreIs m, name, "Keys")) and (Len args) == 1: ?RelOf m, (Or args[0], dummyArg).value
         else: match ?NoLargerArg m, c, args:
             ? a: ?RelOf m, a
             nil: nil
@@ -1372,16 +1633,17 @@ fn ?CallOf e = match e.kind:
 # or a prelude function's first (pick SW), by the clause's `fn:NAME` entries.
 ?NoLargerArg: fn (Text ==> Rel), Expr, [Arg] -> ?Expr
 fn ?NoLargerArg m, c, args = match ?CalleeName c:
-    ? n: match m["fn:{n}"]:
+    ? n: if IsLocal m, n: nil else: match m["fn:{n}"]:
         ? s: match args[s.param]:
             ? a: ? a.value
             nil: nil
         nil: nil
     nil: nil
 
-# The prelude's functions that return no more than their first argument (pick SW).
-IsNoLargerPrelude: fn Text -> Bool
-fn IsNoLargerPrelude k = HasText [["Prelude.Take", "Prelude.Drop", "Prelude.Filter", "Prelude.Remove", "Prelude.Min"]], k
+# The prelude's functions that return no more than their first argument (pick SW), as the
+# prelude declares them.
+IsNoLargerPrelude: fn G, Text -> Bool
+fn IsNoLargerPrelude g, k = (HasText [["Prelude.Take", "Prelude.Drop", "Prelude.Filter", "Prelude.Remove", "Prelude.Min"]], k) and IsPreludeKey g, k
 
 # ---- Summaries: a function that returns parts of its parameter `i` (Semantics ch. 7, the
 # size-change principle across the call). A clause's result is within parameter `i` when
@@ -1392,22 +1654,22 @@ fn IsNoLargerPrelude k = HasText [["Prelude.Take", "Prelude.Drop", "Prelude.Filt
 # strictly smaller than parameter `i`, or a tuple of such: a tuple is not a recursive
 # type, so a cycle reaches only its pieces. A summary reads its body without other
 # summaries, so it never depends on itself.
-PartsSummaries: unbounded fn [Def] -> (Text ==> Nat)
-fn PartsSummaries fns = Fold fns, {}, \|m, d| match d.body:
+PartsSummaries: unbounded fn Shrink, [Def] -> (Text ==> Nat)
+fn PartsSummaries sk, fns = Fold fns, {}, \|m, d| match d.body:
     DbFn clauses:
         let n = match clauses[0]:
             ? c0: Len c0.params
             nil: 0
-        let ok = Filter (Range0 n), \|i| Fold clauses, True, \|okc, c| okc and ClauseWithin c, i
+        let ok = Filter (Range0 n), \|i| Fold clauses, True, \|okc, c| okc and ClauseWithin (ClauseBase sk, d, c), c, i
         match ok[0]:
             ? i: Insert m, d.qk, i
             nil: m
     otherwise: m
 
-ClauseWithin: unbounded fn FnClause, Nat -> Bool
-fn ClauseWithin c, i = match c.body:
-    BodyExpr e: Within (ParamRels c.params), i, e
-    BodyBlock b: WithinBlock (ParamRels c.params), i, b
+ClauseWithin: unbounded fn (Text ==> Rel), FnClause, Nat -> Bool
+fn ClauseWithin base, c, i = match c.body:
+    BodyExpr e: Within base, i, e
+    BodyBlock b: WithinBlock base, i, b
 
 Within: unbounded fn (Text ==> Rel), Nat, Expr -> Bool
 fn Within m, i, e = match ?RelOf m, e:
@@ -1420,7 +1682,7 @@ fn Within m, i, e = match ?RelOf m, e:
         EIf c, t, (? el): (WithinBlock (CondRels c, m), i, t) and WithinBlock m, i, el
         EUpdate start, b: (Within m, i, start) and UpdateWithin (Insert m, "&_", Rel(param=i, strict=False)), i, b
         otherwise: match ?CallOf e:
-            ? ((c, args)): match ?TraversalOf c, args:
+            ? ((c, args)): match ?TraversalOf m, c, args:
                 ? ((coll, step, at)): (Within m, i, coll) and StepWithin m, i, (ExprName c), coll, step, at, (Or args[1], dummyArg).value
                 nil: False
             nil: False
@@ -1448,14 +1710,14 @@ fn WithinBlock m, i, b = Within (BlockRels b.stmts, m), i, (LastOr b)
 # parts, a `Fold` must start within and build on its accumulator.
 StepWithin: unbounded fn (Text ==> Rel), Nat, Text, Expr, Expr, Nat, Expr -> Bool
 fn StepWithin m, i, f, coll, step, at, z:
-    if f == "Filter" or f == "Prelude.Filter": True
+    if PreIs m, f, "Filter": True
     else: match step.kind:
         ELambda (? ps), body:
             let sm = StepRels m, coll, ps, at
             let ((bm, x)) = match body:
                 LbExpr y: ((sm, y))
                 LbBlock b: (((BlockRels b.stmts, sm), (LastOr b)))
-            if f == "Each" or f == "Prelude.Each": Part bm, i, x
+            if PreIs m, f, "Each": Part bm, i, x
             else: match ps[0]:
                 ? acc: match acc.kind:
                     PName n: (Within m, i, z) and BuildsOn bm, i, (SNameKey n), x
@@ -1486,9 +1748,9 @@ fn BuildsOnCall m, i, acc, c, args:
     let rest = Each (Drop args, 1), \|a| a.value
     let parts = Fold rest, True, \|ok, x| ok and Part m, i, x
     if not onAcc: False
-    else: if (f == "Push" or f == "Prelude.Push") and (Len rest) == 1: parts
-    else: if (f == "Insert" or f == "Prelude.Insert") and (Len rest) == 2: parts
-    else: if (f == "Append" or f == "Prelude.Append") and (Len rest) == 1: Within m, i, (Or rest[0], dummyArg.value)
+    else: if (PreIs m, f, "Push") and (Len rest) == 1: parts
+    else: if (PreIs m, f, "Insert") and (Len rest) == 2: parts
+    else: if (PreIs m, f, "Append") and (Len rest) == 1: Within m, i, (Or rest[0], dummyArg.value)
     else: False
 
 # A block's last expression, for `BuildsOn`; a block that binds the accumulator's name
@@ -1510,17 +1772,16 @@ fn Part m, i, e = match e.kind:
 
 # The summaries a clause's calls use, as `fn:NAME` entries of its relations, each the
 # callee's parameter: a summarized function's (pick SM), a prelude function's that
-# returns no more than its first argument (pick SW). A name the clause binds itself (a
-# parameter, a `let`, a lambda's or an arm's pattern, a local `fn`) is not the global
-# function and gets none. `spots` is the clause's walk.
-SummarySeeds: unbounded fn Shrink, Def, FnClause, [Spot], (Text ==> Rel) -> (Text ==> Rel)
-fn SummarySeeds sk, d, c, spots, rels:
-    let bound = Fold spots, (PatternsNames c.params), \|a, sp| UnionTexts a, (SpotBinders sp)
-    Fold (Fold spots, [[]], \|acc, sp| Append acc, (SpotSites sp)), rels, \|m, site| if HasText bound, site.callee: m else: match ?ResolveCallee sk.g, d.home, site.callee:
-        ? k: match sk.sums[k]:
-            ? i: Insert m, "fn:{site.callee}", Rel(param=i, strict=False)
-            nil: if IsNoLargerPrelude k: Insert m, "fn:{site.callee}", Rel(param=0, strict=False) else: m
-        nil: m
+# returns no more than its first argument (pick SW). A call of a name bound where it
+# stands (a parameter, a `let`, a lambda's or an arm's pattern, a local `fn`) is not the
+# global function's, which `?NoLargerArg` checks at each call. `spots` is the clause's
+# walk.
+SummarySeeds: unbounded fn Shrink, Def, [Spot], (Text ==> Rel) -> (Text ==> Rel)
+fn SummarySeeds sk, d, spots, rels = Fold (Fold spots, [[]], \|acc, sp| Append acc, (SpotSites sp)), rels, \|m, site| if IsLocal site.rels, site.callee: m else: match ?ResolveCallee sk.g, d.home, site.callee:
+    ? k: match sk.sums[k]:
+        ? i: Insert m, "fn:{site.callee}", Rel(param=i, strict=False)
+        nil: if IsNoLargerPrelude sk.g, k: Insert m, "fn:{site.callee}", Rel(param=0, strict=False) else: m
+    nil: m
 
 OptNames: unbounded fn ?Pattern -> [Text]
 fn OptNames (? p) = PatternNames p
@@ -1536,7 +1797,7 @@ fn ?DecrementOf m, e = match e.kind:
     EGroup x: ?DecrementOf m, x
     otherwise: match ?CallOf e:
         ? ((c, args)): match ?CalleeName c:
-            ? n: if n == "?Step": ?Smaller m, (Or args[0], dummyArg).value else: nil
+            ? n: if PreIs m, n, "?Step": ?Smaller m, (Or args[0], dummyArg).value else: nil
             nil: nil
         nil: nil
 
@@ -1606,16 +1867,22 @@ fn LoopsOf sk, st, d:
 
 ClauseLoops: unbounded fn Shrink, St, Def, FnClause -> St
 fn ClauseLoops sk, st, d, c:
-    let spots = BodySpots c.body, {}
-    let whiles = Filter spots, \|sp| IsWhileSpot sp
-    if (Len whiles) == 0: st
+    let base = ClauseBase sk, d, c
+    let spots0 = BodySpots c.body, base
+    if not (Fold spots0, False, \|seen, sp| seen or IsWhileSpot sp): st
     else:
-        let seeds = SummarySeeds sk, d, c, spots, {}
-        Fold whiles, st, \|s, sp| match sp:
-            SpotStmt w, ignore: match w.kind:
-                SWhile cond, body: CheckWhile s, cond, body, w.span, d.name, seeds
+        let spots = BodySpots c.body, (SummarySeeds sk, d, spots0, base)
+        Fold (Filter spots, \|sp| IsWhileSpot sp), st, \|s, sp| match sp:
+            SpotStmt w, m: match w.kind:
+                SWhile cond, body: CheckWhile s, cond, body, w.span, d.name, (Marks m)
                 otherwise: s
             otherwise: s
+
+# A walk's relations less what they say of names: only the entries that are not names
+# (`local:`, `pre:`, `fn:`, ...), so a loop's measures start from nothing but where the
+# loop stands.
+Marks: fn (Text ==> Rel) -> (Text ==> Rel)
+fn Marks m = Fold (Keys m), m, \|m2, k| if Contains k, ":": m2 else: Remove m2, k
 
 IsWhileSpot: fn Spot -> Bool
 fn IsWhileSpot (SpotStmt s, ignore) = match s.kind:
@@ -1623,7 +1890,8 @@ fn IsWhileSpot (SpotStmt s, ignore) = match s.kind:
     otherwise: False
 fn IsWhileSpot (SpotExpr ignore, ignore) = False
 
-# `seeds` are the clause's `fn:NAME` entries, so a set reads summaries as a call does.
+# `seeds` are the entries where the loop stands that are not names (`Marks`): its
+# summaries, its locals, the prelude's names, so a set reads them as a call does.
 CheckWhile: unbounded fn St, Cond, Block, Range, Text, (Text ==> Rel) -> St
 fn CheckWhile st, c, body, span, name, seeds:
     let vars = SetTargets body.stmts
@@ -1658,7 +1926,7 @@ fn AllPathsStrict stmts, v, vi, outer:
     let rels = BlockRels stmts, outer
     Fold stmts, False, \|ok, s| match s.kind:
         SSet t, value:
-            if (RefPath t) == [[v]]: SetsStrict value, v, vi, rels
+            if (RefPath t) == [[v]]: (if IsZeroLit value: ok else: SetsStrict value, v, vi, rels)
             else: ok and not (StmtSetsWeak s, v, vi, rels)
         SExpr e: match e.kind:
             EIf c, tb, ?eb:
@@ -1682,10 +1950,21 @@ fn StmtSetsWeak s, v, vi, rels = Fold (StmtSpots s, rels), False, \|seen, sp| se
 
 SpotSetsWeak: unbounded fn Spot, Text, Nat -> Bool
 fn SpotSetsWeak (SpotStmt s, m), v, vi = match s.kind:
-    SSet t, value: (Take (RefPath t), 1) == [[v]] and not (SetsStrict value, v, vi, m)
+    SSet t, value: (Take (RefPath t), 1) == [[v]] and not (SetsStrict value, v, vi, m) and not ((RefPath t) == [[v]] and IsZeroLit value)
     SAccum t, ignore, ignore: (Take (RefPath t), 1) == [[v]]
     otherwise: False
 fn SpotSetsWeak (SpotExpr ignore, ignore), ignore, ignore = False
+
+# `&v <= 0` is no decrease of its own (a literal is smaller only than a local known to be
+# greater), but it keeps one: after `&fuel <= left` on the same path, `0` is no larger than
+# `left`, the bottom of `Nat`, as `-?` takes the local to be.
+IsZeroLit: fn Expr -> Bool
+fn IsZeroLit e = match e.kind:
+    ELit l: match l.kind:
+        LInt d: d == "0"
+        otherwise: False
+    EGroup x: IsZeroLit x
+    otherwise: False
 
 # Pick SW: a value set into `v` is strictly smaller than `v` itself (its measure `vi`), not
 # than some other local, when the relations in scope where the set stands say so (a
@@ -1693,12 +1972,11 @@ fn SpotSetsWeak (SpotExpr ignore, ignore), ignore, ignore = False
 # summarized call on a part); when it is a call that returns no more than an argument
 # strictly smaller than `v` (a summarized function's parameter, pick SM; the prelude's
 # `Take`, `Drop`, `Filter`, `Remove` and `Min`, on their first); `x -? k` of such an `x`;
-# or a literal `0`, the bottom of `Nat`.
+# never a literal: `0` is smaller only than a local known to be greater, which the
+# checker cannot know (`while True: &n <= 0` sets `0` forever); `IsZeroLit` lets a `0`
+# keep a decrease made earlier on the same path.
 SetsStrict: unbounded fn Expr, Text, Nat, (Text ==> Rel) -> Bool
 fn SetsStrict e, v, vi, rels = match e.kind:
-    ELit l: match l.kind:
-        LInt d: d == "0"
-        otherwise: False
     EGroup x: SetsStrict x, v, vi, rels
     EBinary "-?", l, ignore: SetsStrict l, v, vi, rels
     otherwise: (RelStrict rels, e, vi) or (CallStrict e, v, vi, rels)
@@ -1802,12 +2080,14 @@ fn CheckProgram srcs, trees, world, shown, recording:
     let ((failed, st2)) = Fold g1.defs, (([[]], st1)), \|((bad, s)), d|
         let before = Len s.diags
         let s2 = CheckDef g1, s, d
-        let bad2 = if (Len s2.diags) > before: Push bad, d.qk else: bad
+        let bad2 = if (Len s2.diags) > before: Push bad, (OwnKey d).qk else: bad
         ((bad2, s2))
     let st2b = update st2:
         &_.level <= 0
     let st3 = DefaultWants g1, st2b, [[]]
-    let good = Filter g1.defs, \|d| not (HasText failed, d.qk)
+    # A failed impl's method is its impl's alone: two impls' methods share a key, so the
+    # list keys each by where its impl stands (`OwnKey`).
+    let good = Filter g1.defs, \|d| not (HasText failed, (OwnKey d).qk)
     let st4 = ShrinkCheck g1, st3, good
     let ((rootRow, st5)) = RootRow g1, st4, world
     let diags = SortDiags (Filter st5.diags, \|d| d.file < shown)
