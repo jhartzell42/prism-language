@@ -256,18 +256,259 @@ an empty array's element), or one a local `let` quantified.
 
 ### Where it stands
 
+`tests/prismc/check/run.sh` checks every program of the corpus, the 58 negative cases and
+the two typed dumps. A program the books make wrong has its exact report in
+`tests/prismc/check/pos/NAME.expected`; each is listed here with the rule.
+
+- **Clean:** `compiler-ch03-halfcounter`, `conf-ch01-counter`, `conf-ch01-journal`,
+  `counter`, `half-counter`, `todos`, `sem-appB-widgets`, `sem-ch01-counter`,
+  `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`, `sem-ch06-birds`, `sem-ch07-births`,
+  `sem-ch07-normalize`, `sem-ch07-paged`, `sem-ch07-rounds`, `sem-ch09-hosts`,
+  `ts-ch03-traits`, `ts-ch04-lifting`, `prelude`, `chess`.
+- **`conf-ch01-motd`** (1): `!motd` holds a `!~Contents`, and a name shows its type's whole
+  stack (Type System ch. 1, "The whole stack, every time"; D12). Conformance ch. 1 writes
+  `!motd`, Pitch ch. 8 `!~motd` (doubt CF below).
+- **`sem-ch04-labels`** (1): the lambda's `left` is a `?Nat`, so its name shows `?` (ch. 1;
+  ch. 5, a lambda's marks declare its parameters' layers).
+- **`sem-ch05-and-blocks`** (2): `Components`' two `while`s follow parent links, which end
+  only by an invariant; the book says itself that `Components` as written is unbounded
+  (Semantics ch. 5, "`while` and every tick ends").
+- **`sem-ch08-viewer`** (2): the file declares its own `type Key` and `type Contents`,
+  which are not `Ui.Key` and `Fs.Contents`, the types `Ui.TextInput` and `Fs.Contents`'s
+  tag answer (Type System ch. 2: a declared type is its own; the book's listing has no
+  `use Fs.*`, doubt VW below).
+- **`prismc`** (clean): the checker over prismc's own 17 files, 17.5 thousand lines, the
+  back end included. The back end is in progress (`lower.prism`, `emit.prism`,
+  `templates/`, `front.prism`'s `compile` branch), so an error this line shows between
+  its chunks is the back end's, not the checker's.
+
+The negative cases (`neg/`, 58) give one diagnostic each, the error their name says, or a
+case of it (`live-field-bare` is a `mark-stack`; `values-not-shrinking` and
+`summary-not-parts` are `may-not-end`s that keep doubt TR's map rule and pick SM's
+summaries from accepting a cycle that grows; the four `*-rebinding` cases are
+`may-not-end`s that keep pick SC's scoping honest; `guard-recursion`, `method-recursion`
+and `fuel-unrelated` are `may-not-end`s for picks GH and PM, each with a function beside it
+that checks clean). `refinement-escape` and `existential-escape`
+have no case, since the checker does not report them (gaps below).
+
+### Checker picks
+
+The places where the checker had to choose. Each is Claude's, for Jimmy to overturn.
+
+- **TO The typed program is tables beside the tree.** Every annotation is keyed by file
+  and range, and the tree stays `Ast.Module`. *Refused:* a second tree with a type on
+  every node, which doubles ast.prism's forty expression forms and has to follow every
+  change to them.
+- **BG Check order in a block.** Holds first (a hold's start value is where a block most
+  often says what its names are), then `let`s and local functions, then the rest in page
+  order, every name pre-bound to its marked type. The dependency order is computed for the
+  typed program, not used for checking (gap DG).
+- **FD A field of a record nothing has decided yet waits.** When several records have the
+  field, its type is a fresh variable, read once a later line decides the record, and
+  `ambiguous` at the end of the definition (ch. 5's principle: defer what a later line can
+  decide). One record with the field decides it at once.
+- **MS A wrong mark reports once, at the binder,** and the name then has the type its
+  value has, so its uses do not report it again.
+- **CR A collision recovers** with the file's own declaration, else the first candidate,
+  after reporting both, so the rest of the line still checks.
+- **LU `layer-unknown` is asked at the end of the definition.** A free-headed argument
+  meeting a plain or variable parameter is taken whole there; at the end, if its layer is
+  still a variable, or turned out to be a dynamic or an event, it is `layer-unknown` at
+  the argument. *Refused for now:* deferring the application and retrying it (ch. 5's
+  text), which needs the environment kept with each deferral (gap LR).
+- **ER** An arm that is a bare `Error` waits for the other arms, so `if c: Error(..) else:
+  ~ unit` is a `~unit`.
+- **QD** The prelude's `/: fn a, a -> ?a` is read as Type System ch. 3 has it, `fn a, a ->
+  Quotient a`, with `Quotient` normalized for the built-in numbers only.
+- **TL0** Top-level `let`s without a signature are inferred first, in page order, and their
+  monomorphic variables default at the program's end.
+- **PS** In the prompt-cycle check a widget function is prompt in every argument, except
+  the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`).
+- **SM A function that returns parts of a parameter has a summary**, Semantics ch. 7's
+  size-change principle across the call, so a cycle may traverse what a helper returns.
+  A function is summarized on its first parameter `i` for which every clause's result is
+  within `i`:
+  - no larger than it: the parameter, a part, `Values` or `Keys` of one, an index on one;
+  - an array or map literal of parts;
+  - a `match` or `if` whose every arm is within `i`;
+  - a `Filter`, or an `Each` of parts, over a collection within `i`;
+  - a `Fold` over one, from a start within `i`, whose step returns its accumulator or the
+    accumulator with parts added by `Push` or `Insert`, or a within added by `Append`.
+
+  A part is strictly smaller than `i`, or a tuple of such (a tuple is not a recursive type,
+  so a cycle reaches only its pieces). A call of the function is no larger than its
+  argument `i`, and strictly smaller when that argument is. A summary is read without
+  other summaries, so none depends on itself or on a chain, and a name the calling clause
+  binds itself (a parameter, a pattern, a local `fn`) is not the summarized function
+  (`neg/summary-not-parts`: a function returning `[[Node m]]` gets no summary). Chess's
+  `Kids cs` is summarized on `cs`, which clears `LayStack`, `LayLayers` and `LayGrid`.
+  *Refused:* inlining `Kids` at its call sites, which bends the program to the checker;
+  summaries chained to a fixed point, which no program needs yet.
+
+- **SC Size relations are scoped.** This clause loops forever on a `Leaf`:
+
+  ```prism
+  fn Grow t = match t:
+      Node l, r: Grow l
+      Leaf n:
+          let l = Node t, t
+          Grow l
+  ```
+
+  A check that keeps one table of relations for the whole clause clears it: the `Node` arm
+  says `l` is smaller than `t`, and that sentence leaks into the `Leaf` arm, where `l` is a
+  different, bigger tree. So every call, every summary's result and every `while`'s set is
+  read with the relations in scope where it stands:
+  - a name bound again (a `let`, a pattern, a lambda's or a `for`'s parameter, a local
+    `fn`) relates to nothing but what its new definition relates to;
+  - a `match` arm's bindings, and an `if`'s `? x <- e` binding, are seen only in that arm;
+  - a block is one binding group (pick BG pre-binds its names), so its names hide the
+    outer ones on every line of it, and its `let`s and binds relate in page order.
+
+  `neg/arm-rebinding` (the clause above), `neg/let-rebinding` (a `let` after a shrinking
+  `match`), `neg/summary-rebinding` (a summary, pick SM) and `neg/loop-rebinding` (a
+  `while`) each checked clean before; `arm-rebinding`'s `Total (Node l, r) = (Total l) +
+  (Total r)` is per-arm shrinking, and still checks clean. *Refused:* one table where a name
+  bound twice keeps the weaker relation, which works only when both bindings relate to the
+  same parameter and says nothing when the second relates to nothing; renaming every
+  binder apart before the check, which is the same scoping as a separate pass over the
+  tree.
+- **GH One walk finds every call.** This function never ends, and its only call is in a
+  guard:
+
+  ```prism
+  fn Spin n = match n:
+      k if Spin k: True
+      otherwise: False
+  ```
+
+  A collector that lists the forms it visits misses the ones it forgets: `Spin` got a
+  reference edge from the names it mentions and no size-change graph from its call sites,
+  so its cycle had nothing to fail. `n.Max (Spin n)`, a call inside a method call's
+  argument, went the same way. So the shrink check reads a body through one walk
+  (`ExprSpots`, `StmtSpots`): every expression and statement at any depth, each with the
+  relations in scope where it stands:
+  - a guard sees its arm's pattern, a `? x <- e if g` guard its condition's;
+  - `recv.Method args` is the call `Method recv, args`, as inference reads it;
+  - named arguments, text and template placeholders, `if`, `while` and `given:` blocks,
+    `require`, `forbid`, `return`, `update` statements, lambda bodies, local `fn`s and
+    widgets are all in it.
+
+  The call sites, the reference graph's names, the summaries' seeds and the names a body
+  binds, and the `while`s the loop check visits all read this one list (`CheckBlocks`'
+  dependency order reads its names too). `neg/guard-recursion` and `neg/method-recursion`
+  each checked clean before. *Refused:* adding the two forms to each collector, which
+  leaves five walks to drift apart again.
+- **PM A loop's measure is the local it sets.** Each local a `while` sets is its own
+  measure, and a set shrinks it only when the value is strictly smaller than that local.
+  `&fuel <= less`, with `less` the `? less` of `&other -? 1`, is smaller than `&other`, not
+  than `&fuel`; when the loop puts `&other` back every turn, it never ends
+  (`neg/fuel-unrelated`, clean before). *Refused for now:* a measure over several locals
+  together (`&fuel` smaller than `&other` while `&other` never grows), which no program
+  needs yet.
+
+### Checker doubts
+
+- **TR** An element a prelude traversal (`Fold`, `Each`, `Filter`) hands its closure is
+  strictly smaller than the collection, for the shrink check, and a named function passed
+  as the step is a call on an element. Semantics ch. 7 lists "a part ... taken apart by
+  `match`" and does not say this. *First ruling (Claude's):* as stated; prismc's tree
+  walks need it. *If otherwise:* every tree walk through `Fold` is `unbounded`.
+  - A map's children are its parts, as Semantics ch. 7 lists them ("a map's child"):
+    `Values m` and `Keys m` are no larger than `m`, so a traversal over them hands out
+    parts of `m`, and `m[k]` is no larger than `m`, so the `? e` of a match on it is a
+    part (an index on an array likewise, its element). This clears chess's `TextsOf` ->
+    `TextsIn` -> `TextsOf`, folding over `Values cs`. `Values` of a map built bigger than
+    the one given (`Values (Insert m, k, (Node m))`) is related to nothing
+    (`neg/values-not-shrinking`). *First ruling (Claude's):* as stated, the book's own
+    list. *If otherwise:* chess's `TextsIn` and `Kids` are `unbounded fn`, which stops
+    `PlaceAt` lifting over the window's dynamics.
+- **RP** A reference path writes its field steps bare (`&_.rootModule <= ? m`), and a field
+  after an index step names the element's field (`&_[ix].partner <= ? j` sets a `?Nat`).
+  Type System ch. 1 says a field access shows its stack; the parser reads a set only
+  through a bare path. *First ruling (Claude's):* bare steps in references. *If
+  otherwise:* the parser learns `&_.?rootModule <= ...`.
+- **CF** Conformance ch. 1 writes `!motd <- Fs.File(..)` for a `!~Contents`, Pitch ch. 8
+  `!~motd`. *First ruling (Claude's):* Pitch's; Conformance ch. 1 is the slip.
+- **VW** Semantics ch. 8's viewer writes `~Contents` with no `use Fs.*`, and the
+  conformance copy declares its own `Contents`. *First ruling (Claude's):* the listing
+  needs `use Fs.*`.
+- **UI** `prelude/ui.prism`'s `Click` derives nothing, so `^Show` of a click fails
+  (`sem-appB-widgets`), and its `Ui.TextInput` names a `Key` it does not declare.
+  *First ruling (Claude's):* `type Click = click` takes `derive ^Eq, ^Show`, and the tag
+  takes `Gui.Key` or a `Key` of its own.
+- **WL An element has two faces.** A blueprint's element, `Element r o` (what an element
+  expression or `emit` makes, and what a host's supplier receives live), keeps each
+  field's stack: a pattern binds `text: $Text` as `$t` (Type System ch. 1, "Sigils on
+  fields"), and a bare `text=t` there is `mark-stack` (`neg/live-field-bare`). An element
+  seen through a document, `Elem r` (an entry of the `$(Path ==> Elem r)` a host form
+  gives, sampled by a plain function), is that tick's snapshot, Semantics ch. 8's `Level`:
+  a document is a value per tick, and the transcript prints its elements with plain
+  fields (`Ui.Label(text="Count: 0")`). A pattern on it binds each `$` field's current
+  value, plain. So `TextsOf` and `Lay` are plain functions, as Pitch ch. 5 says ("Layout
+  is `PlaceAt`, a plain function from the tree"). The checker tells the faces apart by
+  the type alone, `Elem r` against `Element r o` (Type System ch. 2 already calls `Elem r`
+  the document's value type), with no marker added.
+  - The binder may be bare (`text=t`) or show the field's declared `$` (`text=$t`), which
+    the level drops: either name is a `Text`. Chess's `TextsOf` and `Lay` write `$t`, as
+    Pitch ch. 5's `Masked` writes `held=$n` on an entry of `(Path ==> Elem)`. The `$t`
+    spelling names a plain value with a `$`, against ch. 1's "the whole stack, every time".
+  - `Masked`'s other half, building a document's element from levels (`Cards.Hand(held=$n,
+    ..)` with `$n` now a `Nat`), does not check: a plain value where a `$` field goes is a
+    mismatch, and an `Element` does not pack into an `Elem`.
+  - An `!` field of a snapshot still binds as an event, though a `Level` drops events.
+  - *First ruling (Claude's), for Jimmy to confirm:* the two faces as stated, both binder
+    spellings on a snapshot. *If otherwise:* only `text=t` on a snapshot, and chess's
+    patterns go back to bare names; or fields keep their stacks everywhere, and `TextsOf`
+    and `Lay` are lifted functions, against Pitch ch. 5.
+
+### Gaps against ch. 5
+
+What the checker does not do yet, each with Claude's first ruling.
+
+- **LR Deferred applications.** No application is retried when a later line decides an
+  argument's layer (pick LU). *First ruling:* keep LU; retry when a program needs it.
+- **RE `refinement-escape`.** A tag arm over a rigid output substitutes the arm's equality
+  into the expected type, but outside variables are not made untouchable in the arm.
+  *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it, with the error, next.
+- **EE `existential-escape`.** `any e` solves its bounds at `e`'s type; an `any` meets only
+  an `any`, and is never unpacked into a rigid variable at a parameter (doubt EP).
+  *First ruling:* unpack at application, as ch. 5 says.
+- **R2 Suppliers' outputs are not rigid.** A host's supplier lambda gets a flexible `o`, not
+  one rigid per arm, so the dumps keep `o` as a variable. *First ruling:* rigid per arm
+  with the arm's equality, with RE.
+- **DG Binding groups.** Blocks are checked in BG's order, not dependency order, so a `let`
+  used above its line is used at its monomorphic pre-bound type, and mutually dependent
+  `let`s are not generalized together. *First ruling:* check in the dependency order the
+  typed program already computes.
+- **CT The shrink check's call test** for closures is not there: a closure passed to a
+  program's own higher-order function (`Spaced args, SexpType`) is a call with no
+  edges. *First ruling:* the call test, as Semantics ch. 7 has it.
+- **SU Prompt-cycle summaries** are per block, not computed bottom-up over the call graph
+  (pick PS). *First ruling:* summaries, as ch. 5's pass 1 has them.
+- **FM A field read through a waiting access** (pick FD) is not checked for its marks.
+  *First ruling:* check them when the record is decided.
+- **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
+  *First ruling:* read each impl's associated type into the normalizer.
+
+### Where it stands
+
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
 `tests/compiled/run.sh`, whose default set is what passes:
 
-- **Pass (2):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
+- **Pass (4):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
   has its shape (fields `count: Hold<Int>` and the merge's two `Stamped` inputs,
   `inc`/`dec` recording and asking for the wake, `wake` deciding left first, `patch`
   pulling the label; the half counter's `increment` calling `delta` calling the hold's
   write, with no wake).
-- **The rest of the corpus** runs by name (`tests/compiled/run.sh sem-ch07-normalize`)
+  `sem-ch07-normalize`, the step machine `prism_rtl`'s `tests/normalize.rs` writes by
+  hand (`struct Normalize { t: Term }`, `impl Job<Term>`, `compute until idle: 3 ticks,
+  1 to 3`); `sem-ch07-walk`, a recursion that is not a tail call, one frame per pending
+  `+` (`5 ticks, 1 to 5`).
+- **The rest of the corpus** runs by name (`tests/compiled/run.sh todos`)
   and is not in the default set until a chunk makes it pass: the lowering above reaches
-  `for` rows, `rebuild`, jobs, traits and modules, but nothing past the counters is
+  `for` rows, `rebuild`, jobs, traits and modules, but nothing past these four is
   verified against the typed back end. Programs the checker refuses by the books
   (`conf-ch01-motd`, `sem-ch04-labels`, `sem-ch05-and-blocks`, `sem-ch08-viewer`)
   `compile` refuses too.
@@ -354,10 +595,18 @@ Each is Claude's, for Jimmy to overturn.
   number, Semantics ch. 8 RP), an `@Defer`, the merge `!started <| !again`, and the job's
   `Hold`, cycled once per firing.
 - **JB Jobs.** An unbounded function that `@Run` is given, and every unbounded function
-  it tail-calls, has a job struct of its parameters (`struct Normalize { t: Term }`), its
-  `Job::cycle` the function's body with each tail call a `Turn::More(Rc::new(G { .. }))`
-  and each other result `Turn::Finished`; `start_normalize` is its `Start`. Every
-  unbounded function is also a direct-style Rust function (doubt DS).
+  a job calls, has a job struct of its parameters (`struct Normalize { t: Term }`): the
+  call about to be entered. Its `Job::cycle` is the function's body to the next cycle
+  point (D6: every call of an unbounded function from an unbounded function). A tail
+  call is `Turn::More(Rc::new(G { .. }))`; any other call is
+  `call_then(start_g(..), move |g_705: B| ..)`, the prelude's `Frame` around the
+  callee's job with the rest of the body as its continuation, which the result resumes in
+  the cycle the callee finishes; any other result is `Turn::Finished`. Frames nest, so a
+  job's state is its stack of pending callers (`sem-ch07-walk`: `Total` over a tree of
+  four calls, `5 ticks, 1 to 5`). A continuation is a `move` closure: each borrowed local
+  the rest of the source names is cloned into it first. `start_normalize` is the job's
+  `Start`. Every unbounded function is also a direct-style Rust function, for the calls
+  gap DS leaves.
 - **RW `for` rows.** A row is a node of its own (`TodosRow`) at `n/[k]`, with `key`, a
   `value` hold for `$_`, and a weak reference to its block; the block's builder (a
   template, `TmForBuild`) tears down left keys, builds new ones and updates kept ones from
@@ -408,12 +657,15 @@ ruling taken (Claude's).
 - **WH `Node::wake` has no height.** The contract has a node run "its combinators in
   distance order, once per height"; the hook is not told the height. *First ruling:* the
   node keeps the heights it asked for (pick WH). *If otherwise:* `Node::wake(height)`.
-- **DS Non-tail unbounded calls.** D6 puts a cycle point at every call of an unbounded
-  function from an unbounded function; this back end makes one only at tail calls of a
-  job, and runs every other unbounded call direct-style inside the cycle (on a 1 GB
-  stack). Cycle counts match wherever an unbounded function calls others only in tail
-  position (`Normalize`: `3 ticks, 1 to 3`); elsewhere a job takes fewer ticks than D6
-  says. *If otherwise:* the job keeps a stack of continuation frames.
+- **DS Calls a frame does not reach.** A job makes a frame for a call that its
+  expression makes whatever its value: in a statement, an argument, an operand, a
+  scrutinee or a condition, at any depth. A call under a lambda (a closure an unbounded
+  `Fold` is given, D8), in an arm of a `match` or a branch of an `if` that is not in tail
+  position, right of `and`/`or`, or of a local closure value, still runs direct-style
+  inside the cycle, so such a job takes fewer ticks than D6 says. *Next:* a non-tail
+  `match` binds its continuation once (`let k = Rc::new(move |x| ..)`) and each arm
+  frames into it; a closure given to `Fold` needs the prelude's higher-order functions as
+  jobs. Cost: a cycle walks the frames, so it is linear in the pending calls.
 - **PF A port's fault.** `Port::fire` returns `Done`, and an event method returns
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
