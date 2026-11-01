@@ -42,7 +42,7 @@ fn EmTy t = match t:
     RsFn ps, r: "Rc<dyn Fn({EmRefTys ps}) -> {EmTy r}>"
     RsRef (RsFn ps, r): "&dyn Fn({EmRefTys ps}) -> {EmTy r}"
     RsRef i: "&{EmTy i}"
-    RsJobFn a, b: "fn({EmTy a}) -> Rc<dyn prism_rtl::Job<{EmTy b}>>"
+    RsJobFn a, b: "Rc<dyn Fn({EmTy a}) -> Rc<dyn prism_rtl::Job<{EmTy b}>>>"
     RsJob b: "Rc<dyn prism_rtl::Job<{EmTy b}>>"
     RsEvent i: "Event<{EmTy i}>"
     RsDyn i: "Dynamic<{EmTy i}>"
@@ -331,9 +331,11 @@ fn EmJobDef j:
     let gnames = EmGenericNames (Each j.generics, \|((g, ignore))| g)
     let fields = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t},"), "\n"
     let params = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t}"), ", "
-    let start = "pub fn {j.start}{EmGenerics j.generics}({params}) -> Rc<dyn prism_rtl::Job<{EmTy j.ret}>>"
+    # A job is an `Rc<dyn Job>`, so its type parameters live as long as the program.
+    let bounded = EmGenerics (Each j.generics, \|((g, bs))| ((g, (Push bs, "'static"))))
+    let start = "pub fn {j.start}{bounded}({params}) -> Rc<dyn prism_rtl::Job<{EmTy j.ret}>>"
     let startBody = "Rc::new({j.name} \{ {Join (Each j.fields, \|((n, ignore))| n), ", "} \})"
-    TmJob (TmSourceDoc "", j.doc), j.name, gnames, fields, (EmTy j.ret), (EmBody j.body), start, startBody
+    TmJob (TmSourceDoc "", j.doc), j.name, gnames, bounded, fields, (EmTy j.ret), (EmBody j.body), start, startBody
 
 # A type, its derives, and its printer and plain-data impls (docs/backend.md, "Printing").
 EmTyDef: unbounded fn TyDef -> Text

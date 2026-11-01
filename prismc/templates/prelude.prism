@@ -250,8 +250,31 @@ pub fn div<A: Num>(a: &A, b: &A) -> Option<A> {
     A::div_opt(a, b)
 }
 
-pub fn mod_(a: &Int, b: &Int) -> Option<Int> {
-    (b != &Int::from(0)).then(|| a.modulo(b))
+pub fn mod_<A: Modulo>(a: &A, b: &A) -> Option<A> {
+    A::mod_opt(a, b)
+}
+
+/// `?Mod` over each numeric type that has a remainder.
+pub trait Modulo: Sized {
+    fn mod_opt(a: &Self, b: &Self) -> Option<Self>;
+}
+
+impl Modulo for Int {
+    fn mod_opt(a: &Int, b: &Int) -> Option<Int> {
+        (b != &Int::from(0)).then(|| a.modulo(b))
+    }
+}
+
+impl Modulo for Nat {
+    fn mod_opt(a: &Nat, b: &Nat) -> Option<Nat> {
+        (b != &Nat::from(0u32)).then(|| a.modulo(b))
+    }
+}
+
+impl Modulo for u8 {
+    fn mod_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_rem(*b)
+    }
 }
 
 /// `Float`, `ToFloat`: an `Int` as a double.
@@ -580,6 +603,40 @@ impl<A: 'static, B: 'static> Job<B> for Frame<A, B> {
 /// A call that is not in tail position: a cycle point, with `then` the continuation.
 pub fn call_then<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
     Turn::More(Rc::new(Frame { callee, then: std::cell::RefCell::new(Some(Box::new(then))) }))
+}
+
+/// A call through an unbounded function value that is not in tail position: the value's
+/// job runs its first cycle now. A named function's value is `entered`, so entering it
+/// is still a cycle point (D6); a lambda's body is not a named function and runs on.
+pub fn call_value<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
+    Frame { callee, then: std::cell::RefCell::new(Some(Box::new(then))) }.cycle()
+}
+
+/// A named unbounded function's job as its value gives it: entering it is a cycle point.
+pub struct Entered<B>(Rc<dyn Job<B>>);
+
+impl<B> Job<B> for Entered<B> {
+    fn cycle(&self) -> Turn<B> {
+        Turn::More(self.0.clone())
+    }
+}
+
+pub fn entered<B: 'static>(job: Rc<dyn Job<B>>) -> Rc<dyn Job<B>> {
+    Rc::new(Entered(job))
+}
+
+/// The job of a lambda of unbounded type: its body, run as a job body from its first
+/// cycle (prismc/README.md, pick JB).
+pub struct Once<B>(std::cell::RefCell<Option<Box<dyn FnOnce() -> Turn<B>>>>);
+
+impl<B> Job<B> for Once<B> {
+    fn cycle(&self) -> Turn<B> {
+        (self.0.borrow_mut().take().expect("a lambda's job is cycled once"))()
+    }
+}
+
+pub fn once_job<B: 'static>(body: impl FnOnce() -> Turn<B> + 'static) -> Rc<dyn Job<B>> {
+    Rc::new(Once(std::cell::RefCell::new(Some(Box::new(body)))))
 }
 
 /// A job run to its result inside the cycle: a call of an unbounded function value from

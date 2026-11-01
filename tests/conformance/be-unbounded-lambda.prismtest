@@ -1,0 +1,7 @@
+# The unbounded lambdas' tests: declarations of be-unbounded-lambda.prism (Semantics chapter 6).
+
+test lambdas_are_jobs_too, @Counted 1:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="4")

@@ -1,0 +1,6 @@
+# The written types' tests: declarations of be-inference.prism (Semantics chapter 6).
+
+test the_types_are_written, @Shown [[1, 2, 3, 4, 5]]:
+    build
+    compute until idle
+        => expect Ui.Label(text="30 4")

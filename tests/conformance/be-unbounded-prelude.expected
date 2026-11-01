@@ -1,0 +1,13 @@
+# prism_zero's transcript: a cycle per call of Double (D6). prismc's adapter runs Double to its
+# result inside one cycle and takes 1 tick (prismc/README.md, gap DS), so prismc fails this test.
+test each_takes_an_unbounded_function
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 4 ticks, 1 to 4
+
+tick 4
+  changed:
+    1: Ui.Label(text="[[2, 4, 6]]")

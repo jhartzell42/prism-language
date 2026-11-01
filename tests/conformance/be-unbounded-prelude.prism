@@ -1,0 +1,16 @@
+# An unbounded function given to a prelude function (`Each`): the prelude's closures
+# answer directly, so the value is adapted and its job run to its result. Written for
+# prismc's back end. Work in progress, subject to change.
+emit Ui.*
+
+Double: unbounded fn Nat -> Nat
+fn Double n = n + n
+
+Doubles: unbounded fn [Nat] -> [Nat]
+fn Doubles xs = Each xs, Double
+
+@Listed: fn [Nat] -> @unit
+fn @Listed xs:
+    !done <- @Run Doubles, xs                               # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                   # 1

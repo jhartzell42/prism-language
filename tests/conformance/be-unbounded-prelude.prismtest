@@ -1,0 +1,7 @@
+# The adapted value's tests: declarations of be-unbounded-prelude.prism (Semantics chapter 6).
+
+test each_takes_an_unbounded_function, @Listed [[1, 2, 3]]:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="[[2, 4, 6]]")

@@ -261,7 +261,7 @@ an empty array's element), or one a local `let` quantified.
 
 ### Where it stands
 
-`tests/prismc/check/run.sh` checks every program of the corpus, the 64 negative cases and
+`tests/prismc/check/run.sh` checks every program of the corpus, the 74 negative cases and
 the two typed dumps. A program the books make wrong has its exact report in
 `tests/prismc/check/pos/NAME.expected`; each is listed here with the rule.
 
@@ -287,15 +287,18 @@ the two typed dumps. A program the books make wrong has its exact report in
   `templates/`, `front.prism`'s `compile` branch), so an error this line shows between
   its chunks is the back end's, not the checker's.
 
-The negative cases (`neg/`, 64) give one diagnostic each, the error their name says, or a
+The negative cases (`neg/`, 74) give one diagnostic each, the error their name says, or a
 case of it (`live-field-bare` is a `mark-stack`; `values-not-shrinking` and
 `summary-not-parts` are `may-not-end`s that keep doubt TR's map rule and pick SM's
 summaries from accepting a cycle that grows; the five `*-rebinding` cases are
 `may-not-end`s that keep pick SC's scoping honest; `guard-recursion`, `method-recursion`,
 `template-recursion`, `nested-set` and `fuel-unrelated` are `may-not-end`s for picks GH and
-PM, `operator-recursion` for pick OP, `fuel-call` for pick SW, and `guard-prompt-cycle` a
-`prompt-cycle` for pick GH, each with a function or a block beside it that checks
-clean). `refinement-escape` and `existential-escape` have no case, since the checker does
+PM, `operator-recursion` and `op-literal` for pick OP, `fuel-call` and `literal-set` for
+pick SW, `local-shadow` for pick RN, `closure-call` and `closure-escape` for pick CT,
+`guard-prompt-cycle` and `prompt-lambda` `prompt-cycle`s for picks GH and PS,
+`template-unknown`, `template-attribute` and `template-type` an `unknown-name` and two
+`mismatch`es for pick TK, each with a function or a block beside it that checks clean).
+`impl-failed` gives two, a failed impl's own error and another impl's cycle, for pick FK. `refinement-escape` and `existential-escape` have no case, since the checker does
 not report them (gaps below).
 
 ### Checker picks
@@ -330,10 +333,15 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
 - **TL0** Top-level `let`s without a signature are inferred first, in page order, and their
   monomorphic variables default at the program's end.
 - **PS** In the prompt-cycle check a widget function is prompt in every argument, except
-  the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`). A right
-  side's reads are pick GH's walk, less what is not read where it is written: a lambda, a
-  local `fn` or widget, a nested widget block, a `rebuild` or a `for`, and a delayed
-  binding's arguments. A traversal's step is read, since the traversal calls it now.
+  the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`, by
+  resolution, pick RN). A right side's reads are pick GH's walk, less what is not read
+  where it is written: a lambda, a local `fn` or widget, a nested widget block, a
+  `rebuild` or a `for`, and a delayed binding's arguments. A lambda passed to a call is
+  read, since the callee may call it now: a traversal's step, and a lambda given to any
+  function but a prelude widget function (a supplier builds a blueprint, which is
+  construction). `neg/prompt-lambda`'s `let a = Apply 1, \|x| x + b` reads `b`. A name
+  bound again inside the right side (a lambda's parameter, an arm's binder, an inner
+  `let`) is not the block's.
 - **SM A function that returns parts of a parameter has a summary**, Semantics ch. 7's
   size-change principle across the call, so a cycle may traverse what a helper returns.
   A function is summarized on its first parameter `i` for which every clause's result is
@@ -436,7 +444,8 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   (`&v.kids <= ...`) is a set of `v`. *Refused for now:* a measure over several locals
   together (`&fuel` smaller than `&other` while `&other` never grows), which no program
   needs yet.
-- **OP An operator is a call of every definition of its trait method.** This never ends:
+- **OP An operator is a call of its trait method, at the impl the solver chose.** This
+  never ends:
 
   ```prism
   impl ^Num Money:
@@ -447,20 +456,88 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
 
   `a * b` is `Prelude.*` at Money, and the impl's `*` is a definition like any function, so
   the shrink check takes impls' methods and traits' default methods as definitions, and a
-  trait method's name, an operator's spelling included, calls each of them in the program
-  (`neg/operator-recursion`, clean before). The solver's choice of impl is kept only when
-  the typed program is recorded, so the check chooses by what it can tell of the argument
-  at the method's trait parameter: a literal (a built-in type, no program impl), a
-  constructor, a call of a function whose signature returns a named type, a clause
-  parameter by the definition's signature (an impl's trait parameter is its head). Then
-  the call reaches that type's impl, or the default when the program defines none; else
-  every definition of the method. Chess's `fn Show s = Show (SqOf s)` reaches `Sq`'s impl,
-  not `Spot`'s own. An impl calling its own method on a value the walk cannot type
-  (`fn == a, b = a.key == b.key`, a field) is still a cycle that may not end. Two impls'
-  methods share a definition key (`Prelude.Show impl Show`), so the check tells them apart
-  by where each impl stands. *Refused for now:* keeping the solver's choice per call site
-  in the inference state, which is check-types.prism's and check-env.prism's, for when a
-  program needs it; a call of no impl, which misses every cycle through one.
+  trait method's name, an operator's spelling included, calls them
+  (`neg/operator-recursion`).
+  Which of them a call reaches is the solver's choice at that call. The solver notes how it
+  answered every constraint (`St.choices`, by file, range and trait, recorded whether or not
+  the typed program is): a written impl by where it stands, a derived impl by its type,
+  `any` for a type variable under a bound, a packed value or a quantified `let`, `none` for
+  a built-in type or a former's parts (each part is a constraint noted at the same place).
+  So a method call or an operator reaches:
+  - a written impl's definition of the method, or the trait's default when the impl has
+    none;
+  - through a derived impl, what its fields' types choose, at any depth (a type
+    parameter's choice is the call's own constraint on it, at the same place);
+  - every definition of the method, for `any` and for a call the solver noted nothing at;
+  - none of the program's, for `none`.
+
+  `neg/op-literal`'s `Times a, b = 2 * a` is `*` at `Money`, since the literal is a
+  `Money`, so Money's `*` calls itself through `Times`. Chess's `fn Show s = Show (SqOf s)`
+  reaches `Sq`'s impl, not `Spot`'s own, and an impl's `==` on a field (`a.key == b.key`)
+  reaches the field type's. Two impls' methods share a definition key (`Prelude.Show impl
+  Show`), so the check tells them apart by where each impl stands (`OwnKey`).
+  *Refused:* guessing the type from how the argument is written (a literal, a
+  constructor, a signature's result), which took `2` for a built-in number; the typed
+  program's `ImplNote`s, which exist only when it is recorded and name an impl by its line.
+- **RN Names are resolved where they stand.** This never ends:
+
+  ```prism
+  fn Grow xs:
+      fn Drop ys, k = Push ys, k
+      if (Len xs) == 0: 0 else: Grow (Drop xs, 1)
+  ```
+
+  A check matching the text `Drop` reads `Drop xs, 1` as the prelude's, strictly smaller
+  than `xs` (`neg/local-shadow`). So the walk's relations mark every name bound where it
+  stands as a local: a parameter, a `let`, a pattern, a lambda's or a `for`'s binder, a
+  local `fn` or widget. A call of a local is never a global's call, summary or traversal.
+  The prelude's names the checks read for their meaning (`Drop`, `Take`, `Filter`,
+  `Remove`, `Min`, `Values`, `Keys`, `?Step`, `Fold`, `Each`, `Push`, `Insert`, `Append`,
+  the delayed widgets) mean it only where the name resolves to module `Prelude`'s
+  declaration and no local of that name stands (`PreludeSeeds`, per module). The reference
+  graph, the summaries, the traversals, the loop check and the prompt walk all read names
+  this way. *Refused:* a separate renaming pass, the same scoping as a second walk.
+- **FK A failed impl's method is its impl's alone.** The definitions that fail inference
+  are skipped by the separate checks, and the list keys each by where its impl stands, as
+  the shrink check does (pick OP): one key for every impl's `Show` dropped them all, and a
+  cycle through another impl's went unchecked (`neg/impl-failed`).
+- **TK A template call is a call.** `<@Name a={{x}}>body</@Name>` is checked as lowering
+  passes it: `@Name` if a declaration has that name, else `Name`; each attribute fills the
+  parameter of its name (the one place every clause naming it gives), the body, a text,
+  the last parameter; the application rule checks the arguments against the signature, and
+  the result is a text. A name nothing declares is `unknown-name`
+  (`neg/template-unknown`); an attribute no parameter has (`neg/template-attribute`), one
+  given twice, a parameter left out, a body with no parameter left, and a callee without
+  clauses to name its parameters are `mismatch`es, as is an argument of the wrong type
+  (`neg/template-type`). Doubt TA below.
+- **CT The call test for closures** (Semantics ch. 7, "Finding the cycles"). A closure
+  passed to a program function is cleared when the function only calls it: in every
+  clause, the parameter at that slot is the callee of calls (at any depth, but not inside
+  a closure that may run later: a lambda other than a cleared one or a traversal's step,
+  a local `fn`, a blueprint) or is passed whole to another cleared slot, and nothing else.
+  The closure then runs only inside that call, so its calls are read where it is passed,
+  with what the function's summary says it is given: for each of the closure's parameters,
+  the function's parameter it is no larger than, or strictly smaller than, at every call
+  of the closure.
+
+  ```prism
+  fn AddUp ts, F = Fold ts, 0, \|acc, t| acc + (F t)
+  fn Total (Node ts) = AddUp ts, Total
+  fn Spin t = AddUp [[t]], Spin
+  ```
+
+  `AddUp` calls `F` on parts of `ts`, so `AddUp ts, Total` is a call `Total` on a part of
+  `ts`, and `ts` is a part of the `Node`: `Total` checks clean, and so does a lambda
+  calling it (`neg/closure-call`), as `Each ts, Total` does (doubt TR). `Spin` passes
+  `[[t]]`, whose element is `t` itself, and never ends. A closure at any other place is a
+  call with no edges where it is written (the reference graph), so a function that keeps
+  `F` in a lambda it returns (`neg/closure-escape`'s `Later`) clears nothing. The cleared
+  slots and the summaries are greatest fixed points, each round read under the last
+  round's: a slot stays cleared while what it passes on stays cleared, sound by induction
+  on how deep the call that runs the closure is nested; summaries that never settle are
+  dropped. *Refused:* tracking closures through `let`s, records and results, which needs
+  flow analysis; a lambda's captured names stay related to the caller's parameters, its
+  own parameters to nothing but the summary.
 - **SW A set shrinks through a call only when the callee returns no more than an argument
   that does.** `&fuel <= Bump less`, with `Bump n = n + 2`, grows `&fuel` every turn, and a
   rule that takes any call of a smaller first argument as smaller clears the loop
@@ -470,8 +547,11 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   - it is a call that returns no more than an argument strictly smaller than `v`: a
     summarized function's parameter (pick SM), or the first argument of the prelude's
     `Take`, `Drop`, `Filter`, `Remove` and `Min`;
-  - it is `x -? k` of such an `x`;
-  - it is the literal `0`, the bottom of `Nat`.
+  - it is `x -? k` of such an `x`.
+
+  A literal is never smaller: `0` is smaller only than a local known to be greater, which
+  the checker cannot know, and `while True: &n <= 0` sets `0` forever
+  (`neg/literal-set`).
 
   The prelude's five join the summaries as calls no larger than their first argument, for
   the reference graph's cycles too. `fuel-call`'s `Drain`, `&xs <= Evens (Drop &xs, 1)`,
@@ -480,9 +560,9 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
 
 ### Checker doubts
 
-- **TR** An element a prelude traversal (`Fold`, `Each`, `Filter`) hands its closure is
-  strictly smaller than the collection, for the shrink check, and a named function passed
-  as the step is a call on an element. Semantics ch. 7 lists "a part ... taken apart by
+- **TR** An element a prelude traversal (`Fold`, `Each`, `Filter`, by resolution, pick
+  RN) hands its closure is strictly smaller than the collection, for the shrink check, and
+  a named function passed as the step is a call on an element. Semantics ch. 7 lists "a part ... taken apart by
   `match`" and does not say this. *First ruling (Claude's):* as stated; prismc's tree
   walks need it. *If otherwise:* every tree walk through `Fold` is `unbounded`.
   - A map's children are its parts, as Semantics ch. 7 lists them ("a map's child"):
@@ -494,6 +574,12 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
     (`neg/values-not-shrinking`). *First ruling (Claude's):* as stated, the book's own
     list. *If otherwise:* chess's `TextsIn` and `Kids` are `unbounded fn`, which stops
     `PlaceAt` lifting over the window's dynamics.
+- **TA** A template call's attributes are matched to parameters by name (pick TK, and pick
+  GH's call sites), but lowering passes them in the order written
+  (`LoTemplatePart`): `neg/template-recursion`'s `<@Spin n={{n}} depth={{m}}/>` is checked
+  as `Spin m, n` and would run as `Spin n, m`. *First ruling (Claude's):* by name, the
+  checker's reading; lowering reorders them by the callee's parameters. *If otherwise:* the
+  checker requires attributes in parameter order, and `template-recursion` is rewritten.
 - **RP** A reference path writes its field steps bare (`&_.rootModule <= ? m`), and a field
   after an index step names the element's field (`&_[ix].partner <= ? j` sets a `?Nat`).
   Type System ch. 1 says a field access shows its stack; the parser reads a set only
@@ -554,9 +640,6 @@ What the checker does not do yet, each with Claude's first ruling.
   used above its line is used at its monomorphic pre-bound type, and mutually dependent
   `let`s are not generalized together. *First ruling:* check in the dependency order the
   typed program already computes.
-- **CT The shrink check's call test** for closures is not there: a closure passed to a
-  program's own higher-order function (`Spaced args, SexpType`) is a call with no
-  edges. *First ruling:* the call test, as Semantics ch. 7 has it.
 - **SU Prompt-cycle summaries** are per block, not computed bottom-up over the call graph
   (pick PS). *First ruling:* summaries, as ch. 5's pass 1 has them.
 - **FM A field read through a waiting access** (pick FD) is not checked for its marks.
@@ -615,7 +698,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
 `tests/compiled/run.sh`, whose default set is what passes:
 
-- **Pass (4):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
+- **Pass (12):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
   has its shape (fields `count: Hold<Int>` and the merge's two `Stamped` inputs,
   `inc`/`dec` recording and asking for the wake, `wake` deciding left first, `patch`
@@ -624,10 +707,13 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `sem-ch07-normalize`, the step machine `prism_rtl`'s `tests/normalize.rs` writes by
   hand (`struct Normalize { t: Term }`, `impl Job<Term>`, `compute until idle: 3 ticks,
   1 to 3`); `sem-ch07-walk`, a recursion that is not a tail call, one frame per pending
-  `+` (`5 ticks, 1 to 5`).
+  `+` (`5 ticks, 1 to 5`); and the back end's own tests, one per construct prismc's
+  self-compile needed: `be-let-fn-pair`, `be-unbounded-value`, `be-unbounded-lambda`,
+  `be-row-local`, `be-template-attrs`, `be-error-try`, `be-nat-literal`, `be-inference`.
+  `be-unbounded-prelude` fails by gap DS (1 tick where D6 has 4).
 - **The rest of the corpus** runs by name (`tests/compiled/run.sh todos`)
   and is not in the default set until a chunk makes it pass: the lowering above reaches
-  `for` rows, `rebuild`, jobs, traits and modules, but nothing past these four is
+  `for` rows, `rebuild`, jobs, traits and modules, but nothing past these is
   verified against the typed back end. Programs the checker refuses by the books
   (`conf-ch01-motd`, `sem-ch04-labels`, `sem-ch05-and-blocks`, `sem-ch08-viewer`)
   `compile` refuses too.
@@ -686,7 +772,12 @@ Each is Claude's, for Jimmy to overturn.
   through `?` or a tuple).
 - **CH Clauses and patterns.** A function's clauses are one `match` over the parameters
   that are not the same name in every clause; a number or text literal in a pattern is a
-  binder and an equality guard. A pattern through an `Rc` payload cannot be a Rust
+  binder and an equality guard, a number of the scrutinee's type (`0` against a `Nat` is
+  `Nat::from(0u32)`, `be-nat-literal`). A type gets `ToPod`/`FromPod` only when nothing
+  it holds, through the declarations it names, is a function or a layer. A closure given
+  to a prelude function has its parameter types written (`|found: &Option<Nat>, x:
+  &Nat|`), as does an `update`'s mutable local, and a job's type parameters are
+  `'static` (`be-inference`). A pattern through an `Rc` payload cannot be a Rust
   pattern, so such a `match` is an if-let chain in a labelled block (`'c: { if let .. &&
   let .. = &**f { break 'c ..; } .. }`).
 - **GV `given:`.** A labelled block: a bind is `let Some(p) = e else { break 'g None }`,
@@ -730,12 +821,20 @@ Each is Claude's, for Jimmy to overturn.
   job's state is its stack of pending callers (`sem-ch07-walk`: `Total` over a tree of
   four calls, `5 ticks, 1 to 5`). A continuation is a `move` closure: each borrowed local
   the rest of the source names is cloned into it first. `start_normalize` is the job's
-  `Start`. An unbounded function used as a value is its `Start` (docs/backend.md), a
-  `fn(A) -> Rc<dyn prism_rtl::Job<B>>` (a closure over a tuple when it takes several
-  arguments), and has a job; a job calls such a value as a tail call or a frame like any
-  other, and direct-style code runs it to its result (`run_to_end`, the prelude's).
-  Every unbounded function is also a direct-style Rust function, for the calls gap DS
-  leaves.
+  `Start`. An unbounded function used as a value is a `Start`, an
+  `Rc<dyn Fn(A) -> Rc<dyn prism_rtl::Job<B>>>` (one argument, a tuple when there are
+  several; contract gap UV). A named function's value is `entered(start_g(..))`, a job
+  whose first cycle only enters it, so that entering a named function is a cycle point
+  however it is reached; a lambda of unbounded type is a value whose job is its body
+  lowered as a job body (`once_job`), so a call in it is a tail call or a frame, and
+  entering a lambda is not a cycle point (compiler zero's count: `be-unbounded-lambda`,
+  `5 ticks`). A job calls a value now (`call_value`, the callee's first cycle in this
+  one); direct-style code runs it to its result (`run_to_end`); a prelude function given
+  one gets an adapter (`&|x0| run_to_end(f(x0.clone()))`, gap DS). Every unbounded
+  function is also a direct-style Rust function, for the calls gap DS leaves.
+- **ER `Error(..)` where a `~T` is wanted** is `Err(..)`: as an argument (the checker's
+  pick ER), in a branch of an `if` whose value is a `~T`, and as the firing of an event
+  that feeds a `!~T` (`be-error-try`).
 - **RW `for` rows.** A row is a node of its own (`TodosRow`) at `n/[k]`, with `key`, a
   `value` hold for `$_`, and a weak reference to its block; the block's builder (a
   template, `TmForBuild`) tears down left keys, builds new ones and updates kept ones from
@@ -790,6 +889,11 @@ Each is Claude's, for Jimmy to overturn.
 Where docs/backend.md is silent or the library lacks what it describes, with the first
 ruling taken (Claude's).
 
+- **UV An unbounded function value.** The contract has `fn(A) -> Rc<dyn rt::Job<B>>`, a
+  function pointer, which a lambda that captures cannot be. *First ruling:*
+  `Rc<dyn Fn(A) -> Rc<dyn Job<B>>>`. *If otherwise:* lambdas of unbounded type are
+  refused as values, or lifted to top-level jobs over their captures.
+
 - **WH `Node::wake` has no height.** The contract has a node run "its combinators in
   distance order, once per height"; the hook is not told the height. *First ruling:* the
   node keeps the heights it asked for (pick WH). *If otherwise:* `Node::wake(height)`.
@@ -797,11 +901,12 @@ ruling taken (Claude's).
   expression makes whatever its value: in a statement, an argument, an operand, a
   scrutinee or a condition, at any depth. A call under a lambda (a closure an unbounded
   `Fold` is given, D8), in an arm of a `match` or a branch of an `if` that is not in tail
-  position, or right of `and`/`or`, still runs direct-style
-  inside the cycle, so such a job takes fewer ticks than D6 says. *Next:* a non-tail
-  `match` binds its continuation once (`let k = Rc::new(move |x| ..)`) and each arm
-  frames into it; a closure given to `Fold` needs the prelude's higher-order functions as
-  jobs. Cost: a cycle walks the frames, so it is linear in the pending calls.
+  position, or right of `and`/`or`, still runs direct-style inside the cycle, and so does
+  an unbounded value given to a prelude function (its adapter); such a job takes fewer
+  ticks than D6 says (`be-unbounded-prelude`: compiler zero takes 4 ticks, prismc 1, so it stays out of `tests/compiled/run.sh`'s passing set).
+  *Next:* a non-tail `match` binds its continuation once (`let k = Rc::new(move |x|
+  ..)`) and each arm frames into it; the prelude's higher-order functions as jobs. Cost:
+  a cycle walks the frames, so it is linear in the pending calls.
 - **SH Shadowed runtime names.** A program type named like a `prism_rtl` name the
   emitted code writes bare (`Cx`, `Fault`, `Pod`, `Path`, `Hold`, `Node`) shadows it in
   its module (`use prism_rtl::*` loses to a local item). prismc's `CheckEnv.Cx` does no

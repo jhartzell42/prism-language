@@ -235,6 +235,7 @@ type GenDef = record:
     source: Ex
     valueTy: RsTy
     select: Ex
+derive ^Eq, ^Show
 
 # A port a row subscribes to: the parent's event `name`, fired to every live row.
 type PortDef = record:
@@ -253,6 +254,7 @@ type ForDef = record:
     keyed: Bool
     # The block's plain values the rows read, as the block passes them to a row's `build`.
     passed: [Ex]
+derive ^Eq, ^Show
 
 # The program of a root widget, as a World drives it.
 type ProgDef = record:
@@ -845,12 +847,12 @@ fn LoGlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                 let isLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and LoIsLetDef d)
                 if isLet: VlOwned (XCall (LoValuePath lx, qk), [[]]), t
                 else: match t:
-                    RsJobFn ignore, ignore:
+                    RsJobFn a, ignore:
                         let ((ps, ignore2)) = LoSchemeParts lx, qk
-                        if (Len ps) > 1:
-                            let names = Each (Range0 (Len ps)), \|i| "a{i}"
-                            VlOwned (XCast (XClosure False, [[PaTuple (Each names, \|nm| PaBind nm)]], (XCall (LoStartPath lx, qk), (Each names, \|nm| XRaw nm))), t), t
-                        else: VlOwned (XCast (XRaw (LoStartPath lx, qk)), t), t
+                        let names = Each (Range0 (Len ps)), \|i| "a{i}"
+                        let pa = if (Len ps) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
+                        let f = XClosure False, [[pa]], (XCall "entered", [[(XCall (LoStartPath lx, qk), (Each names, \|nm| XRaw nm))]])
+                        VlOwned (XCast (XCall "Rc::new", [[f]]), t), t
                     otherwise: VlOwned (XCall "Rc::new", [[XRaw (LoValuePath lx, qk)]]), t
             nil: VlOwned (LoTodo "the global {qk}"), t
 
@@ -888,7 +890,11 @@ fn LoCall lx, env, callee, args, span:
                         ? qk: LoGlobalCall lx, env, qk, args, span, t
                         nil: VlOwned (LoTodo "a call of {nkey}, which nothing declares"), t
         EGroup x: LoCall lx, env, x, args, span
-        otherwise: VlOwned (XApply (LoRef (LoX lx, env, callee)), (Each args, \|a| LoArg lx, env, a.value)), t
+        otherwise:
+            let f = LoX lx, env, callee
+            match LoVlTy f:
+                RsJobFn ignore, ignore: VlOwned (XCall "run_to_end", [[(LoStartCall f, (Each args, \|a| LoOwn (LoX lx, env, a.value)))]]), t
+                otherwise: VlOwned (XApply (LoRef f), (Each args, \|a| LoArg lx, env, a.value)), t
 
 # An argument as a parameter takes it: borrowed, a lambda as a borrowed closure.
 LoArg: unbounded fn Lx, LoEnv, Expr -> Ex
@@ -898,7 +904,7 @@ fn LoArg lx, env, e = match env.spans[LoKey lx, e.span]:
 
 LoArgKind: unbounded fn Lx, LoEnv, Expr -> Ex
 fn LoArgKind lx, env, e = match e.kind:
-    ELambda ?ps, body: XUnary "&", (LoLambdaArg lx, env, (Or ?ps, [[]]), body)
+    ELambda ?ps, body: XUnary "&", (LoLambdaArg lx, env, (Or ?ps, [[]]), body, (LoLambdaParamTys lx, e, (Len (Or ?ps, [[]]))))
     EGroup x: LoArg lx, env, x
     EName n:
         let t = LoTyOf lx, e.span
@@ -943,7 +949,12 @@ fn LoArgsFor lx, env, v, args:
         let isError = match LoPeel (LoTyOf lx, a.value.span):
             TyCon "Prelude.Error", ignore: True
             otherwise: False
-        if isTry and isError: XUnary "&", (XCtor "Err", [[LoOwn (LoX lx, env, a.value)]]) else: LoArg lx, env, a.value
+        let toUnbounded = match LoPeel (Or ps[i], TyErr):
+            TyFn CUnbound, ignore, ignore: True
+            otherwise: False
+        if isTry and isError: XUnary "&", (XCtor "Err", [[LoOwn (LoX lx, env, a.value)]])
+        else: if toUnbounded: LoRef (LoX lx, env, a.value)
+        else: LoArg lx, env, a.value
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0))
 
@@ -1069,7 +1080,26 @@ fn LoPreludeCall lx, env, qk, args, span, t:
         ? a: LoTy lx, (LoPeel (LoTyOf lx, a.value.span))
         nil: RsUnit
     let variant = LoPreludeVariant name, first
-    VlOwned (XCall variant, (Each args, \|a| LoArg lx, env, a.value)), t
+    VlOwned (XCall variant, (Each args, \|a| LoPreludeArg lx, env, a.value)), t
+
+# An argument of a prelude function. The prelude's functions take closures that answer
+# directly (`&dyn Fn(&A) -> B`); an unbounded function value given to one is adapted, its
+# job run to its result inside the cycle (gap DS). A lambda written there is lowered as
+# the closure the parameter takes.
+LoPreludeArg: unbounded fn Lx, LoEnv, Expr -> Ex
+fn LoPreludeArg lx, env, e = match e.kind:
+    ELambda ignore, ignore: LoArg lx, env, e
+    EGroup x: LoPreludeArg lx, env, x
+    otherwise: match LoTy lx, (LoPeel (LoTyOf lx, e.span)):
+        RsJobFn a, ignore:
+            let f = LoX lx, env, e
+            let n = match a:
+                RsTuple ts: Len ts
+                otherwise: 1
+            let names = Each (Range0 n), \|i| "x{i}"
+            let owned = Each names, \|nm| XMethod (XRaw nm), "clone", [[]]
+            XUnary "&", (XClosure False, (Each names, \|nm| PaBind nm), (XCall "run_to_end", [[(LoStartCall f, owned)]]))
+        otherwise: LoArg lx, env, e
 
 LoPreludeVariant: fn Text, RsTy -> Text
 fn LoPreludeVariant name, first = match first:
@@ -1144,6 +1174,12 @@ fn LoBodyExprs (LbBlock b) = BlockExprs b
 LoLambdaRc: unbounded fn Lx, LoEnv, Expr, [Pattern], LambdaBody -> Vl
 fn LoLambdaRc lx, env, e, ps, body:
     let ft = LoTy lx, (LoPeel (LoTyOf lx, e.span))
+    match ft:
+        RsJobFn a, ignore: LoJobLambda lx, env, ps, body, ft, a
+        otherwise: LoPlainLambda lx, env, ps, body, ft
+
+LoPlainLambda: unbounded fn Lx, LoEnv, [Pattern], LambdaBody, RsTy -> Vl
+fn LoPlainLambda lx, env, ps, body, ft:
     let pts = match ft:
         RsFn xs, ignore: xs
         otherwise: [[]]
@@ -1159,10 +1195,73 @@ fn LoLambdaRc lx, env, e, ps, body:
     let v = LoLambdaBody lx, env2, body
     VlOwned (XBlock dos, (XCall "Rc::new", [[(XClosure True, pas, (LoOwn v))]])), ft
 
+# A lambda's parameter types, written on the closure so that rustc need not infer them
+# from its use (`fold(&xs, &None, &(|found: &Option<T>, x: &A| ..))`); none when one is
+# not known.
+LoLambdaParamTys: unbounded fn Lx, Expr, Nat -> [RsTy]
+fn LoLambdaParamTys lx, e, n:
+    let ts = match LoTy lx, (LoPeel (LoTyOf lx, e.span)):
+        RsFn xs, ignore: xs
+        RsJobFn a, ignore: match a:
+            RsTuple xs: if n == 1: [[a]] else: xs
+            otherwise: [[a]]
+        otherwise: [[]]
+    if (Len ts) == n and Fold ts, True, \|ok, t| ok and LoKnownTy t: ts else: [[]]
+
+LoKnownTy: unbounded fn RsTy -> Bool
+fn LoKnownTy t = match t:
+    RsUnknown ignore: False
+    RsOpt x: LoKnownTy x
+    RsRes x: LoKnownTy x
+    RsArray x: LoKnownTy x
+    RsRc x: LoKnownTy x
+    RsMap k, v: (LoKnownTy k) and LoKnownTy v
+    RsTuple xs: Fold xs, True, \|ok, x| ok and LoKnownTy x
+    RsNamed ignore, xs: Fold xs, True, \|ok, x| ok and LoKnownTy x
+    RsFn xs, r: (Fold xs, True, \|ok, x| ok and LoKnownTy x) and LoKnownTy r
+    RsJobFn a, b: (LoKnownTy a) and LoKnownTy b
+    otherwise: True
+
+# A lambda of unbounded type as a value: a `Start` like a named unbounded function's
+# (docs/backend.md), `Rc<dyn Fn(A) -> Rc<dyn Job<B>>>`, whose job is the lambda's body
+# lowered as a job body (`once_job`): a call in it is a tail call or a frame, as in any
+# job. The arguments come as one value, a tuple when there are several; each borrowed
+# local the body reads is cloned in, and cloned again per call, since the body's job
+# owns what it reads.
+LoJobLambda: unbounded fn Lx, LoEnv, [Pattern], LambdaBody, RsTy, RsTy -> Vl
+fn LoJobLambda lx, env, ps, body, ft, a:
+    let caps = Filter (LoReadNames (LoBodyExprs body)), \|n| match env.names[n]:
+        ? (BnLocal ignore, ignore, ignore): True
+        otherwise: False
+    let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
+        ? (BnLocal rs, mode, ct):
+            let d = DoLet (PaBind rs), (LoOwn (LoLocal rs, mode, ct))
+            (((Push acc, d), (LoBind en, n, (BnLocal rs, "own", ct))))
+        otherwise: ((acc, en))
+    let again = Fold caps, [[]], \|acc, n| match env1.names[n]:
+        ? (BnLocal rs, ignore, ct): Push acc, (DoLet (PaBind rs), (LoOwn (LoLocal rs, "own", ct)))
+        otherwise: acc
+    let pts = match a:
+        RsTuple ts: if (Len ps) == 1: [[a]] else: ts
+        otherwise: [[a]]
+    let binders = Each (Range0 (Len ps)), \|i| match (Or ps[i], dummyPat).kind:
+        PName n: (((SNameKey n), (LoSnake (SNameKey n))))
+        otherwise: (("", "p{i}"))
+    let env2 = Fold (Range0 (Len binders)), env1, \|en, i| match binders[i]:
+        ? ((k, rs)): if k == "": en else: LoBind en, k, (BnLocal rs, "own", (Or pts[i], RsUnit))
+        nil: en
+    let pa = if (Len ps) == 1: PaTyped (PaBind (Or (Each binders, \|((ignore, rs))| rs)[0], "p0")), a else: PaTyped (PaTuple (Each binders, \|((ignore, rs))| PaBind rs)), a
+    let tail = match body:
+        LbExpr x: LoTail lx, env2, x
+        LbBlock bl: LoTailBlock lx, env2, bl
+    let job = XCall "once_job", [[(XClosure True, [[]], tail)]]
+    let call = if (Len again) == 0: job else: XBlock again, job
+    VlOwned (XBlock dos, (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], call)]]), ft)), ft
+
 # A lambda passed to a parameter: a borrowed closure, its types from the parameter.
-LoLambdaArg: unbounded fn Lx, LoEnv, [Pattern], LambdaBody -> Ex
-fn LoLambdaArg lx, env, ps, body:
-    let ((pas, env2)) = LoParams lx, env, ps, [[]], False
+LoLambdaArg: unbounded fn Lx, LoEnv, [Pattern], LambdaBody, [RsTy] -> Ex
+fn LoLambdaArg lx, env, ps, body, pts:
+    let ((pas, env2)) = LoParams lx, env, ps, pts, (Len pts) > 0
     let v = LoLambdaBody lx, env2, body
     XClosure False, pas, (LoOwn v)
 
@@ -1194,10 +1293,10 @@ fn LoBinderTyOfPattern lx, p = match p.kind:
 LoIf: unbounded fn Lx, LoEnv, Cond, Block, ?Block, RsTy -> Vl
 fn LoIf lx, env, c, thenB, ?elseB, t:
     let elseV = match ?elseB:
-        ? b: LoOwn (LoBlock lx, env, b)
+        ? b: LoOwnAs t, (LoBlock lx, env, b)
         nil: XRaw "()"
     match c:
-        CondExpr x: VlOwned (XIf (LoBool (LoX lx, env, x)), (LoOwn (LoBlock lx, env, thenB)), elseV), t
+        CondExpr x: VlOwned (XIf (LoBool (LoX lx, env, x)), (LoOwnAs t, (LoBlock lx, env, thenB)), elseV), t
         CondBind p, x, ?g:
             let sv = LoX lx, env, x
             let po = LoPat lx, p, (LoTyOf lx, x.span), "ref", "c{x.span.start}"
@@ -1205,7 +1304,7 @@ fn LoIf lx, env, c, thenB, ?elseB, t:
             let guard = match ?g:
                 ? ge: [[CcIf (LoBool (LoX lx, env2, ge))]]
                 nil: [[]]
-            let arm = XArm(pat=po.pa, conds=(Append po.conds, guard), body=(LoOwn (LoBlock lx, env2, thenB)))
+            let arm = XArm(pat=po.pa, conds=(Append po.conds, guard), body=(LoOwnAs t, (LoBlock lx, env2, thenB)))
             let other = XArm(pat=PaWild, conds=[[]], body=elseV)
             LoArmsValue (LoRef sv), [[arm, other]], "c{x.span.start}", t
 
@@ -1382,7 +1481,11 @@ fn LoLitPat lx, l, ty, mode, fresh, neg:
     match l.kind:
         LChar c: LoPatOut (PaLit "'{LoEscapeChar c}'")
         otherwise:
-            let lit = LoLit lx, emptyEnv, l, l.span, neg
+            # A number is of the scrutinee's type (a `0` against a `Nat` is a `Nat`), not
+            # the type the checker defaulted the literal to.
+            let lit = match l.kind:
+                LInt d: if t == RsNat or t == RsInt or t == RsU8 or t == RsFloat: VlOwned (LoNumber t, d, neg), t else: LoLit lx, emptyEnv, l, l.span, neg
+                otherwise: LoLit lx, emptyEnv, l, l.span, neg
             let lv = VlOwned (LoOwn lit), t
             let b = LoLocal fresh, mode, t
             PatOut(pa=(PaBind fresh), conds=[[CcIf (XBin "==", (LoRef b), (LoRef lv))]], binds=[[]])
@@ -1655,8 +1758,9 @@ fn LoUpdStmt lx, env, s = match s.kind:
             PName n:
                 if (Take n.sigils, 1) == "&":
                     let rs = LoSnake (SNameKey n)
-                    let bt = LoTy lx, (LoPeel (LoTyOf lx, x.span))
-                    (([[(DoLet (PaBind "mut {rs}"), v)]], (LoBind env, (SNameKey n), (BnLocal rs, "own", bt))))
+                    let bt = LoTy lx, (LoPeel (LoBinderTy lx, n.span))
+                    let pa = if LoKnownTy bt: PaTyped (PaBind "mut {rs}"), bt else: PaBind "mut {rs}"
+                    (([[(DoLet pa, v)]], (LoBind env, (SNameKey n), (BnLocal rs, "own", bt))))
                 else: LoStmt lx, env, s
             otherwise: LoStmt lx, env, s
     SWhile c, body:
@@ -1906,7 +2010,7 @@ fn LoTailHere lx, env, e = match e.kind:
             let vals = Each args, \|a| LoOwn (LoX lx, env, a.value)
             XCtor "prism_rtl::Turn::More", [[(XCall "Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XRaw "()"))))))]])]]
         nil: match ?LoLocalJobFn lx, env, callee:
-            ? f: XCtor "prism_rtl::Turn::More", [[(LoStartCall f, (Each args, \|a| LoOwn (LoX lx, env, a.value)))]]
+            ? f: XMethod (LoStartCall f, (Each args, \|a| LoOwn (LoX lx, env, a.value))), "cycle", [[]]
             nil: XCtor "prism_rtl::Turn::Finished", [[LoOwn (LoX lx, env, e)]]
     otherwise: XCtor "prism_rtl::Turn::Finished", [[LoOwn (LoX lx, env, e)]]
 
@@ -1999,12 +2103,12 @@ fn LoFrame lx, env, call, restText, Cont = match call.kind:
         let vals = Each args, \|a| LoOwn (LoX lx, env2, a.value)
         let env3 = LoBindSpan env2, (LoKey lx, call.span), (VlOwned (XRaw v), t)
         let body = Cont env3
-        let job = match ?qk:
-            ? q: XCall (LoPathIn lx, (LoOwnerOf q), "start_{base}"), vals
+        let ((job, how)) = match ?qk:
+            ? q: (((XCall (LoPathIn lx, (LoOwnerOf q), "start_{base}"), vals), "call_then"))
             nil: match ?LoLocalJobFn lx, env2, c:
-                ? f: LoStartCall f, vals
-                nil: XRaw "unreachable!()"
-        let enter = XCall "call_then", [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
+                ? f: (((LoStartCall f, vals), "call_value"))
+                nil: (((XRaw "unreachable!()"), "call_then"))
+        let enter = XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
         if (Len dos) == 0: enter else: XBlock dos, enter
     otherwise: Cont env
 
@@ -2012,13 +2116,15 @@ fn LoFrame lx, env, call, restText, Cont = match call.kind:
 ?LoLocalJobFn: unbounded fn Lx, LoEnv, Expr -> ?Vl
 fn ?LoLocalJobFn lx, env, c = match c.kind:
     EName n:
-        if (Len n.path) == 1 and HasKey env.names, (SNameKey n):
-            let f = LoName lx, env, n, c.span
-            match LoVlTy f:
-                RsJobFn ignore, ignore: ? f
-                otherwise: nil
+        if (Len n.path) == 1 and HasKey env.names, (SNameKey n): ?LoJobValue (LoName lx, env, n, c.span)
         else: nil
     EGroup x: ?LoLocalJobFn lx, env, x
+    EField ignore, ignore, ignore: ?LoJobValue (LoX lx, env, c)
+    otherwise: nil
+
+?LoJobValue: fn Vl -> ?Vl
+fn ?LoJobValue f = match LoVlTy f:
+    RsJobFn ignore, ignore: ? f
     otherwise: nil
 
 # A `Start` applied: one argument as itself, several as a tuple.
@@ -2458,7 +2564,12 @@ fn LoLetLine wx, benv, menv, p, e:
     match ?LoBound menv, p:
         ? (BnEv er, t):
             let ((r, wx2)) = LoEv wx, menv, e
-            LoConnect wx2, r, (SkNode er.node)
+            let fed = LoTy lx, (LoPeel (LoPeel (LoTyOf lx, e.span)))
+            let r2 = match t:
+                RsEvent (RsRes ignore): if fed == RsError: LoErrPipe r else: r
+                RsRes ignore: if fed == RsError: LoErrPipe r else: r
+                otherwise: r
+            LoConnect wx2, r2, (SkNode er.node)
         ? (BnDyn ignore, ignore, t):
             let rs = LoSnake (LoPatText p)
             let ((ex, reads)) = LoDyn wx, menv, e
@@ -2475,6 +2586,17 @@ fn LoLetLine wx, benv, menv, p, e:
                 &_.fields <= Push &_.fields, ((f, t, "`{LoPatText p}`"))
                 &_.inits <= Push &_.inits, ((f, (XMethod (XRaw f), "clone", [[]])))
         otherwise: wx
+
+# An event of `Error`s feeding a `!~T`: each firing is the `~T`'s failure.
+LoErrPipe: fn EvRef -> EvRef
+fn LoErrPipe r = EvRef(node=r.node, pipe=(\|x, K| r.pipe x, \|y| K (XCtor "Err", [[y]])))
+
+# An owned value where a `~T` is wanted: a bare `Error` is its failure (the checker's
+# pick ER lets an `Error(..)` wait for its type).
+LoOwnAs: fn RsTy, Vl -> Ex
+fn LoOwnAs t, v = match t:
+    RsRes ignore: if (LoVlTy v) == RsError: XCtor "Err", [[LoOwn v]] else: LoOwn v
+    otherwise: LoOwn v
 
 # `p <- e`: an element or a blueprint, its output or result bound.
 LoBindRes: fn Wx, LoEnv, Pattern, Wres -> Wx
@@ -3414,7 +3536,7 @@ fn LoTyDefs lx, ti:
     let params = Each ti.params, \|p| LoCamel p
     let floaty = LoFloaty lx.g, (TyCon ti.name, [[]]), [[]]
     let bare = BareName ti.name
-    let Mk = \|kind, cases| TyDef(name=(LoCamel bare), prism=bare, params=params, kind=kind, cases=cases, eq=(HasText derives, "Eq"), ord=(HasText derives, "Ord"), floaty=floaty, show=(if LoHasOwnShow lx, ti.name: "own" else: if HasText derives, "Show": "derive" else: ""), pod=(Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and LoPodable ft), doc=(LoTypeDoc lx, ti))
+    let Mk = \|kind, cases| TyDef(name=(LoCamel bare), prism=bare, params=params, kind=kind, cases=cases, eq=(HasText derives, "Eq"), ord=(HasText derives, "Ord"), floaty=floaty, show=(if LoHasOwnShow lx, ti.name: "own" else: if HasText derives, "Show": "derive" else: ""), pod=((LoTyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and LoPodable ft), doc=(LoTypeDoc lx, ti))
     match ti.body:
         BRecord fs:
             let fields = Each (Range0 (Len fs)), \|i|
@@ -3432,6 +3554,33 @@ fn LoTyDefs lx, ti:
                 otherwise: "choice"
             [[ItType (Mk kind, defs)]]
         otherwise: [[]]
+
+# Whether a checker type can cross to a World, through the declarations it names: a
+# record holding a function anywhere inside is not `^Pod` (a type reached again is taken
+# as podable, so cycles end).
+LoTyPodable: unbounded fn Lx, Ty, [Text] -> Bool
+fn LoTyPodable lx, t, seen = match t:
+    TyFn ignore, ignore, ignore: False
+    TyAt ignore, ignore: False
+    TySig "!", ignore: False
+    TySig "$", ignore: False
+    TySig ignore, i: LoTyPodable lx, i, seen
+    TyTuple ts: Fold ts, True, \|ok, x| ok and LoTyPodable lx, x, seen
+    TyArray e: LoTyPodable lx, e, seen
+    TyMap k, v: (LoTyPodable lx, k, seen) and LoTyPodable lx, v, seen
+    TyCon n, args:
+        if HasText seen, n: True
+        else:
+            let more = Push seen, n
+            let argsOk = Fold args, True, \|ok, x| ok and LoTyPodable lx, x, more
+            argsOk and match lx.g.types[n]:
+                ? ti: match ti.body:
+                    BRecord fs: Fold fs, True, \|ok, ((ignore, ft))| ok and LoTyPodable lx, ft, more
+                    BChoice cs: Fold cs, True, \|ok, ((ignore, ats))| ok and Fold ats, True, \|ok2, x| ok2 and LoTyPodable lx, x, more
+                    BAlias a: LoTyPodable lx, a, more
+                    otherwise: True
+                nil: True
+    otherwise: True
 
 LoCaseField: unbounded fn Lx, Text, Nat, Ty -> RsTy
 fn LoCaseField lx, ck, i, t:

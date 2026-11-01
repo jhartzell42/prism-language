@@ -1,0 +1,5 @@
+# The failures' tests: declarations of be-error-try.prism (Semantics chapter 6).
+
+test errors_are_failures, @Shown True:
+    build
+    compute until idle

@@ -260,8 +260,8 @@ fn TmFn doc, signature, body = inline_text <rust>
 
 # An unbounded function's step machine (D6): the job stopped at a cycle point, its
 # `cycle`, and its `Start`.
-TmJob: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
-fn TmJob doc, head, generics, fields, ret, body, start, startBody = inline_text <rust>
+TmJob: fn Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn TmJob doc, head, generics, bounded, fields, ret, body, start, startBody = inline_text <rust>
 /// The step machine of `{{head}}`, stopped at a cycle point: the call about to be
 /// entered. A tail call leaves no frame; any other call waits in a `Frame` around the
 /// callee's job, so the job's stack is its frames.
@@ -271,7 +271,7 @@ pub struct {{head}}{{generics}} {
     {{fields}}
 }
 
-impl{{generics}} prism_rtl::Job<{{ret}}> for {{head}}{{generics}} {
+impl{{bounded}} prism_rtl::Job<{{ret}}> for {{head}}{{generics}} {
     fn cycle(&self) -> prism_rtl::Turn<{{ret}}> {
         {{body}}
     }

@@ -1,0 +1,5 @@
+# The literal patterns' tests: declarations of be-nat-literal.prism (Semantics chapter 6).
+
+test literals_match_nats, @shown:
+    build
+        => expect Ui.Label(text="zero one many even odd")

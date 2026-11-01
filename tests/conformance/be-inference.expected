@@ -1,0 +1,12 @@
+# prism_zero's transcript, checked by hand against the books' rules.
+test the_types_are_written
+
+tick 0
+  added:
+    1: Ui.Label(text="30")
+
+compute until idle: 2 ticks, 1 to 2
+
+tick 2
+  changed:
+    1: Ui.Label(text="30 4")
