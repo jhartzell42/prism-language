@@ -14,14 +14,19 @@ cd "$(dirname "$0")/../.."
 stage0=${STAGE0:-target/keep/prismc-old-chain-1101-0619}
 [ -x "$stage0" ] || { echo "no stage 0 at $stage0 (set STAGE0)" >&2; exit 2; }
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
-# Every stage compiles one snapshot of the sources (target/bootstrap-src/), taken here,
-# so that edits to prismc/ while the stages run reach all of them or none.
-rm -rf target/bootstrap-src && mkdir -p target/bootstrap-src && cp -r prismc target/bootstrap-src/
+# Every stage compiles one snapshot of the sources (target/bootstrap-src/), taken here
+# from the commit, never from the working tree: prismc/ (its templates included) and
+# prelude/ as `git archive` gives them, so that uncommitted edits (another agent's, or
+# one's own half done) reach no stage. `REV=` names another commit (default HEAD).
+rev=${REV:-HEAD}
+rm -rf target/bootstrap-src && mkdir -p target/bootstrap-src
+git archive "$rev" prismc prelude | tar -x -C target/bootstrap-src
+git rev-parse "$rev" > target/bootstrap-src/REV
 sources=(target/bootstrap-src/prismc/*.prism target/bootstrap-src/prismc/templates/*.prism)
 rm -rf target/stage1
 start=$(date +%s)
-"$stage0" compile "${sources[@]}" -o target/stage1 --name prismc
-echo "stage 1: prismc compiled by stage 0 in $(( $(date +%s) - start ))s"
+"$stage0" compile "${sources[@]}" -o target/stage1 --name prismc --prelude target/bootstrap-src/prelude
+echo "stage 1: prismc of $(cut -c1-7 target/bootstrap-src/REV) compiled by stage 0 in $(( $(date +%s) - start ))s"
 start=$(date +%s)
 (cd target/stage1 && CARGO_TARGET_DIR=../stage1-build cargo build --release -q)
 cp target/stage1-build/release/prismc target/stage1/prismc

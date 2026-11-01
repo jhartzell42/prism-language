@@ -509,7 +509,7 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   (`neg/template-unknown`); an attribute no parameter has (`neg/template-attribute`), one
   given twice, a parameter left out, a body with no parameter left, and a callee without
   clauses to name its parameters are `mismatch`es, as is an argument of the wrong type
-  (`neg/template-type`). Doubt TA below.
+  (`neg/template-type`). Lowering orders the attributes by name too (`LoByParamName`).
 - **CT The call test for closures** (Semantics ch. 7, "Finding the cycles"). A closure
   passed to a program function is cleared when the function only calls it: in every
   clause, the parameter at that slot is the callee of calls (at any depth, but not inside
@@ -574,12 +574,6 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
     (`neg/values-not-shrinking`). *First ruling (Claude's):* as stated, the book's own
     list. *If otherwise:* chess's `TextsIn` and `Kids` are `unbounded fn`, which stops
     `PlaceAt` lifting over the window's dynamics.
-- **TA** A template call's attributes are matched to parameters by name (pick TK, and pick
-  GH's call sites), but lowering passes them in the order written
-  (`LoTemplatePart`): `neg/template-recursion`'s `<@Spin n={{n}} depth={{m}}/>` is checked
-  as `Spin m, n` and would run as `Spin n, m`. *First ruling (Claude's):* by name, the
-  checker's reading; lowering reorders them by the callee's parameters. *If otherwise:* the
-  checker requires attributes in parameter order, and `template-recursion` is rewritten.
 - **RP** A reference path writes its field steps bare (`&_.rootModule <= ? m`), and a field
   after an index step names the element's field (`&_[ix].partner <= ? j` sets a `?Nat`).
   Type System ch. 1 says a field access shows its stack; the parser reads a set only
@@ -734,10 +728,17 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   and before), kept at `target/keep/prismc-old-chain-1101-0619` (`STAGE0=` names another).
   Compiler zero is not a stage: it is orders of magnitude slower than a native prismc,
   and is the fallback only for a feature stage 0 refuses.
-- **Stage 1** (`tests/bootstrap/stage1.sh`): stage 0 compiles prismc's sources, and cargo
-  builds the crate (about 3.5 minutes, then 6) into `target/stage1/prismc`, a native
+- **The snapshot.** Every stage compiles one snapshot, `target/bootstrap-src/`, which
+  stage 1 takes by `git archive` of `prismc/` (its templates included) and `prelude/` at
+  a commit (`REV=`, default `HEAD`, recorded in `target/bootstrap-src/REV`), never from
+  the working tree: an uncommitted edit, another agent's or one's own, reaches no stage.
+  Each stage passes `--prelude target/bootstrap-src/prelude`.
+- **Stage 1** (`tests/bootstrap/stage1.sh`): stage 0 compiles the snapshot, and cargo
+  builds the crate (about 6 minutes, then 7 to 9) into `target/stage1/prismc`, a native
   prismc with the typed back end. Development iterates with it.
-- **Stages 2 and 3**: each prismc before compiles the sources with the typed back end;
+- **Stages 2 and 3**: each prismc before compiles the snapshot with the typed back end
+  (stage 1 compiles prismc in about 19 minutes, under the old chain's runtime, with
+  `PRISM_PATIENCE` raised: it takes more than its default 10,000,000 ticks);
   `tests/bootstrap/check.sh` wants their crates byte-equal.
 - **Stage 0's one quirk met so far:** it resolves a record type's name across modules, so
   `Lower`'s environment record is `LoEnv`, not `Env` (which `CheckExpr` has).
