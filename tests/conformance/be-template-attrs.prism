@@ -1,0 +1,14 @@
+# A template call's attributes are named arguments (Type System ch. 5, templates): each
+# binds the callee's parameter of its name, written in any order. Written for prismc's
+# back end. Work in progress, subject to change.
+emit Ui.*
+
+Pair: fn Text, Text -> Text
+fn Pair left, right = "{left} before {right}"
+
+Both: fn Text, Text -> Text
+fn Both a, b = inline_text <t><@Pair right={{b}} left={{a}}/></t>
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$(Both "first", "second"))                # 0

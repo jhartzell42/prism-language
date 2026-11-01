@@ -560,24 +560,38 @@ pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Optio
 /// caller of `callee`, a call of an unbounded function that was not in tail position,
 /// waiting for its result. Entering the call is a cycle point; the result resumes `then`
 /// in the cycle the callee finishes. Frames nest, the innermost call deepest, so a job's
-/// state is its stack of pending callers.
+/// state is its stack of pending callers. A continuation runs once, so it may move what
+/// it owns: a cycled frame hands it on to the next.
 pub struct Frame<A, B> {
     callee: Rc<dyn Job<A>>,
-    then: Rc<dyn Fn(A) -> Turn<B>>,
+    then: std::cell::RefCell<Option<Box<dyn FnOnce(A) -> Turn<B>>>>,
 }
 
 impl<A: 'static, B: 'static> Job<B> for Frame<A, B> {
     fn cycle(&self) -> Turn<B> {
+        let then = self.then.borrow_mut().take().expect("a job's frame is cycled once");
         match self.callee.cycle() {
-            Turn::More(next) => Turn::More(Rc::new(Frame { callee: next, then: self.then.clone() })),
-            Turn::Finished(a) => (self.then)(a),
+            Turn::More(next) => Turn::More(Rc::new(Frame { callee: next, then: std::cell::RefCell::new(Some(then)) })),
+            Turn::Finished(a) => then(a),
         }
     }
 }
 
 /// A call that is not in tail position: a cycle point, with `then` the continuation.
-pub fn call_then<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl Fn(A) -> Turn<B> + 'static) -> Turn<B> {
-    Turn::More(Rc::new(Frame { callee, then: Rc::new(then) }))
+pub fn call_then<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
+    Turn::More(Rc::new(Frame { callee, then: std::cell::RefCell::new(Some(Box::new(then))) }))
+}
+
+/// A job run to its result inside the cycle: a call of an unbounded function value from
+/// direct-style code (gap DS of prismc/README.md).
+pub fn run_to_end<B>(job: Rc<dyn Job<B>>) -> B {
+    let mut job = job;
+    loop {
+        match job.cycle() {
+            Turn::More(next) => job = next,
+            Turn::Finished(b) => return b,
+        }
+    }
 }
 
 // ---- Running ----------------------------------------------------------------------------

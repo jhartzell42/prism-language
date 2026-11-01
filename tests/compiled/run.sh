@@ -36,7 +36,7 @@ compile() {
     fi
 }
 # The programs that pass; NAMES on the command line may name any other.
-passing=(counter half-counter sem-ch07-normalize sem-ch07-walk)
+passing=(counter half-counter sem-ch07-normalize sem-ch07-walk be-let-fn-pair be-unbounded-value be-row-local be-template-attrs)
 only=("$@")
 [ ${#only[@]} -eq 0 ] && only=("${passing[@]}")
 wanted() { [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$1" ] && return 0; done; return 1; }

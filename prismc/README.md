@@ -185,6 +185,11 @@ Places where compiler zero or the prelude lacks something, worked around in Pris
   (`prism_dyn::values::ctor_fn`), as it was before; the tables keep one entry per bare name,
   which is what `^Ord` and trait dispatch read (they have always been program-wide).
 
+- **IB6 A template call's attributes bind in written order.** `<@Pair right={{b}}
+  left={{a}}/>` passes `b` as `left`; the checker reads attributes as named arguments, and
+  prismc's lowering binds each to the parameter of its name
+  (`tests/conformance/be-template-attrs`, whose `.expected` is written by hand).
+
 ## Checker
 
 Type System ch. 5 as a program: the environment of every file's declarations, inference

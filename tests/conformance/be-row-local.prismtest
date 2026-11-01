@@ -1,0 +1,10 @@
+# The rows' tests: declarations of be-row-local.prism (Semantics chapter 6).
+
+test rows_read_the_parameter, @Tagged "todo":
+    build
+        => expect Ui.Label(text="todo says 1")
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="todo: item 0")
+        => expect Ui.Label(text="todo failed: not a number: x0")
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="todo: item 1")

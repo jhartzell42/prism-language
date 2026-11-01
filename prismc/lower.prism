@@ -251,6 +251,8 @@ type ForDef = record:
     valueTy: RsTy
     rowNode: Text
     keyed: Bool
+    # The block's plain values the rows read, as the block passes them to a row's `build`.
+    passed: [Ex]
 
 # The program of a root widget, as a World drives it.
 type ProgDef = record:
@@ -411,7 +413,10 @@ fn LoPathIn lx, owner, name:
 # sigil when another value of the module has the same base (`?ParseNat` and `~ParseNat`).
 LoValueNames: fn G -> (Text ==> Text)
 fn LoValueNames g:
-    let keys = Keys g.vals
+    let lets = Fold g.defs, [[]], \|acc, d| match d.body:
+        DbLet ignore: AddText acc, d.qk
+        otherwise: acc
+    let keys = UnionTexts (Keys g.vals), lets
     let bases = Fold keys, {}, \|m, k| Insert m, (LoBaseKey k), (Push (Or m[LoBaseKey k], [[]]), k)
     Fold keys, {}, \|m, k| Insert m, k, (LoValueName k, (Len (Or bases[LoBaseKey k], [[]])))
 
@@ -427,6 +432,7 @@ fn LoValueName k, count:
     let marks = MarksOf last
     let base = LoSnake last
     if count > 1 and marks != "": "{Drop base, 0}_{LoSigilWord (Take marks, 1)}"
+    else: if count > 1 and not (IsUpperText (Take last, 1)): "{base}_value"
     else: base
 
 LoSigilWord: fn Text -> Text
@@ -839,7 +845,12 @@ fn LoGlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                 let isLet = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and LoIsLetDef d)
                 if isLet: VlOwned (XCall (LoValuePath lx, qk), [[]]), t
                 else: match t:
-                    RsJobFn ignore, ignore: VlOwned (XRaw (LoStartPath lx, qk)), t
+                    RsJobFn ignore, ignore:
+                        let ((ps, ignore2)) = LoSchemeParts lx, qk
+                        if (Len ps) > 1:
+                            let names = Each (Range0 (Len ps)), \|i| "a{i}"
+                            VlOwned (XCast (XClosure False, [[PaTuple (Each names, \|nm| PaBind nm)]], (XCall (LoStartPath lx, qk), (Each names, \|nm| XRaw nm))), t), t
+                        else: VlOwned (XCast (XRaw (LoStartPath lx, qk)), t), t
                     otherwise: VlOwned (XCall "Rc::new", [[XRaw (LoValuePath lx, qk)]]), t
             nil: VlOwned (LoTodo "the global {qk}"), t
 
@@ -865,7 +876,12 @@ fn LoCall lx, env, callee, args, span:
             let nkey = SNameKey n
             let ?local = if (Len n.path) == 1: env.names[nkey] else: nil
             match ?local:
-                ? b: VlOwned (XApply (LoRef (LoName lx, env, n, callee.span)), (Each args, \|a| LoArg lx, env, a.value)), t
+                ? b:
+                    let f = LoName lx, env, n, callee.span
+                    match LoVlTy f:
+                        RsJobFn ignore, ignore:
+                            VlOwned (XCall "run_to_end", [[(LoStartCall f, (Each args, \|a| LoOwn (LoX lx, env, a.value)))]]), t
+                        otherwise: VlOwned (XApply (LoRef f), (Each args, \|a| LoArg lx, env, a.value)), t
                 nil:
                     let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
                     match ?qk:
@@ -887,6 +903,7 @@ fn LoArgKind lx, env, e = match e.kind:
     EName n:
         let t = LoTyOf lx, e.span
         match LoPeel t:
+            TyFn CUnbound, ignore, ignore: LoRef (LoX lx, env, e)
             TyFn ignore, ignore, ignore:
                 let ?local = if (Len n.path) == 1: env.names[SNameKey n] else: nil
                 match ?local:
@@ -1526,8 +1543,35 @@ fn LoTemplatePart lx, env, part = match part:
                 let inner = Fold ps, [[(DoLet (PaBind "mut out"), (XRaw "String::new()"))]], \|acc, p| Append acc, (LoTemplatePart lx, env, p)
                 [[(XUnary "&", (XBlock inner, (XCall "Text::from", [[XRaw "out"]])))]]
             nil: [[]]
-        let call = XCall callee, (Append (Each args, \|a| LoArg lx, env, a.value), body)
+        let ordered = match ?qk:
+            ? q: LoByParamName lx, q, args
+            nil: match ?qk2:
+                ? q: LoByParamName lx, q, args
+                nil: args
+        let call = XCall callee, (Append (Each ordered, \|a| LoArg lx, env, a.value), body)
         [[DoExpr (XCall "place", [[XRaw "&mut out", (XUnary "&", call), XRaw "None"]])]]
+
+# A template call's attributes (`<@Spin n={{n}} depth={{m}}/>`) are named arguments, as
+# the checker reads them: each goes to the callee's parameter of its name, in whatever
+# order they are written. A parameter's name is the first clause's binder there.
+LoByParamName: fn Lx, Text, [Arg] -> [Arg]
+fn LoByParamName lx, qk, args = match (LoClausesOf lx.g, qk)[0]:
+    ? c:
+        let names = Each c.params, \|p| match p.kind:
+            PName n: SNameKey n
+            otherwise: ""
+        let byName = Each (Range0 (Len names)), \|i| Fold args, nil, \|?found, a| match a.?name:
+            ? n: if n.name == (Or names[i], "") and n.name != "": ? a else: ?found
+            nil: ?found
+        if Fold byName, True, \|ok, ?b| ok and LoHasArg ?b: Each byName, \|?b| Or ?b, dummyArgL
+        else: args
+    nil: args
+
+LoHasArg: fn ?Arg -> Bool
+fn LoHasArg (? ignore) = True
+fn LoHasArg nil = False
+
+let dummyArgL = Arg(name=nil, value=(Expr(kind=EAbsent, span=Range(start=0, end=0))), span=Range(start=0, end=0))
 
 # A value as a template or interpolation places it: a text as it is, any other value as
 # it shows.
@@ -1860,9 +1904,11 @@ fn LoTailHere lx, env, e = match e.kind:
             let ((ptys, ignore)) = LoSchemeParts lx, qk
             let fields = LoJobFieldNames lx, qk
             let vals = Each args, \|a| LoOwn (LoX lx, env, a.value)
-            XCtor "Turn::More", [[(XCall "Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XRaw "()"))))))]])]]
-        nil: XCtor "Turn::Finished", [[LoOwn (LoX lx, env, e)]]
-    otherwise: XCtor "Turn::Finished", [[LoOwn (LoX lx, env, e)]]
+            XCtor "prism_rtl::Turn::More", [[(XCall "Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XRaw "()"))))))]])]]
+        nil: match ?LoLocalJobFn lx, env, callee:
+            ? f: XCtor "prism_rtl::Turn::More", [[(LoStartCall f, (Each args, \|a| LoOwn (LoX lx, env, a.value)))]]
+            nil: XCtor "prism_rtl::Turn::Finished", [[LoOwn (LoX lx, env, e)]]
+    otherwise: XCtor "prism_rtl::Turn::Finished", [[LoOwn (LoX lx, env, e)]]
 
 LoTailBlock: unbounded fn Lx, LoEnv, Block -> Ex
 fn LoTailBlock lx, env, b = LoTailFrom lx, env, b, 0
@@ -1874,7 +1920,7 @@ fn LoTailFrom lx, env, b, i:
     let s = Or b.stmts[i], dummyStmtL
     if i + 1 >= (Len b.stmts): match s.kind:
         SExpr x: LoTail lx, env, x
-        otherwise: XCtor "Turn::Finished", [[XRaw "()"]]
+        otherwise: XCtor "prism_rtl::Turn::Finished", [[XRaw "()"]]
     else:
         let ?found = match s.kind:
             SLet ignore, ignore, x: ?LoFrameCall lx, env, x, False
@@ -1903,7 +1949,9 @@ fn ?LoFrameCall lx, env, e, top:
                 if top: nil
                 else: match ?LoTailCallee lx, env, c:
                     ? ignore: ? e
-                    nil: nil
+                    nil: match ?LoLocalJobFn lx, env, c:
+                        ? ignore: ? e
+                        nil: nil
         EMatch x, ignore: ?LoFrameCall lx, env, x, False
         EIf (CondExpr x), ignore, ignore: ?LoFrameCall lx, env, x, False
         EBinary op, l, r: if op == "and" or op == "or": ?LoFrameCall lx, env, l, False else: ?LoFirstFrame lx, env, [[l, r]]
@@ -1936,8 +1984,11 @@ fn ?LoFirstFrame lx, env, es = Fold es, nil, \|?found, x| match ?found:
 LoFrame: unbounded fn Lx, LoEnv, Expr, Text, (unbounded fn LoEnv -> Ex) -> Ex
 fn LoFrame lx, env, call, restText, Cont = match call.kind:
     ECall c, args, ignore, ignore:
-        let qk = Or (?LoTailCallee lx, env, c), ""
-        let base = Or lx.rsNames[qk], (LoSnake (BareName qk))
+        let ?qk = ?LoTailCallee lx, env, c
+        let qk = Or ?qk, ""
+        let base = match ?qk:
+            ? q: Or lx.rsNames[q], (LoSnake (BareName q))
+            nil: LoSnake (LoCalleeText c)
         let v = "{base}_{call.span.start}"
         let t = LoTy lx, (LoPeel (LoTyOf lx, call.span))
         let caps = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
@@ -1948,15 +1999,48 @@ fn LoFrame lx, env, call, restText, Cont = match call.kind:
         let vals = Each args, \|a| LoOwn (LoX lx, env2, a.value)
         let env3 = LoBindSpan env2, (LoKey lx, call.span), (VlOwned (XRaw v), t)
         let body = Cont env3
-        let enter = XCall "call_then", [[(XCall (LoPathIn lx, (LoOwnerOf qk), "start_{base}"), vals), (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
+        let job = match ?qk:
+            ? q: XCall (LoPathIn lx, (LoOwnerOf q), "start_{base}"), vals
+            nil: match ?LoLocalJobFn lx, env2, c:
+                ? f: LoStartCall f, vals
+                nil: XRaw "unreachable!()"
+        let enter = XCall "call_then", [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
         if (Len dos) == 0: enter else: XBlock dos, enter
     otherwise: Cont env
 
-# The source a frame's continuation covers: from `from` to the end of `to`, less the call
-# itself, whose arguments are evaluated before the frame.
+# A local whose value is an unbounded function: its `Start` (docs/backend.md).
+?LoLocalJobFn: unbounded fn Lx, LoEnv, Expr -> ?Vl
+fn ?LoLocalJobFn lx, env, c = match c.kind:
+    EName n:
+        if (Len n.path) == 1 and HasKey env.names, (SNameKey n):
+            let f = LoName lx, env, n, c.span
+            match LoVlTy f:
+                RsJobFn ignore, ignore: ? f
+                otherwise: nil
+        else: nil
+    EGroup x: ?LoLocalJobFn lx, env, x
+    otherwise: nil
+
+# A `Start` applied: one argument as itself, several as a tuple.
+LoStartCall: fn Vl, [Ex] -> Ex
+fn LoStartCall f, vals = XApply (LoRef f), [[LoOneOrTuple vals]]
+
+LoOneOrTuple: fn [Ex] -> Ex
+fn LoOneOrTuple [[one]] = one
+fn LoOneOrTuple vals = XTuple vals
+
+LoCalleeText: fn Expr -> Text
+fn LoCalleeText c = match c.kind:
+    EName n: Dotted n.path
+    EGroup x: LoCalleeText x
+    otherwise: "call"
+
+# The source a frame's continuation covers: from `from` to the end of `to`, the call
+# included: a local its arguments name is cloned before the frame, so that no inner
+# frame finds it still borrowed.
 LoRestText: fn Lx, Range, Range, Range -> Text
 fn LoRestText lx, from, call, to = match lx.g.srcs[lx.file]:
-    ? src: "{SpanText src, (Range(start=from.start, end=call.start))} {SpanText src, (Range(start=call.end, end=to.end))}"
+    ? src: SpanText src, (Range(start=from.start, end=to.end))
     nil: ""
 
 # Whether `text` names `name` as a whole word (a frame's captures; a mention in a
@@ -2431,6 +2515,7 @@ fn LoElementLine wx, benv, menv, e, ?bound:
         ECall c, xs, ignore, ignore: (((LoTagNameOf lx, c), xs))
         EName n: (((LoTagNameOf lx, e), [[]]))
         otherwise: (("", [[]]))
+    let full = LoTyOf lx, e.span
     match lx.g.tags[tagName]:
         nil:
             let wx2 = update wx:
@@ -2460,7 +2545,19 @@ fn LoElementLine wx, benv, menv, e, ?bound:
             let wx4 = update wx3:
                 &_.places <= Push &_.places, Place(pos=pos, level=level, getter=getter, reads=reads)
                 &_.build <= Push &_.build, (DoExpr (XMethod (XRaw "cx"), "added", [[(XMethod (XRaw "node.path"), "at", [[XRaw "{pos}"]]), added]]))
-            LoElementOutput wx4, menv, tg, pos, ?bound, (XMethod (XRecord structPath, constFields), "to_pod", [[]])
+            LoElementOutput wx4, menv, tg, (LoElementOut lx, tg, full), pos, ?bound, (XMethod (XRecord structPath, constFields), "to_pod", [[]])
+
+# An element's output type at this application: the tag's, instantiated by the checker
+# (`Prelude.Unwrap`'s `!a` is `!unit` where its value is `!~unit`). A type variable the
+# program leaves open is the answer as it came, a `Pod`.
+LoElementOut: unbounded fn Lx, TagInfo, Ty -> RsTy
+fn LoElementOut lx, tg, full:
+    let t = match LoPeel full:
+        TyElem ignore, o: LoTy lx, (LoPeel o)
+        otherwise: LoTy lx, (LoPeel tg.out)
+    match t:
+        RsGen ignore: RsPod
+        otherwise: t
 
 # The tag an element expression names.
 LoTagNameOf: fn Lx, Expr -> Text
@@ -2484,10 +2581,9 @@ fn LoRequestField tg, fname:
 
 # An element's output: an event answered at its place, a dynamic pushed to it, a plain
 # value as its first value.
-LoElementOutput: unbounded fn Wx, LoEnv, TagInfo, Nat, ?Bn, Ex -> ((Wx, Wres))
-fn LoElementOutput wx, menv, tg, pos, ?bound, level:
+LoElementOutput: unbounded fn Wx, LoEnv, TagInfo, RsTy, Nat, ?Bn, Ex -> ((Wx, Wres))
+fn LoElementOutput wx, menv, tg, out, pos, ?bound, level:
     let lx = wx.lx
-    let out = LoTy lx, (LoPeel tg.out)
     match LoLayer tg.out:
         "!":
             let ((id, wx2)) = match ?bound:
@@ -2922,7 +3018,7 @@ fn LoSinkCode sk, target, y = match target:
     SkCycle job, again, res:
         let more = [[DoExpr (XMethod (XRaw "self.{job}"), "set", [[XRaw "next", XRaw "cx"]]), DoExpr (XMethod (XRaw "self.{again}"), "arm", [[XRaw "()", XRaw "self.clone()", XRaw "cx"]])]]
         let fin = [[(LoSelfCall (LoGnOf sk.wx, res).name, [[XRaw "b"]])]]
-        [[(DoMatch (XMethod (XMethod (XRaw "self.{job}"), "get", [[XRaw "cx"]]), "cycle", [[]]), [[(((PaCtor "Turn::More", [[PaBind "next"]]), more)), (((PaCtor "Turn::Finished", [[PaBind "b"]]), fin))]])]]
+        [[(DoMatch (XMethod (XMethod (XRaw "self.{job}"), "get", [[XRaw "cx"]]), "cycle", [[]]), [[(((PaCtor "prism_rtl::Turn::More", [[PaBind "next"]]), more)), (((PaCtor "prism_rtl::Turn::Finished", [[PaBind "b"]]), fin))]])]]
 
 LoFire: unbounded fn LoSinks, Gn, Ex -> [Do]
 fn LoFire sk, g, x:
@@ -3195,8 +3291,39 @@ fn LoProgDef lx, qk:
 # The unbounded functions with jobs: those `@Run` is given, and those they tail-call.
 LoJobRoots: unbounded fn Lx -> [Text]
 fn LoJobRoots lx:
-    let direct = Fold lx.g.defs, [[]], \|acc, d| UnionTexts acc, (LoRunTargets (LoAt lx, d.file, d.home), d)
+    let direct = Fold lx.g.defs, [[]], \|acc, d|
+        let lxd = LoAt lx, d.file, d.home
+        UnionTexts (UnionTexts acc, (LoRunTargets lxd, d)), (LoUnboundedValues lxd, d)
     Fold (Range0 8), direct, \|acc, ignore| Fold acc, acc, \|a, qk| UnionTexts a, (LoTailTargets lx, qk)
+
+# The unbounded functions a definition names as values, not called: each value is its
+# `Start` (docs/backend.md), so each has a job.
+LoUnboundedValues: unbounded fn Lx, Def -> [Text]
+fn LoUnboundedValues lx, d:
+    let es = match d.body:
+        DbWidget w: BlockExprs w.body
+        DbFn cs: Fold cs, [[]], \|acc, c| Append acc, (BodyExprs c.body)
+        DbLet l: ExprsIn l.value
+        otherwise: [[]]
+    let callees = Fold es, [[]], \|acc, e| match e.kind:
+        ECall c, ignore, ignore, ignore: Push acc, (LoKey lx, c.span)
+        otherwise: acc
+    Fold es, [[]], \|acc, e| match e.kind:
+        EName n:
+            if HasText callees, (LoKey lx, e.span): acc
+            else:
+                let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+                match ?q:
+                    ? q: if LoIsUnbounded lx, q: AddText acc, q else: acc
+                    nil: acc
+        otherwise: acc
+
+LoIsUnbounded: fn Lx, Text -> Bool
+fn LoIsUnbounded lx, q = match lx.g.vals[q]:
+    ? v: match v.scheme.ty:
+        TyFn CUnbound, ignore, ignore: True
+        otherwise: False
+    nil: False
 
 LoRunTargets: unbounded fn Lx, Def -> [Text]
 fn LoRunTargets lx, d:
@@ -3350,10 +3477,15 @@ fn LoForLine wx, benv, menv, ?binders, source, body, e, ?bound:
         otherwise: "rows"
     let ((name, wx2)) = LoFresh wx1, base
     let rowName = "{wx.node}{if (Len wx.rows) == 0: "" else: "{Len wx.rows}"}Row"
-    let rowWx0 = Wx(lx=lx, node=rowName, pos=0, gns=[[]], fields=[[(("key", kt, "the row's key")), (("value", (RsHold vt), "the row's entry, `$_`")), (("parent", (RsWeak wx.node), "the node of the `for`"))]], inits=[[(("key", (XRaw "key"))), (("value", (XCall "Hold::new", [[XRaw "value", XRaw "cx"]]))), (("parent", (XRaw "parent")))]], lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=(Append nodeHooks, [["key", "value", "parent", "update"]]), fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv)
+    let locals = LoRowLocals benv, menv, body
+    let rowWx0 = Wx(lx=lx, node=rowName, pos=0, gns=[[]], fields=(Append [[(("key", kt, "the row's key")), (("value", (RsHold vt), "the row's entry, `$_`")), (("parent", (RsWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))), inits=(Append [[(("key", (XRaw "key"))), (("value", (XCall "Hold::new", [[XRaw "value", XRaw "cx"]]))), (("parent", (XRaw "parent")))]], (Each locals, \|l| ((l.field, (XRaw l.field))))), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=(Append (Append nodeHooks, [["key", "value", "parent", "update"]]), (Each locals, \|l| l.field)), fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv)
     let keyB = BnLocal "key", "own", kt
     let keyM = BnLocal "self.key", "own", kt
-    let ((rbe, rme)) = LoForEnvs benv, menv, ?binders, keyB, keyM, (BnLocal "value", "own", vt), (BnHold "value", vt), vt
+    let benvL = Fold locals, benv, \|en, l| LoBind en, l.name, (BnLocal l.field, "own", l.ty)
+    let menvL = Fold locals, menv, \|en, l| LoBind en, l.name, (BnLocal "self.{l.field}", "own", l.ty)
+    let passed = Each locals, \|l| l.passed
+    let rowParams = Append [[(("key", kt)), (("value", vt)), (("parent", (RsWeak wx.node)))]], (Each locals, \|l| ((l.field, l.ty)))
+    let ((rbe, rme)) = LoForEnvs benvL, menvL, ?binders, keyB, keyM, (BnLocal "value", "own", vt), (BnHold "value", vt), vt
     let rowWx = LoBlockInto rowWx0, rbe, rme, body
     let full = LoTyOf lx, e.span
     let outTy = LoTy lx, (LoPeel full)
@@ -3365,27 +3497,43 @@ fn LoForLine wx, benv, menv, ?binders, source, body, e, ?bound:
             let wx5 = update wx4:
                 &_.gns <= Each &_.gns, \|n| if n.id == gid: LoWithInputs n, [["{name}_gathered"]] else: n
             let rowDone = LoConnect rowWx, r, (SkUp "{name}_all_in")
-            let wx6 = LoAddBuilder wx5, name, pos, src, kt, vt, rowName, keyed, reads, (LoFinishNode rowDone, rowName, [[(("key", kt)), (("value", vt)), (("parent", (RsWeak wx.node)))]], True)
+            let wx6 = LoAddBuilder wx5, name, pos, src, kt, vt, rowName, keyed, reads, (LoFinishNode rowDone, rowName, rowParams, True), passed
             ((wx6, (WrEv (LoEvOf gid))))
         WrDyn ex, ignore, rt:
             let rowDone = update rowWx:
                 &_.getters <= Push &_.getters, (MethDef(name="result", recv="ref", params=[[]], cx="ref", ret=rt, body=[[]], tail=ex, doc="The row's result, which the block gathers by key."))
-            let wx3 = LoAddBuilder wx2, name, pos, src, kt, vt, rowName, keyed, reads, (LoFinishNode rowDone, rowName, [[(("key", kt)), (("value", vt)), (("parent", (RsWeak wx.node)))]], True)
+            let wx3 = LoAddBuilder wx2, name, pos, src, kt, vt, rowName, keyed, reads, (LoFinishNode rowDone, rowName, rowParams, True), passed
             let all = XRaw "self.{name}.borrow().iter().map(|(k, row)| (k.clone(), row.result(cx))).collect()"
             let wx4 = update wx3:
                 &_.getters <= Push &_.getters, (MethDef(name="{name}_all", recv="ref", params=[[]], cx="ref", ret=(RsMap kt, rt), body=[[]], tail=all, doc="The rows' results by key: the `for`'s dynamic."))
             ((wx4, (WrDyn (XMethod (XRaw "self"), "{name}_all", [[XRaw "cx"]]), [[]], (RsMap kt, rt))))
         otherwise:
-            let wx3 = LoAddBuilder wx2, name, pos, src, kt, vt, rowName, keyed, reads, (LoFinishNode rowWx, rowName, [[(("key", kt)), (("value", vt)), (("parent", (RsWeak wx.node)))]], True)
+            let wx3 = LoAddBuilder wx2, name, pos, src, kt, vt, rowName, keyed, reads, (LoFinishNode rowWx, rowName, rowParams, True), passed
             ((wx3, WrUnit))
 
-LoAddBuilder: fn Wx, Text, Nat, Ex, RsTy, RsTy, Text, Bool, [Text], NodeDef -> Wx
-fn LoAddBuilder wx, name, pos, src, kt, vt, rowName, keyed, reads, rowDef:
+LoAddBuilder: fn Wx, Text, Nat, Ex, RsTy, RsTy, Text, Bool, [Text], NodeDef, [Ex] -> Wx
+fn LoAddBuilder wx, name, pos, src, kt, vt, rowName, keyed, reads, rowDef, passed:
     let wx1 = LoAddField wx, name, (RsCell (RsMap kt, (RsRc (RsNamed rowName, [[]])))), "the rows of the `for` at place {pos}", (XRaw "RefCell::new(Map::new())")
     update wx1:
-        &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, source=src, keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed)
+        &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, source=src, keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, passed=passed)
         &_.buildHolds <= UnionTexts &_.buildHolds, reads
         &_.rows <= Append (Push &_.rows, rowDef), rowDef.children
+
+# The block's plain values a row reads (a parameter, a plain `let`): each a field of the
+# row, which the block passes to its `build`, since a row's build has no block to read.
+type RowLocal = record:
+    name: Text
+    field: Text
+    ty: RsTy
+    passed: Ex
+
+LoRowLocals: unbounded fn LoEnv, LoEnv, Block -> [RowLocal]
+fn LoRowLocals benv, menv, body = Fold (LoReadNames (BlockExprs body)), [[]], \|acc, n| match menv.names[n]:
+    ? (BnLocal rs, mode, t):
+        let field = LoSnake n
+        if field == "key" or field == "value" or field == "parent" or field == "path": acc
+        else: Push acc, (RowLocal(name=n, field=field, ty=t, passed=(LoOwn (VlPlace (XRaw rs), mode, t))))
+    otherwise: acc
 
 # A row's environments: the block's names, `key`, `$_`, and the `for`'s binders.
 LoForEnvs: unbounded fn LoEnv, LoEnv, ?ForBinders, Bn, Bn, Bn, Bn, RsTy -> ((LoEnv, LoEnv))
@@ -3484,6 +3632,8 @@ type GenCase = record:
     params: [((Text, RsTy))]
     pat: Pa
     conds: [Cc]
+    # What each parameter is built from: the arm's binders, owned.
+    passed: [Ex]
 
 LoGenCases: unbounded fn Wx, LoEnv, Block, RsTy, Text -> (([GenCase], Wx))
 fn LoGenCases wx, menv, body, vt, name:
@@ -3499,7 +3649,7 @@ fn LoGenCases wx, menv, body, vt, name:
                 (((Push acc, cr.case), cr.parent))
         nil:
             let whole = LoGenRow wx, menv, body, vt, rowName, "{name}_up"
-            ((([[GenCase(node=whole.node, params=[[(("value", vt))]], pat=PaWild, conds=[[]])]]), whole.parent))
+            ((([[GenCase(node=whole.node, params=[[(("value", vt))]], pat=PaWild, conds=[[]], passed=[[XRaw "value"]])]]), whole.parent))
 
 # A generation's body that is one application of a widget of several clauses: the widget
 # and the arguments.
@@ -3549,7 +3699,11 @@ fn LoClauseRow wx, menv, c, v, rowName, upName:
     let node = LoFinishNode r3, rowName, (Push (Each fields, \|((f, t, ignore))| ((f, t))), (("parent", (RsWeak wx.node)))), True
     let pos = Each (Range0 (Len c.params)), \|i| LoPat lxc, (Or c.params[i], dummyPat), (Or ptys[i], TyErr), "ref", "c{i}"
     let pa = PaTuple (Each pos, \|o| o.pa)
-    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds)), parent=p1)
+    let binds = Fold pos, {}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
+    let passed = Each fields, \|((f, t, bn))| match binds[bn]:
+        ? (BnLocal rs, mode, bt): LoOwn (VlPlace (XRaw rs), mode, bt)
+        otherwise: XMethod (XRaw f), "clone", [[]]
+    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), passed=passed), parent=p1)
 
 
 type GenRow = record:
@@ -3589,8 +3743,7 @@ fn LoGenSelect wx, menv, body, cases, pos = match ?LoClauseCall wx.lx, body:
         let env = LoBind menv, "_", (BnLocal "value", "own", RsUnit)
         let scrut = XTuple (Each args, \|a| LoArg wx.lx, env, a.value)
         let arms = Each cases, \|c|
-            let passed = Each c.params, \|((f, ignore))| XMethod (XRaw f), "clone", [[]]
-            let made = XTry (XCall "{c.node.name}::build", (Append (Append [[XRaw "path.clone()"]], passed), [[XRaw "Rc::downgrade(self)", XRaw "cx"]]))
+            let made = XTry (XCall "{c.node.name}::build", (Append (Append [[XRaw "path.clone()"]], c.passed), [[XRaw "Rc::downgrade(self)", XRaw "cx"]]))
             XArm(pat=c.pat, conds=c.conds, body=(XCast made, (RsNamed "Rc<dyn Row>", [[]])))
         LoOwn (LoArmsValue scrut, arms, "'select", (RsNamed "Rc<dyn Row>", [[]]))
 

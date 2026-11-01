@@ -42,8 +42,8 @@ fn EmTy t = match t:
     RsFn ps, r: "Rc<dyn Fn({EmRefTys ps}) -> {EmTy r}>"
     RsRef (RsFn ps, r): "&dyn Fn({EmRefTys ps}) -> {EmTy r}"
     RsRef i: "&{EmTy i}"
-    RsJobFn a, b: "fn({EmTy a}) -> Rc<dyn Job<{EmTy b}>>"
-    RsJob b: "Rc<dyn Job<{EmTy b}>>"
+    RsJobFn a, b: "fn({EmTy a}) -> Rc<dyn prism_rtl::Job<{EmTy b}>>"
+    RsJob b: "Rc<dyn prism_rtl::Job<{EmTy b}>>"
     RsEvent i: "Event<{EmTy i}>"
     RsDyn i: "Dynamic<{EmTy i}>"
     RsGen n: n
@@ -331,7 +331,7 @@ fn EmJobDef j:
     let gnames = EmGenericNames (Each j.generics, \|((g, ignore))| g)
     let fields = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t},"), "\n"
     let params = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t}"), ", "
-    let start = "pub fn {j.start}{EmGenerics j.generics}({params}) -> Rc<dyn Job<{EmTy j.ret}>>"
+    let start = "pub fn {j.start}{EmGenerics j.generics}({params}) -> Rc<dyn prism_rtl::Job<{EmTy j.ret}>>"
     let startBody = "Rc::new({j.name} \{ {Join (Each j.fields, \|((n, ignore))| n), ", "} \})"
     TmJob (TmSourceDoc "", j.doc), j.name, gnames, fields, (EmTy j.ret), (EmBody j.body), start, startBody
 
@@ -444,7 +444,7 @@ fn EmIsRaw other = False
 
 # A `for`'s builder: rows that left torn down, new keys built, kept rows updated.
 EmForDef: unbounded fn ForDef -> Text
-fn EmForDef b = TmForBuild b.name, "{b.pos}", (EmEx b.source), (EmTy b.keyTy), (EmTy b.valueTy), b.rowNode
+fn EmForDef b = TmForBuild b.name, "{b.pos}", (EmEx b.source), (EmTy b.keyTy), (EmTy b.valueTy), b.rowNode, (Concat (Each b.passed, \|x| ", {EmEx x}"))
 
 # A `rebuild`'s builder: the old generation torn down, the next one built.
 EmGenDef: unbounded fn GenDef -> Text

@@ -1,0 +1,7 @@
+# The unbounded value's tests: declarations of be-unbounded-value.prism (Semantics chapter 6).
+
+test a_function_value_is_a_call_per_cycle, @Counted 5:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="7")

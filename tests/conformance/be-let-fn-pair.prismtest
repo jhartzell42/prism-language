@@ -1,0 +1,5 @@
+# The let/fn pair's tests: declarations of be-let-fn-pair.prism (Semantics chapter 6).
+
+test both_names_resolve, @shown:
+    build
+        => expect Ui.Label(text="37")

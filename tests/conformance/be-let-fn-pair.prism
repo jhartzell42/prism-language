@@ -1,0 +1,13 @@
+# The back end's names (prismc/README.md, pick NM): a top-level `let` and a function whose
+# Rust names would be the same, `digits` and `Digits`. Written for prismc's back end. Work in
+# progress, subject to change.
+emit Ui.*
+
+let digits = "0123456789"
+
+Digits: fn Nat -> Text
+fn Digits n = Take (Drop digits, n), 1
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$"{Digits 3}{Digits 7}")                  # 0
