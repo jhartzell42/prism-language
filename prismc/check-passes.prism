@@ -623,7 +623,8 @@ fn ShrinkCheck g, st, defs:
     let refs = Each fns, \|d| ((d.qk, (DefRefs g, d)))
     let keys = Each fns, \|d| d.qk
     let sccs = Sccs keys, refs
-    let st2 = Fold sccs, st, \|s, comp| ShrinkComponent g, s, comp, fns, refs
+    let sums = if (Len sccs) == 0: {} else: PartsSummaries fns
+    let st2 = Fold sccs, st, \|s, comp| ShrinkComponent g, s, comp, fns, sums
     Fold fns, st2, \|s, d| LoopsOf g, s, d
 
 IsUnboundedKey: fn G, Text -> Bool
@@ -758,11 +759,11 @@ fn Collect rev, seen, comp, k:
 # One cycle of the reference graph: cleared when every function on it is unbounded,
 # else every idempotent size-change graph of the composition closure needs a strictly
 # smaller edge from a parameter to itself.
-ShrinkComponent: unbounded fn G, St, [Text], [Def], [((Text, [Text]))] -> St
-fn ShrinkComponent g, st, comp, fns, refs:
+ShrinkComponent: unbounded fn G, St, [Text], [Def], (Text ==> Nat) -> St
+fn ShrinkComponent g, st, comp, fns, sums:
     if Fold comp, True, \|ok, k| ok and IsUnboundedKey g, k: st
     else:
-        let graphs = Fold fns, [[]], \|acc, d| if HasText comp, d.qk: Append acc, (CallGraphs g, d, comp) else: acc
+        let graphs = Fold fns, [[]], \|acc, d| if HasText comp, d.qk: Append acc, (CallGraphs g, d, comp, sums) else: acc
         let closure = Closure graphs
         let bad = Filter closure, \|sc| sc.caller == sc.callee and (Compose sc, sc).edges == sc.edges and not (Fold sc.edges, False, \|seen, ((a, b, s))| seen or (a == b and s))
         match bad[0]:
@@ -777,14 +778,14 @@ fn ShrinkComponent g, st, comp, fns, refs:
 
 # Every call from `d` into the component, as a size-change graph. A name mentioned but
 # not called is a call with no edges.
-CallGraphs: unbounded fn G, Def, [Text] -> [Sc]
-fn CallGraphs g, d, comp = match d.body:
-    DbFn clauses: Fold clauses, [[]], \|acc, c| Append acc, (ClauseGraphs g, d, c, comp)
+CallGraphs: unbounded fn G, Def, [Text], (Text ==> Nat) -> [Sc]
+fn CallGraphs g, d, comp, sums = match d.body:
+    DbFn clauses: Fold clauses, [[]], \|acc, c| Append acc, (ClauseGraphs g, d, c, comp, sums)
     otherwise: [[]]
 
-ClauseGraphs: unbounded fn G, Def, FnClause, [Text] -> [Sc]
-fn ClauseGraphs g, d, c, comp:
-    let rels = ParamRels c.params
+ClauseGraphs: unbounded fn G, Def, FnClause, [Text], (Text ==> Nat) -> [Sc]
+fn ClauseGraphs g, d, c, comp, sums:
+    let rels = SummarySeeds g, d, c, sums, (ParamRels c.params)
     let rels2 = BodyRels (BodyStmtsOf c.body), (?BodyExprOf c.body), rels
     let steps = StepCalls c.body
     let stepAt = Each steps, \|((ignore, ignore, sp))| sp
@@ -946,25 +947,191 @@ fn ?LastExpr b = match ?Last b.stmts:
     nil: nil
 
 # What an expression is known to be no larger than: a parameter, a field of one (a part),
-# a text or array with something dropped from its front.
+# a text or array with something dropped from its front. A map's children are its parts
+# (Semantics ch. 7, Keep shrinking; doubt TR): `Values m` and `Keys m` are no larger than
+# `m`, so a traversal over them hands out parts, and `m[k]` is no larger than `m`, so the
+# `? e` of a match on it is a part; an index on an array is its element likewise. A call
+# of a function whose summary returns parts of its parameter `i` (`fn:NAME` in the map,
+# seeded by `SummarySeeds`) is no larger than its argument `i`.
 ?RelOf: unbounded fn (Text ==> Rel), Expr -> ?Rel
 fn ?RelOf m, e = match e.kind:
     EName n: m[SNameKey n]
     EField r, ignore, ignore: match ?RelOf m, r:
         ? x: ? Rel(param=x.param, strict=True)
         nil: nil
+    EIndex r, ignore: ?RelOf m, r
     EGroup x: ?RelOf m, x
     ECall c, args, ignore, ignore: match c.kind:
         EName n:
-            if (SNameKey n) == "Drop" and (Len args) == 2 and IsPositiveLit (Or args[1], dummyArg).value:
+            let name = SNameKey n
+            if name == "Drop" and (Len args) == 2 and IsPositiveLit (Or args[1], dummyArg).value:
                 match args[0]:
                     ? a: match ?RelOf m, a.value:
                         ? x: ? Rel(param=x.param, strict=True)
                         nil: nil
                     nil: nil
-            else: nil
+            else: if (HasText [["Values", "Keys", "Prelude.Values", "Prelude.Keys"]], name) and (Len args) == 1: ?RelOf m, (Or args[0], dummyArg).value
+            else: match m["fn:{name}"]:
+                ? s: match args[s.param]:
+                    ? a: ?RelOf m, a.value
+                    nil: nil
+                nil: nil
         otherwise: nil
     otherwise: nil
+
+# ---- Summaries: a function that returns parts of its parameter `i` (Semantics ch. 7, the
+# size-change principle across the call). A clause's result is within parameter `i` when
+# it is no larger than it (`?RelOf`), an array or map literal of its parts, a `match` or
+# `if` whose every arm is, a `Filter` or an `Each` of parts over a collection within it,
+# or a `Fold` over one from an empty or within start whose step returns its accumulator
+# or the accumulator with parts added (`Push`, `Insert`, `Append` of a within). A part is
+# strictly smaller than parameter `i`, or a tuple of such: a tuple is not a recursive
+# type, so a cycle reaches only its pieces. A summary reads its body without other
+# summaries, so it never depends on itself.
+PartsSummaries: unbounded fn [Def] -> (Text ==> Nat)
+fn PartsSummaries fns = Fold fns, {}, \|m, d| match d.body:
+    DbFn clauses:
+        let n = match clauses[0]:
+            ? c0: Len c0.params
+            nil: 0
+        let ok = Filter (Range0 n), \|i| Fold clauses, True, \|okc, c| okc and ClauseWithin c, i
+        match ok[0]:
+            ? i: Insert m, d.qk, i
+            nil: m
+    otherwise: m
+
+ClauseWithin: unbounded fn FnClause, Nat -> Bool
+fn ClauseWithin c, i = match c.body:
+    BodyExpr e: Within (BodyRels [[]], (? e), (ParamRels c.params)), i, e
+    BodyBlock b: match ?LastExpr b:
+        ? e: Within (BodyRels b.stmts, nil, (ParamRels c.params)), i, e
+        nil: False
+
+Within: unbounded fn (Text ==> Rel), Nat, Expr -> Bool
+fn Within m, i, e = match ?RelOf m, e:
+    ? r: r.param == i
+    nil: match e.kind:
+        EArray es: Fold es, True, \|ok, x| ok and Part m, i, x
+        EMap kvs: Fold kvs, True, \|ok, ((k, v))| ok and (Part m, i, k) and Part m, i, v
+        EGroup x: Within m, i, x
+        EMatch ignore, arms: Fold arms, True, \|ok, a| ok and Within m, i, (LastOr a.body)
+        EIf ignore, t, (? el): (Within m, i, (LastOr t)) and Within m, i, (LastOr el)
+        ECall c, args, ignore, ignore: match ?TraversalOf c, args:
+            ? ((coll, step, ignore)): (Within m, i, coll) and StepWithin m, i, (ExprName c), step, (Or args[1], dummyArg).value
+            nil: False
+        otherwise: False
+
+# A traversal's step, for `Within`: a `Filter` keeps elements, an `Each` must map them to
+# parts, a `Fold` must start within and build on its accumulator.
+StepWithin: unbounded fn (Text ==> Rel), Nat, Text, Expr, Expr -> Bool
+fn StepWithin m, i, f, step, z:
+    if f == "Filter" or f == "Prelude.Filter": True
+    else: match step.kind:
+        ELambda (? ps), body:
+            let x = match body:
+                LbExpr y: y
+                LbBlock b: LastOr b
+            if f == "Each" or f == "Prelude.Each": Part m, i, x
+            else: match ps[0]:
+                ? acc: match acc.kind:
+                    PName n: (Within m, i, z) and BuildsOn m, i, (SNameKey n), x
+                    otherwise: False
+                nil: False
+        otherwise: False
+
+# A block's last expression, or one that is within nothing.
+LastOr: fn Block -> Expr
+fn LastOr b = Or (?LastExpr b), dummyArg.value
+
+# A `Fold` step's result: the accumulator, or the accumulator with parts added.
+BuildsOn: unbounded fn (Text ==> Rel), Nat, Text, Expr -> Bool
+fn BuildsOn m, i, acc, e = match e.kind:
+    EName n: (SNameKey n) == acc
+    EGroup x: BuildsOn m, i, acc, x
+    EMatch ignore, arms: Fold arms, True, \|ok, a| ok and BuildsOn m, i, acc, (LastOr a.body)
+    EIf ignore, t, (? el): (BuildsOn m, i, acc, (LastOr t)) and BuildsOn m, i, acc, (LastOr el)
+    ECall c, args, ignore, ignore:
+        let f = ExprName c
+        let onAcc = BuildsOn m, i, acc, (Or args[0], dummyArg).value
+        let rest = Each (Drop args, 1), \|a| a.value
+        let parts = Fold rest, True, \|ok, x| ok and Part m, i, x
+        if not onAcc: False
+        else: if (f == "Push" or f == "Prelude.Push") and (Len rest) == 1: parts
+        else: if (f == "Insert" or f == "Prelude.Insert") and (Len rest) == 2: parts
+        else: if (f == "Append" or f == "Prelude.Append") and (Len rest) == 1: Within m, i, (Or rest[0], dummyArg.value)
+        else: False
+    otherwise: False
+
+Part: unbounded fn (Text ==> Rel), Nat, Expr -> Bool
+fn Part m, i, e = match e.kind:
+    ETuple es: Fold es, True, \|ok, x| ok and Part m, i, x
+    EGroup x: Part m, i, x
+    otherwise: match ?RelOf m, e:
+        ? r: r.param == i and r.strict
+        nil: False
+
+# The summaries a clause's calls use, as `fn:NAME` entries of its relations, each the
+# callee's parameter. A name the clause binds itself (a parameter, a `let`, a lambda's
+# or an arm's pattern, a local `fn`) is not the global function and gets none.
+SummarySeeds: unbounded fn G, Def, FnClause, (Text ==> Nat), (Text ==> Rel) -> (Text ==> Rel)
+fn SummarySeeds g, d, c, sums, rels:
+    let bound = Fold c.params, (BoundInBody c.body), \|a, p| UnionTexts a, (PatternNames p)
+    Fold (CallsInBody c.body), rels, \|m, ((n, ignore, ignore))| if HasText bound, n: m else: match ?ResolveName g, d.home, n:
+        ? k: match sums[k]:
+            ? i: Insert m, "fn:{n}", Rel(param=i, strict=False)
+            nil: m
+        nil: m
+
+BoundInBody: unbounded fn FnBody -> [Text]
+fn BoundInBody (BodyExpr e) = BoundIn e
+fn BoundInBody (BodyBlock b) = BoundInStmts b.stmts
+
+BoundInStmts: unbounded fn [Stmt] -> [Text]
+fn BoundInStmts stmts = Fold stmts, [[]], \|acc, s| UnionTexts acc, match s.kind:
+    SLet p, ignore, e: UnionTexts (PatternNames p), (BoundIn e)
+    SBind p, e, ignore: UnionTexts (PatternNames p), (BoundIn e)
+    SFn f: AddText (Fold f.params, (BoundInBody f.body), \|a, p| UnionTexts a, (PatternNames p)), (DefNameText f.name)
+    SWidget w: BoundInStmts w.body.stmts
+    SWhile (CondBind p, x, ignore), b: UnionTexts (UnionTexts (PatternNames p), (BoundIn x)), (BoundInStmts b.stmts)
+    SWhile ignore, b: BoundInStmts b.stmts
+    SIgnore e: BoundIn e
+    SSet t, v: UnionTexts (BoundIn t), (BoundIn v)
+    SAccum t, ignore, v: UnionTexts (BoundIn t), (BoundIn v)
+    SExpr e: BoundIn e
+    otherwise: [[]]
+
+# The names bound inside an expression: lambdas', arms', `if`s' and `for`s' patterns, and
+# every block's statements; each part is visited once.
+BoundIn: unbounded fn Expr -> [Text]
+fn BoundIn e = match e.kind:
+    ELambda ?ps, body:
+        let fromPs = Fold (Or ?ps, [[]]), [[]], \|a, p| UnionTexts a, (PatternNames p)
+        match body:
+            LbExpr x: UnionTexts fromPs, (BoundIn x)
+            LbBlock b: UnionTexts fromPs, (BoundInStmts b.stmts)
+    EMatch s, arms: Fold arms, (BoundIn s), \|a, arm| UnionTexts (UnionTexts a, (OptNames arm.?pattern)), (BoundInStmts arm.body.stmts)
+    EIf c, t, ?el:
+        let fromCond = match c:
+            CondBind p, x, ignore: UnionTexts (PatternNames p), (BoundIn x)
+            CondExpr x: BoundIn x
+        let fromThen = UnionTexts fromCond, (BoundInStmts t.stmts)
+        match ?el:
+            ? b: UnionTexts fromThen, (BoundInStmts b.stmts)
+            nil: fromThen
+    EFor ?fb, s, b:
+        let fromFb = match ?fb:
+            ? fb: UnionTexts (PatternNames fb.first), (OptNames fb.?second)
+            nil: [[]]
+        UnionTexts (UnionTexts fromFb, (BoundIn s)), (BoundInStmts b.stmts)
+    ERebuild s, b: UnionTexts (BoundIn s), (BoundInStmts b.stmts)
+    EUpdate s, b: UnionTexts (BoundIn s), (BoundInStmts b.stmts)
+    EGiven b: BoundInStmts b.stmts
+    EWidgetBlock b: BoundInStmts b.stmts
+    otherwise: Fold (Subexprs e), [[]], \|a, x| UnionTexts a, (BoundIn x)
+
+OptNames: unbounded fn ?Pattern -> [Text]
+fn OptNames (? p) = PatternNames p
+fn OptNames nil = [[]]
 
 let dummyArg = Arg(name=nil, value=Expr(kind=EError, span=Range(start=0, end=0)), span=Range(start=0, end=0))
 

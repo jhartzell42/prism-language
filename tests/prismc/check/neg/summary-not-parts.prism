@@ -1,0 +1,16 @@
+# `may-not-end`: a function's result counts as parts of its argument only when it is built
+# from parts; `Wrapped` returns a bigger tree than it was given, so traversing it does not
+# shrink.
+type Tree = choice:
+    Leaf Nat
+    Node (Text ==> Tree)
+
+Wrapped: fn (Text ==> Tree) -> [Tree]
+fn Wrapped m = [[Node m]]
+
+Total: fn (Text ==> Tree) -> Nat
+fn Total m = Fold (Wrapped m), 0, \|acc, t| acc + (Weigh t)
+
+Weigh: fn Tree -> Nat
+fn Weigh (Leaf n) = n
+fn Weigh (Node m) = Total m

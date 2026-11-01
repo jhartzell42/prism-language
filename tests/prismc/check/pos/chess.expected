@@ -1,9 +1,0 @@
-examples/chess/window.prism:460: error[may-not-end]: `TextsIn` calls itself on `e`, not smaller than what it was given
-    fn TextsIn cs = Fold (Values cs), {}, \|acc, e| Union acc, (TextsOf e)
-                                                                ^^^^^^^^^
-  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
-examples/chess/window.prism:632: error[may-not-end]: `LayStack` calls itself on `env`, not smaller than what it was given
-        let natural = Each kids, \|((k, e))| Lay env, e, (RoomFor down, 0.0, huge, 0.0, (CrossMax down, room)), (Push chain, k)
-                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
-2 errors

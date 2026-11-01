@@ -256,7 +256,7 @@ an empty array's element), or one a local `let` quantified.
 
 ### Where it stands
 
-`tests/prismc/check/run.sh` checks every program of the corpus, the 49 negative cases and
+`tests/prismc/check/run.sh` checks every program of the corpus, the 51 negative cases and
 the two typed dumps. A program the books make wrong has its exact report in
 `tests/prismc/check/pos/NAME.expected`; each is listed here with the rule.
 
@@ -264,7 +264,7 @@ the two typed dumps. A program the books make wrong has its exact report in
   `sem-ch01-counter`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`, `sem-ch06-birds`,
   `sem-ch07-births`, `sem-ch07-normalize`, `sem-ch07-paged`, `sem-ch07-rounds`,
   `sem-ch09-hosts`, `ts-ch03-traits`, `ts-ch04-lifting`, `examples/counter`,
-  `examples/half-counter`.
+  `examples/half-counter`, `chess`.
 - **`conf-ch01-motd`** (1): `!motd` holds a `!~Contents`, and a name shows its type's whole
   stack (Type System ch. 1, "The whole stack, every time"; D12). Conformance ch. 1 writes
   `!motd`, Pitch ch. 8 `!~motd` (doubt CF below).
@@ -281,14 +281,6 @@ the two typed dumps. A program the books make wrong has its exact report in
   its own; the book's listing has no `use Fs.*`, doubt VW below).
 - **`examples/todos`** (1): `Add "item {$next}"` passes a `$Text` to a constructor, which
   takes every argument whole (Type System ch. 5, the application rule).
-- **`chess`** (2): with doubt WL's snapshot face, `TextsOf` and `Lay` check as plain
-  functions, and two cycles the shrink check cannot show end, which the type errors hid
-  (a definition that fails typing skips the shrink check). `TextsOf` calls `TextsIn` on a
-  part, and `TextsIn` folds over `Values cs`, a call, so its `e` is not known to be
-  smaller (doubt TR covers a traversal over a parameter or its part, not over `Values` or
-  `Keys` of one). `LayStack` traverses `Kids cs`, chess's own function, whose result the
-  checker cannot relate to `cs`. Each needs a rule the checker does not have, or
-  `unbounded fn`, which would stop `PlaceAt` lifting over the window's dynamics.
 - **`prelude`** (2): `gui.prism`'s `Turn` collides with `prelude.prism`'s `Turn b`
   (Semantics ch. 6); `ui.prism`'s `Ui.TextInput` answers `!Key`, and `ui.prism` declares
   no `Key`.
@@ -317,9 +309,11 @@ the two typed dumps. A program the books make wrong has its exact report in
   - `ambiguous` (1): `front.prism`'s `@Compile` gives up with an `Error` whose `~T` nothing
     decides (ch. 5, Defaulting).
 
-The negative cases (`neg/`, 49) give one diagnostic each, the error their name says.
-`layer-unknown` is new with this round; `refinement-escape` and `existential-escape` have
-no case, since the checker does not report them (gaps below).
+The negative cases (`neg/`, 51) give one diagnostic each, the error their name says, or a
+case of it (`live-field-bare` is a `mark-stack`; `values-not-shrinking` and
+`summary-not-parts` are `may-not-end`s that keep doubt TR's map rule and pick SM's
+summaries from accepting a cycle that grows). `refinement-escape` and `existential-escape`
+have no case, since the checker does not report them (gaps below).
 
 ### Checker picks
 
@@ -354,6 +348,26 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   monomorphic variables default at the program's end.
 - **PS** In the prompt-cycle check a widget function is prompt in every argument, except
   the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`).
+- **SM A function that returns parts of a parameter has a summary**, Semantics ch. 7's
+  size-change principle across the call, so a cycle may traverse what a helper returns.
+  A function is summarized on its first parameter `i` for which every clause's result is
+  within `i`:
+  - no larger than it: the parameter, a part, `Values` or `Keys` of one, an index on one;
+  - an array or map literal of parts;
+  - a `match` or `if` whose every arm is within `i`;
+  - a `Filter`, or an `Each` of parts, over a collection within `i`;
+  - a `Fold` over one, from a start within `i`, whose step returns its accumulator or the
+    accumulator with parts added by `Push` or `Insert`, or a within added by `Append`.
+
+  A part is strictly smaller than `i`, or a tuple of such (a tuple is not a recursive type,
+  so a cycle reaches only its pieces). A call of the function is no larger than its
+  argument `i`, and strictly smaller when that argument is. A summary is read without
+  other summaries, so none depends on itself or on a chain, and a name the calling clause
+  binds itself (a parameter, a pattern, a local `fn`) is not the summarized function
+  (`neg/summary-not-parts`: a function returning `[[Node m]]` gets no summary). Chess's
+  `Kids cs` is summarized on `cs`, which clears `LayStack`, `LayLayers` and `LayGrid`.
+  *Refused:* inlining `Kids` at its call sites, which bends the program to the checker;
+  summaries chained to a fixed point, which no program needs yet.
 
 ### Checker doubts
 
@@ -362,6 +376,15 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   as the step is a call on an element. Semantics ch. 7 lists "a part ... taken apart by
   `match`" and does not say this. *First ruling (Claude's):* as stated; prismc's tree
   walks need it. *If otherwise:* every tree walk through `Fold` is `unbounded`.
+  - A map's children are its parts, as Semantics ch. 7 lists them ("a map's child"):
+    `Values m` and `Keys m` are no larger than `m`, so a traversal over them hands out
+    parts of `m`, and `m[k]` is no larger than `m`, so the `? e` of a match on it is a
+    part (an index on an array likewise, its element). This clears chess's `TextsOf` ->
+    `TextsIn` -> `TextsOf`, folding over `Values cs`. `Values` of a map built bigger than
+    the one given (`Values (Insert m, k, (Node m))`) is related to nothing
+    (`neg/values-not-shrinking`). *First ruling (Claude's):* as stated, the book's own
+    list. *If otherwise:* chess's `TextsIn` and `Kids` are `unbounded fn`, which stops
+    `PlaceAt` lifting over the window's dynamics.
 - **RP** A reference path writes its field steps bare (`&_.rootModule <= ? m`), and a field
   after an index step names the element's field (`&_[ix].partner <= ? j` sets a `?Nat`).
   Type System ch. 1 says a field access shows its stack; the parser reads a set only
@@ -432,75 +455,204 @@ What the checker does not do yet, each with Claude's first ruling.
 
 ## Back end
 
-`compile` lowers the program to a core form and emits a Rust crate through code templates
-(decisions.md D1, D16):
+`compile` checks the program, lowers it to a core form and emits a typed Rust crate over
+`prism_rtl` through code templates. `docs/backend.md` is the contract: what Rust each
+construct becomes and which library call it makes. The old back end, which emitted
+`prism_rt` values and applied them through the dynamic layer (D16), is gone.
 
 ```
-prism_zero run prismc/*.prism prismc/templates/*.prism -- compile FILES... -o DIR [--name NAME]
-target/stage3/prismc -- compile FILES... -o DIR [--name NAME]       # the same, compiled
-(cd DIR && cargo build --release)                                     # add --features canvas for chess
-DIR/target/release/NAME [--world cli|test|canvas] [-- ARGS... | SCRIPTS.prismtest...]
+./prism run DIR [ARGS...]                 # compile, cargo build, run the root under its World
+./prism test DIR                          # compile, build, run the .prismtest scripts
+./prism compile DIR -o OUT                # the crate only
+prism_zero run prismc/*.prism prismc/templates/*.prism -- compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH]
+OUT/target/.../NAME [--world cli|canvas|test] [ARGS...]      # the root, under the World its row asks for
+OUT/target/.../NAME test [--print] [SCRIPTS.prismtest...]    # the Test World; compares with .expected
+tests/compiled/run.sh [NAMES...]          # every conformance program and example, byte-equal
 ```
 
-- `lower.prism` (module `Lower`): the program (modules, declarations, `use` scopes, tags,
-  constructors, impls, trait methods) and the core form: names resolved to Rust locals and
-  global getters, layers read off signatures, patterns resolved, expression blocks' `let`s
-  in the order compiler zero forces them, widget blocks' lines in the order compiler zero
-  runs them (pick BG of prism_zero/README.md, done statically: positional lines in page
-  order, forward events, deferred event `let`s, the holds' `then`s last), captures explicit.
-- `emit.prism` (module `Emit`): the core form to Rust, the compile job (`ZCompile`, run
-  through `@Run`), `main.rs` and `Cargo.toml`. A nested function is a Rust `fn` item hoisted
-  to the top of the function it stands in, so an expression stays on one line.
-- `templates/rust.prism` (module `RustTemplates`): every multi-line piece of Rust, as
-  function-form templates with doubled braces; placeholders alone on their lines indent.
-- `front.prism`: `@main`'s `compile` branch, `@CompileMain`.
-- The emitted code is straight-line Rust over `prism_dyn::rt`: every value a
-  `prism_rt::Value`, every application `apply(&f, vec![..], b)?` through the lifting table
-  compiler zero uses. `.prismtest` files among FILES are compiled into the binary too: their
-  `check` lines and their `test name, @program:` blueprints, run by `--world test SCRIPTS`.
-- The checker is not called yet: `check-passes.prism` exposes no `Check` entry the back end
-  can call; `compile` does not run it.
-- Bootstrap: `tests/bootstrap/stage1.sh`, `stage2.sh`, `stage3.sh`, `check.sh` (stage 2 and 3
-  byte-equal), all from one snapshot of the sources (`target/bootstrap-src/`);
-  `compiled-tests.sh [PRISMC|zero]` compiles every conformance program and example and runs
-  its script under the compiled Test World against its `.expected`. `make bootstrap`,
-  `make test`, `make chess` at the root.
+The `prism` script uses the newest `target/stageN/prismc` and otherwise compiler zero;
+`make chess` is `./prism run examples/chess`.
+
+### Files
+
+- `lower.prism` (module `Lower`, 3,450 lines): the core form and lowering. It reads the
+  checker's environment (`CheckEnv.BuildG`: modules, types, constructors, tags, traits,
+  impls, every definition's clauses) and the typed tables (`TProgram`, indexed by place)
+  and decides everything: names, Rust types, borrows and clones, each widget's node (its
+  fields, event graph, heights, places, answers, hooks, rows and generations), each
+  unbounded function's job.
+- `emit.prism` (module `Emit`, 520 lines): the core form spelled; one function per
+  construct, nothing decided (K9).
+- `templates/rust.prism` (module `RustTemplates`, 490 lines): every item and every
+  multi-line expression as a function-form code template with doubled braces;
+  placeholders alone on a line indent to their column; doc comments quote the Prism
+  source through a `<@TmQuoted text={{..}}/>` call.
+- `templates/prelude.prism` (module `PreludeTemplate`, 640 lines): the prelude in Rust,
+  emitted as `src/prelude.rs` beside every program (pick PL).
+- `fs.prism` (module `Fs`): the prelude's `Fs` with `Fs.List`, which `compile DIR` reads
+  (pick FL).
+- `front.prism`: `@main`'s `compile` branch (`@CompileMain`, `CompileProgram`).
+
+The emitted crate: `Cargo.toml` (`prism_rtl`, `prism_world_cli`, and
+`prism_world_canvas_rtl` behind the `canvas` feature, on by default when the root emits
+`Gui`), `src/main.rs` (the programs, the Test World's registrations and compiled `check`
+blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
+
+### Where it stands
+
+End to end under compiler zero (compile, `cargo build`, transcript byte-equal to its
+`.expected`), by `tests/compiled/run.sh`:
+
+STATUS_LIST
 
 ### Back-end picks
 
-- **NM Names.** A Prism name's sigils become letters (`$` d, `!` e, `@` w, `?` q, `~` t, `&` r):
-  `$count` is the local `ld_count`, `@counter` the getter `gw_counter`; a Prism module is
-  the Rust module `m_<name>`, the root `m_main`. Refused: a table of numbered names, which
-  Jimmy could not read.
-- **GL Every global is a getter** made once per thread (`rt::global`), a function its
-  closure: applications are uniform, `apply(&crate::m_lexer::g_Join()?, ..)`. Refused:
-  direct Rust calls to known functions, which need the layers at the call site (a later
-  optimization, typed codegen's job).
-- **HI Hoisted items.** Lambdas, arms, widget blocks become `fn` items at the top of the
-  enclosing function, named by their source offset (`lam_312`), their environment passed
-  as `cap`/`env` slices. Refused: Rust closures capturing locals, which hide captured values
-  from the collector (D5).
-- **ST Static binding groups.** The order of a group's lines is decided at compile time by
-  simulating compiler zero's forcing; the free-name walk is scope-aware (compiler zero's
-  over-approximation, IB1, would make some `let`s cycles at compile time).
-- **CP Cycle points** at an unbounded function's entry, counted only when an unbounded
-  function is running (`rt::within_unbounded`), and per `while` turn: compiler zero's CP,
-  so a compiled `@Run` and an interpreted one take the same number of cycles.
-- **TC `<@Name ...>` in `inline_text`** calls the plain function `Name` (its attributes,
-  then its body's text) when no `@Name` is declared; compiler zero does the same now.
-  Templates ch. 2 gives the function form no call form, so this is an extension; doubt below.
-- **LO Locations.** Each emitted function places the faults inside it at its source
-  position (`within("prismc/lexer.prism:312:5", || ..)`), the innermost first.
-- **RT The runtime path.** `Cargo.toml` finds `prism_rt`, `prism_dyn` and `worlds/canvas`
-  at `--runtime PATH`, by default one `..` per directory of `-o DIR` (DIR under the repo
-  root), so stage 2 and stage 3 emit the same file.
+Each is Claude's, for Jimmy to overturn.
+
+- **NM Names.** Rust's conventions from the program's names: `$count` is the field
+  `count`, `!inc` the method `inc`, `ParseNat` the function `parse_nat`, `?Reduce`
+  `reduce`. Sigils go; when two values of a module share a base (`?ParseNat`,
+  `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`). A Rust
+  keyword or a name the emitted code uses (`cx`, `node`, `path`, `v`) takes a `_`. A
+  merge with no name is `anon`; a node's internal names are first come, first served
+  (`run`, `run_2`). A tag's `Level` struct is its family and name run together
+  (`UiButton`, as `prism_rtl`'s tests have it). *Refused:* the old back end's sigil
+  letters (`ld_count`), which read as a mangling.
+- **MO Modules.** One Rust module per Prism module (`program` for the root module); a
+  prelude module (`Ui`, `Fs`, ...) is emitted only when a program module uses it or names
+  its family on its `emit` line. A reference to another module is `ui::Click`.
+- **OW Ownership.** A function takes every argument by reference and returns a value;
+  lowering tracks how each Rust place holds its value (`ref`, `own`, `rc`, `rcown`) and
+  spells a use as a borrow or a clone accordingly. A closure passed to a parameter is a
+  borrowed `&dyn Fn`; a closure as a value is `Rc<dyn Fn(&A) -> B>`, its captures cloned
+  in. A recursive payload is behind `Rc` (a type that reaches itself by value, directly,
+  through `?` or a tuple).
+- **CH Clauses and patterns.** A function's clauses are one `match` over the parameters
+  that are not the same name in every clause; a number or text literal in a pattern is a
+  binder and an equality guard. A pattern through an `Rc` payload cannot be a Rust
+  pattern, so such a `match` is an if-let chain in a labelled block (`'c: { if let .. &&
+  let .. = &**f { break 'c ..; } .. }`).
+- **GV `given:`.** A labelled block: a bind is `let Some(p) = e else { break 'g None }`,
+  a guard `if !(c) { break 'g .. }`; under `~` a failed guard is `Prelude.Unmet` with the
+  statement's source text (D11). A function body of binds and guards is a `given:` without
+  the word.
+- **UP `&` blocks.** `update x:` is a block over `let mut this = x.clone()`: `&_.f <= v`
+  is an assignment, `+=` an assignment of the sum, `&m[k] <= v` an `insert`, `&xs[i]` the
+  prelude's `at_mut`, `let &i` a `mut` local, `while` a Rust `while`.
+- **PL The prelude** is Rust written once in `templates/prelude.prism` and emitted per
+  program, not compiled from `prelude/prelude.prism`: most of the prelude is builtins
+  with no Prism body, and the Prism-written ones (`Each`, `Filter`, `Or`, `Max`) are a
+  line of Rust each. A name serving an array, a text and a map has variants (`len`,
+  `len_text`, `len_map`), lowering picking by the argument's type. *Refused:* a crate of
+  its own, which `prism_runtime_lib/` (not this task's to change) would have to host.
+- **WG Widgets in static positions are inlined** (Semantics ch. 8: transparent, their
+  places numbered in the caller's sequence): their parameters bound by layer (an event to
+  the caller's event, a dynamic to its reader, a plain value to a field). A node is
+  emitted per root widget only: the ones a test names and `@main`.
+- **EV The event graph.** Within a node an event is a graph node (a source, a named
+  `let !x`, a combinator) and a pipe of pure transforms that calls straight through, so
+  `increment` calls `delta` calls the hold's write, as in Compiler ch. 3. A named event
+  is a method; `<|`, `!Union`, `!Both`, `!Except` are combinators with a `Stamped` field
+  per input, decided in `wake` (option (c), left first, CXb). A dynamic is its reader: the
+  plain expression over the current values, holds read at the read point; a hold write
+  marks the node dirty when a place reads it, through dynamic `let`s.
+- **HT Heights** come from the node's graph (a source at 0, a named event at what fires
+  it, a combinator one above its inputs), not from the checker's group order, which
+  counts reads through a hold's `then` as edges (gap DG; docs/backend.md cuts them).
+- **RN `@Run`** expands to its Appendix B parts in the node: `@started` (it takes a
+  number, Semantics ch. 8 RP), an `@Defer`, the merge `!started <| !again`, and the job's
+  `Hold`, cycled once per firing.
+- **JB Jobs.** An unbounded function that `@Run` is given, and every unbounded function
+  it tail-calls, has a job struct of its parameters (`struct Normalize { t: Term }`), its
+  `Job::cycle` the function's body with each tail call a `Turn::More(Rc::new(G { .. }))`
+  and each other result `Turn::Finished`; `start_normalize` is its `Start`. Every
+  unbounded function is also a direct-style Rust function (doubt DS).
+- **RW `for` rows.** A row is a node of its own (`TodosRow`) at `n/[k]`, with `key`, a
+  `value` hold for `$_`, and a weak reference to its block; the block's builder (a
+  template, `TmForBuild`) tears down left keys, builds new ones and updates kept ones from
+  the source after the tick, run at the build and from the build list when a hold the
+  source reads is written. A row's event result goes up to a gather in the block, which
+  fires `!(K ==> T)` once a tick at a height above the rows'.
+- **GN `rebuild`.** A generation is a node (`QuizGen`) at `n/#g` with `_` a plain field;
+  the builder (`TmGenBuild`) leaves the old one and builds the next when the source's
+  stale flag is set; an answer under `n/#g` reaches the current generation only. A
+  generation's event result fires the block's event, which is what `@Switch $!x` hears
+  (round 46 RD): `$!x <- rebuild` binds as that event.
+- **PO Ports.** An event of a block that a row or generation names reaches it through a
+  `Port` in the block (`Port::fire` when the event fires) and a subscription the row makes
+  when built and drops when it leaves (prelude `subscribe_row`, `Row::leave_row`).
+- **WH Wakes by height.** A node with combinators at several heights records the heights
+  it asked for (prelude `Wakes`) and its `wake` runs the lowest one asked, since
+  `Node::wake` is not told its height (contract gap WH below).
+- **PT Tests.** A `.prismtest` is read joined after the `.prism` of its name (a test
+  holds declarations of its module and has no `module` line, examples/README.md). `test`
+  declarations are taken out before checking (a test's blueprint names a `@name:` block,
+  which has no signature for the checker to read) and a `check` line's pattern too (the
+  Test World reads patterns from the script; the checker mistypes `Show (? 3) => "? 3"`).
+  A test's root is found by name; its arguments arrive as `Pod`s.
+- **FV First values.** A place whose element answers a dynamic asks `cx.first_value` at
+  the build and fails the build when the World has none; its `Hold` is the place's.
+- **TR Traits.** A program's trait is a Rust trait whose methods are associated
+  functions over `Self` (`Loud::loud(&x)`), defaults in the trait; an impl is a Rust
+  impl. An `impl ^Show` is a function of its own (`show_sq`) and `impl Show` over it,
+  and the type then crosses as `Pod::Shown` (docs/backend.md, "Printing"); an `impl ^Eq`
+  is `PartialEq` over its `==`.
+- **FL `Fs.List`.** prismc's own `fs.prism` replaces the prelude's `Fs` to declare it,
+  since a family's tags are declared in the family's module (Semantics ch. 6) and the CLI
+  World answers it for the program that declares it (worlds/cli/README.md). Compiler
+  zero's World answers no listing, so under compiler zero `compile` takes files and the
+  `prism` script lists a directory itself.
+- **RT The runtime path.** `Cargo.toml` finds the library and the Worlds at `--runtime
+  PATH`, by default one `..` per directory of OUT (OUT under the repository root), so the
+  stages emit the same file.
+- **SC The code's site.** An inlined widget's code is lowered in its own module's names
+  but placed in its caller's module, and a check line's in `main.rs`: lowering keeps the
+  module that resolves names apart from the one paths are written from.
+
+### Contract gaps
+
+Where docs/backend.md is silent or the library lacks what it describes, with the first
+ruling taken (Claude's).
+
+- **WH `Node::wake` has no height.** The contract has a node run "its combinators in
+  distance order, once per height"; the hook is not told the height. *First ruling:* the
+  node keeps the heights it asked for (pick WH). *If otherwise:* `Node::wake(height)`.
+- **DS Non-tail unbounded calls.** D6 puts a cycle point at every call of an unbounded
+  function from an unbounded function; this back end makes one only at tail calls of a
+  job, and runs every other unbounded call direct-style inside the cycle (on a 1 GB
+  stack). Cycle counts match wherever an unbounded function calls others only in tail
+  position (`Normalize`: `3 ticks, 1 to 3`); elsewhere a job takes fewer ticks than D6
+  says. *If otherwise:* the job keeps a stack of continuation frames.
+- **PF A port's fault.** `Port::fire` returns `Done`, and an event method returns
+  nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
+  `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
+  `Done` and calls `?`.
+- **TU Tuples beyond pairs** have no `Show` in `prism_rtl` and the orphan rule keeps a
+  program from adding one.
+- **DY Dynamics across nodes.** A row reads its block's events through ports, but not its
+  block's holds or dynamic `let`s (`sem-ch07-paged`'s inner `rebuild $src`): the
+  contract's `Dynamic` with its update port is not used yet.
+- **CL Clause choice.** A `rebuild` or a building `match`/`if` whose arms are widgets of
+  several clauses needs the clause chosen at the build; generations do it for one clause
+  only.
+
+### Not lowered yet
+
+Each emits a `todo!` or a `// ...` note naming it, so rustc or the transcript shows where:
+hosting (`@HostDocument`, `@HostSome`, `@HostList`, `@Element`), `@Flatten`,
+`@Machine`, `@Once` and the prelude's Prism-written widgets, `!MergeAll`, `!Updated`,
+local functions, lifted functions with time parameters (`fn !Bump $n, !go`), building
+`match` and `if`, a `for` whose rows give a dynamic, pushes to a live place
+(`Node::push`), `Time.After`, dynamics read across nodes, and the zombie and dead states
+(`leave`, `clean_up`, `edges`).
 
 ## Doubts
 
 - **TC** `<@` calls in `inline_text` go past Templates ch. 2, which gives the function form
   no call form ("a nested template is a function called in a placeholder"); the task asked
-  for `<@` calls. Jimmy rules which one stands; the emitter uses placeholders everywhere and
-  no `<@` call yet, so dropping TC costs nothing.
+  for `<@` calls. Jimmy rules which one stands; the templates use one (`TmQuoted`, in
+  every doc comment that quotes Prism), and the back end lowers `<@Name a={{x}}>body</@Name>`
+  to `name(&x, &body)`, so dropping TC costs one line.
 
 - **PF** reads less like the books' recursive descent than a language with exceptions
   would; every step after a failure still runs, as a no-op. If Prism gains early exit from a

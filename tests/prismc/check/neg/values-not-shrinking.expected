@@ -1,0 +1,5 @@
+tests/prismc/check/neg/values-not-shrinking.prism:8: error[may-not-end]: `Total` calls itself on `t`, not smaller than what it was given
+    fn Total m = Fold (Values (Insert m, "more", (Node m))), 0, \|acc, t| acc + (Weigh t)
+                                                                                 ^^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+1 error
