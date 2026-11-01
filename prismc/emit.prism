@@ -290,6 +290,7 @@ fn EmItem it = match it:
     ItJob j: EmJobDef j
     ItNode n: EmNodeDef n
     ItNote t: "// {t}\n"
+    ItRefused t: "compile_error!(\"{loweringRefusal}{LoEscape t}\");\n"
 
 EmTraitDef: unbounded fn TraitDef -> Text
 fn EmTraitDef t:
@@ -323,8 +324,13 @@ fn EmImplDef i:
 EmFnDef: unbounded fn FnDef -> Text
 fn EmFnDef f:
     let params = Join (Each f.params, \|((n, t))| "{n}: {EmTy t}"), ", "
-    let sig = "pub fn {f.name}{EmGenerics f.generics}({params}) -> {EmTy f.ret}"
+    # A function may build a job or a closure over its type parameters, which then live
+    # as long as the program (every Prism type does).
+    let sig = "pub fn {f.name}{EmStaticGenerics f.generics}({params}) -> {EmTy f.ret}"
     TmFn (TmSourceDoc "", f.doc), sig, (EmBody f.body)
+
+EmStaticGenerics: fn [((Text, [Text]))] -> Text
+fn EmStaticGenerics gs = EmGenerics (Each gs, \|((g, bs))| ((g, (Push bs, "'static"))))
 
 EmJobDef: unbounded fn JobDef -> Text
 fn EmJobDef j:
@@ -332,7 +338,7 @@ fn EmJobDef j:
     let fields = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t},"), "\n"
     let params = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t}"), ", "
     # A job is an `Rc<dyn Job>`, so its type parameters live as long as the program.
-    let bounded = EmGenerics (Each j.generics, \|((g, bs))| ((g, (Push bs, "'static"))))
+    let bounded = EmStaticGenerics j.generics
     let start = "pub fn {j.start}{bounded}({params}) -> Rc<dyn prism_rtl::Job<{EmTy j.ret}>>"
     let startBody = "Rc::new({j.name} \{ {Join (Each j.fields, \|((n, ignore))| n), ", "} \})"
     TmJob (TmSourceDoc "", j.doc), j.name, gnames, bounded, fields, (EmTy j.ret), (EmBody j.body), start, startBody

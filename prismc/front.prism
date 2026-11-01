@@ -359,7 +359,18 @@ fn CompileProgram job:
         else:
             let model = Lower.LowerProgram srcs, trees, (Len parsed), report.typed, job.name
             let scripts = Each tests, \|((p, ignore))| p
-            Compiled(files=(Emit.EmitCrate model, job.runtime, scripts), failed=False, report="")
+            let files = Emit.EmitCrate model, job.runtime, scripts
+            let refused = Fold files, [[]], \|acc, ((path, text))| Fold (Refusals text), acc, \|a, r| AddText a, "{path}: {r}"
+            if (Len refused) == 0: Compiled(files=files, failed=False, report="")
+            else: Compiled(files=files, failed=True, report="{Concat (Each refused, \|r| "error[not-lowered]: {r}\n")}{Len refused} construct{if (Len refused) == 1: "" else: "s"} the back end does not lower (the crate is written, with a `compile_error!` at each)")
+
+# What lowering refused, as the emitted text marks it (`Lower.LoTodo`, whose words these
+# are): each distinct message once.
+Refusals: fn Text -> [Text]
+fn Refusals text:
+    let marker = "compile_error!(\"prismc does not lower "
+    let parts = Split text, marker
+    Fold (Drop parts, 1), [[]], \|acc, part| AddText acc, (Or (Split part, "\")")[0], part)
 
 # A tree without its `test` declarations: the checker reads a test's blueprint by its
 # root's signature, which a `@name:` block has none of, so tests are checked by running

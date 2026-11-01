@@ -300,6 +300,8 @@ type Item = choice:
     ItJob JobDef
     ItNode NodeDef
     ItNote Text
+    # What lowering cannot lower, as a `compile_error!` item (`LoTodo`).
+    ItRefused Text
 derive ^Eq, ^Show
 
 # One Prism module as one Rust module.
@@ -742,7 +744,7 @@ fn LoLit lx, env, l, span, neg:
         LInt d: VlOwned (LoNumber t, d, neg), t
         LFloat d: VlOwned (XRaw (if neg: "-{d}" else: d)), RsFloat
         LChar c: VlOwned (XRaw "'{LoEscapeChar c}'"), RsChar
-        LDuration d, u: VlOwned (XRaw "todo!(\"a Duration literal\")"), RsDuration
+        LDuration d, u: VlOwned (LoTodo "a Duration literal"), RsDuration
         LText segs: LoTextSegs lx, env, segs
 
 # A text, interpolated: `Text::from(format!(..))`, a `Text` placed as it is and any other
@@ -781,8 +783,16 @@ fn LoShownPart v = match LoVlTy v:
 # references, its clauses one `match`)
 # ---------------------------------------------------------------------------------------
 
+# What lowering cannot lower fails loudly: a `compile_error!` naming the construct, which
+# `CompileProgram` finds in the emitted files and reports as a refusal, the crate still
+# written for reading.
 LoTodo: fn Text -> Ex
-fn LoTodo what = XCall "todo!", [[XRaw "\"{LoEscape what}\""]]
+fn LoTodo what = XCall "compile_error!", [[XRaw "\"{loweringRefusal}{LoEscape what}\""]]
+
+let loweringRefusal = "prismc does not lower "
+
+LoTodoDo: fn Text -> Do
+fn LoTodoDo what = DoExpr (LoTodo what)
 
 LoX: unbounded fn Lx, LoEnv, Expr -> Vl
 fn LoX lx, env, e = match env.spans[LoKey lx, e.span]:
@@ -832,7 +842,26 @@ fn LoXKind lx, env, e:
         EGiven b: LoGiven lx, env, b, t, e.span
         EUpdate target, b: LoUpdate lx, env, target, b, t, e.span
         EAny x: VlOwned (XCall "Rc::new", [[LoOwn (LoX lx, env, x)]]), RsShowAny
-        otherwise: VlOwned (LoTodo "an expression this back end does not lower yet"), t
+        otherwise: VlOwned (LoTodo "{LoKindWords e.kind} as a value"), t
+
+# The construct an expression is, in words, for a refusal (`LoTodo`).
+LoKindWords: fn ExprKind -> Text
+fn LoKindWords k = match k:
+    ESuffixed op, ignore, ignore, ignore: "a suffixed `{op}`"
+    EFreeSigil sg, ignore: "a free `{sg}`"
+    ETopicField ignore: "a topic field (`&_.f` outside an `update`)"
+    ETopicIndex ignore: "a topic index"
+    ENonEmpty ignore: "a non-empty literal"
+    EAbsent: "an absent value"
+    ERest: "a `..` rest"
+    ELambda ignore, ignore: "a lambda"
+    ERebuild ignore, ignore: "a `rebuild` outside a widget block"
+    EFor ignore, ignore, ignore: "a `for` outside a widget block"
+    EWidgetBlock ignore: "a widget block"
+    EMonad ignore, ignore: "a monadic block"
+    ELens ignore: "a lens"
+    EError: "an expression the parser could not read"
+    otherwise: "an expression"
 
 # A name: a local, or a global value, constructor or `let`.
 LoName: unbounded fn Lx, LoEnv, SName, Range -> Vl
@@ -1375,19 +1404,41 @@ fn LoJobLambda lx, env, ps, body, ft, a:
     let pts = match a:
         RsTuple ts: if (Len ps) == 1: [[a]] else: ts
         otherwise: [[a]]
-    let binders = Each (Range0 (Len ps)), \|i| match (Or ps[i], dummyPat).kind:
-        PName n: (((SNameKey n), (LoLocalName lx, (SNameKey n))))
-        otherwise: (("", "p{i}"))
-    let env2 = Fold (Range0 (Len binders)), env1, \|en, i| match binders[i]:
-        ? ((k, rs)): if k == "": en else: LoBind en, k, (BnLocal rs, "own", (Or pts[i], RsUnit))
-        nil: en
-    let pa = if (Len ps) == 1: PaTyped (PaBind (Or (Each binders, \|((ignore, rs))| rs)[0], "p0")), a else: PaTyped (PaTuple (Each binders, \|((ignore, rs))| PaBind rs)), a
-    let tail = match body:
+    # The body sees what it captured and its parameters, nothing borrowed from outside.
+    let env1b = LoOnlyCaptured env1, caps
+    # Each parameter arrives owned as `p{i}` and is taken apart in the body by its
+    # pattern (`\|((en, s)), stmt|`), as any `let` would.
+    let pos = Each (Range0 (Len ps)), \|i|
+        let p = Or ps[i], dummyPat
+        LoPat lx, p, (LoBinderTyOfPattern lx, p), "own", "p{i}_"
+    let unpack = Fold (Range0 (Len pos)), [[]], \|acc, i| match pos[i]:
+        ? po: Append (Push acc, (DoLet po.pa, (XRaw "p{i}"))), (Each po.conds, \|c| LoCondAsLet c)
+        nil: acc
+    let env2 = Fold pos, env1b, \|en, po| LoBindAll en, po.binds
+    let names = Each (Range0 (Len ps)), \|i| "p{i}"
+    let pa = if (Len ps) == 1: PaTyped (PaBind "p0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
+    let tail0 = match body:
         LbExpr x: LoTail lx, env2, x
         LbBlock bl: LoTailBlock lx, env2, bl
+    let tail = if (Len unpack) == 0: tail0 else: XBlock unpack, tail0
     let job = XCall "once_job", [[(XClosure True, [[]], tail)]]
     let call = if (Len again) == 0: job else: XBlock again, job
     VlOwned (XBlock dos, (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], call)]]), ft)), ft
+
+# An environment of only the locals a closure captured (its other borrowed locals cannot
+# live in it); holds, dynamics and events stay.
+LoOnlyCaptured: fn LoEnv, [Text] -> LoEnv
+fn LoOnlyCaptured env, caps = update env:
+    &_.names <= Fold (Keys env.names), {}, \|m, k| match env.names[k]:
+        ? (BnLocal rs, mode, t): if (HasText caps, k) or mode == "own": Insert m, k, (BnLocal rs, mode, t) else: m
+        ? b: Insert m, k, b
+        nil: m
+
+# A condition a closure parameter's pattern leaves (a payload behind an `Rc`), as a
+# `let` in the body: a parameter's pattern is irrefutable, so it holds.
+LoCondAsLet: fn Cc -> Do
+fn LoCondAsLet (CcLet pa, x) = DoLet pa, x
+fn LoCondAsLet (CcIf x) = DoExpr (XRaw "()")
 
 # A lambda passed to a parameter: a borrowed closure, its types from the parameter.
 LoLambdaArg: unbounded fn Lx, LoEnv, [Pattern], LambdaBody, [RsTy] -> Ex
@@ -1531,8 +1582,8 @@ fn LoStmt lx, env, s = match s.kind:
         (([[(DoLet po.pa, (LoOwn v))]], (LoBindAll env, po.binds)))
     SExpr x: (([[DoExpr (LoOwn (LoX lx, env, x))]], env))
     SSignature ignore: (([[]], env))
-    SFn f: (([[DoNote "a local function {DefNameText f.name}: not lowered yet"]], env))
-    otherwise: (([[DoNote "a statement this back end does not lower yet"]], env))
+    SFn f: (([[LoTodoDo "a local function {DefNameText f.name}: not lowered yet"]], env))
+    otherwise: (([[LoTodoDo "a statement this back end does not lower yet"]], env))
 
 # ---------------------------------------------------------------------------------------
 # Patterns: a Rust pattern, the conditions after it, and the names it binds
@@ -1931,7 +1982,7 @@ fn LoUpdMatch lx, env, scrut, arms:
         let po = LoArmPat lx, arm.?pattern, sty, "ref", "u{scrut.span.start}_{i}"
         let ((dos, ignore)) = LoUpdStmts lx, (LoBindAll env, po.binds), arm.body.stmts
         let guarded = Append po.conds, (LoGuardConds lx, (LoBindAll env, po.binds), arm.?guard)
-        ((po.pa, (if (Len guarded) == 0: dos else: [[DoNote "a guarded arm: not lowered yet"]])))
+        ((po.pa, (if (Len guarded) == 0: dos else: [[LoTodoDo "a guarded arm: not lowered yet"]])))
     DoMatch (LoRef sv), cases
 
 LoGuardConds: unbounded fn Lx, LoEnv, ?Expr -> [Cc]
@@ -2249,7 +2300,7 @@ fn LoFrame lx, env, call, restText, Cont = match call.kind:
                 ? f: (((LoStartCall f, vals), "call_value"))
                 nil: match ?LoPreludeJobCall lx, env2, call:
                     ? pj: ((pj, "call_value"))
-                    nil: (((XRaw "unreachable!()"), "call_then"))
+                    nil: (((LoTodo "a call this frame cannot enter"), "call_then"))
         let enter = XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
         if (Len dos) == 0: enter else: XBlock dos, enter
     otherwise: Cont env
@@ -2296,7 +2347,15 @@ fn LoRestText lx, from, call, to = match lx.g.srcs[lx.file]:
 LoMentions: fn Text, Text -> Bool
 fn LoMentions text, name:
     let parts = Split text, name
-    Fold (Range0 (Dec (Len parts))), False, \|found, i| found or ((not (LoEndsIdent (Or parts[i], ""))) and not (LoStartsIdent (Or parts[i + 1], "")))
+    let last = Dec (Len parts)
+    # Between parts i and i + 1 stands an occurrence; an empty part is two occurrences
+    # side by side (`ee` in `callee` for `e`), so its edge is the name's own letter.
+    Fold (Range0 last), False, \|found, i|
+        let before = Or parts[i], ""
+        let after = Or parts[i + 1], ""
+        let leftWord = if before != "": LoEndsIdent before else: i > 0 and LoEndsIdent name
+        let rightWord = if after != "": LoStartsIdent after else: (i + 1) < last and LoStartsIdent name
+        found or ((not leftWord) and not rightWord)
 
 LoEndsIdent: fn Text -> Bool
 fn LoEndsIdent t = (Len t) > 0 and IsIdentChar (Drop t, (Dec (Len t)))
@@ -2657,7 +2716,7 @@ fn LoWStmt wx, benv, menv, s, last:
         SSignature ignore: ((wx, benv, menv))
         otherwise:
             let wx2 = update wx:
-                &_.build <= Push &_.build, (DoNote "a statement this back end does not lower yet")
+                &_.build <= Push &_.build, (LoTodoDo "a statement this back end does not lower yet")
             ((wx2, benv, menv))
 
 LoSetResult: fn Wx, Wres -> Wx
@@ -2764,7 +2823,7 @@ fn LoBuildLine wx, benv, menv, e, ?bound:
             TyAt ignore, ignore: LoWidgetLine wx, benv, menv, e, ?bound
             otherwise:
                 let wx2 = update wx:
-                    &_.build <= Push &_.build, (DoNote "a building line this back end does not lower yet")
+                    &_.build <= Push &_.build, (LoTodoDo "a building line this back end does not lower yet")
                 ((wx2, WrUnit))
 
 # ---------------------------------------------------------------------------------------
@@ -2783,7 +2842,7 @@ fn LoElementLine wx, benv, menv, e, ?bound:
     match lx.g.tags[tagName]:
         nil:
             let wx2 = update wx:
-                &_.build <= Push &_.build, (DoNote "an element of an unknown tag")
+                &_.build <= Push &_.build, (LoTodoDo "an element of an unknown tag")
             ((wx2, WrUnit))
         ? tg:
             let pos = wx.pos
@@ -2910,7 +2969,7 @@ fn LoWidgetLine wx, benv, menv, e, ?bound:
         ? v: LoInlineWidget wx, benv, menv, qk, v, args, e
         nil:
             let wx2 = update wx:
-                &_.build <= Push &_.build, (DoNote "a widget this back end does not lower yet")
+                &_.build <= Push &_.build, (LoTodoDo "a widget this back end does not lower yet")
             ((wx2, WrUnit))
 
 # `@started`: takes a number, makes no place, fires in the tick after the build.
@@ -2961,8 +3020,8 @@ fn LoRunLine wx, benv, args, e, ?target:
             EName n:
                 let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                 LoStartPath lx, (Or ?q, "")
-            otherwise: "todo!"
-        nil: "todo!"
+            otherwise: "compile_error!(\"{loweringRefusal}an `@Run` of a function value that is not a name\")"
+        nil: "compile_error!(\"{loweringRefusal}an `@Run` without its function\")"
     let x = match args[1]:
         ? a: LoOwn (LoX lx, benv, a.value)
         nil: XRaw "()"
@@ -2997,7 +3056,7 @@ fn LoInlineWidget wx, benv, menv, qk, v, args, e:
     match ?body:
         nil:
             let wx2 = update wx:
-                &_.build <= Push &_.build, (DoNote "a widget with several clauses: not lowered yet")
+                &_.build <= Push &_.build, (LoTodoDo "a widget with several clauses: not lowered yet")
             ((wx2, WrUnit))
         ? body:
             if wx.depth > 16: ((wx, WrUnit))
@@ -3677,8 +3736,8 @@ fn LoDefItems lx, d, roots:
                     else: match clauses:
                         [[c]]: match c.body:
                             BodyBlock b: LoNodeItems (LoNodeDef lx, d.qk, c.params, b, v.scheme, True)
-                            otherwise: [[ItNote "`{d.name}`: a root widget whose body is one expression is not lowered yet."]]
-                        otherwise: [[ItNote "`{d.name}`: a root widget of several clauses is not lowered yet."]]
+                            otherwise: [[ItRefused "`{d.name}`, a root widget whose body is one expression"]]
+                        otherwise: [[ItRefused "`{d.name}`, a root widget of several clauses"]]
                 otherwise:
                     let f = ItFn (LoFnDef lx, d.qk, clauses, v.scheme)
                     if HasText lx.unbs, d.qk: [[f, ItJob (LoJobDef lx, d.qk, clauses, v.scheme)]] else: [[f]]
@@ -4047,7 +4106,7 @@ LoGenSelect: unbounded fn Wx, LoEnv, Block, [GenCase], Nat -> Ex
 fn LoGenSelect wx, menv, body, cases, pos = match ?LoClauseCall wx.lx, body:
     nil: match cases[0]:
         ? c: XTry (XCall "{c.node.name}::build", [[XRaw "path", XRaw "value", XRaw "Rc::downgrade(self)", XRaw "cx"]])
-        nil: XRaw "todo!()"
+        nil: LoTodo "a `rebuild` with no generation"
     ? ((qk, args)):
         let env = LoBind menv, "_", (BnLocal "value", "own", RsUnit)
         let scrut = XTuple (Each args, \|a| LoArg wx.lx, env, a.value)

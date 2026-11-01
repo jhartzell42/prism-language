@@ -261,7 +261,7 @@ an empty array's element), or one a local `let` quantified.
 
 ### Where it stands
 
-`tests/prismc/check/run.sh` checks every program of the corpus, the 74 negative cases and
+`tests/prismc/check/run.sh` checks every program of the corpus, the 87 negative cases and
 the two typed dumps. A program the books make wrong has its exact report in
 `tests/prismc/check/pos/NAME.expected`; each is listed here with the rule.
 
@@ -287,10 +287,15 @@ the two typed dumps. A program the books make wrong has its exact report in
   `templates/`, `front.prism`'s `compile` branch), so an error this line shows between
   its chunks is the back end's, not the checker's.
 
-The negative cases (`neg/`, 74) give one diagnostic each, the error their name says, or a
+The negative cases (`neg/`, 87) give one diagnostic each, the error their name says, or a
 case of it (`live-field-bare` is a `mark-stack`; `values-not-shrinking` and
 `summary-not-parts` are `may-not-end`s that keep doubt TR's map rule and pick SM's
-summaries from accepting a cycle that grows; the five `*-rebinding` cases are
+summaries from accepting a cycle that grows; `drop-unknown` and `long-cycle` are
+`may-not-end`s for pick SM's `Drop` rule and the closure's fixed point, `int-minus`,
+`own-minus` and `min-tree` for pick SW's `Nat` rule, `type-arrow` for pick NT, `widget-cycle`,
+`let-cycle`, `local-recursion` and `local-widget` for picks TD and LF, `prelude-module` a
+`may-not-end` and `freeze-resolved` a `frozen` for pick RN, `prompt-let-lambda` a
+`prompt-cycle` for pick PS; the five `*-rebinding` cases are
 `may-not-end`s that keep pick SC's scoping honest; `guard-recursion`, `method-recursion`,
 `template-recursion`, `nested-set` and `fuel-unrelated` are `may-not-end`s for picks GH and
 PM, `operator-recursion` and `op-literal` for pick OP, `fuel-call` and `literal-set` for
@@ -339,14 +344,19 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   `rebuild` or a `for`, and a delayed binding's arguments. A lambda passed to a call is
   read, since the callee may call it now: a traversal's step, and a lambda given to any
   function but a prelude widget function (a supplier builds a blueprint, which is
-  construction). `neg/prompt-lambda`'s `let a = Apply 1, \|x| x + b` reads `b`. A name
-  bound again inside the right side (a lambda's parameter, an arm's binder, an inner
-  `let`) is not the block's.
+  construction). `neg/prompt-lambda`'s `let a = Apply 1, \|x| x + b` reads `b`. A name a
+  `let` binds to a lambda is read by following the binding, where it is passed (to any
+  function but a prelude widget function) or called: `neg/prompt-let-lambda`'s `let f =
+  \|x| x + b`, then `let a = Apply 1, f`, reads `b` (clean before). The lambda's body is
+  read with the relations of the block the check is over, its parameters bound, each
+  lambda once along a path. A name bound again inside the right side (a lambda's
+  parameter, an arm's binder, an inner `let`) is not the block's.
 - **SM A function that returns parts of a parameter has a summary**, Semantics ch. 7's
   size-change principle across the call, so a cycle may traverse what a helper returns.
   A function is summarized on its first parameter `i` for which every clause's result is
   within `i`:
-  - no larger than it: the parameter, a part, `Values` or `Keys` of one, an index on one;
+  - no larger than it: the parameter, a part, `Values` or `Keys` of one, an index on one,
+    `Drop` of one (below);
   - an array or map literal of parts;
   - a `match` or `if` whose every arm is within `i`;
   - a `Filter`, or an `Each` of parts, over a collection within `i`;
@@ -357,7 +367,16 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
     `SkipWord`, `&_ <= next` with `next` from `?Step &_`).
 
   A part is strictly smaller than `i`, or a tuple of such (a tuple is not a recursive type,
-  so a cycle reaches only its pieces). A call of the function is no larger than its
+  so a cycle reaches only its pieces). `Drop xs, k` (a positive literal `k`) is no larger
+  than `xs`, and strictly smaller only where `xs` is known non-empty: in the arm, or the
+  `if`, `while` or `given:` bind, of a refutable pattern that took an element of it (the
+  `? x` of `xs[i]`, an array pattern of one element or more on `xs`), until something
+  binds `xs` again. `Drop` of `[[]]` is `[[]]`, so `fn Loop xs = Loop (Drop xs, 1)` never
+  ends (`neg/drop-unknown`, clean before); `(Len xs) > 0` shows nothing, since Semantics
+  ch. 7's smaller array is a tail "taken apart by `match`". The `+` non-empty type would
+  show it too, and the checker refuses non-empty arrays (`unsupported`), so no program
+  reaches that case yet. `neg/local-shadow`'s `Shrink` and `neg/fuel-call`'s `Drain` now
+  take an element first. A call of the function is no larger than its
   argument `i`, and strictly smaller when that argument is. A summary is read without
   other summaries, so none depends on itself or on a chain, and a name the calling clause
   binds itself (a parameter, a pattern, a local `fn`) is not the summarized function
@@ -368,6 +387,12 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   pick SW.
   *Refused:* inlining `Kids` at its call sites, which bends the program to the checker;
   summaries chained to a fixed point, which no program needs yet.
+
+  The size-change closure itself runs to its fixed point: each round composes the graphs
+  the last round found with the call graphs, until a round finds none. It ends because a
+  graph is a caller, a callee and a set of edges between their parameters, finitely many.
+  A cap of twelve rounds stopped before a ring of sixteen functions closed, and accepted
+  it (`neg/long-cycle`, clean before).
 
 - **SC Size relations are scoped.** This clause loops forever on a `Leaf`:
 
@@ -493,23 +518,56 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   local `fn` or widget. A call of a local is never a global's call, summary or traversal.
   The prelude's names the checks read for their meaning (`Drop`, `Take`, `Filter`,
   `Remove`, `Min`, `Values`, `Keys`, `?Step`, `Fold`, `Each`, `Push`, `Insert`, `Append`,
-  the delayed widgets) mean it only where the name resolves to module `Prelude`'s
-  declaration and no local of that name stands (`PreludeSeeds`, per module). The reference
-  graph, the summaries, the traversals, the loop check and the prompt walk all read names
-  this way. *Refused:* a separate renaming pass, the same scoping as a second walk.
+  `Freeze`, `-?`, the delayed widgets) mean it only where the name resolves to the
+  prelude's declaration and no local of that name stands (`PreludeSeeds`, per module).
+  The prelude is known by identity, not by name: a declaration is the prelude's when
+  module `Prelude` declares it in one of the prelude's own files, the ones `--prelude`
+  adds after the program's (`G.preludeFrom`). A program that is its own `module Prelude`
+  replaces the prelude's file, and its `Drop` means nothing special
+  (`neg/prelude-module`, clean before). The reference graph, the summaries, the
+  traversals, the loop check, the prompt walk and the `&` blocks' checks all read names
+  this way: `Freeze` is the prelude's in either spelling, `Prelude.Freeze &b` included,
+  and a local `fn Freeze` freezes nothing (`neg/freeze-resolved`: the first was missed and
+  the second reported before); `Buffer.Numbered`, `Buffer.Empty` and `Table.Empty` are the
+  checker's builtins by resolution. A `Freeze` anywhere in a statement freezes, and a name
+  anywhere in a later statement reads, through the walk (pick GH). *Refused:* a separate
+  renaming pass, the same scoping as a second walk.
 - **FK A failed impl's method is its impl's alone.** The definitions that fail inference
   are skipped by the separate checks, and the list keys each by where its impl stands, as
   the shrink check does (pick OP): one key for every impl's `Show` dropped them all, and a
   cycle through another impl's went unchecked (`neg/impl-failed`).
-- **TK A template call is a call.** `<@Name a={{x}}>body</@Name>` is checked as lowering
-  passes it: `@Name` if a declaration has that name, else `Name`; each attribute fills the
-  parameter of its name (the one place every clause naming it gives), the body, a text,
-  the last parameter; the application rule checks the arguments against the signature, and
-  the result is a text. A name nothing declares is `unknown-name`
-  (`neg/template-unknown`); an attribute no parameter has (`neg/template-attribute`), one
-  given twice, a parameter left out, a body with no parameter left, and a callee without
-  clauses to name its parameters are `mismatch`es, as is an argument of the wrong type
-  (`neg/template-type`). Lowering orders the attributes by name too (`LoByParamName`).
+- **TK A template call is a call.** `<@Name a={{x}}>body</@Name>` is the call of a function
+  with its arguments put in place by name. The rule, which the checker
+  (`CheckExpr.TemplateCallCheck`), the shrink check (`CheckPasses.ArgSlots`) and lowering
+  must all read the same way:
+  - **The callee** is `@Name` where it stands if that resolves, else `Name`. It must be a
+    top-level function with clauses; its arity is its first clause's number of
+    parameters.
+  - **A parameter's name**, in one clause, is the pattern at that place, seen through
+    parentheses, when it is a name: its spelling less its leading marks (`$text`, `?x`,
+    `!e` and `&b` name `text`, `x`, `e` and `b`). Any other pattern (`(Leaf n)`, `ignore`,
+    a tuple) names nothing there.
+  - **An attribute** `a={{v}}` fills place `j` when `j` is the one place any clause names
+    `a`: every clause that names `a` names it at `j`, and at least one does. Every clause
+    is read, not only the first, so `fn Item (Leaf n), depth` and `fn Item t, depth` both
+    name `depth` at place 1.
+  - **The body**, when the call has one, is a text that fills the last place.
+  - **Every place is filled once**, by an attribute or the body, and the call passes them
+    in place order, whatever order the attributes are written in.
+  - The result is a text, and the application rule checks each argument against the
+    signature.
+
+  A name nothing declares is `unknown-name` (`neg/template-unknown`); an attribute that
+  fills no place (`neg/template-attribute`) or two, one given twice, a place left out, a
+  body whose last place an attribute took or that has no place, and a callee without
+  clauses are `mismatch`es, as is an argument of the wrong type (`neg/template-type`).
+  The shrink check reads the body as the argument for the last place too (it read it as
+  the first positional one). Lowering's `LoByParamName` reads the first clause only,
+  keeps the marks (`$text` names `$text`), and falls back to the written order whenever
+  some place has no attribute, which every call with a body has; the back end matches
+  this rule by naming a parameter as `CheckPasses.ParamNameOf` does, taking each
+  attribute's place as `CheckExpr.?TemplateSlot` does, and putting the body last with the
+  attributes in their places, never in the written order.
 - **CT The call test for closures** (Semantics ch. 7, "Finding the cycles"). A closure
   passed to a program function is cleared when the function only calls it: in every
   clause, the parameter at that slot is the callee of calls (at any depth, but not inside
@@ -538,24 +596,77 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   dropped. *Refused:* tracking closures through `let`s, records and results, which needs
   flow analysis; a lambda's captured names stay related to the caller's parameters, its
   own parameters to nothing but the summary.
+- **NT A type left of its own arrow is a cycle** (Semantics ch. 7, "A type that appears
+  left of a function arrow in its own definition is a cycle"). This never ends, and no
+  call graph shows it:
+
+  ```prism
+  type R = choice:
+      Wrap (fn R -> Nat)
+
+  fn Unwrap (Wrap F), r = F r
+  fn Omega r = Unwrap r, r
+  ```
+
+  `Omega (Wrap Omega)` calls `Omega` through the function the `R` holds. The check reads
+  the rule as the book states it: a program's type is `may-not-end` at its definition when
+  it stands anywhere inside a parameter of a function type of its own definition, at any
+  depth (a double left, `fn (fn R -> Nat) -> Nat`, counts too), and every other type the
+  definition names is read through its definition with the arguments in, so `Q (Box R)`
+  with `type Box a = B (fn a -> Nat)`, and two types that hold each other, are found. It
+  is cleared when every arrow it stands left of is `unbounded fn`: a call through one is
+  an unbounded call, and the color spreads (ch. 7, "Unbounded is a function color").
+  `neg/type-arrow` (clean before) has a stream type right of its arrow and an `unbounded`
+  knot, both clean. *Claude's:* the error at the type, not at the calls through it,
+  since the type is what the book calls the cycle. *Refused:* reporting the call through
+  the stored function, which needs flow analysis to find the function's type at each
+  call; strict positivity, which would refuse `R` right of an arrow left of another.
+- **TD Top-level widget blocks and `let`s are definitions** of the shrink check, each one
+  clause without parameters. A widget that binds itself builds itself forever (ch. 7, "a
+  widget function that binds itself is held to the same test"), and a `let` that reaches
+  itself through the functions it calls never has a value (`neg/widget-cycle`,
+  `neg/let-cycle`, clean before). Widget functions were already in it.
+- **LF A local `fn` or widget is a definition too.** A call of a local is never a
+  global's (pick RN), so `fn Spin k = Spin k` inside `Grow` was an edge to nothing
+  (`neg/local-recursion`, `neg/local-widget`, clean before). Each local, at any depth of a
+  definition's body, is keyed by where it stands; its walk starts from the relations where
+  it is written less what they say of names (a captured name is no parameter of it), and
+  its parameters'. A name means the local where the local's block binds it and nothing
+  binds it again. The local's own graphs are its calls of locals; its calls of globals
+  stay where they were, read in place as the enclosing definition's, with its captured
+  names related to the enclosing parameters (pick GH). A cycle among locals is cleared
+  when the enclosing definition is `unbounded fn`. *Refused:* reading a local's calls of
+  globals as its own, which relates a captured name to nothing and refuses every local
+  helper that recurses into the enclosing function on a part.
 - **SW A set shrinks through a call only when the callee returns no more than an argument
   that does.** `&fuel <= Bump less`, with `Bump n = n + 2`, grows `&fuel` every turn, and a
   rule that takes any call of a smaller first argument as smaller clears the loop
   (`neg/fuel-call`, clean before). A value set into `v` is strictly smaller than `v` when:
   - the relations in scope where the set stands say so (pick SC): a part of `v`, a field
-    or an index of one, `Drop` of `v` by a positive literal, a summarized call on a part;
+    or an index of one, `Drop` of `v` by a positive literal where `v` is known non-empty
+    (pick SM), a summarized call on a part;
   - it is a call that returns no more than an argument strictly smaller than `v`: a
     summarized function's parameter (pick SM), or the first argument of the prelude's
-    `Take`, `Drop`, `Filter`, `Remove` and `Min`;
-  - it is `x -? k` of such an `x`.
+    `Take`, `Drop`, `Filter`, `Remove` and `Min` (`Min` only on `Nat`s, below);
+  - it is `x -? k` of such an `x`, the prelude's `-?` on a `Nat` (below).
+
+  The `? m` of `n -? 1` is smaller than `n` (Semantics ch. 7, "a smaller natural number")
+  only when the name resolves to the prelude's `-?` where it stands and the solver made
+  `n` a `Nat`: inference notes the operand type of every `-?` by file and range
+  (`St.sizeTys`, kept whether or not the typed program is), and the shrink check reads it
+  once the program's defaults are in. An `Int` counts down forever (`neg/int-minus`), and
+  a program's own `-?` is whatever it says (`neg/own-minus`: Money's adds); both were clean
+  before, when the rule read the spelling `-?` alone. `Min a, b` is no larger than `a` the
+  same way, only where the solver made it a `Nat`'s: by `^Ord` it is the smaller of two
+  values, which may be the bigger tree (`neg/min-tree`, clean before).
 
   A literal is never smaller: `0` is smaller only than a local known to be greater, which
   the checker cannot know, and `while True: &n <= 0` sets `0` forever
   (`neg/literal-set`).
 
   The prelude's five join the summaries as calls no larger than their first argument, for
-  the reference graph's cycles too. `fuel-call`'s `Drain`, `&xs <= Evens (Drop &xs, 1)`,
-  was `may-not-end` before and checks clean. *Refused:* a set's value smaller by its type
+  the reference graph's cycles too. `fuel-call`'s `Drain`, `&xs <= Evens (Drop &xs, 1)`
+  under `while ? ignore <- &xs[0]:`, was `may-not-end` before and checks clean. *Refused:* a set's value smaller by its type
   (any call returning `Nat` on a smaller `Nat`), which is the rule that cleared `Bump`.
 
 ### Checker doubts
@@ -692,7 +803,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
 `tests/compiled/run.sh`, whose default set is what passes:
 
-- **Pass (16):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
+- **Pass (18):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
   has its shape (fields `count: Hold<Int>` and the merge's two `Stamped` inputs,
   `inc`/`dec` recording and asking for the wake, `wake` deciding left first, `patch`
@@ -705,7 +816,8 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   self-compile needed: `be-let-fn-pair`, `be-unbounded-value`, `be-unbounded-lambda`,
   `be-row-local`, `be-template-attrs`, `be-error-try`, `be-nat-literal`, `be-inference`,
   `be-unbounded-prelude`, `be-local-names`, `be-tuple-show` (`prism_rtl` shows and pods
-  tuples up to six), `be-function-values`.
+  tuples up to six), `be-function-values`, `be-lambda-patterns` (a job lambda takes its
+  parameters apart by pattern), `be-fold-tuples`.
 - **The rest of the corpus** runs by name (`tests/compiled/run.sh todos`)
   and is not in the default set until a chunk makes it pass: the lowering above reaches
   `for` rows, `rebuild`, jobs, traits and modules, but nothing past these is
@@ -940,7 +1052,9 @@ ruling taken (Claude's).
 
 ### Not lowered yet
 
-Each emits a `todo!` or a `// ...` note naming it, so rustc or the transcript shows where:
+Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
+naming the construct, and `CompileProgram` reports every distinct one as
+`error[not-lowered]` and fails, the crate still written for reading:
 hosting (`@HostDocument`, `@HostSome`, `@HostList`, `@Element`), `@Flatten`,
 `@Machine`, `@Once` and the prelude's Prism-written widgets, `!MergeAll`, `!Updated`,
 local functions, lifted functions with time parameters (`fn !Bump $n, !go`), building

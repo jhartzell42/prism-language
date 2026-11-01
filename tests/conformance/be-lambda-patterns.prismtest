@@ -1,0 +1,7 @@
+# The lambda patterns' tests: declarations of be-lambda-patterns.prism (Semantics chapter 6).
+
+test lambdas_take_their_parameters_apart, @Summed 10:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="26 106")

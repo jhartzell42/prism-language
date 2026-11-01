@@ -1,0 +1,5 @@
+# The tuple fold's tests: declarations of be-fold-tuples.prism (Semantics chapter 6).
+
+test folds_take_tuples_apart, @shown:
+    build
+        => expect Ui.Label(text="ab 5")
