@@ -126,9 +126,11 @@ impl<W: World> World for UnwrapWorld<W> {
     }
 }
 
-/// The World's patience for `run`, in ticks, unless `PRISM_PATIENCE` gives another: the
-/// bootstrap's stage 1 (prismc compiling itself under this chain) takes more than this.
-pub const RUN_PATIENCE: usize = 10_000_000;
+/// The CLI World's patience for `run`: unlimited unless `PRISM_PATIENCE` gives a budget
+/// (Semantics ch. 9: a budget is the World's and optional; the CLI World sets none by
+/// default). A compile of `prismc` by itself runs tens of millions of compute ticks, one
+/// per unbounded call in its parser (D6).
+pub const RUN_PATIENCE: usize = usize::MAX;
 
 fn run_patience() -> usize {
     std::env::var("PRISM_PATIENCE").ok().and_then(|p| p.parse().ok()).unwrap_or(RUN_PATIENCE)
