@@ -43,7 +43,7 @@ tag Draw.Clip of Draw:
     draws: [Draw]
 
 tag Draw.Group of Draw:
-    turn: Turn
+    turn: Gui.Turn
     draws: [Draw]
 
 tag Draw.Clickable of Draw:

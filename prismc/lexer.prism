@@ -204,11 +204,12 @@ fn Reverse t = Fold (Chars t), "", \|acc, c| "{c}{acc}"
 LeadingIn: fn Text, Text -> Nat
 fn LeadingIn t, set = update 0:
     let cs = Chars t
-    let &going = True
-    while &going:
+    let &fuel = Len cs
+    while ? left <- &fuel -? 1:
+        &fuel <= left
         match cs[&_]:
             ? c if Contains set, c: &_ += 1
-            otherwise: &going <= False
+            otherwise: &fuel <= 0
 
 Contains: fn Text, Text -> Bool
 fn Contains set, c = c != "" and (Len (Split set, c)) > 1
@@ -260,11 +261,12 @@ let hexDigits = Chars "0123456789abcdef"
 HexValue: fn Text -> Nat
 fn HexValue c = update 0:
     let l = Lower c
-    let &going = True
-    while &going:
+    let &fuel = Len hexDigits
+    while ? left <- &fuel -? 1:
+        &fuel <= left
         match hexDigits[&_]:
             ? d if d != l: &_ += 1
-            otherwise: &going <= False
+            otherwise: &fuel <= 0
 
 ?ParseHex: fn Text -> ?Nat
 fn ?ParseHex t:
@@ -441,7 +443,7 @@ LayoutActive: fn Lex -> Bool
 fn LayoutActive l = (LayoutOn l.mode) and (Len l.frames) == 0
 
 FatArrowOn: fn Lex -> Bool
-fn FatArrowOn l = l.testDepth != nil or l.checkDepth != nil
+fn FatArrowOn l = l.?testDepth != nil or l.?checkDepth != nil
 
 # ---------------------------------------------------------------------------------------
 # Streams
@@ -673,6 +675,7 @@ fn LayoutLine l0, col, lineBegin, here = update l0:
     let top = Or (?Last &_.layout), 0
     let fat = StartsWith &_, "=>"
     let &opened = False
+    let &fuel = Len &_.layout
     if &_.pendingOpen:
         &_.pendingOpen <= False
         if col > top:
@@ -704,7 +707,8 @@ fn LayoutLine l0, col, lineBegin, here = update l0:
                     &_.markLineStart <= True
                 else:
                     # "A line indented less emits `close`, pops, and compares again."
-                    while (Len &_.layout) > 1 and col < (Or (?Last &_.layout), 0):
+                    while ? left <- &fuel -? 1 if (Len &_.layout) > 1 and col < (Or (?Last &_.layout), 0):
+                        &fuel <= left
                         &_.layout <= Pop &_.layout
                         &_ <= PushTok &_, KLayClose, here, here
                         let depth = Len &_.layout
@@ -820,7 +824,7 @@ fn LexDot l, start:
 
 # Suffixed operators (ch. 2): "a symbol operator followed, with no space, by an uppercase
 # name is one token".
-PushOpSuffix: fn Lex, Text, Nat -> Lex
+PushOpSuffix: unbounded fn Lex, Text, Nat -> Lex
 fn PushOpSuffix l, op, start:
     if (TakesSuffix op) and (IsUpper (Peek l)):
         let ((path, l2)) = LexQualifiedPath l
@@ -844,7 +848,7 @@ fn ClosesSquareOrBrace nil = False
 
 # Longest match over the operator table, with the two marks a sign makes against a closing
 # bracket and the `<<`/`>>` pair.
-?LexOperator: fn Lex, Nat -> ?Lex
+?LexOperator: unbounded fn Lex, Nat -> ?Lex
 fn ?LexOperator l, start:
     let c = Peek l
     let after = PeekAt l, 1
@@ -887,7 +891,7 @@ fn CloseTypeArgs l, start:
         &_.frames <= Pop &_.frames
     PushTok l1, KGtGt, start, l1.pos
 
-PushOperator: fn Lex, Text, Nat -> Lex
+PushOperator: unbounded fn Lex, Text, Nat -> Lex
 fn PushOperator l, op, start:
     let l1 = Forward l, (Len op)
     # "a token that can be prefix or binary is prefix when whitespace, an open bracket, a
@@ -1070,7 +1074,7 @@ fn IsPathWord l, sigils, path:
             KName n if n.sigils == "" and (Len n.path) == 1: Or n.path[0], ""
             otherwise: ""
         nil: ""
-    l.testDepth != nil and sigils == "" and (Len path) == 1 and (w == "at" or w == "element") and (Fold words, False, \|seen, x| seen or x == prev)
+    l.?testDepth != nil and sigils == "" and (Len path) == 1 and (w == "at" or w == "element") and (Fold words, False, \|seen, x| seen or x == prev)
 
 # ---------------------------------------------------------------------------------------
 # Literals
@@ -1125,7 +1129,7 @@ fn LexDecimal l0, sigils:
 let durationUnits = [[(("ns", 1)), (("us", 1000)), (("ms", 1000000)), (("min", 60000000000)), (("s", 1000000000)), (("h", 3600000000000))]]
 
 ?UnitAt: fn Lex -> ?((Text, Nat))
-fn ?UnitAt l = Fold durationUnits, nil, \|found, u| if found == nil and (UnitHere l, u): ? u else: found
+fn ?UnitAt l = Fold durationUnits, nil, \|?found, u| if ?found == nil and (UnitHere l, u): ? u else: ?found
 
 UnitHere: fn Lex, ((Text, Nat)) -> Bool
 fn UnitHere l, ((u, ignore)) = (StartsWith l, u) and not (IsIdentChar (PeekAt l, (Len u)))
@@ -1165,7 +1169,7 @@ fn WholeNanoseconds text, scale:
             let frac = TrimZeros frac0
             let k = Len frac
             let f = if frac == "": 0 else: Or (?ParseNat frac), 1
-            let tens = Fold (Buffer.Numbered k), 1, \|p, ignore| p * 10
+            let tens = Fold (Chars frac), 1, \|p, ignore| p * 10
             k <= 30 and (Or (?Mod (f * scale), tens), 1) == 0
 
 TrimZeros: fn Text -> Text
@@ -1435,7 +1439,7 @@ fn TemplateBody l0, close, delims, isRaw, firstContinues, openStart:
         while &_.going:
             &_ <= TemplateStep &_, how
     let l1 = if r.closed: r.l else: LexErr r.l, openStart, r.l.pos, "a template never closes: expected `{close}`"
-    FinishTemplateLines l1, (Push r.lines, r.cur), (Or r.closingCol, 0), firstContinues
+    FinishTemplateLines l1, (Push r.lines, r.cur), (Or r.?closingCol, 0), firstContinues
 
 TemplateStep: unbounded fn TplRead, TplHow -> TplRead
 fn TemplateStep s, how:
@@ -1519,7 +1523,7 @@ fn TemplateCall l0, delims, open:
     let r = update CallRead(l=l2, attrs=[[]], body=nil, going=True):
         while &_.going:
             &_ <= CallStep &_, start, close, delims, open
-    let item = RiCall name, r.attrs, r.body, Range(start=start, end=r.l.pos)
+    let item = RiCall name, r.attrs, r.?body, Range(start=start, end=r.l.pos)
     ((item, r.l))
 
 CallStep: unbounded fn CallRead, Nat, Text, Text, Text -> CallRead
@@ -1622,7 +1626,7 @@ fn IsPlaceholderItem ignore = False
 
 # The span of a line's first item that is not text, for its error.
 FirstItemSpan: fn [RawItem] -> Range
-fn FirstItemSpan items = Or (Fold items, nil, \|found, it| if found != nil: found else: ?ItemSpan it), Range(start=0, end=0)
+fn FirstItemSpan items = Or (Fold items, nil, \|?found, it| if ?found != nil: ?found else: ?ItemSpan it), Range(start=0, end=0)
 
 ?ItemSpan: fn RawItem -> ?Range
 fn ?ItemSpan (RiPlaceholder ignore, span) = ? span
@@ -1649,7 +1653,7 @@ fn PushPart parts, (RiText t) = match ?Last parts:
     otherwise: Push parts, (TptText t)
 fn PushPart parts, (RiPlaceholder tokens, span) = Push parts, (TptPlaceholder tokens, nil, span)
 fn PushPart parts, (RiBlock tokens, span) = Push parts, (TptBlock tokens, span)
-fn PushPart parts, (RiCall name, attrs, body, span) = Push parts, (TptCall name, attrs, body, span)
+fn PushPart parts, (RiCall name, attrs, ?body, span) = Push parts, (TptCall name, attrs, ?body, span)
 
 # ---------------------------------------------------------------------------------------
 # The layout corpus's notation (prism_syntax/src/corpus.rs): what `front.prism --tokens`
@@ -1658,12 +1662,12 @@ fn PushPart parts, (RiCall name, attrs, body, span) = Push parts, (TptCall name,
 
 RenderTokens: fn [Tok] -> Text
 fn RenderTokens tokens:
-    let ((out, ignore)) = Fold tokens, (("", nil)), \|((acc, prev)), t| RenderStep acc, prev, t
+    let ((out, ignore)) = Fold tokens, (("", nil)), \|((acc, ?prev)), t| RenderStep acc, ?prev, t
     "{out}\n"
 
 RenderStep: fn Text, ?Tok, Tok -> ((Text, ?Tok))
-fn RenderStep acc, prev, t:
-    let gap = match prev:
+fn RenderStep acc, ?prev, t:
+    let gap = match ?prev:
         nil: ""
         ? p: if IsLayout t.kind: "\n" else: if (IsBracket p.kind) and (IsBracket t.kind) and t.touches: "·" else: " "
     if t.kind == KEof: ((acc, (? t))) else: (("{acc}{gap}{TokenText t.kind}", (? t)))
@@ -1731,9 +1735,9 @@ fn PathSegText (PstKey toks) = "[{RenderInner toks}]"
 
 PartText: fn TPartTok -> Text
 fn PartText (TptText t) = DebugText t
-fn PartText (TptPlaceholder toks, col, ignore) = "\{\{{RenderInner toks}\}\}{ColText col}"
+fn PartText (TptPlaceholder toks, ?col, ignore) = "\{\{{RenderInner toks}\}\}{ColText ?col}"
 fn PartText (TptBlock toks, ignore) = "BLOCK\{ {RenderInner toks} \}"
-fn PartText (TptCall name, attrs, body, ignore) = "<{name.sigils}{Join name.path, "."}{Concat (Each attrs, AttrText)}{CallBody name, body}"
+fn PartText (TptCall name, attrs, ?body, ignore) = "<{name.sigils}{Join name.path, "."}{Concat (Each attrs, AttrText)}{CallBody name, ?body}"
 
 ColText: fn ?Nat -> Text
 fn ColText nil = ""
@@ -1776,11 +1780,18 @@ fn EscapeChar c, single, double = match c:
 # The code point of an ASCII character.
 CodeOf: fn Text -> Nat
 fn CodeOf c = update 0:
-    let &going = True
-    while &going:
+    let &fuel = Len asciiTable
+    while ? left <- &fuel -? 1:
+        &fuel <= left
         match asciiTable[&_]:
             ? a if a != c: &_ += 1
-            otherwise: &going <= False
+            otherwise: &fuel <= 0
 
 HexOf: fn Nat -> Text
-fn HexOf n = if n < 16: Or hexDigits[n], "0" else: "{HexOf (Or (?Div n, 16), 0)}{Or hexDigits[Or (?Mod n, 16), 0], "0"}"
+fn HexOf n = HexDigits n, n
+
+# `n` in hexadecimal; `fuel`, at least its number of digits, shrinks on every call.
+HexDigits: fn Nat, Nat -> Text
+fn HexDigits n, fuel = match fuel -? 1:
+    ? left if n >= 16: "{HexDigits (Or (?Div n, 16), 0), left}{Or hexDigits[Or (?Mod n, 16), 0], "0"}"
+    otherwise: Or hexDigits[n], "0"

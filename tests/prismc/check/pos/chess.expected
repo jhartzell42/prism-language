@@ -1,216 +1,64 @@
-examples/chess/rules.prism:84: error[no-impl]: no impl of `^Eq` for `a`
-    fn ?FindOf xs, P = Fold xs, nil, \|?found, x| if ?found == nil and P x: ? x else: ?found
-                                                     ^^^^^^^^^^^^^
-  fix: add `where a: ^Eq` to the signature
-examples/chess/window.prism:76: error[collision]: `Turn` is declared by two modules this file reaches by a bare name
-        turn: Turn
-              ^^^^
-  fix: write it qualified, `Window.Turn`, or rename this file's own
-examples/chess/window.prism:357: error[collision]: `Turn` is declared by two modules this file reaches by a bare name
-        turns: [Turn]                      # the turns of the frames above it, outermost first
-                ^^^^
-  fix: write it qualified, `Window.Turn`, or rename this file's own
-examples/chess/window.prism:464: error[mark-stack]: `t` has type `$Text`, whose stack is `$`; the name shows ``
-        Ui.Label(text=t): WordSet t
-                      ^
-  fix: rename to `$t`
 examples/chess/window.prism:464: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Label(text=t): WordSet t
-                          ^^^^^^^^^
-examples/chess/window.prism:465: error[mark-stack]: `l` has type `$Text`, whose stack is `$`; the name shows ``
-        Ui.Button(label=l): {l: unit}
-                        ^
-  fix: rename to `$l`
+        Ui.Label(text=$t): WordSet $t
+                           ^^^^^^^^^^
 examples/chess/window.prism:465: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Button(label=l): {l: unit}
-                            ^^^^^^^^^
-examples/chess/window.prism:466: error[mark-stack]: `t` has type `$Text`, whose stack is `$`; the name shows ``
-        Ui.TextInput(text=t, cursor=c, ..): {t: unit, (Take t, c): unit}
-                          ^
-  fix: rename to `$t`
-examples/chess/window.prism:466: error[mark-stack]: `c` has type `$Nat`, whose stack is `$`; the name shows ``
-        Ui.TextInput(text=t, cursor=c, ..): {t: unit, (Take t, c): unit}
-                                    ^
-  fix: rename to `$c`
+        Ui.Button(label=$l): {$l: unit}
+                             ^^^^^^^^^^
 examples/chess/window.prism:466: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.TextInput(text=t, cursor=c, ..): {t: unit, (Take t, c): unit}
-                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:467: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r1465 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.VBox(children=cs): TextsIn cs
-                         ^^
-  fix: rename to `$cs`
+        Ui.TextInput(text=$t, cursor=$c, ..): {$t: unit, (Take $t, $c): unit}
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:467: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.VBox(children=cs): TextsIn cs
-                              ^^^^^^^^^^
-examples/chess/window.prism:468: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r1470 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.HBox(children=cs): TextsIn cs
-                         ^^
-  fix: rename to `$cs`
+        Ui.VBox(children=$cs): TextsIn $cs
+                               ^^^^^^^^^^^
 examples/chess/window.prism:468: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.HBox(children=cs): TextsIn cs
-                              ^^^^^^^^^^
-examples/chess/window.prism:469: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r1475 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Row(children=cs, ..): TextsIn cs
-                        ^^
-  fix: rename to `$cs`
+        Ui.HBox(children=$cs): TextsIn $cs
+                               ^^^^^^^^^^^
 examples/chess/window.prism:469: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Row(children=cs, ..): TextsIn cs
-                                 ^^^^^^^^^^
-examples/chess/window.prism:470: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r1480 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Column(children=cs, ..): TextsIn cs
-                           ^^
-  fix: rename to `$cs`
+        Ui.Row(children=$cs, ..): TextsIn $cs
+                                  ^^^^^^^^^^^
 examples/chess/window.prism:470: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Column(children=cs, ..): TextsIn cs
-                                    ^^^^^^^^^^
-examples/chess/window.prism:471: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r1485 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Layers(children=cs): TextsIn cs
-                           ^^
-  fix: rename to `$cs`
+        Ui.Column(children=$cs, ..): TextsIn $cs
+                                     ^^^^^^^^^^^
 examples/chess/window.prism:471: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Layers(children=cs): TextsIn cs
-                                ^^^^^^^^^^
-examples/chess/window.prism:472: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r1490 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Frame(children=cs, ..): TextsIn cs
-                          ^^
-  fix: rename to `$cs`
+        Ui.Layers(children=$cs): TextsIn $cs
+                                 ^^^^^^^^^^^
 examples/chess/window.prism:472: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Frame(children=cs, ..): TextsIn cs
-                                   ^^^^^^^^^^
-examples/chess/window.prism:473: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r1495 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Grid(children=cs, ..): TextsIn cs
-                         ^^
-  fix: rename to `$cs`
+        Ui.Frame(children=$cs, ..): TextsIn $cs
+                                    ^^^^^^^^^^^
 examples/chess/window.prism:473: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Grid(children=cs, ..): TextsIn cs
-                                  ^^^^^^^^^^
-examples/chess/window.prism:486: error[mismatch]: expected `Int`, found `Nat`
-        let gaps = Float (Or ((Max (Len ws), 1) -? 1), 0)
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:516: error[mismatch]: expected `Int`, found `Nat`
-        let size = Fit room, (Extent width, (LineH env) * (Float (Len lines)) + 8.0)
-                                                                 ^^^^^^^^^^^
-examples/chess/window.prism:631: error[mismatch]: expected `Int`, found `Nat`
-        let gaps = spacing * (Max ((Float (Len kids)) - 1.0), 0.0)
-                                          ^^^^^^^^^^
-examples/chess/window.prism:689: error[collision]: `Turn` is declared by two modules this file reaches by a bare name
-    TurnPlaced: fn Turn, Placed -> Placed
-                   ^^^^
-  fix: write it qualified, `Window.Turn`, or rename this file's own
-examples/chess/window.prism:714: error[mismatch]: expected `Int`, found `Nat`
-        let column = Float (i mod n)
-                           ^^^^^^^^^
-examples/chess/window.prism:715: error[mismatch]: expected `Int`, found `Nat`
-        let down = Float (Or (i / n), 0)
-                         ^^^^^^^^^^^^^^^
-examples/chess/window.prism:725: error[mismatch]: expected `Int`, found `Nat`
-        let size = Fit room, (Extent cellSize.w * (Float n), cellSize.h * (Float rows))
-                                                         ^
-examples/chess/window.prism:725: error[mismatch]: expected `Int`, found `Nat`
-        let size = Fit room, (Extent cellSize.w * (Float n), cellSize.h * (Float rows))
-                                                                                 ^^^^
-examples/chess/window.prism:742: error[mark-stack]: `t` has type `$Text`, whose stack is `$`; the name shows ``
-        Ui.Label(text=t): LayLabel env, t, room
-                      ^
-  fix: rename to `$t`
+        Ui.Grid(children=$cs, ..): TextsIn $cs
+                                   ^^^^^^^^^^^
 examples/chess/window.prism:742: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Label(text=t): LayLabel env, t, room
-                          ^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:743: error[mark-stack]: `l` has type `$Text`, whose stack is `$`; the name shows ``
-        Ui.Button(label=l): LayButton env, l, room, chain
-                        ^
-  fix: rename to `$l`
+        Ui.Label(text=$t): LayLabel env, $t, room
+                           ^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:743: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Button(label=l): LayButton env, l, room, chain
-                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:744: error[mark-stack]: `t` has type `$Text`, whose stack is `$`; the name shows ``
-        Ui.TextInput(text=t, cursor=c, ..): LayInput env, t, c, room, chain
-                          ^
-  fix: rename to `$t`
-examples/chess/window.prism:744: error[mark-stack]: `c` has type `$Nat`, whose stack is `$`; the name shows ``
-        Ui.TextInput(text=t, cursor=c, ..): LayInput env, t, c, room, chain
-                                    ^
-  fix: rename to `$c`
+        Ui.Button(label=$l): LayButton env, $l, room, chain
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:744: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.TextInput(text=t, cursor=c, ..): LayInput env, t, c, room, chain
-                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:745: error[mark-stack]: `s` has type `$Text`, whose stack is `$`; the name shows ``
-        Ui.Image(src=s, paint=b): LayImage s, b, room, chain
-                     ^
-  fix: rename to `$s`
-examples/chess/window.prism:745: error[mark-stack]: `b` has type `$Paint`, whose stack is `$`; the name shows ``
-        Ui.Image(src=s, paint=b): LayImage s, b, room, chain
-                              ^
-  fix: rename to `$b`
+        Ui.TextInput(text=$t, cursor=$c, ..): LayInput env, $t, $c, room, chain
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:745: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Image(src=s, paint=b): LayImage s, b, room, chain
-                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:746: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r2583 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.VBox(children=cs): LayStack env, cs, room, chain, True, 0.0, Start
-                         ^^
-  fix: rename to `$cs`
+        Ui.Image(src=$s, paint=$b): LayImage $s, $b, room, chain
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:746: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.VBox(children=cs): LayStack env, cs, room, chain, True, 0.0, Start
-                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:747: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r2588 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.HBox(children=cs): LayStack env, cs, room, chain, False, 0.0, Start
-                         ^^
-  fix: rename to `$cs`
+        Ui.VBox(children=$cs): LayStack env, $cs, room, chain, True, 0.0, Start
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:747: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.HBox(children=cs): LayStack env, cs, room, chain, False, 0.0, Start
-                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:748: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r2593 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Column(spacing=g, align=a, children=cs): LayStack env, cs, room, chain, True, g, a
-                                               ^^
-  fix: rename to `$cs`
+        Ui.HBox(children=$cs): LayStack env, $cs, room, chain, False, 0.0, Start
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:748: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Column(spacing=g, align=a, children=cs): LayStack env, cs, room, chain, True, g, a
-                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:749: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r2602 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Row(spacing=g, align=a, children=cs): LayStack env, cs, room, chain, False, g, a
-                                            ^^
-  fix: rename to `$cs`
+        Ui.Column(spacing=g, align=a, children=$cs): LayStack env, $cs, room, chain, True, g, a
+                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:749: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Row(spacing=g, align=a, children=cs): LayStack env, cs, room, chain, False, g, a
-                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:750: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r2611 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Layers(children=cs): LayLayers env, cs, room, chain
-                           ^^
-  fix: rename to `$cs`
+        Ui.Row(spacing=g, align=a, children=$cs): LayStack env, $cs, room, chain, False, g, a
+                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:750: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Layers(children=cs): LayLayers env, cs, room, chain
-                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:751: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r2616 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Frame(spec=s, children=cs): LayFrame env, s, cs, room, chain
-                                  ^^
-  fix: rename to `$cs`
+        Ui.Layers(children=$cs): LayLayers env, $cs, room, chain
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:751: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Frame(spec=s, children=cs): LayFrame env, s, cs, room, chain
-                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:752: error[mark-stack]: `cs` has type `$(Path ==> (Elem (r2623 | Gui.* | Ui.*)))`, whose stack is `$`; the name shows ``
-        Ui.Grid(columns=n, children=cs): LayGrid env, n, cs, room, chain
-                                    ^^
-  fix: rename to `$cs`
+        Ui.Frame(spec=s, children=$cs): LayFrame env, s, $cs, room, chain
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 examples/chess/window.prism:752: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Grid(columns=n, children=cs): LayGrid env, n, cs, room, chain
-                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:782: error[collision]: `Turn` is declared by two modules this file reaches by a bare name
-    Untransform: fn Point, Turn -> Point
-                           ^^^^
-  fix: write it qualified, `Window.Turn`, or rename this file's own
-examples/chess/window.prism:836: error[mismatch]: expected `?[Path]`, found `?Path`
-        let inputs = Fold hits, [[]], \|acc, h| if h.kind == Focus: Push acc, h.chain else: acc
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:839: error[mismatch]: expected `[Path]`, found `[ [Path] ]`
-            ? c: AfterOne inputs, c
-                          ^^^^^^
-examples/chess/window.prism:840: error[mismatch]: expected `[Path]`, found `[ [Path] ]`
-            nil: inputs
-                 ^^^^^^
-examples/chess/window.prism:843: error[mismatch]: expected `?Path`, found `?[Path]`
-            nil: inputs[0]
-                 ^^^^^^^^^
-examples/chess/window.prism:847: error[mismatch]: expected `Path`, found `[Path]`
-        let ((ignore, kept)) = Fold inputs, ((False, [[]])), \|((passed, acc)), x| if passed: ((True, (Push acc, x))) else: ((x == c, acc))
-                                                                                                                                   ^
-62 errors
+        Ui.Grid(columns=n, children=$cs): LayGrid env, n, $cs, room, chain
+                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 errors

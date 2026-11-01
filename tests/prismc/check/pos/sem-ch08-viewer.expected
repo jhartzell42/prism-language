@@ -1,4 +1,7 @@
+tests/conformance/sem-ch08-viewer.prism:23: error[mismatch]: expected `!Key`, found `!Ui.Key`
+        !key <- Ui.TextInput(name="path", text=$path)           # 0
+        ^^^^
 tests/conformance/sem-ch08-viewer.prism:28: error[mismatch]: expected `~Contents`, found `~Fs.Contents`
         Ui.Label(text=ShowResponse $~current)                   # 2
                                    ^^^^^^^^^
-1 error
+2 errors

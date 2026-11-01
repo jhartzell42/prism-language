@@ -154,7 +154,7 @@ fn PairBrackets toks = update (Each toks, \|t| noPair):
         let i = ix
         if ? kind <- ?OpenKindOf t.kind:
             if kind != "\{" and not (Or &_[i], noPair).inner:
-                if ? j <- (Or &_[i], noPair).partner:
+                if ? j <- (Or &_[i], noPair).?partner:
                     if DoubleAt &_, toks, i, j, kind:
                         &_[i].outer <= True
                         &_[j].outer <= True
@@ -165,8 +165,8 @@ fn PairBrackets toks = update (Each toks, \|t| noPair):
 DoubleAt: fn [Pair], [Tok], Nat, Nat, Text -> Bool
 fn DoubleAt pairs, toks, i, j, kind:
     let next = Or toks[i + 1], eofTok
-    let innerClose = (Or pairs[i + 1], noPair).partner
-    (IsOpenOf next.kind, kind) and next.touches and innerClose == (? (Dec j)) and (Or toks[j], eofTok).touches
+    let ?innerClose = (Or pairs[i + 1], noPair).?partner
+    (IsOpenOf next.kind, kind) and next.touches and ?innerClose == (? (Dec j)) and (Or toks[j], eofTok).touches
 
 ?OpenKindOf: fn TokKind -> ?Text
 fn ?OpenKindOf (KOpen k, ignore) = ? k
@@ -379,7 +379,7 @@ fn WithStepMode p, flag = update p:
     &_.stepMode <= flag
 
 # Items of an indented block (after its `open`) up to its `close`, recovering at each.
-LayoutItems: u fn Ps, (u fn Ps -> ((a, Ps))) -> (([a], Ps))
+LayoutItems: unbounded fn Ps, (u fn Ps -> ((a, Ps))) -> (([a], Ps))
 fn LayoutItems p0, F = update (([[]], p0)):
     let &items = [[]]
     let &p = p0
@@ -399,7 +399,7 @@ fn LayoutItems p0, F = update (([[]], p0)):
     &_ <= ((&items, &p))
 
 # Items separated by commas: `F` once, then again after each comma.
-Commas: u fn Ps, (u fn Ps -> ((a, Ps))) -> (([a], Ps))
+Commas: unbounded fn Ps, (u fn Ps -> ((a, Ps))) -> (([a], Ps))
 fn Commas p0, F = update (([[]], p0)):
     let ((first, p1)) = F p0
     let &items = [[first]]
@@ -496,12 +496,12 @@ derive ^Eq, ^Show
 ParseModule: unbounded fn Ps, Bool -> ((Module, Ps))
 fn ParseModule p0, fragment:
     let start = Here p0
-    let ((template, p1)) = match Kind p0:
+    let ((?template, p1)) = match Kind p0:
         KTemplate t:
             let ((tpl, q)) = ParseTemplate (Adv p0), t, (Here p0)
             ((? tpl, q))
         otherwise: ((nil, p0))
-    let m0 = Module(name=nil, emitRow=nil, uses=[[]], decls=[[]], template=template, span=start)
+    let m0 = Module(name=nil, emitRow=nil, uses=[[]], decls=[[]], template=?template, span=start)
     let r = update ModRead(p=p1, m=m0, stage=0):
         while not (AtEof &_.p):
             &_ <= ModuleItem &_, fragment
@@ -528,7 +528,7 @@ fn HeaderOrDecl s, fragment, itemStart = match Kind s.p:
         if p.bad: update s:
             &_.p <= p
         else:
-            let late = s.stage > 0 or s.m.name != nil
+            let late = s.stage > 0 or s.m.?name != nil
             update s:
                 &_.p <= if late: NoteError p, itemStart, "the `module` line comes first in a file" else: p
                 &_.m.name <= ? name
@@ -538,7 +538,7 @@ fn HeaderOrDecl s, fragment, itemStart = match Kind s.p:
         if p.bad: update s:
             &_.p <= p
         else:
-            let late = s.stage > 1 or s.m.emitRow != nil
+            let late = s.stage > 1 or s.m.?emitRow != nil
             update s:
                 &_.p <= if late: NoteError p, itemStart, "`emit` comes after `module` and above `use`, once (Semantics ch. 6)" else: p
                 &_.m.emitRow <= ? emitRow
@@ -609,9 +609,9 @@ fn DeclKindOf p, fragment, start = match Kind p:
         ((DFn d, q))
     KKw "let", ignore:
         let ((pattern, p1)) = ParsePattern (Adv p), False
-        let ((ty, p2)) = OptionalAnnotation p1
+        let ((?ty, p2)) = OptionalAnnotation p1
         let ((value, p3)) = ParseRhsExpr (ExpectOp p2, "=")
-        ((DLet LetDecl(pattern=pattern, ty=ty, value=value, span=(To start, (Prev p3))), p3))
+        ((DLet LetDecl(pattern=pattern, ty=?ty, value=value, span=(To start, (Prev p3))), p3))
     KName ignore if (KindAt p, 1) == KColon:
         if (KindAt p, 2) == KLayOpen:
             let ((name, p1)) = ParseSName p
@@ -690,7 +690,9 @@ LowerParams: fn Ps -> (([Ident], Ps))
 fn LowerParams p0 = update (([[]], p0)):
     let &ps = [[]]
     let &p = p0
-    while IsPlainLower (Kind &p):
+    let &fuel = Len p0.toks
+    while ? left <- &fuel -? 1 if IsPlainLower (Kind &p):
+        &fuel <= left
         let ((i, q)) = ParseIdent &p
         &ps <= Push &ps, i
         &p <= q
@@ -706,8 +708,8 @@ fn ParseTypeDecl p0:
     let start = Here p0
     let ((name, p1)) = ParseQualName (Adv p0)
     let ((params, p2)) = LowerParams p1
-    let ((body, p3)) = if AtOp p2, "=": ParseTypeBody (Adv p2), name, params else: ((nil, p2))
-    ((TypeDecl(name=name, params=params, body=body, span=(To start, (Prev p3))), p3))
+    let ((?body, p3)) = if AtOp p2, "=": ParseTypeBody (Adv p2), name, params else: ((nil, p2))
+    ((TypeDecl(name=name, params=params, body=?body, span=(To start, (Prev p3))), p3))
 
 ParseTypeBody: unbounded fn Ps, QualName, [Ident] -> ((?TypeBody, Ps))
 fn ParseTypeBody p, name, params = match Kind p:
@@ -830,8 +832,8 @@ fn ParseTraitItem p = match Kind p:
             KName n if n.case == CaseUpper and n.sigils == "" and (Len n.path) == 1:
                 let name = Ident(name=(Or n.path[0], ""), span=(Here p1))
                 let ((params, p2)) = LowerParams (Adv p1)
-                let ((value, p3)) = if AtOp p2, "=": OptionalType (Adv p2) else: ((nil, p2))
-                let item = TiAssocType name, params, value, (To start, (Prev p3))
+                let ((?value, p3)) = if AtOp p2, "=": OptionalType (Adv p2) else: ((nil, p2))
+                let item = TiAssocType name, params, ?value, (To start, (Prev p3))
                 ((item, p3))
             otherwise:
                 let item = TiAssocType noIdent, [[]], nil, noRange
@@ -991,7 +993,7 @@ fn ClimbStep c, min, commas:
         nil: update c:
             &_.going <= False
             &_.p <= NoOperator p
-        ? ((op, suffix)):
+        ? ((op, ?suffix)):
             if (Level op) < min: update c:
                 &_.going <= False
             else:
@@ -1000,10 +1002,10 @@ fn ClimbStep c, min, commas:
                 let opTok = Tk p1
                 let ((rhs, p2)) = ParseBinary (Adv p1), (Level op) + 1, commas
                 let span = To c.lhs.span, rhs.span
-                let kind = match suffix:
+                let kind = match ?suffix:
                     nil: EBinary op, c.lhs, rhs
                     ? ty: ESuffixed op, QualName(path=ty, span=opTok.span), c.lhs, rhs
-                let p3 = if suffix == nil: p2 else: OutOfScope p2, opTok.span, "suffixed operators", "the suffixed operator `{TokenText opTok.kind}` is out of this compiler"
+                let p3 = if ?suffix == nil: p2 else: OutOfScope p2, opTok.span, "suffixed operators", "the suffixed operator `{TokenText opTok.kind}` is out of this compiler"
                 update c:
                     &_.lhs <= Expr(kind=kind, span=span)
                     &_.p <= p3
@@ -1168,9 +1170,9 @@ fn ParseParenArgs p0:
                     &_.rest <= True
                 else:
                     let start = Here &_.p
-                    let ((name, p1)) = ParseArgName &_.p
+                    let ((?name, p1)) = ParseArgName &_.p
                     let ((value, p2)) = ParseArgExpr p1
-                    &_.args <= Push &_.args, Arg(name=name, value=value, span=(To start, value.span))
+                    &_.args <= Push &_.args, Arg(name=?name, value=value, span=(To start, value.span))
                     &_.p <= p2
                 if AtComma &_.p:
                     &_.p <= Adv &_.p
@@ -1437,22 +1439,22 @@ fn TemplateParts p, parts = Fold parts, (([[]], p)), \|((acc, q)), part| Templat
 
 TemplatePartOf: unbounded fn [TemplatePart], Ps, TPartTok -> (([TemplatePart], Ps))
 fn TemplatePartOf acc, p, (TptText s) = (((Push acc, (TpText s)), p))
-fn TemplatePartOf acc, p, (TptPlaceholder toks, col, span):
+fn TemplatePartOf acc, p, (TptPlaceholder toks, ?col, span):
     let ((e, q)) = ParseNested p, toks, span
-    (((Push acc, (TpPlaceholder e, col)), q))
+    (((Push acc, (TpPlaceholder e, ?col)), q))
 fn TemplatePartOf acc, p, (TptBlock toks, span):
     let sub = Sub p, toks, (AtEnd span)
     let ((block, s1)) = ParseBlockUntilEof sub, span
     (((Push acc, (TpBlock block)), (Absorb p, s1)))
-fn TemplatePartOf acc, p, (TptCall name, attrs, body, span):
+fn TemplatePartOf acc, p, (TptCall name, attrs, ?body, span):
     let sname = SName(sigils=name.sigils, path=name.path, span=span)
     let ((args, p1)) = Fold attrs, (([[]], p)), \|((done, q)), a| AttrArg done, q, a
-    let ((inner, p2)) = match body:
+    let ((?inner, p2)) = match ?body:
         ? b:
             let ((ps, q)) = TemplateParts p1, b
             ((? ps, q))
         nil: ((nil, p1))
-    (((Push acc, (TpCall sname, args, inner, span)), p2))
+    (((Push acc, (TpCall sname, args, ?inner, span)), p2))
 
 AttrArg: unbounded fn [Arg], Ps, AttrTok -> (([Arg], Ps))
 fn AttrArg done, p, a:
@@ -1468,13 +1470,13 @@ ParseLambda: unbounded fn Ps -> ((Expr, Ps))
 fn ParseLambda p0:
     let start = Here p0
     let p = Adv p0
-    let ((params, p1)) = if (Kind p) == (KLambdaBar True): LambdaParams (Adv p) else: ((nil, p))
+    let ((?params, p1)) = if (Kind p) == (KLambdaBar True): LambdaParams (Adv p) else: ((nil, p))
     if AtOpenL p1:
         let ((block, q)) = ParseIndentedBlock p1
-        ((Expr(kind=(ELambda params, (LbBlock block)), span=(To start, block.span)), q))
+        ((Expr(kind=(ELambda ?params, (LbBlock block)), span=(To start, block.span)), q))
     else:
         let ((body, q)) = ParseExpr p1
-        ((Expr(kind=(ELambda params, (LbExpr body)), span=(To start, body.span)), q))
+        ((Expr(kind=(ELambda ?params, (LbExpr body)), span=(To start, body.span)), q))
 
 LambdaParams: unbounded fn Ps -> ((?[Pattern], Ps))
 fn LambdaParams p:
@@ -1553,9 +1555,9 @@ fn ParseArm p:
         ((Arm(pattern=nil, guard=nil, body=noBlock, span=start), (ErrorAt p, (Here p), "an arm beginning `ignore:` would read as \"ignore these cases\": the catch-all is `otherwise:`")))
     else:
         let ((pattern, p1)) = ParsePattern p, True
-        let ((guard, p2)) = if AtKw p1, "if": OptionalExpr (Adv p1) else: ((nil, p1))
+        let ((?guard, p2)) = if AtKw p1, "if": OptionalExpr (Adv p1) else: ((nil, p1))
         let ((body, p3)) = ParseBlockAfterColon p2
-        ((Arm(pattern=(? pattern), guard=guard, body=body, span=(To start, body.span)), p3))
+        ((Arm(pattern=(? pattern), guard=?guard, body=body, span=(To start, body.span)), p3))
 
 OptionalExpr: unbounded fn Ps -> ((?Expr, Ps))
 fn OptionalExpr p:
@@ -1567,17 +1569,17 @@ ParseFor: unbounded fn Ps -> ((Expr, Ps))
 fn ParseFor p0:
     let start = Here p0
     let p = Adv p0
-    let ((binders, p1)) = ForBindersOf p
+    let ((?binders, p1)) = ForBindersOf p
     let ((source, p2)) = ParseExpr p1
     let ((body, p3)) = ParseBlockAfterColon p2
-    ((Expr(kind=(EFor binders, source, body), span=(To start, body.span)), p3))
+    ((Expr(kind=(EFor ?binders, source, body), span=(To start, body.span)), p3))
 
 # The binders and their `<-`, by speculation: none when no `<-` follows a pattern.
 ForBindersOf: unbounded fn Ps -> ((?ForBinders, Ps))
 fn ForBindersOf p:
     let ((first, q1)) = ParsePattern p, False
-    let ((second, q2)) = if AtComma q1: OptionalPattern (Adv q1) else: ((nil, q1))
-    if not q2.bad and (AtOp q2, "<-"): ((? ForBinders(first=first, second=second), (Adv q2)))
+    let ((?second, q2)) = if AtComma q1: OptionalPattern (Adv q1) else: ((nil, q1))
+    if not q2.bad and (AtOp q2, "<-"): ((? ForBinders(first=first, second=?second), (Adv q2)))
     else: ((nil, p))
 
 OptionalPattern: unbounded fn Ps -> ((?Pattern, Ps))
@@ -1664,9 +1666,9 @@ fn StmtKindOf p, start = match Kind p:
         ((SEmit r, q))
     KKw "let", "":
         let ((pattern, p1)) = ParsePattern (Adv p), False
-        let ((ty, p2)) = OptionalAnnotation p1
+        let ((?ty, p2)) = OptionalAnnotation p1
         let ((value, p3)) = ParseRhsExpr (ExpectOp p2, "=")
-        (((SLet pattern, ty, value), p3))
+        (((SLet pattern, ?ty, value), p3))
     KKw "fn", "":
         let ((f, q)) = ParseFnClause p
         ((SFn f, q))
@@ -1706,9 +1708,9 @@ fn OtherStmt p:
     if not u.bad: ((upd, u))
     else: if not b.bad and (AtOp b, "<-"):
         let ((value, p1)) = ParseRhsExpr (Adv b)
-        let ((thenStep, p2)) = if AtKw p1, "then": OptionalRhs (Adv p1) else: ((nil, p1))
+        let ((?thenStep, p2)) = if AtKw p1, "then": OptionalRhs (Adv p1) else: ((nil, p1))
         if AtKw p2, "then": ((SExpr noExpr, (ErrorAt p2, (Here p2), "`then` does not associate: a hold has one start and one step")))
-        else: (((SBind pattern, value, thenStep), p2))
+        else: (((SBind pattern, value, ?thenStep), p2))
     else:
         let ((e, p1)) = ParseRhsExpr p
         if AtOp p1, "<-": ((SExpr e, (ErrorAt p1, (Here p1), "the left side of `<-` is not a pattern")))
@@ -1866,13 +1868,14 @@ FreeSigilRun: fn Ps -> ((Text, Ps))
 fn FreeSigilRun p0 = update (("", p0)):
     let &sigils = ""
     let &p = p0
-    let &going = True
-    while &going:
+    let &fuel = Len p0.toks
+    while ? left <- &fuel -? 1:
+        &fuel <= left
         match Kind &p:
             KFree s:
                 &sigils <= "{&sigils}{s}"
                 &p <= Adv &p
-            otherwise: &going <= False
+            otherwise: &fuel <= 0
     &_ <= ((&sigils, &p))
 
 ParseAppType: unbounded fn Ps -> ((Type, Ps))
@@ -2136,9 +2139,9 @@ fn ParseRecordPattern p0, name:
                 &_.rest <= True
             else:
                 let fstart = Here &_.p
-                let ((fname, p1)) = ParseArgName &_.p
+                let ((?fname, p1)) = ParseArgName &_.p
                 let ((pattern, p2)) = ParsePattern p1, False
-                &_.fields <= Push &_.fields, FieldPat(name=fname, pattern=pattern, span=(To fstart, pattern.span))
+                &_.fields <= Push &_.fields, FieldPat(name=?fname, pattern=pattern, span=(To fstart, pattern.span))
                 &_.p <= p2
             if AtComma &_.p:
                 &_.p <= Adv &_.p
@@ -2182,8 +2185,8 @@ ParseCheckLine: unbounded fn Ps -> ((CheckLine, Ps))
 fn ParseCheckLine p:
     let start = Here p
     let ((expr, p1)) = ParseRhsExpr p
-    let ((pattern, q)) = if AtOp p1, "=>": OptionalPatternTop (Adv p1) else: ((nil, p1))
-    ((CheckLine(expr=expr, pattern=pattern, span=(To start, (Prev q))), q))
+    let ((?pattern, q)) = if AtOp p1, "=>": OptionalPatternTop (Adv p1) else: ((nil, p1))
+    ((CheckLine(expr=expr, pattern=?pattern, span=(To start, (Prev q))), q))
 
 OptionalPatternTop: unbounded fn Ps -> ((?Pattern, Ps))
 fn OptionalPatternTop p:
@@ -2199,13 +2202,13 @@ fn ParseTestDecl p0:
     if not (AtComma p1): ((fallback, (ErrorHere p1, "a test names its blueprint: `test name, @blueprint:`")))
     else:
         let ((blueprint, p2)) = ParseArgExpr (Adv p1)
-        let ((seed, p3)) = if AtComma p2: ParseSeed (Adv p2) else: ((nil, p2))
+        let ((?seed, p3)) = if AtComma p2: ParseSeed (Adv p2) else: ((nil, p2))
         let p4 = ExpectColon p3
         if AtOpenL p4:
             let saved = p4.stepMode
             let ((steps, p5)) = LayoutItems (Adv p4), \|s| StepIn s, saved
             let q = WithStepMode p5, saved
-            ((TestDecl(name=name, blueprint=blueprint, seed=seed, steps=steps, span=(To start, (Prev q))), q))
+            ((TestDecl(name=name, blueprint=blueprint, seed=?seed, steps=steps, span=(To start, (Prev q))), q))
         else: ((fallback, (ErrorHere p4, "a test's steps stand in an indented block")))
 
 ParseSeed: fn Ps -> ((?Nat, Ps))

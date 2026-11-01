@@ -1,5 +1,0 @@
-tests/conformance/sem-appB-widgets.prism:29: error[no-impl]: no impl of `^Show` for `Click`
-        $last <- "none" then Shown !numbered
-                             ^^^^^^^^^^^^^^^
-  fix: derive `^Show` on `Click`, or write `impl ^Show Click`
-1 error

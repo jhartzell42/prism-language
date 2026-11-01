@@ -73,7 +73,7 @@ tag Draw.Clip of Draw:
     draws: [Draw]
 
 tag Draw.Group of Draw:
-    turn: Turn
+    turn: Window.Turn
     draws: [Draw]
 
 # where the element at `path` of the window's own layout sits, so a test can click it by path
@@ -354,7 +354,7 @@ type Hit = record:
     rect: Rect
     chain: [Path]
     kind: HitKind
-    turns: [Turn]                      # the turns of the frames above it, outermost first
+    turns: [Window.Turn]                      # the turns of the frames above it, outermost first
 derive ^Eq, ^Show
 
 type Placed = record:
@@ -461,16 +461,16 @@ fn TextsIn cs = Fold (Values cs), {}, \|acc, e| Union acc, (TextsOf e)
 
 TextsOf: fn Elem -> (Text ==> unit)
 fn TextsOf e = match e:
-    Ui.Label(text=t): WordSet t
-    Ui.Button(label=l): {l: unit}
-    Ui.TextInput(text=t, cursor=c, ..): {t: unit, (Take t, c): unit}
-    Ui.VBox(children=cs): TextsIn cs
-    Ui.HBox(children=cs): TextsIn cs
-    Ui.Row(children=cs, ..): TextsIn cs
-    Ui.Column(children=cs, ..): TextsIn cs
-    Ui.Layers(children=cs): TextsIn cs
-    Ui.Frame(children=cs, ..): TextsIn cs
-    Ui.Grid(children=cs, ..): TextsIn cs
+    Ui.Label(text=$t): WordSet $t
+    Ui.Button(label=$l): {$l: unit}
+    Ui.TextInput(text=$t, cursor=$c, ..): {$t: unit, (Take $t, $c): unit}
+    Ui.VBox(children=$cs): TextsIn $cs
+    Ui.HBox(children=$cs): TextsIn $cs
+    Ui.Row(children=$cs, ..): TextsIn $cs
+    Ui.Column(children=$cs, ..): TextsIn $cs
+    Ui.Layers(children=$cs): TextsIn $cs
+    Ui.Frame(children=$cs, ..): TextsIn $cs
+    Ui.Grid(children=$cs, ..): TextsIn $cs
     otherwise: {}
 
 # ---- labels, wrapped by words at the room's width
@@ -483,7 +483,7 @@ fn LineH env = (TextExtent env, " ").h
 
 WordsW: fn Env, [Text] -> Float
 fn WordsW env, ws:
-    let gaps = Float (Or ((Max (Len ws), 1) -? 1), 0)
+    let gaps = Float (Int (Or ((Max (Len ws), 1) -? 1), 0))
     (Fold ws, 0.0, \|acc, w| acc + (TextExtent env, w).w) + (SpaceW env) * gaps
 
 type Lines = record:
@@ -513,7 +513,7 @@ fn LayLabel env, t, room:
     let natural = (WordsW env, (Words t)) + 8.0
     let lines = if natural <= room.maxW: [[t]] else: Wrap env, t, room.maxW - 8.0
     let width = (Fold lines, 0.0, \|m, l| Max m, (WordsW env, (Words l))) + 8.0
-    let size = Fit room, (Extent width, (LineH env) * (Float (Len lines)) + 8.0)
+    let size = Fit room, (Extent width, (LineH env) * (Float (Int (Len lines))) + 8.0)
     Laid size, \|p| Placed (LinesDraw env, lines, p), [[]]
 
 # ---- the other leaves
@@ -628,7 +628,7 @@ LayStack: fn Env, (Path ==> Elem), Room, [Path], Bool, Float, Align -> Laid
 fn LayStack env, cs, room, chain, down, spacing, align:
     let kids = Kids cs
     let idx = Indices (Len kids)
-    let gaps = spacing * (Max ((Float (Len kids)) - 1.0), 0.0)
+    let gaps = spacing * (Max ((Float (Int (Len kids))) - 1.0), 0.0)
     let natural = Each kids, \|((k, e))| Lay env, e, (RoomFor down, 0.0, huge, 0.0, (CrossMax down, room)), (Push chain, k)
     let fixed = Fold idx, 0.0, \|acc, i| acc + (FixedMain down, kids, natural, i)
     let weights = Fold kids, 0.0, \|acc, ((ignore, e))| acc + (FlexOf e)
@@ -686,7 +686,7 @@ fn FrameRoom s, room:
         ? a: AspectRoom r1, a
         nil: r1
 
-TurnPlaced: fn Turn, Placed -> Placed
+TurnPlaced: fn Window.Turn, Placed -> Placed
 fn TurnPlaced t, pl = Placed [[Draw.Group(turn=t, draws=pl.draw)]], (Each pl.hits, \|h| Hit h.rect, h.chain, h.kind, (Append [[t]], h.turns))
 
 FrameAt: fn FrameSpec, Laid, Extent, Point -> Placed
@@ -711,8 +711,8 @@ fn LayFrame env, s, cs, room, chain:
 
 GridStep: fn Nat, Extent, Point, ((Nat, Placed)), Laid -> ((Nat, Placed))
 fn GridStep n, cellSize, p, ((i, placed)), l:
-    let column = Float (i mod n)
-    let down = Float (Or (i / n), 0)
+    let column = Float (Int (i mod n))
+    let down = Float (Int (Or (i / n), 0))
     let at = Point p.x + cellSize.w * column, p.y + cellSize.h * down
     ((i + 1, (Merged placed, (PlaceAt l, at))))
 
@@ -722,7 +722,7 @@ fn LayGrid env, n, cs, room, chain:
     let natural = Each kids, \|((k, e))| Lay env, e, (Loose huge, huge), (Push chain, k)
     let cellSize = Fold natural, (Extent 0.0, 0.0), \|m, l| Extent (Max m.w, l.size.w), (Max m.h, l.size.h)
     let rows = RowsFor (Len kids), n
-    let size = Fit room, (Extent cellSize.w * (Float n), cellSize.h * (Float rows))
+    let size = Fit room, (Extent cellSize.w * (Float (Int n)), cellSize.h * (Float (Int rows)))
     let laids = Each kids, \|((k, e))| Lay env, e, (Tight cellSize), (Push chain, k)
     Laid size, \|p| GridAt n, cellSize, laids, p
 
@@ -739,17 +739,17 @@ fn GridAt n, cellSize, laids, p:
 
 Lay: fn Env, Elem, Room, [Path] -> Laid
 fn Lay env, e, room, chain = match e:
-    Ui.Label(text=t): LayLabel env, t, room
-    Ui.Button(label=l): LayButton env, l, room, chain
-    Ui.TextInput(text=t, cursor=c, ..): LayInput env, t, c, room, chain
-    Ui.Image(src=s, paint=b): LayImage s, b, room, chain
-    Ui.VBox(children=cs): LayStack env, cs, room, chain, True, 0.0, Start
-    Ui.HBox(children=cs): LayStack env, cs, room, chain, False, 0.0, Start
-    Ui.Column(spacing=g, align=a, children=cs): LayStack env, cs, room, chain, True, g, a
-    Ui.Row(spacing=g, align=a, children=cs): LayStack env, cs, room, chain, False, g, a
-    Ui.Layers(children=cs): LayLayers env, cs, room, chain
-    Ui.Frame(spec=s, children=cs): LayFrame env, s, cs, room, chain
-    Ui.Grid(columns=n, children=cs): LayGrid env, n, cs, room, chain
+    Ui.Label(text=$t): LayLabel env, $t, room
+    Ui.Button(label=$l): LayButton env, $l, room, chain
+    Ui.TextInput(text=$t, cursor=$c, ..): LayInput env, $t, $c, room, chain
+    Ui.Image(src=$s, paint=$b): LayImage $s, $b, room, chain
+    Ui.VBox(children=$cs): LayStack env, $cs, room, chain, True, 0.0, Start
+    Ui.HBox(children=$cs): LayStack env, $cs, room, chain, False, 0.0, Start
+    Ui.Column(spacing=g, align=a, children=$cs): LayStack env, $cs, room, chain, True, g, a
+    Ui.Row(spacing=g, align=a, children=$cs): LayStack env, $cs, room, chain, False, g, a
+    Ui.Layers(children=$cs): LayLayers env, $cs, room, chain
+    Ui.Frame(spec=s, children=$cs): LayFrame env, s, $cs, room, chain
+    Ui.Grid(columns=n, children=$cs): LayGrid env, n, $cs, room, chain
     otherwise: unlaid
 
 # ---- hits: the pointer is taken back through each turn above a region; the topmost wins
@@ -779,7 +779,7 @@ fn Cosine angle:
     let s = x * x
     1.0 - s / 2.0 * (1.0 - s / 12.0 * (1.0 - s / 30.0 * (1.0 - s / 56.0 * (1.0 - s / 90.0 * (1.0 - s / 132.0 * (1.0 - s / 182.0))))))
 
-Untransform: fn Point, Turn -> Point
+Untransform: fn Point, Window.Turn -> Point
 fn Untransform q, t:
     let rad = Ratio (t.angle * pi), 180.0
     let dx = Ratio (q.x - t.x), t.scale
@@ -842,7 +842,7 @@ fn ?NextFocus hits, ?focus:
         ? n: ? n
         nil: inputs[0]
 
-AfterOne: fn [[Path]], [Path] -> [[Path]]
+AfterOne: fn [ [Path] ], [Path] -> [ [Path] ]
 fn AfterOne inputs, c:
     let ((ignore, kept)) = Fold inputs, ((False, [[]])), \|((passed, acc)), x| if passed: ((True, (Push acc, x))) else: ((x == c, acc))
     kept

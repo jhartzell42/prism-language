@@ -35,11 +35,14 @@ fn Describe t, starred:
     let star = if starred: " *" else: ""
     "{box} {t.label}{star}"
 
+Added: fn Nat -> Change
+fn Added n = Add "item {n}"
+
 @todos: @unit
 @todos:
     !add <- Ui.Button(label=$"Add")                                 # 0
     $next <- 0 then $next + 1 on !add
-    let !adds = {$next: Add "item {$next}"} on !add
+    let !adds = {$next: Added $next} on !add
     !rows <- for $items:                                            # 1/[key]
         !toggle <- Ui.Button(label=$"Toggle")                       # 1/[key]/0
         !delete <- Ui.Button(label=$"Delete")                       # 1/[key]/1

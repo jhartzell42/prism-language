@@ -1,8 +1,0 @@
-prelude/gui.prism:46: error[collision]: `Turn` is declared by two modules this file reaches by a bare name
-        turn: Turn
-              ^^^^
-  fix: write it qualified, `Gui.Turn`, or rename this file's own
-prelude/ui.prism:17: error[unknown-name]: no type `Key`
-    tag Ui.TextInput of Element !Key:
-                                ^^^^
-2 errors

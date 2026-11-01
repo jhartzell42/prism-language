@@ -80,7 +80,7 @@ fn AllOf xs, P = Fold xs, True, \|ok, x| ok and P x
 Kept: fn [a], (fn a -> Bool) -> [a]
 fn Kept xs, P = Fold xs, [[]], \|acc, x| if P x: Push acc, x else: acc
 
-?FindOf: fn [a], (fn a -> Bool) -> ?a
+?FindOf: fn [a], (fn a -> Bool) -> ?a where a: ^Eq
 fn ?FindOf xs, P = Fold xs, nil, \|?found, x| if ?found == nil and P x: ? x else: ?found
 
 # the distance between two files or two ranks
