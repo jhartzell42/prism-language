@@ -1,0 +1,36 @@
+# Function values at the boundary of the representations (prismc/README.md, pick JB): a
+# constructor passed as a function, a `let`-bound lambda passed to a bounded parameter,
+# and a color-polymorphic function (`u fn`, D8) called with a bounded closure and with an
+# unbounded one. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+
+type Shape = choice:
+    Circle Nat
+    Square Nat
+derive ^Eq, ^Show
+
+Make: fn (fn Nat -> Shape), Nat -> Shape
+fn Make Build, n = Build n
+
+Apply: fn (fn Nat -> Nat), Nat -> Nat
+fn Apply F, n = F n
+
+Twice: u fn Nat, (u fn Nat -> Nat) -> Nat
+fn Twice x, F = F (F x)
+
+Grow: unbounded fn Nat -> Nat
+fn Grow n = n + 1
+
+Work: unbounded fn Nat -> Nat
+fn Work n = Twice n, Grow
+
+@Shown: fn Nat -> @unit
+fn @Shown n:
+    let Double = \|m| m + m
+    let doubled = Apply Double, n
+    let twice = Twice n, Double
+    let shape = Make Circle, n
+    !done <- @Run Work, n                                   # 0
+    let first = "{doubled} {twice} {Show shape}"
+    $shown <- first then "{first} {Show !done}"
+    Ui.Label(text=$shown)                                   # 1

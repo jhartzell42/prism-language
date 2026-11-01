@@ -1,5 +1,4 @@
-# prism_zero's transcript: a cycle per call of Double (D6). prismc's adapter runs Double to its
-# result inside one cycle and takes 1 tick (prismc/README.md, gap DS), so prismc fails this test.
+# prism_zero's transcript: a cycle per call of Double (D6, D8).
 test each_takes_an_unbounded_function
 
 tick 0

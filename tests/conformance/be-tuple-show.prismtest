@@ -1,0 +1,4 @@
+# The tuple's tests: declarations of be-tuple-show.prism (Semantics chapter 6).
+
+test triples_print, @shown:
+    build

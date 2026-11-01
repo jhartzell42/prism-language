@@ -1,0 +1,13 @@
+# prism_zero's transcript, checked by hand against D6 and D8: Work enters Twice, which is not
+# unbounded but takes Grow, so two cycle points, the calls of Grow, and three cycles.
+test functions_cross_the_boundary
+
+tick 0
+  added:
+    1: Ui.Label(text="6 12 Circle 3")
+
+compute until idle: 3 ticks, 1 to 3
+
+tick 3
+  changed:
+    1: Ui.Label(text="6 12 Circle 3 5")

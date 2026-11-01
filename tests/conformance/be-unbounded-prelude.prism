@@ -1,6 +1,6 @@
-# An unbounded function given to a prelude function (`Each`): the prelude's closures
-# answer directly, so the value is adapted and its job run to its result. Written for
-# prismc's back end. Work in progress, subject to change.
+# An unbounded function given to a prelude function (`Each`): D8 makes `Each` unbounded
+# with it, so each call of `Double` is a cycle point (D6), three calls and four cycles.
+# Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
 
 Double: unbounded fn Nat -> Nat

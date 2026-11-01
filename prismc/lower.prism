@@ -339,6 +339,9 @@ type Lx = record:
     layouts: (Text ==> [Bool])
     unbs: [Text]
     notes: [Text]
+    # Every module-level Rust name a local could hide, as `Module.name`; the prelude's
+    # under `Prelude`, which every module imports.
+    globals: (Text ==> Bool)
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.
@@ -422,6 +425,21 @@ fn LoValueNames g:
     let bases = Fold keys, {}, \|m, k| Insert m, (LoBaseKey k), (Push (Or m[LoBaseKey k], [[]]), k)
     Fold keys, {}, \|m, k| Insert m, k, (LoValueName k, (Len (Or bases[LoBaseKey k], [[]])))
 
+LoGlobalNames: fn G -> (Text ==> Bool)
+fn LoGlobalNames g:
+    let names = LoValueNames g
+    Fold (Keys names), {}, \|m, k| Insert m, "{LoOwnerOf k}.{Or names[k], ""}", True
+
+# A local's Rust name (pick NM): a `?x` is `x_opt` and a `~x` is `x_try`, so that it
+# never hides a plain `x` of the same scope; a local whose name a function of the module
+# or the prelude has takes a `_` (`kind_` beside the function `kind`).
+LoLocalName: fn Lx, Text -> Text
+fn LoLocalName lx, nkey:
+    let marks = MarksOf nkey
+    let base = LoSnake nkey
+    let s1 = if HasText (Chars marks), "?": "{base}_opt" else: if HasText (Chars marks), "~": "{base}_try" else: base
+    if (HasKey lx.globals, "{lx.site}.{s1}") or HasKey lx.globals, "Prelude.{s1}": "{s1}_" else: s1
+
 LoBaseKey: fn Text -> Text
 fn LoBaseKey k:
     let parts = Split k, "."
@@ -488,8 +506,10 @@ fn LoTy lx, t = match t:
     TyCon "Table", [[k, v]]: RsArray (RsTuple [[(LoTy lx, k), (LoTy lx, v)]])
     TyCon n, args: LoNamedTy lx, n, (Each args, \|a| LoTy lx, a)
     TyFn c, ps, res:
-        if c == CUnbound: RsJobFn (LoTyOfParams lx, ps), (LoTy lx, res)
-        else: RsFn (Each ps, \|p| LoTy lx, p), (LoTy lx, res)
+        # A function value of any color but bounded is a `Start` (D8: a color variable may
+        # be unbounded), so one representation serves both instantiations.
+        if c == CBound: RsFn (Each ps, \|p| LoTy lx, p), (LoTy lx, res)
+        else: RsJobFn (LoTyOfParams lx, ps), (LoTy lx, res)
     TyTuple [[]]: RsUnit
     TyTuple ts: RsTuple (Each ts, \|a| LoTy lx, a)
     TyArray e: RsArray (LoTy lx, e)
@@ -838,7 +858,16 @@ fn LoName lx, env, n, span:
 # getter), a fault kind, or a function as a value.
 LoGlobalValue: unbounded fn Lx, Text, Range, RsTy -> Vl
 fn LoGlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
-    ? c: LoCtorApp lx, emptyEnv, c, [[]], span
+    ? c:
+        let arity = if (Len c.fields) > 0: Len c.fields else: Len c.args
+        match t:
+            RsFn pts, ignore: if arity > 0: LoCtorFn lx, c, pts, span, t, False else: LoCtorApp lx, emptyEnv, c, [[]], span
+            RsJobFn a, ignore:
+                let pts = match a:
+                    RsTuple ts: if arity == 1: [[a]] else: ts
+                    otherwise: [[a]]
+                if arity > 0: LoCtorFn lx, c, pts, span, t, True else: LoCtorApp lx, emptyEnv, c, [[]], span
+            otherwise: LoCtorApp lx, emptyEnv, c, [[]], span
     nil: match lx.g.tags[qk]:
         ? tg: VlOwned (XRaw "\"{tg.name}\""), t
         nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and LoIsLetDef d): VlOwned (XCall (LoValuePath lx, qk), [[]]), t
@@ -882,7 +911,7 @@ fn LoCall lx, env, callee, args, span:
                     let f = LoName lx, env, n, callee.span
                     match LoVlTy f:
                         RsJobFn ignore, ignore:
-                            VlOwned (XCall "run_to_end", [[(LoStartCall f, (Each args, \|a| LoOwn (LoX lx, env, a.value)))]]), t
+                            VlOwned (XCall "run_to_end", [[(LoStartCall f, (LoStartArgs lx, env, f, args))]]), t
                         otherwise: VlOwned (XApply (LoRef f), (Each args, \|a| LoArg lx, env, a.value)), t
                 nil:
                     let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
@@ -893,7 +922,7 @@ fn LoCall lx, env, callee, args, span:
         otherwise:
             let f = LoX lx, env, callee
             match LoVlTy f:
-                RsJobFn ignore, ignore: VlOwned (XCall "run_to_end", [[(LoStartCall f, (Each args, \|a| LoOwn (LoX lx, env, a.value)))]]), t
+                RsJobFn ignore, ignore: VlOwned (XCall "run_to_end", [[(LoStartCall f, (LoStartArgs lx, env, f, args))]]), t
                 otherwise: VlOwned (XApply (LoRef f), (Each args, \|a| LoArg lx, env, a.value)), t
 
 # An argument as a parameter takes it: borrowed, a lambda as a borrowed closure.
@@ -909,18 +938,24 @@ fn LoArgKind lx, env, e = match e.kind:
     EName n:
         let t = LoTyOf lx, e.span
         match LoPeel t:
-            TyFn CUnbound, ignore, ignore: LoRef (LoX lx, env, e)
-            TyFn ignore, ignore, ignore:
+            TyFn CBound, ignore, ignore:
                 let ?local = if (Len n.path) == 1: env.names[SNameKey n] else: nil
                 match ?local:
-                    ? ignore: LoRef (LoX lx, env, e)
+                    ? ignore: LoClosureRef (LoX lx, env, e)
                     nil:
                         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
                         match ?qk:
-                            ? qk: if HasKey lx.g.ctors, qk: LoRef (LoX lx, env, e) else: XUnary "&", (XRaw (LoValuePath lx, qk))
+                            ? qk: if HasKey lx.g.ctors, qk: LoClosureRef (LoX lx, env, e) else: XUnary "&", (XRaw (LoValuePath lx, qk))
                             nil: LoRef (LoX lx, env, e)
             otherwise: LoRef (LoX lx, env, e)
     otherwise: LoRef (LoX lx, env, e)
+
+# A bounded function value where a `&dyn Fn` is taken: a parameter that is one already
+# passes on; a closure held in an `Rc` is borrowed through it (`&*f`).
+LoClosureRef: fn Vl -> Ex
+fn LoClosureRef (VlPlace x, "ref", t) = x
+fn LoClosureRef (VlPlace x, ignore, t) = XUnary "&", (XUnary "*", x)
+fn LoClosureRef (VlOwned x, t) = XUnary "&", (XUnary "*", x)
 
 # A call of a global: a constructor, a trait method, a prelude function, a program's own.
 LoGlobalCall: unbounded fn Lx, LoEnv, Text, [Arg], Range, RsTy -> Vl
@@ -950,10 +985,11 @@ fn LoArgsFor lx, env, v, args:
             TyCon "Prelude.Error", ignore: True
             otherwise: False
         let toUnbounded = match LoPeel (Or ps[i], TyErr):
-            TyFn CUnbound, ignore, ignore: True
+            TyFn CBound, ignore, ignore: False
+            TyFn ignore, ignore, ignore: True
             otherwise: False
         if isTry and isError: XUnary "&", (XCtor "Err", [[LoOwn (LoX lx, env, a.value)]])
-        else: if toUnbounded: LoRef (LoX lx, env, a.value)
+        else: if toUnbounded: XUnary "&", (LoAsJobValue lx, env, a.value)
         else: LoArg lx, env, a.value
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0))
@@ -984,6 +1020,25 @@ fn LoCtorApp lx, env, c, args, span:
             if (Len c.args) == 0: VlOwned (XRaw path), t
             else: VlOwned (XCtor path, vals), t
         otherwise: VlOwned (LoTodo "a constructor of {c.owner}"), t
+
+# A constructor used as a function value (`OnePattern p, CkExpect`): a closure building
+# it from its arguments, which a bounded value takes by reference and a `Start` owns.
+LoCtorFn: unbounded fn Lx, CtorInfo, [RsTy], Range, RsTy, Bool -> Vl
+fn LoCtorFn lx, c, pts, span, t, job:
+    let names = Each (Range0 (Len pts)), \|i| "a{i}"
+    # Each argument stands at a place no source has, bound to its parameter.
+    let fakes = Each (Range0 (Len pts)), \|i| Arg(name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
+    let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| LoBindSpan en, (LoKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XRaw (Or names[i], "a")), (if job: "own" else: "ref"), (Or pts[i], RsUnit))
+    let made = LoOwn (LoCtorApp lx, env, c, fakes, span)
+    if job:
+        let a = match t:
+            RsJobFn x, ignore: x
+            otherwise: RsUnit
+        let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
+        VlOwned (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[made]]))]]))]]), t), t
+    else:
+        let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (RsRef (Or pts[i], RsUnit))
+        VlOwned (XCall "Rc::new", [[(XClosure False, pas, made)]]), t
 
 LoArgNamed: fn Arg -> Bool
 fn LoArgNamed a = match a.?name:
@@ -1080,26 +1135,102 @@ fn LoPreludeCall lx, env, qk, args, span, t:
         ? a: LoTy lx, (LoPeel (LoTyOf lx, a.value.span))
         nil: RsUnit
     let variant = LoPreludeVariant name, first
-    VlOwned (XCall variant, (Each args, \|a| LoPreludeArg lx, env, a.value)), t
+    match ?LoPreludeJob lx, env, variant, args:
+        ? job: VlOwned (XCall "run_to_end", [[job]]), t
+        nil: VlOwned (XCall variant, (Each args, \|a| LoArg lx, env, a.value)), t
 
-# An argument of a prelude function. The prelude's functions take closures that answer
-# directly (`&dyn Fn(&A) -> B`); an unbounded function value given to one is adapted, its
-# job run to its result inside the cycle (gap DS). A lambda written there is lowered as
-# the closure the parameter takes.
-LoPreludeArg: unbounded fn Lx, LoEnv, Expr -> Ex
-fn LoPreludeArg lx, env, e = match e.kind:
-    ELambda ignore, ignore: LoArg lx, env, e
-    EGroup x: LoPreludeArg lx, env, x
-    otherwise: match LoTy lx, (LoPeel (LoTyOf lx, e.span)):
-        RsJobFn a, ignore:
-            let f = LoX lx, env, e
-            let n = match a:
-                RsTuple ts: Len ts
-                otherwise: 1
-            let names = Each (Range0 n), \|i| "x{i}"
-            let owned = Each names, \|nm| XMethod (XRaw nm), "clone", [[]]
-            XUnary "&", (XClosure False, (Each names, \|nm| PaBind nm), (XCall "run_to_end", [[(LoStartCall f, owned)]]))
-        otherwise: LoArg lx, env, e
+# D8 in the back end: `Fold`, `Each` and `Filter` given a closure that is not bounded are
+# the prelude's job versions (`fold_job`), the closure a `Start`: each call it makes is a
+# call of an unbounded function, a cycle point inside a job (D6). Direct-style code runs
+# the job to its result; a job makes it a frame or a tail call. The arguments owned.
+?LoPreludeJob: unbounded fn Lx, LoEnv, Text, [Arg] -> ?Ex
+fn ?LoPreludeJob lx, env, variant, args:
+    if HasText [["fold", "fold_map", "each", "each_map", "filter", "filter_map"]], variant:
+        let last = Or args[Dec (Len args)], (Arg(name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        match LoTy lx, (LoPeel (LoTyOf lx, last.value.span)):
+            RsJobFn ignore, ignore:
+                let front = Each (Take args, (Dec (Len args))), \|a| LoOwn (LoX lx, env, a.value)
+                ? (XCall "{variant}_job", (Push front, (LoAsJobValue lx, env, last.value)))
+            otherwise: nil
+    else: nil
+
+# A call of a prelude function that is a job here (`?LoPreludeJob`).
+?LoPreludeJobCall: unbounded fn Lx, LoEnv, Expr -> ?Ex
+fn ?LoPreludeJobCall lx, env, e = match e.kind:
+    ECall c, args, ignore, ignore: match c.kind:
+        EName n:
+            if (Len n.path) == 1 and HasKey env.names, (SNameKey n): nil
+            else:
+                let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+                match ?qk:
+                    ? qk: match lx.g.vals[qk]:
+                        ? v:
+                            if v.home == "Prelude":
+                                let name = Or lx.rsNames[qk], (LoSnake (BareName qk))
+                                let first = match args[0]:
+                                    ? a: LoTy lx, (LoPeel (LoTyOf lx, a.value.span))
+                                    nil: RsUnit
+                                ?LoPreludeJob lx, env, (LoPreludeVariant name, first), args
+                            else: nil
+                        nil: nil
+                    nil: nil
+        otherwise: nil
+    otherwise: nil
+
+# A value where a `Start` is wanted (an unbounded or color-polymorphic parameter): a
+# lambda is a job lambda, a `Start` is itself, and a bounded function value is wrapped
+# in a job that answers in its first cycle.
+LoAsJobValue: unbounded fn Lx, LoEnv, Expr -> Ex
+fn LoAsJobValue lx, env, e = match e.kind:
+    EGroup x: LoAsJobValue lx, env, x
+    otherwise:
+        let target = match LoPeel (LoTyOf lx, e.span):
+            TyFn ignore, ps, r: RsJobFn (LoTyOfParams lx, ps), (LoTy lx, r)
+            other: LoTy lx, other
+        let a = match target:
+            RsJobFn x, ignore: x
+            otherwise: RsUnit
+        match e.kind:
+            ELambda ?ps, body: LoOwn (LoJobLambda lx, env, (Or ?ps, [[]]), body, target, a)
+            otherwise:
+                let v = LoX lx, env, e
+                match LoVlTy v:
+                    RsFn pts, ignore: LoWrapAsJob (LoOwn v), pts, target, a
+                    otherwise: LoOwn v
+
+# A bounded function value as a `Start`: its job answers in its first cycle.
+LoWrapAsJob: fn Ex, [RsTy], RsTy, RsTy -> Ex
+fn LoWrapAsJob f, pts, target, a:
+    let names = Each (Range0 (Len pts)), \|i| "a{i}"
+    let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
+    let call = XApply (XRaw "f"), (Each names, \|nm| XUnary "&", (XRaw nm))
+    let body = XBlock [[(DoLet (PaBind "f"), (XMethod (XRaw "f"), "clone", [[]]))]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
+    XBlock [[(DoLet (PaBind "f"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], body)]]), target)
+
+# A named function's arguments, owned, as its job's fields take them: a function
+# parameter that is not bounded takes a `Start`.
+LoNamedArgsOwned: unbounded fn Lx, LoEnv, Text, [Arg] -> [Ex]
+fn LoNamedArgsOwned lx, env, qk, args:
+    let ((ps, ignore)) = LoSchemeParts lx, qk
+    Each (Range0 (Len args)), \|i|
+        let a = Or args[i], (Arg(name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        match LoPeel (Or ps[i], TyErr):
+            TyFn CBound, ignore, ignore: LoOwn (LoX lx, env, a.value)
+            TyFn ignore, ignore, ignore: LoAsJobValue lx, env, a.value
+            otherwise: LoOwn (LoX lx, env, a.value)
+
+# A `Start` value's arguments, owned: one whose parameter type is a `Start` is made one.
+LoStartArgs: unbounded fn Lx, LoEnv, Vl, [Arg] -> [Ex]
+fn LoStartArgs lx, env, f, args:
+    let pts = match LoVlTy f:
+        RsJobFn (RsTuple ts), ignore: if (Len args) == 1: [[RsTuple ts]] else: ts
+        RsJobFn a, ignore: [[a]]
+        otherwise: [[]]
+    Each (Range0 (Len args)), \|i|
+        let a = Or args[i], (Arg(name=nil, value=dummyExpr, span=Range(start=0, end=0)))
+        match Or pts[i], RsUnit:
+            RsJobFn ignore, ignore: LoAsJobValue lx, env, a.value
+            otherwise: LoOwn (LoX lx, env, a.value)
 
 LoPreludeVariant: fn Text, RsTy -> Text
 fn LoPreludeVariant name, first = match first:
@@ -1245,7 +1376,7 @@ fn LoJobLambda lx, env, ps, body, ft, a:
         RsTuple ts: if (Len ps) == 1: [[a]] else: ts
         otherwise: [[a]]
     let binders = Each (Range0 (Len ps)), \|i| match (Or ps[i], dummyPat).kind:
-        PName n: (((SNameKey n), (LoSnake (SNameKey n))))
+        PName n: (((SNameKey n), (LoLocalName lx, (SNameKey n))))
         otherwise: (("", "p{i}"))
     let env2 = Fold (Range0 (Len binders)), env1, \|en, i| match binders[i]:
         ? ((k, rs)): if k == "": en else: LoBind en, k, (BnLocal rs, "own", (Or pts[i], RsUnit))
@@ -1428,7 +1559,7 @@ fn LoPat lx, p, ty, mode, fresh = match p.kind:
             nil: False
         if isCtor: LoCtorPat lx, n, [[]], ty, mode, fresh
         else:
-            let rs = LoSnake nkey
+            let rs = LoLocalName lx, nkey
             let bt = LoTy lx, (LoPeel (LoBinderTy lx, n.span))
             PatOut(pa=(PaBind rs), conds=[[]], binds=[[((nkey, (BnLocal rs, mode, bt)))]])
     PIgnore: LoPatOut PaWild
@@ -1757,7 +1888,7 @@ fn LoUpdStmt lx, env, s = match s.kind:
         match p.kind:
             PName n:
                 if (Take n.sigils, 1) == "&":
-                    let rs = LoSnake (SNameKey n)
+                    let rs = LoLocalName lx, (SNameKey n)
                     let bt = LoTy lx, (LoPeel (LoBinderTy lx, n.span))
                     let pa = if LoKnownTy bt: PaTyped (PaBind "mut {rs}"), bt else: PaBind "mut {rs}"
                     (([[(DoLet pa, v)]], (LoBind env, (SNameKey n), (BnLocal rs, "own", bt))))
@@ -1864,7 +1995,7 @@ fn LoParamNames lx, clauses, pts = Each (Range0 (Len pts)), \|i|
     let names = Each clauses, \|c| LoPlainBinder lx, (Or c.params[i], dummyPat)
     let first = Or names[0], ""
     let same = first != "" and Fold names, True, \|ok, n| ok and n == first
-    if same: ((LoSnake first, False)) else: (((LoParamWord (Or pts[i], RsUnit), i), True))
+    if same: (((LoLocalName lx, first), False)) else: (((LoParamWord (Or pts[i], RsUnit), i), True))
 
 # The binder a parameter pattern is, when it is one: its name with sigils.
 LoPlainBinder: fn Lx, Pattern -> Text
@@ -2007,11 +2138,14 @@ fn LoTailHere lx, env, e = match e.kind:
             let jobName = LoPathIn lx, (LoOwnerOf qk), (LoCamel (BareName qk))
             let ((ptys, ignore)) = LoSchemeParts lx, qk
             let fields = LoJobFieldNames lx, qk
-            let vals = Each args, \|a| LoOwn (LoX lx, env, a.value)
-            XCtor "prism_rtl::Turn::More", [[(XCall "Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XRaw "()"))))))]])]]
+            let vals = LoNamedArgsOwned lx, env, qk, args
+            if LoIsColorPoly lx, qk: XMethod (XCall (LoPathIn lx, (LoOwnerOf qk), "start_{job}"), vals), "cycle", [[]]
+            else: XCtor "prism_rtl::Turn::More", [[(XCall "Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XRaw "()"))))))]])]]
         nil: match ?LoLocalJobFn lx, env, callee:
-            ? f: XMethod (LoStartCall f, (Each args, \|a| LoOwn (LoX lx, env, a.value))), "cycle", [[]]
-            nil: XCtor "prism_rtl::Turn::Finished", [[LoOwn (LoX lx, env, e)]]
+            ? f: XMethod (LoStartCall f, (LoStartArgs lx, env, f, args)), "cycle", [[]]
+            nil: match ?LoPreludeJobCall lx, env, e:
+                ? job: XMethod job, "cycle", [[]]
+                nil: XCtor "prism_rtl::Turn::Finished", [[LoOwn (LoX lx, env, e)]]
     otherwise: XCtor "prism_rtl::Turn::Finished", [[LoOwn (LoX lx, env, e)]]
 
 LoTailBlock: unbounded fn Lx, LoEnv, Block -> Ex
@@ -2055,7 +2189,9 @@ fn ?LoFrameCall lx, env, e, top:
                     ? ignore: ? e
                     nil: match ?LoLocalJobFn lx, env, c:
                         ? ignore: ? e
-                        nil: nil
+                        nil: match ?LoPreludeJobCall lx, env, e:
+                            ? ignore: ? e
+                            nil: nil
         EMatch x, ignore: ?LoFrameCall lx, env, x, False
         EIf (CondExpr x), ignore, ignore: ?LoFrameCall lx, env, x, False
         EBinary op, l, r: if op == "and" or op == "or": ?LoFrameCall lx, env, l, False else: ?LoFirstFrame lx, env, [[l, r]]
@@ -2100,14 +2236,20 @@ fn LoFrame lx, env, call, restText, Cont = match call.kind:
             otherwise: acc
         let dos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (LoOwn (VlPlace (XRaw rs), mode, bt))
         let env2 = Fold caps, env, \|en, ((k, rs, ignore, bt))| LoBind en, k, (BnLocal rs, "own", bt)
-        let vals = Each args, \|a| LoOwn (LoX lx, env2, a.value)
+        let vals = match ?qk:
+            ? q: LoNamedArgsOwned lx, env2, q, args
+            nil: match ?LoLocalJobFn lx, env2, c:
+                ? f: LoStartArgs lx, env2, f, args
+                nil: Each args, \|a| LoOwn (LoX lx, env2, a.value)
         let env3 = LoBindSpan env2, (LoKey lx, call.span), (VlOwned (XRaw v), t)
         let body = Cont env3
         let ((job, how)) = match ?qk:
-            ? q: (((XCall (LoPathIn lx, (LoOwnerOf q), "start_{base}"), vals), "call_then"))
+            ? q: (((XCall (LoPathIn lx, (LoOwnerOf q), "start_{base}"), vals), (if LoIsColorPoly lx, q: "call_value" else: "call_then")))
             nil: match ?LoLocalJobFn lx, env2, c:
                 ? f: (((LoStartCall f, vals), "call_value"))
-                nil: (((XRaw "unreachable!()"), "call_then"))
+                nil: match ?LoPreludeJobCall lx, env2, call:
+                    ? pj: ((pj, "call_value"))
+                    nil: (((XRaw "unreachable!()"), "call_then"))
         let enter = XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
         if (Len dos) == 0: enter else: XBlock dos, enter
     otherwise: Cont env
@@ -2193,7 +2335,7 @@ fn ?LoTailCallee lx, env, callee = match callee.kind:
         else:
             let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
             match ?qk:
-                ? qk: if HasText lx.unbs, qk: ? qk else: nil
+                ? qk: if (HasText lx.unbs, qk) and not (LoInPrelude lx, qk): ? qk else: nil
                 nil: nil
     otherwise: nil
 
@@ -3332,7 +3474,7 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let ((tys, apps, bs, ims)) = LoTables tp
     let mods = LoNeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (LoModName m)
-    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, rsNames=(LoValueNames g), layouts=(LoLayouts g), unbs=[[]], notes=[[]])
+    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, rsNames=(LoValueNames g), layouts=(LoLayouts g), unbs=[[]], notes=[[]], globals=(LoGlobalNames g))
     let lx = update lx0:
         &_.unbs <= LoJobRoots lx0
     let roots = LoRootWidgets lx
@@ -3440,10 +3582,27 @@ fn LoUnboundedValues lx, d:
                     nil: acc
         otherwise: acc
 
+# A function whose color is a variable (`u fn`, D8): unbounded where a caller gives it an
+# unbounded closure. Entering it is not a cycle point (it is not an unbounded function);
+# the calls it makes through its closures are.
+LoInPrelude: fn Lx, Text -> Bool
+fn LoInPrelude lx, q = match lx.g.vals[q]:
+    ? v: v.home == "Prelude"
+    nil: False
+
+LoIsColorPoly: fn Lx, Text -> Bool
+fn LoIsColorPoly lx, q = match lx.g.vals[q]:
+    ? v: match v.scheme.ty:
+        TyFn (CQ ignore), ignore, ignore: True
+        TyFn (CRigid ignore), ignore, ignore: True
+        otherwise: False
+    nil: False
+
 LoIsUnbounded: fn Lx, Text -> Bool
 fn LoIsUnbounded lx, q = match lx.g.vals[q]:
     ? v: match v.scheme.ty:
-        TyFn CUnbound, ignore, ignore: True
+        TyFn CBound, ignore, ignore: False
+        TyFn ignore, ignore, ignore: True
         otherwise: False
     nil: False
 
@@ -3480,7 +3639,8 @@ fn LoTailsOfBody lx, body = Fold (BodyExprs body), [[]], \|acc, e| match e.kind:
         let q = LoBlueprintQk lx, c
         match lx.g.vals[q]:
             ? v: match v.scheme.ty:
-                TyFn CUnbound, ignore, ignore: AddText acc, q
+                TyFn CBound, ignore, ignore: acc
+                TyFn ignore, ignore, ignore: AddText acc, q
                 otherwise: acc
             nil: acc
     otherwise: acc

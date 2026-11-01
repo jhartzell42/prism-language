@@ -1,0 +1,5 @@
+# The locals' tests: declarations of be-local-names.prism (Semantics chapter 6).
+
+test locals_keep_their_names, @shown:
+    build
+        => expect Ui.Label(text="small 2 2 / big 10 10")

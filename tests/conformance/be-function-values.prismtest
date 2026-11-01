@@ -1,0 +1,7 @@
+# The function values' tests: declarations of be-function-values.prism (Semantics chapter 6).
+
+test functions_cross_the_boundary, @Shown 3:
+    build
+        => expect Ui.Label(text="6 12 Circle 3")
+    compute until idle
+        => expect Ui.Label(text="6 12 Circle 3 5")

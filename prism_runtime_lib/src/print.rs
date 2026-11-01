@@ -258,11 +258,23 @@ impl<K: Show + Ord + Clone, V: Show + Clone> Show for Map<K, V> {
     }
 }
 
-impl<A: Show, B: Show> Show for (A, B) {
-    fn show(&self, p: &mut Printer) {
-        p.tuple(&[&self.0, &self.1]);
-    }
+/// A tuple prints as the printer's tuple, for the arities a program writes (pods have
+/// the same, `pod_tuple!`).
+macro_rules! show_tuple {
+    ($($t:ident $i:tt),+) => {
+        impl<$($t: Show),+> Show for ($($t,)+) {
+            fn show(&self, p: &mut Printer) {
+                p.tuple(&[$(&self.$i),+]);
+            }
+        }
+    };
 }
+
+show_tuple!(A 0, B 1);
+show_tuple!(A 0, B 1, C 2);
+show_tuple!(A 0, B 1, C 2, D 3);
+show_tuple!(A 0, B 1, C 2, D 3, E 4);
+show_tuple!(A 0, B 1, C 2, D 3, E 4, F 5);
 
 fn fields(fs: &[(std::rc::Rc<str>, Pod)]) -> Vec<(&str, &dyn Show)> {
     fs.iter().map(|(n, v)| (&**n, v as &dyn Show)).collect()

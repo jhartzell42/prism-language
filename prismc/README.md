@@ -692,7 +692,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
 `tests/compiled/run.sh`, whose default set is what passes:
 
-- **Pass (12):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
+- **Pass (16):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
   has its shape (fields `count: Hold<Int>` and the merge's two `Stamped` inputs,
   `inc`/`dec` recording and asking for the wake, `wake` deciding left first, `patch`
@@ -703,8 +703,9 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   1 to 3`); `sem-ch07-walk`, a recursion that is not a tail call, one frame per pending
   `+` (`5 ticks, 1 to 5`); and the back end's own tests, one per construct prismc's
   self-compile needed: `be-let-fn-pair`, `be-unbounded-value`, `be-unbounded-lambda`,
-  `be-row-local`, `be-template-attrs`, `be-error-try`, `be-nat-literal`, `be-inference`.
-  `be-unbounded-prelude` fails by gap DS (1 tick where D6 has 4).
+  `be-row-local`, `be-template-attrs`, `be-error-try`, `be-nat-literal`, `be-inference`,
+  `be-unbounded-prelude`, `be-local-names`, `be-tuple-show` (`prism_rtl` shows and pods
+  tuples up to six), `be-function-values`.
 - **The rest of the corpus** runs by name (`tests/compiled/run.sh todos`)
   and is not in the default set until a chunk makes it pass: the lowering above reaches
   `for` rows, `rebuild`, jobs, traits and modules, but nothing past these is
@@ -750,7 +751,9 @@ Each is Claude's, for Jimmy to overturn.
 - **NM Names.** Rust's conventions from the program's names: `$count` is the field
   `count`, `!inc` the method `inc`, `ParseNat` the function `parse_nat`, `?Reduce`
   `reduce`. Sigils go; when two values of a module share a base (`?ParseNat`,
-  `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`), and a
+  `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`); so do
+  locals (`?half` is `half_opt` beside `half`), and a local named as a function of its
+  module or the prelude takes a `_` (`kind_` beside `Kind`'s `kind`, `be-local-names`); a
   top-level `let` that shares its base with a function takes `_value` (`let hexDigits`
   is `hex_digits_value()` beside `HexDigits`'s `hex_digits`). A Rust keyword or a name
   the emitted code uses (`cx`, `node`, `path`, `v`) takes a `_`. `Job` and `Turn`, which
@@ -830,9 +833,21 @@ Each is Claude's, for Jimmy to overturn.
   lowered as a job body (`once_job`), so a call in it is a tail call or a frame, and
   entering a lambda is not a cycle point (compiler zero's count: `be-unbounded-lambda`,
   `5 ticks`). A job calls a value now (`call_value`, the callee's first cycle in this
-  one); direct-style code runs it to its result (`run_to_end`); a prelude function given
-  one gets an adapter (`&|x0| run_to_end(f(x0.clone()))`, gap DS). Every unbounded
-  function is also a direct-style Rust function, for the calls gap DS leaves.
+  one); direct-style code runs it to its result (`run_to_end`). A function type whose
+  color is not `bounded` (unbounded, or a color variable `u`, D8) is a `Start`, so a
+  function with a `u fn` parameter takes one whatever its caller gives: a bounded
+  function value is wrapped in a job that answers in its first cycle, a constructor is
+  a closure (`Make Circle, n`), a lambda is a job lambda (`be-function-values`). A
+  color-polymorphic function (`Twice: u fn Nat, (u fn Nat -> Nat) -> Nat`) has a job
+  too; a job enters it at once (`start_twice(..).cycle()`), since it is not an unbounded
+  function, and its calls through its closures are the cycle points.
+- **D8 The prelude's higher-order functions** given a closure that is not bounded are
+  jobs: `fold_job`, `each_job`, `filter_job` and their map variants, which call the
+  closure through `call_value`, so each call of a named unbounded function is a cycle
+  point (`be-unbounded-prelude`: `Each xs, Double` over three, `4 ticks`). A job makes
+  one a frame or a tail call; direct-style code runs it to its result. Given a bounded
+  closure they are the plain functions over `&dyn Fn`. Every unbounded function is
+  also a direct-style Rust function, for the calls gap DS leaves.
 - **ER `Error(..)` where a `~T` is wanted** is `Err(..)`: as an argument (the checker's
   pick ER), in a branch of an `if` whose value is a `~T`, and as the firing of an event
   that feeds a `!~T` (`be-error-try`).
@@ -902,9 +917,8 @@ ruling taken (Claude's).
   expression makes whatever its value: in a statement, an argument, an operand, a
   scrutinee or a condition, at any depth. A call under a lambda (a closure an unbounded
   `Fold` is given, D8), in an arm of a `match` or a branch of an `if` that is not in tail
-  position, or right of `and`/`or`, still runs direct-style inside the cycle, and so does
-  an unbounded value given to a prelude function (its adapter); such a job takes fewer
-  ticks than D6 says (`be-unbounded-prelude`: compiler zero takes 4 ticks, prismc 1, so it stays out of `tests/compiled/run.sh`'s passing set).
+  position, or right of `and`/`or`, still runs direct-style inside the cycle; such a job
+  takes fewer ticks than D6 says.
   *Next:* a non-tail `match` binds its continuation once (`let k = Rc::new(move |x|
   ..)`) and each arm frames into it; the prelude's higher-order functions as jobs. Cost:
   a cycle walks the frames, so it is linear in the pending calls.

@@ -639,6 +639,74 @@ pub fn once_job<B: 'static>(body: impl FnOnce() -> Turn<B> + 'static) -> Rc<dyn 
     Rc::new(Once(std::cell::RefCell::new(Some(Box::new(body)))))
 }
 
+/// A job's result, mapped: `g` runs in the cycle the job finishes (entering is free).
+pub fn map_job<B: 'static, C: 'static>(job: Rc<dyn Job<B>>, g: impl FnOnce(B) -> C + 'static) -> Rc<dyn Job<C>> {
+    Rc::new(Frame { callee: job, then: std::cell::RefCell::new(Some(Box::new(move |b| Turn::Finished(g(b))))) })
+}
+
+// ---- The higher-order functions as jobs (D8): given an unbounded closure, `Fold`, `Each`
+// and `Filter` call it as a job, each call a cycle point when it enters a named function
+// (D6), so that a closure's calls cost the cycles the books count.
+
+fn fold_from<A: Clone + 'static, B: Clone + 'static>(xs: Array<A>, i: usize, acc: B, f: Rc<dyn Fn((B, A)) -> Rc<dyn Job<B>>>) -> Turn<B> {
+    match xs.get(i).cloned() {
+        None => Turn::Finished(acc),
+        Some(x) => {
+            let g = f.clone();
+            call_value(f((acc, x)), move |b| fold_from(xs, i + 1, b, g))
+        }
+    }
+}
+
+pub fn fold_job<A: Clone + 'static, B: Clone + 'static>(xs: Array<A>, init: B, f: Rc<dyn Fn((B, A)) -> Rc<dyn Job<B>>>) -> Rc<dyn Job<B>> {
+    once_job(move || fold_from(xs, 0, init, f))
+}
+
+pub fn fold_map_job<K: Ord + Clone + 'static, V: Clone + 'static, B: Clone + 'static>(m: Map<K, V>, init: B, f: Rc<dyn Fn((B, K, V)) -> Rc<dyn Job<B>>>) -> Rc<dyn Job<B>> {
+    let pairs: Array<(K, V)> = m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    fold_job(pairs, init, Rc::new(move |(acc, (k, v)): (B, (K, V))| f((acc, k, v))))
+}
+
+pub fn each_job<A: Clone + 'static, B: Clone + 'static>(xs: Array<A>, f: Rc<dyn Fn(A) -> Rc<dyn Job<B>>>) -> Rc<dyn Job<Array<B>>> {
+    fold_job(xs, Array::new(), Rc::new(move |(acc, x): (Array<B>, A)| {
+        map_job(f(x), move |b| {
+            let mut acc = acc;
+            acc.push_back(b);
+            acc
+        })
+    }))
+}
+
+pub fn each_map_job<K: Ord + Clone + 'static, V: Clone + 'static, B: Clone + 'static>(m: Map<K, V>, f: Rc<dyn Fn((K, V)) -> Rc<dyn Job<B>>>) -> Rc<dyn Job<Array<B>>> {
+    let pairs: Array<(K, V)> = m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    each_job(pairs, f)
+}
+
+pub fn filter_job<A: Clone + 'static>(xs: Array<A>, keep: Rc<dyn Fn(A) -> Rc<dyn Job<bool>>>) -> Rc<dyn Job<Array<A>>> {
+    fold_job(xs, Array::new(), Rc::new(move |(acc, x): (Array<A>, A)| {
+        map_job(keep(x.clone()), move |k| {
+            let mut acc = acc;
+            if k {
+                acc.push_back(x);
+            }
+            acc
+        })
+    }))
+}
+
+pub fn filter_map_job<K: Ord + Clone + 'static, V: Clone + 'static>(m: Map<K, V>, keep: Rc<dyn Fn((K, V)) -> Rc<dyn Job<bool>>>) -> Rc<dyn Job<Map<K, V>>> {
+    let pairs: Array<(K, V)> = m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    fold_job(pairs, Map::new(), Rc::new(move |(acc, (k, v)): (Map<K, V>, (K, V))| {
+        map_job(keep((k.clone(), v.clone())), move |keep| {
+            let mut acc = acc;
+            if keep {
+                acc.insert(k, v);
+            }
+            acc
+        })
+    }))
+}
+
 /// A job run to its result inside the cycle: a call of an unbounded function value from
 /// direct-style code (gap DS of prismc/README.md).
 pub fn run_to_end<B>(job: Rc<dyn Job<B>>) -> B {
