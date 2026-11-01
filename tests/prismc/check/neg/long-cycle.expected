@@ -1,0 +1,5 @@
+tests/prismc/check/neg/long-cycle.prism:7: error[may-not-end]: `Ring0` calls itself on `k`, not smaller than what it was given
+    fn Ring0 k = Ring1 k
+                 ^^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+1 error

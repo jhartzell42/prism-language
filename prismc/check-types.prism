@@ -122,10 +122,11 @@ type St = record:
     recording: Bool
     typed: TProgram
     choices: (Text ==> [Text])
+    sizeTys: (Text ==> Ty)
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={})
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={})
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
@@ -224,6 +225,19 @@ fn NoteChoice st, file, span, cls, ch:
     if (Take cls, 6) == "Range " or cls == "Prelude.Sub" or cls == "Prelude.Signed": st
     else: update st:
         &_.choices <= Insert &_.choices, k, (AddText (Or &_.choices[k], [[]]), ch)
+
+# The operand type of every `-?` and every call of a `Min`, by file and range, kept
+# whether or not the typed program is recorded: the shrink check takes the `? m` of `n -?
+# 1` as smaller, and `Min a, b` as no larger than `a`, only when the solver made the
+# operand a `Nat` (Semantics ch. 7, "a smaller natural number"; a `Min` by `^Ord` of two
+# trees may return the bigger one).
+NoteSizeTy: fn St, Range, Ty -> St
+fn NoteSizeTy st, span, t = match t:
+    TyFn ignore, ps, ignore: match ps[0]:
+        ? p: update st:
+            &_.sizeTys <= Insert &_.sizeTys, "{st.file}:{span.start}:{span.end}", p
+        nil: st
+    otherwise: st
 
 ChoiceKey: fn Nat, Range, Text -> Text
 fn ChoiceKey file, span, cls = "{file}:{span.start}:{span.end}:{cls}"

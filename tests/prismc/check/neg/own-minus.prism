@@ -1,0 +1,19 @@
+# `may-not-end`: a program's own `-?` says nothing about size (pick SW). Money's `-?`
+# adds, so `Spend` never ends, though it is written as a countdown; `Pay` counts a `Nat`
+# down with the prelude's `-?`, and checks clean.
+type Money = choice:
+    Cents Nat
+derive ^Eq, ^Show
+
+impl ^Num Money:
+    fn -? (Cents a), (Cents b) = ? (Cents (a + b + 1))
+
+Spend: fn Money -> Nat
+fn Spend m = match m -? (Cents 1):
+    nil: 0
+    ? left: Spend left
+
+Pay: fn Nat -> Nat
+fn Pay n = match n -? 1:
+    nil: 0
+    ? m: Pay m

@@ -1,0 +1,5 @@
+tests/prismc/check/neg/type-arrow.prism:6: error[may-not-end]: `R` stands left of a function arrow in its own definition: a call through the function it holds is a cycle, and nothing in it shrinks
+    type R = choice:
+    ^^^^^^^^^^^^^^^^
+  fix: keep `R` right of the arrow, or make the arrow `unbounded fn`, which makes every call through it unbounded
+1 error

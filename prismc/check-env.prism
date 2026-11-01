@@ -148,6 +148,7 @@ type G = record:
     elemFams: [Text]
     rootModule: ?Text
     fnAt: (Text ==> Nat)
+    preludeFrom: Nat
 derive ^Eq, ^Show
 
 # The primitive types (prism_rt's own; prelude.prism declares none of them).
@@ -190,7 +191,7 @@ fn IsUpperText t = IsUpper (Take t, 1)
 # The program's files, parsed: the environment, and the diagnostics of every declaration.
 BuildG: unbounded fn [Src], [Module] -> ((G, St))
 fn BuildG srcs, trees:
-    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], rootModule=nil, fnAt={})
+    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], rootModule=nil, fnAt={}, preludeFrom=(Len trees))
     let st0 = NewSt 0
     let ((g1, st1)) = Fold (Range0 (Len trees)), ((g0, st0)), \|((g, st)), i| AddModule g, st, i, (Or trees[i], emptyModule)
     let g2 = AddBuiltins g1

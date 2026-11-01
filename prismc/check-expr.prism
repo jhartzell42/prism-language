@@ -361,7 +361,8 @@ fn InferBinary env, st, op, lhs, rhs, span:
     else:
         let ((t0, st2)) = InferName env, st, (SName(sigils="", path=[[op]], span=span)), span
         let t = if op == "/": QuotientOf st2, t0 else: t0
-        let st3 = if op == "-": SubWant st2, t, span else: st2
+        let st2b = if op == "-?": NoteSizeTy st2, span, (Walk st2, t0) else: st2
+        let st3 = if op == "-": SubWant st2b, t, span else: st2b
         ApplyFn env, st3, op, t, args, span
 
 # The prelude's `/: fn a, a -> ?a` read as Type System ch. 3 has it, `fn a, a -> Quotient a`
@@ -563,7 +564,8 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
             else: match env.g.vals[qk]:
                 ? v:
                     let ((t, st2, ignore)) = InstantiateWith st, v.scheme, span, explicit
-                    let st3 = NoteCallee (NoteMethodUse st2, v, span), n.span, cspan, t
+                    let st3a = NoteCallee (NoteMethodUse st2, v, span), n.span, cspan, t
+                    let st3 = if (BareName qk) == "Min": NoteSizeTy st3a, span, (Walk st3a, t) else: st3a
                     if (BareName qk) == "Fold" and v.home == "Prelude": FoldApp env, st3, t, args, span
                     else: ApplyFn env, st3, name, t, args, span
                 nil: match env.g.ctors[qk]:

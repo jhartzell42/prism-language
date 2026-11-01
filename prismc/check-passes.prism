@@ -337,7 +337,8 @@ fn IsDelayedWidget n = HasText [["@Defer", "@Later", "@Run", "@Machine", "@start
 BlockPromptCycles: unbounded fn Env, St, Block -> St
 fn BlockPromptCycles env, st, b:
     let defs = Fold b.stmts, [[]], \|acc, s| Append acc, (StmtDefs s)
-    let edges = Fold b.stmts, [[]], \|acc, s| Append acc, (PromptEdges env, st, s, defs)
+    let cx = PCx(g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts))
+    let edges = Fold b.stmts, [[]], \|acc, s| Append acc, (PromptEdges env, st, cx, s, defs)
     let cyc = FindCycle defs, edges
     if (Len cyc) == 0: st
     else:
@@ -352,16 +353,16 @@ fn StmtDefs s = match s.kind:
 
 # The prompt edges a statement adds: from each name it defines to each name of the block
 # its right side reads promptly.
-PromptEdges: unbounded fn Env, St, Stmt, [Text] -> [((Text, Text))]
-fn PromptEdges env, st, s, defs = match s.kind:
+PromptEdges: unbounded fn Env, St, PCx, Stmt, [Text] -> [((Text, Text))]
+fn PromptEdges env, st, cx, s, defs = match s.kind:
     SBind ignore, ignore, (? ignore): [[]]
-    SBind p, e, nil: Edges (PatternNames p), (PromptReads env, st, e, defs)
+    SBind p, e, nil: Edges (PatternNames p), (PromptReads cx, e, defs)
     SLet p, ignore, e:
         let names = PatternNames p
         let layer = Fold names, "", \|acc, n| match env.locals[n]:
             ? sc: HeadSigil st, sc.ty
             nil: acc
-        Edges names, (Filter (PromptReads env, st, e, defs), \|n| ReadIsPrompt env, st, n, layer)
+        Edges names, (Filter (PromptReads cx, e, defs), \|n| ReadIsPrompt env, st, n, layer)
     otherwise: [[]]
 
 Edges: fn [Text], [Text] -> [((Text, Text))]
@@ -380,11 +381,49 @@ fn ReadIsPrompt env, st, n, layer = match env.locals[n]:
             otherwise: (IsLowerText (Drop n, (Len (MarksOf n)))) and h == ""
     nil: False
 
-# What the prompt walk resolves names against: the program and the block's module.
+# What the prompt walk resolves names against: the program and the block's module; the
+# lambdas the block's `let`s bind, at any depth, by where each starts; the relations a
+# right side of the block starts from (`PromptBase`).
 type PCx = record:
     g: G
     home: Text
+    lams: (Nat ==> Expr)
+    base: (Text ==> Rel)
 derive ^Eq, ^Show
+
+# The relations every right side of a block starts from: the prelude's names that no
+# local of the block's scope hides, and the block's own `let NAME = \|..| ..` lines
+# (`lamlet:NAME`, pick PS).
+PromptBase: unbounded fn Env, [Stmt] -> (Text ==> Rel)
+fn PromptBase env, stmts:
+    let pre = PreludeSeeds env.g, env.home
+    let seeds = Fold (Keys pre), pre, \|m, k| if HasKey env.locals, (Drop k, 4): Remove m, k else: m
+    Fold stmts, seeds, \|m, s| LamLetRels s, m
+
+# A `let NAME = \|..| ..`: the name means that lambda where it is in scope, by where the
+# lambda starts (pick PS), until something binds the name again (`Hide`).
+LamLetRels: fn Stmt, (Text ==> Rel) -> (Text ==> Rel)
+fn LamLetRels s, m = match s.kind:
+    SLet p, ignore, e: match ((p.kind, (?LambdaOf e))):
+        ((PName n, ? lam)): Insert m, "lamlet:{SNameKey n}", Rel(param=lam.span.start, strict=False)
+        otherwise: m
+    otherwise: m
+
+?LambdaOf: fn Expr -> ?Expr
+fn ?LambdaOf e = match e.kind:
+    ELambda ignore, ignore: ? e
+    EGroup x: ?LambdaOf x
+    otherwise: nil
+
+# Every lambda a `let` of these statements binds, at any depth, by where it starts.
+LetLambdas: unbounded fn [Stmt] -> (Nat ==> Expr)
+fn LetLambdas stmts = Fold (StmtsSpots stmts, {}), {}, \|m, sp| match sp:
+    SpotStmt s, ignore: match s.kind:
+        SLet ignore, ignore, e: match ?LambdaOf e:
+            ? lam: Insert m, lam.span.start, lam
+            nil: m
+        otherwise: m
+    otherwise: m
 
 # The block's names a right side reads promptly, through the shrink check's one walk (pick
 # GH): every name it mentions at any depth, a guard's, a method call's, a cast's and a
@@ -396,11 +435,9 @@ derive ^Eq, ^Show
 # now. A name bound again inside the right side (a lambda's parameter, an arm's binder, an
 # inner `let`) is not the block's. Every name is resolved: a delayed widget or a traversal
 # is the prelude's only when the name resolves to the prelude's declaration.
-PromptReads: unbounded fn Env, St, Expr, [Text] -> [Text]
-fn PromptReads env, st, e, defs:
-    let cx = PCx(g=env.g, home=env.home)
-    let seeds = Fold (Keys (PreludeSeeds env.g, env.home)), (PreludeSeeds env.g, env.home), \|m, k| if HasKey env.locals, (Drop k, 4): Remove m, k else: m
-    let spots = PromptSpots cx, e, seeds
+PromptReads: unbounded fn PCx, Expr, [Text] -> [Text]
+fn PromptReads cx, e, defs:
+    let spots = PromptSpots cx, e, cx.base
     Fold spots, [[]], \|acc, sp| Fold (SpotSites sp), acc, \|a2, site| if (HasText defs, site.callee) and not (IsLocal site.rels, site.callee): AddText a2, site.callee else: a2
 
 PromptSpots: unbounded fn PCx, Expr, (Text ==> Rel) -> [Spot]
@@ -422,22 +459,44 @@ fn PromptKids cx, e, m = match e.kind:
 PromptCallKids: unbounded fn PCx, Expr, ?Text, (Text ==> Rel) -> [Kid]
 fn PromptCallKids cx, e, ?n, m = match ?n:
     ? n:
-        if IsLocal m, n: OpenLambdas (ExprKids e, m)
+        let called = FollowLamLet cx, n, m
+        if IsLocal m, n: Append called, (OpenLambdas cx, (ExprKids e, m))
+        else: if (Len called) > 0: Append called, (OpenLambdas cx, (ExprKids e, m))
         else: match ?ResolveCallee cx.g, cx.home, n:
             ? k:
                 if (IsPreludeKey cx.g, k) and (IsDelayedWidget (Drop k, 8)): [[]]
                 else: if (IsPreludeKey cx.g, k) and (Take (Drop k, 8), 1) == "@": ExprKids e, m
-                else: OpenLambdas (ExprKids e, m)
-            nil: OpenLambdas (ExprKids e, m)
-    nil: OpenLambdas (ExprKids e, m)
+                else: OpenLambdas cx, (ExprKids e, m)
+            nil: OpenLambdas cx, (ExprKids e, m)
+    nil: OpenLambdas cx, (ExprKids e, m)
 
-# A lambda among the children read through its body, its parameters bound there.
-OpenLambdas: unbounded fn [Kid] -> [Kid]
-fn OpenLambdas kids = Each kids, \|k| match k:
+# A lambda among the children read through its body, its parameters bound there; a name
+# a block's `let` binds to a lambda (`let f = \|x| x + b`, then `Apply 1, f`) read through
+# that lambda's body, by following the binding.
+OpenLambdas: unbounded fn PCx, [Kid] -> [Kid]
+fn OpenLambdas cx, kids = Fold kids, [[]], \|acc, k| match k:
     KidExpr x, m: match x.kind:
-        ELambda ?ps, body: LambdaKid body, (Hide m, (PatternsNames (Or ?ps, [[]])))
-        otherwise: k
-    otherwise: k
+        ELambda ?ps, body: Push acc, (LambdaKid body, (Hide m, (PatternsNames (Or ?ps, [[]]))))
+        EName n: Append (Push acc, k), (FollowLamLet cx, (SNameKey n), m)
+        otherwise: Push acc, k
+    otherwise: Push acc, k
+
+# The body of the lambda a `let` bound `n` to, where `n` still means it (`lamlet:`), read
+# with the relations of the block the prompt check is over (where the lambda was written,
+# at its widest: an inner binding between the two hides nothing), its parameters bound;
+# each lambda followed once along a path (`seen:START`), so a lambda that names itself ends.
+FollowLamLet: unbounded fn PCx, Text, (Text ==> Rel) -> [Kid]
+fn FollowLamLet cx, n, m = match m["lamlet:{n}"]:
+    ? r:
+        if HasKey m, "seen:{r.param}": [[]]
+        else: match cx.lams[r.param]:
+            ? lam: match lam.kind:
+                ELambda ?ps, body:
+                    let seen = Fold (Keys m), cx.base, \|m2, k| if (Take k, 5) == "seen:": Insert m2, k, noRel else: m2
+                    [[(LambdaKid body, (Hide (Insert seen, "seen:{r.param}", noRel), (PatternsNames (Or ?ps, [[]]))))]]
+                otherwise: [[]]
+            nil: [[]]
+    nil: [[]]
 
 PromptKidSpots: unbounded fn PCx, Kid -> [Spot]
 fn PromptKidSpots cx, k = match k:
@@ -507,7 +566,7 @@ fn EscapeStmts env, st, stmts = Fold stmts, st, \|s, stmt| match stmt.kind:
             if (Take n.sigils, 1) == "&": s
             else: match env.locals[SNameKey n]:
                 ? ignore: s
-                nil: if CallsLocalMaker e: ErrFix s, "local-escapes", stmt.span, "a `Buffer` cannot leave its block: `{SNameKey n}` is no `&` local", "write `let &{SNameKey n} = ...`" else: s
+                nil: if CallsLocalMaker env, e: ErrFix s, "local-escapes", stmt.span, "a `Buffer` cannot leave its block: `{SNameKey n}` is no `&` local", "write `let &{SNameKey n} = ...`" else: s
         otherwise: s
     SWhile ignore, body: EscapeStmts env, s, body.stmts
     SExpr e: match e.kind:
@@ -521,36 +580,63 @@ fn EscapeStmts env, st, stmts = Fold stmts, st, \|s, stmt| match stmt.kind:
         otherwise: s
     otherwise: s
 
-CallsLocalMaker: fn Expr -> Bool
-fn CallsLocalMaker e = match e.kind:
-    ECall c, ignore, ignore, ignore: match c.kind:
-        EName n: HasText [["Buffer.Numbered", "Buffer.Empty", "Table.Empty"]], (SNameKey n)
-        otherwise: False
-    EName n: HasText [["Buffer.Empty", "Table.Empty"]], (SNameKey n)
-    EGroup x: CallsLocalMaker x
+# A call of a block-local maker, `Buffer.Numbered n`, `Buffer.Empty` or `Table.Empty`, by
+# what the name resolves to where it stands (the checker's own builtins), never by its text.
+CallsLocalMaker: fn Env, Expr -> Bool
+fn CallsLocalMaker env, e = match e.kind:
+    ECall c, ignore, ignore, ignore: (?MakerOf env, c) != nil
+    EName ignore: match ?MakerOf env, e:
+        ? k: k != "Buffer.Numbered"
+        nil: False
+    EGroup x: CallsLocalMaker env, x
     otherwise: False
 
-# After `Freeze &x`, `&x` is gone, as a Rust value after a move.
-FrozenStmts: unbounded fn Env, St, [Stmt], (Text ==> Nat) -> (((Text ==> Nat), St))
-fn FrozenStmts env, st, stmts, frozen = Fold stmts, ((frozen, st)), \|((fz, s)), stmt|
-    let reads = StmtRefs stmt
-    let s2 = Fold reads, s, \|s1, ((n, sp))| match fz[n]:
-        ? line: ErrFix s1, "frozen", sp, "`{n}` was frozen on line {line + 1}", "use the frozen value, or make a new local"
-        nil: s1
-    let fz2 = Fold (FreezesIn stmt), fz, \|m, n| Insert m, n, (CLineOf env.src.starts, stmt.span.start)
-    ((fz2, s2))
+?MakerOf: fn Env, Expr -> ?Text
+fn ?MakerOf env, c = match ?CalleeName c:
+    ? n:
+        if HasKey env.locals, n: nil
+        else: match ?ResolveName env.g, env.home, n:
+            ? k: if (IsLocalMaker k) and (Or env.g.vals[k], dummyVal).sort == "builtin": ? k else: nil
+            nil: nil
+    nil: nil
 
-# The `&` names a statement reads, with where.
-StmtRefs: unbounded fn Stmt -> [((Text, Range))]
-fn StmtRefs s = match s.kind:
-    SSet t, v: Append (RefsIn t), (RefsIn v)
-    SAccum t, ignore, v: Append (RefsIn t), (RefsIn v)
-    SLet ignore, ignore, v: RefsIn v
-    SExpr e: RefsIn e
-    SWhile c, ignore: match c:
-        CondExpr x: RefsIn x
-        CondBind ignore, x, ignore: RefsIn x
+# After `Freeze &x`, `&x` is gone, as a Rust value after a move. A statement freezes what
+# a call of the prelude's `Freeze` is given anywhere in it (resolved where it stands, pick
+# RN: a local or a program's own `Freeze` freezes nothing), and a statement after it that
+# names the local anywhere in it is `frozen`; a `let` that binds the name again makes a
+# new local.
+FrozenStmts: unbounded fn Env, St, [Stmt], (Text ==> Nat) -> (((Text ==> Nat), St))
+fn FrozenStmts env, st, stmts, frozen:
+    let pre = PreludeSeeds env.g, env.home
+    let seeds = Fold (Keys pre), pre, \|m, k| if HasKey env.locals, (Drop k, 4): Remove m, k else: m
+    let bm = BlockRels stmts, seeds
+    Fold stmts, ((frozen, st)), \|((fz, s)), stmt|
+        let spots = StmtSpots stmt, bm
+        let reads = Fold spots, [[]], \|acc, sp| Append acc, (SpotRefs sp)
+        let s2 = Fold reads, s, \|s1, ((n, sp))| match fz[n]:
+            ? line: ErrFix s1, "frozen", sp, "`{n}` was frozen on line {line + 1}", "use the frozen value, or make a new local"
+            nil: s1
+        let fz1 = match stmt.kind:
+            SLet p, ignore, ignore: Fold (PatternNames p), fz, \|m, n| Remove m, n
+            otherwise: fz
+        let fz2 = Fold spots, fz1, \|m, sp| Fold (SpotFreezes sp), m, \|m2, n| Insert m2, n, (CLineOf env.src.starts, stmt.span.start)
+        ((fz2, s2))
+
+# The `&` names a spot reads, with where.
+SpotRefs: fn Spot -> [((Text, Range))]
+fn SpotRefs (SpotExpr e, ignore) = match e.kind:
+    EName n: if (Take n.sigils, 1) == "&": [[((SNameKey n, n.span))]] else: [[]]
     otherwise: [[]]
+fn SpotRefs (SpotStmt ignore, ignore) = [[]]
+
+# The `&` locals a spot's call of the prelude's `Freeze` is given.
+SpotFreezes: unbounded fn Spot -> [Text]
+fn SpotFreezes (SpotExpr e, m) = match ?CallOf e:
+    ? ((c, args)): match ?CalleeName c:
+        ? n: if PreIs m, n, "Freeze": Fold args, [[]], \|acc, a| Append acc, (Each (RefsIn a.value), \|((n2, ignore))| n2) else: [[]]
+        nil: [[]]
+    nil: [[]]
+fn SpotFreezes (SpotStmt ignore, ignore) = [[]]
 
 RefsIn: unbounded fn Expr -> [((Text, Range))]
 fn RefsIn e = match e.kind:
@@ -564,21 +650,6 @@ fn RefsIn e = match e.kind:
     EGroup x: RefsIn x
     ETuple es: Fold es, [[]], \|acc, x| Append acc, (RefsIn x)
     EArray es: Fold es, [[]], \|acc, x| Append acc, (RefsIn x)
-    otherwise: [[]]
-
-FreezesIn: unbounded fn Stmt -> [Text]
-fn FreezesIn s = match s.kind:
-    SSet ignore, v: FreezeArgs v
-    SLet ignore, ignore, v: FreezeArgs v
-    SExpr v: FreezeArgs v
-    otherwise: [[]]
-
-FreezeArgs: unbounded fn Expr -> [Text]
-fn FreezeArgs e = match e.kind:
-    ECall c, args, ignore, ignore: match c.kind:
-        EName n: if (SNameKey n) == "Freeze": Fold args, [[]], \|acc, a| Append acc, (Each (RefsIn a.value), \|((n2, ignore))| n2) else: Fold args, [[]], \|acc, a| Append acc, (FreezeArgs a.value)
-        otherwise: [[]]
-    EGroup x: FreezeArgs x
     otherwise: [[]]
 
 # Inside `for &s <- &p:` the path `&p` is lent to the loop: a set through a path that
@@ -657,6 +728,8 @@ type Shrink = record:
     choices: (Text ==> [Text])
     sums: (Text ==> Nat)
     seeds: (Text ==> (Text ==> Rel))
+    localOf: (Text ==> Text)
+    localBase: (Text ==> (Text ==> Rel))
 derive ^Eq, ^Show
 
 # The reference graph's cycles that the size-change principle cannot show end are
@@ -667,24 +740,151 @@ fn ShrinkCheck g, st, defs:
     let fns = Each (Filter defs, \|d| (Len (DefClauses d)) > 0), \|d| OwnKey d
     let byKey = Fold fns, {}, \|m, d| Insert m, d.qk, d
     let homes = Fold fns, [[]], \|acc, d| AddText acc, d.home
-    let pre = Fold homes, {}, \|m, h| Insert m, h, (PreludeSeeds g, h)
-    let sk0 = Shrink(g=g, fns=fns, byKey=byKey, targets=(MethodTargets g, fns), implDefs=(ImplDefs g, fns), choices=st.choices, sums={}, seeds=pre)
+    let nats = NatMinusSeeds st
+    let pre = Fold homes, {}, \|m, h| Insert m, h, (Fold (Keys nats), (PreludeSeeds g, h), \|m2, k| Insert m2, k, noRel)
+    let sk0 = Shrink(g=g, fns=fns, byKey=byKey, targets=(MethodTargets g, fns), implDefs=(ImplDefs g, fns), choices=st.choices, sums={}, seeds=pre, localOf={}, localBase={})
     let sk1 = update sk0:
         &_.sums <= PartsSummaries sk0, fns
-    let sk = update sk1:
+    let skg = update sk1:
         &_.seeds <= HofSeeds sk1, homes
-    let refs = Each fns, \|d| ((d.qk, (DefRefs sk, d)))
-    let keys = Each fns, \|d| d.qk
+    let walked = Each fns, \|d| DefWalk skg, d
+    let sk = WithLocals skg, (Fold walked, [[]], \|acc, ((ignore, ignore, ls))| Append acc, ls)
+    let refs = Append (Each walked, \|((k, rs, ignore))| ((k, rs))), (Each (Drop sk.fns, (Len fns)), \|d| ((d.qk, (DefRefs sk, d))))
+    let keys = Each sk.fns, \|d| d.qk
     let sccs = Sccs keys, refs
-    let st2 = Fold sccs, st, \|s, comp| ShrinkComponent sk, s, comp
+    let st2 = Fold sccs, (NegativeTypes g, st), \|s, comp| ShrinkComponent sk, s, comp
     Fold fns, st2, \|s, d| LoopsOf sk, s, d
 
-# A definition's clauses: a function's, an impl's method's, a trait's default method's.
+# ---- Pick NT. "A type that appears left of a function arrow in its own definition is a
+# cycle" (Semantics ch. 7, "Finding the cycles"). `type R = choice: Wrap (fn R -> Nat)`
+# lets `Omega r = Unwrap r, r` call itself through the function an `R` holds, and no call
+# graph shows it: so the type is the cycle, and nothing in it shrinks. It is
+# `may-not-end` at the type, unless every arrow the type stands left of is `unbounded
+# fn`, whose calls are unbounded and spread the color as ch. 7 says. Left of an arrow is
+# anywhere inside a parameter of a function type, at any depth; another type the
+# definition names is read through its own definition, with its parameters filled, so a
+# type reached through `Box R` or a mutual definition is found too.
+NegativeTypes: unbounded fn G, St -> St
+fn NegativeTypes g, st:
+    let arrowy = ArrowyTypes g
+    Fold (Keys g.types), st, \|s, n| NegativeType g, s, arrowy, n
+
+# A type no arrow can reach (`ArrowyTypes`) stands left of none, and is not walked.
+NegativeType: unbounded fn G, St, (Text ==> Bool), Text -> St
+fn NegativeType g, s, arrowy, n = match g.types[n]:
+    ? ti:
+        let ((neg, ignore)) = if ti.file >= g.preludeFrom or not (HasKey arrowy, n): ((False, {})) else: NegWalks g, n, (BodyTys ti), False, {}
+        if not neg: s
+        else:
+            let s0 = update s:
+                &_.file <= ti.file
+            let s1 = ErrFix s0, "may-not-end", ti.span, "`{BareName n}` stands left of a function arrow in its own definition: a call through the function it holds is a cycle, and nothing in it shrinks", "keep `{BareName n}` right of the arrow, or make the arrow `unbounded fn`, which makes every call through it unbounded"
+            update s1:
+                &_.file <= s.file
+    nil: s
+
+# The types whose definitions reach a function arrow: one written in it, or a type it
+# names that does, to a fixed point (each round adds a type or ends).
+ArrowyTypes: unbounded fn G -> (Text ==> Bool)
+fn ArrowyTypes g:
+    let names = Fold (Keys g.types), {}, \|m, n| match g.types[n]:
+        ? ti: Insert m, n, (Fold (BodyTys ti), [[]], \|acc, t| UnionTexts acc, (TyNamesIn t))
+        nil: m
+    let direct = Fold (Keys g.types), {}, \|m, n| match g.types[n]:
+        ? ti: if Fold (BodyTys ti), False, \|seen, t| seen or HasArrow t: Insert m, n, True else: m
+        nil: m
+    ArrowyFrom names, direct
+
+ArrowyFrom: unbounded fn (Text ==> [Text]), (Text ==> Bool) -> (Text ==> Bool)
+fn ArrowyFrom names, got:
+    let next = Fold (Keys names), got, \|m, n| if HasKey m, n: m else: if Fold (Or names[n], [[]]), False, \|seen, r| seen or HasKey got, r: Insert m, n, True else: m
+    if (Len (Keys next)) == (Len (Keys got)): got else: ArrowyFrom names, next
+
+# The named types a type mentions at any depth, inside function types too.
+TyNamesIn: unbounded fn Ty -> [Text]
+fn TyNamesIn t = match t:
+    TyCon c, args: Fold args, [[c]], \|acc, a| UnionTexts acc, (TyNamesIn a)
+    TyFn ignore, ps, res: Fold ps, (TyNamesIn res), \|acc, a| UnionTexts acc, (TyNamesIn a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TyNamesIn a)
+    TyArray e: TyNamesIn e
+    TyMap k, v: UnionTexts (TyNamesIn k), (TyNamesIn v)
+    TySig ignore, i: TyNamesIn i
+    TyAt i, ignore: TyNamesIn i
+    TyElem ignore, i: TyNamesIn i
+    TyAssoc ignore, i: TyNamesIn i
+    otherwise: [[]]
+
+HasArrow: unbounded fn Ty -> Bool
+fn HasArrow t = match t:
+    TyFn ignore, ignore, ignore: True
+    TyCon ignore, args: Fold args, False, \|seen, a| seen or HasArrow a
+    TyTuple ts: Fold ts, False, \|seen, a| seen or HasArrow a
+    TyArray e: HasArrow e
+    TyMap k, v: (HasArrow k) or HasArrow v
+    TySig ignore, i: HasArrow i
+    TyAt i, ignore: HasArrow i
+    TyElem ignore, i: HasArrow i
+    TyAssoc ignore, i: HasArrow i
+    otherwise: False
+
+# The types a definition is made of: a record's fields, a choice's cases' arguments, an
+# alias's type.
+BodyTys: fn TyInfo -> [Ty]
+fn BodyTys ti = match ti.body:
+    BRecord fields: Each fields, \|((ignore, t))| t
+    BChoice cases: Fold cases, [[]], \|acc, ((ignore, args))| Append acc, args
+    BAlias t: [[t]]
+    otherwise: [[]]
+
+# Whether `target` stands left of a bounded arrow in `t` (`b`: `t` itself already does).
+# A named type is read through its definition with its arguments in, once per arguments
+# and side for the whole walk (`seen`: what a type says once it says again); a walk that
+# never closes (a type that grows its own arguments) is taken as the cycle.
+NegWalk: unbounded fn G, Text, Ty, Bool, (Text ==> Bool) -> ((Bool, (Text ==> Bool)))
+fn NegWalk g, target, t, b, seen = match t:
+    TyCon c, args:
+        if c == target: ((b, seen))
+        else: match g.types[c]:
+            ? ti:
+                let sk = "{if b: "-" else: "+"}{ShowTy (NewSt 0), t}"
+                if HasKey seen, sk: ((False, seen))
+                else: if (Len (Keys seen)) > 400: ((True, seen))
+                else: NegWalks g, target, (Each (BodyTys ti), \|bt| SubstQ (ParamInst ti.params, args), bt), b, (Insert seen, sk, True)
+            nil: NegWalks g, target, args, b, seen
+    TyFn col, ps, res:
+        let ((bad, seen2)) = NegWalks g, target, ps, (b or col != CUnbound), seen
+        if bad: ((True, seen2)) else: NegWalk g, target, res, b, seen2
+    TyTuple ts: NegWalks g, target, ts, b, seen
+    TyArray e: NegWalk g, target, e, b, seen
+    TyMap k, v: NegWalks g, target, [[k, v]], b, seen
+    TySig ignore, i: NegWalk g, target, i, b, seen
+    TyAt i, ignore: NegWalk g, target, i, b, seen
+    TyElem ignore, i: NegWalk g, target, i, b, seen
+    TyAssoc ignore, i: NegWalk g, target, i, b, seen
+    otherwise: ((False, seen))
+
+NegWalks: unbounded fn G, Text, [Ty], Bool, (Text ==> Bool) -> ((Bool, (Text ==> Bool)))
+fn NegWalks g, target, ts, b, seen = Fold ts, ((False, seen)), \|((bad, sn)), t| if bad: ((True, sn)) else: NegWalk g, target, t, b, sn
+
+# Every `-?` whose operand the solver made a `Nat`, as `nat:FILE:START:END` (pick SW).
+NatMinusSeeds: unbounded fn St -> (Text ==> Rel)
+fn NatMinusSeeds st = Fold (Keys st.sizeTys), {}, \|m, k| match st.sizeTys[k]:
+    ? t: if (Zonk st, t) == tNat: Insert m, "nat:{k}", noRel else: m
+    nil: m
+
+# A definition's clauses: a function's, an impl's method's, a trait's default method's;
+# a top-level widget block's and a top-level `let`'s, each one clause without parameters.
+# A widget that binds itself builds itself forever (Semantics ch. 7, "a widget function
+# that binds itself is held to the same test"), and a `let` that reaches itself through
+# the functions it calls never has a value: both are cycles of the reference graph, with
+# no parameter to shrink.
 DefClauses: fn Def -> [FnClause]
 fn DefClauses d = match d.body:
     DbFn clauses: clauses
     DbMethod clauses, ignore, ignore: clauses
     DbDefault clauses, ignore: clauses
+    DbWidget w: [[FnClause(name=(DefSName w.name), params=[[]], body=(BodyBlock w.body), span=w.span)]]
+    DbLet l: [[FnClause(name=(DefOp d.name, l.span), params=[[]], body=(BodyExpr l.value), span=l.span)]]
     otherwise: [[]]
 
 # Two impls' methods share a key (`Prelude.Show impl Show`), so here each is told apart by
@@ -979,15 +1179,104 @@ fn ?MeetArgs calls, q = Fold calls, (? Rel(param=topParam, strict=False)), \|?ac
 # The definitions a body mentions, resolved to their keys; a name bound where it stands
 # (a parameter, a `let`, a pattern, a local `fn`) is not a global.
 DefRefs: unbounded fn Shrink, Def -> [Text]
-fn DefRefs sk, d = Fold (DefClauses d), [[]], \|acc, c|
-    let spots = BodySpots c.body, (ClauseBase sk, d, c)
-    Fold spots, acc, \|a1, sp| Fold (SpotSites sp), a1, \|a2, site| if IsLocal site.rels, site.callee: a2 else: match ?ResolveCallee sk.g, d.home, site.callee:
-        ? k: Fold (TargetsOf sk, k), a2, \|a3, t| if HasKey sk.byKey, t: AddText a3, t else: a3
-        nil: a2
+fn DefRefs sk, d = Fold (DefClauses d), [[]], \|acc, c| SpotsRefs sk, d, (BodySpots c.body, (ClauseBase sk, d, c)), acc
+
+SpotsRefs: unbounded fn Shrink, Def, [Spot], [Text] -> [Text]
+fn SpotsRefs sk, d, spots, acc = Fold spots, acc, \|a1, sp| Fold (SpotSites sp), a1, \|a2, site| match ?LocalTarget sk, d, site:
+        ? t: AddText a2, t
+        nil:
+            if (IsLocal site.rels, site.callee) or HasKey sk.localOf, d.qk: a2
+            else: match ?ResolveCallee sk.g, d.home, site.callee:
+                ? k: Fold (TargetsOf sk, k), a2, \|a3, t| if HasKey sk.byKey, t: AddText a3, t else: a3
+                nil: a2
+
+# ---- Pick LF. A local `fn` or widget is a definition of the shrink check too. This
+# never ends, and nothing global is on its cycle:
+#
+#     fn Grow n:
+#         fn Spin k = Spin k
+#         Spin n
+#
+# A call of a local is never a global's (pick RN), so `Spin k` was an edge to nothing.
+# Each local, every clause of it at any depth of a definition's body (`fn` lines of one
+# name in one block are one local), is a definition keyed by where it stands, its walk
+# starting from the relations where it is written less what they say of names (a captured
+# name is no parameter of the local) and its own parameters'. A call of a name that means
+# that local where it stands (`lfn:NAME`, by where the block's first clause of it starts)
+# is a call of it. A local's calls of globals stay where they were, read in place as the
+# enclosing definition's (its captured names related to the enclosing parameters), so the
+# local's own graphs are its calls of locals; a cycle among locals is cleared when the
+# enclosing definition is `unbounded fn`.
+WithLocals: unbounded fn Shrink, [((Def, Text, Text, (Text ==> Rel), ?FnClause, ?WidgetDecl))] -> Shrink
+fn WithLocals sk, found:
+    let ((bases, owners, clauses, wdecls)) = Fold found, (({}, {}, {}, {})), \|((bs, os, cs, ws)), ((d, gk, n, m, ?c, ?w))|
+        let qk = LocalKey n, d.qk, gk
+        let bs2 = if HasKey bs, qk: bs else: Insert bs, qk, (Marks m)
+        let os2 = Insert os, qk, d.qk
+        let cs2 = match ?c:
+            ? c: Insert cs, qk, (Push (Or cs[qk], [[]]), c)
+            nil: cs
+        let ws2 = match ?w:
+            ? w: Insert ws, qk, ((d, w))
+            nil: ws
+        ((bs2, os2, cs2, ws2))
+    let fnDefs = Fold (Keys clauses), [[]], \|acc, qk| match ((owners[qk], clauses[qk])):
+        ((? oq, ? cl)): match sk.byKey[oq]:
+            ? d: Push acc, Def(qk=qk, name=(Or (Split qk, " #")[0], qk), home=d.home, file=d.file, span=d.span, body=(DbFn cl))
+            nil: acc
+        otherwise: acc
+    let wDefs = Fold (Keys wdecls), [[]], \|acc, qk| match wdecls[qk]:
+        ? ((d, w)): Push acc, Def(qk=qk, name=(SNameKey w.name), home=d.home, file=d.file, span=w.span, body=(DbWidget w))
+        nil: acc
+    let locals = Append fnDefs, wDefs
+    update sk:
+        &_.fns <= Append &_.fns, locals
+        &_.byKey <= Fold locals, &_.byKey, \|m, d| Insert m, d.qk, d
+        &_.localOf <= owners
+        &_.localBase <= bases
+
+# A local's key: its name, the top-level definition that holds it, where its block's
+# first clause of it stands (`FILE.START`).
+LocalKey: fn Text, Text, Text -> Text
+fn LocalKey n, owner, gk = "{n} #local {owner} {gk}"
+
+# A top-level definition's references (`DefRefs`) and every local `fn` clause and local
+# widget its body holds, at any depth, from one walk: each local with where its name's
+# block group stands, its name, and the relations where it is written.
+DefWalk: unbounded fn Shrink, Def -> ((Text, [Text], [((Def, Text, Text, (Text ==> Rel), ?FnClause, ?WidgetDecl))]))
+fn DefWalk sk, d:
+    let ((refs, locals)) = Fold (DefClauses d), (([[]], [[]])), \|((rs, ls)), c|
+        let spots = BodySpots c.body, (ClauseBase sk, d, c)
+        (((SpotsRefs sk, d, spots, rs), (Fold spots, ls, \|a2, sp| Append a2, (SpotLocal d, sp))))
+    ((d.qk, refs, locals))
+
+SpotLocal: fn Def, Spot -> [((Def, Text, Text, (Text ==> Rel), ?FnClause, ?WidgetDecl))]
+fn SpotLocal d, sp = match sp:
+    SpotStmt s, m: match s.kind:
+        SFn f:
+            let n = DefNameText f.name
+            match m["lfn:{n}"]:
+                ? r: [[((d, "{d.file}.{r.param}", n, m, (? f), nil))]]
+                nil: [[]]
+        SWidget w:
+            let n = SNameKey w.name
+            match m["lfn:{n}"]:
+                ? r: [[((d, "{d.file}.{r.param}", n, m, nil, (? w)))]]
+                nil: [[]]
+        otherwise: [[]]
+    otherwise: [[]]
+
+# The local a site calls, when its name means one where it stands (pick LF).
+?LocalTarget: fn Shrink, Def, Site -> ?Text
+fn ?LocalTarget sk, d, site = match site.rels["lfn:{site.callee}"]:
+    ? r: ? (LocalKey site.callee, (Or sk.localOf[d.qk], d.qk), "{d.file}.{r.param}")
+    nil: nil
 
 # The relations a clause's walk starts from: its module's seeds, its parameters'.
 ClauseBase: unbounded fn Shrink, Def, FnClause -> (Text ==> Rel)
-fn ClauseBase sk, d, c = ParamRelsOn (Or sk.seeds[d.home], {}), c.params
+fn ClauseBase sk, d, c = match sk.localBase[d.qk]:
+    ? b: ParamRelsOn b, c.params
+    nil: ParamRelsOn (Insert (Or sk.seeds[d.home], {}), "file:", Rel(param=d.file, strict=False)), c.params
 
 # The key a site's name calls: an operator by its spelling, as inference reads it; a
 # template call's `<@Name` as `@Name`, else `Name`, as lowering reads it.
@@ -1049,7 +1338,7 @@ fn Collect rev, seen, comp, k:
 # smaller edge from a parameter to itself.
 ShrinkComponent: unbounded fn Shrink, St, [Text] -> St
 fn ShrinkComponent sk, st, comp:
-    if Fold comp, True, \|ok, k| ok and IsUnboundedKey sk.g, (SigKeyOf sk, k): st
+    if Fold comp, True, \|ok, k| ok and IsUnboundedKey sk.g, (SigKeyOf sk, (Or sk.localOf[k], k)): st
     else:
         let graphs = Fold sk.fns, [[]], \|acc, d| if HasText comp, d.qk: Append acc, (CallGraphs sk, d, comp) else: acc
         let closure = Closure graphs
@@ -1073,11 +1362,13 @@ ClauseGraphs: unbounded fn Shrink, Def, FnClause, [Text] -> [Sc]
 fn ClauseGraphs sk, d, c, comp:
     let base = ClauseBase sk, d, c
     let rels = SummarySeeds sk, d, (BodySpots c.body, base), base
-    Fold (BodySites c.body, rels), [[]], \|acc, site|
-        if IsLocal site.rels, site.callee: acc
-        else: match ?ResolveCallee sk.g, d.home, site.callee:
-            ? k: Fold (DispatchTargets sk, d, site, k), acc, \|acc2, t| if HasText comp, t: Push acc2, (SiteGraph sk, d, site, t) else: acc2
-            nil: acc
+    Fold (BodySites c.body, rels), [[]], \|acc, site| match ?LocalTarget sk, d, site:
+        ? t: if HasText comp, t: Push acc, (SiteGraph sk, d, site, t) else: acc
+        nil:
+            if (IsLocal site.rels, site.callee) or HasKey sk.localOf, d.qk: acc
+            else: match ?ResolveCallee sk.g, d.home, site.callee:
+                ? k: Fold (DispatchTargets sk, d, site, k), acc, \|acc2, t| if HasText comp, t: Push acc2, (SiteGraph sk, d, site, t) else: acc2
+                nil: acc
 
 # One call as a size-change graph: an edge from what each argument is no larger than to
 # the parameter it fills.
@@ -1107,6 +1398,15 @@ fn ArgSlots sk, args, k:
 ?ParamNamed: unbounded fn Shrink, Text, Text -> ?Nat
 fn ?ParamNamed sk, k, name:
     let clauses = DefClauses (Or sk.byKey[k], dummyDef)
+    if name == "#body": match clauses[0]:
+        ? c: if (Len c.params) > 0: ? (Dec (Len c.params)) else: nil
+        nil: nil
+    else: ?ParamNamedIn clauses, name
+
+# The place every clause that names `name` gives it (pick TK's rule, as the checker reads a
+# template call's attributes).
+?ParamNamedIn: unbounded fn [FnClause], Text -> ?Nat
+fn ?ParamNamedIn clauses, name:
     let found = Fold clauses, [[]], \|acc, c| Fold (Range0 (Len c.params)), acc, \|a2, i| match c.params[i]:
         ? p: if (ParamNameOf p) == name and not (HasNat a2, i): Push a2, i else: a2
         nil: a2
@@ -1150,9 +1450,13 @@ fn ParamRelsOn base, ps = Fold (Range0 (Len ps)), (Hide base, (PatternsNames ps)
 # not the prelude's. The map's other entries have a `:` in their keys, which no name has:
 # `local:NAME`, `pre:NAME` (the name resolves to the prelude's declaration), `fn:NAME`
 # (a summary, pick SM), `acc:NAME:J` and `sum:NAME:J:Q` (a closure parameter, pick CT),
-# `lam:` (inside a closure that may run later).
+# `lam:` (inside a closure that may run later), `ne:NAME` (the name is known non-empty
+# here, pick SM), `lamlet:NAME` (a block's `let NAME = \|..| ..`, by where the lambda
+# starts, pick PS), `lfn:NAME` (a local `fn` or widget, by where its block's first
+# clause of it starts, pick LF), `file:` (the file the walk is in) and `nat:FILE:START:END` (a `-?` the
+# solver made a `Nat`'s, pick SW). Binding a name again forgets its `ne:` and `lamlet:`.
 Hide: fn (Text ==> Rel), [Text] -> (Text ==> Rel)
-fn Hide m, names = Fold names, m, \|m2, n| Insert (Remove m2, n), "local:{n}", noRel
+fn Hide m, names = Fold names, m, \|m2, n| Insert (Remove (Remove (Remove (Remove m2, n), "ne:{n}"), "lamlet:{n}"), "lfn:{n}"), "local:{n}", noRel
 
 let noRel = Rel(param=0, strict=False)
 
@@ -1167,21 +1471,37 @@ fn PreIs m, n, bare = (n == bare or n == "Prelude.{bare}") and (HasKey m, "pre:{
 # The prelude's names the checks read for what they mean, and the spellings of each that
 # resolve to the prelude's own declaration from module `h`: the module `Prelude`'s, never
 # a local's or a program module's of the same name.
-let preludeNames = [["Drop", "Take", "Filter", "Remove", "Min", "Values", "Keys", "?Step", "Fold", "Each", "Push", "Insert", "Append", "@Defer", "@Later", "@Run", "@Machine", "@started"]]
+let preludeNames = [["Drop", "Take", "Filter", "Remove", "Min", "Values", "Keys", "?Step", "Fold", "Each", "Push", "Insert", "Append", "Freeze", "-?", "@Defer", "@Later", "@Run", "@Machine", "@started"]]
 
 PreludeSeeds: fn G, Text -> (Text ==> Rel)
 fn PreludeSeeds g, h = Fold preludeNames, {}, \|m, n|
     let q = "Prelude.{n}"
     if not (IsPreludeKey g, q): m
-    else: Fold [[n, q]], m, \|m2, sp| if (?ResolveName g, h, sp) == ? q: Insert m2, "pre:{sp}", noRel else: m2
+    else: Fold [[n, q]], m, \|m2, sp| if (?ResolveCallee g, h, sp) == ? q: Insert m2, "pre:{sp}", noRel else: m2
 
+# A key is the prelude's when module `Prelude` declares it in one of the prelude's own
+# files (from `g.preludeFrom` on), by module identity, never by the text of the name: a
+# program's own `module Prelude` is one of the program's files.
 IsPreludeKey: fn G, Text -> Bool
-fn IsPreludeKey g, q = (Take q, 8) == "Prelude." and HasKey g.vals, q
+fn IsPreludeKey g, q = match g.vals[q]:
+    ? v: (Take q, 8) == "Prelude." and v.home == "Prelude" and v.file >= g.preludeFrom
+    nil: False
 
 # A block is one binding group, so its names hide the outer ones on every line of it; then
 # each `let` and bind, in page order, relates its names from its subject.
 BlockRels: unbounded fn [Stmt], (Text ==> Rel) -> (Text ==> Rel)
-fn BlockRels stmts, m = Fold stmts, (Hide m, (StmtsBinders stmts)), \|m2, s| StmtRels s, m2
+fn BlockRels stmts, m = Fold stmts, (LocalFnMarks stmts, (Hide m, (StmtsBinders stmts))), \|m2, s| LamLetRels s, (StmtRels s, m2)
+
+# Each local `fn` and widget of a block, by where its first clause starts (pick LF).
+LocalFnMarks: fn [Stmt], (Text ==> Rel) -> (Text ==> Rel)
+fn LocalFnMarks stmts, m = Fold stmts, m, \|m2, s|
+    let ?n = match s.kind:
+        SFn f: ? (DefNameText f.name)
+        SWidget w: ? (SNameKey w.name)
+        otherwise: nil
+    match ?n:
+        ? n: if HasKey m2, "lfn:{n}": m2 else: Insert m2, "lfn:{n}", Rel(param=s.span.start, strict=False)
+        nil: m2
 
 # The names a block's own statements bind.
 StmtsBinders: unbounded fn [Stmt] -> [Text]
@@ -1189,6 +1509,7 @@ fn StmtsBinders stmts = Fold stmts, [[]], \|acc, s| match s.kind:
     SLet p, ignore, ignore: UnionTexts acc, (PatternNames p)
     SBind p, ignore, ignore: UnionTexts acc, (PatternNames p)
     SFn f: AddText acc, (DefNameText f.name)
+    SWidget w: AddText acc, (SNameKey w.name)
     otherwise: acc
 
 StmtRels: unbounded fn Stmt, (Text ==> Rel) -> (Text ==> Rel)
@@ -1204,7 +1525,7 @@ BindRels: unbounded fn Pattern, Expr, (Text ==> Rel), Bool -> (Text ==> Rel)
 fn BindRels p, e, m, refutable:
     let ?base = ?RelOf m, e
     let ?dec = ?DecrementOf m, e
-    let h = Hide m, (PatternNames p)
+    let h = NonEmptyRels (Hide m, (PatternNames p)), p, e, refutable
     match p.kind:
         PName n: match ?base:
             ? r: Insert h, (SNameKey n), r
@@ -1219,6 +1540,33 @@ fn BindRels p, e, m, refutable:
         otherwise: match ?base:
             ? r: Fold (PatternNames p), h, \|m2, n| Insert m2, n, Rel(param=r.param, strict=True)
             nil: h
+
+# A refutable pattern that took an element shows the collection non-empty where it binds
+# (pick SM, `Drop`): the `? x` of `xs[i]`, or an array pattern of one element or more on
+# `xs`. A pattern that binds the collection's name again shows nothing.
+NonEmptyRels: unbounded fn (Text ==> Rel), Pattern, Expr, Bool -> (Text ==> Rel)
+fn NonEmptyRels m, p, e, refutable = if not refutable: m else: match ?NonEmptyName p, e:
+    ? n: if HasText (PatternNames p), n: m else: Insert m, "ne:{n}", noRel
+    nil: m
+
+?NonEmptyName: fn Pattern, Expr -> ?Text
+fn ?NonEmptyName p, e = match e.kind:
+    EGroup x: ?NonEmptyName p, x
+    EIndex r, ignore: match p.kind:
+        PSigil "?", ignore: ?NameOf r
+        PGroup q: ?NonEmptyName q, e
+        otherwise: nil
+    EName n: match p.kind:
+        PArray ps: if (Len ps) > 0: ? (SNameKey n) else: nil
+        PGroup q: ?NonEmptyName q, e
+        otherwise: nil
+    otherwise: nil
+
+?NameOf: fn Expr -> ?Text
+fn ?NameOf e = match e.kind:
+    EName n: ? (SNameKey n)
+    EGroup x: ?NameOf x
+    otherwise: nil
 
 # A `match` arm's relations before its block: its pattern's, from the subject.
 ArmPatRels: unbounded fn Expr, Arm, (Text ==> Rel) -> (Text ==> Rel)
@@ -1430,12 +1778,12 @@ fn TemplateKids parts, m = Fold parts, [[]], \|acc, p| match p:
     otherwise: acc
 
 # `<@Name attr={{v}}>body</@Name>` is the call `Name` with its attributes as named
-# arguments and its body, a text, as the last positional one (Templates ch. 2; lowering
-# passes them so).
+# arguments and its body, a text, in the callee's last parameter (Templates ch. 2; pick
+# TK): the body is the argument named `#body`, which no attribute can be.
 TemplateCallExpr: fn SName, [Arg], ?[TemplatePart], Range -> Expr
 fn TemplateCallExpr n, args, ?ps, span:
     let body = match ?ps:
-        ? ps: [[ArgOf (Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span))]]
+        ? ps: [[Arg(name=(? Ident(name="#body", span=span)), value=(Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span)), span=span)]]
         nil: [[]]
     Expr(kind=(ECall (Expr(kind=(EName n), span=n.span)), (Append args, body), False, False), span=span)
 
@@ -1586,7 +1934,8 @@ fn ?LastExpr b = match ?Last b.stmts:
     nil: nil
 
 # What an expression is known to be no larger than: a parameter, a field of one (a part),
-# a text or array with something dropped from its front. A map's children are its parts
+# a text or array with something dropped from its front (strictly smaller only where a
+# pattern took an element of it, `ne:`; `Drop` of an empty list is the empty list). A map's children are its parts
 # (Semantics ch. 7, Keep shrinking; doubt TR): `Values m` and `Keys m` are no larger than
 # `m`, so a traversal over them hands out parts, and `m[k]` is no larger than `m`, so the
 # `? e` of a match on it is a part; an index on an array is its element likewise. A call
@@ -1603,8 +1952,21 @@ fn ?RelOf m, e = match e.kind:
     EIndex r, ignore: ?RelOf m, r
     EGroup x: ?RelOf m, x
     otherwise: match ?CallOf e:
-        ? ((c, args)): ?RelOfCall m, c, args
+        ? ((c, args)): if IsNonNatMin m, e, c: nil else: ?RelOfCall m, c, args
         nil: nil
+
+# A call of the prelude's `Min` that the solver did not make a `Nat`'s: no larger than
+# nothing, since `Min` by `^Ord` may return its second argument, of any size (pick SW).
+IsNonNatMin: fn (Text ==> Rel), Expr, Expr -> Bool
+fn IsNonNatMin m, e, c = match ?CalleeName c:
+    ? n: if PreIs m, n, "Min": not (IsNatAt m, e) else: False
+    nil: False
+
+# Whether the solver made the operand at this expression a `Nat` (`nat:` entries).
+IsNatAt: fn (Text ==> Rel), Expr -> Bool
+fn IsNatAt m, e = match m["file:"]:
+    ? f: HasKey m, "nat:{f.param}:{e.span.start}:{e.span.end}"
+    nil: False
 
 ?RelOfCall: unbounded fn (Text ==> Rel), Expr, [Arg] -> ?Rel
 fn ?RelOfCall m, c, args = match c.kind:
@@ -1613,7 +1975,7 @@ fn ?RelOfCall m, c, args = match c.kind:
         if (PreIs m, name, "Drop") and (Len args) == 2 and IsPositiveLit (Or args[1], dummyArg).value:
             match args[0]:
                 ? a: match ?RelOf m, a.value:
-                    ? x: ? Rel(param=x.param, strict=True)
+                    ? x: ? Rel(param=x.param, strict=(x.strict or KnownNonEmpty m, a.value))
                     nil: nil
                 nil: nil
         else: if ((PreIs m, name, "Values") or (PreIs m, name, "Keys")) and (Len args) == 1: ?RelOf m, (Or args[0], dummyArg).value
@@ -1621,6 +1983,12 @@ fn ?RelOfCall m, c, args = match c.kind:
             ? a: ?RelOf m, a
             nil: nil
     otherwise: nil
+
+# Whether a pattern above, in scope here, took an element of this name (`NonEmptyRels`).
+KnownNonEmpty: fn (Text ==> Rel), Expr -> Bool
+fn KnownNonEmpty m, e = match ?NameOf e:
+    ? n: HasKey m, "ne:{n}"
+    nil: False
 
 # A call in either spelling: `F x, y`, or `x.F y` as `F x, y`, as inference reads it.
 ?CallOf: fn Expr -> ?((Expr, [Arg]))
@@ -1793,13 +2161,19 @@ let dummyArg = Arg(name=nil, value=Expr(kind=EError, span=Range(start=0, end=0))
 # than `n` (Semantics ch. 7, a smaller natural number); `?Step c` likewise for a cursor.
 ?DecrementOf: unbounded fn (Text ==> Rel), Expr -> ?Rel
 fn ?DecrementOf m, e = match e.kind:
-    EBinary "-?", l, r: if IsPositiveLit r: ?Smaller m, l else: nil
+    EBinary "-?", l, r: if (IsPositiveLit r) and IsNatMinus m, e: ?Smaller m, l else: nil
     EGroup x: ?DecrementOf m, x
     otherwise: match ?CallOf e:
         ? ((c, args)): match ?CalleeName c:
             ? n: if PreIs m, n, "?Step": ?Smaller m, (Or args[0], dummyArg).value else: nil
             nil: nil
         nil: nil
+
+# Whether a `-?` is the prelude's on `Nat`: the name resolves to the prelude's `-?` where
+# it stands (pick RN), and the solver made its operand a `Nat` (`nat:` entries, from
+# `St.sizeTys`). An `Int`'s `-?` goes down forever, and a program's own `-?` is anything.
+IsNatMinus: fn (Text ==> Rel), Expr -> Bool
+fn IsNatMinus m, e = (PreIs m, "-?", "-?") and IsNatAt m, e
 
 ?Smaller: unbounded fn (Text ==> Rel), Expr -> ?Rel
 fn ?Smaller m, x = match ?RelOf m, x:
@@ -1814,15 +2188,22 @@ fn IsPositiveLit e = match e.kind:
     EGroup x: IsPositiveLit x
     otherwise: False
 
-# The composition closure of the size-change graphs.
+# The composition closure of the size-change graphs, to its fixed point: each round
+# composes the graphs the last round found with the call graphs, and a round that finds
+# nothing new ends it. It ends because the graphs are finitely many: a caller, a callee,
+# and a set of edges between their parameters. A cap on the rounds would stop before a
+# long cycle's bad graph is found, and accept it.
 Closure: unbounded fn [Sc] -> [Sc]
-fn Closure graphs = ClosureFrom graphs, graphs, 0
+fn Closure graphs = ClosureFrom graphs, (Dedup graphs), (Dedup graphs)
 
-ClosureFrom: unbounded fn [Sc], [Sc], Nat -> [Sc]
-fn ClosureFrom base, acc, rounds:
-    let fresh = Fold acc, [[]], \|out, a| Fold base, out, \|out2, b| AddComposed acc, out2, a, b
-    if (Len fresh) == 0 or rounds > 12: acc
-    else: ClosureFrom base, (Append acc, fresh), rounds + 1
+Dedup: fn [Sc] -> [Sc]
+fn Dedup gs = Fold gs, [[]], \|acc, g| if HasSc acc, g: acc else: Push acc, g
+
+ClosureFrom: unbounded fn [Sc], [Sc], [Sc] -> [Sc]
+fn ClosureFrom base, acc, frontier:
+    let fresh = Fold frontier, [[]], \|out, a| Fold base, out, \|out2, b| AddComposed acc, out2, a, b
+    if (Len fresh) == 0: acc
+    else: ClosureFrom base, (Append acc, fresh), fresh
 
 AddComposed: fn [Sc], [Sc], Sc, Sc -> [Sc]
 fn AddComposed acc, out, a, b:
@@ -1978,7 +2359,7 @@ fn IsZeroLit e = match e.kind:
 SetsStrict: unbounded fn Expr, Text, Nat, (Text ==> Rel) -> Bool
 fn SetsStrict e, v, vi, rels = match e.kind:
     EGroup x: SetsStrict x, v, vi, rels
-    EBinary "-?", l, ignore: SetsStrict l, v, vi, rels
+    EBinary "-?", l, ignore: (IsNatMinus rels, e) and SetsStrict l, v, vi, rels
     otherwise: (RelStrict rels, e, vi) or (CallStrict e, v, vi, rels)
 
 RelStrict: unbounded fn (Text ==> Rel), Expr, Nat -> Bool
@@ -1988,7 +2369,7 @@ fn RelStrict rels, e, vi = match ?RelOf rels, e:
 
 CallStrict: unbounded fn Expr, Text, Nat, (Text ==> Rel) -> Bool
 fn CallStrict e, v, vi, rels = match ?CallOf e:
-    ? ((c, args)): match ?NoLargerArg rels, c, args:
+    ? ((c, args)): if IsNonNatMin rels, e, c: False else: match ?NoLargerArg rels, c, args:
         ? a: SetsStrict a, v, vi, rels
         nil: False
     nil: False
@@ -2073,7 +2454,11 @@ derive ^Eq, ^Show
 # definition, the separate checkers, the root row against `world` when one is named.
 CheckProgram: unbounded fn [Src], [Module], [Text], Nat, Bool -> Report
 fn CheckProgram srcs, trees, world, shown, recording:
-    let ((g0, stb)) = BuildG srcs, trees
+    let ((g0a, stb)) = BuildG srcs, trees
+    # The prelude is the files from `shown` on (pick RN): a program's own `module Prelude`
+    # is one of its files, and means nothing special.
+    let g0 = update g0a:
+        &_.preludeFrom <= shown
     let st0 = update stb:
         &_.recording <= recording
     let ((g1, st1)) = TopLets g0, st0

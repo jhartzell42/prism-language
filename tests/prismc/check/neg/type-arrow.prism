@@ -1,0 +1,27 @@
+# `may-not-end`: a type that stands left of a function arrow in its own definition is a
+# cycle (Semantics ch. 7, "Finding the cycles"; pick NT). An `R` holds a function of
+# `R`s, so `Omega (Wrap Omega)` calls itself through the function it holds, and no call
+# graph shows the cycle. `Stream` stands right of its arrow and `Knot`'s arrow is
+# `unbounded fn`, and both check clean.
+type R = choice:
+    Wrap (fn R -> Nat)
+
+Unwrap: fn R, R -> Nat
+fn Unwrap (Wrap F), r = F r
+
+Omega: fn R -> Nat
+fn Omega r = Unwrap r, r
+
+type Stream = choice:
+    Done Nat
+    More (fn Nat -> Stream)
+
+First: fn Stream -> Nat
+fn First (Done n) = n
+fn First (More ignore) = 0
+
+type Knot = choice:
+    Tie (unbounded fn Knot -> Nat)
+
+Pull: unbounded fn Knot -> Nat
+fn Pull (Tie F) = F (Tie F)
