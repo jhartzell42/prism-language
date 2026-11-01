@@ -1029,17 +1029,40 @@ fn BindName env, st, n, t:
     else: BindFresh env, st, n, t
 
 BindFresh: unbounded fn Env, St, SName, Ty -> ((Env, St))
-fn BindFresh env, st, n, t:
+fn BindFresh env, st, n, t = BindFreshMarked env, st, n, (TypeMarks n.sigils), t
+
+# A binder whose type's stack must be `marks`: the name's own marks, or a level binder's
+# with the field's `$` taken off (`BindLevel`).
+BindFreshMarked: unbounded fn Env, St, SName, Text, Ty -> ((Env, St))
+fn BindFreshMarked env, st, n, marks, t:
     let name = SNameKey n
     let ((v, st2)) = FreshVar st, True, name
     let ((rw, st3)) = FreshRow st2, [[]]
-    let marked = WithMarks (TypeMarks n.sigils), v, rw
+    let marked = WithMarks marks, v, rw
     let ((ok, st4)) = TryUnify st3, t, marked, n.span
     let st5 = if ok: st4
         else:
             let stack = StackOf st3, t
-            ErrFix st3, "mark-stack", n.span, "`{name}` has type `{ShowTy st3, t}`, whose stack is `{stack}`; the name shows `{TypeMarks n.sigils}`", "rename to `{RefMark n.sigils}{stack}{Drop name, (Len n.sigils)}`"
+            ErrFix st3, "mark-stack", n.span, "`{name}` has type `{ShowTy st3, t}`, whose stack is `{stack}`; the name shows `{marks}`", "rename to `{RefMark n.sigils}{stack}{Drop name, (Len n.sigils)}`"
     (((WithLocal env, name, (Mono t)), (NoteBinder st5, n.span, name, t)))
+
+# A field of an element seen through a document (`Elem r`, a snapshot) binds its level
+# (doubt WL): a `$` field's value in that tick, plain. The binder may show the field's
+# declared `$`, as the tag declares it (`Ui.Label(text=$t)`, Pitch ch. 5's `held=$n`),
+# and the level drops it: `$t` is a `Text` there. A blueprint's element (`Element r o`:
+# an element expression, a supplier's `e`) binds each field with its stack.
+BindField: unbounded fn Env, St, Pattern, Ty, Bool -> ((Env, St))
+fn BindField env, st, p, ft, snapshot = match Walk st, ft:
+    TySig s, level if snapshot and s == "$": BindLevel env, st, p, level
+    otherwise: BindPattern env, st, p, ft, True
+
+BindLevel: unbounded fn Env, St, Pattern, Ty -> ((Env, St))
+fn BindLevel env, st, p, level = match p.kind:
+    PName n:
+        if (Take n.sigils, 1) == "$" and (Len n.path) == 1: BindFreshMarked env, st, n, (Drop n.sigils, 1), level
+        else: BindPattern env, st, p, level, True
+    PGroup q: BindLevel env, st, q, level
+    otherwise: BindPattern env, st, p, level, True
 
 BindCtor: unbounded fn Env, St, Pattern, SName, [Pattern], Ty -> ((Env, St))
 fn BindCtor env, st, p, n, args, t:
@@ -1088,20 +1111,29 @@ fn FieldPatName fp, fields, i = match fp.?name:
         otherwise: Or fields[i], ""
 
 # A tag arm `Net.Http(url, ..)` needs `Net` among the row's families, not its tail
-# (`row-not-here`), and binds the fields with their stacks.
+# (`row-not-here`), and binds the fields: with their stacks on a blueprint's element, as
+# levels on a document's (`BindField`).
 BindTagPattern: unbounded fn Env, St, Pattern, Text, [FieldPat], Bool, Ty -> ((Env, St))
 fn BindTagPattern env, st, p, name, fields, rest, t = match env.g.tags[name]:
     nil: ((env, (Err st, "unknown-name", p.span, "no tag `{name}`")))
     ? tg:
         let st1 = if tg.kind == "Element": TagInRow env, st, tg, t, p.span else: Unify st, t, (TyCon tg.kind, [[]]), p.span
+        let snapshot = IsSnapshot st1, t
         let ((ignore, st2, inst)) = InstantiateWith st1, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], bounds=[[]], ty=tg.out)), p.span, [[]]
         let names = Each tg.fields, \|((f, ignore))| f
         Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
             let fp = Or fields[i], FieldPat(name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
             let fname = FieldPatName fp, names, i
             match ?FieldOfTag tg, fname:
-                ? ft: BindPattern en, s, fp.pattern, (SubstQ inst, ft), True
+                ? ft: BindField en, s, fp.pattern, (SubstQ inst, ft), snapshot
                 nil: ((en, (Err s, "mismatch", fp.span, "`{name}` has no field `{fname}`")))
+
+# An element seen through a document: `Elem r`, the document's value type (Type System
+# ch. 2), as against a blueprint's `Element r o` (doubt WL).
+IsSnapshot: unbounded fn St, Ty -> Bool
+fn IsSnapshot st, t = match Walk st, t:
+    TyElemAny ignore: True
+    otherwise: False
 
 TagInRow: unbounded fn Env, St, TagInfo, Ty, Range -> St
 fn TagInRow env, st, tg, t, span = match Walk st, t:

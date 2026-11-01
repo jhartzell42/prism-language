@@ -256,7 +256,7 @@ an empty array's element), or one a local `let` quantified.
 
 ### Where it stands
 
-`tests/prismc/check/run.sh` checks every program of the corpus, the 48 negative cases and
+`tests/prismc/check/run.sh` checks every program of the corpus, the 49 negative cases and
 the two typed dumps. A program the books make wrong has its exact report in
 `tests/prismc/check/pos/NAME.expected`; each is listed here with the rule.
 
@@ -281,15 +281,14 @@ the two typed dumps. A program the books make wrong has its exact report in
   its own; the book's listing has no `use Fs.*`, doubt VW below).
 - **`examples/todos`** (1): `Add "item {$next}"` passes a `$Text` to a constructor, which
   takes every argument whole (Type System ch. 5, the application rule).
-- **`chess`** (62): `Turn` is declared by the window library and by the prelude (`Turn b`),
-  which every file uses with `*`, so the bare name is a collision at each use (Semantics
-  ch. 6); element patterns bind dynamic fields with plain names (`Ui.Label(text=t)`: a
-  field binds with its stack, Pitch ch. 5's `Cards.Hand(seat=s, held=$n, ...)`), and each
-  such arm's value is then a dynamic where the function returns a plain one; `Float`
-  takes an `Int` and is given `Nat`s (no subtyping, Type System ch. 2); `[[Path]]` is a
-  one-level array type (prism_syntax API.md AT), so `AfterOne`'s nested arrays mismatch;
-  `?found == nil` at a rigid `a` needs `where a: ^Eq` (ch. 3, `^Eq` of `?a`; ch. 5, at a
-  rigid variable the givens must entail it).
+- **`chess`** (2): with doubt WL's snapshot face, `TextsOf` and `Lay` check as plain
+  functions, and two cycles the shrink check cannot show end, which the type errors hid
+  (a definition that fails typing skips the shrink check). `TextsOf` calls `TextsIn` on a
+  part, and `TextsIn` folds over `Values cs`, a call, so its `e` is not known to be
+  smaller (doubt TR covers a traversal over a parameter or its part, not over `Values` or
+  `Keys` of one). `LayStack` traverses `Kids cs`, chess's own function, whose result the
+  checker cannot relate to `cs`. Each needs a rule the checker does not have, or
+  `unbounded fn`, which would stop `PlaceAt` lifting over the window's dynamics.
 - **`prelude`** (2): `gui.prism`'s `Turn` collides with `prelude.prism`'s `Turn b`
   (Semantics ch. 6); `ui.prism`'s `Ui.TextInput` answers `!Key`, and `ui.prism` declares
   no `Key`.
@@ -318,7 +317,7 @@ the two typed dumps. A program the books make wrong has its exact report in
   - `ambiguous` (1): `front.prism`'s `@Compile` gives up with an `Error` whose `~T` nothing
     decides (ch. 5, Defaulting).
 
-The negative cases (`neg/`, 48) give one diagnostic each, the error their name says.
+The negative cases (`neg/`, 49) give one diagnostic each, the error their name says.
 `layer-unknown` is new with this round; `refinement-escape` and `existential-escape` have
 no case, since the checker does not report them (gaps below).
 
@@ -377,6 +376,30 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   (`sem-appB-widgets`), and its `Ui.TextInput` names a `Key` it does not declare.
   *First ruling (Claude's):* `type Click = click` takes `derive ^Eq, ^Show`, and the tag
   takes `Gui.Key` or a `Key` of its own.
+- **WL An element has two faces.** A blueprint's element, `Element r o` (what an element
+  expression or `emit` makes, and what a host's supplier receives live), keeps each
+  field's stack: a pattern binds `text: $Text` as `$t` (Type System ch. 1, "Sigils on
+  fields"), and a bare `text=t` there is `mark-stack` (`neg/live-field-bare`). An element
+  seen through a document, `Elem r` (an entry of the `$(Path ==> Elem r)` a host form
+  gives, sampled by a plain function), is that tick's snapshot, Semantics ch. 8's `Level`:
+  a document is a value per tick, and the transcript prints its elements with plain
+  fields (`Ui.Label(text="Count: 0")`). A pattern on it binds each `$` field's current
+  value, plain. So `TextsOf` and `Lay` are plain functions, as Pitch ch. 5 says ("Layout
+  is `PlaceAt`, a plain function from the tree"). The checker tells the faces apart by
+  the type alone, `Elem r` against `Element r o` (Type System ch. 2 already calls `Elem r`
+  the document's value type), with no marker added.
+  - The binder may be bare (`text=t`) or show the field's declared `$` (`text=$t`), which
+    the level drops: either name is a `Text`. Chess's `TextsOf` and `Lay` write `$t`, as
+    Pitch ch. 5's `Masked` writes `held=$n` on an entry of `(Path ==> Elem)`. The `$t`
+    spelling names a plain value with a `$`, against ch. 1's "the whole stack, every time".
+  - `Masked`'s other half, building a document's element from levels (`Cards.Hand(held=$n,
+    ..)` with `$n` now a `Nat`), does not check: a plain value where a `$` field goes is a
+    mismatch, and an `Element` does not pack into an `Elem`.
+  - An `!` field of a snapshot still binds as an event, though a `Level` drops events.
+  - *First ruling (Claude's), for Jimmy to confirm:* the two faces as stated, both binder
+    spellings on a snapshot. *If otherwise:* only `text=t` on a snapshot, and chess's
+    patterns go back to bare names; or fields keep their stacks everywhere, and `TextsOf`
+    and `Lay` are lifted functions, against Pitch ch. 5.
 
 ### Gaps against ch. 5
 

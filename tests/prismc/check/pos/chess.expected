@@ -1,64 +1,9 @@
-examples/chess/window.prism:464: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Label(text=$t): WordSet $t
-                           ^^^^^^^^^^
-examples/chess/window.prism:465: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Button(label=$l): {$l: unit}
-                             ^^^^^^^^^^
-examples/chess/window.prism:466: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.TextInput(text=$t, cursor=$c, ..): {$t: unit, (Take $t, $c): unit}
-                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:467: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.VBox(children=$cs): TextsIn $cs
-                               ^^^^^^^^^^^
-examples/chess/window.prism:468: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.HBox(children=$cs): TextsIn $cs
-                               ^^^^^^^^^^^
-examples/chess/window.prism:469: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Row(children=$cs, ..): TextsIn $cs
-                                  ^^^^^^^^^^^
-examples/chess/window.prism:470: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Column(children=$cs, ..): TextsIn $cs
-                                     ^^^^^^^^^^^
-examples/chess/window.prism:471: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Layers(children=$cs): TextsIn $cs
-                                 ^^^^^^^^^^^
-examples/chess/window.prism:472: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Frame(children=$cs, ..): TextsIn $cs
-                                    ^^^^^^^^^^^
-examples/chess/window.prism:473: error[mismatch]: expected `Text ==> unit`, found `$(Text ==> unit)`
-        Ui.Grid(children=$cs, ..): TextsIn $cs
-                                   ^^^^^^^^^^^
-examples/chess/window.prism:742: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Label(text=$t): LayLabel env, $t, room
-                           ^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:743: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Button(label=$l): LayButton env, $l, room, chain
-                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:744: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.TextInput(text=$t, cursor=$c, ..): LayInput env, $t, $c, room, chain
-                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:745: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Image(src=$s, paint=$b): LayImage $s, $b, room, chain
-                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:746: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.VBox(children=$cs): LayStack env, $cs, room, chain, True, 0.0, Start
-                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:747: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.HBox(children=$cs): LayStack env, $cs, room, chain, False, 0.0, Start
-                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:748: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Column(spacing=g, align=a, children=$cs): LayStack env, $cs, room, chain, True, g, a
-                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:749: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Row(spacing=g, align=a, children=$cs): LayStack env, $cs, room, chain, False, g, a
-                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:750: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Layers(children=$cs): LayLayers env, $cs, room, chain
-                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:751: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Frame(spec=s, children=$cs): LayFrame env, s, $cs, room, chain
-                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-examples/chess/window.prism:752: error[mismatch]: expected `Laid`, found `$Laid`
-        Ui.Grid(columns=n, children=$cs): LayGrid env, n, $cs, room, chain
-                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-21 errors
+examples/chess/window.prism:460: error[may-not-end]: `TextsIn` calls itself on `e`, not smaller than what it was given
+    fn TextsIn cs = Fold (Values cs), {}, \|acc, e| Union acc, (TextsOf e)
+                                                                ^^^^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+examples/chess/window.prism:632: error[may-not-end]: `LayStack` calls itself on `env`, not smaller than what it was given
+        let natural = Each kids, \|((k, e))| Lay env, e, (RoomFor down, 0.0, huge, 0.0, (CrossMax down, room)), (Push chain, k)
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+2 errors
