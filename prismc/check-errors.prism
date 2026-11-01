@@ -1,0 +1,112 @@
+# The checker's diagnostics: Type System ch. 5's errors, each with its name, its position
+# and its fix, and how one prints (ch. 5, "The errors": `file:line:`, the line below, the
+# source with carets, and the fix).
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+module CheckErrors
+emit r
+use Ast.*
+use Lexer.*
+
+# One diagnostic. `code` is ch. 5's name for the error (`mismatch`, `row-lacks`, ...), or
+# one of the checker's own names its README lists (`unknown-name`, `collision`); `file`
+# is the file's index in the program; `fix` is empty when the message is the fix.
+type CDiag = record:
+    code: Text
+    file: Nat
+    span: Range
+    message: Text
+    fix: Text
+derive ^Eq, ^Show
+
+# A source file as the checker holds it: its path, its text, and where its lines start.
+type Src = record:
+    path: Text
+    text: Text
+    starts: [Nat]
+derive ^Eq, ^Show
+
+MkSrc: fn Text, Text -> Src
+fn MkSrc path, text = Src(path=path, text=text, starts=(CLineStarts text))
+
+Diag0: fn Text, Nat, Range, Text -> CDiag
+fn Diag0 code, file, span, message = CDiag(code=code, file=file, span=span, message=message, fix="")
+
+DiagFix: fn Text, Nat, Range, Text, Text -> CDiag
+fn DiagFix code, file, span, message, fix = CDiag(code=code, file=file, span=span, message=message, fix=fix)
+
+# Where each line begins, as a character offset.
+CLineStarts: fn Text -> [Nat]
+fn CLineStarts text:
+    let ((starts, ignore)) = Fold (Chars text), (([[0]], 0)), \|((acc, i)), c| if c == "\n": (((Push acc, i + 1), i + 1)) else: ((acc, i + 1))
+    starts
+
+# The zero-based line holding an offset.
+CLineOf: fn [Nat], Nat -> Nat
+fn CLineOf starts, offset = Dec (Fold starts, 0, \|n, s| if s <= offset: n + 1 else: n)
+
+# The text of line `n` (zero-based), without its newline.
+LineText: fn Src, Nat -> Text
+fn LineText src, n:
+    let from = Or src.starts[n], 0
+    let to = Or src.starts[n + 1], ((Len src.text) + 1)
+    Take (Drop src.text, from), (Or (to -? (from + 1)), 0)
+
+# The source a range covers.
+SpanText: fn Src, Range -> Text
+fn SpanText src, r = Take (Drop src.text, r.start), (Or (r.end -? r.start), 0)
+
+Repeat: fn Text, Nat -> Text
+fn Repeat t, n = Concat (Fold (Range0 n), [[]], \|acc, ignore| Push acc, t)
+
+# The numbers below `n`, without a block-local `Buffer` outside its block.
+Range0: fn Nat -> [Nat]
+fn Range0 n = update [[]]:
+    let &i = 0
+    let &left = n
+    while ? m <- &left -? 1:
+        &left <= m
+        &_ <= Push &_, &i
+        &i += 1
+
+# `file:line: error[code]: message`, the line, carets under the range, and the fix.
+RenderCDiag: fn [Src], CDiag -> Text
+fn RenderCDiag srcs, d = match srcs[d.file]:
+    nil: "?: error[{d.code}]: {d.message}\n"
+    ? src:
+        let line = CLineOf src.starts, d.span.start
+        let col = Or (d.span.start -? (Or src.starts[line], 0)), 0
+        let text = LineText src, line
+        let width = Max 1, (Min (Or (d.span.end -? d.span.start), 0), (Or ((Len text) -? col), 1))
+        let carets = "    {Repeat " ", col}{Repeat "^", width}"
+        let fix = if d.fix == "": "" else: "  fix: {d.fix}\n"
+        "{src.path}:{line + 1}: error[{d.code}]: {d.message}\n    {text}\n{carets}\n{fix}"
+
+# Diagnostics in order of file, then position, then the order they were found; duplicates
+# dropped.
+SortDiags: fn [CDiag] -> [CDiag]
+fn SortDiags ds = Fold ds, [[]], \|acc, d| InsertSorted acc, d
+
+InsertSorted: fn [CDiag], CDiag -> [CDiag]
+fn InsertSorted acc, d:
+    let before = Filter acc, \|x| not (DiagBefore2 d, x)
+    let after = Filter acc, \|x| DiagBefore2 d, x
+    if AnyIs acc, d: acc else: Append (Push before, d), after
+
+AnyIs: fn [CDiag], CDiag -> Bool
+fn AnyIs xs, d = Fold xs, False, \|seen, x| seen or x == d
+
+DiagBefore2: fn CDiag, CDiag -> Bool
+fn DiagBefore2 a, b:
+    if a.file != b.file: a.file < b.file
+    else: a.span.start < b.span.start
+
+# English for small counts, as ch. 5's `kind` message spells them.
+CountWord: fn Nat -> Text
+fn CountWord 0 = "no"
+fn CountWord 1 = "one"
+fn CountWord 2 = "two"
+fn CountWord 3 = "three"
+fn CountWord 4 = "four"
+fn CountWord n = Show n

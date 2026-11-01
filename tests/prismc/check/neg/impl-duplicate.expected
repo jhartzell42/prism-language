@@ -1,0 +1,5 @@
+tests/prismc/check/neg/impl-duplicate.prism:6: error[impl-duplicate]: a second impl of `^Show` for `Card`
+    impl ^Show Card:
+    ^^^^^^^^^^^^^^^^
+  fix: the first is at tests/prismc/check/neg/impl-duplicate.prism:2; keep one
+1 error

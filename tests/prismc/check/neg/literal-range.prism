@@ -1,0 +1,3 @@
+# `literal-range`: a literal out of its type's range.
+Byte: fn Int -> U8
+fn Byte n = 300

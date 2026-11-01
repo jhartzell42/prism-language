@@ -1,0 +1,5 @@
+tests/conformance/conf-ch01-motd.prism:13: error[mark-stack]: `!motd` has type `!~Contents`, whose stack is `!~`; the name shows `!`
+        !motd <- Fs.File(path="/etc/motd", requests=(Read on !started))   # 1
+        ^^^^^
+  fix: rename to `!~motd`
+1 error

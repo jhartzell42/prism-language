@@ -185,6 +185,228 @@ Places where compiler zero or the prelude lacks something, worked around in Pris
   (`prism_dyn::values::ctor_fn`), as it was before; the tables keep one entry per bare name,
   which is what `^Ord` and trait dispatch read (they have always been program-wide).
 
+## Checker
+
+Type System ch. 5 as a program: the environment of every file's declarations, inference
+under each signature with the marks read first (DB1c, D12), rows with families as the
+unit, traits with coherence, lifting decided per application, the color, then the
+separate passes in the book's order. It reports ch. 5's errors by their names, each with
+`file:line:`, the line, carets and the fix.
+
+```
+prism_zero run prismc/*.prism prismc/templates/*.prism -- --check FILES... [--out OUT] [--world Ui,Fs] [--prelude DIR]
+prism_zero run prismc/*.prism prismc/templates/*.prism -- --typed FILES... [--out OUT]
+tests/prismc/check/run.sh [--update] [NAMES...]
+```
+
+`--check` writes the diagnostics, then `no errors` or `N errors`, to OUT, and gives up
+(exit 1) when there is an error. The prelude's files from `--prelude DIR` join the program
+unless it replaces one (a module of the same name, or a tag of the file's family: the chess
+window library declares its own `Ui` tags, so `ui.prism` stays out); diagnostics are shown
+for the program's own files only. `--world` names the families a World answers, for the
+root row check. `--typed` writes the typed program (below), then the diagnostics as `;`
+lines.
+
+### Files
+
+- `check-errors.prism` (`CheckErrors`): a diagnostic, a source file, rendering, sorting.
+- `check-types.prism` (`CheckTypes`): the three layers of a type (plain, stack, color),
+  the inference state, unification with rows (Rémy's algorithm with families for labels,
+  lacks sets), schemes, the color's join, and the typed output's recorders.
+- `check-env.prism` (`CheckEnv`): modules, bare-name tables (a collision is an error at
+  the use), types and kinds, tags, traits, impls, coherence, signatures read as schemes
+  (one color variable per closure-taking signature without `$`, `!` or `@`, D8), trait
+  resolution with defaulting, waiting field accesses.
+- `check-expr.prism` (`CheckExpr`): expressions, the application rule, lifted `match` and
+  `if`, patterns and binders, local `let`s and their generalization (DB1a, doubt MR),
+  clauses under a signature.
+- `check-blocks.prism` (`CheckBlocks`): widget blocks, holds, binds, `rebuild`, `for`,
+  `given:`, `&` blocks, and binding groups' dependency order.
+- `check-passes.prism` (`CheckPasses`): exhaustiveness and reachability (Maranget's
+  usefulness), the prompt-cycle check, `&` borrows and escapes, the shrink check (size-change
+  graphs), inclusion and forwarding, the root row; `CheckProgram`, the whole checker.
+- `typed.prism` (`Typed`): the typed program and its S-expression printer.
+
+### The typed program
+
+`CheckProgram` with recording on gives a `Typed.TProgram`, for the back end: the tree as
+parsed, unchanged, with tables keyed by where each node stands (`At`: file and range),
+every type followed to its end once the program's last defaults are in.
+
+- `exprs: [TyNote]`: the type of every expression (callees included, as function types; a
+  tag or constructor as the function of its fields).
+- `apps: [AppNote]`: the lifting decision at every application, field access, text and
+  lifted `match` or `if`: the node kind (`plain`, `const`, `map`, `sample`, `gate`), the
+  result's time layer, the arguments peeled by position, the `?` or `~` peeled under it,
+  the call's color.
+- `fns: [FnNote]`: the color of every function, lambda and widget: declared, and the join
+  of what its body applies.
+- `methods: [MethodNote]` and `impls: [ImplNote]`: every method call with its trait, and how
+  every constraint at that place was solved (`impl FILE:LINE`, `derived FILE:LINE`,
+  `builtin`, `given`, `parts`, `packed`, `quantified`).
+- `groups: [GroupNote]`: every widget block's and expression block's statements in
+  strongly connected components, dependencies first, ties in page order.
+- `binders: [BinderNote]` and `defs: [DefNote]`: every binder's type and every top-level
+  definition's scheme.
+
+The dump walks the tree, so an expression the checker never annotated prints `unknown`;
+run.sh checks that chess's and the conformance counter's dumps have none. A variable left
+in a dump (`(var t12)`) is one nothing decides and nothing constrains (a supplier's `o`,
+an empty array's element), or one a local `let` quantified.
+
+### Where it stands
+
+`tests/prismc/check/run.sh` checks every program of the corpus, the 48 negative cases and
+the two typed dumps. A program the books make wrong has its exact report in
+`tests/prismc/check/pos/NAME.expected`; each is listed here with the rule.
+
+- **Clean:** `compiler-ch03-halfcounter`, `conf-ch01-counter`, `conf-ch01-journal`,
+  `sem-ch01-counter`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`, `sem-ch06-birds`,
+  `sem-ch07-births`, `sem-ch07-normalize`, `sem-ch07-paged`, `sem-ch07-rounds`,
+  `sem-ch09-hosts`, `ts-ch03-traits`, `ts-ch04-lifting`, `examples/counter`,
+  `examples/half-counter`.
+- **`conf-ch01-motd`** (1): `!motd` holds a `!~Contents`, and a name shows its type's whole
+  stack (Type System ch. 1, "The whole stack, every time"; D12). Conformance ch. 1 writes
+  `!motd`, Pitch ch. 8 `!~motd` (doubt CF below).
+- **`sem-appB-widgets`** (1): `Shown !numbered` needs `^Show` of `Click`, which
+  `prelude/ui.prism` declares without `derive` ("Nothing is derived without the line",
+  Type System ch. 3).
+- **`sem-ch04-labels`** (1): the lambda's `left` is a `?Nat`, so its name shows `?` (ch. 1;
+  ch. 5, a lambda's marks declare its parameters' layers).
+- **`sem-ch05-and-blocks`** (2): `Components`' two `while`s follow parent links, which end
+  only by an invariant; the book says itself that `Components` as written is unbounded
+  (Semantics ch. 5, "`while` and every tick ends").
+- **`sem-ch08-viewer`** (1): the file declares its own `type Contents`, which is not
+  `Fs.Contents`, the type `Fs.Contents`'s tag answers (Type System ch. 2: a declared type is
+  its own; the book's listing has no `use Fs.*`, doubt VW below).
+- **`examples/todos`** (1): `Add "item {$next}"` passes a `$Text` to a constructor, which
+  takes every argument whole (Type System ch. 5, the application rule).
+- **`chess`** (62): `Turn` is declared by the window library and by the prelude (`Turn b`),
+  which every file uses with `*`, so the bare name is a collision at each use (Semantics
+  ch. 6); element patterns bind dynamic fields with plain names (`Ui.Label(text=t)`: a
+  field binds with its stack, Pitch ch. 5's `Cards.Hand(seat=s, held=$n, ...)`), and each
+  such arm's value is then a dynamic where the function returns a plain one; `Float`
+  takes an `Int` and is given `Nat`s (no subtyping, Type System ch. 2); `[[Path]]` is a
+  one-level array type (prism_syntax API.md AT), so `AfterOne`'s nested arrays mismatch;
+  `?found == nil` at a rigid `a` needs `where a: ^Eq` (ch. 3, `^Eq` of `?a`; ch. 5, at a
+  rigid variable the givens must entail it).
+- **`prelude`** (2): `gui.prism`'s `Turn` collides with `prelude.prism`'s `Turn b`
+  (Semantics ch. 6); `ui.prism`'s `Ui.TextInput` answers `!Key`, and `ui.prism` declares
+  no `Key`.
+- **`prismc`** (213, the headline: the checker over its own 14 thousand lines, in about
+  ten and a half minutes under compiler zero). The checker's own files (`check-*.prism`,
+  `typed.prism`, `front.prism`'s `--check` branch) check clean; everything reported is in
+  the files written before there was a checker: `lower.prism` 113, `emit.prism` 28,
+  `parser.prism` 27, `sexp.prism` 23, `lexer.prism` 19, `front.prism` 2 (the front end
+  proper), `templates/rust.prism` 1. By rule:
+  - `mark-stack` (168): names and field reads that hide a `?` (`let first = clauses[0]`,
+    `match arm.pattern:` for `arm.?pattern`; Type System ch. 1, "The whole stack, every
+    time" and "Sigils on fields", 54 of them field reads); `mark-function` (12): functions
+    returning `?T` named without `?` (D10).
+  - `mismatch` (13): `given:` blocks whose last line is a plain value, not `? v` (Semantics
+    ch. 4, "the last line is the answer"); `unit` used as a binder's name in `lower.prism`'s
+    duration code (it is the unit value), with `not-exhaustive` (2) following from it.
+  - `may-not-end` (11): `while &going:` loops and loops whose measure is a field
+    (`LayoutLine`), `HexOf` recursing on a quotient, `SexpType` through `Spaced` (gap CT),
+    `ZForceDeps` and `ZDeferredLets` over the program; each needs a measure or
+    `unbounded fn` (Semantics ch. 7).
+  - `calls-unbounded` (2): `PushOpSuffix` and the `u`-colored `LayoutItems` call unbounded
+    functions (ch. 5, The color).
+  - `local-escapes` (3): `Buffer.Numbered` used as an array outside an `&` block (Semantics
+    ch. 5).
+  - `emit-element` (1): `templates/rust.prism` writes no `emit` line (Semantics ch. 6).
+  - `ambiguous` (1): `front.prism`'s `@Compile` gives up with an `Error` whose `~T` nothing
+    decides (ch. 5, Defaulting).
+
+The negative cases (`neg/`, 48) give one diagnostic each, the error their name says.
+`layer-unknown` is new with this round; `refinement-escape` and `existential-escape` have
+no case, since the checker does not report them (gaps below).
+
+### Checker picks
+
+The places where the checker had to choose. Each is Claude's, for Jimmy to overturn.
+
+- **TO The typed program is tables beside the tree.** Every annotation is keyed by file
+  and range, and the tree stays `Ast.Module`. *Refused:* a second tree with a type on
+  every node, which doubles ast.prism's forty expression forms and has to follow every
+  change to them.
+- **BG Check order in a block.** Holds first (a hold's start value is where a block most
+  often says what its names are), then `let`s and local functions, then the rest in page
+  order, every name pre-bound to its marked type. The dependency order is computed for the
+  typed program, not used for checking (gap DG).
+- **FD A field of a record nothing has decided yet waits.** When several records have the
+  field, its type is a fresh variable, read once a later line decides the record, and
+  `ambiguous` at the end of the definition (ch. 5's principle: defer what a later line can
+  decide). One record with the field decides it at once.
+- **MS A wrong mark reports once, at the binder,** and the name then has the type its
+  value has, so its uses do not report it again.
+- **CR A collision recovers** with the file's own declaration, else the first candidate,
+  after reporting both, so the rest of the line still checks.
+- **LU `layer-unknown` is asked at the end of the definition.** A free-headed argument
+  meeting a plain or variable parameter is taken whole there; at the end, if its layer is
+  still a variable, or turned out to be a dynamic or an event, it is `layer-unknown` at
+  the argument. *Refused for now:* deferring the application and retrying it (ch. 5's
+  text), which needs the environment kept with each deferral (gap LR).
+- **ER** An arm that is a bare `Error` waits for the other arms, so `if c: Error(..) else:
+  ~ unit` is a `~unit`.
+- **QD** The prelude's `/: fn a, a -> ?a` is read as Type System ch. 3 has it, `fn a, a ->
+  Quotient a`, with `Quotient` normalized for the built-in numbers only.
+- **TL0** Top-level `let`s without a signature are inferred first, in page order, and their
+  monomorphic variables default at the program's end.
+- **PS** In the prompt-cycle check a widget function is prompt in every argument, except
+  the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`).
+
+### Checker doubts
+
+- **TR** An element a prelude traversal (`Fold`, `Each`, `Filter`) hands its closure is
+  strictly smaller than the collection, for the shrink check, and a named function passed
+  as the step is a call on an element. Semantics ch. 7 lists "a part ... taken apart by
+  `match`" and does not say this. *First ruling (Claude's):* as stated; prismc's tree
+  walks need it. *If otherwise:* every tree walk through `Fold` is `unbounded`.
+- **RP** A reference path writes its field steps bare (`&_.rootModule <= ? m`), and a field
+  after an index step names the element's field (`&_[ix].partner <= ? j` sets a `?Nat`).
+  Type System ch. 1 says a field access shows its stack; the parser reads a set only
+  through a bare path. *First ruling (Claude's):* bare steps in references. *If
+  otherwise:* the parser learns `&_.?rootModule <= ...`.
+- **CF** Conformance ch. 1 writes `!motd <- Fs.File(..)` for a `!~Contents`, Pitch ch. 8
+  `!~motd`. *First ruling (Claude's):* Pitch's; Conformance ch. 1 is the slip.
+- **VW** Semantics ch. 8's viewer writes `~Contents` with no `use Fs.*`, and the
+  conformance copy declares its own `Contents`. *First ruling (Claude's):* the listing
+  needs `use Fs.*`.
+- **UI** `prelude/ui.prism`'s `Click` derives nothing, so `^Show` of a click fails
+  (`sem-appB-widgets`), and its `Ui.TextInput` names a `Key` it does not declare.
+  *First ruling (Claude's):* `type Click = click` takes `derive ^Eq, ^Show`, and the tag
+  takes `Gui.Key` or a `Key` of its own.
+
+### Gaps against ch. 5
+
+What the checker does not do yet, each with Claude's first ruling.
+
+- **LR Deferred applications.** No application is retried when a later line decides an
+  argument's layer (pick LU). *First ruling:* keep LU; retry when a program needs it.
+- **RE `refinement-escape`.** A tag arm over a rigid output substitutes the arm's equality
+  into the expected type, but outside variables are not made untouchable in the arm.
+  *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it, with the error, next.
+- **EE `existential-escape`.** `any e` solves its bounds at `e`'s type; an `any` meets only
+  an `any`, and is never unpacked into a rigid variable at a parameter (doubt EP).
+  *First ruling:* unpack at application, as ch. 5 says.
+- **R2 Suppliers' outputs are not rigid.** A host's supplier lambda gets a flexible `o`, not
+  one rigid per arm, so the dumps keep `o` as a variable. *First ruling:* rigid per arm
+  with the arm's equality, with RE.
+- **DG Binding groups.** Blocks are checked in BG's order, not dependency order, so a `let`
+  used above its line is used at its monomorphic pre-bound type, and mutually dependent
+  `let`s are not generalized together. *First ruling:* check in the dependency order the
+  typed program already computes.
+- **CT The shrink check's call test** for closures is not there: a closure passed to a
+  program's own higher-order function (`Spaced args, SexpType`) is a call with no
+  edges. *First ruling:* the call test, as Semantics ch. 7 has it.
+- **SU Prompt-cycle summaries** are per block, not computed bottom-up over the call graph
+  (pick PS). *First ruling:* summaries, as ch. 5's pass 1 has them.
+- **FM A field read through a waiting access** (pick FD) is not checked for its marks.
+  *First ruling:* check them when the record is decided.
+- **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
+  *First ruling:* read each impl's associated type into the normalizer.
+
 ## Back end
 
 `compile` lowers the program to a core form and emits a Rust crate through code templates

@@ -1,0 +1,5 @@
+tests/prismc/check/neg/unreachable.prism:5: error[unreachable]: this arm is never reached
+        nil: "none"
+        ^^^
+  fix: remove it, or put it above the arm that covers it
+1 error

@@ -1,0 +1,5 @@
+tests/conformance/sem-ch04-labels.prism:38: error[mark-stack]: `left` has type `?Nat`, whose stack is `?`; the name shows ``
+    fn Restock stock, sold = Fold sold, stock, \|acc, t, left| Insert acc, t, (Or left, 0)
+                                                         ^^^^
+  fix: rename to `?left`
+1 error

@@ -1,0 +1,4 @@
+examples/todos.prism:42: error[mismatch]: expected `Text`, found `$Text`
+        let !adds = {$next: Add "item {$next}"} on !add
+                                ^^^^^^^^^^^^^^
+1 error

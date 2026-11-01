@@ -1,0 +1,9 @@
+# args: --world Ui
+# `world-row`: the program emits `Fs.*`, which this World does not answer.
+emit Ui.* | Fs.*
+use Fs.*
+
+@main: @unit
+@main:
+    $~contents <- Fs.Contents(path="/etc/motd")
+    Ui.Label(text=$"x")

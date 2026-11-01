@@ -1,0 +1,5 @@
+tests/prismc/check/neg/calls-unbounded.prism:6: error[calls-unbounded]: bounded `Step` calls unbounded `Spin`
+    fn Step n = Spin n
+    ^^^^^^^^^^^^^^^^^^
+  fix: mark `Step` `unbounded fn`, or run the call through `@Run`
+1 error

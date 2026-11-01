@@ -1,0 +1,5 @@
+tests/prismc/check/neg/discarded.prism:6: error[discarded]: this line's result is `!Click`; drop it with `ignore <-`
+        Ui.Button(label=$"Ignored")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write `ignore <-` in front of it, or bind it
+1 error

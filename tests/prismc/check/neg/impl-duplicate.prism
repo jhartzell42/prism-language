@@ -1,0 +1,7 @@
+# `impl-duplicate`: a derived `^Show` and a written one.
+type Card = record:
+    rank: Nat
+derive ^Show
+
+impl ^Show Card:
+    fn Show c = "card {c.rank}"

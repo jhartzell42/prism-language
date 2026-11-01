@@ -1,0 +1,5 @@
+tests/prismc/check/neg/borrow-overlap.prism:10: error[borrow-overlap]: `&_.stoppage` is lent to the `for`
+            &_.stoppage <= [[]]
+            ^^^^^^^^^^^
+  fix: set it after the loop, or loop over a copy
+1 error

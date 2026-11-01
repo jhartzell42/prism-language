@@ -1,0 +1,3 @@
+# `layer-under-optional`: an optional dynamic is matched once, at build time.
+?Faster: fn ?$Int -> ?$Int
+fn ?Faster ?$speed = ?$speed + 1

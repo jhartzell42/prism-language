@@ -1,0 +1,1349 @@
+# The checker's environment (Type System ch. 5, "What the checker knows before it
+# starts"): every module's header, its declarations by qualified name, what each file
+# reaches by a bare name (Semantics ch. 6, collisions an error at the use), the types with
+# their kinds, row kinds and tags with their outputs (each family a fixed map, ch. 2), the
+# traits with their methods and superclasses, the impls with coherence checked (one impl,
+# no orphans, no overlap; ch. 3), the prelude's declared signatures, and constructors.
+# Trait resolution (ch. 5, Traits) lives here too, since it reads the impls.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+module CheckEnv
+emit r
+use Ast.*
+use Lexer.*
+use CheckErrors.*
+use CheckTypes.*
+
+# ---------------------------------------------------------------------------------------
+# What the environment holds
+# ---------------------------------------------------------------------------------------
+
+type ModInfo = record:
+    name: Text
+    file: Nat
+    emitRw: Rw
+    rowVar: Text
+    uses: [((Text, Bool))]
+    root: Bool
+    tree: Module
+derive ^Eq, ^Show
+
+type TyBody = choice:
+    BRecord [((Text, Ty))]
+    BChoice [((Text, [Ty]))]
+    BRowKind
+    BAlias Ty
+    BOpaque
+    BPrim
+derive ^Eq, ^Show
+
+type TyInfo = record:
+    name: Text
+    home: Text
+    params: [Text]
+    body: TyBody
+    derives: [Text]
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+# A constructor: of a choice (`args` positional), a record (`fields` named too), a newtype
+# or a unit type. `ty` is the type it builds, over `TyQ` params.
+type CtorInfo = record:
+    name: Text
+    owner: Text
+    params: [Text]
+    args: [Ty]
+    fields: [Text]
+    ty: Ty
+    index: Nat
+derive ^Eq, ^Show
+
+type TagInfo = record:
+    name: Text
+    family: Text
+    kind: Text
+    out: Ty
+    qs: [Text]
+    rqs: [Text]
+    bounds: [((Text, Text))]
+    fields: [((Text, Ty))]
+    home: Text
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+type ValInfo = record:
+    qk: Text
+    scheme: Scheme
+    sort: Text
+    hasSig: Bool
+    home: Text
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+type TraitInfo = record:
+    name: Text
+    home: Text
+    param: Text
+    supers: [Text]
+    methods: [Text]
+    defaults: [Text]
+    assocs: [Text]
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+type ImplInfo = record:
+    cls: Text
+    head: Ty
+    qs: [Text]
+    bounds: [((Text, Text))]
+    home: Text
+    file: Nat
+    span: Range
+    derived: Bool
+    assocs: [((Text, Ty))]
+    methods: [Text]
+derive ^Eq, ^Show
+
+# A definition whose body is checked.
+type DefBody = choice:
+    DbFn [FnClause]
+    DbLet LetDecl
+    DbWidget WidgetDecl
+    DbMethod [FnClause], Text, ImplInfo
+    DbDefault [FnClause], Text
+    DbCheck CheckDecl
+    DbTest TestDecl
+derive ^Eq, ^Show
+
+type Def = record:
+    qk: Text
+    name: Text
+    home: Text
+    file: Nat
+    span: Range
+    body: DefBody
+derive ^Eq, ^Show
+
+type G = record:
+    mods: (Text ==> ModInfo)
+    types: (Text ==> TyInfo)
+    ctors: (Text ==> CtorInfo)
+    tags: (Text ==> TagInfo)
+    families: (Text ==> [Text])
+    famOwner: (Text ==> Text)
+    vals: (Text ==> ValInfo)
+    traits: (Text ==> TraitInfo)
+    impls: (Text ==> [ImplInfo])
+    bare: (Text ==> (Text ==> [Text]))
+    bareTypes: (Text ==> (Text ==> [Text]))
+    bareTraits: (Text ==> (Text ==> [Text]))
+    srcs: [Src]
+    defs: [Def]
+    programRow: Rw
+    elemFams: [Text]
+    rootModule: ?Text
+    fnAt: (Text ==> Nat)
+derive ^Eq, ^Show
+
+# The primitive types (prism_rt's own; prelude.prism declares none of them).
+IsPrimType: fn Text -> Bool
+fn IsPrimType n = HasText [["Bool", "unit", "Char", "Text", "Nat", "Int", "U8", "Float", "Path", "Duration"]], n
+
+IsIntType: fn Text -> Bool
+fn IsIntType n = n == "Nat" or n == "Int" or n == "U8"
+
+QualKey: fn Text, Text -> Text
+fn QualKey m, name = if m == "": name else: "{m}.{name}"
+
+Dotted: fn [Text] -> Text
+fn Dotted parts = Join parts, "."
+
+SNameKey: fn SName -> Text
+fn SNameKey n = "{n.sigils}{Dotted n.path}"
+
+DefNameText: fn DefName -> Text
+fn DefNameText (DefSName n) = SNameKey n
+fn DefNameText (DefOp o, ignore) = o
+
+DefNameSpan: fn DefName -> Range
+fn DefNameSpan (DefSName n) = n.span
+fn DefNameSpan (DefOp ignore, r) = r
+
+TypeSpan: fn Type -> Range
+fn TypeSpan t = t.span
+
+IsLowerText: fn Text -> Bool
+fn IsLowerText t = IsLower (Take t, 1)
+
+IsUpperText: fn Text -> Bool
+fn IsUpperText t = IsUpper (Take t, 1)
+
+# ---------------------------------------------------------------------------------------
+# Building the environment
+# ---------------------------------------------------------------------------------------
+
+# The program's files, parsed: the environment, and the diagnostics of every declaration.
+BuildG: unbounded fn [Src], [Module] -> ((G, St))
+fn BuildG srcs, trees:
+    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], rootModule=nil, fnAt={})
+    let st0 = NewSt 0
+    let ((g1, st1)) = Fold (Range0 (Len trees)), ((g0, st0)), \|((g, st)), i| AddModule g, st, i, (Or trees[i], emptyModule)
+    let g2 = AddBuiltins g1
+    let ((g3, st3)) = Fold (Keys g2.mods), ((g2, st1)), \|((g, st)), m| CollectNames g, st, m
+    let g4 = update g3:
+        &_.programRow <= ProgramRow &_
+    let ((g6, st6)) = Fold (Keys g4.mods), ((g4, st3)), \|((g, st)), m| BuildTables g, st, m
+    let ((g6b, st6b)) = Fold (Keys g6.mods), ((g6, st6)), \|((g, st)), m| ConvertTypes g, st, m
+    let ((g7, st7)) = Fold (Keys g6b.mods), ((g6b, st6b)), \|((g, st)), m| ConvertDecls g, st, m
+    let g8 = DerivedImpls g7
+    let st8 = Coherence g8, st7
+    ((g8, st8))
+
+let emptyModule = Module(name=nil, emitRow=nil, uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
+
+ModName: fn Module -> Text
+fn ModName m = match m.?name:
+    ? q: Dotted q.path
+    nil: ""
+
+AddModule: fn G, St, Nat, Module -> ((G, St))
+fn AddModule g, st, i, tree:
+    let name = ModName tree
+    let s = update st:
+        &_.file <= i
+    if HasKey g.mods, name:
+        let what = if name == "": "two files have no `module` line" else: "two files declare `module {name}`"
+        ((g, (Err s, "collision", tree.span, what)))
+    else:
+        let info = ModInfo(name=name, file=i, emitRw=emptyRow, rowVar="", uses=(Each tree.uses, \|u| ((Dotted u.target.path, u.star))), root=(name == ""), tree=tree)
+        let g2 = update g:
+            &_.mods <= Insert &_.mods, name, info
+            if name == "":
+                &_.rootModule <= ? ""
+        ((g2, s))
+
+HasKey: fn (Text ==> a), Text -> Bool
+fn HasKey m, k = match m[k]:
+    ? ignore: True
+    nil: False
+
+# The builtins with no declaration: `True` and `False`, `never`, the block-local types'
+# makers (Semantics ch. 5) and the `Elem` existential.
+AddBuiltins: fn G -> G
+fn AddBuiltins g:
+    let BoolCtor = \|n, i| CtorInfo(name=n, owner="Bool", params=[[]], args=[[]], fields=[[]], ty=tBool, index=i)
+    let pre = Scheme(qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=(TySig "!", (TyQ "a")))
+    let numbered = Mono (TyFn CBound, [[tNat]], (TyCon "Buffer", [[tNat]]))
+    let bufEmpty = Scheme(qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=(TyCon "Buffer", [[TyQ "a"]]))
+    let tabEmpty = Scheme(qs=[["k", "v"]], plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=(TyCon "Table", [[TyQ "k", TyQ "v"]]))
+    update g:
+        &_.ctors <= Insert (Insert &_.ctors, "True", (BoolCtor "True", 0)), "False", (BoolCtor "False", 1)
+        &_.vals <= Insert &_.vals, "Prelude.never", (Builtin "Prelude.never", pre)
+        &_.vals <= Insert &_.vals, "Buffer.Numbered", (Builtin "Buffer.Numbered", numbered)
+        &_.vals <= Insert &_.vals, "Buffer.Empty", (Builtin "Buffer.Empty", bufEmpty)
+        &_.vals <= Insert &_.vals, "Table.Empty", (Builtin "Table.Empty", tabEmpty)
+
+Builtin: fn Text, Scheme -> ValInfo
+fn Builtin qk, sc = ValInfo(qk=qk, scheme=sc, sort="builtin", hasSig=True, home="Prelude", file=0, span=Range(start=0, end=0))
+
+# ---------------------------------------------------------------------------------------
+# First pass: every declared name, before any type is read
+# ---------------------------------------------------------------------------------------
+
+CollectNames: unbounded fn G, St, Text -> ((G, St))
+fn CollectNames g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s0 = update st:
+            &_.file <= info.file
+        let ((g2, s2, ignore)) = Fold info.tree.decls, ((g, s0, nil)), \|((gg, s, ?lastType)), d| CollectDecl gg, s, info, d, ?lastType
+        ((g2, s2))
+
+# One declaration's names. `?lastType` is the type a following `derive` line belongs to.
+CollectDecl: unbounded fn G, St, ModInfo, Decl, ?Text -> ((G, St, ?Text))
+fn CollectDecl g, st, info, d, ?lastType = match d.kind:
+    DType t:
+        let name = QualKey info.name, (Dotted t.name.path)
+        let ti = TyInfo(name=name, home=info.name, params=(Each t.params, \|p| p.name), body=BOpaque, derives=[[]], file=info.file, span=d.span)
+        if HasKey g.types, name: ((g, (Err st, "collision", d.span, "a second type `{Dotted t.name.path}`"), ?lastType))
+        else:
+            let upd = update g:
+                &_.types <= Insert &_.types, name, ti
+            ((upd, st, ? name))
+    DDerive trs: match ?lastType:
+        ? tn:
+            let upd = update g:
+                &_.types <= Insert &_.types, tn, (AddDerives (Or g.types[tn], dummyTyInfo), (Each trs, \|tr| Dotted tr.path))
+            ((upd, st, ?lastType))
+        nil: ((g, (Err st, "mismatch", d.span, "a `derive` line follows a type declaration"), nil))
+    DTag t:
+        let name = Dotted t.name.path
+        let family = Dotted (Take t.name.path, (Dec (Len t.name.path)))
+        let tags = Or g.families[family], [[]]
+        let owner = Or g.famOwner[family], info.name
+        let st2 = if owner != info.name: Err st, "collision", d.span, "the family `{family}` is declared in `{owner}`; every tag of a family is declared in its family's module" else: st
+        let isElem = match t.ofType.kind:
+            TName n, ignore: (Dotted n.path) == "Element"
+            otherwise: False
+        let g2 = update g:
+            &_.families <= Insert &_.families, family, (Push tags, name)
+            &_.famOwner <= Insert &_.famOwner, family, owner
+            if isElem:
+                &_.elemFams <= AddText &_.elemFams, family
+        ((g2, st2, nil))
+    DTrait t:
+        let name = QualKey info.name, (Dotted t.name.path)
+        let ti = TraitInfo(name=name, home=info.name, param=(Or (Each t.params, \|p| p.name)[0], "a"), supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=info.file, span=d.span)
+        let upd = update g:
+            &_.traits <= Insert &_.traits, name, ti
+        ((upd, st, nil))
+    otherwise: ((g, st, nil))
+
+let dummyTyInfo = TyInfo(name="", home="", params=[[]], body=BOpaque, derives=[[]], file=0, span=Range(start=0, end=0))
+
+AddDerives: fn TyInfo, [Text] -> TyInfo
+fn AddDerives ti, trs = update ti:
+    &_.derives <= Append &_.derives, trs
+
+# The program row (Semantics ch. 6): every family of `Element` tags the program declares.
+ProgramRow: fn G -> Rw
+fn ProgramRow g = Closed g.elemFams
+
+# ---------------------------------------------------------------------------------------
+# Second pass: what each module reaches by a bare name
+# ---------------------------------------------------------------------------------------
+
+BuildTables: unbounded fn G, St, Text -> ((G, St))
+fn BuildTables g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s0 = update st:
+            &_.file <= info.file
+        let s1 = Fold info.uses, s0, \|s, ((u, ignore))| if (HasKey g.mods, u) or u == "Prelude": s else: Err s, "unknown-name", info.tree.span, "no module `{u}` among the program's files"
+        let starred = Filter (Each info.uses, \|((u, star))| if star: u else: ""), \|u| u != "" and u != m
+        let sources = AddText (Append [[m]], starred), "Prelude"
+        let vals = Fold sources, {}, \|acc, src| BareValuesOf g, src, acc
+        let tys = Fold sources, {}, \|acc, src| BareTypesOf g, src, acc
+        let trs = Fold sources, {}, \|acc, src| BareTraitsOf g, src, acc
+        let ((rw, rv, s2)) = ModuleRow g, s1, info
+        let info2 = update info:
+            &_.emitRw <= rw
+            &_.rowVar <= rv
+        let upd = update g:
+            &_.bare <= Insert &_.bare, m, vals
+            &_.bareTypes <= Insert &_.bareTypes, m, tys
+            &_.bareTraits <= Insert &_.bareTraits, m, trs
+            &_.mods <= Insert &_.mods, m, info2
+        ((upd, s2))
+
+AddBare: fn (Text ==> [Text]), Text, Text -> (Text ==> [Text])
+fn AddBare acc, name, qk:
+    let have = Or acc[name], [[]]
+    if HasText have, qk: acc else: Insert acc, name, (Push have, qk)
+
+# The bare names a module declares: its functions, values and constructors.
+BareValuesOf: unbounded fn G, Text, (Text ==> [Text]) -> (Text ==> [Text])
+fn BareValuesOf g, src, acc = match g.mods[src]:
+    nil: acc
+    ? info: Fold info.tree.decls, acc, \|a, d| BareOfDecl src, a, d
+
+BareOfDecl: unbounded fn Text, (Text ==> [Text]), Decl -> (Text ==> [Text])
+fn BareOfDecl m, acc, d = match d.kind:
+    DSignature s: AddBare acc, (DefNameText s.name), (QualKey m, (DefNameText s.name))
+    DFn f: AddBare acc, (DefNameText f.name), (QualKey m, (DefNameText f.name))
+    DLet l: Fold (PatternNames l.pattern), acc, \|a, n| AddBare a, n, (QualKey m, n)
+    DWidget w: AddBare acc, (SNameKey w.name), (QualKey m, (SNameKey w.name))
+    DType t: Fold (CtorNamesOf t), acc, \|a, c| AddBare a, c, (QualKey m, c)
+    DTrait t: Fold t.items, acc, \|a, it| match it:
+        TiSignature s: AddBare a, (DefNameText s.name), (QualKey m, (DefNameText s.name))
+        otherwise: a
+    otherwise: acc
+
+CtorNamesOf: fn TypeDecl -> [Text]
+fn CtorNamesOf t = match t.?body:
+    ? (TbRecord ignore): [[Dotted t.name.path]]
+    ? (TbChoice cs): Each cs, \|c| SNameKey c.name
+    ? (TbNewtype c): [[SNameKey c.name]]
+    ? (TbUnit i): [[i.name]]
+    otherwise: [[]]
+
+# The names a top-level `let` pattern binds.
+PatternNames: unbounded fn Pattern -> [Text]
+fn PatternNames p = match p.kind:
+    PName n: [[SNameKey n]]
+    PCtor ignore, ps: Fold ps, [[]], \|acc, q| Append acc, (PatternNames q)
+    PRecord ignore, fs, ignore: Fold fs, [[]], \|acc, f| Append acc, (PatternNames f.pattern)
+    PSigil ignore, q: PatternNames q
+    PTuple ps: Fold ps, [[]], \|acc, q| Append acc, (PatternNames q)
+    PArray ps: Fold ps, [[]], \|acc, q| Append acc, (PatternNames q)
+    PGroup q: PatternNames q
+    otherwise: [[]]
+
+# The names a pattern binds, with where each binder stands.
+PatternBinders: unbounded fn Pattern -> [((Text, Range))]
+fn PatternBinders p = match p.kind:
+    PName n: [[((SNameKey n, n.span))]]
+    PCtor ignore, ps: Fold ps, [[]], \|acc, q| Append acc, (PatternBinders q)
+    PRecord ignore, fs, ignore: Fold fs, [[]], \|acc, f| Append acc, (PatternBinders f.pattern)
+    PSigil ignore, q: PatternBinders q
+    PTuple ps: Fold ps, [[]], \|acc, q| Append acc, (PatternBinders q)
+    PArray ps: Fold ps, [[]], \|acc, q| Append acc, (PatternBinders q)
+    PGroup q: PatternBinders q
+    otherwise: [[]]
+
+BareTypesOf: fn G, Text, (Text ==> [Text]) -> (Text ==> [Text])
+fn BareTypesOf g, src, acc = Fold (Keys g.types), acc, \|a, k| match g.types[k]:
+    ? ti: if ti.home == src: AddBare a, (BareName ti.name), k else: a
+    nil: a
+
+BareTraitsOf: fn G, Text, (Text ==> [Text]) -> (Text ==> [Text])
+fn BareTraitsOf g, src, acc = Fold (Keys g.traits), acc, \|a, k| match g.traits[k]:
+    ? ti: if ti.home == src: AddBare a, (BareName ti.name), k else: a
+    nil: a
+
+# A module's `emit` row (Semantics ch. 6): families and at most one variable; a library's
+# bare `Element` is `emit-element`; a single tag is `row-single-tag`. A root file with no
+# line has the program row.
+ModuleRow: unbounded fn G, St, ModInfo -> ((Rw, Text, St))
+fn ModuleRow g, st, info = match info.tree.?emitRow:
+    nil:
+        if info.root: ((g.programRow, "", st))
+        else: ((emptyRow, "", (Err st, "emit-element", info.tree.span, "a library writes its own row; this one writes no `emit` line")))
+    ? rowDecl:
+        let ((fams, vars, s2)) = Fold rowDecl.terms, (([[]], [[]], st)), \|((fs, vs, s)), term| RowTermOf g, s, info, term, fs, vs
+        let s3 = if (Len vars) > 1: ErrFix s2, "row-two-tails", rowDecl.span, "a row has one variable; `{Join vars, " | "}` names two", "keep one variable" else: s2
+        let tail = match vars[0]:
+            ? v: TlQ v
+            nil: TlClosed
+        ((Rw(fams=(SortTexts fams), minus=[[]], tail=tail), (Or vars[0], ""), s3))
+
+RowTermOf: fn G, St, ModInfo, RowTerm, [Text], [Text] -> (([Text], [Text], St))
+fn RowTermOf g, s, info, term, fs, vs = match term:
+    RFamily q: (((Push fs, (Dotted q.path)), vs, (CheckFamily g, s, (Dotted q.path), q.span)))
+    RVar v: ((fs, (Push vs, v.name), s))
+    RType t: match t.kind:
+        TName n, [[]]:
+            let name = Dotted n.path
+            if name == "Element" and info.root: (((Append fs, g.programRow.fams), vs, s))
+            else: if name == "Element": ((fs, vs, (Err s, "emit-element", t.span, "a library writes its own row; `emit Element` names the program's")))
+            else: if (HasKey g.tags, name) or (Len n.path) > 1: ((fs, vs, (ErrFix s, "row-single-tag", t.span, "a row names families, not tags: `{name}`", "write `{Dotted (Take n.path, (Dec (Len n.path)))}.*`")))
+            else: ((fs, vs, (Err s, "kind", t.span, "`{name}` is not a row")))
+        otherwise: ((fs, vs, (Err s, "kind", t.span, "this is not a row")))
+
+CheckFamily: fn G, St, Text, Range -> St
+fn CheckFamily g, s, fam, span = if HasKey g.families, fam: s else: Err s, "unknown-name", span, "no family `{fam}`: no module declares a `{fam}.` tag"
+
+# ---------------------------------------------------------------------------------------
+# Name resolution
+# ---------------------------------------------------------------------------------------
+
+# A bare or qualified value name from module `m`: the key it resolves to, or a message.
+ResolveValue: fn G, Text, SName -> ((?Text, Text))
+fn ResolveValue g, m, n:
+    let marks = n.sigils
+    if (Len n.path) == 1:
+        let name = "{marks}{Or n.path[0], ""}"
+        let table = Or g.bare[m], {}
+        let keys = Or table[name], [[]]
+        if (Len keys) == 1: ((keys[0], ""))
+        else: if (Len keys) > 1: ((? (OwnFirst m, keys), "collision"))
+        else: if name == "never": ((? "Prelude.never", ""))
+        else: if HasKey g.ctors, name: ((? name, ""))
+        else: ((nil, "unknown"))
+    else:
+        let qual = Dotted (Take n.path, (Dec (Len n.path)))
+        let last = Or (?Last n.path), ""
+        let qk = "{qual}.{marks}{last}"
+        if (Len marks) == 0 and (HasKey g.tags, (Dotted n.path)): ((? (Dotted n.path), "tag"))
+        else: if (HasKey g.vals, qk) or (HasKey g.ctors, qk): ((? qk, ""))
+        else: ((nil, "unknown"))
+
+ResolveType: fn G, Text, [Text] -> ((?Text, Text))
+fn ResolveType g, m, path:
+    if (Len path) == 1:
+        let keys = Or (Or g.bareTypes[m], {})[Or path[0], ""], [[]]
+        if (Len keys) == 1: ((keys[0], ""))
+        else: if (Len keys) > 1: ((? (OwnFirst m, keys), "collision"))
+        else: ((nil, "unknown"))
+    else:
+        let qk = Dotted path
+        if HasKey g.types, qk: ((? qk, "")) else: ((nil, "unknown"))
+
+# Of two candidates for a bare name, the one checking goes on with after reporting the
+# collision: the file's own declaration, else the first.
+OwnFirst: fn Text, [Text] -> Text
+fn OwnFirst m, keys:
+    let own = Filter keys, \|k| (QualKey m, (BareName k)) == k or (m == "" and not (Contains k, "."))
+    Or own[0], (Or keys[0], "")
+
+?ResolveTrait: fn G, Text, [Text] -> ?Text
+fn ?ResolveTrait g, m, path:
+    if (Len path) == 1:
+        let keys = Or (Or g.bareTraits[m], {})[Or path[0], ""], [[]]
+        keys[0]
+    else:
+        let qk = Dotted path
+        if HasKey g.traits, qk: ? qk else: nil
+
+# ---------------------------------------------------------------------------------------
+# Reading types
+# ---------------------------------------------------------------------------------------
+
+# What a type is read in: the module, its scope row, the row variables of the signature,
+# and the color unwritten colors take (ch. 5, The color).
+type Cx = record:
+    g: G
+    home: Text
+    scope: Rw
+    rowVars: [Text]
+    unwritten: Col
+derive ^Eq, ^Show
+
+CxOf: fn G, Text -> Cx
+fn CxOf g, m:
+    let info = Or g.mods[m], (Or g.mods[""], dummyMod)
+    Cx(g=g, home=m, scope=info.emitRw, rowVars=(if info.rowVar == "": [[]] else: [[info.rowVar]]), unwritten=CBound)
+
+let dummyMod = ModInfo(name="", file=0, emitRw=emptyRow, rowVar="", uses=[[]], root=False, tree=emptyModule)
+
+ConvType: unbounded fn Cx, St, Type -> ((Ty, St))
+fn ConvType cx, st, t = match t.kind:
+    TName n, args:
+        let ((base, st2)) = ConvNamed cx, st, n, args, t.span
+        (((WithMarks n.sigils, base, cx.scope), st2))
+    TSigiled sigils, inner:
+        let ((i, st2)) = ConvType cx, st, inner
+        (((WithMarks sigils, i, cx.scope), st2))
+    TArray e, ignore:
+        let ((i, st2)) = ConvType cx, st, e
+        ((TyArray i, st2))
+    TTuple ts:
+        let ((xs, st2)) = ConvTypes cx, st, ts
+        ((TyTuple xs, st2))
+    TGroup x: ConvType cx, st, x
+    TMap k, v:
+        let ((kk, st2)) = ConvType cx, st, k
+        let ((vv, st3)) = ConvType cx, st2, v
+        (((TyMap kk, vv), st3))
+    TFn color, ps, res:
+        let ((xs, st2)) = ConvTypes cx, st, ps
+        let ((r, st3)) = ConvType cx, st2, res
+        let c = match color:
+            Bounded: cx.unwritten
+            Unbounded: CUnbound
+            ColorVar v: CQ v.name
+        (((TyFn c, xs, r), st3))
+    TEmit ty, rowT:
+        let ((rw, st2)) = ConvRow cx, st, rowT
+        let inner = update cx:
+            &_.scope <= rw
+        ConvType inner, st2, ty
+    TUnit sigils: (((WithMarks sigils, tUnit, cx.scope), st))
+    TAny tr: match ?ResolveTrait cx.g, cx.home, tr.path:
+        ? k: ((TyAny [[k]], st))
+        nil: ((TyErr, (Err st, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
+    TAbsent: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement sparse tuples")))
+    TNonEmpty ignore: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement non-empty arrays")))
+    THole ignore: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement higher-kinded traits")))
+    TFamily q: ((TyErr, (Err st, "kind", t.span, "`{Dotted q.path}.*` is a row, not a type")))
+    TRowUnion ignore: ((TyErr, (Err st, "kind", t.span, "a row is not a type")))
+
+ConvTypes: unbounded fn Cx, St, [Type] -> (([Ty], St))
+fn ConvTypes cx, st, ts = Fold ts, (([[]], st)), \|((acc, s)), x|
+    let ((y, s2)) = ConvType cx, s, x
+    (((Push acc, y), s2))
+
+# A named type applied to its arguments: a variable, a primitive, `Element`, `Elem`, a
+# declared type (an alias expanded), with `kind` for a wrong count.
+ConvNamed: unbounded fn Cx, St, SName, [Type], Range -> ((Ty, St))
+fn ConvNamed cx, st, n, args, span:
+    let name = Dotted n.path
+    if (Len n.path) == 1 and (IsLowerText name):
+        if (Len args) > 0: ((TyErr, (Err st, "unsupported", span, "this checker does not implement higher-kinded traits"))) else: ((TyQ name, st))
+    else: if name == "Element" or name == "Prelude.Element":
+        match Len args:
+            0: (((TyElem cx.scope, tUnit), st))
+            1:
+                let ((o, st2)) = ConvType cx, st, (Or args[0], dummyType)
+                (((TyElem cx.scope, o), st2))
+            2:
+                let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
+                let ((o, st3)) = ConvType cx, st2, (Or args[1], dummyType)
+                (((TyElem rw, o), st3))
+            otherwise: ((TyErr, (Err st, "kind", span, "`Element` takes a row and a type; here it has {CountWord (Len args)}")))
+    else: if name == "Elem":
+        match Len args:
+            0: ((TyElemAny cx.scope, st))
+            1:
+                let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
+                ((TyElemAny rw, st2))
+            otherwise: ((TyErr, (Err st, "kind", span, "`Elem` takes a row; here it has {CountWord (Len args)}")))
+    else: if name == "Answer" or name == "Wired":
+        (((TyCon name, [[]]), st))
+    else: if name == "Instant":
+        ((TyErr, (Err st, "unsupported", span, "this checker does not implement `Instant`")))
+    else: if HasText [["U16", "U32", "U64", "U128", "I8", "I16", "I32", "I64", "I128"]], name:
+        ((TyErr, (Err st, "unsupported", span, "this checker does not implement sized integers other than `U8`")))
+    else: if IsPrimType name:
+        if (Len args) == 0: (((TyCon name, [[]]), st))
+        else: ((TyErr, (Err st, "kind", span, "`{name}` takes no type; here it has {CountWord (Len args)}")))
+    else: if name == "Buffer" or name == "Table":
+        let want = if name == "Buffer": 1 else: 2
+        let ((xs, st2)) = ConvTypes cx, st, args
+        if (Len args) == want: (((TyCon name, xs), st2))
+        else: ((TyErr, (Err st2, "kind", span, "`{name}` takes {CountWord want} types; here it has {CountWord (Len args)}")))
+    else:
+        let ((?key, why)) = ResolveType cx.g, cx.home, n.path
+        match ?key:
+            nil: ((TyErr, (Err st, "unknown-name", span, "no type `{name}`")))
+            ? qk:
+                let ti = Or cx.g.types[qk], dummyTyInfo
+                let st1 = if why == "collision": ErrFix st, "collision", span, "`{name}` is declared by two modules this file reaches by a bare name", "write it qualified, `{qk}`, or rename this file's own" else: st
+                let ((xs, st2)) = ConvTypes cx, st1, args
+                if (Len xs) != (Len ti.params):
+                    ((TyErr, (Err st2, "kind", span, "`{name}` takes {CountWord (Len ti.params)} type{if (Len ti.params) == 1: "" else: "s"}; here it has {CountWord (Len xs)}")))
+                else: match ti.body:
+                    BAlias body: (((SubstQ (ParamInst ti.params, xs), body), st2))
+                    BRowKind: (((TyCon qk, xs), st2))
+                    otherwise: (((TyCon qk, xs), st2))
+
+let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0))
+
+ParamInst: fn [Text], [Ty] -> Inst
+fn ParamInst ps, xs = Inst(tys=(Fold (Range0 (Len ps)), {}, \|m, i| Insert m, (Or ps[i], ""), (Or xs[i], TyErr)), rows={}, cols={})
+
+# A row written in a type (`emit` clauses, `Element r o`, `Elem c`).
+ConvRow: unbounded fn Cx, St, Type -> ((Rw, St))
+fn ConvRow cx, st, t:
+    let ((fams, vars, st2)) = RowParts cx, st, t
+    let st3 = if (Len vars) > 1: ErrFix st2, "row-two-tails", t.span, "a row has one variable; `{Join vars, " | "}` names two", "keep one variable" else: st2
+    let tail = match vars[0]:
+        ? v: TlQ v
+        nil: TlClosed
+    ((Rw(fams=(SortTexts fams), minus=[[]], tail=tail), st3))
+
+RowParts: unbounded fn Cx, St, Type -> (([Text], [Text], St))
+fn RowParts cx, st, t = match t.kind:
+    TRowUnion ts: Fold ts, (([[]], [[]], st)), \|((fs, vs, s)), x|
+        let ((f2, v2, s2)) = RowParts cx, s, x
+        (((Append fs, f2), (Append vs, v2), s2))
+    TGroup x: RowParts cx, st, x
+    TFamily q: (([[Dotted q.path]], [[]], (CheckFamily cx.g, st, (Dotted q.path), q.span)))
+    TName n, [[]]:
+        let name = Dotted n.path
+        if (Len n.path) == 1 and (IsLowerText name): (([[]], [[name]], st))
+        else: if name == "Element": ((cx.scope.fams, (TailNames cx.scope.tail), st))
+        else: (([[]], [[]], (ErrFix st, "row-single-tag", t.span, "a row names families, not tags: `{name}`", "write `{Dotted (Take n.path, (Dec (Len n.path)))}.*`")))
+    otherwise: (([[]], [[]], (Err st, "kind", t.span, "this is not a row")))
+
+TailNames: fn Tail -> [Text]
+fn TailNames (TlQ v) = [[v]]
+fn TailNames (TlRigid v) = [[v]]
+fn TailNames ignore = [[]]
+
+# A signature's scheme (ch. 5): its type variables, row variables (those in a row's place,
+# and the module's own `emit r`), its color variables, its bounds. Unwritten colors are
+# bounded in a signature mentioning `$`, `!` or `@`, and one color variable otherwise when
+# it takes a closure (D8).
+SigScheme: unbounded fn Cx, St, Type, [Bound] -> ((Scheme, St))
+fn SigScheme cx, st, t, bounds:
+    let rowVars = UnionTexts cx.rowVars, (RowVarsOfType t)
+    let colorVar = if (MentionsTime t) or not (TakesClosure t): CBound else: CQ "u"
+    let cx2 = update cx:
+        &_.rowVars <= rowVars
+        &_.unwritten <= colorVar
+    let ((ty, st2)) = ConvType cx2, st, t
+    let tvs = Filter (TypeVarsOfType t), \|v| not (HasText rowVars, v)
+    let written = ColorVarsOfType t
+    let cqs = if colorVar == CBound: written else: AddText written, "u"
+    let ((bs, st3)) = ConvBounds cx, st2, bounds
+    let rowsUsed = Filter rowVars, \|v| (HasText (RowVarsOfType t), v) or (UsesScope t)
+    ((Scheme(qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, bounds=bs, ty=ty), st3))
+
+ConvBounds: fn Cx, St, [Bound] -> (([((Text, Text))], St))
+fn ConvBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| Fold b.traits, ((acc, s)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:
+    ? k: (((Push a2, ((b.var.name, k))), s2))
+    nil: ((a2, (Err s2, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
+
+# Whether a signature's type writes `$`, `!` or `@` anywhere (ch. 5, The color).
+MentionsTime: unbounded fn Type -> Bool
+fn MentionsTime t = match t.kind:
+    TName n, args: (Contains n.sigils, "$") or (Contains n.sigils, "!") or (Contains n.sigils, "@") or Fold args, False, \|seen, a| seen or MentionsTime a
+    TSigiled s, i: (Contains s, "$") or (Contains s, "!") or (Contains s, "@") or MentionsTime i
+    TUnit s: (Contains s, "$") or (Contains s, "!") or (Contains s, "@")
+    TArray e, ignore: MentionsTime e
+    TTuple ts: Fold ts, False, \|seen, a| seen or MentionsTime a
+    TGroup x: MentionsTime x
+    TMap k, v: (MentionsTime k) or MentionsTime v
+    TFn ignore, ps, res: (Fold ps, False, \|seen, a| seen or MentionsTime a) or MentionsTime res
+    TEmit ty, ignore: True
+    otherwise: False
+
+TakesClosure: unbounded fn Type -> Bool
+fn TakesClosure t = match t.kind:
+    TFn ignore, ps, ignore: Fold ps, False, \|seen, p| seen or IsFnType p
+    otherwise: False
+
+IsFnType: unbounded fn Type -> Bool
+fn IsFnType t = match t.kind:
+    TFn ignore, ignore, ignore: True
+    TGroup x: IsFnType x
+    otherwise: False
+
+# Whether a type writes a blueprint or bare element that takes the scope's row.
+UsesScope: unbounded fn Type -> Bool
+fn UsesScope t = match t.kind:
+    TName n, args: (Contains n.sigils, "@") or ((Dotted n.path) == "Element" and (Len args) < 2) or ((Dotted n.path) == "Elem" and (Len args) == 0) or Fold args, False, \|seen, a| seen or UsesScope a
+    TSigiled s, i: (Contains s, "@") or UsesScope i
+    TUnit s: Contains s, "@"
+    TArray e, ignore: UsesScope e
+    TTuple ts: Fold ts, False, \|seen, a| seen or UsesScope a
+    TGroup x: UsesScope x
+    TMap k, v: (UsesScope k) or UsesScope v
+    TFn ignore, ps, res: (Fold ps, False, \|seen, a| seen or UsesScope a) or UsesScope res
+    TEmit ty, rowT: UsesScope rowT
+    otherwise: False
+
+# The lowercase names a type writes in a row's place.
+RowVarsOfType: unbounded fn Type -> [Text]
+fn RowVarsOfType t = match t.kind:
+    TName n, args:
+        let name = Dotted n.path
+        let own = if (name == "Element" and (Len args) == 2) or (name == "Elem" and (Len args) == 1): RowNamesIn (Or args[0], dummyType) else: [[]]
+        let rest = if name == "Element" and (Len args) == 2: Drop args, 1 else: if name == "Elem": [[]] else: args
+        Fold rest, own, \|acc, a| UnionTexts acc, (RowVarsOfType a)
+    TSigiled ignore, i: RowVarsOfType i
+    TArray e, ignore: RowVarsOfType e
+    TTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (RowVarsOfType a)
+    TGroup x: RowVarsOfType x
+    TMap k, v: UnionTexts (RowVarsOfType k), (RowVarsOfType v)
+    TFn ignore, ps, res: Fold ps, (RowVarsOfType res), \|acc, a| UnionTexts acc, (RowVarsOfType a)
+    TEmit ty, rowT: UnionTexts (RowVarsOfType ty), (RowNamesIn rowT)
+    otherwise: [[]]
+
+RowNamesIn: unbounded fn Type -> [Text]
+fn RowNamesIn t = match t.kind:
+    TName n, [[]]: if (Len n.path) == 1 and (IsLowerText (Dotted n.path)): [[Dotted n.path]] else: [[]]
+    TRowUnion ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (RowNamesIn a)
+    TGroup x: RowNamesIn x
+    otherwise: [[]]
+
+# The lowercase type variables a type writes, in order of first appearance (Q-RW8).
+TypeVarsOfType: unbounded fn Type -> [Text]
+fn TypeVarsOfType t = TypeVarsInto [[]], t
+
+TypeVarsInto: unbounded fn [Text], Type -> [Text]
+fn TypeVarsInto acc, t = match t.kind:
+    TName n, args:
+        let name = Dotted n.path
+        let here = if (Len n.path) == 1 and (IsLowerText name) and (Len args) == 0: AddText acc, name else: acc
+        let rest = if name == "Element" and (Len args) == 2: Drop args, 1 else: if name == "Elem": [[]] else: args
+        Fold rest, here, \|a, x| TypeVarsInto a, x
+    TSigiled ignore, i: TypeVarsInto acc, i
+    TArray e, ignore: TypeVarsInto acc, e
+    TTuple ts: Fold ts, acc, \|a, x| TypeVarsInto a, x
+    TGroup x: TypeVarsInto acc, x
+    TMap k, v: TypeVarsInto (TypeVarsInto acc, k), v
+    TFn ignore, ps, res: TypeVarsInto (Fold ps, acc, \|a, x| TypeVarsInto a, x), res
+    TEmit ty, ignore: TypeVarsInto acc, ty
+    otherwise: acc
+
+ColorVarsOfType: unbounded fn Type -> [Text]
+fn ColorVarsOfType t = match t.kind:
+    TFn (ColorVar v), ps, res: AddText (Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)), v.name
+    TFn ignore, ps, res: Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)
+    TName ignore, args: Fold args, [[]], \|acc, a| UnionTexts acc, (ColorVarsOfType a)
+    TSigiled ignore, i: ColorVarsOfType i
+    TArray e, ignore: ColorVarsOfType e
+    TTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (ColorVarsOfType a)
+    TGroup x: ColorVarsOfType x
+    TMap k, v: UnionTexts (ColorVarsOfType k), (ColorVarsOfType v)
+    TEmit ty, ignore: ColorVarsOfType ty
+    otherwise: [[]]
+
+# ---------------------------------------------------------------------------------------
+# Third pass: declarations read as types
+# ---------------------------------------------------------------------------------------
+
+ConvertTypes: unbounded fn G, St, Text -> ((G, St))
+fn ConvertTypes g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s0 = update st:
+            &_.file <= info.file
+        Fold info.tree.decls, ((g, s0)), \|((gg, s)), d| ConvertTypeDecl gg, s, info, d
+
+ConvertDecls: unbounded fn G, St, Text -> ((G, St))
+fn ConvertDecls g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s1 = update st:
+            &_.file <= info.file
+        let ((g2, s2)) = Fold info.tree.decls, ((g, s1)), \|((gg, s)), d| ConvertDecl gg, s, info, d
+        let s3 = MissingSignatures g2, s2, info
+        ((g2, s3))
+
+ConvertTypeDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
+fn ConvertTypeDecl g, st, info, d = match d.kind:
+    DType t:
+        let name = QualKey info.name, (Dotted t.name.path)
+        let ti = Or g.types[name], dummyTyInfo
+        let cx = CxOf g, info.name
+        let params = Each t.params, \|p| p.name
+        let self = TyCon name, (Each params, \|p| TyQ p)
+        match t.?body:
+            nil: ((g, st))
+            ? body: match body:
+                TbRecord fs:
+                    let ((fields, st2)) = Fold fs, (([[]], st)), \|((acc, s)), f|
+                        let ((ft, s2)) = ConvType cx, s, f.ty
+                        (((Push acc, ((f.name.name, ft))), s2))
+                    let ctor = CtorInfo(name=name, owner=name, params=params, args=(Each fields, \|((ignore, ft))| ft), fields=(Each fields, \|((fname, ignore))| fname), ty=self, index=0)
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, (BRecord fields))
+                        &_.ctors <= Insert &_.ctors, name, ctor
+                    ((upd, st2))
+                TbChoice cs: ConvCases g, st, cx, ti, name, params, self, cs
+                TbNewtype c: ConvCases g, st, cx, ti, name, params, self, [[c]]
+                TbUnit i:
+                    let ctor = CtorInfo(name=(QualKey info.name, i.name), owner=name, params=params, args=[[]], fields=[[]], ty=self, index=0)
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, (BChoice [[((i.name, [[]]))]]))
+                        &_.ctors <= Insert &_.ctors, (QualKey info.name, i.name), ctor
+                    ((upd, st))
+                TbRow:
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, BRowKind)
+                    ((upd, st))
+                TbAlias a:
+                    let ((at, st2)) = ConvType cx, st, a
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, (BAlias at))
+                    ((upd, st2))
+    otherwise: ((g, st))
+
+WithBody: fn TyInfo, TyBody -> TyInfo
+fn WithBody ti, b = update ti:
+    &_.body <= b
+
+ConvCases: unbounded fn G, St, Cx, TyInfo, Text, [Text], Ty, [Case] -> ((G, St))
+fn ConvCases g, st, cx, ti, name, params, self, cs:
+    let ((cases, st2)) = Fold cs, (([[]], st)), \|((acc, s)), c|
+        let s1 = match c.?indexed:
+            ? ignore: Err s, "unsupported", c.span, "this checker does not implement indexed choices for user types"
+            nil: s
+        let ((args, s2)) = ConvTypes cx, s1, c.args
+        (((Push acc, ((SNameKey c.name, args))), s2))
+    let g2 = Fold (Range0 (Len cases)), g, \|gg, i|
+        let ((cn, args)) = Or cases[i], (("", [[]]))
+        let qk = QualKey ti.home, cn
+        update gg:
+            &_.ctors <= Insert &_.ctors, qk, CtorInfo(name=qk, owner=name, params=params, args=args, fields=[[]], ty=self, index=i)
+    let upd = update g2:
+        &_.types <= Insert &_.types, name, (WithBody ti, (BChoice cases))
+    ((upd, st2))
+
+ConvertDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
+fn ConvertDecl g, st, info, d = match d.kind:
+    DSignature s:
+        let qk = QualKey info.name, (DefNameText s.name)
+        let cx = CxOf g, info.name
+        let ((sc, st1)) = SigScheme cx, st, s.ty, s.bounds
+        let st2 = LensCheck st1, (DefNameText s.name), s.ty, (DefNameSpan s.name)
+        let st3 = CheckMarkFunction st2, (DefNameText s.name), sc.ty, (DefNameSpan s.name)
+        if HasKey g.vals, qk: ((g, (Err st3, "collision", d.span, "a second signature for `{DefNameText s.name}`")))
+        else:
+            let upd = update g:
+                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc, sort="fn", hasSig=True, home=info.name, file=info.file, span=d.span)
+            ((upd, st3))
+    DFn f:
+        let qk = QualKey info.name, (DefNameText f.name)
+        (((AddClause g, info, qk, (DefNameText f.name), f, d.span, st), st))
+    DLet l:
+        let names = PatternNames l.pattern
+        let qk = QualKey info.name, (Or names[0], "")
+        let def = Def(qk=qk, name=(Or names[0], ""), home=info.name, file=info.file, span=d.span, body=(DbLet l))
+        let upd = update g:
+            &_.defs <= Push &_.defs, def
+        ((upd, st))
+    DWidget w:
+        let qk = QualKey info.name, (SNameKey w.name)
+        let def = Def(qk=qk, name=(SNameKey w.name), home=info.name, file=info.file, span=d.span, body=(DbWidget w))
+        let upd = update g:
+            &_.defs <= Push &_.defs, def
+        ((upd, st))
+    DTag t: ConvTag g, st, info, t, d.span
+    DTrait t: ConvTrait g, st, info, t, d.span
+    DImpl i: ConvImpl g, st, info, i, d.span
+    DCheck c:
+        let upd = update g:
+            &_.defs <= Push &_.defs, Def(qk=(QualKey info.name, "check {c.name.name}"), name=c.name.name, home=info.name, file=info.file, span=d.span, body=(DbCheck c))
+        ((upd, st))
+    DTest t:
+        let upd = update g:
+            &_.defs <= Push &_.defs, Def(qk=(QualKey info.name, "test {t.name.name}"), name=t.name.name, home=info.name, file=info.file, span=d.span, body=(DbTest t))
+        ((upd, st))
+    DStmt s: match s.kind:
+        SEmit ignore: ((g, st))
+        otherwise: ((g, (Err st, "unsupported", d.span, "a statement at the top of a file: nothing at top level is built")))
+    otherwise: ((g, st))
+
+# Clauses of one function gather into one definition, in order.
+AddClause: fn G, ModInfo, Text, Text, FnClause, Range, St -> G
+fn AddClause g, info, qk, name, f, span, st:
+    match g.fnAt[qk]:
+        ? i: update g:
+            &_.defs <= Insert2 &_.defs, i, (AddToFn (Or &_.defs[i], dummyDef), f)
+        nil: update g:
+            &_.fnAt <= Insert &_.fnAt, qk, (Len &_.defs)
+            &_.defs <= Push &_.defs, Def(qk=qk, name=name, home=info.name, file=info.file, span=span, body=(DbFn [[f]]))
+
+let dummyDef = Def(qk="", name="", home="", file=0, span=Range(start=0, end=0), body=(DbFn [[]]))
+
+IsFnDef: fn Def -> Bool
+fn IsFnDef d = match d.body:
+    DbFn ignore: True
+    otherwise: False
+
+AddToFn: fn Def, FnClause -> Def
+fn AddToFn d, f = match d.body:
+    DbFn fs: update d:
+        &_.body <= DbFn (Push fs, f)
+    otherwise: d
+
+# An array with element `i` replaced.
+Insert2: fn [a], Nat, a -> [a]
+fn Insert2 xs, i, x = Append (Push (Take xs, i), x), (Drop xs, i + 1)
+
+# A named lens, `&Home: fn &Fixture -> &Nat`, takes one reference (`lens-arity`); named
+# lenses are out of this compiler (decisions.md), so one that passes is `unsupported`.
+LensCheck: fn St, Text, Type, Range -> St
+fn LensCheck st, name, t, span:
+    if (Take name, 1) != "&": st
+    else: match t.kind:
+        TFn ignore, ps, ignore:
+            let refs = Filter ps, \|p| IsRefType p
+            if (Len refs) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference", "take the second part as a plain value"
+            else: Err st, "unsupported", span, "this checker does not implement named lenses and `Over`"
+        otherwise: st
+
+IsRefType: fn Type -> Bool
+fn IsRefType t = match t.kind:
+    TName n, ignore: (Take n.sigils, 1) == "&"
+    TSigiled s, ignore: (Take s, 1) == "&"
+    otherwise: False
+
+# `mark-function` (ch. 5, the full-stack name check): a function's name shows the
+# outermost mark of what it returns.
+CheckMarkFunction: unbounded fn St, Text, Ty, Range -> St
+fn CheckMarkFunction st, name, t, span = match t:
+    TyFn ignore, ignore, res:
+        let want = HeadSigil st, res
+        let marks = MarksOf name
+        let shown = Take marks, 1
+        let bare = Drop name, (Len marks)
+        if shown == want or (Len marks) > 1 or bare == "" or not (IsUpperText bare): st
+        else: ErrFix st, "mark-function", span, "`{name}` returns `{ShowTy st, res}`; name it `{want}{bare}`", "rename to `{want}{bare}`"
+    otherwise: st
+
+MissingSignatures: fn G, St, ModInfo -> St
+fn MissingSignatures g, st, info = Fold g.defs, st, \|s, d|
+    if d.home == info.name and (IsFnDef d) and not (HasKey g.vals, d.qk):
+        ErrFix s, "no-signature", d.span, "`{d.name}` has no signature line", "write `{d.name}: fn ... -> ...` above it"
+    else: s
+
+# A tag (Semantics ch. 8's table): `of` a row kind, its output, its fields; a generic tag's
+# variables bounded on the line.
+ConvTag: unbounded fn G, St, ModInfo, TagDecl, Range -> ((G, St))
+fn ConvTag g, st, info, t, span:
+    let name = Dotted t.name.path
+    let family = Dotted (Take t.name.path, (Dec (Len t.name.path)))
+    let cx = CxOf g, info.name
+    let ((kind, out, st2)) = TagKind g, cx, st, t.ofType
+    let ((fields, st3)) = Fold t.fields, (([[]], st2)), \|((acc, s)), f|
+        let ((ft, s2)) = ConvType cx, s, f.ty
+        (((Push acc, ((f.name.name, ft))), s2))
+    let qs = Fold t.fields, (TypeVarsOfType t.ofType), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
+    let ((bs, st4)) = ConvBounds cx, st3, t.bounds
+    let tg = TagInfo(name=name, family=family, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, fields=fields, home=info.name, file=info.file, span=span)
+    let upd = update g:
+        &_.tags <= Insert &_.tags, name, tg
+    ((upd, st4))
+
+# The row kind a tag joins and its output: `Element !Click`, `Element` (unit), `Fault`.
+TagKind: unbounded fn G, Cx, St, Type -> ((Text, Ty, St))
+fn TagKind g, cx, st, t = match t.kind:
+    TName n, args:
+        let name = Dotted n.path
+        if name == "Element":
+            match args[0]:
+                ? o:
+                    let ((ot, s2)) = ConvType cx, st, o
+                    (("Element", ot, s2))
+                nil: (("Element", tUnit, st))
+        else:
+            let ((?key, ignore)) = ResolveType g, cx.home, n.path
+            match ?key:
+                ? k: match (Or g.types[k], dummyTyInfo).body:
+                    BRowKind: ((k, tUnit, st))
+                    otherwise: ((k, tUnit, (Err st, "kind", t.span, "`{name}` is not a row kind: a tag joins `Element o`, `Fault` or another `type K = row`")))
+                nil: (("", TyErr, (Err st, "unknown-name", t.span, "no row kind `{name}`")))
+    TGroup x: TagKind g, cx, st, x
+    otherwise: (("", TyErr, (Err st, "kind", t.span, "a tag joins a row kind")))
+
+# A trait: its parameter, superclasses, methods (each a value whose scheme has the trait
+# as a bound on the parameter), defaults and associated types (ch. 3).
+ConvTrait: unbounded fn G, St, ModInfo, TraitDecl, Range -> ((G, St))
+fn ConvTrait g, st, info, t, span:
+    let name = QualKey info.name, (Dotted t.name.path)
+    let param = Or (Each t.params, \|p| p.name)[0], "a"
+    let st1 = if (Len t.params) > 1: Err st, "unsupported", span, "this checker does not implement traits of several types" else: st
+    let cx = CxOf g, info.name
+    let ((supers, st2)) = ConvBounds cx, st1, t.bounds
+    let ((g3, st3, methods, defaults, assocs)) = Fold t.items, ((g, st2, [[]], [[]], [[]])), \|((gg, s, ms, ds, assocAcc)), it| match it:
+        TiSignature sg:
+            let mname = DefNameText sg.name
+            let qk = QualKey info.name, mname
+            let ((sc, s2)) = SigScheme cx, s, sg.ty, sg.bounds
+            let sc2 = update sc:
+                &_.qs <= if HasText &_.qs, param: &_.qs else: Append [[param]], &_.qs
+                &_.bounds <= Append [[((param, name))]], &_.bounds
+            let upd = update gg:
+                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc2, sort="method", hasSig=True, home=info.name, file=info.file, span=sg.span)
+            ((upd, s2, (Push ms, qk), ds, assocAcc))
+        TiFn f:
+            let qk = QualKey info.name, (DefNameText f.name)
+            let def = Def(qk=qk, name=(DefNameText f.name), home=info.name, file=info.file, span=f.span, body=(DbDefault [[f]], name))
+            let upd = update gg:
+                &_.defs <= Push &_.defs, def
+            ((upd, s, ms, (Push ds, qk), assocAcc))
+        TiAssocType n, ignore, ignore, ignore: ((gg, s, ms, ds, (Push assocAcc, n.name)))
+        TiAssocRow ignore, r: ((gg, (Err s, "unsupported", r, "this checker does not implement associated rows"), ms, ds, assocAcc))
+    let ti = TraitInfo(name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), methods=methods, defaults=defaults, assocs=assocs, file=info.file, span=span)
+    let upd3 = update g3:
+        &_.traits <= Insert &_.traits, name, ti
+    ((upd3, st3))
+
+# An impl: its trait, its head with the head's variables quantified, its `where` bounds,
+# its methods checked later against the trait's signatures.
+ConvImpl: unbounded fn G, St, ModInfo, ImplDecl, Range -> ((G, St))
+fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.path:
+    nil: ((g, (Err st, "unknown-name", i.traitRef.span, "no trait `^{Dotted i.traitRef.path}`")))
+    ? cls:
+        let cx = CxOf g, info.name
+        let ((head, st2)) = ConvType cx, st, i.ty
+        let ((bs, st3)) = ConvBounds cx, st2, i.bounds
+        let ((assocs, st4)) = Fold i.items, (([[]], st3)), \|((acc, s)), it| match it:
+            TiAssocType n, ignore, (? v), ignore:
+                let ((vt, s2)) = ConvType cx, s, v
+                (((Push acc, ((n.name, vt))), s2))
+            otherwise: ((acc, s))
+        let names = Fold i.items, [[]], \|acc, it| match it:
+            TiFn f: AddText acc, (DefNameText f.name)
+            otherwise: acc
+        let im = ImplInfo(cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, methods=names)
+        let g2 = update g:
+            &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
+        let g3 = Fold names, g2, \|gg, mname|
+            let clauses = Fold i.items, [[]], \|acc, it| match it:
+                TiFn f: if (DefNameText f.name) == mname: Push acc, f else: acc
+                otherwise: acc
+            update gg:
+                &_.defs <= Push &_.defs, Def(qk="{cls} impl {mname}", name=mname, home=info.name, file=info.file, span=span, body=(DbMethod clauses, cls, im))
+        ((g3, st4))
+
+# ---------------------------------------------------------------------------------------
+# Coherence (ch. 3; ch. 5: impl headers unified pairwise per trait, before any body)
+# ---------------------------------------------------------------------------------------
+
+# The derived impls, from every `derive` line: structural, each type parameter bounded.
+DerivedImpls: fn G -> G
+fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
+    ? ti: Fold ti.derives, gg, \|g2, tr| match ?ResolveTrait g2, ti.home, (Split tr, "."):
+        ? cls:
+            let im = ImplInfo(cls=cls, head=(TyCon ti.name, (Each ti.params, \|p| TyQ p)), qs=ti.params, bounds=(Each ti.params, \|p| ((p, cls))), home=ti.home, file=ti.file, span=ti.span, derived=True, assocs=[[]], methods=[[]])
+            update g2:
+                &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
+        nil: g2
+    nil: gg
+
+Coherence: unbounded fn G, St -> St
+fn Coherence g, st = Fold (Keys g.impls), st, \|s, cls|
+    let impls = Or g.impls[cls], [[]]
+    let s2 = Fold impls, s, \|s1, i| CheckOrphan g, s1, i
+    Fold (Range0 (Len impls)), s2, \|s3, a| Fold (Range0 (Len impls)), s3, \|s4, b| if a < b: CheckPair g, s4, (Or impls[a], dummyImpl), (Or impls[b], dummyImpl) else: s4
+
+let dummyImpl = ImplInfo(cls="", head=TyErr, qs=[[]], bounds=[[]], home="", file=0, span=Range(start=0, end=0), derived=False, assocs=[[]], methods=[[]])
+
+CheckPair: unbounded fn G, St, ImplInfo, ImplInfo -> St
+fn CheckPair g, st, a, b:
+    if not (HeadsMayMeet a.head, b.head): st
+    else: if a.file < b.file or (a.file == b.file and a.span.start <= b.span.start): CheckPairIn g, st, a, b
+    else: CheckPairIn g, st, b, a
+
+# Two heads with different constructors never unify: most pairs of a trait's impls.
+HeadsMayMeet: fn Ty, Ty -> Bool
+fn HeadsMayMeet (TyCon x, ignore), (TyCon y, ignore) = x == y
+fn HeadsMayMeet ignore, ignore = True
+
+CheckPairIn: unbounded fn G, St, ImplInfo, ImplInfo -> St
+fn CheckPairIn g, st, a, b:
+    let s0 = update st:
+        &_.file <= b.file
+    let ((ta, s1)) = Instantiate s0, (Scheme(qs=a.qs, plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=a.head)), b.span
+    let ((tb, s2)) = Instantiate s1, (Scheme(qs=b.qs, plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=b.head)), b.span
+    let ((ok, s3)) = TryUnify s2, ta, tb, b.span
+    if not ok: st
+    else:
+        let same = (Len a.qs) == 0 and (Len b.qs) == 0 or (ShapeOf a.head) == (ShapeOf b.head)
+        let code = if same: "impl-duplicate" else: "impl-overlap"
+        let firstAt = "{(Or g.srcs[a.file], (MkSrc "?", "")).path}:{(CLineOf (Or g.srcs[a.file], (MkSrc "?", "")).starts, a.span.start) + 1}"
+        ErrFix s0, code, b.span, "a second impl of `^{BareName a.cls}` for `{ShowTy s0, b.head}`", "the first is at {firstAt}; keep one"
+
+# A head with its variables erased, to tell a duplicate from an overlap.
+ShapeOf: unbounded fn Ty -> Text
+fn ShapeOf t = match t:
+    TyQ ignore: "_"
+    TyCon n, args: "{n}({Join (Each args, ShapeOf), ","})"
+    TyTuple ts: "(({Join (Each ts, ShapeOf), ","}))"
+    TyArray e: "[{ShapeOf e}]"
+    TyMap k, v: "{ShapeOf k}==>{ShapeOf v}"
+    TySig s, i: "{s}{ShapeOf i}"
+    otherwise: "?"
+
+# No orphans (Semantics ch. 6): an impl stands in the trait's module or in a module that
+# declares a type its header mentions.
+CheckOrphan: unbounded fn G, St, ImplInfo -> St
+fn CheckOrphan g, st, i:
+    let traitMod = (Or g.traits[i.cls], dummyTrait).home
+    let owners = Each (TypeNamesIn i.head), \|n| (Or g.types[n], dummyTyInfo).home
+    if i.derived or i.home == traitMod or HasText owners, i.home: st
+    else:
+        let s = update st:
+            &_.file <= i.file
+        ErrFix s, "orphan", i.span, "{if i.home == "": "this file" else: "`{i.home}`"} declares neither `^{BareName i.cls}` nor `{ShowTy s, i.head}`", "wrap the type in a newtype of this module, or move the impl"
+
+let dummyTrait = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=0, span=Range(start=0, end=0))
+
+TypeNamesIn: unbounded fn Ty -> [Text]
+fn TypeNamesIn t = match t:
+    TyCon n, args: Fold args, [[n]], \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    TyArray e: TypeNamesIn e
+    TyMap k, v: UnionTexts (TypeNamesIn k), (TypeNamesIn v)
+    TySig ignore, i: TypeNamesIn i
+    TyFn ignore, ps, r: Fold ps, (TypeNamesIn r), \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    otherwise: [[]]
+
+# ---------------------------------------------------------------------------------------
+# Trait resolution (ch. 5, Traits)
+# ---------------------------------------------------------------------------------------
+
+# A trait's superclasses, closed: `^Ord` entails `^Eq`.
+SuperClosure: unbounded fn G, Text -> [Text]
+fn SuperClosure g, cls = Fold (Or g.traits[cls], dummyTrait).supers, [[cls]], \|acc, s| UnionTexts acc, (SuperClosure g, s)
+
+WithFile: fn St, Nat -> St
+fn WithFile s, f = update s:
+    &_.file <= f
+
+# The traits the primitives and built-in formers have (Type System ch. 3, "The three built
+# in"): every primitive is `^Eq`, `^Ord`, `^Show`; the numbers are `^Num`; tuples, arrays,
+# maps, optionals and faults have what their parts have; elements compare and print.
+BuiltinHas: fn Text, Text -> Bool
+fn BuiltinHas cls, con:
+    let bare = BareName cls
+    if bare == "Num": con == "Nat" or con == "Int" or con == "U8" or con == "Float"
+    else: if bare == "Eq" or bare == "Ord" or bare == "Show": (IsPrimType con) or con == "Fault" or con == "Prelude.Fault"
+    else: False
+
+# Solve the wanted constraints above `level` that can be solved now; keep the rest. With
+# `final`, flexible variables default (doubt LD) or are `ambiguous`.
+SolveWants: unbounded fn G, St, [((Text, Text))], Bool -> St
+fn SolveWants g, st, givens, final:
+    let s4 = SolveRounds g, st, givens, 0
+    if final: DefaultWants g, s4, givens else: s4
+
+# Solve until nothing changes: an impl's `where` clauses and a tuple's parts are new
+# constraints, solved in the next round.
+SolveRounds: unbounded fn G, St, [((Text, Text))], Nat -> St
+fn SolveRounds g, st0, givens, round:
+    let st = ResolveFields g, (RetryDeferred st0), False
+    let cleared = update st:
+        &_.wants <= [[]]
+    let ((keep, s2)) = Fold st.wants, (([[]], cleared)), \|((acc, s)), w|
+        let ((left, s3)) = SolveOne g, s, givens, w
+        (((Append acc, left), s3))
+    let s4 = update s2:
+        &_.wants <= Append keep, &_.wants
+    if s4.wants == st.wants or round > 6: s4 else: SolveRounds g, s4, givens, round + 1
+
+# The field accesses that waited for their record: read where the record is now known;
+# with `final`, one still unknown is `ambiguous`.
+ResolveFields: unbounded fn G, St, Bool -> St
+fn ResolveFields g, st, final:
+    let qs = st.fieldQs
+    let cleared = update st:
+        &_.fieldQs <= [[]]
+    let done = Fold qs, cleared, \|s, q| ResolveField g, s, q, final
+    WithFile done, st.file
+
+ResolveField: unbounded fn G, St, FieldQ, Bool -> St
+fn ResolveField g, st, q, final:
+    let s = WithFile st, q.file
+    match Walk s, q.recv:
+        TyCon n, args: match g.ctors[n]:
+            ? c:
+                let ?i = Fold (Range0 (Len c.fields)), nil, \|?at, k| if c.fields[k] == ? q.field: ? k else: ?at
+                match ?i:
+                    ? i: Unify s, q.result, (SubstQ (ParamInst c.params, args), (Or c.args[i], TyErr)), q.span
+                    nil: Err s, "mismatch", q.span, "`{BareName n}` has no field `{q.field}`"
+            nil: Err s, "mismatch", q.span, "`{BareName n}` has no fields"
+        TyFlex ignore:
+            if final: ErrFix s, "ambiguous", q.span, "nothing decides which record `.{q.field}` reads: {Join (Each q.owners, \|o| "`{o}`"), ", "} have it", "annotate the value's type, or name it from a signature"
+            else: update s:
+                &_.fieldQs <= Push &_.fieldQs, q
+        TyErr: s
+        other: Err s, "mismatch", q.span, "`{ShowTy s, other}` has no field `{q.field}`"
+
+# One constraint: solved (with its impl's `where` clauses wanted), waiting, or `no-impl`.
+SolveOne: unbounded fn G, St, [((Text, Text))], Want -> (([Want], St))
+fn SolveOne g, st, givens, w:
+    let t = Walk st, w.ty
+    let s0 = update st:
+        &_.file <= w.file
+    let Restore = \|s| WithFile s, st.file
+    match t:
+        TyFlex ignore: (([[w]], st))
+        TyErr: (([[]], st))
+        TyRigid v:
+            if (Take w.cls, 6) == "Range " or w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], st))
+            else: if Fold givens, False, \|seen, ((gv, gc))| seen or (gv == v and HasText (SuperClosure g, gc), w.cls): (([[]], (Solved st, w, t, "given")))
+            else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{v}`", "add `where {v}: ^{BareName w.cls}` to the signature")))
+        TySig s, inner:
+            if (s == "?" or s == "~") and (HasText [["Eq", "Ord", "Show"]], (BareName w.cls)): (([[Want(cls=w.cls, ty=inner, file=w.file, span=w.span, level=w.level)]], (Solved st, w, t, "parts")))
+            else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`", "no trait has an impl at a sigiled type (Type System ch. 3, T6); take the layer off first")))
+        TyAt ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`")))
+        TyFn ignore, ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`: functions do not compare or print")))
+        otherwise: SolveAtHead g, st, s0, Restore, givens, w, t
+
+SolveAtHead: unbounded fn G, St, St, (fn St -> St), [((Text, Text))], Want, Ty -> (([Want], St))
+fn SolveAtHead g, st, s0, Restore, givens, w, t:
+    if (Take w.cls, 6) == "Range ": (([[]], Restore (LiteralRange s0, w, t)))
+    else: if w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], Restore (SignedAt s0, w, t)))
+    else: SolveClass g, st, s0, Restore, givens, w, t
+
+# `literal-range` (ch. 5, Literals): a literal out of range for its final type.
+LiteralRange: unbounded fn St, Want, Ty -> St
+fn LiteralRange st, w, t:
+    let lit = Drop w.cls, 6
+    let negative = (Take lit, 1) == "-"
+    let digits = if negative: Drop lit, 1 else: lit
+    let ?n = ?ParseNat digits
+    match t:
+        TyCon "Nat", [[]]: if negative and digits != "0": Err st, "literal-range", w.span, "`{lit}` does not fit `Nat`" else: st
+        TyCon "U8", [[]]: match ?n:
+            ? v: if negative or v > 255: Err st, "literal-range", w.span, "`{lit}` does not fit `U8`" else: st
+            nil: st
+        otherwise: st
+
+# `-` is not `Nat`'s (round 47 NS, doubt NN's first ruling (a)): `nat-minus`.
+SignedAt: unbounded fn St, Want, Ty -> St
+fn SignedAt st, w, t = match t:
+    TyCon "Nat", [[]]: if w.cls == "Prelude.Sub": ErrFix st, "nat-minus", w.span, "`Nat - Nat`: write `-?` for a `?Nat`, or `Int n`", "write `a -? b` and handle its `nil`, or widen with `Int a`" else: st
+    TyCon "U8", [[]]: if w.cls == "Prelude.Sub": st else: st
+    otherwise: st
+
+SolveClass: unbounded fn G, St, St, (fn St -> St), [((Text, Text))], Want, Ty -> (([Want], St))
+fn SolveClass g, st, s0, Restore, givens, w, t:
+    let bare = BareName w.cls
+    let ?parts = match t:
+        TyTuple ts: ? ts
+        TyArray e: ? [[e]]
+        TyMap k, v: ? [[k, v]]
+        otherwise: nil
+    let structural = bare == "Eq" or bare == "Ord" or bare == "Show"
+    match ?parts:
+        ? ps:
+            if structural: (((Each ps, \|p| Want(cls=w.cls, ty=p, file=w.file, span=w.span, level=w.level)), (Solved st, w, t, "parts")))
+            else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+        nil: match t:
+            TySig ignore, ignore: (([[]], st))
+            TyElem ignore, ignore: if bare == "Eq" or bare == "Show": (([[]], (Solved st, w, t, "builtin"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            TyElemAny ignore: if bare == "Eq" or bare == "Show": (([[]], (Solved st, w, t, "builtin"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            TyAny trs: if (HasText trs, w.cls) or (Fold trs, False, \|seen, tr| seen or (HasText (SuperClosure g, tr), w.cls)): (([[]], (Solved st, w, t, "packed"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            TyCon con, args:
+                if BuiltinHas w.cls, con: (([[]], (Solved st, w, t, "builtin")))
+                else: match ?FindImpl g, st, w.cls, t:
+                    ? ((im, s2, how)):
+                        let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
+                        ((wants, (Solved s2, w, t, how)))
+                    nil:
+                        let fix = if bare == "Num" and con == "Text": "" else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
+                        (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`", fix)))
+            otherwise: (([[]], st))
+
+# The one impl whose header matches, by one-way matching (T1): its `where` bounds as
+# wanted constraints on the matched types.
+?FindImpl: unbounded fn G, St, Text, Ty -> ?(([((Ty, Text))], St, Text))
+fn ?FindImpl g, st, cls, t = Fold (Or g.impls[cls], [[]]), nil, \|?found, im| match ?found:
+    ? f: ? f
+    nil: match ?MatchHead im.head, (Zonk st, t), {}:
+        ? m: ? (((Each im.bounds, \|((v, c))| (((Or m[v], TyErr), c))), st, (ImplHow g, im)))
+        nil: nil
+
+# Where an impl stands, for the typed output: `impl PATH:LINE` or `derived PATH:LINE`.
+ImplHow: fn G, ImplInfo -> Text
+fn ImplHow g, im:
+    let src = Or g.srcs[im.file], (MkSrc "?", "")
+    "{if im.derived: "derived" else: "impl"} {src.path}:{(CLineOf src.starts, im.span.start) + 1}"
+
+# A constraint solved, noted for the typed output.
+Solved: fn St, Want, Ty, Text -> St
+fn Solved st, w, t, how = NoteImpl st, w.file, w.span, w.cls, t, how
+
+# One-way matching of an impl head (with `TyQ` variables) against a type.
+?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchHead pat, t, m = match ((pat, t)):
+    ((TyQ v, x)): match m[v]:
+        ? y: if y == x: ? m else: nil
+        nil: ? (Insert m, v, x)
+    (((TyCon a, xs), (TyCon b, ys))): if a == b and (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyArray x, TyArray y)): ?MatchHead x, y, m
+    (((TyMap k1, v1), (TyMap k2, v2))): ?MatchAll [[k1, v1]], [[k2, v2]], m
+    (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?MatchHead i1, i2, m else: nil
+    otherwise: nil
+
+?MatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
+    ? mm: ?MatchHead (Or xs[i], TyErr), (Or ys[i], TyErr), mm
+    nil: nil
+
+# The end of a definition (doubt LD): a variable whose constraints include `^Num` and lie
+# among `^Num`, `^Eq`, `^Ord`, `^Show` becomes `Int`; anything else left is `ambiguous`.
+DefaultWants: unbounded fn G, St, [((Text, Text))] -> St
+fn DefaultWants g, st, givens:
+    let flexVars = Fold st.wants, [[]], \|acc, w| match Walk st, w.ty:
+        TyFlex n: AddNat acc, n
+        otherwise: acc
+    let s2 = Fold flexVars, st, \|s, v|
+        let classes = Each (Filter s.wants, \|w| (Walk s, w.ty) == (TyFlex v)), \|w| BareName w.cls
+        let defaultable = (HasText classes, "Num") and Fold classes, True, \|ok, c| ok and ((HasText [["Num", "Eq", "Ord", "Show", "Sub", "Signed"]], c) or (Take c, 6) == "Range ")
+        if defaultable: update s:
+            &_.tys <= Insert &_.tys, v, tInt
+        else: s
+    let s3 = SolveWants g, s2, givens, False
+    let leftover = Filter s3.wants, \|w| (IsFlexVar s3, w.ty) and (Take w.cls, 6) != "Range " and w.cls != "Prelude.Sub" and w.cls != "Prelude.Signed"
+    let s4 = Fold leftover, s3, \|s, w|
+        let s5 = update s:
+            &_.file <= w.file
+        ErrFix s5, "ambiguous", w.span, "nothing decides `{ShowTy s, w.ty}` in `^{BareName w.cls} {ShowTy s, w.ty}`; annotate, or write a suffixed operator", "annotate the value's type"
+    update s4:
+        &_.wants <= [[]]
+        &_.file <= st.file

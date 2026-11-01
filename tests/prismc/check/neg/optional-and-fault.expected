@@ -1,0 +1,4 @@
+tests/prismc/check/neg/optional-and-fault.prism:3: error[optional-and-fault]: `?` and `~` in one operation
+    fn ?Add ?a, ~b = ?a + ~b
+                     ^^^^^^^
+1 error

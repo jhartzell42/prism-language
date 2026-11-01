@@ -1,0 +1,5 @@
+tests/prismc/check/neg/not-exhaustive.prism:8: error[not-exhaustive]: this match misses `Finished`
+    fn Visible f, done = match f:
+                         ^^^^^^^^
+  fix: add an arm for it, or `otherwise:`
+1 error

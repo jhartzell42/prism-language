@@ -11,7 +11,9 @@
 # `--prelude DIR` (`prelude` when not given) that the program does not replace, and runs
 # the checker (README, Checker): the diagnostics, then a count, go to `--out OUT` when
 # given, and the program gives up with them when there is an error. `--world FAM,FAM`
-# names the families a World answers, for the root row check.
+# names the families a World answers, for the root row check. `--typed FILE...` does the
+# same and writes the typed program (typed.prism) as S-expressions before the
+# diagnostics, which follow it as `;` comments.
 #
 # Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
@@ -25,6 +27,7 @@ use CheckErrors.*
 use CheckTypes.*
 use CheckEnv.*
 use CheckPasses.*
+use Typed
 use Emit
 
 # What the driver asks of the front end, and what it hands back.
@@ -91,6 +94,7 @@ type CheckJob = record:
     files: [((Text, Text))]
     prelude: [((Text, Text))]
     world: [Text]
+    typed: Bool
 derive ^Eq, ^Show
 
 # The prelude's files, as compiler zero supplies them beside the prelude.
@@ -126,9 +130,14 @@ fn CheckFiles job:
     else:
         let srcs = Each all, \|((path, text, ignore))| MkSrc path, text
         let trees = Each all, \|((ignore, ignore, p))| p.tree
-        let report = CheckProgram srcs, trees, job.world, (Len parsed)
+        let report = CheckProgram srcs, trees, job.world, (Len parsed), job.typed
         let summary = if report.errors == 0: "no errors\n" else: "{report.errors} error{if report.errors == 1: "" else: "s"}\n"
-        Outcome(text="{report.text}{summary}", failed=(report.errors > 0), report="{report.text}{summary}")
+        let shown = if job.typed: "{Typed.TypedSexp srcs, trees, (Len parsed), report.typed}{Commented "{report.text}{summary}"}" else: "{report.text}{summary}"
+        Outcome(text=shown, failed=(report.errors > 0), report="{report.text}{summary}")
+
+# Text as `;` comment lines, after the typed program.
+Commented: fn Text -> Text
+fn Commented t = Concat (Each (Filter (Split t, "\n"), \|l| l != ""), \|l| "; {l}\n")
 
 TagFamilies: fn Module -> [Text]
 fn TagFamilies m = Fold m.decls, [[]], \|acc, d| match d.kind:
@@ -143,7 +152,7 @@ fn RenderParse path, text, ds = Concat (Each (Filter ds, \|d| d.stage != "out"),
 
 @main:
     args <- Process.Args
-    let checking = Fold args, False, \|seen, a| seen or a == "--check"
+    let checking = Fold args, False, \|seen, a| seen or a == "--check" or a == "--typed"
     let compiling = (Or args[0], "") == "compile"
     if compiling: @CompileMain (Drop args, 1)
     else: if checking: @CheckMain args
@@ -163,18 +172,18 @@ fn @CheckMain args:
     $sources <- for p <- paths:
         Fs.Contents(path=p)
     ignore <- rebuild $sources:
-        @Check files, prelude, world, ?out, _
+        @Check files, prelude, world, ?out, (HasText args, "--typed"), _
 
 # One run of the checker, once every file is read; a prelude file that is missing is left
 # out.
-@Check: fn [Text], [Text], [Text], ?Text, (Nat ==> ~Contents) -> @unit
-fn @Check files, prelude, world, ?out, contents:
+@Check: fn [Text], [Text], [Text], ?Text, Bool, (Nat ==> ~Contents) -> @unit
+fn @Check files, prelude, world, ?out, typed, contents:
     let n = Len files
     let texts = Each (Range0 (Len (Append files, prelude))), \|i| ContentsText (Or contents[i], (~ Contents(text="")))
     let mine = Each (Range0 n), \|i| (((Or files[i], ""), (Or texts[i], "")))
     let theirs = Each (Range0 (Len prelude)), \|i| (((Or prelude[i], ""), (Or texts[n + i], "")))
     let present = Filter theirs, \|((ignore, t))| t != ""
-    let job = CheckJob(files=mine, prelude=present, world=world)
+    let job = CheckJob(files=mine, prelude=present, world=world, typed=typed)
     !done <- @Run CheckFiles, job
     $?outcome <- nil then ? !done
     ignore <- rebuild $?outcome:

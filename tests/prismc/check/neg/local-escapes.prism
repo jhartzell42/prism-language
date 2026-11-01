@@ -1,0 +1,5 @@
+# `local-escapes`: a block-local type lives only in an `&` local.
+Zeros: fn Nat -> [Nat]
+fn Zeros n = update [[]]:
+    let parent = Buffer.Numbered n
+    &_ <= Freeze parent

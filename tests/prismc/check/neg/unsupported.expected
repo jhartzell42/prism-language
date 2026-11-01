@@ -1,0 +1,4 @@
+tests/prismc/check/neg/unsupported.prism:3: error[unsupported]: this checker does not implement suffixed operators
+    fn Less a, b = a <Int b
+                   ^^^^^^^^
+1 error

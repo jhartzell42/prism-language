@@ -1,0 +1,5 @@
+tests/prismc/check/neg/may-not-end.prism:3: error[may-not-end]: `Loop` calls itself on `n`, not smaller than what it was given
+    fn Loop n = Loop n
+                ^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+1 error

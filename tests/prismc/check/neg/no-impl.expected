@@ -1,0 +1,4 @@
+tests/prismc/check/neg/no-impl.prism:3: error[no-impl]: no impl of `^Num` for `Text`
+    fn Join2 a, b = a + b
+                    ^^^^^
+1 error

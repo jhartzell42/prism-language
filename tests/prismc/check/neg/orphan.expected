@@ -1,0 +1,5 @@
+tests/prismc/check/neg/orphan.prism:2: error[orphan]: this file declares neither `^Show` nor `Ordering`
+    impl ^Show Ordering:
+    ^^^^^^^^^^^^^^^^^^^^
+  fix: wrap the type in a newtype of this module, or move the impl
+1 error

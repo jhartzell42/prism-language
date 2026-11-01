@@ -1,0 +1,4 @@
+tests/prismc/check/neg/kind.prism:6: error[kind]: `Pair` takes two types; here it has one
+    First: fn (Pair Int) -> Int
+               ^^^^^^^^
+1 error

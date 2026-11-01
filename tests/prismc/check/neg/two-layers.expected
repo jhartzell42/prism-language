@@ -1,0 +1,5 @@
+tests/prismc/check/neg/two-layers.prism:11: error[two-layers]: `Len` over a dynamic of dynamics
+        let $bad = Len $$title
+                       ^^^^^^^
+  fix: take one layer off with a binding first: `@Flatten` or `@Switch`
+1 error

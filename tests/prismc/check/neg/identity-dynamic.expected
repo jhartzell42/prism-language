@@ -1,0 +1,5 @@
+tests/prismc/check/neg/identity-dynamic.prism:8: error[identity-dynamic]: a dynamic in the identity field `src`
+        Ui.Image(src=$src)
+                     ^^^^
+  fix: for a new element per value, write `rebuild $src:` with `Ui.Image(src=_, ...)` inside
+1 error

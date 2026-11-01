@@ -1,0 +1,9 @@
+tests/conformance/sem-ch05-and-blocks.prism:78: error[may-not-end]: this loop in `Components` may not end: nothing it sets gets smaller on every turn
+            while ? p <- &parent[&ra] if p != &ra:
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: set a local from `&x -? 1` through a pattern, as `while ? left <- &fuel -? 1:`, or mark `Components` `unbounded fn`
+tests/conformance/sem-ch05-and-blocks.prism:81: error[may-not-end]: this loop in `Components` may not end: nothing it sets gets smaller on every turn
+            while ? p <- &parent[&rb] if p != &rb:
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: set a local from `&x -? 1` through a pattern, as `while ? left <- &fuel -? 1:`, or mark `Components` `unbounded fn`
+2 errors

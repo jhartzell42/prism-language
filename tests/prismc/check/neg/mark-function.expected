@@ -1,0 +1,5 @@
+tests/prismc/check/neg/mark-function.prism:2: error[mark-function]: `Half` returns `?Int`; name it `?Half`
+    Half: fn Int -> ?Int
+    ^^^^
+  fix: rename to `?Half`
+1 error

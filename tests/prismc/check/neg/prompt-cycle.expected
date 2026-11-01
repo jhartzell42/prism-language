@@ -1,0 +1,5 @@
+tests/prismc/check/neg/prompt-cycle.prism:7: error[prompt-cycle]: a prompt cycle: `!a`, `!b`
+        let !a = 1 + (!b <| 0 on !go)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: break it with a hold: `$last <- start then ...` reads the value as the tick opened
+1 error

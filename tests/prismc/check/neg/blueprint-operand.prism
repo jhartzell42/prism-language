@@ -1,0 +1,5 @@
+# `blueprint-operand`: `@` never lifts (Type System ch. 4, `@form`).
+emit Ui.*
+
+Count: fn @[Text] -> Nat
+fn Count @picks = Len @picks

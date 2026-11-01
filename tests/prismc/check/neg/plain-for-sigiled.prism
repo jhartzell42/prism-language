@@ -1,0 +1,11 @@
+# `plain-for-sigiled`: a plain value never becomes a dynamic because one was expected.
+emit Ui.*
+
+!Bump: fn $Int, !unit -> !Int
+fn !Bump $n, !go = $n + 1 on !go
+
+@bumper: @unit
+@bumper:
+    !go <- Ui.Button(label=$"Go")
+    $bumped <- 0 then !Bump 5, (unit on !go)
+    Ui.Label(text=$"{$bumped}")

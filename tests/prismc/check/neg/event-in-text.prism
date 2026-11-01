@@ -1,0 +1,8 @@
+# `event-in-text`: an event in a dynamic text.
+emit Ui.*
+
+@shout: @unit
+@shout:
+    !go <- Ui.Button(label=$"Go")
+    let !said = "hi" on !go
+    Ui.Label(text=$"{!said}")

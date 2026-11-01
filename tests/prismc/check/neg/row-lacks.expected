@@ -1,0 +1,5 @@
+tests/prismc/check/neg/row-lacks.prism:16: error[row-lacks]: `r | Ui.*` promises `r` has no `Ui` tags
+        @Both @one, @one
+              ^^^^
+  fix: answer the `Ui` tags before this point, or widen the row
+1 error

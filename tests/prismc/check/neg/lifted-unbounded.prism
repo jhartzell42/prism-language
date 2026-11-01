@@ -1,0 +1,12 @@
+# `lifted-unbounded`: an unbounded function lifted over a dynamic; use `@Run`.
+emit Ui.*
+
+Spin: unbounded fn Nat -> Nat
+fn Spin n = Spin n
+
+@spinner: @unit
+@spinner:
+    !go <- Ui.Button(label=$"Go")
+    $n <- 0 then $n + 1 on !go
+    let $m = Spin $n
+    Ui.Label(text=$"{$m}")
