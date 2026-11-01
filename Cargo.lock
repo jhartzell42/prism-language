@@ -1251,6 +1251,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "prism_world_canvas_rtl"
+version = "0.1.0"
+dependencies = [
+ "fontdue",
+ "prism_rtl",
+ "prism_world_cli",
+ "softbuffer",
+ "tiny-skia",
+ "winit",
+ "x11-dl",
+]
+
+[[package]]
+name = "prism_world_cli"
+version = "0.1.0"
+dependencies = [
+ "prism_rtl",
+]
+
+[[package]]
 name = "prism_zero"
 version = "0.1.0"
 dependencies = [
