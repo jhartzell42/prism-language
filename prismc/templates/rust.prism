@@ -263,7 +263,8 @@ fn TmFn doc, signature, body = inline_text <rust>
 TmJob: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
 fn TmJob doc, head, generics, fields, ret, body, start, startBody = inline_text <rust>
 /// The step machine of `{{head}}`, stopped at a cycle point: the call about to be
-/// entered. A tail call leaves no frame, so the job needs no stack.
+/// entered. A tail call leaves no frame; any other call waits in a `Frame` around the
+/// callee's job, so the job's stack is its frames.
 ///
 {{doc}}
 pub struct {{head}}{{generics}} {

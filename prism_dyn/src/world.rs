@@ -126,15 +126,20 @@ impl<W: World> World for UnwrapWorld<W> {
     }
 }
 
-/// The World's patience for `run`, in ticks.
+/// The World's patience for `run`, in ticks, unless `PRISM_PATIENCE` gives another: the
+/// bootstrap's stage 1 (prismc compiling itself under this chain) takes more than this.
 pub const RUN_PATIENCE: usize = 10_000_000;
+
+fn run_patience() -> usize {
+    std::env::var("PRISM_PATIENCE").ok().and_then(|p| p.parse().ok()).unwrap_or(RUN_PATIENCE)
+}
 
 /// Run a program under the CLI World with the `Prelude.Unwrap` policy, in the current
 /// directory: the exit code.
 pub fn run_cli(program: &prism_rt::Program, args: Vec<String>) -> u8 {
     let cwd = std::env::current_dir().unwrap_or_default();
     let mut world = UnwrapWorld::new(prism_rt::world::cli::CliWorld::new(prism_rt::world::cli::RealFs { root: cwd }, args));
-    prism_rt::world::drive(&mut world, program, RUN_PATIENCE)
+    prism_rt::world::drive(&mut world, program, run_patience())
 }
 
 /// An `.expected` file without its leading `# ` comment lines.

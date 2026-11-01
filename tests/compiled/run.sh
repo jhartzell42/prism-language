@@ -2,9 +2,10 @@
 # The conformance programs the typed back end compiles end to end, each compiled by
 # prismc, built, and its `.prismtest` run under the compiled Test World, the transcript
 # byte-equal to its `.expected` (the binary's `test`, which compares as prism_rtl's
-# TestWorld::verify). Today: the counter and the half counter, whose `.expected` files
-# prism_rtl's hand-written tests (prism_runtime_lib/tests/counter.rs) verify too, so
-# those tests run first: compiled and hand-written code meet the same bytes.
+# TestWorld::verify). Today: the counter, the half counter, Normalize and the walk. The
+# first three's `.expected` files are the ones prism_rtl's hand-written tests
+# (prism_runtime_lib/tests/counter.rs, normalize.rs) verify too, so those tests run
+# first: compiled and hand-written code meet the same bytes.
 #
 #   tests/compiled/run.sh [NAMES...]          # the passing set, or any programs named
 #   PRISMC=zero tests/compiled/run.sh         # compiler zero running prismc's sources
@@ -35,7 +36,7 @@ compile() {
     fi
 }
 # The programs that pass; NAMES on the command line may name any other.
-passing=(counter half-counter)
+passing=(counter half-counter sem-ch07-normalize sem-ch07-walk)
 only=("$@")
 [ ${#only[@]} -eq 0 ] && only=("${passing[@]}")
 wanted() { [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$1" ] && return 0; done; return 1; }
@@ -43,8 +44,8 @@ mkdir -p target/compiled
 failed=()
 echo "prismc: $prismc"
 if [ $# -eq 0 ]; then
-    cargo test -q -p prism_rtl --test counter > target/compiled/hand-written.log 2>&1 \
-        && echo "ok hand-written counter (prism_rtl)" || { failed+=("hand-written"); echo "FAILED hand-written prism_rtl tests (target/compiled/hand-written.log)"; }
+    cargo test -q -p prism_rtl --test counter --test normalize > target/compiled/hand-written.log 2>&1 \
+        && echo "ok hand-written counter and Normalize (prism_rtl)" || { failed+=("hand-written"); echo "FAILED hand-written prism_rtl tests (target/compiled/hand-written.log)"; }
 fi
 run() { # name, script, files...
     local name=$1 script=$2; shift 2

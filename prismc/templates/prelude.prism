@@ -554,6 +554,32 @@ pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Optio
     slot.set(Some(h));
 }
 
+// ---- Jobs -------------------------------------------------------------------------------
+
+/// A frame of a job's stack (D6; docs/backend.md, "Unbounded functions and `@Run`"): the
+/// caller of `callee`, a call of an unbounded function that was not in tail position,
+/// waiting for its result. Entering the call is a cycle point; the result resumes `then`
+/// in the cycle the callee finishes. Frames nest, the innermost call deepest, so a job's
+/// state is its stack of pending callers.
+pub struct Frame<A, B> {
+    callee: Rc<dyn Job<A>>,
+    then: Rc<dyn Fn(A) -> Turn<B>>,
+}
+
+impl<A: 'static, B: 'static> Job<B> for Frame<A, B> {
+    fn cycle(&self) -> Turn<B> {
+        match self.callee.cycle() {
+            Turn::More(next) => Turn::More(Rc::new(Frame { callee: next, then: self.then.clone() })),
+            Turn::Finished(a) => (self.then)(a),
+        }
+    }
+}
+
+/// A call that is not in tail position: a cycle point, with `then` the continuation.
+pub fn call_then<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl Fn(A) -> Turn<B> + 'static) -> Turn<B> {
+    Turn::More(Rc::new(Frame { callee, then: Rc::new(then) }))
+}
+
 // ---- Running ----------------------------------------------------------------------------
 
 /// `--world NAME` among the arguments: the World, and the arguments without the option.

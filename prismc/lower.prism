@@ -178,8 +178,9 @@ type FnDef = record:
     public: Bool
 derive ^Eq, ^Show
 
-# A step machine (D6): one per unbounded function of a group whose calls between
-# unbounded functions are all tail calls, so the job needs no stack (`Normalize`).
+# A step machine (D6): one per unbounded function that `@Run` is given or that a job
+# calls. A tail call is the callee's job (`Normalize`); any other call is a `Frame`
+# around it, the caller's continuation waiting for the result (`Total`).
 type JobDef = record:
     name: Text
     start: Text
@@ -1836,12 +1837,19 @@ fn LoLetDef lx, qk, l:
 # functions and `@Run`")
 # ---------------------------------------------------------------------------------------
 
-# A job's body: bounded code to the next cycle point. A tail call of an unbounded function
-# is a cycle point that leaves no frame: the job is the callee with its arguments
-# (`Turn::More`); any other result ends the job (`Turn::Finished`). A call of an unbounded
-# function that is not a tail call runs direct-style inside the cycle (doubt DS).
+# A job's body: bounded code to the next cycle point (D6: a cycle point at every call of
+# an unbounded function from an unbounded function). A tail call leaves no frame: the job
+# is the callee with its arguments (`Turn::More`). Any other call is a frame (`LoFrame`):
+# the callee's job runs, and its result resumes the rest of the body. Any other result
+# ends the job (`Turn::Finished`). A call under a lambda or in a branch of a `match` or an
+# `if` that is not in tail position still runs direct-style inside the cycle (gap DS).
 LoTail: unbounded fn Lx, LoEnv, Expr -> Ex
-fn LoTail lx, env, e = match e.kind:
+fn LoTail lx, env, e = match ?LoFrameCall lx, env, e, True:
+    ? c: LoFrame lx, env, c, (LoRestText lx, e.span, c.span, e.span), \|env2| LoTail lx, env2, e
+    nil: LoTailHere lx, env, e
+
+LoTailHere: unbounded fn Lx, LoEnv, Expr -> Ex
+fn LoTailHere lx, env, e = match e.kind:
     EGroup x: LoTail lx, env, x
     EMatch s, arms: LoTailMatch lx, env, s, arms, e.span
     EIf (CondExpr c), thenB, (? elseB): XIf (LoBool (LoX lx, env, c)), (LoTailBlock lx, env, thenB), (LoTailBlock lx, env, elseB)
@@ -1857,15 +1865,112 @@ fn LoTail lx, env, e = match e.kind:
     otherwise: XCtor "Turn::Finished", [[LoOwn (LoX lx, env, e)]]
 
 LoTailBlock: unbounded fn Lx, LoEnv, Block -> Ex
-fn LoTailBlock lx, env, b:
-    let n = Len b.stmts
-    let ((dos, env2)) = Fold (Range0 (Dec n)), (([[]], env)), \|((acc, en)), i|
-        let ((more, en2)) = LoStmt lx, en, (Or b.stmts[i], dummyStmtL)
-        (((Append acc, more), en2))
-    let last = match (Or b.stmts[Dec n], dummyStmtL).kind:
-        SExpr x: LoTail lx, env2, x
+fn LoTailBlock lx, env, b = LoTailFrom lx, env, b, 0
+
+# A job's block from statement `i` on. A statement whose value needs a call is cut there:
+# the frame's continuation is the statement again, the call's place bound to its result.
+LoTailFrom: unbounded fn Lx, LoEnv, Block, Nat -> Ex
+fn LoTailFrom lx, env, b, i:
+    let s = Or b.stmts[i], dummyStmtL
+    if i + 1 >= (Len b.stmts): match s.kind:
+        SExpr x: LoTail lx, env, x
         otherwise: XCtor "Turn::Finished", [[XRaw "()"]]
-    if (Len dos) == 0: last else: XBlock dos, last
+    else:
+        let ?found = match s.kind:
+            SLet ignore, ignore, x: ?LoFrameCall lx, env, x, False
+            SExpr x: ?LoFrameCall lx, env, x, False
+            otherwise: nil
+        match ?found:
+            ? c: LoFrame lx, env, c, (LoRestText lx, s.span, c.span, b.span), \|env2| LoTailFrom lx, env2, b, i
+            nil:
+                let ((dos, env2)) = LoStmt lx, env, s
+                match LoTailFrom lx, env2, b, i + 1:
+                    XBlock more, last: XBlock (Append dos, more), last
+                    last: if (Len dos) == 0: last else: XBlock dos, last
+
+# The first call (leftmost, innermost) of an unbounded function with a job that an
+# expression makes whatever its value: not under a lambda, not in an arm of a `match` or
+# a branch of an `if`, not right of `and` or `or`. With `top`, a call the expression is
+# itself is a tail call, which leaves no frame. A call whose place is bound is done.
+?LoFrameCall: unbounded fn Lx, LoEnv, Expr, Bool -> ?Expr
+fn ?LoFrameCall lx, env, e, top:
+    if HasKey env.spans, (LoKey lx, e.span): nil
+    else: match e.kind:
+        EGroup x: ?LoFrameCall lx, env, x, top
+        ECall c, args, ignore, ignore: match ?LoFirstFrame lx, env, (Each args, \|a| a.value):
+            ? x: ? x
+            nil:
+                if top: nil
+                else: match ?LoTailCallee lx, env, c:
+                    ? ignore: ? e
+                    nil: nil
+        EMatch x, ignore: ?LoFrameCall lx, env, x, False
+        EIf (CondExpr x), ignore, ignore: ?LoFrameCall lx, env, x, False
+        EBinary op, l, r: if op == "and" or op == "or": ?LoFrameCall lx, env, l, False else: ?LoFirstFrame lx, env, [[l, r]]
+        ETuple es: ?LoFirstFrame lx, env, es
+        EArray es: ?LoFirstFrame lx, env, es
+        EUnary ignore, x: ?LoFrameCall lx, env, x, False
+        EField x, ignore, ignore: ?LoFrameCall lx, env, x, False
+        EIndex x, i: ?LoFirstFrame lx, env, [[x, i]]
+        EMethod x, ignore, args: ?LoFirstFrame lx, env, (Append [[x]], (Each args, \|a| a.value))
+        ECast x, ignore, ignore: ?LoFrameCall lx, env, x, False
+        ELit l: match l.kind:
+            LText segs: ?LoFirstFrame lx, env, (LoPlaceholders segs)
+            otherwise: nil
+        otherwise: nil
+
+LoPlaceholders: fn [TextSeg] -> [Expr]
+fn LoPlaceholders segs = Fold segs, [[]], \|acc, sg| match sg:
+    SegPlaceholder x: Push acc, x
+    otherwise: acc
+
+?LoFirstFrame: unbounded fn Lx, LoEnv, [Expr] -> ?Expr
+fn ?LoFirstFrame lx, env, es = Fold es, nil, \|?found, x| match ?found:
+    ? f: ? f
+    nil: ?LoFrameCall lx, env, x, False
+
+# A frame (D6): entering `call` is a cycle point. The callee's job runs to its result,
+# which resumes `Cont` (in the cycle the callee finishes) with the call's place bound to
+# it. The continuation is a closure that owns what it reads: each borrowed local the rest
+# of the source names is cloned into it first.
+LoFrame: unbounded fn Lx, LoEnv, Expr, Text, (unbounded fn LoEnv -> Ex) -> Ex
+fn LoFrame lx, env, call, restText, Cont = match call.kind:
+    ECall c, args, ignore, ignore:
+        let qk = Or (?LoTailCallee lx, env, c), ""
+        let base = Or lx.rsNames[qk], (LoSnake (BareName qk))
+        let v = "{base}_{call.span.start}"
+        let t = LoTy lx, (LoPeel (LoTyOf lx, call.span))
+        let caps = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
+            ? (BnLocal rs, mode, bt): if (mode == "ref" or mode == "rc") and LoMentions restText, k: Push acc, ((k, rs, mode, bt)) else: acc
+            otherwise: acc
+        let dos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (LoOwn (VlPlace (XRaw rs), mode, bt))
+        let env2 = Fold caps, env, \|en, ((k, rs, ignore, bt))| LoBind en, k, (BnLocal rs, "own", bt)
+        let vals = Each args, \|a| LoOwn (LoX lx, env2, a.value)
+        let env3 = LoBindSpan env2, (LoKey lx, call.span), (VlOwned (XRaw v), t)
+        let body = Cont env3
+        let enter = XCall "call_then", [[(XCall (LoPathIn lx, (LoOwnerOf qk), "start_{base}"), vals), (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
+        if (Len dos) == 0: enter else: XBlock dos, enter
+    otherwise: Cont env
+
+# The source a frame's continuation covers: from `from` to the end of `to`, less the call
+# itself, whose arguments are evaluated before the frame.
+LoRestText: fn Lx, Range, Range, Range -> Text
+fn LoRestText lx, from, call, to = match lx.g.srcs[lx.file]:
+    ? src: "{SpanText src, (Range(start=from.start, end=call.start))} {SpanText src, (Range(start=call.end, end=to.end))}"
+    nil: ""
+
+# Whether `text` names `name` as a whole word (a frame's captures; a mention in a
+# comment or a text only clones one more local).
+LoMentions: fn Text, Text -> Bool
+fn LoMentions text, name:
+    let parts = Split text, name
+    Fold (Range0 (Dec (Len parts))), False, \|found, i| found or ((not (LoEndsIdent (Or parts[i], ""))) and not (LoStartsIdent (Or parts[i + 1], "")))
+
+LoEndsIdent: fn Text -> Bool
+fn LoEndsIdent t = (Len t) > 0 and IsIdentChar (Drop t, (Dec (Len t)))
+
+LoStartsIdent: fn Text -> Bool
+fn LoStartsIdent t = (Len t) > 0 and IsIdentChar (Take t, 1)
 
 LoTailBody: unbounded fn Lx, LoEnv, FnBody -> Ex
 fn LoTailBody lx, env, (BodyExpr x) = LoTail lx, env, x
@@ -3113,7 +3218,7 @@ fn LoRunTargets lx, d:
             else: acc
         otherwise: acc
 
-# The unbounded functions a function calls in tail position.
+# The unbounded functions a function calls, in tail position or not: each has a job.
 LoTailTargets: unbounded fn Lx, Text -> [Text]
 fn LoTailTargets lx, qk:
     let v = Or lx.g.vals[qk], (Builtin qk, (Mono TyErr))
@@ -3121,27 +3226,15 @@ fn LoTailTargets lx, qk:
     Fold (LoClausesOf lx.g, qk), [[]], \|acc, c| UnionTexts acc, (LoTailsOfBody lxm, c.body)
 
 LoTailsOfBody: unbounded fn Lx, FnBody -> [Text]
-fn LoTailsOfBody lx, (BodyExpr x) = LoTailsOf lx, x
-fn LoTailsOfBody lx, (BodyBlock b) = LoTailsOfBlock lx, b
-
-LoTailsOfBlock: unbounded fn Lx, Block -> [Text]
-fn LoTailsOfBlock lx, b = match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL).kind:
-    SExpr x: LoTailsOf lx, x
-    otherwise: [[]]
-
-LoTailsOf: unbounded fn Lx, Expr -> [Text]
-fn LoTailsOf lx, e = match e.kind:
-    EGroup x: LoTailsOf lx, x
-    EMatch ignore, arms: Fold arms, [[]], \|acc, a| UnionTexts acc, (LoTailsOfBlock lx, a.body)
-    EIf ignore, t, (? el): UnionTexts (LoTailsOfBlock lx, t), (LoTailsOfBlock lx, el)
+fn LoTailsOfBody lx, body = Fold (BodyExprs body), [[]], \|acc, e| match e.kind:
     ECall c, ignore, ignore, ignore:
         let q = LoBlueprintQk lx, c
         match lx.g.vals[q]:
             ? v: match v.scheme.ty:
-                TyFn CUnbound, ignore, ignore: [[q]]
-                otherwise: [[]]
-            nil: [[]]
-    otherwise: [[]]
+                TyFn CUnbound, ignore, ignore: AddText acc, q
+                otherwise: acc
+            nil: acc
+    otherwise: acc
 
 # One Prism module's Rust module.
 LoModDef: unbounded fn Lx, Text, [((Text, Bool))], ModInfo, [Text] -> ModDef

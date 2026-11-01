@@ -282,14 +282,16 @@ the two typed dumps. A program the books make wrong has its exact report in
   `templates/`, `front.prism`'s `compile` branch), so an error this line shows between
   its chunks is the back end's, not the checker's.
 
-The negative cases (`neg/`, 58) give one diagnostic each, the error their name says, or a
+The negative cases (`neg/`, 64) give one diagnostic each, the error their name says, or a
 case of it (`live-field-bare` is a `mark-stack`; `values-not-shrinking` and
 `summary-not-parts` are `may-not-end`s that keep doubt TR's map rule and pick SM's
-summaries from accepting a cycle that grows; the four `*-rebinding` cases are
-`may-not-end`s that keep pick SC's scoping honest; `guard-recursion`, `method-recursion`
-and `fuel-unrelated` are `may-not-end`s for picks GH and PM, each with a function beside it
-that checks clean). `refinement-escape` and `existential-escape`
-have no case, since the checker does not report them (gaps below).
+summaries from accepting a cycle that grows; the five `*-rebinding` cases are
+`may-not-end`s that keep pick SC's scoping honest; `guard-recursion`, `method-recursion`,
+`template-recursion`, `nested-set` and `fuel-unrelated` are `may-not-end`s for picks GH and
+PM, `operator-recursion` for pick OP, `fuel-call` for pick SW, and `guard-prompt-cycle` a
+`prompt-cycle` for pick GH, each with a function or a block beside it that checks
+clean). `refinement-escape` and `existential-escape` have no case, since the checker does
+not report them (gaps below).
 
 ### Checker picks
 
@@ -323,7 +325,10 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
 - **TL0** Top-level `let`s without a signature are inferred first, in page order, and their
   monomorphic variables default at the program's end.
 - **PS** In the prompt-cycle check a widget function is prompt in every argument, except
-  the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`).
+  the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`). A right
+  side's reads are pick GH's walk, less what is not read where it is written: a lambda, a
+  local `fn` or widget, a nested widget block, a `rebuild` or a `for`, and a delayed
+  binding's arguments. A traversal's step is read, since the traversal calls it now.
 - **SM A function that returns parts of a parameter has a summary**, Semantics ch. 7's
   size-change principle across the call, so a cycle may traverse what a helper returns.
   A function is summarized on its first parameter `i` for which every clause's result is
@@ -340,8 +345,9 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   argument `i`, and strictly smaller when that argument is. A summary is read without
   other summaries, so none depends on itself or on a chain, and a name the calling clause
   binds itself (a parameter, a pattern, a local `fn`) is not the summarized function
-  (`neg/summary-not-parts`: a function returning `[[Node m]]` gets no summary). Chess's
-  `Kids cs` is summarized on `cs`, which clears `LayStack`, `LayLayers` and `LayGrid`.
+  (`neg/summary-not-parts`: a function returning `[[Node m]]` gets no summary). A call reads
+  the same in either spelling, `Kids cs` or `cs.Kids`. Chess's `Kids cs` is summarized on
+  `cs`, which clears `LayStack`, `LayLayers` and `LayGrid`.
   *Refused:* inlining `Kids` at its call sites, which bends the program to the checker;
   summaries chained to a fixed point, which no program needs yet.
 
@@ -366,8 +372,9 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
     outer ones on every line of it, and its `let`s and binds relate in page order.
 
   `neg/arm-rebinding` (the clause above), `neg/let-rebinding` (a `let` after a shrinking
-  `match`), `neg/summary-rebinding` (a summary, pick SM) and `neg/loop-rebinding` (a
-  `while`) each checked clean before; `arm-rebinding`'s `Total (Node l, r) = (Total l) +
+  `match`), `neg/summary-rebinding` (a summary, pick SM), `neg/loop-rebinding` (a
+  `while`) and `neg/field-rebinding` (`&s <= &s.tail` after a `let &s` in the loop's body)
+  each checked clean before; `arm-rebinding`'s `Total (Node l, r) = (Total l) +
   (Total r)` is per-arm shrinking, and still checks clean. *Refused:* one table where a name
   bound twice keeps the weaker relation, which works only when both bindings relate to the
   same parameter and says nothing when the second relates to nothing; renaming every
@@ -390,22 +397,76 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   relations in scope where it stands:
   - a guard sees its arm's pattern, a `? x <- e if g` guard its condition's;
   - `recv.Method args` is the call `Method recv, args`, as inference reads it;
-  - named arguments, text and template placeholders, `if`, `while` and `given:` blocks,
-    `require`, `forbid`, `return`, `update` statements, lambda bodies, local `fn`s and
-    widgets are all in it.
+  - `a + b` is the call of the operator's trait method (pick OP);
+  - `<@Item depth={{d}}/>` in a template is the call `Item`, its attributes named arguments
+    and its body a text after them, as lowering passes them;
+  - a named argument fills the callee's parameter of its name, not of its place: the one
+    every clause of the callee that names it gives the same place, and none when no clause
+    names it or two disagree;
+  - text and template placeholders, `if`, `while` and `given:` blocks, `require`,
+    `forbid`, `return`, `update` statements, lambda bodies, local `fn`s and widgets are all
+    in it.
 
   The call sites, the reference graph's names, the summaries' seeds and the names a body
-  binds, and the `while`s the loop check visits all read this one list (`CheckBlocks`'
-  dependency order reads its names too). `neg/guard-recursion` and `neg/method-recursion`
-  each checked clean before. *Refused:* adding the two forms to each collector, which
-  leaves five walks to drift apart again.
+  binds, the `while`s the loop check visits and the sets it reads (pick PM), and the
+  prompt-cycle check's reads (pick PS) all read this one list (`CheckBlocks`' dependency
+  order reads its names too). `neg/guard-recursion`, `neg/method-recursion`,
+  `neg/template-recursion` and `neg/guard-prompt-cycle` each checked clean before.
+  *Refused:* adding the forms to each collector, which leaves six walks to drift apart
+  again.
 - **PM A loop's measure is the local it sets.** Each local a `while` sets is its own
   measure, and a set shrinks it only when the value is strictly smaller than that local.
   `&fuel <= less`, with `less` the `? less` of `&other -? 1`, is smaller than `&other`, not
   than `&fuel`; when the loop puts `&other` back every turn, it never ends
-  (`neg/fuel-unrelated`, clean before). *Refused for now:* a measure over several locals
+  (`neg/fuel-unrelated`, clean before). A path through the body is its statements and an
+  `if`'s or a `match`'s arms; a set anywhere else (a nested loop, a `for`, a nested
+  `update`, a `let` value, a lambda) is on no path for sure, so it may only keep the local
+  strictly smaller, and a `+=` never does (`neg/nested-set`: an inner loop's `&fuel += 2`
+  undoes the outer loop's `&fuel <= less`, clean before). A set through a field
+  (`&v.kids <= ...`) is a set of `v`. *Refused for now:* a measure over several locals
   together (`&fuel` smaller than `&other` while `&other` never grows), which no program
   needs yet.
+- **OP An operator is a call of every definition of its trait method.** This never ends:
+
+  ```prism
+  impl ^Num Money:
+      fn * a, b = Times a, b
+
+  fn Times a, b = a * b
+  ```
+
+  `a * b` is `Prelude.*` at Money, and the impl's `*` is a definition like any function, so
+  the shrink check takes impls' methods and traits' default methods as definitions, and a
+  trait method's name, an operator's spelling included, calls each of them in the program
+  (`neg/operator-recursion`, clean before). The solver's choice of impl is kept only when
+  the typed program is recorded, so the check chooses by what it can tell of the argument
+  at the method's trait parameter: a literal (a built-in type, no program impl), a
+  constructor, a call of a function whose signature returns a named type, a clause
+  parameter by the definition's signature (an impl's trait parameter is its head). Then
+  the call reaches that type's impl, or the default when the program defines none; else
+  every definition of the method. Chess's `fn Show s = Show (SqOf s)` reaches `Sq`'s impl,
+  not `Spot`'s own. An impl calling its own method on a value the walk cannot type
+  (`fn == a, b = a.key == b.key`, a field) is still a cycle that may not end. Two impls'
+  methods share a definition key (`Prelude.Show impl Show`), so the check tells them apart
+  by where each impl stands. *Refused for now:* keeping the solver's choice per call site
+  in the inference state, which is check-types.prism's and check-env.prism's, for when a
+  program needs it; a call of no impl, which misses every cycle through one.
+- **SW A set shrinks through a call only when the callee returns no more than an argument
+  that does.** `&fuel <= Bump less`, with `Bump n = n + 2`, grows `&fuel` every turn, and a
+  rule that takes any call of a smaller first argument as smaller clears the loop
+  (`neg/fuel-call`, clean before). A value set into `v` is strictly smaller than `v` when:
+  - the relations in scope where the set stands say so (pick SC): a part of `v`, a field
+    or an index of one, `Drop` of `v` by a positive literal, a summarized call on a part;
+  - it is a call that returns no more than an argument strictly smaller than `v`: a
+    summarized function's parameter (pick SM), or the first argument of the prelude's
+    `Take`, `Drop`, `Filter`, `Remove` and `Min`;
+  - it is `x -? k` of such an `x`;
+  - it is the literal `0`, the bottom of `Nat`.
+
+  The prelude's five join the summaries as calls no larger than their first argument, for
+  the reference graph's cycles too. `fuel-call`'s `Drain`, `&xs <= Evens (Drop &xs, 1)`,
+  was `may-not-end` before and checks clean. *Refused:* a set's value smaller by its type
+  (any call returning `Nat` on a smaller `Nat`), which is the rule that cleared `Bump`.
 
 ### Checker doubts
 
@@ -433,10 +494,12 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
 - **VW** Semantics ch. 8's viewer writes `~Contents` with no `use Fs.*`, and the
   conformance copy declares its own `Contents`. *First ruling (Claude's):* the listing
   needs `use Fs.*`.
-- **UI** `prelude/ui.prism`'s `Click` derives nothing, so `^Show` of a click fails
-  (`sem-appB-widgets`), and its `Ui.TextInput` names a `Key` it does not declare.
-  *First ruling (Claude's):* `type Click = click` takes `derive ^Eq, ^Show`, and the tag
-  takes `Gui.Key` or a `Key` of its own.
+- **UI** Semantics ch. 8's `Ui` family names a `Key` without declaring one, and Appendix B
+  gives `Click` no derives, so `^Show` of a click (`sem-appB-widgets`) has no impl.
+  *First ruling (Claude's):* `prelude/ui.prism` gives `type Click = click` `derive ^Eq,
+  ^Show` and declares its own `Key` (`Letter Text`, `Backspace`) beside `Ui.TextInput`;
+  `sem-appB-widgets` checks clean. *If otherwise:* the tag takes `Gui.Key`, and the books
+  say where `Click`'s `^Show` comes from.
 - **WL An element has two faces.** A blueprint's element, `Element r o` (what an element
   expression or `emit` makes, and what a host's supplier receives live), keeps each
   field's stack: a pattern binds `text: $Text` as `$t` (Type System ch. 1, "Sigils on
@@ -490,6 +553,52 @@ What the checker does not do yet, each with Claude's first ruling.
   *First ruling:* check them when the record is decided.
 - **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
   *First ruling:* read each impl's associated type into the normalizer.
+
+## Back end
+
+`compile` checks the program, lowers it to a core form and emits a typed Rust crate over
+`prism_rtl` through code templates. `docs/backend.md` is the contract: what Rust each
+construct becomes and which library call it makes. The old back end, which emitted
+`prism_rt` values and applied them through the dynamic layer (D16), is gone.
+
+```
+./prism run DIR [ARGS...]                 # compile, cargo build, run the root under its World
+./prism test DIR                          # compile, build, run the .prismtest scripts
+./prism compile DIR -o OUT                # the crate only
+target/stage1/prismc compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH]
+OUT/target/.../NAME [--world cli|canvas|test] [ARGS...]      # the root, under the World its row asks for
+OUT/target/.../NAME test [--print] [SCRIPTS.prismtest...]    # the Test World; compares with .expected
+tests/compiled/run.sh [NAMES...]          # the passing programs (or those named), byte-equal
+```
+
+`prismc` is the newest `target/stageN/prismc` ("The bootstrap" below); the `prism` script
+and `tests/compiled/run.sh` use it, and compiler zero only when none is built;
+`make chess` is `./prism run examples/chess`.
+
+### Files
+
+- `lower.prism` (module `Lower`, 3,700 lines): the core form and lowering. It reads the
+  checker's environment (`CheckEnv.BuildG`: modules, types, constructors, tags, traits,
+  impls, every definition's clauses) and the typed tables (`TProgram`, indexed by place)
+  and decides everything: names, Rust types, borrows and clones, each widget's node (its
+  fields, event graph, heights, places, answers, hooks, rows and generations), each
+  unbounded function's job.
+- `emit.prism` (module `Emit`, 520 lines): the core form spelled; one function per
+  construct, nothing decided (K9).
+- `templates/rust.prism` (module `RustTemplates`, 495 lines): every item and every
+  multi-line expression as a function-form code template with doubled braces;
+  placeholders alone on a line indent to their column; doc comments quote the Prism
+  source through a `<@TmQuoted text={{..}}/>` call.
+- `templates/prelude.prism` (module `PreludeTemplate`, 670 lines): the prelude in Rust,
+  emitted as `src/prelude.rs` beside every program (pick PL).
+- `fs.prism` (module `Fs`): the prelude's `Fs` with `Fs.List`, which `compile DIR` reads
+  (pick FL).
+- `front.prism`: `@main`'s `compile` branch (`@CompileMain`, `CompileProgram`).
+
+The emitted crate: `Cargo.toml` (`prism_rtl`, `prism_world_cli`, and
+`prism_world_canvas_rtl` behind the `canvas` feature, on by default when the root emits
+`Gui`), `src/main.rs` (the programs, the Test World's registrations and compiled `check`
+blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 
 ### Where it stands
 
