@@ -1216,6 +1216,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "prism_rtl"
+version = "0.1.0"
+dependencies = [
+ "im-rc",
+ "num-bigint",
+ "num-traits",
+ "ropey",
+]
+
+[[package]]
 name = "prism_runtime"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,330 @@
+//! The node primitives emitted code calls: the few generic pieces of state a template
+//! would otherwise emit identically in every program (docs/backend.md, "Node
+//! primitives").
+//!
+//! Every primitive is interior-mutable and borrows only inside its own methods, so an
+//! emitted node is a plain struct of these behind an `Rc`, its methods take `&self`, and
+//! no borrow is ever held across a firing (Compiler ch. 4, "The ownership layer": a
+//! firing may deliver back into the node that fired).
+//!
+//! - [`Hold`]: a hold without a commit pass, two values each stamped with the tick that
+//!   wrote it (Graph ch. 4, "Holds without a commit pass").
+//! - [`Stamped`]: scratch between heights and a per-tick kept value; a stale stamp is an
+//!   empty field, and nothing clears it (Compiler ch. 3, CXa).
+//! - [`Cache`]: a computed behavior's cache with its stale stamp (Graph ch. 4,
+//!   "Invalidation by stamped marks").
+//! - [`Port`]: an output event port across nodes: subscriptions with constant-time
+//!   handles, a lien count, and the tick's kept value for a subscriber that catches up.
+//! - [`Event`], [`Dynamic`]: the `!a` and `$a` values that cross the node interface.
+//! - [`Defer`]: `@Defer` (decisions.md D6).
+//! - [`Job`], [`Turn`]: the step machine of an `unbounded` function, which `@Run` cycles.
+
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+use crate::cx::{Cx, Node};
+
+/// A tick number. Tick 0 is the build.
+pub type Tick = u64;
+
+// ---------------------------------------------------------------------------------------
+// Hold
+// ---------------------------------------------------------------------------------------
+
+/// `$x <- init then !e`'s storage: the newer and the older value, each with the tick that
+/// wrote it. A read during tick `n` answers the newer value stamped before `n`; from the
+/// end of propagation on, the one stamped at or before `n`. Nothing installs anything at
+/// the end of a tick.
+pub struct Hold<T> {
+    slots: RefCell<Slots<T>>,
+}
+
+/// The newer value and its stamp, and the older one once there has been a write.
+type Slots<T> = (T, Tick, Option<(T, Tick)>);
+
+impl<T: Clone> Hold<T> {
+    /// A hold's initial value, stamped with the tick that built it.
+    pub fn new(init: T, cx: &Cx) -> Hold<T> {
+        Hold { slots: RefCell::new((init, cx.tick(), None)) }
+    }
+    /// The value at the context's read point: before the tick during propagation, after
+    /// it from the end of propagation on.
+    pub fn get(&self, cx: &Cx) -> T {
+        let s = self.slots.borrow();
+        match &s.2 {
+            Some((older, _)) if s.1 >= cx.read_point() => older.clone(),
+            _ => s.0.clone(),
+        }
+    }
+    /// The tick's one write (G1): the older slot takes the value, stamped now.
+    pub fn set(&self, v: T, cx: &Cx) {
+        let mut s = self.slots.borrow_mut();
+        debug_assert!(s.1 < cx.tick() || s.2.is_none(), "a hold written twice in one tick");
+        let (old, stamp) = (std::mem::replace(&mut s.0, v), s.1);
+        s.1 = cx.tick();
+        s.2 = Some((old, stamp));
+    }
+    /// The newer value, whatever the tick: what a dead widget's hold is from then on.
+    pub fn newest(&self) -> T {
+        self.slots.borrow().0.clone()
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Stamped
+// ---------------------------------------------------------------------------------------
+
+/// A value and the tick that wrote it: a merge's input record, a kept firing, a fork
+/// point. It reads as empty in every other tick.
+pub struct Stamped<T> {
+    cell: RefCell<Option<(T, Tick)>>,
+}
+
+impl<T: Clone> Default for Stamped<T> {
+    fn default() -> Stamped<T> {
+        Stamped { cell: RefCell::new(None) }
+    }
+}
+
+impl<T: Clone> Stamped<T> {
+    pub fn new() -> Stamped<T> {
+        Stamped::default()
+    }
+    pub fn set(&self, v: T, cx: &Cx) {
+        *self.cell.borrow_mut() = Some((v, cx.tick()));
+    }
+    /// The value written this tick, if one was.
+    pub fn get(&self, cx: &Cx) -> Option<T> {
+        self.at(cx.tick())
+    }
+    fn at(&self, tick: Tick) -> Option<T> {
+        self.cell.borrow().as_ref().filter(|(_, t)| *t == tick).map(|(v, _)| v.clone())
+    }
+    /// Whether it was written this tick: an event input that fired.
+    pub fn fired(&self, cx: &Cx) -> bool {
+        self.cell.borrow().as_ref().is_some_and(|(_, t)| *t == cx.tick())
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Cache
+// ---------------------------------------------------------------------------------------
+
+/// A computed behavior's cache: the value and the first read point from which it is
+/// stale. A mark at a write in tick `n` makes it stale from after `n`, so a reader in the
+/// tick of the write reads the value the tag law calls clean, and the reader after
+/// recomputes once.
+pub struct Cache<T> {
+    value: RefCell<Option<T>>,
+    stale_from: Cell<Tick>,
+}
+
+impl<T: Clone> Default for Cache<T> {
+    fn default() -> Cache<T> {
+        Cache { value: RefCell::new(None), stale_from: Cell::new(Tick::MAX) }
+    }
+}
+
+impl<T: Clone> Cache<T> {
+    pub fn new() -> Cache<T> {
+        Cache::default()
+    }
+    /// The cached value at the read point, or `compute`'s, which is then cached.
+    pub fn get(&self, cx: &Cx, compute: impl FnOnce() -> T) -> T {
+        let at = cx.read_point();
+        if let (true, Some(v)) = (at < self.stale_from.get(), self.value.borrow().clone()) {
+            return v;
+        }
+        let v = compute();
+        if at >= self.stale_from.get() {
+            self.stale_from.set(Tick::MAX);
+        }
+        *self.value.borrow_mut() = Some(v.clone());
+        v
+    }
+    /// An input was written this tick: stale from after it.
+    pub fn mark(&self, cx: &Cx) {
+        self.stale_from.set(self.stale_from.get().min(cx.tick() + 1));
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Ports and the values that cross the node interface
+// ---------------------------------------------------------------------------------------
+
+/// A subscription's handle, for unsubscribing in constant time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Handle(usize);
+
+/// A subscriber: a typed closure holding its consumer weakly, since references held
+/// downstream are weak (Graph ch. 4).
+pub type Subscriber<T> = Rc<dyn Fn(&T, &mut Cx) -> crate::cx::Done>;
+
+/// An output event port across nodes.
+pub struct Port<T> {
+    subs: RefCell<Vec<Option<Subscriber<T>>>>,
+    free: RefCell<Vec<usize>>,
+    liens: Cell<u32>,
+    kept: Stamped<T>,
+}
+
+/// How much an output is wanted (Graph ch. 4, "Demand"). Tags are a behavior's, and the
+/// node that owns the behavior counts them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Demand {
+    Idle,
+    Liened,
+    Subscribed,
+}
+
+impl<T: Clone> Default for Port<T> {
+    fn default() -> Port<T> {
+        Port { subs: RefCell::new(Vec::new()), free: RefCell::new(Vec::new()), liens: Cell::new(0), kept: Stamped::new() }
+    }
+}
+
+impl<T: Clone> Port<T> {
+    pub fn new() -> Port<T> {
+        Port::default()
+    }
+    pub fn subscribe(&self, f: Subscriber<T>) -> Handle {
+        let mut subs = self.subs.borrow_mut();
+        match self.free.borrow_mut().pop() {
+            Some(i) => {
+                subs[i] = Some(f);
+                Handle(i)
+            }
+            None => {
+                subs.push(Some(f));
+                Handle(subs.len() - 1)
+            }
+        }
+    }
+    pub fn unsubscribe(&self, h: Handle) {
+        if self.subs.borrow_mut().get_mut(h.0).and_then(Option::take).is_some() {
+            self.free.borrow_mut().push(h.0);
+        }
+    }
+    pub fn lien(&self) {
+        self.liens.set(self.liens.get() + 1);
+    }
+    pub fn release(&self) {
+        self.liens.set(self.liens.get().saturating_sub(1));
+    }
+    pub fn demand(&self) -> Demand {
+        if self.subs.borrow().iter().any(Option::is_some) {
+            Demand::Subscribed
+        } else if self.liens.get() > 0 {
+            Demand::Liened
+        } else {
+            Demand::Idle
+        }
+    }
+    /// Fire: keep the value for the rest of the tick, then deliver it to every
+    /// subscriber. The list is copied first, so a subscriber may unsubscribe.
+    pub fn fire(&self, v: T, cx: &mut Cx) -> crate::cx::Done {
+        self.kept.set(v.clone(), cx);
+        let subs: Vec<Subscriber<T>> = self.subs.borrow().iter().flatten().cloned().collect();
+        subs.iter().try_for_each(|f| f(&v, cx))
+    }
+    /// What it fired this tick: a subscriber arriving at a height after the firing
+    /// catches up from it. A newborn or a swap never does.
+    pub fn kept(&self, cx: &Cx) -> Option<T> {
+        self.kept.get(cx)
+    }
+}
+
+/// An `!a` value: an output port and the node that owns it, held strongly, since a
+/// value's `!` part liens its producer.
+pub struct Event<T> {
+    pub owner: Option<Rc<dyn Node>>,
+    pub port: Rc<Port<T>>,
+}
+
+impl<T> Clone for Event<T> {
+    fn clone(&self) -> Event<T> {
+        Event { owner: self.owner.clone(), port: self.port.clone() }
+    }
+}
+
+impl<T: Clone> Event<T> {
+    /// `never`: a port nothing fires.
+    pub fn never() -> Event<T> {
+        Event { owner: None, port: Rc::new(Port::new()) }
+    }
+}
+
+/// A `$a` value: a read at the context's read point, its update event, and its owner.
+pub struct Dynamic<T> {
+    pub owner: Option<Rc<dyn Node>>,
+    pub read: Rc<dyn Fn(&Cx) -> T>,
+    pub updates: Rc<Port<T>>,
+}
+
+impl<T> Clone for Dynamic<T> {
+    fn clone(&self) -> Dynamic<T> {
+        Dynamic { owner: self.owner.clone(), read: self.read.clone(), updates: self.updates.clone() }
+    }
+}
+
+impl<T: Clone + 'static> Dynamic<T> {
+    /// `$ v`: a constant, whose update event never fires.
+    pub fn constant(v: T) -> Dynamic<T> {
+        Dynamic { owner: None, read: Rc::new(move |_| v.clone()), updates: Rc::new(Port::new()) }
+    }
+    pub fn sample(&self, cx: &Cx) -> T {
+        (self.read)(cx)
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// @Defer, and the step machines @Run cycles
+// ---------------------------------------------------------------------------------------
+
+/// `@Defer: fn !a -> @!a`: each firing fires again in the next tick, by the runtime, with
+/// no World involved, and an armed `@Defer` sets `pending` (decisions.md D6).
+///
+/// A `Defer` is a field of the node that binds it. [`Defer::arm`] records the value and
+/// puts the node on the armed list; in the next tick the runtime calls the node's
+/// [`Node::deferred`] at the lowest height, where [`Defer::fired`] gives the value.
+pub struct Defer<T> {
+    armed: RefCell<Option<(T, Tick)>>,
+}
+
+impl<T: Clone> Default for Defer<T> {
+    fn default() -> Defer<T> {
+        Defer { armed: RefCell::new(None) }
+    }
+}
+
+impl<T: Clone> Defer<T> {
+    pub fn new() -> Defer<T> {
+        Defer::default()
+    }
+    /// The argument fired: fire it again next tick.
+    pub fn arm(&self, v: T, node: Rc<dyn Node>, cx: &mut Cx) {
+        *self.armed.borrow_mut() = Some((v, cx.tick()));
+        cx.arm(node);
+    }
+    /// `@Defer`'s firing this tick: what was armed in the tick before.
+    pub fn fired(&self, cx: &Cx) -> Option<T> {
+        self.armed.borrow().as_ref().filter(|(_, t)| t + 1 == cx.tick()).map(|(v, _)| v.clone())
+    }
+}
+
+/// An `unbounded` function stopped at a cycle point: its continuation (Semantics ch. 7,
+/// "An unbounded function is a bounded body iterated"). The compiler emits one type per
+/// group of unbounded functions, whose frames are the cycle points of the canonical rule
+/// (a call of an unbounded function from an unbounded function), and `Start F, x` is the
+/// job stopped before its first cycle.
+pub trait Job<B> {
+    /// One cycle: run bounded code from here to the next cycle point, or to the result.
+    fn cycle(&self) -> Turn<B>;
+}
+
+/// What a cycle ends in.
+pub enum Turn<B> {
+    /// Stopped at a cycle point; the next cycle resumes here.
+    More(Rc<dyn Job<B>>),
+    Finished(B),
+}

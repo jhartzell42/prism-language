@@ -1,0 +1,15 @@
+[package]
+name = "prism_rtl"
+version = "0.1.0"
+edition = "2024"
+description = "The runtime library compiled Prism programs link: numbers, collections, the World protocol and Worlds, the transcript printer, the patch diff, @Defer and pending, the zombie collector, and the node primitives emitted code calls"
+license-file = "../LICENSE.md"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+im-rc = "15.1.0"
+num-bigint = "0.5.1"
+num-traits = "0.2.19"
+ropey = "1.6.1"
