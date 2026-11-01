@@ -1,0 +1,22 @@
+# `may-not-end`: an operator is a call of its trait method, so a program's own impl of it
+# is on the cycles it closes (pick OP). Money's `*` calls `Times`, which calls `*` on what
+# it was given, so it never ends; Bag's `+` calls itself on the rest of the bag, a part,
+# and checks clean.
+type Money = choice:
+    Cents Nat
+derive ^Eq, ^Show
+
+type Bag = choice:
+    Empty
+    Put Nat, Bag
+derive ^Eq, ^Show
+
+impl ^Num Money:
+    fn * a, b = Times a, b
+
+Times: fn Money, Money -> Money
+fn Times a, b = a * b
+
+impl ^Num Bag:
+    fn + Empty, b = b
+    fn + (Put n, rest), b = Put n, (rest + b)

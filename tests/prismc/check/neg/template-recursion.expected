@@ -1,0 +1,5 @@
+tests/prismc/check/neg/template-recursion.prism:8: error[may-not-end]: `Spin` calls itself on `n`, not smaller than what it was given
+    <@Spin n={{n}} depth={{m}}/>
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+1 error

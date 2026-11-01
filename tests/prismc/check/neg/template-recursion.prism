@@ -1,0 +1,17 @@
+# `may-not-end`: a template call `<@Name attr={{v}}/>` is a call, and each attribute fills
+# the parameter of its name, not of its place. `Spin` passes its own `n` back as `n`, so
+# it never ends (read by place, `n={{n}}` would be `depth` and the call would look
+# smaller); `Count` passes `n`'s `? m` as `n` and checks clean.
+Spin: fn Nat, Nat -> Text
+fn Spin depth, n = match n -? 1:
+    ? m: inline_text <txt>
+<@Spin n={{n}} depth={{m}}/>
+</txt>
+    nil: "{depth}"
+
+Count: fn Nat, Nat -> Text
+fn Count depth, n = match n -? 1:
+    ? m: inline_text <txt>
+<@Count n={{m}} depth={{depth}}/>
+</txt>
+    nil: "{depth}"

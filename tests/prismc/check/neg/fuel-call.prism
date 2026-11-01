@@ -1,0 +1,31 @@
+# `may-not-end`: a call is smaller than what it is given only when the callee is known to
+# return no more (pick SW). `Spin` sets `&fuel` to `Bump less`, and `Bump` adds two, so it
+# never ends; `Capped` sets it to `Min less, 10` (the prelude's `Min`) and `Drain` sets
+# `&xs` to `Evens` of a shorter list (`Evens` is summarized, pick SM), and both check
+# clean.
+Bump: fn Nat -> Nat
+fn Bump n = n + 2
+
+Spin: fn Nat -> Nat
+fn Spin fuel = update 0:
+    let &fuel = fuel
+    while ? less <- &fuel -? 1:
+        &_ += 1
+        &fuel <= Bump less
+
+Capped: fn Nat -> Nat
+fn Capped fuel = update 0:
+    let &fuel = fuel
+    while ? less <- &fuel -? 1:
+        &_ += 1
+        &fuel <= Min less, 10
+
+Evens: fn [Nat] -> [Nat]
+fn Evens xs = Filter xs, \|x| (x mod 2) == 0
+
+Drain: fn [Nat] -> Nat
+fn Drain xs = update 0:
+    let &xs = xs
+    while (Len &xs) > 0:
+        &_ += 1
+        &xs <= Evens (Drop &xs, 1)
