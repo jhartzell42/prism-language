@@ -256,7 +256,7 @@ an empty array's element), or one a local `let` quantified.
 
 ### Where it stands
 
-`tests/prismc/check/run.sh` checks every program of the corpus, the 58 negative cases and
+`tests/prismc/check/run.sh` checks every program of the corpus, the 64 negative cases and
 the two typed dumps. A program the books make wrong has its exact report in
 `tests/prismc/check/pos/NAME.expected`; each is listed here with the rule.
 
@@ -338,7 +338,10 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   - a `match` or `if` whose every arm is within `i`;
   - a `Filter`, or an `Each` of parts, over a collection within `i`;
   - a `Fold` over one, from a start within `i`, whose step returns its accumulator or the
-    accumulator with parts added by `Push` or `Insert`, or a within added by `Append`.
+    accumulator with parts added by `Push` or `Insert`, or a within added by `Append`;
+  - an `update` of a start within `i` whose every set of `&_`, at any depth, is no larger
+    than `&_`, with no `+=` to it and no set of a field of it (Semantics ch. 5's
+    `SkipWord`, `&_ <= next` with `next` from `?Step &_`).
 
   A part is strictly smaller than `i`, or a tuple of such (a tuple is not a recursive type,
   so a cycle reaches only its pieces). A call of the function is no larger than its
@@ -347,7 +350,9 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   binds itself (a parameter, a pattern, a local `fn`) is not the summarized function
   (`neg/summary-not-parts`: a function returning `[[Node m]]` gets no summary). A call reads
   the same in either spelling, `Kids cs` or `cs.Kids`. Chess's `Kids cs` is summarized on
-  `cs`, which clears `LayStack`, `LayLayers` and `LayGrid`.
+  `cs`, which clears `LayStack`, `LayLayers` and `LayGrid`; `sem-ch05-and-blocks`'s
+  `SkipWord c` is summarized on `c`, which clears `Idents`' `&c <= SkipWord next` under
+  pick SW.
   *Refused:* inlining `Kids` at its call sites, which bends the program to the checker;
   summaries chained to a fixed point, which no program needs yet.
 
@@ -653,8 +658,14 @@ Each is Claude's, for Jimmy to overturn.
 - **NM Names.** Rust's conventions from the program's names: `$count` is the field
   `count`, `!inc` the method `inc`, `ParseNat` the function `parse_nat`, `?Reduce`
   `reduce`. Sigils go; when two values of a module share a base (`?ParseNat`,
-  `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`). A Rust
-  keyword or a name the emitted code uses (`cx`, `node`, `path`, `v`) takes a `_`. A
+  `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`), and a
+  top-level `let` that shares its base with a function takes `_value` (`let hexDigits`
+  is `hex_digits_value()` beside `HexDigits`'s `hex_digits`). A Rust keyword or a name
+  the emitted code uses (`cx`, `node`, `path`, `v`) takes a `_`. `Job` and `Turn`, which
+  a program may name a type of its own (prismc has a `type Job`), are always written
+  `prism_rtl::Job` and `prism_rtl::Turn`; the other runtime names (`Cx`, `Fault`, `Pod`,
+  `Path`, ...) are still bare, so a program type of one of those names in a module with
+  nodes would shadow it (gap SH below). A
   merge with no name is `anon`; a node's internal names are first come, first served
   (`run`, `run_2`). A tag's `Level` struct is its family and name run together
   (`UiButton`, as `prism_rtl`'s tests have it). *Refused:* the old back end's sigil
@@ -714,19 +725,27 @@ Each is Claude's, for Jimmy to overturn.
   job's state is its stack of pending callers (`sem-ch07-walk`: `Total` over a tree of
   four calls, `5 ticks, 1 to 5`). A continuation is a `move` closure: each borrowed local
   the rest of the source names is cloned into it first. `start_normalize` is the job's
-  `Start`. Every unbounded function is also a direct-style Rust function, for the calls
-  gap DS leaves.
+  `Start`. An unbounded function used as a value is its `Start` (docs/backend.md), a
+  `fn(A) -> Rc<dyn prism_rtl::Job<B>>` (a closure over a tuple when it takes several
+  arguments), and has a job; a job calls such a value as a tail call or a frame like any
+  other, and direct-style code runs it to its result (`run_to_end`, the prelude's).
+  Every unbounded function is also a direct-style Rust function, for the calls gap DS
+  leaves.
 - **RW `for` rows.** A row is a node of its own (`TodosRow`) at `n/[k]`, with `key`, a
   `value` hold for `$_`, and a weak reference to its block; the block's builder (a
   template, `TmForBuild`) tears down left keys, builds new ones and updates kept ones from
   the source after the tick, run at the build and from the build list when a hold the
   source reads is written. A row's event result goes up to a gather in the block, which
-  fires `!(K ==> T)` once a tick at a height above the rows'.
+  fires `!(K ==> T)` once a tick at a height above the rows'. A row has a field for each
+  plain value of its block it reads (a parameter, a plain `let`), which the builder
+  passes to its `build`, since a row is built where its block's locals are not in scope.
 - **GN `rebuild`.** A generation is a node (`QuizGen`) at `n/#g` with `_` a plain field;
   the builder (`TmGenBuild`) leaves the old one and builds the next when the source's
   stale flag is set; an answer under `n/#g` reaches the current generation only. A
   generation's event result fires the block's event, which is what `@Switch $!x` hears
-  (round 46 RD): `$!x <- rebuild` binds as that event.
+  (round 46 RD): `$!x <- rebuild` binds as that event. A `rebuild` over a widget of
+  several clauses builds the clause whose patterns match, passing each parameter from
+  the arm's binders (`Error(message=m, ..)` passes `m`).
 - **PO Ports.** An event of a block that a row or generation names reaches it through a
   `Port` in the block (`Port::fire` when the event fires) and a subscription the row makes
   when built and drops when it leaves (prelude `subscribe_row`, `Row::leave_row`).
@@ -741,6 +760,9 @@ Each is Claude's, for Jimmy to overturn.
   A test's root is found by name; its arguments arrive as `Pod`s.
 - **FV First values.** A place whose element answers a dynamic asks `cx.first_value` at
   the build and fails the build when the World has none; its `Hold` is the place's.
+  A place's answer type is its tag's output as the checker instantiated it at that
+  application (`Prelude.Unwrap`'s `!a` is `!unit` there); a type variable left open is
+  the answer as it came, a `Pod`.
 - **TR Traits.** A program's trait is a Rust trait whose methods are associated
   functions over `Self` (`Loud::loud(&x)`), defaults in the trait; an impl is a Rust
   impl. An `impl ^Show` is a function of its own (`show_sq`) and `impl Show` over it,
@@ -770,11 +792,16 @@ ruling taken (Claude's).
   expression makes whatever its value: in a statement, an argument, an operand, a
   scrutinee or a condition, at any depth. A call under a lambda (a closure an unbounded
   `Fold` is given, D8), in an arm of a `match` or a branch of an `if` that is not in tail
-  position, right of `and`/`or`, or of a local closure value, still runs direct-style
+  position, or right of `and`/`or`, still runs direct-style
   inside the cycle, so such a job takes fewer ticks than D6 says. *Next:* a non-tail
   `match` binds its continuation once (`let k = Rc::new(move |x| ..)`) and each arm
   frames into it; a closure given to `Fold` needs the prelude's higher-order functions as
   jobs. Cost: a cycle walks the frames, so it is linear in the pending calls.
+- **SH Shadowed runtime names.** A program type named like a `prism_rtl` name the
+  emitted code writes bare (`Cx`, `Fault`, `Pod`, `Path`, `Hold`, `Node`) shadows it in
+  its module (`use prism_rtl::*` loses to a local item). prismc's `CheckEnv.Cx` does no
+  harm, as that module has no nodes. *If otherwise:* such a type takes a suffix in Rust,
+  or the templates write every runtime name qualified.
 - **PF A port's fault.** `Port::fire` returns `Done`, and an event method returns
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
