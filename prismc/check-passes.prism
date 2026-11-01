@@ -786,26 +786,22 @@ fn CallGraphs g, d, comp, sums = match d.body:
 ClauseGraphs: unbounded fn G, Def, FnClause, [Text], (Text ==> Nat) -> [Sc]
 fn ClauseGraphs g, d, c, comp, sums:
     let rels = SummarySeeds g, d, c, sums, (ParamRels c.params)
-    let rels2 = BodyRels (BodyStmtsOf c.body), (?BodyExprOf c.body), rels
-    let steps = StepCalls c.body
-    let stepAt = Each steps, \|((ignore, ignore, sp))| sp
-    # A step's bare name is the step call, not a second call with no edges.
-    let calls = Append (Filter (CallsInBody c.body), \|((ignore, a, sp))| not ((Len a) == 0 and HasRange stepAt, sp)), steps
     let locals = Fold c.params, [[]], \|a2, p| UnionTexts a2, (PatternNames p)
-    Fold calls, [[]], \|acc, ((callee, args, span))|
-        if HasText locals, callee: acc
-        else: match ?ResolveName g, d.home, callee:
+    Fold (BodySites c.body, rels), [[]], \|acc, site|
+        if HasText locals, site.callee: acc
+        else: match ?ResolveName g, d.home, site.callee:
             ? k:
                 if HasText comp, k:
+                    let args = site.args
                     let edges = Fold (Range0 (Len args)), [[]], \|es, i| match args[i]:
-                        ? a: match ?RelOf rels2, a:
+                        ? a: match ?RelOf site.rels, a:
                             ? r: Push es, ((r.param, i, r.strict))
                             nil: es
                         nil: es
                     let argText = match args[0]:
                         ? a: ExprName a
                         nil: ""
-                    Push acc, Sc(caller=d.qk, callee=k, edges=edges, span=span, file=d.file, arg=argText)
+                    Push acc, Sc(caller=d.qk, callee=k, edges=edges, span=site.span, file=d.file, arg=argText)
                 else: acc
             nil: acc
 
@@ -832,97 +828,188 @@ fn ParamRels ps = Fold (Range0 (Len ps)), {}, \|m, i| match ps[i]:
         otherwise: Fold (PatternNames p), m, \|m2, n| Insert m2, n, Rel(param=i, strict=True)
     nil: m
 
-# What the body's `let`s, `match`es and `given:` binds make of the parameters (read
-# without regard to which arm, so a name bound twice keeps the weaker relation).
-BodyRels: unbounded fn [Stmt], ?Expr, (Text ==> Rel) -> (Text ==> Rel)
-fn BodyRels stmts, ?e, rels:
-    let fromStmts = Fold stmts, rels, \|m, s| StmtRels s, m
-    match ?e:
-        ? x: ExprRels x, fromStmts
-        nil: fromStmts
+# ---- Relations are scoped. A name relates to what its own binding makes of it: bound
+# again (a `let`, a pattern, a lambda's parameter, a `for`'s binder, a local `fn`), it
+# relates to nothing but what its new definition relates to; a `match` arm's or an `if`'s
+# bindings are seen only in that arm. A part is what a `match` takes apart in the arm that
+# took it (Semantics ch. 7), not a name another arm happens to share.
+
+# Forget what outer bindings said of these names.
+Hide: fn (Text ==> Rel), [Text] -> (Text ==> Rel)
+fn Hide m, names = Fold names, m, \|m2, n| Remove m2, n
+
+# A block is one binding group, so its names hide the outer ones on every line of it; then
+# each `let` and bind, in page order, relates its names from its subject.
+BlockRels: unbounded fn [Stmt], (Text ==> Rel) -> (Text ==> Rel)
+fn BlockRels stmts, m = Fold stmts, (Hide m, (StmtsBinders stmts)), \|m2, s| StmtRels s, m2
+
+# The names a block's own statements bind.
+StmtsBinders: unbounded fn [Stmt] -> [Text]
+fn StmtsBinders stmts = Fold stmts, [[]], \|acc, s| match s.kind:
+    SLet p, ignore, ignore: UnionTexts acc, (PatternNames p)
+    SBind p, ignore, ignore: UnionTexts acc, (PatternNames p)
+    SFn f: AddText acc, (DefNameText f.name)
+    otherwise: acc
 
 StmtRels: unbounded fn Stmt, (Text ==> Rel) -> (Text ==> Rel)
 fn StmtRels s, m = match s.kind:
-    SLet p, ignore, e: BindRels p, e, (ExprRels e, m), False
-    SBind p, e, nil: BindRels p, e, (ExprRels e, m), True
-    SExpr e: ExprRels e, m
-    SWhile ignore, b: Fold b.stmts, m, \|m2, s2| StmtRels s2, m2
+    SLet p, ignore, e: BindRels p, e, m, False
+    SBind p, e, nil: BindRels p, e, m, True
     otherwise: m
 
-# The relations a `match` arm's or a bind's pattern makes from its subject.
+# The relations a `match` arm's or a bind's pattern makes from its subject: the pattern's
+# names hide what outer bindings said of them, then relate to what the subject is no
+# larger than.
 BindRels: unbounded fn Pattern, Expr, (Text ==> Rel), Bool -> (Text ==> Rel)
 fn BindRels p, e, m, refutable:
     let ?base = ?RelOf m, e
     let ?dec = ?DecrementOf m, e
+    let h = Hide m, (PatternNames p)
     match p.kind:
         PName n: match ?base:
-            ? r: Weaker m, (SNameKey n), r
+            ? r: Insert h, (SNameKey n), r
             nil: match ?dec:
-                ? r: if refutable: Weaker m, (SNameKey n), r else: m
-                nil: m
+                ? r: if refutable: Insert h, (SNameKey n), r else: h
+                nil: h
         PSigil "?", inner: match ?dec:
-            ? r: Fold (PatternNames inner), m, \|m2, n| Weaker m2, n, r
+            ? r: Fold (PatternNames inner), h, \|m2, n| Insert m2, n, r
             nil: match ?base:
-                ? r: Fold (PatternNames inner), m, \|m2, n| Weaker m2, n, Rel(param=r.param, strict=True)
-                nil: m
+                ? r: Fold (PatternNames inner), h, \|m2, n| Insert m2, n, Rel(param=r.param, strict=True)
+                nil: h
         otherwise: match ?base:
-            ? r: Fold (PatternNames p), m, \|m2, n| Weaker m2, n, Rel(param=r.param, strict=True)
-            nil: m
+            ? r: Fold (PatternNames p), h, \|m2, n| Insert m2, n, Rel(param=r.param, strict=True)
+            nil: h
 
-# A name bound twice keeps the weaker of its relations.
-Weaker: fn (Text ==> Rel), Text, Rel -> (Text ==> Rel)
-fn Weaker m, n, r = match m[n]:
-    ? old: if old.param == r.param and old.strict and not r.strict: Insert m, n, r else: if old.param == r.param: m else: m
-    nil: Insert m, n, r
+# A `match` arm's relations before its block: its pattern's, from the subject.
+ArmPatRels: unbounded fn Expr, Arm, (Text ==> Rel) -> (Text ==> Rel)
+fn ArmPatRels s, a, m = match a.?pattern:
+    ? p: BindRels p, s, m, True
+    nil: m
 
-ExprRels: unbounded fn Expr, (Text ==> Rel) -> (Text ==> Rel)
-fn ExprRels e, m = match e.kind:
-    EMatch s, arms: Fold arms, (ExprRels s, m), \|m2, a| match a.?pattern:
-        ? p:
-            let m3 = BindRels p, s, m2, True
-            BodyRels a.body.stmts, (?LastExpr a.body), m3
-        nil: BodyRels a.body.stmts, (?LastExpr a.body), m2
-    EIf c, t, ?el:
-        let m2 = match c:
-            CondBind p, x, ignore: BindRels p, x, m, True
-            otherwise: m
-        let m3 = BodyRels t.stmts, (?LastExpr t), m2
-        match ?el:
-            ? b: BodyRels b.stmts, (?LastExpr b), m3
-            nil: m3
-    EGiven b: BodyRels b.stmts, nil, m
-    EGroup x: ExprRels x, m
-    ECall c, args, ignore, ignore: Fold args, (TraversalRels c, args, m), \|m2, a| ExprRels a.value, m2
-    ELambda ignore, body: match body:
-        LbExpr x: ExprRels x, m
-        LbBlock b: BodyRels b.stmts, (?LastExpr b), m
-    EBinary ignore, l, r: ExprRels r, (ExprRels l, m)
-    EUnary ignore, x: ExprRels x, m
-    EFreeSigil ignore, x: ExprRels x, m
-    EField r, ignore, ignore: ExprRels r, m
-    EIndex r, i: ExprRels i, (ExprRels r, m)
-    ETuple es: Fold es, m, \|m2, x| ExprRels x, m2
-    EArray es: Fold es, m, \|m2, x| ExprRels x, m2
-    ELit l: match l.kind:
-        LText segs: Fold segs, m, \|m2, sg| match sg:
-            SegPlaceholder x: ExprRels x, m2
-            otherwise: m2
-        otherwise: m
-    otherwise: m
+# An `if`'s `then` block's relations before the block: a `? x <- e` condition's pattern's.
+CondRels: unbounded fn Cond, (Text ==> Rel) -> (Text ==> Rel)
+fn CondRels c, m = match c:
+    CondBind p, x, ignore: BindRels p, x, m, True
+    CondExpr ignore: m
 
 # The prelude's traversals hand their closure the collection's elements, each a part of
 # it (Semantics ch. 7, Keep shrinking; doubt TR): `Fold xs, z, \|acc, x| ...`, `Each xs,
 # \|x| ...` and `Filter xs, \|x| ...` over a collection no larger than a parameter bind
 # the element strictly smaller than the parameter; a `Fold` over a map binds its key and
-# value so.
-TraversalRels: unbounded fn Expr, [Arg], (Text ==> Rel) -> (Text ==> Rel)
-fn TraversalRels c, args, m = match ?TraversalOf c, args:
-    nil: m
-    ? ((coll, step, at)): match ?RelOf m, coll:
-        nil: m
-        ? r: match step.kind:
-            ELambda (? ps), ignore: Fold (Drop ps, at), m, \|m2, p| Fold (PatternNames p), m2, \|m3, n| Weaker m3, n, Rel(param=r.param, strict=True)
-            otherwise: m
+# value so. Every parameter of the step hides the outer names it shares.
+StepRels: unbounded fn (Text ==> Rel), Expr, [Pattern], Nat -> (Text ==> Rel)
+fn StepRels m, coll, ps, at:
+    let h = Hide m, (Fold ps, [[]], \|a, p| UnionTexts a, (PatternNames p))
+    match ?RelOf m, coll:
+        ? r: Fold (Drop ps, at), h, \|m2, p| Fold (PatternNames p), m2, \|m3, n| Insert m3, n, Rel(param=r.param, strict=True)
+        nil: h
+
+# A call in a clause's body with the relations in scope where it stands; a name mentioned
+# without being called is a call with no arguments.
+type Site = record:
+    callee: Text
+    args: [Expr]
+    span: Range
+    rels: (Text ==> Rel)
+derive ^Eq, ^Show
+
+BodySites: unbounded fn FnBody, (Text ==> Rel) -> [Site]
+fn BodySites (BodyExpr e), m = SitesIn e, m
+fn BodySites (BodyBlock b), m = BlockSites b.stmts, m
+
+BlockSites: unbounded fn [Stmt], (Text ==> Rel) -> [Site]
+fn BlockSites stmts, m:
+    let bm = BlockRels stmts, m
+    Fold stmts, [[]], \|acc, s| Append acc, (StmtSites s, bm)
+
+StmtSites: unbounded fn Stmt, (Text ==> Rel) -> [Site]
+fn StmtSites s, m = match s.kind:
+    SBind ignore, e, ?t: match ?t:
+        ? x: Append (SitesIn e, m), (SitesIn x, m)
+        nil: SitesIn e, m
+    SIgnore e: SitesIn e, m
+    SLet ignore, ignore, e: SitesIn e, m
+    SFn f: BodySites f.body, (Hide m, (Fold f.params, [[]], \|a, p| UnionTexts a, (PatternNames p)))
+    SSet t, v: Append (SitesIn t, m), (SitesIn v, m)
+    SAccum t, ignore, v: Append (SitesIn t, m), (SitesIn v, m)
+    SRequire c: SitesIn c, m
+    SForbid c: SitesIn c, m
+    SWhile c, b: match c:
+        CondExpr x: Append (SitesIn x, m), (BlockSites b.stmts, m)
+        CondBind ignore, x, ignore: Append (SitesIn x, m), (BlockSites b.stmts, (CondRels c, m))
+    SExpr e: SitesIn e, m
+    otherwise: [[]]
+
+SitesIn: unbounded fn Expr, (Text ==> Rel) -> [Site]
+fn SitesIn e, m = match e.kind:
+    EName n: [[Site(callee=(SNameKey n), args=[[]], span=e.span, rels=m)]]
+    ECall c, args, ignore, ignore:
+        let inner = ArgSites c, args, m
+        let values = Each args, \|a| a.value
+        match c.kind:
+            EName n: Append [[Site(callee=(SNameKey n), args=values, span=e.span, rels=m)]], inner
+            ETypeArgs t, ignore: match t.kind:
+                EName n: Append [[Site(callee=(SNameKey n), args=values, span=e.span, rels=m)]], inner
+                otherwise: Append (SitesIn c, m), inner
+            otherwise: Append (SitesIn c, m), inner
+    EBinary ignore, l, r: Append (SitesIn l, m), (SitesIn r, m)
+    EUnary ignore, x: SitesIn x, m
+    EFreeSigil ignore, x: SitesIn x, m
+    EField r, ignore, ignore: SitesIn r, m
+    EIndex r, i: Append (SitesIn r, m), (SitesIn i, m)
+    EGroup x: SitesIn x, m
+    ETuple es: Fold es, [[]], \|acc, x| Append acc, (SitesIn x, m)
+    EArray es: Fold es, [[]], \|acc, x| Append acc, (SitesIn x, m)
+    EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, (Append (SitesIn k, m), (SitesIn v, m))
+    ELit l: match l.kind:
+        LText segs: Fold segs, [[]], \|acc, sg| match sg:
+            SegPlaceholder x: Append acc, (SitesIn x, m)
+            otherwise: acc
+        otherwise: [[]]
+    ELambda ?ps, body: LambdaSites body, (Hide m, (Fold (Or ?ps, [[]]), [[]], \|a, p| UnionTexts a, (PatternNames p)))
+    EIf c, t, ?el:
+        let base = match c:
+            CondExpr x: SitesIn x, m
+            CondBind ignore, x, ignore: SitesIn x, m
+        let withThen = Append base, (BlockSites t.stmts, (CondRels c, m))
+        match ?el:
+            ? b: Append withThen, (BlockSites b.stmts, m)
+            nil: withThen
+    EMatch s, arms: Fold arms, (SitesIn s, m), \|acc, a| Append acc, (BlockSites a.body.stmts, (ArmPatRels s, a, m))
+    ERebuild s, b: Append (SitesIn s, m), (BlockSites b.stmts, m)
+    EFor ?fb, s, b:
+        let names = match ?fb:
+            ? fb: UnionTexts (PatternNames fb.first), (OptNames fb.?second)
+            nil: [[]]
+        Append (SitesIn s, m), (BlockSites b.stmts, (Hide m, names))
+    EGiven b: BlockSites b.stmts, m
+    EUpdate t, b: Append (SitesIn t, m), (BlockSites b.stmts, m)
+    EWidgetBlock b: BlockSites b.stmts, m
+    otherwise: [[]]
+
+LambdaSites: unbounded fn LambdaBody, (Text ==> Rel) -> [Site]
+fn LambdaSites (LbExpr x), m = SitesIn x, m
+fn LambdaSites (LbBlock b), m = BlockSites b.stmts, m
+
+# A call's arguments. A traversal's step lambda sees its elements as parts of the
+# collection (`StepRels`); a named step is called on each element (doubt TR): `Fold xs, z,
+# F` is a call `F z, x` for each `x` of `xs`, an `Each` or a `Filter` `F x`, with the
+# element written `(xs).element` so the relation reads it as a part.
+ArgSites: unbounded fn Expr, [Arg], (Text ==> Rel) -> [Site]
+fn ArgSites c, args, m = match ?TraversalOf c, args:
+    nil: Fold args, [[]], \|acc, a| Append acc, (SitesIn a.value, m)
+    ? ((coll, step, at)):
+        let others = Fold (Range0 (Len args)), [[]], \|acc, i| if i == at + 1: acc else: match args[i]:
+            ? a: Append acc, (SitesIn a.value, m)
+            nil: acc
+        let fromStep = match step.kind:
+            ELambda (? ps), body: LambdaSites body, (StepRels m, coll, ps, at)
+            EName n:
+                let part = Expr(kind=(EField coll, "", Ident(name="element", span=coll.span)), span=coll.span)
+                let callArgs = if at == 1: [[(Or args[1], dummyArg).value, part]] else: [[part]]
+                [[Site(callee=(SNameKey n), args=callArgs, span=step.span, rels=m)]]
+            otherwise: SitesIn step, m
+        Append others, fromStep
 
 # A call of `Fold`, `Each` or `Filter`: its collection, its step, and the position of the
 # step's first element parameter.
@@ -1002,10 +1089,8 @@ fn PartsSummaries fns = Fold fns, {}, \|m, d| match d.body:
 
 ClauseWithin: unbounded fn FnClause, Nat -> Bool
 fn ClauseWithin c, i = match c.body:
-    BodyExpr e: Within (BodyRels [[]], (? e), (ParamRels c.params)), i, e
-    BodyBlock b: match ?LastExpr b:
-        ? e: Within (BodyRels b.stmts, nil, (ParamRels c.params)), i, e
-        nil: False
+    BodyExpr e: Within (ParamRels c.params), i, e
+    BodyBlock b: WithinBlock (ParamRels c.params), i, b
 
 Within: unbounded fn (Text ==> Rel), Nat, Expr -> Bool
 fn Within m, i, e = match ?RelOf m, e:
@@ -1014,27 +1099,32 @@ fn Within m, i, e = match ?RelOf m, e:
         EArray es: Fold es, True, \|ok, x| ok and Part m, i, x
         EMap kvs: Fold kvs, True, \|ok, ((k, v))| ok and (Part m, i, k) and Part m, i, v
         EGroup x: Within m, i, x
-        EMatch ignore, arms: Fold arms, True, \|ok, a| ok and Within m, i, (LastOr a.body)
-        EIf ignore, t, (? el): (Within m, i, (LastOr t)) and Within m, i, (LastOr el)
+        EMatch s, arms: Fold arms, True, \|ok, a| ok and WithinBlock (ArmPatRels s, a, m), i, a.body
+        EIf c, t, (? el): (WithinBlock (CondRels c, m), i, t) and WithinBlock m, i, el
         ECall c, args, ignore, ignore: match ?TraversalOf c, args:
-            ? ((coll, step, ignore)): (Within m, i, coll) and StepWithin m, i, (ExprName c), step, (Or args[1], dummyArg).value
+            ? ((coll, step, at)): (Within m, i, coll) and StepWithin m, i, (ExprName c), coll, step, at, (Or args[1], dummyArg).value
             nil: False
         otherwise: False
 
+# A block's last expression, read with the block's relations.
+WithinBlock: unbounded fn (Text ==> Rel), Nat, Block -> Bool
+fn WithinBlock m, i, b = Within (BlockRels b.stmts, m), i, (LastOr b)
+
 # A traversal's step, for `Within`: a `Filter` keeps elements, an `Each` must map them to
 # parts, a `Fold` must start within and build on its accumulator.
-StepWithin: unbounded fn (Text ==> Rel), Nat, Text, Expr, Expr -> Bool
-fn StepWithin m, i, f, step, z:
+StepWithin: unbounded fn (Text ==> Rel), Nat, Text, Expr, Expr, Nat, Expr -> Bool
+fn StepWithin m, i, f, coll, step, at, z:
     if f == "Filter" or f == "Prelude.Filter": True
     else: match step.kind:
         ELambda (? ps), body:
-            let x = match body:
-                LbExpr y: y
-                LbBlock b: LastOr b
-            if f == "Each" or f == "Prelude.Each": Part m, i, x
+            let sm = StepRels m, coll, ps, at
+            let ((bm, x)) = match body:
+                LbExpr y: ((sm, y))
+                LbBlock b: (((BlockRels b.stmts, sm), (LastOr b)))
+            if f == "Each" or f == "Prelude.Each": Part bm, i, x
             else: match ps[0]:
                 ? acc: match acc.kind:
-                    PName n: (Within m, i, z) and BuildsOn m, i, (SNameKey n), x
+                    PName n: (Within m, i, z) and BuildsOn bm, i, (SNameKey n), x
                     otherwise: False
                 nil: False
         otherwise: False
@@ -1048,8 +1138,8 @@ BuildsOn: unbounded fn (Text ==> Rel), Nat, Text, Expr -> Bool
 fn BuildsOn m, i, acc, e = match e.kind:
     EName n: (SNameKey n) == acc
     EGroup x: BuildsOn m, i, acc, x
-    EMatch ignore, arms: Fold arms, True, \|ok, a| ok and BuildsOn m, i, acc, (LastOr a.body)
-    EIf ignore, t, (? el): (BuildsOn m, i, acc, (LastOr t)) and BuildsOn m, i, acc, (LastOr el)
+    EMatch s, arms: Fold arms, True, \|ok, a| ok and not (HasText (OptNames a.?pattern), acc) and BuildsOnBlock (ArmPatRels s, a, m), i, acc, a.body
+    EIf c, t, (? el): (not (HasText (CondNames c), acc)) and (BuildsOnBlock (CondRels c, m), i, acc, t) and BuildsOnBlock m, i, acc, el
     ECall c, args, ignore, ignore:
         let f = ExprName c
         let onAcc = BuildsOn m, i, acc, (Or args[0], dummyArg).value
@@ -1061,6 +1151,15 @@ fn BuildsOn m, i, acc, e = match e.kind:
         else: if (f == "Append" or f == "Prelude.Append") and (Len rest) == 1: Within m, i, (Or rest[0], dummyArg.value)
         else: False
     otherwise: False
+
+# A block's last expression, for `BuildsOn`; a block that binds the accumulator's name
+# again no longer means the accumulator by it.
+BuildsOnBlock: unbounded fn (Text ==> Rel), Nat, Text, Block -> Bool
+fn BuildsOnBlock m, i, acc, b = (not (HasText (StmtsBinders b.stmts), acc)) and BuildsOn (BlockRels b.stmts, m), i, acc, (LastOr b)
+
+CondNames: unbounded fn Cond -> [Text]
+fn CondNames (CondBind p, ignore, ignore) = PatternNames p
+fn CondNames (CondExpr ignore) = [[]]
 
 Part: unbounded fn (Text ==> Rel), Nat, Expr -> Bool
 fn Part m, i, e = match e.kind:
@@ -1229,37 +1328,12 @@ fn CallsIn e = match e.kind:
     EWidgetBlock b: Fold b.stmts, [[]], \|acc, x| Append acc, (CallsInStmt x)
     otherwise: [[]]
 
-# A named function passed as a traversal's step is called on each element (doubt TR):
-# `Fold xs, z, F` calls `F z, x` for each `x` of `xs`, an `Each` or a `Filter` `F x`.
-# Each such use is a call whose element argument is the collection taken apart, written
-# here as `(xs).element` so the relation reads it as a part.
-StepCalls: unbounded fn FnBody -> [((Text, [Expr], Range))]
-fn StepCalls body:
-    let es = match body:
-        BodyExpr e: TraversalsIn e
-        BodyBlock b: Fold b.stmts, [[]], \|acc, s| Append acc, (Fold (StmtTopExprs s), [[]], \|a2, x| Append a2, (TraversalsIn x))
-    es
-
 StmtTopExprs: fn Stmt -> [Expr]
 fn StmtTopExprs s = match s.kind:
     SLet ignore, ignore, e: [[e]]
     SExpr e: [[e]]
     SBind ignore, e, ignore: [[e]]
     otherwise: [[]]
-
-TraversalsIn: unbounded fn Expr -> [((Text, [Expr], Range))]
-fn TraversalsIn e:
-    let here = match e.kind:
-        ECall c, args, ignore, ignore: match ?TraversalOf c, args:
-            ? ((coll, step, at)): match step.kind:
-                EName n:
-                    let part = Expr(kind=(EField coll, "", Ident(name="element", span=coll.span)), span=coll.span)
-                    let callArgs = if at == 1: [[(Or args[1], dummyArg).value, part]] else: [[part]]
-                    [[((SNameKey n, callArgs, step.span))]]
-                otherwise: [[]]
-            nil: [[]]
-        otherwise: [[]]
-    Fold (Subexprs e), here, \|acc, x| Append acc, (TraversalsIn x)
 
 # The expressions directly inside one, blocks' last lines and arms included.
 Subexprs: unbounded fn Expr -> [Expr]
@@ -1379,11 +1453,11 @@ fn WhilesInExpr e = match e.kind:
 CheckWhile: unbounded fn St, Cond, Block, Range, Text -> St
 fn CheckWhile st, c, body, span, name:
     let vars = SetTargets body.stmts
-    let rels = match c:
-        CondBind p, x, ignore: LoopBindRels p, x, vars
-        CondExpr ignore: {}
-    let rels2 = Fold body.stmts, rels, \|m, s| LoopStmtRels s, m, vars
-    let ok = Fold vars, False, \|seen, v| seen or AllPathsStrict body.stmts, v, rels2
+    # Each local the loop sets is no larger than itself, so what a pattern takes apart
+    # from it is smaller (relations scoped as for calls).
+    let base = Fold (Range0 (Len vars)), {}, \|m, i| Insert m, (Or vars[i], ""), Rel(param=i, strict=False)
+    let rels = CondRels c, base
+    let ok = Fold vars, False, \|seen, v| seen or AllPathsStrict body.stmts, v, rels
     if ok: st
     else: ErrFix st, "may-not-end", span, "this loop in `{name}` may not end: nothing it sets gets smaller on every turn", "set a local from `&x -? 1` through a pattern, as `while ? left <- &fuel -? 1:`, or mark `{name}` `unbounded fn`"
 
@@ -1404,42 +1478,33 @@ fn SetTargets stmts = Fold stmts, [[]], \|acc, s| match s.kind:
         otherwise: acc
     otherwise: acc
 
-# Names smaller than a loop variable: the `? m` of `&x -? 1`, the rest of `?Step &c`, a
-# part taken apart, a field.
-LoopBindRels: unbounded fn Pattern, Expr, [Text] -> (Text ==> Rel)
-fn LoopBindRels p, x, vars:
-    let base = Fold (Range0 (Len vars)), {}, \|m, i| Insert m, (Or vars[i], ""), Rel(param=i, strict=False)
-    let m2 = BindRels p, x, base, True
-    Fold (Keys m2), {}, \|m, k| if HasText vars, k: m else: Insert m, k, (Or m2[k], Rel(param=0, strict=False))
-
-LoopStmtRels: unbounded fn Stmt, (Text ==> Rel), [Text] -> (Text ==> Rel)
-fn LoopStmtRels s, m, vars:
-    let base = Fold (Range0 (Len vars)), m, \|mm, i| match mm[Or vars[i], ""]:
-        ? ignore: mm
-        nil: Insert mm, (Or vars[i], ""), Rel(param=i, strict=False)
-    let m2 = StmtRels s, base
-    Fold (Keys m2), m, \|mm, k| if HasText vars, k: mm else: Insert mm, k, (Or m2[k], Rel(param=0, strict=False))
-
-# Whether `v` gets strictly smaller on every path through the statements.
+# Whether `v` gets strictly smaller on every path through the statements, each set read
+# with the relations in scope where it stands.
 AllPathsStrict: unbounded fn [Stmt], Text, (Text ==> Rel) -> Bool
-fn AllPathsStrict stmts, v, rels = Fold stmts, False, \|ok, s| match s.kind:
-    SSet t, value:
-        if (Take (RefPath t), 1) == [[v]] and (Len (RefPath t)) == 1: SetsStrict value, v, rels
-        else: ok
-    SAccum t, ignore, ignore: if (Take (RefPath t), 1) == [[v]]: False else: ok
-    SExpr e: match e.kind:
-        EIf ignore, tb, ?eb: match ?eb:
-            ? b: if (AllPathsStrict tb.stmts, v, rels) and (AllPathsStrict b.stmts, v, rels): True else: ok and not (SetsWeak tb.stmts, v, rels) and not (SetsWeak b.stmts, v, rels)
-            nil: ok and not (SetsWeak tb.stmts, v, rels)
-        EMatch ignore, arms:
-            if Fold arms, True, \|allArms, a| allArms and AllPathsStrict a.body.stmts, v, rels: True
-            else: ok and not (Fold arms, False, \|anyArm, a| anyArm or SetsWeak a.body.stmts, v, rels)
+fn AllPathsStrict stmts, v, outer:
+    let rels = BlockRels stmts, outer
+    Fold stmts, False, \|ok, s| match s.kind:
+        SSet t, value:
+            if (Take (RefPath t), 1) == [[v]] and (Len (RefPath t)) == 1: SetsStrict value, v, rels
+            else: ok
+        SAccum t, ignore, ignore: if (Take (RefPath t), 1) == [[v]]: False else: ok
+        SExpr e: match e.kind:
+            EIf c, tb, ?eb:
+                let tr = CondRels c, rels
+                match ?eb:
+                    ? b: if (AllPathsStrict tb.stmts, v, tr) and (AllPathsStrict b.stmts, v, rels): True else: ok and not (SetsWeak tb.stmts, v, tr) and not (SetsWeak b.stmts, v, rels)
+                    nil: ok and not (SetsWeak tb.stmts, v, tr)
+            EMatch subj, arms:
+                if Fold arms, True, \|allArms, a| allArms and AllPathsStrict a.body.stmts, v, (ArmPatRels subj, a, rels): True
+                else: ok and not (Fold arms, False, \|anyArm, a| anyArm or SetsWeak a.body.stmts, v, (ArmPatRels subj, a, rels))
+            otherwise: ok
         otherwise: ok
-    otherwise: ok
 
 # Whether some set of `v` among the statements is not strictly smaller.
 SetsWeak: unbounded fn [Stmt], Text, (Text ==> Rel) -> Bool
-fn SetsWeak stmts, v, rels = Fold stmts, False, \|seen, s| seen or (SetsWeakStmt s, v, rels)
+fn SetsWeak stmts, v, outer:
+    let rels = BlockRels stmts, outer
+    Fold stmts, False, \|seen, s| seen or (SetsWeakStmt s, v, rels)
 
 SetsWeakStmt: unbounded fn Stmt, Text, (Text ==> Rel) -> Bool
 fn SetsWeakStmt s, v, rels = match s.kind:
@@ -1454,8 +1519,8 @@ fn SetsWeakElse nil, ignore, ignore = False
 
 SetsWeakExpr: unbounded fn Expr, Text, (Text ==> Rel) -> Bool
 fn SetsWeakExpr e, v, rels = match e.kind:
-    EIf ignore, tb, ?eb: (SetsWeak tb.stmts, v, rels) or (SetsWeakElse ?eb, v, rels)
-    EMatch ignore, arms: Fold arms, False, \|anyArm, a| anyArm or SetsWeak a.body.stmts, v, rels
+    EIf c, tb, ?eb: (SetsWeak tb.stmts, v, (CondRels c, rels)) or (SetsWeakElse ?eb, v, rels)
+    EMatch subj, arms: Fold arms, False, \|anyArm, a| anyArm or SetsWeak a.body.stmts, v, (ArmPatRels subj, a, rels)
     otherwise: False
 
 # A value set into `v` that is strictly smaller than `v`: a name the loop knows is, a call
