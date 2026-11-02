@@ -712,31 +712,25 @@ impl Interp {
                 TemplatePart::Call { name, attrs, body, span } => {
                     let cloc = Loc { module: sc.module, span: *span };
                     let f = self.template_callee(name, sc, b.as_deref_mut(), cloc)?;
-                    // Attributes are named arguments: each binds to the callee's parameter
-                    // of that name, whatever order they are written in (Templates ch. 2;
-                    // the checker reads them the same way). Written order is kept only when
-                    // the callee's parameters are not all plain names.
-                    let order: Vec<usize> = match self.template_param_names(&f) {
-                        Some(names) if names.len() == attrs.len() && attrs.iter().all(|a| a.name.is_some()) => {
-                            let mut idx = Vec::with_capacity(names.len());
-                            for n in &names {
-                                match attrs.iter().position(|a| a.name.as_ref().map(|i| i.name.as_str()) == Some(n.as_str())) {
-                                    Some(i) => idx.push(i),
-                                    None => return Err(self.fault(cloc, format!("template call <@{}> has no attribute for parameter {}", name.base(), n))),
-                                }
-                            }
-                            idx
+                    // A template call by the attribute rule (prismc/README.md, pick TK):
+                    // the body fills the last place; each attribute fills the one place any
+                    // clause names it at (a name pattern, through parentheses, less its
+                    // marks); the written order is never used.
+                    let places = self.template_place_names(&f).ok_or_else(|| self.fault(cloc, format!("template call <@{}>: the callee has no clauses", name.base())))?;
+                    let arity = places.len();
+                    let mut args = Vec::with_capacity(arity);
+                    for (j, names) in places.iter().enumerate() {
+                        if body.is_some() && j + 1 == arity {
+                            let mut inner = String::new();
+                            self.template_parts(body.as_ref().unwrap(), sc, b.as_deref_mut(), cloc, &mut inner)?;
+                            args.push(Value::text(&inner));
+                            continue;
                         }
-                        _ => (0..attrs.len()).collect(),
-                    };
-                    let mut args = Vec::new();
-                    for i in order {
-                        args.push(self.eval(&attrs[i].value, sc, b.as_deref_mut())?);
-                    }
-                    if let Some(body) = body {
-                        let mut inner = String::new();
-                        self.template_parts(body, sc, b.as_deref_mut(), cloc, &mut inner)?;
-                        args.push(Value::text(&inner));
+                        let found = attrs.iter().find(|a| a.name.as_ref().is_some_and(|i| names.iter().any(|n| n == &i.name)));
+                        match found {
+                            Some(a) => args.push(self.eval(&a.value, sc, b.as_deref_mut())?),
+                            None => return Err(self.fault(cloc, format!("template call <@{}> fills no argument at place {}", name.base(), j))),
+                        }
                     }
                     let v = self.apply(&f, args, b.as_deref_mut(), cloc)?;
                     out.push_str(&self.display(&v, b.as_deref_mut(), cloc)?);
@@ -746,23 +740,31 @@ impl Interp {
         Ok(())
     }
 
-    /// The callee's parameter names, when every clause parameter is a plain name, so a
-    /// template call's attributes can bind by name.
-    fn template_param_names(&self, f: &Value) -> Option<Vec<String>> {
+    /// Each place's names over every clause of the callee (pick TK): a name pattern, seen
+    /// through parentheses, less its marks; its arity is its first clause's.
+    fn template_place_names(&self, f: &Value) -> Option<Vec<Vec<String>>> {
         let code = self.code_of_value(f)?;
         let fc = match &*code {
             crate::interp::Code::Fn(fc) => fc,
             _ => return None,
         };
-        let clause = fc.clauses.first()?;
-        let mut names = Vec::new();
-        for p in &clause.params {
-            match &p.kind {
-                prism_syntax::ast::PatternKind::Name(n) if n.sigils.is_empty() => names.push(n.base().to_string()),
-                _ => return None,
+        let arity = fc.clauses.first()?.params.len();
+        let mut places = vec![Vec::new(); arity];
+        for clause in &fc.clauses {
+            for (j, p) in clause.params.iter().enumerate().take(arity) {
+                let mut p = p;
+                while let prism_syntax::ast::PatternKind::Group(q) = &p.kind {
+                    p = q;
+                }
+                if let prism_syntax::ast::PatternKind::Name(n) = &p.kind {
+                    let base = n.base().to_string();
+                    if !places[j].contains(&base) {
+                        places[j].push(base);
+                    }
+                }
             }
         }
-        Some(names)
+        Some(places)
     }
 
     /// The function a template's `<@Name ...>` call applies: `@Name`, or, in the function

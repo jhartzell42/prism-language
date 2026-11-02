@@ -45,15 +45,16 @@ pub use prism_rtl::world::{EXIT_FAILED, EXIT_UNCHECKED};
 /// The families this World answers, for a root's row check.
 pub const FAMILIES: &[&str] = &["Fs", "Process", "Time", "Prelude"];
 
-/// The CLI World's patience under [`run`], in ticks.
-pub const RUN_PATIENCE: usize = 10_000_000;
+/// The CLI World's patience under [`run`]: unlimited unless `PRISM_PATIENCE` sets a budget
+/// (Semantics ch. 9: a budget is the World's and optional).
+pub const RUN_PATIENCE: usize = usize::MAX;
 
 /// Run a program under the CLI World over the real file system, rooted at the working
 /// directory, with `args` as `Process.Args`: the exit code.
 pub fn run<P: Program>(args: Vec<String>) -> u8 {
     let root = std::env::current_dir().unwrap_or_default();
     let mut world = CliWorld::new(RealFs { root }, args);
-    prism_rtl::drive::<P>(&mut world, &[], RUN_PATIENCE)
+    prism_rtl::drive::<P>(&mut world, &[], std::env::var("PRISM_PATIENCE").ok().and_then(|p| p.parse().ok()).unwrap_or(RUN_PATIENCE))
 }
 
 fn contents(r: Result<String, Error>) -> Pod {

@@ -226,7 +226,7 @@ pub fn ix(n: &Nat) -> usize {
     n.as_int().to_i64().map_or(usize::MAX, |i| i as usize)
 }
 
-fn nat_of(n: usize) -> Nat {
+pub fn nat_of(n: usize) -> Nat {
     Nat::from_int(Int::from(n as i64)).unwrap_or_else(|| Nat::from(0u32))
 }
 

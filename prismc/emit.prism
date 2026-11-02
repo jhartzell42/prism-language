@@ -72,6 +72,7 @@ fn EmRefTys ts = Join (Each ts, \|t| "&{EmTy t}"), ", "
 # Whether an expression must be parenthesized as an operand or a receiver.
 EmLoose: fn Ex -> Bool
 fn EmLoose x = match x:
+    XBlock [[]], inner: EmLoose inner
     XBin ignore, ignore, ignore: True
     XUnary ignore, ignore: True
     XClosure ignore, ignore, ignore: True
@@ -86,6 +87,7 @@ fn EmTight x = if EmLoose x: "({EmEx x})" else: EmEx x
 
 EmOperand: unbounded fn Ex -> Text
 fn EmOperand x = match x:
+    XBlock [[]], inner: EmOperand inner
     XBin ignore, ignore, ignore: "({EmEx x})"
     XClosure ignore, ignore, ignore: "({EmEx x})"
     XIf ignore, ignore, ignore: "({EmEx x})"
@@ -250,6 +252,7 @@ fn EmDo d = match d:
     DoAssign p, x: "{EmEx p} = {EmEx x};"
     DoWhile c, body: TmIfStmt "while {EmEx c}", (EmDos body)
     DoWhileLet p, x, body: TmIfStmt "while let {EmPa p} = {EmEx x}", (EmDos body)
+    DoFor p, x, body: TmIfStmt "for {EmPa p} in {EmEx x}", (EmDos body)
     DoExpr x: "{EmEx x};"
     DoIf c, t, e: "{TmIfStmt "if {EmEx c}", (EmDos t)}{EmElse e}"
     DoIfLet p, x, t, e: "{TmIfStmt "if let {EmPa p} = {EmEx x}", (EmDos t)}{EmElse e}"

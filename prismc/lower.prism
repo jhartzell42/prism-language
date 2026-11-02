@@ -128,6 +128,7 @@ type Do = choice:
     DoAssign Ex, Ex
     DoWhile Ex, [Do]
     DoWhileLet Pa, Ex, [Do]
+    DoFor Pa, Ex, [Do]
     DoExpr Ex
     DoIf Ex, [Do], [Do]
     DoIfLet Pa, Ex, [Do], [Do]
@@ -432,14 +433,18 @@ fn LoGlobalNames g:
     let names = LoValueNames g
     Fold (Keys names), {}, \|m, k| Insert m, "{LoOwnerOf k}.{Or names[k], ""}", True
 
-# A local's Rust name (pick NM): a `?x` is `x_opt` and a `~x` is `x_try`, so that it
-# never hides a plain `x` of the same scope; a local whose name a function of the module
+# A local's Rust name (pick NM): a `?x` is `x_opt`, a `~x` is `x_try` and a `K` is
+# `k_fn`, so that it never hides a plain `x` or `k` of the same scope; a local whose name a function of the module
 # or the prelude has takes a `_` (`kind_` beside the function `kind`).
 LoLocalName: fn Lx, Text -> Text
 fn LoLocalName lx, nkey:
     let marks = MarksOf nkey
     let base = LoSnake nkey
-    let s1 = if HasText (Chars marks), "?": "{base}_opt" else: if HasText (Chars marks), "~": "{base}_try" else: base
+    let bare = Drop nkey, (Len marks)
+    let s0 = if HasText (Chars marks), "?": "{base}_opt" else: if HasText (Chars marks), "~": "{base}_try" else: base
+    # A capitalised local is a function value (`K`, `Pipe`); Rust's case would make it
+    # the plain `k` beside it.
+    let s1 = if IsUpperText (Take bare, 1): "{s0}_fn" else: s0
     if (HasKey lx.globals, "{lx.site}.{s1}") or HasKey lx.globals, "Prelude.{s1}": "{s1}_" else: s1
 
 LoBaseKey: fn Text -> Text
@@ -1828,35 +1833,47 @@ fn LoTemplatePart lx, env, part = match part:
                 let inner = Fold ps, [[(DoLet (PaBind "mut out"), (XRaw "String::new()"))]], \|acc, p| Append acc, (LoTemplatePart lx, env, p)
                 [[(XUnary "&", (XBlock inner, (XCall "Text::from", [[XRaw "out"]])))]]
             nil: [[]]
-        let ordered = match ?qk:
-            ? q: LoByParamName lx, q, args
+        let passed = match ?qk:
+            ? q: LoTemplateArgs lx, env, q, args, body
             nil: match ?qk2:
-                ? q: LoByParamName lx, q, args
-                nil: args
-        let call = XCall callee, (Append (Each ordered, \|a| LoArg lx, env, a.value), body)
+                ? q: LoTemplateArgs lx, env, q, args, body
+                nil: Append (Each args, \|a| LoArg lx, env, a.value), body
+        let call = XCall callee, passed
         [[DoExpr (XCall "place", [[XRaw "&mut out", (XUnary "&", call), XRaw "None"]])]]
 
-# A template call's attributes (`<@Spin n={{n}} depth={{m}}/>`) are named arguments, as
-# the checker reads them: each goes to the callee's parameter of its name, in whatever
-# order they are written. A parameter's name is the first clause's binder there.
-LoByParamName: fn Lx, Text, [Arg] -> [Arg]
-fn LoByParamName lx, qk, args = match (LoClausesOf lx.g, qk)[0]:
-    ? c:
-        let names = Each c.params, \|p| match p.kind:
-            PName n: SNameKey n
-            otherwise: ""
-        let byName = Each (Range0 (Len names)), \|i| Fold args, nil, \|?found, a| match a.?name:
-            ? n: if n.name == (Or names[i], "") and n.name != "": ? a else: ?found
-            nil: ?found
-        if Fold byName, True, \|ok, ?b| ok and LoHasArg ?b: Each byName, \|?b| Or ?b, dummyArgL
-        else: args
-    nil: args
+# A template call's arguments in place order (pick TK, as the checker reads them): the
+# body, when there is one, fills the last place; each attribute fills the one place any
+# clause names it at, its pattern seen through parentheses and without its marks (`$text`,
+# `?x` name `text`, `x`); the written order is never used.
+LoTemplateArgs: unbounded fn Lx, LoEnv, Text, [Arg], [Ex] -> [Ex]
+fn LoTemplateArgs lx, env, qk, args, body:
+    let clauses = LoClausesOf lx.g, qk
+    let arity = Len (Or clauses[0], dummyClause).params
+    Each (Range0 arity), \|j|
+        if (Len body) > 0 and j + 1 == arity: Or body[0], (XRaw "()")
+        else: match ?LoAttrAt clauses, j, args:
+            ? a: LoArg lx, env, a.value
+            nil: LoTodo "a template call that fills no argument at place {j}"
 
-LoHasArg: fn ?Arg -> Bool
-fn LoHasArg (? ignore) = True
-fn LoHasArg nil = False
+?LoAttrAt: fn [FnClause], Nat, [Arg] -> ?Arg
+fn ?LoAttrAt clauses, j, args:
+    let names = Fold clauses, [[]], \|acc, c| match c.params[j]:
+        ? p: match ?LoPlaceName p:
+            ? n: AddText acc, n
+            nil: acc
+        nil: acc
+    Fold args, nil, \|?found, a| match a.?name:
+        ? n: if HasText names, n.name: ? a else: ?found
+        nil: ?found
 
-let dummyArgL = Arg(name=nil, value=(Expr(kind=EAbsent, span=Range(start=0, end=0))), span=Range(start=0, end=0))
+# The name a parameter's pattern gives its place: a name, through parentheses, less its
+# marks; any other pattern names nothing.
+?LoPlaceName: fn Pattern -> ?Text
+fn ?LoPlaceName p = match p.kind:
+    PName n: ? (Dotted n.path)
+    PGroup q: ?LoPlaceName q
+    otherwise: nil
+
 
 # A value as a template or interpolation places it: a text as it is, any other value as
 # it shows.
@@ -1956,8 +1973,45 @@ fn LoUpdStmt lx, env, s = match s.kind:
     SExpr x: match x.kind:
         EIf c, thenB, ?elseB: (([[(LoUpdIf lx, env, c, thenB, ?elseB)]], env))
         EMatch scrut, arms: (([[(LoUpdMatch lx, env, scrut, arms)]], env))
+        EFor ?binders, source, body: (([[(LoUpdFor lx, env, ?binders, source, body, x.span)]], env))
         otherwise: (([[DoExpr (LoOwn (LoX lx, env, x))]], env))
     otherwise: LoStmt lx, env, s
+
+# `for` as a statement of an `update` block (Semantics ch. 4, keyed iteration in plain
+# code): a Rust `for` over the source's entries, owned and in key order. Over an array the
+# key is the index, which `ix` also names; one binder is the entry, two the key and the
+# entry, none bind `key` and `_`.
+LoUpdFor: unbounded fn Lx, LoEnv, ?ForBinders, Expr, Block, Range -> Do
+fn LoUpdFor lx, env, ?binders, source, body, span:
+    let src = LoOwn (LoX lx, env, source)
+    let sty = LoPeel (LoTyOf lx, source.span)
+    let ((kt, vt, isArray)) = match sty:
+        TyArray v: ((RsNat, (LoTy lx, v), True))
+        TyMap k, v: (((LoTy lx, k), (LoTy lx, v), False))
+        otherwise: ((RsUnit, RsUnit, True))
+    let ((vty, kty)) = match sty:
+        TyArray v: ((v, (TyCon "Nat", [[]])))
+        TyMap k, v: ((v, k))
+        otherwise: ((TyErr, TyErr))
+    let keyName = "k{span.start}"
+    let valName = "v{span.start}"
+    let env1 = LoBind (LoBind env, "key", (BnLocal keyName, "own", kt)), "_", (BnLocal valName, "own", vt)
+    let env2 = if isArray: LoBind env1, "ix", (BnLocal keyName, "own", kt) else: env1
+    let ((binds, env3)) = match ?binders:
+        nil: (([[]], env2))
+        ? fb: match fb.?second:
+            nil:
+                let po = LoPat lx, fb.first, vty, "own", "e{span.start}"
+                (([[(DoLet po.pa, (XMethod (XRaw valName), "clone", [[]]))]], (LoBindAll env2, po.binds)))
+            ? second:
+                let pk = LoPat lx, fb.first, kty, "own", "k{span.start}_"
+                let pv = LoPat lx, second, vty, "own", "e{span.start}"
+                ((([[(DoLet pk.pa, (XMethod (XRaw keyName), "clone", [[]])), (DoLet pv.pa, (XMethod (XRaw valName), "clone", [[]]))]]), (LoBindAll (LoBindAll env2, pk.binds), pv.binds)))
+    let ((dos, ignore)) = LoUpdStmts lx, env3, body.stmts
+    if isArray:
+        let head = DoLet (PaBind keyName), (XCall "nat_of", [[XRaw "i{span.start}"]])
+        DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind valName)]]), (XMethod (XMethod src, "into_iter", [[]]), "enumerate", [[]]), (Append (Push [[]], head), (Append binds, dos))
+    else: DoFor (PaTuple [[(PaBind keyName), (PaBind valName)]]), (XMethod src, "into_iter", [[]]), (Append binds, dos)
 
 LoUpdIf: unbounded fn Lx, LoEnv, Cond, Block, ?Block -> Do
 fn LoUpdIf lx, env, c, thenB, ?elseB:
@@ -1977,13 +2031,20 @@ LoUpdMatch: unbounded fn Lx, LoEnv, Expr, [Arm] -> Do
 fn LoUpdMatch lx, env, scrut, arms:
     let sv = LoX lx, env, scrut
     let sty = LoTyOf lx, scrut.span
-    let cases = Each (Range0 (Len arms)), \|i|
+    let arms3 = Each (Range0 (Len arms)), \|i|
         let arm = Or arms[i], dummyArm
         let po = LoArmPat lx, arm.?pattern, sty, "ref", "u{scrut.span.start}_{i}"
         let ((dos, ignore)) = LoUpdStmts lx, (LoBindAll env, po.binds), arm.body.stmts
         let guarded = Append po.conds, (LoGuardConds lx, (LoBindAll env, po.binds), arm.?guard)
-        ((po.pa, (if (Len guarded) == 0: dos else: [[LoTodoDo "a guarded arm: not lowered yet"]])))
-    DoMatch (LoRef sv), cases
+        XArm(pat=po.pa, conds=guarded, body=(XBlock dos, (XRaw "()")))
+    # Arms with conditions (a guard, a literal, a payload behind an `Rc`) are the
+    # value-`match`'s arms, a `match` with guards or an if-let chain; others a plain one.
+    if Fold arms3, False, \|f, a| f or (Len a.conds) > 0: DoExpr (LoOwn (LoArmsValue (LoRef sv), arms3, "'u{scrut.span.start}", RsUnit))
+    else: DoMatch (LoRef sv), (Each arms3, \|a| ((a.pat, (LoArmDos a.body))))
+
+LoArmDos: fn Ex -> [Do]
+fn LoArmDos (XBlock dos, ignore) = dos
+fn LoArmDos x = [[DoExpr x]]
 
 LoGuardConds: unbounded fn Lx, LoEnv, ?Expr -> [Cc]
 fn LoGuardConds lx, env, (? ge) = [[CcIf (LoBool (LoX lx, env, ge))]]
@@ -3055,9 +3116,17 @@ fn LoInlineWidget wx, benv, menv, qk, v, args, e:
             otherwise: (([[]], nil))
     match ?body:
         nil:
-            let wx2 = update wx:
-                &_.build <= Push &_.build, (LoTodoDo "a widget with several clauses: not lowered yet")
-            ((wx2, WrUnit))
+            # A widget of several clauses in a static position: the clause is chosen at the
+            # build from the arguments, which are plain, so it is a generation built once
+            # (a `rebuild` whose source never changes), each clause a row (`ClauseRow`).
+            match args[0]:
+                ? a:
+                    let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
+                    LoRebuildLine wx, benv, menv, a.value, call, e, nil
+                nil:
+                    let wx2 = update wx:
+                        &_.build <= Push &_.build, (LoTodoDo "a widget of several clauses that takes no arguments")
+                    ((wx2, WrUnit))
         ? body:
             if wx.depth > 16: ((wx, WrUnit))
             else:

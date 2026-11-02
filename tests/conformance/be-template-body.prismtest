@@ -1,0 +1,5 @@
+# The template body's tests: declarations of be-template-body.prism (Semantics chapter 6).
+
+test the_body_is_the_last_place, @shown:
+    build
+        => expect Ui.Label(text="[empty] body text (see below) / [2] body text (see below)")

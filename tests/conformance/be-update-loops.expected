@@ -1,0 +1,6 @@
+# prism_zero's transcript, checked by hand against the books' rules.
+test update_blocks_loop
+
+tick 0
+  added:
+    0: Ui.Label(text="zB1sB3 a=1 b=2")

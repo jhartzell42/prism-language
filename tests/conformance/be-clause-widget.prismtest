@@ -1,0 +1,9 @@
+# The clause widget's tests: declarations of be-clause-widget.prism (Semantics chapter 6).
+
+test the_clause_is_chosen_at_the_build, @Notes (? "Mine"):
+    build
+        => expect Ui.Label(text="Mine: first")
+
+test the_other_clause, @Notes nil:
+    build
+        => expect Ui.Label(text="untitled: first")

@@ -1,0 +1,5 @@
+# The closures' tests: declarations of be-closure-names.prism (Semantics chapter 6).
+
+test closures_keep_their_names, @shown:
+    build
+        => expect Ui.Label(text="12 50")

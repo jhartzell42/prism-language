@@ -11,7 +11,7 @@ ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 [ -d target/bootstrap-src/prismc ] || { echo "no source snapshot: run tests/bootstrap/stage1.sh" >&2; exit 2; }
 rm -rf target/stage2
 start=$(date +%s)
-PRISM_PATIENCE=${PRISM_PATIENCE:-4000000000} target/stage1/prismc compile target/bootstrap-src/prismc/*.prism target/bootstrap-src/prismc/templates/*.prism -o target/stage2 --name prismc --prelude target/bootstrap-src/prelude
+target/stage1/prismc compile target/bootstrap-src/prismc/*.prism target/bootstrap-src/prismc/templates/*.prism -o target/stage2 --name prismc --prelude target/bootstrap-src/prelude
 echo "stage 2: prismc compiled by stage 1 in $(( $(date +%s) - start ))s"
 start=$(date +%s)
 (cd target/stage2 && CARGO_TARGET_DIR=../bootstrap-build cargo build --release -q)

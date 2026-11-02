@@ -562,12 +562,10 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   body whose last place an attribute took or that has no place, and a callee without
   clauses are `mismatch`es, as is an argument of the wrong type (`neg/template-type`).
   The shrink check reads the body as the argument for the last place too (it read it as
-  the first positional one). Lowering's `LoByParamName` reads the first clause only,
-  keeps the marks (`$text` names `$text`), and falls back to the written order whenever
-  some place has no attribute, which every call with a body has; the back end matches
-  this rule by naming a parameter as `CheckPasses.ParamNameOf` does, taking each
-  attribute's place as `CheckExpr.?TemplateSlot` does, and putting the body last with the
-  attributes in their places, never in the written order.
+  the first positional one). Lowering (`Lower.LoTemplateArgs`) and compiler zero read it
+  the same way: each place's names from every clause, through parentheses and without
+  marks, the body in the last place, attributes in theirs, never the written order
+  (`be-template-body`).
 - **CT The call test for closures** (Semantics ch. 7, "Finding the cycles"). A closure
   passed to a program function is cleared when the function only calls it: in every
   clause, the parameter at that slot is the callee of calls (at any depth, but not inside
@@ -803,7 +801,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
 `tests/compiled/run.sh`, whose default set is what passes:
 
-- **Pass (18):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
+- **Pass (21):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
   has its shape (fields `count: Hold<Int>` and the merge's two `Stamped` inputs,
   `inc`/`dec` recording and asking for the wake, `wake` deciding left first, `patch`
@@ -817,7 +815,9 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `be-row-local`, `be-template-attrs`, `be-error-try`, `be-nat-literal`, `be-inference`,
   `be-unbounded-prelude`, `be-local-names`, `be-tuple-show` (`prism_rtl` shows and pods
   tuples up to six), `be-function-values`, `be-lambda-patterns` (a job lambda takes its
-  parameters apart by pattern), `be-fold-tuples`.
+  parameters apart by pattern), `be-fold-tuples`, `be-template-body`, `be-closure-names`,
+  `be-update-loops` (a `for` and a guarded `match` as statements of an `update`).
+  `be-clause-widget` fails by gap CW.
 - **The rest of the corpus** runs by name (`tests/compiled/run.sh todos`)
   and is not in the default set until a chunk makes it pass: the lowering above reaches
   `for` rows, `rebuild`, jobs, traits and modules, but nothing past these is
@@ -850,8 +850,8 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   builds the crate (about 6 minutes, then 7 to 9) into `target/stage1/prismc`, a native
   prismc with the typed back end. Development iterates with it.
 - **Stages 2 and 3**: each prismc before compiles the snapshot with the typed back end
-  (stage 1 compiles prismc in about 19 minutes, under the old chain's runtime, with
-  `PRISM_PATIENCE` raised: it takes more than its default 10,000,000 ticks);
+  (stage 1 compiles prismc in about 14 to 34 minutes under the old chain's runtime,
+  whose CLI World's patience is unlimited);
   `tests/bootstrap/check.sh` wants their crates byte-equal.
 - **Stage 0's one quirk met so far:** it resolves a record type's name across modules, so
   `Lower`'s environment record is `LoEnv`, not `Env` (which `CheckExpr` has).
@@ -864,7 +864,8 @@ Each is Claude's, for Jimmy to overturn.
   `count`, `!inc` the method `inc`, `ParseNat` the function `parse_nat`, `?Reduce`
   `reduce`. Sigils go; when two values of a module share a base (`?ParseNat`,
   `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`); so do
-  locals (`?half` is `half_opt` beside `half`), and a local named as a function of its
+  locals (`?half` is `half_opt` beside `half`; a capitalised local, a function value, is
+  `k_fn` beside a plain `k`, `be-closure-names`), and a local named as a function of its
   module or the prelude takes a `_` (`kind_` beside `Kind`'s `kind`, `be-local-names`); a
   top-level `let` that shares its base with a function takes `_value` (`let hexDigits`
   is `hex_digits_value()` beside `HexDigits`'s `hex_digits`). A Rust keyword or a name
@@ -1034,6 +1035,13 @@ ruling taken (Claude's).
   *Next:* a non-tail `match` binds its continuation once (`let k = Rc::new(move |x|
   ..)`) and each arm frames into it; the prelude's higher-order functions as jobs. Cost:
   a cycle walks the frames, so it is linear in the pending calls.
+- **CW A widget of several clauses in a static position** is a generation built once
+  (a `rebuild` of its first argument, which never changes), the clause chosen at the
+  build like a `rebuild`'s; its places stand under the generation (`1/#0/0`), where
+  Semantics ch. 8 puts an inlined widget's places in its caller's sequence (`1`), as
+  compiler zero does, so `be-clause-widget` fails under prismc. *Next:* the clause's
+  node at its caller's path, its places numbered from the caller's position, the
+  caller forwarding their answers.
 - **SH Shadowed runtime names.** A program type named like a `prism_rtl` name the
   emitted code writes bare (`Cx`, `Fault`, `Pod`, `Path`, `Hold`, `Node`) shadows it in
   its module (`use prism_rtl::*` loses to a local item). prismc's `CheckEnv.Cx` does no

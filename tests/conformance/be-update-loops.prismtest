@@ -1,0 +1,5 @@
+# The loops' tests: declarations of be-update-loops.prism (Semantics chapter 6).
+
+test update_blocks_loop, @shown:
+    build
+        => expect Ui.Label(text="zB1sB3 a=1 b=2")
