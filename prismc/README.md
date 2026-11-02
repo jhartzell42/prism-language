@@ -1051,6 +1051,30 @@ Each is Claude's, for Jimmy to overturn.
   its own holds (`be-widget-args`). A parameter applied to arguments, or read as a value,
   is refused loudly. *Refused:* the argument as a blueprint value built at run time,
   which a static position never needs.
+- **HO Hosts.** `@HostDocument @child, supplier` and `@HostSome` are a host node of
+  prism_rtl's (`Host::each`, `Host::some`) at the line's position, holding the supplier
+  (a lowered closure or named function over `&Path` and `&Live<crate::Elem>`) and the
+  child, a node of its own (each hosted named widget is one, `Lx.hosted`) built at the
+  host's child path, so its places emit in the host's scope (gap SP). Per child place the
+  host builds the supplier's blueprint at `pos/[p]` when the place asks its first value
+  or is added, and tears it down when the place leaves. `@ x` as a value is
+  `pure_blueprint(Answering::constant(&x))`, `@Element e` the forwarding
+  `element_blueprint(&e)`, which re-emits the element at `pos/[p]/0` and answers the
+  child's place with whatever comes back there (the transparent rule; pushes too, when
+  the World gives the place a first value). The child's document is a field the block
+  reads as a hold (`HostDoc<crate::Elem>`, before the tick during propagation and after
+  it from then on), and the host's owner is patched when it moves; the runtime's patch
+  list walks a node again when it is marked after its turn. `sem-ch09-hosts`.
+- **PU Pushes.** A place whose element answers a dynamic keeps its element
+  (`f_element`), registers with `cx.listen_at`, and answers a push or a host's answer by
+  path by writing its hold and patching the node.
+- **MA `@Machine`, local functions, `!MergeAll`.** `@Machine step, init, !a` is a hold
+  of the state and a sink on `!a` that calls the named step function, writes the state
+  and fires the output on `? b`. A block's local function (`fn Paired k, v = ((k, v))`)
+  is inlined where it is called, each parameter a local bound to its argument.
+  `!MergeAll [[..]]` is a combinator of one stamped input per element of the literal,
+  firing the list of what fired, in order (`sem-appB-widgets`). The prelude's
+  Prism-written widgets (`@Once`, `@AfterFirst`, `@Numbered`) inline as any widget.
 - **SC The code's site.** An inlined widget's code is lowered in its own module's names
   but placed in its caller's module, and a check line's in `main.rs`: lowering keeps the
   module that resolves names apart from the one paths are written from.
@@ -1103,9 +1127,25 @@ ruling taken (Claude's).
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
   `Done` and calls `?`.
-- **DY Dynamics across nodes.** A row reads its block's events through ports, but not its
-  block's holds or dynamic `let`s (`sem-ch07-paged`'s inner `rebuild $src`): the
-  contract's `Dynamic` with its update port is not used yet.
+- **DY Dynamics across nodes.** A row reads its block's events through ports, and its
+  block's holds and dynamic `let`s through its parent at its own read point
+  (`sem-ch07-paged`'s inner `rebuild $src`). *First ruling:* a row is not marked when
+  they move; a generation that reads one is rebuilt only with its parent's. *Next:* the
+  contract's `Dynamic` with its update port. A hosted child reads nothing of its host's
+  block, and a host's block nothing of its child's but the document.
+- **HS Hosting at the boundary of plain data.** The contract's supplier is typed per
+  child element (`Fn(Path, ElementOf<c>) -> blueprint`); a supplier's `o` is its own per
+  place (rank 2), so here a blueprint answers with an `Answering` (prism_rtl's `host`): a
+  constant, an `Event<Pod>` or a `Dynamic<Pod>`, and the host answers its child by path
+  through `Node::answer`, as a World does. *First ruling:* plain data at the host
+  boundary. *If otherwise:* a typed answer per tag, which `@HostList`'s `^Responds`
+  wants anyway.
+- **SP The scope rides on the path.** The contract has every widget constructor take a
+  `Scope`. Every constructor already takes its path, so a hosted child's paths start
+  with `Segment::Host` and `Cx::added`, `changed`, `removed`, `request`, `first_value_at`
+  and `listen_at` route by it; rows and generations inside the child inherit the scope
+  with no argument. *First ruling:* the path. *If otherwise:* a `scope` parameter on
+  every `build`, and a field on every node.
 - **LE A live element's `$` field in a plain function.** A plain function is lifted:
   its `$` values are read at the caller's read point, and it has no `cx` to read a live
   element's dynamic at. *First ruling:* refused loudly there; a host's supplier, lowered
@@ -1121,13 +1161,15 @@ ruling taken (Claude's).
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
 naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
-hosting (`@HostDocument`, `@HostSome`, `@HostList`, `@Element`), an element applied as a
+`@HostList`; a host whose child is not a named widget without arguments (a widget
+parameter's argument, a block), and a hosted child's result bound to a name; an event
+blueprint as a value (`@ !e`, the window library's `?Boxed`); an element applied as a
 plain value and a live element's `$` field read in a plain function (gap LE), `@Flatten`,
-`@Machine`, `@Once` and the prelude's Prism-written widgets, `!MergeAll`, `!Updated`,
-local functions, lifted functions with time parameters (`fn !Bump $n, !go`), building
-`match` and `if`, a `for` whose rows give a dynamic, pushes to a live place
-(`Node::push`), `Time.After`, dynamics read across nodes, and the zombie and dead states
-(`leave`, `clean_up`, `edges`).
+`!Updated`, an `@Machine` whose step is not a named function, a local function whose
+parameters are not names or used as a value, `!MergeAll` of a list that is not a
+literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
+and `if`, a `for` whose rows give a dynamic, `Time.After`, and the zombie and dead
+states (`leave`, `clean_up`, `edges`).
 
 ## Doubts
 

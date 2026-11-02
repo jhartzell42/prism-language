@@ -160,7 +160,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`@HostDocument @child, supplier`** → a host node holding the supplier, a typed closure
   `Fn(Path, ElementOf<c>) -> blueprint`, and a `Map<Path, Rc<dyn Node>>` of supplier
   rows, built and torn down as the child's places are, in the host's scope. The child's
-  document `$(Path ==> Elem c)` is a `Dynamic` over that map.
+  document `$(Path ==> Elem c)` is a `Dynamic` over that map. (prismc: the boundary is
+  plain data, a blueprint answering with an `Answering`, and the scope rides on the
+  child's paths, `Segment::Host`; prismc/README.md, gaps HS and SP, pick HO.)
 - **Forwarding** (`@Element e`) re-emits at the host's path `[p]`; an answer there
   reaches the row, whose output answers the child's place.
 - **`@HostSome`, `@HostList`** are their Prism derivations (Semantics ch. 9).
