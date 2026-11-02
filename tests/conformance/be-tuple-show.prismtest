@@ -1,3 +1,4 @@
+# Audited: the record shows with its tuple in double parentheses, as the books print a tuple; one place.
 # The tuple's tests: declarations of be-tuple-show.prism (Semantics chapter 6).
 
 test triples_print, @shown:

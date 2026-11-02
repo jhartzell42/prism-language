@@ -1,3 +1,4 @@
+# Audited: attributes bind by name, so left is "first"; one place.
 # The template call's tests: declarations of be-template-attrs.prism (Semantics chapter 6).
 
 test attributes_bind_by_name, @shown:

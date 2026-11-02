@@ -1,3 +1,4 @@
+# Audited: 0 is z, 7 and 9 (over 5) are B with their indices 1 and 3, 2 is s; the map's entries in key order.
 # The loops' tests: declarations of be-update-loops.prism (Semantics chapter 6).
 
 test update_blocks_loop, @shown:

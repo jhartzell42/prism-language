@@ -1,3 +1,4 @@
+# Audited: @Notes's label is place 0 and @Note's, inlined transparently, takes the caller's place 1 (Semantics ch. 8); each text follows from its clause.
 # The clause widget's tests: declarations of be-clause-widget.prism (Semantics chapter 6).
 
 test the_clause_is_chosen_at_the_build, @Notes (? "Mine"):

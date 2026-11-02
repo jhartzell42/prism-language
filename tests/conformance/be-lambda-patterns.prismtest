@@ -1,3 +1,4 @@
+# Audited: four cycles, Run's entry, the call of Sums and Grow twice in its fold; (0, 100) then (12, 102) then (26, 106).
 # The lambda patterns' tests: declarations of be-lambda-patterns.prism (Semantics chapter 6).
 
 test lambdas_take_their_parameters_apart, @Summed 10:

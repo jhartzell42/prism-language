@@ -1,3 +1,4 @@
+# Audited: the body is the last argument; depth 0 takes the "[empty]" clause, depth 2 the general one, the note given both times.
 # The template body's tests: declarations of be-template-body.prism (Semantics chapter 6).
 
 test the_body_is_the_last_place, @shown:

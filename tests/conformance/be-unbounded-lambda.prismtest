@@ -1,3 +1,4 @@
+# Audited: Work's entry, Inc twice in Add2, Apply, and Inc in Inc1 are the five cycles (the lambdas are not entered by the agreed count); 1 + 2 + 1 = 4.
 # The unbounded lambdas' tests: declarations of be-unbounded-lambda.prism (Semantics chapter 6).
 
 test lambdas_are_jobs_too, @Counted 1:

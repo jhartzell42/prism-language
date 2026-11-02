@@ -1,3 +1,4 @@
+# Audited: Counts's entry, Count 3 and its four tests of the guard (three turns and the failing one), Count 0 and its one failing test: eight cycles; 3 turns of += 2 give 6.
 # The guarded loop's tests: declarations of be-while-guard.prism (Semantics chapter 6).
 
 test the_guard_ends_the_loop, @Shown 3:
