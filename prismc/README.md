@@ -940,7 +940,8 @@ Each is Claude's, for Jimmy to overturn.
   job's state is its stack of pending callers (`sem-ch07-walk`: `Total` over a tree of
   four calls, `5 ticks, 1 to 5`). A continuation is a `move` closure: each borrowed local
   the rest of the source names is cloned into it first. `start_normalize` is the job's
-  `Start`. An unbounded function used as a value is a `Start`, an
+  `Start`; its fields are public, so a tail call from another module builds it. An
+  unbounded function used as a value is a `Start`, an
   `Rc<dyn Fn(A) -> Rc<dyn prism_rtl::Job<B>>>` (one argument, a tuple when there are
   several; contract gap UV). A named function's value is `entered(start_g(..))`, a job
   whose first cycle only enters it, so that entering a named function is a cycle point
@@ -1037,6 +1038,11 @@ ruling taken (Claude's).
   *Next:* a non-tail `match` binds its continuation once (`let k = Rc::new(move |x|
   ..)`) and each arm frames into it; the prelude's higher-order functions as jobs. Cost:
   a cycle walks the frames, so it is linear in the pending calls.
+- **LP A loop in an unbounded function.** Compiler zero makes each turn of a `while` in
+  an unbounded function a cycle (`be-while-guard`: 8 ticks); prismc runs the loop within
+  one cycle (3 ticks, the same label), as D6 puts cycle points at calls only. *First
+  ruling (Claude's):* calls only, so `be-while-guard` stays out of the passing set. *If
+  otherwise:* a `while` in a job is a frame per turn.
 - **CW A widget of several clauses in a static position** is a generation built once
   (a `rebuild` of its first argument, which never changes), the clause chosen at the
   build like a `rebuild`'s; its places stand under the generation (`1/#0/0`), where

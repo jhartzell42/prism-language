@@ -1982,10 +1982,20 @@ fn LoUpdStmt lx, env, s = match s.kind:
         let ((inner, ignore)) = LoUpdStmts lx, env, body.stmts
         match c:
             CondExpr x: (([[(DoWhile (LoBool (LoX lx, env, x)), inner)]], env))
-            CondBind p, x, ignore:
+            CondBind p, x, ?g:
                 let po = LoPat lx, p, (LoTyOf lx, x.span), "own", "w{s.span.start}"
-                let ((inner2, ignore)) = LoUpdStmts lx, (LoBindAll env, po.binds), body.stmts
-                (([[(DoWhileLet po.pa, (LoOwn (LoX lx, env, x)), inner2)]], env))
+                let envB = LoBindAll env, po.binds
+                let ((inner2, ignore)) = LoUpdStmts lx, envB, body.stmts
+                # The pattern's conditions and the guard (`while ? left <- &fuel -? 1 if c:`)
+                # end the loop as a failed match does: a `break` when they do not hold.
+                let conds = Append po.conds, (LoGuardConds lx, envB, ?g)
+                let tests = Fold conds, [[]], \|acc, c| match c:
+                    CcIf t: Push acc, t
+                    otherwise: acc
+                let lets = Fold conds, False, \|f, c| f or LoIsLetCond c
+                let stop = if (Len tests) == 0: [[]] else: [[(DoIf (XUnary "!", (LoAll tests)), [[DoExpr (XRaw "break")]], [[]])]]
+                let body2 = if lets: [[LoTodoDo "a `while` whose pattern matches through an `Rc`"]] else: Append stop, inner2
+                (([[(DoWhileLet po.pa, (LoOwn (LoX lx, env, x)), body2)]], env))
     SExpr x: match x.kind:
         EIf c, thenB, ?elseB: (([[(LoUpdIf lx, env, c, thenB, ?elseB)]], env))
         EMatch scrut, arms: (([[(LoUpdMatch lx, env, scrut, arms)]], env))
@@ -2057,6 +2067,11 @@ fn LoUpdMatch lx, env, scrut, arms:
     # value-`match`'s arms, a `match` with guards or an if-let chain; others a plain one.
     if Fold arms3, False, \|f, a| f or (Len a.conds) > 0: DoExpr (LoOwn (LoArmsValue (LoRef sv), arms3, "'u{scrut.span.start}", RsUnit))
     else: DoMatch (LoRef sv), (Each arms3, \|a| ((a.pat, (LoArmDos a.body))))
+
+# Conditions joined by `&&`.
+LoAll: fn [Ex] -> Ex
+fn LoAll [[one]] = one
+fn LoAll xs = Fold (Drop xs, 1), (Or xs[0], (XRaw "true")), \|acc, x| XBin "&&", acc, x
 
 LoArmDos: fn Ex -> [Do]
 fn LoArmDos (XBlock dos, ignore) = dos

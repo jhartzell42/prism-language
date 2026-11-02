@@ -1,0 +1,14 @@
+# prism_zero's transcript: compiler zero makes each turn of a `while` in an unbounded function
+# a cycle (8 ticks); prismc's loop runs within a cycle (doubt LP in prismc/README.md), so prismc
+# gives the same label in fewer ticks.
+test the_guard_ends_the_loop
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 8 ticks, 1 to 8
+
+tick 8
+  changed:
+    1: Ui.Label(text="6 0")

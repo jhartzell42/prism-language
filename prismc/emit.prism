@@ -338,7 +338,8 @@ fn EmStaticGenerics gs = EmGenerics (Each gs, \|((g, bs))| ((g, (Push bs, "'stat
 EmJobDef: unbounded fn JobDef -> Text
 fn EmJobDef j:
     let gnames = EmGenericNames (Each j.generics, \|((g, ignore))| g)
-    let fields = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t},"), "\n"
+    # Public: a tail call from another module builds the job by its fields.
+    let fields = Join (Each j.fields, \|((n, t))| "pub {n}: {EmTy t},"), "\n"
     let params = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t}"), ", "
     # A job is an `Rc<dyn Job>`, so its type parameters live as long as the program.
     let bounded = EmStaticGenerics j.generics

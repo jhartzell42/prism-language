@@ -1,0 +1,6 @@
+# The guarded loop's tests: declarations of be-while-guard.prism (Semantics chapter 6).
+
+test the_guard_ends_the_loop, @Shown 3:
+    build
+    compute until idle
+        => expect Ui.Label(text="6 0")
