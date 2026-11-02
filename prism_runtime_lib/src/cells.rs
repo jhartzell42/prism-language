@@ -255,10 +255,12 @@ impl<T: Clone> Event<T> {
 }
 
 /// A `$a` value: a read at the context's read point, its update event, and its owner.
+/// The update event says only that the value moved; a reader reads it again, so a
+/// projection of a dynamic shares its source's port.
 pub struct Dynamic<T> {
     pub owner: Option<Rc<dyn Node>>,
     pub read: Rc<dyn Fn(&Cx) -> T>,
-    pub updates: Rc<Port<T>>,
+    pub updates: Rc<Port<()>>,
 }
 
 impl<T> Clone for Dynamic<T> {
@@ -274,6 +276,25 @@ impl<T: Clone + 'static> Dynamic<T> {
     }
     pub fn sample(&self, cx: &Cx) -> T {
         (self.read)(cx)
+    }
+    /// The dynamic `f` of this one: the same owner and update event, the read mapped.
+    pub fn map<U: 'static>(&self, f: impl Fn(&T) -> U + 'static) -> Dynamic<U> {
+        let read = self.read.clone();
+        Dynamic { owner: self.owner.clone(), read: Rc::new(move |cx| f(&read(cx))), updates: self.updates.clone() }
+    }
+}
+
+/// A live element, `Element r o`: what a host's supplier receives for each of its child's
+/// places. `identity` is the place's level at its build, whose tag and plain fields never
+/// change while it lives; `level` is its level over time, which a `$` field reads.
+pub struct Live<E> {
+    pub identity: E,
+    pub level: Dynamic<E>,
+}
+
+impl<E: Clone> Clone for Live<E> {
+    fn clone(&self) -> Live<E> {
+        Live { identity: self.identity.clone(), level: self.level.clone() }
     }
 }
 

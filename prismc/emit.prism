@@ -58,6 +58,7 @@ fn EmTy t = match t:
     RsCell i: "RefCell<{EmTy i}>"
     RsWakes: "Wakes"
     RsPort i: "Port<{EmTy i}>"
+    RsLive i: "Live<{EmTy i}>"
     RsUnknown what: "() /* {what} */"
 
 EmTys: unbounded fn [RsTy] -> Text
@@ -290,6 +291,7 @@ fn EmItem it = match it:
     ItImpl i: EmImplDef i
     ItType t: EmTyDef t
     ItTag t: EmTagDef t
+    ItRow r: EmRowDef r
     ItFn f: EmFnDef f
     ItJob j: EmJobDef j
     ItNode n: EmNodeDef n
@@ -424,7 +426,22 @@ EmTagDef: unbounded fn TagDef -> Text
 fn EmTagDef t:
     let fields = Join (Each t.fields, \|((ignore, f, ft))| "pub {f}: {EmTy ft},"), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "(\"{p}\", self.{f}.to_pod())"), ", "
-    TmTag (TmSourceDoc "The `Level` of `{t.tagName}`:", t.doc), t.name, fields, t.tagName, pods
+    let derives = if t.pod: "Clone, PartialEq" else: "Clone"
+    let reads = Join (Each t.fields, \|((p, f, ignore))| "{f}: FromPod::from_pod(field(p, \"{p}\")?)?"), ", "
+    let back = if t.pod: "\n{TmTagFromPod t.name, t.tagName, reads}" else: ""
+    "{TmTag (TmSourceDoc "The `Level` of `{t.tagName}`:", t.doc), derives, t.name, fields, t.tagName, pods}{back}"
+
+# A row kind's enum (pick RV): a variant per tag, printing and crossing as the tag's level.
+EmRowDef: unbounded fn RowDef -> Text
+fn EmRowDef r:
+    let derives = if r.pod: "Clone, PartialEq" else: "Clone"
+    let cases = Join (Each r.cases, \|((v, st))| "{v}({st}),"), "\n"
+    let pods = Join (Each r.cases, \|((v, ignore))| "{r.name}::{v}(x) => x.to_pod(),"), "\n"
+    let reads = Join (Each r.cases, \|((v, st))| "Some(t) if t == {st}::TAG => Ok({r.name}::{v}(FromPod::from_pod(p)?)),"), "\n"
+    let back = if r.pod: "\n{TmRowFromPod r.name, reads}" else: ""
+    # An empty row's enum has no values: its match is over `*self`, with no arms.
+    let pods2 = if (Len r.cases) == 0: "_ => unreachable!()," else: pods
+    "{TmRow (TmSourceDoc "`{r.prism}`, a row kind's values:", r.doc), derives, r.name, cases, pods2}{back}"
 
 # ---------------------------------------------------------------------------------------
 # Nodes and programs
@@ -525,7 +542,7 @@ fn EmitCrate model, runtime, scripts:
     let world = match model.?root:
         ? r: r.world
         nil: "test"
-    let main = TmMain model.name, "mod prelude;\n{mods}", programs, "{regs}{checks}", scriptList, runRoot, world
+    let main = TmMain model.name, "mod prelude;\n{mods}", "{EmRowDef model.elem}\n{programs}", "{regs}{checks}", scriptList, runRoot, world
     let files = Each model.mods, \|m| (("src/{m.name}.rs", (EmModule m)))
     Append [[(("Cargo.toml", cargo)), (("src/main.rs", main)), (("src/prelude.rs", (TmPrelude "")))]], files
 

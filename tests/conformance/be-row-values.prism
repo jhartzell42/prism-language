@@ -1,0 +1,76 @@
+# Row values as plain data (prismc's pick RV): a `type Ink = row` and its tags are values
+# like a choice's, built, compared, shown and taken apart by pattern, and sent to the World
+# inside an element's field (as chess's `Draw` goes in a `Gui.Scene`). Elements seen
+# through a document (`Elem r`) and live elements (`Element r o`) take patterns too; no
+# program here has either, so `TextOf` and `KindOf` are only compiled (hosting gives
+# them their values). Written for prismc's back end. Work in progress, subject to change.
+emit Ui.* | Pad.*
+
+type Box = record:
+    w: Nat
+    h: Nat
+derive ^Eq, ^Show
+
+type Ink = row
+derive ^Eq, ^Show
+
+tag Ink.Line of Ink:
+    from: Nat
+    to: Nat
+
+tag Ink.Fill of Ink:
+    box: Box
+    marks: [Ink]
+
+# a sheet the World is shown, its marks live
+tag Pad.Sheet of Element unit:
+    title: Text
+    marks: $[Ink]
+
+Width: fn Ink -> Nat
+fn Width i = match i:
+    Ink.Line(from=a, to=b): Or (b -? a), 0
+    Ink.Fill(box=b, ..): b.w
+
+Total: fn [Ink] -> Nat
+fn Total xs = Fold xs, 0, \|acc, x| acc + Width x
+
+# the lines inside, through every fill
+Lines: fn Ink -> Nat
+fn Lines i = match i:
+    Ink.Fill(marks=ms, ..): Fold ms, 0, \|acc, m| acc + Lines m
+    Ink.*: 1
+
+# a document's element: each `$` field its value in the tick (the checker's WL)
+TextOf: fn Elem Ui.* -> Text
+fn TextOf e = match e:
+    Ui.Label(text=$t): $t
+    Ui.Button(label=l): l
+    Ui.*: ""
+
+# a live element: its tag and plain fields are its identity (a `$` field binds its
+# dynamic only where there is a read point, a host's supplier)
+KindOf: fn Element Ui.* o -> Text
+fn KindOf e = match e:
+    Ui.Label(..): "label"
+    Ui.TextInput(name=n, ..): n
+    Ui.*: "other"
+
+# a tag's value is plain: built in a plain function, which then lifts
+MarksFor: fn Nat -> [Ink]
+fn MarksFor n = [[Ink.Line(from=0, to=n), Ink.Fill(box=(Box n, 2), marks=[[Ink.Line(from=1, to=2)]])]]
+
+Around: fn [Ink] -> Ink
+fn Around ms = Ink.Fill(box=(Box 0, 0), marks=ms)
+
+LineFrom: fn Nat -> Ink
+fn LineFrom n = Ink.Line(from=n, to=9)
+
+@sketch: @unit
+@sketch:
+    !add <- Ui.Button(label=$"Add")                                    # 0
+    $n <- 1 then $n + 1 on !add
+    let $marks = MarksFor $n
+    Pad.Sheet(title="sketch", marks=$marks)                            # 1
+    Ui.Label(text=$"{Total $marks} {Lines (Around $marks)} {$marks == [[]]}")    # 2
+    Ui.Label(text=Show (LineFrom $n))                                  # 3

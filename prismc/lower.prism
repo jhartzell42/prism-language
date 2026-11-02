@@ -66,6 +66,8 @@ type RsTy = choice:
     RsCell RsTy
     RsWakes
     RsPort RsTy
+    # A live element (`Element r o`, pick RV): its level at the build and its level over time.
+    RsLive RsTy
     RsUnknown Text
 derive ^Eq, ^Show
 
@@ -165,6 +167,21 @@ type TagDef = record:
     name: Text
     tagName: Text
     fields: [((Text, Text, RsTy))]
+    doc: Text
+    # Every field is plain data (`LoPodable`): the struct is `Clone` and `PartialEq` and
+    # reads back from a `Pod`, so a value holding it (a `[Draw]` in a record) can be data.
+    pod: Bool
+derive ^Eq, ^Show
+
+# A row kind's values as plain data (pick RV): one Rust enum whose variants are the tags
+# of the kind across the program, each holding its tag's struct. A `type Draw = row` is
+# `Draw` in its module; `Elem r`, a document's element, is `crate::Elem` over every
+# `Element` tag.
+type RowDef = record:
+    name: Text
+    prism: Text
+    cases: [((Text, Text))]
+    pod: Bool
     doc: Text
 derive ^Eq, ^Show
 
@@ -297,6 +314,7 @@ type Item = choice:
     ItImpl ImplDef
     ItType TyDef
     ItTag TagDef
+    ItRow RowDef
     ItFn FnDef
     ItJob JobDef
     ItNode NodeDef
@@ -320,6 +338,8 @@ type Model = record:
     programs: [ProgDef]
     root: ?ProgDef
     checks: [CheckDef]
+    # `crate::Elem`, emitted in `main.rs`
+    elem: RowDef
     scripts: [Text]
     notes: [Text]
 derive ^Eq, ^Show
@@ -345,6 +365,8 @@ type Lx = record:
     # Every module-level Rust name a local could hide, as `Module.name`; the prelude's
     # under `Prelude`, which every module imports.
     globals: (Text ==> Bool)
+    # Lowering inside a node, which has a read point (`cx`): a host's supplier.
+    inNode: Bool
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.
@@ -531,8 +553,8 @@ fn LoTy lx, t = match t:
     TyRigid n: RsGen (LoCamel n)
     TyFlex ignore: RsUnit
     TyAny ignore: RsShowAny
-    TyElem ignore, ignore: RsPod
-    TyElemAny ignore: RsPod
+    TyElem ignore, ignore: RsLive (RsNamed "crate::Elem", [[]])
+    TyElemAny ignore: RsNamed "crate::Elem", [[]]
     TyAt i, ignore: RsUnknown "a blueprint value"
     TyAssoc ignore, ignore: RsUnknown "an associated type"
     TyErr: RsUnknown "a type the checker did not find"
@@ -556,7 +578,8 @@ LoNamedTy: unbounded fn Lx, Text, [RsTy] -> RsTy
 fn LoNamedTy lx, n, args = match lx.g.types[n]:
     ? ti: match ti.body:
         BAlias a: LoTy lx, a
-        BRowKind: RsPod
+        # A fault kind is its name (`Error`'s `kind`); any other row kind is its enum.
+        BRowKind: if n == "Prelude.Fault": RsPod else: RsNamed (LoPathIn lx, ti.home, (LoCamel (BareName n))), [[]]
         otherwise: RsNamed (LoPathIn lx, ti.home, (LoCamel (BareName n))), args
     nil: if HasKey lx.g.families, n: RsPod else: RsNamed (LoCamel (BareName n)), args
 
@@ -639,6 +662,7 @@ fn LoPodable t = match t:
     RsEvent ignore: False
     RsDyn ignore: False
     RsShowAny: False
+    RsLive ignore: False
     RsUnknown ignore: False
     RsGen ignore: True
     RsNamed ignore, args: Fold args, True, \|ok, a| ok and LoPodable a
@@ -887,12 +911,14 @@ fn LoName lx, env, n, span:
         ? (BnDyn x, ignore, dt): VlOwned x, dt
         ? (BnEv ignore, et): VlOwned (LoTodo "an event read as a value"), et
         nil:
-            let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+            let ((?qk, why)) = ResolveValue lx.g, lx.home, n
             match ?qk:
                 ? "True": VlOwned (XRaw "true"), RsBool
                 ? "False": VlOwned (XRaw "false"), RsBool
                 ? "Prelude.never": VlOwned (XRaw "Event::never()"), t
-                ? qk: LoGlobalValue lx, qk, span, t
+                ? qk: match lx.g.tags[qk]:
+                    ? tg if tg.kind != "Prelude.Fault" and why == "tag": LoTagValue lx, env, tg, [[]]
+                    otherwise: LoGlobalValue lx, qk, span, t
                 nil: VlOwned (LoTodo "the name {nkey}, which nothing declares"), t
 
 # A global named, not called: a constructor with no fields, a top-level `let` (its
@@ -955,9 +981,13 @@ fn LoCall lx, env, callee, args, span:
                             VlOwned (XCall "run_to_end", [[(LoStartCall f, (LoStartArgs lx, env, f, args))]]), t
                         otherwise: VlOwned (XApply (LoRef f), (Each args, \|a| LoArg lx, env, a.value)), t
                 nil:
-                    let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+                    let ((?qk, why)) = ResolveValue lx.g, lx.home, n
                     match ?qk:
-                        ? qk: LoGlobalCall lx, env, qk, args, span, t
+                        # A tag and a record may share a key (`Fs.Contents`); the name
+                        # resolved to the tag only when written with its family.
+                        ? qk: match lx.g.tags[qk]:
+                            ? tg if why == "tag": LoTagValue lx, env, tg, args
+                            otherwise: LoGlobalCallOf lx, env, qk, args, span, t
                         nil: VlOwned (LoTodo "a call of {nkey}, which nothing declares"), t
         EGroup x: LoCall lx, env, x, args, span
         otherwise:
@@ -1000,7 +1030,32 @@ fn LoClosureRef (VlOwned x, t) = XUnary "&", (XUnary "*", x)
 
 # A call of a global: a constructor, a trait method, a prelude function, a program's own.
 LoGlobalCall: unbounded fn Lx, LoEnv, Text, [Arg], Range, RsTy -> Vl
-fn LoGlobalCall lx, env, qk, args, span, t:
+fn LoGlobalCall lx, env, qk, args, span, t = LoGlobalCallOf lx, env, qk, args, span, t
+
+# A tag applied as a value (pick RV): a plain row kind's value is its enum's variant
+# around the tag's struct (`Draw::DrawRect(DrawRect { .. })`). An element as a value is
+# live, and only a host makes one (gap LE).
+LoTagValue: unbounded fn Lx, LoEnv, TagInfo, [Arg] -> Vl
+fn LoTagValue lx, env, tg, args:
+    let ((variant, structPath)) = LoTagPaths lx, tg
+    let t = RsNamed (LoKindPath lx, tg.kind), [[]]
+    if tg.kind == "Element": VlOwned (LoTodo "an element as a plain value ({tg.name}): a live element comes from its host"), t
+    else: if tg.kind == "Prelude.Fault": VlOwned (LoTodo "a fault kind applied ({tg.name})"), t
+    else:
+        let named = Fold args, False, \|f, a| f or LoArgNamed a
+        let fields = Each (Range0 (Len tg.fields)), \|i|
+            let ((fname, ignore)) = Or tg.fields[i], (("", TyErr))
+            let ?arg = if named: ?LoTagArg args, fname else: match args[i]:
+                ? a: ? a.value
+                nil: nil
+            let v = match ?arg:
+                ? x: LoOwn (LoX lx, env, x)
+                nil: XRaw "Default::default()"
+            ((LoSnake fname, v))
+        VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
+
+LoGlobalCallOf: unbounded fn Lx, LoEnv, Text, [Arg], Range, RsTy -> Vl
+fn LoGlobalCallOf lx, env, qk, args, span, t:
     match lx.g.ctors[qk]:
         ? c: LoCtorApp lx, env, c, args, span
         nil: match lx.g.vals[qk]:
@@ -1133,6 +1188,9 @@ fn LoBinary lx, env, op, l, r, span:
     let t = LoTy lx, (LoPeel (LoTyOf lx, span))
     if op == "and": VlOwned (XBin "&&", (LoBool (LoX lx, env, l)), (LoBool (LoX lx, env, r))), RsBool
     else: if op == "or": VlOwned (XBin "||", (LoBool (LoX lx, env, l)), (LoBool (LoX lx, env, r))), RsBool
+    # In a function lifted over an event (`fn !Bump $n, !go = $n + 1 on !go`), the
+    # function runs at the event's firing, so `x on !e` is `x` read there.
+    else: if op == "on": LoX lx, env, l
     else: LoOp lx, op, (LoX lx, env, l), (LoX lx, env, r), span, t
 
 # An operator over two values of the left one's type (Type System ch. 3: `^Eq`, `^Ord`,
@@ -1625,11 +1683,15 @@ LoPat: unbounded fn Lx, Pattern, Ty, Text, Text -> PatOut
 fn LoPat lx, p, ty, mode, fresh = match p.kind:
     PName n:
         let nkey = SNameKey n
-        let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+        let ((?qk, why)) = ResolveValue lx.g, lx.home, n
         let isCtor = match ?qk:
             ? qk: (HasKey lx.g.ctors, qk) and ((IsUpperText (LoBase nkey)) or (Len n.path) > 1 or LoIsUnitCtor lx, qk)
             nil: False
+        let ?tagged = match ?qk:
+            ? qk: lx.g.tags[qk]
+            nil: nil
         if isCtor: LoCtorPat lx, n, [[]], ty, mode, fresh
+        else: if why == "tag" and ?tagged != nil: LoTagPat lx, (Or ?tagged, dummyTagInfo), [[]], True, ty, mode, fresh
         else:
             let rs = LoLocalName lx, nkey
             let bt = LoTy lx, (LoPeel (LoBinderTy lx, n.span))
@@ -1652,7 +1714,7 @@ fn LoPat lx, p, ty, mode, fresh = match p.kind:
         let subs = Each (Range0 (Len ps)), \|i| LoPat lx, (Or ps[i], dummyPat), (Or ts[i], TyErr), mode, "{fresh}_{i}"
         PatOut(pa=(PaTuple (Each subs, \|o| o.pa)), conds=(Fold subs, [[]], \|acc, o| Append acc, o.conds), binds=(Fold subs, [[]], \|acc, o| Append acc, o.binds))
     PArray ps: LoArrayPat lx, ps, ty, mode, fresh
-    otherwise: PatOut(pa=PaWild, conds=[[CcIf (LoTodo "a pattern this back end does not lower yet")]], binds=[[]])
+    PFamily q: LoFamilyPat lx, q, ty, fresh
 
 let dummyPat = Pattern(kind=PIgnore, span=Range(start=0, end=0))
 
@@ -1748,9 +1810,10 @@ fn LoBehindRc lx, p, ty, rcMode, fresh:
 # as `Err`).
 LoRecordPat: unbounded fn Lx, SName, [FieldPat], Bool, Ty, Text, Text -> PatOut
 fn LoRecordPat lx, n, fps, rest, ty, mode, fresh:
-    let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+    let ((?qk, why)) = ResolveValue lx.g, lx.home, n
     let qk = Or ?qk, ""
     if qk == "Prelude.Error": LoErrorPat lx, fps, ty, mode, fresh
+    else: if why == "tag" and HasKey lx.g.tags, qk: LoTagPat lx, (Or lx.g.tags[qk], dummyTagInfo), fps, rest, ty, mode, fresh
     else: match lx.g.ctors[qk]:
         ? c:
             let owner = Or lx.g.types[c.owner], dummyTyInfo
@@ -1768,9 +1831,89 @@ fn LoRecordPat lx, n, fps, rest, ty, mode, fresh:
             let conds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.conds
             let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
             PatOut(pa=(PaRecord tyPath, (Each subs, \|((f, o))| ((f, o.pa))), (rest or (Len subs) < (Len c.fields))), conds=conds, binds=binds)
-        nil: PatOut(pa=PaWild, conds=[[CcIf (LoTodo "an element pattern")]], binds=[[]])
+        nil: match lx.g.tags[qk]:
+            ? tg: LoTagPat lx, tg, fps, rest, ty, mode, fresh
+            nil: PatOut(pa=PaWild, conds=[[CcIf (LoTodo "a pattern of {qk}")]], binds=[[]])
 
 let dummyFieldPat = FieldPat(name=nil, pattern=dummyPat, span=Range(start=0, end=0))
+
+let dummyTagInfo = TagInfo(name="", family="", kind="", out=TyErr, qs=[[]], rqs=[[]], bounds=[[]], fields=[[]], home="", file=0, span=Range(start=0, end=0))
+
+# Whether a scrutinee is a live element (`Element r o`), whose patterns bind each field
+# with its stack, against a document's element or another row's value, plain data.
+LoIsLive: fn Ty -> Bool
+fn LoIsLive t = match LoPeel t:
+    TyElem ignore, ignore: True
+    otherwise: False
+
+# A tag's field a pattern names: by name, punned, or by position.
+LoTagFieldName: fn FieldPat, [Text], Nat -> Text
+fn LoTagFieldName fp, names, i = match fp.?name:
+    ? id: id.name
+    nil: match fp.pattern.kind:
+        PName n: if HasText names, (SNameKey n): SNameKey n else: Or names[i], ""
+        otherwise: Or names[i], ""
+
+# `Ui.Label(text=$t)`, `Draw.Rect(rect=r, ..)` (pick RV): the enum's variant around the
+# tag's struct. On a plain row value or a document's element (`Elem r`, a snapshot, the
+# checker's WL) every field is plain, a `$` field its value in that tick. On a live
+# element the tag and plain fields match its level at the build, and a `$` field binds
+# its dynamic, the element's level over time projected to the field.
+LoTagPat: unbounded fn Lx, TagInfo, [FieldPat], Bool, Ty, Text, Text -> PatOut
+fn LoTagPat lx, tg, fps, rest, ty, mode, fresh:
+    let ((variant, structPath)) = LoTagPaths lx, tg
+    let live = LoIsLive ty
+    let names = Each tg.fields, \|((f, ignore))| f
+    let subMode = if live: "ref" else: mode
+    let parts = Each (Range0 (Len fps)), \|i|
+        let fp = Or fps[i], dummyFieldPat
+        let fname = LoTagFieldName fp, names, i
+        let ft = Fold tg.fields, TyErr, \|found, ((f, t))| if f == fname: t else: found
+        let layer = LoLayer ft
+        if layer == "!": ((nil, (PatOut(pa=PaWild, conds=[[CcIf (LoTodo "an event field in an element pattern ({tg.name}.{fname})")]], binds=[[]]))))
+        else: if live and layer == "$": ((nil, (LoLiveFieldPat lx, fp.pattern, variant, fname, ft, fresh)))
+        else:
+            let o = LoPat lx, fp.pattern, (LoPeel ft), subMode, "{fresh}_{i}"
+            ((? (LoSnake fname), o))
+    let fieldPas = Fold parts, [[]], \|acc, ((?f, o))| match ?f:
+        ? f: Push acc, ((f, o.pa))
+        nil: acc
+    let conds = Fold parts, [[]], \|acc, ((ignore, o))| Append acc, o.conds
+    let binds = Fold parts, [[]], \|acc, ((ignore, o))| Append acc, o.binds
+    let level = PaCtor variant, [[(PaRecord structPath, fieldPas, True)]]
+    if live: PatOut(pa=(PaBind fresh), conds=(Append [[(CcLet level, (XRaw "&{fresh}.identity"))]], conds), binds=binds)
+    else: PatOut(pa=level, conds=conds, binds=binds)
+
+# A live element's `$` field: a binder takes the field's dynamic, the element's level
+# projected (`Dynamic::map`). A plain function is lifted, its `$` values read at the
+# caller's read point, which it has no `cx` to read at, so there the binder is refused
+# (gap LE); a host's supplier, lowered in its node, binds the dynamic.
+LoLiveFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text -> PatOut
+fn LoLiveFieldPat lx, p, variant, fname, ft, fresh = match p.kind:
+    PIgnore: LoPatOut PaWild
+    PName n:
+        let rs = if lx.inNode: LoLiveProjection fresh, variant, fname else: "compile_error!(\"{loweringRefusal}a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)\")"
+        PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal rs, "own", (RsDyn (LoTy lx, (LoPeel ft))))))]])
+    PGroup q: LoLiveFieldPat lx, q, variant, fname, ft, fresh
+    otherwise: PatOut(pa=PaWild, conds=[[CcIf (LoTodo "a pattern inside a live element's `$` field ({fname})")]], binds=[[]])
+
+LoLiveProjection: fn Text, Text, Text -> Text
+fn LoLiveProjection fresh, variant, fname = "{fresh}.level.map(move |l| match l \{ {variant}(x) => x.{LoSnake fname}.clone(), _ => unreachable!() \})"
+
+# `Ui.*`: the scrutinee is one of the family's tags.
+LoFamilyPat: unbounded fn Lx, QualName, Ty, Text -> PatOut
+fn LoFamilyPat lx, q, ty, fresh:
+    let fam = Dotted (Filter q.path, \|x| x != "*")
+    let kind = match LoPeel ty:
+        TyElem ignore, ignore: "Element"
+        TyElemAny ignore: "Element"
+        TyCon k, ignore: k
+        otherwise: ""
+    let tags = Filter (LoKindTags lx, kind, (Keys lx.rsMods)), \|tg| tg.family == fam
+    let alts = Join (Each tags, \|tg| "{LoVariantOf lx, tg}(..)"), " | "
+    let place = if LoIsLive ty: "{fresh}.identity" else: fresh
+    let probe = if alts == "": "false" else: "matches!({place}, {alts})"
+    PatOut(pa=(PaBind fresh), conds=[[CcIf (XRaw probe)]], binds=[[]])
 
 # `Error(kind=Fs.NotFound, message=m)`: `Err(e)` and the kind compared after it.
 LoErrorPat: unbounded fn Lx, [FieldPat], Ty, Text, Text -> PatOut
@@ -2144,7 +2287,7 @@ fn LoParamNames lx, clauses, pts = Each (Range0 (Len pts)), \|i|
 LoPlainBinder: fn Lx, Pattern -> Text
 fn LoPlainBinder lx, p = match p.kind:
     PName n:
-        let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+        let ((?qk, why)) = ResolveValue lx.g, lx.home, n
         let isCtor = match ?qk:
             ? qk: (HasKey lx.g.ctors, qk) and ((IsUpperText (LoBase (SNameKey n))) or LoIsUnitCtor lx, qk)
             nil: False
@@ -3379,7 +3522,31 @@ fn LoEv wx, menv, e:
             "Prelude.!Both": LoPairEv wx, menv, args, "both", t
             "Prelude.!Except": LoPairEv wx, menv, args, "except", t
             otherwise: LoEvMap wx, menv, e
+        EIf (CondExpr c), thenB, (? elseB): match ((?LoBlockExpr thenB, ?LoBlockExpr elseB)):
+            ((? a, ? b)): LoEvIf wx, menv, c, a, b, t
+            otherwise: LoEvMap wx, menv, e
         otherwise: LoEvMap wx, menv, e
+
+# `if $c: !a else: !b`, an `if` lifted to events (Type System ch. 4): each branch gated by
+# the condition at its firing, the two merged.
+LoEvIf: unbounded fn Wx, LoEnv, Expr, Expr, Expr, RsTy -> ((EvRef, Wx))
+fn LoEvIf wx, menv, c, a, b, t:
+    let cond = LoBool (LoX wx.lx, menv, c)
+    let ((ra, w1)) = LoEv wx, menv, a
+    let ((rb, w2)) = LoEv w1, menv, b
+    let ga = EvRef(node=ra.node, pipe=(\|x, K| ra.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]))
+    let gb = EvRef(node=rb.node, pipe=(\|x, K| rb.pipe x, \|y| [[(DoIf (XBin "==", cond, (XRaw "false")), (K y), [[]])]]))
+    let ((nm, w3)) = LoFresh w2, "chosen"
+    let ((id, w4)) = LoMerge w3, nm, t, ga, gb
+    ((LoEvOf id, w4))
+
+# A block that is one expression: that expression.
+?LoBlockExpr: fn Block -> ?Expr
+fn ?LoBlockExpr b = match b.stmts:
+    [[st]]: match st.kind:
+        SExpr x: ? x
+        otherwise: nil
+    otherwise: nil
 
 LoEvPrelude: fn Lx, Expr -> Text
 fn LoEvPrelude lx, c = match c.kind:
@@ -3741,7 +3908,7 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let ((tys, apps, bs, ims)) = LoTables tp
     let mods = LoNeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (LoModName m)
-    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, rsNames=(LoValueNames g), layouts=(LoLayouts g), unbs=[[]], notes=[[]], globals=(LoGlobalNames g))
+    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, rsNames=(LoValueNames g), layouts=(LoLayouts g), unbs=[[]], notes=[[]], globals=(LoGlobalNames g), inNode=False)
     let lx = update lx0:
         &_.unbs <= LoJobRoots lx0
     let roots = LoRootWidgets lx
@@ -3752,7 +3919,7 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let checks = Fold g.defs, [[]], \|acc, d| match d.body:
         DbCheck c: Push acc, (LoCheckDef (LoAtSite lx, d.file, d.home, "\u{0}main"), c)
         otherwise: acc
-    Model(name=name, mods=modDefs, programs=programs, root=?root, checks=checks, scripts=[[]], notes=[[]])
+    Model(name=name, mods=modDefs, programs=programs, root=?root, checks=checks, elem=(LoElemRow lx, mods), scripts=[[]], notes=[[]])
 
 # The modules a program needs: its own files', and the modules they use or whose families
 # they emit, followed (the prelude's are emitted only when reached).
@@ -3920,7 +4087,7 @@ fn LoModDef lx0, m, roots, info, mods:
         ? src: src.path
         nil: ""
     let types = Fold (Values lx.g.types), [[]], \|acc, ti| if ti.home == m: Append acc, (LoTyDefs lx, ti) else: acc
-    let tags = Fold (Values lx.g.tags), [[]], \|acc, tg| if tg.home == m and tg.kind == "Element": Push acc, (ItTag (LoTagDef lx, tg)) else: acc
+    let tags = Fold (Values lx.g.tags), [[]], \|acc, tg| if tg.home == m and tg.kind != "Prelude.Fault": Push acc, (ItTag (LoTagDef lx, tg)) else: acc
     let defs = Fold lx.g.defs, [[]], \|acc, d| if d.home == m: Append acc, (LoDefItems (LoAt lx, d.file, m), d, roots) else: acc
     let traits = Fold (Values lx.g.traits), [[]], \|acc, tr| if tr.home == m: Push acc, (ItTrait (LoTraitDef lx, tr)) else: acc
     let impls = Fold (Values lx.g.impls), [[]], \|acc, ims| Fold ims, acc, \|a, im| if im.home == m and not im.derived: Push a, (ItImpl (LoImplDef (LoAt lx, im.file, m), im)) else: a
@@ -3980,6 +4147,7 @@ fn LoTyDefs lx, ti:
                 [[((cn, ignore))]]: if cn == bare: "newtype" else: "choice"
                 otherwise: "choice"
             [[ItType (Mk kind, defs)]]
+        BRowKind: if ti.name == "Prelude.Fault": [[]] else: [[ItRow (LoRowDef lx, ti)]]
         otherwise: [[]]
 
 # Whether a checker type can cross to a World, through the declarations it names: a
@@ -4019,11 +4187,48 @@ fn LoTypeDoc lx, ti = match lx.g.srcs[ti.file]:
     ? src: Trim (LineText src, (CLineOf src.starts, ti.span.start))
     nil: ti.name
 
-# An element tag's `Level`: its plain and dynamic fields (an event field is a request).
+# A tag's struct: an element tag's `Level`, its plain and dynamic fields (an event field
+# is a request); any other tag's fields, all plain.
 LoTagDef: unbounded fn Lx, TagInfo -> TagDef
 fn LoTagDef lx, tg:
-    let fields = Filter tg.fields, \|((ignore, ft))| (LoLayer ft) != "!"
-    TagDef(name=(LoTagStruct tg.name), tagName=tg.name, fields=(Each fields, \|((fname, ft))| ((fname, (LoSnake fname), (LoTy lx, (LoPeel ft))))), doc=(LoTypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))))
+    let fields = Each (LoLevelFields tg), \|((fname, ft))| ((fname, (LoSnake fname), (LoTy lx, (LoPeel ft))))
+    TagDef(name=(LoTagStruct tg.name), tagName=tg.name, fields=fields, doc=(LoTypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and LoPodable t))
+
+LoLevelFields: fn TagInfo -> [((Text, Ty))]
+fn LoLevelFields tg = Filter tg.fields, \|((ignore, ft))| (LoLayer ft) != "!"
+
+# The tags of a row kind, in their modules: the variants of its enum (pick RV). A tag
+# whose module the program does not emit is not among them.
+LoKindTags: fn Lx, Text, [Text] -> [TagInfo]
+fn LoKindTags lx, kind, mods = Filter (Values lx.g.tags), \|tg| tg.kind == kind and HasText mods, tg.home
+
+LoRowDef: unbounded fn Lx, TyInfo -> RowDef
+fn LoRowDef lx, ti:
+    let tags = LoKindTags lx, ti.name, (Keys lx.rsMods)
+    let cases = Each tags, \|tg| (((LoTagStruct tg.name), (LoPathIn lx, tg.home, (LoTagStruct tg.name))))
+    let pod = Fold tags, True, \|ok, tg| ok and (LoTagDef lx, tg).pod
+    RowDef(name=(LoCamel (BareName ti.name)), prism=ti.name, cases=cases, pod=pod, doc=(LoTypeDoc lx, ti))
+
+# `crate::Elem`: every element tag's `Level`, the value of a document's entry.
+LoElemRow: unbounded fn Lx, [Text] -> RowDef
+fn LoElemRow lx, mods:
+    let tags = LoKindTags lx, "Element", mods
+    let cases = Each tags, \|tg| (((LoTagStruct tg.name), "{LoModName tg.home}::{LoTagStruct tg.name}"))
+    let pod = Fold tags, True, \|ok, tg| ok and (LoTagDef lx, tg).pod
+    RowDef(name="Elem", prism="Elem", cases=cases, pod=pod, doc="`Elem r`: an element as a document holds it, its `Level` in a tick.")
+
+# The Rust path of a tag's enum variant and of its struct, from the current module.
+LoTagPaths: fn Lx, TagInfo -> ((Text, Text))
+fn LoTagPaths lx, tg:
+    let st = LoTagStruct tg.name
+    let structPath = LoPathIn lx, tg.home, st
+    (("{LoKindPath lx, tg.kind}::{st}", structPath))
+
+LoVariantOf: fn Lx, TagInfo -> Text
+fn LoVariantOf lx, tg = "{LoKindPath lx, tg.kind}::{LoTagStruct tg.name}"
+
+LoKindPath: fn Lx, Text -> Text
+fn LoKindPath lx, kind = if kind == "Element": "crate::Elem" else: LoPathIn lx, (Or lx.g.types[kind], dummyTyInfo).home, (LoCamel (BareName kind))
 
 # A `check` block: each line's value as plain data, or the fault that stopped it.
 LoCheckDef: unbounded fn Lx, CheckDecl -> CheckDef

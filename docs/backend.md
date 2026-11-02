@@ -57,7 +57,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   clone); a named function → a Rust `fn`.
 - `unbounded fn a -> b` as a value → `fn(A) -> Rc<dyn rt::Job<B>>`, its `Start`.
 - `!a`, `$a` where they cross a node boundary or sit in a value → `rt::Event<A>`
-  (`owner` + `Rc<Port<A>>`), `rt::Dynamic<A>` (`owner` + typed read + update port).
+  (`owner` + `Rc<Port<A>>`), `rt::Dynamic<A>` (`owner` + typed read + an update port of `()`, which says the value moved).
   Inside one node they are methods and fields, never values.
 - `@a` as a value → `Rc<dyn Fn(Path, &mut Cx) -> (Rc<dyn Node>, A)>`.
 - A trait → a Rust trait; `derive` → impls; generics → Rust generics, monomorphized by
@@ -65,6 +65,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - An existential `any ^Show` → `Rc<dyn Show>`.
 - An element tag → a struct per tag holding its `Level` fields, with `ToPod`, and the Rust
   type of its output.
+- A row kind other than `Fault` (`type Draw = row`) → an `enum` with a variant per tag of
+  the kind, each holding its tag's struct; `Elem r`, a document's element → `crate::Elem`,
+  a variant per element tag's `Level`; `Element r o`, a live element → `rt::Live<Elem>`,
+  its level at the build (tag and plain fields) and its level over time, a `Dynamic<Elem>`
+  (prismc/README.md, pick RV).
 
 ## Functions and lifting
 

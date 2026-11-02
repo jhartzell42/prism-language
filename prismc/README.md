@@ -806,7 +806,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: 38 of 48 pass.
+`tests/compiled/run.sh`, which runs every program every time: 40 of 49 pass.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -826,11 +826,12 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `be-update-loops` (a `for` and a guarded `match` as statements of an `update`),
   `be-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
   `let`-bound lambda's own type gives them), `be-while-guard` (a cycle a turn of a
-  `while`, gap LP).
+  `while`, gap LP), `be-row-values` (a row kind's values built, compared, shown,
+  matched and sent inside an element, pick RV).
   `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
-  `sem-ch06-birds`, `sem-ch07-births`, `sem-ch07-rounds`, `ts-ch03-traits`, chess's
+  `sem-ch06-birds`, `sem-ch07-births`, `sem-ch07-rounds`, `ts-ch03-traits`, `ts-ch04-lifting`, chess's
   `rules.prismtest` (`chess-rules`), and prismc's own `lexer-checks` and `parser-checks`.
 - **Refused by the checker,** as the books have them wrong (`conf-ch01-motd`,
   `sem-ch04-labels`, `sem-ch05-and-blocks`, `sem-ch08-viewer`): `compile` refuses too.
@@ -838,8 +839,9 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   chess's board, whose window library also takes elements apart by pattern, builds
   `Draw.*` values, binds a place's tuple answer and passes a widget block as a value),
   `@Machine` and local functions (`sem-appB-widgets`), a generation reading its block's
-  dynamic (`sem-ch07-paged`). A function lifted over time parameters
-  (`ts-ch04-lifting`) is emitted as Rust that does not build (`on` left in the code).
+  dynamic (`sem-ch07-paged`). `ts-ch04-lifting` passes: a function lifted over an event
+  runs at its firing, so its `x on !e` is `x`, and an `if` over events gates each branch
+  by the condition and merges them.
 - **Speed:** the kept prismc compiles a conformance program in under a second, and cargo
   builds it in about 1 s against the shared target directory; the whole of
   `tests/compiled/run.sh` takes about 2.5 minutes. prismc compiles itself in about 4.5
@@ -1012,6 +1014,25 @@ Each is Claude's, for Jimmy to overturn.
 - **RT The runtime path.** `Cargo.toml` finds the library and the Worlds at `--runtime
   PATH`, by default one `..` per directory of OUT (OUT under the repository root), so the
   stages emit the same file.
+- **RV Row values.** A row kind other than `Fault` is plain data: `type Draw = row` is a
+  Rust `enum Draw` in its module with a variant per tag of the kind in the program, each
+  holding the tag's struct (`Draw::DrawRect(DrawRect { rect, paint })`), so a `[Draw]`
+  is an `Array<Draw>`. A tag applied in an expression builds the variant; a tag pattern
+  is the variant around a struct pattern; `Draw.*` is a `matches!` over the family's
+  variants. Every tag struct and row enum is `Clone`, `ToPod` and `Show` (printing as
+  its `Pod`, `Draw.Rect(rect=Rect(..), paint=Grey)`), and `PartialEq` and `FromPod` when
+  all its fields are plain data. A document's element, `Elem r` (the checker's WL), is
+  `crate::Elem`, emitted in `main.rs`: a variant per element tag's `Level`, so a pattern
+  binds each field plain (`Ui.Label(text=$t)` binds the text in that tick). A live
+  element, `Element r o`, is `prism_rtl::Live<crate::Elem>`: its level at the build
+  (`identity`: the tag and plain fields, which never change while it lives) and its
+  level over time (`level`, a `Dynamic<Elem>`); a pattern matches the tag and plain
+  fields on the identity and binds a `$` field to `level.map(..)`, the field's dynamic
+  (gap LE). A tag and a record that share a key (`Fs.Contents`) are told apart as the
+  checker does: the tag only when written with its family. `Dynamic`'s update port
+  carries `()` (the value moved; readers read again), so a projection shares its
+  source's port and `Dynamic::map` subscribes to nothing (`be-row-values`).
+  *Refused:* row values as `Pod`s, which made every field access a runtime decode.
 - **SC The code's site.** An inlined widget's code is lowered in its own module's names
   but placed in its caller's module, and a check line's in `main.rs`: lowering keeps the
   module that resolves names apart from the one paths are written from.
@@ -1064,6 +1085,12 @@ ruling taken (Claude's).
 - **DY Dynamics across nodes.** A row reads its block's events through ports, but not its
   block's holds or dynamic `let`s (`sem-ch07-paged`'s inner `rebuild $src`): the
   contract's `Dynamic` with its update port is not used yet.
+- **LE A live element's `$` field in a plain function.** A plain function is lifted:
+  its `$` values are read at the caller's read point, and it has no `cx` to read a live
+  element's dynamic at. *First ruling:* refused loudly there; a host's supplier, lowered
+  inside its node (`Lx.inNode`), binds the dynamic. An element applied as a plain value
+  (not a place, not a supplier's argument) is refused too: only a host makes a live
+  element. *If otherwise:* lifted functions take `&Cx`.
 - **CL Clause choice.** A `rebuild` or a building `match`/`if` whose arms are widgets of
   several clauses needs the clause chosen at the build; generations do it for one clause
   only.
@@ -1073,7 +1100,8 @@ ruling taken (Claude's).
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
 naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
-hosting (`@HostDocument`, `@HostSome`, `@HostList`, `@Element`), `@Flatten`,
+hosting (`@HostDocument`, `@HostSome`, `@HostList`, `@Element`), an element applied as a
+plain value and a live element's `$` field read in a plain function (gap LE), `@Flatten`,
 `@Machine`, `@Once` and the prelude's Prism-written widgets, `!MergeAll`, `!Updated`,
 local functions, lifted functions with time parameters (`fn !Bump $n, !go`), building
 `match` and `if`, a `for` whose rows give a dynamic, pushes to a live place

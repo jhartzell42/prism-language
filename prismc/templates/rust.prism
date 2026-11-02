@@ -231,17 +231,78 @@ match p.structure() {
 }
 </rust>
 
-# An element tag's `Level`.
-TmTag: fn Text, Text, Text, Text, Text -> Text
-fn TmTag doc, name, fields, tagName, pods = inline_text <rust>
+# A tag's struct: an element tag's `Level`, or a plain row value's fields.
+TmTag: fn Text, Text, Text, Text, Text, Text -> Text
+fn TmTag doc, derives, name, fields, tagName, pods = inline_text <rust>
 {{doc}}
+#[derive({{derives}})]
 pub struct {{name}} {
     {{fields}}
+}
+
+impl {{name}} {
+    /// The tag's qualified name, as its `Pod` carries it.
+    pub const TAG: &'static str = "{{tagName}}";
 }
 
 impl ToPod for {{name}} {
     fn to_pod(&self) -> Pod {
         Pod::element("{{tagName}}", vec![{{pods}}])
+    }
+}
+
+impl Show for {{name}} {
+    fn show(&self, p: &mut Printer) {
+        self.to_pod().show(p);
+    }
+}
+</rust>
+
+# A tag's struct read back from its `Pod`.
+TmTagFromPod: fn Text, Text, Text -> Text
+fn TmTagFromPod name, tagName, reads = inline_text <rust>
+impl FromPod for {{name}} {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        match p.tag() {
+            Some("{{tagName}}") => Ok({{name}} { {{reads}} }),
+            _ => prism_rtl::pod::mismatch("a {{tagName}}", p),
+        }
+    }
+}
+</rust>
+
+# A row kind's enum: a variant per tag (pick RV).
+TmRow: fn Text, Text, Text, Text, Text -> Text
+fn TmRow doc, derives, name, cases, pods = inline_text <rust>
+{{doc}}
+#[derive({{derives}})]
+pub enum {{name}} {
+    {{cases}}
+}
+
+impl ToPod for {{name}} {
+    fn to_pod(&self) -> Pod {
+        match self {
+            {{pods}}
+        }
+    }
+}
+
+impl Show for {{name}} {
+    fn show(&self, p: &mut Printer) {
+        self.to_pod().show(p);
+    }
+}
+</rust>
+
+TmRowFromPod: fn Text, Text -> Text
+fn TmRowFromPod name, reads = inline_text <rust>
+impl FromPod for {{name}} {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        match p.tag() {
+            {{reads}}
+            _ => prism_rtl::pod::mismatch("a {{name}}", p),
+        }
     }
 }
 </rust>
