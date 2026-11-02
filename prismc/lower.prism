@@ -516,7 +516,7 @@ fn LoTy lx, t = match t:
         # A function value of any color but bounded is a `Start` (D8: a color variable may
         # be unbounded), so one representation serves both instantiations.
         if c == CBound: RsFn (Each ps, \|p| LoTy lx, p), (LoTy lx, res)
-        else: RsJobFn (LoTyOfParams lx, ps), (LoTy lx, res)
+        else: RsJobFn (LoTyOfParams lx, (Each ps, \|p| LoJobParam p)), (LoTy lx, res)
     TyTuple [[]]: RsUnit
     TyTuple ts: RsTuple (Each ts, \|a| LoTy lx, a)
     TyArray e: RsArray (LoTy lx, e)
@@ -536,6 +536,13 @@ fn LoTy lx, t = match t:
     TyAt i, ignore: RsUnknown "a blueprint value"
     TyAssoc ignore, ignore: RsUnknown "an associated type"
     TyErr: RsUnknown "a type the checker did not find"
+
+# A `Start`'s function parameter is a `Start` whatever its color: a caller may pass an
+# unbounded one where the callee's own type says bounded (a parameter's color is
+# contravariant), and a `Start` serves both.
+LoJobParam: fn Ty -> Ty
+fn LoJobParam (TyFn ignore, ps, r) = TyFn CUnbound, ps, r
+fn LoJobParam t = t
 
 # An unbounded function's parameter as a job function's: one parameter is itself, several
 # a tuple.
@@ -1419,7 +1426,16 @@ fn LoJobLambda lx, env, ps, body, ft, a:
     let unpack = Fold (Range0 (Len pos)), [[]], \|acc, i| match pos[i]:
         ? po: Append (Push acc, (DoLet po.pa, (XRaw "p{i}"))), (Each po.conds, \|c| LoCondAsLet c)
         nil: acc
-    let env2 = Fold pos, env1b, \|en, po| LoBindAll en, po.binds
+    # A name parameter's type is the `Start`'s (a function parameter is a `Start` there).
+    let pos2 = Each (Range0 (Len pos)), \|i| match pos[i]:
+        ? po: match (Or ps[i], dummyPat).kind:
+            PName ignore: update po:
+                &_.binds <= Each &_.binds, \|((n, b))| match b:
+                    BnLocal rs, mode, bt: ((n, (BnLocal rs, mode, (Or pts[i], bt))))
+                    otherwise: ((n, b))
+            otherwise: po
+        nil: PatOut(pa=PaWild, conds=[[]], binds=[[]])
+    let env2 = Fold pos2, env1b, \|en, po| LoBindAll en, po.binds
     let names = Each (Range0 (Len ps)), \|i| "p{i}"
     let pa = if (Len ps) == 1: PaTyped (PaBind "p0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
     let tail0 = match body:

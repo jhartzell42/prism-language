@@ -1,0 +1,6 @@
+# The pipe's tests: declarations of be-pipe-record.prism (Semantics chapter 6).
+
+test the_pipe_runs, @Piped 4:
+    build
+    compute until idle
+        => expect Ui.Label(text="5")

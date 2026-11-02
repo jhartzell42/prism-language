@@ -1,0 +1,12 @@
+# prism_zero's transcript, checked by hand against D6: Id and Grow entered, three cycles.
+test the_pipe_runs
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 3 ticks, 1 to 3
+
+tick 3
+  changed:
+    1: Ui.Label(text="5")

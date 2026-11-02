@@ -36,7 +36,7 @@ compile() {
     fi
 }
 # The programs that pass; NAMES on the command line may name any other.
-passing=(counter half-counter sem-ch07-normalize sem-ch07-walk be-let-fn-pair be-unbounded-value be-row-local be-template-attrs be-unbounded-lambda be-error-try be-nat-literal be-inference be-unbounded-prelude be-local-names be-tuple-show be-function-values be-lambda-patterns be-fold-tuples be-template-body be-closure-names be-update-loops)
+passing=(counter half-counter sem-ch07-normalize sem-ch07-walk be-let-fn-pair be-unbounded-value be-row-local be-template-attrs be-unbounded-lambda be-error-try be-nat-literal be-inference be-unbounded-prelude be-local-names be-tuple-show be-function-values be-lambda-patterns be-fold-tuples be-template-body be-closure-names be-update-loops be-pipe-record)
 only=("$@")
 [ ${#only[@]} -eq 0 ] && only=("${passing[@]}")
 wanted() { [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$1" ] && return 0; done; return 1; }

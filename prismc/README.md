@@ -801,7 +801,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
 `tests/compiled/run.sh`, whose default set is what passes:
 
-- **Pass (21):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
+- **Pass (22):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
   has its shape (fields `count: Hold<Int>` and the merge's two `Stamped` inputs,
   `inc`/`dec` recording and asking for the wake, `wake` deciding left first, `patch`
@@ -816,7 +816,9 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `be-unbounded-prelude`, `be-local-names`, `be-tuple-show` (`prism_rtl` shows and pods
   tuples up to six), `be-function-values`, `be-lambda-patterns` (a job lambda takes its
   parameters apart by pattern), `be-fold-tuples`, `be-template-body`, `be-closure-names`,
-  `be-update-loops` (a `for` and a guarded `match` as statements of an `update`).
+  `be-update-loops` (a `for` and a guarded `match` as statements of an `update`),
+  `be-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
+  `let`-bound lambda's own type gives them).
   `be-clause-widget` fails by gap CW.
 - **The rest of the corpus** runs by name (`tests/compiled/run.sh todos`)
   and is not in the default set until a chunk makes it pass: the lowering above reaches
