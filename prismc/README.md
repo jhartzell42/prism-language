@@ -949,16 +949,22 @@ Each is Claude's, for Jimmy to overturn.
   whose first cycle only enters it, so that entering a named function is a cycle point
   however it is reached; a lambda of unbounded type is a value whose job is its body
   lowered as a job body (`once_job`), so a call in it is a tail call or a frame, and
-  entering a lambda is not a cycle point (compiler zero's count: `be-unbounded-lambda`,
-  `5 ticks`). A job calls a value now (`call_value`, the callee's first cycle in this
+  `entered` too (D6 as ruled: a call of an unbounded lambda is a cycle point;
+  `be-unbounded-lambda` 7 ticks, `be-lambda-cycle` 5). A lambda is unbounded when its
+  checked type is, or when its body calls an unbounded function or a `Start` local: the
+  checker fixes a lambda's color before its parameters' types are known
+  (`be-pipe-record`'s `\|ignore| K v`). A job calls a value now (`call_value`, the callee's first cycle in this
   one); direct-style code runs it to its result (`run_to_end`). A function type whose
   color is not `bounded` (unbounded, or a color variable `u`, D8) is a `Start`, so a
   function with a `u fn` parameter takes one whatever its caller gives: a bounded
   function value is wrapped in a job that answers in its first cycle, a constructor is
   a closure (`Make Circle, n`), a lambda is a job lambda (`be-function-values`). A
   color-polymorphic function (`Twice: u fn Nat, (u fn Nat -> Nat) -> Nat`) has a job
-  too; a job enters it at once (`start_twice(..).cycle()`), since it is not an unbounded
-  function, and its calls through its closures are the cycle points.
+  too. A call that instantiates its color unbounded (an argument at a function parameter
+  whose checked type is unbounded) is a cycle point, a frame or `Turn::More` like a named
+  unbounded function's (D6 as ruled; `be-function-values` 4 ticks); any other call
+  enters it at once (`start_twice(..).cycle()`). Its calls through its closures are
+  cycle points as their values decide.
 - **D8 The prelude's higher-order functions** given a closure that is not bounded are
   jobs: `fold_job`, `each_job`, `filter_job` and their map variants, which call the
   closure through `call_value`, so each call of a named unbounded function is a cycle
@@ -1033,6 +1039,18 @@ Each is Claude's, for Jimmy to overturn.
   carries `()` (the value moved; readers read again), so a projection shares its
   source's port and `Dynamic::map` subscribes to nothing (`be-row-values`).
   *Refused:* row values as `Pod`s, which made every field access a runtime decode.
+- **BA Bundles.** A tag whose output is a tuple of plain parts and one event part
+  (`Gui.Window`'s `((WindowId, !WindowInput))`), bound by a tuple pattern: the plain
+  parts are the place's first value (one part itself, several a tuple), each bound part
+  a field; the event part fires on each answer at the place (`be-bundle`). A `$` part,
+  or a second event part, is refused loudly.
+- **WB Widget arguments.** A widget parameter (`@child`) binds its argument, a widget
+  block (`@widget: ..`) or a widget expression (`@counter`), with the caller's
+  environments; applying the parameter lowers the argument there, so its places take
+  this node's next positions (transparent, Semantics ch. 8) and each application has
+  its own holds (`be-widget-args`). A parameter applied to arguments, or read as a value,
+  is refused loudly. *Refused:* the argument as a blueprint value built at run time,
+  which a static position never needs.
 - **SC The code's site.** An inlined widget's code is lowered in its own module's names
   but placed in its caller's module, and a check line's in `main.rs`: lowering keeps the
   module that resolves names apart from the one paths are written from.
@@ -1059,13 +1077,16 @@ ruling taken (Claude's).
   *Next:* a non-tail `match` binds its continuation once (`let k = Rc::new(move |x|
   ..)`) and each arm frames into it; the prelude's higher-order functions as jobs. Cost:
   a cycle walks the frames, so it is linear in the pending calls.
-- **LP A loop in an unbounded function** (D6: "every turn of a `while` in an unbounded
-  `&` block" is a cycle point, so that a tick always ends). A `while` at the top level of
-  an `update` block in a job is a loop job (`loop_job`): the block's state (`this` and
-  its `&` locals) is the job's, each turn a cycle, the rest of the block its
-  continuation (`be-while-guard`: 8 ticks, as compiler zero). prismc's own lexer and
-  parser loops so cost a cycle a turn. *Not yet:* a `while` nested in an `if`, a
-  `match`, a `for` or another `while` of the block, which still turns within the cycle.
+- **LP A loop in an unbounded function** (D6 as ruled: a turn of a `while` the shrink
+  check does not clear is a cycle point; a loop it clears is one unit of work). The
+  checker runs its loop check on unbounded functions too and notes each loop it does not
+  clear in the typed tables (`TProgram.unshrunk`), with no error; lowering reads them
+  (`Lx.unshrunk`). Such a `while` at the top level of an `update` block in a job is a
+  loop job (`loop_job`): the block's state (`this` and its `&` locals) is the job's,
+  each turn a cycle, the rest of the block its continuation. A cleared loop is a Rust
+  `while` inside the cycle (`be-while-guard`, a `Nat` fuel: 3 ticks). *Not yet:* an
+  unshrinking `while` nested in an `if`, a `match`, a `for` or another `while` of the
+  block, which still turns within the cycle.
 - **CW A widget of several clauses in a static position** is a generation built once
   (a `rebuild` of its first argument, which never changes), the clause chosen at the
   build like a `rebuild`'s; its places stand under the generation (`1/#0/0`), where
