@@ -29,11 +29,12 @@ The lexer, parser and tree of Prism, written in Prism and run by compiler zero
 ## Running it
 
 ```
-prism_zero run prismc/*.prism -- FILE [OUT]              # the tree, as `dump FILE` prints it
-prism_zero run prismc/*.prism -- --tokens FILE [OUT]     # the tokens, as `dump --tokens`
-prism_zero run prismc/*.prism -- --fragment FILE [OUT]   # a run of statements, `dump --fragment`
-tests/prismc/compare.sh [--tokens|--fragment] [FILES...] # diff against prism_syntax
+prismc FILE [OUT]              # the tree in S-expression notation
+prismc --tokens FILE [OUT]     # the tokens, in the layout corpus's notation
+prismc --fragment FILE [OUT]   # a run of statements
 ```
+
+`prismc` is the newest native binary, as the `prism` script picks it (Back end, below).
 
 `@main` reads FILE through `Fs.Contents`, runs the front end through `@Run`, and writes
 exactly what `cargo run -p prism_syntax --example dump -- FILE` prints (the dump, then the
@@ -43,14 +44,13 @@ then gives up through `Prelude.Unwrap` with the rendered diagnostics as its mess
 the CLI World prints to standard error before it exits 1. Out-of-scope features are
 reported in the output and do not fail the run.
 
-`tests/prismc/compare.sh` runs both dumps over every `.prism` and `.prismtest` under
-`examples/`, `tests/conformance/`, `prelude/` and `prismc/`, and exits 1 listing the files
-that differ. `tests/prismc/lexer-checks.prism` and `tests/prismc/parser-checks.prism` are
-`check`s on small inputs:
+`tests/prismc/lexer-checks.prismtest` and `tests/prismc/parser-checks.prismtest` are
+`check`s on small inputs, over the helpers in the `.prism` of their names; they run
+compiled with the front end's modules, transcripts byte-equal to their `.expected`:
 
 ```
-prism_zero test prismc/ast.prism prismc/lexer.prism tests/prismc/lexer-checks.prism
-prism_zero test prismc/ast.prism prismc/lexer.prism prismc/parser.prism prismc/sexp.prism tests/prismc/parser-checks.prism
+tests/compiled/run.sh lexer-checks parser-checks
+./prism test tests/prismc/lexer-checks.prism prismc/ast.prism prismc/lexer.prism
 ```
 
 ## Where it stands
@@ -199,8 +199,9 @@ separate passes in the book's order. It reports ch. 5's errors by their names, e
 `file:line:`, the line, carets and the fix.
 
 ```
-prism_zero run prismc/*.prism prismc/templates/*.prism -- --check FILES... [--out OUT] [--world Ui,Fs] [--prelude DIR]
-prism_zero run prismc/*.prism prismc/templates/*.prism -- --typed FILES... [--out OUT]
+prismc --check FILES... [--out OUT] [--world Ui,Fs] [--prelude DIR]
+prismc --typed FILES... [--out OUT]
+./prism check [--world Ui,Fs] DIR|FILES...      # the report on standard output
 tests/prismc/check/run.sh [--update] [NAMES...]
 ```
 
@@ -758,18 +759,24 @@ construct becomes and which library call it makes. The old back end, which emitt
 `prism_rt` values and applied them through the dynamic layer (D16), is gone.
 
 ```
-./prism run DIR [ARGS...]                 # compile, cargo build, run the root under its World
-./prism test DIR                          # compile, build, run the .prismtest scripts
-./prism compile DIR -o OUT                # the crate only
-target/stage1/prismc compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH]
+./prism compile DIR|FILES... -o OUT             # the crate only
+./prism test DIR|FILES...                       # compile, build, run the .prismtest scripts
+./prism run [--world cli|canvas] DIR|FILES... [-- ARGS...]   # compile, build, run the root
+./prism check DIR|FILES...                      # the checker's report
+prismc compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH]
 OUT/target/.../NAME [--world cli|canvas|test] [ARGS...]      # the root, under the World its row asks for
 OUT/target/.../NAME test [--print] [SCRIPTS.prismtest...]    # the Test World; compares with .expected
-tests/compiled/run.sh [NAMES...]          # the passing programs (or those named), byte-equal
+tests/compiled/run.sh [NAMES...]                # every program, byte-equal
 ```
 
-`prismc` is the newest `target/stageN/prismc` ("The bootstrap" below); the `prism` script
-and `tests/compiled/run.sh` use it, and compiler zero only when none is built;
-`make chess` is `./prism run examples/chess`.
+`prismc` is `$PRISMC`, or the newest of `target/bootstrap/prismc` and
+`target/keep/prismc-*` ("The bootstrap" below); the `prism` script, `tests/compiled/run.sh`
+and `tests/prismc/check/run.sh` use it. `prism test` builds debug, `prism run` release;
+`prism run` picks the canvas World when the root's row has `Gui.*` and the CLI World
+otherwise, and refuses a root whose row has `Ui.*` without `Gui.*`, since no World answers
+Ui elements alone. The compiled binary takes `--world` only as its first argument; a later
+one is the program's own (prismc's `--check --world Ui`). `make chess` is
+`./prism run examples/chess`.
 
 ### Files
 
@@ -799,9 +806,9 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, whose default set is what passes:
+`tests/compiled/run.sh`, which runs every program every time: 38 of 48 pass.
 
-- **Pass (23):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
+- **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
   has its shape (fields `count: Hold<Int>` and the merge's two `Stamped` inputs,
   `inc`/`dec` recording and asking for the wake, `wake` deciding left first, `patch`
@@ -820,44 +827,36 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `be-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
   `let`-bound lambda's own type gives them), `be-while-guard` (a cycle a turn of a
   `while`, gap LP).
-  `be-clause-widget` fails by gap CW.
-- **The rest of the corpus** runs by name (`tests/compiled/run.sh todos`)
-  and is not in the default set until a chunk makes it pass: the lowering above reaches
-  `for` rows, `rebuild`, jobs, traits and modules, but nothing past these is
-  verified against the typed back end. Programs the checker refuses by the books
-  (`conf-ch01-motd`, `sem-ch04-labels`, `sem-ch05-and-blocks`, `sem-ch08-viewer`)
-  `compile` refuses too.
-- **Not yet:** hosting (`sem-ch09-hosts`, chess's window library), `@Machine`, `@Once`,
-  `!MergeAll`, local functions (`sem-appB-widgets`), functions lifted over time
-  parameters (`ts-ch04-lifting`), a generation reading its block's dynamic
-  (`sem-ch07-paged`).
-- **Speed:** a native prismc (stage 1) compiles the counter in 3 s and the half counter
-  in 2 s; cargo builds each in about 1 s against a shared target directory. Compiler zero
-  takes about 7 s and 4 s. prismc's `--check` of its own 16 files takes about 6.5
-  minutes natively.
+  `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
+  counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
+  `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
+  `sem-ch06-birds`, `sem-ch07-births`, `sem-ch07-rounds`, `ts-ch03-traits`, chess's
+  `rules.prismtest` (`chess-rules`), and prismc's own `lexer-checks` and `parser-checks`.
+- **Refused by the checker,** as the books have them wrong (`conf-ch01-motd`,
+  `sem-ch04-labels`, `sem-ch05-and-blocks`, `sem-ch08-viewer`): `compile` refuses too.
+- **Not lowered yet,** each refused loudly at compile: hosting (`sem-ch09-hosts`, and
+  chess's board, whose window library also takes elements apart by pattern, builds
+  `Draw.*` values, binds a place's tuple answer and passes a widget block as a value),
+  `@Machine` and local functions (`sem-appB-widgets`), a generation reading its block's
+  dynamic (`sem-ch07-paged`). A function lifted over time parameters
+  (`ts-ch04-lifting`) is emitted as Rust that does not build (`on` left in the code).
+- **Speed:** the kept prismc compiles a conformance program in under a second, and cargo
+  builds it in about 1 s against the shared target directory; the whole of
+  `tests/compiled/run.sh` takes about 2.5 minutes. prismc compiles itself in about 4.5
+  minutes and cargo builds it in about 2.5; `tests/prismc/check/run.sh` takes about 1.5
+  minutes.
 - **prismc itself** checks clean under `--check`.
 
 ### The bootstrap
 
-- **Stage 0** is a prismc binary of the old dynamic chain (its back end emitted
-  `prism_rt` values applied through `prism_dyn`; its sources are in git history, 2524e50
-  and before), kept at `target/keep/prismc-old-chain-1101-0619` (`STAGE0=` names another).
-  Compiler zero is not a stage: it is orders of magnitude slower than a native prismc,
-  and is the fallback only for a feature stage 0 refuses.
-- **The snapshot.** Every stage compiles one snapshot, `target/bootstrap-src/`, which
-  stage 1 takes by `git archive` of `prismc/` (its templates included) and `prelude/` at
-  a commit (`REV=`, default `HEAD`, recorded in `target/bootstrap-src/REV`), never from
-  the working tree: an uncommitted edit, another agent's or one's own, reaches no stage.
-  Each stage passes `--prelude target/bootstrap-src/prelude`.
-- **Stage 1** (`tests/bootstrap/stage1.sh`): stage 0 compiles the snapshot, and cargo
-  builds the crate (about 6 minutes, then 7 to 9) into `target/stage1/prismc`, a native
-  prismc with the typed back end. Development iterates with it.
-- **Stages 2 and 3**: each prismc before compiles the snapshot with the typed back end
-  (stage 1 compiles prismc in about 14 to 34 minutes under the old chain's runtime,
-  whose CLI World's patience is unlimited);
-  `tests/bootstrap/check.sh` wants their crates byte-equal.
-- **Stage 0's one quirk met so far:** it resolves a record type's name across modules, so
-  `Lower`'s environment record is `LoEnv`, not `Env` (which `CheckExpr` has).
+- **The kept binary** is a native prismc at a self-hosting fixed point, kept at
+  `target/keep/prismc-*` (the newest; `PRISMC=` names another).
+- **`tests/bootstrap/bootstrap.sh`** (`make bootstrap`): the kept binary compiles
+  `prismc/` (the working tree, templates included) into the crate
+  `target/bootstrap/gen1`, cargo builds it, and gen1's binary compiles `prismc/` again into
+  `target/bootstrap/gen2`. The two crates must be byte-equal: the compiler compiles itself
+  to the crate it was built from. gen1's binary is then installed as
+  `target/bootstrap/prismc`, which the scripts pick as the newest.
 
 ### Back-end picks
 

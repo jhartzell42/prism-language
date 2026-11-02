@@ -38,14 +38,15 @@ Each program `X.prism` has:
 
 ## How they will run
 
-- **Tests, now:** `prism_zero test examples/chess/rules.prism examples/chess/window.prism
-  examples/chess/board.prism` runs each file's `.prismtest` under the Test World and
-  same for the half counter and the todo list.
-- **Chess in a window, now:** `prism_zero run examples/chess/board.prism
-  examples/chess/rules.prism examples/chess/window.prism`: `board.prism` is the one file with
-  no `module` line, so its `@$main` is the root (Semantics ch. 6), under the canvas World.
-- **Later:** `prismc examples/chess/*.prism` emits Rust that links `prism_rt` and
-  `worlds/canvas` (`docs/architecture.md`); `make chess` builds and opens it.
+- **Tests:** `./prism test examples/chess` compiles the three files with prismc, builds
+  them, and runs `board.prismtest` and `rules.prismtest` under the compiled Test World,
+  each transcript byte-equal to its `.expected`. `board.prism` is the one file with no
+  `module` line, so its `@$main` is the root (Semantics ch. 6).
+- **Chess in a window:** `./prism run examples/chess` (`make chess`) builds it with the
+  canvas World, which the root's `Gui.*` row asks for, and opens it.
+- **Today** prismc checks chess clean and refuses to compile it: the window library
+  hosts (`@HostSome`), takes elements apart by pattern and builds `Draw.*` values, which
+  the back end does not lower yet (prismc/README.md, "Not lowered yet").
 - The counter, the half counter and the todo list emit bare `Ui` elements, and the canvas
   World answers only `Gui` (a thin World, Pitch ch. 6). They run under their tests, or in a
   window when a root wraps them: `@Window $"Counter", (Extent 320.0, 200.0), @counter`.

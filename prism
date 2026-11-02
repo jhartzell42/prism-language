@@ -1,55 +1,150 @@
 #!/usr/bin/env bash
-# The `prism` command (docs/architecture.md, "Single commands"), a thin shell over prismc:
+# The `prism` command (docs/architecture.md, "Single commands"), a thin shell over a
+# native prismc:
 #
-#   ./prism run DIR [ARGS...]      compile DIR, build it, run its root under its World
-#   ./prism test DIR               compile DIR, build it, run its .prismtest scripts
-#   ./prism compile DIR -o OUT     compile DIR to the Rust crate OUT
+#   ./prism compile SRC... -o OUT        the Rust crate of the program, in OUT
+#   ./prism test SRC...                  compile, build, run the .prismtest scripts
+#   ./prism run [--world W] SRC... [-- ARGS...]   compile, build, run the root
+#   ./prism check [--world FAMS] SRC...  the checker's report
 #
-# DIR is a directory of `.prism` and `.prismtest` files, or one `.prism` file (with the
-# `.prismtest` of its name, when there is one). prismc is the newest one built (stage 3,
-# 2, then 1); with none, compiler zero runs prismc's sources. Run from the repository
-# root. The crate goes to target/prism/NAME, the build to target/prism-build.
+# SRC is a directory (every `.prism` and `.prismtest` under it), a `.prism` file (with the
+# `.prismtest` of its name beside it, when there is one) or a `.prismtest` file. `test`
+# runs every script under the compiled Test World, each transcript byte-equal to the
+# `.expected` of its name. `run` builds with the World the root's `emit` row asks for:
+# `Gui.*` the canvas World, anything else the CLI World; `--world cli|canvas` overrides.
+# A root whose row has `Ui.*` without `Gui.*` is refused: no World answers Ui elements
+# alone.
 #
-# Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change.
+# prismc is `$PRISMC`, or the newest of target/bootstrap/prismc and target/keep/prismc-*
+# (the old dynamic chain's binary left out). The crate goes to target/prism/NAME, the
+# build to target/prism-build (debug for `test`, release for `run`).
+#
+# Written by Claude, 2 November 2026, on the claude-self-hosting branch. Subject to change.
 set -eu
-cd "$(dirname "$0")"
+here=$PWD
+root=$(cd "$(dirname "$0")" && pwd)
+usage() { sed -n '4,9p' "$0" | sed 's/^# //' >&2; exit 2; }
 cmd=${1:-}
-src=${2:-}
-if [ -z "$cmd" ] || [ -z "$src" ]; then
-    sed -n '3,8p' "$0" | sed 's/^# //' >&2
+[ -n "$cmd" ] || usage
+shift
+
+# The arguments: sources, options, and after `--` (or the first argument that is no
+# source) the program's own.
+srcs=()
+out=""
+world=""
+progargs=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o) out=$2; shift 2 ;;
+        --world) world=$2; shift 2 ;;
+        --world=*) world=${1#--world=}; shift ;;
+        --) shift; progargs=("$@"); break ;;
+        *)
+            if [ -d "$1" ] || [[ "$1" == *.prism ]] || [[ "$1" == *.prismtest ]]; then
+                srcs+=("$1"); shift
+            else
+                progargs=("$@"); break
+            fi ;;
+    esac
+done
+[ ${#srcs[@]} -gt 0 ] || usage
+
+# Paths relative to the repository root, where prismc and the crate expect them.
+rel=()
+for s in "${srcs[@]}"; do
+    case "$s" in /*) a=$s ;; *) a=$here/$s ;; esac
+    [ -e "$a" ] || { echo "prism: no such file or directory: $s" >&2; exit 2; }
+    r=$(realpath -m --relative-to="$root" "$a")
+    case "$r" in ../*) echo "prism: $s is outside the repository" >&2; exit 2 ;; esac
+    rel+=("$r")
+done
+cd "$root"
+ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
+
+prismc=${PRISMC:-}
+if [ -z "$prismc" ]; then
+    prismc=$(ls -t target/bootstrap/prismc target/keep/prismc-* 2>/dev/null | grep -v old-chain | head -1 || true)
+    [ -n "$prismc" ] || { echo "prism: no prismc binary (target/keep/prismc-*, or make bootstrap)" >&2; exit 2; }
+fi
+
+# The sources as prismc takes them: a `.prism` file with the `.prismtest` of its name.
+sources=()
+for s in "${rel[@]}"; do
+    sources+=("$s")
+    if [[ "$s" == *.prism ]] && [ -f "${s%.prism}.prismtest" ]; then
+        t="${s%.prism}.prismtest"
+        case " ${rel[*]} " in *" $t "*) ;; *) sources+=("$t") ;; esac
+    fi
+done
+
+# Every `.prism` file the sources name, directories walked.
+prism_files() {
+    for s in "${rel[@]}"; do
+        if [ -d "$s" ]; then find "$s" -name '*.prism' | sort; elif [[ "$s" == *.prism ]]; then echo "$s"; fi
+    done
+}
+
+if [ "$cmd" = check ]; then
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    mapfile -t files < <(prism_files)
+    opts=()
+    [ -n "$world" ] && opts=(--world "$world")
+    code=0
+    "$prismc" --check "${opts[@]}" "${files[@]}" --out "$tmp" > /dev/null 2>&1 || code=$?
+    if [ -s "$tmp" ]; then cat "$tmp"; else echo "prism: the checker wrote nothing" >&2; fi
+    exit $code
+fi
+
+first=${rel[0]%/}
+name=$(basename "${first%.prism*}" | tr -c 'a-zA-Z0-9_\n' '_')
+case "$name" in [0-9]*) name="p_$name" ;; esac
+case "$cmd" in
+    compile)
+        [ -n "$out" ] || { echo "prism compile: -o OUT is required" >&2; exit 2; }
+        case "$out" in /*) ;; *) out=$here/$out ;; esac
+        r=$(realpath -m --relative-to="$root" "$out")
+        case "$r" in ../*) ;; *) out=$r ;; esac ;;
+    test|run) out=target/prism/$name ;;
+    *) echo "prism: unknown command $cmd (compile, test, run, check)" >&2; exit 2 ;;
+esac
+# The crate finds prism_rtl and the Worlds at the repository root: by `..`s when OUT is
+# under it (prismc's default), else by the absolute path.
+runtime=()
+case "$out" in /*) runtime=(--runtime "$root") ;; esac
+rm -rf "$out"
+"$prismc" compile "${sources[@]}" -o "$out" --name "$name" "${runtime[@]}"
+[ "$cmd" = compile ] && exit 0
+
+build() { # profile flags...
+    (cd "$out" && CARGO_TARGET_DIR="$root/target/prism-build" cargo build --offline -q "$@")
+}
+
+if [ "$cmd" = test ]; then
+    build
+    exec target/prism-build/debug/"$name" test
+fi
+
+# run: the World from the root's row, unless --world names one.
+asked=$(sed -n 's/^const WORLD: &str = "\(.*\)";$/\1/p' "$out/src/main.rs")
+if [ "$asked" = test ]; then
+    echo "prism run: the program has no @main root to run (prism test runs its tests)" >&2
     exit 2
 fi
-shift 2
-ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
-prismc=""
-for stage in 3 2 1; do
-    if [ -x target/stage$stage/prismc ]; then prismc=target/stage$stage/prismc; break; fi
-done
-name=$(basename "${src%.prism}" | tr -c 'a-zA-Z0-9_\n' '_')
-case "$name" in [0-9]*) name="p_$name" ;; esac
-out=target/prism/$name
-if [ "$cmd" = compile ]; then
-    [ "${1:-}" = "-o" ] && out=$2
+if [ -z "$world" ]; then
+    mapfile -t files < <(prism_files)
+    rootfile=$(grep -l -E '^(fn )?@\$?main\b' "${files[@]}" | head -1 || true)
+    row=$( [ -n "$rootfile" ] && grep -m1 -E '^emit ' "$rootfile" || true)
+    if [[ "$row" == *Ui.* ]] && [[ "$row" != *Gui.* ]]; then
+        echo "prism run: the root's row ($rootfile: $row) has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world" >&2
+        exit 2
+    fi
+    world=$asked
 fi
-# The sources: a directory as itself for a compiled prismc (Fs.List), as its files for
-# compiler zero, whose World answers no listing.
-sources=("$src")
-if [ -f "$src" ]; then
-    stem=${src%.prism}
-    if [ -f "$stem.prismtest" ]; then sources+=("$stem.prismtest"); fi
-elif [ -z "$prismc" ]; then
-    mapfile -t sources < <(find "$src" \( -name '*.prism' -o -name '*.prismtest' \) | sort)
-fi
-if [ -n "$prismc" ]; then
-    "$prismc" compile "${sources[@]}" -o "$out" --name "$name"
-else
-    cargo build --release -q -p prism_zero
-    target/release/prism_zero run prismc/*.prism prismc/templates/*.prism -- compile "${sources[@]}" -o "$out" --name "$name"
-fi
-[ "$cmd" = compile ] && exit 0
-(cd "$out" && CARGO_TARGET_DIR=../../prism-build cargo build --release -q)
-case "$cmd" in
-    run) exec target/prism-build/release/"$name" "$@" ;;
-    test) exec target/prism-build/release/"$name" test "$@" ;;
-    *) echo "prism: unknown command $cmd (run, test, compile)" >&2; exit 2 ;;
+case "$world" in
+    canvas) build --release --features canvas ;;
+    cli) build --release ;;
+    *) echo "prism run: unknown World $world (cli, canvas)" >&2; exit 2 ;;
 esac
+exec target/prism-build/release/"$name" --world "$world" "${progargs[@]}"

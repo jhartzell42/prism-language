@@ -1,0 +1,16 @@
+# The lexer's checks, declarations of lexer-checks.prism's module (examples/README.md).
+check words:
+    Toks "x" => "x\n"
+    Toks "let x = 1" => "let x = 1\n"
+    Toks "@$?draft Ui.Button Ui.*" => "@$?draft Ui.Button Ui.*\n"
+
+check layout:
+    Toks "a:\n    b\n    c\nd" => "a :\nopen b\nsep c\nclose\nsep d\n"
+
+check operators:
+    Toks "a -1 b - 1 x-?y" => "a -pre 1 b - 1 x -? y\n"
+    Toks "f((a, b))" => "f (·( a , b )·)\n"
+
+check texts:
+    Toks "\"hi \{x\} there\"" => "TEXT(hi {x} there)\n"
+    Errs "\"open" => 1

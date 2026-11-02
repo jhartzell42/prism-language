@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# The checker's tests (prismc/README.md, Checker): every corpus program checks clean, or
-# gives exactly the diagnostics its `pos/NAME.expected` records (the programs the README
-# lists as wrong by the books); every negative program under `neg/` gives exactly its
-# `.expected` diagnostic. A `# args: ...` first line passes options (`--world Ui`).
-# Then the typed output (prismc/typed.prism): `--typed` over chess and the conformance
-# counter annotates every expression with a type, none of them `unknown`.
-# Exits 1 listing the mismatches, 0 when everything matches. `--update` rewrites the
-# `.expected` files from what the checker says now, for review.
+# The checker's tests (prismc/README.md, Checker), through a native prismc's `--check`:
+# every corpus program checks clean, or gives exactly the diagnostics its
+# `pos/NAME.expected` records (the programs the README lists as wrong by the books); every
+# negative program under `neg/` gives exactly its `.expected` diagnostic. A `# args: ...`
+# first line passes options (`--world Ui`). Then the typed output (prismc/typed.prism):
+# `--typed` over chess and the conformance counter annotates every expression with a type,
+# none of them `unknown`. Exits 1 listing the mismatches, 0 when everything matches.
+# `--update` rewrites the `.expected` files from what the checker says now, for review.
 #
-# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change.
+# prismc is `$PRISMC`, or the newest of target/bootstrap/prismc and target/keep/prismc-*,
+# as the `prism` script picks it.
+#
+# Written by Claude, 2 November 2026, on the claude-self-hosting branch. Subject to change.
 set -u
 cd "$(dirname "$0")/../../.." || exit 2
 here=tests/prismc/check
@@ -21,11 +24,10 @@ for a in "$@"; do
     esac
 done
 
-cargo build --release -q -p prism_zero || exit 2
-zero=target/release/prism_zero
-# compiler zero recurses on the Rust stack (prismc/README.md, Workarounds SK)
+prismc=${PRISMC:-$(ls -t target/bootstrap/prismc target/keep/prismc-* 2>/dev/null | grep -v old-chain | head -1)}
+[ -x "$prismc" ] || { echo "no prismc binary (target/keep/prismc-*, or make bootstrap)" >&2; exit 2; }
+echo "prismc: $prismc"
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
-prismc=(prismc/*.prism prismc/templates/*.prism)
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -34,7 +36,7 @@ trap 'rm -rf "$tmp"' EXIT
 check() {
     local name=$1; shift
     rm -f "$tmp/$name.out"
-    "$zero" run "${prismc[@]}" -- --check "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
+    "$prismc" --check "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
     if [ ! -f "$tmp/$name.out" ]; then
         { echo "(the checker wrote nothing)"; tail -3 "$tmp/$name.err"; } > "$tmp/$name.out"
     fi
@@ -99,7 +101,7 @@ for name in $(printf '%s\n' "${!typed[@]}" | sort); do
     wanted "$name" || continue
     rm -f "$tmp/$name.typed"
     # shellcheck disable=SC2086
-    "$zero" run "${prismc[@]}" -- --typed ${typed[$name]} --out "$tmp/$name.typed" > "$tmp/$name.err" 2>&1
+    "$prismc" --typed ${typed[$name]} --out "$tmp/$name.typed" > "$tmp/$name.err" 2>&1
     if [ ! -s "$tmp/$name.typed" ]; then
         failed+=("$name"); echo "typed $name: (nothing written)"
     else

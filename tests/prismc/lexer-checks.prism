@@ -1,26 +1,11 @@
-# Checks of prismc's lexer on small inputs: each renders a text's tokens in the layout
-# corpus's notation (prism_syntax/src/corpus.rs), as `dump --tokens` does.
+# The helpers of prismc's lexer checks (lexer-checks.prismtest): each renders a text's
+# tokens in the layout corpus's notation, as `prismc --tokens` does.
 use Ast.*
 use Lexer.*
 
-Toks: fn Text -> Text
+Toks: unbounded fn Text -> Text
 fn Toks src = RenderTokens (LexFile src).tokens
 
-Errs: fn Text -> Nat
+Errs: unbounded fn Text -> Nat
 fn Errs src = Len (LexFile src).diags
 
-check words:
-    Toks "x" => "x\n"
-    Toks "let x = 1" => "let x = 1\n"
-    Toks "@$?draft Ui.Button Ui.*" => "@$?draft Ui.Button Ui.*\n"
-
-check layout:
-    Toks "a:\n    b\n    c\nd" => "a :\nopen b\nsep c\nclose\nsep d\n"
-
-check operators:
-    Toks "a -1 b - 1 x-?y" => "a -pre 1 b - 1 x -? y\n"
-    Toks "f((a, b))" => "f (·( a , b )·)\n"
-
-check texts:
-    Toks "\"hi \{x\} there\"" => "TEXT(hi {x} there)\n"
-    Errs "\"open" => 1

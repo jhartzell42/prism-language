@@ -11,7 +11,7 @@ branch and why.*
 ## The goal
 
 One binary, `prismc`, written in Prism, that compiles Prism to Rust, compiles itself
-(stage 2 and stage 3 byte-equal), and compiles chess, which links a canvas World and
+(the crate it emits for itself is the crate it was built from), and compiles chess, which links a canvas World and
 opens a window on macOS. Full front end: every language claim that is in (see
 `decisions.md`, "Features in and out") is implemented completely, with tests. Simplified
 back end: Graph's propagation (heights, subscriptions, demand, double-buffered holds, the
@@ -21,39 +21,32 @@ serialization or checkpoints.
 ## The crates and directories
 
 ```
-prism_rt/        the runtime library every compiled program links: values, nodes,
-                 heights, holds, keyed for, host suppliers, patches, first-value query,
-                 @Defer and pending, the collector, the Test World, Fs and Process Worlds
-prism_dyn/       the dynamic layer of the semantics both run on: application with the
-                 lifting table, trait dispatch, builtins, patterns, `&` lens paths, the
-                 widget bindings, the Unwrap World; `rt`, what emitted code calls (D16)
-prism_zero/      compiler zero: a Rust interpreter of Prism (lexer, parser, dynamic
-                 evaluator over prism_rt). Scaffolding: it runs prismc once, to compile
-                 prismc; deleted when stage 3 lands. No type checker (decisions.md D3).
-prismc/          the compiler, in Prism: lexer, parser, checker, lowering, emission
-                 through code templates, the driver (a rebuild over the source set)
-prelude/         the Prism prelude, shared by prism_zero and compiled programs
-examples/        chess (rules, board, window library), counter, half counter, todos
-worlds/canvas/   the macOS canvas World (winit + softbuffer + tiny-skia + fontdue):
-                 Gui.Window, Gui.Scene, Gui.Metrics, Gui.Focus; no hit testing
-tests/           conformance transcripts (the Conformance book's test language),
-                 goldens, the zombie-loop collector test, stage-2/stage-3 byte equality
-prism_runtime/   Jimmy's earlier runtime prototype, untouched
+prism_runtime_lib/  prism_rtl, the runtime library every compiled program links:
+                    nodes, heights, holds, keyed for, patches, first values, @Defer
+                    and pending, jobs, the Test World (docs/backend.md)
+prismc/             the compiler, in Prism: lexer, parser, checker, lowering, emission
+                    through code templates, the driver (a rebuild over the source set)
+prelude/            the Prism prelude the checker reads; its Rust is prismc's
+                    templates/prelude.prism, emitted beside every program
+examples/           chess (rules, board, window library)
+worlds/cli/         the CLI World: Fs, Process, Time, Prelude.Unwrap
+worlds/canvas_rtl/  the canvas World (winit + softbuffer + tiny-skia + fontdue):
+                    Gui.Window, Gui.Scene, Gui.Metrics, Gui.Focus
+tests/              conformance transcripts (the Conformance book's test language), the
+                    checker's tests, the bootstrap's fixed point
+prism               the command: compile, test, run, check
 ```
 
 ## The pipeline
 
-- `prism_zero run <files>` lexes, parses and evaluates a program under a World.
-- `prismc` (Prism) reads sources through `Fs.Contents`, lexes, parses, type checks,
-  lowers to SSA, emits Rust through code templates, writes through `Fs.Output`, exits
-  through `Process.Exit`. A batch compile is three ticks plus the compute ticks of its
-  unbounded parser.
-- Stage 1: `prism_zero run prismc/*.prism -- prismc/*.prism` emits `prismc` in Rust;
-  cargo builds it. Stage 2: that binary compiles `prismc` again. Stage 3: stage 2's
-  output compiles `prismc`. Stage 2 and 3 are byte-equal.
-- Chess: `prismc examples/chess/*.prism` emits Rust that links `prism_rt` and
-  `worlds/canvas`; under the Test World the same program runs the conformance
-  transcripts.
+- `prismc` (Prism) reads sources through `Fs.Contents` (a directory through `Fs.List`),
+  lexes, parses, type checks, lowers, emits a Rust crate over `prism_rtl` through code
+  templates, writes through `Fs.Output`.
+- The bootstrap: a kept native prismc compiles `prismc/` into gen1, cargo builds it, gen1
+  compiles `prismc/` into gen2, and gen1 and gen2 are byte-equal (the fixed point).
+- Chess: `./prism run examples/chess` compiles it, builds it with the canvas World and
+  opens the window; `./prism test examples/chess` runs its transcripts under the compiled
+  Test World.
 
 ## The tick
 
@@ -66,9 +59,11 @@ armed; a World that sees it ticks again, with no inputs if it has none.
 
 ## Single commands
 
-- `make test` (or `cargo test --workspace`): every Rust test, every conformance
-  transcript, the stage-2/3 byte check once `prismc` exists.
-- `make chess`: build and open chess on macOS.
-- `make bootstrap`: stage 1, 2, 3.
+- `make test`: `cargo test --workspace`, every compiled transcript
+  (`tests/compiled/run.sh`), the checker's tests (`tests/prismc/check/run.sh`), and the
+  bootstrap's fixed point.
+- `make chess`: build and open chess (`./prism run examples/chess`).
+- `make bootstrap`: the kept prismc to gen1 to gen2, byte-equal; installs
+  `target/bootstrap/prismc`.
 
 The README states these three.

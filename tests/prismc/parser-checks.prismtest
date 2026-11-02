@@ -1,0 +1,24 @@
+# The parser's checks, declarations of parser-checks.prism's module (examples/README.md).
+check declarations:
+    Dump "let x = 1" => "(module\n  (let x 1))\n"
+    Dump "F: fn Nat -> Nat\nfn F n = n + 1" => "(module\n  (sig F (fn Nat -> Nat))\n  (fn F (params n)\n    (+ n 1)))\n"
+    Dump "type Op = choice:\n    Add Int\n    Swap" => "(module\n  (type Op choice\n    (case Add Int)\n    (case Swap)))\n"
+
+check precedence:
+    Dump "let c = $count + 1 on !click" => "(module\n  (let c (on (+ $count 1) !click)))\n"
+    Dump "let s = Size $k + 1" => "(module\n  (let s (call Size (+ $k 1))))\n"
+    Dump "let n = not a == b" => "(module\n  (let n (not (== a b))))\n"
+    Dump "let t = F a, G b, c" => "(module\n  (let t (call F a (call G b) c)))\n"
+
+check widgets:
+    Dump "@w:\n    !inc <- Ui.Button(label=$\"Go\")\n    $n <- 0 then $n + 1 on !inc" => "(module\n  (widget @w\n    (bind !inc (call() Ui.Button label=$\"Go\"))\n    (hold $n 0 then (on (+ $n 1) !inc))))\n"
+
+# The step's `=>` is spelled `\u{3d}>`, so that the check line's own `=>` is the only one
+# on the line.
+check tests:
+    Dump "test t, @w:\n    build\n        \u{3d}> expect Ui.Label(text=\"a\")" => "(module\n  (test t @w\n    (step build\n      (=> expect (record Ui.Label text=\"a\")))))\n"
+
+check recovery:
+    Errors "fn F x = (1 +\nlet y = 2" => [["expected an expression, found `let`"]]
+    Errors "let a = 1\n$x <- 2\nlet b = 3" => [["a bind or hold is a statement of a widget block: nothing at top level is built (Semantics ch. 6)"]]
+    Dump "let a = )\nlet b = 3" => "(module\n  (let b 3))\n"

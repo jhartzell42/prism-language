@@ -3245,17 +3245,27 @@ fn LoInlineWidget wx, benv, menv, qk, v, args, e:
             otherwise: (([[]], nil))
     match ?body:
         nil:
-            # A widget of several clauses in a static position: the clause is chosen at the
-            # build from the arguments, which are plain, so it is a generation built once
-            # (a `rebuild` whose source never changes), each clause a row (`ClauseRow`).
-            match args[0]:
-                ? a:
-                    let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
-                    LoRebuildLine wx, benv, menv, a.value, call, e, nil
-                nil:
-                    let wx2 = update wx:
-                        &_.build <= Push &_.build, (LoTodoDo "a widget of several clauses that takes no arguments")
-                    ((wx2, WrUnit))
+            if (Len clauses) == 0:
+                # A widget with no body, a builtin of the prelude this back end does not
+                # lower (`@HostSome`, `@Element`, `@Machine`, ...): refused, and not taken
+                # for a widget of several clauses, whose generation would lower the call
+                # again, without end.
+                let wx2 = update wx:
+                    &_.build <= Push &_.build, (LoTodoDo "the builtin widget {BareName qk}")
+                ((wx2, WrUnit))
+            else:
+                # A widget of several clauses in a static position: the clause is chosen at
+                # the build from the arguments, which are plain, so it is a generation built
+                # once (a `rebuild` whose source never changes), each clause a row
+                # (`ClauseRow`).
+                match args[0]:
+                    ? a:
+                        let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
+                        LoRebuildLine wx, benv, menv, a.value, call, e, nil
+                    nil:
+                        let wx2 = update wx:
+                            &_.build <= Push &_.build, (LoTodoDo "a widget of several clauses that takes no arguments")
+                        ((wx2, WrUnit))
         ? body:
             if wx.depth > 16: ((wx, WrUnit))
             else:

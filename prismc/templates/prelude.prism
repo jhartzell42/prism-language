@@ -744,21 +744,15 @@ pub fn run_to_end<B>(job: Rc<dyn Job<B>>) -> B {
 
 // ---- Running ----------------------------------------------------------------------------
 
-/// `--world NAME` among the arguments: the World, and the arguments without the option.
+/// `--world NAME` as the first argument: the World, and the arguments without the
+/// option. Only the first: a `--world` later on is the program's own (prismc's `--check
+/// --world Ui` names the World the checker checks against).
 pub fn world_option(args: &[String], default: &str) -> (String, Vec<String>) {
-    let mut world = default.to_string();
-    let mut rest = Vec::new();
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        if a == "--world" {
-            world = it.next().cloned().unwrap_or(world);
-        } else if let Some(w) = a.strip_prefix("--world=") {
-            world = w.to_string();
-        } else {
-            rest.push(a.clone());
-        }
+    match args.first().map(String::as_str) {
+        Some("--world") if args.len() > 1 => (args[1].clone(), args[2..].to_vec()),
+        Some(a) if a.starts_with("--world=") => (a["--world=".len()..].to_string(), args[1..].to_vec()),
+        _ => (default.to_string(), args.to_vec()),
     }
-    (world, rest)
 }
 
 /// Run on a thread with a large stack: unbounded code runs direct-style within a cycle
