@@ -806,7 +806,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: 44 of 49 pass.
+`tests/compiled/run.sh`, which runs every program every time: 52 of 57 pass, chess's board included.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -829,29 +829,29 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   one unit of work, gap LP), `be-lambda-cycle` (mutually recursive unbounded lambdas, a
   cycle a call), `be-row-values` (a row kind's values built, compared, shown,
   matched and sent inside an element, pick RV), `be-bundle` (pick BA),
-  `be-widget-args` (pick WB).
+  `be-widget-args` (pick WB), `be-host-param` (pick HO), `be-event-values` (pick EV2),
+  `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry` (pick DO).
   `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
   `sem-ch06-birds`, `sem-ch07-births`, `sem-ch07-rounds`, `sem-ch07-paged` (gap DY),
   `sem-ch09-hosts` (pick HO), `sem-appB-widgets` (pick MA), `ts-ch03-traits`,
-  `ts-ch04-lifting`, chess's `rules.prismtest` (`chess-rules`), and prismc's own
-  `lexer-checks` and `parser-checks`.
+  `ts-ch04-lifting`, chess (`board.prismtest`, byte-equal to `board.expected`, and
+  `rules.prismtest`; `chess-rules` alone too), and prismc's own `lexer-checks` and
+  `parser-checks`. `./prism run examples/chess` under `xvfb-run -a` opens the window;
+  a robot (Xlib and XTest, as `worlds/canvas_rtl/tests/xvfb_smoke.rs` clicks) clicks e2
+  then e4, the root's result (printed with `PRISM_RESULTS` set) goes from "White's turn"
+  to "Black's turn", and closing the window exits 0.
 - **Refused by the checker,** as the books have them wrong (`conf-ch01-motd`,
   `sem-ch04-labels`, `sem-ch05-and-blocks`, `sem-ch08-viewer`): `compile` refuses too.
-- **Not lowered yet,** each refused loudly at compile: chess's board, whose window
-  library hosts a widget parameter's argument (`@Grid 8, @widget: ..`, `@Window ..,
-  @$board`) and takes its result back across the host, answers with event blueprints
-  built from the host's own events (`?Boxed`'s `@ !Filter (?ClickTo p, !in)`, a plain
-  function with a `!` parameter), and gathers a `for` whose rows give a dynamic
-  (`$sizes`, `Gui.Metrics` first values). `ts-ch04-lifting` passes: a function lifted over an event
-  runs at its firing, so its `x on !e` is `x`, and an `if` over events gates each branch
-  by the condition and merges them.
+- **Lifting:** `ts-ch04-lifting` passes: a function lifted over an event runs at its
+  firing, so its `x on !e` is `x`, and an `if` over events gates each branch by the
+  condition and merges them.
 - **Speed:** the kept prismc compiles a conformance program in under a second, and cargo
   builds it in about 1 s against the shared target directory; the whole of
-  `tests/compiled/run.sh` takes about 2.5 minutes. prismc compiles itself in about 4.5
+  `tests/compiled/run.sh` takes about 2.5 minutes. prismc compiles itself in about 5
   minutes and cargo builds it in about 2.5; `tests/prismc/check/run.sh` takes about 1.5
-  minutes.
+  minutes; chess's tests run in under a second (release) and build in about 8 s.
 - **prismc itself** checks clean under `--check`.
 
 ### The bootstrap
@@ -1088,6 +1088,18 @@ Each is Claude's, for Jimmy to overturn.
 - **PU Pushes.** A place whose element answers a dynamic keeps its element
   (`f_element`), registers with `cx.listen_at`, and answers a push or a host's answer by
   path by writing its hold and patching the node.
+- **RD The root's dynamic result** goes to the World at the build and in the patch pass
+  whenever it moved (`result_value`, `result_last`); a test root registers under its
+  sigils (`@$board` is `$board`).
+- **DO One decision per input a tick.** A combinator takes its stamped inputs as it
+  decides them (`Stamped::take`), so a node woken again in its tick (a host's answer
+  re-entering the node its child is inlined into) decides only what came since; a hold
+  written twice in a tick is a fault of the tick, `Runtime.TwoWrites` (Semantics R3;
+  `be-host-reentry`). A builder run again in its tick, after a host's document moved,
+  adds and drops rows but leaves kept rows their entry. *If otherwise:* kept rows
+  compare their entry, which needs `^Eq` of every row value.
+- **PS `Pod::Shown`** compares, orders and hashes by its structure, its text only
+  printed, so a key with an `impl ^Show` (chess's `Spot`, `e2`) orders by its fields.
 - **MA `@Machine`, local functions, `!MergeAll`.** `@Machine step, init, !a` is a hold
   of the state and a sink on `!a` that calls the named step function, writes the state
   and fires the output on `? b`. A block's local function (`fn Paired k, v = ((k, v))`)
@@ -1149,10 +1161,10 @@ ruling taken (Claude's).
   `Done` and calls `?`.
 - **DY Dynamics across nodes.** A row reads its block's events through ports, and its
   block's holds and dynamic `let`s through its parent at its own read point
-  (`sem-ch07-paged`'s inner `rebuild $src`). *First ruling:* a row is not marked when
-  they move; a generation that reads one is rebuilt only with its parent's. *Next:* the
-  contract's `Dynamic` with its update port. A hosted child reads nothing of its host's
-  block, and a host's block nothing of its child's but the document.
+  (`sem-ch07-paged`'s inner `rebuild $src`). A `for` row is marked by the block's writes
+  of what it reads (`Wx.rowHolds`, the reads marked `^parent:`), and the block is
+  patched after its rows are built; a generation is not marked, and is rebuilt only with
+  its parent's. *Next:* the contract's `Dynamic` with its update port.
 - **HS Hosting at the boundary of plain data.** The contract's supplier is typed per
   child element (`Fn(Path, ElementOf<c>) -> blueprint`); a supplier's `o` is its own per
   place (rank 2), so here a blueprint answers with an `Answering` (prism_rtl's `host`): a
