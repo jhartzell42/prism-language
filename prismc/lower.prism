@@ -688,6 +688,9 @@ type Bn = choice:
     BnHold Text, RsTy
     BnDyn Ex, [Text], RsTy
     BnEv EvRef, RsTy
+    # A tuple pattern's parts, each its name's binding (`((id, !incoming)) <- Gui.Window(..)`),
+    # where a bundle's output goes.
+    BnParts [?Bn]
 
 type LoEnv = record:
     names: (Text ==> Bn)
@@ -910,6 +913,7 @@ fn LoName lx, env, n, span:
         ? (BnHold f, ht): VlOwned (XMethod (XRaw "self.{f}"), "get", [[XRaw "cx"]]), ht
         ? (BnDyn x, ignore, dt): VlOwned x, dt
         ? (BnEv ignore, et): VlOwned (LoTodo "an event read as a value"), et
+        ? (BnParts ignore): VlOwned (LoTodo "a tuple pattern's binding as a value"), t
         nil:
             let ((?qk, why)) = ResolveValue lx.g, lx.home, n
             match ?qk:
@@ -2967,6 +2971,9 @@ LoPreBind: unbounded fn Wx, LoEnv, LoEnv, Stmt -> ((Wx, LoEnv, LoEnv))
 fn LoPreBind wx, benv, menv, s = match s.kind:
     SBind p, init, ?step: match p.kind:
         PName n: LoPreBindName wx, benv, menv, n, (LoHowBound ?step)
+        PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
+            PName n: LoPreBindName w, be, me, n, "bind"
+            otherwise: ((w, be, me))
         otherwise: ((wx, benv, menv))
     SLet p, ignore, ignore: match p.kind:
         PName n: LoPreBindName wx, benv, menv, n, "let"
@@ -3010,6 +3017,12 @@ fn LoIsSwitched t = match t:
 # The binding a prebound name has.
 ?LoBound: fn LoEnv, Pattern -> ?Bn
 fn ?LoBound env, p = match p.kind:
+    PName n: env.names[SNameKey n]
+    PTuple ps: ? (BnParts (Each ps, \|q| ?LoBoundName env, q))
+    otherwise: nil
+
+?LoBoundName: fn LoEnv, Pattern -> ?Bn
+fn ?LoBoundName env, p = match p.kind:
     PName n: env.names[SNameKey n]
     otherwise: nil
 
@@ -3240,6 +3253,75 @@ fn LoRequestField tg, fname:
 LoElementOutput: unbounded fn Wx, LoEnv, TagInfo, RsTy, Nat, ?Bn, Ex -> ((Wx, Wres))
 fn LoElementOutput wx, menv, tg, out, pos, ?bound, level:
     let lx = wx.lx
+    match ?bound:
+        ? (BnParts parts): LoBundleOutput wx, tg, out, pos, parts, level
+        otherwise: LoElementOutputOf wx, menv, tg, out, pos, ?bound, level
+
+# A bundle's output (`Gui.Window`'s `((WindowId, !WindowInput))`), taken apart by its
+# tuple pattern: the plain parts are the place's first value (one part itself, several a
+# tuple), the event part its answers (docs/backend.md, "Answers"; the World protocol's
+# bundle). A `$` part, or a second event part, is not lowered yet.
+LoBundleOutput: unbounded fn Wx, TagInfo, RsTy, Nat, [?Bn], Ex -> ((Wx, Wres))
+fn LoBundleOutput wx, tg, out, pos, parts, level:
+    let layers = match tg.out:
+        TyTuple cs: Each cs, \|c| LoLayer c
+        otherwise: [[]]
+    let tys = match out:
+        RsTuple ts: ts
+        otherwise: [[]]
+    let idx = Range0 (Len layers)
+    let plainIx = Filter idx, \|i| (Or layers[i], "") == ""
+    let evIx = Filter idx, \|i| (Or layers[i], "") == "!"
+    let dynIx = Filter idx, \|i| (Or layers[i], "") == "$"
+    let wx1 = LoBundleFirst wx, tg, pos, plainIx, tys, parts, level
+    let wx2 = Fold evIx, wx1, \|w, i| LoBundleAnswer w, pos, (Or tys[i], RsUnit), (Or parts[i], nil)
+    if (Len evIx) > 1 or (Len dynIx) > 0:
+        let wx3 = update wx2:
+            &_.build <= Push &_.build, (LoTodoDo "a bundle with a `$` part or two event parts ({tg.name})")
+        ((wx3, WrUnit))
+    else: ((wx2, WrUnit))
+
+# A bundle's plain parts, from the place's first value: each bound part a field.
+LoBundleFirst: unbounded fn Wx, TagInfo, Nat, [Nat], [RsTy], [?Bn], Ex -> Wx
+fn LoBundleFirst wx, tg, pos, plainIx, tys, parts, level = match plainIx:
+    [[]]: wx
+    otherwise:
+        let one = (Len plainIx) == 1
+        let plainTy = if one: Or tys[Or plainIx[0], 0], RsUnit else: RsTuple (Each plainIx, \|i| Or tys[i], RsUnit)
+        let asked = XMethod (XRaw "cx"), "first_value", [[(XUnary "&", level)]]
+        let first = XTry (XMethod asked, "ok_or", [[(XCall "Fault::answer", [[XRaw "\"no first value for {tg.name}\""]])]])
+        let wx1 = update wx:
+            &_.lets <= Append &_.lets, [[(DoLet (PaBind "first_{pos}"), first), (DoLet (PaBind "bundle_{pos}"), (XDecode plainTy, (XRaw "&first_{pos}")))]]
+            &_.fallible <= True
+        Fold (Range0 (Len plainIx)), wx1, \|w, k|
+            let i = Or plainIx[k], 0
+            match parts[i]:
+                ? (? (BnLocal rs, ignore, ignore)):
+                    let f = Drop rs, 5
+                    let part = if one: XRaw "bundle_{pos}" else: XRaw "bundle_{pos}.{k}.clone()"
+                    update w:
+                        &_.lets <= Push &_.lets, (DoLet (PaBind f), part)
+                        &_.fields <= Push &_.fields, ((f, (Or tys[i], RsUnit), "place {pos}'s answer, part {i} of its first value"))
+                        &_.inits <= Push &_.inits, ((f, (XMethod (XRaw f), "clone", [[]])))
+                otherwise: w
+
+# A bundle's event part: the place's answers.
+LoBundleAnswer: fn Wx, Nat, RsTy, ?Bn -> Wx
+fn LoBundleAnswer wx, pos, et, ?b:
+    let t = match et:
+        RsEvent inner: inner
+        otherwise: et
+    let ((id, wx2)) = match ?b:
+        ? (BnEv er, ignore): ((er.node, wx))
+        otherwise:
+            let ((nm, w)) = LoFresh wx, "place_{pos}"
+            LoAddGn w, nm, t, "answer", 0
+    update wx2:
+        &_.answers <= Push &_.answers, ((pos, id, t))
+
+LoElementOutputOf: unbounded fn Wx, LoEnv, TagInfo, RsTy, Nat, ?Bn, Ex -> ((Wx, Wres))
+fn LoElementOutputOf wx, menv, tg, out, pos, ?bound, level:
+    let lx = wx.lx
     match LoLayer tg.out:
         "!":
             let ((id, wx2)) = match ?bound:
@@ -3294,6 +3376,11 @@ fn LoWidgetLine wx, benv, menv, e, ?bound:
     let ?target = match ?bound:
         ? (BnEv er, ignore): ? er.node
         otherwise: nil
+    LoWidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
+
+LoWidgetCall: unbounded fn Wx, LoEnv, LoEnv, Expr, ?Bn, Text, [Arg], ?Nat -> ((Wx, Wres))
+fn LoWidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
+    let lx = wx.lx
     if qk == "Prelude.@started": LoStartedLine wx, ?bound
     else: if qk == "Prelude.@Switch": LoSwitchLine wx, menv, args
     else: if qk == "Prelude.@Defer": LoDeferLine wx, menv, args, e, ?target
