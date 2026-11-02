@@ -691,6 +691,10 @@ type Bn = choice:
     # A tuple pattern's parts, each its name's binding (`((id, !incoming)) <- Gui.Window(..)`),
     # where a bundle's output goes.
     BnParts [?Bn]
+    # A widget parameter's argument (`@child`, given `@widget: ..` or `@$board`): the
+    # blueprint expression with the caller's environments and context, a closure lowered
+    # where the parameter is applied (pick WB).
+    BnWidget Expr, LoEnv, LoEnv, Lx
 
 type LoEnv = record:
     names: (Text ==> Bn)
@@ -914,6 +918,7 @@ fn LoName lx, env, n, span:
         ? (BnDyn x, ignore, dt): VlOwned x, dt
         ? (BnEv ignore, et): VlOwned (LoTodo "an event read as a value"), et
         ? (BnParts ignore): VlOwned (LoTodo "a tuple pattern's binding as a value"), t
+        ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (LoTodo "a widget parameter read as a plain value"), t
         nil:
             let ((?qk, why)) = ResolveValue lx.g, lx.home, n
             match ?qk:
@@ -3161,6 +3166,7 @@ fn LoBuildLine wx, benv, menv, e, ?bound:
     let full = LoTyOf lx, e.span
     match e.kind:
         EGroup x: LoBuildLine wx, benv, menv, x, ?bound
+        EWidgetBlock b: LoInlineBlock wx, benv, menv, b, lx
         EFor ?binders, source, body: LoForLine wx, benv, menv, ?binders, source, body, e, ?bound
         ERebuild scrut, body: LoRebuildLine wx, benv, menv, scrut, body, e, ?bound
         EIf (CondExpr c), thenB, (? elseB): LoIfGenLine wx, menv, c, thenB, elseB, e
@@ -3376,7 +3382,45 @@ fn LoWidgetLine wx, benv, menv, e, ?bound:
     let ?target = match ?bound:
         ? (BnEv er, ignore): ? er.node
         otherwise: nil
-    LoWidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
+    let ?param = match callee.kind:
+        EName n: if (Len n.path) == 1: menv.names[SNameKey n] else: nil
+        otherwise: nil
+    match ?param:
+        ? (BnWidget x, cbenv, cmenv, clx): LoApplyWidgetParam wx, x, cbenv, cmenv, clx, (Len args)
+        otherwise: LoWidgetCall wx, benv, menv, e, ?bound, qk, args, ?target
+
+# A widget parameter applied (`@child` as a statement): its argument lowered here, in its
+# caller's environments and context, so its places take this node's next positions
+# (transparent, Semantics ch. 8). A blueprint parameter applied to arguments is not
+# lowered yet.
+LoApplyWidgetParam: unbounded fn Wx, Expr, LoEnv, LoEnv, Lx, Nat -> ((Wx, Wres))
+fn LoApplyWidgetParam wx, x, cbenv, cmenv, clx, nargs:
+    if nargs > 0:
+        let wx2 = update wx:
+            &_.build <= Push &_.build, (LoTodoDo "a widget parameter applied to arguments")
+        ((wx2, WrUnit))
+    else: if wx.depth > 32: ((wx, WrUnit))
+    else:
+        let lx = wx.lx
+        let inner = update wx:
+            &_.lx <= clx
+            &_.depth <= &_.depth + 1
+        let ((done, res)) = LoBuildLine inner, cbenv, cmenv, x, nil
+        let back = update done:
+            &_.lx <= lx
+            &_.depth <= wx.depth
+        ((back, res))
+
+# A widget block in a static position, `@widget:` applied: its statements lowered into this
+# node in a scope of their own.
+LoInlineBlock: unbounded fn Wx, LoEnv, LoEnv, Block, Lx -> ((Wx, Wres))
+fn LoInlineBlock wx, benv, menv, b, lx:
+    let inner = update wx:
+        &_.result <= WrUnit
+    let done = LoBlockInto inner, benv, menv, b
+    let back = update done:
+        &_.result <= wx.result
+    ((back, done.result))
 
 LoWidgetCall: unbounded fn Wx, LoEnv, LoEnv, Expr, ?Bn, Text, [Arg], ?Nat -> ((Wx, Wres))
 fn LoWidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
@@ -3536,6 +3580,9 @@ fn LoBindParam wx, cbenv, cmenv, be, me, nkey, pty, arg:
     let lx = wx.lx
     let t = LoTy lx, (LoPeel pty)
     match LoLayer pty:
+        "@":
+            let b = BnWidget arg, cbenv, cmenv, lx
+            ((wx, (LoBind be, nkey, b), (LoBind me, nkey, b)))
         "!":
             let ((r, wx2)) = LoEv wx, cmenv, arg
             let b = BnEv r, t

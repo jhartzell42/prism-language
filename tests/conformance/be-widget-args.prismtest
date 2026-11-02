@@ -1,0 +1,8 @@
+# The widget arguments' tests: declarations of be-widget-args.prism (Semantics chapter 6).
+
+test arguments_are_inlined, @page:
+    build
+    click at 6
+    click at 4
+    click at 6
+    click at 0
