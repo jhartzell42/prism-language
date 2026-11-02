@@ -389,15 +389,13 @@ fn TmMethod doc, signature, body = inline_text <rust>
 </rust>
 
 # A `for`'s builder (docs/backend.md, "Dynamic structure"), run at the build and in the
-# build list after a tick that changed its source.
+# build list after a tick that changed its source, once.
 TmForBuild: fn Text, Text, Text, Text, Text, Text, Text -> Text
 fn TmForBuild name, at, source, keyTy, valueTy, rowNode, passed = inline_text <rust>
 /// The rows of the `for` at `{{at}}`: rows whose key left are torn down, new keys are
 /// built under it at `[k]`, kept rows hear their entry; from the values after the tick.
 fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     let items: Map<{{keyTy}}, {{valueTy}}> = {{source}};
-    // Run again in the tick (a host's document moved): kept rows had their entry.
-    let again = self.{{name}}_built.replace(cx.tick()) == cx.tick();
     let old = self.{{name}}.borrow().clone();
     for (k, row) in old.iter() {
         if !items.contains_key(k) {
@@ -409,9 +407,7 @@ fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     for (k, v) in items.iter() {
         let row = match old.get(k) {
             Some(row) => {
-                if !again {
-                    row.update(v.clone(), cx);
-                }
+                row.update(v.clone(), cx);
                 row.clone()
             }
             None => {{rowNode}}::build(self.{{at}}.child(Segment::Key(k.to_pod())), k.clone(), v.clone(), Rc::downgrade(self){{passed}}, cx)?,

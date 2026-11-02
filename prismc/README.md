@@ -1095,9 +1095,21 @@ Each is Claude's, for Jimmy to overturn.
   decides them (`Stamped::take`), so a node woken again in its tick (a host's answer
   re-entering the node its child is inlined into) decides only what came since; a hold
   written twice in a tick is a fault of the tick, `Runtime.TwoWrites` (Semantics R3;
-  `be-host-reentry`). A builder run again in its tick, after a host's document moved,
-  adds and drops rows but leaves kept rows their entry. *If otherwise:* kept rows
-  compare their entry, which needs `^Eq` of every row value.
+  `be-host-reentry`). A builder runs once a tick, after propagation, from the values
+  after the tick (Semantics R7): its source's marks list it, and nothing lists it again.
+- **HD A host's child document is a dynamic within the tick.** `$doc` is each child
+  place's level pulled from the owner node at the read point (`Level::pulled`, a
+  closure over the place's getter): the current levels during propagation, the levels
+  after the tick from then on, like any `$`. The host stores no document and the patch
+  pass writes none (it only tells a forwarded element it moved). The document field's
+  reads are everything the child's places and builders read, so a write to a child hold
+  marks the owner's places and builders over `$doc`; the owner's `build` runs a hosted
+  child's builders before its host's (`LoInnermostFirst`), so a `for` over `$doc` sees the
+  child's structure settled. `be-host-doc-in-tick` (failed before: a row of a `for` over
+  `$doc` and an owner hold showed the stale element for a tick, the document having
+  moved only in the patch pass, which ran the builder a second time). *Refused:* the
+  document as a hold-like cell written by the patch pass, which puts an end-of-tick
+  artifact inside a `$`.
 - **PS `Pod::Shown`** compares, orders and hashes by its structure, its text only
   printed, so a key with an `impl ^Show` (chess's `Spot`, `e2`) orders by its fields.
 - **MA `@Machine`, local functions, `!MergeAll`.** `@Machine step, init, !a` is a hold

@@ -21,9 +21,12 @@
 //! - **The child is inlined into the host's owner**, the node of the host's block: its
 //!   places emit under the host's child path, and the host answers one by calling the
 //!   owner's `Node::answer` under that path.
-//! - **The child's document** is a dynamic of each child place's `Level`, read before
-//!   the tick during propagation and after it from then on, as a hold is
-//!   ([`HostDoc`]); the owner is patched and its builders run when it moves.
+//! - **The child's document is a dynamic within the tick**: each child place's `Level`
+//!   is pulled from the owner node at the read point ([`Level::Pulled`]), so `$doc` reads
+//!   the current levels during propagation and the levels after the tick from then on,
+//!   like any `$`. Nothing is stored and nothing is written by the patch pass; the
+//!   owner's places and builders that read `$doc` are marked by the child's own holds,
+//!   which the compiler closes over (`prismc`, the host line's reads).
 //! - **The sandbox law** is the checker's (the remainder row at the forwarding arm,
 //!   Semantics ch. 9); at run time nothing the child emits reaches the document except
 //!   through a blueprint the supplier built.
@@ -37,9 +40,9 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
 
-use crate::cells::{Dynamic, Event, Handle, Live, Port, Tick};
+use crate::cells::{Dynamic, Event, Handle, Live, Port};
 use crate::collections::Map;
-use crate::cx::{Cx, Done, Node};
+use crate::cx::{Cx, Done, Level, Node};
 use crate::pod::{Fault, FromPod, Path, Pod, Segment, ToPod};
 
 /// A blueprint's output as plain data: how it answers the child's place.
@@ -169,23 +172,17 @@ impl Node for Forward {
 /// blueprint answering it, or `None` to forward it (`@HostSome`'s `nil`).
 type PodSupplier = Rc<dyn Fn(&Path, &Live<Pod>, &mut Cx) -> Result<Option<Blueprint>, Fault>>;
 
-/// One child place as the host holds it: its level over time, the blueprint's node and
-/// output, and the subscription that answers the child.
+/// One child place as the host holds it: its level, pulled from the owner at each read
+/// point; the level the World side last saw of it, so a forwarded element is re-emitted
+/// when it moved; the blueprint's node and output; and the subscription that answers
+/// the child.
 struct Row {
-    level: Rc<RefCell<Pod>>,
+    level: Rc<RefCell<Level>>,
+    seen: RefCell<Pod>,
     moved: Rc<Port<()>>,
     node: Rc<dyn Node>,
     out: Answering,
     handle: Option<Handle>,
-}
-
-/// A host's child's document: each place's `Level`, the newest and the one before the
-/// tick that last moved it.
-struct Doc {
-    now: BTreeMap<Path, Pod>,
-    before: BTreeMap<Path, Pod>,
-    stamp: Tick,
-    written: bool,
 }
 
 /// A host node (`@HostDocument`, `@HostSome`): the child, its document, and a supplier
@@ -196,8 +193,6 @@ pub struct Host {
     path: Path,
     supplier: PodSupplier,
     rows: RefCell<BTreeMap<Path, Row>>,
-    doc: RefCell<Doc>,
-    updates: Rc<Port<()>>,
     owner: RefCell<Option<Weak<dyn Node>>>,
 }
 
@@ -262,8 +257,6 @@ impl Host {
             path,
             supplier,
             rows: RefCell::new(BTreeMap::new()),
-            doc: RefCell::new(Doc { now: BTreeMap::new(), before: BTreeMap::new(), stamp: 0, written: false }),
-            updates: Rc::new(Port::new()),
             owner: RefCell::new(None),
         })
     }
@@ -295,51 +288,30 @@ impl Host {
     pub fn id(&self) -> u64 {
         self.id
     }
-    /// The node the host and its child are inlined into: it reads the child's document
-    /// (patched and rebuilt when it moves), and an answer to a child place goes to it
-    /// under the child's path.
+    /// The node the host and its child are inlined into: an answer to a child place goes
+    /// to it under the child's path.
     pub fn set_owner(&self, owner: &Rc<dyn Node>) {
         *self.owner.borrow_mut() = Some(Rc::downgrade(owner));
     }
 
-    /// The child's document at the context's read point: before the tick during
-    /// propagation, after it from the end of propagation on.
+    /// The child's document at the context's read point: each place's level, pulled.
     pub fn document(&self, cx: &Cx) -> BTreeMap<Path, Pod> {
-        let d = self.doc.borrow();
-        if d.written && d.stamp >= cx.read_point() { d.before.clone() } else { d.now.clone() }
-    }
-
-    fn write_doc(&self, cx: &mut Cx, f: impl FnOnce(&mut BTreeMap<Path, Pod>)) {
-        {
-            let mut d = self.doc.borrow_mut();
-            if !d.written || d.stamp != cx.tick() {
-                d.before = d.now.clone();
-                d.stamp = cx.tick();
-                d.written = true;
-            }
-            f(&mut d.now);
-        }
-        let owner = self.owner.borrow().as_ref().and_then(Weak::upgrade);
-        if let Some(o) = owner {
-            cx.dirty(o.clone());
-            cx.build_later(o);
-        }
-        let done = self.updates.fire((), cx);
-        cx.keep(done);
+        self.rows.borrow().iter().map(|(p, r)| (p.clone(), r.level.borrow().read(cx))).collect()
     }
 
     /// The row for child place `at`, built from the supplier's blueprint when it has none
     /// yet: when the place asks its first value, or when it is added.
-    fn ensure_row(&self, at: &Path, level: &Pod, cx: &mut Cx) -> Done {
+    fn ensure_row(&self, at: &Path, level: Level, cx: &mut Cx) -> Done {
         if self.rows.borrow().contains_key(at) {
             return Ok(());
         }
-        let cell = Rc::new(RefCell::new(level.clone()));
+        let identity = level.read(cx);
+        let cell = Rc::new(RefCell::new(level));
         let moved = Rc::new(Port::new());
         let read = cell.clone();
         let live = Live {
-            identity: level.clone(),
-            level: Dynamic { owner: None, read: Rc::new(move |_| read.borrow().clone()), updates: moved.clone() },
+            identity: identity.clone(),
+            level: Dynamic { owner: None, read: Rc::new(move |cx| read.borrow().read(cx)), updates: moved.clone() },
         };
         let bp = match (self.supplier)(at, &live, cx)? {
             Some(bp) => bp,
@@ -347,7 +319,7 @@ impl Host {
         };
         let (node, out) = bp(self.path.child(Segment::Key(Pod::Path(at.clone()))), cx)?;
         let handle = self.answer_from(at, &out);
-        self.rows.borrow_mut().insert(at.clone(), Row { level: cell, moved, node, out, handle });
+        self.rows.borrow_mut().insert(at.clone(), Row { level: cell, seen: RefCell::new(identity), moved, node, out, handle });
         Ok(())
     }
 
@@ -389,7 +361,7 @@ impl Host {
     /// A child place's first value: its blueprint's output after the tick, unless that
     /// is an event.
     pub fn first_value(&self, at: Path, level: &Pod, cx: &mut Cx) -> Result<Option<Pod>, Fault> {
-        self.ensure_row(&at, level, cx)?;
+        self.ensure_row(&at, Level::Fixed(level.clone()), cx)?;
         let out = self.rows.borrow().get(&at).map(|r| r.out.clone());
         Ok(match out {
             Some(Answering::Constant(v)) => Some(v),
@@ -398,37 +370,37 @@ impl Host {
         })
     }
 
-    /// A child place built: into the document, and its blueprint built.
-    pub fn added(&self, at: Path, level: Pod, cx: &mut Cx) -> Done {
-        self.write_doc(cx, |d| {
-            d.insert(at.clone(), level.clone());
-        });
-        self.ensure_row(&at, &level, cx)
+    /// A child place built: its level is the host's to read from now on (a row the
+    /// first-value query built early takes it), and its blueprint is built.
+    pub fn added(&self, at: Path, level: Level, cx: &mut Cx) -> Done {
+        let early = self.rows.borrow().get(&at).map(|r| r.level.clone());
+        match early {
+            Some(cell) => {
+                *cell.borrow_mut() = level;
+                Ok(())
+            }
+            None => self.ensure_row(&at, level, cx),
+        }
     }
 
-    /// A child place's level moved: the document, and the live element its blueprint
-    /// reads.
+    /// The patch pass pulled a child place's level after the tick: when it moved since
+    /// the World side last saw it, the live element the blueprint reads hears it (a
+    /// forwarded element is re-emitted). The document itself needs nothing: it is read.
     pub fn changed(&self, at: &Path, level: Pod, cx: &mut Cx) {
-        if self.doc.borrow().now.get(at) == Some(&level) {
-            return;
-        }
-        self.write_doc(cx, |d| {
-            d.insert(at.clone(), level.clone());
-        });
-        let row = self.rows.borrow().get(at).map(|r| (r.level.clone(), r.moved.clone()));
-        if let Some((cell, moved)) = row {
-            *cell.borrow_mut() = level;
+        let row = self.rows.borrow().get(at).map(|r| (r.seen.clone(), r.moved.clone()));
+        if let Some((seen, moved)) = row {
+            if *seen.borrow() == level {
+                return;
+            }
+            *seen.borrow_mut() = level;
             let done = moved.fire((), cx);
             cx.keep(done);
         }
     }
 
-    /// A child place torn down: its key leaves the document and its blueprint leaves
-    /// with it, at the end of the same tick (teardown is seen at the host).
+    /// A child place torn down: its blueprint leaves with it, at the end of the same tick
+    /// (teardown is seen at the host).
     pub fn removed(&self, at: &Path, cx: &mut Cx) {
-        self.write_doc(cx, |d| {
-            d.remove(at);
-        });
         let row = self.rows.borrow_mut().remove(at);
         if let Some(r) = row {
             if let (Some(h), Answering::Event(e)) = (r.handle, &r.out) {

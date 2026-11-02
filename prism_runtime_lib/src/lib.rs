@@ -38,7 +38,7 @@ pub mod world;
 
 pub use cells::{Cache, Defer, Demand, Dynamic, Event, Handle, Hold, Job, Live, Port, Stamped, Tick, Turn};
 pub use collections::{Array, Map, Text};
-pub use cx::{Cx, Done, Node, Runtime};
+pub use cx::{Cx, Done, Level, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
 pub use host::{Answering, Blueprint, Host, HostDoc, built, element_blueprint, pure_blueprint};
 pub use num::{Int, Nat};

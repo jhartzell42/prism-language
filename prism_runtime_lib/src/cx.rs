@@ -177,16 +177,21 @@ impl Cx<'_> {
         self.g.cleanups.push(node);
     }
 
-    /// A place built, with its `Level` after the tick. A place under a host's child goes
-    /// to the host, which builds its supplier's blueprint (the scope rides on the path:
-    /// [`crate::host`]).
-    pub fn added(&mut self, path: Path, level: Pod) {
+    /// A place built, with its `Level`: the document takes the value after the tick; a
+    /// host (the scope rides on the path: [`crate::host`]) keeps the level itself and
+    /// reads it at each read point, its child's document being a dynamic within the tick,
+    /// and builds its supplier's blueprint.
+    pub fn added(&mut self, path: Path, level: impl Into<Level>) {
+        let level = level.into();
         match crate::host::split(&path) {
             Some((host, at)) => {
                 let done = host.added(at, level, self);
                 self.keep(done);
             }
-            None => self.g.edits.push(Edit::Added(path, level)),
+            None => {
+                let now = level.read(self);
+                self.g.edits.push(Edit::Added(path, now))
+            }
         }
     }
     /// A place torn down.
@@ -372,5 +377,35 @@ impl Runtime {
     /// The document as last sent.
     pub fn document(&self) -> &Document {
         &self.document
+    }
+}
+
+/// A place's `Level` as it goes out: fixed for a place with no live fields, or pulled
+/// from its node at the read point, so a host reads the current value during propagation
+/// and the value after the tick from then on.
+#[derive(Clone)]
+pub enum Level {
+    Fixed(Pod),
+    Pulled(Rc<dyn Fn(&Cx) -> Pod>),
+}
+
+impl Level {
+    /// The level at the context's read point.
+    pub fn read(&self, cx: &Cx) -> Pod {
+        match self {
+            Level::Fixed(p) => p.clone(),
+            Level::Pulled(f) => f(cx),
+        }
+    }
+    /// A level pulled from `node` by `f`, held weakly: a node that left reads as `unit`.
+    pub fn pulled<N: 'static>(node: &Rc<N>, f: impl Fn(&N, &Cx) -> Pod + 'static) -> Level {
+        let w = Rc::downgrade(node);
+        Level::Pulled(Rc::new(move |cx| w.upgrade().map(|n| f(&n, cx)).unwrap_or(Pod::Unit)))
+    }
+}
+
+impl From<Pod> for Level {
+    fn from(p: Pod) -> Level {
+        Level::Fixed(p)
     }
 }

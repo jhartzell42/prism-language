@@ -94,8 +94,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   state.
 - **The constructor** `fn build(path, args, cx: &mut Cx) -> Rc<Self>` runs after
   propagation: holds take their initial values (`Hold::new(v, cx)`, stamped with the
-  build tick), each place goes out with `cx.added(path.at(n), level)` in its `Level`
-  after the tick, a place with a first value asks `cx.first_value(&level)`, a block that
+  build tick), each place goes out with `cx.added(path.at(n), level)`, a fixed `Level`
+  for a place with no live fields and a pulled one (`Level::pulled(&node, |n, cx|
+  n.getter(cx))`) otherwise, which the document samples after the tick and a host reads
+  at each read point; a place with a first value asks `cx.first_value(&level)`, a block that
   binds `@started` calls `cx.on_started(node)`, and nothing fires.
 - **Binding groups, sorted by prompt edges.** The class model takes the block's
   bindings as a graph whose edges are prompt (same-tick) reads; an edge through a hold's
@@ -160,9 +162,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **`@HostDocument @child, supplier`** → a host node holding the supplier, a typed closure
   `Fn(Path, ElementOf<c>) -> blueprint`, and a `Map<Path, Rc<dyn Node>>` of supplier
   rows, built and torn down as the child's places are, in the host's scope. The child's
-  document `$(Path ==> Elem c)` is a `Dynamic` over that map. (prismc: the boundary is
-  plain data, a blueprint answering with an `Answering`, and the scope rides on the
-  child's paths, `Segment::Host`; prismc/README.md, gaps HS and SP, pick HO.)
+  document `$(Path ==> Elem c)` is a `Dynamic` within the tick: each child place's level
+  pulled at the read point (`Level::Pulled`), never stored, never written by the patch
+  pass. A builder over it is marked by the child's holds and runs once, after the child's
+  own builders. (prismc: the boundary is plain data, a blueprint answering with an
+  `Answering`, and the scope rides on the child's paths, `Segment::Host`;
+  prismc/README.md, gaps HS and SP, picks HO and HD.)
 - **Forwarding** (`@Element e`) re-emits at the host's path `[p]`; an answer there
   reaches the row, whose output answers the child's place.
 - **`@HostSome`, `@HostList`** are their Prism derivations (Semantics ch. 9).

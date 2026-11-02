@@ -1,0 +1,33 @@
+# Derived by hand from Semantics ch. 9 (a host's child document is the child's elements, a dynamic) and R7 (rows built after the tick from the values after it).
+test the_document_moves_within_the_tick
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="inc")
+    0/[1]/0: Ui.Label(text="0")
+    1: Ui.Button(label="tap")
+    2/[0]/0: Ui.Label(text="inc after 0")
+    2/[1]/0: Ui.Label(text="0 after 0")
+
+tick 1
+  in:
+    1: click
+  changed:
+    2/[0]/0: Ui.Label(text="inc after 1")
+    2/[1]/0: Ui.Label(text="0 after 1")
+
+tick 2
+  in:
+    0/[0]/0: click
+    1: click
+  changed:
+    0/[1]/0: Ui.Label(text="1")
+    2/[0]/0: Ui.Label(text="inc after 2")
+    2/[1]/0: Ui.Label(text="1 after 2")
+
+tick 3
+  in:
+    0/[0]/0: click
+  changed:
+    0/[1]/0: Ui.Label(text="2")
+    2/[1]/0: Ui.Label(text="2 after 2")

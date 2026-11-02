@@ -3492,7 +3492,9 @@ fn LoElementLine wx, benv, menv, e, ?bound:
             let live = (Len reads) > 0
             let ((getter, wx3)) = if live: LoFresh wx2, (LoSnake (BareName tg.name)) else: (("", wx2))
             let level = XMethod (XRecord structPath, (if live: liveFields else: constFields)), "to_pod", [[]]
-            let added = if live: XMethod (XRaw "node"), getter, [[XRaw "cx"]] else: level
+            # a live place's level is pulled at each read point (a host's child document is a
+            # dynamic within the tick); a constant one is fixed
+            let added = if live: XCall "prism_rtl::Level::pulled", [[XRaw "&node", XRaw "|n, cx| n.{getter}(cx)"]] else: level
             let wx4 = update wx3:
                 &_.places <= Push &_.places, Place(pos=pos, level=level, getter=getter, reads=reads)
                 &_.build <= Push &_.build, (DoExpr (XMethod (XRaw "cx"), "added", [[(XRaw (LoPlaceAt wx3.scopes, "node", pos)), added]]))
@@ -3722,7 +3724,9 @@ fn LoWidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
 # argument, inlined into this node in a scope of its own, its places counted from 0 under
 # the host's child path (`scopes`), so they emit in the host's scope and the host answers
 # them through this node. The child's result is the line's first part (`WrHosted`), the
-# child's document a field the block reads as a hold, the host's owner this node.
+# child's document a field the block reads as a dynamic within the tick: what it reads is
+# everything the child's places and builders read, so a write to any of the child's holds
+# marks the owner's places and builders that read `$doc`. The host's owner is this node.
 LoHostLine: unbounded fn Wx, LoEnv, LoEnv, Text, [Arg], ?Bn -> ((Wx, Wres))
 fn LoHostLine wx, benv, menv, form, args, ?bound:
     let lx = wx.lx
@@ -3751,9 +3755,14 @@ fn LoHostLine wx, benv, menv, form, args, ?bound:
                 &_.pos <= LoScopeBase (Len wx2.scopes)
                 &_.result <= WrUnit
             let ((done, res)) = LoBuildLine inner, benv, menv, child.value, nil
+            let childPlaces = Drop done.places, (Len wx2.places)
+            let childBuilds = Filter done.buildHolds, \|h| not (HasText wx2.buildHolds, h)
+            let childGens = Fold (Drop done.genHolds, (Len wx2.genHolds)), [[]], \|acc, ((ignore, hs))| UnionTexts acc, hs
+            let docReads = Fold childPlaces, (UnionTexts childBuilds, childGens), \|acc, pl| UnionTexts acc, pl.reads
             let back = update done:
                 &_.pos <= wx2.pos
                 &_.result <= wx.result
+                &_.dynReads <= Fold docs, &_.dynReads, \|acc, f| Insert acc, f, docReads
             ((back, (WrHosted res)))
         otherwise:
             let wx2 = update wx1:
@@ -4271,12 +4280,14 @@ fn LoFinishNode wx0, qk, params, isRow:
     let deferredBody = Each wx.defers, \|((f, id))| DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XRaw "self.{f}"), "fired", [[XRaw "cx"]]), [[(LoSelfCall (LoGnOf wx, id).name, [[XRaw "v"]])]], [[]]
     let patchBody0 = Fold live, [[]], \|acc, p| Append acc, (LoPatchPlace wx.scopes, p)
     let patchBody = Append patchBody0, (LoRootDynPatch wx)
-    let genBuild = Each wx.gens, \|gd| DoIf (XMethod (XRaw "self.{gd.name}_stale"), "replace", [[XRaw "false"]]), [[DoExpr (XTry (XMethod (XRaw "self"), "{gd.name}_build", [[XRaw "cx"]]))]], [[]]
-    let buildBody = Append (Each wx.builders, \|b| DoExpr (XTry (XMethod (XRaw "self"), "{b.name}_build", [[XRaw "cx"]]))), genBuild
+    let builders = LoInnermostFirst wx.scopes, wx.builders, \|b| b.pos
+    let gens = LoInnermostFirst wx.scopes, wx.gens, \|gd| gd.pos
+    let genBuild = Each gens, \|gd| DoIf (XMethod (XRaw "self.{gd.name}_stale"), "replace", [[XRaw "false"]]), [[DoExpr (XTry (XMethod (XRaw "self"), "{gd.name}_build", [[XRaw "cx"]]))]], [[]]
+    let buildBody = Append (Each builders, \|b| DoExpr (XTry (XMethod (XRaw "self"), "{b.name}_build", [[XRaw "cx"]]))), genBuild
     let pushBody = Each wx.dynPlaces, \|((pos, f, t))| DoIf (XBin "==", (XRaw "element"), (XRaw "&self.{f}_element")), [[DoExpr (XMethod (XRaw "self.{f}"), "set", [[(XDecode t, (XRaw "v")), XRaw "cx"]]), DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]], [[]]
     let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
     let startedReg = if (Len wx.started) > 0: [[DoExpr (XMethod (XRaw "cx"), "on_started", [[XRaw "node.clone()"]])]] else: [[]]
-    let rowsBuilt = Append (Each wx.builders, \|b| DoExpr (XTry (XMethod (XRaw "node"), "{b.name}_build", [[XRaw "cx"]]))), (Each wx.gens, \|gd| DoExpr (XTry (XMethod (XRaw "node"), "{gd.name}_build", [[XRaw "cx"]])))
+    let rowsBuilt = Append (Each builders, \|b| DoExpr (XTry (XMethod (XRaw "node"), "{b.name}_build", [[XRaw "cx"]]))), (Each gens, \|gd| DoExpr (XTry (XMethod (XRaw "node"), "{gd.name}_build", [[XRaw "cx"]])))
     let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall "subscribe_row", [[XRaw "&node", (XMethod (XRaw "node.parent"), "upgrade", [[]]), XRaw "|p| &p.{ev}_port", XRaw "|n, v, cx| n.{m}(v.clone(), cx)", XRaw "&node.{m}_sub"]])
     let answers = Append (Each wx.answers, \|((pos, id, t))| LoAnswerArm wx, pos, id, t), (Each wx.dynPlaces, \|((pos, f, t))| LoDynAnswerArm wx.scopes, pos, f, t)
     let hostArms = Each wx.hosts, \|((pos, hf))| (((LoPosPat wx.scopes, pos, ", rest @ .."), (XTry (XMethod (XRaw "self.{hf}.clone()"), "answer", [[XRaw "rest", XRaw "v", XRaw "cx"]]))))
@@ -4292,6 +4303,14 @@ fn LoFinishNode wx0, qk, params, isRow:
     let subInits = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (XRaw "Cell::new(None)")))
     let fallible = wx.fallible or isRow or (Len wx.builders) > 0 or (Len wx.gens) > 0
     NodeDef(name=wx.node, prism=(BareName qk), doc=(LoDefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append (Append (Append (Append wx.inits, wakesInit), genInits), portInits), subInits), build=(Append (Append (Append wx.build, rowsBuilt), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), answers=(Append (Append answers, forwards), hostArms), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, rowKind=(if isRow: (if (Len (Filter wx.fields, \|((f, ignore, ignore))| f == "key")) > 0: "for" else: "gen") else: ""))
+
+# The builders (or generations) of a node, a hosted child's before its host's: a host's
+# `for` over `$doc` runs after the child's own structure has settled, in the one `build`
+# of the node they are inlined into. Siblings keep their order.
+LoInnermostFirst: fn [Text], [a], (fn a -> Nat) -> [a]
+fn LoInnermostFirst scopes, xs, PosOf = Fold (Range0 ((Len scopes) + 1)), [[]], \|acc, i|
+    let k = Or ((Len scopes) -? i), 0
+    Append acc, (Filter xs, \|x| (LoScopeIx scopes, (PosOf x)) == k)
 
 # An answer at a place whose element answers a dynamic (a push, or a host's answer by
 # path): the hold written, the node patched.
@@ -4895,8 +4914,7 @@ fn LoForLine wx, benv, menv, ?binders, source, body, e, ?bound:
 LoAddBuilder: fn Wx, Text, Nat, Ex, RsTy, RsTy, Text, Bool, [Text], NodeDef, [Ex] -> Wx
 fn LoAddBuilder wx, name, pos, src, kt, vt, rowName, keyed, reads, rowDef, passed:
     let wx0 = LoAddField wx, name, (RsCell (RsMap kt, (RsRc (RsNamed rowName, [[]])))), "the rows of the `for` at place {pos}", (XRaw "RefCell::new(Map::new())")
-    let wx1 = LoAddField wx0, "{name}_built", (RsNamed "Cell<u64>", [[]]), "the tick its rows were last built", (XRaw "Cell::new(u64::MAX)")
-    update wx1:
+    update wx0:
         &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(LoPlaceAt wx.scopes, "", pos), source=src, keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, passed=passed)
         &_.buildHolds <= UnionTexts &_.buildHolds, reads
         &_.rows <= Append (Push &_.rows, rowDef), rowDef.children
