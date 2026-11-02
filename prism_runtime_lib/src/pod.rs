@@ -143,6 +143,9 @@ pub enum Segment {
     Pos(u32),
     Gen(u32),
     Key(Pod),
+    /// The root of a hosted child: the host whose scope its places emit in
+    /// ([`crate::host`]). It heads a child's paths and never reaches a document.
+    Host(crate::host::HostRef),
 }
 
 /// A place's path. The derived order is document order: a path before every path it

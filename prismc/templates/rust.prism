@@ -469,6 +469,15 @@ fn {{name}}(self: Rc<Self>, cx: &mut Cx) -> Done {
 }
 </rust>
 
+# A push to a place whose element answers a dynamic (`Node::push`, keyed by the element).
+TmPushHook: fn Text -> Text
+fn TmPushHook body = inline_text <rust>
+fn push(self: Rc<Self>, element: &Pod, v: &Pod, cx: &mut Cx) -> Done {
+    {{body}}
+    Ok(())
+}
+</rust>
+
 # The program around a root node, as every World drives it.
 TmProgram: fn Text, Text, Text, Text, Text -> Text
 fn TmProgram name, prism, node, decode, call = inline_text <rust>

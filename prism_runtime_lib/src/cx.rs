@@ -14,7 +14,7 @@
 //!
 //! Then the compact round, [`Runtime::compact`]: the clean-ups, then the zombie collector.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::rc::{Rc, Weak};
 
 use crate::cells::Tick;
@@ -61,23 +61,29 @@ pub trait Node: 'static {
     fn release(&self) {}
 }
 
-/// A list of nodes, each at most once.
+/// A list of nodes, each at most once until the walk passes it: a node added again after
+/// its turn is walked again (a host's owner, marked by its child's patch after its own).
 #[derive(Default)]
 struct List {
     nodes: Vec<Rc<dyn Node>>,
-    seen: HashSet<*const ()>,
+    seen: HashMap<*const (), usize>,
+    walked: usize,
 }
 
 impl List {
     fn add(&mut self, n: Rc<dyn Node>) {
-        if self.seen.insert(Rc::as_ptr(&n) as *const ()) {
-            self.nodes.push(n);
+        let key = Rc::as_ptr(&n) as *const ();
+        if self.seen.get(&key).is_some_and(|&at| at >= self.walked) {
+            return;
         }
+        self.seen.insert(key, self.nodes.len());
+        self.nodes.push(n);
     }
     /// Walk a list, including what is added to it while walking.
     fn walk<'w>(cx: &mut Cx<'w>, pick: for<'a> fn(&'a mut Cx<'w>) -> &'a mut List, f: fn(Rc<dyn Node>, &mut Cx<'w>) -> Done) -> Done {
         let mut i = 0;
         while let Some(n) = pick(cx).nodes.get(i).cloned() {
+            pick(cx).walked = i + 1;
             f(n, cx)?;
             i += 1;
         }
@@ -101,6 +107,9 @@ struct Gathered {
     listens: Vec<(Pod, Weak<dyn Node>)>,
     zombies: Vec<Weak<dyn Node>>,
     cleanups: Vec<Rc<dyn Node>>,
+    /// A fault raised where no `Done` goes back (a host building a supplier's blueprint
+    /// for a place its child added): the tick fails at its close.
+    fault: Option<Fault>,
 }
 
 /// One tick's context: the tick and its read point, the lists, the outputs so far.
@@ -166,22 +175,46 @@ impl Cx<'_> {
         self.g.cleanups.push(node);
     }
 
-    /// A place built, with its `Level` after the tick.
+    /// A place built, with its `Level` after the tick. A place under a host's child goes
+    /// to the host, which builds its supplier's blueprint (the scope rides on the path:
+    /// [`crate::host`]).
     pub fn added(&mut self, path: Path, level: Pod) {
-        self.g.edits.push(Edit::Added(path, level))
+        match crate::host::split(&path) {
+            Some((host, at)) => {
+                let done = host.added(at, level, self);
+                self.keep(done);
+            }
+            None => self.g.edits.push(Edit::Added(path, level)),
+        }
     }
     /// A place torn down.
     pub fn removed(&mut self, path: Path) {
-        self.g.edits.push(Edit::Removed(path))
+        match crate::host::split(&path) {
+            Some((host, at)) => host.removed(&at, self),
+            None => self.g.edits.push(Edit::Removed(path)),
+        }
     }
     /// A place whose live fields may have moved: the diff decides.
     pub fn changed(&mut self, path: Path, level: Pod) {
-        self.g.edits.push(Edit::Changed(path, level))
+        match crate::host::split(&path) {
+            Some((host, at)) => host.changed(&at, level, self),
+            None => self.g.edits.push(Edit::Changed(path, level)),
+        }
     }
     /// A request field fired, with its `Edge` value; `field` names it when the tag has
-    /// several.
+    /// several. A hosted child's request is the host's: it reaches the World only through
+    /// a forwarding blueprint.
     pub fn request(&mut self, path: Path, field: Option<&str>, value: Pod) {
-        self.g.requests.push(Request { path, field: field.map(Into::into), value })
+        match crate::host::split(&path) {
+            Some((host, at)) => host.request(&at, field, value, self),
+            None => self.g.requests.push(Request { path, field: field.map(Into::into), value }),
+        }
+    }
+    /// A fault where no `Done` goes back: the tick fails at its close.
+    pub fn keep(&mut self, done: Done) {
+        if let (Err(f), None) = (done, &self.g.fault) {
+            self.g.fault = Some(f);
+        }
     }
     /// The root's result: a plain one at the build, a dynamic one when it changes, an
     /// event one when it fires.
@@ -195,9 +228,31 @@ impl Cx<'_> {
         let pushed = self.pushes.iter().rev().find(|(e, _)| e == element).map(|(_, v)| v.clone());
         pushed.or_else(|| self.ready.first_value(element))
     }
+    /// The first value of the place at `path`: the World's, or under a hosted child the
+    /// host's, from the dynamic its supplier's blueprint answers the place with (Semantics
+    /// ch. 9, "How a supplier answers").
+    pub fn first_value_at(&mut self, path: &Path, element: &Pod) -> Option<Pod> {
+        match crate::host::split(path) {
+            Some((host, at)) => match host.first_value(at, element, self) {
+                Ok(v) => v,
+                Err(f) => {
+                    self.keep(Err(f));
+                    None
+                }
+            },
+            None => self.first_value(element),
+        }
+    }
     /// Register a place for the pushes keyed by its element's value.
     pub fn listen(&mut self, element: Pod, node: &Rc<dyn Node>) {
         self.g.listens.push((element, Rc::downgrade(node)))
+    }
+    /// Register the place at `path` for pushes: a hosted child's place hears its host
+    /// instead, which answers it by path.
+    pub fn listen_at(&mut self, path: &Path, element: Pod, node: &Rc<dyn Node>) {
+        if crate::host::split(path).is_none() {
+            self.listen(element, node)
+        }
     }
 }
 
@@ -267,6 +322,9 @@ impl Runtime {
         List::walk(&mut cx, |cx| &mut cx.g.patches, |n, cx| n.patch(cx))?;
 
         let mut g = cx.g;
+        if let Some(f) = g.fault.take() {
+            return Err(f);
+        }
         g.requests.sort_by(|a, b| a.path.cmp(&b.path));
         for (element, node) in g.listens {
             self.listeners.entry(element).or_default().push(node);

@@ -221,6 +221,7 @@ show_with! {
                 p.inner(k, At::Whole);
                 p.raw("]");
             }
+            Segment::Host(h) => p.raw(&format!("^{}", h.id())),
         }
     };
 }

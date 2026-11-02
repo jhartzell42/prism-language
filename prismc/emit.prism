@@ -463,7 +463,7 @@ fn EmNodeDef n:
     let answer = if (Len n.answers) == 0: "" else: TmAnswer (Join (Each n.answers, \|((pat, call))| "{pat} => {EmEx call},"), "\n")
     let builders = Concat (Append (Each n.builders, \|b| "\n{EmForDef b}"), (Each n.gens, \|gd| "\n{EmGenDef gd}"))
     let rowImpl = if n.rowKind == "": "" else: "\n{EmRowImpl n}"
-    let hooks = Join (Each n.hooks, \|((h, body))| TmHook h, (EmDos body)), "\n"
+    let hooks = Join (Each n.hooks, \|((h, body))| if h == "push": TmPushHook (EmDos body) else: TmHook h, (EmDos body)), "\n"
     let doc = TmSourceDoc "`{n.prism}`: a node of its own (docs/backend.md, \"A widget block\").", n.doc
     "{TmNode doc, n.name, fields, consts, build, "{methods}{builders}", hooks, answer}{rowImpl}"
 
