@@ -876,11 +876,28 @@ fn LoXKind lx, env, e:
 # An expression of an event type outside the pipe that maps it (no event of it is bound
 # by its place): an event value, `prism_rtl::Event`, built by the library's combinators
 # (a function with a `!` parameter, a supplier's `@ !Filter (?ClickTo p, !in)`).
-LoIsEventValue: fn Lx, LoEnv, Expr -> Bool
+LoIsEventValue: unbounded fn Lx, LoEnv, Expr -> Bool
 fn LoIsEventValue lx, env, e = match e.kind:
     EName ignore: False
     EGroup ignore: False
-    otherwise: ((LoLayer (LoTyOf lx, e.span)) == "!") and not (Fold (LoChildren e), False, \|bound, c| bound or HasKey env.spans, (LoKey lx, c.span))
+    otherwise: ((LoLayer (LoTyOf lx, e.span)) == "!") and (not (Fold (LoChildren e), False, \|bound, c| bound or HasKey env.spans, (LoKey lx, c.span))) and LoHasEventSource lx, env, e
+
+# Whether an event expression stands over an event value: a local of an event type (a
+# parameter taken as one), or a node's event that has its value port. A lifted function's
+# body (`fn !Bump $n, !go = $n + 1 on !go`) has neither: its events are its firing.
+LoHasEventSource: unbounded fn Lx, LoEnv, Expr -> Bool
+fn LoHasEventSource lx, env, e = Fold (LoChildren e), False, \|found, c| found or LoIsEventSource lx, env, c
+
+LoIsEventSource: unbounded fn Lx, LoEnv, Expr -> Bool
+fn LoIsEventSource lx, env, c:
+    if (LoLayer (LoTyOf lx, c.span)) != "!": False
+    else: match c.kind:
+        EName n: match env.names[SNameKey n]:
+            ? (BnLocal ignore, ignore, (RsEvent ignore)): True
+            ? (BnEv ignore, ignore): HasKey env.names, "{SNameKey n}#port"
+            otherwise: False
+        EGroup x: LoIsEventSource lx, env, x
+        otherwise: LoHasEventSource lx, env, c
 
 LoEvValueX: unbounded fn Lx, LoEnv, Expr -> Vl
 fn LoEvValueX lx, env, e:
@@ -4370,10 +4387,10 @@ fn LoGatherIn sk, g:
 
 LoDecide: fn Gn -> Do
 fn LoDecide g = match g.kind:
-    "gather": DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XRaw "self.{Or g.inputs[0], ""}"), "get", [[XRaw "cx"]]), [[(LoSelfCall g.name, [[XRaw "v"]])]], [[]]
+    "gather": DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XRaw "self.{Or g.inputs[0], ""}"), "take", [[XRaw "cx"]]), [[(LoSelfCall g.name, [[XRaw "v"]])]], [[]]
     "merge": LoMergeDecide g
     "mergeall":
-        let pushes = Each g.inputs, \|f| DoIfLet (PaCtor "Some", [[PaBind "x"]]), (XMethod (XRaw "self.{f}"), "get", [[XRaw "cx"]]), [[DoExpr (XMethod (XRaw "all"), "push_back", [[XRaw "x"]])]], [[]]
+        let pushes = Each g.inputs, \|f| DoIfLet (PaCtor "Some", [[PaBind "x"]]), (XMethod (XRaw "self.{f}"), "take", [[XRaw "cx"]]), [[DoExpr (XMethod (XRaw "all"), "push_back", [[XRaw "x"]])]], [[]]
         let start = DoLet (PaBind "mut all"), (XRaw "Array::new()")
         let fire = DoIf (XRaw "!all.is_empty()"), [[(LoSelfCall g.name, [[XRaw "all"]])]], [[]]
         DoIf (XRaw "true"), (Push (Append [[start]], pushes), fire), [[]]
@@ -4383,8 +4400,8 @@ fn LoDecide g = match g.kind:
 # pairs them, `!Except` fires the left without the right.
 LoPairDecide: fn Gn, Text -> Do
 fn LoPairDecide g, kind:
-    let getL = XMethod (XRaw "self.{Or g.inputs[0], ""}"), "get", [[XRaw "cx"]]
-    let getR = XMethod (XRaw "self.{Or g.inputs[1], ""}"), "get", [[XRaw "cx"]]
+    let getL = XMethod (XRaw "self.{Or g.inputs[0], ""}"), "take", [[XRaw "cx"]]
+    let getR = XMethod (XRaw "self.{Or g.inputs[1], ""}"), "take", [[XRaw "cx"]]
     let both = XTuple [[getL, getR]]
     let Fire = \|x| [[(LoSelfCall g.name, [[x]])]]
     let sa = PaCtor "Some", [[PaBind "a"]]
@@ -4409,6 +4426,10 @@ fn LoForwardAnswer b:
     let rowOf = XMethod (XMethod (XMethod (XRaw "self.{b.name}"), "borrow", [[]]), "get", [[(XUnary "&", (XDecode b.keyTy, (XRaw "k")))]]), "cloned", [[]]
     XBlock [[(DoLet (PaBind "row"), rowOf), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "row"), [[DoExpr (XTry (XMethod (XRaw "row"), "answer", [[XRaw "rest", XRaw "v", XRaw "cx"]]))]], [[]])]], (XRaw "()")
 
+LoIsHold: fn RsTy -> Bool
+fn LoIsHold (RsHold ignore) = True
+fn LoIsHold other = False
+
 LoHeldTy: fn RsTy, RsTy -> RsTy
 fn LoHeldTy (RsHold i), other = i
 fn LoHeldTy t, other = other
@@ -4419,12 +4440,12 @@ fn LoRowMethods wx, dirty:
     let vt = Fold wx.fields, RsUnit, \|acc, ((f, t, ignore))| if f == "value": LoHeldTy t, acc else: acc
     let set = DoExpr (XMethod (XRaw "self.value"), "set", [[XRaw "v", XRaw "cx"]])
     let mark = if HasText dirty, "value": [[DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]] else: [[]]
-    let held = Fold wx.fields, False, \|acc, ((f, t, ignore))| acc or (f == "value" and (LoHeldTy t, RsUnit) != RsUnit)
+    let held = Fold wx.fields, False, \|acc, ((f, t, ignore))| acc or (f == "value" and LoIsHold t)
     let updater = MethDef(name="update", recv="rc", params=[[(("v", vt))]], cx="mut", ret=RsUnit, body=(Append [[set]], mark), tail=(XRaw "()"), doc="A kept row's entry changed: its `$_` hears it.")
     let removes = Each wx.places, \|p| DoExpr (XMethod (XRaw "cx"), "removed", [[(XRaw (LoPlaceAt wx.scopes, "self", p.pos))]])
     let nested = Append (Each wx.builders, \|b| DoExpr (XRaw "self.{b.name}.borrow().values().for_each(|row| row.leave_row(cx))")), (Each wx.gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "self.{gd.name}.borrow().as_ref()"), [[DoExpr (XRaw "row.leave_row(cx)")]], [[]])
     let remove = MethDef(name="remove_places", recv="ref", params=[[]], cx="mut", ret=RsUnit, body=(Append removes, nested), tail=(XRaw "()"), doc="The row left: its places are torn down.")
-    [[updater, remove]]
+    if held: [[updater, remove]] else: [[remove]]
 
 LoGnDoc: fn Gn -> Text
 fn LoGnDoc g = match g.kind:
@@ -4436,10 +4457,14 @@ fn LoGnDoc g = match g.kind:
 
 # The merge decides once, after its inputs: the left first.
 LoMergeDecide: fn Gn -> Do
+# Each input taken as it is decided, so a wake the node gets again in the tick (an input
+# fired anew through a host's answer) decides only what came since.
 fn LoMergeDecide g:
     let call = [[(LoSelfCall g.name, [[XRaw "v"]])]]
-    let right = DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XRaw "self.{Or g.inputs[1], ""}"), "get", [[XRaw "cx"]]), call, [[]]
-    DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XRaw "self.{Or g.inputs[0], ""}"), "get", [[XRaw "cx"]]), call, [[right]]
+    let takeL = DoLet (PaBind "left"), (XMethod (XRaw "self.{Or g.inputs[0], ""}"), "take", [[XRaw "cx"]])
+    let takeR = DoLet (PaBind "right"), (XMethod (XRaw "self.{Or g.inputs[1], ""}"), "take", [[XRaw "cx"]])
+    let right = DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XRaw "right"), call, [[]]
+    DoIf (XRaw "true"), [[takeL, takeR, (DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XRaw "left"), call, [[right]])]], [[]]
 
 # ---------------------------------------------------------------------------------------
 # The program
@@ -4869,7 +4894,8 @@ fn LoForLine wx, benv, menv, ?binders, source, body, e, ?bound:
 
 LoAddBuilder: fn Wx, Text, Nat, Ex, RsTy, RsTy, Text, Bool, [Text], NodeDef, [Ex] -> Wx
 fn LoAddBuilder wx, name, pos, src, kt, vt, rowName, keyed, reads, rowDef, passed:
-    let wx1 = LoAddField wx, name, (RsCell (RsMap kt, (RsRc (RsNamed rowName, [[]])))), "the rows of the `for` at place {pos}", (XRaw "RefCell::new(Map::new())")
+    let wx0 = LoAddField wx, name, (RsCell (RsMap kt, (RsRc (RsNamed rowName, [[]])))), "the rows of the `for` at place {pos}", (XRaw "RefCell::new(Map::new())")
+    let wx1 = LoAddField wx0, "{name}_built", (RsNamed "Cell<u64>", [[]]), "the tick its rows were last built", (XRaw "Cell::new(u64::MAX)")
     update wx1:
         &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(LoPlaceAt wx.scopes, "", pos), source=src, keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, passed=passed)
         &_.buildHolds <= UnionTexts &_.buildHolds, reads

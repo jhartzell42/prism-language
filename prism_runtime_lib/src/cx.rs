@@ -120,6 +120,8 @@ pub struct Cx<'w> {
     ready: &'w dyn ReadyState,
     pushes: Vec<(Pod, Pod)>,
     g: Gathered,
+    /// A fault a cell raises through a shared reference (a hold written twice).
+    late: std::cell::RefCell<Option<Fault>>,
 }
 
 impl Cx<'_> {
@@ -210,6 +212,10 @@ impl Cx<'_> {
             None => self.g.requests.push(Request { path, field: field.map(Into::into), value }),
         }
     }
+    /// A fault a cell raises where it holds only `&Cx`: the tick fails at its close.
+    pub fn fail_later(&self, f: Fault) {
+        self.late.borrow_mut().get_or_insert(f);
+    }
     /// A fault where no `Done` goes back: the tick fails at its close.
     pub fn keep(&mut self, done: Done) {
         if let (Err(f), None) = (done, &self.g.fault) {
@@ -277,14 +283,14 @@ impl Runtime {
 
     /// Tick 0: a build reads values only, all of them after the tick.
     pub fn build<'w>(&mut self, ready: &'w dyn ReadyState) -> Cx<'w> {
-        Cx { tick: 0, read_at: 1, height: None, ready, pushes: Vec::new(), g: Gathered::default() }
+        Cx { tick: 0, read_at: 1, height: None, ready, pushes: Vec::new(), g: Gathered::default(), late: Default::default() }
     }
 
     /// One tick as a World calls it: open, fire, deliver, close.
     pub fn tick(&mut self, root: &Rc<dyn Node>, input: &TickIn, ready: &dyn ReadyState) -> Result<TickOut, Fault> {
         self.cleanups.drain(..).for_each(Node::clean_up);
         let n = self.tick + 1;
-        let mut cx = Cx { tick: n, read_at: n, height: None, ready, pushes: input.pushes.clone(), g: Gathered::default() };
+        let mut cx = Cx { tick: n, read_at: n, height: None, ready, pushes: input.pushes.clone(), g: Gathered::default(), late: Default::default() };
         for node in std::mem::take(&mut self.started) {
             node.started(&mut cx)?;
         }
@@ -329,6 +335,9 @@ impl Runtime {
             }
         }
 
+        if let Some(f) = cx.late.borrow_mut().take() {
+            return Err(f);
+        }
         let mut g = cx.g;
         if let Some(f) = g.fault.take() {
             return Err(f);

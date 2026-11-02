@@ -1,0 +1,7 @@
+# Audited: a click on go fires !either once, which counts once and answers both child buttons; the child's !hit fires once (its left wins), so one hit; the child's buttons have no elements of their own, its label is forwarded at 2/[2]/0.
+# The re-entry's tests: declarations of be-host-reentry.prism (Semantics chapter 6).
+
+test the_owner_is_woken_again, @loop:
+    build
+    click at 0
+    click at 1

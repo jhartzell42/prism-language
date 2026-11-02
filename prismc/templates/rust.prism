@@ -396,6 +396,8 @@ fn TmForBuild name, at, source, keyTy, valueTy, rowNode, passed = inline_text <r
 /// built under it at `[k]`, kept rows hear their entry; from the values after the tick.
 fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     let items: Map<{{keyTy}}, {{valueTy}}> = {{source}};
+    // Run again in the tick (a host's document moved): kept rows had their entry.
+    let again = self.{{name}}_built.replace(cx.tick()) == cx.tick();
     let old = self.{{name}}.borrow().clone();
     for (k, row) in old.iter() {
         if !items.contains_key(k) {
@@ -407,7 +409,9 @@ fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     for (k, v) in items.iter() {
         let row = match old.get(k) {
             Some(row) => {
-                row.update(v.clone(), cx);
+                if !again {
+                    row.update(v.clone(), cx);
+                }
                 row.clone()
             }
             None => {{rowNode}}::build(self.{{at}}.child(Segment::Key(k.to_pod())), k.clone(), v.clone(), Rc::downgrade(self){{passed}}, cx)?,

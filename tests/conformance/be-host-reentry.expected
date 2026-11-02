@@ -1,0 +1,23 @@
+# Derived by hand from Semantics R3 (a hold takes one write a tick) and ch. 9 (an event output answers the child's place).
+test the_owner_is_woken_again
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Button(label="other")
+    2/[2]/0: Ui.Label(text="0 hits")
+    3: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2/[2]/0: Ui.Label(text="1 hits")
+    3: Ui.Label(text="1")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2/[2]/0: Ui.Label(text="2 hits")
+    3: Ui.Label(text="2")
