@@ -106,9 +106,12 @@ type TProgram = record:
     groups: [GroupNote]
     binders: [BinderNote]
     defs: [DefNote]
+    # Every `while` in an unbounded function that the shrink check does not clear: each
+    # turn of one is a cycle point (D6); a loop it clears is one unit of work.
+    unshrunk: [At]
 derive ^Eq, ^Show
 
-let emptyTyped = TProgram(exprs=[[]], apps=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], defs=[[]])
+let emptyTyped = TProgram(exprs=[[]], apps=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], defs=[[]], unshrunk=[[]])
 
 AtKey: fn At -> Text
 fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"

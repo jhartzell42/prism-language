@@ -367,6 +367,9 @@ type Lx = record:
     globals: (Text ==> Bool)
     # Lowering inside a node, which has a read point (`cx`): a host's supplier.
     inNode: Bool
+    # The `while` loops of unbounded functions the shrink check did not clear, by place:
+    # each turn of one is a cycle point (D6).
+    unshrunk: (Text ==> Bool)
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.
@@ -1299,7 +1302,7 @@ fn LoAsJobValue lx, env, e = match e.kind:
             RsJobFn x, ignore: x
             otherwise: RsUnit
         match e.kind:
-            ELambda ?ps, body: LoOwn (LoJobLambda lx, env, (Or ?ps, [[]]), body, target, a)
+            ELambda ?ps, body: LoOwn (LoJobLambda lx, env, (Or ?ps, [[]]), body, target, a, (LoEntersLambda lx, e))
             otherwise:
                 let v = LoX lx, env, e
                 match LoVlTy v:
@@ -1414,7 +1417,7 @@ LoLambdaRc: unbounded fn Lx, LoEnv, Expr, [Pattern], LambdaBody -> Vl
 fn LoLambdaRc lx, env, e, ps, body:
     let ft = LoTy lx, (LoPeel (LoTyOf lx, e.span))
     match ft:
-        RsJobFn a, ignore: LoJobLambda lx, env, ps, body, ft, a
+        RsJobFn a, ignore: LoJobLambda lx, env, ps, body, ft, a, (LoEntersLambda lx, e)
         otherwise: LoPlainLambda lx, env, ps, body, ft
 
 LoPlainLambda: unbounded fn Lx, LoEnv, [Pattern], LambdaBody, RsTy -> Vl
@@ -1466,9 +1469,11 @@ fn LoKnownTy t = match t:
 # lowered as a job body (`once_job`): a call in it is a tail call or a frame, as in any
 # job. The arguments come as one value, a tuple when there are several; each borrowed
 # local the body reads is cloned in, and cloned again per call, since the body's job
-# owns what it reads.
-LoJobLambda: unbounded fn Lx, LoEnv, [Pattern], LambdaBody, RsTy, RsTy -> Vl
-fn LoJobLambda lx, env, ps, body, ft, a:
+# owns what it reads. A lambda whose own type is not bounded is `entered`: a call of it is
+# a cycle point however it is reached (D6); a bounded lambda given where a `Start` is
+# wanted answers in its first cycle.
+LoJobLambda: unbounded fn Lx, LoEnv, [Pattern], LambdaBody, RsTy, RsTy, Bool -> Vl
+fn LoJobLambda lx, env, ps, body, ft, a, enter:
     let caps = Filter (LoReadNames (LoBodyExprs body)), \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
@@ -1509,9 +1514,32 @@ fn LoJobLambda lx, env, ps, body, ft, a:
         LbExpr x: LoTail lx, env2, x
         LbBlock bl: LoTailBlock lx, env2, bl
     let tail = if (Len unpack) == 0: tail0 else: XBlock unpack, tail0
-    let job = XCall "once_job", [[(XClosure True, [[]], tail)]]
+    let job0 = XCall "once_job", [[(XClosure True, [[]], tail)]]
+    let job = if enter or LoCallsUnbounded lx, body: XCall "entered", [[job0]] else: job0
     let call = if (Len again) == 0: job else: XBlock again, job
     VlOwned (XBlock dos, (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], call)]]), ft)), ft
+
+# Whether a lambda's own checked type is not bounded (unbounded, or a color variable):
+# entering it is a cycle point (D6).
+LoEntersLambda: fn Lx, Expr -> Bool
+fn LoEntersLambda lx, e = match LoPeel (LoTyOf lx, e.span):
+    TyFn CBound, ignore, ignore: False
+    TyFn ignore, ignore, ignore: True
+    otherwise: False
+
+# Whether a lambda's body calls an unbounded function (a callee whose checked type is
+# not bounded): such a lambda is unbounded whatever color the checker left on the lambda
+# itself, which it fixes before a parameter's type is known (`\|ignore| K v` with `K`
+# a `Start`).
+LoCallsUnbounded: unbounded fn Lx, LambdaBody -> Bool
+fn LoCallsUnbounded lx, body = Fold (LoBodyExprs body), False, \|seen, x| seen or LoIsUnboundedCall lx, x
+
+LoIsUnboundedCall: fn Lx, Expr -> Bool
+fn LoIsUnboundedCall lx, x = match x.kind:
+    ECall c, ignore, ignore, ignore: match LoPeel (LoTyOf lx, c.span):
+        TyFn CUnbound, ignore, ignore: True
+        otherwise: False
+    otherwise: False
 
 # An environment of only the locals a closure captured (its other borrowed locals cannot
 # live in it); holds, dynamics and events stay.
@@ -2426,7 +2454,7 @@ LoTailHere: unbounded fn Lx, LoEnv, Expr -> Ex
 fn LoTailHere lx, env, e = match e.kind:
     EGroup x: LoTail lx, env, x
     EUpdate target, b:
-        if LoHasTopWhile b: LoUpdTail lx, env, target, b, e.span, \|en, v| XCtor "prism_rtl::Turn::Finished", [[v]]
+        if LoHasTopWhile lx, b: LoUpdTail lx, env, target, b, e.span, \|en, v| XCtor "prism_rtl::Turn::Finished", [[v]]
         else: XCtor "prism_rtl::Turn::Finished", [[LoOwn (LoX lx, env, e)]]
     EMatch s, arms: LoTailMatch lx, env, s, arms, e.span
     EIf (CondExpr c), thenB, (? elseB): XIf (LoBool (LoX lx, env, c)), (LoTailBlock lx, env, thenB), (LoTailBlock lx, env, elseB)
@@ -2437,7 +2465,8 @@ fn LoTailHere lx, env, e = match e.kind:
             let ((ptys, ignore)) = LoSchemeParts lx, qk
             let fields = LoJobFieldNames lx, qk
             let vals = LoNamedArgsOwned lx, env, qk, args
-            if LoIsColorPoly lx, qk: XMethod (XCall (LoPathIn lx, (LoOwnerOf qk), "start_{job}"), vals), "cycle", [[]]
+            if LoEntersAtOnce lx, qk, args: XMethod (XCall (LoPathIn lx, (LoOwnerOf qk), "start_{job}"), vals), "cycle", [[]]
+            else: if LoIsColorPoly lx, qk: XCtor "prism_rtl::Turn::More", [[(XCall (LoPathIn lx, (LoOwnerOf qk), "start_{job}"), vals)]]
             else: XCtor "prism_rtl::Turn::More", [[(XCall "Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XRaw "()"))))))]])]]
         nil: match ?LoLocalJobFn lx, env, callee:
             ? f: XMethod (LoStartCall f, (LoStartArgs lx, env, f, args)), "cycle", [[]]
@@ -2464,7 +2493,7 @@ fn LoTailFrom lx, env, b, i:
             otherwise: nil
         let ?looping = match s.kind:
             SLet p, ignore, x: match x.kind:
-                EUpdate target, ub: if LoHasTopWhile ub: ? ((p, target, ub, x)) else: nil
+                EUpdate target, ub: if LoHasTopWhile lx, ub: ? ((p, target, ub, x)) else: nil
                 otherwise: nil
             otherwise: nil
         match ?looping:
@@ -2488,9 +2517,14 @@ fn LoTailFrom lx, env, b, i:
 # (`loop_job`); what follows the loop is its continuation. A `while` nested in an `if`,
 # a `match` or another loop still turns within the cycle (gap LP).
 
-LoHasTopWhile: fn Block -> Bool
-fn LoHasTopWhile b = Fold b.stmts, False, \|f, st| f or match st.kind:
-    SWhile ignore, ignore: True
+# Whether an `update` block has a `while` at its top level that the shrink check did
+# not clear: a loop job (D6). A loop it cleared turns within the cycle, one unit of work.
+LoHasTopWhile: fn Lx, Block -> Bool
+fn LoHasTopWhile lx, b = Fold b.stmts, False, \|f, st| f or LoIsCycleWhile lx, st
+
+LoIsCycleWhile: fn Lx, Stmt -> Bool
+fn LoIsCycleWhile lx, st = match st.kind:
+    SWhile ignore, ignore: HasKey lx.unshrunk, (LoKey lx, st.span)
     otherwise: False
 
 # An `update` block in a job, its value given to `Cont` (with the environment outside the
@@ -2507,9 +2541,12 @@ fn LoUpdTailFrom lx, outer, env, b, i, to, Cont:
     if i >= (Len b.stmts): Cont outer, (XRaw "this")
     else:
         let s = Or b.stmts[i], dummyStmtL
-        match s.kind:
-            SWhile c, wb: LoWhileJob lx, outer, env, c, wb, s.span, (LoRestText lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), to), \|o2, e2| LoUpdTailFrom lx, o2, e2, b, i + 1, to, Cont
-            otherwise:
+        let ?loop = match s.kind:
+            SWhile c, wb: if LoIsCycleWhile lx, s: ? ((c, wb)) else: nil
+            otherwise: nil
+        match ?loop:
+            ? ((c, wb)): LoWhileJob lx, outer, env, c, wb, s.span, (LoRestText lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), to), \|o2, e2| LoUpdTailFrom lx, o2, e2, b, i + 1, to, Cont
+            nil:
                 let ((dos, env2)) = LoUpdStmt lx, env, s
                 LoPrepend dos, (LoUpdTailFrom lx, outer, env2, b, i + 1, to, Cont)
 
@@ -2637,7 +2674,7 @@ fn LoFrame lx, env, call, restText, Cont = match call.kind:
         let env3 = LoBindSpan env2, (LoKey lx, call.span), (VlOwned (XRaw v), t)
         let body = Cont env3
         let ((job, how)) = match ?qk:
-            ? q: (((XCall (LoPathIn lx, (LoOwnerOf q), "start_{base}"), vals), (if LoIsColorPoly lx, q: "call_value" else: "call_then")))
+            ? q: (((XCall (LoPathIn lx, (LoOwnerOf q), "start_{base}"), vals), (if LoEntersAtOnce lx, q, args: "call_value" else: "call_then")))
             nil: match ?LoLocalJobFn lx, env2, c:
                 ? f: (((LoStartCall f, vals), "call_value"))
                 nil: match ?LoPreludeJobCall lx, env2, call:
@@ -4042,7 +4079,7 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let ((tys, apps, bs, ims)) = LoTables tp
     let mods = LoNeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (LoModName m)
-    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, rsNames=(LoValueNames g), layouts=(LoLayouts g), unbs=[[]], notes=[[]], globals=(LoGlobalNames g), inNode=False)
+    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, rsNames=(LoValueNames g), layouts=(LoLayouts g), unbs=[[]], notes=[[]], globals=(LoGlobalNames g), inNode=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True))
     let lx = update lx0:
         &_.unbs <= LoJobRoots lx0
     let roots = LoRootWidgets lx
@@ -4165,6 +4202,18 @@ fn LoIsColorPoly lx, q = match lx.g.vals[q]:
         TyFn (CRigid ignore), ignore, ignore: True
         otherwise: False
     nil: False
+
+# A color-polymorphic function is entered at once (it is not an unbounded function)
+# unless this call instantiates its color variable unbounded: an argument at a function
+# parameter is itself unbounded (D6: then the call is a cycle point). An argument whose
+# color is a variable of the caller's own stays entered at once.
+LoEntersAtOnce: fn Lx, Text, [Arg] -> Bool
+fn LoEntersAtOnce lx, q, args = (LoIsColorPoly lx, q) and not (Fold args, False, \|seen, a| seen or LoIsUnboundedArg lx, a)
+
+LoIsUnboundedArg: fn Lx, Arg -> Bool
+fn LoIsUnboundedArg lx, a = match LoPeel (LoTyOf lx, a.value.span):
+    TyFn CUnbound, ignore, ignore: True
+    otherwise: False
 
 LoIsUnbounded: fn Lx, Text -> Bool
 fn LoIsUnbounded lx, q = match lx.g.vals[q]:

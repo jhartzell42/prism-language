@@ -1,12 +1,12 @@
-# prism_zero's transcript, checked by hand against D6: four calls of named unbounded functions, five cycles.
+# Derived by hand from D6 as ruled: Work, Add2, Inc, Inc, Apply, Inc1 and Inc entered, seven cycles.
 test lambdas_are_jobs_too
 
 tick 0
   added:
     1: Ui.Label(text="working")
 
-compute until idle: 5 ticks, 1 to 5
+compute until idle: 7 ticks, 1 to 7
 
-tick 5
+tick 7
   changed:
     1: Ui.Label(text="4")

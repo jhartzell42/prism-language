@@ -1,4 +1,4 @@
-# Audited: 6, Double (Double 3) = 12 and Circle 3 at the build; Work's entry and its two calls of Grow through Twice are the three cycles, and Grow (Grow 3) = 5.
+# Audited: 6, Double (Double 3) = 12 and Circle 3 at the build; Work's entry, Twice entered (its color variable instantiated unbounded, D6 as ruled) and its two calls of Grow are the four cycles, and Grow (Grow 3) = 5.
 # The function values' tests: declarations of be-function-values.prism (Semantics chapter 6).
 
 test functions_cross_the_boundary, @Shown 3:

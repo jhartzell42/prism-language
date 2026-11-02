@@ -2235,19 +2235,22 @@ fn EdgeBefore ((a1, b1, ignore)), ((a2, b2, ignore)) = a1 < a2 or (a1 == a2 and 
 
 # A `while` in a bounded function, wherever it stands (the walk), keeps shrinking when
 # some local it sets gets strictly smaller than itself on every path through its body
-# (Semantics ch. 5, `while` and every tick ends).
+# (Semantics ch. 5, `while` and every tick ends). In an unbounded function the same
+# check decides where the cycle points are (D6): a loop it does not clear is noted in
+# the typed tables (`unshrunk`), each of its turns a cycle, and is no error.
 LoopsOf: unbounded fn Shrink, St, Def -> St
 fn LoopsOf sk, st, d:
-    if IsUnboundedKey sk.g, (SigKeyOf sk, d.qk): st
+    let unb = IsUnboundedKey sk.g, (SigKeyOf sk, d.qk)
+    if unb and not st.recording: st
     else:
         let s0 = update st:
             &_.file <= d.file
-        let s1 = Fold (DefClauses d), s0, \|s, c| ClauseLoops sk, s, d, c
+        let s1 = Fold (DefClauses d), s0, \|s, c| ClauseLoops sk, s, d, c, unb
         update s1:
             &_.file <= st.file
 
-ClauseLoops: unbounded fn Shrink, St, Def, FnClause -> St
-fn ClauseLoops sk, st, d, c:
+ClauseLoops: unbounded fn Shrink, St, Def, FnClause, Bool -> St
+fn ClauseLoops sk, st, d, c, unb:
     let base = ClauseBase sk, d, c
     let spots0 = BodySpots c.body, base
     if not (Fold spots0, False, \|seen, sp| seen or IsWhileSpot sp): st
@@ -2255,7 +2258,7 @@ fn ClauseLoops sk, st, d, c:
         let spots = BodySpots c.body, (SummarySeeds sk, d, spots0, base)
         Fold (Filter spots, \|sp| IsWhileSpot sp), st, \|s, sp| match sp:
             SpotStmt w, m: match w.kind:
-                SWhile cond, body: CheckWhile s, cond, body, w.span, d.name, (Marks m)
+                SWhile cond, body: CheckWhile s, cond, body, w.span, d.name, (Marks m), unb
                 otherwise: s
             otherwise: s
 
@@ -2273,8 +2276,8 @@ fn IsWhileSpot (SpotExpr ignore, ignore) = False
 
 # `seeds` are the entries where the loop stands that are not names (`Marks`): its
 # summaries, its locals, the prelude's names, so a set reads them as a call does.
-CheckWhile: unbounded fn St, Cond, Block, Range, Text, (Text ==> Rel) -> St
-fn CheckWhile st, c, body, span, name, seeds:
+CheckWhile: unbounded fn St, Cond, Block, Range, Text, (Text ==> Rel), Bool -> St
+fn CheckWhile st, c, body, span, name, seeds, unb:
     let vars = SetTargets body.stmts
     # Each local the loop sets is no larger than itself, its own measure `i`, so what a
     # pattern takes apart from it is smaller (relations scoped as for calls).
@@ -2282,7 +2285,12 @@ fn CheckWhile st, c, body, span, name, seeds:
     let rels = CondRels c, base
     let ok = Fold (Range0 (Len vars)), False, \|seen, i| seen or AllPathsStrict body.stmts, (Or vars[i], ""), i, rels
     if ok: st
+    else: if unb: NoteUnshrunk st, span
     else: ErrFix st, "may-not-end", span, "this loop in `{name}` may not end: nothing it sets gets smaller on every turn", "set a local from `&x -? 1` through a pattern, as `while ? left <- &fuel -? 1:`, or mark `{name}` `unbounded fn`"
+
+NoteUnshrunk: fn St, Range -> St
+fn NoteUnshrunk st, span = update st:
+    &_.typed.unshrunk <= Push &_.typed.unshrunk, (AtHere st, span)
 
 # The roots of the references a loop sets, at any depth of its body: the walk's every
 # statement, a nested loop's, an `if`'s or `match`'s, a `for`'s, a nested `update`'s, a

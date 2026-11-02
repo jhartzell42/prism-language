@@ -1,13 +1,12 @@
-# prism_zero's transcript, checked by hand against D6 and D8: Work enters Twice, which is not
-# unbounded but takes Grow, so two cycle points, the calls of Grow, and three cycles.
+# Derived by hand from D6 as ruled and D8: Work's call of Twice instantiates its color unbounded, a cycle point, and its two calls of Grow two more: four cycles.
 test functions_cross_the_boundary
 
 tick 0
   added:
     1: Ui.Label(text="6 12 Circle 3")
 
-compute until idle: 3 ticks, 1 to 3
+compute until idle: 4 ticks, 1 to 4
 
-tick 3
+tick 4
   changed:
     1: Ui.Label(text="6 12 Circle 3 5")
