@@ -806,7 +806,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: 40 of 49 pass.
+`tests/compiled/run.sh`, which runs every program every time: 44 of 49 pass.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -825,21 +825,26 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   parameters apart by pattern), `be-fold-tuples`, `be-template-body`, `be-closure-names`,
   `be-update-loops` (a `for` and a guarded `match` as statements of an `update`),
   `be-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
-  `let`-bound lambda's own type gives them), `be-while-guard` (a cycle a turn of a
-  `while`, gap LP), `be-row-values` (a row kind's values built, compared, shown,
-  matched and sent inside an element, pick RV).
+  `let`-bound lambda's own type gives them), `be-while-guard` (a shrinking `while` is
+  one unit of work, gap LP), `be-lambda-cycle` (mutually recursive unbounded lambdas, a
+  cycle a call), `be-row-values` (a row kind's values built, compared, shown,
+  matched and sent inside an element, pick RV), `be-bundle` (pick BA),
+  `be-widget-args` (pick WB).
   `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
-  `sem-ch06-birds`, `sem-ch07-births`, `sem-ch07-rounds`, `ts-ch03-traits`, `ts-ch04-lifting`, chess's
-  `rules.prismtest` (`chess-rules`), and prismc's own `lexer-checks` and `parser-checks`.
+  `sem-ch06-birds`, `sem-ch07-births`, `sem-ch07-rounds`, `sem-ch07-paged` (gap DY),
+  `sem-ch09-hosts` (pick HO), `sem-appB-widgets` (pick MA), `ts-ch03-traits`,
+  `ts-ch04-lifting`, chess's `rules.prismtest` (`chess-rules`), and prismc's own
+  `lexer-checks` and `parser-checks`.
 - **Refused by the checker,** as the books have them wrong (`conf-ch01-motd`,
   `sem-ch04-labels`, `sem-ch05-and-blocks`, `sem-ch08-viewer`): `compile` refuses too.
-- **Not lowered yet,** each refused loudly at compile: hosting (`sem-ch09-hosts`, and
-  chess's board, whose window library also takes elements apart by pattern, builds
-  `Draw.*` values, binds a place's tuple answer and passes a widget block as a value),
-  `@Machine` and local functions (`sem-appB-widgets`), a generation reading its block's
-  dynamic (`sem-ch07-paged`). `ts-ch04-lifting` passes: a function lifted over an event
+- **Not lowered yet,** each refused loudly at compile: chess's board, whose window
+  library hosts a widget parameter's argument (`@Grid 8, @widget: ..`, `@Window ..,
+  @$board`) and takes its result back across the host, answers with event blueprints
+  built from the host's own events (`?Boxed`'s `@ !Filter (?ClickTo p, !in)`, a plain
+  function with a `!` parameter), and gathers a `for` whose rows give a dynamic
+  (`$sizes`, `Gui.Metrics` first values). `ts-ch04-lifting` passes: a function lifted over an event
   runs at its firing, so its `x on !e` is `x`, and an `if` over events gates each branch
   by the condition and merges them.
 - **Speed:** the kept prismc compiles a conformance program in under a second, and cargo
