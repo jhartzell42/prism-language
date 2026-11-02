@@ -54,11 +54,19 @@ runtime, and the refusal is recorded as a doubt there.
   with no World involved; an armed `@Defer` sets `pending`.
 - `tick` returns `pending`; a World that sees it ticks again, with no inputs if it has
   none. The World knows there is pending compute and nothing else about it.
-- An unbounded function is a bounded body iterated. One cycle is one turn. The compiler
-  puts a cycle point at every call of an unbounded function from an unbounded function
-  (the simple canonical rule, Jimmy's), saving the continuation as the machine state.
-  `@Run f, x` is `@Machine step, (start f x), !tick` with `!tick <- @Defer`; one cycle
-  per tick; the result is an event in the tick the machine finishes.
+- An unbounded function is a bounded body iterated. One cycle is one turn. Cycle points
+  sit exactly where the shrink check proved nothing: at every call of an unbounded
+  function from an unbounded function (a named function, a lambda, or a function whose
+  color variable is instantiated unbounded), and at every turn of a `while` loop the
+  shrink check did not clear. A bounded call and a shrinking `while` are one unit of work
+  inside a cycle. The checker is part of the language, so which loops it clears is as
+  determined as which programs it accepts, and the count is a function of the program
+  under the spec (Jimmy, 2 November). Refused: a cycle at every `while` turn in an
+  unbounded function regardless of shrinking, argued from transcript stability across
+  checker versions; a smarter checker is a spec change and may move transcripts. The
+  compiler saves the continuation as the machine state. `@Run f, x` is `@Machine step,
+  (start f x), !tick` with `!tick <- @Defer`; one cycle per tick; the result is an event
+  in the tick the machine finishes.
 - The Test World is a foreign World with the same `tick`. The test writes `compute`
   (a tick with no inputs) and checks outputs; it never supplies a result. `compute
   until idle` is allowed and prints the count; exact counts are recorded.
