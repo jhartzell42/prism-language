@@ -625,6 +625,29 @@ pub fn entered<B: 'static>(job: Rc<dyn Job<B>>) -> Rc<dyn Job<B>> {
     Rc::new(Entered(job))
 }
 
+/// A `while` in an `update` block of an unbounded function as a job (D6: every turn of a
+/// `while` in an unbounded `&` block is a cycle point): `step` takes the block's state
+/// (`this` and its `&` locals) one turn, `Ok` to turn again, `Err` when the condition
+/// fails; each turn is a cycle.
+pub struct Looping<S> {
+    state: std::cell::RefCell<Option<S>>,
+    step: Rc<dyn Fn(S) -> Result<S, S>>,
+}
+
+impl<S: 'static> Job<S> for Looping<S> {
+    fn cycle(&self) -> Turn<S> {
+        let s = self.state.borrow_mut().take().expect("a loop's turn is cycled once");
+        match (self.step)(s) {
+            Ok(next) => Turn::More(Rc::new(Looping { state: std::cell::RefCell::new(Some(next)), step: self.step.clone() })),
+            Err(done) => Turn::Finished(done),
+        }
+    }
+}
+
+pub fn loop_job<S: 'static>(state: S, step: impl Fn(S) -> Result<S, S> + 'static) -> Rc<dyn Job<S>> {
+    Rc::new(Looping { state: std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
+}
+
 /// The job of a lambda of unbounded type: its body, run as a job body from its first
 /// cycle (prismc/README.md, pick JB).
 pub struct Once<B>(std::cell::RefCell<Option<Box<dyn FnOnce() -> Turn<B>>>>);

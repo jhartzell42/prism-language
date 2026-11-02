@@ -36,6 +36,7 @@ fn EmTy t = match t:
     RsNamed n, args: "{n}<{EmTys args}>"
     RsOpt i: "Option<{EmTy i}>"
     RsRes i: "Result<{EmTy i}, Error>"
+    RsTuple [[one]]: "({EmTy one},)"
     RsTuple ts: "({EmTys ts})"
     RsArray e: "Array<{EmTy e}>"
     RsMap k, v: "Map<{EmTy k}, {EmTy v}>"

@@ -2273,6 +2273,9 @@ fn LoTail lx, env, e = match ?LoFrameCall lx, env, e, True:
 LoTailHere: unbounded fn Lx, LoEnv, Expr -> Ex
 fn LoTailHere lx, env, e = match e.kind:
     EGroup x: LoTail lx, env, x
+    EUpdate target, b:
+        if LoHasTopWhile b: LoUpdTail lx, env, target, b, e.span, \|en, v| XCtor "prism_rtl::Turn::Finished", [[v]]
+        else: XCtor "prism_rtl::Turn::Finished", [[LoOwn (LoX lx, env, e)]]
     EMatch s, arms: LoTailMatch lx, env, s, arms, e.span
     EIf (CondExpr c), thenB, (? elseB): XIf (LoBool (LoX lx, env, c)), (LoTailBlock lx, env, thenB), (LoTailBlock lx, env, elseB)
     ECall callee, args, ignore, ignore: match ?LoTailCallee lx, env, callee:
@@ -2307,13 +2310,108 @@ fn LoTailFrom lx, env, b, i:
             SLet ignore, ignore, x: ?LoFrameCall lx, env, x, False
             SExpr x: ?LoFrameCall lx, env, x, False
             otherwise: nil
-        match ?found:
-            ? c: LoFrame lx, env, c, (LoRestText lx, s.span, c.span, b.span), \|env2| LoTailFrom lx, env2, b, i
-            nil:
-                let ((dos, env2)) = LoStmt lx, env, s
-                match LoTailFrom lx, env2, b, i + 1:
-                    XBlock more, last: XBlock (Append dos, more), last
-                    last: if (Len dos) == 0: last else: XBlock dos, last
+        let ?looping = match s.kind:
+            SLet p, ignore, x: match x.kind:
+                EUpdate target, ub: if LoHasTopWhile ub: ? ((p, target, ub, x)) else: nil
+                otherwise: nil
+            otherwise: nil
+        match ?looping:
+            ? ((p, target, ub, x)):
+                LoUpdTail lx, env, target, ub, b.span, \|en, v|
+                    let po = LoPat lx, p, (LoTyOf lx, x.span), "own", "l{s.span.start}"
+                    let rest = LoTailFrom lx, (LoBindAll en, po.binds), b, i + 1
+                    LoPrepend [[(DoLet po.pa, v)]], rest
+            nil: match ?found:
+                ? c: LoFrame lx, env, c, (LoRestText lx, s.span, c.span, b.span), \|env2| LoTailFrom lx, env2, b, i
+                nil:
+                    let ((dos, env2)) = LoStmt lx, env, s
+                    match LoTailFrom lx, env2, b, i + 1:
+                        XBlock more, last: XBlock (Append dos, more), last
+                        last: if (Len dos) == 0: last else: XBlock dos, last
+
+# ---- `while` in an `update` block of a job (D6: every turn of a `while` in an unbounded
+# `&` block is a cycle point; a loop whose turns are unbounded inside one cycle could keep
+# a tick from ending). The block runs as statements up to a `while` at its top level; the
+# loop is a job over the block's state (`this` and its `&` locals), one turn a cycle
+# (`loop_job`); what follows the loop is its continuation. A `while` nested in an `if`,
+# a `match` or another loop still turns within the cycle (gap LP).
+
+LoHasTopWhile: fn Block -> Bool
+fn LoHasTopWhile b = Fold b.stmts, False, \|f, st| f or match st.kind:
+    SWhile ignore, ignore: True
+    otherwise: False
+
+# An `update` block in a job, its value given to `Cont` (with the environment outside the
+# block); `to` is where the source the continuation covers ends.
+LoUpdTail: unbounded fn Lx, LoEnv, Expr, Block, Range, (unbounded fn LoEnv, Ex -> Ex) -> Ex
+fn LoUpdTail lx, env, target, b, to, Cont:
+    let t = LoTy lx, (LoPeel (LoTyOf lx, target.span))
+    let tv = LoX lx, env, target
+    let env1 = LoBind env, "&_", (BnLocal "this", "own", t)
+    LoPrepend [[(DoLet (PaBind "mut this"), (LoOwn tv))]], (LoUpdTailFrom lx, env, env1, b, 0, to, Cont)
+
+LoUpdTailFrom: unbounded fn Lx, LoEnv, LoEnv, Block, Nat, Range, (unbounded fn LoEnv, Ex -> Ex) -> Ex
+fn LoUpdTailFrom lx, outer, env, b, i, to, Cont:
+    if i >= (Len b.stmts): Cont outer, (XRaw "this")
+    else:
+        let s = Or b.stmts[i], dummyStmtL
+        match s.kind:
+            SWhile c, wb: LoWhileJob lx, outer, env, c, wb, s.span, (LoRestText lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), to), \|o2, e2| LoUpdTailFrom lx, o2, e2, b, i + 1, to, Cont
+            otherwise:
+                let ((dos, env2)) = LoUpdStmt lx, env, s
+                LoPrepend dos, (LoUpdTailFrom lx, outer, env2, b, i + 1, to, Cont)
+
+LoPrepend: fn [Do], Ex -> Ex
+fn LoPrepend dos, (XBlock more, last) = XBlock (Append dos, more), last
+fn LoPrepend dos, x = if (Len dos) == 0: x else: XBlock dos, x
+
+# One `while` as a loop job: the step closure takes the state a turn (`Ok`) or gives it
+# back when the condition fails (`Err`); the continuation takes the state again by the
+# same names. Locals the loop or the rest reads are cloned into each closure first.
+LoWhileJob: unbounded fn Lx, LoEnv, LoEnv, Cond, Block, Range, Text, (unbounded fn LoEnv, LoEnv -> Ex) -> Ex
+fn LoWhileJob lx, outer, env, c, wb, span, restText, Cont:
+    let state = Fold (Keys env.names), [[]], \|acc, k| if (Take k, 1) != "&": acc else: match env.names[k]:
+        ? (BnLocal rs, ignore, bt): Push acc, ((k, rs, bt))
+        otherwise: acc
+    let names = Each state, \|((ignore, rs, ignore))| rs
+    let stTy = RsTuple (Each state, \|((ignore, ignore, bt))| bt)
+    let pat = PaTuple (Each names, \|n| PaBind "mut {n}")
+    let pack = XTuple (Each names, \|n| XRaw n)
+    let envS = Fold state, env, \|en, ((k, rs, bt))| LoBind en, k, (BnLocal rs, "own", bt)
+    let loopText = match lx.g.srcs[lx.file]:
+        ? src: SpanText src, span
+        nil: ""
+    # The loop's other locals: borrowed or owned, cloned into the step closure.
+    let caps = LoCapsIn envS, loopText, names
+    let capDos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (LoOwn (VlPlace (XRaw rs), mode, bt))
+    let envC = Fold caps, envS, \|en, ((k, rs, ignore, bt))| LoBind en, k, (BnLocal rs, "own", bt)
+    let ((bodyDos, ignore)) = LoUpdStmts lx, envC, wb.stmts
+    let again = XCtor "Ok", [[pack]]
+    let stop = XCtor "Err", [[pack]]
+    let turn = match c:
+        CondExpr x: XIf (LoBool (LoX lx, envC, x)), (XBlock bodyDos, again), stop
+        CondBind p, x, ?g:
+            let po = LoPat lx, p, (LoTyOf lx, x.span), "own", "w{span.start}"
+            let envB = LoBindAll envC, po.binds
+            let ((inner, ignore)) = LoUpdStmts lx, envB, wb.stmts
+            let conds = Append po.conds, (LoGuardConds lx, envB, ?g)
+            LoOwn (LoArmsValue (LoOwn (LoX lx, envC, x)), [[XArm(pat=po.pa, conds=conds, body=(XBlock inner, again)), XArm(pat=PaWild, conds=[[]], body=stop)]], "'w{span.start}", stTy)
+    # The continuation: the state by its names again, and the outer locals the rest reads.
+    let outCaps = LoCapsIn outer, restText, names
+    let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (LoOwn (VlPlace (XRaw rs), mode, bt))
+    let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| LoBind en, k, (BnLocal rs, "own", bt)
+    let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| LoBind en, k, (BnLocal rs, "own", bt)
+    let stepFn = LoPrepend capDos, (XClosure True, [[(PaTyped pat, stTy)]], turn)
+    let enter = XCall "call_then", [[(XCall "loop_job", [[pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
+    LoPrepend outDos, enter
+
+# The locals of `env` a source text names, other than `skip`: each to clone into a closure.
+LoCapsIn: fn LoEnv, Text, [Text] -> [((Text, Text, Text, RsTy))]
+fn LoCapsIn env, text, skip = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
+    ? (BnLocal rs, mode, bt):
+        if (HasText skip, rs) or (Take rs, 5) == "self." or not (LoMentions text, (Drop k, (Len (MarksOf k)))): acc
+        else: Push acc, ((k, rs, mode, bt))
+    otherwise: acc
 
 # The first call (leftmost, innermost) of an unbounded function with a job that an
 # expression makes whatever its value: not under a lambda, not in an arm of a `match` or

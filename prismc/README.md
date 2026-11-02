@@ -801,7 +801,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
 `tests/compiled/run.sh`, whose default set is what passes:
 
-- **Pass (22):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
+- **Pass (23):** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
   has its shape (fields `count: Hold<Int>` and the merge's two `Stamped` inputs,
   `inc`/`dec` recording and asking for the wake, `wake` deciding left first, `patch`
@@ -818,7 +818,8 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   parameters apart by pattern), `be-fold-tuples`, `be-template-body`, `be-closure-names`,
   `be-update-loops` (a `for` and a guarded `match` as statements of an `update`),
   `be-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
-  `let`-bound lambda's own type gives them).
+  `let`-bound lambda's own type gives them), `be-while-guard` (a cycle a turn of a
+  `while`, gap LP).
   `be-clause-widget` fails by gap CW.
 - **The rest of the corpus** runs by name (`tests/compiled/run.sh todos`)
   and is not in the default set until a chunk makes it pass: the lowering above reaches
@@ -1038,11 +1039,13 @@ ruling taken (Claude's).
   *Next:* a non-tail `match` binds its continuation once (`let k = Rc::new(move |x|
   ..)`) and each arm frames into it; the prelude's higher-order functions as jobs. Cost:
   a cycle walks the frames, so it is linear in the pending calls.
-- **LP A loop in an unbounded function.** Compiler zero makes each turn of a `while` in
-  an unbounded function a cycle (`be-while-guard`: 8 ticks); prismc runs the loop within
-  one cycle (3 ticks, the same label), as D6 puts cycle points at calls only. *First
-  ruling (Claude's):* calls only, so `be-while-guard` stays out of the passing set. *If
-  otherwise:* a `while` in a job is a frame per turn.
+- **LP A loop in an unbounded function** (D6: "every turn of a `while` in an unbounded
+  `&` block" is a cycle point, so that a tick always ends). A `while` at the top level of
+  an `update` block in a job is a loop job (`loop_job`): the block's state (`this` and
+  its `&` locals) is the job's, each turn a cycle, the rest of the block its
+  continuation (`be-while-guard`: 8 ticks, as compiler zero). prismc's own lexer and
+  parser loops so cost a cycle a turn. *Not yet:* a `while` nested in an `if`, a
+  `match`, a `for` or another `while` of the block, which still turns within the cycle.
 - **CW A widget of several clauses in a static position** is a generation built once
   (a `rebuild` of its first argument, which never changes), the clause chosen at the
   build like a `rebuild`'s; its places stand under the generation (`1/#0/0`), where
