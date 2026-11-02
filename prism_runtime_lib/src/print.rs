@@ -305,7 +305,7 @@ impl Show for Pod {
             Pod::Ok(x) => p.prefixed("~ ", &**x),
             Pod::Failed(e) => e.show(p),
             Pod::Path(path) => path.show(p),
-            Pod::Shown(text, _) => p.raw(text),
+            Pod::Shown(text, _) => p.raw(&text.0),
         }
     }
 }

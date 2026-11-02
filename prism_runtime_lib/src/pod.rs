@@ -46,7 +46,38 @@ pub enum Pod {
     Path(Path),
     /// A value whose type has its own `impl ^Show`: it prints as the impl's text and
     /// matches as its structure (transcripts print by `^Show`, Type System ch. 2).
-    Shown(Rc<str>, Box<Pod>),
+    Shown(ShownText, Box<Pod>),
+}
+
+/// A `Pod::Shown`'s text: what it prints as. It takes no part in equality, order or
+/// hashing, which go by the structure (a chess `Spot` orders by its rank and file, not
+/// by its name `e2`).
+#[derive(Clone, Debug)]
+pub struct ShownText(pub Rc<str>);
+
+impl PartialEq for ShownText {
+    fn eq(&self, _: &ShownText) -> bool {
+        true
+    }
+}
+impl Eq for ShownText {}
+impl PartialOrd for ShownText {
+    fn partial_cmp(&self, o: &ShownText) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+impl Ord for ShownText {
+    fn cmp(&self, _: &ShownText) -> std::cmp::Ordering {
+        std::cmp::Ordering::Equal
+    }
+}
+impl std::hash::Hash for ShownText {
+    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+}
+impl From<&str> for ShownText {
+    fn from(s: &str) -> ShownText {
+        ShownText(s.into())
+    }
 }
 
 /// An `f64` ordered by IEEE's total order, so `nan` can key a map.
