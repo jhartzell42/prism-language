@@ -247,10 +247,34 @@ impl<T> Clone for Event<T> {
     }
 }
 
-impl<T: Clone> Event<T> {
+impl<T: Clone + 'static> Event<T> {
     /// `never`: a port nothing fires.
     pub fn never() -> Event<T> {
         Event { owner: None, port: Rc::new(Port::new()) }
+    }
+    /// A node's own event as a value: the port its firing method fires.
+    pub fn of(port: &Rc<Port<T>>) -> Event<T> {
+        Event { owner: None, port: port.clone() }
+    }
+    /// The event `f` of this one, a pure transform at each firing (a lifted call).
+    pub fn map<U: Clone + 'static>(&self, f: impl Fn(&T) -> U + 'static) -> Event<U> {
+        let port = Rc::new(Port::new());
+        let out = port.clone();
+        self.port.subscribe(Rc::new(move |v: &T, cx: &mut Cx| out.fire(f(v), cx)));
+        Event { owner: self.owner.clone(), port }
+    }
+}
+
+impl<U: Clone + 'static> Event<Option<U>> {
+    /// `!Filter`: the present values.
+    pub fn filter_some(&self) -> Event<U> {
+        let port = Rc::new(Port::new());
+        let out = port.clone();
+        self.port.subscribe(Rc::new(move |v: &Option<U>, cx: &mut Cx| match v {
+            Some(u) => out.fire(u.clone(), cx),
+            None => Ok(()),
+        }));
+        Event { owner: self.owner.clone(), port }
     }
 }
 

@@ -18,9 +18,12 @@
 //!   `@Element e`) re-emits the child's element at its own place `host/[p]/0` and hands
 //!   every answer there back to the child's place, so a host that forwards everything is
 //!   observably not there, under deeper paths outside.
+//! - **The child is inlined into the host's owner**, the node of the host's block: its
+//!   places emit under the host's child path, and the host answers one by calling the
+//!   owner's `Node::answer` under that path.
 //! - **The child's document** is a dynamic of each child place's `Level`, read before
 //!   the tick during propagation and after it from then on, as a hold is
-//!   ([`HostDoc`]); the host's owner is patched when it moves.
+//!   ([`HostDoc`]); the owner is patched and its builders run when it moves.
 //! - **The sandbox law** is the checker's (the remainder row at the forwarding arm,
 //!   Semantics ch. 9); at run time nothing the child emits reaches the document except
 //!   through a blueprint the supplier built.
@@ -195,7 +198,6 @@ pub struct Host {
     rows: RefCell<BTreeMap<Path, Row>>,
     doc: RefCell<Doc>,
     updates: Rc<Port<()>>,
-    child: RefCell<Option<Rc<dyn Node>>>,
     owner: RefCell<Option<Weak<dyn Node>>>,
 }
 
@@ -262,7 +264,6 @@ impl Host {
             rows: RefCell::new(BTreeMap::new()),
             doc: RefCell::new(Doc { now: BTreeMap::new(), before: BTreeMap::new(), stamp: 0, written: false }),
             updates: Rc::new(Port::new()),
-            child: RefCell::new(None),
             owner: RefCell::new(None),
         })
     }
@@ -290,11 +291,13 @@ impl Host {
     pub fn child_path(&self) -> Path {
         Path(vec![Segment::Host(HostRef(self.id, self.me.clone()))])
     }
-    /// The child, once built: answers go down to it by path.
-    pub fn set_child(&self, child: Rc<dyn Node>) {
-        *self.child.borrow_mut() = Some(child);
+    /// This host's id, which its child's paths name.
+    pub fn id(&self) -> u64 {
+        self.id
     }
-    /// The node whose places read the child's document: patched when it moves.
+    /// The node the host and its child are inlined into: it reads the child's document
+    /// (patched and rebuilt when it moves), and an answer to a child place goes to it
+    /// under the child's path.
     pub fn set_owner(&self, owner: &Rc<dyn Node>) {
         *self.owner.borrow_mut() = Some(Rc::downgrade(owner));
     }
@@ -318,7 +321,8 @@ impl Host {
         }
         let owner = self.owner.borrow().as_ref().and_then(Weak::upgrade);
         if let Some(o) = owner {
-            cx.dirty(o);
+            cx.dirty(o.clone());
+            cx.build_later(o);
         }
         let done = self.updates.fire((), cx);
         cx.keep(done);
@@ -371,9 +375,13 @@ impl Host {
     }
 
     fn answer_child(&self, at: &Path, v: &Pod, cx: &mut Cx) -> Done {
-        let child = self.child.borrow().clone();
-        match child {
-            Some(c) => c.answer(at.segments(), v, cx),
+        let owner = self.owner.borrow().as_ref().and_then(Weak::upgrade);
+        match owner {
+            Some(o) => {
+                let mut segs = vec![Segment::Host(HostRef(self.id, self.me.clone()))];
+                segs.extend(at.segments().iter().cloned());
+                o.answer(&segs, v, cx)
+            }
             None => Ok(()),
         }
     }

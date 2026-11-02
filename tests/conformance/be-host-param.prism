@@ -1,0 +1,22 @@
+# A widget function hosting its widget parameter (as the window library's `@Grid` hosts
+# `@widget: ..`): the child, a block given to the parameter, is inlined in the host's
+# scope, reads its caller's hold (and is patched when it moves), and its result crosses
+# back out of the host as the host's own (`((r, $doc))`, `@ r`). Written for prismc's
+# back end. Work in progress, subject to change.
+emit Ui.*
+
+@Boxed: fn @a -> @a
+fn @Boxed @child:
+    ((r, $doc)) <- @HostDocument @child, \|p, e| @Element e     # 1/[p]
+    Ui.Label(text=$"{Size $doc} inside")                        # 2
+    @ r
+
+@page: @unit
+@page:
+    !go <- Ui.Button(label=$"go")                               # 0
+    $n <- 0 then $n + 1 on !go
+    !inner <- @Boxed @widget:
+        !b <- Ui.Button(label=$"in {$n}")                       # 1/[0]/0
+        @ !b
+    $m <- 0 then $m + 1 on !inner
+    Ui.Label(text=$"{$m}")                                      # 3

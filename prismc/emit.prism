@@ -474,11 +474,11 @@ fn EmIsRaw other = False
 
 # A `for`'s builder: rows that left torn down, new keys built, kept rows updated.
 EmForDef: unbounded fn ForDef -> Text
-fn EmForDef b = TmForBuild b.name, "{b.pos}", (EmEx b.source), (EmTy b.keyTy), (EmTy b.valueTy), b.rowNode, (Concat (Each b.passed, \|x| ", {EmEx x}"))
+fn EmForDef b = TmForBuild b.name, b.at, (EmEx b.source), (EmTy b.keyTy), (EmTy b.valueTy), b.rowNode, (Concat (Each b.passed, \|x| ", {EmEx x}"))
 
 # A `rebuild`'s builder: the old generation torn down, the next one built.
 EmGenDef: unbounded fn GenDef -> Text
-fn EmGenDef gd = TmGenBuild gd.name, "{gd.pos}", (EmEx gd.source), (EmTy gd.valueTy), (EmEx gd.select)
+fn EmGenDef gd = TmGenBuild gd.name, gd.at, (EmEx gd.source), (EmTy gd.valueTy), (EmEx gd.select)
 
 # A row's leaving (prelude `Row`): its places torn down, its subscriptions let go.
 EmRowImpl: unbounded fn NodeDef -> Text

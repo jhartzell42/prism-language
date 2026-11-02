@@ -81,7 +81,7 @@ impl List {
     }
     /// Walk a list, including what is added to it while walking.
     fn walk<'w>(cx: &mut Cx<'w>, pick: for<'a> fn(&'a mut Cx<'w>) -> &'a mut List, f: fn(Rc<dyn Node>, &mut Cx<'w>) -> Done) -> Done {
-        let mut i = 0;
+        let mut i = pick(cx).walked;
         while let Some(n) = pick(cx).nodes.get(i).cloned() {
             pick(cx).walked = i + 1;
             f(n, cx)?;
@@ -316,10 +316,18 @@ impl Runtime {
             h += 1;
         }
         (cx.height, cx.read_at) = (None, cx.tick + 1);
-        List::walk(&mut cx, |cx| &mut cx.g.builds, |n, cx| n.build(cx))?;
-        List::walk(&mut cx, |cx| &mut cx.g.swaps, |n, cx| n.swap(cx))?;
-        List::walk(&mut cx, |cx| &mut cx.g.leaves, |n, cx| n.leave(cx))?;
-        List::walk(&mut cx, |cx| &mut cx.g.patches, |n, cx| n.patch(cx))?;
+        // A patch can mark builders and nodes again (a host's document moves when its
+        // child's places patch): the walks run again until nothing new is listed.
+        loop {
+            List::walk(&mut cx, |cx| &mut cx.g.builds, |n, cx| n.build(cx))?;
+            List::walk(&mut cx, |cx| &mut cx.g.swaps, |n, cx| n.swap(cx))?;
+            List::walk(&mut cx, |cx| &mut cx.g.leaves, |n, cx| n.leave(cx))?;
+            List::walk(&mut cx, |cx| &mut cx.g.patches, |n, cx| n.patch(cx))?;
+            let g = &cx.g;
+            if [&g.builds, &g.swaps, &g.leaves, &g.patches].iter().all(|l| l.walked >= l.nodes.len()) {
+                break;
+            }
+        }
 
         let mut g = cx.g;
         if let Some(f) = g.fault.take() {
