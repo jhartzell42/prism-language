@@ -539,6 +539,7 @@ fn LoTy lx, t = match t:
     TyCon "\u{0}Self", [[]]: RsNamed "Self", [[]]
     TyCon "Buffer", [[a]]: RsArray (LoTy lx, a)
     TyCon "Table", [[k, v]]: RsArray (RsTuple [[(LoTy lx, k), (LoTy lx, v)]])
+    TyCon "\u{0}Event", [[a]]: RsEvent (LoTy lx, a)
     TyCon n, args: LoNamedTy lx, n, (Each args, \|a| LoTy lx, a)
     TyFn c, ps, res:
         # A function value of any color but bounded is a `Start` (D8: a color variable may
@@ -564,6 +565,20 @@ fn LoTy lx, t = match t:
     TyAt i, ignore: RsNamed "prism_rtl::Blueprint", [[]]
     TyAssoc ignore, ignore: RsUnknown "an associated type"
     TyErr: RsUnknown "a type the checker did not find"
+
+# Whether a type gives a blueprint (`@o`, `?@o`).
+LoHasBlueprint: fn Ty -> Bool
+fn LoHasBlueprint t = match t:
+    TyAt ignore, ignore: True
+    TySig ignore, i: LoHasBlueprint i
+    otherwise: False
+
+# An event parameter taken as an event value: a type `LoPeel` leaves and `LoTy` spells
+# `Event<A>`.
+LoEventParam: fn Ty -> Ty
+fn LoEventParam t = match t:
+    TySig "!", i: TyCon "\u{0}Event", [[(LoPeel i)]]
+    otherwise: t
 
 # A `Start`'s function parameter is a `Start` whatever its color: a caller may pass an
 # unbounded one where the callee's own type says bounded (a parameter's color is
@@ -2490,9 +2505,12 @@ fn LoFnBodyValue lx, env, (BodyBlock b) = LoOwn (LoBlock lx, env, b)
 # A plain function: its scheme's types, its clauses as a `match`.
 LoFnDef: unbounded fn Lx, Text, [FnClause], Scheme -> FnDef
 fn LoFnDef lx, qk, clauses, sc:
-    let ((ptys, res)) = match sc.ty:
+    let ((ptys0, res)) = match sc.ty:
         TyFn ignore, ps, r: ((ps, r))
         other: (([[]], other))
+    # A function that gives a blueprint is not lifted over its `!` parameters: it takes
+    # each as an event value (`?Boxed p, e, !in` builds `@ !Filter (?ClickTo p, !in)`).
+    let ptys = if LoHasBlueprint res: Each ptys0, \|p| LoEventParam p else: ptys0
     let pts = Each ptys, \|p| LoTy lx, (LoPeel p)
     let names = LoParamNames lx, clauses, pts
     let body = LoClauses lx, emptyEnv, clauses, names, ptys, LoFnBodyValue, "c"

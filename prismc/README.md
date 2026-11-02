@@ -1058,18 +1058,33 @@ Each is Claude's, for Jimmy to overturn.
   which a static position never needs.
 - **HO Hosts.** `@HostDocument @child, supplier` and `@HostSome` are a host node of
   prism_rtl's (`Host::each`, `Host::some`) at the line's position, holding the supplier
-  (a lowered closure or named function over `&Path` and `&Live<crate::Elem>`) and the
-  child, a node of its own (each hosted named widget is one, `Lx.hosted`) built at the
-  host's child path, so its places emit in the host's scope (gap SP). Per child place the
-  host builds the supplier's blueprint at `pos/[p]` when the place asks its first value
-  or is added, and tears it down when the place leaves. `@ x` as a value is
-  `pure_blueprint(Answering::constant(&x))`, `@Element e` the forwarding
-  `element_blueprint(&e)`, which re-emits the element at `pos/[p]/0` and answers the
-  child's place with whatever comes back there (the transparent rule; pushes too, when
-  the World gives the place a first value). The child's document is a field the block
-  reads as a hold (`HostDoc<crate::Elem>`, before the tick during propagation and after
-  it from then on), and the host's owner is patched when it moves; the runtime's patch
-  list walks a node again when it is marked after its turn. `sem-ch09-hosts`.
+  (a lowered closure or named function over `&Path` and `&Live<crate::Elem>`). The
+  child, a named widget, a widget parameter's argument or a block, is inlined into the
+  host's owner (the node of the host's line) in a scope of its own: `Wx.scopes` lists the
+  node's hosts, a position from `LoScopeBase k` is the child of host `k`'s place, spelled
+  under `host_k_path` (the host's child path, `Segment::Host`), so it emits in the host's
+  scope (gap SP); its answer arm is `[Segment::Host(h), Segment::Pos(n), ..] if h.id() ==
+  self.host_k.id()`, and the host answers a child place through the owner's
+  `Node::answer` under that path. The child reads its caller's names as any inlined
+  widget does, marks included, and its result is the line's first part (`WrHosted`,
+  bound as an event or a dynamic whatever type the checker gave the name). Per child
+  place the host builds the supplier's blueprint at `pos/[p]` when the place asks its
+  first value or is added, and tears it down when the place leaves. `@ x` as a value is
+  `pure_blueprint(Answering::constant(&x))`, `@ !e` `Answering::event`, `@Element e` the
+  forwarding `element_blueprint(&e)`, which re-emits the element at `pos/[p]/0` and
+  answers the child's place with whatever comes back there (the transparent rule;
+  pushes too, when the World gives the place a first value). The child's document is a
+  field the block reads as a hold (`HostDoc<crate::Elem>`, before the tick during
+  propagation and after it from then on); when it moves the owner is patched and its
+  builders run, and the runtime reruns its build, swap, leave and patch walks until
+  nothing new is listed. `sem-ch09-hosts`, `be-host-param`.
+- **EV2 Event values.** A named event (`!x <- ..`, `let !x = ..`) fires a port of its
+  own (`x_v_port`, made in the build before the node so a closure can hold it), and
+  `!x` read as a value is `Event::of(&x_v_port)`. An event expression outside the pipe
+  that maps it is built by the library's combinators: a lifted call is `Event::map`,
+  `!Filter` `filter_some`. A function that gives a blueprint (`?Boxed: fn Path, Element
+  o, !Routed -> ?@o`) is not lifted over its `!` parameters: it takes each as an event
+  value. `be-event-values`.
 - **PU Pushes.** A place whose element answers a dynamic keeps its element
   (`f_element`), registers with `cx.listen_at`, and answers a push or a host's answer by
   path by writing its hold and patching the node.

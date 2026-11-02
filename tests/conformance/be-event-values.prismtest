@@ -1,0 +1,7 @@
+# Audited: the supplier answers the pad's button (child place 0, so no element of its own) with go's clicks and forwards the label (1/[1]/0); a click on go is a hit.
+# The event values' tests: declarations of be-event-values.prism (Semantics chapter 6).
+
+test an_event_answers_a_child, @remote:
+    build
+    click at 0
+    click at 0

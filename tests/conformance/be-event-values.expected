@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 9 ("an event output is answered by the event the blueprint returns").
+test an_event_answers_a_child
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/[1]/0: Ui.Label(text="0 hits")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/[1]/0: Ui.Label(text="1 hits")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1/[1]/0: Ui.Label(text="2 hits")
