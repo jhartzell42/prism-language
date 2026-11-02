@@ -1515,7 +1515,7 @@ fn LoJobLambda lx, env, ps, body, ft, a, enter:
         LbBlock bl: LoTailBlock lx, env2, bl
     let tail = if (Len unpack) == 0: tail0 else: XBlock unpack, tail0
     let job0 = XCall "once_job", [[(XClosure True, [[]], tail)]]
-    let job = if enter or LoCallsUnbounded lx, body: XCall "entered", [[job0]] else: job0
+    let job = if enter or LoCallsUnbounded lx, env2, body: XCall "entered", [[job0]] else: job0
     let call = if (Len again) == 0: job else: XBlock again, job
     VlOwned (XBlock dos, (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], call)]]), ft)), ft
 
@@ -1528,17 +1528,31 @@ fn LoEntersLambda lx, e = match LoPeel (LoTyOf lx, e.span):
     otherwise: False
 
 # Whether a lambda's body calls an unbounded function (a callee whose checked type is
-# not bounded): such a lambda is unbounded whatever color the checker left on the lambda
-# itself, which it fixes before a parameter's type is known (`\|ignore| K v` with `K`
-# a `Start`).
-LoCallsUnbounded: unbounded fn Lx, LambdaBody -> Bool
-fn LoCallsUnbounded lx, body = Fold (LoBodyExprs body), False, \|seen, x| seen or LoIsUnboundedCall lx, x
+# unbounded, or a local that is a `Start`): such a lambda is unbounded whatever color the
+# checker left on the lambda itself, which it fixes before a parameter's type is known
+# (`\|ignore| K v` with `K` a `Start`).
+LoCallsUnbounded: unbounded fn Lx, LoEnv, LambdaBody -> Bool
+fn LoCallsUnbounded lx, env, body = Fold (LoBodyExprs body), False, \|seen, x| seen or LoIsUnboundedCall lx, env, x
 
-LoIsUnboundedCall: fn Lx, Expr -> Bool
-fn LoIsUnboundedCall lx, x = match x.kind:
-    ECall c, ignore, ignore, ignore: match LoPeel (LoTyOf lx, c.span):
-        TyFn CUnbound, ignore, ignore: True
-        otherwise: False
+LoIsUnboundedCall: fn Lx, LoEnv, Expr -> Bool
+fn LoIsUnboundedCall lx, env, x = match x.kind:
+    ECall c, ignore, ignore, ignore: (LoIsUnboundedTy (LoTyOf lx, c.span)) or LoIsStartLocal env, c
+    otherwise: False
+
+LoIsUnboundedTy: fn Ty -> Bool
+fn LoIsUnboundedTy t = match LoPeel t:
+    TyFn CUnbound, ignore, ignore: True
+    otherwise: False
+
+LoIsStartLocal: fn LoEnv, Expr -> Bool
+fn LoIsStartLocal env, c = match c.kind:
+    EName n: if (Len n.path) == 1: LoIsStartBinding env.names[SNameKey n] else: False
+    EGroup y: LoIsStartLocal env, y
+    otherwise: False
+
+LoIsStartBinding: fn ?Bn -> Bool
+fn LoIsStartBinding ?b = match ?b:
+    ? (BnLocal ignore, ignore, (RsJobFn ignore, ignore)): True
     otherwise: False
 
 # An environment of only the locals a closure captured (its other borrowed locals cannot
