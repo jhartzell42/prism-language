@@ -4424,7 +4424,7 @@ fn LoRowMethods wx, dirty:
     let removes = Each wx.places, \|p| DoExpr (XMethod (XRaw "cx"), "removed", [[(XRaw (LoPlaceAt wx.scopes, "self", p.pos))]])
     let nested = Append (Each wx.builders, \|b| DoExpr (XRaw "self.{b.name}.borrow().values().for_each(|row| row.leave_row(cx))")), (Each wx.gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "self.{gd.name}.borrow().as_ref()"), [[DoExpr (XRaw "row.leave_row(cx)")]], [[]])
     let remove = MethDef(name="remove_places", recv="ref", params=[[]], cx="mut", ret=RsUnit, body=(Append removes, nested), tail=(XRaw "()"), doc="The row left: its places are torn down.")
-    if held: [[updater, remove]] else: [[remove]]
+    [[updater, remove]]
 
 LoGnDoc: fn Gn -> Text
 fn LoGnDoc g = match g.kind:
@@ -4831,7 +4831,7 @@ fn LoForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let ((name, wx2)) = LoFresh wx1, base
     let rowName = "{wx.node}{if (Len wx.rows) == 0: "" else: "{Len wx.rows}"}Row"
     let locals = LoRowLocals benv, menv, body
-    let rowWx0 = Wx(lx=lx, node=rowName, pos=0, gns=[[]], fields=(Append [[(("key", kt, "the row's key")), (("value", (RsHold vt), "the row's entry, `$_`")), (("parent", (RsWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))), inits=(Append [[(("key", (XRaw "key"))), (("value", (XCall "Hold::new", [[XRaw "value", XRaw "cx"]]))), (("parent", (XRaw "parent")))]], (Each locals, \|l| ((l.field, (XRaw l.field))))), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=(Append (Append nodeHooks, [["key", "value", "parent", "update"]]), (Each locals, \|l| l.field)), fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowHolds=[[]])
+    let rowWx0 = Wx(lx=lx, node=rowName, pos=0, gns=[[]], fields=(Append [[(("key", kt, "the row's key")), (("value", (RsHold vt), "the row's entry, `$_`")), (("parent", (RsWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))), inits=(Append [[(("key", (XRaw "key.clone()"))), (("value", (XCall "Hold::new", [[XRaw "value.clone()", XRaw "cx"]]))), (("parent", (XRaw "parent")))]], (Each locals, \|l| ((l.field, (XRaw l.field))))), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=(Append (Append nodeHooks, [["key", "value", "parent", "update"]]), (Each locals, \|l| l.field)), fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowHolds=[[]])
     let keyB = BnLocal "key", "own", kt
     let keyM = BnLocal "self.key", "own", kt
     let benvL = Fold locals, (LoRowReads benv, "parent.upgrade().expect(\"the block outlives its rows\")"), \|en, l| LoBind en, l.name, (BnLocal l.field, "own", l.ty)

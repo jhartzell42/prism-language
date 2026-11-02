@@ -86,7 +86,16 @@ impl Document {
                     patch.added.push((path, level));
                 }
                 Edit::Changed(path, level) => {
-                    if born.contains(&path) || self.0.get(&path) == Some(&level) || !self.0.contains_key(&path) {
+                    if born.contains(&path) {
+                        // Built this tick and moved again before the tick's end (a host's
+                        // owner patched after its child): it goes out as it stands.
+                        if let Some(entry) = patch.added.iter_mut().rev().find(|(p, _)| *p == path) {
+                            entry.1 = level.clone();
+                        }
+                        self.0.insert(path, level);
+                        continue;
+                    }
+                    if self.0.get(&path) == Some(&level) || !self.0.contains_key(&path) {
                         continue;
                     }
                     self.0.insert(path.clone(), level.clone());
