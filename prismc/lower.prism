@@ -4544,7 +4544,7 @@ fn LoProgDef lx, qk:
     let params = Each (Range0 (Len ptys)), \|i| (("arg{i}", (LoTy lxm, (LoPeel (Or ptys[i], TyErr)))))
     let node = "{LoModName v.home}::{LoCamel (BareName qk)}"
     let gui = HasText (Or lx.g.mods[v.home], dummyMod).emitRw.fams, "Gui"
-    ProgDef(name="{LoCamel (BareName qk)}Program", prism=(LoBase (BareName qk)), node=node, params=params, fallible=True, world=(if gui: "canvas" else: "cli"))
+    ProgDef(name="{LoCamel (BareName qk)}Program", prism=(Drop (BareName qk), 1), node=node, params=params, fallible=True, world=(if gui: "canvas" else: "cli"))
 
 # The unbounded functions with jobs: those `@Run` is given, and those they tail-call.
 LoJobRoots: unbounded fn Lx -> [Text]
