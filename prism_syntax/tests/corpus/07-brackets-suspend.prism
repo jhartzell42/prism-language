@@ -1,8 +1,0 @@
-# Rule 6: inside any bracket, line breaks are whitespace and no colon opens a block
-let m = {
-  "a": 1,
-        "b": 2}
-let xs = [[1,
-2]]
-let t = F<<
-    Int>> x

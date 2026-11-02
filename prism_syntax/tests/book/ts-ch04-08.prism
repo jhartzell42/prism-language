@@ -1,3 +1,0 @@
-# 02-type-system/book/ch-04-expressions-and-lifting.md, line 255
-!Bump: fn $Int, !unit -> !Int
-fn !Bump $n, !go = $n + 1 on !go

@@ -1,8 +1,0 @@
-# 01-semantics/book/ch-08-document-paths-places.md, line 21
-# from the Ui and Fs modules
-tag Ui.TextInput of Element !Key:
-    name: Text                             # identity
-    text: $Text                            # live
-
-tag Fs.Contents of Element $~Contents:
-    path: Text                             # identity: a new path is a new watch

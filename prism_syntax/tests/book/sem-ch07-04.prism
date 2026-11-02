@@ -1,4 +1,0 @@
-# 01-semantics/book/ch-07-ticks.md, line 240
-@broken:
-    let !a = 1 + !b
-    let !b = 2 + !a

@@ -1,9 +1,0 @@
-# 03-templates/book/ch-02-code-templates.md, line 156
-Rust.templatetext(text="// generated from ")
-Rust.templateplaceholder(text=$m.path, column=nil)
-Rust.templatetext(text="\n")
-Rust.templatetext(text="pub struct ")              # in @ClassText's row
-Rust.templateplaceholder(text=$c.name, column=nil)
-Rust.templatetext(text=" {\n")
-Rust.templateplaceholder(text=..., column=4)
-...

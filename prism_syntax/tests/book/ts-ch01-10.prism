@@ -1,4 +1,0 @@
-# 02-type-system/book/ch-01-names-and-sigils.md, line 344
-Size: fn ~Contents -> Nat
-fn Size (~ c) = Len c.text
-fn Size (Error(..)) = 0

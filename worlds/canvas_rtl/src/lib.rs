@@ -1,6 +1,5 @@
 //! The canvas World over `prism_rtl`'s protocol: a window for each `Gui.Window` place,
-//! painted in software. It is `worlds/canvas` (which serves the interpreter, prism_zero)
-//! speaking the compiled programs' [`Program`] and [`World`] instead of prism_rt's.
+//! painted in software, speaking the compiled programs' [`Program`] and [`World`].
 //!
 //! *Written by Claude, 1 November 2026, on the `claude-self-hosting` branch. Subject to
 //! change: implementers use their discretion. `README.md` beside this crate says what
@@ -15,7 +14,6 @@
 //! - [`font`]: the bundled DejaVu Sans, `worlds/canvas/src/font.rs` itself.
 //! - `app`: winit's event loop, the windows and their surfaces (softbuffer).
 
-#[path = "../../canvas/src/font.rs"]
 pub mod font;
 pub mod render;
 pub mod world;

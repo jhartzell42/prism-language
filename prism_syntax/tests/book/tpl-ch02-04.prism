@@ -1,7 +1,0 @@
-# 03-templates/book/ch-02-code-templates.md, line 184
-module Rust
-
-type Doc = choice:
-    templatetext Text
-    templateplaceholder Text, ?Nat
-derive ^Pod

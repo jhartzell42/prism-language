@@ -1,7 +1,0 @@
-@bad :
-open !x <- for $rows :
-open Ui.Button ( label = $_ )
-close
-sep <| !other
-close
-5:1: unindent does not match any open block

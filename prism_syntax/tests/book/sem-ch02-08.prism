@@ -1,7 +1,0 @@
-# 01-semantics/book/ch-02-lexical-structure.md, line 217
-$"Go"                        # the constant lift: a $Text that never changes
-$"Page {_}"                  # the same, with _ plain
-$"Count: {$count}"           # checked: the placeholder already makes it a $Text
-"Count: {$count}"            # the same expression, unmarked
-$ "Count: {$count}"          # free: a dynamic of that dynamic, $$Text
-$0                           # a $Nat that is always zero

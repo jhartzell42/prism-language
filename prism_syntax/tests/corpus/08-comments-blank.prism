@@ -1,7 +1,0 @@
-# Rule 10: blank and comment-only lines never open, close or continue anything
-@w:
-
-        # a comment deeper than the block
-    !a <- Ui.Button(label=$"A")
-# a comment at column 0
-    @ !a

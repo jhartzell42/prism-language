@@ -1,3 +1,0 @@
-# 02-type-system/book/ch-01-names-and-sigils.md, line 14
--    let $?name = $?user.name
-+    let ?name = ?user.name

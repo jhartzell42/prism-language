@@ -1,5 +1,0 @@
-# Rule 4 and rule 7: the label's column 4 closes the rebuild (Semantics ch. 2, Layout)
-@outer:
-    !x <- rebuild $a:
-        Ui.Button(label=$"B")
-    Ui.Label(text=$"done")

@@ -1,3 +1,0 @@
-let m = { TEXT(a) : 1 , TEXT(b) : 2 }
-sep let xs = [·[ 1 , 2 ]·]
-sep let t = F << Int >> x

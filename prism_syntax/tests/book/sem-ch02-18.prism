@@ -1,2 +1,0 @@
-# 01-semantics/book/ch-02-lexical-structure.md, line 577
-$count <- 0 then $count + (-1 on !dec <| +1 on !inc)

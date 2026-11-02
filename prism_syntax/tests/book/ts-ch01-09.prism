@@ -1,3 +1,0 @@
-# 02-type-system/book/ch-01-names-and-sigils.md, line 333
-let ?start = nil
-let ?corner = ? ((0, 0))

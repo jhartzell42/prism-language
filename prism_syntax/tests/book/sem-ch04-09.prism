@@ -1,7 +1,0 @@
-# 01-semantics/book/ch-04-blocks.md, line 371
-~Port: fn Text -> ~Nat
-fn ~Port text:
-    doc <- ~ParseConfig text                       # ~Config: an Error gives up with it
-    port <- ~Field doc, "port"
-    require port <= 65535
-    ~ port

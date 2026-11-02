@@ -1,6 +1,0 @@
-# 01-semantics/book/ch-03-syntax.md, line 165
-F a, G b, c                        # F(a, G(b), c)
-F a, (G b, c)                      # F(a, G(b, c))
-F G H x                            # F(G(H(x)))
-Fold changes, 0, \|acc, c| Max acc, c   # the lambda's body takes the rest
-let bigger = Insert $m, $k, (Size $k) + 1

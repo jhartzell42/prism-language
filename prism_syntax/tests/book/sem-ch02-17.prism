@@ -1,5 +1,0 @@
-# 01-semantics/book/ch-02-lexical-structure.md, line 544
-@bad:
-    !x <- for $rows:
-        Ui.Button(label=$_)
-      <| !other                          # error: unindent matches no block

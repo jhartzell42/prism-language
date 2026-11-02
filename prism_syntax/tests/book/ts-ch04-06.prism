@@ -1,5 +1,0 @@
-# 02-type-system/book/ch-04-expressions-and-lifting.md, line 225
-let !reset = 0 on !clear                    # plain left: fires 0 with the clear
-let !draft = $text on !send                 # the text's sample at the send
-let !step = $count + 1 on !click            # ($count + 1) on !click
-let !action = Save on !save <| Quit on !quit

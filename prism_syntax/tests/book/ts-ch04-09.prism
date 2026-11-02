@@ -1,6 +1,0 @@
-# 02-type-system/book/ch-04-expressions-and-lifting.md, line 266
-Fold: u fn [a], b, (u fn b, a -> b) -> b
-
-let total = Fold prices, 0, \|s, p| s + p           # bounded: an ordinary call
-let $sum = Fold $prices, 0, \|s, p| s + p           # bounded, so it lifts over $prices
-let nf = Fold terms, t, \|_, x| Normalize x         # error: unbounded, inside a tick

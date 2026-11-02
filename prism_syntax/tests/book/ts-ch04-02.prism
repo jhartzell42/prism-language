@@ -1,4 +1,0 @@
-# 02-type-system/book/ch-04-expressions-and-lifting.md, line 132
-let width = 8
-let cells = width * width
-let ?per_row = cells / width          # ?Nat: division may have no answer

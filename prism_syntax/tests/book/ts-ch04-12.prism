@@ -1,5 +1,0 @@
-# 02-type-system/book/ch-04-expressions-and-lifting.md, line 356
-let ?mean = total / count                         # ?Nat: nil when count is zero
-let ?shown = ?mean + 1                            # still ?Nat
-let shown = Or ?shown, 0                          # plain at last
-let ?left = n -? 1                                # ?Nat: nil below zero

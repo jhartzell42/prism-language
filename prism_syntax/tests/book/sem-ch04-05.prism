@@ -1,9 +1,0 @@
-# 01-semantics/book/ch-04-blocks.md, line 269
-@viewer: @unit
-@viewer:
-    $path <- @TextInput "/etc/motd"
-    $$name <- rebuild $path:
-        Ui.Image(src=_)
-        @ $"showing {_}"
-    $name <- @Flatten $$name
-    Ui.Label(text=$name)

@@ -1,6 +1,0 @@
-# 01-semantics/book/ch-02-lexical-structure.md, line 125
-Ui.Button          # a tag in the Ui family
-Time.Clock         # a tag in the Time family
-Ui.*               # every tag in the family: a pattern, and an import
-cart.total         # field access: the second part is lowercase
-Rust.templatetext  # a family and a reserved lowercase constructor

@@ -1,3 +1,0 @@
-let r = ( Max a , ( Min b , c )·)
-sep let t = (·(·( Min 18 , 20 ) , ( Max 22 , 20 )·)·)
-sep let s = F -pre 1 , (·( n , absent )·) , [·[ x ]·] nonempty , a -Int b , n -? 1

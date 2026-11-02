@@ -1,7 +1,0 @@
-# 02-type-system/book/ch-02-values-and-types.md, line 111
-type Vector = record:
-    x: Float
-    y: Float
-
-let origin = Vector 0.0, 0.0
-let east = Vector(x=1.0, y=0.0)

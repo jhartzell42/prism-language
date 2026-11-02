@@ -1,4 +1,0 @@
-# 01-semantics/book/ch-02-lexical-structure.md, line 99
-let tally = 0                      # a value now
-Tally: fn [Nat] -> Nat             # applied later
-fn Tally xs = Fold xs, 0, \|a, b| a + b

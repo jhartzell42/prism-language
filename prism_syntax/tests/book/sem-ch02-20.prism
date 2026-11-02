@@ -1,4 +1,0 @@
-# 01-semantics/book/ch-02-lexical-structure.md, line 612
-let r = (Max a, (Min b, c))
-let t = (((Min 18, 20), (Max 22, 20)))
-let s = F -pre 1, ((n, -)), [[x]]+, a -Int b, n -? 1

@@ -1,3 +1,0 @@
-# 02-type-system/book/ch-03-traits.md, line 164
-Describe: fn [a] -> Text where a: ^Show
-fn Describe xs = JoinText (Map xs, Show), ", "

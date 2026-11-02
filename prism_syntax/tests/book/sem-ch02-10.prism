@@ -1,4 +1,0 @@
-# 01-semantics/book/ch-02-lexical-structure.md, line 295
-let blink = 250ms
-let lag = 1.3ms              # 1300us: a whole number of nanoseconds
-let before = -2s             # a prefix minus: durations may be negative

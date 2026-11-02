@@ -1,5 +1,0 @@
-# 01-semantics/book/ch-09-hosting-and-worlds.md, line 183
-@View: fn @a emit Lang t, (fn $(Here t) -> @b) -> @((a, b))                     where t: ^Pod
-@Templated: fn p -> @unit emit Lang t
-@Edit: fn [[t]], (fn $(Here t) -> @!t emit Ui.*) -> @$[[t]] emit Lang t | Ui.*
-@Translate: fn @a emit Lang s, (fn $(Here s) -> @unit emit Lang t) -> @a emit Lang t

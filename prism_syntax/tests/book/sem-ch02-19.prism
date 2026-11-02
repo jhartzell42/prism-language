@@ -1,8 +1,0 @@
-# 01-semantics/book/ch-02-lexical-structure.md, line 585
-$count + 1 on !click             # ($count + 1) on !click
-$done or $n > limit on !click    # ($done or ($n > limit)) on !click
-not a == b                       # not (a == b)
-(col + 1) mod width              # the group is needed: mod is tighter than +
-Size $k + 1                      # Size ($k + 1)
-F a <| G b                       # F (a <| G b)
-n -? 1 == nil                    # (n -? 1) == nil

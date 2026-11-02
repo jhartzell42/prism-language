@@ -1,7 +1,0 @@
-# 02-type-system/book/ch-03-traits.md, line 64
-Clamp: fn a, a, a -> a where a: ^Ord
-fn Clamp lo, hi, x = if x < lo: lo else: if hi < x: hi else: x
-
-let third = 10 / 3                                 # ?Int: it may have no answer
-let ratio = 10.0 / 3.0                             # Float
-let names = Sort [["grace", "ada", "alan"]]        # Text is ^Ord

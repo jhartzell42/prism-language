@@ -1,8 +1,0 @@
-# 04-conformance/book/ch-01-the-test-language.md, line 378
-test pawn_to_e4_by_path, @$main:
-    build
-        => returns "White's turn"
-    click element 0/[e2]/0
-        => returns "White's turn"
-    click element 0/[e4]/0
-        => returns "Black's turn"

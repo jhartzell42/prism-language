@@ -1,8 +1,0 @@
-# 02-type-system/book/ch-04-expressions-and-lifting.md, line 338
-@prices:
-    $book <- @PriceFeed
-    $symbol <- @SymbolPicker
-    let $Price = \|sym| $book[sym]               # fn Sym -> $?Nat
-    let $$?price = $Price $symbol                # lifted: a dynamic of dynamics
-    $?price <- @Flatten ($Price $symbol)         # flattened, by a binding
-    let $?same = $book[$symbol]                  # better: one lift, two dynamics

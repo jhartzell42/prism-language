@@ -1,9 +1,0 @@
-# 01-semantics/book/ch-02-lexical-structure.md, line 402
-F -1          # prefix: F applied to -1
-F - 1         # binary: F minus one
-F-1           # binary
-a * -b        # prefix, after an operator
-\F .x         # prefix: F applied to _.x
-\F [0]        # prefix: F applied to _[0]
-a.x           # binary: field x of a
-xs[0]         # binary: index into xs

@@ -1,5 +1,0 @@
-# 02-type-system/book/ch-01-names-and-sigils.md, line 355
-Describe: fn Game, Sq -> Text
-fn Describe g, sq = match ?At g, sq:
-    ? pc: "a {Show pc.man} stands here"
-    nil: "empty"

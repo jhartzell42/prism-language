@@ -1,5 +1,0 @@
-# 02-type-system/book/ch-01-names-and-sigils.md, line 402
-@toolbar: @unit
-@toolbar:
-    let ok = Ui.Button(label=$"OK")                # plain: an element value
-    !click <- ok                                   # bound: an event

@@ -1,9 +1,0 @@
-# 01-semantics/book/ch-06-modules.md, line 167
-module Frames
-emit r | Ui.*
-use Ui
-
-@Titled: fn Text, @a emit r | Ui.* -> @a
-fn @Titled title, @child:
-    Ui.Label(text=$title)
-    @child

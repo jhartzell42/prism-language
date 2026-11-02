@@ -1,5 +1,0 @@
-# 02-type-system/book/ch-03-traits.md, line 91
-type Sq = record:
-    file: Nat
-    rank: Nat
-derive ^Eq, ^Ord, ^Show

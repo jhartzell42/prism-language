@@ -1,9 +1,0 @@
-module Birds.Field
-sep use Birds.*
-sep let a = [·[ Ui.Button , Time.Clock , cart . total , Rust.templatetext , templateplaceholder , _ , _1 , key , ix , jx , kx ]·]
-sep let b = @widget :
-open free@ !key
-close
-sep impl ^Timeline !_ :
-open fn !Updates !e = !e
-close

@@ -1,8 +1,0 @@
-# 01-semantics/book/ch-01-principles-and-constraints.md, line 17
-emit Ui.* | Net.*
-
-@compose:
-    !key <- Ui.TextInput(name="message", text=$draft)       # 0
-    !send <- Ui.Button(label=$"Send")                       # 1
-    $draft <- "" then ("" on !send <| Edit $draft, !key)
-    Net.Outbox(sends=($draft on !send))                     # 2

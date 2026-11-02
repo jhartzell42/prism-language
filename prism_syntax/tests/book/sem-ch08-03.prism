@@ -1,7 +1,0 @@
-# 01-semantics/book/ch-08-document-paths-places.md, line 241
-@Basket: fn $(Text ==> Nat) -> @unit
-fn @Basket $items:
-    emit Nat
-    ignore <- for $items:
-        ignore <- rebuild $_:
-            _                              # one price, in cents, per generation

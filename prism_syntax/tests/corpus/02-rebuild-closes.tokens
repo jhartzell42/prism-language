@@ -1,6 +1,0 @@
-@outer :
-open !x <- rebuild $a :
-open Ui.Button ( label = $TEXT(B) )
-close
-sep Ui.Label ( text = $TEXT(done) )
-close

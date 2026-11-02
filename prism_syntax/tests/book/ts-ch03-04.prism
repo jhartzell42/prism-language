@@ -1,8 +1,0 @@
-# 02-type-system/book/ch-03-traits.md, line 139
-trait ^Show a:
-    Show: fn a -> Text
-
-let letters = [["a", "b", "c", "d", "e", "f", "g", "h"]]
-
-impl ^Show Sq:
-    fn Show sq = "{Or letters[sq.file], "?"}{sq.rank + 1}"

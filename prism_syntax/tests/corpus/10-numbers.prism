@@ -1,4 +1,0 @@
-let n = [[1_000_000, 0xFF, 0o17, 0b1010, 0.75, 2e-3, -40, 250ms, 1.3ms, -2s, 2min, 3h]]
-let t = "hi {name}, you have {Len mail} messages"
-let r = "set \{x\} to \"on\"\n"
-let w = "{Or $?name, "nobody"} signed in"

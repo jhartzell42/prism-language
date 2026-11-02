@@ -1,7 +1,0 @@
-# 01-semantics/book/ch-04-blocks.md, line 290
-@Shelf: fn $(Text ==> Nat) -> @!(Text ==> ?Nat)
-fn @Shelf $stock:
-    for title, $count <- $stock:
-        Ui.Label(text=$"{title}: {$count} left")
-        !sell <- Ui.Button(label=$"Sell one")
-        @ $count -? 1 on !sell

@@ -1,6 +1,0 @@
-# 01-semantics/book/ch-10-errors-and-faults.md, line 173
-~Port: fn Text -> ~Nat
-fn ~Port text:
-    n <- ~ParseNat text
-    forbid n > 65535, Error(kind=Net.BadPort, message="{n} is past the last port")
-    ~ n

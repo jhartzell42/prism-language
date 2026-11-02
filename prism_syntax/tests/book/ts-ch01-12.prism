@@ -1,7 +1,0 @@
-# 02-type-system/book/ch-01-names-and-sigils.md, line 385
-&Home: fn &Fixture -> &Nat
-fn &Home &f = &f.score.home
-
-Forfeit: fn Fixture -> Fixture
-fn Forfeit f = update f:
-    &Home &_ <= 0

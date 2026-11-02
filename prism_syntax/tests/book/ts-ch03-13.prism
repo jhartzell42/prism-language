@@ -1,5 +1,0 @@
-# 02-type-system/book/ch-03-traits.md, line 395
-module Fancy
-use Cards
-impl ^Show Cards.Card:                               # error: Card already has one,
-    fn Show c = "the {Long c.rank} of {Long c.suit}" # and nothing here is Fancy's
