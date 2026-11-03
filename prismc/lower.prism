@@ -1215,20 +1215,21 @@ TagValue: unbounded fn Lx, Env, TagInfo, [Arg] -> Vl
 fn TagValue lx, env, tg, args:
     let ((variant, structPath)) = TagPaths lx, tg
     let t = RsNamed (KindPath lx, tg.kind), [[]]
-    if tg.kind == "Element": VlOwned (Refusal "an element as a plain value ({tg.name}): a live element comes from its host"), t
-    else: if tg.kind == "Prelude.Fault": VlOwned (Refusal "a fault kind applied ({tg.name})"), t
-    else:
-        let named = Fold args, False, \|f, a| f or IsNamedArg a
-        let fields = Each (Range0 (Len tg.fields)), \|i|
-            let ((fname, ignore)) = Or tg.fields[i], (("", TyErr))
-            let ?arg = if named: ?TagArg args, fname else: match args[i]:
-                ? a: ? a.value
-                nil: nil
-            let v = match ?arg:
-                ? x: Own (ValueOf lx, env, x)
-                nil: XRaw "Default::default()"
-            ((Snake fname, v))
-        VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
+    match tg.kind:
+        "Element": VlOwned (Refusal "an element as a plain value ({tg.name}): a live element comes from its host"), t
+        "Prelude.Fault": VlOwned (Refusal "a fault kind applied ({tg.name})"), t
+        otherwise:
+            let named = Fold args, False, \|f, a| f or IsNamedArg a
+            let fields = Each (Range0 (Len tg.fields)), \|i|
+                let ((fname, ignore)) = Or tg.fields[i], (("", TyErr))
+                let ?arg = if named: ?TagArg args, fname else: match args[i]:
+                    ? a: ? a.value
+                    nil: nil
+                let v = match ?arg:
+                    ? x: Own (ValueOf lx, env, x)
+                    nil: XRaw "Default::default()"
+                ((Snake fname, v))
+            VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
 
 # A call of a global: a constructor, a trait method, a prelude function, a program's own.
 GlobalCall: unbounded fn Lx, Env, Text, [Arg], Range, RsTy -> Vl
@@ -1275,24 +1276,25 @@ fn CtorApp lx, env, c, args, span:
     let owner = Or lx.g.types[c.owner], dummyTyInfo
     let tyPath = PathIn lx, owner.home, (Camel (BareName c.owner))
     let vals = CtorArgs lx, env, c, args
-    if c.owner == "Bool": VlOwned (XRaw (if c.name == "True": "true" else: "false")), RsBool
-    else: if c.owner == "Prelude.Error":
-        let kind = Or vals[0], (XRaw "\"\"")
-        let msg = Or vals[1], (XText "")
-        let made = XCall "Error::new", [[kind, msg]]
-        match t:
-            RsRes ignore: VlOwned (XCtor "Err", [[made]]), t
-            otherwise: VlOwned made, RsError
-    else: match owner.body:
-        BRecord fs:
-            if (Len c.fields) == 0: VlOwned (XRaw tyPath), t
-            else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((Snake (Or c.fields[i], "")), (Or vals[i], (XRaw "Default::default()")))))), t
-        BChoice cases:
-            let isUnitType = (Len cases) == 1 and (Len c.args) == 0 and IsLowerText (BareName c.name)
-            let path = if isUnitType: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
-            if (Len c.args) == 0: VlOwned (XRaw path), t
-            else: VlOwned (XCtor path, vals), t
-        otherwise: VlOwned (Refusal "a constructor of {c.owner}"), t
+    match c.owner:
+        "Bool": VlOwned (XRaw (if c.name == "True": "true" else: "false")), RsBool
+        "Prelude.Error":
+            let kind = Or vals[0], (XRaw "\"\"")
+            let msg = Or vals[1], (XText "")
+            let made = XCall "Error::new", [[kind, msg]]
+            match t:
+                RsRes ignore: VlOwned (XCtor "Err", [[made]]), t
+                otherwise: VlOwned made, RsError
+        otherwise: match owner.body:
+            BRecord fs:
+                if (Len c.fields) == 0: VlOwned (XRaw tyPath), t
+                else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((Snake (Or c.fields[i], "")), (Or vals[i], (XRaw "Default::default()")))))), t
+            BChoice cases:
+                let isUnitType = (Len cases) == 1 and (Len c.args) == 0 and IsLowerText (BareName c.name)
+                let path = if isUnitType: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
+                if (Len c.args) == 0: VlOwned (XRaw path), t
+                else: VlOwned (XCtor path, vals), t
+            otherwise: VlOwned (Refusal "a constructor of {c.owner}"), t
 
 # A constructor used as a function value (`OnePattern p, CkExpect`): a closure building
 # it from its arguments, which a bounded value takes by reference and a `Start` owns.
@@ -1354,21 +1356,23 @@ PreludeMethod: unbounded fn Lx, Text, Text, [Vl], Range, RsTy -> Vl
 fn PreludeMethod lx, cls, m, vals, span, t:
     let a = Or vals[0], (VlOwned (XRaw "()"), RsUnit)
     let b = Or vals[1], (VlOwned (XRaw "()"), RsUnit)
-    if m == "Show": VlOwned (XCall "show_text", [[Ref a]]), RsText
-    else: if m == "Compare": VlOwned (XCall "compare", [[Ref a, Ref b]]), t
-    else: if m == "Children": VlOwned (XCall "children", [[Ref a]]), t
-    else: OpValue lx, m, a, b, span, t
+    match m:
+        "Show": VlOwned (XCall "show_text", [[Ref a]]), RsText
+        "Compare": VlOwned (XCall "compare", [[Ref a, Ref b]]), t
+        "Children": VlOwned (XCall "children", [[Ref a]]), t
+        otherwise: OpValue lx, m, a, b, span, t
 
 # A binary operator.
 BinaryValue: unbounded fn Lx, Env, Text, Expr, Expr, Range -> Vl
 fn BinaryValue lx, env, op, l, r, span:
     let t = RustTy lx, (Peel (TypeAt lx, span))
-    if op == "and": VlOwned (XBin "&&", (AsBool (ValueOf lx, env, l)), (AsBool (ValueOf lx, env, r))), RsBool
-    else: if op == "or": VlOwned (XBin "||", (AsBool (ValueOf lx, env, l)), (AsBool (ValueOf lx, env, r))), RsBool
-    # In a function lifted over an event (`fn !Bump $n, !go = $n + 1 on !go`), the
-    # function runs at the event's firing, so `x on !e` is `x` read there.
-    else: if op == "on": ValueOf lx, env, l
-    else: OpValue lx, op, (ValueOf lx, env, l), (ValueOf lx, env, r), span, t
+    match op:
+        "and": VlOwned (XBin "&&", (AsBool (ValueOf lx, env, l)), (AsBool (ValueOf lx, env, r))), RsBool
+        "or": VlOwned (XBin "||", (AsBool (ValueOf lx, env, l)), (AsBool (ValueOf lx, env, r))), RsBool
+        # In a function lifted over an event (`fn !Bump $n, !go = $n + 1 on !go`), the
+        # function runs at the event's firing, so `x on !e` is `x` read there.
+        "on": ValueOf lx, env, l
+        otherwise: OpValue lx, op, (ValueOf lx, env, l), (ValueOf lx, env, r), span, t
 
 # An operator over two values of the left one's type (Type System ch. 3: `^Eq`, `^Ord`,
 # `^Num` on the built-in numbers; `/` gives `?a` on the integers, doubt QD).
@@ -2143,17 +2147,18 @@ fn ErrorPat lx, fps, ty, mode, fresh:
         let fname = match fp.?name:
             ? id: id.name
             nil: ""
-        if fname == "kind": match fp.pattern.kind:
-            PName k:
-                let ((?kq, ignore)) = ResolveValue lx.g, lx.home, k
-                match ?kq:
-                    ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin "==", (XRaw "&*{fresh}.kind"), (XRaw "\"{kq}\""))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal "{fresh}.kind", Owned, RsText)))]]))
-                    nil: (([[]], [[((SNameKey k, (BnLocal "{fresh}.kind", Owned, RsText)))]]))
+        match fname:
+            "kind": match fp.pattern.kind:
+                PName k:
+                    let ((?kq, ignore)) = ResolveValue lx.g, lx.home, k
+                    match ?kq:
+                        ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin "==", (XRaw "&*{fresh}.kind"), (XRaw "\"{kq}\""))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal "{fresh}.kind", Owned, RsText)))]]))
+                        nil: (([[]], [[((SNameKey k, (BnLocal "{fresh}.kind", Owned, RsText)))]]))
+                otherwise: (([[]], [[]]))
+            "message": match fp.pattern.kind:
+                PName m: (([[]], [[((SNameKey m, (BnLocal "{fresh}.message", Owned, RsText)))]]))
+                otherwise: (([[]], [[]]))
             otherwise: (([[]], [[]]))
-        else: if fname == "message": match fp.pattern.kind:
-            PName m: (([[]], [[((SNameKey m, (BnLocal "{fresh}.message", Owned, RsText)))]]))
-            otherwise: (([[]], [[]]))
-        else: (([[]], [[]]))
     let wrapped = match Peel ty:
         TySig "~", ignore: PaCtor "Err", [[PaBind fresh]]
         otherwise: PaBind fresh
@@ -3813,19 +3818,20 @@ fn InlineBlock wx, benv, menv, b, lx:
 WidgetCall: unbounded fn Wx, Env, Env, Expr, ?Bn, Text, [Arg], ?Nat -> ((Wx, Wres))
 fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
     let lx = wx.lx
-    if qk == "Prelude.@started": StartedLine wx, ?bound
-    else: if qk == "Prelude.@Switch": SwitchLine wx, menv, args
-    else: if qk == "Prelude.@Defer": DeferLine wx, menv, args, e, ?target
-    else: if qk == "Prelude.@Run": RunLine wx, benv, args, e, ?target
-    else: if qk == "Prelude.@Machine": MachineLine wx, benv, menv, args, e, ?target
-    else: if qk == "Prelude.@HostDocument": HostLine wx, benv, menv, HostEach, args, ?bound
-    else: if qk == "Prelude.@HostSome": HostLine wx, benv, menv, HostSome, args, ?bound
-    else: match lx.g.vals[qk]:
-        ? v: InlineWidget wx, benv, menv, qk, v, args, e
-        nil:
-            let wx2 = update wx:
-                &_.build <= Push &_.build, (RefusalDo "a widget this back end does not lower yet")
-            ((wx2, WrUnit))
+    match qk:
+        "Prelude.@started": StartedLine wx, ?bound
+        "Prelude.@Switch": SwitchLine wx, menv, args
+        "Prelude.@Defer": DeferLine wx, menv, args, e, ?target
+        "Prelude.@Run": RunLine wx, benv, args, e, ?target
+        "Prelude.@Machine": MachineLine wx, benv, menv, args, e, ?target
+        "Prelude.@HostDocument": HostLine wx, benv, menv, HostEach, args, ?bound
+        "Prelude.@HostSome": HostLine wx, benv, menv, HostSome, args, ?bound
+        otherwise: match lx.g.vals[qk]:
+            ? v: InlineWidget wx, benv, menv, qk, v, args, e
+            nil:
+                let wx2 = update wx:
+                    &_.build <= Push &_.build, (RefusalDo "a widget this back end does not lower yet")
+                ((wx2, WrUnit))
 
 # A host (docs/backend.md, "Hosting"; prism_rtl's `host`; pick HO): a host node at this
 # position holding the supplier; the child, a named widget or a widget parameter's

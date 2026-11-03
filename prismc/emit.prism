@@ -158,7 +158,12 @@ fn FormatPiece (XText t) = FormatEscape (Escape t)
 fn FormatPiece other = "\{\}"
 
 FormatEscape: fn Text -> Text
-fn FormatEscape t = Concat (Each (Chars t), \|c| if c == "\{": "\{\{" else: if c == "\}": "\}\}" else: c)
+fn FormatEscape t = Concat (Each (Chars t), \|c| FormatEscapeChar c)
+
+FormatEscapeChar: fn Text -> Text
+fn FormatEscapeChar "\{" = "\{\{"
+fn FormatEscapeChar "\}" = "\}\}"
+fn FormatEscapeChar c = c
 
 # `if c { a } else { b }` on one line when both sides are short.
 IfExpression: unbounded fn Ex, Ex, Ex -> Text
@@ -317,15 +322,16 @@ RustImpl: unbounded fn ImplDef -> Text
 fn RustImpl i:
     let head = Type i.head
     let gens = Generics i.generics
-    if i.cls == "Prelude.Show":
-        let fns = Join (Each i.methods, \|f| RustFn f), "\n"
-        let shown = Or (Each i.methods, \|f| f.name)[0], "show"
-        "{fns}\n{Impl gens, "Show", head, "fn show(&self, p: &mut Printer)", "p.raw(&{shown}(self).to_string());"}"
-    else: if i.cls == "Prelude.Eq":
-        let fns = Join (Each i.methods, \|f| RustFn f), "\n"
-        let eq = Fold i.methods, "", \|acc, f| if (Take f.name, 2) != "ne" and acc == "": f.name else: acc
-        "{fns}\n{Impl gens, "PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}"
-    else: "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body)), "\n")}\n\}\n"
+    match i.cls:
+        "Prelude.Show":
+            let fns = Join (Each i.methods, \|f| RustFn f), "\n"
+            let shown = Or (Each i.methods, \|f| f.name)[0], "show"
+            "{fns}\n{Impl gens, "Show", head, "fn show(&self, p: &mut Printer)", "p.raw(&{shown}(self).to_string());"}"
+        "Prelude.Eq":
+            let fns = Join (Each i.methods, \|f| RustFn f), "\n"
+            let eq = Fold i.methods, "", \|acc, f| if (Take f.name, 2) != "ne" and acc == "": f.name else: acc
+            "{fns}\n{Impl gens, "PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}"
+        otherwise: "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body)), "\n")}\n\}\n"
 
 RustFn: unbounded fn FnDef -> Text
 fn RustFn f:
