@@ -3184,9 +3184,6 @@ type Gn = record:
     # through its parent sits above the block's writers of it (pick RE).
     floor: Nat
     outs: [Out]
-    # An `!Updated` node over a structural dynamic (pick ST): decided at the end of the
-    # node's construction step, not in the wake, and fired at the start of the next tick.
-    structural: Bool
 
 # What a node of the graph is: a source (a place's answer, `@started`, an `@Defer`, a row's
 # port), a named event, or a combinator decided in the wake (a merge, `!Union`, `!Both`,
@@ -3366,14 +3363,20 @@ type HostDef = record:
     name: Text
     scope: Nat
 
-# A structural dynamic of the node (Semantics ch. 7, "Structural dynamics"; pick ST): its
-# getter `name` answers a snapshot, `prism_rtl::Snapshot` in the field `{name}_snap`, which
-# the construction step takes from the live computation `{name}_now` once the structure
-# behind it has settled: before the host's `for` over `$doc` runs (the child's builders
-# have), or after the gathering `for` has built its rows. `eq` says the snapshot compares,
-# so its update event fires only when the value moved; `what` names it in a fault.
+# A structural dynamic of the node (Semantics ch. 7, "Structural dynamics"; pick ST): a
+# lawful dynamic one tick behind the structure it describes. The construction step takes a
+# snapshot, `prism_rtl::Snapshot` in the field `{name}_snap`, from the live computation
+# `{name}_now` once the structure behind it has settled: before the host's `for` over the
+# child's document runs (the child's builders have), or after the gathering `for` has built
+# its rows. The getter `name` answers the dynamic, the snapshot of the tick before the
+# tick the read point is after; a snapshot that moved is published at the start of the next
+# tick by `{name}_publish`, a write of `name` as of a hold. The reads behind the structure
+# are `live`'s (`{name}_now`), so a write behind them marks the snapshot and touches no
+# reader of `name`. `eq` says the snapshot compares, so the dynamic moves only when the
+# value did; `what` names it in a fault.
 type SnapDef = record:
     name: Text
+    live: Text
     ty: RsTy
     eq: Bool
     builder: Text
@@ -3422,7 +3425,7 @@ AddGn: fn Wx, Text, RsTy, GnKind, Nat -> ((Nat, Wx))
 fn AddGn wx, name, ty, kind, height:
     let id = Len wx.gns
     let wx2 = update wx:
-        &_.gns <= Push &_.gns, Gn(id=id, name=name, ty=ty, kind=kind, height=height, inputs=[[]], reads=[[]], floor=0, outs=[[]], structural=False)
+        &_.gns <= Push &_.gns, Gn(id=id, name=name, ty=ty, kind=kind, height=height, inputs=[[]], reads=[[]], floor=0, outs=[[]])
     ((id, wx2))
 
 # An event reference given a consumer.
@@ -3445,7 +3448,7 @@ fn HeightOf wx, n = match wx.gns[n]:
     nil: 0
 
 GnOf: fn Wx, Nat -> Gn
-fn GnOf wx, n = Or wx.gns[n], (Gn(id=n, name="never", ty=RsUnit, kind=GnNever, height=0, inputs=[[]], reads=[[]], floor=0, outs=[[]], structural=False))
+fn GnOf wx, n = Or wx.gns[n], (Gn(id=n, name="never", ty=RsUnit, kind=GnNever, height=0, inputs=[[]], reads=[[]], floor=0, outs=[[]]))
 
 # A plain value of the block, bound at the build and kept as a field: the build reads the
 # Rust local, the methods the field.
@@ -4142,7 +4145,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
     let rowsName = "{hf}_rows"
     let docGetter = "{hf}_doc"
     let wx1 = update wx:
-        &_.taken <= Append &_.taken, [[hf, rowsName, docGetter, "{docGetter}_now", "{docGetter}_snap", "{hf}_answer", "{hf}_moved"]]
+        &_.taken <= Append &_.taken, [[hf, rowsName, docGetter, "{docGetter}_now", "{docGetter}_snap", "{docGetter}_direct", "{docGetter}_publish", "{hf}_answer", "{hf}_moved"]]
     match ((args[0], args[1])):
         ((? child, ? sup)):
             # the supplier's dynamic answers (`@ $d`, round 3 DY): a getter of this node per
@@ -4155,7 +4158,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             let supplier = if (Len dynLets) == 0: supplier0 else: XBlock dynLets, supplier0
             # the scope the host's rows build in: the World's, or the enclosing host's
             let enclosing = if Emits wx, pos: XRaw "None" else: XCtor "Some", [[(XCast (XRaw "{HostLocal wx, pos}.clone()"), hostOfTy)]]
-            let made = XCall "prism_rtl::Host::new", [[(XRaw (PlaceAt wx, "", pos)), (XRaw "{rowsName}.clone()"), supplier, enclosing, (XRaw "{wx.node}::{docGetter}"), (XRaw "{wx.node}::{hf}_answer")]]
+            let made = XCall "prism_rtl::Host::new", [[(XRaw (PlaceAt wx, "", pos)), (XRaw "{rowsName}.clone()"), supplier, enclosing, (XRaw "{wx.node}::{docGetter}_direct"), (XRaw "{wx.node}::{hf}_answer")]]
             let hostTy = RsNamed "Rc<prism_rtl::Host<crate::Elem, crate::Answer, {wx.node}>>", [[]]
             let rowsTy = RsNamed "prism_rtl::Rows<crate::Elem, crate::Answer>", [[]]
             let docTy = RsMap RsPath, elemTy
@@ -4163,15 +4166,15 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             let wx2 = update wxd:
                 &_.pos <= NextPos &_.pos
                 &_.lets <= Append &_.lets, [[(DoLet (PaBind rowsName), (XRaw "Rc::new(RefCell::new(Map::new()))")), (DoLet (PaBind hf), made)]]
-                &_.fields <= Append &_.fields, [[((hf, hostTy, "the host at place {PlaceText pos}: its supplier, its rows, and the way back into its child (pick HO)")), ((rowsName, rowsTy, "the rows of the host at place {PlaceText pos}: `for p, e <- $doc`, one supplier blueprint per child place")), (("{docGetter}_snap", (RsSnapshot docTy), "`$doc` of the host at place {PlaceText pos}, a structural dynamic: its snapshot after the tick (pick ST)"))]]
+                &_.fields <= Append &_.fields, [[((hf, hostTy, "the host at place {PlaceText pos}: its supplier, its rows, and the way back into its child (pick HO)")), ((rowsName, rowsTy, "the rows of the host at place {PlaceText pos}: `for p, e <- $doc`, one supplier blueprint per child place")), (("{docGetter}_snap", (RsSnapshot docTy), "`$doc` of the host at place {PlaceText pos}, a structural dynamic: its snapshots, the structure and the lagged dynamic (pick ST)"))]]
                 &_.inits <= Append &_.inits, [[((hf, (XRaw "{hf}.clone()"))), ((rowsName, (XRaw "{rowsName}.clone()"))), (("{docGetter}_snap", (XCall "Snapshot::new", [[XRaw "\"{what}\""]])))]]
                 &_.hosts <= Push &_.hosts, HostDef(pos=pos, name=hf, scope=k)
-                &_.snaps <= Push &_.snaps, SnapDef(name=docGetter, ty=docTy, eq=True, builder=rowsName, before=True, what=what)
-                &_.getters <= Push &_.getters, (SnapGetter docGetter, docTy, "The document of the child hosted at place {PlaceText pos}, `$doc`, a structural dynamic (pick ST): the snapshot taken in the construction step, the document after the tick from then on; during propagation, the document as the tick opened.")
+                &_.snaps <= Push &_.snaps, SnapDef(name=docGetter, live="{docGetter}_now", ty=docTy, eq=True, builder=rowsName, before=True, what=what)
+                &_.getters <= Append &_.getters, [[(SnapGetter docGetter, docTy, "The document of the child hosted at place {PlaceText pos}, `$doc`, a structural dynamic (pick ST): one tick behind the child's structure, the snapshot of the tick before the tick the read point is after."), (MethDef(name="{docGetter}_direct", recv=RecvRef, params=[[]], cx=CxRef, ret=docTy, body=[[]], tail=(XMethod (XRaw "self.{docGetter}_snap"), "current", [[XRaw "cx"]]), doc="The structure of the child hosted at place {PlaceText pos}, not the lagged `$doc`: the snapshot taken in this tick's construction step, the document as the tick opened during propagation. The host's own `for` and its rows' entries read it, so a newborn child place gets its row in the tick it is born (pick ST)."))]]
                 &_.scopes <= Push &_.scopes, hf
-                &_.builders <= Push &_.builders, ForDef(name=rowsName, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=RsPath, valueTy=elemTy, rowNode="prism_rtl::HostRow::<crate::Elem, crate::Answer>", keyed=True, source=docGetter, parent="self.{hf}.clone()", passed=[[]])
-                &_.buildHolds <= AddRead &_.buildHolds, (OwnRead docGetter)
-                &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=rowsName, reads=[[OwnRead docGetter]], wrote=[[]], kind=ForRow)
+                &_.builders <= Push &_.builders, ForDef(name=rowsName, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=RsPath, valueTy=elemTy, rowNode="prism_rtl::HostRow::<crate::Elem, crate::Answer>", keyed=True, source="{docGetter}_direct", parent="self.{hf}.clone()", passed=[[]])
+                &_.buildHolds <= AddRead &_.buildHolds, (OwnRead "{docGetter}_now")
+                &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=rowsName, reads=[[OwnRead "{docGetter}_now"]], wrote=[[]], kind=ForRow)
                 &_.fallible <= True
             let inner = update wx2:
                 &_.pos <= ScopePos k
@@ -4191,7 +4194,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.pos <= wx2.pos
                 &_.result <= wx.result
                 &_.getters <= Push &_.getters, getter
-                &_.dynReads <= Insert &_.dynReads, docGetter, docReads
+                &_.dynReads <= Insert &_.dynReads, "{docGetter}_now", docReads
             let docBn = BnDyn (XMethod (XRaw "self"), docGetter, [[XRaw "cx"]]), [[OwnRead docGetter]], docTy
             ((back, (WrHosted res, docBn)))
         otherwise:
@@ -4772,15 +4775,6 @@ GetterReads: fn (Text ==> [Read]), Read -> [Read]
 fn GetterReads dyn, (OwnRead n) = Or dyn[n], [[]]
 fn GetterReads dyn, (ParentRead ignore) = [[]]
 
-# The same closure stopped at the structural dynamics (pick ST): a snapshot's name is kept
-# and what lies behind it is not entered, so a structural `!Updated` node's reads are the
-# snapshots it reads and the holds it reads beside them. A write behind a snapshot moves the
-# node only through the snapshot, when it is taken and has moved.
-ReadsStopping: fn (Text ==> [Read]), [Text], [Read] -> [Read]
-fn ReadsStopping dyn, roots, reads = Fold (Range0 4), reads, \|acc, ignore| Fold acc, acc, \|a, r| match r:
-    OwnRead n: if HasText roots, n: a else: UnionReads a, (GetterReads dyn, r)
-    ParentRead ignore: a
-
 # Whether a closed read set reaches a structural dynamic.
 ReachesSnap: fn [Text], [Read] -> Bool
 fn ReachesSnap roots, reads = Fold reads, False, \|f, r| f or match r:
@@ -4842,7 +4836,7 @@ fn HoldWritten sk, f:
     let stales = Fold sk.wx.genHolds, [[]], \|acc, ((gname, hs))| if HasRead (ReadsClosed sk.wx.dynReads, hs), r: Push acc, (DoExpr (XMethod (XRaw "self.{gname}_stale"), "set", [[XRaw "true"]])) else: acc
     let rowMarks = Fold sk.wx.rowMarks, [[]], \|acc, rm| Append acc, (RowWritten sk.wx, rm, r)
     let builds = (HasRead sk.builds, r) or (Len stales) > 0
-    # the build is listed once: here, or by the marks when a structural dynamic moves
+    # the build is listed once: here, or by the marks when a snapshot is marked
     let rebuildIt = if builds and not (ListsBuild sk, r): Append stales, [[DoExpr (XMethod (XRaw "cx"), "build_later", [[XRaw "self.clone()"]])]] else: stales
     # a row whose result its block gathers tells the block when a hold behind the result moves
     let gathered = match sk.wx.?resultMoved:
@@ -4861,28 +4855,26 @@ MovedMarks: fn Sinks, Text -> [Do]
 fn MovedMarks sk, f = MovedBy sk, (OwnRead f)
 
 # A write behind a read: the "updated" nodes over it told and the wake asked at their
-# heights; a structural one (pick ST) told and the build listed, where it is decided; the
-# snapshots the write lies behind marked, and the build listed to take them.
+# heights; the snapshots the write lies behind marked, and the build listed to take them.
 MovedBy: fn Sinks, Read -> [Do]
 fn MovedBy sk, r:
     let moved = Filter sk.wx.gns, \|g| Moves r, g
     let flags = Each moved, \|g| DoExpr (XMethod (XRaw "self.{g.name}_moved"), "set", [[XRaw "true"]])
-    let heights = SortNats (Fold (Filter moved, \|g| not g.structural), [[]], \|acc, g| AddNat acc, g.height)
+    let heights = SortNats (Fold moved, [[]], \|acc, g| AddNat acc, g.height)
     let marks = Each (SnapsBehind sk.wx, r), \|sn| DoExpr (XMethod (XRaw "self.{sn.name}_snap"), "mark", [[XRaw "cx"]])
     let listed = if ListsBuild sk, r: [[DoExpr (XMethod (XRaw "cx"), "build_later", [[XRaw "self.clone()"]])]] else: [[]]
     # a host's dynamic answer over it: its port fired, so its blueprints push next tick
     let answers = Each (Filter sk.wx.dynAnswers, \|((ignore, rds))| HasRead (ReadsClosed sk.wx.dynReads, rds), r), \|((name, ignore))| DoExpr (XMethod (XMethod (XRaw "self.{name}_port"), "fire", [[XRaw "()", XRaw "cx"]]), "ok", [[]])
     Append (Append (Append (Fold heights, flags, \|acc, h| Append acc, (AskWake sk, h)), marks), listed), answers
 
-# The snapshots a write behind a read marks: the structural dynamic itself (a host's
-# `host_k_moved` writes behind `host_k_doc` with no hold), or one whose reads reach it.
+# The snapshots a write behind a read marks: the structure itself (a host's `host_k_moved`
+# writes behind `host_k_doc_now` with no hold), or one whose live reads reach it.
 SnapsBehind: fn Wx, Read -> [SnapDef]
-fn SnapsBehind wx, r = Filter wx.snaps, \|sn| r == (OwnRead sn.name) or HasRead (ReadsClosed wx.dynReads, [[OwnRead sn.name]]), r
+fn SnapsBehind wx, r = Filter wx.snaps, \|sn| r == (OwnRead sn.live) or HasRead (ReadsClosed wx.dynReads, [[OwnRead sn.live]]), r
 
-# Whether a write behind a read lists the node's build through its marks: a structural
-# "updated" node moved, or a snapshot marked.
+# Whether a write behind a read lists the node's build through its marks: a snapshot marked.
 ListsBuild: fn Sinks, Read -> Bool
-fn ListsBuild sk, r = (Fold sk.wx.gns, False, \|f, g| f or (g.structural and Moves r, g)) or (Len (SnapsBehind sk.wx, r)) > 0
+fn ListsBuild sk, r = (Len (SnapsBehind sk.wx, r)) > 0
 
 FiringCode: unbounded fn Sinks, Gn, Ex -> [Do]
 fn FiringCode sk, g, x:
@@ -4895,16 +4887,14 @@ fn FinishNode wx0, qk, params, isRow:
     # An "updated" node's reads, closed over the dynamic `let`s now that every line is in;
     # its height is one above the writers of those holds. The `for` rows are finished with
     # the block's heights known (pick RE), the gathers one above their rows'.
-    let roots = SnapNames wx0
-    let closedGns = Each wx0.gns, \|g| if g.kind == GnUpdated: CloseUpdated wx0.dynReads, roots, g else: g
+    let closedGns = Each wx0.gns, \|g| if g.kind == GnUpdated: WithReads g, (ReadsClosed wx0.dynReads, g.reads) else: g
     let ((rowDefs, gns2)) = FinishPending wx0, (Heights closedGns)
     let isGen = isRow and (Len (Filter wx0.fields, \|((f, ignore, ignore))| f == "key")) == 0
     let wx = update wx0:
         &_.gns <= Heights gns2
         &_.build <= Append &_.build, (UpdatedGaps wx0, closedGns, isGen)
         &_.rows <= Fold rowDefs, &_.rows, \|acc, rd| Append (Push acc, rd), rd.children
-    let combs = Filter wx.gns, \|g| ((IsComb g.kind) and not g.structural) or g.kind == GnGather
-    let structural = Filter wx.gns, \|g| g.structural
+    let combs = Filter wx.gns, \|g| (IsComb g.kind) or g.kind == GnGather
     let heights = SortNats (Fold combs, [[]], \|acc, g| AddNat acc, g.height)
     let many = (Len heights) > 1
     let consts = Each heights, \|h| (((WakeConst heights, h), h, "merges' height above the node's inputs"))
@@ -4925,7 +4915,7 @@ fn FinishNode wx0, qk, params, isRow:
     # of its host's document
     let patchBody0 = Fold (Filter live, \|p| Emits wx, p.pos), [[]], \|acc, p| Append acc, (PatchPlace wx, p)
     let patchBody = Append patchBody0, (RootDynPatch wx)
-    let buildBody = Append (BuildSteps sinks, False), (Each structural, \|g| StructuralFire g)
+    let buildBody = BuildSteps sinks, False
     let pushBody = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin "==", (XRaw "element"), (XRaw "&self.{f}_element")), (DynPlaceWrite sinks, f, (XDecode t, (XRaw "v"))), [[]]
     let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
     let startedReg = if (Len wx.started) > 0: [[DoExpr (XMethod (XRaw "cx"), "on_started", [[XRaw "node.clone()"]])]] else: [[]]
@@ -4940,7 +4930,7 @@ fn FinishNode wx0, qk, params, isRow:
     let answers = Append (Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, id, t, ignore))| AnswerArm wx, pos, id, t), (Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DynAnswerArm sinks, pos, f, t)
     let forwards = Append (Each (Filter wx.builders, \|b| Emits wx, b.pos), \|b| (((PosPat b.pos, ", Segment::Key(k), rest @ .."), (ForwardAnswer b)))), (Each (Filter wx.gens, \|gd| Emits wx, gd.pos), \|gd| (((PosPat gd.pos, ", Segment::Gen(g), rest @ .."), (ForwardGen gd))))
     let hostMethods = Fold wx.hosts, [[]], \|acc, h| Append acc, [[(TypedDispatch sinks, "{h.name}_answer", h.scope), (HostMoved sinks, h)]]
-    let gatheredMoved = Each (Filter wx.snaps, \|sn| not sn.before), \|sn| GatheredMoved sn
+    let gatheredMoved = Append (Each (Filter wx.snaps, \|sn| not sn.before), \|sn| GatheredMoved sn), (Each wx.snaps, \|sn| SnapPublish sinks, sn)
     let hostedMethods = match wx.?hostedBy:
         ? ignore: [[(TypedDispatch sinks, "deliver", 0), (DocumentGetter wx)]]
         nil: [[]]
@@ -4958,28 +4948,14 @@ fn FinishNode wx0, qk, params, isRow:
     let portInits = Each wx.ports, \|pn| (("{pn}_port", (XRaw "Port::new()")))
     let subFields = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (RsNamed "Cell<Option<Handle>>", [[]]), "the subscription to the parent's `!{ev}`"))
     let subInits = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (XRaw "Cell::new(None)")))
-    let queuedFields = Each structural, \|g| (("{g.name}_queued", (RsStamped RsUnit), "`!{g.name}` is queued for the next tick (pick ST)"))
-    let queuedInits = Each structural, \|g| (("{g.name}_queued", (XRaw "Stamped::new()")))
     let fallible = wx.fallible or isRow or (Len wx.builders) > 0 or (Len wx.gens) > 0
-    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), queuedFields), consts=consts, lets=wx.lets, inits=(Append (Append (Append (Append (Append wx.inits, wakesInit), genInits), portInits), subInits), queuedInits), build=(Append (Append (Append rowsBuilt, wx.build), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), movedMethod), answers=(Append answers, forwards), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
+    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append (Append (Append (Append wx.inits, wakesInit), genInits), portInits), subInits), build=(Append (Append (Append rowsBuilt, wx.build), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), movedMethod), answers=(Append answers, forwards), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
 
 # A node of the hosted child wrote behind the host's document (a row's own hold): what a
 # write of a hold the document reads marks, with no hold set (`HoldWritten` of the getter,
 # whose reads are the child's).
 HostMoved: fn Sinks, HostDef -> MethDef
-fn HostMoved sk, h = MethDef(name="{h.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=(HoldWritten sk, "{h.name}_doc"), tail=(XRaw "()"), doc="A node of the child hosted at place {PlaceText h.pos} wrote behind its document: the readers of `$doc` are marked as for a write of a hold it reads (pick HO).")
-
-# An "updated" node's reads closed (pick UP), and whether it is structural (pick ST): when
-# the closure reaches a snapshot, the node is decided at the end of the construction step,
-# and its reads stop at the snapshots it reaches.
-CloseUpdated: fn (Text ==> [Read]), [Text], Gn -> Gn
-fn CloseUpdated dyn, roots, g:
-    let closed = ReadsClosed dyn, g.reads
-    if ReachesSnap roots, closed:
-        let stopped = WithReads g, (ReadsStopping dyn, roots, g.reads)
-        update stopped:
-            &_.structural <= True
-    else: WithReads g, closed
+fn HostMoved sk, h = MethDef(name="{h.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=(HoldWritten sk, "{h.name}_doc_now"), tail=(XRaw "()"), doc="A node of the child hosted at place {PlaceText h.pos} wrote behind its document: the structure is marked as for a write of a hold it reads (pick HO), the snapshot listed to be taken; the program's `$doc` moves when it is published, the tick after (pick ST).")
 
 # The construction step of the node (pick ST): the builders and generations scope by scope,
 # a hosted child's before its host's (a host's `for` over `$doc` runs after the child's own
@@ -4987,8 +4963,8 @@ fn CloseUpdated dyn, roots, g:
 # their order), with each structural dynamic's snapshot taken where the structure behind it
 # has settled: a host's `$doc` before the host's `for` over it builds its rows, a `for`'s
 # gathered dynamic after its builder. In the build (`atBuild`, spelled from `node`) every
-# snapshot is taken; in `Node::build` a marked one is taken and compared, and the structural
-# "updated" nodes over a snapshot that moved are told.
+# snapshot is taken; in `Node::build` a marked one is taken and compared, and one that moved
+# is queued for publication.
 BuildSteps: fn Sinks, Bool -> [Do]
 fn BuildSteps sk, atBuild:
     let wx = sk.wx
@@ -5008,25 +4984,23 @@ fn BuildSteps sk, atBuild:
 SnapTakeAtBuild: fn SnapDef -> Do
 fn SnapTakeAtBuild sn = DoExpr (XMethod (XRaw "node.{sn.name}_snap"), "take", [[(XMethod (XRaw "node"), "{sn.name}_now", [[XRaw "cx"]]), XRaw "cx"]])
 
-# The snapshot taken in `Node::build` when a write marked it: compared where the type has
-# equality, so the structural "updated" nodes over it are told only when it moved; else told
-# whenever it was marked (R3 as loosened: a spurious firing is allowed, a double one never).
+# The snapshot taken in `Node::build` when a write marked it, compared where the type has
+# equality: when it moved (or, without equality, whenever taken), its publication is queued
+# for the start of the next tick, which is owed, once per tick.
 SnapTake: fn Sinks, SnapDef -> Do
 fn SnapTake sk, sn:
     let now = XMethod (XRaw "self"), "{sn.name}_now", [[XRaw "cx"]]
-    let told = Each (Filter sk.wx.gns, \|g| g.structural and HasRead g.reads, (OwnRead sn.name)), \|g| DoExpr (XMethod (XRaw "self.{g.name}_moved"), "set", [[XRaw "true"]])
-    let taken = if sn.eq: [[(DoIf (XMethod (XRaw "self.{sn.name}_snap"), "take_compared", [[now, XRaw "cx"]]), told, [[]])]]
-        else: Append [[(DoExpr (XMethod (XRaw "self.{sn.name}_snap"), "take", [[now, XRaw "cx"]]))]], told
-    DoIf (XMethod (XRaw "self.{sn.name}_snap"), "marked", [[XRaw "cx"]]), taken, [[]]
+    let take = DoExpr (XMethod (XRaw "self.{sn.name}_snap"), (if sn.eq: "take_compared" else: "take"), [[now, XRaw "cx"]])
+    let queue = DoExpr (XMethod (XRaw "cx"), "answer_later", [[XRaw "Box::new(move |cx| \{ node.{sn.name}_publish(cx); Ok(()) \})"]])
+    let queued = DoIf (XMethod (XRaw "self.{sn.name}_snap"), "queue", [[XRaw "cx"]]), [[(DoLet (PaBind "node"), (XRaw "self.clone()")), queue]], [[]]
+    DoIf (XMethod (XRaw "self.{sn.name}_snap"), "marked", [[XRaw "cx"]]), [[take, queued]], [[]]
 
-# A structural "updated" node decided, the last act of the construction step (pick ST): told
-# this tick (a snapshot it reads moved, or a hold it reads beside them was written), its
-# firing is queued for the start of the next tick, which is owed, once; the value is read
-# then, at that tick's read point: the snapshots and holds after this tick.
-StructuralFire: fn Gn -> Do
-fn StructuralFire g:
-    let queue = DoExpr (XMethod (XRaw "cx"), "answer_later", [[XRaw "Box::new(move |cx| \{ let v = node.{g.name}_value(cx); node.{g.name}(v, cx); Ok(()) \})"]])
-    DoIf (XRaw "self.{g.name}_moved.replace(false) && !self.{g.name}_queued.fired(cx)"), [[(DoExpr (XMethod (XRaw "self.{g.name}_queued"), "set", [[XRaw "()", XRaw "cx"]])), (DoLet (PaBind "node"), (XRaw "self.clone()")), queue]], [[]]
+# A structural dynamic published (pick ST), a first firing of the tick after its snapshot
+# moved: the dynamic now answers that snapshot, and everything over it is marked as for a
+# write of a hold, so its `!Updated` fires in this tick's wake with the new value while
+# every sample in the tick reads the old one (R2/R3).
+SnapPublish: fn Sinks, SnapDef -> MethDef
+fn SnapPublish sk, sn = MethDef(name="{sn.name}_publish", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=[[(DoIf (XMethod (XRaw "self.{sn.name}_snap"), "published", [[XRaw "cx"]]), (HoldWritten sk, sn.name), [[]])]], tail=(XRaw "()"), doc="{sn.what}, published: its snapshot of the tick before moved it, written as a hold is (pick ST).")
 
 # A row's hold behind its gathered result moved (pick ST): the block marks the gathered
 # dynamic's snapshot and lists its build to take it.
@@ -5078,13 +5052,11 @@ fn DynPlaceWrite sk, f, value = Append [[DoExpr (XMethod (XRaw "self.{f}"), "set
 
 # What an "updated" node cannot be given: a read of anything that is not a hold a sink of
 # this node writes, a dynamic `let` over such, or a structural dynamic of the node (its
-# snapshot decides the node at the end of construction, pick ST); in a generation, a name of
-# the block read through the parent. A row's reads through the parent are checked where the
-# block is finished, as the block's own: a name the row hears a write behind must stand over
-# a hold of the block or a name the block hears itself, and not over a structural dynamic of
-# the block, which the block decides at the end of its construction step, where the row's
-# node has no decision of its own (gap SU). Refused loudly rather than lowered to an event
-# that never fires, or one that reads a snapshot before it is taken.
+# publication writes it as a hold, pick ST); in a generation, a name of the block read
+# through the parent. A row's reads through the parent are checked where the block is
+# finished, as the block's own: a name the row hears a write behind must stand over a hold
+# of the block or a name the block hears itself, and not over a structural dynamic of the
+# block (gap SU). Refused loudly rather than lowered to an event that never fires.
 UpdatedGaps: fn Wx, [Gn], Bool -> [Do]
 fn UpdatedGaps wx, gns, isGen:
     let holds = Fold wx.fields, [[]], \|acc, ((f, t, ignore))| if IsHold t: Push acc, f else: acc
@@ -5102,7 +5074,7 @@ fn UpdatedGaps wx, gns, isGen:
         let written = Fold behind, False, \|w, r| w or match r:
             OwnRead h: HasText holds, h
             ParentRead ignore: True
-        if (HasText roots, m) or ReachesSnap roots, behind: Push a, (RefusalDo "`!Updated` of a dynamic in a row that reads its block's `{m}`, a structural dynamic the block decides at the end of its construction step (gap SU)")
+        if (HasText roots, m) or ReachesSnap roots, behind: Push a, (RefusalDo "`!Updated` of a dynamic in a row that reads its block's `{m}`, a structural dynamic the block publishes at the start of a tick, not lowered for a row's `!Updated` (gap SU)")
         else: if written or (HasText derived, m): a
         else: Push a, (RefusalDo "`!Updated` of a dynamic in a row that reads its block's `{m}`, which no sink of the block writes (no height for its event)")
 
@@ -5370,7 +5342,7 @@ fn GnDoc g = match g.kind:
     GnStarted: "`@started`, the tick after the build."
     GnDeferred: "An `@Defer` firing, the tick after it was armed."
     GnMerge: "The merge `{g.name}`, decided in the wake."
-    GnUpdated: if g.structural: "`!Updated` of a structural dynamic (pick ST): its value after the tick before, fired at the start of this tick, the first firing, when it moved." else: "`!Updated`: the dynamic's value after the tick, fired in the wake when a hold it reads was written."
+    GnUpdated: "`!Updated`: the dynamic's value after the tick, fired in the wake when a hold it reads was written (or a structural dynamic it reads was published, pick ST)."
     otherwise: "`!{g.name}`."
 
 # The merge decides once, after its inputs: the left first.
@@ -5864,9 +5836,10 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
         WrDyn ex, resultReads, rt:
             # The gathered dynamic `$(K ==> T)` is structural (pick ST): the rows' results by
             # key are computed live by `{name}_all_now`, snapshotted after the builder has run,
-            # and read from the snapshot. A row whose own hold behind its result is written
-            # marks the snapshot through `{name}_all_moved`; the block's writes behind the
-            # results, read through the parent, mark it as the snapshot's own reads.
+            # and the program reads the lagged dynamic, published the tick after a snapshot
+            # moved. A row whose own hold behind its result is written marks the snapshot
+            # through `{name}_all_moved`; the block's writes behind the results, read through
+            # the parent, mark it as the live computation's own reads.
             let gathered = "{name}_all"
             let gatheredTy = RsMap kt, rt
             let ownBehind = Filter (ReadsClosed rowWx.dynReads, resultReads), \|r| match r:
@@ -5879,12 +5852,12 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
             let all = XRaw "self.{name}.borrow().iter().map(|(k, row)| (k.clone(), row.result(cx))).collect()"
             let what = "the dynamic gathered by the `for` at place {PlaceText pos}"
             let wx5 = update wx4:
-                &_.taken <= Append &_.taken, [[gathered, "{gathered}_now", "{gathered}_snap", "{gathered}_moved"]]
-                &_.getters <= Append &_.getters, [[(MethDef(name="{gathered}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=gatheredTy, body=[[]], tail=all, doc="The rows' results by key, computed live: what the snapshot of the `for`'s dynamic is taken from (pick ST).")), (SnapGetter gathered, gatheredTy, "The `for`'s dynamic, the rows' results by key, a structural dynamic (pick ST): the snapshot taken after the builder has run, the results after the tick from then on; during propagation, the results as the tick opened.")]]
-                &_.fields <= Push &_.fields, (("{gathered}_snap", (RsSnapshot gatheredTy), "the `for` at place {PlaceText pos}'s gathered dynamic, structural: its snapshot after the tick (pick ST)"))
+                &_.taken <= Append &_.taken, [[gathered, "{gathered}_now", "{gathered}_snap", "{gathered}_moved", "{gathered}_publish"]]
+                &_.getters <= Append &_.getters, [[(MethDef(name="{gathered}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=gatheredTy, body=[[]], tail=all, doc="The rows' results by key, computed live: what the snapshot of the `for`'s dynamic is taken from (pick ST).")), (SnapGetter gathered, gatheredTy, "The `for`'s dynamic, the rows' results by key, a structural dynamic (pick ST): one tick behind the rows, the snapshot of the tick before the tick the read point is after.")]]
+                &_.fields <= Push &_.fields, (("{gathered}_snap", (RsSnapshot gatheredTy), "the `for` at place {PlaceText pos}'s gathered dynamic, structural: its snapshots, the rows' results and the lagged dynamic (pick ST)"))
                 &_.inits <= Push &_.inits, (("{gathered}_snap", (XCall "Snapshot::new", [[XRaw "\"{what}\""]])))
-                &_.snaps <= Push &_.snaps, SnapDef(name=gathered, ty=gatheredTy, eq=(TyHasEq lx, (Peel full), [[]]), builder=name, before=False, what=what)
-                &_.dynReads <= Insert &_.dynReads, gathered, (UnionReads reads, (BlockReads (ReadsClosed rowWx.dynReads, resultReads)))
+                &_.snaps <= Push &_.snaps, SnapDef(name=gathered, live="{gathered}_now", ty=gatheredTy, eq=(TyHasEq lx, (Peel full), [[]]), builder=name, before=False, what=what)
+                &_.dynReads <= Insert &_.dynReads, "{gathered}_now", (UnionReads reads, (BlockReads (ReadsClosed rowWx.dynReads, resultReads)))
             ((wx5, (WrDyn (XMethod (XRaw "self"), gathered, [[XRaw "cx"]]), [[OwnRead gathered]], gatheredTy)))
         otherwise:
             let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWx, qk=rowName, params=rowParams, gather=nil)), passed

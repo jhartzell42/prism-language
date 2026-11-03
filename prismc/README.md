@@ -1104,19 +1104,21 @@ Each is Claude's, for Jimmy to overturn.
   `k`'s), a hosted position is spelled `place_h{k}_{n}` in names and doc comments, and a
   hosted place emits into no document: it is keyed by its path relative to the child
   (`Path::root().at(n)`, `PlaceAt`) in the host's document. The owner gets, per host:
-  - the getter `host_k_doc(&self, cx) -> Map<Path, Elem>`, `$doc`, a structural dynamic
-    (pick ST): the snapshot `host_k_doc_snap` at the read point, taken in the construction
-    step from `host_k_doc_now`, every child place as the program's `crate::Elem` (its
-    static places by getter or constant, and under each `for` and `rebuild` of the child
-    the rows' `Row::document`, recursively); its reads (`dynReads`) are everything the
-    child's places, builders, generations and rows read, so a write behind any of them
-    marks the owner's places over `$doc`, marks the snapshot, lists its builders and
-    dirties the host's rows. A child row that writes a hold of its own tells the owner
-    through `document_moved` → `host_k_moved`, which marks the same (`HoldWritten` of the
-    getter);
-  - the builder `host_k_rows_build`, the ordinary `for` template over the getter, whose rows
+  - the snapshot `host_k_doc_snap`, taken in the construction step from `host_k_doc_now`,
+    every child place as the program's `crate::Elem` (its static places by getter or
+    constant, and under each `for` and `rebuild` of the child the rows' `Row::document`,
+    recursively); the structure itself is `host_k_doc_direct(&self, cx) -> Map<Path,
+    Elem>`, which the host's `for` and its rows' entries read, and the program's `$doc` is
+    the getter `host_k_doc`, a structural dynamic one tick behind (pick ST). The live
+    computation's reads (`dynReads` of `host_k_doc_now`) are everything the child's places,
+    builders, generations and rows read, so a write behind any of them marks the snapshot,
+    lists the build and dirties the host's rows; the owner's places over `$doc` are marked
+    when it is published, `host_k_doc_publish`, the tick after. A child row that writes a
+    hold of its own tells the owner through `document_moved` → `host_k_moved`, which marks
+    the same (`HoldWritten` of `host_k_doc_now`);
+  - the builder `host_k_rows_build`, the ordinary `for` template over the structure, whose rows
     are prism_rtl's `HostRow`s at `hostpos/[p]`, one per child place: built when the key is
-    in `$doc` after a tick and not before (R7), kept while it stays, torn down at the end of
+    in the child's document after a tick and not before (R7), kept while it stays, torn down at the end of
     the tick its key leaves (R8), each marked by the owner's writes as any row (`RowMarks`);
   - the typed dispatch `host_k_answer(self: &Rc<Self>, place: &Path, v: &crate::Answer,
     cx) -> Done` from a child place's path into the child's input method, a hold the
@@ -1220,7 +1222,7 @@ Each is Claude's, for Jimmy to overturn.
   to n+1 for the read and back. So the event fires at n with the value after n, in the
   tick of the change, whenever the dynamic was recomputed, deduped by nobody (`$a * 0`
   fires on every write of `$a`; `be-updated`). This is the rule for a dynamic over holds
-  only; one over constructed structure is pick ST's. A row's `!Updated` over its entry or
+  only; a structural dynamic is written the same way when it is published (pick ST). A row's `!Updated` over its entry or
   over its block's holds read through the parent is pick RE's (`be-row-entry`). *Refused
   loudly* (`compile_error!`, not an event that never fires): an `!Updated` whose dynamic
   reads anything no sink of the node writes, and a row's that reads a block name no hold
@@ -1281,37 +1283,42 @@ ruling taken (Claude's).
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
   `Done` and calls `?`.
-- **ST Structural dynamics.** A dynamic whose value includes constructed structure, a
-  host's `$doc` and a `for`'s gathered `$(K ==> T)`, and every dynamic lifted from one
-  (`let $x = Tag $doc, $clicks`; structurality follows `dynReads`), has no value after n
-  before n's construction step has run (Semantics ch. 7, "Structural dynamics"; round 3
-  ST). Each root keeps its value in a `prism_rtl::Snapshot` (`{name}_snap`; `SnapDef`):
-  the getter (`host_k_doc`, `rows_all`) answers the snapshot at the read point, the live
-  computation is `{name}_now`, read only when the snapshot is taken, once per tick, in the
-  node's construction step where the structure behind it has settled (`BuildSteps`: a
-  host's `$doc` after the child's builders and before the host's `for` over it, a
-  gathered dynamic after its builder; builders and generations run scope by scope,
-  innermost first), compared where the type has equality (`TyHasEq`: `Elem` always, a
-  gathered `T` when it derives `^Eq`). So a sample at read point n reads the snapshot of
-  n−1; the builders of n and the patch pass read the snapshot of n (a forwarding host
-  still builds a newborn child place's row in the same tick, R7 unchanged); a read of a
-  marked snapshot after the tick before it is taken, under `Cx::after` during propagation
-  or by a builder out of order, is a panic naming the dynamic, not a stale value. Every
-  write behind a root marks it (`SnapsBehind`, in `MovedBy`) and lists the build; a row
-  whose own hold moves its gathered result tells the block (`{name}_all_moved`,
-  `resultMoved`). The event half: an `!Updated` whose closed reads reach a root is
-  structural (`CloseUpdated`; its reads stop at the roots, `ReadsStopping`), decided not
-  in the wake but at the end of `Node::build` (`StructuralFire`): told by a snapshot that
-  moved when taken (or was marked, without equality) or by a write of a hold it reads
-  beside the roots, it queues its firing with `Cx::answer_later`, once per tick
-  (`{name}_queued`), so it fires at n+1 as a first firing of that owed tick, reading its
-  value then, at n+1's read point: the snapshots and holds after n, one state in both
-  halves (`be-structural`, `be-host-updated`). `UpdatedGaps` no longer refuses `!Updated`
-  of a gathered dynamic; a `rebuild` handing back a dynamic is not lowered at all. The
-  builders run before the places go out in the build, so a place over `$doc` reads a
-  taken snapshot. *Refused:* the whole dynamic a tick late (a host's `for` would build a
-  newborn's row a tick after the child did, breaking forwarding parity); the event at n
-  with the structure before n (gap HU, now closed: a visible inconsistent state).
+- **ST Structural dynamics.** A host's `$doc` and a `for`'s gathered `$(K ==> T)` are
+  lawful dynamics (R2/R3; Semantics ch. 7, "A dynamic is a sample and an update event")
+  one tick behind the structure they describe (round 3 ST, the hub's ruling). Each keeps a
+  `prism_rtl::Snapshot` (`{name}_snap`; `SnapDef`), taken from the live computation
+  `{name}_now` once per tick when a write marked it, in the node's construction step where
+  the structure behind it has settled (`BuildSteps`: a host's document after the child's
+  builders and before the host's `for` over it, a gathered dynamic after its builder;
+  builders and generations run scope by scope, innermost first): the snapshot S(n). The
+  dynamic's value after m is S(m−1) (after the node's build, the build's snapshot), which
+  the getter (`host_k_doc`, `rows_all`) answers at the read point. When S(n) differs from
+  S(n−1) (`take_compared` where the type has equality, `TyHasEq`: `Elem` always, a gathered
+  `T` when it derives `^Eq`; else every take), the node queues `{name}_publish` with
+  `Cx::answer_later`, once a tick (`Snapshot::queue`), and tick n+1 is owed. The
+  publication, among n+1's first firings, is `HoldWritten` of the dynamic's name: places
+  over it dirtied, builders and generations over it listed, rows reading it marked, and
+  every `!Updated` over it or over a dynamic lifted from it (`let $x = Tag $doc, $clicks`)
+  told and woken, an ordinary pick UP node. So `!Updated $doc` fires at n+1 with S(n),
+  while every sample at n+1 (`$old <- 0 then Size $doc on (!Updated $doc)`) reads S(n−1),
+  and the patch pass and the builders of n+1 read S(n) (`be-structural-law`); a hold
+  written in n+1 beside it gives one firing. The live computation's reads are its own
+  (`dynReads` of `{name}_now`, `SnapDef.live`): a write behind the structure marks the
+  snapshot and lists the build (`SnapsBehind`, `ListsBuild`) and touches no reader of the
+  dynamic. The host's own rows do not read `$doc`: its `for` and its rows' entries read the
+  structure, `host_k_doc_direct` (`Snapshot::current`: S(n) from n's construction step
+  on), so a newborn child place gets its supplier row in its birth tick and a host that
+  forwards everything is observably not there; a current read of a marked snapshot before
+  it is taken is a panic naming it, not a stale value. A row whose own hold moves its
+  gathered result tells the block (`{name}_all_moved`, `resultMoved`). A `rebuild` hands
+  back only an event here, forwarded from the current generation as it fires
+  (`@Switch` is the identity on it), so a newborn generation's `@started` and first
+  firings reach the block in their tick; a `rebuild` handing back a dynamic is not lowered
+  at all, and `@Flatten` is refused. *Refused:* the whole dynamic a tick late, the host's
+  rows included (a host's `for` would build a newborn's row a tick after the child did,
+  breaking forwarding parity); the snapshot of n read by samples at n+1 beside the event
+  carrying it (a sample in the event's tick would read the new value, against R2/R3); the
+  event at n with the structure before n (a visible inconsistent state).
 - **DY Dynamics across nodes.** A row reads its block's events through ports, and its
   block's holds and dynamic `let`s through its parent at its own read point
   (`sem-ch07-paged`'s inner `rebuild $src`). A `for` row is marked by the block's writes
@@ -1332,10 +1339,10 @@ ruling taken (Claude's).
   applied as a plain value (not a place, not a supplier's argument) is refused too: only a
   host makes a live element. *If otherwise:* lifted functions take `&Cx`.
 - **SU A row's `!Updated` over its block's structural dynamic.** A row hears the block's
-  writes through `parent_wrote_{m}` and decides its `!Updated` nodes in its wake, where a
-  structural dynamic of the block (pick ST) has no value after the tick yet. *First
-  ruling:* refused loudly (`UpdatedGaps`). *Next:* the block decides it with its own
-  structural nodes at the end of its construction step and tells the row.
+  writes through `parent_wrote_{m}` and decides its `!Updated` nodes in its wake; the
+  block's publication of a structural dynamic (pick ST) is `HoldWritten` of its name, so
+  the row's marks are already in it, but no test pins a row's `!Updated` over one. *First
+  ruling:* refused loudly (`UpdatedGaps`). *Next:* a test, then the refusal goes.
 - **DM The document is read whole.** A host row's entry (`HostRow::entry`), the owner's
   places over `$doc` and the host's builder each read `host_k_doc`, which builds the
   child's whole document (every place's level, every row's), so a patch of `n` forwarded

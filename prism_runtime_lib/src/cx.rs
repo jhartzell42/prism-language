@@ -4,9 +4,9 @@
 //! walks them in Graph's order (Graph ch. 4, "A tick, in order"):
 //!
 //! 1. last round's undone clean-ups; the started list and the armed `@Defer`s fire; the
-//!    answers a host's supplier computed last tick and the update events of structural
-//!    dynamics that moved last tick ([`Cx::answer_later`]), then the World's answers by
-//!    path and its pushes by element;
+//!    answers a host's supplier computed last tick and the publications of the structural
+//!    dynamics whose snapshot moved last tick ([`Cx::answer_later`]), then the World's
+//!    answers by path and its pushes by element;
 //! 2. the wakes by height, a bucket per height, each node once per height;
 //! 3. propagation ends, and every read from here on is after the tick;
 //! 4. the build list (a builder drops what left, then builds); 5. the swap list; 6. the
@@ -112,8 +112,8 @@ struct Gathered {
     cleanups: Vec<Rc<dyn Node>>,
     /// What this tick leaves for the start of the next, which is owed: the answers a host's
     /// supplier computed, each the typed delivery into the child's place (hosting,
-    /// [`crate::host`]), and the update events of structural dynamics that moved (their
-    /// value after this tick, [`crate::cells::Snapshot`]).
+    /// [`crate::host`]), and the publications of structural dynamics whose snapshot moved
+    /// ([`crate::cells::Snapshot`]).
     later: Vec<Later>,
     /// A fault raised where no `Done` goes back (a row leaving inside a builder's walk):
     /// the tick fails at its close.
@@ -121,7 +121,7 @@ struct Gathered {
 }
 
 /// A firing waiting for the start of the next tick: a closure over the node method that
-/// fires (a computed answer into a child's place, a structural dynamic's update event).
+/// fires (a computed answer into a child's place, a structural dynamic's publication).
 pub type Later = Box<dyn FnOnce(&mut Cx) -> Done>;
 
 /// Where a tick stands: propagating (its firings and wakes), or constructing (the walks
@@ -158,7 +158,7 @@ impl Cx<'_> {
         self.read_at.get()
     }
     /// Whether the tick is still propagating: its firings and wakes, before the construction
-    /// step. A structural dynamic ([`crate::cells::Snapshot`]) has no value after the tick
+    /// step. A structure ([`crate::cells::Snapshot::current`]) has no value after the tick
     /// yet, so a read of one after the tick is a bug here and a value from the construction
     /// step on.
     pub fn propagating(&self) -> bool {
@@ -248,8 +248,9 @@ impl Cx<'_> {
     /// A firing for the start of the next tick, which is owed (like an `@Defer`): an answer
     /// a host's supplier computed (an event output's firing, a dynamic output's update),
     /// delivered to the child's place as an input of that tick (Semantics ch. 9 as ruled: a
-    /// computed answer is a tick late); the update event of a structural dynamic that moved
-    /// this tick, fired at n+1 with the value after n (ch. 7, round 3 ST).
+    /// computed answer is a tick late); the publication of a structural dynamic whose
+    /// snapshot moved this tick, written at n+1 as a hold is, so its update event fires at
+    /// n+1 with the snapshot of n (ch. 7, round 3 ST).
     pub fn answer_later(&mut self, deliver: Later) {
         self.g.later.push(deliver)
     }

@@ -4,12 +4,13 @@
 //!
 //! A host is Prism inside the same graph and the same tick. The compiler inlines the hosted
 //! child into the node of the host's block (its owner), in a scope of its own, and emits
-//! for the host two typed methods on the owner: the child's document `$doc` as a getter
-//! (`host_k_doc`: every child place by its path relative to the child, each a snapshot
+//! for the host two typed methods on the owner: the child's document as a getter
+//! (`host_k_doc_direct`, the structure itself, not the lagged `$doc` the program reads:
+//! every child place by its path relative to the child, each a snapshot
 //! `Elem`) and a dispatch from a child place's path and a typed answer into the child's
 //! input method (`host_k_answer`). The owner holds a [`Host`] made of those two, and a
 //! `for` over the document whose rows are [`HostRow`]s: one per child place, built when the
-//! key appears in `$doc` after a tick and torn down at the end of the tick its key leaves
+//! key appears in the child's document after a tick and torn down at the end of the tick its key leaves
 //! (R7, R8, the `for` machinery of the emitted code). Nothing here is plain data: the
 //! child's elements are `E`, the program's `Elem` enum, and an answer is `A`, the program's
 //! `Answer` enum (one variant per tag, carrying that tag's output type).
