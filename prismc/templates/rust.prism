@@ -124,7 +124,8 @@ const SCRIPTS: &[&str] = &[
     {{scripts}}
 ];
 
-/// The World the root's row asks for.
+/// The World the root's row asks for: `canvas`, `cli`, or `none` (a row with `Ui` and no
+/// `Gui`, which no World answers).
 const WORLD: &str = "{{world}}";
 
 fn main() {
@@ -158,7 +159,15 @@ RunRoot: fn Text -> Text
 fn RunRoot program = inline_text <rust>
 match world {
     "canvas" => prelude::run_canvas::<{{program}}>(),
-    _ => prelude::on_big_stack(move || prism_world_cli::run::<{{program}}>(args)),
+    "cli" => prelude::on_big_stack(move || prism_world_cli::run::<{{program}}>(args)),
+    "none" => {
+        eprintln!("the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world");
+        2
+    }
+    other => {
+        eprintln!("no World {other} (cli, canvas, test)");
+        2
+    }
 }
 </rust>
 

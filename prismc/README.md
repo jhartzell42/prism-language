@@ -750,7 +750,7 @@ construct becomes and which library call it makes. The old back end, which emitt
 ```
 ./prism compile DIR|FILES... -o OUT             # the crate only
 ./prism test DIR|FILES...                       # compile, build, run the .prismtest scripts
-./prism run [--world cli|canvas] DIR|FILES... [-- ARGS...]   # compile, build, run the root
+./prism run [--world cli|canvas] [--print-world] DIR|FILES... [-- ARGS...]   # compile, build, run the root
 ./prism check DIR|FILES...                      # the checker's report
 prismc compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH]
 OUT/target/.../NAME [--world cli|canvas|test] [ARGS...]      # the root, under the World its row asks for
@@ -761,9 +761,11 @@ tests/compiled/run.sh [NAMES...]                # every program, byte-equal
 `prismc` is `$PRISMC`, or the newest of `target/bootstrap/prismc` and
 `target/keep/prismc-*` ("The bootstrap" below); the `prism` script, `tests/compiled/run.sh`
 and `tests/prismc/check/run.sh` use it. `prism test` builds debug, `prism run` release;
-`prism run` picks the canvas World when the root's row has `Gui.*` and the CLI World
-otherwise, and refuses a root whose row has `Ui.*` without `Gui.*`, since no World answers
-Ui elements alone. The compiled binary takes `--world` only as its first argument; a later
+`prism run` runs the root under the World prismc took from the root module's `emit` row
+(the crate's `const WORLD`): the canvas World when the row has `Gui.*`, the CLI World when
+it has neither `Gui.*` nor `Ui.*`, and none, a refusal, when it has `Ui.*` without
+`Gui.*`, since no World answers Ui elements alone; `--world` overrides, and
+`--print-world` prints the choice and stops before the build (`tests/driver/run.sh`). The compiled binary takes `--world` only as its first argument; a later
 one is the program's own (prismc's `--check --world Ui`). `make chess` is
 `./prism run examples/chess`.
 

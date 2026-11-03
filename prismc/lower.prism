@@ -5621,8 +5621,11 @@ fn ProgDefOf lx, qk:
     let lxm = InModuleAt lx, v.file, v.home, "\u{0}main"
     let params = Each (Range0 (Len ptys)), \|i| (("arg{i}", (RustTy lxm, (Peel (Or ptys[i], TyErr)))))
     let node = "{RustModName v.home}::{Camel (BareName qk)}"
-    let gui = HasText (Or lx.g.mods[v.home], dummyMod).emitRw.fams, "Gui"
-    ProgDef(name="{Camel (BareName qk)}Program", prism=(Drop (BareName qk), 1), node=node, params=params, fallible=True, world=(if gui: "canvas" else: "cli"))
+    # the World the root's row asks for: `Gui` the canvas World; `Ui` without `Gui` none,
+    # since no World answers Ui elements alone; anything else the CLI World
+    let fams = (Or lx.g.mods[v.home], dummyMod).emitRw.fams
+    let world = if HasText fams, "Gui": "canvas" else: if HasText fams, "Ui": "none" else: "cli"
+    ProgDef(name="{Camel (BareName qk)}Program", prism=(Drop (BareName qk), 1), node=node, params=params, fallible=True, world=world)
 
 # The unbounded functions with jobs: those `@Run` is given, and those they tail-call.
 JobRoots: unbounded fn Lx -> [Text]

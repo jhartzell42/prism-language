@@ -4,16 +4,16 @@
 #
 #   ./prism compile SRC... -o OUT        the Rust crate of the program, in OUT
 #   ./prism test SRC...                  compile, build, run the .prismtest scripts
-#   ./prism run [--world W] SRC... [-- ARGS...]   compile, build, run the root
+#   ./prism run [--world W] [--print-world] SRC... [-- ARGS...]   compile, build, run the root
 #   ./prism check [--world FAMS] SRC...  the checker's report
 #
 # SRC is a directory (every `.prism` and `.prismtest` under it), a `.prism` file (with the
 # `.prismtest` of its name beside it, when there is one) or a `.prismtest` file. `test`
 # runs every script under the compiled Test World, each transcript byte-equal to the
-# `.expected` of its name. `run` builds with the World the root's `emit` row asks for:
-# `Gui.*` the canvas World, anything else the CLI World; `--world cli|canvas` overrides.
-# A root whose row has `Ui.*` without `Gui.*` is refused: no World answers Ui elements
-# alone.
+# `.expected` of its name. `run` builds with the World the root's `emit` row asks for, as
+# prismc decides it from the root module's row: `Gui.*` the canvas World, anything else
+# the CLI World; `--world cli|canvas` overrides. A root whose row has `Ui.*` without
+# `Gui.*` is refused: no World answers Ui elements alone.
 #
 # prismc is `$PRISMC`, or the newest of target/bootstrap/prismc and target/keep/prismc-*
 # (the old dynamic chain's binary left out). The crate goes to target/prism/NAME, the
@@ -33,12 +33,14 @@ shift
 srcs=()
 out=""
 world=""
+print_world=0
 progargs=()
 while [ $# -gt 0 ]; do
     case "$1" in
         -o) out=$2; shift 2 ;;
         --world) world=$2; shift 2 ;;
         --world=*) world=${1#--world=}; shift ;;
+        --print-world) print_world=1; shift ;;
         --) shift; progargs=("$@"); break ;;
         *)
             if [ -d "$1" ] || [[ "$1" == *.prism ]] || [[ "$1" == *.prismtest ]]; then
@@ -126,21 +128,23 @@ if [ "$cmd" = test ]; then
     exec target/prism-build/debug/"$name" test
 fi
 
-# run: the World from the root's row, unless --world names one.
+# run: the World prismc took from the root's row (`const WORLD` of the crate's main.rs),
+# unless --world names one; --print-world prints it and stops before the build.
 asked=$(sed -n 's/^const WORLD: &str = "\(.*\)";$/\1/p' "$out/src/main.rs")
 if [ "$asked" = test ]; then
     echo "prism run: the program has no @main root to run (prism test runs its tests)" >&2
     exit 2
 fi
 if [ -z "$world" ]; then
-    mapfile -t files < <(prism_files)
-    rootfile=$(grep -l -E '^(fn )?@\$?main\b' "${files[@]}" | head -1 || true)
-    row=$( [ -n "$rootfile" ] && grep -m1 -E '^emit ' "$rootfile" || true)
-    if [[ "$row" == *Ui.* ]] && [[ "$row" != *Gui.* ]]; then
-        echo "prism run: the root's row ($rootfile: $row) has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world" >&2
+    if [ "$asked" = none ]; then
+        echo "prism run: the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world" >&2
         exit 2
     fi
     world=$asked
+fi
+if [ "$print_world" = 1 ]; then
+    echo "$world"
+    exit 0
 fi
 case "$world" in
     canvas) build --release --features canvas ;;
