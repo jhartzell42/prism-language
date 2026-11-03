@@ -1,0 +1,63 @@
+# Derived by hand from Semantics ch. 7, "Structural dynamics" (round 3 ST): a structural dynamic's value after n is fixed as the last act of n's construction, read by n's patch pass and by every sample in n+1; its update event fires at n+1, the first firing of that owed tick, with the value after n, and only when the value moved where equality exists; R7 (a newborn row is built at the end of its tick) and ch. 9's forwarding (re-emission at host/[p]/0).
+test one_state_in_the_sample_and_the_event
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="add")
+    0/[1/[1]/0]/0: Ui.Label(text="k1")
+    1: Ui.Button(label="tap")
+    2: Ui.Label(text="0 moves, 2 places")
+    3: Ui.Label(text="seen 0 places at 0 clicks")
+
+tick 1
+  in:
+    1: click
+
+tick 2
+  changed:
+    3: Ui.Label(text="seen 2 places at 1 clicks")
+
+tick 3
+  in:
+    0/[0]/0: click
+    1: click
+  added:
+    0/[1/[2]/0]/0: Ui.Label(text="k2")
+  changed:
+    2: Ui.Label(text="0 moves, 3 places")
+
+tick 4
+  changed:
+    2: Ui.Label(text="1 moves, 3 places")
+    3: Ui.Label(text="seen 3 places at 2 clicks")
+
+tick 5
+  in:
+    0/[0]/0: click
+  added:
+    0/[1/[3]/0]/0: Ui.Label(text="k3")
+  changed:
+    2: Ui.Label(text="1 moves, 4 places")
+
+tick 6
+  changed:
+    2: Ui.Label(text="2 moves, 4 places")
+    3: Ui.Label(text="seen 4 places at 2 clicks")
+
+test a_gathered_dynamic_fires_next_tick
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="one")
+    2: Ui.Label(text="0 heard, 0 rows")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="three")
+
+tick 2
+  changed:
+    2: Ui.Label(text="1 heard, 2 rows")

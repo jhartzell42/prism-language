@@ -1,0 +1,50 @@
+# A structural dynamic (Semantics ch. 7, "Structural dynamics"; round 3 ST): a host's child
+# document `$doc`, a `for`'s gathered `$(K ==> T)`, and every dynamic lifted from one. Its
+# value after n is fixed once, as the last act of n's construction step, so a sample in n's
+# patch pass (`Size $doc` in a label) shows the structure after n in the tick of the click;
+# its update event fires at n+1, as the first firing of that owed tick, with the value after
+# n, so a dynamic lifted over `$doc` and a hold the host wrote at n fires with the document
+# after n and the hold after n, never a new count beside an old document. Written for
+# prismc's back end. Work in progress, subject to change.
+emit Ui.*
+use Ui.*
+
+@child: @unit
+@child:
+    !add <- Ui.Button(label=$"add")                                          # 0
+    $names <- {1: "k1"} then Insert $names, (Size $names) + 1, "k{(Size $names) + 1}" on !add
+    for k, $name <- $names:                                                  # 1/[k]
+        Ui.Label(text=$name)                                                 # 1/[k]/0
+
+type Pair = record:
+    size: Nat
+    clicks: Nat
+derive ^Eq, ^Show
+
+Paired: fn Nat, Nat -> Pair
+fn Paired size, clicks = Pair size, clicks
+
+# `$doc` and `$pair` are structural; `$clicks`, `$moves` and `$seen` are holds.
+@host: @unit
+@host:
+    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e              # 0/[p]/0
+    !tap <- Ui.Button(label=$"tap")                                           # 1
+    $clicks <- 0 then $clicks + 1 on !tap
+    $moves <- 0 then $moves + 1 on (!Updated $doc)
+    let $pair = Paired (Size $doc), $clicks
+    $seen <- Pair 0, 0 then !Updated $pair
+    Ui.Label(text=$"{$moves} moves, {Size $doc} places")                     # 2
+    Ui.Label(text=$"seen {$seen.size} places at {$seen.clicks} clicks")      # 3
+
+# A `for`'s gathered dynamic is structural too: its event fires in the tick after the row
+# is born, with the rows' results after the birth tick.
+@gathered: @unit
+@gathered:
+    !add <- Ui.Button(label=$"add")                                          # 0
+    $names <- {1: "one"} then Insert $names, 2, "three" on !add
+    $lens <- for k, $name <- $names:                                         # 1/[k]
+        Ui.Label(text=$name)                                                 # 1/[k]/0
+        @ Len $name
+    $heard <- 0 then $heard + 1 on (!Updated $lens)
+    $rows <- 0 then Size (!Updated $lens)
+    Ui.Label(text=$"{$heard} heard, {$rows} rows")                           # 2
