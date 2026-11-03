@@ -759,7 +759,7 @@ derive ^Eq, ^Show
 type Bn = choice:
     BnLocal Text, Holding, RsTy
     BnHold Text, RsTy
-    BnDyn Ex, [Text], RsTy
+    BnDyn Ex, [Read], RsTy
     BnEv EvRef, RsTy
     # A tuple pattern's parts, each its name's binding (`((id, !incoming)) <- Gui.Window(..)`),
     # where a bundle's output goes.
@@ -3070,6 +3070,9 @@ type Gn = record:
     kind: GnKind
     height: Nat
     inputs: [Text]
+    # An `!Updated` node's: what its dynamic reads, closed over the dynamic `let`s when the
+    # node is finished.
+    reads: [Read]
     outs: [Out]
 
 # What a node of the graph is: a source (a place's answer, `@started`, an `@Defer`, a row's
@@ -3133,12 +3136,29 @@ type Place = record:
     pos: Nat
     level: Ex
     getter: Text
-    reads: [Text]
+    reads: [Read]
+
+# What a dynamic reads, for the marks (docs/backend.md, "Marks"): a hold or a dynamic
+# `let`'s getter of this node by its field or method name, or, in a row, one of its block's
+# read through the parent (gap DY), whose writes in the block mark the rows.
+type Read = choice:
+    OwnRead Text
+    ParentRead Text
+derive ^Eq, ^Show
+
+HasRead: fn [Read], Read -> Bool
+fn HasRead rs, r = Fold rs, False, \|seen, x| seen or x == r
+
+AddRead: fn [Read], Read -> [Read]
+fn AddRead rs, r = if HasRead rs, r: rs else: Push rs, r
+
+UnionReads: fn [Read], [Read] -> [Read]
+fn UnionReads xs, ys = Fold ys, xs, \|acc, y| AddRead acc, y
 
 # What a block (or an inlined widget) gives back.
 type Wres = choice:
     WrEv EvRef
-    WrDyn Ex, [Text], RsTy
+    WrDyn Ex, [Read], RsTy
     WrPlain Ex, RsTy
     WrUnit
     # A host's output: its child's result, the first part of the line's tuple pattern.
@@ -3159,17 +3179,17 @@ type Wx = record:
     started: [Nat]
     defers: [((Text, Nat))]
     getters: [MethDef]
-    dynReads: (Text ==> [Text])
+    dynReads: (Text ==> [Read])
     taken: [Text]
     fallible: Bool
     depth: Nat
     result: Wres
     rows: [NodeDef]
     builders: [ForDef]
-    buildHolds: [Text]
+    buildHolds: [Read]
     upSink: Text
     gens: [GenDef]
-    genHolds: [((Text, [Text]))]
+    genHolds: [((Text, [Read]))]
     ports: [Text]
     subs: [((Text, Text, RsTy))]
     parentEnv: LoEnv
@@ -3185,10 +3205,10 @@ type Wx = record:
     scopes: [Text]
     # The root's dynamic result: what it reads and its type (the World hears it at the
     # build and whenever it moves).
-    rootDyn: ?((Ex, [Text], RsTy))
+    rootDyn: ?((Ex, [Read], RsTy))
     # The `for`s whose rows read the block's holds: each builder and the holds, whose
     # writes mark every row (gap DY).
-    rowHolds: [((Text, [Text]))]
+    rowHolds: [((Text, [Read]))]
 
 # The names a node's own methods and the `Node` interface take.
 let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "push", "swap", "leave", "patch", "clean_up", "edges", "release", "leave_row", "remove_places"]]
@@ -3209,7 +3229,7 @@ LoAddGn: fn Wx, Text, RsTy, GnKind, Nat -> ((Nat, Wx))
 fn LoAddGn wx, name, ty, kind, height:
     let id = Len wx.gns
     let wx2 = update wx:
-        &_.gns <= Push &_.gns, Gn(id=id, name=name, ty=ty, kind=kind, height=height, inputs=[[]], outs=[[]])
+        &_.gns <= Push &_.gns, Gn(id=id, name=name, ty=ty, kind=kind, height=height, inputs=[[]], reads=[[]], outs=[[]])
     ((id, wx2))
 
 # An event reference given a consumer.
@@ -3232,7 +3252,7 @@ fn LoHeightOf wx, n = match wx.gns[n]:
     nil: 0
 
 LoGnOf: fn Wx, Nat -> Gn
-fn LoGnOf wx, n = Or wx.gns[n], (Gn(id=n, name="never", ty=RsUnit, kind=GnNever, height=0, inputs=[[]], outs=[[]]))
+fn LoGnOf wx, n = Or wx.gns[n], (Gn(id=n, name="never", ty=RsUnit, kind=GnNever, height=0, inputs=[[]], reads=[[]], outs=[[]]))
 
 # A plain value of the block, bound at the build and kept as a field: the build reads the
 # Rust local, the methods the field.
@@ -3344,7 +3364,7 @@ fn LoPreBindName wx, benv, menv, n, how:
         ((wx3, be, me))
     else: match ((layer, how)):
         ((LyDyn, AsLet)):
-            let b = BnDyn (XMethod (XRaw "self"), rs, [[XRaw "cx"]]), [[rs]], t
+            let b = BnDyn (XMethod (XRaw "self"), rs, [[XRaw "cx"]]), [[OwnRead rs]], t
             ((wx1, (LoBind benv, nkey, b), (LoBind menv, nkey, b)))
         ((LyDyn, ignore)):
             let b = BnHold rs, t
@@ -3584,7 +3604,7 @@ fn LoElementLine wx, benv, menv, e, ?bound:
                             otherwise:
                                 let ((ex, rds)) = LoDyn w, menv, arg
                                 let cv = LoOwn (LoX lx, benv, arg)
-                                (((Push lf, ((LoSnake fname, ex))), (Push cf, ((LoSnake fname, cv))), (UnionTexts rd, rds), w))
+                                (((Push lf, ((LoSnake fname, ex))), (Push cf, ((LoSnake fname, cv))), (UnionReads rd, rds), w))
             let live = (Len reads) > 0
             let ((getter, wx3)) = if live: LoFresh wx2, (LoSnake (BareName tg.name)) else: (("", wx2))
             let level = XMethod (XRecord structPath, (if live: liveFields else: constFields)), "to_pod", [[]]
@@ -3725,7 +3745,7 @@ fn LoElementOutputOf wx, menv, tg, out, pos, ?bound, level:
                 &_.build <= Push &_.build, (DoExpr (XMethod (XRaw "cx"), "listen_at", [[(XRaw "&{LoPlaceAt wx.scopes, "node", pos}"), (XRaw "node.{f}_element.clone()"), (XRaw "&(node.clone() as Rc<dyn Node>)")]]))
                 &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out))
                 &_.fallible <= True
-            ((wx2, (WrDyn (XMethod (XRaw "self.{f}"), "get", [[XRaw "cx"]]), [[f]], out)))
+            ((wx2, (WrDyn (XMethod (XRaw "self.{f}"), "get", [[XRaw "cx"]]), [[OwnRead f]], out)))
         otherwise: match ?bound:
             ? (BnLocal rs, ignore, ignore):
                 let f = Drop rs, 5
@@ -3862,9 +3882,9 @@ fn LoHostLine wx, benv, menv, form, args, ?bound:
                 &_.result <= WrUnit
             let ((done, res)) = LoBuildLine inner, benv, menv, child.value, nil
             let childPlaces = Drop done.places, (Len wx2.places)
-            let childBuilds = Filter done.buildHolds, \|h| not (HasText wx2.buildHolds, h)
-            let childGens = Fold (Drop done.genHolds, (Len wx2.genHolds)), [[]], \|acc, ((ignore, hs))| UnionTexts acc, hs
-            let docReads = Fold childPlaces, (UnionTexts childBuilds, childGens), \|acc, pl| UnionTexts acc, pl.reads
+            let childBuilds = Filter done.buildHolds, \|h| not (HasRead wx2.buildHolds, h)
+            let childGens = Fold (Drop done.genHolds, (Len wx2.genHolds)), [[]], \|acc, ((ignore, hs))| UnionReads acc, hs
+            let docReads = Fold childPlaces, (UnionReads childBuilds, childGens), \|acc, pl| UnionReads acc, pl.reads
             let back = update done:
                 &_.pos <= wx2.pos
                 &_.result <= wx.result
@@ -4081,13 +4101,13 @@ fn LoBindParam wx, cbenv, cmenv, be, me, nkey, pty, arg:
 # hold read at the read point (`self.x.get(cx)`), and the holds and getters it reads, for
 # the marks (docs/backend.md, "Marks"). Lifting is the checker's; at one moment a lifted
 # expression is the plain one.
-LoDyn: unbounded fn Wx, LoEnv, Expr -> ((Ex, [Text]))
+LoDyn: unbounded fn Wx, LoEnv, Expr -> ((Ex, [Read]))
 fn LoDyn wx, menv, e:
     let v = LoX wx.lx, menv, e
     let reads = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
         EName n: match menv.names[SNameKey n]:
-            ? (BnHold f, ignore): AddText acc, f
-            ? (BnDyn ignore, rs, ignore): UnionTexts acc, rs
+            ? (BnHold f, ignore): AddRead acc, (OwnRead f)
+            ? (BnDyn ignore, rs, ignore): UnionReads acc, rs
             otherwise: acc
         otherwise: acc
     ((LoOwn v, reads))
@@ -4219,7 +4239,7 @@ fn LoUpdatedEv wx, menv, args, t = match args[0]:
         let ((id, w2)) = LoAddGn w1, nm, t, GnUpdated, 1
         let w3 = LoAddField w2, "{nm}_moved", (RsNamed "Cell<bool>", [[]]), "a hold `!{nm}`'s dynamic reads was written this tick", (XRaw "Cell::new(false)")
         let w4 = update w3:
-            &_.gns <= Each &_.gns, \|n| if n.id == id: LoWithInputs n, reads else: n
+            &_.gns <= Each &_.gns, \|n| if n.id == id: LoWithReads n, reads else: n
             &_.getters <= Push &_.getters, (MethDef(name="{nm}_value", recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The dynamic `!{nm}` is the event half of, which the wake reads after the tick."))
         ((LoEvOf id, w4))
     nil: LoNever wx, t
@@ -4308,13 +4328,17 @@ LoWithInputs: fn Gn, [Text] -> Gn
 fn LoWithInputs n, ins = update n:
     &_.inputs <= ins
 
+LoWithReads: fn Gn, [Read] -> Gn
+fn LoWithReads n, reads = update n:
+    &_.reads <= reads
+
 # ---------------------------------------------------------------------------------------
 # The node, finished: heights, methods, the `Node` hooks, the build
 # ---------------------------------------------------------------------------------------
 
 # Heights (Q-B8; Compiler ch. 3, "The analyses"): a source is at 0, a named event at the
 # height of what fires it, a combinator one above its inputs; an "updated" node's inputs
-# are the writers of the holds its dynamic reads (its `inputs`, closed). The graph is
+# are the writers of the holds its dynamic reads (its `reads`, closed). The graph is
 # acyclic within a tick (the checker's prompt-cycle check), so as many rounds as nodes
 # settle it.
 LoHeights: fn [Gn] -> [Gn]
@@ -4353,11 +4377,17 @@ fn LoFeeds other, n = False
 
 # Whether a write to hold `f` moves an "updated" node's dynamic.
 LoWrites: fn Text, Gn -> Bool
-fn LoWrites f, n = n.kind == GnUpdated and HasText n.inputs, f
+fn LoWrites f, n = n.kind == GnUpdated and HasRead n.reads, (OwnRead f)
 
 # The holds a place reads, through the getters of dynamic `let`s.
-LoReadsClosed: fn (Text ==> [Text]), [Text] -> [Text]
-fn LoReadsClosed dyn, reads = Fold (Range0 4), reads, \|acc, ignore| Fold acc, acc, \|a, r| UnionTexts a, (Or dyn[r], [[]])
+LoReadsClosed: fn (Text ==> [Read]), [Read] -> [Read]
+fn LoReadsClosed dyn, reads = Fold (Range0 4), reads, \|acc, ignore| Fold acc, acc, \|a, r| UnionReads a, (LoGetterReads dyn, r)
+
+# What a read reaches through the node's getters: a dynamic `let`'s reads; a hold, or a
+# read through the parent, nothing more.
+LoGetterReads: fn (Text ==> [Read]), Read -> [Read]
+fn LoGetterReads dyn, (OwnRead n) = Or dyn[n], [[]]
+fn LoGetterReads dyn, (ParentRead ignore) = [[]]
 
 LoWakeConst: fn [Nat], Nat -> Text
 fn LoWakeConst heights, h = if (Len heights) <= 1: "WAKE" else: "WAKE_{h}"
@@ -4374,10 +4404,10 @@ fn LoSinkCode sk, target, y = match target:
         Append [[DoExpr (XMethod (XRaw "self.{Or g.inputs[i], ""}"), "set", [[y, XRaw "cx"]])]], (LoAskWake sk, g.height)
     SkHold f:
         let set = DoExpr (XMethod (XRaw "self.{f}"), "set", [[y, XRaw "cx"]])
-        let dirty = if HasText sk.dirty, f: [[DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]] else: [[]]
-        let stales = Fold sk.wx.genHolds, [[]], \|acc, ((gname, hs))| if HasText (LoReadsClosed sk.wx.dynReads, hs), f: Push acc, (DoExpr (XMethod (XRaw "self.{gname}_stale"), "set", [[XRaw "true"]])) else: acc
-        let rowMarks = Fold sk.wx.rowHolds, [[]], \|acc, ((b, hs))| if HasText hs, f: Push acc, (DoExpr (XRaw "for row in self.{b}.borrow().values() \{ cx.dirty(row.clone()); \}")) else: acc
-        let builds = (HasText sk.builds, f) or (Len stales) > 0
+        let dirty = if HasRead sk.dirty, (OwnRead f): [[DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]] else: [[]]
+        let stales = Fold sk.wx.genHolds, [[]], \|acc, ((gname, hs))| if HasRead (LoReadsClosed sk.wx.dynReads, hs), (OwnRead f): Push acc, (DoExpr (XMethod (XRaw "self.{gname}_stale"), "set", [[XRaw "true"]])) else: acc
+        let rowMarks = Fold sk.wx.rowHolds, [[]], \|acc, ((b, hs))| if HasRead hs, (OwnRead f): Push acc, (DoExpr (XRaw "for row in self.{b}.borrow().values() \{ cx.dirty(row.clone()); \}")) else: acc
+        let builds = (HasRead sk.builds, (OwnRead f)) or (Len stales) > 0
         let rebuildIt = if builds: Append stales, [[DoExpr (XMethod (XRaw "cx"), "build_later", [[XRaw "self.clone()"]])]] else: [[]]
         Append (Append (Append (Append [[set]], dirty), rebuildIt), rowMarks), (LoMovedMarks sk, f)
     SkRequest pos, field:
@@ -4417,7 +4447,7 @@ LoFinishNode: unbounded fn Wx, Text, [((Text, RsTy))], Bool -> NodeDef
 fn LoFinishNode wx0, qk, params, isRow:
     # An "updated" node's reads, closed over the dynamic `let`s now that every line is in;
     # its height is one above the writers of those holds.
-    let closedGns = Each wx0.gns, \|g| if g.kind == GnUpdated: LoWithInputs g, (LoReadsClosed wx0.dynReads, g.inputs) else: g
+    let closedGns = Each wx0.gns, \|g| if g.kind == GnUpdated: LoWithReads g, (LoReadsClosed wx0.dynReads, g.reads) else: g
     let wx = update wx0:
         &_.gns <= LoHeights closedGns
         &_.build <= Append &_.build, (LoUpdatedGaps wx0, closedGns, isRow)
@@ -4429,7 +4459,7 @@ fn LoFinishNode wx0, qk, params, isRow:
     let rootReads = match wx.?rootDyn:
         ? ((ignore, rds, ignore)): LoReadsClosed wx.dynReads, rds
         nil: [[]]
-    let dirtyHolds = Fold live, rootReads, \|acc, p| UnionTexts acc, (LoReadsClosed wx.dynReads, p.reads)
+    let dirtyHolds = Fold live, rootReads, \|acc, p| UnionReads acc, (LoReadsClosed wx.dynReads, p.reads)
     let buildHolds = LoReadsClosed wx.dynReads, wx.buildHolds
     let sinks = LoSinks(wx=wx, dirty=dirtyHolds, builds=buildHolds, heights=heights, many=many)
     let evMethods = Each (Filter wx.gns, \|g| g.kind != GnNever), \|g| MethDef(name=g.name, recv=RecvRc, params=[[(("v", g.ty))]], cx=CxMut, ret=RsUnit, body=(LoFire sinks, g, (XRaw "v")), tail=(XRaw "()"), doc=(LoGnDoc g))
@@ -4490,11 +4520,12 @@ LoUpdatedGaps: fn Wx, [Gn], Bool -> [Do]
 fn LoUpdatedGaps wx, gns, isRow:
     let holds = Fold wx.fields, [[]], \|acc, ((f, t, ignore))| if LoIsHold t: Push acc, f else: acc
     let derived = Keys wx.dynReads
-    Fold (Filter gns, \|g| g.kind == GnUpdated), [[]], \|acc, g| Fold g.inputs, acc, \|a, r|
-        if (Take r, 8) == "^parent:": Push a, (LoTodoDo "`!Updated` of a dynamic in a row that reads its block's `{Drop r, 8}`, which the builder writes after propagation (no height for its event)")
-        else: if isRow and r == "value": Push a, (LoTodoDo "`!Updated` of a dynamic that reads a row's `$_`, which the builder writes after propagation (no height for its event)")
-        else: if (HasText holds, r) or (HasText derived, r): a
-        else: Push a, (LoTodoDo "`!Updated` of a dynamic that reads `{r}`, which no sink of this node writes (no height for its event)")
+    Fold (Filter gns, \|g| g.kind == GnUpdated), [[]], \|acc, g| Fold g.reads, acc, \|a, r| match r:
+        ParentRead f: Push a, (LoTodoDo "`!Updated` of a dynamic in a row that reads its block's `{f}`, which the builder writes after propagation (no height for its event)")
+        OwnRead f:
+            if isRow and f == "value": Push a, (LoTodoDo "`!Updated` of a dynamic that reads a row's `$_`, which the builder writes after propagation (no height for its event)")
+            else: if (HasText holds, f) or (HasText derived, f): a
+            else: Push a, (LoTodoDo "`!Updated` of a dynamic that reads `{f}`, which no sink of this node writes (no height for its event)")
 
 # The patch pass for one live place: its `Level` pulled and sent as changed.
 LoPatchPlace: fn [Text], Place -> [Do]
@@ -4550,8 +4581,8 @@ fn LoAnswerArm wx, pos, id, t:
 # builder, the heights, and whether the wake dispatches by height.
 type LoSinks = record:
     wx: Wx
-    dirty: [Text]
-    builds: [Text]
+    dirty: [Read]
+    builds: [Read]
     heights: [Nat]
     many: Bool
 
@@ -4640,11 +4671,11 @@ fn LoHeldTy (RsHold i), other = i
 fn LoHeldTy t, other = other
 
 # A row's own methods: its value updated by the builder, its places torn down.
-LoRowMethods: fn Wx, [Text] -> [MethDef]
+LoRowMethods: fn Wx, [Read] -> [MethDef]
 fn LoRowMethods wx, dirty:
     let vt = Fold wx.fields, RsUnit, \|acc, ((f, t, ignore))| if f == "value": LoHeldTy t, acc else: acc
     let set = DoExpr (XMethod (XRaw "self.value"), "set", [[XRaw "v", XRaw "cx"]])
-    let mark = if HasText dirty, "value": [[DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]] else: [[]]
+    let mark = if HasRead dirty, (OwnRead "value"): [[DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]] else: [[]]
     let held = Fold wx.fields, False, \|acc, ((f, t, ignore))| acc or (f == "value" and LoIsHold t)
     let updater = MethDef(name="update", recv=RecvRc, params=[[(("v", vt))]], cx=CxMut, ret=RsUnit, body=(Append [[set]], mark), tail=(XRaw "()"), doc="A kept row's entry changed: its `$_` hears it.")
     let removes = Each wx.places, \|p| DoExpr (XMethod (XRaw "cx"), "removed", [[(XRaw (LoPlaceAt wx.scopes, "self", p.pos))]])
@@ -5071,7 +5102,7 @@ fn LoForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let rowParams = Append [[(("key", kt)), (("value", vt)), (("parent", (RsWeak wx.node)))]], (Each locals, \|l| ((l.field, l.ty)))
     let ((rbe, rme)) = LoForEnvs benvL, menvL, ?binders, keyB, keyM, (BnLocal "value", Owned, vt), (BnHold "value", vt), vt
     let rowWx = LoBlockInto rowWx0, rbe, rme, body
-    let marks = Fold rowWx.places, [[]], \|acc, pl| UnionTexts acc, (LoParentMarks (LoReadsClosed rowWx.dynReads, pl.reads))
+    let marks = Fold rowWx.places, [[]], \|acc, pl| UnionReads acc, (LoBlockReads (LoReadsClosed rowWx.dynReads, pl.reads))
     let wx2 = if (Len marks) == 0: wx2 else: update wx2:
         &_.rowHolds <= Push &_.rowHolds, ((name, (LoReadsClosed wx2.dynReads, marks)))
     let full = LoTyOf lx, e.span
@@ -5093,30 +5124,34 @@ fn LoForLine wx, benv, menv, ?binders, source, body, e, ?bound:
             let all = XRaw "self.{name}.borrow().iter().map(|(k, row)| (k.clone(), row.result(cx))).collect()"
             let wx4 = update wx3:
                 &_.getters <= Push &_.getters, (MethDef(name="{name}_all", recv=RecvRef, params=[[]], cx=CxRef, ret=(RsMap kt, rt), body=[[]], tail=all, doc="The rows' results by key: the `for`'s dynamic."))
-            ((wx4, (WrDyn (XMethod (XRaw "self"), "{name}_all", [[XRaw "cx"]]), [["{name}"]], (RsMap kt, rt))))
+            ((wx4, (WrDyn (XMethod (XRaw "self"), "{name}_all", [[XRaw "cx"]]), [[OwnRead name]], (RsMap kt, rt))))
         otherwise:
             let wx3 = LoAddBuilder wx2, name, pos, src, kt, vt, rowName, keyed, reads, (LoFinishNode rowWx, rowName, rowParams, True), passed
             ((wx3, WrUnit))
 
-LoAddBuilder: fn Wx, Text, Nat, Ex, RsTy, RsTy, Text, Bool, [Text], NodeDef, [Ex] -> Wx
+LoAddBuilder: fn Wx, Text, Nat, Ex, RsTy, RsTy, Text, Bool, [Read], NodeDef, [Ex] -> Wx
 fn LoAddBuilder wx, name, pos, src, kt, vt, rowName, keyed, reads, rowDef, passed:
     let wx0 = LoAddField wx, name, (RsCell (RsMap kt, (RsRc (RsNamed rowName, [[]])))), "the rows of the `for` at place {pos}", (XRaw "RefCell::new(Map::new())")
     update wx0:
         &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(LoPlaceAt wx.scopes, "", pos), source=src, keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, passed=passed)
-        &_.buildHolds <= UnionTexts &_.buildHolds, reads
+        &_.buildHolds <= UnionReads &_.buildHolds, reads
         &_.rows <= Append (Push &_.rows, rowDef), rowDef.children
 
 # A row's view of its block's holds and dynamic `let`s: read through the parent at the
-# row's read point, each marked `^parent:` in what it reads, so the row's places that
-# read one are live and the block's writes of it mark the rows (gap DY).
+# row's read point, each a `ParentRead` in what it reads, so the row's places that read
+# one are live and the block's writes of it mark the rows (gap DY).
 LoRowReads: fn LoEnv, Text -> LoEnv
 fn LoRowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
-    ? (BnHold f, t): LoBind en, k, (BnDyn (XMethod (XRaw "{pref}.{f}"), "get", [[XRaw "cx"]]), [["^parent:{f}"]], t)
-    ? (BnDyn (XMethod (XRaw "self"), m, xs), ignore, t): LoBind en, k, (BnDyn (XMethod (XRaw pref), m, xs), [["^parent:{m}"]], t)
+    ? (BnHold f, t): LoBind en, k, (BnDyn (XMethod (XRaw "{pref}.{f}"), "get", [[XRaw "cx"]]), [[ParentRead f]], t)
+    ? (BnDyn (XMethod (XRaw "self"), m, xs), ignore, t): LoBind en, k, (BnDyn (XMethod (XRaw pref), m, xs), [[ParentRead m]], t)
     otherwise: en
 
-LoParentMarks: fn [Text] -> [Text]
-fn LoParentMarks reads = Fold reads, [[]], \|acc, r| if (Take r, 8) == "^parent:": AddText acc, (Drop r, 8) else: acc
+# A row's reads of its block, as the block's own reads: the block's writes of these mark
+# the rows.
+LoBlockReads: fn [Read] -> [Read]
+fn LoBlockReads reads = Fold reads, [[]], \|acc, r| match r:
+    ParentRead f: AddRead acc, (OwnRead f)
+    OwnRead ignore: acc
 
 # The block's plain values a row reads (a parameter, a plain `let`): each a field of the
 # row, which the block passes to its `build`, since a row's build has no block to read.
@@ -5169,7 +5204,7 @@ fn LoBindPat env, p, b, whole, t = match p.kind:
 
 # Part `i` of a tuple entry: of the build's value, or read from the row's hold.
 LoPartBn: fn Bn, Text, Nat, RsTy -> Bn
-fn LoPartBn (BnHold f, ignore), whole, i, t = BnDyn (XField (XMethod (XRaw "self.{f}"), "get", [[XRaw "cx"]]), "{i}"), [[f]], t
+fn LoPartBn (BnHold f, ignore), whole, i, t = BnDyn (XField (XMethod (XRaw "self.{f}"), "get", [[XRaw "cx"]]), "{i}"), [[OwnRead f]], t
 fn LoPartBn other, whole, i, t = BnLocal "{whole}.{i}", Owned, t
 
 LoGnTyNamed: fn Wx, Text -> RsTy

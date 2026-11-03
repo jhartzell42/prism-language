@@ -1197,7 +1197,7 @@ ruling taken (Claude's).
 - **DY Dynamics across nodes.** A row reads its block's events through ports, and its
   block's holds and dynamic `let`s through its parent at its own read point
   (`sem-ch07-paged`'s inner `rebuild $src`). A `for` row is marked by the block's writes
-  of what it reads (`Wx.rowHolds`, the reads marked `^parent:`), and the block is
+  of what it reads (`Wx.rowHolds`, its `ParentRead`s), and the block is
   patched after its rows are built; a generation is not marked, and is rebuilt only with
   its parent's. *Next:* the contract's `Dynamic` with its update port.
 - **HS Hosting at the boundary of plain data.** The contract's supplier is typed per
