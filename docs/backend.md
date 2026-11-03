@@ -244,12 +244,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
     (`HostRow::document`), and its first value is the enclosing host's.
   - `@ x` and a constant `@ $ v` (`rt::plain_blueprint`) are the first value once; `@ never`
     (`rt::never_blueprint`) answers nothing.
-  - `@ !e` (`rt::event_blueprint`) and `@ $d` (`rt::dynamic_blueprint`, a dynamic's first
-    value read at the build, synchronously) are **computed answers, delayed**: each firing
-    or update is queued with `Cx::answer_later` and delivered to the child's place as an
-    input of the next tick, which is owed (`pending`, like an armed `@Defer`). A computed
-    answer in flight to a place whose key left is dropped. Nested hosts add one tick per
-    computing layer and none per forwarding layer.
+  - `@ !e` (`rt::event_blueprint`) and `@ $d` (`rt::dynamic_blueprint`, `$d` any dynamic
+    of the owner, its first value read at the row's build, synchronously) are **computed
+    answers, delayed**: each firing, and each tick with a change behind `$d`, is queued
+    with `Cx::answer_later` and delivered to the child's place as an input of the next
+    tick, which is owed (`pending`, like an armed `@Defer`); a dynamic's push samples it
+    when delivered, so it carries the value after the tick of the change. The owner emits a
+    getter per dynamic answer and fires its update port at every write behind it; the
+    supplier reads the getter through an `rt::Link` to the owner, and the dynamic's value
+    at the build while the owner is being made. A computed answer in flight to a place
+    whose key left is dropped. Nested hosts add one tick per computing layer and none per
+    forwarding layer.
 - **First values.** A child place with a first value asks the host at its build
   (`host_k.first_value(&place, &elem, cx)`), before the owner's node exists: the host builds
   the supplier row for the place early and keeps it in the rows, where the builder finds it
@@ -303,7 +308,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `leave_later`, `dirty`, `on_started`, `arm`, `clean_up_later`, `added`, `removed`,
   `changed`, `request`, `answer_later`, `result`, `first_value`, `listen`), `Runtime`
   (`build`, `tick`, `close`, `compact`, `document`).
-- `host`: `Host`, `HostRow`, `HostOf`, `Rows`, `Scope`, `Blueprint`, `Supplier`, `Sink`,
+- `host`: `Host`, `HostRow`, `HostOf`, `Link`, `Rows`, `Scope`, `Blueprint`, `Supplier`, `Sink`,
   `Supplied`, `AnswerOf`, the blueprint forms (`plain_blueprint`, `never_blueprint`,
   `event_blueprint`, `dynamic_blueprint`, `element_blueprint`), `forward_on_none`.
 - `doc`: `Document` (`diff`, `apply`), `Edit`, `Patch`, `Request`.

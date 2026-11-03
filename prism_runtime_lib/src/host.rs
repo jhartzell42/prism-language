@@ -44,7 +44,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
-use crate::cells::{Dynamic, Event, Handle, Live, Port};
+use crate::cells::{Dynamic, Event, Handle, Live, Port, Stamped};
 use crate::collections::Map;
 use crate::cx::{Cx, Done, Node};
 use crate::pod::{Fault, Path, Pod, Segment, ToPod};
@@ -141,20 +141,62 @@ pub fn event_blueprint<E: 'static, A: Clone + 'static>(e: Event<A>) -> Blueprint
     })
 }
 
-/// `@ $d`: the value after the birth tick is the place's first value, read now; each
-/// later update is an answer, a tick late.
+/// `@ $d`: the value after the birth tick is the place's first value, read now,
+/// synchronously, as a World's first-value query is; each later change of `d` is a push to
+/// the child's place as an input of the next tick, which is owed (Semantics ch. 9 as ruled,
+/// round 3 DY). The port says only that `d` moved: the value is sampled when the push is
+/// delivered, at the next tick's read point, so it is the value after the tick of the
+/// change whatever height the change came at, and several marks in one tick are one push.
 pub fn dynamic_blueprint<E: 'static, A: Clone + 'static>(d: Dynamic<A>) -> Blueprint<E, A> {
     Rc::new(move |_path, sink: Sink<A>, _scope, cx| {
         let first = d.sample(cx);
         let node = Rc::new(Subscribed { port: d.updates.clone(), handle: Cell::new(None) });
         let read = d.clone();
+        let queued: Stamped<()> = Stamped::new();
         let h = d.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
-            let v = read.sample(cx);
-            later(&sink, v, cx)
+            if queued.fired(cx) {
+                return Ok(());
+            }
+            queued.set((), cx);
+            let (read, sink) = (read.clone(), sink.clone());
+            cx.answer_later(Box::new(move |cx| sink(&read.sample(cx), cx)));
+            Ok(())
         }));
         node.handle.set(Some(h));
         Ok(Supplied { node, first: Some(first), forwards: false })
     })
+}
+
+/// The owner a supplier's dynamic answer reads through (`@ $d`, round 3 DY): the supplier
+/// is made in the owner's build, before its node, and reads the node's getter for `d` once
+/// it is linked ([`Link::link`], beside [`Host::link`]). While the owner is being built, an
+/// early row's first value reads the dynamic's value at the build instead (the emitted
+/// read's other arm), since nothing fires at a build.
+pub struct Link<P>(Rc<RefCell<Weak<P>>>);
+
+impl<P> Clone for Link<P> {
+    fn clone(&self) -> Link<P> {
+        Link(self.0.clone())
+    }
+}
+
+impl<P> Default for Link<P> {
+    fn default() -> Link<P> {
+        Link(Rc::new(RefCell::new(Weak::new())))
+    }
+}
+
+impl<P> Link<P> {
+    pub fn new() -> Link<P> {
+        Link::default()
+    }
+    pub fn link(&self, owner: &Rc<P>) {
+        *self.0.borrow_mut() = Rc::downgrade(owner);
+    }
+    /// The owner, once linked and while it lives.
+    pub fn owner(&self) -> Option<Rc<P>> {
+        self.0.borrow().upgrade()
+    }
 }
 
 /// `@Element e`: the child's element re-emitted at `path/0`, its level following the

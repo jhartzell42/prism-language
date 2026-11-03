@@ -806,7 +806,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: 60 of 66 pass, chess's board included (the transcripts pick HO moved, `be-event-values`, `be-host-reentry` and chess's `board.expected`, and the one pick ST moved, `be-host-updated`).
+`tests/compiled/run.sh`, which runs every program every time: 61 of 66 pass, chess's board included (the transcripts pick HO moved, `be-event-values`, `be-host-reentry` and chess's `board.expected`, and the one pick ST moved, `be-host-updated`).
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -829,7 +829,8 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   one unit of work, gap LP), `be-lambda-cycle` (mutually recursive unbounded lambdas, a
   cycle a call), `be-row-values` (a row kind's values built, compared, shown,
   matched and sent inside an element, pick RV), `be-bundle` (pick BA),
-  `be-widget-args` (pick WB), `be-host-param` (pick HO), `be-event-values` (pick EV2),
+  `be-widget-args` (pick WB), `be-host-param` and `be-host-dynamic-answer` (pick HO),
+  `be-event-values` (pick EV2),
   `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry`,
   `be-host-doc-in-tick`, `be-host-delay`, `be-host-nested` and `be-host-teardown` (pick
   HO), `be-updated` (pick UP), `be-host-updated` and `be-structural` (pick ST),
@@ -1139,11 +1140,24 @@ Each is Claude's, for Jimmy to overturn.
   `event_blueprint` over `e.map(Answer::Tag)` (each firing a computed answer, delivered as
   an input of the next tick, which is owed, `Cx::answer_later`), `@Element e`
   `element_blueprint` (re-emission at `hostpos/[p]/0`, the World's answers and pushes
-  handed to the child in the same tick). A dynamic answer that is not a constant (`@
-  $hold`) is refused loudly: its updates would be delayed answers through
-  `dynamic_blueprint`, over a `Dynamic` of the hold the back end does not make yet (gap
-  DY). A widget-function blueprint as an answer, and a bundle in a hosted scope, are
-  refused too.
+  handed to the child in the same tick). A dynamic answer that is not a constant (`@ $d`,
+  `$d` a hold or a derived dynamic of the owner; round 3 DY; `be-host-dynamic-answer`) is
+  `dynamic_blueprint` over a `Dynamic<Answer>`: its first value is read at the row's build,
+  synchronously, and each later change is a push queued with `Cx::answer_later`, sampled
+  when delivered as the next tick's input, which is owed, once per tick however many
+  writes behind `$d` the tick had. The supplier is a closure made before the owner's node,
+  so `DynamicAnswers` gives each such `@ x` of the supplier a getter of the owner,
+  `host_k_dyn_j`, and a port, `host_k_dyn_j_port`, fired by every write behind it
+  (`MovedBy`); the `Dynamic`'s read goes through the owner's `prism_rtl::Link`
+  (`host_k_owner`, linked at the build) to the getter, and, while the owner's node is
+  being made (an early row's first value), reads the dynamic's value at the build: every
+  hold's initial value stands in a local `{f}_init` (`HoldLine`), a dynamic `let` over
+  such values in `{rs}_init` too (`LetLine`), bound in the build environment under
+  `{name}#init`, captured by the supplier's closure, and `InitEnv` reads the dynamic's
+  expression over them. A dynamic answer reading what has no value at the build (a pushed
+  place's hold, a structural dynamic, a `let` after the host's line) is refused loudly. A
+  widget-function blueprint as an answer, and a bundle in a hosted scope, are refused
+  too.
 
   A row of a hosted child's `for` or `rebuild` (`Wx.hostedBy`) emits nothing of its own
   either: it takes the enclosing host (`enclosing: Rc<dyn HostOf>`) as a parameter of its
@@ -1343,9 +1357,9 @@ ruling taken (Claude's).
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
 naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
-`@HostList`; a supplier's answer `@ x` outside a tag arm, a dynamic answer that is not a
-constant, a widget-function blueprint as an answer, and a bundle in a hosted scope (pick
-HO); an element applied as a plain value and a live element's `$` field read in a plain
+`@HostList`; a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
+no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
+a hosted scope (pick HO); an element applied as a plain value and a live element's `$` field read in a plain
 function (gap LE), `@Flatten`,
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), an `@Machine` whose step is

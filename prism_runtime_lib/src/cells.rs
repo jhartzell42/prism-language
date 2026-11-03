@@ -403,6 +403,11 @@ impl<T: Clone + 'static> Dynamic<T> {
     pub fn constant(v: T) -> Dynamic<T> {
         Dynamic { owner: None, read: Rc::new(move |_| v.clone()), updates: Rc::new(Port::new()) }
     }
+    /// A dynamic with no owner over a read and the port that says it moved: a host's
+    /// dynamic answer to a child place (`@ $d`), whose read goes through the owner's getter.
+    pub fn of(read: impl Fn(&Cx) -> T + 'static, updates: &Rc<Port<()>>) -> Dynamic<T> {
+        Dynamic { owner: None, read: Rc::new(read), updates: updates.clone() }
+    }
     pub fn sample(&self, cx: &Cx) -> T {
         (self.read)(cx)
     }

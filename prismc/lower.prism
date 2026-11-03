@@ -1107,15 +1107,32 @@ fn PureBlueprint lx, env, x, t:
             LyEv:
                 let wrapped = XMethod (Own (ValueOf lx, env, x)), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[XRaw "v.clone()"]]))]]
                 VlOwned (XCall "prism_rtl::event_blueprint::<crate::Elem, _>", [[wrapped]]), t
-            LyDyn: match x.kind:
-                EFreeSigil "$", inner: if (LayerOf (TypeAt lx, inner.span)) == LyPlain: PlainBlueprint lx, env, inner, variant, t
-                    else: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that is not a constant (its updates would be delayed answers; prism_rtl's `dynamic_blueprint`)"), t
-                otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that is not a constant (its updates would be delayed answers; prism_rtl's `dynamic_blueprint`)"), t
+            LyDyn: match ?DynamicAnswer lx, x:
+                nil: match x.kind:
+                    EFreeSigil "$", inner: PlainBlueprint lx, env, inner, variant, t
+                    otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer of no known form"), t
+                ? d: DynamicBlueprint lx, env, x, d, variant, t
             otherwise: PlainBlueprint lx, env, x, variant, t
         otherwise: VlOwned (Refusal "a supplier's answer under a tag the arm does not name"), t
 
 PlainBlueprint: unbounded fn Lx, Env, Expr, Text, RsTy -> Vl
 fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall "prism_rtl::plain_blueprint::<crate::Elem, _>", [[(XCtor variant, [[Own (ValueOf lx, env, x)]])]]), t
+
+# `@ $d` with `$d` a dynamic of the host that is not a constant (round 3 DY): prism_rtl's
+# `dynamic_blueprint` over a `Dynamic` of the tag's `Answer` whose read is the owner's getter
+# for `d` through the owner's link, and, while the owner's node is being made, `d`'s value at
+# the build (`InitEnv`); its update port is the getter's, fired by the writes behind `d`
+# (`DynamicAnswers`). The first value is read at the row's build, each later update is a push
+# delivered the next tick.
+DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Text, RsTy -> Vl
+fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
+    ((? (BnLocal getter, ignore, dt), ? (BnLocal owner, ignore, ignore))):
+        let atBuild = Own (ValueOf lx, (InitEnv env), d)
+        let arms = [[XArm(pat=(PaCtor "Some", [[PaBind "owner"]]), conds=[[]], body=(XCtor variant, [[(XMethod (XRaw "owner"), getter, [[XRaw "cx"]])]])), XArm(pat=(PaUnit "None"), conds=[[]], body=(XCtor variant, [[XRaw "at_build.clone()"]]))]]
+        let read = XClosure True, [[(PaTyped (PaBind "cx"), (RsRef (RsNamed "Cx", [[]])))]], (XMatch (XMethod (XRaw "link"), "owner", [[]]), arms, False)
+        let dynamic = XBlock [[(DoLet (PaBind "link"), (XRaw "{owner}.clone()")), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, XRaw "&{getter}_port"]])
+        VlOwned (XCall "prism_rtl::dynamic_blueprint::<crate::Elem, _>", [[dynamic]]), t
+    otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a pushed place, a structural dynamic, or a `let` after the host's line)"), t
 
 # `@Element e` as a value: the forwarding blueprint, the child's element re-emitted in the
 # host's scope.
@@ -1687,8 +1704,10 @@ fn PlainLambda lx, env, ps, body, ft:
     let caps0 = Filter read, \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
-    # An event the body reads as a value is its port, captured too.
-    let caps = Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)
+    # An event the body reads as a value is its port, captured too; a hold or dynamic `let`
+    # the body reads has its value at the build captured, for a supplier's dynamic answer
+    # (round 3 DY).
+    let caps = Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
             let local = if (Take rs, 5) == "self.": Drop rs, 5 else: rs
@@ -3321,6 +3340,13 @@ type Wx = record:
     # A row whose result its block gathers (pick ST): the block's method that marks the
     # gathered snapshot, and the row's reads behind the result, a write of which calls it.
     resultMoved: ?((Text, [Read]))
+    # A host's dynamic answers to its child's places (`@ $d`, round 3 DY): the owner's
+    # getter for each, and what it reads, a write behind which fires the getter's port.
+    dynAnswers: [((Text, [Read]))]
+    # The holds and dynamic `let`s whose value at the build stands in a local, `{f}_init`,
+    # bound in the build environment under `{name}#init`: what a supplier's dynamic answer
+    # reads while the owner's node is being made (round 3 DY).
+    inited: [Text]
 
 # A `for`'s rows' (or a `rebuild`'s generation's) reads of their block, as the block's own
 # names (gap DY): the builder's field; what the rows' places read, whose writes in the block
@@ -3378,7 +3404,7 @@ fn NewWx lx, name, fields, inits, getters, dynReads, taken, depth, ?hostedBy:
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XRaw "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=(Append inits, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, depth=depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], hostedBy=?hostedBy, rootDyn=nil, rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=nil)
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=(Append inits, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, depth=depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], hostedBy=?hostedBy, rootDyn=nil, rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=nil, dynAnswers=[[]], inited=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))
@@ -3575,14 +3601,14 @@ fn WidgetStmt wx, benv, menv, s, last:
                 (((WrHosted inner, doc), PTuple ps)): BindHosted wx3, benv, menv, inner, doc, ps
                 otherwise: ((wx3, benv, menv))
         SBind p, init, (? step):
-            let wx2 = HoldLine wx, benv, menv, p, init, step
-            ((wx2, benv, menv))
+            let ((wx2, be2)) = HoldLine wx, benv, menv, p, init, step
+            ((wx2, be2, menv))
         SIgnore e:
             let ((wx2, ignore)) = BuildLine wx, benv, menv, e, nil
             ((wx2, benv, menv))
         SLet p, ignore, e:
-            let wx2 = LetLine wx, benv, menv, p, e
-            ((wx2, benv, menv))
+            let ((wx2, be2)) = LetLine wx, benv, menv, p, e
+            ((wx2, be2, menv))
         SExpr e: match e.kind:
             EFreeSigil "@", x:
                 let ((res, wx2)) = ResultOf wx, benv, menv, x
@@ -3659,17 +3685,38 @@ fn ResultOfTyped wx, benv, menv, x, full, t:
             if t == RsUnit: ((WrUnit, wx))
             else: (((WrPlain (Own (ValueOf lx, benv, x)), t), wx))
 
-# `$x <- init then step`: a `Hold` field; the step event writes it.
-HoldLine: unbounded fn Wx, Env, Env, Pattern, Expr, Expr -> Wx
+# `$x <- init then step`: a `Hold` field; the step event writes it. Its initial value stands
+# in the local `{f}_init` first, the hold's value at the build, which a supplier's dynamic
+# answer reads while the node is being made (`InitEnv`, round 3 DY); the build environment
+# binds it under `{name}#init`.
+HoldLine: unbounded fn Wx, Env, Env, Pattern, Expr, Expr -> ((Wx, Env))
 fn HoldLine wx, benv, menv, p, init, step:
     let lx = wx.lx
     match ?BindingOf menv, p:
         ? (BnHold f, t):
             let iv = Own (ValueOf lx, benv, init)
-            let wx1 = AddField wx, f, (RsHold t), "`{PatText p}`", (XCall "Hold::new", [[iv, XRaw "cx"]])
+            let wx1 = AddField wx, f, (RsHold t), "`{PatText p}`", (XCall "Hold::new", [[XRaw "{f}_init.clone()", XRaw "cx"]])
             let ((r, wx2)) = EventRef wx1, menv, step
-            Connect wx2, r, (SkHold f)
-        otherwise: wx
+            let wx3 = update (Connect wx2, r, (SkHold f)):
+                &_.lets <= Push &_.lets, (DoLet (PaBind "{f}_init"), iv)
+                &_.inited <= Push &_.inited, f
+            ((wx3, (Bind benv, "{PatText p}#init", (BnLocal "{f}_init", Owned, t))))
+        otherwise: ((wx, benv))
+
+# The build environment with every name that has a value at the build (`{name}#init`) read
+# as that local: what a supplier's dynamic answer evaluates to while the owner's node is
+# being made (round 3 DY). Every other name keeps its binding.
+InitEnv: fn Env -> Env
+fn InitEnv env = Fold (Keys env.names), env, \|en, k| match (((Len k) -? 5, env.names[k])):
+    ((? n, ? b)): if (Drop k, n) == "#init": Bind en, (Take k, n), b else: en
+    otherwise: en
+
+# Whether every read behind a dynamic has a value at the build: a hold or a dynamic `let`
+# with its `{f}_init`, nothing structural, nothing of a parent.
+AllInited: fn Wx, [Read] -> Bool
+fn AllInited wx, reads = Fold (ReadsClosed wx.dynReads, reads), True, \|ok, r| ok and match r:
+    OwnRead f: HasText wx.inited, f
+    ParentRead ignore: False
 
 PatText: fn Pattern -> Text
 fn PatText p = match p.kind:
@@ -3677,8 +3724,9 @@ fn PatText p = match p.kind:
     otherwise: "_"
 
 # `let` in a widget block: an event names a node fed by its expression; a dynamic a
-# getter; a plain value a field computed at the build.
-LetLine: unbounded fn Wx, Env, Env, Pattern, Expr -> Wx
+# getter, and, when everything it reads has a value at the build, that value in the local
+# `{rs}_init` too (`InitEnv`, round 3 DY); a plain value a field computed at the build.
+LetLine: unbounded fn Wx, Env, Env, Pattern, Expr -> ((Wx, Env))
 fn LetLine wx, benv, menv, p, e:
     let lx = wx.lx
     match ?BindingOf menv, p:
@@ -3689,23 +3737,30 @@ fn LetLine wx, benv, menv, p, e:
                 RsEvent (RsRes ignore): if fed == RsError: ErrPipe r else: r
                 RsRes ignore: if fed == RsError: ErrPipe r else: r
                 otherwise: r
-            Connect wx2, r2, (SkNode er.node)
+            (((Connect wx2, r2, (SkNode er.node)), benv))
         ? (BnDyn ignore, ignore, t):
             let rs = Snake (PatText p)
             let ((ex, reads)) = DynamicExpr wx, menv, e
             let getter = MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{PatText p}`")
-            update wx:
+            let wx2 = update wx:
                 &_.getters <= Push &_.getters, getter
                 &_.dynReads <= Insert &_.dynReads, rs, reads
+            if AllInited wx2, reads:
+                let wx3 = update wx2:
+                    &_.lets <= Push &_.lets, (DoLet (PaBind "{rs}_init"), (Own (ValueOf lx, (InitEnv benv), e)))
+                    &_.inited <= Push &_.inited, rs
+                ((wx3, (Bind benv, "{PatText p}#init", (BnLocal "{rs}_init", Owned, t))))
+            else: ((wx2, benv))
         ? (BnLocal rs, ignore, t):
             let local = Base rs
             let v = Own (ValueOf lx, benv, e)
             let f = Drop rs, 5
-            update wx:
+            let wx2 = update wx:
                 &_.lets <= Push &_.lets, (DoLet (PaBind f), v)
                 &_.fields <= Push &_.fields, ((f, t, "`{PatText p}`"))
                 &_.inits <= Push &_.inits, ((f, (XMethod (XRaw f), "clone", [[]])))
-        otherwise: wx
+            ((wx2, benv))
+        otherwise: ((wx, benv))
 
 # An event of `Error`s feeding a `!~T`: each firing is the `~T`'s failure.
 ErrPipe: fn EvRef -> EvRef
@@ -4090,10 +4145,14 @@ fn HostLine wx, benv, menv, form, args, ?bound:
         &_.taken <= Append &_.taken, [[hf, rowsName, docGetter, "{docGetter}_now", "{docGetter}_snap", "{hf}_answer", "{hf}_moved"]]
     match ((args[0], args[1])):
         ((? child, ? sup)):
-            let offered = Own (ValueOf lx, benv, sup.value)
-            let supplier = match form:
+            # the supplier's dynamic answers (`@ $d`, round 3 DY): a getter of this node per
+            # dynamic, read through the owner's link, and a port each marks
+            let ((wxd, dynEnv, dynLets)) = DynamicAnswers wx1, benv, menv, hf, sup.value
+            let offered = Own (ValueOf lx, dynEnv, sup.value)
+            let supplier0 = match form:
                 HostEach: offered
                 HostSome: XCall "prism_rtl::forward_on_none", [[offered]]
+            let supplier = if (Len dynLets) == 0: supplier0 else: XBlock dynLets, supplier0
             # the scope the host's rows build in: the World's, or the enclosing host's
             let enclosing = if Emits wx, pos: XRaw "None" else: XCtor "Some", [[(XCast (XRaw "{HostLocal wx, pos}.clone()"), hostOfTy)]]
             let made = XCall "prism_rtl::Host::new", [[(XRaw (PlaceAt wx, "", pos)), (XRaw "{rowsName}.clone()"), supplier, enclosing, (XRaw "{wx.node}::{docGetter}"), (XRaw "{wx.node}::{hf}_answer")]]
@@ -4101,7 +4160,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             let rowsTy = RsNamed "prism_rtl::Rows<crate::Elem, crate::Answer>", [[]]
             let docTy = RsMap RsPath, elemTy
             let what = "the document of the child hosted at place {PlaceText pos}"
-            let wx2 = update wx1:
+            let wx2 = update wxd:
                 &_.pos <= NextPos &_.pos
                 &_.lets <= Append &_.lets, [[(DoLet (PaBind rowsName), (XRaw "Rc::new(RefCell::new(Map::new()))")), (DoLet (PaBind hf), made)]]
                 &_.fields <= Append &_.fields, [[((hf, hostTy, "the host at place {PlaceText pos}: its supplier, its rows, and the way back into its child (pick HO)")), ((rowsName, rowsTy, "the rows of the host at place {PlaceText pos}: `for p, e <- $doc`, one supplier blueprint per child place")), (("{docGetter}_snap", (RsSnapshot docTy), "`$doc` of the host at place {PlaceText pos}, a structural dynamic: its snapshot after the tick (pick ST)"))]]
@@ -4140,6 +4199,65 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.pos <= NextPos &_.pos
                 &_.build <= Push &_.build, (RefusalDo "a host without its child or its supplier")
             ((wx2, (WrHosted WrUnit, (BnLocal "()", Owned, RsUnit))))
+
+# A supplier's dynamic answers (`@ $d`, `$d` a hold or a derived dynamic of this node; round
+# 3 DY): each `@ x` of the supplier whose `x` is a dynamic that is not a constant gets a
+# getter of this node, `host_k_dyn_j`, that reads it at the read point, and a port,
+# `host_k_dyn_j_port`, fired by a write behind it (`HoldWritten`), so the blueprint's
+# updates push the child's place the next tick. The supplier is made before the node, so it
+# reads the getter through the owner's link, `host_k_owner`, linked at the build; while the
+# node is being made (an early row's first value) it reads the dynamic's value at the build,
+# `InitEnv`. Bound for `PureBlueprint` under `#owner` and `#dyn{span}`; the locals the
+# supplier's closure moves in are cloned first (`dynLets`). A dynamic answer reading what has
+# no value at the build (a pushed place, a structural dynamic, a later `let`) is refused
+# there, loudly.
+DynamicAnswers: unbounded fn Wx, Env, Env, Text, Expr -> ((Wx, Env, [Do]))
+fn DynamicAnswers wx, benv, menv, hf, sup:
+    let lx = wx.lx
+    let dyns = Fold (ExprsIn sup), [[]], \|acc, x| match x.kind:
+        EFreeSigil "@", y: match ?DynamicAnswer lx, y:
+            ? d: Push acc, ((y, d))
+            nil: acc
+        otherwise: acc
+    if (Len dyns) == 0: ((wx, benv, [[]]))
+    else:
+        let owner = "{hf}_owner"
+        let wx1 = update wx:
+            &_.taken <= Push &_.taken, owner
+            &_.lets <= Push &_.lets, (DoLet (PaBind owner), (XRaw "prism_rtl::Link::<{wx.node}>::new()"))
+            &_.build <= Push &_.build, (DoExpr (XMethod (XRaw owner), "link", [[XRaw "&node"]]))
+        let env0 = Bind benv, "#owner", (BnLocal owner, Owned, RsUnit)
+        let lets0 = [[(DoLet (PaBind owner), (XRaw "{owner}.clone()"))]]
+        Fold (Range0 (Len dyns)), ((wx1, env0, lets0)), \|((w, en, ls)), j| match dyns[j]:
+            ? ((y, d)):
+                let name = "{hf}_dyn_{j + 1}"
+                let port = "{name}_port"
+                let ((ex, reads)) = DynamicExpr w, menv, d
+                let t = RustTy lx, (Peel (TypeAt lx, d.span))
+                if not (AllInited w, reads): ((w, en, ls))
+                else:
+                    let w2 = update w:
+                        &_.taken <= Append &_.taken, [[name, port]]
+                        &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The host at `{hf}`'s dynamic answer `{SrcText lx, lx.file, y.span}`, read at the read point (round 3 DY)."))
+                        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind port), (RsRc (RsPort RsUnit))), (XRaw "Rc::new(Port::new())"))
+                        &_.fields <= Push &_.fields, ((port, (RsRc (RsPort RsUnit)), "the dynamic answer `{name}` moved: its blueprints push the child's place next tick"))
+                        &_.inits <= Push &_.inits, ((port, (XRaw "{port}.clone()")))
+                        &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
+                    ((w2, (Bind en, "#dyn{DynKey y}", (BnLocal name, Owned, t)), (Push ls, (DoLet (PaBind port), (XRaw "{port}.clone()")))))
+            nil: ((w, en, ls))
+
+# The dynamic a supplier's `@ x` answers with, when `x` is a dynamic that is not a constant:
+# `x` itself, or the `d` of `$ d` when `d` is a dynamic already.
+?DynamicAnswer: fn Lx, Expr -> ?Expr
+fn ?DynamicAnswer lx, x:
+    if (LayerOf (TypeAt lx, x.span)) != LyDyn: nil
+    else: match x.kind:
+        EFreeSigil "$", inner: if (LayerOf (TypeAt lx, inner.span)) == LyDyn: ? inner else: nil
+        otherwise: ? x
+
+# The key a supplier's `@ x` is bound under in the supplier's environment.
+DynKey: fn Expr -> Text
+fn DynKey x = "{x.span.start}:{x.span.end}"
 
 # The hosted child's document as the owner computes it live, `host_k_doc_now` (pick HO):
 # every place of the child at the read point, keyed by its path relative to the child: the
@@ -4752,7 +4870,9 @@ fn MovedBy sk, r:
     let heights = SortNats (Fold (Filter moved, \|g| not g.structural), [[]], \|acc, g| AddNat acc, g.height)
     let marks = Each (SnapsBehind sk.wx, r), \|sn| DoExpr (XMethod (XRaw "self.{sn.name}_snap"), "mark", [[XRaw "cx"]])
     let listed = if ListsBuild sk, r: [[DoExpr (XMethod (XRaw "cx"), "build_later", [[XRaw "self.clone()"]])]] else: [[]]
-    Append (Append (Fold heights, flags, \|acc, h| Append acc, (AskWake sk, h)), marks), listed
+    # a host's dynamic answer over it: its port fired, so its blueprints push next tick
+    let answers = Each (Filter sk.wx.dynAnswers, \|((ignore, rds))| HasRead (ReadsClosed sk.wx.dynReads, rds), r), \|((name, ignore))| DoExpr (XMethod (XMethod (XRaw "self.{name}_port"), "fire", [[XRaw "()", XRaw "cx"]]), "ok", [[]])
+    Append (Append (Append (Fold heights, flags, \|acc, h| Append acc, (AskWake sk, h)), marks), listed), answers
 
 # The snapshots a write behind a read marks: the structural dynamic itself (a host's
 # `host_k_moved` writes behind `host_k_doc` with no hold), or one whose reads reach it.
