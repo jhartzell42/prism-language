@@ -358,16 +358,16 @@ fn EmTyDef t:
     let derives = Join (Filter [["Clone", (if t.eq or t.ord: "PartialEq" else: ""), (if eq or ord: "Eq" else: ""), (if t.ord: "PartialOrd" else: ""), (if ord: "Ord" else: "")]], \|d| d != ""), ", "
     let head = "{t.name}{EmGenericNames t.params}"
     let doc = TmSourceDoc "`{t.prism}`:", t.doc
-    let decl = match t.kind:
-        "record":
+    let decl = match t.shape:
+        ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
             TmStruct doc, derives, head, (Join (Each c.fields, \|((f, ft))| "pub {f}: {EmTy ft},"), "\n")
-        "unit": TmTupleStruct doc, derives, head, ""
-        "newtype":
+        ShapeUnit: TmTupleStruct doc, derives, head, ""
+        ShapeNewtype:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
             TmTupleStruct doc, derives, head, "({Join (Each c.fields, \|((ignore, ft))| "pub {EmTy ft}"), ", "})"
         otherwise: TmEnum doc, derives, head, (Join (Each t.cases, \|c| EmCase c), "\n")
-    let show = if t.show == "derive": "\n{EmShowImpl t, head}" else: ""
+    let show = if t.show == ShownDerived: "\n{EmShowImpl t, head}" else: ""
     let pod = if t.pod: "\n{EmToPodImpl t, head}\n{EmFromPodImpl t, head}" else: ""
     "{decl}{show}{pod}"
 
@@ -379,16 +379,16 @@ EmBinders: fn Nat -> [Text]
 fn EmBinders n = Each (Range0 n), \|i| "a{i}"
 
 EmCasePattern: fn TyDef, CaseDef -> Text
-fn EmCasePattern t, c = match t.kind:
-    "newtype": "{t.name}({Join (EmBinders (Len c.fields)), ", "})"
-    "unit": t.name
+fn EmCasePattern t, c = match t.shape:
+    ShapeNewtype: "{t.name}({Join (EmBinders (Len c.fields)), ", "})"
+    ShapeUnit: t.name
     otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}({Join (EmBinders (Len c.fields)), ", "})"
 
 # `derive ^Show`: one printer call per constructor; the printer decides the parentheses.
 EmShowImpl: unbounded fn TyDef, Text -> Text
 fn EmShowImpl t, head:
-    let body = match t.kind:
-        "record":
+    let body = match t.shape:
+        ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
             "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{EmPrismField f}\", &self.{f})"), ", "}]);"
         otherwise: TmMatchSelf (Join (Each t.cases, \|c| "{EmCasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (EmBinders (Len c.fields)), ", "}]),"), "\n")
@@ -400,24 +400,24 @@ fn EmPrismField f = if (Drop f, (Dec (Len f))) == "_": Take f, (Dec (Len f)) els
 
 EmToPodImpl: unbounded fn TyDef, Text -> Text
 fn EmToPodImpl t, head:
-    let body = match t.kind:
-        "record":
+    let body = match t.shape:
+        ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
             "Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{EmPrismField f}\", self.{f}.to_pod())"), ", "}])"
         otherwise: TmMatchSelf (Join (Each t.cases, \|c| "{EmCasePattern t, c} => Pod::Choice(\"{c.prism}\".into(), vec![{Join (Each (EmBinders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"), "\n")
-    let shown = if t.show == "own": TmShownPod body else: body
+    let shown = if t.show == ShownOwn: TmShownPod body else: body
     TmImpl (EmBounded t.params, "ToPod"), "ToPod", head, "fn to_pod(&self) -> Pod", shown
 
 EmFromPodImpl: unbounded fn TyDef, Text -> Text
 fn EmFromPodImpl t, head:
-    let body = match t.kind:
-        "record":
+    let body = match t.shape:
+        ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
             "Ok({t.name} \{ {Join (Each c.fields, \|((f, ignore))| "{f}: FromPod::from_pod(field(p, \"{EmPrismField f}\")?)?"), ", "} \})"
         otherwise:
             let arms = Each t.cases, \|c|
                 let n = Len c.fields
-                let made = if n == 0: (if t.kind == "unit": t.name else: "{t.name}::{c.name}") else: "{if t.kind == "newtype": t.name else: "{t.name}::{c.name}"}({Join (Each (Range0 n), \|i| "FromPod::from_pod(&a[{i}])?"), ", "})"
+                let made = if n == 0: (if t.shape == ShapeUnit: t.name else: "{t.name}::{c.name}") else: "{if t.shape == ShapeNewtype: t.name else: "{t.name}::{c.name}"}({Join (Each (Range0 n), \|i| "FromPod::from_pod(&a[{i}])?"), ", "})"
                 "Pod::Choice(c, a) if &**c == \"{c.prism}\" && a.len() == {n} => Ok({made}),"
             TmFromPod (Join arms, "\n"), "a {t.prism}"
     TmImpl (EmBounded t.params, "FromPod"), "FromPod", head, "fn from_pod(p: &Pod) -> Result<Self, Fault>", body
@@ -462,7 +462,7 @@ fn EmNodeDef n:
     let methods = Join (Each n.methods, \|m| EmMethod m), "\n"
     let answer = if (Len n.answers) == 0: "" else: TmAnswer (Join (Each n.answers, \|((pat, call))| "{pat} => {EmEx call},"), "\n")
     let builders = Concat (Append (Each n.builders, \|b| "\n{EmForDef b}"), (Each n.gens, \|gd| "\n{EmGenDef gd}"))
-    let rowImpl = if n.rowKind == "": "" else: "\n{EmRowImpl n}"
+    let rowImpl = if n.rowKind == NotARow: "" else: "\n{EmRowImpl n}"
     let hooks = Join (Each n.hooks, \|((h, body))| if h == "push": TmPushHook (EmDos body) else: TmHook h, (EmDos body)), "\n"
     let doc = TmSourceDoc "`{n.prism}`: a node of its own (docs/backend.md, \"A widget block\").", n.doc
     "{TmNode doc, n.name, fields, consts, build, "{methods}{builders}", hooks, answer}{rowImpl}"
@@ -486,8 +486,12 @@ fn EmRowImpl n = TmRowImpl n.name, (Join (Each n.subs, \|((ev, m, ignore))| "if 
 
 EmMethod: unbounded fn MethDef -> Text
 fn EmMethod m:
-    let recv = if m.recv == "rc": "self: &Rc<Self>" else: "&self"
-    let cx = if m.cx == "mut": ", cx: &mut Cx" else: if m.cx == "ref": ", cx: &Cx" else: ""
+    let recv = match m.recv:
+        RecvRc: "self: &Rc<Self>"
+        RecvRef: "&self"
+    let cx = match m.cx:
+        CxMut: ", cx: &mut Cx"
+        CxRef: ", cx: &Cx"
     let params = Concat (Each m.params, \|((p, t))| ", {p}: {EmTy t}")
     let ret = if m.ret == RsUnit: "" else: " -> {EmTy m.ret}"
     let sig = "fn {m.name}({recv}{params}{cx}){ret}"

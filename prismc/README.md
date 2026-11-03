@@ -892,11 +892,11 @@ Each is Claude's, for Jimmy to overturn.
   prelude module (`Ui`, `Fs`, ...) is emitted only when a program module uses it or names
   its family on its `emit` line. A reference to another module is `ui::Click`.
 - **OW Ownership.** A function takes every argument by reference and returns a value;
-  lowering tracks how each Rust place holds its value (`ref`, `own`, `rc`, `rcown`) and
-  spells a use as a borrow or a clone accordingly. A closure passed to a parameter is a
-  borrowed `&dyn Fn`; a closure as a value is `Rc<dyn Fn(&A) -> B>`, its captures cloned
-  in. A recursive payload is behind `Rc` (a type that reaches itself by value, directly,
-  through `?` or a tuple).
+  lowering tracks how each Rust place holds its value (`ByRef`, `Owned`, `RcRef`,
+  `RcOwned`) and spells a use as a borrow or a clone accordingly. A closure passed to a
+  parameter is a borrowed `&dyn Fn`; a closure as a value is `Rc<dyn Fn(&A) -> B>`, its
+  captures cloned in. A recursive payload is behind `Rc` (a type that reaches itself by
+  value, directly, through `?` or a tuple).
 - **CH Clauses and patterns.** A function's clauses are one `match` over the parameters
   that are not the same name in every clause; a number or text literal in a pattern is a
   binder and an equality guard, a number of the scrutinee's type (`0` against a `Nat` is
@@ -1126,7 +1126,7 @@ Each is Claude's, for Jimmy to overturn.
 - **UP A dynamic is a behavior and an event.** The behavior half is pull: a sample in tick
   n (a getter call during propagation, `$d on !e`) reads the holds at the read point, the
   values as the tick opened (Semantics R2). The event half, `!Updated $d`, is a graph node
-  of kind "updated", decided in the wake like a merge: its height is one above every node
+  of kind `GnUpdated`, decided in the wake like a merge: its height is one above every node
   whose sink writes a hold the dynamic reads (the reads closed over the dynamic `let`s,
   `LoReadsClosed`, so `!Updated $b` with `let $b = $a + 1` sits above `$a`'s writers;
   `@Machine`'s state hold counts). Each such write sets the node's `Cell<bool>` flag
