@@ -1,4 +1,4 @@
-# Derived by hand from Semantics ch. 9 as ruled: a computed answer is the next tick's input and that tick is owed, so two computing layers are two owed ticks (tick 2 fires the inner's go and shows nothing; tick 3 moves the leaf's label); a forwarding layer adds no tick and nests the path (host/[p]/0 twice over).
+# Derived by hand from Semantics ch. 9 as ruled: a computed answer is the next tick's input and that tick is owed, so two computing layers are two owed ticks (tick 2 fires the inner's go and shows nothing; tick 3 moves the leaf's label); a forwarding layer adds no tick and nests the path (host/[p]/0 twice over); and ch. 7 as ruled (round 3 ST): the label's move at 3 moves both hosts' `$doc`, S(3) differs from S(2), so tick 4 is owed for their publication, which nothing here reads.
 test two_computing_layers_cost_two_ticks
 
 tick 0
@@ -11,13 +11,13 @@ tick 1
   in:
     0: click
 
-compute until idle: 2 ticks, 2 to 3
+compute until idle: 3 ticks, 2 to 4
 
 tick 3
   changed:
     1/[1/[2]/0]/0: Ui.Label(text="1 hits, 0 keys")
 
-tick 4
+tick 5
   in:
     1/[1/[1]/0]/0: Letter "x"
   changed:
