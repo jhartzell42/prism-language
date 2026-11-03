@@ -124,12 +124,15 @@ impl<T: Clone> Stamped<T> {
 // Cache
 // ---------------------------------------------------------------------------------------
 
-/// A computed behavior's cache: the value and the first read point from which it is
-/// stale. A mark at a write in tick `n` makes it stale from after `n`, so a reader in the
-/// tick of the write reads the value the tag law calls clean, and the reader after
-/// recomputes once.
+/// A computed behavior's cache: the value, the read point it was computed at, and the
+/// first read point from which it is stale. A mark at a write in tick `n` makes it stale
+/// from after `n`, so a reader in the tick of the write reads the value the tag law calls
+/// clean, and the reader after recomputes once. A value computed at one read point serves
+/// only reads at or past it (and before the stale point): a read after the tick made
+/// during propagation ([`Cx::after`]) caches the value after the tick, and a reader back
+/// at the tick's own read point is not served it.
 pub struct Cache<T> {
-    value: RefCell<Option<T>>,
+    value: RefCell<Option<(T, Tick)>>,
     stale_from: Cell<Tick>,
 }
 
@@ -143,17 +146,24 @@ impl<T: Clone> Cache<T> {
     pub fn new() -> Cache<T> {
         Cache::default()
     }
-    /// The cached value at the read point, or `compute`'s, which is then cached.
+    /// The cached value at the read point, or `compute`'s, which is then cached. A read
+    /// below the cached read point computes and keeps nothing: the cache stays the later
+    /// value, and the marks that made it stale were already consumed by that read.
     pub fn get(&self, cx: &Cx, compute: impl FnOnce() -> T) -> T {
         let at = cx.read_point();
-        if let (true, Some(v)) = (at < self.stale_from.get(), self.value.borrow().clone()) {
-            return v;
+        if let Some((v, from)) = self.value.borrow().clone() {
+            if from <= at && at < self.stale_from.get() {
+                return v;
+            }
+            if at < from {
+                return compute();
+            }
         }
         let v = compute();
         if at >= self.stale_from.get() {
             self.stale_from.set(Tick::MAX);
         }
-        *self.value.borrow_mut() = Some(v.clone());
+        *self.value.borrow_mut() = Some((v.clone(), at));
         v
     }
     /// An input was written this tick: stale from after it.

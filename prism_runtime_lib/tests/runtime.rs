@@ -50,6 +50,16 @@ impl Node for Probe {
         if self.seen.borrow().len() < 4 {
             cx.wake(1, self.clone()); // below the running height: clamped to the next one
         }
+        // A read after the tick during propagation (`!Updated`'s value): the read point
+        // moves past the tick for the closure and comes back.
+        let (hold, cached) = cx.after(|cx| {
+            let cached = self.cache.get(cx, || {
+                *self.computed.borrow_mut() += 1;
+                self.hold(cx)
+            });
+            (self.hold(cx), cached)
+        });
+        self.log(format!("after {}: hold {} cache {}", cx.tick(), hold, cached));
         Ok(())
     }
     fn deferred(self: Rc<Self>, cx: &mut Cx) -> Done {
@@ -101,11 +111,17 @@ fn a_hold_reads_old_values_during_its_tick_and_new_ones_after() {
             "started 1",
             "deferred 2: Some(\"again\")",
             "wake 2: hold 7 cache 7",
+            "after 2: hold 8 cache 8",
             "wake 2: hold 7 cache 7",
+            "after 2: hold 8 cache 8",
             "patch 2: hold 8 cache 8",
         ]
     );
-    assert_eq!(*p.computed.borrow(), 2, "the reader in the tick of the write reads the clean cache; the one after recomputes once");
+    assert_eq!(
+        *p.computed.borrow(),
+        3,
+        "the reader in the tick of the write reads the clean cache; the read after the tick recomputes once and is cached; the reader back at the tick's point is not served it, and computes without caching"
+    );
 }
 
 #[test]

@@ -14,6 +14,7 @@
 //!
 //! Then the compact round, [`Runtime::compact`]: the clean-ups, then the zombie collector.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::{Rc, Weak};
 
@@ -115,7 +116,9 @@ struct Gathered {
 /// One tick's context: the tick and its read point, the lists, the outputs so far.
 pub struct Cx<'w> {
     tick: Tick,
-    read_at: Tick,
+    /// The read point: a cell, so [`Cx::after`] can move it past the tick through a shared
+    /// reference and move it back.
+    read_at: Cell<Tick>,
     height: Option<u32>,
     ready: &'w dyn ReadyState,
     pushes: Vec<(Pod, Pod)>,
@@ -132,7 +135,17 @@ impl Cx<'_> {
     /// The read point: the tick during propagation (a read before it), the tick plus one
     /// from the end of propagation on (a read after it).
     pub fn read_point(&self) -> Tick {
-        self.read_at
+        self.read_at.get()
+    }
+    /// A read after the tick, made during propagation: `f` runs with the read point past
+    /// the tick, so every hold it reads answers its value after this tick, and the read
+    /// point is then put back. `!Updated $d` fires `$d`'s value after the tick in the tick
+    /// of the change (Semantics R3); this is how its node computes it at its height.
+    pub fn after<T>(&self, f: impl FnOnce(&Cx) -> T) -> T {
+        let saved = self.read_at.replace(self.tick + 1);
+        let v = f(self);
+        self.read_at.set(saved);
+        v
     }
 
     /// Ask for a wake at `height`, once per height. A wake asked for at or below the
@@ -288,14 +301,14 @@ impl Runtime {
 
     /// Tick 0: a build reads values only, all of them after the tick.
     pub fn build<'w>(&mut self, ready: &'w dyn ReadyState) -> Cx<'w> {
-        Cx { tick: 0, read_at: 1, height: None, ready, pushes: Vec::new(), g: Gathered::default(), late: Default::default() }
+        Cx { tick: 0, read_at: Cell::new(1), height: None, ready, pushes: Vec::new(), g: Gathered::default(), late: Default::default() }
     }
 
     /// One tick as a World calls it: open, fire, deliver, close.
     pub fn tick(&mut self, root: &Rc<dyn Node>, input: &TickIn, ready: &dyn ReadyState) -> Result<TickOut, Fault> {
         self.cleanups.drain(..).for_each(Node::clean_up);
         let n = self.tick + 1;
-        let mut cx = Cx { tick: n, read_at: n, height: None, ready, pushes: input.pushes.clone(), g: Gathered::default(), late: Default::default() };
+        let mut cx = Cx { tick: n, read_at: Cell::new(n), height: None, ready, pushes: input.pushes.clone(), g: Gathered::default(), late: Default::default() };
         for node in std::mem::take(&mut self.started) {
             node.started(&mut cx)?;
         }
@@ -326,7 +339,8 @@ impl Runtime {
             }
             h += 1;
         }
-        (cx.height, cx.read_at) = (None, cx.tick + 1);
+        cx.height = None;
+        cx.read_at.set(cx.tick + 1);
         // A patch can mark builders and nodes again (a host's document moves when its
         // child's places patch): the walks run again until nothing new is listed.
         loop {
