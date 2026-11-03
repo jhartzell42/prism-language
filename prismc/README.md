@@ -739,6 +739,16 @@ What the checker does not do yet, each with Claude's first ruling.
   *First ruling:* check them when the record is decided.
 - **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
   *First ruling:* read each impl's associated type into the normalizer.
+- **LB A lambda's color is fixed when it is read.** Colors are bounded, unbounded, rigid or
+  quantified, never flexible, and unification does not look at them, so a lambda that
+  calls a parameter whose type is not known yet (`\|K| \|y| K y`) is bounded however `K`
+  turns out, and a let-bound lambda is not color-polymorphic in it:
+  `tests/prismc/check/neg/lambda-color` fails (`Run Grow` is refused, where `G n` should
+  be). Lowering papers over it for the programs that run (pick JB: a lambda whose body
+  calls an unbounded function or a `Start` local is unbounded). *Next:* flexible colors in
+  the checker, bound by unification of function types and joined into a lambda's color,
+  generalized at a `let` like type variables and defaulted to bounded at the end; then
+  JB's workaround goes.
 
 ## Back end
 
