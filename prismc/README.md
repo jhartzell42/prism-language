@@ -797,7 +797,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: 64 of 67 pass, chess's board included.
+`tests/compiled/run.sh`, which runs every program every time: all 68 pass, chess's board included.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -838,9 +838,9 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   a robot (Xlib and XTest, as `worlds/canvas_rtl/tests/xvfb_smoke.rs` clicks) clicks e2
   then e4, the root's result (printed with `PRISM_RESULTS` set) goes from "White's turn"
   to "Black's turn", and closing the window exits 0.
-- **Back-end gaps:** `sem-ch05-and-blocks` (an unbounded function with an `update`
-  block, called from `check`: gap UF) and `sem-ch08-viewer` (`@Flatten`: gap UU) check
-  clean and fail in emission.
+- **Also passing:** `sem-ch05-and-blocks` (a prelude function hidden by a program's own,
+  index writes, `Buffer.Numbered`, `for &s <- &_:`) and `sem-ch08-viewer` (`@Flatten` over
+  a `rebuild`'s dynamic, its transcript moved by pick ST).
 - **Lifting:** `ts-ch04-lifting` passes: a function lifted over an event runs at its
   firing, so its `x on !e` is `x`, and an `if` over events gates each branch by the
   condition and merges them.
