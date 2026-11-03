@@ -1,0 +1,5 @@
+tests/prismc/check/neg/lambda-color.prism:12: error[calls-unbounded]: bounded `Sneak` calls unbounded `G`
+        G n
+        ^^^
+  fix: mark `Sneak` `unbounded fn`, or run the call through `@Run`
+1 error
