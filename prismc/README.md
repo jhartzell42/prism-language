@@ -263,26 +263,15 @@ an empty array's element), or one a local `let` quantified.
 ### Where it stands
 
 `tests/prismc/check/run.sh` checks every program of the corpus, the 87 negative cases and
-the two typed dumps. A program the books make wrong has its exact report in
-`tests/prismc/check/pos/NAME.expected`; each is listed here with the rule.
+the two typed dumps. Every corpus program checks clean; a book program the checker refused
+was a slip in the book, corrected there and here (Semantics round 3 CK).
 
 - **Clean:** `compiler-ch03-halfcounter`, `conf-ch01-counter`, `conf-ch01-journal`,
-  `counter`, `half-counter`, `todos`, `sem-appB-widgets`, `sem-ch01-counter`,
-  `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`, `sem-ch06-birds`, `sem-ch07-births`,
-  `sem-ch07-normalize`, `sem-ch07-paged`, `sem-ch07-rounds`, `sem-ch09-hosts`,
-  `ts-ch03-traits`, `ts-ch04-lifting`, `prelude`, `chess`.
-- **`conf-ch01-motd`** (1): `!motd` holds a `!~Contents`, and a name shows its type's whole
-  stack (Type System ch. 1, "The whole stack, every time"; D12). Conformance ch. 1 writes
-  `!motd`, Pitch ch. 8 `!~motd` (doubt CF below).
-- **`sem-ch04-labels`** (1): the lambda's `left` is a `?Nat`, so its name shows `?` (ch. 1;
-  ch. 5, a lambda's marks declare its parameters' layers).
-- **`sem-ch05-and-blocks`** (2): `Components`' two `while`s follow parent links, which end
-  only by an invariant; the book says itself that `Components` as written is unbounded
-  (Semantics ch. 5, "`while` and every tick ends").
-- **`sem-ch08-viewer`** (2): the file declares its own `type Key` and `type Contents`,
-  which are not `Ui.Key` and `Fs.Contents`, the types `Ui.TextInput` and `Fs.Contents`'s
-  tag answer (Type System ch. 2: a declared type is its own; the book's listing has no
-  `use Fs.*`, doubt VW below).
+  `conf-ch01-motd`, `counter`, `half-counter`, `todos`, `sem-appB-widgets`,
+  `sem-ch01-counter`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-labels`,
+  `sem-ch04-quiz`, `sem-ch05-and-blocks`, `sem-ch06-birds`, `sem-ch07-births`,
+  `sem-ch07-normalize`, `sem-ch07-paged`, `sem-ch07-rounds`, `sem-ch08-viewer`,
+  `sem-ch09-hosts`, `ts-ch03-traits`, `ts-ch04-lifting`, `prelude`, `chess`.
 - **`prismc`** (clean): the checker over prismc's own 17 files, 17.5 thousand lines, the
   back end included. The back end is in progress (`lower.prism`, `emit.prism`,
   `templates/`, `front.prism`'s `compile` branch), so an error this line shows between
@@ -847,8 +836,9 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   a robot (Xlib and XTest, as `worlds/canvas_rtl/tests/xvfb_smoke.rs` clicks) clicks e2
   then e4, the root's result (printed with `PRISM_RESULTS` set) goes from "White's turn"
   to "Black's turn", and closing the window exits 0.
-- **Refused by the checker,** as the books have them wrong (`conf-ch01-motd`,
-  `sem-ch04-labels`, `sem-ch05-and-blocks`, `sem-ch08-viewer`): `compile` refuses too.
+- **Back-end gaps:** `sem-ch05-and-blocks` (an unbounded function with an `update`
+  block, called from `check`: gap UF) and `sem-ch08-viewer` (`@Flatten`: gap UU) check
+  clean and fail in emission.
 - **Lifting:** `ts-ch04-lifting` passes: a function lifted over an event runs at its
   firing, so its `x on !e` is `x`, and an `if` over events gates each branch by the
   condition and merges them.
@@ -1264,6 +1254,13 @@ ruling taken (Claude's).
   `while` inside the cycle (`be-while-guard`, a `Nat` fuel: 3 ticks). *Not yet:* an
   unshrinking `while` nested in an `if`, a `match`, a `for` or another `while` of the
   block, which still turns within the cycle.
+- **UU `@Flatten`** is not lowered; a program that uses it is refused at emission with
+  `not-lowered` (`sem-ch08-viewer`).
+- **UF An unbounded function with an `update` block** called from a `check` line emits
+  Rust that does not compile (`Buffer.Numbered`, a reassigned binding; `sem-ch05-and-blocks`).
+- **HL A host and its rows hold each other strongly** (`Host` → rows → `HostRow` → `Host`),
+  so a host torn down is never freed: a leak under D5. The C++ runtime holds the host
+  weakly (`cpp/prism_rtl/README.md`, doubt HW).
 - **CW A widget of several clauses in a static position** is a generation built once
   (a `rebuild` of its first argument, which never changes), the clause chosen at the
   build like a `rebuild`'s; its places stand under the generation (`1/#0/0`), where
