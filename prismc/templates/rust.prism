@@ -422,11 +422,12 @@ fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
 }
 </rust>
 
-# A `rebuild`'s builder: one generation at a time, at `{{pos}}/#g`.
-GenBuild: fn Text, Text, Text, Text, Text -> Text
-fn GenBuild name, at, source, valueTy, select = inline_text <rust>
+# A `rebuild`'s builder: one generation at a time, at `{{pos}}/#g` (a widget of several
+# clauses in a static position: at its caller's path).
+GenBuild: fn Text, Text, Text, Text, Text, Text -> Text
+fn GenBuild name, at, path, source, valueTy, select = inline_text <rust>
 /// The `rebuild` at `{{at}}`: the old generation torn down (it ran to the end of the
-/// tick), the next built under it at `#g` from the source after the tick.
+/// tick), the next built at `{{path}}` from the source after the tick.
 fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     if let Some(old) = self.{{name}}.borrow_mut().take() {
         old.leave_row(cx);
@@ -434,7 +435,7 @@ fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     }
     let g = self.{{name}}_count.get();
     self.{{name}}_count.set(g + 1);
-    let path = {{at}}.child(Segment::Gen(g));
+    let path = {{path}};
     let value: {{valueTy}} = {{source}};
     let row: Rc<dyn Row> = {{select}};
     *self.{{name}}.borrow_mut() = Some(row);

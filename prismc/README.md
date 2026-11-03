@@ -825,7 +825,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   HO), `be-updated` (pick UP), `be-host-updated`, `be-structural` and `be-structural-law`
   (pick ST),
   `be-row-entry` (pick RE).
-  `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
+  `be-clause-widget` (pick CS). The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
   `sem-ch06-birds`, `sem-ch07-births`, `sem-ch07-rounds`, `sem-ch07-paged` (gap DY),
@@ -1023,6 +1023,16 @@ Each is Claude's, for Jimmy to overturn.
   (round 46 RD): `$!x <- rebuild` binds as that event. A `rebuild` over a widget of
   several clauses builds the clause whose patterns match, passing each parameter from
   the arm's binders (`Error(message=m, ..)` passes `m`).
+- **CS A widget of several clauses in a static position** is a generation built once (a
+  `rebuild` of its first argument, which never changes), the clause chosen at the build
+  like a `rebuild`'s, and transparent (Semantics ch. 8): the generation's node stands at
+  its caller's path and its places take the caller's positions from the call's on, as an
+  inlined widget's do (`be-clause-widget`: `@Note`'s label is `@Notes`'s place 1), the
+  caller forwarding the World's answers at those positions to it (`GenForwards`). Its
+  clauses must have as many places each, so that the caller's later places have one
+  position whichever clause is chosen; one whose clauses differ, or one in a hosted
+  scope, is refused. *If otherwise:* the clause chosen at compile time where its patterns
+  are constant.
 - **PO Ports.** An event of a block that a row or generation names reaches it through a
   `Port` in the block (`Port::fire` when the event fires) and a subscription the row makes
   when built and drops when it leaves (prelude `subscribe_row`, `Row::leave_row`).
@@ -1254,13 +1264,6 @@ ruling taken (Claude's).
   `while` inside the cycle (`be-while-guard`, a `Nat` fuel: 3 ticks). *Not yet:* an
   unshrinking `while` nested in an `if`, a `match`, a `for` or another `while` of the
   block, which still turns within the cycle.
-- **CW A widget of several clauses in a static position** is a generation built once
-  (a `rebuild` of its first argument, which never changes), the clause chosen at the
-  build like a `rebuild`'s; its places stand under the generation (`1/#0/0`), where
-  Semantics ch. 8 puts an inlined widget's places in its caller's sequence (`1`), as
-  compiler zero does, so `be-clause-widget` fails under prismc. *Next:* the clause's
-  node at its caller's path, its places numbered from the caller's position, the
-  caller forwarding their answers.
 - **SH Shadowed runtime names.** A program type named like a `prism_rtl` name the
   emitted code writes bare (`Cx`, `Fault`, `Pod`, `Path`, `Hold`, `Node`) shadows it in
   its module (`use prism_rtl::*` loses to a local item). prismc's `CheckEnv.Cx` does no
@@ -1314,9 +1317,8 @@ ruling taken (Claude's).
   samples the inner at the read point, and a write behind the current generation's result
   marks its readers (`{gen}_result_moved`). So a generation built at n is the `rebuild`'s
   dynamic after n+1 and the `@Flatten`'s from n+2: `sem-ch08-viewer`'s label lags the watch
-  by two ticks, where the book has one (its transcript derives it). A `rebuild` whose
-  generation is a widget of several clauses and gives a dynamic is refused (gap CL), and so
-  is `@Flatten` of anything but a `rebuild`'s dynamic. *Refused:* the whole dynamic a tick late, the host's
+  by two ticks, where the book has one (its transcript derives it). `@Flatten` of anything but a
+  `rebuild`'s dynamic is refused. *Refused:* the whole dynamic a tick late, the host's
   rows included (a host's `for` would build a newborn's row a tick after the child did,
   breaking forwarding parity); the snapshot of n read by samples at n+1 beside the event
   carrying it (a sample in the event's tick would read the new value, against R2/R3); the
@@ -1375,8 +1377,8 @@ structural dynamic of its block (gap SU), an `@Machine` whose step is
 not a named function, a local function whose
 parameters are not names or used as a value, `!MergeAll` of a list that is not a
 literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
-and `if`, a `rebuild` whose generation is a widget of several clauses that gives a
-dynamic (gap CL), `Time.After`, and the zombie and
+and `if`, a widget of several clauses in a static position whose clauses have different
+numbers of places, or in a hosted scope (pick CS), `Time.After`, and the zombie and
 dead states (`leave`, `clean_up`, `edges`).
 
 ## Doubts

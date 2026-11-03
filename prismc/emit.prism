@@ -496,7 +496,11 @@ fn ForBuilder b = ForBuild b.name, b.at, (Type b.keyTy), (Type b.valueTy), b.row
 
 # A `rebuild`'s builder: the old generation torn down, the next one built.
 GenBuilder: unbounded fn GenDef -> Text
-fn GenBuilder gd = GenBuild gd.name, gd.at, (Expression gd.source), (Type gd.valueTy), (Expression gd.select)
+fn GenBuilder gd:
+    # a transparent generation (a widget of several clauses in a static position) stands at
+    # its caller's path
+    let path = if gd.transparent: "self.path.clone()" else: "{gd.at}.child(Segment::Gen(g))"
+    GenBuild gd.name, gd.at, path, (Expression gd.source), (Type gd.valueTy), (Expression gd.select)
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, since
 # its key is gone from the source after it (R8); its places are torn down; its

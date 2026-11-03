@@ -324,6 +324,11 @@ type GenDef = record:
     source: Ex
     valueTy: RsTy
     select: Ex
+    # A widget of several clauses in a static position (Semantics ch. 8): its one
+    # generation's node stands at the caller's path, its `width` places numbered from the
+    # caller's position `pos`, where an inlined widget's places stand.
+    transparent: Bool
+    width: Nat
 derive ^Eq, ^Show
 
 # A port a row subscribes to: the parent's event `name`, fired to every live row.
@@ -4468,7 +4473,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                 match args[0]:
                     ? a:
                         let call = Block(stmts=[[Stmt(kind=(SExpr e), span=e.span)]], inline=True, span=e.span)
-                        RebuildLine wx, benv, menv, a.value, call, e, nil
+                        ClauseWidgetLine wx, menv, a.value, call, qk, v, e
                     nil:
                         let wx2 = update wx:
                             &_.build <= Push &_.build, (RefusalDo "a widget of several clauses that takes no arguments")
@@ -4991,7 +4996,7 @@ fn FinishNode wx0, qk, params, isRow:
     # typed by its host, through `host_k_answer` (the places of scope `k`) or `deliver` (a
     # hosted node's own)
     let answers = Append (Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, id, t, ignore))| AnswerArm wx, pos, id, t), (Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DynAnswerArm sinks, pos, f, t)
-    let forwards = Append (Each (Filter wx.builders, \|b| Emits wx, b.pos), \|b| (((PosPat b.pos, ", Segment::Key(k), rest @ .."), (ForwardAnswer b)))), (Each (Filter wx.gens, \|gd| Emits wx, gd.pos), \|gd| (((PosPat gd.pos, ", Segment::Gen(g), rest @ .."), (ForwardGen gd))))
+    let forwards = Append (Each (Filter wx.builders, \|b| Emits wx, b.pos), \|b| (((PosPat b.pos, ", Segment::Key(k), rest @ .."), (ForwardAnswer b)))), (Fold (Filter wx.gens, \|gd| Emits wx, gd.pos), [[]], \|acc, gd| Append acc, (GenForwards gd))
     let hostMethods = Fold wx.hosts, [[]], \|acc, h| Append acc, [[(TypedDispatch sinks, "{h.name}_answer", h.scope), (HostMoved sinks, h)]]
     let gathered = Filter wx.snaps, \|sn| not (sn.before or (IsGeneration wx, sn.builder))
     let gatheredMoved = Append (Append (Each gathered, \|sn| GatheredMoved sn), (Each wx.snaps, \|sn| SnapPublish sinks, sn)), (FlattenMethods sinks)
@@ -6124,7 +6129,7 @@ fn RebuildLine wx, benv, menv, scrut, body, e, ?bound:
         let rowDefs = Each cases, \|c| c.node
         let select = GenSelect wx4, menv, body, cases, pos
         let wx5 = update wx4:
-            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select)
+            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0)
             &_.genHolds <= Push &_.genHolds, ((name, reads))
             &_.rows <= Fold rowDefs, &_.rows, \|acc, rd| Append (Push acc, rd), rd.children
             &_.getters <= Push &_.getters, (GenUp name, (GnOf wx4, upId).name, (GnOf wx4, upId).ty)
@@ -6166,7 +6171,7 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
             let select = XBlock [[(DoLet (PaBind "row"), built), kept, marked]], (XRaw "row")
             let current = XMethod (XMethod (XMethod (XRaw "self.{live}"), "borrow", [[]]), "clone", [[]]), "expect", [[XRaw "\"a `rebuild` has a generation from its build on\""]]
             let wx2 = update whole.parent:
-                &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select)
+                &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0)
                 &_.genHolds <= Push &_.genHolds, ((name, reads))
                 &_.rows <= Append (Push &_.rows, whole.node), whole.node.children
                 &_.taken <= Append &_.taken, [[result, live, "{result}_now", "{result}_snap", "{result}_publish", "{result}_moved"]]
@@ -6175,6 +6180,53 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
                 &_.getters <= Append &_.getters, [[(MethDef(name="{result}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=dynTy, body=[[]], tail=current, doc="The current generation's result: what the snapshot of the `rebuild`'s dynamic is taken from (pick ST).")), (SnapGetter result, dynTy, "The `rebuild`'s dynamic, its generation's result, a structural dynamic (pick ST): one tick behind the generations, the snapshot of the tick before the tick the read point is after.")]]
                 &_.snaps <= Push &_.snaps, SnapDef(name=result, live="{result}_now", ty=dynTy, eq=False, builder=name, before=False, what=what)
             ((wx2, (WrDyn (XMethod (XRaw "self"), result, [[XRaw "cx"]]), [[OwnRead result]], dynTy)))
+
+# A widget of several clauses in a static position (Semantics ch. 8): the clause is chosen
+# at the build from the arguments, which are plain, so it is a generation built once (its
+# source, the first argument, never changes), each clause a row (`ClauseRowOf`). The
+# generation is transparent: its node stands at the caller's path and its places take the
+# caller's positions from the call's on, as an inlined widget's do, the caller forwarding
+# the World's answers there to it. The clauses must have as many places each, so that the
+# caller's later places have one position whichever clause is chosen.
+ClauseWidgetLine: unbounded fn Wx, Env, Expr, Block, Text, ValInfo, Expr -> ((Wx, Wres))
+fn ClauseWidgetLine wx, menv, scrut, call, qk, v, e:
+    let lx = wx.lx
+    let pos = wx.pos
+    let ((srcEx, reads)) = DynamicExpr wx, menv, scrut
+    let vt = RustTy lx, (Peel (TypeAt lx, scrut.span))
+    let ((name, wx1)) = FreshName wx, "generation"
+    let ((upId, wx2)) = AddGn wx1, "{name}_fired", (RustTy lx, (Peel (TypeAt lx, e.span))), GnNamed, 0
+    let clauses = ClausesOf lx.g, qk
+    let rowName = "{wx.node}Gen{RowSuffix wx}"
+    let ((rows, wx3)) = Fold (Range0 (Len clauses)), (([[]], wx2)), \|((acc, w)), i|
+        let c = Or clauses[i], dummyClause
+        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True
+        (((Push acc, cr), cr.parent))
+    let widths = Fold rows, [[]], \|acc, cr| AddNat acc, cr.width
+    let width = Or widths[0], 0
+    let cases = Each rows, \|cr| cr.case
+    if (Len widths) > 1 or (IsHostedScope wx):
+        let why = if (Len widths) > 1: "a widget of several clauses whose clauses have different numbers of places, in a static position" else: "a widget of several clauses in a static position of a hosted scope"
+        let wx4 = update wx3:
+            &_.build <= Push &_.build, (RefusalDo why)
+        ((wx4, WrUnit))
+    else:
+        let select = GenSelect wx3, menv, call, cases, pos
+        let wx4 = update wx3:
+            &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
+            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width)
+            &_.genHolds <= Push &_.genHolds, ((name, reads))
+            &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
+            &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
+        ((wx4, (WrEv (EvRefOf upId))))
+
+# Whether the node's places go to a host's document rather than the World's.
+IsHostedScope: fn Wx -> Bool
+fn IsHostedScope wx = wx.pos.scope > 0 or (IsSome wx.?hostedBy)
+
+IsSome: fn ?a -> Bool
+fn IsSome (? ignore) = True
+fn IsSome nil = False
 
 # One generation's node, for the block or for one clause of the widget it applies.
 type GenCase = record:
@@ -6195,7 +6247,7 @@ fn GenCases wx, menv, body, vt, name:
             let v = ValOf lx, qk
             Fold (Range0 (Len clauses)), (([[]], wx)), \|((acc, w)), i|
                 let c = Or clauses[i], dummyClause
-                let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name
+                let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, False
                 (((Push acc, cr.case), cr.parent))
         nil:
             let whole = GenRowOf wx, menv, body, vt, rowName, name
@@ -6221,11 +6273,14 @@ fn ?ClauseCallX lx, x = match x.kind:
 type ClauseRow = record:
     case: GenCase
     parent: Wx
+    # How many places the clause has: the positions it takes in its caller when it stands
+    # there (`ClauseWidgetLine`).
+    width: Nat
 
 # One clause's generation: its parameters' binders the row's fields, chosen by matching
 # the arguments (in the block, `_` the generation's value).
-ClauseRowOf: unbounded fn Wx, Env, FnClause, ValInfo, Text, Text -> ClauseRow
-fn ClauseRowOf wx, menv, c, v, rowName, genName:
+ClauseRowOf: unbounded fn Wx, Env, FnClause, ValInfo, Text, Text, Bool -> ClauseRow
+fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent:
     let upName = "{genName}_up"
     let lx = wx.lx
     let lxc = InModuleAt lx, v.file, v.home, lx.site
@@ -6237,7 +6292,10 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName:
     let rowFields = Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", (RsWeak wx.node), "the node of the `rebuild`"))
     let rowInits = Push (Each fields, \|((f, ignore, ignore))| ((f, (XMethod (XRaw f), "clone", [[]])))), (("parent", (XRaw "parent")))
     let rowTaken = Append nodeHooks, (Push (Each fields, \|((f, ignore, ignore))| f), "parent")
-    let r0 = NewWx lxc, rowName, rowFields, rowInits, [[]], {}, rowTaken, wx.depth, (?HostedRows wx)
+    let r00 = NewWx lxc, rowName, rowFields, rowInits, [[]], {}, rowTaken, wx.depth, (?HostedRows wx)
+    # standing in its caller, the clause's places are numbered from the caller's position
+    let r0 = if transparent: (update r00:
+        &_.pos <= wx.pos) else: r00
     let body = match c.body:
         BodyBlock b: b
         BodyExpr x: Block(stmts=[[(Stmt(kind=(SExpr x), span=x.span))]], inline=True, span=x.span)
@@ -6255,7 +6313,7 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName:
     let passed = Each fields, \|((f, t, bn))| match binds[bn]:
         ? (BnLocal rs, mode, bt): Own (VlPlace (XRaw rs), mode, bt)
         otherwise: XMethod (XRaw f), "clone", [[]]
-    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), passed=passed), parent=p2)
+    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0))
 
 
 type GenRow = record:
@@ -6312,7 +6370,7 @@ fn BuildSpelling env = Fold (Keys env.names), env, \|en, k| match env.names[k]:
     ? (BnDyn (XMethod (XRaw rs), m, xs), ds, t): if (Take rs, 12) == "self.parent.": Bind en, k, (BnDyn (XMethod (XRaw (Drop rs, 5)), m, xs), ds, t) else: en
     otherwise: en
 
-let dummyGen = GenDef(name="", pos=pos0, at="", source=(XRaw ""), valueTy=RsUnit, select=(XRaw ""))
+let dummyGen = GenDef(name="", pos=pos0, at="", source=(XRaw ""), valueTy=RsUnit, select=(XRaw ""), transparent=False, width=0)
 
 # The generation built: the one case, its row's constructor.
 GenSelect: unbounded fn Wx, Env, Block, [GenCase], Pos -> Ex
@@ -6333,6 +6391,16 @@ fn GenSelect wx, menv, body, cases, pos:
 # The `rebuild`'s up-forwarding: a generation's result fires the block's event.
 GenUp: fn Text, Text, RsTy -> MethDef
 fn GenUp name, upName, t = MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", t))]], cx=CxMut, ret=RsUnit, body=[[(SelfCall upName, [[XRaw "v"]])]], tail=(XRaw "()"), doc="The current generation's result fires the `rebuild`'s.")
+
+# The answers a generation's places get through the block: under `pos/#g` to the current
+# generation; for a transparent one, at each of its positions in the block, whole.
+GenForwards: fn GenDef -> [((Text, Ex))]
+fn GenForwards gd:
+    if gd.transparent: Each (Range0 gd.width), \|i|
+        let current = XMethod (XMethod (XRaw "self.{gd.name}"), "borrow", [[]]), "clone", [[]]
+        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "row"), [[DoExpr (XTry (XMethod (XRaw "row"), "answer", [[XRaw "at", XRaw "v", XRaw "cx"]]))]], [[]])]], (XRaw "()")
+        (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), ", .."), body))
+    else: [[(((PosPat gd.pos, ", Segment::Gen(g), rest @ .."), (ForwardGen gd)))]]
 
 ForwardGen: fn GenDef -> Ex
 fn ForwardGen gd:
@@ -6475,7 +6543,7 @@ fn IfGenLine wx, menv, c, thenB, elseB, e:
     let Mk = \|n| XCast (XTry (XCall "{n.name}::build", (Append [[XRaw "path", XRaw "value"]], tail))), (RsNamed "Rc<dyn Row>", [[]])
     let select = XIf cond, (Mk yes.node), (Mk no.node)
     let wx3 = update no.parent:
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XRaw "()"), valueTy=RsUnit, select=select)
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XRaw "()"), valueTy=RsUnit, select=select, transparent=False, width=0)
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.rows <= Append (Append (Append (Push &_.rows, yes.node), yes.node.children), [[no.node]]), no.node.children
         &_.getters <= Push &_.getters, (MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", RsUnit))]], cx=CxMut, ret=RsUnit, body=[[]], tail=(XRaw "()"), doc="An arm's result, which a building `if` of widgets drops."))
