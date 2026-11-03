@@ -1,4 +1,4 @@
-# Derived by hand from D6 as ruled (every turn of a `while` the shrink check does not clear is a cycle point, as `Top` shows: the entry, then one cycle per test of the condition, the first in the cycle that reaches the loop): `InIf` is `Top` under a plain `if`, 5 ticks; `Nested` 2 has 3 outer tests, each true one reaching an inner loop of 3 tests, the outer test after an inner loop ends in a cycle of its own: 1 + (1 + 2) + (1 + 2) + 1 = 8 ticks.
+# Derived by hand from D6 as ruled, with the cost of a top-level loop as `Top` shows it (prismc's `loop_job`): reaching a cycle-point loop ends the cycle, each test of its condition is a cycle of its own, and after the last test the rest runs in that cycle; 1 + 4 = 5 ticks for 3 turns. `InIf` is `Top` under a plain `if`, 5 ticks. `Nested` 2: the entry reaching the outer loop, then 3 outer tests, each of the 2 true ones reaching an inner loop of 3 tests, the next outer test in a cycle of its own: 1 + 3 + 2 * 3 = 10 ticks.
 test a_top_loop_turns_a_cycle_each
 
 tick 0
@@ -29,8 +29,8 @@ tick 0
   added:
     1: Ui.Label(text="working")
 
-compute until idle: 8 ticks, 1 to 8
+compute until idle: 10 ticks, 1 to 10
 
-tick 8
+tick 10
   changed:
     1: Ui.Label(text="4")
