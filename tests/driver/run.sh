@@ -29,8 +29,8 @@ expect() {
 }
 expect chess canvas examples/chess
 expect cli-root cli tests/driver/cli-root.prism
-expect birds refused tests/conformance/sem-ch06-birds.prism
-expect birds-as-cli cli --world cli tests/conformance/sem-ch06-birds.prism
+expect birds refused tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
+expect birds-as-cli cli --world cli tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
 expect counter-no-root refused tests/conformance/counter.prism
 if [ ${#failed[@]} -gt 0 ]; then
     echo "failed: ${failed[*]}"
