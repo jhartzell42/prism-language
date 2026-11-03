@@ -563,7 +563,7 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   body whose last place an attribute took or that has no place, and a callee without
   clauses are `mismatch`es, as is an argument of the wrong type (`neg/template-type`).
   The shrink check reads the body as the argument for the last place too (it read it as
-  the first positional one). Lowering (`Lower.LoTemplateArgs`) and compiler zero read it
+  the first positional one). Lowering (`Lower.TemplateArgs`) and compiler zero read it
   the same way: each place's names from every clause, through parentheses and without
   marks, the body in the last place, attributes in theirs, never the written order
   (`be-template-body`).
@@ -780,19 +780,19 @@ one is the program's own (prismc's `--check --world Ui`). `make chess` is
 
 ### Files
 
-- `lower.prism` (module `Lower`, 3,700 lines): the core form and lowering. It reads the
+- `lower.prism` (module `Lower`, 5,500 lines): the core form and lowering. It reads the
   checker's environment (`CheckEnv.BuildG`: modules, types, constructors, tags, traits,
   impls, every definition's clauses) and the typed tables (`TProgram`, indexed by place)
   and decides everything: names, Rust types, borrows and clones, each widget's node (its
   fields, event graph, heights, places, answers, hooks, rows and generations), each
   unbounded function's job.
-- `emit.prism` (module `Emit`, 520 lines): the core form spelled; one function per
+- `emit.prism` (module `Emit`, 560 lines): the core form spelled; one function per
   construct, nothing decided (K9).
-- `templates/rust.prism` (module `RustTemplates`, 495 lines): every item and every
+- `templates/rust.prism` (module `RustTemplates`, 565 lines): every item and every
   multi-line expression as a function-form code template with doubled braces;
   placeholders alone on a line indent to their column; doc comments quote the Prism
-  source through a `<@TmQuoted text={{..}}/>` call.
-- `templates/prelude.prism` (module `PreludeTemplate`, 670 lines): the prelude in Rust,
+  source through a `<@Quoted text={{..}}/>` call.
+- `templates/prelude.prism` (module `PreludeTemplate`, 820 lines): the prelude in Rust,
   emitted as `src/prelude.rs` beside every program (pick PL).
 - `fs.prism` (module `Fs`): the prelude's `Fs` with `Fs.List`, which `compile DIR` reads
   (pick FL).
@@ -983,14 +983,14 @@ Each is Claude's, for Jimmy to overturn.
   that feeds a `!~T` (`be-error-try`).
 - **RW `for` rows.** A row is a node of its own (`TodosRow`) at `n/[k]`, with `key`, a
   `value` hold for `$_`, and a weak reference to its block; the block's builder (a
-  template, `TmForBuild`) tears down left keys, builds new ones and updates kept ones from
+  template, `ForBuild`) tears down left keys, builds new ones and updates kept ones from
   the source after the tick, run at the build and from the build list when a hold the
   source reads is written. A row's event result goes up to a gather in the block, which
   fires `!(K ==> T)` once a tick at a height above the rows'. A row has a field for each
   plain value of its block it reads (a parameter, a plain `let`), which the builder
   passes to its `build`, since a row is built where its block's locals are not in scope.
 - **GN `rebuild`.** A generation is a node (`QuizGen`) at `n/#g` with `_` a plain field;
-  the builder (`TmGenBuild`) leaves the old one and builds the next when the source's
+  the builder (`GenBuild`) leaves the old one and builds the next when the source's
   stale flag is set; an answer under `n/#g` reaches the current generation only. A
   generation's event result fires the block's event, which is what `@Switch $!x` hears
   (round 46 RD): `$!x <- rebuild` binds as that event. A `rebuild` over a widget of
@@ -1062,7 +1062,7 @@ Each is Claude's, for Jimmy to overturn.
   (a lowered closure or named function over `&Path` and `&Live<crate::Elem>`). The
   child, a named widget, a widget parameter's argument or a block, is inlined into the
   host's owner (the node of the host's line) in a scope of its own: `Wx.scopes` lists the
-  node's hosts, a position from `LoScopeBase k` is the child of host `k`'s place, spelled
+  node's hosts, a position from `ScopeBase k` is the child of host `k`'s place, spelled
   under `host_k_path` (the host's child path, `Segment::Host`), so it emits in the host's
   scope (gap SP); its answer arm is `[Segment::Host(h), Segment::Pos(n), ..] if h.id() ==
   self.host_k.id()`, and the host answers a child place through the owner's
@@ -1105,7 +1105,7 @@ Each is Claude's, for Jimmy to overturn.
   pass writes none (it only tells a forwarded element it moved). The document field's
   reads are everything the child's places and builders read, so a write to a child hold
   marks the owner's places and builders over `$doc`; the owner's `build` runs a hosted
-  child's builders before its host's (`LoInnermostFirst`), so a `for` over `$doc` sees the
+  child's builders before its host's (`InnermostFirst`), so a `for` over `$doc` sees the
   child's structure settled. `be-host-doc-in-tick` (failed before: a row of a `for` over
   `$doc` and an owner hold showed the stale element for a tick, the document having
   moved only in the patch pass, which ran the builder a second time). *Refused:* the
@@ -1128,7 +1128,7 @@ Each is Claude's, for Jimmy to overturn.
   values as the tick opened (Semantics R2). The event half, `!Updated $d`, is a graph node
   of kind `GnUpdated`, decided in the wake like a merge: its height is one above every node
   whose sink writes a hold the dynamic reads (the reads closed over the dynamic `let`s,
-  `LoReadsClosed`, so `!Updated $b` with `let $b = $a + 1` sits above `$a`'s writers;
+  `ReadsClosed`, so `!Updated $b` with `let $b = $a + 1` sits above `$a`'s writers;
   `@Machine`'s state hold counts). Each such write sets the node's `Cell<bool>` flag
   `{name}_moved` and asks the wake at its height, as an answer or a push that writes a
   place's hold does at height 0; the decision takes the flag (`replace(false)`, so once a
@@ -1188,8 +1188,12 @@ ruling taken (Claude's).
 - **SH Shadowed runtime names.** A program type named like a `prism_rtl` name the
   emitted code writes bare (`Cx`, `Fault`, `Pod`, `Path`, `Hold`, `Node`) shadows it in
   its module (`use prism_rtl::*` loses to a local item). prismc's `CheckEnv.Cx` does no
-  harm, as that module has no nodes. *If otherwise:* such a type takes a suffix in Rust,
-  or the templates write every runtime name qualified.
+  harm, as that module has no nodes. A function whose Rust name is one of the runtime's
+  free functions the emitted code calls bare (`call_value`, `entered`, `once_job`) shadows
+  it the same way: a `CallValue` in a module with jobs breaks that module's frames; and
+  a local `startBody` beside an unbounded `Body` is that function's `start_body`.
+  *If otherwise:* such a type or function takes a suffix in Rust, or the templates write
+  every runtime name qualified.
 - **PF A port's fault.** `Port::fire` returns `Done`, and an event method returns
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
@@ -1243,7 +1247,7 @@ states (`leave`, `clean_up`, `edges`).
 
 - **TC** `<@` calls in `inline_text` go past Templates ch. 2, which gives the function form
   no call form ("a nested template is a function called in a placeholder"); the task asked
-  for `<@` calls. Jimmy rules which one stands; the templates use one (`TmQuoted`, in
+  for `<@` calls. Jimmy rules which one stands; the templates use one (`Quoted`, in
   every doc comment that quotes Prism), and the back end lowers `<@Name a={{x}}>body</@Name>`
   to `name(&x, &body)`, so dropping TC costs one line.
 

@@ -11,8 +11,8 @@
 module PreludeTemplate
 emit r
 
-TmPrelude: fn Text -> Text
-fn TmPrelude unused = inline_text <rust>
+PreludeSource: fn Text -> Text
+fn PreludeSource unused = inline_text <rust>
 //! The prelude (Semantics Appendix B), emitted by prismc beside every program: the
 //! builtins and the prelude's own functions as Rust over `prism_rtl`.
 

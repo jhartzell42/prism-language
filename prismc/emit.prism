@@ -19,8 +19,8 @@ use PreludeTemplate.*
 # Types
 # ---------------------------------------------------------------------------------------
 
-EmTy: unbounded fn RsTy -> Text
-fn EmTy t = match t:
+Type: unbounded fn RsTy -> Text
+fn Type t = match t:
     RsNat: "Nat"
     RsInt: "Int"
     RsU8: "u8"
@@ -33,48 +33,48 @@ fn EmTy t = match t:
     RsDuration: "Duration"
     RsError: "Error"
     RsNamed n, [[]]: n
-    RsNamed n, args: "{n}<{EmTys args}>"
-    RsOpt i: "Option<{EmTy i}>"
-    RsRes i: "Result<{EmTy i}, Error>"
-    RsTuple [[one]]: "({EmTy one},)"
-    RsTuple ts: "({EmTys ts})"
-    RsArray e: "Array<{EmTy e}>"
-    RsMap k, v: "Map<{EmTy k}, {EmTy v}>"
-    RsFn ps, r: "Rc<dyn Fn({EmRefTys ps}) -> {EmTy r}>"
-    RsRef (RsFn ps, r): "&dyn Fn({EmRefTys ps}) -> {EmTy r}"
-    RsRef i: "&{EmTy i}"
-    RsJobFn a, b: "Rc<dyn Fn({EmTy a}) -> Rc<dyn prism_rtl::Job<{EmTy b}>>>"
-    RsJob b: "Rc<dyn prism_rtl::Job<{EmTy b}>>"
-    RsEvent i: "Event<{EmTy i}>"
-    RsDyn i: "Dynamic<{EmTy i}>"
+    RsNamed n, args: "{n}<{Types args}>"
+    RsOpt i: "Option<{Type i}>"
+    RsRes i: "Result<{Type i}, Error>"
+    RsTuple [[one]]: "({Type one},)"
+    RsTuple ts: "({Types ts})"
+    RsArray e: "Array<{Type e}>"
+    RsMap k, v: "Map<{Type k}, {Type v}>"
+    RsFn ps, r: "Rc<dyn Fn({RefTypes ps}) -> {Type r}>"
+    RsRef (RsFn ps, r): "&dyn Fn({RefTypes ps}) -> {Type r}"
+    RsRef i: "&{Type i}"
+    RsJobFn a, b: "Rc<dyn Fn({Type a}) -> Rc<dyn prism_rtl::Job<{Type b}>>>"
+    RsJob b: "Rc<dyn prism_rtl::Job<{Type b}>>"
+    RsEvent i: "Event<{Type i}>"
+    RsDyn i: "Dynamic<{Type i}>"
     RsGen n: n
-    RsRc i: "Rc<{EmTy i}>"
+    RsRc i: "Rc<{Type i}>"
     RsPod: "Pod"
     RsShowAny: "Rc<dyn Show>"
-    RsHold i: "Hold<{EmTy i}>"
-    RsStamped i: "Stamped<{EmTy i}>"
-    RsDefer i: "Defer<{EmTy i}>"
+    RsHold i: "Hold<{Type i}>"
+    RsStamped i: "Stamped<{Type i}>"
+    RsDefer i: "Defer<{Type i}>"
     RsWeak n: "Weak<{n}>"
-    RsCell i: "RefCell<{EmTy i}>"
+    RsCell i: "RefCell<{Type i}>"
     RsWakes: "Wakes"
-    RsPort i: "Port<{EmTy i}>"
-    RsLive i: "Live<{EmTy i}>"
+    RsPort i: "Port<{Type i}>"
+    RsLive i: "Live<{Type i}>"
     RsUnknown what: "() /* {what} */"
 
-EmTys: unbounded fn [RsTy] -> Text
-fn EmTys ts = Join (Each ts, \|t| EmTy t), ", "
+Types: unbounded fn [RsTy] -> Text
+fn Types ts = Join (Each ts, \|t| Type t), ", "
 
-EmRefTys: unbounded fn [RsTy] -> Text
-fn EmRefTys ts = Join (Each ts, \|t| "&{EmTy t}"), ", "
+RefTypes: unbounded fn [RsTy] -> Text
+fn RefTypes ts = Join (Each ts, \|t| "&{Type t}"), ", "
 
 # ---------------------------------------------------------------------------------------
 # Expressions
 # ---------------------------------------------------------------------------------------
 
 # Whether an expression must be parenthesized as an operand or a receiver.
-EmLoose: fn Ex -> Bool
-fn EmLoose x = match x:
-    XBlock [[]], inner: EmLoose inner
+IsLoose: fn Ex -> Bool
+fn IsLoose x = match x:
+    XBlock [[]], inner: IsLoose inner
     XBin ignore, ignore, ignore: True
     XUnary ignore, ignore: True
     XClosure ignore, ignore, ignore: True
@@ -84,124 +84,124 @@ fn EmLoose x = match x:
     XCast ignore, ignore: True
     otherwise: False
 
-EmTight: unbounded fn Ex -> Text
-fn EmTight x = if EmLoose x: "({EmEx x})" else: EmEx x
+Tight: unbounded fn Ex -> Text
+fn Tight x = if IsLoose x: "({Expression x})" else: Expression x
 
-EmOperand: unbounded fn Ex -> Text
-fn EmOperand x = match x:
-    XBlock [[]], inner: EmOperand inner
-    XBin ignore, ignore, ignore: "({EmEx x})"
-    XClosure ignore, ignore, ignore: "({EmEx x})"
-    XIf ignore, ignore, ignore: "({EmEx x})"
-    XCast ignore, ignore: "({EmEx x})"
-    otherwise: EmEx x
+Operand: unbounded fn Ex -> Text
+fn Operand x = match x:
+    XBlock [[]], inner: Operand inner
+    XBin ignore, ignore, ignore: "({Expression x})"
+    XClosure ignore, ignore, ignore: "({Expression x})"
+    XIf ignore, ignore, ignore: "({Expression x})"
+    XCast ignore, ignore: "({Expression x})"
+    otherwise: Expression x
 
-EmArgs: unbounded fn [Ex] -> Text
-fn EmArgs xs = Join (Each xs, \|x| EmEx x), ", "
+Args: unbounded fn [Ex] -> Text
+fn Args xs = Join (Each xs, \|x| Expression x), ", "
 
-EmEx: unbounded fn Ex -> Text
-fn EmEx x = match x:
+Expression: unbounded fn Ex -> Text
+fn Expression x = match x:
     XRaw t: t
-    XCall f, args: "{f}({EmArgs args})"
-    XApply f, args: "{EmTight f}({EmArgs args})"
-    XMethod r, m, args: "{EmTight r}.{m}({EmArgs args})"
-    XBin op, l, r: "{EmOperand l} {op} {EmOperand r}"
-    XUnary op, y: "{op}{EmOperand y}"
-    XCtor p, args: "{p}({EmArgs args})"
-    XRecord p, fs: "{p} \{ {Join (Each fs, \|((f, v))| EmFieldInit f, v), ", "} \}"
-    XTuple [[one]]: "({EmEx one},)"
-    XTuple xs: "({EmArgs xs})"
-    XVec xs: "vec![{EmArgs xs}]"
-    XText t: "Text::from(\"{LoEscape t}\")"
-    XFormat parts: EmFormat parts
-    XMatch s, arms, fallback: TmMatch (EmEx s), (EmArms arms, fallback)
-    XChain label, s, arms: EmChain (EmLabel label), s, arms
-    XIf c, t, e: EmIf c, t, e
-    XBlock [[]], e: EmEx e
-    XBlock dos, e: TmBlock (EmDos dos), (EmEx e)
-    XLabeled label, dos, e: TmLabeled (EmLabel label), (EmDos dos), (EmEx e)
-    XClosure mv, ps, body: "{if mv: "move " else: ""}|{Join (Each ps, \|p| EmPa p), ", "}| {EmEx body}"
-    XTry y: "{EmTight y}?"
-    XField r, f: "{EmTight r}.{f}"
-    XDecode t, y: "{EmDecodeHead t}::from_pod({EmEx y})?"
-    XCast y, t: "{EmTight y} as {EmTy t}"
+    XCall f, args: "{f}({Args args})"
+    XApply f, args: "{Tight f}({Args args})"
+    XMethod r, m, args: "{Tight r}.{m}({Args args})"
+    XBin op, l, r: "{Operand l} {op} {Operand r}"
+    XUnary op, y: "{op}{Operand y}"
+    XCtor p, args: "{p}({Args args})"
+    XRecord p, fs: "{p} \{ {Join (Each fs, \|((f, v))| FieldInit f, v), ", "} \}"
+    XTuple [[one]]: "({Expression one},)"
+    XTuple xs: "({Args xs})"
+    XVec xs: "vec![{Args xs}]"
+    XText t: "Text::from(\"{Escape t}\")"
+    XFormat parts: Format parts
+    XMatch s, arms, fallback: Match (Expression s), (Arms arms, fallback)
+    XChain label, s, arms: Chain (Label label), s, arms
+    XIf c, t, e: IfExpression c, t, e
+    XBlock [[]], e: Expression e
+    XBlock dos, e: Block (Statements dos), (Expression e)
+    XLabeled label, dos, e: Labeled (Label label), (Statements dos), (Expression e)
+    XClosure mv, ps, body: "{if mv: "move " else: ""}|{Join (Each ps, \|p| Pattern p), ", "}| {Expression body}"
+    XTry y: "{Tight y}?"
+    XField r, f: "{Tight r}.{f}"
+    XDecode t, y: "{DecodeHead t}::from_pod({Expression y})?"
+    XCast y, t: "{Tight y} as {Type t}"
 
-EmFieldInit: unbounded fn Text, Ex -> Text
-fn EmFieldInit f, (XRaw v) = if v == f: f else: "{f}: {v}"
-fn EmFieldInit f, v = "{f}: {EmEx v}"
+FieldInit: unbounded fn Text, Ex -> Text
+fn FieldInit f, (XRaw v) = if v == f: f else: "{f}: {v}"
+fn FieldInit f, v = "{f}: {Expression v}"
 
-EmDecodeHead: unbounded fn RsTy -> Text
-fn EmDecodeHead t = match t:
+DecodeHead: unbounded fn RsTy -> Text
+fn DecodeHead t = match t:
     RsNamed n, [[]]: n
     RsNat: "Nat"
     RsInt: "Int"
     RsText: "Text"
-    otherwise: "<{EmTy t}>"
+    otherwise: "<{Type t}>"
 
-EmLabel: fn Text -> Text
-fn EmLabel l = if (Take l, 1) == "'": l else: "'{l}"
+Label: fn Text -> Text
+fn Label l = if (Take l, 1) == "'": l else: "'{l}"
 
 # `Text::from(format!(..))`: the literal runs with their braces doubled, a `{}` per value.
-EmFormat: unbounded fn [Ex] -> Text
-fn EmFormat parts:
-    let lit = Concat (Each parts, \|p| EmFormatPiece p)
-    let vals = Filter parts, \|p| not (EmIsText p)
+Format: unbounded fn [Ex] -> Text
+fn Format parts:
+    let lit = Concat (Each parts, \|p| FormatPiece p)
+    let vals = Filter parts, \|p| not (IsText p)
     if (Len vals) == 0: "Text::from(\"{lit}\")"
-    else: "Text::from(format!(\"{lit}\", {EmArgs vals}))"
+    else: "Text::from(format!(\"{lit}\", {Args vals}))"
 
-EmIsText: fn Ex -> Bool
-fn EmIsText (XText ignore) = True
-fn EmIsText other = False
+IsText: fn Ex -> Bool
+fn IsText (XText ignore) = True
+fn IsText other = False
 
-EmFormatPiece: fn Ex -> Text
-fn EmFormatPiece (XText t) = EmFormatEscape (LoEscape t)
-fn EmFormatPiece other = "\{\}"
+FormatPiece: fn Ex -> Text
+fn FormatPiece (XText t) = FormatEscape (Escape t)
+fn FormatPiece other = "\{\}"
 
-EmFormatEscape: fn Text -> Text
-fn EmFormatEscape t = Concat (Each (Chars t), \|c| if c == "\{": "\{\{" else: if c == "\}": "\}\}" else: c)
+FormatEscape: fn Text -> Text
+fn FormatEscape t = Concat (Each (Chars t), \|c| if c == "\{": "\{\{" else: if c == "\}": "\}\}" else: c)
 
 # `if c { a } else { b }` on one line when both sides are short.
-EmIf: unbounded fn Ex, Ex, Ex -> Text
-fn EmIf c, t, e:
-    let ct = EmEx c
-    let tt = EmEx t
-    let et = EmEx e
+IfExpression: unbounded fn Ex, Ex, Ex -> Text
+fn IfExpression c, t, e:
+    let ct = Expression c
+    let tt = Expression t
+    let et = Expression e
     let short = not (Contains "{tt}{et}", "\n") and (Len "{ct}{tt}{et}") < 70
-    if short: "if {ct} \{ {tt} \} else \{ {et} \}" else: TmIf ct, tt, et
+    if short: "if {ct} \{ {tt} \} else \{ {et} \}" else: If ct, tt, et
 
 # A `match`'s arms, guards joined; the fallback arm when a guard leaves the match open.
-EmArms: unbounded fn [XArm], Bool -> Text
-fn EmArms arms, fallback:
-    let lines = Each arms, \|a| EmArm a
+Arms: unbounded fn [XArm], Bool -> Text
+fn Arms arms, fallback:
+    let lines = Each arms, \|a| Arm a
     let all = if fallback: Push lines, "_ => unreachable!(\"no arm matched\")," else: lines
     Join all, "\n"
 
-EmArm: unbounded fn XArm -> Text
-fn EmArm a:
-    let guard = if (Len a.conds) == 0: "" else: " if {Join (Each a.conds, \|c| EmCond c), " && "}"
-    let body = EmEx a.body
-    "{EmPa a.pat}{guard} => {body},"
+Arm: unbounded fn XArm -> Text
+fn Arm a:
+    let guard = if (Len a.conds) == 0: "" else: " if {Join (Each a.conds, \|c| Condition c), " && "}"
+    let body = Expression a.body
+    "{Pattern a.pat}{guard} => {body},"
 
-EmCond: unbounded fn Cc -> Text
-fn EmCond (CcIf x) = EmOperand x
-fn EmCond (CcLet p, x) = "let {EmPa p} = {EmEx x}"
+Condition: unbounded fn Cc -> Text
+fn Condition (CcIf x) = Operand x
+fn Condition (CcLet p, x) = "let {Pattern p} = {Expression x}"
 
 # An if-let chain over arms in a labelled block: each arm breaks with its value; a last arm
 # that matches anything ends the block.
-EmChain: unbounded fn Text, Ex, [XArm] -> Text
-fn EmChain label, s, arms:
+Chain: unbounded fn Text, Ex, [XArm] -> Text
+fn Chain label, s, arms:
     let ((bind, scrut)) = match s:
         XRaw n: (([[]], n))
         XUnary "&", (XRaw n): (([[]], "&{n}"))
-        otherwise: (([["let scrutinee = {EmEx s};"]], "scrutinee"))
+        otherwise: (([["let scrutinee = {Expression s};"]], "scrutinee"))
     let n = Len arms
     let lines = Each (Range0 n), \|i|
         let a = Or arms[i], (XArm(pat=PaWild, conds=[[]], body=(XRaw "()")))
         let catchAll = (a.pat == PaWild) and (Len a.conds) == 0
-        if catchAll: EmEx a.body
+        if catchAll: Expression a.body
         else:
-            let head = Join (Append [["let {EmPa a.pat} = {scrut}"]], (Each a.conds, \|c| EmCond c)), " && "
-            TmChainArm head, label, (EmContinued (EmEx a.body), "    ")
+            let head = Join (Append [["let {Pattern a.pat} = {scrut}"]], (Each a.conds, \|c| Condition c)), " && "
+            ChainArm head, label, (Continued (Expression a.body), "    ")
     let ends = match ?Last arms:
         ? a: (a.pat == PaWild) and (Len a.conds) == 0
         nil: False
@@ -209,15 +209,15 @@ fn EmChain label, s, arms:
     "{label}: \{\n{Indent (Join (Append (Append bind, lines), tail), "\n")}\n\}"
 
 # A text placed after other text on an indented line: its later lines take the indent.
-EmContinued: fn Text, Text -> Text
-fn EmContinued t, pad:
+Continued: fn Text, Text -> Text
+fn Continued t, pad:
     let ls = Split t, "\n"
     Join (Each (Range0 (Len ls)), \|i| if i == 0 or (Or ls[i], "") == "": Or ls[i], "" else: "{pad}{Or ls[i], ""}"), "\n"
 
 # A function's body: a block's statements and value without its braces.
-EmBody: unbounded fn Ex -> Text
-fn EmBody (XBlock dos, e) = if (Len dos) == 0: EmBody e else: "{EmDos dos}\n{EmBody e}"
-fn EmBody x = EmEx x
+BodyLines: unbounded fn Ex -> Text
+fn BodyLines (XBlock dos, e) = if (Len dos) == 0: BodyLines e else: "{Statements dos}\n{BodyLines e}"
+fn BodyLines x = Expression x
 
 # Every line of a text four spaces in.
 Indent: fn Text -> Text
@@ -227,304 +227,304 @@ fn Indent t = Join (Each (Split t, "\n"), \|l| if l == "": "" else: "    {l}"), 
 # Patterns and statements
 # ---------------------------------------------------------------------------------------
 
-EmPa: unbounded fn Pa -> Text
-fn EmPa p = match p:
+Pattern: unbounded fn Pa -> Text
+fn Pattern p = match p:
     PaWild: "_"
     PaBind n: n
-    PaCtor c, ps: "{c}({Join (Each ps, \|q| EmPa q), ", "})"
+    PaCtor c, ps: "{c}({Join (Each ps, \|q| Pattern q), ", "})"
     PaUnit c: c
     PaRecord c, fs, rest:
         let parts = Each fs, \|((f, q))| match q:
             PaBind n: if n == f: f else: "{f}: {n}"
-            otherwise: "{f}: {EmPa q}"
+            otherwise: "{f}: {Pattern q}"
         let all = if rest: Push parts, ".." else: parts
         "{c} \{ {Join all, ", "} \}"
-    PaTuple [[one]]: "({EmPa one},)"
-    PaTuple ps: "({Join (Each ps, \|q| EmPa q), ", "})"
+    PaTuple [[one]]: "({Pattern one},)"
+    PaTuple ps: "({Join (Each ps, \|q| Pattern q), ", "})"
     PaLit t: t
-    PaTyped q, t: "{EmPa q}: {EmTy t}"
+    PaTyped q, t: "{Pattern q}: {Type t}"
 
-EmDos: unbounded fn [Do] -> Text
-fn EmDos dos = Join (Each dos, \|d| EmDo d), "\n"
+Statements: unbounded fn [Do] -> Text
+fn Statements dos = Join (Each dos, \|d| Statement d), "\n"
 
-EmDo: unbounded fn Do -> Text
-fn EmDo d = match d:
-    DoLet p, x: "let {EmPa p} = {EmEx x};"
-    DoLetElse p, x, e: "let {EmPa p} = {EmEx x} else \{ {EmEx e} \};"
-    DoAssign p, x: "{EmEx p} = {EmEx x};"
-    DoWhile c, body: TmIfStmt "while {EmEx c}", (EmDos body)
-    DoWhileLet p, x, body: TmIfStmt "while let {EmPa p} = {EmEx x}", (EmDos body)
-    DoFor p, x, body: TmIfStmt "for {EmPa p} in {EmEx x}", (EmDos body)
-    DoExpr x: "{EmEx x};"
-    DoIf c, t, e: "{TmIfStmt "if {EmEx c}", (EmDos t)}{EmElse e}"
-    DoIfLet p, x, t, e: "{TmIfStmt "if let {EmPa p} = {EmEx x}", (EmDos t)}{EmElse e}"
-    DoMatch x, cases: TmMatch (EmEx x), (Join (Each cases, \|((p, body))| TmArmBlock (EmPa p), (EmDos body)), "\n")
-    DoReturn x: "return {EmEx x};"
+Statement: unbounded fn Do -> Text
+fn Statement d = match d:
+    DoLet p, x: "let {Pattern p} = {Expression x};"
+    DoLetElse p, x, e: "let {Pattern p} = {Expression x} else \{ {Expression e} \};"
+    DoAssign p, x: "{Expression p} = {Expression x};"
+    DoWhile c, body: IfStmt "while {Expression c}", (Statements body)
+    DoWhileLet p, x, body: IfStmt "while let {Pattern p} = {Expression x}", (Statements body)
+    DoFor p, x, body: IfStmt "for {Pattern p} in {Expression x}", (Statements body)
+    DoExpr x: "{Expression x};"
+    DoIf c, t, e: "{IfStmt "if {Expression c}", (Statements t)}{ElseBranch e}"
+    DoIfLet p, x, t, e: "{IfStmt "if let {Pattern p} = {Expression x}", (Statements t)}{ElseBranch e}"
+    DoMatch x, cases: Match (Expression x), (Join (Each cases, \|((p, body))| ArmBlock (Pattern p), (Statements body)), "\n")
+    DoReturn x: "return {Expression x};"
     DoNote t: "// {t}"
 
 # An `else`, `else if` for a lone `if` inside.
-EmElse: unbounded fn [Do] -> Text
-fn EmElse [[]] = ""
-fn EmElse [[(DoIf c, t, e)]] = " else {EmDo (DoIf c, t, e)}"
-fn EmElse [[(DoIfLet p, x, t, e)]] = " else {EmDo (DoIfLet p, x, t, e)}"
-fn EmElse body = TmElse (EmDos body)
+ElseBranch: unbounded fn [Do] -> Text
+fn ElseBranch [[]] = ""
+fn ElseBranch [[(DoIf c, t, e)]] = " else {Statement (DoIf c, t, e)}"
+fn ElseBranch [[(DoIfLet p, x, t, e)]] = " else {Statement (DoIfLet p, x, t, e)}"
+fn ElseBranch body = Else (Statements body)
 
 # ---------------------------------------------------------------------------------------
 # Items
 # ---------------------------------------------------------------------------------------
 
-EmGenerics: fn [((Text, [Text]))] -> Text
-fn EmGenerics [[]] = ""
-fn EmGenerics gs = "<{Join (Each gs, \|((g, bs))| if (Len bs) == 0: g else: "{g}: {Join bs, " + "}"), ", "}>"
+Generics: fn [((Text, [Text]))] -> Text
+fn Generics [[]] = ""
+fn Generics gs = "<{Join (Each gs, \|((g, bs))| if (Len bs) == 0: g else: "{g}: {Join bs, " + "}"), ", "}>"
 
-EmGenericNames: fn [Text] -> Text
-fn EmGenericNames [[]] = ""
-fn EmGenericNames ps = "<{Join ps, ", "}>"
+GenericNames: fn [Text] -> Text
+fn GenericNames [[]] = ""
+fn GenericNames ps = "<{Join ps, ", "}>"
 
-EmBounded: fn [Text], Text -> Text
-fn EmBounded [[]], ignore = ""
-fn EmBounded ps, tr = "<{Join (Each ps, \|p| "{p}: {tr}"), ", "}>"
+Bounded: fn [Text], Text -> Text
+fn Bounded [[]], ignore = ""
+fn Bounded ps, tr = "<{Join (Each ps, \|p| "{p}: {tr}"), ", "}>"
 
-EmItem: unbounded fn Item -> Text
-fn EmItem it = match it:
-    ItTrait t: EmTraitDef t
-    ItImpl i: EmImplDef i
-    ItType t: EmTyDef t
-    ItTag t: EmTagDef t
-    ItRow r: EmRowDef r
-    ItFn f: EmFnDef f
-    ItJob j: EmJobDef j
-    ItNode n: EmNodeDef n
+RustItem: unbounded fn Item -> Text
+fn RustItem it = match it:
+    ItTrait t: RustTrait t
+    ItImpl i: RustImpl i
+    ItType t: TypeDecl t
+    ItTag t: RustTag t
+    ItRow r: RustRow r
+    ItFn f: RustFn f
+    ItJob j: RustJob j
+    ItNode n: RustNode n
     ItNote t: "// {t}\n"
-    ItRefused t: "compile_error!(\"{loweringRefusal}{LoEscape t}\");\n"
+    ItRefused t: "compile_error!(\"{loweringRefusal}{Escape t}\");\n"
 
-EmTraitDef: unbounded fn TraitDef -> Text
-fn EmTraitDef t:
-    let ms = Join (Each t.methods, \|f| EmTraitMethod f), "\n"
-    "{TmSourceDoc "", t.doc}pub trait {t.name} \{\n{Indent ms}\n\}\n"
+RustTrait: unbounded fn TraitDef -> Text
+fn RustTrait t:
+    let ms = Join (Each t.methods, \|f| TraitMethod f), "\n"
+    "{SourceDoc "", t.doc}pub trait {t.name} \{\n{Indent ms}\n\}\n"
 
-EmSig: unbounded fn FnDef, Text -> Text
-fn EmSig f, vis:
-    let params = Join (Each f.params, \|((n, t))| "{n}: {EmTy t}"), ", "
-    "{vis}fn {f.name}{EmGenerics f.generics}({params}) -> {EmTy f.ret}"
+Signature: unbounded fn FnDef, Text -> Text
+fn Signature f, vis:
+    let params = Join (Each f.params, \|((n, t))| "{n}: {Type t}"), ", "
+    "{vis}fn {f.name}{Generics f.generics}({params}) -> {Type f.ret}"
 
-EmTraitMethod: unbounded fn FnDef -> Text
-fn EmTraitMethod f = if f.public: TmFn "", (EmSig f, ""), (EmBody f.body) else: "{EmSig f, ""};"
+TraitMethod: unbounded fn FnDef -> Text
+fn TraitMethod f = if f.public: Fn "", (Signature f, ""), (BodyLines f.body) else: "{Signature f, ""};"
 
 # An impl: a program's trait's methods inside it; `^Show`, `^Eq` and `^Ord` as Rust's
 # traits over the method, a function of its own.
-EmImplDef: unbounded fn ImplDef -> Text
-fn EmImplDef i:
-    let head = EmTy i.head
-    let gens = EmGenerics i.generics
+RustImpl: unbounded fn ImplDef -> Text
+fn RustImpl i:
+    let head = Type i.head
+    let gens = Generics i.generics
     if i.cls == "Prelude.Show":
-        let fns = Join (Each i.methods, \|f| EmFnDef f), "\n"
+        let fns = Join (Each i.methods, \|f| RustFn f), "\n"
         let shown = Or (Each i.methods, \|f| f.name)[0], "show"
-        "{fns}\n{TmImpl gens, "Show", head, "fn show(&self, p: &mut Printer)", "p.raw(&{shown}(self).to_string());"}"
+        "{fns}\n{Impl gens, "Show", head, "fn show(&self, p: &mut Printer)", "p.raw(&{shown}(self).to_string());"}"
     else: if i.cls == "Prelude.Eq":
-        let fns = Join (Each i.methods, \|f| EmFnDef f), "\n"
+        let fns = Join (Each i.methods, \|f| RustFn f), "\n"
         let eq = Fold i.methods, "", \|acc, f| if (Take f.name, 2) != "ne" and acc == "": f.name else: acc
-        "{fns}\n{TmImpl gens, "PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}"
-    else: "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Each i.methods, \|f| TmFn "", (EmSig f, ""), (EmBody f.body)), "\n")}\n\}\n"
+        "{fns}\n{Impl gens, "PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}"
+    else: "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body)), "\n")}\n\}\n"
 
-EmFnDef: unbounded fn FnDef -> Text
-fn EmFnDef f:
-    let params = Join (Each f.params, \|((n, t))| "{n}: {EmTy t}"), ", "
+RustFn: unbounded fn FnDef -> Text
+fn RustFn f:
+    let params = Join (Each f.params, \|((n, t))| "{n}: {Type t}"), ", "
     # A function may build a job or a closure over its type parameters, which then live
     # as long as the program (every Prism type does).
-    let sig = "pub fn {f.name}{EmStaticGenerics f.generics}({params}) -> {EmTy f.ret}"
-    TmFn (TmSourceDoc "", f.doc), sig, (EmBody f.body)
+    let sig = "pub fn {f.name}{StaticGenerics f.generics}({params}) -> {Type f.ret}"
+    Fn (SourceDoc "", f.doc), sig, (BodyLines f.body)
 
-EmStaticGenerics: fn [((Text, [Text]))] -> Text
-fn EmStaticGenerics gs = EmGenerics (Each gs, \|((g, bs))| ((g, (Push bs, "'static"))))
+StaticGenerics: fn [((Text, [Text]))] -> Text
+fn StaticGenerics gs = Generics (Each gs, \|((g, bs))| ((g, (Push bs, "'static"))))
 
-EmJobDef: unbounded fn JobDef -> Text
-fn EmJobDef j:
-    let gnames = EmGenericNames (Each j.generics, \|((g, ignore))| g)
+RustJob: unbounded fn JobDef -> Text
+fn RustJob j:
+    let gnames = GenericNames (Each j.generics, \|((g, ignore))| g)
     # Public: a tail call from another module builds the job by its fields.
-    let fields = Join (Each j.fields, \|((n, t))| "pub {n}: {EmTy t},"), "\n"
-    let params = Join (Each j.fields, \|((n, t))| "{n}: {EmTy t}"), ", "
+    let fields = Join (Each j.fields, \|((n, t))| "pub {n}: {Type t},"), "\n"
+    let params = Join (Each j.fields, \|((n, t))| "{n}: {Type t}"), ", "
     # A job is an `Rc<dyn Job>`, so its type parameters live as long as the program.
-    let bounded = EmStaticGenerics j.generics
-    let start = "pub fn {j.start}{bounded}({params}) -> Rc<dyn prism_rtl::Job<{EmTy j.ret}>>"
+    let bounded = StaticGenerics j.generics
+    let start = "pub fn {j.start}{bounded}({params}) -> Rc<dyn prism_rtl::Job<{Type j.ret}>>"
     let startBody = "Rc::new({j.name} \{ {Join (Each j.fields, \|((n, ignore))| n), ", "} \})"
-    TmJob (TmSourceDoc "", j.doc), j.name, gnames, bounded, fields, (EmTy j.ret), (EmBody j.body), start, startBody
+    Job (SourceDoc "", j.doc), j.name, gnames, bounded, fields, (Type j.ret), (BodyLines j.body), start, startBody
 
 # A type, its derives, and its printer and plain-data impls (docs/backend.md, "Printing").
-EmTyDef: unbounded fn TyDef -> Text
-fn EmTyDef t:
+TypeDecl: unbounded fn TyDef -> Text
+fn TypeDecl t:
     let eq = t.eq and not t.floaty
     let ord = t.ord and not t.floaty
     let derives = Join (Filter [["Clone", (if t.eq or t.ord: "PartialEq" else: ""), (if eq or ord: "Eq" else: ""), (if t.ord: "PartialOrd" else: ""), (if ord: "Ord" else: "")]], \|d| d != ""), ", "
-    let head = "{t.name}{EmGenericNames t.params}"
-    let doc = TmSourceDoc "`{t.prism}`:", t.doc
+    let head = "{t.name}{GenericNames t.params}"
+    let doc = SourceDoc "`{t.prism}`:", t.doc
     let decl = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            TmStruct doc, derives, head, (Join (Each c.fields, \|((f, ft))| "pub {f}: {EmTy ft},"), "\n")
-        ShapeUnit: TmTupleStruct doc, derives, head, ""
+            Struct doc, derives, head, (Join (Each c.fields, \|((f, ft))| "pub {f}: {Type ft},"), "\n")
+        ShapeUnit: TupleStruct doc, derives, head, ""
         ShapeNewtype:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            TmTupleStruct doc, derives, head, "({Join (Each c.fields, \|((ignore, ft))| "pub {EmTy ft}"), ", "})"
-        otherwise: TmEnum doc, derives, head, (Join (Each t.cases, \|c| EmCase c), "\n")
-    let show = if t.show == ShownDerived: "\n{EmShowImpl t, head}" else: ""
-    let pod = if t.pod: "\n{EmToPodImpl t, head}\n{EmFromPodImpl t, head}" else: ""
+            TupleStruct doc, derives, head, "({Join (Each c.fields, \|((ignore, ft))| "pub {Type ft}"), ", "})"
+        otherwise: Enum doc, derives, head, (Join (Each t.cases, \|c| EnumCase c), "\n")
+    let show = if t.show == ShownDerived: "\n{ShowImpl t, head}" else: ""
+    let pod = if t.pod: "\n{ToPodImpl t, head}\n{FromPodImpl t, head}" else: ""
     "{decl}{show}{pod}"
 
-EmCase: unbounded fn CaseDef -> Text
-fn EmCase c = if (Len c.fields) == 0: "{c.name}," else: "{c.name}({Join (Each c.fields, \|((ignore, ft))| EmTy ft), ", "}),"
+EnumCase: unbounded fn CaseDef -> Text
+fn EnumCase c = if (Len c.fields) == 0: "{c.name}," else: "{c.name}({Join (Each c.fields, \|((ignore, ft))| Type ft), ", "}),"
 
 # The bound variables of a case, `a0, a1`.
-EmBinders: fn Nat -> [Text]
-fn EmBinders n = Each (Range0 n), \|i| "a{i}"
+Binders: fn Nat -> [Text]
+fn Binders n = Each (Range0 n), \|i| "a{i}"
 
-EmCasePattern: fn TyDef, CaseDef -> Text
-fn EmCasePattern t, c = match t.shape:
-    ShapeNewtype: "{t.name}({Join (EmBinders (Len c.fields)), ", "})"
+CasePattern: fn TyDef, CaseDef -> Text
+fn CasePattern t, c = match t.shape:
+    ShapeNewtype: "{t.name}({Join (Binders (Len c.fields)), ", "})"
     ShapeUnit: t.name
-    otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}({Join (EmBinders (Len c.fields)), ", "})"
+    otherwise: if (Len c.fields) == 0: "{t.name}::{c.name}" else: "{t.name}::{c.name}({Join (Binders (Len c.fields)), ", "})"
 
 # `derive ^Show`: one printer call per constructor; the printer decides the parentheses.
-EmShowImpl: unbounded fn TyDef, Text -> Text
-fn EmShowImpl t, head:
+ShowImpl: unbounded fn TyDef, Text -> Text
+fn ShowImpl t, head:
     let body = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{EmPrismField f}\", &self.{f})"), ", "}]);"
-        otherwise: TmMatchSelf (Join (Each t.cases, \|c| "{EmCasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (EmBinders (Len c.fields)), ", "}]),"), "\n")
-    TmImpl (EmBounded t.params, "Show"), "Show", head, "fn show(&self, p: &mut Printer)", body
+            "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{PrismField f}\", &self.{f})"), ", "}]);"
+        otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (Binders (Len c.fields)), ", "}]),"), "\n")
+    Impl (Bounded t.params, "Show"), "Show", head, "fn show(&self, p: &mut Printer)", body
 
 # A field's Prism spelling: the Rust one without the `_` a keyword took.
-EmPrismField: fn Text -> Text
-fn EmPrismField f = if (Drop f, (Dec (Len f))) == "_": Take f, (Dec (Len f)) else: f
+PrismField: fn Text -> Text
+fn PrismField f = if (Drop f, (Dec (Len f))) == "_": Take f, (Dec (Len f)) else: f
 
-EmToPodImpl: unbounded fn TyDef, Text -> Text
-fn EmToPodImpl t, head:
+ToPodImpl: unbounded fn TyDef, Text -> Text
+fn ToPodImpl t, head:
     let body = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            "Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{EmPrismField f}\", self.{f}.to_pod())"), ", "}])"
-        otherwise: TmMatchSelf (Join (Each t.cases, \|c| "{EmCasePattern t, c} => Pod::Choice(\"{c.prism}\".into(), vec![{Join (Each (EmBinders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"), "\n")
-    let shown = if t.show == ShownOwn: TmShownPod body else: body
-    TmImpl (EmBounded t.params, "ToPod"), "ToPod", head, "fn to_pod(&self) -> Pod", shown
+            "Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{PrismField f}\", self.{f}.to_pod())"), ", "}])"
+        otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => Pod::Choice(\"{c.prism}\".into(), vec![{Join (Each (Binders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"), "\n")
+    let shown = if t.show == ShownOwn: ShownPod body else: body
+    Impl (Bounded t.params, "ToPod"), "ToPod", head, "fn to_pod(&self) -> Pod", shown
 
-EmFromPodImpl: unbounded fn TyDef, Text -> Text
-fn EmFromPodImpl t, head:
+FromPodImpl: unbounded fn TyDef, Text -> Text
+fn FromPodImpl t, head:
     let body = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            "Ok({t.name} \{ {Join (Each c.fields, \|((f, ignore))| "{f}: FromPod::from_pod(field(p, \"{EmPrismField f}\")?)?"), ", "} \})"
+            "Ok({t.name} \{ {Join (Each c.fields, \|((f, ignore))| "{f}: FromPod::from_pod(field(p, \"{PrismField f}\")?)?"), ", "} \})"
         otherwise:
             let arms = Each t.cases, \|c|
                 let n = Len c.fields
                 let made = if n == 0: (if t.shape == ShapeUnit: t.name else: "{t.name}::{c.name}") else: "{if t.shape == ShapeNewtype: t.name else: "{t.name}::{c.name}"}({Join (Each (Range0 n), \|i| "FromPod::from_pod(&a[{i}])?"), ", "})"
                 "Pod::Choice(c, a) if &**c == \"{c.prism}\" && a.len() == {n} => Ok({made}),"
-            TmFromPod (Join arms, "\n"), "a {t.prism}"
-    TmImpl (EmBounded t.params, "FromPod"), "FromPod", head, "fn from_pod(p: &Pod) -> Result<Self, Fault>", body
+            FromPodBody (Join arms, "\n"), "a {t.prism}"
+    Impl (Bounded t.params, "FromPod"), "FromPod", head, "fn from_pod(p: &Pod) -> Result<Self, Fault>", body
 
-EmTagDef: unbounded fn TagDef -> Text
-fn EmTagDef t:
-    let fields = Join (Each t.fields, \|((ignore, f, ft))| "pub {f}: {EmTy ft},"), "\n"
+RustTag: unbounded fn TagDef -> Text
+fn RustTag t:
+    let fields = Join (Each t.fields, \|((ignore, f, ft))| "pub {f}: {Type ft},"), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "(\"{p}\", self.{f}.to_pod())"), ", "
     let derives = if t.pod: "Clone, PartialEq" else: "Clone"
     let reads = Join (Each t.fields, \|((p, f, ignore))| "{f}: FromPod::from_pod(field(p, \"{p}\")?)?"), ", "
-    let back = if t.pod: "\n{TmTagFromPod t.name, t.tagName, reads}" else: ""
-    "{TmTag (TmSourceDoc "The `Level` of `{t.tagName}`:", t.doc), derives, t.name, fields, t.tagName, pods}{back}"
+    let back = if t.pod: "\n{TagFromPod t.name, t.tagName, reads}" else: ""
+    "{Tag (SourceDoc "The `Level` of `{t.tagName}`:", t.doc), derives, t.name, fields, t.tagName, pods}{back}"
 
 # A row kind's enum (pick RV): a variant per tag, printing and crossing as the tag's level.
-EmRowDef: unbounded fn RowDef -> Text
-fn EmRowDef r:
+RustRow: unbounded fn RowDef -> Text
+fn RustRow r:
     let derives = if r.pod: "Clone, PartialEq" else: "Clone"
     let cases = Join (Each r.cases, \|((v, st))| "{v}({st}),"), "\n"
     let pods = Join (Each r.cases, \|((v, ignore))| "{r.name}::{v}(x) => x.to_pod(),"), "\n"
     let reads = Join (Each r.cases, \|((v, st))| "Some(t) if t == {st}::TAG => Ok({r.name}::{v}(FromPod::from_pod(p)?)),"), "\n"
-    let back = if r.pod: "\n{TmRowFromPod r.name, reads}" else: ""
+    let back = if r.pod: "\n{RowFromPod r.name, reads}" else: ""
     # An empty row's enum has no values: its match is over `*self`, with no arms.
     let pods2 = if (Len r.cases) == 0: "_ => unreachable!()," else: pods
-    "{TmRow (TmSourceDoc "`{r.prism}`, a row kind's values:", r.doc), derives, r.name, cases, pods2}{back}"
+    "{Row (SourceDoc "`{r.prism}`, a row kind's values:", r.doc), derives, r.name, cases, pods2}{back}"
 
 # ---------------------------------------------------------------------------------------
 # Nodes and programs
 # ---------------------------------------------------------------------------------------
 
-EmNodeDef: unbounded fn NodeDef -> Text
-fn EmNodeDef n:
-    let fields = Join (Each n.fields, \|((f, t, doc))| "{TmDoc doc}{f}: {EmTy t},"), "\n"
-    let consts = Concat (Each n.consts, \|((c, h, doc))| "{TmDoc "The {doc}."}const {c}: u32 = {h};\n")
-    let params = Concat (Each n.params, \|((p, t))| "{p}: {EmTy t}, ")
+RustNode: unbounded fn NodeDef -> Text
+fn RustNode n:
+    let fields = Join (Each n.fields, \|((f, t, doc))| "{Doc doc}{f}: {Type t},"), "\n"
+    let consts = Concat (Each n.consts, \|((c, h, doc))| "{Doc "The {doc}."}const {c}: u32 = {h};\n")
+    let params = Concat (Each n.params, \|((p, t))| "{p}: {Type t}, ")
     let ret = if n.fallible: "Result<Rc<{n.name}>, Fault>" else: "Rc<{n.name}>"
-    let computed = Filter n.inits, \|((ignore, v))| not (EmIsRaw v)
-    let moved = Filter n.inits, \|((ignore, v))| EmIsRaw v
-    let inits = Join (Append [["path"]], (Each (Append computed, moved), \|((f, v))| EmFieldInit f, v)), ", "
+    let computed = Filter n.inits, \|((ignore, v))| not (IsRaw v)
+    let moved = Filter n.inits, \|((ignore, v))| IsRaw v
+    let inits = Join (Append [["path"]], (Each (Append computed, moved), \|((f, v))| FieldInit f, v)), ", "
     let tail = if n.fallible: "Ok(node)" else: "node"
-    let restText = if (Len n.build) == 0: tail else: "{EmDos n.build}\n{tail}"
-    let build = TmBuild n.name, params, ret, (EmDos n.lets), inits, restText
-    let methods = Join (Each n.methods, \|m| EmMethod m), "\n"
-    let answer = if (Len n.answers) == 0: "" else: TmAnswer (Join (Each n.answers, \|((pat, call))| "{pat} => {EmEx call},"), "\n")
-    let builders = Concat (Append (Each n.builders, \|b| "\n{EmForDef b}"), (Each n.gens, \|gd| "\n{EmGenDef gd}"))
-    let rowImpl = if n.rowKind == NotARow: "" else: "\n{EmRowImpl n}"
-    let hooks = Join (Each n.hooks, \|((h, body))| if h == "push": TmPushHook (EmDos body) else: TmHook h, (EmDos body)), "\n"
-    let doc = TmSourceDoc "`{n.prism}`: a node of its own (docs/backend.md, \"A widget block\").", n.doc
-    "{TmNode doc, n.name, fields, consts, build, "{methods}{builders}", hooks, answer}{rowImpl}"
+    let restText = if (Len n.build) == 0: tail else: "{Statements n.build}\n{tail}"
+    let build = Build n.name, params, ret, (Statements n.lets), inits, restText
+    let methods = Join (Each n.methods, \|m| RustMethod m), "\n"
+    let answer = if (Len n.answers) == 0: "" else: Answer (Join (Each n.answers, \|((pat, call))| "{pat} => {Expression call},"), "\n")
+    let builders = Concat (Append (Each n.builders, \|b| "\n{ForBuilder b}"), (Each n.gens, \|gd| "\n{GenBuilder gd}"))
+    let rowImpl = if n.rowKind == NotARow: "" else: "\n{RustRowImpl n}"
+    let hooks = Join (Each n.hooks, \|((h, body))| if h == "push": PushHook (Statements body) else: Hook h, (Statements body)), "\n"
+    let doc = SourceDoc "`{n.prism}`: a node of its own (docs/backend.md, \"A widget block\").", n.doc
+    "{Node doc, n.name, fields, consts, build, "{methods}{builders}", hooks, answer}{rowImpl}"
 
 # A field initializer that moves a local: written last, after the ones that read it.
-EmIsRaw: fn Ex -> Bool
-fn EmIsRaw (XRaw ignore) = True
-fn EmIsRaw other = False
+IsRaw: fn Ex -> Bool
+fn IsRaw (XRaw ignore) = True
+fn IsRaw other = False
 
 # A `for`'s builder: rows that left torn down, new keys built, kept rows updated.
-EmForDef: unbounded fn ForDef -> Text
-fn EmForDef b = TmForBuild b.name, b.at, (EmEx b.source), (EmTy b.keyTy), (EmTy b.valueTy), b.rowNode, (Concat (Each b.passed, \|x| ", {EmEx x}"))
+ForBuilder: unbounded fn ForDef -> Text
+fn ForBuilder b = ForBuild b.name, b.at, (Expression b.source), (Type b.keyTy), (Type b.valueTy), b.rowNode, (Concat (Each b.passed, \|x| ", {Expression x}"))
 
 # A `rebuild`'s builder: the old generation torn down, the next one built.
-EmGenDef: unbounded fn GenDef -> Text
-fn EmGenDef gd = TmGenBuild gd.name, gd.at, (EmEx gd.source), (EmTy gd.valueTy), (EmEx gd.select)
+GenBuilder: unbounded fn GenDef -> Text
+fn GenBuilder gd = GenBuild gd.name, gd.at, (Expression gd.source), (Type gd.valueTy), (Expression gd.select)
 
 # A row's leaving (prelude `Row`): its places torn down, its subscriptions let go.
-EmRowImpl: unbounded fn NodeDef -> Text
-fn EmRowImpl n = TmRowImpl n.name, (Join (Each n.subs, \|((ev, m, ignore))| "if let (Some(p), Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"), "\n")
+RustRowImpl: unbounded fn NodeDef -> Text
+fn RustRowImpl n = RowImpl n.name, (Join (Each n.subs, \|((ev, m, ignore))| "if let (Some(p), Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"), "\n")
 
-EmMethod: unbounded fn MethDef -> Text
-fn EmMethod m:
+RustMethod: unbounded fn MethDef -> Text
+fn RustMethod m:
     let recv = match m.recv:
         RecvRc: "self: &Rc<Self>"
         RecvRef: "&self"
     let cx = match m.cx:
         CxMut: ", cx: &mut Cx"
         CxRef: ", cx: &Cx"
-    let params = Concat (Each m.params, \|((p, t))| ", {p}: {EmTy t}")
-    let ret = if m.ret == RsUnit: "" else: " -> {EmTy m.ret}"
+    let params = Concat (Each m.params, \|((p, t))| ", {p}: {Type t}")
+    let ret = if m.ret == RsUnit: "" else: " -> {Type m.ret}"
     let sig = "fn {m.name}({recv}{params}{cx}){ret}"
-    let body = if m.ret == RsUnit: EmDos m.body else: if (Len m.body) == 0: EmBody m.tail else: "{EmDos m.body}\n{EmBody m.tail}"
-    TmMethod (TmDoc m.doc), sig, body
+    let body = if m.ret == RsUnit: Statements m.body else: if (Len m.body) == 0: BodyLines m.tail else: "{Statements m.body}\n{BodyLines m.tail}"
+    Method (Doc m.doc), sig, body
 
-EmProgram: unbounded fn ProgDef, Bool -> Text
-fn EmProgram p, fallible:
+RustProgram: unbounded fn ProgDef, Bool -> Text
+fn RustProgram p, fallible:
     let n = Len p.params
     let names = Each p.params, \|((a, ignore))| a
-    let decode = if n == 0: "let _ = args;" else: EmDecodeArgs p, names
+    let decode = if n == 0: "let _ = args;" else: DecodeArgs p, names
     let call = "{p.node}::build(Path::root(), {Concat (Each names, \|a| "{a}, ")}&mut cx){if fallible: "?" else: ""}"
-    TmProgram p.name, p.prism, p.node, decode, call
+    Program p.name, p.prism, p.node, decode, call
 
-EmDecodeArgs: unbounded fn ProgDef, [Text] -> Text
-fn EmDecodeArgs p, names:
+DecodeArgs: unbounded fn ProgDef, [Text] -> Text
+fn DecodeArgs p, names:
     let n = Len names
     let plural = if n == 1: "" else: "s"
     let head = "let [{Join names, ", "}] = args else \{ return Err(Fault::answer(\"@{p.prism} takes {n} argument{plural}\")) \};"
-    Join (Append [[head]], (Each p.params, \|((a, t))| "let {a} = {EmDecodeHead t}::from_pod({a})?;")), "\n"
+    Join (Append [[head]], (Each p.params, \|((a, t))| "let {a} = {DecodeHead t}::from_pod({a})?;")), "\n"
 
 # ---------------------------------------------------------------------------------------
 # The crate
 # ---------------------------------------------------------------------------------------
 
-EmModule: unbounded fn ModDef -> Text
-fn EmModule m:
+RustModule: unbounded fn ModDef -> Text
+fn RustModule m:
     let uses = if (Len m.uses) == 0: "" else: "#[allow(unused_imports)]\nuse crate::\{{Join m.uses, ", "}\};"
-    TmModule (if m.prism == "": "The root module" else: "The module `{m.prism}`"), m.path, uses, (Join (Each m.items, \|it| EmItem it), "\n")
+    Module (if m.prism == "": "The root module" else: "The module `{m.prism}`"), m.path, uses, (Join (Each m.items, \|it| RustItem it), "\n")
 
 # Whether a node is built fallibly: the program's `?`.
-EmNodeFallible: fn Model, Text -> Bool
-fn EmNodeFallible model, path = Fold model.mods, False, \|f, m| Fold m.items, f, \|f2, it| match it:
+NodeFallible: fn Model, Text -> Bool
+fn NodeFallible model, path = Fold model.mods, False, \|f, m| Fold m.items, f, \|f2, it| match it:
     ItNode n: f2 or ("{m.name}::{n.name}" == path and n.fallible)
     otherwise: f2
 
@@ -534,24 +534,24 @@ fn EmitCrate model, runtime, scripts:
     let gui = match model.?root:
         ? r: r.world == "canvas"
         nil: False
-    let cargo = TmCargo model.name, runtime, (if gui: "\"canvas\"" else: "")
+    let cargo = Cargo model.name, runtime, (if gui: "\"canvas\"" else: "")
     let mods = Concat (Each model.mods, \|m| "mod {m.name};\n")
-    let programs = Join (Each (EmAllPrograms model), \|p| EmProgram p, (EmNodeFallible model, p.node)), "\n"
+    let programs = Join (Each (AllPrograms model), \|p| RustProgram p, (NodeFallible model, p.node)), "\n"
     let regs = Concat (Each model.programs, \|p| ".program::<{p.name}>(\"{p.prism}\")\n")
-    let checks = Concat (Each model.checks, \|c| ".check(\"{c.name}\", || vec![{Join (Each c.lines, \|l| EmEx l), ", "}])\n")
-    let scriptList = Concat (Each scripts, \|s| "\"{LoEscape s}\",\n")
+    let checks = Concat (Each model.checks, \|c| ".check(\"{c.name}\", || vec![{Join (Each c.lines, \|l| Expression l), ", "}])\n")
+    let scriptList = Concat (Each scripts, \|s| "\"{Escape s}\",\n")
     let runRoot = match model.?root:
-        ? r: TmRunRoot r.name
-        nil: TmNoRoot model.name
+        ? r: RunRoot r.name
+        nil: NoRoot model.name
     let world = match model.?root:
         ? r: r.world
         nil: "test"
-    let main = TmMain model.name, "mod prelude;\n{mods}", "{EmRowDef model.elem}\n{programs}", "{regs}{checks}", scriptList, runRoot, world
-    let files = Each model.mods, \|m| (("src/{m.name}.rs", (EmModule m)))
-    Append [[(("Cargo.toml", cargo)), (("src/main.rs", main)), (("src/prelude.rs", (TmPrelude "")))]], files
+    let main = Main model.name, "mod prelude;\n{mods}", "{RustRow model.elem}\n{programs}", "{regs}{checks}", scriptList, runRoot, world
+    let files = Each model.mods, \|m| (("src/{m.name}.rs", (RustModule m)))
+    Append [[(("Cargo.toml", cargo)), (("src/main.rs", main)), (("src/prelude.rs", (PreludeSource "")))]], files
 
 # Every program, the root's among them, once.
-EmAllPrograms: fn Model -> [ProgDef]
-fn EmAllPrograms model = match model.?root:
+AllPrograms: fn Model -> [ProgDef]
+fn AllPrograms model = match model.?root:
     ? r: if Fold model.programs, False, \|f, p| f or p.name == r.name: model.programs else: Push model.programs, r
     nil: model.programs

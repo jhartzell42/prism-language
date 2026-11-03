@@ -364,7 +364,7 @@ fn CompileProgram job:
             if (Len refused) == 0: Compiled(files=files, failed=False, report="")
             else: Compiled(files=files, failed=True, report="{Concat (Each refused, \|r| "error[not-lowered]: {r}\n")}{Len refused} construct{if (Len refused) == 1: "" else: "s"} the back end does not lower (the crate is written, with a `compile_error!` at each)")
 
-# What lowering refused, as the emitted text marks it (`Lower.LoTodo`, whose words these
+# What lowering refused, as the emitted text marks it (`Lower.Refusal`, whose words these
 # are): each distinct message once.
 Refusals: fn Text -> [Text]
 fn Refusals text:
