@@ -1,0 +1,36 @@
+# Derived by hand from D6 as ruled (every turn of a `while` the shrink check does not clear is a cycle point, as `Top` shows: the entry, then one cycle per test of the condition, the first in the cycle that reaches the loop): `InIf` is `Top` under a plain `if`, 5 ticks; `Nested` 2 has 3 outer tests, each true one reaching an inner loop of 3 tests, the outer test after an inner loop ends in a cycle of its own: 1 + (1 + 2) + (1 + 2) + 1 = 8 ticks.
+test a_top_loop_turns_a_cycle_each
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 5 ticks, 1 to 5
+
+tick 5
+  changed:
+    1: Ui.Label(text="3")
+
+test a_loop_in_an_if_turns_a_cycle_each
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 5 ticks, 1 to 5
+
+tick 5
+  changed:
+    1: Ui.Label(text="3")
+
+test nested_loops_turn_a_cycle_each
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 8 ticks, 1 to 8
+
+tick 8
+  changed:
+    1: Ui.Label(text="4")

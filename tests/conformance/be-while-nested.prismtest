@@ -1,0 +1,17 @@
+# Audited: Top turns a cycle a test of its condition (5 ticks for 3), and InIf and Nested must count the same way (gap LP).
+# The nested loops' tests: declarations of be-while-nested.prism (Semantics chapter 7).
+
+test a_top_loop_turns_a_cycle_each, @TopShown 3:
+    build
+    compute until idle
+        => expect Ui.Label(text="3")
+
+test a_loop_in_an_if_turns_a_cycle_each, @InIfShown 3:
+    build
+    compute until idle
+        => expect Ui.Label(text="3")
+
+test nested_loops_turn_a_cycle_each, @NestedShown 2:
+    build
+    compute until idle
+        => expect Ui.Label(text="4")
