@@ -4,7 +4,8 @@
 //! walks them in Graph's order (Graph ch. 4, "A tick, in order"):
 //!
 //! 1. last round's undone clean-ups; the started list and the armed `@Defer`s fire; the
-//!    answers by path and the pushes by element;
+//!    answers a host's supplier computed last tick ([`Cx::answer_later`]), then the
+//!    World's answers by path and its pushes by element;
 //! 2. the wakes by height, a bucket per height, each node once per height;
 //! 3. propagation ends, and every read from here on is after the tick;
 //! 4. the build list (a builder drops what left, then builds); 5. the swap list; 6. the
@@ -63,7 +64,7 @@ pub trait Node: 'static {
 }
 
 /// A list of nodes, each at most once until the walk passes it: a node added again after
-/// its turn is walked again (a host's owner, marked by its child's patch after its own).
+/// its turn is walked again (a builder marked by a row built in the same walk).
 #[derive(Default)]
 struct List {
     nodes: Vec<Rc<dyn Node>>,
@@ -108,10 +109,17 @@ struct Gathered {
     listens: Vec<(Pod, Weak<dyn Node>)>,
     zombies: Vec<Weak<dyn Node>>,
     cleanups: Vec<Rc<dyn Node>>,
-    /// A fault raised where no `Done` goes back (a host building a supplier's blueprint
-    /// for a place its child added): the tick fails at its close.
+    /// The answers a host's supplier computed this tick, each the typed delivery into the
+    /// child's place: inputs of the next tick, which is owed (hosting, [`crate::host`]).
+    later: Vec<Later>,
+    /// A fault raised where no `Done` goes back (a row leaving inside a builder's walk):
+    /// the tick fails at its close.
     fault: Option<Fault>,
 }
+
+/// A computed answer waiting for the next tick: a closure over the typed value and the
+/// node method that takes it.
+pub type Later = Box<dyn FnOnce(&mut Cx) -> Done>;
 
 /// One tick's context: the tick and its read point, the lists, the outputs so far.
 pub struct Cx<'w> {
@@ -201,45 +209,28 @@ impl Cx<'_> {
         self.g.cleanups.push(node);
     }
 
-    /// A place built, with its `Level`: the document takes the value after the tick; a
-    /// host (the scope rides on the path: [`crate::host`]) keeps the level itself and
-    /// reads it at each read point, its child's document being a dynamic within the tick,
-    /// and builds its supplier's blueprint.
-    pub fn added(&mut self, path: Path, level: impl Into<Level>) {
-        let level = level.into();
-        match crate::host::split(&path) {
-            Some((host, at)) => {
-                let done = host.added(at, level, self);
-                self.keep(done);
-            }
-            None => {
-                let now = level.read(self);
-                self.g.edits.push(Edit::Added(path, now))
-            }
-        }
+    /// A place built, with its level: the document takes it.
+    pub fn added(&mut self, path: Path, level: Pod) {
+        self.g.edits.push(Edit::Added(path, level))
     }
     /// A place torn down.
     pub fn removed(&mut self, path: Path) {
-        match crate::host::split(&path) {
-            Some((host, at)) => host.removed(&at, self),
-            None => self.g.edits.push(Edit::Removed(path)),
-        }
+        self.g.edits.push(Edit::Removed(path))
     }
     /// A place whose live fields may have moved: the diff decides.
     pub fn changed(&mut self, path: Path, level: Pod) {
-        match crate::host::split(&path) {
-            Some((host, at)) => host.changed(&at, level, self),
-            None => self.g.edits.push(Edit::Changed(path, level)),
-        }
+        self.g.edits.push(Edit::Changed(path, level))
     }
     /// A request field fired, with its `Edge` value; `field` names it when the tag has
-    /// several. A hosted child's request is the host's: it reaches the World only through
-    /// a forwarding blueprint.
+    /// several.
     pub fn request(&mut self, path: Path, field: Option<&str>, value: Pod) {
-        match crate::host::split(&path) {
-            Some((host, at)) => host.request(&at, field, value, self),
-            None => self.g.requests.push(Request { path, field: field.map(Into::into), value }),
-        }
+        self.g.requests.push(Request { path, field: field.map(Into::into), value })
+    }
+    /// An answer a host's supplier computed (an event output's firing, a dynamic output's
+    /// update): delivered to the child's place as an input of the next tick, which is owed
+    /// (Semantics ch. 9 as ruled: a computed answer is a tick late, like an `@Defer`).
+    pub fn answer_later(&mut self, deliver: Later) {
+        self.g.later.push(deliver)
     }
     /// A fault a cell raises where it holds only `&Cx`: the tick fails at its close.
     pub fn fail_later(&self, f: Fault) {
@@ -263,42 +254,21 @@ impl Cx<'_> {
         let pushed = self.pushes.iter().rev().find(|(e, _)| e == element).map(|(_, v)| v.clone());
         pushed.or_else(|| self.ready.first_value(element))
     }
-    /// The first value of the place at `path`: the World's, or under a hosted child the
-    /// host's, from the dynamic its supplier's blueprint answers the place with (Semantics
-    /// ch. 9, "How a supplier answers").
-    pub fn first_value_at(&mut self, path: &Path, element: &Pod) -> Option<Pod> {
-        match crate::host::split(path) {
-            Some((host, at)) => match host.first_value(at, element, self) {
-                Ok(v) => v,
-                Err(f) => {
-                    self.keep(Err(f));
-                    None
-                }
-            },
-            None => self.first_value(element),
-        }
-    }
     /// Register a place for the pushes keyed by its element's value.
     pub fn listen(&mut self, element: Pod, node: &Rc<dyn Node>) {
         self.g.listens.push((element, Rc::downgrade(node)))
     }
-    /// Register the place at `path` for pushes: a hosted child's place hears its host
-    /// instead, which answers it by path.
-    pub fn listen_at(&mut self, path: &Path, element: Pod, node: &Rc<dyn Node>) {
-        if crate::host::split(path).is_none() {
-            self.listen(element, node)
-        }
-    }
 }
 
 /// What a program keeps between ticks besides its root: the tick counter, the started
-/// list, the armed `@Defer`s, the push index, the clean-ups, the document last sent, and
-/// the collector's zombies.
+/// list, the armed `@Defer`s, the computed answers due, the push index, the clean-ups, the
+/// document last sent, and the collector's zombies.
 #[derive(Default)]
 pub struct Runtime {
     tick: Tick,
     started: Vec<Rc<dyn Node>>,
     armed: Vec<Rc<dyn Node>>,
+    later: Vec<Later>,
     listeners: BTreeMap<Pod, Vec<Weak<dyn Node>>>,
     cleanups: Vec<Rc<dyn Node>>,
     document: Document,
@@ -326,6 +296,9 @@ impl Runtime {
         for node in std::mem::take(&mut self.armed) {
             node.deferred(&mut cx)?;
         }
+        for deliver in std::mem::take(&mut self.later) {
+            deliver(&mut cx)?;
+        }
         for (path, v) in &input.answers {
             root.clone().answer(path.segments(), v, &mut cx)?;
         }
@@ -352,8 +325,8 @@ impl Runtime {
         }
         cx.height = None;
         cx.read_at.set(cx.tick + 1);
-        // A patch can mark builders and nodes again (a host's document moves when its
-        // child's places patch): the walks run again until nothing new is listed.
+        // A walk can list nodes for an earlier one (a builder's new row is patched; a row
+        // built in the patch pass is built): the walks run again until nothing new is listed.
         loop {
             List::walk(&mut cx, |cx| &mut cx.g.builds, |n, cx| n.build(cx))?;
             List::walk(&mut cx, |cx| &mut cx.g.swaps, |n, cx| n.swap(cx))?;
@@ -382,13 +355,13 @@ impl Runtime {
         });
         self.collector.watch(g.zombies.into_iter());
         self.cleanups.extend(g.cleanups);
-        (self.started, self.armed, self.tick) = (g.started.nodes, g.armed.nodes, cx.tick);
+        (self.started, self.armed, self.later, self.tick) = (g.started.nodes, g.armed.nodes, g.later, cx.tick);
         Ok(TickOut {
             tick: cx.tick,
             patch: self.document.diff(g.edits),
             requests: g.requests,
             result: g.result,
-            pending: !self.started.is_empty() || !self.armed.is_empty(),
+            pending: !self.started.is_empty() || !self.armed.is_empty() || !self.later.is_empty(),
         })
     }
 
@@ -402,35 +375,5 @@ impl Runtime {
     /// The document as last sent.
     pub fn document(&self) -> &Document {
         &self.document
-    }
-}
-
-/// A place's `Level` as it goes out: fixed for a place with no live fields, or pulled
-/// from its node at the read point, so a host reads the current value during propagation
-/// and the value after the tick from then on.
-#[derive(Clone)]
-pub enum Level {
-    Fixed(Pod),
-    Pulled(Rc<dyn Fn(&Cx) -> Pod>),
-}
-
-impl Level {
-    /// The level at the context's read point.
-    pub fn read(&self, cx: &Cx) -> Pod {
-        match self {
-            Level::Fixed(p) => p.clone(),
-            Level::Pulled(f) => f(cx),
-        }
-    }
-    /// A level pulled from `node` by `f`, held weakly: a node that left reads as `unit`.
-    pub fn pulled<N: 'static>(node: &Rc<N>, f: impl Fn(&N, &Cx) -> Pod + 'static) -> Level {
-        let w = Rc::downgrade(node);
-        Level::Pulled(Rc::new(move |cx| w.upgrade().map(|n| f(&n, cx)).unwrap_or(Pod::Unit)))
-    }
-}
-
-impl From<Pod> for Level {
-    fn from(p: Pod) -> Level {
-        Level::Fixed(p)
     }
 }

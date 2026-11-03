@@ -449,6 +449,17 @@ fn RustRow r:
     let pods2 = if (Len r.cases) == 0: "_ => unreachable!()," else: pods
     "{Row (SourceDoc "`{r.prism}`, a row kind's values:", r.doc), derives, r.name, cases, pods2}{back}"
 
+# `crate::Answer` (pick HO): a variant per element tag with the tag's output; an accessor
+# per variant; the decode of a World's answer by the element's tag. With no element tag the
+# enum is empty, and its matches are over the value, which has none.
+RustAnswer: unbounded fn AnswerDef -> Text
+fn RustAnswer a:
+    let cases = Join (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), "\n"
+    let tags = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Answer::{c.variant}(_) => {c.structPath}::TAG,"), "\n"
+    let accessors = Join (Each a.cases, \|c| AnswerGetter c.accessor, c.variant, c.tagName, (Type c.ty)), "\n"
+    let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Elem::{c.variant}(..) => Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?)),"), "\n"
+    AnswerType cases, tags, accessors, decodes
+
 # ---------------------------------------------------------------------------------------
 # Nodes and programs
 # ---------------------------------------------------------------------------------------
@@ -480,7 +491,7 @@ fn IsRaw other = False
 
 # A `for`'s builder: rows that left torn down, new keys built.
 ForBuilder: unbounded fn ForDef -> Text
-fn ForBuilder b = ForBuild b.name, b.at, (Type b.keyTy), (Type b.valueTy), b.rowNode, (Concat (Each b.passed, \|x| ", {Expression x}"))
+fn ForBuilder b = ForBuild b.name, b.at, (Type b.keyTy), (Type b.valueTy), b.rowNode, b.source, b.parent, (Concat (Each b.passed, \|x| ", {Expression x}"))
 
 # A `rebuild`'s builder: the old generation torn down, the next one built.
 GenBuilder: unbounded fn GenDef -> Text
@@ -488,18 +499,19 @@ fn GenBuilder gd = GenBuild gd.name, gd.at, (Expression gd.source), (Type gd.val
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, since
 # its key is gone from the source after it (R8); its places are torn down; its
-# subscriptions let go.
+# subscriptions let go. A hosted row's `Row` methods beside it.
 RustRowImpl: unbounded fn NodeDef -> Text
 fn RustRowImpl n:
     let kept = if n.rowKind == ForRow: [["*self.left_entry.borrow_mut() = Some(self.entry(cx));"]] else: [[]]
     let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if let (Some(p), Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"
-    RowImpl n.name, (Join (Append (Push kept, "self.remove_places(cx);"), unsubscribe), "\n")
+    RowImpl n.name, (Join (Append (Push kept, "self.remove_places(cx);"), unsubscribe), "\n"), (Join (Each n.hosted, \|m| RustMethod m), "\n")
 
 RustMethod: unbounded fn MethDef -> Text
 fn RustMethod m:
     let recv = match m.recv:
         RecvRc: "self: &Rc<Self>"
         RecvRef: "&self"
+        RecvOwned: "self: Rc<Self>"
     let cx = match m.cx:
         CxMut: ", cx: &mut Cx"
         CxRef: ", cx: &Cx"
@@ -557,7 +569,7 @@ fn EmitCrate model, runtime, scripts:
     let world = match model.?root:
         ? r: r.world
         nil: "test"
-    let main = Main model.name, "mod prelude;\n{mods}", "{RustRow model.elem}\n{programs}", "{regs}{checks}", scriptList, runRoot, world
+    let main = Main model.name, "mod prelude;\n{mods}", "{RustRow model.elem}\n{RustAnswer model.answer}\n{programs}", "{regs}{checks}", scriptList, runRoot, world
     let files = Each model.mods, \|m| (("src/{m.name}.rs", (RustModule m)))
     Append [[(("Cargo.toml", cargo)), (("src/main.rs", main)), (("src/prelude.rs", (PreludeSource "")))]], files
 

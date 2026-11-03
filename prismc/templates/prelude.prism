@@ -558,9 +558,32 @@ impl Wakes {
     }
 }
 
-/// A row of a `for` or a generation of a `rebuild`: a node its builder tears down.
+/// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
+/// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
+/// own places, by their paths relative to the row, and a host's typed answer to one of them.
 pub trait Row: Node {
     fn leave_row(&self, cx: &mut Cx);
+    fn document(&self, cx: &Cx) -> Vec<(Path, crate::Elem)> {
+        let _ = cx;
+        Vec::new()
+    }
+    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Answer, cx: &mut Cx) -> Done {
+        let _ = (v, cx);
+        Err(Fault::answer(format!("no hosted place at {} to answer: the row is not hosted", Path(at.to_vec()))))
+    }
+}
+
+/// A host's own rows (prism_rtl's), which its `for` builds and tears down like any row.
+impl Row for prism_rtl::HostRow<crate::Elem, crate::Answer> {
+    fn leave_row(&self, cx: &mut Cx) {
+        prism_rtl::HostRow::leave_row(self, cx)
+    }
+    fn document(&self, cx: &Cx) -> Vec<(Path, crate::Elem)> {
+        prism_rtl::HostRow::document(self, cx)
+    }
+    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Answer, cx: &mut Cx) -> Done {
+        prism_rtl::HostRow::deliver(&self, at, v, cx)
+    }
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle

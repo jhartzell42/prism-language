@@ -1,471 +1,432 @@
-//! Hosting (Semantics ch. 9, "`@HostDocument` and its forms"; docs/backend.md,
-//! "Hosting"): a host node holds its child and, per place of the child, the blueprint
-//! its supplier answers that place with, built at `host/[p]` in the host's own scope.
+//! Hosting (Semantics ch. 9, "`@HostDocument` and its forms"; docs/backend.md, "Hosting"):
+//! what is the same in every program when a host document is lowered as a `for` over its
+//! child's document.
 //!
-//! The boundary between a host and its child is plain data, as a World's is: the child's
-//! places reach the host as `Pod` levels, an answer goes down by path through the
-//! child's `Node::answer`, and a first value comes from the dynamic the place's blueprint
-//! answers with. A supplier's output type is its own per place (rank 2), so a blueprint
-//! answers with an [`Answering`], its output as plain data.
+//! A host is Prism inside the same graph and the same tick. The compiler inlines the hosted
+//! child into the node of the host's block (its owner), in a scope of its own, and emits
+//! for the host two typed methods on the owner: the child's document `$doc` as a getter
+//! (`host_k_doc`: every child place by its path relative to the child, each a snapshot
+//! `Elem`) and a dispatch from a child place's path and a typed answer into the child's
+//! input method (`host_k_answer`). The owner holds a [`Host`] made of those two, and a
+//! `for` over the document whose rows are [`HostRow`]s: one per child place, built when the
+//! key appears in `$doc` after a tick and torn down at the end of the tick its key leaves
+//! (R7, R8, the `for` machinery of the emitted code). Nothing here is plain data: the
+//! child's elements are `E`, the program's `Elem` enum, and an answer is `A`, the program's
+//! `Answer` enum (one variant per tag, carrying that tag's output type).
 //!
-//! **The scope rides on the path.** Every widget constructor takes its path, and a
-//! hosted child's paths start with [`Segment::Host`]: `Cx::added`, `changed`, `removed`,
-//! `request`, `first_value_at` and `listen_at` send what is under a host to the host, the
-//! rest to the document. Rows and generations inside the child build at paths under the
-//! child's, so they inherit the scope with no argument of their own.
+//! A row calls the supplier with the place's path and its live element ([`Live`]: the
+//! identity, and the level over time read through the owner's document) and builds the
+//! blueprint it answers with at `host/[p]`, handing it a [`Sink`], the typed way back into
+//! the child's place. The blueprint forms decide *when* an answer reaches the child:
 //!
-//! - **The transparent rule.** A forwarding blueprint ([`element_blueprint`],
-//!   `@Element e`) re-emits the child's element at its own place `host/[p]/0` and hands
-//!   every answer there back to the child's place, so a host that forwards everything is
-//!   observably not there, under deeper paths outside.
-//! - **The child is inlined into the host's owner**, the node of the host's block: its
-//!   places emit under the host's child path, and the host answers one by calling the
-//!   owner's `Node::answer` under that path.
-//! - **The child's document is a dynamic within the tick**: each child place's `Level`
-//!   is pulled from the owner node at the read point ([`Level::Pulled`]), so `$doc` reads
-//!   the current levels during propagation and the levels after the tick from then on,
-//!   like any `$`. Nothing is stored and nothing is written by the patch pass; the
-//!   owner's places and builders that read `$doc` are marked by the child's own holds,
-//!   which the compiler closes over (`prismc`, the host line's reads).
-//! - **The sandbox law** is the checker's (the remainder row at the forwarding arm,
-//!   Semantics ch. 9); at run time nothing the child emits reaches the document except
-//!   through a blueprint the supplier built.
+//! - **Forwarding** ([`element_blueprint`], `@Element e`) is re-emission: a new element of
+//!   the host's own at `host/[p]/0` whose level follows `e`'s, and whose answers and
+//!   pushes from the World go to the child's place in the same tick, as the tick's
+//!   inputs. A host that forwards everything is observably not there. A host in a hosted
+//!   scope re-emits into the enclosing host's document instead ([`Host::enclosing`]).
+//! - **A computed answer** is delayed: an event output's firing ([`event_blueprint`]) or a
+//!   dynamic output's later update ([`dynamic_blueprint`]) is queued with
+//!   [`Cx::answer_later`] and delivered as an input of the next tick, which is owed
+//!   (`pending`, like an armed `@Defer`). A dynamic output's first value is read in the
+//!   birth tick, synchronously (as a World's first-value query is), and a plain output
+//!   ([`plain_blueprint`]) is the first value once. A computed answer in flight to a place
+//!   whose key left is dropped (`HostRow::left`). Nested hosts add one tick per computing
+//!   layer and none per forwarding layer.
 //!
-//! Written by Claude, 2 November 2026, on the claude-self-hosting branch. Subject to
-//! change.
+//! **First values.** A child place with a first value asks its host at its build
+//! ([`Host::first_value`]), before the owner's node exists: the supplier row for that place
+//! is built early and kept for the builder, which finds it present. This is the one early
+//! construction, and it is why a [`Host`] reaches its owner through a link filled in once
+//! the node is made ([`Host::link`]).
+//!
+//! Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change.
 
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
-use std::fmt;
-use std::hash::{Hash, Hasher};
 use std::rc::{Rc, Weak};
 
 use crate::cells::{Dynamic, Event, Handle, Live, Port};
 use crate::collections::Map;
-use crate::cx::{Cx, Done, Level, Node};
-use crate::pod::{Fault, FromPod, Path, Pod, Segment, ToPod};
+use crate::cx::{Cx, Done, Node};
+use crate::pod::{Fault, Path, Pod, Segment, ToPod};
 
-/// A blueprint's output as plain data: how it answers the child's place.
-#[derive(Clone)]
-pub enum Answering {
-    /// A plain or constant output: the place's first value, never updated.
-    Constant(Pod),
-    /// An event output: each firing is an answer to the place.
-    Event(Event<Pod>),
-    /// A dynamic output: its value after the tick is the first value, each update a new
-    /// answer.
-    Dynamic(Dynamic<Pod>),
+/// The way back into a child's place: a typed answer, delivered now.
+pub type Sink<A> = Rc<dyn Fn(&A, &mut Cx) -> Done>;
+
+/// What a blueprint built for a child place gives back: its node (whose places are under
+/// the row's path), the place's first value when the output has one, and whether the
+/// blueprint forwards the element (then the child place's requests go out with it, at
+/// the row's `0`, and an enclosing host's answers to that place come back to the child).
+pub struct Supplied<A> {
+    pub node: Rc<dyn Node>,
+    pub first: Option<A>,
+    pub forwards: bool,
 }
 
-impl Answering {
-    /// `@ x` for a plain or constant `x`.
-    pub fn constant<T: ToPod>(v: &T) -> Answering {
-        Answering::Constant(v.to_pod())
-    }
-    /// `@ !e`: each firing as plain data.
-    pub fn event<T: ToPod + Clone + 'static>(e: &Event<T>) -> Answering {
-        let port = Rc::new(Port::new());
-        let out = port.clone();
-        e.port.subscribe(Rc::new(move |v: &T, cx: &mut Cx| out.fire(v.to_pod(), cx)));
-        Answering::Event(Event { owner: e.owner.clone(), port })
-    }
+/// `@o` as a value (docs/backend.md, "Types"): built at a path with the sink that answers
+/// the child's place, in the scope of the host whose row builds it.
+pub type Blueprint<E, A> = Rc<dyn Fn(Path, Sink<A>, &Scope<E, A>, &mut Cx) -> Result<Supplied<A>, Fault>>;
+
+/// A host's supplier, in the `@HostDocument` form: a blueprint for every child place.
+pub type Supplier<E, A> = Rc<dyn Fn(&Path, &Live<E>) -> Blueprint<E, A>>;
+
+/// `@HostSome`'s supplier made `@HostDocument`'s (Semantics ch. 9, the derivation): `nil`
+/// means "not mine, forward it".
+pub fn forward_on_none<E: ToPod + Clone + 'static, A: AnswerOf<E>>(some: Rc<dyn Fn(&Path, &Live<E>) -> Option<Blueprint<E, A>>>) -> Supplier<E, A> {
+    Rc::new(move |p: &Path, e: &Live<E>| match some(p, e) {
+        Some(b) => b,
+        None => element_blueprint(e),
+    })
 }
 
-/// `@a` as a value (docs/backend.md, "Types"): built at a path, a node and its output.
-pub type Blueprint = Rc<dyn Fn(Path, &mut Cx) -> Result<(Rc<dyn Node>, Answering), Fault>>;
+/// The program's answer type, which a World's answer to an element decodes into by the
+/// element's tag (emitted beside `Elem`).
+pub trait AnswerOf<E>: Clone + 'static {
+    fn decode(element: &E, v: &Pod) -> Result<Self, Fault>;
+}
 
-/// A node with no places and nothing to do: what `@ x` builds.
+/// Where a node's places go (docs/backend.md, "Hosting"): the document, or an enclosing
+/// host's document, which answers a first-value query itself.
+pub enum Scope<E, A> {
+    World,
+    Hosted(Rc<dyn HostOf<E, A>>),
+}
+
+// ---------------------------------------------------------------------------------------
+// The blueprint forms
+// ---------------------------------------------------------------------------------------
+
+/// A node with no places and nothing to do.
 struct Inert;
 impl Node for Inert {}
 
-/// `@ x`: no places, the output `x`.
-pub fn pure_blueprint(out: Answering) -> Blueprint {
-    Rc::new(move |_path, _cx| Ok((Rc::new(Inert) as Rc<dyn Node>, out.clone())))
+/// `@ x`: no places, the first value `x`, once.
+pub fn plain_blueprint<E: 'static, A: Clone + 'static>(x: A) -> Blueprint<E, A> {
+    Rc::new(move |_path, _sink, _scope, _cx| Ok(Supplied { node: Rc::new(Inert), first: Some(x.clone()), forwards: false }))
+}
+
+/// `@ never`: no places, no first value, no answer.
+pub fn never_blueprint<E: 'static, A: 'static>() -> Blueprint<E, A> {
+    Rc::new(move |_path, _sink, _scope, _cx| Ok(Supplied { node: Rc::new(Inert), first: None, forwards: false }))
+}
+
+/// A subscription a blueprint's node holds, let go when the row leaves.
+struct Subscribed<T> {
+    port: Rc<Port<T>>,
+    handle: Cell<Option<Handle>>,
+}
+
+impl<T: Clone + 'static> Node for Subscribed<T> {
+    fn leave(self: Rc<Self>, _cx: &mut Cx) -> Done {
+        if let Some(h) = self.handle.take() {
+            self.port.unsubscribe(h);
+        }
+        Ok(())
+    }
+}
+
+/// A computed answer: delivered as an input of the next tick, which is owed.
+fn later<A: Clone + 'static>(sink: &Sink<A>, v: A, cx: &mut Cx) -> Done {
+    let sink = sink.clone();
+    cx.answer_later(Box::new(move |cx| sink(&v, cx)));
+    Ok(())
+}
+
+/// `@ !e`: each firing of `e` is an answer to the child's place, a tick late.
+pub fn event_blueprint<E: 'static, A: Clone + 'static>(e: Event<A>) -> Blueprint<E, A> {
+    Rc::new(move |_path, sink: Sink<A>, _scope, _cx| {
+        let node = Rc::new(Subscribed { port: e.port.clone(), handle: Cell::new(None) });
+        let h = e.port.subscribe(Rc::new(move |v: &A, cx: &mut Cx| later(&sink, v.clone(), cx)));
+        node.handle.set(Some(h));
+        Ok(Supplied { node, first: None, forwards: false })
+    })
+}
+
+/// `@ $d`: the value after the birth tick is the place's first value, read now; each
+/// later update is an answer, a tick late.
+pub fn dynamic_blueprint<E: 'static, A: Clone + 'static>(d: Dynamic<A>) -> Blueprint<E, A> {
+    Rc::new(move |_path, sink: Sink<A>, _scope, cx| {
+        let first = d.sample(cx);
+        let node = Rc::new(Subscribed { port: d.updates.clone(), handle: Cell::new(None) });
+        let read = d.clone();
+        let h = d.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
+            let v = read.sample(cx);
+            later(&sink, v, cx)
+        }));
+        node.handle.set(Some(h));
+        Ok(Supplied { node, first: Some(first), forwards: false })
+    })
 }
 
 /// `@Element e`: the child's element re-emitted at `path/0`, its level following the
-/// child's, every answer there handed back as the blueprint's output (the transparent
-/// rule). A place the World gives a first value answers as a dynamic, pushes included;
-/// any other as an event.
-pub fn element_blueprint<E: ToPod + Clone + 'static>(e: &Live<E>) -> Blueprint {
-    let identity = e.identity.to_pod();
-    let level = e.level.map(|v: &E| v.to_pod());
-    Rc::new(move |path, cx| {
+/// child's, every answer and push there handed to the child's place in the same tick (the
+/// transparent rule). In the World's scope the place goes out with `cx.added` and its first
+/// value is the World's; in a hosted scope nothing goes out (the enclosing host's document
+/// reads the row), and the first value is the enclosing host's.
+pub fn element_blueprint<E: ToPod + Clone + 'static, A: AnswerOf<E>>(e: &Live<E>) -> Blueprint<E, A> {
+    let e = e.clone();
+    Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, cx| {
         let at = path.at(0);
-        let first = cx.first_value_at(&at, &identity);
-        let node = Rc::new(Forward {
-            at: at.clone(),
-            level: level.clone(),
-            port: Rc::new(Port::new()),
-            value: RefCell::new(first.clone()),
-            updates: Rc::new(Port::new()),
-            handle: Cell::new(None),
-        });
-        let weak = Rc::downgrade(&node);
-        let h = level.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
-            if let Some(n) = weak.upgrade() {
-                let now = n.level.sample(cx);
-                cx.changed(n.at.clone(), now);
-            }
-            Ok(())
-        }));
-        node.handle.set(Some(h));
-        cx.added(at.clone(), level.sample(cx));
-        let out = match first {
-            Some(_) => {
-                cx.listen_at(&at, identity.clone(), &(node.clone() as Rc<dyn Node>));
-                let me = node.clone();
-                Answering::Dynamic(Dynamic {
-                    owner: Some(node.clone()),
-                    read: Rc::new(move |_| me.value.borrow().clone().unwrap_or(Pod::Unit)),
-                    updates: node.updates.clone(),
-                })
-            }
-            None => Answering::Event(Event { owner: Some(node.clone()), port: node.port.clone() }),
+        // The level at the build is the identity: a row is built from the entry after the
+        // tick, and an early row's entry cannot be read until its host's node is made.
+        let element = e.identity.to_pod();
+        let first = match scope {
+            Scope::World => cx.first_value(&element).map(|v| A::decode(&e.identity, &v)).transpose()?,
+            Scope::Hosted(host) => host.first_value(&at, &e.identity, cx)?,
         };
-        Ok((node as Rc<dyn Node>, out))
+        let node = Rc::new(Forward { at: at.clone(), element: e.identity.clone(), level: e.level.clone(), sink, handle: Cell::new(None) });
+        if let Scope::World = scope {
+            let weak = Rc::downgrade(&node);
+            let h = e.level.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| {
+                if let Some(n) = weak.upgrade() {
+                    let now = n.level.sample(cx).to_pod();
+                    cx.changed(n.at.clone(), now);
+                }
+                Ok(())
+            }));
+            node.handle.set(Some(h));
+            cx.added(at, element.clone());
+            if first.is_some() {
+                cx.listen(element, &(node.clone() as Rc<dyn Node>));
+            }
+        }
+        Ok(Supplied { node, first, forwards: true })
     })
 }
 
 /// A forwarding blueprint's node: one place, the child's element re-emitted.
-struct Forward {
+struct Forward<E, A> {
     at: Path,
-    level: Dynamic<Pod>,
-    port: Rc<Port<Pod>>,
-    value: RefCell<Option<Pod>>,
-    updates: Rc<Port<()>>,
+    element: E,
+    level: Dynamic<E>,
+    sink: Sink<A>,
+    /// The re-emission on the level's updates, in the World's scope.
     handle: Cell<Option<Handle>>,
 }
 
-impl Forward {
-    fn answered(&self, v: &Pod, cx: &mut Cx) -> Done {
-        let dynamic = self.value.borrow().is_some();
-        if dynamic {
-            *self.value.borrow_mut() = Some(v.clone());
-            self.updates.fire((), cx)
-        } else {
-            self.port.fire(v.clone(), cx)
-        }
-    }
-}
-
-impl Node for Forward {
+impl<E: ToPod + Clone + 'static, A: AnswerOf<E>> Node for Forward<E, A> {
     fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
         match at {
-            [Segment::Pos(0)] => self.answered(v, cx),
+            [Segment::Pos(0)] => (self.sink)(&A::decode(&self.element, v)?, cx),
             _ => Err(Fault::answer(format!("no place at {} under a forwarded element", Path(at.to_vec())))),
         }
     }
     fn push(self: Rc<Self>, _element: &Pod, v: &Pod, cx: &mut Cx) -> Done {
-        self.answered(v, cx)
+        (self.sink)(&A::decode(&self.element, v)?, cx)
     }
     fn leave(self: Rc<Self>, cx: &mut Cx) -> Done {
         if let Some(h) = self.handle.take() {
             self.level.updates.unsubscribe(h);
+            cx.removed(self.at.clone());
         }
-        cx.removed(self.at.clone());
         Ok(())
     }
 }
 
-/// The supplier at the plain-data boundary: a child place's path and live element, the
-/// blueprint answering it, or `None` to forward it (`@HostSome`'s `nil`).
-type PodSupplier = Rc<dyn Fn(&Path, &Live<Pod>, &mut Cx) -> Result<Option<Blueprint>, Fault>>;
+// ---------------------------------------------------------------------------------------
+// The host and the rows of its `for`
+// ---------------------------------------------------------------------------------------
 
-/// One child place as the host holds it: its level, pulled from the owner at each read
-/// point; the level the World side last saw of it, so a forwarded element is re-emitted
-/// when it moved; the blueprint's node and output; and the subscription that answers
-/// the child.
-struct Row {
-    level: Rc<RefCell<Level>>,
-    seen: RefCell<Pod>,
-    moved: Rc<Port<()>>,
-    node: Rc<dyn Node>,
-    out: Answering,
-    handle: Option<Handle>,
+/// A host as its rows reach it: the hosted child's document at the read point, the typed
+/// dispatch into the child's places, a child place's first value (the early construction),
+/// the supplier, and the scope the rows' blueprints build in. Implemented by [`Host`],
+/// which erases the owner's type.
+pub trait HostOf<E, A> {
+    fn document(&self, cx: &Cx) -> Map<Path, E>;
+    fn deliver(&self, place: &Path, v: &A, cx: &mut Cx) -> Done;
+    fn first_value(&self, place: &Path, element: &E, cx: &mut Cx) -> Result<Option<A>, Fault>;
+    fn supplier(&self) -> &Supplier<E, A>;
+    fn scope(&self) -> Scope<E, A>;
 }
 
-/// A host node (`@HostDocument`, `@HostSome`): the child, its document, and a supplier
-/// row per child place at `path/[p]`.
-pub struct Host {
-    id: u64,
-    me: Weak<Host>,
+/// The rows of a host's `for p, e <- $doc`, which the owner keeps in a field.
+pub type Rows<E, A> = Rc<RefCell<Map<Path, Rc<HostRow<E, A>>>>>;
+
+/// A host of owner `P` (the node its line and its child are inlined into): its place, its
+/// rows, its supplier, the enclosing host when the line stands in a hosted scope, and the
+/// owner's two emitted methods, the child's document and the typed dispatch.
+pub struct Host<E, A, P> {
+    me: Weak<Host<E, A, P>>,
+    at: Path,
+    owner: RefCell<Weak<P>>,
+    rows: Rows<E, A>,
+    supplier: Supplier<E, A>,
+    enclosing: Option<Rc<dyn HostOf<E, A>>>,
+    document: fn(&P, &Cx) -> Map<Path, E>,
+    deliver: fn(&Rc<P>, &Path, &A, &mut Cx) -> Done,
+}
+
+impl<E: ToPod + Clone + 'static, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
+    /// Made in the owner's build, before its node: `rows` is the field the `for` keeps,
+    /// `enclosing` the host whose scope the line stands in, if any.
+    pub fn new(at: Path, rows: Rows<E, A>, supplier: Supplier<E, A>, enclosing: Option<Rc<dyn HostOf<E, A>>>, document: fn(&P, &Cx) -> Map<Path, E>, deliver: fn(&Rc<P>, &Path, &A, &mut Cx) -> Done) -> Rc<Host<E, A, P>> {
+        Rc::new_cyclic(|me| Host { me: me.clone(), at, owner: RefCell::new(Weak::new()), rows, supplier, enclosing, document, deliver })
+    }
+
+    /// The owner's node, once made: the rows read the document and answer through it.
+    pub fn link(&self, owner: &Rc<P>) {
+        *self.owner.borrow_mut() = Rc::downgrade(owner);
+    }
+
+    fn owner(&self) -> Rc<P> {
+        self.owner.borrow().upgrade().expect("a host's node is linked at its build and outlives its rows")
+    }
+
+    fn me(&self) -> Rc<dyn HostOf<E, A>> {
+        self.me.upgrade().expect("a host outlives its rows")
+    }
+
+    /// A child place's request: out with its forwarded element, or nowhere when the
+    /// supplier answered the place (a host answers its child; a request reaches a World
+    /// only from an element the host's blueprint emits).
+    pub fn request(&self, place: &Path, field: Option<&str>, value: Pod, cx: &mut Cx) -> Done {
+        let row = self.rows.borrow().get(place).cloned();
+        match row {
+            Some(row) => Ok(row.request(field, value, cx)),
+            None => Err(Fault::answer(format!("a request from {place}, which has no row under the host at {}", self.at))),
+        }
+    }
+}
+
+impl<E: ToPod + Clone + 'static, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
+    fn document(&self, cx: &Cx) -> Map<Path, E> {
+        (self.document)(&self.owner(), cx)
+    }
+    fn deliver(&self, place: &Path, v: &A, cx: &mut Cx) -> Done {
+        (self.deliver)(&self.owner(), place, v, cx)
+    }
+    /// A child place's first value, asked at its build (Semantics ch. 9, "Queries are
+    /// sync"): the supplier row for the place is built now, before the owner's node, and
+    /// kept where the builder finds it. The one early construction.
+    fn first_value(&self, place: &Path, element: &E, cx: &mut Cx) -> Result<Option<A>, Fault> {
+        let row = HostRow::build(self.at.child(Segment::Key(place.to_pod())), place.clone(), element.clone(), self.me(), cx)?;
+        let first = row.first();
+        self.rows.borrow_mut().insert(place.clone(), row);
+        Ok(first)
+    }
+    fn supplier(&self) -> &Supplier<E, A> {
+        &self.supplier
+    }
+    fn scope(&self) -> Scope<E, A> {
+        match &self.enclosing {
+            Some(h) => Scope::Hosted(h.clone()),
+            None => Scope::World,
+        }
+    }
+}
+
+/// One row of a host's `for p, e <- $doc`: the supplier's blueprint for child place `key`,
+/// built at `host/[key]`. Its entry is the projection `$doc[key]` (pick RE), read through
+/// the host while the key is in the document; the row ends at the end of the tick its key
+/// leaves (R8), its blueprint's node with it, and nothing reads its entry after.
+pub struct HostRow<E, A> {
     path: Path,
-    supplier: PodSupplier,
-    rows: RefCell<BTreeMap<Path, Row>>,
-    owner: RefCell<Option<Weak<dyn Node>>>,
+    key: Path,
+    host: Rc<dyn HostOf<E, A>>,
+    /// The key left: a computed answer in flight to the place is dropped.
+    left: Cell<bool>,
+    sink: Sink<A>,
+    supplied: RefCell<Option<Supplied<A>>>,
+    /// The entry moved: readers of the live element's level (a forwarded element) read it
+    /// again.
+    level_moved: Rc<Port<()>>,
 }
 
-thread_local! {
-    static NEXT_HOST: Cell<u64> = const { Cell::new(0) };
-}
-
-/// The host a hosted child's path names, held weakly (the child is the host's).
-#[derive(Clone)]
-pub struct HostRef(u64, Weak<Host>);
-
-impl HostRef {
-    pub fn id(&self) -> u64 {
-        self.0
-    }
-}
-impl PartialEq for HostRef {
-    fn eq(&self, o: &HostRef) -> bool {
-        self.0 == o.0
-    }
-}
-impl Eq for HostRef {}
-impl PartialOrd for HostRef {
-    fn partial_cmp(&self, o: &HostRef) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(o))
-    }
-}
-impl Ord for HostRef {
-    fn cmp(&self, o: &HostRef) -> std::cmp::Ordering {
-        self.0.cmp(&o.0)
-    }
-}
-impl Hash for HostRef {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        self.0.hash(h)
-    }
-}
-impl fmt::Debug for HostRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Host({})", self.0)
-    }
-}
-
-/// A path under a hosted child: its host, and the path relative to the child.
-pub fn split(path: &Path) -> Option<(Rc<Host>, Path)> {
-    match path.segments().first() {
-        Some(Segment::Host(h)) => h.1.upgrade().map(|host| (host, Path(path.segments()[1..].to_vec()))),
-        _ => None,
-    }
-}
-
-impl Host {
-    fn new(path: Path, supplier: PodSupplier) -> Rc<Host> {
-        let id = NEXT_HOST.with(|n| {
-            let id = n.get();
-            n.set(id + 1);
-            id
+impl<E: ToPod + Clone + 'static, A: Clone + 'static> HostRow<E, A> {
+    /// Built after propagation, from the entry after the tick (R7): the supplier is asked
+    /// for the place's blueprint, and the blueprint is built under the row's path, in the
+    /// host's scope. The `for` machinery of the emitted code calls this with the host as
+    /// the row's parent.
+    pub fn build(path: Path, key: Path, value: E, host: Rc<dyn HostOf<E, A>>, cx: &mut Cx) -> Result<Rc<HostRow<E, A>>, Fault> {
+        let node = Rc::new_cyclic(|me: &Weak<HostRow<E, A>>| {
+            let row = me.clone();
+            let sink: Sink<A> = Rc::new(move |v: &A, cx: &mut Cx| match row.upgrade() {
+                // An answer to a row that left, or one that is gone, is dropped (Semantics
+                // ch. 9, "A late result is dropped"): a computed answer in flight to a
+                // place whose key left.
+                Some(row) if !row.left.get() => row.host.deliver(&row.key, v, cx),
+                _ => Ok(()),
+            });
+            HostRow { path, key, host, left: Cell::new(false), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()) }
         });
-        Rc::new_cyclic(|me| Host {
-            id,
-            me: me.clone(),
-            path,
-            supplier,
-            rows: RefCell::new(BTreeMap::new()),
-            owner: RefCell::new(None),
-        })
+        let element = node.element(value);
+        let blueprint = (node.host.supplier())(&node.key, &element);
+        let supplied = blueprint(node.path.clone(), node.sink.clone(), &node.host.scope(), cx)?;
+        *node.supplied.borrow_mut() = Some(supplied);
+        Ok(node)
     }
 
-    /// `@HostDocument @child, supplier`: a blueprint for every place.
-    pub fn each<E: FromPod + Clone + 'static>(path: Path, supplier: Rc<dyn Fn(&Path, &Live<E>) -> Blueprint>) -> Rc<Host> {
-        Host::some(path, Rc::new(move |p: &Path, e: &Live<E>| Some(supplier(p, e))))
+    /// The blueprint's first value: the place's, when its output has one.
+    pub fn first(&self) -> Option<A> {
+        self.supplied.borrow().as_ref().and_then(|s| s.first.clone())
     }
 
-    /// `@HostSome @child, supplier`: `None` forwards the place.
-    pub fn some<E: FromPod + Clone + 'static>(path: Path, supplier: Rc<dyn Fn(&Path, &Live<E>) -> Option<Blueprint>>) -> Rc<Host> {
-        Host::new(
-            path,
-            Rc::new(move |p: &Path, e: &Live<Pod>, _cx: &mut Cx| {
-                let identity = E::from_pod(&e.identity)?;
-                let fallback = identity.clone();
-                let level = e.level.map(move |v: &Pod| E::from_pod(v).unwrap_or_else(|_| fallback.clone()));
-                let live = Live { identity, level };
-                Ok(supplier(p, &live))
-            }),
-        )
+    /// The live element the supplier sees: the place's level at the build, and its level
+    /// over time, the row's entry.
+    fn element(self: &Rc<Self>, identity: E) -> Live<E> {
+        let me = Rc::downgrade(self);
+        let read = Rc::new(move |cx: &Cx| me.upgrade().expect("a live element outlives its host's row").entry(cx));
+        Live { identity, level: Dynamic { owner: None, read, updates: self.level_moved.clone() } }
     }
 
-    /// The root path of the child: every path under it is this host's.
-    pub fn child_path(&self) -> Path {
-        Path(vec![Segment::Host(HostRef(self.id, self.me.clone()))])
-    }
-    /// This host's id, which its child's paths name.
-    pub fn id(&self) -> u64 {
-        self.id
-    }
-    /// The node the host and its child are inlined into: an answer to a child place goes
-    /// to it under the child's path.
-    pub fn set_owner(&self, owner: &Rc<dyn Node>) {
-        *self.owner.borrow_mut() = Some(Rc::downgrade(owner));
+    /// The row's entry, `$doc[key]`, at the read point. The document is the child's
+    /// places as they stand, so a key that left is gone from it at once: the leaving
+    /// unsubscribes every reader of the entry first (`leave_row`), and a read after that
+    /// is a bug of the compiler, not a value.
+    pub fn entry(&self, cx: &Cx) -> E {
+        self.host.document(cx).get(&self.key).cloned().expect("a host row's entry is read only while its key is in the child's document")
     }
 
-    /// The child's document at the context's read point: each place's level, pulled.
-    pub fn document(&self, cx: &Cx) -> BTreeMap<Path, Pod> {
-        self.rows.borrow().iter().map(|(p, r)| (p.clone(), r.level.borrow().read(cx))).collect()
+    fn forwards(&self) -> bool {
+        self.supplied.borrow().as_ref().is_some_and(|s| s.forwards)
     }
 
-    /// The row for child place `at`, built from the supplier's blueprint when it has none
-    /// yet: when the place asks its first value, or when it is added.
-    fn ensure_row(&self, at: &Path, level: Level, cx: &mut Cx) -> Done {
-        if self.rows.borrow().contains_key(at) {
-            return Ok(());
-        }
-        let identity = level.read(cx);
-        let cell = Rc::new(RefCell::new(level));
-        let moved = Rc::new(Port::new());
-        let read = cell.clone();
-        let live = Live {
-            identity: identity.clone(),
-            level: Dynamic { owner: None, read: Rc::new(move |cx| read.borrow().read(cx)), updates: moved.clone() },
-        };
-        let bp = match (self.supplier)(at, &live, cx)? {
-            Some(bp) => bp,
-            None => element_blueprint(&live),
-        };
-        let (node, out) = bp(self.path.child(Segment::Key(Pod::Path(at.clone()))), cx)?;
-        let handle = self.answer_from(at, &out);
-        self.rows.borrow_mut().insert(at.clone(), Row { level: cell, seen: RefCell::new(identity), moved, node, out, handle });
-        Ok(())
-    }
-
-    /// The subscription that answers the child's place from the blueprint's output.
-    fn answer_from(&self, at: &Path, out: &Answering) -> Option<Handle> {
-        let me = self.me.clone();
-        let at = at.clone();
-        match out {
-            Answering::Constant(_) => None,
-            Answering::Event(e) => Some(e.port.subscribe(Rc::new(move |v: &Pod, cx: &mut Cx| match me.upgrade() {
-                Some(h) => h.answer_child(&at, v, cx),
-                None => Ok(()),
-            }))),
-            Answering::Dynamic(d) => {
-                let read = d.clone();
-                Some(d.updates.subscribe(Rc::new(move |_: &(), cx: &mut Cx| match me.upgrade() {
-                    Some(h) => {
-                        let v = read.sample(cx);
-                        h.answer_child(&at, &v, cx)
-                    }
-                    None => Ok(()),
-                })))
-            }
+    /// The child place's request: out with the forwarded element, or nowhere when the
+    /// supplier answered the place.
+    pub fn request(&self, field: Option<&str>, value: Pod, cx: &mut Cx) {
+        if self.forwards() {
+            cx.request(self.path.at(0), field, value);
         }
     }
 
-    fn answer_child(&self, at: &Path, v: &Pod, cx: &mut Cx) -> Done {
-        let owner = self.owner.borrow().as_ref().and_then(Weak::upgrade);
-        match owner {
-            Some(o) => {
-                let mut segs = vec![Segment::Host(HostRef(self.id, self.me.clone()))];
-                segs.extend(at.segments().iter().cloned());
-                o.answer(&segs, v, cx)
-            }
-            None => Ok(()),
-        }
+    /// The row's own places, for an enclosing host's document: the forwarded element at
+    /// `0`, when there is one.
+    pub fn document(&self, cx: &Cx) -> Vec<(Path, E)> {
+        if self.forwards() { vec![(Path::root().at(0), self.entry(cx))] } else { Vec::new() }
     }
 
-    /// A child place's first value: its blueprint's output after the tick, unless that
-    /// is an event.
-    pub fn first_value(&self, at: Path, level: &Pod, cx: &mut Cx) -> Result<Option<Pod>, Fault> {
-        self.ensure_row(&at, Level::Fixed(level.clone()), cx)?;
-        let out = self.rows.borrow().get(&at).map(|r| r.out.clone());
-        Ok(match out {
-            Some(Answering::Constant(v)) => Some(v),
-            Some(Answering::Dynamic(d)) => Some(d.sample(cx)),
-            _ => None,
-        })
-    }
-
-    /// A child place built: its level is the host's to read from now on (a row the
-    /// first-value query built early takes it), and its blueprint is built.
-    pub fn added(&self, at: Path, level: Level, cx: &mut Cx) -> Done {
-        let early = self.rows.borrow().get(&at).map(|r| r.level.clone());
-        match early {
-            Some(cell) => {
-                *cell.borrow_mut() = level;
-                Ok(())
-            }
-            None => self.ensure_row(&at, level, cx),
-        }
-    }
-
-    /// The patch pass pulled a child place's level after the tick: when it moved since
-    /// the World side last saw it, the live element the blueprint reads hears it (a
-    /// forwarded element is re-emitted). The document itself needs nothing: it is read.
-    pub fn changed(&self, at: &Path, level: Pod, cx: &mut Cx) {
-        let row = self.rows.borrow().get(at).map(|r| (r.seen.clone(), r.moved.clone()));
-        if let Some((seen, moved)) = row {
-            if *seen.borrow() == level {
-                return;
-            }
-            *seen.borrow_mut() = level;
-            let done = moved.fire((), cx);
-            cx.keep(done);
-        }
-    }
-
-    /// A child place torn down: its blueprint leaves with it, at the end of the same tick
-    /// (teardown is seen at the host).
-    pub fn removed(&self, at: &Path, cx: &mut Cx) {
-        let row = self.rows.borrow_mut().remove(at);
-        if let Some(r) = row {
-            if let (Some(h), Answering::Event(e)) = (r.handle, &r.out) {
-                e.port.unsubscribe(h);
-            }
-            if let (Some(h), Answering::Dynamic(d)) = (r.handle, &r.out) {
-                d.updates.unsubscribe(h);
-            }
-            let done = r.node.leave(cx);
-            cx.keep(done);
-        }
-    }
-
-    /// A hosted child's request reaches no World: a host answers its child, and a
-    /// request goes out only from an element the host's blueprint emits.
-    pub fn request(&self, _at: &Path, _field: Option<&str>, _value: Pod, _cx: &mut Cx) {}
-}
-
-impl Node for Host {
-    /// An answer at `path/[p]/..`: to the blueprint built for child place `p`.
-    fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
+    /// An enclosing host's typed answer to a place under the row: the forwarded element's,
+    /// handed to the child's place now.
+    pub fn deliver(&self, at: &[Segment], v: &A, cx: &mut Cx) -> Done {
         match at {
-            [Segment::Key(Pod::Path(p)), rest @ ..] => {
-                let node = self.rows.borrow().get(p).map(|r| r.node.clone());
-                match node {
-                    Some(n) => n.answer(rest, v, cx),
-                    None => Err(Fault::answer(format!("no hosted place {p} under {}", self.path))),
-                }
-            }
-            _ => Err(Fault::answer(format!("no place at {} under the host at {}", Path(at.to_vec()), self.path))),
+            [Segment::Pos(0)] if self.forwards() => (self.sink)(v, cx),
+            _ => Err(Fault::answer(format!("no hosted place at {} under the host row at {}", Path(at.to_vec()), self.path))),
+        }
+    }
+
+    /// The key left the child's document: the blueprint's node leaves with the row at the
+    /// end of this tick (R8; a forwarded element is torn down in this tick's patch), and an
+    /// answer in flight is dropped. The emitted prelude's `Row` calls this.
+    pub fn leave_row(&self, cx: &mut Cx) {
+        self.left.set(true);
+        if let Some(s) = self.supplied.borrow_mut().take() {
+            let done = s.node.leave(cx);
+            cx.keep(done);
         }
     }
 }
 
-/// A host's child document as its owner's block reads it, `$(Path ==> Elem c)`.
-pub struct HostDoc<E> {
-    host: Rc<Host>,
-    _e: std::marker::PhantomData<E>,
-}
-
-impl<E: FromPod + Clone> HostDoc<E> {
-    pub fn new(host: &Rc<Host>) -> HostDoc<E> {
-        HostDoc { host: host.clone(), _e: std::marker::PhantomData }
+impl<E: ToPod + Clone + 'static, A: Clone + 'static> Node for HostRow<E, A> {
+    /// A World's answer under the row: to the blueprint's node (a forwarded element).
+    fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
+        let inner = self.supplied.borrow().as_ref().map(|s| s.node.clone());
+        match inner {
+            Some(node) => node.answer(at, v, cx),
+            None => Err(Fault::answer(format!("no place at {} under the host row at {}", Path(at.to_vec()), self.path))),
+        }
     }
-    /// The document at the read point, each level as the program's element.
-    pub fn get(&self, cx: &Cx) -> Map<Path, E> {
-        self.host.document(cx).iter().filter_map(|(p, l)| E::from_pod(l).ok().map(|e| (p.clone(), e))).collect()
+    /// The entry may have moved (the host marked the row): the live element's readers
+    /// read it again, and a forwarded element re-emits.
+    fn patch(self: Rc<Self>, cx: &mut Cx) -> Done {
+        self.level_moved.fire((), cx)
     }
-}
-
-/// A constructor's result, fallible or not, as a `Result`: the host line builds its
-/// child without knowing which.
-pub trait Built<T> {
-    fn built(self) -> Result<T, Fault>;
-}
-impl<T> Built<Rc<T>> for Rc<T> {
-    fn built(self) -> Result<Rc<T>, Fault> {
-        Ok(self)
-    }
-}
-impl<T> Built<Rc<T>> for Result<Rc<T>, Fault> {
-    fn built(self) -> Result<Rc<T>, Fault> {
-        self
-    }
-}
-pub fn built<T, B: Built<T>>(b: B) -> Result<T, Fault> {
-    b.built()
 }

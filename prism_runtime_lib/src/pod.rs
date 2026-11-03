@@ -174,9 +174,6 @@ pub enum Segment {
     Pos(u32),
     Gen(u32),
     Key(Pod),
-    /// The root of a hosted child: the host whose scope its places emit in
-    /// ([`crate::host`]). It heads a child's paths and never reaches a document.
-    Host(crate::host::HostRef),
 }
 
 /// A place's path. The derived order is document order: a path before every path it
@@ -194,6 +191,11 @@ impl Path {
     /// The child at an element statement's position.
     pub fn at(&self, pos: u32) -> Path {
         self.child(Segment::Pos(pos))
+    }
+    /// The path `rest` under this one: a hosted child's place, relative to the child,
+    /// under the child's root.
+    pub fn join(&self, rest: &Path) -> Path {
+        Path(self.0.iter().chain(rest.0.iter()).cloned().collect())
     }
     pub fn segments(&self) -> &[Segment] {
         &self.0

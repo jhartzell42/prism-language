@@ -806,7 +806,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: 55 of 60 pass, chess's board included.
+`tests/compiled/run.sh`, which runs every program every time: 59 of 64 pass, chess's board included, once the three transcripts pick HO moves (`be-event-values`, `be-host-reentry`, chess's `board.expected`: a computed answer a tick late) are accepted.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -830,9 +830,9 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   cycle a call), `be-row-values` (a row kind's values built, compared, shown,
   matched and sent inside an element, pick RV), `be-bundle` (pick BA),
   `be-widget-args` (pick WB), `be-host-param` (pick HO), `be-event-values` (pick EV2),
-  `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry` (pick DO),
-  `be-host-doc-in-tick` (pick HD), `be-updated` and `be-host-updated` (pick UP),
-  `be-row-entry` (pick RE).
+  `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry`,
+  `be-host-doc-in-tick`, `be-host-delay`, `be-host-nested` and `be-host-teardown` (pick
+  HO), `be-updated` and `be-host-updated` (pick UP), `be-row-entry` (pick RE).
   `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
@@ -1043,7 +1043,9 @@ Each is Claude's, for Jimmy to overturn.
   Test World reads patterns from the script; the checker mistypes `Show (? 3) => "? 3"`).
   A test's root is found by name; its arguments arrive as `Pod`s.
 - **FV First values.** A place whose element answers a dynamic asks `cx.first_value` at
-  the build and fails the build when the World has none; its `Hold` is the place's.
+  the build (a hosted place asks its host, `host_k.first_value`, which builds the
+  supplier row for the place early, pick HO) and fails the build when there is none; its
+  `Hold` is the place's.
   A place's answer type is its tag's output as the checker instantiated it at that
   application (`Prelude.Unwrap`'s `!a` is `!unit` there); a type variable left open is
   the answer as it came, a `Pod`.
@@ -1091,31 +1093,68 @@ Each is Claude's, for Jimmy to overturn.
   its own holds (`be-widget-args`). A parameter applied to arguments, or read as a value,
   is refused loudly. *Refused:* the argument as a blueprint value built at run time,
   which a static position never needs.
-- **HO Hosts.** `@HostDocument @child, supplier` and `@HostSome` are a host node of
-  prism_rtl's (`Host::each`, `Host::some`) at the line's position, holding the supplier
-  (a lowered closure or named function over `&Path` and `&Live<crate::Elem>`). The
-  child, a named widget, a widget parameter's argument or a block, is inlined into the
-  host's owner (the node of the host's line) in a scope of its own: `Wx.scopes` lists the
-  node's hosts, and a position is a `Pos`, a scope and a number in it: scope 0 the node's
-  own path, scope `k` the child of host `k`'s place, spelled under `host_k_path` (the
-  host's child path, `Segment::Host`), so it emits in the host's scope (gap SP); in a
-  name or a doc comment a hosted child's position still prints as the one number
-  `1000000 * k + n` it was when positions were that sum (`PlaceText`), so the emitted
-  code did not move when the representation did; its answer arm is `[Segment::Host(h), Segment::Pos(n), ..] if h.id() ==
-  self.host_k.id()`, and the host answers a child place through the owner's
-  `Node::answer` under that path. The child reads its caller's names as any inlined
-  widget does, marks included, and its result is the line's first part (`WrHosted`,
-  bound as an event or a dynamic whatever type the checker gave the name). Per child
-  place the host builds the supplier's blueprint at `pos/[p]` when the place asks its
-  first value or is added, and tears it down when the place leaves. `@ x` as a value is
-  `pure_blueprint(Answering::constant(&x))`, `@ !e` `Answering::event`, `@Element e` the
-  forwarding `element_blueprint(&e)`, which re-emits the element at `pos/[p]/0` and
-  answers the child's place with whatever comes back there (the transparent rule;
-  pushes too, when the World gives the place a first value). The child's document is a
-  field the block reads as a hold (`HostDoc<crate::Elem>`, before the tick during
-  propagation and after it from then on); when it moves the owner is patched and its
-  builders run, and the runtime reruns its build, swap, leave and patch walks until
-  nothing new is listed. `sem-ch09-hosts`, `be-host-param`.
+- **HO Hosts.** A host is Prism inside the same graph and the same tick (Semantics ch. 9
+  as ruled), and a host document is a `for`. `@HostDocument @child, supplier` (and
+  `@HostSome`, whose `nil` forwards, through prism_rtl's `forward_on_none`) inlines the
+  child, a named widget or a widget parameter's argument, into the node of the host's line
+  (its owner) in a scope of its own: `Wx.hosts` lists the node's hosts, a position is a
+  `Pos`, a scope and a number (scope 0 the node's own places, scope `k` the child of host
+  `k`'s), a hosted position is spelled `place_h{k}_{n}` in names and doc comments, and a
+  hosted place emits into no document: it is keyed by its path relative to the child
+  (`Path::root().at(n)`, `PlaceAt`) in the host's document. The owner gets, per host:
+  - the getter `host_k_doc(&self, cx) -> Map<Path, Elem>`, `$doc`, every child place at the
+    read point as the program's `crate::Elem` (its static places by getter or constant, and
+    under each `for` and `rebuild` of the child the rows' `Row::document`, recursively);
+    its reads (`dynReads`) are everything the child's places, builders, generations and
+    rows read, so a write behind any of them marks the owner's places over `$doc`, lists
+    its builders, dirties the host's rows and fires `!Updated $doc` (pick UP). A child row
+    that writes a hold of its own tells the owner through `document_moved` →
+    `host_k_moved`, which marks the same (`HoldWritten` of the getter);
+  - the builder `host_k_rows_build`, the ordinary `for` template over the getter, whose rows
+    are prism_rtl's `HostRow`s at `hostpos/[p]`, one per child place: built when the key is
+    in `$doc` after a tick and not before (R7), kept while it stays, torn down at the end of
+    the tick its key leaves (R8), each marked by the owner's writes as any row (`RowMarks`);
+  - the typed dispatch `host_k_answer(self: &Rc<Self>, place: &Path, v: &crate::Answer,
+    cx) -> Done` from a child place's path into the child's input method, a hold the
+    place's element answers (`DynPlaceWrite`, every mark a hold's sink makes), or the row of
+    a `for` or `rebuild` under it (`Row::deliver`, typed, recursive). A variant of another
+    tag is a fault of the tick;
+  - the field `host_k: Rc<prism_rtl::Host<Elem, Answer, Owner>>`: the supplier (a lowered
+    closure or named function over `&Path` and `&Live<crate::Elem>`), the rows, the
+    enclosing host when the line stands in a hosted scope, and the two methods above as
+    function pointers, made in the build before the node and linked to it after
+    (`host_k.link(&node)`), since a child place's first value asks the host before the node
+    exists.
+
+  `crate::Answer` is emitted beside `crate::Elem` in `main.rs` (`AnswerEnum`): a variant
+  per element tag carrying the tag's output type (a bundle's event part; an open type
+  variable a `Pod`), an accessor per variant (`v.ui_button()?`), and the decode of a
+  World's answer by the element's tag (`prism_rtl::AnswerOf<Elem>`). A supplier's `@ x` is
+  typed by the tag of the arm it stands in (`TagPat` binds `#tag` on a live element;
+  outside a tag arm it is refused loudly): `@ x` and a constant `@ $ v` are
+  `plain_blueprint` (the first value once), `@ never` `never_blueprint`, `@ !e`
+  `event_blueprint` over `e.map(Answer::Tag)` (each firing a computed answer, delivered as
+  an input of the next tick, which is owed, `Cx::answer_later`), `@Element e`
+  `element_blueprint` (re-emission at `hostpos/[p]/0`, the World's answers and pushes
+  handed to the child in the same tick). A dynamic answer that is not a constant (`@
+  $hold`) is refused loudly: its updates would be delayed answers through
+  `dynamic_blueprint`, over a `Dynamic` of the hold the back end does not make yet (gap
+  DY). A widget-function blueprint as an answer, and a bundle in a hosted scope, are
+  refused too.
+
+  A row of a hosted child's `for` or `rebuild` (`Wx.hostedBy`) emits nothing of its own
+  either: it takes the enclosing host (`enclosing: Rc<dyn HostOf>`) as a parameter of its
+  `build`, asks it its places' first values, implements `Row::document` and `Row::deliver`
+  for its own places, and tells it when a place may have moved. Nested hosts compose:
+  a host inside a hosted child builds its rows in the enclosing host's scope
+  (`prism_rtl::Scope::Hosted`), so a forwarded element there is an entry of the enclosing
+  document rather than a place of the World's, and its first value comes from the enclosing
+  host; each computing layer costs a tick and a forwarding layer none (`be-host-nested`).
+  The child's result is the line's first part (`WrHosted`), the document the second
+  (`BindHosted`). `sem-ch09-hosts`, `be-host-param`, `be-host-doc-in-tick`,
+  `be-host-updated`, `be-host-reentry`, `be-host-delay`, `be-host-nested`,
+  `be-host-teardown`. *Refused:* the host as a World in miniature (a `Host` node with a
+  `Pod` boundary answering through `Node::answer` in the same tick), Jimmy's ruling.
 - **EV2 Event values.** A named event (`!x <- ..`, `let !x = ..`) fires a port of its
   own (`x_v_port`, made in the build before the node so a closure can hold it), and
   `!x` read as a value is `Event::of(&x_v_port)`. An event expression outside the pipe
@@ -1124,30 +1163,20 @@ Each is Claude's, for Jimmy to overturn.
   o, !Routed -> ?@o`) is not lifted over its `!` parameters: it takes each as an event
   value. `be-event-values`.
 - **PU Pushes.** A place whose element answers a dynamic keeps its element
-  (`f_element`), registers with `cx.listen_at`, and answers a push or a host's answer by
-  path by writing its hold and patching the node.
+  (`f_element`), registers with `cx.listen`, and answers a push by writing its hold with
+  every mark a hold's sink makes (`DynPlaceWrite`: the node patched, the builders and rows
+  over it listed, the `!Updated` nodes told); a hosted place's pushes come typed from its
+  host the same way.
 - **RD The root's dynamic result** goes to the World at the build and in the patch pass
   whenever it moved (`result_value`, `result_last`); a test root registers under its
   sigils (`@$board` is `$board`).
 - **DO One decision per input a tick.** A combinator takes its stamped inputs as it
-  decides them (`Stamped::take`), so a node woken again in its tick (a host's answer
-  re-entering the node its child is inlined into) decides only what came since; a hold
-  written twice in a tick is a fault of the tick, `Runtime.TwoWrites` (Semantics R3;
-  `be-host-reentry`). A builder runs once a tick, after propagation, from the values
-  after the tick (Semantics R7): its source's marks list it, and nothing lists it again.
-- **HD A host's child document is a dynamic within the tick.** `$doc` is each child
-  place's level pulled from the owner node at the read point (`Level::pulled`, a
-  closure over the place's getter): the current levels during propagation, the levels
-  after the tick from then on, like any `$`. The host stores no document and the patch
-  pass writes none (it only tells a forwarded element it moved). The document field's
-  reads are everything the child's places and builders read, so a write to a child hold
-  marks the owner's places and builders over `$doc`; the owner's `build` runs a hosted
-  child's builders before its host's (`InnermostFirst`), so a `for` over `$doc` sees the
-  child's structure settled. `be-host-doc-in-tick` (failed before: a row of a `for` over
-  `$doc` and an owner hold showed the stale element for a tick, the document having
-  moved only in the patch pass, which ran the builder a second time). *Refused:* the
-  document as a hold-like cell written by the patch pass, which puts an end-of-tick
-  artifact inside a `$`.
+  decides them (`Stamped::take`), so a node woken again in its tick decides only what
+  came since; a hold written twice in a tick is a fault of the tick, `Runtime.TwoWrites`
+  (Semantics R3). A builder runs once a tick, after propagation, from the values after
+  the tick (Semantics R7): its source's marks list it, and nothing lists it again; the
+  owner's `build` runs a hosted child's builders before its host's (`InnermostFirst`), so
+  a host's `for` over `$doc` sees the child's structure settled (`be-host-doc-in-tick`).
 - **PS `Pod::Shown`** compares, orders and hashes by its structure, its text only
   printed, so a key with an `impl ^Show` (chess's `Spot`, `e2`) orders by its fields.
 - **MA `@Machine`, local functions, `!MergeAll`.** `@Machine step, init, !a` is a hold
@@ -1174,8 +1203,8 @@ Each is Claude's, for Jimmy to overturn.
   to n+1 for the read and back. So the event fires at n with the value after n, in the
   tick of the change, whenever the dynamic was recomputed, deduped by nobody (`$a * 0`
   fires on every write of `$a`; `be-updated`). A host's `$doc` has the child's holds as
-  its reads (pick HD), so `!Updated $doc` fires in the tick a child hold moves, with the
-  document after it (`HostDoc::get` under `Cx::after`; `be-host-updated`). A row's
+  its reads (pick HO), so `!Updated $doc` fires in the tick a child hold moves, with the
+  document after it (`host_k_doc` under `Cx::after`; `be-host-updated`; gap HU below). A row's
   `!Updated` over its entry or over its block's holds read through the parent is pick
   RE's (`be-row-entry`). *Refused loudly* (`compile_error!`, not an event that never
   fires): an `!Updated` whose dynamic reads anything no sink of the node writes (a
@@ -1243,30 +1272,34 @@ ruling taken (Claude's).
   (`sem-ch07-paged`'s inner `rebuild $src`). A `for` row is marked by the block's writes
   of what it reads (`Wx.rowMarks`: its `ParentRead`s as the block's own, `RowWritten`),
   its `!Updated` nodes told through `parent_wrote_{m}` (pick RE), and the block is
-  patched after its rows are built; a generation is not marked, and is rebuilt only with
-  its parent's. A row's port for a block event sits at height 0 in the row, below the
+  patched after its rows are built; a generation's reads through its parent are
+  `ParentRead`s too (`RowEnv`), so a place of it over a block hold is live and the current
+  generation is dirtied by the block's writes (`RowMarks` of kind `GenerationRow`), but a
+  generation is told of no write, so an `!Updated` in it over a block name is refused
+  loudly (`UpdatedGaps`). A row's port for a block event sits at height 0 in the row, below the
   event's height in the block; the runtime's clamp (`Cx::wake` at or below the running
   height runs at the next) orders it. *Next:* the contract's `Dynamic` with its update
   port.
-- **HS Hosting at the boundary of plain data.** The contract's supplier is typed per
-  child element (`Fn(Path, ElementOf<c>) -> blueprint`); a supplier's `o` is its own per
-  place (rank 2), so here a blueprint answers with an `Answering` (prism_rtl's `host`): a
-  constant, an `Event<Pod>` or a `Dynamic<Pod>`, and the host answers its child by path
-  through `Node::answer`, as a World does. *First ruling:* plain data at the host
-  boundary. *If otherwise:* a typed answer per tag, which `@HostList`'s `^Responds`
-  wants anyway.
-- **SP The scope rides on the path.** The contract has every widget constructor take a
-  `Scope`. Every constructor already takes its path, so a hosted child's paths start
-  with `Segment::Host` and `Cx::added`, `changed`, `removed`, `request`, `first_value_at`
-  and `listen_at` route by it; rows and generations inside the child inherit the scope
-  with no argument. *First ruling:* the path. *If otherwise:* a `scope` parameter on
-  every `build`, and a field on every node.
 - **LE A live element's `$` field in a plain function.** A plain function is lifted:
   its `$` values are read at the caller's read point, and it has no `cx` to read a live
-  element's dynamic at. *First ruling:* refused loudly there; a host's supplier, lowered
-  inside its node (`Lx.inNode`), binds the dynamic. An element applied as a plain value
-  (not a place, not a supplier's argument) is refused too: only a host makes a live
-  element. *If otherwise:* lifted functions take `&Cx`.
+  element's dynamic at. *First ruling:* refused loudly there (a supplier is lowered in
+  the build, as a value, so it is refused there too; `Lx.inNode` is never set). An element
+  applied as a plain value (not a place, not a supplier's argument) is refused too: only a
+  host makes a live element. *If otherwise:* lifted functions take `&Cx`.
+- **HU `!Updated $doc` and the child's structure.** The event fires in the tick a child
+  builder's source moves, at its height, with `host_k_doc` read under `Cx::after`: the
+  levels after the tick, but the rows as they stand, since the child's builder runs only
+  after propagation (a new key's places do not exist yet, a left key's still do). A `for`
+  over `$doc` in the host is not affected: it runs after the child's builders. *First
+  ruling:* the structure as the tick opened in the event's value; a spurious firing is
+  allowed and this is not one, but the value is short of Jimmy's "the map after n". *If
+  otherwise:* a builder that can say its next key set during propagation.
+- **DM The document is read whole.** A host row's entry (`HostRow::entry`), the owner's
+  places over `$doc` and the host's builder each read `host_k_doc`, which builds the
+  child's whole document (every place's level, every row's), so a patch of `n` forwarded
+  elements costs `n` documents. *First ruling:* correctness first, as gap SR. *Next:* a
+  per-place getter from the owner, or an `rt::Cache` on the document marked by the child's
+  writes.
 - **CL Clause choice.** A `rebuild` or a building `match`/`if` whose arms are widgets of
   several clauses needs the clause chosen at the build; generations do it for one clause
   only.
@@ -1274,7 +1307,7 @@ ruling taken (Claude's).
   block's source getter (`Tag $doc, $clicks` in `be-host-doc-in-tick`) and indexes it,
   where the `Hold` it replaced was a clone (pick RE). *First ruling:* correctness first.
   *Next:* an `rt::Cache` on the getter, marked by every write path (a hold's sink,
-  `@Machine`'s state, a push or a host's answer at a place), which docs/backend.md's
+  `@Machine`'s state, a push or a host's typed answer at a place), which docs/backend.md's
   "Marks" already names for a shared computed behavior.
 
 ### Not lowered yet
@@ -1282,10 +1315,10 @@ ruling taken (Claude's).
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
 naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
-`@HostList`; a host whose child is not a named widget without arguments (a widget
-parameter's argument, a block), and a hosted child's result bound to a name; an event
-blueprint as a value (`@ !e`, the window library's `?Boxed`); an element applied as a
-plain value and a live element's `$` field read in a plain function (gap LE), `@Flatten`,
+`@HostList`; a supplier's answer `@ x` outside a tag arm, a dynamic answer that is not a
+constant, a widget-function blueprint as an answer, and a bundle in a hosted scope (pick
+HO); an element applied as a plain value and a live element's `$` field read in a plain
+function (gap LE), `@Flatten`,
 `!Updated` of a dynamic no sink of the node writes (pick UP; a `for`'s gathered
 dynamic), an `@Machine` whose step is
 not a named function, a local function whose

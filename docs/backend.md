@@ -31,10 +31,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   - `tick(&mut self, input, ready)`: `rt.tick(&root, input, ready)`;
   - `compact(&mut self)`: `rt.compact()`.
 - **The tick** (`Runtime::tick`, Graph ch. 4's order): last round's undone clean-ups; the
-  started list's `Node::started` and the armed `Node::deferred`; answers through
+  started list's `Node::started` and the armed `Node::deferred`; the computed answers a
+  host's supplier queued last tick (`Cx::answer_later`); answers through
   `root.answer(path, v)`; pushes through the push index; wakes by height; the read point
   moves past the tick; the build, swap, leave and patch lists; the patch diffed against
-  the document last sent; requests sorted into document order; `pending`.
+  the document last sent; requests sorted into document order; `pending` (a started node,
+  an armed `@Defer`, or a computed answer due).
 - **The node interface** (`rt::Node`): `wake`, `started`, `deferred`, `answer`, `push`,
   `build`, `swap`, `leave`, `patch`, `clean_up`, `edges`, `release`, each defaulting to
   nothing; the tick's methods take `self: Rc<Self>` and `&mut Cx`, so a node can put
@@ -94,11 +96,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   state.
 - **The constructor** `fn build(path, args, cx: &mut Cx) -> Rc<Self>` runs after
   propagation: holds take their initial values (`Hold::new(v, cx)`, stamped with the
-  build tick), each place goes out with `cx.added(path.at(n), level)`, a fixed `Level`
-  for a place with no live fields and a pulled one (`Level::pulled(&node, |n, cx|
-  n.getter(cx))`) otherwise, which the document samples after the tick and a host reads
-  at each read point; a place with a first value asks `cx.first_value(&level)`, a block that
-  binds `@started` calls `cx.on_started(node)`, and nothing fires.
+  build tick), each place goes out with `cx.added(path.at(n), level.to_pod())`, its level
+  the program's `Elem` (a constant for a place with no live fields, the place's getter
+  `n.getter(cx)` otherwise, which the patch pass reads again after the tick); a place with
+  a first value asks `cx.first_value(&level)`, a block that binds `@started` calls
+  `cx.on_started(node)`, and nothing fires. A place in a hosted scope goes out nowhere: it
+  is an entry of its host's document (Hosting, below).
 - **Binding groups, sorted by prompt edges.** The class model takes the block's
   bindings as a graph whose edges are prompt (same-tick) reads; an edge through a hold's
   `then` is delayed and cuts nothing. A prompt cycle is the checker's error, so the graph
@@ -173,20 +176,67 @@ it make every program an interpreter run, and every type mistake a runtime fault
 
 ## Hosting
 
-- **Every widget constructor takes its scope**, the emitted row enum `Scope` of the
-  program: the document (elements go to `cx.added`) or a host node.
-- **`@HostDocument @child, supplier`** → a host node holding the supplier, a typed closure
-  `Fn(Path, ElementOf<c>) -> blueprint`, and a `Map<Path, Rc<dyn Node>>` of supplier
-  rows, built and torn down as the child's places are, in the host's scope. The child's
-  document `$(Path ==> Elem c)` is a `Dynamic` within the tick: each child place's level
-  pulled at the read point (`Level::Pulled`), never stored, never written by the patch
-  pass. A builder over it is marked by the child's holds and runs once, after the child's
-  own builders. (prismc: the boundary is plain data, a blueprint answering with an
-  `Answering`, and the scope rides on the child's paths, `Segment::Host`;
-  prismc/README.md, gaps HS and SP, picks HO and HD.)
-- **Forwarding** (`@Element e`) re-emits at the host's path `[p]`; an answer there
-  reaches the row, whose output answers the child's place.
-- **`@HostSome`, `@HostList`** are their Prism derivations (Semantics ch. 9).
+- **A host is Prism inside the same graph and the same tick** (Semantics ch. 9 as ruled).
+  `@HostDocument @child, supplier` inlines the child into the node of the host's block (its
+  owner) in a scope of its own: the child's places are numbered from 0 in that scope, keyed
+  by their path relative to the child (`0`, `1`, `2/[k]/0`), and emit into no document.
+  There is no protocol and no plain data at the host: the owner reads the child's places
+  as values and answers them by calling their input methods.
+- **The child's document `$doc` is a getter** of the owner, `host_k_doc(&self, cx) ->
+  Map<Path, Elem>`: every child place at the read point, each a snapshot of the program's
+  `Elem` enum (the static places by their getters or constants, and under each `for` and
+  `rebuild` of the child the rows' own `Row::document`, recursively). Its reads are
+  everything the child's places, builders, generations and rows read, so a write behind any
+  of them marks the owner's places over `$doc`, lists its builders, dirties the host's rows
+  and fires `!Updated $doc` once at its height with the document after the tick. A row of
+  the child that writes a hold of its own tells the owner through `document_moved` →
+  `host_k_moved`, which marks the same way.
+- **The host is `for p, e <- $doc: supplier p, e`** in the owner: an ordinary builder
+  (`host_k_rows_build`, the `for` template) over the getter, whose rows are `rt::HostRow`s,
+  one per child place, built at `hostpos/[p]` when the key is in `$doc` after a tick and not
+  before (R7), kept while it stays, and torn down at the end of the tick its key leaves
+  (R8). The owner holds the host as `rt::Host<Elem, Answer, Owner>`: the supplier, the rows,
+  the enclosing host when the line stands in a hosted scope, and the owner's two emitted
+  methods, the document and the typed dispatch, linked to the node once it is made.
+- **`e` is the live element**, `rt::Live<Elem>`: its identity (the level at the build) and
+  its level over time, a `Dynamic<Elem>` whose read is the row's entry, the projection
+  `$doc[p]` through the owner.
+- **The way back is typed.** `crate::Answer` is emitted beside `crate::Elem` in `main.rs`:
+  one variant per element tag carrying that tag's output type, an accessor per variant
+  (`ui_button() -> Result<Click, Fault>`), and the decode of a World's answer by the
+  element's tag (`rt::AnswerOf<Elem>`). The owner's `host_k_answer(place, &Answer, cx)`
+  dispatches from a child place's path into the child's input method (a hold the place's
+  element answers is written as a push writes it, with every mark a hold's sink makes), or
+  to the row of a `for` or `rebuild` under it, whose `Row::deliver` carries it on. A
+  variant of another tag is a fault of the tick.
+- **The blueprint forms decide when an answer arrives** (`rt::Blueprint<Elem, Answer>`,
+  built at the row's path with a `Sink<Answer>`, the typed delivery, in the host's
+  `Scope`):
+  - `@Element e` (`rt::element_blueprint`) is re-emission: a `Forward` node whose place
+    `hostpos/[p]/0` goes out with `cx.added` (the identity's level), follows `e`'s level
+    (the row is dirtied by the owner's marks; its patch fires the level's update port and
+    the forward re-emits with `cx.changed`), and hands every answer and push the World
+    sends it to the sink **in the same tick**, as the tick's inputs. Its first value is the
+    World's. A host that forwards everything is observably not there. A forward in a hosted
+    scope (nested hosts) emits nothing: it is an entry of the enclosing host's document
+    (`HostRow::document`), and its first value is the enclosing host's.
+  - `@ x` and a constant `@ $ v` (`rt::plain_blueprint`) are the first value once; `@ never`
+    (`rt::never_blueprint`) answers nothing.
+  - `@ !e` (`rt::event_blueprint`) and `@ $d` (`rt::dynamic_blueprint`, a dynamic's first
+    value read at the build, synchronously) are **computed answers, delayed**: each firing
+    or update is queued with `Cx::answer_later` and delivered to the child's place as an
+    input of the next tick, which is owed (`pending`, like an armed `@Defer`). A computed
+    answer in flight to a place whose key left is dropped. Nested hosts add one tick per
+    computing layer and none per forwarding layer.
+- **First values.** A child place with a first value asks the host at its build
+  (`host_k.first_value(&place, &elem, cx)`), before the owner's node exists: the host builds
+  the supplier row for the place early and keeps it in the rows, where the builder finds it
+  present. This is the only early construction; it is why `Host` reaches its owner through
+  a link filled in after `Rc::new`.
+- **Requests** of a hosted place go to the host (`host_k.request`): out with the forwarded
+  element, or nowhere when the supplier answered the place.
+- **`@HostSome`** is `@HostDocument` through `rt::forward_on_none` (`nil` forwards);
+  `@HostList` is not lowered yet.
 
 ## Unbounded functions and `@Run`
 
@@ -228,8 +278,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Defer`, `Job`, `Turn`.
 - `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `after`, `before`, `wake`, `build_later`, `swap_later`,
   `leave_later`, `dirty`, `on_started`, `arm`, `clean_up_later`, `added`, `removed`,
-  `changed`, `request`, `result`, `first_value`, `listen`), `Runtime` (`build`, `tick`,
-  `close`, `compact`, `document`).
+  `changed`, `request`, `answer_later`, `result`, `first_value`, `listen`), `Runtime`
+  (`build`, `tick`, `close`, `compact`, `document`).
+- `host`: `Host`, `HostRow`, `HostOf`, `Rows`, `Scope`, `Blueprint`, `Supplier`, `Sink`,
+  `Supplied`, `AnswerOf`, the blueprint forms (`plain_blueprint`, `never_blueprint`,
+  `event_blueprint`, `dynamic_blueprint`, `element_blueprint`), `forward_on_none`.
 - `doc`: `Document` (`diff`, `apply`), `Edit`, `Patch`, `Request`.
 - `gc`: `Collector`.
 - `world`: `Program`, `TickIn`, `TickOut`, `Outcome`, `ReadyState`, `ReadyMap`, `World`,
@@ -264,9 +317,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - **FV The sharing rule for first values.** Graph has a newborn take an equal older
   place's value. *First ruling (Claude's):* the ready state with the tick's pushes on top
   stands in, since a World's pushes keep its ready state equal to its places.
-- **SC Scope as an emitted enum.** A host must see the elements its child emits, typed by
-  the child's row. *First ruling (Claude's):* one `Scope` enum per program. *If
-  otherwise:* a trait object per row.
+- **SC The scope.** A host sees the elements its child emits typed, as the program's
+  `Elem`, through the owner's document getter, and a row of a hosted child takes the
+  enclosing host (`Rc<dyn HostOf>`) as a parameter of its `build`. *First ruling
+  (Claude's):* the scope is known at compile time for every emitted node and rides on the
+  rows as a parameter; only the library's `HostRow` asks its host for it (`Scope`). *If
+  otherwise:* a `Scope` parameter on every constructor.
 - **SZ The size.** The library proper (everything but the Test World, its reader and
   the scene) is about 2,000 lines; the Test World adds about 1,300. *First ruling
   (Claude's):* both stay in this crate, as the brief asks. *If otherwise:* the Test World

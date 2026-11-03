@@ -20,7 +20,8 @@
 //!   walks the lists in Graph's order.
 //! - [`doc`]: the document and the patch diff; requests.
 //! - [`gc`]: the zombie collector, trial deletion in the compact round.
-//! - [`host`]: host nodes, their supplier rows and the child's document (hosting).
+//! - [`host`]: hosting: the rows of a host's `for` over its child's document, the
+//!   blueprint forms a supplier answers with, and the typed way back into the child.
 //! - [`world`]: the protocol ([`Program`], [`TickIn`], [`TickOut`], [`ReadyState`],
 //!   [`World`], [`drive`]), the Test World, the CLI World, and the scene's clickables.
 
@@ -38,9 +39,9 @@ pub mod world;
 
 pub use cells::{Cache, Defer, Demand, Dynamic, Event, Handle, Hold, Job, Live, Port, Stamped, Tick, Turn};
 pub use collections::{Array, Map, Text};
-pub use cx::{Cx, Done, Level, Node, Runtime};
+pub use cx::{Cx, Done, Later, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
-pub use host::{Answering, Blueprint, Host, HostDoc, built, element_blueprint, pure_blueprint};
+pub use host::{AnswerOf, Blueprint, Host, HostOf, HostRow, Rows, Scope, Sink, Supplied, Supplier, dynamic_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
 pub use num::{Int, Nat};
 pub use pod::{Error, Fault, FromPod, Path, Pod, Segment, ToPod};
 pub use print::{Printer, Show, show, show_text};
