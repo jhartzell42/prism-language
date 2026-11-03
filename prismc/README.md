@@ -806,7 +806,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: 52 of 57 pass, chess's board included.
+`tests/compiled/run.sh`, which runs every program every time: 55 of 60 pass, chess's board included.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -830,7 +830,8 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   cycle a call), `be-row-values` (a row kind's values built, compared, shown,
   matched and sent inside an element, pick RV), `be-bundle` (pick BA),
   `be-widget-args` (pick WB), `be-host-param` (pick HO), `be-event-values` (pick EV2),
-  `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry` (pick DO).
+  `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry` (pick DO),
+  `be-host-doc-in-tick` (pick HD), `be-updated` and `be-host-updated` (pick UP).
   `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
@@ -1122,6 +1123,28 @@ Each is Claude's, for Jimmy to overturn.
 - **SC The code's site.** An inlined widget's code is lowered in its own module's names
   but placed in its caller's module, and a check line's in `main.rs`: lowering keeps the
   module that resolves names apart from the one paths are written from.
+- **UP A dynamic is a behavior and an event.** The behavior half is pull: a sample in tick
+  n (a getter call during propagation, `$d on !e`) reads the holds at the read point, the
+  values as the tick opened (Semantics R2). The event half, `!Updated $d`, is a graph node
+  of kind "updated", decided in the wake like a merge: its height is one above every node
+  whose sink writes a hold the dynamic reads (the reads closed over the dynamic `let`s,
+  `LoReadsClosed`, so `!Updated $b` with `let $b = $a + 1` sits above `$a`'s writers;
+  `@Machine`'s state hold counts). Each such write sets the node's `Cell<bool>` flag
+  `{name}_moved` and asks the wake at its height, as an answer or a push that writes a
+  place's hold does at height 0; the decision takes the flag (`replace(false)`, so once a
+  tick and a double firing is impossible) and fires the dynamic's value after the tick,
+  read by the node's `{name}_value` getter under `Cx::after`, which moves the read point
+  to n+1 for the read and back. So the event fires at n with the value after n, in the
+  tick of the change, whenever the dynamic was recomputed, deduped by nobody (`$a * 0`
+  fires on every write of `$a`; `be-updated`). A host's `$doc` has the child's holds as
+  its reads (pick HD), so `!Updated $doc` fires in the tick a child hold moves, with the
+  document after it (`HostDoc::get` under `Cx::after`; `be-host-updated`). *Refused
+  loudly* (`compile_error!`, not an event that never fires): an `!Updated` whose dynamic
+  reads a row's `$_` or its block's holds through the parent (the builder writes them
+  after propagation, gap DY) or anything no sink of the node writes (a `for`'s rows).
+  *Refused:* a stamp on every hold compared in the wake, which fires nothing for a write
+  of an equal value and so dedupes, against the ruling; and firing from the patch pass,
+  which puts the event a tick late.
 
 ### Contract gaps
 
@@ -1209,7 +1232,8 @@ naming the construct, and `CompileProgram` reports every distinct one as
 parameter's argument, a block), and a hosted child's result bound to a name; an event
 blueprint as a value (`@ !e`, the window library's `?Boxed`); an element applied as a
 plain value and a live element's `$` field read in a plain function (gap LE), `@Flatten`,
-`!Updated`, an `@Machine` whose step is not a named function, a local function whose
+`!Updated` of a dynamic no sink of the node writes (pick UP), an `@Machine` whose step is
+not a named function, a local function whose
 parameters are not names or used as a value, `!MergeAll` of a list that is not a
 literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
 and `if`, a `for` whose rows give a dynamic, `Time.After`, and the zombie and dead

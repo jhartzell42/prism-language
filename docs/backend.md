@@ -115,7 +115,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   tag law needs no commit pass.
 - **Marks.** A write marks its readers at the write: `cx.dirty(self)` for a place whose
   live field reads it, `Cache::mark` for a computed behavior in the node, a fire on the
-  update port for a reader in another node.
+  update port for a reader in another node, and the `_moved` flag of an `!Updated` node
+  over it, with a wake at that node's height.
+- **`!Updated $d`** is a combinator decided in the wake, one above the writers of the
+  holds `$d` reads: when its flag was set this tick it fires `$d`'s value after the tick,
+  read under `Cx::after` (the read point moved to n+1 for the read), so the event half
+  fires at n with the value after n while a sample in n reads the opening value
+  (prismc/README.md, pick UP).
 - **The patch pass.** `Node::patch` calls `cx.changed(path, level)` for each dirty place;
   `rt::Document::diff` drops a `Changed` whose `Level` did not move.
 - **Answers.** `Node::answer` matches the path's segments: a position in this node calls
@@ -210,7 +216,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Port` (`subscribe`, `unsubscribe`,
   `lien`, `release`, `demand`, `fire`, `kept`), `Handle`, `Demand`, `Event`, `Dynamic`,
   `Defer`, `Job`, `Turn`.
-- `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `wake`, `build_later`, `swap_later`,
+- `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `after`, `wake`, `build_later`, `swap_later`,
   `leave_later`, `dirty`, `on_started`, `arm`, `clean_up_later`, `added`, `removed`,
   `changed`, `request`, `result`, `first_value`, `listen`), `Runtime` (`build`, `tick`,
   `close`, `compact`, `document`).

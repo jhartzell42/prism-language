@@ -4022,6 +4022,7 @@ fn LoEv wx, menv, e:
             "Prelude.!Both": LoPairEv wx, menv, args, "both", t
             "Prelude.!Except": LoPairEv wx, menv, args, "except", t
             "Prelude.!MergeAll": LoMergeAllEv wx, menv, args, t
+            "Prelude.!Updated": LoUpdatedEv wx, menv, args, t
             otherwise: LoEvMap wx, menv, e
         EIf (CondExpr c), thenB, (? elseB): match ((?LoBlockExpr thenB, ?LoBlockExpr elseB)):
             ((? a, ? b)): LoEvIf wx, menv, c, a, b, t
@@ -4094,6 +4095,27 @@ fn LoMergeAllEv wx, menv, args, t = match args[0]:
             let w2 = update w1:
                 &_.build <= Push &_.build, (LoTodoDo "`!MergeAll` of a list that is not a literal")
             ((r, w2))
+    nil: LoNever wx, t
+
+# `!Updated $d`: the event half of a dynamic (Semantics R3; README pick UP). A graph node
+# of kind "updated", decided in the wake like a merge, one above every node whose sink
+# writes a hold the dynamic reads: a write to one of them sets the node's `_moved` flag and
+# asks the wake; the decision takes the flag (once a tick, so a double firing cannot
+# happen) and fires the dynamic's value after the tick, read through `Cx::after`. A sample
+# of the same dynamic in that tick reads the value as the tick opened (R2). The node keeps
+# the dynamic's reads; they are closed over the dynamic `let`s and the writers found when
+# the node is finished, since a `let $b` may follow its `!Updated`.
+LoUpdatedEv: unbounded fn Wx, LoEnv, [Arg], RsTy -> ((EvRef, Wx))
+fn LoUpdatedEv wx, menv, args, t = match args[0]:
+    ? a:
+        let ((ex, reads)) = LoDyn wx, menv, a.value
+        let ((nm, w1)) = LoFresh wx, "updated"
+        let ((id, w2)) = LoAddGn w1, nm, t, "updated", 1
+        let w3 = LoAddField w2, "{nm}_moved", (RsNamed "Cell<bool>", [[]]), "a hold `!{nm}`'s dynamic reads was written this tick", (XRaw "Cell::new(false)")
+        let w4 = update w3:
+            &_.gns <= Each &_.gns, \|n| if n.id == id: LoWithInputs n, reads else: n
+            &_.getters <= Push &_.getters, (MethDef(name="{nm}_value", recv="ref", params=[[]], cx="ref", ret=t, body=[[]], tail=ex, doc="The dynamic `!{nm}` is the event half of, which the wake reads after the tick."))
+        ((LoEvOf id, w4))
     nil: LoNever wx, t
 
 # `!Filter !?a` fires the present values; `!Present` fires `unit` for them.
@@ -4185,28 +4207,38 @@ fn LoWithInputs n, ins = update n:
 # ---------------------------------------------------------------------------------------
 
 # Heights (Q-B8; Compiler ch. 3, "The analyses"): a source is at 0, a named event at the
-# height of what fires it, a combinator one above its inputs. The graph is acyclic within
-# a tick (the checker's prompt-cycle check), so as many rounds as nodes settle it.
+# height of what fires it, a combinator one above its inputs; an "updated" node's inputs
+# are the writers of the holds its dynamic reads (its `inputs`, closed). The graph is
+# acyclic within a tick (the checker's prompt-cycle check), so as many rounds as nodes
+# settle it.
 LoHeights: fn [Gn] -> [Gn]
 fn LoHeights gns = Fold gns, gns, \|cur, ignore| Each cur, \|n| LoHeightStep cur, n
 
 LoHeightStep: fn [Gn], Gn -> Gn
 fn LoHeightStep gns, n:
-    let feeders = Filter gns, \|m| Fold m.outs, False, \|f, o| f or LoFeeds o.sink, n.id
+    let feeders = Filter gns, \|m| Fold m.outs, False, \|f, o| f or LoFeeds o.sink, n
     let top = Fold feeders, 0, \|hi, m| Max hi, m.height
     let h = if LoIsComb n.kind: top + 1 else: if n.kind == "named": top else: n.height
     update n:
         &_.height <= h
 
+# The kinds decided in the wake, one above what feeds them.
 LoIsComb: fn Text -> Bool
-fn LoIsComb k = HasText [["merge", "union", "both", "except", "mergeall"]], k
+fn LoIsComb k = HasText [["merge", "union", "both", "except", "mergeall", "updated"]], k
 
-LoFeeds: fn Sk, Nat -> Bool
-fn LoFeeds (SkNode m), id = m == id
-fn LoFeeds (SkIn m, ignore), id = m == id
-fn LoFeeds (SkCycle ignore, ignore, m), id = m == id
-fn LoFeeds (SkMachine ignore, ignore, m), id = m == id
-fn LoFeeds other, id = False
+# Whether a sink feeds a node: by firing it, or, for an "updated" node, by writing a hold
+# its dynamic reads (`SkHold`, and `@Machine`'s state).
+LoFeeds: fn Sk, Gn -> Bool
+fn LoFeeds (SkNode m), n = m == n.id
+fn LoFeeds (SkIn m, ignore), n = m == n.id
+fn LoFeeds (SkCycle ignore, ignore, m), n = m == n.id
+fn LoFeeds (SkMachine f, ignore, m), n = m == n.id or LoWrites f, n
+fn LoFeeds (SkHold f), n = LoWrites f, n
+fn LoFeeds other, n = False
+
+# Whether a write to hold `f` moves an "updated" node's dynamic.
+LoWrites: fn Text, Gn -> Bool
+fn LoWrites f, n = n.kind == "updated" and HasText n.inputs, f
 
 # The holds a place reads, through the getters of dynamic `let`s.
 LoReadsClosed: fn (Text ==> [Text]), [Text] -> [Text]
@@ -4232,7 +4264,7 @@ fn LoSinkCode sk, target, y = match target:
         let rowMarks = Fold sk.wx.rowHolds, [[]], \|acc, ((b, hs))| if HasText hs, f: Push acc, (DoExpr (XRaw "for row in self.{b}.borrow().values() \{ cx.dirty(row.clone()); \}")) else: acc
         let builds = (HasText sk.builds, f) or (Len stales) > 0
         let rebuildIt = if builds: Append stales, [[DoExpr (XMethod (XRaw "cx"), "build_later", [[XRaw "self.clone()"]])]] else: [[]]
-        Append (Append (Append [[set]], dirty), rebuildIt), rowMarks
+        Append (Append (Append (Append [[set]], dirty), rebuildIt), rowMarks), (LoMovedMarks sk, f)
     SkRequest pos, field:
         let fieldEx = if field == "": XRaw "None" else: XRaw "Some(\"{field}\")"
         [[DoExpr (XMethod (XRaw "cx"), "request", [[(XRaw (LoPlaceAt sk.wx.scopes, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]])]])]]
@@ -4240,7 +4272,7 @@ fn LoSinkCode sk, target, y = match target:
     SkArm f: [[DoExpr (XMethod (XRaw "self.{f}"), "arm", [[y, XRaw "self.clone()", XRaw "cx"]])]]
     SkMachine f, step, out:
         let stepped = XCall step, [[(XRaw "&self.{f}.get(cx)"), (XUnary "&", y)]]
-        [[(DoLet (PaTuple [[PaBind "machine_s", PaBind "machine_b"]]), stepped), DoExpr (XMethod (XRaw "self.{f}"), "set", [[XRaw "machine_s", XRaw "cx"]]), (DoIfLet (PaCtor "Some", [[PaBind "machine_b"]]), (XRaw "machine_b"), [[(LoSelfCall (LoGnOf sk.wx, out).name, [[XRaw "machine_b"]])]], [[]])]]
+        Append [[(DoLet (PaTuple [[PaBind "machine_s", PaBind "machine_b"]]), stepped), DoExpr (XMethod (XRaw "self.{f}"), "set", [[XRaw "machine_s", XRaw "cx"]]), (DoIfLet (PaCtor "Some", [[PaBind "machine_b"]]), (XRaw "machine_b"), [[(LoSelfCall (LoGnOf sk.wx, out).name, [[XRaw "machine_b"]])]], [[]])]], (LoMovedMarks sk, f)
     SkPort f: [[DoExpr (XMethod (XMethod (XRaw "self.{f}_port"), "fire", [[y, XRaw "cx"]]), "ok", [[]])]]
     SkUp m:
         let keyed = (Len (Filter sk.wx.fields, \|((f, ignore, ignore))| f == "key")) > 0
@@ -4251,6 +4283,15 @@ fn LoSinkCode sk, target, y = match target:
         let fin = [[(LoSelfCall (LoGnOf sk.wx, res).name, [[XRaw "b"]])]]
         [[(DoMatch (XMethod (XMethod (XRaw "self.{job}"), "get", [[XRaw "cx"]]), "cycle", [[]]), [[(((PaCtor "prism_rtl::Turn::More", [[PaBind "next"]]), more)), (((PaCtor "prism_rtl::Turn::Finished", [[PaBind "b"]]), fin))]])]]
 
+# A hold written: every "updated" node whose dynamic reads it is told (its `_moved` flag),
+# and the wake asked at its height, once per height.
+LoMovedMarks: fn LoSinks, Text -> [Do]
+fn LoMovedMarks sk, f:
+    let moved = Filter sk.wx.gns, \|g| LoWrites f, g
+    let flags = Each moved, \|g| DoExpr (XMethod (XRaw "self.{g.name}_moved"), "set", [[XRaw "true"]])
+    let heights = LoSortNats (Fold moved, [[]], \|acc, g| AddNat acc, g.height)
+    Fold heights, flags, \|acc, h| Append acc, (LoAskWake sk, h)
+
 LoFire: unbounded fn LoSinks, Gn, Ex -> [Do]
 fn LoFire sk, g, x:
     let many = (Len g.outs) > 1 and not (LoIsCopy g.ty)
@@ -4259,8 +4300,12 @@ fn LoFire sk, g, x:
 
 LoFinishNode: unbounded fn Wx, Text, [((Text, RsTy))], Bool -> NodeDef
 fn LoFinishNode wx0, qk, params, isRow:
+    # An "updated" node's reads, closed over the dynamic `let`s now that every line is in;
+    # its height is one above the writers of those holds.
+    let closedGns = Each wx0.gns, \|g| if g.kind == "updated": LoWithInputs g, (LoReadsClosed wx0.dynReads, g.inputs) else: g
     let wx = update wx0:
-        &_.gns <= LoHeights &_.gns
+        &_.gns <= LoHeights closedGns
+        &_.build <= Append &_.build, (LoUpdatedGaps wx0, closedGns, isRow)
     let combs = Filter wx.gns, \|g| (LoIsComb g.kind) or g.kind == "gather"
     let heights = LoSortNats (Fold combs, [[]], \|acc, g| AddNat acc, g.height)
     let many = (Len heights) > 1
@@ -4284,12 +4329,12 @@ fn LoFinishNode wx0, qk, params, isRow:
     let gens = LoInnermostFirst wx.scopes, wx.gens, \|gd| gd.pos
     let genBuild = Each gens, \|gd| DoIf (XMethod (XRaw "self.{gd.name}_stale"), "replace", [[XRaw "false"]]), [[DoExpr (XTry (XMethod (XRaw "self"), "{gd.name}_build", [[XRaw "cx"]]))]], [[]]
     let buildBody = Append (Each builders, \|b| DoExpr (XTry (XMethod (XRaw "self"), "{b.name}_build", [[XRaw "cx"]]))), genBuild
-    let pushBody = Each wx.dynPlaces, \|((pos, f, t))| DoIf (XBin "==", (XRaw "element"), (XRaw "&self.{f}_element")), [[DoExpr (XMethod (XRaw "self.{f}"), "set", [[(XDecode t, (XRaw "v")), XRaw "cx"]]), DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]], [[]]
+    let pushBody = Each wx.dynPlaces, \|((pos, f, t))| DoIf (XBin "==", (XRaw "element"), (XRaw "&self.{f}_element")), (LoDynPlaceWrite sinks, f, t), [[]]
     let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
     let startedReg = if (Len wx.started) > 0: [[DoExpr (XMethod (XRaw "cx"), "on_started", [[XRaw "node.clone()"]])]] else: [[]]
     let rowsBuilt = Append (Each builders, \|b| DoExpr (XTry (XMethod (XRaw "node"), "{b.name}_build", [[XRaw "cx"]]))), (Each gens, \|gd| DoExpr (XTry (XMethod (XRaw "node"), "{gd.name}_build", [[XRaw "cx"]])))
     let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall "subscribe_row", [[XRaw "&node", (XMethod (XRaw "node.parent"), "upgrade", [[]]), XRaw "|p| &p.{ev}_port", XRaw "|n, v, cx| n.{m}(v.clone(), cx)", XRaw "&node.{m}_sub"]])
-    let answers = Append (Each wx.answers, \|((pos, id, t))| LoAnswerArm wx, pos, id, t), (Each wx.dynPlaces, \|((pos, f, t))| LoDynAnswerArm wx.scopes, pos, f, t)
+    let answers = Append (Each wx.answers, \|((pos, id, t))| LoAnswerArm wx, pos, id, t), (Each wx.dynPlaces, \|((pos, f, t))| LoDynAnswerArm sinks, pos, f, t)
     let hostArms = Each wx.hosts, \|((pos, hf))| (((LoPosPat wx.scopes, pos, ", rest @ .."), (XTry (XMethod (XRaw "self.{hf}.clone()"), "answer", [[XRaw "rest", XRaw "v", XRaw "cx"]]))))
     let forwards = Append (Each wx.builders, \|b| (((LoPosPat wx.scopes, b.pos, ", Segment::Key(k), rest @ .."), (LoForwardAnswer b)))), (Each wx.gens, \|gd| (((LoPosPat wx.scopes, gd.pos, ", Segment::Gen(g), rest @ .."), (LoForwardGen gd))))
     let rowMethods = if isRow: LoRowMethods wx, dirtyHolds else: [[]]
@@ -4314,8 +4359,27 @@ fn LoInnermostFirst scopes, xs, PosOf = Fold (Range0 ((Len scopes) + 1)), [[]], 
 
 # An answer at a place whose element answers a dynamic (a push, or a host's answer by
 # path): the hold written, the node patched.
-LoDynAnswerArm: fn [Text], Nat, Text, RsTy -> ((Text, Ex))
-fn LoDynAnswerArm scopes, pos, f, t = (((LoPosPat scopes, pos, ""), (XBlock [[DoExpr (XMethod (XRaw "self.{f}"), "set", [[(XDecode t, (XRaw "v")), XRaw "cx"]]), DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]], (XRaw "()"))))
+LoDynAnswerArm: fn LoSinks, Nat, Text, RsTy -> ((Text, Ex))
+fn LoDynAnswerArm sk, pos, f, t = (((LoPosPat sk.wx.scopes, pos, ""), (XBlock (LoDynPlaceWrite sk, f, t), (XRaw "()"))))
+
+# The write of a place's hold from the answer `v`: the hold set, the node patched, and the
+# "updated" nodes over it told (at height 0, before any wake, so the wake is only asked).
+LoDynPlaceWrite: fn LoSinks, Text, RsTy -> [Do]
+fn LoDynPlaceWrite sk, f, t = Append [[DoExpr (XMethod (XRaw "self.{f}"), "set", [[(XDecode t, (XRaw "v")), XRaw "cx"]]), DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]], (LoMovedMarks sk, f)
+
+# What an "updated" node cannot be given a height for: a read of a row's `$_` or of its
+# block's holds through the parent (written by the builder after propagation, gap DY), or
+# of anything that is not a hold a sink of this node writes (a `for`'s rows). Refused
+# loudly rather than lowered to an event that never fires.
+LoUpdatedGaps: fn Wx, [Gn], Bool -> [Do]
+fn LoUpdatedGaps wx, gns, isRow:
+    let holds = Fold wx.fields, [[]], \|acc, ((f, t, ignore))| if LoIsHold t: Push acc, f else: acc
+    let derived = Keys wx.dynReads
+    Fold (Filter gns, \|g| g.kind == "updated"), [[]], \|acc, g| Fold g.inputs, acc, \|a, r|
+        if (Take r, 8) == "^parent:": Push a, (LoTodoDo "`!Updated` of a dynamic in a row that reads its block's `{Drop r, 8}`, which the builder writes after propagation (no height for its event)")
+        else: if isRow and r == "value": Push a, (LoTodoDo "`!Updated` of a dynamic that reads a row's `$_`, which the builder writes after propagation (no height for its event)")
+        else: if (HasText holds, r) or (HasText derived, r): a
+        else: Push a, (LoTodoDo "`!Updated` of a dynamic that reads `{r}`, which no sink of this node writes (no height for its event)")
 
 # The patch pass for one live place: its `Level` pulled and sent as changed.
 LoPatchPlace: fn [Text], Place -> [Do]
@@ -4408,12 +4472,19 @@ LoDecide: fn Gn -> Do
 fn LoDecide g = match g.kind:
     "gather": DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XRaw "self.{Or g.inputs[0], ""}"), "take", [[XRaw "cx"]]), [[(LoSelfCall g.name, [[XRaw "v"]])]], [[]]
     "merge": LoMergeDecide g
+    "updated": LoUpdatedDecide g
     "mergeall":
         let pushes = Each g.inputs, \|f| DoIfLet (PaCtor "Some", [[PaBind "x"]]), (XMethod (XRaw "self.{f}"), "take", [[XRaw "cx"]]), [[DoExpr (XMethod (XRaw "all"), "push_back", [[XRaw "x"]])]], [[]]
         let start = DoLet (PaBind "mut all"), (XRaw "Array::new()")
         let fire = DoIf (XRaw "!all.is_empty()"), [[(LoSelfCall g.name, [[XRaw "all"]])]], [[]]
         DoIf (XRaw "true"), (Push (Append [[start]], pushes), fire), [[]]
     kind: LoPairDecide g, kind
+
+# An "updated" node decides: the flag taken (once a tick: a hold it reads was written), the
+# dynamic read after the tick, the event fired with it. No dedupe (pick UD): the event
+# fires whenever the dynamic was recomputed, equal value or not.
+LoUpdatedDecide: fn Gn -> Do
+fn LoUpdatedDecide g = DoIf (XMethod (XRaw "self.{g.name}_moved"), "replace", [[XRaw "false"]]), [[(DoLet (PaBind "after"), (XRaw "cx.after(|cx| self.{g.name}_value(cx))")), (LoSelfCall g.name, [[XRaw "after"]])]], [[]]
 
 # Both inputs read, then decided: `!Union` joins the maps (the left's keys win), `!Both`
 # pairs them, `!Except` fires the left without the right.
@@ -4472,6 +4543,7 @@ fn LoGnDoc g = match g.kind:
     "started": "`@started`, the tick after the build."
     "deferred": "An `@Defer` firing, the tick after it was armed."
     "merge": "The merge `{g.name}`, decided in the wake."
+    "updated": "`!Updated`: the dynamic's value after the tick, fired in the wake when a hold it reads was written."
     otherwise: "`!{g.name}`."
 
 # The merge decides once, after its inputs: the left first.
