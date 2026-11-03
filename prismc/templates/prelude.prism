@@ -750,6 +750,32 @@ pub fn loop_job<S: 'static>(state: S, step: impl Fn(S) -> Result<S, S> + 'static
     Rc::new(Looping { state: std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
 }
 
+/// A `while` whose body holds a cycle-point loop of its own (D6): a turn is a job, `Ok` to
+/// turn again in the next cycle, `Err` when the condition fails; each turn starts a cycle.
+pub struct LoopingTurns<S> {
+    state: std::cell::RefCell<Option<S>>,
+    step: Rc<dyn Fn(S) -> Turn<Result<S, S>>>,
+}
+
+impl<S: 'static> Job<S> for LoopingTurns<S> {
+    fn cycle(&self) -> Turn<S> {
+        let state = self.state.borrow_mut().take().expect("a loop's turn is cycled once");
+        let step = self.step.clone();
+        let again = move |r: Result<S, S>| match r {
+            Ok(next) => Turn::More(Rc::new(LoopingTurns { state: std::cell::RefCell::new(Some(next)), step }) as Rc<dyn Job<S>>),
+            Err(done) => Turn::Finished(done),
+        };
+        match (self.step)(state) {
+            Turn::Finished(r) => again(r),
+            Turn::More(turn) => Turn::More(Rc::new(Frame { callee: turn, then: std::cell::RefCell::new(Some(Box::new(again))) })),
+        }
+    }
+}
+
+pub fn loop_turns<S: 'static>(state: S, step: impl Fn(S) -> Turn<Result<S, S>> + 'static) -> Rc<dyn Job<S>> {
+    Rc::new(LoopingTurns { state: std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
+}
+
 /// The job of a lambda of unbounded type: its body, run as a job body from its first
 /// cycle (prismc/README.md, pick JB).
 pub struct Once<B>(std::cell::RefCell<Option<Box<dyn FnOnce() -> Turn<B>>>>);

@@ -2892,17 +2892,35 @@ fn TailFrom lx, env, b, i:
 # `&` block is a cycle point; a loop whose turns are unbounded inside one cycle could keep
 # a tick from ending). The block runs as statements up to a `while` at its top level; the
 # loop is a job over the block's state (`this` and its `&` locals), one turn a cycle
-# (`loop_job`); what follows the loop is its continuation. A `while` nested in an `if`,
-# a `match` or another loop still turns within the cycle (gap LP).
+# (`loop_job`); what follows the loop is its continuation. A loop under an `if` of the
+# block, or in another loop's body, is one too: the `if` binds what follows it once, as a
+# continuation each branch ends in (`IfJob`), and a loop whose body holds such a loop
+# takes its turns as jobs (`loop_turns`). A loop in a `match` or a `for` still turns
+# within the cycle (gap LP).
 
-# Whether an `update` block has a `while` at its top level that the shrink check did
-# not clear: a loop job (D6). A loop it cleared turns within the cycle, one unit of work.
+# Whether an `update` block has a `while` the shrink check did not clear, at its top level
+# or under an `if` or a `while` of it: a loop job (D6). A loop it cleared turns within the
+# cycle, one unit of work.
 HasTopWhile: fn Lx, Block -> Bool
-fn HasTopWhile lx, b = Fold b.stmts, False, \|f, st| f or IsCycleWhile lx, st
+fn HasTopWhile lx, b = Fold b.stmts, False, \|f, st| f or (IsCycleWhile lx, st) or (HoldsCycleWhile lx, st)
 
 IsCycleWhile: fn Lx, Stmt -> Bool
 fn IsCycleWhile lx, st = match st.kind:
     SWhile ignore, ignore: HasKey lx.unshrunk, (PlaceKey lx, st.span)
+    otherwise: False
+
+ElseHasTopWhile: fn Lx, ?Block -> Bool
+fn ElseHasTopWhile lx, (? b) = HasTopWhile lx, b
+fn ElseHasTopWhile lx, nil = False
+
+# A statement whose blocks hold a cycle-point `while`: an `if`, or a `while` (cleared or
+# not) whose body does.
+HoldsCycleWhile: fn Lx, Stmt -> Bool
+fn HoldsCycleWhile lx, st = match st.kind:
+    SWhile ignore, wb: HasTopWhile lx, wb
+    SExpr x: match x.kind:
+        EIf ignore, thenB, ?elseB: (HasTopWhile lx, thenB) or (ElseHasTopWhile lx, ?elseB)
+        otherwise: False
     otherwise: False
 
 # An `update` block in a job, its value given to `Cont` (with the environment outside the
@@ -2919,12 +2937,20 @@ fn UpdTailFrom lx, outer, env, b, i, to, Cont:
     if i >= (Len b.stmts): Cont outer, (XRaw "this")
     else:
         let s = Or b.stmts[i], dummyStmtL
+        let rest = RestText lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), to
+        let Next = \|o2, e2| UpdTailFrom lx, o2, e2, b, i + 1, to, Cont
         let ?loop = match s.kind:
-            SWhile c, wb: if IsCycleWhile lx, s: ? ((c, wb)) else: nil
+            SWhile c, wb: if (IsCycleWhile lx, s) or (HoldsCycleWhile lx, s): ? ((c, wb)) else: nil
             otherwise: nil
-        match ?loop:
-            ? ((c, wb)): WhileJob lx, outer, env, c, wb, s.span, (RestText lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), to), \|o2, e2| UpdTailFrom lx, o2, e2, b, i + 1, to, Cont
-            nil:
+        let ?branch = match s.kind:
+            SExpr x: match x.kind:
+                EIf c, thenB, ?elseB: if HoldsCycleWhile lx, s: ? ((c, thenB, ?elseB)) else: nil
+                otherwise: nil
+            otherwise: nil
+        match ((?loop, ?branch)):
+            ((? ((c, wb)), ignore)): WhileJob lx, outer, env, c, wb, s.span, rest, Next
+            ((nil, ? ((c, thenB, ?elseB)))): IfJob lx, outer, env, c, thenB, ?elseB, s.span, rest, Next
+            otherwise:
                 let ((dos, env2)) = UpdStmt lx, env, s
                 Prepend dos, (UpdTailFrom lx, outer, env2, b, i + 1, to, Cont)
 
@@ -2952,25 +2978,71 @@ fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
     let caps = CapsIn envS, loopText, names
     let capDos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (Own (VlPlace (XRaw rs), mode, bt))
     let envC = Fold caps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
-    let ((bodyDos, ignore)) = UpdStmts lx, envC, wb.stmts
-    let again = XCtor "Ok", [[pack]]
-    let stop = XCtor "Err", [[pack]]
+    # A body that holds a cycle-point loop of its own runs as a job a turn (`loop_turns`):
+    # it ends in the turn's `Ok`, after the inner loop's continuation; else it runs within
+    # the cycle and gives `Ok` or `Err` itself (`loop_job`).
+    let jobs = HasTopWhile lx, wb
+    let Finish = \|x| if jobs: XCtor "prism_rtl::Turn::Finished", [[x]] else: x
+    let again = Finish (XCtor "Ok", [[pack]])
+    let stop = Finish (XCtor "Err", [[pack]])
+    let Body = \|en| if jobs: UpdTailFrom lx, en, en, wb, 0, wb.span, \|o2, e2| again else: StmtsThen lx, en, wb, again
+    let resTy = if jobs: RsNamed "prism_rtl::Turn", [[(RsNamed "Result", [[stTy, stTy]])]] else: stTy
     let turn = match c:
-        CondExpr x: XIf (AsBool (ValueOf lx, envC, x)), (XBlock bodyDos, again), stop
+        CondExpr x: XIf (AsBool (ValueOf lx, envC, x)), (Body envC), stop
         CondBind p, x, ?g:
             let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "w{span.start}"
             let envB = BindAll envC, po.binds
-            let ((inner, ignore)) = UpdStmts lx, envB, wb.stmts
             let conds = Append po.conds, (GuardConds lx, envB, ?g)
-            Own (ArmsValue (Own (ValueOf lx, envC, x)), [[XArm(pat=po.pa, conds=conds, body=(XBlock inner, again)), XArm(pat=PaWild, conds=[[]], body=stop)]], "'w{span.start}", stTy)
+            Own (ArmsValue (Own (ValueOf lx, envC, x)), [[XArm(pat=po.pa, conds=conds, body=(Body envB)), XArm(pat=PaWild, conds=[[]], body=stop)]], "'w{span.start}", resTy)
     # The continuation: the state by its names again, and the outer locals the rest reads.
     let outCaps = CapsIn outer, restText, names
     let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (Own (VlPlace (XRaw rs), mode, bt))
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
     let stepFn = Prepend capDos, (XClosure True, [[(PaTyped pat, stTy)]], turn)
-    let enter = XCall "call_then", [[(XCall "loop_job", [[pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
+    let looping = if jobs: "loop_turns" else: "loop_job"
+    let enter = XCall "call_then", [[(XCall looping, [[pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
     Prepend outDos, enter
+
+# A block's statements in an `update` block, then `last`.
+StmtsThen: unbounded fn Lx, Env, Block, Ex -> Ex
+fn StmtsThen lx, env, b, last:
+    let ((dos, ignore)) = UpdStmts lx, env, b.stmts
+    XBlock dos, last
+
+# An `if` of an `update` block in a job whose branches hold a cycle-point `while`: what
+# follows it is bound once, a continuation over the block's state (`this` and its `&`
+# locals) that each branch ends in (a missing `else` is the continuation at once), so a
+# loop in a branch is a loop job with the rest of its branch, then the continuation, after.
+IfJob: unbounded fn Lx, Env, Env, Cond, Block, ?Block, Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
+fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
+    let state = Fold (Keys env.names), [[]], \|acc, k| if (Take k, 1) != "&": acc else: match env.names[k]:
+        ? (BnLocal rs, ignore, bt): Push acc, ((k, rs, bt))
+        otherwise: acc
+    let names = Each state, \|((ignore, rs, ignore))| rs
+    let stTy = RsTuple (Each state, \|((ignore, ignore, bt))| bt)
+    let pat = PaTuple (Each names, \|n| PaBind "mut {n}")
+    let pack = XTuple (Each names, \|n| XRaw n)
+    let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal rs, Owned, bt)
+    # the continuation: the state by its names again, and the outer locals the rest reads
+    let outCaps = CapsIn outer, restText, names
+    let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (Own (VlPlace (XRaw rs), mode, bt))
+    let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
+    let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
+    let kName = "k_if{span.start}"
+    let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))
+    let ToK = \|o2, e2| XCall kName, [[pack]]
+    let Branch = \|b| UpdTailFrom lx, env, env, b, 0, b.span, ToK
+    let elseX = match ?elseB:
+        ? eb: Branch eb
+        nil: XCall kName, [[pack]]
+    let choose = match c:
+        CondExpr x: XIf (AsBool (ValueOf lx, env, x)), (Branch thenB), elseX
+        CondBind p, x, ignore:
+            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{x.span.start}"
+            let thenX = UpdTailFrom lx, (BindAll env, po.binds), (BindAll env, po.binds), thenB, 0, thenB.span, ToK
+            Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=thenX), XArm(pat=PaWild, conds=[[]], body=elseX)]], "'u{x.span.start}", RsUnknown "the job's turn")
+    Prepend (Push outDos, kDo), choose
 
 # The locals of `env` a source text names, other than `skip`: each to clone into a closure.
 CapsIn: fn Env, Text, [Text] -> [((Text, Text, Holding, RsTy))]

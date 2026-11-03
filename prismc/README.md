@@ -815,7 +815,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `be-update-loops` (a `for` and a guarded `match` as statements of an `update`),
   `be-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
   `let`-bound lambda's own type gives them), `be-while-guard` (a shrinking `while` is
-  one unit of work, gap LP), `be-lambda-cycle` (mutually recursive unbounded lambdas, a
+  one unit of work, gap LP), `be-while-nested` (gap LP), `be-lambda-cycle` (mutually recursive unbounded lambdas, a
   cycle a call), `be-row-values` (a row kind's values built, compared, shown,
   matched and sent inside an element, pick RV), `be-bundle` (pick BA),
   `be-widget-args` (pick WB), `be-host-param` and `be-host-dynamic-answer` (pick HO),
@@ -1261,9 +1261,13 @@ ruling taken (Claude's).
   (`Lx.unshrunk`). Such a `while` at the top level of an `update` block in a job is a
   loop job (`loop_job`): the block's state (`this` and its `&` locals) is the job's,
   each turn a cycle, the rest of the block its continuation. A cleared loop is a Rust
-  `while` inside the cycle (`be-while-guard`, a `Nat` fuel: 3 ticks). *Not yet:* an
-  unshrinking `while` nested in an `if`, a `match`, a `for` or another `while` of the
-  block, which still turns within the cycle.
+  `while` inside the cycle (`be-while-guard`, a `Nat` fuel: 3 ticks). A loop job under an
+  `if` of the block binds what follows the `if` once, a continuation over the block's
+  state that each branch ends in (`IfJob`); one in another loop's body makes that loop's
+  turns jobs (`loop_turns`: a turn that reaches the inner loop ends after it, and the next
+  test starts a cycle), so `be-while-nested` costs what a top-level loop does (5 ticks for
+  3 turns under an `if`, 10 for 2 by 2). *Not yet:* an unshrinking `while` in a `match` or
+  a `for` of the block, which still turns within the cycle.
 - **SH Shadowed runtime names.** A program type named like a `prism_rtl` name the
   emitted code writes bare (`Cx`, `Fault`, `Pod`, `Path`, `Hold`, `Node`) shadows it in
   its module (`use prism_rtl::*` loses to a local item). prismc's `CheckEnv.Cx` does no
