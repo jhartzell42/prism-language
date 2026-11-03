@@ -1254,8 +1254,6 @@ ruling taken (Claude's).
   `while` inside the cycle (`be-while-guard`, a `Nat` fuel: 3 ticks). *Not yet:* an
   unshrinking `while` nested in an `if`, a `match`, a `for` or another `while` of the
   block, which still turns within the cycle.
-- **UF An unbounded function with an `update` block** called from a `check` line emits
-  Rust that does not compile (`Buffer.Numbered`, a reassigned binding; `sem-ch05-and-blocks`).
 - **CW A widget of several clauses in a static position** is a generation built once
   (a `rebuild` of its first argument, which never changes), the clause chosen at the
   build like a `rebuild`'s; its places stand under the generation (`1/#0/0`), where

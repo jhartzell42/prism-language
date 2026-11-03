@@ -530,8 +530,13 @@ fn RustModName m = if m == "": "program" else: Snake (Join (Split m, "."), "_")
 PathIn: fn Lx, Text, Text -> Text
 fn PathIn lx, owner, name:
     if owner == lx.site: name
-    else: if owner == "Prelude": name
+    else: if owner == "Prelude": PreludePath lx, name
     else: "{Or lx.rsMods[owner], (RustModName owner)}::{name}"
+
+# A prelude function's Rust path from the site: bare, or qualified where the site's own
+# value of the same Rust name hides it (`?Step`, `step`, beside a program's `Step`).
+PreludePath: fn Lx, Text -> Text
+fn PreludePath lx, name = if HasKey lx.globals, "{lx.site}.{name}": "crate::prelude::{name}" else: name
 
 # The Rust name of a top-level value of a module: its snake case, with a suffix by its
 # sigil when another value of the module has the same base (`?ParseNat` and `~ParseNat`).
@@ -1524,7 +1529,7 @@ fn PreludeCall lx, env, qk, args, span, t:
     let variant = PreludeVariant name, first
     match ?PreludeJob lx, env, variant, args:
         ? job: VlOwned (XCall "run_to_end", [[job]]), t
-        nil: VlOwned (XCall variant, (Each args, \|a| Argument lx, env, a.value)), t
+        nil: VlOwned (XCall (PreludePath lx, variant), (Each args, \|a| Argument lx, env, a.value)), t
 
 # D8 in the back end: `Fold`, `Each` and `Filter` given a closure that is not bounded are
 # the prelude's job versions (`fold_job`), the closure a `Start`: each call it makes is a
@@ -2488,8 +2493,45 @@ fn UpdStmt lx, env, s = match s.kind:
 # entry, none bind `key` and `_`.
 UpdFor: unbounded fn Lx, Env, ?ForBinders, Expr, Block, Range -> Do
 fn UpdFor lx, env, ?binders, source, body, span:
-    let src = Own (ValueOf lx, env, source)
     let sty = Peel (TypeAt lx, source.span)
+    match ?RefBinder ?binders:
+        ? n: if IsRefPath source: UpdForRefs lx, env, n, source, body, span, sty else: UpdForValues lx, env, ?binders, source, body, span, sty
+        nil: UpdForValues lx, env, ?binders, source, body, span, sty
+
+# `for &s <- &_:` (Semantics ch. 5): a reference per entry of the array the path names, in
+# place; `ix` is its index. A map's entries are not handed by reference here.
+UpdForRefs: unbounded fn Lx, Env, SName, Expr, Block, Range, Ty -> Do
+fn UpdForRefs lx, env, n, source, body, span, sty = match sty:
+    TyArray v:
+        let keyName = "k{span.start}"
+        let refName = "r{span.start}"
+        let env1 = Bind (Bind (Bind env, "key", (BnLocal keyName, Owned, RsNat)), "ix", (BnLocal keyName, Owned, RsNat)), (SNameKey n), (BnLocal "(*{refName})", Owned, (RustTy lx, v))
+        let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
+        let head = DoLet (PaBind keyName), (XCall "nat_of", [[XRaw "i{span.start}"]])
+        DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
+    otherwise: RefusalDo "a `for` by reference over what is not an array"
+
+# The one binder of a `for` when it is a reference, `&s`.
+?RefBinder: fn ?ForBinders -> ?SName
+fn ?RefBinder (? fb) = match fb.?second:
+    nil: match fb.first.kind:
+        PName n: if (Take n.sigils, 1) == "&": ? n else: nil
+        otherwise: nil
+    otherwise: nil
+fn ?RefBinder nil = nil
+
+# A reference path: `&_`, a local `&x`, or a path from one.
+IsRefPath: fn Expr -> Bool
+fn IsRefPath e = match e.kind:
+    EName n: (Take n.sigils, 1) == "&"
+    EField r, ignore, ignore: IsRefPath r
+    EIndex r, ignore: IsRefPath r
+    EGroup x: IsRefPath x
+    otherwise: False
+
+UpdForValues: unbounded fn Lx, Env, ?ForBinders, Expr, Block, Range, Ty -> Do
+fn UpdForValues lx, env, ?binders, source, body, span, sty:
+    let src = Own (ValueOf lx, env, source)
     let ((kt, vt, isArray)) = match sty:
         TyArray v: ((RsNat, (RustTy lx, v), True))
         TyMap k, v: (((RustTy lx, k), (RustTy lx, v), False))
@@ -2576,14 +2618,16 @@ fn PlaceOf lx, env, e = match e.kind:
     EGroup x: PlaceOf lx, env, x
     otherwise: Refusal "a reference path this back end does not lower"
 
-# `&p <= v`; on a map's key, an insertion.
+# `&p <= v`. An index path's part is optional (Semantics ch. 5: an array's part type,
+# `?a`): `? x` writes the entry, and `nil` removes a map's key.
 Assign: unbounded fn Lx, Env, Expr, Ex -> Do
 fn Assign lx, env, target, v = match target.kind:
     EIndex r, k:
         let rt = RustTy lx, (Peel (TypeAt lx, r.span))
-        match rt:
-            RsMap ignore, ignore: DoExpr (XMethod (PlaceOf lx, env, r), "insert", [[Own (ValueOf lx, env, k), v]])
-            otherwise: DoAssign (PlaceOf lx, env, target), v
+        let f = match rt:
+            RsMap ignore, ignore: "set_key"
+            otherwise: "set_index"
+        DoExpr (XCall f, [[(XUnary "&mut ", (PlaceOf lx, env, r)), (Argument lx, env, k), v]])
     EGroup x: Assign lx, env, x, v
     otherwise: DoAssign (PlaceOf lx, env, target), v
 
