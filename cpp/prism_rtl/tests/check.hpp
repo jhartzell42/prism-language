@@ -56,15 +56,15 @@ std::string shown(const T& x) {
     static ::check::Register CHECK_CAT(register_, name)(#name, name);               \
     static void name()
 
-#define CHECK(cond)                                                    \
-    do {                                                               \
-        if (!(cond)) ::check::fail(__FILE__, __LINE__, "CHECK(" #cond ")"); \
+#define CHECK(...)                                                                    \
+    do {                                                                              \
+        if (!(__VA_ARGS__)) ::check::fail(__FILE__, __LINE__, "CHECK(" #__VA_ARGS__ ")"); \
     } while (0)
 
 #define CHECK_EQ(a, b)                                                                                     \
     do {                                                                                                   \
-        auto&& check_a_ = (a);                                                                             \
-        auto&& check_b_ = (b);                                                                             \
+        auto check_a_ = (a);                                                                             \
+        auto check_b_ = (b);                                                                             \
         if (!(check_a_ == check_b_))                                                                       \
             ::check::fail(__FILE__, __LINE__,                                                              \
                           "CHECK_EQ(" #a ", " #b ")\n  left:  " + ::check::shown(check_a_) + "\n  right: " + \

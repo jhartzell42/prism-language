@@ -1,8 +1,9 @@
 # prism_rtl in C++: a static library and its tests. Written by Claude, 3 November 2026,
 # on the claude-self-hosting branch. Subject to change.
 #
-#   make test          the tests under g++ and clang++, then both under
-#                      AddressSanitizer, LeakSanitizer and UBSan
+#   make test          the tests under g++ and clang++, then under AddressSanitizer,
+#                      LeakSanitizer and UBSan with g++ (and clang++ when its
+#                      sanitizer runtime is installed)
 #   make check         the tests once, with $(CXX) into build/$(CONFIG)
 #   make lib           build/$(CONFIG)/libprism_rtl.a
 
@@ -28,7 +29,9 @@ test:
 	$(MAKE) check CXX=g++ CONFIG=gcc
 	$(MAKE) check CXX=clang++ CONFIG=clang
 	$(MAKE) check CXX=g++ CONFIG=asan-gcc OPT="-O1 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined"
-	$(MAKE) check CXX=clang++ CONFIG=asan-clang OPT="-O1 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined"
+	@if [ -f "$$(clang++ -print-resource-dir)/lib/linux/libclang_rt.asan-x86_64.a" ]; then \
+	  $(MAKE) check CXX=clang++ CONFIG=asan-clang OPT="-O1 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined"; \
+	else echo "clang++ has no sanitizer runtime here (libclang-rt-dev): the sanitizers ran under g++ only"; fi
 
 check: $(BUILD)/prism_rtl_tests
 	ASAN_OPTIONS=detect_leaks=1 $(BUILD)/prism_rtl_tests

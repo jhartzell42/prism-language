@@ -105,6 +105,29 @@ std::string float_digits(double f) {
         if (c != '.') digits += c;
     int exp = 0;
     std::from_chars(sci.data() + e + 1 + (sci[e + 1] == '+'), sci.data() + sci.size(), exp);
+    // On an exact tie between two shortest candidates `to_chars` rounds to even, and Rust
+    // rounds up (its Dragon4 fallback's last digit). The exact expansion (a double has at
+    // most 767 significant digits) shows a tie: the digits so far, then 5, then zeros.
+    char exact[800];
+    auto x = std::to_chars(exact, exact + sizeof exact, std::fabs(f), std::chars_format::scientific, 780);
+    std::string_view xs(exact, std::size_t(x.ptr - exact));
+    std::size_t xe = xs.find('e');
+    std::string xdigits;
+    for (char c : xs.substr(0, xe))
+        if (c != '.') xdigits += c;
+    int xexp = 0;
+    std::from_chars(xs.data() + xe + 1 + (xs[xe + 1] == '+'), xs.data() + xs.size(), xexp);
+    std::size_t n0 = digits.size();
+    if (xexp == exp && xdigits.compare(0, n0, digits) == 0 && xdigits[n0] == '5' &&
+        xdigits.find_first_not_of('0', n0 + 1) == std::string::npos) {
+        std::size_t i = n0;
+        while (i > 0 && digits[i - 1] == '9') digits[--i] = '0';
+        if (i == 0) {
+            digits.insert(digits.begin(), '1');
+            exp += 1;
+        } else digits[i - 1] += 1;
+        while (digits.size() > 1 && digits.back() == '0') digits.pop_back();
+    }
     exp += 1;
     int n = int(digits.size());
     if (exp <= 0) out += "0." + std::string(std::size_t(-exp), '0') + digits;
