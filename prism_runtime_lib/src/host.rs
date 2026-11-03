@@ -364,7 +364,9 @@ impl<E: ToPod + Clone + 'static, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Ho
 pub struct HostRow<E, A> {
     path: Path,
     key: Path,
-    host: Rc<dyn HostOf<E, A>>,
+    /// Weak: the host keeps its rows, and a strong pointer back would be a count cycle
+    /// that leaks a torn-down host (D5). The host outlives its rows.
+    host: Weak<dyn HostOf<E, A>>,
     /// The key left: a computed answer in flight to the place is dropped.
     left: Cell<bool>,
     sink: Sink<A>,
@@ -386,16 +388,20 @@ impl<E: ToPod + Clone + 'static, A: Clone + 'static> HostRow<E, A> {
                 // An answer to a row that left, or one that is gone, is dropped (Semantics
                 // ch. 9, "A late result is dropped"): a computed answer in flight to a
                 // place whose key left.
-                Some(row) if !row.left.get() => row.host.deliver(&row.key, v, cx),
+                Some(row) if !row.left.get() => row.host().deliver(&row.key, v, cx),
                 _ => Ok(()),
             });
-            HostRow { path, key, host, left: Cell::new(false), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()) }
+            HostRow { path, key, host: Rc::downgrade(&host), left: Cell::new(false), sink, supplied: RefCell::new(None), level_moved: Rc::new(Port::new()) }
         });
         let element = node.element(value);
-        let blueprint = (node.host.supplier())(&node.key, &element);
-        let supplied = blueprint(node.path.clone(), node.sink.clone(), &node.host.scope(), cx)?;
+        let blueprint = (host.supplier())(&node.key, &element);
+        let supplied = blueprint(node.path.clone(), node.sink.clone(), &host.scope(), cx)?;
         *node.supplied.borrow_mut() = Some(supplied);
         Ok(node)
+    }
+
+    fn host(&self) -> Rc<dyn HostOf<E, A>> {
+        self.host.upgrade().expect("a host outlives its rows")
     }
 
     /// The blueprint's first value: the place's, when its output has one.
@@ -416,7 +422,7 @@ impl<E: ToPod + Clone + 'static, A: Clone + 'static> HostRow<E, A> {
     /// unsubscribes every reader of the entry first (`leave_row`), and a read after that
     /// is a bug of the compiler, not a value.
     pub fn entry(&self, cx: &Cx) -> E {
-        self.host.document(cx).get(&self.key).cloned().expect("a host row's entry is read only while its key is in the child's document")
+        self.host().document(cx).get(&self.key).cloned().expect("a host row's entry is read only while its key is in the child's document")
     }
 
     fn forwards(&self) -> bool {

@@ -1258,9 +1258,6 @@ ruling taken (Claude's).
   `not-lowered` (`sem-ch08-viewer`).
 - **UF An unbounded function with an `update` block** called from a `check` line emits
   Rust that does not compile (`Buffer.Numbered`, a reassigned binding; `sem-ch05-and-blocks`).
-- **HL A host and its rows hold each other strongly** (`Host` → rows → `HostRow` → `Host`),
-  so a host torn down is never freed: a leak under D5. The C++ runtime holds the host
-  weakly (`cpp/prism_rtl/README.md`, doubt HW).
 - **CW A widget of several clauses in a static position** is a generation built once
   (a `rebuild` of its first argument, which never changes), the clause chosen at the
   build like a `rebuild`'s; its places stand under the generation (`1/#0/0`), where

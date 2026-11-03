@@ -223,7 +223,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
   before (R7), kept while it stays, and torn down at the end of the tick its key leaves
   (R8). The owner holds the host as `rt::Host<Elem, Answer, Owner>`: the supplier, the rows,
   the enclosing host when the line stands in a hosted scope, and the owner's two emitted
-  methods, the document and the typed dispatch, linked to the node once it is made.
+  methods, the document and the typed dispatch, linked to the node once it is made. The
+  host holds its owner and each row holds the host weakly (the host outlives its rows), so
+  no count cycle runs through a host and a torn-down host is freed with its rows (D5).
 - **`e` is the live element**, `rt::Live<Elem>`: its identity (the level at the build) and
   its level over time, a `Dynamic<Elem>` whose read is the row's entry, the projection
   `$doc[p]` through the owner.
