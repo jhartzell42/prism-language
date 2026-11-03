@@ -1,9 +1,9 @@
-# A host's child document is a dynamic, and `!Updated $doc` is its event half: it fires in
-# the tick a child place's level or the child's structure moves, with the document after
-# that tick, and the host hears it in the same tick. A click on the forwarded child button
-# moves the child's label; the host counts the document's updates and shows the child's
-# label text out of the new document. Written for prismc's back end. Work in progress,
-# subject to change.
+# A host's child document is a dynamic, and `!Updated $doc` is its event half. `$doc` is
+# structural (Semantics ch. 7, "Structural dynamics"; round 3 ST): a click on the forwarded
+# child button moves the child's label in its tick, and the event fires in the tick after,
+# the first firing of that owed tick, with the document after the click; the host counts the
+# document's updates there and shows the child's label text out of the new document. Written
+# for prismc's back end. Work in progress, subject to change.
 emit Ui.*
 use Ui.*
 
