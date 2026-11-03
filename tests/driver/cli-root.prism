@@ -1,0 +1,9 @@
+# A root whose row has no Ui and no Gui: `prism run` picks the CLI World for it.
+# Written for tests/driver/run.sh. Work in progress, subject to change.
+emit Fs.*
+use Fs.*
+
+@main: @unit
+@main:
+    !started <- @started                                              # 0
+    ignore <- Fs.File(path="/etc/motd", requests=(Read on !started))  # 1
