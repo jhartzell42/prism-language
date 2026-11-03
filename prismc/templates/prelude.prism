@@ -51,6 +51,18 @@ pub struct Span {
     pub binding: Text,
 }
 
+impl ToPod for Span {
+    fn to_pod(&self) -> Pod {
+        Pod::record("Span", vec![("file", self.file.to_pod()), ("line", self.line.to_pod()), ("column", self.column.to_pod()), ("binding", self.binding.to_pod())])
+    }
+}
+
+impl FromPod for Span {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        Ok(Span { file: FromPod::from_pod(field(p, "file")?)?, line: FromPod::from_pod(field(p, "line")?)?, column: FromPod::from_pod(field(p, "column")?)?, binding: FromPod::from_pod(field(p, "binding")?)? })
+    }
+}
+
 /// `type Exception = record: kind, message, spans, path`.
 #[derive(Clone, PartialEq)]
 pub struct Exception {
@@ -58,6 +70,18 @@ pub struct Exception {
     pub message: Text,
     pub spans: Array<Span>,
     pub path_: Option<Path>,
+}
+
+impl ToPod for Exception {
+    fn to_pod(&self) -> Pod {
+        Pod::record("Exception", vec![("kind", self.kind.to_pod()), ("message", self.message.to_pod()), ("spans", self.spans.to_pod()), ("path", self.path_.to_pod())])
+    }
+}
+
+impl FromPod for Exception {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        Ok(Exception { kind: FromPod::from_pod(field(p, "kind")?)?, message: FromPod::from_pod(field(p, "message")?)?, spans: FromPod::from_pod(field(p, "spans")?)?, path_: FromPod::from_pod(field(p, "path")?)? })
+    }
 }
 
 /// `type Cursor = record: text, at`: a position in a text, for `?Step`.
@@ -74,8 +98,14 @@ pub enum PreludeTurn<B> {
     Done(B),
 }
 
-/// `tag Prelude.Unwrap of Element !a: value: !~a`.
+/// `tag Prelude.Unwrap of Element !a: value: !~a`. The prelude's element tags are variants
+/// of `crate::Elem` and `crate::Answer` like any program's (a hosted child may emit them).
+#[derive(Clone, PartialEq)]
 pub struct PreludeUnwrap {}
+
+impl PreludeUnwrap {
+    pub const TAG: &'static str = "Prelude.Unwrap";
+}
 
 impl ToPod for PreludeUnwrap {
     fn to_pod(&self) -> Pod {
@@ -83,12 +113,35 @@ impl ToPod for PreludeUnwrap {
     }
 }
 
+impl FromPod for PreludeUnwrap {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        match p.tag() {
+            Some("Prelude.Unwrap") => Ok(PreludeUnwrap {}),
+            _ => prism_rtl::pod::mismatch("a Prelude.Unwrap", p),
+        }
+    }
+}
+
 /// `tag Prelude.Exceptions of Element !Exception`.
+#[derive(Clone, PartialEq)]
 pub struct PreludeExceptions {}
+
+impl PreludeExceptions {
+    pub const TAG: &'static str = "Prelude.Exceptions";
+}
 
 impl ToPod for PreludeExceptions {
     fn to_pod(&self) -> Pod {
         Pod::element("Prelude.Exceptions", vec![])
+    }
+}
+
+impl FromPod for PreludeExceptions {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        match p.tag() {
+            Some("Prelude.Exceptions") => Ok(PreludeExceptions {}),
+            _ => prism_rtl::pod::mismatch("a Prelude.Exceptions", p),
+        }
     }
 }
 

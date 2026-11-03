@@ -5468,10 +5468,12 @@ fn RowDefOf lx, ti:
     let pod = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).pod
     RowDef(name=(Camel (BareName ti.name)), prism=ti.name, cases=cases, pod=pod, doc=(TypeDoc lx, ti))
 
-# `crate::Elem`: every element tag's `Level`, the value of a document's entry.
+# `crate::Elem`: every element tag's `Level`, the value of a document's entry; the
+# prelude's element tags among them (`Prelude.Unwrap`, `Prelude.Exceptions`), which the
+# prelude template defines.
 ElemRow: unbounded fn Lx, [Text] -> RowDef
 fn ElemRow lx, mods:
-    let tags = KindTags lx, "Element", mods
+    let tags = KindTags lx, "Element", (Push mods, "Prelude")
     let cases = Each tags, \|tg| (((TagStruct tg.name), "{RustModName tg.home}::{TagStruct tg.name}"))
     let pod = Fold tags, True, \|ok, tg| ok and (TagDefOf lx, tg).pod
     RowDef(name="Elem", prism="Elem", cases=cases, pod=pod, doc="`Elem r`: an element as a document holds it, its `Level` in a tick.")
@@ -5479,7 +5481,7 @@ fn ElemRow lx, mods:
 # `crate::Answer`: a variant per element tag, carrying the tag's output type.
 AnswerEnum: unbounded fn Lx, [Text] -> AnswerDef
 fn AnswerEnum lx, mods:
-    let tags = KindTags lx, "Element", mods
+    let tags = KindTags lx, "Element", (Push mods, "Prelude")
     AnswerDef(cases=(Each tags, \|tg| AnswerCase(variant=(TagStruct tg.name), accessor=(AnswerAccessor tg), structPath="{RustModName tg.home}::{TagStruct tg.name}", tagName=tg.name, ty=(AnswerTy lx, tg))))
 
 # What an answer to a tag's element carries: its output's value; of a bundle (a tuple with
