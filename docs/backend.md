@@ -140,11 +140,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
 ## Dynamic structure
 
 - **`for k, $v <- $xs:`** → a builder node: a `Map<K, Rc<Row>>` of rows, a mark on `$xs`
-  calls `cx.build_later(self)`, and at the builder's height a removed key detaches its
-  row (`cx.removed` for its places, `cx.leave_later(row)`). `build` drops the left rows
-  and builds each new key's row at `path/[k]` from the values after the tick. A kept row
-  hears its `$v` through its own update port. A `for` returning an event or dynamic
-  consolidates its rows into `!(K ==> T)` or `$(K ==> T)`.
+  calls `cx.build_later(self)`, and after propagation `build` detaches the rows whose
+  key left (`cx.removed` for its places, `cx.leave_later(row)`) and builds each new
+  key's row at `path/[k]` from the values after the tick (R7); a key that leaves ends
+  its row at the end of that tick (R8). The `for` is a projection of `$xs`: a row's
+  `$v` is `$xs[k]`, a derived dynamic, never state. The block keeps the source as a
+  getter and a row's `entry` reads it at the row's read point by its key, so a kept row
+  reads its entry as any `$` (the opening value during propagation, the value after the
+  tick from then on), nothing writes it, and `!Updated $v` is a combinator of the row
+  one above the block's writers of the holds behind `$xs`, told of the write by the
+  block (`parent_wrote_{m}`), firing the entry after the tick in the tick of the change.
+  A `for` returning an event or dynamic consolidates its rows into `!(K ==> T)` or
+  `$(K ==> T)`. (prismc/README.md, pick RE.)
 - **`rebuild $x:`** → the same with one generation at `path/#g`; a `rebuild` returning an
   event is a builder and a switch in one path (round 46 RD).
 - **`@Switch $!a`** → a field with the current inner `Event` and its `Handle`, and an
@@ -155,7 +162,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   on the started list, so it fires at n+1 (Graph ch. 4).
 - **Leaving.** `leave` writes the `state` enum (live, detached, zombie, dead), turns
   holds into their `newest()` constants and the node's own events into `never`, then
-  `cx.clean_up_later(self, zombie)`. In the compact round `clean_up` unsubscribes what the
+  `cx.clean_up_later(self, zombie)`. A `for` row's entry, a projection whose key the
+  source no longer has, becomes the constant it was as the leaving tick opened (read
+  under `Cx::before`, the read point moved back to the tick), since the entry after that
+  tick does not exist. In the compact round `clean_up` unsubscribes what the
   new state no longer reads; a zombie's `edges` and `release` let the collector break the
   one loop counts cannot (Graph ch. 4, worked examples).
 - **States and transitions** are emitted: a `state` field per node, the transition as
@@ -216,7 +226,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Port` (`subscribe`, `unsubscribe`,
   `lien`, `release`, `demand`, `fire`, `kept`), `Handle`, `Demand`, `Event`, `Dynamic`,
   `Defer`, `Job`, `Turn`.
-- `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `after`, `wake`, `build_later`, `swap_later`,
+- `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `after`, `before`, `wake`, `build_later`, `swap_later`,
   `leave_later`, `dirty`, `on_started`, `arm`, `clean_up_later`, `added`, `removed`,
   `changed`, `request`, `result`, `first_value`, `listen`), `Runtime` (`build`, `tick`,
   `close`, `compact`, `document`).

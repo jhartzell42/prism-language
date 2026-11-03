@@ -831,7 +831,8 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   matched and sent inside an element, pick RV), `be-bundle` (pick BA),
   `be-widget-args` (pick WB), `be-host-param` (pick HO), `be-event-values` (pick EV2),
   `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry` (pick DO),
-  `be-host-doc-in-tick` (pick HD), `be-updated` and `be-host-updated` (pick UP).
+  `be-host-doc-in-tick` (pick HD), `be-updated` and `be-host-updated` (pick UP),
+  `be-row-entry` (pick RE).
   `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
@@ -981,14 +982,47 @@ Each is Claude's, for Jimmy to overturn.
 - **ER `Error(..)` where a `~T` is wanted** is `Err(..)`: as an argument (the checker's
   pick ER), in a branch of an `if` whose value is a `~T`, and as the firing of an event
   that feeds a `!~T` (`be-error-try`).
-- **RW `for` rows.** A row is a node of its own (`TodosRow`) at `n/[k]`, with `key`, a
-  `value` hold for `$_`, and a weak reference to its block; the block's builder (a
-  template, `ForBuild`) tears down left keys, builds new ones and updates kept ones from
-  the source after the tick, run at the build and from the build list when a hold the
-  source reads is written. A row's event result goes up to a gather in the block, which
+- **RW `for` rows.** A row is a node of its own (`TodosRow`) at `n/[k]`, with `key` and a
+  weak reference to its block; the block's builder (a template, `ForBuild`) tears down
+  left keys and builds new ones from the source after the tick (Semantics R7), run at the
+  build and from the build list when a hold the source reads is written; it writes
+  nothing to a kept row. A row's event result goes up to a gather in the block, which
   fires `!(K ==> T)` once a tick at a height above the rows'. A row has a field for each
   plain value of its block it reads (a parameter, a plain `let`), which the builder
   passes to its `build`, since a row is built where its block's locals are not in scope.
+- **RE A row's entry is a projection.** `for k, $v <- $xs:` is a projection of its source:
+  the rows are the key set of `$xs`, and each row's `$v` (`$_`) is `$xs[k]`, a dynamic
+  derived above `$xs`, never state and never written by anybody. The block gets a getter
+  `{rows}_source` (the source expression, a dynamic `let` of the block for the marks),
+  and the row's `entry(cx)` reads it at the row's read point and indexes by `key`: the
+  values as the tick opened during propagation, the values after it from then on, like
+  any `$`. Its reads are a `ParentRead` of the getter, so a row's places over `$_` are
+  marked by the block's writes of the holds behind the source, and `!Updated $_` (and
+  `!Updated` of any dynamic the row derives over its block's holds) has a height: the
+  rows are finished with their block (`FinishNode` keeps them `pending` until the block's
+  heights are known), each `!Updated` node of a row floors at one above the block's
+  writers of the holds behind what it reads through the parent (`ParentFloor`, the
+  block's own floors inherited by rows of rows), and the block's gather sits one above
+  the row's heights. A write behind a name the row hears (`RowHears`: what its
+  `!Updated` nodes read through the parent, and what its own rows hear) calls the row's
+  `parent_wrote_{m}`, which sets the flags and asks the wakes, and marks the row's own
+  rows in turn; so the event fires once at its height with the entry after the tick, in
+  the tick of the change, deduped by nobody (an edit of one key fires every row's
+  `!Updated $_`, pick UD). A key that leaves ends its row at the end of that tick (R8):
+  the entry after that tick does not exist, so a read that finds the key gone reads the
+  source as the tick opened (`Cx::before`), and the leaving keeps that value in
+  `left_entry`, the row's constant from then on (docs/backend.md, "Leaving"). The build
+  still takes the entry after the tick as an argument (`value`), for the holds and plain
+  `let`s computed at the build: the same value the projection reads there. In the build
+  `$_` is that argument; in the methods the projection. `be-row-entry`. *Refused:*
+  the entry as a `Hold` the builder writes after propagation, which made `$_` state
+  written at the end of the tick and left `!Updated $_` without a height; a `Cache` on
+  the source getter, which every write path would have to mark (a row reads the source
+  again at each read; cost noted under doubts). *Not done for `rebuild`'s `_`:* the
+  checker types it plain ("`_` is that value, plain"), and a generation is built from
+  `$x` after the tick and torn down at the end of the tick `$x` changes, so a plain
+  field holding `$x`'s value for that generation is the projection already; no
+  `!Updated _` can be written over it.
 - **GN `rebuild`.** A generation is a node (`QuizGen`) at `n/#g` with `_` a plain field;
   the builder (`GenBuild`) leaves the old one and builds the next when the source's
   stale flag is set; an answer under `n/#g` reaches the current generation only. A
@@ -1138,10 +1172,13 @@ Each is Claude's, for Jimmy to overturn.
   tick of the change, whenever the dynamic was recomputed, deduped by nobody (`$a * 0`
   fires on every write of `$a`; `be-updated`). A host's `$doc` has the child's holds as
   its reads (pick HD), so `!Updated $doc` fires in the tick a child hold moves, with the
-  document after it (`HostDoc::get` under `Cx::after`; `be-host-updated`). *Refused
-  loudly* (`compile_error!`, not an event that never fires): an `!Updated` whose dynamic
-  reads a row's `$_` or its block's holds through the parent (the builder writes them
-  after propagation, gap DY) or anything no sink of the node writes (a `for`'s rows).
+  document after it (`HostDoc::get` under `Cx::after`; `be-host-updated`). A row's
+  `!Updated` over its entry or over its block's holds read through the parent is pick
+  RE's (`be-row-entry`). *Refused loudly* (`compile_error!`, not an event that never
+  fires): an `!Updated` whose dynamic reads anything no sink of the node writes (a
+  `for`'s rows, so the gathered `$(K ==> T)` has no event half yet: the rows' results
+  move in the builder, after propagation, with no clean height), and a row's that reads
+  a block name no hold of the block stands behind.
   *Refused:* a stamp on every hold compared in the wake, which fires nothing for a write
   of an equal value and so dedupes, against the ruling; and firing from the patch pass,
   which puts the event a tick late.
@@ -1201,9 +1238,13 @@ ruling taken (Claude's).
 - **DY Dynamics across nodes.** A row reads its block's events through ports, and its
   block's holds and dynamic `let`s through its parent at its own read point
   (`sem-ch07-paged`'s inner `rebuild $src`). A `for` row is marked by the block's writes
-  of what it reads (`Wx.rowHolds`, its `ParentRead`s), and the block is
+  of what it reads (`Wx.rowMarks`: its `ParentRead`s as the block's own, `RowWritten`),
+  its `!Updated` nodes told through `parent_wrote_{m}` (pick RE), and the block is
   patched after its rows are built; a generation is not marked, and is rebuilt only with
-  its parent's. *Next:* the contract's `Dynamic` with its update port.
+  its parent's. A row's port for a block event sits at height 0 in the row, below the
+  event's height in the block; the runtime's clamp (`Cx::wake` at or below the running
+  height runs at the next) orders it. *Next:* the contract's `Dynamic` with its update
+  port.
 - **HS Hosting at the boundary of plain data.** The contract's supplier is typed per
   child element (`Fn(Path, ElementOf<c>) -> blueprint`); a supplier's `o` is its own per
   place (rank 2), so here a blueprint answers with an `Answering` (prism_rtl's `host`): a
@@ -1226,6 +1267,12 @@ ruling taken (Claude's).
 - **CL Clause choice.** A `rebuild` or a building `match`/`if` whose arms are widgets of
   several clauses needs the clause chosen at the build; generations do it for one clause
   only.
+- **SR A row's source is read per read.** Every read of a row's entry evaluates the
+  block's source getter (`Tag $doc, $clicks` in `be-host-doc-in-tick`) and indexes it,
+  where the `Hold` it replaced was a clone (pick RE). *First ruling:* correctness first.
+  *Next:* an `rt::Cache` on the getter, marked by every write path (a hold's sink,
+  `@Machine`'s state, a push or a host's answer at a place), which docs/backend.md's
+  "Marks" already names for a shared computed behavior.
 
 ### Not lowered yet
 
@@ -1236,7 +1283,8 @@ naming the construct, and `CompileProgram` reports every distinct one as
 parameter's argument, a block), and a hosted child's result bound to a name; an event
 blueprint as a value (`@ !e`, the window library's `?Boxed`); an element applied as a
 plain value and a live element's `$` field read in a plain function (gap LE), `@Flatten`,
-`!Updated` of a dynamic no sink of the node writes (pick UP), an `@Machine` whose step is
+`!Updated` of a dynamic no sink of the node writes (pick UP; a `for`'s gathered
+dynamic), an `@Machine` whose step is
 not a named function, a local function whose
 parameters are not names or used as a value, `!MergeAll` of a list that is not a
 literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`

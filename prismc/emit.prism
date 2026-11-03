@@ -478,17 +478,22 @@ IsRaw: fn Ex -> Bool
 fn IsRaw (XRaw ignore) = True
 fn IsRaw other = False
 
-# A `for`'s builder: rows that left torn down, new keys built, kept rows updated.
+# A `for`'s builder: rows that left torn down, new keys built.
 ForBuilder: unbounded fn ForDef -> Text
-fn ForBuilder b = ForBuild b.name, b.at, (Expression b.source), (Type b.keyTy), (Type b.valueTy), b.rowNode, (Concat (Each b.passed, \|x| ", {Expression x}"))
+fn ForBuilder b = ForBuild b.name, b.at, (Type b.keyTy), (Type b.valueTy), b.rowNode, (Concat (Each b.passed, \|x| ", {Expression x}"))
 
 # A `rebuild`'s builder: the old generation torn down, the next one built.
 GenBuilder: unbounded fn GenDef -> Text
 fn GenBuilder gd = GenBuild gd.name, gd.at, (Expression gd.source), (Type gd.valueTy), (Expression gd.select)
 
-# A row's leaving (prelude `Row`): its places torn down, its subscriptions let go.
+# A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, since
+# its key is gone from the source after it (R8); its places are torn down; its
+# subscriptions let go.
 RustRowImpl: unbounded fn NodeDef -> Text
-fn RustRowImpl n = RowImpl n.name, (Join (Each n.subs, \|((ev, m, ignore))| "if let (Some(p), Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"), "\n")
+fn RustRowImpl n:
+    let kept = if n.rowKind == ForRow: [["*self.left_entry.borrow_mut() = Some(self.entry(cx));"]] else: [[]]
+    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if let (Some(p), Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"
+    RowImpl n.name, (Join (Append (Push kept, "self.remove_places(cx);"), unsubscribe), "\n")
 
 RustMethod: unbounded fn MethDef -> Text
 fn RustMethod m:

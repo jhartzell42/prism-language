@@ -147,6 +147,17 @@ impl Cx<'_> {
         self.read_at.set(saved);
         v
     }
+    /// A read as the tick opened, made after propagation: `f` runs with the read point at
+    /// the tick, so every hold it reads answers its value before this tick's writes, and the
+    /// read point is then put back. A `for` row whose key left reads its entry's last value
+    /// this way (Semantics R8: the row ends at the end of the tick its key leaves; the
+    /// entry after that tick does not exist).
+    pub fn before<T>(&self, f: impl FnOnce(&Cx) -> T) -> T {
+        let saved = self.read_at.replace(self.tick);
+        let v = f(self);
+        self.read_at.set(saved);
+        v
+    }
 
     /// Ask for a wake at `height`, once per height. A wake asked for at or below the
     /// running height runs at the next one (the clamp, Graph ch. 4).

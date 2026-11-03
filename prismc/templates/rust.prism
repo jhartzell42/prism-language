@@ -389,13 +389,15 @@ fn Method doc, signature, body = inline_text <rust>
 </rust>
 
 # A `for`'s builder (docs/backend.md, "Dynamic structure"), run at the build and in the
-# build list after a tick that changed its source, once.
-ForBuild: fn Text, Text, Text, Text, Text, Text, Text -> Text
-fn ForBuild name, at, source, keyTy, valueTy, rowNode, passed = inline_text <rust>
+# build list after a tick that changed its source, once. A kept row reads its entry through
+# the block's `{{name}}_source` at its own read point: the builder writes nothing to it.
+ForBuild: fn Text, Text, Text, Text, Text, Text -> Text
+fn ForBuild name, at, keyTy, valueTy, rowNode, passed = inline_text <rust>
 /// The rows of the `for` at `{{at}}`: rows whose key left are torn down, new keys are
-/// built under it at `[k]`, kept rows hear their entry; from the values after the tick.
+/// built under it at `[k]` from the values after the tick; kept rows keep reading their
+/// entry out of the source.
 fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
-    let items: Map<{{keyTy}}, {{valueTy}}> = {{source}};
+    let items: Map<{{keyTy}}, {{valueTy}}> = self.{{name}}_source(cx);
     let old = self.{{name}}.borrow().clone();
     for (k, row) in old.iter() {
         if !items.contains_key(k) {
@@ -406,10 +408,7 @@ fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     let mut next = Map::new();
     for (k, v) in items.iter() {
         let row = match old.get(k) {
-            Some(row) => {
-                row.update(v.clone(), cx);
-                row.clone()
-            }
+            Some(row) => row.clone(),
             None => {{rowNode}}::build(self.{{at}}.child(Segment::Key(k.to_pod())), k.clone(), v.clone(), Rc::downgrade(self){{passed}}, cx)?,
         };
         next.insert(k.clone(), row);
@@ -441,13 +440,13 @@ fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
 }
 </rust>
 
-# A row's leaving.
+# A row's leaving: a `for` row keeps its entry's last value first (R8), its places are torn
+# down, its subscriptions let go.
 RowImpl: fn Text, Text -> Text
-fn RowImpl name, unsubscribe = inline_text <rust>
+fn RowImpl name, leaving = inline_text <rust>
 impl Row for {{name}} {
     fn leave_row(&self, cx: &mut Cx) {
-        self.remove_places(cx);
-        {{unsubscribe}}
+        {{leaving}}
     }
 }
 </rust>
