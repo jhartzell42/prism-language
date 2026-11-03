@@ -173,6 +173,87 @@ impl<T: Clone> Cache<T> {
 }
 
 // ---------------------------------------------------------------------------------------
+// Snapshot
+// ---------------------------------------------------------------------------------------
+
+/// A structural dynamic's value (Semantics ch. 7, "Structural dynamics"; round 3 ST): a
+/// host's child document, a `for`'s gathered `$(K ==> T)`, anything whose value is made of
+/// constructed structure. Such a value after tick `n` cannot exist before `n`'s
+/// construction step has run, so it is never computed during propagation: the node takes it
+/// once, at the point of its construction step where the structure behind it has settled
+/// ([`Snapshot::take`], [`Snapshot::take_compared`]), and every read answers a snapshot. A
+/// read at read point `n` (a sample during propagation, or under [`Cx::before`]) answers the
+/// snapshot of `n - 1`; a read after the tick answers the snapshot of `n`, taken or, when
+/// nothing marked the structure this tick, the one that stands.
+///
+/// A write behind the structure [`Snapshot::mark`]s the snapshot; the node's construction
+/// step takes it when marked. Reading a marked snapshot after the tick before it is taken is
+/// a bug of the compiler, not a stale value: a read under [`Cx::after`] during propagation,
+/// or a builder that runs before the structure it reads has settled. It panics with the
+/// reason.
+pub struct Snapshot<T> {
+    /// The newest snapshot and its tick, and the older one once there have been two.
+    slots: RefCell<Option<Slots<T>>>,
+    /// The tick a write behind the structure marked, until the snapshot of that tick is taken.
+    marked: Cell<Option<Tick>>,
+    what: &'static str,
+}
+
+impl<T: Clone> Snapshot<T> {
+    /// An empty snapshot; `what` names the dynamic in the panic message.
+    pub fn new(what: &'static str) -> Snapshot<T> {
+        Snapshot { slots: RefCell::new(None), marked: Cell::new(None), what }
+    }
+    /// A write behind the structure this tick: the construction step takes the snapshot.
+    pub fn mark(&self, cx: &Cx) {
+        self.marked.set(Some(cx.tick()));
+    }
+    /// Whether a write marked the structure this tick and the snapshot is not taken yet.
+    pub fn marked(&self, cx: &Cx) -> bool {
+        self.marked.get() == Some(cx.tick())
+    }
+    /// The snapshot of this tick, taken: the value after the tick, which every read after
+    /// the tick answers from now on. A second take in the same tick replaces the first.
+    pub fn take(&self, v: T, cx: &Cx) {
+        let mut s = self.slots.borrow_mut();
+        *s = Some(match s.take() {
+            Some((_, stamp, older)) if stamp == cx.tick() => (v, stamp, older),
+            Some((newest, stamp, _)) => (v, cx.tick(), Some((newest, stamp))),
+            None => (v, cx.tick(), None),
+        });
+        self.marked.set(None);
+    }
+    /// The value at the read point: the newest snapshot taken before it.
+    pub fn get(&self, cx: &Cx) -> T {
+        let at = cx.read_point();
+        let s = self.slots.borrow();
+        match &*s {
+            Some((newest, stamp, _)) if *stamp < at => {
+                if at > cx.tick() && self.marked(cx) {
+                    let how = if cx.propagating() { "under `Cx::after` during propagation" } else { "by a builder that runs before the structure it reads has settled" };
+                    panic!("{} read after tick {} before its snapshot was taken: a structural dynamic read {how}", self.what, cx.tick());
+                }
+                newest.clone()
+            }
+            Some((_, _, Some((older, _)))) => older.clone(),
+            Some((_, stamp, None)) => panic!("{} read at read point {at} before its first snapshot, taken in tick {stamp}", self.what),
+            None => panic!("{} read before its first snapshot was taken", self.what),
+        }
+    }
+}
+
+impl<T: Clone + PartialEq> Snapshot<T> {
+    /// The snapshot taken and compared with the one that stood: whether the value moved.
+    /// The update event of a structural dynamic fires only when it did (R3 with one tick of
+    /// lag; a dedupe where equality exists).
+    pub fn take_compared(&self, v: T, cx: &Cx) -> bool {
+        let moved = self.slots.borrow().as_ref().is_none_or(|(newest, _, _)| *newest != v);
+        self.take(v, cx);
+        moved
+    }
+}
+
+// ---------------------------------------------------------------------------------------
 // Ports and the values that cross the node interface
 // ---------------------------------------------------------------------------------------
 

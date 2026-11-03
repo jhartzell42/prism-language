@@ -96,9 +96,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   state.
 - **The constructor** `fn build(path, args, cx: &mut Cx) -> Rc<Self>` runs after
   propagation: holds take their initial values (`Hold::new(v, cx)`, stamped with the
-  build tick), each place goes out with `cx.added(path.at(n), level.to_pod())`, its level
-  the program's `Elem` (a constant for a place with no live fields, the place's getter
-  `n.getter(cx)` otherwise, which the patch pass reads again after the tick); a place with
+  build tick), the hosts are linked, the builders run and the structural dynamics'
+  snapshots are taken (Dynamic structure, below), then each place goes out with
+  `cx.added(path.at(n), level.to_pod())`, its level the program's `Elem` (a constant for a
+  place with no live fields, the place's getter `n.getter(cx)` otherwise, which the patch
+  pass reads again after the tick); a place with
   a first value asks `cx.first_value(&level)`, a block that binds `@started` calls
   `cx.on_started(node)`, and nothing fires. A place in a hosted scope goes out nowhere: it
   is an entry of its host's document (Hosting, below).
@@ -120,11 +122,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   live field reads it, `Cache::mark` for a computed behavior in the node, a fire on the
   update port for a reader in another node, and the `_moved` flag of an `!Updated` node
   over it, with a wake at that node's height.
-- **`!Updated $d`** is a combinator decided in the wake, one above the writers of the
-  holds `$d` reads: when its flag was set this tick it fires `$d`'s value after the tick,
-  read under `Cx::after` (the read point moved to n+1 for the read), so the event half
-  fires at n with the value after n while a sample in n reads the opening value
-  (prismc/README.md, pick UP).
+- **`!Updated $d`** over holds is a combinator decided in the wake, one above the writers
+  of the holds `$d` reads: when its flag was set this tick it fires `$d`'s value after the
+  tick, read under `Cx::after` (the read point moved to n+1 for the read), so the event
+  half fires at n with the value after n while a sample in n reads the opening value
+  (prismc/README.md, pick UP). Over a structural dynamic it is decided at the end of the
+  construction step and fires at n+1 (Structural dynamics, below).
 - **The patch pass.** `Node::patch` calls `cx.changed(path, level)` for each dirty place;
   `rt::Document::diff` drops a `Changed` whose `Level` did not move.
 - **Answers.** `Node::answer` matches the path's segments: a position in this node calls
@@ -153,10 +156,26 @@ it make every program an interpreter run, and every type mistake a runtime fault
   tick from then on), nothing writes it, and `!Updated $v` is a combinator of the row
   one above the block's writers of the holds behind `$xs`, told of the write by the
   block (`parent_wrote_{m}`), firing the entry after the tick in the tick of the change.
-  A `for` returning an event or dynamic consolidates its rows into `!(K ==> T)` or
-  `$(K ==> T)`. (prismc/README.md, pick RE.)
+  A `for` returning an event consolidates its rows' firings into `!(K ==> T)`, one a
+  tick; one returning a dynamic gathers the rows' results into `$(K ==> T)`, a structural
+  dynamic (below). (prismc/README.md, pick RE.)
 - **`rebuild $x:`** → the same with one generation at `path/#g`; a `rebuild` returning an
   event is a builder and a switch in one path (round 46 RD).
+- **Structural dynamics** (Semantics ch. 7, "Structural dynamics"; round 3 ST): a `for`'s
+  gathered `$(K ==> T)`, a host's `$doc`, and every dynamic lifted from one have no value
+  after n before n's construction step has run. Each root is an `rt::Snapshot` field: the
+  getter (`rows_all`, `host_k_doc`) answers the snapshot at the read point, and the live
+  computation (`rows_all_now`, `host_k_doc_now`) is read once per tick, in the node's
+  construction step where the structure behind it has settled (a gathered dynamic after
+  its builder; `$doc` after the child's builders, before the host's `for` over it), when a
+  write marked it, compared where the type has equality. A sample during propagation reads
+  the snapshot of n−1; the builders and the patch pass of n read the snapshot of n; a read
+  of a marked snapshot after the tick before it is taken is a panic, not a value. A
+  structural `!Updated` is decided at the end of `Node::build`: when a snapshot it reads
+  moved, or a hold it reads beside the snapshots was written, its firing is queued with
+  `cx.answer_later`, once, so it fires at n+1 among that owed tick's first firings, reading
+  its value at n+1's read point: the snapshots and holds after n, one state in both halves
+  (prismc/README.md, pick ST).
 - **`@Switch $!a`** → a field with the current inner `Event` and its `Handle`, and an
   invalidation edge on the outer whose mark calls `cx.swap_later(self)`. `swap` pulls
   the outer after the tick; on a new inner it subscribes first, with no catch-up, then
@@ -182,15 +201,18 @@ it make every program an interpreter run, and every type mistake a runtime fault
   by their path relative to the child (`0`, `1`, `2/[k]/0`), and emit into no document.
   There is no protocol and no plain data at the host: the owner reads the child's places
   as values and answers them by calling their input methods.
-- **The child's document `$doc` is a getter** of the owner, `host_k_doc(&self, cx) ->
-  Map<Path, Elem>`: every child place at the read point, each a snapshot of the program's
-  `Elem` enum (the static places by their getters or constants, and under each `for` and
-  `rebuild` of the child the rows' own `Row::document`, recursively). Its reads are
-  everything the child's places, builders, generations and rows read, so a write behind any
-  of them marks the owner's places over `$doc`, lists its builders, dirties the host's rows
-  and fires `!Updated $doc` once at its height with the document after the tick. A row of
-  the child that writes a hold of its own tells the owner through `document_moved` →
-  `host_k_moved`, which marks the same way.
+- **The child's document `$doc` is a structural dynamic** of the owner (Dynamic structure,
+  above): the getter `host_k_doc(&self, cx) -> Map<Path, Elem>` answers the snapshot
+  `host_k_doc_snap` at the read point, which the construction step takes from
+  `host_k_doc_now`, every child place as the program's `Elem` enum (the static places by
+  their getters or constants, and under each `for` and `rebuild` of the child the rows' own
+  `Row::document`, recursively), after the child's builders have run and before the host's
+  `for` over it builds its rows. Its reads are everything the child's places, builders,
+  generations and rows read, so a write behind any of them marks the owner's places over
+  `$doc`, marks the snapshot, lists its builders and dirties the host's rows; `!Updated
+  $doc` fires in the next tick with the document after this one. A row of the child that
+  writes a hold of its own tells the owner through `document_moved` → `host_k_moved`, which
+  marks the same way.
 - **The host is `for p, e <- $doc: supplier p, e`** in the owner: an ordinary builder
   (`host_k_rows_build`, the `for` template) over the getter, whose rows are `rt::HostRow`s,
   one per child place, built at `hostpos/[p]` when the key is in `$doc` after a tick and not
@@ -273,10 +295,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - `pod`: `Pod`, `Path`, `Segment`, `ToPod`, `FromPod`, `mismatch`, `Error`, `Fault`.
 - `print`: `Show`, `Printer`, `show`, `show_text`; `read`: `value`, `pattern`, `path`,
   `Pattern`.
-- `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Port` (`subscribe`, `unsubscribe`,
-  `lien`, `release`, `demand`, `fire`, `kept`), `Handle`, `Demand`, `Event`, `Dynamic`,
-  `Defer`, `Job`, `Turn`.
-- `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `after`, `before`, `wake`, `build_later`, `swap_later`,
+- `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Snapshot` (`mark`, `marked`, `take`,
+  `take_compared`, `get`), `Port` (`subscribe`, `unsubscribe`, `lien`, `release`,
+  `demand`, `fire`, `kept`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
+  `Turn`.
+- `cx`: `Node`, `Done`, `Cx` (`tick`, `read_point`, `propagating`, `after`, `before`, `wake`, `build_later`, `swap_later`,
   `leave_later`, `dirty`, `on_started`, `arm`, `clean_up_later`, `added`, `removed`,
   `changed`, `request`, `answer_later`, `result`, `first_value`, `listen`), `Runtime`
   (`build`, `tick`, `close`, `compact`, `document`).

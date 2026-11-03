@@ -37,7 +37,7 @@ pub mod print;
 pub mod read;
 pub mod world;
 
-pub use cells::{Cache, Defer, Demand, Dynamic, Event, Handle, Hold, Job, Live, Port, Stamped, Tick, Turn};
+pub use cells::{Cache, Defer, Demand, Dynamic, Event, Handle, Hold, Job, Live, Port, Snapshot, Stamped, Tick, Turn};
 pub use collections::{Array, Map, Text};
 pub use cx::{Cx, Done, Later, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};

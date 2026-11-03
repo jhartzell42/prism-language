@@ -4,8 +4,9 @@
 //! walks them in Graph's order (Graph ch. 4, "A tick, in order"):
 //!
 //! 1. last round's undone clean-ups; the started list and the armed `@Defer`s fire; the
-//!    answers a host's supplier computed last tick ([`Cx::answer_later`]), then the
-//!    World's answers by path and its pushes by element;
+//!    answers a host's supplier computed last tick and the update events of structural
+//!    dynamics that moved last tick ([`Cx::answer_later`]), then the World's answers by
+//!    path and its pushes by element;
 //! 2. the wakes by height, a bucket per height, each node once per height;
 //! 3. propagation ends, and every read from here on is after the tick;
 //! 4. the build list (a builder drops what left, then builds); 5. the swap list; 6. the
@@ -109,17 +110,27 @@ struct Gathered {
     listens: Vec<(Pod, Weak<dyn Node>)>,
     zombies: Vec<Weak<dyn Node>>,
     cleanups: Vec<Rc<dyn Node>>,
-    /// The answers a host's supplier computed this tick, each the typed delivery into the
-    /// child's place: inputs of the next tick, which is owed (hosting, [`crate::host`]).
+    /// What this tick leaves for the start of the next, which is owed: the answers a host's
+    /// supplier computed, each the typed delivery into the child's place (hosting,
+    /// [`crate::host`]), and the update events of structural dynamics that moved (their
+    /// value after this tick, [`crate::cells::Snapshot`]).
     later: Vec<Later>,
     /// A fault raised where no `Done` goes back (a row leaving inside a builder's walk):
     /// the tick fails at its close.
     fault: Option<Fault>,
 }
 
-/// A computed answer waiting for the next tick: a closure over the typed value and the
-/// node method that takes it.
+/// A firing waiting for the start of the next tick: a closure over the node method that
+/// fires (a computed answer into a child's place, a structural dynamic's update event).
 pub type Later = Box<dyn FnOnce(&mut Cx) -> Done>;
+
+/// Where a tick stands: propagating (its firings and wakes), or constructing (the walks
+/// after propagation and the patch pass). The build, tick 0, constructs only.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Phase {
+    Propagating,
+    Constructing,
+}
 
 /// One tick's context: the tick and its read point, the lists, the outputs so far.
 pub struct Cx<'w> {
@@ -127,6 +138,7 @@ pub struct Cx<'w> {
     /// The read point: a cell, so [`Cx::after`] can move it past the tick through a shared
     /// reference and move it back.
     read_at: Cell<Tick>,
+    phase: Cell<Phase>,
     height: Option<u32>,
     ready: &'w dyn ReadyState,
     pushes: Vec<(Pod, Pod)>,
@@ -144,6 +156,13 @@ impl Cx<'_> {
     /// from the end of propagation on (a read after it).
     pub fn read_point(&self) -> Tick {
         self.read_at.get()
+    }
+    /// Whether the tick is still propagating: its firings and wakes, before the construction
+    /// step. A structural dynamic ([`crate::cells::Snapshot`]) has no value after the tick
+    /// yet, so a read of one after the tick is a bug here and a value from the construction
+    /// step on.
+    pub fn propagating(&self) -> bool {
+        self.phase.get() == Phase::Propagating
     }
     /// A read after the tick, made during propagation: `f` runs with the read point past
     /// the tick, so every hold it reads answers its value after this tick, and the read
@@ -226,9 +245,11 @@ impl Cx<'_> {
     pub fn request(&mut self, path: Path, field: Option<&str>, value: Pod) {
         self.g.requests.push(Request { path, field: field.map(Into::into), value })
     }
-    /// An answer a host's supplier computed (an event output's firing, a dynamic output's
-    /// update): delivered to the child's place as an input of the next tick, which is owed
-    /// (Semantics ch. 9 as ruled: a computed answer is a tick late, like an `@Defer`).
+    /// A firing for the start of the next tick, which is owed (like an `@Defer`): an answer
+    /// a host's supplier computed (an event output's firing, a dynamic output's update),
+    /// delivered to the child's place as an input of that tick (Semantics ch. 9 as ruled: a
+    /// computed answer is a tick late); the update event of a structural dynamic that moved
+    /// this tick, fired at n+1 with the value after n (ch. 7, round 3 ST).
     pub fn answer_later(&mut self, deliver: Later) {
         self.g.later.push(deliver)
     }
@@ -282,14 +303,14 @@ impl Runtime {
 
     /// Tick 0: a build reads values only, all of them after the tick.
     pub fn build<'w>(&mut self, ready: &'w dyn ReadyState) -> Cx<'w> {
-        Cx { tick: 0, read_at: Cell::new(1), height: None, ready, pushes: Vec::new(), g: Gathered::default(), late: Default::default() }
+        Cx { tick: 0, read_at: Cell::new(1), phase: Cell::new(Phase::Constructing), height: None, ready, pushes: Vec::new(), g: Gathered::default(), late: Default::default() }
     }
 
     /// One tick as a World calls it: open, fire, deliver, close.
     pub fn tick(&mut self, root: &Rc<dyn Node>, input: &TickIn, ready: &dyn ReadyState) -> Result<TickOut, Fault> {
         self.cleanups.drain(..).for_each(Node::clean_up);
         let n = self.tick + 1;
-        let mut cx = Cx { tick: n, read_at: Cell::new(n), height: None, ready, pushes: input.pushes.clone(), g: Gathered::default(), late: Default::default() };
+        let mut cx = Cx { tick: n, read_at: Cell::new(n), phase: Cell::new(Phase::Propagating), height: None, ready, pushes: input.pushes.clone(), g: Gathered::default(), late: Default::default() };
         for node in std::mem::take(&mut self.started) {
             node.started(&mut cx)?;
         }
@@ -325,6 +346,7 @@ impl Runtime {
         }
         cx.height = None;
         cx.read_at.set(cx.tick + 1);
+        cx.phase.set(Phase::Constructing);
         // A walk can list nodes for an earlier one (a builder's new row is patched; a row
         // built in the patch pass is built): the walks run again until nothing new is listed.
         loop {

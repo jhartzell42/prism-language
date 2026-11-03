@@ -806,7 +806,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: 59 of 64 pass, chess's board included, once the three transcripts pick HO moves (`be-event-values`, `be-host-reentry`, chess's `board.expected`: a computed answer a tick late) are accepted.
+`tests/compiled/run.sh`, which runs every program every time: 60 of 66 pass, chess's board included (the transcripts pick HO moved, `be-event-values`, `be-host-reentry` and chess's `board.expected`, and the one pick ST moved, `be-host-updated`).
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -832,7 +832,8 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `be-widget-args` (pick WB), `be-host-param` (pick HO), `be-event-values` (pick EV2),
   `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry`,
   `be-host-doc-in-tick`, `be-host-delay`, `be-host-nested` and `be-host-teardown` (pick
-  HO), `be-updated` and `be-host-updated` (pick UP), `be-row-entry` (pick RE).
+  HO), `be-updated` (pick UP), `be-host-updated` and `be-structural` (pick ST),
+  `be-row-entry` (pick RE).
   `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
@@ -1102,14 +1103,16 @@ Each is Claude's, for Jimmy to overturn.
   `k`'s), a hosted position is spelled `place_h{k}_{n}` in names and doc comments, and a
   hosted place emits into no document: it is keyed by its path relative to the child
   (`Path::root().at(n)`, `PlaceAt`) in the host's document. The owner gets, per host:
-  - the getter `host_k_doc(&self, cx) -> Map<Path, Elem>`, `$doc`, every child place at the
-    read point as the program's `crate::Elem` (its static places by getter or constant, and
-    under each `for` and `rebuild` of the child the rows' `Row::document`, recursively);
-    its reads (`dynReads`) are everything the child's places, builders, generations and
-    rows read, so a write behind any of them marks the owner's places over `$doc`, lists
-    its builders, dirties the host's rows and fires `!Updated $doc` (pick UP). A child row
-    that writes a hold of its own tells the owner through `document_moved` →
-    `host_k_moved`, which marks the same (`HoldWritten` of the getter);
+  - the getter `host_k_doc(&self, cx) -> Map<Path, Elem>`, `$doc`, a structural dynamic
+    (pick ST): the snapshot `host_k_doc_snap` at the read point, taken in the construction
+    step from `host_k_doc_now`, every child place as the program's `crate::Elem` (its
+    static places by getter or constant, and under each `for` and `rebuild` of the child
+    the rows' `Row::document`, recursively); its reads (`dynReads`) are everything the
+    child's places, builders, generations and rows read, so a write behind any of them
+    marks the owner's places over `$doc`, marks the snapshot, lists its builders and
+    dirties the host's rows. A child row that writes a hold of its own tells the owner
+    through `document_moved` → `host_k_moved`, which marks the same (`HoldWritten` of the
+    getter);
   - the builder `host_k_rows_build`, the ordinary `for` template over the getter, whose rows
     are prism_rtl's `HostRow`s at `hostpos/[p]`, one per child place: built when the key is
     in `$doc` after a tick and not before (R7), kept while it stays, torn down at the end of
@@ -1152,7 +1155,7 @@ Each is Claude's, for Jimmy to overturn.
   host; each computing layer costs a tick and a forwarding layer none (`be-host-nested`).
   The child's result is the line's first part (`WrHosted`), the document the second
   (`BindHosted`). `sem-ch09-hosts`, `be-host-param`, `be-host-doc-in-tick`,
-  `be-host-updated`, `be-host-reentry`, `be-host-delay`, `be-host-nested`,
+  `be-host-updated` (pick ST), `be-host-reentry`, `be-host-delay`, `be-host-nested`,
   `be-host-teardown`. *Refused:* the host as a World in miniature (a `Host` node with a
   `Pod` boundary answering through `Node::answer` in the same tick), Jimmy's ruling.
 - **EV2 Event values.** A named event (`!x <- ..`, `let !x = ..`) fires a port of its
@@ -1202,15 +1205,12 @@ Each is Claude's, for Jimmy to overturn.
   read by the node's `{name}_value` getter under `Cx::after`, which moves the read point
   to n+1 for the read and back. So the event fires at n with the value after n, in the
   tick of the change, whenever the dynamic was recomputed, deduped by nobody (`$a * 0`
-  fires on every write of `$a`; `be-updated`). A host's `$doc` has the child's holds as
-  its reads (pick HO), so `!Updated $doc` fires in the tick a child hold moves, with the
-  document after it (`host_k_doc` under `Cx::after`; `be-host-updated`; gap HU below). A row's
-  `!Updated` over its entry or over its block's holds read through the parent is pick
-  RE's (`be-row-entry`). *Refused loudly* (`compile_error!`, not an event that never
-  fires): an `!Updated` whose dynamic reads anything no sink of the node writes (a
-  `for`'s rows, so the gathered `$(K ==> T)` has no event half yet: the rows' results
-  move in the builder, after propagation, with no clean height), and a row's that reads
-  a block name no hold of the block stands behind.
+  fires on every write of `$a`; `be-updated`). This is the rule for a dynamic over holds
+  only; one over constructed structure is pick ST's. A row's `!Updated` over its entry or
+  over its block's holds read through the parent is pick RE's (`be-row-entry`). *Refused
+  loudly* (`compile_error!`, not an event that never fires): an `!Updated` whose dynamic
+  reads anything no sink of the node writes, and a row's that reads a block name no hold
+  of the block stands behind, or a structural dynamic of the block (gap SU).
   *Refused:* a stamp on every hold compared in the wake, which fires nothing for a write
   of an equal value and so dedupes, against the ruling; and firing from the patch pass,
   which puts the event a tick late.
@@ -1267,6 +1267,37 @@ ruling taken (Claude's).
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
   `Done` and calls `?`.
+- **ST Structural dynamics.** A dynamic whose value includes constructed structure, a
+  host's `$doc` and a `for`'s gathered `$(K ==> T)`, and every dynamic lifted from one
+  (`let $x = Tag $doc, $clicks`; structurality follows `dynReads`), has no value after n
+  before n's construction step has run (Semantics ch. 7, "Structural dynamics"; round 3
+  ST). Each root keeps its value in a `prism_rtl::Snapshot` (`{name}_snap`; `SnapDef`):
+  the getter (`host_k_doc`, `rows_all`) answers the snapshot at the read point, the live
+  computation is `{name}_now`, read only when the snapshot is taken, once per tick, in the
+  node's construction step where the structure behind it has settled (`BuildSteps`: a
+  host's `$doc` after the child's builders and before the host's `for` over it, a
+  gathered dynamic after its builder; builders and generations run scope by scope,
+  innermost first), compared where the type has equality (`TyHasEq`: `Elem` always, a
+  gathered `T` when it derives `^Eq`). So a sample at read point n reads the snapshot of
+  n−1; the builders of n and the patch pass read the snapshot of n (a forwarding host
+  still builds a newborn child place's row in the same tick, R7 unchanged); a read of a
+  marked snapshot after the tick before it is taken, under `Cx::after` during propagation
+  or by a builder out of order, is a panic naming the dynamic, not a stale value. Every
+  write behind a root marks it (`SnapsBehind`, in `MovedBy`) and lists the build; a row
+  whose own hold moves its gathered result tells the block (`{name}_all_moved`,
+  `resultMoved`). The event half: an `!Updated` whose closed reads reach a root is
+  structural (`CloseUpdated`; its reads stop at the roots, `ReadsStopping`), decided not
+  in the wake but at the end of `Node::build` (`StructuralFire`): told by a snapshot that
+  moved when taken (or was marked, without equality) or by a write of a hold it reads
+  beside the roots, it queues its firing with `Cx::answer_later`, once per tick
+  (`{name}_queued`), so it fires at n+1 as a first firing of that owed tick, reading its
+  value then, at n+1's read point: the snapshots and holds after n, one state in both
+  halves (`be-structural`, `be-host-updated`). `UpdatedGaps` no longer refuses `!Updated`
+  of a gathered dynamic; a `rebuild` handing back a dynamic is not lowered at all. The
+  builders run before the places go out in the build, so a place over `$doc` reads a
+  taken snapshot. *Refused:* the whole dynamic a tick late (a host's `for` would build a
+  newborn's row a tick after the child did, breaking forwarding parity); the event at n
+  with the structure before n (gap HU, now closed: a visible inconsistent state).
 - **DY Dynamics across nodes.** A row reads its block's events through ports, and its
   block's holds and dynamic `let`s through its parent at its own read point
   (`sem-ch07-paged`'s inner `rebuild $src`). A `for` row is marked by the block's writes
@@ -1286,14 +1317,11 @@ ruling taken (Claude's).
   the build, as a value, so it is refused there too; `Lx.inNode` is never set). An element
   applied as a plain value (not a place, not a supplier's argument) is refused too: only a
   host makes a live element. *If otherwise:* lifted functions take `&Cx`.
-- **HU `!Updated $doc` and the child's structure.** The event fires in the tick a child
-  builder's source moves, at its height, with `host_k_doc` read under `Cx::after`: the
-  levels after the tick, but the rows as they stand, since the child's builder runs only
-  after propagation (a new key's places do not exist yet, a left key's still do). A `for`
-  over `$doc` in the host is not affected: it runs after the child's builders. *First
-  ruling:* the structure as the tick opened in the event's value; a spurious firing is
-  allowed and this is not one, but the value is short of Jimmy's "the map after n". *If
-  otherwise:* a builder that can say its next key set during propagation.
+- **SU A row's `!Updated` over its block's structural dynamic.** A row hears the block's
+  writes through `parent_wrote_{m}` and decides its `!Updated` nodes in its wake, where a
+  structural dynamic of the block (pick ST) has no value after the tick yet. *First
+  ruling:* refused loudly (`UpdatedGaps`). *Next:* the block decides it with its own
+  structural nodes at the end of its construction step and tells the row.
 - **DM The document is read whole.** A host row's entry (`HostRow::entry`), the owner's
   places over `$doc` and the host's builder each read `host_k_doc`, which builds the
   child's whole document (every place's level, every row's), so a patch of `n` forwarded
@@ -1319,13 +1347,13 @@ naming the construct, and `CompileProgram` reports every distinct one as
 constant, a widget-function blueprint as an answer, and a bundle in a hosted scope (pick
 HO); an element applied as a plain value and a live element's `$` field read in a plain
 function (gap LE), `@Flatten`,
-`!Updated` of a dynamic no sink of the node writes (pick UP; a `for`'s gathered
-dynamic), an `@Machine` whose step is
+`!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
+structural dynamic of its block (gap SU), an `@Machine` whose step is
 not a named function, a local function whose
 parameters are not names or used as a value, `!MergeAll` of a list that is not a
 literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
-and `if`, a `for` whose rows give a dynamic, `Time.After`, and the zombie and dead
-states (`leave`, `clean_up`, `edges`).
+and `if`, a `rebuild` whose generations give a dynamic, `Time.After`, and the zombie and
+dead states (`leave`, `clean_up`, `edges`).
 
 ## Doubts
 

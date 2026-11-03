@@ -53,6 +53,7 @@ fn Type t = match t:
     RsShowAny: "Rc<dyn Show>"
     RsHold i: "Hold<{Type i}>"
     RsStamped i: "Stamped<{Type i}>"
+    RsSnapshot i: "Snapshot<{Type i}>"
     RsDefer i: "Defer<{Type i}>"
     RsWeak n: "Weak<{n}>"
     RsCell i: "RefCell<{Type i}>"
