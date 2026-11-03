@@ -322,12 +322,12 @@ Rows<E, A> new_rows() {
 template <class E, class A>
 class HostRow : public Node {
 public:
-    using Node::build;
     /// Built after propagation, from the entry after the tick (R7): the supplier is asked
     /// for the place's blueprint, and the blueprint is built under the row's path, in the
     /// host's scope. The `for` machinery of the emitted code calls this with the host as
-    /// the row's parent.
-    static Result<std::shared_ptr<HostRow>> build(Path path, Path key, E value, const std::shared_ptr<HostOf<E, A>>& host,
+    /// the row's parent. (Rust's `HostRow::build`: in C++ `build` is the virtual
+    /// build-list method, which a static of that name would hide.)
+    static Result<std::shared_ptr<HostRow>> make(Path path, Path key, E value, const std::shared_ptr<HostOf<E, A>>& host,
                                                   Cx& cx) {
         auto node = std::shared_ptr<HostRow>(new HostRow(std::move(path), std::move(key), host));
         std::weak_ptr<HostRow> row = node;
@@ -484,7 +484,7 @@ public:
     /// kept where the builder finds it. The one early construction.
     Result<std::optional<A>> first_value(const Path& place, const E& element, Cx& cx) override {
         std::shared_ptr<HostOf<E, A>> me = this->shared_from_this();
-        PRISM_TRY_LET(row, (HostRow<E, A>::build(at_.child(Segment::key(to_pod(place))), place, element, me, cx)));
+        PRISM_TRY_LET(row, (HostRow<E, A>::make(at_.child(Segment::key(to_pod(place))), place, element, me, cx)));
         std::optional<A> first = row->first();
         rows_->insert(place, row);
         return first;

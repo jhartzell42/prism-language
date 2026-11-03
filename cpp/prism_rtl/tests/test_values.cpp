@@ -361,7 +361,7 @@ struct OwnerProgram : Program {
         // The host's `for` over `$doc`, as the emitted builder makes its rows.
         for (const auto& [key, elem] : owner->doc(cx)) {
             std::shared_ptr<HostOf<Elem, Answer>> h = owner->host;
-            PRISM_TRY_LET(row, (HostRow<Elem, Answer>::build(Path::root().at(5).child(Segment::key(to_pod(key))), key, elem, h, cx)));
+            PRISM_TRY_LET(row, (HostRow<Elem, Answer>::make(Path::root().at(5).child(Segment::key(to_pod(key))), key, elem, h, cx)));
             owner->rows->insert(key, row);
         }
         p->root = owner;

@@ -44,4 +44,5 @@
 #include "prism_rtl/read.hpp"
 #include "prism_rtl/result.hpp"
 #include "prism_rtl/scene.hpp"
+#include "prism_rtl/test_world.hpp"
 #include "prism_rtl/world.hpp"
