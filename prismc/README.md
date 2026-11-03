@@ -806,7 +806,7 @@ blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: 61 of 66 pass, chess's board included (the transcripts pick HO moved, `be-event-values`, `be-host-reentry` and chess's `board.expected`, and the one pick ST moved, `be-host-updated`).
+`tests/compiled/run.sh`, which runs every program every time: 64 of 67 pass, chess's board included.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -833,7 +833,8 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `be-event-values` (pick EV2),
   `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry`,
   `be-host-doc-in-tick`, `be-host-delay`, `be-host-nested` and `be-host-teardown` (pick
-  HO), `be-updated` (pick UP), `be-host-updated` and `be-structural` (pick ST),
+  HO), `be-updated` (pick UP), `be-host-updated`, `be-structural` and `be-structural-law`
+  (pick ST),
   `be-row-entry` (pick RE).
   `be-clause-widget` fails by gap CW. The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
