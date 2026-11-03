@@ -1,0 +1,27 @@
+# A host's child document is a dynamic, and `!Updated $doc` is its event half: it fires in
+# the tick a child place's level or the child's structure moves, with the document after
+# that tick, and the host hears it in the same tick. A click on the forwarded child button
+# moves the child's label; the host counts the document's updates and shows the child's
+# label text out of the new document. Written for prismc's back end. Work in progress,
+# subject to change.
+emit Ui.*
+use Ui.*
+
+@child: @unit
+@child:
+    !inc <- Ui.Button(label=$"inc")                              # 0
+    $n <- 0 then $n + 1 on !inc
+    Ui.Label(text=$"{$n}")                                       # 1
+
+Texts: fn (Path ==> Elem Ui.*) -> Text
+fn Texts doc = Fold (Values doc), "", \|acc, e| match e:
+    Ui.Label(text=$t): "{acc}[{$t}]"
+    Ui.*: acc
+
+@counter: @unit
+@counter:
+    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
+    let !moved = !Updated $doc
+    $moves <- 0 then $moves + 1 on !moved
+    $latest <- "" then Texts !moved
+    Ui.Label(text=$"{$moves} moves, latest {$latest}")           # 1

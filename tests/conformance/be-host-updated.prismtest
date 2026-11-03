@@ -1,0 +1,6 @@
+# The host document's event half: declarations of be-host-updated.prism (Semantics chapter 9).
+
+test the_document_updates_in_its_tick, @counter:
+    build
+    click at 0/[0]/0
+    click at 0/[0]/0

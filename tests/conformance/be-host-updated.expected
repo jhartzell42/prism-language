@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 9 (a host's child document is a dynamic of the child's elements) and R3 (its update event fires at n with the value after n).
+test the_document_updates_in_its_tick
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="inc")
+    0/[1]/0: Ui.Label(text="0")
+    1: Ui.Label(text="0 moves, latest ")
+
+tick 1
+  in:
+    0/[0]/0: click
+  changed:
+    0/[1]/0: Ui.Label(text="1")
+    1: Ui.Label(text="1 moves, latest [1]")
+
+tick 2
+  in:
+    0/[0]/0: click
+  changed:
+    0/[1]/0: Ui.Label(text="2")
+    1: Ui.Label(text="2 moves, latest [2]")
