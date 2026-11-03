@@ -1,4 +1,4 @@
-# Semantics ch. 8's tick 0 and ch. 7's "tick n" and "tick n+1" (the Backspace and the label's lag), byte for byte; the book prints them apart.
+# Semantics ch. 8's tick 0 and tick 1 byte for byte; then moved by pick ST: the `rebuild`'s dynamic is structural, its value after m the snapshot S(m-1), so it holds the /etc/hostnam generation (built at 1) only after 2, when it is published, and `@Flatten` (after n, the inner its outer held after n-1, adopted at the end of the tick it moved, ch. 7) reads that generation from 3: the label lags the watch by two ticks, where the book, whose rebuild dynamic takes the newborn's result after its birth tick, has one.
 test the_label_lags_the_watch
 
 tick 0
@@ -18,5 +18,7 @@ tick 1
     1/#0/0: Fs.Contents(path="/etc/hostname")
 
 tick 2
+
+tick 3
   changed:
     2: Ui.Label(text="(no such file)")

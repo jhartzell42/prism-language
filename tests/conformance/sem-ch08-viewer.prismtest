@@ -6,4 +6,6 @@ test the_label_lags_the_watch, @viewer:
         => expect Fs.Contents(path="/etc/hostnam")
         => expect Ui.Label(text="box")
     tick
+        => expect Ui.Label(text="box")
+    tick
         => expect Ui.Label(text="(no such file)")

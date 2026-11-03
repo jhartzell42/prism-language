@@ -1,6 +1,6 @@
 # Semantics ch. 8's file viewer (and ch. 7's "viewer's lag"): a text box whose `text` is
 # live, a watch whose `path` is identity, rebuilt per path, and a label through
-# `@Flatten`, one tick behind the watch.
+# `@Flatten`, two ticks behind the watch under pick ST (the transcript says why).
 emit Ui.* | Fs.*
 use Fs.*
 use Ui.*
