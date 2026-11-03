@@ -1,0 +1,38 @@
+# Derived by hand from Semantics ch. 4 (a `for` row's entry is `$xs[k]`, a projection of its source, built from the values after the tick, R7), R3 (a dynamic's update event fires at n with the value after n, deduped by nobody, pick UD) and R8 (a key that leaves ends its row at the end of that tick).
+test the_entry_is_a_projection
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Button(label="edit")
+    2: Ui.Button(label="drop")
+    3/[0]/0: Ui.Label(text="0: a changed 0, edits 0")
+
+tick 1
+  in:
+    1: click
+  changed:
+    3/[0]/0: Ui.Label(text="0: e0 changed 1, edits 1")
+
+tick 2
+  in:
+    0: click
+  added:
+    3/[1]/0: Ui.Label(text="1: b1 changed 0, edits 0")
+  changed:
+    3/[0]/0: Ui.Label(text="0: e0 changed 2, edits 1")
+
+tick 3
+  in:
+    1: click
+  changed:
+    3/[0]/0: Ui.Label(text="0: e1 changed 3, edits 2")
+    3/[1]/0: Ui.Label(text="1: b1 changed 1, edits 1")
+
+tick 4
+  in:
+    2: click
+  changed:
+    3/[1]/0: Ui.Label(text="1: b1 changed 2, edits 1")
+  torn down:
+    3/[0]/0: Ui.Label(text="0: e1 changed 3, edits 2")
