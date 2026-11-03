@@ -3,7 +3,10 @@
 # document a test reads is the window's (Gui.Window at 1, a Gui.Metrics per word at
 # 2/[text]/0, Gui.Scene at 3, Gui.Focus at 4) and the board shows through `returns`; the
 # board's own elements are read under `@$board` alone (README, doubt EV). A square's place in
-# the grid's document is 0/[e2]/0, the square as its spot prints. Not yet run.
+# the grid's document is 0/[e2]/0, the square as its spot prints. A press reaches a square
+# through two computing layers of hosts (the window answers the grid, the grid answers the
+# square), each a tick late (Semantics ch. 9 as ruled), so every press is followed by
+# `compute until idle`, two owed ticks.
 
 test the_board_alone_shows_the_opening, @$board:
     build
@@ -20,8 +23,10 @@ test pawn_to_e4_by_pointer, @$main:
     build
         => returns "White's turn"
     send Gui.Window(..), Press Point(x=280.0, y=400.0)        # the pawn on e2
+    compute until idle
         => returns "White's turn"
     send Gui.Window(..), Press Point(x=280.0, y=280.0)        # the square e4
+    compute until idle
         => returns "Black's turn"
         => expect Gui.Metrics(text="Black's")
         => expect_none Gui.Metrics(text="White's")
@@ -33,19 +38,27 @@ test fools_mate_by_path, @$main:
         => returns "White's turn"
         => expect_count Gui.Metrics(..), 3
     click element 0/[f2]/0
+    compute until idle
         => returns "White's turn"
     click element 0/[f3]/0
+    compute until idle
         => returns "Black's turn"
     click element 0/[e7]/0
+    compute until idle
         => returns "Black's turn"
     click element 0/[e5]/0
+    compute until idle
         => returns "White's turn"
     click element 0/[g2]/0
+    compute until idle
     click element 0/[g4]/0
+    compute until idle
         => returns "Black's turn"
     click element 0/[d8]/0
+    compute until idle
         => settles
     click element 0/[h4]/0
+    compute until idle
         => returns "White has been checkmated"
         => expect Gui.Metrics(text="checkmated")
         => expect_count Gui.Metrics(..), 5
@@ -54,9 +67,12 @@ test a_second_click_that_cannot_move_only_clears, @$main:
     build
         => returns "White's turn"
     click element 0/[e2]/0                                  # selects the pawn
+    compute until idle
         => returns "White's turn"
     click element 0/[e5]/0                                  # three squares: no move, and the selection clears
+    compute until idle
         => returns "White's turn"
     click element 0/[e4]/0                                  # nothing selected, and an empty square
+    compute until idle
         => returns "White's turn"
         => expect Gui.Scene(..)

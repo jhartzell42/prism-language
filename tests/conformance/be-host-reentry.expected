@@ -1,4 +1,4 @@
-# Derived by hand from Semantics R3 (a hold takes one write a tick) and ch. 9 (an event output answers the child's place).
+# Derived by hand from Semantics R3 (a hold takes one write a tick: !either counts once in the owner in the click's tick) and ch. 9 as ruled (an event output answers the child's place as an input of the next tick, which is owed: both child buttons hear !either in the compute tick, the child's merge takes its left, one hit).
 test the_owner_is_woken_again
 
 tick 0
@@ -12,12 +12,18 @@ tick 1
   in:
     0: click
   changed:
-    2/[2]/0: Ui.Label(text="1 hits")
     3: Ui.Label(text="1")
 
 tick 2
+  changed:
+    2/[2]/0: Ui.Label(text="1 hits")
+
+tick 3
   in:
     1: click
   changed:
-    2/[2]/0: Ui.Label(text="2 hits")
     3: Ui.Label(text="2")
+
+tick 4
+  changed:
+    2/[2]/0: Ui.Label(text="2 hits")
