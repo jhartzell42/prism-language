@@ -516,6 +516,7 @@ fn RustMethod m:
     let cx = match m.cx:
         CxMut: ", cx: &mut Cx"
         CxRef: ", cx: &Cx"
+        CxNone: ""
     let params = Concat (Each m.params, \|((p, t))| ", {p}: {Type t}")
     let ret = if m.ret == RsUnit: "" else: " -> {Type m.ret}"
     let sig = "fn {m.name}({recv}{params}{cx}){ret}"

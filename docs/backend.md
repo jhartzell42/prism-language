@@ -160,7 +160,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   tick; one returning a dynamic gathers the rows' results into `$(K ==> T)`, a structural
   dynamic (below). (prismc/README.md, pick RE.)
 - **`rebuild $x:`** → the same with one generation at `path/#g`; a `rebuild` returning an
-  event is a builder and a switch in one path (round 46 RD).
+  event is a builder and a switch in one path (round 46 RD). One returning a dynamic,
+  `$$a`, gives the current generation's result as an `rt::Dynamic` (the generation's
+  `result_dynamic`), a structural dynamic of the block (below): the build keeps the
+  newborn's dynamic and marks the snapshot, taken after the generation is built.
 - **Structural dynamics** (Semantics ch. 7, "Structural dynamics"; round 3 ST): a `for`'s
   gathered `$(K ==> T)` and a host's `$doc` are lawful dynamics one tick behind the
   structure they describe. Each is an `rt::Snapshot` field. The live computation
@@ -182,8 +185,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
   invalidation edge on the outer whose mark calls `cx.swap_later(self)`. `swap` pulls
   the outer after the tick; on a new inner it subscribes first, with no catch-up, then
   unsubscribes the old.
-- **`@Flatten $$a`** → the same, with a current-inner `Hold`; the adoption puts the node
-  on the started list, so it fires at n+1 (Graph ch. 4).
+- **`@Flatten $$a`** over a `rebuild`'s dynamic → a current-inner `Hold<Option<Dynamic<A>>>`
+  (`{name}_inner`), adopted at the build; when the outer is published (n), the adoption
+  (`{name}_adopt`) is queued with `cx.answer_later` among the first firings of n+1, which is
+  owed, and writes the hold, so the `@Flatten` reads the new inner after n+1 (Semantics
+  ch. 7: after n, the inner its outer held after n-1). The getter samples the inner at the
+  read point; a write behind the current generation's result marks the `@Flatten`'s
+  readers (`{gen}_result_moved`).
 - **Leaving.** `leave` writes the `state` enum (live, detached, zombie, dead), turns
   holds into their `newest()` constants and the node's own events into `never`, then
   `cx.clean_up_later(self, zombie)`. A `for` row's entry, a projection whose key the

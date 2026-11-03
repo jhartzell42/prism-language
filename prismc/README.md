@@ -1254,8 +1254,6 @@ ruling taken (Claude's).
   `while` inside the cycle (`be-while-guard`, a `Nat` fuel: 3 ticks). *Not yet:* an
   unshrinking `while` nested in an `if`, a `match`, a `for` or another `while` of the
   block, which still turns within the cycle.
-- **UU `@Flatten`** is not lowered; a program that uses it is refused at emission with
-  `not-lowered` (`sem-ch08-viewer`).
 - **UF An unbounded function with an `update` block** called from a `check` line emits
   Rust that does not compile (`Buffer.Numbered`, a reassigned binding; `sem-ch05-and-blocks`).
 - **CW A widget of several clauses in a static position** is a generation built once
@@ -1305,11 +1303,22 @@ ruling taken (Claude's).
   on), so a newborn child place gets its supplier row in its birth tick and a host that
   forwards everything is observably not there; a current read of a marked snapshot before
   it is taken is a panic naming it, not a stale value. A row whose own hold moves its
-  gathered result tells the block (`{name}_all_moved`, `resultMoved`). A `rebuild` hands
-  back only an event here, forwarded from the current generation as it fires
-  (`@Switch` is the identity on it), so a newborn generation's `@started` and first
-  firings reach the block in their tick; a `rebuild` handing back a dynamic is not lowered
-  at all, and `@Flatten` is refused. *Refused:* the whole dynamic a tick late, the host's
+  gathered result tells the block (`{name}_all_moved`, `resultMoved`). A `rebuild` that
+  hands back an event forwards it from the current generation as it fires (`@Switch` is
+  the identity on it), so a newborn generation's `@started` and first firings reach the
+  block in their tick. A `rebuild` that hands back a dynamic, `$$a`, is a structural
+  dynamic too (`{gen}_result`): the build keeps the newborn generation's result as a
+  `Dynamic` (`result_dynamic`, kept in `{gen}_result_live`) and marks the snapshot, which
+  the construction step takes after the generation is built. `@Flatten $$a` keeps its
+  current inner in a `Hold` (`{name}_inner`), adopted at the build and, when the
+  `rebuild`'s dynamic is published, among the first firings of the tick after
+  (`{name}_adopt`, queued with `Cx::answer_later`, so that tick is owed); its dynamic
+  samples the inner at the read point, and a write behind the current generation's result
+  marks its readers (`{gen}_result_moved`). So a generation built at n is the `rebuild`'s
+  dynamic after n+1 and the `@Flatten`'s from n+2: `sem-ch08-viewer`'s label lags the watch
+  by two ticks, where the book has one (its transcript derives it). A `rebuild` whose
+  generation is a widget of several clauses and gives a dynamic is refused (gap CL), and so
+  is `@Flatten` of anything but a `rebuild`'s dynamic. *Refused:* the whole dynamic a tick late, the host's
   rows included (a host's `for` would build a newborn's row a tick after the child did,
   breaking forwarding parity); the snapshot of n read by samples at n+1 beside the event
   carrying it (a sample in the event's tick would read the new value, against R2/R3); the
@@ -1362,13 +1371,14 @@ naming the construct, and `CompileProgram` reports every distinct one as
 `@HostList`; a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); an element applied as a plain value and a live element's `$` field read in a plain
-function (gap LE), `@Flatten`,
+function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s,
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), an `@Machine` whose step is
 not a named function, a local function whose
 parameters are not names or used as a value, `!MergeAll` of a list that is not a
 literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
-and `if`, a `rebuild` whose generations give a dynamic, `Time.After`, and the zombie and
+and `if`, a `rebuild` whose generation is a widget of several clauses that gives a
+dynamic (gap CL), `Time.After`, and the zombie and
 dead states (`leave`, `clean_up`, `edges`).
 
 ## Doubts
