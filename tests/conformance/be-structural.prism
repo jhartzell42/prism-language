@@ -1,11 +1,11 @@
 # A structural dynamic (Semantics ch. 7, "Structural dynamics"; round 3 ST): a host's child
-# document `$doc`, a `for`'s gathered `$(K ==> T)`, and every dynamic lifted from one. Its
-# value after n is fixed once, as the last act of n's construction step, so a sample in n's
-# patch pass (`Size $doc` in a label) shows the structure after n in the tick of the click;
-# its update event fires at n+1, as the first firing of that owed tick, with the value after
-# n, so a dynamic lifted over `$doc` and a hold the host wrote at n fires with the document
-# after n and the hold after n, never a new count beside an old document. Written for
-# prismc's back end. Work in progress, subject to change.
+# document `$doc`, a `for`'s gathered `$(K ==> T)`. It is a lawful dynamic one tick behind
+# the structure: with S(n) fixed as the last act of n's construction step, its value after m
+# is S(m-1), and it moves at n+1, the first firing of that owed tick, when S(n) differs from
+# S(n-1), so `!Updated $doc` fires at n+1 with S(n). A dynamic lifted over `$doc` and a hold
+# the host writes is an ordinary dynamic: it fires in the tick the hold is written, with the
+# document one tick behind, and once in a tick where both move. Written for prismc's back
+# end. Work in progress, subject to change.
 emit Ui.*
 use Ui.*
 
