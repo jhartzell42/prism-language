@@ -281,12 +281,39 @@ type RowKind = choice:
     NotARow
 derive ^Eq, ^Show
 
+# A place's position in a node (pick HO): `scope` 0 is the node's own path, `k` from 1 the
+# child of host `scopes[k - 1]` of the node, whose places count from 0 under that host's
+# child path. A position is spelled by `PlaceAt` and matched by `PosPat`; `PlaceText` is its
+# text in a name or a doc comment.
+type Pos = record:
+    scope: Nat
+    at: Nat
+derive ^Eq, ^Show
+
+let pos0 = Pos(scope=0, at=0)
+
+# The next position in the same scope.
+NextPos: fn Pos -> Pos
+fn NextPos p = update p:
+    &_.at <= &_.at + 1
+
+# The first position of host `k`'s child (`k` from 1).
+ScopePos: fn Nat -> Pos
+fn ScopePos k = Pos(scope=k, at=0)
+
+# A position as text, in a name (`place_1`) or a doc comment: the node's own by its number;
+# a hosted child's by its scope and number run together as one number, `scope * 1000000 +
+# at`, the spelling the emitted names had when positions were that sum (Task B of the
+# `claude-self-hosting` branch kept the emitted code byte-equal; Jimmy chooses the spelling).
+PlaceText: fn Pos -> Text
+fn PlaceText p = if p.scope == 0: "{p.at}" else: "{(Fold (Range0 p.scope), 0, \|a, ignore| a + 1000000) + p.at}"
+
 # A `rebuild` (docs/backend.md, "Dynamic structure"): one generation at `path/n/#g`,
 # torn down and built anew from the source after a tick that changed it; the clause of a
 # widget of several clauses chosen by matching its arguments.
 type GenDef = record:
     name: Text
-    pos: Nat
+    pos: Pos
     at: Text
     source: Ex
     valueTy: RsTy
@@ -302,7 +329,7 @@ type PortDef = record:
 # its own at `path/n/[k]`, rebuilt from the source after the tick.
 type ForDef = record:
     name: Text
-    pos: Nat
+    pos: Pos
     # The place's path from `self`: `self.path.at(pos)`, or under a host's child path.
     at: Text
     keyTy: RsTy
@@ -3122,7 +3149,7 @@ type Sk = choice:
     SkNode Nat
     SkIn Nat, Nat
     SkHold Text
-    SkRequest Nat, Text
+    SkRequest Pos, Text
     SkResult
     SkArm Text
     SkCycle Text, Text, Nat
@@ -3134,7 +3161,7 @@ type Sk = choice:
 # A place of the block: its position, its `Level`, and when a live field reads a dynamic
 # its getter (the patch pass pulls it after the tick, docs/backend.md "Marks").
 type Place = record:
-    pos: Nat
+    pos: Pos
     level: Ex
     getter: Text
     reads: [Read]
@@ -3169,14 +3196,14 @@ type Wres = choice:
 type Wx = record:
     lx: Lx
     node: Text
-    pos: Nat
+    pos: Pos
     gns: [Gn]
     fields: [((Text, RsTy, Text))]
     inits: [((Text, Ex))]
     lets: [Do]
     build: [Do]
     places: [Place]
-    answers: [((Nat, Nat, RsTy))]
+    answers: [((Pos, Nat, RsTy))]
     started: [Nat]
     defers: [((Text, Nat))]
     getters: [MethDef]
@@ -3196,13 +3223,12 @@ type Wx = record:
     parentEnv: Env
     # The hosts of the block (`@HostDocument`, `@HostSome`): each one's position and field,
     # which answers under `pos/[p]` go to.
-    hosts: [((Nat, Text))]
+    hosts: [((Pos, Text))]
     # The places whose element answers a dynamic: position, the hold, its type. An answer
     # or a push there writes the hold.
-    dynPlaces: [((Nat, Text, RsTy))]
-    # The hosts whose child is inlined into this node, in order: a position at or above
-    # `ScopeBase k` is a place of the child of `scopes[k - 1]`, under that host's child
-    # path (pick HO).
+    dynPlaces: [((Pos, Text, RsTy))]
+    # The hosts whose child is inlined into this node, in order: a position of scope `k`
+    # is a place of the child of `scopes[k - 1]`, under that host's child path (pick HO).
     scopes: [Text]
     # The root's dynamic result: what it reads and its type (the World hears it at the
     # build and whenever it moves).
@@ -3294,7 +3320,7 @@ fn NodeDefOf lx, qk, params, body, sc, isRoot:
     let ptys = match sc.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]
-    let wx0 = Wx(lx=lx, node=name, pos=0, gns=[[]], fields=[[]], inits=[[]], lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=nodeHooks, fallible=False, depth=0, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowMarks=[[]], pending=[[]], floors={})
+    let wx0 = Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=[[]], inits=[[]], lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=nodeHooks, fallible=False, depth=0, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowMarks=[[]], pending=[[]], floors={})
     let ((ps, wx1, benv, menv)) = Fold (Range0 (Len params)), (([[]], wx0, emptyEnv, emptyEnv)), \|((acc, w, be, me)), i|
         let p = Or params[i], dummyPat
         let nkey = PlainBinder lx, p
@@ -3614,7 +3640,7 @@ fn ElementLine wx, benv, menv, e, ?bound:
         ? tg:
             let pos = wx.pos
             let wx1 = update wx:
-                &_.pos <= &_.pos + 1
+                &_.pos <= NextPos &_.pos
             let structPath = PathIn lx, tg.home, (TagStruct tg.name)
             let ((liveFields, constFields, reads, wx2)) = Fold tg.fields, (([[]], [[]], [[]], wx1)), \|((lf, cf, rd, w)), ((fname, fty))|
                 match ?TagArg args, fname:
@@ -3673,7 +3699,7 @@ fn RequestField tg, fname:
 
 # An element's output: an event answered at its place, a dynamic pushed to it, a plain
 # value as its first value.
-ElementOutput: unbounded fn Wx, Env, TagInfo, RsTy, Nat, ?Bn, Ex -> ((Wx, Wres))
+ElementOutput: unbounded fn Wx, Env, TagInfo, RsTy, Pos, ?Bn, Ex -> ((Wx, Wres))
 fn ElementOutput wx, menv, tg, out, pos, ?bound, level:
     let lx = wx.lx
     match ?bound:
@@ -3684,7 +3710,7 @@ fn ElementOutput wx, menv, tg, out, pos, ?bound, level:
 # tuple pattern: the plain parts are the place's first value (one part itself, several a
 # tuple), the event part its answers (docs/backend.md, "Answers"; the World protocol's
 # bundle). A `$` part, or a second event part, is not lowered yet.
-BundleOutput: unbounded fn Wx, TagInfo, RsTy, Nat, [?Bn], Ex -> ((Wx, Wres))
+BundleOutput: unbounded fn Wx, TagInfo, RsTy, Pos, [?Bn], Ex -> ((Wx, Wres))
 fn BundleOutput wx, tg, out, pos, parts, level:
     let layers = match tg.out:
         TyTuple cs: Each cs, \|c| LayerOf c
@@ -3705,7 +3731,7 @@ fn BundleOutput wx, tg, out, pos, parts, level:
     else: ((wx2, WrUnit))
 
 # A bundle's plain parts, from the place's first value: each bound part a field.
-BundleFirst: unbounded fn Wx, TagInfo, Nat, [Nat], [RsTy], [?Bn], Ex -> Wx
+BundleFirst: unbounded fn Wx, TagInfo, Pos, [Nat], [RsTy], [?Bn], Ex -> Wx
 fn BundleFirst wx, tg, pos, plainIx, tys, parts, level = match plainIx:
     [[]]: wx
     otherwise:
@@ -3714,22 +3740,22 @@ fn BundleFirst wx, tg, pos, plainIx, tys, parts, level = match plainIx:
         let asked = XMethod (XRaw "cx"), "first_value_at", [[(XRaw "&{PlaceAt wx.scopes, "", pos}"), (XUnary "&", level)]]
         let first = XTry (XMethod asked, "ok_or", [[(XCall "Fault::answer", [[XRaw "\"no first value for {tg.name}\""]])]])
         let wx1 = update wx:
-            &_.lets <= Append &_.lets, [[(DoLet (PaBind "first_{pos}"), first), (DoLet (PaBind "bundle_{pos}"), (XDecode plainTy, (XRaw "&first_{pos}")))]]
+            &_.lets <= Append &_.lets, [[(DoLet (PaBind "first_{PlaceText pos}"), first), (DoLet (PaBind "bundle_{PlaceText pos}"), (XDecode plainTy, (XRaw "&first_{PlaceText pos}")))]]
             &_.fallible <= True
         Fold (Range0 (Len plainIx)), wx1, \|w, k|
             let i = Or plainIx[k], 0
             match parts[i]:
                 ? (? (BnLocal rs, ignore, ignore)):
                     let f = Drop rs, 5
-                    let part = if one: XRaw "bundle_{pos}" else: XRaw "bundle_{pos}.{k}.clone()"
+                    let part = if one: XRaw "bundle_{PlaceText pos}" else: XRaw "bundle_{PlaceText pos}.{k}.clone()"
                     update w:
                         &_.lets <= Push &_.lets, (DoLet (PaBind f), part)
-                        &_.fields <= Push &_.fields, ((f, (Or tys[i], RsUnit), "place {pos}'s answer, part {i} of its first value"))
+                        &_.fields <= Push &_.fields, ((f, (Or tys[i], RsUnit), "place {PlaceText pos}'s answer, part {i} of its first value"))
                         &_.inits <= Push &_.inits, ((f, (XMethod (XRaw f), "clone", [[]])))
                 otherwise: w
 
 # A bundle's event part: the place's answers.
-BundleAnswer: fn Wx, Nat, RsTy, ?Bn -> Wx
+BundleAnswer: fn Wx, Pos, RsTy, ?Bn -> Wx
 fn BundleAnswer wx, pos, et, ?b:
     let t = match et:
         RsEvent inner: inner
@@ -3737,12 +3763,12 @@ fn BundleAnswer wx, pos, et, ?b:
     let ((id, wx2)) = match ?b:
         ? (BnEv er, ignore): ((er.node, wx))
         otherwise:
-            let ((nm, w)) = FreshName wx, "place_{pos}"
+            let ((nm, w)) = FreshName wx, "place_{PlaceText pos}"
             AddGn w, nm, t, GnAnswer, 0
     update wx2:
         &_.answers <= Push &_.answers, ((pos, id, t))
 
-ElementOutputOf: unbounded fn Wx, Env, TagInfo, RsTy, Nat, ?Bn, Ex -> ((Wx, Wres))
+ElementOutputOf: unbounded fn Wx, Env, TagInfo, RsTy, Pos, ?Bn, Ex -> ((Wx, Wres))
 fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
     let lx = wx.lx
     match LayerOf tg.out:
@@ -3750,7 +3776,7 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
             let ((id, wx2)) = match ?bound:
                 ? (BnEv er, ignore): ((er.node, wx))
                 otherwise:
-                    let ((nm, w)) = FreshName wx, "place_{pos}"
+                    let ((nm, w)) = FreshName wx, "place_{PlaceText pos}"
                     AddGn w, nm, out, GnAnswer, 0
             let wx3 = update wx2:
                 &_.answers <= Push &_.answers, ((pos, id, out))
@@ -3758,13 +3784,13 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
         LyDyn:
             let ((f, wx1)) = match ?bound:
                 ? (BnHold hf, ignore): ((hf, wx))
-                otherwise: FreshName wx, "place_{pos}"
+                otherwise: FreshName wx, "place_{PlaceText pos}"
             let asked = XMethod (XRaw "cx"), "first_value_at", [[(XRaw "&{PlaceAt wx.scopes, "", pos}"), (XUnary "&", level)]]
             let first = XTry (XMethod asked, "ok_or", [[(XCall "Fault::answer", [[XRaw "\"no first value for {tg.name}\""]])]])
             let wx2 = update wx1:
-                &_.lets <= Append &_.lets, [[(DoLet (PaBind "first_{pos}"), first), (DoLet (PaBind "{f}_element"), level)]]
-                &_.fields <= Append &_.fields, [[((f, RsHold out, "pushed to place {pos}")), (("{f}_element", RsPod, "place {pos}'s element, which pushes are keyed by"))]]
-                &_.inits <= Append &_.inits, [[((f, (XCall "Hold::new", [[(XDecode out, (XRaw "&first_{pos}")), XRaw "cx"]]))), (("{f}_element", (XRaw "{f}_element.clone()")))]]
+                &_.lets <= Append &_.lets, [[(DoLet (PaBind "first_{PlaceText pos}"), first), (DoLet (PaBind "{f}_element"), level)]]
+                &_.fields <= Append &_.fields, [[((f, RsHold out, "pushed to place {PlaceText pos}")), (("{f}_element", RsPod, "place {PlaceText pos}'s element, which pushes are keyed by"))]]
+                &_.inits <= Append &_.inits, [[((f, (XCall "Hold::new", [[(XDecode out, (XRaw "&first_{PlaceText pos}")), XRaw "cx"]]))), (("{f}_element", (XRaw "{f}_element.clone()")))]]
                 &_.build <= Push &_.build, (DoExpr (XMethod (XRaw "cx"), "listen_at", [[(XRaw "&{PlaceAt wx.scopes, "node", pos}"), (XRaw "node.{f}_element.clone()"), (XRaw "&(node.clone() as Rc<dyn Node>)")]]))
                 &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out))
                 &_.fallible <= True
@@ -3775,8 +3801,8 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
                 let asked = XMethod (XRaw "cx"), "first_value_at", [[(XRaw "&{PlaceAt wx.scopes, "", pos}"), (XUnary "&", level)]]
                 let first = XTry (XMethod asked, "ok_or", [[(XCall "Fault::answer", [[XRaw "\"no first value for {tg.name}\""]])]])
                 let wx2 = update wx:
-                    &_.lets <= Append &_.lets, [[(DoLet (PaBind "first_{pos}"), first), (DoLet (PaBind f), (XDecode out, (XRaw "&first_{pos}")))]]
-                    &_.fields <= Push &_.fields, ((f, out, "place {pos}'s answer, its first value"))
+                    &_.lets <= Append &_.lets, [[(DoLet (PaBind "first_{PlaceText pos}"), first), (DoLet (PaBind f), (XDecode out, (XRaw "&first_{PlaceText pos}")))]]
+                    &_.fields <= Push &_.fields, ((f, out, "place {PlaceText pos}'s answer, its first value"))
                     &_.inits <= Push &_.inits, ((f, (XMethod (XRaw f), "clone", [[]])))
                     &_.fallible <= True
                 ((wx2, WrUnit))
@@ -3881,7 +3907,7 @@ HostLine: unbounded fn Wx, Env, Env, HostForm, [Arg], ?Bn -> ((Wx, Wres))
 fn HostLine wx, benv, menv, form, args, ?bound:
     let lx = wx.lx
     let pos = wx.pos
-    let ((hf, wx1)) = FreshName wx, "host_{LocalPos wx.scopes, pos}"
+    let ((hf, wx1)) = FreshName wx, "host_{pos.at}"
     let parts = match ?bound:
         ? (BnParts ps): ps
         otherwise: [[]]
@@ -3893,16 +3919,16 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 ? (? (BnHold f, ignore)): [[f]]
                 otherwise: [[]]
             let wx2 = update wx1:
-                &_.pos <= &_.pos + 1
+                &_.pos <= NextPos &_.pos
                 &_.lets <= Append &_.lets, [[(DoLet (PaBind hf), made), (DoLet (PaBind "{hf}_path"), (XMethod (XRaw hf), "child_path", [[]]))]]
-                &_.fields <= Append (Append &_.fields, [[((hf, (RsNamed "Rc<prism_rtl::Host>", [[]]), "the host at place {LocalPos wx.scopes, pos}: a supplier row per child place")), (("{hf}_path", RsPath, "the root of its child's paths, under which the child's places emit in its scope"))]]), (Each docs, \|f| ((f, (RsNamed "prism_rtl::HostDoc<crate::Elem>", [[]]), "the document of the child hosted at place {LocalPos wx.scopes, pos}")))
+                &_.fields <= Append (Append &_.fields, [[((hf, (RsNamed "Rc<prism_rtl::Host>", [[]]), "the host at place {pos.at}: a supplier row per child place")), (("{hf}_path", RsPath, "the root of its child's paths, under which the child's places emit in its scope"))]]), (Each docs, \|f| ((f, (RsNamed "prism_rtl::HostDoc<crate::Elem>", [[]]), "the document of the child hosted at place {pos.at}")))
                 &_.inits <= Append (Append &_.inits, [[((hf, (XRaw "{hf}.clone()"))), (("{hf}_path", (XRaw "{hf}_path.clone()")))]]), (Each docs, \|f| ((f, (XCall "prism_rtl::HostDoc::new", [[XRaw "&{hf}"]]))))
                 &_.build <= Push &_.build, (DoExpr (XMethod (XRaw "node.{hf}"), "set_owner", [[XRaw "&(node.clone() as Rc<dyn Node>)"]]))
                 &_.hosts <= Push &_.hosts, ((pos, hf))
                 &_.scopes <= Push &_.scopes, hf
                 &_.fallible <= True
             let inner = update wx2:
-                &_.pos <= ScopeBase (Len wx2.scopes)
+                &_.pos <= ScopePos (Len wx2.scopes)
                 &_.result <= WrUnit
             let ((done, res)) = BuildLine inner, benv, menv, child.value, nil
             let childPlaces = Drop done.places, (Len wx2.places)
@@ -3916,7 +3942,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             ((back, (WrHosted res)))
         otherwise:
             let wx2 = update wx1:
-                &_.pos <= &_.pos + 1
+                &_.pos <= NextPos &_.pos
                 &_.build <= Push &_.build, (RefusalDo "a host without its child or its supplier")
             ((wx2, WrUnit))
 
@@ -3924,7 +3950,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
 StartedLine: fn Wx, ?Bn -> ((Wx, Wres))
 fn StartedLine wx, ?bound:
     let wx1 = update wx:
-        &_.pos <= &_.pos + 1
+        &_.pos <= NextPos &_.pos
     let ((id, wx2)) = match ?bound:
         ? (BnEv er, ignore): ((er.node, wx1))
         otherwise:
@@ -3961,7 +3987,7 @@ fn RunLine wx, benv, args, e, ?target:
     let t = RustTy lx, (OutOf (TypeAt lx, e.span))
     let ((p, wx1)) = FreshName wx, "run"
     let wx2 = update wx1:
-        &_.pos <= &_.pos + 1
+        &_.pos <= NextPos &_.pos
         &_.taken <= Append &_.taken, [["{p}_job", "{p}_again", "{p}_started", "{p}_turn"]]
     let start = match args[0]:
         ? a: match a.value.kind:
@@ -4500,14 +4526,14 @@ fn FinishNode wx0, qk, params, isRow:
     let sinks = Sinks(wx=wx, dirty=dirtyHolds, builds=buildHolds, heights=heights, many=many)
     let evMethods = Each (Filter wx.gns, \|g| g.kind != GnNever), \|g| MethDef(name=g.name, recv=RecvRc, params=[[(("v", g.ty))]], cx=CxMut, ret=RsUnit, body=(FiringCode sinks, g, (XRaw "v")), tail=(XRaw "()"), doc=(GnDoc g))
     let gatherIns = Each (Filter wx.gns, \|g| g.kind == GnGather), \|g| GatherIn sinks, g
-    let placeGetters = Each live, \|p| MethDef(name=p.getter, recv=RecvRef, params=[[]], cx=CxRef, ret=RsPod, body=[[]], tail=p.level, doc="Place {p.pos}'s `Level`, pulled after the tick.")
+    let placeGetters = Each live, \|p| MethDef(name=p.getter, recv=RecvRef, params=[[]], cx=CxRef, ret=RsPod, body=[[]], tail=p.level, doc="Place {PlaceText p.pos}'s `Level`, pulled after the tick.")
     let wakeBody = if many: [[(WakeByHeight combs, heights)]] else: Each combs, \|g| Decide g
     let startedBody = Each wx.started, \|st| SelfCall (GnOf wx, st).name, [[XRaw "()"]]
     let deferredBody = Each wx.defers, \|((f, id))| DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XRaw "self.{f}"), "fired", [[XRaw "cx"]]), [[(SelfCall (GnOf wx, id).name, [[XRaw "v"]])]], [[]]
     let patchBody0 = Fold live, [[]], \|acc, p| Append acc, (PatchPlace wx.scopes, p)
     let patchBody = Append patchBody0, (RootDynPatch wx)
-    let builders = InnermostFirst wx.scopes, wx.builders, \|b| b.pos
-    let gens = InnermostFirst wx.scopes, wx.gens, \|gd| gd.pos
+    let builders = InnermostFirst wx.scopes, wx.builders, \|b| b.pos.scope
+    let gens = InnermostFirst wx.scopes, wx.gens, \|gd| gd.pos.scope
     let genBuild = Each gens, \|gd| DoIf (XMethod (XRaw "self.{gd.name}_stale"), "replace", [[XRaw "false"]]), [[DoExpr (XTry (XMethod (XRaw "self"), "{gd.name}_build", [[XRaw "cx"]]))]], [[]]
     let buildBody = Append (Each builders, \|b| DoExpr (XTry (XMethod (XRaw "self"), "{b.name}_build", [[XRaw "cx"]]))), genBuild
     let pushBody = Each wx.dynPlaces, \|((pos, f, t))| DoIf (XBin "==", (XRaw "element"), (XRaw "&self.{f}_element")), (DynPlaceWrite sinks, f, t), [[]]
@@ -4523,7 +4549,7 @@ fn FinishNode wx0, qk, params, isRow:
     let top = Fold wx.gns, 0, \|hi, g| Max hi, g.height
     let wakesField = if many: [[(("wakes", RsWakes, "the heights asked for this tick, lowest first"))]] else: [[]]
     let wakesInit = if many: [[(("wakes", (XRaw "Wakes::default()")))]] else: [[]]
-    let genFields = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (RsCell (RsOpt (RsNamed "Rc<dyn Row>", [[]]))), "the current generation of the `rebuild` at place {gd.pos}")), (("{gd.name}_count", (RsNamed "Cell<u32>", [[]]), "how many generations it has built")), (("{gd.name}_stale", (RsNamed "Cell<bool>", [[]]), "its source changed since it was built"))]]
+    let genFields = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (RsCell (RsOpt (RsNamed "Rc<dyn Row>", [[]]))), "the current generation of the `rebuild` at place {PlaceText gd.pos}")), (("{gd.name}_count", (RsNamed "Cell<u32>", [[]]), "how many generations it has built")), (("{gd.name}_stale", (RsNamed "Cell<bool>", [[]]), "its source changed since it was built"))]]
     let genInits = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (XRaw "RefCell::new(None)"))), (("{gd.name}_count", (XRaw "Cell::new(0)"))), (("{gd.name}_stale", (XRaw "Cell::new(false)")))]]
     let portFields = Each wx.ports, \|pn| (("{pn}_port", (RsPort (GnTyNamed wx, pn)), "`!{pn}`, which rows subscribe to"))
     let portInits = Each wx.ports, \|pn| (("{pn}_port", (XRaw "Port::new()")))
@@ -4534,15 +4560,16 @@ fn FinishNode wx0, qk, params, isRow:
 
 # The builders (or generations) of a node, a hosted child's before its host's: a host's
 # `for` over `$doc` runs after the child's own structure has settled, in the one `build`
-# of the node they are inlined into. Siblings keep their order.
+# of the node they are inlined into. Siblings keep their order. `ScopeOf` gives each one's
+# position's scope.
 InnermostFirst: fn [Text], [a], (fn a -> Nat) -> [a]
-fn InnermostFirst scopes, xs, PosOf = Fold (Range0 ((Len scopes) + 1)), [[]], \|acc, i|
+fn InnermostFirst scopes, xs, ScopeOf = Fold (Range0 ((Len scopes) + 1)), [[]], \|acc, i|
     let k = Or ((Len scopes) -? i), 0
-    Append acc, (Filter xs, \|x| (ScopeIx scopes, (PosOf x)) == k)
+    Append acc, (Filter xs, \|x| (ScopeOf x) == k)
 
 # An answer at a place whose element answers a dynamic (a push, or a host's answer by
 # path): the hold written, the node patched.
-DynAnswerArm: fn Sinks, Nat, Text, RsTy -> ((Text, Ex))
+DynAnswerArm: fn Sinks, Pos, Text, RsTy -> ((Text, Ex))
 fn DynAnswerArm sk, pos, f, t = (((PosPat sk.wx.scopes, pos, ""), (XBlock (DynPlaceWrite sk, f, t), (XRaw "()"))))
 
 # The write of a place's hold from the answer `v`: the hold set, the node patched, and the
@@ -4642,36 +4669,20 @@ fn PatchPlace scopes, p:
     let at = XRaw (PlaceAt scopes, "self", p.pos)
     [[pull, (DoExpr (XMethod (XRaw "cx"), "changed", [[at, XRaw p.getter]]))]]
 
-# Positions in a node with inlined hosted children (pick HO): a child's places count
-# from `ScopeBase k`, `k` the host's index in `scopes` from 1.
-let scopeStep = 1000000
-
-ScopeBase: fn Nat -> Nat
-fn ScopeBase k = Fold (Range0 k), 0, \|a, ignore| a + scopeStep
-
-ScopeIx: fn [Text], Nat -> Nat
-fn ScopeIx scopes, pos = Fold (Range0 (Len scopes)), 0, \|found, i| if pos >= (ScopeBase (i + 1)): i + 1 else: found
-
-LocalPos: fn [Text], Nat -> Nat
-fn LocalPos scopes, pos = Or (pos -? (ScopeBase (ScopeIx scopes, pos))), pos
-
 # A place's path as Rust spells it from `recv` (`self`, `node`, or "" in the build, before
-# the node exists): the node's own path, or its host's child path.
-PlaceAt: fn [Text], Text, Nat -> Text
+# the node exists): the node's own path, or its host's child path (pick HO: a position of
+# scope `k` is under host `scopes[k - 1]`'s child path).
+PlaceAt: fn [Text], Text, Pos -> Text
 fn PlaceAt scopes, recv, pos:
-    let k = ScopeIx scopes, pos
-    let n = LocalPos scopes, pos
-    let base = if k == 0: "path" else: "{Or scopes[Dec k], ""}_path"
-    if recv == "": "{base}.at({n})" else: "{recv}.{base}.at({n})"
+    let base = if pos.scope == 0: "path" else: "{Or scopes[Dec pos.scope], ""}_path"
+    if recv == "": "{base}.at({pos.at})" else: "{recv}.{base}.at({pos.at})"
 
 # The pattern of an answer at a place, `tail` the rest of its segments: under a host's
 # child path the host's segment first, the arm guarded by the host's id.
-PosPat: fn [Text], Nat, Text -> Text
+PosPat: fn [Text], Pos, Text -> Text
 fn PosPat scopes, pos, tail:
-    let k = ScopeIx scopes, pos
-    let n = LocalPos scopes, pos
-    if k == 0: "[Segment::Pos({n}){tail}]"
-    else: "[Segment::Host(h), Segment::Pos({n}){tail}] if h.id() == self.{Or scopes[Dec k], ""}.id()"
+    if pos.scope == 0: "[Segment::Pos({pos.at}){tail}]"
+    else: "[Segment::Host(h), Segment::Pos({pos.at}){tail}] if h.id() == self.{Or scopes[Dec pos.scope], ""}.id()"
 
 # The root's dynamic result at the patch pass: sent when it moved.
 RootDynPatch: fn Wx -> [Do]
@@ -4680,7 +4691,7 @@ fn RootDynPatch wx = match wx.?rootDyn:
     nil: [[]]
 
 # An answer at a place: the input method called with the decoded value.
-AnswerArm: fn Wx, Nat, Nat, RsTy -> ((Text, Ex))
+AnswerArm: fn Wx, Pos, Nat, RsTy -> ((Text, Ex))
 fn AnswerArm wx, pos, id, t:
     let call = XMethod (XRaw "self"), (GnOf wx, id).name, [[(XDecode t, (XRaw "v")), XRaw "cx"]]
     (((PosPat wx.scopes, pos, ""), call))
@@ -5183,7 +5194,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let lx = wx.lx
     let pos = wx.pos
     let wx1 = update wx:
-        &_.pos <= &_.pos + 1
+        &_.pos <= NextPos &_.pos
     let ((srcEx, reads)) = DynamicExpr wx1, menv, source
     let srcTy = Peel (TypeAt lx, source.span)
     let ((kt, vt, keyed)) = match srcTy:
@@ -5200,11 +5211,11 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let srcGetter = "{name}_source"
     let wx2 = update wx2a:
         &_.taken <= Push &_.taken, srcGetter
-        &_.getters <= Push &_.getters, (MethDef(name=srcGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=(RsMap kt, vt), body=[[]], tail=src, doc="The source of the `for` at place {pos} by key, at the read point: what its builder and its rows' entries read."))
+        &_.getters <= Push &_.getters, (MethDef(name=srcGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=(RsMap kt, vt), body=[[]], tail=src, doc="The source of the `for` at place {PlaceText pos} by key, at the read point: what its builder and its rows' entries read."))
         &_.dynReads <= Insert &_.dynReads, srcGetter, reads
     let rowName = "{wx.node}{RowSuffix wx}Row"
     let locals = RowLocals benv, menv, body
-    let rowWx0 = Wx(lx=lx, node=rowName, pos=0, gns=[[]], fields=(Append [[(("key", kt, "the row's key")), (("left_entry", (RsCell (RsOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (RsWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))), inits=(Append [[(("key", (XRaw "key.clone()"))), (("left_entry", (XRaw "RefCell::new(None)"))), (("parent", (XRaw "parent")))]], (Each locals, \|l| ((l.field, (XRaw l.field))))), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[(EntryGetter srcGetter, vt)]], dynReads={"entry": [[ParentRead srcGetter]]}, taken=(Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)), fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowMarks=[[]], pending=[[]], floors={})
+    let rowWx0 = Wx(lx=lx, node=rowName, pos=pos0, gns=[[]], fields=(Append [[(("key", kt, "the row's key")), (("left_entry", (RsCell (RsOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (RsWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))), inits=(Append [[(("key", (XRaw "key.clone()"))), (("left_entry", (XRaw "RefCell::new(None)"))), (("parent", (XRaw "parent")))]], (Each locals, \|l| ((l.field, (XRaw l.field))))), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[(EntryGetter srcGetter, vt)]], dynReads={"entry": [[ParentRead srcGetter]]}, taken=(Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)), fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowMarks=[[]], pending=[[]], floors={})
     let keyB = BnLocal "key", Owned, kt
     let keyM = BnLocal "self.key", Owned, kt
     let benvL = Fold locals, (RowReads benv, "parent.upgrade().expect(\"the block outlives its rows\")"), \|en, l| Bind en, l.name, (BnLocal l.field, Owned, l.ty)
@@ -5255,9 +5266,9 @@ fn EntryGetter srcGetter, vt:
     let tail = XMatch found, [[XArm(pat=(PaCtor "Some", [[PaBind "v"]]), conds=[[]], body=(XRaw "v")), XArm(pat=(PaUnit "None"), conds=[[]], body=opened)]], False
     MethDef(name="entry", recv=RecvRef, params=[[]], cx=CxRef, ret=vt, body=body, tail=tail, doc="The row's entry, `$_`: the block's source at this key, at the read point; from the row's leaving on, the value as the leaving tick opened.")
 
-AddBuilder: fn Wx, Text, Nat, RsTy, RsTy, Text, Bool, [Read], PendingRow, [Ex] -> Wx
+AddBuilder: fn Wx, Text, Pos, RsTy, RsTy, Text, Bool, [Read], PendingRow, [Ex] -> Wx
 fn AddBuilder wx, name, pos, kt, vt, rowName, keyed, reads, waiting, passed:
-    let wx0 = AddField wx, name, (RsCell (RsMap kt, (RsRc (RsNamed rowName, [[]])))), "the rows of the `for` at place {pos}", (XRaw "RefCell::new(Map::new())")
+    let wx0 = AddField wx, name, (RsCell (RsMap kt, (RsRc (RsNamed rowName, [[]])))), "the rows of the `for` at place {PlaceText pos}", (XRaw "RefCell::new(Map::new())")
     update wx0:
         &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(PlaceAt wx.scopes, "", pos), keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, passed=passed)
         &_.buildHolds <= UnionReads &_.buildHolds, reads
@@ -5384,7 +5395,7 @@ fn RebuildLine wx, benv, menv, scrut, body, e, ?bound:
     let lx = wx.lx
     let pos = wx.pos
     let wx1 = update wx:
-        &_.pos <= &_.pos + 1
+        &_.pos <= NextPos &_.pos
     let ((srcEx, reads)) = DynamicExpr wx1, menv, scrut
     let vt = RustTy lx, (Peel (TypeAt lx, scrut.span))
     let ((name, wx2)) = FreshName wx1, "generation"
@@ -5461,7 +5472,7 @@ fn ClauseRowOf wx, menv, c, v, rowName, upName:
     let rowFields = Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", (RsWeak wx.node), "the node of the `rebuild`"))
     let rowInits = Push (Each fields, \|((f, ignore, ignore))| ((f, (XMethod (XRaw f), "clone", [[]])))), (("parent", (XRaw "parent")))
     let rowTaken = Append nodeHooks, (Push (Each fields, \|((f, ignore, ignore))| f), "parent")
-    let r0 = Wx(lx=lxc, node=rowName, pos=0, gns=[[]], fields=rowFields, inits=rowInits, lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=rowTaken, fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowMarks=[[]], pending=[[]], floors={})
+    let r0 = Wx(lx=lxc, node=rowName, pos=pos0, gns=[[]], fields=rowFields, inits=rowInits, lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=rowTaken, fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowMarks=[[]], pending=[[]], floors={})
     let body = match c.body:
         BodyBlock b: b
         BodyExpr x: Block(stmts=[[(Stmt(kind=(SExpr x), span=x.span))]], inline=True, span=x.span)
@@ -5490,7 +5501,7 @@ type GenRow = record:
 GenRowOf: unbounded fn Wx, Env, Block, RsTy, Text, Text -> GenRow
 fn GenRowOf wx, menv, body, vt, rowName, upName:
     let lx = wx.lx
-    let r0 = Wx(lx=lx, node=rowName, pos=0, gns=[[]], fields=[[(("value", vt, "the generation's value, `_`")), (("parent", (RsWeak wx.node), "the node of the `rebuild`"))]], inits=[[(("value", (XMethod (XRaw "value"), "clone", [[]]))), (("parent", (XRaw "parent")))]], lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=(Append nodeHooks, [["value", "parent"]]), fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowMarks=[[]], pending=[[]], floors={})
+    let r0 = Wx(lx=lx, node=rowName, pos=pos0, gns=[[]], fields=[[(("value", vt, "the generation's value, `_`")), (("parent", (RsWeak wx.node), "the node of the `rebuild`"))]], inits=[[(("value", (XMethod (XRaw "value"), "clone", [[]]))), (("parent", (XRaw "parent")))]], lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=[[]], dynReads={}, taken=(Append nodeHooks, [["value", "parent"]]), fallible=False, depth=wx.depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], rootDyn=nil, rowMarks=[[]], pending=[[]], floors={})
     let ((p1, r1, ports)) = RowEnv wx, r0, menv, body
     let be = Bind (BuildSpelling ports), "_", (BnLocal "value", Owned, vt)
     let me = Bind ports, "_", (BnLocal "self.value", Owned, vt)
@@ -5507,10 +5518,10 @@ fn BuildSpelling env = Fold (Keys env.names), env, \|en, k| match env.names[k]:
     ? (BnDyn (XMethod (XRaw rs), m, xs), ds, t): if (Take rs, 12) == "self.parent.": Bind en, k, (BnDyn (XMethod (XRaw (Drop rs, 5)), m, xs), ds, t) else: en
     otherwise: en
 
-let dummyGen = GenDef(name="", pos=0, at="", source=(XRaw ""), valueTy=RsUnit, select=(XRaw ""))
+let dummyGen = GenDef(name="", pos=pos0, at="", source=(XRaw ""), valueTy=RsUnit, select=(XRaw ""))
 
 # The generation built: the one case, its row's constructor.
-GenSelect: unbounded fn Wx, Env, Block, [GenCase], Nat -> Ex
+GenSelect: unbounded fn Wx, Env, Block, [GenCase], Pos -> Ex
 fn GenSelect wx, menv, body, cases, pos = match ?ClauseCall wx.lx, body:
     nil: match cases[0]:
         ? c: XTry (XCall "{c.node.name}::build", [[XRaw "path", XRaw "value", XRaw "Rc::downgrade(self)", XRaw "cx"]])
@@ -5621,7 +5632,7 @@ fn IfGenLine wx, menv, c, thenB, elseB, e:
     let lx = wx.lx
     let pos = wx.pos
     let wx1 = update wx:
-        &_.pos <= &_.pos + 1
+        &_.pos <= NextPos &_.pos
     let ((name, wx2)) = FreshName wx1, "arm"
     let base = "{wx.node}{Camel name}{RowSuffix wx}"
     let yes = GenRowOf wx2, menv, thenB, RsUnit, "{base}Then", "{name}_up"

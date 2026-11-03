@@ -1096,9 +1096,12 @@ Each is Claude's, for Jimmy to overturn.
   (a lowered closure or named function over `&Path` and `&Live<crate::Elem>`). The
   child, a named widget, a widget parameter's argument or a block, is inlined into the
   host's owner (the node of the host's line) in a scope of its own: `Wx.scopes` lists the
-  node's hosts, a position from `ScopeBase k` is the child of host `k`'s place, spelled
-  under `host_k_path` (the host's child path, `Segment::Host`), so it emits in the host's
-  scope (gap SP); its answer arm is `[Segment::Host(h), Segment::Pos(n), ..] if h.id() ==
+  node's hosts, and a position is a `Pos`, a scope and a number in it: scope 0 the node's
+  own path, scope `k` the child of host `k`'s place, spelled under `host_k_path` (the
+  host's child path, `Segment::Host`), so it emits in the host's scope (gap SP); in a
+  name or a doc comment a hosted child's position still prints as the one number
+  `1000000 * k + n` it was when positions were that sum (`PlaceText`), so the emitted
+  code did not move when the representation did; its answer arm is `[Segment::Host(h), Segment::Pos(n), ..] if h.id() ==
   self.host_k.id()`, and the host answers a child place through the owner's
   `Node::answer` under that path. The child reads its caller's names as any inlined
   widget does, marks included, and its result is the line's first part (`WrHosted`,
