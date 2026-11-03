@@ -2,13 +2,8 @@
 # live, a watch whose `path` is identity, rebuilt per path, and a label through
 # `@Flatten`, one tick behind the watch.
 emit Ui.* | Fs.*
-
-type Contents = record:
-    text: Text
-
-type Key = choice:
-    Letter Text
-    Backspace
+use Fs.*
+use Ui.*
 
 Edit: fn Text, Key -> Text
 fn Edit text, (Letter s) = "{text}{s}"

@@ -10,6 +10,6 @@ fn ShowResponse (Error(..)) = "(cannot read)"
 
 @motd:
     !started <- @started                                              # 0
-    !motd <- Fs.File(path="/etc/motd", requests=(Read on !started))   # 1
-    $text <- "(reading...)" then ShowResponse !motd
+    !~motd <- Fs.File(path="/etc/motd", requests=(Read on !started))   # 1
+    $text <- "(reading...)" then ShowResponse !~motd
     Ui.Label(text=$text)                                              # 2

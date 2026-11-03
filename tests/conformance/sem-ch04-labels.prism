@@ -35,4 +35,4 @@ fn @Shelf $stock:
     !sold <- @Shelf $stock
 
 Restock: fn (Text ==> Nat), (Text ==> ?Nat) -> (Text ==> Nat)
-fn Restock stock, sold = Fold sold, stock, \|acc, t, left| Insert acc, t, (Or left, 0)
+fn Restock stock, sold = Fold sold, stock, \|acc, t, ?left| Insert acc, t, (Or ?left, 0)

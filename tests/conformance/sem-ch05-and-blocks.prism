@@ -70,7 +70,7 @@ fn Idents src = update 0:
         else:
             &c <= next
 
-Components: fn Nat, [((Nat, Nat))] -> [Nat]
+Components: unbounded fn Nat, [((Nat, Nat))] -> [Nat]
 fn Components n, edges = update [[]]:
     let &parent = Buffer.Numbered n
     for ((a, b)) <- edges:
