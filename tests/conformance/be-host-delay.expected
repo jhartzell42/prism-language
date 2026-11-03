@@ -1,0 +1,25 @@
+# Derived by hand from Semantics ch. 9 as ruled (a supplier's computed answer is an input of the next tick, which is owed; a forwarded element's answer from the World is heard in its tick) and ch. 9's forwarding (re-emission at host/[p]/0).
+test a_computed_answer_is_a_tick_late
+
+tick 0
+  added:
+    0: Ui.Button(label="tap")
+    1/[1]/0: Ui.TextInput(name="in", text="")
+    1/[2]/0: Ui.Label(text="0 hits, 0 keys")
+    2: Ui.Label(text="0 taps")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="1 taps")
+
+tick 2
+  changed:
+    1/[2]/0: Ui.Label(text="1 hits, 0 keys")
+
+tick 3
+  in:
+    1/[1]/0: Letter "x"
+  changed:
+    1/[2]/0: Ui.Label(text="1 hits, 1 keys")
