@@ -6261,8 +6261,9 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
 # source, the first argument, never changes), each clause a row (`ClauseRowOf`). The
 # generation is transparent: its node stands at the caller's path and its places take the
 # caller's positions from the call's on, as an inlined widget's do, the caller forwarding
-# the World's answers there to it. The clauses must have as many places each, so that the
-# caller's later places have one position whichever clause is chosen.
+# the World's answers there to it. Clauses with different numbers of places take the
+# widest one's positions, so the caller's later places have one position whichever clause
+# is chosen (pick CS).
 ClauseWidgetLine: unbounded fn Wx, Env, Expr, Block, Text, ValInfo, Expr -> ((Wx, Wres))
 fn ClauseWidgetLine wx, menv, scrut, call, qk, v, e:
     let lx = wx.lx
@@ -6277,13 +6278,12 @@ fn ClauseWidgetLine wx, menv, scrut, call, qk, v, e:
         let c = Or clauses[i], dummyClause
         let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True
         (((Push acc, cr), cr.parent))
-    let widths = Fold rows, [[]], \|acc, cr| AddNat acc, cr.width
-    let width = Or widths[0], 0
+    # clauses of different widths take the widest one's positions (pick CS)
+    let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
     let cases = Each rows, \|cr| cr.case
-    if (Len widths) > 1 or (IsHostedScope wx):
-        let why = if (Len widths) > 1: "a widget of several clauses whose clauses have different numbers of places, in a static position" else: "a widget of several clauses in a static position of a hosted scope"
+    if IsHostedScope wx:
         let wx4 = update wx3:
-            &_.build <= Push &_.build, (RefusalDo why)
+            &_.build <= Push &_.build, (RefusalDo "a widget of several clauses in a static position of a hosted scope")
         ((wx4, WrUnit))
     else:
         let select = GenSelect wx3, menv, call, cases, pos
