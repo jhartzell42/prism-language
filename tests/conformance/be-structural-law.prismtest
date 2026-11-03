@@ -1,0 +1,15 @@
+# The structural dynamics' law: declarations of be-structural-law.prism (Semantics chapter 7).
+
+test the_event_tick_samples_the_old_value, @host:
+    build
+    click at 0/[0]/0
+    compute
+    click at 0/[0]/0
+    compute
+
+test a_gathered_dynamic_keeps_the_law, @gathered:
+    build
+    click at 0
+    compute
+    click at 0
+    compute

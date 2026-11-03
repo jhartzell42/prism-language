@@ -1,0 +1,59 @@
+# Derived by hand from the dynamic law (Semantics R2/R3) as ruled for structural dynamics: with S(n) the snapshot as the last act of n's construction, the dynamic after m is S(m-1) (after the build, S(0)); it fires at n+1 with S(n) when S(n) differs from S(n-1), owing that tick; samples at n+1 read S(n-1), from n+2 S(n); the host's supplier rows read the child's structure directly, so a newborn place is forwarded in its tick (R7, ch. 9).
+test the_event_tick_samples_the_old_value
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="add")
+    0/[1/[1]/0]/0: Ui.Label(text="k1")
+    1: Ui.Label(text="old 0, new 0")
+    2: Ui.Label(text="size 2")
+
+tick 1
+  in:
+    0/[0]/0: click
+  added:
+    0/[1/[2]/0]/0: Ui.Label(text="k2")
+
+tick 2
+  changed:
+    1: Ui.Label(text="old 2, new 3")
+    2: Ui.Label(text="size 3")
+
+tick 3
+  in:
+    0/[0]/0: click
+  added:
+    0/[1/[3]/0]/0: Ui.Label(text="k3")
+
+tick 4
+  changed:
+    1: Ui.Label(text="old 3, new 4")
+    2: Ui.Label(text="size 4")
+
+test a_gathered_dynamic_keeps_the_law
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/[1]/0: Ui.Label(text="one")
+    2: Ui.Label(text="old 0, new 0, size 1")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[2]/0: Ui.Label(text="more")
+
+tick 2
+  changed:
+    2: Ui.Label(text="old 1, new 2, size 2")
+
+tick 3
+  in:
+    0: click
+  added:
+    1/[3]/0: Ui.Label(text="more")
+
+tick 4
+  changed:
+    2: Ui.Label(text="old 2, new 3, size 3")
