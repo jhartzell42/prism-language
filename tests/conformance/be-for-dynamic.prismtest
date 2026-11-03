@@ -4,3 +4,4 @@
 test rows_give_a_dynamic, @files:
     with Fs.Contents(path="a") = ~ Contents(text="A"), with Fs.Contents(path="b") = ~ Contents(text="B"), build
     click at 0
+    compute
