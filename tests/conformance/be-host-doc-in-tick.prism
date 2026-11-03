@@ -3,9 +3,10 @@
 # never a hold and never something the end-of-tick patch pass produces. Here the owner's
 # `for` runs over a source that reads both `$doc` and the owner's own hold `$clicks`, and
 # one tick writes both (a click on the forwarded child button and a click on the owner's
-# own). The rows are built once, after propagation, from the values after the tick: a
-# kept row shows the moved child label and the new count together. Written for prismc's
-# back end. Work in progress, subject to change.
+# own). The rows are built once, after propagation, from the values after the tick:
+# `$doc` is structural (round 3 ST), one tick behind the child, so a kept row shows the new
+# count beside the label as the tick opened, and the moved label in the tick after.
+# Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
 use Ui.*
 

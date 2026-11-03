@@ -1,4 +1,4 @@
-# Derived by hand from Semantics ch. 9 (a host's child document is the child's elements, a dynamic) and R7 (rows built after the tick from the values after it).
+# Derived by hand from Semantics ch. 9 (a host's child document is the child's elements, a dynamic), R7 (rows built after the tick from the values after it) and ch. 7 as ruled (round 3 ST): `$doc` after m is the child's structure after m-1, so a kept row shows the new count with the document one tick behind, and the moved label in the owed tick after.
 test the_document_moves_within_the_tick
 
 tick 0
@@ -23,11 +23,15 @@ tick 2
   changed:
     0/[1]/0: Ui.Label(text="1")
     2/[0]/0: Ui.Label(text="inc after 2")
-    2/[1]/0: Ui.Label(text="1 after 2")
+    2/[1]/0: Ui.Label(text="0 after 2")
 
 tick 3
   in:
     0/[0]/0: click
   changed:
     0/[1]/0: Ui.Label(text="2")
+    2/[1]/0: Ui.Label(text="1 after 2")
+
+tick 4
+  changed:
     2/[1]/0: Ui.Label(text="2 after 2")
