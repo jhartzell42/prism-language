@@ -53,6 +53,10 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
   - the C++ template's missing canvas World;
   - the stale canvas README;
   - gaps LP, LW, DM and SR;
+  - **a `for` row that reacts to its block's event reacts to the wrong event**
+    (`docs/bugs/for-row-block-event.md`): lowering resolves the block's event by index in
+    the row's own event table. Silent wrong code on both targets. Fix first: it is the
+    worst of the three.
   - **an inline supplier's `o` is not rank-2** (`docs/bugs/supplier-rank2.md`): two
     tag arms with different outputs are refused. The rule is settled there: an
     element's output variable confined to one function-typed parameter is quantified

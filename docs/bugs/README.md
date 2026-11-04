@@ -9,3 +9,5 @@ A bug leaves this directory when its fix lands.
   different outputs are refused.
 - **`host-doc-prompt-cycle.md`**: a `for` misses a real prompt cycle through its own
   gathered dynamic, which the same cycle through a host's `$doc` is refused for.
+- **`for-row-block-event.md`**: a `for` row that reacts to its block's event reacts to
+  the row's own event with the same index instead, or to nothing.
