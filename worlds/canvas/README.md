@@ -13,6 +13,7 @@ screen, tiny-skia for the raster, fontdue for the bundled DejaVu Sans (`fonts/`)
 
 ```rust
 prism_world_canvas_rtl::run::<MyProgram>()          // on the main thread
+prism_world_canvas_rtl::run_hooked::<MyProgram>(wrap, hooks)   // with Hooks, for a driver
 ```
 
 ## The modules
@@ -34,6 +35,11 @@ prism_world_canvas_rtl::run::<MyProgram>()          // on the main thread
   `World::failed`'s code, 1.
 - **Late input.** Input queued for a window whose place has left is dropped, and the
   wrapper drops any answer to a place no longer in the document.
+- **Hooks.** `Hooks::settled` is called each time the loop would sleep with no input
+  queued, no tick owed, and every window's last redraw presented. Through `Session` a
+  hook queues input as a click would, ends the run, and reads a pixel of the last
+  presented frame. The benchmark (`bench/`) and `tests/hooks_smoke.rs` drive the World
+  this way; `worlds/canvas-cpp` has the same four calls.
 
 ## What was checked, and where
 
@@ -51,5 +57,8 @@ prism_world_canvas_rtl::run::<MyProgram>()          // on the main thread
     run ends with 0.
   - With no `DISPLAY` the test starts itself again under `xvfb-run -a`. With no
     `xvfb-run` either, as on a Mac, it says so and passes.
+- **Through Hooks** (`tests/hooks_smoke.rs`, part of `cargo test`): the same window, its
+  pixel read back from the presented frame and pressed through `Session`, with no robot.
+  It runs on macOS (checked), and on Linux when there is a display.
 - **Chess** compiled by prismc runs under it (`make chess`, `./prism run examples/chess`),
   checked by hand on Linux.
