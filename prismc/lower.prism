@@ -4609,7 +4609,15 @@ fn HostLine wx, benv, menv, form, args, ?bound:
     let docGetter = "{hf}_doc"
     let wx1 = update wx:
         &_.taken <= Append &_.taken, [[hf, rowsName, docGetter, "{docGetter}_now", "{docGetter}_snap", "{docGetter}_direct", "{docGetter}_publish", "{hf}_answer", "{hf}_moved"]]
+    let named = match args[1]:
+        ? sup: IsWidgetName sup.value
+        nil: False
     match ((args[0], args[1])):
+        ((? ignore, ? ignore)) if named:
+            let wx2 = update wx1:
+                &_.pos <= NextPos &_.pos
+                &_.build <= Push &_.build, (RefusalDo "a named widget function as a host's supplier (gap NS): a lambda supplier is lowered, a widget function is not a value")
+            ((wx2, (WrHosted WrUnit, (BnLocal XUnit, Owned, OutUnit))))
         ((? child, ? sup)):
             # the supplier's dynamic answers (`@ $d`, round 3 DY): a getter of this node per
             # dynamic, read through the owner's link, and a port each marks
@@ -4666,6 +4674,13 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.pos <= NextPos &_.pos
                 &_.build <= Push &_.build, (RefusalDo "a host without its child or its supplier")
             ((wx2, (WrHosted WrUnit, (BnLocal XUnit, Owned, OutUnit))))
+
+# A widget function's name as a value (`@Supply`), which lowering has no value for.
+IsWidgetName: fn Expr -> Bool
+fn IsWidgetName e = match e.kind:
+    EName n: (Take (SNameKey n), 1) == "@"
+    EGroup x: IsWidgetName x
+    otherwise: False
 
 # A supplier's dynamic answers (`@ $d`, `$d` a hold or a derived dynamic of this node; round
 # 3 DY): each `@ x` of the supplier whose `x` is a dynamic that is not a constant gets a
@@ -5269,7 +5284,8 @@ fn SinkCode sk, target, y = match target:
         let fieldEx = if field == "": XNone else: (XCtor "Some", [[XStr field]])
         # a hosted place's request goes to its host: out with a forwarded element, else nowhere
         if Emits sk.wx, pos: [[DoExpr (XMethod (XCx), "request", [[(PlaceAt sk.wx, "self", pos), fieldEx, (XMethod y, "to_pod", [[]])]])]]
-        else: [[DoExpr (XMethod (XCx), "keep", [[(XMethod (HostFieldEx sk.wx, pos), "request", [[(XRef (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]]), XCx]])]])]]
+        # the host's answer first, then kept: `cx` is borrowed once at a time
+        else: [[(DoLet (PaBind "requested"), (XMethod (HostFieldEx sk.wx, pos), "request", [[(XRef (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]]), XCx]])), (DoExpr (XMethod (XCx), "keep", [[(XVar "requested")]]))]]
     SkResult: [[DoExpr (XMethod (XCx), "result", [[(XCtor "Outcome::Fired", [[(XMethod y, "to_pod", [[]])]])]])]]
     SkArm f: [[DoExpr (XMethod (XField XSelf, "{f}"), "arm", [[y, (XClone XSelf), XCx]])]]
     SkMachine f, step, out:

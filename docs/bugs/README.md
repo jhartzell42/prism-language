@@ -4,6 +4,3 @@
 bug in prismc that has been reproduced and traced to its cause, with the books' rule it
 breaks, the design question under the fix if there is one, and the fix with its tests.
 A bug leaves this directory when its fix lands.
-
-- **`supplier-rank2.md`**: an inline supplier's `o` is not rank-2, so two tag arms with
-  different outputs are refused.
