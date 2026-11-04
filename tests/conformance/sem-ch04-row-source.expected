@@ -1,0 +1,48 @@
+# Derived by hand from Semantics ch. 4 (a `for` keyed by its source; a row born the tick its key appears) and ch. 7 (a hold moves the tick its event fires; a push moves a place's dynamic in its tick), with pick RE (a row's entry is the source at its key at the read point): the click adds key 1 and its row in its tick, the push moves every row's text in its tick; hosted, the forwarding host is observably not there, under deeper paths.
+test every_write_path_moves_the_rows
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Fs.Contents(path="m")
+    2/[0]/0: Ui.Label(text="0 a0")
+
+tick 1
+  in:
+    0: click
+  added:
+    2/[1]/0: Ui.Label(text="1 a1")
+
+tick 2
+  in:
+    Fs.Contents(path="m") = ~ Contents(text="b")
+  changed:
+    2/[0]/0: Ui.Label(text="0 b0")
+    2/[1]/0: Ui.Label(text="1 b1")
+
+tick 3
+  in:
+    0: click
+  added:
+    2/[2]/0: Ui.Label(text="2 b2")
+
+test hosted_answers_move_the_rows
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="add")
+    0/[1]/0: Fs.Contents(path="m")
+    0/[2/[0]/0]/0: Ui.Label(text="0 a0")
+
+tick 1
+  in:
+    0/[0]/0: click
+  added:
+    0/[2/[1]/0]/0: Ui.Label(text="1 a1")
+
+tick 2
+  in:
+    Fs.Contents(path="m") = ~ Contents(text="b")
+  changed:
+    0/[2/[0]/0]/0: Ui.Label(text="0 b0")
+    0/[2/[1]/0]/0: Ui.Label(text="1 b1")
