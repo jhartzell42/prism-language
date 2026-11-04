@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -51,11 +52,11 @@ concept one_of = (std::is_same_v<std::remove_cvref_t<C>, Cs> || ...);
 template <class T>
 bool is_some(const std::optional<T>& o) { return o.has_value(); }
 template <class T>
-bool is_some(const std::shared_ptr<T>& p) { return p != nullptr; }
+bool is_some(const Rc<T>& p) { return p != nullptr; }
 template <class T>
 bool is_none(const std::optional<T>& o) { return !o.has_value(); }
 template <class T>
-bool is_none(const std::shared_ptr<T>& p) { return p == nullptr; }
+bool is_none(const Rc<T>& p) { return p == nullptr; }
 template <class T, class E>
 bool is_ok(const Expected<T, E>& e) { return e.has_value(); }
 template <class T, class E>
@@ -122,26 +123,26 @@ template <class... T> struct IsValue<std::tuple<T...>> : std::true_type {};
 template <class T>
 auto rc(T x) {
     if constexpr (IsValue<T>::value || std::is_pointer_v<T> || requires { &T::operator(); }) return x;
-    else return std::make_shared<T>(std::move(x));
+    else return make_rc<T>(std::move(x));
 }
 
 /// `Rc::new(T::new())` with `T` the type the context asks for.
 struct MakeNew {
     template <class T>
-    operator std::shared_ptr<T>() const { return std::make_shared<T>(); }
+    operator Rc<T>() const { return make_rc<T>(); }
 };
 inline MakeNew make_new() { return {}; }
 
 /// `self` as a shared pointer, and a weak one.
 template <class T>
-std::shared_ptr<T> share(T* self) { return std::static_pointer_cast<T>(self->shared_from_this()); }
+Rc<T> share(T* self) { return rc_static_cast<T>(self->rc_from_this()); }
 template <class T>
-std::weak_ptr<T> weaken(T* self) { return share(self); }
+Weak<T> weaken(T* self) { return share(self); }
 template <class T>
-std::weak_ptr<T> weaken(const std::shared_ptr<T>& p) { return p; }
+Weak<T> weaken(const Rc<T>& p) { return p; }
 /// `Weak::upgrade`: the node, if it lives.
 template <class T>
-std::optional<std::shared_ptr<T>> upgrade(const std::weak_ptr<T>& w) {
+std::optional<Rc<T>> upgrade(const Weak<T>& w) {
     if (auto p = w.lock()) return p;
     return std::nullopt;
 }
@@ -150,12 +151,12 @@ std::optional<std::shared_ptr<T>> upgrade(const std::weak_ptr<T>& w) {
 template <class T>
 struct IsShared : std::false_type {};
 template <class T>
-struct IsShared<std::shared_ptr<T>> : std::true_type {};
+struct IsShared<Rc<T>> : std::true_type {};
 template <class T>
     requires(!IsShared<std::remove_cv_t<T>>::value)
 T& deref(T& x) { return x; }
 template <class T>
-T& deref(const std::shared_ptr<T>& p) { return *p; }
+T& deref(const Rc<T>& p) { return *p; }
 
 /// `Some(p)`'s payload: an option's value, a live node's pointer (`Weak::upgrade`'s).
 template <class T>
@@ -163,7 +164,7 @@ const T& some_of(const std::optional<T>& o) { return *o; }
 template <class T>
 T& some_of(std::optional<T>& o) { return *o; }
 template <class T>
-const std::shared_ptr<T>& some_of(const std::shared_ptr<T>& p) { return p; }
+const Rc<T>& some_of(const Rc<T>& p) { return p; }
 
 /// `Ok(())`: the success of a `Done` or of a `~unit`.
 struct OkUnit {
@@ -297,11 +298,11 @@ struct NeverEvent {
 inline NeverEvent never_event() { return {}; }
 
 template <class T>
-Event<T> event_of(const std::shared_ptr<Port<T>>& port) { return Event<T>::of(port); }
+Event<T> event_of(const Rc<Port<T>>& port) { return Event<T>::of(port); }
 
 /// `Dynamic::of(read, updates)`: the type is what `read` gives.
 template <class F>
-auto dynamic_of(F read, const std::shared_ptr<Port<Unit>>& updates) {
+auto dynamic_of(F read, const Rc<Port<Unit>>& updates) {
     using T = std::decay_t<std::invoke_result_t<F, const Cx&>>;
     return Dynamic<T>::of(std::move(read), updates);
 }
@@ -309,27 +310,27 @@ auto dynamic_of(F read, const std::shared_ptr<Port<Unit>>& updates) {
 /// `Host::new(at, rows, supplier, enclosing, document, deliver)`: the host's types are its
 /// rows' and its owner's, whose methods `document` and `deliver` are.
 template <class E, class A, class P, class S, class D1, class D2>
-std::shared_ptr<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::shared_ptr<HostOf<E, A>> enclosing,
+Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, Rc<HostOf<E, A>> enclosing,
                                         D1 P::*document, D2 P::*deliver) {
     using H = Host<E, A, P>;
     return H::make(std::move(at), std::move(rows), Supplier<E, A>(std::move(supplier)), std::move(enclosing),
                    typename H::DocumentFn(document), typename H::DeliverFn(deliver));
 }
 template <class E, class A, class P, class S, class D1, class D2>
-std::shared_ptr<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::nullopt_t, D1 P::*document,
+Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::nullopt_t, D1 P::*document,
                                         D2 P::*deliver) {
-    return host_new(std::move(at), std::move(rows), std::move(supplier), std::shared_ptr<HostOf<E, A>>(), document, deliver);
+    return host_new(std::move(at), std::move(rows), std::move(supplier), Rc<HostOf<E, A>>(), document, deliver);
 }
 template <class E, class A, class P, class S, class D1, class D2, class H>
-std::shared_ptr<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::optional<H> enclosing,
+Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::optional<H> enclosing,
                                         D1 P::*document, D2 P::*deliver) {
     return host_new(std::move(at), std::move(rows), std::move(supplier),
-                    enclosing ? std::shared_ptr<HostOf<E, A>>(*enclosing) : nullptr, document, deliver);
+                    enclosing ? Rc<HostOf<E, A>>(*enclosing) : nullptr, document, deliver);
 }
 
 /// `Turn::More(job)`: the next turn is the job's.
 template <class J>
-auto more(std::shared_ptr<J> job) {
+auto more(Rc<J> job) {
     using B = typename decltype(job->cycle())::Value;
     return Turn<B>::more(std::move(job));
 }
@@ -360,12 +361,12 @@ public:
     Fn() = default;
     template <class F>
         requires(!std::is_same_v<std::remove_cvref_t<F>, Fn> && std::is_invocable_v<const F&, A...>)
-    Fn(F f) : f_(std::make_shared<const std::function<R(A...)>>(std::move(f))) {}
+    Fn(F f) : f_(make_rc<const std::function<R(A...)>>(std::move(f))) {}
     template <class... B>
     R operator()(B&&... b) const { return (*f_)(std::forward<B>(b)...); }
 
 private:
-    std::shared_ptr<const std::function<R(A...)>> f_;
+    Rc<const std::function<R(A...)>> f_;
 };
 
 // ---- Text --------------------------------------------------------------------------------

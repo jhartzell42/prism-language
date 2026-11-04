@@ -86,18 +86,18 @@ struct Shared {
 /// The ready state: `Gui.Window` answered with its id, `Gui.Metrics` from the font.
 class CanvasReady : public prism_rtl::ReadyState {
 public:
-    explicit CanvasReady(std::shared_ptr<const Font> font) : font_(std::move(font)) {}
+    explicit CanvasReady(prism_rtl::Rc<const Font> font) : font_(std::move(font)) {}
     std::optional<Pod> first_value(const Pod& element) const override;
 
 private:
-    std::shared_ptr<const Font> font_;
+    prism_rtl::Rc<const Font> font_;
 };
 
 /// The canvas World.
 class CanvasWorld : public prism_rtl::World {
 public:
-    CanvasWorld(std::shared_ptr<Shared> shared, std::shared_ptr<const Font> font);
-    std::shared_ptr<const prism_rtl::ReadyState> ready() const override;
+    CanvasWorld(prism_rtl::Rc<Shared> shared, prism_rtl::Rc<const Font> font);
+    prism_rtl::Rc<const prism_rtl::ReadyState> ready() const override;
     /// None of the four tags has a request field, and the prelude's requests are the
     /// wrapper's, so a request is never this World's. The patch: removals first, so a
     /// place rebuilt at a new path in the same tick is not drawn twice.
@@ -112,9 +112,9 @@ private:
     void not_answered(const std::string& tag);
     void place(const Path& path, const Pod& element, bool added);
 
-    std::shared_ptr<Shared> shared_;
-    std::shared_ptr<const Font> font_;
-    std::shared_ptr<const CanvasReady> ready_;
+    prism_rtl::Rc<Shared> shared_;
+    prism_rtl::Rc<const Font> font_;
+    prism_rtl::Rc<const CanvasReady> ready_;
     /// Tags already reported as not answered here.
     std::set<std::string> warned_;
 };
@@ -124,7 +124,7 @@ private:
 class UnwrapWorld : public prism_rtl::World {
 public:
     explicit UnwrapWorld(std::unique_ptr<prism_rtl::World> inner);
-    std::shared_ptr<const prism_rtl::ReadyState> ready() const override { return inner_->ready(); }
+    prism_rtl::Rc<const prism_rtl::ReadyState> ready() const override { return inner_->ready(); }
     void perform(const prism_rtl::TickOut& out) override;
     std::optional<prism_rtl::TickIn> next_inputs() override;
     std::optional<std::uint8_t> exit_code() const override;

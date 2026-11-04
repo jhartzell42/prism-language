@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <algorithm>
 #include <functional>
 #include <limits>
@@ -263,7 +264,7 @@ struct Handle {
 /// A subscriber: a typed closure holding its consumer weakly, since references held
 /// downstream are weak (Graph ch. 4). Shared, so a firing copies the list cheaply.
 template <class T>
-using Subscriber = std::shared_ptr<const std::function<Done(const T&, Cx&)>>;
+using Subscriber = Rc<const std::function<Done(const T&, Cx&)>>;
 
 /// How much an output is wanted (Graph ch. 4, "Demand"). Tags are a behavior's, and the
 /// node that owns the behavior counts them.
@@ -288,7 +289,7 @@ public:
     template <class F>
         requires std::is_invocable_r_v<Done, F, const T&, Cx&>
     Handle subscribe(F&& f) {
-        return subscribe(std::make_shared<const std::function<Done(const T&, Cx&)>>(std::forward<F>(f)));
+        return subscribe(make_rc<const std::function<Done(const T&, Cx&)>>(std::forward<F>(f)));
     }
     void unsubscribe(Handle h) {
         if (h.index < subs_.size() && subs_[h.index]) {
@@ -331,17 +332,17 @@ private:
 template <class T>
 struct Event {
     NodeRef owner;
-    std::shared_ptr<Port<T>> port;
+    Rc<Port<T>> port;
 
     /// `never`: a port nothing fires.
-    static Event never() { return Event{nullptr, std::make_shared<Port<T>>()}; }
+    static Event never() { return Event{nullptr, make_rc<Port<T>>()}; }
     /// A node's own event as a value: the port its firing method fires.
-    static Event of(const std::shared_ptr<Port<T>>& port) { return Event{nullptr, port}; }
+    static Event of(const Rc<Port<T>>& port) { return Event{nullptr, port}; }
     /// The event `f` of this one, a pure transform at each firing (a lifted call).
     template <class F>
     auto map(F f) const -> Event<std::invoke_result_t<F, const T&>> {
         using U = std::invoke_result_t<F, const T&>;
-        auto out = std::make_shared<Port<U>>();
+        auto out = make_rc<Port<U>>();
         port->subscribe([out, f](const T& v, Cx& cx) -> Done { return out->fire(f(v), cx); });
         return Event<U>{owner, out};
     }
@@ -350,7 +351,7 @@ struct Event {
 /// `!Filter`: the present values.
 template <class U>
 Event<U> filter_some(const Event<std::optional<U>>& e) {
-    auto out = std::make_shared<Port<U>>();
+    auto out = make_rc<Port<U>>();
     e.port->subscribe([out](const std::optional<U>& v, Cx& cx) -> Done {
         if (v) return out->fire(*v, cx);
         return {};
@@ -364,20 +365,20 @@ Event<U> filter_some(const Event<std::optional<U>>& e) {
 template <class T>
 struct Dynamic {
     NodeRef owner;
-    std::shared_ptr<const std::function<T(const Cx&)>> read;
-    std::shared_ptr<Port<Unit>> updates;
+    Rc<const std::function<T(const Cx&)>> read;
+    Rc<Port<Unit>> updates;
 
     /// `$ v`: a constant, whose update event never fires.
     static Dynamic constant(T v) {
-        return Dynamic{nullptr, std::make_shared<const std::function<T(const Cx&)>>([v](const Cx&) { return v; }),
-                       std::make_shared<Port<Unit>>()};
+        return Dynamic{nullptr, make_rc<const std::function<T(const Cx&)>>([v](const Cx&) { return v; }),
+                       make_rc<Port<Unit>>()};
     }
     /// A dynamic with no owner over a read and the port that says it moved: a host's
     /// dynamic answer to a child place (`@ $d`), whose read goes through the owner's
     /// getter.
     template <class F>
-    static Dynamic of(F read, const std::shared_ptr<Port<Unit>>& updates) {
-        return Dynamic{nullptr, std::make_shared<const std::function<T(const Cx&)>>(std::move(read)), updates};
+    static Dynamic of(F read, const Rc<Port<Unit>>& updates) {
+        return Dynamic{nullptr, make_rc<const std::function<T(const Cx&)>>(std::move(read)), updates};
     }
     T sample(const Cx& cx) const { return (*read)(cx); }
     /// The dynamic `f` of this one: the same owner and update event, the read mapped.
@@ -385,7 +386,7 @@ struct Dynamic {
     auto map(F f) const -> Dynamic<std::invoke_result_t<F, const T&>> {
         using U = std::invoke_result_t<F, const T&>;
         auto r = read;
-        return Dynamic<U>{owner, std::make_shared<const std::function<U(const Cx&)>>([r, f](const Cx& cx) { return f((*r)(cx)); }),
+        return Dynamic<U>{owner, make_rc<const std::function<U(const Cx&)>>([r, f](const Cx& cx) { return f((*r)(cx)); }),
                           updates};
     }
 };
@@ -445,7 +446,7 @@ public:
 };
 
 template <class B>
-using JobRef = std::shared_ptr<const Job<B>>;
+using JobRef = Rc<const Job<B>>;
 
 /// What a cycle ends in: stopped at a cycle point, where the next cycle resumes (`More`),
 /// or the result (`Finished`).

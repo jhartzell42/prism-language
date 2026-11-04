@@ -113,7 +113,7 @@ to overturn.
 
     The C++ "characters" binary is the one the main checkout had installed on 4 November
     (its compiler not recorded); the "cursors" one is clang++ -O1. In the C++ prismc the
-    lexer was never the cost (malloc and `shared_ptr` counts are, handoff item 4).
+    lexer was never the cost (malloc and reference counting are, handoff item 4).
   - **Doubts for Jimmy:**
     - **TXC** A `Cursor` is `^Eq`, `^Ord` and `^Show` like every primitive; it compares
       by its byte index alone (the book: "Cursors compare by it"), so cursors into two
@@ -1066,7 +1066,7 @@ Test World; `tests/compiled/run.sh --target cpp` runs every program so.
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 
 - **CH: a choice is a handle.** A choice (and a row kind's values, `Elem`, `Answer`) is a
-  class holding a `shared_ptr` to a `std::variant` of its case structs. What it buys:
+  class holding a `prism_rtl::Rc` to a `std::variant` of its case structs. What it buys:
   `Rc<T>` of any value type is `T` itself (`IsValueTy`), so a recursive type needs no box,
   every `*` and `&` of the model is a no-op in C++, and `.` reaches a value's fields
   whatever the Rust side derefs. A record is a plain struct; a cycle of records by value
@@ -1092,7 +1092,7 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   tail (`OutUnknown "the job's turn"`); such a `match` is a chain of `?:`, whose type C++
   works out from the arms (`finished(..)` converts to any `Turn<B>`); a guard binds the
   pattern twice, once for its test and once for the value.
-- **PT: `->` and `.`.** A node is reached through a `shared_ptr`, a value directly. The
+- **PT: `->` and `.`.** A node is reached through a `prism_rtl::Rc`, a value directly. The
   printer writes `->` where the model says a receiver is a pointer (`self`, a field or a
   `let` of a pointer type, `node` in a constructor) and, elsewhere, for a member name some
   node has; every record has an `operator->` returning itself, so the second rule is

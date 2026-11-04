@@ -16,7 +16,7 @@
 # The C++ forms (prismc/README.md, "The C++ target"): a record is a struct, a choice a
 # handle on a shared `std::variant` of its cases (so a value behind an `Rc` is the value
 # itself, and a recursive type needs no box); a node is a class deriving from `Node`, held
-# by `std::shared_ptr`; a `match`, an if-let chain and a labelled block are GNU statement
+# by `prism_rtl::Rc`; a `match`, an if-let chain and a labelled block are GNU statement
 # expressions whose value is a `Slot`, except a function's closing `match`, which returns
 # from its arms.
 #
@@ -230,18 +230,18 @@ fn CppType cp, t = match t:
     OutEvent i: "Event<{CppType cp, i}>"
     OutDyn i: "Dynamic<{CppType cp, i}>"
     OutGen n: n
-    OutRc i: if IsValueTy cp, i: CppType cp, i else: "std::shared_ptr<{CppType cp, i}>"
+    OutRc i: if IsValueTy cp, i: CppType cp, i else: "prism_rtl::Rc<{CppType cp, i}>"
     OutPod: "Pod"
-    OutShowAny: "std::shared_ptr<const DynShow>"
+    OutShowAny: "prism_rtl::Rc<const DynShow>"
     OutHold i: "Hold<{CppType cp, i}>"
     OutStamped i: "Stamped<{CppType cp, i}>"
     OutSnapshot i: "Snapshot<{CppType cp, i}>"
     OutDefer i: "Defer<{CppType cp, i}>"
-    OutWeak n: "std::weak_ptr<{TypePath n}>"
+    OutWeak n: "prism_rtl::Weak<{TypePath n}>"
     OutCell i: CppType cp, i
     OutWakes: "Wakes"
     OutCount: "std::uint32_t"
-    OutObj i: "std::shared_ptr<{CppType cp, i}>"
+    OutObj i: "prism_rtl::Rc<{CppType cp, i}>"
     OutSlice i: "std::span<const {CppType cp, i}>"
     OutPort i: "Port<{CppType cp, i}>"
     OutLive i: "Live<{CppType cp, i}>"
@@ -1563,7 +1563,7 @@ fn JobParts cp, j:
     let ret = CppType cp, j.ret
     let decl = JobStruct (CppDoc j.doc), gens, j.name, ret, fields, ctor
     let cycle = CppFunction "", "{gens}prism_rtl::Turn<{ret}> {head}::cycle() const", (CppBody jcp, j.body)
-    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}prism_rtl::JobRef<{ret}> {j.start}({params})", "return std::make_shared<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
+    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}prism_rtl::JobRef<{ret}> {j.start}({params})", "return prism_rtl::make_rc<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
     let generic = (Len j.generics) > 0
     Parts(forward=[["{gens}struct {j.name};"]], handles=[[]], values=[[]], cases=[[]], protos=[["{gens}prism_rtl::JobRef<{ret}> {j.start}({params});"]], classes=[[decl]], outer=[[]], generic=(if generic: [[cycle, start]] else: [[]]), defs=(if generic: [[]] else: [[cycle, start]]))
 
@@ -1636,7 +1636,7 @@ fn NodeParts cp, n:
     let ctorParams = Join (Append [["Path path"]], (Each n.fields, \|((f, t, ignore))| "{CppType cp, t} {FieldId f}")), ", "
     let ctorInits = Join (Append [["path(std::move(path))"]], (Each n.fields, \|((f, ignore, ignore))| "{FieldId f}(std::move({FieldId f}))")), ", "
     let params = Concat (Each n.params, \|((p, t))| "{ParamType cp, t} {p}, ")
-    let ret = if n.fallible: "Result<std::shared_ptr<{n.name}>>" else: "std::shared_ptr<{n.name}>"
+    let ret = if n.fallible: "Result<prism_rtl::Rc<{n.name}>>" else: "prism_rtl::Rc<{n.name}>"
     let makeDecl = "static {ret} make(Path path, {params}Cx& cx);"
     let methodDecls = Each (Append n.methods, n.hosted), \|m| "{MethodSig ncp, m, ""};"
     let builderDecls = Append (Each n.builders, \|b| "Done {b.name}_build(Cx& cx);"), (Each n.gens, \|g| "Done {g.name}_build(Cx& cx);")

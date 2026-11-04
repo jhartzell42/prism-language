@@ -27,9 +27,9 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 
 | Rust | C++ |
 |---|---|
-| `Rc<T>`, `Weak<T>` | `std::shared_ptr<T>`, `std::weak_ptr<T>` |
-| `Rc<dyn Node>` | `NodeRef` = `std::shared_ptr<Node>`; `Node` is an abstract class with virtual methods |
-| `self: Rc<Self>` in a node method | a virtual method on `this`; `me()` (or `me_as<T>()`) is the node as a `NodeRef`, for putting it on a list. Nodes are always made with `std::make_shared` |
+| `Rc<T>`, `Weak<T>` | `prism_rtl::Rc<T>`, `prism_rtl::Weak<T>` (rc.hpp): plain counts, not atomic ("Threads" below), the value and its counts in one allocation (`make_rc<T>(..)`, or `RcPlace<T>` with a constructor the caller writes); `std::shared_ptr`'s spelling (`get`, `reset`, `use_count`, `lock`, `expired`, `rc_static_cast`), and `RcFromThis<T>` for `std::enable_shared_from_this` |
+| `Rc<dyn Node>` | `NodeRef` = `Rc<Node>`; `Node` is an abstract class with virtual methods |
+| `self: Rc<Self>` in a node method | a virtual method on `this`; `me()` (or `me_as<T>()`) is the node as a `NodeRef`, for putting it on a list. Nodes are always made by `make_rc` or `rc_placed` |
 | `RefCell<T>`, `Cell<T>` | plain members (single-threaded); `Cx`'s read point and late fault, and a `Cache`'s value and stale point (its `get` is `const`, as Rust's is `&self`), are `mutable`. A node's fields are not: its `const` methods (level readers such as `label`) write none of them |
 | `Result<T, Fault>` | `Result<T>` = `Expected<T, Fault>` (result.hpp: clang 18 over libstdc++ 13 has no `std::expected`) |
 | `Result<(), Fault>` (`Done`) | `Done` = `Expected<void, Fault>`; `return {};` is `Ok(())` |
@@ -37,8 +37,31 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 | `?` | `TRY(expr)`, an expression (a GNU statement expression, which g++ and clang++ take); its operand is moved from, so it is a temporary (lowering refuses `?` of a place) |
 | `panic!` (a bug of the compiler) | `panic(msg)` throws `Panic` |
 | `Box<dyn FnOnce(&mut Cx) -> Done>` (`Later`) | `std::function<Done(Cx&)>` |
-| `Rc<dyn Fn(..)>` (subscribers, reads) | `std::shared_ptr<const std::function<..>>` |
-| `Rc::new_cyclic` | `make_shared`, then the weak self set afterwards (`HostRow::make`) |
+| `Rc<dyn Fn(..)>` (subscribers, reads) | `Rc<const std::function<..>>` |
+| `Rc::new_cyclic` | `rc_placed` (over `RcPlace`), then the weak self set afterwards (`HostRow::make`) |
+
+## Threads
+
+`Rc`'s counts are plain integers, as Rust's are, because no two threads ever touch a
+counted value at once (D4: a program is single-threaded). Read in the C++ runtime, both
+Worlds and the emitted `main`, the only threads are these, and each waits while the other
+runs:
+
+- **The emitted `main`'s big stack** (`on_big_stack`, templates/cpp_prelude.prism): the
+  program runs on one thread with a 4 GB stack while the main thread blocks in
+  `pthread_join`; nothing counted crosses (the arguments are a `std::vector` of
+  strings).
+- **The canvas World's `BigStack`** (worlds/canvas/cpp, `src/big_stack.cpp`): every tick
+  and the program's teardown run on its thread, and the window thread (Xlib or AppKit)
+  hands each job over under a mutex and waits on a condition variable until it is done,
+  so the two never run at once and the mutex orders every count's change between them.
+  The window thread reads the scene and the shared input queue (`Shared`) only between
+  jobs.
+- **The Xvfb smoke test's robot** (worlds/canvas/cpp/tests, Linux only) drives X from a
+  thread of its own and touches no value of the program.
+
+A World that ran a tick beside another thread holding counted values would need atomic
+counts again.
 
 ## Module and type map
 
@@ -57,9 +80,9 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 | `pod::Segment`, `pod::Path` | `Segment` (`pos`, `gen`, `key`, `kind`, `number`, `key_value`, `is_pos`), `Path` (`root`, `child`, `at`, `join`, `segments` → `std::span`, `len`, `to_string`); `path_of(span)` is Rust's `Path(at.to_vec())` | pod.hpp |
 | `pod::Fault` | `Fault` (`kind`, `message`, `answer`, `to_string`) | result.hpp |
 | `pod::Error`; `Result<T, Error>` (`~a`) | `Error`; `Fallible<T>` = `Expected<T, Error>` | pod.hpp |
-| `pod::ToPod`, `pod::FromPod` | the class templates `ToPod<T>`, `FromPod<T>` (specialize them, or give the type a member `Pod to_pod() const` and a static `Result<T> from_pod(const Pod&)`), with the helpers `to_pod(x)` and `from_pod<T>(p)`; for `Unit`, `bool`, `Int`, `Nat`, `uint8_t`, `double`, `char32_t`, `Text`, `Path`, `Pod`, `Error`, `std::optional`, `Fallible`, `std::shared_ptr<const T>`, `Array`, `Map`, `std::tuple` of any arity | pod.hpp |
+| `pod::ToPod`, `pod::FromPod` | the class templates `ToPod<T>`, `FromPod<T>` (specialize them, or give the type a member `Pod to_pod() const` and a static `Result<T> from_pod(const Pod&)`), with the helpers `to_pod(x)` and `from_pod<T>(p)`; for `Unit`, `bool`, `Int`, `Nat`, `uint8_t`, `double`, `char32_t`, `Text`, `Path`, `Pod`, `Error`, `std::optional`, `Fallible`, `Rc<const T>`, `Array`, `Map`, `std::tuple` of any arity | pod.hpp |
 | `pod::mismatch` | `mismatch<T>(want, got)` | pod.hpp |
-| `print::Show` | the class template `Show<T>` (specialize it, or give the type a member `void show(Printer&) const`); `ShowRef` is `&dyn Show`; an `any ^Show` is `std::shared_ptr<const DynShow>` | print.hpp |
+| `print::Show` | the class template `Show<T>` (specialize it, or give the type a member `void show(Printer&) const`); `ShowRef` is `&dyn Show`; an `any ^Show` is `Rc<const DynShow>` | print.hpp |
 | `print::Printer` | `Printer`: `raw`, `text`, `choice(ctor, {args})`, `record(name, {{"f", v}})`, `tuple`, `array`/`array_of`, `map`/`map_of`, `option`, `prefixed`, `float64` (Rust's `float`), `duration` | print.hpp |
 | `print::show`, `show_text`, `path` | `show(x)`, `show_text(x)`, `print_path(p)`; `float_digits(f)` is Rust's `{}` for `f64` | print.hpp |
 | `read::value`, `pattern`, `path`, `Pattern` | `read::value`, `read::pattern`, `read::path` (each `Expected<_, std::string>`), `Pattern` | read.hpp |
@@ -73,7 +96,7 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 | `cx::Runtime` | `Runtime`: `build`, `tick`, `close(std::move(cx))`, `compact`, `document`, `collector` | cx.hpp |
 | `doc::Document`, `Edit`, `Patch`, `Request` | the same; `Edit::added`/`changed`/`removed` | doc.hpp |
 | `gc::Collector` | `Collector` | gc.hpp |
-| `host::Host`, `HostRow`, `HostOf`, `Rows`, `Scope`, `Link`, `Sink`, `Supplied`, `Blueprint`, `Supplier` | the same names. `Host::new` is `Host::make`, `HostRow::build` is `HostRow::make`. `Rows<E, A>` is a `shared_ptr<Map<..>>` (`new_rows<E, A>()`). `Scope` is `{hosted}`, with `world()`, `in(h)`, `is_world()` | host.hpp |
+| `host::Host`, `HostRow`, `HostOf`, `Rows`, `Scope`, `Link`, `Sink`, `Supplied`, `Blueprint`, `Supplier` | the same names. `Host::new` is `Host::make`, `HostRow::build` is `HostRow::make`. `Rows<E, A>` is an `Rc<Map<..>>` (`new_rows<E, A>()`). `Scope` is `{hosted}`, with `world()`, `in(h)`, `is_world()` | host.hpp |
 | `host::AnswerOf<E>` | the concept `AnswerOf<A, E>`: `static Result<A> A::decode(const E&, const Pod&)` | host.hpp |
 | the blueprint forms, `forward_on_none` | `plain_blueprint<E, A>`, `never_blueprint`, `event_blueprint`, `dynamic_blueprint`, `element_blueprint`, `forward_on_none` | host.hpp |
 | `world::Program` | `Program` (virtual `tick`, `compact`); a program type `P` also has `static Built<P> build(std::span<const Pod>, const ReadyState&)`, where `Built<P>` = `Result<pair<unique_ptr<P>, TickOut>>` | world.hpp |
@@ -124,7 +147,7 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 
 - **HW: a row holds its host weakly.** In Rust, `HostRow::host` is an `Rc`, which closes
   the count cycle Host → rows → HostRow → Host. That cycle leaks under D5. Here the
-  back-pointer is a `weak_ptr`: the host outlives its rows, and a row that outlives its
+  back-pointer is a `Weak`: the host outlives its rows, and a row that outlives its
   host panics as a bug. The test `a_host_torn_down_with_its_rows_frees_everything` holds
   it. *Ruling (the coordinator's):* weak, and Rust gets the same fix.
 - **CW: persistent collections.** A `Map` is a persistent AVL tree (an update copies

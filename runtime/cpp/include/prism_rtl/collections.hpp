@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <algorithm>
 #include <compare>
 #include <cstdint>
@@ -90,7 +91,7 @@ private:
         t.end_ = start_ + b;
         return t;
     }
-    std::shared_ptr<const std::string> s_;
+    Rc<const std::string> s_;
     std::size_t start_ = 0, end_ = 0;
 };
 
@@ -138,17 +139,17 @@ public:
 private:
     struct Node {
         value_type kv;
-        std::shared_ptr<const Node> left, right;
+        Rc<const Node> left, right;
         int height;
         std::size_t count;
     };
-    using Ptr = std::shared_ptr<const Node>;
+    using Ptr = Rc<const Node>;
     static int height(const Ptr& n) { return n ? n->height : 0; }
     static std::size_t count(const Ptr& n) { return n ? n->count : 0; }
     static Ptr make(value_type kv, Ptr l, Ptr r) {
         int h = std::max(height(l), height(r)) + 1;
         std::size_t c = count(l) + count(r) + 1;
-        return std::make_shared<const Node>(Node{std::move(kv), std::move(l), std::move(r), h, c});
+        return make_rc<const Node>(Node{std::move(kv), std::move(l), std::move(r), h, c});
     }
     static Ptr balance(value_type kv, Ptr l, Ptr r) {
         int hl = height(l), hr = height(r);
@@ -191,7 +192,7 @@ private:
         Ptr l = n->left, r = n->right;
         if (k < n->kv.first) l = copy_to(n->left, k, at);
         else if (n->kv.first < k) r = copy_to(n->right, k, at);
-        auto fresh = std::make_shared<Node>(Node{n->kv, l, r, n->height, n->count});
+        auto fresh = make_rc<Node>(Node{n->kv, l, r, n->height, n->count});
         if (!(k < n->kv.first) && !(n->kv.first < k)) at = &fresh->kv.second;
         return fresh;
     }
@@ -437,7 +438,7 @@ public:
 private:
     /// This view's elements in a buffer of their own.
     void own() {
-        auto fresh = std::make_shared<Buffer>();
+        auto fresh = make_rc<Buffer>();
         for (std::size_t i = 0; i < len_; ++i) fresh->push((*this)[i]);
         b_ = std::move(fresh);
         off_ = 0;
@@ -446,7 +447,7 @@ private:
     void unique() {
         if (!b_ || b_.use_count() > 1 || off_ != 0 || len_ != b_->size) own();
     }
-    std::shared_ptr<Buffer> b_;
+    Rc<Buffer> b_;
     std::size_t off_ = 0, len_ = 0;
 };
 

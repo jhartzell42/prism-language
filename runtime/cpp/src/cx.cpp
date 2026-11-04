@@ -102,7 +102,7 @@ Result<TickOut> Runtime::close(Cx&& cx) {
     for (auto& [element, node] : g.listens) listeners_[element].push_back(node);
     for (auto it = listeners_.begin(); it != listeners_.end();) {
         auto& ns = it->second;
-        std::erase_if(ns, [](const std::weak_ptr<Node>& w) { return w.expired(); });
+        std::erase_if(ns, [](const Weak<Node>& w) { return w.expired(); });
         it = ns.empty() ? listeners_.erase(it) : std::next(it);
     }
     collector_.watch(g.zombies);

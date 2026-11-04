@@ -98,7 +98,7 @@ void require_utf8(std::string_view s) {
 Text::Text(std::string_view utf8) {
     if (utf8.empty()) return;
     require_utf8(utf8);
-    s_ = std::make_shared<const std::string>(utf8);
+    s_ = make_rc<const std::string>(utf8);
     end_ = s_->size();
 }
 
@@ -106,7 +106,7 @@ Text::Text(std::string&& utf8) {
     if (utf8.empty()) return;
     require_utf8(utf8);
     end_ = utf8.size();
-    s_ = std::make_shared<const std::string>(std::move(utf8));
+    s_ = make_rc<const std::string>(std::move(utf8));
 }
 
 Text Text::concat(const Text& other) const {
@@ -118,7 +118,7 @@ Text Text::concat(const Text& other) const {
     s += other.view();
     Text t;
     t.end_ = s.size();
-    t.s_ = std::make_shared<const std::string>(std::move(s));
+    t.s_ = make_rc<const std::string>(std::move(s));
     return t;
 }
 

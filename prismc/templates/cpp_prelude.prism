@@ -55,7 +55,7 @@ public:
     using Cases = std::variant<Less, Equal, Greater>;
     template <class C>
         requires prism_rtl::one_of<C, Less, Equal, Greater>
-    Ordering(C c) : cases_(std::make_shared<const Cases>(std::move(c))) {}
+    Ordering(C c) : cases_(prism_rtl::make_rc<const Cases>(std::move(c))) {}
     const Cases& cases() const { return *cases_; }
     const char* name() const {
         return std::holds_alternative<Less>(cases()) ? "Less" : std::holds_alternative<Equal>(cases()) ? "Equal" : "Greater";
@@ -66,7 +66,7 @@ public:
     friend auto operator<=>(const Ordering& a, const Ordering& b) { return a.cases() <=> b.cases(); }
 
 private:
-    std::shared_ptr<const Cases> cases_;
+    prism_rtl::Rc<const Cases> cases_;
 };
 
 /// A derived `FromPod`'s field.
@@ -394,7 +394,7 @@ template <class K, class V>
 Nat size(const Map<K, V>& m) { return nat_of(m.size()); }
 /// A host's rows (`prism_rtl::Rows`, shared), as `Map::values` reads them.
 template <class K, class V>
-Array<V> values(const std::shared_ptr<Map<K, V>>& m) { return values(*m); }
+Array<V> values(const prism_rtl::Rc<Map<K, V>>& m) { return values(*m); }
 template <class K, class V>
 Map<K, V> map(const Array<std::tuple<K, V>>& entries) {
     Map<K, V> m;
@@ -569,7 +569,7 @@ struct Frame : Job<B> {
     Frame(JobRef<A> callee, std::function<Turn<B>(A)> then) : callee(std::move(callee)), then(std::move(then)) {}
     Turn<B> cycle() const override {
         Turn<A> t = callee->cycle();
-        if (auto m = t.if_more()) return Turn<B>::more(std::make_shared<Frame<A, B>>(m->next, then));
+        if (auto m = t.if_more()) return Turn<B>::more(prism_rtl::make_rc<Frame<A, B>>(m->next, then));
         return then(std::move(std::get<typename Turn<A>::Finished>(t.v).value));
     }
 };
@@ -579,7 +579,7 @@ template <class A, class F>
 auto call_then(JobRef<A> callee, F then) {
     using T = std::invoke_result_t<F, A>;
     using B = typename T::Value;
-    return Turn<B>::more(std::make_shared<Frame<A, B>>(std::move(callee), std::move(then)));
+    return Turn<B>::more(prism_rtl::make_rc<Frame<A, B>>(std::move(callee), std::move(then)));
 }
 
 /// A call through an unbounded function value that is not in tail position: the value's
@@ -599,46 +599,46 @@ struct Entered : Job<B> {
     Turn<B> cycle() const override { return Turn<B>::more(job); }
 };
 template <class B>
-JobRef<B> entered(JobRef<B> job) { return std::make_shared<Entered<B>>(std::move(job)); }
+JobRef<B> entered(JobRef<B> job) { return prism_rtl::make_rc<Entered<B>>(std::move(job)); }
 
 /// A `while` in an `update` block of an unbounded function as a job (D6): each turn is a
 /// cycle; `step` answers the next state, or a failure when the condition fails.
 template <class S>
 struct Looping : Job<S> {
     S state;
-    std::shared_ptr<const std::function<Expected<S, S>(S)>> step;
-    Looping(S state, std::shared_ptr<const std::function<Expected<S, S>(S)>> step) : state(std::move(state)), step(std::move(step)) {}
+    prism_rtl::Rc<const std::function<Expected<S, S>(S)>> step;
+    Looping(S state, prism_rtl::Rc<const std::function<Expected<S, S>(S)>> step) : state(std::move(state)), step(std::move(step)) {}
     Turn<S> cycle() const override {
         Expected<S, S> r = (*step)(state);
-        if (r) return Turn<S>::more(std::make_shared<Looping<S>>(std::move(r).value(), step));
+        if (r) return Turn<S>::more(prism_rtl::make_rc<Looping<S>>(std::move(r).value(), step));
         return Turn<S>::finished(r.error());
     }
 };
 template <class S, class F>
 JobRef<S> loop_job(S state, F step) {
-    return std::make_shared<Looping<S>>(std::move(state), std::make_shared<const std::function<Expected<S, S>(S)>>(std::move(step)));
+    return prism_rtl::make_rc<Looping<S>>(std::move(state), prism_rtl::make_rc<const std::function<Expected<S, S>(S)>>(std::move(step)));
 }
 
 /// A `while` whose body holds a cycle-point loop of its own (D6): a turn is a job.
 template <class S>
 struct LoopingTurns : Job<S> {
     S state;
-    std::shared_ptr<const std::function<Turn<Expected<S, S>>(S)>> step;
-    LoopingTurns(S state, std::shared_ptr<const std::function<Turn<Expected<S, S>>(S)>> step) : state(std::move(state)), step(std::move(step)) {}
+    prism_rtl::Rc<const std::function<Turn<Expected<S, S>>(S)>> step;
+    LoopingTurns(S state, prism_rtl::Rc<const std::function<Turn<Expected<S, S>>(S)>> step) : state(std::move(state)), step(std::move(step)) {}
     Turn<S> cycle() const override {
         auto st = step;
         std::function<Turn<S>(Expected<S, S>)> again = [st](Expected<S, S> r) -> Turn<S> {
-            if (r) return Turn<S>::more(std::make_shared<LoopingTurns<S>>(std::move(r).value(), st));
+            if (r) return Turn<S>::more(prism_rtl::make_rc<LoopingTurns<S>>(std::move(r).value(), st));
             return Turn<S>::finished(r.error());
         };
         Turn<Expected<S, S>> t = (*step)(state);
-        if (auto m = t.if_more()) return Turn<S>::more(std::make_shared<Frame<Expected<S, S>, S>>(m->next, again));
+        if (auto m = t.if_more()) return Turn<S>::more(prism_rtl::make_rc<Frame<Expected<S, S>, S>>(m->next, again));
         return again(t.if_finished()->value);
     }
 };
 template <class S, class F>
 JobRef<S> loop_turns(S state, F step) {
-    return std::make_shared<LoopingTurns<S>>(std::move(state), std::make_shared<const std::function<Turn<Expected<S, S>>(S)>>(std::move(step)));
+    return prism_rtl::make_rc<LoopingTurns<S>>(std::move(state), prism_rtl::make_rc<const std::function<Turn<Expected<S, S>>(S)>>(std::move(step)));
 }
 
 
@@ -653,14 +653,14 @@ struct Once : Job<B> {
 template <class F>
 auto once_job(F body) {
     using B = typename std::invoke_result_t<F>::Value;
-    return JobRef<B>(std::make_shared<Once<B>>(std::move(body)));
+    return JobRef<B>(prism_rtl::make_rc<Once<B>>(std::move(body)));
 }
 
 /// A job's result, mapped: `g` runs in the cycle the job finishes.
 template <class B, class G>
 auto map_job(JobRef<B> job, G g) {
     using C = std::decay_t<std::invoke_result_t<G, B>>;
-    return JobRef<C>(std::make_shared<Frame<B, C>>(std::move(job), [g](B b) { return Turn<C>::finished(g(std::move(b))); }));
+    return JobRef<C>(prism_rtl::make_rc<Frame<B, C>>(std::move(job), [g](B b) { return Turn<C>::finished(g(std::move(b))); }));
 }
 
 /// A `for` of an `update` block whose body holds a cycle-point loop (D6, gap LP): a loop
@@ -669,8 +669,8 @@ auto map_job(JobRef<B> job, G g) {
 template <class S, class E, class F>
 JobRef<S> for_turns(std::vector<E> entries, S state, F step) {
     using P = std::pair<S, std::size_t>;
-    auto all = std::make_shared<const std::vector<E>>(std::move(entries));
-    auto st = std::make_shared<const F>(std::move(step));
+    auto all = prism_rtl::make_rc<const std::vector<E>>(std::move(entries));
+    auto st = prism_rtl::make_rc<const F>(std::move(step));
     JobRef<P> job = loop_turns(P(std::move(state), 0), [all, st](P p) -> Turn<Expected<P, P>> {
         std::size_t i = p.second;
         if (i >= all->size()) return Turn<Expected<P, P>>::finished(Expected<P, P>(unexpected(std::move(p))));
@@ -875,9 +875,9 @@ public:
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
 /// kept for its leaving (docs/backend.md: `Port::subscribe`).
 template <class N, class P, class Port, class Call>
-void subscribe_row(const std::shared_ptr<N>& node, std::optional<std::shared_ptr<P>> parent, Port port, Call call, std::optional<Handle>& slot) {
+void subscribe_row(const prism_rtl::Rc<N>& node, std::optional<prism_rtl::Rc<P>> parent, Port port, Call call, std::optional<Handle>& slot) {
     if (!parent) return;
-    std::weak_ptr<N> me = node;
+    prism_rtl::Weak<N> me = node;
     using T = typename std::remove_cvref_t<decltype(deref(port(*parent)))>::Value;
     Handle h = deref(port(*parent)).subscribe([me, call](const T& v, Cx& cx) -> Done {
         if (auto n = me.lock()) call(n, v, cx);

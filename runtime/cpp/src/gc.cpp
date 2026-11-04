@@ -8,7 +8,7 @@
 
 namespace prism_rtl {
 
-void Collector::watch(const std::vector<std::weak_ptr<Node>>& zombies) {
+void Collector::watch(const std::vector<Weak<Node>>& zombies) {
     watched_.insert(watched_.end(), zombies.begin(), zombies.end());
 }
 
@@ -19,7 +19,7 @@ std::size_t Collector::watching() const {
 }
 
 std::size_t Collector::collect() {
-    std::erase_if(watched_, [](const std::weak_ptr<Node>& w) { return w.expired(); });
+    std::erase_if(watched_, [](const Weak<Node>& w) { return w.expired(); });
     std::vector<NodeRef> held;
     std::unordered_map<const Node*, std::size_t> index;
     for (const auto& w : watched_)

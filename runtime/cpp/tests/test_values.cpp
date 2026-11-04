@@ -350,7 +350,7 @@ struct Answer {
 /// label is a hold, and a click on the forwarded element reaches the child in the tick.
 struct Owner : Node {
     Rows<Elem, Answer> rows = new_rows<Elem, Answer>();
-    std::shared_ptr<Host<Elem, Answer, Owner>> host;
+    prism_rtl::Rc<Host<Elem, Answer, Owner>> host;
     std::optional<Hold<Text>> label;
     int clicks = 0;
 
@@ -366,7 +366,7 @@ struct Owner : Node {
         // `9`: the child's place leaves `$doc`, and its row leaves with it (R8).
         if (at.size() == 1 && at[0].is_pos(9)) {
             for (const auto& [_, row] : *rows) row->leave_row(cx);
-            *rows = Map<Path, std::shared_ptr<HostRow<Elem, Answer>>>();
+            *rows = Map<Path, prism_rtl::Rc<HostRow<Elem, Answer>>>();
             return {};
         }
         // `hostpos/[p]/...`: the row at key `p`.
@@ -381,22 +381,22 @@ struct Owner : Node {
 
 struct OwnerProgram : Program {
     Runtime rt;
-    std::shared_ptr<Owner> root;
+    prism_rtl::Rc<Owner> root;
     static Built<OwnerProgram> build(std::span<const Pod>, const ReadyState& ready) {
         auto p = std::make_unique<OwnerProgram>();
         Cx cx = p->rt.build(ready);
-        auto owner = std::make_shared<Owner>();
+        auto owner = prism_rtl::make_rc<Owner>();
         owner->label.emplace(Text("press"), cx);
         Supplier<Elem, Answer> supplier = [](const Path&, const Live<Elem>& e) { return element_blueprint<Elem, Answer>(e); };
         owner->host = Host<Elem, Answer, Owner>::make(
             Path::root().at(5), owner->rows, supplier, nullptr, [](const Owner& o, const Cx& cx) { return o.doc(cx); },
-            [](const std::shared_ptr<Owner>& o, const Path& place, const Answer& a, Cx& cx) {
+            [](const prism_rtl::Rc<Owner>& o, const Path& place, const Answer& a, Cx& cx) {
                 return o->deliver(place, a, cx);
             });
         owner->host->link(owner);
         // The host's `for` over `$doc`, as the emitted builder makes its rows.
         for (const auto& [key, elem] : owner->doc(cx)) {
-            std::shared_ptr<HostOf<Elem, Answer>> h = owner->host;
+            prism_rtl::Rc<HostOf<Elem, Answer>> h = owner->host;
             auto row = TRY((HostRow<Elem, Answer>::make(Path::root().at(5).child(Segment::key(to_pod(key))), key, elem, h, cx)));
             owner->rows->insert(key, row);
         }
@@ -431,9 +431,9 @@ TEST(a_host_torn_down_with_its_rows_frees_everything) {
     // rows leave and the program is dropped, every node and the host are freed (D5; LSan
     // reports zero leaks for this test).
     ReadyMap ready;
-    std::weak_ptr<Owner> owner;
-    std::weak_ptr<HostOf<Elem, Answer>> host;
-    std::weak_ptr<HostRow<Elem, Answer>> row;
+    prism_rtl::Weak<Owner> owner;
+    prism_rtl::Weak<HostOf<Elem, Answer>> host;
+    prism_rtl::Weak<HostRow<Elem, Answer>> row;
     {
         auto built = OwnerProgram::build({}, ready);
         CHECK(built.has_value());

@@ -24,7 +24,7 @@ namespace {
 template <class N>
 struct Prog : Program {
     Runtime rt;
-    std::shared_ptr<N> root;
+    prism_rtl::Rc<N> root;
     static Built<Prog> build(std::span<const Pod>, const ReadyState& ready) {
         auto p = std::make_unique<Prog>();
         Cx cx = p->rt.build(ready);
@@ -51,13 +51,13 @@ struct Copy : Node {
     Hold<Text> text;
     Copy(Path path, Text to, Hold<Text> text) : path(std::move(path)), to(std::move(to)), text(std::move(text)) {}
     Pod output(const Cx& cx) const { return Pod::element("Fs.Output", {{"path", to_pod(to)}, {"text", to_pod(text.get(cx))}}); }
-    static Result<std::shared_ptr<Copy>> construct(Path path, Cx& cx) {
+    static Result<prism_rtl::Rc<Copy>> construct(Path path, Cx& cx) {
         Pod args_el = Pod::element("Process.Args", {});
         auto first = cx.first_value(args_el);
         if (!first) return unexpected(Fault::answer("Process.Args unanswered"));
         auto args = from_pod<Array<Text>>(*first);
         if (!args) return unexpected(args.error());
-        auto node = std::make_shared<Copy>(std::move(path), (*args)[1], Hold<Text>(Text(""), cx));
+        auto node = prism_rtl::make_rc<Copy>(std::move(path), (*args)[1], Hold<Text>(Text(""), cx));
         cx.added(node->path.at(0), args_el);
         cx.added(node->path.at(1), Pod::element("Fs.File", {{"path", to_pod((*args)[0])}}));
         cx.added(node->path.at(2), Pod::element("Prelude.Unwrap", {}));
@@ -184,11 +184,11 @@ struct Lister : Node {
     Path path;
     Hold<Pod> files;
     Lister(Path path, Hold<Pod> files) : path(std::move(path)), files(std::move(files)) {}
-    static Result<std::shared_ptr<Lister>> construct(Path path, Cx& cx) {
+    static Result<prism_rtl::Rc<Lister>> construct(Path path, Cx& cx) {
         Pod el = Pod::element("Fs.List", {{"dir", text("src")}});
         auto files = cx.first_value(el);
         if (!files) return unexpected(Fault::answer("Fs.List unanswered"));
-        auto node = std::make_shared<Lister>(std::move(path), Hold<Pod>(*files, cx));
+        auto node = prism_rtl::make_rc<Lister>(std::move(path), Hold<Pod>(*files, cx));
         cx.added(node->path.at(0), el);
         cx.added(node->path.at(1), Pod::element("Fs.File", {{"path", text("src/new.prism")}}));
         cx.added(node->path.at(2), Pod::element("Process.Exit", {}));
@@ -243,8 +243,8 @@ template <int MS>
 struct Waker : Node {
     Path path;
     explicit Waker(Path path) : path(std::move(path)) {}
-    static Result<std::shared_ptr<Waker>> construct(Path path, Cx& cx) {
-        auto node = std::make_shared<Waker>(std::move(path));
+    static Result<prism_rtl::Rc<Waker>> construct(Path path, Cx& cx) {
+        auto node = prism_rtl::make_rc<Waker>(std::move(path));
         cx.added(node->path.at(0), Pod::element("Time.After", {}));
         cx.added(node->path.at(1), Pod::element("Process.Exit", {}));
         cx.on_started(node);
@@ -267,8 +267,8 @@ struct Waker : Node {
 
 struct Forever : Node {
     Defer<Unit> defer;
-    static Result<std::shared_ptr<Forever>> construct(Path, Cx& cx) {
-        auto node = std::make_shared<Forever>();
+    static Result<prism_rtl::Rc<Forever>> construct(Path, Cx& cx) {
+        auto node = prism_rtl::make_rc<Forever>();
         node->defer.arm(Unit{}, node, cx);
         return node;
     }
@@ -279,7 +279,7 @@ struct Forever : Node {
 };
 
 struct Quiet : Node {
-    static Result<std::shared_ptr<Quiet>> construct(Path, Cx&) { return std::make_shared<Quiet>(); }
+    static Result<prism_rtl::Rc<Quiet>> construct(Path, Cx&) { return prism_rtl::make_rc<Quiet>(); }
 };
 
 }  // namespace

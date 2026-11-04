@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <initializer_list>
 #include <memory>
 #include <optional>
@@ -64,7 +65,7 @@ private:
     void (*f_)(const void*, Printer&);
 };
 
-/// An existential `any ^Show`, held as `std::shared_ptr<const DynShow>`.
+/// An existential `any ^Show`, held as `Rc<const DynShow>`.
 class DynShow {
 public:
     virtual ~DynShow() = default;
@@ -189,8 +190,8 @@ struct Show<Pod> {
 };
 
 template <class T>
-struct Show<std::shared_ptr<const T>> {
-    static void show(const std::shared_ptr<const T>& x, Printer& p) { Show<T>::show(*x, p); }
+struct Show<Rc<const T>> {
+    static void show(const Rc<const T>& x, Printer& p) { Show<T>::show(*x, p); }
 };
 
 template <class T>

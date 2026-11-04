@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <compare>
 #include <cstdint>
 #include <memory>
@@ -90,7 +91,7 @@ public:
 private:
     std::int64_t small_;
     /// Set exactly when the value does not fit in `int64_t`.
-    std::shared_ptr<const BigInt> big_;
+    Rc<const BigInt> big_;
 };
 
 /// A Prism `Nat`: an `Int` never negative. There is no `Nat - Nat`; `-?` is

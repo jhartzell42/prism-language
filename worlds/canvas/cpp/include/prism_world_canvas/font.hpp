@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <memory>
+#include "prism_rtl/rc.hpp"
 #include <string>
 #include <utility>
 #include <vector>
@@ -41,7 +42,7 @@ class Font {
 public:
     /// The bundled DejaVu Sans. It is part of the binary, so this cannot fail at run time;
     /// if FreeType refuses it anyway, that is a bug, and it panics.
-    static std::shared_ptr<const Font> bundled();
+    static prism_rtl::Rc<const Font> bundled();
     ~Font();
     Font(const Font&) = delete;
     Font& operator=(const Font&) = delete;

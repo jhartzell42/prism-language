@@ -74,7 +74,7 @@ TEST(a_hold_reads_old_values_during_its_tick_and_new_ones_after) {
     Runtime rt;
     ReadyMap r = ready();
     Cx cx = rt.build(r);
-    auto p = std::make_shared<Probe>();
+    auto p = prism_rtl::make_rc<Probe>();
     p->hold.emplace(Int(7), cx);
     cx.added(Path::root().at(0), Pod::element("Test.Probe", {{"n", Pod::int64(7)}}));
     cx.on_started(p);
@@ -122,18 +122,18 @@ TEST(the_patch_diff_sends_only_what_moved) {
 }
 
 TEST(ports_subscribe_and_unsubscribe_in_constant_time) {
-    auto port = std::make_shared<Port<Int>>();
+    auto port = prism_rtl::make_rc<Port<Int>>();
     CHECK(port->demand() == Demand::Idle);
     port->lien();
     CHECK(port->demand() == Demand::Liened);
-    auto heard = std::make_shared<std::vector<std::string>>();
+    auto heard = prism_rtl::make_rc<std::vector<std::string>>();
     Handle a = port->subscribe([heard](const Int& v, Cx&) -> Done {
         heard->push_back("a " + v.to_string());
         return {};
     });
     // A subscriber that unsubscribes itself while the port fires.
-    auto me = std::make_shared<std::optional<Handle>>();
-    std::weak_ptr<Port<Int>> weak = port;
+    auto me = prism_rtl::make_rc<std::optional<Handle>>();
+    prism_rtl::Weak<Port<Int>> weak = port;
     Handle b = port->subscribe([heard, weak, me](const Int& v, Cx&) -> Done {
         heard->push_back("b " + v.to_string());
         if (auto p = weak.lock(); p && *me) p->unsubscribe(**me);
@@ -165,8 +165,8 @@ TEST(a_constant_and_never) {
     auto doubled = Dynamic<Int>::constant(Int(21)).map([](const Int& n) { return n * Int(2); });
     CHECK(doubled.sample(cx) == Int(42));
     // An event's transform and its filter fire through.
-    auto src = std::make_shared<Port<std::optional<Int>>>();
-    auto got = std::make_shared<std::vector<Int>>();
+    auto src = prism_rtl::make_rc<Port<std::optional<Int>>>();
+    auto got = prism_rtl::make_rc<std::vector<Int>>();
     Event<Int> plus = filter_some(Event<std::optional<Int>>::of(src)).map([](const Int& n) { return n + Int(1); });
     (void)plus.port->subscribe([got](const Int& n, Cx&) -> Done {
         got->push_back(n);
@@ -227,7 +227,7 @@ TEST(a_snapshot_answers_the_structure_and_the_dynamic_one_tick_behind) {
             return {};
         }
     };
-    auto w = std::make_shared<Writer>();
+    auto w = prism_rtl::make_rc<Writer>();
     w->s = &s;
     NodeRef root = w;
     (void)rt.tick(root, TickIn::none().answer(Path::root().at(0), Pod::unit()), r).value();
@@ -259,7 +259,7 @@ TEST(pushes_reach_every_place_with_the_element_and_newborns_see_them) {
     Runtime rt;
     Cx cx = rt.build(entries);
     CHECK(cx.first_value(clock) == std::optional<Pod>(Pod::int64(1)));
-    auto place = std::make_shared<Place>();
+    auto place = prism_rtl::make_rc<Place>();
     place->element = clock;
     NodeRef node = place;
     cx.listen(clock, node);
@@ -291,13 +291,13 @@ TEST(two_zombies_that_lien_each_other_are_freed_and_a_held_one_is_kept) {
     ReadyMap r = ready();
     Runtime rt;
     Cx cx = rt.build(r);
-    auto a = std::make_shared<Zombie>(), b = std::make_shared<Zombie>(), c = std::make_shared<Zombie>();
+    auto a = prism_rtl::make_rc<Zombie>(), b = prism_rtl::make_rc<Zombie>(), c = prism_rtl::make_rc<Zombie>();
     a->constant = b;
     b->constant = a;
     c->constant = a;  // c keeps a, and the test keeps c: all three live
     for (const auto& z : {a, b, c}) cx.clean_up_later(z, true);
     (void)rt.close(std::move(cx)).value();
-    std::weak_ptr<Zombie> wa = a, wb = b, wc = c;
+    prism_rtl::Weak<Zombie> wa = a, wb = b, wc = c;
     a.reset();
     b.reset();
     CHECK_EQ(rt.compact(), 0u);  // c is held from outside, and it reaches the loop
@@ -326,7 +326,7 @@ struct ExitsProgram : Program {
         auto p = std::make_unique<ExitsProgram>();
         Cx cx = p->rt.build(ready);
         cx.added(Path::root().at(0), Pod::element("Process.Exit", {}));
-        p->root = std::make_shared<Exits>();
+        p->root = prism_rtl::make_rc<Exits>();
         cx.on_started(p->root);
         auto out = TRY(p->rt.close(std::move(cx)));
         return std::pair{std::move(p), std::move(out)};
@@ -339,7 +339,7 @@ struct Quiet : World {
     Document doc;
     std::optional<std::uint8_t> exit;
     std::size_t ticks = 0;
-    std::shared_ptr<const ReadyState> ready() const override { return std::make_shared<ReadyMap>(); }
+    prism_rtl::Rc<const ReadyState> ready() const override { return prism_rtl::make_rc<ReadyMap>(); }
     void perform(const TickOut& out) override {
         ++ticks;
         doc.apply(out.patch);

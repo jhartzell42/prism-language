@@ -356,7 +356,8 @@ what differs is how C++ spells it.
   value itself and a recursive type needs no box. `?a` is `std::optional`, `~a`
   `Fallible`, a tuple `std::tuple`, `Rc<dyn Fn>` `prism_rtl::Fn`, a job `JobRef`. A
   node is a class deriving from `Node` (or the prelude's `Row`), held by
-  `std::shared_ptr`; its constructor is `make` and its methods are members.
+  `prism_rtl::Rc` (plain counts, one thread); its constructor is `make` and its methods
+  are members.
 - **Expressions.** A block, a `match`, an if-let chain and a labelled block are GNU
   statement expressions (g++ and clang++ both take them); a `match`'s value is a
   `prism_rtl::Slot` of the type the model gives it, set by the arm that holds, which then

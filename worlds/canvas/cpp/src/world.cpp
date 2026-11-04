@@ -82,10 +82,10 @@ std::optional<Pod> CanvasReady::first_value(const Pod& element) const {
     return std::nullopt;
 }
 
-CanvasWorld::CanvasWorld(std::shared_ptr<Shared> shared, std::shared_ptr<const Font> font)
-    : shared_(std::move(shared)), font_(font), ready_(std::make_shared<CanvasReady>(std::move(font))) {}
+CanvasWorld::CanvasWorld(prism_rtl::Rc<Shared> shared, prism_rtl::Rc<const Font> font)
+    : shared_(std::move(shared)), font_(font), ready_(prism_rtl::make_rc<CanvasReady>(std::move(font))) {}
 
-std::shared_ptr<const prism_rtl::ReadyState> CanvasWorld::ready() const { return ready_; }
+prism_rtl::Rc<const prism_rtl::ReadyState> CanvasWorld::ready() const { return ready_; }
 
 void CanvasWorld::not_answered(const std::string& tag) {
     if (tag.rfind("Prelude.", 0) == 0 || !warned_.insert(tag).second) return;

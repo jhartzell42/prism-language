@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <compare>
 #include <cstdint>
 #include <memory>
@@ -65,10 +66,10 @@ public:
     friend std::strong_ordering operator<=>(const Segment& a, const Segment& b);
 
 private:
-    Segment(Kind k, std::uint32_t n, std::shared_ptr<const Pod> key) : kind_(k), n_(n), key_(std::move(key)) {}
+    Segment(Kind k, std::uint32_t n, Rc<const Pod> key) : kind_(k), n_(n), key_(std::move(key)) {}
     Kind kind_;
     std::uint32_t n_;
-    std::shared_ptr<const Pod> key_;
+    Rc<const Pod> key_;
 };
 
 /// A place's path. The order is document order: a path before every path it prefixes,
@@ -136,7 +137,7 @@ public:
     };
     struct Shown {
         std::string text;
-        std::shared_ptr<const Pod> structure;
+        Rc<const Pod> structure;
     };
     using Entries = std::vector<std::pair<Pod, Pod>>;
 
@@ -166,12 +167,12 @@ public:
     static Pod array(std::vector<Pod> xs) { return Pod(std::in_place_index<11>, std::move(xs)); }
     static Pod map(Entries es) { return Pod(std::in_place_index<12>, std::move(es)); }
     static Pod nil() { return Pod(std::in_place_index<13>, Unit{}); }
-    static Pod some(Pod x) { return Pod(std::in_place_index<14>, std::make_shared<const Pod>(std::move(x))); }
-    static Pod ok(Pod x) { return Pod(std::in_place_index<15>, std::make_shared<const Pod>(std::move(x))); }
-    static Pod failed(Pod e) { return Pod(std::in_place_index<16>, std::make_shared<const Pod>(std::move(e))); }
+    static Pod some(Pod x) { return Pod(std::in_place_index<14>, make_rc<const Pod>(std::move(x))); }
+    static Pod ok(Pod x) { return Pod(std::in_place_index<15>, make_rc<const Pod>(std::move(x))); }
+    static Pod failed(Pod e) { return Pod(std::in_place_index<16>, make_rc<const Pod>(std::move(e))); }
     static Pod path(prism_rtl::Path p) { return Pod(std::in_place_index<17>, std::move(p)); }
     static Pod shown(std::string text, Pod structure) {
-        return Pod(std::in_place_index<18>, Shown{std::move(text), std::make_shared<const Pod>(std::move(structure))});
+        return Pod(std::in_place_index<18>, Shown{std::move(text), make_rc<const Pod>(std::move(structure))});
     }
 
     Kind kind() const { return Kind(v_.index()); }
@@ -216,8 +217,8 @@ public:
 
 private:
     using V = std::variant<Unit, bool, Int, F64, char32_t, Text, Nanos, Named, Choice, Named, std::vector<Pod>,
-                           std::vector<Pod>, Entries, Unit, std::shared_ptr<const Pod>, std::shared_ptr<const Pod>,
-                           std::shared_ptr<const Pod>, prism_rtl::Path, Shown>;
+                           std::vector<Pod>, Entries, Unit, Rc<const Pod>, Rc<const Pod>,
+                           Rc<const Pod>, prism_rtl::Path, Shown>;
     template <std::size_t I, class... A>
     Pod(std::in_place_index_t<I> i, A&&... a) : v_(i, std::forward<A>(a)...) {}
     template <std::size_t I>
@@ -391,15 +392,15 @@ struct FromPod<Fallible<T>> {
 
 /// A recursive payload, `Rc<T>` in Rust.
 template <class T>
-struct ToPod<std::shared_ptr<const T>> {
-    static Pod to_pod(const std::shared_ptr<const T>& x) { return prism_rtl::to_pod(*x); }
+struct ToPod<Rc<const T>> {
+    static Pod to_pod(const Rc<const T>& x) { return prism_rtl::to_pod(*x); }
 };
 template <class T>
-struct FromPod<std::shared_ptr<const T>> {
-    static Result<std::shared_ptr<const T>> from_pod(const Pod& p) {
+struct FromPod<Rc<const T>> {
+    static Result<Rc<const T>> from_pod(const Pod& p) {
         auto v = prism_rtl::from_pod<T>(p);
         if (!v) return unexpected(v.error());
-        return std::shared_ptr<const T>(std::make_shared<const T>(std::move(v).value()));
+        return Rc<const T>(make_rc<const T>(std::move(v).value()));
     }
 };
 

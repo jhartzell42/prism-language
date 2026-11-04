@@ -25,8 +25,8 @@ TickOut outputs(Patch patch) {
     return out;
 }
 
-std::pair<CanvasWorld, std::shared_ptr<Shared>> world() {
-    auto shared = std::make_shared<Shared>();
+std::pair<CanvasWorld, prism_rtl::Rc<Shared>> world() {
+    auto shared = prism_rtl::make_rc<Shared>();
     return {CanvasWorld(shared, Font::bundled()), shared};
 }
 
