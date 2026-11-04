@@ -1,0 +1,6 @@
+# The Rust target's transcript, checked by hand: inner weighs 2 + 3, outer 5 + 4 + 5.
+test the_modules_weigh_each_others_types
+
+tick 0
+  added:
+    0: Ui.Label(text="14 Plain 1")
