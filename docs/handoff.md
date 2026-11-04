@@ -54,13 +54,16 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
   - the stale canvas README;
   - gaps LP, LW, DM and SR;
   - **an inline supplier's `o` is not rank-2** (`docs/bugs/supplier-rank2.md`): two
-    tag arms with different outputs are refused. Needs Jimmy's ruling on which rule
-    makes a variable rank-2 in a signature; Claude recommends "confined to one
-    function-typed parameter".
-  - **a cycle through a host's own `$doc` is refused as a prompt cycle**
-    (`docs/bugs/host-doc-prompt-cycle.md`): the host forms give `$doc` the child
-    result's edges, though `$doc` is structural and lagged; the same cycle through a
-    `for` passes.
+    tag arms with different outputs are refused. The rule is settled there: an
+    element's output variable confined to one function-typed parameter is quantified
+    at it. Implement it, failing tests first, and add the rule's sentence to Type System
+    ch. 5.
+  - **a `for` misses a real prompt cycle through its own gathered dynamic**
+    (`docs/bugs/host-doc-prompt-cycle.md`), which the host form correctly refuses. The
+    checker stays blind to which dynamics are structural (Jimmy). Make a `for`'s and a
+    `rebuild`'s result prompt in what their rows read, failing tests first. The design
+    direction at the end of that file (using this to remove owed ticks) is for a design
+    round with Jimmy, not for code.
   Failing test first for each bug.
 - **Then the queue below, items 1 to 9.** All the emitter changes go first, then one
   fixed point at the end.
