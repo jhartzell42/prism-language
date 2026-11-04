@@ -20,15 +20,49 @@ type CDiag = record:
     fix: Text
 derive ^Eq, ^Show
 
-# A source file as the checker holds it: its path, its text, and where its lines start.
+# A source as the checker holds it: its path, its text, where its lines start, and the
+# files it joins. A module of a tree is its main file, its sections and its test modules
+# read as one text, each file after a newline (docs/modules-style-pass.md); `segs` says
+# where each begins, so a diagnostic names the file and line it is in.
 type Src = record:
     path: Text
     text: Text
     starts: [Nat]
+    segs: [SrcSeg]
+derive ^Eq, ^Show
+
+# One file of a source: its path, the offset and the line of the joined text it starts at,
+# and its role (`main`, `section` or `test` in a tree; `loose`, `old` or `script` else).
+type SrcSeg = record:
+    path: Text
+    start: Nat
+    line: Nat
+    role: Text
 derive ^Eq, ^Show
 
 MkSrc: fn Text, Text -> Src
-fn MkSrc path, text = Src(path=path, text=text, starts=(CLineStarts text))
+fn MkSrc path, text = Src(path=path, text=text, starts=(CLineStarts text), segs=[[SrcSeg(path=path, start=0, line=0, role="loose")]])
+
+# A source of several files, each `((path, text, role))`, joined by newlines.
+MkJoinedSrc: fn [((Text, Text, Text))] -> Src
+fn MkJoinedSrc files:
+    let text = Join (Each files, \|((ignore, t, ignore))| t), "\n"
+    let starts = CLineStarts text
+    let ((segs, ignore)) = Fold files, (([[]], 0)), \|((acc, at)), ((path, t, role))| (((Push acc, SrcSeg(path=path, start=at, line=(CLineOf starts, at), role=role)), at + (Len t) + 1))
+    let first = match files[0]:
+        ? ((path, ignore, ignore)): path
+        nil: ""
+    Src(path=first, text=text, starts=starts, segs=segs)
+
+# The file of a source holding an offset: the last that starts at or before it.
+SegAt: fn Src, Nat -> SrcSeg
+fn SegAt src, offset = Fold src.segs, (Or src.segs[0], SrcSeg(path=src.path, start=0, line=0, role="loose")), \|found, s| if s.start <= offset: s else: found
+
+# `path:line` of an offset, the line counted in its own file.
+SrcPlace: fn Src, Nat -> Text
+fn SrcPlace src, offset:
+    let seg = SegAt src, offset
+    "{seg.path}:{(Or ((CLineOf src.starts, offset) -? seg.line), 0) + 1}"
 
 Diag0: fn Text, Nat, Range, Text -> CDiag
 fn Diag0 code, file, span, message = CDiag(code=code, file=file, span=span, message=message, fix="")
@@ -81,14 +115,15 @@ fn RenderCDiag srcs, d = match srcs[d.file]:
         let width = Max 1, (Min (CountChars (SpanText src, d.span)), (Or ((CountChars text) -? col), 1))
         let carets = "    {Repeat " ", col}{Repeat "^", width}"
         let fix = if d.fix == "": "" else: "  fix: {d.fix}\n"
-        "{src.path}:{line + 1}: {Severity d}[{d.code}]: {d.message}\n    {text}\n{carets}\n{fix}"
+        "{SrcPlace src, d.span.start}: {Severity d}[{d.code}]: {d.message}\n    {text}\n{carets}\n{fix}"
 
-# `warning` for the one diagnostic that fails nothing (`unused`), else `error`.
+# `warning` for the diagnostics that fail nothing (`unused`, and `old-layout`, a one-file
+# module left in a tree directory), else `error`.
 Severity: fn CDiag -> Text
 fn Severity d = if IsWarning d: "warning" else: "error"
 
 IsWarning: fn CDiag -> Bool
-fn IsWarning d = d.code == "unused"
+fn IsWarning d = d.code == "unused" or d.code == "old-layout"
 
 # Diagnostics in order of file, then position, then the order they were found; duplicates
 # dropped.

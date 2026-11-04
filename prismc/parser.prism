@@ -484,14 +484,14 @@ fn CheckTypeNameScope p, name:
 # ---------------------------------------------------------------------------------------
 
 # A file being read: the cursor, the module so far, and how far into its header it is (0:
-# `module` allowed; 1: `emit`; 2: `use`; 3: declarations).
+# nothing yet; 1: `module`; 2: `emit`; 3: `mod`; 4: `use`; 5: declarations).
 type ModRead = record:
     p: Ps
     m: Module
     stage: Nat
 derive ^Eq, ^Show
 
-# A file: the header (`module`, then `emit`, then `use`), then declarations. With
+# A file: the header (`module`, then `emit`, then `mod`, then `use`), then declarations. With
 # `fragment`, statements are accepted among the declarations.
 ParseModule: unbounded fn Ps, Bool -> ((Module, Ps))
 fn ParseModule p0, fragment:
@@ -501,7 +501,7 @@ fn ParseModule p0, fragment:
             let ((tpl, q)) = ParseTemplate (Adv p0), t, (Here p0)
             ((? tpl, q))
         otherwise: ((nil, p0))
-    let m0 = Module(name=nil, emitRow=nil, uses=[[]], decls=[[]], template=?template, span=start)
+    let m0 = Module(name=nil, emitRow=nil, mods=[[]], uses=[[]], decls=[[]], template=?template, span=start)
     let r = update ModRead(p=p1, m=m0, stage=0):
         while not (AtEof &_.p):
             &_ <= ModuleItem &_, fragment
@@ -549,16 +549,35 @@ fn HeaderOrDecl s, fragment, itemStart = match Kind s.p:
             &_.p <= p
         else:
             update s:
-                &_.p <= if s.stage > 2: NoteError p, itemStart, "`use` lines belong to the header, above the declarations" else: p
+                &_.p <= if s.stage > 4: NoteError p, itemStart, "`use` lines belong to the header, above the declarations" else: p
                 &_.m.uses <= Push &_.m.uses, u
-                &_.stage <= 2
+                &_.stage <= 4
+    KKw "mod", "": ModHeader s, (Adv s.p), False, itemStart
+    KKw "test", "" if IsKwKind (Kind (Adv s.p)), "mod": ModHeader s, (Adv (Adv s.p)), True, itemStart
     otherwise:
         let ((d, p)) = ParseDecl s.p, fragment
         update s:
             &_.p <= p
-            &_.stage <= 3
+            &_.stage <= 5
             if not p.bad:
                 &_.m.decls <= Push &_.m.decls, d
+
+# A `mod` or `test mod` line, its name at `p`: after `emit`, above `use`.
+ModHeader: fn ModRead, Ps, Bool, Range -> ModRead
+fn ModHeader s, p, isTest, itemStart = match Kind p:
+    KName n if n.sigils == "" and (Len n.path) == 1 and not (isTest and n.case == CaseUpper):
+        let line = ModLine(name=Ident(name=(Or n.path[0], ""), span=(Here p)), isTest=isTest, span=(To itemStart, (Here p)))
+        update s:
+            &_.p <= if s.stage > 3: NoteError (Adv p), itemStart, "`mod` lines come after `emit` and above `use` (docs/modules-style-pass.md)" else: Adv p
+            &_.m.mods <= Push &_.m.mods, line
+            &_.stage <= 3
+    otherwise: update s:
+        &_.p <= ErrorHere p, (if isTest: "expected a test module's lowercase name after `test mod`" else: "expected a section's or a submodule's name after `mod`")
+
+IsKwKind: fn TokKind, Text -> Bool
+fn IsKwKind k, w = match k:
+    KKw x, ignore: x == w
+    otherwise: False
 
 let noQual = QualName(path=[[]], span=noRange)
 

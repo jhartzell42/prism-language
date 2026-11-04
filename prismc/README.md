@@ -1414,12 +1414,17 @@ Each is Claude's, for Jimmy to overturn.
 - **WH Wakes by height.** A node with combinators at several heights records the heights
   it asked for (prelude `Wakes`) and its `wake` runs the lowest one asked, since
   `Node::wake` is not told its height (contract gap WH below).
-- **PT Tests.** A `.prismtest` is read joined after the `.prism` of its name (a test
-  holds declarations of its module and has no `module` line, examples/README.md). `test`
-  declarations are taken out before checking (a test's blueprint names a `@name:` block,
-  which has no signature for the checker to read) and a `check` line's pattern too (the
-  Test World reads patterns from the script; the checker mistypes `Show (? 3) => "? 3"`).
-  A test's root is found by name; its arguments arrive as `Pod`s.
+- **PT Tests.** A test module (`test mod tests`, docs/modules-style-pass.md) is read
+  after its module's other files, and only under `--tests` (`prism test`, `prism check`);
+  a `.prismtest` is read joined after the `.prism` of its name (a test holds declarations
+  of its module and has no `module` line, examples/README.md), when compiling. `test`
+  declarations are taken out before checking a compile (a test's blueprint names a
+  `@name:` block, which has no signature for the checker to read) and a `check` line's
+  pattern too (the Test World reads patterns from the script; the checker mistypes
+  `Show (? 3) => "? 3"`). A test's root is found by name; its arguments arrive as `Pod`s.
+  The compiled program's scripts are its test modules and `.prismtest`s; each transcript
+  is the `.expected` of its name (`tests.expected` for `tests.prism`), and the Test World
+  passes over a test module's helper declarations.
 - **FV First values.** A place whose element answers a dynamic asks `cx.first_value` at
   the build (a hosted place asks its host, `host_k.first_value`, which builds the
   supplier row for the place early, pick HO) and fails the build when there is none; its
@@ -1434,9 +1439,21 @@ Each is Claude's, for Jimmy to overturn.
   is `PartialEq` over its `==`.
 - **FL `Fs.List`.** prismc's own `fs.prism` replaces the prelude's `Fs` to declare it,
   since a family's tags are declared in the family's module (Semantics ch. 6) and the CLI
-  World answers it for the program that declares it (worlds/cli/rust/README.md). Compiler
-  zero's World answers no listing, so under compiler zero `compile` takes files and the
-  `prism` script lists a directory itself.
+  World answers it for the program that declares it (worlds/cli/rust/README.md). Every
+  directory argument is listed, and the directories above a module directory, to find
+  the tree's root.
+- **TR2 Trees** (docs/modules-style-pass.md). A directory argument holding an app.prism
+  or lib.prism is a tree; one holding a mod.prism is that module of the tree whose root
+  is the nearest directory above it, with the modules it reaches by `use`; any other is
+  every `.prism` and `.prismtest` under it. The front end reads each main file's header
+  from its text, walks the `mod` lines, and gives each module its files (main, sections
+  in `mod` order, test modules) as one source joined by newlines, whose `Src.segs` say
+  where each file starts, so a diagnostic names its own file and line. `mod-missing`,
+  `mod-stray`, `mod-clash`, `section-header`, `module-line`, `two-roots` and `lib-header`
+  stop the run before parsing; `test-outside` and `test-declares` are found over the
+  parsed trees, `test-only-reached` over the checker's references. A one-file module (a
+  `module` line) no `mod` line declares is read as before trees, with an `old-layout`
+  warning.
 - **RT The runtime path.** `Cargo.toml` finds the library and the Worlds at `--runtime
   PATH`, by default one `..` per directory of OUT (OUT under the repository root), so the
   stages emit the same file.

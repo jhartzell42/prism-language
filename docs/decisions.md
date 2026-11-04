@@ -120,6 +120,17 @@ World boundary is the only place values are plain data (`Pod`). Refused: a dynam
 typed `Value` representation shared by compiled code and an interpreter (Jimmy: the
 checker is not a gate in front of a dynamic runtime; there is no interpreter).
 
+## D17. Modules are directories; test modules are declared (Jimmy's)
+
+A module is one file, or a directory whose `mod.prism` heads it: its header's `mod name`
+lines declare its sections (`name.prism`, the same namespace), `mod Name` its submodules
+(`name/mod.prism`, named by their path from the root), `test mod name` its test modules,
+which only `prism test` and `prism check` read. A tree's root is `app.prism` (a program)
+or `lib.prism` (`mod` lines only). prismc reads a module's files as one source, each after
+a newline, so the checker sees one module per namespace as before; each diagnostic names
+the file and line it is in. Files on the command line stay loose (Semantics ch. 6). The
+design, its rulings and the refused alternatives are docs/modules-style-pass.md.
+
 ## Features in and out
 
 In, complete and tested: records, choices, newtypes, unit types; maps, arrays, options,

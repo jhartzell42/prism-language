@@ -789,6 +789,29 @@ fn UnusedDefs defs, refs, shown:
     let own = Filter defs, \|d| d.file < shown and not (HasKey used, d.qk) and d.name != "@main" and not (IsMethodDef d)
     Each own, \|d| CDiag(code="unused", file=d.file, span=d.span, message="nothing uses `{d.name}`", fix="delete it, or use it")
 
+# Nothing outside a test module names what one declares (`test-only-reached`, docs/
+# modules-style-pass.md): a definition in no test module whose references reach a
+# definition in one. With the test modules dropped, as `prism run` drops them, no other
+# declaration's meaning changes.
+TestOnlyReached: fn [Src], [Def], [((Text, [Text]))] -> [CDiag]
+fn TestOnlyReached srcs, defs, refs:
+    let inTest = Fold defs, {}, \|m, d| if (DefRole srcs, d) == "test": Insert m, d.qk, d else: m
+    if (Size inTest) == 0: [[]]
+    else:
+        let byKey = Fold defs, {}, \|m, d| Insert m, d.qk, d
+        Fold refs, [[]], \|acc, ((k, rs))| match byKey[k]:
+            ? d: if (DefRole srcs, d) == "test": acc else: Fold rs, acc, \|a, r| match inTest[r]:
+                ? t: Push a, CDiag(code="test-only-reached", file=d.file, span=d.span, message="`{d.name}` names `{t.name}`, which a test module declares ({LastPathPart (SegAt (Or srcs[t.file], (MkSrc "", "")), t.span.start).path}): only test modules name it", fix="move `{t.name}` out of the test module, or `{d.name}` into one")
+                nil: a
+            nil: acc
+
+# The role of the file of its source a definition is in (`test` in a test module).
+DefRole: fn [Src], Def -> Text
+fn DefRole srcs, d = (SegAt (Or srcs[d.file], (MkSrc "", "")), d.span.start).role
+
+LastPathPart: fn Text -> Text
+fn LastPathPart p = Or (?Last (Split p, "/")), p
+
 IsMethodDef: fn Def -> Bool
 fn IsMethodDef d = match d.body:
     DbMethod ignore, ignore, ignore: True
@@ -2495,9 +2518,11 @@ type Report = record:
 derive ^Eq, ^Show
 
 # The whole checker over a program's files (each already parsed): the environment, every
-# definition, the separate checkers, the root row against `world` when one is named.
-CheckProgram: unbounded fn [Src], [Module], [Text], Nat, Bool, Bool -> Report
-fn CheckProgram srcs, trees, world, shown, recording, unused:
+# definition, the separate checkers, the root row against `world` when one is named. `pre`
+# are the front end's own diagnostics at the program's files (a tree's, docs/
+# modules-style-pass.md), sorted in with the checker's.
+CheckProgram: unbounded fn [Src], [Module], [Text], Nat, Bool, Bool, [CDiag] -> Report
+fn CheckProgram srcs, trees, world, shown, recording, unused, pre:
     let ((g0a, stb)) = BuildG srcs, trees
     # The prelude is the files from `shown` on (pick RN): a program's own `module Prelude`
     # is one of its files, and means nothing special.
@@ -2520,7 +2545,8 @@ fn CheckProgram srcs, trees, world, shown, recording, unused:
     let ((st4, refs)) = ShrinkCheck g1, st3, good
     let ((rootRow, st5)) = RootRow g1, st4, world
     let warnings = if unused: UnusedDefs good, refs, shown else: [[]]
-    let diags = SortDiags (Append (Filter st5.diags, \|d| d.file < shown), warnings)
+    let reached = TestOnlyReached srcs, g1.defs, refs
+    let diags = SortDiags (Append (Append (Append (Filter st5.diags, \|d| d.file < shown), warnings), pre), reached)
     let text = Concat (Each diags, \|d| RenderCDiag srcs, d)
     let typed = if recording: TypedOf g1, st5, shown else: emptyTyped
     Report(text=text, errors=(Len (Filter diags, \|d| not (IsWarning d))), rootRow=rootRow, typed=typed)

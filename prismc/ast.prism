@@ -71,9 +71,19 @@ derive ^Eq, ^Show
 type Module = record:
     name: ?QualName
     emitRow: ?Row
+    mods: [ModLine]
     uses: [Use]
     decls: [Decl]
     template: ?Template
+    span: Range
+derive ^Eq, ^Show
+
+# `mod name` (a section, `name.prism` beside the main file), `mod Name` (a submodule,
+# `name/mod.prism`) or `test mod name` (a test module, `name.prism`): a main file's header
+# says what its module is made of (docs/modules-style-pass.md).
+type ModLine = record:
+    name: Ident
+    isTest: Bool
     span: Range
 derive ^Eq, ^Show
 

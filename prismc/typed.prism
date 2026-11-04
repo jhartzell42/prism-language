@@ -191,13 +191,14 @@ fn SchemeSexp sc:
 AtText: fn [Src], SrcAt -> Text
 fn AtText srcs, a = match srcs[a.file]:
     nil: "?:{a.span.start}"
-    ? src: "{src.path}:{PosText src, a.span.start}-{PosText src, a.span.end}"
+    ? src: "{(SegAt src, a.span.start).path}:{PosText src, a.span.start}-{PosText src, a.span.end}"
 
+# `line:col` of an offset, the line counted in the file of the source holding the start.
 PosText: fn Src, Nat -> Text
 fn PosText src, offset:
     let line = CLineOf src.starts, offset
     let col = ColumnOf src.text, (Or src.starts[line], 0), offset
-    "{line + 1}:{col + 1}"
+    "{(Or (line -? (SegAt src, offset).line), 0) + 1}:{col + 1}"
 
 # The whole typed program: per definition its scheme; then per file every expression in
 # the order the tree has it, with its type (`unknown` when none was found); then the tables.
@@ -221,7 +222,7 @@ fn TypedSexp srcs, trees, shown, tp:
 Shown: fn SrcAt, Nat -> Bool
 fn Shown a, shown = a.file < shown
 
-let emptyMod = Module(name=nil, emitRow=nil, uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
+let emptyMod = Module(name=nil, emitRow=nil, mods=[[]], uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
 
 Quote: fn Text -> Text
 fn Quote t = "\"{t}\""

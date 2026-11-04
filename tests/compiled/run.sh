@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Every conformance program, and chess, through `./prism test`: compiled by prismc, built,
-# each `.prismtest` run under the compiled Test World, its transcript byte-equal to its
-# `.expected`. All of them, every time: `tests/conformance/*.prismtest` (a program's
+# each `.prismtest` and test module run under the compiled Test World, its transcript
+# byte-equal to its `.expected`. A tests/conformance/NAME/ holding an app.prism is a tree
+# (docs/modules-style-pass.md). All of them, every time: `tests/conformance/*.prismtest` (a program's
 # directory of the same name joins it, as sem-ch06-birds's); `examples/chess/rules.prism`
 # alone (rules.prismtest) and `examples/chess` (board.prismtest and rules.prismtest); and
 # prismc's lexer and parser checks (tests/prismc/lexer-checks.prismtest,

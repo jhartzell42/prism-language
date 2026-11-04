@@ -1,4 +1,5 @@
 # `B`, the library's other module, with a test module of its own.
+emit r
 test mod tests
 use A
 

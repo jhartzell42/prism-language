@@ -42,12 +42,13 @@ fn SexpModule m:
     let emits = match m.?emitRow:
         ? r: "{Nl 1}(emit {SexpRow r})"
         nil: ""
+    let mods = Concat (Each m.mods, \|l| "{Nl 1}({if l.isTest: "test-mod" else: "mod"} {l.name.name})")
     let uses = Concat (Each m.uses, \|u| "{Nl 1}(use {Path u.target.path}{if u.star: ".*" else: ""})")
     let template = match m.?template:
         ? t: "{Nl 1}{SexpTemplate t, 1}"
         nil: ""
     let decls = Concat (Each m.decls, \|d| "{Nl 1}{SexpDecl d, 1}")
-    "(module{name}{emits}{uses}{template}{decls})\n"
+    "(module{name}{emits}{mods}{uses}{template}{decls})\n"
 
 SexpRow: fn Row -> Text
 fn SexpRow r = "(row{Spaced r.terms, SexpRowTerm})"

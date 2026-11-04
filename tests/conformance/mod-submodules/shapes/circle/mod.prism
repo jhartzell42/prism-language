@@ -1,4 +1,5 @@
 # `Shapes.Circle` (π taken as 3): it and `Shapes.Square` use each other.
+emit r
 use Shapes.Square
 
 Area: fn Nat -> Nat

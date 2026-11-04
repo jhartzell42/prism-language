@@ -1,12 +1,13 @@
 # `A.Types`, a submodule of `A` named as the top-level `Types` is.
-type Size = choice:
+emit r
+type Amount = choice:
     Small
     Large
 derive ^Eq, ^Show
 
-Of: fn Nat -> Size
+Of: fn Nat -> Amount
 fn Of n = if n < 10: Small else: Large
 
-Label: fn Size -> Text
+Label: fn Amount -> Text
 fn Label Small = "small"
 fn Label Large = "large"

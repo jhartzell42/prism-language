@@ -199,7 +199,7 @@ fn BuildG srcs, trees:
     let st8 = Coherence g8, st7
     ((g8, st8))
 
-let emptyModule = Module(name=nil, emitRow=nil, uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
+let emptyModule = Module(name=nil, emitRow=nil, mods=[[]], uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
 
 ModName: fn Module -> Text
 fn ModName m = match m.?name:
@@ -1195,7 +1195,7 @@ fn CheckPairIn g, st, a, b:
     else:
         let same = (Len a.qs) == 0 and (Len b.qs) == 0 or (ShapeOf a.head) == (ShapeOf b.head)
         let code = if same: "impl-duplicate" else: "impl-overlap"
-        let firstAt = "{(Or g.srcs[a.file], (MkSrc "?", "")).path}:{(CLineOf (Or g.srcs[a.file], (MkSrc "?", "")).starts, a.span.start) + 1}"
+        let firstAt = SrcPlace (Or g.srcs[a.file], (MkSrc "?", "")), a.span.start
         ErrFix s0, code, b.span, "a second impl of `^{BareName a.cls}` for `{ShowTy s0, b.head}`", "the first is at {firstAt}; keep one"
 
 # A head with its variables erased, to tell a duplicate from an overlap.

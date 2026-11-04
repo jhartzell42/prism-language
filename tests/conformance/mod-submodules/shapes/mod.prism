@@ -1,5 +1,6 @@
 # `Shapes`: its main file declares two submodules, reached from here, as from anywhere, by
 # their full paths.
+emit r
 mod Circle
 mod Square
 

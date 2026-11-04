@@ -1,4 +1,5 @@
 # `A`, a top-level module of the library; it and `B` use each other.
+emit r
 use B
 
 Inc: fn Nat -> Nat

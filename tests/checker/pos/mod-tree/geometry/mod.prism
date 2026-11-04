@@ -1,3 +1,4 @@
 # `Geometry`, a submodule of the root, named by its path.
+emit r
 Double: fn Nat -> Nat
 fn Double n = n * 2

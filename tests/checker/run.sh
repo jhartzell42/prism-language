@@ -3,7 +3,9 @@
 # every corpus program checks clean, or gives exactly the diagnostics its
 # `pos/NAME.expected` records (the programs the README lists as wrong by the books), and so
 # does every program of its own under `pos/`; every
-# negative program under `neg/` gives exactly its `.expected` diagnostic. A `# args: ...`
+# negative program under `neg/` gives exactly its `.expected` diagnostic. A directory under
+# `pos/` or `neg/` is one program, a tree (docs/modules-style-pass.md), its `.expected`
+# beside it; every program is checked with `--tests`, its test modules read. A `# args: ...`
 # first line passes options (`--world Ui`). Then the typed output (prismc/typed.prism):
 # `--typed` over chess and the conformance counter annotates every expression with a type,
 # none of them `unknown`; a `pos/NAME.colors` holds every `(app` and `(fn` line of
@@ -39,7 +41,7 @@ trap 'rm -rf "$tmp"' EXIT
 check() {
     local name=$1; shift
     rm -f "$tmp/$name.out"
-    "$prismc" --check "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
+    "$prismc" --check --tests "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
     if [ ! -f "$tmp/$name.out" ]; then
         { echo "(the checker wrote nothing)"; tail -3 "$tmp/$name.err"; } > "$tmp/$name.out"
     fi

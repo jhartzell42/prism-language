@@ -928,7 +928,8 @@ pub fn on_big_stack(f: impl FnOnce() -> u8 + Send + 'static) -> u8 {
 
 /// `test`: each script under the Test World. With `--print` the transcripts go to
 /// standard output as they are; otherwise each is compared byte for byte with the
-/// `.expected` beside it, and `ok` or the difference is printed.
+/// `.expected` beside it (`tests.expected` for `tests.prism`, `x.expected` for
+/// `x.prismtest`), and `ok` or the difference is printed.
 pub fn run_scripts(world: &TestWorld, given: &[String], compiled: &[&str]) -> u8 {
     let print = given.iter().any(|a| a == "--print");
     let mut paths: Vec<String> = given.iter().filter(|a| *a != "--print").cloned().collect();
@@ -952,7 +953,8 @@ pub fn run_scripts(world: &TestWorld, given: &[String], compiled: &[&str]) -> u8
             code = code.max(report.exit_code);
             continue;
         }
-        let expected_path = format!("{}.expected", path.strip_suffix(".prismtest").unwrap_or(&path));
+        let stem = path.strip_suffix(".prismtest").or_else(|| path.strip_suffix(".prism")).unwrap_or(&path);
+        let expected_path = format!("{stem}.expected");
         match std::fs::read_to_string(&expected_path) {
             Ok(expected) => match world.verify(&script, &expected) {
                 Ok(_) => println!("ok {path}"),

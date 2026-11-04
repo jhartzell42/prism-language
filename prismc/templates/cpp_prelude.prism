@@ -770,7 +770,8 @@ inline std::optional<std::string> read_file(const std::string& path) {
 
 /// `test`: each script under the Test World. With `--print` the transcripts go to standard
 /// output as they are; otherwise each is compared byte for byte with the `.expected` beside
-/// it, and `ok` or the difference is printed.
+/// it (`tests.expected` for `tests.prism`, `x.expected` for `x.prismtest`), and `ok` or the
+/// difference is printed.
 inline int run_scripts(const TestWorld& world, const std::vector<std::string>& given, const std::vector<std::string>& compiled) {
     bool print = std::find(given.begin(), given.end(), "--print") != given.end();
     std::vector<std::string> paths;
@@ -785,7 +786,9 @@ inline int run_scripts(const TestWorld& world, const std::vector<std::string>& g
             code = 2;
             continue;
         }
-        std::string stem = path.size() > 10 && path.substr(path.size() - 10) == ".prismtest" ? path.substr(0, path.size() - 10) : path;
+        // a script's transcript is beside it, its `.prismtest` or `.prism` (a test module) dropped
+        std::string stem = path.size() > 10 && path.substr(path.size() - 10) == ".prismtest" ? path.substr(0, path.size() - 10)
+            : path.size() > 6 && path.substr(path.size() - 6) == ".prism" ? path.substr(0, path.size() - 6) : path;
         auto expected = print ? std::nullopt : read_file(stem + ".expected");
         if (!expected) {
             Report report = world.run(*script);
