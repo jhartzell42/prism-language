@@ -27,6 +27,7 @@ fn CppPreludeSource unused = inline_text <cpp>
 #include <sstream>
 
 #include "prism_rtl/lang.hpp"
+#include "prism_world_cli/cli.hpp"
 
 namespace crate {
 
@@ -777,9 +778,9 @@ inline int run_scripts(const TestWorld& world, const std::vector<std::string>& g
     return code;
 }
 
-/// The CLI World, when the program is built with it (`worlds/cli-cpp`).
+/// The root under the CLI World (`worlds/cli-cpp`).
 template <class P>
-int run_cli(const std::vector<std::string>& args);
+int run_cli(const std::vector<std::string>& args) { return prism_world_cli::run<P>(args); }
 
 }  // namespace prelude
 }  // namespace crate
@@ -812,8 +813,8 @@ template <class N, class P, class Port, class Call>
 void subscribe_row(const std::shared_ptr<N>& node, std::optional<std::shared_ptr<P>> parent, Port port, Call call, std::optional<Handle>& slot) {
     if (!parent) return;
     std::weak_ptr<N> me = node;
-    using T = typename std::remove_cvref_t<decltype(deref(port(**parent)))>::Value;
-    Handle h = deref(port(**parent)).subscribe([me, call](const T& v, Cx& cx) -> Done {
+    using T = typename std::remove_cvref_t<decltype(deref(port(*parent)))>::Value;
+    Handle h = deref(port(*parent)).subscribe([me, call](const T& v, Cx& cx) -> Done {
         if (auto n = me.lock()) call(n, v, cx);
         return {};
     });

@@ -20,16 +20,21 @@ fn CppMakefile name, runtime, sources = inline_text <cpp>
 #   make                   the program, with $(CXX) (g++ by default)
 #   make CXX=clang++
 RT := {{runtime}}/runtime/cpp
+WORLD := {{runtime}}/worlds/cli-cpp
 CXX ?= g++
 OPT ?= -O1
 CONFIG ?= prog-$(notdir $(CXX))$(subst $() ,,$(OPT))
 LIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
-FLAGS := -std=gnu++20 $(OPT) -I$(RT)/include -Isrc -Wall -Wno-unused -Wno-unused-parameter -Wno-unused-label
+FLAGS := -std=gnu++20 $(OPT) -I$(RT)/include -I$(WORLD)/include -Isrc -Wall -Wno-unused -Wno-unused-parameter -Wno-unused-label
 SRCS := src/main.cpp {{sources}}
 OBJS := $(SRCS:src/%.cpp=build/%.o)
 
-{{name}}: $(OBJS) $(LIB)
-	$(CXX) $(FLAGS) -o $@ $(OBJS) $(LIB)
+{{name}}: $(OBJS) build/cli.o $(LIB)
+	$(CXX) $(FLAGS) -o $@ $(OBJS) build/cli.o $(LIB)
+
+build/cli.o: $(WORLD)/src/cli.cpp $(WORLD)/include/prism_world_cli/cli.hpp
+	@mkdir -p build
+	$(CXX) $(FLAGS) -c $< -o $@
 
 build/%.o: src/%.cpp src/crate.hpp src/prelude.hpp
 	@mkdir -p build
@@ -227,6 +232,7 @@ fn ValueStruct doc, gens, name, fields, members = inline_text <cpp>
     using prism_value = void;
     {{fields}}
     const {{name}}* operator->() const { return this; }
+    {{name}}* operator->() { return this; }
     {{members}}
 };
 </cpp>
@@ -241,6 +247,7 @@ struct {{name}} {
     static constexpr const char* TAG = "{{tagName}}";
     {{fields}}
     const {{name}}* operator->() const { return this; }
+    {{name}}* operator->() { return this; }
     Pod to_pod() const;
     void show(Printer& p) const;
     {{members}}
@@ -267,10 +274,10 @@ fn JobStruct doc, gens, name, ret, fields, ctor = inline_text <cpp>
 /// callee's job, so the job's stack is its frames.
 ///
 {{doc}}
-{{gens}}struct {{name}} : Job<{{ret}}> {
+{{gens}}struct {{name}} : prism_rtl::Job<{{ret}}> {
     {{fields}}
     {{ctor}}
-    Turn<{{ret}}> cycle() const override;
+    prism_rtl::Turn<{{ret}}> cycle() const override;
 };
 </cpp>
 
@@ -319,7 +326,7 @@ fn ForBuildTemplate owner, name, at, keyTy, valueTy, rowMake, source, parent, pa
 /// entry out of the source.
 Done {{owner}}::{{name}}_build(Cx& cx) {
     Map<{{keyTy}}, {{valueTy}}> items = {{source}}(cx);
-    auto old = this->{{name}};
+    auto old = deref(this->{{name}});
     for (auto&& [k, row] : old) {
         if (!items.contains(k)) {
             row->leave_row(cx);
@@ -331,7 +338,7 @@ Done {{owner}}::{{name}}_build(Cx& cx) {
         if (auto row = old.get(k)) next.insert(k, *row);
         else next.insert(k, TRY({{rowMake}}({{at}}.child(Segment::key(prism_rtl::to_pod(k))), k, v, {{parent}}{{passed}}, cx)));
     }
-    this->{{name}} = next;
+    deref(this->{{name}}) = next;
     // What the block reads of its rows (a `for` that gives a dynamic) moved.
     cx.dirty(share(this));
     return {};

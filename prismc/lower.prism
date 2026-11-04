@@ -1237,7 +1237,7 @@ fn ValueByKind lx, env, e:
         EBound b: match env.names[b]:
             ? (BnLocal rs, mode, bt): LocalPlace rs, mode, bt
             otherwise: VlOwned (Refusal "`{b}` outside a `for`"), t
-        ENil ignore: VlOwned (XNone), t
+        ENil ignore: VlOwned (XTyped (XNone), t), t
         ETuple es: VlOwned (XTuple (Each es, \|x| Own (ValueOf lx, env, x))), t
         EArray [[]]: VlOwned (XTyped (XCall "Array::new", [[]]), t), t
         EArray es: VlOwned (XCall "Array::from", [[XVec (Each es, \|x| Own (ValueOf lx, env, x))]]), t
@@ -3242,10 +3242,11 @@ fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
     # the cycle and gives `Ok` or `Err` itself (`loop_job`).
     let jobs = HasTopWhile lx, wb
     let Finish = \|x| if jobs: XCtor "prism_rtl::Turn::Finished", [[x]] else: x
-    let again = Finish (XCtor "Ok", [[pack]])
-    let stop = Finish (XCtor "Err", [[pack]])
+    let stepTy = OutNamed "Result", [[stTy, stTy]]
+    let again = Finish (XTyped (XCtor "Ok", [[pack]]), stepTy)
+    let stop = Finish (XTyped (XCtor "Err", [[pack]]), stepTy)
     let Body = \|en| if jobs: UpdTailFrom lx, en, en, wb, 0, wb.span, \|o2, e2| again else: StmtsThen lx, en, wb, again
-    let resTy = if jobs: OutNamed "prism_rtl::Turn", [[(OutNamed "Result", [[stTy, stTy]])]] else: stTy
+    let resTy = if jobs: OutNamed "prism_rtl::Turn", [[stepTy]] else: stTy
     let turn = match c:
         CondExpr x: XIf (AsBool (ValueOf lx, envC, x)), (Body envC), stop
         CondBind p, x, ?g:

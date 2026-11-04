@@ -129,7 +129,7 @@ template <class... T> struct IsValue<std::tuple<T...>> : std::true_type {};
 /// cell on the heap.
 template <class T>
 auto rc(T x) {
-    if constexpr (IsValue<T>::value || requires { &T::operator(); }) return x;
+    if constexpr (IsValue<T>::value || std::is_pointer_v<T> || requires { &T::operator(); }) return x;
     else return std::make_shared<T>(std::move(x));
 }
 
@@ -156,9 +156,36 @@ std::optional<std::shared_ptr<T>> upgrade(const std::weak_ptr<T>& w) {
 
 /// A runtime cell reached as Rust auto-derefs it: through a shared pointer, or as it is.
 template <class T>
+struct IsShared : std::false_type {};
+template <class T>
+struct IsShared<std::shared_ptr<T>> : std::true_type {};
+template <class T>
+    requires(!IsShared<std::remove_cv_t<T>>::value)
 T& deref(T& x) { return x; }
 template <class T>
 T& deref(const std::shared_ptr<T>& p) { return *p; }
+
+/// `Some(p)`'s payload: an option's value, a live node's pointer (`Weak::upgrade`'s).
+template <class T>
+const T& some_of(const std::optional<T>& o) { return *o; }
+template <class T>
+T& some_of(std::optional<T>& o) { return *o; }
+template <class T>
+const std::shared_ptr<T>& some_of(const std::shared_ptr<T>& p) { return p; }
+
+/// `Ok(())`: the success of a `Done` or of a `~unit`.
+struct OkUnit {
+    operator Done() const { return {}; }
+    template <class E>
+    operator Expected<Unit, E>() const { return Unit{}; }
+};
+inline OkUnit ok() { return {}; }
+
+/// `Iterator::for_each`.
+template <class R, class F>
+void for_each(const R& xs, F f) {
+    for (const auto& x : xs) f(x);
+}
 
 /// `Option::expect`.
 template <class T>
