@@ -641,6 +641,7 @@ JobRef<S> loop_turns(S state, F step) {
     return std::make_shared<LoopingTurns<S>>(std::move(state), std::make_shared<const std::function<Turn<Expected<S, S>>(S)>>(std::move(step)));
 }
 
+
 /// The job of a lambda of unbounded type: its body, run as a job body from its first
 /// cycle (prismc/README.md, pick JB).
 template <class B>
@@ -660,6 +661,40 @@ template <class B, class G>
 auto map_job(JobRef<B> job, G g) {
     using C = std::decay_t<std::invoke_result_t<G, B>>;
     return JobRef<C>(std::make_shared<Frame<B, C>>(std::move(job), [g](B b) { return Turn<C>::finished(g(std::move(b))); }));
+}
+
+/// A `for` of an `update` block whose body holds a cycle-point loop (D6, gap LP): a loop
+/// over its entries as `loop_turns` is over its condition, taking the next entry its
+/// test; `step` takes the block's state and an entry's parts, a turn a job.
+template <class S, class E, class F>
+JobRef<S> for_turns(std::vector<E> entries, S state, F step) {
+    using P = std::pair<S, std::size_t>;
+    auto all = std::make_shared<const std::vector<E>>(std::move(entries));
+    auto st = std::make_shared<const F>(std::move(step));
+    JobRef<P> job = loop_turns(P(std::move(state), 0), [all, st](P p) -> Turn<Expected<P, P>> {
+        std::size_t i = p.second;
+        if (i >= all->size()) return Turn<Expected<P, P>>::finished(Expected<P, P>(unexpected(std::move(p))));
+        Turn<S> t = std::apply([&](const auto&... parts) { return (*st)(std::move(p.first), parts...); }, (*all)[i]);
+        if (auto m = t.if_more()) return call_then(m->next, [i](S s2) { return Turn<Expected<P, P>>::finished(Expected<P, P>(P(std::move(s2), i + 1))); });
+        return Turn<Expected<P, P>>::finished(Expected<P, P>(P(std::move(t.if_finished()->value), i + 1)));
+    });
+    return map_job(job, [](P p) { return std::move(p.first); });
+}
+
+/// `for` over a map in a job (`for_turns`): the key and the entry, in key order.
+template <class K, class V, class S, class F>
+JobRef<S> for_turns_keyed(Map<K, V> m, S state, F step) {
+    std::vector<std::pair<K, V>> entries;
+    for (auto&& [k, v] : m) entries.emplace_back(k, v);
+    return for_turns(std::move(entries), std::move(state), std::move(step));
+}
+
+/// `for` over an array in a job (`for_turns`): the index and the entry.
+template <class V, class S, class F>
+JobRef<S> for_turns_indexed(Array<V> xs, S state, F step) {
+    std::vector<std::pair<Nat, V>> entries;
+    for (auto&& [i, v] : prism_rtl::enumerate(xs)) entries.emplace_back(nat_of(i), v);
+    return for_turns(std::move(entries), std::move(state), std::move(step));
 }
 
 // ---- The higher-order functions as jobs (D8) ---------------------------------------------
