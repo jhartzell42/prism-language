@@ -52,7 +52,7 @@ From the input to the frame that shows its result, handed to the window system.
   recomputed, and the frame is painted and presented (`[CATransaction flush]` in C++,
   softbuffer's `present` in Rust). After each timed step the driver checks the screen
   shows the rows and the marker it should, and fails the run otherwise. C++ is built at
-  -O2 with clang; Rust as a cargo release build (opt-level 3).
+  -O3 with clang; Rust as a cargo release build (opt-level 3).
 - **GTK** (`gtk/`): C with GTK 3 over Quartz. `gtk_button_clicked`, then the window's
   next frame-clock `after-paint`, then `gdk_display_sync`. Rows are boxes of a label and
   two buttons in a scrolled window.

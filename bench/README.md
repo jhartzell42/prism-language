@@ -12,7 +12,7 @@ the C++-built prismc emits C++ and make builds it. Nothing mixes the two.
   target's canvas World.
 - **`building/`: how long Prism takes to build.** From Prism source to a runnable binary,
   from clean: prismc's emit plus cargo's or make's build, for `prismc/`, chess and the
-  table, at cargo debug and release and at -O0 to -O3.
+  table, at cargo release against clang -O3 (Jimmy: the shipping configurations only).
 - **`gui/`: the table**, js-framework-benchmark's operations, written four ways: Prism
   (C++ and Rust), C with GTK 3, Cuis Smalltalk on the Cog VM.
 

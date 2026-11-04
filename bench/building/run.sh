@@ -6,9 +6,8 @@
 # time, the build time, their total, and the binary's size.
 #
 #   bench/building/run.sh [SUBJECT...]        # prismc chess table, or those named
-#   CONFIGS="rust-release cpp-O2" bench/building/run.sh
+#   CONFIGS="rust-release" bench/building/run.sh
 #
-# Configurations: rust-debug and rust-release (cargo's defaults: 256 and 16 codegen units,
 # -j every core); cpp-O0, cpp-O1 (what `prism test` uses), cpp-O2 (what `prism run`
 # uses), cpp-O3, each `make -j` every core with $CXX (clang++ by default). The binaries stay
 # in target/bench/building/SUBJECT/CONFIG/ for bench/running/run.sh. Writes
@@ -23,7 +22,7 @@ jobs=$(getconf _NPROCESSORS_ONLN)
 CXX=${CXX:-clang++}
 subjects=("$@")
 [ ${#subjects[@]} -gt 0 ] || subjects=(prismc chess table)
-read -r -a configs <<< "${CONFIGS:-rust-debug rust-release cpp-O0 cpp-O1 cpp-O2 cpp-O3}"
+read -r -a configs <<< "${CONFIGS:-rust-release cpp-O3}"
 rust_prismc=target/bootstrap/prismc
 cpp_prismc=target/bootstrap/prismc-cpp
 [ -x "$rust_prismc" ] || { echo "bench: no $rust_prismc (make bootstrap)" >&2; exit 2; }
@@ -75,9 +74,6 @@ for subject in "${subjects[@]}"; do
         echo "bench: $subject: $c built from clean" >&2
         t0=$(now)
         case "$c" in
-            rust-debug)
-                rm -rf "$out/cargo-$c" && (cd "$dir" && CARGO_TARGET_DIR="$PWD/../../cargo-$c" cargo build --offline -q 2> "$dir.log")
-                bin=$out/cargo-$c/debug/$name ;;
             rust-release)
                 rm -rf "$out/cargo-$c" && (cd "$dir" && CARGO_TARGET_DIR="$PWD/../../cargo-$c" cargo build --offline --release -q 2> "$dir.log")
                 bin=$out/cargo-$c/release/$name ;;

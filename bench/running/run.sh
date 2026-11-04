@@ -6,24 +6,22 @@
 # retired); and the GUI table under each target's canvas World (bench/gui/run.sh, which
 # also runs GTK and Cuis beside it).
 #
-#   bench/running/run.sh                       # every configuration built, the GUI table too
-#   CONFIGS="rust-release cpp-O2" SELF=1 GUI=0 NORM=5 bench/running/run.sh
+#   bench/running/run.sh                       # both configurations, the GUI table too
+#   CONFIGS="rust-release" GUI=0 NORM=5 bench/running/run.sh
 #
-# SELF=1 (the default) runs the self-compile only at the shipping configurations
-# (rust-release, cpp-O2, cpp-O3), since a debug or -O0 prismc takes many minutes on it;
-# SELF=all runs it everywhere. Writes bench/running/RESULTS.md. Run it with nothing else
-# running, after bench/building/run.sh.
+# The configurations are bench/building/run.sh's: rust-release and cpp-O3 (Jimmy: the
+# shipping ones only). Writes bench/running/RESULTS.md. Run it with nothing else running,
+# after bench/building/run.sh.
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu
 cd "$(dirname "$0")/../.."
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 norm=${NORM:-5}
-self=${SELF:-1}
 gui=${GUI:-1}
 built=target/bench/building/prismc
 if [ -n "${CONFIGS:-}" ]; then read -r -a configs <<< "$CONFIGS"
-else configs=(); for d in rust-debug rust-release cpp-O0 cpp-O1 cpp-O2 cpp-O3; do [ -x "$built/$d/prismc.bin" ] && configs+=("$d"); done; fi
+else configs=(); for d in rust-release cpp-O3; do [ -x "$built/$d/prismc.bin" ] && configs+=("$d"); done; fi
 [ ${#configs[@]} -gt 0 ] || { echo "bench: no prismc built under $built (run bench/building/run.sh prismc)" >&2; exit 2; }
 out=target/bench/running
 mkdir -p "$out"
@@ -50,16 +48,10 @@ for c in "${configs[@]}"; do
     case "$c" in rust-*) target=rust ;; *) target=cpp ;; esac
     dir=$out/$c
     rm -rf "$dir" && mkdir -p "$dir"
-    doself=0
-    case "$self:$c" in all:*|1:rust-release|1:cpp-O2|1:cpp-O3) doself=1 ;; esac
-    if [ $doself = 1 ]; then
-        echo "bench: $c: prismc/ compiled to $target by it" >&2
-        self_s[$c]=$(timed "$dir/self.log" "$bin" compile prismc --prelude prelude -o "$dir/self" --name prismc --target "$target")
-        self_mb[$c]=$(peak_mb "$dir/self.log.time")
-        self_gi[$c]=$(instr_g "$dir/self.log.time")
-    else
-        self_s[$c]="-"; self_mb[$c]="-"; self_gi[$c]="-"
-    fi
+    echo "bench: $c: prismc/ compiled to $target by it" >&2
+    self_s[$c]=$(timed "$dir/self.log" "$bin" compile prismc --prelude prelude -o "$dir/self" --name prismc --target "$target")
+    self_mb[$c]=$(peak_mb "$dir/self.log.time")
+    self_gi[$c]=$(instr_g "$dir/self.log.time")
     echo "bench: $c: normalize compiled to $target by it, $norm times" >&2
     : > "$dir/norm.txt"
     for i in $(seq "$norm"); do
@@ -100,7 +92,7 @@ fi
     if [ "$gui" != 0 ] && [ -f bench/gui/RESULTS.md ]; then
         echo "## The GUI table as the workload"
         echo
-        echo "bench/gui/RESULTS.md's timings (prism-cpp is the table compiled to C++ at -O2, prism-rust"
+        echo "bench/gui/RESULTS.md's timings (prism-cpp is the table compiled to C++ at -O3, prism-rust"
         echo "compiled to Rust as a release build; GTK and Cuis beside them for scale):"
         echo
         sed -n '/^| Operation |/,/^$/p' bench/gui/RESULTS.md | head -12

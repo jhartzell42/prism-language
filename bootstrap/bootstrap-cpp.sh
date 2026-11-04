@@ -28,7 +28,7 @@ update=0
 b=target/bootstrap
 seed=bootstrap/prismc-cpp.tar.xz
 CXX=${CXX:-g++}
-OPT=${OPT:--O1}
+OPT=${OPT:--O3}
 mkdir -p "$b"
 # build_cpp DIR: make builds the program in DIR, its binary at DIR/prismc (one job: the
 # largest file needs most of the memory a small machine has)

@@ -34,7 +34,7 @@ The same bootstrap runs through C++ (`prismc compile --target cpp`, prismc/READM
   printers, and either compiler gives the same output for either target. It installs
   the binary as `target/bootstrap/prismc-cpp`.
 - **`bootstrap-cpp.sh --update`** also rewrites the C++ seed.
-- **`CXX`, `OPT`, `JOBS`** choose the compiler (g++), its optimization (`-O1`) and make's
+- **`CXX`, `OPT`, `JOBS`** choose the compiler (g++), its optimization (`-O3`) and make's
   jobs (1: the largest file, `lower.cpp`, needs most of a small machine's memory).
 - **From the repository root:** `make bootstrap-cpp`, `make bootstrap-cpp-update`.
 - **The last run** (4 November 2026, 2 cores, g++ 13 `-O1`, one job): the Rust prismc

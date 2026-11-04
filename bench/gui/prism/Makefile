@@ -2,7 +2,7 @@
 #
 #   make            both drivers
 #   make cpp        target/bench/prism/driver: bench.prism, with examples/chess's window
-#                   library, compiled to C++ by the prism script's prismc, at -O2
+#                   library, compiled to C++ by the prism script's prismc, at -O3
 #   make rust       target/bench/prism-rs/driver: the same compiled to Rust, cargo
 #                   release (opt-level 3)
 #
@@ -16,7 +16,7 @@ REPO := $(abspath ../../..)
 OUT := $(REPO)/target/bench/prism
 SRC := $(OUT)/src
 CXX ?= clang++
-OPT ?= -O2
+OPT ?= -O3
 CONFIG := bench-$(notdir $(CXX))$(OPT)
 RT := $(REPO)/runtime/cpp
 CLI := $(REPO)/worlds/cli/cpp
