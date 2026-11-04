@@ -945,7 +945,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `sem-ch05-update-loops` (a `for` and a guarded `match` as statements of an `update`),
   `sem-ch07-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
   `let`-bound lambda's own type gives them), `sem-ch07-while-guard` (a shrinking `while` is
-  one unit of work, gap LP), `sem-ch07-while-nested` (gap LP), `sem-ch07-lambda-cycle` (mutually recursive unbounded lambdas, a
+  one unit of work, gap LP), `sem-ch07-while-nested` and `sem-ch07-while-match-for` (gap LP), `sem-ch07-lambda-cycle` (mutually recursive unbounded lambdas, a
   cycle a call), `ts-ch02-row-values` (a row kind's values built, compared, shown,
   matched and sent inside an element, pick RV), `sem-ch09-bundle` (pick BA),
   `sem-ch08-widget-args` (pick WB), `sem-ch09-host-param` and `sem-ch09-host-dynamic-answer` (pick HO),
@@ -1497,8 +1497,13 @@ ruling taken (Claude's).
   state that each branch ends in (`IfJob`); one in another loop's body makes that loop's
   turns jobs (`loop_turns`: a turn that reaches the inner loop ends after it, and the next
   test starts a cycle), so `sem-ch07-while-nested` costs what a top-level loop does (5 ticks for
-  3 turns under an `if`, 10 for 2 by 2). *Not yet:* an unshrinking `while` in a `match` or
-  a `for` of the block, which still turns within the cycle.
+  3 turns under an `if`, 10 for 2 by 2). A loop job in an arm of a `match` of the block binds
+  what follows the `match` once, as under an `if` (`MatchJob`); one in a `for` of the block
+  makes the `for` a loop over its entries whose test is taking the next one, each turn a
+  job (`ForJob`, the preludes' `for_turns_keyed` and `for_turns_indexed`), so
+  `sem-ch07-while-match-for` costs 5 ticks in a `match` and 9 for a `for` of two entries
+  of 2 and 1 turns. A loop job in a `for &s <- &_:` is refused (its references cannot
+  outlive a cycle).
 - **FA A field's `.` or `->`** is chosen by the receiver's type where `?Pointer` knows it,
   and only otherwise by its name, `->` when any node has a member of that name
   (`cp.members`). Where the type is not known, a value's field named as some node's
