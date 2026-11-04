@@ -3356,7 +3356,7 @@ fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
 # continuation, after. The arms take the scrutinee owned, since each may be a job's.
 MatchJob: unbounded fn Lx, Env, Env, Expr, [Arm], Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
 fn MatchJob lx, outer, env, scrut, arms, span, restText, Cont:
-    let state = Fold (Keys env.names), [[]], \|acc, k| if (Take k, 1) != "&": acc else: match env.names[k]:
+    let state = Fold (Keys env.names), [[]], \|acc, k| if (not (HasPrefix k, "&")): acc else: match env.names[k]:
         ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
     let names = Each state, \|((ignore, rs, ignore))| rs
@@ -3387,7 +3387,7 @@ fn MatchJob lx, outer, env, scrut, arms, span, restText, Cont:
 # continuation takes the state again by the same names.
 ForJob: unbounded fn Lx, Env, Env, ?ForBinders, Expr, Block, Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
 fn ForJob lx, outer, env, ?binders, source, body, span, restText, Cont:
-    let state = Fold (Keys env.names), [[]], \|acc, k| if (Take k, 1) != "&": acc else: match env.names[k]:
+    let state = Fold (Keys env.names), [[]], \|acc, k| if (not (HasPrefix k, "&")): acc else: match env.names[k]:
         ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
     let names = Each state, \|((ignore, rs, ignore))| rs
@@ -4814,7 +4814,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
 # A widget function's name as a value (`@Supply`), which lowering has no value for.
 IsWidgetName: fn Expr -> Bool
 fn IsWidgetName e = match e.kind:
-    EName n: (Take (SNameKey n), 1) == "@"
+    EName n: HasPrefix (SNameKey n), "@"
     EGroup x: IsWidgetName x
     otherwise: False
 
