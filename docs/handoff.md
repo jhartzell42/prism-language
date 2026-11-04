@@ -53,30 +53,14 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
   - the C++ template's missing canvas World;
   - the stale canvas README;
   - gaps LP, LW, DM and SR;
-  - **a lambda supplier's `o` is not rank-2.** An inline supplier that answers two tags
-    with different outputs is refused (`Fs.Contents(..): @ $ ...` then `Fs.File(..): @
-    never` gives "expected `$~Contents`, found `!t20`"), while the same supplier as a named
-    function with a signature is accepted.
-    - Cause: tag arms refine only a rigid `o` (`InferMatch`/`InferArm` in
-      `check-expr.prism`), and a rigid variable comes only from a declared signature; a
-      lambda argument gets `@HostDocument`'s `o` as a flexible variable from
-      instantiation. Hosting is not special-cased, and the checker has no rank handling.
-    - The books: Type System ch. 2, "The supplier is rank-2 in `o`, and the signature
-      supplies it"; ch. 5, "Refinement at tag matches"; Semantics ch. 9's `@Offline` is
-      the refused case.
-    - Design question for Jimmy: which rule makes `o` rank-2 in a signature. Claude's
-      recommendation: a variable that appears only inside one function-typed parameter is
-      quantified there (a grep finds only the three host forms in the prelude, prismc,
-      the examples and the tests). Alternatives: an explicit quantifier in the
-      parameter; special-casing the host forms (refused: it makes hosting privileged).
-    - Fix: at a call, skolemize the confined variable for a lambda argument and check
-      the lambda against the parameter, with an escape check. Tests first:
-      `ts-ch05-supplier-rank2` (the refused program, both places answered) and a
-      `refinement-escape` negative.
-  - **a cycle through a host's own `$doc` is refused as a prompt cycle** (`$doc`,
-    `$answers`), though `$doc` is structural and lags a tick; a hold breaks it. Either
-    the prompt-cycle check ignores structural lag, or the lag is not meant to break a
-    cycle. Needs Jimmy's ruling before a fix.
+  - **an inline supplier's `o` is not rank-2** (`docs/bugs/supplier-rank2.md`): two
+    tag arms with different outputs are refused. Needs Jimmy's ruling on which rule
+    makes a variable rank-2 in a signature; Claude recommends "confined to one
+    function-typed parameter".
+  - **a cycle through a host's own `$doc` is refused as a prompt cycle**
+    (`docs/bugs/host-doc-prompt-cycle.md`): the host forms give `$doc` the child
+    result's edges, though `$doc` is structural and lagged; the same cycle through a
+    `for` passes.
   Failing test first for each bug.
 - **Then the queue below, items 1 to 9.** All the emitter changes go first, then one
   fixed point at the end.
