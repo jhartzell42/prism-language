@@ -1350,7 +1350,10 @@ fn TypeParts cp, t:
     match t.shape:
         ShapeChoice:
             let names = Each t.cases, \|c| c.name
-            let handle = ChoiceHandle doc, gens, t.name, (Join (Each names, \|n| "struct {n};"), "\n"), (Join names, ", "), members
+            # `==` declared in the handle, so a record holding this choice by value, defined
+            # before the cases are, finds it when its own defaulted `==` is (clang's rule)
+            let friendEq = if eq and not generic: "\nfriend inline bool operator==(const {head}& a, const {head}& b);" else: ""
+            let handle = ChoiceHandle doc, gens, t.name, (Join (Each names, \|n| "struct {n};"), "\n"), (Join names, ", "), "{members}{friendEq}"
             let cases = Each t.cases, \|c| CaseStruct cp, gens, head, c, eq, ord
             let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline auto operator<=>(const {head}& a, const {head}& b) \{ return a.cases() <=> b.cases(); \}" else: "")]], \|s| s != ""), "\n"
             let defs = TypeDefs cp, t, head
