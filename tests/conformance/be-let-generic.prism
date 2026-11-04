@@ -1,0 +1,21 @@
+# A generalized local `let` (Type System ch. 5, a local `let` generalizes; D8): lowering
+# instantiates it at each use (prismc/README.md, pick LG). `Twin` is used at Nat and at
+# Text; `Second`, whose first parameter is unused, at (Text, Nat) and at (Nat, Text).
+# Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+
+Describe: fn Nat -> Text
+fn Describe n:
+    let Twin = \|x| ((x, x))
+    let ((a, b)) = Twin n
+    let ((s, t)) = Twin "ab"
+    let Second = \|ignore, y| y
+    let k = Second "unused", n
+    let w = Second n, s
+    "{a + b} {s}{t} {k} {w}"
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$"{Describe 3}")                          # 0
+# Audited: Twin 3 is (3, 3), 3 + 3 = 6; Twin "ab" is ("ab", "ab"); Second "unused", 3 is 3;
+# Second 3, "ab" is "ab"; one place.
