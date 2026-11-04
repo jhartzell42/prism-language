@@ -173,6 +173,51 @@ All the emitter changes go first; then one fixed point at the end.
     - Doubt: a display without MIT-SHM is painted through `XPutImage` with a message on
       stderr. Jimmy may want a hard error there instead.
 
+## Regular expressions as a primitive (Jimmy's direction, to design)
+
+Jimmy: Prism is a general-purpose language with systems-programming uses, and a lexer
+written character by character is "shooting yourself in the foot". Regular expressions
+belong in the runtime beside `Text`, as a primitive, so that prismc's lexer (and every
+program's) shrinks. Write the design before implementing; the books need it (Semantics
+ch. 2 for the literals, Appendix B for the prelude, Type System for the types).
+
+- **Literals.** `r/pattern/` is a `Regex`; `s/pattern/replacement/` is a
+  `RegexReplacement` (names to settle), Perl and sed style.
+  - The lexer reads them as one token. `r` and `s` would otherwise be names, so the
+    rule needs the spacing rule's help: `r/` touching is a literal, `r / x` is division.
+    Settle whether a name `r` touching `/` is then an error.
+  - Flags after the closing slash, settled with the literal (`r/x/i`).
+  - Other delimiters (`r{...}`, `r#/.../#`) for patterns holding `/`.
+  - Interpolation is refused or explicit: a pattern built from text goes through a
+    function, `?Regex: fn Text -> ?Regex`, never a placeholder inside a literal.
+- **Checked at compile time.** A literal that is not a valid pattern is a diagnostic,
+  before tick 0, never a fault at run time. Capture groups could give the match its
+  type: a record of named groups, a tuple of numbered ones.
+- **Semantics consistent with TX.** Matching is over UTF-8 bytes; a match reports
+  cursors (`Before`/`After` of a match are views), never character counts.
+- **Cost promise.** Linear in the text (RE2 and Rust's `regex`: no backreferences, no
+  lookaround), so a program's cost stays a property of its text (Appendix B, TD-V2).
+- **Prelude** (names to settle):
+  - `?Match: fn Regex, Cursor -> ?Match` anchored at the cursor, which is what a lexer
+    wants;
+  - `?Find: fn Regex, Text -> ?Match`;
+  - `Matches: fn Regex, Text -> [Match]`;
+  - `Replace: fn RegexReplacement, Text -> Text`;
+  - `Split: fn Regex, Text -> [Text]`.
+- **Runtimes.**
+  - Rust: the `regex` crate (or `regex-automata` for anchored longest-match lexing).
+  - C++: RE2 (apt `libre2-dev`, Homebrew `re2`) rather than `std::regex`, which is slow
+    and backtracks.
+  - Both must give byte-identical results on the conformance suite, so the dialect is
+    the intersection the books specify, not either library's.
+- **The lexer afterwards.** Each token class becomes a literal (names, numbers,
+  durations, operators by longest match, string bodies), with layout as a separate pass
+  over the token stream (see the lexer items below). Measure: lines of `lexer.prism`
+  before and after, and instructions on the normalize compile.
+- **Doubt:** a lexer generator (a token table compiled to one automaton, like `logos` or
+  re2c) may serve the lexer better than separate regexes tried in turn. Both can sit on
+  the same `Regex` primitive.
+
 ## Smaller items
 
 - **The installed prismc ignores `--target cpp` silently.** `./prism compile --target
