@@ -324,7 +324,7 @@ fn CppExpr cp, x = match x:
     XFloat d: d
     XIndex n: "{n}u"
     XChar c: "U'{CppCharEscape c}'"
-    XStr t: "\"{Escape t}\""
+    XStr t: CppString t
     XRef y: CppExpr cp, y
     XRefMut y: CppExpr cp, y
     XDeref y: CppExpr cp, y
@@ -350,8 +350,8 @@ fn CppExpr cp, x = match x:
     XTuple xs: "std::tuple\{{CppArgs cp, xs}\}"
     XVec [[]]: "\{\}"
     XVec xs: "std::vector\{{CppArgs cp, xs}\}"
-    XText t: "Text(\"{Escape t}\")"
-    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text(\"{Concat (Each parts, \|p| TextPiece p)}\")" else: CppFormat cp, parts, "prism_rtl::cat"
+    XText t: "Text({CppString t})"
+    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
     XMatch s, arms, fallback, t: CppMatch cp, s, arms, t
     XChain label, s, arms, t: CppMatch cp, s, arms, t
     XIf c, t, e: CppIf cp, c, t, e
@@ -372,12 +372,20 @@ fn CppExpr cp, x = match x:
         else: if (IsCtor y, "Ok") or IsCtor y, "Err": "{CppType cp, t}({e})"
         else: e
 
+# A string literal: a NUL as `\000` (an octal escape takes three digits at most), and the
+# literal a `std::string_view` (`""sv`) when it holds one, which a `const char*` would end.
+CppString: fn Text -> Text
+fn CppString t = if Contains t, "\u{0}": "\"{CppEscape t}\"sv" else: "\"{CppEscape t}\""
+
+CppEscape: fn Text -> Text
+fn CppEscape t = Concat (Each (Chars t), \|c| if c == "\u{0}": "\\000" else: CharEscape c)
+
 IsTextPiece: fn Ex -> Bool
 fn IsTextPiece (XText ignore) = True
 fn IsTextPiece other = False
 
 TextPiece: fn Ex -> Text
-fn TextPiece (XText t) = Escape t
+fn TextPiece (XText t) = t
 fn TextPiece other = ""
 
 # `format!(..)` as `str(..)` (a message) or `cat(..)` (a `Text`): the pieces in order.
@@ -385,7 +393,7 @@ CppFormat: unbounded fn Cp, [Ex], Text -> Text
 fn CppFormat cp, parts, how = "{how}({Join (Each parts, \|p| FormatArg cp, p), ", "})"
 
 FormatArg: unbounded fn Cp, Ex -> Text
-fn FormatArg cp, (XText t) = "\"{Escape t}\""
+fn FormatArg cp, (XText t) = CppString t
 fn FormatArg cp, x = CppExpr cp, x
 
 CppCharEscape: fn Text -> Text

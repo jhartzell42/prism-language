@@ -8,7 +8,7 @@
 # changes what prismc emits, gen1 still emits the starting binary's output: gen2 is built
 # and compiles gen3, which must equal gen2. The C++ binary at the fixed point then compiles
 # prismc/ to Rust, which must be byte-equal to what the Rust-built prismc
-# (target/bootstrap/prismc) emits: one model, two printers, the same answer from either
+# (target/bootstrap/prismc, or $RUST_PRISMC) emits: one model, two printers, the same answer from either
 # compiler. The binary is installed as target/bootstrap/prismc-cpp. Every compile reads one
 # copy of prismc/ and prelude/ taken at the start (target/bootstrap/cpp-src).
 #
@@ -77,15 +77,17 @@ if ! same 1 2; then
     fixed=2
 fi
 echo "C++ fixed point: cpp-gen$fixed and cpp-gen$((fixed + 1)) are byte-equal ($(cat "$b/cpp-gen$fixed"/src/*.cpp "$b/cpp-gen$fixed"/src/*.hpp | wc -l) lines of C++)"
-# The C++ compiler's Rust against the Rust compiler's.
-if [ -x "$b/prismc" ]; then
+# The C++ compiler's Rust against the Rust compiler's ($RUST_PRISMC, else the Rust
+# bootstrap's, which must be built from the same prismc/: run `make bootstrap` first).
+rust=${RUST_PRISMC:-$b/prismc}
+if [ -x "$rust" ]; then
     rm -rf "$b/cpp-rust" "$b/rust-rust"
     "$b/cpp-gen$fixed/prismc" compile "${src[@]}" -o "$b/cpp-rust" --name prismc
-    "$b/prismc" compile "${src[@]}" -o "$b/rust-rust" --name prismc
+    "$rust" compile "${src[@]}" -o "$b/rust-rust" --name prismc
     if diff -r -q "$b/cpp-rust" "$b/rust-rust"; then
         echo "the C++ prismc compiles prismc/ to the Rust the Rust prismc does, byte for byte"
     else
-        echo "the C++ prismc's Rust differs from the Rust prismc's" >&2
+        echo "the C++ prismc's Rust differs from $rust's" >&2
         exit 1
     fi
 else

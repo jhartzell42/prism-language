@@ -365,6 +365,7 @@ private:
 inline void display(std::string& out, const Text& t) { out += t.to_string(); }
 inline void display(std::string& out, const std::string& s) { out += s; }
 inline void display(std::string& out, const char* s) { out += s; }
+inline void display(std::string& out, std::string_view s) { out += s; }
 inline void display(std::string& out, const Int& n) { out += n.to_string(); }
 inline void display(std::string& out, const Nat& n) { out += n.to_string(); }
 inline void display(std::string& out, char32_t c) { utf8_push(out, c); }
