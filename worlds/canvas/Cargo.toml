@@ -27,3 +27,9 @@ x11-dl = "2.21"
 [[test]]
 name = "xvfb_smoke"
 harness = false
+
+# A window driven through Hooks, on the main thread; the test for macOS (and any Linux
+# with a display).
+[[test]]
+name = "hooks_smoke"
+harness = false

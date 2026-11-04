@@ -45,6 +45,35 @@ pub fn run<P: Program>() -> u8 {
 /// [`run`], with `wrap` putting the World inside whatever answers the rest of the
 /// program's families; `|w| Box::new(w)` for none.
 pub fn run_with<P: Program>(wrap: impl FnOnce(CanvasWorld) -> Box<dyn World>) -> u8 {
+    run_hooked::<P>(wrap, Hooks::default())
+}
+
+/// What a hook may do to a running World: queue window input as the window system would,
+/// end the run, and read back what reached the screen. A benchmark or a test drives the
+/// program through it (worlds/canvas-cpp's `Session`, the same four calls).
+pub trait Session {
+    /// The document's windows and scenes, as the World last read them.
+    fn shared(&self) -> std::cell::Ref<'_, Shared>;
+    /// Queue an input for the `Gui.Window` place at `window`, as a click or a key would.
+    fn input(&mut self, window: &prism_rtl::Path, value: prism_rtl::Pod);
+    /// End the run with `code` once the hook returns.
+    fn exit(&mut self, code: u8);
+    /// The last presented frame's colour, 0xRRGGBB, at logical `(x, y)` in the window for
+    /// the place at `window`; none outside it or before its first frame.
+    fn pixel(&self, window: &prism_rtl::Path, x: f64, y: f64) -> Option<u32>;
+}
+
+/// Calls into a hook from the loop. Each may be empty.
+#[derive(Default)]
+pub struct Hooks {
+    /// The loop has settled: no input is queued, no tick is owed, and every window has
+    /// presented the document's scenes since they last changed. Called each time the loop
+    /// would go to sleep.
+    pub settled: Option<Box<dyn FnMut(&mut dyn Session)>>,
+}
+
+/// [`run_with`], with `hooks` called from the loop.
+pub fn run_hooked<P: Program>(wrap: impl FnOnce(CanvasWorld) -> Box<dyn World>, hooks: Hooks) -> u8 {
     let shared = Rc::new(RefCell::new(Shared::default()));
     let font = Rc::new(font::Font::bundled());
     let world = wrap(CanvasWorld::new(shared.clone(), font.clone()));
@@ -55,7 +84,7 @@ pub fn run_with<P: Program>(wrap: impl FnOnce(CanvasWorld) -> Box<dyn World>) ->
             return EXIT_FAILED;
         }
     };
-    let mut app = app::App::<P>::new(world, shared, render::Renderer::new(font));
+    let mut app = app::App::<P>::new(world, shared, render::Renderer::new(font), hooks);
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("prism canvas: the event loop failed: {e}");
         return EXIT_FAILED;

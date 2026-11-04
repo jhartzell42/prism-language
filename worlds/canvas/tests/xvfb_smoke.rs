@@ -1,5 +1,5 @@
-//! A window on a real X server: a hand-written program (in docs/backend.md's shape) opens
-//! one `Gui.Window` with a `Gui.Scene` that fills a red rectangle. A second thread, a
+//! A window on a real X server: the program of tests/common opens one `Gui.Window` with a
+//! red rectangle in it. A second thread, a
 //! client of its own on the same display, waits until the rectangle's pixel on the root
 //! window is red (no window manager under Xvfb, so the window sits at the origin), then
 //! clicks it through XTest. The program hears the `Press` and tears both places down;
@@ -8,21 +8,16 @@
 //! With no `DISPLAY`, the test starts itself again under `xvfb-run -a`; with no `xvfb-run`
 //! it says so and passes. The child has 30 seconds.
 
-use std::rc::Rc;
+mod common;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use prism_rtl::*;
-use prism_world_canvas_rtl::world::gui;
+use common::{CENTRE, HEARD, SmokeProgram};
 
-/// Set when the window's first input reached the program.
-static HEARD: AtomicBool = AtomicBool::new(false);
 /// Set when the scene's red showed on the screen.
 static PAINTED: AtomicBool = AtomicBool::new(false);
 
-/// The rectangle the scene fills, in the window's (and, with no window manager, the
-/// screen's) pixels: its centre is where the robot looks and clicks.
-const CENTRE: (i32, i32) = (60, 35);
 
 /// The robot: look for red at the centre, then click there.
 #[cfg(target_os = "linux")]
@@ -63,60 +58,6 @@ fn robot() {
 
 #[cfg(not(target_os = "linux"))]
 fn robot() {}
-
-// @main:
-//     !input <- Gui.Window(title="Smoke", size=Extent(w=200.0, h=100.0))      # 0
-//     Gui.Scene(window=WindowId "Smoke", draw=[Draw.Rect(rect=.., paint=Red)]) # 1
-// and on `!input`'s first firing both places leave.
-struct Smoke {
-    path: Path,
-    open: std::cell::Cell<bool>,
-}
-
-impl Node for Smoke {
-    fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
-        if at != [Segment::Pos(0)] || !self.open.get() {
-            return Err(Fault::answer(format!("no answering place at {}", Path(at.to_vec()))));
-        }
-        let Pod::Choice(c, _) = v.structure() else { return Err(Fault::answer(format!("expected WindowInput, got {v}"))) };
-        eprintln!("smoke: the window sent {v}");
-        if &**c != "Press" {
-            return Ok(()); // a `Resized` before the click
-        }
-        HEARD.store(true, Ordering::SeqCst);
-        self.open.set(false);
-        cx.removed(self.path.at(0));
-        cx.removed(self.path.at(1));
-        Ok(())
-    }
-}
-
-struct SmokeProgram {
-    rt: Runtime,
-    root: Rc<Smoke>,
-}
-
-impl Program for SmokeProgram {
-    fn build(_: &[Pod], ready: &dyn ReadyState) -> Result<(Self, TickOut), Fault> {
-        let mut rt = Runtime::new();
-        let mut cx = rt.build(ready);
-        let root = Rc::new(Smoke { path: Path::root(), open: true.into() });
-        let window = Pod::element("Gui.Window", vec![("title", Pod::text("Smoke")), ("size", gui::extent(200.0, 100.0))]);
-        let id = cx.first_value(&window).ok_or(Fault::answer("Gui.Window unanswered"))?;
-        cx.added(root.path.at(0), window);
-        let rect = Pod::element("Draw.Rect", vec![("rect", gui::rect(10.0, 10.0, 100.0, 50.0)), ("paint", Pod::name("Red"))]);
-        cx.added(root.path.at(1), Pod::element("Gui.Scene", vec![("window", id), ("draw", Pod::Array(vec![rect]))]));
-        let out = rt.close(cx)?;
-        Ok((SmokeProgram { rt, root }, out))
-    }
-    fn tick(&mut self, input: &TickIn, ready: &dyn ReadyState) -> Result<TickOut, Fault> {
-        let root: Rc<dyn Node> = self.root.clone();
-        self.rt.tick(&root, input, ready)
-    }
-    fn compact(&mut self) {
-        self.rt.compact();
-    }
-}
 
 fn main() {
     if std::env::var_os("DISPLAY").is_some() {

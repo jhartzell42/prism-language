@@ -33,6 +33,7 @@ use winit::window::{Window, WindowId as OsWindowId};
 
 use crate::render::Renderer;
 use crate::world::{Shared, gui};
+use crate::{Hooks, Session};
 
 /// How long one wake-up of the loop may spend ticking before it lets the windows
 /// repaint and take input.
@@ -49,6 +50,10 @@ struct OsWindow {
     size: (f64, f64),
     /// The pointer, physical pixels, from the last `CursorMoved`.
     cursor: PhysicalPosition<f64>,
+    /// Asked to redraw and not yet presented.
+    damaged: bool,
+    /// The last frame presented, and its scale, for `Session::pixel`.
+    last: Option<(Pixmap, f64)>,
 }
 
 /// The program, its World, and the windows.
@@ -67,10 +72,11 @@ pub struct App<P: Program> {
     places: HashMap<OsWindowId, Path>,
     /// The code the run ends with, once something has ended it.
     pub exit: Option<u8>,
+    hooks: Hooks,
 }
 
 impl<P: Program> App<P> {
-    pub fn new(world: Box<dyn World>, shared: Rc<RefCell<Shared>>, renderer: Renderer) -> App<P> {
+    pub fn new(world: Box<dyn World>, shared: Rc<RefCell<Shared>>, renderer: Renderer, hooks: Hooks) -> App<P> {
         App {
             program: None,
             world,
@@ -82,6 +88,7 @@ impl<P: Program> App<P> {
             windows: BTreeMap::new(),
             places: HashMap::new(),
             exit: None,
+            hooks,
         }
     }
 
@@ -170,6 +177,8 @@ impl<P: Program> App<P> {
                     title: place.title.clone(),
                     size: place.size,
                     cursor: PhysicalPosition::new(0.0, 0.0),
+                    damaged: true,
+                    last: None,
                 })
             });
             match opened {
@@ -190,7 +199,8 @@ impl<P: Program> App<P> {
         // settled states").
         if shared.dirty && !self.pending {
             shared.dirty = false;
-            for w in self.windows.values() {
+            for w in self.windows.values_mut() {
+                w.damaged = true;
                 w.window.request_redraw();
             }
         }
@@ -212,8 +222,12 @@ impl<P: Program> App<P> {
             }
             buffer.present()
         });
-        if let Err(e) = shown {
-            eprintln!("prism canvas: cannot paint {:?}: {e}", w.title);
+        match shown {
+            Ok(()) => {
+                w.damaged = false;
+                w.last = Some((pixmap, w.window.scale_factor()));
+            }
+            Err(e) => eprintln!("prism canvas: cannot paint {:?}: {e}", w.title),
         }
     }
 
@@ -240,9 +254,13 @@ impl<P: Program> App<P> {
                     w.size = size;
                     shared.push_input(path.clone(), gui::resized(size.0, size.1));
                 }
+                w.damaged = true;
                 w.window.request_redraw();
             }
-            WindowEvent::ScaleFactorChanged { .. } => w.window.request_redraw(),
+            WindowEvent::ScaleFactorChanged { .. } => {
+                w.damaged = true;
+                w.window.request_redraw();
+            }
             _ => {}
         }
     }
@@ -307,7 +325,44 @@ impl<P: Program> ApplicationHandler for App<P> {
             event_loop.exit();
             return;
         }
-        let queued = !self.shared.borrow().queue.is_empty();
+        let mut queued = !self.shared.borrow().queue.is_empty();
+        if !more && !self.pending && !queued && self.windows.values().all(|w| !w.damaged) {
+            if let Some(mut settled) = self.hooks.settled.take() {
+                settled(&mut HookSession { app: self });
+                self.hooks.settled = Some(settled);
+                if self.exit.is_some() {
+                    event_loop.exit();
+                    return;
+                }
+                queued = !self.shared.borrow().queue.is_empty();
+            }
+        }
         event_loop.set_control_flow(if more || self.pending || queued { ControlFlow::Poll } else { ControlFlow::Wait });
+    }
+}
+
+/// The running World as a hook sees it.
+struct HookSession<'a, P: Program> {
+    app: &'a mut App<P>,
+}
+
+impl<P: Program> Session for HookSession<'_, P> {
+    fn shared(&self) -> std::cell::Ref<'_, Shared> {
+        self.app.shared.borrow()
+    }
+    fn input(&mut self, window: &Path, value: Pod) {
+        self.app.shared.borrow_mut().push_input(window.clone(), value);
+    }
+    fn exit(&mut self, code: u8) {
+        self.app.exit.get_or_insert(code);
+    }
+    fn pixel(&self, window: &Path, x: f64, y: f64) -> Option<u32> {
+        let (pixmap, scale) = self.app.windows.get(window)?.last.as_ref()?;
+        let (px, py) = ((x * scale).round(), (y * scale).round());
+        if px < 0.0 || py < 0.0 {
+            return None;
+        }
+        let p = pixmap.pixel(px as u32, py as u32)?;
+        Some((p.red() as u32) << 16 | (p.green() as u32) << 8 | p.blue() as u32)
     }
 }
