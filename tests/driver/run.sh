@@ -4,7 +4,9 @@
 # World, a row with `Ui.*` and no `Gui.*` refused (no World answers Ui elements alone), and
 # `--world` over all of it; a program with no `@main` has no root to run. Then prismc's
 # own options: an option it does not know, an unknown target, or an option missing its
-# value is refused, never ignored, and `prism compile --target cpp` writes C++.
+# value is refused, never ignored, and `prism compile --target cpp` writes C++. Last, chess
+# compiled to C++ runs under the C++ canvas World: its `main` calls the World and its
+# Makefile links it.
 #
 #   tests/driver/run.sh
 #
@@ -58,6 +60,14 @@ if ./prism compile --target cpp tests/driver/cli-root.prism -o "$out/cpp" > /dev
 else
     failed+=(compile-cpp)
     echo "FAILED compile-cpp: prism compile --target cpp wrote no C++ program (or a Cargo.toml)"
+fi
+if ./prism compile --target cpp examples/chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
+    grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&
+    make -s -C "$out/chess-cpp" -j"$(getconf _NPROCESSORS_ONLN)" > "$out/chess-cpp.log" 2>&1; then
+    echo "ok chess-cpp-canvas: built under the canvas World"
+else
+    failed+=(chess-cpp-canvas)
+    echo "FAILED chess-cpp-canvas: chess compiled to C++ does not call or link the canvas World ($out/chess-cpp.log)"
 fi
 
 if [ ${#failed[@]} -gt 0 ]; then
