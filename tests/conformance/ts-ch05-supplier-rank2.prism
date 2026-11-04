@@ -2,7 +2,7 @@
 # Type System ch. 2 ("the supplier is rank-2 in `o`") and ch. 5, "Refinement at tag
 # matches": an element's output variable confined to one function-typed parameter is
 # quantified at it, so an inline supplier answers each tag at that tag's own output, as a
-# named one with a signature does.
+# named one with a signature does (tests/checker/pos/supplier-named).
 emit Ui.* | Fs.*
 use Fs.*
 
@@ -24,13 +24,3 @@ fn Shown (Error(..)) = "(none)"
         Fs.Contents(..): @ $ (~ Contents(text="A"))
         Fs.File(..): @ never
         otherwise: @Element e
-
-@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
-fn @Supply p, e = match e:
-    Fs.Contents(..): @ $ (~ Contents(text="A"))
-    Fs.File(..): @ never
-    otherwise: @Element e
-
-@named: @unit
-@named:
-    ignore <- @HostDocument @child, @Supply                       # 0/[p]

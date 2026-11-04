@@ -1,0 +1,23 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# The supplier of ts-ch05-supplier-rank2 named, with a signature polymorphic in its
+# element's output (Type System ch. 5, "Refinement at tag matches"): its own `o`
+# instantiates fresh and unifies with the host's rank-2 one. (Lowering refuses a named
+# widget function as a supplier, gap NS, so this program is checked only.)
+emit Ui.* | Fs.*
+use Fs.*
+
+@child: @unit
+@child:
+    $~text <- Fs.Contents(path="a")                               # 0
+    !~got <- Fs.File(path="b", requests=never)                    # 1
+    Ui.Label(text=$"child")                                       # 2
+
+@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
+fn @Supply p, e = match e:
+    Fs.Contents(..): @ $ (~ Contents(text="A"))
+    Fs.File(..): @ never
+    otherwise: @Element e
+
+@named: @unit
+@named:
+    ignore <- @HostDocument @child, @Supply                       # 0/[p]

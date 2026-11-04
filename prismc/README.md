@@ -780,13 +780,22 @@ What the checker does not do yet, each with Claude's first ruling.
   argument's layer (pick LU). *First ruling:* keep LU; retry when a program needs it.
 - **RE `refinement-escape`.** A tag arm over a rigid output substitutes the arm's equality
   into the expected type, but outside variables are not made untouchable in the arm.
-  *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it, with the error, next.
+  A call's rank-2 variable (pick R2) reaching the call's result or a name of the scope
+  is `refinement-escape` (`Escaped`), a check no test reaches: a name's marks fix its
+  stack, so no outside name takes a free-headed output, and the rule confines the
+  variable to its parameter. *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it,
+  with the error, next.
 - **EE `existential-escape`.** `any e` solves its bounds at `e`'s type; an `any` meets only
   an `any`, and is never unpacked into a rigid variable at a parameter (doubt EP).
   *First ruling:* unpack at application, as ch. 5 says.
-- **R2 Suppliers' outputs are not rigid.** A host's supplier lambda gets a flexible `o`, not
-  one rigid per arm, so the dumps keep `o` as a variable. *First ruling:* rigid per arm
-  with the arm's equality, with RE.
+- **R2 Rank-2 element outputs** (Type System round 4 R2). An element's output variable
+  that appears only inside one function-typed parameter of a signature is quantified at
+  that parameter: at a call it is a fresh rigid variable (`RankTwo`, named `o'N`), so a
+  lambda given there has each tag arm refine it (`ts-ch05-supplier-rank2`), and a named
+  supplier's own `o` unifies with it (`pos/supplier-named`); one not polymorphic in it is
+  a `mismatch` (`neg/supplier-not-polymorphic`). Only element outputs: `fn (fn Nat -> b)
+  -> unit` still takes `\|n| Show n` (`pos/rank-one-callback`). Explicit type arguments
+  are never rigid.
 - **DG Binding groups.** Blocks are checked in BG's order, not dependency order, so a `let`
   used above its line is used at its monomorphic pre-bound type, and mutually dependent
   `let`s are not generalized together. *First ruling:* check in the dependency order the
@@ -1602,7 +1611,8 @@ naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
 a widget block's generalized `let` used at several instantiations (gap LW: one node
 field, its quantified variables refused; *first ruling:* a field per instantiation);
-`@HostList`; a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
+`@HostList`; a named widget function as a host's supplier (gap NS: a widget function is
+a node, not a value; a lambda supplier is lowered); a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); an element applied as a plain value and a live element's `$` field read in a plain
 function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s,
