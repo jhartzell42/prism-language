@@ -4,8 +4,8 @@
 # focus are Prism, in the program's own document (Semantics chapter 9, a thin World; D9).
 # Ported from prism-reflex's examples/gui/window.prism into the books' spelling; the layout
 # is prism-reflex's seed layout.md, unchanged. General on purpose: chess uses the grid, the
-# card games will use rows, layers and turned frames. Work in progress, subject to change;
-# not yet run.
+# card games will use rows, layers and turned frames. Chess runs on it under both canvas
+# Worlds, and the GUI benchmark (bench/gui) drives it. Subject to change.
 module Window
 emit r | Ui.* | Gui.*
 
