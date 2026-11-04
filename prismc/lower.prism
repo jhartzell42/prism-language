@@ -5486,7 +5486,13 @@ fn MovedBy sk, r:
     # a `@Flatten` over a `rebuild`'s dynamic that moved: the adoption among the next tick's
     # first firings, which is owed (Semantics ch. 7)
     let adoptions = Each (Filter sk.wx.flattens, \|fl| r == (OwnRead fl.outer)), \|fl| DoScope (Adoption fl)
-    Append (Append (Append (Append (Fold heights, flags, \|acc, h| Append acc, (AskWake sk, h)), marks), listed), answers), adoptions
+    Append (Append (Append (Append (Append (Fold heights, flags, \|acc, h| Append acc, (AskWake sk, h)), marks), listed), answers), adoptions), (SourceMarks sk.wx, r)
+
+# A write behind a `for`'s source marks the source's cache (gap SR): every write path, a
+# hold's sink, an answer or push at a place, a snapshot's publication, the block's write
+# a row hears, reaches here.
+SourceMarks: fn Wx, Read -> [Do]
+fn SourceMarks wx, r = Fold wx.builders, [[]], \|acc, b| if HasRead (ReadsClosed wx.dynReads, (Or wx.dynReads[b.source], [[]])), r: Push acc, (DoExpr (XMethod (XField XSelf, "{b.source}_cache"), "mark", [[XCx]])) else: acc
 
 # The snapshots a write behind a read marks: the structure itself (a host's `host_k_moved`
 # writes behind `host_k_doc_now` with no hold), or one whose live reads reach it.
@@ -6477,7 +6483,10 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     # The source as a getter of the block, which the builder and every row's entry read: a
     # dynamic `let` of the block for the marks.
     let srcGetter = "{name}_source"
-    let srcDef = MethDef(name=srcGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=(OutMap kt, vt), body=[[]], tail=src, doc="The source of the `for` at place {PlaceText pos} by key, at the read point: what its builder and its rows' entries read.")
+    # Computed once per write behind it (gap SR): an `rt::Cache`, marked by every write
+    # path through `MovedBy` (`SourceMarks`).
+    let srcCached = XMethod (XField XSelf, "{srcGetter}_cache"), "get", [[XCx, (XClosure False, [[]], src)]]
+    let srcDef = MethDef(name=srcGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=(OutMap kt, vt), body=[[]], tail=srcCached, doc="The source of the `for` at place {PlaceText pos} by key, at the read point: what its builder and its rows' entries read, computed once per write behind it.")
     let rowName = "{wx.node}{RowSuffix wx}Row"
     let locals = RowLocals benv, menv, body
     let rowFields = Append [[(("key", kt, "the row's key")), (("left_entry", (OutCell (OutOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (OutWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))
@@ -6488,8 +6497,8 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     # (`RowEnv`): a port node in the row, subscribed to the block's port, which the block's
     # event fires. The row's own graph indexes none of the block's events.
     let ((wx2p, rowWx0p, ports)) = RowEnv wx2a, rowWx0, menv, body
-    let wx2 = update wx2p:
-        &_.taken <= Push &_.taken, srcGetter
+    let wx2 = update (AddField wx2p, "{srcGetter}_cache", (OutNamed "Cache", [[(OutMap kt, vt)]]), "the source of the `for` at place {PlaceText pos}, cached (gap SR)", (XCall "Cache::new", [[]])):
+        &_.taken <= Append &_.taken, [[srcGetter, "{srcGetter}_cache"]]
         &_.getters <= Push &_.getters, srcDef
         &_.dynReads <= Insert &_.dynReads, srcGetter, reads
     let keyB = BnLocal (XVar "key"), Owned, kt
