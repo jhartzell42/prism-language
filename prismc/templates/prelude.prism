@@ -790,6 +790,31 @@ pub fn loop_turns<S: 'static>(state: S, step: impl Fn(S) -> Turn<Result<S, S>> +
     Rc::new(LoopingTurns { state: std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
 }
 
+/// A `for` of an `update` block whose body holds a cycle-point loop (D6, gap LP): a loop
+/// over its entries as `loop_turns` is over its condition, taking the next entry its
+/// test; `step` takes the block's state and an entry, a turn a job.
+fn for_turns<E: Clone + 'static, S: 'static>(entries: Vec<E>, state: S, step: impl Fn(S, E) -> Turn<S> + 'static) -> Rc<dyn Job<S>> {
+    let entries = Rc::new(entries);
+    let job = loop_turns((state, 0usize), move |(s, i): (S, usize)| match entries.get(i).cloned() {
+        Some(e) => match step(s, e) {
+            Turn::Finished(s2) => Turn::Finished(Ok((s2, i + 1))),
+            Turn::More(j) => call_then(j, move |s2| Turn::Finished(Ok((s2, i + 1)))),
+        },
+        None => Turn::Finished(Err((s, i))),
+    });
+    map_job(job, |(s, _)| s)
+}
+
+/// `for` over a map in a job (`for_turns`): the key and the entry, in key order.
+pub fn for_turns_keyed<K: Clone + 'static, V: Clone + 'static, S: 'static>(entries: impl IntoIterator<Item = (K, V)>, state: S, step: impl Fn(S, K, V) -> Turn<S> + 'static) -> Rc<dyn Job<S>> {
+    for_turns(entries.into_iter().collect(), state, move |s, (k, v)| step(s, k, v))
+}
+
+/// `for` over an array in a job (`for_turns`): the index and the entry.
+pub fn for_turns_indexed<V: Clone + 'static, S: 'static>(entries: impl IntoIterator<Item = V>, state: S, step: impl Fn(S, Nat, V) -> Turn<S> + 'static) -> Rc<dyn Job<S>> {
+    for_turns(entries.into_iter().enumerate().collect(), state, move |s, (i, v)| step(s, nat_of(i), v))
+}
+
 /// The job of a lambda of unbounded type: its body, run as a job body from its first
 /// cycle (prismc/README.md, pick JB).
 pub struct Once<B>(std::cell::RefCell<Option<Box<dyn FnOnce() -> Turn<B>>>>);

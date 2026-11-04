@@ -51,3 +51,21 @@ program reads like a shell script.
   `Prelude.Unwrap`.
 - A `#!` line: `prism run` with a cache, so a script starts as fast as a shell's.
 - Then `prism` itself as a Prism script under this World, compiled by prismc.
+
+## A design round: owed ticks after the prompt check
+
+Jimmy: "If anything use this to get rid of delay ticks." The checker refuses every prompt
+cycle through a structural dynamic, a host's `$doc` and a `for`'s or `rebuild`'s
+gathered result alike, without knowing which dynamics are structural. Claude's proposal,
+for a round before any code:
+
+- **The guarantee:** nothing that reads a structural dynamic feeds back into the
+  propagation that produced it in the same tick.
+- **What it allows:** after construction in tick n, a second propagation over only the
+  readers of structural dynamics, in the same tick, from the snapshot taken at the end of
+  construction. Readers see one consistent state (DV2 stays met), and tick n's patch
+  holds their results, with no owed tick.
+- **Where a tick is still owed:** a structural read that reaches construction again (a
+  `rebuild` or `for` whose key or arm depends on `$doc`).
+- **Cost:** the viewer's lag (VL) and chess's owed ticks per move shrink; the transcripts
+  pinning today's owed ticks change; the runtimes gain a second phase per tick.

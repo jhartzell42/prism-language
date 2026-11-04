@@ -572,14 +572,98 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
                 ? v:
-                    let ((t, st2, ignore)) = InstantiateWith st, v.scheme, span, explicit
+                    let ((t, st2i, inst)) = InstantiateWith st, v.scheme, span, explicit
+                    let ((rigids, st2)) = RankTwo st2i, v.scheme, inst, (Len explicit), span
                     let st3a = NoteCallee (NoteMethodUse st2, v, span), n.span, cspan, t
                     let st3 = if (BareName qk) == "Min": NoteSizeTy st3a, span, (Walk st3a, t) else: st3a
                     if (BareName qk) == "Fold" and v.home == "Prelude": FoldApp env, st3, t, args, span
-                    else: ApplyFn env, st3, name, t, args, span
+                    else:
+                        let ((rt, st4)) = ApplyFn env, st3, name, t, args, span
+                        ((rt, (Escaped env, st4, rigids, rt, name, span)))
                 nil: match env.g.ctors[qk]:
                     ? c: CtorApp env, st, c, args, span, cspan
                     nil: ((TyErr, (Err st, "unknown-name", n.span, "`{name}` has no signature line")))
+
+# The rank-2 rule (Type System ch. 5, "Refinement at tag matches"): an element's output
+# variable that appears only inside one function-typed parameter is quantified at that
+# parameter. At a call each such variable is a fresh rigid one, so a lambda given there
+# works for every output and its tag arms refine it; a named supplier's own variable
+# unifies with it. Explicit type arguments (`F<<T>>`) are never rigid.
+RankTwo: unbounded fn St, Scheme, Inst, Nat, Range -> (([Text], St))
+fn RankTwo st, sc, inst, nExplicit, span:
+    let qs = Filter (Range0 (Len sc.qs)), \|i| i >= nExplicit and IsRankTwo (Or sc.qs[i], ""), sc.ty
+    Fold qs, (([[]], st)), \|((acc, s)), i|
+        let q = Or sc.qs[i], ""
+        let rigid = "{q}'{s.next}"
+        let s2 = update s:
+            &_.next += 1
+        (((Push acc, rigid), (Unify s2, (Or inst.tys[q], TyErr), (TyRigid rigid), span)))
+
+IsRankTwo: fn Text, Ty -> Bool
+fn IsRankTwo q, t = match t:
+    TyFn ignore, ps, res:
+        let holding = Filter ps, \|p| QOccurs q, p
+        if (Len holding) != 1 or (QOccurs q, res): False
+        else: match holding[0]:
+            ? (TyFn ignore, ignore, ignore): ElemOutQ q, (Or holding[0], TyErr)
+            otherwise: False
+    otherwise: False
+
+# Whether the quantified variable `q` occurs in a type.
+QOccurs: fn Text, Ty -> Bool
+fn QOccurs q, t = match t:
+    TyQ n: n == q
+    TyCon ignore, args: Fold args, False, \|seen, a| seen or QOccurs q, a
+    TyFn ignore, ps, r: Fold ps, (QOccurs q, r), \|seen, a| seen or QOccurs q, a
+    TyTuple ts: Fold ts, False, \|seen, a| seen or QOccurs q, a
+    TyArray e: QOccurs q, e
+    TyMap k, v: (QOccurs q, k) or QOccurs q, v
+    TySig ignore, i: QOccurs q, i
+    TyAt i, ignore: QOccurs q, i
+    TyElem ignore, o: QOccurs q, o
+    TyAssoc ignore, i: QOccurs q, i
+    otherwise: False
+
+# Whether `q` is an element's output somewhere in a type (`Element R q`).
+ElemOutQ: fn Text, Ty -> Bool
+fn ElemOutQ q, t = match t:
+    TyElem ignore, o: o == (TyQ q) or ElemOutQ q, o
+    TyCon ignore, args: Fold args, False, \|seen, a| seen or ElemOutQ q, a
+    TyFn ignore, ps, r: Fold ps, (ElemOutQ q, r), \|seen, a| seen or ElemOutQ q, a
+    TyTuple ts: Fold ts, False, \|seen, a| seen or ElemOutQ q, a
+    TyArray e: ElemOutQ q, e
+    TyMap k, v: (ElemOutQ q, k) or ElemOutQ q, v
+    TySig ignore, i: ElemOutQ q, i
+    TyAt i, ignore: ElemOutQ q, i
+    otherwise: False
+
+# `refinement-escape`: a rank-2 variable of a call (`RankTwo`) reached a type outside the
+# argument it is quantified at: the call's result or a name of the scope (a block name the
+# argument's body unified with the element's output).
+Escaped: unbounded fn Env, St, [Text], Ty, Text, Range -> St
+fn Escaped env, st, rigids, rt, fname, span = Fold rigids, st, \|s, r|
+    let outside = Filter (Keys env.locals), \|k| HasRigid s, r, (Or env.locals[k], (Mono TyErr)).ty
+    if HasRigid s, r, rt: Err s, "refinement-escape", span, "the call's result takes the output of the element `{fname}`'s supplier answers, which is the supplier's alone (rank-2)"
+    else: match outside[0]:
+        ? k: Err s, "refinement-escape", span, "`{k}`, outside the supplier `{fname}` is given, takes the output of the element the supplier answers, which is the supplier's alone (rank-2)"
+        nil: s
+
+HasRigid: unbounded fn St, Text, Ty -> Bool
+fn HasRigid st, r, t = RigidIn r, (Zonk st, t)
+
+RigidIn: fn Text, Ty -> Bool
+fn RigidIn r, t = match t:
+    TyRigid n: n == r
+    TyCon ignore, args: Fold args, False, \|seen, a| seen or RigidIn r, a
+    TyFn ignore, ps, res: Fold ps, (RigidIn r, res), \|seen, a| seen or RigidIn r, a
+    TyTuple ts: Fold ts, False, \|seen, a| seen or RigidIn r, a
+    TyArray e: RigidIn r, e
+    TyMap k, v: (RigidIn r, k) or RigidIn r, v
+    TySig ignore, i: RigidIn r, i
+    TyAt i, ignore: RigidIn r, i
+    TyElem ignore, o: RigidIn r, o
+    TyAssoc ignore, i: RigidIn r, i
+    otherwise: False
 
 # A block-local type made outside every `&` block (ch. 5, pass 3; Semantics ch. 5).
 IsLocalMaker: fn Text -> Bool

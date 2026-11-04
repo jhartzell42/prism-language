@@ -391,7 +391,11 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`, by
   resolution, pick RN). A right side's reads are pick GH's walk, less what is not read
   where it is written: a lambda, a local `fn` or widget, a nested widget block, a
-  `rebuild` or a `for`, and a delayed binding's arguments. A lambda passed to a call is
+  `rebuild`'s or a `for`'s source and holds (building a row is never an edge, R7), and a
+  delayed binding's arguments. A `for`'s or a `rebuild`'s result is prompt in its rows'
+  other lines (Semantics ch. 7, a `for`'s consolidation), the checker not knowing which
+  dynamics are structural: a row reading its own `for`'s gathered result is a cycle, as a
+  host's child reading `$doc` is (`neg/sem-ch07-for-own-gather`). A lambda passed to a call is
   read, since the callee may call it now: a traversal's step, and a lambda given to any
   function but a prelude widget function (a supplier builds a blueprint, which is
   construction). `neg/prompt-lambda`'s `let a = Apply 1, \|x| x + b` reads `b`. A name a
@@ -828,13 +832,22 @@ What the checker does not do yet, each with Claude's first ruling.
   argument's layer (pick LU). *First ruling:* keep LU; retry when a program needs it.
 - **RE `refinement-escape`.** A tag arm over a rigid output substitutes the arm's equality
   into the expected type, but outside variables are not made untouchable in the arm.
-  *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it, with the error, next.
+  A call's rank-2 variable (pick R2) reaching the call's result or a name of the scope
+  is `refinement-escape` (`Escaped`), a check no test reaches: a name's marks fix its
+  stack, so no outside name takes a free-headed output, and the rule confines the
+  variable to its parameter. *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it,
+  with the error, next.
 - **EE `existential-escape`.** `any e` solves its bounds at `e`'s type; an `any` meets only
   an `any`, and is never unpacked into a rigid variable at a parameter (doubt EP).
   *First ruling:* unpack at application, as ch. 5 says.
-- **R2 Suppliers' outputs are not rigid.** A host's supplier lambda gets a flexible `o`, not
-  one rigid per arm, so the dumps keep `o` as a variable. *First ruling:* rigid per arm
-  with the arm's equality, with RE.
+- **R2 Rank-2 element outputs** (Type System round 4 R2). An element's output variable
+  that appears only inside one function-typed parameter of a signature is quantified at
+  that parameter: at a call it is a fresh rigid variable (`RankTwo`, named `o'N`), so a
+  lambda given there has each tag arm refine it (`ts-ch05-supplier-rank2`), and a named
+  supplier's own `o` unifies with it (`pos/supplier-named`); one not polymorphic in it is
+  a `mismatch` (`neg/supplier-not-polymorphic`). Only element outputs: `fn (fn Nat -> b)
+  -> unit` still takes `\|n| Show n` (`pos/rank-one-callback`). Explicit type arguments
+  are never rigid.
 - **DG Binding groups.** Blocks are checked in BG's order, not dependency order, so a `let`
   used above its line is used at its monomorphic pre-bound type, and mutually dependent
   `let`s are not generalized together. *First ruling:* check in the dependency order the
@@ -964,7 +977,7 @@ qualified path, a label) or a literal's digits, never syntax.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: all 69 pass, chess's board included.
+`tests/compiled/run.sh`, which runs every program every time: all 81 pass, chess's board included.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -984,7 +997,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `sem-ch05-update-loops` (a `for` and a guarded `match` as statements of an `update`),
   `sem-ch07-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
   `let`-bound lambda's own type gives them), `sem-ch07-while-guard` (a shrinking `while` is
-  one unit of work, gap LP), `sem-ch07-while-nested` (gap LP), `sem-ch07-lambda-cycle` (mutually recursive unbounded lambdas, a
+  one unit of work, gap LP), `sem-ch07-while-nested` and `sem-ch07-while-match-for` (gap LP), `sem-ch07-lambda-cycle` (mutually recursive unbounded lambdas, a
   cycle a call), `ts-ch02-row-values` (a row kind's values built, compared, shown,
   matched and sent inside an element, pick RV), `sem-ch09-bundle` (pick BA),
   `sem-ch08-widget-args` (pick WB), `sem-ch09-host-param` and `sem-ch09-host-dynamic-answer` (pick HO),
@@ -1039,7 +1052,7 @@ function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli/cpp
 `$CXX` (g++ by default) into `target/prism-cpp/NAME` and runs its tests under the C++
 Test World; `tests/compiled/run.sh --target cpp` runs every program so.
 
-- **Where it stands:** all 87 programs of `tests/compiled/run.sh` pass under C++ (every
+- **Where it stands:** every program of `tests/compiled/run.sh` passes under C++ (every
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
@@ -1281,8 +1294,9 @@ Each is Claude's, for Jimmy to overturn.
   name `twin_fn`), and each use names its instantiation's binding. A use inside another
   generalized `let` may be at that one's variables (prismc's `Take`, used in `Builder` at
   `Builder`'s color): it stands for each of `Builder`'s instantiations. A widget block's
-  `let` is a node field of one type: it is lowered at its uses' one instantiation
-  (`ts-ch02-function-values`'s `Double`), and at several it is refused (gap LW). So `let Twin = \|x| ((x,
+  `let` is a node field: at its uses' one instantiation it is one field
+  (`ts-ch02-function-values`'s `Double`), at several a field per instantiation, each
+  use naming its own (gap LW's first ruling, `ts-ch05-widget-let-generic`). So `let Twin = \|x| ((x,
   x))` used at Nat and at Text is two closures, each bounded where its uses are, and an
   unused parameter (`\|ignore, y| y`) is typed like any other (`ts-ch05-let-generic`). A
   `let` nothing uses is not lowered. A quantified variable that reaches the Rust anyway
@@ -1596,8 +1610,13 @@ ruling taken (Claude's).
   state that each branch ends in (`IfJob`); one in another loop's body makes that loop's
   turns jobs (`loop_turns`: a turn that reaches the inner loop ends after it, and the next
   test starts a cycle), so `sem-ch07-while-nested` costs what a top-level loop does (5 ticks for
-  3 turns under an `if`, 10 for 2 by 2). *Not yet:* an unshrinking `while` in a `match` or
-  a `for` of the block, which still turns within the cycle.
+  3 turns under an `if`, 10 for 2 by 2). A loop job in an arm of a `match` of the block binds
+  what follows the `match` once, as under an `if` (`MatchJob`); one in a `for` of the block
+  makes the `for` a loop over its entries whose test is taking the next one, each turn a
+  job (`ForJob`, the preludes' `for_turns_keyed` and `for_turns_indexed`), so
+  `sem-ch07-while-match-for` costs 5 ticks in a `match` and 9 for a `for` of two entries
+  of 2 and 1 turns. A loop job in a `for &s <- &_:` is refused (its references cannot
+  outlive a cycle).
 - **FA A field's `.` or `->`** is chosen by the receiver's type where `?Pointer` knows it,
   and only otherwise by its name, `->` when any node has a member of that name
   (`cp.members`). Where the type is not known, a value's field named as some node's
@@ -1661,7 +1680,7 @@ ruling taken (Claude's).
   breaking forwarding parity); the snapshot of n read by samples at n+1 beside the event
   carrying it (a sample in the event's tick would read the new value, against R2/R3); the
   event at n with the structure before n (a visible inconsistent state).
-- **DY Dynamics across nodes.** A row reads its block's events through ports, and its
+- **DY Dynamics across nodes.** A row (a `for`'s or a generation's) reads its block's events through ports (`RowEnv`: a port node in the row, subscribed to the block's port; `sem-ch04-row-block-event`, a row of a row through two), and its
   block's holds and dynamic `let`s through its parent at its own read point
   (`sem-ch07-paged`'s inner `rebuild $src`). A `for` row is marked by the block's writes
   of what it reads (`Wx.rowMarks`: its `ParentRead`s as the block's own, `RowWritten`),
@@ -1672,7 +1691,9 @@ ruling taken (Claude's).
   generation is told of no write, so an `!Updated` in it over a block name is refused
   loudly (`UpdatedGaps`). A row's port for a block event sits at height 0 in the row, below the
   event's height in the block; the runtime's clamp (`Cx::wake` at or below the running
-  height runs at the next) orders it. *Next:* the contract's `Dynamic` with its update
+  height runs at the next) orders it. An event reference names the node whose graph it
+  indexes (`EvRef.owner`); one read or wired in any other node crossed without a port,
+  a lowering bug, and is refused naming it (`Crossed`). *Next:* the contract's `Dynamic` with its update
   port.
 - **LE A live element's `$` field in a plain function.** A plain function is lifted:
   its `$` values are read at the caller's read point, and it has no `cx` to read a live
@@ -1685,30 +1706,34 @@ ruling taken (Claude's).
   block's publication of a structural dynamic (pick ST) is `HoldWritten` of its name, so
   the row's marks are already in it, but no test pins a row's `!Updated` over one. *First
   ruling:* refused loudly (`UpdatedGaps`). *Next:* a test, then the refusal goes.
-- **DM The document is read whole.** A host row's entry (`HostRow::entry`), the owner's
-  places over `$doc` and the host's builder each read `host_k_doc`, which builds the
-  child's whole document (every place's level, every row's), so a patch of `n` forwarded
-  elements costs `n` documents. *First ruling:* correctness first, as gap SR. *Next:* a
-  per-place getter from the owner, or an `rt::Cache` on the document marked by the child's
-  writes.
+- **DM The document is built whole once per marked tick.** A host row's entry
+  (`HostRow::entry`), the owner's places over `$doc` and the host's builder read the
+  document's snapshot (pick ST: `host_k_doc` and `host_k_doc_direct`), a persistent map
+  in both runtimes, so a read is a shared copy and a lookup, not a document. The live
+  computation `host_k_doc_now` still builds the child's whole document (every place's
+  level, every row's) when the child's writes marked it, once in that tick's
+  construction step: a tick that moves one of `n` places costs one document of `n`, not
+  `n` documents (`sem-ch09-hosts`, `sem-ch04-row-source`'s hosted test). *Next, if it
+  shows in a profile:* the snapshot updated per place from the child's writes, each
+  place's level recomputed only when its own reads moved.
 - **CL Clause choice.** A `rebuild` or a building `match`/`if` whose arms are widgets of
   several clauses needs the clause chosen at the build; generations do it for one clause
   only.
-- **SR A row's source is read per read.** Every read of a row's entry evaluates the
-  block's source getter (`Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`) and indexes it,
-  where the `Hold` it replaced was a clone (pick RE). *First ruling:* correctness first.
-  *Next:* an `rt::Cache` on the getter, marked by every write path (a hold's sink,
-  `@Machine`'s state, a push or a host's typed answer at a place), which docs/backend.md's
-  "Marks" already names for a shared computed behavior.
+- **SR A `for`'s source is computed once per write behind it.** The block's source getter
+  (`{name}_source`, `Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`), which the
+  builder and every row's entry read (pick RE), keeps its value in an `rt::Cache`
+  (`{name}_source_cache`), marked by every write path through `MovedBy`
+  (`SourceMarks`): a hold's sink, an answer or a push at a place, a snapshot's
+  publication, `@Machine`'s state, the block's write a row hears through its parent
+  (`sem-ch04-row-source`).
 
 ### Not lowered yet
 
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
 naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
-a widget block's generalized `let` used at several instantiations (gap LW: one node
-field, its quantified variables refused; *first ruling:* a field per instantiation);
-`@HostList`; a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
+`@HostList`; a named widget function as a host's supplier (gap NS: a widget function is
+a node, not a value; a lambda supplier is lowered); a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); an element applied as a plain value and a live element's `$` field read in a plain
 function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s,
