@@ -63,7 +63,8 @@ else
 fi
 if ./prism compile --target cpp examples/chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
     grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&
-    make -s -C "$out/chess-cpp" -j"$(getconf _NPROCESSORS_ONLN)" > "$out/chess-cpp.log" 2>&1; then
+    make -s -C "$out/chess-cpp" -j"$(getconf _NPROCESSORS_ONLN)" > "$out/chess-cpp.log" 2>&1 &&
+    [ -x "$out/chess-cpp/chess" ]; then
     echo "ok chess-cpp-canvas: built under the canvas World"
 else
     failed+=(chess-cpp-canvas)
