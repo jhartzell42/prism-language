@@ -311,6 +311,13 @@ PRISM_POD_LEAF(Path, "a path", return Pod::path(s);, if (auto q = p.if_path()) r
 
 #undef PRISM_POD_LEAF
 
+/// A cursor is plain data only on its way out (a `check` line's value, a transcript):
+/// `Cursor(at=N)`, as it shows. It is opaque, so nothing reads one back.
+template <>
+struct ToPod<Cursor> {
+    static Pod to_pod(const Cursor& c) { return Pod::record("Cursor", {{"at", Pod::int64(std::int64_t(c.at()))}}); }
+};
+
 template <>
 struct ToPod<Pod> {
     static Pod to_pod(const Pod& p) { return p; }

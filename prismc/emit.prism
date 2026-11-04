@@ -28,6 +28,7 @@ fn Type t = match t:
     OutBool: "bool"
     OutChar: "char"
     OutText: "Text"
+    OutCursor: "Cursor"
     OutUnit: "()"
     OutPath: "Path"
     OutDuration: "Duration"
@@ -120,7 +121,7 @@ fn Expression x = match x:
     XNone: "None"
     XBool b: if b: "true" else: "false"
     XNat d: if (Len d) <= 9: "Nat::from({d}u32)" else: "Nat::from_int(Int::from({d}i64)).unwrap()"
-    XInt d: if (Len (if (Take d, 1) == "-": Drop d, 1 else: d)) <= 18: "Int::from({d})" else: "Int::from({d}i64)"
+    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int::from({d})" else: "Int::from({d}i64)"
     XByte d: "{d}u8"
     XFloat d: d
     XIndex n: "{n}"
@@ -180,7 +181,7 @@ fn DecodeHead t = match t:
     otherwise: "<{Type t}>"
 
 Label: fn Text -> Text
-fn Label l = if (Take l, 1) == "'": l else: "'{l}"
+fn Label l = if (HasPrefix l, "'"): l else: "'{l}"
 
 # `Text::from(format!(..))`: the literal runs with their braces doubled, a `{}` per value.
 Format: unbounded fn [Ex] -> Text
@@ -215,7 +216,7 @@ fn FormatPiece (XText t) = FormatEscape (Escape t)
 fn FormatPiece other = "\{\}"
 
 FormatEscape: fn Text -> Text
-fn FormatEscape t = Concat (Each (Chars t), \|c| FormatEscapeChar c)
+fn FormatEscape t = MapChars t, \|c| FormatEscapeChar c
 
 FormatEscapeChar: fn Text -> Text
 fn FormatEscapeChar "\{" = "\{\{"
@@ -414,7 +415,7 @@ fn RustImpl i:
             "{fns}\n{Impl gens, "Show", head, "fn show(&self, p: &mut Printer)", "p.raw(&{shown}(self).to_string());"}"
         "Prelude.Eq":
             let fns = Join (Each i.methods, \|f| RustFn f), "\n"
-            let eq = Fold i.methods, "", \|acc, f| if (Take f.name, 2) != "ne" and acc == "": f.name else: acc
+            let eq = Fold i.methods, "", \|acc, f| if (not (HasPrefix f.name, "ne")) and acc == "": f.name else: acc
             "{fns}\n{Impl gens, "PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}"
         otherwise: "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body)), "\n")}\n\}\n"
 
@@ -487,7 +488,7 @@ fn ShowImpl t, head:
 
 # A field's Prism spelling: the Rust one without the `_` a keyword took.
 PrismField: fn Text -> Text
-fn PrismField f = if (Drop f, (Dec (Len f))) == "_": Take f, (Dec (Len f)) else: f
+fn PrismField f = if (LastChar f) == "_": BeforeLast f else: f
 
 ToPodImpl: unbounded fn TyDef, Text -> Text
 fn ToPodImpl t, head:

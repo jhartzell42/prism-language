@@ -307,6 +307,14 @@ pod_leaf!(char, "a Char", |s| Pod::Char(*s), Pod::Char(c) => *c);
 pod_leaf!(Text, "a Text", |s| Pod::Text(s.clone()), Pod::Text(t) => t.clone());
 pod_leaf!(Path, "a path", |s| Pod::Path(s.clone()), Pod::Path(p) => p.clone());
 
+/// A cursor is plain data only on its way out (a `check` line's value, a transcript):
+/// `Cursor(at=N)`, as it shows. It is opaque, so nothing reads one back.
+impl ToPod for crate::collections::Cursor {
+    fn to_pod(&self) -> Pod {
+        Pod::record("Cursor", vec![("at", Pod::int(i64::try_from(self.at()).expect("a text over 2^63 bytes")))])
+    }
+}
+
 impl ToPod for Pod {
     fn to_pod(&self) -> Pod {
         self.clone()

@@ -72,7 +72,7 @@ Each program `X.prism` has:
 | `Rgb ((Float, Float, Float))`, `Draw.Rect ((Rect, Color))` | `Rgb Float, Float, Float`; `Draw.Rect(rect=r, paint=p)`, a tag of the row kind `Draw` |
 | `Map xs, \|x\| ..` over an array | `Each xs, \|x\| ..`; `Map` takes pairs to a map |
 | `Append xs, x`, one element | `Push xs, x`; `Append` joins two arrays |
-| `Union2`, `Cat`, `Prefix t, n` | `Union`, `Append`, `Take t, n` |
+| `Union2`, `Cat`, `Prefix t, n` | `Union`, `Append`, `Before` of `?CursorAt t, n` (`TextBefore`: a text is cut at a cursor, its caret a byte offset) |
 | `Fold m, z, \|acc, k, v\| ..` over a map | `Fold (Keys m), z, ..` or `Fold (Values m), z, ..` |
 | `Mod a, b`, `Div a, b` | `a mod b`, `Or (a / b), 0` |
 | `IsSome x` | `x != nil`, or the pattern `? ignore` |

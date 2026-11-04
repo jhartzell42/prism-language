@@ -153,7 +153,7 @@ derive ^Eq, ^Show
 
 # The primitive types (prism_rt's own; prelude.prism declares none of them).
 IsPrimType: fn Text -> Bool
-fn IsPrimType n = HasText [["Bool", "unit", "Char", "Text", "Nat", "Int", "U8", "Float", "Path", "Duration"]], n
+fn IsPrimType n = HasText [["Bool", "unit", "Char", "Text", "Nat", "Int", "U8", "Float", "Path", "Duration", "Cursor"]], n
 
 QualKey: fn Text, Text -> Text
 fn QualKey m, name = if m == "": name else: "{m}.{name}"
@@ -173,10 +173,10 @@ fn DefNameSpan (DefSName n) = n.span
 fn DefNameSpan (DefOp ignore, r) = r
 
 IsLowerText: fn Text -> Bool
-fn IsLowerText t = IsLower (Take t, 1)
+fn IsLowerText t = IsLower (Head t)
 
 IsUpperText: fn Text -> Bool
-fn IsUpperText t = IsUpper (Take t, 1)
+fn IsUpperText t = IsUpper (Head t)
 
 # ---------------------------------------------------------------------------------------
 # Building the environment
@@ -1017,7 +1017,7 @@ fn Insert2 xs, i, x = Append (Push (Take xs, i), x), (Drop xs, i + 1)
 # lenses are out of this compiler (decisions.md), so one that passes is `unsupported`.
 LensCheck: fn St, Text, Type, Range -> St
 fn LensCheck st, name, t, span:
-    if (Take name, 1) != "&": st
+    if (not (HasPrefix name, "&")): st
     else: match t.kind:
         TFn ignore, ps, ignore:
             let refs = Filter ps, \|p| IsRefType p
@@ -1027,8 +1027,8 @@ fn LensCheck st, name, t, span:
 
 IsRefType: fn Type -> Bool
 fn IsRefType t = match t.kind:
-    TName n, ignore: (Take n.sigils, 1) == "&"
-    TSigiled s, ignore: (Take s, 1) == "&"
+    TName n, ignore: (HasPrefix n.sigils, "&")
+    TSigiled s, ignore: (HasPrefix s, "&")
     otherwise: False
 
 # `mark-function` (ch. 5, the full-stack name check): a function's name shows the
@@ -1038,8 +1038,8 @@ fn CheckMarkFunction st, name, t, span = match t:
     TyFn ignore, ignore, res:
         let want = HeadSigil st, res
         let marks = MarksOf name
-        let shown = Take marks, 1
-        let bare = Drop name, (Len marks)
+        let shown = Head marks
+        let bare = DropPrefix name, marks
         if shown == want or (Len marks) > 1 or bare == "" or not (IsUpperText bare): st
         else: ErrFix st, "mark-function", span, "`{name}` returns `{ShowTy st, res}`; name it `{want}{bare}`", "rename to `{want}{bare}`"
     otherwise: st
@@ -1315,7 +1315,7 @@ fn SolveOne g, st, givens, w:
         TyFlex ignore: (([[w]], st))
         TyErr: (([[]], st))
         TyRigid v:
-            if (Take w.cls, 6) == "Range " or w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], st))
+            if (HasPrefix w.cls, "Range ") or w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], st))
             else: if Fold givens, False, \|seen, ((gv, gc))| seen or (gv == v and HasText (SuperClosure g, gc), w.cls): (([[]], (Solved st, w, t, "given")))
             else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{v}`", "add `where {v}: ^{BareName w.cls}` to the signature")))
         TySig s, inner:
@@ -1327,16 +1327,16 @@ fn SolveOne g, st, givens, w:
 
 SolveAtHead: unbounded fn G, St, St, (fn St -> St), [((Text, Text))], Want, Ty -> (([Want], St))
 fn SolveAtHead g, st, s0, Restore, givens, w, t:
-    if (Take w.cls, 6) == "Range ": (([[]], Restore (LiteralRange s0, w, t)))
+    if (HasPrefix w.cls, "Range "): (([[]], Restore (LiteralRange s0, w, t)))
     else: if w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], Restore (SignedAt s0, w, t)))
     else: SolveClass g, st, s0, Restore, givens, w, t
 
 # `literal-range` (ch. 5, Literals): a literal out of range for its final type.
 LiteralRange: unbounded fn St, Want, Ty -> St
 fn LiteralRange st, w, t:
-    let lit = Drop w.cls, 6
-    let negative = (Take lit, 1) == "-"
-    let digits = if negative: Drop lit, 1 else: lit
+    let lit = DropPrefix w.cls, "Range "
+    let negative = (HasPrefix lit, "-")
+    let digits = if negative: AfterFirst lit else: lit
     let ?n = ?ParseNat digits
     match t:
         TyCon "Nat", [[]]: if negative and digits != "0": Err st, "literal-range", w.span, "`{lit}` does not fit `Nat`" else: st
@@ -1440,12 +1440,12 @@ fn DefaultWants g, st, givens:
         otherwise: acc
     let s2 = Fold flexVars, st, \|s, v|
         let classes = Each (Filter s.wants, \|w| (Walk s, w.ty) == (TyFlex v)), \|w| BareName w.cls
-        let defaultable = (HasText classes, "Num") and Fold classes, True, \|ok, c| ok and ((HasText [["Num", "Eq", "Ord", "Show", "Sub", "Signed"]], c) or (Take c, 6) == "Range ")
+        let defaultable = (HasText classes, "Num") and Fold classes, True, \|ok, c| ok and ((HasText [["Num", "Eq", "Ord", "Show", "Sub", "Signed"]], c) or (HasPrefix c, "Range "))
         if defaultable: update s:
             &_.tys <= Insert &_.tys, v, tInt
         else: s
     let s3 = SolveWants g, s2, givens, False
-    let leftover = Filter s3.wants, \|w| (IsFlexVar s3, w.ty) and (Take w.cls, 6) != "Range " and w.cls != "Prelude.Sub" and w.cls != "Prelude.Signed"
+    let leftover = Filter s3.wants, \|w| (IsFlexVar s3, w.ty) and (not (HasPrefix w.cls, "Range ")) and w.cls != "Prelude.Sub" and w.cls != "Prelude.Signed"
     let s4 = Fold leftover, s3, \|s, w|
         let s5 = update s:
             &_.file <= w.file

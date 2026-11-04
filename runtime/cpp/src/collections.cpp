@@ -61,39 +61,81 @@ std::string utf8_encode(std::u32string_view s) {
     return out;
 }
 
+std::string utf8_valid(std::string_view s) {
+    std::size_t i = 0;
+    while (i < s.size() && static_cast<unsigned char>(s[i]) < 0x80) ++i;
+    if (i == s.size()) return std::string(s);
+    // Past the ASCII prefix: decode and encode, which keeps well-formed UTF-8 as it is and
+    // reads a malformed byte as U+FFFD.
+    std::string out(s.substr(0, i));
+    out += utf8_encode(utf8_decode(s.substr(i)));
+    return out;
+}
+
 Text::Text(std::string_view utf8) {
-    if (!utf8.empty()) s_ = std::make_shared<const std::u32string>(utf8_decode(utf8));
+    if (utf8.empty()) return;
+    s_ = std::make_shared<const std::string>(utf8_valid(utf8));
+    end_ = s_->size();
 }
 
-Text::Text(std::u32string chars) {
-    if (!chars.empty()) s_ = std::make_shared<const std::u32string>(std::move(chars));
-}
-
-const std::u32string& Text::chars() const {
-    static const std::u32string none;
-    return s_ ? *s_ : none;
-}
-
-Text Text::take(std::size_t n) const {
-    if (n >= len()) return *this;
-    return Text(chars().substr(0, n));
-}
-
-Text Text::drop_front(std::size_t n) const {
-    if (n == 0) return *this;
-    if (n >= len()) return Text();
-    return Text(chars().substr(n));
+Text::Text(std::string&& utf8) {
+    if (utf8.empty()) return;
+    std::string valid = utf8_valid(utf8);
+    s_ = std::make_shared<const std::string>(valid == utf8 ? std::move(utf8) : std::move(valid));
+    end_ = s_->size();
 }
 
 Text Text::concat(const Text& other) const {
     if (other.is_empty()) return *this;
     if (is_empty()) return other;
-    return Text(chars() + other.chars());
+    std::string s;
+    s.reserve(len() + other.len());
+    s += view();
+    s += other.view();
+    Text t;
+    t.end_ = s.size();
+    t.s_ = std::make_shared<const std::string>(std::move(s));
+    return t;
 }
 
-std::optional<char32_t> Text::char_at(std::size_t i) const {
-    if (i >= len()) return std::nullopt;
-    return chars()[i];
+namespace {
+
+/// Whether byte `n` of `s` starts a character (or is its end).
+bool boundary(std::string_view s, std::size_t n) {
+    return n == s.size() || (n < s.size() && (static_cast<unsigned char>(s[n]) & 0xC0) != 0x80);
+}
+
+/// The length of the UTF-8 sequence a lead byte starts.
+std::size_t seq_len(unsigned char c) { return c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4; }
+
+/// The character of well-formed UTF-8 starting at byte `i`, `n` bytes long.
+char32_t decode_at(std::string_view s, std::size_t i, std::size_t n) {
+    unsigned char c = static_cast<unsigned char>(s[i]);
+    char32_t cp = n == 1 ? c : n == 2 ? c & 0x1F : n == 3 ? c & 0x0F : c & 0x07;
+    for (std::size_t k = 1; k < n; ++k) cp = (cp << 6) | (static_cast<unsigned char>(s[i + k]) & 0x3F);
+    return cp;
+}
+
+}  // namespace
+
+std::optional<Cursor> Cursor::at_byte(const Text& t, std::size_t n) {
+    if (!boundary(t.view(), n)) return std::nullopt;
+    return Cursor(t, n);
+}
+
+std::optional<std::pair<char32_t, Cursor>> Cursor::step() const {
+    std::string_view s = text_.view();
+    if (at_ >= s.size()) return std::nullopt;
+    std::size_t n = seq_len(static_cast<unsigned char>(s[at_]));
+    return std::pair<char32_t, Cursor>(decode_at(s, at_, n), Cursor(text_, at_ + n));
+}
+
+std::optional<std::pair<char32_t, Cursor>> Cursor::step_back() const {
+    std::string_view s = text_.view();
+    if (at_ == 0) return std::nullopt;
+    std::size_t i = at_ - 1;
+    while (i > 0 && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) --i;
+    return std::pair<char32_t, Cursor>(decode_at(s, i, at_ - i), Cursor(text_, i));
 }
 
 }  // namespace prism_rtl

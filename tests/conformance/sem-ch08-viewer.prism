@@ -7,7 +7,9 @@ use Ui.*
 
 Edit: fn Text, Key -> Text
 fn Edit text, (Letter s) = "{text}{s}"
-fn Edit text, Backspace = Take text, (Or ((Len text) -? 1), 0)
+fn Edit text, Backspace = match ?StepBack (Back text):
+    ? ((ignore, c)): Before c
+    nil: text
 
 ShowResponse: fn ~Contents -> Text
 fn ShowResponse (~ c) = c.text

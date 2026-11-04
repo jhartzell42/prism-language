@@ -249,21 +249,38 @@ fn ?Boxed p, e, !in = match e:
 # ---------------------------------------------------------------------------
 # The widget functions: each composes, keeping a hold or hosting its child (D10)
 
+# A text and where its caret is, a byte offset (Semantics Appendix B, Text): it is kept as
+# a number because every key makes a new text, and made a cursor again with `?CursorAt`.
 type Edit = record:
     text: Text
     cursor: Nat
 derive ^Eq, ^Show
 
 Apply: fn Edit, Key -> Edit
-fn Apply e, k = match k:
-    Char c: Edit "{Take e.text, e.cursor}{c}{Drop e.text, e.cursor}", e.cursor + 1
-    Left: Edit e.text, (Or (e.cursor -? 1), 0)
-    Right: if e.cursor == (Len e.text): e else: Edit e.text, e.cursor + 1
-    Backspace: match e.cursor -? 1:
-        ? back: Edit "{Take e.text, back}{Drop e.text, e.cursor}", back
-        nil: e
-    Tab: e
-    Enter: e
+fn Apply e, k = match ?CursorAt e.text, e.cursor:
+    nil: e
+    ? at: match k:
+        Char c:
+            let typed = "{c}"
+            Edit "{Before at}{typed}{After at}", e.cursor + (Len typed)
+        Left: match ?StepBack at:
+            ? ((ignore, prev)): Edit e.text, (At prev)
+            nil: e
+        Right: match ?Step at:
+            ? ((ignore, next)): Edit e.text, (At next)
+            nil: e
+        Backspace: match ?StepBack at:
+            ? ((ignore, prev)): Edit "{Before prev}{After at}", (At prev)
+            nil: e
+        Tab: e
+        Enter: e
+
+# The text before byte `n` of `t`, where an input's caret is; all of it when `n` is no
+# character boundary.
+TextBefore: fn Text, Nat -> Text
+fn TextBefore t, n = match ?CursorAt t, n:
+    ? at: Before at
+    nil: t
 
 @TextInput: fn Text, Text -> @$Text
 fn @TextInput name, initial:
@@ -438,11 +455,21 @@ fn ClickableAt r, chain = match ?Innermost chain:
 # ---- what the World measures: each distinct word of a label and the space, each button's
 # label, each input's text and its text up to the cursor
 
-# a text split at its spaces, a character at a time
+# a text split at its spaces, a character at a time, walked with a cursor
 Words: fn Text -> [Text]
 fn Words t:
-    let ((done, word)) = Fold (Indices (Len t)), (([[]], "")), \|acc, i| WordStep acc, (Take (Drop t, i), 1)
+    let ((done, word)) = update (([[]], "")):
+        let &c = Front t
+        while ? ((ignore, next)) <- ?Step &c:
+            &_ <= WordStep &_, (CharText &c)
+            &c <= next
     Finished done, word
+
+# The character at a cursor as a one-character text: the start of the text after it.
+CharText: fn Cursor -> Text
+fn CharText c = match ?Step (Front (After c)):
+    ? ((ignore, one)): Before one
+    nil: ""
 
 WordStep: fn (([Text], Text)), Text -> (([Text], Text))
 fn WordStep ((done, word)), c = if c == " ": (((Finished done, word), "")) else: ((done, "{word}{c}"))
@@ -463,7 +490,7 @@ TextsOf: fn Elem -> (Text ==> unit)
 fn TextsOf e = match e:
     Ui.Label(text=$t): WordSet $t
     Ui.Button(label=$l): {$l: unit}
-    Ui.TextInput(text=$t, cursor=$c, ..): {$t: unit, (Take $t, $c): unit}
+    Ui.TextInput(text=$t, cursor=$c, ..): {$t: unit, (TextBefore $t, $c): unit}
     Ui.VBox(children=$cs): TextsIn $cs
     Ui.HBox(children=$cs): TextsIn $cs
     Ui.Row(children=$cs, ..): TextsIn $cs
@@ -532,7 +559,7 @@ fn LayButton env, l, room, chain:
 # a white box, the text, and a caret bar when the input has focus
 InputDraw: fn Env, Rect, [Path], Text, Nat -> [Draw]
 fn InputDraw env, r, chain, t, c:
-    let caretX = r.x + 4.0 + (TextExtent env, (Take t, c)).w
+    let caretX = r.x + 4.0 + (TextExtent env, (TextBefore t, c)).w
     let caret = match env.?focus:
         ? f if f == chain: [[Draw.Rect(rect=(Rect caretX, r.y + 3.0, 2.0, r.h - 6.0), paint=Ink)]]
         otherwise: [[]]

@@ -18,8 +18,9 @@ emit r
 # Types (Appendix B, Types)
 # ---------------------------------------------------------------------------------------
 
-# `Bool`, `unit`, `Char`, `Text`, `Nat`, `Int`, `U8`, `Duration`, `Path` are the
-# runtime's own (prism_rt's `Value`); they need no declaration here.
+# `Bool`, `unit`, `Char`, `Text`, `Nat`, `Int`, `U8`, `Duration`, `Path` and `Cursor` are
+# the runtime's own; they need no declaration here. A `Cursor` (Appendix B, Text) is
+# opaque: a text and a byte position in it, on a character boundary.
 
 # What `Compare` answers (Type System ch. 3, `^Ord`).
 type Ordering = choice:
@@ -52,13 +53,6 @@ type Span = record:
     line: Nat
     column: Nat
     binding: Text
-derive ^Eq, ^Ord, ^Show
-
-# A position in a text, for `?Step` (Appendix B, Text; TD-V1). `Offset` is opaque in the
-# book; here it is the character index.
-type Cursor = record:
-    text: Text
-    at: Nat
 derive ^Eq, ^Ord, ^Show
 
 # What one cycle of a job gives (Appendix B, Types; Semantics ch. 7).
@@ -118,11 +112,16 @@ trait ^Pod t:
 # Arrays (Appendix B, Arrays)
 # ---------------------------------------------------------------------------------------
 
-# One name for arrays, texts and maps (doubt LZ). Constant.
+# One name for arrays, texts and maps (doubt LZ): elements, bytes, entries. Constant.
 Len: fn a -> Nat
 
 # Logarithmic.
 Append: fn [a], [a] -> [a]
+
+# The first `n` elements, and the rest; logarithmic. An array only: a text is cut at a
+# cursor (`Before`, `After`).
+Take: fn [a], Nat -> [a]
+Drop: fn [a], Nat -> [a]
 
 # Amortised constant.
 Push: fn [a], a -> [a]
@@ -164,16 +163,24 @@ Map: fn [((k, v))] -> (k ==> v)
 Union: fn (k ==> v), (k ==> v) -> (k ==> v)
 
 # ---------------------------------------------------------------------------------------
-# Text (Appendix B, Text)
+# Text (Appendix B, Text; round 4 TX)
 # ---------------------------------------------------------------------------------------
 
-# Logarithmic, by a rope. Over an array, the same cut.
-Take: fn a, Nat -> a
-Drop: fn a, Nat -> a
+# A text is UTF-8: a position in it is a byte index, and its characters are walked with a
+# cursor. Nothing counts or indexes characters; `t[i]`, `Take` and `Drop` on a text are
+# type errors. Texts order bytewise. Each constant but `Upper`, `Lower` and `Split`.
+Front: fn Text -> Cursor
+Back: fn Text -> Cursor
+?Step: fn Cursor -> ?((Char, Cursor))
+?StepBack: fn Cursor -> ?((Char, Cursor))
+Before: fn Cursor -> Text
+After: fn Cursor -> Text
+At: fn Cursor -> Nat
+?CursorAt: fn Text, Nat -> ?Cursor
 Upper: fn Text -> Text
 Lower: fn Text -> Text
+# Not in Appendix B: the pieces between the separators; an empty separator is refused.
 Split: fn Text, Text -> [Text]
-?Step: fn Cursor -> ?((Char, Cursor))
 ?ParseNat: fn Text -> ?Nat
 
 ~ParseNat: fn Text -> ~Nat

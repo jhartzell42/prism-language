@@ -49,8 +49,8 @@ tag Prismc.Refused of Fault
 
 # The front end over one file, run through `@Run` (decisions.md D7: the parser is
 # `unbounded`).
-Front: unbounded fn Job -> Outcome
-fn Front job:
+FrontEnd: unbounded fn Job -> Outcome
+fn FrontEnd job:
     if job.tokens:
         let lexed = LexFile job.text
         let report = RenderDiags job.text, lexed.diags
@@ -68,21 +68,22 @@ fn AnyErrors ds = Fold ds, False, \|seen, d| seen or d.stage != "out"
 RenderDiags: fn Text, [Diag] -> Text
 fn RenderDiags text, ds:
     let starts = LineStarts text
-    Join (Each ds, \|d| RenderDiag starts, d), "\n"
+    Join (Each ds, \|d| RenderDiag text, starts, d), "\n"
 
-RenderDiag: fn [Nat], Diag -> Text
-fn RenderDiag starts, d:
+# Columns count characters, as `prism_syntax` does.
+RenderDiag: fn Text, [Nat], Diag -> Text
+fn RenderDiag text, starts, d:
     let line = LineOf starts, d.span.start
-    let col = (Or (d.span.start -? (Or starts[line], 0)), 0) + 1
+    let col = (ColumnOf text, (Or starts[line], 0), d.span.start) + 1
     let at = "{line + 1}:{col}"
     match d.?feature:
         ? f: "{at}: out of scope ({f}): {d.message}"
         nil: "{at}: {d.message}"
 
-# Where each line begins, as a character offset.
+# Where each line begins, as a byte offset.
 LineStarts: fn Text -> [Nat]
 fn LineStarts text:
-    let ((starts, ignore)) = Fold (Chars text), (([[0]], 0)), \|((acc, i)), c| if c == "\n": (((Push acc, i + 1), i + 1)) else: ((acc, i + 1))
+    let ((starts, ignore)) = Fold (Split text, "\n"), (([[]], 0)), \|((acc, at)), line| (((Push acc, at), at + (Len line) + 1))
     starts
 
 # The zero-based line holding an offset: the last line that starts at or before it.
@@ -114,7 +115,7 @@ fn BadOptions args, flags, valued:
     let ((bad, owed)) = Fold args, (([[]], "")), \|((acc, owed)), a|
         if owed != "": ((acc, ""))
         else: if HasText valued, a: ((acc, a))
-        else: if (Take a, 1) == "-" and not (HasText flags, a): (((AddText acc, "unknown option {a}"), ""))
+        else: if (HasPrefix a, "-") and not (HasText flags, a): (((AddText acc, "unknown option {a}"), ""))
         else: ((acc, ""))
     if owed == "": bad else: AddText bad, "{owed} takes a value"
 
@@ -132,7 +133,7 @@ fn PlainArgs args:
     let ((kept, ignore)) = Fold args, (([[]], False)), \|((acc, skip)), a|
         if skip: ((acc, False))
         else: if HasText takesValue, a: ((acc, True))
-        else: if (Take a, 2) == "--": ((acc, False))
+        else: if (HasPrefix a, "--"): ((acc, False))
         else: (((Push acc, a), False))
     kept
 
@@ -169,7 +170,7 @@ AnyIn: fn [Text], [Text] -> Bool
 fn AnyIn xs, ys = Fold xs, False, \|seen, x| seen or HasText ys, x
 
 RenderParse: fn Text, Text, [Diag] -> Text
-fn RenderParse path, text, ds = Concat (Each (Filter ds, \|d| d.stage != "out"), \|d| "{path}:{RenderDiag (LineStarts text), d}\n")
+fn RenderParse path, text, ds = Concat (Each (Filter ds, \|d| d.stage != "out"), \|d| "{path}:{RenderDiag text, (LineStarts text), d}\n")
 
 @main:
     args <- Process.Args
@@ -242,7 +243,7 @@ fn @WriteOut (? path), text:
 fn @FrontMain args:
     let tokens = Fold args, False, \|seen, a| seen or a == "--tokens"
     let fragment = Fold args, False, \|seen, a| seen or a == "--fragment"
-    let names = Fold args, [[]], \|acc, a| if (Take a, 2) == "--": acc else: Push acc, a
+    let names = Fold args, [[]], \|acc, a| if (HasPrefix a, "--"): acc else: Push acc, a
     let file = Or names[0], ""
     let out = Or names[1], "{file}.sexp"
     $~source <- Fs.Contents(path=file)
@@ -254,7 +255,7 @@ fn @FrontMain args:
 fn @Compile job, file, out, (~ c):
     let full = update job:
         &_.text <= c.text
-    !done <- @Run Front, full
+    !done <- @Run FrontEnd, full
     $?outcome <- nil then ? !done
     ignore <- rebuild $?outcome:
         @Finish out, _
@@ -322,7 +323,7 @@ IsSourcePath: fn Text -> Bool
 fn IsSourcePath f = (EndsWithText f, ".prism") or EndsWithText f, ".prismtest"
 
 EndsWithText: fn Text, Text -> Bool
-fn EndsWithText t, suffix = (Len t) >= (Len suffix) and (Drop t, (Or ((Len t) -? (Len suffix)), 0)) == suffix
+fn EndsWithText t, suffix = HasSuffix t, suffix
 
 # `..` per directory of OUT, which is relative to the repository root.
 RuntimeFor: fn Text -> Text
@@ -336,7 +337,7 @@ fn CompileFiles args:
     let ((kept, ignore)) = Fold args, (([[]], False)), \|((acc, skip)), a|
         if skip: ((acc, False))
         else: if HasText compileValued, a: ((acc, True))
-        else: if (Take a, 1) == "-": ((acc, False))
+        else: if (HasPrefix a, "-"): ((acc, False))
         else: (((Push acc, a), False))
     kept
 
@@ -445,7 +446,7 @@ fn IsTestDecl d = match d.kind:
 # declarations of its module (examples/README.md) and has no `module` line of its own.
 WithTests: fn Text, Text, [((Text, Text))] -> Text
 fn WithTests path, text, tests:
-    let stem = Take path, (Or ((Len path) -? 6), 0)
+    let stem = Or (?BeforeSuffix path, ".prism"), path
     Fold tests, text, \|acc, ((tp, tt))| if tp == "{stem}.prismtest": "{acc}\n{tt}" else: acc
 
 # Writes the crate, and gives up with the diagnostics when the compile failed.

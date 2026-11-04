@@ -418,7 +418,7 @@ let noSName = SName(sigils="", path=[[]], span=noRange)
 let noIdent = Ident(name="", span=noRange)
 
 IsUpperName: fn SName -> Bool
-fn IsUpperName n = IsUpper (Take (Or (?Last n.path), ""), 1)
+fn IsUpperName n = IsUpper (Head (Or (?Last n.path), ""))
 
 # Applied later: an uppercase name or a reserved lowercase constructor.
 IsCallee: fn SName -> Bool
@@ -656,7 +656,7 @@ ParseDefName: fn Ps -> ((DefName, Ps))
 fn ParseDefName p = match Kind p:
     KName n:
         let ((name, q)) = ParseSName p
-        let lens = (Take n.sigils, 1) == "&" and (IsUpperName name)
+        let lens = (HasPrefix n.sigils, "&") and (IsUpperName name)
         let q2 = if lens: OutOfScope q, name.span, "named lenses `&Home` and `Over`", "the named lens `{NameText name}` is out of this compiler" else: q
         ((DefSName name, q2))
     KOp op, ignore if p.inTrait:
@@ -1737,7 +1737,7 @@ fn ParseUpdateStmt p:
 # `ref ::= "&_" lens* | "&" lname lens* | "&" uname ref` (Appendix A.6).
 ParseReference: unbounded fn Ps -> ((Expr, Ps))
 fn ParseReference p = match Kind p:
-    KName n if (Take n.sigils, 1) == "&":
+    KName n if (HasPrefix n.sigils, "&"):
         let start = Here p
         let ((name, p1)) = ParseSName p
         if IsUpperName name:
@@ -2408,14 +2408,12 @@ fn PlainOf ignore = ""
 ParseNatText: fn Text -> Nat
 fn ParseNatText text0:
     let text = Concat (Split text0, "_")
-    let prefix = Take text, 2
-    let digits = Drop text, 2
-    if prefix == "0x": Or (?ParseHex digits), 0
-    else: if prefix == "0o": Or (?ParseRadix digits, 8), 0
-    else: if prefix == "0b": Or (?ParseRadix digits, 2), 0
+    if HasPrefix text, "0x": Or (?ParseHex (DropPrefix text, "0x")), 0
+    else: if HasPrefix text, "0o": Or (?ParseRadix (DropPrefix text, "0o"), 8), 0
+    else: if HasPrefix text, "0b": Or (?ParseRadix (DropPrefix text, "0b"), 2), 0
     else: Or (?ParseNat text), 0
 
 ?ParseRadix: fn Text, Nat -> ?Nat
 fn ?ParseRadix t, radix:
     require t != "" and (AllChars t, \|c| (IsDigit c) and (HexValue c) < radix)
-    ? Fold (Chars t), 0, \|n, c| n * radix + (HexValue c)
+    ? FoldChars t, 0, \|n, c| n * radix + (HexValue c)

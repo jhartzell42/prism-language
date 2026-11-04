@@ -132,7 +132,7 @@ derive ^Eq, ^Show
 # The text, the cursor and the diagnostics, which every stream shares, and one stream's own
 # state, which `Fresh` starts over for a nested stream.
 type Lex = record:
-    cs: [Text]
+    src: Text
     pos: Nat
     diags: [Diag]
     mode: Mode
@@ -153,7 +153,7 @@ type Lex = record:
 derive ^Eq, ^Show
 
 Fresh: fn Lex, Mode -> Lex
-fn Fresh l, mode = Lex(cs=l.cs, pos=l.pos, diags=l.diags, mode=mode, tokens=[[]], layout=[[]],
+fn Fresh l, mode = Lex(src=l.src, pos=l.pos, diags=l.diags, mode=mode, tokens=[[]], layout=[[]],
     frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingSpan=Range(start=0, end=0),
     lineFirst=0, markLineStart=False, firstLine=True, testPending="", testDepth=nil,
     checkDepth=nil, pathNext=False)
@@ -178,38 +178,131 @@ Pop: fn [a] -> [a]
 fn Pop xs = Take xs, (Dec (Len xs))
 
 Join: fn [Text], Text -> Text
-fn Join xs, sep = Drop (Concat (Each xs, \|x| "{sep}{x}")), (Len sep)
+fn Join xs, sep = match xs[0]:
+    ? first: Concat (Fold (Drop xs, 1), [[first]], \|acc, x| Push (Push acc, sep), x)
+    nil: ""
 
-Chars: fn Text -> [Text]
-fn Chars t = Split t, ""
+# Texts are walked with cursors (Semantics Appendix B, Text): a position is a byte index,
+# and a character is reached by stepping to it. A character here is a one-character text,
+# a view of the text it is in (README, pick CH).
+
+# The character at a cursor, or `""` at the end.
+CharAt: fn Cursor -> Text
+fn CharAt c = match ?Step (Front (After c)):
+    ? ((ignore, one)): Before one
+    nil: ""
+
+# The first character of `t`, and `t` after it.
+Head: fn Text -> Text
+fn Head t = CharAt (Front t)
+
+AfterFirst: fn Text -> Text
+fn AfterFirst t = match ?Step (Front t):
+    ? ((ignore, c)): After c
+    nil: ""
+
+# The last character of `t`, and `t` before it.
+LastChar: fn Text -> Text
+fn LastChar t = match ?StepBack (Back t):
+    ? ((ignore, c)): After c
+    nil: ""
+
+BeforeLast: fn Text -> Text
+fn BeforeLast t = match ?StepBack (Back t):
+    ? ((ignore, c)): Before c
+    nil: ""
+
+# The bytes of `t` from `a` to `b`, two character boundaries (a span's ends, a lexer's
+# positions); `""` when either is not one.
+Between: fn Text, Nat, Nat -> Text
+fn Between t, a, b = match ?CursorAt t, b:
+    ? cb: match ?CursorAt (Before cb), a:
+        ? ca: After ca
+        nil: ""
+    nil: ""
+
+# `t` after the prefix `p`, when it starts with it.
+?AfterPrefix: fn Text, Text -> ?Text
+fn ?AfterPrefix t, p = match ?CursorAt t, (Len p):
+    ? c: if (Before c) == p: ? (After c) else: nil
+    nil: nil
+
+HasPrefix: fn Text, Text -> Bool
+fn HasPrefix t, p = (?AfterPrefix t, p) != nil
+
+# `t` without `p` at its start; `t` itself when it does not start with it.
+DropPrefix: fn Text, Text -> Text
+fn DropPrefix t, p = Or (?AfterPrefix t, p), t
+
+# `t` before the suffix `s`, when it ends with it.
+?BeforeSuffix: fn Text, Text -> ?Text
+fn ?BeforeSuffix t, s = match (Len t) -? (Len s):
+    ? n: match ?CursorAt t, n:
+        ? c: if (After c) == s: ? (Before c) else: nil
+        nil: nil
+    nil: nil
+
+HasSuffix: fn Text, Text -> Bool
+fn HasSuffix t, s = (?BeforeSuffix t, s) != nil
+
+# `Fold` over the characters of `t`, front to back.
+FoldChars: fn Text, b, (fn b, Text -> b) -> b
+fn FoldChars t, z, F = update z:
+    let &c = Front t
+    while ? ((ignore, next)) <- ?Step &c:
+        &_ <= F &_, (CharAt &c)
+        &c <= next
+
+# Each character of `t` replaced by a text.
+MapChars: fn Text, (fn Text -> Text) -> Text
+fn MapChars t, F = Concat (FoldChars t, [[]], \|acc, c| Push acc, (F c))
+
+# How many characters `t` has: a column on a screen, in a line of source.
+CountChars: fn Text -> Nat
+fn CountChars t = FoldChars t, 0, \|n, ignore| n + 1
+
+# The column of byte `offset` in a line that starts at byte `from`, in characters.
+ColumnOf: fn Text, Nat, Nat -> Nat
+fn ColumnOf text, from, offset = CountChars (Between text, from, offset)
 
 # Every character of `t` satisfies `P`.
 AllChars: fn Text, (fn Text -> Bool) -> Bool
-fn AllChars t, P = Fold (Chars t), True, \|ok, c| ok and P c
+fn AllChars t, P = FoldChars t, True, \|ok, c| ok and P c
+
+# `t` without the characters among `set` at its start, or at its end.
+TrimLeading: fn Text, Text -> Text
+fn TrimLeading t, set:
+    let c = update Front t:
+        while ? ((ignore, next)) <- ?Step &_ if Contains set, (CharAt &_):
+            &_ <= next
+    After c
+
+# `?StepBack` shrinks nothing the shrink check knows (Semantics ch. 7 names `?Step`), so a
+# walk back takes fuel: a text has no more characters than bytes.
+TrimTrailing: fn Text, Text -> Text
+fn TrimTrailing t, set:
+    let c = update Back t:
+        let &fuel = Len t
+        while ? left <- &fuel -? 1:
+            &fuel <= left
+            match ?StepBack &_:
+                ? ((ignore, prev)) if Contains set, (CharAt prev): &_ <= prev
+                otherwise: &fuel <= 0
+    Before c
 
 # `t` without the spaces and carriage returns at its start, its end, or both.
 TrimStart: fn Text -> Text
-fn TrimStart t = Drop t, (LeadingIn t, " \u{d}")
+fn TrimStart t = TrimLeading t, " \u{d}"
 
 TrimEnd: fn Text -> Text
-fn TrimEnd t = Take t, (Or ((Len t) -? (LeadingIn (Reverse t), " \u{d}")), 0)
+fn TrimEnd t = TrimTrailing t, " \u{d}"
 
 Trim: fn Text -> Text
 fn Trim t = TrimEnd (TrimStart t)
 
-Reverse: fn Text -> Text
-fn Reverse t = Fold (Chars t), "", \|acc, c| "{c}{acc}"
-
-# How many characters at the start of `t` are among `set`.
+# How many bytes at the start of `t` are characters among `set` (for spaces, a count).
 LeadingIn: fn Text, Text -> Nat
-fn LeadingIn t, set = update 0:
-    let cs = Chars t
-    let &fuel = Len cs
-    while ? left <- &fuel -? 1:
-        &fuel <= left
-        match cs[&_]:
-            ? c if Contains set, c: &_ += 1
-            otherwise: &fuel <= 0
+fn LeadingIn t, set = Or ((Len t) -? (Len (TrimLeading t, set))), 0
 
 Contains: fn Text, Text -> Bool
 fn Contains set, c = c != "" and (Len (Split set, c)) > 1
@@ -251,58 +344,78 @@ fn IsSpaceChar c = c == " " or c == "\n" or c == "\u{d}" or c == "\t"
 IsReservedCtor: fn Text -> Bool
 fn IsReservedCtor w = w == "templatetext" or w == "templateplaceholder"
 
-# The ASCII characters by code point: what `\u{hex}` can name in prismc (README, gap UC),
-# and how the S-expression printer names a control character.
-let asciiTable = Chars "\u{0}\u{1}\u{2}\u{3}\u{4}\u{5}\u{6}\u{7}\u{8}\u{9}\u{a}\u{b}\u{c}\u{d}\u{e}\u{f}\u{10}\u{11}\u{12}\u{13}\u{14}\u{15}\u{16}\u{17}\u{18}\u{19}\u{1a}\u{1b}\u{1c}\u{1d}\u{1e}\u{1f} !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|\}~\u{7f}"
+# The ASCII characters by code point, one byte each, so a character's code point is its
+# byte index: what `\u{hex}` can name in prismc (README, gap UC), and how the
+# S-expression printer names a control character.
+let asciiText = "\u{0}\u{1}\u{2}\u{3}\u{4}\u{5}\u{6}\u{7}\u{8}\u{9}\u{a}\u{b}\u{c}\u{d}\u{e}\u{f}\u{10}\u{11}\u{12}\u{13}\u{14}\u{15}\u{16}\u{17}\u{18}\u{19}\u{1a}\u{1b}\u{1c}\u{1d}\u{1e}\u{1f} !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|\}~\u{7f}"
 
-let hexDigits = Chars "0123456789abcdef"
+let hexDigits = "0123456789abcdef"
 
-# The value of a hexadecimal digit.
+# The character at byte `n` of `t`, `""` when there is none.
+CharAtByte: fn Text, Nat -> Text
+fn CharAtByte t, n = match ?CursorAt t, n:
+    ? c: CharAt c
+    nil: ""
+
+# The value of a hexadecimal digit (16 for anything else): its byte index in `hexDigits`.
 HexValue: fn Text -> Nat
-fn HexValue c = update 0:
+fn HexValue c:
     let l = Lower c
-    let &fuel = Len hexDigits
-    while ? left <- &fuel -? 1:
-        &fuel <= left
-        match hexDigits[&_]:
-            ? d if d != l: &_ += 1
-            otherwise: &fuel <= 0
+    if l == "": 16 else: Len (Or (Split hexDigits, l)[0], hexDigits)
 
 ?ParseHex: fn Text -> ?Nat
 fn ?ParseHex t:
     require t != "" and (AllChars t, IsHexDigit)
-    ? Fold (Chars t), 0, \|n, c| n * 16 + (HexValue c)
+    ? FoldChars t, 0, \|n, c| n * 16 + (HexValue c)
 
 # The character at a code point below 0x80.
 ?AsciiChar: fn Nat -> ?Text
-fn ?AsciiChar n = asciiTable[n]
+fn ?AsciiChar n = if n < 128: ? (CharAtByte asciiText, n) else: nil
 
 # ---------------------------------------------------------------------------------------
 # Reading characters
 # ---------------------------------------------------------------------------------------
 
-# The character at the cursor, or `""` at the end.
-Peek: fn Lex -> Text
-fn Peek l = Or l.cs[l.pos], ""
+# The text from the lexer's position on. Positions are byte offsets into `src`, always on
+# a character boundary.
+Rest: fn Lex -> Text
+fn Rest l = match ?CursorAt l.src, l.pos:
+    ? c: After c
+    nil: ""
 
+# The character at the position, or `""` at the end.
+Peek: fn Lex -> Text
+fn Peek l = CharAtByte l.src, l.pos
+
+# The character `n` characters past the position, or `""` past the end.
 PeekAt: fn Lex, Nat -> Text
-fn PeekAt l, n = Or l.cs[l.pos + n], ""
+fn PeekAt l, n:
+    let rest = update Rest l:
+        let &k = n
+        while ? left <- &k -? 1:
+            &k <= left
+            &_ <= AfterFirst &_
+    Head rest
 
 StartsWith: fn Lex, Text -> Bool
-fn StartsWith l, s = (Slice l, l.pos, l.pos + (Len s)) == s
+fn StartsWith l, s = HasPrefix (Rest l), s
 
 # The text from `a` to `b`.
 Slice: fn Lex, Nat, Nat -> Text
-fn Slice l, a, b = Concat (Take (Drop l.cs, a), (Or (b -? a), 0))
+fn Slice l, a, b = Between l.src, a, b
 
+# Past the character at the position.
 Bump: fn Lex -> Lex
 fn Bump l = update l:
-    if &_.pos < (Len &_.cs):
-        &_.pos += 1
+    &_.pos += Len (Peek &_)
 
+# Past `n` characters.
 Forward: fn Lex, Nat -> Lex
 fn Forward l, n = update l:
-    &_.pos <= Min (&_.pos + n), (Len &_.cs)
+    let &k = n
+    while ? left <- &k -? 1:
+        &k <= left
+        &_.pos += Len (Peek &_)
 
 NextIsSpace: fn Lex, Nat -> Bool
 fn NextIsSpace l, n:
@@ -310,10 +423,14 @@ fn NextIsSpace l, n:
     c == "" or (IsSpaceChar c)
 
 # Where the current line ends: the next newline, or the end of the text.
-LineEnd: unbounded fn Lex -> Nat
-fn LineEnd l = update l.pos:
-    while (Or l.cs[&_], "\n") != "\n":
-        &_ += 1
+LineEnd: fn Lex -> Nat
+fn LineEnd l = match ?CursorAt l.src, l.pos:
+    ? c:
+        let end = update c:
+            while ? ((ch, next)) <- ?Step &_ if ch != '\n':
+                &_ <= next
+        At end
+    nil: l.pos
 
 # The rest of the current line from the cursor, without its newline.
 RestOfLine: unbounded fn Lex -> Text
@@ -453,7 +570,7 @@ fn FatArrowOn l = l.?testDepth != nil or l.?checkDepth != nil
 # first token is a language tag is a template (A.7).
 LexFile: unbounded fn Text -> Lexed
 fn LexFile src:
-    let start = Lex(cs=(Chars src), pos=0, diags=[[]], mode=MFile, tokens=[[]], layout=[[]],
+    let start = Lex(src=src, pos=0, diags=[[]], mode=MFile, tokens=[[]], layout=[[]],
         frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingSpan=Range(start=0, end=0),
         lineFirst=0, markLineStart=False, firstLine=True, testPending="", testDepth=nil,
         checkDepth=nil, pathNext=False)
@@ -476,7 +593,7 @@ fn SkipBlankAndCommentLines l = update l:
     while &going:
         let line = RestOfLine &_
         let t = TrimStart line
-        if (t == "" or (Take t, 1) == "#") and &_.pos + (Len line) < (Len &_.cs):
+        if (t == "" or (Head t) == "#") and &_.pos + (Len line) < (Len &_.src):
             &_.pos += (Len line) + 1
         else:
             &going <= False
@@ -766,7 +883,8 @@ fn LexTokenAt l, start, c = match c:
     otherwise: match ?LexOperator l, start:
         ? l2: l2
         nil:
-            let l2 = LexErr (Bump l), start, start + 1, "unexpected character `{c}`"
+            let l1 = Bump l
+            let l2 = LexErr l1, start, l1.pos, "unexpected character `{c}`"
             update l2:
                 &_.lastWs <= True
 
@@ -965,7 +1083,7 @@ fn LexAttached l, start, sigils, next:
 FreeSigils: fn Lex, Nat, Text -> Lex
 fn FreeSigils l0, start, sigils = update l0:
     let spaceAfter = NextIsSpace &_, 0
-    let all = Chars sigils
+    let all = FoldChars sigils, [[]], \|acc, c| Push acc, c
     for s <- all:
         let at = start + ix
         if spaceAfter and ix + 1 == (Len all):
@@ -986,7 +1104,7 @@ fn LexQualifiedPath l0 = update (([[]], l0)):
     while &going:
         let last = Or (?Last &path), ""
         let next = PeekAt &l, 1
-        if (Peek &l) != "." or not (IsUpper (Take last, 1)):
+        if (Peek &l) != "." or not (IsUpper (Head last)):
             &going <= False
         else:
             if IsUpper next:
@@ -1019,7 +1137,7 @@ fn LexWordToken l0, sigils, start:
     let l = if IsNonAscii (Peek l1): SkipNonAscii l1, wStart else: l1
     let first = Or path[0], ""
     # `Ui.*` is one token, "and the only place `*` touches a `.`".
-    if (StartsWith l, ".*") and (IsUpper (Take first, 1)):
+    if (StartsWith l, ".*") and (IsUpper (Head first)):
         let l2 = Forward l, 2
         let l3 = if sigils != "": LexErr l2, start, l2.pos, "a family pattern takes no sigil" else: l2
         PushTok l3, (KFamily path), start, l3.pos
@@ -1032,7 +1150,7 @@ SkipNonAscii: unbounded fn Lex, Nat -> Lex
 fn SkipNonAscii l0, wStart:
     let l = update l0:
         while (IsIdentChar (Peek &_)) or (IsNonAscii (Peek &_)):
-            &_.pos += 1
+            &_.pos += Len (Peek &_)
     LexErr l, wStart, l.pos, "names are ASCII letters, digits and underscores"
 
 LexKeyword: unbounded fn Lex, Text, Text, Nat -> Lex
@@ -1055,10 +1173,10 @@ NameCaseOf: fn Lex, [Text], Nat -> ((NameCase, Lex))
 fn NameCaseOf l, path, wStart:
     let last = Or (?Last path), ""
     if last == "_": ((CaseTopic, l))
-    else: if (Take last, 1) == "_" and (AllChars (Drop last, 1), IsDigit): ((CaseHole, l))
-    else: if (Take last, 1) == "_": ((CaseLower, (LexErr l, wStart, l.pos, "`_` followed by a letter is not a name: `_` alone is the topic, `_1` a hole")))
+    else: if (Head last) == "_" and (AllChars (AfterFirst last), IsDigit): ((CaseHole, l))
+    else: if (Head last) == "_": ((CaseLower, (LexErr l, wStart, l.pos, "`_` followed by a letter is not a name: `_` alone is the topic, `_1` a hole")))
     else: if IsReservedCtor last: ((CaseReserved, l))
-    else: if IsUpper (Take last, 1):
+    else: if IsUpper (Head last):
         let underscored = Fold path, False, \|seen, seg| seen or (Contains seg, "_")
         if underscored: ((CaseUpper, (LexErr l, wStart, l.pos, "`{Join path, "."}`: a capital promises UpperCamelCase")))
         else: ((CaseUpper, l))
@@ -1169,11 +1287,11 @@ fn WholeNanoseconds text, scale:
             let frac = TrimZeros frac0
             let k = Len frac
             let f = if frac == "": 0 else: Or (?ParseNat frac), 1
-            let tens = Fold (Chars frac), 1, \|p, ignore| p * 10
+            let tens = FoldChars frac, 1, \|p, ignore| p * 10
             k <= 30 and (Or (?Mod (f * scale), tens), 1) == 0
 
 TrimZeros: fn Text -> Text
-fn TrimZeros t = Take t, (Or ((Len t) -? (LeadingIn (Reverse t), "0")), 0)
+fn TrimZeros t = TrimTrailing t, "0"
 
 # "A literal has no type suffix; `255U8` is not a token" (round 47 BI; doubt LS).
 CheckNoSuffix: unbounded fn Lex, Nat -> Lex
@@ -1279,7 +1397,7 @@ CharTail: unbounded fn Lex, Nat -> Lex
 fn CharTail l0, start:
     let l1 = update l0:
         while (Peek &_) != "'" and (Peek &_) != "\n" and (Peek &_) != "":
-            &_.pos += 1
+            &_.pos += Len (Peek &_)
     let l2 = if (Peek l1) == "'": Bump l1 else: l1
     LexErr l2, start, l2.pos, "a character literal holds one code point: `'c'`"
 
@@ -1350,7 +1468,7 @@ TemplateTagAhead: unbounded fn Lex -> Text
 fn TemplateTagAhead l:
     let ((name, ignore)) = LexIdent (Bump l)
     let after = PeekAt l, (Len name) + 1
-    if (Peek l) == "<" and name != "" and (IsLower (Take name, 1)) and after == ">": name else: ""
+    if (Peek l) == "<" and name != "" and (IsLower (Head name)) and after == ">": name else: ""
 
 # The template token's kind, and the lexer after its closing tag.
 LexTemplate: unbounded fn Lex, Text, Nat -> ((TokKind, Lex))
@@ -1610,7 +1728,11 @@ fn StripLine line, strip, l:
         ? (RiText s): LeadingIn s, " "
         otherwise: 0
     let items = match line.items[0]:
-        ? (RiText s): Append [[RiText (Drop s, (Min n, strip))]], (Drop line.items, 1)
+        ? (RiText s):
+            let rest = match ?CursorAt s, (Min n, strip):
+                ? c: After c
+                nil: s
+            Append [[RiText rest]], (Drop line.items, 1)
         otherwise: line.items
     let l2 = if n < strip and not blank: LexErr l, (FirstItemSpan items).start, (FirstItemSpan items).end, "a template line is indented less than its closing tag (Q-CT3)" else: l
     let kept = if items[0] == ? (RiText ""): Drop items, 1 else: items
@@ -1681,7 +1803,7 @@ RenderInner: fn [Tok] -> Text
 fn RenderInner tokens = Join (Split (TrimEnd (TrimNewlines (RenderTokens tokens))), "\n"), " "
 
 TrimNewlines: fn Text -> Text
-fn TrimNewlines t = Take t, (Or ((Len t) -? (LeadingIn (Reverse t), "\n \t")), 0)
+fn TrimNewlines t = TrimTrailing t, "\n \t"
 
 # One token's text in the corpus notation.
 TokenText: fn TokKind -> Text
@@ -1726,7 +1848,7 @@ fn SegText (TsPlain p) = EscapeBraces (EscapeDebug p, True, True)
 fn SegText (TsPlaceholder toks, ignore) = "\{{RenderInner toks}\}"
 
 EscapeBraces: fn Text -> Text
-fn EscapeBraces t = Concat (Each (Chars t), \|c| if c == "\{" or c == "\}": "\\{c}" else: c)
+fn EscapeBraces t = MapChars t, \|c| if c == "\{" or c == "\}": "\\{c}" else: c
 
 PathSegText: fn PathSegTok -> Text
 fn PathSegText (PstNum n) = "{n}"
@@ -1763,7 +1885,7 @@ DebugChar: fn Text -> Text
 fn DebugChar c = "'{EscapeDebug c, True, False}'"
 
 EscapeDebug: fn Text, Bool, Bool -> Text
-fn EscapeDebug t, single, double = Concat (Each (Chars t), \|c| EscapeChar c, single, double)
+fn EscapeDebug t, single, double = MapChars t, \|c| EscapeChar c, single, double
 
 EscapeChar: fn Text, Bool, Bool -> Text
 fn EscapeChar c, single, double = match c:
@@ -1777,15 +1899,10 @@ fn EscapeChar c, single, double = match c:
     ignore if c < " " or c == "\u{7f}": "\\u\{{HexOf (CodeOf c)}\}"
     otherwise: c
 
-# The code point of an ASCII character.
+# The code point of an ASCII character (128 for anything else): its byte index in
+# `asciiText`.
 CodeOf: fn Text -> Nat
-fn CodeOf c = update 0:
-    let &fuel = Len asciiTable
-    while ? left <- &fuel -? 1:
-        &fuel <= left
-        match asciiTable[&_]:
-            ? a if a != c: &_ += 1
-            otherwise: &fuel <= 0
+fn CodeOf c = if c == "": 128 else: Len (Or (Split asciiText, c)[0], asciiText)
 
 HexOf: fn Nat -> Text
 fn HexOf n = HexDigits n, n
@@ -1793,5 +1910,5 @@ fn HexOf n = HexDigits n, n
 # `n` in hexadecimal; `fuel`, at least its number of digits, shrinks on every call.
 HexDigits: fn Nat, Nat -> Text
 fn HexDigits n, fuel = match fuel -? 1:
-    ? left if n >= 16: "{HexDigits (Or (?Div n, 16), 0), left}{Or hexDigits[Or (?Mod n, 16), 0], "0"}"
-    otherwise: Or hexDigits[n], "0"
+    ? left if n >= 16: "{HexDigits (Or (?Div n, 16), 0), left}{CharAtByte hexDigits, (Or (?Mod n, 16), 0)}"
+    otherwise: if n < 16: CharAtByte hexDigits, n else: "0"

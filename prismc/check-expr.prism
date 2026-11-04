@@ -264,8 +264,7 @@ fn InferBound env, st, b, span = match env.locals[b]:
 # literal with a point is a `Float`. `negative` marks a `-` in front, which `Nat` refuses.
 InferLit: unbounded fn Env, St, Literal, Bool, Range -> ((Ty, St))
 fn InferLit env, st, l, negative, span:
-    let marks = Filter (Chars l.marks), \|c| IsMarkChar c
-    let sigils = Concat marks
+    let sigils = FoldChars l.marks, "", \|acc, c| if IsMarkChar c: "{acc}{c}" else: acc
     let signed = negative or (Contains l.marks, "-")
     let ((base, st2)) = match l.kind:
         LInt digits:
@@ -444,9 +443,9 @@ fn IsBlueprintExpr env, st, x = match x.kind:
     EFreeSigil "@", ignore: True
     EGroup y: IsBlueprintExpr env, st, y
     ECall c, ignore, ignore, ignore: match c.kind:
-        EName n: (Take n.sigils, 1) == "@"
+        EName n: (HasPrefix n.sigils, "@")
         otherwise: False
-    EName n: (Take n.sigils, 1) == "@"
+    EName n: (HasPrefix n.sigils, "@")
     EWidgetBlock ignore: True
     otherwise: False
 
@@ -513,7 +512,9 @@ fn ?IndexOf xs, x = Fold (Range0 (Len xs)), nil, \|?found, i| match ?found:
     ? f: ? f
     nil: if xs[i] == ? x: ? i else: nil
 
-# Indexing is a plain function of two arguments returning `?v` (ch. 4).
+# Indexing is a plain function of two arguments returning `?v` (ch. 4), of an array or a
+# map. A text has no index (Appendix B, Text; round 4 TX): a byte index is read off a
+# cursor, not cut at.
 InferIndex: unbounded fn Env, St, Expr, Expr, Range -> ((Ty, St))
 fn InferIndex env, st, recv, idx, span:
     let ((rt, st1)) = Infer env, st, recv
@@ -521,17 +522,16 @@ fn InferIndex env, st, recv, idx, span:
     let inner = if IsTimeSigil head: InnerOf st1, rt else: rt
     let ((v, st2)) = FreshVar st1, False, ""
     let ((k, st3)) = FreshVar st2, True, ""
-    let ((coll, keyTy, st4)) = match Walk st3, inner:
-        TyMap ignore, ignore: (((TyMap k, v), k, st3))
-        TyCon "Table", ignore: (((TyCon "Table", [[k, v]]), k, st3))
-        TyCon "Buffer", ignore: (((TyCon "Buffer", [[v]]), tNat, st3))
-        TyCon "Text", [[]]: ((tText, tNat, st3))
-        otherwise: ((TyArray v, tNat, st3))
-    let res = match Walk st4, inner:
-        TyCon "Text", [[]]: TySig "?", tText
-        otherwise: TySig "?", v
-    let args = [[Arg(name=nil, value=recv, span=recv.span), Arg(name=nil, value=idx, span=idx.span)]]
-    ApplyRule env, st4, "[]", CBound, [[coll, keyTy]], res, args, span
+    match Walk st3, inner:
+        TyCon "Text", [[]]: ((TyErr, (ErrFix st3, "mismatch", span, "a text has no index: a position in a text is a cursor", "walk it with `Front` and `?Step`, or make a cursor from a byte offset with `?CursorAt`")))
+        otherwise:
+            let ((coll, keyTy)) = match Walk st3, inner:
+                TyMap ignore, ignore: (((TyMap k, v), k))
+                TyCon "Table", ignore: (((TyCon "Table", [[k, v]]), k))
+                TyCon "Buffer", ignore: (((TyCon "Buffer", [[v]]), tNat))
+                otherwise: ((TyArray v, tNat))
+            let args = [[Arg(name=nil, value=recv, span=recv.span), Arg(name=nil, value=idx, span=idx.span)]]
+            ApplyRule env, st3, "[]", CBound, [[coll, keyTy]], (TySig "?", v), args, span
 
 # ---------------------------------------------------------------------------------------
 # Calls
@@ -1035,7 +1035,7 @@ fn BindName env, st, n, t:
             ? sc:
                 let ((ok, st1)) = TryUnify st, sc.ty, t, n.span
                 let marksAgree = (StackOf st, t) == (TypeMarks n.sigils) or (IsFlexVar st, t)
-                let stA = if ok: st1 else: if marksAgree: Unify st, sc.ty, t, n.span else: ErrFix st, "mark-stack", n.span, "`{name}` has type `{ShowTy st, t}`, whose stack is `{StackOf st, t}`; the name shows `{TypeMarks n.sigils}`", "rename to `{RefMark n.sigils}{StackOf st, t}{Drop name, (Len n.sigils)}`"
+                let stA = if ok: st1 else: if marksAgree: Unify st, sc.ty, t, n.span else: ErrFix st, "mark-stack", n.span, "`{name}` has type `{ShowTy st, t}`, whose stack is `{StackOf st, t}`; the name shows `{TypeMarks n.sigils}`", "rename to `{RefMark n.sigils}{StackOf st, t}{DropPrefix name, n.sigils}`"
                 ((env, (NoteBinder stA, n.span, name, t)))
             nil: BindFresh env, st, n, t
     else: BindFresh env, st, n, t
@@ -1055,7 +1055,7 @@ fn BindFreshMarked env, st, n, marks, t:
     let st5 = if ok: st4
         else:
             let stack = StackOf st3, t
-            ErrFix st3, "mark-stack", n.span, "`{name}` has type `{ShowTy st3, t}`, whose stack is `{stack}`; the name shows `{marks}`", "rename to `{RefMark n.sigils}{stack}{Drop name, (Len n.sigils)}`"
+            ErrFix st3, "mark-stack", n.span, "`{name}` has type `{ShowTy st3, t}`, whose stack is `{stack}`; the name shows `{marks}`", "rename to `{RefMark n.sigils}{stack}{DropPrefix name, n.sigils}`"
     (((WithLocal env, name, (Mono t)), (NoteBinder st5, n.span, name, t)))
 
 # A field of an element seen through a document (`Elem r`, a snapshot) binds its level
@@ -1071,7 +1071,7 @@ fn BindField env, st, p, ft, snapshot = match Walk st, ft:
 BindLevel: unbounded fn Env, St, Pattern, Ty -> ((Env, St))
 fn BindLevel env, st, p, level = match p.kind:
     PName n:
-        if (Take n.sigils, 1) == "$" and (Len n.path) == 1: BindFreshMarked env, st, n, (Drop n.sigils, 1), level
+        if (HasPrefix n.sigils, "$") and (Len n.path) == 1: BindFreshMarked env, st, n, (AfterFirst n.sigils), level
         else: BindPattern env, st, p, level, True
     PGroup q: BindLevel env, st, q, level
     otherwise: BindPattern env, st, p, level, True
@@ -1504,17 +1504,17 @@ fn AheadUnify env, st, name, pre, t, span = match env.locals[name]:
 
 # The marks that are type layers: `&` names a reference, typed as the part it names.
 TypeMarks: fn Text -> Text
-fn TypeMarks marks = if (Take marks, 1) == "&": Drop marks, 1 else: marks
+fn TypeMarks marks = if (HasPrefix marks, "&"): AfterFirst marks else: marks
 
 RefMark: fn Text -> Text
-fn RefMark marks = if (Take marks, 1) == "&": "&" else: ""
+fn RefMark marks = if (HasPrefix marks, "&"): "&" else: ""
 
 Unpend: fn Env -> Env
 fn Unpend env = update env:
     &_.pending <= [[]]
 
 IsTopicName: fn Text -> Bool
-fn IsTopicName n = n == "_" or (Drop n, (Len (MarksOf n))) == "_"
+fn IsTopicName n = n == "_" or (DropPrefix n, (MarksOf n)) == "_"
 
 # The wanted constraints of a `let` about to generalize: on a lambda's variables they
 # become the scheme's bounds and leave the wanted list; on a non-lambda's they keep the
@@ -1531,7 +1531,7 @@ fn WantsAbove st, t, lambda:
         otherwise: acc
     if lambda:
         let bounds = Fold mine, [[]], \|acc, w| match Walk st, w.ty:
-            TyFlex n: if (Take w.cls, 6) == "Range ": acc else: Push acc, ((n, w.cls))
+            TyFlex n: if (HasPrefix w.cls, "Range "): acc else: Push acc, ((n, w.cls))
             otherwise: acc
         let st1 = Fold mine, st, \|s, w| NoteChoice (NoteImpl s, w.file, w.span, w.cls, w.ty, "quantified"), w.file, w.span, w.cls, "any"
         let st2 = update st1:
@@ -1586,7 +1586,7 @@ fn CheckClauses env, st, name, clauses, sc, span:
     let givens = Append env.givens, sc.bounds
     let env2 = update env:
         &_.givens <= givens
-        &_.mark <= Take (MarksOf name), 1
+        &_.mark <= Head (MarksOf name)
         &_.defName <= name
     match t:
         TyFn col, params, res:
@@ -1668,7 +1668,7 @@ fn TemplatePartCheck env, st, part = match part:
 # are errors.
 TemplateCallCheck: unbounded fn Env, St, SName, [Arg], ?[TemplatePart], Range -> St
 fn TemplateCallCheck env, st, n, args, ?parts, span:
-    let plain = SName(sigils=(Drop n.sigils, 1), path=n.path, span=n.span)
+    let plain = SName(sigils=(AfterFirst n.sigils), path=n.path, span=n.span)
     let ((?qk1, ignore)) = ResolveValue env.g, env.home, n
     let callee = if ?qk1 != nil: n else: plain
     let ((?qk, ignore2)) = ResolveValue env.g, env.home, callee

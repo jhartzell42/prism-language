@@ -40,6 +40,7 @@ type OutTy = choice:
     OutBool
     OutChar
     OutText
+    OutCursor
     OutUnit
     OutPath
     OutDuration
@@ -612,13 +613,13 @@ let rustKeywords = [["as", "async", "await", "box", "break", "const", "continue"
 
 # A Prism name without its sigils.
 Base: fn Text -> Text
-fn Base name = Drop name, (Len (MarksOf name))
+fn Base name = DropPrefix name, (MarksOf name)
 
 # `rootModule` and `ParseNat` as `root_module` and `parse_nat`; a Rust keyword, or a name
 # the emitted code uses for itself, takes a `_`.
 Snake: fn Text -> Text
 fn Snake name:
-    let ((out, ignore)) = Fold (Chars (Base name)), (("", "")), \|((acc, prev)), c|
+    let ((out, ignore)) = FoldChars (Base name), (("", "")), \|((acc, prev)), c|
         let sep = if (IsUpper c) and ((IsLower prev) or (IsDigit prev)): "_" else: ""
         ((("{acc}{sep}{LowerChar c}"), c))
     let plain = if out == "": "x" else: out
@@ -633,8 +634,8 @@ fn LowerChar c = if IsUpper c: Lower c else: c
 Camel: fn Text -> Text
 fn Camel name:
     let b = Base name
-    let first = Take b, 1
-    let fixed = if IsLower first: "{Upper first}{Drop b, 1}" else: b
+    let first = Head b
+    let fixed = if IsLower first: "{Upper first}{AfterFirst b}" else: b
     if fixed == "Self" or HasText runtimeNames, fixed: "{fixed}_" else: fixed
 
 # The type, trait and class names the emitted code reaches bare: `prism_rtl`'s, in Rust
@@ -642,7 +643,7 @@ fn Camel name:
 # writes unqualified (`Rc`, `Cell`, `Vec`...). The prelude's own names (`Fault`, `Error`,
 # `Turn`, `Show`, `Text`, `Nat`, `Int`, `Map`, `Array`) are left out: the emitted code
 # names the runtime's by path, or they are the runtime's own.
-let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache", "Case", "Cell", "Clickable", "Collector", "Cx", "Defer", "Demand", "Document", "Done", "DynShow", "Dynamic", "Edit", "Err", "Event", "F64", "Fallible", "Fields", "Finishing", "Fn", "Forward", "FromPod", "Gathered", "Gen", "Handle", "Hold", "Host", "HostOf", "HostRow", "Inert", "IsShared", "IsValue", "Job", "JobRef", "Later", "Link", "List", "Live", "MakeNew", "MutElements", "Nanos", "NeverEvent", "NewSnapshot", "Node", "NodeRef", "None", "Ok", "OkUnit", "Option", "Outcome", "Panic", "Patch", "Path", "Pattern", "Pod", "Port", "Pos", "Printer", "Program", "Rc", "ReadyMap", "ReadyState", "RefCell", "Report", "Request", "Result", "Row", "Rows", "Runtime", "Scope", "Segment", "ShowRef", "ShownText", "Sink", "Slot", "Snapshot", "Some", "Stamped", "String", "Subscribed", "Subscriber", "Supplied", "Supplier", "TestWorld", "Tick", "TickIn", "TickOut", "ToPod", "Unexpected", "Unit", "Vec", "Weak", "World", "XorShift"]]
+let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache", "Case", "Cell", "Clickable", "Collector", "Cursor", "Cx", "Defer", "Demand", "Document", "Done", "DynShow", "Dynamic", "Edit", "Err", "Event", "F64", "Fallible", "Fields", "Finishing", "Fn", "Forward", "FromPod", "Gathered", "Gen", "Handle", "Hold", "Host", "HostOf", "HostRow", "Inert", "IsShared", "IsValue", "Job", "JobRef", "Later", "Link", "List", "Live", "MakeNew", "MutElements", "Nanos", "NeverEvent", "NewSnapshot", "Node", "NodeRef", "None", "Ok", "OkUnit", "Option", "Outcome", "Panic", "Patch", "Path", "Pattern", "Pod", "Port", "Pos", "Printer", "Program", "Rc", "ReadyMap", "ReadyState", "RefCell", "Report", "Request", "Result", "Row", "Rows", "Runtime", "Scope", "Segment", "ShowRef", "ShownText", "Sink", "Slot", "Snapshot", "Some", "Stamped", "String", "Subscribed", "Subscriber", "Supplied", "Supplier", "TestWorld", "Tick", "TickIn", "TickOut", "ToPod", "Unexpected", "Unit", "Vec", "Weak", "World", "XorShift"]]
 
 # A Prism module's Rust module.
 RustModName: fn Text -> Text
@@ -683,11 +684,11 @@ LocalName: fn Lx, Text -> Text
 fn LocalName lx, nkey:
     let marks = MarksOf nkey
     let base = Snake nkey
-    let bare = Drop nkey, (Len marks)
-    let s0 = if HasText (Chars marks), "?": "{base}_opt" else: if HasText (Chars marks), "~": "{base}_try" else: base
+    let bare = DropPrefix nkey, marks
+    let s0 = if Contains marks, "?": "{base}_opt" else: if Contains marks, "~": "{base}_try" else: base
     # A capitalised local is a function value (`K`, `Pipe`); Rust's case would make it
     # the plain `k` beside it.
-    let s1 = if IsUpperText (Take bare, 1): "{s0}_fn" else: s0
+    let s1 = if IsUpperText (Head bare): "{s0}_fn" else: s0
     if (HasKey lx.globals, "{lx.site}.{s1}") or HasKey lx.globals, "Prelude.{s1}": "{s1}_" else: s1
 
 BaseKey: fn Text -> Text
@@ -701,8 +702,8 @@ fn ValueName k, count:
     let last = BareName k
     let marks = MarksOf last
     let base = Snake last
-    if count > 1 and marks != "": "{Drop base, 0}_{SigilWord (Take marks, 1)}"
-    else: if count > 1 and not (IsUpperText (Take last, 1)): "{base}_value"
+    if count > 1 and marks != "": "{base}_{SigilWord (Head marks)}"
+    else: if count > 1 and not (IsUpperText (Head last)): "{base}_value"
     else: base
 
 SigilWord: fn Text -> Text
@@ -749,6 +750,7 @@ fn OutTyOf lx, t = match t:
     TyCon "Text", [[]]: OutText
     TyCon "unit", [[]]: OutUnit
     TyCon "Path", [[]]: OutPath
+    TyCon "Cursor", [[]]: OutCursor
     TyCon "Duration", [[]]: OutDuration
     TyCon "Prelude.Error", [[]]: OutError
     TyCon "\u{0}Self", [[]]: OutNamed "Self", [[]]
@@ -987,7 +989,7 @@ fn NameKeyAt lx, env, n, span = match lx.useInsts[PlaceKey lx, span]:
 # Names a closure reads, with the instantiations of each that is a generalized `let`
 # lowered more than once (pick LG): a capture takes them all.
 WithInstances: fn Env, [Text] -> [Text]
-fn WithInstances env, names = Fold names, names, \|acc, n| Append acc, (Filter (Keys env.names), \|k| (Take k, (Len n) + 5) == "{n}#inst")
+fn WithInstances env, names = Fold names, names, \|acc, n| Append acc, (Filter (Keys env.names), \|k| HasPrefix k, "{n}#inst")
 
 BindSpan: fn Env, Text, Vl -> Env
 fn BindSpan env, nkey, v = update env:
@@ -1083,7 +1085,7 @@ fn AsBool v = Copy v
 
 # A Rust string literal's inside.
 Escape: fn Text -> Text
-fn Escape t = Concat (Each (Chars t), \|c| CharEscape c)
+fn Escape t = MapChars t, \|c| CharEscape c
 
 CharEscape: fn Text -> Text
 fn CharEscape "\\" = "\\\\"
@@ -1097,7 +1099,7 @@ fn CharEscape c = c
 # A number literal of a numeric type.
 Number: fn OutTy, Text, Bool -> Ex
 fn Number t, digits, neg:
-    let clean = Concat (Filter (Chars digits), \|c| c != "_")
+    let clean = Concat (Split digits, "_")
     let signed = if neg: "-{clean}" else: clean
     match t:
         OutNat: XNat clean
@@ -1655,7 +1657,7 @@ fn MethodCall lx, env, v, args, span, t:
     let cls = Or (Each v.scheme.bounds, \|((ignore, c))| c)[0], ""
     let m = BareName v.qk
     let vals = Each args, \|a| ValueOf lx, env, a.value
-    if (Take cls, 8) == "Prelude.": PreludeMethod lx, cls, m, vals, span, t
+    if (HasPrefix cls, "Prelude."): PreludeMethod lx, cls, m, vals, span, t
     else:
         let tr = Or lx.g.traits[cls], dummyTraitInfo
         let path = PathIn lx, tr.home, "{Camel (BareName cls)}::{Snake m}"
@@ -1825,7 +1827,7 @@ fn StartArgs lx, env, f, args:
 
 PreludeVariant: fn Text, OutTy -> Text
 fn PreludeVariant name, first = match first:
-    OutText: if HasText [["len", "take", "drop"]], name: "{name}_text" else: name
+    OutText: if name == "len": "len_text" else: name
     OutMap ignore, ignore: if HasText [["len", "fold", "each", "filter"]], name: "{name}_map" else: name
     otherwise: name
 
@@ -1871,13 +1873,12 @@ fn Instantiated t, params, args = match t:
     TySig s, i: TySig s, (Instantiated i, params, args)
     otherwise: t
 
-# `xs[i]`: an optional, of an array, a map or a text.
+# `xs[i]`: an optional, of an array or a map (a text has no index: the checker refuses it).
 IndexValue: unbounded fn Lx, Env, Expr, Expr, OutTy -> Vl
 fn IndexValue lx, env, r, i, t:
     let rt = OutTyOf lx, (Peel (TypeAt lx, r.span))
     let f = match rt:
         OutMap ignore, ignore: "get"
-        OutText: "index_text"
         otherwise: "index"
     VlOwned (XCall f, [[(Argument lx, env, r), (Argument lx, env, i)]]), (OutOpt t)
 
@@ -2623,7 +2624,7 @@ fn TemplatePartDos lx, env, part = match part:
         if (ValueTy v) == OutUnit: [[DoExpr (Own v)]]
         else: [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), ShownText v, XNone]])]]
     TpCall n, args, ?parts, ignore:
-        let plain = SName(sigils=(Drop n.sigils, 1), path=n.path, span=n.span)
+        let plain = SName(sigils=(AfterFirst n.sigils), path=n.path, span=n.span)
         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
         let ((?qk2, ignore)) = ResolveValue lx.g, lx.home, plain
         let callee = match ?qk:
@@ -2751,14 +2752,14 @@ fn UpdStmt lx, env, s = match s.kind:
         let cur = PlaceOf lx, env, target
         let tt = OutTyOf lx, (Peel (TypeAt lx, target.span))
         let rv = ValueOf lx, env, value
-        let bin = Take op, 1
+        let bin = Head op
         let next = OpValue lx, bin, (VlPlace cur, Owned, tt), rv, s.span, tt
         (([[(Assign lx, env, target, (Own next))]], env))
     SLet p, ignore, x:
         let v = Own (ValueOf lx, env, x)
         match p.kind:
             PName n:
-                if (Take n.sigils, 1) == "&":
+                if (HasPrefix n.sigils, "&"):
                     let rs = LocalName lx, (SNameKey n)
                     let bt = OutTyOf lx, (Peel (BinderTy lx, n.span))
                     let pa = if IsKnownTy bt: PaTyped (PaMut "{rs}"), bt else: PaMut "{rs}"
@@ -2818,7 +2819,7 @@ fn UpdForRefs lx, env, n, source, body, span, sty = match sty:
 ?RefBinder: fn ?ForBinders -> ?SName
 fn ?RefBinder (? fb) = match fb.?second:
     nil: match fb.first.kind:
-        PName n: if (Take n.sigils, 1) == "&": ? n else: nil
+        PName n: if (HasPrefix n.sigils, "&"): ? n else: nil
         otherwise: nil
     otherwise: nil
 fn ?RefBinder nil = nil
@@ -2826,7 +2827,7 @@ fn ?RefBinder nil = nil
 # A reference path: `&_`, a local `&x`, or a path from one.
 IsRefPath: fn Expr -> Bool
 fn IsRefPath e = match e.kind:
-    EName n: (Take n.sigils, 1) == "&"
+    EName n: (HasPrefix n.sigils, "&")
     EField r, ignore, ignore: IsRefPath r
     EIndex r, ignore: IsRefPath r
     EGroup x: IsRefPath x
@@ -3101,7 +3102,7 @@ fn DropTrailingComments t:
 IsCodeLine: fn Text -> Bool
 fn IsCodeLine l:
     let s = Trim l
-    s != "" and (Take s, 1) != "#"
+    s != "" and (not (HasPrefix s, "#"))
 
 # A top-level `let`: a getter computing its value (pick TL of the README).
 LetGetter: unbounded fn Lx, Text, LetDecl -> FnDef
@@ -3261,7 +3262,7 @@ fn Prepend dos, x = if (Len dos) == 0: x else: XBlock dos, x
 # same names. Locals the loop or the rest reads are cloned into each closure first.
 WhileJob: unbounded fn Lx, Env, Env, Cond, Block, Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
 fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
-    let state = Fold (Keys env.names), [[]], \|acc, k| if (Take k, 1) != "&": acc else: match env.names[k]:
+    let state = Fold (Keys env.names), [[]], \|acc, k| if (not (HasPrefix k, "&")): acc else: match env.names[k]:
         ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
     let names = Each state, \|((ignore, rs, ignore))| rs
@@ -3315,7 +3316,7 @@ fn StmtsThen lx, env, b, last:
 # loop in a branch is a loop job with the rest of its branch, then the continuation, after.
 IfJob: unbounded fn Lx, Env, Env, Cond, Block, ?Block, Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
 fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
-    let state = Fold (Keys env.names), [[]], \|acc, k| if (Take k, 1) != "&": acc else: match env.names[k]:
+    let state = Fold (Keys env.names), [[]], \|acc, k| if (not (HasPrefix k, "&")): acc else: match env.names[k]:
         ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
     let names = Each state, \|((ignore, rs, ignore))| rs
@@ -3351,7 +3352,7 @@ fn InstanceOf k = Or (Split k, "#inst")[0], k
 CapsIn: fn Env, Text, [Text] -> [((Text, Ex, Holding, OutTy))]
 fn CapsIn env, text, skip = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
     ? (BnLocal rs, mode, bt):
-        if (HasText skip, (PlaceStem rs)) or (OnSelf rs) or not (Mentions text, (Drop (InstanceOf k), (Len (MarksOf k)))): acc
+        if (HasText skip, (PlaceStem rs)) or (OnSelf rs) or not (Mentions text, (DropPrefix (InstanceOf k), (MarksOf k))): acc
         else: Push acc, ((k, rs, mode, bt))
     otherwise: acc
 
@@ -3490,10 +3491,10 @@ fn Mentions text, name:
         found or ((not leftWord) and not rightWord)
 
 EndsIdent: fn Text -> Bool
-fn EndsIdent t = (Len t) > 0 and IsIdentChar (Drop t, (Dec (Len t)))
+fn EndsIdent t = (Len t) > 0 and IsIdentChar (LastChar t)
 
 StartsIdent: fn Text -> Bool
-fn StartsIdent t = (Len t) > 0 and IsIdentChar (Take t, 1)
+fn StartsIdent t = (Len t) > 0 and IsIdentChar (Head t)
 
 TailBody: unbounded fn Lx, Env, FnBody -> Ex
 fn TailBody lx, env, (BodyExpr x) = Tail lx, env, x
@@ -4154,8 +4155,8 @@ fn HoldLine wx, benv, menv, p, init, step:
 # as that local: what a supplier's dynamic answer evaluates to while the owner's node is
 # being made (round 3 DY). Every other name keeps its binding.
 InitEnv: fn Env -> Env
-fn InitEnv env = Fold (Keys env.names), env, \|en, k| match (((Len k) -? 5, env.names[k])):
-    ((? n, ? b)): if (Drop k, n) == "#init": Bind en, (Take k, n), b else: en
+fn InitEnv env = Fold (Keys env.names), env, \|en, k| match (((?BeforeSuffix k, "#init"), env.names[k])):
+    ((? name, ? b)): Bind en, name, b
     otherwise: en
 
 # Whether every read behind a dynamic has a value at the build: a hold or a dynamic `let`
@@ -5936,7 +5937,7 @@ fn RootWidgets lx:
 
 # The root module's `@main` (`@$main` too: Semantics ch. 6).
 IsMain: fn Text -> Bool
-fn IsMain qk = (OwnerOf qk) == "" and (Base (BareName qk)) == "main" and (Take (BareName qk), 1) == "@"
+fn IsMain qk = (OwnerOf qk) == "" and (Base (BareName qk)) == "main" and (HasPrefix (BareName qk), "@")
 
 BlueprintQk: fn Lx, Expr -> Text
 fn BlueprintQk lx, e = match e.kind:
@@ -5969,7 +5970,7 @@ fn ProgDefOf lx, qk:
     # since no World answers Ui elements alone; anything else the CLI World
     let fams = (Or lx.g.mods[v.home], dummyMod).emitRw.fams
     let world = if HasText fams, "Gui": "canvas" else: if HasText fams, "Ui": "none" else: "cli"
-    ProgDef(name="{Camel (BareName qk)}Program", prism=(Drop (BareName qk), 1), node=node, params=params, fallible=True, world=world)
+    ProgDef(name="{Camel (BareName qk)}Program", prism=(AfterFirst (BareName qk)), node=node, params=params, fallible=True, world=world)
 
 # The unbounded functions with jobs: those `@Run` is given, and those they tail-call.
 JobRoots: unbounded fn Lx -> [Text]
@@ -6941,7 +6942,7 @@ fn ImplDefOf lx, im:
             &_.qs <= Filter &_.qs, \|q| q != tr.param
             &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
         let fd = FnDefOf lx, mq, (MethodClauses d), sc
-        if (Take im.cls, 8) == "Prelude.": Renamed fd, "{Snake d.name}_{Snake (BareName (HeadName im.head))}" else: fd
+        if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{Snake (BareName (HeadName im.head))}" else: fd
     let generics = Each im.qs, \|q| ((Camel q, [["Clone"]]))
     ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (Camel (BareName im.cls))), head=head, generics=generics, methods=methods, doc="")
 

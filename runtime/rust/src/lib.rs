@@ -9,7 +9,8 @@
 //! The modules, from the bottom up:
 //!
 //! - [`num`]: `Nat` and `Int`, arbitrary precision with a small-value fast path.
-//! - [`collections`]: `Text` as a rope, persistent `Map` and `Array`.
+//! - [`collections`]: `Text` as a view of a shared UTF-8 buffer and its `Cursor`,
+//!   persistent `Map` and `Array`.
 //! - [`pod`]: [`Pod`], the plain data a World sees; paths; the `^Pod` traits; `Error`
 //!   (a `~T`'s failure) and [`Fault`] (a failed tick).
 //! - [`mod@print`]: the transcript's spelling, as the printer API derived `^Show` calls.
@@ -38,7 +39,7 @@ pub mod read;
 pub mod world;
 
 pub use cells::{Cache, Defer, Demand, Dynamic, Event, Handle, Hold, Job, Live, Port, Snapshot, Stamped, Tick, Turn};
-pub use collections::{Array, Map, Text};
+pub use collections::{Array, Cursor, Map, Text};
 pub use cx::{Cx, Done, Later, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
 pub use host::{AnswerOf, Blueprint, Host, HostOf, HostRow, Link, Rows, Scope, Sink, Supplied, Supplier, dynamic_blueprint, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};

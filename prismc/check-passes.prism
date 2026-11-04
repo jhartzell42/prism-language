@@ -175,7 +175,7 @@ fn Useful env, st, rows, q, tys = match q[0]:
                     nil: Useful env, st, (DefaultRows rows), (Drop q, 1), rest
 
 CtorFamily: fn Ctor -> Text
-fn CtorFamily c = if (Take c.name, 4) == "tag:": Dotted (Pop (Split (Drop c.name, 4), ".")) else: ""
+fn CtorFamily c = if (HasPrefix c.name, "tag:"): Dotted (Pop (Split (DropPrefix c.name, "tag:"), ".")) else: ""
 
 Wilds: fn Nat -> [Pat]
 fn Wilds n = Each (Range0 n), \|ignore| PtAny
@@ -378,7 +378,7 @@ fn ReadIsPrompt env, st, n, layer = match env.locals[n]:
         else: if layer == "$": h == "$" or h == "!"
         else: match Walk st, sc.ty:
             TyFn ignore, ignore, ignore: False
-            otherwise: (IsLowerText (Drop n, (Len (MarksOf n)))) and h == ""
+            otherwise: (IsLowerText (DropPrefix n, (MarksOf n))) and h == ""
     nil: False
 
 # What the prompt walk resolves names against: the program and the block's module; the
@@ -397,7 +397,7 @@ derive ^Eq, ^Show
 PromptBase: unbounded fn Env, [Stmt] -> (Text ==> Rel)
 fn PromptBase env, stmts:
     let pre = PreludeSeeds env.g, env.home
-    let seeds = Fold (Keys pre), pre, \|m, k| if HasKey env.locals, (Drop k, 4): Remove m, k else: m
+    let seeds = Fold (Keys pre), pre, \|m, k| if HasKey env.locals, (DropPrefix k, "pre:"): Remove m, k else: m
     Fold stmts, seeds, \|m, s| LamLetRels s, m
 
 # A `let NAME = \|..| ..`: the name means that lambda where it is in scope, by where the
@@ -464,8 +464,8 @@ fn PromptCallKids cx, e, ?n, m = match ?n:
         else: if (Len called) > 0: Append called, (OpenLambdas cx, (ExprKids e, m))
         else: match ?ResolveCallee cx.g, cx.home, n:
             ? k:
-                if (IsPreludeKey cx.g, k) and (IsDelayedWidget (Drop k, 8)): [[]]
-                else: if (IsPreludeKey cx.g, k) and (Take (Drop k, 8), 1) == "@": ExprKids e, m
+                if (IsPreludeKey cx.g, k) and (IsDelayedWidget (DropPrefix k, "Prelude.")): [[]]
+                else: if (IsPreludeKey cx.g, k) and (HasPrefix k, "Prelude.@"): ExprKids e, m
                 else: OpenLambdas cx, (ExprKids e, m)
             nil: OpenLambdas cx, (ExprKids e, m)
     nil: OpenLambdas cx, (ExprKids e, m)
@@ -492,7 +492,7 @@ fn FollowLamLet cx, n, m = match m["lamlet:{n}"]:
         else: match cx.lams[r.param]:
             ? lam: match lam.kind:
                 ELambda ?ps, body:
-                    let seen = Fold (Keys m), cx.base, \|m2, k| if (Take k, 5) == "seen:": Insert m2, k, noRel else: m2
+                    let seen = Fold (Keys m), cx.base, \|m2, k| if (HasPrefix k, "seen:"): Insert m2, k, noRel else: m2
                     [[(LambdaKid body, (Hide (Insert seen, "seen:{r.param}", noRel), (PatternsNames (Or ?ps, [[]]))))]]
                 otherwise: [[]]
             nil: [[]]
@@ -563,7 +563,7 @@ EscapeStmts: unbounded fn Env, St, [Stmt] -> St
 fn EscapeStmts env, st, stmts = Fold stmts, st, \|s, stmt| match stmt.kind:
     SLet p, ignore, e: match p.kind:
         PName n:
-            if (Take n.sigils, 1) == "&": s
+            if (HasPrefix n.sigils, "&"): s
             else: match env.locals[SNameKey n]:
                 ? ignore: s
                 nil: if CallsLocalMaker env, e: ErrFix s, "local-escapes", stmt.span, "a `Buffer` cannot leave its block: `{SNameKey n}` is no `&` local", "write `let &{SNameKey n} = ...`" else: s
@@ -608,7 +608,7 @@ fn ?MakerOf env, c = match ?CalleeName c:
 FrozenStmts: unbounded fn Env, St, [Stmt], (Text ==> Nat) -> (((Text ==> Nat), St))
 fn FrozenStmts env, st, stmts, frozen:
     let pre = PreludeSeeds env.g, env.home
-    let seeds = Fold (Keys pre), pre, \|m, k| if HasKey env.locals, (Drop k, 4): Remove m, k else: m
+    let seeds = Fold (Keys pre), pre, \|m, k| if HasKey env.locals, (DropPrefix k, "pre:"): Remove m, k else: m
     let bm = BlockRels stmts, seeds
     Fold stmts, ((frozen, st)), \|((fz, s)), stmt|
         let spots = StmtSpots stmt, bm
@@ -625,7 +625,7 @@ fn FrozenStmts env, st, stmts, frozen:
 # The `&` names a spot reads, with where.
 SpotRefs: fn Spot -> [((Text, Range))]
 fn SpotRefs (SpotExpr e, ignore) = match e.kind:
-    EName n: if (Take n.sigils, 1) == "&": [[((SNameKey n, n.span))]] else: [[]]
+    EName n: if (HasPrefix n.sigils, "&"): [[((SNameKey n, n.span))]] else: [[]]
     otherwise: [[]]
 fn SpotRefs (SpotStmt ignore, ignore) = [[]]
 
@@ -640,7 +640,7 @@ fn SpotFreezes (SpotStmt ignore, ignore) = [[]]
 
 RefsIn: unbounded fn Expr -> [((Text, Range))]
 fn RefsIn e = match e.kind:
-    EName n: if (Take n.sigils, 1) == "&": [[((SNameKey n, n.span))]] else: [[]]
+    EName n: if (HasPrefix n.sigils, "&"): [[((SNameKey n, n.span))]] else: [[]]
     ECall c, args, ignore, ignore: Fold args, (RefsIn c), \|acc, a| Append acc, (RefsIn a.value)
     EBinary ignore, l, r: Append (RefsIn l), (RefsIn r)
     EUnary ignore, x: RefsIn x
@@ -684,7 +684,7 @@ fn IsPrefix a, b = (Len a) <= (Len b) and (Take b, (Len a)) == a
 # A reference's path: its root `&` name and field steps (an index step ends it).
 RefPath: unbounded fn Expr -> [Text]
 fn RefPath e = match e.kind:
-    EName n: if (Take n.sigils, 1) == "&": [[SNameKey n]] else: [[]]
+    EName n: if (HasPrefix n.sigils, "&"): [[SNameKey n]] else: [[]]
     EField r, ignore, f:
         let p = RefPath r
         if (Len p) > 0: Push p, f.name else: p
@@ -964,10 +964,10 @@ fn DispatchTargets sk, d, site, k:
 ChoiceTargets: unbounded fn Shrink, Text, Text, [Text], Text, [Text] -> [Text]
 fn ChoiceTargets sk, k, cls, all, ch, seen:
     if ch == "none": [[]]
-    else: if (Take ch, 5) == "impl:": match sk.implDefs["{k}|{Drop ch, 5}"]:
+    else: if (HasPrefix ch, "impl:"): match sk.implDefs["{k}|{DropPrefix ch, "impl:"}"]:
         ? q: [[q]]
         nil: Filter all, \|q| q == k
-    else: if (Take ch, 8) == "derived:": DerivedTargets sk, k, cls, all, (Drop ch, 8), seen
+    else: if (HasPrefix ch, "derived:"): DerivedTargets sk, k, cls, all, (DropPrefix ch, "derived:"), seen
     else: all
 
 # A derived impl calls the method on its fields: each field's type's own choice, a type
@@ -1300,7 +1300,7 @@ fn ClauseBase sk, d, c = match sk.localBase[d.qk]:
 ?ResolveCallee: fn G, Text, Text -> ?Text
 fn ?ResolveCallee g, m, n = if IsOpText n: ?ResolveOp g, m, n else: match ?ResolveName g, m, n:
     ? k: ? k
-    nil: if (Take n, 1) == "@": ?ResolveName g, m, (Drop n, 1) else: nil
+    nil: if (HasPrefix n, "@"): ?ResolveName g, m, (AfterFirst n) else: nil
 
 ?ResolveOp: fn G, Text, Text -> ?Text
 fn ?ResolveOp g, m, op:
@@ -1309,12 +1309,12 @@ fn ?ResolveOp g, m, op:
 
 # An operator's spelling: no letter in it.
 IsOpText: fn Text -> Bool
-fn IsOpText n = (Len n) > 0 and not (Fold (Chars n), False, \|seen, ch| seen or (IsUpper ch) or (IsLower ch) or ch == "_")
+fn IsOpText n = (Len n) > 0 and not (FoldChars n, False, \|seen, ch| seen or (IsUpper ch) or (IsLower ch) or ch == "_")
 
 ?ResolveName: fn G, Text, Text -> ?Text
 fn ?ResolveName g, m, n:
     let marks = MarksOf n
-    let path = Split (Drop n, (Len marks)), "."
+    let path = Split (DropPrefix n, marks), "."
     let ((?k, ignore)) = ResolveValue g, m, (SName(sigils=marks, path=path, span=Range(start=0, end=0)))
     ?k
 
@@ -1434,7 +1434,7 @@ ParamNameOf: unbounded fn Pattern -> Text
 fn ParamNameOf p = match p.kind:
     PName n:
         let text = SNameKey n
-        Drop text, (Len (MarksOf text))
+        DropPrefix text, (MarksOf text)
     PGroup q: ParamNameOf q
     otherwise: ""
 
@@ -1498,7 +1498,7 @@ fn PreludeSeeds g, h = Fold preludeNames, {}, \|m, n|
 # program's own `module Prelude` is one of the program's files.
 IsPreludeKey: fn G, Text -> Bool
 fn IsPreludeKey g, q = match g.vals[q]:
-    ? v: (Take q, 8) == "Prelude." and v.home == "Prelude" and v.file >= g.preludeFrom
+    ? v: (HasPrefix q, "Prelude.") and v.home == "Prelude" and v.file >= g.preludeFrom
     nil: False
 
 # A block is one binding group, so its names hide the outer ones on every line of it; then
@@ -2510,7 +2510,7 @@ fn TypedOf g, st, shown:
     let z = ZonkTyped st
     let vals = Filter (Values g.vals), \|v| v.file < shown and v.sort != "builtin" and (Or g.mods[v.home], dummyMod).file == v.file
     update z:
-        &_.defs <= Each vals, \|v| DefNote(at=At(file=v.file, span=v.span), name=v.qk, scheme=(ZonkScheme st, v.scheme))
+        &_.defs <= Each vals, \|v| DefNote(at=SrcAt(file=v.file, span=v.span), name=v.qk, scheme=(ZonkScheme st, v.scheme))
 
 ZonkScheme: unbounded fn St, Scheme -> Scheme
 fn ZonkScheme st, sc = update sc:
@@ -2645,7 +2645,7 @@ fn CheckWidgetDef env, st, d, w = match env.g.vals[d.qk]:
 ?MethodKey: fn G, Text, Text -> ?Text
 fn ?MethodKey g, cls, name = Fold (Or g.traits[cls], dummyTrait).methods, nil, \|?found, k| match ?found:
     ? f: ? f
-    nil: if (BareName k) == name or (Drop k, (Len (Or g.traits[cls], dummyTrait).home) + 1) == name: ? k else: nil
+    nil: if (BareName k) == name or (DropPrefix k, "{(Or g.traits[cls], dummyTrait).home}.") == name: ? k else: nil
 
 # An impl's method against its trait's signature at the impl's head (ch. 3): the head's
 # variables rigid, the impl's bounds givens.

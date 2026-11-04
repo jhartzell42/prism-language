@@ -41,7 +41,9 @@ Quoted: fn Text -> Text
 fn Quoted text = Joined (Each (Split text, "\n"), \|l| if l == "": "///" else: "/// {l}"), "\n"
 
 Joined: fn [Text], Text -> Text
-fn Joined xs, sep = Drop (Concat (Each xs, \|x| "{sep}{x}")), (Len sep)
+fn Joined xs, sep = match xs[0]:
+    ? first: Concat (Fold (Drop xs, 1), [[first]], \|acc, x| Push (Push acc, sep), x)
+    nil: ""
 
 # ---------------------------------------------------------------------------------------
 # Files

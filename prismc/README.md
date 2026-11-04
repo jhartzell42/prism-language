@@ -89,10 +89,40 @@ to overturn.
   the prelude having a `Span` already (Q-D2 (b) names it `Range` too). Fields named for
   keywords are renamed: `emit` is `emitRow`, `of` is `ofType`, `trait_` is `traitRef`, a
   `Use`'s `module` is `target`.
-- **CH Characters are one-character texts.** The lexer splits its text once into an array of
-  one-character `Text`s and indexes it; a `Char` literal holds a one-character `Text`.
-  Offsets are characters, not bytes; the diagnostics' `line:col` come out the same, since
-  `prism_syntax` counts columns in characters.
+- **CH Texts are walked with cursors** (Semantics Appendix B, Text; round 4 TX). The lexer
+  holds its source as one `Text` and its position as a byte offset; `Peek` makes a
+  cursor there with `?CursorAt` and reads the character as a one-character `Text`, a view
+  of the source (`CharAt`: `Before` of one `?Step` into `After`). A character is a
+  one-character `Text` throughout the front end, so the classifiers compare texts; a
+  `Char` literal holds a one-character `Text`. Every offset (a `Range`, a line start) is
+  a byte; the diagnostics count their columns in characters, by walking the line
+  (`ColumnOf`), so `line:col` is what `prism_syntax` prints. The text helpers
+  (`lexer.prism`: `Head`, `AfterFirst`, `LastChar`, `BeforeLast`, `HasPrefix`,
+  `DropPrefix`, `?BeforeSuffix`, `Between`, `FoldChars`, `MapChars`, `AllChars`,
+  `TrimLeading`, `TrimTrailing`, `CountChars`) are cursor walks and cuts; nothing in
+  prismc indexes or takes from a text.
+  - **What it costs** (`/usr/bin/time -l <prismc> compile
+    tests/conformance/sem-ch07-normalize.prism --prelude prelude -o target/norm --name
+    norm`, M2 Pro, other jobs running), over a rope of characters (`ropey` in Rust, a
+    `std::u32string` in C++) and now:
+
+    | prismc built by | instructions, characters | instructions, cursors | peak memory, characters | peak memory, cursors |
+    |---|---|---|---|---|
+    | Rust (cargo release) | 4.79 G to 4.82 G | 1.40 G to 1.43 G | 43 MB | 33 MB |
+    | C++ (clang++ -O1) | 1.88 G to 1.94 G | CPP_AFTER |
+  - **Doubts for Jimmy:**
+    - **TXC** A `Cursor` is `^Eq`, `^Ord` and `^Show` like every primitive; it compares
+      by its byte index alone (the book: "Cursors compare by it"), so cursors into two
+      texts at one index are equal. It shows, and leaves as plain data for a `check`
+      line, as `Cursor(at=N)`. The book is silent on both.
+    - **TXS** Only `?Step` shrinks in the shrink check (Semantics ch. 7 names it); a loop
+      over `?StepBack` takes fuel (`TrimTrailing`). Counting `?StepBack` too would let a
+      loop that steps both ways pass.
+    - **TXP** `Split` (not in Appendix B) stays, for a non-empty separator; an empty one
+      gives up (a panic), since it was the way to a text's characters.
+    - **TXK** `Take` and `Drop` are `fn [a], Nat -> [a]`, so `Take` on a text is a
+      `mismatch` at its argument (and its result), with no fix line of its own; `t[i]` on
+      a text has its own message and fix.
 - **UB What is `unbounded`.** Every function that recurses through the grammar or loops
   with no measure a checker could see (the lexer's loops over the text, the parser's
   descent, `Recover`); predicates and cursor primitives are bounded. The closure-taking
@@ -865,7 +895,7 @@ qualified path, a label) or a literal's digits, never syntax.
   `let`s and steps, `MethDef` methods (a receiver `Recv`, a read point `CxArg`), its answer
   arms (a position pattern and the call), hooks, `ForDef` and `GenDef` builders (each
   place's path and a row's parent are expressions), its rows as child nodes.
-- **Types, `OutTy`:** the value types (`OutNat`, `OutInt`, `OutText`, `OutOpt`, `OutRes`,
+- **Types, `OutTy`:** the value types (`OutNat`, `OutInt`, `OutText`, `OutCursor`, `OutOpt`, `OutRes`,
   `OutTuple`, `OutArray`, `OutMap`, `OutNamed` with arguments, `OutGen` a type parameter);
   functions (`OutFn` bounded, `OutJobFn` a `Start`, `OutJob`); the runtime's pieces
   (`OutHold`, `OutStamped`, `OutSnapshot`, `OutDefer`, `OutPort`, `OutWakes`, `OutEvent`,

@@ -225,8 +225,8 @@ fn Unspent corners, pc, from, to:
     let home = (RanksOf pc.color).home
     Kept corners, \|c| not (c == from or c == to or (pc.man == King and c.rank == home))
 
-After: fn Game, Piece, Sq, Sq, Man, Manner -> Game
-fn After g, pc, from, to, promo, manner:
+AfterMove: fn Game, Piece, Sq, Sq, Man, Manner -> Game
+fn AfterMove g, pc, from, to, promo, manner:
     let promotes = pc.man == Pawn and to.rank == (RanksOf pc.color).last
     let placed = if promotes: (Piece pc.color, promo) else: pc
     let moved = Insert (Remove g.board, from), to, placed
@@ -246,7 +246,7 @@ fn ?Move g, from, to, promo:
     forbid (Owns g, to, g.turn)                    # never onto one's own piece
     forbid promo == King or promo == Pawn          # a pawn becomes a piece
     manner <- ?Legal g, pc, from, to
-    let next = After g, pc, from, to, promo, manner
+    let next = AfterMove g, pc, from, to, promo, manner
     forbid (InCheck next, g.turn)                  # never into check, never left in it
     ? next
 
