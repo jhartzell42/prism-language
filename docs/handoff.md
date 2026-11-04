@@ -72,8 +72,26 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
   Failing test first for each bug.
 - **Then the queue below, items 1 to 9.** All the emitter changes go first, then one
   fixed point at the end.
-- **Last, regular expressions:** after everything else. Jimmy (4 November): the design
-  below is done and good; write the books, then implement, without a design round.
+- **Then the style pass** (Jimmy, 4 November), after the queue and before the regex code:
+  - a module divided into sections becomes separate files; more hierarchy in the tree;
+  - every module's main file is `mod.prism` (Rust's rule); `lib.prism`, `mod.prism` or
+    `app.prism` declares its submodules, and `app.prism` the main widget;
+  - top-level items that exist only for testability move out of the module into a
+    `test.prism` beside it, run as `.prismtest` is today.
+  A module-system change as much as a reshuffle: prismc's front end, the checker's module
+  graph, the `prism` script and the Semantics chapter on modules. Write the design as a
+  short note first, do it, and put the calls in it as doubts.
+- **Then regular expressions** (the code; the books are written on `claude-regex-books`).
+  Jimmy (4 November): the design is done and good; no design round.
+- **Then the final benchmarks** (bench/building, bench/running, bench/gui), on a quiet
+  machine, and from them **a recommendation: Rust or C++ as the default back end**, argued
+  from both models, running and building (Jimmy).
+- **Makefiles and paths (IC):** the emitted Makefile takes `PRISM_ROOT` from the
+  environment, the relative path only as the fallback, and `prism`, the bootstrap scripts
+  and the test runners export it from their own location (`pwd -P`), so a build tree
+  reached through a symlink (a `target/` moved out of iCloud) still finds the runtime.
+  Check what cargo does with a symlinked manifest directory and fix the Rust side the
+  same way. Right after the current merges.
 
 ## On macOS
 
