@@ -1,0 +1,135 @@
+# The GUI benchmark's table in Prism (bench/README.md): js-framework-benchmark's
+# operations over a table of rows, each an id, a label and a remove button, under the
+# window library of examples/chess. Each row is a place keyed by its slot; a new row takes
+# a new slot, so "create" replaces every row's place and "swap" moves two rows' values
+# between their places. The selected row's label is marked with a leading `▶`: a frame's
+# background is not live in the window library, a label is.
+#
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Gui.*
+use Window.*
+
+type Row = record:
+    id: Nat
+    label: Text
+derive ^Eq, ^Show
+
+type Op = choice:
+    Create Nat                 # replace every row with this many new ones
+    AddMore Nat                # add this many after the last
+    UpdateTenth                # " !!!" after every tenth row's label, from the first
+    Clear
+    Swap                       # the second row and the 999th trade places
+    Select Nat                 # the row in this slot
+    Delete Nat                 # the row in this slot
+derive ^Eq, ^Show
+
+type Sheet = record:
+    rows: (Nat ==> Row)        # by slot, in order
+    next: Nat                  # the next row's id
+    slot: Nat                  # the next row's slot
+    seed: Nat                  # the labels' generator
+    selected: ?Nat             # a slot
+derive ^Eq, ^Show
+
+let empty = Sheet(rows={}, next=1, slot=0, seed=42, selected=nil)
+
+# js-framework-benchmark's words
+let adjectives = [["pretty", "large", "big", "small", "tall", "short", "long", "handsome", "plain", "quaint", "clean", "elegant", "easy", "angry", "crazy", "helpful", "mushy", "odd", "unsightly", "adorable", "important", "inexpensive", "cheap", "expensive", "fancy"]]
+let colours = [["red", "yellow", "blue", "green", "pink", "brown", "purple", "brown", "white", "black", "orange"]]
+let nouns = [["table", "chair", "house", "bbq", "desk", "car", "pony", "cookie", "sandwich", "burger", "pizza", "mouse", "keyboard"]]
+
+# a linear congruential generator, so every run makes the same labels
+NextSeed: fn Nat -> Nat
+fn NextSeed s = (s * 1103515245 + 12345) mod 2147483648
+
+Pick: fn [Text], Nat -> Text
+fn Pick words, s = Or words[(Or (?Div s, 65536), 0) mod (Len words)], ""
+
+AddRow: fn Sheet, Nat -> Sheet
+fn AddRow t, ignore:
+    let s1 = NextSeed t.seed
+    let s2 = NextSeed s1
+    let s3 = NextSeed s2
+    let label = "{Pick adjectives, s1} {Pick colours, s2} {Pick nouns, s3}"
+    Sheet(rows=(Insert t.rows, t.slot, (Row t.next, label)), next=(t.next + 1), slot=(t.slot + 1), seed=s3, selected=t.?selected)
+
+# 0 to n - 1
+Upto: fn Nat -> [Nat]
+fn Upto n = update [[]]:
+    let &i = 0
+    let &left = n
+    while ? m <- &left -? 1:
+        &left <= m
+        &_ <= Push &_, &i
+        &i += 1
+
+Added: fn Sheet, Nat -> Sheet
+fn Added t, n = Fold (Upto n), t, \|acc, i| AddRow acc, i
+
+Bang: fn (Nat ==> Row), Nat -> (Nat ==> Row)
+fn Bang m, k = match ?Get m, k:
+    ? r: Insert m, k, (Row r.id, "{r.label} !!!")
+    nil: m
+
+Swapped: fn (Nat ==> Row), [Nat] -> (Nat ==> Row)
+fn Swapped m, keys:
+    let a = Or keys[1], 0
+    let b = Or keys[998], 0
+    match (((?Get m, a), (?Get m, b))):
+        ((? ra, ? rb)): Insert (Insert m, a, rb), b, ra
+        otherwise: m
+
+Step: fn Sheet, Op -> Sheet
+fn Step t, (Create n) = Added (update t: &_.rows <= {}), n
+fn Step t, (AddMore n) = Added t, n
+fn Step t, UpdateTenth:
+    let keys = Keys t.rows
+    let rows = Fold (Upto (Len keys)), t.rows, \|m, i| if i mod 10 == 0: Bang m, (Or keys[i], 0) else: m
+    update t:
+        &_.rows <= rows
+fn Step t, Clear = update t:
+    &_.rows <= {}
+fn Step t, Swap = update t:
+    &_.rows <= Swapped t.rows, (Keys t.rows)
+fn Step t, (Select s) = update t:
+    &_.selected <= ? s
+fn Step t, (Delete s) = update t:
+    &_.rows <= Remove t.rows, s
+
+Marked: fn Row, Nat, ?Nat -> Text
+fn Marked r, s, ?selected = if ?selected == (? s): "▶ {r.label}" else: r.label
+
+IdText: fn Row -> Text
+fn IdText r = "{r.id}"
+
+?FirstOp: fn (Nat ==> Op) -> ?Op
+fn ?FirstOp ops:
+    ((ignore, op)) <- ?First ops
+    ? op
+
+@$table: @$Text
+@$table:
+    !op <- @Column 2.0, @widget:
+        !top <- @Row 4.0, @widget:
+            !a <- Ui.Button(label=$"Create 1,000 rows")
+            !b <- Ui.Button(label=$"Create 10,000 rows")
+            !c <- Ui.Button(label=$"Append 1,000 rows")
+            !d <- Ui.Button(label=$"Update every 10th row")
+            !e <- Ui.Button(label=$"Clear")
+            !f <- Ui.Button(label=$"Swap rows")
+            @ ((Create 1000) on !a) <| ((Create 10000) on !b) <| ((AddMore 1000) on !c) <| (UpdateTenth on !d) <| (Clear on !e) <| (Swap on !f)
+        !rowOps <- for slot, $entry <- $table.rows:
+            !acts <- @Row 4.0, @widget:
+                Ui.Label(text=(IdText $entry))
+                !sel <- Ui.Button(label=(Marked $entry, slot, $table.?selected))
+                !rm <- Ui.Button(label=$"x")
+                @ ((Select slot) on !sel) <| ((Delete slot) on !rm)
+            @ !acts
+        @ !top <| !Filter (?FirstOp !rowOps)
+    $table <- empty then Step $table, !op
+    @ "{Size $table.rows} rows"
+
+@$main: @$Text
+@$main:
+    @Window $"Prism table", (Extent 900.0, 800.0), @$table
