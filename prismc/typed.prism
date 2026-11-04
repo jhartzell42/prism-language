@@ -89,6 +89,26 @@ type BinderNote = record:
     ty: Ty
 derive ^Eq, ^Show
 
+# A generalized local `let` (ch. 5, a local `let` generalizes; D8): its binder's place,
+# its name, and the type and color variables its scheme quantified (`'12`, `'c14`), which
+# its binder's type and its value's types have as `(var t12)` and `(color 'c14)`.
+type GenNote = record:
+    at: At
+    name: Text
+    tys: [Text]
+    cols: [Text]
+derive ^Eq, ^Show
+
+# A use of a generalized local `let` (ch. 5, a local `let` generalizes; D8): the name's
+# place, its name, and what each of the scheme's type and color variables is there, by the
+# variable's name; lowering lowers the bound value once per instantiation.
+type InstNote = record:
+    at: At
+    name: Text
+    tys: [((Text, Ty))]
+    cols: [((Text, Col))]
+derive ^Eq, ^Show
+
 # A top-level definition's scheme as the checker read it: its signature's, or what a
 # top-level `let` without one generalized to.
 type DefNote = record:
@@ -105,13 +125,15 @@ type TProgram = record:
     methods: [MethodNote]
     groups: [GroupNote]
     binders: [BinderNote]
+    gens: [GenNote]
+    insts: [InstNote]
     defs: [DefNote]
     # Every `while` in an unbounded function that the shrink check does not clear: each
     # turn of one is a cycle point (D6); a loop it clears is one unit of work.
     unshrunk: [At]
 derive ^Eq, ^Show
 
-let emptyTyped = TProgram(exprs=[[]], apps=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], defs=[[]], unshrunk=[[]])
+let emptyTyped = TProgram(exprs=[[]], apps=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
 
 AtKey: fn At -> Text
 fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"
@@ -192,7 +214,9 @@ fn TypedSexp srcs, trees, shown, tp:
     let impls = Concat (Each (Filter tp.impls, \|x| Mine x.at), \|x| "  (impl {AtText srcs, x.at} ^{x.cls} {TySexp x.ty} {x.how})\n")
     let groups = Concat (Each (Filter tp.groups, \|x| Mine x.at), \|x| "  (group {x.kind} {AtText srcs, x.at}{Concat (Each x.order, \|c| " ({Join (Each c, \|i| "{i}"), " "})")})\n")
     let binders = Concat (Each (Filter tp.binders, \|x| Mine x.at), \|x| "  (binder {Quote x.name} {AtText srcs, x.at} {TySexp x.ty})\n")
-    "(typed\n (defs\n{defs} )\n (exprs\n{exprs} )\n (apps\n{apps} )\n (fns\n{fns} )\n (methods\n{methods} )\n (impls\n{impls} )\n (groups\n{groups} )\n (binders\n{binders} ))\n"
+    let gens = Concat (Each (Filter tp.gens, \|x| Mine x.at), \|x| "  (gen {Quote x.name} {AtText srcs, x.at}{Concat (Each x.tys, \|q| " {q}")}{Concat (Each x.cols, \|q| " {q}")})\n")
+    let insts = Concat (Each (Filter tp.insts, \|x| Mine x.at), \|x| "  (inst {Quote x.name} {AtText srcs, x.at}{Concat (Each x.tys, \|((q, t))| " ({q} {TySexp t})")}{Concat (Each x.cols, \|((q, c))| " ({q} {ColSexp c})")})\n")
+    "(typed\n (defs\n{defs} )\n (exprs\n{exprs} )\n (apps\n{apps} )\n (fns\n{fns} )\n (methods\n{methods} )\n (impls\n{impls} )\n (groups\n{groups} )\n (binders\n{binders} )\n (gens\n{gens} )\n (insts\n{insts} ))\n"
 
 Shown: fn At, Nat -> Bool
 fn Shown a, shown = a.file < shown

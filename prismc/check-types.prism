@@ -233,6 +233,16 @@ NoteBinder: fn St, Range, Text, Ty -> St
 fn NoteBinder st, span, name, t = if not st.recording: st else: update st:
     &_.typed.binders <= Push &_.typed.binders, BinderNote(at=(AtHere st, span), name=name, ty=t)
 
+# A generalized local `let`: its binder and the variables its scheme quantified.
+NoteGen: fn St, Range, Text, Scheme -> St
+fn NoteGen st, span, name, sc = if (not st.recording) or ((Len sc.qs) == 0 and (Len sc.cqs) == 0): st else: update st:
+    &_.typed.gens <= Push &_.typed.gens, GenNote(at=(AtHere st, span), name=name, tys=sc.qs, cols=sc.cqs)
+
+# A use of a generalized local `let`: what each of its scheme's variables is here.
+NoteInst: fn St, Range, Text, Scheme, Inst -> St
+fn NoteInst st, span, name, sc, inst = if not st.recording: st else: update st:
+    &_.typed.insts <= Push &_.typed.insts, InstNote(at=(AtHere st, span), name=name, tys=(Each sc.qs, \|q| ((q, (Or inst.tys[q], TyErr)))), cols=(Each sc.cqs, \|q| ((q, (Or inst.cols[q], CBound)))))
+
 NoteApp: fn St, Range, Text, Text, Text, [Nat], Text, Col -> St
 fn NoteApp st, span, callee, kind, layer, lifted, inner, col = if not st.recording: st else: update st:
     &_.typed.apps <= Push &_.typed.apps, AppNote(at=(AtHere st, span), callee=callee, kind=kind, layer=layer, lifted=lifted, inner=inner, color=col)
@@ -289,6 +299,7 @@ fn ZonkTyped st:
     update t:
         &_.exprs <= Each &_.exprs, \|n| TyNote(at=n.at, ty=(ResolveTy st, n.ty))
         &_.binders <= Each &_.binders, \|n| BinderNote(at=n.at, name=n.name, ty=(ResolveTy st, n.ty))
+        &_.insts <= Each &_.insts, \|n| InstNote(at=n.at, name=n.name, tys=(Each n.tys, \|((q, x))| ((q, (ResolveTy st, x)))), cols=(Each n.cols, \|((q, c))| ((q, (ResolveCol st, c)))))
         &_.impls <= Each &_.impls, \|n| ImplNote(at=n.at, cls=n.cls, ty=(ResolveTy st, n.ty), how=n.how)
         &_.apps <= Each &_.apps, \|n| AppNote(at=n.at, callee=n.callee, kind=n.kind, layer=n.layer, lifted=n.lifted, inner=n.inner, color=(ResolveCol st, n.color))
         &_.fns <= Each &_.fns, \|n| FnNote(at=n.at, name=n.name, declared=(ResolveCol st, n.declared), body=(ResolveCol st, n.body))

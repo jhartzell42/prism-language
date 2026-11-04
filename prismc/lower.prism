@@ -76,6 +76,9 @@ type OutTy = choice:
     OutPort OutTy
     # A live element (`Element r o`, pick RV): its level at the build and its level over time.
     OutLive OutTy
+    # A quantified type variable of a generalized local `let` that no instantiation gave a
+    # type (pick LG): the printer refuses it, naming the binding.
+    OutQuantified Text
     OutUnknown Text
 derive ^Eq, ^Show
 
@@ -537,6 +540,17 @@ type Lx = record:
     # The `while` loops of unbounded functions the shrink check did not clear, by place:
     # each turn of one is a cycle point (D6).
     unshrunk: (Text ==> Bool)
+    # The generalized local `let`s (pick LG): each by its binder's place; its uses'
+    # instantiations by the scheme's first variable; every quantified variable with its
+    # binding's name; and the instantiation being lowered, for the type and color
+    # variables of the value lowered at it.
+    gens: (Text ==> GenNote)
+    insts: (Text ==> [InstNote])
+    quants: (Text ==> Text)
+    genOfQ: (Text ==> GenNote)
+    useInsts: (Text ==> InstNote)
+    subst: (Text ==> Ty)
+    csubst: (Text ==> Col)
 derive ^Eq, ^Show
 
 # A key into the typed tables: the file and the range.
@@ -544,13 +558,42 @@ PlaceKey: fn Lx, Range -> Text
 fn PlaceKey lx, r = "{lx.file}:{r.start}:{r.end}"
 
 TypeAt: fn Lx, Range -> Ty
-fn TypeAt lx, r = Or lx.tys[PlaceKey lx, r], TyErr
+fn TypeAt lx, r = SubstTy lx, (Or lx.tys[PlaceKey lx, r], TyErr)
 
 ?AppAt: fn Lx, Range -> ?AppNote
 fn ?AppAt lx, r = lx.apps[PlaceKey lx, r]
 
 BinderTy: fn Lx, Range -> Ty
-fn BinderTy lx, r = Or lx.binders[PlaceKey lx, r], (TypeAt lx, r)
+fn BinderTy lx, r = match lx.binders[PlaceKey lx, r]:
+    ? t: SubstTy lx, t
+    nil: TypeAt lx, r
+
+# A type at the instantiation being lowered (pick LG): a generalized `let`'s type and color
+# variables replaced by what this instantiation gives them.
+SubstTy: fn Lx, Ty -> Ty
+fn SubstTy lx, t = if (Len (Keys lx.subst)) == 0 and (Len (Keys lx.csubst)) == 0: t else: SubstTyIn lx, t
+
+SubstTyIn: fn Lx, Ty -> Ty
+fn SubstTyIn lx, t = match t:
+    TyFlex n: Or lx.subst["'{n}"], t
+    TyCon n, args: TyCon n, (Each args, \|a| SubstTyIn lx, a)
+    TyFn c, ps, res: TyFn (InstCol lx, c), (Each ps, \|p| SubstTyIn lx, p), (SubstTyIn lx, res)
+    TyTuple ts: TyTuple (Each ts, \|a| SubstTyIn lx, a)
+    TyArray e: TyArray (SubstTyIn lx, e)
+    TyMap k, v: TyMap (SubstTyIn lx, k), (SubstTyIn lx, v)
+    TySig s, i: TySig s, (SubstTyIn lx, i)
+    TyAt i, rw: TyAt (SubstTyIn lx, i), rw
+    TyElem rw, o: TyElem rw, (SubstTyIn lx, o)
+    TyAssoc n, a: TyAssoc n, (SubstTyIn lx, a)
+    other: other
+
+InstCol: fn Lx, Col -> Col
+fn InstCol lx, (CQ q) = Or lx.csubst[q], (CQ q)
+fn InstCol lx, c = c
+
+IsQuantCol: fn Lx, Col -> Bool
+fn IsQuantCol lx, (CQ q) = HasKey lx.quants, q
+fn IsQuantCol lx, c = False
 
 # The tables of the typed program by place.
 TypedTables: fn TProgram -> (((Text ==> Ty), (Text ==> AppNote), (Text ==> Ty), (Text ==> [ImplNote])))
@@ -708,7 +751,9 @@ fn OutTyOf lx, t = match t:
     TyFn c, ps, res:
         # A function value of any color but bounded is a `Start` (D8: a color variable may
         # be unbounded), so one representation serves both instantiations.
-        if c == CBound: OutFn (Each ps, \|p| OutTyOf lx, p), (OutTyOf lx, res)
+        let c2 = InstCol lx, c
+        if c2 == CBound: OutFn (Each ps, \|p| OutTyOf lx, p), (OutTyOf lx, res)
+        else: if IsQuantCol lx, c2: OutQuantified (Or lx.quants[ColName c2], "")
         else: OutJobFn (RustTyOfParams lx, (Each ps, \|p| JobParam p)), (OutTyOf lx, res)
     TyTuple [[]]: OutUnit
     TyTuple ts: OutTuple (Each ts, \|a| OutTyOf lx, a)
@@ -722,7 +767,11 @@ fn OutTyOf lx, t = match t:
     TySig ignore, i: OutTyOf lx, i
     TyQ n: OutGen (Camel n)
     TyRigid n: OutGen (Camel n)
-    TyFlex ignore: OutUnit
+    TyFlex n: match lx.subst["'{n}"]:
+        ? x: OutTyOf lx, x
+        nil: match lx.quants["'{n}"]:
+            ? b: OutQuantified b
+            nil: OutUnit
     TyAny ignore: OutShowAny
     TyElem ignore, ignore: OutLive (OutNamed "crate::Elem", [[]])
     TyElemAny ignore: OutNamed "crate::Elem", [[]]
@@ -914,8 +963,23 @@ type Bn = choice:
 type Env = record:
     names: (Text ==> Bn)
     spans: (Text ==> Vl)
+    # The instantiations of each generalized `let` (pick LG): the name and the
+    # instantiation, with the key of its binding (`Twin#inst1`).
+    uses: (Text ==> Text)
 
-let emptyEnv = Env(names={}, spans={})
+let emptyEnv = Env(names={}, spans={}, uses={})
+
+# The key of the binding a name names at a place: a generalized `let`'s instantiation
+# there (pick LG), else the name's own.
+NameKeyAt: fn Lx, Env, SName, Range -> Text
+fn NameKeyAt lx, env, n, span = match lx.useInsts[PlaceKey lx, span]:
+    ? u: Or env.uses["{SNameKey n}#{Show (InstAt lx, u)}"], (SNameKey n)
+    nil: SNameKey n
+
+# Names a closure reads, with the instantiations of each that is a generalized `let`
+# lowered more than once (pick LG): a capture takes them all.
+WithInstances: fn Env, [Text] -> [Text]
+fn WithInstances env, names = Fold names, names, \|acc, n| Append acc, (Filter (Keys env.names), \|k| (Take k, (Len n) + 5) == "{n}#inst")
 
 BindSpan: fn Env, Text, Vl -> Env
 fn BindSpan env, nkey, v = update env:
@@ -1144,7 +1208,7 @@ fn EventValueOf lx, env, e:
                 [[one]]:
                     let src = Own (ValueOf lx, env, one)
                     let it = OutTyOf lx, (Peel (TypeAt lx, one.span))
-                    let caps = Filter (ReadNames (ExprsIn e)), \|n| match env.names[n]:
+                    let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
                         ? (BnLocal ignore, ignore, ignore): True
                         otherwise: False
                     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
@@ -1279,7 +1343,7 @@ fn KindWords k = match k:
 # A name: a local, or a global value, constructor or `let`.
 NameValue: unbounded fn Lx, Env, SName, Range -> Vl
 fn NameValue lx, env, n, span:
-    let nkey = SNameKey n
+    let nkey = NameKeyAt lx, env, n, span
     let t = OutTyOf lx, (Peel (TypeAt lx, span))
     let ?local = if (Len n.path) == 1: env.names[nkey] else: nil
     match ?local:
@@ -1353,7 +1417,7 @@ fn Application lx, env, callee, args, span:
     let t = OutTyOf lx, (Peel (TypeAt lx, span))
     match callee.kind:
         EName n:
-            let nkey = SNameKey n
+            let nkey = NameKeyAt lx, env, n, callee.span
             let ?local = if (Len n.path) == 1: env.names[nkey] else: nil
             match ?local:
                 ? (BnLocalFn c): InlineLocalFn lx, env, c, args, t
@@ -1412,7 +1476,7 @@ fn ArgumentByKind lx, env, e = match e.kind:
         let t = TypeAt lx, e.span
         match Peel t:
             TyFn CBound, ignore, ignore:
-                let ?local = if (Len n.path) == 1: env.names[SNameKey n] else: nil
+                let ?local = if (Len n.path) == 1: env.names[NameKeyAt lx, env, n, e.span] else: nil
                 match ?local:
                     ? ignore: ClosureRef (ValueOf lx, env, e)
                     nil:
@@ -1816,7 +1880,7 @@ fn PlainLambda lx, env, ps, body, ft:
     let pts = match ft:
         OutFn xs, ignore: xs
         otherwise: [[]]
-    let read = ReadNames (LambdaExprs body)
+    let read = WithInstances env, (ReadNames (LambdaExprs body))
     let caps0 = Filter read, \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
@@ -1871,7 +1935,7 @@ fn IsKnownTy t = match t:
 # wanted answers in its first cycle.
 JobLambda: unbounded fn Lx, Env, [Pattern], LambdaBody, OutTy, OutTy, Bool -> Vl
 fn JobLambda lx, env, ps, body, ft, a, enter:
-    let caps = Filter (ReadNames (LambdaExprs body)), \|n| match env.names[n]:
+    let caps = Filter (WithInstances env, (ReadNames (LambdaExprs body))), \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
@@ -1912,7 +1976,7 @@ fn JobLambda lx, env, ps, body, ft, a, enter:
         LbBlock bl: TailBlock lx, env2, bl
     let tail = if (Len unpack) == 0: tail0 else: XBlock unpack, tail0
     let job0 = XCall "once_job", [[(XClosure True, [[]], tail)]]
-    let job = if enter or CallsUnbounded lx, env2, body: XCall "entered", [[job0]] else: job0
+    let job = if enter: XCall "entered", [[job0]] else: job0
     let call = if (Len again) == 0: job else: XBlock again, job
     VlOwned (XBlock dos, (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], call)]]), ft)), ft
 
@@ -1922,34 +1986,6 @@ EntersLambda: fn Lx, Expr -> Bool
 fn EntersLambda lx, e = match Peel (TypeAt lx, e.span):
     TyFn CBound, ignore, ignore: False
     TyFn ignore, ignore, ignore: True
-    otherwise: False
-
-# Whether a lambda's body calls an unbounded function (a callee whose checked type is
-# unbounded, or a local that is a `Start`): such a lambda is unbounded whatever color the
-# checker left on the lambda itself, which it fixes before a parameter's type is known
-# (`\|ignore| K v` with `K` a `Start`).
-CallsUnbounded: unbounded fn Lx, Env, LambdaBody -> Bool
-fn CallsUnbounded lx, env, body = Fold (LambdaExprs body), False, \|seen, x| seen or IsUnboundedCall lx, env, x
-
-IsUnboundedCall: fn Lx, Env, Expr -> Bool
-fn IsUnboundedCall lx, env, x = match x.kind:
-    ECall c, ignore, ignore, ignore: (IsUnboundedTy (TypeAt lx, c.span)) or IsStartLocal env, c
-    otherwise: False
-
-IsUnboundedTy: fn Ty -> Bool
-fn IsUnboundedTy t = match Peel t:
-    TyFn CUnbound, ignore, ignore: True
-    otherwise: False
-
-IsStartLocal: fn Env, Expr -> Bool
-fn IsStartLocal env, c = match c.kind:
-    EName n: if (Len n.path) == 1: IsStartBinding env.names[SNameKey n] else: False
-    EGroup y: IsStartLocal env, y
-    otherwise: False
-
-IsStartBinding: fn ?Bn -> Bool
-fn IsStartBinding ?b = match ?b:
-    ? (BnLocal ignore, ignore, (OutJobFn ignore, ignore)): True
     otherwise: False
 
 # An environment of only the locals a closure captured (its other borrowed locals cannot
@@ -2103,14 +2139,126 @@ let dummyStmtL = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0))
 # One statement of an expression block.
 BlockStmt: unbounded fn Lx, Env, Stmt -> (([Do], Env))
 fn BlockStmt lx, env, s = match s.kind:
-    SLet p, ignore, x:
-        let v = ValueOf lx, env, x
-        let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{s.span.start}"
-        (([[(DoLet po.pa, (Own v))]], (BindAll env, po.binds)))
+    SLet p, ignore, x: match p.kind:
+        PName n: match lx.gens[PlaceKey lx, n.span]:
+            ? gn: GenericLet lx, env, n, gn, x
+            nil: PlainLet lx, env, s, p, x
+        otherwise: PlainLet lx, env, s, p, x
     SExpr x: (([[DoExpr (Own (ValueOf lx, env, x))]], env))
     SSignature ignore: (([[]], env))
     SFn f: (([[RefusalDo "a local function {DefNameText f.name}: not lowered yet"]], env))
     otherwise: (([[RefusalDo "a statement this back end does not lower yet"]], env))
+
+# A generalized local `let` (pick LG): its value lowered once per distinct instantiation
+# its uses have, each a binding of its own (`twin_fn_0`, `twin_fn_1`; one alone keeps the
+# plain name), each use bound to its instantiation's. An instantiation is this one's (an
+# enclosing generalized `let`'s) applied to what the use gives the variables. With no use
+# there is nothing to lower.
+GenericLet: unbounded fn Lx, Env, SName, GenNote, Expr -> (([Do], Env))
+fn GenericLet lx, env, n, gn, x:
+    let nkey = SNameKey n
+    let distinct = Instantiations lx, gn
+    let one = (Len distinct) == 1
+    let rs = LocalName lx, nkey
+    Fold (Range0 (Len distinct)), (([[]], env)), \|((dos, en)), k|
+        let ((tys, cols)) = Or distinct[k], (([[]], [[]]))
+        let lxk = AtInstance lx, ((tys, cols))
+        let rk = if one: rs else: "{rs}_{k}"
+        let bkey = if k == 0: nkey else: "{nkey}#inst{k}"
+        let bt = OutTyOf lxk, (Peel (BinderTy lxk, n.span))
+        let v = ValueOf lxk, env, x
+        let en1 = Bind en, bkey, (BnLocal (XVar rk), Owned, bt)
+        let en2 = update en1:
+            &_.uses <= Insert &_.uses, "{nkey}#{Show ((tys, cols))}", bkey
+        let d = DoLet (PaBind rk), (Own v)
+        (((Push dos, d), en2))
+
+# The distinct instantiations a generalized `let`'s uses have, in page order. A use
+# inside another generalized `let` (`Take` used in `Builder`) may be at that one's
+# variables: it stands for each of that one's instantiations.
+Instantiations: unbounded fn Lx, GenNote -> [(([((Text, Ty))], [((Text, Col))]))]
+fn Instantiations lx, gn = Fold (Or lx.insts[GenKey gn], [[]]), [[]], \|acc, u|
+    Fold (Expanded lx, (InstAt lx, u)), acc, \|a, i| if Fold a, False, \|seen, j| seen or (Show j) == (Show i): a else: Push a, i
+
+Expanded: unbounded fn Lx, (([((Text, Ty))], [((Text, Col))])) -> [(([((Text, Ty))], [((Text, Col))]))]
+fn Expanded lx, i = match ?OpenQ lx, i:
+    nil: [[i]]
+    ? q: match lx.genOfQ[q]:
+        ? g: Fold (Instantiations lx, g), [[]], \|acc, gi|
+            let lx2 = AtInstance lx, gi
+            Append acc, (Expanded lx2, (SubstInst lx2, i))
+        nil: [[i]]
+
+SubstInst: fn Lx, (([((Text, Ty))], [((Text, Col))])) -> (([((Text, Ty))], [((Text, Col))]))
+fn SubstInst lx, ((tys, cols)):
+    let tys2 = Each tys, \|((q, t))| ((q, (SubstTy lx, t)))
+    let cols2 = Each cols, \|((q, c))| ((q, (InstCol lx, c)))
+    ((tys2, cols2))
+
+# The first quantified variable an instantiation still has that no instantiation being
+# lowered gives.
+?OpenQ: unbounded fn Lx, (([((Text, Ty))], [((Text, Col))])) -> ?Text
+fn ?OpenQ lx, ((tys, cols)):
+    let fromCols = Fold cols, [[]], \|acc, ((ignore, c))| Append acc, (OpenCols lx, c)
+    let all = Fold tys, fromCols, \|acc, ((ignore, t))| Append acc, (OpenTyQs lx, t)
+    all[0]
+
+OpenCols: fn Lx, Col -> [Text]
+fn OpenCols lx, (CQ q) = if (HasKey lx.genOfQ, q) and not (HasKey lx.csubst, q): [[q]] else: [[]]
+fn OpenCols lx, c = [[]]
+
+OpenTyQs: unbounded fn Lx, Ty -> [Text]
+fn OpenTyQs lx, t = match t:
+    TyFlex n: if (HasKey lx.genOfQ, "'{n}") and not (HasKey lx.subst, "'{n}"): [["'{n}"]] else: [[]]
+    TyFn c, ps, res: Fold (Push ps, res), (OpenCols lx, c), \|acc, x| Append acc, (OpenTyQs lx, x)
+    TyCon ignore, args: Fold args, [[]], \|acc, x| Append acc, (OpenTyQs lx, x)
+    TyTuple ts: Fold ts, [[]], \|acc, x| Append acc, (OpenTyQs lx, x)
+    TyArray e: OpenTyQs lx, e
+    TyMap k, v: Append (OpenTyQs lx, k), (OpenTyQs lx, v)
+    TySig ignore, i: OpenTyQs lx, i
+    TyAt i, ignore: OpenTyQs lx, i
+    TyElem ignore, o: OpenTyQs lx, o
+    TyAssoc ignore, a: OpenTyQs lx, a
+    otherwise: [[]]
+
+# Lowering at an instantiation: its variables' types and colors in the substitution.
+AtInstance: fn Lx, (([((Text, Ty))], [((Text, Col))])) -> Lx
+fn AtInstance lx, ((tys, cols)) = update lx:
+    &_.subst <= Fold tys, &_.subst, \|m, ((q, t))| Insert m, q, t
+    &_.csubst <= Fold cols, &_.csubst, \|m, ((q, c))| Insert m, q, c
+
+# A widget block's `let` (a node's field, of one type): a generalized one is lowered at
+# its uses' instantiation when they have one; at several it keeps its quantified
+# variables, which the printer refuses (gap LW).
+WidgetLetLx: unbounded fn Lx, Range -> Lx
+fn WidgetLetLx lx, span = match lx.gens[PlaceKey lx, span]:
+    ? gn: match Instantiations lx, gn:
+        [[i]]: AtInstance lx, i
+        otherwise: lx
+    nil: lx
+
+# A use's instantiation at the one being lowered: each variable's type and color.
+InstAt: fn Lx, InstNote -> (([((Text, Ty))], [((Text, Col))]))
+fn InstAt lx, u:
+    let tys = Each u.tys, \|((q, t))| ((q, (SubstTy lx, t)))
+    let cols = Each u.cols, \|((q, c))| ((q, (InstCol lx, c)))
+    ((tys, cols))
+
+GenKey: fn GenNote -> Text
+fn GenKey gn = Or (Append gn.tys, gn.cols)[0], ""
+
+InstKey: fn InstNote -> Text
+fn InstKey u = Or (Append (Each u.tys, \|((q, ignore))| q), (Each u.cols, \|((q, ignore))| q))[0], ""
+
+ColName: fn Col -> Text
+fn ColName (CQ q) = q
+fn ColName c = ""
+
+PlainLet: unbounded fn Lx, Env, Stmt, Pattern, Expr -> (([Do], Env))
+fn PlainLet lx, env, s, p, x:
+        let v = ValueOf lx, env, x
+        let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{s.span.start}"
+        (([[(DoLet po.pa, (Own v))]], (BindAll env, po.binds)))
 
 # ---------------------------------------------------------------------------------------
 # Patterns: a Rust pattern, the conditions after it, and the names it binds
@@ -3150,11 +3298,15 @@ fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
             Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=thenX), XArm(pat=PaWild, conds=[[]], body=elseX)]], "'u{x.span.start}", OutUnknown "the job's turn")
     Prepend (Push outDos, kDo), choose
 
+# The name an instantiation's key is of (`Twin#inst1`, pick LG); any other key itself.
+InstanceOf: fn Text -> Text
+fn InstanceOf k = Or (Split k, "#inst")[0], k
+
 # The locals of `env` a source text names, other than `skip`: each to clone into a closure.
 CapsIn: fn Env, Text, [Text] -> [((Text, Ex, Holding, OutTy))]
 fn CapsIn env, text, skip = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
     ? (BnLocal rs, mode, bt):
-        if (HasText skip, (PlaceStem rs)) or (OnSelf rs) or not (Mentions text, (Drop k, (Len (MarksOf k)))): acc
+        if (HasText skip, (PlaceStem rs)) or (OnSelf rs) or not (Mentions text, (Drop (InstanceOf k), (Len (MarksOf k)))): acc
         else: Push acc, ((k, rs, mode, bt))
     otherwise: acc
 
@@ -3218,7 +3370,7 @@ fn Frame lx, env, call, restText, Cont = match call.kind:
         let v = "{base}_{call.span.start}"
         let t = OutTyOf lx, (Peel (TypeAt lx, call.span))
         let caps = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
-            ? (BnLocal rs, mode, bt): if (mode == ByRef or mode == RcRef) and Mentions restText, k: Push acc, ((k, rs, mode, bt)) else: acc
+            ? (BnLocal rs, mode, bt): if (mode == ByRef or mode == RcRef) and Mentions restText, (InstanceOf k): Push acc, ((k, rs, mode, bt)) else: acc
             otherwise: acc
         let dos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind (PlaceStem rs)), (Own (VlPlace rs, mode, bt))
         let env2 = Fold caps, env, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (PlaceStem rs)), Owned, bt)
@@ -3789,7 +3941,7 @@ fn HowBound nil = AsBind
 
 PreBindName: unbounded fn Wx, Env, Env, SName, HowBound -> ((Wx, Env, Env))
 fn PreBindName wx, benv, menv, n, how:
-    let lx = wx.lx
+    let lx = WidgetLetLx wx.lx, n.span
     let nkey = SNameKey n
     let full = BinderTy lx, n.span
     let layer = LayerOf full
@@ -4008,7 +4160,10 @@ fn LetLine wx, benv, menv, p, e:
             else: ((wx2, benv))
         ? (BnLocal rs, ignore, t):
             let local = PlaceStem rs
-            let v = Own (ValueOf lx, benv, e)
+            let lxw = match p.kind:
+                PName n: WidgetLetLx lx, n.span
+                otherwise: lx
+            let v = Own (ValueOf lxw, benv, e)
             let f = PlaceStem rs
             let wx2 = update wx:
                 &_.lets <= Push &_.lets, (DoLet (PaBind f), v)
@@ -5695,9 +5850,14 @@ LowerProgram: unbounded fn [Src], [Module], Nat, TProgram, Text -> Model
 fn LowerProgram srcs, trees, shown, tp, name:
     let ((g, ignore)) = BuildG srcs, trees
     let ((tys, apps, bs, ims)) = TypedTables tp
+    let gens = Fold tp.gens, {}, \|m, n| Insert m, (AtKey n.at), n
+    let insts = Fold tp.insts, {}, \|m, n| Insert m, (InstKey n), (Push (Or m[InstKey n], [[]]), n)
+    let quants = Fold tp.gens, {}, \|m, n| Fold (Append n.tys, n.cols), m, \|m2, q| Insert m2, q, n.name
+    let genOfQ = Fold tp.gens, {}, \|m, n| Fold (Append n.tys, n.cols), m, \|m2, q| Insert m2, q, n
+    let useInsts = Fold tp.insts, {}, \|m, n| Insert m, (AtKey n.at), n
     let mods = NeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (RustModName m)
-    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True))
+    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, subst={}, csubst={})
     let lx = update lx0:
         &_.unbs <= JobRoots lx0
     let roots = RootWidgets lx

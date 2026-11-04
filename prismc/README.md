@@ -255,11 +255,16 @@ every type followed to its end once the program's last defaults are in.
   strongly connected components, dependencies first, ties in page order.
 - `binders: [BinderNote]` and `defs: [DefNote]`: every binder's type and every top-level
   definition's scheme.
+- `gens: [GenNote]` and `insts: [InstNote]`: every generalized local `let` (its binder and
+  the variables its scheme quantified, `'12` and `'c14`) and every use of one (the name's
+  place and what each of those variables is there). The binder's type and its value's
+  types have the variables as `(var t12)` and `(color 'c14)`; lowering instantiates the
+  value at each use (pick LG).
 
 The dump walks the tree, so an expression the checker never annotated prints `unknown`;
 run.sh checks that chess's and the conformance counter's dumps have none. A variable left
 in a dump (`(var t12)`) is one nothing decides and nothing constrains (a supplier's `o`,
-an empty array's element), or one a local `let` quantified.
+an empty array's element), or one a local `let` quantified (`gens` names those).
 
 ### Where it stands
 
@@ -766,10 +771,6 @@ What the checker does not do yet, each with Claude's first ruling.
   *First ruling:* check them when the record is decided.
 - **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
   *First ruling:* read each impl's associated type into the normalizer.
-- **LB Lowering still guesses a lambda's color** (its pick JB: a lambda whose body calls
-  an unbounded function or a `Start` local is unbounded), though the typed output now
-  gives the solved one (pick CV). *Next:* lowering reads the typed output's color, and
-  JB's workaround goes.
 
 ## Back end
 
@@ -846,7 +847,8 @@ qualified path, a label) or a literal's digits, never syntax.
   `OutTuple`, `OutArray`, `OutMap`, `OutNamed` with arguments, `OutGen` a type parameter);
   functions (`OutFn` bounded, `OutJobFn` a `Start`, `OutJob`); the runtime's pieces
   (`OutHold`, `OutStamped`, `OutSnapshot`, `OutDefer`, `OutPort`, `OutWakes`, `OutEvent`,
-  `OutDyn`, `OutLive`, `OutPod`); memory (`OutRc` shared, `OutWeak` to a node, `OutCell`
+  `OutDyn`, `OutLive`, `OutPod`); `OutQuantified`, a generalized `let`'s variable no
+  instantiation gave a type (pick LG), which the printer refuses; memory (`OutRc` shared, `OutWeak` to a node, `OutCell`
   mutable inside a shared node, `OutRef` a borrow, `OutObj` a shared trait object such as
   a node, a row or a host, `OutSlice`, `OutCount` a machine count). The C++ runtime's
   README maps each to its C++ form.
@@ -883,7 +885,7 @@ qualified path, a label) or a literal's digits, never syntax.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: all 68 pass, chess's board included.
+`tests/compiled/run.sh`, which runs every program every time: all 69 pass, chess's board included.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -898,7 +900,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   self-compile needed: `be-let-fn-pair`, `be-unbounded-value`, `be-unbounded-lambda`,
   `be-row-local`, `be-template-attrs`, `be-error-try`, `be-nat-literal`, `be-inference`,
   `be-unbounded-prelude`, `be-local-names`, `be-tuple-show` (`prism_rtl` shows and pods
-  tuples up to six), `be-function-values`, `be-lambda-patterns` (a job lambda takes its
+  tuples up to six), `be-function-values`, `be-let-generic` (pick LG), `be-lambda-patterns` (a job lambda takes its
   parameters apart by pattern), `be-fold-tuples`, `be-template-body`, `be-closure-names`,
   `be-update-loops` (a `for` and a guarded `match` as statements of an `update`),
   `be-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
@@ -1038,10 +1040,9 @@ Each is Claude's, for Jimmy to overturn.
   however it is reached; a lambda of unbounded type is a value whose job is its body
   lowered as a job body (`once_job`), so a call in it is a tail call or a frame, and
   `entered` too (D6 as ruled: a call of an unbounded lambda is a cycle point;
-  `be-unbounded-lambda` 7 ticks, `be-lambda-cycle` 5). A lambda is unbounded when its
-  checked type is, or when its body calls an unbounded function or a `Start` local: the
-  checker fixes a lambda's color before its parameters' types are known
-  (`be-pipe-record`'s `\|ignore| K v`). A job calls a value now (`call_value`, the callee's first cycle in this
+  `be-unbounded-lambda` 7 ticks, `be-lambda-cycle` 5). A lambda's color is the typed
+  output's, as the checker solved it (pick CV; `be-pipe-record`'s `\|ignore| K v` is
+  unbounded since `K` is). A job calls a value now (`call_value`, the callee's first cycle in this
   one); direct-style code runs it to its result (`run_to_end`). A function type whose
   color is not `bounded` (unbounded, or a color variable `u`, D8) is a `Start`, so a
   function with a `u fn` parameter takes one whatever its caller gives: a bounded
@@ -1053,6 +1054,24 @@ Each is Claude's, for Jimmy to overturn.
   unbounded function's (D6 as ruled; `be-function-values` 4 ticks); any other call
   enters it at once (`start_twice(..).cycle()`). Its calls through its closures are
   cycle points as their values decide.
+- **LG A generalized local `let` is lowered once per instantiation.** A local `let` the
+  checker generalized (Type System ch. 5; D8 for its colors) is a Rust value of one type,
+  so lowering instantiates it: each distinct instantiation its uses have (the typed
+  output's `insts`) is the value lowered again with the scheme's variables replaced, a
+  binding of its own (`twin_fn_0`, `twin_fn_1`; one instantiation alone keeps the plain
+  name `twin_fn`), and each use names its instantiation's binding. A use inside another
+  generalized `let` may be at that one's variables (prismc's `Take`, used in `Builder` at
+  `Builder`'s color): it stands for each of `Builder`'s instantiations. A widget block's
+  `let` is a node field of one type: it is lowered at its uses' one instantiation
+  (`be-function-values`'s `Double`), and at several it is refused (gap LW). So `let Twin = \|x| ((x,
+  x))` used at Nat and at Text is two closures, each bounded where its uses are, and an
+  unused parameter (`\|ignore, y| y`) is typed like any other (`be-let-generic`). A
+  `let` nothing uses is not lowered. A quantified variable that reaches the Rust anyway
+  is no type: the printer writes a `compile_error!` naming the binding, never `()`.
+  *Claude's:* one closure per instantiation, since a Rust closure has one type, and
+  instantiations repeat (a lambda used at Nat in five places is one closure). *Refused:*
+  a Rust generic function per local lambda (it cannot capture); one closure over `Pod`
+  values (a dynamic layer, D16); inlining the lambda at each use (code grows with uses).
 - **D8 The prelude's higher-order functions** given a closure that is not bounded are
   jobs: `fold_job`, `each_job`, `filter_job` and their map variants, which call the
   closure through `call_value`, so each call of a named unbounded function is a cycle
@@ -1464,6 +1483,8 @@ ruling taken (Claude's).
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
 naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
+a widget block's generalized `let` used at several instantiations (gap LW: one node
+field, its quantified variables refused; *first ruling:* a field per instantiation);
 `@HostList`; a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); an element applied as a plain value and a live element's `$` field read in a plain

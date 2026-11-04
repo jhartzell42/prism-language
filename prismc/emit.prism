@@ -64,6 +64,7 @@ fn Type t = match t:
     OutPort i: "Port<{Type i}>"
     OutLive i: "Live<{Type i}>"
     OutUnknown what: "() /* {what} */"
+    OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
 
 Types: unbounded fn [OutTy] -> Text
 fn Types ts = Join (Each ts, \|t| Type t), ", "

@@ -192,8 +192,17 @@ InferNameIn: unbounded fn Env, St, SName, Range -> ((Ty, St))
 fn InferNameIn env, st, n, span:
     let local = SNameKey n
     match env.locals[local]:
-        ? sc: Instantiate st, sc, span
+        ? sc: InstantiateLocal st, sc, span, local
         nil: InferGlobal env, st, n, span
+
+# A local's scheme instantiated at a use; a generalized `let`'s use is noted with its
+# instantiation, for lowering (pick LG of the README).
+InstantiateLocal: unbounded fn St, Scheme, Range, Text -> ((Ty, St))
+fn InstantiateLocal st, sc, span, name:
+    if (Len sc.qs) == 0 and (Len sc.cqs) == 0: Instantiate st, sc, span
+    else:
+        let ((t, st2, inst)) = InstantiateWith st, sc, span, [[]]
+        ((t, (NoteInst st2, span, name, sc, inst)))
 
 InferGlobal: unbounded fn Env, St, SName, Range -> ((Ty, St))
 fn InferGlobal env, st0, n, span:
@@ -534,7 +543,7 @@ fn InferCall env, st, callee, args, span = match callee.kind:
         let local = SNameKey n
         match env.locals[local]:
             ? sc:
-                let ((t, st2)) = Instantiate st, sc, n.span
+                let ((t, st2)) = InstantiateLocal st, sc, callee.span, local
                 ApplyFn env, (NoteTy st2, callee.span, t), local, t, (Positional args), span
             nil: CallGlobal env, st, n, args, span, [[]], callee.span
     ETypeArgs target, tys: match target.kind:
@@ -1471,7 +1480,7 @@ fn CheckLet env, st, p, ?ty, e, span:
                 let lambda = IsLambda e
                 let ((keep, bounds, st8)) = WantsAbove st7, t, lambda
                 let ((sc, st9)) = Generalize st8, t, keep, bounds
-                (((WithLocal env2, name, sc), (Ahead st9)))
+                (((WithLocal env2, name, sc), (Ahead (NoteGen st9, n.span, name, sc))))
         otherwise:
             let st6 = LeaveLevel st5
             BindPattern env, st6, p, (Zonk st6, pre), False
