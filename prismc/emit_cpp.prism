@@ -522,7 +522,7 @@ let stdNames = [["apply", "begin", "end", "size", "empty", "data", "get", "swap"
 
 # The runtime's constructors of an empty value, whose type the context gives.
 IsFresh: fn Text -> Bool
-fn IsFresh f = InList [["Stamped::new", "Port::new", "Map::new", "Array::new", "Vec::new", "Default::default", "Wakes::default", "Defer::new"]], f
+fn IsFresh f = InList [["Stamped::new", "Cache::new", "Port::new", "Map::new", "Array::new", "Vec::new", "Default::default", "Wakes::default", "Defer::new"]], f
 
 # A function's path: a node's constructor is `make` (`build` is the C++ runtime's virtual
 # build-list method), the rest as written.

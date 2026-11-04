@@ -1646,21 +1646,26 @@ ruling taken (Claude's).
   block's publication of a structural dynamic (pick ST) is `HoldWritten` of its name, so
   the row's marks are already in it, but no test pins a row's `!Updated` over one. *First
   ruling:* refused loudly (`UpdatedGaps`). *Next:* a test, then the refusal goes.
-- **DM The document is read whole.** A host row's entry (`HostRow::entry`), the owner's
-  places over `$doc` and the host's builder each read `host_k_doc`, which builds the
-  child's whole document (every place's level, every row's), so a patch of `n` forwarded
-  elements costs `n` documents. *First ruling:* correctness first, as gap SR. *Next:* a
-  per-place getter from the owner, or an `rt::Cache` on the document marked by the child's
-  writes.
+- **DM The document is built whole once per marked tick.** A host row's entry
+  (`HostRow::entry`), the owner's places over `$doc` and the host's builder read the
+  document's snapshot (pick ST: `host_k_doc` and `host_k_doc_direct`), a persistent map
+  in both runtimes, so a read is a shared copy and a lookup, not a document. The live
+  computation `host_k_doc_now` still builds the child's whole document (every place's
+  level, every row's) when the child's writes marked it, once in that tick's
+  construction step: a tick that moves one of `n` places costs one document of `n`, not
+  `n` documents (`sem-ch09-hosts`, `sem-ch04-row-source`'s hosted test). *Next, if it
+  shows in a profile:* the snapshot updated per place from the child's writes, each
+  place's level recomputed only when its own reads moved.
 - **CL Clause choice.** A `rebuild` or a building `match`/`if` whose arms are widgets of
   several clauses needs the clause chosen at the build; generations do it for one clause
   only.
-- **SR A row's source is read per read.** Every read of a row's entry evaluates the
-  block's source getter (`Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`) and indexes it,
-  where the `Hold` it replaced was a clone (pick RE). *First ruling:* correctness first.
-  *Next:* an `rt::Cache` on the getter, marked by every write path (a hold's sink,
-  `@Machine`'s state, a push or a host's typed answer at a place), which docs/backend.md's
-  "Marks" already names for a shared computed behavior.
+- **SR A `for`'s source is computed once per write behind it.** The block's source getter
+  (`{name}_source`, `Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`), which the
+  builder and every row's entry read (pick RE), keeps its value in an `rt::Cache`
+  (`{name}_source_cache`), marked by every write path through `MovedBy`
+  (`SourceMarks`): a hold's sink, an answer or a push at a place, a snapshot's
+  publication, `@Machine`'s state, the block's write a row hears through its parent
+  (`sem-ch04-row-source`).
 
 ### Not lowered yet
 
