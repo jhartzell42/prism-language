@@ -16,9 +16,9 @@ empty.*
   World's template; it type-checks and has never been built (queue item 1).
 - **The books** are `jhartzell42/prism-notes` at `e66aba7` or later. The Semantics
   RULINGS file ends with round 4 (TX, Text).
-- **The bootstrap.** `bootstrap/prismc-rust.tar.xz` is the Rust seed, which predates
-  today's emitter changes. The C++ seed `bootstrap/prismc-cpp.tar.xz` is not written yet
-  (Jimmy wants both seeds; queue item 8).
+- **The bootstrap.** Both seeds exist and match the tree: `bootstrap/prismc-rust.tar.xz`
+  (the Rust crate) and `bootstrap/prismc-cpp.tar.xz` (the C++ program), each written from
+  its fixed point on 4 November. Queue item 8 rewrites them once more at the end.
 - **The benchmarks** are `bench/` (the GUI table, four ways) and `bench/compiler/` (Rust
   against C++, each all one language); `RESULTS.md` beside each is the last run.
 - **No agents are running**, and no scheduled watchdogs remain.
