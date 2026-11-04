@@ -9,7 +9,7 @@ CXX ?= g++
 LEAKS := $(if $(filter Darwin,$(shell uname -s)),0,1)
 CONFIG ?= default
 SANITIZE ?=
-OPT ?= -O1 -g
+OPT ?= -O3 -g
 RT := ../../../runtime/cpp
 BUILD := build/$(CONFIG)
 FLAGS := -std=c++20 -Wall -Wextra -Werror $(OPT) $(SANITIZE) -Iinclude -I$(RT)/include -I$(RT)/tests
@@ -38,7 +38,7 @@ test:
 	$(MAKE) check CXX=g++ CONFIG=gcc
 	$(MAKE) check CXX=clang++ CONFIG=clang
 	$(ASAN_READY)
-	$(MAKE) check CXX=$(ASAN_CXX) CONFIG=$(ASAN_CONFIG) OPT="-O1 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined $(ASAN_LIBCXX)"
+	$(MAKE) check CXX=$(ASAN_CXX) CONFIG=$(ASAN_CONFIG) OPT="-O3 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined $(ASAN_LIBCXX)"
 
 check: $(BUILD)/cli_tests
 	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/cli_tests

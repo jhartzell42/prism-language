@@ -1060,8 +1060,8 @@ Test World; `tests/compiled/run.sh --target cpp` runs every program so.
 - **The C++ bootstrap:** prismc itself compiles to C++ (about 163,000 lines: 38 source
   files and 73 headers, pick MH) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
   takes it to its fixed point and checks its Rust against the Rust prismc's
-  (bootstrap/README.md). clang++ -O1 builds it in about 2.5 minutes with four jobs on an
-  M2 Pro; g++ -O1 took about 14 minutes on two cores, one file at a time.
+  (bootstrap/README.md). clang++ -O3 builds it in about 100 s wall (1,003 s CPU) with
+  twelve jobs on an M2 Pro; g++ -O1 took about 14 minutes on two cores, one file at a time.
 
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 

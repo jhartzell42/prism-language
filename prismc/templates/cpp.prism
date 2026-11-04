@@ -29,7 +29,7 @@ PRISM_ROOT ?= $(if $(filter /%,{{runtime}}),{{runtime}},$(abspath $(HERE)/{{runt
 RT := $(PRISM_ROOT)/runtime/cpp
 WORLD := $(PRISM_ROOT)/worlds/cli/cpp
 CXX ?= g++
-OPT ?= -O1
+OPT ?= -O3
 CONFIG ?= prog-$(notdir $(CXX))$(subst $() ,,$(OPT))
 LIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
 FLAGS := -std=gnu++20 $(OPT) -I$(RT)/include -I$(WORLD)/include -Isrc -Wall -Wno-unused -Wno-unused-parameter -Wno-unused-label
