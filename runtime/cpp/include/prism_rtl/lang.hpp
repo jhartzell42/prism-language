@@ -39,10 +39,11 @@ private:
     std::optional<T> v_;
 };
 
-/// `?`: the value of a `Result`, or the function returns its failure.
+/// `?`: the value of a `Result`, or the function returns its failure. The result is a
+/// copy (a value is cheap to copy), so a named one is left as it was.
 #define TRY(...)                                                                         \
     ({                                                                                   \
-        auto&& prism_q_ = (__VA_ARGS__);                                                 \
+        auto prism_q_ = (__VA_ARGS__);                                                   \
         if (!prism_q_.has_value()) return ::prism_rtl::unexpected(prism_q_.error());    \
         std::move(prism_q_).value();                                                     \
     })
