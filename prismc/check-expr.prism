@@ -233,7 +233,7 @@ fn CollisionAt env, st, why, name, span:
 # arguments is a function that takes them whole.
 CtorValue: unbounded fn Env, St, CtorInfo, Range -> ((Ty, St))
 fn CtorValue env, st, c, span:
-    let sc = Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=(if (Len c.args) == 0: c.ty else: TyFn CBound, c.args, c.ty))
+    let sc = Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(if (Len c.args) == 0: c.ty else: TyFn CBound, c.args, c.ty))
     Instantiate st, sc, span
 
 # A tag named without arguments: an element with no fields (`Process.Args`), or a fault
@@ -245,7 +245,7 @@ fn TagValue env, st, name, span = match env.g.tags[name]:
         if tg.kind == "Element":
             let ((rw, st2)) = FreshRow st, [[tg.family]]
             let erow = Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)
-            let ((out, st3)) = Instantiate st2, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], bounds=tg.bounds, ty=tg.out)), span
+            let ((out, st3)) = Instantiate st2, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span
             (((TyElem erow, out), st3))
         else: (((TyCon tg.kind, [[]]), st))
 
@@ -815,7 +815,7 @@ fn PeelTimeOnly env, st, acc, fname, p, at, a:
 # A constructor takes every argument whole (ch. 5): positionally, or a record's by name.
 CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
 fn CtorApp env, st, c, args, span, cspan:
-    let ((self, st0, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=c.ty)), span, [[]]
+    let ((self, st0, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), span, [[]]
     let fieldTys = Each c.args, \|t| SubstQ inst, t
     let st1 = NoteTy st0, cspan, (TyFn CBound, fieldTys, self)
     let named = Filter args, \|a| a.?name != nil
@@ -843,7 +843,7 @@ TagApp: unbounded fn Env, St, Text, [Arg], Range, Range -> ((Ty, St))
 fn TagApp env, st, name, args, span, cspan = match env.g.tags[name]:
     nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
     ? tg:
-        let ((out, st1, inst)) = InstantiateWith st, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
+        let ((out, st1, inst)) = InstantiateWith st, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span, [[]]
         let st2 = Fold args, st1, \|s, a| match a.?name:
             ? id: match ?FieldOfTag tg, id.name:
                 ? ft: TagField env, s, name, id.name, (SubstQ inst, ft), a
@@ -1074,7 +1074,7 @@ fn BindCtor env, st, p, n, args, t:
             else: match env.g.ctors[qk]:
                 nil: ((env, (Err st, "unknown-name", n.span, "`{SNameKey n}` is not a constructor")))
                 ? c:
-                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
+                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
                     let st2 = Unify st1, t, self, p.span
                     if (Len args) != (Len c.args) and not ((Len args) == 1 and (Len c.args) > 1):
                         ((env, (Err st2, "mismatch", p.span, "`{BareName c.name}` takes {CountWord (Len c.args)} argument{if (Len c.args) == 1: "" else: "s"}; this pattern gives {CountWord (Len args)}")))
@@ -1092,7 +1092,7 @@ fn BindRecord env, st, p, n, fields, rest, t:
             else: match env.g.ctors[qk]:
                 nil: ((env, (Err st, "unknown-name", n.span, "`{SNameKey n}` is not a record")))
                 ? c:
-                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
+                    let ((self, st1, inst)) = InstantiateWith st, (Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=c.ty)), p.span, [[]]
                     let st2 = Unify st1, t, self, p.span
                     Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
                         let fp = Or fields[i], FieldPat(name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
@@ -1119,7 +1119,7 @@ fn BindTagPattern env, st, p, name, fields, rest, t = match env.g.tags[name]:
     ? tg:
         let st1 = if tg.kind == "Element": TagInRow env, st, tg, t, p.span else: Unify st, t, (TyCon tg.kind, [[]]), p.span
         let snapshot = IsSnapshot st1, t
-        let ((ignore, st2, inst)) = InstantiateWith st1, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], bounds=[[]], ty=tg.out)), p.span, [[]]
+        let ((ignore, st2, inst)) = InstantiateWith st1, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=[[]], ty=tg.out)), p.span, [[]]
         let names = Each tg.fields, \|((f, ignore))| f
         Fold (Range0 (Len fields)), ((env, st2)), \|((en, s)), i|
             let fp = Or fields[i], FieldPat(name=nil, pattern=Pattern(kind=PIgnore, span=p.span), span=p.span)
@@ -1584,6 +1584,7 @@ fn CheckClauses env, st, name, clauses, sc, span:
                 &_.color <= CBound
                 &_.colorWhy <= ""
                 &_.colorFlex <= [[]]
+                &_.colUp <= Fold sc.cjoins, &_.colUp, \|m, ((lo, hi))| Insert m, lo, hi
             let st1 = Fold clauses, st0, \|s, c| CheckClause env2, s, c, params, res
             let st1b = SettleBody (SolveWants env.g, st1, givens, False), col, name
             let st2 = ClauseCoverage env2, st1b, clauses, params, span

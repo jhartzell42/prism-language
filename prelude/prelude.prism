@@ -128,13 +128,13 @@ Append: fn [a], [a] -> [a]
 Push: fn [a], a -> [a]
 
 # `n·t`. Over a map, the step takes the key and the value: `\|acc, k, v|`.
-Fold: u fn [a], b, (u fn b, a -> b) -> b
+Fold: fn [a], b, (fn b, a -> b) -> b
 
-Each: u fn [a], (u fn a -> b) -> [b]
+Each: fn [a], (fn a -> b) -> [b]
 fn Each xs, F = Fold xs, [[]], \|acc, x| Push acc, (F x)
 
 # Not in Appendix B, which is a slip: Semantics ch. 4's quiz and Type System ch. 4 use it.
-Filter: u fn [a], (u fn a -> Bool) -> [a]
+Filter: fn [a], (fn a -> Bool) -> [a]
 fn Filter xs, Keep = Fold xs, [[]], \|acc, x| if Keep x: Push acc, x else: acc
 
 Sum: fn [a] -> a where a: ^Num

@@ -238,10 +238,10 @@ fn HasKey m, k = match m[k]:
 AddBuiltins: fn G -> G
 fn AddBuiltins g:
     let BoolCtor = \|n, i| CtorInfo(name=n, owner="Bool", params=[[]], args=[[]], fields=[[]], ty=tBool, index=i)
-    let pre = Scheme(qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=(TySig "!", (TyQ "a")))
+    let pre = Scheme(qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TySig "!", (TyQ "a")))
     let numbered = Mono (TyFn CBound, [[tNat]], (TyCon "Buffer", [[tNat]]))
-    let bufEmpty = Scheme(qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=(TyCon "Buffer", [[TyQ "a"]]))
-    let tabEmpty = Scheme(qs=[["k", "v"]], plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=(TyCon "Table", [[TyQ "k", TyQ "v"]]))
+    let bufEmpty = Scheme(qs=[["a"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Buffer", [[TyQ "a"]]))
+    let tabEmpty = Scheme(qs=[["k", "v"]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(TyCon "Table", [[TyQ "k", TyQ "v"]]))
     update g:
         &_.ctors <= Insert (Insert &_.ctors, "True", (BoolCtor "True", 0)), "False", (BoolCtor "False", 1)
         &_.vals <= Insert &_.vals, "Prelude.never", (Builtin "Prelude.never", pre)
@@ -537,7 +537,7 @@ fn ConvType cx, st, t = match t.kind:
         let c = match color:
             Bounded: cx.unwritten
             Unbounded: CUnbound
-            ColorVar v: CQ v.name
+            ColorVar v: if v.name == "bounded": CBound else: CQ v.name
         (((TyFn c, xs, r), st3))
     TEmit ty, rowT:
         let ((rw, st2)) = ConvRow cx, st, rowT
@@ -648,23 +648,119 @@ fn TailNames (TlRigid v) = [[v]]
 fn TailNames ignore = [[]]
 
 # A signature's scheme (ch. 5): its type variables, row variables (those in a row's place,
-# and the module's own `emit r`), its color variables, its bounds. Unwritten colors are
-# bounded in a signature mentioning `$`, `!` or `@`, and one color variable otherwise when
-# it takes a closure (D8).
+# and the module's own `emit r`), its color variables and their joins, its bounds.
 SigScheme: unbounded fn Cx, St, Type, [Bound] -> ((Scheme, St))
 fn SigScheme cx, st, t, bounds:
     let rowVars = UnionTexts cx.rowVars, (RowVarsOfType t)
-    let colorVar = if (MentionsTime t) or not (TakesClosure t): CBound else: CQ "u"
     let cx2 = update cx:
         &_.rowVars <= rowVars
-        &_.unwritten <= colorVar
-    let ((ty, st2)) = ConvType cx2, st, t
-    let tvs = Filter (TypeVarsOfType t), \|v| not (HasText rowVars, v)
+        &_.unwritten <= CBound
     let written = ColorVarsOfType t
-    let cqs = if colorVar == CBound: written else: AddText written, "u"
+    let ((ty, defaults, joins, st2)) = SigType cx2, st, t, written
+    let tvs = Filter (TypeVarsOfType t), \|v| not (HasText rowVars, v)
+    let cqs = Fold defaults, written, \|acc, v| AddText acc, v
     let ((bs, st3)) = ConvBounds cx, st2, bounds
     let rowsUsed = Filter rowVars, \|v| (HasText (RowVarsOfType t), v) or (UsesScope t)
-    ((Scheme(qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, bounds=bs, ty=ty), st3))
+    ((Scheme(qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, cjoins=joins, bounds=bs, ty=ty), st3))
+
+# A signature's unwritten colors (ch. 5, The color; round 3 CD). One mentioning `$`, `!`
+# or `@`, or taking no function, has them bounded. Otherwise every function parameter
+# whose color is unwritten has a color variable of its own, and an unwritten colors inside
+# it is that one; the function's own unwritten color is the join of its function
+# parameters' colors, as if it called each of them: unbounded if one is written
+# `unbounded`, bounded if there is none, the one variable if there is one, and a variable
+# of its own above each of them (a join `lo ≤ hi` of the scheme) if there are several.
+# The result's and the other parameters' unwritten colors are the function's. A function
+# written `bounded fn` has its unwritten parameters bounded. Also the variables it adds
+# and the joins.
+SigType: unbounded fn Cx, St, Type, [Text] -> ((Ty, [Text], [((Text, Text))], St))
+fn SigType cx, st, t, written = match t.kind:
+    TGroup x: SigType cx, st, x, written
+    TFn color, ps, res:
+        if (MentionsTime t) or not (TakesClosure t): BoundedSig cx, st, t
+        else: ClosureSig cx, st, color, ps, res, written
+    otherwise: BoundedSig cx, st, t
+
+BoundedSig: unbounded fn Cx, St, Type -> ((Ty, [Text], [((Text, Text))], St))
+fn BoundedSig cx, st, t:
+    let ((ty, st2)) = ConvType cx, st, t
+    ((ty, [[]], [[]], st2))
+
+ClosureSig: unbounded fn Cx, St, Color, [Type], Type, [Text] -> ((Ty, [Text], [((Text, Text))], St))
+fn ClosureSig cx, st, color, ps, res, written:
+    let ((outerSet, outerW)) = WrittenCol color
+    let boundedOuter = outerSet and outerW == CBound
+    let nDefault = Len (Filter ps, \|p| (IsFnType p) and not (WritesCol (TopColor p)))
+    let names = FreshColNames written, (if boundedOuter: 0 else: nDefault)
+    # Each parameter's color: (False, _) for one that is not a function.
+    let ((pcols, ignore)) = Fold ps, (([[]], 0)), \|((acc, k)), p|
+        if not (IsFnType p): (((Push acc, ((False, CBound))), k))
+        else:
+            let ((set, c)) = WrittenCol (TopColor p)
+            if set: (((Push acc, ((True, c))), k))
+            else: if boundedOuter: (((Push acc, ((True, CBound))), k))
+            else: (((Push acc, ((True, (CQ (Or names[k], "u"))))), k + 1))
+    let vars = Fold pcols, [[]], \|acc, ((ignore, c))| match c:
+        CQ v: AddText acc, v
+        otherwise: acc
+    let anyUnbounded = Fold pcols, False, \|seen, ((ignore, c))| seen or c == CUnbound
+    let spare = FreshColNames (Append written, names), 1
+    let outerName = if outerSet or anyUnbounded or (Len vars) < 2: "" else: Or spare[0], "u"
+    let outer = if outerSet: outerW
+        else: if anyUnbounded: CUnbound
+        else: if (Len vars) == 0: CBound
+        else: if (Len vars) == 1: CQ (Or vars[0], "u")
+        else: CQ outerName
+    let joins = match outer:
+        CQ hi: Each (Filter vars, \|v| v != hi), \|v| ((v, hi))
+        otherwise: [[]]
+    let cxOuter = WithUnwritten cx, outer
+    let ((xs, st2)) = Fold (Range0 (Len ps)), (([[]], st)), \|((acc, s)), i|
+        let p = Or ps[i], res
+        let ((isFn, c)) = Or pcols[i], ((False, CBound))
+        let pcx = if isFn: WithUnwritten cx, c else: cxOuter
+        let ((y, s2)) = ConvType pcx, s, p
+        (((Push acc, y), s2))
+    let ((r, st3)) = ConvType cxOuter, st2, res
+    let added = if outerName == "": names else: Push names, outerName
+    (((TyFn outer, xs, r), added, joins, st3))
+
+# The color a function type writes, and whether it writes one (`bounded` is bounded).
+WrittenCol: fn Color -> ((Bool, Col))
+fn WrittenCol Bounded = ((False, CBound))
+fn WrittenCol Unbounded = ((True, CUnbound))
+fn WrittenCol (ColorVar v) = if v.name == "bounded": ((True, CBound)) else: ((True, (CQ v.name)))
+
+WithUnwritten: fn Cx, Col -> Cx
+fn WithUnwritten cx, c = update cx:
+    &_.unwritten <= c
+
+WritesCol: fn Color -> Bool
+fn WritesCol Bounded = False
+fn WritesCol ignore = True
+
+# A function type's color, through parentheses (`Bounded` for a type that is not one).
+TopColor: unbounded fn Type -> Color
+fn TopColor t = match t.kind:
+    TFn c, ignore, ignore: c
+    TGroup x: TopColor x
+    otherwise: Bounded
+
+# `n` color variable names no signature variable takes: `u` for one, `u1`, `u2`, ... for
+# several.
+FreshColNames: unbounded fn [Text], Nat -> [Text]
+fn FreshColNames taken, n:
+    let ((names, ignore)) = Fold (Range0 n), (([[]], 1)), \|((acc, k)), ignore|
+        let k2 = NextFreeCol (Append taken, acc), (if n == 1: 0 else: k)
+        (((Push acc, (SigColName k2)), k2 + 1))
+    names
+
+NextFreeCol: unbounded fn [Text], Nat -> Nat
+fn NextFreeCol taken, k = if HasText taken, (SigColName k): NextFreeCol taken, (k + 1) else: k
+
+SigColName: fn Nat -> Text
+fn SigColName 0 = "u"
+fn SigColName k = "u{k}"
 
 ConvBounds: fn Cx, St, [Bound] -> (([((Text, Text))], St))
 fn ConvBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| Fold b.traits, ((acc, s)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:
@@ -756,7 +852,9 @@ fn TypeVarsInto acc, t = match t.kind:
 
 ColorVarsOfType: unbounded fn Type -> [Text]
 fn ColorVarsOfType t = match t.kind:
-    TFn (ColorVar v), ps, res: AddText (Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)), v.name
+    TFn (ColorVar v), ps, res:
+        let inner = Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)
+        if v.name == "bounded": inner else: AddText inner, v.name
     TFn ignore, ps, res: Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)
     TName ignore, args: Fold args, [[]], \|acc, a| UnionTexts acc, (ColorVarsOfType a)
     TSigiled ignore, i: ColorVarsOfType i
@@ -1096,8 +1194,8 @@ CheckPairIn: unbounded fn G, St, ImplInfo, ImplInfo -> St
 fn CheckPairIn g, st, a, b:
     let s0 = update st:
         &_.file <= b.file
-    let ((ta, s1)) = Instantiate s0, (Scheme(qs=a.qs, plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=a.head)), b.span
-    let ((tb, s2)) = Instantiate s1, (Scheme(qs=b.qs, plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=b.head)), b.span
+    let ((ta, s1)) = Instantiate s0, (Scheme(qs=a.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=a.head)), b.span
+    let ((tb, s2)) = Instantiate s1, (Scheme(qs=b.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=b.head)), b.span
     let ((ok, s3)) = TryUnify s2, ta, tb, b.span
     if not ok: st
     else:

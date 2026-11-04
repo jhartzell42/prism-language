@@ -97,12 +97,15 @@ type Want = record:
 derive ^Eq, ^Show
 
 # A type scheme: quantified type variables (free-headed, or plain-headed when a local
-# `let` generalized a plain-headed variable), row variables, color variables, bounds.
+# `let` generalized a plain-headed variable), row variables, color variables and the
+# joins `lo ≤ hi` between them (a signature's own color above its function parameters',
+# round 3 CD), bounds.
 type Scheme = record:
     qs: [Text]
     plainQs: [Text]
     rqs: [Text]
     cqs: [Text]
+    cjoins: [((Text, Text))]
     bounds: [((Text, Text))]
     ty: Ty
 derive ^Eq, ^Show
@@ -136,6 +139,7 @@ type St = record:
     cols: (Nat ==> Col)
     cleqs: [CLeq]
     colQ: (Nat ==> Text)
+    colUp: (Text ==> Text)
     deferred: [((Ty, Ty, Range))]
     binderAt: (Nat ==> Range)
     rowNames: (Nat ==> Text)
@@ -148,7 +152,7 @@ type St = record:
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={})
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={})
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
@@ -781,7 +785,7 @@ fn BindRow st, n, rw, span:
 # ---------------------------------------------------------------------------------------
 
 Mono: fn Ty -> Scheme
-fn Mono t = Scheme(qs=[[]], plainQs=[[]], rqs=[[]], cqs=[[]], bounds=[[]], ty=t)
+fn Mono t = Scheme(qs=[[]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=t)
 
 # A type's quantified names replaced: type variables, row tails, colors.
 type Inst = record:
@@ -842,7 +846,8 @@ fn InstantiateWith st, sc, span, explicit:
         let ((c, s2)) = FreshCol s
         (((Insert m, q, c), s2))
     let inst = Inst(tys=tys, rows=rows, cols=cols)
-    let st3 = Fold sc.bounds, st2b, \|s, ((v, tr))| update s:
+    let st2c = Fold sc.cjoins, st2b, \|s, ((lo, hi))| AddLeq s, (Or cols[lo], CBound), (Or cols[hi], CBound), span, "arg", "", ""
+    let st3 = Fold sc.bounds, st2c, \|s, ((v, tr))| update s:
         &_.wants <= Push &_.wants, Want(cls=tr, ty=(Or tys[v], TyErr), file=s.file, span=span, level=s.level)
     (((SubstQ inst, sc.ty), st3, inst))
 
@@ -892,7 +897,7 @@ fn Generalize st0, t, keep, bounds:
     let bs = Each (Filter bounds, \|((v, ignore))| HasNat vs, v), \|((v, tr))| (("'{v}", tr))
     let st2 = update st:
         &_.colQ <= Fold cvs, &_.colQ, \|m, v| Insert m, v, "'c{v}"
-    ((Scheme(qs=(Each vs, \|v| "'{v}"), plainQs=plains, rqs=[[]], cqs=(Each cvs, \|v| "'c{v}"), bounds=bs, ty=named), st2))
+    ((Scheme(qs=(Each vs, \|v| "'{v}"), plainQs=plains, rqs=[[]], cqs=(Each cvs, \|v| "'c{v}"), cjoins=[[]], bounds=bs, ty=named), st2))
 
 SubstFlex: unbounded fn (Nat ==> Ty), (Nat ==> Col), Ty -> Ty
 fn SubstFlex m, cm, t = match t:
@@ -964,10 +969,20 @@ fn UseColor st, c0, why, span = match WalkCol st, c0:
     c: JoinKnown st, c, why
 
 JoinKnown: fn St, Col, Text -> St
-fn JoinKnown st, c, why = update st:
-    if not (ColLeq c, &_.color):
-        &_.colorWhy <= why
-    &_.color <= JoinCol &_.color, c
+fn JoinKnown st, c0, why:
+    let c = UpCol st, c0
+    update st:
+        if not (ColLeq c, &_.color):
+            &_.colorWhy <= why
+        &_.color <= JoinCol &_.color, c
+
+# In a body, a function parameter's own rigid color stands for the signature's color above
+# it (round 3 CD): calling the parameter costs the body that one.
+UpCol: fn St, Col -> Col
+fn UpCol st, (CRigid n) = match st.colUp[n]:
+    ? up: CRigid up
+    nil: CRigid n
+fn UpCol st, c = c
 
 # A color followed through the variables bound so far.
 WalkCol: unbounded fn St, Col -> Col
@@ -1107,11 +1122,12 @@ fn CheckColors st0:
     let st2 = Fold st.cleqs, st, \|s, c|
         let lo = SettledCol s, c.lo
         let hi = SettledCol s, c.hi
-        if ColLeq lo, hi: s
+        if (ColLeq lo, hi) or (ColLeq (UpCol s, lo), (UpCol s, hi)): s
         else: AddDiag s, (LeqDiag c, lo, hi)
     update st2:
         &_.cleqs <= [[]]
         &_.colorFlex <= [[]]
+        &_.colUp <= {}
 
 LeqDiag: fn CLeq, Col, Col -> CDiag
 fn LeqDiag c, lo, hi:

@@ -2643,7 +2643,7 @@ fn CheckMethod env, st, d, clauses, cls, im = match ?MethodKey env.g, cls, d.nam
             let ti = Or env.g.traits[cls], dummyTrait
             let head = SubstQ (Inst(tys=(Fold im.qs, {}, \|m, q| Insert m, q, (TyRigid q)), rows={}, cols={})), im.head
             let ty = SubstQ (Inst(tys={ti.param: head}, rows={}, cols={})), v.scheme.ty
-            let sc = Scheme(qs=(Filter v.scheme.qs, \|q| q != ti.param), plainQs=[[]], rqs=v.scheme.rqs, cqs=v.scheme.cqs, bounds=(Filter v.scheme.bounds, \|((q, ignore))| q != ti.param), ty=ty)
+            let sc = Scheme(qs=(Filter v.scheme.qs, \|q| q != ti.param), plainQs=[[]], rqs=v.scheme.rqs, cqs=v.scheme.cqs, cjoins=v.scheme.cjoins, bounds=(Filter v.scheme.bounds, \|((q, ignore))| q != ti.param), ty=ty)
             let env2 = update env:
                 &_.givens <= im.bounds
             CheckClauses env2, st, d.name, clauses, sc, d.span

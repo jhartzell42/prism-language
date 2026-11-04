@@ -369,7 +369,7 @@ fn Describe k = "`{TokenText k}`"
 
 # A step with its own step mode off: inside a bracket, where a test step's comma rule
 # (Conformance A.3, "a comma at bracket depth zero") does not reach.
-Bracketed: u fn Ps, (u fn Ps -> ((a, Ps))) -> ((a, Ps))
+Bracketed: fn Ps, (fn Ps -> ((a, Ps))) -> ((a, Ps))
 fn Bracketed p, F:
     let ((v, q)) = F (WithStepMode p, False)
     ((v, (WithStepMode q, p.stepMode)))
@@ -379,7 +379,7 @@ fn WithStepMode p, flag = update p:
     &_.stepMode <= flag
 
 # Items of an indented block (after its `open`) up to its `close`, recovering at each.
-LayoutItems: unbounded fn Ps, (u fn Ps -> ((a, Ps))) -> (([a], Ps))
+LayoutItems: unbounded fn Ps, (fn Ps -> ((a, Ps))) -> (([a], Ps))
 fn LayoutItems p0, F = update (([[]], p0)):
     let &items = [[]]
     let &p = p0
@@ -399,7 +399,7 @@ fn LayoutItems p0, F = update (([[]], p0)):
     &_ <= ((&items, &p))
 
 # Items separated by commas: `F` once, then again after each comma.
-Commas: unbounded fn Ps, (u fn Ps -> ((a, Ps))) -> (([a], Ps))
+Commas: unbounded fn Ps, (fn Ps -> ((a, Ps))) -> (([a], Ps))
 fn Commas p0, F = update (([[]], p0)):
     let ((first, p1)) = F p0
     let &items = [[first]]

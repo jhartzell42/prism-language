@@ -96,7 +96,8 @@ to overturn.
 - **UB What is `unbounded`.** Every function that recurses through the grammar or loops
   with no measure a checker could see (the lexer's loops over the text, the parser's
   descent, `Recover`); predicates and cursor primitives are bounded. The closure-taking
-  helpers (`LayoutItems`, `Commas`, `Bracketed`) take a color variable (D8).
+  helpers (`LayoutItems`, `Commas`, `Bracketed`) take their closure's color by default
+  (pick CD).
 - **NA A non-ASCII character glued to a name** counts as a letter: Rust asks
   `char::is_alphabetic`, which Prism's prelude has no counterpart for. Both report an error;
   only the message for a glued non-letter symbol differs, and no corpus file has one.
@@ -222,7 +223,7 @@ lines.
   output's recorders.
 - `check-env.prism` (`CheckEnv`): modules, bare-name tables (a collision is an error at
   the use), types and kinds, tags, traits, impls, coherence, signatures read as schemes
-  (one color variable per closure-taking signature without `$`, `!` or `@`, D8), trait
+  (a color variable per function parameter, the signature's color their join, pick CD), trait
   resolution with defaulting, waiting field accesses.
 - `check-expr.prism` (`CheckExpr`): expressions, the application rule, lifted `match` and
   `if`, patterns and binders, local `let`s and their generalization (DB1a, doubt MR),
@@ -666,8 +667,8 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
 
 - **CV Colors are variables, solved by joins** (ch. 5, The color; doubts UC and CJ; D8).
   A function type's color is bounded, unbounded, rigid, quantified or flexible. A
-  lambda's color is a fresh variable, and a call's is its callee's, its signature's `u`
-  fresh at each call. Unification unifies the colors of two function types (bounded and
+  lambda's color is a fresh variable, and a call's is its callee's, its signature's
+  variables fresh at each call (pick CD). Unification unifies the colors of two function types (bounded and
   unbounded do not unify; a variable takes either); the joins are not unification but
   owed orders `lo ≤ hi`: a body owes its color whatever it applies, and a function
   argument at a function parameter owes the parameter's color its own (the two types
@@ -677,7 +678,7 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   end, and the end checks every join (`calls-unbounded`, `lifted-unbounded` for a lift
   whose color was still a variable) and defaults every variable nothing bound to bounded.
   A local `let` generalizes its colors like its type variables: two of its own joined
-  become one (D8's one variable per signature), one joined with a variable outside stays
+  become one, one joined with a variable outside stays
   monomorphic, one under a bounded or rigid color is that color. A block binds its
   `let`s ahead (for its dependency order); a plain name's `let` still checks at a variable
   of its own level and generalizes, the variable bound ahead taking its monomorphic type.
@@ -688,6 +689,27 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   'cN)`. *Claude's:* least solution, as the body's join was. *Refused:* a lambda's color
   fixed when it is read, wrong for `\|y| K y` while `K` is a variable; unification alone,
   which refuses a bounded closure beside an unbounded one at one `u`.
+
+- **CD Every function parameter has a color variable, and the function's color is their
+  join** (ch. 5, The color; Semantics ch. 7; round 3 CD, Jimmy's). In a signature that
+  takes a function and writes no `$`, `!` or `@`, each function parameter whose color is
+  unwritten has a variable of its own (`u` for one, `u1`, `u2`, ... for several), and an
+  unwritten color inside it is that one. The function's unwritten color is the join of
+  its function parameters' colors, as if it called each: unbounded when one is written
+  `unbounded`, bounded when none is a variable, the variable when there is one, and a
+  variable of its own above each (the scheme's `cjoins`, `lo ≤ hi`) when there are
+  several. The result's and the other parameters' unwritten colors are the function's.
+  `bounded fn` writes a bounded function type (`neg/bounded-param`); a signature
+  `bounded fn` has its unwritten parameters bounded. A written variable stays as written,
+  to tie colors together. A call instantiates every variable fresh and owes each join, so
+  its color is the join of its arguments' (`pos/param-color`: `Apply n, \|y| y + 1` is
+  bounded, `Apply n, \|y| Grow y` unbounded; `neg/param-color`). In the body a
+  parameter's rigid color counts as the signature's above it: calling `F` and `G` costs
+  `Twice` its `u`, and a join between two parameters' colors holds when both are under it.
+  So `Apply: fn Nat, (fn Nat -> Nat) -> Nat` is color-polymorphic as the prelude's `Fold`
+  is, and the prelude writes no `u`. *Claude's:* the signature decides, so a caller's color
+  and a cycle point count read off the signature. *Refused:* inferring from the body which
+  parameters it calls, which made a caller's color depend on a body it cannot see.
 
 ### Checker doubts
 
