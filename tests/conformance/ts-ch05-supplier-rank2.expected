@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 9 (a host's supplier answers each child place; an answered place is not the World's) and Type System ch. 5 (the supplier is rank-2 in its element's output): the Fs.Contents place answered with "A", the Fs.File place with `never`, so the read's click changes nothing; inline and named alike.
+test inline_supplier
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="read")
+    0/[3]/0: Ui.Label(text="A, nothing")
+
+tick 1
+  in:
+    0/[0]/0: click
+
+test named_supplier
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="read")
+    0/[3]/0: Ui.Label(text="A, nothing")
+
+tick 1
+  in:
+    0/[0]/0: click
