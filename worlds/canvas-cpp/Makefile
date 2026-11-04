@@ -23,7 +23,7 @@ BUILD := build/$(CONFIG)
 ifeq ($(shell uname -s),Darwin)
 PKGS := cairo freetype2
 APP_SRC := src/app_macos.mm
-APP_FLAGS := -x objective-c++ -fobjc-arc
+APP_FLAGS := -x objective-c++ -fobjc-arc $(APP_EXTRA)
 FRAMEWORKS := -framework Cocoa -framework QuartzCore
 SMOKE := macos_smoke
 # LeakSanitizer does not run on macOS on arm64.
@@ -49,10 +49,31 @@ HEADERS := $(wildcard include/prism_world_canvas/*.hpp)
 
 .PHONY: test check lib chess-smoke FORCE
 
+# The sanitizer run's compiler: g++ on Linux; on macOS Homebrew's clang (`brew install
+# llvm`), since Apple clang 17's AddressSanitizer hangs at startup on macOS 26 (a program
+# of an empty `main` never gets past its shadow-memory setup). Without it the run stops
+# and says so.
+ifeq ($(shell uname -s),Darwin)
+ASAN_CXX := /opt/homebrew/opt/llvm/bin/clang++
+ASAN_CONFIG := asan-llvm
+# its own libc++, whose headers it compiles against (the system's lacks parts of them)
+ASAN_LIBCXX := -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++ -Wno-unused-command-line-argument
+# and no Objective-C call stubs, which only a newer linker than this machine's resolves
+ASAN_APP := -fno-objc-msgsend-selector-stubs -fno-objc-msgsend-class-selector-stubs
+ASAN_READY = @test -x $(ASAN_CXX) || { echo "the sanitizer run needs Homebrew's clang (brew install llvm): Apple clang's AddressSanitizer hangs at startup on this macOS"; false; }
+else
+ASAN_CXX := g++
+ASAN_CONFIG := asan-gcc
+ASAN_LIBCXX :=
+ASAN_APP :=
+ASAN_READY = @true
+endif
+
 test:
 	$(MAKE) check CXX=g++ CONFIG=gcc
 	$(MAKE) check CXX=clang++ CONFIG=clang
-	$(MAKE) check CXX=g++ CONFIG=asan-gcc OPT="-O1 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined"
+	$(ASAN_READY)
+	$(MAKE) check CXX=$(ASAN_CXX) CONFIG=$(ASAN_CONFIG) OPT="-O1 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined $(ASAN_LIBCXX)" APP_EXTRA="$(ASAN_APP)"
 
 check: $(BUILD)/canvas_tests $(BUILD)/$(SMOKE)
 	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/canvas_tests
