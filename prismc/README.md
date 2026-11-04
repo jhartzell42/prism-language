@@ -902,7 +902,12 @@ qualified path, a label) or a literal's digits, never syntax.
 - **Names the Rust printer spells as they are:** the paths of runtime and prelude
   functions in `XCall` (`Hold::new`, `Rc::new`, `prism_rtl::Dynamic::of`), method names
   (`get`, `set`, `borrow`), a `for` row's node path (`ForDef.rowNode`, with its type
-  arguments for a host's rows). A second printer maps them to its runtime's names.
+  arguments for a host's rows). The C++ printer maps them to its runtime's names
+  (`CallName`'s cases and `MethodForm` in emit_cpp.prism).
+- **Types where a printer needs them:** a `match`, an if-let chain and a labelled block
+  carry their value's type (`XMatch`, `XChain`, `XLabeled`), and `XTyped` says the type
+  of an expression whose type C++ cannot infer (an empty array or map, `nil`, a loop
+  step's `Ok` and `Err`). The Rust printer reads neither.
 
 ### Where it stands
 
@@ -971,6 +976,68 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `target/bootstrap/gen2`. The two crates must be byte-equal: the compiler compiles itself
   to the crate it was built from. gen1's binary is then installed as
   `target/bootstrap/prismc`, which the scripts pick as the newest.
+
+### The C++ target
+
+`compile --target cpp` (`./prism compile|test|run --target cpp`) prints the model through
+emit_cpp.prism (module `EmitCpp`), templates/cpp.prism (`CppTemplates`) and
+templates/cpp_prelude.prism (`CppPreludeTemplate`, the prelude in C++, function for
+function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli-cpp`
+(docs/backend.md, "The C++ side"). `./prism test --target cpp` builds it with make and
+`$CXX` (g++ by default) into `target/prism-cpp/NAME` and runs its tests under the C++
+Test World; `tests/compiled/run.sh --target cpp` runs every program so.
+
+- **Where it stands:** all 69 programs of `tests/compiled/run.sh` pass under C++ (every
+  conformance program, hosting included; chess's `rules.prismtest` and
+  `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
+  files the Rust target passes. A conformance program builds in about 8 s with g++.
+- **The C++ bootstrap:** prismc itself compiles to C++ (about 157,000 lines) and
+  `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`) takes it to its fixed point and
+  checks its Rust against the Rust prismc's (bootstrap/README.md).
+
+C++ picks, each a place where C++ needs what the model leaves to Rust:
+
+- **CH: a choice is a handle.** A choice (and a row kind's values, `Elem`, `Answer`) is a
+  class holding a `shared_ptr` to a `std::variant` of its case structs. What it buys:
+  `Rc<T>` of any value type is `T` itself (`IsValueTy`), so a recursive type needs no box,
+  every `*` and `&` of the model is a no-op in C++, and `.` reaches a value's fields
+  whatever the Rust side derefs. A record is a plain struct; a cycle of records by value
+  with no choice on it does not compile (gap CY).
+- **SE: statement expressions.** A block is `({ ...; value; })`, a `match` a statement
+  expression whose `Slot<T>` (`T` the model's type for it) the arm that holds sets before
+  `goto _done`; a labelled block's `break` sets its slot and jumps to its label. What it
+  buys: `return`, `TRY` and `break` inside an arm mean what they mean in Rust. The cost:
+  a GNU extension, which g++ and clang++ both have.
+- **TT: a job's turn as a conditional.** Lowering gives no type for a `match` in a job's
+  tail (`OutUnknown "the job's turn"`); such a `match` is a chain of `?:`, whose type C++
+  works out from the arms (`finished(..)` converts to any `Turn<B>`); a guard binds the
+  pattern twice, once for its test and once for the value.
+- **PT: `->` and `.`.** A node is reached through a `shared_ptr`, a value directly. The
+  printer writes `->` where the model says a receiver is a pointer (`self`, a field or a
+  `let` of a pointer type, `node` in a constructor) and, elsewhere, for a member name some
+  node has; every record has an `operator->` returning itself, so the second rule is
+  harmless on a value.
+- **RN: a `let` that rebinds a name from itself** (Rust's shadowing, an `&` block's
+  `let mut fuel = fuel.clone()`) binds a new name (`fuel_1`), which the statements after
+  it read; a scope that binds the name anew hides the rename.
+- **KW, QL: names.** A C++ keyword takes a `_` after it (`or_`, `int_`, `explicit_`); a
+  record field named as a value type's member (`show`, `to_pod`, `cases`) too; a node
+  method named as some node's field too. A call whose name a node's member, a module or
+  a `std` function could take is qualified (`program::past`, `prelude::lower`).
+- **TB: the runtime's names by table.** `MethodForm` maps each Rust method of the model to
+  a member, a free function of `lang.hpp`, an assignment (`Cell::set`), an exchange
+  (`Option::take`) or nothing (`RefCell::borrow`); `CppCall` maps the runtime's
+  constructors (`Hold::new` is `{init, cx}`, `Port::new` inside `Rc::new` `make_new()`).
+- **NC: a node's constructor takes its fields in declared order**, the initializers the
+  model orders by moves being copies in C++.
+
+Gaps:
+
+- **No canvas World in C++**: `./prism run --target cpp` runs the CLI World only; chess's
+  window is the Rust target's.
+- **CY:** a cycle of records held by value with no choice on it.
+- **GC:** a generic choice's case constructor (`Tree(Tree::Node{..})`) needs its type
+  arguments, which CTAD cannot deduce from a nested case; no program here has one.
 
 ### Back-end picks
 

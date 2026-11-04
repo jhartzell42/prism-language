@@ -340,7 +340,7 @@ Done {{owner}}::{{name}}_build(Cx& cx) {
     }
     deref(this->{{name}}) = next;
     // What the block reads of its rows (a `for` that gives a dynamic) moved.
-    cx.dirty(share(this));
+    cx.dirty(prism_rtl::share(this));
     return {};
 }
 </cpp>

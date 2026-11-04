@@ -24,6 +24,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -144,21 +145,36 @@ private:
 
 // ---- Array ------------------------------------------------------------------------------
 
+/// How an `Array<bool>` stores an element: a `bool` with an address of its own (a
+/// `std::vector<bool>` packs bits, whose elements have none).
+struct BoolCell {
+    bool v;
+    BoolCell(bool b = false) : v(b) {}
+    operator const bool&() const { return v; }
+    operator bool&() { return v; }
+    friend bool operator==(BoolCell a, BoolCell b) { return a.v == b.v; }
+    friend auto operator<=>(BoolCell a, BoolCell b) { return a.v <=> b.v; }
+};
+
 /// `[[a]]`: a vector, copy on write.
 template <class T>
 class Array {
 public:
-    using Inner = std::vector<T>;
+    using Stored = std::conditional_t<std::is_same_v<T, bool>, BoolCell, T>;
+    using Inner = std::vector<Stored>;
     using const_iterator = typename Inner::const_iterator;
 
     Array() = default;
-    Array(std::initializer_list<T> xs) : v_(std::make_shared<Inner>(xs)) {}
-    explicit Array(Inner xs) : v_(std::make_shared<Inner>(std::move(xs))) {}
+    Array(std::initializer_list<T> xs) : v_(std::make_shared<Inner>(xs.begin(), xs.end())) {}
+    explicit Array(std::vector<T> xs) : v_(adopt(std::move(xs))) {}
+    explicit Array(Inner xs)
+        requires(!std::is_same_v<Inner, std::vector<T>>)
+        : v_(std::make_shared<Inner>(std::move(xs))) {}
 
     std::size_t size() const { return v_ ? v_->size() : 0; }
     bool empty() const { return size() == 0; }
     /// The element at `i`, or null.
-    const T* get(std::size_t i) const { return i < size() ? &(*v_)[i] : nullptr; }
+    const T* get(std::size_t i) const { return i < size() ? &static_cast<const T&>((*v_)[i]) : nullptr; }
     const T& operator[](std::size_t i) const { return (*v_)[i]; }
 
     void push_back(T x) { mut().push_back(std::move(x)); }
@@ -204,6 +220,10 @@ public:
     friend auto operator<=>(const Array& a, const Array& b) { return a.inner() <=> b.inner(); }
 
 private:
+    static std::shared_ptr<Inner> adopt(std::vector<T>&& xs) {
+        if constexpr (std::is_same_v<Inner, std::vector<T>>) return std::make_shared<Inner>(std::move(xs));
+        else return std::make_shared<Inner>(xs.begin(), xs.end());
+    }
     Inner& mut() {
         if (!v_) v_ = std::make_shared<Inner>();
         else if (v_.use_count() > 1) v_ = std::make_shared<Inner>(*v_);

@@ -127,7 +127,7 @@ let preludeTypes = {"prelude::Ordering": TyInfo(kind="choice", fields=[[]], para
 let preludeCtors = {"prelude::Ordering::Less": "choice", "prelude::Ordering::Equal": "choice", "prelude::Ordering::Greater": "choice"}
 
 # What every node has: its path, and the runtime's methods a node is called by.
-let nodeBase = {"make": True, "path": True, "leave_row": True, "answer": True, "document": True, "deliver": True, "document_moved": True, "me": True, "result_dynamic": True}
+let nodeBase = {"make": True, "push": True, "wake": True, "started": True, "deferred": True, "build": True, "swap": True, "leave": True, "patch": True, "edges": True, "release": True, "clean_up": True, "path": True, "leave_row": True, "answer": True, "document": True, "deliver": True, "document_moved": True, "me": True, "result_dynamic": True}
 
 AddModelItem: fn Cp, Text, Item -> Cp
 fn AddModelItem cp, m, it = match it:
@@ -312,7 +312,7 @@ CppExpr: unbounded fn Cp, Ex -> Text
 fn CppExpr cp, x = match x:
     XVar n: VarName cp, n
     XPath p: PathValue cp, p
-    XSelf: "share(this)"
+    XSelf: "prism_rtl::share(this)"
     XCx: "cx"
     XConst n: n
     XUnit: "Unit\{\}"
@@ -330,16 +330,16 @@ fn CppExpr cp, x = match x:
     XDeref y: CppExpr cp, y
     XTarget y: CppExpr cp, y
     XClone y: CppExpr cp, y
-    XWeak y: "weaken({CppExpr cp, y})"
-    XUpgrade y: "upgrade({CppExpr cp, y})"
+    XWeak y: "prism_rtl::weaken({CppExpr cp, y})"
+    XUpgrade y: "prism_rtl::upgrade({CppExpr cp, y})"
     XBreak l, y: "({CppBreak cp, l, y})"
     XBreakLoop: "(\{ break; \})"
     XLater y: "[=](Cx& cx) -> Done \{ {CppExpr cp, y}; return \{\}; \}"
-    XFormatStr parts: CppFormat cp, parts, "str"
+    XFormatStr parts: CppFormat cp, parts, "prism_rtl::str"
     XIsCase y, [[]]: "false"
     XIsCase y, cs: "({Join (Each cs, \|c| CaseTest cp, c, (CppTight cp, y)), " || "})"
     XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
-    XUnreachable: "(prism_rtl::unreachable(), throw)"
+    XUnreachable: "throw prism_rtl::Panic(\"entered unreachable code\")"
     XCall f, args: CppCall cp, f, args
     XApply f, args: "{CppTight cp, f}({CppArgs cp, args})"
     XMethod r, m, args: CppMethod cp, r, m, args
@@ -351,7 +351,7 @@ fn CppExpr cp, x = match x:
     XVec [[]]: "\{\}"
     XVec xs: "std::vector\{{CppArgs cp, xs}\}"
     XText t: "Text(\"{Escape t}\")"
-    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text(\"{Concat (Each parts, \|p| TextPiece p)}\")" else: CppFormat cp, parts, "cat"
+    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text(\"{Concat (Each parts, \|p| TextPiece p)}\")" else: CppFormat cp, parts, "prism_rtl::cat"
     XMatch s, arms, fallback, t: CppMatch cp, s, arms, t
     XChain label, s, arms, t: CppMatch cp, s, arms, t
     XIf c, t, e: CppIf cp, c, t, e
@@ -467,7 +467,9 @@ CppCall: unbounded fn Cp, Text, [Ex] -> Text
 fn CppCall cp, f, args:
     let a = CppArgs cp, args
     match f:
-        "Rc::new": if a == "\{\}": "make_new()" else: "rc({a})"
+        "Rc::new": if a == "\{\}": "prism_rtl::make_new()" else: "prism_rtl::rc({a})"
+        "is_some": "prism_rtl::is_some({a})"
+        "is_none": "prism_rtl::is_none({a})"
         "RefCell::new": a
         "Cell::new": a
         "Hold::new": "\{{a}\}"
@@ -515,7 +517,9 @@ fn IsFresh f = InList [["Stamped::new", "Port::new", "Map::new", "Array::new", "
 CallPath: fn Text -> Text
 fn CallPath f:
     let last = LastSegment f
-    if last == "build": "{TypePath (ParentPath f)}::make"
+    let owner = LastSegment (ParentPath f)
+    let isType = (ParentPath f) != "" and Contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ", (Take owner, 1)
+    if last == "build" and isType: "{TypePath (ParentPath f)}::make"
     else: if last == "new": TypePath (ParentPath f)
     else: CppPathId (TypePath f)
 
@@ -562,9 +566,7 @@ fn NodeMethodName cp, m = match ((cp.methods[m], cp.fieldNames[m])):
 fn ?Pointer cp, r = match r:
     XSelf: ? True
     XCx: ? False
-    XVar n: match cp.pointers[n]:
-        ? ignore: ? True
-        nil: nil
+    XVar n: cp.pointers[n]
     XClone y: ?Pointer cp, y
     XRef y: ?Pointer cp, y
     XField XSelf, f: match cp.fields[f]:
@@ -649,15 +651,15 @@ fn MemberName m = match m:
 # The test of a constructor against a value, as a C++ condition.
 CaseTest: fn Cp, Text, Text -> Text
 fn CaseTest cp, c, v = match c:
-    "Some": "is_some({v})"
-    "None": "is_none({v})"
-    "Ok": "is_ok({v})"
-    "Err": "is_err({v})"
+    "Some": "prism_rtl::is_some({v})"
+    "None": "prism_rtl::is_none({v})"
+    "Ok": "prism_rtl::is_ok({v})"
+    "Err": "prism_rtl::is_err({v})"
     "prism_rtl::Turn::More": "{v}.if_more()"
     "prism_rtl::Turn::Finished": "{v}.if_finished()"
     otherwise: match ?CaseOf cp, c:
-        ? ignore: "is<{CaseType c}>({v})"
-        nil: if IsRuntimeCase c: "is<{CaseType c}>({v})" else: "true"
+        ? ignore: "prism_rtl::is<{CaseType c}>({v})"
+        nil: if IsRuntimeCase c: "prism_rtl::is<{CaseType c}>({v})" else: "true"
 
 # A constructor's case type: a choice's case, or a runtime constructor's pattern tag.
 CaseType: fn Text -> Text
@@ -670,14 +672,14 @@ fn CaseType c = match c:
 # The payload of a constructor's field `i` in a value.
 Payload: fn Cp, Text, Text, Nat -> Text
 fn Payload cp, c, v, i = match c:
-    "Some": "some_of({v})"
+    "Some": "prism_rtl::some_of({v})"
     "Ok": "*{v}"
     "Err": "{v}.error()"
     "prism_rtl::Turn::More": "{v}.if_more()->next"
     "prism_rtl::Turn::Finished": "{v}.if_finished()->value"
     otherwise: match ?CaseOf cp, c:
-        ? ignore: "as<{CaseType c}>({v}).a{i}"
-        nil: if IsRuntimeCase c: "as<{CaseType c}>({v}).a{i}" else: "{v}.a{i}"
+        ? ignore: "prism_rtl::as<{CaseType c}>({v}).a{i}"
+        nil: if IsRuntimeCase c: "prism_rtl::as<{CaseType c}>({v}).a{i}" else: "{v}.a{i}"
 
 IsRuntimeCase: fn Text -> Bool
 fn IsRuntimeCase c = (Take c, 9) == "Segment::"
@@ -722,7 +724,8 @@ fn OkBranch cp, x, y = match x:
 
 # A closure: a lambda capturing by value (`move`) or by reference.
 CppClosure: unbounded fn Cp, Bool, [Pa], Ex -> Text
-fn CppClosure cp, mv, ps, body:
+fn CppClosure cp0, mv, ps, body:
+    let cp = Unbind cp0, (Concat2 (Each ps, \|p| PatNames p))
     let params = Join (Each (Range0 (Len ps)), \|i| ClosureParam cp, (Or ps[i], PaWild), i), ", "
     let binds = Concat (Each (Range0 (Len ps)), \|i| ClosureBinds cp, (Or ps[i], PaWild), i)
     let capture = if mv: "=" else: "&"
@@ -884,15 +887,16 @@ fn TernaryMatch cp, s, arms:
     let bind = match ?bound:
         ? ignore: ""
         nil: "auto&& _m = {CppExpr cp, s};\n"
-    let parts = Each arms, \|a| TernaryArm cp, subject, a
-    let ends = match ?Last arms:
-        ? a: (IsCatchAll a.pat) and (Len a.conds) == 0
-        nil: False
+    # an arm that tests nothing ends the chain: the arms after it are never reached
+    let reached = Fold arms, (([[]], False)), \|((acc, done)), a| if done: ((acc, done)) else: (((Push acc, a), (Len (PatConds cp, a.pat, subject)) == 0 and (Len a.conds) == 0))
+    let ((kept, ends)) = reached
+    let parts = Each kept, \|a| TernaryArm cp, subject, a
     let lastText = if ends: "" else: "\n    : throw prism_rtl::Panic(\"no arm matched\")"
     StmtExpr "{bind}", "{Join parts, "\n    : "}{lastText}"
 
 TernaryArm: unbounded fn Cp, Text, XArm -> Text
-fn TernaryArm cp, subject, a:
+fn TernaryArm cp0, subject, a:
+    let cp = Unbind cp0, (ArmNames a)
     let tests = PatConds cp, a.pat, subject
     let binds = PatBinds cp, a.pat, subject
     let lets = Concat2 (Each a.conds, \|c| CondBinds cp, c)
@@ -920,7 +924,8 @@ fn GuardTest cp, cs:
 
 # One arm: its tests, its bindings, its value set and the match left.
 MatchArm: unbounded fn Cp, Text, XArm -> Text
-fn MatchArm cp, subject, a:
+fn MatchArm cp0, subject, a:
+    let cp = Unbind cp0, (ArmNames a)
     let tests = PatConds cp, a.pat, subject
     let binds = PatBinds cp, a.pat, subject
     let body = if Leaves a.body: "{CppExpr cp, a.body};" else: "_v.set({CppExpr cp, a.body});\ngoto _done;"
@@ -981,16 +986,21 @@ fn CppStatementsCp cp, dos:
 # `out`), parenthesized.
 Unvexed: fn Text -> Text
 fn Unvexed t:
-    let parts = Split t, "("
-    let vexing = (Len parts) == 2 and (Drop t, (Dec (Len t))) == ")" and (not (Contains t, " ")) and CppIdentChar (Take (Or parts[1], ""), 1)
+    let head = Or (Split t, "(")[0], ""
+    let typeLike = (Contains head, ":") or Contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ", (Take head, 1)
+    let vexing = (Drop t, (Dec (Len t))) == ")" and (not (Contains head, " ")) and head != "" and typeLike
     if vexing: "({t})" else: t
 
 # The context after a statement: a `let` of a name its value reads renames it.
 Rebound: unbounded fn Cp, Do -> Cp
 fn Rebound cp, d = match d:
+    DoLetElse p, ignore, ignore: Unbind cp, (PatNames p)
+    DoLet (PaTuple ps), ignore: Unbind cp, (PatNames (PaTuple ps))
+    DoLet (PaCtor c, ps), ignore: Unbind cp, (PatNames (PaCtor c, ps))
+    DoLet (PaRecord c, fs, r), ignore: Unbind cp, (PatNames (PaRecord c, fs, r))
     DoLet p, x: match ?LetName p:
         ? n:
-            let pointing = if IsPointerLet cp, p, x: Pointing cp, n else: cp
+            let pointing = if IsPointerLet cp, p, x: Pointing cp, n else: KnownValue cp, p, n
             if CppMentions (CppExpr cp, x), (VarName cp, n):
                 let fresh = "{VarName cp, n}_{Inc (Len (Keys cp.renames))}"
                 update pointing:
@@ -999,10 +1009,44 @@ fn Rebound cp, d = match d:
         nil: cp
     otherwise: cp
 
+# The names a pattern binds.
+PatNames: unbounded fn Pa -> [Text]
+fn PatNames p = match p:
+    PaBind n: [[n]]
+    PaMut n: [[n]]
+    PaTyped q, ignore: PatNames q
+    PaCtor ignore, ps: Concat2 (Each ps, \|q| PatNames q)
+    PaRecord ignore, fs, ignore: Concat2 (Each fs, \|((ignore, q))| PatNames q)
+    PaTuple ps: Concat2 (Each ps, \|q| PatNames q)
+    PaSlice ps: Concat2 (Each ps, \|q| PatNames q)
+    PaRest n: if n == "": [[]] else: [[n]]
+    otherwise: [[]]
+
+ArmNames: unbounded fn XArm -> [Text]
+fn ArmNames a = Append (PatNames a.pat), (Concat2 (Each a.conds, \|c| CondNames c))
+
+CondNames: unbounded fn Cc -> [Text]
+fn CondNames (CcLet q, ignore) = PatNames q
+fn CondNames (CcIf ignore) = [[]]
+
+# The context inside a scope that binds `names` anew: an outer rename of one is hidden,
+# as is its being a pointer.
+Unbind: fn Cp, [Text] -> Cp
+fn Unbind cp, names = update cp:
+    &_.renames <= Fold names, &_.renames, \|m, n| Remove m, n
+    &_.pointers <= Fold names, &_.pointers, \|m, n| Remove m, n
+
 # A local the context knows is a shared pointer: its members are reached by `->`.
 Pointing: fn Cp, Text -> Cp
 fn Pointing cp, n = update cp:
     &_.pointers <= Insert &_.pointers, n, True
+
+# A local whose type the `let` says and is no pointer: its members are reached by `.`.
+KnownValue: fn Cp, Pa, Text -> Cp
+fn KnownValue cp, p, n = match p:
+    PaTyped ignore, ignore: update cp:
+        &_.pointers <= Insert &_.pointers, n, False
+    otherwise: cp
 
 # Whether a `let` binds a shared pointer: its type says so, or its value is one.
 IsPointerLet: fn Cp, Pa, Ex -> Bool
@@ -1093,8 +1137,14 @@ fn CppLet cp, named, p, x = match p:
     PaTyped (PaMut n), t: "{CppType cp, t} {VarName named, n} = {CppExpr cp, x};"
     PaTuple ps:
         if Fold ps, True, \|f, q| f and IsName q: "auto [{Join (Each ps, \|q| PatName q), ", "}] = {CppExpr cp, x};"
-        else: "auto&& _t = {CppExpr cp, x};\n{Join (PatBinds cp, p, "_t"), "\n"}"
-    otherwise: "auto&& _t = {CppExpr cp, x};\n{Join (PatBinds cp, p, "_t"), "\n"}"
+        else: LetThrough cp, p, x
+    otherwise: LetThrough cp, p, x
+
+# A `let` of a pattern: the value in a local named after the pattern's first binder.
+LetThrough: unbounded fn Cp, Pa, Ex -> Text
+fn LetThrough cp, p, x:
+    let t = "_{Or (?FirstBinder p), "t"}"
+    "auto&& {t} = {CppExpr cp, x};\n{Join (PatBinds cp, p, t), "\n"}"
 
 # A pattern's first binder, which names the local a `let`-`else` tests.
 ?FirstBinder: unbounded fn Pa -> ?Text
@@ -1121,7 +1171,8 @@ fn PatName (PaMut n) = CppId n
 fn PatName other = "_"
 
 CppIfLet: unbounded fn Cp, Pa, Ex, [Do], [Do] -> Text
-fn CppIfLet cp, p, x, t, e:
+fn CppIfLet cp0, p, x, t, e:
+    let cp = Unbind cp0, (PatNames p)
     let v = "_m"
     let head = "if (auto&& _m = {CppExpr cp, x}; {Conds (PatConds cp, p, v)})"
     let body = Join (Append (PatBinds cp, p, v), [[(CppStatements cp, t)]]), "\n"
@@ -1142,13 +1193,16 @@ fn CppDoMatch cp, x, cases:
 
 # `for p in xs`: each element bound by the pattern; a map's entries are pairs.
 CppFor: unbounded fn Cp, Pa, Ex, [Do] -> Text
-fn CppFor cp, p, x, body = match p:
-    PaBind n: Block "for (auto&& {CppId n} : {CppExpr cp, x})", (CppStatements cp, body)
-    PaMut n: Block "for (auto {CppId n} : {CppExpr cp, x})", (CppStatements cp, body)
+fn CppFor cp0, p, x, body = CppForIn (Unbind cp0, (PatNames p)), p, (CppExpr cp0, x), body
+
+CppForIn: unbounded fn Cp, Pa, Text, [Do] -> Text
+fn CppForIn cp, p, xs, body = match p:
+    PaBind n: Block "for (auto&& {CppId n} : {xs})", (CppStatements cp, body)
+    PaMut n: Block "for (auto {CppId n} : {xs})", (CppStatements cp, body)
     PaTuple ps:
-        if Fold ps, True, \|f, q| f and IsName q: Block "for (auto&& [{Join (Each ps, \|q| PatName q), ", "}] : {CppExpr cp, x})", (CppStatements cp, body)
-        else: Block "for (auto&& _e : {CppExpr cp, x})", (Join (Append (PatBinds cp, p, "_e"), [[(CppStatements cp, body)]]), "\n")
-    otherwise: Block "for (auto&& _e : {CppExpr cp, x})", (Join (Append (PatBinds cp, p, "_e"), [[(CppStatements cp, body)]]), "\n")
+        if Fold ps, True, \|f, q| f and IsName q: Block "for (auto&& [{Join (Each ps, \|q| PatName q), ", "}] : {xs})", (CppStatements cp, body)
+        else: Block "for (auto&& _e : {xs})", (Join (Append (PatBinds cp, p, "_e"), [[(CppStatements cp, body)]]), "\n")
+    otherwise: Block "for (auto&& _e : {xs})", (Join (Append (PatBinds cp, p, "_e"), [[(CppStatements cp, body)]]), "\n")
 
 # A function's body: its statements, then the value returned.
 CppBody: unbounded fn Cp, Ex -> Text
@@ -1364,7 +1418,7 @@ fn FromPodDef cp, t, head, gens:
     let body = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            let reads = Join (Each c.fields, \|((f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(field(whole, \"{PrismField f}\"))))"), ", "
+            let reads = Join (Each c.fields, \|((f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(prelude::field(whole, \"{PrismField f}\"))))"), ", "
             "return {head}\{{reads}\};"
         otherwise:
             let arms = Each t.cases, \|c|
@@ -1390,7 +1444,7 @@ TagParts: unbounded fn Cp, TagDef -> Parts
 fn TagParts cp, t:
     let fields = Join (Each t.fields, \|((ignore, f, ft))| "{CppType cp, ft} {FieldId f};"), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "\{\"{p}\", prism_rtl::to_pod({FieldId f})\}"), ", "
-    let reads = Join (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(field(p, \"{p}\"))))"), ", "
+    let reads = Join (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(prelude::field(p, \"{p}\"))))"), ", "
     let eq = if t.pod: "bool operator==(const {t.name}&) const = default;" else: ""
     let back = if t.pod: "static Result<{t.name}> from_pod(const Pod& p);" else: ""
     let decl = CppTagStruct (CppSourceDoc "The `Level` of `{t.tagName}`:", t.doc), t.name, fields, t.tagName, (Join (Filter [[eq, back]], \|s| s != ""), "\n")
@@ -1440,14 +1494,14 @@ fn JobParts cp, j:
     let gens = CppTemplateHead (GenericNamesOf j.generics)
     let head = HeadOf j.name, (GenericNamesOf j.generics)
     let jcp = WithFields cp, j.fields
-    let fields = Join (Each j.fields, \|((n, t))| "{CppType cp, t} {n};"), "\n"
-    let params = Join (Each j.fields, \|((n, t))| "{CppType cp, t} {n}"), ", "
-    let inits = Join (Each j.fields, \|((n, ignore))| "{n}(std::move({n}))"), ", "
+    let fields = Join (Each j.fields, \|((n, t))| "{CppType cp, t} {FieldId n};"), "\n"
+    let params = Join (Each j.fields, \|((n, t))| "{CppType cp, t} {FieldId n}"), ", "
+    let inits = Join (Each j.fields, \|((n, ignore))| "{FieldId n}(std::move({FieldId n}))"), ", "
     let ctor = if (Len j.fields) == 0: "" else: "{j.name}({params}) : {inits} \{\}"
     let ret = CppType cp, j.ret
     let decl = JobStruct (CppDoc j.doc), gens, j.name, ret, fields, ctor
     let cycle = CppFunction "", "{gens}prism_rtl::Turn<{ret}> {head}::cycle() const", (CppBody jcp, j.body)
-    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}prism_rtl::JobRef<{ret}> {j.start}({params})", "return std::make_shared<{head}>({Join (Each j.fields, \|((n, ignore))| n), ", "});"
+    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}prism_rtl::JobRef<{ret}> {j.start}({params})", "return std::make_shared<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
     let generic = (Len j.generics) > 0
     Parts(forward=[["{gens}struct {j.name};"]], handles=[[]], values=[[]], cases=[[]], protos=(if generic: [[]] else: [["prism_rtl::JobRef<{ret}> {j.start}({params});"]]), classes=[[decl]], generic=(if generic: [[cycle, start]] else: [[]]), defs=(if generic: [[]] else: [[cycle, start]]))
 
@@ -1640,11 +1694,33 @@ fn EmitCpp model, runtime, scripts:
         ? r: CppRunRoot r.name
         nil: CppNoRoot model.name
     let main = CppMain model.name, regs, checks, scriptList, world, runRoot, (Join (Concat2 (Each [[elem, answer]], \|p| p.defs)), "\n\n")
-    let files = Each (Range0 (Len model.mods)), \|i|
+    let perModule = Each (Range0 (Len model.mods)), \|i|
         let m = Or model.mods[i], (ModDef(name="", prism="", path="", uses=[[]], items=[[]]))
         let p = Or mods[i], noParts
-        (("src/{m.name}.cpp", (CppModule (if m.prism == "": "The root module" else: "The module `{m.prism}`"), m.path, m.name, (Join p.defs, "\n\n"))))
-    Append [[(("Makefile", (CppMakefile model.name, runtime, (Join (Each model.mods, \|m| "src/{m.name}.cpp"), " ")))), (("src/crate.hpp", header)), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], files
+        ModuleFiles m, (Chunks p.defs)
+    let files = Fold perModule, [[]], \|acc, fs| Append acc, fs
+    let sources = Join (Each files, \|((f, ignore))| f), " "
+    Append [[(("Makefile", (CppMakefile model.name, runtime, sources))), (("src/crate.hpp", header)), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], files
+
+# A module's definitions in files of about `chunkSize` characters each, so that no file
+# needs more memory to compile than a small machine has (`lower.cpp` alone would): the
+# first is `src/NAME.cpp`, the next `src/NAME_2.cpp`, and so on.
+Chunks: fn [Text] -> [ [Text] ]
+fn Chunks defs:
+    let ((done, current, size)) = Fold defs, (([[]], [[]], 0)), \|((acc, cur, n)), d|
+        if n > chunkSize and (Len cur) > 0: (((Push acc, cur), [[d]], (Len d)))
+        else: ((acc, (Push cur, d), n + (Len d)))
+    if (Len current) == 0 and (Len done) > 0: done else: Push done, current
+
+let chunkSize = 250000
+
+ModuleFiles: fn ModDef, [ [Text] ] -> [((Text, Text))]
+fn ModuleFiles m, chunks:
+    let title = if m.prism == "": "The root module" else: "The module `{m.prism}`"
+    Each (Range0 (Len chunks)), \|k| (((ChunkFile m.name, k), (CppModule title, m.path, m.name, (Join (Or chunks[k], [[]]), "\n\n"))))
+
+ChunkFile: fn Text, Nat -> Text
+fn ChunkFile m, k = if k == 0: "src/{m}.cpp" else: "src/{m}_{k + 1}.cpp"
 
 # Every program, the root's among them, once.
 AllProgramsCpp: fn Model -> [ProgDef]

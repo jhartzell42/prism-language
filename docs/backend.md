@@ -331,6 +331,39 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `drive`; `test_world::TestWorld` (`program::<P>(name)`, `check`, `run`, `verify`);
   `scene::find_clickables`.
 
+## The C++ side
+
+`prismc compile --target cpp` prints the same model as C++20 over `runtime/cpp` (the C++
+`prism_rtl`, whose README maps each Rust type of the library to its C++ form), through
+emit_cpp.prism and templates/cpp.prism. Everything above holds construct for construct;
+what differs is how C++ spells it.
+
+- **The program** is `Makefile`, `src/crate.hpp` (every declaration, in the order C++
+  needs: forward declarations, choices' handles, value types each after the types it
+  holds by value, choices' cases, prototypes, nodes and jobs, programs, templates),
+  `src/main.cpp` (`crate::Elem`'s and `crate::Answer`'s definitions, `test_world()`,
+  `main`), `src/prelude.hpp` and one `src/NAME.cpp` per module. The modules are the
+  namespaces `crate::NAME`. A program class has the static `build(args, ready)` and the
+  virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a `@main`
+  root under the C++ CLI World (worlds/cli-cpp).
+- **Types.** A record, a tag's `Level`, a newtype and a unit type are structs (fields in
+  order, designated initializers); a choice and a row kind's values are a handle on a
+  shared `std::variant` of case structs (`Term::Var`), so a value behind an `Rc` is the
+  value itself and a recursive type needs no box. `?a` is `std::optional`, `~a`
+  `Fallible`, a tuple `std::tuple`, `Rc<dyn Fn>` `prism_rtl::Fn`, a job `JobRef`. A
+  node is a class deriving from `Node` (or the prelude's `Row`), held by
+  `std::shared_ptr`; its constructor is `make` and its methods are members.
+- **Expressions.** A block, a `match`, an if-let chain and a labelled block are GNU
+  statement expressions (g++ and clang++ both take them); a `match`'s value is a
+  `prism_rtl::Slot` of the type the model gives it, set by the arm that holds, which then
+  leaves by `goto`; `break 'l v` sets the label's slot and jumps. `?` is `TRY(..)`. A
+  pattern tests with `prism_rtl::is<Case>` and binds `prism_rtl::as<Case>(v).aN`.
+- **What the library adds for the emitter** is `prism_rtl/lang.hpp`: `Slot`, `TRY`, the
+  pattern helpers, `rc` (`Rc::new`: a value as it is, a node or a cell on the heap),
+  `share`/`weaken`/`upgrade`, `Fn`, `str`/`cat` (`format!`), `deref` (Rust's auto-deref of
+  a cell), `host_new`, and the constructors whose type the context gives (`make_new`,
+  `snapshot`, `finished`).
+
 ## Negative space
 
 - **No dynamic `Value`.** *Buys:* type errors at rustc, not in a tick; a counter that

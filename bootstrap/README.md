@@ -14,3 +14,24 @@ keeps no binary; it keeps one archive.
 - **`bootstrap.sh --update`** also rewrites the seed from the new fixed point, after a
   change to the compiler.
 - **From the repository root:** `make bootstrap`, `make bootstrap-update`.
+
+## The C++ target
+
+The same bootstrap runs through C++ (`prismc compile --target cpp`, prismc/README.md,
+"The C++ target"), with one check more.
+
+- **`prismc-cpp.tar.xz`** is the C++ seed: the C++ program `prismc` emitted for itself at
+  its last C++ fixed point (its `src/` and `Makefile`), compressed. It builds with `make`
+  and a C++20 compiler (g++ 13 or clang++ 18) over `runtime/cpp` and `worlds/cli-cpp`.
+- **`bootstrap-cpp.sh`** starts from `$PRISMC`, else the Rust bootstrap's
+  `target/bootstrap/prismc`, else the C++ seed unpacked and built with make. That
+  compiler compiles `prismc/` to C++ (`target/bootstrap/cpp-gen1`); make builds it; the
+  new binary compiles `prismc/` to C++ again; the two programs must be byte-equal (the
+  C++ fixed point). The C++ binary at the fixed point then compiles `prismc/` to Rust,
+  which must be byte-equal to what `target/bootstrap/prismc` emits: one model, two
+  printers, and either compiler gives the same output for either target. It installs
+  the binary as `target/bootstrap/prismc-cpp`.
+- **`bootstrap-cpp.sh --update`** also rewrites the C++ seed.
+- **`CXX`, `OPT`, `JOBS`** choose the compiler (g++), its optimization (`-O1`) and make's
+  jobs (1: the largest file, `lower.cpp`, needs most of a small machine's memory).
+- **From the repository root:** `make bootstrap-cpp`, `make bootstrap-cpp-update`.

@@ -211,7 +211,11 @@ struct Show<Fallible<T>> {
 
 template <class T>
 struct Show<Array<T>> {
-    static void show(const Array<T>& xs, Printer& p) { p.array_of(xs); }
+    static void show(const Array<T>& xs, Printer& p) {
+        std::vector<ShowRef> items;
+        for (const T& x : xs) items.emplace_back(x);
+        p.array(items);
+    }
 };
 
 template <class K, class V>

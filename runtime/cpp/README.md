@@ -88,8 +88,17 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 
 - **Everything in `runtime/rust/src` is ported.** That covers cells, cx, doc, gc,
   num, collections, pod, print, read, host, the World protocol, the scene and the Test
-  World. The CLI and canvas Worlds are crates of their own in Rust (`worlds/`), and
-  are not part of this library.
+  World, and `Snapshot` as the Rust one has it now: the structure (`current`) and the
+  dynamic one tick behind it (`get`, `queue`, `published`). The CLI World in C++ is
+  `worlds/cli-cpp`, beside this library; there is no canvas World in C++.
+- **The emitter's C++ is `prismc compile --target cpp`** (prismc/README.md, "The C++
+  target"; docs/backend.md, "The C++ side"). What it needs beyond the library's types is
+  `prism_rtl/lang.hpp`: the value slot of a `match`, `TRY`, the pattern helpers, `rc`,
+  `share`, `upgrade`, `Fn`, `str`/`cat`, `deref`, `host_new`, and the constructors whose
+  type the context gives. For it the library also has `Turn::Value`, `Port::Value` and
+  `Job::Value`, and `Array::items_mut`/`Map::items_mut` (an `&` block's update in place);
+  an `Array<bool>` stores `BoolCell`s, so its elements have addresses as every other
+  array's do.
 - **The Test World prints byte for byte what the Rust one prints.** The hand-written
   counter, half counter and `@Normal` (Rust's `tests/counter.rs` and
   `tests/normalize.rs`, in C++) verify against `tests/conformance/*.expected`.
