@@ -1,0 +1,370 @@
+# `Check.Expr`'s section `lets`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Expression blocks and `let`
+# ---------------------------------------------------------------------------------------
+
+# A block of `let`s, local functions and signatures ending on an expression (Semantics
+# ch. 4: an expression block's `let`s are one binding group). A block whose statements
+# build is a widget block, read where it stands.
+InferExprBlock: unbounded fn Env, St, Block -> ((Ty, St))
+fn InferExprBlock env, st, b:
+    if IsWidgetish b.stmts: InferWidgetBlock env, st, b
+    else:
+        let ((env2, st2)) = BindGroup env, st, b.stmts
+        match ?Last b.stmts:
+            ? s: match s.kind:
+                SExpr e: Infer env2, st2, e
+                otherwise: ((tUnit, st2))
+            nil: ((tUnit, st2))
+
+# Whether a block's statements build: binds, holds, `ignore <-`, `emit`, or a bare
+# element or blueprint before its last line.
+IsWidgetish: fn [Stmt] -> Bool
+fn IsWidgetish stmts = Fold stmts, False, \|seen, s| seen or (Builds s)
+
+Builds: fn Stmt -> Bool
+fn Builds s = match s.kind:
+    SBind ignore, ignore, ignore: True
+    SIgnore ignore: True
+    SEmit ignore: True
+    SWidget ignore: True
+    otherwise: False
+
+# A local `let`, `fn` or signature, and the expressions a block holds before its last line,
+# in order of dependence: every name is bound before any right side is read, then each
+# `let` is checked and generalized (ch. 5) once nothing it depends on is unchecked.
+BindGroup: unbounded fn Env, St, [Stmt] -> ((Env, St))
+fn BindGroup env, st, stmts:
+    let order = GroupOrder stmts
+    let ((env1, st1)) = Fold order, ((env, st)), \|((en, s)), i| PreBind en, s, (Or stmts[i], dummyStmt)
+    let st2 = if st1.recording and (Len stmts) > 1: NoteGroup st1, (StmtsSpan stmts), "expr", (DepOrder stmts) else: st1
+    Fold order, ((env1, st2)), \|((en, s)), i| CheckGroupStmt en, s, (Or stmts[i], dummyStmt), (IsLast stmts, i)
+
+StmtsSpan: fn [Stmt] -> Range
+fn StmtsSpan stmts = Range(start=(Or stmts[0], dummyStmt).span.start, end=(Or (?Last stmts), dummyStmt).span.end)
+
+let dummyStmt = Stmt(kind=(SExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+
+IsLast: fn [Stmt], Nat -> Bool
+fn IsLast stmts, i = i + 1 == (Len stmts)
+
+# Local functions with a signature are bound to it; recursive `let`s and `fn`s are bound to
+# a monomorphic variable first.
+PreBind: unbounded fn Env, St, Stmt -> ((Env, St))
+fn PreBind env, st, s = match s.kind:
+    SSignature sg:
+        let ((sc, st2)) = SigScheme (EnvCx env), st, sg.ty, sg.bounds
+        (((WithLocal env, (DefNameText sg.name), sc), st2))
+    SFn f:
+        let name = DefNameText f.name
+        match env.locals[name]:
+            ? ignore: ((env, st))
+            nil:
+                let ((v, st2)) = FreshVar st, False, ""
+                (((WithLocal env, name, (Mono v)), st2))
+    SLet p, ignore, ignore: match p.kind:
+        PName n:
+            let ((v, st1)) = FreshVar st, True, (SNameKey n)
+            let st2 = AtBinder st1, v, n.span
+            let ((rw, st3)) = FreshRow st2, [[]]
+            (((WithLocal env, (SNameKey n), (Mono (WithMarks (TypeMarks n.sigils), v, rw))), st3))
+        otherwise: ((env, st))
+    otherwise: ((env, st))
+
+CheckGroupStmt: unbounded fn Env, St, Stmt, Bool -> ((Env, St))
+fn CheckGroupStmt env, st, s, last = match s.kind:
+    SLet p, ?ty, e: CheckLet env, st, p, ?ty, e, s.span
+    SFn f: CheckLocalFn env, st, f, s.span
+    SSignature ignore: ((env, st))
+    SExpr e:
+        if last: ((env, st))
+        else:
+            let ((t, st2)) = Infer env, st, e
+            ((env, st2))
+    otherwise: ((env, (Err st, "mismatch", s.span, "this statement belongs in a widget, `given:` or `update` block")))
+
+# A local `let` (ch. 5): generalized over the variables not free in the scope when its type
+# has no `$` or `!` outside every arrow (round 1 DB1a), and, when its right side is not a
+# lambda, over no variable with a trait constraint (doubt MR).
+CheckLet: unbounded fn Env, St, Pattern, ?Type, Expr, Range -> ((Env, St))
+fn CheckLet env, st, p, ?ty, e, span:
+    let st0 = EnterLevel st
+    let ((?annot, st1)) = match ?ty:
+        ? t:
+            let ((at, s2)) = ConvType (EnvCx env), st0, t
+            ((? at, s2))
+        nil: ((nil, st0))
+    let ((pre, st2)) = match p.kind:
+        PName n: match env.locals[SNameKey n]:
+            # A plain name the block bound ahead (PreBind) gets a variable of the `let`'s
+            # own level, so that it generalizes (DB1a, D8); the block's dependency order
+            # checks its uses after it.
+            ? sc: if n.sigils == "" and (IsFlexVar st1, sc.ty):
+                let ((v, s2)) = FreshVar st1, True, (SNameKey n)
+                ((v, (AtBinder s2, v, n.span)))
+            else: ((sc.ty, st1))
+            nil: FreshVar st1, True, (SNameKey n)
+        otherwise: FreshVar st1, False, ""
+    let st3 = match ?annot:
+        ? at: Check env, st2, e, at
+        nil: Check env, st2, e, pre
+    let st4 = match ?annot:
+        ? at: Unify st3, pre, at, span
+        nil: st3
+    let st5 = SolveWants env.g, st4, env.givens, False
+    match p.kind:
+        PName n:
+            let name = SNameKey n
+            # The binder's own variable at the `let`'s level, so binding it does not pull
+            # the type's variables out of reach of the generalization.
+            let t = Zonk st5, pre
+            let ((env2, st7a)) = BindName env, st5, n, t
+            let st7 = LeaveLevel st7a
+            # The variable bound ahead, for a use the block checks before this `let`,
+            # takes the monomorphic type.
+            let Ahead = \|s| AheadUnify env, s, name, pre, t, span
+            if (HoldsNode st7, t) or (IsTopicName name): ((env2, (Ahead st7)))
+            else:
+                let lambda = IsLambda e
+                let ((keep, bounds, st8)) = WantsAbove st7, t, lambda
+                let ((sc, st9)) = Generalize st8, t, keep, bounds
+                (((WithLocal env2, name, sc), (Ahead (NoteGen st9, n.span, name, sc))))
+        otherwise:
+            let st6 = LeaveLevel st5
+            BindPattern env, st6, p, (Zonk st6, pre), False
+
+AheadUnify: unbounded fn Env, St, Text, Ty, Ty, Range -> St
+fn AheadUnify env, st, name, pre, t, span = match env.locals[name]:
+    ? sc0: if sc0.ty != pre: Unify st, sc0.ty, t, span else: st
+    nil: st
+
+# The marks that are type layers: `&` names a reference, typed as the part it names.
+TypeMarks: fn Text -> Text
+fn TypeMarks marks = if (HasPrefix marks, "&"): AfterFirst marks else: marks
+
+RefMark: fn Text -> Text
+fn RefMark marks = if (HasPrefix marks, "&"): "&" else: ""
+
+Unpend: fn Env -> Env
+fn Unpend env = update env:
+    &_.pending <= [[]]
+
+IsTopicName: fn Text -> Bool
+fn IsTopicName n = n == "_" or (DropPrefix n, (MarksOf n)) == "_"
+
+# The wanted constraints of a `let` about to generalize: on a lambda's variables they
+# become the scheme's bounds and leave the wanted list; on a non-lambda's they keep the
+# variable monomorphic (doubt MR).
+WantsAbove: unbounded fn St, Ty, Bool -> (([Nat], [((Nat, Text))], St))
+fn WantsAbove st, t, lambda:
+    let vs = Filter (FreeVars st, t), \|v| (InfoOf st, v).level > st.level
+    let mine = Filter st.wants, \|w| match Walk st, w.ty:
+        TyFlex n: HasNat vs, n
+        otherwise: False
+    let others = Filter st.wants, \|w| not (HasText (Each mine, \|m| Show m), (Show w))
+    let constrained = Fold mine, [[]], \|acc, w| match Walk st, w.ty:
+        TyFlex n: AddNat acc, n
+        otherwise: acc
+    if lambda:
+        let bounds = Fold mine, [[]], \|acc, w| match Walk st, w.ty:
+            TyFlex n: if (HasPrefix w.cls, "Range "): acc else: Push acc, ((n, w.cls))
+            otherwise: acc
+        let st1 = Fold mine, st, \|s, w| NoteChoice (NoteImpl s, w.file, w.span, w.cls, w.ty, "quantified"), w.file, w.span, w.cls, "any"
+        let st2 = update st1:
+            &_.wants <= others
+        (([[]], bounds, st2))
+    else:
+        let st2 = LowerLevels st, constrained, st.level
+        ((constrained, [[]], st2))
+
+# A local `fn`: a `let` of its lambda (its clauses one function), or checked as a
+# top-level function when a local signature names it (ch. 5).
+CheckLocalFn: unbounded fn Env, St, FnClause, Range -> ((Env, St))
+fn CheckLocalFn env, st, f, span:
+    let name = DefNameText f.name
+    match env.locals[name]:
+        ? sc:
+            if (Len sc.qs) > 0 or (Len sc.cqs) > 0 or not (IsFlexVar st, sc.ty):
+                let st2 = CheckClauses env, st, name, [[f]], sc, span
+                ((env, st2))
+            else:
+                let st0 = EnterLevel st
+                let ((lt, st1)) = ClauseLambda env, st0, f
+                let st2 = Unify st1, sc.ty, lt, span
+                let st3 = SolveWants env.g, st2, env.givens, False
+                let st4 = LeaveLevel st3
+                let t = Zonk st4, sc.ty
+                if HoldsNode st4, t: ((env, st4))
+                else:
+                    let ((keep, bounds, st5)) = WantsAbove st4, t, True
+                    let ((sc2, st6)) = Generalize st5, t, keep, bounds
+                    (((WithLocal env, name, sc2), st6))
+        nil: ((env, st))
+
+# One clause as a lambda.
+ClauseLambda: unbounded fn Env, St, FnClause -> ((Ty, St))
+fn ClauseLambda env, st, f:
+    let body = match f.body:
+        BodyExpr e: LbExpr e
+        BodyBlock b: LbBlock b
+    InferLambda env, st, (Expr(kind=(ELambda (? f.params), body), span=f.span)), nil
+
+# ---------------------------------------------------------------------------------------
+# Function clauses under a signature
+# ---------------------------------------------------------------------------------------
+
+# Every clause against the signature, its type variables, rows and color rigid, its bounds
+# givens; the body against the result, in the block its name's mark opens; the clauses
+# exhaustive over the parameters.
+CheckClauses: unbounded fn Env, St, Text, [FnClause], Scheme, Range -> St
+fn CheckClauses env, st, name, clauses, sc, span:
+    let t = Skolemize sc
+    let givens = Append env.givens, sc.bounds
+    let env2 = update env:
+        &_.givens <= givens
+        &_.mark <= Head (MarksOf name)
+        &_.defName <= name
+    match t:
+        TyFn col, params, res:
+            let outerColor = st.color
+            let outerFlex = st.colorFlex
+            let st0 = update st:
+                &_.color <= CBound
+                &_.colorWhy <= ""
+                &_.colorFlex <= [[]]
+                &_.colUp <= Fold sc.cjoins, &_.colUp, \|m, ((lo, hi))| Insert m, lo, hi
+            let st1 = Fold clauses, st0, \|s, c| CheckClause env2, s, c, params, res
+            let st1b = SettleBody (SolveWants env.g, st1, givens, False), col, name
+            let st2 = ClauseCoverage env2, st1b, clauses, params, span
+            let st3 = if ColLeq st2.color, col: st2
+                else: ErrFix st2, "calls-unbounded", span, "{ColWord col} `{name}` calls {ColWord st2.color} `{st2.colorWhy}`", "mark `{name}` `unbounded fn`, or run the call through `@Run`"
+            let st4 = NoteFn st3, span, name, col, st2.color
+            update st4:
+                &_.color <= outerColor
+                &_.colorFlex <= outerFlex
+        other:
+            let st1 = Fold clauses, st, \|s, c| CheckClause env2, s, c, [[]], other
+            st1
+
+CheckClause: unbounded fn Env, St, FnClause, [Ty], Ty -> St
+fn CheckClause env, st, c, params, res:
+    if (Len c.params) != (Len params):
+        Err st, "mismatch", c.span, "this clause takes {CountWord (Len c.params)} parameter{if (Len c.params) == 1: "" else: "s"}; the signature has {CountWord (Len params)}"
+    else:
+        let ((env2, st1)) = Fold (Range0 (Len params)), ((env, st)), \|((en, s)), i| BindPattern en, s, (Or c.params[i], Pattern(kind=PIgnore, span=c.span)), (Or params[i], TyErr), True
+        CheckBody env2, st1, c.body, res
+
+# A body against its result type, in the block the name's mark opens: `@` a widget block,
+# `?` or `~` a `given:` body, anything else an expression block (Semantics ch. 4).
+CheckBody: unbounded fn Env, St, FnBody, Ty -> St
+fn CheckBody env, st, body, res = match body:
+    BodyExpr e: Check env, st, e, res
+    BodyBlock b:
+        if env.mark == "@":
+            match Walk st, res:
+                TyAt inner, rw:
+                    let env2 = update env:
+                        &_.scope <= rw
+                    let ((t, st2)) = InferWidgetBlock env2, st, b
+                    Unify st2, inner, t, b.span
+                other: Err st, "mismatch", b.span, "a widget block builds a blueprint; the signature says `{ShowTy st, other}`"
+        else: if env.mark == "?" or env.mark == "~":
+            let ((t, st2)) = InferGivenBlock env, st, b, env.mark
+            Unify st2, res, t, b.span
+        else:
+            let ((t, st2)) = InferExprBlock env, st, b
+            Unify st2, res, t, b.span
+
+# ---------------------------------------------------------------------------------------
+# Templates
+# ---------------------------------------------------------------------------------------
+
+# A code template is a text (prism_zero's pick TP); each placeholder prints.
+InferTemplate: unbounded fn Env, St, Template -> ((Ty, St))
+fn InferTemplate env, st, t:
+    let st2 = Fold t.parts, st, \|s, part| TemplatePartCheck env, s, part
+    ((tText, st2))
+
+TemplatePartCheck: unbounded fn Env, St, TemplatePart -> St
+fn TemplatePartCheck env, st, part = match part:
+    TpText ignore: st
+    TpPlaceholder x, ignore:
+        let ((t, st2)) = Infer env, st, x
+        ShowWant st2, (if IsTimeSigil (HeadSigil st2, t): InnerOf st2, t else: t), x.span
+    TpBlock b:
+        let ((t, st2)) = InferExprBlock env, st, b
+        st2
+    TpCall n, args, ?parts, span: TemplateCallCheck env, st, n, args, ?parts, span
+
+# `<@Name attr={{v}}>body</@Name>` is a call like any (Templates ch. 2; lowering passes it
+# so): `@Name` if a declaration has that name, else `Name`; each attribute the parameter
+# of its name (the one place every clause naming it gives), the body, a text, the last
+# parameter; checked by the application rule against the callee's signature, its result
+# a text. An attribute no parameter has, a parameter left out, a name nothing declares
+# are errors.
+TemplateCallCheck: unbounded fn Env, St, SName, [Arg], ?[TemplatePart], Range -> St
+fn TemplateCallCheck env, st, n, args, ?parts, span:
+    let plain = SName(sigils=(AfterFirst n.sigils), path=n.path, span=n.span)
+    let ((?qk1, ignore)) = ResolveValue env.g, env.home, n
+    let callee = if ?qk1 != nil: n else: plain
+    let ((?qk, ignore2)) = ResolveValue env.g, env.home, callee
+    let cname = SNameKey plain
+    match ?qk:
+        nil:
+            let ((ignore3, st2)) = CallGlobal env, st, callee, [[]], span, [[]], callee.span
+            st2
+        ? qk:
+            let clauses = match env.g.fnAt[qk]:
+                ? i: match env.g.defs[i]:
+                    ? d: match d.body:
+                        DbFn cs: cs
+                        otherwise: [[]]
+                    nil: [[]]
+                nil: [[]]
+            let arity = match clauses[0]:
+                ? c: Len c.params
+                nil: 0
+            if (Len clauses) == 0: Err st, "mismatch", span, "`<@{cname}>` calls a function without clauses, which name no parameters for its attributes"
+            else:
+                let ((slots, st1)) = Fold args, (({}, st)), \|((m, s)), a| match a.?name:
+                    ? id: match ?TemplateSlot clauses, id.name:
+                        ? j: if HasKey m, "{j}": ((m, (Err s, "mismatch", a.span, "`{id.name}` is given twice"))) else: (((Insert m, "{j}", a.value), s))
+                        nil: ((m, (Err s, "mismatch", a.span, "`{cname}` has no parameter `{id.name}`")))
+                    nil: ((m, (Err s, "mismatch", a.span, "a template call names each argument: `name=\{\{value\}\}`")))
+                let ?body = match ?parts:
+                    ? ps: ? (Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span))
+                    nil: nil
+                let last = Dec arity
+                let st2 = match ?body:
+                    ? ignore4: if arity == 0 or HasKey slots, "{last}": Err st1, "mismatch", span, "`{cname}` has no parameter left for the call's body" else: st1
+                    nil: st1
+                let quiet = (Len st1.diags) > (Len st.diags)
+                let ((positional, st3)) = Fold (Range0 arity), (([[]], st2)), \|((acc, s)), j| match slots["{j}"]:
+                    ? v: (((Push acc, Arg(name=nil, value=v, span=v.span)), s))
+                    nil: match ?body:
+                        ? b: if j == last: (((Push acc, Arg(name=nil, value=b, span=span)), s)) else: TemplateMissing acc, s, clauses, j, cname, span, quiet
+                        nil: TemplateMissing acc, s, clauses, j, cname, span, quiet
+                let ((t, st4)) = CallGlobal env, st3, callee, positional, span, [[]], callee.span
+                Unify st4, tText, t, span
+
+# A parameter no attribute gives: an error (unless an attribute was already wrong, which
+# says it), and an error argument in its place.
+TemplateMissing: unbounded fn [Arg], St, [FnClause], Nat, Text, Range, Bool -> (([Arg], St))
+fn TemplateMissing acc, st, clauses, j, cname, span, quiet:
+    let pname = match clauses[0]:
+        ? c: match c.params[j]:
+            ? p: ParamNameOf p
+            nil: ""
+        nil: ""
+    let st2 = if quiet: st else: Err st, "mismatch", span, "`<@{cname}>` needs `{pname}=`"
+    (((Push acc, Arg(name=nil, value=Expr(kind=EError, span=span), span=span)), st2))
+
+# The parameter an attribute names: the one place every clause that names it gives.
+?TemplateSlot: unbounded fn [FnClause], Text -> ?Nat
+fn ?TemplateSlot clauses, name:
+    let found = Fold clauses, [[]], \|acc, c| Fold (Range0 (Len c.params)), acc, \|a2, i| match c.params[i]:
+        ? p: if (ParamNameOf p) == name: AddNat a2, i else: a2
+        nil: a2
+    if (Len found) == 1: found[0] else: nil

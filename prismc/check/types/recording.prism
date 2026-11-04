@@ -1,0 +1,191 @@
+# `Check.Types`'s section `recording`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# The typed output (typed.prism), recorded only when it is asked for
+# ---------------------------------------------------------------------------------------
+
+AtHere: fn St, Range -> SrcAt
+fn AtHere st, span = SrcAt(file=st.file, span=span)
+
+NoteTy: fn St, Range, Ty -> St
+fn NoteTy st, span, t = if not st.recording: st else: update st:
+    &_.typed.exprs <= Push &_.typed.exprs, TyNote(at=(AtHere st, span), ty=t)
+
+NoteBinder: fn St, Range, Text, Ty -> St
+fn NoteBinder st, span, name, t = if not st.recording: st else: update st:
+    &_.typed.binders <= Push &_.typed.binders, BinderNote(at=(AtHere st, span), name=name, ty=t)
+
+# A generalized local `let`: its binder and the variables its scheme quantified.
+NoteGen: fn St, Range, Text, Scheme -> St
+fn NoteGen st, span, name, sc = if (not st.recording) or ((Len sc.qs) == 0 and (Len sc.cqs) == 0): st else: update st:
+    &_.typed.gens <= Push &_.typed.gens, GenNote(at=(AtHere st, span), name=name, tys=sc.qs, cols=sc.cqs)
+
+# A use of a generalized local `let`: what each of its scheme's variables is here.
+NoteInst: fn St, Range, Text, Scheme, Inst -> St
+fn NoteInst st, span, name, sc, inst = if not st.recording: st else: update st:
+    &_.typed.insts <= Push &_.typed.insts, InstNote(at=(AtHere st, span), name=name, tys=(Each sc.qs, \|q| ((q, (Or inst.tys[q], TyErr)))), cols=(Each sc.cqs, \|q| ((q, (Or inst.cols[q], CBound)))))
+
+NoteApp: fn St, Range, Text, Text, Text, [Nat], Text, Col -> St
+fn NoteApp st, span, callee, kind, layer, lifted, inner, col = if not st.recording: st else: update st:
+    &_.typed.apps <= Push &_.typed.apps, AppNote(at=(AtHere st, span), callee=callee, kind=kind, layer=layer, lifted=lifted, inner=inner, color=col)
+
+NoteFn: fn St, Range, Text, Col, Col -> St
+fn NoteFn st, span, name, declared, body = if not st.recording: st else: update st:
+    &_.typed.fns <= Push &_.typed.fns, FnNote(at=(AtHere st, span), name=name, declared=declared, body=body)
+
+NoteImpl: fn St, Nat, Range, Text, Ty, Text -> St
+fn NoteImpl st, file, span, cls, t, how = if not st.recording or (HasPrefix cls, "Range ") or cls == "Prelude.Sub" or cls == "Prelude.Signed": st else: update st:
+    &_.typed.impls <= Push &_.typed.impls, ImplNote(at=SrcAt(file=file, span=span), cls=cls, ty=t, how=how)
+
+# How the solver answered a constraint at a place, kept whether or not the typed program is
+# recorded, for the shrink check's operator and method calls (pick OP): `impl:FILE.START`
+# (a written impl, by where it stands), `derived:TYPE`, `any` (a variable under a bound, a
+# packed value, a quantified `let`: every impl may answer), `none` (built in, or through
+# its parts, each part noted at the same place).
+NoteChoice: fn St, Nat, Range, Text, Text -> St
+fn NoteChoice st, file, span, cls, ch:
+    let k = ChoiceKey file, span, cls
+    if (HasPrefix cls, "Range ") or cls == "Prelude.Sub" or cls == "Prelude.Signed": st
+    else: update st:
+        &_.choices <= Insert &_.choices, k, (AddText (Or &_.choices[k], [[]]), ch)
+
+# The operand type of every `-?` and every call of a `Min`, by file and range, kept
+# whether or not the typed program is recorded: the shrink check takes the `? m` of `n -?
+# 1` as smaller, and `Min a, b` as no larger than `a`, only when the solver made the
+# operand a `Nat` (Semantics ch. 7, "a smaller natural number"; a `Min` by `^Ord` of two
+# trees may return the bigger one).
+NoteSizeTy: fn St, Range, Ty -> St
+fn NoteSizeTy st, span, t = match t:
+    TyFn ignore, ps, ignore: match ps[0]:
+        ? p: update st:
+            &_.sizeTys <= Insert &_.sizeTys, "{st.file}:{span.start}:{span.end}", p
+        nil: st
+    otherwise: st
+
+ChoiceKey: fn Nat, Range, Text -> Text
+fn ChoiceKey file, span, cls = "{file}:{span.start}:{span.end}:{cls}"
+
+NoteMethod: fn St, Range, Text, Text -> St
+fn NoteMethod st, span, method, cls = if not st.recording: st else: update st:
+    &_.typed.methods <= Push &_.typed.methods, MethodNote(at=(AtHere st, span), method=method, cls=cls)
+
+NoteGroup: fn St, Range, Text, [ [Nat] ] -> St
+fn NoteGroup st, span, kind, order = if not st.recording: st else: update st:
+    &_.typed.groups <= Push &_.typed.groups, GroupNote(at=(AtHere st, span), kind=kind, order=order)
+
+# The typed output with every recorded type followed to its end, once the program's last
+# defaults are in.
+ZonkTyped: unbounded fn St -> TProgram
+fn ZonkTyped st:
+    let t = st.typed
+    update t:
+        &_.exprs <= Each &_.exprs, \|n| TyNote(at=n.at, ty=(ResolveTy st, n.ty))
+        &_.binders <= Each &_.binders, \|n| BinderNote(at=n.at, name=n.name, ty=(ResolveTy st, n.ty))
+        &_.insts <= Each &_.insts, \|n| InstNote(at=n.at, name=n.name, tys=(Each n.tys, \|((q, x))| ((q, (ResolveTy st, x)))), cols=(Each n.cols, \|((q, c))| ((q, (ResolveCol st, c)))))
+        &_.impls <= Each &_.impls, \|n| ImplNote(at=n.at, cls=n.cls, ty=(ResolveTy st, n.ty), how=n.how)
+        &_.apps <= Each &_.apps, \|n| AppNote(at=n.at, callee=n.callee, kind=n.kind, layer=n.layer, lifted=n.lifted, inner=n.inner, color=(ResolveCol st, n.color))
+        &_.fns <= Each &_.fns, \|n| FnNote(at=n.at, name=n.name, declared=(ResolveCol st, n.declared), body=(ResolveCol st, n.body))
+
+# A color at the program's end: a flexible variable a local `let` quantified is that
+# scheme's variable, any other left defaults to bounded.
+ResolveCol: unbounded fn St, Col -> Col
+fn ResolveCol st, c = match WalkCol st, c:
+    CFlex n: match st.colQ[n]:
+        ? q: CQ q
+        nil: CBound
+    other: other
+
+# A type zonked, its colors resolved.
+ResolveTy: unbounded fn St, Ty -> Ty
+fn ResolveTy st, t = ResolveIn st, (Zonk st, t)
+
+ResolveIn: unbounded fn St, Ty -> Ty
+fn ResolveIn st, t = match t:
+    TyCon n, args: TyCon n, (Each args, \|a| ResolveIn st, a)
+    TyFn c, ps, res: TyFn (ResolveCol st, c), (Each ps, \|p| ResolveIn st, p), (ResolveIn st, res)
+    TyTuple ts: TyTuple (Each ts, \|a| ResolveIn st, a)
+    TyArray e: TyArray (ResolveIn st, e)
+    TyMap k, v: TyMap (ResolveIn st, k), (ResolveIn st, v)
+    TySig s, i: TySig s, (ResolveIn st, i)
+    TyAt i, rw: TyAt (ResolveIn st, i), rw
+    TyElem rw, o: TyElem rw, (ResolveIn st, o)
+    TyAssoc n, a: TyAssoc n, (ResolveIn st, a)
+    other: other
+
+# A binder's variable remembers where the binder stands, for `mark-stack`.
+AtBinder: fn St, Ty, Range -> St
+fn AtBinder st, (TyFlex n), span = update st:
+    &_.binderAt <= Insert &_.binderAt, n, span
+fn AtBinder st, ignore, ignore = st
+
+FreshRow: fn St, [Text] -> ((Rw, St))
+fn FreshRow st, lacking:
+    let n = st.next
+    let st2 = update st:
+        &_.next += 1
+        &_.lacks <= Insert &_.lacks, n, lacking
+    ((Rw(fams=[[]], minus=[[]], tail=TlFlex n), st2))
+
+AddDiag: fn St, CDiag -> St
+fn AddDiag st, d = update st:
+    &_.diags <= Push &_.diags, d
+
+Err: fn St, Text, Range, Text -> St
+fn Err st, code, span, message = AddDiag st, (Diag0 code, st.file, span, message)
+
+ErrFix: fn St, Text, Range, Text, Text -> St
+fn ErrFix st, code, span, message, fix = AddDiag st, (DiagFix code, st.file, span, message, fix)
+
+InfoOf: fn St, Nat -> VInfo
+fn InfoOf st, n = Or st.infos[n], VInfo(plain=False, level=0, name="")
+
+# The type a variable stands for, followed to its end.
+Walk: unbounded fn St, Ty -> Ty
+fn Walk st, (TyFlex n) = match st.tys[n]:
+    ? t: Walk st, t
+    nil: TyFlex n
+fn Walk st, t = t
+
+# A row with its bound tails followed: the families of every tail on the way are added.
+WalkRow: unbounded fn St, Rw -> Rw
+fn WalkRow st, r = match r.tail:
+    TlFlex n: match st.rows[n]:
+        ? r2:
+            let w = WalkRow st, r2
+            Rw(fams=(SortTexts (UnionTexts r.fams, w.fams)), minus=(UnionTexts r.minus, w.minus), tail=w.tail)
+        nil: r
+    otherwise: r
+
+# A type with every bound variable replaced, all the way down.
+Zonk: unbounded fn St, Ty -> Ty
+fn Zonk st, t = match NormAssoc st, (Walk st, t):
+    TyCon n, args: TyCon n, (Each args, \|a| Zonk st, a)
+    TyFn c, ps, res: TyFn (WalkCol st, c), (Each ps, \|p| Zonk st, p), (Zonk st, res)
+    TyTuple ts: TyTuple (Each ts, \|a| Zonk st, a)
+    TyArray e: TyArray (Zonk st, e)
+    TyMap k, v: TyMap (Zonk st, k), (Zonk st, v)
+    TySig s, i: TySig s, (Zonk st, i)
+    TyAt i, rw: TyAt (Zonk st, i), (WalkRow st, rw)
+    TyElem rw, o: TyElem (WalkRow st, rw), (Zonk st, o)
+    TyElemAny rw: TyElemAny (WalkRow st, rw)
+    TyAssoc n, a: TyAssoc n, (Zonk st, a)
+    w: w
+
+# The flexible type variables of a type.
+FreeVars: unbounded fn St, Ty -> [Nat]
+fn FreeVars st, t = FreeVarsInto st, [[]], t
+
+FreeVarsInto: unbounded fn St, [Nat], Ty -> [Nat]
+fn FreeVarsInto st, acc, t = match Walk st, t:
+    TyFlex n: AddNat acc, n
+    TyCon ignore, args: Fold args, acc, \|a, x| FreeVarsInto st, a, x
+    TyFn ignore, ps, res: FreeVarsInto st, (Fold ps, acc, \|a, x| FreeVarsInto st, a, x), res
+    TyTuple ts: Fold ts, acc, \|a, x| FreeVarsInto st, a, x
+    TyArray e: FreeVarsInto st, acc, e
+    TyMap k, v: FreeVarsInto st, (FreeVarsInto st, acc, k), v
+    TySig ignore, i: FreeVarsInto st, acc, i
+    TyAt i, ignore: FreeVarsInto st, acc, i
+    TyElem ignore, o: FreeVarsInto st, acc, o
+    TyAssoc ignore, a: FreeVarsInto st, acc, a
+    otherwise: acc

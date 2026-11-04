@@ -1,0 +1,132 @@
+# `Check.Blocks`'s section `borrows`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# `&` blocks (Semantics ch. 5)
+# ---------------------------------------------------------------------------------------
+
+# `update v:` is a pure function of `v`: `&_` is the value being updated, the statements are
+# steps, the block's value is the updated copy. A reference is typed as the part it names.
+InferUpdate: unbounded fn Env, St, Expr, Block, Range -> ((Ty, St))
+fn InferUpdate env, st, target, body, span:
+    let ((t, st1)) = Infer env, st, target
+    let sh = HeadSigil st1, t
+    let st2 = if (IsTimeSigil sh) or sh == "@": ErrFix st1, "time-in-update", target.span, "`update` over a `{ShowTy st1, t}`", "update the plain value, and lift the function that does it" else: st1
+    let env2 = update (WithTopic env, "&_", t):
+        &_.inUpdate <= True
+    let ((ignore, st3)) = UpdateStmts env2, st2, body.stmts
+    let st4 = AndBlockChecks env2, st3, body, t
+    ((t, st4))
+
+UpdateStmts: unbounded fn Env, St, [Stmt] -> ((Env, St))
+fn UpdateStmts env, st, stmts = Fold stmts, ((env, st)), \|((en, s)), stmt| UpdateStmt en, s, stmt
+
+UpdateStmt: unbounded fn Env, St, Stmt -> ((Env, St))
+fn UpdateStmt env, st, s = match s.kind:
+    SSet target, value:
+        let ((tt, st1)) = Infer env, st, target
+        let st2 = RefTarget env, st1, target
+        ((env, (Check env, st2, value, tt)))
+    SAccum target, op, value:
+        let ((tt, st1)) = Infer env, st, target
+        let st2 = RefTarget env, st1, target
+        let st3 = Check env, st2, value, tt
+        let st4 = AddWant st3, "Prelude.Num", tt, s.span
+        let st5 = if op == "-=": AddWant st4, "Prelude.Sub", tt, s.span else: st4
+        ((env, st5))
+    SLet p, ?ty, e:
+        let ((t, st1)) = Infer env, st, e
+        let st2 = match ?ty:
+            ? ty:
+                let ((at, s2)) = ConvType (EnvCx env), st1, ty
+                Unify s2, at, t, e.span
+            nil: st1
+        let ((env2, st3)) = BindPattern (Unpending env), st2, p, t, False
+        ((env2, st3))
+    SWhile c, body: ((env, (UpdateWhile env, st, c, body)))
+    SExpr e: match e.kind:
+        EIf c, thenB, ?elseB: ((env, (UpdateIf env, st, c, thenB, ?elseB)))
+        EMatch scrut, arms: ((env, (UpdateMatch env, st, scrut, arms, e.span)))
+        EFor ?binders, source, body: ((env, (UpdateFor env, st, ?binders, source, body, e.span)))
+        otherwise:
+            let ((t, st1)) = Infer env, st, e
+            ((env, (Discarded st1, t, e.span)))
+    SFn f:
+        let ((env1, st1)) = PreBind env, st, s
+        CheckLocalFn env1, st1, f, s.span
+    SSignature ignore: PreBind env, st, s
+    otherwise: ((env, (Err st, "mismatch", s.span, "this statement belongs in a widget or `given:` block")))
+
+# The left side of a set is a reference: `&_`, a local, a lens path from either.
+RefTarget: fn Env, St, Expr -> St
+fn RefTarget env, st, e = if IsRef e: st else: ErrFix st, "mismatch", e.span, "the left of `<=` is a reference: `&_`, a local `&x`, or a path from one", "write `&_.{SrcText env, e.span}`, or make a local with `let &x = ...`"
+
+IsRef: fn Expr -> Bool
+fn IsRef e = match e.kind:
+    EName n: (HasPrefix n.sigils, "&")
+    EField r, ignore, ignore: IsRef r
+    EIndex r, ignore: IsRef r
+    EGroup x: IsRef x
+    otherwise: False
+
+UpdateIf: unbounded fn Env, St, Cond, Block, ?Block -> St
+fn UpdateIf env, st, c, thenB, ?elseB:
+    let ((env2, st1)) = match c:
+        CondExpr e: ((env, (CheckCond env, st, e)))
+        CondBind p, e, ?gd:
+            let ((et, s1)) = Infer env, st, e
+            let ((en, s2)) = BindPattern (Unpending env), s1, p, et, True
+            match ?gd:
+                ? g: ((en, (CheckCond en, s2, g)))
+                nil: ((en, s2))
+    let ((ignore, st2)) = UpdateStmts env2, st1, thenB.stmts
+    match ?elseB:
+        ? b:
+            let ((ignore, st3)) = UpdateStmts env, st2, b.stmts
+            st3
+        nil: st2
+
+UpdateMatch: unbounded fn Env, St, Expr, [Arm], Range -> St
+fn UpdateMatch env, st, scrut, arms, span:
+    let ((t, st1)) = Infer env, st, scrut
+    let st2 = Fold arms, st1, \|s, arm|
+        let ((env2, s1)) = match arm.?pattern:
+            ? p: BindPattern (Unpending env), s, p, t, True
+            nil: ((env, s))
+        let s2 = match arm.?guard:
+            ? gd: CheckCond env2, s1, gd
+            nil: s1
+        let ((ignore, s3)) = UpdateStmts env2, s2, arm.body.stmts
+        s3
+    MatchCoverage env, st2, t, arms, span
+
+# `while c:` and `while pattern <- e:` (doubt WB: a pattern's names are bound for the turn).
+UpdateWhile: unbounded fn Env, St, Cond, Block -> St
+fn UpdateWhile env, st, c, body:
+    let ((env2, st1)) = match c:
+        CondExpr e: ((env, (CheckCond env, st, e)))
+        CondBind p, e, ?gd:
+            let ((et, s1)) = Infer env, st, e
+            let ((en, s2)) = BindPattern (Unpending env), s1, p, et, True
+            match ?gd:
+                ? g: ((en, (CheckCond en, s2, g)))
+                nil: ((en, s2))
+    let ((ignore, st2)) = UpdateStmts env2, st1, body.stmts
+    st2
+
+# `for &s <- &_.xs:` yields a reference per element; `for x <- xs:` values; the bare form
+# rebinds `&_` to the element.
+UpdateFor: unbounded fn Env, St, ?ForBinders, Expr, Block, Range -> St
+fn UpdateFor env, st, ?binders, source, body, span:
+    let ((t, st1)) = Infer env, st, source
+    let ((k, v, st2)) = CollParts st1, t, source.span
+    let env1 = LoopIndices env
+    let ((env2, st3)) = match ?binders:
+        nil: (((WithTopic env1, "&_", v), st2))
+        ? bs: match bs.?second:
+            ? second:
+                let ((e1, s1)) = BindPattern (Unpending env1), st2, bs.first, k, False
+                BindPattern e1, s1, second, v, False
+            nil: BindPattern (Unpending env1), st2, bs.first, v, False
+    let ((ignore, st4)) = UpdateStmts env2, st3, body.stmts
+    st4

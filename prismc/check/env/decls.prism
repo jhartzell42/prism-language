@@ -1,0 +1,293 @@
+# `Check.Env`'s section `decls`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Third pass: declarations read as types
+# ---------------------------------------------------------------------------------------
+
+ConvertTypes: unbounded fn G, St, Text -> ((G, St))
+fn ConvertTypes g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s0 = update st:
+            &_.file <= info.file
+        Fold info.tree.decls, ((g, s0)), \|((gg, s)), d| ConvertTypeDecl gg, s, info, d
+
+ConvertDecls: unbounded fn G, St, Text -> ((G, St))
+fn ConvertDecls g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s1 = update st:
+            &_.file <= info.file
+        let ((g2, s2)) = Fold info.tree.decls, ((g, s1)), \|((gg, s)), d| ConvertDecl gg, s, info, d
+        let s3 = MissingSignatures g2, s2, info
+        ((g2, s3))
+
+ConvertTypeDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
+fn ConvertTypeDecl g, st, info, d = match d.kind:
+    DType t:
+        let name = QualKey info.name, (Dotted t.name.path)
+        let ti = Or g.types[name], dummyTyInfo
+        let cx = CxOf g, info.name
+        let params = Each t.params, \|p| p.name
+        let self = TyCon name, (Each params, \|p| TyQ p)
+        match t.?body:
+            nil: ((g, st))
+            ? body: match body:
+                TbRecord fs:
+                    let ((fields, st2)) = Fold fs, (([[]], st)), \|((acc, s)), f|
+                        let ((ft, s2)) = ConvType cx, s, f.ty
+                        (((Push acc, ((f.name.name, ft))), s2))
+                    let ctor = CtorInfo(name=name, owner=name, params=params, args=(Each fields, \|((ignore, ft))| ft), fields=(Each fields, \|((fname, ignore))| fname), ty=self, index=0)
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, (BRecord fields))
+                        &_.ctors <= Insert &_.ctors, name, ctor
+                    ((upd, st2))
+                TbChoice cs: ConvCases g, st, cx, ti, name, params, self, cs
+                TbNewtype c: ConvCases g, st, cx, ti, name, params, self, [[c]]
+                TbUnit i:
+                    let ctor = CtorInfo(name=(QualKey info.name, i.name), owner=name, params=params, args=[[]], fields=[[]], ty=self, index=0)
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, (BChoice [[((i.name, [[]]))]]))
+                        &_.ctors <= Insert &_.ctors, (QualKey info.name, i.name), ctor
+                    ((upd, st))
+                TbRow:
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, BRowKind)
+                    ((upd, st))
+                TbAlias a:
+                    let ((at, st2)) = ConvType cx, st, a
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, (BAlias at))
+                    ((upd, st2))
+    otherwise: ((g, st))
+
+WithBody: fn TyInfo, TyBody -> TyInfo
+fn WithBody ti, b = update ti:
+    &_.body <= b
+
+ConvCases: unbounded fn G, St, Cx, TyInfo, Text, [Text], Ty, [Case] -> ((G, St))
+fn ConvCases g, st, cx, ti, name, params, self, cs:
+    let ((cases, st2)) = Fold cs, (([[]], st)), \|((acc, s)), c|
+        let s1 = match c.?indexed:
+            ? ignore: Err s, "unsupported", c.span, "this checker does not implement indexed choices for user types"
+            nil: s
+        let ((args, s2)) = ConvTypes cx, s1, c.args
+        (((Push acc, ((SNameKey c.name, args))), s2))
+    let g2 = Fold (Range0 (Len cases)), g, \|gg, i|
+        let ((cn, args)) = Or cases[i], (("", [[]]))
+        let qk = QualKey ti.home, cn
+        update gg:
+            &_.ctors <= Insert &_.ctors, qk, CtorInfo(name=qk, owner=name, params=params, args=args, fields=[[]], ty=self, index=i)
+    let upd = update g2:
+        &_.types <= Insert &_.types, name, (WithBody ti, (BChoice cases))
+    ((upd, st2))
+
+ConvertDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
+fn ConvertDecl g, st, info, d = match d.kind:
+    DSignature s:
+        let qk = QualKey info.name, (DefNameText s.name)
+        let cx = CxOf g, info.name
+        let ((sc, st1)) = SigScheme cx, st, s.ty, s.bounds
+        let st2 = LensCheck st1, (DefNameText s.name), s.ty, (DefNameSpan s.name)
+        let st3 = CheckMarkFunction st2, (DefNameText s.name), sc.ty, (DefNameSpan s.name)
+        if HasKey g.vals, qk: ((g, (Err st3, "collision", d.span, "a second signature for `{DefNameText s.name}`")))
+        else:
+            let upd = update g:
+                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc, sort="fn", hasSig=True, home=info.name, file=info.file, span=d.span)
+            ((upd, st3))
+    DFn f:
+        let qk = QualKey info.name, (DefNameText f.name)
+        (((AddClause g, info, qk, (DefNameText f.name), f, d.span, st), st))
+    DLet l:
+        let names = PatternNames l.pattern
+        let qk = QualKey info.name, (Or names[0], "")
+        let def = Def(qk=qk, name=(Or names[0], ""), home=info.name, file=info.file, span=d.span, body=(DbLet l))
+        let upd = update g:
+            &_.defs <= Push &_.defs, def
+        ((upd, st))
+    DWidget w:
+        let qk = QualKey info.name, (SNameKey w.name)
+        let def = Def(qk=qk, name=(SNameKey w.name), home=info.name, file=info.file, span=d.span, body=(DbWidget w))
+        let upd = update g:
+            &_.defs <= Push &_.defs, def
+        ((upd, st))
+    DTag t: ConvTag g, st, info, t, d.span
+    DTrait t: ConvTrait g, st, info, t, d.span
+    DImpl i: ConvImpl g, st, info, i, d.span
+    DCheck c:
+        let upd = update g:
+            &_.defs <= Push &_.defs, Def(qk=(QualKey info.name, "check {c.name.name}"), name=c.name.name, home=info.name, file=info.file, span=d.span, body=(DbCheck c))
+        ((upd, st))
+    DTest t:
+        let upd = update g:
+            &_.defs <= Push &_.defs, Def(qk=(QualKey info.name, "test {t.name.name}"), name=t.name.name, home=info.name, file=info.file, span=d.span, body=(DbTest t))
+        ((upd, st))
+    DStmt s: match s.kind:
+        SEmit ignore: ((g, st))
+        otherwise: ((g, (Err st, "unsupported", d.span, "a statement at the top of a file: nothing at top level is built")))
+    otherwise: ((g, st))
+
+# Clauses of one function gather into one definition, in order.
+AddClause: fn G, ModInfo, Text, Text, FnClause, Range, St -> G
+fn AddClause g, info, qk, name, f, span, st:
+    match g.fnAt[qk]:
+        ? i: update g:
+            &_.defs <= Insert2 &_.defs, i, (AddToFn (Or &_.defs[i], dummyDef), f)
+        nil: update g:
+            &_.fnAt <= Insert &_.fnAt, qk, (Len &_.defs)
+            &_.defs <= Push &_.defs, Def(qk=qk, name=name, home=info.name, file=info.file, span=span, body=(DbFn [[f]]))
+
+let dummyDef = Def(qk="", name="", home="", file=0, span=Range(start=0, end=0), body=(DbFn [[]]))
+
+IsFnDef: fn Def -> Bool
+fn IsFnDef d = match d.body:
+    DbFn ignore: True
+    otherwise: False
+
+AddToFn: fn Def, FnClause -> Def
+fn AddToFn d, f = match d.body:
+    DbFn fs: update d:
+        &_.body <= DbFn (Push fs, f)
+    otherwise: d
+
+# An array with element `i` replaced.
+Insert2: fn [a], Nat, a -> [a]
+fn Insert2 xs, i, x = Append (Push (Take xs, i), x), (Drop xs, i + 1)
+
+# A named lens, `&Home: fn &Fixture -> &Nat`, takes one reference (`lens-arity`); named
+# lenses are out of this compiler (decisions.md), so one that passes is `unsupported`.
+LensCheck: fn St, Text, Type, Range -> St
+fn LensCheck st, name, t, span:
+    if (not (HasPrefix name, "&")): st
+    else: match t.kind:
+        TFn ignore, ps, ignore:
+            let refs = Filter ps, \|p| IsRefType p
+            if (Len refs) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference", "take the second part as a plain value"
+            else: Err st, "unsupported", span, "this checker does not implement named lenses and `Over`"
+        otherwise: st
+
+IsRefType: fn Type -> Bool
+fn IsRefType t = match t.kind:
+    TName n, ignore: (HasPrefix n.sigils, "&")
+    TSigiled s, ignore: (HasPrefix s, "&")
+    otherwise: False
+
+# `mark-function` (ch. 5, the full-stack name check): a function's name shows the
+# outermost mark of what it returns.
+CheckMarkFunction: unbounded fn St, Text, Ty, Range -> St
+fn CheckMarkFunction st, name, t, span = match t:
+    TyFn ignore, ignore, res:
+        let want = HeadSigil st, res
+        let marks = MarksOf name
+        let shown = Head marks
+        let bare = DropPrefix name, marks
+        if shown == want or (Len marks) > 1 or bare == "" or not (IsUpperText bare): st
+        else: ErrFix st, "mark-function", span, "`{name}` returns `{ShowTy st, res}`; name it `{want}{bare}`", "rename to `{want}{bare}`"
+    otherwise: st
+
+MissingSignatures: fn G, St, ModInfo -> St
+fn MissingSignatures g, st, info = Fold g.defs, st, \|s, d|
+    if d.home == info.name and (IsFnDef d) and not (HasKey g.vals, d.qk):
+        ErrFix s, "no-signature", d.span, "`{d.name}` has no signature line", "write `{d.name}: fn ... -> ...` above it"
+    else: s
+
+# A tag (Semantics ch. 8's table): `of` a row kind, its output, its fields; a generic tag's
+# variables bounded on the line.
+ConvTag: unbounded fn G, St, ModInfo, TagDecl, Range -> ((G, St))
+fn ConvTag g, st, info, t, span:
+    let name = Dotted t.name.path
+    let family = Dotted (Take t.name.path, (Dec (Len t.name.path)))
+    let cx = CxOf g, info.name
+    let ((kind, out, st2)) = TagKind g, cx, st, t.ofType
+    let ((fields, st3)) = Fold t.fields, (([[]], st2)), \|((acc, s)), f|
+        let ((ft, s2)) = ConvType cx, s, f.ty
+        (((Push acc, ((f.name.name, ft))), s2))
+    let qs = Fold t.fields, (TypeVarsOfType t.ofType), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
+    let ((bs, st4)) = ConvBounds cx, st3, t.bounds
+    let tg = TagInfo(name=name, family=family, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, fields=fields, home=info.name, file=info.file, span=span)
+    let upd = update g:
+        &_.tags <= Insert &_.tags, name, tg
+    ((upd, st4))
+
+# The row kind a tag joins and its output: `Element !Click`, `Element` (unit), `Fault`.
+TagKind: unbounded fn G, Cx, St, Type -> ((Text, Ty, St))
+fn TagKind g, cx, st, t = match t.kind:
+    TName n, args:
+        let name = Dotted n.path
+        if name == "Element":
+            match args[0]:
+                ? o:
+                    let ((ot, s2)) = ConvType cx, st, o
+                    (("Element", ot, s2))
+                nil: (("Element", tUnit, st))
+        else:
+            let ((?key, ignore)) = ResolveType g, cx.home, n.path
+            match ?key:
+                ? k: match (Or g.types[k], dummyTyInfo).body:
+                    BRowKind: ((k, tUnit, st))
+                    otherwise: ((k, tUnit, (Err st, "kind", t.span, "`{name}` is not a row kind: a tag joins `Element o`, `Fault` or another `type K = row`")))
+                nil: (("", TyErr, (Err st, "unknown-name", t.span, "no row kind `{name}`")))
+    TGroup x: TagKind g, cx, st, x
+    otherwise: (("", TyErr, (Err st, "kind", t.span, "a tag joins a row kind")))
+
+# A trait: its parameter, superclasses, methods (each a value whose scheme has the trait
+# as a bound on the parameter), defaults and associated types (ch. 3).
+ConvTrait: unbounded fn G, St, ModInfo, TraitDecl, Range -> ((G, St))
+fn ConvTrait g, st, info, t, span:
+    let name = QualKey info.name, (Dotted t.name.path)
+    let param = Or (Each t.params, \|p| p.name)[0], "a"
+    let st1 = if (Len t.params) > 1: Err st, "unsupported", span, "this checker does not implement traits of several types" else: st
+    let cx = CxOf g, info.name
+    let ((supers, st2)) = ConvBounds cx, st1, t.bounds
+    let ((g3, st3, methods, defaults, assocs)) = Fold t.items, ((g, st2, [[]], [[]], [[]])), \|((gg, s, ms, ds, assocAcc)), it| match it:
+        TiSignature sg:
+            let mname = DefNameText sg.name
+            let qk = QualKey info.name, mname
+            let ((sc, s2)) = SigScheme cx, s, sg.ty, sg.bounds
+            let sc2 = update sc:
+                &_.qs <= if HasText &_.qs, param: &_.qs else: Append [[param]], &_.qs
+                &_.bounds <= Append [[((param, name))]], &_.bounds
+            let upd = update gg:
+                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, scheme=sc2, sort="method", hasSig=True, home=info.name, file=info.file, span=sg.span)
+            ((upd, s2, (Push ms, qk), ds, assocAcc))
+        TiFn f:
+            let qk = QualKey info.name, (DefNameText f.name)
+            let def = Def(qk=qk, name=(DefNameText f.name), home=info.name, file=info.file, span=f.span, body=(DbDefault [[f]], name))
+            let upd = update gg:
+                &_.defs <= Push &_.defs, def
+            ((upd, s, ms, (Push ds, qk), assocAcc))
+        TiAssocType n, ignore, ignore, ignore: ((gg, s, ms, ds, (Push assocAcc, n.name)))
+        TiAssocRow ignore, r: ((gg, (Err s, "unsupported", r, "this checker does not implement associated rows"), ms, ds, assocAcc))
+    let ti = TraitInfo(name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), methods=methods, defaults=defaults, assocs=assocs, file=info.file, span=span)
+    let upd3 = update g3:
+        &_.traits <= Insert &_.traits, name, ti
+    ((upd3, st3))
+
+# An impl: its trait, its head with the head's variables quantified, its `where` bounds,
+# its methods checked later against the trait's signatures.
+ConvImpl: unbounded fn G, St, ModInfo, ImplDecl, Range -> ((G, St))
+fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.path:
+    nil: ((g, (Err st, "unknown-name", i.traitRef.span, "no trait `^{Dotted i.traitRef.path}`")))
+    ? cls:
+        let cx = CxOf g, info.name
+        let ((head, st2)) = ConvType cx, st, i.ty
+        let ((bs, st3)) = ConvBounds cx, st2, i.bounds
+        let ((assocs, st4)) = Fold i.items, (([[]], st3)), \|((acc, s)), it| match it:
+            TiAssocType n, ignore, (? v), ignore:
+                let ((vt, s2)) = ConvType cx, s, v
+                (((Push acc, ((n.name, vt))), s2))
+            otherwise: ((acc, s))
+        let names = Fold i.items, [[]], \|acc, it| match it:
+            TiFn f: AddText acc, (DefNameText f.name)
+            otherwise: acc
+        let im = ImplInfo(cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, methods=names)
+        let g2 = update g:
+            &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
+        let g3 = Fold names, g2, \|gg, mname|
+            let clauses = Fold i.items, [[]], \|acc, it| match it:
+                TiFn f: if (DefNameText f.name) == mname: Push acc, f else: acc
+                otherwise: acc
+            update gg:
+                &_.defs <= Push &_.defs, Def(qk="{cls} impl {mname}", name=mname, home=info.name, file=info.file, span=span, body=(DbMethod clauses, cls, im))
+        ((g3, st4))

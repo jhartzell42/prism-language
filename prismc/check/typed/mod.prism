@@ -1,0 +1,139 @@
+# The checker's typed output, for the back end (Type System ch. 5, Elaboration): the tree
+# annotated with what inference decided. The annotations are tables keyed by where each
+# node stands (its file and its range), beside the unchanged tree (pick TO of the README):
+# the type of every expression, the lifting decision at every application, the color of
+# every function, the impl resolved at every method call (and every other constraint), the
+# dependency order of every binding group, the type of every binder and the scheme of every
+# top-level definition. `TypedSexp` prints it all as S-expressions, walking the tree so an
+# expression the checker never annotated shows as `unknown`.
+#
+# Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+mod print
+use Ast.*
+use Lexer.*
+use Check.Errors.*
+use Check.Types.*
+
+# Where a node stands: its file's index in the program and its range.
+type SrcAt = record:
+    file: Nat
+    span: Range
+derive ^Eq, ^Show
+
+# One expression's type, every variable followed (a variable left is one nothing decided
+# and nothing constrains, or one a local `let` quantified).
+type TyNote = record:
+    at: SrcAt
+    ty: Ty
+derive ^Eq, ^Show
+
+# One application's lifting decision (ch. 5, The application rule). `kind` is the node it
+# elaborates to: `plain` (no node), `const` (a plain value made a constant dynamic, `$ x`
+# or a `$"…"` with nothing dynamic), `map` (a map over the dynamics peeled, or over an
+# event), `sample` (an event sampling dynamics), `gate` (an event arm of a lifted `match`
+# or `if`). `layer` is the result's time layer (`""`, `$`, `!`); `lifted` the arguments
+# peeled, by position; `inner` the `?` or `~` peeled under it; `color` the call's color.
+type AppNote = record:
+    at: SrcAt
+    callee: Text
+    kind: Text
+    layer: Text
+    lifted: [Nat]
+    inner: Text
+    color: Col
+derive ^Eq, ^Show
+
+# A function's color (ch. 5, The color): what its signature declares and the join of what
+# its body applies. A lambda's declared color is its body's.
+type FnNote = record:
+    at: SrcAt
+    name: Text
+    declared: Col
+    body: Col
+derive ^Eq, ^Show
+
+# How one wanted constraint was solved (ch. 5, Traits): `impl FILE:LINE` (a written impl),
+# `derived FILE:LINE`, `builtin` (the primitives and formers, Type System ch. 3), `given`
+# (a bound of the enclosing signature), `parts` (a tuple, array, map or optional, solved
+# through its parts, each noted at the same place), `quantified` (left to the callers of a
+# generalized local `let`).
+type ImplNote = record:
+    at: SrcAt
+    cls: Text
+    ty: Ty
+    how: Text
+derive ^Eq, ^Show
+
+# A method call: the method's qualified name and its trait; the impl is the `ImplNote` of
+# the same trait at the same place.
+type MethodNote = record:
+    at: SrcAt
+    method: Text
+    cls: Text
+derive ^Eq, ^Show
+
+# A binding group's dependency order: the block, and its statements (by index) in
+# strongly connected components, each component's dependencies before it; the statements
+# of one component are mutually dependent (ch. 5, blocks by binding group).
+type GroupNote = record:
+    at: SrcAt
+    kind: Text
+    order: [ [Nat] ]
+derive ^Eq, ^Show
+
+type BinderNote = record:
+    at: SrcAt
+    name: Text
+    ty: Ty
+derive ^Eq, ^Show
+
+# A generalized local `let` (ch. 5, a local `let` generalizes; D8): its binder's place,
+# its name, and the type and color variables its scheme quantified (`'12`, `'c14`), which
+# its binder's type and its value's types have as `(var t12)` and `(color 'c14)`.
+type GenNote = record:
+    at: SrcAt
+    name: Text
+    tys: [Text]
+    cols: [Text]
+derive ^Eq, ^Show
+
+# A use of a generalized local `let` (ch. 5, a local `let` generalizes; D8): the name's
+# place, its name, and what each of the scheme's type and color variables is there, by the
+# variable's name; lowering lowers the bound value once per instantiation.
+type InstNote = record:
+    at: SrcAt
+    name: Text
+    tys: [((Text, Ty))]
+    cols: [((Text, Col))]
+derive ^Eq, ^Show
+
+# A top-level definition's scheme as the checker read it: its signature's, or what a
+# top-level `let` without one generalized to.
+type DefNote = record:
+    at: SrcAt
+    name: Text
+    scheme: Scheme
+derive ^Eq, ^Show
+
+type TProgram = record:
+    exprs: [TyNote]
+    apps: [AppNote]
+    fns: [FnNote]
+    impls: [ImplNote]
+    methods: [MethodNote]
+    groups: [GroupNote]
+    binders: [BinderNote]
+    gens: [GenNote]
+    insts: [InstNote]
+    defs: [DefNote]
+    # Every `while` in an unbounded function that the shrink check does not clear: each
+    # turn of one is a cycle point (D6); a loop it clears is one unit of work.
+    unshrunk: [SrcAt]
+derive ^Eq, ^Show
+
+let emptyTyped = TProgram(exprs=[[]], apps=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
+
+AtKey: fn SrcAt -> Text
+fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"

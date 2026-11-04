@@ -1,0 +1,243 @@
+# `Check`, the checker (prismc/README.md, Checker): `CheckProgram` runs every pass over a
+# program's modules, in order; its submodules are the passes and what they share.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+mod Errors
+mod Types
+mod Env
+mod Expr
+mod Blocks
+mod Passes
+mod Shrink
+mod Typed
+use Ast.*
+use Lexer.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Env.*
+use Check.Expr.*
+use Check.Blocks.*
+use Check.Typed.*
+use Check.Passes.*
+use Check.Shrink.*
+# ---------------------------------------------------------------------------------------
+# The program
+# ---------------------------------------------------------------------------------------
+
+# What the checker says of a program: its diagnostics, rendered, and the root row.
+type Report = record:
+    text: Text
+    errors: Nat
+    rootRow: Text
+    typed: TProgram
+derive ^Eq, ^Show
+
+# The whole checker over a program's files (each already parsed): the environment, every
+# definition, the separate checkers, the root row against `world` when one is named. `pre`
+# are the front end's own diagnostics at the program's files (a tree's, docs/
+# modules-style-pass.md), sorted in with the checker's.
+CheckProgram: unbounded fn [Src], [Module], [Text], Nat, Bool, Bool, [CDiag] -> Report
+fn CheckProgram srcs, trees, world, shown, recording, unused, pre:
+    let ((g0a, stb)) = BuildG srcs, trees
+    # The prelude is the files from `shown` on (pick RN): a program's own `module Prelude`
+    # is one of its files, and means nothing special.
+    let g0 = update g0a:
+        &_.preludeFrom <= shown
+    let st0 = update stb:
+        &_.recording <= recording
+    let ((g1, st1)) = TopLets g0, st0
+    let ((failed, st2)) = Fold g1.defs, (([[]], st1)), \|((bad, s)), d|
+        let before = Len s.diags
+        let s2 = CheckDef g1, s, d
+        let bad2 = if (Len s2.diags) > before: Push bad, (OwnKey d).qk else: bad
+        ((bad2, s2))
+    let st2b = update st2:
+        &_.level <= 0
+    let st3 = DefaultWants g1, st2b, [[]]
+    # A failed impl's method is its impl's alone: two impls' methods share a key, so the
+    # list keys each by where its impl stands (`OwnKey`).
+    let good = Filter g1.defs, \|d| not (HasText failed, (OwnKey d).qk)
+    let ((st4, refs)) = ShrinkCheck g1, st3, good
+    let ((rootRow, st5)) = RootRow g1, st4, world
+    let warnings = if unused: UnusedDefs good, refs, shown else: [[]]
+    let reached = TestOnlyReached srcs, g1.defs, refs
+    let diags = SortDiags (Append (Append (Append (Filter st5.diags, \|d| d.file < shown), warnings), pre), reached)
+    let text = Concat (Each diags, \|d| RenderCDiag srcs, d)
+    let typed = if recording: TypedOf g1, st5, shown else: emptyTyped
+    Report(text=text, errors=(Len (Filter diags, \|d| not (IsWarning d))), rootRow=rootRow, typed=typed)
+
+# The typed output: every recorded type followed to its end, and the scheme of every
+# top-level definition of the program's own files.
+TypedOf: unbounded fn G, St, Nat -> TProgram
+fn TypedOf g, st, shown:
+    let z = ZonkTyped st
+    let vals = Filter (Values g.vals), \|v| v.file < shown and v.sort != "builtin" and (Or g.mods[v.home], dummyMod).file == v.file
+    update z:
+        &_.defs <= Each vals, \|v| DefNote(at=SrcAt(file=v.file, span=v.span), name=v.qk, scheme=(ZonkScheme st, v.scheme))
+
+ZonkScheme: unbounded fn St, Scheme -> Scheme
+fn ZonkScheme st, sc = update sc:
+    &_.ty <= Zonk st, &_.ty
+
+# Top-level `let`s without a signature, inferred first in the order written, each
+# generalized as a local `let` is; their monomorphic variables stay open to the rest of the
+# program and default at its end (doubt TL0).
+TopLets: unbounded fn G, St -> ((G, St))
+fn TopLets g, st:
+    let unsigned = Filter g.defs, \|d| (IsLetDef d) and not (HasKey g.vals, d.qk)
+    let ((g1, st1)) = Fold unsigned, ((g, st)), \|((gg, s)), d|
+        let ((v, s2)) = FreshVar s, False, d.name
+        let gg2 = update gg:
+            &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=(Mono v), sort="let", hasSig=False, home=d.home, file=d.file, span=d.span)
+        ((gg2, s2))
+    Fold unsigned, ((g1, st1)), \|((gg, s)), d| match d.body:
+        DbLet l:
+            let env = DefEnv gg, d
+            let s0 = update s:
+                &_.file <= d.file
+                &_.level <= 1
+            let pre = (Or gg.vals[d.qk], dummyVal).scheme.ty
+            let s1 = Check env, s0, l.value, pre
+            let s2 = SolveWants gg, s1, [[]], False
+            let s3 = update s2:
+                &_.level <= 0
+            let t = Zonk s3, pre
+            let ((keep, bounds, s4)) = WantsAbove s3, t, (IsLambda l.value)
+            let ((sc, s5)) = if HoldsNode s4, t: ((Mono t, s4)) else: Generalize s4, t, keep, bounds
+            let gg2 = update gg:
+                &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=sc, sort="let", hasSig=False, home=d.home, file=d.file, span=d.span)
+            ((gg2, (DischargeIncls gg, (LayerQuestions (ResolveFields gg, (CheckColors s5), True)), 0)))
+        otherwise: ((gg, s))
+
+let dummyVal = ValInfo(qk="", scheme=(Mono TyErr), sort="", hasSig=False, home="", file=0, span=Range(start=0, end=0))
+
+IsLetDef: fn Def -> Bool
+fn IsLetDef d = match d.body:
+    DbLet ignore: True
+    otherwise: False
+
+# The environment a definition's body starts in: its module's row, with the module's row
+# variable rigid (as its signatures' bodies see it).
+DefEnv: fn G, Def -> Env
+fn DefEnv g, d:
+    let info = Or g.mods[d.home], dummyMod
+    let scope = match info.emitRw.tail:
+        TlQ v: Rw(fams=info.emitRw.fams, minus=[[]], tail=(TlRigid v))
+        otherwise: info.emitRw
+    Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={}, pending=[[]])
+
+# One definition: its body against its signature; its constraints solved and defaulted;
+# its row obligations discharged.
+CheckDef: unbounded fn G, St, Def -> St
+fn CheckDef g, st, d:
+    let env = DefEnv g, d
+    let inclsBefore = Len st.incls
+    let s0 = update st:
+        &_.file <= d.file
+        &_.level <= 1
+        &_.color <= CBound
+        &_.colorWhy <= ""
+        &_.colorFlex <= [[]]
+        &_.cleqs <= [[]]
+    let s1 = match d.body:
+        DbFn clauses: match g.vals[d.qk]:
+            ? v: CheckClauses env, s0, d.name, clauses, v.scheme, d.span
+            nil: s0
+        DbWidget w: CheckWidgetDef env, s0, d, w
+        DbLet l: match g.vals[d.qk]:
+            ? v:
+                if v.hasSig: Check env, s0, l.value, (Skolemize v.scheme)
+                else: s0
+            nil: s0
+        DbMethod clauses, cls, im: CheckMethod env, s0, d, clauses, cls, im
+        DbDefault clauses, cls: match ?MethodKey g, cls, d.name:
+            ? mk: match g.vals[mk]:
+                ? v: CheckClauses env, s0, d.name, clauses, v.scheme, d.span
+                nil: s0
+            nil: s0
+        DbCheck c: Fold c.lines, s0, \|s, line|
+            let ((t, s2)) = Infer env, s, line.expr
+            match line.?pattern:
+                ? p:
+                    let ((ignore, s3)) = BindPattern env, s2, p, t, True
+                    s3
+                nil: s2
+        DbTest t:
+            let ((bt, s2)) = Infer env, s0, t.blueprint
+            match Walk s2, bt:
+                TyAt ignore, ignore: s2
+                TyErr: s2
+                other: Err s2, "mismatch", t.blueprint.span, "a test builds a blueprint; this is `{ShowTy s2, other}`"
+    let solved = CheckColors (SolveWants g, s1, env.givens, False)
+    let defaulted = LayerQuestions (ResolveFields g, (DefaultDef g, solved), True)
+    let discharged = DischargeIncls g, defaulted, inclsBefore
+    update discharged:
+        &_.level <= 0
+
+# The end of a definition: its own variables default (doubt LD); the top-level `let`s'
+# monomorphic ones wait for the program's end.
+DefaultDef: unbounded fn G, St -> St
+fn DefaultDef g, st:
+    let mine = Filter st.wants, \|w| match Walk st, w.ty:
+        TyFlex n: (InfoOf st, n).level >= 1
+        otherwise: True
+    let theirs = Filter st.wants, \|w| match Walk st, w.ty:
+        TyFlex n: (InfoOf st, n).level < 1
+        otherwise: False
+    let st1 = update st:
+        &_.wants <= mine
+    let s2 = DefaultWants g, st1, [[]]
+    update s2:
+        &_.wants <= Append theirs, &_.wants
+
+# A top-level widget, `@labels:`, against its signature `@labels: @unit`, or inferred.
+CheckWidgetDef: unbounded fn Env, St, Def, WidgetDecl -> St
+fn CheckWidgetDef env, st, d, w = match env.g.vals[d.qk]:
+    ? v: match Skolemize v.scheme:
+        TyAt inner, rw:
+            let env2 = update env:
+                &_.scope <= rw
+                &_.mark <= "@"
+            let ((t, st2)) = InferWidgetBlock env2, st, w.body
+            NoteFn (Unify st2, inner, t, w.span), w.span, d.name, CBound, st2.color
+        other: Err st, "mismatch", w.span, "`{d.name}` is declared `{ShowTy st, other}`; a widget block builds a blueprint"
+    nil:
+        let ((t, st2)) = InferWidgetBlock env, st, w.body
+        NoteFn st2, w.span, d.name, CBound, st2.color
+
+?MethodKey: fn G, Text, Text -> ?Text
+fn ?MethodKey g, cls, name = Fold (Or g.traits[cls], dummyTrait).methods, nil, \|?found, k| match ?found:
+    ? f: ? f
+    nil: if (BareName k) == name or (DropPrefix k, "{(Or g.traits[cls], dummyTrait).home}.") == name: ? k else: nil
+
+# An impl's method against its trait's signature at the impl's head (ch. 3): the head's
+# variables rigid, the impl's bounds givens.
+CheckMethod: unbounded fn Env, St, Def, [FnClause], Text, ImplInfo -> St
+fn CheckMethod env, st, d, clauses, cls, im = match ?MethodKey env.g, cls, d.name:
+    nil: Err st, "mismatch", d.span, "`^{BareName cls}` has no method `{d.name}`"
+    ? mk: match env.g.vals[mk]:
+        nil: st
+        ? v:
+            let ti = Or env.g.traits[cls], dummyTrait
+            let head = SubstQ (Inst(tys=(Fold im.qs, {}, \|m, q| Insert m, q, (TyRigid q)), rows={}, cols={})), im.head
+            let ty = SubstQ (Inst(tys={ti.param: head}, rows={}, cols={})), v.scheme.ty
+            let sc = Scheme(qs=(Filter v.scheme.qs, \|q| q != ti.param), plainQs=[[]], rqs=v.scheme.rqs, cqs=v.scheme.cqs, cjoins=v.scheme.cjoins, bounds=(Filter v.scheme.bounds, \|((q, ignore))| q != ti.param), ty=ty)
+            let env2 = update env:
+                &_.givens <= im.bounds
+            CheckClauses env2, st, d.name, clauses, sc, d.span
+
+# The root row (ch. 5, pass 6): `@main`'s row, the program row when `emit` is implied,
+# reported; against a World's families when the command names them (`world-row`).
+RootRow: unbounded fn G, St, [Text] -> ((Text, St))
+fn RootRow g, st, world = match g.mods[""]:
+    nil: (("", st))
+    ? info:
+        let shown = ShowRow info.emitRw
+        if (Len world) == 0: ((shown, st))
+        else:
+            let missing = Filter info.emitRw.fams, \|f| not (HasText world, f)
+            if (Len missing) == 0: ((shown, st))
+            else:
+                let s0 = update st:
+                    &_.file <= info.file
+                ((shown, (ErrFix s0, "world-row", info.tree.span, "the program emits {Join (Each missing, \|f| "`{f}.*`"), ", "}, which this World does not answer", "host the tags it cannot answer, or run under a World that answers them")))

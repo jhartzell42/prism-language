@@ -1,0 +1,207 @@
+# `Check.Expr`'s section `operators`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Arrays, maps, operators
+# ---------------------------------------------------------------------------------------
+
+# An array takes its components whole (ch. 4, Where the table looks).
+InferArray: unbounded fn Env, St, [Expr], Range -> ((Ty, St))
+fn InferArray env, st, es, span:
+    let ((v, st2)) = FreshVar st, False, ""
+    let st3 = Fold es, st2, \|s, x| Check env, s, x, v
+    ((TyArray v, st3))
+
+# A map literal lifts over a `$` or `!` among its entries (prism_zero's pick ML, which
+# Semantics ch. 4's `{$next: Added} on !add` needs); its keys are `^Ord`.
+InferMap: unbounded fn Env, St, [((Expr, Expr))], Range -> ((Ty, St))
+fn InferMap env, st, entries, span:
+    let ((k, st1)) = FreshVar st, True, ""
+    let ((v, st2)) = FreshVar st1, False, ""
+    let n = Len entries
+    let params = Fold entries, [[]], \|acc, ignore| Append acc, [[k, v]]
+    let args = Fold entries, [[]], \|acc, ((ke, ve))| Append acc, [[Arg(name=nil, value=ke, span=ke.span), Arg(name=nil, value=ve, span=ve.span)]]
+    let st3 = if n > 0: AddWant st2, "Prelude.Ord", k, span else: st2
+    ApplyRule env, st3, "a map literal", CBound, params, (TyMap k, v), args, span
+
+# A binary operator is its function: `+` is `^Num`'s, `==` `^Eq`'s; `on` keeps its left
+# operand and fires with its right; `<|` merges two events, the left winning; `and`, `or`.
+InferBinary: unbounded fn Env, St, Text, Expr, Expr, Range -> ((Ty, St))
+fn InferBinary env, st, op, lhs, rhs, span:
+    let args = [[Arg(name=nil, value=lhs, span=lhs.span), Arg(name=nil, value=rhs, span=rhs.span)]]
+    if op == "and" or op == "or":
+        ApplyRule env, st, op, CBound, [[tBool, tBool]], tBool, args, span
+    else: if op == "on": InferOn env, st, lhs, rhs, span
+    else: if op == "<|":
+        let ((v, st2)) = FreshVar st, False, ""
+        ApplyRule env, st2, op, CBound, [[(TySig "!", v), (TySig "!", v)]], (TySig "!", v), args, span
+    else: if op == "mod":
+        let ((v, st2)) = FreshVar st, True, ""
+        let st3 = AddWant st2, "Prelude.Num", v, span
+        ApplyRule env, st3, op, CBound, [[v, v]], v, args, span
+    else:
+        let ((t0, st2)) = InferName env, st, (SName(sigils="", path=[[op]], span=span)), span
+        let t = if op == "/": QuotientOf st2, t0 else: t0
+        let st2b = if op == "-?": NoteSizeTy st2, span, (Walk st2, t0) else: st2
+        let st3 = if op == "-": SubWant st2b, t, span else: st2b
+        ApplyFn env, st3, op, t, args, span
+
+# The prelude's `/: fn a, a -> ?a` read as Type System ch. 3 has it, `fn a, a -> Quotient a`
+# (doubt QD).
+QuotientOf: unbounded fn St, Ty -> Ty
+fn QuotientOf st, t = match Walk st, t:
+    TyFn c, ps, ignore: match ps[0]:
+        ? p: TyFn c, ps, (TyAssoc "Quotient", p)
+        nil: t
+    other: other
+
+# `-` is not `Nat`'s (round 47 NS): a `Prelude.Sub` constraint on its operand type, which
+# `Nat` refuses with `nat-minus`.
+SubWant: unbounded fn St, Ty, Range -> St
+fn SubWant st, t, span = match Walk st, t:
+    TyFn ignore, ps, ignore: match ps[0]:
+        ? p: AddWant st, "Prelude.Sub", p, span
+        nil: st
+    otherwise: st
+
+# `on` returns its left operand and ignores the value of its right (ch. 4): the left lifts
+# with the right, which must be an event.
+InferOn: unbounded fn Env, St, Expr, Expr, Range -> ((Ty, St))
+fn InferOn env, st, lhs, rhs, span:
+    let ((a, st1)) = FreshVar st, True, ""
+    let ((b, st2)) = FreshVar st1, True, ""
+    let ((rt, st3)) = Infer env, st2, rhs
+    if (HeadSigil st3, rt) != "!" and rt != TyErr and not (IsFlexVar st3, rt):
+        ((TyErr, (Err st3, "mismatch", rhs.span, "`on` fires with an event on its right; this is `{ShowTy st3, rt}`")))
+    else:
+        let args = [[Arg(name=nil, value=lhs, span=lhs.span), Arg(name=nil, value=rhs, span=rhs.span)]]
+        ApplyRule env, st3, "on", CBound, [[a, b]], a, args, span
+
+InferUnary: unbounded fn Env, St, Text, Expr, Range -> ((Ty, St))
+fn InferUnary env, st, op, x, span:
+    let args = [[Arg(name=nil, value=x, span=x.span)]]
+    match op:
+        "not": ApplyRule env, st, "not", CBound, [[tBool]], tBool, args, span
+        "neg": match x.kind:
+            ELit l:
+                let ((t, st2)) = InferLit env, st, l, True, span
+                ((t, (NoteTy st2, x.span, t)))
+            otherwise:
+                let ((v, st2)) = FreshVar st, True, ""
+                let st3 = AddWant (AddWant st2, "Prelude.Num", v, span), "Prelude.Signed", v, span
+                ApplyRule env, st3, "-", CBound, [[v]], v, args, span
+        otherwise: Infer env, st, x
+
+# `? e`, `~ e` and `$ e` are plain functions, so they lift; `@ v` ends a block and takes
+# `v` whole (ch. 5, Free sigils and text).
+InferFreeSigil: unbounded fn Env, St, Text, Expr, Range -> ((Ty, St))
+fn InferFreeSigil env, st, s, x, span:
+    if s == "@":
+        let ((t, st2)) = Infer env, st, x
+        (((TyAt t, env.scope), st2))
+    else: if s == "?" or s == "~" or s == "$":
+        let ((v, st2)) = FreshVar st, False, ""
+        if IsBlueprintExpr env, st2, x:
+            let ((t, st3)) = Infer env, st2, x
+            (((TySig s, t), st3))
+        else: ApplyRule env, st2, "{s}", CBound, [[v]], (TySig s, v), [[Arg(name=nil, value=x, span=x.span)]], span
+    else:
+        let ((t, st2)) = Infer env, st, x
+        (((WithMarks s, t, env.scope), st2))
+
+# An `@` expression or a widget function's application: `? (@Give p, e)` is an optional
+# blueprint (Semantics ch. 9), taken whole (doubt FS).
+IsBlueprintExpr: fn Env, St, Expr -> Bool
+fn IsBlueprintExpr env, st, x = match x.kind:
+    EFreeSigil "@", ignore: True
+    EGroup y: IsBlueprintExpr env, st, y
+    ECall c, ignore, ignore, ignore: match c.kind:
+        EName n: (HasPrefix n.sigils, "@")
+        otherwise: False
+    EName n: (HasPrefix n.sigils, "@")
+    EWidgetBlock ignore: True
+    otherwise: False
+
+# ---------------------------------------------------------------------------------------
+# Field access and indexing
+# ---------------------------------------------------------------------------------------
+
+# A field access is a plain function: it lifts over `$` then `?`; on a plain bundle it does
+# not lift, and it shows the field's stack (ch. 1, Sigils on fields).
+InferField: unbounded fn Env, St, Expr, Text, Ident, Range -> ((Ty, St))
+fn InferField env, st, recv, sigils, name, span:
+    let ((rt, st1)) = Infer env, st, recv
+    let head = HeadSigil st1, rt
+    let inner = if IsTimeSigil head: InnerOf st1, rt else: rt
+    # In a reference path a field after an index names the element's field: the slot's
+    # `?` does not lift into the path (`&_[ix].partner <= ? j`; doubt RP).
+    let ih = if IsRef recv: "" else: HeadSigil st1, inner
+    let plainT = if IsPlainSigil (HeadSigil st1, inner): InnerOf st1, inner else: inner
+    let st2 = if head == "@": Err st1, "blueprint-operand", recv.span, "`.{name.name}` over a blueprint; bind it first" else: st1
+    let ((ft, st3)) = FieldType env, st2, plainT, name.name, span
+    let stack = StackOf st3, ft
+    # A reference path's steps write their labels bare (`&_.rootModule <= ? m`): the
+    # parser reads a set only through a bare path, and the `&` is the path's mark.
+    let bad = stack != sigils and ft != TyErr and not (IsFlexVar st3, ft) and not (IsRef recv)
+    let st4 = if bad: ErrFix st3, "mark-stack", name.span, "`.{sigils}{name.name}` has type `{ShowTy st3, ft}`, whose stack is `{stack}`; the access shows `{sigils}`", "write `.{stack}{name.name}`" else: st3
+    let withOpt = if IsPlainSigil ih: TySig ih, ft else: ft
+    let res = if IsTimeSigil head: TySig head, withOpt else: withOpt
+    let st5 = if IsTimeSigil head: Elab st4, span, ".{name.name}", "map", head else: st4
+    ((res, st5))
+
+# The type of a field of a record type, or of a tag element's field; on a type nothing
+# has decided yet, the one record that has the field.
+FieldType: unbounded fn Env, St, Ty, Text, Range -> ((Ty, St))
+fn FieldType env, st, t, field, span = match Walk st, t:
+    TyCon n, args: match env.g.ctors[n]:
+        ? c:
+            match ?IndexOf c.fields, field:
+                ? i:
+                    let inst = ParamInst c.params, args
+                    (((SubstQ inst, (Or c.args[i], TyErr)), st))
+                nil: ((TyErr, (Err st, "mismatch", span, "`{BareName n}` has no field `{field}`")))
+        nil: ((TyErr, (Err st, "mismatch", span, "`{BareName n}` has no fields")))
+    TyFlex ignore:
+        let owners = Filter (Values env.g.ctors), \|c| HasText c.fields, field
+        match owners[0]:
+            ? c:
+                if (Len owners) > 1:
+                    # A later line may decide the record (ch. 5: defer only what a later
+                    # line can decide): the field's type waits, and is read once the
+                    # record is known, or is `ambiguous` at the end of the definition.
+                    let ((v, st2)) = FreshVar st, False, ""
+                    ((v, (AskField st2, t, field, v, span, (Each owners, \|o| BareName o.owner))))
+                else:
+                    let ((self, st2)) = CtorValue env, st, (update c:
+                        &_.args <= [[]]), span
+                    let st3 = Unify st2, self, t, span
+                    FieldType env, st3, self, field, span
+            nil: ((TyErr, (Err st, "mismatch", span, "no record has a field `{field}`")))
+    TyErr: ((TyErr, st))
+    other: ((TyErr, (Err st, "mismatch", span, "`{ShowTy st, other}` has no field `{field}`")))
+
+?IndexOf: fn [Text], Text -> ?Nat
+fn ?IndexOf xs, x = Fold (Range0 (Len xs)), nil, \|?found, i| match ?found:
+    ? f: ? f
+    nil: if xs[i] == ? x: ? i else: nil
+
+# Indexing is a plain function of two arguments returning `?v` (ch. 4), of an array or a
+# map. A text has no index (Appendix B, Text; round 4 TX): a byte index is read off a
+# cursor, not cut at.
+InferIndex: unbounded fn Env, St, Expr, Expr, Range -> ((Ty, St))
+fn InferIndex env, st, recv, idx, span:
+    let ((rt, st1)) = Infer env, st, recv
+    let head = HeadSigil st1, rt
+    let inner = if IsTimeSigil head: InnerOf st1, rt else: rt
+    let ((v, st2)) = FreshVar st1, False, ""
+    let ((k, st3)) = FreshVar st2, True, ""
+    match Walk st3, inner:
+        TyCon "Text", [[]]: ((TyErr, (ErrFix st3, "mismatch", span, "a text has no index: a position in a text is a cursor", "walk it with `Front` and `?Step`, or make a cursor from a byte offset with `?CursorAt`")))
+        otherwise:
+            let ((coll, keyTy)) = match Walk st3, inner:
+                TyMap ignore, ignore: (((TyMap k, v), k))
+                TyCon "Table", ignore: (((TyCon "Table", [[k, v]]), k))
+                TyCon "Buffer", ignore: (((TyCon "Buffer", [[v]]), tNat))
+                otherwise: ((TyArray v, tNat))
+            let args = [[Arg(name=nil, value=recv, span=recv.span), Arg(name=nil, value=idx, span=idx.span)]]
+            ApplyRule env, st3, "[]", CBound, [[coll, keyTy]], (TySig "?", v), args, span

@@ -1,0 +1,236 @@
+# `Check.Passes`'s section `cycles`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# The prompt-cycle check (Semantics ch. 7, There are no cycles)
+# ---------------------------------------------------------------------------------------
+
+# The prelude's widget bindings whose result is not prompt in their argument: a deferral,
+# a later firing, a job's result (D6); every other widget function is taken as prompt in
+# everything it is given (the worst a blueprint parameter assumes, doubt PS). A name is
+# one of them only when it resolves to the prelude's own declaration, never to a local or
+# a program's own `@Defer`.
+IsDelayedWidget: fn Text -> Bool
+fn IsDelayedWidget n = HasText [["@Defer", "@Later", "@Run", "@Machine", "@started"]], n
+
+# A cycle of prompt edges among a widget block's bindings is `prompt-cycle`, naming its
+# bindings in order. A hold's value is delayed; a sample is delayed; a `rebuild`'s
+# generation is built at the end of the tick.
+BlockPromptCycles: unbounded fn Env, St, Block -> St
+fn BlockPromptCycles env, st, b:
+    let defs = Fold b.stmts, [[]], \|acc, s| Append acc, (StmtDefs s)
+    let cx = PCx(g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts))
+    let edges = Fold b.stmts, [[]], \|acc, s| Append acc, (PromptEdges env, st, cx, s, defs)
+    let cyc = FindCycle defs, edges
+    if (Len cyc) == 0: st
+    else:
+        let span = Fold b.stmts, b.span, \|sp, s| if HasText (StmtDefs s), (Or cyc[0], ""): s.span else: sp
+        ErrFix st, "prompt-cycle", span, "a prompt cycle: {Join (Each cyc, \|n| "`{n}`"), ", "}", "break it with a hold: `$last <- start then ...` reads the value as the tick opened"
+
+StmtDefs: unbounded fn Stmt -> [Text]
+fn StmtDefs s = match s.kind:
+    SBind p, ignore, ignore: PatternNames p
+    SLet p, ignore, ignore: PatternNames p
+    otherwise: [[]]
+
+# The prompt edges a statement adds: from each name it defines to each name of the block
+# its right side reads promptly.
+PromptEdges: unbounded fn Env, St, PCx, Stmt, [Text] -> [((Text, Text))]
+fn PromptEdges env, st, cx, s, defs = match s.kind:
+    SBind ignore, ignore, (? ignore): [[]]
+    SBind p, e, nil: Edges (PatternNames p), (PromptReads cx, e, defs)
+    SLet p, ignore, e:
+        let names = PatternNames p
+        let layer = Fold names, "", \|acc, n| match env.locals[n]:
+            ? sc: HeadSigil st, sc.ty
+            nil: acc
+        Edges names, (Filter (PromptReads cx, e, defs), \|n| ReadIsPrompt env, st, n, layer)
+    otherwise: [[]]
+
+Edges: fn [Text], [Text] -> [((Text, Text))]
+fn Edges froms, tos = Fold froms, [[]], \|acc, f| Append acc, (Each tos, \|t| ((f, t)))
+
+# Under an event the dynamics are sampled, which is delayed; a plain value's function
+# reads are not a cycle (functions recurse).
+ReadIsPrompt: unbounded fn Env, St, Text, Text -> Bool
+fn ReadIsPrompt env, st, n, layer = match env.locals[n]:
+    ? sc:
+        let h = HeadSigil st, sc.ty
+        if layer == "!": h == "!" or h == "@"
+        else: if layer == "$": h == "$" or h == "!"
+        else: match Walk st, sc.ty:
+            TyFn ignore, ignore, ignore: False
+            otherwise: (IsLowerText (DropPrefix n, (MarksOf n))) and h == ""
+    nil: False
+
+# What the prompt walk resolves names against: the program and the block's module; the
+# lambdas the block's `let`s bind, at any depth, by where each starts; the relations a
+# right side of the block starts from (`PromptBase`).
+type PCx = record:
+    g: G
+    home: Text
+    lams: (Nat ==> Expr)
+    base: (Text ==> Rel)
+derive ^Eq, ^Show
+
+# The relations every right side of a block starts from: the prelude's names that no
+# local of the block's scope hides, and the block's own `let NAME = \|..| ..` lines
+# (`lamlet:NAME`, pick PS).
+PromptBase: unbounded fn Env, [Stmt] -> (Text ==> Rel)
+fn PromptBase env, stmts:
+    let pre = PreludeSeeds env.g, env.home
+    let seeds = Fold (Keys pre), pre, \|m, k| if HasKey env.locals, (DropPrefix k, "pre:"): Remove m, k else: m
+    Fold stmts, seeds, \|m, s| LamLetRels s, m
+
+# A `let NAME = \|..| ..`: the name means that lambda where it is in scope, by where the
+# lambda starts (pick PS), until something binds the name again (`Hide`).
+LamLetRels: fn Stmt, (Text ==> Rel) -> (Text ==> Rel)
+fn LamLetRels s, m = match s.kind:
+    SLet p, ignore, e: match ((p.kind, (?LambdaOf e))):
+        ((PName n, ? lam)): Insert m, "lamlet:{SNameKey n}", Rel(param=lam.span.start, strict=False)
+        otherwise: m
+    otherwise: m
+
+?LambdaOf: fn Expr -> ?Expr
+fn ?LambdaOf e = match e.kind:
+    ELambda ignore, ignore: ? e
+    EGroup x: ?LambdaOf x
+    otherwise: nil
+
+# Every lambda a `let` of these statements binds, at any depth, by where it starts.
+LetLambdas: unbounded fn [Stmt] -> (Nat ==> Expr)
+fn LetLambdas stmts = Fold (StmtsSpots stmts, {}), {}, \|m, sp| match sp:
+    SpotStmt s, ignore: match s.kind:
+        SLet ignore, ignore, e: match ?LambdaOf e:
+            ? lam: Insert m, lam.span.start, lam
+            nil: m
+        otherwise: m
+    otherwise: m
+
+# The block's names a right side reads promptly, through the shrink check's one walk (pick
+# GH): every name it mentions at any depth, a guard's, a method call's, a cast's and a
+# template's included, except under a lambda, a local `fn` or a nested widget (a closure
+# or a blueprint is not read where it is written), in a `rebuild`'s or `for`'s source and
+# holds (construction is never an edge; its rows' other lines are, `RowKids`), and in the
+# arguments of a delayed widget binding. A traversal's step
+# is read: the walk gives its body, not the lambda, since the traversal calls it now; so
+# is a lambda passed to any function but a prelude widget function's, which may call it
+# now. A name bound again inside the right side (a lambda's parameter, an arm's binder, an
+# inner `let`) is not the block's. Every name is resolved: a delayed widget or a traversal
+# is the prelude's only when the name resolves to the prelude's declaration.
+PromptReads: unbounded fn PCx, Expr, [Text] -> [Text]
+fn PromptReads cx, e, defs:
+    let spots = PromptSpots cx, e, cx.base
+    Fold spots, [[]], \|acc, sp| Fold (SpotSites sp), acc, \|a2, site| if (HasText defs, site.callee) and not (IsLocal site.rels, site.callee): AddText a2, site.callee else: a2
+
+PromptSpots: unbounded fn PCx, Expr, (Text ==> Rel) -> [Spot]
+fn PromptSpots cx, e, m = Fold (PromptKids cx, e, m), [[(SpotExpr e, m)]], \|acc, k| Append acc, (PromptKidSpots cx, k)
+
+# The walk's children of an expression, less the ones that are not read promptly.
+PromptKids: unbounded fn PCx, Expr, (Text ==> Rel) -> [Kid]
+fn PromptKids cx, e, m = match e.kind:
+    ELambda ignore, ignore: [[]]
+    ERebuild ignore, body: RowKids body, m, [[]]
+    EFor ?binders, ignore, body: RowKids body, m, (ForBinderNames ?binders)
+    EWidgetBlock ignore: [[]]
+    ECall c, ignore, ignore, ignore: PromptCallKids cx, e, (?CalleeName c), m
+    EMethod ignore, n, ignore: PromptCallKids cx, e, (? (SNameKey n)), m
+    otherwise: ExprKids e, m
+
+# A `for`'s or a `rebuild`'s result is prompt in what its rows read (Semantics ch. 7, a
+# `for`'s consolidation among the prompt edges): building a row is never an edge (R7), so
+# the source is not read, but the rows' lines are, holds excepted, as a block's are
+# (`PromptEdges`). The checker does not know which dynamics are structural, so a row
+# reading its own `for`'s gathered result is a cycle, as a host's child reading `$doc` is.
+# The binders, `_` and the rows' own names are the rows'.
+RowKids: unbounded fn Block, (Text ==> Rel), [Text] -> [Kid]
+fn RowKids body, m, binders:
+    let lines = Filter body.stmts, \|s| match s.kind:
+        SBind ignore, ignore, (? ignore): False
+        otherwise: True
+    let own = Fold body.stmts, (Append binders, [["_", "$_"]]), \|acc, s| Append acc, (StmtDefs s)
+    [[(KidStmts lines, (Hide m, own))]]
+
+ForBinderNames: unbounded fn ?ForBinders -> [Text]
+fn ForBinderNames ?binders = match ?binders:
+    ? fb: match fb.?second:
+        ? second: Append (PatternNames fb.first), (PatternNames second)
+        nil: PatternNames fb.first
+    nil: [[]]
+
+# A call's children: none under a delayed widget binding; a lambda argument's body when
+# the callee may call it now (anything but a prelude widget function).
+PromptCallKids: unbounded fn PCx, Expr, ?Text, (Text ==> Rel) -> [Kid]
+fn PromptCallKids cx, e, ?n, m = match ?n:
+    ? n:
+        let called = FollowLamLet cx, n, m
+        if IsLocal m, n: Append called, (OpenLambdas cx, (ExprKids e, m))
+        else: if (Len called) > 0: Append called, (OpenLambdas cx, (ExprKids e, m))
+        else: match ?ResolveCallee cx.g, cx.home, n:
+            ? k:
+                if (IsPreludeKey cx.g, k) and (IsDelayedWidget (DropPrefix k, "Prelude.")): [[]]
+                else: if (IsPreludeKey cx.g, k) and (HasPrefix k, "Prelude.@"): ExprKids e, m
+                else: OpenLambdas cx, (ExprKids e, m)
+            nil: OpenLambdas cx, (ExprKids e, m)
+    nil: OpenLambdas cx, (ExprKids e, m)
+
+# A lambda among the children read through its body, its parameters bound there; a name
+# a block's `let` binds to a lambda (`let f = \|x| x + b`, then `Apply 1, f`) read through
+# that lambda's body, by following the binding.
+OpenLambdas: unbounded fn PCx, [Kid] -> [Kid]
+fn OpenLambdas cx, kids = Fold kids, [[]], \|acc, k| match k:
+    KidExpr x, m: match x.kind:
+        ELambda ?ps, body: Push acc, (LambdaKid body, (Hide m, (PatternsNames (Or ?ps, [[]]))))
+        EName n: Append (Push acc, k), (FollowLamLet cx, (SNameKey n), m)
+        otherwise: Push acc, k
+    otherwise: Push acc, k
+
+# The body of the lambda a `let` bound `n` to, where `n` still means it (`lamlet:`), read
+# with the relations of the block the prompt check is over (where the lambda was written,
+# at its widest: an inner binding between the two hides nothing), its parameters bound;
+# each lambda followed once along a path (`seen:START`), so a lambda that names itself ends.
+FollowLamLet: unbounded fn PCx, Text, (Text ==> Rel) -> [Kid]
+fn FollowLamLet cx, n, m = match m["lamlet:{n}"]:
+    ? r:
+        if HasKey m, "seen:{r.param}": [[]]
+        else: match cx.lams[r.param]:
+            ? lam: match lam.kind:
+                ELambda ?ps, body:
+                    let seen = Fold (Keys m), cx.base, \|m2, k| if (HasPrefix k, "seen:"): Insert m2, k, noRel else: m2
+                    [[(LambdaKid body, (Hide (Insert seen, "seen:{r.param}", noRel), (PatternsNames (Or ?ps, [[]]))))]]
+                otherwise: [[]]
+            nil: [[]]
+    nil: [[]]
+
+PromptKidSpots: unbounded fn PCx, Kid -> [Spot]
+fn PromptKidSpots cx, k = match k:
+    KidExpr x, m: PromptSpots cx, x, m
+    KidStmts ss, m:
+        let bm = BlockRels ss, m
+        Fold ss, [[]], \|acc, s| Append acc, (PromptStmtSpots cx, s, bm)
+
+PromptStmtSpots: unbounded fn PCx, Stmt, (Text ==> Rel) -> [Spot]
+fn PromptStmtSpots cx, s, m = match s.kind:
+    SFn ignore: [[(SpotStmt s, m)]]
+    SWidget ignore: [[(SpotStmt s, m)]]
+    otherwise: Fold (StmtKids s, m), [[(SpotStmt s, m)]], \|acc, k| Append acc, (PromptKidSpots cx, k)
+
+# The first cycle among the edges, as its names in the order the block binds them.
+FindCycle: unbounded fn [Text], [((Text, Text))] -> [Text]
+fn FindCycle defs, edges = Fold defs, [[]], \|found, d| if (Len found) > 0: found else: CycleThrough defs, edges, d
+
+CycleThrough: unbounded fn [Text], [((Text, Text))], Text -> [Text]
+fn CycleThrough defs, edges, d:
+    let fwd = ReachFrom edges, d
+    if HasText fwd, d: Filter defs, \|x| (HasText fwd, x) and (HasText (ReachFrom edges, x), d)
+    else: [[]]
+
+ReachFrom: unbounded fn [((Text, Text))], Text -> [Text]
+fn ReachFrom edges, d = Reach edges, (Each (Filter edges, \|((f, ignore))| f == d), \|((ignore, t))| t), [[]]
+
+Reach: unbounded fn [((Text, Text))], [Text], [Text] -> [Text]
+fn Reach edges, frontier, seen = match frontier[0]:
+    nil: seen
+    ? x:
+        if HasText seen, x: Reach edges, (Drop frontier, 1), seen
+        else: Reach edges, (Append (Drop frontier, 1), (Each (Filter edges, \|((f, ignore))| f == x), \|((ignore, t))| t)), (Push seen, x)

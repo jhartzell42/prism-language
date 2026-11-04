@@ -26,7 +26,7 @@
 module EmitCpp
 emit r
 use Lexer.*
-use CheckErrors.*
+use Check.Errors.*
 use Lower.*
 use CppTemplates.*
 use CppPreludeTemplate.*

@@ -10,7 +10,7 @@
 module Emit
 emit r
 use Lexer.*
-use CheckErrors.*
+use Check.Errors.*
 use Lower.*
 use RustTemplates.*
 use PreludeTemplate.*

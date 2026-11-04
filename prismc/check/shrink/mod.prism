@@ -1,0 +1,120 @@
+# `Check.Shrink`: the shrink check (Semantics ch. 7, "Every tick ends"; prismc/README.md,
+# Checker): every cycle of calls shrinks, or is `unbounded`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+mod types
+mod calls
+mod locals
+mod relations
+mod walk
+mod summaries
+use Ast.*
+use Lexer.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Env.*
+use Check.Expr.*
+use Check.Blocks.*
+use Check.Typed.*
+use Check.*
+use Check.Passes.*
+# ---------------------------------------------------------------------------------------
+# The shrink check (Semantics ch. 7, Every tick ends)
+# ---------------------------------------------------------------------------------------
+
+# A size-change graph: edges from the caller's parameters to the callee's, strict or not.
+type Sc = record:
+    caller: Text
+    callee: Text
+    edges: [((Nat, Nat, Bool))]
+    span: Range
+    file: Nat
+    arg: Text
+derive ^Eq, ^Show
+
+# What a name is known to be no larger (or strictly smaller) than: a parameter.
+type Rel = record:
+    param: Nat
+    strict: Bool
+derive ^Eq, ^Show
+
+# What the shrink check reads of the program: its definitions with clauses (functions,
+# impls' methods, traits' default methods), each by its key; the definitions a trait
+# method's name calls, and each impl's definition of each method by where the impl stands
+# (pick OP); the solver's choices (`NoteChoice`); the summaries (pick SM); the seeds each
+# module's walks start from (`ModuleSeeds`).
+type Shrink = record:
+    g: G
+    fns: [Def]
+    byKey: (Text ==> Def)
+    targets: (Text ==> [Text])
+    implDefs: (Text ==> Text)
+    choices: (Text ==> [Text])
+    sums: (Text ==> Nat)
+    seeds: (Text ==> (Text ==> Rel))
+    localOf: (Text ==> Text)
+    localBase: (Text ==> (Text ==> Rel))
+derive ^Eq, ^Show
+
+# The reference graph's cycles that the size-change principle cannot show end are
+# `may-not-end`, unless every function on the cycle is declared unbounded (D6). A `while`
+# is its own loop, checked in place.
+# The shrink check, and the reference graph it walked: each function's key and the keys
+# it reaches.
+ShrinkCheck: unbounded fn G, St, [Def] -> ((St, [((Text, [Text]))]))
+fn ShrinkCheck g, st, defs:
+    let fns = Each (Filter defs, \|d| (Len (DefClauses d)) > 0), \|d| OwnKey d
+    let byKey = Fold fns, {}, \|m, d| Insert m, d.qk, d
+    let homes = Fold fns, [[]], \|acc, d| AddText acc, d.home
+    let nats = NatMinusSeeds st
+    let pre = Fold homes, {}, \|m, h| Insert m, h, (Fold (Keys nats), (PreludeSeeds g, h), \|m2, k| Insert m2, k, noRel)
+    let sk0 = Shrink(g=g, fns=fns, byKey=byKey, targets=(MethodTargets g, fns), implDefs=(ImplDefs g, fns), choices=st.choices, sums={}, seeds=pre, localOf={}, localBase={})
+    let sk1 = update sk0:
+        &_.sums <= PartsSummaries sk0, fns
+    let skg = update sk1:
+        &_.seeds <= HofSeeds sk1, homes
+    let walked = Each fns, \|d| DefWalk skg, d
+    let sk = WithLocals skg, (Fold walked, [[]], \|acc, ((ignore, ignore, ls))| Append acc, ls)
+    let refs = Append (Each walked, \|((k, rs, ignore))| ((k, rs))), (Each (Drop sk.fns, (Len fns)), \|d| ((d.qk, (DefRefs sk, d))))
+    let keys = Each sk.fns, \|d| d.qk
+    let sccs = Sccs keys, refs
+    let st2 = Fold sccs, (NegativeTypes g, st), \|s, comp| ShrinkComponent sk, s, comp
+    let st3 = Fold fns, st2, \|s, d| LoopsOf sk, s, d
+    ((st3, refs))
+
+# `--unused`: a warning at each top-level function or `let` of the program's own files
+# (before `shown`) that no other definition reaches, other than a root (`@main`) and an
+# impl's method, which a call through its trait reaches.
+UnusedDefs: fn [Def], [((Text, [Text]))], Nat -> [CDiag]
+fn UnusedDefs defs, refs, shown:
+    let used = Fold refs, {}, \|m, ((k, rs))| Fold rs, m, \|m2, r| if r == k: m2 else: Insert m2, r, unit
+    let own = Filter defs, \|d| d.file < shown and not (HasKey used, d.qk) and d.name != "@main" and not (IsMethodDef d)
+    Each own, \|d| CDiag(code="unused", file=d.file, span=d.span, message="nothing uses `{d.name}`", fix="delete it, or use it")
+
+# Nothing outside a test module names what one declares (`test-only-reached`, docs/
+# modules-style-pass.md): a definition in no test module whose references reach a
+# definition in one. With the test modules dropped, as `prism run` drops them, no other
+# declaration's meaning changes.
+TestOnlyReached: fn [Src], [Def], [((Text, [Text]))] -> [CDiag]
+fn TestOnlyReached srcs, defs, refs:
+    let inTest = Fold defs, {}, \|m, d| if (DefRole srcs, d) == "test": Insert m, d.qk, d else: m
+    if (Size inTest) == 0: [[]]
+    else:
+        let byKey = Fold defs, {}, \|m, d| Insert m, d.qk, d
+        Fold refs, [[]], \|acc, ((k, rs))| match byKey[k]:
+            ? d: if (DefRole srcs, d) == "test": acc else: Fold rs, acc, \|a, r| match inTest[r]:
+                ? t: Push a, CDiag(code="test-only-reached", file=d.file, span=d.span, message="`{d.name}` names `{t.name}`, which a test module declares ({LastPathPart (SegAt (Or srcs[t.file], (MkSrc "", "")), t.span.start).path}): only test modules name it", fix="move `{t.name}` out of the test module, or `{d.name}` into one")
+                nil: a
+            nil: acc
+
+# The role of the file of its source a definition is in (`test` in a test module).
+DefRole: fn [Src], Def -> Text
+fn DefRole srcs, d = (SegAt (Or srcs[d.file], (MkSrc "", "")), d.span.start).role
+
+LastPathPart: fn Text -> Text
+fn LastPathPart p = Or (?Last (Split p, "/")), p
+
+IsMethodDef: fn Def -> Bool
+fn IsMethodDef d = match d.body:
+    DbMethod ignore, ignore, ignore: True
+    otherwise: False

@@ -21,10 +21,10 @@ module Lower
 emit r
 use Ast.*
 use Lexer.*
-use CheckErrors.*
-use CheckTypes.*
-use CheckEnv.*
-use Typed.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Env.*
+use Check.Typed.*
 
 # ---------------------------------------------------------------------------------------
 # The core form

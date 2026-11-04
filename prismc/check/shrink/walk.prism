@@ -1,0 +1,423 @@
+# `Check.Shrink`'s section `walk`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---- The walk. Every expression and statement of a body, at any depth, listed once with
+# the relations in scope where it stands: a `match` guard, a method call's receiver and
+# arguments, named arguments, text and template placeholders, `if`, `while` and `given:`
+# conditions, `require` and `forbid`, `update` statements, lambda bodies, local `fn`s and
+# widgets. The call sites, the names a body mentions, the names it binds and the loops it
+# holds are all read from this one list, so no reader misses a form another one sees.
+
+# A place the walk stops: an expression or a statement, with its relations.
+type Spot = choice:
+    SpotExpr Expr, (Text ==> Rel)
+    SpotStmt Stmt, (Text ==> Rel)
+derive ^Eq, ^Show
+
+# What a node holds one level down: an expression, or a block's statements, each with the
+# relations it is read under.
+type Kid = choice:
+    KidExpr Expr, (Text ==> Rel)
+    KidStmts [Stmt], (Text ==> Rel)
+derive ^Eq, ^Show
+
+ExprSpots: unbounded fn Expr, (Text ==> Rel) -> [Spot]
+fn ExprSpots e, m = Fold (ExprKids e, m), [[(SpotExpr e, m)]], \|acc, k| Append acc, (KidSpots k)
+
+KidSpots: unbounded fn Kid -> [Spot]
+fn KidSpots (KidExpr x, m) = ExprSpots x, m
+fn KidSpots (KidStmts ss, m) = StmtsSpots ss, m
+
+# A block is one binding group: its statements are read under the block's relations.
+StmtsSpots: unbounded fn [Stmt], (Text ==> Rel) -> [Spot]
+fn StmtsSpots stmts, m:
+    let bm = BlockRels stmts, m
+    Fold stmts, [[]], \|acc, s| Append acc, (StmtSpots s, bm)
+
+StmtSpots: unbounded fn Stmt, (Text ==> Rel) -> [Spot]
+fn StmtSpots s, m = Fold (StmtKids s, m), [[(SpotStmt s, m)]], \|acc, k| Append acc, (KidSpots k)
+
+BodySpots: unbounded fn FnBody, (Text ==> Rel) -> [Spot]
+fn BodySpots (BodyExpr e), m = ExprSpots e, m
+fn BodySpots (BodyBlock b), m = StmtsSpots b.stmts, m
+
+ExprKids: unbounded fn Expr, (Text ==> Rel) -> [Kid]
+fn ExprKids e, m = match e.kind:
+    ECall c, args, ignore, ignore: CallKids c, args, m
+    EMethod r, n, args: CallKids (MethodCallee n), (MethodArgs r, args), m
+    EBinary ignore, l, r: ExprsKids [[l, r]], m
+    ESuffixed ignore, ignore, l, r: ExprsKids [[l, r]], m
+    EIndex r, i: ExprsKids [[r, i]], m
+    EUnary ignore, x: [[(KidExpr x, m)]]
+    EFreeSigil ignore, x: [[(KidExpr x, m)]]
+    EField r, ignore, ignore: [[(KidExpr r, m)]]
+    ETopicIndex x: [[(KidExpr x, m)]]
+    EGroup x: [[(KidExpr x, m)]]
+    ETypeArgs x, ignore: [[(KidExpr x, m)]]
+    ECast x, ignore, ignore: [[(KidExpr x, m)]]
+    ENonEmpty x: [[(KidExpr x, m)]]
+    EAny x: [[(KidExpr x, m)]]
+    ETuple es: ExprsKids es, m
+    EArray es: ExprsKids es, m
+    EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, (ExprsKids [[k, v]], m)
+    ELit l: match l.kind:
+        LText segs: Fold segs, [[]], \|acc, sg| match sg:
+            SegPlaceholder x: Push acc, (KidExpr x, m)
+            otherwise: acc
+        otherwise: [[]]
+    ELambda ?ps, body: [[(LambdaKid body, (Later (Hide m, (PatternsNames (Or ?ps, [[]])))))]]
+    EIf c, t, ?el:
+        let withThen = Push (CondKids c, m), (KidStmts t.stmts, (CondRels c, m))
+        match ?el:
+            ? b: Push withThen, (KidStmts b.stmts, m)
+            nil: withThen
+    EMatch s, arms: Fold arms, [[(KidExpr s, m)]], \|acc, a|
+        let am = ArmPatRels s, a, m
+        Push (Append acc, (OptKids a.?guard, am)), (KidStmts a.body.stmts, am)
+    ERebuild s, b: [[(KidExpr s, m), (KidStmts b.stmts, (Later m))]]
+    EUpdate s, b: [[(KidExpr s, m), (KidStmts b.stmts, m)]]
+    EMonad s, b: [[(KidExpr s, m), (KidStmts b.stmts, m)]]
+    EFor ?fb, s, b:
+        let names = match ?fb:
+            ? fb: UnionTexts (PatternNames fb.first), (OptNames fb.?second)
+            nil: [[]]
+        [[(KidExpr s, m), (KidStmts b.stmts, (Hide m, names))]]
+    EGiven b: [[(KidStmts b.stmts, m)]]
+    EWidgetBlock b: [[(KidStmts b.stmts, (Later m))]]
+    ETemplate t: TemplateKids t.parts, m
+    otherwise: [[]]
+
+StmtKids: unbounded fn Stmt, (Text ==> Rel) -> [Kid]
+fn StmtKids s, m = match s.kind:
+    SBind ignore, e, ?t: Append [[(KidExpr e, m)]], (OptKids ?t, m)
+    SIgnore e: [[(KidExpr e, m)]]
+    SLet ignore, ignore, e: [[(KidExpr e, m)]]
+    SFn f: [[(BodyKid f.body, (Later (Hide m, (PatternsNames f.params))))]]
+    SWidget w: [[(KidStmts w.body.stmts, (Later m))]]
+    SSet t, v: ExprsKids [[t, v]], m
+    SAccum t, ignore, v: ExprsKids [[t, v]], m
+    SRequire c: [[(KidExpr c, m)]]
+    SForbid c: [[(KidExpr c, m)]]
+    SReturn e: [[(KidExpr e, m)]]
+    SWhile c, b: Push (CondKids c, m), (KidStmts b.stmts, (CondRels c, m))
+    SExpr e: [[(KidExpr e, m)]]
+    otherwise: [[]]
+
+# A condition's subject, and a `? x <- e if g` guard, which sees the pattern's names.
+CondKids: unbounded fn Cond, (Text ==> Rel) -> [Kid]
+fn CondKids c, m = match c:
+    CondExpr x: [[(KidExpr x, m)]]
+    CondBind ignore, x, ?g: Append [[(KidExpr x, m)]], (OptKids ?g, (CondRels c, m))
+
+# A call's children: its callee unless a name calls it (the call is that name's site),
+# and its arguments. A traversal hands its step the collection's elements, so a step
+# lambda's body reads them as parts (`StepRels`), and a named step is a call of its own
+# (`CallSites`). A closure passed where a program function only calls it (pick CT,
+# `acc:` entries) is read the same way: a lambda's body with its parameters related as
+# the function's summary says, a named function as a call of its own.
+CallKids: unbounded fn Expr, [Arg], (Text ==> Rel) -> [Kid]
+fn CallKids c, args, m:
+    let callee = match ?CalleeName c:
+        ? ignore: [[]]
+        nil: [[(KidExpr c, m)]]
+    match ?TraversalOf m, c, args:
+        nil: match ?AccCallee m, c, args:
+            ? cn: Append callee, (Fold (Range0 (Len args)), [[]], \|acc, i| Append acc, (AccKids m, cn, args, i))
+            nil: Append callee, (ExprsKids (Each args, \|a| a.value), m)
+        ? ((coll, step, at)):
+            let others = Fold (Range0 (Len args)), callee, \|acc, i| if i == at + 1: acc else: match args[i]:
+                ? a: Push acc, (KidExpr a.value, m)
+                nil: acc
+            match step.kind:
+                ELambda (? ps), body: Push others, (LambdaKid body, (StepRels m, coll, ps, at))
+                EName ignore: others
+                otherwise: Push others, (KidExpr step, m)
+
+# Inside a closure that may run after the walk's function returned (a lambda but a
+# traversal's step or a closure argument pick CT clears, a local `fn`, a blueprint), for
+# pick CT's test that a closure parameter is only called.
+Later: fn (Text ==> Rel) -> (Text ==> Rel)
+fn Later m = Insert m, "lam:", noRel
+
+# The callee of a call with a closure slot pick CT clears: a global name, every argument
+# by position.
+?AccCallee: fn (Text ==> Rel), Expr, [Arg] -> ?Text
+fn ?AccCallee m, c, args = match ?CalleeName c:
+    ? cn:
+        if IsLocal m, cn: nil
+        else: if not (Fold args, True, \|ok, a| ok and a.?name == nil): nil
+        else: if Fold (Range0 (Len args)), False, \|seen, i| seen or HasKey m, "acc:{cn}:{i}": ? cn else: nil
+    nil: nil
+
+# An argument at a cleared closure slot: a lambda's body, its parameters related by the
+# summary; a name, nothing here (its call is `AccSites`').
+AccKids: unbounded fn (Text ==> Rel), Text, [Arg], Nat -> [Kid]
+fn AccKids m, cn, args, i:
+    let a = Or args[i], dummyArg
+    if not (HasKey m, "acc:{cn}:{i}"): [[(KidExpr a.value, m)]]
+    else: match a.value.kind:
+        ELambda ?ps, body: [[(LambdaKid body, (AccLambdaRels m, cn, i, (Or ?ps, [[]]), args))]]
+        EName ignore: [[]]
+        otherwise: [[(KidExpr a.value, m)]]
+
+# A lambda at slot `j` of `cn`: its parameter `q` is what the summary says the function
+# passes there, read from the call's own arguments (`sum:CN:J:Q` names the parameter of
+# `cn` it is no larger than, or strictly smaller than).
+AccLambdaRels: unbounded fn (Text ==> Rel), Text, Nat, [Pattern], [Arg] -> (Text ==> Rel)
+fn AccLambdaRels m, cn, j, ps, args:
+    let h = Hide m, (PatternsNames ps)
+    Fold (Range0 (Len ps)), h, \|m2, q| match ((m["sum:{cn}:{j}:{q}"], ps[q])):
+        ((? s, ? p)): if s.param == topParam: m2 else: match args[s.param]:
+            ? a: match ?RelOf m, a.value:
+                ? r: match p.kind:
+                    PName n: Insert m2, (SNameKey n), Rel(param=r.param, strict=(r.strict or s.strict))
+                    otherwise: Fold (PatternNames p), m2, \|m3, n| Insert m3, n, Rel(param=r.param, strict=True)
+                nil: m2
+            nil: m2
+        otherwise: m2
+
+# The summary of a closure parameter nothing has narrowed yet (pick CT's fixed point).
+let topParam = 9999
+
+TemplateKids: unbounded fn [TemplatePart], (Text ==> Rel) -> [Kid]
+fn TemplateKids parts, m = Fold parts, [[]], \|acc, p| match p:
+    TpPlaceholder x, ignore: Push acc, (KidExpr x, m)
+    TpBlock b: Push acc, (KidStmts b.stmts, m)
+    TpCall n, args, ?ps, span: Push acc, (KidExpr (TemplateCallExpr n, args, ?ps, span), m)
+    otherwise: acc
+
+# `<@Name attr={{v}}>body</@Name>` is the call `Name` with its attributes as named
+# arguments and its body, a text, in the callee's last parameter (Templates ch. 2; pick
+# TK): the body is the argument named `#body`, which no attribute can be.
+TemplateCallExpr: fn SName, [Arg], ?[TemplatePart], Range -> Expr
+fn TemplateCallExpr n, args, ?ps, span:
+    let body = match ?ps:
+        ? ps: [[Arg(name=(? Ident(name="#body", span=span)), value=(Expr(kind=(ETemplate (Template(keyword="InlineText", lang="", delims="double", parts=ps, span=span))), span=span)), span=span)]]
+        nil: [[]]
+    Expr(kind=(ECall (Expr(kind=(EName n), span=n.span)), (Append args, body), False, False), span=span)
+
+ArgOf: fn Expr -> Arg
+fn ArgOf x = Arg(name=nil, value=x, span=x.span)
+
+ExprsKids: fn [Expr], (Text ==> Rel) -> [Kid]
+fn ExprsKids xs, m = Each xs, \|x| KidExpr x, m
+
+OptKids: fn ?Expr, (Text ==> Rel) -> [Kid]
+fn OptKids (? x), m = [[(KidExpr x, m)]]
+fn OptKids nil, ignore = [[]]
+
+LambdaKid: fn LambdaBody, (Text ==> Rel) -> Kid
+fn LambdaKid (LbExpr x), m = KidExpr x, m
+fn LambdaKid (LbBlock b), m = KidStmts b.stmts, m
+
+BodyKid: fn FnBody, (Text ==> Rel) -> Kid
+fn BodyKid (BodyExpr x), m = KidExpr x, m
+fn BodyKid (BodyBlock b), m = KidStmts b.stmts, m
+
+PatternsNames: unbounded fn [Pattern] -> [Text]
+fn PatternsNames ps = Fold ps, [[]], \|a, p| UnionTexts a, (PatternNames p)
+
+# The name a call applies, when its callee is one (`F`, `F<<T>>`).
+?CalleeName: fn Expr -> ?Text
+fn ?CalleeName c = match c.kind:
+    EName n: ? (SNameKey n)
+    ETypeArgs t, ignore: match t.kind:
+        EName n: ? (SNameKey n)
+        otherwise: nil
+    otherwise: nil
+
+# `recv.Method args` is the call `Method recv, args`, as inference reads it.
+MethodCallee: fn SName -> Expr
+fn MethodCallee n = Expr(kind=(EName n), span=n.span)
+
+MethodArgs: fn Expr, [Arg] -> [Arg]
+fn MethodArgs r, args = Append [[Arg(name=nil, value=r, span=r.span)]], args
+
+# A call in a clause's body with the relations in scope where it stands; a name mentioned
+# without being called is a call with no arguments.
+type Site = record:
+    callee: Text
+    args: [Arg]
+    span: Range
+    rels: (Text ==> Rel)
+derive ^Eq, ^Show
+
+BodySites: unbounded fn FnBody, (Text ==> Rel) -> [Site]
+fn BodySites body, m = Fold (BodySpots body, m), [[]], \|acc, sp| Append acc, (SpotSites sp)
+
+# The calls at one spot: a name (a call with no arguments when nothing applies it), a call
+# or method call of a name, an operator (its trait method's, pick OP), a template call,
+# and a traversal's named step.
+SpotSites: unbounded fn Spot -> [Site]
+fn SpotSites (SpotStmt ignore, ignore) = [[]]
+fn SpotSites (SpotExpr e, m) = match e.kind:
+    EName n: [[Site(callee=(SNameKey n), args=[[]], span=e.span, rels=m)]]
+    ECall c, args, ignore, ignore: CallSites c, args, e.span, m
+    EMethod r, n, args: CallSites (MethodCallee n), (MethodArgs r, args), e.span, m
+    EBinary op, l, r: if IsCalledOp op: [[Site(callee=op, args=[[(ArgOf l), (ArgOf r)]], span=e.span, rels=m)]] else: [[]]
+    otherwise: [[]]
+
+# The binary operators that are a trait method's: all but the built-in forms.
+IsCalledOp: fn Text -> Bool
+fn IsCalledOp op = not (HasText [["and", "or", "on", "<|", "mod"]], op)
+
+# A call of a name, and a traversal's named step (doubt TR): `Fold xs, z, F` is a call
+# `F z, x` for each `x` of `xs`, an `Each` or a `Filter` `F x`, with the element written
+# `(xs).element` so the relation reads it as a part. A named function at a closure slot
+# pick CT clears is a call of its own (`AccSites`).
+CallSites: unbounded fn Expr, [Arg], Range, (Text ==> Rel) -> [Site]
+fn CallSites c, args, span, m:
+    let direct = match ?CalleeName c:
+        ? n: [[Site(callee=n, args=args, span=span, rels=m)]]
+        nil: [[]]
+    match ?TraversalOf m, c, args:
+        ? ((coll, step, at)): match step.kind:
+            EName n:
+                let callArgs = if at == 1: [[(Or args[1], dummyArg), (ArgOf (PartOf coll))]] else: [[ArgOf (PartOf coll)]]
+                Push direct, Site(callee=(SNameKey n), args=callArgs, span=step.span, rels=m)
+            otherwise: direct
+        nil: match ?AccCallee m, c, args:
+            ? cn: Append direct, (AccSites m, cn, args)
+            nil: direct
+
+# `x.element`: a part of `x`, for the relations.
+PartOf: fn Expr -> Expr
+fn PartOf x = Expr(kind=(EField x, "", Ident(name="element", span=x.span)), span=x.span)
+
+# A name at a cleared closure slot of `cn` is called as the summary says: its argument `q`
+# is the call's argument the summary names, or a part of it.
+AccSites: fn (Text ==> Rel), Text, [Arg] -> [Site]
+fn AccSites m, cn, args = Fold (Range0 (Len args)), [[]], \|acc, j| match ((m["acc:{cn}:{j}"], args[j])):
+    ((? ar, ? a)): match a.value.kind:
+        EName f: Push acc, Site(callee=(SNameKey f), args=(Each (Range0 ar.param), \|q| AccArg m, cn, j, q, args), span=a.value.span, rels=m)
+        otherwise: acc
+    otherwise: acc
+
+AccArg: fn (Text ==> Rel), Text, Nat, Nat, [Arg] -> Arg
+fn AccArg m, cn, j, q, args = match m["sum:{cn}:{j}:{q}"]:
+    ? s:
+        if s.param == topParam: ArgOf topExpr
+        else: match args[s.param]:
+            ? a: ArgOf (if s.strict: PartOf a.value else: a.value)
+            nil: dummyArg
+    nil: dummyArg
+
+# What a slot not yet narrowed passes (pick CT's fixed point reads it as anything).
+let topExpr = Expr(kind=(EName (SName(sigils="", path=[["⊤"]], span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+
+# The names a spot mentions: what it calls (an operator, a template call), a local
+# widget's name.
+SpotsNames: unbounded fn [Spot] -> [Text]
+fn SpotsNames spots = Fold spots, [[]], \|acc, sp| UnionTexts acc, (SpotNames sp)
+
+SpotNames: unbounded fn Spot -> [Text]
+fn SpotNames sp:
+    let called = Each (SpotSites sp), \|s| s.callee
+    match sp:
+        SpotExpr ignore, ignore: called
+        SpotStmt s, ignore: match s.kind:
+            SWidget w: AddText called, (SNameKey w.name)
+            otherwise: called
+
+# A call of the prelude's `Fold`, `Each` or `Filter` (by resolution, never a local or a
+# program's own): its collection, its step, and the position of the step's first element
+# parameter.
+?TraversalOf: fn (Text ==> Rel), Expr, [Arg] -> ?((Expr, Expr, Nat))
+fn ?TraversalOf m, c, args = match c.kind:
+    EName n:
+        let name = SNameKey n
+        if (PreIs m, name, "Fold") and (Len args) == 3: match ((args[0], args[2])):
+            ((? a, ? s)): ? ((a.value, s.value, 1))
+            otherwise: nil
+        else: if ((PreIs m, name, "Each") or (PreIs m, name, "Filter")) and (Len args) == 2: match ((args[0], args[1])):
+            ((? a, ? s)): ? ((a.value, s.value, 0))
+            otherwise: nil
+        else: nil
+    otherwise: nil
+
+?LastExpr: fn Block -> ?Expr
+fn ?LastExpr b = match ?Last b.stmts:
+    ? s: match s.kind:
+        SExpr x: ? x
+        otherwise: nil
+    nil: nil
+
+# What an expression is known to be no larger than: a parameter, a field of one (a part),
+# a text or array with something dropped from its front (strictly smaller only where a
+# pattern took an element of it, `ne:`; `Drop` of an empty list is the empty list). A map's children are its parts
+# (Semantics ch. 7, Keep shrinking; doubt TR): `Values m` and `Keys m` are no larger than
+# `m`, so a traversal over them hands out parts, and `m[k]` is no larger than `m`, so the
+# `? e` of a match on it is a part; an index on an array is its element likewise. A call
+# of a function whose summary returns parts of its parameter `i`, or of a prelude function
+# that returns no more than its first argument (`fn:NAME` in the map, seeded by
+# `SummarySeeds`; picks SM and SW), is no larger than its argument `i`. A call is read in
+# either spelling, `Kids xs` or `xs.Kids`.
+?RelOf: unbounded fn (Text ==> Rel), Expr -> ?Rel
+fn ?RelOf m, e = match e.kind:
+    EName n: m[SNameKey n]
+    EField r, ignore, ignore: match ?RelOf m, r:
+        ? x: ? Rel(param=x.param, strict=True)
+        nil: nil
+    EIndex r, ignore: ?RelOf m, r
+    EGroup x: ?RelOf m, x
+    otherwise: match ?CallOf e:
+        ? ((c, args)): if IsNonNatMin m, e, c: nil else: ?RelOfCall m, c, args
+        nil: nil
+
+# A call of the prelude's `Min` that the solver did not make a `Nat`'s: no larger than
+# nothing, since `Min` by `^Ord` may return its second argument, of any size (pick SW).
+IsNonNatMin: fn (Text ==> Rel), Expr, Expr -> Bool
+fn IsNonNatMin m, e, c = match ?CalleeName c:
+    ? n: if PreIs m, n, "Min": not (IsNatAt m, e) else: False
+    nil: False
+
+# Whether the solver made the operand at this expression a `Nat` (`nat:` entries).
+IsNatAt: fn (Text ==> Rel), Expr -> Bool
+fn IsNatAt m, e = match m["file:"]:
+    ? f: HasKey m, "nat:{f.param}:{e.span.start}:{e.span.end}"
+    nil: False
+
+?RelOfCall: unbounded fn (Text ==> Rel), Expr, [Arg] -> ?Rel
+fn ?RelOfCall m, c, args = match c.kind:
+    EName n:
+        let name = SNameKey n
+        if (PreIs m, name, "Drop") and (Len args) == 2 and IsPositiveLit (Or args[1], dummyArg).value:
+            match args[0]:
+                ? a: match ?RelOf m, a.value:
+                    ? x: ? Rel(param=x.param, strict=(x.strict or KnownNonEmpty m, a.value))
+                    nil: nil
+                nil: nil
+        else: if ((PreIs m, name, "Values") or (PreIs m, name, "Keys")) and (Len args) == 1: ?RelOf m, (Or args[0], dummyArg).value
+        else: match ?NoLargerArg m, c, args:
+            ? a: ?RelOf m, a
+            nil: nil
+    otherwise: nil
+
+# Whether a pattern above, in scope here, took an element of this name (`NonEmptyRels`).
+KnownNonEmpty: fn (Text ==> Rel), Expr -> Bool
+fn KnownNonEmpty m, e = match ?NameOf e:
+    ? n: HasKey m, "ne:{n}"
+    nil: False
+
+# A call in either spelling: `F x, y`, or `x.F y` as `F x, y`, as inference reads it.
+?CallOf: fn Expr -> ?((Expr, [Arg]))
+fn ?CallOf e = match e.kind:
+    ECall c, args, ignore, ignore: ? ((c, args))
+    EMethod r, n, args: ? (((MethodCallee n), (MethodArgs r, args)))
+    otherwise: nil
+
+# The argument a call's result is no larger than: the summarized parameter's (pick SM),
+# or a prelude function's first (pick SW), by the clause's `fn:NAME` entries.
+?NoLargerArg: fn (Text ==> Rel), Expr, [Arg] -> ?Expr
+fn ?NoLargerArg m, c, args = match ?CalleeName c:
+    ? n: if IsLocal m, n: nil else: match m["fn:{n}"]:
+        ? s: match args[s.param]:
+            ? a: ? a.value
+            nil: nil
+        nil: nil
+    nil: nil
+
+# The prelude's functions that return no more than their first argument (pick SW), as the
+# prelude declares them.
+IsNoLargerPrelude: fn G, Text -> Bool
+fn IsNoLargerPrelude g, k = (HasText [["Prelude.Take", "Prelude.Drop", "Prelude.Filter", "Prelude.Remove", "Prelude.Min"]], k) and IsPreludeKey g, k

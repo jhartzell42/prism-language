@@ -79,7 +79,7 @@ programs[half-counter]=tests/conformance/half-counter.prism
 programs[todos]=tests/conformance/todos.prism
 programs[chess]="examples/chess/board.prism examples/chess/rules.prism examples/chess/window.prism"
 programs[prelude]="$(ls prelude/*.prism | tr '\n' ' ')"
-programs[prismc]="$(ls prismc/*.prism prismc/templates/*.prism | tr '\n' ' ')"
+programs[prismc]=prismc
 for f in "$here"/pos/*.prism; do [ -e "$f" ] && programs[$(basename "$f" .prism)]="$f"; done
 # a directory under pos/ is one program, a tree (docs/modules-style-pass.md)
 for d in "$here"/pos/*/; do [ -d "$d" ] && programs[$(basename "$d")]="${d%/}"; done

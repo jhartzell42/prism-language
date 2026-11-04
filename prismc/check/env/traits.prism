@@ -1,0 +1,306 @@
+# `Check.Env`'s section `traits`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Coherence (ch. 3; ch. 5: impl headers unified pairwise per trait, before any body)
+# ---------------------------------------------------------------------------------------
+
+# The derived impls, from every `derive` line: structural, each type parameter bounded.
+DerivedImpls: fn G -> G
+fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
+    ? ti: Fold ti.derives, gg, \|g2, tr| match ?ResolveTrait g2, ti.home, (Split tr, "."):
+        ? cls:
+            let im = ImplInfo(cls=cls, head=(TyCon ti.name, (Each ti.params, \|p| TyQ p)), qs=ti.params, bounds=(Each ti.params, \|p| ((p, cls))), home=ti.home, file=ti.file, span=ti.span, derived=True, assocs=[[]], methods=[[]])
+            update g2:
+                &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
+        nil: g2
+    nil: gg
+
+Coherence: unbounded fn G, St -> St
+fn Coherence g, st = Fold (Keys g.impls), st, \|s, cls|
+    let impls = Or g.impls[cls], [[]]
+    let s2 = Fold impls, s, \|s1, i| CheckOrphan g, s1, i
+    Fold (Range0 (Len impls)), s2, \|s3, a| Fold (Range0 (Len impls)), s3, \|s4, b| if a < b: CheckPair g, s4, (Or impls[a], dummyImpl), (Or impls[b], dummyImpl) else: s4
+
+let dummyImpl = ImplInfo(cls="", head=TyErr, qs=[[]], bounds=[[]], home="", file=0, span=Range(start=0, end=0), derived=False, assocs=[[]], methods=[[]])
+
+CheckPair: unbounded fn G, St, ImplInfo, ImplInfo -> St
+fn CheckPair g, st, a, b:
+    if not (HeadsMayMeet a.head, b.head): st
+    else: if a.file < b.file or (a.file == b.file and a.span.start <= b.span.start): CheckPairIn g, st, a, b
+    else: CheckPairIn g, st, b, a
+
+# Two heads with different constructors never unify: most pairs of a trait's impls.
+HeadsMayMeet: fn Ty, Ty -> Bool
+fn HeadsMayMeet (TyCon x, ignore), (TyCon y, ignore) = x == y
+fn HeadsMayMeet ignore, ignore = True
+
+CheckPairIn: unbounded fn G, St, ImplInfo, ImplInfo -> St
+fn CheckPairIn g, st, a, b:
+    let s0 = update st:
+        &_.file <= b.file
+    let ((ta, s1)) = Instantiate s0, (Scheme(qs=a.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=a.head)), b.span
+    let ((tb, s2)) = Instantiate s1, (Scheme(qs=b.qs, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=b.head)), b.span
+    let ((ok, s3)) = TryUnify s2, ta, tb, b.span
+    if not ok: st
+    else:
+        let same = (Len a.qs) == 0 and (Len b.qs) == 0 or (ShapeOf a.head) == (ShapeOf b.head)
+        let code = if same: "impl-duplicate" else: "impl-overlap"
+        let firstAt = SrcPlace (Or g.srcs[a.file], (MkSrc "?", "")), a.span.start
+        ErrFix s0, code, b.span, "a second impl of `^{BareName a.cls}` for `{ShowTy s0, b.head}`", "the first is at {firstAt}; keep one"
+
+# A head with its variables erased, to tell a duplicate from an overlap.
+ShapeOf: unbounded fn Ty -> Text
+fn ShapeOf t = match t:
+    TyQ ignore: "_"
+    TyCon n, args: "{n}({Join (Each args, ShapeOf), ","})"
+    TyTuple ts: "(({Join (Each ts, ShapeOf), ","}))"
+    TyArray e: "[{ShapeOf e}]"
+    TyMap k, v: "{ShapeOf k}==>{ShapeOf v}"
+    TySig s, i: "{s}{ShapeOf i}"
+    otherwise: "?"
+
+# No orphans (Semantics ch. 6): an impl stands in the trait's module or in a module that
+# declares a type its header mentions.
+CheckOrphan: unbounded fn G, St, ImplInfo -> St
+fn CheckOrphan g, st, i:
+    let traitMod = (Or g.traits[i.cls], dummyTrait).home
+    let owners = Each (TypeNamesIn i.head), \|n| (Or g.types[n], dummyTyInfo).home
+    if i.derived or i.home == traitMod or HasText owners, i.home: st
+    else:
+        let s = update st:
+            &_.file <= i.file
+        ErrFix s, "orphan", i.span, "{if i.home == "": "this file" else: "`{i.home}`"} declares neither `^{BareName i.cls}` nor `{ShowTy s, i.head}`", "wrap the type in a newtype of this module, or move the impl"
+
+let dummyTrait = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=0, span=Range(start=0, end=0))
+
+TypeNamesIn: unbounded fn Ty -> [Text]
+fn TypeNamesIn t = match t:
+    TyCon n, args: Fold args, [[n]], \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    TyArray e: TypeNamesIn e
+    TyMap k, v: UnionTexts (TypeNamesIn k), (TypeNamesIn v)
+    TySig ignore, i: TypeNamesIn i
+    TyFn ignore, ps, r: Fold ps, (TypeNamesIn r), \|acc, a| UnionTexts acc, (TypeNamesIn a)
+    otherwise: [[]]
+
+# ---------------------------------------------------------------------------------------
+# Trait resolution (ch. 5, Traits)
+# ---------------------------------------------------------------------------------------
+
+# A trait's superclasses, closed: `^Ord` entails `^Eq`.
+SuperClosure: unbounded fn G, Text -> [Text]
+fn SuperClosure g, cls = Fold (Or g.traits[cls], dummyTrait).supers, [[cls]], \|acc, s| UnionTexts acc, (SuperClosure g, s)
+
+WithFile: fn St, Nat -> St
+fn WithFile s, f = update s:
+    &_.file <= f
+
+# The traits the primitives and built-in formers have (Type System ch. 3, "The three built
+# in"): every primitive is `^Eq`, `^Ord`, `^Show`; the numbers are `^Num`; tuples, arrays,
+# maps, optionals and faults have what their parts have; elements compare and print.
+BuiltinHas: fn Text, Text -> Bool
+fn BuiltinHas cls, con:
+    let bare = BareName cls
+    if bare == "Num": con == "Nat" or con == "Int" or con == "U8" or con == "Float"
+    else: if bare == "Eq" or bare == "Ord" or bare == "Show": (IsPrimType con) or con == "Fault" or con == "Prelude.Fault"
+    else: False
+
+# Solve the wanted constraints above `level` that can be solved now; keep the rest. With
+# `final`, flexible variables default (doubt LD) or are `ambiguous`.
+SolveWants: unbounded fn G, St, [((Text, Text))], Bool -> St
+fn SolveWants g, st, givens, final:
+    let s4 = SolveRounds g, st, givens, 0
+    if final: DefaultWants g, s4, givens else: s4
+
+# Solve until nothing changes: an impl's `where` clauses and a tuple's parts are new
+# constraints, solved in the next round.
+SolveRounds: unbounded fn G, St, [((Text, Text))], Nat -> St
+fn SolveRounds g, st0, givens, round:
+    let st = ResolveFields g, (RetryDeferred st0), False
+    let cleared = update st:
+        &_.wants <= [[]]
+    let ((keep, s2)) = Fold st.wants, (([[]], cleared)), \|((acc, s)), w|
+        let ((left, s3)) = SolveOne g, s, givens, w
+        (((Append acc, left), s3))
+    let s4 = update s2:
+        &_.wants <= Append keep, &_.wants
+    if s4.wants == st.wants or round > 6: s4 else: SolveRounds g, s4, givens, round + 1
+
+# The field accesses that waited for their record: read where the record is now known;
+# with `final`, one still unknown is `ambiguous`.
+ResolveFields: unbounded fn G, St, Bool -> St
+fn ResolveFields g, st, final:
+    let qs = st.fieldQs
+    let cleared = update st:
+        &_.fieldQs <= [[]]
+    let done = Fold qs, cleared, \|s, q| ResolveField g, s, q, final
+    WithFile done, st.file
+
+ResolveField: unbounded fn G, St, FieldQ, Bool -> St
+fn ResolveField g, st, q, final:
+    let s = WithFile st, q.file
+    match Walk s, q.recv:
+        TyCon n, args: match g.ctors[n]:
+            ? c:
+                let ?i = Fold (Range0 (Len c.fields)), nil, \|?at, k| if c.fields[k] == ? q.field: ? k else: ?at
+                match ?i:
+                    ? i: Unify s, q.result, (SubstQ (ParamInst c.params, args), (Or c.args[i], TyErr)), q.span
+                    nil: Err s, "mismatch", q.span, "`{BareName n}` has no field `{q.field}`"
+            nil: Err s, "mismatch", q.span, "`{BareName n}` has no fields"
+        TyFlex ignore:
+            if final: ErrFix s, "ambiguous", q.span, "nothing decides which record `.{q.field}` reads: {Join (Each q.owners, \|o| "`{o}`"), ", "} have it", "annotate the value's type, or name it from a signature"
+            else: update s:
+                &_.fieldQs <= Push &_.fieldQs, q
+        TyErr: s
+        other: Err s, "mismatch", q.span, "`{ShowTy s, other}` has no field `{q.field}`"
+
+# One constraint: solved (with its impl's `where` clauses wanted), waiting, or `no-impl`.
+SolveOne: unbounded fn G, St, [((Text, Text))], Want -> (([Want], St))
+fn SolveOne g, st, givens, w:
+    let t = Walk st, w.ty
+    let s0 = update st:
+        &_.file <= w.file
+    let Restore = \|s| WithFile s, st.file
+    match t:
+        TyFlex ignore: (([[w]], st))
+        TyErr: (([[]], st))
+        TyRigid v:
+            if (HasPrefix w.cls, "Range ") or w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], st))
+            else: if Fold givens, False, \|seen, ((gv, gc))| seen or (gv == v and HasText (SuperClosure g, gc), w.cls): (([[]], (Solved st, w, t, "given")))
+            else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{v}`", "add `where {v}: ^{BareName w.cls}` to the signature")))
+        TySig s, inner:
+            if (s == "?" or s == "~") and (HasText [["Eq", "Ord", "Show"]], (BareName w.cls)): (([[Want(cls=w.cls, ty=inner, file=w.file, span=w.span, level=w.level)]], (Solved st, w, t, "parts")))
+            else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`", "no trait has an impl at a sigiled type (Type System ch. 3, T6); take the layer off first")))
+        TyAt ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`")))
+        TyFn ignore, ignore, ignore: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{ShowTy st, t}`: functions do not compare or print")))
+        otherwise: SolveAtHead g, st, s0, Restore, givens, w, t
+
+SolveAtHead: unbounded fn G, St, St, (fn St -> St), [((Text, Text))], Want, Ty -> (([Want], St))
+fn SolveAtHead g, st, s0, Restore, givens, w, t:
+    if (HasPrefix w.cls, "Range "): (([[]], Restore (LiteralRange s0, w, t)))
+    else: if w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], Restore (SignedAt s0, w, t)))
+    else: SolveClass g, st, s0, Restore, givens, w, t
+
+# `literal-range` (ch. 5, Literals): a literal out of range for its final type.
+LiteralRange: unbounded fn St, Want, Ty -> St
+fn LiteralRange st, w, t:
+    let lit = DropPrefix w.cls, "Range "
+    let negative = (HasPrefix lit, "-")
+    let digits = if negative: AfterFirst lit else: lit
+    let ?n = ?ParseNat digits
+    match t:
+        TyCon "Nat", [[]]: if negative and digits != "0": Err st, "literal-range", w.span, "`{lit}` does not fit `Nat`" else: st
+        TyCon "U8", [[]]: match ?n:
+            ? v: if negative or v > 255: Err st, "literal-range", w.span, "`{lit}` does not fit `U8`" else: st
+            nil: st
+        otherwise: st
+
+# `-` is not `Nat`'s (round 47 NS, doubt NN's first ruling (a)): `nat-minus`.
+SignedAt: unbounded fn St, Want, Ty -> St
+fn SignedAt st, w, t = match t:
+    TyCon "Nat", [[]]: if w.cls == "Prelude.Sub": ErrFix st, "nat-minus", w.span, "`Nat - Nat`: write `-?` for a `?Nat`, or `Int n`", "write `a -? b` and handle its `nil`, or widen with `Int a`" else: st
+    TyCon "U8", [[]]: if w.cls == "Prelude.Sub": st else: st
+    otherwise: st
+
+SolveClass: unbounded fn G, St, St, (fn St -> St), [((Text, Text))], Want, Ty -> (([Want], St))
+fn SolveClass g, st, s0, Restore, givens, w, t:
+    let bare = BareName w.cls
+    let ?parts = match t:
+        TyTuple ts: ? ts
+        TyArray e: ? [[e]]
+        TyMap k, v: ? [[k, v]]
+        otherwise: nil
+    let structural = bare == "Eq" or bare == "Ord" or bare == "Show"
+    match ?parts:
+        ? ps:
+            if structural: (((Each ps, \|p| Want(cls=w.cls, ty=p, file=w.file, span=w.span, level=w.level)), (Solved st, w, t, "parts")))
+            else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+        nil: match t:
+            TySig ignore, ignore: (([[]], st))
+            TyElem ignore, ignore: if bare == "Eq" or bare == "Show": (([[]], (Solved st, w, t, "builtin"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            TyElemAny ignore: if bare == "Eq" or bare == "Show": (([[]], (Solved st, w, t, "builtin"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            TyAny trs: if (HasText trs, w.cls) or (Fold trs, False, \|seen, tr| seen or (HasText (SuperClosure g, tr), w.cls)): (([[]], (Solved st, w, t, "packed"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            TyCon con, args:
+                if BuiltinHas w.cls, con: (([[]], (Solved st, w, t, "builtin")))
+                else: match ?FindImpl g, st, w.cls, t:
+                    ? ((im, s2, how, ch)):
+                        let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
+                        ((wants, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch)))
+                    nil:
+                        let fix = if bare == "Num" and con == "Text": "" else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
+                        (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`", fix)))
+            otherwise: (([[]], st))
+
+# The one impl whose header matches, by one-way matching (T1): its `where` bounds as
+# wanted constraints on the matched types, and the choice the shrink check reads
+# (`NoteChoice`).
+?FindImpl: unbounded fn G, St, Text, Ty -> ?(([((Ty, Text))], St, Text, Text))
+fn ?FindImpl g, st, cls, t = Fold (Or g.impls[cls], [[]]), nil, \|?found, im| match ?found:
+    ? f: ? f
+    nil: match ?MatchHead im.head, (Zonk st, t), {}:
+        ? m: ? (((Each im.bounds, \|((v, c))| (((Or m[v], TyErr), c))), st, (ImplHow g, im), (ImplChoice im)))
+        nil: nil
+
+# An impl as a choice: a derived one by its type, a written one by where it stands.
+ImplChoice: fn ImplInfo -> Text
+fn ImplChoice im = match im.head:
+    TyCon n, ignore: if im.derived: "derived:{n}" else: "impl:{im.file}.{im.span.start}"
+    otherwise: if im.derived: "any" else: "impl:{im.file}.{im.span.start}"
+
+# Where an impl stands, for the typed output: `impl PATH:LINE` or `derived PATH:LINE`.
+ImplHow: fn G, ImplInfo -> Text
+fn ImplHow g, im:
+    let src = Or g.srcs[im.file], (MkSrc "?", "")
+    "{if im.derived: "derived" else: "impl"} {src.path}:{(CLineOf src.starts, im.span.start) + 1}"
+
+# A constraint solved, noted for the typed output and, but for a written or derived impl
+# (`?FindImpl` notes those), as the shrink check's choice: a given, a packed value, a
+# quantified `let` may be any impl; a built-in type or a former's parts none.
+Solved: fn St, Want, Ty, Text -> St
+fn Solved st, w, t, how:
+    let s2 = NoteImpl st, w.file, w.span, w.cls, t, how
+    if how == "given" or how == "packed" or how == "quantified": NoteChoice s2, w.file, w.span, w.cls, "any"
+    else: if how == "builtin" or how == "parts": NoteChoice s2, w.file, w.span, w.cls, "none"
+    else: s2
+
+# One-way matching of an impl head (with `TyQ` variables) against a type.
+?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchHead pat, t, m = match ((pat, t)):
+    ((TyQ v, x)): match m[v]:
+        ? y: if y == x: ? m else: nil
+        nil: ? (Insert m, v, x)
+    (((TyCon a, xs), (TyCon b, ys))): if a == b and (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyArray x, TyArray y)): ?MatchHead x, y, m
+    (((TyMap k1, v1), (TyMap k2, v2))): ?MatchAll [[k1, v1]], [[k2, v2]], m
+    (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?MatchHead i1, i2, m else: nil
+    otherwise: nil
+
+?MatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
+    ? mm: ?MatchHead (Or xs[i], TyErr), (Or ys[i], TyErr), mm
+    nil: nil
+
+# The end of a definition (doubt LD): a variable whose constraints include `^Num` and lie
+# among `^Num`, `^Eq`, `^Ord`, `^Show` becomes `Int`; anything else left is `ambiguous`.
+DefaultWants: unbounded fn G, St, [((Text, Text))] -> St
+fn DefaultWants g, st, givens:
+    let flexVars = Fold st.wants, [[]], \|acc, w| match Walk st, w.ty:
+        TyFlex n: AddNat acc, n
+        otherwise: acc
+    let s2 = Fold flexVars, st, \|s, v|
+        let classes = Each (Filter s.wants, \|w| (Walk s, w.ty) == (TyFlex v)), \|w| BareName w.cls
+        let defaultable = (HasText classes, "Num") and Fold classes, True, \|ok, c| ok and ((HasText [["Num", "Eq", "Ord", "Show", "Sub", "Signed"]], c) or (HasPrefix c, "Range "))
+        if defaultable: update s:
+            &_.tys <= Insert &_.tys, v, tInt
+        else: s
+    let s3 = SolveWants g, s2, givens, False
+    let leftover = Filter s3.wants, \|w| (IsFlexVar s3, w.ty) and (not (HasPrefix w.cls, "Range ")) and w.cls != "Prelude.Sub" and w.cls != "Prelude.Signed"
+    let s4 = Fold leftover, s3, \|s, w|
+        let s5 = update s:
+            &_.file <= w.file
+        ErrFix s5, "ambiguous", w.span, "nothing decides `{ShowTy s, w.ty}` in `^{BareName w.cls} {ShowTy s, w.ty}`; annotate, or write a suffixed operator", "annotate the value's type"
+    update s4:
+        &_.wants <= [[]]
+        &_.file <= st.file
