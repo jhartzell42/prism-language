@@ -24,7 +24,7 @@ The same bootstrap runs through C++ (`prismc compile --target cpp`, prismc/READM
 
 - **`prismc-cpp.tar.xz`** is the C++ seed: the C++ program `prismc` emitted for itself at
   its last C++ fixed point (its `src/` and `Makefile`), compressed. It builds with `make`
-  and a C++20 compiler (g++ 13 or clang++ 18) over `runtime/cpp` and `worlds/cli-cpp`.
+  and a C++20 compiler (g++ 13 or clang++ 18) over `runtime/cpp` and `worlds/cli/cpp`.
 - **`bootstrap-cpp.sh`** starts from `$PRISMC`, else the Rust bootstrap's
   `target/bootstrap/prismc`, else the C++ seed unpacked and built with make. That
   compiler compiles `prismc/` to C++ (`target/bootstrap/cpp-gen1`); make builds it; the

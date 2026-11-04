@@ -22,7 +22,7 @@ fn CppMakefile name, runtime, sources, canvas = inline_text <cpp>
 #   make CXX=clang++
 .DEFAULT_GOAL := {{name}}
 RT := {{runtime}}/runtime/cpp
-WORLD := {{runtime}}/worlds/cli-cpp
+WORLD := {{runtime}}/worlds/cli/cpp
 CXX ?= g++
 OPT ?= -O1
 CONFIG ?= prog-$(notdir $(CXX))$(subst $() ,,$(OPT))
@@ -52,11 +52,11 @@ FORCE:
 .PHONY: FORCE
 </cpp>
 
-# The Makefile's lines for a root under the canvas World (worlds/canvas-cpp), whose library
+# The Makefile's lines for a root under the canvas World (worlds/canvas/cpp), whose library
 # its own Makefile builds after runtime/cpp's, and the system's libraries under it.
 CppMakefileCanvas: fn Text -> Text
 fn CppMakefileCanvas runtime = inline_text <cpp>
-CANVAS := {{runtime}}/worlds/canvas-cpp
+CANVAS := {{runtime}}/worlds/canvas/cpp
 FLAGS += -I$(CANVAS)/include $(shell pkg-config --cflags cairo freetype2)
 WORLD_LIBS := $(CANVAS)/build/$(CONFIG)/libprism_world_canvas.a
 ifeq ($(shell uname -s),Darwin)

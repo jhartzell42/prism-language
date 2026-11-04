@@ -30,9 +30,12 @@ prismc/             the compiler, in Prism: lexer, parser, checker, lowering, em
 prelude/            the Prism prelude the checker reads; its Rust is prismc's
                     templates/prelude.prism, emitted beside every program
 examples/           chess (rules, board, window library)
-worlds/cli/         the CLI World: Fs, Process, Time, Prelude.Unwrap
-worlds/canvas/  the canvas World (winit + softbuffer + tiny-skia + fontdue):
-                    Gui.Window, Gui.Scene, Gui.Metrics, Gui.Focus
+runtime/{rust,cpp}/ the runtimes the emitted code runs on, one per target
+worlds/cli/{rust,cpp}/   the CLI World: Fs, Process, Time, Prelude.Unwrap
+worlds/canvas/{rust,cpp}/  the canvas World (winit + softbuffer + tiny-skia + fontdue;
+                    Xlib or Cocoa + cairo + FreeType): Gui.Window, Gui.Scene,
+                    Gui.Metrics, Gui.Focus
+bench/              running Prism once compiled, building Prism, and the GUI table
 tests/              conformance transcripts (the Conformance book's test language), the
                     checker's tests, the bootstrap's fixed point
 prism               the command: compile, test, run, check

@@ -11,8 +11,8 @@ test:
 	tests/checker/run.sh
 	tests/driver/run.sh
 	make -C runtime/cpp test
-	make -C worlds/cli-cpp test
-	make -C worlds/canvas-cpp test
+	make -C worlds/cli/cpp test
+	make -C worlds/canvas/cpp test
 	tests/compiled/run.sh --target cpp
 	bootstrap/bootstrap.sh
 	@! ./prism check --unused prismc/ | grep -A2 'warning\[unused\]' || { echo "prismc has definitions nothing uses"; false; }

@@ -83,7 +83,7 @@ for subject in "${subjects[@]}"; do
                 bin=$out/cargo-$c/release/$name ;;
             cpp-*)
                 opt=-${c#cpp-}
-                rm -rf "runtime/cpp/build/bench$opt" "worlds/canvas-cpp/build/bench$opt"
+                rm -rf "runtime/cpp/build/bench$opt" "worlds/canvas/cpp/build/bench$opt"
                 make -s -C "$dir" -j"$jobs" CXX="$CXX" OPT="$opt" CONFIG="bench$opt" > "$dir.log" 2>&1
                 bin=$dir/$name ;;
         esac

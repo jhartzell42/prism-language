@@ -24,5 +24,5 @@ MIT license, available in `LICENSE.md`.
   picks the World from the root's `emit` row.
 
 Each directory has a README: `prismc/` (the compiler), `prelude/`, `runtime/rust/` and
-`runtime/cpp/` (the runtimes), `worlds/` (the CLI and canvas Worlds), `bootstrap/`,
+`runtime/cpp/` (the runtimes), `worlds/{cli,canvas}/{rust,cpp}/` (the Worlds), `bench/`, `bootstrap/`,
 `tests/`, `examples/chess/`, `docs/`.

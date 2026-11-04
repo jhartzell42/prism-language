@@ -950,7 +950,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `ts-ch04-lifting`, chess (`board.prismtest`, byte-equal to `board.expected`, and
   `rules.prismtest`; `chess-rules` alone too), and prismc's own `lexer-checks` and
   `parser-checks`. `./prism run examples/chess` under `xvfb-run -a` opens the window;
-  a robot (Xlib and XTest, as `worlds/canvas/tests/xvfb_smoke.rs` clicks) clicks e2
+  a robot (Xlib and XTest, as `worlds/canvas/rust/tests/xvfb_smoke.rs` clicks) clicks e2
   then e4, the root's result (printed with `PRISM_RESULTS` set) goes from "White's turn"
   to "Black's turn", and closing the window exits 0.
 - **Also passing:** `sem-ch05-and-blocks` (a prelude function hidden by a program's own,
@@ -982,7 +982,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
 `compile --target cpp` (`./prism compile|test|run --target cpp`) prints the model through
 emit_cpp.prism (module `EmitCpp`), templates/cpp.prism (`CppTemplates`) and
 templates/cpp_prelude.prism (`CppPreludeTemplate`, the prelude in C++, function for
-function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli-cpp`
+function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli/cpp`
 (docs/backend.md, "The C++ side"). `./prism test --target cpp` builds it with make and
 `$CXX` (g++ by default) into `target/prism-cpp/NAME` and runs its tests under the C++
 Test World; `tests/compiled/run.sh --target cpp` runs every program so.
@@ -1277,7 +1277,7 @@ Each is Claude's, for Jimmy to overturn.
   is `PartialEq` over its `==`.
 - **FL `Fs.List`.** prismc's own `fs.prism` replaces the prelude's `Fs` to declare it,
   since a family's tags are declared in the family's module (Semantics ch. 6) and the CLI
-  World answers it for the program that declares it (worlds/cli/README.md). Compiler
+  World answers it for the program that declares it (worlds/cli/rust/README.md). Compiler
   zero's World answers no listing, so under compiler zero `compile` takes files and the
   `prism` script lists a directory itself.
 - **RT The runtime path.** `Cargo.toml` finds the library and the Worlds at `--runtime

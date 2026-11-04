@@ -805,7 +805,7 @@ inline int on_big_stack(std::function<int()> f) {
     return job.code;
 }
 
-/// The root under the CLI World (`worlds/cli-cpp`).
+/// The root under the CLI World (`worlds/cli/cpp`).
 template <class P>
 int run_cli(const std::vector<std::string>& args) { return prism_world_cli::run<P>(args); }
 

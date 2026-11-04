@@ -19,8 +19,8 @@ CXX ?= clang++
 OPT ?= -O2
 CONFIG := bench-$(notdir $(CXX))$(OPT)
 RT := $(REPO)/runtime/cpp
-CLI := $(REPO)/worlds/cli-cpp
-CANVAS := $(REPO)/worlds/canvas-cpp
+CLI := $(REPO)/worlds/cli/cpp
+CANVAS := $(REPO)/worlds/canvas/cpp
 RTLIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
 CANVASLIB := $(CANVAS)/build/$(CONFIG)/libprism_world_canvas.a
 ifeq ($(shell uname -s),Darwin)

@@ -1,0 +1,9 @@
+[package]
+name = "prism_world_cli"
+version = "0.1.0"
+edition = "2024"
+description = "The CLI World over prism_rtl's protocol: Fs, Process and Time, with the prelude's Prelude.Unwrap and Prelude.Exceptions, and the CLI World's exit codes"
+license-file = "../../../LICENSE.md"
+
+[dependencies]
+prism_rtl = { path = "../../../runtime/rust" }

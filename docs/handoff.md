@@ -77,7 +77,7 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
 
 ## On macOS
 
-- **Both canvas Worlds run natively:** `worlds/canvas` (winit) and `worlds/canvas-cpp`
+- **Both canvas Worlds run natively:** `worlds/canvas/rust` (winit) and `worlds/canvas/cpp`
   (`src/app_macos.mm`, Cocoa). Each has `Hooks` and a smoke test driven through them
   (`hooks_smoke`, `macos_smoke`); the Xvfb tests and the XTest robot are Linux-only.
 - **Homebrew:** `cairo freetype pkg-config gtk+3 llvm` (llvm for the sanitizer run).

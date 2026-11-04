@@ -36,7 +36,7 @@ tag Fs.NotFound of Fault
 tag Fs.Denied of Fault
 tag Fs.Failed of Fault
 
-# A directory's sources (worlds/cli/README.md, "`Fs.List`: a directory listing, for the
+# A directory's sources (worlds/cli/rust/README.md, "`Fs.List`: a directory listing, for the
 # compiler's sake"): every `.prism` and `.prismtest` path under `dir`, sorted. Declared
 # here, by the program that uses it, so the prelude's `Fs` keeps no listing; this module
 # replaces the prelude's `fs.prism` for prismc.

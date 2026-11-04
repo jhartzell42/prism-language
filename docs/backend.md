@@ -345,7 +345,7 @@ what differs is how C++ spells it.
   `main`), `src/prelude.hpp` and one `src/NAME.cpp` per module. The modules are the
   namespaces `crate::NAME`. A program class has the static `build(args, ready)` and the
   virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a `@main`
-  root under the C++ CLI World (worlds/cli-cpp).
+  root under the C++ CLI World (worlds/cli/cpp).
 - **Types.** A record, a tag's `Level`, a newtype and a unit type are structs (fields in
   order, designated initializers); a choice and a row kind's values are a handle on a
   shared `std::variant` of case structs (`Term::Var`), so a value behind an `Rc` is the
@@ -376,7 +376,7 @@ what differs is how C++ spells it.
 - **No heap of our own, no compaction, no checkpoints** (D4). *Buys:* `Rc` and rustc's
   drop glue in place of a copying collector; the price is doubts AB and GC.
 - **No CLI World in this crate.** Worlds sit over the protocol in crates of their own,
-  as `worlds/canvas` does. *Buys:* a library compiled programs link without a file system.
+  as `worlds/canvas/rust` does. *Buys:* a library compiled programs link without a file system.
 
 ## Doubts
 
