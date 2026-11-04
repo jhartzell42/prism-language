@@ -35,3 +35,7 @@ The same bootstrap runs through C++ (`prismc compile --target cpp`, prismc/READM
 - **`CXX`, `OPT`, `JOBS`** choose the compiler (g++), its optimization (`-O1`) and make's
   jobs (1: the largest file, `lower.cpp`, needs most of a small machine's memory).
 - **From the repository root:** `make bootstrap-cpp`, `make bootstrap-cpp-update`.
+- **The last run** (4 November 2026, 2 cores, g++ 13 `-O1`, one job): the Rust prismc
+  compiled `prismc/` to C++ in 262 s; make built it in 848 s; the C++ prismc compiled
+  itself in 129 s (158,788 lines of C++, byte-equal to what it was built from); its Rust
+  was byte-equal to the Rust prismc's.
