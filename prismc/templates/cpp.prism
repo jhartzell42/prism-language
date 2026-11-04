@@ -156,14 +156,16 @@ int run_root(const std::string& world, const std::vector<std::string>& args) {
 
 int main(int argc, char** argv) {
     std::vector<std::string> args(argv + 1, argv + argc);
-    auto [world, rest] = crate::prelude::world_option(args, crate::WORLD);
-    if ((!args.empty() && args[0] == "test") || world == "test") {
-        std::vector<std::string> scripts;
-        for (const auto& a : rest)
-            if (a != "test") scripts.push_back(a);
-        return crate::prelude::run_scripts(crate::test_world(), scripts, crate::SCRIPTS);
-    }
-    return crate::run_root(world, rest);
+    return crate::prelude::on_big_stack([&] {
+        auto [world, rest] = crate::prelude::world_option(args, crate::WORLD);
+        if ((!args.empty() && args[0] == "test") || world == "test") {
+            std::vector<std::string> scripts;
+            for (const auto& a : rest)
+                if (a != "test") scripts.push_back(a);
+            return crate::prelude::run_scripts(crate::test_world(), scripts, crate::SCRIPTS);
+        }
+        return crate::run_root(world, rest);
+    });
 }
 </cpp>
 

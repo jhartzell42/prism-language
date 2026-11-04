@@ -419,3 +419,46 @@ TEST(a_host_torn_down_with_its_rows_frees_everything) {
     }
     CHECK(owner.expired() && row.expired());
 }
+
+// ---- Persistence: an update never reaches a value that shares the contents -------------------
+
+TEST(a_map_update_copies_only_its_path_and_leaves_its_sharers_alone) {
+    Map<Int, Text> m;
+    for (int i = 0; i < 200; ++i) m.insert(Int(i), Text(std::to_string(i)));
+    Map<Int, Text> kept = m;
+    m.insert(Int(7), Text("seven"));
+    m.remove(Int(100));
+    CHECK_EQ(kept.size(), std::size_t(200));
+    CHECK(*kept.get(Int(7)) == Text("7"));
+    CHECK(kept.contains(Int(100)) && !m.contains(Int(100)));
+    *m.mut_get(Int(8)) = Text("eight");
+    CHECK(*kept.get(Int(8)) == Text("8") && *m.get(Int(8)) == Text("eight"));
+    int prev = -1;
+    bool ordered = true;
+    for (const auto& [k, v] : m) {
+        int n = int(*k.to_i64());
+        ordered = ordered && n > prev;
+        prev = n;
+    }
+    CHECK(ordered);
+    CHECK_EQ(m.size(), std::size_t(199));
+}
+
+TEST(an_array_view_grows_in_place_and_its_sharers_do_not_see_it) {
+    Array<Int> a;
+    for (int i = 0; i < 300; ++i) a = a.pushed(Int(i));
+    Array<Int> b = a;
+    const Int* first = a.get(0);
+    a.push_back(Int(300));
+    b.push_back(Int(-1));
+    CHECK_EQ(a.size(), std::size_t(301));
+    CHECK_EQ(b.size(), std::size_t(301));
+    CHECK(a[300] == Int(300) && b[300] == Int(-1));
+    CHECK(a.get(0) == first);
+    Array<Int> tail = a.drop_front(10).take(5);
+    CHECK(tail[0] == Int(10) && tail.size() == 5);
+    tail.set(0, Int(99));
+    CHECK(a[10] == Int(10) && tail[0] == Int(99));
+    Array<bool> flags{true, false};
+    CHECK(*flags.get(0) && !*flags.get(1));
+}

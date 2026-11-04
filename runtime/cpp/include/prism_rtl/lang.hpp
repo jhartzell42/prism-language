@@ -253,12 +253,30 @@ std::vector<std::pair<std::size_t, T>> enumerate(const Array<T>& xs) {
     return out;
 }
 
+/// `Vector::iter_mut()`: an array's elements to update in place, the array's own
+/// (copied first when shared).
+template <class T>
+struct MutElements {
+    Array<T>& xs;
+    struct iterator {
+        Array<T>* xs;
+        std::size_t i;
+        T& operator*() const { return xs->mut_at(i); }
+        iterator& operator++() {
+            ++i;
+            return *this;
+        }
+        bool operator!=(const iterator& o) const { return i != o.i; }
+    };
+    iterator begin() const { return {&xs, 0}; }
+    iterator end() const { return {&xs, xs.size()}; }
+};
+
 /// `iter_mut().enumerate()`: each element, to update in place, with its index.
 template <class T>
-std::vector<std::pair<std::size_t, T&>> enumerate(std::vector<T>& xs) {
+std::vector<std::pair<std::size_t, T&>> enumerate(MutElements<T> xs) {
     std::vector<std::pair<std::size_t, T&>> out;
-    std::size_t i = 0;
-    for (T& x : xs) out.emplace_back(i++, x);
+    for (std::size_t i = 0; i < xs.xs.size(); ++i) out.emplace_back(i, xs.xs.mut_at(i));
     return out;
 }
 
@@ -266,9 +284,8 @@ std::vector<std::pair<std::size_t, T&>> enumerate(std::vector<T>& xs) {
 template <class T>
 T unwrap_or_default(const std::optional<T>& o) { return o ? *o : T(); }
 
-/// `Vector::iter_mut()`: an array's elements to update in place.
 template <class T>
-std::vector<T>& iter_mut(Array<T>& xs) { return xs.items_mut(); }
+MutElements<T> iter_mut(Array<T>& xs) { return MutElements<T>{xs}; }
 
 // ---- The runtime's constructors whose type the context gives --------------------------------
 

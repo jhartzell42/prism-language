@@ -23,6 +23,7 @@ fn CppPreludeSource unused = inline_text <cpp>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <pthread.h>
 #include <set>
 #include <sstream>
 
@@ -337,13 +338,12 @@ inline std::optional<char32_t> index_text(const Text& t, const Nat& i) { return 
 
 /// `&xs[i]` in an `&` block.
 template <class A>
-A& at_mut(Array<A>& xs, const Nat& i) { return xs.items_mut().at(ix(i)); }
+A& at_mut(Array<A>& xs, const Nat& i) { return xs.mut_at(ix(i)); }
 template <class K, class V>
 V& at_mut_map(Map<K, V>& m, const K& k) {
-    auto& inner = m.items_mut();
-    auto it = inner.find(k);
-    if (it == inner.end()) panic("an `&` path to a key the map does not hold");
-    return it->second;
+    V* v = m.mut_get(k);
+    if (!v) panic("an `&` path to a key the map does not hold");
+    return *v;
 }
 
 /// `&xs[i] <= v` in an `&` block: an array has no entry to remove.
@@ -777,6 +777,32 @@ inline int run_scripts(const TestWorld& world, const std::vector<std::string>& g
     }
     std::fflush(stdout);
     return code;
+}
+
+/// Run on a thread with a large stack (4 GB, committed as it is used): unbounded code runs
+/// direct-style within a cycle (doubt DS of prismc/README.md), and a C++ frame of the
+/// emitted code is larger than Rust's, whose runner takes 1 GB.
+inline int on_big_stack(std::function<int()> f) {
+    struct Job {
+        std::function<int()> f;
+        int code = 1;
+    } job{std::move(f)};
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, std::size_t(4) << 30);
+    pthread_t t;
+    auto run = [](void* p) -> void* {
+        auto* j = static_cast<Job*>(p);
+        j->code = j->f();
+        return nullptr;
+    };
+    if (pthread_create(&t, &attr, run, &job) != 0) {
+        std::fprintf(stderr, "prism: no thread with a 4 GB stack: running on the main thread's\n");
+        return job.f();
+    }
+    pthread_join(t, nullptr);
+    pthread_attr_destroy(&attr);
+    return job.code;
 }
 
 /// The root under the CLI World (`worlds/cli-cpp`).
