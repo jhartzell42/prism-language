@@ -16,6 +16,7 @@
 # Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change.
 set -u
 cd "$(dirname "$0")/../.." || exit 2
+export PRISM_ROOT=$PWD
 failed=()
 # expect NAME WANT ARGS...: `prism run --print-world ARGS` prints WANT and exits 0, or with
 # WANT `refused` exits 2 saying why

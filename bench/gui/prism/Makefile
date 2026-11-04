@@ -87,7 +87,7 @@ $(RS)/src/main.rs: bench.prism $(REPO)/examples/chess/window.prism driver.rs
 	echo 'include!("$(abspath driver.rs)");' >> $@
 
 $(RS)/driver: $(RS)/src/main.rs FORCE
-	cd $(RS) && CARGO_TARGET_DIR=$(RSBUILD) cargo build --offline --release -q
+	CARGO_TARGET_DIR=$(RSBUILD) cargo build --offline --release -q --manifest-path $(RS)/Cargo.toml
 	cp $(RSBUILD)/release/bench $@
 
 FORCE:

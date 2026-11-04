@@ -21,6 +21,7 @@
 # Written by Claude on the claude-self-hosting branch. Subject to change.
 set -eu
 cd "$(dirname "$0")/.."
+export PRISM_ROOT=$PWD  # for the emitted Makefiles; cargo gets the crate by --manifest-path
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 update=0
 [ "${1:-}" = "--update" ] && update=1
@@ -30,7 +31,7 @@ mkdir -p "$b"
 # build_crate DIR: cargo builds the crate in DIR, its binary at DIR/prismc
 build_crate() {
     local log; log="$(pwd)/$1.log"
-    (cd "$1" && CARGO_TARGET_DIR="$(cd .. && pwd)/build" cargo build --offline --release -q 2> "$log")
+    CARGO_TARGET_DIR="$PWD/$b/build" cargo build --offline --release -q --manifest-path "$PWD/$1/Cargo.toml" 2> "$log"
     cp "$b/build/release/prismc" "$1/prismc"
 }
 start=${PRISMC:-}

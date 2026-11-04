@@ -22,6 +22,7 @@
 # Written by Claude, 4 November 2026, on the claude-self-hosting branch. Subject to change.
 set -eu
 cd "$(dirname "$0")/.."
+export PRISM_ROOT=$PWD  # for the emitted Makefiles
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 update=0
 [ "${1:-}" = "--update" ] && update=1

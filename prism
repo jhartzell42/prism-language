@@ -29,6 +29,9 @@
 set -eu
 here=$PWD
 root=$(cd "$(dirname "$0")" && pwd)
+# The emitted Makefiles read it; the logical path, so a target/ reached through a symlink
+# still finds the runtime. cargo gets the crate by --manifest-path for the same reason.
+export PRISM_ROOT=$root
 usage() { sed -n '4,9p' "$0" | sed 's/^# //' >&2; exit 2; }
 cmd=${1:-}
 [ -n "$cmd" ] || usage
@@ -184,7 +187,7 @@ if [ "$target" = cpp ]; then
 fi
 
 build() { # profile flags...
-    (cd "$out" && CARGO_TARGET_DIR="$root/target/prism-build" cargo build --offline -q "$@")
+    CARGO_TARGET_DIR="$root/target/prism-build" cargo build --offline -q --manifest-path "$root/$out/Cargo.toml" "$@"
 }
 
 if [ "$cmd" = test ]; then

@@ -21,8 +21,13 @@ fn CppMakefile name, runtime, sources, canvas = inline_text <cpp>
 #   make                   the program, with $(CXX) (g++ by default)
 #   make CXX=clang++
 .DEFAULT_GOAL := {{name}}
-RT := {{runtime}}/runtime/cpp
-WORLD := {{runtime}}/worlds/cli/cpp
+# The repository root: PRISM_ROOT from the environment (the prism script and the bootstrap
+# export their own location), else from this Makefile's path, which keeps a symlinked
+# build directory's logical path where `make -C`'s current directory would not.
+HERE := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+PRISM_ROOT ?= $(if $(filter /%,{{runtime}}),{{runtime}},$(abspath $(HERE)/{{runtime}}))
+RT := $(PRISM_ROOT)/runtime/cpp
+WORLD := $(PRISM_ROOT)/worlds/cli/cpp
 CXX ?= g++
 OPT ?= -O1
 CONFIG ?= prog-$(notdir $(CXX))$(subst $() ,,$(OPT))
@@ -58,7 +63,7 @@ FORCE:
 # its own Makefile builds after runtime/cpp's, and the system's libraries under it.
 CppMakefileCanvas: fn Text -> Text
 fn CppMakefileCanvas runtime = inline_text <cpp>
-CANVAS := {{runtime}}/worlds/canvas/cpp
+CANVAS := $(PRISM_ROOT)/worlds/canvas/cpp
 FLAGS += -I$(CANVAS)/include $(shell pkg-config --cflags cairo freetype2)
 WORLD_LIBS := $(CANVAS)/build/$(CONFIG)/libprism_world_canvas.a
 ifeq ($(shell uname -s),Darwin)

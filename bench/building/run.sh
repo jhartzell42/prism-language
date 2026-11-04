@@ -18,6 +18,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu
 cd "$(dirname "$0")/../.."
+export PRISM_ROOT=$PWD
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 jobs=$(getconf _NPROCESSORS_ONLN)
 CXX=${CXX:-clang++}
@@ -76,7 +77,7 @@ for subject in "${subjects[@]}"; do
         t0=$(now)
         case "$c" in
             rust-release)
-                rm -rf "$out/cargo-$c" && (cd "$dir" && CARGO_TARGET_DIR="$PWD/../../cargo-$c" cargo build --offline --release -q 2> "$dir.log")
+                rm -rf "$out/cargo-$c" && CARGO_TARGET_DIR="$PWD/$out/cargo-$c" cargo build --offline --release -q --manifest-path "$PWD/$dir/Cargo.toml" 2> "$dir.log"
                 bin=$out/cargo-$c/release/$name ;;
             cpp-*)
                 opt=-${c#cpp-}
