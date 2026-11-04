@@ -11,7 +11,8 @@ Platform (08).*
 
 - A module divided into sections is separate files.
 - More hierarchy in the directory and module tree.
-- Top-level items that exist only for testability move into `test.prism` beside the module.
+- Top-level items that exist only for testability move into a declared test module beside
+  the module, which only `prism test` and `prism check` read.
 - Every module's main file is `mod.prism` (Rust's rule); `lib.prism`, `mod.prism` or
   `app.prism` declares the submodules, and `app.prism` the main widget.
 
@@ -24,7 +25,7 @@ Platform (08).*
   - `app.prism` is the root file of Semantics ch. 6 ("The root, and what a set of files
     means"): no namespace, the implied `emit Element`, and `@main` (the main widget),
     defined there or bound there by `let @main = @Board.Game`. It may have sections and a
-    `test.prism` like any module.
+    `tests.prism` like any module.
   - `lib.prism` holds only `mod` lines: the library's top-level modules. *Refused:*
     `lib.prism` as the namespace of a module named after its directory (Rust's crate
     root); Prism has no crates yet (Semantics ch. 6 Q-C1, Appendix C), and the prelude's
@@ -38,14 +39,14 @@ Platform (08).*
   - `mod compile` reads `compile.prism` beside the main file, in the same namespace.
   - `mod Expr` reads `expr/mod.prism`; the directory is the name in snake case
     (`CheckEnv` is `check_env/`).
-  - A section's name is a lowercase name and so never a keyword: no `for.prism`,
-    `check.prism` or `test.prism` can be declared.
+  - A section's name is a lowercase name and so never a keyword: no `for.prism` or
+    `check.prism` can be declared; a test module is `test mod tests`, below.
   - `mod expr` and `mod Expr` in one header are refused (`mod-clash`).
   - *Refused:* a second keyword (`section expr`) beside `mod Expr`, a word more for the same
     line; the file list taken from the directory with no `mod` lines, under which a file
     existing changes the program (Semantics ch. 6, M5) and a module's main file no longer
     says what the module is.
-- **Every `.prism` file of a module directory is declared or is its `test.prism`**
+- **Every `.prism` file of a module directory is declared**, by `mod` or `test mod`
   (`mod-stray`, `mod-missing`); other files (chess's `pieces/`) are not looked at.
 - **A section has no header.** No `module`, `emit`, `use` or `mod` line (`section-header`);
   the main file's header is the whole module's. *Refused:* per-section `use` lines (Rust's
@@ -80,28 +81,34 @@ Platform (08).*
   add tags to its parent's. **Everything is public, as today** (ch. 6, Negative space;
   Q-M3): hierarchy organises, it does not hide.
 
-## `test.prism`
+## Test modules
 
-- **One per module directory at most**, beside `mod.prism` or `app.prism`; none beside
-  `lib.prism`. Never declared by a `mod` line (`test` is a keyword); read by `prism test`
-  and `prism check`, never by `prism run` or `prism compile` without `--tests`.
+- **A test module is declared, as a test module** (Jimmy, 4 November: "test modules should
+  be declared... declared as test modules, and so are only incorporated in `prism test`"):
+  `test mod tests` in the header of `mod.prism` or `app.prism` declares `tests.prism` as a
+  test module of that module. Any lowercase name; more than one is allowed; none beside
+  `lib.prism`. `prism test` and `prism check` read them; `prism run` and `prism compile`
+  never do, so the program's files hold the program and nothing is stripped (today's pick
+  PT strips `test` declarations before checking). *Claude's spelling:* `test mod name`, the
+  two keywords in the order a reader says them; refused: a file named `tests.prism` found
+  by convention and never declared, which Jimmy refused, and a `tests/` subdirectory, which
+  would make a test module a submodule with a namespace of its own.
 - **It is a section of its module:** no header, the module's names bare; its `test` and
   `check` declarations (Conformance ch. 1 and App. A, what a `.prismtest` holds today),
   and the helpers they need.
-- **In a tree, `test` and `check` stand only in `test.prism`** (`test-outside`), so the
-  program's files hold the program and nothing is stripped (today's pick PT strips `test`
-  declarations before checking). *Refused:* tests anywhere, as in a loose file; the
-  helpers would still need a home, and the program files would still carry tests.
+- **In a tree, `test` and `check` stand only in a test module** (`test-outside`).
+  *Refused:* tests anywhere, as in a loose file; the helpers would still need a home, and
+  the program files would still carry tests.
 - **What it may declare:** functions, values, widgets (a mock host document, Semantics
   ch. 6, "`test` and `check` are declarations"), types with their `derive`s. No tag,
   trait or other impl (`test-declares`).
-- **Nothing outside a `test.prism` names what one declares** (`test-only-reached`); a
-  `test.prism` may name another module's test helpers (shared fixtures). With the two rules,
-  dropping every `test.prism` changes no other declaration's meaning: M6 ("The program you
+- **Nothing outside a test module names what one declares** (`test-only-reached`); a test
+  module may name another module's test helpers (shared fixtures). With the two rules,
+  dropping every test module changes no other declaration's meaning: M6 ("The program you
   test is the program you run") holds as Semantics ch. 6 argues it for tests.
-  *Refused:* helpers reachable only from their own module's `test.prism`; chess's board
+  *Refused:* helpers reachable only from their own module's test modules; chess's board
   tests would rebuild the rules' positions.
-- **Its transcripts are `test.expected` beside it**, compared per module.
+- **Its transcripts are `NAME.expected` beside it** (`tests.expected`), compared per test module.
 - **The items moved, found by a scan of every top-level name for uses outside tests:**
   `tests/prismc/lexer-checks.prism`'s `Toks`, `Errs` and `parser-checks.prism`'s `Dump`,
   `Errors` (root files that exist only for those checks), and chess `rules.prism`'s whole
@@ -119,7 +126,7 @@ Platform (08).*
 - **A directory argument is a tree**, no longer "every `.prism` under it": its
   `app.prism`, `lib.prism`, or `mod.prism` (that module, named by the nearest ancestor
   root, with the modules it reaches by `use`).
-- **`.prismtest` goes**, with the join of pick PT: in a tree its role is `test.prism`, in a
+- **`.prismtest` goes**, with the join of pick PT: in a tree its role is `tests.prism`, in a
   loose file the declarations are inline.
 
 ## The tree for this repository
@@ -136,10 +143,10 @@ prismc/app.prism         root: the driver, @main, @FrontMain (~250)     front.pr
   syntax/lexer/          Syntax.Lexer (1914)                            lexer.prism
     mod (tokens, state, kinds, pushing 265), chars (279), layout (streams, layout 277),
     words (tokens, sigils 355), literals (+ the test path 250), templates (333),
-    corpus (notation, escapes 135), test.prism (lexer-checks)
+    corpus (notation, escapes 135), tests.prism (lexer-checks)
   syntax/parser/         Syntax.Parser (2419)                           parser.prism
     mod (cursor, names 442), decls (403), expr (704), blocks (190),
-    types (+ patterns 373), test_language (269), test.prism (parser-checks)
+    types (+ patterns 373), test_language (269), tests.prism (parser-checks)
   syntax/sexp/mod.prism  Syntax.Sexp (407)                              sexp.prism
   check/mod.prism        Check: CheckProgram, the whole checker (218)   check-passes "The program"
   check/errors/          Check.Errors (119)                             check-errors.prism
@@ -178,13 +185,13 @@ prismc/app.prism         root: the driver, @main, @FrontMain (~250)     front.pr
   emit/cpp/prelude/      Emit.Cpp.Prelude (888, one file)               templates/cpp_prelude.prism
 prelude/lib.prism        mod Prelude, Ui, Gui, Fs, Process, Time, Test
   prelude/prelude/mod.prism (282), ui/, gui/, fs/, process/, time/, test/ (each mod.prism)
-examples/chess/app.prism the board, @$main (85); test.prism, test.expected
+examples/chess/app.prism the board, @$main (85); tests.prism, tests.expected
   rules/                 Rules (was Chess): mod (helpers, position, move ~265);
-                         test.prism (rules.prismtest + "For the checks")
+                         tests.prism (rules.prismtest + "For the checks")
   window/                Window (917): mod (geometry, scene, drawing tags ~130), ui (81),
                          hosting (47), widgets (106), layout (426), hits (116)
 bench/gui/prism/app.prism  bench.prism, compiled with examples/chess/window
-tests/conformance/NAME/  app.prism, test.prism, test.expected (88 programs);
+tests/conformance/NAME/  app.prism, tests.prism, tests.expected (88 programs);
                          birds/, left/ right/, aloud/ zoo/ as submodules
 ```
 
@@ -200,7 +207,7 @@ tests/conformance/NAME/  app.prism, test.prism, test.expected (88 programs);
 - **Front end** (`compile.prism`, `checking.prism`): a directory argument read as a tree:
   `Fs.List` the directories as today, find the root, give each file its module name and
   role (main, section, test, root, lib) from its path, check `mod` lines against the
-  listing (`mod-missing`, `mod-stray`), and pass `test.prism` only under `--tests`.
+  listing (`mod-missing`, `mod-stray`), and pass test modules only under `--tests`.
   `preludeFiles` gives way to `--prelude DIR`'s `lib.prism`. *Refused:* reading only what
   `mod` lines name, one tick per level and stray files unseen.
 - **Checker** (`Check.Env`): `ModInfo.file: Nat` becomes `files: [Nat]` (main, sections in
@@ -244,15 +251,15 @@ tests/conformance/NAME/  app.prism, test.prism, test.expected (88 programs);
   line, and it is the program.**" and "**Every other file is a module named by its
   `module` line**" hold for loose files; a tree's rule is added beside them.
 - Ch. 6, "`test` and `check` are declarations": "A test declares no type, tag or impl, so
-  ignoring it changes no other declaration's meaning" gains `test.prism`'s two rules.
+  ignoring it changes no other declaration's meaning" gains `tests.prism`'s two rules.
 - Ch. 6, Negative space: "**No dynamic loading, no test-only code.**" becomes: test-only
-  code only in `test.prism`, which nothing outside one names.
+  code only in `tests.prism`, which nothing outside one names.
 - Ch. 6, "The declaration forms": rows for `mod name` and `mod Name`.
 - App. A.2: `mod` is listed under declarations as well as operators. App. A.6: `header
   ::= ("module" qname SEP)? ("emit" row SEP)? ("use" qname ".*"? SEP)*` gains `("mod"
   name SEP)*` before the `use`s, and a section is `(decl SEP)*`.
 - Conformance ch. 1, Principles: "**The test is in the file**, beside the code it tests"
-  becomes: in the module, inline in a loose file or in its directory's `test.prism`.
+  becomes: in the module, inline in a loose file or in its directory's `tests.prism`.
 - Platform ch. 1, "Several files on the command line": "A directory argument means every
   `.prism` file under it" becomes: a directory argument is a tree.
 - Unchanged and relied on: Type System ch. 2 and ch. 5 on a family declared whole in one
@@ -261,9 +268,9 @@ tests/conformance/NAME/  app.prism, test.prism, test.expected (88 programs);
 ## Failing tests first
 
 - Conformance (`tests/conformance/`, both targets): `mod-sections` (names bare across
-  sections, a test in `test.prism`); `mod-submodules` (`Shapes.Circle.Area` qualified and
+  sections, a test in `tests.prism`); `mod-submodules` (`Shapes.Circle.Area` qualified and
   by `use Shapes.Circle.*`, mutual `use`); `mod-test-helpers` (a helper type with `derive`
-  and a function in `test.prism`, used by a `check`); `mod-family-sections` (a family's
+  and a function in `tests.prism`, used by a `check`); `mod-family-sections` (a family's
   tags over two sections, matched exhaustively in a third); `mod-nested-names` (`A.Types`
   beside a top-level `Types`, for C++ qualification and Rust paths).
 - Checker, `neg/`: `mod-clash`, `mod-stray`, `mod-missing`, `section-header`,
@@ -280,9 +287,9 @@ tests/conformance/NAME/  app.prism, test.prism, test.expected (88 programs);
 3. prismc, module by module, each step a bootstrap (Rust and C++) with every transcript
    and checker test green: `front.prism` to `app.prism` and its sections; `fs`; `Check`
    and `Check.Errors`, then each `check-*` file and `typed`; `syntax/` with the two
-   `test.prism`s (and `tests/prismc/` removed); `lower/`; `emit/`. Seeds once more.
+   `tests.prism`s (and `tests/prismc/` removed); `lower/`; `emit/`. Seeds once more.
 4. prelude, chess and the bench, then the conformance programs (`git mv` by script; each
-   `.expected` becomes `test.expected`, its text unchanged).
+   `.expected` becomes `tests.expected`, its text unchanged).
 5. The old forms dropped: `old-layout` becomes `mod-stray`, `.prismtest` and pick PT go,
    a directory stops meaning every file under it. Loose files stay (above).
 
@@ -294,8 +301,9 @@ tests/conformance/NAME/  app.prism, test.prism, test.expected (88 programs);
 - **PP** `prelude/prelude/mod.prism` reads twice; or a `lib.prism` that may hold one module?
 - **RN** The renames (`Ast` to `Syntax`, `CheckEnv` to `Check.Env`, `Chess` to `Rules`,
   `EmitCpp` to `Emit.Cpp`): worth the churn?
-- **TO** `test` and `check` only in `test.prism` within a tree; or anywhere?
-- **TS** A `test.prism` naming another module's helpers; or its own module's only?
+- **TO** `test` and `check` only in test modules within a tree; or anywhere? And the
+  spelling `test mod name` (Jimmy ruled that test modules are declared; the spelling is Claude's).
+- **TS** A test module naming another module's test helpers; or its own module's only?
 - **WL** The window library named across trees by the bench; or its own library,
   `examples/window/lib.prism`?
 - **KW** Section files whose natural name is a keyword (`check`, `for`, `rebuild`) take
