@@ -238,8 +238,8 @@ bool tagged(const Pod& e, const char* tag) {
 }
 
 struct CliReady : prism_rtl::ReadyState {
-    std::shared_ptr<FileSystem> fs;
-    std::shared_ptr<const std::vector<std::string>> args;
+    prism_rtl::Rc<FileSystem> fs;
+    prism_rtl::Rc<const std::vector<std::string>> args;
     std::optional<Pod> first_value(const Pod& e) const override {
         auto tag = e.tag();
         if (!tag) return std::nullopt;
@@ -262,10 +262,10 @@ struct CliReady : prism_rtl::ReadyState {
 }  // namespace
 
 CliWorld::CliWorld(std::unique_ptr<FileSystem> fs, std::vector<std::string> args)
-    : fs_(std::move(fs)), args_(std::make_shared<const std::vector<std::string>>(std::move(args))) {}
+    : fs_(std::move(fs)), args_(prism_rtl::make_rc<const std::vector<std::string>>(std::move(args))) {}
 
-std::shared_ptr<const prism_rtl::ReadyState> CliWorld::ready() const {
-    auto r = std::make_shared<CliReady>();
+prism_rtl::Rc<const prism_rtl::ReadyState> CliWorld::ready() const {
+    auto r = prism_rtl::make_rc<CliReady>();
     r->fs = fs_;
     r->args = args_;
     return r;

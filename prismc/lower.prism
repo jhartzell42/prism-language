@@ -210,7 +210,9 @@ type Do = choice:
     DoIfLet Pa, Ex, [Do], [Do]
     DoMatch Ex, [((Pa, [Do]))]
     DoReturn Ex
-    # Statements kept on one line: in a scope of their own, or as they are.
+    # Statements in a scope of their own, over lines (`DoBlock`) or on one (`DoScope`), and
+    # statements kept on one line as they are.
+    DoBlock [Do]
     DoScope [Do]
     DoLine [Do]
     DoNote Text
@@ -1115,7 +1117,7 @@ fn CharEscape c = c
 # A number literal of a numeric type.
 Number: fn OutTy, Text, Bool -> Ex
 fn Number t, digits, neg:
-    let clean = Concat (Split digits, "_")
+    let clean = DecimalDigits (Concat (Split digits, "_"))
     let signed = if neg: "-{clean}" else: clean
     match t:
         OutNat: XNat clean
@@ -1123,6 +1125,17 @@ fn Number t, digits, neg:
         OutU8: (XByte clean)
         OutFloat: XFloat (if Contains clean, ".": signed else: "{signed}.0")
         otherwise: XInt signed
+
+# A literal's digits in plain decimal, every digit kept: a radix literal (`0x`, `0o`,
+# `0b`) converted and a decimal one without its leading zeros, so each printer writes
+# them in its own language unchanged (C++ reads `010` as octal and has no `0o`). A
+# decimal fraction, and digits that are plain decimal already, stay as they are.
+DecimalDigits: fn Text -> Text
+fn DecimalDigits d:
+    let r = if (Head d) == "0": Head (AfterFirst d) else: ""
+    let base: Nat = if r == "x": 16 else: if r == "o": 8 else: if r == "b": 2 else: 10
+    let ds = if base == 10: d else: AfterFirst (AfterFirst d)
+    if (Contains d, ".") or (Head d) != "0" or d == "0": d else: "{FoldChars ds, 0, \|n, c| n * base + (HexValue c)}"
 
 LiteralValue: unbounded fn Lx, Env, Literal, Range, Bool -> Vl
 fn LiteralValue lx, env, l, span, neg:
@@ -5978,7 +5991,7 @@ fn Decide g = match g.kind:
         let pushes = Each g.inputs, \|f| DoIfLet (PaCtor "Some", [[PaBind "x"]]), (XMethod (XField XSelf, "{f}"), "take", [[XCx]]), [[DoExpr (XMethod (XVar "all"), "push_back", [[(XVar "x")]])]], [[]]
         let start = DoLet (PaTyped (PaMut "all"), g.ty), (XCall "Array::new", [[]])
         let fire = DoIf (XUnary "!", (XMethod (XVar "all"), "is_empty", [[]])), [[(SelfCall g.name, [[(XVar "all")]])]], [[]]
-        DoIf (XBool True), (Push (Append [[start]], pushes), fire), [[]]
+        DoBlock (Push (Append [[start]], pushes), fire)
     kind: PairDecide g, kind
 
 # An "updated" node decides: the flag taken (once a tick: a hold it reads was written), the
@@ -6047,7 +6060,7 @@ fn MergeDecide g:
     let takeL = DoLet (PaBind "left"), (XMethod (XField XSelf, "{Or g.inputs[0], ""}"), "take", [[XCx]])
     let takeR = DoLet (PaBind "right"), (XMethod (XField XSelf, "{Or g.inputs[1], ""}"), "take", [[XCx]])
     let right = DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XVar "right"), call, [[]]
-    DoIf (XBool True), [[takeL, takeR, (DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XVar "left"), call, [[right]])]], [[]]
+    DoBlock [[takeL, takeR, (DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XVar "left"), call, [[right]])]]
 
 # ---------------------------------------------------------------------------------------
 # The program

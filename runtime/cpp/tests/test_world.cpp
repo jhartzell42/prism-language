@@ -66,8 +66,8 @@ struct Counter : Node {
 
     Counter(Path p, const Cx& cx) : path(std::move(p)), count(Int(0), cx) {}
 
-    static std::shared_ptr<Counter> make(Path path, Cx& cx) {
-        auto node = std::make_shared<Counter>(std::move(path), cx);
+    static prism_rtl::Rc<Counter> make(Path path, Cx& cx) {
+        auto node = prism_rtl::make_rc<Counter>(std::move(path), cx);
         cx.added(node->path.at(0), to_pod(UiButton{"Increment"}));
         cx.added(node->path.at(1), to_pod(UiButton{"Decrement"}));
         cx.added(node->path.at(2), node->label(cx));
@@ -116,7 +116,7 @@ struct Counter : Node {
 /// The program: the root node and the runtime.
 struct CounterProgram : Program {
     Runtime rt;
-    std::shared_ptr<Counter> root;
+    prism_rtl::Rc<Counter> root;
     static Built<CounterProgram> build(std::span<const Pod>, const ReadyState& ready) {
         auto p = std::make_unique<CounterProgram>();
         Cx cx = p->rt.build(ready);
@@ -142,8 +142,8 @@ struct HalfCounter : Node {
     Path path;
     Hold<Int> count;
     HalfCounter(Path p, const Cx& cx) : path(std::move(p)), count(Int(0), cx) {}
-    static std::shared_ptr<HalfCounter> make(Path path, Cx& cx) {
-        auto node = std::make_shared<HalfCounter>(std::move(path), cx);
+    static prism_rtl::Rc<HalfCounter> make(Path path, Cx& cx) {
+        auto node = prism_rtl::make_rc<HalfCounter>(std::move(path), cx);
         cx.added(node->path.at(0), to_pod(UiButton{"Increment"}));
         cx.added(node->path.at(1), node->label(cx));
         return node;
@@ -170,7 +170,7 @@ struct HalfCounter : Node {
 
 struct HalfCounterProgram : Program {
     Runtime rt;
-    std::shared_ptr<HalfCounter> root;
+    prism_rtl::Rc<HalfCounter> root;
     static Built<HalfCounterProgram> build(std::span<const Pod>, const ReadyState& ready) {
         auto p = std::make_unique<HalfCounterProgram>();
         Cx cx = p->rt.build(ready);
@@ -226,14 +226,14 @@ TEST(a_static_widget_owes_no_tick) {
 namespace {
 
 struct Term;
-using TermRef = std::shared_ptr<const Term>;
+using TermRef = prism_rtl::Rc<const Term>;
 
 struct Term {
     enum Kind { Var, Lam, App } kind;
     Nat n;
     TermRef a, b;
     static Term var(Nat n) { return Term{Var, std::move(n), nullptr, nullptr}; }
-    static Term lam(Term b) { return Term{Lam, Nat(), std::make_shared<const Term>(std::move(b)), nullptr}; }
+    static Term lam(Term b) { return Term{Lam, Nat(), prism_rtl::make_rc<const Term>(std::move(b)), nullptr}; }
     static Term app(TermRef f, TermRef x) { return Term{App, Nat(), std::move(f), std::move(x)}; }
     friend bool operator==(const Term& x, const Term& y) {
         if (x.kind != y.kind) return false;
@@ -279,7 +279,7 @@ struct Term {
     }
 };
 
-TermRef boxed(Term t) { return std::make_shared<const Term>(std::move(t)); }
+TermRef boxed(Term t) { return prism_rtl::make_rc<const Term>(std::move(t)); }
 
 // ---- The plain functions ----------------------------------------------------------------
 
@@ -334,7 +334,7 @@ struct Normalize : Job<Term> {
     Term t;
     explicit Normalize(Term t) : t(std::move(t)) {}
     Turn<Term> cycle() const override {
-        if (auto t2 = reduce(t)) return Turn<Term>::more(std::make_shared<const Normalize>(*t2));
+        if (auto t2 = reduce(t)) return Turn<Term>::more(prism_rtl::make_rc<const Normalize>(*t2));
         return Turn<Term>::finished(t);
     }
 };
@@ -362,10 +362,10 @@ struct Normal : Node {
     Hold<Text> shown;
 
     Normal(Path p, Term term, const Cx& cx)
-        : path(std::move(p)), run_job(std::make_shared<const Normalize>(std::move(term)), cx), shown(Text("working"), cx) {}
+        : path(std::move(p)), run_job(prism_rtl::make_rc<const Normalize>(std::move(term)), cx), shown(Text("working"), cx) {}
 
-    static std::shared_ptr<Normal> make(Path path, Term term, Cx& cx) {
-        auto node = std::make_shared<Normal>(std::move(path), std::move(term), cx);
+    static prism_rtl::Rc<Normal> make(Path path, Term term, Cx& cx) {
+        auto node = prism_rtl::make_rc<Normal>(std::move(path), std::move(term), cx);
         cx.on_started(node);  // `@Run` binds `@started`: the next tick is owed
         cx.added(node->path.at(1), node->label(cx));
         return node;
@@ -405,7 +405,7 @@ struct Normal : Node {
 
 struct NormalProgram : Program {
     Runtime rt;
-    std::shared_ptr<Normal> root;
+    prism_rtl::Rc<Normal> root;
     static Built<NormalProgram> build(std::span<const Pod> args, const ReadyState& ready) {
         if (args.size() != 1) return unexpected(Fault::answer("@Normal takes one Term"));
         auto term = TRY(from_pod<Term>(args[0]));

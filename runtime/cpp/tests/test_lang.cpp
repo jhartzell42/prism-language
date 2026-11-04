@@ -18,7 +18,7 @@ namespace {
 /// A value that counts its copies.
 struct Counted {
     static inline int copies = 0;
-    std::shared_ptr<int> p = std::make_shared<int>(7);
+    prism_rtl::Rc<int> p = prism_rtl::make_rc<int>(7);
     Counted() = default;
     Counted(const Counted& o) : p(o.p) { ++copies; }
     Counted(Counted&&) = default;

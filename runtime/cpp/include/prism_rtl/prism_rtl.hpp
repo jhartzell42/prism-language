@@ -11,6 +11,7 @@
 // The headers, from the bottom up:
 //
 // - result.hpp: `Tick`, `Unit`, `Fault`, `Panic`, `Expected`/`Result`/`Done`, `TRY`.
+// - rc.hpp: `Rc` and `Weak`, reference counting with plain counts (one thread).
 // - num.hpp: `Nat` and `Int`, arbitrary precision with a small-value fast path.
 // - collections.hpp: `Text`, `Map` and `Array`, immutable values copied on write.
 // - pod.hpp: `Pod`, the plain data a World sees; paths; the `^Pod` traits; `Error` (a

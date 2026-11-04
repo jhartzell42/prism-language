@@ -120,8 +120,8 @@ fn Expression x = match x:
     XUnit: "()"
     XNone: "None"
     XBool b: if b: "true" else: "false"
-    XNat d: if (Len d) <= 9: "Nat::from({d}u32)" else: "Nat::from_int(Int::from({d}i64)).unwrap()"
-    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int::from({d})" else: "Int::from({d}i64)"
+    XNat d: if (Len d) <= 9: "Nat::from({d}u32)" else: if (Len d) <= 18: "Nat::from_int(Int::from({d}i64)).unwrap()" else: "Nat::from_int(Int::parse(\"{d}\").unwrap()).unwrap()"
+    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int::from({d})" else: "Int::parse(\"{d}\").unwrap()"
     XByte d: "{d}u8"
     XFloat d: d
     XIndex n: "{n}"
@@ -152,7 +152,7 @@ fn Expression x = match x:
     XTuple [[one]]: "({Expression one},)"
     XTuple xs: "({Args xs})"
     XVec xs: "vec![{Args xs}]"
-    XText t: "Text::from(\"{Escape t}\")"
+    XText t: "Text::lit(\"{Escape t}\")"
     XFormat parts: Format parts
     XMatch s, arms, fallback, ignore: Match (Expression s), (Arms arms, fallback)
     XChain label, s, arms, ignore: Chain (Label label), s, arms
@@ -183,13 +183,18 @@ fn DecodeHead t = match t:
 Label: fn Text -> Text
 fn Label l = if (HasPrefix l, "'"): l else: "'{l}"
 
-# `Text::from(format!(..))`: the literal runs with their braces doubled, a `{}` per value.
+# `Text::from(format!(..))`: the literal runs with their braces doubled, a `{}` per value;
+# with no value, the literal itself (`Text::lit`).
 Format: unbounded fn [Ex] -> Text
 fn Format parts:
     let lit = Concat (Each parts, \|p| FormatPiece p)
     let vals = Filter parts, \|p| not (IsText p)
-    if (Len vals) == 0: "Text::from(\"{lit}\")"
+    if (Len vals) == 0: "Text::lit(\"{Escape (Concat (Each parts, \|p| PlainPiece p))}\")"
     else: "Text::from(format!(\"{lit}\", {Args vals}))"
+
+PlainPiece: fn Ex -> Text
+fn PlainPiece (XText t) = t
+fn PlainPiece other = ""
 
 # `format!(..)`, a message's text (a fault's), not a `Text`: a local is named in the
 # literal, any other value placed by position.
@@ -341,6 +346,7 @@ fn Statement d = match d:
     DoIfLet p, x, t, e: "{IfStmt "if let {Pattern p} = {Expression x}", (Statements t)}{ElseBranch e}"
     DoMatch x, cases: Match (Expression x), (Join (Each cases, \|((p, body))| ArmBlock (Pattern p), (Statements body)), "\n")
     DoReturn x: "return {Expression x};"
+    DoBlock body: Scope (Statements body)
     DoScope body: "\{ {InlineStatements body} \};"
     DoLine body: "{InlineStatements body};"
     DoNote t: "// {t}"

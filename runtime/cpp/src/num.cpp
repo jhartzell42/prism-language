@@ -284,7 +284,7 @@ std::strong_ordering operator<=>(const BigInt& a, const BigInt& b) {
 
 Int::Int(const BigInt& b) : small_(0) {
     if (auto n = b.to_i64()) small_ = *n;
-    else big_ = std::make_shared<const BigInt>(b);
+    else big_ = make_rc<const BigInt>(b);
 }
 
 std::optional<Int> Int::parse(std::string_view digits) {

@@ -77,7 +77,7 @@ struct OsWindow {
 
 class App final : public Session {
 public:
-    App(Builder build, std::unique_ptr<prism_rtl::World> world, std::shared_ptr<Shared> shared, Renderer renderer, Hooks hooks)
+    App(Builder build, std::unique_ptr<prism_rtl::World> world, prism_rtl::Rc<Shared> shared, Renderer renderer, Hooks hooks)
         : build_(std::move(build)), world_(std::move(world)), shared_(std::move(shared)), renderer_(std::move(renderer)),
           hooks_(std::move(hooks)) {}
     ~App() override;
@@ -112,7 +112,7 @@ private:
     BigStack big_;
     Builder build_;
     std::unique_ptr<prism_rtl::World> world_;
-    std::shared_ptr<Shared> shared_;
+    prism_rtl::Rc<Shared> shared_;
     Renderer renderer_;
     Hooks hooks_;
     std::unique_ptr<prism_rtl::Program> program_;
@@ -507,7 +507,7 @@ int App::run() {
 }  // namespace
 
 int run_program(Builder build, Wrap wrap, Hooks hooks) {
-    auto shared = std::make_shared<Shared>();
+    auto shared = prism_rtl::make_rc<Shared>();
     auto font = Font::bundled();
     auto world = wrap(std::make_unique<CanvasWorld>(shared, font));
     App app(std::move(build), std::move(world), shared, Renderer(font), std::move(hooks));

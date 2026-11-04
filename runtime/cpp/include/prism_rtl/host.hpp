@@ -45,6 +45,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <concepts>
 #include <functional>
 #include <memory>
@@ -89,9 +90,9 @@ class HostOf;
 /// or an enclosing host's document, which answers a first-value query itself.
 template <class E, class A>
 struct Scope {
-    std::shared_ptr<HostOf<E, A>> hosted;
+    Rc<HostOf<E, A>> hosted;
     static Scope world() { return Scope{nullptr}; }
-    static Scope in(std::shared_ptr<HostOf<E, A>> host) { return Scope{std::move(host)}; }
+    static Scope in(Rc<HostOf<E, A>> host) { return Scope{std::move(host)}; }
     bool is_world() const { return !hosted; }
 };
 
@@ -116,9 +117,9 @@ struct Inert : Node {};
 /// A subscription a blueprint's node holds, let go when the row leaves.
 template <class T>
 struct Subscribed : Node {
-    std::shared_ptr<Port<T>> port;
+    Rc<Port<T>> port;
     std::optional<Handle> handle;
-    explicit Subscribed(std::shared_ptr<Port<T>> p) : port(std::move(p)) {}
+    explicit Subscribed(Rc<Port<T>> p) : port(std::move(p)) {}
     Done leave(Cx&) override {
         if (handle) port->unsubscribe(*std::exchange(handle, std::nullopt));
         return {};
@@ -138,7 +139,7 @@ Done later(const Sink<A>& sink, A v, Cx& cx) {
 template <class E, class A>
 Blueprint<E, A> plain_blueprint(A x) {
     return [x](Path, Sink<A>, const Scope<E, A>&, Cx&) -> Result<Supplied<A>> {
-        return Supplied<A>{std::make_shared<detail::Inert>(), x, false};
+        return Supplied<A>{make_rc<detail::Inert>(), x, false};
     };
 }
 
@@ -146,7 +147,7 @@ Blueprint<E, A> plain_blueprint(A x) {
 template <class E, class A>
 Blueprint<E, A> never_blueprint() {
     return [](Path, Sink<A>, const Scope<E, A>&, Cx&) -> Result<Supplied<A>> {
-        return Supplied<A>{std::make_shared<detail::Inert>(), std::nullopt, false};
+        return Supplied<A>{make_rc<detail::Inert>(), std::nullopt, false};
     };
 }
 
@@ -154,7 +155,7 @@ Blueprint<E, A> never_blueprint() {
 template <class E, class A>
 Blueprint<E, A> event_blueprint(Event<A> e) {
     return [e](Path, Sink<A> sink, const Scope<E, A>&, Cx&) -> Result<Supplied<A>> {
-        auto node = std::make_shared<detail::Subscribed<A>>(e.port);
+        auto node = make_rc<detail::Subscribed<A>>(e.port);
         node->handle = e.port->subscribe([sink](const A& v, Cx& cx) { return detail::later(sink, v, cx); });
         return Supplied<A>{node, std::nullopt, false};
     };
@@ -170,8 +171,8 @@ template <class E, class A>
 Blueprint<E, A> dynamic_blueprint(Dynamic<A> d) {
     return [d](Path, Sink<A> sink, const Scope<E, A>&, Cx& cx) -> Result<Supplied<A>> {
         A first = d.sample(cx);
-        auto node = std::make_shared<detail::Subscribed<Unit>>(d.updates);
-        auto queued = std::make_shared<Stamped<Unit>>();
+        auto node = make_rc<detail::Subscribed<Unit>>(d.updates);
+        auto queued = make_rc<Stamped<Unit>>();
         node->handle = d.updates->subscribe([d, sink, queued](const Unit&, Cx& cx) -> Done {
             if (queued->fired(cx)) return {};
             queued->set(Unit{}, cx);
@@ -190,13 +191,13 @@ Blueprint<E, A> dynamic_blueprint(Dynamic<A> d) {
 template <class P>
 class Link {
 public:
-    Link() : w_(std::make_shared<std::weak_ptr<P>>()) {}
-    void link(const std::shared_ptr<P>& owner) const { *w_ = owner; }
+    Link() : w_(make_rc<Weak<P>>()) {}
+    void link(const Rc<P>& owner) const { *w_ = owner; }
     /// The owner, once linked and while it lives.
-    std::shared_ptr<P> owner() const { return w_->lock(); }
+    Rc<P> owner() const { return w_->lock(); }
 
 private:
-    std::shared_ptr<std::weak_ptr<P>> w_;
+    Rc<Weak<P>> w_;
 };
 
 namespace detail {
@@ -259,9 +260,9 @@ Blueprint<E, A> element_blueprint(const Live<E>& e) {
             auto f = TRY(scope.hosted->first_value(at, e.identity, cx));
             first = std::move(f);
         }
-        auto node = std::make_shared<detail::Forward<E, A>>(at, e.identity, e.level, std::move(sink));
+        auto node = make_rc<detail::Forward<E, A>>(at, e.identity, e.level, std::move(sink));
         if (scope.is_world()) {
-            std::weak_ptr<detail::Forward<E, A>> weak = node;
+            Weak<detail::Forward<E, A>> weak = node;
             node->handle = e.level.updates->subscribe([weak](const Unit&, Cx& cx) -> Done {
                 if (auto n = weak.lock()) cx.changed(n->at, to_pod(n->level.sample(cx)));
                 return {};
@@ -308,11 +309,11 @@ class HostRow;
 
 /// The rows of a host's `for p, e <- $doc`, which the owner keeps in a field.
 template <class E, class A>
-using Rows = std::shared_ptr<Map<Path, std::shared_ptr<HostRow<E, A>>>>;
+using Rows = Rc<Map<Path, Rc<HostRow<E, A>>>>;
 
 template <class E, class A>
 Rows<E, A> new_rows() {
-    return std::make_shared<Map<Path, std::shared_ptr<HostRow<E, A>>>>();
+    return make_rc<Map<Path, Rc<HostRow<E, A>>>>();
 }
 
 /// One row of a host's `for p, e <- $doc`: the supplier's blueprint for child place `key`,
@@ -327,10 +328,10 @@ public:
     /// host's scope. The `for` machinery of the emitted code calls this with the host as
     /// the row's parent. (Rust's `HostRow::build`: in C++ `build` is the virtual
     /// build-list method, which a static of that name would hide.)
-    static Result<std::shared_ptr<HostRow>> make(Path path, Path key, E value, const std::shared_ptr<HostOf<E, A>>& host,
+    static Result<Rc<HostRow>> make(Path path, Path key, E value, const Rc<HostOf<E, A>>& host,
                                                   Cx& cx) {
-        auto node = std::shared_ptr<HostRow>(new HostRow(std::move(path), std::move(key), host));
-        std::weak_ptr<HostRow> row = node;
+        auto node = rc_placed<HostRow>([&](void* place) { return new (place) HostRow(std::move(path), std::move(key), host); });
+        Weak<HostRow> row = node;
         node->sink_ = [row](const A& v, Cx& cx) -> Done {
             // An answer to a row that left, or one that is gone, is dropped (Semantics
             // ch. 9, "A late result is dropped"): a computed answer in flight to a place
@@ -410,10 +411,10 @@ public:
     const Path& key() const { return key_; }
 
 private:
-    HostRow(Path path, Path key, const std::shared_ptr<HostOf<E, A>>& host)
-        : path_(std::move(path)), key_(std::move(key)), host_(host), level_moved_(std::make_shared<Port<Unit>>()) {}
+    HostRow(Path path, Path key, const Rc<HostOf<E, A>>& host)
+        : path_(std::move(path)), key_(std::move(key)), host_(host), level_moved_(make_rc<Port<Unit>>()) {}
 
-    std::shared_ptr<HostOf<E, A>> host() const {
+    Rc<HostOf<E, A>> host() const {
         auto h = host_.lock();
         if (!h) panic("a host outlives its rows");
         return h;
@@ -423,8 +424,8 @@ private:
     /// The live element the supplier sees: the place's level at the build, and its level
     /// over time, the row's entry.
     Live<E> element(E identity) {
-        std::weak_ptr<HostRow> me = std::static_pointer_cast<HostRow>(shared_from_this());
-        auto read = std::make_shared<const std::function<E(const Cx&)>>([me](const Cx& cx) {
+        Weak<HostRow> me = rc_static_cast<HostRow>(rc_from_this());
+        auto read = make_rc<const std::function<E(const Cx&)>>([me](const Cx& cx) {
             auto r = me.lock();
             if (!r) panic("a live element outlives its host's row");
             return r->entry(cx);
@@ -434,14 +435,14 @@ private:
 
     Path path_;
     Path key_;
-    std::weak_ptr<HostOf<E, A>> host_;
+    Weak<HostOf<E, A>> host_;
     /// The key left: a computed answer in flight to the place is dropped.
     bool left_ = false;
     Sink<A> sink_;
     std::optional<Supplied<A>> supplied_;
     /// The entry moved: readers of the live element's level (a forwarded element) read it
     /// again.
-    std::shared_ptr<Port<Unit>> level_moved_;
+    Rc<Port<Unit>> level_moved_;
 };
 
 /// A host of owner `P` (the node its line and its child are inlined into): its place, its
@@ -449,21 +450,23 @@ private:
 /// owner's two emitted methods, the child's document and the typed dispatch.
 template <class E, class A, class P>
     requires AnswerOf<A, E>
-class Host : public HostOf<E, A>, public std::enable_shared_from_this<Host<E, A, P>> {
+class Host : public HostOf<E, A>, public RcFromThis<Host<E, A, P>> {
 public:
     using DocumentFn = std::function<Map<Path, E>(const P&, const Cx&)>;
-    using DeliverFn = std::function<Done(const std::shared_ptr<P>&, const Path&, const A&, Cx&)>;
+    using DeliverFn = std::function<Done(const Rc<P>&, const Path&, const A&, Cx&)>;
 
     /// Made in the owner's build, before its node: `rows` is the field the `for` keeps,
     /// `enclosing` the host whose scope the line stands in, if any.
-    static std::shared_ptr<Host> make(Path at, Rows<E, A> rows, Supplier<E, A> supplier,
-                                      std::shared_ptr<HostOf<E, A>> enclosing, DocumentFn document, DeliverFn deliver) {
-        return std::shared_ptr<Host>(new Host(std::move(at), std::move(rows), std::move(supplier), std::move(enclosing),
-                                              std::move(document), std::move(deliver)));
+    static Rc<Host> make(Path at, Rows<E, A> rows, Supplier<E, A> supplier,
+                                      Rc<HostOf<E, A>> enclosing, DocumentFn document, DeliverFn deliver) {
+        return rc_placed<Host>([&](void* place) {
+            return new (place) Host(std::move(at), std::move(rows), std::move(supplier), std::move(enclosing),
+                                    std::move(document), std::move(deliver));
+        });
     }
 
     /// The owner's node, once made: the rows read the document and answer through it.
-    void link(const std::shared_ptr<P>& owner) { owner_ = owner; }
+    void link(const Rc<P>& owner) { owner_ = owner; }
 
     /// A child place's request: out with its forwarded element, or nowhere when the
     /// supplier answered the place (a host answers its child; a request reaches a World
@@ -483,7 +486,7 @@ public:
     /// sync"): the supplier row for the place is built now, before the owner's node, and
     /// kept where the builder finds it. The one early construction.
     Result<std::optional<A>> first_value(const Path& place, const E& element, Cx& cx) override {
-        std::shared_ptr<HostOf<E, A>> me = this->shared_from_this();
+        Rc<HostOf<E, A>> me = this->rc_from_this();
         auto row = TRY((HostRow<E, A>::make(at_.child(Segment::key(to_pod(place))), place, element, me, cx)));
         std::optional<A> first = row->first();
         rows_->insert(place, row);
@@ -495,22 +498,22 @@ public:
     const Rows<E, A>& rows() const { return rows_; }
 
 private:
-    Host(Path at, Rows<E, A> rows, Supplier<E, A> supplier, std::shared_ptr<HostOf<E, A>> enclosing, DocumentFn document,
+    Host(Path at, Rows<E, A> rows, Supplier<E, A> supplier, Rc<HostOf<E, A>> enclosing, DocumentFn document,
          DeliverFn deliver)
         : at_(std::move(at)), rows_(std::move(rows)), supplier_(std::move(supplier)), enclosing_(std::move(enclosing)),
           document_(std::move(document)), deliver_(std::move(deliver)) {}
 
-    std::shared_ptr<P> owner() const {
+    Rc<P> owner() const {
         auto o = owner_.lock();
         if (!o) panic("a host's node is linked at its build and outlives its rows");
         return o;
     }
 
     Path at_;
-    std::weak_ptr<P> owner_;
+    Weak<P> owner_;
     Rows<E, A> rows_;
     Supplier<E, A> supplier_;
-    std::shared_ptr<HostOf<E, A>> enclosing_;
+    Rc<HostOf<E, A>> enclosing_;
     DocumentFn document_;
     DeliverFn deliver_;
 };

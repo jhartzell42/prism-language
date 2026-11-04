@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -122,7 +123,7 @@ class World {
 public:
     virtual ~World() = default;
     /// The ready state the next tick's first-value queries are answered from.
-    virtual std::shared_ptr<const ReadyState> ready() const = 0;
+    virtual Rc<const ReadyState> ready() const = 0;
     /// Perform a tick's outputs: its requests in document order, torn-down places
     /// included, before acting on the patch.
     virtual void perform(const TickOut& out) = 0;

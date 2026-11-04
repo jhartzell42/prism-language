@@ -419,8 +419,8 @@ pub fn filter<A: Clone>(xs: &Array<A>, keep: &dyn Fn(&A) -> bool) -> Array<A> {
 }
 
 pub fn concat(xs: &Array<Text>) -> Text {
-    let mut s = String::new();
-    xs.iter().for_each(|t| s.push_str(&t.to_string()));
+    let mut s = String::with_capacity(xs.iter().map(Text::len).sum());
+    xs.iter().for_each(|t| s.push_str(t.as_str()));
     Text::from(s)
 }
 
@@ -522,21 +522,20 @@ pub fn filter_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>, keep: &dyn Fn(&K, &V)
 // ---- Text -------------------------------------------------------------------------------
 
 pub fn upper(t: &Text) -> Text {
-    Text::from(t.to_string().to_uppercase())
+    Text::from(t.as_str().to_uppercase())
 }
 
 pub fn lower(t: &Text) -> Text {
-    Text::from(t.to_string().to_lowercase())
+    Text::from(t.as_str().to_lowercase())
 }
 
 /// `Split t, sep`: the pieces between the separators. An empty separator is refused: a
 /// text's characters are walked with a cursor (Appendix B, Text).
 pub fn split(t: &Text, sep: &Text) -> Array<Text> {
-    let (s, sep) = (t.to_string(), sep.to_string());
     if sep.is_empty() {
         panic!("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
     }
-    s.split(sep.as_str()).map(Text::from).collect()
+    t.split(sep.as_str()).collect()
 }
 
 /// `Front: fn Text -> Cursor`.
@@ -581,11 +580,11 @@ pub fn cursor_at(t: &Text, n: &Nat) -> Option<Cursor> {
 
 /// `?ParseNat`.
 pub fn parse_nat_opt(t: &Text) -> Option<Nat> {
-    let s = t.to_string();
-    if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()) {
+    let s = t.as_str();
+    if s.is_empty() || !s.bytes().all(|c| c.is_ascii_digit()) {
         return None;
     }
-    s.parse::<i64>().ok().and_then(|n| Nat::from_int(Int::from(n)))
+    Int::parse(s).and_then(Nat::from_int)
 }
 
 /// `~ParseNat`.
@@ -607,23 +606,22 @@ pub fn freeze<A: Clone>(a: &A) -> A {
 /// indented to its column, a final newline dropped, an empty text no line; sharing a line,
 /// the text as it is.
 pub fn place(out: &mut String, text: &Text, column: Option<usize>) {
-    let text = text.to_string();
+    let text = text.as_str();
     match column {
         Some(c) => {
-            let text = text.strip_suffix('\n').unwrap_or(&text);
+            let text = text.strip_suffix('\n').unwrap_or(text);
             if text.is_empty() {
                 return;
             }
-            let pad = " ".repeat(c);
             for l in text.split('\n') {
                 if !l.is_empty() {
-                    out.push_str(&pad);
+                    out.extend(std::iter::repeat_n(' ', c));
                 }
                 out.push_str(l);
                 out.push('\n');
             }
         }
-        None => out.push_str(&text),
+        None => out.push_str(text),
     }
 }
 

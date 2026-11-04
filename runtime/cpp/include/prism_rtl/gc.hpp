@@ -1,6 +1,6 @@
 // The zombie collector: trial deletion restricted to zombies, in the compact round.
 //
-// Values and nodes are reference counted (`std::shared_ptr`), and the event flow is a
+// Values and nodes are reference counted (`Rc`, rc.hpp), and the event flow is a
 // DAG, so counts free everything but one loop: zombies whose constants lien each other.
 // Row A's hold keeps a value with row B's `$b` inside, and B's keeps A's `$a`; both rows
 // leave in one tick, and neither count reaches zero (Graph ch. 4, worked examples, "The
@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <cstddef>
 #include <memory>
 #include <vector>
@@ -34,7 +35,7 @@ class Node;
 /// The zombies the compact round looks at.
 class Collector {
 public:
-    void watch(const std::vector<std::weak_ptr<Node>>& zombies);
+    void watch(const std::vector<Weak<Node>>& zombies);
     /// How many zombies are still alive and watched.
     std::size_t watching() const;
     /// One round: release every node the watched zombies keep that nothing outside them
@@ -42,7 +43,7 @@ public:
     std::size_t collect();
 
 private:
-    std::vector<std::weak_ptr<Node>> watched_;
+    std::vector<Weak<Node>> watched_;
 };
 
 }  // namespace prism_rtl

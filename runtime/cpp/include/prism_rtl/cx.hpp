@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -42,9 +43,9 @@ class Cx;
 
 /// A node: one widget instance's storage and the methods its block compiles to. Each
 /// method defaults to nothing, so a node implements what its block needs. A node is
-/// always made with `std::make_shared`, so a method can put the node on a list with
+/// always made by `make_rc` or `rc_placed` (rc.hpp), so a method can put the node on a list with
 /// `me()` (Rust's `self: Rc<Self>`).
-class Node : public std::enable_shared_from_this<Node> {
+class Node : public RcFromThis<Node> {
 public:
     virtual ~Node() = default;
     /// A wake at the height the node asked for: its internal combinators decide, once.
@@ -70,20 +71,20 @@ public:
     /// no longer reads, release what dead fields held, split off live paths.
     virtual void clean_up() {}
     /// The nodes this node's fields hold strongly: what the zombie collector follows.
-    using Visit = std::function<void(const std::shared_ptr<Node>&)>;
+    using Visit = std::function<void(const Rc<Node>&)>;
     virtual void edges(const Visit&) const {}
     /// The collector found this node garbage: let go of every value held.
     virtual void release() {}
 
     /// This node, shared: what a method puts on a list.
-    std::shared_ptr<Node> me() { return shared_from_this(); }
+    Rc<Node> me() { return rc_from_this(); }
     template <class T>
-    std::shared_ptr<T> me_as() {
-        return std::static_pointer_cast<T>(shared_from_this());
+    Rc<T> me_as() {
+        return rc_static_cast<T>(rc_from_this());
     }
 };
 
-using NodeRef = std::shared_ptr<Node>;
+using NodeRef = Rc<Node>;
 
 /// A firing waiting for the start of the next tick: a closure over the node method that
 /// fires (a computed answer into a child's place, a structural dynamic's update event).
@@ -107,8 +108,8 @@ struct Gathered {
     std::vector<Edit> edits;
     std::vector<Request> requests;
     std::optional<Outcome> result;
-    std::vector<std::pair<Pod, std::weak_ptr<Node>>> listens;
-    std::vector<std::weak_ptr<Node>> zombies;
+    std::vector<std::pair<Pod, Weak<Node>>> listens;
+    std::vector<Weak<Node>> zombies;
     std::vector<NodeRef> cleanups;
     /// What this tick leaves for the start of the next, which is owed: the answers a
     /// host's supplier computed, each the typed delivery into the child's place (hosting,
@@ -269,7 +270,7 @@ private:
     std::vector<NodeRef> started_;
     std::vector<NodeRef> armed_;
     std::vector<Later> later_;
-    std::map<Pod, std::vector<std::weak_ptr<Node>>> listeners_;
+    std::map<Pod, std::vector<Weak<Node>>> listeners_;
     std::vector<NodeRef> cleanups_;
     Document document_;
     Collector collector_;

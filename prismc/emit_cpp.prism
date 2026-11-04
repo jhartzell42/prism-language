@@ -16,8 +16,9 @@
 # The C++ forms (prismc/README.md, "The C++ target"): a record is a struct, a choice a
 # handle on a shared `std::variant` of its cases (so a value behind an `Rc` is the value
 # itself, and a recursive type needs no box); a node is a class deriving from `Node`, held
-# by `std::shared_ptr`; a `match`, an if-let chain and a labelled block are GNU statement
-# expressions whose value is a `Slot`.
+# by `prism_rtl::Rc`; a `match`, an if-let chain and a labelled block are GNU statement
+# expressions whose value is a `Slot`, except a function's closing `match`, which returns
+# from its arms.
 #
 # Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
@@ -229,18 +230,18 @@ fn CppType cp, t = match t:
     OutEvent i: "Event<{CppType cp, i}>"
     OutDyn i: "Dynamic<{CppType cp, i}>"
     OutGen n: n
-    OutRc i: if IsValueTy cp, i: CppType cp, i else: "std::shared_ptr<{CppType cp, i}>"
+    OutRc i: if IsValueTy cp, i: CppType cp, i else: "prism_rtl::Rc<{CppType cp, i}>"
     OutPod: "Pod"
-    OutShowAny: "std::shared_ptr<const DynShow>"
+    OutShowAny: "prism_rtl::Rc<const DynShow>"
     OutHold i: "Hold<{CppType cp, i}>"
     OutStamped i: "Stamped<{CppType cp, i}>"
     OutSnapshot i: "Snapshot<{CppType cp, i}>"
     OutDefer i: "Defer<{CppType cp, i}>"
-    OutWeak n: "std::weak_ptr<{TypePath n}>"
+    OutWeak n: "prism_rtl::Weak<{TypePath n}>"
     OutCell i: CppType cp, i
     OutWakes: "Wakes"
     OutCount: "std::uint32_t"
-    OutObj i: "std::shared_ptr<{CppType cp, i}>"
+    OutObj i: "prism_rtl::Rc<{CppType cp, i}>"
     OutSlice i: "std::span<const {CppType cp, i}>"
     OutPort i: "Port<{CppType cp, i}>"
     OutLive i: "Live<{CppType cp, i}>"
@@ -322,7 +323,7 @@ fn CppExpr cp, x = match x:
     XUnit: "Unit\{\}"
     XNone: "std::nullopt"
     XBool b: if b: "true" else: "false"
-    XNat d: "Nat({d}u)"
+    XNat d: if (Len d) <= 9: "Nat({d}u)" else: "*Nat::from_int({CppExpr cp, (XInt d)})"
     XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int({d}ll)" else: "*Int::parse(\"{d}\")"
     XByte d: "std::uint8_t({d})"
     XFloat d: d
@@ -354,8 +355,8 @@ fn CppExpr cp, x = match x:
     XTuple xs: "std::tuple\{{CppArgs cp, xs}\}"
     XVec [[]]: "\{\}"
     XVec xs: "std::vector\{{CppArgs cp, xs}\}"
-    XText t: "Text({CppString t})"
-    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
+    XText t: "Text::lit({CppString t})"
+    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text::lit({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
     XMatch s, arms, fallback, t: CppMatch cp, s, arms, t
     XChain label, s, arms, t: CppMatch cp, s, arms, t
     XIf c, t, e: CppIf cp, c, t, e
@@ -874,12 +875,33 @@ fn CppMatch cp, s, arms, t:
     let bind = match ?bound:
         ? ignore: ""
         nil: "auto&& _m = {CppExpr cp, s};\n"
-    let lines = Each arms, \|a| MatchArm cp, subject, a
+    let lines = Each arms, \|a| MatchArm cp, subject, a, False
+    MatchExpr (CppType cp, t), "{bind}{Join lines, "\n"}\n{MatchTail arms}"
+
+# A `match` or an if-let chain that is a function's value (pick CB of the README): the same
+# tests, each arm returning its value (an arm's own `match` returning in turn), with no
+# statement expression, `Slot` or jump.
+ReturnMatch: unbounded fn Cp, Ex, [XArm], OutTy -> Text
+fn ReturnMatch cp, s, arms, (OutUnknown what) = "return {TernaryMatch cp, s, arms};"
+fn ReturnMatch cp, s, arms, t:
+    let ?bound = match s:
+        XVar n: ? (CppId n)
+        XRef (XVar n): ? (CppId n)
+        otherwise: nil
+    let subject = Or ?bound, "_m"
+    let bind = match ?bound:
+        ? ignore: ""
+        nil: "auto&& _m = {CppExpr cp, s};\n"
+    let lines = Each arms, \|a| MatchArm cp, subject, a, True
+    "{bind}{Join lines, "\n"}\n{MatchTail arms}"
+
+# After a match's arms: nothing when the last arm always holds, else the fault.
+MatchTail: fn [XArm] -> Text
+fn MatchTail arms:
     let ends = match ?Last arms:
         ? a: (IsCatchAll a.pat) and (Len a.conds) == 0
         nil: False
-    let tail = if ends: "" else: "prism_rtl::unreachable(\"no arm matched\");\n"
-    MatchExpr (CppType cp, t), "{bind}{Join lines, "\n"}\n{tail}"
+    if ends: "" else: "prism_rtl::unreachable(\"no arm matched\");\n"
 
 # A `match` whose type the model does not give (a job's turn, gap TT of the README): a
 # chain of conditional expressions, whose type C++ works out; a guard's test binds the
@@ -950,13 +972,14 @@ fn GuardTest cp, cs:
             let whole = if (Len cs) == 1: tests else: "{tests} && {StmtExpr (Join (PatBinds cp, p, v), "\n"), rest}"
             if (Len pre) == 0: whole else: StmtExpr (Join pre, "\n"), whole
 
-# One arm: its tests, its bindings, its value set and the match left.
-MatchArm: unbounded fn Cp, Text, XArm -> Text
-fn MatchArm cp0, subject, a:
+# One arm: its tests, its bindings, and its value set and the match left, or (`returns`)
+# its value returned from the function.
+MatchArm: unbounded fn Cp, Text, XArm, Bool -> Text
+fn MatchArm cp0, subject, a, returns:
     let cp = Unbind cp0, (ArmNames a)
     let tests = PatConds cp, a.pat, subject
     let binds = PatBinds cp, a.pat, subject
-    let body = if Leaves a.body: "{CppExpr cp, a.body};" else: "_v.set({CppExpr cp, a.body});\ngoto _done;"
+    let body = if returns: CppBody cp, a.body else: if Leaves a.body: "{CppExpr cp, a.body};" else: "_v.set({CppExpr cp, a.body});\ngoto _done;"
     let guarded = if (Len a.conds) == 0: body else: GuardedArm cp, a.conds, body
     let inner = Join (Append binds, [[guarded]]), "\n"
     if (Len tests) == 0: Braced inner else: IfBlock (Conds tests), inner
@@ -1140,6 +1163,7 @@ fn CppStatement cp, d = match d:
     DoIfLet p, x, t, e: CppIfLet cp, p, x, t, e
     DoMatch x, cases: CppDoMatch cp, x, cases
     DoReturn x: "return {CppExpr cp, x};"
+    DoBlock body: Braced (CppStatements cp, body)
     DoScope body: "\{ {CppInline cp, body} \}"
     DoLine body: CppInline cp, body
     DoNote t: "// {t}"
@@ -1238,6 +1262,8 @@ CppBody: unbounded fn Cp, Ex -> Text
 fn CppBody cp, (XBlock dos, e):
     let ((st, cp2)) = CppStatementsCp cp, dos
     if (Len dos) == 0: CppBody cp, e else: "{st}\n{CppBody cp2, e}"
+fn CppBody cp, (XMatch s, arms, fallback, t) = ReturnMatch cp, s, arms, t
+fn CppBody cp, (XChain label, s, arms, t) = ReturnMatch cp, s, arms, t
 fn CppBody cp, x = if Leaves x: "{CppExpr cp, x};" else: "return {CppExpr cp, x};"
 
 # ---------------------------------------------------------------------------------------
@@ -1537,7 +1563,7 @@ fn JobParts cp, j:
     let ret = CppType cp, j.ret
     let decl = JobStruct (CppDoc j.doc), gens, j.name, ret, fields, ctor
     let cycle = CppFunction "", "{gens}prism_rtl::Turn<{ret}> {head}::cycle() const", (CppBody jcp, j.body)
-    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}prism_rtl::JobRef<{ret}> {j.start}({params})", "return std::make_shared<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
+    let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}prism_rtl::JobRef<{ret}> {j.start}({params})", "return prism_rtl::make_rc<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
     let generic = (Len j.generics) > 0
     Parts(forward=[["{gens}struct {j.name};"]], handles=[[]], values=[[]], cases=[[]], protos=[["{gens}prism_rtl::JobRef<{ret}> {j.start}({params});"]], classes=[[decl]], outer=[[]], generic=(if generic: [[cycle, start]] else: [[]]), defs=(if generic: [[]] else: [[cycle, start]]))
 
@@ -1605,12 +1631,12 @@ NodeParts: unbounded fn Cp, NodeDef -> Parts
 fn NodeParts cp, n:
     let ncp = WithFields cp, (Each n.fields, \|((f, t, ignore))| ((f, t)))
     let base = if n.rowKind == NotARow and (Len n.hosted) == 0: "Node" else: "Row"
-    let fields = Join (Each n.fields, \|((f, t, doc))| "{CppDoc doc}mutable {CppType cp, t} {FieldId f};"), "\n"
+    let fields = Join (Each n.fields, \|((f, t, doc))| "{CppDoc doc}{CppType cp, t} {FieldId f};"), "\n"
     let consts = Join (Each n.consts, \|((c, h, doc))| "{CppDoc "The {doc}."}static constexpr std::uint32_t {c} = {h};"), "\n"
     let ctorParams = Join (Append [["Path path"]], (Each n.fields, \|((f, t, ignore))| "{CppType cp, t} {FieldId f}")), ", "
     let ctorInits = Join (Append [["path(std::move(path))"]], (Each n.fields, \|((f, ignore, ignore))| "{FieldId f}(std::move({FieldId f}))")), ", "
     let params = Concat (Each n.params, \|((p, t))| "{ParamType cp, t} {p}, ")
-    let ret = if n.fallible: "Result<std::shared_ptr<{n.name}>>" else: "std::shared_ptr<{n.name}>"
+    let ret = if n.fallible: "Result<prism_rtl::Rc<{n.name}>>" else: "prism_rtl::Rc<{n.name}>"
     let makeDecl = "static {ret} make(Path path, {params}Cx& cx);"
     let methodDecls = Each (Append n.methods, n.hosted), \|m| "{MethodSig ncp, m, ""};"
     let builderDecls = Append (Each n.builders, \|b| "Done {b.name}_build(Cx& cx);"), (Each n.gens, \|g| "Done {g.name}_build(Cx& cx);")

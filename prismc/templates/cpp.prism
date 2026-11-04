@@ -369,12 +369,12 @@ public:
     using Cases = std::variant<{{names}}>;
     template <class C>
         requires prism_rtl::one_of<C, {{names}}>
-    {{name}}(C c) : cases_(std::make_shared<const Cases>(std::move(c))) {}
+    {{name}}(C c) : cases_(prism_rtl::make_rc<const Cases>(std::move(c))) {}
     const Cases& cases() const;
     {{members}}
 
 private:
-    std::shared_ptr<const Cases> cases_;
+    prism_rtl::Rc<const Cases> cases_;
 };
 </cpp>
 
@@ -475,7 +475,8 @@ fn NodeMake name, signature, lets, args, rest = inline_text <cpp>
 /// `cx.added`, and nothing fires.
 {{signature}} {
     {{lets}}
-    auto node = std::shared_ptr<{{name}}>(new {{name}}({{args}}));
+    prism_rtl::RcPlace<{{name}}> _place;
+    auto node = _place.take(new (_place.at()) {{name}}({{args}}));
     {{rest}}
 }
 </cpp>
@@ -521,7 +522,7 @@ Done {{owner}}::{{name}}_build(Cx& cx) {
     this->{{name}}_count = g + 1;
     Path path = {{path}};
     {{valueTy}} value = {{source}};
-    std::shared_ptr<Row> row = {{select}};
+    prism_rtl::Rc<Row> row = {{select}};
     this->{{name}} = row;
     return {};
 }
@@ -547,7 +548,7 @@ public:
     void compact() override { rt.compact(); }
 
     Runtime rt;
-    std::shared_ptr<{{node}}> root;
+    prism_rtl::Rc<{{node}}> root;
 };
 </cpp>
 

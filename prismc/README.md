@@ -113,7 +113,7 @@ to overturn.
 
     The C++ "characters" binary is the one the main checkout had installed on 4 November
     (its compiler not recorded); the "cursors" one is clang++ -O1. In the C++ prismc the
-    lexer was never the cost (malloc and `shared_ptr` counts are, handoff item 4).
+    lexer was never the cost (malloc and reference counting are, handoff item 4).
   - **Doubts for Jimmy:**
     - **TXC** A `Cursor` is `^Eq`, `^Ord` and `^Show` like every primitive; it compares
       by its byte index alone (the book: "Cursors compare by it"), so cursors into two
@@ -942,7 +942,8 @@ qualified path, a label) or a literal's digits, never syntax.
 - **Expressions, `Ex`:**
   - names: `XVar` a local, `XPath` a global item, `XSelf` the node, `XCx` the read point,
     `XConst` a constant of the node's (a height);
-  - literals: `XUnit`, `XNone`, `XBool`, `XNat`, `XInt` (decimal digits), `XByte`,
+  - literals: `XUnit`, `XNone`, `XBool`, `XNat`, `XInt` (plain decimal digits, every
+    one kept: lowering converts a radix literal and drops leading zeros), `XByte`,
     `XFloat`, `XIndex` (a machine integer), `XChar`, `XStr` (a string, not a `Text`: a
     message, a name), `XText` (a `Text`), `XFormat` (a `Text` with values),
     `XFormatStr` (a message with values; a local is named in it);
@@ -1065,7 +1066,7 @@ Test World; `tests/compiled/run.sh --target cpp` runs every program so.
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 
 - **CH: a choice is a handle.** A choice (and a row kind's values, `Elem`, `Answer`) is a
-  class holding a `shared_ptr` to a `std::variant` of its case structs. What it buys:
+  class holding a `prism_rtl::Rc` to a `std::variant` of its case structs. What it buys:
   `Rc<T>` of any value type is `T` itself (`IsValueTy`), so a recursive type needs no box,
   every `*` and `&` of the model is a no-op in C++, and `.` reaches a value's fields
   whatever the Rust side derefs. A record is a plain struct; a cycle of records by value
@@ -1075,6 +1076,13 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   `goto _done`; a labelled block's `break` sets its slot and jumps to its label. What it
   buys: `return`, `TRY` and `break` inside an arm mean what they mean in Rust. The cost:
   a GNU extension, which g++ and clang++ both have.
+- **CB: a `match` that is a function's value returns from its arms.** A function's (or a
+  method's, or a job's cycle's) body that ends in a `match` or an if-let chain is the
+  same tests as statements, each arm `return`ing its value, an arm whose value is a
+  `match` returning from its own arms in turn (`subst` and `reduce` in
+  `sem-ch07-normalize`): no statement expression, `Slot` or `goto`. The Rust printer
+  writes Rust's own `match` there, and an if-let chain as a labelled block, which needs
+  no slot.
 - **TR: `?` is `TRY(x)`**, a GNU statement expression (g++ and clang++ only, as every
   block is): the function returns the failure, else the expression is the value, moved
   out of the operand. Every `?` lowering writes is of a temporary (a call's result), and
@@ -1084,7 +1092,7 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   tail (`OutUnknown "the job's turn"`); such a `match` is a chain of `?:`, whose type C++
   works out from the arms (`finished(..)` converts to any `Turn<B>`); a guard binds the
   pattern twice, once for its test and once for the value.
-- **PT: `->` and `.`.** A node is reached through a `shared_ptr`, a value directly. The
+- **PT: `->` and `.`.** A node is reached through a `prism_rtl::Rc`, a value directly. The
   printer writes `->` where the model says a receiver is a pointer (`self`, a field or a
   `let` of a pointer type, `node` in a constructor) and, elsewhere, for a member name some
   node has; every record has an `operator->` returning itself, so the second rule is
@@ -1149,6 +1157,17 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
     CPU (user and system) against 116 s and 980 s for the one header; at `-O2` 122 s and
     1,019 s against 163 s and 1,243 s. The CPU time falls by about a sixth: the
     definitions, not the declarations, are most of each file's work.
+- **Building prismc, C++ against Rust** (4 November 2026, Apple M2 Pro, 12 cores, from
+  clean, the runtime's C++ library built beforehand; the load average 3.4 at the start,
+  another agent's jobs raising it to 40 by the end, so the wall times are rough):
+  - C++: `make -j12 CXX=clang++ OPT=-O3` of the emitted program (38 sources, 154,462
+    lines with its headers), 100 s wall and 1,003 s of CPU (user and system), about 10
+    of the 12 cores busy throughout.
+  - Rust: `cargo build --release` of the emitted crate (103,850 lines), its
+    dependencies included, with cargo's defaults: the release profile (opt-level 3, 16
+    codegen units, no incremental build) and as many jobs as cores (12): 91 s wall and
+    255 s of CPU, 2.8 cores busy on average; prismc's own crate is one unit for rustc's
+    front end, which runs on one core, and only its 16 codegen units run in parallel.
 
 Gaps:
 
@@ -1157,9 +1176,6 @@ Gaps:
 - **CY:** a cycle of records held by value with no choice on it.
 - **GC:** a generic choice's case constructor (`Tree(Tree::Node{..})`) needs its type
   arguments, which CTAD cannot deduce from a nested case; no program here has one.
-- **NL: a `Nat` literal past 32 bits is truncated** (`Nat(60000000000u)` in the lexer's
-  duration units, which clang warns of as `-Wconstant-conversion`): `prism_rtl::Nat`'s
-  constructor takes a `uint32_t`.
 
 C++ doubts:
 
@@ -1213,10 +1229,25 @@ Each is Claude's, for Jimmy to overturn.
   parameter is a borrowed `&dyn Fn`; a closure as a value is `Rc<dyn Fn(&A) -> B>`, its
   captures cloned in. A recursive payload is behind `Rc` (a type that reaches itself by
   value, directly, through `?` or a tuple).
+- **OC A binding of an owned scrutinee is cloned at its one use** (`Some(b2) =>
+  Some(Term::Lam(Rc::new(b2.clone())))` in `sem-ch07-normalize`'s `?Reduce`), where a
+  move would do. Not cheap to decide in lowering: each read is spelled on its own as the
+  arm's body is lowered (`Own` of an `Owned` place is a clone), knowing nothing of the
+  reads after it, and a move is right only for the last read on every path, outside a
+  loop and outside a closure's body. Deciding it needs a count of the binder's reads
+  before the body is lowered (`ExprsIn` gives the mentions, but a mention is not one
+  read: an interpolation or a `?` of it lowers to several), and a `Holding` for "owned,
+  read once" that each of lowering's 82 tests of a mode would have to take; or a pass
+  over the model's `Ex` rewriting the one `XClone`, a walker over its 50 forms that
+  lowering does not have. Each such clone is a count's increment (a `Term` holds `Rc`s);
+  C++ has the same copy (`prism_rtl::rc(b2)` of an `auto&&`).
 - **CH Clauses and patterns.** A function's clauses are one `match` over the parameters
   that are not the same name in every clause; a number or text literal in a pattern is a
   binder and an equality guard, a number of the scrutinee's type (`0` against a `Nat` is
-  `Nat::from(0u32)`, `ts-ch02-nat-literal`). A type gets `ToPod`/`FromPod` only when nothing
+  `Nat::from(0u32)`, `ts-ch02-nat-literal`). A number literal keeps every digit: up to 9
+  digits a `u32` (`Nat::from(5u32)`, C++ `Nat(5u)`), up to 18 an `i64`, past that parsed
+  once from its digits (`Int::parse("..")`), on both targets (`ts-ch02-big-literal`,
+  `ts-ch02-radix-literal`). A type gets `ToPod`/`FromPod` only when nothing
   it holds, through the declarations it names, is a function or a layer. A closure given
   to a prelude function has its parameter types written (`|found: &Option<Nat>, x:
   &Nat|`), as does an `update`'s mutable local, and a job's type parameters are
@@ -1726,6 +1757,44 @@ ruling taken (Claude's).
   (`SourceMarks`): a hold's sink, an answer or a push at a place, a snapshot's
   publication, `@Machine`'s state, the block's write a row hears through its parent
   (`sem-ch04-row-source`).
+
+### Strings: what is copied
+
+Where a text is made, copied or compared, in both runtimes, both emitted preludes and the
+printers (handoff item 5). Without a copy: a `Text` literal in C++ (`Text::lit`, its
+bytes where the program has them, no buffer or count); `Split`'s pieces (views of the
+text's buffer, both targets); `Concat` (one buffer of the summed length, the pieces'
+bytes copied once); `Upper`, `Lower`, `?ParseNat` and a template placeholder (`place`)
+reading the text's bytes where they are; a number shown or interpolated (written into
+the output, with no string of its own: Rust's `Printer::display`, C++'s `display`); and
+interpolation's and `Concat`'s result in C++, which skips the UTF-8 check its pieces
+already passed (`Text::of_utf8`). On the normalize compile this took the C++ prismc
+from 1.777G to 1.516G instructions and its self-compile from 836.9G to 727.4G (68.7 s
+to 60.6 s); the Rust prismc moved within noise (1.403G to 1.400G; 725.2G to 724.0G).
+What stays, and why:
+
+- **SC1 A Rust text literal is a buffer of its own** (`Text::lit` is `Text::new`), made
+  each time the literal is evaluated. A `&'static str` beside the `Rc<str>` (an enum)
+  made every read branch: 2% more instructions on the normalize compile than the
+  allocations it saved, so it was taken out. Without `unsafe` (the runtime has none) a
+  branch-free view needs the buffer always counted.
+- **SC2 `format!` into a `String`, then `Text::from`** (interpolation in Rust, `show_text`):
+  the `String` is copied once more into the `Rc<str>`, which cannot take a `String`'s
+  buffer over. Writing straight into a counted buffer needs a builder the runtime does
+  not have; C++ moves its `std::string` into the block instead.
+- **SC3 C++ `Upper` and `Lower` are ASCII only; Rust maps all of Unicode**
+  (`str::to_uppercase`): the targets disagree on a non-ASCII letter (`"é"`). No test has
+  one; the fix is the Unicode tables in C++, or the books narrowing the functions.
+- **SC4 A runtime-made C++ text is checked for UTF-8 each time** (`Text(std::string_view)`:
+  a World's input, a `Pod`'s name), as Rust's `str` is by construction; it is the guard
+  that a text never holds broken bytes, so it stays.
+- **SC5 The Test World compares a place by its printed path** (`p.to_string() == *t.at`
+  in test_world.cpp, and Rust's alike), once per step of a transcript, not per tick of a
+  program.
+- **SC6 Escaping pushes one character at a time** (both printers' `quoted`): each
+  character is examined anyway; runs of plain characters could go in one append.
+- **SC7 A cursor's step copies its text** (a count's increment and decrement, both
+  targets): `?Step` returns a new cursor, which holds the text. Non-atomic in C++ now.
 
 ### Not lowered yet
 

@@ -54,7 +54,7 @@ double number(const Pod* v);
 /// changes one square does not reread sixty-four files.
 class Renderer {
 public:
-    explicit Renderer(std::shared_ptr<const Font> font) : font_(std::move(font)) {}
+    explicit Renderer(prism_rtl::Rc<const Font> font) : font_(std::move(font)) {}
     ~Renderer();
     Renderer(Renderer&&) = default;
     Renderer(const Renderer&) = delete;
@@ -76,7 +76,7 @@ private:
     const Glyph& glyph(char32_t c, float px);
     cairo_surface_t* image(const std::string& src);
 
-    std::shared_ptr<const Font> font_;
+    prism_rtl::Rc<const Font> font_;
     /// Each `src` as loaded, or null for a file that failed (reported once).
     std::map<std::string, cairo_surface_t*> images_;
     /// Each character at each pixel size.

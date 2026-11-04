@@ -100,7 +100,7 @@ const Pod* element_of(const Document& doc, const prism_rtl::TickOut& out, const 
 class CliWorld : public prism_rtl::World {
 public:
     CliWorld(std::unique_ptr<FileSystem> fs, std::vector<std::string> args);
-    std::shared_ptr<const prism_rtl::ReadyState> ready() const override;
+    prism_rtl::Rc<const prism_rtl::ReadyState> ready() const override;
     void perform(const prism_rtl::TickOut& out) override;
     std::optional<prism_rtl::TickIn> next_inputs() override;
     std::optional<std::uint8_t> exit_code() const override;
@@ -119,8 +119,8 @@ private:
     void relist();
     void due();
 
-    std::shared_ptr<FileSystem> fs_;
-    std::shared_ptr<const std::vector<std::string>> args_;
+    prism_rtl::Rc<FileSystem> fs_;
+    prism_rtl::Rc<const std::vector<std::string>> args_;
     Document doc_;
     std::vector<std::pair<Path, Pod>> answers_;
     std::vector<std::pair<Pod, Pod>> pushes_;

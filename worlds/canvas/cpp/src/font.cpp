@@ -70,7 +70,7 @@ Font::Font() : face_(std::make_unique<Face>()) {
 
 Font::~Font() = default;
 
-std::shared_ptr<const Font> Font::bundled() { return std::shared_ptr<const Font>(new Font()); }
+prism_rtl::Rc<const Font> Font::bundled() { return prism_rtl::rc_placed<const Font>([](void* at) { return new (at) Font(); }); }
 
 float Font::advance(char32_t c, float px) const {
     auto it = face_->advances.find(c);

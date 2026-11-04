@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "prism_rtl/rc.hpp"
 #include <algorithm>
 #include <compare>
 #include <cstdint>
@@ -51,22 +52,35 @@ std::optional<std::size_t> utf8_error_at(std::string_view s);
 /// and ends on a character boundary. `Len` is bytes; a `Cursor`'s `before` and `after` are
 /// views of the same buffer; concatenation copies. A text is made only from well-formed
 /// UTF-8: anything else is a fatal error (a `Panic`) naming the byte, as Rust's `str` cannot
-/// hold it; a World checks the bytes it reads first (the CLI World's `Fs.NotText`).
+/// hold it; a World checks the bytes it reads first (the CLI World's `Fs.NotText`). A
+/// program's literal (`Text::lit`) is its bytes where they are, with no buffer or count.
 class Text {
 public:
     Text() = default;
+    /// A literal of the program: bytes in static storage, well-formed UTF-8 (prismc wrote
+    /// them from its source), never copied.
+    static Text lit(std::string_view static_utf8) {
+        Text t;
+        t.p_ = static_utf8.data();
+        t.n_ = static_utf8.size();
+        return t;
+    }
+    /// Bytes the caller made from well-formed pieces (texts, numbers, literals), so not
+    /// checked again: interpolation's result, a concatenation.
+    static Text of_utf8(std::string&& utf8);
     Text(const char* utf8) : Text(std::string_view(utf8)) {}
     Text(std::string_view utf8);
     Text(const std::string& utf8) : Text(std::string_view(utf8)) {}
     Text(std::string&& utf8);
 
     /// `Len`: the number of bytes.
-    std::size_t len() const { return end_ - start_; }
-    bool is_empty() const { return start_ == end_; }
+    std::size_t len() const { return n_; }
+    bool is_empty() const { return n_ == 0; }
     /// The bytes.
-    std::string_view view() const {
-        return s_ ? std::string_view(*s_).substr(start_, end_ - start_) : std::string_view();
-    }
+    std::string_view view() const { return std::string_view(p_, n_); }
+    /// `Split`'s pieces: the bytes between each `sep` (not empty), each a view of this
+    /// text's bytes, with no copy.
+    std::vector<Text> split(std::string_view sep) const;
     /// Concatenation, as interpolation does it.
     Text concat(const Text& other) const;
     /// The characters, decoded.
@@ -86,12 +100,14 @@ private:
     Text slice(std::size_t a, std::size_t b) const {
         Text t;
         t.s_ = s_;
-        t.start_ = start_ + a;
-        t.end_ = start_ + b;
+        t.p_ = p_ + a;
+        t.n_ = b - a;
         return t;
     }
-    std::shared_ptr<const std::string> s_;
-    std::size_t start_ = 0, end_ = 0;
+    /// The buffer the bytes are in (none for a literal), and the bytes.
+    Rc<const std::string> s_;
+    const char* p_ = "";
+    std::size_t n_ = 0;
 };
 
 inline std::ostream& operator<<(std::ostream& o, const Text& t) { return o << t.view(); }
@@ -138,17 +154,17 @@ public:
 private:
     struct Node {
         value_type kv;
-        std::shared_ptr<const Node> left, right;
+        Rc<const Node> left, right;
         int height;
         std::size_t count;
     };
-    using Ptr = std::shared_ptr<const Node>;
+    using Ptr = Rc<const Node>;
     static int height(const Ptr& n) { return n ? n->height : 0; }
     static std::size_t count(const Ptr& n) { return n ? n->count : 0; }
     static Ptr make(value_type kv, Ptr l, Ptr r) {
         int h = std::max(height(l), height(r)) + 1;
         std::size_t c = count(l) + count(r) + 1;
-        return std::make_shared<const Node>(Node{std::move(kv), std::move(l), std::move(r), h, c});
+        return make_rc<const Node>(Node{std::move(kv), std::move(l), std::move(r), h, c});
     }
     static Ptr balance(value_type kv, Ptr l, Ptr r) {
         int hl = height(l), hr = height(r);
@@ -191,7 +207,7 @@ private:
         Ptr l = n->left, r = n->right;
         if (k < n->kv.first) l = copy_to(n->left, k, at);
         else if (n->kv.first < k) r = copy_to(n->right, k, at);
-        auto fresh = std::make_shared<Node>(Node{n->kv, l, r, n->height, n->count});
+        auto fresh = make_rc<Node>(Node{n->kv, l, r, n->height, n->count});
         if (!(k < n->kv.first) && !(n->kv.first < k)) at = &fresh->kv.second;
         return fresh;
     }
@@ -437,7 +453,7 @@ public:
 private:
     /// This view's elements in a buffer of their own.
     void own() {
-        auto fresh = std::make_shared<Buffer>();
+        auto fresh = make_rc<Buffer>();
         for (std::size_t i = 0; i < len_; ++i) fresh->push((*this)[i]);
         b_ = std::move(fresh);
         off_ = 0;
@@ -446,7 +462,7 @@ private:
     void unique() {
         if (!b_ || b_.use_count() > 1 || off_ != 0 || len_ != b_->size) own();
     }
-    std::shared_ptr<Buffer> b_;
+    Rc<Buffer> b_;
     std::size_t off_ = 0, len_ = 0;
 };
 

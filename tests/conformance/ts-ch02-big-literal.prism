@@ -1,0 +1,19 @@
+# A number literal keeps every digit on both targets (prismc/README.md, gap NL): a `Nat`
+# past 32 bits, past 64, and an `Int` past 64 bits, in an expression and in a pattern.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+Minute: fn Nat -> Text
+fn Minute 60_000_000_000 = "minute"
+fn Minute n = "other"
+
+@shown: @unit
+@shown:
+    let a: Nat = 4294967295
+    let b: Nat = 4294967296
+    let c: Nat = 60_000_000_000
+    let d: Nat = 18446744073709551616
+    let e: Int = -9223372036854775809
+    let f: Int = 123456789012345678901234567890
+    Ui.Label(text=$"{a} {b} {c} {c + 1} {d} {d * 2} {e} {f}")     # 0
+    Ui.Label(text=$"{Minute 60000000000} {Minute 4165425152}")     # 1

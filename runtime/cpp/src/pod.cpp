@@ -22,7 +22,7 @@ std::strong_ordering operator<=>(F64 a, F64 b) {
 
 // ---- Segment and Path ----------------------------------------------------------------------
 
-Segment Segment::key(Pod k) { return Segment(Kind::Key, 0, std::make_shared<const Pod>(std::move(k))); }
+Segment Segment::key(Pod k) { return Segment(Kind::Key, 0, make_rc<const Pod>(std::move(k))); }
 
 bool operator==(const Segment& a, const Segment& b) { return (a <=> b) == 0; }
 

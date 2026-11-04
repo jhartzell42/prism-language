@@ -49,11 +49,11 @@ struct Smoke : Node {
 
 struct SmokeProgram : Program {
     Runtime rt;
-    std::shared_ptr<Smoke> root;
+    prism_rtl::Rc<Smoke> root;
     static Built<SmokeProgram> build(std::span<const Pod>, const ReadyState& ready) {
         auto p = std::make_unique<SmokeProgram>();
         Cx cx = p->rt.build(ready);
-        p->root = std::make_shared<Smoke>(Path::root());
+        p->root = prism_rtl::make_rc<Smoke>(Path::root());
         Pod window = Pod::element("Gui.Window", {{"title", Pod::text(Text("Smoke"))}, {"size", gui::extent(200, 100)}});
         auto id = cx.first_value(window);
         if (!id) return unexpected(Fault::answer("Gui.Window unanswered"));
