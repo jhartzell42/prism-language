@@ -483,6 +483,18 @@ type ModDef = record:
     prism: Text
     path: Text
     uses: [Text]
+    # What a target that declares a module before it defines it needs of the others (the
+    # C++ printer's per-module headers; the Rust printer ignores it): `complete`, the
+    # modules whose records, newtypes, unit types or tags this module's own types hold by
+    # value, defined first; `declared`, the others it may name (every module its `use`s
+    # and emitted families reach), whose declarations are enough.
+    # `typesWith`, the modules whose value types are defined together with this one's,
+    # itself among them: a cycle of `complete` (each module holding the next one's types
+    # by value, with no cycle among the types themselves) is one group, in which the types
+    # are put in order across the modules.
+    complete: [Text]
+    declared: [Text]
+    typesWith: [Text]
     items: [Item]
 derive ^Eq, ^Show
 
@@ -496,6 +508,10 @@ type Model = record:
     elem: RowDef
     # `crate::Answer`, beside it
     answer: AnswerDef
+    # What `Elem` and `Answer` need of the modules, as `ModDef.complete` and `declared`
+    # say.
+    elemComplete: [Text]
+    elemDeclared: [Text]
     scripts: [Text]
     notes: [Text]
 derive ^Eq, ^Show
@@ -5902,7 +5918,142 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let checks = Fold g.defs, [[]], \|acc, d| match d.body:
         DbCheck c: Push acc, (CheckDefOf (InModuleAt lx, d.file, d.home, "\u{0}main"), c)
         otherwise: acc
-    Model(name=name, mods=modDefs, programs=programs, root=?root, checks=checks, elem=(ElemRow lx, mods), answer=(AnswerEnum (InModuleAt lx, 0, "", "\u{0}main"), mods), scripts=[[]], notes=[[]])
+    let withNeeds = WithGroups (WithNeeds g, srcs, tp, modDefs)
+    let elem = ElemRow lx, mods
+    let answer = AnswerEnum (InModuleAt lx, 0, "", "\u{0}main"), mods
+    let names = Each withNeeds, \|d| d.name
+    let valueTys = ValueTypes withNeeds
+    let elemHeld = Fold elem.cases, [[]], \|acc, ((ignore, sp))| UnionTexts acc, (HeldIn names, valueTys, "", (OutNamed sp, [[]]))
+    let answerHeld = Fold answer.cases, elemHeld, \|acc, k| UnionTexts acc, (HeldIn names, valueTys, "", k.ty)
+    let answerNamed = Fold answer.cases, [[]], \|acc, k| UnionTexts acc, (NamedIn names, "", k.ty)
+    Model(name=name, mods=withNeeds, programs=programs, root=?root, checks=checks, elem=elem, answer=answer, elemComplete=answerHeld, elemDeclared=(MinusTexts answerNamed, answerHeld), scripts=[[]], notes=[[]])
+
+# Each module with what it needs of the others (`ModDef.complete` and `declared`).
+WithNeeds: unbounded fn G, [Src], TProgram, [ModDef] -> [ModDef]
+fn WithNeeds g, srcs, tp, defs:
+    let names = Each defs, \|d| d.name
+    let valueTys = ValueTypes defs
+    let refs = NamedMods g, srcs, tp, (Each defs, \|d| d.prism)
+    Each defs, \|d|
+        let held = Fold d.items, [[]], \|acc, it| UnionTexts acc, (ItemHeld names, valueTys, d.name, it)
+        let complete = Filter held, \|n| n != d.name
+        let reached = Each (ReachedBy refs, [[d.prism]], [[]]), \|m| RustModName m
+        let declared = Filter names, \|n| n != d.name and (HasText reached, n) and not (HasText complete, n)
+        update d:
+            &_.complete <= complete
+            &_.declared <= declared
+
+# The modules each of these modules names, by Prism name: its `use`s and emitted families
+# (`ModRefs`); the modules it names qualified (`Lower.Model`: a line of its source that is
+# no comment holds the module's name and a dot, which a text literal can hold too, adding
+# a module it does not need); and the modules of the impls its constraints were solved by
+# (a trait method's overload, which a target that declares before it calls must see).
+NamedMods: unbounded fn G, [Src], TProgram, [Text] -> (Text ==> [Text])
+fn NamedMods g, srcs, tp, ms:
+    let byPath = Fold (Values g.mods), {}, \|acc, info| Insert acc, (Or srcs[info.file], (MkSrc "", "")).path, info.name
+    let byFile = Fold (Values g.mods), {}, \|acc, info| Insert acc, info.file, info.name
+    let solved = Fold tp.impls, {}, \|acc, n| match byFile[n.at.file]:
+        ? site: match byPath[ImplPath n.how]:
+            ? home: if home == site or HasText (Or acc[site], [[]]), home: acc else: Insert acc, site, (Push (Or acc[site], [[]]), home)
+            nil: acc
+        nil: acc
+    Fold ms, {}, \|acc, m| match g.mods[m]:
+        ? info:
+            let code = Join (Filter (Split (Or srcs[info.file], (MkSrc "", "")).text, "\n"), \|l| not (HasPrefix (TrimStart l), "#")), "\n"
+            let qualified = Filter ms, \|o| o != m and o != "" and Contains code, "{o}."
+            Insert acc, m, (UnionTexts (UnionTexts (ModRefs g, m), qualified), (Or solved[m], [[]]))
+        nil: acc
+
+# The source path of an impl an `ImplNote` names (`impl PATH:LINE`, `derived PATH:LINE`),
+# or "" for a constraint no written or derived impl solved.
+ImplPath: fn Text -> Text
+fn ImplPath how:
+    let rest = Or (?AfterPrefix how, "impl "), (Or (?AfterPrefix how, "derived "), "")
+    let parts = Split rest, ":"
+    Join (Take parts, (Dec (Len parts))), ":"
+
+# The program's types held by value where they are held (records, newtypes, unit types
+# and tags; a choice and a row are handles), by path (`ast::Span`).
+ValueTypes: fn [ModDef] -> (Text ==> Bool)
+fn ValueTypes defs = Fold defs, {}, \|acc, d| Fold d.items, acc, \|a, it| match it:
+    ItType t: match t.shape:
+        ShapeChoice: a
+        otherwise: Insert a, "{d.name}::{t.name}", True
+    ItTag t: Insert a, "{d.name}::{t.name}", True
+    otherwise: a
+
+# The modules whose value types an item's own type holds by value.
+ItemHeld: fn [Text], (Text ==> Bool), Text, Item -> [Text]
+fn ItemHeld names, valueTys, home, it = match it:
+    ItType t: Fold t.cases, [[]], \|acc, c| Fold c.fields, acc, \|a, ((ignore, ft))| UnionTexts a, (HeldIn names, valueTys, home, ft)
+    ItTag t: Fold t.fields, [[]], \|acc, ((ignore, ignore, ft))| UnionTexts acc, (HeldIn names, valueTys, home, ft)
+    ItRow r: Fold r.cases, [[]], \|acc, ((ignore, sp))| UnionTexts acc, (HeldIn names, valueTys, home, (OutNamed sp, [[]]))
+    otherwise: [[]]
+
+# The modules of the value types a type holds by value: itself, an option's, a result's,
+# a tuple's parts', a cell's and an `Rc`'s (which a target whose choices are handles holds
+# as the value itself), and a named type's arguments (which it may hold).
+HeldIn: fn [Text], (Text ==> Bool), Text, OutTy -> [Text]
+fn HeldIn names, valueTys, home, t = match t:
+    OutNamed n, args:
+        let p = PathFrom names, home, n
+        let own = if HasKey valueTys, p: [[(ParentOf p)]] else: [[]]
+        Fold args, own, \|acc, a| UnionTexts acc, (HeldIn names, valueTys, home, a)
+    OutOpt i: HeldIn names, valueTys, home, i
+    OutRes i: HeldIn names, valueTys, home, i
+    OutCell i: HeldIn names, valueTys, home, i
+    OutRc i: HeldIn names, valueTys, home, i
+    OutTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (HeldIn names, valueTys, home, a)
+    otherwise: [[]]
+
+# The modules of every type a type names, however it holds them.
+NamedIn: fn [Text], Text, OutTy -> [Text]
+fn NamedIn names, home, t = match t:
+    OutNamed n, args:
+        let p = PathFrom names, home, n
+        let own = if HasText names, (ParentOf p): [[(ParentOf p)]] else: [[]]
+        Fold args, own, \|acc, a| UnionTexts acc, (NamedIn names, home, a)
+    OutOpt i: NamedIn names, home, i
+    OutRes i: NamedIn names, home, i
+    OutCell i: NamedIn names, home, i
+    OutArray i: NamedIn names, home, i
+    OutRc i: NamedIn names, home, i
+    OutEvent i: NamedIn names, home, i
+    OutDyn i: NamedIn names, home, i
+    OutMap k, v: UnionTexts (NamedIn names, home, k), (NamedIn names, home, v)
+    OutTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (NamedIn names, home, a)
+    OutFn ps, r: Fold ps, (NamedIn names, home, r), \|acc, a| UnionTexts acc, (NamedIn names, home, a)
+    otherwise: [[]]
+
+# A type's path as the model writes it, made absolute (`crate::` dropped; a path that does
+# not start with a module is the home module's).
+PathFrom: fn [Text], Text, Text -> Text
+fn PathFrom names, home, n:
+    let q = DropPrefix n, "crate::"
+    if HasText names, (Or (Split q, "::")[0], ""): q else: if home == "": q else: "{home}::{q}"
+
+ParentOf: fn Text -> Text
+fn ParentOf p:
+    let segs = Split p, "::"
+    Join (Take segs, (Dec (Len segs))), "::"
+
+# Each module with the modules its value types are ordered with (`ModDef.typesWith`): the
+# ones it reaches by `complete` that reach it back, itself among them, in the program's
+# order.
+WithGroups: unbounded fn [ModDef] -> [ModDef]
+fn WithGroups defs:
+    let edges = Fold defs, {}, \|m, d| Insert m, d.name, d.complete
+    let reach = Fold defs, {}, \|m, d| Insert m, d.name, (ReachedBy edges, [[d.name]], [[]])
+    Each defs, \|d|
+        let mine = Or reach[d.name], [[]]
+        update d:
+            &_.typesWith <= Filter (Each defs, \|o| o.name), \|n| n == d.name or ((HasText mine, n) and (HasText (Or reach[n], [[]]), d.name))
+
+# The modules reached from these along the edges, these among them.
+ReachedBy: unbounded fn (Text ==> [Text]), [Text], [Text] -> [Text]
+fn ReachedBy edges, todo, seen = match todo[0]:
+    nil: seen
+    ? m: if HasText seen, m: ReachedBy edges, (Drop todo, 1), seen else: ReachedBy edges, (Append (Drop todo, 1), (Or edges[m], [[]])), (Push seen, m)
 
 # The modules a program needs: its own files', and the modules they use or whose families
 # they emit, followed (the prelude's are emitted only when reached).
@@ -6090,7 +6241,7 @@ fn ModDefOf lx0, m, roots, info, mods:
     let traits = Fold (Values lx.g.traits), [[]], \|acc, tr| if tr.home == m: Push acc, (ItTrait (TraitDefOf lx, tr)) else: acc
     let impls = Fold (Values lx.g.impls), [[]], \|acc, ims| Fold ims, acc, \|a, im| if im.home == m and not im.derived: Push a, (ItImpl (ImplDefOf (InModule lx, im.file, m), im)) else: a
     let uses = Filter (Each mods, \|o| RustModName o), \|o| o != (RustModName m)
-    ModDef(name=(RustModName m), prism=m, path=path, uses=uses, items=(Append (Append (Append (Append types, tags), traits), impls), defs))
+    ModDef(name=(RustModName m), prism=m, path=path, uses=uses, complete=[[]], declared=[[]], typesWith=[[]], items=(Append (Append (Append (Append types, tags), traits), impls), defs))
 
 # A definition's items: a function (and its job when `@Run` cycles it), a node for a root
 # widget, a getter for a `let`.
