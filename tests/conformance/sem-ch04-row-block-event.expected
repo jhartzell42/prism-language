@@ -1,0 +1,78 @@
+# Derived by hand from Semantics ch. 4 (a row reads its block's names; a hold over an event moves the tick it fires) and ch. 7 (a `for`'s event result fires the tick a row's fires): a click on `go` moves each row's `$c` and fires the rows' results in its own tick; the row's own button fires only its own result.
+test go_once
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/["a"]/0: Ui.Label(text="row 0")
+    1/["a"]/1: Ui.Button(label="row button")
+    2: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/["a"]/0: Ui.Label(text="row 1")
+    2: Ui.Label(text="1")
+
+tick 2
+
+tick 3
+  in:
+    1/["a"]/1: click
+  changed:
+    2: Ui.Label(text="2")
+
+tick 4
+
+test go_alone
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/["a"]/0: Ui.Label(text="row 0")
+    2: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/["a"]/0: Ui.Label(text="row 1")
+    2: Ui.Label(text="1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1/["a"]/0: Ui.Label(text="row 2")
+    2: Ui.Label(text="2")
+
+test go_nested
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/["a"]/0: Ui.Button(label="outer")
+    1/["a"]/1: Ui.Label(text="outer 0")
+    1/["a"]/2/["x"]/0: Ui.Button(label="inner")
+    1/["a"]/2/["x"]/1: Ui.Label(text="inner 0")
+    2: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/["a"]/2/["x"]/1: Ui.Label(text="inner 1")
+    2: Ui.Label(text="1")
+
+tick 2
+  in:
+    1/["a"]/2/["x"]/0: click
+  changed:
+    2: Ui.Label(text="2")
+
+tick 3
+  in:
+    1/["a"]/0: click
+  changed:
+    1/["a"]/1: Ui.Label(text="outer 1")
