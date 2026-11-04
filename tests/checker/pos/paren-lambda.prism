@@ -1,5 +1,5 @@
 # A parenthesized lambda at a function parameter is the lambda: it keeps its parameters
-# and takes the parameter's type, as the bare one does.
+# and takes the parameter's type and color, as the bare one does (`pos/paren-lambda.colors`).
 Twice: fn Nat, (fn Nat -> Nat), (fn Nat -> Nat) -> Nat
 fn Twice x, F, G = G (F x)
 

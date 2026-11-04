@@ -605,9 +605,7 @@ fn NoteMethodUse st, v, span:
 FoldApp: unbounded fn Env, St, Ty, [Arg], Range -> ((Ty, St))
 fn FoldApp env, st, t, args, span:
     let lambdaArity = match args[2]:
-        ? a: match a.value.kind:
-            ELambda (? ps), ignore: Len ps
-            otherwise: 2
+        ? a: LambdaArity a.value
         nil: 2
     if lambdaArity == 3:
         match Walk st, t:
@@ -880,16 +878,30 @@ fn TagField env, st, tagName, field, ft, a:
 # Lambdas
 # ---------------------------------------------------------------------------------------
 
+# A lambda argument's parameter count, through parentheses; 2 for anything else.
+LambdaArity: fn Expr -> Nat
+fn LambdaArity e = match e.kind:
+    ELambda (? ps), ignore: Len ps
+    EGroup x: LambdaArity x
+    otherwise: 2
+
 # A lambda's marks declare its parameters' layers (ch. 5); against an expected function
 # type its parameters take the expected types. Its color is its body's join.
+# A parenthesized lambda (`IsLambda` sees through the group) is the lambda inside.
 InferLambda: unbounded fn Env, St, Expr, ?Ty -> ((Ty, St))
-fn InferLambda env, st, e, ?expected:
+fn InferLambda env, st, e, ?expected = match e.kind:
+    EGroup x:
+        let ((t, st2)) = InferLambda env, st, x, ?expected
+        ((t, (NoteTy st2, e.span, t)))
+    otherwise: InferBareLambda env, st, e, ?expected
+
+InferBareLambda: unbounded fn Env, St, Expr, ?Ty -> ((Ty, St))
+fn InferBareLambda env, st, e, ?expected:
     let ((params, body)) = match e.kind:
         ELambda (? ps), b: ((ps, b))
         ELambda nil, b: (([[TopicPat e.span]], b))
         ETopicField f: (([[TopicPat e.span]], LbExpr (TopicFieldExpr e.span, f)))
         ETopicIndex x: (([[TopicPat e.span]], LbExpr (TopicIndexExpr e.span, x)))
-        EGroup x: (([[]], LbExpr x))
         otherwise: (([[]], LbExpr e))
     let ((expParams, ?expRes, st0)) = match ?expected:
         ? t: match Walk st, t:
