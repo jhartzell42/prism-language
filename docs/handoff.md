@@ -7,16 +7,20 @@ empty.*
 
 ## Where things are
 
-- **Branch `claude-self-hosting`** is green at `f8ac5b5`: `make test` (cargo, both
-  compiled suites, the checker harness, the driver test, `make -C runtime/cpp test`, the
-  bootstrap).
-- **Branch `claude-cpp-headers-wip`** (`61ba1b2`) holds per-module C++ headers, half-done
-  and never compiled. Not for merge; continue it (below).
+- **Branch `claude-self-hosting`** is green on macOS (an M2 Pro): the Rust and the C++
+  fixed points, the C++ prismc emitting the Rust prismc's Rust byte for byte, both
+  compiled suites, the checker, the driver tests, the C++ runtime's and Worlds' tests
+  (ASan+UBSan under Homebrew clang; Apple clang's hangs at startup on macOS 26).
+- **Branch `claude-headers-rebased`** (a worktree at `../prism-headers`) is
+  `claude-cpp-headers-wip` cherry-picked onto this branch and merged with the canvas
+  World's template; it type-checks and has never been built (queue item 1).
 - **The books** are `jhartzell42/prism-notes` at `e66aba7` or later. The Semantics
   RULINGS file ends with round 4 (TX, Text).
-- **The bootstrap.** `bootstrap/prismc-rust.tar.xz` is the Rust seed.
-  `bootstrap/bootstrap-cpp.sh` and `make bootstrap-cpp` reach the C++ fixed point, but
-  the C++ seed `bootstrap/prismc-cpp.tar.xz` is not written yet (Jimmy wants both seeds).
+- **The bootstrap.** `bootstrap/prismc-rust.tar.xz` is the Rust seed, which predates
+  today's emitter changes. The C++ seed `bootstrap/prismc-cpp.tar.xz` is not written yet
+  (Jimmy wants both seeds; queue item 8).
+- **The benchmarks** are `bench/` (the GUI table, four ways) and `bench/compiler/` (Rust
+  against C++, each all one language); `RESULTS.md` beside each is the last run.
 - **No agents are running**, and no scheduled watchdogs remain.
 
 ## Measured so far
@@ -48,10 +52,7 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
 
 ## The order (Jimmy's)
 
-- **First, the GUI benchmark** (queue item 10) **and the bug fixes:**
-  - the installed prismc ignoring `--target cpp` silently;
-  - the C++ template's missing canvas World;
-  - the stale canvas README;
+- **First, the bug fixes** (the GUI benchmark is done):
   - gaps LP, LW, DM and SR;
   - **a `for` row that reacts to its block's event reacts to the wrong event**
     (`docs/bugs/for-row-block-event.md`): lowering resolves the block's event by index in
@@ -71,26 +72,19 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
   Failing test first for each bug.
 - **Then the queue below, items 1 to 9.** All the emitter changes go first, then one
   fixed point at the end.
-- **Last, regular expressions:** after everything else, designed in conversation with
-  Jimmy before any code.
+- **Last, regular expressions:** after everything else. Jimmy (4 November): the design
+  below is done and good; write the books, then implement, without a design round.
 
 ## On macOS
 
-- **The canvas World in Rust** (`worlds/canvas`) runs natively; chess runs under it.
-- **`worlds/canvas-cpp` needs a macOS `src/app.cpp`:** Cocoa (an `NSWindow` whose view
-  draws the cairo surface as a `CGImage`, the loop on the main thread) or SDL2. `brew
-  install cairo freetype pkg-config`.
-- **The Xvfb smoke tests and the XTest robot are Linux-only.** On macOS, drive the
-  benchmark through `Hooks::settled` and synthetic presses, not a robot.
-- **GTK:** `brew install gtk+3` (it runs on Quartz).
-- **Cuis:** clone `Cuis-Smalltalk/Cuis-Smalltalk-Dev` for the image, and get the Cog VM
-  for macOS. On a Mac the OpenSmalltalk release binaries may be reachable; otherwise
-  build `opensmalltalk-vm`'s macOS Cog Spur build from source.
-- **Timings:** quit everything else, plug in power, and run each timing several times.
-  Record the machine (chip, cores, memory) in `bench/RESULTS.md`.
-- **Container-only tools** (`valgrind`, `xvfb-run`) may be missing. For instruction
-  counts on macOS, use `valgrind` if Homebrew has it for the chip, else Instruments or
-  `perf`-like sampling, and say which.
+- **Both canvas Worlds run natively:** `worlds/canvas` (winit) and `worlds/canvas-cpp`
+  (`src/app_macos.mm`, Cocoa). Each has `Hooks` and a smoke test driven through them
+  (`hooks_smoke`, `macos_smoke`); the Xvfb tests and the XTest robot are Linux-only.
+- **Homebrew:** `cairo freetype pkg-config gtk+3 llvm` (llvm for the sanitizer run).
+- **Timings:** quit everything else, plug in power; `bench/run.sh` and
+  `bench/compiler/run.sh` record the machine and the load average.
+- **Instruction counts** come from macOS's `time -l` ("instructions retired"); valgrind
+  does not run on arm64 macOS.
 
 ## The queue, in order
 
@@ -184,51 +178,15 @@ All the emitter changes go first; then one fixed point at the end.
    - Jimmy: "that last data point—which amounts to, which compiled code is faster—is
      key."
    - If -O3 runs out of memory on a file, say which and how much.
-10. **The GUI benchmark** (Jimmy's choices: the C++ canvas World, the js-framework-benchmark
-    operations, Cuis Smalltalk on the Cog JIT VM built from source, builds before
-    timings).
-    - Done: `worlds/canvas-cpp` (`f8ac5b5`).
-      - Xlib with MIT-SHM, cairo and FreeType; the Rust World's DejaVu Sans; the Rust
-        crate's unit tests; the Xvfb smoke test.
-      - Chess compiled to C++ plays e2–e4 and exits 0:
-        `PRISMC=target/bootstrap/next-cpp/prismc make -C worlds/canvas-cpp chess-smoke`.
-    - On macOS, only `worlds/canvas-cpp/src/app.cpp` (the Xlib loop and painting) needs
-      replacing: Cocoa (an `NSWindow` whose view draws the cairo surface as a
-      `CGImage`) or SDL2. Cairo and FreeType come from Homebrew. The robot and the smoke
-      tests are X11-only.
-    - The emitted C++ has no canvas World: `CppRunRoot` in `prismc/templates/cpp.prism`
-      prints "the C++ target has no canvas World". The port works around it with `make
-      program PROG=DIR ROOT=MainProgram`, which renames the emitted `main`. Fix it in the
-      template: the canvas branch calls `prism_world_canvas::run<P>()`, and the emitted
-      Makefile links `worlds/canvas-cpp` for a canvas root.
-    - `bench/` itself, the GTK app (C; `libgtk-3-dev`), Cuis with Morphic, the Cog VM
-      build and `bench/run.sh` with `bench/RESULTS.md` are not started. The design the
-      agent planned:
-      - each app runs its own script of operations;
-      - Prism presses at a button's clickable centre and stops the clock at the canvas
-        World's `Hooks::settled`;
-      - GTK calls `gtk_button_clicked` and waits for the frame clock's after-paint, then
-        a display sync;
-      - Cuis performs the button's action, then forces a World cycle;
-      - the Prism build uses -O2, as `./prism run --target cpp` does;
-      - the timing is median and spread over N runs, plus peak memory.
-    - Expected cost: the window library recomputes the whole layout as pure functions on
-      every change, so 10,000 rows will be slow; the benchmark measures it.
-    - Timings need a quiet machine: on macOS that is the whole machine, with nothing
-      else building.
-    - Doubt: a display without MIT-SHM is painted through `XPutImage` with a message on
-      stderr. Jimmy may want a hard error there instead.
+## Regular expressions as a primitive (Jimmy's direction; the design is settled)
 
-## Regular expressions as a primitive (Jimmy's direction, to design)
-
-After everything else, and in conversation with Jimmy: propose, wait for his go, then
-write the books, then implement.
+Jimmy (4 November): implement it as below, the `%` literals included; the books first
+(Semantics ch. 2, Appendix B, Type System), then the code, failing tests first.
 
 Jimmy: Prism is a general-purpose language with systems-programming uses, and a lexer
 written character by character is "shooting yourself in the foot". Regular expressions
 belong in the runtime beside `Text`, as a primitive, so that prismc's lexer (and every
-program's) shrinks. Write the design before implementing; the books need it (Semantics
-ch. 2 for the literals, Appendix B for the prelude, Type System for the types).
+program's) shrinks.
 
 - **Literals.** A pattern is a `Regex`; a pattern and a replacement is a
   `RegexReplacement` (names to settle), Perl and sed style. Two spellings considered:
@@ -277,18 +235,6 @@ ch. 2 for the literals, Appendix B for the prelude, Type System for the types).
 
 ## Smaller items
 
-- **The installed prismc ignores `--target cpp` silently.** `./prism compile --target
-  cpp examples/chess -o target/x` with the 3 November `target/bootstrap/prismc` exits 0
-  and writes a Rust crate. prismc must refuse an unknown option, and `./prism` should
-  check that the output is the target asked for. Failing test first. Re-installing (item
-  8) hides it but does not fix it.
-- **Dead code:** 10 top-level definitions are never referenced. Delete them, and add a
-  checker warning for unused top-level definitions so this cannot build up again:
-  - `check-env.prism`: `IsIntType`, `TypeSpan`;
-  - `check-passes.prism`: `ParamRels`;
-  - `check-types.prism`: `FreeRowVars`;
-  - `emit_cpp.prism`: `ArmConds`;
-  - `lower.prism`: `?AppAt`, `HeightOf`, `HostField`, `HeldTy`, `PortDef`.
 - **Lexer simplifications** (ideas Jimmy asked about; "don't do it just noodle"):
   - walk with cursors (part of item 6);
   - layout as a separate pass over the token stream, the way Haskell's layout algorithm
@@ -300,8 +246,6 @@ ch. 2 for the literals, Appendix B for the prelude, Type System for the types).
   - the Rust-specific bookkeeping in lowering's shared model (clones, borrows, `Rc`),
     which may belong in the Rust printer;
   - the three hosting forms, which may be one form with two thin wrappers.
-- **Stale doc:** `worlds/canvas/README.md` says the World "serves the interpreter
-  (prism_zero)". There is no interpreter.
 - **C++ build noise:** emitted chess C++ gives many g++ `-Wmaybe-uninitialized` warnings
   at -O1 (e.g. a `FrameSpec` copy in `lay_frame`). The runtime test silences a false one
   under ASan (`test_lang.cpp`).
