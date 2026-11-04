@@ -20,6 +20,7 @@ fn CppMakefile name, runtime, sources, canvas = inline_text <cpp>
 # Emitted by prismc. Edit the Prism sources, not this file.
 #   make                   the program, with $(CXX) (g++ by default)
 #   make CXX=clang++
+.DEFAULT_GOAL := {{name}}
 RT := {{runtime}}/runtime/cpp
 WORLD := {{runtime}}/worlds/cli-cpp
 CXX ?= g++
