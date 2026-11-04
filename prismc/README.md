@@ -1486,6 +1486,10 @@ ruling taken (Claude's).
   test starts a cycle), so `sem-ch07-while-nested` costs what a top-level loop does (5 ticks for
   3 turns under an `if`, 10 for 2 by 2). *Not yet:* an unshrinking `while` in a `match` or
   a `for` of the block, which still turns within the cycle.
+- **FA A field's `.` or `->`** is chosen by the receiver's type where `?Pointer` knows it,
+  and only otherwise by its name, `->` when any node has a member of that name
+  (`cp.members`). Where the type is not known, a value's field named as some node's
+  member is still spelled through a pointer.
 - **SH Shadowed runtime names.** A program type, case or node named like a name the
   emitted code writes bare (`prism_rtl`'s `Row`, `Node`, `Hold`, `Cx`, `Pod`, `Path`...,
   and Rust's `Rc`, `Cell`, `Vec`...) takes a `_` in both targets (`lower.prism`'s

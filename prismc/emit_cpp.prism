@@ -427,9 +427,12 @@ CppField: unbounded fn Cp, Ex, Text -> Text
 fn CppField cp, XSelf, f = "this->{FieldId f}"
 fn CppField cp, r, f:
     let name = if IsDigits f: "a{f}" else: FieldId f
-    let through = match cp.members[f]:
-        ? ignore: "->"
-        nil: "."
+    # by the receiver's type where it is known, else by whether some node has the member
+    let through = match ?Pointer cp, r:
+        ? b: if b: "->" else: "."
+        nil: match cp.members[f]:
+            ? ignore: "->"
+            nil: "."
     "{CppTight cp, r}{through}{name}"
 
 IsDigits: fn Text -> Bool

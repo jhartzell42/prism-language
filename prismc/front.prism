@@ -118,11 +118,11 @@ fn BadOptions args, flags, valued:
         else: ((acc, ""))
     if owed == "": bad else: AddText bad, "{owed} takes a value"
 
-# Gives up with `message`, as a refused program does.
+# Gives up with `why`, as a refused program does.
 @Refuse: fn Text -> @unit
-fn @Refuse message:
+fn @Refuse why:
     !started <- @started
-    let !~gaveUp: !~unit = Error(kind=Prismc.Refused, message=message) on !started
+    let !~gaveUp: !~unit = Error(kind=Prismc.Refused, message=why) on !started
     ignore <- Prelude.Unwrap(value=!~gaveUp)
 
 # The arguments that are neither options nor the values options take.

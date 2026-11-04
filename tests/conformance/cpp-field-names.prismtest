@@ -1,0 +1,4 @@
+# A record's field named as a node's member: declarations of cpp-field-names.prism.
+
+test fields_and_members_apart, @notes:
+    build

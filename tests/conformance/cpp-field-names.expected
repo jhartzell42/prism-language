@@ -1,0 +1,7 @@
+# Derived by hand: the widget function's label (its place is the call's own, 0) shows its argument, the second label the note.
+test fields_and_members_apart
+
+tick 0
+  added:
+    0: Ui.Label(text="hello")
+    1: Ui.Label(text="hi x2")
