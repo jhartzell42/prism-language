@@ -1,8 +1,9 @@
 # Emission for C++: the model lowering decided (lower.prism) spelled as a C++20 program over
 # `runtime/cpp` (`prism_rtl` in C++, whose README maps every Rust type of the library to its
 # C++ form) through the templates (templates/cpp.prism, templates/cpp_prelude.prism):
-# `Makefile`, `src/crate.hpp` (every declaration, in an order C++ accepts), `src/main.cpp`
-# and one `src/NAME.cpp` per Prism module. As in emit.prism, nothing here decides (K9).
+# `Makefile`, three headers per Prism module (`src/NAME.decl.hpp`, `src/NAME.types.hpp`,
+# `src/NAME.hpp`) and two for `Elem` and `Answer`, in the order C++ accepts, `src/main.cpp`
+# and one `src/NAME.cpp` (or several) per module. As in emit.prism, nothing here decides (K9).
 #
 # The model names the Rust runtime's operations (`Rc::new`, `borrow`, `upgrade`); this
 # printer maps each to its C++ spelling through the tables `CallName` and `MethodForm`, and
@@ -1267,7 +1268,7 @@ FnDefinition: unbounded fn Cp, FnDef -> Text
 fn FnDefinition cp, f = CppFunction (CppDoc f.doc), (FnSignature cp, f), (CppBody cp, f.body)
 
 # The parts of a module's items: declarations ahead of the definitions, in the order C++
-# needs (the header's sections, `Header` below).
+# needs (the headers' sections, `ModuleFiles` below).
 type Parts = record:
     forward: [Text]
     handles: [Text]
@@ -1321,7 +1322,8 @@ fn ItemParts cp, it = match it:
 
 FnParts: unbounded fn Cp, FnDef -> Parts
 fn FnParts cp, f:
-    if (Len f.generics) > 0: GenericOnly [[(FnDefinition cp, f)]]
+    if (Len f.generics) > 0: update (GenericOnly [[(FnDefinition cp, f)]]):
+        &_.protos <= [["{FnSignature cp, f};"]]
     else: ProtosDefs [["{FnSignature cp, f};"]], [[(FnDefinition cp, f)]]
 
 # A doc comment, `///` per line.
@@ -1533,7 +1535,7 @@ fn JobParts cp, j:
     let cycle = CppFunction "", "{gens}prism_rtl::Turn<{ret}> {head}::cycle() const", (CppBody jcp, j.body)
     let start = CppFunction (CppDoc "`Start {j.name}, x`: what the function value is when passed to `@Run`."), "{gens}prism_rtl::JobRef<{ret}> {j.start}({params})", "return std::make_shared<{head}>({Join (Each j.fields, \|((n, ignore))| FieldId n), ", "});"
     let generic = (Len j.generics) > 0
-    Parts(forward=[["{gens}struct {j.name};"]], handles=[[]], values=[[]], cases=[[]], protos=(if generic: [[]] else: [["prism_rtl::JobRef<{ret}> {j.start}({params});"]]), classes=[[decl]], generic=(if generic: [[cycle, start]] else: [[]]), defs=(if generic: [[]] else: [[cycle, start]]))
+    Parts(forward=[["{gens}struct {j.name};"]], handles=[[]], values=[[]], cases=[[]], protos=[["{gens}prism_rtl::JobRef<{ret}> {j.start}({params});"]], classes=[[decl]], generic=(if generic: [[cycle, start]] else: [[]]), defs=(if generic: [[]] else: [[cycle, start]]))
 
 # A program's own trait: its methods are functions of a namespace named after it, each impl
 # an overload (a default's body a template over `Self`).
@@ -1711,9 +1713,7 @@ fn EmitCpp model, runtime, scripts:
     let elem = RowParts crate, "", model.elem
     let answer = AnswerParts crate, model.answer
     let mods = Each model.mods, \|m| ModuleParts cp, m
-    let all = Fold mods, (JoinParts elem, answer), \|acc, p| JoinParts acc, p
     let programs = Join (Each (AllProgramsCpp model), \|p| ProgramCpp crate, p, (NodeFallibleCpp model, p.node)), "\n\n"
-    let header = Header model.name, all, programs
     let regs = Concat (Each model.programs, \|p| "\n.program<{p.name}>(\"{p.prism}\")")
     let checks = Concat (Each model.checks, \|c| "\n.check(\"{c.name}\", [] \{ return std::vector<Result<Pod>>\{{Join (Each c.lines, \|l| CppExpr crate, l), ", "}\}; \})")
     let scriptList = Join (Each scripts, \|s| "\"{Escape s}\","), "\n"
@@ -1723,14 +1723,24 @@ fn EmitCpp model, runtime, scripts:
     let runRoot = match model.?root:
         ? r: CppRunRoot r.name
         nil: CppNoRoot model.name
-    let main = CppMain model.name, regs, checks, scriptList, world, runRoot, (Join (Concat2 (Each [[elem, answer]], \|p| p.defs)), "\n\n")
+    let both = JoinParts elem, answer
+    let elemDecl = CppElemDecl (Includes "decl", (Append model.elemComplete, model.elemDeclared)), (Join both.forward, "\n\n"), (Join both.handles, "\n\n"), (CppPreludeRows "")
+    let elemTypes = CppElemTypes (Join (Filter [[(Includes "types", model.elemComplete), (Includes "decl", model.elemDeclared)]], \|t| t != ""), "\n"), (Join both.cases, "\n\n")
+    let refusals = Concat (Each model.cycles, \|c| "compile_error!(\"{loweringRefusal}a cycle of modules each holding the next one's types by value, whose headers C++ cannot order: {c}\");\n")
+    let mainIncludes = Join (Append [["#include \"elem.types.hpp\""]], (Each model.mods, \|m| "#include \"{m.name}.hpp\"")), "\n"
+    let main = CppMain model.name, "{mainIncludes}\n{refusals}", regs, checks, scriptList, world, runRoot, (Join (Concat2 (Each [[elem, answer]], \|p| p.defs)), "\n\n"), programs
     let perModule = Each (Range0 (Len model.mods)), \|i|
-        let m = Or model.mods[i], (ModDef(name="", prism="", path="", uses=[[]], items=[[]]))
+        let m = Or model.mods[i], (ModDef(name="", prism="", path="", uses=[[]], complete=[[]], declared=[[]], items=[[]]))
         let p = Or mods[i], noParts
-        ModuleFiles m, (Chunks p.defs)
+        ModuleFiles m, p
     let files = Fold perModule, [[]], \|acc, fs| Append acc, fs
-    let sources = Join (Each files, \|((f, ignore))| f), " "
-    Append [[(("Makefile", (CppMakefile model.name, runtime, sources))), (("src/crate.hpp", header)), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], files
+    let sources = Join (Filter (Each files, \|((f, ignore))| f), \|f| Contains f, ".cpp"), " "
+    Append [[(("Makefile", (CppMakefile model.name, runtime, sources))), (("src/elem.decl.hpp", elemDecl)), (("src/elem.types.hpp", elemTypes)), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], files
+
+# `#include` lines for these modules' headers of one layer (`decl`, `types`, or `` for the
+# whole header).
+Includes: fn Text, [Text] -> Text
+fn Includes layer, ms = Join (Each ms, \|m| if layer == "": "#include \"{m}.hpp\"" else: "#include \"{m}.{layer}.hpp\""), "\n"
 
 # A module's definitions in files of about `chunkSize` characters each, so that no file
 # needs more memory to compile than a small machine has (`lower.cpp` alone would): the
@@ -1744,10 +1754,21 @@ fn Chunks defs:
 
 let chunkSize = 250000
 
-ModuleFiles: fn ModDef, [ [Text] ] -> [((Text, Text))]
-fn ModuleFiles m, chunks:
+ModuleFiles: unbounded fn ModDef, Parts -> [((Text, Text))]
+fn ModuleFiles m, p:
     let title = if m.prism == "": "The root module" else: "The module `{m.prism}`"
-    Each (Range0 (Len chunks)), \|k| (((ChunkFile m.name, k), (CppModule title, m.path, m.name, (Join (Or chunks[k], [[]]), "\n\n"))))
+    let needed = Append m.complete, m.declared
+    let decl = CppDeclHeader title, "", (Join p.forward, "\n\n"), (Join p.handles, "\n\n")
+    let typeIncludes = Join (Filter [[("#include \"{m.name}.decl.hpp\"\n#include \"elem.decl.hpp\""), (Includes "decl", m.declared), (Includes "types", m.complete)]], \|t| t != ""), "\n"
+    let values = Join (OrderValues p.values, (Fold p.values, {}, \|acc, v| Insert acc, v.path, False), [[]]), "\n\n"
+    let types = CppTypesHeader title, typeIncludes, values, (Join p.cases, "\n\n")
+    let headIncludes = Join (Filter [[("#include \"{m.name}.types.hpp\"\n#include \"elem.types.hpp\""), (Includes "types", needed)]], \|t| t != ""), "\n"
+    let genericIncludes = if (Len p.generic) == 0 or (Len needed) == 0: "" else: "\n{Includes "", needed}"
+    let head = CppModHeader title, headIncludes, (Join p.protos, "\n"), (Join p.classes, "\n\n"), genericIncludes, (Join p.generic, "\n\n")
+    let bodyIncludes = Join (Filter [[("#include \"{m.name}.hpp\""), (Includes "", needed)]], \|t| t != ""), "\n"
+    let chunks = Chunks p.defs
+    let sources = Each (Range0 (Len chunks)), \|k| (((ChunkFile m.name, k), (CppModule title, m.path, m.name, bodyIncludes, (Join (Or chunks[k], [[]]), "\n\n"))))
+    Append [[(("src/{m.name}.decl.hpp", decl)), (("src/{m.name}.types.hpp", types)), (("src/{m.name}.hpp", head))]], sources
 
 ChunkFile: fn Text, Nat -> Text
 fn ChunkFile m, k = if k == 0: "src/{m}.cpp" else: "src/{m}_{k + 1}.cpp"
@@ -1757,13 +1778,6 @@ AllProgramsCpp: fn Model -> [ProgDef]
 fn AllProgramsCpp model = match model.?root:
     ? r: if Fold model.programs, False, \|f, p| f or p.name == r.name: model.programs else: Push model.programs, r
     nil: model.programs
-
-# `crate.hpp`: every declaration of the program, in the order C++ needs: the forward
-# declarations, the choices' handles, the value types (a record's fields are complete
-# before it), the choices' cases, the prelude's rows, the functions' prototypes, the nodes
-# and jobs, the programs, and the templates' definitions.
-Header: unbounded fn Text, Parts, Text -> Text
-fn Header name, all, programs = CppHeader name, (Join all.forward, "\n\n"), (Join all.handles, "\n\n"), (Join (OrderValues all.values, (Fold all.values, {}, \|m, v| Insert m, v.path, False), [[]]), "\n\n"), (Join all.cases, "\n\n"), (CppPreludeRows ""), (Join all.protos, "\n"), (Join all.classes, "\n\n"), programs, (Join all.generic, "\n\n")
 
 # The value types in an order C++ accepts: each after the types it holds by value, rounds
 # of the ones whose types are all declared. A cycle of records by value (which `Rc` breaks

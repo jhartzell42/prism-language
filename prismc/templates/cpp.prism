@@ -36,9 +36,11 @@ build/cli.o: $(WORLD)/src/cli.cpp $(WORLD)/include/prism_world_cli/cli.hpp
 	@mkdir -p build
 	$(CXX) $(FLAGS) -c $< -o $@
 
-build/%.o: src/%.cpp src/crate.hpp src/prelude.hpp
+build/%.o: src/%.cpp
 	@mkdir -p build
-	$(CXX) $(FLAGS) -c $< -o $@
+	$(CXX) $(FLAGS) -MMD -MP -c $< -o $@
+
+-include $(OBJS:.o=.d)
 
 $(LIB): FORCE
 	@$(MAKE) -s -C $(RT) lib CXX=$(CXX) CONFIG=$(CONFIG) OPT="$(OPT)"
@@ -47,38 +49,94 @@ FORCE:
 .PHONY: FORCE
 </cpp>
 
-# `crate.hpp`: every declaration, in the order C++ needs.
-CppHeader: fn Text, Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
-fn CppHeader name, forward, handles, values, cases, rows, protos, classes, programs, generic = inline_text <cpp>
-// The program `{{name}}`, emitted by prismc from Prism (docs/backend.md): C++ over
-// `prism_rtl` (runtime/cpp), run under the Test World. Edit the Prism sources, not these
-// files. Every declaration of the program is here, in the order C++ needs them; each
-// module's definitions are in its own `.cpp`.
+# A module's headers, three layers (prismc/README.md, pick MH): `NAME.decl.hpp`, its types
+# and nodes declared and its choices' handles; `NAME.types.hpp`, its records (each after
+# the types it holds) and its choices' cases; `NAME.hpp`, its functions' prototypes, its
+# nodes and jobs, and the definitions of its generic functions and types.
+CppDeclHeader: fn Text, Text, Text, Text -> Text
+fn CppDeclHeader title, includes, forward, handles = inline_text <cpp>
+// {{title}}: its types, nodes and jobs declared, and its choices' handles, emitted by
+// prismc (docs/backend.md). Edit the Prism source, not this file.
 #pragma once
 
 #include "prelude.hpp"
+{{includes}}
 
 namespace crate {
 
 using namespace prelude;
 
-// ---- The types, the nodes and the jobs, declared --------------------------------------
-
 {{forward}}
-
-// ---- The choices: each a handle on its cases ------------------------------------------
 
 {{handles}}
 
-// ---- The records, tags and newtypes: each after the types it holds --------------------
+}  // namespace crate
+</cpp>
+
+CppTypesHeader: fn Text, Text, Text, Text -> Text
+fn CppTypesHeader title, includes, values, cases = inline_text <cpp>
+// {{title}}: its records, tags and newtypes (each after the types it holds) and its
+// choices' cases, emitted by prismc (docs/backend.md). Edit the Prism source, not this file.
+#pragma once
+
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
 
 {{values}}
 
-// ---- The choices' cases ---------------------------------------------------------------
-
 {{cases}}
 
-// ---- What the prelude says of the program's rows --------------------------------------
+}  // namespace crate
+</cpp>
+
+CppModHeader: fn Text, Text, Text, Text, Text, Text -> Text
+fn CppModHeader title, includes, protos, classes, genericIncludes, generic = inline_text <cpp>
+// {{title}}: its functions' prototypes, its nodes and jobs, and its generic functions'
+// and types' definitions, emitted by prismc (docs/backend.md). Edit the Prism source, not
+// this file.
+#pragma once
+
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{protos}}
+
+{{classes}}
+
+}  // namespace crate
+{{genericIncludes}}
+
+namespace crate {
+
+{{generic}}
+
+}  // namespace crate
+</cpp>
+
+# `elem.decl.hpp`: `Elem` and `Answer` declared, their handles, and what the prelude says of
+# the program's rows; `elem.types.hpp`: their cases.
+CppElemDecl: fn Text, Text, Text, Text -> Text
+fn CppElemDecl includes, forward, handles, rows = inline_text <cpp>
+// The program's `Elem` and `Answer` declared, their handles, and the prelude's rows,
+// emitted by prismc (docs/backend.md). Edit the Prism sources, not this file.
+#pragma once
+
+#include "prelude.hpp"
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{forward}}
+
+{{handles}}
 
 namespace prelude {
 
@@ -86,31 +144,33 @@ namespace prelude {
 
 }  // namespace prelude
 
-// ---- The functions ---------------------------------------------------------------------
+}  // namespace crate
+</cpp>
 
-{{protos}}
+CppElemTypes: fn Text, Text -> Text
+fn CppElemTypes includes, cases = inline_text <cpp>
+// The cases of the program's `Elem` and `Answer`, emitted by prismc (docs/backend.md).
+// Edit the Prism sources, not this file.
+#pragma once
 
-// ---- The nodes and the jobs ------------------------------------------------------------
+#include "elem.decl.hpp"
+{{includes}}
 
-{{classes}}
+namespace crate {
 
-// ---- The programs ----------------------------------------------------------------------
+using namespace prelude;
 
-{{programs}}
-
-// ---- The definitions of the generic functions and types --------------------------------
-
-{{generic}}
+{{cases}}
 
 }  // namespace crate
 </cpp>
 
 # One Prism module's definitions.
-CppModule: fn Text, Text, Text, Text -> Text
-fn CppModule prism, path, ns, defs = inline_text <cpp>
+CppModule: fn Text, Text, Text, Text, Text -> Text
+fn CppModule prism, path, ns, includes, defs = inline_text <cpp>
 // {{prism}}, from `{{path}}`, emitted by prismc: its functions, its nodes' methods, its
 // types' printers (docs/backend.md). Edit the Prism source, not this file.
-#include "crate.hpp"
+{{includes}}
 
 namespace crate::{{ns}} {
 
@@ -121,15 +181,19 @@ namespace crate::{{ns}} {
 
 # `main.cpp`: the crate's own types' definitions, the Test World with every program and
 # compiled `check` block, and `main`, which picks the World.
-CppMain: fn Text, Text, Text, Text, Text, Text, Text -> Text
-fn CppMain name, registrations, checks, scripts, world, runRoot, crateDefs = inline_text <cpp>
+CppMain: fn Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn CppMain name, includes, registrations, checks, scripts, world, runRoot, crateDefs, programs = inline_text <cpp>
 // The program `{{name}}`, emitted by prismc from Prism (docs/backend.md): C++ over
 // `prism_rtl`, run under the Test World. Edit the Prism sources, not these files.
-#include "crate.hpp"
+{{includes}}
 
 namespace crate {
 
+using namespace prelude;
+
 {{crateDefs}}
+
+{{programs}}
 
 /// The Test World with every root a test names, and the compiled `check` blocks.
 TestWorld test_world() {
