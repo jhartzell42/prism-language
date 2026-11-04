@@ -3586,13 +3586,16 @@ fn JobClauses lx, clauses, names, ptys, pts:
 # the result, the code.
 type EvRef = record:
     node: Nat
+    # The node (`Wx.node`) whose graph `node` indexes: an event crosses into a row only
+    # through a port, so a reference used in any other node is a lowering bug, refused.
+    owner: Text
     pipe: unbounded fn Ex, (unbounded fn Ex -> [Do]) -> [Do]
 
 IdPipe: unbounded fn Ex, (unbounded fn Ex -> [Do]) -> [Do]
 fn IdPipe x, K = K x
 
-EvRefOf: fn Nat -> EvRef
-fn EvRefOf n = EvRef(node=n, pipe=IdPipe)
+EvRefOf: fn Wx, Nat -> EvRef
+fn EvRefOf wx, n = EvRef(node=n, owner=wx.node, pipe=IdPipe)
 
 # One node of the graph: its method, its value's type, what it is, and what each firing
 # does (`outs`, in page order). A combinator's `inputs` are its stamped fields.
@@ -3874,8 +3877,17 @@ fn AddGn wx, name, ty, kind, height:
 
 # An event reference given a consumer.
 Connect: fn Wx, EvRef, Sk -> Wx
-fn Connect wx, r, sink = update wx:
-    &_.gns <= Each &_.gns, \|n| if n.id == r.node: AddOut n, (Out(pipe=r.pipe, sink=sink)) else: n
+fn Connect wx, r, sink:
+    if r.owner != wx.node: Crossed wx, "an event of node `{r.owner}` (its graph node {r.node})"
+    else: update wx:
+        &_.gns <= Each &_.gns, \|n| if n.id == r.node: AddOut n, (Out(pipe=r.pipe, sink=sink)) else: n
+
+# An event reference used in a node other than its own: it crossed a node boundary without
+# a port, which is always a lowering bug (the index would name another node's event, or
+# none). Refused at the node's build, naming what crossed.
+Crossed: fn Wx, Text -> Wx
+fn Crossed wx, what = update wx:
+    &_.build <= Push &_.build, (DoExpr (Refusal "{what} read in node `{wx.node}` without a port (a lowering bug)"))
 
 AddOut: fn Gn, Out -> Gn
 fn AddOut n, o = update n:
@@ -3991,12 +4003,12 @@ fn PreBindName wx, benv, menv, n, how:
     if layer == LyEv or IsSwitched full:
         let et = OutTyOf lx, (Peel (Peel full))
         let ((id, wx2)) = AddGn wx1, rs, et, GnNamed, 0
-        let b = BnEv (EvRefOf id), t
+        let b = BnEv (EvRefOf wx2, id), t
         # Its value form (`!x` passed to a function, read by a supplier): a port the event
         # fires, made before the node so that a closure in the build can hold it.
         let pf = "{rs}_v_port"
         let pt = OutRc (OutPort et)
-        let wx3 = update (Connect wx2, (EvRefOf id), (SkPort "{rs}_v")):
+        let wx3 = update (Connect wx2, (EvRefOf wx2, id), (SkPort "{rs}_v")):
             &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall "Rc::new", [[(XCall "Port::new", [[]])]]))
             &_.fields <= Push &_.fields, ((pf, pt, "`{nkey}` as a value: the port it fires"))
             &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
@@ -4215,7 +4227,7 @@ fn LetLine wx, benv, menv, p, e:
 
 # An event of `Error`s feeding a `!~T`: each firing is the `~T`'s failure.
 ErrPipe: fn EvRef -> EvRef
-fn ErrPipe r = EvRef(node=r.node, pipe=(\|x, K| r.pipe x, \|y| K (XCtor "Err", [[y]])))
+fn ErrPipe r = EvRef(node=r.node, owner=r.owner, pipe=(\|x, K| r.pipe x, \|y| K (XCtor "Err", [[y]])))
 
 # An owned value where a `~T` is wanted: a bare `Error` is its failure (the checker's
 # pick ER lets an `Error(..)` wait for its type).
@@ -4228,7 +4240,9 @@ fn OwnAs t, v = match t:
 BindRes: fn Wx, Env, Pattern, Wres -> Wx
 fn BindRes wx2, menv, p, res = match ?BindingOf menv, p:
         ? (BnEv er, ignore): match res:
-            WrEv r: if r.node == er.node: wx2 else: Connect wx2, r, (SkNode er.node)
+            WrEv r:
+                if er.owner != wx2.node: Crossed wx2, "the bound event of node `{er.owner}` (its graph node {er.node})"
+                else: if r.node == er.node: wx2 else: Connect wx2, r, (SkNode er.node)
             otherwise: wx2
         otherwise: wx2
 
@@ -4453,7 +4467,7 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
                     AddGn w, nm, out, GnAnswer, 0
             let wx3 = update wx2:
                 &_.answers <= Push &_.answers, ((pos, id, out, (AnswerAccessor tg)))
-            ((wx3, (WrEv (EvRefOf id))))
+            ((wx3, (WrEv (EvRefOf wx3, id))))
         LyDyn:
             let ((f, wx1)) = match ?bound:
                 ? (BnHold hf, ignore): ((hf, wx))
@@ -4739,7 +4753,7 @@ fn StartedLine wx, ?bound:
             AddGn w, nm, OutUnit, GnStarted, 0
     let wx3 = update wx2:
         &_.started <= Push &_.started, id
-    ((wx3, (WrEv (EvRefOf id))))
+    ((wx3, (WrEv (EvRefOf wx3, id))))
 
 # `@Defer !e`: a `Defer` field armed by each firing; the next tick's `deferred` fires it.
 DeferLine: unbounded fn Wx, Env, [Arg], Expr, ?Nat -> ((Wx, Wres))
@@ -4756,8 +4770,8 @@ fn DeferLine wx, menv, args, e, ?target:
     match args[0]:
         ? a:
             let ((r, wx5)) = EventRef wx4, menv, a.value
-            (((Connect wx5, r, (SkArm field)), (WrEv (EvRefOf id))))
-        nil: ((wx4, (WrEv (EvRefOf id))))
+            (((Connect wx5, r, (SkArm field)), (WrEv (EvRefOf wx5, id))))
+        nil: ((wx4, (WrEv (EvRefOf wx4, id))))
 
 # `@Run F, x` (Semantics Appendix B, over `@started`, `@Defer` and `@Machine`): it takes
 # a number for its `@started`; the job is a `Hold`, the merge `!started <| !again` cycles
@@ -4784,14 +4798,14 @@ fn RunLine wx, benv, args, e, ?target:
     let wx4 = AddFieldLast wx3, "{p}_again", (OutDefer OutUnit), "`@Run`'s `!again`", (XCall "Defer::new", [[]])
     let ((s, wx5)) = AddGn wx4, "{p}_started", OutUnit, GnStarted, 0
     let ((a, wx6)) = AddGn wx5, "{p}_again", OutUnit, GnDeferred, 0
-    let ((m, wx7)) = Merge wx6, "{p}_turn", OutUnit, (EvRefOf s), (EvRefOf a)
+    let ((m, wx7)) = Merge wx6, "{p}_turn", OutUnit, (EvRefOf wx6, s), (EvRefOf wx6, a)
     let ((res, wx8)) = match ?target:
         ? n: ((n, wx7))
         nil: AddGn wx7, "{p}_done", t, GnNamed, 0
-    let wx9 = update (Connect wx8, (EvRefOf m), (SkCycle "{p}_job", "{p}_again", res)):
+    let wx9 = update (Connect wx8, (EvRefOf wx8, m), (SkCycle "{p}_job", "{p}_again", res)):
         &_.started <= Push &_.started, s
         &_.defers <= Push &_.defers, (("{p}_again", a))
-    ((wx9, (WrEv (EvRefOf res))))
+    ((wx9, (WrEv (EvRefOf wx9, res))))
 
 # `@Machine step, init, !a` (Semantics Appendix B): the state a hold; each firing of
 # `!a` steps it, writes the new state and fires the output when the step gives one. The
@@ -4819,7 +4833,7 @@ fn MachineLine wx, benv, menv, args, e, ?target:
                 ? n: ((n, wx2))
                 nil: AddGn wx2, "{f}_fired", t, GnNamed, 0
             let ((r, wx4)) = EventRef wx3, menv, ev.value
-            (((Connect wx4, r, (SkMachine "{f}_state", sp, out)), (WrEv (EvRefOf out))))
+            (((Connect wx4, r, (SkMachine "{f}_state", sp, out)), (WrEv (EvRefOf wx4, out))))
         otherwise:
             let wx2 = update wx1:
                 &_.build <= Push &_.build, (RefusalDo "an `@Machine` whose step is not a named function")
@@ -4947,7 +4961,7 @@ fn DynamicExpr wx, menv, e:
 NeverEvent: fn Wx, OutTy -> ((EvRef, Wx))
 fn NeverEvent wx, t:
     let ((id, wx2)) = AddGn wx, "never", t, GnNever, 0
-    ((EvRefOf id, wx2))
+    (((EvRefOf wx2, id), wx2))
 
 # An event expression as a reference into the block's graph (Compiler ch. 3): a pure
 # transform extends the pipe and calls straight through; `<|` is a combinator, a merge
@@ -4959,18 +4973,20 @@ fn EventRef wx, menv, e:
     match e.kind:
         EGroup x: EventRef wx, menv, x
         EName n: match menv.names[SNameKey n]:
-            ? (BnEv r, ignore): ((r, wx))
+            ? (BnEv r, ignore):
+                if r.owner == wx.node: ((r, wx))
+                else: NeverEvent (Crossed wx, "the event `{SNameKey n}`, of node `{r.owner}`,"), t
             otherwise: NeverEvent wx, t
         EBinary "<|", l, r:
             let ((lr, w1)) = EventRef wx, menv, l
             let ((rr, w2)) = EventRef w1, menv, r
             let ((nm, w3)) = FreshName w2, "anon"
             let ((id, w4)) = Merge w3, nm, t, lr, rr
-            ((EvRefOf id, w4))
+            (((EvRefOf w4, id), w4))
         EBinary "on", l, r:
             let ((rr, w1)) = EventRef wx, menv, r
             let value = Own (ValueOf lx, menv, l)
-            ((EvRef(node=rr.node, pipe=(\|x, K| rr.pipe x, \|ignore| K value)), w1))
+            ((EvRef(node=rr.node, owner=rr.owner, pipe=(\|x, K| rr.pipe x, \|ignore| K value)), w1))
         ECall c, args, ignore, ignore: match CalleeKey lx, c:
             "Prelude.!Filter": FilterEvent wx, menv, args, False
             "Prelude.!Present": FilterEvent wx, menv, args, True
@@ -4993,11 +5009,11 @@ fn EventIf wx, menv, c, a, b, t:
     let cond = AsBool (ValueOf wx.lx, menv, c)
     let ((ra, w1)) = EventRef wx, menv, a
     let ((rb, w2)) = EventRef w1, menv, b
-    let ga = EvRef(node=ra.node, pipe=(\|x, K| ra.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]))
-    let gb = EvRef(node=rb.node, pipe=(\|x, K| rb.pipe x, \|y| [[(DoIf (XBin "==", cond, (XBool False)), (K y), [[]])]]))
+    let ga = EvRef(node=ra.node, owner=ra.owner, pipe=(\|x, K| ra.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]))
+    let gb = EvRef(node=rb.node, owner=rb.owner, pipe=(\|x, K| rb.pipe x, \|y| [[(DoIf (XBin "==", cond, (XBool False)), (K y), [[]])]]))
     let ((nm, w3)) = FreshName w2, "chosen"
     let ((id, w4)) = Merge w3, nm, t, ga, gb
-    ((EvRefOf id, w4))
+    (((EvRefOf w4, id), w4))
 
 # A block that is one expression: that expression.
 ?BlockExpr: fn Block -> ?Expr
@@ -5024,7 +5040,7 @@ fn PairEvent wx, menv, args, kind, t = match ((args[0], args[1])):
         let rt = OutTyOf wx.lx, (Peel (TypeAt wx.lx, b.value.span))
         let ((nm, w3)) = FreshName w2, (KindWord kind)
         let ((id, w4)) = Combinator w3, nm, t, kind, ra, rb, lt, rt
-        ((EvRefOf id, w4))
+        (((EvRefOf w4, id), w4))
     otherwise: NeverEvent wx, t
 
 # `!MergeAll [[!a, ..]]`: every input that fired this tick, in the list's order, one
@@ -5046,7 +5062,7 @@ fn MergeAllEvent wx, menv, args, t = match args[0]:
             let w5 = Fold (Range0 (Len es)), w4, \|w, i|
                 let ((r, w6)) = EventRef w, menv, (Or es[i], a.value)
                 Connect w6, r, (SkIn id, i)
-            ((EvRefOf id, w5))
+            (((EvRefOf w5, id), w5))
         otherwise:
             let ((r, w1)) = NeverEvent wx, t
             let w2 = update w1:
@@ -5072,7 +5088,7 @@ fn UpdatedEvent wx, menv, args, t = match args[0]:
         let w4 = update w3:
             &_.gns <= Each &_.gns, \|n| if n.id == id: WithReads n, reads else: n
             &_.getters <= Push &_.getters, (MethDef(name="{nm}_value", recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The dynamic `!{nm}` is the event half of, which the wake reads after the tick."))
-        ((EvRefOf id, w4))
+        (((EvRefOf w4, id), w4))
     nil: NeverEvent wx, t
 
 # `!Filter !?a` fires the present values; `!Present` fires `unit` for them.
@@ -5084,7 +5100,7 @@ fn FilterEvent wx, menv, args, isUnit:
             let ((r, w1)) = EventRef wx, menv, a.value
             let bound = if isUnit: PaWild else: PaBind "w"
             let pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor "Some", [[bound]]), y, (K (if isUnit: XUnit else: XVar "w")), [[]])]]
-            ((EvRef(node=r.node, pipe=pipe), w1))
+            ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
 
 # `!Gate $b, !e` fires `!e` while `$b` reads true.
 GateEvent: unbounded fn Wx, Env, [Arg] -> ((EvRef, Wx))
@@ -5096,7 +5112,7 @@ fn GateEvent wx, menv, args = match args[1]:
             ? b: AsBool (ValueOf wx.lx, menv, b.value)
             nil: (XBool False)
         let pipe = \|x, K| r.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]
-        ((EvRef(node=r.node, pipe=pipe), w1))
+        ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
 
 # Any other event expression maps the one event among its operands: the event's value is
 # bound at its place in the source, and the expression lowers as a plain one over it.
@@ -5111,7 +5127,7 @@ fn EventMap wx, menv, e:
             let et = OutTyOf lx, (Peel (TypeAt lx, one.span))
             let k = PlaceKey lx, one.span
             let pipe = \|x, K| r.pipe x, \|y| K (Own (ValueOf lx, (BindSpan menv, k, (FiringValue y, et)), e))
-            ((EvRef(node=r.node, pipe=pipe), w1))
+            ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
         otherwise: NeverEvent wx, t
 
 # A firing's value where an expression reads it: a local is a place, anything else an
@@ -6310,27 +6326,32 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     # The source as a getter of the block, which the builder and every row's entry read: a
     # dynamic `let` of the block for the marks.
     let srcGetter = "{name}_source"
-    let wx2 = update wx2a:
-        &_.taken <= Push &_.taken, srcGetter
-        &_.getters <= Push &_.getters, (MethDef(name=srcGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=(OutMap kt, vt), body=[[]], tail=src, doc="The source of the `for` at place {PlaceText pos} by key, at the read point: what its builder and its rows' entries read."))
-        &_.dynReads <= Insert &_.dynReads, srcGetter, reads
+    let srcDef = MethDef(name=srcGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=(OutMap kt, vt), body=[[]], tail=src, doc="The source of the `for` at place {PlaceText pos} by key, at the read point: what its builder and its rows' entries read.")
     let rowName = "{wx.node}{RowSuffix wx}Row"
     let locals = RowLocals benv, menv, body
     let rowFields = Append [[(("key", kt, "the row's key")), (("left_entry", (OutCell (OutOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (OutWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))
     let rowMoves = Append [[(("key", (XClone (XVar "key")))), (("left_entry", (XCall "RefCell::new", [[XNone]]))), (("parent", (XVar "parent")))]], (Each locals, \|l| ((l.field, (XVar l.field))))
     let rowTaken = Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)
     let rowWx0 = NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.depth, (?HostedRows wx)
+    # The block's events the body names reach the row through ports, as a generation's do
+    # (`RowEnv`): a port node in the row, subscribed to the block's port, which the block's
+    # event fires. The row's own graph indexes none of the block's events.
+    let ((wx2p, rowWx0p, ports)) = RowEnv wx2a, rowWx0, menv, body
+    let wx2 = update wx2p:
+        &_.taken <= Push &_.taken, srcGetter
+        &_.getters <= Push &_.getters, srcDef
+        &_.dynReads <= Insert &_.dynReads, srcGetter, reads
     let keyB = BnLocal (XVar "key"), Owned, kt
     let keyM = BnLocal (XField XSelf, "key"), Owned, kt
-    let benvL = Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty)
-    let menvL = Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty)
+    let benvL = EventsOf ports, (Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))
+    let menvL = EventsOf ports, (Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty))
     let passed = Append (HostedPassed wx), (Each locals, \|l| l.passed)
     let rowParams = Append (Append [[(("key", kt)), (("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), (Each locals, \|l| ((l.field, l.ty)))
     # `$_`: in the build the entry after the tick, which the builder passes; in the methods the
     # projection, marked by the block's writes behind the source.
     let entryM = BnDyn (XMethod (XSelf), "entry", [[XCx]]), [[ParentRead srcGetter]], vt
     let ((rbe, rme)) = ForEnvs benvL, menvL, ?binders, keyB, keyM, (BnLocal (XVar "value"), Owned, vt), entryM, vt
-    let rowWx = BlockInto rowWx0, rbe, rme, body
+    let rowWx = BlockInto rowWx0p, rbe, rme, body
     let wx3 = update wx2:
         &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=name, reads=(RowPlaceReads rowWx), wrote=(RowHears rowWx), kind=ForRow)
     let full = TypeAt lx, e.span
@@ -6343,7 +6364,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
                 &_.gns <= Each &_.gns, \|n| if n.id == gid: WithInputs n, [["{name}_gathered"]] else: n
             let rowDone = Connect rowWx, r, (SkUp "{name}_all_in")
             let wx7 = AddBuilder wx6, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gather=(? gid))), passed
-            ((wx7, (WrEv (EvRefOf gid))))
+            ((wx7, (WrEv (EvRefOf wx7, gid))))
         WrDyn ex, resultReads, rt:
             # The gathered dynamic `$(K ==> T)` is structural (pick ST): the rows' results by
             # key are computed live by `{name}_all_now`, snapshotted after the builder has run,
@@ -6421,6 +6442,13 @@ RowReads: fn Env, Ex -> Env
 fn RowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
     ? (BnHold f, t): Bind en, k, (BnDyn (XMethod (XField pref, f), "get", [[XCx]]), [[ParentRead f]], t)
     ? (BnDyn (XMethod (XSelf), m, xs), ignore, t): Bind en, k, (BnDyn (XMethod pref, m, xs), [[ParentRead m]], t)
+    otherwise: en
+
+# The event bindings of a row's port environment (`RowEnv`) over a row's environment: the
+# block's events as the row's ports.
+EventsOf: fn Env, Env -> Env
+fn EventsOf ports, env = Fold (Keys ports.names), env, \|en, k| match ports.names[k]:
+    ? (BnEv er, t): Bind en, k, (BnEv er, t)
     otherwise: en
 
 # A row's reads of its block, as the block's own reads: the block's writes of these mark
@@ -6512,8 +6540,8 @@ fn RowEnv parent, rowWx, menv, body:
             let ((id, r2)) = AddGn r1, rs, t, GnPort, 0
             let r3 = update r2:
                 &_.subs <= Push &_.subs, ((pname, rs, t))
-            let p2 = if HasText p.ports, pname: p else: Connect (WithPort p, pname), (EvRefOf er.node), (SkPort pname)
-            ((p2, r3, (Bind env, n, (BnEv (EvRefOf id), t))))
+            let p2 = if HasText p.ports, pname: p else: Connect (WithPort p, pname), (EvRefOf p, er.node), (SkPort pname)
+            ((p2, r3, (Bind env, n, (BnEv (EvRefOf r3, id), t))))
         # The block's dynamics and holds, read through the parent at the row's read point,
         # each a `ParentRead` in what it reads, so a generation's place that reads one is
         # live and the block's writes of it mark the generation (gap DY).
@@ -6565,7 +6593,7 @@ fn RebuildLine wx, benv, menv, scrut, body, e, ?bound:
             &_.genHolds <= Push &_.genHolds, ((name, reads))
             &_.rows <= Fold rowDefs, &_.rows, \|acc, rd| Append (Push acc, rd), rd.children
             &_.getters <= Push &_.getters, (GenUp name, (GnOf wx4, upId).name, (GnOf wx4, upId).ty)
-        ((wx5, (WrEv (EvRefOf upId))))
+        ((wx5, (WrEv (EvRefOf wx5, upId))))
 
 # Whether a `rebuild` hands back a dynamic, `$$a` (its generations give `$a`), rather than
 # an event, `$!a`.
@@ -6651,7 +6679,7 @@ fn ClauseWidgetLine wx, menv, scrut, call, qk, v, e:
             &_.genHolds <= Push &_.genHolds, ((name, reads))
             &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
             &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
-        ((wx4, (WrEv (EvRefOf upId))))
+        ((wx4, (WrEv (EvRefOf wx4, upId))))
 
 # Whether the node's places go to a host's document rather than the World's.
 IsHostedScope: fn Wx -> Bool
