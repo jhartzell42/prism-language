@@ -2,7 +2,9 @@
 # The `prism` driver's World choice (`prism run --print-world`): the World prismc takes from
 # the root module's `emit` row, `Gui.*` the canvas World, a row without Ui or Gui the CLI
 # World, a row with `Ui.*` and no `Gui.*` refused (no World answers Ui elements alone), and
-# `--world` over all of it; a program with no `@main` has no root to run.
+# `--world` over all of it; a program with no `@main` has no root to run. Then prismc's
+# own options: an option it does not know, an unknown target, or an option missing its
+# value is refused, never ignored, and `prism compile --target cpp` writes C++.
 #
 #   tests/driver/run.sh
 #
@@ -32,6 +34,32 @@ expect cli-root cli tests/driver/cli-root.prism
 expect birds refused tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
 expect birds-as-cli cli --world cli tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
 expect counter-no-root refused tests/conformance/counter.prism
+
+prismc=${PRISMC:-$(ls -t target/bootstrap/prismc target/keep/prismc-* 2>/dev/null | grep -v old-chain | head -1)}
+out=target/driver
+rm -rf "$out"
+# refuse NAME WORDS ARGS...: `prismc ARGS` exits non-zero, says WORDS, and writes nothing
+refuse() {
+    local name=$1 words=$2; shift 2
+    local said code
+    said=$("$prismc" "$@" 2>&1); code=$?
+    if [ $code -ne 0 ] && echo "$said" | grep -q -- "$words" && [ ! -e "$out/$name" ]; then
+        echo "ok $name: refused ($words)"; return
+    fi
+    failed+=("$name")
+    echo "FAILED $name: wanted a refusal saying '$words', got exit $code: $said"
+}
+refuse unknown-option "unknown option --bogus" compile --bogus tests/driver/cli-root.prism -o "$out/unknown-option"
+refuse unknown-target "unknown target wasm" compile --target wasm tests/driver/cli-root.prism -o "$out/unknown-target"
+refuse missing-value "--target takes a value" compile tests/driver/cli-root.prism -o "$out/missing-value" --target
+refuse check-unknown-option "unknown option --bogus" --check --bogus tests/driver/cli-root.prism
+if ./prism compile --target cpp tests/driver/cli-root.prism -o "$out/cpp" > /dev/null 2>&1 && [ -f "$out/cpp/src/main.cpp" ] && [ ! -e "$out/cpp/Cargo.toml" ]; then
+    echo "ok compile-cpp: C++ written"
+else
+    failed+=(compile-cpp)
+    echo "FAILED compile-cpp: prism compile --target cpp wrote no C++ program (or a Cargo.toml)"
+fi
+
 if [ ${#failed[@]} -gt 0 ]; then
     echo "failed: ${failed[*]}"
     exit 1
