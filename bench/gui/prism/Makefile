@@ -55,17 +55,19 @@ PROG_OBJS = $(PROG_SRCS:$(SRC)/%.cpp=$(BUILD)/%.o)
 .PHONY: objects
 objects: $(PROG_OBJS) $(BUILD)/emitted_main.o $(BUILD)/driver.o
 
-$(BUILD)/%.o: $(SRC)/%.cpp $(SRC)/crate.hpp $(SRC)/prelude.hpp
+$(BUILD)/%.o: $(SRC)/%.cpp
 	@mkdir -p $(BUILD)
-	$(CXX) $(FLAGS) -c $< -o $@
+	$(CXX) $(FLAGS) -MMD -MP -c $< -o $@
 
-$(BUILD)/emitted_main.o: $(SRC)/main.cpp $(SRC)/crate.hpp
+$(BUILD)/emitted_main.o: $(SRC)/main.cpp
 	@mkdir -p $(BUILD)
-	$(CXX) $(FLAGS) -Dmain=prism_emitted_main -c $< -o $@
+	$(CXX) $(FLAGS) -MMD -MP -Dmain=prism_emitted_main -c $< -o $@
 
-$(BUILD)/driver.o: driver.cpp $(SRC)/crate.hpp
+$(BUILD)/driver.o: driver.cpp $(SRC)/programs.hpp
 	@mkdir -p $(BUILD)
-	$(CXX) $(FLAGS) -c $< -o $@
+	$(CXX) $(FLAGS) -MMD -MP -c $< -o $@
+
+-include $(wildcard $(BUILD)/*.d)
 
 # The objects are globbed when the link runs: on a clean build none exist when make reads
 # this file, before prismc has emitted their sources.

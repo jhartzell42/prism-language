@@ -339,14 +339,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
 emit_cpp.prism and templates/cpp.prism. Everything above holds construct for construct;
 what differs is how C++ spells it.
 
-- **The program** is `Makefile`, `src/crate.hpp` (every declaration, in the order C++
-  needs: forward declarations, choices' handles, value types each after the types it
-  holds by value, choices' cases, prototypes, nodes and jobs, programs, templates),
-  `src/main.cpp` (`crate::Elem`'s and `crate::Answer`'s definitions, `test_world()`,
-  `main`), `src/prelude.hpp` and one `src/NAME.cpp` per module. The modules are the
-  namespaces `crate::NAME`. A program class has the static `build(args, ready)` and the
-  virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a `@main`
-  root under the C++ CLI World (worlds/cli/cpp).
+- **The program** is `Makefile`; per module the headers `src/NAME.decl.hpp` (its types
+  declared, its choices' handles), `src/NAME.types.hpp` (its value types, each after the
+  types it holds by value, and its choices' cases), `src/NAME.hpp` (prototypes, nodes and
+  jobs) and, when it has templates, `src/NAME.generic.hpp`, each including only the
+  layers of the modules it needs (prismc/README.md, pick MH); `src/elem.decl.hpp` and
+  `src/elem.types.hpp` for `crate::Elem` and `crate::Answer`; `src/programs.hpp` (the
+  program classes); `src/main.cpp` (`Elem`'s and `Answer`'s definitions, `test_world()`,
+  `main`), `src/prelude.hpp` and one `src/NAME.cpp` (or several) per module. The modules
+  are the namespaces `crate::NAME`. A program class has the static `build(args, ready)`
+  and the virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a
+  `@main` root under the C++ CLI World (worlds/cli/cpp).
 - **Types.** A record, a tag's `Level`, a newtype and a unit type are structs (fields in
   order, designated initializers); a choice and a row kind's values are a handle on a
   shared `std::variant` of case structs (`Term::Var`), so a value behind an `Rc` is the

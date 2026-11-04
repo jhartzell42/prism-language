@@ -2,8 +2,10 @@
 # `runtime/cpp` (`prism_rtl` in C++, whose README maps every Rust type of the library to its
 # C++ form) through the templates (templates/cpp.prism, templates/cpp_prelude.prism):
 # `Makefile`, three headers per Prism module (`src/NAME.decl.hpp`, `src/NAME.types.hpp`,
-# `src/NAME.hpp`) and two for `Elem` and `Answer`, in the order C++ accepts, `src/main.cpp`
-# and one `src/NAME.cpp` (or several) per module. As in emit.prism, nothing here decides (K9).
+# `src/NAME.hpp`) and a fourth when it has generic definitions (`src/NAME.generic.hpp`),
+# two for `Elem` and `Answer` (`src/elem.decl.hpp`, `src/elem.types.hpp`), the program
+# classes (`src/programs.hpp`), `src/main.cpp` and one `src/NAME.cpp` (or several) per
+# module (prismc/README.md, pick MH). As in emit.prism, nothing here decides (K9).
 #
 # The model names the Rust runtime's operations (`Rc::new`, `borrow`, `upgrade`); this
 # printer maps each to its C++ spelling through the tables `CallName` and `MethodForm`, and
@@ -1747,11 +1749,11 @@ fn EmitCpp model, runtime, scripts:
     let perModule = Each pairs, \|((m, p))| ModuleFiles m, p, generics
     let mainIncludes = Join (Append (Append [["#include \"elem.types.hpp\""]], (Each model.mods, \|m| "#include \"{m.name}.hpp\"")), (Each generics, \|n| "#include \"{n}.generic.hpp\"")), "\n"
     let canvasInclude = if canvas: CppCanvasInclude "" else: ""
-    let main = CppMain model.name, "{mainIncludes}\n{canvasInclude}", regs, checks, scriptList, world, runRoot, (Join (Concat2 (Each [[elem, answer]], \|p| p.defs)), "\n\n"), programs
+    let main = CppMain model.name, "#include \"programs.hpp\"\n{canvasInclude}", regs, checks, scriptList, world, runRoot, (Join (Concat2 (Each [[elem, answer]], \|p| p.defs)), "\n\n")
     let groups = Each (Filter model.mods, \|m| (Len m.typesWith) > 1 and (Or m.typesWith[0], "") == m.name), \|m| GroupTypesFile pairs, m.typesWith
     let files = Fold perModule, [[]], \|acc, fs| Append acc, fs
     let sources = Join (Filter (Each files, \|((f, ignore))| f), \|f| Contains f, ".cpp"), " "
-    Append [[(("Makefile", (CppMakefile model.name, runtime, sources, (if canvas: CppMakefileCanvas runtime else: "")))), (("src/elem.decl.hpp", elemDecl)), (("src/elem.types.hpp", elemTypes)), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], (Append groups, files)
+    Append [[(("Makefile", (CppMakefile model.name, runtime, sources, (if canvas: CppMakefileCanvas runtime else: "")))), (("src/elem.decl.hpp", elemDecl)), (("src/elem.types.hpp", elemTypes)), (("src/programs.hpp", (CppProgramsHeader model.name, mainIncludes, programs))), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], (Append groups, files)
 
 let noMod = ModDef(name="", prism="", path="", uses=[[]], complete=[[]], declared=[[]], typesWith=[[]], items=[[]])
 

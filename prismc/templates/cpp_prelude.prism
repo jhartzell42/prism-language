@@ -4,7 +4,7 @@
 # function, under the same names (a C++ keyword with `_` after it: `or_`, `int_`). Every
 # function takes its arguments by `const&` and gives back a value, as emitted functions do;
 # a closure parameter is any callable. `CppPreludeRows` is the part that names the
-# program's `Elem` and `Answer`: the `Row` of a `for` or a `rebuild`, in `crate.hpp` after
+# program's `Elem` and `Answer`: the `Row` of a `for` or a `rebuild`, in `elem.decl.hpp` after
 # them.
 #
 # Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change:

@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-#include "crate.hpp"
+#include "programs.hpp"
 #include "prism_world_canvas/canvas.hpp"
 
 int prism_emitted_main(int argc, char** argv);

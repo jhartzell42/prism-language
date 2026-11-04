@@ -228,10 +228,29 @@ namespace crate::{{ns}} {
 }  // namespace crate::{{ns}}
 </cpp>
 
+# `programs.hpp`: the program classes, over every module's header (what `main.cpp` and a
+# driver linking the program, bench/gui/prism/driver.cpp, need).
+CppProgramsHeader: fn Text, Text, Text -> Text
+fn CppProgramsHeader name, includes, programs = inline_text <cpp>
+// The programs of `{{name}}`, emitted by prismc (docs/backend.md): each root's class, over
+// every module's header. Edit the Prism sources, not this file.
+#pragma once
+
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{programs}}
+
+}  // namespace crate
+</cpp>
+
 # `main.cpp`: the crate's own types' definitions, the Test World with every program and
 # compiled `check` block, and `main`, which picks the World.
-CppMain: fn Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
-fn CppMain name, includes, registrations, checks, scripts, world, runRoot, crateDefs, programs = inline_text <cpp>
+CppMain: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn CppMain name, includes, registrations, checks, scripts, world, runRoot, crateDefs = inline_text <cpp>
 // The program `{{name}}`, emitted by prismc from Prism (docs/backend.md): C++ over
 // `prism_rtl`, run under the Test World. Edit the Prism sources, not these files.
 {{includes}}
@@ -241,8 +260,6 @@ namespace crate {
 using namespace prelude;
 
 {{crateDefs}}
-
-{{programs}}
 
 /// The Test World with every root a test names, and the compiled `check` blocks.
 TestWorld test_world() {
