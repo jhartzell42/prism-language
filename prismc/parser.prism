@@ -572,8 +572,6 @@ let noExpr = Expr(kind=EError, span=noRange)
 let noType = Type(kind=TAbsent, span=noRange)
 let noPattern = Pattern(kind=PIgnore, span=noRange)
 let noBlock = Block(stmts=[[]], inline=True, span=noRange)
-let noStmt = Stmt(kind=(SExpr noExpr), span=noRange)
-let noDecl = Decl(kind=(DStmt noStmt), span=noRange)
 
 ParseDecl: unbounded fn Ps, Bool -> ((Decl, Ps))
 fn ParseDecl p, fragment:

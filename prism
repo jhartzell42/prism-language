@@ -5,7 +5,8 @@
 #   ./prism compile [--target T] SRC... -o OUT   the program in OUT: a Rust crate, or C++
 #   ./prism test [--target T] SRC...     compile, build, run the .prismtest scripts
 #   ./prism run [--world W] [--print-world] SRC... [-- ARGS...]   compile, build, run the root
-#   ./prism check [--world FAMS] SRC...  the checker's report
+#   ./prism check [--world FAMS] [--unused] SRC...  the checker's report; --unused also
+#                                        warns at each definition nothing uses
 #
 # `--target rust` (the default) or `--target cpp`: the C++ program (runtime/cpp) is built
 # with make and `$CXX` (g++ by default) into target/prism-cpp/NAME, and runs its tests
@@ -39,6 +40,7 @@ out=""
 world=""
 target=rust
 print_world=0
+unused=0
 progargs=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -48,6 +50,7 @@ while [ $# -gt 0 ]; do
         --target=*) target=${1#--target=}; shift ;;
         --world=*) world=${1#--world=}; shift ;;
         --print-world) print_world=1; shift ;;
+        --unused) unused=1; shift ;;
         --) shift; progargs=("$@"); break ;;
         *)
             if [ -d "$1" ] || [[ "$1" == *.prism ]] || [[ "$1" == *.prismtest ]]; then
@@ -119,6 +122,7 @@ if [ "$cmd" = check ]; then
     mapfile -t files < <(prism_files)
     opts=()
     [ -n "$world" ] && opts=(--world "$world")
+    [ "$unused" = 1 ] && opts+=(--unused)
     code=0
     "$prismc" --check "${opts[@]}" "${files[@]}" --out "$tmp" > /dev/null 2>&1 || code=$?
     if [ -s "$tmp" ]; then cat "$tmp"; else echo "prism: the checker wrote nothing" >&2; fi

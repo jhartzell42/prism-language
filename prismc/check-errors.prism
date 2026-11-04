@@ -73,7 +73,7 @@ fn Range0 n = update [[]]:
 # `file:line: error[code]: message`, the line, carets under the range, and the fix.
 RenderCDiag: fn [Src], CDiag -> Text
 fn RenderCDiag srcs, d = match srcs[d.file]:
-    nil: "?: error[{d.code}]: {d.message}\n"
+    nil: "?: {Severity d}[{d.code}]: {d.message}\n"
     ? src:
         let line = CLineOf src.starts, d.span.start
         let col = Or (d.span.start -? (Or src.starts[line], 0)), 0
@@ -81,7 +81,14 @@ fn RenderCDiag srcs, d = match srcs[d.file]:
         let width = Max 1, (Min (Or (d.span.end -? d.span.start), 0), (Or ((Len text) -? col), 1))
         let carets = "    {Repeat " ", col}{Repeat "^", width}"
         let fix = if d.fix == "": "" else: "  fix: {d.fix}\n"
-        "{src.path}:{line + 1}: error[{d.code}]: {d.message}\n    {text}\n{carets}\n{fix}"
+        "{src.path}:{line + 1}: {Severity d}[{d.code}]: {d.message}\n    {text}\n{carets}\n{fix}"
+
+# `warning` for the one diagnostic that fails nothing (`unused`), else `error`.
+Severity: fn CDiag -> Text
+fn Severity d = if IsWarning d: "warning" else: "error"
+
+IsWarning: fn CDiag -> Bool
+fn IsWarning d = d.code == "unused"
 
 # Diagnostics in order of file, then position, then the order they were found; duplicates
 # dropped.

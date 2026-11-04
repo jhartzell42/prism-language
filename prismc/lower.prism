@@ -407,11 +407,6 @@ type GenDef = record:
     width: Nat
 derive ^Eq, ^Show
 
-# A port a row subscribes to: the parent's event `name`, fired to every live row.
-type PortDef = record:
-    name: Text
-    ty: OutTy
-
 # A `for` builder (docs/backend.md, "Dynamic structure"): a map of rows, each a node of
 # its own at `path/n/[k]`, rebuilt from the source after the tick.
 type ForDef = record:
@@ -566,9 +561,6 @@ fn PlaceKey lx, r = "{lx.file}:{r.start}:{r.end}"
 
 TypeAt: fn Lx, Range -> Ty
 fn TypeAt lx, r = SubstTy lx, (Or lx.tys[PlaceKey lx, r], TyErr)
-
-?AppAt: fn Lx, Range -> ?AppNote
-fn ?AppAt lx, r = lx.apps[PlaceKey lx, r]
 
 BinderTy: fn Lx, Range -> Ty
 fn BinderTy lx, r = match lx.binders[PlaceKey lx, r]:
@@ -2451,6 +2443,24 @@ fn RecordPat lx, n, fps, rest, ty, mode, fresh:
         ? c:
             let owner = Or lx.g.types[c.owner], dummyTyInfo
             let tyPath = PathIn lx, owner.home, (Camel (BareName c.owner))
+            match owner.body:
+                # `Box(..)` on a choice's positional case: that case, every field ignored
+                BChoice cases if (Len fps) == 0: RestCasePat c, cases, tyPath
+                otherwise: FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath
+        nil: match lx.g.tags[qk]:
+            ? tg: TagPat lx, tg, fps, rest, ty, mode, fresh
+            nil: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern of {qk}")]], binds=[[]])
+
+RestCasePat: fn CtorInfo, [((Text, [Ty]))], Text -> PatOut
+fn RestCasePat c, cases, tyPath:
+    let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner)
+    let path = if isNewtype: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
+    if (Len c.args) == 0: PatOut(pa=(PaUnit path), conds=[[]], binds=[[]])
+    else: PatOut(pa=(PaCtor path, (Each c.args, \|ignore| PaWild)), conds=[[]], binds=[[]])
+
+# A record's (or a case's) fields by name: `Rec(f=p, ..)`.
+FieldsPat: unbounded fn Lx, CtorInfo, [FieldPat], Bool, Ty, Holding, Text, Text -> PatOut
+fn FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath:
             let args = match Peel ty:
                 TyCon ignore, xs: xs
                 otherwise: [[]]
@@ -2464,9 +2474,6 @@ fn RecordPat lx, n, fps, rest, ty, mode, fresh:
             let conds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.conds
             let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
             PatOut(pa=(PaRecord tyPath, (Each subs, \|((f, o))| ((f, o.pa))), (rest or (Len subs) < (Len c.fields))), conds=conds, binds=binds)
-        nil: match lx.g.tags[qk]:
-            ? tg: TagPat lx, tg, fps, rest, ty, mode, fresh
-            nil: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern of {qk}")]], binds=[[]])
 
 let dummyFieldPat = FieldPat(name=nil, pattern=dummyPat, span=Range(start=0, end=0))
 
@@ -3884,11 +3891,6 @@ fn AddFieldLast wx, name, t, doc, init = update wx:
     &_.fields <= Push &_.fields, ((name, t, doc))
     &_.moves <= Push &_.moves, ((name, init))
 
-HeightOf: fn Wx, Nat -> Nat
-fn HeightOf wx, n = match wx.gns[n]:
-    ? g: g.height
-    nil: 0
-
 GnOf: fn Wx, Nat -> Gn
 fn GnOf wx, n = Or wx.gns[n], (Gn(id=n, name="never", ty=OutUnit, kind=GnNever, height=0, inputs=[[]], reads=[[]], floor=0, outs=[[]]))
 
@@ -5294,9 +5296,6 @@ fn HoldWritten sk, f:
 
 # The host whose document a position's place is an entry of, as the methods spell it: the
 # host of its scope, or for a node's own places in a hosted scope the enclosing host.
-HostField: fn Wx, Pos -> Text
-fn HostField wx, pos = "self.{HostLocal wx, pos}"
-
 HostFieldEx: fn Wx, Pos -> Ex
 fn HostFieldEx wx, pos = XField XSelf, (HostLocal wx, pos)
 
@@ -5830,10 +5829,6 @@ fn ForwardAnswer b:
 IsHold: fn OutTy -> Bool
 fn IsHold (OutHold ignore) = True
 fn IsHold other = False
-
-HeldTy: fn OutTy, OutTy -> OutTy
-fn HeldTy (OutHold i), other = i
-fn HeldTy t, other = other
 
 # A row's own methods: its places torn down (the ones that went to the World; a hosted
 # row's leave its host's document with the row), its rows' and generations' too.
@@ -6810,8 +6805,6 @@ fn BuildSpelling env = Fold (Keys env.names), env, \|en, k| match env.names[k]:
         ? x: Bind en, k, (BnDyn (XMethod x, m, xs), ds, t)
         nil: en
     otherwise: en
-
-let dummyGen = GenDef(name="", pos=pos0, at=XUnit, source=(XUnit), valueTy=OutUnit, select=(XUnit), transparent=False, width=0)
 
 # The generation built: the one case, its row's constructor.
 GenSelect: unbounded fn Wx, Env, Block, [GenCase], Pos -> Ex

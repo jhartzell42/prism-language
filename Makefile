@@ -3,8 +3,8 @@
 
 .PHONY: test bootstrap bootstrap-update bootstrap-cpp bootstrap-cpp-update chess
 
-# Every Rust test, every compiled transcript, the checker's tests, and the bootstrap's
-# fixed point.
+# Every Rust test, every compiled transcript, the checker's tests, the C++ runtime's and
+# Worlds' tests, the bootstrap's fixed point, and no definition in prismc/ nothing uses.
 test:
 	cargo test --workspace
 	tests/compiled/run.sh
@@ -12,8 +12,10 @@ test:
 	tests/driver/run.sh
 	make -C runtime/cpp test
 	make -C worlds/cli-cpp test
+	make -C worlds/canvas-cpp test
 	tests/compiled/run.sh --target cpp
 	bootstrap/bootstrap.sh
+	@! ./prism check --unused prismc/ | grep -A2 'warning\[unused\]' || { echo "prismc has definitions nothing uses"; false; }
 
 # prismc compiles itself to a fixed point and is installed as target/bootstrap/prismc,
 # starting from the seed archive on a fresh clone (bootstrap/README.md).

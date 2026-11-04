@@ -155,9 +155,6 @@ derive ^Eq, ^Show
 IsPrimType: fn Text -> Bool
 fn IsPrimType n = HasText [["Bool", "unit", "Char", "Text", "Nat", "Int", "U8", "Float", "Path", "Duration"]], n
 
-IsIntType: fn Text -> Bool
-fn IsIntType n = n == "Nat" or n == "Int" or n == "U8"
-
 QualKey: fn Text, Text -> Text
 fn QualKey m, name = if m == "": name else: "{m}.{name}"
 
@@ -174,9 +171,6 @@ fn DefNameText (DefOp o, ignore) = o
 DefNameSpan: fn DefName -> Range
 fn DefNameSpan (DefSName n) = n.span
 fn DefNameSpan (DefOp ignore, r) = r
-
-TypeSpan: fn Type -> Range
-fn TypeSpan t = t.span
 
 IsLowerText: fn Text -> Bool
 fn IsLowerText t = IsLower (Take t, 1)

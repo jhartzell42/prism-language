@@ -411,28 +411,6 @@ fn FreeVarsInto st, acc, t = match Walk st, t:
     TyAssoc ignore, a: FreeVarsInto st, acc, a
     otherwise: acc
 
-# The flexible row variables of a type.
-FreeRowVars: unbounded fn St, Ty -> [Nat]
-fn FreeRowVars st, t = FreeRowsInto st, [[]], t
-
-FreeRowsInto: unbounded fn St, [Nat], Ty -> [Nat]
-fn FreeRowsInto st, acc, t = match Walk st, t:
-    TyCon ignore, args: Fold args, acc, \|a, x| FreeRowsInto st, a, x
-    TyFn ignore, ps, res: FreeRowsInto st, (Fold ps, acc, \|a, x| FreeRowsInto st, a, x), res
-    TyTuple ts: Fold ts, acc, \|a, x| FreeRowsInto st, a, x
-    TyArray e: FreeRowsInto st, acc, e
-    TyMap k, v: FreeRowsInto st, (FreeRowsInto st, acc, k), v
-    TySig ignore, i: FreeRowsInto st, acc, i
-    TyAt i, rw: FreeRowsInto st, (RowTailVar st, acc, rw), i
-    TyElem rw, o: FreeRowsInto st, (RowTailVar st, acc, rw), o
-    TyElemAny rw: RowTailVar st, acc, rw
-    otherwise: acc
-
-RowTailVar: unbounded fn St, [Nat], Rw -> [Nat]
-fn RowTailVar st, acc, rw = match (WalkRow st, rw).tail:
-    TlFlex n: AddNat acc, n
-    otherwise: acc
-
 # ---------------------------------------------------------------------------------------
 # Stacks
 # ---------------------------------------------------------------------------------------

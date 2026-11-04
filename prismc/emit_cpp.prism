@@ -844,14 +844,6 @@ fn IsCatchAll p = match p:
     PaTyped q, ignore: IsCatchAll q
     otherwise: False
 
-# An arm's conditions after its pattern: a guard, or a `let` through a payload.
-ArmConds: unbounded fn Cp, [Cc] -> [Text]
-fn ArmConds cp, cs = Concat2 (Each cs, \|c| ArmCond cp, c)
-
-ArmCond: unbounded fn Cp, Cc -> [Text]
-fn ArmCond cp, (CcIf x) = [[(CppExpr cp, x)]]
-fn ArmCond cp, (CcLet p, x) = PatConds cp, p, (CppTight cp, x)
-
 # Whether an expression leaves instead of giving a value: a `break`, a `return`, an
 # unreachable arm.
 Leaves: fn Ex -> Bool

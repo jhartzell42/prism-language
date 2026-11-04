@@ -735,7 +735,9 @@ derive ^Eq, ^Show
 # The reference graph's cycles that the size-change principle cannot show end are
 # `may-not-end`, unless every function on the cycle is declared unbounded (D6). A `while`
 # is its own loop, checked in place.
-ShrinkCheck: unbounded fn G, St, [Def] -> St
+# The shrink check, and the reference graph it walked: each function's key and the keys
+# it reaches.
+ShrinkCheck: unbounded fn G, St, [Def] -> ((St, [((Text, [Text]))]))
 fn ShrinkCheck g, st, defs:
     let fns = Each (Filter defs, \|d| (Len (DefClauses d)) > 0), \|d| OwnKey d
     let byKey = Fold fns, {}, \|m, d| Insert m, d.qk, d
@@ -753,7 +755,22 @@ fn ShrinkCheck g, st, defs:
     let keys = Each sk.fns, \|d| d.qk
     let sccs = Sccs keys, refs
     let st2 = Fold sccs, (NegativeTypes g, st), \|s, comp| ShrinkComponent sk, s, comp
-    Fold fns, st2, \|s, d| LoopsOf sk, s, d
+    let st3 = Fold fns, st2, \|s, d| LoopsOf sk, s, d
+    ((st3, refs))
+
+# `--unused`: a warning at each top-level function or `let` of the program's own files
+# (before `shown`) that no other definition reaches, other than a root (`@main`) and an
+# impl's method, which a call through its trait reaches.
+UnusedDefs: fn [Def], [((Text, [Text]))], Nat -> [CDiag]
+fn UnusedDefs defs, refs, shown:
+    let used = Fold refs, {}, \|m, ((k, rs))| Fold rs, m, \|m2, r| if r == k: m2 else: Insert m2, r, unit
+    let own = Filter defs, \|d| d.file < shown and not (HasKey used, d.qk) and d.name != "@main" and not (IsMethodDef d)
+    Each own, \|d| CDiag(code="unused", file=d.file, span=d.span, message="nothing uses `{d.name}`", fix="delete it, or use it")
+
+IsMethodDef: fn Def -> Bool
+fn IsMethodDef d = match d.body:
+    DbMethod ignore, ignore, ignore: True
+    otherwise: False
 
 # ---- Pick NT. "A type that appears left of a function arrow in its own definition is a
 # cycle" (Semantics ch. 7, "Finding the cycles"). `type R = choice: Wrap (fn R -> Nat)`
@@ -1427,11 +1444,8 @@ fn ExprName e = match e.kind:
     EGroup x: ExprName x
     otherwise: ""
 
-# A clause's parameters: a name is no larger than its parameter, a part taken apart by the
-# clause's pattern is strictly smaller; each is a local where the clause stands.
-ParamRels: unbounded fn [Pattern] -> (Text ==> Rel)
-fn ParamRels ps = ParamRelsOn {}, ps
-
+# A clause's parameters, over `base`: a name is no larger than its parameter, a part taken
+# apart by the clause's pattern is strictly smaller; each is a local where the clause stands.
 ParamRelsOn: unbounded fn (Text ==> Rel), [Pattern] -> (Text ==> Rel)
 fn ParamRelsOn base, ps = Fold (Range0 (Len ps)), (Hide base, (PatternsNames ps)), \|m, i| match ps[i]:
     ? p: match p.kind:
@@ -2460,8 +2474,8 @@ derive ^Eq, ^Show
 
 # The whole checker over a program's files (each already parsed): the environment, every
 # definition, the separate checkers, the root row against `world` when one is named.
-CheckProgram: unbounded fn [Src], [Module], [Text], Nat, Bool -> Report
-fn CheckProgram srcs, trees, world, shown, recording:
+CheckProgram: unbounded fn [Src], [Module], [Text], Nat, Bool, Bool -> Report
+fn CheckProgram srcs, trees, world, shown, recording, unused:
     let ((g0a, stb)) = BuildG srcs, trees
     # The prelude is the files from `shown` on (pick RN): a program's own `module Prelude`
     # is one of its files, and means nothing special.
@@ -2481,12 +2495,13 @@ fn CheckProgram srcs, trees, world, shown, recording:
     # A failed impl's method is its impl's alone: two impls' methods share a key, so the
     # list keys each by where its impl stands (`OwnKey`).
     let good = Filter g1.defs, \|d| not (HasText failed, (OwnKey d).qk)
-    let st4 = ShrinkCheck g1, st3, good
+    let ((st4, refs)) = ShrinkCheck g1, st3, good
     let ((rootRow, st5)) = RootRow g1, st4, world
-    let diags = SortDiags (Filter st5.diags, \|d| d.file < shown)
+    let warnings = if unused: UnusedDefs good, refs, shown else: [[]]
+    let diags = SortDiags (Append (Filter st5.diags, \|d| d.file < shown), warnings)
     let text = Concat (Each diags, \|d| RenderCDiag srcs, d)
     let typed = if recording: TypedOf g1, st5, shown else: emptyTyped
-    Report(text=text, errors=(Len diags), rootRow=rootRow, typed=typed)
+    Report(text=text, errors=(Len (Filter diags, \|d| not (IsWarning d))), rootRow=rootRow, typed=typed)
 
 # The typed output: every recorded type followed to its end, and the scheme of every
 # top-level definition of the program's own files.
