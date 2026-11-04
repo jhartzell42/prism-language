@@ -1,0 +1,10 @@
+# `calls-unbounded`: a bounded function hands a user function an unbounded lambda, so the
+# call is unbounded (round 3 CD: a function parameter is called, as far as color goes).
+Grow: unbounded fn Nat -> Nat
+fn Grow n = n + 1
+
+Apply: fn Nat, (fn Nat -> Nat) -> Nat
+fn Apply x, F = F x
+
+Step: fn Nat -> Nat
+fn Step n = Apply n, \|y| Grow y
