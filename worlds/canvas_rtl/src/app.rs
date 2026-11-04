@@ -184,7 +184,11 @@ impl<P: Program> App<P> {
                 }
             }
         }
-        if shared.dirty {
+        // A World presents only settled states: while the program owes a tick
+        // (`pending`), the scene may show one host deep a tick ahead of another, so the
+        // redraw waits until the owed ticks have run (Semantics ch. 9, "A World presents
+        // settled states").
+        if shared.dirty && !self.pending {
             shared.dirty = false;
             for w in self.windows.values() {
                 w.window.request_redraw();
@@ -279,6 +283,8 @@ impl<P: Program> ApplicationHandler for App<P> {
                 self.exit.get_or_insert(0);
                 event_loop.exit();
             }
+            // A redraw the system asks for while ticks are owed waits for them too.
+            WindowEvent::RedrawRequested if self.pending => self.shared.borrow_mut().dirty = true,
             WindowEvent::RedrawRequested => self.redraw(&path),
             other => self.input(&path, &other),
         }
