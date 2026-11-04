@@ -67,8 +67,10 @@ $(BUILD)/driver.o: driver.cpp $(SRC)/crate.hpp
 	@mkdir -p $(BUILD)
 	$(CXX) $(FLAGS) -c $< -o $@
 
+# The objects are globbed when the link runs: on a clean build none exist when make reads
+# this file, before prismc has emitted their sources.
 $(OUT)/driver: emitted $(CANVASLIB) $(RTLIB)
-	$(CXX) $(FLAGS) -o $@ $(PROG_OBJS) $(BUILD)/emitted_main.o $(BUILD)/driver.o $(CANVASLIB) $(RTLIB) $(SYS_LIBS)
+	$(CXX) $(FLAGS) -o $@ $(BUILD)/*.o $(CANVASLIB) $(RTLIB) $(SYS_LIBS)
 
 # ---- Rust ---------------------------------------------------------------------------
 
