@@ -59,12 +59,31 @@ while [ $# -gt 0 ]; do
 done
 [ ${#srcs[@]} -gt 0 ] || usage
 
+# relative PATH: the absolute PATH relative to the repository root, `.` and `..` resolved
+# by spelling alone (PATH need not exist); `../PATH` when it is outside the root.
+relative() {
+    local part parts=() IFS=/
+    for part in $1; do
+        case "$part" in
+            ''|.) ;;
+            ..) [ ${#parts[@]} -gt 0 ] && unset 'parts[${#parts[@]}-1]' ;;
+            *) parts+=("$part") ;;
+        esac
+    done
+    local full="/${parts[*]}"
+    case "$full" in
+        "$root") echo . ;;
+        "$root"/*) echo "${full#"$root"/}" ;;
+        *) echo "../$full" ;;
+    esac
+}
+
 # Paths relative to the repository root, where prismc and the crate expect them.
 rel=()
 for s in "${srcs[@]}"; do
     case "$s" in /*) a=$s ;; *) a=$here/$s ;; esac
     [ -e "$a" ] || { echo "prism: no such file or directory: $s" >&2; exit 2; }
-    r=$(realpath -m --relative-to="$root" "$a")
+    r=$(relative "$a")
     case "$r" in ../*) echo "prism: $s is outside the repository" >&2; exit 2 ;; esac
     rel+=("$r")
 done
@@ -113,7 +132,7 @@ case "$cmd" in
     compile)
         [ -n "$out" ] || { echo "prism compile: -o OUT is required" >&2; exit 2; }
         case "$out" in /*) ;; *) out=$here/$out ;; esac
-        r=$(realpath -m --relative-to="$root" "$out")
+        r=$(relative "$out")
         case "$r" in ../*) ;; *) out=$r ;; esac ;;
     test|run) if [ "$target" = cpp ]; then out=target/prism-cpp/$name; else out=target/prism/$name; fi ;;
     *) echo "prism: unknown command $cmd (compile, test, run, check)" >&2; exit 2 ;;
@@ -127,13 +146,17 @@ rm -rf "$out"
 targetopt=()
 [ "$target" = cpp ] && targetopt=(--target cpp)
 "$prismc" compile "${sources[@]}" -o "$out" --name "$name" "${runtime[@]}" "${targetopt[@]}"
+# The program is the target asked for: a prismc that took `--target` without knowing it
+# would have written a Rust crate.
+if [ "$target" = cpp ]; then marker=$out/src/main.cpp; else marker=$out/Cargo.toml; fi
+[ -f "$marker" ] || { echo "prism: $prismc wrote no $target program to $out (no $marker)" >&2; exit 2; }
 [ "$cmd" = compile ] && exit 0
 
 if [ "$target" = cpp ]; then
     # The C++ program: make builds runtime/cpp's library and the program with $CXX.
     opt=-O1
     [ "$cmd" = run ] && opt=-O2
-    make -s -C "$out" -j"$(nproc)" CXX="${CXX:-g++}" OPT="$opt" >&2
+    make -s -C "$out" -j"$(getconf _NPROCESSORS_ONLN)" CXX="${CXX:-g++}" OPT="$opt" >&2
     if [ "$cmd" = test ]; then exec "$out/$name" test; fi
     asked=$(sed -n 's/^const std::string WORLD = "\(.*\)";$/\1/p' "$out/src/main.cpp")
     [ -n "$world" ] || world=$asked

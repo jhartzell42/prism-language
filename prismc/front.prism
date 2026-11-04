@@ -105,6 +105,25 @@ let preludeFiles = [["prelude.prism", "ui.prism", "fs.prism", "process.prism", "
 ?OptionValue: fn [Text], Text -> ?Text
 fn ?OptionValue args, name = Fold (Range0 (Len args)), nil, \|?found, i| if args[i] == ? name: args[i + 1] else: ?found
 
+# What is wrong with a mode's options: each argument starting with `-` that is neither one
+# of `flags` nor one of `valued` (which take the argument after them), and a `valued`
+# option with nothing after it. A mode refuses these rather than ignoring them.
+BadOptions: fn [Text], [Text], [Text] -> [Text]
+fn BadOptions args, flags, valued:
+    let ((bad, owed)) = Fold args, (([[]], "")), \|((acc, owed)), a|
+        if owed != "": ((acc, ""))
+        else: if HasText valued, a: ((acc, a))
+        else: if (Take a, 1) == "-" and not (HasText flags, a): (((AddText acc, "unknown option {a}"), ""))
+        else: ((acc, ""))
+    if owed == "": bad else: AddText bad, "{owed} takes a value"
+
+# Gives up with `message`, as a refused program does.
+@Refuse: fn Text -> @unit
+fn @Refuse message:
+    !started <- @started
+    let !~gaveUp: !~unit = Error(kind=Prismc.Refused, message=message) on !started
+    ignore <- Prelude.Unwrap(value=!~gaveUp)
+
 # The arguments that are neither options nor the values options take.
 PlainArgs: fn [Text] -> [Text]
 fn PlainArgs args:
@@ -159,9 +178,16 @@ fn RenderParse path, text, ds = Concat (Each (Filter ds, \|d| d.stage != "out"),
     else: if checking: @CheckMain args
     else: @FrontMain args
 
-# `--check FILE...`: every file read, then the checker run through `@Run`.
+# `--check FILE...`: every file read, then the checker run through `@Run`; an option it
+# does not know is refused.
 @CheckMain: fn [Text] -> @unit
 fn @CheckMain args:
+    let bad = BadOptions args, [["--check", "--typed"]], [["--prelude", "--out", "--world"]]
+    if (Len bad) > 0: @Refuse "{Join bad, "; "} (--check takes --typed, --prelude DIR, --out FILE, --world W,...)"
+    else: @CheckChecked args
+
+@CheckChecked: fn [Text] -> @unit
+fn @CheckChecked args:
     let files = PlainArgs args
     let dir = Or (?OptionValue args, "--prelude"), "prelude"
     let ?out = ?OptionValue args, "--out"
@@ -258,9 +284,21 @@ fn @Finish out, (? o):
 # Worlds are found at `--runtime PATH` (by default `..` per directory of OUT, so OUT is
 # under the repository root); with `--target cpp`, as a C++ program over `runtime/cpp`
 # (emit_cpp.prism). A `.prismtest` is read with the `.prism` of its name (pick
-# PT of the README).
+# PT of the README). An option it does not know, a target but `rust` or `cpp`, or an
+# option with no value after it is refused.
 @CompileMain: fn [Text] -> @unit
 fn @CompileMain opts:
+    let bad = BadOptions opts, [[]], compileValued
+    let target = Or (?OptionValue opts, "--target"), "rust"
+    if (Len bad) > 0: @Refuse "{Join bad, "; "} (compile takes -o OUT, --name NAME, --prelude DIR, --runtime PATH, --target rust|cpp)"
+    else: if target != "rust" and target != "cpp": @Refuse "unknown target {target} (rust, cpp)"
+    else: @CompileChecked opts
+
+# The options of `compile` that take a value.
+let compileValued = [["-o", "--prelude", "--name", "--runtime", "--target"]]
+
+@CompileChecked: fn [Text] -> @unit
+fn @CompileChecked opts:
     let named = CompileFiles opts
     let dirs = Filter named, \|f| not (IsSourcePath f)
     let files = Filter named, \|f| IsSourcePath f
@@ -294,10 +332,9 @@ fn RuntimeFor out:
 # The files of a `compile`: the arguments that are neither options nor their values.
 CompileFiles: fn [Text] -> [Text]
 fn CompileFiles args:
-    let takesValue = [["-o", "--prelude", "--name", "--runtime", "--target"]]
     let ((kept, ignore)) = Fold args, (([[]], False)), \|((acc, skip)), a|
         if skip: ((acc, False))
-        else: if HasText takesValue, a: ((acc, True))
+        else: if HasText compileValued, a: ((acc, True))
         else: if (Take a, 1) == "-": ((acc, False))
         else: (((Push acc, a), False))
     kept
