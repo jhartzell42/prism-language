@@ -1039,14 +1039,15 @@ function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli/cpp
 `$CXX` (g++ by default) into `target/prism-cpp/NAME` and runs its tests under the C++
 Test World; `tests/compiled/run.sh --target cpp` runs every program so.
 
-- **Where it stands:** all 69 programs of `tests/compiled/run.sh` pass under C++ (every
+- **Where it stands:** all 87 programs of `tests/compiled/run.sh` pass under C++ (every
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
-- **The C++ bootstrap:** prismc itself compiles to C++ (about 157,000 lines in 37 files)
-  and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`) takes it to its fixed point
-  and checks its Rust against the Rust prismc's (bootstrap/README.md). g++ -O1 builds it
-  in about 14 minutes on two cores, one file at a time.
+- **The C++ bootstrap:** prismc itself compiles to C++ (about 163,000 lines: 38 source
+  files and 73 headers, pick MH) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
+  takes it to its fixed point and checks its Rust against the Rust prismc's
+  (bootstrap/README.md). clang++ -O1 builds it in about 2.5 minutes with four jobs on an
+  M2 Pro; g++ -O1 took about 14 minutes on two cores, one file at a time.
 
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 
@@ -1100,6 +1101,41 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   `Array` a view of a shared buffer of chunks (runtime/cpp/include/prism_rtl/collections.hpp),
   so a fold that inserts into a map or pushes onto an array is as cheap as Rust's
   `im_rc`; with copy-on-write ones prismc's own lexer was quadratic.
+- **MH: per-module headers.** No header holds the whole program. Each module has
+  `NAME.decl.hpp` (its types, nodes and jobs declared, its choices' handles),
+  `NAME.types.hpp` (its records, tags and newtypes, each after the types it holds, and its
+  choices' cases), `NAME.hpp` (its prototypes, nodes and jobs) and, when it has templates,
+  `NAME.generic.hpp`; `elem.decl.hpp` and `elem.types.hpp` hold `Elem` and `Answer`,
+  `programs.hpp` the program classes (for `main.cpp` and bench/gui/prism/driver.cpp). A
+  layer includes only the layers of the modules it needs, which lowering records though
+  the Rust printer ignores them: `ModDef.complete`, the modules whose value types its own
+  types hold by value (through `?`, `~`, a tuple, a cell, an `Rc`, a type argument), whose
+  `NAME.types.hpp` it includes; `ModDef.declared`, every other module it reaches by `use`,
+  emitted family, qualified name (`EmitCpp.EmitCpp` in front.prism, which has no `use
+  EmitCpp`) or impl solving one of its constraints, closed over, whose `NAME.decl.hpp` is
+  enough for its types. A source file includes its own `NAME.hpp` and those it needs,
+  then the `NAME.generic.hpp` of each that has one: a template's call of a trait method
+  is qualified, so it sees only the overloads declared before the template, and every
+  `NAME.hpp` of the file comes first. A trait method without a default is declared a
+  deleted template over `Self`, so a template can name it in a file with no impl; an impl
+  of another module's trait is in a namespace of its own module (`zoo::impl_aloud_Loud`,
+  since a namespace `aloud` inside `zoo` would hide the module `aloud`), and a
+  using-declaration at the crate's scope brings it into the trait's namespace
+  (`cpp-trait-across-modules`). Modules that hold each other's types by value with no
+  cycle among the types (prismc's `check_types::St` holds a `typed::TProgram`, whose notes
+  hold `check_types::Scheme`) share one types header, `check_types-typed.types.hpp`, the
+  types ordered across them (`ModDef.typesWith`, a cycle of `complete`); each member's
+  `NAME.types.hpp` includes it. The Makefile tracks the includes with `-MMD -MP`.
+  - **Its size:** prismc in C++ has 73 headers of 31,971 lines in all; each of its 38
+    source files includes from 565 to 31,171 lines of them (median 16,056; 474,242 over
+    all files), where the one header every file included had 30,029 (1,141,102 over all
+    files).
+  - **Its build time** (prismc from clean, `make -j12 CXX=clang++`, Apple M2 Pro, the
+    runtime's library built beforehand, other agents' builds running beside it at load
+    averages of 50 to 75, so the wall times are rough): at `-O1` 96 s wall and 822 s of
+    CPU (user and system) against 116 s and 980 s for the one header; at `-O2` 122 s and
+    1,019 s against 163 s and 1,243 s. The CPU time falls by about a sixth: the
+    definitions, not the declarations, are most of each file's work.
 
 Gaps:
 
@@ -1108,6 +1144,30 @@ Gaps:
 - **CY:** a cycle of records held by value with no choice on it.
 - **GC:** a generic choice's case constructor (`Tree(Tree::Node{..})`) needs its type
   arguments, which CTAD cannot deduce from a nested case; no program here has one.
+- **NL: a `Nat` literal past 32 bits is truncated** (`Nat(60000000000u)` in the lexer's
+  duration units, which clang warns of as `-Wconstant-conversion`): `prism_rtl::Nat`'s
+  constructor takes a `uint32_t`.
+
+C++ doubts:
+
+- **MH1** A module's qualified references are found in its source text: a line that is no
+  comment and holds a module's name and a dot (`Zoo.`) names that module. A text literal
+  holding one adds a module the file does not need (more includes, never fewer); the
+  checker's resolution of each name would be exact, and the typed program does not keep
+  it.
+- **MH2** `declared` is closed over the modules each one reaches, so a module reached
+  through a long chain (front reaches nearly every module) includes nearly every header;
+  the per-file sizes above are what that gives. A module's own uses, without the closure,
+  would miss a type it names only through another module's (a lambda's parameter type
+  written out, CH of the back-end picks).
+- **MH3** A group of modules sharing a types header (`typesWith`) is a cycle of modules,
+  not of types; a cycle of types by value (gap CY) stays a C++ error, as in the one
+  header. A group is one header for its modules, not for the program.
+- **MH4** A trait call's overloads are the ones its file declares before the template: an
+  impl in a module the instantiating file never reaches would be missed (a `deleted`
+  error, not a wrong overload). `declared` follows each constraint's impl to its module,
+  so no program here has one; it is not proved for generic impls instantiated through a
+  third module's generic function.
 
 ### Back-end picks
 
