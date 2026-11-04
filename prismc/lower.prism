@@ -635,13 +635,22 @@ fn Snake name:
 LowerChar: fn Text -> Text
 fn LowerChar c = if IsUpper c: Lower c else: c
 
-# A type or constructor name as Rust writes one: the first letter upper.
+# A type or constructor name as Rust and C++ write one: the first letter upper, and a `_`
+# after a name the emitted code also reaches bare from the runtimes or the standard
+# library (`runtimeNames`), so a program's `Row` or `Node` is never the runtime's.
 Camel: fn Text -> Text
 fn Camel name:
     let b = Base name
     let first = Take b, 1
     let fixed = if IsLower first: "{Upper first}{Drop b, 1}" else: b
-    if fixed == "Self": "Self_" else: fixed
+    if fixed == "Self" or HasText runtimeNames, fixed: "{fixed}_" else: fixed
+
+# The type, trait and class names the emitted code reaches bare: `prism_rtl`'s, in Rust
+# (`use prism_rtl::*`) and in C++ (`using namespace prism_rtl`), and the Rust names it
+# writes unqualified (`Rc`, `Cell`, `Vec`...). The prelude's own names (`Fault`, `Error`,
+# `Turn`, `Show`, `Text`, `Nat`, `Int`, `Map`, `Array`) are left out: the emitted code
+# names the runtime's by path, or they are the runtime's own.
+let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache", "Case", "Cell", "Clickable", "Collector", "Cx", "Defer", "Demand", "Document", "Done", "DynShow", "Dynamic", "Edit", "Err", "Event", "F64", "Fallible", "Fields", "Finishing", "Fn", "Forward", "FromPod", "Gathered", "Gen", "Handle", "Hold", "Host", "HostOf", "HostRow", "Inert", "IsShared", "IsValue", "Job", "JobRef", "Later", "Link", "List", "Live", "MakeNew", "MutElements", "Nanos", "NeverEvent", "NewSnapshot", "Node", "NodeRef", "None", "Ok", "OkUnit", "Option", "Outcome", "Panic", "Patch", "Path", "Pattern", "Pod", "Port", "Pos", "Printer", "Program", "Rc", "ReadyMap", "ReadyState", "RefCell", "Report", "Request", "Result", "Row", "Rows", "Runtime", "Scope", "Segment", "ShowRef", "ShownText", "Sink", "Slot", "Snapshot", "Some", "Stamped", "String", "Subscribed", "Subscriber", "Supplied", "Supplier", "TestWorld", "Tick", "TickIn", "TickOut", "ToPod", "Unexpected", "Unit", "Vec", "Weak", "World", "XorShift"]]
 
 # A Prism module's Rust module.
 RustModName: fn Text -> Text
@@ -1599,7 +1608,9 @@ fn CtorApp lx, env, c, args, span:
                 else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((Snake (Or c.fields[i], "")), (Or vals[i], (XCall "Default::default", [[]])))))), t
             BChoice cases:
                 let isUnitType = (Len cases) == 1 and (Len c.args) == 0 and IsLowerText (BareName c.name)
-                let path = if isUnitType: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
+                # a newtype is a tuple struct (a struct in C++), built by its own name
+                let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner)
+                let path = if isUnitType or isNewtype: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
                 if (Len c.args) == 0: VlOwned (XPath path), t
                 else: VlOwned (XCtor path, vals), t
             otherwise: VlOwned (Refusal "a constructor of {c.owner}"), t
@@ -2396,7 +2407,11 @@ fn CtorPat lx, n, ps, ty, mode, fresh:
                     BRecord fs: PatOut(pa=(PaRecord tyPath, (Each (Range0 (Len pas)), \|i| (((Snake (Or c.fields[i], "")), (Or pas[i], PaWild)))), ((Len pas) < (Len c.fields))), conds=conds, binds=binds)
                     otherwise:
                         let isUnitType = (Len c.args) == 0 and IsUnitCtor lx, qk
-                        let path = if isUnitType: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
+                        # a newtype is a tuple struct, matched by its own name
+                        let isNewtype = (BareName c.name) == (BareName c.owner) and match owner.body:
+                            BChoice cases: (Len cases) == 1
+                            otherwise: False
+                        let path = if isUnitType or isNewtype: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
                         if (Len c.args) == 0: PatOut(pa=(PaUnit path), conds=[[]], binds=[[]])
                         else: PatOut(pa=(PaCtor path, pas), conds=conds, binds=binds)
             nil: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern of {qk}")]], binds=[[]])

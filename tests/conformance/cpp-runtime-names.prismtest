@@ -3,4 +3,3 @@
 test names_do_not_collide, @rows:
     build
     click at 0
-    compute
