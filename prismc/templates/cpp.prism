@@ -71,10 +71,11 @@ $(WORLD_LIBS): FORCE | $(LIB)
 	@$(MAKE) -s -C $(CANVAS) lib CXX=$(CXX) CONFIG=$(CONFIG) OPT="$(OPT)"
 </cpp>
 
-# A module's headers, three layers (prismc/README.md, pick MH): `NAME.decl.hpp`, its types
-# and nodes declared and its choices' handles; `NAME.types.hpp`, its records (each after
-# the types it holds) and its choices' cases; `NAME.hpp`, its functions' prototypes, its
-# nodes and jobs, and the definitions of its generic functions and types.
+# A module's headers, three layers and a fourth for templates (prismc/README.md, pick MH):
+# `NAME.decl.hpp`, its types and nodes declared and its choices' handles; `NAME.types.hpp`,
+# its records (each after the types it holds) and its choices' cases; `NAME.hpp`, its
+# functions' prototypes and its nodes and jobs; `NAME.generic.hpp`, when it has any, the
+# definitions of its generic functions and types.
 CppDeclHeader: fn Text, Text, Text, Text -> Text
 fn CppDeclHeader title, includes, forward, handles = inline_text <cpp>
 // {{title}}: its types, nodes and jobs declared, and its choices' handles, emitted by
@@ -114,11 +115,22 @@ using namespace prelude;
 }  // namespace crate
 </cpp>
 
-CppModHeader: fn Text, Text, Text, Text, Text, Text -> Text
-fn CppModHeader title, includes, protos, classes, genericIncludes, generic = inline_text <cpp>
-// {{title}}: its functions' prototypes, its nodes and jobs, and its generic functions'
-// and types' definitions, emitted by prismc (docs/backend.md). Edit the Prism source, not
-// this file.
+# A module's types header when its value types are defined with other modules' (a group,
+# `ModDef.typesWith`): the group's header.
+CppTypesInGroup: fn Text, Text -> Text
+fn CppTypesInGroup title, group = inline_text <cpp>
+// {{title}}: its records, tags and newtypes and its choices' cases are defined with those
+// of the modules whose types it holds by value and which hold its own, in `{{group}}.types.hpp`,
+// emitted by prismc (docs/backend.md). Edit the Prism source, not this file.
+#pragma once
+
+#include "{{group}}.types.hpp"
+</cpp>
+
+CppModHeader: fn Text, Text, Text, Text, Text -> Text
+fn CppModHeader title, includes, protos, outer, classes = inline_text <cpp>
+// {{title}}: its functions' prototypes and its nodes and jobs, emitted by prismc
+// (docs/backend.md). Edit the Prism source, not this file.
 #pragma once
 
 {{includes}}
@@ -129,12 +141,27 @@ using namespace prelude;
 
 {{protos}}
 
+{{outer}}
+
 {{classes}}
 
 }  // namespace crate
-{{genericIncludes}}
+</cpp>
+
+# `NAME.generic.hpp`: a module's generic functions' and types' definitions, which a source
+# file includes after every module's `NAME.hpp` it includes, so that a template sees every
+# overload of a trait's method (an impl's, in whichever module) the file declares.
+CppGenericHeader: fn Text, Text, Text -> Text
+fn CppGenericHeader title, includes, generic = inline_text <cpp>
+// {{title}}: its generic functions' and types' definitions, emitted by prismc
+// (docs/backend.md). Edit the Prism source, not this file.
+#pragma once
+
+{{includes}}
 
 namespace crate {
+
+using namespace prelude;
 
 {{generic}}
 
