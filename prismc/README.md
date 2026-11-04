@@ -1234,8 +1234,9 @@ Each is Claude's, for Jimmy to overturn.
   name `twin_fn`), and each use names its instantiation's binding. A use inside another
   generalized `let` may be at that one's variables (prismc's `Take`, used in `Builder` at
   `Builder`'s color): it stands for each of `Builder`'s instantiations. A widget block's
-  `let` is a node field of one type: it is lowered at its uses' one instantiation
-  (`ts-ch02-function-values`'s `Double`), and at several it is refused (gap LW). So `let Twin = \|x| ((x,
+  `let` is a node field: at its uses' one instantiation it is one field
+  (`ts-ch02-function-values`'s `Double`), at several a field per instantiation, each
+  use naming its own (gap LW's first ruling, `ts-ch05-widget-let-generic`). So `let Twin = \|x| ((x,
   x))` used at Nat and at Text is two closures, each bounded where its uses are, and an
   unused parameter (`\|ignore, y| y`) is typed like any other (`ts-ch05-let-generic`). A
   `let` nothing uses is not lowered. A quantified variable that reaches the Rust anyway
@@ -1666,8 +1667,6 @@ ruling taken (Claude's).
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`
 naming the construct, and `CompileProgram` reports every distinct one as
 `error[not-lowered]` and fails, the crate still written for reading:
-a widget block's generalized `let` used at several instantiations (gap LW: one node
-field, its quantified variables refused; *first ruling:* a field per instantiation);
 `@HostList`; a named widget function as a host's supplier (gap NS: a widget function is
 a node, not a value; a lambda supplier is lowered); a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in

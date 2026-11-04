@@ -2254,8 +2254,8 @@ fn AtInstance lx, ((tys, cols)) = update lx:
     &_.csubst <= Fold cols, &_.csubst, \|m, ((q, c))| Insert m, q, c
 
 # A widget block's `let` (a node's field, of one type): a generalized one is lowered at
-# its uses' instantiation when they have one; at several it keeps its quantified
-# variables, which the printer refuses (gap LW).
+# its uses' instantiation when they have one; at several it is a field per instantiation
+# (`?ManyInstances`).
 WidgetLetLx: unbounded fn Lx, Range -> Lx
 fn WidgetLetLx lx, span = match lx.gens[PlaceKey lx, span]:
     ? gn: match Instantiations lx, gn:
@@ -4114,9 +4114,34 @@ fn PreBindName wx, benv, menv, n, how:
         ((LyDyn, ignore)):
             let b = BnHold rs, t
             ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
-        otherwise:
-            let ((be, me)) = BindPlain benv, menv, nkey, rs, t
-            ((wx1, be, me))
+        otherwise: match ?ManyInstances wx.lx, n.span:
+            # A generalized `let` used at several instantiations (gap LW, first ruling): a
+            # field per instantiation, each use bound to its own, as `GenericLet` binds a
+            # local per instantiation.
+            ? insts: Fold (Range0 (Len insts)), ((wx1, benv, menv)), \|((w, be, me)), k|
+                let inst = Or insts[k], (([[]], [[]]))
+                let lxk = AtInstance wx.lx, inst
+                let tk = OutTyOf lxk, (Peel (BinderTy lxk, n.span))
+                let ((rk, w2)) = if k == 0: ((rs, w)) else: FreshName w, "{rs}_{k}"
+                let bkey = if k == 0: nkey else: "{nkey}#inst{k}"
+                let ((be2, me2)) = BindPlain be, me, bkey, rk, tk
+                let ukey = "{nkey}#{Show inst}"
+                ((w2, (WithUse be2, ukey, bkey), (WithUse me2, ukey, bkey)))
+            nil:
+                let ((be, me)) = BindPlain benv, menv, nkey, rs, t
+                ((wx1, be, me))
+
+WithUse: fn Env, Text, Text -> Env
+fn WithUse env, ukey, bkey = update env:
+    &_.uses <= Insert &_.uses, ukey, bkey
+
+# A widget block's generalized `let`'s instantiations, when its uses have several.
+?ManyInstances: unbounded fn Lx, Range -> ?[(([((Text, Ty))], [((Text, Col))]))]
+fn ?ManyInstances lx, span = match lx.gens[PlaceKey lx, span]:
+    ? gn:
+        let insts = Instantiations lx, gn
+        if (Len insts) > 1: ? insts else: nil
+    nil: nil
 
 # `$!a`: a dynamic of events, which `@Switch` hears (a `rebuild` handing back an event is a
 # builder and a switch in one path, round 46 RD): it binds as the event its generation
@@ -4304,18 +4329,37 @@ fn LetLine wx, benv, menv, p, e:
                 ((wx3, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{rs}_init"), Owned, t))))
             else: ((wx2, benv))
         ? (BnLocal rs, ignore, t):
-            let local = PlaceStem rs
-            let lxw = match p.kind:
-                PName n: WidgetLetLx lx, n.span
-                otherwise: lx
-            let v = Own (ValueOf lxw, benv, e)
-            let f = PlaceStem rs
-            let wx2 = update wx:
-                &_.lets <= Push &_.lets, (DoLet (PaBind f), v)
-                &_.fields <= Push &_.fields, ((f, t, "`{PatText p}`"))
-                &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
-            ((wx2, benv))
+            let ?insts = match p.kind:
+                PName n: ?ManyInstances lx, n.span
+                otherwise: nil
+            match ?insts:
+                # a field per instantiation (gap LW), each the value lowered at it
+                ? insts: match p.kind:
+                    PName n:
+                        let nkey = SNameKey n
+                        let wxn = Fold (Range0 (Len insts)), wx, \|w, k|
+                            let lxk = AtInstance lx, (Or insts[k], (([[]], [[]])))
+                            let bkey = if k == 0: nkey else: "{nkey}#inst{k}"
+                            match menv.names[bkey]:
+                                ? (BnLocal rk, ignore, tk): WidgetLetField w, (PlaceStem rk), tk, (Own (ValueOf lxk, benv, e)), "`{nkey}` at its instantiation {k}"
+                                otherwise: update w:
+                                    &_.build <= Push &_.build, (RefusalDo "`{nkey}` at its instantiation {k}, which has no binding")
+                        ((wxn, benv))
+                    otherwise: ((wx, benv))
+                nil:
+                    let lxw = match p.kind:
+                        PName n: WidgetLetLx lx, n.span
+                        otherwise: lx
+                    let v = Own (ValueOf lxw, benv, e)
+                    (((WidgetLetField wx, (PlaceStem rs), t, v, "`{PatText p}`"), benv))
         otherwise: ((wx, benv))
+
+# A widget block's plain `let` as a node field: computed in the build's `let`s, moved in.
+WidgetLetField: fn Wx, Text, OutTy, Ex, Text -> Wx
+fn WidgetLetField wx, f, t, v, doc = update wx:
+    &_.lets <= Push &_.lets, (DoLet (PaBind f), v)
+    &_.fields <= Push &_.fields, ((f, t, doc))
+    &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
 
 # An event of `Error`s feeding a `!~T`: each firing is the `~T`'s failure.
 ErrPipe: fn EvRef -> EvRef
