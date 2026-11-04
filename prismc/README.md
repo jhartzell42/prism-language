@@ -109,7 +109,11 @@ to overturn.
     | prismc built by | instructions, characters | instructions, cursors | peak memory, characters | peak memory, cursors |
     |---|---|---|---|---|
     | Rust (cargo release) | 4.79 G to 4.82 G | 1.40 G to 1.43 G | 43 MB | 33 MB |
-    | C++ (clang++ -O1) | 1.88 G to 1.94 G | CPP_AFTER |
+    | C++ (-O1) | 1.88 G to 1.94 G | 1.80 G to 1.86 G | 33 MB | 38 MB |
+
+    The C++ "characters" binary is the one the main checkout had installed on 4 November
+    (its compiler not recorded); the "cursors" one is clang++ -O1. In the C++ prismc the
+    lexer was never the cost (malloc and `shared_ptr` counts are, handoff item 4).
   - **Doubts for Jimmy:**
     - **TXC** A `Cursor` is `^Eq`, `^Ord` and `^Show` like every primitive; it compares
       by its byte index alone (the book: "Cursors compare by it"), so cursors into two
