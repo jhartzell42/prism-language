@@ -88,6 +88,7 @@ public:
     void exit(std::uint8_t code) override {
         if (!exit_) exit_ = code;
     }
+    std::optional<std::uint32_t> pixel(const Path& window, double x, double y) const override;
 
 private:
     void tick_once(TickIn input);
@@ -329,6 +330,16 @@ int App::paint() {
     // The frame is on the server, and the shared image free to paint again.
     if (painted) XSync(dpy_, False);
     return painted;
+}
+
+std::optional<std::uint32_t> App::pixel(const Path& window, double x, double y) const {
+    auto it = windows_.find(window);
+    if (it == windows_.end() || !it->second.image) return std::nullopt;
+    const OsWindow& w = it->second;
+    long px = std::lround(x * scale_), py = std::lround(y * scale_);
+    if (px < 0 || py < 0 || px >= w.pw || py >= w.ph) return std::nullopt;
+    auto* row = reinterpret_cast<const std::uint32_t*>(w.image->data + std::ptrdiff_t(py) * w.image->bytes_per_line);
+    return row[px] & 0xffffff;
 }
 
 OsWindow* App::window_of(::Window xid, Path* path) {

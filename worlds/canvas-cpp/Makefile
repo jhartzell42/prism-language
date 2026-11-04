@@ -7,10 +7,11 @@
 #   make program PROG=DIR [ROOT=MainProgram]
 #                        DIR/canvas: the C++ program prismc emitted into DIR, its root under
 #                        this World (see README.md, "A compiled program")
-#   make chess-smoke     chess compiled to C++ under Xvfb: click e2, then e4, exit 0
+#   make chess-smoke     chess compiled to C++ under Xvfb: click e2, then e4, exit 0 (Linux)
 #
-# The tests: test_canvas (no display) and xvfb_smoke (a window under xvfb-run, clicked
-# through XTest), both run by `check`.
+# The tests: test_canvas (no display), and on Linux xvfb_smoke (a window under xvfb-run,
+# clicked through XTest), on macOS macos_smoke (a Cocoa window, pressed through Hooks),
+# all run by `check`.
 
 CXX ?= g++
 CONFIG ?= default
@@ -21,16 +22,32 @@ RT := $(REPO)/runtime/cpp
 CLI := $(REPO)/worlds/cli-cpp
 FONT := $(REPO)/worlds/canvas/fonts/DejaVuSans.ttf
 BUILD := build/$(CONFIG)
+# The window side: Xlib on Linux (src/app.cpp), Cocoa on macOS (src/app_macos.mm).
+ifeq ($(shell uname -s),Darwin)
+PKGS := cairo freetype2
+APP_SRC := src/app_macos.mm
+APP_FLAGS := -x objective-c++ -fobjc-arc
+FRAMEWORKS := -framework Cocoa -framework QuartzCore
+SMOKE := macos_smoke
+# LeakSanitizer does not run on macOS on arm64.
+LEAKS := 0
+else
 PKGS := cairo freetype2 x11 xext
+APP_SRC := src/app.cpp
+APP_FLAGS :=
+FRAMEWORKS :=
+SMOKE := xvfb_smoke
+LEAKS := 1
+endif
 PKG_CFLAGS := $(shell pkg-config --cflags $(PKGS))
-PKG_LIBS := $(shell pkg-config --libs $(PKGS))
+PKG_LIBS := $(shell pkg-config --libs $(PKGS)) $(FRAMEWORKS)
 STD ?= -std=c++20
 WARN ?= -Wall -Wextra -Werror
 FLAGS := $(STD) $(WARN) $(OPT) $(SANITIZE) -Iinclude -I$(RT)/include -I$(CLI)/include $(PKG_CFLAGS)
 RTLIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
 LIB := $(BUILD)/libprism_world_canvas.a
-LIB_SRCS := src/world.cpp src/font.cpp src/render.cpp src/app.cpp
-LIB_OBJS := $(LIB_SRCS:src/%.cpp=$(BUILD)/%.o) $(BUILD)/cli.o
+LIB_SRCS := src/world.cpp src/font.cpp src/render.cpp
+LIB_OBJS := $(LIB_SRCS:src/%.cpp=$(BUILD)/%.o) $(BUILD)/app.o $(BUILD)/cli.o
 HEADERS := $(wildcard include/prism_world_canvas/*.hpp)
 
 .PHONY: test check lib program chess-smoke FORCE
@@ -40,9 +57,9 @@ test:
 	$(MAKE) check CXX=clang++ CONFIG=clang
 	$(MAKE) check CXX=g++ CONFIG=asan-gcc OPT="-O1 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined"
 
-check: $(BUILD)/canvas_tests $(BUILD)/xvfb_smoke
-	ASAN_OPTIONS=detect_leaks=1 $(BUILD)/canvas_tests
-	$(BUILD)/xvfb_smoke
+check: $(BUILD)/canvas_tests $(BUILD)/$(SMOKE)
+	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/canvas_tests
+	$(BUILD)/$(SMOKE)
 
 lib: $(LIB)
 
@@ -52,6 +69,10 @@ $(RTLIB): FORCE
 $(BUILD)/%.o: src/%.cpp $(HEADERS)
 	@mkdir -p $(BUILD)
 	$(CXX) $(FLAGS) -DPRISM_CANVAS_FONT='"$(FONT)"' -c $< -o $@
+
+$(BUILD)/app.o: $(APP_SRC) $(HEADERS)
+	@mkdir -p $(BUILD)
+	$(CXX) $(APP_FLAGS) $(FLAGS) -c $< -o $@
 
 $(BUILD)/cli.o: $(CLI)/src/cli.cpp $(CLI)/include/prism_world_cli/cli.hpp
 	@mkdir -p $(BUILD)
@@ -64,7 +85,10 @@ $(LIB): $(LIB_OBJS)
 $(BUILD)/canvas_tests: tests/test_canvas.cpp $(RT)/tests/main.cpp $(LIB) $(RTLIB) $(HEADERS)
 	$(CXX) $(FLAGS) -I$(RT)/tests -DPRISM_REPO='"$(REPO)"' -o $@ tests/test_canvas.cpp $(RT)/tests/main.cpp $(LIB) $(RTLIB) $(PKG_LIBS)
 
-$(BUILD)/xvfb_smoke: tests/xvfb_smoke.cpp tests/robot.hpp $(LIB) $(RTLIB) $(HEADERS)
+$(BUILD)/macos_smoke: tests/macos_smoke.cpp tests/smoke_program.hpp $(LIB) $(RTLIB) $(HEADERS)
+	$(CXX) $(FLAGS) -o $@ tests/macos_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS)
+
+$(BUILD)/xvfb_smoke: tests/xvfb_smoke.cpp tests/robot.hpp tests/smoke_program.hpp $(LIB) $(RTLIB) $(HEADERS)
 	$(CXX) $(FLAGS) -o $@ tests/xvfb_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS) -lXtst -lpthread
 
 $(BUILD)/robot: tests/robot.cpp tests/robot.hpp

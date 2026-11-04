@@ -1,8 +1,8 @@
-// A window on a real X server: a hand-written program (in docs/backend.md's shape) opens
-// one `Gui.Window` with a `Gui.Scene` that fills a red rectangle. A second thread, a
-// client of its own on the same display, waits until the rectangle's pixel on the root
-// window is red, then clicks it through XTest. The program hears the `Press` and tears
-// both places down; with no window left and nothing owed, the World ends the run with 0.
+// A window on a real X server: the program of smoke_program.hpp opens one `Gui.Window`
+// with a red rectangle in it. A second thread, a client of its own on the same display,
+// waits until the rectangle's pixel on the root window is red, then clicks it through
+// XTest. The program hears the `Press` and tears both places down; with no window left and
+// nothing owed, the World ends the run with 0.
 // worlds/canvas/tests/xvfb_smoke.rs in C++.
 //
 // With no `DISPLAY`, the test starts itself again under `xvfb-run -a`; with no `xvfb-run`
@@ -18,21 +18,17 @@
 #include <cstdlib>
 #include <thread>
 
-#include "prism_world_canvas/canvas.hpp"
 #include "robot.hpp"
+#include "smoke_program.hpp"
 
 using namespace prism_rtl;
 using namespace prism_world_canvas;
+using namespace smoke;
 
 namespace {
 
-/// Set when the window's first input reached the program.
-std::atomic<bool> heard{false};
 /// Set when the scene's red showed on the screen.
 std::atomic<bool> painted{false};
-
-/// The rectangle's centre: where the robot looks and clicks.
-constexpr int CX = 60, CY = 35;
 
 void run_robot() {
     robot::Robot r;
@@ -40,54 +36,10 @@ void run_robot() {
         std::fprintf(stderr, "smoke: the robot cannot open the display\n");
         return;
     }
-    if (r.wait_for(CX, CY, 0xc82828, 20.0)) painted = true;
+    if (r.wait_for(CX, CY, RED, 20.0)) painted = true;
     r.click(CX, CY);
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
-
-// @main:
-//     !input <- Gui.Window(title="Smoke", size=Extent(w=200.0, h=100.0))      # 0
-//     Gui.Scene(window=WindowId "Smoke", draw=[Draw.Rect(rect=.., paint=Red)]) # 1
-// and on `!input`'s first firing both places leave.
-struct Smoke : Node {
-    Path path;
-    bool open = true;
-    explicit Smoke(Path p) : path(std::move(p)) {}
-    Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override {
-        if (at.size() != 1 || !at[0].is_pos(0) || !open)
-            return unexpected(Fault::answer("no answering place at " + path_of(at).to_string()));
-        auto c = v.structure().if_choice();
-        if (!c) return unexpected(Fault::answer("expected WindowInput, got " + v.to_string()));
-        std::fprintf(stderr, "smoke: the window sent %s\n", v.to_string().c_str());
-        if (c->ctor != "Press") return {};  // a `Resized` before the click
-        heard = true;
-        open = false;
-        cx.removed(path.at(0));
-        cx.removed(path.at(1));
-        return {};
-    }
-};
-
-struct SmokeProgram : Program {
-    Runtime rt;
-    std::shared_ptr<Smoke> root;
-    static Built<SmokeProgram> build(std::span<const Pod>, const ReadyState& ready) {
-        auto p = std::make_unique<SmokeProgram>();
-        Cx cx = p->rt.build(ready);
-        p->root = std::make_shared<Smoke>(Path::root());
-        Pod window = Pod::element("Gui.Window", {{"title", Pod::text(Text("Smoke"))}, {"size", gui::extent(200, 100)}});
-        auto id = cx.first_value(window);
-        if (!id) return unexpected(Fault::answer("Gui.Window unanswered"));
-        cx.added(p->root->path.at(0), window);
-        Pod rect = Pod::element("Draw.Rect", {{"rect", gui::rect(10, 10, 100, 50)}, {"paint", Pod::name("Red")}});
-        cx.added(p->root->path.at(1), Pod::element("Gui.Scene", {{"window", *id}, {"draw", Pod::array({rect})}}));
-        auto out = p->rt.close(std::move(cx));
-        if (!out) return unexpected(out.error());
-        return std::pair<std::unique_ptr<SmokeProgram>, TickOut>(std::move(p), std::move(out).value());
-    }
-    Result<TickOut> tick(const TickIn& input, const ReadyState& ready) override { return rt.tick(root, input, ready); }
-    void compact() override { rt.compact(); }
-};
 
 }  // namespace
 

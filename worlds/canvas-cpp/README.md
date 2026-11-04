@@ -17,23 +17,27 @@ prism_world_canvas::run_with<MyProgram>(wrap, hooks)    // another wrapper; hook
 - **`include/prism_world_canvas/`**: `world.hpp` (the World with no display: `Shared`,
   `CanvasReady`, `CanvasWorld`, and `UnwrapWorld`, the prelude's policy around it),
   `font.hpp`, `render.hpp`, `canvas.hpp` (the loop, `Session`, `Hooks`, `run`).
-- **`src/`**: `world.cpp`, `font.cpp`, `render.cpp`, `app.cpp` (the Xlib loop), and
-  `program_main.cpp`, the `main` for a compiled program (below).
+- **`src/`**: `world.cpp`, `font.cpp`, `render.cpp`, `app.cpp` (the Xlib loop, Linux),
+  `app_macos.mm` (the Cocoa loop, macOS), and `program_main.cpp`, the `main` for a
+  compiled program (below).
 - **`tests/`**: `test_canvas.cpp` (the Rust crate's unit tests, test for test, plus the
-  Rust World's widths for five texts), `xvfb_smoke.cpp` (the Rust `xvfb_smoke`: a
-  hand-written program's window clicked through XTest), `chess_smoke.sh` with `robot.cpp`
-  and `robot.hpp` (chess, below).
+  Rust World's widths for five texts), `smoke_program.hpp` (a hand-written program with
+  one window), `xvfb_smoke.cpp` (Linux: the Rust `xvfb_smoke`, that window clicked
+  through XTest), `macos_smoke.cpp` (macOS: that window's pixel read back and pressed
+  through `Hooks`), `chess_smoke.sh` with `robot.cpp` and `robot.hpp` (chess under Xvfb,
+  Linux).
 
 ```
-make -C worlds/canvas-cpp test          # g++, clang++, then ASan+UBSan with g++
+make -C worlds/canvas-cpp test          # g++, clang++, then ASan+UBSan with g++ (clang on a Mac)
 make -C worlds/canvas-cpp check         # once, with $(CXX)
 make -C worlds/canvas-cpp chess-smoke   # chess compiled to C++ under Xvfb: e2, e4, exit 0
 ```
 
 ## The libraries, and why
 
-From apt (`libx11-dev libxext-dev libcairo2-dev libfreetype-dev`, and `libxtst-dev` for
-the tests' robot).
+On Linux from apt (`libx11-dev libxext-dev libcairo2-dev libfreetype-dev`, and
+`libxtst-dev` for the tests' robot); on macOS from Homebrew (`cairo freetype
+pkg-config`) and the system's Cocoa and QuartzCore.
 
 - **Xlib with MIT-SHM** for the windows. It is what softbuffer does on X11 under winit:
   a window, its events, and an image the X server reads from shared memory, so a frame
@@ -51,8 +55,8 @@ the tests' robot).
 
 ## What differs from `worlds/canvas`
 
-- **The scale factor is 1.** X11 here reads no DPI setting.
-- **Keys** are `XLookupString`'s: Latin-1 characters, and the named keys the Rust World
+- **The scale factor is 1 on X11**, which here reads no DPI setting (macOS: below).
+- **Keys on X11** are `XLookupString`'s: Latin-1 characters, and the named keys the Rust World
   names.
 - **Hooks.** `Hooks::settled` is called each time the loop would sleep with every window
   showing the document; `Hooks::presented` after each frame is synced to the server. A
@@ -72,8 +76,19 @@ emitted `main`.
 
 ## On macOS
 
-Everything but `app.cpp` is portable: cairo and FreeType come from Homebrew, and the
-font, the renderer and the World have no X in them. A Mac needs `app.cpp` written again
-over Cocoa (an `NSWindow` with a view that draws a cairo image surface as a `CGImage`, the
-loop on the main thread, as winit's), or over SDL2 everywhere; the robot and the smoke tests
-are X11's and do not run there.
+- **`src/app_macos.mm` is the window side**, the Xlib loop's rounds over AppKit: the loop
+  takes events with `nextEventMatchingMask:` on the main thread and sleeps there with
+  `distantFuture` when nothing is owed. Everything else (the font, the renderer, the
+  World) is the same file on both.
+- **Painting.** Cairo paints into a buffer of the window's size in physical pixels; it
+  becomes a `CGImage` set as the view's layer contents, and `[CATransaction flush]` hands
+  the frame to the window server. `Hooks::settled` runs after that flush.
+- **The scale factor is the window's `backingScaleFactor`** (2 on a Retina screen), so
+  text and shapes are drawn at the screen's resolution in logical pixels, as the Rust
+  World under winit does.
+- **Keys** are the event's characters, as Unicode, and the named keys by key code.
+- **Tests.** `macos_smoke` needs a logged-in session (a window server) but no
+  accessibility permission: it reads the frame back through `Session::pixel` and presses
+  through `Session::input`. The Xvfb tests and the XTest robot are Linux-only, and
+  LeakSanitizer does not run on arm64 macOS, so `check` runs ASan there without leak
+  checking.

@@ -11,7 +11,8 @@
 // - world.hpp: the `World` the tick loop calls, with no display in it.
 // - render.hpp: a draw list painted onto a cairo image surface.
 // - font.hpp: the bundled DejaVu Sans, through FreeType.
-// - this file: the loop over Xlib, the windows and their MIT-SHM images (app.cpp).
+// - this file: the loop, over Xlib with MIT-SHM images (app.cpp) or over Cocoa
+//   (app_macos.mm).
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
 
@@ -20,6 +21,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 
 #include "prism_world_canvas/font.hpp"
@@ -39,13 +41,17 @@ public:
     virtual void input(const Path& window, Pod value) = 0;
     /// End the run with `code` once the hook returns.
     virtual void exit(std::uint8_t code) = 0;
+    /// The last painted frame's colour, 0xRRGGBB, at logical `(x, y)` in the window for
+    /// the place at `window`; none outside it or before its first frame. A driver checks
+    /// what reached the screen this way, with no robot.
+    virtual std::optional<std::uint32_t> pixel(const Path& window, double x, double y) const = 0;
 };
 
 /// Calls into a hook from the loop. Each may be empty.
 struct Hooks {
     /// The loop has settled: no input is queued, no tick is owed, and every window shows
     /// the document's scenes, on the X server (the frame after the last change is painted
-    /// and synced). Called each time the loop would go to sleep.
+    /// and synced, or flushed to the window server on macOS). Called each time the loop would go to sleep.
     std::function<void(Session&)> settled;
     /// A frame went to the X server and was synced: `painted` windows this round.
     std::function<void(Session&, int painted)> presented;

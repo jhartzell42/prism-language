@@ -17,6 +17,15 @@
 #ifndef PRISM_CANVAS_FONT
 #error "PRISM_CANVAS_FONT must name the font file to build in"
 #endif
+#ifdef __APPLE__
+// Mach-O: read-only data in __TEXT,__const, and C names carry a leading underscore.
+asm(".section __TEXT,__const\n"
+    ".p2align 4\n"
+    "_prism_canvas_font_data:\n"
+    ".incbin \"" PRISM_CANVAS_FONT "\"\n"
+    "_prism_canvas_font_end:\n"
+    ".text\n");
+#else
 asm(".section .rodata\n"
     ".balign 16\n"
     ".type prism_canvas_font_data, @object\n"
@@ -24,6 +33,7 @@ asm(".section .rodata\n"
     ".incbin \"" PRISM_CANVAS_FONT "\"\n"
     "prism_canvas_font_end:\n"
     ".previous\n");
+#endif
 extern "C" const unsigned char prism_canvas_font_data[];
 extern "C" const unsigned char prism_canvas_font_end[];
 
