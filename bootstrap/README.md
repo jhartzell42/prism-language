@@ -7,7 +7,9 @@ keeps no binary; it keeps one archive.
   last fixed point (its `src/` and `Cargo.toml`), compressed. It is the only compiled
   code in the repository, kept apart from the source.
 - **`bootstrap.sh`** starts from `$PRISMC`, else the installed `target/bootstrap/prismc`,
-  else the seed unpacked and built with cargo. That compiler compiles `prismc/`; cargo
+  else the seed unpacked and built with cargo (after a `cargo fetch` of its crates, the
+  one step that needs the network; every build after it is offline). That compiler
+  compiles `prismc/`; cargo
   builds the result; the new binary compiles `prismc/` again; the two emitted crates must
   be byte-equal (the fixed point). It installs the result as `target/bootstrap/prismc`,
   the binary `./prism` uses.

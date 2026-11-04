@@ -40,6 +40,8 @@ if [ -z "$start" ]; then
     echo "seed: building prismc from $seed"
     rm -rf "$b/seed" && mkdir -p "$b/seed"
     tar -C "$b/seed" -xJf "$seed"
+    # Every build here is offline; a fresh machine has no crates yet, so get them first.
+    (cd "$b/seed" && cargo fetch -q)
     build_crate "$b/seed"
     start=$b/seed/prismc
 fi
