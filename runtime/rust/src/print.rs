@@ -24,7 +24,7 @@
 //! duration in its largest whole unit; `((a, b))`, `[[a, b]]`, `{k: v}` in key order;
 //! `unit`, `True`, `nil`, `? x`, `~ x`; a path as `1/#0/[k]/0`.
 
-use crate::collections::{Array, Map, Text};
+use crate::collections::{Array, Cursor, Map, Text};
 use crate::num::{Int, Nat};
 use crate::pod::{Error, Path, Pod, Segment};
 
@@ -210,6 +210,7 @@ show_with! {
     f64 => |s, p| p.float(*s);
     char => |s, p| p.quoted(std::iter::once(*s), '\'');
     Text => |s, p| p.quoted(s.chars(), '"');
+    Cursor => |s, p| p.record("Cursor", &[("at", &Nat::from(u32::try_from(s.at()).expect("a text over 4 GB")))]);
     Error => |s, p| p.record("Error", &[("kind", &Pod::name(&s.kind)), ("message", &s.message)]);
     Path => |s, p| for (i, seg) in s.0.iter().enumerate() {
         p.raw(if i > 0 { "/" } else { "" });

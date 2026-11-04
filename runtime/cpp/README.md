@@ -48,7 +48,8 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 | `()` | `Unit` | result.hpp |
 | `num::Int`, `num::Nat` | `Int`, `Nat`: `div` → `std::optional`, `modulo`, `checked_sub`, `from_int`, `as_int`, `to_i64`, `+ - *`, `<=>`; `Int::parse` for literals | num.hpp |
 | `num_bigint::BigInt` | `BigInt` (this library's own: 32-bit limbs, Knuth D) | num.hpp |
-| `collections::Text` | `Text` (characters as `char32_t`; `len`, `take`, `drop_front`, `concat`, `char_at`, `chars`, `to_string` in UTF-8) | collections.hpp |
+| `collections::Text` | `Text` (UTF-8: a byte range of a shared `std::string`; `len` in bytes, `view`, `concat`, `chars` decoded, `to_string`) | collections.hpp |
+| `collections::Cursor` | `Cursor` (a `Text` and a byte index on a character boundary; `front`, `back`, `at_byte`, `at`, `step`, `step_back`, `before`, `after`, the last two views of the same buffer) | collections.hpp |
 | `collections::Map<K, V>` (`im_rc::OrdMap`) | `Map<K, V>` (a persistent AVL tree): `get` → pointer, `mut_get` (the path copied), `contains`, `insert`/`remove` (this value), `inserted`/`removed` (new value), `unit`, ordered iteration | collections.hpp |
 | `collections::Array<T>` (`im_rc::Vector`) | `Array<T>` (a view of a shared buffer of chunks): `get`, `[]`, `mut_at`, `push_back`/`set` (this value), `pushed`/`updated`, `concat`, `take`, `drop_front` | collections.hpp |
 | `pod::Pod` | `Pod`: factories `unit`, `boolean`, `integer`, `int64` (Rust's `Pod::int`), `floating`, `character`, `text`, `duration`, `record`, `choice`, `name`, `element`, `tuple`, `array`, `map`, `nil`, `some`, `ok`, `failed`, `path`, `shown`; `kind()` and `if_<kind>()` accessors; `structure`, `field`, `tag`, `as_text`, `as_f64`, `elements`, `to_string` | pod.hpp |
@@ -131,9 +132,13 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
   (`take` and `drop_front` are constant, so is a `push_back` onto the view that ends where
   its buffer does, and an element's address never moves). Copy on write, as this library
   first had it, made prismc compiled to C++ quadratic in its own lexer and checker: the
-  program showed the cost. `Text` still copies on `take`, `drop_front` and
-  concatenation, where Rust's is a rope. *Ruling (Claude's):* these two structures;
-  a rope for `Text` when a program shows its cost.
+  program showed the cost. *Ruling (Claude's):* these two structures. A `Text` is a
+  byte range of a shared UTF-8 `std::string`, as Rust's is of an `Rc<str>` (Semantics
+  Appendix B, Text: a cursor's `Before` and `After` are constant views); concatenation
+  copies. A text is made only from well-formed UTF-8, as Rust's `str` is: other bytes
+  are a fatal error (a `Panic` naming the byte), never U+FFFD, and the CLI World checks a
+  file's bytes before it makes a text of them (`Fs.NotText`), so a cursor never meets a
+  broken sequence (doubt TXU in prismc/README.md).
 - **FT: Float ties.** On an exact tie between two shortest spellings, `std::to_chars`
   rounds to even and Rust rounds up. `float_digits` checks the exact expansion and
   rounds up. 300,000 random floats, ties included, agreed with Rust byte for byte; the

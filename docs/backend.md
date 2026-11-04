@@ -48,8 +48,9 @@ it make every program an interpreter run, and every type mistake a runtime fault
 ## Types
 
 - `Nat`, `Int` → `rt::Nat`, `rt::Int` (bignums with an `i64` fast path); `U8` → `u8`;
-  `Float` → `f64`; `Bool` → `bool`; `Char` → `char`; `Text` → `rt::Text` (a rope);
-  `unit` → `()`.
+  `Float` → `f64`; `Bool` → `bool`; `Char` → `char`; `Text` → `rt::Text` (UTF-8: a
+  byte range of a shared `Rc<str>`); `Cursor` → `rt::Cursor` (the text and a byte
+  index); `unit` → `()`.
 - A record → a `struct`, fields in declaration order; a choice → an `enum`, recursive
   payloads behind `Rc`; a newtype → a tuple struct; a unit type (`click`) → a unit
   struct.

@@ -154,14 +154,50 @@ TEST(bignum_known_values) {
 
 // ---- Text and collections -------------------------------------------------------------------
 
-TEST(text_takes_and_drops_by_characters) {
+TEST(text_is_bytes_and_orders_bytewise) {
     Text t("h\xC3\xA9llo");  // héllo
-    CHECK_EQ(t.len(), 5u);
-    CHECK_EQ(t.take(2).to_string(), std::string("h\xC3\xA9"));
-    CHECK_EQ(t.drop_front(2).to_string(), std::string("llo"));
-    CHECK(t.take(2).concat(t.drop_front(2)) == t);
+    CHECK_EQ(t.len(), 6u);
+    CHECK(Text("h\xC3\xA9").concat(Text("llo")) == t);
     CHECK(Text("ab") < Text("b"));
-    CHECK(t.char_at(1) == std::optional<char32_t>(U'é') && !t.char_at(5));
+    CHECK(Text("z") < Text("\xC3\xA9"));
+    CHECK(Text("") == Text());
+    CHECK(!utf8_error_at("h\xC3\xA9\xE4\xB8\x96\xF0\x9F\x98\x80"));
+    CHECK(utf8_error_at("a\xFF" "b") == std::optional<std::size_t>(1));
+    CHECK(utf8_error_at("\xC0\x80") == std::optional<std::size_t>(0));      // overlong
+    CHECK(utf8_error_at("x\xED\xA0\x80") == std::optional<std::size_t>(1)); // a surrogate
+    CHECK(utf8_error_at("\xF4\x90\x80\x80") == std::optional<std::size_t>(0)); // past U+10FFFF
+    CHECK(utf8_error_at("ab\xE4\xB8") == std::optional<std::size_t>(2));    // cut short
+    bool refused = false;
+    try {
+        Text bad("a\xFF" "b");
+    } catch (const Panic& p) {
+        refused = std::string(p.what()).find("byte 1 is malformed") != std::string::npos;
+    }
+    CHECK(refused);  // a malformed byte is a fatal error, never U+FFFD
+}
+
+TEST(cursors_walk_characters_and_cut_views) {
+    Text t("h\xE2\x86\x92\xE4\xB8\x96");  // h→世
+    Cursor c0 = Cursor::front(t);
+    auto s1 = c0.step();
+    CHECK(s1 && s1->first == U'h' && s1->second.at() == 1u);
+    auto s2 = s1->second.step();
+    CHECK(s2 && s2->first == U'→' && s2->second.at() == 4u);
+    auto s3 = s2->second.step();
+    CHECK(s3 && s3->first == U'世' && s3->second.at() == 7u);
+    CHECK(!s3->second.step() && !c0.step_back());
+    CHECK(s3->second == Cursor::back(t));
+    auto b = Cursor::back(t).step_back();
+    CHECK(b && b->first == U'世' && b->second.at() == 4u);
+    Cursor c2 = s2->second;
+    CHECK_EQ(c2.before().to_string(), std::string("h\xE2\x86\x92"));
+    CHECK_EQ(c2.after().to_string(), std::string("\xE4\xB8\x96"));
+    auto inner = Cursor::front(c2.after()).step();
+    CHECK(inner && inner->first == U'世' && inner->second.before() == c2.after() && inner->second.after().is_empty());
+    CHECK(!Cursor::at_byte(t, 2) && !Cursor::at_byte(t, 8));
+    CHECK_EQ(Cursor::at_byte(t, 4)->after().to_string(), std::string("\xE4\xB8\x96"));
+    CHECK(s1->second < c2);
+    CHECK_EQ(show(c2), std::string("Cursor(at=4)"));
 }
 
 TEST(collections_copy_on_write) {

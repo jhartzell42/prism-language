@@ -62,7 +62,7 @@ fn SkipWord c = update c:
 
 Idents: fn Text -> Nat
 fn Idents src = update 0:
-    let &c = Cursor(text=src, at=0)
+    let &c = Front src
     while ? ((ch, next)) <- ?Step &c:
         if IsLetter ch:
             &_ += 1

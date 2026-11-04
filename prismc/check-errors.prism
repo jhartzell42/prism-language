@@ -36,10 +36,10 @@ fn Diag0 code, file, span, message = CDiag(code=code, file=file, span=span, mess
 DiagFix: fn Text, Nat, Range, Text, Text -> CDiag
 fn DiagFix code, file, span, message, fix = CDiag(code=code, file=file, span=span, message=message, fix=fix)
 
-# Where each line begins, as a character offset.
+# Where each line begins, as a byte offset.
 CLineStarts: fn Text -> [Nat]
 fn CLineStarts text:
-    let ((starts, ignore)) = Fold (Chars text), (([[0]], 0)), \|((acc, i)), c| if c == "\n": (((Push acc, i + 1), i + 1)) else: ((acc, i + 1))
+    let ((starts, ignore)) = Fold (Split text, "\n"), (([[]], 0)), \|((acc, at)), line| (((Push acc, at), at + (Len line) + 1))
     starts
 
 # The zero-based line holding an offset.
@@ -51,11 +51,11 @@ LineText: fn Src, Nat -> Text
 fn LineText src, n:
     let from = Or src.starts[n], 0
     let to = Or src.starts[n + 1], ((Len src.text) + 1)
-    Take (Drop src.text, from), (Or (to -? (from + 1)), 0)
+    Between src.text, from, (Max from, (Or (to -? 1), 0))
 
 # The source a range covers.
 SpanText: fn Src, Range -> Text
-fn SpanText src, r = Take (Drop src.text, r.start), (Or (r.end -? r.start), 0)
+fn SpanText src, r = Between src.text, r.start, (Max r.start, r.end)
 
 Repeat: fn Text, Nat -> Text
 fn Repeat t, n = Concat (Fold (Range0 n), [[]], \|acc, ignore| Push acc, t)
@@ -76,9 +76,9 @@ fn RenderCDiag srcs, d = match srcs[d.file]:
     nil: "?: {Severity d}[{d.code}]: {d.message}\n"
     ? src:
         let line = CLineOf src.starts, d.span.start
-        let col = Or (d.span.start -? (Or src.starts[line], 0)), 0
+        let col = ColumnOf src.text, (Or src.starts[line], 0), d.span.start
         let text = LineText src, line
-        let width = Max 1, (Min (Or (d.span.end -? d.span.start), 0), (Or ((Len text) -? col), 1))
+        let width = Max 1, (Min (CountChars (SpanText src, d.span)), (Or ((CountChars text) -? col), 1))
         let carets = "    {Repeat " ", col}{Repeat "^", width}"
         let fix = if d.fix == "": "" else: "  fix: {d.fix}\n"
         "{src.path}:{line + 1}: {Severity d}[{d.code}]: {d.message}\n    {text}\n{carets}\n{fix}"

@@ -78,14 +78,14 @@ fn InList xs, x = Fold xs, False, \|seen, y| seen or y == x
 # start with a module put in the module being printed.
 Absolute: fn Cp, Text -> Text
 fn Absolute cp, p:
-    let q = if (Take p, 7) == "crate::": Drop p, 7 else: p
+    let q = DropPrefix p, "crate::"
     let first = Or (Split q, "::")[0], ""
     if InList cp.mods, first: q else: "{cp.home}::{q}"
 
 # The type a path names: in the module, the prelude's, or the crate's own (`Elem`).
 ?TypeOf: fn Cp, Text -> ?TyInfo
 fn ?TypeOf cp, p:
-    let q = if (Take p, 7) == "crate::": Drop p, 7 else: p
+    let q = DropPrefix p, "crate::"
     match cp.types[Absolute cp, q]:
         ? t: ? t
         nil: match cp.types["prelude::{q}"]:
@@ -95,7 +95,7 @@ fn ?TypeOf cp, p:
 # The choice a constructor path is a case of (`Term::Var` of `Term`), as the path writes it.
 ?CaseOf: fn Cp, Text -> ?Text
 fn ?CaseOf cp, p:
-    let q = if (Take p, 7) == "crate::": Drop p, 7 else: p
+    let q = DropPrefix p, "crate::"
     match cp.ctors[Absolute cp, q]:
         ? ignore: ? (ParentPath p)
         nil: match cp.ctors["prelude::{q}"]:
@@ -122,7 +122,7 @@ fn Context model:
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 
 # The prelude's own types and constructors (templates/cpp_prelude.prism).
-let preludeTypes = {"prelude::Ordering": TyInfo(kind="choice", fields=[[]], params=[[]]), "prelude::Span": TyInfo(kind="record", fields=[["file", "line", "column", "binding"]], params=[[]]), "prelude::Exception": TyInfo(kind="record", fields=[["kind", "message", "spans", "path_"]], params=[[]]), "prelude::Cursor": TyInfo(kind="record", fields=[["text", "at"]], params=[[]]), "prelude::Duration": TyInfo(kind="newtype", fields=[[]], params=[[]]), "prelude::PreludeUnwrap": TyInfo(kind="tag", fields=[[]], params=[[]]), "prelude::PreludeExceptions": TyInfo(kind="tag", fields=[[]], params=[[]])}
+let preludeTypes = {"prelude::Ordering": TyInfo(kind="choice", fields=[[]], params=[[]]), "prelude::Span": TyInfo(kind="record", fields=[["file", "line", "column", "binding"]], params=[[]]), "prelude::Exception": TyInfo(kind="record", fields=[["kind", "message", "spans", "path_"]], params=[[]]), "prelude::Duration": TyInfo(kind="newtype", fields=[[]], params=[[]]), "prelude::PreludeUnwrap": TyInfo(kind="tag", fields=[[]], params=[[]]), "prelude::PreludeExceptions": TyInfo(kind="tag", fields=[[]], params=[[]])}
 
 let preludeCtors = {"prelude::Ordering::Less": "choice", "prelude::Ordering::Equal": "choice", "prelude::Ordering::Greater": "choice"}
 
@@ -201,6 +201,7 @@ fn CppType cp, t = match t:
     OutBool: "bool"
     OutChar: "char32_t"
     OutText: "Text"
+    OutCursor: "Cursor"
     OutUnit: "Unit"
     OutPath: "Path"
     OutDuration: "Duration"
@@ -319,7 +320,7 @@ fn CppExpr cp, x = match x:
     XNone: "std::nullopt"
     XBool b: if b: "true" else: "false"
     XNat d: "Nat({d}u)"
-    XInt d: if (Len (if (Take d, 1) == "-": Drop d, 1 else: d)) <= 18: "Int({d}ll)" else: "*Int::parse(\"{d}\")"
+    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int({d}ll)" else: "*Int::parse(\"{d}\")"
     XByte d: "std::uint8_t({d})"
     XFloat d: d
     XIndex n: "{n}u"
@@ -378,7 +379,7 @@ CppString: fn Text -> Text
 fn CppString t = if Contains t, "\u{0}": "\"{CppEscape t}\"sv" else: "\"{CppEscape t}\""
 
 CppEscape: fn Text -> Text
-fn CppEscape t = Concat (Each (Chars t), \|c| if c == "\u{0}": "\\000" else: CharEscape c)
+fn CppEscape t = MapChars t, \|c| if c == "\u{0}": "\\000" else: CharEscape c
 
 IsTextPiece: fn Ex -> Bool
 fn IsTextPiece (XText ignore) = True
@@ -436,7 +437,7 @@ fn CppField cp, r, f:
     "{CppTight cp, r}{through}{name}"
 
 IsDigits: fn Text -> Bool
-fn IsDigits t = t != "" and Fold (Chars t), True, \|ok, c| ok and Contains "0123456789", c
+fn IsDigits t = t != "" and FoldChars t, True, \|ok, c| ok and Contains "0123456789", c
 
 # A constructor: a choice's case wrapped in its handle, a newtype's or unit type's value, the
 # runtime's cases by their C++ names.
@@ -529,7 +530,7 @@ CallPath: fn Text -> Text
 fn CallPath f:
     let last = LastSegment f
     let owner = LastSegment (ParentPath f)
-    let isType = (ParentPath f) != "" and Contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ", (Take owner, 1)
+    let isType = (ParentPath f) != "" and Contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ", (Head owner)
     if last == "build" and isType: "{TypePath (ParentPath f)}::make"
     else: if last == "new": TypePath (ParentPath f)
     else: CppPathId (TypePath f)
@@ -693,7 +694,7 @@ fn Payload cp, c, v, i = match c:
         nil: if IsRuntimeCase c: "prism_rtl::as<{CaseType c}>({v}).a{i}" else: "{v}.a{i}"
 
 IsRuntimeCase: fn Text -> Bool
-fn IsRuntimeCase c = (Take c, 9) == "Segment::"
+fn IsRuntimeCase c = (HasPrefix c, "Segment::")
 
 # `if`: a conditional expression.
 CppIf: unbounded fn Cp, Ex, Ex, Ex -> Text
@@ -978,7 +979,7 @@ fn CppLabeled cp, label, dos, e, t:
     LabeledExpr l, (CppType cp, t), (Join (Push (Each dos, \|d| CppStatement cp, d), last), "\n")
 
 CppLabel: fn Text -> Text
-fn CppLabel l = if (Take l, 1) == "'": Drop l, 1 else: l
+fn CppLabel l = if (HasPrefix l, "'"): AfterFirst l else: l
 
 CppBreak: unbounded fn Cp, Text, Ex -> Text
 fn CppBreak cp, l, y:
@@ -1012,8 +1013,8 @@ fn CppStatementsCp cp, dos:
 Unvexed: fn Text -> Text
 fn Unvexed t:
     let head = Or (Split t, "(")[0], ""
-    let typeLike = (Contains head, ":") or Contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ", (Take head, 1)
-    let vexing = (Drop t, (Dec (Len t))) == ")" and (not (Contains head, " ")) and head != "" and typeLike
+    let typeLike = (Contains head, ":") or Contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ", (Head head)
+    let vexing = (LastChar t) == ")" and (not (Contains head, " ")) and head != "" and typeLike
     if vexing: "({t})" else: t
 
 # The context after a statement: a `let` of a name its value reads renames it.
@@ -1107,11 +1108,11 @@ fn CppMentions t, n:
 
 CppEndsIdent: fn Text -> Bool
 fn CppEndsIdent t:
-    let c = Drop t, (Dec (Len t))
+    let c = LastChar t
     (CppIdentChar c) or c == "." or c == ">"
 
 CppStartsIdent: fn Text -> Bool
-fn CppStartsIdent t = CppIdentChar (Take t, 1)
+fn CppStartsIdent t = CppIdentChar (Head t)
 
 CppIdentChar: fn Text -> Bool
 fn CppIdentChar c = c != "" and Contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", c
@@ -1462,7 +1463,7 @@ fn FromPodDef cp, t, head, gens:
 
 # A field's Prism spelling: the C++ one without the `_` a keyword took.
 PrismField: fn Text -> Text
-fn PrismField f = if (Drop f, (Dec (Len f))) == "_": Take f, (Dec (Len f)) else: f
+fn PrismField f = if (LastChar f) == "_": BeforeLast f else: f
 
 IndentCpp: fn Text -> Text
 fn IndentCpp t = Join (Each (Split t, "\n"), \|l| if l == "": "" else: "    {l}"), "\n"
@@ -1554,7 +1555,7 @@ fn ImplParts cp, i:
             let shown = Or (Each i.methods, \|f| f.name)[0], "show"
             JoinParts own, (ProtosDefs [[]], [[(CppFunction "", "{gens}void {head}::show(Printer& p) const", "p.raw({shown}(*this).to_string());")]])
         "Prelude.Eq":
-            let eq = Fold i.methods, "", \|acc, f| if (Take f.name, 2) != "ne" and acc == "": f.name else: acc
+            let eq = Fold i.methods, "", \|acc, f| if (not (HasPrefix f.name, "ne")) and acc == "": f.name else: acc
             JoinParts own, (ProtosDefs [["{gens}bool operator==(const {head}& a, const {head}& b);"]], [[(CppFunction "", "{gens}bool operator==(const {head}& a, const {head}& b)", "return {eq}(a, b);")]])
         otherwise:
             let tr = TypePath i.tr

@@ -17,7 +17,7 @@ use CheckErrors.*
 use CheckTypes.*
 
 # Where a node stands: its file's index in the program and its range.
-type At = record:
+type SrcAt = record:
     file: Nat
     span: Range
 derive ^Eq, ^Show
@@ -25,7 +25,7 @@ derive ^Eq, ^Show
 # One expression's type, every variable followed (a variable left is one nothing decided
 # and nothing constrains, or one a local `let` quantified).
 type TyNote = record:
-    at: At
+    at: SrcAt
     ty: Ty
 derive ^Eq, ^Show
 
@@ -36,7 +36,7 @@ derive ^Eq, ^Show
 # or `if`). `layer` is the result's time layer (`""`, `$`, `!`); `lifted` the arguments
 # peeled, by position; `inner` the `?` or `~` peeled under it; `color` the call's color.
 type AppNote = record:
-    at: At
+    at: SrcAt
     callee: Text
     kind: Text
     layer: Text
@@ -48,7 +48,7 @@ derive ^Eq, ^Show
 # A function's color (ch. 5, The color): what its signature declares and the join of what
 # its body applies. A lambda's declared color is its body's.
 type FnNote = record:
-    at: At
+    at: SrcAt
     name: Text
     declared: Col
     body: Col
@@ -60,7 +60,7 @@ derive ^Eq, ^Show
 # through its parts, each noted at the same place), `quantified` (left to the callers of a
 # generalized local `let`).
 type ImplNote = record:
-    at: At
+    at: SrcAt
     cls: Text
     ty: Ty
     how: Text
@@ -69,7 +69,7 @@ derive ^Eq, ^Show
 # A method call: the method's qualified name and its trait; the impl is the `ImplNote` of
 # the same trait at the same place.
 type MethodNote = record:
-    at: At
+    at: SrcAt
     method: Text
     cls: Text
 derive ^Eq, ^Show
@@ -78,13 +78,13 @@ derive ^Eq, ^Show
 # strongly connected components, each component's dependencies before it; the statements
 # of one component are mutually dependent (ch. 5, blocks by binding group).
 type GroupNote = record:
-    at: At
+    at: SrcAt
     kind: Text
     order: [ [Nat] ]
 derive ^Eq, ^Show
 
 type BinderNote = record:
-    at: At
+    at: SrcAt
     name: Text
     ty: Ty
 derive ^Eq, ^Show
@@ -93,7 +93,7 @@ derive ^Eq, ^Show
 # its name, and the type and color variables its scheme quantified (`'12`, `'c14`), which
 # its binder's type and its value's types have as `(var t12)` and `(color 'c14)`.
 type GenNote = record:
-    at: At
+    at: SrcAt
     name: Text
     tys: [Text]
     cols: [Text]
@@ -103,7 +103,7 @@ derive ^Eq, ^Show
 # place, its name, and what each of the scheme's type and color variables is there, by the
 # variable's name; lowering lowers the bound value once per instantiation.
 type InstNote = record:
-    at: At
+    at: SrcAt
     name: Text
     tys: [((Text, Ty))]
     cols: [((Text, Col))]
@@ -112,7 +112,7 @@ derive ^Eq, ^Show
 # A top-level definition's scheme as the checker read it: its signature's, or what a
 # top-level `let` without one generalized to.
 type DefNote = record:
-    at: At
+    at: SrcAt
     name: Text
     scheme: Scheme
 derive ^Eq, ^Show
@@ -130,12 +130,12 @@ type TProgram = record:
     defs: [DefNote]
     # Every `while` in an unbounded function that the shrink check does not clear: each
     # turn of one is a cycle point (D6); a loop it clears is one unit of work.
-    unshrunk: [At]
+    unshrunk: [SrcAt]
 derive ^Eq, ^Show
 
 let emptyTyped = TProgram(exprs=[[]], apps=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
 
-AtKey: fn At -> Text
+AtKey: fn SrcAt -> Text
 fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"
 
 # ---------------------------------------------------------------------------------------
@@ -188,7 +188,7 @@ fn SchemeSexp sc:
     "(scheme{qs}{rqs}{cqs}{bs} {TySexp sc.ty})"
 
 # `path:line:col-line:col`.
-AtText: fn [Src], At -> Text
+AtText: fn [Src], SrcAt -> Text
 fn AtText srcs, a = match srcs[a.file]:
     nil: "?:{a.span.start}"
     ? src: "{src.path}:{PosText src, a.span.start}-{PosText src, a.span.end}"
@@ -196,7 +196,7 @@ fn AtText srcs, a = match srcs[a.file]:
 PosText: fn Src, Nat -> Text
 fn PosText src, offset:
     let line = CLineOf src.starts, offset
-    let col = Or (offset -? (Or src.starts[line], 0)), 0
+    let col = ColumnOf src.text, (Or src.starts[line], 0), offset
     "{line + 1}:{col + 1}"
 
 # The whole typed program: per definition its scheme; then per file every expression in
@@ -218,7 +218,7 @@ fn TypedSexp srcs, trees, shown, tp:
     let insts = Concat (Each (Filter tp.insts, \|x| Mine x.at), \|x| "  (inst {Quote x.name} {AtText srcs, x.at}{Concat (Each x.tys, \|((q, t))| " ({q} {TySexp t})")}{Concat (Each x.cols, \|((q, c))| " ({q} {ColSexp c})")})\n")
     "(typed\n (defs\n{defs} )\n (exprs\n{exprs} )\n (apps\n{apps} )\n (fns\n{fns} )\n (methods\n{methods} )\n (impls\n{impls} )\n (groups\n{groups} )\n (binders\n{binders} )\n (gens\n{gens} )\n (insts\n{insts} ))\n"
 
-Shown: fn At, Nat -> Bool
+Shown: fn SrcAt, Nat -> Bool
 fn Shown a, shown = a.file < shown
 
 let emptyMod = Module(name=nil, emitRow=nil, uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
@@ -234,9 +234,9 @@ fn LayerWord s = s
 ExprsOfFile: unbounded fn [Src], (Text ==> Ty), Nat, Module -> Text
 fn ExprsOfFile srcs, tys, file, m:
     let es = Fold m.decls, [[]], \|acc, d| Append acc, (DeclExprs d)
-    Concat (Each es, \|e| ExprLine srcs, tys, At(file=file, span=e.span))
+    Concat (Each es, \|e| ExprLine srcs, tys, SrcAt(file=file, span=e.span))
 
-ExprLine: unbounded fn [Src], (Text ==> Ty), At -> Text
+ExprLine: unbounded fn [Src], (Text ==> Ty), SrcAt -> Text
 fn ExprLine srcs, tys, a = "  (expr {AtText srcs, a} {TySexp (Or tys[AtKey a], TyErr)})\n"
 
 DeclExprs: unbounded fn Decl -> [Expr]

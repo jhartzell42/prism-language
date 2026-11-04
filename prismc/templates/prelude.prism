@@ -84,13 +84,6 @@ impl FromPod for Exception {
     }
 }
 
-/// `type Cursor = record: text, at`: a position in a text, for `?Step`.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Cursor {
-    pub text: Text,
-    pub at: Nat,
-}
-
 /// `type Turn b = choice: More | Done b` (the prelude's; `prism_rtl::Turn` is the job's).
 #[derive(Clone, PartialEq, Eq)]
 pub enum PreludeTurn<B> {
@@ -436,11 +429,6 @@ pub fn index<A: Clone>(xs: &Array<A>, i: &Nat) -> Option<A> {
     xs.get(ix(i)).cloned()
 }
 
-/// `text[i]`.
-pub fn index_text(t: &Text, i: &Nat) -> Option<char> {
-    t.char_at(ix(i))
-}
-
 /// `&xs[i]` in an `&` block.
 pub fn at_mut<'a, A: Clone>(xs: &'a mut Array<A>, i: &Nat) -> &'a mut A {
     &mut xs[ix(i)]
@@ -475,16 +463,8 @@ pub fn take<A: Clone>(xs: &Array<A>, n: &Nat) -> Array<A> {
     xs.take(ix(n).min(xs.len()))
 }
 
-pub fn take_text(t: &Text, n: &Nat) -> Text {
-    t.take(ix(n))
-}
-
 pub fn drop<A: Clone>(xs: &Array<A>, n: &Nat) -> Array<A> {
     xs.skip(ix(n).min(xs.len()))
-}
-
-pub fn drop_text(t: &Text, n: &Nat) -> Text {
-    t.drop_front(ix(n))
 }
 
 // ---- Maps -------------------------------------------------------------------------------
@@ -549,20 +529,54 @@ pub fn lower(t: &Text) -> Text {
     Text::from(t.to_string().to_lowercase())
 }
 
-/// `Split t, sep`; with an empty separator, the characters, each a text.
+/// `Split t, sep`: the pieces between the separators. An empty separator is refused: a
+/// text's characters are walked with a cursor (Appendix B, Text).
 pub fn split(t: &Text, sep: &Text) -> Array<Text> {
     let (s, sep) = (t.to_string(), sep.to_string());
     if sep.is_empty() {
-        s.chars().map(|c| Text::from(c.to_string())).collect()
-    } else {
-        s.split(sep.as_str()).map(Text::from).collect()
+        panic!("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
     }
+    s.split(sep.as_str()).map(Text::from).collect()
+}
+
+/// `Front: fn Text -> Cursor`.
+pub fn front(t: &Text) -> Cursor {
+    Cursor::front(t)
+}
+
+/// `Back: fn Text -> Cursor`.
+pub fn back(t: &Text) -> Cursor {
+    Cursor::back(t)
 }
 
 /// `?Step: fn Cursor -> ?((Char, Cursor))`.
 pub fn step(c: &Cursor) -> Option<(char, Cursor)> {
-    let ch = c.text.char_at(ix(&c.at))?;
-    Some((ch, Cursor { text: c.text.clone(), at: &c.at + &Nat::from(1u32) }))
+    c.step()
+}
+
+/// `?StepBack: fn Cursor -> ?((Char, Cursor))`.
+pub fn step_back(c: &Cursor) -> Option<(char, Cursor)> {
+    c.step_back()
+}
+
+/// `Before: fn Cursor -> Text`.
+pub fn before(c: &Cursor) -> Text {
+    c.before()
+}
+
+/// `After: fn Cursor -> Text`.
+pub fn after(c: &Cursor) -> Text {
+    c.after()
+}
+
+/// `At: fn Cursor -> Nat`.
+pub fn at(c: &Cursor) -> Nat {
+    nat_of(c.at())
+}
+
+/// `?CursorAt: fn Text, Nat -> ?Cursor`.
+pub fn cursor_at(t: &Text, n: &Nat) -> Option<Cursor> {
+    Cursor::at_byte(t, ix(n))
 }
 
 /// `?ParseNat`.

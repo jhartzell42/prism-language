@@ -109,15 +109,6 @@ struct Exception {
     }
 };
 
-/// `type Cursor = record: text, at`: a position in a text, for `?Step`.
-struct Cursor {
-    using prism_value = void;
-    Text text;
-    Nat at;
-    const Cursor* operator->() const { return this; }
-    auto operator<=>(const Cursor&) const = default;
-};
-
 /// `tag Prelude.Unwrap of Element !a: value: !~a`.
 struct PreludeUnwrap {
     using prism_value = void;
@@ -333,8 +324,6 @@ std::optional<A> index(const Array<A>& xs, const Nat& i) {
     if (auto x = xs.get(ix(i))) return *x;
     return std::nullopt;
 }
-/// `text[i]`.
-inline std::optional<char32_t> index_text(const Text& t, const Nat& i) { return t.char_at(ix(i)); }
 
 /// `&xs[i]` in an `&` block.
 template <class A>
@@ -361,10 +350,8 @@ void set_key(Map<K, V>& m, const K& k, std::optional<V> v) {
 
 template <class A>
 Array<A> take(const Array<A>& xs, const Nat& n) { return xs.take(std::min(ix(n), xs.size())); }
-inline Text take_text(const Text& t, const Nat& n) { return t.take(std::min(ix(n), t.len())); }
 template <class A>
 Array<A> drop(const Array<A>& xs, const Nat& n) { return xs.drop_front(std::min(ix(n), xs.size())); }
-inline Text drop_text(const Text& t, const Nat& n) { return t.drop_front(std::min(ix(n), t.len())); }
 
 // ---- Maps -------------------------------------------------------------------------------
 
@@ -439,31 +426,29 @@ Map<K, V> filter_map(const Map<K, V>& m, const F& keep) {
 // ---- Text -------------------------------------------------------------------------------
 
 inline Text upper(const Text& t) {
-    std::u32string s = t.chars();
+    std::string s = t.to_string();
     for (auto& c : s)
-        if (c >= U'a' && c <= U'z') c = c - U'a' + U'A';
-    return Text(s);
+        if (c >= 'a' && c <= 'z') c = char(c - 'a' + 'A');
+    return Text(std::move(s));
 }
 inline Text lower(const Text& t) {
-    std::u32string s = t.chars();
+    std::string s = t.to_string();
     for (auto& c : s)
-        if (c >= U'A' && c <= U'Z') c = c - U'A' + U'a';
-    return Text(s);
+        if (c >= 'A' && c <= 'Z') c = char(c - 'A' + 'a');
+    return Text(std::move(s));
 }
 
-/// `Split t, sep`; with an empty separator, the characters, each a text.
+/// `Split t, sep`: the pieces between the separators. An empty separator is refused: a
+/// text's characters are walked with a cursor (Appendix B, Text).
 inline Array<Text> split(const Text& t, const Text& sep) {
-    const std::u32string& s = t.chars();
-    const std::u32string& d = sep.chars();
+    std::string_view s = t.view();
+    std::string_view d = sep.view();
+    if (d.empty()) panic("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
     std::vector<Text> out;
-    if (d.empty()) {
-        for (char32_t c : s) out.push_back(Text(std::u32string(1, c)));
-        return Array<Text>(std::move(out));
-    }
     std::size_t from = 0;
     while (true) {
         std::size_t at = s.find(d, from);
-        if (at == std::u32string::npos) {
+        if (at == std::string_view::npos) {
             out.push_back(Text(s.substr(from)));
             break;
         }
@@ -473,17 +458,35 @@ inline Array<Text> split(const Text& t, const Text& sep) {
     return Array<Text>(std::move(out));
 }
 
+/// `Front: fn Text -> Cursor`.
+inline Cursor front(const Text& t) { return Cursor::front(t); }
+/// `Back: fn Text -> Cursor`.
+inline Cursor back(const Text& t) { return Cursor::back(t); }
 /// `?Step: fn Cursor -> ?((Char, Cursor))`.
 inline std::optional<std::tuple<char32_t, Cursor>> step(const Cursor& c) {
-    auto ch = c.text.char_at(ix(c.at));
-    if (!ch) return std::nullopt;
-    return std::tuple<char32_t, Cursor>(*ch, Cursor{c.text, c.at + Nat(1u)});
+    auto s = c.step();
+    if (!s) return std::nullopt;
+    return std::tuple<char32_t, Cursor>(s->first, std::move(s->second));
 }
+/// `?StepBack: fn Cursor -> ?((Char, Cursor))`.
+inline std::optional<std::tuple<char32_t, Cursor>> step_back(const Cursor& c) {
+    auto s = c.step_back();
+    if (!s) return std::nullopt;
+    return std::tuple<char32_t, Cursor>(s->first, std::move(s->second));
+}
+/// `Before: fn Cursor -> Text`.
+inline Text before(const Cursor& c) { return c.before(); }
+/// `After: fn Cursor -> Text`.
+inline Text after(const Cursor& c) { return c.after(); }
+/// `At: fn Cursor -> Nat`.
+inline Nat at(const Cursor& c) { return nat_of(c.at()); }
+/// `?CursorAt: fn Text, Nat -> ?Cursor`.
+inline std::optional<Cursor> cursor_at(const Text& t, const Nat& n) { return Cursor::at_byte(t, ix(n)); }
 
 /// `?ParseNat`.
 inline std::optional<Nat> parse_nat_opt(const Text& t) {
-    const std::u32string& s = t.chars();
-    if (s.empty() || !std::all_of(s.begin(), s.end(), [](char32_t c) { return c >= U'0' && c <= U'9'; })) return std::nullopt;
+    std::string_view s = t.view();
+    if (s.empty() || !std::all_of(s.begin(), s.end(), [](char c) { return c >= '0' && c <= '9'; })) return std::nullopt;
     if (s.size() > 18) return std::nullopt;
     return Nat::from_int(*Int::parse(t.to_string()));
 }

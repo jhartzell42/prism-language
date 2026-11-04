@@ -153,6 +153,16 @@ fn the_real_file_system_writes_beside_and_renames() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+#[test]
+fn a_file_that_is_not_utf8_reads_as_fs_not_text() {
+    use prism_world_cli::FileSystem;
+    let dir = temp_dir("not-text");
+    std::fs::write(dir.join("bad.txt"), b"ab\xFFc").unwrap();
+    let err = RealFs { root: dir.clone() }.read("bad.txt").unwrap_err();
+    assert_eq!((&*err.kind, err.message.to_string()), ("Fs.NotText", "bad.txt: not UTF-8: byte 2 is malformed".to_string()));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 // ---- Fs.List ----------------------------------------------------------------------------
 
 fn temp_dir(name: &str) -> std::path::PathBuf {

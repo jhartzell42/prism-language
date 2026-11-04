@@ -226,8 +226,8 @@ fn FreshCol st:
 # The typed output (typed.prism), recorded only when it is asked for
 # ---------------------------------------------------------------------------------------
 
-AtHere: fn St, Range -> At
-fn AtHere st, span = At(file=st.file, span=span)
+AtHere: fn St, Range -> SrcAt
+fn AtHere st, span = SrcAt(file=st.file, span=span)
 
 NoteTy: fn St, Range, Ty -> St
 fn NoteTy st, span, t = if not st.recording: st else: update st:
@@ -256,8 +256,8 @@ fn NoteFn st, span, name, declared, body = if not st.recording: st else: update 
     &_.typed.fns <= Push &_.typed.fns, FnNote(at=(AtHere st, span), name=name, declared=declared, body=body)
 
 NoteImpl: fn St, Nat, Range, Text, Ty, Text -> St
-fn NoteImpl st, file, span, cls, t, how = if not st.recording or (Take cls, 6) == "Range " or cls == "Prelude.Sub" or cls == "Prelude.Signed": st else: update st:
-    &_.typed.impls <= Push &_.typed.impls, ImplNote(at=At(file=file, span=span), cls=cls, ty=t, how=how)
+fn NoteImpl st, file, span, cls, t, how = if not st.recording or (HasPrefix cls, "Range ") or cls == "Prelude.Sub" or cls == "Prelude.Signed": st else: update st:
+    &_.typed.impls <= Push &_.typed.impls, ImplNote(at=SrcAt(file=file, span=span), cls=cls, ty=t, how=how)
 
 # How the solver answered a constraint at a place, kept whether or not the typed program is
 # recorded, for the shrink check's operator and method calls (pick OP): `impl:FILE.START`
@@ -267,7 +267,7 @@ fn NoteImpl st, file, span, cls, t, how = if not st.recording or (Take cls, 6) =
 NoteChoice: fn St, Nat, Range, Text, Text -> St
 fn NoteChoice st, file, span, cls, ch:
     let k = ChoiceKey file, span, cls
-    if (Take cls, 6) == "Range " or cls == "Prelude.Sub" or cls == "Prelude.Signed": st
+    if (HasPrefix cls, "Range ") or cls == "Prelude.Sub" or cls == "Prelude.Signed": st
     else: update st:
         &_.choices <= Insert &_.choices, k, (AddText (Or &_.choices[k], [[]]), ch)
 
@@ -443,7 +443,7 @@ fn IsFreeHeaded st, t = match Walk st, t:
 # A type with a stack written on top: marks `"$?"` over `t` is `$?t`; an `@` among the
 # marks takes `rw` as its row.
 WithMarks: fn Text, Ty, Rw -> Ty
-fn WithMarks marks, t, rw = Fold (Reverse2 (Chars marks)), t, \|acc, m| if m == "@": TyAt acc, rw else: TySig m, acc
+fn WithMarks marks, t, rw = Fold (Reverse2 (FoldChars marks, [[]], \|acc, c| Push acc, c)), t, \|acc, m| if m == "@": TyAt acc, rw else: TySig m, acc
 
 Reverse2: fn [Text] -> [Text]
 fn Reverse2 xs = Fold xs, [[]], \|acc, x| Append [[x]], acc
@@ -471,7 +471,7 @@ fn ShowTyIn st, t, nested = match t:
     TyTuple ts: "(({Join (Each ts, \|a| ShowTyIn st, a, False), ", "}))"
     TyArray e:
         let inner = ShowTyIn st, e, False
-        if (Take inner, 1) == "[": "[ {inner} ]" else: "[{inner}]"
+        if (HasPrefix inner, "["): "[ {inner} ]" else: "[{inner}]"
     TyMap k, v:
         let inner = "{ShowTyIn st, k, True} ==> {ShowTyIn st, v, True}"
         if nested: "({inner})" else: inner
@@ -533,7 +533,7 @@ fn ShowTyQ st, t = match Zonk st, t:
     TySig s, i: "{s}{ShowTyQ st, i}"
     TyArray e:
         let inner = ShowTyQ st, e
-        if (Take inner, 1) == "[": "[ {inner} ]" else: "[{inner}]"
+        if (HasPrefix inner, "["): "[ {inner} ]" else: "[{inner}]"
     TyMap k, v: "({ShowTyQ st, k} ==> {ShowTyQ st, v})"
     TyAt i, rw: "@{ShowTyQ st, i} emit {ShowRowIn rw, True}"
     other: ShowTy st, other
@@ -643,7 +643,7 @@ fn BindVar st, n, t, span:
             let marks = MarksOf info.name
             let whole = "{marks}{ShowTyIn st, (Zonk st, t), True}"
             let at = Or st.binderAt[n], span
-            let st2 = ErrFix st, "mark-stack", at, "`{info.name}` has type `{whole}`, whose stack is `{marks}{stack}`; the name shows `{marks}`", "rename to `{marks}{stack}{Drop info.name, (Len marks)}`"
+            let st2 = ErrFix st, "mark-stack", at, "`{info.name}` has type `{whole}`, whose stack is `{marks}{stack}`; the name shows `{marks}`", "rename to `{marks}{stack}{DropPrefix info.name, marks}`"
             # Reported once, at the binder: the name then has the type its value has, so
             # neither its binder nor its uses report it again.
             (("", update (LowerLevels st2, (Append (FreeVars st2, t), (FreeColVars st2, t)), info.level):
@@ -657,8 +657,10 @@ fn BindVar st, n, t, span:
 # The marks a name was written with: `$?user` has `$?`.
 MarksOf: fn Text -> Text
 fn MarksOf name:
-    let ((n, ignore)) = Fold (Chars name), ((0, True)), \|((k, going)), c| if going and (IsMarkChar c): ((k + 1, True)) else: ((k, False))
-    Take name, n
+    let c = update Front name:
+        while ? ((ignore, next)) <- ?Step &_ if IsMarkChar (CharAt &_):
+            &_ <= next
+    Before c
 
 IsMarkChar: fn Text -> Bool
 fn IsMarkChar c = c == "$" or c == "!" or c == "@" or c == "?" or c == "~" or c == "&"

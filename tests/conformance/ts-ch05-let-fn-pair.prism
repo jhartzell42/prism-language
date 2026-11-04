@@ -6,7 +6,11 @@ emit Ui.*
 let digits = "0123456789"
 
 Digits: fn Nat -> Text
-fn Digits n = Take (Drop digits, n), 1
+fn Digits n = match ?CursorAt digits, n:
+    ? c: match ?Step (Front (After c)):
+        ? ((ignore, d)): Before d
+        nil: ""
+    nil: ""
 
 @shown: @unit
 @shown:

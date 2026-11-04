@@ -588,7 +588,7 @@ fn RefTarget env, st, e = if IsRef e: st else: ErrFix st, "mismatch", e.span, "t
 
 IsRef: fn Expr -> Bool
 fn IsRef e = match e.kind:
-    EName n: (Take n.sigils, 1) == "&"
+    EName n: (HasPrefix n.sigils, "&")
     EField r, ignore, ignore: IsRef r
     EIndex r, ignore: IsRef r
     EGroup x: IsRef x

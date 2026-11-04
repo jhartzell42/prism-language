@@ -1,4 +1,4 @@
-# The Rust target's transcript, checked by hand: three characters, the middle one the NUL, two pieces.
+# The Rust target's transcript, checked by hand: three bytes (`Len` is bytes, Semantics Appendix B, Text; each character here is one), the middle character the NUL, two pieces.
 test a_nul_is_a_character
 
 tick 0

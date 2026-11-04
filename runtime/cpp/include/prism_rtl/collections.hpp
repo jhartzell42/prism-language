@@ -10,7 +10,8 @@
 // key, logarithmic); an `Array` is a view of a shared buffer of chunks, so `take` and
 // `drop_front` are constant and so is a `push_back` onto the newest view of its buffer
 // (the way an array built by a fold grows); an element's address never moves. A `Text`
-// copies on `take`, `drop_front` and concatenation.
+// is a view of a shared UTF-8 buffer (a cursor's `before` and `after` are constant) and
+// copies on concatenation.
 
 #pragma once
 
@@ -39,45 +40,91 @@ std::u32string utf8_decode(std::string_view s);
 /// One scalar value appended as UTF-8.
 void utf8_push(std::string& out, char32_t c);
 std::string utf8_encode(std::u32string_view s);
+/// Where `s` stops being well-formed UTF-8 (as Rust's `str::from_utf8` reads it: no
+/// overlong form, no surrogate, nothing past U+10FFFF), or none when it is well-formed.
+std::optional<std::size_t> utf8_error_at(std::string_view s);
 
 // ---- Text -------------------------------------------------------------------------------
 
-/// `Text`: a sequence of Unicode scalar values, ordered by its characters. `Len` and a
-/// character's index are constant time; `Take`, `Drop` and concatenation copy.
+/// `Text` (Semantics Appendix B, Text; round 4 TX): UTF-8, a byte range of a shared
+/// buffer, ordered bytewise (which for UTF-8 is code-point order). Its range always starts
+/// and ends on a character boundary. `Len` is bytes; a `Cursor`'s `before` and `after` are
+/// views of the same buffer; concatenation copies. A text is made only from well-formed
+/// UTF-8: anything else is a fatal error (a `Panic`) naming the byte, as Rust's `str` cannot
+/// hold it; a World checks the bytes it reads first (the CLI World's `Fs.NotText`).
 class Text {
 public:
     Text() = default;
     Text(const char* utf8) : Text(std::string_view(utf8)) {}
     Text(std::string_view utf8);
     Text(const std::string& utf8) : Text(std::string_view(utf8)) {}
-    explicit Text(std::u32string chars);
+    Text(std::string&& utf8);
 
-    /// `Len`: the number of characters.
-    std::size_t len() const { return chars().size(); }
-    bool is_empty() const { return len() == 0; }
-    /// `Take text, n`: the first `n` characters.
-    Text take(std::size_t n) const;
-    /// `Drop text, n`: everything after the first `n` characters.
-    Text drop_front(std::size_t n) const;
+    /// `Len`: the number of bytes.
+    std::size_t len() const { return end_ - start_; }
+    bool is_empty() const { return start_ == end_; }
+    /// The bytes.
+    std::string_view view() const {
+        return s_ ? std::string_view(*s_).substr(start_, end_ - start_) : std::string_view();
+    }
     /// Concatenation, as interpolation does it.
     Text concat(const Text& other) const;
-    std::optional<char32_t> char_at(std::size_t i) const;
-    /// The characters.
-    const std::u32string& chars() const;
+    /// The characters, decoded.
+    std::u32string chars() const { return utf8_decode(view()); }
     /// The text as UTF-8.
-    std::string to_string() const { return utf8_encode(chars()); }
+    std::string to_string() const { return std::string(view()); }
 
-    friend bool operator==(const Text& a, const Text& b) { return a.chars() == b.chars(); }
+    friend bool operator==(const Text& a, const Text& b) { return a.view() == b.view(); }
     friend std::strong_ordering operator<=>(const Text& a, const Text& b) {
-        return a.chars().compare(b.chars()) <=> 0;
+        return a.view().compare(b.view()) <=> 0;
     }
     friend Text operator+(const Text& a, const Text& b) { return a.concat(b); }
 
 private:
-    std::shared_ptr<const std::u32string> s_;
+    friend class Cursor;
+    /// The bytes `a` to `b` of this text, on character boundaries: a view of the buffer.
+    Text slice(std::size_t a, std::size_t b) const {
+        Text t;
+        t.s_ = s_;
+        t.start_ = start_ + a;
+        t.end_ = start_ + b;
+        return t;
+    }
+    std::shared_ptr<const std::string> s_;
+    std::size_t start_ = 0, end_ = 0;
 };
 
-inline std::ostream& operator<<(std::ostream& o, const Text& t) { return o << t.to_string(); }
+inline std::ostream& operator<<(std::ostream& o, const Text& t) { return o << t.view(); }
+
+/// `Cursor` (Semantics Appendix B, Text): a text and a byte position in it, always on a
+/// character boundary. Opaque to programs; cursors compare by their position.
+class Cursor {
+public:
+    Cursor() = default;
+    /// `Front` and `Back`.
+    static Cursor front(const Text& t) { return Cursor(t, 0); }
+    static Cursor back(const Text& t) { return Cursor(t, t.len()); }
+    /// `?CursorAt`: the cursor at byte `n`, none past the end or inside a character.
+    static std::optional<Cursor> at_byte(const Text& t, std::size_t n);
+    /// `At`: the byte index.
+    std::size_t at() const { return at_; }
+    /// `?Step`: the character at the cursor and the cursor past it, none at the end.
+    std::optional<std::pair<char32_t, Cursor>> step() const;
+    /// `?StepBack`: the character before the cursor and the cursor at its start, none at
+    /// the start.
+    std::optional<std::pair<char32_t, Cursor>> step_back() const;
+    /// `Before` and `After`: views of the same bytes.
+    Text before() const { return text_.slice(0, at_); }
+    Text after() const { return text_.slice(at_, text_.len()); }
+
+    friend bool operator==(const Cursor& a, const Cursor& b) { return a.at_ == b.at_; }
+    friend std::strong_ordering operator<=>(const Cursor& a, const Cursor& b) { return a.at_ <=> b.at_; }
+
+private:
+    Cursor(Text t, std::size_t at) : text_(std::move(t)), at_(at) {}
+    Text text_;
+    std::size_t at_ = 0;
+};
 
 // ---- Map --------------------------------------------------------------------------------
 
