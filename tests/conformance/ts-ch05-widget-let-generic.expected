@@ -1,0 +1,14 @@
+# Derived by hand from Type System ch. 5 (a local `let` generalizes; each use instantiates) and Semantics ch. 7 (a hold moves the tick its event fires): Twin 3 shows as ((3, 3)) and Twin True as ((True, True)) (a tuple shows in its literal's double parentheses, as ts-ch03-tuple-show's); Twin over the hold shows the pair of its value, ((1, 1)) then ((2, 2)).
+test each_use_its_own_field
+
+tick 0
+  added:
+    0: Ui.Button(label="more")
+    1: Ui.Label(text="((3, 3)) ((True, True))")
+    2: Ui.Label(text="((1, 1))")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="((2, 2))")
