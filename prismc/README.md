@@ -1549,7 +1549,7 @@ ruling taken (Claude's).
   breaking forwarding parity); the snapshot of n read by samples at n+1 beside the event
   carrying it (a sample in the event's tick would read the new value, against R2/R3); the
   event at n with the structure before n (a visible inconsistent state).
-- **DY Dynamics across nodes.** A row reads its block's events through ports, and its
+- **DY Dynamics across nodes.** A row (a `for`'s or a generation's) reads its block's events through ports (`RowEnv`: a port node in the row, subscribed to the block's port; `sem-ch04-row-block-event`, a row of a row through two), and its
   block's holds and dynamic `let`s through its parent at its own read point
   (`sem-ch07-paged`'s inner `rebuild $src`). A `for` row is marked by the block's writes
   of what it reads (`Wx.rowMarks`: its `ParentRead`s as the block's own, `RowWritten`),
@@ -1560,7 +1560,9 @@ ruling taken (Claude's).
   generation is told of no write, so an `!Updated` in it over a block name is refused
   loudly (`UpdatedGaps`). A row's port for a block event sits at height 0 in the row, below the
   event's height in the block; the runtime's clamp (`Cx::wake` at or below the running
-  height runs at the next) orders it. *Next:* the contract's `Dynamic` with its update
+  height runs at the next) orders it. An event reference names the node whose graph it
+  indexes (`EvRef.owner`); one read or wired in any other node crossed without a port,
+  a lowering bug, and is refused naming it (`Crossed`). *Next:* the contract's `Dynamic` with its update
   port.
 - **LE A live element's `$` field in a plain function.** A plain function is lifted:
   its `$` values are read at the caller's read point, and it has no `cx` to read a live
