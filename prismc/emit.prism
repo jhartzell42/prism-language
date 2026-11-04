@@ -19,53 +19,56 @@ use PreludeTemplate.*
 # Types
 # ---------------------------------------------------------------------------------------
 
-Type: unbounded fn RsTy -> Text
+Type: unbounded fn OutTy -> Text
 fn Type t = match t:
-    RsNat: "Nat"
-    RsInt: "Int"
-    RsU8: "u8"
-    RsFloat: "f64"
-    RsBool: "bool"
-    RsChar: "char"
-    RsText: "Text"
-    RsUnit: "()"
-    RsPath: "Path"
-    RsDuration: "Duration"
-    RsError: "Error"
-    RsNamed n, [[]]: n
-    RsNamed n, args: "{n}<{Types args}>"
-    RsOpt i: "Option<{Type i}>"
-    RsRes i: "Result<{Type i}, Error>"
-    RsTuple [[one]]: "({Type one},)"
-    RsTuple ts: "({Types ts})"
-    RsArray e: "Array<{Type e}>"
-    RsMap k, v: "Map<{Type k}, {Type v}>"
-    RsFn ps, r: "Rc<dyn Fn({RefTypes ps}) -> {Type r}>"
-    RsRef (RsFn ps, r): "&dyn Fn({RefTypes ps}) -> {Type r}"
-    RsRef i: "&{Type i}"
-    RsJobFn a, b: "Rc<dyn Fn({Type a}) -> Rc<dyn prism_rtl::Job<{Type b}>>>"
-    RsJob b: "Rc<dyn prism_rtl::Job<{Type b}>>"
-    RsEvent i: "Event<{Type i}>"
-    RsDyn i: "Dynamic<{Type i}>"
-    RsGen n: n
-    RsRc i: "Rc<{Type i}>"
-    RsPod: "Pod"
-    RsShowAny: "Rc<dyn Show>"
-    RsHold i: "Hold<{Type i}>"
-    RsStamped i: "Stamped<{Type i}>"
-    RsSnapshot i: "Snapshot<{Type i}>"
-    RsDefer i: "Defer<{Type i}>"
-    RsWeak n: "Weak<{n}>"
-    RsCell i: "RefCell<{Type i}>"
-    RsWakes: "Wakes"
-    RsPort i: "Port<{Type i}>"
-    RsLive i: "Live<{Type i}>"
-    RsUnknown what: "() /* {what} */"
+    OutNat: "Nat"
+    OutInt: "Int"
+    OutU8: "u8"
+    OutFloat: "f64"
+    OutBool: "bool"
+    OutChar: "char"
+    OutText: "Text"
+    OutUnit: "()"
+    OutPath: "Path"
+    OutDuration: "Duration"
+    OutError: "Error"
+    OutNamed n, [[]]: n
+    OutNamed n, args: "{n}<{Types args}>"
+    OutOpt i: "Option<{Type i}>"
+    OutRes i: "Result<{Type i}, Error>"
+    OutTuple [[one]]: "({Type one},)"
+    OutTuple ts: "({Types ts})"
+    OutArray e: "Array<{Type e}>"
+    OutMap k, v: "Map<{Type k}, {Type v}>"
+    OutFn ps, r: "Rc<dyn Fn({RefTypes ps}) -> {Type r}>"
+    OutRef (OutFn ps, r): "&dyn Fn({RefTypes ps}) -> {Type r}"
+    OutRef i: "&{Type i}"
+    OutJobFn a, b: "Rc<dyn Fn({Type a}) -> Rc<dyn prism_rtl::Job<{Type b}>>>"
+    OutJob b: "Rc<dyn prism_rtl::Job<{Type b}>>"
+    OutEvent i: "Event<{Type i}>"
+    OutDyn i: "Dynamic<{Type i}>"
+    OutGen n: n
+    OutRc i: "Rc<{Type i}>"
+    OutPod: "Pod"
+    OutShowAny: "Rc<dyn Show>"
+    OutHold i: "Hold<{Type i}>"
+    OutStamped i: "Stamped<{Type i}>"
+    OutSnapshot i: "Snapshot<{Type i}>"
+    OutDefer i: "Defer<{Type i}>"
+    OutWeak n: "Weak<{n}>"
+    OutCell i: "RefCell<{Type i}>"
+    OutWakes: "Wakes"
+    OutCount: "u32"
+    OutObj i: "Rc<dyn {Type i}>"
+    OutSlice i: "[{Type i}]"
+    OutPort i: "Port<{Type i}>"
+    OutLive i: "Live<{Type i}>"
+    OutUnknown what: "() /* {what} */"
 
-Types: unbounded fn [RsTy] -> Text
+Types: unbounded fn [OutTy] -> Text
 fn Types ts = Join (Each ts, \|t| Type t), ", "
 
-RefTypes: unbounded fn [RsTy] -> Text
+RefTypes: unbounded fn [OutTy] -> Text
 fn RefTypes ts = Join (Each ts, \|t| "&{Type t}"), ", "
 
 # ---------------------------------------------------------------------------------------
@@ -164,12 +167,12 @@ FieldInit: unbounded fn Text, Ex -> Text
 fn FieldInit f, (XVar v) = if v == f: f else: "{f}: {v}"
 fn FieldInit f, v = "{f}: {Expression v}"
 
-DecodeHead: unbounded fn RsTy -> Text
+DecodeHead: unbounded fn OutTy -> Text
 fn DecodeHead t = match t:
-    RsNamed n, [[]]: n
-    RsNat: "Nat"
-    RsInt: "Int"
-    RsText: "Text"
+    OutNamed n, [[]]: n
+    OutNat: "Nat"
+    OutInt: "Int"
+    OutText: "Text"
     otherwise: "<{Type t}>"
 
 Label: fn Text -> Text
@@ -592,9 +595,9 @@ fn RustMethod m:
         CxRef: ", cx: &Cx"
         CxNone: ""
     let params = Concat (Each m.params, \|((p, t))| ", {p}: {Type t}")
-    let ret = if m.ret == RsUnit: "" else: " -> {Type m.ret}"
+    let ret = if m.ret == OutUnit: "" else: " -> {Type m.ret}"
     let sig = "fn {m.name}({recv}{params}{cx}){ret}"
-    let body = if m.ret == RsUnit: Statements m.body else: if (Len m.body) == 0: BodyLines m.tail else: "{Statements m.body}\n{BodyLines m.tail}"
+    let body = if m.ret == OutUnit: Statements m.body else: if (Len m.body) == 0: BodyLines m.tail else: "{Statements m.body}\n{BodyLines m.tail}"
     Method (Doc m.doc), sig, body
 
 RustProgram: unbounded fn ProgDef, Bool -> Text
