@@ -127,6 +127,24 @@ to overturn.
     - **TXK** `Take` and `Drop` are `fn [a], Nat -> [a]`, so `Take` on a text is a
       `mismatch` at its argument (and its result), with no fix line of its own; `t[i]` on
       a text has its own message and fix.
+    - **TXU** Invalid UTF-8 is never repaired. A `Text` is made from bytes only at a
+      World's boundary; in `prism_rtl` a `Text` from bytes that are not UTF-8 is a fatal
+      error naming the byte (C++: a `Panic` from the constructor; Rust: a `Text` is made
+      only from a `str`, and `std::env::args` itself panics on such an argument). The CLI
+      World checks a file's bytes first and answers `Fs.Contents` and `Fs.File` with an
+      `Error` of kind `Fs.NotText` (`prelude/fs.prism`), message `PATH: not UTF-8: byte N
+      is malformed`, in both Worlds (their tests
+      `a_file_that_is_not_utf8_reads_as_fs_not_text`).
+  - **Gaps:**
+    - **PL A parenthesized lambda argument loses its types.** `MapChars t, (\|c| F c)`
+      checks, but the lambda's parameter reaches lowering with no type (`p0: ()`, "a
+      type the checker did not find") and rustc refuses the crate. Written without the
+      parentheses it lowers; prismc does so. Not fixed.
+    - **CI Interpolating a `Char` shows it quoted.** `"{c}"` with `c: Char` places `'a'`,
+      since a placeholder places a `Text` or a number as it is and anything else as it
+      shows; no prelude function makes a `Text` of a `Char` (gap UC). Chess's text input
+      (`Key`'s `Char Char`) therefore inserts `'a'` for a typed `a`; its caret moves by the
+      inserted text's bytes.
 - **UB What is `unbounded`.** Every function that recurses through the grammar or loops
   with no measure a checker could see (the lexer's loops over the text, the parser's
   descent, `Recover`); predicates and cursor primitives are bounded. The closure-taking

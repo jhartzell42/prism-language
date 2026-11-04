@@ -135,9 +135,10 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
   program showed the cost. *Ruling (Claude's):* these two structures. A `Text` is a
   byte range of a shared UTF-8 `std::string`, as Rust's is of an `Rc<str>` (Semantics
   Appendix B, Text: a cursor's `Before` and `After` are constant views); concatenation
-  copies. A text made from outside bytes is checked once: a malformed byte becomes
-  U+FFFD, so every `Text` is well-formed UTF-8 and a cursor never meets a broken
-  sequence.
+  copies. A text is made only from well-formed UTF-8, as Rust's `str` is: other bytes
+  are a fatal error (a `Panic` naming the byte), never U+FFFD, and the CLI World checks a
+  file's bytes before it makes a text of them (`Fs.NotText`), so a cursor never meets a
+  broken sequence (doubt TXU in prismc/README.md).
 - **FT: Float ties.** On an exact tie between two shortest spellings, `std::to_chars`
   rounds to even and Rust rounds up. `float_digits` checks the exact expansion and
   rounds up. 300,000 random floats, ties included, agreed with Rust byte for byte; the

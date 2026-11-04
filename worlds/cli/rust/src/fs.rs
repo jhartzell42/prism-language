@@ -17,7 +17,8 @@ use prism_rtl::Error;
 
 /// What the `Fs` language reads, writes and lists.
 pub trait FileSystem {
-    /// The file's text, or an `Error` of kind `Fs.NotFound`, `Fs.Denied` or `Fs.Failed`.
+    /// The file's text, or an `Error` of kind `Fs.NotFound`, `Fs.Denied`, `Fs.Failed`, or
+    /// `Fs.NotText` when its bytes are not UTF-8 (a `Text` holds only UTF-8).
     fn read(&self, path: &str) -> Result<String, Error>;
     fn write(&mut self, path: &str, text: &str) -> Result<(), Error>;
     /// The `.prism` and `.prismtest` files under `dir`, sorted. A directory that is
@@ -52,6 +53,11 @@ fn io_error(e: std::io::Error, path: &str) -> Error {
     Error::new(kind, format!("{path}: {e}"))
 }
 
+/// `Fs.NotText`: the file's bytes are not UTF-8 from byte `at` on.
+pub fn not_text(path: &str, at: usize) -> Error {
+    Error::new("Fs.NotText", format!("{path}: not UTF-8: byte {at} is malformed"))
+}
+
 impl RealFs {
     fn walk(at: &Path, prefix: &str, out: &mut Vec<String>) {
         let Ok(entries) = std::fs::read_dir(at) else { return };
@@ -73,7 +79,8 @@ impl RealFs {
 
 impl FileSystem for RealFs {
     fn read(&self, path: &str) -> Result<String, Error> {
-        std::fs::read_to_string(self.root.join(path)).map_err(|e| io_error(e, path))
+        let bytes = std::fs::read(self.root.join(path)).map_err(|e| io_error(e, path))?;
+        String::from_utf8(bytes).map_err(|e| not_text(path, e.utf8_error().valid_up_to()))
     }
 
     fn write(&mut self, path: &str, text: &str) -> Result<(), Error> {

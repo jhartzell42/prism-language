@@ -40,15 +40,18 @@ std::u32string utf8_decode(std::string_view s);
 /// One scalar value appended as UTF-8.
 void utf8_push(std::string& out, char32_t c);
 std::string utf8_encode(std::u32string_view s);
-/// `s` as well-formed UTF-8: itself when it is, else each malformed byte as U+FFFD.
-std::string utf8_valid(std::string_view s);
+/// Where `s` stops being well-formed UTF-8 (as Rust's `str::from_utf8` reads it: no
+/// overlong form, no surrogate, nothing past U+10FFFF), or none when it is well-formed.
+std::optional<std::size_t> utf8_error_at(std::string_view s);
 
 // ---- Text -------------------------------------------------------------------------------
 
 /// `Text` (Semantics Appendix B, Text; round 4 TX): UTF-8, a byte range of a shared
 /// buffer, ordered bytewise (which for UTF-8 is code-point order). Its range always starts
 /// and ends on a character boundary. `Len` is bytes; a `Cursor`'s `before` and `after` are
-/// views of the same buffer; concatenation copies.
+/// views of the same buffer; concatenation copies. A text is made only from well-formed
+/// UTF-8: anything else is a fatal error (a `Panic`) naming the byte, as Rust's `str` cannot
+/// hold it; a World checks the bytes it reads first (the CLI World's `Fs.NotText`).
 class Text {
 public:
     Text() = default;

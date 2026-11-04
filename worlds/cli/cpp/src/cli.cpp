@@ -75,7 +75,10 @@ Expected<std::string, Error> RealFs::read(const std::string& path) const {
     if (!f) return unexpected(io_error(errno ? errno : ENOENT, path));
     std::ostringstream s;
     s << f.rdbuf();
-    return s.str();
+    std::string bytes = s.str();
+    if (auto bad = prism_rtl::utf8_error_at(bytes))
+        return unexpected(Error("Fs.NotText", prism_rtl::Text(path + ": not UTF-8: byte " + std::to_string(*bad) + " is malformed")));
+    return bytes;
 }
 
 Expected<void, Error> RealFs::write(const std::string& path, const std::string& text) {

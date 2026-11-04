@@ -161,7 +161,19 @@ TEST(text_is_bytes_and_orders_bytewise) {
     CHECK(Text("ab") < Text("b"));
     CHECK(Text("z") < Text("\xC3\xA9"));
     CHECK(Text("") == Text());
-    CHECK_EQ(Text("a\xFF" "b").to_string(), std::string("a\xEF\xBF\xBD" "b"));  // a malformed byte is U+FFFD
+    CHECK(!utf8_error_at("h\xC3\xA9\xE4\xB8\x96\xF0\x9F\x98\x80"));
+    CHECK(utf8_error_at("a\xFF" "b") == std::optional<std::size_t>(1));
+    CHECK(utf8_error_at("\xC0\x80") == std::optional<std::size_t>(0));      // overlong
+    CHECK(utf8_error_at("x\xED\xA0\x80") == std::optional<std::size_t>(1)); // a surrogate
+    CHECK(utf8_error_at("\xF4\x90\x80\x80") == std::optional<std::size_t>(0)); // past U+10FFFF
+    CHECK(utf8_error_at("ab\xE4\xB8") == std::optional<std::size_t>(2));    // cut short
+    bool refused = false;
+    try {
+        Text bad("a\xFF" "b");
+    } catch (const Panic& p) {
+        refused = std::string(p.what()).find("byte 1 is malformed") != std::string::npos;
+    }
+    CHECK(refused);  // a malformed byte is a fatal error, never U+FFFD
 }
 
 TEST(cursors_walk_characters_and_cut_views) {
