@@ -942,7 +942,8 @@ qualified path, a label) or a literal's digits, never syntax.
 - **Expressions, `Ex`:**
   - names: `XVar` a local, `XPath` a global item, `XSelf` the node, `XCx` the read point,
     `XConst` a constant of the node's (a height);
-  - literals: `XUnit`, `XNone`, `XBool`, `XNat`, `XInt` (decimal digits), `XByte`,
+  - literals: `XUnit`, `XNone`, `XBool`, `XNat`, `XInt` (plain decimal digits, every
+    one kept: lowering converts a radix literal and drops leading zeros), `XByte`,
     `XFloat`, `XIndex` (a machine integer), `XChar`, `XStr` (a string, not a `Text`: a
     message, a name), `XText` (a `Text`), `XFormat` (a `Text` with values),
     `XFormatStr` (a message with values; a local is named in it);
@@ -1157,9 +1158,6 @@ Gaps:
 - **CY:** a cycle of records held by value with no choice on it.
 - **GC:** a generic choice's case constructor (`Tree(Tree::Node{..})`) needs its type
   arguments, which CTAD cannot deduce from a nested case; no program here has one.
-- **NL: a `Nat` literal past 32 bits is truncated** (`Nat(60000000000u)` in the lexer's
-  duration units, which clang warns of as `-Wconstant-conversion`): `prism_rtl::Nat`'s
-  constructor takes a `uint32_t`.
 
 C++ doubts:
 
@@ -1216,7 +1214,10 @@ Each is Claude's, for Jimmy to overturn.
 - **CH Clauses and patterns.** A function's clauses are one `match` over the parameters
   that are not the same name in every clause; a number or text literal in a pattern is a
   binder and an equality guard, a number of the scrutinee's type (`0` against a `Nat` is
-  `Nat::from(0u32)`, `ts-ch02-nat-literal`). A type gets `ToPod`/`FromPod` only when nothing
+  `Nat::from(0u32)`, `ts-ch02-nat-literal`). A number literal keeps every digit: up to 9
+  digits a `u32` (`Nat::from(5u32)`, C++ `Nat(5u)`), up to 18 an `i64`, past that parsed
+  once from its digits (`Int::parse("..")`), on both targets (`ts-ch02-big-literal`,
+  `ts-ch02-radix-literal`). A type gets `ToPod`/`FromPod` only when nothing
   it holds, through the declarations it names, is a function or a layer. A closure given
   to a prelude function has its parameter types written (`|found: &Option<Nat>, x:
   &Nat|`), as does an `update`'s mutable local, and a job's type parameters are

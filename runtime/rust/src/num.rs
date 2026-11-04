@@ -55,6 +55,11 @@ impl Int {
             _ => Some(Int::from(floored(&self.to_big(), &d.to_big()).0)),
         }
     }
+    /// Decimal digits with an optional leading `-`, as an emitted literal too big for
+    /// `i64` gives them; `None` on anything else.
+    pub fn parse(digits: &str) -> Option<Int> {
+        digits.parse::<BigInt>().ok().map(Int::from)
+    }
     /// `mod`: floored, with `x mod 0 = x`.
     pub fn modulo(&self, d: &Int) -> Int {
         if d.0 == Repr::Small(0) { self.clone() } else { Int::from(floored(&self.to_big(), &d.to_big()).1) }
