@@ -629,8 +629,9 @@ fn ApplyFn env, st, fname, fty, args, span:
                 let ((v, s2)) = FreshVar s, False, ""
                 (((Push acc, v), s2))
             let ((res, st2)) = FreshVar st1, False, ""
-            let st3 = Unify st2, fty, (TyFn CBound, params, res), span
-            ApplyRule env, st3, fname, CBound, params, res, args, span
+            let ((col, st2b)) = FreshCol st2
+            let st3 = Unify st2b, fty, (TyFn col, params, res), span
+            ApplyRule env, st3, fname, col, params, res, args, span
         TyErr: ((TyErr, st0))
         other:
             if (Len args) == 0: ((other, st0))
@@ -653,16 +654,21 @@ fn Broken p, b = if not b: p else: update p:
 # The application rule (ch. 5): first the plain arguments, unified whole; then the
 # lambdas, against their parameters as far as known; then the layered arguments, peeled
 # at a plain or variable parameter. One row for the application; the result under the
-# peeled `?` or `~`, under the row's layer. The color is the closure arguments' join.
+# peeled `?` or `~`, under the row's layer. The color is the closure arguments' join: a
+# function argument at a function parameter owes the parameter's color its own, and the
+# two types unify with the parameter's color (ch. 5, The color, doubt CJ).
 ApplyRule: unbounded fn Env, St, Text, Col, [Ty], Ty, [Arg], Range -> ((Ty, St))
 fn ApplyRule env, st, fname, col, params, res, args, span:
     let n = Len args
     let cmp = IsComparison fname
-    let ((argTys, st1)) = Fold args, (([[]], st)), \|((acc, s)), a|
+    let ((argTys, st1)) = Fold (Range0 n), (([[]], st)), \|((acc, s)), i|
+        let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value: (((Push acc, TyErr), s))
         else:
             let ((t, s2)) = Infer env, s, a.value
-            (((Push acc, t), s2))
+            match (((Walk s2, (Or params[i], TyErr)), (Walk s2, t))):
+                (((TyFn pc, ignore, ignore), (TyFn ac, aps, ar))): (((Push acc, (TyFn pc, aps, ar)), (AddLeq s2, ac, pc, a.value.span, "arg", fname, "")))
+                otherwise: (((Push acc, t), s2))
     let ((st2, whole)) = Fold (Range0 n), ((st1, [[]])), \|((s, done)), i|
         let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
@@ -672,16 +678,15 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if (StackOf s, at) != "" or (IsFreeHeaded s, at): ((s, done))
         else: (((PlainArg env, s, fname, (Or params[i], TyErr), at, a), done))
-    let ((lcols, st3)) = Fold (Range0 n), (({}, st2)), \|((m, s)), i|
+    let ((ignore, st3)) = Fold (Range0 n), (({}, st2)), \|((m, s)), i|
         let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value:
             let p = Walk s, (Or params[i], TyErr)
             let ((lt, s2)) = InferLambda env, s, a.value, (? p)
-            let s3 = Unify (NoteTy s2, a.value.span, lt), p, lt, a.value.span
-            let lc = match lt:
-                TyFn c, ignore, ignore: c
-                otherwise: CBound
-            (((Insert m, i, lc), s3))
+            let s3 = match ((p, lt)):
+                (((TyFn pc, ignore, ignore), (TyFn lc, lps, lr))): AddLeq (Unify (NoteTy s2, a.value.span, lt), p, (TyFn pc, lps, lr), a.value.span), lc, pc, a.value.span, "arg", fname, ""
+                otherwise: Unify (NoteTy s2, a.value.span, lt), p, lt, a.value.span
+            ((m, s3))
         else: ((m, s))
     let ((pl, st4)) = Fold (Range0 n), ((Peeled(events=[[]], dyns=[[]], opts=[[]], lifted="", broken=False), st3)), \|((acc, s)), i|
         let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
@@ -701,10 +706,11 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
         ? o: TySig o, res
         nil: res
     let result = if pl.broken: TyErr else: if layer == "": withOpt else: TySig layer, withOpt
-    let ((callCol, st7)) = CallColor env, st6, fname, col, params, argTys, lcols, args
-    let liftedBad = layer != "" and callCol != CBound
+    let callCol = WalkCol st6, col
+    let st7 = if layer != "" and (IsFlexCol callCol): AddLeq st6, callCol, CBound, span, "lifted", fname, pl.lifted else: st6
+    let liftedBad = layer != "" and callCol != CBound and not (IsFlexCol callCol)
     let st8 = if liftedBad: ErrFix st7, "lifted-unbounded", span, "{ColWord callCol} `{fname}` lifted over `{pl.lifted}`; use `@Run`", "run it through `!done <- @Run {fname}, ...`" else: st7
-    let st9 = UseColor st8, callCol, fname
+    let st9 = UseColor st8, callCol, fname, span
     let kind = if layer == "!" and (Len pl.dyns) > 0: "sample" else: if layer != "": "map" else: if fname == "$": "const" else: "plain"
     let peeled = Append pl.events, pl.dyns
     let lifted = Filter (Range0 n), \|i| HasRange peeled, (Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)).value.span
@@ -796,29 +802,6 @@ fn PeelTimeOnly env, st, acc, fname, p, at, a:
         if IsTimeSigil (HeadSigil st, inner): ((acc2, (ErrFix st, "two-layers", span, "`{fname}` over a {if head == "$": "dynamic" else: "event"} of {if (HeadSigil st, inner) == "$": "dynamic" else: "event"}s", "take one layer off with a binding first: `@Flatten` or `@Switch`")))
         else: ((acc2, (Unify st, p, inner, span)))
     else: ((acc, (Unify st, p, at, span)))
-
-# The color of a call (ch. 5, The color): a color variable is the join of the closure
-# arguments at its parameters; a closure above a bounded parameter is `calls-unbounded`.
-CallColor: unbounded fn Env, St, Text, Col, [Ty], [Ty], (Nat ==> Col), [Arg] -> ((Col, St))
-fn CallColor env, st, fname, col, params, argTys, lcols, args = Fold (Range0 (Len params)), ((ColBase col, st)), \|((c, s)), i|
-    match Walk s, (Or params[i], TyErr):
-        TyFn pc, ignore, ignore:
-            let argCol = match lcols[i]:
-                ? lc: lc
-                nil: match Walk s, (Or argTys[i], TyErr):
-                    TyFn ac, ignore, ignore: ColBase ac
-                    otherwise: CBound
-            let span = (Or args[i], Arg(name=nil, value=Expr(kind=EError, span=Range(start=0, end=0)), span=Range(start=0, end=0))).span
-            match pc:
-                CQ q: if col == (CQ q): (((JoinCol c, argCol), s)) else: ((c, s))
-                CBound: if argCol == CUnbound: ((c, (ErrFix s, "calls-unbounded", span, "bounded `{fname}` takes a bounded closure; this one is unbounded", "mark the parameter `unbounded fn`, or run the work through `@Run`"))) else: ((c, s))
-                otherwise: ((c, s))
-        otherwise: ((c, s))
-
-# A color variable still quantified (an instantiated scheme's) is resolved at the call.
-ColBase: fn Col -> Col
-fn ColBase (CQ ignore) = CBound
-fn ColBase c = c
 
 # A constructor takes every argument whole (ch. 5): positionally, or a record's by name.
 CtorApp: unbounded fn Env, St, CtorInfo, [Arg], Range, Range -> ((Ty, St))
@@ -915,8 +898,12 @@ fn InferLambda env, st, e, ?expected:
         ((en2, (Push acc, pt), s3))
     let outerColor = st1.color
     let outerWhy = st1.colorWhy
-    let st2 = update st1:
+    let outerFlex = st1.colorFlex
+    let ((lcol, st1b)) = FreshCol st1
+    let st2 = update st1b:
         &_.color <= CBound
+        &_.colorWhy <= ""
+        &_.colorFlex <= [[]]
     let ((rt, st3)) = match body:
         LbExpr x: match ?expRes:
             ? r:
@@ -924,10 +911,12 @@ fn InferLambda env, st, e, ?expected:
                 ((r, s4))
             nil: Infer env2, st2, x
         LbBlock b: InferBodyBlock env2, st2, b, ?expRes
-    let lcol = st3.color
-    let st4 = update st3:
+    let st3b = SettleBody st3, lcol, ""
+    let st3c = AddLeq st3b, st3b.color, lcol, e.span, "lambda", "", st3b.colorWhy
+    let st4 = update st3c:
         &_.color <= outerColor
         &_.colorWhy <= outerWhy
+        &_.colorFlex <= outerFlex
     (((TyFn lcol, ptys, rt), (NoteFn st4, e.span, "lambda", lcol, lcol)))
 
 # The topic `_` as a lambda's parameter, and the bodies of `\.f` and `\[i]`.
@@ -1450,7 +1439,13 @@ fn CheckLet env, st, p, ?ty, e, span:
         nil: ((nil, st0))
     let ((pre, st2)) = match p.kind:
         PName n: match env.locals[SNameKey n]:
-            ? sc: ((sc.ty, st1))
+            # A plain name the block bound ahead (PreBind) gets a variable of the `let`'s
+            # own level, so that it generalizes (DB1a, D8); the block's dependency order
+            # checks its uses after it.
+            ? sc: if n.sigils == "" and (IsFlexVar st1, sc.ty):
+                let ((v, s2)) = FreshVar st1, True, (SNameKey n)
+                ((v, (AtBinder s2, v, n.span)))
+            else: ((sc.ty, st1))
             nil: FreshVar st1, True, (SNameKey n)
         otherwise: FreshVar st1, False, ""
     let st3 = match ?annot:
@@ -1460,19 +1455,31 @@ fn CheckLet env, st, p, ?ty, e, span:
         ? at: Unify st3, pre, at, span
         nil: st3
     let st5 = SolveWants env.g, st4, env.givens, False
-    let st6 = LeaveLevel st5
     match p.kind:
         PName n:
             let name = SNameKey n
-            let t = Zonk st6, pre
-            let ((env2, st7)) = BindName env, st6, n, t
-            if (HoldsNode st7, t) or (IsTopicName name): ((env2, st7))
+            # The binder's own variable at the `let`'s level, so binding it does not pull
+            # the type's variables out of reach of the generalization.
+            let t = Zonk st5, pre
+            let ((env2, st7a)) = BindName env, st5, n, t
+            let st7 = LeaveLevel st7a
+            # The variable bound ahead, for a use the block checks before this `let`,
+            # takes the monomorphic type.
+            let Ahead = \|s| AheadUnify env, s, name, pre, t, span
+            if (HoldsNode st7, t) or (IsTopicName name): ((env2, (Ahead st7)))
             else:
                 let lambda = IsLambda e
                 let ((keep, bounds, st8)) = WantsAbove st7, t, lambda
-                let sc = Generalize st8, t, keep, bounds
-                (((WithLocal env2, name, sc), st8))
-        otherwise: BindPattern env, st6, p, (Zonk st6, pre), False
+                let ((sc, st9)) = Generalize st8, t, keep, bounds
+                (((WithLocal env2, name, sc), (Ahead st9)))
+        otherwise:
+            let st6 = LeaveLevel st5
+            BindPattern env, st6, p, (Zonk st6, pre), False
+
+AheadUnify: unbounded fn Env, St, Text, Ty, Ty, Range -> St
+fn AheadUnify env, st, name, pre, t, span = match env.locals[name]:
+    ? sc0: if sc0.ty != pre: Unify st, sc0.ty, t, span else: st
+    nil: st
 
 # The marks that are type layers: `&` names a reference, typed as the part it names.
 TypeMarks: fn Text -> Text
@@ -1533,7 +1540,8 @@ fn CheckLocalFn env, st, f, span:
                 if HoldsNode st4, t: ((env, st4))
                 else:
                     let ((keep, bounds, st5)) = WantsAbove st4, t, True
-                    (((WithLocal env, name, (Generalize st5, t, keep, bounds)), st5))
+                    let ((sc2, st6)) = Generalize st5, t, keep, bounds
+                    (((WithLocal env, name, sc2), st6))
         nil: ((env, st))
 
 # One clause as a lambda.
@@ -1562,17 +1570,20 @@ fn CheckClauses env, st, name, clauses, sc, span:
     match t:
         TyFn col, params, res:
             let outerColor = st.color
+            let outerFlex = st.colorFlex
             let st0 = update st:
                 &_.color <= CBound
                 &_.colorWhy <= ""
+                &_.colorFlex <= [[]]
             let st1 = Fold clauses, st0, \|s, c| CheckClause env2, s, c, params, res
-            let st1b = SolveWants env.g, st1, givens, False
+            let st1b = SettleBody (SolveWants env.g, st1, givens, False), col, name
             let st2 = ClauseCoverage env2, st1b, clauses, params, span
             let st3 = if ColLeq st2.color, col: st2
                 else: ErrFix st2, "calls-unbounded", span, "{ColWord col} `{name}` calls {ColWord st2.color} `{st2.colorWhy}`", "mark `{name}` `unbounded fn`, or run the call through `@Run`"
             let st4 = NoteFn st3, span, name, col, st2.color
             update st4:
                 &_.color <= outerColor
+                &_.colorFlex <= outerFlex
         other:
             let st1 = Fold clauses, st, \|s, c| CheckClause env2, s, c, [[]], other
             st1

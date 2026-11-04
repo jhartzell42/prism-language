@@ -1,0 +1,7 @@
+# A lambda passed to `Fold` that calls an unbounded function makes the `Fold` call
+# unbounded (gap LB), which the bounded `Sum` may not make.
+Grow: unbounded fn Nat -> Nat
+fn Grow n = n + 1
+
+Sum: fn [Nat] -> Nat
+fn Sum xs = Fold xs, 0, \|acc, x| acc + (Grow x)

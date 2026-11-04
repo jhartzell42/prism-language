@@ -145,6 +145,7 @@ fn ColSexp CBound = "bounded"
 fn ColSexp CUnbound = "unbounded"
 fn ColSexp (CRigid n) = "(color {n})"
 fn ColSexp (CQ n) = "(color {n})"
+fn ColSexp (CFlex n) = "(color c{n})"
 
 RowSexp: fn Rw -> Text
 fn RowSexp rw:

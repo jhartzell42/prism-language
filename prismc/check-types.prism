@@ -18,12 +18,30 @@ use Typed.*
 # ---------------------------------------------------------------------------------------
 
 # A function type's color (ch. 5, "The color"): bounded, unbounded, a color variable
-# rigid in a body (`CRigid`), or quantified in a scheme (`CQ`).
+# rigid in a body (`CRigid`), quantified in a scheme (`CQ`), or flexible (`CFlex`: a
+# lambda's, a call's, a function value's whose type is not known yet), bound by
+# unification and by the joins below.
 type Col = choice:
     CBound
     CUnbound
     CRigid Text
     CQ Text
+    CFlex Nat
+derive ^Eq, ^Show
+
+# A join the color owes (ch. 5, The color, doubt CJ): `lo` at most `hi`, from the place
+# that made it. `kind` says which rule: `body` (a body applied something of color `lo`,
+# `name` the body, `why` the callee), `lambda` (the same for a lambda's body), `arg` (a
+# closure argument under its parameter's color, `name` the callee), `lifted` (a lifted
+# application, `name` the callee, `why` what it is lifted over).
+type CLeq = record:
+    lo: Col
+    hi: Col
+    file: Nat
+    span: Range
+    kind: Text
+    name: Text
+    why: Text
 derive ^Eq, ^Show
 
 # A row's tail: closed, a flexible variable, a rigid one, or one quantified in a scheme.
@@ -114,6 +132,10 @@ type St = record:
     file: Nat
     color: Col
     colorWhy: Text
+    colorFlex: [((Col, Text, Range))]
+    cols: (Nat ==> Col)
+    cleqs: [CLeq]
+    colQ: (Nat ==> Text)
     deferred: [((Ty, Ty, Range))]
     binderAt: (Nat ==> Range)
     rowNames: (Nat ==> Text)
@@ -126,7 +148,7 @@ type St = record:
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={})
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={})
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)
@@ -186,6 +208,15 @@ fn FreshVar st, plain, name:
         &_.next += 1
         &_.infos <= Insert &_.infos, n, VInfo(plain=plain, level=&_.level, name=name)
     ((TyFlex n, st2))
+
+# A fresh color variable at the current level.
+FreshCol: fn St -> ((Col, St))
+fn FreshCol st:
+    let n = st.next
+    let st2 = update st:
+        &_.next += 1
+        &_.infos <= Insert &_.infos, n, VInfo(plain=False, level=&_.level, name="")
+    ((CFlex n, st2))
 
 # ---------------------------------------------------------------------------------------
 # The typed output (typed.prism), recorded only when it is asked for
@@ -256,9 +287,37 @@ ZonkTyped: unbounded fn St -> TProgram
 fn ZonkTyped st:
     let t = st.typed
     update t:
-        &_.exprs <= Each &_.exprs, \|n| TyNote(at=n.at, ty=(Zonk st, n.ty))
-        &_.binders <= Each &_.binders, \|n| BinderNote(at=n.at, name=n.name, ty=(Zonk st, n.ty))
-        &_.impls <= Each &_.impls, \|n| ImplNote(at=n.at, cls=n.cls, ty=(Zonk st, n.ty), how=n.how)
+        &_.exprs <= Each &_.exprs, \|n| TyNote(at=n.at, ty=(ResolveTy st, n.ty))
+        &_.binders <= Each &_.binders, \|n| BinderNote(at=n.at, name=n.name, ty=(ResolveTy st, n.ty))
+        &_.impls <= Each &_.impls, \|n| ImplNote(at=n.at, cls=n.cls, ty=(ResolveTy st, n.ty), how=n.how)
+        &_.apps <= Each &_.apps, \|n| AppNote(at=n.at, callee=n.callee, kind=n.kind, layer=n.layer, lifted=n.lifted, inner=n.inner, color=(ResolveCol st, n.color))
+        &_.fns <= Each &_.fns, \|n| FnNote(at=n.at, name=n.name, declared=(ResolveCol st, n.declared), body=(ResolveCol st, n.body))
+
+# A color at the program's end: a flexible variable a local `let` quantified is that
+# scheme's variable, any other left defaults to bounded.
+ResolveCol: unbounded fn St, Col -> Col
+fn ResolveCol st, c = match WalkCol st, c:
+    CFlex n: match st.colQ[n]:
+        ? q: CQ q
+        nil: CBound
+    other: other
+
+# A type zonked, its colors resolved.
+ResolveTy: unbounded fn St, Ty -> Ty
+fn ResolveTy st, t = ResolveIn st, (Zonk st, t)
+
+ResolveIn: unbounded fn St, Ty -> Ty
+fn ResolveIn st, t = match t:
+    TyCon n, args: TyCon n, (Each args, \|a| ResolveIn st, a)
+    TyFn c, ps, res: TyFn (ResolveCol st, c), (Each ps, \|p| ResolveIn st, p), (ResolveIn st, res)
+    TyTuple ts: TyTuple (Each ts, \|a| ResolveIn st, a)
+    TyArray e: TyArray (ResolveIn st, e)
+    TyMap k, v: TyMap (ResolveIn st, k), (ResolveIn st, v)
+    TySig s, i: TySig s, (ResolveIn st, i)
+    TyAt i, rw: TyAt (ResolveIn st, i), rw
+    TyElem rw, o: TyElem rw, (ResolveIn st, o)
+    TyAssoc n, a: TyAssoc n, (ResolveIn st, a)
+    other: other
 
 # A binder's variable remembers where the binder stands, for `mark-stack`.
 AtBinder: fn St, Ty, Range -> St
@@ -308,7 +367,7 @@ fn WalkRow st, r = match r.tail:
 Zonk: unbounded fn St, Ty -> Ty
 fn Zonk st, t = match NormAssoc st, (Walk st, t):
     TyCon n, args: TyCon n, (Each args, \|a| Zonk st, a)
-    TyFn c, ps, res: TyFn c, (Each ps, \|p| Zonk st, p), (Zonk st, res)
+    TyFn c, ps, res: TyFn (WalkCol st, c), (Each ps, \|p| Zonk st, p), (Zonk st, res)
     TyTuple ts: TyTuple (Each ts, \|a| Zonk st, a)
     TyArray e: TyArray (Zonk st, e)
     TyMap k, v: TyMap (Zonk st, k), (Zonk st, v)
@@ -438,6 +497,7 @@ fn ShowCol CBound = ""
 fn ShowCol CUnbound = "unbounded "
 fn ShowCol (CRigid n) = "{n} "
 fn ShowCol (CQ n) = "{n} "
+fn ShowCol (CFlex ignore) = ""
 
 ShowRow: fn Rw -> Text
 fn ShowRow rw = ShowRowIn rw, False
@@ -545,8 +605,10 @@ fn UnifyHeads st, e, f, span:
         (((TyCon a, xs), (TyCon b, ys))):
             if a == b and (Len xs) == (Len ys): UnifyAll st, xs, ys, span
             else: (("mismatch", st))
-        (((TyFn ignore, ps, r1), (TyFn ignore, qs, r2))):
-            if (Len ps) == (Len qs): UnifyAll st, (Push ps, r1), (Push qs, r2), span
+        (((TyFn c1, ps, r1), (TyFn c2, qs, r2))):
+            if (Len ps) == (Len qs):
+                let ((v, st2)) = UnifyCol st, c1, c2
+                if v != "": ((v, st2)) else: UnifyAll st2, (Push ps, r1), (Push qs, r2), span
             else: (("mismatch", st))
         ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): UnifyAll st, xs, ys, span else: (("mismatch", st))
         ((TyArray x, TyArray y)): UnifyIn st, x, y, span
@@ -591,11 +653,11 @@ fn BindVar st, n, t, span:
             let st2 = ErrFix st, "mark-stack", at, "`{info.name}` has type `{whole}`, whose stack is `{marks}{stack}`; the name shows `{marks}`", "rename to `{marks}{stack}{Drop info.name, (Len marks)}`"
             # Reported once, at the binder: the name then has the type its value has, so
             # neither its binder nor its uses report it again.
-            (("", update (LowerLevels st2, (FreeVars st2, t), info.level):
+            (("", update (LowerLevels st2, (Append (FreeVars st2, t), (FreeColVars st2, t)), info.level):
                 &_.tys <= Insert &_.tys, n, t))
         else: (("mismatch", st))
     else:
-        let lowered = LowerLevels st, (FreeVars st, t), info.level
+        let lowered = LowerLevels st, (Append (FreeVars st, t), (FreeColVars st, t)), info.level
         (("", update lowered:
             &_.tys <= Insert &_.tys, n, t))
 
@@ -765,8 +827,11 @@ fn InstantiateWith st, sc, span, explicit:
     let ((rows, st2)) = Fold sc.rqs, (({}, st1)), \|((m, s)), q|
         let ((rw, s2)) = FreshRow s, (LacksIn sc.ty, q)
         (((Insert m, q, rw.tail), (NameRow s2, rw.tail, q)))
-    let inst = Inst(tys=tys, rows=rows, cols={})
-    let st3 = Fold sc.bounds, st2, \|s, ((v, tr))| update s:
+    let ((cols, st2b)) = Fold sc.cqs, (({}, st2)), \|((m, s)), q|
+        let ((c, s2)) = FreshCol s
+        (((Insert m, q, c), s2))
+    let inst = Inst(tys=tys, rows=rows, cols=cols)
+    let st3 = Fold sc.bounds, st2b, \|s, ((v, tr))| update s:
         &_.wants <= Push &_.wants, Want(cls=tr, ty=(Or tys[v], TyErr), file=s.file, span=span, level=s.level)
     (((SubstQ inst, sc.ty), st3, inst))
 
@@ -798,28 +863,42 @@ fn Skolemize sc:
 
 # Generalize a type over the variables above the current level (a local `let`, ch. 5):
 # `keep` lists variables that must stay monomorphic (constrained ones of a non-lambda).
-Generalize: unbounded fn St, Ty, [Nat], [((Nat, Text))] -> Scheme
-fn Generalize st, t, keep, bounds:
+# Its color variables first settle their joins (GeneralizeCols), then are quantified
+# like its type variables (D8).
+Generalize: unbounded fn St, Ty, [Nat], [((Nat, Text))] -> ((Scheme, St))
+fn Generalize st0, t, keep, bounds:
+    # A variable a waiting field access still decides stays monomorphic: the access is
+    # answered by the uses of the name.
+    let waiting = Fold st0.fieldQs, [[]], \|acc, q| FreeVarsInto st0, (FreeVarsInto st0, acc, q.recv), q.result
+    let st = GeneralizeCols (LowerLevels st0, waiting, st0.level)
     let z = Zonk st, t
     let vs = Filter (FreeVars st, z), \|v| (InfoOf st, v).level > st.level and not (HasNat keep, v)
+    let cvs = Filter (FreeColVars st, z), \|v| (InfoOf st, v).level > st.level
     let tys = Fold vs, {}, \|m, v| Insert m, v, (TyQ "'{v}")
-    let named = SubstFlex tys, z
+    let cols = Fold cvs, {}, \|m, v| Insert m, v, (CQ "'c{v}")
+    let named = SubstFlex tys, cols, z
     let plains = Each (Filter vs, \|v| (InfoOf st, v).plain), \|v| "'{v}"
     let bs = Each (Filter bounds, \|((v, ignore))| HasNat vs, v), \|((v, tr))| (("'{v}", tr))
-    Scheme(qs=(Each vs, \|v| "'{v}"), plainQs=plains, rqs=[[]], cqs=[[]], bounds=bs, ty=named)
+    let st2 = update st:
+        &_.colQ <= Fold cvs, &_.colQ, \|m, v| Insert m, v, "'c{v}"
+    ((Scheme(qs=(Each vs, \|v| "'{v}"), plainQs=plains, rqs=[[]], cqs=(Each cvs, \|v| "'c{v}"), bounds=bs, ty=named), st2))
 
-SubstFlex: unbounded fn (Nat ==> Ty), Ty -> Ty
-fn SubstFlex m, t = match t:
+SubstFlex: unbounded fn (Nat ==> Ty), (Nat ==> Col), Ty -> Ty
+fn SubstFlex m, cm, t = match t:
     TyFlex n: Or m[n], (TyFlex n)
-    TyCon n, args: TyCon n, (Each args, \|a| SubstFlex m, a)
-    TyFn c, ps, res: TyFn c, (Each ps, \|p| SubstFlex m, p), (SubstFlex m, res)
-    TyTuple ts: TyTuple (Each ts, \|a| SubstFlex m, a)
-    TyArray e: TyArray (SubstFlex m, e)
-    TyMap k, v: TyMap (SubstFlex m, k), (SubstFlex m, v)
-    TySig s, i: TySig s, (SubstFlex m, i)
-    TyAt i, rw: TyAt (SubstFlex m, i), rw
-    TyElem rw, o: TyElem rw, (SubstFlex m, o)
-    TyAssoc n, a: TyAssoc n, (SubstFlex m, a)
+    TyCon n, args: TyCon n, (Each args, \|a| SubstFlex m, cm, a)
+    TyFn c, ps, res:
+        let c2 = match c:
+            CFlex n: Or cm[n], c
+            other: other
+        TyFn c2, (Each ps, \|p| SubstFlex m, cm, p), (SubstFlex m, cm, res)
+    TyTuple ts: TyTuple (Each ts, \|a| SubstFlex m, cm, a)
+    TyArray e: TyArray (SubstFlex m, cm, e)
+    TyMap k, v: TyMap (SubstFlex m, cm, k), (SubstFlex m, cm, v)
+    TySig s, i: TySig s, (SubstFlex m, cm, i)
+    TyAt i, rw: TyAt (SubstFlex m, cm, i), rw
+    TyElem rw, o: TyElem rw, (SubstFlex m, cm, o)
+    TyAssoc n, a: TyAssoc n, (SubstFlex m, cm, a)
     other: other
 
 # Whether a type has a `$` or `!` outside every function arrow (ch. 5: a `let` holding a
@@ -862,10 +941,182 @@ fn ColWord CBound = "bounded"
 fn ColWord CUnbound = "unbounded"
 fn ColWord (CRigid n) = "`{n}`-colored"
 fn ColWord (CQ n) = "`{n}`-colored"
+fn ColWord (CFlex ignore) = "bounded"
 
-# Record that the body being checked applied something of color `c`, for the message.
-UseColor: fn St, Col, Text -> St
-fn UseColor st, c, why = update st:
+# Record that the body being checked applied something of color `c` at `span`, for the
+# message: a known color joins the body's, a flexible one waits in `colorFlex` until the
+# body ends (InferLambda, CheckClauses).
+UseColor: unbounded fn St, Col, Text, Range -> St
+fn UseColor st, c0, why, span = match WalkCol st, c0:
+    CFlex n: update st:
+        &_.colorFlex <= Push &_.colorFlex, ((CFlex n, why, span))
+    c: JoinKnown st, c, why
+
+JoinKnown: fn St, Col, Text -> St
+fn JoinKnown st, c, why = update st:
     if not (ColLeq c, &_.color):
         &_.colorWhy <= why
     &_.color <= JoinCol &_.color, c
+
+# A color followed through the variables bound so far.
+WalkCol: unbounded fn St, Col -> Col
+fn WalkCol st, (CFlex n) = match st.cols[n]:
+    ? c: WalkCol st, c
+    nil: CFlex n
+fn WalkCol st, c = c
+
+IsRigidCol: fn Col -> Bool
+fn IsRigidCol (CRigid ignore) = True
+fn IsRigidCol ignore = False
+
+# A flexible color variable above the current level: a local `let`'s own.
+IsOwnCol: fn St, Col -> Bool
+fn IsOwnCol s, (CFlex n) = (InfoOf s, n).level > s.level
+fn IsOwnCol s, ignore = False
+
+IsFlexCol: fn Col -> Bool
+fn IsFlexCol (CFlex ignore) = True
+fn IsFlexCol ignore = False
+
+# A color as the end of a definition sees it: a variable nothing bound is bounded.
+SettledCol: unbounded fn St, Col -> Col
+fn SettledCol st, c = match WalkCol st, c:
+    CFlex ignore: CBound
+    other: other
+
+# Two colors of one function type unify (bounded and unbounded do not); a quantified one
+# left in a type nothing instantiated agrees with anything.
+UnifyCol: unbounded fn St, Col, Col -> ((Text, St))
+fn UnifyCol st, a0, b0:
+    let a = WalkCol st, a0
+    let b = WalkCol st, b0
+    if a == b: (("", st))
+    else: match ((a, b)):
+        ((CFlex x, other)): (("", (BindCol st, x, other)))
+        ((other, CFlex y)): (("", (BindCol st, y, other)))
+        ((CQ ignore, ignore)): (("", st))
+        ((ignore, CQ ignore)): (("", st))
+        otherwise: (("mismatch", st))
+
+BindCol: fn St, Nat, Col -> St
+fn BindCol st, n, c:
+    let st2 = match c:
+        CFlex m: LowerOne st, m, (InfoOf st, n).level
+        otherwise: st
+    update st2:
+        &_.cols <= Insert &_.cols, n, c
+
+# The flexible color variables of a type.
+FreeColVars: unbounded fn St, Ty -> [Nat]
+fn FreeColVars st, t = FreeColsInto st, [[]], t
+
+FreeColsInto: unbounded fn St, [Nat], Ty -> [Nat]
+fn FreeColsInto st, acc, t = match Walk st, t:
+    TyCon ignore, args: Fold args, acc, \|a, x| FreeColsInto st, a, x
+    TyFn c, ps, res:
+        let acc2 = match WalkCol st, c:
+            CFlex n: AddNat acc, n
+            otherwise: acc
+        FreeColsInto st, (Fold ps, acc2, \|a, x| FreeColsInto st, a, x), res
+    TyTuple ts: Fold ts, acc, \|a, x| FreeColsInto st, a, x
+    TyArray e: FreeColsInto st, acc, e
+    TyMap k, v: FreeColsInto st, (FreeColsInto st, acc, k), v
+    TySig ignore, i: FreeColsInto st, acc, i
+    TyAt i, ignore: FreeColsInto st, acc, i
+    TyElem ignore, o: FreeColsInto st, acc, o
+    TyAssoc ignore, a: FreeColsInto st, acc, a
+    otherwise: acc
+
+# A join owed: `lo` at most `hi`. One that already holds (`lo` bounded, `hi` unbounded,
+# the two the same) is not kept.
+AddLeq: unbounded fn St, Col, Col, Range, Text, Text, Text -> St
+fn AddLeq st, lo0, hi0, span, kind, name, why:
+    let lo = WalkCol st, lo0
+    let hi = WalkCol st, hi0
+    if lo == CBound or hi == CUnbound or lo == hi: st
+    else: update st:
+        &_.cleqs <= Push &_.cleqs, CLeq(lo=lo, hi=hi, file=&_.file, span=span, kind=kind, name=name, why=why)
+
+# The joins' least solution, as far as it is forced: a variable above an unbounded color is
+# unbounded; with `rigid`, a variable above a rigid one is that one (only at a definition's
+# end, when nothing more can join it).
+Propagate: unbounded fn St, Bool -> St
+fn Propagate st, rigid:
+    let ((st2, changed)) = Fold st.cleqs, ((st, False)), \|((s, ch)), c|
+        let lo = WalkCol s, c.lo
+        match WalkCol s, c.hi:
+            CFlex h:
+                let forced = lo == CUnbound or (rigid and (IsRigidCol lo))
+                if forced: (((BindCol s, h, lo), True)) else: ((s, ch))
+            otherwise: ((s, ch))
+    if changed: Propagate st2, rigid else: st2
+
+# Before a local `let` generalizes (D8): the forced joins in; a variable of the `let`
+# joined with one outside it stays outside (not quantified); two of the `let`'s own joined
+# become one variable (one color variable, as a signature has); one of its own under a
+# bounded or rigid color is that color.
+GeneralizeCols: unbounded fn St -> St
+fn GeneralizeCols st0:
+    let st1 = LowerJoined (Propagate st0, False)
+    let st2 = Fold st1.cleqs, st1, \|s, c|
+        let lo = WalkCol s, c.lo
+        let hi = WalkCol s, c.hi
+        match ((lo, hi)):
+            ((CFlex x, CFlex y)): if x != y and (IsOwnCol s, lo) and (IsOwnCol s, hi): BindCol s, x, hi else: s
+            otherwise: s
+    Fold st2.cleqs, st2, \|s, c|
+        let lo = WalkCol s, c.lo
+        let hi = WalkCol s, c.hi
+        match ((lo, hi)):
+            ((CFlex ignore, CFlex ignore)): s
+            ((CFlex ignore, CUnbound)): s
+            ((CFlex x, other)): if IsOwnCol s, lo: BindCol s, x, other else: s
+            ((CRigid r, CFlex y)): if IsOwnCol s, hi: BindCol s, y, lo else: s
+            otherwise: s
+
+# A join between a variable above the current level and one below it lowers the first.
+LowerJoined: unbounded fn St -> St
+fn LowerJoined st:
+    let ((st2, changed)) = Fold st.cleqs, ((st, False)), \|((s, ch)), c|
+        match (((WalkCol s, c.lo), (WalkCol s, c.hi))):
+            ((CFlex x, CFlex y)):
+                let lx = (InfoOf s, x).level
+                let ly = (InfoOf s, y).level
+                if lx > s.level and ly <= s.level and lx > ly: (((LowerOne s, x, ly), True))
+                else: if ly > s.level and lx <= s.level and ly > lx: (((LowerOne s, y, lx), True))
+                else: ((s, ch))
+            otherwise: ((s, ch))
+    if changed: LowerJoined st2 else: st2
+
+# The end of a definition: the joins solved, each one checked, the variables nothing bound
+# bounded; a broken one is `calls-unbounded` (`lifted-unbounded` for a lift).
+CheckColors: unbounded fn St -> St
+fn CheckColors st0:
+    let st = Propagate (Propagate st0, False), True
+    let st2 = Fold st.cleqs, st, \|s, c|
+        let lo = SettledCol s, c.lo
+        let hi = SettledCol s, c.hi
+        if ColLeq lo, hi: s
+        else: AddDiag s, (LeqDiag c, lo, hi)
+    update st2:
+        &_.cleqs <= [[]]
+        &_.colorFlex <= [[]]
+
+LeqDiag: fn CLeq, Col, Col -> CDiag
+fn LeqDiag c, lo, hi:
+    if c.kind == "lifted": DiagFix "lifted-unbounded", c.file, c.span, "{ColWord lo} `{c.name}` lifted over `{c.why}`; use `@Run`", "run it through `!done <- @Run {c.name}, ...`"
+    else: if c.kind == "arg": DiagFix "calls-unbounded", c.file, c.span, "{ColWord hi} `{c.name}` takes a {ColWord hi} closure; this one is {ColWord lo}", "mark the parameter `unbounded fn`, or run the work through `@Run`"
+    else: if c.kind == "lambda": DiagFix "calls-unbounded", c.file, c.span, "this {ColWord hi} lambda calls {ColWord lo} `{c.why}`", "mark the function type it meets `unbounded fn`, or run the call through `@Run`"
+    else: DiagFix "calls-unbounded", c.file, c.span, "{ColWord hi} `{c.name}` calls {ColWord lo} `{c.why}`", "mark `{c.name}` `unbounded fn`, or run the call through `@Run`"
+
+# A body's waiting colors at its end, under its color `col`: those known by now join the
+# body's color, the rest are joins owed to `col`.
+SettleBody: unbounded fn St, Col, Text -> St
+fn SettleBody st0, col, name:
+    let st = Propagate st0, False
+    let waiting = st.colorFlex
+    let cleared = update st:
+        &_.colorFlex <= [[]]
+    Fold waiting, cleared, \|s, ((c, why, span))| match WalkCol s, c:
+        CFlex n: AddLeq s, (CFlex n), col, span, (if name == "": "lambda" else: "body"), name, why
+        known: JoinKnown s, known, why

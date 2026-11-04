@@ -2525,10 +2525,10 @@ fn TopLets g, st:
                 &_.level <= 0
             let t = Zonk s3, pre
             let ((keep, bounds, s4)) = WantsAbove s3, t, (IsLambda l.value)
-            let sc = if HoldsNode s4, t: Mono t else: Generalize s4, t, keep, bounds
+            let ((sc, s5)) = if HoldsNode s4, t: ((Mono t, s4)) else: Generalize s4, t, keep, bounds
             let gg2 = update gg:
                 &_.vals <= Insert &_.vals, d.qk, ValInfo(qk=d.qk, scheme=sc, sort="let", hasSig=False, home=d.home, file=d.file, span=d.span)
-            ((gg2, (DischargeIncls gg, (LayerQuestions (ResolveFields gg, s4, True)), 0)))
+            ((gg2, (DischargeIncls gg, (LayerQuestions (ResolveFields gg, (CheckColors s5), True)), 0)))
         otherwise: ((gg, s))
 
 let dummyVal = ValInfo(qk="", scheme=(Mono TyErr), sort="", hasSig=False, home="", file=0, span=Range(start=0, end=0))
@@ -2559,6 +2559,8 @@ fn CheckDef g, st, d:
         &_.level <= 1
         &_.color <= CBound
         &_.colorWhy <= ""
+        &_.colorFlex <= [[]]
+        &_.cleqs <= [[]]
     let s1 = match d.body:
         DbFn clauses: match g.vals[d.qk]:
             ? v: CheckClauses env, s0, d.name, clauses, v.scheme, d.span
@@ -2588,7 +2590,7 @@ fn CheckDef g, st, d:
                 TyAt ignore, ignore: s2
                 TyErr: s2
                 other: Err s2, "mismatch", t.blueprint.span, "a test builds a blueprint; this is `{ShowTy s2, other}`"
-    let solved = SolveWants g, s1, env.givens, False
+    let solved = CheckColors (SolveWants g, s1, env.givens, False)
     let defaulted = LayerQuestions (ResolveFields g, (DefaultDef g, solved), True)
     let discharged = DischargeIncls g, defaulted, inclsBefore
     update discharged:

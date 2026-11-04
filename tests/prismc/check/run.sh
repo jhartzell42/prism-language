@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # The checker's tests (prismc/README.md, Checker), through a native prismc's `--check`:
 # every corpus program checks clean, or gives exactly the diagnostics its
-# `pos/NAME.expected` records (the programs the README lists as wrong by the books); every
+# `pos/NAME.expected` records (the programs the README lists as wrong by the books), and so
+# does every program of its own under `pos/`; every
 # negative program under `neg/` gives exactly its `.expected` diagnostic. A `# args: ...`
 # first line passes options (`--world Ui`). Then the typed output (prismc/typed.prism):
 # `--typed` over chess and the conformance counter annotates every expression with a type,
-# none of them `unknown`. Exits 1 listing the mismatches, 0 when everything matches.
+# none of them `unknown`; a `pos/NAME.colors` holds every `(app` and `(fn` line of
+# `pos/NAME.prism`'s typed output, the colors it resolves. Exits 1 listing the mismatches,
+# 0 when everything matches.
 # `--update` rewrites the `.expected` files from what the checker says now, for review.
 #
 # prismc is `$PRISMC`, or the newest of target/bootstrap/prismc and target/keep/prismc-*,
@@ -70,6 +73,7 @@ programs[todos]=tests/conformance/todos.prism
 programs[chess]="examples/chess/board.prism examples/chess/rules.prism examples/chess/window.prism"
 programs[prelude]="$(ls prelude/*.prism | tr '\n' ' ')"
 programs[prismc]="$(ls prismc/*.prism prismc/templates/*.prism | tr '\n' ' ')"
+for f in "$here"/pos/*.prism; do [ -e "$f" ] && programs[$(basename "$f" .prism)]="$f"; done
 
 for name in $(printf '%s\n' "${!programs[@]}" | sort); do
     wanted "$name" || continue
@@ -110,6 +114,19 @@ for name in $(printf '%s\n' "${!typed[@]}" | sort); do
         [ "$unknown" = 0 ] || failed+=("$name")
         echo "typed $name: $exprs expressions, $unknown unknown"
     fi
+done
+
+# The colors: every application's and function's, as the typed output resolves them.
+for f in "$here"/pos/*.colors; do
+    [ -e "$f" ] || continue
+    name=$(basename "$f" .colors)
+    wanted "$name" || continue
+    "$prismc" --typed "$here/pos/$name.prism" --out "$tmp/$name.typed" > "$tmp/$name.err" 2>&1
+    grep -E '^  \((app|fn) ' "$tmp/$name.typed" > "$tmp/$name.colors" 2>/dev/null
+    if [ "$update" = 1 ]; then cp "$tmp/$name.colors" "$f"
+    else diff -q "$f" "$tmp/$name.colors" > /dev/null || failed+=("colors-$name")
+    fi
+    echo "colors $name: $(wc -l < "$tmp/$name.colors") lines"
 done
 
 if [ ${#failed[@]} -gt 0 ]; then

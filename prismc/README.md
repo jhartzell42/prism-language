@@ -218,7 +218,8 @@ lines.
 - `check-errors.prism` (`CheckErrors`): a diagnostic, a source file, rendering, sorting.
 - `check-types.prism` (`CheckTypes`): the three layers of a type (plain, stack, color),
   the inference state, unification with rows (Rémy's algorithm with families for labels,
-  lacks sets), schemes, the color's join, and the typed output's recorders.
+  lacks sets) and colors, schemes, the color's joins and their solution, and the typed
+  output's recorders.
 - `check-env.prism` (`CheckEnv`): modules, bare-name tables (a collision is an error at
   the use), types and kinds, tags, traits, impls, coherence, signatures read as schemes
   (one color variable per closure-taking signature without `$`, `!` or `@`, D8), trait
@@ -246,7 +247,7 @@ every type followed to its end once the program's last defaults are in.
   result's time layer, the arguments peeled by position, the `?` or `~` peeled under it,
   the call's color.
 - `fns: [FnNote]`: the color of every function, lambda and widget: declared, and the join
-  of what its body applies.
+  of what its body applies. A lambda's two are its color as solved (below).
 - `methods: [MethodNote]` and `impls: [ImplNote]`: every method call with its trait, and how
   every constraint at that place was solved (`impl FILE:LINE`, `derived FILE:LINE`,
   `builtin`, `given`, `parts`, `packed`, `quantified`).
@@ -262,8 +263,9 @@ an empty array's element), or one a local `let` quantified.
 
 ### Where it stands
 
-`tests/prismc/check/run.sh` checks every program of the corpus, the 87 negative cases and
-the two typed dumps. Every corpus program checks clean; a book program the checker refused
+`tests/prismc/check/run.sh` checks every program of the corpus, the programs of its own
+under `pos/` (`lambda-color`, clean, with its colors in `pos/lambda-color.colors`), the
+88 negative cases and the two typed dumps. Every corpus program checks clean; a book program the checker refused
 was a slip in the book, corrected there and here (Semantics round 3 CK).
 
 - **Clean:** `compiler-ch03-halfcounter`, `conf-ch01-counter`, `conf-ch01-journal`,
@@ -277,7 +279,7 @@ was a slip in the book, corrected there and here (Semantics round 3 CK).
   `templates/`, `front.prism`'s `compile` branch), so an error this line shows between
   its chunks is the back end's, not the checker's.
 
-The negative cases (`neg/`, 87) give one diagnostic each, the error their name says, or a
+The negative cases (`neg/`, 88) give one diagnostic each, the error their name says, or a
 case of it (`live-field-bare` is a `mark-stack`; `values-not-shrinking` and
 `summary-not-parts` are `may-not-end`s that keep doubt TR's map rule and pick SM's
 summaries from accepting a cycle that grows; `drop-unknown` and `long-cycle` are
@@ -657,6 +659,31 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   under `while ? ignore <- &xs[0]:`, was `may-not-end` before and checks clean. *Refused:* a set's value smaller by its type
   (any call returning `Nat` on a smaller `Nat`), which is the rule that cleared `Bump`.
 
+- **CV Colors are variables, solved by joins** (ch. 5, The color; doubts UC and CJ; D8).
+  A function type's color is bounded, unbounded, rigid, quantified or flexible. A
+  lambda's color is a fresh variable, and a call's is its callee's, its signature's `u`
+  fresh at each call. Unification unifies the colors of two function types (bounded and
+  unbounded do not unify; a variable takes either); the joins are not unification but
+  owed orders `lo ≤ hi`: a body owes its color whatever it applies, and a function
+  argument at a function parameter owes the parameter's color its own (the two types
+  then unify with the parameter's color, so one call takes a bounded and an unbounded
+  closure, doubt CJ). The joins are solved for the least colors: a variable above an
+  unbounded color is unbounded at once, above a rigid one that one at the definition's
+  end, and the end checks every join (`calls-unbounded`, `lifted-unbounded` for a lift
+  whose color was still a variable) and defaults every variable nothing bound to bounded.
+  A local `let` generalizes its colors like its type variables: two of its own joined
+  become one (D8's one variable per signature), one joined with a variable outside stays
+  monomorphic, one under a bounded or rigid color is that color. A block binds its
+  `let`s ahead (for its dependency order); a plain name's `let` still checks at a variable
+  of its own level and generalizes, the variable bound ahead taking its monomorphic type.
+  So `let Run = \|K| \|y| K
+  y` is `fn (u fn a -> b) -> u fn a -> b`, and `Run Grow` is unbounded where `Run \|y| y +
+  1` is bounded in the same body (`pos/lambda-color`, `neg/lambda-color`). The typed
+  output gives each lambda, call and type its solved color, a quantified one as `(color
+  'cN)`. *Claude's:* least solution, as the body's join was. *Refused:* a lambda's color
+  fixed when it is read, wrong for `\|y| K y` while `K` is a variable; unification alone,
+  which refuses a bounded closure beside an unbounded one at one `u`.
+
 ### Checker doubts
 
 - **TR** An element a prelude traversal (`Fold`, `Each`, `Filter`, by resolution, pick
@@ -739,15 +766,9 @@ What the checker does not do yet, each with Claude's first ruling.
   *First ruling:* check them when the record is decided.
 - **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
   *First ruling:* read each impl's associated type into the normalizer.
-- **LB A lambda's color is fixed when it is read.** Colors are bounded, unbounded, rigid or
-  quantified, never flexible, and unification does not look at them, so a lambda that
-  calls a parameter whose type is not known yet (`\|K| \|y| K y`) is bounded however `K`
-  turns out, and a let-bound lambda is not color-polymorphic in it:
-  `tests/prismc/check/neg/lambda-color` fails (`Run Grow` is refused, where `G n` should
-  be). Lowering papers over it for the programs that run (pick JB: a lambda whose body
-  calls an unbounded function or a `Start` local is unbounded). *Next:* flexible colors in
-  the checker, bound by unification of function types and joined into a lambda's color,
-  generalized at a `let` like type variables and defaulted to bounded at the end; then
+- **LB Lowering still guesses a lambda's color** (its pick JB: a lambda whose body calls
+  an unbounded function or a `Start` local is unbounded), though the typed output now
+  gives the solved one (pick CV). *Next:* lowering reads the typed output's color, and
   JB's workaround goes.
 
 ## Back end
