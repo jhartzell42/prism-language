@@ -428,8 +428,9 @@ fn LetLambdas stmts = Fold (StmtsSpots stmts, {}), {}, \|m, sp| match sp:
 # The block's names a right side reads promptly, through the shrink check's one walk (pick
 # GH): every name it mentions at any depth, a guard's, a method call's, a cast's and a
 # template's included, except under a lambda, a local `fn` or a nested widget (a closure
-# or a blueprint is not read where it is written), inside a `rebuild` or `for` (construction
-# is never an edge), and in the arguments of a delayed widget binding. A traversal's step
+# or a blueprint is not read where it is written), in a `rebuild`'s or `for`'s source and
+# holds (construction is never an edge; its rows' other lines are, `RowKids`), and in the
+# arguments of a delayed widget binding. A traversal's step
 # is read: the walk gives its body, not the lambda, since the traversal calls it now; so
 # is a lambda passed to any function but a prelude widget function's, which may call it
 # now. A name bound again inside the right side (a lambda's parameter, an arm's binder, an
@@ -447,12 +448,33 @@ fn PromptSpots cx, e, m = Fold (PromptKids cx, e, m), [[(SpotExpr e, m)]], \|acc
 PromptKids: unbounded fn PCx, Expr, (Text ==> Rel) -> [Kid]
 fn PromptKids cx, e, m = match e.kind:
     ELambda ignore, ignore: [[]]
-    ERebuild ignore, ignore: [[]]
-    EFor ignore, ignore, ignore: [[]]
+    ERebuild ignore, body: RowKids body, m, [[]]
+    EFor ?binders, ignore, body: RowKids body, m, (ForBinderNames ?binders)
     EWidgetBlock ignore: [[]]
     ECall c, ignore, ignore, ignore: PromptCallKids cx, e, (?CalleeName c), m
     EMethod ignore, n, ignore: PromptCallKids cx, e, (? (SNameKey n)), m
     otherwise: ExprKids e, m
+
+# A `for`'s or a `rebuild`'s result is prompt in what its rows read (Semantics ch. 7, a
+# `for`'s consolidation among the prompt edges): building a row is never an edge (R7), so
+# the source is not read, but the rows' lines are, holds excepted, as a block's are
+# (`PromptEdges`). The checker does not know which dynamics are structural, so a row
+# reading its own `for`'s gathered result is a cycle, as a host's child reading `$doc` is.
+# The binders, `_` and the rows' own names are the rows'.
+RowKids: unbounded fn Block, (Text ==> Rel), [Text] -> [Kid]
+fn RowKids body, m, binders:
+    let lines = Filter body.stmts, \|s| match s.kind:
+        SBind ignore, ignore, (? ignore): False
+        otherwise: True
+    let own = Fold body.stmts, (Append binders, [["_", "$_"]]), \|acc, s| Append acc, (StmtDefs s)
+    [[(KidStmts lines, (Hide m, own))]]
+
+ForBinderNames: unbounded fn ?ForBinders -> [Text]
+fn ForBinderNames ?binders = match ?binders:
+    ? fb: match fb.?second:
+        ? second: Append (PatternNames fb.first), (PatternNames second)
+        nil: PatternNames fb.first
+    nil: [[]]
 
 # A call's children: none under a delayed widget binding; a lambda argument's body when
 # the callee may call it now (anything but a prelude widget function).

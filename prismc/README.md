@@ -339,7 +339,11 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   the prelude's delayed ones (`@Defer`, `@Later`, `@Run`, `@Machine`, `@started`, by
   resolution, pick RN). A right side's reads are pick GH's walk, less what is not read
   where it is written: a lambda, a local `fn` or widget, a nested widget block, a
-  `rebuild` or a `for`, and a delayed binding's arguments. A lambda passed to a call is
+  `rebuild`'s or a `for`'s source and holds (building a row is never an edge, R7), and a
+  delayed binding's arguments. A `for`'s or a `rebuild`'s result is prompt in its rows'
+  other lines (Semantics ch. 7, a `for`'s consolidation), the checker not knowing which
+  dynamics are structural: a row reading its own `for`'s gathered result is a cycle, as a
+  host's child reading `$doc` is (`neg/sem-ch07-for-own-gather`). A lambda passed to a call is
   read, since the callee may call it now: a traversal's step, and a lambda given to any
   function but a prelude widget function (a supplier builds a blueprint, which is
   construction). `neg/prompt-lambda`'s `let a = Apply 1, \|x| x + b` reads `b`. A name a
