@@ -805,10 +805,10 @@ one is the program's own (prismc's `--check --world Ui`). `make chess` is
 - `lower.prism` (module `Lower`, 5,500 lines): the core form and lowering. It reads the
   checker's environment (`CheckEnv.BuildG`: modules, types, constructors, tags, traits,
   impls, every definition's clauses) and the typed tables (`TProgram`, indexed by place)
-  and decides everything: names, Rust types, borrows and clones, each widget's node (its
+  and decides everything: names, types, borrows and clones, each widget's node (its
   fields, event graph, heights, places, answers, hooks, rows and generations), each
   unbounded function's job.
-- `emit.prism` (module `Emit`, 560 lines): the core form spelled; one function per
+- `emit.prism` (module `Emit`, 640 lines): the Rust printer, the core form spelled; one function per
   construct, nothing decided (K9).
 - `templates/rust.prism` (module `RustTemplates`, 565 lines): every item and every
   multi-line expression as a function-form code template with doubled braces;
@@ -824,6 +824,61 @@ The emitted crate: `Cargo.toml` (`prism_rtl`, `prism_world_cli`, and
 `prism_world_canvas_rtl` behind the `canvas` feature, on by default when the root emits
 `Gui`), `src/main.rs` (the programs, the Test World's registrations and compiled `check`
 blocks, `main`), `src/prelude.rs`, and `src/NAME.rs` per Prism module.
+
+### The model
+
+Lowering's output, `Model` (lower.prism), is a small imperative program that names
+operations and never spells them: a printer spells it for its target, `Emit` for Rust.
+Text in a node is a name (a local, a field, a method, a function's or constructor's
+qualified path, a label) or a literal's digits, never syntax.
+
+- **Items:** `ModDef` per Prism module, holding `Item`s: `TyDef` (a record, choice,
+  newtype or unit type), `TagDef` (an element tag's level), `RowDef` (a row kind's values),
+  `FnDef` (a function, a top-level `let`'s getter), `JobDef` (a step machine), `NodeDef` (a
+  widget block's node), `TraitDef`, `ImplDef`; `ProgDef` per program, `CheckDef` per
+  compiled `check` block, `AnswerDef` for `crate::Answer`.
+- **A node:** `NodeDef` has its fields, the field initializers in the order written (the
+  ones that clone a local before the locals moved in: lowering orders them), its build's
+  `let`s and steps, `MethDef` methods (a receiver `Recv`, a read point `CxArg`), its answer
+  arms (a position pattern and the call), hooks, `ForDef` and `GenDef` builders (each
+  place's path and a row's parent are expressions), its rows as child nodes.
+- **Types, `OutTy`:** the value types (`OutNat`, `OutInt`, `OutText`, `OutOpt`, `OutRes`,
+  `OutTuple`, `OutArray`, `OutMap`, `OutNamed` with arguments, `OutGen` a type parameter);
+  functions (`OutFn` bounded, `OutJobFn` a `Start`, `OutJob`); the runtime's pieces
+  (`OutHold`, `OutStamped`, `OutSnapshot`, `OutDefer`, `OutPort`, `OutWakes`, `OutEvent`,
+  `OutDyn`, `OutLive`, `OutPod`); memory (`OutRc` shared, `OutWeak` to a node, `OutCell`
+  mutable inside a shared node, `OutRef` a borrow, `OutObj` a shared trait object such as
+  a node, a row or a host, `OutSlice`, `OutCount` a machine count). The C++ runtime's
+  README maps each to its C++ form.
+- **Expressions, `Ex`:**
+  - names: `XVar` a local, `XPath` a global item, `XSelf` the node, `XCx` the read point,
+    `XConst` a constant of the node's (a height);
+  - literals: `XUnit`, `XNone`, `XBool`, `XNat`, `XInt` (decimal digits), `XByte`,
+    `XFloat`, `XIndex` (a machine integer), `XChar`, `XStr` (a string, not a `Text`: a
+    message, a name), `XText` (a `Text`), `XFormat` (a `Text` with values),
+    `XFormatStr` (a message with values; a local is named in it);
+  - calls: `XCall` of a named function, `XApply` of a function value, `XMethod`, `XCtor`,
+    `XRecord`, `XTuple`, `XVec`;
+  - places: `XField`, `XPart` (a tuple's), `XRef`, `XRefMut`, `XDeref`, `XTarget` (what a
+    `for &s` loop updates in place);
+  - sharing: `XClone` (a copy of a shared value), `XWeak` (a weak reference to a node),
+    `XUpgrade` (the node again if it lives);
+  - control: `XBin`, `XUnary`, `XIf`, `XMatch`, `XChain` (a match through shared
+    payloads), `XBlock`, `XLabeled` and `XBreak` (a labelled exit with a value),
+    `XBreakLoop`, `XClosure` (move or not, typed patterns as parameters), `XTry` (pass a
+    fault on), `XDecode` (a value from plain data), `XCast`, `XLater` (a callback the
+    runtime runs after the tick's answers), `XIsCase` (whether a value is one of these
+    constructors), `XRefusal` (what lowering cannot lower), `XUnreachable`.
+- **Patterns, `Pa`:** `PaWild`, `PaBind`, `PaMut` (a binder changed in place), `PaCtor`,
+  `PaUnit`, `PaRecord`, `PaTuple`, `PaChar`, `PaBool`, `PaIndex`, `PaConst` (a height),
+  `PaSlice` with `PaRest` (a place's path under it), `PaTyped`.
+- **Statements, `Do`:** `DoLet`, `DoLetElse`, `DoAssign`, `DoWhile`, `DoWhileLet`, `DoFor`,
+  `DoExpr`, `DoIf`, `DoIfLet`, `DoMatch`, `DoReturn`, `DoScope` and `DoLine` (statements
+  the Rust printer keeps on one line), `DoNote` (a comment).
+- **Names the Rust printer spells as they are:** the paths of runtime and prelude
+  functions in `XCall` (`Hold::new`, `Rc::new`, `prism_rtl::Dynamic::of`), method names
+  (`get`, `set`, `borrow`), a `for` row's node path (`ForDef.rowNode`, with its type
+  arguments for a host's rows). A second printer maps them to its runtime's names.
 
 ### Where it stands
 
