@@ -1,0 +1,6 @@
+# The Rust target's transcript, checked by hand: three characters, the middle one the NUL, two pieces.
+test a_nul_is_a_character
+
+tick 0
+  added:
+    0: Ui.Label(text="3 True 2")

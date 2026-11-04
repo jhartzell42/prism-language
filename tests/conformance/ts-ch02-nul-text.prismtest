@@ -1,0 +1,5 @@
+# The NUL text's tests: declarations of ts-ch02-nul-text.prism.
+
+test a_nul_is_a_character, @shown:
+    build
+        => expect Ui.Label(text="3 True 2")

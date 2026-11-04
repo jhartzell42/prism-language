@@ -1,0 +1,13 @@
+# A text holds any character, a NUL among them (`\u{0}`): its length counts it, and a
+# character compares equal to it. Written for prismc's C++ target, whose string literals
+# end at a NUL unless written as a `std::string_view`. Work in progress, subject to change.
+emit Ui.*
+
+Nul: fn Text -> Bool
+fn Nul c = c == "\u{0}"
+
+@shown: @unit
+@shown:
+    let t = "a\u{0}b"
+    Ui.Label(text=$"{Len t} {Nul (Take (Drop t, 1), 1)} {Len (Split t, "\u{0}")}")     # 0
+# Audited: three characters; the middle one is the NUL; split at it, two pieces.
