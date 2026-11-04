@@ -13,7 +13,7 @@
 CXX ?= g++
 CONFIG ?= default
 SANITIZE ?=
-OPT ?= -O1 -g
+OPT ?= -O3 -g
 REPO := $(abspath ../../..)
 RT := $(REPO)/runtime/cpp
 CLI := $(REPO)/worlds/cli/cpp
@@ -74,7 +74,7 @@ test:
 	$(MAKE) check CXX=g++ CONFIG=gcc
 	$(MAKE) check CXX=clang++ CONFIG=clang
 	$(ASAN_READY)
-	$(MAKE) check CXX=$(ASAN_CXX) CONFIG=$(ASAN_CONFIG) OPT="-O1 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined $(ASAN_LIBCXX)"
+	$(MAKE) check CXX=$(ASAN_CXX) CONFIG=$(ASAN_CONFIG) OPT="-O3 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined $(ASAN_LIBCXX)"
 
 check: $(BUILD)/canvas_tests $(BUILD)/$(SMOKE)
 	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/canvas_tests

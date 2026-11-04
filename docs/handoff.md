@@ -25,30 +25,26 @@ empty.*
 
 ## Measured so far
 
-On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
+Apple M2 Pro (12 cores, 16 GB), 4 November 2026, each pipeline all one language, both at
+the shipping configurations (cargo release, opt-level 3; clang++ -O3). Least of five runs
+for instruction counts; wall times with other jobs running, so rough. The full tables and
+their history are in prismc/README.md ("What it costs", "Strings: what is copied",
+"Building prismc, C++ against Rust").
 
 | Run | Rust | C++ |
 |---|---|---|
-| Build the compiler | 112 s (cargo release, opt-level 3, both cores) | 848 s (g++ -O1, `make -j1`, one big header) |
-| prismc/ compiled by the Rust-built prismc | 224–246 s to Rust, 2.53 GB peak | 262–265 s to C++ |
-| The compiled prismc compiling itself | 224–232 s | 129 s (to C++, 158,788 lines, -O1) |
-| Instructions, compiling `sem-ch07-normalize.prism` to Rust (callgrind) | 4.07 G | 1.60 G |
-| lexer-checks / parser-checks suites | 19 s / 35 s | 43 s / 87 s |
-| `prism check prismc/` | about 45 s | |
+| Build the compiler from clean (runtime library built beforehand) | 91 s wall, 255 s CPU (cargo, dependencies included) | 100 s wall, 1,003 s CPU (`make -j12`) |
+| The compiled prismc compiling itself | 72 s, 724 G instructions, 3.5 GB peak | 61 s, 727 G instructions, 1.2 GB peak |
+| Instructions, compiling `sem-ch07-normalize.prism` (`time -l`) | 1.40 G | 1.52 G |
+| Lines emitted for prismc | 103,850 | 154,462 |
 
-- **Why C++ runs faster:** in the Rust-built prismc, about 64% of the instructions are
-  `ropey` (Rust's `Text` is a rope; the lexer makes one per character, and `Map<Text,
-  _>` compares ropes). In the C++ prismc, about 25% is malloc/free and about 10% is
-  `shared_ptr`'s atomic count.
-- **Every difference in the self-compile favors Rust** (opt-level 3 against -O1, and the
-  C++ run emits 158k lines against 91k), so the like-for-like run can only widen the
-  gap.
-- **The like-for-like script** (all four jobs: both binaries to Rust and to C++, with
-  peak memory through a getrusage wrapper; `/usr/bin/time` is not installed on the
-  container) was in the container's scratchpad and is gone. Rewrite it in
-  `bench/compiler/`.
-- **The Rust binary for these runs** must be a current prismc. The installed
-  `target/bootstrap/prismc` dated 3 November has no `--target` and ignores it (below).
+- **What moved the numbers:** `Text` as UTF-8 with cursors (Rust 4.8 G → 1.4 G, the
+  `ropey` rope gone); per-module C++ headers (C++ build CPU down about a sixth); the
+  non-atomic `prism_rtl::Rc` and less string churn (C++ 1.79 G → 1.52 G, the C++
+  self-compile 77 s → 61 s).
+- **The benchmarks proper** are `bench/building/run.sh` and `bench/running/run.sh`, to be
+  run on a quiet machine after the style pass and regex (item 8), and they write
+  `RESULTS.md` beside themselves.
 
 ## The order (Jimmy's)
 
