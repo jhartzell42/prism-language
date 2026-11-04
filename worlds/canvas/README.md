@@ -3,34 +3,35 @@
 *Written by Claude, 1 November 2026, on the `claude-self-hosting` branch. Subject to
 change: implementers use their discretion.*
 
-This is `worlds/canvas` speaking compiled programs' protocol (`docs/backend.md`): a
-`prism_rtl::Program` and `prism_rtl::World`, everything crossing as a `Pod`.
-`worlds/canvas` stays as it is and serves the interpreter (prism_zero) until the
-interpreter goes. What the World answers, what it ignores, how it runs, the font, the
-dependencies and the known limits are as `worlds/canvas/README.md` says. This file says
-only what differs.
+The canvas World in Rust: the World a program prismc compiled to Rust runs under when its
+root emits `Gui.*`, speaking compiled programs' protocol (`docs/backend.md`), a
+`prism_rtl::Program` and `prism_rtl::World` with everything crossing as a `Pod`. It
+answers four tags, `Gui.Window`, `Gui.Scene`, `Gui.Metrics` and `Gui.Focus`, and paints
+in software: winit for the windows and their events, softbuffer for the pixels on the
+screen, tiny-skia for the raster, fontdue for the bundled DejaVu Sans (`fonts/`).
+`worlds/canvas-cpp` is the same World in C++.
 
 ```rust
 prism_world_canvas_rtl::run::<MyProgram>()          // on the main thread
 ```
 
-## What differs from `worlds/canvas`
+## The modules
 
-- **The modules.**
-  - `font.rs` is `worlds/canvas/src/font.rs` itself, through `#[path]`, with the bundled
-    font beside it. It has no `prism_rt` in it.
-  - `render.rs` and `app.rs` are copies with `prism_rt::Value` turned into `Pod` and the
-    loop into `prism_rtl`'s. Painting itself is unchanged.
-  - `world.rs` is the protocol half, rewritten. It carries its own `gui` helpers
-    (`window_id`, `extent`, `press` and the rest), since `prism_rtl` has no families
-    module.
+- `world.rs`: the protocol half, the World with no display in it, with its own `gui`
+  helpers (`window_id`, `extent`, `press` and the rest), since `prism_rtl` has no
+  families module.
+- `render.rs`: a draw list painted onto a pixel buffer.
+- `font.rs`: the bundled font and its measures.
+- `app.rs`: the loop over winit's event loop.
+
+## How it runs
+
 - **The prelude.** `run` puts the World inside `prism_world_cli::UnwrapWorld`, the CLI
-  World's `Prelude.Unwrap` policy as a wrapper, where `worlds/canvas` was wrapped by
-  prism_zero. A poisoned root prints its exception and ends the run with 1. `run_with`
-  takes another wrapper.
-- **The loop.** It is `prism_rtl::drive` turned inside out, as before. The build is the
-  first tick, `compact` runs after every tick, and a failed tick or failed build ends
-  the run with `World::failed`'s code, 1.
+  World's `Prelude.Unwrap` policy as a wrapper. A poisoned root prints its exception and
+  ends the run with 1. `run_with` takes another wrapper.
+- **The loop.** It is `prism_rtl::drive` turned inside out. The build is the first tick,
+  `compact` runs after every tick, and a failed tick or failed build ends the run with
+  `World::failed`'s code, 1.
 - **Late input.** Input queued for a window whose place has left is dropped, and the
   wrapper drops any answer to a place no longer in the document.
 
@@ -38,7 +39,7 @@ prism_world_canvas_rtl::run::<MyProgram>()          // on the main thread
 
 - **On the Linux container**
   - `cargo clippy -p prism_world_canvas_rtl --all-targets` is clean.
-  - The unit tests run without a display, as in `worlds/canvas`: the ready state, the
+  - The unit tests run without a display: the ready state, the
     patch read into windows and scenes, the input queue, every draw command painted
     offscreen at scale 1 and 2, and the font.
 - **Under Xvfb** (`tests/xvfb_smoke.rs`, part of `cargo test`)
@@ -50,6 +51,5 @@ prism_world_canvas_rtl::run::<MyProgram>()          // on the main thread
     run ends with 0.
   - With no `DISPLAY` the test starts itself again under `xvfb-run -a`. With no
     `xvfb-run` either, as on a Mac, it says so and passes.
-- **Not checked: chess.** Chess needs `prismc` to emit it, so no compiled chess exists
-  yet. The interpreter's chess under `worlds/canvas` is what was checked by hand.
-- **Not checked: macOS itself**, as in `worlds/canvas`.
+- **Chess** compiled by prismc runs under it (`make chess`, `./prism run examples/chess`),
+  checked by hand on Linux.

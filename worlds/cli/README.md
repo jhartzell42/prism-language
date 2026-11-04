@@ -7,7 +7,6 @@ The World compiled programs run under at the command line, over `prism_rtl`'s pr
 (`docs/backend.md`): a `Program` built and ticked by `prism_rtl::drive`, everything
 crossing as a `Pod`. It answers the `Fs`, `Process` and `Time` families of `prelude/`, the
 prelude's `Prelude.Unwrap` and `Prelude.Exceptions`, and one tag of its own, `Fs.List`.
-It follows `prism_rt/src/world/cli.rs`, the interpreter's CLI World, which stays as it is.
 
 ```rust
 prism_world_cli::run::<MyProgram>(args)            // the real file system, at the working directory
