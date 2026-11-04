@@ -1,0 +1,19 @@
+# A case with positional fields matched with `(..)`, ignoring them all: the arm is the
+# case's, not a record pattern of its type. Written for prismc's back end; subject to
+# change.
+emit Ui.*
+use Ui.*
+
+type Shape = choice:
+    Dot
+    Box Nat, Nat
+derive ^Eq, ^Show
+
+IsBox: fn Shape -> Bool
+fn IsBox s = match s:
+    Box(..): True
+    otherwise: False
+
+@shapes: @unit
+@shapes:
+    Ui.Label(text=$"{IsBox (Box 2, 3)} {IsBox Dot}")                     # 0
