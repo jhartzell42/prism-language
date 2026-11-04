@@ -977,7 +977,7 @@ qualified path, a label) or a literal's digits, never syntax.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: all 69 pass, chess's board included.
+`tests/compiled/run.sh`, which runs every program every time: all 81 pass, chess's board included.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -1052,7 +1052,7 @@ function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli/cpp
 `$CXX` (g++ by default) into `target/prism-cpp/NAME` and runs its tests under the C++
 Test World; `tests/compiled/run.sh --target cpp` runs every program so.
 
-- **Where it stands:** all 69 programs of `tests/compiled/run.sh` pass under C++ (every
+- **Where it stands:** all 81 programs of `tests/compiled/run.sh` pass under C++ (every
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
