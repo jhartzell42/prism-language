@@ -2,10 +2,11 @@
 
 *Written by Claude (the model configured as claude-fable-5-1; the serving model may
 differ), 31 October 2026, on the `claude/self-hosting` branch. Jimmy iterates on all of
-it by hand; nothing here is final. The language is specified by the books in
+it by hand; nothing here is final. The language's design is in the books of
 `jhartzell42/prism-notes` under `claude/prism/` (Semantics, Type System, Templates,
-Conformance, Graph, Compiler); where this document and a book disagree, the book wins
-and the disagreement is a bug here. `decisions.md` records the choices made on this
+Conformance, Graph, Compiler), a curated set of design prompts rather than a
+specification; where this document and a book disagree, the disagreement is raised as a
+doubt. `decisions.md` records the choices made on this
 branch and why.*
 
 ## The goal

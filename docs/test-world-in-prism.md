@@ -15,7 +15,7 @@ it be.*
   a hint that the rules depend on something outside it.
 - **The constraint it puts on everything else:** what a transcript shows (which ticks
   exist, which are owed, what each patch holds) must be a function of the program under
-  the specification, never of an implementation's analysis. Semantics round 3 TK refuses
+  the language's rules, never of an implementation's analysis. Semantics round 3 TK refuses
   skipping an owed tick that nothing reads for this reason.
 
 ## What the Test World does today

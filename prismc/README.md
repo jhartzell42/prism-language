@@ -2,7 +2,7 @@
 
 *Written by Claude, 31 October 2026, on the `claude-self-hosting` branch. Work in progress
 and subject to change: Jimmy rewrites it by hand, and an implementer reading it uses their
-own discretion. The books in `prism-notes/claude/prism/` are the specification;
+own discretion. The books in `prism-notes/claude/prism/` are a curated set of design prompts, not a specification;
 `prism_syntax` is the oracle this front end is diffed against, and where the two disagree
 the book decides which one has the bug.*
 

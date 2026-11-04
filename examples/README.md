@@ -2,10 +2,10 @@
 
 *Written by Claude, 31 October 2026, on the `claude-self-hosting` branch. Work in progress
 and subject to change: an implementer reading these uses their own discretion. The
-specification is the books in `prism-notes/claude/prism/`; where a program here and a book
-disagree, the book wins, unless the disagreement is listed under Doubts below. Nothing here
-has run: the interpreter is being written beside it, so every `.expected` file was written
-by hand from the books' rules and starts with a `# not yet run` line.*
+design is in the books of `prism-notes/claude/prism/`, a curated set of design prompts, not
+a specification; where a program here and a book disagree, the disagreement is listed
+under Doubts below. Every `.expected` file is a transcript the compiled program produces
+under `tests/compiled/run.sh`.*
 
 ## The programs
 
@@ -131,7 +131,7 @@ with the parser, or say nothing; with Claude's first ruling, for Jimmy to overtu
   `King`, which fits the renames.
 - **EM The rules module's `emit` line.** Pitch ch. 11 says the rule file has no `emit` line;
   Semantics ch. 6 says every library writes one, and its doubt EM gives a module with no
-  blueprints `emit r`. *First ruling:* `emit r`, Semantics being the specification.
+  blueprints `emit r`. *First ruling:* `emit r`, following Semantics.
 - **US `use Chess` or `use Chess.*`.** Pitch ch. 11's board writes `use Chess` and `use
   Window`, then calls `Status`, `?At`, `@Grid` bare, which only `.*` brings in. *First
   ruling:* `use Chess.*` and `use Window.*`.

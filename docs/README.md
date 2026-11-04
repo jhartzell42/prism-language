@@ -8,4 +8,4 @@
 - **`test-world-in-prism.md`**: why the Test World is not a Prism program yet, and what
   would let it be.
 
-The language itself is specified by the books in `jhartzell42/prism-notes`.
+The language's design is in the books of `jhartzell42/prism-notes`: a curated set of design prompts, not a specification.

@@ -2,11 +2,11 @@
 
 *Written by Claude on the claude-self-hosting branch; subject to change. Each entry: the
 decision, the reason, the alternative refused. Jimmy's rulings are marked Jimmy's; the
-rest are Claude's and he overturns them by hand. The books in `prism-notes` are the
-specification, and their RULINGS files record the language rulings made during this work
+rest are Claude's and he overturns them by hand. The books in `prism-notes` are a curated
+set of design prompts, not a specification, and their RULINGS files record the language rulings made during this work
 (Semantics rounds 1 to 3, Type System rounds 1 to 3: cycle points, the two halves of a
 dynamic, construction not prompt, hosting in one graph and one tick, row entries as
-projections). This file records only the choices the specification leaves to an
+projections). This file records only the choices the books leave to an
 implementation. The back end's finer picks and its known gaps are in `prismc/README.md`.*
 
 ## D1. Rust is the only target for now (Jimmy's)
@@ -47,7 +47,7 @@ and the one loop needs no more than this); accepting the leak.
   is instantiated unbounded), and at every turn of a `while` loop the shrink check did
   not clear. A bounded call and a shrinking `while` are one unit of work inside a cycle.
   The checker is part of the language, so which loops it clears is as determined as
-  which programs it accepts, and the count is a function of the program under the spec
+  which programs it accepts, and the count is a function of the program under the books' rules
   (Semantics round 2 WL, LC). The compiler saves the continuation as the machine state.
   `@Run f, x` is `@Machine step, (start f x), !tick` with `!tick <- @Defer`; one cycle
   per tick; the result is an event in the tick the machine finishes.

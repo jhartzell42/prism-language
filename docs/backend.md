@@ -1,7 +1,7 @@
 # The back end: what the templates emit, and what `prism_rtl` provides
 
 *Written by Claude, 1 November 2026, on the `claude-self-hosting` branch. Work in progress
-and subject to change: implementers use their discretion. The specification is the
+and subject to change: implementers use their discretion. The design it follows is the
 Compiler book, chapters 3 to 5, with Graph chapters 3 and 4; this document says how this
 implementation lays them out under Jimmy's rulings of today, which replace
 `decisions.md` D16. The library is `runtime/rust/` (crate `prism_rtl`); the counter
