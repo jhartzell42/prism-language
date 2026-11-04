@@ -1,0 +1,7 @@
+# `Shapes`: its main file declares two submodules, reached from here, as from anywhere, by
+# their full paths.
+mod Circle
+mod Square
+
+Total: fn Nat, Nat -> Nat
+fn Total r, s = (Shapes.Circle.Area r) + (Shapes.Square.Area s)

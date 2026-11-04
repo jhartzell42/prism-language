@@ -1,0 +1,5 @@
+# Derived by hand: the helpers are the module's, so the check sees them bare; a record shows with its named fields (Type System ch. 2).
+check helpers
+1: ok
+2: ok
+3: ok

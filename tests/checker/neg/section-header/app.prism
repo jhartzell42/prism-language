@@ -1,0 +1,3 @@
+# A section with a header line: refused (section-header); the main file's header is the module's.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+mod part

@@ -1,0 +1,4 @@
+# `B`'s test module.
+check round_trip:
+    Dec (A.Inc 4) => 4
+    A.Both 4 => 4

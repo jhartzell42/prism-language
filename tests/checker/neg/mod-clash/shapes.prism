@@ -1,0 +1,3 @@
+# The section `shapes`.
+Unit: fn Nat -> Nat
+fn Unit n = n

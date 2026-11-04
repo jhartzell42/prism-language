@@ -1,0 +1,5 @@
+# A test module that declares a tag.
+tag Ink.Dot of Ink
+
+check inks:
+    Ink.Dot == Ink.Dot => True

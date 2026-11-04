@@ -79,6 +79,8 @@ programs[chess]="examples/chess/board.prism examples/chess/rules.prism examples/
 programs[prelude]="$(ls prelude/*.prism | tr '\n' ' ')"
 programs[prismc]="$(ls prismc/*.prism prismc/templates/*.prism | tr '\n' ' ')"
 for f in "$here"/pos/*.prism; do [ -e "$f" ] && programs[$(basename "$f" .prism)]="$f"; done
+# a directory under pos/ is one program, a tree (docs/modules-style-pass.md)
+for d in "$here"/pos/*/; do [ -d "$d" ] && programs[$(basename "$d")]="${d%/}"; done
 
 for name in $(printf '%s\n' "${!programs[@]}" | sort); do
     wanted "$name" || continue
@@ -98,6 +100,16 @@ for f in "$here"/neg/*.prism; do
         "# args: "*) read -r -a args <<< "${first#\# args: }" ;;
     esac
     check "neg-$name" "${args[@]}" "$f"
+    compare "neg-$name" "$here/neg/$name.expected"
+    echo "neg $name: $(head -1 "$tmp/neg-$name.out")"
+done
+
+# The negative trees: a directory under neg/ is one program, its `.expected` beside it.
+for d in "$here"/neg/*/; do
+    [ -d "$d" ] || continue
+    name=$(basename "$d")
+    wanted "$name" || continue
+    check "neg-$name" "${d%/}"
     compare "neg-$name" "$here/neg/$name.expected"
     echo "neg $name: $(head -1 "$tmp/neg-$name.out")"
 done

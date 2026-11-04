@@ -1,0 +1,12 @@
+# `A.Types`, a submodule of `A` named as the top-level `Types` is.
+type Size = choice:
+    Small
+    Large
+derive ^Eq, ^Show
+
+Of: fn Nat -> Size
+fn Of n = if n < 10: Small else: Large
+
+Label: fn Size -> Text
+fn Label Small = "small"
+fn Label Large = "large"

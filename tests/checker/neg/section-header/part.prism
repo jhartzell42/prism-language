@@ -1,0 +1,6 @@
+# A section that names a module.
+
+use Ui
+
+Part: fn Nat -> Nat
+fn Part n = n

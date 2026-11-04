@@ -1,0 +1,5 @@
+tests/checker/neg/test-declares/tests.prism:2: error[test-declares]: a test module declares no tag, trait or impl
+    tag Ink.Dot of Ink
+    ^^^^^^^^^^^^^^^^^^
+  fix: declare it in app.prism or a section of the module
+1 error

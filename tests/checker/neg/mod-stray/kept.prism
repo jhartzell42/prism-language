@@ -1,0 +1,3 @@
+# The declared section.
+Kept: fn Nat -> Nat
+fn Kept n = n

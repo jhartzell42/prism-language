@@ -1,0 +1,5 @@
+tests/checker/neg/two-roots/lib.prism:1: error[two-roots]: `app.prism` and `lib.prism` in one directory: a tree has one root
+    # A library's root beside a program's: refused (two-roots).
+    ^
+  fix: keep app.prism for a program or lib.prism for a library
+1 error

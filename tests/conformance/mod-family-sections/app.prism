@@ -1,0 +1,18 @@
+# Modules as directories (docs/modules-style-pass.md): a section is its module, so a
+# family's tags may be declared over several sections (Type System ch. 2, "Every tag of a
+# family is declared in its family's module"); `lines` and `fills` declare `Ink`'s, and
+# `measure` matches them exhaustively, with no `Ink.*` arm.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod lines
+mod fills
+mod measure
+test mod tests
+use Ui
+
+type Ink = row
+derive ^Eq, ^Show
+
+@main: @unit
+@main:
+    Ui.Label(text=$"{Width Ink.Line(from=1, to=4)}")

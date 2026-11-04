@@ -1,0 +1,6 @@
+# Nothing outside a test module names what one declares: refused (test-only-reached).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod tests
+
+Uses: fn Nat -> Nat
+fn Uses n = Helper n

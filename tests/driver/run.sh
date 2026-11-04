@@ -34,6 +34,7 @@ expect() {
 }
 expect chess canvas examples/chess
 expect cli-root cli tests/driver/cli-root.prism
+expect gui-tree canvas tests/driver/gui-tree
 expect birds refused tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
 expect birds-as-cli cli --world cli tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
 expect counter-no-root refused tests/conformance/counter.prism

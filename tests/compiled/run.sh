@@ -52,6 +52,11 @@ for script in tests/conformance/*.prismtest; do
     [ -d "$base" ] && files+=("$base")
     run "$(basename "$base")" "${files[@]}"
 done
+# the programs that are trees (docs/modules-style-pass.md): a directory with an app.prism,
+# each test module's transcript its NAME.expected
+for dir in tests/conformance/*/; do
+    [ -f "$dir/app.prism" ] && run "$(basename "$dir")" "${dir%/}"
+done
 run chess-rules examples/chess/rules.prism
 run chess examples/chess
 # prismc's own front end, checked through its modules (tests/prismc/)

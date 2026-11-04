@@ -1,0 +1,5 @@
+tests/checker/neg/module-line/sub/mod.prism:3: error[module-line]: a main file has no `module` line: its path names the module `Sub`
+    module Sub
+    ^^^^^^^^^^
+  fix: delete the line
+1 error

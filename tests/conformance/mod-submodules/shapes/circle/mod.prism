@@ -1,0 +1,9 @@
+# `Shapes.Circle` (π taken as 3): it and `Shapes.Square` use each other.
+use Shapes.Square
+
+Area: fn Nat -> Nat
+fn Area r = 3 * r * r
+
+# The area of the smallest square around a circle of radius `r`.
+Around: fn Nat -> Nat
+fn Around r = Shapes.Square.Area (2 * r)

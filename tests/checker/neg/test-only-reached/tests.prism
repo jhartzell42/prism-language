@@ -1,0 +1,6 @@
+# The root's test module and its helper.
+Helper: fn Nat -> Nat
+fn Helper n = n + 1
+
+check helped:
+    Helper 1 => 2

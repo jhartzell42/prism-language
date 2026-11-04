@@ -1,0 +1,5 @@
+tests/checker/neg/test-only-reached/app.prism:6: error[test-only-reached]: `Uses` names `Helper`, which a test module declares (tests.prism): only test modules name it
+    fn Uses n = Helper n
+    ^^^^^^^^^^^^^^^^^^^^
+  fix: move `Helper` out of the test module, or `Uses` into one
+1 error

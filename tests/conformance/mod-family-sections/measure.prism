@@ -1,0 +1,10 @@
+# The section `measure`: both tags matched, and no other: the family is whole in its module.
+Width: fn Ink -> Nat
+fn Width i = match i:
+    Ink.Line(from=a, to=b): Or (b -? a), 0
+    Ink.Fill(width=w): w
+
+Kind: fn Ink -> Text
+fn Kind i = match i:
+    Ink.Line(..): "line"
+    Ink.Fill(..): "fill"

@@ -1,0 +1,4 @@
+# A header that declares a section and a submodule of one name: refused (mod-clash).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+mod shapes
+mod Shapes

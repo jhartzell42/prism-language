@@ -1,0 +1,3 @@
+# A section no header declares.
+Stray: fn Nat -> Nat
+fn Stray n = n

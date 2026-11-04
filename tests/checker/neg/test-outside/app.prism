@@ -1,0 +1,8 @@
+# In a tree, `test` and `check` stand only in a test module: refused (test-outside).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+Sum: fn Nat, Nat -> Nat
+fn Sum a, b = a + b
+
+check sums:
+    Sum 1, 2 => 3

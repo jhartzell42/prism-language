@@ -1,0 +1,6 @@
+# The root's test module.
+check widths:
+    Width Ink.Line(from=2, to=7) => 5
+    Width Ink.Fill(width=3) => 3
+    Join (Each [[Ink.Line(from=0, to=1), Ink.Fill(width=2)]], \|i| Kind i), " " => "line fill"
+    Ink.Fill(width=2) == Ink.Fill(width=2) => True

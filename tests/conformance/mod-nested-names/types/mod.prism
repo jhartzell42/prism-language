@@ -1,0 +1,13 @@
+# The top-level `Types`.
+type Size = record:
+    n: Nat
+derive ^Eq, ^Show
+
+Make: fn Nat -> Size
+fn Make n = Size(n=n)
+
+Grow: fn Size -> Size
+fn Grow s = Size(n=s.n + 1)
+
+Count: fn Size -> Nat
+fn Count s = s.n

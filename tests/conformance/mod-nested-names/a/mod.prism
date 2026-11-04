@@ -1,0 +1,11 @@
+# `A`, whose submodule `A.Types` has the name of a top-level module.
+mod Types
+use Types
+use A.Types
+
+Describe: fn Nat -> Text
+fn Describe n = Both (Types.Grow (Types.Make n)), (A.Types.Of n)
+
+# Each `Size` by its full path.
+Both: fn Types.Size, A.Types.Size -> Text
+fn Both s, k = "{Types.Count s} {A.Types.Label k}"

@@ -1,0 +1,13 @@
+# A tree that checks clean: the root, a section, a submodule and a test module
+# (docs/modules-style-pass.md).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod words
+mod Geometry
+test mod tests
+use Ui
+use Geometry.*
+
+@main: @unit
+@main:
+    Ui.Label(text=$"{Name (Double 2)}")

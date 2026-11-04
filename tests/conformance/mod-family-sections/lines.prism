@@ -1,0 +1,4 @@
+# The section `lines`: one tag of the root's family `Ink`.
+tag Ink.Line of Ink:
+    from: Nat
+    to: Nat
