@@ -9,6 +9,9 @@ check precedence
 3: ok
 4: ok
 
+check lambdas
+1: ok
+
 check widgets
 1: ok
 

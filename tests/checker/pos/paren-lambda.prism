@@ -1,0 +1,16 @@
+# A parenthesized lambda at a function parameter is the lambda: it keeps its parameters
+# and takes the parameter's type, as the bare one does.
+Twice: fn Nat, (fn Nat -> Nat), (fn Nat -> Nat) -> Nat
+fn Twice x, F, G = G (F x)
+
+Grow: unbounded fn Nat -> Nat
+fn Grow n = n + 1
+
+Mild: fn Nat -> Nat
+fn Mild n = Twice n, (\|y| y + 1), (\|y| y + 2)
+
+Wild: unbounded fn Nat -> Nat
+fn Wild n = Twice n, (\|y| y + 1), (\|y| Grow y)
+
+Sum: fn [Nat] -> Nat
+fn Sum xs = Fold xs, 0, (\|acc, x| acc + x)
