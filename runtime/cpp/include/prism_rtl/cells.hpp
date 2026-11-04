@@ -125,9 +125,11 @@ class Cache {
 public:
     /// The cached value at the read point, or `compute`'s, which is then cached. A read
     /// below the cached read point computes and keeps nothing: the cache stays the later
-    /// value, and the marks that made it stale were already consumed by that read.
+    /// value, and the marks that made it stale were already consumed by that read. A read
+    /// is `const`, as Rust's `Cache::get(&self)` over its `RefCell`: what it caches is the
+    /// cache's own state (`mutable`), never the node's.
     template <class F>
-    T get(const Cx& cx, F&& compute) {
+    T get(const Cx& cx, F&& compute) const {
         Tick at = cx.read_point();
         if (value_) {
             if (value_->second <= at && at < stale_from_) return value_->first;
@@ -143,8 +145,8 @@ public:
 
 private:
     static constexpr Tick NEVER = std::numeric_limits<Tick>::max();
-    std::optional<std::pair<T, Tick>> value_;
-    Tick stale_from_ = NEVER;
+    mutable std::optional<std::pair<T, Tick>> value_;
+    mutable Tick stale_from_ = NEVER;
 };
 
 // ---------------------------------------------------------------------------------------

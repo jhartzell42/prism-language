@@ -30,7 +30,7 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 | `Rc<T>`, `Weak<T>` | `std::shared_ptr<T>`, `std::weak_ptr<T>` |
 | `Rc<dyn Node>` | `NodeRef` = `std::shared_ptr<Node>`; `Node` is an abstract class with virtual methods |
 | `self: Rc<Self>` in a node method | a virtual method on `this`; `me()` (or `me_as<T>()`) is the node as a `NodeRef`, for putting it on a list. Nodes are always made with `std::make_shared` |
-| `RefCell<T>`, `Cell<T>` | plain members (single-threaded); `Cx`'s read point and late fault are `mutable` |
+| `RefCell<T>`, `Cell<T>` | plain members (single-threaded); `Cx`'s read point and late fault, and a `Cache`'s value and stale point (its `get` is `const`, as Rust's is `&self`), are `mutable`. A node's fields are not: its `const` methods (level readers such as `label`) write none of them |
 | `Result<T, Fault>` | `Result<T>` = `Expected<T, Fault>` (result.hpp: clang 18 over libstdc++ 13 has no `std::expected`) |
 | `Result<(), Fault>` (`Done`) | `Done` = `Expected<void, Fault>`; `return {};` is `Ok(())` |
 | `Err(f)` | `return unexpected(f);` |
