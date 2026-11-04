@@ -181,11 +181,19 @@ belong in the runtime beside `Text`, as a primitive, so that prismc's lexer (and
 program's) shrinks. Write the design before implementing; the books need it (Semantics
 ch. 2 for the literals, Appendix B for the prelude, Type System for the types).
 
-- **Literals.** `r/pattern/` is a `Regex`; `s/pattern/replacement/` is a
-  `RegexReplacement` (names to settle), Perl and sed style.
-  - The lexer reads them as one token. `r` and `s` would otherwise be names, so the
-    rule needs the spacing rule's help: `r/` touching is a literal, `r / x` is division.
-    Settle whether a name `r` touching `/` is then an error.
+- **Literals.** A pattern is a `Regex`; a pattern and a replacement is a
+  `RegexReplacement` (names to settle), Perl and sed style. Two spellings considered:
+  - **`%`, Jimmy's idea, and Claude's recommendation as a mark, not a sigil.**
+    `%/pattern/` is a `Regex` and `%/pattern/replacement/` a `RegexReplacement`.
+    - `%` is free: Semantics ch. 2 refuses a `%` operator so that "funny characters
+      are all sigils or marks", and a literal's mark fits that.
+    - No name is taken, and there is no ambiguity with division.
+  - **Why not a sigil:** a sigil on a name says *when* (Pitch ch. 3; it is the
+    outermost time layer of the name's type, D12). A regex is a value, not a time
+    layer, so a `%name` would be the one sigil that does not answer "when".
+  - **The refused spelling:** `r/pattern/` and `s/pattern/replacement/` take `r` and
+    `s`, which would otherwise be names, and need the spacing rule to tell `r/x/` from
+    `r / x`.
   - Flags after the closing slash, settled with the literal (`r/x/i`).
   - Other delimiters (`r{...}`, `r#/.../#`) for patterns holding `/`.
   - Interpolation is refused or explicit: a pattern built from text goes through a
