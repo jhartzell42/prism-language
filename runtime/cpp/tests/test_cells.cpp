@@ -188,7 +188,7 @@ TEST(a_hold_written_twice_in_a_tick_fails_it) {
     CHECK(!out.has_value() && out.error().kind == "Runtime.TwoWrites");
 }
 
-TEST(a_snapshot_answers_the_tick_before_during_propagation) {
+TEST(a_snapshot_answers_the_structure_and_the_dynamic_one_tick_behind) {
     ReadyMap r = ready();
     Runtime rt;
     Cx build = rt.build(r);
@@ -200,7 +200,7 @@ TEST(a_snapshot_answers_the_tick_before_during_propagation) {
         threw = true;
     }
     CHECK(threw);
-    CHECK(s.take_compared(Int(1), build));
+    CHECK(!s.take_compared(Int(1), build));
     CHECK_EQ(s.get(build), Int(1));
     (void)rt.close(std::move(build)).value();
     struct Writer : Node {
@@ -208,10 +208,10 @@ TEST(a_snapshot_answers_the_tick_before_during_propagation) {
         std::vector<std::string> log;
         Done answer(std::span<const Segment>, const Pod&, Cx& cx) override {
             s->mark(cx);
-            log.push_back("during " + s->get(cx).to_string());
+            log.push_back("during " + s->current(cx).to_string());
             bool threw = false;
             try {
-                cx.after([&](const Cx& later) { return s->get(later); });
+                cx.after([&](const Cx& later) { return s->current(later); });
             } catch (const Panic&) {
                 threw = true;
             }
@@ -221,8 +221,9 @@ TEST(a_snapshot_answers_the_tick_before_during_propagation) {
         }
         Done build(Cx& cx) override {
             log.push_back(std::string("moved ") + (s->take_compared(Int(2), cx) ? "yes" : "no"));
-            log.push_back("after " + s->get(cx).to_string());
-            log.push_back("before " + cx.before([&](const Cx& c) { return s->get(c); }).to_string());
+            log.push_back("after " + cx.after([&](const Cx& c) { return s->current(c); }).to_string());
+            log.push_back("construction " + s->current(cx).to_string());
+            log.push_back("dynamic " + cx.after([&](const Cx& c) { return s->get(c); }).to_string());
             return {};
         }
     };
@@ -230,7 +231,7 @@ TEST(a_snapshot_answers_the_tick_before_during_propagation) {
     w->s = &s;
     NodeRef root = w;
     (void)rt.tick(root, TickIn::none().answer(Path::root().at(0), Pod::unit()), r).value();
-    CHECK(w->log == (std::vector<std::string>{"during 1", "after panics", "moved yes", "after 2", "before 1"}));
+    CHECK(w->log == (std::vector<std::string>{"during 1", "after panics", "moved yes", "after 2", "construction 2", "dynamic 1"}));
 }
 
 // ---- Pushes, first values, requests -----------------------------------------------------

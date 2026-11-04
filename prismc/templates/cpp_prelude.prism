@@ -275,8 +275,8 @@ Ordering compare(const A& a, const A& b) {
 // ---- Optionals --------------------------------------------------------------------------
 
 /// `Or: fn ?a, a -> a`.
-template <class A>
-A or_(const std::optional<A>& o, const A& d) { return o ? *o : d; }
+template <class A, class D>
+A or_(const std::optional<A>& o, const D& d) { return o ? *o : A(d); }
 
 // ---- Arrays -----------------------------------------------------------------------------
 
@@ -403,6 +403,9 @@ Array<V> values(const Map<K, V>& m) {
 }
 template <class K, class V>
 Nat size(const Map<K, V>& m) { return nat_of(m.size()); }
+/// A host's rows (`prism_rtl::Rows`, shared), as `Map::values` reads them.
+template <class K, class V>
+Array<V> values(const std::shared_ptr<Map<K, V>>& m) { return values(*m); }
 template <class K, class V>
 Map<K, V> map(const Array<std::tuple<K, V>>& entries) {
     Map<K, V> m;
@@ -792,7 +795,7 @@ fn CppPreludeRows unused = inline_text <cpp>
 class Row : public Node {
 public:
     virtual void leave_row(Cx& cx) = 0;
-    virtual std::vector<std::pair<Path, Elem>> document(const Cx& cx) {
+    virtual std::vector<std::tuple<Path, Elem>> document(const Cx& cx) {
         static_cast<void>(cx);
         return {};
     }
@@ -809,8 +812,8 @@ template <class N, class P, class Port, class Call>
 void subscribe_row(const std::shared_ptr<N>& node, std::optional<std::shared_ptr<P>> parent, Port port, Call call, std::optional<Handle>& slot) {
     if (!parent) return;
     std::weak_ptr<N> me = node;
-    using T = typename std::remove_cvref_t<decltype(*port(**parent))>::Value;
-    Handle h = port(**parent)->subscribe([me, call](const T& v, Cx& cx) -> Done {
+    using T = typename std::remove_cvref_t<decltype(deref(port(**parent)))>::Value;
+    Handle h = deref(port(**parent)).subscribe([me, call](const T& v, Cx& cx) -> Done {
         if (auto n = me.lock()) call(n, v, cx);
         return {};
     });

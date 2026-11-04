@@ -125,10 +125,11 @@ template <class K, class V> struct IsValue<Map<K, V>> : std::true_type {};
 template <class T, class E> struct IsValue<Expected<T, E>> : std::true_type {};
 template <class... T> struct IsValue<std::tuple<T...>> : std::true_type {};
 
-/// `Rc::new(x)`: a value as it is; a node or a runtime cell on the heap.
+/// `Rc::new(x)`: a value (or a closure, which a `Fn` takes) as it is; a node or a runtime
+/// cell on the heap.
 template <class T>
 auto rc(T x) {
-    if constexpr (IsValue<T>::value) return x;
+    if constexpr (IsValue<T>::value || requires { &T::operator(); }) return x;
     else return std::make_shared<T>(std::move(x));
 }
 
@@ -152,6 +153,12 @@ std::optional<std::shared_ptr<T>> upgrade(const std::weak_ptr<T>& w) {
     if (auto p = w.lock()) return p;
     return std::nullopt;
 }
+
+/// A runtime cell reached as Rust auto-derefs it: through a shared pointer, or as it is.
+template <class T>
+T& deref(T& x) { return x; }
+template <class T>
+T& deref(const std::shared_ptr<T>& p) { return *p; }
 
 /// `Option::expect`.
 template <class T>
@@ -188,8 +195,49 @@ auto fmap(const std::optional<T>& o, F f) -> std::optional<std::decay_t<std::inv
 }
 template <class T, class F>
 auto fmap(const Event<T>& e, F f) { return e.map(std::move(f)); }
+/// `iter().map(f).collect()` over an array, and over a map's entries (each a pair, `f`
+/// giving a pair back).
+template <class T, class F>
+auto fmap(const Array<T>& xs, F f) {
+    using U = std::decay_t<std::invoke_result_t<F, const T&>>;
+    std::vector<U> out;
+    for (const T& x : xs) out.push_back(f(x));
+    return Array<U>(std::move(out));
+}
+template <class K, class V, class F>
+auto fmap(const Map<K, V>& m, F f) {
+    using R = std::decay_t<std::invoke_result_t<F, const std::pair<const K, V>&>>;
+    Map<std::decay_t<std::tuple_element_t<0, R>>, std::decay_t<std::tuple_element_t<1, R>>> out;
+    for (const auto& e : m) {
+        R r = f(e);
+        out.insert(std::get<0>(r), std::get<1>(r));
+    }
+    return out;
+}
 template <class T, class F>
 auto fmap(const Dynamic<T>& d, F f) { return d.map(std::move(f)); }
+
+/// `iter().enumerate()`: each element with its index.
+template <class T>
+std::vector<std::pair<std::size_t, T>> enumerate(const Array<T>& xs) {
+    std::vector<std::pair<std::size_t, T>> out;
+    std::size_t i = 0;
+    for (const T& x : xs) out.emplace_back(i++, x);
+    return out;
+}
+
+/// `iter_mut().enumerate()`: each element, to update in place, with its index.
+template <class T>
+std::vector<std::pair<std::size_t, T&>> enumerate(std::vector<T>& xs) {
+    std::vector<std::pair<std::size_t, T&>> out;
+    std::size_t i = 0;
+    for (T& x : xs) out.emplace_back(i++, x);
+    return out;
+}
+
+/// `Option::unwrap_or_default()`.
+template <class T>
+T unwrap_or_default(const std::optional<T>& o) { return o ? *o : T(); }
 
 /// `Vector::iter_mut()`: an array's elements to update in place.
 template <class T>
@@ -222,6 +270,27 @@ auto dynamic_of(F read, const std::shared_ptr<Port<Unit>>& updates) {
     return Dynamic<T>::of(std::move(read), updates);
 }
 
+/// `Host::new(at, rows, supplier, enclosing, document, deliver)`: the host's types are its
+/// rows' and its owner's, whose methods `document` and `deliver` are.
+template <class E, class A, class P, class S, class D1, class D2>
+std::shared_ptr<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::shared_ptr<HostOf<E, A>> enclosing,
+                                        D1 P::*document, D2 P::*deliver) {
+    using H = Host<E, A, P>;
+    return H::make(std::move(at), std::move(rows), Supplier<E, A>(std::move(supplier)), std::move(enclosing),
+                   typename H::DocumentFn(document), typename H::DeliverFn(deliver));
+}
+template <class E, class A, class P, class S, class D1, class D2>
+std::shared_ptr<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::nullopt_t, D1 P::*document,
+                                        D2 P::*deliver) {
+    return host_new(std::move(at), std::move(rows), std::move(supplier), std::shared_ptr<HostOf<E, A>>(), document, deliver);
+}
+template <class E, class A, class P, class S, class D1, class D2, class H>
+std::shared_ptr<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::optional<H> enclosing,
+                                        D1 P::*document, D2 P::*deliver) {
+    return host_new(std::move(at), std::move(rows), std::move(supplier),
+                    enclosing ? std::shared_ptr<HostOf<E, A>>(*enclosing) : nullptr, document, deliver);
+}
+
 /// `Turn::More(job)`: the next turn is the job's.
 template <class J>
 auto more(std::shared_ptr<J> job) {
@@ -232,6 +301,7 @@ auto more(std::shared_ptr<J> job) {
 /// `Turn::Finished(v)`: a finished turn of the job type the context gives.
 template <class V>
 struct Finishing {
+    using Value = V;
     V value;
     template <class B>
     operator Turn<B>() && { return Turn<B>::finished(B(std::move(value))); }

@@ -176,26 +176,39 @@ public:
     void mark(const Cx& cx) { marked_ = cx.tick(); }
     /// Whether a write marked the structure this tick and the snapshot is not taken yet.
     bool marked(const Cx& cx) const { return marked_ == cx.tick(); }
-    /// The snapshot of this tick, taken: the value after the tick, which every read after
-    /// the tick answers from now on. A second take in the same tick replaces the first.
-    void take(T v, const Cx& cx) {
-        if (newest_ && newest_->second == cx.tick()) newest_->first = std::move(v);
-        else {
-            if (newest_) older_ = std::move(newest_);
-            newest_.emplace(std::move(v), cx.tick());
-        }
-        marked_.reset();
+    /// The snapshot of this tick taken, the structure after the tick; a second take in the
+    /// same tick replaces the first. Without equality every take after the node's first
+    /// tick moves the dynamic. Answers whether it moved.
+    bool take(T v, const Cx& cx) {
+        return put(std::move(v), cx, [](const T&, const T&) { return true; });
     }
-    /// The snapshot taken and compared with the one that stood: whether the value moved.
-    /// The update event of a structural dynamic fires only when it did (R3 with one tick
-    /// of lag; a dedupe where equality exists).
+    /// The snapshot taken and compared with the one that stood before this tick: whether
+    /// the dynamic moved (R3: its update event fires only when the value changed).
     bool take_compared(T v, const Cx& cx) {
-        bool moved = !newest_ || !(newest_->first == v);
-        take(std::move(v), cx);
-        return moved;
+        return put(std::move(v), cx, [](const T& a, const T& b) { return !(a == b); });
     }
-    /// The value at the read point: the newest snapshot taken before it.
+    /// Whether the node queues the publication now: the snapshot taken this tick moved the
+    /// dynamic, and nothing queued it yet this tick (one firing per tick).
+    bool queue(const Cx& cx) {
+        bool first = moved_ == cx.tick() && queued_ != cx.tick();
+        if (first) queued_ = cx.tick();
+        return first;
+    }
+    /// At the start of tick `n + 1`: whether S(n) still differs from S(n-1), so the
+    /// publication writes the dynamic.
+    bool published(const Cx& cx) const { return moved_ && *moved_ + 1 == cx.tick(); }
+    /// The dynamic at the read point: its value after the tick before the read point, the
+    /// snapshot of the tick before that (S(m-1) after `m`); the build's snapshot until then.
     T get(const Cx& cx) const {
+        Tick at = cx.read_point();
+        if (!newest_) panic(what_ + " read before its first snapshot was taken");
+        if (newest_->second + 2 <= at) return newest_->first;
+        if (older_) return older_->first;
+        return newest_->first;
+    }
+    /// The structure at the read point: the newest snapshot taken before it, S(n) from
+    /// tick `n`'s construction step on, S(n-1) during `n`'s propagation.
+    T current(const Cx& cx) const {
         Tick at = cx.read_point();
         if (!newest_) panic(what_ + " read before its first snapshot was taken");
         if (newest_->second < at) {
@@ -203,7 +216,7 @@ public:
                 std::string how = cx.propagating() ? "under `Cx::after` during propagation"
                                                    : "by a builder that runs before the structure it reads has settled";
                 panic(what_ + " read after tick " + std::to_string(cx.tick()) +
-                      " before its snapshot was taken: a structural dynamic read " + how);
+                      " before its snapshot was taken: a structure read " + how);
             }
             return newest_->first;
         }
@@ -213,11 +226,25 @@ public:
     }
 
 private:
-    /// The newest snapshot and its tick, and the older one once there have been two.
+    template <class D>
+    bool put(T v, const Cx& cx, D differs) {
+        bool moved = false;
+        if (!newest_) {
+            newest_.emplace(std::move(v), cx.tick());
+        } else if (newest_->second == cx.tick()) {
+            if (older_) moved = differs(older_->first, v);
+            newest_->first = std::move(v);
+        } else {
+            moved = differs(newest_->first, v);
+            older_ = std::move(newest_);
+            newest_.emplace(std::move(v), cx.tick());
+        }
+        moved_ = moved ? std::optional<Tick>(cx.tick()) : std::nullopt;
+        marked_.reset();
+        return moved;
+    }
     std::optional<std::pair<T, Tick>> newest_, older_;
-    /// The tick a write behind the structure marked, until the snapshot of that tick is
-    /// taken.
-    std::optional<Tick> marked_;
+    std::optional<Tick> marked_, moved_, queued_;
     std::string what_;
 };
 
@@ -409,6 +436,7 @@ struct Turn;
 template <class B>
 class Job {
 public:
+    using Value = B;
     virtual ~Job() = default;
     /// One cycle: run bounded code from here to the next cycle point, or to the result.
     virtual Turn<B> cycle() const = 0;

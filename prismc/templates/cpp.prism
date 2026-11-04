@@ -426,7 +426,7 @@ fn CondExpr cond, thenX, elseX = inline_text <cpp>
 
 Lambda: fn Text, Text, Text -> Text
 fn Lambda capture, params, body = inline_text <cpp>
-[{{capture}}]({{params}}) {
+[{{capture}}]({{params}} {
     {{body}}
 }</cpp>
 

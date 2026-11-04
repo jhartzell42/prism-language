@@ -80,6 +80,7 @@ fn RefTypes ts = Join (Each ts, \|t| "&{Type t}"), ", "
 IsLoose: fn Ex -> Bool
 fn IsLoose x = match x:
     XBlock [[]], inner: IsLoose inner
+    XTyped inner, ignore: IsLoose inner
     XBin ignore, ignore, ignore: True
     XUnary ignore, ignore: True
     XClosure ignore, ignore, ignore: True
@@ -98,6 +99,7 @@ fn Tight x = if IsLoose x: "({Expression x})" else: Expression x
 Operand: unbounded fn Ex -> Text
 fn Operand x = match x:
     XBlock [[]], inner: Operand inner
+    XTyped inner, ignore: Operand inner
     XBin ignore, ignore, ignore: "({Expression x})"
     XClosure ignore, ignore, ignore: "({Expression x})"
     XIf ignore, ignore, ignore: "({Expression x})"
@@ -163,6 +165,7 @@ fn Expression x = match x:
     XPart r, k: "{Tight r}.{k}"
     XDecode t, y: "{DecodeHead t}::from_pod({Expression y})?"
     XCast y, t: "{Tight y} as {Type t}"
+    XTyped y, ignore: Expression y
 
 FieldInit: unbounded fn Text, Ex -> Text
 fn FieldInit f, (XVar v) = if v == f: f else: "{f}: {v}"

@@ -155,6 +155,9 @@ type Ex = choice:
     XPart Ex, Nat
     XDecode OutTy, Ex
     XCast Ex, OutTy
+    # An expression with its type said, where a printer cannot infer it (an empty array
+    # or map passed to a generic function).
+    XTyped Ex, OutTy
 derive ^Eq, ^Show
 
 # One arm of a `match` or of an if-let chain: the pattern, the conditions after it (a
@@ -1236,9 +1239,9 @@ fn ValueByKind lx, env, e:
             otherwise: VlOwned (Refusal "`{b}` outside a `for`"), t
         ENil ignore: VlOwned (XNone), t
         ETuple es: VlOwned (XTuple (Each es, \|x| Own (ValueOf lx, env, x))), t
-        EArray [[]]: VlOwned (XCall "Array::new", [[]]), t
+        EArray [[]]: VlOwned (XTyped (XCall "Array::new", [[]]), t), t
         EArray es: VlOwned (XCall "Array::from", [[XVec (Each es, \|x| Own (ValueOf lx, env, x))]]), t
-        EMap [[]]: VlOwned (XCall "Map::new", [[]]), t
+        EMap [[]]: VlOwned (XTyped (XCall "Map::new", [[]]), t), t
         EMap kvs: VlOwned (XCall "map_of", [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
         EGroup x: ValueOf lx, env, x
         ECall c, args, ignore, ignore: Application lx, env, c, args, e.span
@@ -2693,7 +2696,7 @@ fn UpdateValue lx, env, target, b, t, span:
     let tv = ValueOf lx, env, target
     let env1 = Bind env, "&_", (BnLocal (XVar "this"), Owned, t)
     let ((dos, ignore)) = UpdStmts lx, env1, b.stmts
-    VlOwned (XBlock (Append [[(DoLet (PaMut "this"), (Own tv))]], dos), (XVar "this")), t
+    VlOwned (XBlock (Append [[(DoLet (PaTyped (PaMut "this"), t), (Own tv))]], dos), (XVar "this")), t
 
 UpdStmts: unbounded fn Lx, Env, [Stmt] -> (([Do], Env))
 fn UpdStmts lx, env, stmts = Fold stmts, (([[]], env)), \|((acc, en)), s|
@@ -2951,8 +2954,8 @@ fn ParamWord t, i:
     "{base}{i}"
 
 # A function's clauses as one body over its parameters (each a reference, `ref`).
-ClausesBody: unbounded fn Lx, Env, [FnClause], [((Text, Bool))], [Ty], (fn Lx, Env, FnBody -> Ex), Text -> Ex
-fn ClausesBody lx, env, clauses, names, ptys, Body, label:
+ClausesBody: unbounded fn Lx, Env, [FnClause], [((Text, Bool))], [Ty], (fn Lx, Env, FnBody -> Ex), Text, OutTy -> Ex
+fn ClausesBody lx, env, clauses, names, ptys, Body, label, t:
     let env1 = Fold (Range0 (Len names)), env, \|en, i|
         let ((rs, matched)) = Or names[i], (("", True))
         if matched: en
@@ -2976,7 +2979,7 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label:
             let conds = Fold pos, [[]], \|acc, o| Append acc, o.conds
             let binds = Fold pos, [[]], \|acc, o| Append acc, o.binds
             XArm(pat=pa, conds=conds, body=(Body lx, (BindAll env1, binds), c.body))
-        Own (ArmsValue scrut, arms, "'{label}", OutUnit)
+        Own (ArmsValue scrut, arms, "'{label}", t)
 
 let dummyClause = FnClause(name=(DefOp "", Range(start=0, end=0)), params=[[]], body=(BodyExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
 
@@ -2995,7 +2998,7 @@ fn FnDefOf lx, qk, clauses, sc:
     let ptys = if HasBlueprint res: Each ptys0, \|p| EventParam p else: ptys0
     let pts = Each ptys, \|p| OutTyOf lx, (Peel p)
     let names = ParamNames lx, clauses, pts
-    let body = ClausesBody lx, emptyEnv, clauses, names, ptys, FnBodyValue, "c"
+    let body = ClausesBody lx, emptyEnv, clauses, names, ptys, FnBodyValue, "c", (OutTyOf lx, (Peel res))
     let params = Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (OutRef (Or pts[i], OutUnit))))
     let ret = OutTyOf lx, (Peel res)
     # A type variable the Rust signature erases (a supplier's `o`, under a blueprint and a
@@ -3186,7 +3189,7 @@ fn UpdTail lx, env, target, b, to, Cont:
     let t = OutTyOf lx, (Peel (TypeAt lx, target.span))
     let tv = ValueOf lx, env, target
     let env1 = Bind env, "&_", (BnLocal (XVar "this"), Owned, t)
-    Prepend [[(DoLet (PaMut "this"), (Own tv))]], (UpdTailFrom lx, env, env1, b, 0, to, Cont)
+    Prepend [[(DoLet (PaTyped (PaMut "this"), t), (Own tv))]], (UpdTailFrom lx, env, env1, b, 0, to, Cont)
 
 UpdTailFrom: unbounded fn Lx, Env, Env, Block, Nat, Range, (unbounded fn Env, Ex -> Ex) -> Ex
 fn UpdTailFrom lx, outer, env, b, i, to, Cont:
@@ -3473,7 +3476,7 @@ fn TailMatch lx, env, s, arms, span:
         let env2 = BindAll env, po.binds
         XArm(pat=po.pa, conds=(Append po.conds, (GuardConds lx, env2, arm.?guard)), body=(TailBlock lx, env2, arm.body))
     let scrut = if owned: Own sv else: Ref sv
-    Own (ArmsValue scrut, xarms, "'{label}", OutUnit)
+    Own (ArmsValue scrut, xarms, "'{label}", (OutUnknown "the job's turn"))
 
 # The unbounded function a call in tail position enters, when it has a job.
 ?TailCallee: fn Lx, Env, Expr -> ?Text
@@ -3528,7 +3531,7 @@ fn JobClauses lx, clauses, names, ptys, pts:
     let lets = Each (Range0 (Len names)), \|i|
         let ((rs, ignore)) = Or names[i], (("arg", True))
         DoLet (PaBind rs), (XRef (XField XSelf, rs))
-    let inner = ClausesBody lx, emptyEnv, clauses, names, ptys, TailBody, "j"
+    let inner = ClausesBody lx, emptyEnv, clauses, names, ptys, TailBody, "j", (OutUnknown "the job's turn")
     XBlock lets, inner
 
 # ---------------------------------------------------------------------------------------
@@ -4107,7 +4110,7 @@ fn HoldLine wx, benv, menv, p, init, step:
             let wx1 = AddField wx, f, (OutHold t), "`{PatText p}`", (XCall "Hold::new", [[(XClone (XVar "{f}_init")), XCx]])
             let ((r, wx2)) = EventRef wx1, menv, step
             let wx3 = update (Connect wx2, r, (SkHold f)):
-                &_.lets <= Push &_.lets, (DoLet (PaBind "{f}_init"), iv)
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{f}_init"), t), iv)
                 &_.inited <= Push &_.inited, f
             ((wx3, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
         otherwise: ((wx, benv))
@@ -4156,7 +4159,7 @@ fn LetLine wx, benv, menv, p, e:
                 &_.dynReads <= Insert &_.dynReads, rs, reads
             if AllInited wx2, reads:
                 let wx3 = update wx2:
-                    &_.lets <= Push &_.lets, (DoLet (PaBind "{rs}_init"), (Own (ValueOf lx, (InitEnv benv), e)))
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{rs}_init"), t), (Own (ValueOf lx, (InitEnv benv), e)))
                     &_.inited <= Push &_.inited, rs
                 ((wx3, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{rs}_init"), Owned, t))))
             else: ((wx2, benv))
@@ -4575,7 +4578,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             let what = "the document of the child hosted at place {PlaceText pos}"
             let wx2 = update wxd:
                 &_.pos <= NextPos &_.pos
-                &_.lets <= Append &_.lets, [[(DoLet (PaBind rowsName), (XCall "Rc::new", [[(XCall "RefCell::new", [[(XCall "Map::new", [[]])]])]])), (DoLet (PaBind hf), made)]]
+                &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind rowsName), rowsTy), (XCall "Rc::new", [[(XCall "RefCell::new", [[(XCall "Map::new", [[]])]])]])), (DoLet (PaBind hf), made)]]
                 &_.fields <= Append &_.fields, [[((hf, hostTy, "the host at place {PlaceText pos}: its supplier, its rows, and the way back into its child (pick HO)")), ((rowsName, rowsTy, "the rows of the host at place {PlaceText pos}: `for p, e <- $doc`, one supplier blueprint per child place")), (("{docGetter}_snap", (OutSnapshot docTy), "`$doc` of the host at place {PlaceText pos}, a structural dynamic: its snapshots, the structure and the lagged dynamic (pick ST)"))]]
                 &_.moves <= Append &_.moves, [[((hf, (XClone (XVar hf)))), ((rowsName, (XClone (XVar rowsName))))]]
                 &_.inits <= Push &_.inits, (("{docGetter}_snap", (XCall "Snapshot::new", [[XStr what]])))
@@ -4680,7 +4683,7 @@ fn DynKey x = "{x.span.start}:{x.span.end}"
 # step (pick ST).
 HostDocGetter: fn Text, Pos, [Place], [ForDef], [GenDef] -> MethDef
 fn HostDocGetter name, pos, places, builders, gens:
-    let start = DoLet (PaMut "doc"), (XCall "Map::new", [[]])
+    let start = DoLet (PaTyped (PaMut "doc"), (OutMap OutPath, elemTy)), (XCall "Map::new", [[]])
     let body = DocumentBody MapInsert, places, builders, gens
     MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=(OutMap OutPath, elemTy), body=(Append [[start]], body), tail=(XVar "doc"), doc="The document of the child hosted at place {PlaceText pos} computed live: each of its places by its path relative to the child, its level at the read point (pick HO). Read only by the snapshot `$doc` answers from (pick ST).")
 
@@ -5454,7 +5457,7 @@ DocumentGetter: fn Wx -> MethDef
 fn DocumentGetter wx:
     let IsOwn = \|p| p.scope == 0
     let body = DocumentBody VecPush, (Filter wx.places, \|pl| IsOwn pl.pos), (Filter wx.builders, \|b| IsOwn b.pos), (Filter wx.gens, \|gd| IsOwn gd.pos)
-    MethDef(name="document", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutNamed "Vec", [[(OutTuple [[OutPath, elemTy]])]]), body=(Append [[(DoLet (PaMut "doc"), (XCall "Vec::new", [[]]))]], body), tail=(XVar "doc"), doc="The row's own places, entries of its host's document, by their paths relative to the row (pick HO).")
+    MethDef(name="document", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutNamed "Vec", [[(OutTuple [[OutPath, elemTy]])]]), body=(Append [[(DoLet (PaTyped (PaMut "doc"), (OutNamed "Vec", [[(OutTuple [[OutPath, elemTy]])]])), (XCall "Vec::new", [[]]))]], body), tail=(XVar "doc"), doc="The row's own places, entries of its host's document, by their paths relative to the row (pick HO).")
 
 # A hosted row's place may have moved (a hold it reads was written): its parent is told,
 # and tells its host in turn.
@@ -5750,7 +5753,7 @@ fn Decide g = match g.kind:
     GnUpdated: UpdatedDecide g
     GnMergeAll:
         let pushes = Each g.inputs, \|f| DoIfLet (PaCtor "Some", [[PaBind "x"]]), (XMethod (XField XSelf, "{f}"), "take", [[XCx]]), [[DoExpr (XMethod (XVar "all"), "push_back", [[(XVar "x")]])]], [[]]
-        let start = DoLet (PaMut "all"), (XCall "Array::new", [[]])
+        let start = DoLet (PaTyped (PaMut "all"), g.ty), (XCall "Array::new", [[]])
         let fire = DoIf (XUnary "!", (XMethod (XVar "all"), "is_empty", [[]])), [[(SelfCall g.name, [[(XVar "all")]])]], [[]]
         DoIf (XBool True), (Push (Append [[start]], pushes), fire), [[]]
     kind: PairDecide g, kind
