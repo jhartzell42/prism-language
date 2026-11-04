@@ -1076,6 +1076,13 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   `goto _done`; a labelled block's `break` sets its slot and jumps to its label. What it
   buys: `return`, `TRY` and `break` inside an arm mean what they mean in Rust. The cost:
   a GNU extension, which g++ and clang++ both have.
+- **CB: a `match` that is a function's value returns from its arms.** A function's (or a
+  method's, or a job's cycle's) body that ends in a `match` or an if-let chain is the
+  same tests as statements, each arm `return`ing its value, an arm whose value is a
+  `match` returning from its own arms in turn (`subst` and `reduce` in
+  `sem-ch07-normalize`): no statement expression, `Slot` or `goto`. The Rust printer
+  writes Rust's own `match` there, and an if-let chain as a labelled block, which needs
+  no slot.
 - **TR: `?` is `TRY(x)`**, a GNU statement expression (g++ and clang++ only, as every
   block is): the function returns the failure, else the expression is the value, moved
   out of the operand. Every `?` lowering writes is of a temporary (a call's result), and

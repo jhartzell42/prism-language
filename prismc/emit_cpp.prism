@@ -17,7 +17,8 @@
 # handle on a shared `std::variant` of its cases (so a value behind an `Rc` is the value
 # itself, and a recursive type needs no box); a node is a class deriving from `Node`, held
 # by `std::shared_ptr`; a `match`, an if-let chain and a labelled block are GNU statement
-# expressions whose value is a `Slot`.
+# expressions whose value is a `Slot`, except a function's closing `match`, which returns
+# from its arms.
 #
 # Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
@@ -874,12 +875,33 @@ fn CppMatch cp, s, arms, t:
     let bind = match ?bound:
         ? ignore: ""
         nil: "auto&& _m = {CppExpr cp, s};\n"
-    let lines = Each arms, \|a| MatchArm cp, subject, a
+    let lines = Each arms, \|a| MatchArm cp, subject, a, False
+    MatchExpr (CppType cp, t), "{bind}{Join lines, "\n"}\n{MatchTail arms}"
+
+# A `match` or an if-let chain that is a function's value (pick CB of the README): the same
+# tests, each arm returning its value (an arm's own `match` returning in turn), with no
+# statement expression, `Slot` or jump.
+ReturnMatch: unbounded fn Cp, Ex, [XArm], OutTy -> Text
+fn ReturnMatch cp, s, arms, (OutUnknown what) = "return {TernaryMatch cp, s, arms};"
+fn ReturnMatch cp, s, arms, t:
+    let ?bound = match s:
+        XVar n: ? (CppId n)
+        XRef (XVar n): ? (CppId n)
+        otherwise: nil
+    let subject = Or ?bound, "_m"
+    let bind = match ?bound:
+        ? ignore: ""
+        nil: "auto&& _m = {CppExpr cp, s};\n"
+    let lines = Each arms, \|a| MatchArm cp, subject, a, True
+    "{bind}{Join lines, "\n"}\n{MatchTail arms}"
+
+# After a match's arms: nothing when the last arm always holds, else the fault.
+MatchTail: fn [XArm] -> Text
+fn MatchTail arms:
     let ends = match ?Last arms:
         ? a: (IsCatchAll a.pat) and (Len a.conds) == 0
         nil: False
-    let tail = if ends: "" else: "prism_rtl::unreachable(\"no arm matched\");\n"
-    MatchExpr (CppType cp, t), "{bind}{Join lines, "\n"}\n{tail}"
+    if ends: "" else: "prism_rtl::unreachable(\"no arm matched\");\n"
 
 # A `match` whose type the model does not give (a job's turn, gap TT of the README): a
 # chain of conditional expressions, whose type C++ works out; a guard's test binds the
@@ -950,13 +972,14 @@ fn GuardTest cp, cs:
             let whole = if (Len cs) == 1: tests else: "{tests} && {StmtExpr (Join (PatBinds cp, p, v), "\n"), rest}"
             if (Len pre) == 0: whole else: StmtExpr (Join pre, "\n"), whole
 
-# One arm: its tests, its bindings, its value set and the match left.
-MatchArm: unbounded fn Cp, Text, XArm -> Text
-fn MatchArm cp0, subject, a:
+# One arm: its tests, its bindings, and its value set and the match left, or (`returns`)
+# its value returned from the function.
+MatchArm: unbounded fn Cp, Text, XArm, Bool -> Text
+fn MatchArm cp0, subject, a, returns:
     let cp = Unbind cp0, (ArmNames a)
     let tests = PatConds cp, a.pat, subject
     let binds = PatBinds cp, a.pat, subject
-    let body = if Leaves a.body: "{CppExpr cp, a.body};" else: "_v.set({CppExpr cp, a.body});\ngoto _done;"
+    let body = if returns: CppBody cp, a.body else: if Leaves a.body: "{CppExpr cp, a.body};" else: "_v.set({CppExpr cp, a.body});\ngoto _done;"
     let guarded = if (Len a.conds) == 0: body else: GuardedArm cp, a.conds, body
     let inner = Join (Append binds, [[guarded]]), "\n"
     if (Len tests) == 0: Braced inner else: IfBlock (Conds tests), inner
@@ -1238,6 +1261,8 @@ CppBody: unbounded fn Cp, Ex -> Text
 fn CppBody cp, (XBlock dos, e):
     let ((st, cp2)) = CppStatementsCp cp, dos
     if (Len dos) == 0: CppBody cp, e else: "{st}\n{CppBody cp2, e}"
+fn CppBody cp, (XMatch s, arms, fallback, t) = ReturnMatch cp, s, arms, t
+fn CppBody cp, (XChain label, s, arms, t) = ReturnMatch cp, s, arms, t
 fn CppBody cp, x = if Leaves x: "{CppExpr cp, x};" else: "return {CppExpr cp, x};"
 
 # ---------------------------------------------------------------------------------------
