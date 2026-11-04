@@ -1,0 +1,5 @@
+tests/checker/neg/unused.prism:10: warning[unused]: nothing uses `Forgotten`
+    Forgotten: fn Nat -> Nat
+    ^^^^^^^^^
+  fix: delete it, or use it
+no errors
