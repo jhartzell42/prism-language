@@ -84,8 +84,8 @@ fn IsLoose x = match x:
     XUnary ignore, ignore: True
     XClosure ignore, ignore, ignore: True
     XIf ignore, ignore, ignore: True
-    XMatch ignore, ignore, ignore: True
-    XChain ignore, ignore, ignore: True
+    XMatch ignore, ignore, ignore, ignore: True
+    XChain ignore, ignore, ignore, ignore: True
     XCast ignore, ignore: True
     XRef ignore: True
     XRefMut ignore: True
@@ -151,12 +151,12 @@ fn Expression x = match x:
     XVec xs: "vec![{Args xs}]"
     XText t: "Text::from(\"{Escape t}\")"
     XFormat parts: Format parts
-    XMatch s, arms, fallback: Match (Expression s), (Arms arms, fallback)
-    XChain label, s, arms: Chain (Label label), s, arms
+    XMatch s, arms, fallback, ignore: Match (Expression s), (Arms arms, fallback)
+    XChain label, s, arms, ignore: Chain (Label label), s, arms
     XIf c, t, e: IfExpression c, t, e
     XBlock [[]], e: Expression e
     XBlock dos, e: Block (Statements dos), (Expression e)
-    XLabeled label, dos, e: Labeled (Label label), (Statements dos), (Expression e)
+    XLabeled label, dos, e, ignore: Labeled (Label label), (Statements dos), (Expression e)
     XClosure mv, ps, body: "{if mv: "move " else: ""}|{Join (Each ps, \|p| Pattern p), ", "}| {Expression body}"
     XTry y: "{Tight y}?"
     XField r, f: "{Tight r}.{f}"

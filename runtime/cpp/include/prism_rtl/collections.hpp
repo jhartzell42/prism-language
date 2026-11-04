@@ -127,6 +127,8 @@ public:
         static const Inner none;
         return m_ ? *m_ : none;
     }
+    /// The entries to update in place (copied first when shared): an `&` block's `&m[k]`.
+    Inner& items_mut() { return mut(); }
 
     friend bool operator==(const Map& a, const Map& b) { return a.m_ == b.m_ || a.inner() == b.inner(); }
     friend auto operator<=>(const Map& a, const Map& b) { return a.inner() <=> b.inner(); }
@@ -194,6 +196,9 @@ public:
         static const Inner none;
         return v_ ? *v_ : none;
     }
+    /// The elements to update in place (copied first when shared): an `&` block's
+    /// `&xs[i]`, a `for &s <- &xs:` loop.
+    Inner& items_mut() { return mut(); }
 
     friend bool operator==(const Array& a, const Array& b) { return a.v_ == b.v_ || a.inner() == b.inner(); }
     friend auto operator<=>(const Array& a, const Array& b) { return a.inner() <=> b.inner(); }

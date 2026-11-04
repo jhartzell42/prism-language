@@ -2,10 +2,14 @@
 # The `prism` command (docs/architecture.md, "Single commands"), a thin shell over a
 # native prismc:
 #
-#   ./prism compile SRC... -o OUT        the Rust crate of the program, in OUT
-#   ./prism test SRC...                  compile, build, run the .prismtest scripts
+#   ./prism compile [--target T] SRC... -o OUT   the program in OUT: a Rust crate, or C++
+#   ./prism test [--target T] SRC...     compile, build, run the .prismtest scripts
 #   ./prism run [--world W] [--print-world] SRC... [-- ARGS...]   compile, build, run the root
 #   ./prism check [--world FAMS] SRC...  the checker's report
+#
+# `--target rust` (the default) or `--target cpp`: the C++ program (runtime/cpp) is built
+# with make and `$CXX` (g++ by default) into target/prism-cpp/NAME, and runs its tests
+# under the C++ Test World; `run` under the C++ target takes the CLI World only.
 #
 # SRC is a directory (every `.prism` and `.prismtest` under it), a `.prism` file (with the
 # `.prismtest` of its name beside it, when there is one) or a `.prismtest` file. `test`
@@ -33,12 +37,15 @@ shift
 srcs=()
 out=""
 world=""
+target=rust
 print_world=0
 progargs=()
 while [ $# -gt 0 ]; do
     case "$1" in
         -o) out=$2; shift 2 ;;
         --world) world=$2; shift 2 ;;
+        --target) target=$2; shift 2 ;;
+        --target=*) target=${1#--target=}; shift ;;
         --world=*) world=${1#--world=}; shift ;;
         --print-world) print_world=1; shift ;;
         --) shift; progargs=("$@"); break ;;
@@ -108,16 +115,31 @@ case "$cmd" in
         case "$out" in /*) ;; *) out=$here/$out ;; esac
         r=$(realpath -m --relative-to="$root" "$out")
         case "$r" in ../*) ;; *) out=$r ;; esac ;;
-    test|run) out=target/prism/$name ;;
+    test|run) if [ "$target" = cpp ]; then out=target/prism-cpp/$name; else out=target/prism/$name; fi ;;
     *) echo "prism: unknown command $cmd (compile, test, run, check)" >&2; exit 2 ;;
 esac
 # The crate finds prism_rtl and the Worlds at the repository root: by `..`s when OUT is
 # under it (prismc's default), else by the absolute path.
 runtime=()
 case "$out" in /*) runtime=(--runtime "$root") ;; esac
+case "$target" in rust|cpp) ;; *) echo "prism: unknown target $target (rust, cpp)" >&2; exit 2 ;; esac
 rm -rf "$out"
-"$prismc" compile "${sources[@]}" -o "$out" --name "$name" "${runtime[@]}"
+targetopt=()
+[ "$target" = cpp ] && targetopt=(--target cpp)
+"$prismc" compile "${sources[@]}" -o "$out" --name "$name" "${runtime[@]}" "${targetopt[@]}"
 [ "$cmd" = compile ] && exit 0
+
+if [ "$target" = cpp ]; then
+    # The C++ program: make builds runtime/cpp's library and the program with $CXX.
+    opt=-O1
+    [ "$cmd" = run ] && opt=-O2
+    make -s -C "$out" -j"$(nproc)" CXX="${CXX:-g++}" OPT="$opt" >&2
+    if [ "$cmd" = test ]; then exec "$out/$name" test; fi
+    asked=$(sed -n 's/^const std::string WORLD = "\(.*\)";$/\1/p' "$out/src/main.cpp")
+    [ -n "$world" ] || world=$asked
+    if [ "$print_world" = 1 ]; then echo "$world"; exit 0; fi
+    exec "$out/$name" --world "$world" "${progargs[@]}"
+fi
 
 build() { # profile flags...
     (cd "$out" && CARGO_TARGET_DIR="$root/target/prism-build" cargo build --offline -q "$@")

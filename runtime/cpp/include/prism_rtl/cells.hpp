@@ -244,6 +244,7 @@ enum class Demand { Idle, Liened, Subscribed };
 template <class T>
 class Port {
 public:
+    using Value = T;
     Handle subscribe(Subscriber<T> f) {
         if (!free_.empty()) {
             std::size_t i = free_.back();
@@ -420,6 +421,7 @@ using JobRef = std::shared_ptr<const Job<B>>;
 /// or the result (`Finished`).
 template <class B>
 struct Turn {
+    using Value = B;
     struct More {
         JobRef<B> next;
     };

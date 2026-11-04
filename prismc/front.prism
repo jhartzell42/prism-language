@@ -250,13 +250,14 @@ fn @Finish out, (? o):
 # `compile FILES|DIR... -o OUT`: the back end (lower.prism, emit.prism, templates/)
 # ---------------------------------------------------------------------------------------
 
-# `compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH]`: a
+# `compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH] [--target rust|cpp]`: a
 # directory stands for every `.prism` and `.prismtest` under it (`Fs.List`, which
 # prismc's `Fs` declares); every file is read, with the prelude's files the program does
 # not replace; the program is parsed, checked (and refused on an error), lowered and
 # emitted through `@Run` as a Rust crate in OUT whose dependencies on `prism_rtl` and the
 # Worlds are found at `--runtime PATH` (by default `..` per directory of OUT, so OUT is
-# under the repository root). A `.prismtest` is read with the `.prism` of its name (pick
+# under the repository root); with `--target cpp`, as a C++ program over `runtime/cpp`
+# (emit_cpp.prism). A `.prismtest` is read with the `.prism` of its name (pick
 # PT of the README).
 @CompileMain: fn [Text] -> @unit
 fn @CompileMain opts:
@@ -264,7 +265,7 @@ fn @CompileMain opts:
     let dirs = Filter named, \|f| not (IsSourcePath f)
     let files = Filter named, \|f| IsSourcePath f
     let out = Or (?OptionValue opts, "-o"), "prismc-out"
-    let settings = CompileSettings(out=out, prelude=(Or (?OptionValue opts, "--prelude"), "prelude"), name=(Or (?OptionValue opts, "--name"), "program"), runtime=(Or (?OptionValue opts, "--runtime"), (RuntimeFor out)))
+    let settings = CompileSettings(out=out, prelude=(Or (?OptionValue opts, "--prelude"), "prelude"), name=(Or (?OptionValue opts, "--name"), "program"), runtime=(Or (?OptionValue opts, "--runtime"), (RuntimeFor out)), target=(Or (?OptionValue opts, "--target"), "rust"))
     $listed <- for d <- dirs:
         Fs.List(dir=d)
     ignore <- rebuild $listed:
@@ -275,6 +276,7 @@ type CompileSettings = record:
     prelude: Text
     name: Text
     runtime: Text
+    target: Text
 derive ^Eq, ^Show
 
 IsSourcePath: fn Text -> Bool
@@ -292,7 +294,7 @@ fn RuntimeFor out:
 # The files of a `compile`: the arguments that are neither options nor their values.
 CompileFiles: fn [Text] -> [Text]
 fn CompileFiles args:
-    let takesValue = [["-o", "--prelude", "--name", "--runtime"]]
+    let takesValue = [["-o", "--prelude", "--name", "--runtime", "--target"]]
     let ((kept, ignore)) = Fold args, (([[]], False)), \|((acc, skip)), a|
         if skip: ((acc, False))
         else: if HasText takesValue, a: ((acc, True))
@@ -315,6 +317,7 @@ type CompileJob = record:
     prelude: [((Text, Text))]
     name: Text
     runtime: Text
+    target: Text
 derive ^Eq, ^Show
 
 type Compiled = record:
@@ -330,7 +333,7 @@ fn @CompileAll settings, files, prelude, contents:
     let mine = Each (Range0 n), \|i| (((Or files[i], ""), (Or texts[i], "")))
     let theirs = Each (Range0 (Len prelude)), \|i| (((Or prelude[i], ""), (Or texts[n + i], "")))
     let present = Filter theirs, \|((ignore, t))| t != ""
-    !done <- @Run CompileProgram, CompileJob(files=mine, prelude=present, name=settings.name, runtime=settings.runtime)
+    !done <- @Run CompileProgram, CompileJob(files=mine, prelude=present, name=settings.name, runtime=settings.runtime, target=settings.target)
     $?outcome <- nil then ? !done
     ignore <- rebuild $?outcome:
         @FinishCompile settings.out, _
@@ -359,7 +362,7 @@ fn CompileProgram job:
         else:
             let model = Lower.LowerProgram srcs, trees, (Len parsed), report.typed, job.name
             let scripts = Each tests, \|((p, ignore))| p
-            let files = Emit.EmitCrate model, job.runtime, scripts
+            let files = if job.target == "cpp": EmitCpp.EmitCpp model, job.runtime, scripts else: Emit.EmitCrate model, job.runtime, scripts
             let refused = Fold files, [[]], \|acc, ((path, text))| Fold (Refusals text), acc, \|a, r| AddText a, "{path}: {r}"
             if (Len refused) == 0: Compiled(files=files, failed=False, report="")
             else: Compiled(files=files, failed=True, report="{Concat (Each refused, \|r| "error[not-lowered]: {r}\n")}{Len refused} construct{if (Len refused) == 1: "" else: "s"} the back end does not lower (the crate is written, with a `compile_error!` at each)")

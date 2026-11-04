@@ -141,11 +141,13 @@ type Ex = choice:
     XVec [Ex]
     XText Text
     XFormat [Ex]
-    XMatch Ex, [XArm], Bool
-    XChain Text, Ex, [XArm]
+    # A `match`, an if-let chain and a labelled block, with the type of their value (a
+    # printer without expression blocks declares it).
+    XMatch Ex, [XArm], Bool, OutTy
+    XChain Text, Ex, [XArm], OutTy
     XIf Ex, Ex, Ex
     XBlock [Do], Ex
-    XLabeled Text, [Do], Ex
+    XLabeled Text, [Do], Ex, OutTy
     XClosure Bool, [Pa], Ex
     XTry Ex
     XField Ex, Text
@@ -1309,7 +1311,7 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x
     ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
         let atBuild = Own (ValueOf lx, (InitEnv env), d)
         let arms = [[XArm(pat=(PaCtor "Some", [[PaBind "owner"]]), conds=[[]], body=(XCtor variant, [[(XMethod (XVar "owner"), getter, [[XCx]])]])), XArm(pat=(PaUnit "None"), conds=[[]], body=(XCtor variant, [[(XClone (XVar "at_build"))]]))]]
-        let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed "Cx", [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False)
+        let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed "Cx", [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed "crate::Answer", [[]]))
         let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, (XRef (XVar "{getter}_port"))]])
         VlOwned (XCall "prism_rtl::dynamic_blueprint::<crate::Elem, _>", [[dynamic]]), t
     otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a pushed place, a structural dynamic, or a `let` after the host's line)"), t
@@ -2059,8 +2061,8 @@ ArmsValue: fn Ex, [XArm], Text, OutTy -> Vl
 fn ArmsValue scrut, arms, label, t:
     let chain = Fold arms, False, \|f, a| f or Fold a.conds, False, \|f2, c| f2 or IsLetCond c
     let guarded = Fold arms, False, \|f, a| f or (Len a.conds) > 0
-    if chain: VlOwned (XChain label, scrut, arms), t
-    else: VlOwned (XMatch scrut, arms, guarded), t
+    if chain: VlOwned (XChain label, scrut, arms, t), t
+    else: VlOwned (XMatch scrut, arms, guarded, t), t
 
 IsLetCond: fn Cc -> Bool
 fn IsLetCond (CcLet ignore, ignore) = True
@@ -2490,16 +2492,16 @@ LiveFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text -> PatOut
 fn LiveFieldPat lx, p, variant, fname, ft, fresh = match p.kind:
     PIgnore: PatOnly PaWild
     PName n:
-        let rs = if lx.inNode: LiveProjection fresh, variant, fname else: Refusal "a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)"
+        let rs = if lx.inNode: LiveProjection fresh, variant, fname, (OutTyOf lx, (Peel ft)) else: Refusal "a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)"
         PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal rs, Owned, (OutDyn (OutTyOf lx, (Peel ft))))))]])
     PGroup q: LiveFieldPat lx, q, variant, fname, ft, fresh
     otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern inside a live element's `$` field ({fname})")]], binds=[[]])
 
-LiveProjection: fn Text, Text, Text -> Ex
-fn LiveProjection fresh, variant, fname:
+LiveProjection: fn Text, Text, Text, OutTy -> Ex
+fn LiveProjection fresh, variant, fname, ft:
     let arm = XArm(pat=(PaCtor variant, [[PaBind "x"]]), conds=[[]], body=(XClone (XField (XVar "x"), (Snake fname))))
     let other = XArm(pat=PaWild, conds=[[]], body=XUnreachable)
-    XMethod (XField (XVar fresh), "level"), "map", [[(XClosure True, [[PaBind "l"]], (XMatch (XVar "l"), [[arm, other]], False))]]
+    XMethod (XField (XVar fresh), "level"), "map", [[(XClosure True, [[PaBind "l"]], (XMatch (XVar "l"), [[arm, other]], False, ft))]]
 
 # `Ui.*`: the scrutinee is one of the family's tags.
 FamilyPat: unbounded fn Lx, QualName, Ty, Text -> PatOut
@@ -2658,7 +2660,7 @@ fn GivenValue lx, env, b, t, span:
             SBind p, x, nil:
                 let v = ValueOf lx, en, x
                 let po = RustPat lx, p, (InnerTy (TypeAt lx, x.span)), Owned, "g{s.span.start}"
-                (((Push acc, (GivenBind isTry, po.pa, (Own v), label)), (BindAll en, po.binds), ?lv))
+                (((Push acc, (GivenBind isTry, po.pa, (Own v), label, (OutTyOf lx, (InnerTy (TypeAt lx, x.span))))), (BindAll en, po.binds), ?lv))
             SRequire c: (((Push acc, (DoIf (XUnary "!", (AsBool (ValueOf lx, en, c))), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
             SForbid c: (((Push acc, (DoIf (AsBool (ValueOf lx, en, c)), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
             SExpr x:
@@ -2668,13 +2670,13 @@ fn GivenValue lx, env, b, t, span:
                 let ((more, en2)) = BlockStmt lx, en, s
                 (((Append acc, more), en2, ?lv))
     let last = Or ?last, (VlOwned (XNone), t)
-    VlOwned (XLabeled label, dos, (Own last)), t
+    VlOwned (XLabeled label, dos, (Own last), t), t
 
 # A bind in `given:`: `let Some(p) = e else { break 'g None; }`, or under `~` the error
 # passed on.
-GivenBind: fn Bool, Pa, Ex, Text -> Do
-fn GivenBind isTry, pa, x, label:
-    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor "Ok", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor "Err", [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor "Err", [[XVar "e"]])))]], False)
+GivenBind: fn Bool, Pa, Ex, Text, OutTy -> Do
+fn GivenBind isTry, pa, x, label, t:
+    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor "Ok", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor "Err", [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor "Err", [[XVar "e"]])))]], False, t)
     else: DoLetElse (PaCtor "Some", [[pa]]), x, (XBreak label, XNone)
 
 # The source a range covers, in the file being lowered.
@@ -6350,7 +6352,7 @@ fn EntryGetter srcGetter, vt:
     let found = XMethod (XMethod (XMethod (XVar "parent"), srcGetter, [[XCx]]), "get", [[(XRef (XField XSelf, "key"))]]), "cloned", [[]]
     let opened = XMethod (XMethod (XCx), "before", [[(XClosure False, [[PaBind "cx"]], found)]]), "expect", [[(XStr "a row's key is in its source as its tick opened")]]
     let body = [[(DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XMethod (XField XSelf, "left_entry"), "borrow", [[]]), "as_ref", [[]]), [[(DoReturn (XClone (XVar "v")))]], [[]]), (DoLet (PaBind "parent"), parentRef)]]
-    let tail = XMatch found, [[XArm(pat=(PaCtor "Some", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaUnit "None"), conds=[[]], body=opened)]], False
+    let tail = XMatch found, [[XArm(pat=(PaCtor "Some", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaUnit "None"), conds=[[]], body=opened)]], False, vt
     MethDef(name="entry", recv=RecvRef, params=[[]], cx=CxRef, ret=vt, body=body, tail=tail, doc="The row's entry, `$_`: the block's source at this key, at the read point; from the row's leaving on, the value as the leaving tick opened.")
 
 AddBuilder: fn Wx, Text, Pos, OutTy, OutTy, Text, Bool, [Read], PendingRow, [Ex] -> Wx
