@@ -48,7 +48,8 @@ RTLIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
 LIB := $(BUILD)/libprism_world_canvas.a
 LIB_SRCS := src/world.cpp src/font.cpp src/render.cpp src/big_stack.cpp
 LIB_OBJS := $(LIB_SRCS:src/%.cpp=$(BUILD)/%.o) $(BUILD)/app.o $(BUILD)/cli.o
-HEADERS := $(wildcard include/prism_world_canvas/*.hpp)
+# the runtime's headers too: an object of this World holds the runtime's types by value
+HEADERS := $(wildcard include/prism_world_canvas/*.hpp) $(wildcard $(RT)/include/prism_rtl/*.hpp)
 
 .PHONY: test check lib chess-smoke FORCE
 
@@ -92,7 +93,7 @@ $(BUILD)/app.o: $(APP_SRC) $(HEADERS) Makefile
 	@mkdir -p $(BUILD)
 	$(CXX) $(APP_FLAGS) $(FLAGS) -c $< -o $@
 
-$(BUILD)/cli.o: $(CLI)/src/cli.cpp $(CLI)/include/prism_world_cli/cli.hpp
+$(BUILD)/cli.o: $(CLI)/src/cli.cpp $(CLI)/include/prism_world_cli/cli.hpp $(HEADERS)
 	@mkdir -p $(BUILD)
 	$(CXX) $(FLAGS) -c $< -o $@
 

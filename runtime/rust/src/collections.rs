@@ -33,9 +33,29 @@ impl Text {
     pub fn new(s: &str) -> Text {
         if s.is_empty() { Text::default() } else { Text { buf: Rc::from(s), start: 0, end: s.len() } }
     }
+    /// A literal of the program (what an emitted text literal is): a buffer of its own, as
+    /// `new` makes. A literal held where it is, a `&'static str` beside the `Rc<str>`, made
+    /// every read branch and cost the normalize compile 2% more instructions than the
+    /// allocations it saved (prismc/README.md, string churn).
+    pub fn lit(s: &'static str) -> Text {
+        Text::new(s)
+    }
     /// The text's bytes as a `str`.
     pub fn as_str(&self) -> &str {
         &self.buf[self.start..self.end]
+    }
+    /// `Split`'s pieces: the bytes between each `sep` (not empty), each a view of this
+    /// text's buffer, with no copy.
+    pub fn split<'a>(&'a self, sep: &'a str) -> impl Iterator<Item = Text> + 'a {
+        let mut from = 0;
+        let s = self.as_str();
+        let mut ends = s.match_indices(sep).map(|(at, _)| at).chain(std::iter::once(s.len()));
+        std::iter::from_fn(move || {
+            let at = ends.next()?;
+            let piece = self.view(from, at);
+            from = at + sep.len();
+            Some(piece)
+        })
     }
     /// `Len`: the number of bytes.
     pub fn len(&self) -> usize {
@@ -211,6 +231,16 @@ mod tests {
         assert!(Text::new("z") < Text::new("é"));
         assert_eq!(Text::new("hé").concat(&Text::new("llo")), t);
         assert_eq!(Text::default(), Text::new(""));
+        assert_eq!(Text::lit("héllo"), t);
+    }
+
+    #[test]
+    fn split_pieces_are_views() {
+        let t = Text::new("a,,bé,");
+        let pieces: Vec<Text> = t.split(",").collect();
+        assert_eq!(pieces, vec![Text::new("a"), Text::new(""), Text::new("bé"), Text::new("")]);
+        assert_eq!(Text::lit("x--y").split("--").collect::<Vec<_>>(), vec![Text::new("x"), Text::new("y")]);
+        assert_eq!(Text::lit("").split(",").collect::<Vec<_>>(), vec![Text::new("")]);
     }
 
     #[test]

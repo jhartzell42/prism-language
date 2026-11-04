@@ -1747,6 +1747,44 @@ ruling taken (Claude's).
   publication, `@Machine`'s state, the block's write a row hears through its parent
   (`sem-ch04-row-source`).
 
+### Strings: what is copied
+
+Where a text is made, copied or compared, in both runtimes, both emitted preludes and the
+printers (handoff item 5). Without a copy: a `Text` literal in C++ (`Text::lit`, its
+bytes where the program has them, no buffer or count); `Split`'s pieces (views of the
+text's buffer, both targets); `Concat` (one buffer of the summed length, the pieces'
+bytes copied once); `Upper`, `Lower`, `?ParseNat` and a template placeholder (`place`)
+reading the text's bytes where they are; a number shown or interpolated (written into
+the output, with no string of its own: Rust's `Printer::display`, C++'s `display`); and
+interpolation's and `Concat`'s result in C++, which skips the UTF-8 check its pieces
+already passed (`Text::of_utf8`). On the normalize compile this took the C++ prismc
+from 1.777G to 1.516G instructions and its self-compile from 836.9G to 727.4G (68.7 s
+to 60.6 s); the Rust prismc moved within noise (1.403G to 1.400G; 725.2G to 724.0G).
+What stays, and why:
+
+- **SC1 A Rust text literal is a buffer of its own** (`Text::lit` is `Text::new`), made
+  each time the literal is evaluated. A `&'static str` beside the `Rc<str>` (an enum)
+  made every read branch: 2% more instructions on the normalize compile than the
+  allocations it saved, so it was taken out. Without `unsafe` (the runtime has none) a
+  branch-free view needs the buffer always counted.
+- **SC2 `format!` into a `String`, then `Text::from`** (interpolation in Rust, `show_text`):
+  the `String` is copied once more into the `Rc<str>`, which cannot take a `String`'s
+  buffer over. Writing straight into a counted buffer needs a builder the runtime does
+  not have; C++ moves its `std::string` into the block instead.
+- **SC3 C++ `Upper` and `Lower` are ASCII only; Rust maps all of Unicode**
+  (`str::to_uppercase`): the targets disagree on a non-ASCII letter (`"é"`). No test has
+  one; the fix is the Unicode tables in C++, or the books narrowing the functions.
+- **SC4 A runtime-made C++ text is checked for UTF-8 each time** (`Text(std::string_view)`:
+  a World's input, a `Pod`'s name), as Rust's `str` is by construction; it is the guard
+  that a text never holds broken bytes, so it stays.
+- **SC5 The Test World compares a place by its printed path** (`p.to_string() == *t.at`
+  in test_world.cpp, and Rust's alike), once per step of a transcript, not per tick of a
+  program.
+- **SC6 Escaping pushes one character at a time** (both printers' `quoted`): each
+  character is examined anyway; runs of plain characters could go in one append.
+- **SC7 A cursor's step copies its text** (a count's increment and decrement, both
+  targets): `?Step` returns a new cursor, which holds the text. Non-atomic in C++ now.
+
 ### Not lowered yet
 
 Each is refused loudly: lowering emits a `compile_error!("prismc does not lower ..")`

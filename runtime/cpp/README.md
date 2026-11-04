@@ -156,7 +156,8 @@ counts again.
   its buffer does, and an element's address never moves). Copy on write, as this library
   first had it, made prismc compiled to C++ quadratic in its own lexer and checker: the
   program showed the cost. *Ruling (Claude's):* these two structures. A `Text` is a
-  byte range of a shared UTF-8 `std::string`, as Rust's is of an `Rc<str>` (Semantics
+  byte range of a shared UTF-8 `std::string` (a literal's, `Text::lit`, of the program's
+  own static bytes, with no buffer), as Rust's is of an `Rc<str>` (Semantics
   Appendix B, Text: a cursor's `Before` and `After` are constant views); concatenation
   copies. A text is made only from well-formed UTF-8, as Rust's `str` is: other bytes
   are a fatal error (a `Panic` naming the byte), never U+FFFD, and the CLI World checks a

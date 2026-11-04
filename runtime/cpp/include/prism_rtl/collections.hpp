@@ -52,22 +52,35 @@ std::optional<std::size_t> utf8_error_at(std::string_view s);
 /// and ends on a character boundary. `Len` is bytes; a `Cursor`'s `before` and `after` are
 /// views of the same buffer; concatenation copies. A text is made only from well-formed
 /// UTF-8: anything else is a fatal error (a `Panic`) naming the byte, as Rust's `str` cannot
-/// hold it; a World checks the bytes it reads first (the CLI World's `Fs.NotText`).
+/// hold it; a World checks the bytes it reads first (the CLI World's `Fs.NotText`). A
+/// program's literal (`Text::lit`) is its bytes where they are, with no buffer or count.
 class Text {
 public:
     Text() = default;
+    /// A literal of the program: bytes in static storage, well-formed UTF-8 (prismc wrote
+    /// them from its source), never copied.
+    static Text lit(std::string_view static_utf8) {
+        Text t;
+        t.p_ = static_utf8.data();
+        t.n_ = static_utf8.size();
+        return t;
+    }
+    /// Bytes the caller made from well-formed pieces (texts, numbers, literals), so not
+    /// checked again: interpolation's result, a concatenation.
+    static Text of_utf8(std::string&& utf8);
     Text(const char* utf8) : Text(std::string_view(utf8)) {}
     Text(std::string_view utf8);
     Text(const std::string& utf8) : Text(std::string_view(utf8)) {}
     Text(std::string&& utf8);
 
     /// `Len`: the number of bytes.
-    std::size_t len() const { return end_ - start_; }
-    bool is_empty() const { return start_ == end_; }
+    std::size_t len() const { return n_; }
+    bool is_empty() const { return n_ == 0; }
     /// The bytes.
-    std::string_view view() const {
-        return s_ ? std::string_view(*s_).substr(start_, end_ - start_) : std::string_view();
-    }
+    std::string_view view() const { return std::string_view(p_, n_); }
+    /// `Split`'s pieces: the bytes between each `sep` (not empty), each a view of this
+    /// text's bytes, with no copy.
+    std::vector<Text> split(std::string_view sep) const;
     /// Concatenation, as interpolation does it.
     Text concat(const Text& other) const;
     /// The characters, decoded.
@@ -87,12 +100,14 @@ private:
     Text slice(std::size_t a, std::size_t b) const {
         Text t;
         t.s_ = s_;
-        t.start_ = start_ + a;
-        t.end_ = start_ + b;
+        t.p_ = p_ + a;
+        t.n_ = b - a;
         return t;
     }
+    /// The buffer the bytes are in (none for a literal), and the bytes.
     Rc<const std::string> s_;
-    std::size_t start_ = 0, end_ = 0;
+    const char* p_ = "";
+    std::size_t n_ = 0;
 };
 
 inline std::ostream& operator<<(std::ostream& o, const Text& t) { return o << t.view(); }

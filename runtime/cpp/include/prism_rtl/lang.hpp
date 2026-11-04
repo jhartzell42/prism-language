@@ -10,6 +10,7 @@
 #pragma once
 
 #include "prism_rtl/rc.hpp"
+#include <charconv>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -372,12 +373,22 @@ private:
 // ---- Text --------------------------------------------------------------------------------
 
 /// A value as `format!("{}")` spells it into a message or a `Text`.
-inline void display(std::string& out, const Text& t) { out += t.to_string(); }
+inline void display(std::string& out, const Text& t) { out += t.view(); }
 inline void display(std::string& out, const std::string& s) { out += s; }
 inline void display(std::string& out, const char* s) { out += s; }
 inline void display(std::string& out, std::string_view s) { out += s; }
-inline void display(std::string& out, const Int& n) { out += n.to_string(); }
-inline void display(std::string& out, const Nat& n) { out += n.to_string(); }
+/// A number's digits written straight into `out` (no `std::string` of their own), the
+/// arbitrary-precision path aside.
+inline void display(std::string& out, const Int& n) {
+    if (auto v = n.to_i64()) {
+        char digits[24];
+        auto end = std::to_chars(digits, digits + sizeof digits, *v).ptr;
+        out.append(digits, end);
+    } else {
+        out += n.to_string();
+    }
+}
+inline void display(std::string& out, const Nat& n) { display(out, n.as_int()); }
 inline void display(std::string& out, char32_t c) { utf8_push(out, c); }
 inline void display(std::string& out, std::uint8_t b) { out += std::to_string(unsigned(b)); }
 inline void display(std::string& out, std::uint32_t n) { out += std::to_string(n); }
@@ -397,6 +408,6 @@ std::string str(const X&... xs) {
 
 /// `Text::from(format!(..))`.
 template <class... X>
-Text cat(const X&... xs) { return Text(str(xs...)); }
+Text cat(const X&... xs) { return Text::of_utf8(str(xs...)); }
 
 }  // namespace prism_rtl

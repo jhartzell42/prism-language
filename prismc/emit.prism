@@ -152,7 +152,7 @@ fn Expression x = match x:
     XTuple [[one]]: "({Expression one},)"
     XTuple xs: "({Args xs})"
     XVec xs: "vec![{Args xs}]"
-    XText t: "Text::from(\"{Escape t}\")"
+    XText t: "Text::lit(\"{Escape t}\")"
     XFormat parts: Format parts
     XMatch s, arms, fallback, ignore: Match (Expression s), (Arms arms, fallback)
     XChain label, s, arms, ignore: Chain (Label label), s, arms
@@ -183,13 +183,18 @@ fn DecodeHead t = match t:
 Label: fn Text -> Text
 fn Label l = if (HasPrefix l, "'"): l else: "'{l}"
 
-# `Text::from(format!(..))`: the literal runs with their braces doubled, a `{}` per value.
+# `Text::from(format!(..))`: the literal runs with their braces doubled, a `{}` per value;
+# with no value, the literal itself (`Text::lit`).
 Format: unbounded fn [Ex] -> Text
 fn Format parts:
     let lit = Concat (Each parts, \|p| FormatPiece p)
     let vals = Filter parts, \|p| not (IsText p)
-    if (Len vals) == 0: "Text::from(\"{lit}\")"
+    if (Len vals) == 0: "Text::lit(\"{Escape (Concat (Each parts, \|p| PlainPiece p))}\")"
     else: "Text::from(format!(\"{lit}\", {Args vals}))"
+
+PlainPiece: fn Ex -> Text
+fn PlainPiece (XText t) = t
+fn PlainPiece other = ""
 
 # `format!(..)`, a message's text (a fault's), not a `Text`: a local is named in the
 # literal, any other value placed by position.

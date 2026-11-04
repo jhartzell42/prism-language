@@ -355,8 +355,8 @@ fn CppExpr cp, x = match x:
     XTuple xs: "std::tuple\{{CppArgs cp, xs}\}"
     XVec [[]]: "\{\}"
     XVec xs: "std::vector\{{CppArgs cp, xs}\}"
-    XText t: "Text({CppString t})"
-    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
+    XText t: "Text::lit({CppString t})"
+    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text::lit({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
     XMatch s, arms, fallback, t: CppMatch cp, s, arms, t
     XChain label, s, arms, t: CppMatch cp, s, arms, t
     XIf c, t, e: CppIf cp, c, t, e

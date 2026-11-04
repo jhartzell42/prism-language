@@ -313,9 +313,12 @@ Array<A> filter(const Array<A>& xs, const F& keep) {
     return Array<A>(std::move(out));
 }
 inline Text concat(const Array<Text>& xs) {
+    std::size_t n = 0;
+    for (const Text& t : xs) n += t.len();
     std::string s;
-    for (const Text& t : xs) s += t.to_string();
-    return Text(s);
+    s.reserve(n);
+    for (const Text& t : xs) s += t.view();
+    return Text::of_utf8(std::move(s));
 }
 
 /// `xs[i]`.
@@ -429,33 +432,20 @@ inline Text upper(const Text& t) {
     std::string s = t.to_string();
     for (auto& c : s)
         if (c >= 'a' && c <= 'z') c = char(c - 'a' + 'A');
-    return Text(std::move(s));
+    return Text::of_utf8(std::move(s));
 }
 inline Text lower(const Text& t) {
     std::string s = t.to_string();
     for (auto& c : s)
         if (c >= 'A' && c <= 'Z') c = char(c - 'A' + 'a');
-    return Text(std::move(s));
+    return Text::of_utf8(std::move(s));
 }
 
 /// `Split t, sep`: the pieces between the separators. An empty separator is refused: a
 /// text's characters are walked with a cursor (Appendix B, Text).
 inline Array<Text> split(const Text& t, const Text& sep) {
-    std::string_view s = t.view();
-    std::string_view d = sep.view();
-    if (d.empty()) panic("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
-    std::vector<Text> out;
-    std::size_t from = 0;
-    while (true) {
-        std::size_t at = s.find(d, from);
-        if (at == std::string_view::npos) {
-            out.push_back(Text(s.substr(from)));
-            break;
-        }
-        out.push_back(Text(s.substr(from, at - from)));
-        from = at + d.size();
-    }
-    return Array<Text>(std::move(out));
+    if (sep.is_empty()) panic("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
+    return Array<Text>(t.split(sep.view()));
 }
 
 /// `Front: fn Text -> Cursor`.
@@ -487,8 +477,7 @@ inline std::optional<Cursor> cursor_at(const Text& t, const Nat& n) { return Cur
 inline std::optional<Nat> parse_nat_opt(const Text& t) {
     std::string_view s = t.view();
     if (s.empty() || !std::all_of(s.begin(), s.end(), [](char c) { return c >= '0' && c <= '9'; })) return std::nullopt;
-    if (s.size() > 18) return std::nullopt;
-    return Nat::from_int(*Int::parse(t.to_string()));
+    return Nat::from_int(*Int::parse(s));
 }
 
 /// `~ParseNat`.
@@ -512,22 +501,21 @@ A freeze(const A& a) { return a; }
 /// indented to its column, a final newline dropped, an empty text no line; sharing a line,
 /// the text as it is.
 inline void place(std::string& out, const Text& text, std::optional<std::size_t> column) {
-    std::string t = text.to_string();
+    std::string_view t = text.view();
     if (!column) {
         out += t;
         return;
     }
-    if (!t.empty() && t.back() == '\n') t.pop_back();
+    if (!t.empty() && t.back() == '\n') t.remove_suffix(1);
     if (t.empty()) return;
-    std::string pad(*column, ' ');
     std::size_t from = 0;
     while (true) {
         std::size_t at = t.find('\n', from);
-        std::string l = t.substr(from, at == std::string::npos ? std::string::npos : at - from);
-        if (!l.empty()) out += pad;
+        std::string_view l = t.substr(from, at == std::string_view::npos ? std::string_view::npos : at - from);
+        if (!l.empty()) out.append(*column, ' ');
         out += l;
         out += '\n';
-        if (at == std::string::npos) break;
+        if (at == std::string_view::npos) break;
         from = at + 1;
     }
 }

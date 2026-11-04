@@ -24,6 +24,8 @@
 //! duration in its largest whole unit; `((a, b))`, `[[a, b]]`, `{k: v}` in key order;
 //! `unit`, `True`, `nil`, `? x`, `~ x`; a path as `1/#0/[k]/0`.
 
+use std::fmt::Write as _;
+
 use crate::collections::{Array, Cursor, Map, Text};
 use crate::num::{Int, Nat};
 use crate::pod::{Error, Path, Pod, Segment};
@@ -70,6 +72,12 @@ impl Printer {
         self.out.push_str(s);
     }
 
+    /// A number (anything `Display`) written straight into the output, with no `String`
+    /// of its own.
+    pub fn display(&mut self, x: &dyn std::fmt::Display) {
+        let _ = write!(self.out, "{x}");
+    }
+
     /// A `Text`, quoted and escaped.
     pub fn text(&mut self, s: &str) {
         self.quoted(s.chars(), '"');
@@ -83,7 +91,9 @@ impl Printer {
                 '\n' => self.out.push_str("\\n"),
                 '\t' => self.out.push_str("\\t"),
                 c if c == quote => self.out.extend(['\\', c]),
-                c if c.is_control() => self.out.push_str(&format!("\\u{{{:x}}}", c as u32)),
+                c if c.is_control() => {
+                    let _ = write!(self.out, "\\u{{{:x}}}", c as u32);
+                }
                 c => self.out.push(c),
             }
         }
@@ -183,7 +193,7 @@ impl Printer {
         const UNITS: [(&str, i128); 6] =
             [("h", 3_600_000_000_000), ("m", 60_000_000_000), ("s", 1_000_000_000), ("ms", 1_000_000), ("us", 1_000), ("ns", 1)];
         let (name, size) = if ns == 0 { ("s", 1) } else { *UNITS.iter().find(|(_, s)| ns % s == 0).unwrap() };
-        self.out.push_str(&format!("{}{name}", ns / size));
+        let _ = write!(self.out, "{}{name}", ns / size);
     }
 }
 
@@ -201,10 +211,10 @@ macro_rules! show_with {
 }
 
 show_with! {
-    Int => |s, p| p.raw(&s.to_string());
-    Nat => |s, p| p.raw(&s.to_string());
-    u8 => |s, p| p.raw(&s.to_string());
-    i64 => |s, p| p.raw(&s.to_string());
+    Int => |s, p| p.display(s);
+    Nat => |s, p| p.display(s);
+    u8 => |s, p| p.display(s);
+    i64 => |s, p| p.display(s);
     () => |_s, p| p.raw("unit");
     bool => |s, p| p.raw(if *s { "True" } else { "False" });
     f64 => |s, p| p.float(*s);
@@ -215,8 +225,11 @@ show_with! {
     Path => |s, p| for (i, seg) in s.0.iter().enumerate() {
         p.raw(if i > 0 { "/" } else { "" });
         match seg {
-            Segment::Pos(n) => p.raw(&n.to_string()),
-            Segment::Gen(g) => p.raw(&format!("#{g}")),
+            Segment::Pos(n) => p.display(n),
+            Segment::Gen(g) => {
+                p.raw("#");
+                p.display(g);
+            }
             Segment::Key(k) => {
                 p.raw("[");
                 p.inner(k, At::Whole);

@@ -99,14 +99,25 @@ Text::Text(std::string_view utf8) {
     if (utf8.empty()) return;
     require_utf8(utf8);
     s_ = make_rc<const std::string>(utf8);
-    end_ = s_->size();
+    p_ = s_->data();
+    n_ = s_->size();
 }
 
 Text::Text(std::string&& utf8) {
     if (utf8.empty()) return;
     require_utf8(utf8);
-    end_ = utf8.size();
     s_ = make_rc<const std::string>(std::move(utf8));
+    p_ = s_->data();
+    n_ = s_->size();
+}
+
+Text Text::of_utf8(std::string&& utf8) {
+    Text t;
+    if (utf8.empty()) return t;
+    t.s_ = make_rc<const std::string>(std::move(utf8));
+    t.p_ = t.s_->data();
+    t.n_ = t.s_->size();
+    return t;
 }
 
 Text Text::concat(const Text& other) const {
@@ -117,9 +128,25 @@ Text Text::concat(const Text& other) const {
     s += view();
     s += other.view();
     Text t;
-    t.end_ = s.size();
     t.s_ = make_rc<const std::string>(std::move(s));
+    t.p_ = t.s_->data();
+    t.n_ = t.s_->size();
     return t;
+}
+
+std::vector<Text> Text::split(std::string_view sep) const {
+    std::string_view s = view();
+    std::vector<Text> out;
+    std::size_t from = 0;
+    while (true) {
+        std::size_t at = s.find(sep, from);
+        if (at == std::string_view::npos) {
+            out.push_back(slice(from, s.size()));
+            return out;
+        }
+        out.push_back(slice(from, at));
+        from = at + sep.size();
+    }
 }
 
 namespace {
