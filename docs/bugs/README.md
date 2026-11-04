@@ -7,5 +7,3 @@ A bug leaves this directory when its fix lands.
 
 - **`supplier-rank2.md`**: an inline supplier's `o` is not rank-2, so two tag arms with
   different outputs are refused.
-- **`host-doc-prompt-cycle.md`**: a `for` misses a real prompt cycle through its own
-  gathered dynamic, which the same cycle through a host's `$doc` is refused for.
