@@ -1,0 +1,36 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# Type System ch. 2 ("the supplier is rank-2 in `o`") and ch. 5, "Refinement at tag
+# matches": an element's output variable confined to one function-typed parameter is
+# quantified at it, so an inline supplier answers each tag at that tag's own output, as a
+# named one with a signature does.
+emit Ui.* | Fs.*
+use Fs.*
+
+Shown: fn ~Contents -> Text
+fn Shown (~ c) = c.text
+fn Shown (Error(..)) = "(none)"
+
+@child: @unit
+@child:
+    !read <- Ui.Button(label=$"read")                             # 0
+    $~text <- Fs.Contents(path="a")                               # 1
+    !~got <- Fs.File(path="b", requests=Read on !read)            # 2
+    $last <- "nothing" then Shown !~got
+    Ui.Label(text=$"{Shown $~text}, {$last}")                     # 3
+
+@inline: @unit
+@inline:
+    ignore <- @HostDocument @child, \|p, e| match e:               # 0/[p]
+        Fs.Contents(..): @ $ (~ Contents(text="A"))
+        Fs.File(..): @ never
+        otherwise: @Element e
+
+@Supply: fn Path, Element (Ui.* | Fs.*) o -> @o
+fn @Supply p, e = match e:
+    Fs.Contents(..): @ $ (~ Contents(text="A"))
+    Fs.File(..): @ never
+    otherwise: @Element e
+
+@named: @unit
+@named:
+    ignore <- @HostDocument @child, @Supply                       # 0/[p]

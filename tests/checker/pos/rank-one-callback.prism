@@ -1,0 +1,9 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# The rank-2 rule (Type System ch. 5, "Refinement at tag matches") is for an element's
+# output alone: `b` below appears only inside `F`'s type, but it is no element's output,
+# so `Apply` is rank-1 in it and a lambda that is not polymorphic in `b` is accepted.
+Apply: fn (fn Nat -> b) -> unit
+fn Apply F = unit
+
+Shows: fn Nat -> unit
+fn Shows n = Apply \|m| Show m
