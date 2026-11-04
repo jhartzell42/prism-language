@@ -1,0 +1,11 @@
+# Derived by hand from Semantics Appendix B, Text: `?CursorAt` gives a cursor at every character boundary from 0 to the length (15) and `nil` inside a character (byte 2 is inside é, byte 10 inside 世) or past the end (16).
+check cursor_at
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok

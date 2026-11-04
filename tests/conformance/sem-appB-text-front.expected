@@ -1,0 +1,10 @@
+# Derived by hand from Semantics Appendix B, Text: `Front` is the cursor at byte 0, everything is after it and nothing before, `?Step` from it gives the first character and `?StepBack` from it gives `nil`.
+check front
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok

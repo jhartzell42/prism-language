@@ -1,0 +1,11 @@
+# `At`: declarations of sem-appB-text-at.prism.
+
+check at:
+    At (Into sample, 0) => 0
+    At (Into sample, 1) => 1
+    At (Into sample, 2) => 3
+    At (Into sample, 6) => 9
+    At (Into sample, 7) => 12
+    At (Into sample, 8) => 15
+    (Into sample, 2) < (Into sample, 6) => True
+    (Into sample, 8) == (Back sample) => True

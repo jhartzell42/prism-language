@@ -1,0 +1,10 @@
+# `Before`: declarations of sem-appB-text-before.prism.
+
+check before:
+    Before (Into sample, 0) => ""
+    Before (Into sample, 2) => "hé"
+    Before (Into sample, 6) => "héllo→"
+    Before (Into sample, 8) => "héllo→世界"
+    Len (Before (Into sample, 7)) => 12
+    Before (Into (Before (Into sample, 7)), 6) => "héllo→"
+    "[{Before (Into sample, 3)}]" => "[hél]"

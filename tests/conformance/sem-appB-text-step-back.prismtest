@@ -1,0 +1,9 @@
+# `?StepBack`: declarations of sem-appB-text-step-back.prism.
+
+check step_back:
+    WalkBack sample => [['界', '世', '→', 'o', 'l', 'l', 'é', 'h']]
+    Backspace sample => "héllo→世"
+    Backspace (Backspace sample) => "héllo→"
+    Backspace "é" => ""
+    Backspace "" => ""
+    Len (Backspace sample) => 12

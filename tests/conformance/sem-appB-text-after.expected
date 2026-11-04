@@ -1,0 +1,10 @@
+# Derived by hand from Semantics Appendix B, Text: `After` is the text from the cursor on ("llo→世界" two characters in, 14 bytes one in); a cursor in a view counts bytes from the view's start (→ is 3 bytes); the parts before and after a cursor join to the text.
+check after
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
