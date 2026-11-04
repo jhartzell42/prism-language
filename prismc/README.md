@@ -1157,6 +1157,17 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
     CPU (user and system) against 116 s and 980 s for the one header; at `-O2` 122 s and
     1,019 s against 163 s and 1,243 s. The CPU time falls by about a sixth: the
     definitions, not the declarations, are most of each file's work.
+- **Building prismc, C++ against Rust** (4 November 2026, Apple M2 Pro, 12 cores, from
+  clean, the runtime's C++ library built beforehand; the load average 3.4 at the start,
+  another agent's jobs raising it to 40 by the end, so the wall times are rough):
+  - C++: `make -j12 CXX=clang++ OPT=-O3` of the emitted program (38 sources, 154,462
+    lines with its headers), 100 s wall and 1,003 s of CPU (user and system), about 10
+    of the 12 cores busy throughout.
+  - Rust: `cargo build --release` of the emitted crate (103,850 lines), its
+    dependencies included, with cargo's defaults: the release profile (opt-level 3, 16
+    codegen units, no incremental build) and as many jobs as cores (12): 91 s wall and
+    255 s of CPU, 2.8 cores busy on average; prismc's own crate is one unit for rustc's
+    front end, which runs on one core, and only its 16 codegen units run in parallel.
 
 Gaps:
 
