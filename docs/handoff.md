@@ -11,9 +11,9 @@ empty.*
   fixed points, the C++ prismc emitting the Rust prismc's Rust byte for byte, both
   compiled suites, the checker, the driver tests, the C++ runtime's and Worlds' tests
   (ASan+UBSan under Homebrew clang; Apple clang's hangs at startup on macOS 26).
-- **Branch `claude-headers-rebased`** (a worktree at `../prism-headers`) is
-  `claude-cpp-headers-wip` cherry-picked onto this branch and merged with the canvas
-  World's template; it type-checks and has never been built (queue item 1).
+- **Merged today (4 November):** per-module C++ headers (queue item 1); the three bugs of
+  `docs/bugs/` and gaps LP, LW, SR (DM is documentation); `Text` as UTF-8 with cursors
+  (item 6). Running: an agent on items 2–5 and gap NL (branch `claude-perf`).
 - **The books** are `jhartzell42/prism-notes` at `e66aba7` or later. The Semantics
   RULINGS file ends with round 4 (TX, Text).
 - **The bootstrap.** Both seeds exist and match the tree: `bootstrap/prismc-rust.tar.xz`
@@ -52,26 +52,8 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
 
 ## The order (Jimmy's)
 
-- **First, the bug fixes** (the GUI benchmark is done):
-  - gaps LP, LW, DM and SR;
-  - **a `for` row that reacts to its block's event reacts to the wrong event**
-    (`docs/bugs/for-row-block-event.md`): lowering resolves the block's event by index in
-    the row's own event table. Silent wrong code on both targets. Fix first: it is the
-    worst of the three.
-  - **an inline supplier's `o` is not rank-2** (`docs/bugs/supplier-rank2.md`): two
-    tag arms with different outputs are refused. The rule is settled there: an
-    element's output variable confined to one function-typed parameter is quantified
-    at it. Implement it, failing tests first, and add the rule's sentence to Type System
-    ch. 5.
-  - **a `for` misses a real prompt cycle through its own gathered dynamic**
-    (`docs/bugs/host-doc-prompt-cycle.md`), which the host form correctly refuses. The
-    checker stays blind to which dynamics are structural (Jimmy). Make a `for`'s and a
-    `rebuild`'s result prompt in what their rows read, failing tests first. The design
-    direction at the end of that file (using this to remove owed ticks) is for a design
-    round with Jimmy, not for code.
-  Failing test first for each bug.
-- **Then the queue below, items 1 to 9.** All the emitter changes go first, then one
-  fixed point at the end.
+- **The queue below, items 2 to 5, 7 to 9** (1 and 6 are done). The emitter changes first,
+  then one fixed point at the end.
 - **Then the style pass** (Jimmy, 4 November), after the queue and before the regex code:
   - a module divided into sections becomes separate files; more hierarchy in the tree;
   - every module's main file is `mod.prism` (Rust's rule); `lib.prism`, `mod.prism` or
@@ -108,27 +90,6 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
 
 All the emitter changes go first; then one fixed point at the end.
 
-1. **Per-module headers** (continue `claude-cpp-headers-wip`).
-   - What exists:
-     - Lowering records `ModDef.complete` (modules whose types this module holds by
-       value) and `ModDef.declared` (the rest of its `use` closure and emitted families),
-       plus `Model.elemComplete`, `elemDeclared` and by-value `cycles`. The Rust printer
-       ignores them.
-     - `emit_cpp` writes `NAME.decl.hpp`, `NAME.types.hpp`, `NAME.hpp` per module, plus
-       `elem.decl.hpp` and `elem.types.hpp`, and moves the programs into `main.cpp`.
-     - A by-value module cycle is refused, naming it. The Makefile uses `-MMD -MP`.
-     - `prism check prismc/` passes.
-   - Next: rebuild the prismc in `target/bootstrap/next-cpp` from the WIP branch, run
-     `tests/compiled/run.sh --target cpp`, fix missing includes, then time
-     `make -j$(nproc)` of the C++ prismc before and after.
-   - Pinning test: `ts-ch05-crossed-modules`.
-   - Doubt: the design refuses any by-value cycle between modules even when no type
-     cycle exists, which the one big header accepted; prismc itself may hit it.
-   - Doubt: `declared` assumes a module names types only from its `use` closure; this is
-     untested for emit-only families and for trait namespaces called from other modules'
-     generics.
-   - Jimmy: "There shouldn't be one big-file header... Figure out how to track includes
-     even if it's code Rust backend ignores." The precompiled-header idea was dropped.
 2. **Re-time the C++ build at `make -j$(nproc)`** and record cargo's parallelism (codegen
    units), since the -j1 number was unfair (Jimmy).
 3. **Cleanups that change emitted code**, one commit each, with build and self-compile
@@ -149,36 +110,6 @@ All the emitter changes go first; then one fixed point at the end.
    a `String` built and then copied into a `Text`, `format!` into a temporary and then
    `Text::new`, `to_string()` in comparisons, character-by-character pushes. Fix what's
    cheap, list the rest. Instruction counts before and after on the normalize compile.
-6. **Text as Semantics round 4 TX specifies** (Appendix B, Text; read it first). This is
-   a language change, Jimmy's: "Do Rust's philosophy and have byte indexes and character
-   iteration only! ... YAGNI".
-   - The prelude:
-     - A `Text` is UTF-8; `Len` is bytes.
-     - `Front`, `Back: fn Text -> Cursor`.
-     - `?Step`, `?StepBack: fn Cursor -> ?((Char, Cursor))`.
-     - `Before`, `After: fn Cursor -> Text`, constant views.
-     - `At: fn Cursor -> Nat`.
-     - `?CursorAt: fn Text, Nat -> ?Cursor`, `nil` past the end or inside a character
-       (Jimmy: "you can get a cursor from a byte offset why not?").
-     - `Cursor` is opaque.
-     - `Take`/`Drop` on a text and `t[i]` on a text are type errors; `Take`/`Drop` stay
-       for arrays.
-     - Texts order bytewise.
-   - Both runtimes: a shared UTF-8 buffer plus a byte range (Rust `Rc<str>` and a range;
-     C++ a shared `std::string` and a range, in place of the `u32string`). Drop `ropey`.
-   - prismc itself:
-     - The lexer walks the source with cursors instead of `Chars src` (an array of
-       one-character texts, `cs: [Text]`, `Peek l = Or l.cs[l.pos], ""`).
-     - `Chars`, `AllChars`, `Reverse`, `Join`, `TrimStart`, `TrimEnd` and `LeadingIn` move
-       to cursors.
-     - `index_text`, `take_text` and `drop_text` leave both preludes and lowering.
-   - Failing tests first:
-     - one conformance program per prelude function, including a non-ASCII text;
-     - checker tests rejecting `Take` on a text and `t[i]` on a text. These edit
-       `prismc/check-*.prism`; no other agent owns those files now.
-   - Any transcript that counted characters in a non-ASCII text is re-derived and the
-     rule named in the commit.
-   - Instruction count before and after.
 7. **(h) Split `prismc/lower.prism`** (about 7,000 lines, 27% of prismc) along its seams:
    expressions, nodes and widgets, hosting, the model and its types. No behavior change;
    the fixed point and the suites are the check. Claude's call; ask Jimmy whether to
@@ -270,11 +201,7 @@ program's) shrinks.
 - **`TRY`** is a GNU statement expression (g++ and clang only); the docs say so. Lowering
   refuses `?` of a place with a hard error, which no source reaches, so it has no test.
   `tests/compiled/run.sh` has no way to check a refusal yet.
-- **Remaining gaps** (`prismc/README.md`):
-  - LP, a `while` nested in a `match` or `for`;
-  - LW, a widget-block `let` at several instantiations;
-  - DM, `host_k_doc` rebuilt whole on each read;
-  - SR, a row entry recomputing its source on each read.
+- **Remaining gaps:** see `prismc/README.md` (NS, NL, RE, PL, CI, CY, GC, FA, MH1–MH4).
 - **Doubts for the PR write-up:**
   - CW-color: signatures with `$`/`!`/`@` keep unwritten colors bounded;
   - pick CS, place numbering;
