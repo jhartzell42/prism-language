@@ -66,8 +66,9 @@ formats. A measure-based shrink proof for the parser was the alternative.
 
 ## D8. `Fold` and every closure-taking prelude function is polymorphic in the color
 
-Bounded in, bounded out; unbounded in, unbounded out. One color variable per
-closure-taking signature, resolved at each call.
+Bounded in, bounded out; unbounded in, unbounded out. Every function parameter has a
+color variable of its own and the function's color is their join, as if it called each,
+resolved at each call; nothing is written (round 3 CD, Jimmy's; prismc/README.md pick CD).
 
 ## D9. Hosting is the general feature; the canvas World is the one foreign World (Jimmy's)
 
