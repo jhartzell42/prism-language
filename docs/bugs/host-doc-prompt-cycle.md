@@ -1,4 +1,4 @@
-# A cycle through a host's own `$doc` is refused as a prompt cycle
+# A host's `$doc` and a `for`'s gathered dynamic disagree in the prompt-cycle check
 
 *Written by Claude on the claude-self-hosting branch, 4 November 2026; subject to
 change.*
@@ -36,8 +36,9 @@ cyc.prism:15: error[prompt-cycle]: a prompt cycle: `$doc`, `$size`
 Two neighbours of the same program pass the checker:
 
 - **Through a hold:** `$size <- 0 then Size (!Updated $doc)` in place of the `let`.
-- **Through a `for`:** each row of a `for` reads a count of the `for`'s own gathered
-  dynamic, which is the same dependency on a structural dynamic:
+- **Through a `for`:** each row's result is a count of the `for`'s own gathered
+  dynamic, so the gathered dynamic depends on itself, the same dependency on a
+  structural dynamic:
 
 ```prism
 @host: @unit
@@ -45,7 +46,7 @@ Two neighbours of the same program pass the checker:
     let $names = $ {"a": unit, "b": unit}
     $rows <- for k, ignore <- $names:                             # 0/[k]
         Ui.Label(text=$"{$count} rows")                           # 0/[k]/0
-        @ $ k
+        @ $count
     let $count = Size $rows
     Ui.Label(text=$"{$count}")                                    # 1
 ```
@@ -55,17 +56,21 @@ host's `$doc`. There the cycle goes `$doc` to `$answers` to the child.
 
 ## Is it a bug?
 
-Yes. The program has no prompt cycle under the books' rules:
+Yes, but not the way it first looks. The two forms are the same dependency, a block
+reading a structural dynamic that its own construction feeds, and the checker gives them
+opposite answers. One of the two answers is wrong.
 
-- **`$doc` is structural, so it is lagged.** Semantics round 3 ST: a host document's
-  dynamic "fix[es] its value after n as the last act of construction and fire[s] its
-  update event at n+1 with that value". A read of `$doc` in tick m sees the snapshot
-  taken at the end of tick m-1's construction. That is a delayed edge, like a sample or
-  a hold's own value, and a cycle through a delayed edge is not prompt.
-- **The checker already agrees for a `for`.** A `for`'s gathered dynamic is structural
-  by the same ruling, and the `for` form passes. A host document is a `for` over the
-  child's document (Semantics ch. 9, "A host document is a `for`"), so the two must be
-  judged the same.
+- **Which one:** the checker must not know which dynamics are structural (Jimmy: "don't
+  you dare tell the checker which dynamics are structural"). Structurality is how the
+  runtimes publish a snapshot (round 3 ST), a timing fact of the implementation; a check
+  that relied on the lag would bake the lag into which programs are legal, and the lag
+  could then never be removed.
+- **So the host form's answer is the right one,** and the `for` form is the bug. A
+  checker blind to structurality must take a structural dynamic's read as prompt, and
+  then a row that reads its own `for`'s gathered dynamic is a prompt cycle, exactly as
+  `$doc` to `$size` to the child is.
+- **The HTTP host that found it** is correct to be refused: its listener reads the
+  responses off `$doc`, and the loop needs a hold (which is what fixed it).
 
 ## Why the checker refuses it
 
@@ -84,43 +89,49 @@ to the generic rule for prelude widget functions:
 - **A `for` is excluded from edges altogether.** `PromptKids` returns no children for
   `EFor` and `ERebuild`, under the comment "construction is never an edge", so the `for`
   form never forms the edge.
-- **The result:** an edge from `$doc` to `$size`, and from `$size` to `$doc` through
-  the `let`. That cycle exists only because `$doc` inherited `x`'s edges.
+- **The result:** the host form gets an edge from `$doc` to `$size` (inherited from the
+  child's result `x`, which is right: the child's document holds `@Shown`'s label, whose
+  level reads `$size`) and one back through the `let`, a cycle; the `for` form gets the
+  edge back through the `let` and none forward, so its real cycle goes unseen.
 
-## What is prompt and what is not
+## The books
 
-The host's two outputs differ:
-
-- **`x`, the child's result, can be prompt in the arguments.** A child's result crosses
-  out of the host in the same tick (`sem-ch09-host-param`: `@Boxed` returns `r`), and
-  `@Shown` might pass `$n` straight into its result. The checker cannot see into the
-  child, so the worst case is right here (Semantics ch. 7: "where a blueprint arrives as
-  a parameter, the worst is assumed").
-- **`$doc` is never prompt in anything.** It is structural, so by ST every read of it is
-  one construction late.
-
-## A doubt in the books
-
-Semantics ch. 7's list of prompt edges still names "a `for`'s consolidation" as
-prompt. That predates round 3 ST, which made the gathered dynamic lagged. The checker
-follows ST (no edge for a `for`). The chapter's list should say that a structural
-dynamic's read is a delayed edge, beside a sample, a hold's own value and an adoption.
+- **Semantics ch. 7** lists "a `for`'s consolidation" among the prompt edges, which is
+  what the checker should do and the host form already does. The checker's `for`
+  exemption ("construction is never an edge") is broader than R7: R7 says *building* a
+  row is not prompt; it does not say that reading the rows' gathered results is not.
+- **Round 3 ST** stays as it is for the runtimes. Nothing in the check depends on it.
 
 ## The fix
 
-- **Edges per name for the host forms.** For a binding whose right side is
-  `@HostDocument`, `@HostSome` or `@HostList`, the result's first component (`x`) keeps
-  the edges it has now, and the document component (`$doc`, `$slots`) gets none.
-  - Where it goes: the `SBind` case of `PromptEdges` needs the pattern's components
-    matched against the call's result tuple, not `PatternNames` flattened.
-- **Structural dynamics as a class, not a list of names.** The cleaner form of the same
-  fix is to mark structural results in the checker's types or summaries. Lowering
-  already knows which dynamics are structural (pick ST in `lower.prism`; `Snapshot` in
-  both runtimes), and the checker should know it too, so that any
-  structural dynamic, including one lifted from `$doc`, reads as a delayed edge. That
-  also covers a user's widget function that returns its host's `$doc`.
-- **Tests first:**
-  - `sem-ch07-host-doc-cycle`: the program above, accepted, with a transcript showing
-    the label one owed tick behind the document, as ST predicts;
-  - a negative test where the cycle runs through `x` instead (the child's result fed
-    back as the child's argument), still refused as a prompt cycle.
+- **A `for`'s gathered dynamic is prompt in what its rows read.** In `PromptKids`, an
+  `EFor` keeps no edge for *building* its rows (R7), but a binding of the `for`'s result
+  gets edges to the block names its rows' bodies read promptly, as a `let` of the same
+  expressions would. The same goes for `ERebuild`'s result.
+- **The host forms stay as they are,** prompt in their arguments (the worst case, since
+  the checker cannot see into the child).
+- **Tests first,** committed failing before the fix:
+  - `sem-ch07-for-own-gather`: the `for` program above, refused with `prompt-cycle`
+    naming `$rows` and `$count`;
+  - the same with the count held (`$count <- 0 then Size (!Updated $rows)`), accepted;
+  - every existing program still checks. If one breaks, it has a real prompt cycle by
+    this rule and gets a hold, named in its commit.
+
+## A design direction, for Jimmy before any code
+
+Jimmy: "If anything use this to get rid of delay ticks." With the check blind to
+structurality and refusing every prompt cycle through a structural dynamic, the owed tick
+that ST adds may not be needed:
+
+- **The guarantee the check gives:** nothing that reads a structural dynamic feeds back
+  into the propagation that produced it in the same tick.
+- **What that allows:** after construction in tick n, run a second propagation over only
+  the readers of structural dynamics, in the same tick, with the snapshot taken at the end
+  of construction. Readers see one consistent state (Jimmy's DV2 objection to mixed state
+  stays met), and the patch of tick n holds their results, with no owed tick.
+- **Where a tick is still owed:** a structural read that reaches construction again (a
+  `rebuild` or `for` whose key or arm depends on `$doc`), since building in the second
+  phase would need another construction. Those stay at n+1, as now.
+- **What it would cost:** the viewer's lag (VL) and chess's four owed ticks per move would
+  shrink; the transcripts that pin today's owed ticks change; the runtimes gain a second
+  phase per tick. A design round with Jimmy first; no code until he rules.

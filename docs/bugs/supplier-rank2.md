@@ -66,42 +66,46 @@ rank-2:
   most one tag with a non-forwarding output per inline supplier, or answer every tag
   alike (`@Element e`). A single answering arm unifies `o` once and passes.
 
-## The design question under the fix
+## The rule (Claude's, at Jimmy's "make something up")
 
-The books say "the signature supplies it", but `fn @a emit c, (fn Path, Element c o ->
-@o) -> ...` does not say which `o` is rank-2. A signature needs a rule. Options:
+**An element's output variable that appears only inside one function-typed parameter is
+quantified at that parameter.** In `@HostDocument: fn @a emit c, (fn Path, Element c o ->
+@o) -> @((a, $(Path ==> Elem c)))`, `o` is the output of an `Element` and appears nowhere
+outside the supplier parameter, so the supplier must work for every `o`: rank-2. Nothing
+else changes rank.
 
-- **(a) A variable that appears only inside one function-typed parameter is quantified
-  at that parameter.** `o` appears nowhere else in `@HostDocument`'s signature, so it is
-  rank-2 there, and the rule needs no new syntax.
-  - *Cost:* a reader must check where else a variable appears to know its rank.
-  - *Risk:* an existing signature whose variable is confined to a parameter by accident
-    changes meaning (none in the prelude besides the three host forms, as far as a grep
-    shows).
-- **(b) An explicit quantifier in the parameter,** e.g. `(any o: fn Path, Element c o ->
-  @o)`, reusing the existential's `any` for "for every `o`" would be confusing; a new word
-  (`each o:`) would be clearer.
-  - *Cost:* new syntax.
-  - *Buys:* the rank is visible where it matters.
-- **(c) Special-case the three host forms** in the checker.
-  - *Cost:* a user's own host-like widget (taking a supplier) could not refine.
-  - *Refused by Claude:* it makes hosting privileged, against "no privileged World".
+- **Why only element outputs:** a tag arm is the one place where a variable's rank
+  changes what a program can do (it is what lets an arm assume `o ~ !HttpResponse`). A
+  general confinement rule would also make `fn (fn Nat -> b) -> unit` demand a
+  polymorphic argument, rejecting `\|n| Show n`, which a rank-1 reading accepts and no
+  body could tell apart.
+- **Why no syntax:** it is what "the signature supplies it" (Type System ch. 2) already
+  says. A grep of the prelude, prismc, the examples and the tests finds the rule applies
+  to the three host forms and nothing else, so no existing program changes meaning.
+- **Refused:**
+  - an explicit quantifier in the parameter (`each o: fn ...`): new syntax for a rule
+    a signature already implies;
+  - a confinement rule for every variable (above);
+  - special-casing the three host forms in the checker: a user's own host-like widget
+    taking a supplier could not refine, and it makes hosting privileged.
+- **Books:** add the rule, in one sentence, to Type System ch. 5, "Refinement at tag
+  matches", where it now says "with `o` rigid (a supplier's, rank-2)".
 
-**Claude's recommendation:** (a). It matches "the signature supplies it" with no new
-syntax, it covers user-written hosts, and the risk is checkable by a grep.
-
-## The fix, under (a)
+## The fix
 
 - **At a call,** when an argument is a lambda checked against a function-typed parameter
-  whose variable is confined to it, skolemize that variable to a fresh rigid one for the
-  lambda's body, and check the lambda against the parameter (checking mode, so each arm
-  gets `?expected`).
+  holding a confined element output, skolemize that variable to a fresh rigid one for
+  the lambda's body, and check the lambda against the parameter in checking mode, so
+  each arm gets `?expected` and `InferArm` refines it.
 - **Escape check:** the rigid variable must not leak into the call's result or other
-  arguments (`refinement-escape`, as the books name it).
-- **A named supplier** keeps working as it does: its own scheme instantiates to a fresh
-  flexible `o`, which unifies with the parameter's rigid one.
-- **Tests first:**
+  arguments (`refinement-escape`, as Type System ch. 5 names it).
+- **A named supplier** keeps working as it does: its scheme instantiates to a fresh
+  flexible `o`, which unifies with the parameter's rigid one. A named supplier that is
+  not polymorphic in `o` (`fn Path, Element c Nat -> @Nat`) is refused there, which is
+  right.
+- **Tests first,** committed failing before the fix:
   - `ts-ch05-supplier-rank2`: the refused program above, answering two tags with
-    different outputs inline; expected to check, build and answer both places;
-  - a negative test where the lambda leaks `o` (e.g. stores the element's output in a
-    hold outside), expecting `refinement-escape`.
+    different outputs inline; it checks, builds, and answers both places;
+  - `ts-ch05-supplier-escape`: a lambda supplier that leaks `o` (the element's output
+    stored in a hold outside the match), refused with `refinement-escape`;
+  - a checker test that `fn (fn Nat -> b) -> unit` still accepts `\|n| Show n`.
