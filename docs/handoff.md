@@ -46,6 +46,37 @@ On the container: 2 cores, 7 GB, g++ 13, nothing else running unless noted.
 - **The Rust binary for these runs** must be a current prismc. The installed
   `target/bootstrap/prismc` dated 3 November has no `--target` and ignores it (below).
 
+## The order (Jimmy's)
+
+- **First, the GUI benchmark** (queue item 10) **and the bug fixes:**
+  - the installed prismc ignoring `--target cpp` silently;
+  - the C++ template's missing canvas World;
+  - the stale canvas README;
+  - gaps LP, LW, DM and SR.
+  Failing test first for each bug.
+- **Then the queue below, items 1 to 9.** All the emitter changes go first, then one
+  fixed point at the end.
+- **Last, regular expressions:** after everything else, designed in conversation with
+  Jimmy before any code.
+
+## On macOS
+
+- **The canvas World in Rust** (`worlds/canvas`) runs natively; chess runs under it.
+- **`worlds/canvas-cpp` needs a macOS `src/app.cpp`:** Cocoa (an `NSWindow` whose view
+  draws the cairo surface as a `CGImage`, the loop on the main thread) or SDL2. `brew
+  install cairo freetype pkg-config`.
+- **The Xvfb smoke tests and the XTest robot are Linux-only.** On macOS, drive the
+  benchmark through `Hooks::settled` and synthetic presses, not a robot.
+- **GTK:** `brew install gtk+3` (it runs on Quartz).
+- **Cuis:** clone `Cuis-Smalltalk/Cuis-Smalltalk-Dev` for the image, and get the Cog VM
+  for macOS. On a Mac the OpenSmalltalk release binaries may be reachable; otherwise
+  build `opensmalltalk-vm`'s macOS Cog Spur build from source.
+- **Timings:** quit everything else, plug in power, and run each timing several times.
+  Record the machine (chip, cores, memory) in `bench/RESULTS.md`.
+- **Container-only tools** (`valgrind`, `xvfb-run`) may be missing. For instruction
+  counts on macOS, use `valgrind` if Homebrew has it for the chip, else Instruments or
+  `perf`-like sampling, and say which.
+
 ## The queue, in order
 
 All the emitter changes go first; then one fixed point at the end.
@@ -174,6 +205,9 @@ All the emitter changes go first; then one fixed point at the end.
       stderr. Jimmy may want a hard error there instead.
 
 ## Regular expressions as a primitive (Jimmy's direction, to design)
+
+After everything else, and in conversation with Jimmy: propose, wait for his go, then
+write the books, then implement.
 
 Jimmy: Prism is a general-purpose language with systems-programming uses, and a lexer
 written character by character is "shooting yourself in the foot". Regular expressions
