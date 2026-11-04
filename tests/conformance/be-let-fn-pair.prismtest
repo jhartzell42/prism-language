@@ -1,6 +1,0 @@
-# Audited: digits 3 and 7 of "0123456789" are "3" and "7"; one place.
-# The let/fn pair's tests: declarations of be-let-fn-pair.prism (Semantics chapter 6).
-
-test both_names_resolve, @shown:
-    build
-        => expect Ui.Label(text="37")

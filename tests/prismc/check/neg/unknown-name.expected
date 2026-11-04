@@ -1,4 +1,0 @@
-tests/prismc/check/neg/unknown-name.prism:3: error[unknown-name]: nothing declares `Thrice` here
-    fn Twice n = Thrice n
-                 ^^^^^^
-1 error

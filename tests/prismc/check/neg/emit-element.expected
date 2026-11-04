@@ -1,4 +1,0 @@
-tests/prismc/check/neg/emit-element.prism:3: error[emit-element]: a library writes its own row; `emit Element` names the program's
-    emit Element
-         ^^^^^^^
-1 error

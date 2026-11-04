@@ -1,0 +1,5 @@
+tests/checker/neg/time-in-update.prism:6: error[time-in-update]: `$zero` in an `update` block
+        &_ <= $zero
+              ^^^^^
+  fix: an `&` block cannot see time: pass the plain value in, and lift the function
+1 error

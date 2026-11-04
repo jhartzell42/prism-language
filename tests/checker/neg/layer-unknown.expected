@@ -1,0 +1,5 @@
+tests/checker/neg/layer-unknown.prism:11: error[layer-unknown]: the layer of this argument to `Twice` is not known here
+        let both = Twice (Anything unit)
+                         ^^^^^^^^^^^^^^^
+  fix: say it where the value is made: a name whose marks declare the layer (`let $x = ...`), `<<T>>` at the application that made it, or a signature on the enclosing `let`
+1 error

@@ -1,5 +1,0 @@
-tests/prismc/check/neg/row-not-closed.prism:7: error[row-not-closed]: a match over `Element (r | Ui.*) o` needs `otherwise:`
-    fn Name e = match e:
-                ^^^^^^^^
-  fix: add an `otherwise:` arm: the row's variable may hold tags this match cannot name
-1 error

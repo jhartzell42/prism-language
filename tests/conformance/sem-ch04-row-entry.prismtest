@@ -1,0 +1,8 @@
+# The row entry's tests: declarations of sem-ch04-row-entry.prism (Semantics chapter 4).
+
+test the_entry_is_a_projection, @entries:
+    build
+    click at 1
+    click at 0
+    click at 1
+    click at 2

@@ -1,5 +1,0 @@
-tests/prismc/check/neg/row-single-tag.prism:3: error[row-single-tag]: a row names families, not tags: `Ui.Button`
-    emit Ui.Button
-         ^^^^^^^^^
-  fix: write `Ui.*`
-1 error

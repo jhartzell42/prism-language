@@ -1,0 +1,7 @@
+# Audited: one row per name, each Fs.Contents answered from the ready state; the label joins the rows' first values in key order, and the row b added by the click moves it.
+# The gathered dynamic's tests: declarations of sem-ch04-for-dynamic.prism (Semantics chapter 6).
+
+test rows_give_a_dynamic, @files:
+    with Fs.Contents(path="a") = ~ Contents(text="A"), with Fs.Contents(path="b") = ~ Contents(text="B"), build
+    click at 0
+    compute

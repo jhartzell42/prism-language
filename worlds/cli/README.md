@@ -50,7 +50,7 @@ prism_rtl::drive::<MyProgram>(&mut CliWorld::new(MemFs::default(), args), &[], p
     place outside the subtree (Semantics ch. 10, "Exceptions: a widget giving up").
   - `prelude.rs` holds the policy alone (`Prelude`), and a wrapper (`UnwrapWorld`) that
     puts it around a World answering no prelude tag. The canvas World over `prism_rtl`
-    (`worlds/canvas_rtl`) runs inside that wrapper.
+    (`worlds/canvas`) runs inside that wrapper.
 
 An answer to a place that has left goes nowhere (Semantics ch. 9, "A late result is
 dropped"), and so does one to a poisoned place.
@@ -118,7 +118,7 @@ tag Fs.List of Element $[Text]:
 ## Tests
 
 `cargo test -p prism_world_cli`. `tests/cli.rs` holds programs written by hand in the
-shape `docs/backend.md` gives the templates, as `prism_runtime_lib/tests/counter.rs` does:
+shape `docs/backend.md` gives the templates, as `runtime/rust/tests/counter.rs` does:
 
 - reading a file through `Fs.File` and `Prelude.Unwrap`, writing it upper-cased through
   `Fs.Output`, and exiting 42 on `Written`, over the in-memory and the real file system;

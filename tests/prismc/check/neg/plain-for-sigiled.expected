@@ -1,5 +1,0 @@
-tests/prismc/check/neg/plain-for-sigiled.prism:10: error[plain-for-sigiled]: a plain `5` where `!Bump` takes a `$Int`
-        $bumped <- 0 then !Bump 5, (unit on !go)
-                                ^
-  fix: write `$ 5`
-1 error

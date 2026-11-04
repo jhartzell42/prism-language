@@ -1,5 +1,0 @@
-tests/prismc/check/neg/let-rebinding.prism:14: error[may-not-end]: `Grow` calls itself on `l`, not smaller than what it was given
-        n + (Grow l)
-             ^^^^^^
-  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
-1 error

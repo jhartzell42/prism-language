@@ -1,0 +1,5 @@
+tests/checker/neg/local-escapes.prism:4: error[local-escapes]: a `Buffer` cannot leave its block: `parent` is no `&` local
+        let parent = Buffer.Numbered n
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write `let &parent = ...`
+1 error

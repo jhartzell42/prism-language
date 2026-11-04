@@ -1,0 +1,29 @@
+[package]
+name = "prism_world_canvas_rtl"
+version = "0.1.0"
+edition = "2024"
+description = "The canvas World over prism_rtl's protocol: Gui.Window, Gui.Scene, Gui.Metrics and Gui.Focus with winit, softbuffer, tiny-skia and fontdue"
+license-file = "../../LICENSE.md"
+
+[dependencies]
+prism_rtl = { path = "../../runtime/rust" }
+# The prelude's `Prelude.Unwrap` policy, which this World runs around itself.
+prism_world_cli = { path = "../cli" }
+fontdue = "0.9"
+# `png-format` brings the png crate, which decodes `Draw.Image` files.
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd", "png-format"] }
+
+# macOS needs no backend feature; Linux builds with X11 only, which is enough to compile and
+# check the crate here.
+winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11"] }
+softbuffer = { version = "0.4", default-features = false, features = ["x11", "x11-dlopen"] }
+
+# The smoke test reads a pixel and clicks through Xlib and XTest, as no X tools are assumed.
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+x11-dl = "2.21"
+
+# Runs on the main thread, as winit's event loop must: it starts itself again under
+# `xvfb-run` when there is no display, and skips when there is no `xvfb-run` either.
+[[test]]
+name = "xvfb_smoke"
+harness = false

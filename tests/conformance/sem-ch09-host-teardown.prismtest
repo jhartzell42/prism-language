@@ -1,0 +1,12 @@
+# Audited: one tick clicks tap (an answer to both row buttons, due next tick) and drops row 2 through the forwarded text input; row 2's label leaves in that tick's patch, and in the owed tick only row 1 hears the tap.
+# The teardown's tests: declarations of sem-ch09-host-teardown.prism (Semantics chapter 9).
+
+test a_left_key_drops_the_answer_in_flight, @host:
+    build
+        => expect Ui.Label(text="two: 0")
+    click at 0, send at 1/[0]/0, Backspace
+        => expect_none Ui.Label(text="two: 0")
+        => expect Ui.Label(text="one: 0")
+    compute
+        => expect Ui.Label(text="one: 1")
+        => expect_count Ui.Label(..), 1

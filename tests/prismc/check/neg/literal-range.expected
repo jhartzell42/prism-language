@@ -1,4 +1,0 @@
-tests/prismc/check/neg/literal-range.prism:3: error[literal-range]: `300` does not fit `U8`
-    fn Byte n = 300
-                ^^^
-1 error

@@ -1,0 +1,12 @@
+# Audited: a click on the host's tap counts in the host at once and reaches the child's hit button as the next tick's input (the owed tick, `compute`); a key sent to the forwarded text input at 1/[1]/0 reaches the child in its own tick.
+# The delayed answer's tests: declarations of sem-ch09-host-delay.prism (Semantics chapter 9).
+
+test a_computed_answer_is_a_tick_late, @host:
+    build
+    click at 0
+        => expect Ui.Label(text="1 taps")
+        => expect Ui.Label(text="0 hits, 0 keys")
+    compute
+        => expect Ui.Label(text="1 hits, 0 keys")
+    send at 1/[1]/0, Letter "x"
+        => expect Ui.Label(text="1 hits, 1 keys")

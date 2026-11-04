@@ -1,7 +1,0 @@
-# Audited: Counts's entry, Count 3 and Count 0 are the three cycles, by D6 as ruled (the fuel is a `Nat` and `-?` shrinks it, so the shrink check clears the loop and its turns are one unit of work, not cycle points); 3 turns of += 2 give 6.
-# The guarded loop's tests: declarations of be-while-guard.prism (Semantics chapter 6).
-
-test the_guard_ends_the_loop, @Shown 3:
-    build
-    compute until idle
-        => expect Ui.Label(text="6 0")

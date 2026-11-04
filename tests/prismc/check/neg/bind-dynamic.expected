@@ -1,5 +1,0 @@
-tests/prismc/check/neg/bind-dynamic.prism:13: error[bind-dynamic]: binding a `$@unit`; say what happens to the old widgets with `rebuild`
-        x <- $@w
-             ^^^
-  fix: write `rebuild` over the dynamic, with the blueprint inside
-1 error

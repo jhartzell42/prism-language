@@ -1,5 +1,0 @@
-tests/prismc/check/neg/operator-recursion.prism:15: error[may-not-end]: `*` calls itself on `a`, not smaller than what it was given
-        fn * a, b = Times a, b
-                    ^^^^^^^^^^
-  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
-1 error

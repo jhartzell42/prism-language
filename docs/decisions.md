@@ -29,7 +29,7 @@ Values and nodes are reference counted; the event flow is a DAG, so counts free
 everything but one loop: zombies whose constants keep each other (row A's hold holds a
 value with row B's `$b` inside and the reverse, both rows leaving in one tick). The
 compact round runs trial deletion over the zombies the runtime watches
-(`prism_runtime_lib/src/gc.rs`): reach from the watched zombies along the nodes' strong
+(`runtime/rust/src/gc.rs`): reach from the watched zombies along the nodes' strong
 edges, count references from inside the set, keep what the outside still reaches,
 release the rest. A test constructs the loop and checks nothing stays alive. Refused: a
 tracing mark-sweep over the whole value heap (Graph refuses it for Graph on cost grounds,

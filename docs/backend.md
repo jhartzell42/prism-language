@@ -4,7 +4,7 @@
 and subject to change: implementers use their discretion. The specification is the
 Compiler book, chapters 3 to 5, with Graph chapters 3 and 4; this document says how this
 implementation lays them out under Jimmy's rulings of today, which replace
-`decisions.md` D16. The library is `prism_runtime_lib/` (crate `prism_rtl`); the counter
+`decisions.md` D16. The library is `runtime/rust/` (crate `prism_rtl`); the counter
 and `@Normal` in its `tests/` are hand-written in the form below.*
 
 ## Why the line sits where it does

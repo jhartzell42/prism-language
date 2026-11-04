@@ -1,6 +1,0 @@
-# Audited: 0 and 1 hit their literal clauses, 5 the last; 4 mod 2 is 0, 7 mod 2 is 1.
-# The literal patterns' tests: declarations of be-nat-literal.prism (Semantics chapter 6).
-
-test literals_match_nats, @shown:
-    build
-        => expect Ui.Label(text="zero one many even odd")

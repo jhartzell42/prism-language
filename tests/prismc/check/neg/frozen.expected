@@ -1,5 +1,0 @@
-tests/prismc/check/neg/frozen.prism:6: error[frozen]: `&parent` was frozen on line 5
-        &parent[0] <= ? 1
-        ^^^^^^^
-  fix: use the frozen value, or make a new local
-1 error

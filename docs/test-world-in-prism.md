@@ -20,7 +20,7 @@ it be.*
 
 ## What the Test World does today
 
-`prism_runtime_lib/src/world/test_world.rs`, about 800 lines of Rust:
+`runtime/rust/src/world/test_world.rs`, about 800 lines of Rust:
 
 - **Drives ticks.** It holds the program under test as a value and calls `tick` on it:
   `build`, one tick per script line, `compute` (a tick with no inputs), `compute until

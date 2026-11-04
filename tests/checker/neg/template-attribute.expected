@@ -1,0 +1,4 @@
+tests/checker/neg/template-attribute.prism:9: error[mismatch]: `Quote` has no parameter `body`
+    <@Quote body={{t}}/>
+            ^^^^^^^^^^
+1 error

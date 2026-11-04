@@ -82,9 +82,9 @@ name = "{{name}}"
 path = "src/main.rs"
 
 [dependencies]
-prism_rtl = { path = "{{runtime}}/prism_runtime_lib" }
+prism_rtl = { path = "{{runtime}}/runtime/rust" }
 prism_world_cli = { path = "{{runtime}}/worlds/cli" }
-prism_world_canvas_rtl = { path = "{{runtime}}/worlds/canvas_rtl", optional = true }
+prism_world_canvas_rtl = { path = "{{runtime}}/worlds/canvas", optional = true }
 
 [features]
 default = [{{defaults}}]

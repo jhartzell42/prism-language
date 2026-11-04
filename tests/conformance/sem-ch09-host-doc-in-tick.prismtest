@@ -1,0 +1,8 @@
+# The in-tick document's tests: declarations of sem-ch09-host-doc-in-tick.prism (Semantics chapter 9).
+
+test the_document_moves_within_the_tick, @owner:
+    build
+    click at 1
+    click at 0/[0]/0, click at 1
+    click at 0/[0]/0
+    compute

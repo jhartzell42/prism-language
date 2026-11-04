@@ -21,7 +21,7 @@ serialization or checkpoints.
 ## The crates and directories
 
 ```
-prism_runtime_lib/  prism_rtl, the runtime library every compiled program links:
+runtime/rust/  prism_rtl, the runtime library every compiled program links:
                     nodes, heights, holds, keyed for, patches, first values, @Defer
                     and pending, jobs, the Test World (docs/backend.md)
 prismc/             the compiler, in Prism: lexer, parser, checker, lowering, emission
@@ -30,7 +30,7 @@ prelude/            the Prism prelude the checker reads; its Rust is prismc's
                     templates/prelude.prism, emitted beside every program
 examples/           chess (rules, board, window library)
 worlds/cli/         the CLI World: Fs, Process, Time, Prelude.Unwrap
-worlds/canvas_rtl/  the canvas World (winit + softbuffer + tiny-skia + fontdue):
+worlds/canvas/  the canvas World (winit + softbuffer + tiny-skia + fontdue):
                     Gui.Window, Gui.Scene, Gui.Metrics, Gui.Focus
 tests/              conformance transcripts (the Conformance book's test language), the
                     checker's tests, the bootstrap's fixed point
@@ -60,7 +60,7 @@ armed; a World that sees it ticks again, with no inputs if it has none.
 ## Single commands
 
 - `make test`: `cargo test --workspace`, every compiled transcript
-  (`tests/compiled/run.sh`), the checker's tests (`tests/prismc/check/run.sh`), and the
+  (`tests/compiled/run.sh`), the checker's tests (`tests/checker/run.sh`), and the
   bootstrap's fixed point.
 - `make chess`: build and open chess (`./prism run examples/chess`).
 - `make bootstrap`: the kept prismc to gen1 to gen2, byte-equal; installs

@@ -188,7 +188,7 @@ Places where compiler zero or the prelude lacks something, worked around in Pris
 - **IB6** (fixed): template attributes bind by parameter name in compiler zero too.
   left={{a}}/>` passes `b` as `left`; the checker reads attributes as named arguments, and
   prismc's lowering binds each to the parameter of its name
-  (`tests/conformance/be-template-attrs`, whose `.expected` is written by hand).
+  (`tests/conformance/ts-ch05-template-attrs`, whose `.expected` is written by hand).
 
 ## Checker
 
@@ -202,7 +202,7 @@ separate passes in the book's order. It reports ch. 5's errors by their names, e
 prismc --check FILES... [--out OUT] [--world Ui,Fs] [--prelude DIR]
 prismc --typed FILES... [--out OUT]
 ./prism check [--world Ui,Fs] DIR|FILES...      # the report on standard output
-tests/prismc/check/run.sh [--update] [NAMES...]
+tests/checker/run.sh [--update] [NAMES...]
 ```
 
 `--check` writes the diagnostics, then `no errors` or `N errors`, to OUT, and gives up
@@ -268,7 +268,7 @@ an empty array's element), or one a local `let` quantified (`gens` names those).
 
 ### Where it stands
 
-`tests/prismc/check/run.sh` checks every program of the corpus, the programs of its own
+`tests/checker/run.sh` checks every program of the corpus, the programs of its own
 under `pos/` (`lambda-color`, clean, with its colors in `pos/lambda-color.colors`), the
 88 negative cases and the two typed dumps. Every corpus program checks clean; a book program the checker refused
 was a slip in the book, corrected there and here (Semantics round 3 CK).
@@ -562,7 +562,7 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   the first positional one). Lowering (`Lower.TemplateArgs`) and compiler zero read it
   the same way: each place's names from every clause, through parentheses and without
   marks, the body in the last place, attributes in theirs, never the written order
-  (`be-template-body`).
+  (`ts-ch05-template-body`).
 - **CT The call test for closures** (Semantics ch. 7, "Finding the cycles"). A closure
   passed to a program function is cleared when the function only calls it: in every
   clause, the parameter at that slot is the callee of calls (at any depth, but not inside
@@ -792,7 +792,7 @@ tests/compiled/run.sh [NAMES...]                # every program, byte-equal
 
 `prismc` is `$PRISMC`, or the newest of `target/bootstrap/prismc` and
 `target/keep/prismc-*` ("The bootstrap" below); the `prism` script, `tests/compiled/run.sh`
-and `tests/prismc/check/run.sh` use it. `prism test` builds debug, `prism run` release;
+and `tests/checker/run.sh` use it. `prism test` builds debug, `prism run` release;
 `prism run` runs the root under the World prismc took from the root module's `emit` row
 (the crate's `const WORLD`): the canvas World when the row has `Gui.*`, the CLI World when
 it has neither `Gui.*` nor `Ui.*`, and none, a refusal, when it has `Ui.*` without
@@ -897,25 +897,25 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   hand (`struct Normalize { t: Term }`, `impl Job<Term>`, `compute until idle: 3 ticks,
   1 to 3`); `sem-ch07-walk`, a recursion that is not a tail call, one frame per pending
   `+` (`5 ticks, 1 to 5`); and the back end's own tests, one per construct prismc's
-  self-compile needed: `be-let-fn-pair`, `be-unbounded-value`, `be-unbounded-lambda`,
-  `be-row-local`, `be-template-attrs`, `be-error-try`, `be-nat-literal`, `be-inference`,
-  `be-unbounded-prelude`, `be-local-names`, `be-tuple-show` (`prism_rtl` shows and pods
-  tuples up to six), `be-function-values`, `be-let-generic` (pick LG), `be-lambda-patterns` (a job lambda takes its
-  parameters apart by pattern), `be-fold-tuples`, `be-template-body`, `be-closure-names`,
-  `be-update-loops` (a `for` and a guarded `match` as statements of an `update`),
-  `be-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
-  `let`-bound lambda's own type gives them), `be-while-guard` (a shrinking `while` is
-  one unit of work, gap LP), `be-while-nested` (gap LP), `be-lambda-cycle` (mutually recursive unbounded lambdas, a
-  cycle a call), `be-row-values` (a row kind's values built, compared, shown,
-  matched and sent inside an element, pick RV), `be-bundle` (pick BA),
-  `be-widget-args` (pick WB), `be-host-param` and `be-host-dynamic-answer` (pick HO),
-  `be-event-values` (pick EV2),
-  `be-for-dynamic` (gap DY), `be-root-dynamic` (pick RD), `be-host-reentry`,
-  `be-host-doc-in-tick`, `be-host-delay`, `be-host-nested` and `be-host-teardown` (pick
-  HO), `be-updated` (pick UP), `be-host-updated`, `be-structural` and `be-structural-law`
+  self-compile needed: `tests/backend/let-fn-pair`, `sem-ch07-unbounded-value`, `sem-ch07-unbounded-lambda`,
+  `sem-ch04-row-local`, `ts-ch05-template-attrs`, `sem-ch10-error-try`, `ts-ch02-nat-literal`, `tests/backend/inference`,
+  `sem-ch07-unbounded-prelude`, `tests/backend/local-names`, `tests/backend/tuple-show` (`prism_rtl` shows and pods
+  tuples up to six), `ts-ch02-function-values`, `ts-ch05-let-generic` (pick LG), `sem-ch07-lambda-patterns` (a job lambda takes its
+  parameters apart by pattern), `ts-ch04-fold-tuples`, `ts-ch05-template-body`, `tests/backend/closure-names`,
+  `sem-ch05-update-loops` (a `for` and a guarded `match` as statements of an `update`),
+  `sem-ch07-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
+  `let`-bound lambda's own type gives them), `sem-ch07-while-guard` (a shrinking `while` is
+  one unit of work, gap LP), `sem-ch07-while-nested` (gap LP), `sem-ch07-lambda-cycle` (mutually recursive unbounded lambdas, a
+  cycle a call), `ts-ch02-row-values` (a row kind's values built, compared, shown,
+  matched and sent inside an element, pick RV), `sem-ch09-bundle` (pick BA),
+  `sem-ch08-widget-args` (pick WB), `sem-ch09-host-param` and `sem-ch09-host-dynamic-answer` (pick HO),
+  `sem-ch09-event-values` (pick EV2),
+  `sem-ch04-for-dynamic` (gap DY), `sem-ch09-root-dynamic` (pick RD), `sem-ch09-host-reentry`,
+  `sem-ch09-host-doc-in-tick`, `sem-ch09-host-delay`, `sem-ch09-host-nested` and `sem-ch09-host-teardown` (pick
+  HO), `sem-ch07-updated` (pick UP), `sem-ch09-host-updated`, `sem-ch07-structural` and `sem-ch07-structural-law`
   (pick ST),
-  `be-row-entry` (pick RE).
-  `be-clause-widget` (pick CS). The rest of the corpus that passes: the conformance
+  `sem-ch04-row-entry` (pick RE).
+  `sem-ch08-clause-widget` (pick CS). The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
   `sem-ch06-birds`, `sem-ch07-births`, `sem-ch07-rounds`, `sem-ch07-paged` (gap DY),
@@ -923,7 +923,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `ts-ch04-lifting`, chess (`board.prismtest`, byte-equal to `board.expected`, and
   `rules.prismtest`; `chess-rules` alone too), and prismc's own `lexer-checks` and
   `parser-checks`. `./prism run examples/chess` under `xvfb-run -a` opens the window;
-  a robot (Xlib and XTest, as `worlds/canvas_rtl/tests/xvfb_smoke.rs` clicks) clicks e2
+  a robot (Xlib and XTest, as `worlds/canvas/tests/xvfb_smoke.rs` clicks) clicks e2
   then e4, the root's result (printed with `PRISM_RESULTS` set) goes from "White's turn"
   to "Black's turn", and closing the window exits 0.
 - **Also passing:** `sem-ch05-and-blocks` (a prelude function hidden by a program's own,
@@ -935,7 +935,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
 - **Speed:** the kept prismc compiles a conformance program in under a second, and cargo
   builds it in about 1 s against the shared target directory; the whole of
   `tests/compiled/run.sh` takes about 2.5 minutes. prismc compiles itself in about 5
-  minutes and cargo builds it in about 2.5; `tests/prismc/check/run.sh` takes about 1.5
+  minutes and cargo builds it in about 2.5; `tests/checker/run.sh` takes about 1.5
   minutes; chess's tests run in under a second (release) and build in about 8 s.
 - **prismc itself** checks clean under `--check`.
 
@@ -943,7 +943,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
 
 - **The kept binary** is a native prismc at a self-hosting fixed point, kept at
   `target/keep/prismc-*` (the newest; `PRISMC=` names another).
-- **`tests/bootstrap/bootstrap.sh`** (`make bootstrap`): the kept binary compiles
+- **`bootstrap/bootstrap.sh`** (`make bootstrap`): the kept binary compiles
   `prismc/` (the working tree, templates included) into the crate
   `target/bootstrap/gen1`, cargo builds it, and gen1's binary compiles `prismc/` again into
   `target/bootstrap/gen2`. The two crates must be byte-equal: the compiler compiles itself
@@ -959,8 +959,8 @@ Each is Claude's, for Jimmy to overturn.
   `reduce`. Sigils go; when two values of a module share a base (`?ParseNat`,
   `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`); so do
   locals (`?half` is `half_opt` beside `half`; a capitalised local, a function value, is
-  `k_fn` beside a plain `k`, `be-closure-names`), and a local named as a function of its
-  module or the prelude takes a `_` (`kind_` beside `Kind`'s `kind`, `be-local-names`); a
+  `k_fn` beside a plain `k`, `tests/backend/closure-names`), and a local named as a function of its
+  module or the prelude takes a `_` (`kind_` beside `Kind`'s `kind`, `tests/backend/local-names`); a
   top-level `let` that shares its base with a function takes `_value` (`let hexDigits`
   is `hex_digits_value()` beside `HexDigits`'s `hex_digits`). A Rust keyword or a name
   the emitted code uses (`cx`, `node`, `path`, `v`) takes a `_`. `Job` and `Turn`, which
@@ -984,11 +984,11 @@ Each is Claude's, for Jimmy to overturn.
 - **CH Clauses and patterns.** A function's clauses are one `match` over the parameters
   that are not the same name in every clause; a number or text literal in a pattern is a
   binder and an equality guard, a number of the scrutinee's type (`0` against a `Nat` is
-  `Nat::from(0u32)`, `be-nat-literal`). A type gets `ToPod`/`FromPod` only when nothing
+  `Nat::from(0u32)`, `ts-ch02-nat-literal`). A type gets `ToPod`/`FromPod` only when nothing
   it holds, through the declarations it names, is a function or a layer. A closure given
   to a prelude function has its parameter types written (`|found: &Option<Nat>, x:
   &Nat|`), as does an `update`'s mutable local, and a job's type parameters are
-  `'static` (`be-inference`). A pattern through an `Rc` payload cannot be a Rust
+  `'static` (`tests/backend/inference`). A pattern through an `Rc` payload cannot be a Rust
   pattern, so such a `match` is an if-let chain in a labelled block (`'c: { if let .. &&
   let .. = &**f { break 'c ..; } .. }`).
 - **GV `given:`.** A labelled block: a bind is `let Some(p) = e else { break 'g None }`,
@@ -1003,7 +1003,7 @@ Each is Claude's, for Jimmy to overturn.
   with no Prism body, and the Prism-written ones (`Each`, `Filter`, `Or`, `Max`) are a
   line of Rust each. A name serving an array, a text and a map has variants (`len`,
   `len_text`, `len_map`), lowering picking by the argument's type. *Refused:* a crate of
-  its own, which `prism_runtime_lib/` (not this task's to change) would have to host.
+  its own, which `runtime/rust/` (not this task's to change) would have to host.
 - **WG Widgets in static positions are inlined** (Semantics ch. 8: transparent, their
   places numbered in the caller's sequence): their parameters bound by layer (an event to
   the caller's event, a dynamic to its reader, a plain value to a field). A node is
@@ -1040,18 +1040,18 @@ Each is Claude's, for Jimmy to overturn.
   however it is reached; a lambda of unbounded type is a value whose job is its body
   lowered as a job body (`once_job`), so a call in it is a tail call or a frame, and
   `entered` too (D6 as ruled: a call of an unbounded lambda is a cycle point;
-  `be-unbounded-lambda` 7 ticks, `be-lambda-cycle` 5). A lambda's color is the typed
-  output's, as the checker solved it (pick CV; `be-pipe-record`'s `\|ignore| K v` is
+  `sem-ch07-unbounded-lambda` 7 ticks, `sem-ch07-lambda-cycle` 5). A lambda's color is the typed
+  output's, as the checker solved it (pick CV; `sem-ch07-pipe-record`'s `\|ignore| K v` is
   unbounded since `K` is). A job calls a value now (`call_value`, the callee's first cycle in this
   one); direct-style code runs it to its result (`run_to_end`). A function type whose
   color is not `bounded` (unbounded, or a color variable `u`, D8) is a `Start`, so a
   function with a `u fn` parameter takes one whatever its caller gives: a bounded
   function value is wrapped in a job that answers in its first cycle, a constructor is
-  a closure (`Make Circle, n`), a lambda is a job lambda (`be-function-values`). A
+  a closure (`Make Circle, n`), a lambda is a job lambda (`ts-ch02-function-values`). A
   color-polymorphic function (`Twice: u fn Nat, (u fn Nat -> Nat) -> Nat`) has a job
   too. A call that instantiates its color unbounded (an argument at a function parameter
   whose checked type is unbounded) is a cycle point, a frame or `Turn::More` like a named
-  unbounded function's (D6 as ruled; `be-function-values` 4 ticks); any other call
+  unbounded function's (D6 as ruled; `ts-ch02-function-values` 4 ticks); any other call
   enters it at once (`start_twice(..).cycle()`). Its calls through its closures are
   cycle points as their values decide.
 - **LG A generalized local `let` is lowered once per instantiation.** A local `let` the
@@ -1063,9 +1063,9 @@ Each is Claude's, for Jimmy to overturn.
   generalized `let` may be at that one's variables (prismc's `Take`, used in `Builder` at
   `Builder`'s color): it stands for each of `Builder`'s instantiations. A widget block's
   `let` is a node field of one type: it is lowered at its uses' one instantiation
-  (`be-function-values`'s `Double`), and at several it is refused (gap LW). So `let Twin = \|x| ((x,
+  (`ts-ch02-function-values`'s `Double`), and at several it is refused (gap LW). So `let Twin = \|x| ((x,
   x))` used at Nat and at Text is two closures, each bounded where its uses are, and an
-  unused parameter (`\|ignore, y| y`) is typed like any other (`be-let-generic`). A
+  unused parameter (`\|ignore, y| y`) is typed like any other (`ts-ch05-let-generic`). A
   `let` nothing uses is not lowered. A quantified variable that reaches the Rust anyway
   is no type: the printer writes a `compile_error!` naming the binding, never `()`.
   *Claude's:* one closure per instantiation, since a Rust closure has one type, and
@@ -1075,13 +1075,13 @@ Each is Claude's, for Jimmy to overturn.
 - **D8 The prelude's higher-order functions** given a closure that is not bounded are
   jobs: `fold_job`, `each_job`, `filter_job` and their map variants, which call the
   closure through `call_value`, so each call of a named unbounded function is a cycle
-  point (`be-unbounded-prelude`: `Each xs, Double` over three, `4 ticks`). A job makes
+  point (`sem-ch07-unbounded-prelude`: `Each xs, Double` over three, `4 ticks`). A job makes
   one a frame or a tail call; direct-style code runs it to its result. Given a bounded
   closure they are the plain functions over `&dyn Fn`. Every unbounded function is
   also a direct-style Rust function, for the calls gap DS leaves.
 - **ER `Error(..)` where a `~T` is wanted** is `Err(..)`: as an argument (the checker's
   pick ER), in a branch of an `if` whose value is a `~T`, and as the firing of an event
-  that feeds a `!~T` (`be-error-try`).
+  that feeds a `!~T` (`sem-ch10-error-try`).
 - **RW `for` rows.** A row is a node of its own (`TodosRow`) at `n/[k]`, with `key` and a
   weak reference to its block; the block's builder (a template, `ForBuild`) tears down
   left keys and builds new ones from the source after the tick (Semantics R7), run at the
@@ -1114,7 +1114,7 @@ Each is Claude's, for Jimmy to overturn.
   `left_entry`, the row's constant from then on (docs/backend.md, "Leaving"). The build
   still takes the entry after the tick as an argument (`value`), for the holds and plain
   `let`s computed at the build: the same value the projection reads there. In the build
-  `$_` is that argument; in the methods the projection. `be-row-entry`. *Refused:*
+  `$_` is that argument; in the methods the projection. `sem-ch04-row-entry`. *Refused:*
   the entry as a `Hold` the builder writes after propagation, which made `$_` state
   written at the end of the tick and left `!Updated $_` without a height; a `Cache` on
   the source getter, which every write path would have to mark (a row reads the source
@@ -1134,7 +1134,7 @@ Each is Claude's, for Jimmy to overturn.
   `rebuild` of its first argument, which never changes), the clause chosen at the build
   like a `rebuild`'s, and transparent (Semantics ch. 8): the generation's node stands at
   its caller's path and its places take the caller's positions from the call's on, as an
-  inlined widget's do (`be-clause-widget`: `@Note`'s label is `@Notes`'s place 1), the
+  inlined widget's do (`sem-ch08-clause-widget`: `@Note`'s label is `@Notes`'s place 1), the
   caller forwarding the World's answers at those positions to it (`GenForwards`).
   Clauses with different numbers of places take the widest clause's positions, so the
   caller's later places have one position whichever clause is chosen; where a narrower
@@ -1193,18 +1193,18 @@ Each is Claude's, for Jimmy to overturn.
   (gap LE). A tag and a record that share a key (`Fs.Contents`) are told apart as the
   checker does: the tag only when written with its family. `Dynamic`'s update port
   carries `()` (the value moved; readers read again), so a projection shares its
-  source's port and `Dynamic::map` subscribes to nothing (`be-row-values`).
+  source's port and `Dynamic::map` subscribes to nothing (`ts-ch02-row-values`).
   *Refused:* row values as `Pod`s, which made every field access a runtime decode.
 - **BA Bundles.** A tag whose output is a tuple of plain parts and one event part
   (`Gui.Window`'s `((WindowId, !WindowInput))`), bound by a tuple pattern: the plain
   parts are the place's first value (one part itself, several a tuple), each bound part
-  a field; the event part fires on each answer at the place (`be-bundle`). A `$` part,
+  a field; the event part fires on each answer at the place (`sem-ch09-bundle`). A `$` part,
   or a second event part, is refused loudly.
 - **WB Widget arguments.** A widget parameter (`@child`) binds its argument, a widget
   block (`@widget: ..`) or a widget expression (`@counter`), with the caller's
   environments; applying the parameter lowers the argument there, so its places take
   this node's next positions (transparent, Semantics ch. 8) and each application has
-  its own holds (`be-widget-args`). A parameter applied to arguments, or read as a value,
+  its own holds (`sem-ch08-widget-args`). A parameter applied to arguments, or read as a value,
   is refused loudly. *Refused:* the argument as a blueprint value built at run time,
   which a static position never needs.
 - **HO Hosts.** A host is Prism inside the same graph and the same tick (Semantics ch. 9
@@ -1255,7 +1255,7 @@ Each is Claude's, for Jimmy to overturn.
   an input of the next tick, which is owed, `Cx::answer_later`), `@Element e`
   `element_blueprint` (re-emission at `hostpos/[p]/0`, the World's answers and pushes
   handed to the child in the same tick). A dynamic answer that is not a constant (`@ $d`,
-  `$d` a hold or a derived dynamic of the owner; round 3 DY; `be-host-dynamic-answer`) is
+  `$d` a hold or a derived dynamic of the owner; round 3 DY; `sem-ch09-host-dynamic-answer`) is
   `dynamic_blueprint` over a `Dynamic<Answer>`: its first value is read at the row's build,
   synchronously, and each later change is a push queued with `Cx::answer_later`, sampled
   when delivered as the next tick's input, which is owed, once per tick however many
@@ -1280,11 +1280,11 @@ Each is Claude's, for Jimmy to overturn.
   a host inside a hosted child builds its rows in the enclosing host's scope
   (`prism_rtl::Scope::Hosted`), so a forwarded element there is an entry of the enclosing
   document rather than a place of the World's, and its first value comes from the enclosing
-  host; each computing layer costs a tick and a forwarding layer none (`be-host-nested`).
+  host; each computing layer costs a tick and a forwarding layer none (`sem-ch09-host-nested`).
   The child's result is the line's first part (`WrHosted`), the document the second
-  (`BindHosted`). `sem-ch09-hosts`, `be-host-param`, `be-host-doc-in-tick`,
-  `be-host-updated` (pick ST), `be-host-reentry`, `be-host-delay`, `be-host-nested`,
-  `be-host-teardown`. *Refused:* the host as a World in miniature (a `Host` node with a
+  (`BindHosted`). `sem-ch09-hosts`, `sem-ch09-host-param`, `sem-ch09-host-doc-in-tick`,
+  `sem-ch09-host-updated` (pick ST), `sem-ch09-host-reentry`, `sem-ch09-host-delay`, `sem-ch09-host-nested`,
+  `sem-ch09-host-teardown`. *Refused:* the host as a World in miniature (a `Host` node with a
   `Pod` boundary answering through `Node::answer` in the same tick), Jimmy's ruling.
 - **EV2 Event values.** A named event (`!x <- ..`, `let !x = ..`) fires a port of its
   own (`x_v_port`, made in the build before the node so a closure can hold it), and
@@ -1292,7 +1292,7 @@ Each is Claude's, for Jimmy to overturn.
   that maps it is built by the library's combinators: a lifted call is `Event::map`,
   `!Filter` `filter_some`. A function that gives a blueprint (`?Boxed: fn Path, Element
   o, !Routed -> ?@o`) is not lifted over its `!` parameters: it takes each as an event
-  value. `be-event-values`.
+  value. `sem-ch09-event-values`.
 - **PU Pushes.** A place whose element answers a dynamic keeps its element
   (`f_element`), registers with `cx.listen`, and answers a push by writing its hold with
   every mark a hold's sink makes (`DynPlaceWrite`: the node patched, the builders and rows
@@ -1307,7 +1307,7 @@ Each is Claude's, for Jimmy to overturn.
   (Semantics R3). A builder runs once a tick, after propagation, from the values after
   the tick (Semantics R7): its source's marks list it, and nothing lists it again; the
   owner's `build` runs a hosted child's builders before its host's (`InnermostFirst`), so
-  a host's `for` over `$doc` sees the child's structure settled (`be-host-doc-in-tick`).
+  a host's `for` over `$doc` sees the child's structure settled (`sem-ch09-host-doc-in-tick`).
 - **PS `Pod::Shown`** compares, orders and hashes by its structure, its text only
   printed, so a key with an `impl ^Show` (chess's `Spot`, `e2`) orders by its fields.
 - **MA `@Machine`, local functions, `!MergeAll`.** `@Machine step, init, !a` is a hold
@@ -1333,9 +1333,9 @@ Each is Claude's, for Jimmy to overturn.
   read by the node's `{name}_value` getter under `Cx::after`, which moves the read point
   to n+1 for the read and back. So the event fires at n with the value after n, in the
   tick of the change, whenever the dynamic was recomputed, deduped by nobody (`$a * 0`
-  fires on every write of `$a`; `be-updated`). This is the rule for a dynamic over holds
+  fires on every write of `$a`; `sem-ch07-updated`). This is the rule for a dynamic over holds
   only; a structural dynamic is written the same way when it is published (pick ST). A row's `!Updated` over its entry or
-  over its block's holds read through the parent is pick RE's (`be-row-entry`). *Refused
+  over its block's holds read through the parent is pick RE's (`sem-ch04-row-entry`). *Refused
   loudly* (`compile_error!`, not an event that never fires): an `!Updated` whose dynamic
   reads anything no sink of the node writes, and a row's that reads a block name no hold
   of the block stands behind, or a structural dynamic of the block (gap SU).
@@ -1372,11 +1372,11 @@ ruling taken (Claude's).
   (`Lx.unshrunk`). Such a `while` at the top level of an `update` block in a job is a
   loop job (`loop_job`): the block's state (`this` and its `&` locals) is the job's,
   each turn a cycle, the rest of the block its continuation. A cleared loop is a Rust
-  `while` inside the cycle (`be-while-guard`, a `Nat` fuel: 3 ticks). A loop job under an
+  `while` inside the cycle (`sem-ch07-while-guard`, a `Nat` fuel: 3 ticks). A loop job under an
   `if` of the block binds what follows the `if` once, a continuation over the block's
   state that each branch ends in (`IfJob`); one in another loop's body makes that loop's
   turns jobs (`loop_turns`: a turn that reaches the inner loop ends after it, and the next
-  test starts a cycle), so `be-while-nested` costs what a top-level loop does (5 ticks for
+  test starts a cycle), so `sem-ch07-while-nested` costs what a top-level loop does (5 ticks for
   3 turns under an `if`, 10 for 2 by 2). *Not yet:* an unshrinking `while` in a `match` or
   a `for` of the block, which still turns within the cycle.
 - **SH Shadowed runtime names.** A program type named like a `prism_rtl` name the
@@ -1410,7 +1410,7 @@ ruling taken (Claude's).
   every `!Updated` over it or over a dynamic lifted from it (`let $x = Tag $doc, $clicks`)
   told and woken, an ordinary pick UP node. So `!Updated $doc` fires at n+1 with S(n),
   while every sample at n+1 (`$old <- 0 then Size $doc on (!Updated $doc)`) reads S(n−1),
-  and the patch pass and the builders of n+1 read S(n) (`be-structural-law`); a hold
+  and the patch pass and the builders of n+1 read S(n) (`sem-ch07-structural-law`); a hold
   written in n+1 beside it gives one firing. The live computation's reads are its own
   (`dynReads` of `{name}_now`, `SnapDef.live`): a write behind the structure marks the
   snapshot and lists the build (`SnapsBehind`, `ListsBuild`) and touches no reader of the
@@ -1472,7 +1472,7 @@ ruling taken (Claude's).
   several clauses needs the clause chosen at the build; generations do it for one clause
   only.
 - **SR A row's source is read per read.** Every read of a row's entry evaluates the
-  block's source getter (`Tag $doc, $clicks` in `be-host-doc-in-tick`) and indexes it,
+  block's source getter (`Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`) and indexes it,
   where the `Hold` it replaced was a clone (pick RE). *First ruling:* correctness first.
   *Next:* an `rt::Cache` on the getter, marked by every write path (a hold's sink,
   `@Machine`'s state, a push or a host's typed answer at a place), which docs/backend.md's

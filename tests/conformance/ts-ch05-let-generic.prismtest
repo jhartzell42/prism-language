@@ -1,0 +1,5 @@
+# The generalized local let's tests: declarations of ts-ch05-let-generic.prism (Semantics chapter 6).
+
+test each_use_its_own_types, @shown:
+    build
+        => expect Ui.Label(text="6 abab 3 ab")

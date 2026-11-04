@@ -1,6 +1,0 @@
-# Audited: the weights sum to 5 and the while turns once per item (fuel 2), naming a then b; bounded, no ticks.
-# The tuple fold's tests: declarations of be-fold-tuples.prism (Semantics chapter 6).
-
-test folds_take_tuples_apart, @shown:
-    build
-        => expect Ui.Label(text="ab 5")

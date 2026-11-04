@@ -1,5 +1,0 @@
-tests/prismc/check/neg/two-events.prism:8: error[two-events]: two events in one operation
-        let !total = (1 on !a) + (10 on !b)
-                                 ^^^^^^^^^^
-  fix: merge them with `<|`, or hold one first, `$last <- 0 then !b`
-1 error

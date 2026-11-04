@@ -1,0 +1,9 @@
+# Audited: a click on go fires !either once, which counts once in the owner and answers both child buttons as the next tick's input (a computed answer is a tick late, Semantics ch. 9 as ruled); in that owed tick the child's !hit fires once (its left wins), so one hit; the child's buttons have no elements of their own, its label is forwarded at 2/[2]/0.
+# The re-entry's tests: declarations of sem-ch09-host-reentry.prism (Semantics chapter 6).
+
+test the_owner_is_woken_again, @loop:
+    build
+    click at 0
+    compute
+    click at 1
+    compute

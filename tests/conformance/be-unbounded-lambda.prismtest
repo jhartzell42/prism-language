@@ -1,8 +1,0 @@
-# Audited: Work's entry, Add2 entered, Inc twice in Add2, Apply, Inc1 entered and Inc in Inc1 are the seven cycles, by D6 as ruled (a call of an unbounded lambda is a cycle point); 1 + 2 + 1 = 4.
-# The unbounded lambdas' tests: declarations of be-unbounded-lambda.prism (Semantics chapter 6).
-
-test lambdas_are_jobs_too, @Counted 1:
-    build
-        => expect Ui.Label(text="working")
-    compute until idle
-        => expect Ui.Label(text="4")

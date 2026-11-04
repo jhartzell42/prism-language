@@ -1,5 +1,0 @@
-tests/prismc/check/neg/local-shadow.prism:8: error[may-not-end]: `Grow` calls itself, not smaller than what it was given
-        if (Len xs) == 0: 0 else: Grow (Drop xs, 1)
-                                  ^^^^^^^^^^^^^^^^^
-  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
-1 error

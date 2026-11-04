@@ -1,4 +1,0 @@
-tests/prismc/check/neg/occurs.prism:4: error[occurs]: `t9` would contain itself: `t9 = fn t9 -> t10`
-        let Loop = \|F| F F
-                          ^
-1 error

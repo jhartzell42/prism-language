@@ -1,5 +1,0 @@
-tests/prismc/check/neg/row-outside.prism:7: error[row-outside]: a child that emits `Fs.*` in a scope that emits `Ui.*`
-        $~contents <- Fs.Contents(path="/etc/motd")
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  fix: widen the scope's `emit` row, or host the child with `@HostDocument`
-1 error

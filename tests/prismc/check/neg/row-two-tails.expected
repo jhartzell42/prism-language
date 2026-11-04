@@ -1,5 +1,0 @@
-tests/prismc/check/neg/row-two-tails.prism:3: error[row-two-tails]: a row has one variable; `r | s` names two
-    emit r | s
-         ^^^^^
-  fix: keep one variable
-1 error

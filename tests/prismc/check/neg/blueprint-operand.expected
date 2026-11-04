@@ -1,5 +1,0 @@
-tests/prismc/check/neg/blueprint-operand.prism:5: error[blueprint-operand]: `Len` over a blueprint; bind it first
-    fn Count @picks = Len @picks
-                          ^^^^^^
-  fix: bind it, `x <- @picks`, and use `x`
-1 error

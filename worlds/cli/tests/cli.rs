@@ -1,5 +1,5 @@
 //! The CLI World against programs written by hand in the shape docs/backend.md gives the
-//! templates (as prism_runtime_lib/tests/counter.rs is), driven by `prism_rtl::drive`.
+//! templates (as runtime/rust/tests/counter.rs is), driven by `prism_rtl::drive`.
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};

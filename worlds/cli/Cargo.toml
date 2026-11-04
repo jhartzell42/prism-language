@@ -6,4 +6,4 @@ description = "The CLI World over prism_rtl's protocol: Fs, Process and Time, wi
 license-file = "../../LICENSE.md"
 
 [dependencies]
-prism_rtl = { path = "../../prism_runtime_lib" }
+prism_rtl = { path = "../../runtime/rust" }

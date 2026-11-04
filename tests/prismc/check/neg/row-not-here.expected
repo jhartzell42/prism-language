@@ -1,5 +1,0 @@
-tests/prismc/check/neg/row-not-here.prism:7: error[row-not-here]: `Fs.Contents` is not in this row, `Ui.*`
-        Fs.Contents(..): "file"
-        ^^^^^^^^^^^^^^^
-  fix: add `Fs.*` to the row, or answer the tag elsewhere
-1 error

@@ -1,5 +1,0 @@
-tests/prismc/check/neg/forwarding.prism:10: error[forwarding]: forwarding Fs.File, Fs.Output from a scope that emits r
-            otherwise: @Element e
-                       ^^^^^^^^^^
-  fix: answer them above this arm, for example `Fs.File(..): @ never`
-1 error
