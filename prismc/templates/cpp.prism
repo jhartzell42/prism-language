@@ -13,9 +13,10 @@ emit r
 # Files
 # ---------------------------------------------------------------------------------------
 
-# The `Makefile`: the program's sources against `runtime/cpp`'s library, which it builds.
-CppMakefile: fn Text, Text, Text -> Text
-fn CppMakefile name, runtime, sources = inline_text <cpp>
+# The `Makefile`: the program's sources against `runtime/cpp`'s library, which it builds,
+# and the lines of the canvas World when the root's row asks for it (`CppMakefileCanvas`).
+CppMakefile: fn Text, Text, Text, Text -> Text
+fn CppMakefile name, runtime, sources, canvas = inline_text <cpp>
 # Emitted by prismc. Edit the Prism sources, not this file.
 #   make                   the program, with $(CXX) (g++ by default)
 #   make CXX=clang++
@@ -28,9 +29,12 @@ LIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
 FLAGS := -std=gnu++20 $(OPT) -I$(RT)/include -I$(WORLD)/include -Isrc -Wall -Wno-unused -Wno-unused-parameter -Wno-unused-label
 SRCS := src/main.cpp {{sources}}
 OBJS := $(SRCS:src/%.cpp=build/%.o)
+WORLD_LIBS :=
+SYS_LIBS :=
+{{canvas}}
 
-{{name}}: $(OBJS) build/cli.o $(LIB)
-	$(CXX) $(FLAGS) -o $@ $(OBJS) build/cli.o $(LIB)
+{{name}}: $(OBJS) build/cli.o $(LIB) $(WORLD_LIBS)
+	$(CXX) $(FLAGS) -o $@ $(OBJS) build/cli.o $(WORLD_LIBS) $(LIB) $(SYS_LIBS)
 
 build/cli.o: $(WORLD)/src/cli.cpp $(WORLD)/include/prism_world_cli/cli.hpp
 	@mkdir -p build
@@ -45,6 +49,23 @@ $(LIB): FORCE
 
 FORCE:
 .PHONY: FORCE
+</cpp>
+
+# The Makefile's lines for a root under the canvas World (worlds/canvas-cpp), whose library
+# its own Makefile builds after runtime/cpp's, and the system's libraries under it.
+CppMakefileCanvas: fn Text -> Text
+fn CppMakefileCanvas runtime = inline_text <cpp>
+CANVAS := {{runtime}}/worlds/canvas-cpp
+FLAGS += -I$(CANVAS)/include $(shell pkg-config --cflags cairo freetype2)
+WORLD_LIBS := $(CANVAS)/build/$(CONFIG)/libprism_world_canvas.a
+ifeq ($(shell uname -s),Darwin)
+SYS_LIBS := $(shell pkg-config --libs cairo freetype2) -framework Cocoa -framework QuartzCore
+else
+SYS_LIBS := $(shell pkg-config --libs cairo freetype2 x11 xext)
+endif
+
+$(WORLD_LIBS): FORCE | $(LIB)
+	@$(MAKE) -s -C $(CANVAS) lib CXX=$(CXX) CONFIG=$(CONFIG) OPT="$(OPT)"
 </cpp>
 
 # `crate.hpp`: every declaration, in the order C++ needs.
@@ -121,11 +142,12 @@ namespace crate::{{ns}} {
 
 # `main.cpp`: the crate's own types' definitions, the Test World with every program and
 # compiled `check` block, and `main`, which picks the World.
-CppMain: fn Text, Text, Text, Text, Text, Text, Text -> Text
-fn CppMain name, registrations, checks, scripts, world, runRoot, crateDefs = inline_text <cpp>
+CppMain: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn CppMain name, includes, registrations, checks, scripts, world, runRoot, crateDefs = inline_text <cpp>
 // The program `{{name}}`, emitted by prismc from Prism (docs/backend.md): C++ over
 // `prism_rtl`, run under the Test World. Edit the Prism sources, not these files.
 #include "crate.hpp"
+{{includes}}
 
 namespace crate {
 
@@ -156,6 +178,10 @@ int run_root(const std::string& world, const std::vector<std::string>& args) {
 
 int main(int argc, char** argv) {
     std::vector<std::string> args(argv + 1, argv + argc);
+    // The canvas World keeps the main thread for its windows (AppKit's rule on macOS) and
+    // ticks on a big stack of its own.
+    if (auto [world, rest] = crate::prelude::world_option(args, crate::WORLD); world == "canvas" && (args.empty() || args[0] != "test"))
+        return crate::run_root(world, rest);
     return crate::prelude::on_big_stack([&] {
         auto [world, rest] = crate::prelude::world_option(args, crate::WORLD);
         if ((!args.empty() && args[0] == "test") || world == "test") {
@@ -178,13 +204,12 @@ std::fprintf(stderr, "{{name}}: the program has no `@main`; `{{name}} test` runs
 return 2;
 </cpp>
 
-# A root under the World its row asks for.
-CppRunRoot: fn Text -> Text
-fn CppRunRoot program = inline_text <cpp>
+# A root under the World its row asks for; `canvas` is `CppCanvasRun` or `CppNoCanvas`.
+CppRunRoot: fn Text, Text -> Text
+fn CppRunRoot program, canvas = inline_text <cpp>
 if (world == "cli") return prelude::run_cli<{{program}}>(args);
 if (world == "canvas") {
-    std::fprintf(stderr, "the C++ target has no canvas World\n");
-    return 2;
+    {{canvas}}
 }
 if (world == "none") {
     std::fprintf(stderr, "the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world\n");
@@ -192,6 +217,28 @@ if (world == "none") {
 }
 std::fprintf(stderr, "no World %s (cli, canvas, test)\n", world.c_str());
 return 2;
+</cpp>
+
+# The canvas branch of a root whose row asks for the canvas World, which takes no
+# arguments.
+CppCanvasRun: fn Text -> Text
+fn CppCanvasRun program = inline_text <cpp>
+static_cast<void>(args);
+return prism_world_canvas::run<{{program}}>();
+</cpp>
+
+# The canvas branch of a root whose row does not ask for it: the program is built without
+# the World.
+CppNoCanvas: fn Text -> Text
+fn CppNoCanvas program = inline_text <cpp>
+std::fprintf(stderr, "the root's row emits no Gui.*, so this program is built without the canvas World\n");
+return 2;
+</cpp>
+
+# The include of the canvas World, for a root that runs under it.
+CppCanvasInclude: fn Text -> Text
+fn CppCanvasInclude ignore = inline_text <cpp>
+#include "prism_world_canvas/canvas.hpp"
 </cpp>
 
 # ---------------------------------------------------------------------------------------

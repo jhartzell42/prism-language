@@ -1720,17 +1720,19 @@ fn EmitCpp model, runtime, scripts:
     let world = match model.?root:
         ? r: r.world
         nil: "test"
+    let canvas = world == "canvas"
     let runRoot = match model.?root:
-        ? r: CppRunRoot r.name
+        ? r: CppRunRoot r.name, (if canvas: CppCanvasRun r.name else: CppNoCanvas r.name)
         nil: CppNoRoot model.name
-    let main = CppMain model.name, regs, checks, scriptList, world, runRoot, (Join (Concat2 (Each [[elem, answer]], \|p| p.defs)), "\n\n")
+    let includes = if canvas: CppCanvasInclude "" else: ""
+    let main = CppMain model.name, includes, regs, checks, scriptList, world, runRoot, (Join (Concat2 (Each [[elem, answer]], \|p| p.defs)), "\n\n")
     let perModule = Each (Range0 (Len model.mods)), \|i|
         let m = Or model.mods[i], (ModDef(name="", prism="", path="", uses=[[]], items=[[]]))
         let p = Or mods[i], noParts
         ModuleFiles m, (Chunks p.defs)
     let files = Fold perModule, [[]], \|acc, fs| Append acc, fs
     let sources = Join (Each files, \|((f, ignore))| f), " "
-    Append [[(("Makefile", (CppMakefile model.name, runtime, sources))), (("src/crate.hpp", header)), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], files
+    Append [[(("Makefile", (CppMakefile model.name, runtime, sources, (if canvas: CppMakefileCanvas runtime else: "")))), (("src/crate.hpp", header)), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], files
 
 # A module's definitions in files of about `chunkSize` characters each, so that no file
 # needs more memory to compile than a small machine has (`lower.cpp` alone would): the

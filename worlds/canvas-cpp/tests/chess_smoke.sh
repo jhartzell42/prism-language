@@ -23,14 +23,14 @@ if [ -z "${DISPLAY:-}" ]; then
     cd "$repo"
     ./prism compile --target cpp examples/chess -o target/canvas-cpp/chess
     [ -f "$prog/src/main.cpp" ] || { echo "chess_smoke: prismc (${PRISMC:-the newest}) emitted no C++; set PRISMC to one with --target cpp" >&2; exit 1; }
-    make -s -C worlds/canvas-cpp program PROG="$prog" CONFIG=gcc CXX=g++ -j"$(nproc)"
+    make -s -C "$prog" CXX=g++ -j"$(getconf _NPROCESSORS_ONLN)"
     exec timeout 120 xvfb-run -a -s "-screen 0 1024x768x24" "$here/chess_smoke.sh" "$robot"
 fi
 
 cd "$repo"
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
-PRISM_RESULTS=1 "$prog/canvas" 2> "$log" &
+PRISM_RESULTS=1 "$prog/chess" 2> "$log" &
 pid=$!
 fail() { echo "chess_smoke: $*" >&2; cat "$log" >&2; kill "$pid" 2>/dev/null || true; exit 1; }
 

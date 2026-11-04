@@ -16,10 +16,11 @@ prism_world_canvas::run_with<MyProgram>(wrap, hooks)    // another wrapper; hook
 
 - **`include/prism_world_canvas/`**: `world.hpp` (the World with no display: `Shared`,
   `CanvasReady`, `CanvasWorld`, and `UnwrapWorld`, the prelude's policy around it),
-  `font.hpp`, `render.hpp`, `canvas.hpp` (the loop, `Session`, `Hooks`, `run`).
+  `font.hpp`, `render.hpp`, `canvas.hpp` (the loop, `Session`, `Hooks`, `run`),
+  `big_stack.hpp`.
 - **`src/`**: `world.cpp`, `font.cpp`, `render.cpp`, `app.cpp` (the Xlib loop, Linux),
-  `app_macos.mm` (the Cocoa loop, macOS), and `program_main.cpp`, the `main` for a
-  compiled program (below).
+  `app_macos.mm` (the Cocoa loop, macOS), and `big_stack.cpp`, the thread ticks run on
+  (below).
 - **`tests/`**: `test_canvas.cpp` (the Rust crate's unit tests, test for test, plus the
   Rust World's widths for five texts), `smoke_program.hpp` (a hand-written program with
   one window), `xvfb_smoke.cpp` (Linux: the Rust `xvfb_smoke`, that window clicked
@@ -67,12 +68,14 @@ pkg-config`) and the system's Cocoa and QuartzCore.
 
 ## A compiled program
 
-prismc's C++ program has its own `main.cpp`, whose canvas branch says "the C++ target has
-no canvas World" (prismc/templates/cpp.prism, `CppRunRoot`). Until the template runs this
-World, `make program PROG=DIR ROOT=MainProgram` builds `DIR/canvas`: the program's
-sources, its `main.cpp` compiled with `main` renamed, and `src/program_main.cpp`, which
-runs `crate::ROOT` under this World. `DIR/canvas test` and `--world cli` go on to the
-emitted `main`.
+A program whose root's row emits `Gui.*` is emitted by prismc with this World: its
+`main.cpp` runs the root through `prism_world_canvas::run<P>()`, and its Makefile builds
+this library (`make lib`, after runtime/cpp's) and links it with cairo, FreeType and the
+window system (prismc/templates/cpp.prism, `CppMakefileCanvas`). `main` keeps the main
+thread for the windows, which AppKit requires, and the loop runs every tick, and the
+program's teardown, on a thread with a 4 GB stack (`BigStack`), the stack the emitted
+`main` gives the CLI World; the loop waits on each, so the two threads never run at once.
+`PROG test` and `--world cli` run as for any root.
 
 ## On macOS
 

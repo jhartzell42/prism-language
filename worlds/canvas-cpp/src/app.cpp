@@ -23,6 +23,7 @@
 // Written by Claude on the claude-self-hosting branch; subject to change.
 
 // The library first: Xlib defines `Bool` and `Status` as macros.
+#include "prism_world_canvas/big_stack.hpp"
 #include "prism_world_canvas/canvas.hpp"
 
 #include <X11/Xatom.h>
@@ -91,7 +92,11 @@ public:
     std::optional<std::uint32_t> pixel(const Path& window, double x, double y) const override;
 
 private:
-    void tick_once(TickIn input);
+    /// One tick, on the big stack: `tick_here` there.
+    void tick_once(TickIn input) {
+        big_.run([&] { tick_here(std::move(input)); });
+    }
+    void tick_here(TickIn input);
     bool run_ticks();
     void reconcile();
     bool open(const Path& path, const WindowPlace& place);
@@ -103,6 +108,8 @@ private:
     OsWindow* window_of(::Window xid, Path* path);
     bool all_shown() const;
 
+    /// Where ticks run, and the program is torn down: first, so it goes last.
+    BigStack big_;
     Builder build_;
     std::unique_ptr<prism_rtl::World> world_;
     std::shared_ptr<Shared> shared_;
@@ -139,6 +146,11 @@ int shm_error_handler(Display*, XErrorEvent*) {
 }
 
 App::~App() {
+    // A program's teardown recurses as deep as its values: on the big stack.
+    big_.run([&] {
+        program_.reset();
+        world_.reset();
+    });
     for (auto& [_, w] : windows_) close(w);
     if (dpy_) {
         if (gc_) XFreeGC(dpy_, gc_);
@@ -146,7 +158,7 @@ App::~App() {
     }
 }
 
-void App::tick_once(TickIn input) {
+void App::tick_here(TickIn input) {
     auto ready = world_->ready();
     prism_rtl::Result<TickOut> result = [&]() -> prism_rtl::Result<TickOut> {
         if (program_) return program_->tick(input, *ready);
