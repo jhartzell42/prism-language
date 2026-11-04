@@ -23,5 +23,4 @@ bench/building/run.sh                        # every subject and configuration
 CONFIGS="rust-release" bench/building/run.sh prismc   # one side
 ```
 
-`prism run` builds C++ at -O3 too; `prism test` builds it at -O1, which is a test run, not
-a measurement.
+`prism run` and `prism test` build C++ at -O3 too (`PRISM_OPT` overrides for debugging).
