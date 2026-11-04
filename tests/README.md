@@ -3,9 +3,9 @@
 - **`conformance/`**: programs with `.prismtest` scripts and `.expected` transcripts, each
   pinning a rule of the books. The prefix names the book and chapter (`sem-ch09-...` is
   Semantics chapter 9, `ts-ch05-...` Type System chapter 5, `conf-ch01-...` Conformance,
-  `compiler-ch03-...` Compiler). A directory of a program's name joins it.
-- **`backend/`**: transcripts only `prismc`'s emission can get wrong (names, inference
-  rustc needs, printing), with no book rule behind them.
+  `compiler-ch03-...` Compiler). A directory of a program's name joins it. Every one of
+  them is a program with a language-defined transcript, so every one is named for the
+  rule its transcript pins.
 - **`compiled/run.sh`**: every program above, plus chess and prismc's lexer and parser
   checks, compiled by `prismc` and run under the Test World, byte-equal to `.expected`.
 - **`checker/`**: the checker's own tests: every corpus program checks clean, every

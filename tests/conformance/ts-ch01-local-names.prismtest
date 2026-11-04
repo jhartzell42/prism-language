@@ -1,5 +1,5 @@
 # Audited: 4 halves to 2 and is small, 20 halves to 10 and is big; each label and half follow.
-# The locals' tests: declarations of local-names.prism (Semantics chapter 6).
+# The locals' tests: declarations of ts-ch01-local-names.prism (Semantics chapter 6).
 
 test locals_keep_their_names, @shown:
     build

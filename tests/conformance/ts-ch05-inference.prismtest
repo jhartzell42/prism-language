@@ -1,5 +1,5 @@
 # Audited: the first item over 2 is 3 and the op's step gives 0; LastOf's entry and its call of Last are the two cycles, and the last even of 1 to 5 is 4.
-# The written types' tests: declarations of inference.prism (Semantics chapter 6).
+# The written types' tests: declarations of ts-ch05-inference.prism (Semantics chapter 6).
 
 test the_types_are_written, @Shown [[1, 2, 3, 4, 5]]:
     build

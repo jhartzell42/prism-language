@@ -919,11 +919,11 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   hand (`struct Normalize { t: Term }`, `impl Job<Term>`, `compute until idle: 3 ticks,
   1 to 3`); `sem-ch07-walk`, a recursion that is not a tail call, one frame per pending
   `+` (`5 ticks, 1 to 5`); and the back end's own tests, one per construct prismc's
-  self-compile needed: `tests/backend/let-fn-pair`, `sem-ch07-unbounded-value`, `sem-ch07-unbounded-lambda`,
-  `sem-ch04-row-local`, `ts-ch05-template-attrs`, `sem-ch10-error-try`, `ts-ch02-nat-literal`, `tests/backend/inference`,
-  `sem-ch07-unbounded-prelude`, `tests/backend/local-names`, `tests/backend/tuple-show` (`prism_rtl` shows and pods
+  self-compile needed: `ts-ch05-let-fn-pair`, `sem-ch07-unbounded-value`, `sem-ch07-unbounded-lambda`,
+  `sem-ch04-row-local`, `ts-ch05-template-attrs`, `sem-ch10-error-try`, `ts-ch02-nat-literal`, `ts-ch05-inference`,
+  `sem-ch07-unbounded-prelude`, `ts-ch01-local-names`, `ts-ch03-tuple-show` (`prism_rtl` shows and pods
   tuples up to six), `ts-ch02-function-values`, `ts-ch05-let-generic` (pick LG), `sem-ch07-lambda-patterns` (a job lambda takes its
-  parameters apart by pattern), `ts-ch04-fold-tuples`, `ts-ch05-template-body`, `tests/backend/closure-names`,
+  parameters apart by pattern), `ts-ch04-fold-tuples`, `ts-ch05-template-body`, `ts-ch02-closure-names`,
   `sem-ch05-update-loops` (a `for` and a guarded `match` as statements of an `update`),
   `sem-ch07-pipe-record` (a `Start`'s function parameters are `Start`s, whatever color a
   `let`-bound lambda's own type gives them), `sem-ch07-while-guard` (a shrinking `while` is
@@ -981,8 +981,8 @@ Each is Claude's, for Jimmy to overturn.
   `reduce`. Sigils go; when two values of a module share a base (`?ParseNat`,
   `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`); so do
   locals (`?half` is `half_opt` beside `half`; a capitalised local, a function value, is
-  `k_fn` beside a plain `k`, `tests/backend/closure-names`), and a local named as a function of its
-  module or the prelude takes a `_` (`kind_` beside `Kind`'s `kind`, `tests/backend/local-names`); a
+  `k_fn` beside a plain `k`, `ts-ch02-closure-names`), and a local named as a function of its
+  module or the prelude takes a `_` (`kind_` beside `Kind`'s `kind`, `ts-ch01-local-names`); a
   top-level `let` that shares its base with a function takes `_value` (`let hexDigits`
   is `hex_digits_value()` beside `HexDigits`'s `hex_digits`). A Rust keyword or a name
   the emitted code uses (`cx`, `node`, `path`, `v`) takes a `_`. `Job` and `Turn`, which
@@ -1010,7 +1010,7 @@ Each is Claude's, for Jimmy to overturn.
   it holds, through the declarations it names, is a function or a layer. A closure given
   to a prelude function has its parameter types written (`|found: &Option<Nat>, x:
   &Nat|`), as does an `update`'s mutable local, and a job's type parameters are
-  `'static` (`tests/backend/inference`). A pattern through an `Rc` payload cannot be a Rust
+  `'static` (`ts-ch05-inference`). A pattern through an `Rc` payload cannot be a Rust
   pattern, so such a `match` is an if-let chain in a labelled block (`'c: { if let .. &&
   let .. = &**f { break 'c ..; } .. }`).
 - **GV `given:`.** A labelled block: a bind is `let Some(p) = e else { break 'g None }`,
