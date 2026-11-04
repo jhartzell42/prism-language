@@ -310,7 +310,7 @@ public:
         std::vector<Subscriber<T>> subs;
         for (const auto& s : subs_)
             if (s) subs.push_back(s);
-        for (const auto& f : subs) PRISM_TRY((*f)(v, cx));
+        for (const auto& f : subs) TRY((*f)(v, cx));
         return {};
     }
     /// What it fired this tick: a subscriber arriving at a height after the firing

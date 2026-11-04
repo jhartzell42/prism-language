@@ -216,13 +216,13 @@ struct Forward : Node {
 
     Done answer(std::span<const Segment> rest, const Pod& v, Cx& cx) override {
         if (rest.size() == 1 && rest[0].is_pos(0)) {
-            PRISM_TRY_LET(a, A::decode(element, v));
+            auto a = TRY(A::decode(element, v));
             return sink(a, cx);
         }
         return unexpected(Fault::answer("no place at " + path_of(rest).to_string() + " under a forwarded element"));
     }
     Done push(const Pod&, const Pod& v, Cx& cx) override {
-        PRISM_TRY_LET(a, A::decode(element, v));
+        auto a = TRY(A::decode(element, v));
         return sink(a, cx);
     }
     Done leave(Cx& cx) override {
@@ -252,11 +252,11 @@ Blueprint<E, A> element_blueprint(const Live<E>& e) {
         std::optional<A> first;
         if (scope.is_world()) {
             if (auto v = cx.first_value(element)) {
-                PRISM_TRY_LET(a, A::decode(e.identity, *v));
+                auto a = TRY(A::decode(e.identity, *v));
                 first = std::move(a);
             }
         } else {
-            PRISM_TRY_LET(f, scope.hosted->first_value(at, e.identity, cx));
+            auto f = TRY(scope.hosted->first_value(at, e.identity, cx));
             first = std::move(f);
         }
         auto node = std::make_shared<detail::Forward<E, A>>(at, e.identity, e.level, std::move(sink));
@@ -341,7 +341,7 @@ public:
         };
         Live<E> element = node->element(std::move(value));
         Blueprint<E, A> blueprint = host->supplier()(node->key_, element);
-        PRISM_TRY_LET(supplied, blueprint(node->path_, node->sink_, host->scope(), cx));
+        auto supplied = TRY(blueprint(node->path_, node->sink_, host->scope(), cx));
         node->supplied_ = std::move(supplied);
         return node;
     }
@@ -484,7 +484,7 @@ public:
     /// kept where the builder finds it. The one early construction.
     Result<std::optional<A>> first_value(const Path& place, const E& element, Cx& cx) override {
         std::shared_ptr<HostOf<E, A>> me = this->shared_from_this();
-        PRISM_TRY_LET(row, (HostRow<E, A>::make(at_.child(Segment::key(to_pod(place))), place, element, me, cx)));
+        auto row = TRY((HostRow<E, A>::make(at_.child(Segment::key(to_pod(place))), place, element, me, cx)));
         std::optional<A> first = row->first();
         rows_->insert(place, row);
         return first;

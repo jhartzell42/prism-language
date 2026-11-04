@@ -3,7 +3,7 @@
 // `std::expected` this library writes itself (clang 18 over libstdc++ 13 has none).
 //
 // A node method returns `Done`, a `Result<void>`: a `Fault` escaping it fails the tick,
-// which then never happened (Semantics ch. 9, ch. 10). `PRISM_TRY` is Rust's `?`.
+// which then never happened (Semantics ch. 9, ch. 10). `TRY` is Rust's `?`.
 
 #pragma once
 
@@ -131,17 +131,22 @@ using Result = Expected<T, Fault>;
 /// What a node method returns: a fault escaping it fails the tick.
 using Done = Result<void>;
 
-/// Rust's `?` on a `Done` or any `Expected`: return its failure, keep going otherwise.
-#define PRISM_TRY(expr)                                                     \
-    do {                                                                    \
-        auto&& prism_try_ = (expr);                                         \
-        if (!prism_try_.has_value()) return ::prism_rtl::unexpected(prism_try_.error()); \
-    } while (0)
+/// A named value's copy, a temporary: what `TRY` takes where its operand must be left as
+/// it was (the emitter writes it where the model says the operand is named).
+template <class T>
+std::decay_t<T> copy_of(const T& x) {
+    return x;
+}
 
-/// `let name = expr?;`
-#define PRISM_TRY_LET(name, expr)                                                    \
-    auto name##_prism_try_ = (expr);                                                 \
-    if (!name##_prism_try_.has_value()) return ::prism_rtl::unexpected(name##_prism_try_.error()); \
-    auto name = std::move(name##_prism_try_).value()
+/// Rust's `?` on a `Done` or any `Expected`, as an expression: the function returns the
+/// failure, or the expression is the value. The operand is moved from: give it a
+/// temporary (`copy_of(x)` for a named value). A GNU statement expression, which g++ and
+/// clang++ both take.
+#define TRY(...)                                                                         \
+    ({                                                                                   \
+        auto&& prism_try_ = (__VA_ARGS__);                                               \
+        if (!prism_try_.has_value()) return ::prism_rtl::unexpected(prism_try_.error()); \
+        std::move(prism_try_).value();                                                   \
+    })
 
 }  // namespace prism_rtl

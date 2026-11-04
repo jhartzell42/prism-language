@@ -361,11 +361,11 @@ struct OwnerProgram : Program {
         // The host's `for` over `$doc`, as the emitted builder makes its rows.
         for (const auto& [key, elem] : owner->doc(cx)) {
             std::shared_ptr<HostOf<Elem, Answer>> h = owner->host;
-            PRISM_TRY_LET(row, (HostRow<Elem, Answer>::make(Path::root().at(5).child(Segment::key(to_pod(key))), key, elem, h, cx)));
+            auto row = TRY((HostRow<Elem, Answer>::make(Path::root().at(5).child(Segment::key(to_pod(key))), key, elem, h, cx)));
             owner->rows->insert(key, row);
         }
         p->root = owner;
-        PRISM_TRY_LET(out, p->rt.close(std::move(cx)));
+        auto out = TRY(p->rt.close(std::move(cx)));
         return std::pair{std::move(p), std::move(out)};
     }
     Result<TickOut> tick(const TickIn& input, const ReadyState& ready) override { return rt.tick(root, input, ready); }

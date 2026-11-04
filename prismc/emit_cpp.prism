@@ -361,7 +361,7 @@ fn CppExpr cp, x = match x:
         StmtExpr st, (Unvexed (CppExpr cp2, e))
     XLabeled label, dos, e, t: CppLabeled cp, label, dos, e, t
     XClosure mv, ps, body: CppClosure cp, mv, ps, body
-    XTry y: "TRY({CppExpr cp, y})"
+    XTry y, temporary: if temporary: "TRY({CppExpr cp, y})" else: "TRY(prism_rtl::copy_of({CppExpr cp, y}))"
     XField r, f: CppField cp, r, f
     XPart r, k: "std::get<{k}>({CppExpr cp, r})"
     XDecode t, y: "TRY(prism_rtl::from_pod<{CppType cp, t}>({CppExpr cp, y}))"
@@ -907,15 +907,35 @@ fn TernaryArm cp0, subject, a:
     let cp = Unbind cp0, (ArmNames a)
     let tests = PatConds cp, a.pat, subject
     let binds = PatBinds cp, a.pat, subject
-    let lets = Concat2 (Each a.conds, \|c| CondBinds cp, c)
+    let n = Len a.conds
+    let lets = Concat2 (Each (Range0 n), \|i| CondBinds cp, (Or a.conds[i], (CcIf XUnit)), (Or (n -? i), 0))
     let value = if (Len binds) + (Len lets) == 0: CppExpr cp, a.body else: StmtExpr (Join (Append binds, lets), "\n"), (CppExpr cp, a.body)
     let guard = if (Len a.conds) == 0: [[]] else: [[(StmtExpr (Join binds, "\n"), (GuardTest cp, a.conds))]]
     let all = Append tests, guard
     if (Len all) == 0: value else: "{Conds all} ? {value}"
 
-CondBinds: unbounded fn Cp, Cc -> [Text]
-fn CondBinds cp, (CcLet p, x) = PatBinds cp, p, (CppTight cp, x)
-fn CondBinds cp, (CcIf x) = [[]]
+CondBinds: unbounded fn Cp, Cc, Nat -> [Text]
+fn CondBinds cp, (CcLet p, x), k:
+    let ((v, pre)) = CondSubject cp, x, k
+    Append pre, (PatBinds cp, p, v)
+fn CondBinds cp, (CcIf x), k = [[]]
+
+# The value a condition's `let` matches: a place as it is; any other value in a local
+# (`_c2`), so that what the pattern binds by reference into it lives as long as the
+# bindings do. `k` counts the conditions left, which tells the locals of one arm apart.
+CondSubject: unbounded fn Cp, Ex, Nat -> ((Text, [Text]))
+fn CondSubject cp, x, k = if IsPlaceEx x: (((CppTight cp, x), [[]])) else: (("_c{k}", [["auto&& _c{k} = {CppExpr cp, x};"]]))
+
+IsPlaceEx: fn Ex -> Bool
+fn IsPlaceEx x = match x:
+    XVar ignore: True
+    XField y, ignore: IsPlaceEx y
+    XPart y, ignore: IsPlaceEx y
+    XTarget ignore: True
+    XSelf: True
+    XRef y: IsPlaceEx y
+    XDeref y: IsPlaceEx y
+    otherwise: False
 
 # The conditions after a pattern as one test, each `let` binding before the next.
 GuardTest: unbounded fn Cp, [Cc] -> Text
@@ -926,9 +946,10 @@ fn GuardTest cp, cs:
     match first:
         CcIf x: if (Len cs) == 1: CppTight cp, x else: "{CppTight cp, x} && {rest}"
         CcLet p, x:
-            let v = CppTight cp, x
+            let ((v, pre)) = CondSubject cp, x, (Len cs)
             let tests = Conds (PatConds cp, p, v)
-            if (Len cs) == 1: tests else: "{tests} && {StmtExpr (Join (PatBinds cp, p, v), "\n"), rest}"
+            let whole = if (Len cs) == 1: tests else: "{tests} && {StmtExpr (Join (PatBinds cp, p, v), "\n"), rest}"
+            if (Len pre) == 0: whole else: StmtExpr (Join pre, "\n"), whole
 
 # One arm: its tests, its bindings, its value set and the match left.
 MatchArm: unbounded fn Cp, Text, XArm -> Text
@@ -950,8 +971,9 @@ fn GuardedArm cp, cs, body:
     match first:
         CcIf x: IfBlock (CppExpr cp, x), rest
         CcLet p, x:
-            let v = CppTight cp, x
-            IfBlock (Conds (PatConds cp, p, v)), (Join (Append (PatBinds cp, p, v), [[rest]]), "\n")
+            let ((v, pre)) = CondSubject cp, x, (Len cs)
+            let inner = IfBlock (Conds (PatConds cp, p, v)), (Join (Append (PatBinds cp, p, v), [[rest]]), "\n")
+            if (Len pre) == 0: inner else: Braced (Join (Push pre, inner), "\n")
 
 # A labelled block with its value: a `break` sets the value and jumps to the end.
 CppLabeled: unbounded fn Cp, Text, [Do], Ex, OutTy -> Text

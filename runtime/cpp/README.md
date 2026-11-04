@@ -34,7 +34,7 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 | `Result<T, Fault>` | `Result<T>` = `Expected<T, Fault>` (result.hpp: clang 18 over libstdc++ 13 has no `std::expected`) |
 | `Result<(), Fault>` (`Done`) | `Done` = `Expected<void, Fault>`; `return {};` is `Ok(())` |
 | `Err(f)` | `return unexpected(f);` |
-| `?` | `PRISM_TRY(expr);` and `PRISM_TRY_LET(name, expr);` |
+| `?` | `TRY(expr)`, an expression (a GNU statement expression, which g++ and clang++ take); its operand is moved from, so a named one is passed as `copy_of(x)` |
 | `panic!` (a bug of the compiler) | `panic(msg)` throws `Panic` |
 | `Box<dyn FnOnce(&mut Cx) -> Done>` (`Later`) | `std::function<Done(Cx&)>` |
 | `Rc<dyn Fn(..)>` (subscribers, reads) | `std::shared_ptr<const std::function<..>>` |
@@ -49,8 +49,8 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 | `num::Int`, `num::Nat` | `Int`, `Nat`: `div` → `std::optional`, `modulo`, `checked_sub`, `from_int`, `as_int`, `to_i64`, `+ - *`, `<=>`; `Int::parse` for literals | num.hpp |
 | `num_bigint::BigInt` | `BigInt` (this library's own: 32-bit limbs, Knuth D) | num.hpp |
 | `collections::Text` | `Text` (characters as `char32_t`; `len`, `take`, `drop_front`, `concat`, `char_at`, `chars`, `to_string` in UTF-8) | collections.hpp |
-| `collections::Map<K, V>` (`im_rc::OrdMap`) | `Map<K, V>`: `get` → pointer, `contains`, `insert`/`remove` (in place), `inserted`/`removed` (new value), `unit`, ordered iteration | collections.hpp |
-| `collections::Array<T>` (`im_rc::Vector`) | `Array<T>`: `get`, `[]`, `push_back`/`set` (in place), `pushed`/`updated`, `concat`, `take`, `drop_front` | collections.hpp |
+| `collections::Map<K, V>` (`im_rc::OrdMap`) | `Map<K, V>` (a persistent AVL tree): `get` → pointer, `mut_get` (the path copied), `contains`, `insert`/`remove` (this value), `inserted`/`removed` (new value), `unit`, ordered iteration | collections.hpp |
+| `collections::Array<T>` (`im_rc::Vector`) | `Array<T>` (a view of a shared buffer of chunks): `get`, `[]`, `mut_at`, `push_back`/`set` (this value), `pushed`/`updated`, `concat`, `take`, `drop_front` | collections.hpp |
 | `pod::Pod` | `Pod`: factories `unit`, `boolean`, `integer`, `int64` (Rust's `Pod::int`), `floating`, `character`, `text`, `duration`, `record`, `choice`, `name`, `element`, `tuple`, `array`, `map`, `nil`, `some`, `ok`, `failed`, `path`, `shown`; `kind()` and `if_<kind>()` accessors; `structure`, `field`, `tag`, `as_text`, `as_f64`, `elements`, `to_string` | pod.hpp |
 | `pod::F64`, `pod::ShownText` | `F64` (total order); a `Shown`'s text is `Pod::Shown::text` | pod.hpp |
 | `pod::Segment`, `pod::Path` | `Segment` (`pos`, `gen`, `key`, `kind`, `number`, `key_value`, `is_pos`), `Path` (`root`, `child`, `at`, `join`, `segments` → `std::span`, `len`, `to_string`); `path_of(span)` is Rust's `Path(at.to_vec())` | pod.hpp |
@@ -96,9 +96,7 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
   `prism_rtl/lang.hpp`: the value slot of a `match`, `TRY`, the pattern helpers, `rc`,
   `share`, `upgrade`, `Fn`, `str`/`cat`, `deref`, `host_new`, and the constructors whose
   type the context gives. For it the library also has `Turn::Value`, `Port::Value` and
-  `Job::Value`, and `Array::items_mut`/`Map::items_mut` (an `&` block's update in place);
-  an `Array<bool>` stores `BoolCell`s, so its elements have addresses as every other
-  array's do.
+  `Job::Value`, and `Array::mut_at`/`Map::mut_get` (an `&` block's update in place).
 - **The Test World prints byte for byte what the Rust one prints.** The hand-written
   counter, half counter and `@Normal` (Rust's `tests/counter.rs` and
   `tests/normalize.rs`, in C++) verify against `tests/conformance/*.expected`.
@@ -112,7 +110,10 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
     each read back to the same bits;
   - a forwarding host;
   - a host torn down with its rows, which frees everything.
-- **All 38 tests pass** under g++ and clang++. They also pass under AddressSanitizer,
+  - persistence: a map's and an array's update never reaches a value sharing them;
+  - `lang.hpp`: `TRY` on a named value leaves it as it was, a `Slot` of an option holds
+    `nil` as a value.
+- **All 42 tests pass** under g++ and clang++. They also pass under AddressSanitizer,
   LeakSanitizer and UBSan with g++, and LSan reports no leaks. That includes the zombie
   loop, which the collector frees, and the host teardown. Clang's sanitizer runtime
   (`libclang-rt-18-dev`) is not installed on this machine; `make test` runs clang under
@@ -125,12 +126,14 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
   back-pointer is a `weak_ptr`: the host outlives its rows, and a row that outlives its
   host panics as a bug. The test `a_host_torn_down_with_its_rows_frees_everything` holds
   it. *Ruling (the coordinator's):* weak, and Rust gets the same fix.
-- **CW: copy-on-write collections.** Rust's `Text` is a rope and its `Map` and `Array`
-  are persistent trees, which keeps Appendix B's logarithmic `Take`, `Drop` and updates
-  under sharing. Here a copy is a pointer copy, and an update of a shared value copies
-  the contents, which is linear. An update of a unique value works in place, which is
-  what `&` blocks need. *First ruling (Claude's):* copy on write until a program shows
-  the cost. *If otherwise:* a rope and HAMT/RRB structures behind the same interfaces.
+- **CW: persistent collections.** A `Map` is a persistent AVL tree (an update copies
+  the path to its key); an `Array` is a view of a shared buffer of fixed-size chunks
+  (`take` and `drop_front` are constant, so is a `push_back` onto the view that ends where
+  its buffer does, and an element's address never moves). Copy on write, as this library
+  first had it, made prismc compiled to C++ quadratic in its own lexer and checker: the
+  program showed the cost. `Text` still copies on `take`, `drop_front` and
+  concatenation, where Rust's is a rope. *Ruling (Claude's):* these two structures;
+  a rope for `Text` when a program shows its cost.
 - **FT: Float ties.** On an exact tie between two shortest spellings, `std::to_chars`
   rounds to even and Rust rounds up. `float_digits` checks the exact expansion and
   rounds up. 300,000 random floats, ties included, agreed with Rust byte for byte; the

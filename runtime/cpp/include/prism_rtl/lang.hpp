@@ -1,7 +1,7 @@
 // What the emitted C++ uses besides the library's types (prismc/README.md, "The C++
 // target"): the spellings of the model's operations that C++ has no syntax for. A Rust
 // `match` or labelled block is a GNU statement expression whose value is a `Slot`; a
-// pattern tests with `is<C>` and takes a payload with `as<C>`; `?` is `TRY`; a shared
+// pattern tests with `is<C>` and takes a payload with `as<C>`; `?` is `TRY` (result.hpp); a shared
 // function value is `Fn`; the model's names for the Rust runtime's constructors and
 // methods (`Rc::new`, `Rc::downgrade`, `upgrade`, `Port::new`) are the functions below.
 //
@@ -38,15 +38,6 @@ public:
 private:
     std::optional<T> v_;
 };
-
-/// `?`: the value of a `Result`, or the function returns its failure. The result is a
-/// copy (a value is cheap to copy), so a named one is left as it was.
-#define TRY(...)                                                                         \
-    ({                                                                                   \
-        auto prism_q_ = (__VA_ARGS__);                                                   \
-        if (!prism_q_.has_value()) return ::prism_rtl::unexpected(prism_q_.error());    \
-        std::move(prism_q_).value();                                                     \
-    })
 
 /// `unreachable!()`, as an expression of any type.
 [[noreturn]] inline void unreachable(const char* what = "entered unreachable code") { panic(what); }

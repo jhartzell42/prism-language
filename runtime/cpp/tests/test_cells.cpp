@@ -28,7 +28,7 @@ struct Probe : Node {
     }
 
     Done answer(std::span<const Segment>, const Pod& v, Cx& cx) override {
-        PRISM_TRY_LET(n, from_pod<Int>(v));
+        auto n = TRY(from_pod<Int>(v));
         hold->set(n, cx);
         cache.mark(cx);
         cx.wake(3, me());
@@ -328,7 +328,7 @@ struct ExitsProgram : Program {
         cx.added(Path::root().at(0), Pod::element("Process.Exit", {}));
         p->root = std::make_shared<Exits>();
         cx.on_started(p->root);
-        PRISM_TRY_LET(out, p->rt.close(std::move(cx)));
+        auto out = TRY(p->rt.close(std::move(cx)));
         return std::pair{std::move(p), std::move(out)};
     }
     Result<TickOut> tick(const TickIn& input, const ReadyState& ready) override { return rt.tick(root, input, ready); }

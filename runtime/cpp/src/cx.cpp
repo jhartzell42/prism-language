@@ -26,7 +26,7 @@ static Done walk(Gathered& g, List Gathered::* pick, Done (Node::*f)(Cx&), Cx& c
     while (i < (g.*pick).nodes.size()) {
         NodeRef n = (g.*pick).nodes[i];
         (g.*pick).walked = i + 1;
-        PRISM_TRY(((*n).*f)(cx));
+        TRY(((*n).*f)(cx));
         ++i;
     }
     return {};
@@ -57,16 +57,16 @@ Result<TickOut> Runtime::tick(const NodeRef& root, const TickIn& input, const Re
     for (auto& n : std::exchange(cleanups_, {})) n->clean_up();
     Tick n = tick_ + 1;
     Cx cx(n, n, Cx::Phase::Propagating, ready, input.pushes);
-    for (auto& node : std::exchange(started_, {})) PRISM_TRY(node->started(cx));
-    for (auto& node : std::exchange(armed_, {})) PRISM_TRY(node->deferred(cx));
-    for (auto& deliver : std::exchange(later_, {})) PRISM_TRY(deliver(cx));
-    for (const auto& [path, v] : input.answers) PRISM_TRY(root->answer(path.segments(), v, cx));
+    for (auto& node : std::exchange(started_, {})) TRY(node->started(cx));
+    for (auto& node : std::exchange(armed_, {})) TRY(node->deferred(cx));
+    for (auto& deliver : std::exchange(later_, {})) TRY(deliver(cx));
+    for (const auto& [path, v] : input.answers) TRY(root->answer(path.segments(), v, cx));
     for (const auto& [element, v] : input.pushes) {
         std::vector<NodeRef> live;
         if (auto it = listeners_.find(element); it != listeners_.end())
             for (const auto& w : it->second)
                 if (auto node = w.lock()) live.push_back(std::move(node));
-        for (auto& node : live) PRISM_TRY(node->push(element, v, cx));
+        for (auto& node : live) TRY(node->push(element, v, cx));
     }
     return close(std::move(cx));
 }
@@ -77,7 +77,7 @@ Result<TickOut> Runtime::close(Cx&& cx) {
         cx.height_ = std::uint32_t(h);
         for (std::size_t i = 0; i < cx.g_.heights[h].nodes.size(); ++i) {
             NodeRef node = cx.g_.heights[h].nodes[i];
-            PRISM_TRY(node->wake(cx));
+            TRY(node->wake(cx));
         }
     }
     cx.height_.reset();
@@ -86,10 +86,10 @@ Result<TickOut> Runtime::close(Cx&& cx) {
     // A walk can list nodes for an earlier one (a builder's new row is patched; a row
     // built in the patch pass is built): the walks run again until nothing new is listed.
     for (;;) {
-        PRISM_TRY(detail::walk(cx.g_, &Gathered::builds, &Node::build, cx));
-        PRISM_TRY(detail::walk(cx.g_, &Gathered::swaps, &Node::swap, cx));
-        PRISM_TRY(detail::walk(cx.g_, &Gathered::leaves, &Node::leave, cx));
-        PRISM_TRY(detail::walk(cx.g_, &Gathered::patches, &Node::patch, cx));
+        TRY(detail::walk(cx.g_, &Gathered::builds, &Node::build, cx));
+        TRY(detail::walk(cx.g_, &Gathered::swaps, &Node::swap, cx));
+        TRY(detail::walk(cx.g_, &Gathered::leaves, &Node::leave, cx));
+        TRY(detail::walk(cx.g_, &Gathered::patches, &Node::patch, cx));
         const Gathered& g = cx.g_;
         auto done = [](const detail::List& l) { return l.walked >= l.nodes.size(); };
         if (done(g.builds) && done(g.swaps) && done(g.leaves) && done(g.patches)) break;

@@ -991,9 +991,10 @@ Test World; `tests/compiled/run.sh --target cpp` runs every program so.
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
-- **The C++ bootstrap:** prismc itself compiles to C++ (about 157,000 lines) and
-  `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`) takes it to its fixed point and
-  checks its Rust against the Rust prismc's (bootstrap/README.md).
+- **The C++ bootstrap:** prismc itself compiles to C++ (about 157,000 lines in 37 files)
+  and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`) takes it to its fixed point
+  and checks its Rust against the Rust prismc's (bootstrap/README.md). g++ -O1 builds it
+  in about 14 minutes on two cores, one file at a time.
 
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 
@@ -1008,6 +1009,11 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   `goto _done`; a labelled block's `break` sets its slot and jumps to its label. What it
   buys: `return`, `TRY` and `break` inside an arm mean what they mean in Rust. The cost:
   a GNU extension, which g++ and clang++ both have.
+- **TR: `?` is `TRY(x)`**, a GNU statement expression (g++ and clang++ only, as every
+  block is): the function returns the failure, else the expression is the value, moved
+  out of the operand. The model says whether the operand is a temporary (`XTry`'s flag,
+  which the Rust printer ignores: Rust's `?` moves either); a named one is passed as
+  `copy_of(x)`, so it is left as it was. The runtime's own uses are the same macro.
 - **TT: a job's turn as a conditional.** Lowering gives no type for a `match` in a job's
   tail (`OutUnknown "the job's turn"`); such a `match` is a chain of `?:`, whose type C++
   works out from the arms (`finished(..)` converts to any `Turn<B>`); a guard binds the
@@ -1030,6 +1036,18 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   constructors (`Hold::new` is `{init, cx}`, `Port::new` inside `Rc::new` `make_new()`).
 - **NC: a node's constructor takes its fields in declared order**, the initializers the
   model orders by moves being copies in C++.
+- **SF: a module's definitions in files of about 250,000 characters** (`lower.cpp`,
+  `lower_2.cpp`, ...): one file of `lower.prism`'s needs more than 7 GB to compile.
+- **BS: a 4 GB stack.** `main` runs on a thread with a 4 GB stack (committed as used), as
+  the Rust program runs on a 1 GB one: unbounded code runs direct-style within a cycle,
+  and a C++ frame of the emitted code is larger than Rust's.
+- **PB: a pattern binds by reference into its value**, which therefore lives as long as
+  the bindings: the scrutinee is a local (`_m`), and a guard's `let` over a value that
+  is no place binds it to a local (`_c1`) first (`ts-ch06-array-in-case`, under ASan).
+- **PC: persistent collections.** The C++ runtime's `Map` is a persistent AVL tree and its
+  `Array` a view of a shared buffer of chunks (runtime/cpp/include/prism_rtl/collections.hpp),
+  so a fold that inserts into a map or pushes onto an array is as cheap as Rust's
+  `im_rc`; with copy-on-write ones prismc's own lexer was quadratic.
 
 Gaps:
 

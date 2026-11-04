@@ -149,7 +149,9 @@ type Ex = choice:
     XBlock [Do], Ex
     XLabeled Text, [Do], Ex, OutTy
     XClosure Bool, [Pa], Ex
-    XTry Ex
+    # `?`: the failure passed on, else the value; whether the operand is a temporary,
+    # which a target that copies a named one moves (C++'s `TRY`; Rust's `?` moves either).
+    XTry Ex, Bool
     XField Ex, Text
     # A tuple's part by its position.
     XPart Ex, Nat
@@ -1154,6 +1156,21 @@ fn ShownPart v = match ValueTy v:
 # written for reading.
 Refusal: fn Text -> Ex
 fn Refusal what = XRefusal what
+
+# `?` of a value: a temporary unless the value is a place (a local, a field, a part of
+# one), whose value a target that moves from the operand must copy first.
+TryOf: fn Ex -> Ex
+fn TryOf x = XTry x, (not (IsNamedPlace x))
+
+IsNamedPlace: fn Ex -> Bool
+fn IsNamedPlace x = match x:
+    XVar ignore: True
+    XField ignore, ignore: True
+    XPart ignore, ignore: True
+    XTarget ignore: True
+    XRef y: IsNamedPlace y
+    XDeref y: IsNamedPlace y
+    otherwise: False
 
 let loweringRefusal = "prismc does not lower "
 
@@ -4386,11 +4403,11 @@ fn FirstValueLet wx, pos, tg, level:
     let missing = XCall "Fault::answer", [[(XStr "no first value for {tg.name}")]]
     if Emits wx, pos:
         let asked = XMethod (XCx), "first_value", [[(XRef (XMethod level, "to_pod", [[]]))]]
-        DoLet (PaBind "first_{PlaceText pos}"), (XTry (XMethod asked, "ok_or", [[missing]]))
+        DoLet (PaBind "first_{PlaceText pos}"), (TryOf (XMethod asked, "ok_or", [[missing]]))
     else:
         let host = HostLocal wx, pos
-        let asked = XTry (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, "", pos)), (XRef level), XCx]])
-        DoLet (PaBind "first_{PlaceText pos}"), (XTry (XMethod (XTry (XMethod asked, "ok_or", [[missing]])), (AnswerAccessor tg), [[]]))
+        let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, "", pos)), (XRef level), XCx]])
+        DoLet (PaBind "first_{PlaceText pos}"), (TryOf (XMethod (TryOf (XMethod asked, "ok_or", [[missing]])), (AnswerAccessor tg), [[]]))
 
 # The host whose document a position's place is an entry of, as the build spells it (a
 # local before the node exists): the host of its scope, or for a node's own places in a
@@ -5415,10 +5432,10 @@ fn BuildSteps sk, atBuild:
     let Builder = \|b|
         let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
         let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
-        Append (Push before, (DoExpr (XTry (XMethod recv, "{b.name}_build", [[XCx]])))), after
+        Append (Push before, (DoExpr (TryOf (XMethod recv, "{b.name}_build", [[XCx]])))), after
     # a `rebuild` handing back a dynamic: its snapshot taken after the generation is built
     let Gen = \|gd|
-        let built = if atBuild: DoExpr (XTry (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (XTry (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
+        let built = if atBuild: DoExpr (TryOf (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (TryOf (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
         Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
     Fold (Range0 ((Len wx.scopes) + 1)), [[]], \|acc, i|
         let k = Or ((Len wx.scopes) -? i), 0
@@ -5670,23 +5687,23 @@ fn AnswerArm wx, pos, id, t:
 # A host's typed answer to a place of its child (pick HO): the input method called with the
 # tag's variant of `crate::Answer` taken apart (a variant of another tag is a fault).
 TypedAnswerArm: fn Wx, Pos, Nat, Text -> ((Pa, [Do]))
-fn TypedAnswerArm wx, pos, id, acc = (((PosPat pos, [[]]), [[(SelfCall (GnOf wx, id).name, [[(XTry (XMethod (XVar "v"), acc, [[]]))]])]]))
+fn TypedAnswerArm wx, pos, id, acc = (((PosPat pos, [[]]), [[(SelfCall (GnOf wx, id).name, [[(TryOf (XMethod (XVar "v"), acc, [[]]))]])]]))
 
 TypedDynArm: fn Sinks, Pos, Text, Text -> ((Pa, [Do]))
-fn TypedDynArm sk, pos, f, acc = (((PosPat pos, [[]]), (DynPlaceWrite sk, f, (XTry (XMethod (XVar "v"), acc, [[]])))))
+fn TypedDynArm sk, pos, f, acc = (((PosPat pos, [[]]), (DynPlaceWrite sk, f, (TryOf (XMethod (XVar "v"), acc, [[]])))))
 
 # A host's typed answer under a `for`'s or a `rebuild`'s place of its child: to the row its
 # key names, or the current generation, which delivers it on (prelude `Row::deliver`).
 TypedForwardArm: fn ForDef, Ex -> ((Pa, [Do]))
 fn TypedForwardArm b, segs:
     let rowOf = XMethod (XMethod (XMethod (XField XSelf, "{b.name}"), "borrow", [[]]), "get", [[(XRef (XDecode b.keyTy, (XVar "k")))]]), "cloned", [[]]
-    (((PosPat b.pos, keyTail), [[(DoLet (PaBind "row"), rowOf), (DoMatch (XVar "row"), [[(((PaCtor "Some", [[PaBind "row"]]), [[DoExpr (XTry (XMethod (XVar "row"), "deliver", [[(XVar "rest"), (XVar "v"), XCx]]))]])), ((PaUnit "None", [[DoReturn (XCtor "Err", [[(XCall "Fault::answer", [[(XFormatStr [[(XText "no row "), (XVar "k"), (XText " under the hosted place "), (XCtor "Path", [[(XMethod segs, "to_vec", [[]])]])]])]])]])]]))]])]]))
+    (((PosPat b.pos, keyTail), [[(DoLet (PaBind "row"), rowOf), (DoMatch (XVar "row"), [[(((PaCtor "Some", [[PaBind "row"]]), [[DoExpr (TryOf (XMethod (XVar "row"), "deliver", [[(XVar "rest"), (XVar "v"), XCx]]))]])), ((PaUnit "None", [[DoReturn (XCtor "Err", [[(XCall "Fault::answer", [[(XFormatStr [[(XText "no row "), (XVar "k"), (XText " under the hosted place "), (XCtor "Path", [[(XMethod segs, "to_vec", [[]])]])]])]])]])]]))]])]]))
 
 TypedGenArm: fn GenDef -> ((Pa, [Do]))
 fn TypedGenArm gd:
     let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
     let isCurrent = XBin "==", (XBin "+", (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
-    (((PosPat gd.pos, genTail), [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (XTry (XMethod (XVar "row"), "deliver", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]]))
+    (((PosPat gd.pos, genTail), [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "deliver", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]]))
 
 # The typed dispatch from a child place's path into the child's places (pick HO): the owner's
 # `host_k_answer` for the places of scope `k`, and a hosted node's `deliver` for its own
@@ -5793,7 +5810,7 @@ fn WakeByHeight combs, heights = DoMatch (XMethod (XField XSelf, "wakes"), "next
 ForwardAnswer: fn ForDef -> Ex
 fn ForwardAnswer b:
     let rowOf = XMethod (XMethod (XMethod (XField XSelf, "{b.name}"), "borrow", [[]]), "get", [[(XRef (XDecode b.keyTy, (XVar "k")))]]), "cloned", [[]]
-    XBlock [[(DoLet (PaBind "row"), rowOf), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
+    XBlock [[(DoLet (PaBind "row"), rowOf), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
 
 IsHold: fn OutTy -> Bool
 fn IsHold (OutHold ignore) = True
@@ -6569,7 +6586,7 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
             let live = "{result}_live"
             let what = "the dynamic of the `rebuild` at place {PlaceText pos}"
             let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
-            let built = XTry (XCall "{whole.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
+            let built = TryOf (XCall "{whole.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
             let kept = DoAssign (XDeref (XMethod (XField XSelf, live), "borrow_mut", [[]])), (XCtor "Some", [[(XMethod (XVar "row"), "result_dynamic", [[]])]])
             let marked = DoExpr (XMethod (XField XSelf, "{result}_snap"), "mark", [[XCx]])
             let select = XBlock [[(DoLet (PaBind "row"), built), kept, marked]], (XVar "row")
@@ -6787,13 +6804,13 @@ fn GenSelect wx, menv, body, cases, pos:
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
     match ?ClauseCall wx.lx, body:
         nil: match cases[0]:
-            ? c: XTry (XCall "{c.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
+            ? c: TryOf (XCall "{c.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
             nil: Refusal "a `rebuild` with no generation"
         ? ((qk, args)):
             let env = Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit)
             let scrut = XTuple (Each args, \|a| Argument wx.lx, env, a.value)
             let arms = Each cases, \|c|
-                let made = XTry (XCall "{c.node.name}::build", (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
+                let made = TryOf (XCall "{c.node.name}::build", (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
                 XArm(pat=c.pat, conds=c.conds, body=(XCast made, (OutObj (OutNamed "Row", [[]]))))
             Own (ArmsValue scrut, arms, "'select", (OutObj (OutNamed "Row", [[]])))
 
@@ -6807,7 +6824,7 @@ GenForwards: fn GenDef -> [((Pa, Ex))]
 fn GenForwards gd:
     if gd.transparent: Each (Range0 gd.width), \|i|
         let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
-        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[(XVar "at"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
+        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "at"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
         (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), [[PaRest ""]]), body))
     else: [[(((PosPat gd.pos, genTail), (ForwardGen gd)))]]
 
@@ -6815,7 +6832,7 @@ ForwardGen: fn GenDef -> Ex
 fn ForwardGen gd:
     let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
     let isCurrent = XBin "==", (XBin "+", (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
-    XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
+    XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
 
 # `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (docs/backend.md, "Dynamic structure";
 # Semantics ch. 7): a field with the current inner, a hold of the generation's `Dynamic`,
@@ -6949,7 +6966,7 @@ fn IfGenLine wx, menv, c, thenB, elseB, e:
     let no = GenRowOf yes.parent, menv, elseB, OutUnit, "{base}Else", name
     let cond = AsBool (ValueOf lx, menv, c)
     let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
-    let Mk = \|n| XCast (XTry (XCall "{n.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))), (OutObj (OutNamed "Row", [[]]))
+    let Mk = \|n| XCast (TryOf (XCall "{n.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))), (OutObj (OutNamed "Row", [[]]))
     let select = XIf cond, (Mk yes.node), (Mk no.node)
     let wx3 = update no.parent:
         &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=False, width=0)

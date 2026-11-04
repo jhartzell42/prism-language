@@ -93,10 +93,10 @@ struct Counter : Node {
 
     Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override {
         if (at.size() == 1 && at[0].is_pos(0)) {
-            PRISM_TRY_LET(c, from_pod<Click>(v));
+            auto c = TRY(from_pod<Click>(v));
             on_inc(c, cx);
         } else if (at.size() == 1 && at[0].is_pos(1)) {
-            PRISM_TRY_LET(c, from_pod<Click>(v));
+            auto c = TRY(from_pod<Click>(v));
             on_dec(c, cx);
         } else return unexpected(Fault::answer("no answering place at " + path_of(at).to_string()));
         return {};
@@ -121,7 +121,7 @@ struct CounterProgram : Program {
         auto p = std::make_unique<CounterProgram>();
         Cx cx = p->rt.build(ready);
         p->root = Counter::make(Path::root(), cx);
-        PRISM_TRY_LET(out, p->rt.close(std::move(cx)));
+        auto out = TRY(p->rt.close(std::move(cx)));
         return std::pair{std::move(p), std::move(out)};
     }
     Result<TickOut> tick(const TickIn& input, const ReadyState& ready) override { return rt.tick(root, input, ready); }
@@ -156,7 +156,7 @@ struct HalfCounter : Node {
     Pod label(const Cx& cx) const { return to_pod(UiLabel{Text("Count: " + count.get(cx).to_string())}); }
     Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override {
         if (at.size() == 1 && at[0].is_pos(0)) {
-            PRISM_TRY_LET(c, from_pod<Click>(v));
+            auto c = TRY(from_pod<Click>(v));
             increment(c, cx);
             return {};
         }
@@ -175,7 +175,7 @@ struct HalfCounterProgram : Program {
         auto p = std::make_unique<HalfCounterProgram>();
         Cx cx = p->rt.build(ready);
         p->root = HalfCounter::make(Path::root(), cx);
-        PRISM_TRY_LET(out, p->rt.close(std::move(cx)));
+        auto out = TRY(p->rt.close(std::move(cx)));
         return std::pair{std::move(p), std::move(out)};
     }
     Result<TickOut> tick(const TickIn& input, const ReadyState& ready) override { return rt.tick(root, input, ready); }
@@ -263,16 +263,16 @@ struct Term {
         const Pod& p = whole.structure();
         auto c = p.if_choice();
         if (c && c->ctor == "Var" && c->args.size() == 1) {
-            PRISM_TRY_LET(n, prism_rtl::from_pod<Nat>(c->args[0]));
+            auto n = TRY(prism_rtl::from_pod<Nat>(c->args[0]));
             return var(n);
         }
         if (c && c->ctor == "Lam" && c->args.size() == 1) {
-            PRISM_TRY_LET(b, prism_rtl::from_pod<TermRef>(c->args[0]));
+            auto b = TRY(prism_rtl::from_pod<TermRef>(c->args[0]));
             return Term{Lam, Nat(), b, nullptr};
         }
         if (c && c->ctor == "App" && c->args.size() == 2) {
-            PRISM_TRY_LET(f, prism_rtl::from_pod<TermRef>(c->args[0]));
-            PRISM_TRY_LET(x, prism_rtl::from_pod<TermRef>(c->args[1]));
+            auto f = TRY(prism_rtl::from_pod<TermRef>(c->args[0]));
+            auto x = TRY(prism_rtl::from_pod<TermRef>(c->args[1]));
             return app(f, x);
         }
         return mismatch<Term>("a Term", p);
@@ -408,11 +408,11 @@ struct NormalProgram : Program {
     std::shared_ptr<Normal> root;
     static Built<NormalProgram> build(std::span<const Pod> args, const ReadyState& ready) {
         if (args.size() != 1) return unexpected(Fault::answer("@Normal takes one Term"));
-        PRISM_TRY_LET(term, from_pod<Term>(args[0]));
+        auto term = TRY(from_pod<Term>(args[0]));
         auto p = std::make_unique<NormalProgram>();
         Cx cx = p->rt.build(ready);
         p->root = Normal::make(Path::root(), term, cx);
-        PRISM_TRY_LET(out, p->rt.close(std::move(cx)));
+        auto out = TRY(p->rt.close(std::move(cx)));
         return std::pair{std::move(p), std::move(out)};
     }
     Result<TickOut> tick(const TickIn& input, const ReadyState& ready) override { return rt.tick(root, input, ready); }

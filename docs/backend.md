@@ -356,7 +356,9 @@ what differs is how C++ spells it.
 - **Expressions.** A block, a `match`, an if-let chain and a labelled block are GNU
   statement expressions (g++ and clang++ both take them); a `match`'s value is a
   `prism_rtl::Slot` of the type the model gives it, set by the arm that holds, which then
-  leaves by `goto`; `break 'l v` sets the label's slot and jumps. `?` is `TRY(..)`. A
+  leaves by `goto`; `break 'l v` sets the label's slot and jumps. `?` is `TRY(..)`, a GNU
+  statement expression too, which moves out of its operand: the model marks a named
+  operand, which the printer passes as `copy_of(x)`. A
   pattern tests with `prism_rtl::is<Case>` and binds `prism_rtl::as<Case>(v).aN`.
 - **What the library adds for the emitter** is `prism_rtl/lang.hpp`: `Slot`, `TRY`, the
   pattern helpers, `rc` (`Rc::new`: a value as it is, a node or a cell on the heap),
