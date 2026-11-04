@@ -83,6 +83,9 @@ fn IsLoose x = match x:
     XMatch ignore, ignore, ignore: True
     XChain ignore, ignore, ignore: True
     XCast ignore, ignore: True
+    XRef ignore: True
+    XRefMut ignore: True
+    XDeref ignore: True
     otherwise: False
 
 Tight: unbounded fn Ex -> Text
@@ -102,7 +105,36 @@ fn Args xs = Join (Each xs, \|x| Expression x), ", "
 
 Expression: unbounded fn Ex -> Text
 fn Expression x = match x:
-    XRaw t: t
+    XVar n: n
+    XPath p: p
+    XSelf: "self"
+    XCx: "cx"
+    XConst n: "Self::{n}"
+    XUnit: "()"
+    XNone: "None"
+    XBool b: if b: "true" else: "false"
+    XNat d: if (Len d) <= 9: "Nat::from({d}u32)" else: "Nat::from_int(Int::from({d}i64)).unwrap()"
+    XInt d: if (Len (if (Take d, 1) == "-": Drop d, 1 else: d)) <= 18: "Int::from({d})" else: "Int::from({d}i64)"
+    XByte d: "{d}u8"
+    XFloat d: d
+    XIndex n: "{n}"
+    XChar c: "'{CharEscape c}'"
+    XStr t: "\"{Escape t}\""
+    XRef y: "&{Operand y}"
+    XRefMut y: "&mut {Operand y}"
+    XDeref y: "*{Operand y}"
+    XTarget y: "(*{Expression y})"
+    XClone y: "{Tight y}.clone()"
+    XWeak y: "Rc::downgrade({Expression y})"
+    XUpgrade y: "{Tight y}.upgrade()"
+    XBreak l, y: "break {Label l} {Expression y}"
+    XBreakLoop: "break"
+    XLater y: "Box::new(move |cx| \{ {Expression y}; Ok(()) \})"
+    XFormatStr parts: FormatStr parts
+    XIsCase y, [[]]: "false"
+    XIsCase y, cs: "matches!({Expression y}, {Join (Each cs, \|c| "{c}(..)"), " | "})"
+    XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
+    XUnreachable: "unreachable!()"
     XCall f, args: "{f}({Args args})"
     XApply f, args: "{Tight f}({Args args})"
     XMethod r, m, args: "{Tight r}.{m}({Args args})"
@@ -124,11 +156,12 @@ fn Expression x = match x:
     XClosure mv, ps, body: "{if mv: "move " else: ""}|{Join (Each ps, \|p| Pattern p), ", "}| {Expression body}"
     XTry y: "{Tight y}?"
     XField r, f: "{Tight r}.{f}"
+    XPart r, k: "{Tight r}.{k}"
     XDecode t, y: "{DecodeHead t}::from_pod({Expression y})?"
     XCast y, t: "{Tight y} as {Type t}"
 
 FieldInit: unbounded fn Text, Ex -> Text
-fn FieldInit f, (XRaw v) = if v == f: f else: "{f}: {v}"
+fn FieldInit f, (XVar v) = if v == f: f else: "{f}: {v}"
 fn FieldInit f, v = "{f}: {Expression v}"
 
 DecodeHead: unbounded fn RsTy -> Text
@@ -149,6 +182,22 @@ fn Format parts:
     let vals = Filter parts, \|p| not (IsText p)
     if (Len vals) == 0: "Text::from(\"{lit}\")"
     else: "Text::from(format!(\"{lit}\", {Args vals}))"
+
+# `format!(..)`, a message's text (a fault's), not a `Text`: a local is named in the
+# literal, any other value placed by position.
+FormatStr: unbounded fn [Ex] -> Text
+fn FormatStr parts:
+    let lit = Concat (Each parts, \|p| StrPiece p)
+    let vals = Filter parts, \|p| not (IsText p) and not (IsVar p)
+    if (Len vals) == 0: "\"{lit}\"" else: "format!(\"{lit}\", {Args vals})"
+
+IsVar: fn Ex -> Bool
+fn IsVar (XVar ignore) = True
+fn IsVar other = False
+
+StrPiece: fn Ex -> Text
+fn StrPiece (XVar n) = "\{{n}\}"
+fn StrPiece other = FormatPiece other
 
 IsText: fn Ex -> Bool
 fn IsText (XText ignore) = True
@@ -196,13 +245,13 @@ fn Condition (CcLet p, x) = "let {Pattern p} = {Expression x}"
 # that matches anything ends the block.
 Chain: unbounded fn Text, Ex, [XArm] -> Text
 fn Chain label, s, arms:
-    let ((bind, scrut)) = match s:
-        XRaw n: (([[]], n))
-        XUnary "&", (XRaw n): (([[]], "&{n}"))
-        otherwise: (([["let scrutinee = {Expression s};"]], "scrutinee"))
+    let inPlace = match s:
+        XRef y: IsBound y
+        otherwise: IsBound s
+    let ((bind, scrut)) = if inPlace: (([[]], Expression s)) else: (([["let scrutinee = {Expression s};"]], "scrutinee"))
     let n = Len arms
     let lines = Each (Range0 n), \|i|
-        let a = Or arms[i], (XArm(pat=PaWild, conds=[[]], body=(XRaw "()")))
+        let a = Or arms[i], (XArm(pat=PaWild, conds=[[]], body=XUnit))
         let catchAll = (a.pat == PaWild) and (Len a.conds) == 0
         if catchAll: Expression a.body
         else:
@@ -213,6 +262,17 @@ fn Chain label, s, arms:
         nil: False
     let tail = if ends: [[]] else: [["unreachable!(\"no clause matched\")"]]
     "{label}: \{\n{Indent (Join (Append (Append bind, lines), tail), "\n")}\n\}"
+
+# A place a name is bound to (a local, a field of the node, of the block through a row's
+# parent, the element a `for &s` loop updates): a chain matches it where it stands.
+IsBound: fn Ex -> Bool
+fn IsBound x = match x:
+    XVar ignore: True
+    XField XSelf, ignore: True
+    XField (XMethod (XUpgrade ignore), ignore, ignore), ignore: True
+    XTarget ignore: True
+    XPart (XVar ignore), ignore: True
+    otherwise: False
 
 # A text placed after other text on an indented line: its later lines take the indent.
 Continued: fn Text, Text -> Text
@@ -237,6 +297,7 @@ Pattern: unbounded fn Pa -> Text
 fn Pattern p = match p:
     PaWild: "_"
     PaBind n: n
+    PaMut n: "mut {n}"
     PaCtor c, ps: "{c}({Join (Each ps, \|q| Pattern q), ", "})"
     PaUnit c: c
     PaRecord c, fs, rest:
@@ -247,7 +308,13 @@ fn Pattern p = match p:
         "{c} \{ {Join all, ", "} \}"
     PaTuple [[one]]: "({Pattern one},)"
     PaTuple ps: "({Join (Each ps, \|q| Pattern q), ", "})"
-    PaLit t: t
+    PaChar c: "'{CharEscape c}'"
+    PaBool b: if b: "true" else: "false"
+    PaIndex n: "{n}"
+    PaConst n: "Self::{n}"
+    PaSlice ps: "[{Join (Each ps, \|q| Pattern q), ", "}]"
+    PaRest "": ".."
+    PaRest n: "{n} @ .."
     PaTyped q, t: "{Pattern q}: {Type t}"
 
 Statements: unbounded fn [Do] -> Text
@@ -266,7 +333,17 @@ fn Statement d = match d:
     DoIfLet p, x, t, e: "{IfStmt "if let {Pattern p} = {Expression x}", (Statements t)}{ElseBranch e}"
     DoMatch x, cases: Match (Expression x), (Join (Each cases, \|((p, body))| ArmBlock (Pattern p), (Statements body)), "\n")
     DoReturn x: "return {Expression x};"
+    DoScope body: "\{ {InlineStatements body} \};"
+    DoLine body: "{InlineStatements body};"
     DoNote t: "// {t}"
+
+# Statements on one line (`DoScope`, `DoLine`).
+InlineStatements: unbounded fn [Do] -> Text
+fn InlineStatements dos = Join (Each dos, \|d| InlineStatement d), " "
+
+InlineStatement: unbounded fn Do -> Text
+fn InlineStatement (DoIf c, t, [[]]) = "if {Expression c} \{ {InlineStatements t} \}"
+fn InlineStatement d = Statement d
 
 # An `else`, `else if` for a lone `if` inside.
 ElseBranch: unbounded fn [Do] -> Text
@@ -471,36 +548,29 @@ fn RustNode n:
     let consts = Concat (Each n.consts, \|((c, h, doc))| "{Doc "The {doc}."}const {c}: u32 = {h};\n")
     let params = Concat (Each n.params, \|((p, t))| "{p}: {Type t}, ")
     let ret = if n.fallible: "Result<Rc<{n.name}>, Fault>" else: "Rc<{n.name}>"
-    let computed = Filter n.inits, \|((ignore, v))| not (IsRaw v)
-    let moved = Filter n.inits, \|((ignore, v))| IsRaw v
-    let inits = Join (Append [["path"]], (Each (Append computed, moved), \|((f, v))| FieldInit f, v)), ", "
+    let inits = Join (Append [["path"]], (Each n.inits, \|((f, v))| FieldInit f, v)), ", "
     let tail = if n.fallible: "Ok(node)" else: "node"
     let restText = if (Len n.build) == 0: tail else: "{Statements n.build}\n{tail}"
     let build = Build n.name, params, ret, (Statements n.lets), inits, restText
     let methods = Join (Each n.methods, \|m| RustMethod m), "\n"
-    let answer = if (Len n.answers) == 0: "" else: Answer (Join (Each n.answers, \|((pat, call))| "{pat} => {Expression call},"), "\n")
+    let answer = if (Len n.answers) == 0: "" else: Answer (Join (Each n.answers, \|((pat, call))| "{Pattern pat} => {Expression call},"), "\n")
     let builders = Concat (Append (Each n.builders, \|b| "\n{ForBuilder b}"), (Each n.gens, \|gd| "\n{GenBuilder gd}"))
     let rowImpl = if n.rowKind == NotARow: "" else: "\n{RustRowImpl n}"
     let hooks = Join (Each n.hooks, \|((h, body))| if h == "push": PushHook (Statements body) else: Hook h, (Statements body)), "\n"
     let doc = SourceDoc "`{n.prism}`: a node of its own (docs/backend.md, \"A widget block\").", n.doc
     "{Node doc, n.name, fields, consts, build, "{methods}{builders}", hooks, answer}{rowImpl}"
 
-# A field initializer that moves a local: written last, after the ones that read it.
-IsRaw: fn Ex -> Bool
-fn IsRaw (XRaw ignore) = True
-fn IsRaw other = False
-
 # A `for`'s builder: rows that left torn down, new keys built.
 ForBuilder: unbounded fn ForDef -> Text
-fn ForBuilder b = ForBuild b.name, b.at, (Type b.keyTy), (Type b.valueTy), b.rowNode, b.source, b.parent, (Concat (Each b.passed, \|x| ", {Expression x}"))
+fn ForBuilder b = ForBuild b.name, (Expression b.at), (Type b.keyTy), (Type b.valueTy), b.rowNode, b.source, (Expression b.parent), (Concat (Each b.passed, \|x| ", {Expression x}"))
 
 # A `rebuild`'s builder: the old generation torn down, the next one built.
 GenBuilder: unbounded fn GenDef -> Text
 fn GenBuilder gd:
     # a transparent generation (a widget of several clauses in a static position) stands at
     # its caller's path
-    let path = if gd.transparent: "self.path.clone()" else: "{gd.at}.child(Segment::Gen(g))"
-    GenBuild gd.name, gd.at, path, (Expression gd.source), (Type gd.valueTy), (Expression gd.select)
+    let path = if gd.transparent: "self.path.clone()" else: "{Expression gd.at}.child(Segment::Gen(g))"
+    GenBuild gd.name, (Expression gd.at), path, (Expression gd.source), (Type gd.valueTy), (Expression gd.select)
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, since
 # its key is gone from the source after it (R8); its places are torn down; its

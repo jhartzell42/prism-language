@@ -73,10 +73,54 @@ type RsTy = choice:
     RsUnknown Text
 derive ^Eq, ^Show
 
-# An expression. Every one is a Rust expression; `XRaw` is a name, a path or a literal
-# already spelled.
+# An expression. Each node names an operation, never its spelling: a printer spells it
+# for its target. Text in a node is a name (a local, a field, a method, a function's or a
+# constructor's qualified path) or a literal's digits, never syntax.
 type Ex = choice:
-    XRaw Text
+    # A local: a parameter, a `let`, a pattern's binder.
+    XVar Text
+    # A global item by its qualified path: a function, a getter, a unit constructor.
+    XPath Text
+    # The node a method runs on, the read point, and a constant of the node's (a height).
+    XSelf
+    XCx
+    XConst Text
+    XUnit
+    XNone
+    XBool Bool
+    # Number literals: a `Nat` and an `Int` by their decimal digits (an `Int` signed), a
+    # byte, a float spelled with its point, a machine integer (a count, an index).
+    XNat Text
+    XInt Text
+    XByte Text
+    XFloat Text
+    XIndex Nat
+    # A character and a string literal (not a `Text`: a fault's message, a name), as the
+    # source has them; the printer escapes.
+    XChar Text
+    XStr Text
+    # A reference to a place, a mutable one, and the place a reference points to.
+    XRef Ex
+    XRefMut Ex
+    XDeref Ex
+    # The element a `for &s <- &xs:` loop updates in place, through its mutable reference.
+    XTarget Ex
+    # A copy of a shared value; a weak reference to a node, and the node again if it lives.
+    XClone Ex
+    XWeak Ex
+    XUpgrade Ex
+    # A labelled block's exit with its value, and a loop's exit.
+    XBreak Text, Ex
+    XBreakLoop
+    # A callback the runtime runs after the tick's answers (`Later`): the call, and done.
+    XLater Ex
+    # A message formatted from literal runs and values (a fault's), not a `Text`.
+    XFormatStr [Ex]
+    # Whether a value is one of these constructors, whatever their payloads.
+    XIsCase Ex, [Text]
+    # What lowering cannot lower (`Refusal`), and an arm no value reaches.
+    XRefusal Text
+    XUnreachable
     XCall Text, [Ex]
     XApply Ex, [Ex]
     XMethod Ex, Text, [Ex]
@@ -96,6 +140,8 @@ type Ex = choice:
     XClosure Bool, [Pa], Ex
     XTry Ex
     XField Ex, Text
+    # A tuple's part by its position.
+    XPart Ex, Nat
     XDecode RsTy, Ex
     XCast Ex, RsTy
 derive ^Eq, ^Show
@@ -117,11 +163,20 @@ derive ^Eq, ^Show
 type Pa = choice:
     PaWild
     PaBind Text
+    # A binder whose value the body changes in place.
+    PaMut Text
     PaCtor Text, [Pa]
     PaUnit Text
     PaRecord Text, [((Text, Pa))], Bool
     PaTuple [Pa]
-    PaLit Text
+    PaChar Text
+    PaBool Bool
+    # A machine integer, a constant of the node's (a height).
+    PaIndex Nat
+    PaConst Text
+    # A slice's elements; `PaRest` the rest of it, bound to a name unless the name is "".
+    PaSlice [Pa]
+    PaRest Text
     PaTyped Pa, RsTy
 derive ^Eq, ^Show
 
@@ -138,6 +193,9 @@ type Do = choice:
     DoIfLet Pa, Ex, [Do], [Do]
     DoMatch Ex, [((Pa, [Do]))]
     DoReturn Ex
+    # Statements kept on one line: in a scope of their own, or as they are.
+    DoScope [Do]
+    DoLine [Do]
     DoNote Text
 derive ^Eq, ^Show
 
@@ -262,11 +320,13 @@ type NodeDef = record:
     fields: [((Text, RsTy, Text))]
     consts: [((Text, Nat, Text))]
     lets: [Do]
+    # The fields' initializers in the order written: the ones that clone a local before
+    # the locals moved in.
     inits: [((Text, Ex))]
     build: [Do]
     fallible: Bool
     methods: [MethDef]
-    answers: [((Text, Ex))]
+    answers: [((Pa, Ex))]
     hooks: [((Text, [Do]))]
     builders: [ForDef]
     wakes: Bool
@@ -319,8 +379,8 @@ fn PlaceText p = if p.scope == 0: "{p.at}" else: "h{p.scope}_{p.at}"
 type GenDef = record:
     name: Text
     pos: Pos
-    # The place's path, as Rust spells it from `self` (`PlaceAt`).
-    at: Text
+    # The place's path, read from `self` (`PlaceAt`).
+    at: Ex
     source: Ex
     valueTy: RsTy
     select: Ex
@@ -341,17 +401,17 @@ type PortDef = record:
 type ForDef = record:
     name: Text
     pos: Pos
-    # The place's path, as Rust spells it from `self` (`PlaceAt`).
-    at: Text
+    # The place's path, read from `self` (`PlaceAt`).
+    at: Ex
     keyTy: RsTy
     valueTy: RsTy
     rowNode: Text
     keyed: Bool
     # The block's getter the builder and the rows' entries read the source from.
     source: Text
-    # What a row's `build` takes as its parent: the block, weakly (`Rc::downgrade(self)`),
-    # or for a host's rows the host (pick HO).
-    parent: Text
+    # What a row's `build` takes as its parent: the block, weakly, or for a host's rows the
+    # host (pick HO).
+    parent: Ex
     # The block's plain values the rows read, as the block passes them to a row's `build`.
     passed: [Ex]
 derive ^Eq, ^Show
@@ -826,11 +886,11 @@ type Holding = choice:
     RcOwned
 derive ^Eq, ^Show
 
-# A name where it is read. `BnLocal` is a Rust place and how it holds its value. In a
+# A name where it is read. `BnLocal` is a place and how it holds its value. In a
 # widget block a hold reads at the read point, a derived dynamic is a reader, and an event
 # is a node of the block's graph.
 type Bn = choice:
-    BnLocal Text, Holding, RsTy
+    BnLocal Ex, Holding, RsTy
     BnHold Text, RsTy
     BnDyn Ex, [Read], RsTy
     BnEv EvRef, RsTy
@@ -868,28 +928,67 @@ ValueTy: fn Vl -> RsTy
 fn ValueTy (VlPlace ignore, ignore, t) = t
 fn ValueTy (VlOwned ignore, t) = t
 
-LocalPlace: fn Text, Holding, RsTy -> Vl
-fn LocalPlace rs, mode, t = VlPlace (XRaw rs), mode, t
+LocalPlace: fn Ex, Holding, RsTy -> Vl
+fn LocalPlace x, mode, t = VlPlace x, mode, t
+
+# A place's last name: a local's own, a field's (`self.count` is `count`), what a copy of it
+# in a closure is named after.
+PlaceStem: fn Ex -> Text
+fn PlaceStem x = match x:
+    XVar n: n
+    XField ignore, f: f
+    XTarget y: PlaceStem y
+    XPart y, k: "{PlaceStem y}_{k}"
+    otherwise: "place"
+
+# Whether a place is read through the node (`self.count`), which a closure cannot capture.
+OnSelf: fn Ex -> Bool
+fn OnSelf x = match x:
+    XField XSelf, ignore: True
+    XField y, ignore: OnSelf y
+    XPart y, ignore: OnSelf y
+    XMethod y, ignore, ignore: OnSelf y
+    XUpgrade y: OnSelf y
+    otherwise: False
+
+# A place of the block read through a row's `parent` field, as the row's build reads it,
+# through its `parent` argument; `nil` for a place that is not the block's.
+?ThroughParent: fn Ex -> ?Ex
+fn ?ThroughParent x = match x:
+    XField XSelf, "parent": ? (XVar "parent")
+    XField y, f: match ?ThroughParent y:
+        ? z: ? (XField z, f)
+        nil: nil
+    XPart y, k: match ?ThroughParent y:
+        ? z: ? (XPart z, k)
+        nil: nil
+    XMethod y, m, xs: match ?ThroughParent y:
+        ? z: ? (XMethod z, m, xs)
+        nil: nil
+    XUpgrade y: match ?ThroughParent y:
+        ? z: ? (XUpgrade z)
+        nil: nil
+    otherwise: nil
 
 # The value, owned: a place is cloned (values are cheap to clone, docs/backend.md).
 Own: fn Vl -> Ex
-fn Own (VlPlace x, RcRef, ignore) = XMethod (XUnary "*", (XUnary "*", x)), "clone", [[]]
-fn Own (VlPlace x, RcOwned, ignore) = XMethod (XUnary "*", x), "clone", [[]]
+fn Own (VlPlace x, RcRef, ignore) = XMethod (XDeref (XDeref x)), "clone", [[]]
+fn Own (VlPlace x, RcOwned, ignore) = XMethod (XDeref x), "clone", [[]]
 fn Own (VlPlace x, mode, t) = if IsCopy t: Copy (VlPlace x, mode, t) else: XMethod x, "clone", [[]]
 fn Own (VlOwned e, ignore) = e
 
 # The value, borrowed: what a parameter takes.
 Ref: fn Vl -> Ex
 fn Ref (VlPlace x, ByRef, ignore) = x
-fn Ref (VlPlace x, RcRef, ignore) = XUnary "&", (XUnary "*", (XUnary "*", x))
-fn Ref (VlPlace x, RcOwned, ignore) = XUnary "&", (XUnary "*", x)
-fn Ref (VlPlace x, ignore, ignore) = XUnary "&", x
-fn Ref (VlOwned e, ignore) = XUnary "&", e
+fn Ref (VlPlace x, RcRef, ignore) = XRef (XDeref (XDeref x))
+fn Ref (VlPlace x, RcOwned, ignore) = XRef (XDeref x)
+fn Ref (VlPlace x, ignore, ignore) = XRef x
+fn Ref (VlOwned e, ignore) = XRef e
 
 # A copy type's value: `bool`, `f64`, `u8`, `char`, `()`.
 Copy: fn Vl -> Ex
-fn Copy (VlPlace x, ByRef, ignore) = XUnary "*", x
-fn Copy (VlPlace x, RcRef, ignore) = XUnary "*", (XUnary "*", (XUnary "*", x))
+fn Copy (VlPlace x, ByRef, ignore) = XDeref x
+fn Copy (VlPlace x, RcRef, ignore) = XDeref (XDeref (XDeref x))
 fn Copy (VlPlace x, ignore, ignore) = x
 fn Copy (VlOwned e, ignore) = e
 
@@ -923,19 +1022,19 @@ fn Number t, digits, neg:
     let clean = Concat (Filter (Chars digits), \|c| c != "_")
     let signed = if neg: "-{clean}" else: clean
     match t:
-        RsNat: if (Len clean) <= 9: XCall "Nat::from", [[XRaw "{clean}u32"]] else: XRaw "Nat::from_int(Int::from({clean}i64)).unwrap()"
-        RsInt: XCall "Int::from", [[XRaw (if (Len clean) <= 18: "{signed}" else: "{signed}i64")]]
-        RsU8: XRaw "{clean}u8"
-        RsFloat: XRaw (if Contains clean, ".": signed else: "{signed}.0")
-        otherwise: XCall "Int::from", [[XRaw signed]]
+        RsNat: XNat clean
+        RsInt: XInt signed
+        RsU8: (XByte clean)
+        RsFloat: XFloat (if Contains clean, ".": signed else: "{signed}.0")
+        otherwise: XInt signed
 
 LiteralValue: unbounded fn Lx, Env, Literal, Range, Bool -> Vl
 fn LiteralValue lx, env, l, span, neg:
     let t = RustTy lx, (Peel (TypeAt lx, span))
     match l.kind:
         LInt d: VlOwned (Number t, d, neg), t
-        LFloat d: VlOwned (XRaw (if neg: "-{d}" else: d)), RsFloat
-        LChar c: VlOwned (XRaw "'{CharEscape c}'"), RsChar
+        LFloat d: VlOwned (XFloat (if neg: "-{d}" else: d)), RsFloat
+        LChar c: VlOwned (XChar c), RsChar
         LDuration d, u: VlOwned (Refusal "a Duration literal"), RsDuration
         LText segs: TextValue lx, env, segs
 
@@ -979,7 +1078,7 @@ fn ShownPart v = match ValueTy v:
 # `CompileProgram` finds in the emitted files and reports as a refusal, the crate still
 # written for reading.
 Refusal: fn Text -> Ex
-fn Refusal what = XCall "compile_error!", [[XRaw "\"{loweringRefusal}{Escape what}\""]]
+fn Refusal what = XRefusal what
 
 let loweringRefusal = "prismc does not lower "
 
@@ -1044,13 +1143,13 @@ fn EventValueOf lx, env, e:
                         otherwise: False
                     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
                         ? (BnLocal rs, mode, ct):
-                            let local = "{if (Take rs, 5) == "self.": Drop rs, 5 else: rs}_c"
-                            (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal local, Owned, ct))))
+                            let local = "{PlaceStem rs}_c"
+                            (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
                         otherwise: ((acc, en))
-                    let env2 = BindSpan env1, (PlaceKey lx, one.span), (VlPlace (XRaw "y_ev"), ByRef, it)
+                    let env2 = BindSpan env1, (PlaceKey lx, one.span), (VlPlace (XVar "y_ev"), ByRef, it)
                     let body = Own (ValueByKind lx, env2, e)
                     let mapped = XMethod src, "map", [[(XClosure True, [[(PaTyped (PaBind "y_ev"), (RsRef it))]], body)]]
-                    VlOwned (XBlock (Push dos, (DoLet (PaBind "src_ev"), src)), (XMethod (XRaw "src_ev"), "map", [[(XClosure True, [[(PaTyped (PaBind "y_ev"), (RsRef it))]], body)]])), et
+                    VlOwned (XBlock (Push dos, (DoLet (PaBind "src_ev"), src)), (XMethod (XVar "src_ev"), "map", [[(XClosure True, [[(PaTyped (PaBind "y_ev"), (RsRef it))]], body)]])), et
                 otherwise: VlOwned (Refusal "an event value of several events"), et
 
 ValueByKind: unbounded fn Lx, Env, Expr -> Vl
@@ -1059,15 +1158,15 @@ fn ValueByKind lx, env, e:
     match e.kind:
         EName n: NameValue lx, env, n, e.span
         ELit l: LiteralValue lx, env, l, e.span, False
-        EUnit ignore: VlOwned (XRaw "()"), RsUnit
+        EUnit ignore: VlOwned (XUnit), RsUnit
         EBound b: match env.names[b]:
             ? (BnLocal rs, mode, bt): LocalPlace rs, mode, bt
             otherwise: VlOwned (Refusal "`{b}` outside a `for`"), t
-        ENil ignore: VlOwned (XRaw "None"), t
+        ENil ignore: VlOwned (XNone), t
         ETuple es: VlOwned (XTuple (Each es, \|x| Own (ValueOf lx, env, x))), t
-        EArray [[]]: VlOwned (XRaw "Array::new()"), t
+        EArray [[]]: VlOwned (XCall "Array::new", [[]]), t
         EArray es: VlOwned (XCall "Array::from", [[XVec (Each es, \|x| Own (ValueOf lx, env, x))]]), t
-        EMap [[]]: VlOwned (XRaw "Map::new()"), t
+        EMap [[]]: VlOwned (XCall "Map::new", [[]]), t
         EMap kvs: VlOwned (XCall "map_of", [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
         EGroup x: ValueOf lx, env, x
         ECall c, args, ignore, ignore: Application lx, env, c, args, e.span
@@ -1114,9 +1213,9 @@ fn PureBlueprint lx, env, x, t:
     if isNever: VlOwned (XCall "prism_rtl::never_blueprint::<crate::Elem, crate::Answer>", [[]]), t
     else: match env.names["#tag"]:
         nil: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}` as a supplier's answer outside a tag arm: which tag's output it answers cannot be known"), t
-        ? (BnLocal variant, ignore, ignore): match LayerOf (TypeAt lx, x.span):
+        ? (BnLocal (XPath variant), ignore, ignore): match LayerOf (TypeAt lx, x.span):
             LyEv:
-                let wrapped = XMethod (Own (ValueOf lx, env, x)), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[XRaw "v.clone()"]]))]]
+                let wrapped = XMethod (Own (ValueOf lx, env, x)), "map", [[(XClosure False, [[PaBind "v"]], (XCtor variant, [[(XClone (XVar "v"))]]))]]
                 VlOwned (XCall "prism_rtl::event_blueprint::<crate::Elem, _>", [[wrapped]]), t
             LyDyn: match ?DynamicAnswer lx, x:
                 nil: match x.kind:
@@ -1137,11 +1236,11 @@ fn PlainBlueprint lx, env, x, variant, t = VlOwned (XCall "prism_rtl::plain_blue
 # delivered the next tick.
 DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Text, RsTy -> Vl
 fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
-    ((? (BnLocal getter, ignore, dt), ? (BnLocal owner, ignore, ignore))):
+    ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
         let atBuild = Own (ValueOf lx, (InitEnv env), d)
-        let arms = [[XArm(pat=(PaCtor "Some", [[PaBind "owner"]]), conds=[[]], body=(XCtor variant, [[(XMethod (XRaw "owner"), getter, [[XRaw "cx"]])]])), XArm(pat=(PaUnit "None"), conds=[[]], body=(XCtor variant, [[XRaw "at_build.clone()"]]))]]
-        let read = XClosure True, [[(PaTyped (PaBind "cx"), (RsRef (RsNamed "Cx", [[]])))]], (XMatch (XMethod (XRaw "link"), "owner", [[]]), arms, False)
-        let dynamic = XBlock [[(DoLet (PaBind "link"), (XRaw "{owner}.clone()")), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, XRaw "&{getter}_port"]])
+        let arms = [[XArm(pat=(PaCtor "Some", [[PaBind "owner"]]), conds=[[]], body=(XCtor variant, [[(XMethod (XVar "owner"), getter, [[XCx]])]])), XArm(pat=(PaUnit "None"), conds=[[]], body=(XCtor variant, [[(XClone (XVar "at_build"))]]))]]
+        let read = XClosure True, [[(PaTyped (PaBind "cx"), (RsRef (RsNamed "Cx", [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False)
+        let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, (XRef (XVar "{getter}_port"))]])
         VlOwned (XCall "prism_rtl::dynamic_blueprint::<crate::Elem, _>", [[dynamic]]), t
     otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a pushed place, a structural dynamic, or a `let` after the host's line)"), t
 
@@ -1179,10 +1278,10 @@ fn NameValue lx, env, n, span:
     let ?local = if (Len n.path) == 1: env.names[nkey] else: nil
     match ?local:
         ? (BnLocal rs, mode, lt): LocalPlace rs, mode, lt
-        ? (BnHold f, ht): VlOwned (XMethod (XRaw "self.{f}"), "get", [[XRaw "cx"]]), ht
+        ? (BnHold f, ht): VlOwned (XMethod (XField XSelf, "{f}"), "get", [[XCx]]), ht
         ? (BnDyn x, ignore, dt): VlOwned x, dt
         ? (BnEv ignore, et): match env.names["{nkey}#port"]:
-            ? (BnLocal pf, ignore, ignore): VlOwned (XCall "prism_rtl::Event::of", [[XRaw "&{pf}"]]), (RsEvent (RustTy lx, (Peel (Peel (TypeAt lx, span)))))
+            ? (BnLocal pf, ignore, ignore): VlOwned (XCall "prism_rtl::Event::of", [[XRef pf]]), (RsEvent (RustTy lx, (Peel (Peel (TypeAt lx, span)))))
             otherwise: VlOwned (Refusal "an event read as a value"), et
         ? (BnParts ignore): VlOwned (Refusal "a tuple pattern's binding as a value"), t
         ? (BnWidget ignore, ignore, ignore, ignore): VlOwned (Refusal "a widget parameter read as a plain value"), t
@@ -1190,9 +1289,9 @@ fn NameValue lx, env, n, span:
         nil:
             let ((?qk, why)) = ResolveValue lx.g, lx.home, n
             match ?qk:
-                ? "True": VlOwned (XRaw "true"), RsBool
-                ? "False": VlOwned (XRaw "false"), RsBool
-                ? "Prelude.never": VlOwned (XRaw "Event::never()"), t
+                ? "True": VlOwned (XBool True), RsBool
+                ? "False": VlOwned (XBool False), RsBool
+                ? "Prelude.never": VlOwned (XCall "Event::never", [[]]), t
                 ? qk: match lx.g.tags[qk]:
                     ? tg if tg.kind != "Prelude.Fault" and why == "tag": TagValue lx, env, tg, [[]]
                     otherwise: GlobalValue lx, qk, span, t
@@ -1213,7 +1312,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                 if arity > 0: CtorFn lx, c, pts, span, t, True else: CtorApp lx, emptyEnv, c, [[]], span
             otherwise: CtorApp lx, emptyEnv, c, [[]], span
     nil: match lx.g.tags[qk]:
-        ? tg: VlOwned (XRaw "\"{tg.name}\""), t
+        ? tg: VlOwned (XStr tg.name), t
         nil: if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsLetDef d): VlOwned (XCall (ValuePath lx, qk), [[]]), t
         else: match lx.g.vals[qk]:
             ? v:
@@ -1224,9 +1323,9 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                         let ((ps, ignore2)) = SchemeParts lx, qk
                         let names = Each (Range0 (Len ps)), \|i| "a{i}"
                         let pa = if (Len ps) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
-                        let f = XClosure False, [[pa]], (XCall "entered", [[(XCall (StartPath lx, qk), (Each names, \|nm| XRaw nm))]])
+                        let f = XClosure False, [[pa]], (XCall "entered", [[(XCall (StartPath lx, qk), (Each names, \|nm| XVar nm))]])
                         VlOwned (XCast (XCall "Rc::new", [[f]]), t), t
-                    otherwise: VlOwned (XCall "Rc::new", [[XRaw (ValuePath lx, qk)]]), t
+                    otherwise: VlOwned (XCall "Rc::new", [[XPath (ValuePath lx, qk)]]), t
             nil: VlOwned (Refusal "the global {qk}"), t
 
 IsLetDef: fn Def -> Bool
@@ -1288,9 +1387,9 @@ fn InlineLocalFn lx, env, c, args, t:
             let rs = "{LocalName lx, nm}_{c.span.start}"
             let v = match args[i]:
                 ? a: ValueOf lx, env, a.value
-                nil: VlOwned (XRaw "()"), RsUnit
+                nil: VlOwned (XUnit), RsUnit
             let bt = ValueTy v
-            (((Push acc, (DoLet (PaBind rs), (Own v))), (Bind en, nm, (BnLocal rs, Owned, bt))))
+            (((Push acc, (DoLet (PaBind rs), (Own v))), (Bind en, nm, (BnLocal (XVar rs), Owned, bt))))
         VlOwned (XBlock dos, (FnBodyValue lx, env2, c.body)), t
 
 # An argument as a parameter takes it: borrowed, a lambda as a borrowed closure.
@@ -1301,7 +1400,7 @@ fn Argument lx, env, e = match env.spans[PlaceKey lx, e.span]:
 
 ArgumentByKind: unbounded fn Lx, Env, Expr -> Ex
 fn ArgumentByKind lx, env, e = match e.kind:
-    ELambda ?ps, body: XUnary "&", (LambdaArg lx, env, (Or ?ps, [[]]), body, (LambdaParamTys lx, e, (Len (Or ?ps, [[]]))))
+    ELambda ?ps, body: XRef (LambdaArg lx, env, (Or ?ps, [[]]), body, (LambdaParamTys lx, e, (Len (Or ?ps, [[]]))))
     EGroup x: Argument lx, env, x
     EName n:
         let t = TypeAt lx, e.span
@@ -1313,7 +1412,7 @@ fn ArgumentByKind lx, env, e = match e.kind:
                     nil:
                         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
                         match ?qk:
-                            ? qk: if HasKey lx.g.ctors, qk: ClosureRef (ValueOf lx, env, e) else: XUnary "&", (XRaw (ValuePath lx, qk))
+                            ? qk: if HasKey lx.g.ctors, qk: ClosureRef (ValueOf lx, env, e) else: XRef (XPath (ValuePath lx, qk))
                             nil: Ref (ValueOf lx, env, e)
             otherwise: Ref (ValueOf lx, env, e)
     otherwise: Ref (ValueOf lx, env, e)
@@ -1322,8 +1421,8 @@ fn ArgumentByKind lx, env, e = match e.kind:
 # passes on; a closure held in an `Rc` is borrowed through it (`&*f`).
 ClosureRef: fn Vl -> Ex
 fn ClosureRef (VlPlace x, ByRef, t) = x
-fn ClosureRef (VlPlace x, ignore, t) = XUnary "&", (XUnary "*", x)
-fn ClosureRef (VlOwned x, t) = XUnary "&", (XUnary "*", x)
+fn ClosureRef (VlPlace x, ignore, t) = XRef (XDeref x)
+fn ClosureRef (VlOwned x, t) = XRef (XDeref x)
 
 # A tag applied as a value (pick RV): a plain row kind's value is its enum's variant
 # around the tag's struct (`Draw::DrawRect(DrawRect { .. })`). An element as a value is
@@ -1344,7 +1443,7 @@ fn TagValue lx, env, tg, args:
                     nil: nil
                 let v = match ?arg:
                     ? x: Own (ValueOf lx, env, x)
-                    nil: XRaw "Default::default()"
+                    nil: (XCall "Default::default", [[]])
                 ((Snake fname, v))
             VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
 
@@ -1379,8 +1478,8 @@ fn ArgsFor lx, env, v, args:
             TyFn CBound, ignore, ignore: False
             TyFn ignore, ignore, ignore: True
             otherwise: False
-        if isTry and isError: XUnary "&", (XCtor "Err", [[Own (ValueOf lx, env, a.value)]])
-        else: if toUnbounded: XUnary "&", (AsJobValue lx, env, a.value)
+        if isTry and isError: XRef (XCtor "Err", [[Own (ValueOf lx, env, a.value)]])
+        else: if toUnbounded: XRef (AsJobValue lx, env, a.value)
         else: Argument lx, env, a.value
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0))
@@ -1394,9 +1493,9 @@ fn CtorApp lx, env, c, args, span:
     let tyPath = PathIn lx, owner.home, (Camel (BareName c.owner))
     let vals = CtorArgs lx, env, c, args
     match c.owner:
-        "Bool": VlOwned (XRaw (if c.name == "True": "true" else: "false")), RsBool
+        "Bool": VlOwned (XBool (c.name == "True")), RsBool
         "Prelude.Error":
-            let kind = Or vals[0], (XRaw "\"\"")
+            let kind = Or vals[0], (XStr "")
             let msg = Or vals[1], (XText "")
             let made = XCall "Error::new", [[kind, msg]]
             match t:
@@ -1404,12 +1503,12 @@ fn CtorApp lx, env, c, args, span:
                 otherwise: VlOwned made, RsError
         otherwise: match owner.body:
             BRecord fs:
-                if (Len c.fields) == 0: VlOwned (XRaw tyPath), t
-                else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((Snake (Or c.fields[i], "")), (Or vals[i], (XRaw "Default::default()")))))), t
+                if (Len c.fields) == 0: VlOwned (XPath tyPath), t
+                else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((Snake (Or c.fields[i], "")), (Or vals[i], (XCall "Default::default", [[]])))))), t
             BChoice cases:
                 let isUnitType = (Len cases) == 1 and (Len c.args) == 0 and IsLowerText (BareName c.name)
                 let path = if isUnitType: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
-                if (Len c.args) == 0: VlOwned (XRaw path), t
+                if (Len c.args) == 0: VlOwned (XPath path), t
                 else: VlOwned (XCtor path, vals), t
             otherwise: VlOwned (Refusal "a constructor of {c.owner}"), t
 
@@ -1420,7 +1519,7 @@ fn CtorFn lx, c, pts, span, t, job:
     let names = Each (Range0 (Len pts)), \|i| "a{i}"
     # Each argument stands at a place no source has, bound to its parameter.
     let fakes = Each (Range0 (Len pts)), \|i| Arg(name=nil, value=(Expr(kind=EAbsent, span=Range(start=(4000000000 + i), end=(4000000000 + i)))), span=Range(start=0, end=0))
-    let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XRaw (Or names[i], "a")), (if job: Owned else: ByRef), (Or pts[i], RsUnit))
+    let env = Fold (Range0 (Len pts)), emptyEnv, \|en, i| BindSpan en, (PlaceKey lx, (Range(start=(4000000000 + i), end=(4000000000 + i)))), (VlPlace (XVar (Or names[i], "a")), (if job: Owned else: ByRef), (Or pts[i], RsUnit))
     let made = Own (CtorApp lx, env, c, fakes, span)
     if job:
         let a = match t:
@@ -1451,7 +1550,7 @@ fn CtorArgs lx, env, c, args:
             let v = Own (ValueOf lx, env, x)
             if c.owner == "Prelude.Error" and i == 0: v
             else: if RcField lx, c.name, i: XCall "Rc::new", [[v]] else: v
-        otherwise: XRaw "Default::default()"
+        otherwise: (XCall "Default::default", [[]])
 
 # A trait method applied: the operator a builtin, derived or written impl answers (an
 # `impl ^Eq` is emitted as Rust's `PartialEq`, so `==` reaches it), or the method of a
@@ -1471,8 +1570,8 @@ let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods
 
 PreludeMethod: unbounded fn Lx, Text, Text, [Vl], Range, RsTy -> Vl
 fn PreludeMethod lx, cls, m, vals, span, t:
-    let a = Or vals[0], (VlOwned (XRaw "()"), RsUnit)
-    let b = Or vals[1], (VlOwned (XRaw "()"), RsUnit)
+    let a = Or vals[0], (VlOwned (XUnit), RsUnit)
+    let b = Or vals[1], (VlOwned (XUnit), RsUnit)
     match m:
         "Show": VlOwned (XCall "show_text", [[Ref a]]), RsText
         "Compare": VlOwned (XCall "compare", [[Ref a, Ref b]]), t
@@ -1600,8 +1699,8 @@ WrapAsJob: fn Ex, [RsTy], RsTy, RsTy -> Ex
 fn WrapAsJob f, pts, target, a:
     let names = Each (Range0 (Len pts)), \|i| "a{i}"
     let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
-    let call = XApply (XRaw "f"), (Each names, \|nm| XUnary "&", (XRaw nm))
-    let body = XBlock [[(DoLet (PaBind "f"), (XMethod (XRaw "f"), "clone", [[]]))]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
+    let call = XApply (XVar "f"), (Each names, \|nm| XRef (XVar nm))
+    let body = XBlock [[(DoLet (PaBind "f"), (XMethod (XVar "f"), "clone", [[]]))]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
     XBlock [[(DoLet (PaBind "f"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], body)]]), target)
 
 # A named function's arguments, owned, as its job's fields take them: a function
@@ -1721,9 +1820,9 @@ fn PlainLambda lx, env, ps, body, ft:
     let caps = Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
-            let local = if (Take rs, 5) == "self.": Drop rs, 5 else: rs
+            let local = PlaceStem rs
             let d = DoLet (PaBind local), (Own (LocalPlace rs, mode, ct))
-            (((Push acc, d), (Bind en, n, (BnLocal local, Owned, ct))))
+            (((Push acc, d), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
         otherwise: ((acc, en))
     let ((pas, env2)) = ClosureParams lx, env1, ps, pts, True
     let v = LambdaBodyValue lx, env2, body
@@ -1771,11 +1870,11 @@ fn JobLambda lx, env, ps, body, ft, a, enter:
         otherwise: False
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
-            let d = DoLet (PaBind rs), (Own (LocalPlace rs, mode, ct))
-            (((Push acc, d), (Bind en, n, (BnLocal rs, Owned, ct))))
+            let d = DoLet (PaBind (PlaceStem rs)), (Own (LocalPlace rs, mode, ct))
+            (((Push acc, d), (Bind en, n, (BnLocal (XVar (PlaceStem rs)), Owned, ct))))
         otherwise: ((acc, en))
     let again = Fold caps, [[]], \|acc, n| match env1.names[n]:
-        ? (BnLocal rs, ignore, ct): Push acc, (DoLet (PaBind rs), (Own (LocalPlace rs, Owned, ct)))
+        ? (BnLocal rs, ignore, ct): Push acc, (DoLet (PaBind (PlaceStem rs)), (Own (LocalPlace rs, Owned, ct)))
         otherwise: acc
     let pts = match a:
         RsTuple ts: if (Len ps) == 1: [[a]] else: ts
@@ -1788,7 +1887,7 @@ fn JobLambda lx, env, ps, body, ft, a, enter:
         let p = Or ps[i], dummyPat
         RustPat lx, p, (BinderTyOfPattern lx, p), Owned, "p{i}_"
     let unpack = Fold (Range0 (Len pos)), [[]], \|acc, i| match pos[i]:
-        ? po: Append (Push acc, (DoLet po.pa, (XRaw "p{i}"))), (Each po.conds, \|c| CondAsLet c)
+        ? po: Append (Push acc, (DoLet po.pa, (XVar "p{i}"))), (Each po.conds, \|c| CondAsLet c)
         nil: acc
     # A name parameter's type is the `Start`'s (a function parameter is a `Start` there).
     let pos2 = Each (Range0 (Len pos)), \|i| match pos[i]:
@@ -1860,7 +1959,7 @@ fn OnlyCaptured env, caps = update env:
 # `let` in the body: a parameter's pattern is irrefutable, so it holds.
 CondAsLet: fn Cc -> Do
 fn CondAsLet (CcLet pa, x) = DoLet pa, x
-fn CondAsLet (CcIf x) = DoExpr (XRaw "()")
+fn CondAsLet (CcIf x) = DoExpr (XUnit)
 
 # A lambda passed to a parameter: a borrowed closure, its types from the parameter.
 LambdaArg: unbounded fn Lx, Env, [Pattern], LambdaBody, [RsTy] -> Ex
@@ -1898,7 +1997,7 @@ IfValue: unbounded fn Lx, Env, Cond, Block, ?Block, RsTy -> Vl
 fn IfValue lx, env, c, thenB, ?elseB, t:
     let elseV = match ?elseB:
         ? b: OwnAs t, (BlockValue lx, env, b)
-        nil: XRaw "()"
+        nil: XUnit
     match c:
         CondExpr x: VlOwned (XIf (AsBool (ValueOf lx, env, x)), (OwnAs t, (BlockValue lx, env, thenB)), elseV), t
         CondBind p, x, ?g:
@@ -1989,7 +2088,7 @@ fn PlainBlockValue lx, env, b:
         else:
             let ((more, en2)) = BlockStmt lx, en, s
             (((Append acc, more), en2, ?lv))
-    let last = Or ?last, (VlOwned (XRaw "()"), RsUnit)
+    let last = Or ?last, (VlOwned (XUnit), RsUnit)
     if (Len dos) == 0: last
     else: VlOwned (XBlock dos, (Own last)), (ValueTy last)
 
@@ -2038,7 +2137,7 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
         else:
             let rs = LocalName lx, nkey
             let bt = RustTy lx, (Peel (BinderTy lx, n.span))
-            PatOut(pa=(PaBind rs), conds=[[]], binds=[[((nkey, (BnLocal rs, mode, bt)))]])
+            PatOut(pa=(PaBind rs), conds=[[]], binds=[[((nkey, (BnLocal (XVar rs), mode, bt)))]])
     PIgnore: PatOnly PaWild
     PUnit: PatOnly PaWild
     PNil: PatOnly (PaUnit "None")
@@ -2087,7 +2186,7 @@ LitPat: unbounded fn Lx, Literal, Ty, Holding, Text, Bool -> PatOut
 fn LitPat lx, l, ty, mode, fresh, neg:
     let t = RustTy lx, (Peel ty)
     match l.kind:
-        LChar c: PatOnly (PaLit "'{CharEscape c}'")
+        LChar c: PatOnly (PaChar c)
         otherwise:
             # A number is of the scrutinee's type (a `0` against a `Nat` is a `Nat`), not
             # the type the checker defaulted the literal to.
@@ -2095,7 +2194,7 @@ fn LitPat lx, l, ty, mode, fresh, neg:
                 LInt d: if t == RsNat or t == RsInt or t == RsU8 or t == RsFloat: VlOwned (Number t, d, neg), t else: LiteralValue lx, emptyEnv, l, l.span, neg
                 otherwise: LiteralValue lx, emptyEnv, l, l.span, neg
             let lv = VlOwned (Own lit), t
-            let b = LocalPlace fresh, mode, t
+            let b = LocalPlace (XVar fresh), mode, t
             PatOut(pa=(PaBind fresh), conds=[[CcIf (XBin "==", (Ref b), (Ref lv))]], binds=[[]])
 
 # `Ctor p, q`: a choice's case, a newtype, a unit type's value, `True`, a record by
@@ -2104,8 +2203,8 @@ CtorPat: unbounded fn Lx, SName, [Pattern], Ty, Holding, Text -> PatOut
 fn CtorPat lx, n, ps, ty, mode, fresh:
     let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
     match ?qk:
-        ? "True": PatOnly (PaLit "true")
-        ? "False": PatOnly (PaLit "false")
+        ? "True": PatOnly (PaBool True)
+        ? "False": PatOnly (PaBool False)
         ? qk: match lx.g.ctors[qk]:
             ? c:
                 let owner = Or lx.g.types[c.owner], dummyTyInfo
@@ -2146,7 +2245,7 @@ fn SubPat lx, c, i, p, ty, mode, fresh:
 BehindRc: unbounded fn Lx, Pattern, Ty, Holding, Text -> PatOut
 fn BehindRc lx, p, ty, rcMode, fresh:
     let inner = RustPat lx, p, ty, ByRef, "{fresh}_r"
-    let place = Ref (LocalPlace fresh, rcMode, (RsUnknown "a payload"))
+    let place = Ref (LocalPlace (XVar fresh), rcMode, (RsUnknown "a payload"))
     PatOut(pa=(PaBind fresh), conds=(Append [[(CcLet inner.pa, place)]], inner.conds), binds=inner.binds)
 
 # `Rec(f=p, ..)` (a record) or `Error(kind=K, ..)` (the prelude's error, matched in `~T`
@@ -2225,8 +2324,8 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
     let binds = Fold parts, [[]], \|acc, ((ignore, o))| Append acc, o.binds
     let level = PaCtor variant, [[(PaRecord structPath, fieldPas, True)]]
     # the arm names the tag: a `@ x` in it answers with the tag's variant of `crate::Answer`
-    let tagged = Push binds, (("#tag", (BnLocal (AnswerVariant tg), Owned, RsUnit)))
-    if live: PatOut(pa=(PaBind fresh), conds=(Append [[(CcLet level, (XRaw "&{fresh}.identity"))]], conds), binds=tagged)
+    let tagged = Push binds, (("#tag", (BnLocal (XPath (AnswerVariant tg)), Owned, RsUnit)))
+    if live: PatOut(pa=(PaBind fresh), conds=(Append [[(CcLet level, (XRef (XField (XVar fresh), "identity")))]], conds), binds=tagged)
     else: PatOut(pa=level, conds=conds, binds=binds)
 
 # A live element's `$` field: a binder takes the field's dynamic, the element's level
@@ -2237,13 +2336,16 @@ LiveFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text -> PatOut
 fn LiveFieldPat lx, p, variant, fname, ft, fresh = match p.kind:
     PIgnore: PatOnly PaWild
     PName n:
-        let rs = if lx.inNode: LiveProjection fresh, variant, fname else: "compile_error!(\"{loweringRefusal}a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)\")"
+        let rs = if lx.inNode: LiveProjection fresh, variant, fname else: Refusal "a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)"
         PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal rs, Owned, (RsDyn (RustTy lx, (Peel ft))))))]])
     PGroup q: LiveFieldPat lx, q, variant, fname, ft, fresh
     otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern inside a live element's `$` field ({fname})")]], binds=[[]])
 
-LiveProjection: fn Text, Text, Text -> Text
-fn LiveProjection fresh, variant, fname = "{fresh}.level.map(move |l| match l \{ {variant}(x) => x.{Snake fname}.clone(), _ => unreachable!() \})"
+LiveProjection: fn Text, Text, Text -> Ex
+fn LiveProjection fresh, variant, fname:
+    let arm = XArm(pat=(PaCtor variant, [[PaBind "x"]]), conds=[[]], body=(XClone (XField (XVar "x"), (Snake fname))))
+    let other = XArm(pat=PaWild, conds=[[]], body=XUnreachable)
+    XMethod (XField (XVar fresh), "level"), "map", [[(XClosure True, [[PaBind "l"]], (XMatch (XVar "l"), [[arm, other]], False))]]
 
 # `Ui.*`: the scrutinee is one of the family's tags.
 FamilyPat: unbounded fn Lx, QualName, Ty, Text -> PatOut
@@ -2255,15 +2357,13 @@ fn FamilyPat lx, q, ty, fresh:
         TyCon k, ignore: k
         otherwise: ""
     let tags = Filter (KindTags lx, kind, (Keys lx.rsMods)), \|tg| tg.family == fam
-    let alts = Join (Each tags, \|tg| "{VariantOf lx, tg}(..)"), " | "
-    let place = if IsLive ty: "{fresh}.identity" else: fresh
-    let probe = if alts == "": "false" else: "matches!({place}, {alts})"
-    PatOut(pa=(PaBind fresh), conds=[[CcIf (XRaw probe)]], binds=[[]])
+    let place = if IsLive ty: XField (XVar fresh), "identity" else: XVar fresh
+    PatOut(pa=(PaBind fresh), conds=[[CcIf (XIsCase place, (Each tags, \|tg| VariantOf lx, tg))]], binds=[[]])
 
 # `Error(kind=Fs.NotFound, message=m)`: `Err(e)` and the kind compared after it.
 ErrorPat: unbounded fn Lx, [FieldPat], Ty, Holding, Text -> PatOut
 fn ErrorPat lx, fps, ty, mode, fresh:
-    let e = LocalPlace fresh, mode, RsError
+    let e = LocalPlace (XVar fresh), mode, RsError
     let parts = Each fps, \|fp|
         let fname = match fp.?name:
             ? id: id.name
@@ -2273,11 +2373,11 @@ fn ErrorPat lx, fps, ty, mode, fresh:
                 PName k:
                     let ((?kq, ignore)) = ResolveValue lx.g, lx.home, k
                     match ?kq:
-                        ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin "==", (XRaw "&*{fresh}.kind"), (XRaw "\"{kq}\""))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal "{fresh}.kind", Owned, RsText)))]]))
-                        nil: (([[]], [[((SNameKey k, (BnLocal "{fresh}.kind", Owned, RsText)))]]))
+                        ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin "==", (XRef (XDeref (XField (XVar fresh), "kind"))), (XStr kq))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal (XField (XVar fresh), "kind"), Owned, RsText)))]]))
+                        nil: (([[]], [[((SNameKey k, (BnLocal (XField (XVar fresh), "kind"), Owned, RsText)))]]))
                 otherwise: (([[]], [[]]))
             "message": match fp.pattern.kind:
-                PName m: (([[]], [[((SNameKey m, (BnLocal "{fresh}.message", Owned, RsText)))]]))
+                PName m: (([[]], [[((SNameKey m, (BnLocal (XField (XVar fresh), "message"), Owned, RsText)))]]))
                 otherwise: (([[]], [[]]))
             otherwise: (([[]], [[]]))
     let wrapped = match Peel ty:
@@ -2291,10 +2391,10 @@ fn ArrayPat lx, ps, ty, mode, fresh:
     let et = match Peel ty:
         TyArray x: x
         otherwise: TyErr
-    let arr = LocalPlace fresh, mode, (RustTy lx, (Peel ty))
-    let lenCond = CcIf (XBin "==", (XMethod (Ref arr), "len", [[]]), (XRaw "{Len ps}"))
+    let arr = LocalPlace (XVar fresh), mode, (RustTy lx, (Peel ty))
+    let lenCond = CcIf (XBin "==", (XMethod (Ref arr), "len", [[]]), (XIndex (Len ps)))
     let subs = Each (Range0 (Len ps)), \|i| ((i, (RustPat lx, (Or ps[i], dummyPat), et, Owned, "{fresh}_{i}")))
-    let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor "Some", [[o.pa]]), (XCall "index", [[Ref arr, XRaw "&Nat::from({i}u32)"]]))), o.conds
+    let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor "Some", [[o.pa]]), (XCall "index", [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds
     let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
     PatOut(pa=(PaBind fresh), conds=conds, binds=binds)
 
@@ -2307,23 +2407,23 @@ fn ArrayPat lx, ps, ty, mode, fresh:
 # column (`place`, the prelude's).
 TemplateValue: unbounded fn Lx, Env, Template -> Vl
 fn TemplateValue lx, env, tp:
-    let start = [[(DoLet (PaBind "mut out"), (XRaw "String::new()"))]]
+    let start = [[(DoLet (PaMut "out"), (XCall "String::new", [[]]))]]
     let dos = Fold tp.parts, start, \|acc, part| Append acc, (TemplatePartDos lx, env, part)
-    VlOwned (XBlock dos, (XCall "Text::from", [[XRaw "out"]])), RsText
+    VlOwned (XBlock dos, (XCall "Text::from", [[(XVar "out")]])), RsText
 
 TemplatePartDos: unbounded fn Lx, Env, TemplatePart -> [Do]
 fn TemplatePartDos lx, env, part = match part:
-    TpText t: [[DoExpr (XMethod (XRaw "out"), "push_str", [[XRaw "\"{Escape t}\""]])]]
+    TpText t: [[DoExpr (XMethod (XVar "out"), "push_str", [[(XStr t)]])]]
     TpPlaceholder x, ?col:
         let v = ValueOf lx, env, x
         let column = match ?col:
-            ? c: XRaw "Some({c})"
-            nil: XRaw "None"
-        [[DoExpr (XCall "place", [[XRaw "&mut out", ShownText v, column]])]]
+            ? c: XCtor "Some", [[XIndex c]]
+            nil: XNone
+        [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), ShownText v, column]])]]
     TpBlock b:
         let v = BlockValue lx, env, b
         if (ValueTy v) == RsUnit: [[DoExpr (Own v)]]
-        else: [[DoExpr (XCall "place", [[XRaw "&mut out", ShownText v, XRaw "None"]])]]
+        else: [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), ShownText v, XNone]])]]
     TpCall n, args, ?parts, ignore:
         let plain = SName(sigils=(Drop n.sigils, 1), path=n.path, span=n.span)
         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
@@ -2335,8 +2435,8 @@ fn TemplatePartDos lx, env, part = match part:
                 nil: Snake (SNameKey n)
         let body = match ?parts:
             ? ps:
-                let inner = Fold ps, [[(DoLet (PaBind "mut out"), (XRaw "String::new()"))]], \|acc, p| Append acc, (TemplatePartDos lx, env, p)
-                [[(XUnary "&", (XBlock inner, (XCall "Text::from", [[XRaw "out"]])))]]
+                let inner = Fold ps, [[(DoLet (PaMut "out"), (XCall "String::new", [[]]))]], \|acc, p| Append acc, (TemplatePartDos lx, env, p)
+                [[(XRef (XBlock inner, (XCall "Text::from", [[(XVar "out")]])))]]
             nil: [[]]
         let passed = match ?qk:
             ? q: TemplateArgs lx, env, q, args, body
@@ -2344,7 +2444,7 @@ fn TemplatePartDos lx, env, part = match part:
                 ? q: TemplateArgs lx, env, q, args, body
                 nil: Append (Each args, \|a| Argument lx, env, a.value), body
         let call = XCall callee, passed
-        [[DoExpr (XCall "place", [[XRaw "&mut out", (XUnary "&", call), XRaw "None"]])]]
+        [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), (XRef call), XNone]])]]
 
 # A template call's arguments in place order (pick TK, as the checker reads them): the
 # body, when there is one, fills the last place; each attribute fills the one place any
@@ -2355,7 +2455,7 @@ fn TemplateArgs lx, env, qk, args, body:
     let clauses = ClausesOf lx.g, qk
     let arity = Len (Or clauses[0], dummyClause).params
     Each (Range0 arity), \|j|
-        if (Len body) > 0 and j + 1 == arity: Or body[0], (XRaw "()")
+        if (Len body) > 0 and j + 1 == arity: Or body[0], (XUnit)
         else: match ?AttrAt clauses, j, args:
             ? a: Argument lx, env, a.value
             nil: Refusal "a template call that fills no argument at place {j}"
@@ -2385,7 +2485,7 @@ fn ?PlaceName p = match p.kind:
 ShownText: fn Vl -> Ex
 fn ShownText v = match ValueTy v:
     RsText: Ref v
-    otherwise: XUnary "&", (XCall "show_text", [[Ref v]])
+    otherwise: XRef (XCall "show_text", [[Ref v]])
 
 # `given:` (Semantics ch. 4): `let`s, binds that fail on `nil` (or on an `Error`), the
 # guards, and the answer last; a failed guard under `~` is `Prelude.Unmet` with the
@@ -2399,29 +2499,29 @@ fn GivenValue lx, env, b, t, span:
     let n = Len b.stmts
     let ((dos, env2, ?last)) = Fold (Range0 n), (([[]], env, nil)), \|((acc, en, ?lv)), i|
         let s = Or b.stmts[i], dummyStmtL
-        let fail = if isTry: "Err(Error::new(\"Prelude.Unmet\", \"{Escape (SourceText lx, s.span)}\"))" else: "None"
+        let fail = if isTry: XCtor "Err", [[(XCall "Error::new", [[(XStr "Prelude.Unmet"), (XStr (SourceText lx, s.span))]])]] else: XNone
         match s.kind:
             SBind p, x, nil:
                 let v = ValueOf lx, en, x
                 let po = RustPat lx, p, (InnerTy (TypeAt lx, x.span)), Owned, "g{s.span.start}"
                 (((Push acc, (GivenBind isTry, po.pa, (Own v), label)), (BindAll en, po.binds), ?lv))
-            SRequire c: (((Push acc, (DoIf (XUnary "!", (AsBool (ValueOf lx, en, c))), [[DoExpr (XRaw "break {label} {fail}")]], [[]])), en, ?lv))
-            SForbid c: (((Push acc, (DoIf (AsBool (ValueOf lx, en, c)), [[DoExpr (XRaw "break {label} {fail}")]], [[]])), en, ?lv))
+            SRequire c: (((Push acc, (DoIf (XUnary "!", (AsBool (ValueOf lx, en, c))), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
+            SForbid c: (((Push acc, (DoIf (AsBool (ValueOf lx, en, c)), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
             SExpr x:
                 if i + 1 == n: ((acc, en, ? (ValueOf lx, en, x)))
                 else: (((Push acc, (DoExpr (Own (ValueOf lx, en, x)))), en, ?lv))
             otherwise:
                 let ((more, en2)) = BlockStmt lx, en, s
                 (((Append acc, more), en2, ?lv))
-    let last = Or ?last, (VlOwned (XRaw "None"), t)
+    let last = Or ?last, (VlOwned (XNone), t)
     VlOwned (XLabeled label, dos, (Own last)), t
 
 # A bind in `given:`: `let Some(p) = e else { break 'g None; }`, or under `~` the error
 # passed on.
 GivenBind: fn Bool, Pa, Ex, Text -> Do
 fn GivenBind isTry, pa, x, label:
-    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor "Ok", [[PaBind "v"]]), conds=[[]], body=(XRaw "v")), XArm(pat=(PaCtor "Err", [[PaBind "e"]]), conds=[[]], body=(XRaw "break {label} Err(e)"))]], False)
-    else: DoLetElse (PaCtor "Some", [[pa]]), x, (XRaw "break {label} None")
+    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor "Ok", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor "Err", [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor "Err", [[XVar "e"]])))]], False)
+    else: DoLetElse (PaCtor "Some", [[pa]]), x, (XBreak label, XNone)
 
 # The source a range covers, in the file being lowered.
 SourceText: fn Lx, Range -> Text
@@ -2435,9 +2535,9 @@ fn SourceText lx, r = match lx.g.srcs[lx.file]:
 UpdateValue: unbounded fn Lx, Env, Expr, Block, RsTy, Range -> Vl
 fn UpdateValue lx, env, target, b, t, span:
     let tv = ValueOf lx, env, target
-    let env1 = Bind env, "&_", (BnLocal "this", Owned, t)
+    let env1 = Bind env, "&_", (BnLocal (XVar "this"), Owned, t)
     let ((dos, ignore)) = UpdStmts lx, env1, b.stmts
-    VlOwned (XBlock (Append [[(DoLet (PaBind "mut this"), (Own tv))]], dos), (XRaw "this")), t
+    VlOwned (XBlock (Append [[(DoLet (PaMut "this"), (Own tv))]], dos), (XVar "this")), t
 
 UpdStmts: unbounded fn Lx, Env, [Stmt] -> (([Do], Env))
 fn UpdStmts lx, env, stmts = Fold stmts, (([[]], env)), \|((acc, en)), s|
@@ -2463,8 +2563,8 @@ fn UpdStmt lx, env, s = match s.kind:
                 if (Take n.sigils, 1) == "&":
                     let rs = LocalName lx, (SNameKey n)
                     let bt = RustTy lx, (Peel (BinderTy lx, n.span))
-                    let pa = if IsKnownTy bt: PaTyped (PaBind "mut {rs}"), bt else: PaBind "mut {rs}"
-                    (([[(DoLet pa, v)]], (Bind env, (SNameKey n), (BnLocal rs, Owned, bt))))
+                    let pa = if IsKnownTy bt: PaTyped (PaMut "{rs}"), bt else: PaMut "{rs}"
+                    (([[(DoLet pa, v)]], (Bind env, (SNameKey n), (BnLocal (XVar rs), Owned, bt))))
                 else: BlockStmt lx, env, s
             otherwise: BlockStmt lx, env, s
     SWhile c, body:
@@ -2482,7 +2582,7 @@ fn UpdStmt lx, env, s = match s.kind:
                     CcIf t: Push acc, t
                     otherwise: acc
                 let lets = Fold conds, False, \|f, c| f or IsLetCond c
-                let stop = if (Len tests) == 0: [[]] else: [[(DoIf (XUnary "!", (AllOf tests)), [[DoExpr (XRaw "break")]], [[]])]]
+                let stop = if (Len tests) == 0: [[]] else: [[(DoIf (XUnary "!", (AllOf tests)), [[DoExpr (XVar "break")]], [[]])]]
                 let body2 = if lets: [[RefusalDo "a `while` whose pattern matches through an `Rc`"]] else: Append stop, inner2
                 (([[(DoWhileLet po.pa, (Own (ValueOf lx, env, x)), body2)]], env))
     SExpr x: match x.kind:
@@ -2510,9 +2610,9 @@ fn UpdForRefs lx, env, n, source, body, span, sty = match sty:
     TyArray v:
         let keyName = "k{span.start}"
         let refName = "r{span.start}"
-        let env1 = Bind (Bind (Bind env, "key", (BnLocal keyName, Owned, RsNat)), "ix", (BnLocal keyName, Owned, RsNat)), (SNameKey n), (BnLocal "(*{refName})", Owned, (RustTy lx, v))
+        let env1 = Bind (Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, RsNat)), "ix", (BnLocal (XVar keyName), Owned, RsNat)), (SNameKey n), (BnLocal (XTarget (XVar refName)), Owned, (RustTy lx, v))
         let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
-        let head = DoLet (PaBind keyName), (XCall "nat_of", [[XRaw "i{span.start}"]])
+        let head = DoLet (PaBind keyName), (XCall "nat_of", [[(XVar "i{span.start}")]])
         DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
     otherwise: RefusalDo "a `for` by reference over what is not an array"
 
@@ -2547,21 +2647,21 @@ fn UpdForValues lx, env, ?binders, source, body, span, sty:
         otherwise: ((TyErr, TyErr))
     let keyName = "k{span.start}"
     let valName = "v{span.start}"
-    let env1 = Bind (Bind env, "key", (BnLocal keyName, Owned, kt)), "_", (BnLocal valName, Owned, vt)
-    let env2 = if isArray: Bind env1, "ix", (BnLocal keyName, Owned, kt) else: env1
+    let env1 = Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, kt)), "_", (BnLocal (XVar valName), Owned, vt)
+    let env2 = if isArray: Bind env1, "ix", (BnLocal (XVar keyName), Owned, kt) else: env1
     let ((binds, env3)) = match ?binders:
         nil: (([[]], env2))
         ? fb: match fb.?second:
             nil:
                 let po = RustPat lx, fb.first, vty, Owned, "e{span.start}"
-                (([[(DoLet po.pa, (XMethod (XRaw valName), "clone", [[]]))]], (BindAll env2, po.binds)))
+                (([[(DoLet po.pa, (XMethod (XVar valName), "clone", [[]]))]], (BindAll env2, po.binds)))
             ? second:
                 let pk = RustPat lx, fb.first, kty, Owned, "k{span.start}_"
                 let pv = RustPat lx, second, vty, Owned, "e{span.start}"
-                ((([[(DoLet pk.pa, (XMethod (XRaw keyName), "clone", [[]])), (DoLet pv.pa, (XMethod (XRaw valName), "clone", [[]]))]]), (BindAll (BindAll env2, pk.binds), pv.binds)))
+                ((([[(DoLet pk.pa, (XMethod (XVar keyName), "clone", [[]])), (DoLet pv.pa, (XMethod (XVar valName), "clone", [[]]))]]), (BindAll (BindAll env2, pk.binds), pv.binds)))
     let ((dos, ignore)) = UpdStmts lx, env3, body.stmts
     if isArray:
-        let head = DoLet (PaBind keyName), (XCall "nat_of", [[XRaw "i{span.start}"]])
+        let head = DoLet (PaBind keyName), (XCall "nat_of", [[(XVar "i{span.start}")]])
         DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind valName)]]), (XMethod (XMethod src, "into_iter", [[]]), "enumerate", [[]]), (Append (Push [[]], head), (Append binds, dos))
     else: DoFor (PaTuple [[(PaBind keyName), (PaBind valName)]]), (XMethod src, "into_iter", [[]]), (Append binds, dos)
 
@@ -2588,7 +2688,7 @@ fn UpdMatch lx, env, scrut, arms:
         let po = ArmPat lx, arm.?pattern, sty, ByRef, "u{scrut.span.start}_{i}"
         let ((dos, ignore)) = UpdStmts lx, (BindAll env, po.binds), arm.body.stmts
         let guarded = Append po.conds, (GuardConds lx, (BindAll env, po.binds), arm.?guard)
-        XArm(pat=po.pa, conds=guarded, body=(XBlock dos, (XRaw "()")))
+        XArm(pat=po.pa, conds=guarded, body=(XBlock dos, (XUnit)))
     # Arms with conditions (a guard, a literal, a payload behind an `Rc`) are the
     # value-`match`'s arms, a `match` with guards or an if-let chain; others a plain one.
     if Fold arms3, False, \|f, a| f or (Len a.conds) > 0: DoExpr (Own (ArmsValue (Ref sv), arms3, "'u{scrut.span.start}", RsUnit))
@@ -2597,7 +2697,7 @@ fn UpdMatch lx, env, scrut, arms:
 # Conditions joined by `&&`.
 AllOf: fn [Ex] -> Ex
 fn AllOf [[one]] = one
-fn AllOf xs = Fold (Drop xs, 1), (Or xs[0], (XRaw "true")), \|acc, x| XBin "&&", acc, x
+fn AllOf xs = Fold (Drop xs, 1), (Or xs[0], (XBool True)), \|acc, x| XBin "&&", acc, x
 
 ArmDos: fn Ex -> [Do]
 fn ArmDos (XBlock dos, ignore) = dos
@@ -2611,15 +2711,15 @@ fn GuardConds lx, env, nil = [[]]
 PlaceOf: unbounded fn Lx, Env, Expr -> Ex
 fn PlaceOf lx, env, e = match e.kind:
     EName n: match env.names[SNameKey n]:
-        ? (BnLocal rs, ignore, ignore): XRaw rs
-        otherwise: XRaw (Snake (SNameKey n))
+        ? (BnLocal rs, ignore, ignore): rs
+        otherwise: XVar (Snake (SNameKey n))
     EField r, ignore, name: XField (PlaceOf lx, env, r), (Snake name.name)
     EIndex r, k:
         let rt = RustTy lx, (Peel (TypeAt lx, r.span))
         let f = match rt:
             RsMap ignore, ignore: "at_mut_map"
             otherwise: "at_mut"
-        XUnary "*", (XCall f, [[(XUnary "&mut ", (PlaceOf lx, env, r)), (Argument lx, env, k)]])
+        XDeref (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]])
     EGroup x: PlaceOf lx, env, x
     otherwise: Refusal "a reference path this back end does not lower"
 
@@ -2632,7 +2732,7 @@ fn Assign lx, env, target, v = match target.kind:
         let f = match rt:
             RsMap ignore, ignore: "set_key"
             otherwise: "set_index"
-        DoExpr (XCall f, [[(XUnary "&mut ", (PlaceOf lx, env, r)), (Argument lx, env, k), v]])
+        DoExpr (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k), v]])
     EGroup x: Assign lx, env, x, v
     otherwise: DoAssign (PlaceOf lx, env, target), v
 
@@ -2700,7 +2800,7 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label:
     let env1 = Fold (Range0 (Len names)), env, \|en, i|
         let ((rs, matched)) = Or names[i], (("", True))
         if matched: en
-        else: Bind en, (PlainBinder lx, (Or (Or clauses[0], dummyClause).params[i], dummyPat)), (BnLocal rs, ByRef, (RustTy lx, (Peel (Or ptys[i], TyErr))))
+        else: Bind en, (PlainBinder lx, (Or (Or clauses[0], dummyClause).params[i], dummyPat)), (BnLocal (XVar rs), ByRef, (RustTy lx, (Peel (Or ptys[i], TyErr))))
     let scrutIx = Filter (Range0 (Len names)), \|i| match names[i]:
         ? ((ignore, True)): True
         otherwise: False
@@ -2709,8 +2809,8 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label:
         Body lx, env1, c.body
     else:
         let scrut = match scrutIx:
-            [[i]]: XRaw (Or (Each names, \|((n, ignore))| n)[i], "arg")
-            otherwise: XTuple (Each scrutIx, \|i| XRaw (Or (Each names, \|((n, ignore))| n)[i], "arg"))
+            [[i]]: XVar (Or (Each names, \|((n, ignore))| n)[i], "arg")
+            otherwise: XTuple (Each scrutIx, \|i| XVar (Or (Each names, \|((n, ignore))| n)[i], "arg"))
         let arms = Each (Range0 (Len clauses)), \|ci|
             let c = Or clauses[ci], dummyClause
             let pos = Each scrutIx, \|i| RustPat lx, (Or c.params[i], dummyPat), (Or ptys[i], TyErr), ByRef, "{label}{ci}_{i}"
@@ -2845,7 +2945,7 @@ fn TailHere lx, env, e = match e.kind:
             let vals = NamedArgsOwned lx, env, qk, args
             if EntersAtOnce lx, qk, args: XMethod (XCall (PathIn lx, (OwnerOf qk), "start_{job}"), vals), "cycle", [[]]
             else: if IsColorPoly lx, qk: XCtor "prism_rtl::Turn::More", [[(XCall (PathIn lx, (OwnerOf qk), "start_{job}"), vals)]]
-            else: XCtor "prism_rtl::Turn::More", [[(XCall "Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XRaw "()"))))))]])]]
+            else: XCtor "prism_rtl::Turn::More", [[(XCall "Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XUnit))))))]])]]
         nil: match ?LocalJobFn lx, env, callee:
             ? f: XMethod (StartCall f, (StartArgs lx, env, f, args)), "cycle", [[]]
             nil: match ?PreludeJobCall lx, env, e:
@@ -2863,7 +2963,7 @@ fn TailFrom lx, env, b, i:
     let s = Or b.stmts[i], dummyStmtL
     if i + 1 >= (Len b.stmts): match s.kind:
         SExpr x: Tail lx, env, x
-        otherwise: XCtor "prism_rtl::Turn::Finished", [[XRaw "()"]]
+        otherwise: XCtor "prism_rtl::Turn::Finished", [[XUnit]]
     else:
         let ?found = match s.kind:
             SLet ignore, ignore, x: ?FrameCall lx, env, x, False
@@ -2929,12 +3029,12 @@ UpdTail: unbounded fn Lx, Env, Expr, Block, Range, (unbounded fn Env, Ex -> Ex) 
 fn UpdTail lx, env, target, b, to, Cont:
     let t = RustTy lx, (Peel (TypeAt lx, target.span))
     let tv = ValueOf lx, env, target
-    let env1 = Bind env, "&_", (BnLocal "this", Owned, t)
-    Prepend [[(DoLet (PaBind "mut this"), (Own tv))]], (UpdTailFrom lx, env, env1, b, 0, to, Cont)
+    let env1 = Bind env, "&_", (BnLocal (XVar "this"), Owned, t)
+    Prepend [[(DoLet (PaMut "this"), (Own tv))]], (UpdTailFrom lx, env, env1, b, 0, to, Cont)
 
 UpdTailFrom: unbounded fn Lx, Env, Env, Block, Nat, Range, (unbounded fn Env, Ex -> Ex) -> Ex
 fn UpdTailFrom lx, outer, env, b, i, to, Cont:
-    if i >= (Len b.stmts): Cont outer, (XRaw "this")
+    if i >= (Len b.stmts): Cont outer, (XVar "this")
     else:
         let s = Or b.stmts[i], dummyStmtL
         let rest = RestText lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), to
@@ -2964,20 +3064,20 @@ fn Prepend dos, x = if (Len dos) == 0: x else: XBlock dos, x
 WhileJob: unbounded fn Lx, Env, Env, Cond, Block, Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
 fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
     let state = Fold (Keys env.names), [[]], \|acc, k| if (Take k, 1) != "&": acc else: match env.names[k]:
-        ? (BnLocal rs, ignore, bt): Push acc, ((k, rs, bt))
+        ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
     let names = Each state, \|((ignore, rs, ignore))| rs
     let stTy = RsTuple (Each state, \|((ignore, ignore, bt))| bt)
-    let pat = PaTuple (Each names, \|n| PaBind "mut {n}")
-    let pack = XTuple (Each names, \|n| XRaw n)
-    let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal rs, Owned, bt)
+    let pat = PaTuple (Each names, \|n| PaMut "{n}")
+    let pack = XTuple (Each names, \|n| XVar n)
+    let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal (XVar rs), Owned, bt)
     let loopText = match lx.g.srcs[lx.file]:
         ? src: SpanText src, span
         nil: ""
     # The loop's other locals: borrowed or owned, cloned into the step closure.
     let caps = CapsIn envS, loopText, names
-    let capDos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (Own (VlPlace (XRaw rs), mode, bt))
-    let envC = Fold caps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
+    let capDos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind (PlaceStem rs)), (Own (VlPlace rs, mode, bt))
+    let envC = Fold caps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (PlaceStem rs)), Owned, bt)
     # A body that holds a cycle-point loop of its own runs as a job a turn (`loop_turns`):
     # it ends in the turn's `Ok`, after the inner loop's continuation; else it runs within
     # the cycle and gives `Ok` or `Err` itself (`loop_job`).
@@ -2996,9 +3096,9 @@ fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
             Own (ArmsValue (Own (ValueOf lx, envC, x)), [[XArm(pat=po.pa, conds=conds, body=(Body envB)), XArm(pat=PaWild, conds=[[]], body=stop)]], "'w{span.start}", resTy)
     # The continuation: the state by its names again, and the outer locals the rest reads.
     let outCaps = CapsIn outer, restText, names
-    let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (Own (VlPlace (XRaw rs), mode, bt))
-    let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
-    let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
+    let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (PlaceStem rs)), (Own (VlPlace rs, mode, bt))
+    let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (PlaceStem rs)), Owned, bt)
+    let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (PlaceStem rs)), Owned, bt)
     let stepFn = Prepend capDos, (XClosure True, [[(PaTyped pat, stTy)]], turn)
     let looping = if jobs: "loop_turns" else: "loop_job"
     let enter = XCall "call_then", [[(XCall looping, [[pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
@@ -3017,18 +3117,18 @@ fn StmtsThen lx, env, b, last:
 IfJob: unbounded fn Lx, Env, Env, Cond, Block, ?Block, Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
 fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
     let state = Fold (Keys env.names), [[]], \|acc, k| if (Take k, 1) != "&": acc else: match env.names[k]:
-        ? (BnLocal rs, ignore, bt): Push acc, ((k, rs, bt))
+        ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
     let names = Each state, \|((ignore, rs, ignore))| rs
     let stTy = RsTuple (Each state, \|((ignore, ignore, bt))| bt)
-    let pat = PaTuple (Each names, \|n| PaBind "mut {n}")
-    let pack = XTuple (Each names, \|n| XRaw n)
-    let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal rs, Owned, bt)
+    let pat = PaTuple (Each names, \|n| PaMut "{n}")
+    let pack = XTuple (Each names, \|n| XVar n)
+    let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal (XVar rs), Owned, bt)
     # the continuation: the state by its names again, and the outer locals the rest reads
     let outCaps = CapsIn outer, restText, names
-    let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (Own (VlPlace (XRaw rs), mode, bt))
-    let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
-    let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
+    let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (PlaceStem rs)), (Own (VlPlace rs, mode, bt))
+    let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (PlaceStem rs)), Owned, bt)
+    let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (PlaceStem rs)), Owned, bt)
     let kName = "k_if{span.start}"
     let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))
     let ToK = \|o2, e2| XCall kName, [[pack]]
@@ -3045,10 +3145,10 @@ fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
     Prepend (Push outDos, kDo), choose
 
 # The locals of `env` a source text names, other than `skip`: each to clone into a closure.
-CapsIn: fn Env, Text, [Text] -> [((Text, Text, Holding, RsTy))]
+CapsIn: fn Env, Text, [Text] -> [((Text, Ex, Holding, RsTy))]
 fn CapsIn env, text, skip = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
     ? (BnLocal rs, mode, bt):
-        if (HasText skip, rs) or (Take rs, 5) == "self." or not (Mentions text, (Drop k, (Len (MarksOf k)))): acc
+        if (HasText skip, (PlaceStem rs)) or (OnSelf rs) or not (Mentions text, (Drop k, (Len (MarksOf k)))): acc
         else: Push acc, ((k, rs, mode, bt))
     otherwise: acc
 
@@ -3114,14 +3214,14 @@ fn Frame lx, env, call, restText, Cont = match call.kind:
         let caps = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
             ? (BnLocal rs, mode, bt): if (mode == ByRef or mode == RcRef) and Mentions restText, k: Push acc, ((k, rs, mode, bt)) else: acc
             otherwise: acc
-        let dos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind rs), (Own (VlPlace (XRaw rs), mode, bt))
-        let env2 = Fold caps, env, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal rs, Owned, bt)
+        let dos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind (PlaceStem rs)), (Own (VlPlace rs, mode, bt))
+        let env2 = Fold caps, env, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (PlaceStem rs)), Owned, bt)
         let vals = match ?qk:
             ? q: NamedArgsOwned lx, env2, q, args
             nil: match ?LocalJobFn lx, env2, c:
                 ? f: StartArgs lx, env2, f, args
                 nil: Each args, \|a| Own (ValueOf lx, env2, a.value)
-        let env3 = BindSpan env2, (PlaceKey lx, call.span), (VlOwned (XRaw v), t)
+        let env3 = BindSpan env2, (PlaceKey lx, call.span), (VlOwned (XVar v), t)
         let body = Cont env3
         let ((job, how)) = match ?qk:
             ? q: (((XCall (PathIn lx, (OwnerOf q), "start_{base}"), vals), (if EntersAtOnce lx, q, args: "call_value" else: "call_then")))
@@ -3267,7 +3367,7 @@ JobClauses: unbounded fn Lx, [FnClause], [((Text, Bool))], [Ty], [RsTy] -> Ex
 fn JobClauses lx, clauses, names, ptys, pts:
     let lets = Each (Range0 (Len names)), \|i|
         let ((rs, ignore)) = Or names[i], (("arg", True))
-        DoLet (PaBind rs), (XRaw "&self.{rs}")
+        DoLet (PaBind rs), (XRef (XField XSelf, rs))
     let inner = ClausesBody lx, emptyEnv, clauses, names, ptys, TailBody, "j"
     XBlock lets, inner
 
@@ -3405,7 +3505,11 @@ type Wx = record:
     pos: Pos
     gns: [Gn]
     fields: [((Text, RsTy, Text))]
+    # Field initializers: the computed ones (a clone of a local among them), then `moves`,
+    # the locals moved into the node and the fresh cells, written after the ones that read
+    # them.
     inits: [((Text, Ex))]
+    moves: [((Text, Ex))]
     lets: [Do]
     build: [Do]
     places: [Place]
@@ -3535,15 +3639,15 @@ let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "pus
 # no graph and no places yet. `?hostedBy` is set for a row of a hosted child's `for` or
 # `rebuild` (its places are the enclosing host's; the name is the parent's method it tells
 # when one may have moved).
-NewWx: fn Lx, Text, [((Text, RsTy, Text))], [((Text, Ex))], [MethDef], (Text ==> [Read]), [Text], Nat, ?Text -> Wx
-fn NewWx lx, name, fields, inits, getters, dynReads, taken, depth, ?hostedBy:
+NewWx: fn Lx, Text, [((Text, RsTy, Text))], [((Text, Ex))], [((Text, Ex))], [MethDef], (Text ==> [Read]), [Text], Nat, ?Text -> Wx
+fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, depth, ?hostedBy:
     let hostedFields = match ?hostedBy:
         ? ignore: [[(("enclosing", hostOfTy, "the host whose document this row's places are entries of (pick HO)"))]]
         nil: [[]]
     let hostedInits = match ?hostedBy:
-        ? ignore: [[(("enclosing", (XRaw "enclosing")))]]
+        ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=(Append inits, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, depth=depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], hostedBy=?hostedBy, rootDyn=nil, rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=nil, dynAnswers=[[]], inited=[[]], flattens=[[]])
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, depth=depth, result=WrUnit, rows=[[]], builders=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], hostedBy=?hostedBy, rootDyn=nil, rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=nil, dynAnswers=[[]], inited=[[]], flattens=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))
@@ -3578,6 +3682,12 @@ fn AddField wx, name, t, doc, init = update wx:
     &_.fields <= Push &_.fields, ((name, t, doc))
     &_.inits <= Push &_.inits, ((name, init))
 
+# A field whose initializer is a fresh cell, written with the moved locals.
+AddFieldLast: fn Wx, Text, RsTy, Text, Ex -> Wx
+fn AddFieldLast wx, name, t, doc, init = update wx:
+    &_.fields <= Push &_.fields, ((name, t, doc))
+    &_.moves <= Push &_.moves, ((name, init))
+
 HeightOf: fn Wx, Nat -> Nat
 fn HeightOf wx, n = match wx.gns[n]:
     ? g: g.height
@@ -3589,7 +3699,7 @@ fn GnOf wx, n = Or wx.gns[n], (Gn(id=n, name="never", ty=RsUnit, kind=GnNever, h
 # A plain value of the block, bound at the build and kept as a field: the build reads the
 # Rust local, the methods the field.
 BindPlain: fn Env, Env, Text, Text, RsTy -> ((Env, Env))
-fn BindPlain benv, menv, nkey, rs, t = (((Bind benv, nkey, (BnLocal rs, Owned, t)), (Bind menv, nkey, (BnLocal "self.{rs}", Owned, t))))
+fn BindPlain benv, menv, nkey, rs, t = (((Bind benv, nkey, (BnLocal (XVar rs), Owned, t)), (Bind menv, nkey, (BnLocal (XField XSelf, rs), Owned, t))))
 
 # ---------------------------------------------------------------------------------------
 # A node from a widget definition
@@ -3603,7 +3713,7 @@ fn NodeDefOf lx, qk, params, body, sc, isRoot:
     let ptys = match sc.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]
-    let wx0 = NewWx lx, name, [[]], [[]], [[]], {}, nodeHooks, 0, nil
+    let wx0 = NewWx lx, name, [[]], [[]], [[]], [[]], {}, nodeHooks, 0, nil
     let ((ps, wx1, benv, menv)) = Fold (Range0 (Len params)), (([[]], wx0, emptyEnv, emptyEnv)), \|((acc, w, be, me)), i|
         let p = Or params[i], dummyPat
         let nkey = PlainBinder lx, p
@@ -3612,7 +3722,7 @@ fn NodeDefOf lx, qk, params, body, sc, isRoot:
         let t = RustTy lx, (Peel (Or ptys[i], TyErr))
         let w3 = update w2:
             &_.fields <= Push &_.fields, ((rs, t, "a parameter"))
-            &_.inits <= Push &_.inits, ((rs, (XMethod (XRaw rs), "clone", [[]])))
+            &_.inits <= Push &_.inits, ((rs, (XMethod (XVar rs), "clone", [[]])))
         let ((be2, me2)) = BindPlain be, me, nkey, rs, t
         (((Push acc, ((rs, t))), w3, be2, me2))
     let wx2 = BlockInto wx1, benv, menv, body
@@ -3627,10 +3737,10 @@ fn RootResult wx = match wx.result:
         &_.rootDyn <= ? ((x, rds, t))
         &_.getters <= Push &_.getters, MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxRef, ret=RsPod, body=[[]], tail=(XMethod x, "to_pod", [[]]), doc="The root's dynamic result, pulled after the tick.")
         &_.fields <= Push &_.fields, (("result_last", (RsCell (RsOpt RsPod)), "the result the World last heard"))
-        &_.inits <= Push &_.inits, (("result_last", (XRaw "RefCell::new(None)")))
-        &_.build <= Push &_.build, (DoExpr (XRaw "\{ let r = node.result_value(cx); *node.result_last.borrow_mut() = Some(r.clone()); cx.result(Outcome::Value(r)); \}"))
+        &_.moves <= Push &_.moves, (("result_last", (XCall "RefCell::new", [[XNone]])))
+        &_.build <= Push &_.build, (DoScope (ResultTold (XVar "node")))
     WrPlain x, ignore: update wx:
-        &_.build <= Push &_.build, (DoExpr (XMethod (XRaw "cx"), "result", [[(XCtor "Outcome::Value", [[(XMethod x, "to_pod", [[]])]])]]))
+        &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "result", [[(XCtor "Outcome::Value", [[(XMethod x, "to_pod", [[]])]])]]))
     otherwise: wx
 
 # A block's statements into the node, names bound before any line is read (one binding
@@ -3688,15 +3798,15 @@ fn PreBindName wx, benv, menv, n, how:
         let pf = "{rs}_v_port"
         let pt = RsRc (RsPort et)
         let wx3 = update (Connect wx2, (EvRefOf id), (SkPort "{rs}_v")):
-            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XRaw "Rc::new(Port::new())"))
+            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall "Rc::new", [[(XCall "Port::new", [[]])]]))
             &_.fields <= Push &_.fields, ((pf, pt, "`{nkey}` as a value: the port it fires"))
-            &_.inits <= Push &_.inits, ((pf, (XRaw "{pf}.clone()")))
-        let be = Bind (Bind benv, nkey, b), "{nkey}#port", (BnLocal pf, Owned, pt)
-        let me = Bind (Bind menv, nkey, b), "{nkey}#port", (BnLocal "self.{pf}", Owned, pt)
+            &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
+        let be = Bind (Bind benv, nkey, b), "{nkey}#port", (BnLocal (XVar pf), Owned, pt)
+        let me = Bind (Bind menv, nkey, b), "{nkey}#port", (BnLocal (XField XSelf, pf), Owned, pt)
         ((wx3, be, me))
     else: match ((layer, how)):
         ((LyDyn, AsLet)):
-            let b = BnDyn (XMethod (XRaw "self"), rs, [[XRaw "cx"]]), [[OwnRead rs]], t
+            let b = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
             ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
         ((LyDyn, ignore)):
             let b = BnHold rs, t
@@ -3834,12 +3944,12 @@ fn HoldLine wx, benv, menv, p, init, step:
     match ?BindingOf menv, p:
         ? (BnHold f, t):
             let iv = Own (ValueOf lx, benv, init)
-            let wx1 = AddField wx, f, (RsHold t), "`{PatText p}`", (XCall "Hold::new", [[XRaw "{f}_init.clone()", XRaw "cx"]])
+            let wx1 = AddField wx, f, (RsHold t), "`{PatText p}`", (XCall "Hold::new", [[(XClone (XVar "{f}_init")), XCx]])
             let ((r, wx2)) = EventRef wx1, menv, step
             let wx3 = update (Connect wx2, r, (SkHold f)):
                 &_.lets <= Push &_.lets, (DoLet (PaBind "{f}_init"), iv)
                 &_.inited <= Push &_.inited, f
-            ((wx3, (Bind benv, "{PatText p}#init", (BnLocal "{f}_init", Owned, t))))
+            ((wx3, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
         otherwise: ((wx, benv))
 
 # The build environment with every name that has a value at the build (`{name}#init`) read
@@ -3888,16 +3998,16 @@ fn LetLine wx, benv, menv, p, e:
                 let wx3 = update wx2:
                     &_.lets <= Push &_.lets, (DoLet (PaBind "{rs}_init"), (Own (ValueOf lx, (InitEnv benv), e)))
                     &_.inited <= Push &_.inited, rs
-                ((wx3, (Bind benv, "{PatText p}#init", (BnLocal "{rs}_init", Owned, t))))
+                ((wx3, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{rs}_init"), Owned, t))))
             else: ((wx2, benv))
         ? (BnLocal rs, ignore, t):
-            let local = Base rs
+            let local = PlaceStem rs
             let v = Own (ValueOf lx, benv, e)
-            let f = Drop rs, 5
+            let f = PlaceStem rs
             let wx2 = update wx:
                 &_.lets <= Push &_.lets, (DoLet (PaBind f), v)
                 &_.fields <= Push &_.fields, ((f, t, "`{PatText p}`"))
-                &_.inits <= Push &_.inits, ((f, (XMethod (XRaw f), "clone", [[]])))
+                &_.inits <= Push &_.inits, ((f, (XMethod (XVar f), "clone", [[]])))
             ((wx2, benv))
         otherwise: ((wx, benv))
 
@@ -3982,10 +4092,10 @@ fn ElementLine wx, benv, menv, e, ?bound:
             # a field is live, else the constant; at the build the constant fields' value
             let level = XCtor variant, [[(XRecord structPath, (if live: liveFields else: constFields))]]
             let atBuild = XCtor variant, [[(XRecord structPath, constFields)]]
-            let added = if live: XMethod (XRaw "node"), getter, [[XRaw "cx"]] else: level
+            let added = if live: XMethod (XVar "node"), getter, [[XCx]] else: level
             let wx4 = update wx3:
                 &_.places <= Push &_.places, Place(pos=pos, level=level, getter=getter, reads=reads)
-                &_.build <= if Emits wx3, pos: Push &_.build, (DoExpr (XMethod (XRaw "cx"), "added", [[(XRaw (PlaceAt wx3, "node", pos)), (XMethod added, "to_pod", [[]])]])) else: &_.build
+                &_.build <= if Emits wx3, pos: Push &_.build, (DoExpr (XMethod (XCx), "added", [[(PlaceAt wx3, "node", pos), (XMethod added, "to_pod", [[]])]])) else: &_.build
             ElementOutput wx4, menv, tg, (ElementOut lx, tg, full), pos, ?bound, atBuild
 
 # An element's output type at this application: the tag's, instantiated by the checker
@@ -4070,18 +4180,18 @@ fn BundleFirst wx, tg, pos, plainIx, tys, parts, level = match plainIx:
         let one = (Len plainIx) == 1
         let plainTy = if one: Or tys[Or plainIx[0], 0], RsUnit else: RsTuple (Each plainIx, \|i| Or tys[i], RsUnit)
         let wx1 = update wx:
-            &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level), (DoLet (PaBind "bundle_{PlaceText pos}"), (XDecode plainTy, (XRaw "&first_{PlaceText pos}")))]]
+            &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level), (DoLet (PaBind "bundle_{PlaceText pos}"), (XDecode plainTy, (XRef (XVar "first_{PlaceText pos}"))))]]
             &_.fallible <= True
         Fold (Range0 (Len plainIx)), wx1, \|w, k|
             let i = Or plainIx[k], 0
             match parts[i]:
                 ? (? (BnLocal rs, ignore, ignore)):
-                    let f = Drop rs, 5
-                    let part = if one: XRaw "bundle_{PlaceText pos}" else: XRaw "bundle_{PlaceText pos}.{k}.clone()"
+                    let f = PlaceStem rs
+                    let part = if one: (XVar "bundle_{PlaceText pos}") else: (XClone (XPart (XVar "bundle_{PlaceText pos}"), k))
                     update w:
                         &_.lets <= Push &_.lets, (DoLet (PaBind f), part)
                         &_.fields <= Push &_.fields, ((f, (Or tys[i], RsUnit), "place {PlaceText pos}'s answer, part {i} of its first value"))
-                        &_.inits <= Push &_.inits, ((f, (XMethod (XRaw f), "clone", [[]])))
+                        &_.inits <= Push &_.inits, ((f, (XMethod (XVar f), "clone", [[]])))
                 otherwise: w
 
 # A bundle's event part: the place's answers.
@@ -4106,13 +4216,13 @@ fn BundleAnswer wx, pos, et, ?b:
 # from the World.
 FirstValueLet: fn Wx, Pos, TagInfo, Ex -> Do
 fn FirstValueLet wx, pos, tg, level:
-    let missing = XCall "Fault::answer", [[XRaw "\"no first value for {tg.name}\""]]
+    let missing = XCall "Fault::answer", [[(XStr "no first value for {tg.name}")]]
     if Emits wx, pos:
-        let asked = XMethod (XRaw "cx"), "first_value", [[(XUnary "&", (XMethod level, "to_pod", [[]]))]]
+        let asked = XMethod (XCx), "first_value", [[(XRef (XMethod level, "to_pod", [[]]))]]
         DoLet (PaBind "first_{PlaceText pos}"), (XTry (XMethod asked, "ok_or", [[missing]]))
     else:
         let host = HostLocal wx, pos
-        let asked = XTry (XMethod (XRaw host), "first_value", [[(XRaw "&{PlaceAt wx, "", pos}"), (XUnary "&", level), XRaw "cx"]])
+        let asked = XTry (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, "", pos)), (XRef level), XCx]])
         DoLet (PaBind "first_{PlaceText pos}"), (XTry (XMethod (XTry (XMethod asked, "ok_or", [[missing]])), (AnswerAccessor tg), [[]]))
 
 # The host whose document a position's place is an entry of, as the build spells it (a
@@ -4148,11 +4258,11 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
                 otherwise: FreshName wx, "place_{PlaceText pos}"
             let emits = Emits wx, pos
             # a World's first value is plain data, decoded; a host's is typed already
-            let first = if emits: XDecode out, (XRaw "&first_{PlaceText pos}") else: XRaw "first_{PlaceText pos}"
+            let first = if emits: XDecode out, (XRef (XVar "first_{PlaceText pos}")) else: (XVar "first_{PlaceText pos}")
             let wx2 = update wx1:
                 &_.lets <= Push &_.lets, (FirstValueLet wx, pos, tg, level)
                 &_.fields <= Push &_.fields, ((f, RsHold out, "pushed to place {PlaceText pos}"))
-                &_.inits <= Push &_.inits, ((f, (XCall "Hold::new", [[first, XRaw "cx"]])))
+                &_.inits <= Push &_.inits, ((f, (XCall "Hold::new", [[first, XCx]])))
                 &_.dynPlaces <= Push &_.dynPlaces, ((pos, f, out, (AnswerAccessor tg)))
                 &_.fallible <= True
             # a World's pushes are keyed by the element: the place listens for them; a hosted
@@ -4160,18 +4270,18 @@ fn ElementOutputOf wx, menv, tg, out, pos, ?bound, level:
             let wx3 = if emits: update wx2:
                 &_.lets <= Push &_.lets, (DoLet (PaBind "{f}_element"), (XMethod level, "to_pod", [[]]))
                 &_.fields <= Push &_.fields, (("{f}_element", RsPod, "place {PlaceText pos}'s element, which pushes are keyed by"))
-                &_.inits <= Push &_.inits, (("{f}_element", (XRaw "{f}_element.clone()")))
-                &_.build <= Push &_.build, (DoExpr (XMethod (XRaw "cx"), "listen", [[(XRaw "node.{f}_element.clone()"), (XRaw "&(node.clone() as Rc<dyn Node>)")]]))
+                &_.moves <= Push &_.moves, (("{f}_element", (XClone (XVar "{f}_element"))))
+                &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "listen", [[(XClone (XField (XVar "node"), "{f}_element")), (XRef (XCast (XClone (XVar "node")), (RsNamed "Rc<dyn Node>", [[]])))]]))
             else: wx2
-            ((wx3, (WrDyn (XMethod (XRaw "self.{f}"), "get", [[XRaw "cx"]]), [[OwnRead f]], out)))
+            ((wx3, (WrDyn (XMethod (XField XSelf, "{f}"), "get", [[XCx]]), [[OwnRead f]], out)))
         otherwise: match ?bound:
             ? (BnLocal rs, ignore, ignore):
-                let f = Drop rs, 5
-                let first = if Emits wx, pos: XDecode out, (XRaw "&first_{PlaceText pos}") else: XRaw "first_{PlaceText pos}"
+                let f = PlaceStem rs
+                let first = if Emits wx, pos: XDecode out, (XRef (XVar "first_{PlaceText pos}")) else: (XVar "first_{PlaceText pos}")
                 let wx2 = update wx:
                     &_.lets <= Append &_.lets, [[(FirstValueLet wx, pos, tg, level), (DoLet (PaBind f), first)]]
                     &_.fields <= Push &_.fields, ((f, out, "place {PlaceText pos}'s answer, its first value"))
-                    &_.inits <= Push &_.inits, ((f, (XMethod (XRaw f), "clone", [[]])))
+                    &_.inits <= Push &_.inits, ((f, (XMethod (XVar f), "clone", [[]])))
                     &_.fallible <= True
                 ((wx2, WrUnit))
             otherwise: ((wx, WrUnit))
@@ -4294,22 +4404,23 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 HostSome: XCall "prism_rtl::forward_on_none", [[offered]]
             let supplier = if (Len dynLets) == 0: supplier0 else: XBlock dynLets, supplier0
             # the scope the host's rows build in: the World's, or the enclosing host's
-            let enclosing = if Emits wx, pos: XRaw "None" else: XCtor "Some", [[(XCast (XRaw "{HostLocal wx, pos}.clone()"), hostOfTy)]]
-            let made = XCall "prism_rtl::Host::new", [[(XRaw (PlaceAt wx, "", pos)), (XRaw "{rowsName}.clone()"), supplier, enclosing, (XRaw "{wx.node}::{docGetter}_direct"), (XRaw "{wx.node}::{hf}_answer")]]
+            let enclosing = if Emits wx, pos: XNone else: XCtor "Some", [[(XCast (XClone (XVar (HostLocal wx, pos))), hostOfTy)]]
+            let made = XCall "prism_rtl::Host::new", [[(PlaceAt wx, "", pos), (XClone (XVar rowsName)), supplier, enclosing, (XPath "{wx.node}::{docGetter}_direct"), (XPath "{wx.node}::{hf}_answer")]]
             let hostTy = RsNamed "Rc<prism_rtl::Host<crate::Elem, crate::Answer, {wx.node}>>", [[]]
             let rowsTy = RsNamed "prism_rtl::Rows<crate::Elem, crate::Answer>", [[]]
             let docTy = RsMap RsPath, elemTy
             let what = "the document of the child hosted at place {PlaceText pos}"
             let wx2 = update wxd:
                 &_.pos <= NextPos &_.pos
-                &_.lets <= Append &_.lets, [[(DoLet (PaBind rowsName), (XRaw "Rc::new(RefCell::new(Map::new()))")), (DoLet (PaBind hf), made)]]
+                &_.lets <= Append &_.lets, [[(DoLet (PaBind rowsName), (XCall "Rc::new", [[(XCall "RefCell::new", [[(XCall "Map::new", [[]])]])]])), (DoLet (PaBind hf), made)]]
                 &_.fields <= Append &_.fields, [[((hf, hostTy, "the host at place {PlaceText pos}: its supplier, its rows, and the way back into its child (pick HO)")), ((rowsName, rowsTy, "the rows of the host at place {PlaceText pos}: `for p, e <- $doc`, one supplier blueprint per child place")), (("{docGetter}_snap", (RsSnapshot docTy), "`$doc` of the host at place {PlaceText pos}, a structural dynamic: its snapshots, the structure and the lagged dynamic (pick ST)"))]]
-                &_.inits <= Append &_.inits, [[((hf, (XRaw "{hf}.clone()"))), ((rowsName, (XRaw "{rowsName}.clone()"))), (("{docGetter}_snap", (XCall "Snapshot::new", [[XRaw "\"{what}\""]])))]]
+                &_.moves <= Append &_.moves, [[((hf, (XClone (XVar hf)))), ((rowsName, (XClone (XVar rowsName))))]]
+                &_.inits <= Push &_.inits, (("{docGetter}_snap", (XCall "Snapshot::new", [[XStr what]])))
                 &_.hosts <= Push &_.hosts, HostDef(pos=pos, name=hf, scope=k)
                 &_.snaps <= Push &_.snaps, SnapDef(name=docGetter, live="{docGetter}_now", ty=docTy, eq=True, builder=rowsName, before=True, what=what)
-                &_.getters <= Append &_.getters, [[(SnapGetter docGetter, docTy, "The document of the child hosted at place {PlaceText pos}, `$doc`, a structural dynamic (pick ST): one tick behind the child's structure, the snapshot of the tick before the tick the read point is after."), (MethDef(name="{docGetter}_direct", recv=RecvRef, params=[[]], cx=CxRef, ret=docTy, body=[[]], tail=(XMethod (XRaw "self.{docGetter}_snap"), "current", [[XRaw "cx"]]), doc="The structure of the child hosted at place {PlaceText pos}, not the lagged `$doc`: the snapshot taken in this tick's construction step, the document as the tick opened during propagation. The host's own `for` and its rows' entries read it, so a newborn child place gets its row in the tick it is born (pick ST)."))]]
+                &_.getters <= Append &_.getters, [[(SnapGetter docGetter, docTy, "The document of the child hosted at place {PlaceText pos}, `$doc`, a structural dynamic (pick ST): one tick behind the child's structure, the snapshot of the tick before the tick the read point is after."), (MethDef(name="{docGetter}_direct", recv=RecvRef, params=[[]], cx=CxRef, ret=docTy, body=[[]], tail=(XMethod (XField XSelf, "{docGetter}_snap"), "current", [[XCx]]), doc="The structure of the child hosted at place {PlaceText pos}, not the lagged `$doc`: the snapshot taken in this tick's construction step, the document as the tick opened during propagation. The host's own `for` and its rows' entries read it, so a newborn child place gets its row in the tick it is born (pick ST)."))]]
                 &_.scopes <= Push &_.scopes, hf
-                &_.builders <= Push &_.builders, ForDef(name=rowsName, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=RsPath, valueTy=elemTy, rowNode="prism_rtl::HostRow::<crate::Elem, crate::Answer>", keyed=True, source="{docGetter}_direct", parent="self.{hf}.clone()", passed=[[]])
+                &_.builders <= Push &_.builders, ForDef(name=rowsName, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=RsPath, valueTy=elemTy, rowNode="prism_rtl::HostRow::<crate::Elem, crate::Answer>", keyed=True, source="{docGetter}_direct", parent=(XClone (XField XSelf, hf)), passed=[[]])
                 &_.buildHolds <= AddRead &_.buildHolds, (OwnRead "{docGetter}_now")
                 &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=rowsName, reads=[[OwnRead "{docGetter}_now"]], wrote=[[]], kind=ForRow)
                 &_.fallible <= True
@@ -4332,13 +4443,13 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.result <= wx.result
                 &_.getters <= Push &_.getters, getter
                 &_.dynReads <= Insert &_.dynReads, "{docGetter}_now", docReads
-            let docBn = BnDyn (XMethod (XRaw "self"), docGetter, [[XRaw "cx"]]), [[OwnRead docGetter]], docTy
+            let docBn = BnDyn (XMethod (XSelf), docGetter, [[XCx]]), [[OwnRead docGetter]], docTy
             ((back, (WrHosted res, docBn)))
         otherwise:
             let wx2 = update wx1:
                 &_.pos <= NextPos &_.pos
                 &_.build <= Push &_.build, (RefusalDo "a host without its child or its supplier")
-            ((wx2, (WrHosted WrUnit, (BnLocal "()", Owned, RsUnit))))
+            ((wx2, (WrHosted WrUnit, (BnLocal XUnit, Owned, RsUnit))))
 
 # A supplier's dynamic answers (`@ $d`, `$d` a hold or a derived dynamic of this node; round
 # 3 DY): each `@ x` of the supplier whose `x` is a dynamic that is not a constant gets a
@@ -4364,10 +4475,10 @@ fn DynamicAnswers wx, benv, menv, hf, sup:
         let owner = "{hf}_owner"
         let wx1 = update wx:
             &_.taken <= Push &_.taken, owner
-            &_.lets <= Push &_.lets, (DoLet (PaBind owner), (XRaw "prism_rtl::Link::<{wx.node}>::new()"))
-            &_.build <= Push &_.build, (DoExpr (XMethod (XRaw owner), "link", [[XRaw "&node"]]))
-        let env0 = Bind benv, "#owner", (BnLocal owner, Owned, RsUnit)
-        let lets0 = [[(DoLet (PaBind owner), (XRaw "{owner}.clone()"))]]
+            &_.lets <= Push &_.lets, (DoLet (PaBind owner), (XCall "prism_rtl::Link::<{wx.node}>::new", [[]]))
+            &_.build <= Push &_.build, (DoExpr (XMethod (XVar owner), "link", [[(XRef (XVar "node"))]]))
+        let env0 = Bind benv, "#owner", (BnLocal (XVar owner), Owned, RsUnit)
+        let lets0 = [[(DoLet (PaBind owner), (XClone (XVar owner)))]]
         Fold (Range0 (Len dyns)), ((wx1, env0, lets0)), \|((w, en, ls)), j| match dyns[j]:
             ? ((y, d)):
                 let name = "{hf}_dyn_{j + 1}"
@@ -4379,11 +4490,11 @@ fn DynamicAnswers wx, benv, menv, hf, sup:
                     let w2 = update w:
                         &_.taken <= Append &_.taken, [[name, port]]
                         &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The host at `{hf}`'s dynamic answer `{SrcText lx, lx.file, y.span}`, read at the read point (round 3 DY)."))
-                        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind port), (RsRc (RsPort RsUnit))), (XRaw "Rc::new(Port::new())"))
+                        &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind port), (RsRc (RsPort RsUnit))), (XCall "Rc::new", [[(XCall "Port::new", [[]])]]))
                         &_.fields <= Push &_.fields, ((port, (RsRc (RsPort RsUnit)), "the dynamic answer `{name}` moved: its blueprints push the child's place next tick"))
-                        &_.inits <= Push &_.inits, ((port, (XRaw "{port}.clone()")))
+                        &_.moves <= Push &_.moves, ((port, (XClone (XVar port))))
                         &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
-                    ((w2, (Bind en, "#dyn{DynKey y}", (BnLocal name, Owned, t)), (Push ls, (DoLet (PaBind port), (XRaw "{port}.clone()")))))
+                    ((w2, (Bind en, "#dyn{DynKey y}", (BnLocal (XVar name), Owned, t)), (Push ls, (DoLet (PaBind port), (XClone (XVar port))))))
             nil: ((w, en, ls))
 
 # The dynamic a supplier's `@ x` answers with, when `x` is a dynamic that is not a constant:
@@ -4406,13 +4517,13 @@ fn DynKey x = "{x.span.start}:{x.span.end}"
 # step (pick ST).
 HostDocGetter: fn Text, Pos, [Place], [ForDef], [GenDef] -> MethDef
 fn HostDocGetter name, pos, places, builders, gens:
-    let start = DoLet (PaBind "mut doc"), (XRaw "Map::new()")
+    let start = DoLet (PaMut "doc"), (XCall "Map::new", [[]])
     let body = DocumentBody MapInsert, places, builders, gens
-    MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=(RsMap RsPath, elemTy), body=(Append [[start]], body), tail=(XRaw "doc"), doc="The document of the child hosted at place {PlaceText pos} computed live: each of its places by its path relative to the child, its level at the read point (pick HO). Read only by the snapshot `$doc` answers from (pick ST).")
+    MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=(RsMap RsPath, elemTy), body=(Append [[start]], body), tail=(XVar "doc"), doc="The document of the child hosted at place {PlaceText pos} computed live: each of its places by its path relative to the child, its level at the read point (pick HO). Read only by the snapshot `$doc` answers from (pick ST).")
 
 # A structural dynamic's getter (pick ST): its snapshot at the read point.
 SnapGetter: fn Text, RsTy, Text -> MethDef
-fn SnapGetter name, t, doc = MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=(XMethod (XRaw "self.{name}_snap"), "get", [[XRaw "cx"]]), doc=doc)
+fn SnapGetter name, t, doc = MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=(XMethod (XField XSelf, "{name}_snap"), "get", [[XCx]]), doc=doc)
 
 # `@started`: takes a number, makes no place, fires in the tick after the build.
 StartedLine: fn Wx, ?Bn -> ((Wx, Wres))
@@ -4437,7 +4548,7 @@ fn DeferLine wx, menv, args, e, ?target:
     let ((id, wx2)) = match ?target:
         ? n: ((n, wx1))
         nil: AddGn wx1, "{field}_fired", t, GnDeferred, 0
-    let wx3 = AddField wx2, field, (RsDefer t), "`@Defer`", (XRaw "Defer::new()")
+    let wx3 = AddFieldLast wx2, field, (RsDefer t), "`@Defer`", (XCall "Defer::new", [[]])
     let wx4 = update wx3:
         &_.defers <= Push &_.defers, ((field, id))
     match args[0]:
@@ -4461,14 +4572,14 @@ fn RunLine wx, benv, args, e, ?target:
         ? a: match a.value.kind:
             EName n:
                 let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
-                StartPath lx, (Or ?q, "")
-            otherwise: "compile_error!(\"{loweringRefusal}an `@Run` of a function value that is not a name\")"
-        nil: "compile_error!(\"{loweringRefusal}an `@Run` without its function\")"
+                XPath (StartPath lx, (Or ?q, ""))
+            otherwise: Refusal "an `@Run` of a function value that is not a name"
+        nil: Refusal "an `@Run` without its function"
     let x = match args[1]:
         ? a: Own (ValueOf lx, benv, a.value)
-        nil: XRaw "()"
-    let wx3 = AddField wx2, "{p}_job", (RsHold (RsJob t)), "`@Run`'s job (`@Machine`'s state)", (XCall "Hold::new", [[(XCall start, [[x]]), XRaw "cx"]])
-    let wx4 = AddField wx3, "{p}_again", (RsDefer RsUnit), "`@Run`'s `!again`", (XRaw "Defer::new()")
+        nil: XUnit
+    let wx3 = AddField wx2, "{p}_job", (RsHold (RsJob t)), "`@Run`'s job (`@Machine`'s state)", (XCall "Hold::new", [[(XApply start, [[x]]), XCx]])
+    let wx4 = AddFieldLast wx3, "{p}_again", (RsDefer RsUnit), "`@Run`'s `!again`", (XCall "Defer::new", [[]])
     let ((s, wx5)) = AddGn wx4, "{p}_started", RsUnit, GnStarted, 0
     let ((a, wx6)) = AddGn wx5, "{p}_again", RsUnit, GnDeferred, 0
     let ((m, wx7)) = Merge wx6, "{p}_turn", RsUnit, (EvRefOf s), (EvRefOf a)
@@ -4501,7 +4612,7 @@ fn MachineLine wx, benv, menv, args, e, ?target:
         ((sp, ? init, ? ev)) if sp != "":
             let st = RustTy lx, (Peel (TypeAt lx, init.value.span))
             let x = Own (ValueOf lx, benv, init.value)
-            let wx2 = AddField wx1, "{f}_state", (RsHold st), "`@Machine`'s state", (XCall "Hold::new", [[x, XRaw "cx"]])
+            let wx2 = AddField wx1, "{f}_state", (RsHold st), "`@Machine`'s state", (XCall "Hold::new", [[x, XCx]])
             let ((out, wx3)) = match ?target:
                 ? n: ((n, wx2))
                 nil: AddGn wx2, "{f}_fired", t, GnNamed, 0
@@ -4607,7 +4718,7 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, pty, arg:
             let wx3 = update wx2:
                 &_.lets <= Push &_.lets, (DoLet (PaBind rs), v)
                 &_.fields <= Push &_.fields, ((rs, t, "`{nkey}`"))
-                &_.inits <= Push &_.inits, ((rs, (XMethod (XRaw rs), "clone", [[]])))
+                &_.inits <= Push &_.inits, ((rs, (XMethod (XVar rs), "clone", [[]])))
             let ((be2, me2)) = BindPlain be, me, nkey, rs, t
             ((wx3, be2, me2))
 
@@ -4681,7 +4792,7 @@ fn EventIf wx, menv, c, a, b, t:
     let ((ra, w1)) = EventRef wx, menv, a
     let ((rb, w2)) = EventRef w1, menv, b
     let ga = EvRef(node=ra.node, pipe=(\|x, K| ra.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]))
-    let gb = EvRef(node=rb.node, pipe=(\|x, K| rb.pipe x, \|y| [[(DoIf (XBin "==", cond, (XRaw "false")), (K y), [[]])]]))
+    let gb = EvRef(node=rb.node, pipe=(\|x, K| rb.pipe x, \|y| [[(DoIf (XBin "==", cond, (XBool False)), (K y), [[]])]]))
     let ((nm, w3)) = FreshName w2, "chosen"
     let ((id, w4)) = Merge w3, nm, t, ga, gb
     ((EvRefOf id, w4))
@@ -4727,7 +4838,7 @@ fn MergeAllEvent wx, menv, args, t = match args[0]:
             let ((nm, w1)) = FreshName wx, "merged"
             let ((id, w2)) = AddGn w1, nm, t, GnMergeAll, 1
             let ins = Each (Range0 (Len es)), \|i| "{nm}_{i}"
-            let w3 = Fold ins, w2, \|w, f| AddField w, f, (RsStamped et), "an input of `!MergeAll`", (XRaw "Stamped::new()")
+            let w3 = Fold ins, w2, \|w, f| AddFieldLast w, f, (RsStamped et), "an input of `!MergeAll`", (XCall "Stamped::new", [[]])
             let w4 = update w3:
                 &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, ins else: n
             let w5 = Fold (Range0 (Len es)), w4, \|w, i|
@@ -4755,7 +4866,7 @@ fn UpdatedEvent wx, menv, args, t = match args[0]:
         let ((ex, reads)) = DynamicExpr wx, menv, a.value
         let ((nm, w1)) = FreshName wx, "updated"
         let ((id, w2)) = AddGn w1, nm, t, GnUpdated, 1
-        let w3 = AddField w2, "{nm}_moved", (RsNamed "Cell<bool>", [[]]), "a hold `!{nm}`'s dynamic reads was written this tick", (XRaw "Cell::new(false)")
+        let w3 = AddFieldLast w2, "{nm}_moved", (RsNamed "Cell<bool>", [[]]), "a hold `!{nm}`'s dynamic reads was written this tick", (XCall "Cell::new", [[XBool False]])
         let w4 = update w3:
             &_.gns <= Each &_.gns, \|n| if n.id == id: WithReads n, reads else: n
             &_.getters <= Push &_.getters, (MethDef(name="{nm}_value", recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The dynamic `!{nm}` is the event half of, which the wake reads after the tick."))
@@ -4770,7 +4881,7 @@ fn FilterEvent wx, menv, args, isUnit:
         ? a:
             let ((r, w1)) = EventRef wx, menv, a.value
             let bound = if isUnit: PaWild else: PaBind "w"
-            let pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor "Some", [[bound]]), y, (K (XRaw (if isUnit: "()" else: "w"))), [[]])]]
+            let pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor "Some", [[bound]]), y, (K (if isUnit: XUnit else: XVar "w")), [[]])]]
             ((EvRef(node=r.node, pipe=pipe), w1))
 
 # `!Gate $b, !e` fires `!e` while `$b` reads true.
@@ -4781,7 +4892,7 @@ fn GateEvent wx, menv, args = match args[1]:
         let ((r, w1)) = EventRef wx, menv, a.value
         let cond = match args[0]:
             ? b: AsBool (ValueOf wx.lx, menv, b.value)
-            nil: XRaw "false"
+            nil: (XBool False)
         let pipe = \|x, K| r.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]
         ((EvRef(node=r.node, pipe=pipe), w1))
 
@@ -4804,7 +4915,8 @@ fn EventMap wx, menv, e:
 # A firing's value where an expression reads it: a local is a place, anything else an
 # owned temporary.
 FiringValue: fn Ex, RsTy -> Vl
-fn FiringValue (XRaw n), t = VlPlace (XRaw n), Owned, t
+fn FiringValue (XVar n), t = VlPlace (XVar n), Owned, t
+fn FiringValue XUnit, t = VlPlace XUnit, Owned, t
 fn FiringValue x, t = VlOwned x, t
 
 # The operands of an expression, one level down.
@@ -4836,8 +4948,8 @@ fn Merge wx, name, t, l, r = Combinator wx, name, t, GnMerge, l, r, t, t
 Combinator: fn Wx, Text, RsTy, GnKind, EvRef, EvRef, RsTy, RsTy -> ((Nat, Wx))
 fn Combinator wx, name, t, kind, l, r, lt, rt:
     let ((id, wx1)) = AddGn wx, name, t, kind, 1
-    let wx2 = AddField wx1, "{name}_left", (RsStamped lt), "`{name}`'s left input", (XRaw "Stamped::new()")
-    let wx3 = AddField wx2, "{name}_right", (RsStamped rt), "its right input", (XRaw "Stamped::new()")
+    let wx2 = AddFieldLast wx1, "{name}_left", (RsStamped lt), "`{name}`'s left input", (XCall "Stamped::new", [[]])
+    let wx3 = AddFieldLast wx2, "{name}_right", (RsStamped rt), "its right input", (XCall "Stamped::new", [[]])
     let wx4 = update wx3:
         &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, [["{name}_left", "{name}_right"]] else: n
     ((id, (Connect (Connect wx4, l, (SkIn id, 0)), r, (SkIn id, 1))))
@@ -4925,7 +5037,7 @@ WakeConst: fn [Nat], Nat -> Text
 fn WakeConst heights, h = if (Len heights) <= 1: "WAKE" else: "WAKE_{h}"
 
 SelfCall: fn Text, [Ex] -> Do
-fn SelfCall m, args = DoExpr (XMethod (XRaw "self"), m, (Push args, (XRaw "cx")))
+fn SelfCall m, args = DoExpr (XMethod (XSelf), m, (Push args, (XCx)))
 
 # What a firing does at its sink.
 SinkCode: fn Sinks, Sk, Ex -> [Do]
@@ -4933,27 +5045,27 @@ fn SinkCode sk, target, y = match target:
     SkNode m: [[(SelfCall (GnOf sk.wx, m).name, [[y]])]]
     SkIn m, i:
         let g = GnOf sk.wx, m
-        Append [[DoExpr (XMethod (XRaw "self.{Or g.inputs[i], ""}"), "set", [[y, XRaw "cx"]])]], (AskWake sk, g.height)
-    SkHold f: Append [[(DoExpr (XMethod (XRaw "self.{f}"), "set", [[y, XRaw "cx"]]))]], (HoldWritten sk, f)
+        Append [[DoExpr (XMethod (XField XSelf, "{Or g.inputs[i], ""}"), "set", [[y, XCx]])]], (AskWake sk, g.height)
+    SkHold f: Append [[(DoExpr (XMethod (XField XSelf, "{f}"), "set", [[y, XCx]]))]], (HoldWritten sk, f)
     SkRequest pos, field:
-        let fieldEx = if field == "": XRaw "None" else: XRaw "Some(\"{field}\")"
+        let fieldEx = if field == "": XNone else: (XCtor "Some", [[XStr field]])
         # a hosted place's request goes to its host: out with a forwarded element, else nowhere
-        if Emits sk.wx, pos: [[DoExpr (XMethod (XRaw "cx"), "request", [[(XRaw (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]])]])]]
-        else: [[DoExpr (XMethod (XRaw "cx"), "keep", [[(XMethod (XRaw (HostField sk.wx, pos)), "request", [[(XRaw "&{PlaceAt sk.wx, "self", pos}"), fieldEx, (XMethod y, "to_pod", [[]]), XRaw "cx"]])]])]]
-    SkResult: [[DoExpr (XMethod (XRaw "cx"), "result", [[(XCtor "Outcome::Fired", [[(XMethod y, "to_pod", [[]])]])]])]]
-    SkArm f: [[DoExpr (XMethod (XRaw "self.{f}"), "arm", [[y, XRaw "self.clone()", XRaw "cx"]])]]
+        if Emits sk.wx, pos: [[DoExpr (XMethod (XCx), "request", [[(PlaceAt sk.wx, "self", pos), fieldEx, (XMethod y, "to_pod", [[]])]])]]
+        else: [[DoExpr (XMethod (XCx), "keep", [[(XMethod (HostFieldEx sk.wx, pos), "request", [[(XRef (PlaceAt sk.wx, "self", pos)), fieldEx, (XMethod y, "to_pod", [[]]), XCx]])]])]]
+    SkResult: [[DoExpr (XMethod (XCx), "result", [[(XCtor "Outcome::Fired", [[(XMethod y, "to_pod", [[]])]])]])]]
+    SkArm f: [[DoExpr (XMethod (XField XSelf, "{f}"), "arm", [[y, (XClone XSelf), XCx]])]]
     SkMachine f, step, out:
-        let stepped = XCall step, [[(XRaw "&self.{f}.get(cx)"), (XUnary "&", y)]]
-        Append [[(DoLet (PaTuple [[PaBind "machine_s", PaBind "machine_b"]]), stepped), DoExpr (XMethod (XRaw "self.{f}"), "set", [[XRaw "machine_s", XRaw "cx"]]), (DoIfLet (PaCtor "Some", [[PaBind "machine_b"]]), (XRaw "machine_b"), [[(SelfCall (GnOf sk.wx, out).name, [[XRaw "machine_b"]])]], [[]])]], (MovedMarks sk, f)
-    SkPort f: [[DoExpr (XMethod (XMethod (XRaw "self.{f}_port"), "fire", [[y, XRaw "cx"]]), "ok", [[]])]]
+        let stepped = XCall step, [[(XRef (XMethod (XField XSelf, f), "get", [[XCx]])), (XRef y)]]
+        Append [[(DoLet (PaTuple [[PaBind "machine_s", PaBind "machine_b"]]), stepped), DoExpr (XMethod (XField XSelf, "{f}"), "set", [[(XVar "machine_s"), XCx]]), (DoIfLet (PaCtor "Some", [[PaBind "machine_b"]]), (XVar "machine_b"), [[(SelfCall (GnOf sk.wx, out).name, [[(XVar "machine_b")]])]], [[]])]], (MovedMarks sk, f)
+    SkPort f: [[DoExpr (XMethod (XMethod (XField XSelf, "{f}_port"), "fire", [[y, XCx]]), "ok", [[]])]]
     SkUp m:
         let keyed = (Len (Filter sk.wx.fields, \|((f, ignore, ignore))| f == "key")) > 0
-        let args = if keyed: [[(XMethod (XRaw "self.key"), "clone", [[]]), y, XRaw "cx"]] else: [[y, XRaw "cx"]]
-        [[(DoIfLet (PaCtor "Some", [[PaBind "parent"]]), (XMethod (XRaw "self.parent"), "upgrade", [[]]), [[DoExpr (XMethod (XRaw "parent"), m, args)]], [[]])]]
+        let args = if keyed: [[(XMethod (XField XSelf, "key"), "clone", [[]]), y, XCx]] else: [[y, XCx]]
+        [[(DoIfLet (PaCtor "Some", [[PaBind "parent"]]), (XMethod (XField XSelf, "parent"), "upgrade", [[]]), [[DoExpr (XMethod (XVar "parent"), m, args)]], [[]])]]
     SkCycle job, again, res:
-        let more = [[DoExpr (XMethod (XRaw "self.{job}"), "set", [[XRaw "next", XRaw "cx"]]), DoExpr (XMethod (XRaw "self.{again}"), "arm", [[XRaw "()", XRaw "self.clone()", XRaw "cx"]])]]
-        let fin = [[(SelfCall (GnOf sk.wx, res).name, [[XRaw "b"]])]]
-        [[(DoMatch (XMethod (XMethod (XRaw "self.{job}"), "get", [[XRaw "cx"]]), "cycle", [[]]), [[(((PaCtor "prism_rtl::Turn::More", [[PaBind "next"]]), more)), (((PaCtor "prism_rtl::Turn::Finished", [[PaBind "b"]]), fin))]])]]
+        let more = [[DoExpr (XMethod (XField XSelf, "{job}"), "set", [[(XVar "next"), XCx]]), DoExpr (XMethod (XField XSelf, "{again}"), "arm", [[XUnit, (XClone XSelf), XCx]])]]
+        let fin = [[(SelfCall (GnOf sk.wx, res).name, [[(XVar "b")]])]]
+        [[(DoMatch (XMethod (XMethod (XField XSelf, "{job}"), "get", [[XCx]]), "cycle", [[]]), [[(((PaCtor "prism_rtl::Turn::More", [[PaBind "next"]]), more)), (((PaCtor "prism_rtl::Turn::Finished", [[PaBind "b"]]), fin))]])]]
 
 # What a write of hold `f` (or of the pseudo-hold behind a host's document, `host_k_doc`,
 # when a node of the hosted child wrote behind it) marks, after the `set` (docs/backend.md,
@@ -4968,16 +5080,16 @@ fn HoldWritten sk, f:
     let readByPlace = HasRead sk.dirty, r
     # a hosted node's places are all entries of hosts' documents: nothing of its own to patch
     let ((dirty, told)) = match sk.wx.?hostedBy:
-        ? ignore: (([[]], (if readByPlace: [[DoExpr (XMethod (XRaw "self"), "document_moved", [[XRaw "cx"]])]] else: [[]])))
-        nil: (((if readByPlace: [[DoExpr (XMethod (XRaw "cx"), "dirty", [[XRaw "self.clone()"]])]] else: [[]]), [[]]))
-    let stales = Fold sk.wx.genHolds, [[]], \|acc, ((gname, hs))| if HasRead (ReadsClosed sk.wx.dynReads, hs), r: Push acc, (DoExpr (XMethod (XRaw "self.{gname}_stale"), "set", [[XRaw "true"]])) else: acc
+        ? ignore: (([[]], (if readByPlace: [[DoExpr (XMethod (XSelf), "document_moved", [[XCx]])]] else: [[]])))
+        nil: (((if readByPlace: [[DoExpr (XMethod (XCx), "dirty", [[(XClone XSelf)]])]] else: [[]]), [[]]))
+    let stales = Fold sk.wx.genHolds, [[]], \|acc, ((gname, hs))| if HasRead (ReadsClosed sk.wx.dynReads, hs), r: Push acc, (DoExpr (XMethod (XField XSelf, "{gname}_stale"), "set", [[(XBool True)]])) else: acc
     let rowMarks = Fold sk.wx.rowMarks, [[]], \|acc, rm| Append acc, (RowWritten sk.wx, rm, r)
     let builds = (HasRead sk.builds, r) or (Len stales) > 0
     # the build is listed once: here, or by the marks when a snapshot is marked
-    let rebuildIt = if builds and not (ListsBuild sk, r): Append stales, [[DoExpr (XMethod (XRaw "cx"), "build_later", [[XRaw "self.clone()"]])]] else: stales
+    let rebuildIt = if builds and not (ListsBuild sk, r): Append stales, [[DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]])]] else: stales
     # a row whose result its block gathers tells the block when a hold behind the result moves
     let gathered = match sk.wx.?resultMoved:
-        ? ((m, rds)): if HasRead rds, r: [[(DoIfLet (PaCtor "Some", [[PaBind "parent"]]), (XMethod (XRaw "self.parent"), "upgrade", [[]]), [[DoExpr (XMethod (XRaw "parent"), m, [[XRaw "cx"]])]], [[]])]] else: [[]]
+        ? ((m, rds)): if HasRead rds, r: [[(DoIfLet (PaCtor "Some", [[PaBind "parent"]]), (XMethod (XField XSelf, "parent"), "upgrade", [[]]), [[DoExpr (XMethod (XVar "parent"), m, [[XCx]])]], [[]])]] else: [[]]
         nil: [[]]
     Append (Append (Append (Append (Append dirty, told), rebuildIt), rowMarks), gathered), (MovedMarks sk, f)
 
@@ -4985,6 +5097,9 @@ fn HoldWritten sk, f:
 # host of its scope, or for a node's own places in a hosted scope the enclosing host.
 HostField: fn Wx, Pos -> Text
 fn HostField wx, pos = "self.{HostLocal wx, pos}"
+
+HostFieldEx: fn Wx, Pos -> Ex
+fn HostFieldEx wx, pos = XField XSelf, (HostLocal wx, pos)
 
 # A hold written: every "updated" node whose dynamic reads it is told (its `_moved` flag),
 # and the wake asked at its height, once per height.
@@ -4996,15 +5111,15 @@ fn MovedMarks sk, f = MovedBy sk, (OwnRead f)
 MovedBy: fn Sinks, Read -> [Do]
 fn MovedBy sk, r:
     let moved = Filter sk.wx.gns, \|g| Moves r, g
-    let flags = Each moved, \|g| DoExpr (XMethod (XRaw "self.{g.name}_moved"), "set", [[XRaw "true"]])
+    let flags = Each moved, \|g| DoExpr (XMethod (XField XSelf, "{g.name}_moved"), "set", [[(XBool True)]])
     let heights = SortNats (Fold moved, [[]], \|acc, g| AddNat acc, g.height)
-    let marks = Each (SnapsBehind sk.wx, r), \|sn| DoExpr (XMethod (XRaw "self.{sn.name}_snap"), "mark", [[XRaw "cx"]])
-    let listed = if ListsBuild sk, r: [[DoExpr (XMethod (XRaw "cx"), "build_later", [[XRaw "self.clone()"]])]] else: [[]]
+    let marks = Each (SnapsBehind sk.wx, r), \|sn| DoExpr (XMethod (XField XSelf, "{sn.name}_snap"), "mark", [[XCx]])
+    let listed = if ListsBuild sk, r: [[DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]])]] else: [[]]
     # a host's dynamic answer over it: its port fired, so its blueprints push next tick
-    let answers = Each (Filter sk.wx.dynAnswers, \|((ignore, rds))| HasRead (ReadsClosed sk.wx.dynReads, rds), r), \|((name, ignore))| DoExpr (XMethod (XMethod (XRaw "self.{name}_port"), "fire", [[XRaw "()", XRaw "cx"]]), "ok", [[]])
+    let answers = Each (Filter sk.wx.dynAnswers, \|((ignore, rds))| HasRead (ReadsClosed sk.wx.dynReads, rds), r), \|((name, ignore))| DoExpr (XMethod (XMethod (XField XSelf, "{name}_port"), "fire", [[XUnit, XCx]]), "ok", [[]])
     # a `@Flatten` over a `rebuild`'s dynamic that moved: the adoption among the next tick's
     # first firings, which is owed (Semantics ch. 7)
-    let adoptions = Each (Filter sk.wx.flattens, \|fl| r == (OwnRead fl.outer)), \|fl| DoExpr (XRaw "\{ let node = self.clone(); cx.answer_later(Box::new(move |cx| \{ node.{fl.name}_adopt(cx); Ok(()) \})); \}")
+    let adoptions = Each (Filter sk.wx.flattens, \|fl| r == (OwnRead fl.outer)), \|fl| DoScope (Adoption fl)
     Append (Append (Append (Append (Fold heights, flags, \|acc, h| Append acc, (AskWake sk, h)), marks), listed), answers), adoptions
 
 # The snapshots a write behind a read marks: the structure itself (a host's `host_k_moved`
@@ -5045,30 +5160,30 @@ fn FinishNode wx0, qk, params, isRow:
     let dirtyHolds = Fold live, rootReads, \|acc, p| UnionReads acc, (ReadsClosed wx.dynReads, p.reads)
     let buildHolds = ReadsClosed wx.dynReads, wx.buildHolds
     let sinks = Sinks(wx=wx, dirty=dirtyHolds, builds=buildHolds, heights=heights, many=many)
-    let evMethods = Each (Filter wx.gns, \|g| g.kind != GnNever), \|g| MethDef(name=g.name, recv=RecvRc, params=[[(("v", g.ty))]], cx=CxMut, ret=RsUnit, body=(FiringCode sinks, g, (XRaw "v")), tail=(XRaw "()"), doc=(GnDoc g))
+    let evMethods = Each (Filter wx.gns, \|g| g.kind != GnNever), \|g| MethDef(name=g.name, recv=RecvRc, params=[[(("v", g.ty))]], cx=CxMut, ret=RsUnit, body=(FiringCode sinks, g, (XVar "v")), tail=(XUnit), doc=(GnDoc g))
     let gatherIns = Each (Filter wx.gns, \|g| g.kind == GnGather), \|g| GatherIn sinks, g
     let placeGetters = Each live, \|p| MethDef(name=p.getter, recv=RecvRef, params=[[]], cx=CxRef, ret=elemTy, body=[[]], tail=p.level, doc="Place {PlaceText p.pos}'s level, read at the read point.")
     let wakeBody = if many: [[(WakeByHeight combs, heights)]] else: Each combs, \|g| Decide g
-    let startedBody = Each wx.started, \|st| SelfCall (GnOf wx, st).name, [[XRaw "()"]]
-    let deferredBody = Each wx.defers, \|((f, id))| DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XRaw "self.{f}"), "fired", [[XRaw "cx"]]), [[(SelfCall (GnOf wx, id).name, [[XRaw "v"]])]], [[]]
+    let startedBody = Each wx.started, \|st| SelfCall (GnOf wx, st).name, [[XUnit]]
+    let deferredBody = Each wx.defers, \|((f, id))| DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XField XSelf, "{f}"), "fired", [[XCx]]), [[(SelfCall (GnOf wx, id).name, [[(XVar "v")]])]], [[]]
     # the patch pass sends the World the places that go to it; a hosted place is read out
     # of its host's document
     let patchBody0 = Fold (Filter live, \|p| Emits wx, p.pos), [[]], \|acc, p| Append acc, (PatchPlace wx, p)
     let patchBody = Append patchBody0, (RootDynPatch wx)
     let buildBody = BuildSteps sinks, False
-    let pushBody = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin "==", (XRaw "element"), (XRaw "&self.{f}_element")), (DynPlaceWrite sinks, f, (XDecode t, (XRaw "v"))), [[]]
+    let pushBody = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin "==", (XVar "element"), (XRef (XField XSelf, "{f}_element"))), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
     let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
-    let startedReg = if (Len wx.started) > 0: [[DoExpr (XMethod (XRaw "cx"), "on_started", [[XRaw "node.clone()"]])]] else: [[]]
+    let startedReg = if (Len wx.started) > 0: [[DoExpr (XMethod (XCx), "on_started", [[(XClone (XVar "node"))]])]] else: [[]]
     # the hosts linked to the node, then the builders and the snapshots (a place over a
     # structural dynamic reads its snapshot at the build), then the places out
-    let links = Each wx.hosts, \|h| DoExpr (XMethod (XRaw "node.{h.name}"), "link", [[XRaw "&node"]])
+    let links = Each wx.hosts, \|h| DoExpr (XMethod (XField (XVar "node"), "{h.name}"), "link", [[(XRef (XVar "node"))]])
     let rowsBuilt = Append links, (BuildSteps sinks, True)
-    let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall "subscribe_row", [[XRaw "&node", (XMethod (XRaw "node.parent"), "upgrade", [[]]), XRaw "|p| &p.{ev}_port", XRaw "|n, v, cx| n.{m}(v.clone(), cx)", XRaw "&node.{m}_sub"]])
+    let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall "subscribe_row", [[(XRef (XVar "node")), (XMethod (XField (XVar "node"), "parent"), "upgrade", [[]]), (XClosure False, [[PaBind "p"]], (XRef (XField (XVar "p"), "{ev}_port"))), (XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), m, [[XClone (XVar "v"), XCx]])), (XRef (XField (XVar "node"), "{m}_sub"))]])
     # the World's answers, by path, to the places that go to it; a hosted place is answered
     # typed by its host, through `host_k_answer` (the places of scope `k`) or `deliver` (a
     # hosted node's own)
     let answers = Append (Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, id, t, ignore))| AnswerArm wx, pos, id, t), (Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DynAnswerArm sinks, pos, f, t)
-    let forwards = Append (Each (Filter wx.builders, \|b| Emits wx, b.pos), \|b| (((PosPat b.pos, ", Segment::Key(k), rest @ .."), (ForwardAnswer b)))), (Fold (Filter wx.gens, \|gd| Emits wx, gd.pos), [[]], \|acc, gd| Append acc, (GenForwards gd))
+    let forwards = Append (Each (Filter wx.builders, \|b| Emits wx, b.pos), \|b| (((PosPat b.pos, keyTail), (ForwardAnswer b)))), (Fold (Filter wx.gens, \|gd| Emits wx, gd.pos), [[]], \|acc, gd| Append acc, (GenForwards gd))
     let hostMethods = Fold wx.hosts, [[]], \|acc, h| Append acc, [[(TypedDispatch sinks, "{h.name}_answer", h.scope), (HostMoved sinks, h)]]
     let gathered = Filter wx.snaps, \|sn| not (sn.before or (IsGeneration wx, sn.builder))
     let gatheredMoved = Append (Append (Each gathered, \|sn| GatheredMoved sn), (Each wx.snaps, \|sn| SnapPublish sinks, sn)), (FlattenMethods sinks)
@@ -5079,18 +5194,18 @@ fn FinishNode wx0, qk, params, isRow:
         ? m: [[DocumentMoved m]]
         nil: [[]]
     let rowMethods = if isRow: RowMethods wx else: [[]]
-    let heard = Each (RowHears wx), \|m| MethDef(name="parent_wrote_{m}", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=(Append (MovedBy sinks, (ParentRead m)), (Fold wx.rowMarks, [[]], \|acc, rm| Append acc, (RowWritten wx, rm, (ParentRead m)))), tail=(XRaw "()"), doc="The block wrote behind its `{m}`, which this row reads through the parent: the `!Updated` nodes over it are told and the wake asked at their heights; the rows of this row's own `for`s that read it are marked.")
+    let heard = Each (RowHears wx), \|m| MethDef(name="parent_wrote_{m}", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=(Append (MovedBy sinks, (ParentRead m)), (Fold wx.rowMarks, [[]], \|acc, rm| Append acc, (RowWritten wx, rm, (ParentRead m)))), tail=(XUnit), doc="The block wrote behind its `{m}`, which this row reads through the parent: the `!Updated` nodes over it are told and the wake asked at their heights; the rows of this row's own `for`s that read it are marked.")
     let top = Fold wx.gns, 0, \|hi, g| Max hi, g.height
     let wakesField = if many: [[(("wakes", RsWakes, "the heights asked for this tick, lowest first"))]] else: [[]]
-    let wakesInit = if many: [[(("wakes", (XRaw "Wakes::default()")))]] else: [[]]
+    let wakesInit = if many: [[(("wakes", (XCall "Wakes::default", [[]])))]] else: [[]]
     let genFields = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (RsCell (RsOpt (RsNamed "Rc<dyn Row>", [[]]))), "the current generation of the `rebuild` at place {PlaceText gd.pos}")), (("{gd.name}_count", (RsNamed "Cell<u32>", [[]]), "how many generations it has built")), (("{gd.name}_stale", (RsNamed "Cell<bool>", [[]]), "its source changed since it was built"))]]
-    let genInits = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (XRaw "RefCell::new(None)"))), (("{gd.name}_count", (XRaw "Cell::new(0)"))), (("{gd.name}_stale", (XRaw "Cell::new(false)")))]]
+    let genInits = Fold wx.gens, [[]], \|acc, gd| Append acc, [[((gd.name, (XCall "RefCell::new", [[XNone]]))), (("{gd.name}_count", (XCall "Cell::new", [[XIndex 0]]))), (("{gd.name}_stale", (XCall "Cell::new", [[XBool False]])))]]
     let portFields = Each wx.ports, \|pn| (("{pn}_port", (RsPort (GnTyNamed wx, pn)), "`!{pn}`, which rows subscribe to"))
-    let portInits = Each wx.ports, \|pn| (("{pn}_port", (XRaw "Port::new()")))
+    let portInits = Each wx.ports, \|pn| (("{pn}_port", (XCall "Port::new", [[]])))
     let subFields = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (RsNamed "Cell<Option<Handle>>", [[]]), "the subscription to the parent's `!{ev}`"))
-    let subInits = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (XRaw "Cell::new(None)")))
+    let subInits = Each wx.subs, \|((ev, m, t))| (("{m}_sub", (XCall "Cell::new", [[XNone]])))
     let fallible = wx.fallible or isRow or (Len wx.builders) > 0 or (Len wx.gens) > 0
-    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append (Append (Append (Append wx.inits, wakesInit), genInits), portInits), subInits), build=(Append (Append (Append rowsBuilt, wx.build), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), movedMethod), answers=(Append answers, forwards), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
+    NodeDef(name=wx.node, prism=(BareName qk), doc=(DefinitionText wx.lx, qk), params=params, fields=(Append (Append (Append (Append wx.fields, wakesField), genFields), portFields), subFields), consts=consts, lets=wx.lets, inits=(Append wx.inits, (Append (Append (Append (Append wx.moves, wakesInit), genInits), portInits), subInits)), build=(Append (Append (Append rowsBuilt, wx.build), subscribed), startedReg), fallible=fallible, methods=(Append (Append (Append (Append (Append (Append (Append (Append evMethods, gatherIns), placeGetters), wx.getters), rowMethods), heard), hostMethods), gatheredMoved), movedMethod), answers=(Append answers, forwards), hooks=hooks, builders=wx.builders, wakes=many, children=wx.rows, gens=wx.gens, subs=wx.subs, top=top, rowKind=(if isRow: (if isGen: GenerationRow else: ForRow) else: NotARow), hosted=hostedMethods)
 
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
@@ -5103,19 +5218,19 @@ FlattenMethods: fn Sinks -> [MethDef]
 fn FlattenMethods sk:
     let wx = sk.wx
     let adopts = Each wx.flattens, \|fl|
-        let set = DoExpr (XMethod (XRaw "self.{fl.name}_inner"), "set", [[(XCtor "Some", [[(XMethod (XRaw "self"), fl.outer, [[XRaw "cx"]])]]), XRaw "cx"]])
-        MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=(Append [[set]], (HoldWritten sk, "{fl.name}_inner")), tail=(XRaw "()"), doc="`@Flatten` adopts the inner its `rebuild`'s dynamic held after the tick before, among this tick's first firings: from here on it reads that inner (Semantics ch. 7).")
+        let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor "Some", [[(XMethod (XSelf), fl.outer, [[XCx]])]]), XCx]])
+        MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=(Append [[set]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`@Flatten` adopts the inner its `rebuild`'s dynamic held after the tick before, among this tick's first firings: from here on it reads that inner (Semantics ch. 7).")
     let dynGens = Filter wx.gens, \|gd| (Len (Filter wx.snaps, \|sn| sn.builder == gd.name)) > 0
     let moved = Each dynGens, \|gd|
         let marks = Fold (Filter wx.flattens, \|fl| fl.generation == gd.name), [[]], \|acc, fl| Append acc, (HoldWritten sk, "{fl.name}_inner")
-        MethDef(name="{gd.name}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=marks, tail=(XRaw "()"), doc="The current generation's result moved: what reads a `@Flatten` over it reads it again.")
+        MethDef(name="{gd.name}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=marks, tail=(XUnit), doc="The current generation's result moved: what reads a `@Flatten` over it reads it again.")
     Append adopts, moved
 
 # A node of the hosted child wrote behind the host's document (a row's own hold): what a
 # write of a hold the document reads marks, with no hold set (`HoldWritten` of the getter,
 # whose reads are the child's).
 HostMoved: fn Sinks, HostDef -> MethDef
-fn HostMoved sk, h = MethDef(name="{h.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=(HoldWritten sk, "{h.name}_doc_now"), tail=(XRaw "()"), doc="A node of the child hosted at place {PlaceText h.pos} wrote behind its document: the structure is marked as for a write of a hold it reads (pick HO), the snapshot listed to be taken; the program's `$doc` moves when it is published, the tick after (pick ST).")
+fn HostMoved sk, h = MethDef(name="{h.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=(HoldWritten sk, "{h.name}_doc_now"), tail=(XUnit), doc="A node of the child hosted at place {PlaceText h.pos} wrote behind its document: the structure is marked as for a write of a hold it reads (pick HO), the snapshot listed to be taken; the program's `$doc` moves when it is published, the tick after (pick ST).")
 
 # The construction step of the node (pick ST): the builders and generations scope by scope,
 # a hosted child's before its host's (a host's `for` over `$doc` runs after the child's own
@@ -5128,15 +5243,15 @@ fn HostMoved sk, h = MethDef(name="{h.name}_moved", recv=RecvRc, params=[[]], cx
 BuildSteps: fn Sinks, Bool -> [Do]
 fn BuildSteps sk, atBuild:
     let wx = sk.wx
-    let recv = if atBuild: "node" else: "self"
+    let recv = if atBuild: XVar "node" else: XSelf
     let Take = \|sn| if atBuild: SnapTakeAtBuild sn else: SnapTake sk, sn
     let Builder = \|b|
         let before = Each (Filter wx.snaps, \|sn| sn.before and sn.builder == b.name), Take
         let after = Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == b.name), Take
-        Append (Push before, (DoExpr (XTry (XMethod (XRaw recv), "{b.name}_build", [[XRaw "cx"]])))), after
+        Append (Push before, (DoExpr (XTry (XMethod recv, "{b.name}_build", [[XCx]])))), after
     # a `rebuild` handing back a dynamic: its snapshot taken after the generation is built
     let Gen = \|gd|
-        let built = if atBuild: DoExpr (XTry (XMethod (XRaw recv), "{gd.name}_build", [[XRaw "cx"]])) else: DoIf (XMethod (XRaw "self.{gd.name}_stale"), "replace", [[XRaw "false"]]), [[DoExpr (XTry (XMethod (XRaw "self"), "{gd.name}_build", [[XRaw "cx"]]))]], [[]]
+        let built = if atBuild: DoExpr (XTry (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (XTry (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
         Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
     Fold (Range0 ((Len wx.scopes) + 1)), [[]], \|acc, i|
         let k = Or ((Len wx.scopes) -? i), 0
@@ -5145,30 +5260,30 @@ fn BuildSteps sk, atBuild:
 
 # The snapshot taken at the build: the structure as built.
 SnapTakeAtBuild: fn SnapDef -> Do
-fn SnapTakeAtBuild sn = DoExpr (XMethod (XRaw "node.{sn.name}_snap"), "take", [[(XMethod (XRaw "node"), "{sn.name}_now", [[XRaw "cx"]]), XRaw "cx"]])
+fn SnapTakeAtBuild sn = DoExpr (XMethod (XField (XVar "node"), "{sn.name}_snap"), "take", [[(XMethod (XVar "node"), "{sn.name}_now", [[XCx]]), XCx]])
 
 # The snapshot taken in `Node::build` when a write marked it, compared where the type has
 # equality: when it moved (or, without equality, whenever taken), its publication is queued
 # for the start of the next tick, which is owed, once per tick.
 SnapTake: fn Sinks, SnapDef -> Do
 fn SnapTake sk, sn:
-    let now = XMethod (XRaw "self"), "{sn.name}_now", [[XRaw "cx"]]
-    let take = DoExpr (XMethod (XRaw "self.{sn.name}_snap"), (if sn.eq: "take_compared" else: "take"), [[now, XRaw "cx"]])
-    let queue = DoExpr (XMethod (XRaw "cx"), "answer_later", [[XRaw "Box::new(move |cx| \{ node.{sn.name}_publish(cx); Ok(()) \})"]])
-    let queued = DoIf (XMethod (XRaw "self.{sn.name}_snap"), "queue", [[XRaw "cx"]]), [[(DoLet (PaBind "node"), (XRaw "self.clone()")), queue]], [[]]
-    DoIf (XMethod (XRaw "self.{sn.name}_snap"), "marked", [[XRaw "cx"]]), [[take, queued]], [[]]
+    let now = XMethod (XSelf), "{sn.name}_now", [[XCx]]
+    let take = DoExpr (XMethod (XField XSelf, "{sn.name}_snap"), (if sn.eq: "take_compared" else: "take"), [[now, XCx]])
+    let queue = DoExpr (XMethod (XCx), "answer_later", [[(XLater (XMethod (XVar "node"), "{sn.name}_publish", [[XCx]]))]])
+    let queued = DoIf (XMethod (XField XSelf, "{sn.name}_snap"), "queue", [[XCx]]), [[(DoLet (PaBind "node"), (XClone XSelf)), queue]], [[]]
+    DoIf (XMethod (XField XSelf, "{sn.name}_snap"), "marked", [[XCx]]), [[take, queued]], [[]]
 
 # A structural dynamic published (pick ST), a first firing of the tick after its snapshot
 # moved: the dynamic now answers that snapshot, and everything over it is marked as for a
 # write of a hold, so its `!Updated` fires in this tick's wake with the new value while
 # every sample in the tick reads the old one (R2/R3).
 SnapPublish: fn Sinks, SnapDef -> MethDef
-fn SnapPublish sk, sn = MethDef(name="{sn.name}_publish", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=[[(DoIf (XMethod (XRaw "self.{sn.name}_snap"), "published", [[XRaw "cx"]]), (HoldWritten sk, sn.name), [[]])]], tail=(XRaw "()"), doc="{sn.what}, published: its snapshot of the tick before moved it, written as a hold is (pick ST).")
+fn SnapPublish sk, sn = MethDef(name="{sn.name}_publish", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=[[(DoIf (XMethod (XField XSelf, "{sn.name}_snap"), "published", [[XCx]]), (HoldWritten sk, sn.name), [[]])]], tail=(XUnit), doc="{sn.what}, published: its snapshot of the tick before moved it, written as a hold is (pick ST).")
 
 # A row's hold behind its gathered result moved (pick ST): the block marks the gathered
 # dynamic's snapshot and lists its build to take it.
 GatheredMoved: fn SnapDef -> MethDef
-fn GatheredMoved sn = MethDef(name="{sn.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=[[(DoExpr (XMethod (XRaw "self.{sn.name}_snap"), "mark", [[XRaw "cx"]])), (DoExpr (XMethod (XRaw "cx"), "build_later", [[XRaw "self.clone()"]]))]], tail=(XRaw "()"), doc="A row's result moved: the `for`'s gathered dynamic is marked, and its snapshot taken after the builder (pick ST).")
+fn GatheredMoved sn = MethDef(name="{sn.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=[[(DoExpr (XMethod (XField XSelf, "{sn.name}_snap"), "mark", [[XCx]])), (DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]]))]], tail=(XUnit), doc="A row's result moved: the `for`'s gathered dynamic is marked, and its snapshot taken after the builder (pick ST).")
 
 # A hosted row's own places, for its host's document (`Row::document`): each by its path
 # relative to the row, and under its `for`s and `rebuild`s their rows'.
@@ -5176,12 +5291,12 @@ DocumentGetter: fn Wx -> MethDef
 fn DocumentGetter wx:
     let IsOwn = \|p| p.scope == 0
     let body = DocumentBody VecPush, (Filter wx.places, \|pl| IsOwn pl.pos), (Filter wx.builders, \|b| IsOwn b.pos), (Filter wx.gens, \|gd| IsOwn gd.pos)
-    MethDef(name="document", recv=RecvRef, params=[[]], cx=CxRef, ret=(RsNamed "Vec<(Path, crate::Elem)>", [[]]), body=(Append [[(DoLet (PaBind "mut doc"), (XRaw "Vec::new()"))]], body), tail=(XRaw "doc"), doc="The row's own places, entries of its host's document, by their paths relative to the row (pick HO).")
+    MethDef(name="document", recv=RecvRef, params=[[]], cx=CxRef, ret=(RsNamed "Vec<(Path, crate::Elem)>", [[]]), body=(Append [[(DoLet (PaMut "doc"), (XCall "Vec::new", [[]]))]], body), tail=(XVar "doc"), doc="The row's own places, entries of its host's document, by their paths relative to the row (pick HO).")
 
 # A hosted row's place may have moved (a hold it reads was written): its parent is told,
 # and tells its host in turn.
 DocumentMoved: fn Text -> MethDef
-fn DocumentMoved m = MethDef(name="document_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=[[(DoIfLet (PaCtor "Some", [[PaBind "parent"]]), (XMethod (XRaw "self.parent"), "upgrade", [[]]), [[DoExpr (XMethod (XRaw "parent"), m, [[XRaw "cx"]])]], [[]])]], tail=(XRaw "()"), doc="A place of this row may have moved: its host's document moved, and the host's readers and rows are marked (pick HO).")
+fn DocumentMoved m = MethDef(name="document_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=RsUnit, body=[[(DoIfLet (PaCtor "Some", [[PaBind "parent"]]), (XMethod (XField XSelf, "parent"), "upgrade", [[]]), [[DoExpr (XMethod (XVar "parent"), m, [[XCx]])]], [[]])]], tail=(XUnit), doc="A place of this row may have moved: its host's document moved, and the host's readers and rows are marked (pick HO).")
 
 # The entries of a document: each place at the read point (its getter when a field is live,
 # else its constant), and under each `for` and `rebuild` the rows' own documents, keyed
@@ -5190,28 +5305,28 @@ fn DocumentMoved m = MethDef(name="document_moved", recv=RecvRc, params=[[]], cx
 DocumentBody: fn (fn Ex, Ex -> Do), [Place], [ForDef], [GenDef] -> [Do]
 fn DocumentBody Add, places, builders, gens:
     let statics = Each places, \|pl|
-        let level = if pl.getter == "": pl.level else: XMethod (XRaw "self"), pl.getter, [[XRaw "cx"]]
-        Add (XRaw "Path::root().at({pl.pos.at})"), level
-    let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XRaw "self.{b.name}.borrow().iter()"), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XRaw "row.document(cx)"), [[(Add (XRaw "Path::root().at({b.pos.at}).child(Segment::Key(k.to_pod())).join(&p)"), (XRaw "e"))]])]]
-    let generations = Each gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "self.{gd.name}.borrow().as_ref()"), [[(DoLet (PaBind "g"), (XRaw "self.{gd.name}_count.get() - 1")), (DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XRaw "row.document(cx)"), [[(Add (XRaw "Path::root().at({gd.pos.at}).child(Segment::Gen(g)).join(&p)"), (XRaw "e"))]])]], [[]]
+        let level = if pl.getter == "": pl.level else: XMethod (XSelf), pl.getter, [[XCx]]
+        Add (XMethod (XCall "Path::root", [[]]), "at", [[XIndex pl.pos.at]]), level
+    let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (XMethod (XMethod (XMethod (XCall "Path::root", [[]]), "at", [[XIndex b.pos.at]]), "child", [[(XCtor "Segment::Key", [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
+    let generations = Each gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[(DoLet (PaBind "g"), (XBin "-", (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]]), (XIndex 1))), (DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (XMethod (XMethod (XMethod (XCall "Path::root", [[]]), "at", [[XIndex gd.pos.at]]), "child", [[(XCtor "Segment::Gen", [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]], [[]]
     Append (Append statics, rows), generations
 
 MapInsert: fn Ex, Ex -> Do
-fn MapInsert path, e = DoExpr (XMethod (XRaw "doc"), "insert", [[path, e]])
+fn MapInsert path, e = DoExpr (XMethod (XVar "doc"), "insert", [[path, e]])
 
 VecPush: fn Ex, Ex -> Do
-fn VecPush path, e = DoExpr (XMethod (XRaw "doc"), "push", [[XTuple [[path, e]]]])
+fn VecPush path, e = DoExpr (XMethod (XVar "doc"), "push", [[XTuple [[path, e]]]])
 
 # A World's answer at a place whose element answers a dynamic (a push, or an answer by
 # path): the hold written from the plain data, the node patched.
-DynAnswerArm: fn Sinks, Pos, Text, RsTy -> ((Text, Ex))
-fn DynAnswerArm sk, pos, f, t = (((PosPat pos, ""), (XBlock (DynPlaceWrite sk, f, (XDecode t, (XRaw "v"))), (XRaw "()"))))
+DynAnswerArm: fn Sinks, Pos, Text, RsTy -> ((Pa, Ex))
+fn DynAnswerArm sk, pos, f, t = (((PosPat pos, [[]]), (XBlock (DynPlaceWrite sk, f, (XDecode t, (XVar "v"))), (XUnit))))
 
 # The write of a place's hold from the answer `value`: the hold set, and everything a
 # hold's sink marks (the node patched, the builders and rows over it, the "updated" nodes
 # over it told at height 0, before any wake, so the wake is only asked).
 DynPlaceWrite: fn Sinks, Text, Ex -> [Do]
-fn DynPlaceWrite sk, f, value = Append [[DoExpr (XMethod (XRaw "self.{f}"), "set", [[value, XRaw "cx"]])]], (HoldWritten sk, f)
+fn DynPlaceWrite sk, f, value = Append [[DoExpr (XMethod (XField XSelf, "{f}"), "set", [[value, XCx]])]], (HoldWritten sk, f)
 
 # What an "updated" node cannot be given: a read of anything that is not a hold a sink of
 # this node writes, a dynamic `let` over such, or a structural dynamic of the node (its
@@ -5298,20 +5413,20 @@ fn RowHears wx:
 # are told through `parent_wrote_{m}`.
 RowWritten: fn Wx, RowMarks, Read -> [Do]
 fn RowWritten wx, rm, r:
-    let dirty = if HasRead (ReadsClosed wx.dynReads, rm.reads), r: [[DoExpr (XRaw "cx.dirty(row.clone())")]] else: [[]]
-    let told = Fold rm.wrote, [[]], \|acc, m| if HasRead (ReadsClosed wx.dynReads, [[OwnRead m]]), r: Push acc, (DoExpr (XRaw "row.parent_wrote_{m}(cx)")) else: acc
+    let dirty = if HasRead (ReadsClosed wx.dynReads, rm.reads), r: [[DoExpr (XMethod XCx, "dirty", [[XClone (XVar "row")]])]] else: [[]]
+    let told = Fold rm.wrote, [[]], \|acc, m| if HasRead (ReadsClosed wx.dynReads, [[OwnRead m]]), r: Push acc, (DoExpr (XMethod (XVar "row"), "parent_wrote_{m}", [[XCx]])) else: acc
     let body = Append dirty, told
     if (Len body) == 0: [[]]
     else: match rm.kind:
-        GenerationRow: [[(DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "self.{rm.builder}.borrow().as_ref()"), body, [[]])]]
-        otherwise: [[(DoFor (PaBind "row"), (XRaw "self.{rm.builder}.borrow().values()"), body)]]
+        GenerationRow: [[(DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "as_ref", [[]]), body, [[]])]]
+        otherwise: [[(DoFor (PaBind "row"), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "values", [[]]), body)]]
 
 # The patch pass for one live place: its level read and sent as changed.
 PatchPlace: fn Wx, Place -> [Do]
 fn PatchPlace wx, p:
-    let pull = DoLet (PaBind p.getter), (XMethod (XRaw "self"), p.getter, [[XRaw "cx"]])
-    let at = XRaw (PlaceAt wx, "self", p.pos)
-    [[pull, (DoExpr (XMethod (XRaw "cx"), "changed", [[at, (XMethod (XRaw p.getter), "to_pod", [[]])]]))]]
+    let pull = DoLet (PaBind p.getter), (XMethod (XSelf), p.getter, [[XCx]])
+    let at = PlaceAt wx, "self", p.pos
+    [[pull, (DoExpr (XMethod (XCx), "changed", [[at, (XMethod (XVar p.getter), "to_pod", [[]])]]))]]
 
 # Whether a position's place goes out to the World's document: the node's own, when the
 # node is not itself in a hosted scope. Any other place is an entry of a host's document
@@ -5319,18 +5434,48 @@ fn PatchPlace wx, p:
 Emits: fn Wx, Pos -> Bool
 fn Emits wx, pos = pos.scope == 0 and wx.?hostedBy == nil
 
-# A place's path as Rust spells it from `recv` (`self`, `node`, or "" in the build, before
+# The root's result at the build: computed, kept as the last one told, and told the World.
+ResultTold: fn Ex -> [Do]
+fn ResultTold node:
+    let r = DoLet (PaBind "r"), (XMethod node, "result_value", [[XCx]])
+    [[r, (ResultKept node), resultTell]]
+
+# The root's result after a tick: told when it differs from the last one told.
+ResultMoved: fn Ex -> [Do]
+fn ResultMoved node:
+    let r = DoLet (PaBind "r"), (XMethod node, "result_value", [[XCx]])
+    let last = XMethod (XMethod (XField node, "result_last"), "borrow", [[]]), "as_ref", [[]]
+    let differs = XBin "!=", last, (XCtor "Some", [[XRef (XVar "r")]])
+    [[r, (DoIf differs, [[(ResultKept node), resultTell]], [[]])]]
+
+ResultKept: fn Ex -> Do
+fn ResultKept node = DoAssign (XDeref (XMethod (XField node, "result_last"), "borrow_mut", [[]])), (XCtor "Some", [[XClone (XVar "r")]])
+
+let resultTell = DoExpr (XMethod XCx, "result", [[(XCtor "Outcome::Value", [[XVar "r"]])]])
+
+# `@Flatten`'s adoption queued for the first firings of the next tick.
+Adoption: fn FlatDef -> [Do]
+fn Adoption fl:
+    let adopt = XLater (XMethod (XVar "node"), "{fl.name}_adopt", [[XCx]])
+    [[(DoLet (PaBind "node"), (XClone XSelf)), (DoExpr (XMethod XCx, "answer_later", [[adopt]]))]]
+
+# A place's path as read from `recv` (`self`, `node`, or "" in the build, before
 # the node exists): the node's own path for a place that goes to the World, or, for a place
 # of a host's document, its path relative to the hosted child (`Path::root().at(n)`), under
 # which a host's row builds (pick HO).
-PlaceAt: fn Wx, Text, Pos -> Text
+PlaceAt: fn Wx, Text, Pos -> Ex
 fn PlaceAt wx, recv, pos:
-    if Emits wx, pos: (if recv == "": "path.at({pos.at})" else: "{recv}.path.at({pos.at})")
-    else: "Path::root().at({pos.at})"
+    let at = [[XIndex pos.at]]
+    if Emits wx, pos: XMethod (if recv == "": XVar "path" else: (if recv == "self": XField XSelf, "path" else: XField (XVar recv), "path")), "at", at
+    else: XMethod (XCall "Path::root", [[]]), "at", at
 
 # The pattern of an answer at a place, `tail` the rest of its segments.
-PosPat: fn Pos, Text -> Text
-fn PosPat pos, tail = "[Segment::Pos({pos.at}){tail}]"
+PosPat: fn Pos, [Pa] -> Pa
+fn PosPat pos, tail = PaSlice (Append [[(PaCtor "Segment::Pos", [[PaIndex pos.at]])]], tail)
+
+# The segments under a place: a `for` row's key, a generation's number, or any.
+let keyTail = [[(PaCtor "Segment::Key", [[PaBind "k"]]), PaRest "rest"]]
+let genTail = [[(PaCtor "Segment::Gen", [[PaBind "g"]]), PaRest "rest"]]
 
 # What the rows of a `for` or `rebuild` at the block's current position tell when a place
 # of theirs may have moved: nothing when the rows' places go to the World; the host's
@@ -5346,35 +5491,35 @@ fn ?HostedRows wx:
 # The root's dynamic result at the patch pass: sent when it moved.
 RootDynPatch: fn Wx -> [Do]
 fn RootDynPatch wx = match wx.?rootDyn:
-    ? ignore: [[DoExpr (XRaw "let r = self.result_value(cx); if self.result_last.borrow().as_ref() != Some(&r) \{ *self.result_last.borrow_mut() = Some(r.clone()); cx.result(Outcome::Value(r)); \}")]]
+    ? ignore: [[DoLine (ResultMoved XSelf)]]
     nil: [[]]
 
 # A World's answer at a place: the input method called with the decoded value.
-AnswerArm: fn Wx, Pos, Nat, RsTy -> ((Text, Ex))
+AnswerArm: fn Wx, Pos, Nat, RsTy -> ((Pa, Ex))
 fn AnswerArm wx, pos, id, t:
-    let call = XMethod (XRaw "self"), (GnOf wx, id).name, [[(XDecode t, (XRaw "v")), XRaw "cx"]]
-    (((PosPat pos, ""), call))
+    let call = XMethod (XSelf), (GnOf wx, id).name, [[(XDecode t, (XVar "v")), XCx]]
+    (((PosPat pos, [[]]), call))
 
 # A host's typed answer to a place of its child (pick HO): the input method called with the
 # tag's variant of `crate::Answer` taken apart (a variant of another tag is a fault).
 TypedAnswerArm: fn Wx, Pos, Nat, Text -> ((Pa, [Do]))
-fn TypedAnswerArm wx, pos, id, acc = (((PaLit (PosPat pos, "")), [[(SelfCall (GnOf wx, id).name, [[(XTry (XMethod (XRaw "v"), acc, [[]]))]])]]))
+fn TypedAnswerArm wx, pos, id, acc = (((PosPat pos, [[]]), [[(SelfCall (GnOf wx, id).name, [[(XTry (XMethod (XVar "v"), acc, [[]]))]])]]))
 
 TypedDynArm: fn Sinks, Pos, Text, Text -> ((Pa, [Do]))
-fn TypedDynArm sk, pos, f, acc = (((PaLit (PosPat pos, "")), (DynPlaceWrite sk, f, (XTry (XMethod (XRaw "v"), acc, [[]])))))
+fn TypedDynArm sk, pos, f, acc = (((PosPat pos, [[]]), (DynPlaceWrite sk, f, (XTry (XMethod (XVar "v"), acc, [[]])))))
 
 # A host's typed answer under a `for`'s or a `rebuild`'s place of its child: to the row its
 # key names, or the current generation, which delivers it on (prelude `Row::deliver`).
-TypedForwardArm: fn ForDef, Text -> ((Pa, [Do]))
+TypedForwardArm: fn ForDef, Ex -> ((Pa, [Do]))
 fn TypedForwardArm b, segs:
-    let rowOf = XMethod (XMethod (XMethod (XRaw "self.{b.name}"), "borrow", [[]]), "get", [[(XUnary "&", (XDecode b.keyTy, (XRaw "k")))]]), "cloned", [[]]
-    (((PaLit (PosPat b.pos, ", Segment::Key(k), rest @ ..")), [[(DoLet (PaBind "row"), rowOf), (DoMatch (XRaw "row"), [[(((PaCtor "Some", [[PaBind "row"]]), [[DoExpr (XTry (XMethod (XRaw "row"), "deliver", [[XRaw "rest", XRaw "v", XRaw "cx"]]))]])), ((PaUnit "None", [[DoReturn (XRaw "Err(Fault::answer(format!(\"no row \{k\} under the hosted place \{\}\", Path({segs}.to_vec()))))")]]))]])]]))
+    let rowOf = XMethod (XMethod (XMethod (XField XSelf, "{b.name}"), "borrow", [[]]), "get", [[(XRef (XDecode b.keyTy, (XVar "k")))]]), "cloned", [[]]
+    (((PosPat b.pos, keyTail), [[(DoLet (PaBind "row"), rowOf), (DoMatch (XVar "row"), [[(((PaCtor "Some", [[PaBind "row"]]), [[DoExpr (XTry (XMethod (XVar "row"), "deliver", [[(XVar "rest"), (XVar "v"), XCx]]))]])), ((PaUnit "None", [[DoReturn (XCtor "Err", [[(XCall "Fault::answer", [[(XFormatStr [[(XText "no row "), (XVar "k"), (XText " under the hosted place "), (XCtor "Path", [[(XMethod segs, "to_vec", [[]])]])]])]])]])]]))]])]]))
 
 TypedGenArm: fn GenDef -> ((Pa, [Do]))
 fn TypedGenArm gd:
-    let current = XMethod (XMethod (XRaw "self.{gd.name}"), "borrow", [[]]), "clone", [[]]
-    let isCurrent = XBin "==", (XBin "+", (XRaw "*g"), (XRaw "1")), (XMethod (XRaw "self.{gd.name}_count"), "get", [[]])
-    (((PaLit (PosPat gd.pos, ", Segment::Gen(g), rest @ ..")), [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "row"), [[(DoIf isCurrent, [[DoExpr (XTry (XMethod (XRaw "row"), "deliver", [[XRaw "rest", XRaw "v", XRaw "cx"]]))]], [[]])]], [[]])]]))
+    let current = XMethod (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]]), "clone", [[]]
+    let isCurrent = XBin "==", (XBin "+", (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
+    (((PosPat gd.pos, genTail), [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (XTry (XMethod (XVar "row"), "deliver", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]]))
 
 # The typed dispatch from a child place's path into the child's places (pick HO): the owner's
 # `host_k_answer` for the places of scope `k`, and a hosted node's `deliver` for its own
@@ -5386,15 +5531,15 @@ fn TypedDispatch sk, name, scope:
     let InScope = \|p| p.scope == scope
     # the owner's `host_k_answer` takes the child place's path; a hosted node's `deliver`, a
     # `Row` hook, the segments under its parent's place
-    let ((recv, param, segs, doc)) = if scope > 0: ((RecvRc, (("place", (RsRef RsPath))), "place.segments()", "The host at place {PlaceText (Or wx.hosts[Dec scope], dummyHost).pos} answers its child's place `place` (pick HO): into the child's input method, a hold the place's element answers, or the row of a `for` or `rebuild` under it."))
-        else: ((RecvOwned, (("at", (RsNamed "&[Segment]", [[]]))), "at", "A host's answer to a place of this row's own, `at` under the row (pick HO): into the input method, a hold, or a row under it."))
+    let ((recv, param, segs, doc)) = if scope > 0: ((RecvRc, (("place", (RsRef RsPath))), (XMethod (XVar "place"), "segments", [[]]), "The host at place {PlaceText (Or wx.hosts[Dec scope], dummyHost).pos} answers its child's place `place` (pick HO): into the child's input method, a hold the place's element answers, or the row of a `for` or `rebuild` under it."))
+        else: ((RecvOwned, (("at", (RsNamed "&[Segment]", [[]]))), (XVar "at"), "A host's answer to a place of this row's own, `at` under the row (pick HO): into the input method, a hold, or a row under it."))
     let answers = Each (Filter wx.answers, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, id, ignore, acc))| TypedAnswerArm wx, pos, id, acc
     let dyns = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| InScope pos), \|((pos, f, ignore, acc))| TypedDynArm sk, pos, f, acc
     let rows = Each (Filter wx.builders, \|b| InScope b.pos), \|b| TypedForwardArm b, segs
     let gens = Each (Filter wx.gens, \|gd| InScope gd.pos), \|gd| TypedGenArm gd
-    let none = ((PaWild, [[DoReturn (XRaw "Err(Fault::answer(format!(\"no hosted place at \{\} to answer\", Path({segs}.to_vec()))))")]]))
+    let none = ((PaWild, [[DoReturn (XCtor "Err", [[(XCall "Fault::answer", [[(XFormatStr [[(XText "no hosted place at "), (XCtor "Path", [[(XMethod segs, "to_vec", [[]])]]), (XText " to answer")]])]])]])]]))
     let arms = Push (Append (Append (Append answers, dyns), rows), gens), none
-    MethDef(name=name, recv=recv, params=[[param, (("v", (RsRef answerTy)))]], cx=CxMut, ret=(RsNamed "Done", [[]]), body=[[(DoMatch (XRaw segs), arms)]], tail=(XRaw "Ok(())"), doc=doc)
+    MethDef(name=name, recv=recv, params=[[param, (("v", (RsRef answerTy)))]], cx=CxMut, ret=(RsNamed "Done", [[]]), body=[[(DoMatch segs, arms)]], tail=(XCtor "Ok", [[XUnit]]), doc=doc)
 
 let dummyHost = HostDef(pos=pos0, name="", scope=0)
 
@@ -5415,9 +5560,9 @@ fn SortNats xs = Fold xs, [[]], \|acc, x| Append (Push (Filter acc, \|y| y < x),
 # `Node::wake` is not told the height, gap WH of the README).
 AskWake: fn Sinks, Nat -> [Do]
 fn AskWake sk, h:
-    let c = "Self::{WakeConst sk.heights, h}"
-    let ask = DoExpr (XMethod (XRaw "self.wakes"), "ask", [[XRaw c]])
-    let wake = DoExpr (XMethod (XRaw "cx"), "wake", [[XRaw c, XRaw "self.clone()"]])
+    let c = XConst (WakeConst sk.heights, h)
+    let ask = DoExpr (XMethod (XField XSelf, "wakes"), "ask", [[c]])
+    let wake = DoExpr (XMethod (XCx), "wake", [[c, (XClone XSelf)]])
     if sk.many: [[ask, wake]] else: [[wake]]
 
 # A gather's input: a row's firing, collected by key into the tick's one firing.
@@ -5430,35 +5575,35 @@ fn GatherIn sk, g:
     let vt = match g.ty:
         RsMap ignore, v: v
         otherwise: RsUnit
-    let current = XMethod (XMethod (XRaw "self.{field}"), "get", [[XRaw "cx"]]), "unwrap_or_default", [[]]
-    let collect = [[(DoLet (PaBind "mut all"), current), (DoExpr (XMethod (XRaw "all"), "insert", [[XRaw "k", XRaw "v"]])), (DoExpr (XMethod (XRaw "self.{field}"), "set", [[XRaw "all", XRaw "cx"]]))]]
+    let current = XMethod (XMethod (XField XSelf, "{field}"), "get", [[XCx]]), "unwrap_or_default", [[]]
+    let collect = [[(DoLet (PaMut "all"), current), (DoExpr (XMethod (XVar "all"), "insert", [[(XVar "k"), (XVar "v")]])), (DoExpr (XMethod (XField XSelf, "{field}"), "set", [[(XVar "all"), XCx]]))]]
     let body = Append collect, (AskWake sk, g.height)
-    MethDef(name="{g.name}_in", recv=RecvRc, params=[[(("k", kt)), (("v", vt))]], cx=CxMut, ret=RsUnit, body=body, tail=(XRaw "()"), doc="A row's firing, gathered by its key.")
+    MethDef(name="{g.name}_in", recv=RecvRc, params=[[(("k", kt)), (("v", vt))]], cx=CxMut, ret=RsUnit, body=body, tail=(XUnit), doc="A row's firing, gathered by its key.")
 
 Decide: fn Gn -> Do
 fn Decide g = match g.kind:
-    GnGather: DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XRaw "self.{Or g.inputs[0], ""}"), "take", [[XRaw "cx"]]), [[(SelfCall g.name, [[XRaw "v"]])]], [[]]
+    GnGather: DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XField XSelf, "{Or g.inputs[0], ""}"), "take", [[XCx]]), [[(SelfCall g.name, [[(XVar "v")]])]], [[]]
     GnMerge: MergeDecide g
     GnUpdated: UpdatedDecide g
     GnMergeAll:
-        let pushes = Each g.inputs, \|f| DoIfLet (PaCtor "Some", [[PaBind "x"]]), (XMethod (XRaw "self.{f}"), "take", [[XRaw "cx"]]), [[DoExpr (XMethod (XRaw "all"), "push_back", [[XRaw "x"]])]], [[]]
-        let start = DoLet (PaBind "mut all"), (XRaw "Array::new()")
-        let fire = DoIf (XRaw "!all.is_empty()"), [[(SelfCall g.name, [[XRaw "all"]])]], [[]]
-        DoIf (XRaw "true"), (Push (Append [[start]], pushes), fire), [[]]
+        let pushes = Each g.inputs, \|f| DoIfLet (PaCtor "Some", [[PaBind "x"]]), (XMethod (XField XSelf, "{f}"), "take", [[XCx]]), [[DoExpr (XMethod (XVar "all"), "push_back", [[(XVar "x")]])]], [[]]
+        let start = DoLet (PaMut "all"), (XCall "Array::new", [[]])
+        let fire = DoIf (XUnary "!", (XMethod (XVar "all"), "is_empty", [[]])), [[(SelfCall g.name, [[(XVar "all")]])]], [[]]
+        DoIf (XBool True), (Push (Append [[start]], pushes), fire), [[]]
     kind: PairDecide g, kind
 
 # An "updated" node decides: the flag taken (once a tick: a hold it reads was written), the
 # dynamic read after the tick, the event fired with it. No dedupe (pick UD): the event
 # fires whenever the dynamic was recomputed, equal value or not.
 UpdatedDecide: fn Gn -> Do
-fn UpdatedDecide g = DoIf (XMethod (XRaw "self.{g.name}_moved"), "replace", [[XRaw "false"]]), [[(DoLet (PaBind "after"), (XRaw "cx.after(|cx| self.{g.name}_value(cx))")), (SelfCall g.name, [[XRaw "after"]])]], [[]]
+fn UpdatedDecide g = DoIf (XMethod (XField XSelf, "{g.name}_moved"), "replace", [[(XBool False)]]), [[(DoLet (PaBind "after"), (XMethod XCx, "after", [[(XClosure False, [[PaBind "cx"]], (XMethod XSelf, "{g.name}_value", [[XCx]]))]])), (SelfCall g.name, [[(XVar "after")]])]], [[]]
 
 # Both inputs read, then decided: `!Union` joins the maps (the left's keys win), `!Both`
 # pairs them, `!Except` fires the left without the right.
 PairDecide: fn Gn, GnKind -> Do
 fn PairDecide g, kind:
-    let getL = XMethod (XRaw "self.{Or g.inputs[0], ""}"), "take", [[XRaw "cx"]]
-    let getR = XMethod (XRaw "self.{Or g.inputs[1], ""}"), "take", [[XRaw "cx"]]
+    let getL = XMethod (XField XSelf, "{Or g.inputs[0], ""}"), "take", [[XCx]]
+    let getR = XMethod (XField XSelf, "{Or g.inputs[1], ""}"), "take", [[XCx]]
     let both = XTuple [[getL, getR]]
     let Fire = \|x| [[(SelfCall g.name, [[x]])]]
     let sa = PaCtor "Some", [[PaBind "a"]]
@@ -5467,21 +5612,21 @@ fn PairDecide g, kind:
     let left = PaTuple [[sa, (PaUnit "None")]]
     let right = PaTuple [[(PaUnit "None"), sb]]
     let cases = match kind:
-        GnUnion: [[((some2, (Fire (XCall "union", [[XRaw "&a", XRaw "&b"]])))), ((left, (Fire (XRaw "a")))), ((right, (Fire (XRaw "b")))), ((PaWild, [[]]))]]
-        GnBoth: [[((some2, (Fire (XTuple [[XRaw "a", XRaw "b"]])))), ((PaWild, [[]]))]]
-        otherwise: [[((left, (Fire (XRaw "a")))), ((PaWild, [[]]))]]
+        GnUnion: [[((some2, (Fire (XCall "union", [[(XRef (XVar "a")), (XRef (XVar "b"))]])))), ((left, (Fire (XVar "a")))), ((right, (Fire (XVar "b")))), ((PaWild, [[]]))]]
+        GnBoth: [[((some2, (Fire (XTuple [[(XVar "a"), (XVar "b")]])))), ((PaWild, [[]]))]]
+        otherwise: [[((left, (Fire (XVar "a")))), ((PaWild, [[]]))]]
     DoMatch both, cases
 
 # The wake of a node with combinators at several heights: the lowest height asked runs
 # its combinators.
 WakeByHeight: fn [Gn], [Nat] -> Do
-fn WakeByHeight combs, heights = DoMatch (XMethod (XRaw "self.wakes"), "next", [[]]), (Push (Each heights, \|h| ((PaLit "Self::{WakeConst heights, h}", (Each (Filter combs, \|g| g.height == h), \|g| Decide g)))), ((PaWild, [[]])))
+fn WakeByHeight combs, heights = DoMatch (XMethod (XField XSelf, "wakes"), "next", [[]]), (Push (Each heights, \|h| ((PaConst (WakeConst heights, h), (Each (Filter combs, \|g| g.height == h), \|g| Decide g)))), ((PaWild, [[]])))
 
 # An answer under a `for`'s place goes to the row its key names.
 ForwardAnswer: fn ForDef -> Ex
 fn ForwardAnswer b:
-    let rowOf = XMethod (XMethod (XMethod (XRaw "self.{b.name}"), "borrow", [[]]), "get", [[(XUnary "&", (XDecode b.keyTy, (XRaw "k")))]]), "cloned", [[]]
-    XBlock [[(DoLet (PaBind "row"), rowOf), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "row"), [[DoExpr (XTry (XMethod (XRaw "row"), "answer", [[XRaw "rest", XRaw "v", XRaw "cx"]]))]], [[]])]], (XRaw "()")
+    let rowOf = XMethod (XMethod (XMethod (XField XSelf, "{b.name}"), "borrow", [[]]), "get", [[(XRef (XDecode b.keyTy, (XVar "k")))]]), "cloned", [[]]
+    XBlock [[(DoLet (PaBind "row"), rowOf), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
 
 IsHold: fn RsTy -> Bool
 fn IsHold (RsHold ignore) = True
@@ -5495,9 +5640,9 @@ fn HeldTy t, other = other
 # row's leave its host's document with the row), its rows' and generations' too.
 RowMethods: fn Wx -> [MethDef]
 fn RowMethods wx:
-    let removes = Each (Filter wx.places, \|p| Emits wx, p.pos), \|p| DoExpr (XMethod (XRaw "cx"), "removed", [[(XRaw (PlaceAt wx, "self", p.pos))]])
-    let nested = Append (Each wx.builders, \|b| DoExpr (XRaw "self.{b.name}.borrow().values().for_each(|row| row.leave_row(cx))")), (Each wx.gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "self.{gd.name}.borrow().as_ref()"), [[DoExpr (XRaw "row.leave_row(cx)")]], [[]])
-    [[MethDef(name="remove_places", recv=RecvRef, params=[[]], cx=CxMut, ret=RsUnit, body=(Append removes, nested), tail=(XRaw "()"), doc="The row left: its places are torn down.")]]
+    let removes = Each (Filter wx.places, \|p| Emits wx, p.pos), \|p| DoExpr (XMethod (XCx), "removed", [[(PlaceAt wx, "self", p.pos)]])
+    let nested = Append (Each wx.builders, \|b| DoExpr (XMethod (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "values", [[]]), "for_each", [[(XClosure False, [[PaBind "row"]], (XMethod (XVar "row"), "leave_row", [[XCx]]))]])), (Each wx.gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[DoExpr (XMethod (XVar "row"), "leave_row", [[XCx]])]], [[]])
+    [[MethDef(name="remove_places", recv=RecvRef, params=[[]], cx=CxMut, ret=RsUnit, body=(Append removes, nested), tail=(XUnit), doc="The row left: its places are torn down.")]]
 
 GnDoc: fn Gn -> Text
 fn GnDoc g = match g.kind:
@@ -5513,11 +5658,11 @@ MergeDecide: fn Gn -> Do
 # Each input taken as it is decided, so a wake the node gets again in the tick (an input
 # fired anew through a host's answer) decides only what came since.
 fn MergeDecide g:
-    let call = [[(SelfCall g.name, [[XRaw "v"]])]]
-    let takeL = DoLet (PaBind "left"), (XMethod (XRaw "self.{Or g.inputs[0], ""}"), "take", [[XRaw "cx"]])
-    let takeR = DoLet (PaBind "right"), (XMethod (XRaw "self.{Or g.inputs[1], ""}"), "take", [[XRaw "cx"]])
-    let right = DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XRaw "right"), call, [[]]
-    DoIf (XRaw "true"), [[takeL, takeR, (DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XRaw "left"), call, [[right]])]], [[]]
+    let call = [[(SelfCall g.name, [[(XVar "v")]])]]
+    let takeL = DoLet (PaBind "left"), (XMethod (XField XSelf, "{Or g.inputs[0], ""}"), "take", [[XCx]])
+    let takeR = DoLet (PaBind "right"), (XMethod (XField XSelf, "{Or g.inputs[1], ""}"), "take", [[XCx]])
+    let right = DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XVar "right"), call, [[]]
+    DoIf (XBool True), [[takeL, takeR, (DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XVar "left"), call, [[right]])]], [[]]
 
 # ---------------------------------------------------------------------------------------
 # The program
@@ -5957,7 +6102,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
         TyMap k, v: (((RustTy lx, k), (RustTy lx, v), True))
         TyArray v: ((RsNat, (RustTy lx, v), False))
         otherwise: ((RsUnit, RsUnit, True))
-    let src = if keyed: srcEx else: XCall "indexed", [[(XUnary "&", srcEx)]]
+    let src = if keyed: srcEx else: XCall "indexed", [[(XRef srcEx)]]
     let base = match ?bound:
         ? (BnEv er, ignore): (GnOf wx1, er.node).name
         otherwise: "rows"
@@ -5972,19 +6117,19 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let rowName = "{wx.node}{RowSuffix wx}Row"
     let locals = RowLocals benv, menv, body
     let rowFields = Append [[(("key", kt, "the row's key")), (("left_entry", (RsCell (RsOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (RsWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))
-    let rowInits = Append [[(("key", (XRaw "key.clone()"))), (("left_entry", (XRaw "RefCell::new(None)"))), (("parent", (XRaw "parent")))]], (Each locals, \|l| ((l.field, (XRaw l.field))))
+    let rowMoves = Append [[(("key", (XClone (XVar "key")))), (("left_entry", (XCall "RefCell::new", [[XNone]]))), (("parent", (XVar "parent")))]], (Each locals, \|l| ((l.field, (XVar l.field))))
     let rowTaken = Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)
-    let rowWx0 = NewWx lx, rowName, rowFields, rowInits, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.depth, (?HostedRows wx)
-    let keyB = BnLocal "key", Owned, kt
-    let keyM = BnLocal "self.key", Owned, kt
-    let benvL = Fold locals, (RowReads benv, "parent.upgrade().expect(\"the block outlives its rows\")"), \|en, l| Bind en, l.name, (BnLocal l.field, Owned, l.ty)
-    let menvL = Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal "self.{l.field}", Owned, l.ty)
+    let rowWx0 = NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.depth, (?HostedRows wx)
+    let keyB = BnLocal (XVar "key"), Owned, kt
+    let keyM = BnLocal (XField XSelf, "key"), Owned, kt
+    let benvL = Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty)
+    let menvL = Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty)
     let passed = Append (HostedPassed wx), (Each locals, \|l| l.passed)
     let rowParams = Append (Append [[(("key", kt)), (("value", vt)), (("parent", (RsWeak wx.node)))]], (HostedParams wx)), (Each locals, \|l| ((l.field, l.ty)))
     # `$_`: in the build the entry after the tick, which the builder passes; in the methods the
     # projection, marked by the block's writes behind the source.
-    let entryM = BnDyn (XMethod (XRaw "self"), "entry", [[XRaw "cx"]]), [[ParentRead srcGetter]], vt
-    let ((rbe, rme)) = ForEnvs benvL, menvL, ?binders, keyB, keyM, (BnLocal "value", Owned, vt), entryM, vt
+    let entryM = BnDyn (XMethod (XSelf), "entry", [[XCx]]), [[ParentRead srcGetter]], vt
+    let ((rbe, rme)) = ForEnvs benvL, menvL, ?binders, keyB, keyM, (BnLocal (XVar "value"), Owned, vt), entryM, vt
     let rowWx = BlockInto rowWx0, rbe, rme, body
     let wx3 = update wx2:
         &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=name, reads=(RowPlaceReads rowWx), wrote=(RowHears rowWx), kind=ForRow)
@@ -5993,7 +6138,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     match rowWx.result:
         WrEv r:
             let ((gid, wx4)) = AddGn wx3, "{name}_all", outTy, GnGather, 1
-            let wx5 = AddField wx4, "{name}_gathered", (RsStamped outTy), "the rows' firings this tick, by key", (XRaw "Stamped::new()")
+            let wx5 = AddFieldLast wx4, "{name}_gathered", (RsStamped outTy), "the rows' firings this tick, by key", (XCall "Stamped::new", [[]])
             let wx6 = update wx5:
                 &_.gns <= Each &_.gns, \|n| if n.id == gid: WithInputs n, [["{name}_gathered"]] else: n
             let rowDone = Connect rowWx, r, (SkUp "{name}_all_in")
@@ -6015,16 +6160,16 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
                 &_.getters <= Push &_.getters, (MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The row's result, which the block gathers by key."))
                 &_.resultMoved <= if (Len ownBehind) > 0: ? (("{gathered}_moved", ownBehind)) else: nil
             let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gather=nil)), passed
-            let all = XRaw "self.{name}.borrow().iter().map(|(k, row)| (k.clone(), row.result(cx))).collect()"
+            let all = (XMethod (XMethod (XMethod (XMethod (XField XSelf, name), "borrow", [[]]), "iter", [[]]), "map", [[(XClosure False, [[PaTuple [[PaBind "k", PaBind "row"]]]], (XTuple [[XClone (XVar "k"), (XMethod (XVar "row"), "result", [[XCx]])]]))]]), "collect", [[]])
             let what = "the dynamic gathered by the `for` at place {PlaceText pos}"
             let wx5 = update wx4:
                 &_.taken <= Append &_.taken, [[gathered, "{gathered}_now", "{gathered}_snap", "{gathered}_moved", "{gathered}_publish"]]
                 &_.getters <= Append &_.getters, [[(MethDef(name="{gathered}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=gatheredTy, body=[[]], tail=all, doc="The rows' results by key, computed live: what the snapshot of the `for`'s dynamic is taken from (pick ST).")), (SnapGetter gathered, gatheredTy, "The `for`'s dynamic, the rows' results by key, a structural dynamic (pick ST): one tick behind the rows, the snapshot of the tick before the tick the read point is after.")]]
                 &_.fields <= Push &_.fields, (("{gathered}_snap", (RsSnapshot gatheredTy), "the `for` at place {PlaceText pos}'s gathered dynamic, structural: its snapshots, the rows' results and the lagged dynamic (pick ST)"))
-                &_.inits <= Push &_.inits, (("{gathered}_snap", (XCall "Snapshot::new", [[XRaw "\"{what}\""]])))
+                &_.inits <= Push &_.inits, (("{gathered}_snap", (XCall "Snapshot::new", [[XStr what]])))
                 &_.snaps <= Push &_.snaps, SnapDef(name=gathered, live="{gathered}_now", ty=gatheredTy, eq=(TyHasEq lx, (Peel full), [[]]), builder=name, before=False, what=what)
                 &_.dynReads <= Insert &_.dynReads, "{gathered}_now", (UnionReads reads, (BlockReads (ReadsClosed rowWx.dynReads, resultReads)))
-            ((wx5, (WrDyn (XMethod (XRaw "self"), gathered, [[XRaw "cx"]]), [[OwnRead gathered]], gatheredTy)))
+            ((wx5, (WrDyn (XMethod (XSelf), gathered, [[XCx]]), [[OwnRead gathered]], gatheredTy)))
         otherwise:
             let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWx, qk=rowName, params=rowParams, gather=nil)), passed
             ((wx4, WrUnit))
@@ -6036,17 +6181,17 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
 # (`Cx::before`) and keeps it in `left_entry`.
 EntryGetter: fn Text, RsTy -> MethDef
 fn EntryGetter srcGetter, vt:
-    let found = XMethod (XMethod (XMethod (XRaw "parent"), srcGetter, [[XRaw "cx"]]), "get", [[XRaw "&self.key"]]), "cloned", [[]]
-    let opened = XMethod (XMethod (XRaw "cx"), "before", [[(XClosure False, [[PaBind "cx"]], found)]]), "expect", [[XRaw "\"a row's key is in its source as its tick opened\""]]
-    let body = [[(DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XRaw "self.left_entry.borrow().as_ref()"), [[(DoReturn (XMethod (XRaw "v"), "clone", [[]]))]], [[]]), (DoLet (PaBind "parent"), (XRaw parentRef))]]
-    let tail = XMatch found, [[XArm(pat=(PaCtor "Some", [[PaBind "v"]]), conds=[[]], body=(XRaw "v")), XArm(pat=(PaUnit "None"), conds=[[]], body=opened)]], False
+    let found = XMethod (XMethod (XMethod (XVar "parent"), srcGetter, [[XCx]]), "get", [[(XRef (XField XSelf, "key"))]]), "cloned", [[]]
+    let opened = XMethod (XMethod (XCx), "before", [[(XClosure False, [[PaBind "cx"]], found)]]), "expect", [[(XStr "a row's key is in its source as its tick opened")]]
+    let body = [[(DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XMethod (XField XSelf, "left_entry"), "borrow", [[]]), "as_ref", [[]]), [[(DoReturn (XMethod (XVar "v"), "clone", [[]]))]], [[]]), (DoLet (PaBind "parent"), parentRef)]]
+    let tail = XMatch found, [[XArm(pat=(PaCtor "Some", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaUnit "None"), conds=[[]], body=opened)]], False
     MethDef(name="entry", recv=RecvRef, params=[[]], cx=CxRef, ret=vt, body=body, tail=tail, doc="The row's entry, `$_`: the block's source at this key, at the read point; from the row's leaving on, the value as the leaving tick opened.")
 
 AddBuilder: fn Wx, Text, Pos, RsTy, RsTy, Text, Bool, [Read], PendingRow, [Ex] -> Wx
 fn AddBuilder wx, name, pos, kt, vt, rowName, keyed, reads, waiting, passed:
-    let wx0 = AddField wx, name, (RsCell (RsMap kt, (RsRc (RsNamed rowName, [[]])))), "the rows of the `for` at place {PlaceText pos}", (XRaw "RefCell::new(Map::new())")
+    let wx0 = AddFieldLast wx, name, (RsCell (RsMap kt, (RsRc (RsNamed rowName, [[]])))), "the rows of the `for` at place {PlaceText pos}", (XCall "RefCell::new", [[(XCall "Map::new", [[]])]])
     update wx0:
-        &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, source="{name}_source", parent="Rc::downgrade(self)", passed=passed)
+        &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, source="{name}_source", parent=(XWeak XSelf), passed=passed)
         &_.buildHolds <= UnionReads &_.buildHolds, reads
         &_.pending <= Push &_.pending, waiting
 
@@ -6066,16 +6211,16 @@ fn HostedParams wx = match ?HostedRows wx:
 
 HostedPassed: fn Wx -> [Ex]
 fn HostedPassed wx = match ?HostedRows wx:
-    ? ignore: [[XRaw "{HostField wx, wx.pos}.clone()"]]
+    ? ignore: [[(XClone (HostFieldEx wx, wx.pos))]]
     nil: [[]]
 
 # A row's view of its block's holds and dynamic `let`s: read through the parent at the
 # row's read point, each a `ParentRead` in what it reads, so the row's places that read
 # one are live and the block's writes of it mark the rows (gap DY).
-RowReads: fn Env, Text -> Env
+RowReads: fn Env, Ex -> Env
 fn RowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
-    ? (BnHold f, t): Bind en, k, (BnDyn (XMethod (XRaw "{pref}.{f}"), "get", [[XRaw "cx"]]), [[ParentRead f]], t)
-    ? (BnDyn (XMethod (XRaw "self"), m, xs), ignore, t): Bind en, k, (BnDyn (XMethod (XRaw pref), m, xs), [[ParentRead m]], t)
+    ? (BnHold f, t): Bind en, k, (BnDyn (XMethod (XField pref, f), "get", [[XCx]]), [[ParentRead f]], t)
+    ? (BnDyn (XMethod (XSelf), m, xs), ignore, t): Bind en, k, (BnDyn (XMethod pref, m, xs), [[ParentRead m]], t)
     otherwise: en
 
 # A row's reads of its block, as the block's own reads: the block's writes of these mark
@@ -6098,7 +6243,7 @@ fn RowLocals benv, menv, body = Fold (ReadNames (BlockExprs body)), [[]], \|acc,
     ? (BnLocal rs, mode, t):
         let field = Snake n
         if field == "key" or field == "value" or field == "parent" or field == "path": acc
-        else: Push acc, (RowLocal(name=n, field=field, ty=t, passed=(Own (VlPlace (XRaw rs), mode, t))))
+        else: Push acc, (RowLocal(name=n, field=field, ty=t, passed=(Own (VlPlace rs, mode, t))))
     otherwise: acc
 
 # A row's environments: the block's names, `key`, `$_`, and the `for`'s binders.
@@ -6110,16 +6255,16 @@ fn ForEnvs benv, menv, ?binders, keyB, keyM, valB, valM, vt:
         nil: ((be0, me0))
         ? fb: match fb.?second:
             ? second:
-                let be1 = BindPat be0, fb.first, keyB, "key", kt0
-                let me1 = BindPat me0, fb.first, keyM, "self.key", kt0
-                (((BindPat be1, second, valB, "value", vt), (BindPat me1, second, valM, "", vt)))
-            nil: (((BindPat be0, fb.first, valB, "value", vt), (BindPat me0, fb.first, valM, "", vt)))
+                let be1 = BindPat be0, fb.first, keyB, (XVar "key"), kt0
+                let me1 = BindPat me0, fb.first, keyM, (XField XSelf, "key"), kt0
+                (((BindPat be1, second, valB, (XVar "value"), vt), (BindPat me1, second, valM, XUnit, vt)))
+            nil: (((BindPat be0, fb.first, valB, (XVar "value"), vt), (BindPat me0, fb.first, valM, XUnit, vt)))
 
 let kt0 = RsUnit
 
 # A `for` binder: a name binds the key or the entry; a tuple binds its parts, each the
 # part of the entry (`for ((path, text)) <- files:`).
-BindPat: fn Env, Pattern, Bn, Text, RsTy -> Env
+BindPat: fn Env, Pattern, Bn, Ex, RsTy -> Env
 fn BindPat env, p, b, whole, t = match p.kind:
     PName n: Bind env, (SNameKey n), b
     PGroup q: BindPat env, q, b, whole, t
@@ -6135,9 +6280,9 @@ fn BindPat env, p, b, whole, t = match p.kind:
     otherwise: env
 
 # Part `i` of a tuple entry: of the build's value, or of the row's entry projection.
-PartBn: fn Bn, Text, Nat, RsTy -> Bn
-fn PartBn (BnDyn x, rds, ignore), whole, i, t = BnDyn (XField x, "{i}"), rds, t
-fn PartBn other, whole, i, t = BnLocal "{whole}.{i}", Owned, t
+PartBn: fn Bn, Ex, Nat, RsTy -> Bn
+fn PartBn (BnDyn x, rds, ignore), whole, i, t = BnDyn (XPart x, i), rds, t
+fn PartBn other, whole, i, t = BnLocal (XPart whole, i), Owned, t
 
 # What tells a node's rows apart in their names: nothing for the first, a count for the
 # rest (the finished rows, with their children, and the `for` rows still pending).
@@ -6160,9 +6305,7 @@ RowEnv: unbounded fn Wx, Wx, Env, Block -> ((Wx, Wx, Env))
 fn RowEnv parent, rowWx, menv, body:
     let names = ReadNames (BlockExprs body)
     Fold names, ((parent, rowWx, emptyEnv)), \|((p, r, env)), n| match menv.names[n]:
-        ? (BnLocal rs, mode, t):
-            let fieldOf = if (Take rs, 5) == "self.": Drop rs, 5 else: rs
-            ((p, r, (Bind env, n, (BnLocal "self.parent.upgrade().expect(\"the block outlives its rows\").{fieldOf}", Owned, t))))
+        ? (BnLocal rs, mode, t): ((p, r, (Bind env, n, (BnLocal (OverParent rs), Owned, t))))
         ? (BnEv er, t):
             let pname = (GnOf p, er.node).name
             let ((rs, r1)) = FreshName r, (Snake n)
@@ -6175,12 +6318,26 @@ fn RowEnv parent, rowWx, menv, body:
         # each a `ParentRead` in what it reads, so a generation's place that reads one is
         # live and the block's writes of it mark the generation (gap DY).
         ? (BnDyn (XMethod recv, m, xs), ignore, t):
-            if recv == (XRaw "self"): ((p, r, (Bind env, n, (BnDyn (XMethod (XRaw parentRef), m, xs), [[ParentRead m]], t))))
+            if recv == (XSelf): ((p, r, (Bind env, n, (BnDyn (XMethod parentRef, m, xs), [[ParentRead m]], t))))
             else: ((p, r, env))
-        ? (BnHold f, t): ((p, r, (Bind env, n, (BnDyn (XMethod (XRaw "{parentRef}.{f}"), "get", [[XRaw "cx"]]), [[ParentRead f]], t))))
+        ? (BnHold f, t): ((p, r, (Bind env, n, (BnDyn (XMethod (XField parentRef, f), "get", [[XCx]]), [[ParentRead f]], t))))
         otherwise: ((p, r, env))
 
-let parentRef = "self.parent.upgrade().expect(\"the block outlives its rows\")"
+# A place of the block as a row's methods read it: through the parent (a row of a row reads
+# its own parent's places through that row's parent in turn).
+OverParent: fn Ex -> Ex
+fn OverParent x = match x:
+    XSelf: parentRef
+    XField y, f: XField (OverParent y), f
+    XPart y, k: XPart (OverParent y), k
+    XMethod y, m, xs: XMethod (OverParent y), m, xs
+    XUpgrade y: XUpgrade (OverParent y)
+    otherwise: XField parentRef, (PlaceStem x)
+
+# The block, as a row's methods read it through the row's `parent` field, and as the
+# row's build reads it through its `parent` argument.
+let parentRef = XMethod (XUpgrade (XField XSelf, "parent")), "expect", [[XStr "the block outlives its rows"]]
+let parentArg = XMethod (XUpgrade (XVar "parent")), "expect", [[XStr "the block outlives its rows"]]
 
 WithPort: fn Wx, Text -> Wx
 fn WithPort wx, pname = update wx:
@@ -6239,22 +6396,23 @@ fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
             let result = "{name}_result"
             let live = "{result}_live"
             let what = "the dynamic of the `rebuild` at place {PlaceText pos}"
-            let tail = Append (Append [[XRaw "Rc::downgrade(self)"]], (HostedPassed wx)), [[XRaw "cx"]]
-            let built = XTry (XCall "{whole.node.name}::build", (Append [[XRaw "path", XRaw "value"]], tail))
-            let kept = DoExpr (XRaw "*self.{live}.borrow_mut() = Some(row.result_dynamic())")
-            let marked = DoExpr (XMethod (XRaw "self.{result}_snap"), "mark", [[XRaw "cx"]])
-            let select = XBlock [[(DoLet (PaBind "row"), built), kept, marked]], (XRaw "row")
-            let current = XMethod (XMethod (XMethod (XRaw "self.{live}"), "borrow", [[]]), "clone", [[]]), "expect", [[XRaw "\"a `rebuild` has a generation from its build on\""]]
+            let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
+            let built = XTry (XCall "{whole.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
+            let kept = DoAssign (XDeref (XMethod (XField XSelf, live), "borrow_mut", [[]])), (XCtor "Some", [[(XMethod (XVar "row"), "result_dynamic", [[]])]])
+            let marked = DoExpr (XMethod (XField XSelf, "{result}_snap"), "mark", [[XCx]])
+            let select = XBlock [[(DoLet (PaBind "row"), built), kept, marked]], (XVar "row")
+            let current = XMethod (XMethod (XMethod (XField XSelf, "{live}"), "borrow", [[]]), "clone", [[]]), "expect", [[(XStr "a `rebuild` has a generation from its build on")]]
             let wx2 = update whole.parent:
                 &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0)
                 &_.genHolds <= Push &_.genHolds, ((name, reads))
                 &_.rows <= Append (Push &_.rows, whole.node), whole.node.children
                 &_.taken <= Append &_.taken, [[result, live, "{result}_now", "{result}_snap", "{result}_publish", "{result}_moved"]]
                 &_.fields <= Append &_.fields, [[((live, (RsCell (RsOpt dynTy)), "the current generation's result, which the snapshot of the `rebuild`'s dynamic is taken from")), (("{result}_snap", (RsSnapshot dynTy), "the `rebuild` at place {PlaceText pos}'s dynamic, structural: its snapshots, the generations' results and the lagged dynamic (pick ST)"))]]
-                &_.inits <= Append &_.inits, [[((live, (XRaw "RefCell::new(None)"))), (("{result}_snap", (XCall "Snapshot::new", [[XRaw "\"{what}\""]])))]]
+                &_.moves <= Push &_.moves, ((live, (XCall "RefCell::new", [[XNone]])))
+                &_.inits <= Push &_.inits, (("{result}_snap", (XCall "Snapshot::new", [[XStr what]])))
                 &_.getters <= Append &_.getters, [[(MethDef(name="{result}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=dynTy, body=[[]], tail=current, doc="The current generation's result: what the snapshot of the `rebuild`'s dynamic is taken from (pick ST).")), (SnapGetter result, dynTy, "The `rebuild`'s dynamic, its generation's result, a structural dynamic (pick ST): one tick behind the generations, the snapshot of the tick before the tick the read point is after.")]]
                 &_.snaps <= Push &_.snaps, SnapDef(name=result, live="{result}_now", ty=dynTy, eq=False, builder=name, before=False, what=what)
-            ((wx2, (WrDyn (XMethod (XRaw "self"), result, [[XRaw "cx"]]), [[OwnRead result]], dynTy)))
+            ((wx2, (WrDyn (XMethod (XSelf), result, [[XCx]]), [[OwnRead result]], dynTy)))
 
 # A widget of several clauses in a static position (Semantics ch. 8): the clause is chosen
 # at the build from the arguments, which are plain, so it is a generation built once (its
@@ -6326,7 +6484,7 @@ fn GenCases wx, menv, body, vt, name:
                 (((Push acc, cr.case), cr.parent))
         nil:
             let whole = GenRowOf wx, menv, body, vt, rowName, name
-            ((([[GenCase(node=whole.node, params=[[(("value", vt))]], pat=PaWild, conds=[[]], passed=[[XRaw "value"]])]]), whole.parent))
+            ((([[GenCase(node=whole.node, params=[[(("value", vt))]], pat=PaWild, conds=[[]], passed=[[(XVar "value")]])]]), whole.parent))
 
 # A generation's body that is one application of a widget of several clauses: the widget
 # and the arguments.
@@ -6365,9 +6523,9 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent:
     let binders = Fold c.params, [[]], \|acc, p| Append acc, (PatternBinders p)
     let fields = Each binders, \|((bn, r))| (((Snake bn), (RustTy lxc, (Peel (BinderTy lxc, r))), bn))
     let rowFields = Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", (RsWeak wx.node), "the node of the `rebuild`"))
-    let rowInits = Push (Each fields, \|((f, ignore, ignore))| ((f, (XMethod (XRaw f), "clone", [[]])))), (("parent", (XRaw "parent")))
+    let rowInits = Each fields, \|((f, ignore, ignore))| ((f, (XMethod (XVar f), "clone", [[]])))
     let rowTaken = Append nodeHooks, (Push (Each fields, \|((f, ignore, ignore))| f), "parent")
-    let r00 = NewWx lxc, rowName, rowFields, rowInits, [[]], {}, rowTaken, wx.depth, (?HostedRows wx)
+    let r00 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XVar "parent")))]], [[]], {}, rowTaken, wx.depth, (?HostedRows wx)
     # standing in its caller, the clause's places are numbered from the caller's position
     let r0 = if transparent: (update r00:
         &_.pos <= wx.pos) else: r00
@@ -6386,8 +6544,8 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent:
     let pa = PaTuple (Each pos, \|o| o.pa)
     let binds = Fold pos, {}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
     let passed = Each fields, \|((f, t, bn))| match binds[bn]:
-        ? (BnLocal rs, mode, bt): Own (VlPlace (XRaw rs), mode, bt)
-        otherwise: XMethod (XRaw f), "clone", [[]]
+        ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)
+        otherwise: XMethod (XVar f), "clone", [[]]
     ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0))
 
 
@@ -6404,10 +6562,10 @@ GenRowOf: unbounded fn Wx, Env, Block, RsTy, Text, Text -> GenRow
 fn GenRowOf wx, menv, body, vt, rowName, genName:
     let lx = wx.lx
     let upName = "{genName}_up"
-    let r0 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (RsWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XMethod (XRaw "value"), "clone", [[]]))), (("parent", (XRaw "parent")))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.depth, (?HostedRows wx)
+    let r0 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (RsWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XMethod (XVar "value"), "clone", [[]])))]], [[(("parent", (XVar "parent")))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.depth, (?HostedRows wx)
     let ((p1, r1, ports)) = RowEnv wx, r0, menv, body
-    let be = Bind (BuildSpelling ports), "_", (BnLocal "value", Owned, vt)
-    let me = Bind ports, "_", (BnLocal "self.value", Owned, vt)
+    let be = Bind (BuildSpelling ports), "_", (BnLocal (XVar "value"), Owned, vt)
+    let me = Bind ports, "_", (BnLocal (XField XSelf, "value"), Owned, vt)
     let r2 = BlockInto r1, be, me, body
     let ((r3, ?dynResult)) = match r2.result:
         WrEv r: (((Connect r2, r, (SkUp upName)), nil))
@@ -6423,10 +6581,10 @@ fn GenResult r, genName, ex, resultReads, rt:
     let ownBehind = Filter (ReadsClosed r.dynReads, resultReads), \|rd| match rd:
         OwnRead ignore: True
         ParentRead ignore: False
-    let made = XCall "Dynamic::of", [[(XClosure True, [[PaBind "cx"]], (XMethod (XRaw "me"), "result", [[XRaw "cx"]])), XRaw "&Rc::new(Port::new())"]]
+    let made = XCall "Dynamic::of", [[(XClosure True, [[PaBind "cx"]], (XMethod (XVar "me"), "result", [[XCx]])), (XRef (XCall "Rc::new", [[(XCall "Port::new", [[]])]]))]]
     let doc = "The generation's result as a dynamic, which the block keeps while the generation is current; the block hears it move through `{genName}_result_moved`, not through the dynamic's port."
     update r:
-        &_.getters <= Append &_.getters, [[(MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The generation's result, which the `rebuild` hands back.")), (MethDef(name="result_dynamic", recv=RecvRc, params=[[]], cx=CxNone, ret=(RsDyn rt), body=[[(DoLet (PaBind "me"), (XRaw "self.clone()"))]], tail=made, doc=doc))]]
+        &_.getters <= Append &_.getters, [[(MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The generation's result, which the `rebuild` hands back.")), (MethDef(name="result_dynamic", recv=RecvRc, params=[[]], cx=CxNone, ret=(RsDyn rt), body=[[(DoLet (PaBind "me"), (XClone XSelf))]], tail=made, doc=doc))]]
         &_.resultMoved <= if (Len ownBehind) > 0: ? (("{genName}_result_moved", ownBehind)) else: nil
 
 # The block's writes behind what a generation's places read mark the generation (gap DY;
@@ -6441,47 +6599,51 @@ fn GenMarked parent, genName, rowWx:
 # A row's names as its constructor spells them: the block through the `parent` argument.
 BuildSpelling: fn Env -> Env
 fn BuildSpelling env = Fold (Keys env.names), env, \|en, k| match env.names[k]:
-    ? (BnLocal rs, mode, t): if (Take rs, 12) == "self.parent.": Bind en, k, (BnLocal (Drop rs, 5), mode, t) else: en
-    ? (BnDyn (XMethod (XRaw rs), m, xs), ds, t): if (Take rs, 12) == "self.parent.": Bind en, k, (BnDyn (XMethod (XRaw (Drop rs, 5)), m, xs), ds, t) else: en
+    ? (BnLocal rs, mode, t): match ?ThroughParent rs:
+        ? x: Bind en, k, (BnLocal x, mode, t)
+        nil: en
+    ? (BnDyn (XMethod rs, m, xs), ds, t): match ?ThroughParent rs:
+        ? x: Bind en, k, (BnDyn (XMethod x, m, xs), ds, t)
+        nil: en
     otherwise: en
 
-let dummyGen = GenDef(name="", pos=pos0, at="", source=(XRaw ""), valueTy=RsUnit, select=(XRaw ""), transparent=False, width=0)
+let dummyGen = GenDef(name="", pos=pos0, at=XUnit, source=(XUnit), valueTy=RsUnit, select=(XUnit), transparent=False, width=0)
 
 # The generation built: the one case, its row's constructor.
 GenSelect: unbounded fn Wx, Env, Block, [GenCase], Pos -> Ex
 fn GenSelect wx, menv, body, cases, pos:
-    let tail = Append (Append [[XRaw "Rc::downgrade(self)"]], (HostedPassed wx)), [[XRaw "cx"]]
+    let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
     match ?ClauseCall wx.lx, body:
         nil: match cases[0]:
-            ? c: XTry (XCall "{c.node.name}::build", (Append [[XRaw "path", XRaw "value"]], tail))
+            ? c: XTry (XCall "{c.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
             nil: Refusal "a `rebuild` with no generation"
         ? ((qk, args)):
-            let env = Bind menv, "_", (BnLocal "value", Owned, RsUnit)
+            let env = Bind menv, "_", (BnLocal (XVar "value"), Owned, RsUnit)
             let scrut = XTuple (Each args, \|a| Argument wx.lx, env, a.value)
             let arms = Each cases, \|c|
-                let made = XTry (XCall "{c.node.name}::build", (Append (Append [[XRaw "path.clone()"]], c.passed), tail))
+                let made = XTry (XCall "{c.node.name}::build", (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
                 XArm(pat=c.pat, conds=c.conds, body=(XCast made, (RsNamed "Rc<dyn Row>", [[]])))
             Own (ArmsValue scrut, arms, "'select", (RsNamed "Rc<dyn Row>", [[]]))
 
 # The `rebuild`'s up-forwarding: a generation's result fires the block's event.
 GenUp: fn Text, Text, RsTy -> MethDef
-fn GenUp name, upName, t = MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", t))]], cx=CxMut, ret=RsUnit, body=[[(SelfCall upName, [[XRaw "v"]])]], tail=(XRaw "()"), doc="The current generation's result fires the `rebuild`'s.")
+fn GenUp name, upName, t = MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", t))]], cx=CxMut, ret=RsUnit, body=[[(SelfCall upName, [[(XVar "v")]])]], tail=(XUnit), doc="The current generation's result fires the `rebuild`'s.")
 
 # The answers a generation's places get through the block: under `pos/#g` to the current
 # generation; for a transparent one, at each of its positions in the block, whole.
-GenForwards: fn GenDef -> [((Text, Ex))]
+GenForwards: fn GenDef -> [((Pa, Ex))]
 fn GenForwards gd:
     if gd.transparent: Each (Range0 gd.width), \|i|
-        let current = XMethod (XMethod (XRaw "self.{gd.name}"), "borrow", [[]]), "clone", [[]]
-        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "row"), [[DoExpr (XTry (XMethod (XRaw "row"), "answer", [[XRaw "at", XRaw "v", XRaw "cx"]]))]], [[]])]], (XRaw "()")
-        (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), ", .."), body))
-    else: [[(((PosPat gd.pos, ", Segment::Gen(g), rest @ .."), (ForwardGen gd)))]]
+        let current = XMethod (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]]), "clone", [[]]
+        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[(XVar "at"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
+        (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), [[PaRest ""]]), body))
+    else: [[(((PosPat gd.pos, genTail), (ForwardGen gd)))]]
 
 ForwardGen: fn GenDef -> Ex
 fn ForwardGen gd:
-    let current = XMethod (XMethod (XRaw "self.{gd.name}"), "borrow", [[]]), "clone", [[]]
-    let isCurrent = XBin "==", (XBin "+", (XRaw "*g"), (XRaw "1")), (XMethod (XRaw "self.{gd.name}_count"), "get", [[]])
-    XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XRaw "row"), [[(DoIf isCurrent, [[DoExpr (XTry (XMethod (XRaw "row"), "answer", [[XRaw "rest", XRaw "v", XRaw "cx"]]))]], [[]])]], [[]])]], (XRaw "()")
+    let current = XMethod (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]]), "clone", [[]]
+    let isCurrent = XBin "==", (XBin "+", (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
+    XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (XTry (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
 
 # `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (docs/backend.md, "Dynamic structure";
 # Semantics ch. 7): a field with the current inner, a hold of the generation's `Dynamic`,
@@ -6494,7 +6656,7 @@ fn FlattenLine wx, menv, args, ?bound:
     let ?outer = match args[0]:
         ? a: match a.value.kind:
             EName n: match menv.names[SNameKey n]:
-                ? (BnDyn (XMethod (XRaw "self"), m, ignore), ignore, (RsDyn t)): Fold wx.gens, nil, \|?acc, gd| if "{gd.name}_result" == m: ? ((m, gd.name, t)) else: ?acc
+                ? (BnDyn (XMethod (XSelf), m, ignore), ignore, (RsDyn t)): Fold wx.gens, nil, \|?acc, gd| if "{gd.name}_result" == m: ? ((m, gd.name, t)) else: ?acc
                 otherwise: nil
             otherwise: nil
         nil: nil
@@ -6508,17 +6670,17 @@ fn FlattenLine wx, menv, args, ?bound:
                 ? (BnHold f, ignore): ((f, wx))
                 otherwise: FreshName wx, "flatten"
             let inner = "{name}_inner"
-            let first = DoExpr (XMethod (XRaw "node.{inner}"), "set", [[(XCtor "Some", [[(XMethod (XRaw "node"), m, [[XRaw "cx"]])]]), XRaw "cx"]])
-            let sample = XMethod (XMethod (XMethod (XRaw "self.{inner}"), "get", [[XRaw "cx"]]), "expect", [[XRaw "\"`@Flatten` adopts its first inner at the build\""]]), "sample", [[XRaw "cx"]]
+            let first = DoExpr (XMethod (XField (XVar "node"), "{inner}"), "set", [[(XCtor "Some", [[(XMethod (XVar "node"), m, [[XCx]])]]), XCx]])
+            let sample = XMethod (XMethod (XMethod (XField XSelf, "{inner}"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]), "sample", [[XCx]]
             let wx2 = update wx1:
                 &_.taken <= Append &_.taken, [[inner, "{name}_adopt"]]
                 &_.fields <= Push &_.fields, ((inner, (RsHold (RsOpt (RsDyn t))), "`@Flatten`'s current inner: the dynamic of the generation it adopted"))
-                &_.inits <= Push &_.inits, ((inner, (XRaw "Hold::new(None, cx)")))
+                &_.moves <= Push &_.moves, ((inner, (XCall "Hold::new", [[XNone, XCx]])))
                 &_.build <= Push &_.build, first
                 &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@Flatten`'s dynamic: its current inner at the read point."))
                 &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]
                 &_.flattens <= Push &_.flattens, FlatDef(name=name, outer=m, generation=gen, ty=t)
-            ((wx2, (WrDyn (XMethod (XRaw "self"), name, [[XRaw "cx"]]), [[OwnRead inner]], t)))
+            ((wx2, (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead inner]], t)))
 
 # `@Switch $!a`: the event its `rebuild` forwards.
 SwitchLine: unbounded fn Wx, Env, [Arg] -> ((Wx, Wres))
@@ -6614,12 +6776,12 @@ fn IfGenLine wx, menv, c, thenB, elseB, e:
     let yes = GenRowOf wx2, menv, thenB, RsUnit, "{base}Then", name
     let no = GenRowOf yes.parent, menv, elseB, RsUnit, "{base}Else", name
     let cond = AsBool (ValueOf lx, menv, c)
-    let tail = Append (Append [[XRaw "Rc::downgrade(self)"]], (HostedPassed wx)), [[XRaw "cx"]]
-    let Mk = \|n| XCast (XTry (XCall "{n.name}::build", (Append [[XRaw "path", XRaw "value"]], tail))), (RsNamed "Rc<dyn Row>", [[]])
+    let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
+    let Mk = \|n| XCast (XTry (XCall "{n.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))), (RsNamed "Rc<dyn Row>", [[]])
     let select = XIf cond, (Mk yes.node), (Mk no.node)
     let wx3 = update no.parent:
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XRaw "()"), valueTy=RsUnit, select=select, transparent=False, width=0)
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=RsUnit, select=select, transparent=False, width=0)
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.rows <= Append (Append (Append (Push &_.rows, yes.node), yes.node.children), [[no.node]]), no.node.children
-        &_.getters <= Push &_.getters, (MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", RsUnit))]], cx=CxMut, ret=RsUnit, body=[[]], tail=(XRaw "()"), doc="An arm's result, which a building `if` of widgets drops."))
+        &_.getters <= Push &_.getters, (MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", RsUnit))]], cx=CxMut, ret=RsUnit, body=[[]], tail=(XUnit), doc="An arm's result, which a building `if` of widgets drops."))
     ((wx3, WrUnit))
