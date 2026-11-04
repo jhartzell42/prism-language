@@ -65,8 +65,13 @@ wanted() { [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" =
 
 # The positive set: every program of the corpus, by its files.
 declare -A programs
-for f in tests/conformance/*.prism; do programs[$(basename "$f" .prism)]="$f"; done
-programs[sem-ch06-birds]="tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds/birds.prism"
+# A program's directory of the same name joins it (its other modules), as in
+# tests/compiled/run.sh.
+for f in tests/conformance/*.prism; do
+    n=$(basename "$f" .prism)
+    programs[$n]="$f"
+    [ -d "${f%.prism}" ] && programs[$n]="$f $(ls "${f%.prism}"/*.prism | tr '\n' ' ')"
+done
 programs[counter]=tests/conformance/counter.prism
 programs[half-counter]=tests/conformance/half-counter.prism
 programs[todos]=tests/conformance/todos.prism
