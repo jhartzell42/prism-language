@@ -1486,15 +1486,15 @@ ruling taken (Claude's).
   test starts a cycle), so `sem-ch07-while-nested` costs what a top-level loop does (5 ticks for
   3 turns under an `if`, 10 for 2 by 2). *Not yet:* an unshrinking `while` in a `match` or
   a `for` of the block, which still turns within the cycle.
-- **SH Shadowed runtime names.** A program type named like a `prism_rtl` name the
-  emitted code writes bare (`Cx`, `Fault`, `Pod`, `Path`, `Hold`, `Node`) shadows it in
-  its module (`use prism_rtl::*` loses to a local item). prismc's `CheckEnv.Cx` does no
-  harm, as that module has no nodes. A function whose Rust name is one of the runtime's
-  free functions the emitted code calls bare (`call_value`, `entered`, `once_job`) shadows
-  it the same way: a `CallValue` in a module with jobs breaks that module's frames; and
-  a local `startBody` beside an unbounded `Body` is that function's `start_body`.
-  *If otherwise:* such a type or function takes a suffix in Rust, or the templates write
-  every runtime name qualified.
+- **SH Shadowed runtime names.** A program type, case or node named like a name the
+  emitted code writes bare (`prism_rtl`'s `Row`, `Node`, `Hold`, `Cx`, `Pod`, `Path`...,
+  and Rust's `Rc`, `Cell`, `Vec`...) takes a `_` in both targets (`lower.prism`'s
+  `runtimeNames`, through `Camel`), as a Rust keyword does through `Snake`; printed
+  values keep the Prism name (`cpp-runtime-names`). *Not yet:* a function whose Rust name
+  is one of the runtime's free functions the emitted code calls bare (`call_value`,
+  `entered`, `once_job`) still shadows it: a `CallValue` in a module with jobs breaks that
+  module's frames, and a local `startBody` beside an unbounded `Body` is that function's
+  `start_body`.
 - **PF A port's fault.** `Port::fire` returns `Done`, and an event method returns
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
