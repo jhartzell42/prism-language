@@ -110,10 +110,8 @@ All the emitter changes go first; then one fixed point at the end.
    a `String` built and then copied into a `Text`, `format!` into a temporary and then
    `Text::new`, `to_string()` in comparisons, character-by-character pushes. Fix what's
    cheap, list the rest. Instruction counts before and after on the normalize compile.
-7. **(h) Split `prismc/lower.prism`** (about 7,000 lines, 27% of prismc) along its seams:
-   expressions, nodes and widgets, hosting, the model and its types. No behavior change;
-   the fixed point and the suites are the check. Claude's call; ask Jimmy whether to
-   revert.
+7. **(h) Split `prismc/lower.prism`** (about 7,000 lines): folded into the style pass below
+   (a module's sections become separate files), which does it for every module at once.
 8. **The final fixed point:** `make bootstrap-cpp`, the C++-built prismc's Rust output
    byte-identical to the Rust-built prismc's, then both seeds (`bootstrap/bootstrap.sh
    --update` for the Rust seed if Rust emission changed; write
