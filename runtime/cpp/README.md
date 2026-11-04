@@ -34,7 +34,7 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 | `Result<T, Fault>` | `Result<T>` = `Expected<T, Fault>` (result.hpp: clang 18 over libstdc++ 13 has no `std::expected`) |
 | `Result<(), Fault>` (`Done`) | `Done` = `Expected<void, Fault>`; `return {};` is `Ok(())` |
 | `Err(f)` | `return unexpected(f);` |
-| `?` | `TRY(expr)`, an expression (a GNU statement expression, which g++ and clang++ take); its operand is moved from, so a named one is passed as `copy_of(x)` |
+| `?` | `TRY(expr)`, an expression (a GNU statement expression, which g++ and clang++ take); its operand is moved from, so it is a temporary (lowering refuses `?` of a place) |
 | `panic!` (a bug of the compiler) | `panic(msg)` throws `Panic` |
 | `Box<dyn FnOnce(&mut Cx) -> Done>` (`Later`) | `std::function<Done(Cx&)>` |
 | `Rc<dyn Fn(..)>` (subscribers, reads) | `std::shared_ptr<const std::function<..>>` |

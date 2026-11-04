@@ -361,7 +361,7 @@ fn CppExpr cp, x = match x:
         StmtExpr st, (Unvexed (CppExpr cp2, e))
     XLabeled label, dos, e, t: CppLabeled cp, label, dos, e, t
     XClosure mv, ps, body: CppClosure cp, mv, ps, body
-    XTry y, temporary: if temporary: "TRY({CppExpr cp, y})" else: "TRY(prism_rtl::copy_of({CppExpr cp, y}))"
+    XTry y: "TRY({CppExpr cp, y})"
     XField r, f: CppField cp, r, f
     XPart r, k: "std::get<{k}>({CppExpr cp, r})"
     XDecode t, y: "TRY(prism_rtl::from_pod<{CppType cp, t}>({CppExpr cp, y}))"

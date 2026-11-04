@@ -131,16 +131,9 @@ using Result = Expected<T, Fault>;
 /// What a node method returns: a fault escaping it fails the tick.
 using Done = Result<void>;
 
-/// A named value's copy, a temporary: what `TRY` takes where its operand must be left as
-/// it was (the emitter writes it where the model says the operand is named).
-template <class T>
-std::decay_t<T> copy_of(const T& x) {
-    return x;
-}
-
 /// Rust's `?` on a `Done` or any `Expected`, as an expression: the function returns the
-/// failure, or the expression is the value. The operand is moved from: give it a
-/// temporary (`copy_of(x)` for a named value). A GNU statement expression, which g++ and
+/// failure, or the expression is the value. The operand is moved from, so it must be a
+/// temporary (lowering refuses `?` of a place). A GNU statement expression, which g++ and
 /// clang++ both take.
 #define TRY(...)                                                                         \
     ({                                                                                   \

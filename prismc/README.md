@@ -1011,9 +1011,9 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   a GNU extension, which g++ and clang++ both have.
 - **TR: `?` is `TRY(x)`**, a GNU statement expression (g++ and clang++ only, as every
   block is): the function returns the failure, else the expression is the value, moved
-  out of the operand. The model says whether the operand is a temporary (`XTry`'s flag,
-  which the Rust printer ignores: Rust's `?` moves either); a named one is passed as
-  `copy_of(x)`, so it is left as it was. The runtime's own uses are the same macro.
+  out of the operand. Every `?` lowering writes is of a temporary (a call's result), and
+  lowering refuses `?` of a place, naming it, so nothing named is moved from. The
+  runtime's own uses are the same macro.
 - **TT: a job's turn as a conditional.** Lowering gives no type for a `match` in a job's
   tail (`OutUnknown "the job's turn"`); such a `match` is a chain of `?:`, whose type C++
   works out from the arms (`finished(..)` converts to any `Turn<B>`); a guard binds the

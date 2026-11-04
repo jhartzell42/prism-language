@@ -5,18 +5,15 @@
 #include "check.hpp"
 #include "prism_rtl/lang.hpp"
 
+// g++ 13 at -O1 under ASan warns that the Slot test's optional<optional<Int>> may be read
+// uninitialized, which it is not (a known false positive of -Wmaybe-uninitialized).
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
+
 using namespace prism_rtl;
 
 namespace {
-
-// A named operand of `?` is copied (`copy_of`, what the emitter writes where the model
-// says the operand is named), so it is left as it was.
-Fallible<Text> twice(const Fallible<Text>& x) {
-    Fallible<Text> kept = x;
-    Text first = TRY(copy_of(kept));
-    Text second = TRY(copy_of(kept));
-    return Text(first.to_string() + second.to_string());
-}
 
 /// A value that counts its copies.
 struct Counted {
@@ -31,31 +28,24 @@ struct Counted {
 
 Fallible<Counted> made() { return Counted(); }
 
-Fallible<long> moved_and_copied(Fallible<Counted>& named, long& named_count) {
+Fallible<long> moved(Text& failed) {
     Counted a = TRY(made());
-    Counted b = TRY(copy_of(named));
-    named_count = named->p.use_count();
-    return long(a.p.use_count());
+    Fallible<Counted> bad = unexpected(Error("Prelude.Unmet", Text("no")));
+    failed = Text("not yet");
+    Counted b = TRY(std::move(bad));
+    failed = Text("passed");
+    return long(a.p.use_count() + b.p.use_count());
 }
 
 }  // namespace
 
-TEST(try_on_a_named_value_leaves_it_as_it_was) {
-    auto r = twice(Text("ab"));
-    CHECK(r.has_value() && *r == Text("abab"));
-    auto e = twice(unexpected(Error("Prelude.Unmet", Text("no"))));
-    CHECK(!e.has_value() && e.error().kind == "Prelude.Unmet");
-}
-
-TEST(try_moves_a_temporary_and_copies_a_named_value_once) {
-    Fallible<Counted> named = Counted();
+TEST(try_moves_a_temporary_and_returns_a_failure) {
     Counted::copies = 0;
-    long named_count = 0;
-    auto r = moved_and_copied(named, named_count);
-    CHECK(r.has_value() && *r == 1);
-    CHECK_EQ(Counted::copies, 1);
-    CHECK_EQ(named_count, 2L);
-    CHECK_EQ(named->p.use_count(), 1L);
+    Text failed;
+    auto r = moved(failed);
+    CHECK(!r.has_value() && r.error().kind == "Prelude.Unmet");
+    CHECK(failed == Text("not yet"));
+    CHECK_EQ(Counted::copies, 0);
 }
 
 TEST(a_slot_holds_an_optional_none_as_a_value) {

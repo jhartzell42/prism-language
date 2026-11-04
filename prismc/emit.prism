@@ -160,7 +160,7 @@ fn Expression x = match x:
     XBlock dos, e: Block (Statements dos), (Expression e)
     XLabeled label, dos, e, ignore: Labeled (Label label), (Statements dos), (Expression e)
     XClosure mv, ps, body: "{if mv: "move " else: ""}|{Join (Each ps, \|p| Pattern p), ", "}| {Expression body}"
-    XTry y, ignore: "{Tight y}?"
+    XTry y: "{Tight y}?"
     XField r, f: "{Tight r}.{f}"
     XPart r, k: "{Tight r}.{k}"
     XDecode t, y: "{DecodeHead t}::from_pod({Expression y})?"

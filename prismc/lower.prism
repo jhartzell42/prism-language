@@ -151,7 +151,7 @@ type Ex = choice:
     XClosure Bool, [Pa], Ex
     # `?`: the failure passed on, else the value; whether the operand is a temporary,
     # which a target that copies a named one moves (C++'s `TRY`; Rust's `?` moves either).
-    XTry Ex, Bool
+    XTry Ex
     XField Ex, Text
     # A tuple's part by its position.
     XPart Ex, Nat
@@ -1157,10 +1157,10 @@ fn ShownPart v = match ValueTy v:
 Refusal: fn Text -> Ex
 fn Refusal what = XRefusal what
 
-# `?` of a value: a temporary unless the value is a place (a local, a field, a part of
-# one), whose value a target that moves from the operand must copy first.
+# `?` of a value, which must be a temporary: the C++ printer's TRY moves out of its operand,
+# so `?` of a place (a local, a field, a part of one) is refused, naming the place.
 TryOf: fn Ex -> Ex
-fn TryOf x = XTry x, (not (IsNamedPlace x))
+fn TryOf x = if IsNamedPlace x: Refusal "`?` of the place `{PlaceStem x}`, which C++'s TRY would move out of (only a temporary may be tried)" else: XTry x
 
 IsNamedPlace: fn Ex -> Bool
 fn IsNamedPlace x = match x:
