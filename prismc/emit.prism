@@ -341,6 +341,7 @@ fn Statement d = match d:
     DoIfLet p, x, t, e: "{IfStmt "if let {Pattern p} = {Expression x}", (Statements t)}{ElseBranch e}"
     DoMatch x, cases: Match (Expression x), (Join (Each cases, \|((p, body))| ArmBlock (Pattern p), (Statements body)), "\n")
     DoReturn x: "return {Expression x};"
+    DoBlock body: Scope (Statements body)
     DoScope body: "\{ {InlineStatements body} \};"
     DoLine body: "{InlineStatements body};"
     DoNote t: "// {t}"

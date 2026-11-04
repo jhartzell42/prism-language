@@ -1163,6 +1163,7 @@ fn CppStatement cp, d = match d:
     DoIfLet p, x, t, e: CppIfLet cp, p, x, t, e
     DoMatch x, cases: CppDoMatch cp, x, cases
     DoReturn x: "return {CppExpr cp, x};"
+    DoBlock body: Braced (CppStatements cp, body)
     DoScope body: "\{ {CppInline cp, body} \}"
     DoLine body: CppInline cp, body
     DoNote t: "// {t}"

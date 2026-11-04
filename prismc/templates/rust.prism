@@ -605,6 +605,13 @@ fn IfStmt head, body = inline_text <rust>
     {{body}}
 }</rust>
 
+# A block of statements in a scope of their own.
+Scope: fn Text -> Text
+fn Scope body = inline_text <rust>
+{
+    {{body}}
+}</rust>
+
 Else: fn Text -> Text
 fn Else body = inline_text <rust>
  else {
