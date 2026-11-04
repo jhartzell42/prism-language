@@ -1,4 +1,4 @@
-// The Prism table's driver for the Rust target (bench/README.md), driver.cpp in Rust:
+// The Prism table's driver for the Rust target (bench/gui/README.md), driver.cpp in Rust:
 // bench.prism compiled to Rust runs under the Rust canvas World with `Hooks`, and each
 // step of an operation's script is a press at a button's text, found in the scene the
 // World last read. A timed step's clock starts when the press is queued and stops at the
@@ -6,7 +6,7 @@
 //
 //   driver OP RUNS WARMUP     prints `OP RUN MS` per timed run, then `peak_rss_bytes N`
 //
-// bench/prism/Makefile includes this file at the end of the emitted main.rs, whose own
+// bench/gui/prism/Makefile includes this file at the end of the emitted main.rs, whose own
 // `main` it renames `prism_emitted_main`.
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.

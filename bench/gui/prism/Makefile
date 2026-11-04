@@ -1,4 +1,4 @@
-# The Prism table under the canvas World, C++ and Rust, built for the benchmark (bench/README.md).
+# The Prism table under the canvas World, C++ and Rust, built for the benchmark (bench/gui/README.md).
 #
 #   make            both drivers
 #   make cpp        target/bench/prism/driver: bench.prism, with examples/chess's window
@@ -12,7 +12,7 @@
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
-REPO := $(abspath ../..)
+REPO := $(abspath ../../..)
 OUT := $(REPO)/target/bench/prism
 SRC := $(OUT)/src
 CXX ?= clang++

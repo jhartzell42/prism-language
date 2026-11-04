@@ -1,9 +1,9 @@
-"The GUI benchmark's table in Cuis Smalltalk with Morphic, on the Cog VM (bench/README.md):
+"The GUI benchmark's table in Cuis Smalltalk with Morphic, on the Cog VM (bench/gui/README.md):
 the same rows, labels, buttons and operations as bench/prism/bench.prism, and its own
 driver. The rows are in a scroll pane in a 900 by 800 window, as GTK's are in a scrolled
 window and the Prism window clips them. A step performs its button's action, as a click would, then forces a World cycle
 (doOneCycleNow: layout, drawing, and the damage put on the Display); a timed step's clock
-runs from just before the action to the end of that cycle. bench/run.sh writes OP, RUNS
+runs from just before the action to the end of that cycle. bench/gui/run.sh writes OP, RUNS
 and WARMUP in for the placeholders and runs this with -s; it prints `OP RUN MS` per timed
 run on standard output, then quits.
 

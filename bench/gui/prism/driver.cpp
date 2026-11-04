@@ -1,4 +1,4 @@
-// The Prism table's driver (bench/README.md): bench.prism compiled to C++ runs under the
+// The Prism table's driver (bench/gui/README.md): bench.prism compiled to C++ runs under the
 // canvas World with `Hooks`, and each step of an operation's script is a press at a
 // button's text, found in the scene the World last read. A timed step's clock starts when
 // the press is queued and stops at the next `Hooks::settled`: every tick it caused has
@@ -6,7 +6,7 @@
 //
 //   driver OP RUNS WARMUP     prints `OP RUN MS` per timed run, then `peak_rss_bytes N`
 //
-// The emitted main.cpp is linked beside this with its `main` renamed (bench/prism/Makefile).
+// The emitted main.cpp is linked beside this with its `main` renamed (bench/gui/prism/Makefile).
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
 

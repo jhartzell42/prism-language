@@ -6,7 +6,7 @@
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu
-deps=$(cd "$(dirname "$0")/../.." && pwd)/target/bench/deps
+deps=$(cd "$(dirname "$0")/../../.." && pwd)/target/bench/deps
 mkdir -p "$deps"
 if [ ! -d "$deps/cuis" ]; then
     git clone -q --depth 1 https://github.com/Cuis-Smalltalk/Cuis-Smalltalk-Dev.git "$deps/cuis"

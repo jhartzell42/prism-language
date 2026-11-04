@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# The GUI benchmark (bench/README.md): js-framework-benchmark's operations on the same
+# The GUI benchmark (bench/gui/README.md): js-framework-benchmark's operations on the same
 # table in Prism compiled to C++ and to Rust, in C with GTK 3, and in Cuis Smalltalk on
 # the Cog VM. Builds each, runs every operation RUNS times after WARMUP untimed runs, one
-# process per operation and implementation, and writes bench/RESULTS.md: the machine, the
+# process per operation and implementation, and writes bench/gui/RESULTS.md: the machine, the
 # versions, the median time of each operation with its spread, and each process's peak
 # memory. The raw numbers go to target/bench/results/.
 #
-#   bench/run.sh [IMPL...]          # prism-cpp prism-rust gtk cuis, or those named
-#   RUNS=10 WARMUP=2 bench/run.sh   # the defaults
+#   bench/gui/run.sh [IMPL...]          # prism-cpp prism-rust gtk cuis, or those named
+#   RUNS=10 WARMUP=2 bench/gui/run.sh   # the defaults
 #
 # Run it with nothing else running: no builds, no other apps busy. The load average at the
 # start and the end is recorded.
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 runs=${RUNS:-10}
 warmup=${WARMUP:-2}
 ops=(create1k replace1k update10th select swap remove create10k append1k clear)
@@ -26,10 +26,10 @@ mkdir -p "$raw"
 # The builds, before any timing.
 for impl in "${impls[@]}"; do
     case "$impl" in
-        prism-cpp) make -s -C bench/prism cpp ;;
-        prism-rust) make -s -C bench/prism rust ;;
-        gtk) make -s -C bench/gtk ;;
-        cuis) bench/cuis/setup.sh ;;
+        prism-cpp) make -s -C bench/gui/prism cpp ;;
+        prism-rust) make -s -C bench/gui/prism rust ;;
+        gtk) make -s -C bench/gui/gtk ;;
+        cuis) bench/gui/cuis/setup.sh ;;
         *) echo "bench: unknown implementation $impl (prism-cpp prism-rust gtk cuis)" >&2; exit 2 ;;
     esac
 done
@@ -39,7 +39,7 @@ command_of() { # impl
         prism-cpp) echo target/bench/prism/driver ;;
         prism-rust) echo target/bench/prism-rs/driver ;;
         gtk) echo target/bench/gtk/table ;;
-        cuis) echo bench/cuis/run.sh ;;
+        cuis) echo bench/gui/cuis/run.sh ;;
     esac
 }
 
@@ -119,5 +119,5 @@ rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`, bytes o
         for i in "${impls[@]}"; do printf " %s |" "$(rss_mb "$i" "$op")"; done
         echo
     done
-} > bench/RESULTS.md
-echo "bench: wrote bench/RESULTS.md" >&2
+} > bench/gui/RESULTS.md
+echo "bench: wrote bench/gui/RESULTS.md" >&2

@@ -1,4 +1,4 @@
-/* The GUI benchmark's table in C with GTK 3 (bench/README.md): the same rows, labels,
+/* The GUI benchmark's table in C with GTK 3 (bench/gui/README.md): the same rows, labels,
  * buttons and operations as bench/prism/bench.prism, and its own driver. A step clicks its
  * button with gtk_button_clicked; a timed step's clock starts just before the click and
  * stops at the window's next frame-clock "after-paint" once the click's handler has run,

@@ -11,7 +11,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
-deps=$here/../../target/bench/deps
+deps=$here/../../../target/bench/deps
 vm=$deps/cuis/CuisVM.app/Contents/MacOS/Squeak
 image=$(ls "$deps"/cuis/CuisImage/Cuis*.image | head -1)
 [ -x "$vm" ] && [ -f "$image" ] || { echo "cuis: no VM or image under $deps (run bench/cuis/setup.sh)" >&2; exit 2; }
