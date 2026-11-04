@@ -8,8 +8,9 @@
 #   bench/building/run.sh [SUBJECT...]        # prismc chess table, or those named
 #   CONFIGS="rust-release" bench/building/run.sh
 #
-# -j every core); cpp-O0, cpp-O1 (what `prism test` uses), cpp-O2 (what `prism run`
-# uses), cpp-O3, each `make -j` every core with $CXX (clang++ by default). The binaries stay
+# Configurations (Jimmy: the shipping ones only): rust-release (cargo release, opt-level 3,
+# its default parallelism) and cpp-O3 (`make -j` every core with $CXX, clang++ by default).
+# The binaries stay
 # in target/bench/building/SUBJECT/CONFIG/ for bench/running/run.sh. Writes
 # bench/building/RESULTS.md. The emitting binaries are the installed fixed points
 # (`make bootstrap bootstrap-cpp`). Run it with nothing else running.

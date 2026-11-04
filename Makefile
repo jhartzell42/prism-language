@@ -1,7 +1,7 @@
 # The single commands (docs/architecture.md, "Single commands"). Written by Claude,
 # 2 November 2026, on the claude-self-hosting branch. Subject to change.
 
-.PHONY: test bootstrap bootstrap-update bootstrap-cpp bootstrap-cpp-update chess
+.PHONY: test test-sanitize bootstrap bootstrap-update bootstrap-cpp bootstrap-cpp-update chess
 
 # Every Rust test, every compiled transcript, the checker's tests, the C++ runtime's and
 # Worlds' tests, the bootstrap's fixed point, and no definition in prismc/ nothing uses.
@@ -16,6 +16,11 @@ test:
 	tests/compiled/run.sh --target cpp
 	bootstrap/bootstrap.sh
 	@! ./prism check --unused prismc/ | grep -A2 'warning\[unused\]' || { echo "prismc has definitions nothing uses"; false; }
+
+# The C++ compiled suite with every program and the runtime under ASan and UBSan: finds
+# undefined behavior that -O3 alone would hide (Jimmy). Slow; run it before a PR.
+test-sanitize:
+	PRISM_SANITIZE=1 tests/compiled/run.sh --target cpp
 
 # prismc compiles itself to a fixed point and is installed as target/bootstrap/prismc,
 # starting from the seed archive on a fresh clone (bootstrap/README.md).

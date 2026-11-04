@@ -90,7 +90,7 @@ rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`, bytes o
     echo "- **Machine:** $(sysctl -n machdep.cpu.brand_string 2>/dev/null), $(sysctl -n hw.ncpu) cores ($(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null) performance, $(sysctl -n hw.perflevel1.physicalcpu 2>/dev/null) efficiency), $(( $(sysctl -n hw.memsize) / 1073741824 )) GB, $(sw_vers -productName) $(sw_vers -productVersion)"
     echo "- **Load average:** $load_start at the start, $load_end at the end"
     echo "- **prism-language:** $(git rev-parse --short HEAD)$(git diff --quiet || echo ' (with uncommitted changes)'); prismc installed $(stat -f %Sm -t '%F %R' target/bootstrap/prismc 2>/dev/null || stat -c %y target/bootstrap/prismc | cut -c1-16)"
-    echo "- **C++:** $(clang++ --version | head -1), -O2; **Rust:** $(rustc --version), cargo release (opt-level 3)"
+    echo "- **C++:** $(clang++ --version | head -1), -O3; **Rust:** $(rustc --version), cargo release (opt-level 3)"
     echo "- **GTK:** $(pkg-config --modversion gtk+-3.0), cc -O2"
     echo "- **Cuis:** $( [ -f target/bench/deps/cuis.commit ] && echo "Cuis-Smalltalk-Dev $(cut -c1-10 target/bench/deps/cuis.commit), $(basename "$(ls target/bench/deps/cuis/CuisImage/Cuis*.image | head -1)")"); VM $(strings target/bench/deps/cuis/CuisVM.app/Contents/MacOS/Squeak 2>/dev/null | grep -m1 -o 'VMMaker[^ ]*' | tr -d ']' || true)"
     echo "- **Runs:** $runs timed after $warmup untimed, one process per operation"

@@ -162,7 +162,20 @@ if [ "$target" = cpp ]; then
     # -O3, the shipping level, for test and run alike (Jimmy); PRISM_OPT="-O0 -g" to debug a
     # failing test with a build that keeps its variables
     opt=${PRISM_OPT:--O3}
-    make -s -C "$out" -j"$(getconf _NPROCESSORS_ONLN)" CXX="${CXX:-g++}" OPT="$opt" >&2
+    # PRISM_SANITIZE=1: the program and the runtime under AddressSanitizer and UBSan, with
+    # Homebrew's clang on macOS (Apple clang's sanitizer hangs at startup on macOS 26), so
+    # a test suite run finds undefined behavior the optimizer would otherwise hide.
+    cxx=${CXX:-g++}
+    if [ "${PRISM_SANITIZE:-0}" = 1 ]; then
+        opt="$opt -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined"
+        if [ "$(uname -s)" = Darwin ]; then
+            cxx=/opt/homebrew/opt/llvm/bin/clang++
+            [ -x "$cxx" ] || { echo "prism: PRISM_SANITIZE needs Homebrew's clang (brew install llvm)" >&2; exit 2; }
+            opt="$opt -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++ -Wno-unused-command-line-argument"
+        fi
+        export ASAN_OPTIONS=${ASAN_OPTIONS:-detect_leaks=0}
+    fi
+    make -s -C "$out" -j"${PRISM_JOBS:-$(getconf _NPROCESSORS_ONLN)}" CXX="$cxx" OPT="$opt" >&2
     if [ "$cmd" = test ]; then exec "$out/$name" test; fi
     asked=$(sed -n 's/^const std::string WORLD = "\(.*\)";$/\1/p' "$out/src/main.cpp")
     [ -n "$world" ] || world=$asked
