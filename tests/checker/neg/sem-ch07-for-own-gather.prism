@@ -1,0 +1,15 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# `prompt-cycle`: a `for`'s gathered dynamic is prompt in what its rows read (Semantics
+# ch. 7, a `for`'s consolidation among the prompt edges), and the checker does not know
+# which dynamics are structural, so a row reading a count of its own `for`'s result is a
+# cycle, as a host's child reading a count of `$doc` is.
+emit Ui.*
+
+@host: @unit
+@host:
+    let $names = $ {"a": unit, "b": unit}
+    $rows <- for k, ignore <- $names:                             # 0/[k]
+        Ui.Label(text=$"{$count} rows")                           # 0/[k]/0
+        @ $count
+    let $count = Size $rows
+    Ui.Label(text=$"{$count}")                                    # 1
