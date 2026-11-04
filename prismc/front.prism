@@ -489,7 +489,7 @@ OldLayout: fn (Text ==> Text), Text, ModFiles -> TreeDiag
 fn OldLayout texts, root, u:
     let path = MainPath u
     let span = Fold (HeaderLines (MainText u)), noSpan, \|sp, h| if h.word == "module": h.span else: sp
-    TreeDiag(path=path, span=span, code="old-layout", message="`{path}` is a one-file module in the tree of {root}: no `mod` line declares it", fix="make it a module directory with a `mod.prism`, declared by a `mod` line")
+    TreeDiag(path=path, span=span, code="old-layout", message="`{DropPrefix path, "{root}/"}` is a one-file module in the tree of `{root}`: no `mod` line declares it", fix="make it a module directory with a `mod.prism`, declared by a `mod` line")
 
 # A tree from its root directory: app.prism or lib.prism and every module their `mod` lines
 # reach, then every other file of the listing: a one-file module (a `module` line) is an
@@ -715,9 +715,11 @@ fn CheckFiles job:
         if pp.errors != "": Outcome(text="{pp.errors}parse errors\n", failed=True, report="{pp.errors}parse errors")
         else:
             let pre = Append (WarningDiags pp.srcs, read.warnings), (TreeDeclDiags pp.srcs, pp.trees, pp.shown)
-            let report = CheckProgram pp.srcs, pp.trees, job.world, pp.shown, job.typed, job.unused, pre
+            # a `check` line's pattern is the Test World's to read, as in a compile (pick PT)
+            let checked = Each pp.trees, \|t| WithoutCheckPatterns t
+            let report = CheckProgram pp.srcs, checked, job.world, pp.shown, job.typed, job.unused, pre
             let summary = if report.errors == 0: "no errors\n" else: "{report.errors} error{if report.errors == 1: "" else: "s"}\n"
-            let shown = if job.typed: "{Typed.TypedSexp pp.srcs, pp.trees, pp.shown, report.typed}{Commented "{report.text}{summary}"}" else: "{report.text}{summary}"
+            let shown = if job.typed: "{Typed.TypedSexp pp.srcs, checked, pp.shown, report.typed}{Commented "{report.text}{summary}"}" else: "{report.text}{summary}"
             Outcome(text=shown, failed=(report.errors > 0), report="{report.text}{summary}")
 
 # Text as `;` comment lines, after the typed program.
@@ -877,6 +879,11 @@ fn Refusals text:
 WithoutTests: fn Module -> Module
 fn WithoutTests m = update m:
     &_.decls <= Each (Filter &_.decls, \|d| not (IsTestDecl d)), \|d| WithoutPatterns d
+
+# A tree with its `check` lines' patterns taken out (pick PT), its `test` declarations kept.
+WithoutCheckPatterns: fn Module -> Module
+fn WithoutCheckPatterns m = update m:
+    &_.decls <= Each &_.decls, \|d| WithoutPatterns d
 
 # A `check` line's pattern is the Test World's to read from the script, not the
 # checker's: the line's expression is checked alone (pick PT).

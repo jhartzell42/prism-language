@@ -77,7 +77,7 @@ if ! same 1 2; then
     fi
     fixed=2
 fi
-echo "C++ fixed point: cpp-gen$fixed and cpp-gen$((fixed + 1)) are byte-equal ($(cat "$b/cpp-gen$fixed"/src/*.cpp "$b/cpp-gen$fixed"/src/*.hpp | wc -l) lines of C++)"
+echo "C++ fixed point: cpp-gen$fixed and cpp-gen$((fixed + 1)) are byte-equal ($(find "$b/cpp-gen$fixed/src" -name '*.[ch]pp' -exec cat {} + | wc -l) lines of C++)"
 # The C++ compiler's Rust against the Rust compiler's ($RUST_PRISMC, else the Rust
 # bootstrap's, which must be built from the same prismc/: run `make bootstrap` first).
 rust=${RUST_PRISMC:-$b/prismc}

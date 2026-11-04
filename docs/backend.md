@@ -339,15 +339,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
 emit_cpp.prism and templates/cpp.prism. Everything above holds construct for construct;
 what differs is how C++ spells it.
 
-- **The program** is `Makefile`; per module the headers `src/NAME.decl.hpp` (its types
-  declared, its choices' handles), `src/NAME.types.hpp` (its value types, each after the
-  types it holds by value, and its choices' cases), `src/NAME.hpp` (prototypes, nodes and
-  jobs) and, when it has templates, `src/NAME.generic.hpp`, each including only the
+- **The program** is `Makefile`; per module, in its directory (`src/DIR/`, `check/env`
+  for `Check.Env`), the headers `decl.hpp` (its types declared, its choices' handles),
+  `types.hpp` (its value types, each after the types it holds by value, and its choices'
+  cases), `module.hpp` (prototypes, nodes and jobs) and, when it has templates,
+  `generic.hpp`, each including only the
   layers of the modules it needs (prismc/README.md, pick MH); `src/elem.decl.hpp` and
   `src/elem.types.hpp` for `crate::Elem` and `crate::Answer`; `src/programs.hpp` (the
   program classes); `src/main.cpp` (`Elem`'s and `Answer`'s definitions, `test_world()`,
-  `main`), `src/prelude.hpp` and one `src/NAME.cpp` (or several) per module. The modules
-  are the namespaces `crate::NAME`. A program class has the static `build(args, ready)`
+  `main`), `src/prelude.hpp` and one `src/DIR/mod.cpp` (or several) per module. The
+  modules are the namespaces `crate::check::env`, nested as their names are, and every
+  reference to another module's item is from `crate::`. A program class has the static `build(args, ready)`
   and the virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a
   `@main` root under the C++ CLI World (worlds/cli/cpp).
 - **Types.** A record, a tag's `Level`, a newtype and a unit type are structs (fields in

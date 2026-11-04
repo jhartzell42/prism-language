@@ -77,7 +77,7 @@ if ! same 1 2; then
     fi
     fixed=2
 fi
-echo "fixed point: gen$fixed and gen$((fixed + 1)) are byte-equal ($(cat "$b/gen$fixed"/src/*.rs | wc -l) lines of Rust)"
+echo "fixed point: gen$fixed and gen$((fixed + 1)) are byte-equal ($(find "$b/gen$fixed/src" -name '*.rs' -exec cat {} + | wc -l) lines of Rust)"
 cp "$b/gen$fixed/prismc" "$b/prismc.new" && mv "$b/prismc.new" "$b/prismc"
 echo "installed $b/prismc (gen$fixed)"
 if [ $update = 1 ]; then

@@ -47,7 +47,7 @@ build/cli.o: $(WORLD)/src/cli.cpp $(WORLD)/include/prism_world_cli/cli.hpp
 	$(CXX) $(FLAGS) -c $< -o $@
 
 build/%.o: src/%.cpp
-	@mkdir -p build
+	@mkdir -p $(dir $@)
 	$(CXX) $(FLAGS) -MMD -MP -c $< -o $@
 
 -include $(OBJS:.o=.d)
@@ -129,7 +129,7 @@ fn CppTypesInGroup title, group = inline_text <cpp>
 // emitted by prismc (docs/backend.md). Edit the Prism source, not this file.
 #pragma once
 
-#include "{{group}}.types.hpp"
+#include <{{group}}.types.hpp>
 </cpp>
 
 CppModHeader: fn Text, Text, Text, Text, Text -> Text

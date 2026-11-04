@@ -1110,8 +1110,8 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   constructors (`Hold::new` is `{init, cx}`, `Port::new` inside `Rc::new` `make_new()`).
 - **NC: a node's constructor takes its fields in declared order**, the initializers the
   model orders by moves being copies in C++.
-- **SF: a module's definitions in files of about 250,000 characters** (`lower.cpp`,
-  `lower_2.cpp`, ...): one file of `lower.prism`'s needs more than 7 GB to compile.
+- **SF: a module's definitions in files of about 250,000 characters** (`lower/mod.cpp`,
+  `lower/mod_2.cpp`, ...): one file of `lower.prism`'s needs more than 7 GB to compile.
 - **BS: a 4 GB stack.** `main` runs on a thread with a 4 GB stack (committed as used), as
   the Rust program runs on a 1 GB one: unbounded code runs direct-style within a cycle,
   and a C++ frame of the emitted code is larger than Rust's.
@@ -1122,11 +1122,15 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   `Array` a view of a shared buffer of chunks (runtime/cpp/include/prism_rtl/collections.hpp),
   so a fold that inserts into a map or pushes onto an array is as cheap as Rust's
   `im_rc`; with copy-on-write ones prismc's own lexer was quadratic.
-- **MH: per-module headers.** No header holds the whole program. Each module has
-  `NAME.decl.hpp` (its types, nodes and jobs declared, its choices' handles),
-  `NAME.types.hpp` (its records, tags and newtypes, each after the types it holds, and its
-  choices' cases), `NAME.hpp` (its prototypes, nodes and jobs) and, when it has templates,
-  `NAME.generic.hpp`; `elem.decl.hpp` and `elem.types.hpp` hold `Elem` and `Answer`,
+- **MH: per-module headers.** No header holds the whole program. Each module has, in its
+  directory (`src/check/env/` for `Check.Env`, whose namespace is `crate::check::env`),
+  `decl.hpp` (its types, nodes and jobs declared, its choices' handles), `types.hpp` (its
+  records, tags and newtypes, each after the types it holds, and its choices' cases),
+  `module.hpp` (its prototypes, nodes and jobs) and, when it has templates, `generic.hpp`,
+  each included from `src/` in angle brackets (`#include <check/env/decl.hpp>`: a quoted
+  name is looked up beside the including file first, where `a/types/` would answer for the
+  top-level `types/`); in what follows `NAME.decl.hpp` is `NAME/decl.hpp`, `NAME.hpp`
+  `NAME/module.hpp`; `elem.decl.hpp` and `elem.types.hpp` hold `Elem` and `Answer`,
   `programs.hpp` the program classes (for `main.cpp` and bench/gui/prism/driver.cpp). A
   layer includes only the layers of the modules it needs, which lowering records though
   the Rust printer ignores them: `ModDef.complete`, the modules whose value types its own
@@ -1220,9 +1224,14 @@ Each is Claude's, for Jimmy to overturn.
   (`run`, `run_2`). A tag's `Level` struct is its family and name run together
   (`UiButton`, as `prism_rtl`'s tests have it). *Refused:* the old back end's sigil
   letters (`ld_count`), which read as a mangling.
-- **MO Modules.** One Rust module per Prism module (`program` for the root module); a
-  prelude module (`Ui`, `Fs`, ...) is emitted only when a program module uses it or names
-  its family on its `emit` line. A reference to another module is `ui::Click`.
+- **MO Modules.** One Rust module per Prism module (`program` for the root module, in
+  `src/program.rs`), nested as the Prism names are: `Check.Env` is `crate::check::env`,
+  in `src/check/env/mod.rs`, declared by `pub mod env;` in `src/check/mod.rs` (a parent
+  no Prism module is gets a file of its `pub mod` lines only). A prelude module (`Ui`,
+  `Fs`, ...) is emitted only when a program module uses it or names its family on its
+  `emit` line. A reference to another module is from the crate, `crate::ui::Click`, so a
+  submodule named as a top-level module (`a::types` beside `types`) never stands in for
+  it (`mod-nested-names`); a module file has no `use` of the others.
 - **OW Ownership.** A function takes every argument by reference and returns a value;
   lowering tracks how each Rust place holds its value (`ByRef`, `Owned`, `RcRef`,
   `RcOwned`) and spells a use as a borrow or a clone accordingly. A closure passed to a

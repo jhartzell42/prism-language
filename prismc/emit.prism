@@ -630,10 +630,10 @@ fn DecodeArgs p, names:
 # The crate
 # ---------------------------------------------------------------------------------------
 
-RustModule: unbounded fn ModDef -> Text
-fn RustModule m:
-    let uses = if (Len m.uses) == 0: "" else: "#[allow(unused_imports)]\nuse crate::\{{Join m.uses, ", "}\};"
-    Module (if m.prism == "": "The root module" else: "The module `{m.prism}`"), m.path, uses, (Join (Each m.items, \|it| RustItem it), "\n")
+# A module's file; `kids` declares its submodules (`pub mod env;`). Another module's items
+# are named from the crate (`crate::check::env::BuildG`), so it needs no `use`.
+RustModule: unbounded fn ModDef, Text -> Text
+fn RustModule m, kids = Module (if m.prism == "": "The root module" else: "The module `{m.prism}`"), m.path, kids, (Join (Each m.items, \|it| RustItem it), "\n")
 
 # Whether a node is built fallibly: the program's `?`.
 NodeFallible: fn Model, Text -> Bool
@@ -648,7 +648,8 @@ fn EmitCrate model, runtime, scripts:
         ? r: r.world == "canvas"
         nil: False
     let cargo = Cargo model.name, runtime, (if gui: "\"canvas\"" else: "")
-    let mods = Concat (Each model.mods, \|m| "mod {m.name};\n")
+    let paths = RustModPaths model.mods
+    let mods = Concat (Each (Filter paths, \|p| not (Contains p, ":")), \|p| "mod {p};\n")
     let programs = Join (Each (AllPrograms model), \|p| RustProgram p, (NodeFallible model, p.node)), "\n"
     let regs = Concat (Each model.programs, \|p| ".program::<{p.name}>(\"{p.prism}\")\n")
     let checks = Concat (Each model.checks, \|c| ".check(\"{c.name}\", || vec![{Join (Each c.lines, \|l| Expression l), ", "}])\n")
@@ -660,8 +661,28 @@ fn EmitCrate model, runtime, scripts:
         ? r: r.world
         nil: "test"
     let main = Main model.name, "mod prelude;\n{mods}", "{RustRow model.elem}\n{RustAnswer model.answer}\n{programs}", "{regs}{checks}", scriptList, runRoot, world
-    let files = Each model.mods, \|m| (("src/{m.name}.rs", (RustModule m)))
-    Append [[(("Cargo.toml", cargo)), (("src/main.rs", main)), (("src/prelude.rs", (PreludeSource "")))]], files
+    let files = Each model.mods, \|m| (((RustModFile m.name), (RustModule m, (KidsOf paths, m.name))))
+    let named = Each model.mods, \|m| m.name
+    let bare = Each (Filter paths, \|p| not (Fold named, False, \|f, n| f or n == p)), \|p| (((RustModFile p), "//! Emitted by prismc: the modules under `{p}`, which declares nothing of its own.\n\n{KidsOf paths, p}"))
+    Append [[(("Cargo.toml", cargo)), (("src/main.rs", main)), (("src/prelude.rs", (PreludeSource "")))]], (Append files, bare)
+
+# Every module path of the crate, with the parents a nested one needs (`check` for
+# `check::env` when no Prism module is `Check`), in order.
+RustModPaths: fn [ModDef] -> [Text]
+fn RustModPaths mods = Fold mods, [[]], \|acc, m|
+    let segs = Split m.name, "::"
+    Fold (Range0 (Len segs)), acc, \|a, i| AddPath a, (Join (Take segs, i + 1), "::")
+
+AddPath: fn [Text], Text -> [Text]
+fn AddPath ps, p = if Fold ps, False, \|f, q| f or q == p: ps else: Push ps, p
+
+# A module's file: `src/program.rs` for the root, else `src/PATH/mod.rs`.
+RustModFile: fn Text -> Text
+fn RustModFile p = if p == "program": "src/program.rs" else: "src/{Join (Split p, "::"), "/"}/mod.rs"
+
+# The `pub mod` lines of a module path's children.
+KidsOf: fn [Text], Text -> Text
+fn KidsOf paths, p = Concat (Each (Filter paths, \|q| (HasPrefix q, "{p}::") and not (Contains (DropPrefix q, "{p}::"), ":")), \|q| "pub mod {DropPrefix q, "{p}::"};\n")
 
 # Every program, the root's among them, once.
 AllPrograms: fn Model -> [ProgDef]
