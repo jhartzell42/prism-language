@@ -167,6 +167,10 @@ find	\p{Lu}	i	⟨-⟩	a	0-1
 find	\p{Ll}+	i	⟨-⟩	aB	0-2
 find	\P{Lu}	i	⟨-⟩	aB	nil
 find	\p{Greek}	i	⟨-⟩	Ω	0-2
+find	[\p{Lu}]	i	⟨-⟩	a	0-1
+find	[^\p{Lu}]	i	⟨-⟩	aB1	2-3
+find	[\p{Greek}]	i	⟨-⟩	Ω	0-2
+find	[^A-Z]	i	⟨-⟩	aK⟨212A⟩	nil
 find	i	i	⟨-⟩	İı	nil
 find	\x{130}	i	⟨-⟩	i	nil
 find	é	i	⟨-⟩	aÉé	1-3
