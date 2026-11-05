@@ -139,8 +139,9 @@ to overturn.
     - **TXS** Only `?Step` shrinks in the shrink check (Semantics ch. 7 names it); a loop
       over `?StepBack` takes fuel (`TrimTrailing`). Counting `?StepBack` too would let a
       loop that steps both ways pass.
-    - **TXP** `Split` (not in Appendix B) stays, for a non-empty separator; an empty one
-      gives up (a panic), since it was the way to a text's characters.
+    - **TXP** The text splitter, never in Appendix B, is `SplitOn`, for a non-empty
+      separator (an empty one gives up, a panic); `Split` is Appendix B's, a regular
+      expression's (Regular expressions, below).
     - **TXK** `Take` and `Drop` are `fn [a], Nat -> [a]`, so `Take` on a text is a
       `mismatch` at its argument (and its result), with no fix line of its own; `t[i]` on
       a text has its own message and fix.
@@ -303,6 +304,8 @@ lines.
   usefulness), the prompt-cycle check, `&` borrows and escapes, inclusion and forwarding,
   the root row; `check/shrink/` (`Check.Shrink`), the shrink check (size-change graphs);
   `check/` (`Check`), `CheckProgram`, the whole checker.
+- `check/regex/` (`Check.Regex`): a regular-expression literal read against the dialect
+  (claude/regex-dialect.md), with its test module, the shared corpus as checks.
 - `typed.prism` (`Typed`): the typed program and its S-expression printer.
 
 ### The typed program
@@ -1813,7 +1816,7 @@ ruling taken (Claude's).
 
 Where a text is made, copied or compared, in both runtimes, both emitted preludes and the
 printers (handoff item 5). Without a copy: a `Text` literal in C++ (`Text::lit`, its
-bytes where the program has them, no buffer or count); `Split`'s pieces (views of the
+bytes where the program has them, no buffer or count); `SplitOn`'s and `Split`'s pieces (views of the
 text's buffer, both targets); `Concat` (one buffer of the summed length, the pieces'
 bytes copied once); `Upper`, `Lower`, `?ParseNat` and a template placeholder (`place`)
 reading the text's bytes where they are; a number shown or interpolated (written into
@@ -1903,6 +1906,90 @@ literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `m
 and `if`, a widget of several clauses in a static position of a hosted scope (pick CS),
 `Time.After`, and the zombie and
 dead states (`leave`, `clean_up`, `edges`).
+
+## Regular expressions
+
+Semantics ch. 2 and Appendix B, Regular expressions; the dialect is
+claude/regex-dialect.md, the shared corpus tests/regex/corpus.txt; claude/backend.md says
+what each part becomes.
+
+- **Lexer** (`Syntax.Lexer.Regexes`): `%/.../`, the hashed form `%#/.../#` (more hashes
+  for a pattern holding `/#`), read to their end within their line; after the pattern's
+  closing delimiter the run of ASCII letters and the one character after it decide flags
+  or replacement (doubt RX-R). The token keeps the pattern and the replacement as written
+  and the byte where each part begins. A `%` that begins no literal is an error naming
+  `mod`.
+- **Checker** (`Check.Regex`): every literal read against the dialect, the runtimes'
+  decisions in their order with their positions and messages (`error[regex]` at the
+  character named; an unknown flag's fix names the hashed form). `Check.Regex.Tests` is
+  the corpus as 478 checks, written by `check/regex/gen-tests.py` because a test module
+  runs under the Test World, which reads no file; tests/checker/neg/regex-* are one
+  program per message, written by tests/checker/regex-neg.py.
+- **Prelude**: `?Regex`, `?Match`, `?Find`, `Matches`, `Replace`, `Split`; the records
+  `Group` and `Match`. `Regex` and `RegexReplacement` have `^Eq` and `^Show` by spelling
+  and no `^Ord`.
+- **prismc's own lexer reads its token classes by anchored `?Match`** (Jimmy: a lexer
+  written character by character is "shooting yourself in the foot"): names
+  (`[A-Za-z0-9_]*`, and a name glued to letters past ASCII), the operators as one
+  alternation in the table's order with `=>` only in a test's checks, digits of each
+  radix, the duration units (`(?:ns|us|ms|min|s|h)\b`), exponents, a suffix after a
+  number, `\u{...}` digits, a text's plain run, a character literal's tail, a path's
+  digits, a comment's end, a template's plain run and the spaces in a call, and a regex
+  literal's own ends (the hashed form's closing delimiter, whose hashes vary, is still
+  a walk), through `MatchEnd` and `MatchHere` (`Syntax.Lexer.Chars`). Layout is as it
+  was. The tokens, trees and diagnostics of all 551 `.prism` files in the repository
+  are byte-identical before and after (`prismc --tokens` and `prismc FILE` diffed), and
+  prismc compiles itself to the same crate.
+  - **Lines** of `prismc/syntax/lexer/` but its test module: 2,173 before, 2,143 after.
+    The char loops were a small part of the lexer; its bulk is layout, templates, the
+    token types and the diagnostics.
+  - **Cost** (`/usr/bin/time -l`, M2 Pro, other agents' builds running, load about 5):
+
+    | | instructions before | after | wall before | after |
+    |---|---|---|---|---|
+    | Rust prismc, self-compile | 734.5 G | 731.6 G | 57.5 s | 55.2 s |
+    | Rust prismc, sem-ch07-normalize | 1.274 G | 1.264 G | 0.10 s | 0.10 s |
+    | C++ prismc, self-compile | 849.5 G | 847.5 G | 77.7 s | 78.0 s |
+    | C++ prismc, sem-ch07-normalize | 1.842 G | 1.845 G | 0.17 s | 0.17 s |
+
+    Within a percent either way: lexing is a small share of a compile, and an anchored
+    search per token (a cursor, a `Match` with its groups array and map) costs about
+    what the walk it replaced did, while a text's or template's run is read at once. The
+    C++ normalize compile is 0.1% slower, inside the noise of a loaded machine.
+- **Picks**, each Claude's, for Jimmy to overturn:
+  - **HW** The hashed form decides as the plain one but for whitespace (ch. 2, word for
+    word), so letters followed by any other non-letter are flags there too:
+    `%#/x/#a-b/#` is refused, and a replacement `a-b` is written `%/x/\u{61}-b/`. Doubt
+    RX-R's summary ("holds a space or other non-letter is written in the hashed form")
+    reads as if the hashed form took any. *If otherwise:* in the hashed form a non-empty
+    run followed by anything but a terminator begins a replacement when the line holds
+    the closing `/#`.
+  - **HN** A hashed literal followed on its line by whitespace or a non-terminator, with
+    another `/#` later on the line, takes everything up to it as its replacement:
+    `(if c: %#/a/# else: %#/b/#)` is one literal. ch. 2 says so; prismc's own operator
+    patterns use the plain form for it. *If otherwise:* the replacement must close
+    before the next `%`.
+  - **FL** An unknown flag's diagnostic is the dialect's message, and its fix line names
+    the hashed form (ch. 2: "the diagnostic for the unknown flag says ..."), for every
+    unknown flag of a literal, not only after a non-letter.
+  - **NC** A name character touching the flags (`%/a/i2`) is a lexer error over the run
+    of name characters, which the lexer consumes.
+  - **SO** Appendix B's `Split` took the name from the text splitter, renamed `SplitOn`
+    (not in Appendix B), rather than every separator becoming a pattern: prismc splits
+    on literal texts in about sixty places, two on separators made at run time.
+  - **PD** No `^Pod` (RX-EQ), but the runtimes' `ToPod` writes a regex as its spelling
+    and a match as a record, and `FromPod` refuses: an emitted record derives both
+    whatever its fields (a `Cursor` field had the same gap: no `FromPod`, so a record
+    holding one could not build in Rust; a regex field now can).
+  - **CP** `Check.Regex` orders a character against a `\x` code point of the same UTF-8
+    length with a class of the dialect (`[\x{lo}-\x{hi}]`, by `?Regex`): Prism has no
+    code point of a character, and adding one was not this work's to do.
+- **Where the books and prismc disagree:** the books' examples `Name: fn Cursor ->
+  ?((Text, Cursor))` (Appendix B) and `Key: fn Text -> ?Text` (Type System ch. 2) are
+  `mark-function` errors to prismc, which wants `?Name` and `?Key`; Type System ch. 2's
+  `m.named["key"].text` checks and does not lower (claude/bugs/lifted-field-read.md); a
+  `check` line's value goes through plain data, so `?Regex "a**" => nil` cannot be
+  written (`(?Regex "a**") == nil => True` is).
 
 ## Doubts
 

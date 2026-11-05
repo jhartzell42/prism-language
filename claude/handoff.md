@@ -27,8 +27,8 @@ empty.*
 - **Merged:** modules as a tree (Jimmy: they nest as Rust's do, `mod Name`, no sections;
   test modules are declared `test mod Tests` and read only by `prism test`;
   `claude/modules-style-pass.md`, whose doubts are open for him); regular expressions in
-  both runtimes (`claude/regex-dialect.md`, `tests/regex/corpus.txt`), not yet in the
-  compiler; per-module C++ headers; the first three bugs and gaps LP, LW, SR; `Text` as
+  both runtimes (`claude/regex-dialect.md`, `tests/regex/corpus.txt`) and in the compiler,
+  prismc's lexer reading by them (Regular expressions, below); per-module C++ headers; the first three bugs and gaps LP, LW, SR; `Text` as
   UTF-8 with cursors; the performance queue (a non-atomic `prism_rtl::Rc`, less string
   churn, gap NL, `?ParseNat`, the emitted-code cleanups).
 - **Branches in flight, each an agent's, merged here when green:**
@@ -70,9 +70,8 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 ## The order (Jimmy's)
 
 1. **The array fix** (`claude-arrays`), merged.
-2. **Regular expressions in the compiler** (lexer, parser, checker, lowering, both
-   printers, the prelude), then prismc's own lexer written with them. Jimmy: the
-   design is done and good; no design round.
+2. **Regular expressions in the compiler**, then prismc's own lexer written with them,
+   done (Regular expressions, below).
 3. **The layout bug** another agent is reporting under `claude/bugs/` (Jimmy: after regex
    in the lexer).
 4. **The GUI table's costs**, traced and written up under `claude/bugs/`
@@ -110,60 +109,16 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 - **The performance table for the PR** comes from `bench/building/run.sh` and
   `bench/running/run.sh`: cargo release against clang `-O3` only.
 
-## Regular expressions as a primitive (Jimmy's direction; the design is settled)
+## Regular expressions
 
-Jimmy (4 November): implement it as below, the `%` literals included; the books first
-(Semantics ch. 2, Appendix B, Type System), then the code, failing tests first.
-
-Jimmy: Prism is a general-purpose language with systems-programming uses, and a lexer
-written character by character is "shooting yourself in the foot". Regular expressions
-belong in the runtime beside `Text`, as a primitive, so that prismc's lexer (and every
-program's) shrinks.
-
-- **Literals.** A pattern is a `Regex`; a pattern and a replacement is a
-  `RegexReplacement` (names to settle), Perl and sed style. Two spellings considered:
-  - **`%`, Jimmy's idea, and Claude's recommendation as a mark, not a sigil.**
-    `%/pattern/` is a `Regex` and `%/pattern/replacement/` a `RegexReplacement`.
-    - `%` is free: Semantics ch. 2 refuses a `%` operator so that "funny characters
-      are all sigils or marks", and a literal's mark fits that.
-    - No name is taken, and there is no ambiguity with division.
-  - **Why not a sigil:** a sigil on a name says *when* (Pitch ch. 3; it is the
-    outermost time layer of the name's type, D12). A regex is a value, not a time
-    layer, so a `%name` would be the one sigil that does not answer "when".
-  - **The refused spelling:** `r/pattern/` and `s/pattern/replacement/` take `r` and
-    `s`, which would otherwise be names, and need the spacing rule to tell `r/x/` from
-    `r / x`.
-  - Flags after the closing slash, settled with the literal (`r/x/i`).
-  - Other delimiters (`r{...}`, `r#/.../#`) for patterns holding `/`.
-  - Interpolation is refused or explicit: a pattern built from text goes through a
-    function, `?Regex: fn Text -> ?Regex`, never a placeholder inside a literal.
-- **Checked at compile time.** A literal that is not a valid pattern is a diagnostic,
-  before tick 0, never a fault at run time. Capture groups could give the match its
-  type: a record of named groups, a tuple of numbered ones.
-- **Semantics consistent with TX.** Matching is over UTF-8 bytes; a match reports
-  cursors (`Before`/`After` of a match are views), never character counts.
-- **Cost promise.** Linear in the text (RE2 and Rust's `regex`: no backreferences, no
-  lookaround), so a program's cost stays a property of its text (Appendix B, TD-V2).
-- **Prelude** (names to settle):
-  - `?Match: fn Regex, Cursor -> ?Match` anchored at the cursor, which is what a lexer
-    wants;
-  - `?Find: fn Regex, Text -> ?Match`;
-  - `Matches: fn Regex, Text -> [Match]`;
-  - `Replace: fn RegexReplacement, Text -> Text`;
-  - `Split: fn Regex, Text -> [Text]`.
-- **Runtimes.**
-  - Rust: the `regex` crate (or `regex-automata` for anchored longest-match lexing).
-  - C++: RE2 (apt `libre2-dev`, Homebrew `re2`) rather than `std::regex`, which is slow
-    and backtracks.
-  - Both must give byte-identical results on the conformance suite, so the dialect is
-    the intersection the books specify, not either library's.
-- **The lexer afterwards.** Each token class becomes a literal (names, numbers,
-  durations, operators by longest match, string bodies), with layout as a separate pass
-  over the token stream (see the lexer items below). Measure: lines of `lexer.prism`
-  before and after, and instructions on the normalize compile.
-- **Doubt:** a lexer generator (a token table compiled to one automaton, like `logos` or
-  re2c) may serve the lexer better than separate regexes tried in turn. Both can sit on
-  the same `Regex` primitive.
+In both runtimes and in prismc: the literals `%/.../`, `%/.../.../` and the hashed form,
+checked before tick 0 by `Check.Regex` against claude/regex-dialect.md (held to the
+runtimes' corpus, tests/regex/corpus.txt); the prelude's `?Regex`, `?Match`, `?Find`,
+`Matches`, `Replace` and `Split` (the old text splitter is `SplitOn`); prismc's own lexer
+reading its token classes by anchored `?Match`, its output unchanged and its cost within
+a percent (prismc/README.md, Regular expressions; claude/backend.md; D18). Left: the
+lexer generator doubt (a token table as one automaton) stands, unmeasured; layout as a
+separate pass over the token stream was not in this work.
 
 ## From the cloud GUI run (5 November), after the queue
 

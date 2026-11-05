@@ -133,6 +133,22 @@ across files. One module is one Rust module (`src/PATH/mod.rs`) and one C++ unit
 on the command line stay loose (Semantics ch. 6). The design, its rulings and the refused
 alternatives are claude/modules-style-pass.md.
 
+## D18. Regular expressions are checked by prismc in Prism, and prismc lexes with them (Jimmy's)
+
+`%/pattern/`, `%/pattern/replacement/` and the hashed form are literals of the types
+`Regex` and `RegexReplacement` (Semantics ch. 2), each checked before tick 0 by
+`Check.Regex`, a Prism implementation of claude/regex-dialect.md's procedure that makes
+the runtimes' decisions with their positions and messages, held to the runtimes' own
+corpus (tests/regex/corpus.txt); each literal is compiled once per literal by the
+runtime. The prelude has Appendix B's `?Regex`, `?Match`, `?Find`, `Matches`, `Replace`
+and `Split`; the text splitter that had the name is `SplitOn`. prismc's lexer reads its
+token classes (names, numbers, units, exponents, operators by longest match, text and
+template runs, a regex literal's ends) by anchored `?Match` (Jimmy: a lexer written
+character by character is "shooting yourself in the foot"). Refused: the runtime as the
+checker's oracle (a second implementation consulted at compile time; `Check.Regex` uses a
+regex only to order a character against a code point, which Prism cannot name), and a
+token table compiled to one automaton (handoff's doubt), which no runtime offers.
+
 ## Features in and out
 
 In, complete and tested: records, choices, newtypes, unit types; maps, arrays, options,

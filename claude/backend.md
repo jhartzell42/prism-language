@@ -381,6 +381,40 @@ what differs is how C++ spells it.
   a cell), `host_new`, and the constructors whose type the context gives (`make_new`,
   `snapshot`, `finished`).
 
+## Regular expressions
+
+The types, the literal and the prelude's functions (Semantics ch. 2 and Appendix B,
+Regular expressions; the dialect, `claude/regex-dialect.md`, checked by prismc before
+tick 0 and again by each runtime).
+
+- **Types.** `Regex` → `prism_rtl::Regex` and `RegexReplacement` →
+  `prism_rtl::RegexReplacement` (`OutRegex`, `OutReplacement`), opaque, an `Rc` of the
+  compiled form in both runtimes; `Group` and `Match`, records the prelude declares, are
+  the runtime's own structs (Rust: `pub use prism_rtl::{Group, Match}` in the emitted
+  prelude; C++: seen through `using namespace prism_rtl`), fields as Appendix B names them.
+- **A literal is built once and shared.** `%/p/f` → Rust
+  `{ thread_local!(static R: Regex = Regex::lit("p", "f")); R.with(Regex::clone) }`,
+  C++ `([]() -> const Regex& { static const Regex r = Regex::lit("p", "f"); return r; }())`;
+  `%/p/r/f` the same with `RegexReplacement::lit("p", "f", "r")`. The pattern and the
+  replacement are the texts as written between the delimiters (`\/` stays `\/`), which
+  the runtime reads by the dialect. Each literal site is its own static: a Rust block's
+  item, a C++ lambda's function-local static (initialized on first call, thread-safe,
+  alive to exit; a copy holds its own count, so no destruction order matters). The
+  arguments are string literals of static storage. `lit` treats a refusal as a fatal
+  error, which prismc's check makes unreachable.
+- **The prelude.** `?Regex` → `regex` (`Regex::parse`), `?Match` → `match_`
+  (`match_at`), `?Find` → `find`, `Matches` → `matches`, `Replace` → `replace`, `Split` →
+  `split`, each the runtime's method; `SplitOn`, a text's separator split, is `split_on`.
+  A prelude call whose name is a segment of a module's path is written
+  `crate::prelude::name`, since in C++ that module's namespace would hide it.
+- **Plain data.** Neither type has `^Pod`, but an emitted record derives the runtime's
+  `ToPod` and `FromPod` whatever its fields: a regex, a replacement, a group and a match
+  go out as plain data (a regex as its spelling, `Pod::Shown`), as a `Cursor` does, and
+  `FromPod` is a mismatch.
+- **The C++ link.** RE2 is a prerequisite of every C++ build (`runtime/cpp/README.md`);
+  the emitted Makefile links `$(shell pkg-config --libs re2)` after `libprism_rtl.a`,
+  in the CLI and the canvas variant alike.
+
 ## Negative space
 
 - **No dynamic `Value`.** *Buys:* type errors at rustc, not in a tick; a counter that
