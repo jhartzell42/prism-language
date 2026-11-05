@@ -91,31 +91,10 @@ fn Unclosed l, sigils, start, pattern, at, ?replacement, what, close:
 
 # Where a plain form's text ends: the first `/` not paired with a `\` before it, from
 # `at`; `nil` when the line ends first.
-?PlainEnd: unbounded fn Text, Nat -> ?Nat
-fn ?PlainEnd src, at:
-    let ((?found, ignore, ignore)) = update ((nil, at, True)):
-        let &i = at
-        let &going = True
-        let &?found = nil
-        while &going:
-            let c = CharAtByte src, &i
-            if c == "" or c == "\n":
-                &going <= False
-            else:
-                if c == "/":
-                    &?found <= ? &i
-                    &going <= False
-                else:
-                    if c == "\\":
-                        let d = CharAtByte src, &i + 1
-                        if d == "" or d == "\n":
-                            &going <= False
-                        else:
-                            &i += 1 + (Len d)
-                    else:
-                        &i += Len c
-        &_ <= ((&?found, &i, &going))
-    ?found
+?PlainEnd: fn Text, Nat -> ?Nat
+fn ?PlainEnd src, at = match MatchEnd %/(?:[^\/\\\n]|\\[^\n])*\//, src, at:
+    e if e > at: e -? 1
+    otherwise: nil
 
 # Where a hashed form's text ends: the first `close` (`/` and the hashes) from `at`; `nil`
 # when the line ends first. Nothing in it is an escape.
@@ -139,28 +118,20 @@ fn ?HashedEnd src, at, close:
     ?found
 
 # The first byte from `at` that is not a `#`.
-HashesEnd: unbounded fn Text, Nat -> Nat
-fn HashesEnd src, at = update at:
-    while (CharAtByte src, &_) == "#":
-        &_ += 1
+HashesEnd: fn Text, Nat -> Nat
+fn HashesEnd src, at = MatchEnd %/#*/, src, at
 
 # The first byte from `at` that is not an ASCII letter.
-LettersEnd: unbounded fn Text, Nat -> Nat
-fn LettersEnd src, at = update at:
-    while (IsUpper (CharAtByte src, &_)) or (IsLower (CharAtByte src, &_)):
-        &_ += 1
+LettersEnd: fn Text, Nat -> Nat
+fn LettersEnd src, at = MatchEnd %/[A-Za-z]*/, src, at
 
 # The first byte from `at` that is not a name character.
-IdentEnd: unbounded fn Text, Nat -> Nat
-fn IdentEnd src, at = update at:
-    while IsIdentChar (CharAtByte src, &_):
-        &_ += 1
+IdentEnd: fn Text, Nat -> Nat
+fn IdentEnd src, at = MatchEnd %/[A-Za-z0-9_]*/, src, at
 
 # The end of the line `at` is on: its newline, or the end of the text.
-LineEndAt: unbounded fn Text, Nat -> Nat
-fn LineEndAt src, at = update at:
-    while (CharAtByte src, &_) != "" and (CharAtByte src, &_) != "\n":
-        &_ += Len (CharAtByte src, &_)
+LineEndAt: fn Text, Nat -> Nat
+fn LineEndAt src, at = MatchEnd %/[^\n]*/, src, at
 
 # The text from byte `at` on.
 TextFrom: fn Text, Nat -> Text

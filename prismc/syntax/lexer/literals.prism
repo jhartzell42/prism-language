@@ -20,19 +20,14 @@ fn LexNumber l, sigils:
     if (Peek l) == "0" and (Contains "xob", (PeekAt l, 1)): LexRadix l, sigils
     else: LexDecimal l, sigils
 
-RadixDigit: fn Text, Text -> Bool
-fn RadixDigit "x", c = IsHexDigit c
-fn RadixDigit "o", c = "0" <= c and c <= "7"
-fn RadixDigit ignore, c = c == "0" or c == "1"
-
 LexRadix: unbounded fn Lex, Text -> ((TokKind, Lex))
 fn LexRadix l0, sigils:
     let start = l0.pos
     let radix = PeekAt l0, 1
     let l1 = Forward l0, 2
+    let digits = if radix == "x": %/[0-9a-fA-F_]*/ else: if radix == "o": %/[0-7_]*/ else: %/[01_]*/
     let l2 = update l1:
-        while (RadixDigit radix, (Peek &_)) or (Peek &_) == "_":
-            &_.pos += 1
+        &_.pos <= MatchEnd digits, &_.src, &_.pos
     let l3 = if l2.pos == l1.pos: LexErr l2, start, l2.pos, "a radix prefix needs digits after it" else: l2
     let l4 = CheckNoSuffix l3, start
     let kind = KInt sigils, (Slice l4, start, l4.pos)
@@ -40,8 +35,7 @@ fn LexRadix l0, sigils:
 
 SkipDigits: unbounded fn Lex -> Lex
 fn SkipDigits l = update l:
-    while (IsDigit (Peek &_)) or (Peek &_) == "_":
-        &_.pos += 1
+    &_.pos <= MatchEnd %/[0-9_]*/, &_.src, &_.pos
 
 LexDecimal: unbounded fn Lex, Text -> ((TokKind, Lex))
 fn LexDecimal l0, sigils:
@@ -62,11 +56,12 @@ fn LexDecimal l0, sigils:
 # The duration units and their scale in nanoseconds, in the order lexer.rs tries them.
 let durationUnits = [[(("ns", 1)), (("us", 1000)), (("ms", 1000000)), (("min", 60000000000)), (("s", 1000000000)), (("h", 3600000000000))]]
 
+# The unit at the cursor, in that order, with no name character after it (`\b`: the units
+# end in letters, and a name character is a word character).
 ?UnitAt: fn Lex -> ?((Text, Nat))
-fn ?UnitAt l = Fold durationUnits, nil, \|?found, u| if ?found == nil and (UnitHere l, u): ? u else: ?found
-
-UnitHere: fn Lex, ((Text, Nat)) -> Bool
-fn UnitHere l, ((u, ignore)) = (StartsWith l, u) and not (IsIdentChar (PeekAt l, (Len u)))
+fn ?UnitAt l = match MatchHere %/(?:ns|us|ms|min|s|h)\b/, l:
+    "": nil
+    u: Fold durationUnits, nil, \|?found, ((name, scale))| if name == u: ? ((name, scale)) else: ?found
 
 # A duration, an exponent, or the number as it stands.
 NumberTail: unbounded fn Lex, Text, Nat, Bool -> ((TokKind, Lex))
@@ -88,9 +83,11 @@ fn NumberTail l, sigils, start, decimal = match ?UnitAt l:
 
 Exponent: unbounded fn Lex, Bool -> ((Bool, Lex))
 fn Exponent l, decimal:
-    let l1 = Bump l
-    let l2 = if (Peek l1) == "+" or (Peek l1) == "-": Bump l1 else: l1
-    if ((Peek l) == "e" or (Peek l) == "E") and (IsDigit (Peek l2)): ((True, SkipDigits l2))
+    let end = MatchEnd %/[eE][+-]?[0-9][0-9_]*/, l.src, l.pos
+    if end > l.pos:
+        let l2 = update l:
+            &_.pos <= end
+        ((True, l2))
     else: ((decimal, l))
 
 # Whether `digits[.frac]` times `scale` nanoseconds is whole.
@@ -114,8 +111,7 @@ CheckNoSuffix: unbounded fn Lex, Nat -> Lex
 fn CheckNoSuffix l0, start:
     if IsIdentChar (Peek l0):
         let l = update l0:
-            while IsIdentChar (Peek &_):
-                &_.pos += 1
+            &_.pos <= MatchEnd %/[A-Za-z0-9_]*/, &_.src, &_.pos
         LexErr l, start, l.pos, "`{Slice l, start, l.pos}` is not a token: a number literal has no suffix (write a type annotation)"
     else: l0
 
@@ -144,8 +140,7 @@ fn UnicodeEscape l, start:
     else:
         let hs = l.pos + 1
         let l1 = update (Bump l):
-            while IsHexDigit (Peek &_):
-                &_.pos += 1
+            &_.pos <= MatchEnd %/[0-9a-fA-F]*/, &_.src, &_.pos
         let hex = Slice l1, hs, l1.pos
         if (Peek l1) != "\}": (("", (LexErr l1, start, l1.pos, "`\\u\{` needs its closing `\}`")))
         else:
@@ -189,9 +184,11 @@ fn LexText l0 = update (([[]], l0)):
                 "\}":
                     &l <= LexErr (Bump &l), &l.pos, &l.pos + 1, "a `\}` in text is written `\\\}`"
                     &cur <= "{&cur}\}"
+                # A run of the characters that are only themselves, at once.
                 otherwise:
-                    &l <= Bump &l
-                    &cur <= "{&cur}{c}"
+                    let run = MatchHere %/[^"\\{}\n]+/, &l
+                    &l.pos += Len run
+                    &cur <= "{&cur}{run}"
     if &cur != "":
         &segs <= Push &segs, (TsPlain &cur)
     &_ <= ((&segs, &l))
@@ -212,8 +209,7 @@ fn LexChar l0:
 CharTail: unbounded fn Lex, Nat -> Lex
 fn CharTail l0, start:
     let l1 = update l0:
-        while (Peek &_) != "'" and (Peek &_) != "\n" and (Peek &_) != "":
-            &_.pos += Len (Peek &_)
+        &_.pos <= MatchEnd %/[^'\n]*/, &_.src, &_.pos
     let l2 = if (Peek l1) == "'": Bump l1 else: l1
     LexErr l2, start, l2.pos, "a character literal holds one code point: `'c'`"
 
@@ -232,16 +228,14 @@ fn LexPath l0 = update (([[]], l0)):
         let c = Peek &l
         if c == "#":
             let digits = update (Bump &l):
-                while IsDigit (Peek &_):
-                    &_.pos += 1
+                &_.pos <= MatchEnd %/[0-9]*/, &_.src, &_.pos
             let text = Slice digits, s + 1, digits.pos
             &l <= if text == "": LexErr digits, s, digits.pos, "a generation segment is `#` and a number" else: digits
             &segs <= Push &segs, (PstGen (Or (?ParseNat text), 0))
         else:
             if IsDigit c:
                 let digits = update &l:
-                    while IsDigit (Peek &_):
-                        &_.pos += 1
+                    &_.pos <= MatchEnd %/[0-9]*/, &_.src, &_.pos
                 &segs <= Push &segs, (PstNum (Or (?ParseNat (Slice digits, s, digits.pos)), 0))
                 &l <= digits
             else:

@@ -235,11 +235,6 @@ let keywordSet = Map (Each keywordList, \|w| ((w, True)))
 IsKeyword: fn Text -> Bool
 fn IsKeyword w = keywordSet[w] != nil
 
-# The symbol operators by longest match (ch. 2, "Operators and punctuation"), in the order
-# lexer.rs tries them.
-let opTable = [["==>", "<-", "<=", "<|", "->", "-=", "-?", "+=", "+?", "*=", "*?", "/=", "==",
-    ">=", "=>", "<", ">", "-", "+", "*", "/", "="]]
-
 # The operators that take a type suffix when an uppercase name touches them.
 TakesSuffix: fn Text -> Bool
 fn TakesSuffix op = Fold [["<=", "==", "!=", "<", ">", ">=", "+", "-", "*", "/", "+?", "-?", "*?"]], False, \|seen, o| seen or o == op
