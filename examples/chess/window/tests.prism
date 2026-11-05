@@ -1,0 +1,44 @@
+# The window library's tests (`Window.Tests`, a test module of `Window`): what the window
+# draws of a column taller than it. Under the Test World a text is 9 wide a character and
+# 14 high, so the button is 30 high and each label 22: in the 200 by 100 window the button
+# and the first four labels show (the fourth starts at 96), and the window draws those
+# alone. The Bump button changes the last label, which is far below the window's edge, so
+# the scene does not change, only the words the window measures do.
+#
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Gui.*
+use Window.*
+use Window.Ui.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
+
+@$tall: @$Text
+@$tall:
+    !bump <- @Column 0.0, @widget:
+        !b <- Ui.Button(label=$"Bump")
+        Ui.Label(text=$"one")
+        Ui.Label(text=$"two")
+        Ui.Label(text=$"three")
+        Ui.Label(text=$"four")
+        Ui.Label(text=$"five")
+        Ui.Label(text=$"six")
+        Ui.Label(text=$"seven")
+        Ui.Label(text=$"last {$count}")
+        @ !b
+    $count <- 0 then $count + 1 on !bump
+    @ "{$count}"
+
+@$window: @$Text
+@$window:
+    @Window $"Tall", (Extent 200.0, 100.0), @$tall
+
+test a_column_taller_than_the_window_draws_what_shows, @$window:
+    build
+        => returns "0"
+        => expect Gui.Metrics(text="seven")
+    click element 0
+    compute until idle
+        => returns "1"
+        => expect Gui.Metrics(text="1")

@@ -5,6 +5,7 @@
 #                   library, compiled to C++ by the prism script's prismc, at -O3
 #   make rust       target/bench/prism-rs/driver: the same compiled to Rust, cargo
 #                   release (opt-level 3)
+#   ./check.sh      both built, and each run once with `check` (bench/gui/README.md)
 #
 # The emitted main.cpp holds the crate's own definitions, so it is compiled here with its
 # `main` renamed and linked beside driver.cpp, whose `main` runs the root under Hooks. The
@@ -35,8 +36,10 @@ BUILD := $(OUT)/build-driver
 all: cpp rust
 cpp: $(OUT)/driver
 
-# The program, emitted afresh whenever the sources are newer than its main.cpp.
-$(SRC)/main.cpp: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism)
+# The program, emitted afresh whenever the sources or the installed prismc are newer than
+# its main.cpp.
+PRISMC := $(wildcard $(REPO)/target/bootstrap/prismc)
+$(SRC)/main.cpp: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) $(PRISMC)
 	cd $(REPO) && ./prism compile --target cpp bench/gui/prism examples/chess/window -o target/bench/prism
 
 $(RTLIB): FORCE
@@ -82,7 +85,7 @@ RSBUILD := $(REPO)/target/bench/prism-rs-build
 
 rust: $(RS)/driver
 
-$(RS)/src/main.rs: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) driver.rs
+$(RS)/src/main.rs: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) driver.rs $(PRISMC)
 	cd $(REPO) && ./prism compile bench/gui/prism examples/chess/window -o target/bench/prism-rs
 	sed -i.emitted 's/^fn main() {$$/fn prism_emitted_main() {/' $@
 	echo 'include!("$(abspath driver.rs)");' >> $@
