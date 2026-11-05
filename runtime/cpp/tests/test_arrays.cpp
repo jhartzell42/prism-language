@@ -230,3 +230,112 @@ TEST(an_elements_address_holds_while_its_buffer_grows) {
     for (std::size_t i = 0; i < refs.size(); ++i) *refs[i] = Int(std::int64_t(100 + i));
     CHECK(counts(b, 10, 100) && counts(a, 300));
 }
+
+// ---- Costs (Semantics Appendix B, Arrays), by counting the elements copied and moved -------
+
+namespace {
+
+/// An element that counts its copies and moves.
+struct Counted {
+    static inline std::size_t copies = 0, moves = 0;
+    int v = 0;
+    Counted() = default;
+    explicit Counted(int x) : v(x) {}
+    Counted(const Counted& o) : v(o.v) { ++copies; }
+    Counted(Counted&& o) noexcept : v(o.v) { ++moves; }
+    Counted& operator=(const Counted& o) {
+        ++copies;
+        v = o.v;
+        return *this;
+    }
+    Counted& operator=(Counted&& o) noexcept {
+        ++moves;
+        v = o.v;
+        return *this;
+    }
+    static void reset() { copies = moves = 0; }
+    static std::size_t work() { return copies + moves; }
+};
+
+Array<Counted> counted(std::size_t n, int from = 0) {
+    Array<Counted> a;
+    for (std::size_t i = 0; i < n; ++i) a.push_back(Counted(from + int(i)));
+    return a;
+}
+
+bool counts_from(const Array<Counted>& a, std::size_t n, int from) {
+    if (a.size() != n) return false;
+    int want = from;
+    for (const Counted& x : a)
+        if (x.v != want++) return false;
+    return true;
+}
+
+/// The elements one operation may copy or move whatever the array's length: a chunk's
+/// worth (64) a few times over, and never the array.
+constexpr std::size_t BOUNDED = 256;
+constexpr std::size_t BIG = 20000;
+
+}  // namespace
+
+TEST(a_push_onto_any_array_copies_a_bounded_number_of_elements) {
+    Array<Counted> a = counted(BIG);
+    Array<Counted> first = a;
+    first.push_back(Counted(-1));  // the array `a` is no longer the newest of anything
+    for (int round = 0; round < 3; ++round) {
+        Counted::reset();
+        Array<Counted> b = a;
+        b.push_back(Counted(-2));
+        CHECK(Counted::work() <= BOUNDED);
+        CHECK(b.size() == BIG + 1 && b[BIG].v == -2 && counts_from(b.take(BIG), BIG, 0));
+    }
+    CHECK(counts_from(a, BIG, 0) && first[BIG].v == -1);
+    Counted::reset();
+    Array<Counted> front = a.take(BIG / 2);
+    front.push_back(Counted(-3));
+    Array<Counted> back = a.drop_front(10);
+    back.push_back(Counted(-4));
+    CHECK(Counted::work() <= 2 * BOUNDED);
+    CHECK(counts_from(front.take(BIG / 2), BIG / 2, 0) && front[BIG / 2].v == -3);
+    CHECK(counts_from(back.take(BIG - 10), BIG - 10, 10) && back[BIG - 10].v == -4);
+    CHECK(counts_from(a, BIG, 0));
+}
+
+TEST(appending_two_large_arrays_copies_neither) {
+    Array<Counted> a = counted(BIG), b = counted(BIG, int(BIG));
+    Array<Counted> newest = a;
+    newest.push_back(Counted(-1));
+    Counted::reset();
+    Array<Counted> ab = a.concat(b);
+    Array<Counted> ba = b.concat(a);
+    Array<Counted> aa = a.concat(a);
+    CHECK(Counted::work() <= 3 * BOUNDED);
+    CHECK(counts_from(ab, 2 * BIG, 0));
+    CHECK(counts_from(ba.take(BIG), BIG, int(BIG)) && counts_from(ba.drop_front(BIG), BIG, 0));
+    CHECK(counts_from(aa.take(BIG), BIG, 0) && counts_from(aa.drop_front(BIG), BIG, 0));
+    CHECK(counts_from(a, BIG, 0) && counts_from(b, BIG, int(BIG)));
+}
+
+TEST(a_write_to_a_shared_array_copies_a_bounded_number_of_elements) {
+    Array<Counted> a = counted(BIG);
+    for (std::size_t i : {std::size_t(0), BIG / 2, BIG - 1}) {
+        Counted::reset();
+        Array<Counted> b = a;
+        b.set(i, Counted(-7));
+        b.mut_at(BIG - 1 - i).v = -8;
+        CHECK(Counted::work() <= 2 * BOUNDED);
+        CHECK(b[i].v == -7 && b[BIG - 1 - i].v == -8 && counts_from(a, BIG, 0));
+    }
+}
+
+TEST(an_array_from_a_vector_moves_each_element_once_into_storage_of_its_size) {
+    for (std::size_t n : SIZES) {
+        std::vector<Counted> v;
+        for (std::size_t i = 0; i < n; ++i) v.push_back(Counted(int(i)));
+        Counted::reset();
+        Array<Counted> a(std::move(v));
+        CHECK(Counted::copies == 0 && Counted::moves <= n);
+        CHECK_EQ(a.capacity(), n);
+        CHECK(counts_from(a, n, 0));
+    }
+}

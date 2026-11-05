@@ -133,7 +133,6 @@ fn bound(n: usize) -> usize {
 }
 
 #[test]
-#[ignore = "the Rust half of claude/bugs/small-arrays-whole-chunks.md is open: im_rc::Vector holds 64-element chunks"]
 fn an_array_holds_storage_linear_in_its_length() {
     for n in SIZES {
         let (a, bytes) = held(|| {
@@ -163,5 +162,114 @@ fn an_array_holds_storage_linear_in_its_length() {
             let (_d, bytes) = held(|| a.update(0, big(9)));
             assert!(bytes <= bound(n), "a shared {n}-element array updated holds {bytes} bytes more");
         }
+    }
+}
+
+// ---- Costs (Semantics Appendix B, Arrays), by counting the elements cloned ------------------
+
+thread_local! {
+    static CLONES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// An element that counts its clones.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Counted(usize);
+
+impl Clone for Counted {
+    fn clone(&self) -> Counted {
+        CLONES.with(|c| c.set(c.get() + 1));
+        Counted(self.0)
+    }
+}
+
+fn clones<R>(f: impl FnOnce() -> R) -> (R, usize) {
+    let before = CLONES.with(|c| c.get());
+    let r = f();
+    (r, CLONES.with(|c| c.get()) - before)
+}
+
+fn counted(n: usize, from: usize) -> Array<Counted> {
+    let mut a = Array::new();
+    for i in 0..n {
+        a.push_back(Counted(from + i));
+    }
+    a
+}
+
+fn counts_from(a: &Array<Counted>, n: usize, from: usize) -> bool {
+    a.len() == n && a.iter().map(|c| c.0).eq(from..from + n)
+}
+
+/// The elements one operation may clone whatever the array's length: a chunk's worth (64)
+/// a few times over, and never the array.
+const BOUNDED: usize = 256;
+const BIG: usize = 20000;
+
+#[test]
+fn a_push_onto_any_array_clones_a_bounded_number_of_elements() {
+    let a = counted(BIG, 0);
+    for end in [0usize, 1, 2] {
+        let (b, n) = clones(|| {
+            let mut b = a.clone();
+            b.push_back(Counted(usize::MAX - end));
+            b
+        });
+        assert!(n <= BOUNDED, "a push onto a shared array cloned {n} elements");
+        assert!(b.len() == BIG + 1 && b[BIG].0 == usize::MAX - end);
+    }
+    let ((front, back), n) = clones(|| {
+        let mut front = a.take(BIG / 2);
+        front.push_back(Counted(7));
+        let mut back = a.skip(10);
+        back.push_back(Counted(8));
+        (front, back)
+    });
+    assert!(n <= 2 * BOUNDED, "pushes onto a taken and a skipped array cloned {n} elements");
+    assert!(counts_from(&front.take(BIG / 2), BIG / 2, 0) && front[BIG / 2].0 == 7);
+    assert!(counts_from(&back.take(BIG - 10), BIG - 10, 10) && back[BIG - 10].0 == 8);
+    assert!(counts_from(&a, BIG, 0));
+}
+
+#[test]
+fn appending_two_large_arrays_clones_neither() {
+    let a = counted(BIG, 0);
+    let b = counted(BIG, BIG);
+    let ((ab, aa), n) = clones(|| {
+        let mut ab = a.clone();
+        ab.append(b.clone());
+        let mut aa = a.clone();
+        aa.append(a.clone());
+        (ab, aa)
+    });
+    assert!(n <= 2 * BOUNDED, "two appends of {BIG}-element arrays cloned {n} elements");
+    assert!(counts_from(&ab, 2 * BIG, 0));
+    assert!(counts_from(&aa.take(BIG), BIG, 0) && counts_from(&aa.skip(BIG), BIG, 0));
+    assert!(counts_from(&a, BIG, 0) && counts_from(&b, BIG, BIG));
+}
+
+#[test]
+fn a_write_to_a_shared_array_clones_a_bounded_number_of_elements() {
+    let a = counted(BIG, 0);
+    for i in [0, BIG / 2, BIG - 1] {
+        let (b, n) = clones(|| {
+            let mut b = a.clone();
+            b.set(i, Counted(usize::MAX));
+            b[BIG - 1 - i].0 = 1;
+            b
+        });
+        assert!(n <= 2 * BOUNDED, "two writes to a shared array cloned {n} elements");
+        assert!(b[i].0 == usize::MAX && b[BIG - 1 - i].0 == 1 && counts_from(&a, BIG, 0));
+    }
+}
+
+#[test]
+fn an_array_from_a_vec_clones_nothing_into_storage_of_its_size() {
+    for n in SIZES {
+        let v: Vec<Big> = (0..n).map(big).collect();
+        let (a, bytes) = held(|| Array::from(v));
+        assert!(bytes <= 256 + n * std::mem::size_of::<Big>(), "{n} elements from a Vec hold {bytes} bytes");
+        assert!(a.iter().cloned().eq((0..n).map(big)));
+        let (_c, k) = clones(|| Array::from((0..n).map(Counted).collect::<Vec<_>>()));
+        assert_eq!(k, 0);
     }
 }
