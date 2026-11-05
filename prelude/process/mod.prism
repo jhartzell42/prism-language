@@ -7,3 +7,8 @@ tag Process.Exit of Element:
 
 # The command line's arguments, plain, answered once.
 tag Process.Args of Element [Text]
+
+# An environment variable's value, plain, answered once: `nil` when it is not set (or is
+# not UTF-8).
+tag Process.Env of Element ?Text:
+    name: Text

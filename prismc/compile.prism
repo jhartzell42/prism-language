@@ -11,24 +11,37 @@
 # prelude's modules the program does not replace; test modules only with `--tests`. The
 # program is parsed, checked (and refused on an error), lowered and emitted through `@Run`
 # as a Rust crate in OUT whose dependencies on `prism_rtl` and the Worlds are found at
-# `--runtime PATH` (by default `..` per directory of OUT, so OUT is under the repository
-# root); with `--target cpp`, as a C++ program over `runtime/cpp` (emit/cpp/). An
+# `--runtime PATH` (`RuntimeOf` gives the default); with `--target cpp`, as a C++ program
+# over `runtime/cpp` (emit/cpp/). An
 # option it does not know, a target but `rust` or `cpp`, or an option with no value after
 # it is refused.
 @CompileMain: fn [Text] -> @unit
 fn @CompileMain opts:
+    ?root <- Process.Env(name="PRISM_ROOT")
     let bad = BadOptions opts, [["--tests"]], compileValued
     let target = Or (?OptionValue opts, "--target"), "rust"
+    let out = Or (?OptionValue opts, "-o"), "prismc-out"
+    let ?runtime = ?RuntimeOf (?OptionValue opts, "--runtime"), ?root, out
     if (Len bad) > 0: @Refuse "{Join bad, "; "} (compile takes -o OUT, --name NAME, --prelude DIR, --runtime PATH, --target rust|cpp, --tests)"
     else: if target != "rust" and target != "cpp": @Refuse "unknown target {target} (rust, cpp)"
+    else: if ?runtime == nil: @Refuse "an absolute -o needs --runtime PATH or PRISM_ROOT: the runtime's path from {out} cannot be told from its segments"
     else:
-        let out = Or (?OptionValue opts, "-o"), "prismc-out"
         let prelude = NoSlash (Or (?OptionValue opts, "--prelude"), "prelude")
-        let settings = CompileSettings(out=out, prelude=prelude, name=(Or (?OptionValue opts, "--name"), "program"), runtime=(Or (?OptionValue opts, "--runtime"), (RuntimeFor out)), target=target)
+        let settings = CompileSettings(out=out, prelude=prelude, name=(Or (?OptionValue opts, "--name"), "program"), runtime=(Or ?runtime, ""), target=target)
         @ReadSources ReadMode(compiling=True, checking=noCheckOpts, compile=settings), (PlainArgs opts, compileValued), prelude, (HasText opts, "--tests")
 
 # The options of `compile` that take a value.
 let compileValued = [["-o", "--prelude", "--name", "--runtime", "--target"]]
+
+# Where the crate finds the runtime: `--runtime PATH`; else, for a relative OUT, `..` per
+# directory of OUT, which is relative to the repository root (as `./prism` and the
+# bootstraps call prismc, so an emitted crate, and the seed, name no machine's paths); else,
+# for an absolute OUT, `PRISM_ROOT`; else nothing, and the compile is refused
+# (prismc/README.md, pick AR).
+?RuntimeOf: fn ?Text, ?Text, Text -> ?Text
+fn ?RuntimeOf ?named, ?root, out = match ?named:
+    ? r: ? r
+    nil: if not (HasPrefix out, "/"): ? (RuntimeFor out) else: ?root
 
 # `..` per directory of OUT, which is relative to the repository root.
 RuntimeFor: fn Text -> Text

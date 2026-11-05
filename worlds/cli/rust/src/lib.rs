@@ -13,6 +13,8 @@
 //! - **`Fs.List(dir)`** answers `$[Text]`: the `.prism` and `.prismtest` paths under `dir`,
 //!   at any depth, sorted. A write that changes a listing pushes the new one.
 //! - **`Process.Args`** answers the arguments, plain, once.
+//! - **`Process.Env(name)`** answers the variable's value, plain, once: `nil` when it is
+//!   unset or not UTF-8.
 //! - **`Process.Exit(code=!U8)`** ends the program with `code` once every request of its
 //!   tick is performed, in document order; the first exit of a tick wins.
 //! - **`Time.After(wakes=!Wake)`** answers each wake with the same `Wake`, no sooner than
@@ -65,6 +67,14 @@ fn listing(paths: Vec<String>) -> Pod {
     Pod::Array(paths.into_iter().map(|p| Pod::text(p.as_str())).collect())
 }
 
+/// `Process.Env`'s answer: `? value`, or `nil` when the variable is unset or not UTF-8.
+pub fn env_value(name: &str) -> Pod {
+    match std::env::var(name) {
+        Ok(v) => Pod::Some(Box::new(Pod::text(v.as_str()))),
+        Err(_) => Pod::Nil,
+    }
+}
+
 fn text_field(e: &Pod, name: &str) -> Option<String> {
     e.field(name).and_then(Pod::as_text).map(|t| t.to_string())
 }
@@ -82,6 +92,7 @@ impl<F: FileSystem> ReadyState for CliReady<F> {
             "Fs.Output" => Some(Pod::name("Writing")),
             "Fs.List" => Some(listing(self.fs.borrow().list(&text_field(e, "dir")?))),
             "Process.Args" => Some(Pod::Array(self.args.iter().map(|a| Pod::text(a.as_str())).collect())),
+            "Process.Env" => Some(env_value(&text_field(e, "name")?)),
             _ => None,
         }
     }

@@ -1475,8 +1475,16 @@ Each is Claude's, for Jimmy to overturn.
   stop the run before parsing; `test-outside` and `test-declares` are found over the
   parsed trees, `test-only-reached` over the checker's references.
 - **RT The runtime path.** `Cargo.toml` finds the library and the Worlds at `--runtime
-  PATH`, by default one `..` per directory of OUT (OUT under the repository root), so the
-  stages emit the same file.
+  PATH`, by default one `..` per directory of a relative OUT (OUT under the repository
+  root, as `./prism` and the bootstraps call prismc), so the stages emit the same file
+  and the seed names no machine's paths.
+- **AR An absolute OUT.** With no `--runtime`, an absolute OUT takes `PRISM_ROOT`
+  (`Process.Env`, which the CLI Worlds answer), as the C++ Makefile does; with neither, the
+  compile is refused, naming `--runtime`, since `..` per segment would climb to `/`
+  (`tests/driver`). *Refused:* `PRISM_ROOT` for a relative OUT too, which would write
+  this machine's absolute paths into every crate the bootstraps emit, the seed's among
+  them. A relative OUT from another directory than the repository's still lands on that
+  directory's ancestors; no file-system check finds it.
 - **RV Row values.** A row kind other than `Fault` is plain data: `type Draw = row` is a
   Rust `enum Draw` in its module with a variant per tag of the kind in the program, each
   holding the tag's struct (`Draw::DrawRect(DrawRect { rect, paint })`), so a `[Draw]`

@@ -126,6 +126,16 @@ std::string read_file(const sfs::path& p) {
 
 }  // namespace
 
+TEST(an_environment_variable_is_answered_plain_or_nil) {
+    CliWorld world(mem({}), {});
+    auto ready = world.ready();
+    auto env = [&](const std::string& n) { return ready->first_value(Pod::element("Process.Env", {{"name", text(n)}})); };
+    const char* path = std::getenv("PATH");
+    CHECK(path != nullptr);
+    if (path) CHECK(env("PATH") == std::optional<Pod>(Pod::some(text(path))));
+    CHECK(env("PRISM_TEST_SURELY_UNSET_VARIABLE") == std::optional<Pod>(Pod::nil()));
+}
+
 TEST(a_program_reads_a_file_writes_one_and_exits_42) {
     CliWorld world(mem({{"in.txt", "hello"}}), {"in.txt", "out/up.txt"});
     CHECK_EQ(int(drive<Prog<Copy>>(world, {}, 100)), 42);
