@@ -1802,33 +1802,39 @@ What stays, and why:
 
 Peak memory, wall time and instructions retired (`/usr/bin/time -l`) of each prismc
 compiling itself (`compile prismc --prelude prelude --name prismc`, to its own target)
-and `examples/chess`, before and after the runtimes' arrays and maps were sized to their
-contents (runtime/rust/README.md; runtime/cpp/README.md, "Arrays and maps: the
-costs"). Apple M2 Pro, 5 November 2026, cargo release and clang++ -O3, other
-agents' jobs running (load average 3 to 10), so the wall times are rough; "footprint" is
-macOS's peak memory footprint, "RSS" the maximum resident set; instructions are the
-least of three runs on chess, one run (two before) on the self-compile.
+and `examples/chess`, with the collections each runtime had before and has now
+(runtime/rust/README.md; runtime/cpp/README.md, "Arrays and maps: the costs"). Apple M2
+Pro, 5 November 2026, cargo release and clang++ -O3, other agents' jobs running (load
+average 3 to 13), so the wall times are rough; "footprint" is macOS's peak memory
+footprint, "RSS" the maximum resident set; instructions are the least of three runs on
+chess and of two on the self-compile.
 
 | Run | footprint | RSS | wall | instructions |
 |---|---|---|---|---|
-| C++ prismc, self, before | 996 MB | 1,168 to 1,174 MB | 61 to 64 s | 725.6 G to 726.0 G |
-| C++ prismc, self, first chunks of 1 to 64 slots | 293 MB | 395 MB | 62 s | 750.1 G |
-| Rust prismc, self, before (`im_rc` `Vector` and `OrdMap`) | 2,878 to 2,890 MB | 2,808 to 2,896 MB | 75 to 83 s | 723.1 G to 723.4 G |
-| Rust prismc, self, `Map` an AVL tree (`Array` still `im_rc`) | 2,722 to 2,731 MB | 3,072 to 3,293 MB | 57 s | 692.6 G to 694.1 G |
-| C++ prismc, chess, before | 71 MB | 96 MB | 1.1 s | 13.0 G |
-| C++ prismc, chess, after | 25 MB | 50 MB | 1.1 s | 12.9 G |
-| Rust prismc, chess, before | 146 MB | 159 MB | 1.2 s | 12.4 G |
-| Rust prismc, chess, `Map` an AVL tree | 144 MB | 157 MB | 1.0 s | 12.0 G |
+| Rust prismc, self: `im_rc` `Vector` and `OrdMap` | 2,878 to 2,890 MB | 2,808 to 2,896 MB | 75 to 83 s | 723.1 G |
+| Rust prismc, self: AVL `Map`, `im_rc` `Vector` | 2,722 to 2,731 MB | 3,072 to 3,293 MB | 57 s | 692.6 G |
+| Rust prismc, self: tree of chunks `Array`, AVL `Map` | 274 to 275 MB | 329 to 333 MB | 45 to 46 s | 586.0 G |
+| C++ prismc, self: a view over 64-slot chunks | 996 MB | 1,168 to 1,174 MB | 61 to 64 s | 725.6 G |
+| C++ prismc, self: the view, first chunks 1 to 64 slots | 293 MB | 395 MB | 62 s | 750.1 G |
+| C++ prismc, self: tree of chunks `Array` | 310 to 324 MB | 382 to 403 MB | 65 to 68 s | 737.8 G |
+| Rust prismc, chess: `im_rc` / AVL `Map` / tree of chunks | 146 / 144 / 21 MB | 159 / 157 / 33 MB | 1.2 / 1.0 / 0.8 s | 12.4 / 12.0 / 10.0 G |
+| C++ prismc, chess: view / view, small chunks / tree of chunks | 71 / 25 / 27 MB | 96 / 50 / 52 MB | 1.1 / 1.1 / 1.2 s | 13.0 / 12.9 / 13.3 G |
 
-- **C++:** the self-compile's footprint falls by 70% (996 MB to 293 MB); instructions
-  rise by 3% (more, smaller chunk allocations while an array is small, and the index's
-  `bit_width`), the wall time within noise.
-- **Rust:** the `Map` port takes 4% of the instructions and 5% of the footprint; the RSS
-  moved the other way between runs (memory compression under the other jobs). Most of
-  the Rust footprint is `im_rc::Vector`'s chunks, whose fix waits for the ruling in the
-  bug report.
-- **Emitted code is unchanged** by both: the runtimes' APIs stayed, the fixed points
-  were reached from the installed compilers, and the seeds are as they were.
+- **Rust:** the self-compile's footprint falls tenfold (2.9 GB to 275 MB) and its
+  instructions by 19%; the RSS measured between the AVL `Map` and the tree of chunks moved
+  with memory compression under the other jobs.
+- **C++:** the footprint falls by two thirds (996 MB to about 310 MB). The view over a
+  shared buffer was cheaper to run, 726 G instructions against 738 G (2% more): an index
+  in the tree descends it, and every array reaches its tail through a node of its own,
+  where the view broke Appendix B's `Append` and `Push` promises (a push onto any view but
+  the newest, and a concatenation, copied the array). Each of those is now kept, in both
+  runtimes, by the same design.
+- **The two targets** now measure the same collections: the Rust prismc does the
+  self-compile in fewer instructions than the C++ one (586 G against 738 G) and less
+  memory (275 MB against about 310 MB).
+- **Emitted code** is unchanged by the runtimes' collections (the methods emitted code
+  calls kept their names); the C++ prelude's `union_` changed (`Map::united`, the smaller
+  map into the larger), and both seeds with it.
 
 ### Not lowered yet
 
