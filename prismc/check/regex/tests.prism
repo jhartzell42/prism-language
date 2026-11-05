@@ -6,7 +6,7 @@ use Check.Regex.*
 
 # A pattern, its flags and a replacement as the corpus writes the result: `accepted`,
 # or the diagnostic `part@at message`.
-Refused: fn Text, Text, ?Text -> Text
+Refused: unbounded fn Text, Text, ?Text -> Text
 fn Refused pattern, flags, ?replacement = match ?RegexRefusal pattern, flags, ?replacement:
     nil: "accepted"
     ? d: "{d.part}@{d.at} {d.message}"

@@ -55,6 +55,8 @@ fn Type t = match t:
     OutChar: "char"
     OutText: "Text"
     OutCursor: "Cursor"
+    OutRegex: "Regex"
+    OutReplacement: "RegexReplacement"
     OutUnit: "()"
     OutPath: "Path"
     OutDuration: "Duration"
@@ -153,6 +155,10 @@ fn Expression x = match x:
     XIndex n: "{n}"
     XChar c: "'{CharEscape c}'"
     XStr t: "\"{Escape t}\""
+    # One literal, one compiled regex per thread: the static is built on its first use and
+    # each use clones it, which counts a reference (prism_rtl's `Regex` is an `Rc`).
+    XRegex p, f: "\{ thread_local!(static R: Regex = Regex::lit(\"{Escape p}\", \"{Escape f}\")); R.with(Regex::clone) \}"
+    XReplacement p, r, f: "\{ thread_local!(static R: RegexReplacement = RegexReplacement::lit(\"{Escape p}\", \"{Escape f}\", \"{Escape r}\")); R.with(RegexReplacement::clone) \}"
     XRef y: "&{Operand y}"
     XRefMut y: "&mut {Operand y}"
     XDeref y: "*{Operand y}"

@@ -7,6 +7,7 @@ use Syntax.Lexer.Layout.*
 use Syntax.Lexer.Literals.*
 use Syntax.Lexer.Templates.*
 use Syntax.Lexer.Corpus.*
+use Syntax.Lexer.Regexes.*
 use Syntax.*
 use Syntax.Decls.*
 
@@ -49,6 +50,7 @@ fn LexTokenAt l, start, c = match c:
     ":": PushTok (Bump l), KColon, start, start + 1
     ";": PushTok (Bump l), KSemi, start, start + 1
     "\\": LexBackslash l, start
+    "%": LexRegex l, "", start
     "|": LexBar l, start
     ".": LexDot l, start
     otherwise: match ?LexOperator l, start:
@@ -203,7 +205,7 @@ fn LexSigils l0:
     let ((sigils, caret, l)) = ReadSigils l0
     let next = Peek l
     if caret: LexCaret l, start, sigils, next
-    else: if (IsIdentStart next) or (IsDigit next) or next == "\"": LexAttached l, start, sigils, next
+    else: if (IsIdentStart next) or (IsDigit next) or next == "\"" or next == "%": LexAttached l, start, sigils, next
     else: if sigils == "&" and next == "." and (IsLower (PeekAt l, 1)): PushTok (Bump l), KLensDot, start, l.pos + 1
     else: FreeSigils l, start, sigils
 
@@ -247,6 +249,7 @@ fn LexAttached l, start, sigils, next:
     else: if IsDigit next:
         let ((kind, l2)) = LexNumber l, sigils
         PushTok l2, kind, start, l2.pos
+    else: if next == "%": LexRegex l, sigils, start
     else: LexWordToken l, sigils, start
 
 # Free. A run of several sigils before a bracket is several free sigils, each the prefix

@@ -244,6 +244,8 @@ fn CppType cp, t = match t:
     OutChar: "char32_t"
     OutText: "Text"
     OutCursor: "Cursor"
+    OutRegex: "Regex"
+    OutReplacement: "RegexReplacement"
     OutUnit: "Unit"
     OutPath: "Path"
     OutDuration: "Duration"

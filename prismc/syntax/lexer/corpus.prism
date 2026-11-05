@@ -51,6 +51,7 @@ fn TokenText (KFloat s, t) = "{s}{t}"
 fn TokenText (KDuration s, t, u) = "{s}{t}{u}"
 fn TokenText (KChar s, c) = "{s}{DebugChar c}"
 fn TokenText (KText s, segs) = "{s}TEXT({Concat (Each segs, SegText)})"
+fn TokenText (KRegex s, r) = "{s}REGEX({DebugText r.pattern}/{ReplacementText r.?replacement}{r.flags})"
 fn TokenText (KTemplate t) = "TEMPLATE<{t.lang}>({Concat (Each t.parts, PartText)})"
 fn TokenText (KOp op, True) = "{op}pre"
 fn TokenText (KOp op, False) = op
@@ -75,6 +76,10 @@ fn TokenText KLayOpen = "open"
 fn TokenText KLaySep = "sep"
 fn TokenText KLayClose = "close"
 fn TokenText KEof = "eof"
+
+ReplacementText: fn ?Text -> Text
+fn ReplacementText nil = ""
+fn ReplacementText (? t) = "{DebugText t}/"
 
 SegText: fn TextSegTok -> Text
 fn SegText (TsPlain p) = EscapeBraces (EscapeDebug p, True, True)

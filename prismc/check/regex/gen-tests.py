@@ -112,7 +112,7 @@ with open(os.path.join(here, "tests.prism"), "w", encoding="utf-8") as out:
     out.write("use Check.Regex.*\n\n")
     out.write("# A pattern, its flags and a replacement as the corpus writes the result: `accepted`,\n")
     out.write("# or the diagnostic `part@at message`.\n")
-    out.write("Refused: fn Text, Text, ?Text -> Text\n")
+    out.write("Refused: unbounded fn Text, Text, ?Text -> Text\n")
     out.write("fn Refused pattern, flags, ?replacement = match ?RegexRefusal pattern, flags, ?replacement:\n")
     out.write("    nil: \"accepted\"\n")
     out.write("    ? d: \"{d.part}@{d.at} {d.message}\"\n")

@@ -13,3 +13,5 @@ A bug leaves this directory when its fix lands.
   small one, so `TextsIn`'s fold is quadratic; C++ create10k is 112× create1k.
 - **`bench-cuis-latin1-and-software-paint.md`**: the Cuis table crashes on `▶` in a
   Latin-1 `String`; on Linux its times measure software painting.
+- **`lifted-field-read.md`**: a field read through a `?` checks and then reaches cargo as a
+  field of an `Option`; the book's regex example `m.named["key"].text` needs it.

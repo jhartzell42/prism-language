@@ -152,6 +152,7 @@ fn LitText l = match l.kind:
     LChar c: "'{c}'"
     LText segs: Concat (Each segs, LitSegText)
     LDuration d, u: "{d}{u}"
+    LRegex r: "%/{r.pattern}/"
 
 LitSegText: fn TextSeg -> Text
 fn LitSegText (SegPlain t) = t

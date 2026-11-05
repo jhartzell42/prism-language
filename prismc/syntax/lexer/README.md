@@ -8,6 +8,7 @@ The module `Syntax.Lexer` (claude/modules-style-pass.md): The lexer: characters 
 - `layout.prism`: `Syntax.Lexer.Layout`, a child module: Streams; Layout (rules 1 to 4 and 10; Conformance A.1 inside a `test` block).
 - `literals.prism`: `Syntax.Lexer.Literals`, a child module: Literals.
 - `templates.prism`: `Syntax.Lexer.Templates`, a child module: Templates (Templates ch. 2; Semantics ch. 2, "The template frame").
+- `regexes.prism`: `Syntax.Lexer.Regexes`, a child module: regular-expression literals, `%/.../` and the hashed form, read to their end within their line (Semantics ch. 2, Regular expressions).
 - `tests.prism`: `Syntax.Lexer.Tests`, its test module: The lexer's test module: its checks and the helpers they need, which only `prism test` and `prism check` read (claude/modules-style-pass.md).
 - `words.prism`: `Syntax.Lexer.Words`, a child module: Tokens; Sigils and words.
 

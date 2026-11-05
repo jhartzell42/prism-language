@@ -248,6 +248,9 @@ fn SexpLiteral l, d = match l.kind:
     LFloat s: "{l.marks}{s}"
     LDuration digits, u: "{l.marks}{digits}{u}"
     LChar c: "{l.marks}{DebugChar c}"
+    LRegex r: match r.?replacement:
+        nil: "({l.marks}regex {DebugText r.pattern} {DebugText r.flags})"
+        ? t: "({l.marks}regex-replacement {DebugText r.pattern} {DebugText t} {DebugText r.flags})"
     LText segs:
         if AllPlainSegs segs: "{l.marks}{DebugText (Concat (Each segs, PlainSegText))}"
         else: "({l.marks}text{Concat (Each segs, \|s| " {SexpSeg s, d}")})"

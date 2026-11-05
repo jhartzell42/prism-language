@@ -58,6 +58,8 @@ fn OutTyOf lx, t = match t:
     TyCon "unit", [[]]: OutUnit
     TyCon "Path", [[]]: OutPath
     TyCon "Cursor", [[]]: OutCursor
+    TyCon "Regex", [[]]: OutRegex
+    TyCon "RegexReplacement", [[]]: OutReplacement
     TyCon "Duration", [[]]: OutDuration
     TyCon "Prelude.Error", [[]]: OutError
     TyCon "\u{0}Self", [[]]: OutNamed "Self", [[]]

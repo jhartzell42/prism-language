@@ -1,0 +1,169 @@
+# `Syntax.Lexer.Regexes`, a child module of `Syntax.Lexer`: regular-expression literals
+# (Semantics ch. 2, Regular expressions; Appendix A.2), read to their end at once, within
+# their line. The pattern and the replacement are handed on as written between their
+# delimiters (the plain form's `\/` stays `\/`, the hashed form is raw); the checker reads
+# them against the dialect (claude/regex-dialect.md), the lexer only finds their ends.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.*
+
+let percentMessage = "`%` is no operator: the remainder is `mod`, and `%` begins a regular expression only as `%/` or `%#/`"
+
+# A literal at the `%`, its sigils (already read) beginning at `start`: `%/.../`, or the
+# hashed form `%#/.../#` with as many hashes in its closing delimiter as in its opening.
+LexRegex: unbounded fn Lex, Text, Nat -> Lex
+fn LexRegex l, sigils, start:
+    let pct = l.pos
+    let open = HashesEnd l.src, pct + 1
+    let hashes = Between l.src, pct + 1, open
+    if (CharAtByte l.src, open) != "/": NoRegex l, pct, open, hashes
+    else:
+        let close = "/{hashes}"
+        let ?end = if hashes == "": ?PlainEnd l.src, open + 1 else: ?HashedEnd l.src, open + 1, close
+        match ?end:
+            ? e: AfterPattern l, sigils, start, open + 1, e, close
+            nil: Unclosed l, sigils, start, (Between l.src, open + 1, (LineEndAt l.src, open)), open + 1, nil, "pattern", close
+
+# A `%` that begins no literal: "a `%` followed by anything but `/` or `#` is an error that
+# names `mod`".
+NoRegex: fn Lex, Nat, Nat, Text -> Lex
+fn NoRegex l, pct, open, hashes:
+    let end = if hashes == "": pct + 1 else: open
+    let message = if hashes == "": percentMessage else: "a hashed regular expression opens with `%`, its hashes and `/`: `%#/.../#`"
+    let l1 = update l:
+        &_.pos <= end
+    let l2 = LexErr l1, pct, end, message
+    update l2:
+        &_.lastWs <= True
+
+# After the pattern's closing delimiter, ending at `end`: the longest run of ASCII letters
+# and the one character after it decide (ch. 2, "Pattern or replacement"; doubt RX-R).
+AfterPattern: unbounded fn Lex, Text, Nat, Nat, Nat, Text -> Lex
+fn AfterPattern l, sigils, start, at, end, close:
+    let src = l.src
+    let pattern = Between src, at, end
+    let after = end + (Len close)
+    let runEnd = LettersEnd src, after
+    let run = Between src, after, runEnd
+    let c = CharAtByte src, runEnd
+    let plain = close == "/"
+    # A terminator, in the plain form whitespace too: the run is the flags.
+    if c == "" or c == "\n" or (Contains ",)]\}:;", c) or (plain and (IsSpaceChar c)): Finish l, sigils, start, pattern, at, nil, 0, after
+    # The closing delimiter again: the run is a replacement of letters only.
+    else: if HasPrefix (TextFrom src, runEnd), close: Finish l, sigils, start, pattern, at, (? run), after, runEnd + (Len close)
+    # Anything else after no letters begins a replacement running to the next delimiter;
+    # in the hashed form letters before whitespace do too, when the line holds one.
+    else: if plain and run == "": match ?PlainEnd src, after:
+        ? e: Finish l, sigils, start, pattern, at, (? (Between src, after, e)), after, e + 1
+        nil: Unclosed l, sigils, start, pattern, at, (? (Between src, after, (LineEndAt src, after))), "replacement", close
+    else: if not plain and (run == "" or (IsSpaceChar c)): match ?HashedEnd src, after, close:
+        ? e: Finish l, sigils, start, pattern, at, (? (Between src, after, e)), after, e + (Len close)
+        nil: Finish l, sigils, start, pattern, at, nil, 0, after
+    # Letters followed by anything else: read as flags, which the checker refuses, naming
+    # the hashed form.
+    else: Finish l, sigils, start, pattern, at, nil, 0, after
+
+# The literal, its flags the letters from `flagsAt`; a name character touching them is an
+# error ("a name character right after the flags").
+Finish: unbounded fn Lex, Text, Nat, Text, Nat, ?Text, Nat, Nat -> Lex
+fn Finish l, sigils, start, pattern, at, ?replacement, replacementAt, flagsAt:
+    let src = l.src
+    let flagsEnd = LettersEnd src, flagsAt
+    let lit = RegexLit(pattern=pattern, patternAt=at, replacement=?replacement, replacementAt=replacementAt, flags=(Between src, flagsAt, flagsEnd), flagsAt=flagsAt)
+    let tail = IdentEnd src, flagsEnd
+    let l1 = update l:
+        &_.pos <= tail
+    let l2 = if tail > flagsEnd: LexErr l1, flagsEnd, tail, "`{Between src, flagsEnd, tail}` touches the flags of a regular expression: the flags are letters, and no name character follows them" else: l1
+    PushTok l2, (KRegex sigils, lit), start, flagsEnd
+
+# A literal whose pattern or replacement the line ends inside: an error over the literal,
+# and the literal as far as the line goes, so that nothing after it is misread.
+Unclosed: unbounded fn Lex, Text, Nat, Text, Nat, ?Text, Text, Text -> Lex
+fn Unclosed l, sigils, start, pattern, at, ?replacement, what, close:
+    let end = LineEndAt l.src, at
+    let lit = RegexLit(pattern=pattern, patternAt=at, replacement=?replacement, replacementAt=at, flags="", flagsAt=end)
+    let l1 = update l:
+        &_.pos <= end
+    let l2 = LexErr l1, start, end, "a regular expression ends on its line: close its {what} with `{close}`"
+    PushTok l2, (KRegex sigils, lit), start, end
+
+# Where a plain form's text ends: the first `/` not paired with a `\` before it, from
+# `at`; `nil` when the line ends first.
+?PlainEnd: unbounded fn Text, Nat -> ?Nat
+fn ?PlainEnd src, at:
+    let ((?found, ignore, ignore)) = update ((nil, at, True)):
+        let &i = at
+        let &going = True
+        let &?found = nil
+        while &going:
+            let c = CharAtByte src, &i
+            if c == "" or c == "\n":
+                &going <= False
+            else:
+                if c == "/":
+                    &?found <= ? &i
+                    &going <= False
+                else:
+                    if c == "\\":
+                        let d = CharAtByte src, &i + 1
+                        if d == "" or d == "\n":
+                            &going <= False
+                        else:
+                            &i += 1 + (Len d)
+                    else:
+                        &i += Len c
+        &_ <= ((&?found, &i, &going))
+    ?found
+
+# Where a hashed form's text ends: the first `close` (`/` and the hashes) from `at`; `nil`
+# when the line ends first. Nothing in it is an escape.
+?HashedEnd: unbounded fn Text, Nat, Text -> ?Nat
+fn ?HashedEnd src, at, close:
+    let ((?found, ignore, ignore)) = update ((nil, at, True)):
+        let &i = at
+        let &going = True
+        let &?found = nil
+        while &going:
+            let c = CharAtByte src, &i
+            if c == "" or c == "\n":
+                &going <= False
+            else:
+                if c == "/" and (HasPrefix (TextFrom src, &i), close):
+                    &?found <= ? &i
+                    &going <= False
+                else:
+                    &i += Len c
+        &_ <= ((&?found, &i, &going))
+    ?found
+
+# The first byte from `at` that is not a `#`.
+HashesEnd: unbounded fn Text, Nat -> Nat
+fn HashesEnd src, at = update at:
+    while (CharAtByte src, &_) == "#":
+        &_ += 1
+
+# The first byte from `at` that is not an ASCII letter.
+LettersEnd: unbounded fn Text, Nat -> Nat
+fn LettersEnd src, at = update at:
+    while (IsUpper (CharAtByte src, &_)) or (IsLower (CharAtByte src, &_)):
+        &_ += 1
+
+# The first byte from `at` that is not a name character.
+IdentEnd: unbounded fn Text, Nat -> Nat
+fn IdentEnd src, at = update at:
+    while IsIdentChar (CharAtByte src, &_):
+        &_ += 1
+
+# The end of the line `at` is on: its newline, or the end of the text.
+LineEndAt: unbounded fn Text, Nat -> Nat
+fn LineEndAt src, at = update at:
+    while (CharAtByte src, &_) != "" and (CharAtByte src, &_) != "\n":
+        &_ += Len (CharAtByte src, &_)
+
+# The text from byte `at` on.
+TextFrom: fn Text, Nat -> Text
+fn TextFrom src, at = match ?CursorAt src, at:
+    ? c: After c
+    nil: ""
