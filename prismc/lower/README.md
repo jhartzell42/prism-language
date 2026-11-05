@@ -1,6 +1,6 @@
 # lower/
 
-The module `Lower` (docs/modules-style-pass.md): Lowering: the checked program to the core form a printer spells (Compiler ch.
+The module `Lower` (claude/modules-style-pass.md): Lowering: the checked program to the core form a printer spells (Compiler ch.
 
 - `mod.prism`: the main file: the header; the context: the environment, the typed tables by place, the module being lowered, names.
 - `expr.prism`: a section; literals, plain expressions.

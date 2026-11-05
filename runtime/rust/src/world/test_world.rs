@@ -23,7 +23,7 @@
 //! left side is read as a value.
 //!
 //! A tick that aborts leaves no state to go on from, since this implementation keeps no
-//! checkpoints: the test's later steps fail (doubt AB in docs/backend.md).
+//! checkpoints: the test's later steps fail (doubt AB in claude/backend.md).
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -600,7 +600,7 @@ fn indent(line: &str) -> usize {
     line.len() - line.trim_start().len()
 }
 
-/// A declaration at the left edge of a test module (docs/modules-style-pass.md) beside its
+/// A declaration at the left edge of a test module (claude/modules-style-pass.md) beside its
 /// tests: a helper type, function or value, its `derive` or signature line. The compiled
 /// program holds it, so the script passes over it, body and all.
 fn is_declaration(head: &str) -> bool {

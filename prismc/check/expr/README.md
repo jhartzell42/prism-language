@@ -1,6 +1,6 @@
 # check/expr/
 
-The module `Check.Expr` (docs/modules-style-pass.md): Expressions (Type System ch.
+The module `Check.Expr` (claude/modules-style-pass.md): Expressions (Type System ch.
 
 - `mod.prism`: the main file: the header; inference, names, literals.
 - `calls.prism`: a section; calls, lambdas.

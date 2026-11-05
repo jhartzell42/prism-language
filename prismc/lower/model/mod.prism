@@ -1,4 +1,4 @@
-# `Lower.Model`: the core form lowering decides (docs/backend.md), which the printers
+# `Lower.Model`: the core form lowering decides (claude/backend.md), which the printers
 # (`Emit.Rust`, `Emit.Cpp`) spell and nothing after it changes (K9).
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r
@@ -14,7 +14,7 @@ use Lower.Node.*
 # The core form
 # ---------------------------------------------------------------------------------------
 
-# A type of the output program (docs/backend.md, "Types"): the value types, and the
+# A type of the output program (claude/backend.md, "Types"): the value types, and the
 # runtime's cells, ports, references and shared pointers a node is made of.
 type OutTy = choice:
     OutNat
@@ -314,7 +314,7 @@ type CxArg = choice:
     CxNone
 derive ^Eq, ^Show
 
-# A node: one widget block's storage and methods (docs/backend.md, "A widget block").
+# A node: one widget block's storage and methods (claude/backend.md, "A widget block").
 type NodeDef = record:
     name: Text
     prism: Text
@@ -376,7 +376,7 @@ fn ScopePos k = Pos(scope=k, at=0)
 PlaceText: fn Pos -> Text
 fn PlaceText p = if p.scope == 0: "{p.at}" else: "h{p.scope}_{p.at}"
 
-# A `rebuild` (docs/backend.md, "Dynamic structure"): one generation at `path/n/#g`,
+# A `rebuild` (claude/backend.md, "Dynamic structure"): one generation at `path/n/#g`,
 # torn down and built anew from the source after a tick that changed it; the clause of a
 # widget of several clauses chosen by matching its arguments.
 type GenDef = record:
@@ -394,7 +394,7 @@ type GenDef = record:
     width: Nat
 derive ^Eq, ^Show
 
-# A `for` builder (docs/backend.md, "Dynamic structure"): a map of rows, each a node of
+# A `for` builder (claude/backend.md, "Dynamic structure"): a map of rows, each a node of
 # its own at `path/n/[k]`, rebuilt from the source after the tick.
 type ForDef = record:
     name: Text

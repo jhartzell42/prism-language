@@ -1,4 +1,4 @@
-# Modules as directories (docs/modules-style-pass.md): a section is its module, so a
+# Modules as directories (claude/modules-style-pass.md): a section is its module, so a
 # family's tags may be declared over several sections (Type System ch. 2, "Every tag of a
 # family is declared in its family's module"); `lines` and `fills` declare `Ink`'s, and
 # `measure` matches them exhaustively, with no `Ink.*` arm.

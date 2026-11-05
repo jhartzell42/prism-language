@@ -1,6 +1,6 @@
 # examples/chess
 
-Chess in Prism, a program tree (docs/modules-style-pass.md): `app.prism` (the root:
+Chess in Prism, a program tree (claude/modules-style-pass.md): `app.prism` (the root:
 sixty-four squares in a grid, the selection and the game as holds, a status label),
 `rules/` (`Rules`, the game as plain functions), `window/` (`Window`, a window library:
 layout, hit testing and focus as host documents in Prism, over the four `Gui` tags a

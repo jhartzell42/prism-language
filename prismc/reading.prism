@@ -2,7 +2,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # ---------------------------------------------------------------------------------------
-# Reading a program: files, and directories read as trees (docs/modules-style-pass.md)
+# Reading a program: files, and directories read as trees (claude/modules-style-pass.md)
 # ---------------------------------------------------------------------------------------
 
 # What a run reads, and what it does then: the checker's report (`--check`, `--typed`) or,

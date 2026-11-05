@@ -29,7 +29,7 @@ fn NodeDefOf lx, qk, params, body, sc, isRoot:
     let wx3 = if isRoot: RootResult wx2 else: wx2
     FinishNode wx3, qk, ps, False
 
-# The root's result goes to the World (docs/backend.md: `cx.result(..)`).
+# The root's result goes to the World (claude/backend.md: `cx.result(..)`).
 RootResult: fn Wx -> Wx
 fn RootResult wx = match wx.result:
     WrEv r: Connect wx, r, SkResult

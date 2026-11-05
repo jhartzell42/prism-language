@@ -1,4 +1,8 @@
-# docs
+# claude
+
+Everything here is written by Claude, not by Jimmy: notes for the work on this branch,
+not documentation he has signed off on. Claude-written code can sit beside his code;
+Claude-written prose lives here, under this name, and nowhere else.
 
 - **`architecture.md`**: the pieces of this repository and how a program flows through
   them.

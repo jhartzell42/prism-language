@@ -1,6 +1,6 @@
 # tests
 
-- **`conformance/`**: programs, each a tree (docs/modules-style-pass.md): a directory
+- **`conformance/`**: programs, each a tree (claude/modules-style-pass.md): a directory
   `NAME/` with its root `app.prism`, its test module `tests.prism` (in the Conformance
   book's test language) and the transcript `tests.expected`, each pinning a rule of the
   books; a program's other modules are its submodules (`sem-ch06-birds/birds/`). The

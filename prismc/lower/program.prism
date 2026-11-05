@@ -262,7 +262,7 @@ fn JobRoots lx:
     Fold (Range0 8), direct, \|acc, ignore| Fold acc, acc, \|a, qk| UnionTexts a, (TailTargets lx, qk)
 
 # The unbounded functions a definition names as values, not called: each value is its
-# `Start` (docs/backend.md), so each has a job.
+# `Start` (claude/backend.md), so each has a job.
 UnboundedValues: unbounded fn Lx, Def -> [Text]
 fn UnboundedValues lx, d:
     let es = match d.body:
@@ -402,7 +402,7 @@ fn DefItems lx, d, roots:
 NodeItems: fn NodeDef -> [Item]
 fn NodeItems n = Append [[ItNode n]], (Each n.children, \|c| ItNode c)
 
-# A declared type's Rust type (docs/backend.md, "Types").
+# A declared type's Rust type (claude/backend.md, "Types").
 TyDefs: unbounded fn Lx, TyInfo -> [Item]
 fn TyDefs lx, ti:
     let derives = Each ti.derives, \|dn| BareName dn

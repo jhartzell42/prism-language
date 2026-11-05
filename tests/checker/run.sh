@@ -4,7 +4,7 @@
 # `pos/NAME.expected` records (the programs the README lists as wrong by the books), and so
 # does every program of its own under `pos/`; every
 # negative program under `neg/` gives exactly its `.expected` diagnostic. A directory under
-# `pos/` or `neg/` is one program, a tree (docs/modules-style-pass.md), its `.expected`
+# `pos/` or `neg/` is one program, a tree (claude/modules-style-pass.md), its `.expected`
 # beside it; every program is checked with `--tests`, its test modules read. A `# args: ...`
 # first line passes options (`--world Ui`). Then the typed output (prismc/typed.prism):
 # `--typed` over chess and the conformance counter annotates every expression with a type,
@@ -65,7 +65,7 @@ compare() {
 
 wanted() { [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$1" ] && return 0; done; return 1; }
 
-# The positive set: every program of the corpus, each a tree (docs/modules-style-pass.md).
+# The positive set: every program of the corpus, each a tree (claude/modules-style-pass.md).
 declare -A programs
 for d in tests/conformance/*/; do
     [ -f "$d/app.prism" ] && programs[$(basename "$d")]="${d%/}"
@@ -74,7 +74,7 @@ programs[chess]=examples/chess
 programs[prelude]=prelude
 programs[prismc]=prismc
 for f in "$here"/pos/*.prism; do [ -e "$f" ] && programs[$(basename "$f" .prism)]="$f"; done
-# a directory under pos/ is one program, a tree (docs/modules-style-pass.md)
+# a directory under pos/ is one program, a tree (claude/modules-style-pass.md)
 for d in "$here"/pos/*/; do [ -d "$d" ] && programs[$(basename "$d")]="${d%/}"; done
 
 for name in $(printf '%s\n' "${!programs[@]}" | sort); do

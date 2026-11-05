@@ -21,7 +21,7 @@ derive ^Eq, ^Show
 
 # A source as the checker holds it: its path, its text, where its lines start, and the
 # files it joins. A module of a tree is its main file, its sections and its test modules
-# read as one text, each file after a newline (docs/modules-style-pass.md); `segs` says
+# read as one text, each file after a newline (claude/modules-style-pass.md); `segs` says
 # where each begins, so a diagnostic names the file and line it is in.
 type Src = record:
     path: Text

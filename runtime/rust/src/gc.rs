@@ -18,7 +18,7 @@
 //!   garbage node's fields, which breaks the loop, and the counts free the bytes.
 //!
 //! A zombie stays watched until it dies, so a round costs the live zombies and what they
-//! keep, never the tree (doubt GC in docs/backend.md).
+//! keep, never the tree (doubt GC in claude/backend.md).
 
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};

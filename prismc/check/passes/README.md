@@ -1,6 +1,6 @@
 # check/passes/
 
-The module `Check.Passes` (docs/modules-style-pass.md): The separate checkers (Type System ch.
+The module `Check.Passes` (claude/modules-style-pass.md): The separate checkers (Type System ch.
 
 - `mod.prism`: the main file: the header; exhaustiveness and reachability, inclusion and the forwarding-arm remainder.
 - `borrows.prism`: a section; `&` blocks: escapes, freezes, borrows.

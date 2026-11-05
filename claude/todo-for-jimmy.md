@@ -1,7 +1,7 @@
 # To do, for Jimmy
 
 *Written by Claude on the claude-self-hosting branch; subject to change. Jimmy's list, to
-reform as he likes; Claude's own list is `docs/handoff.md`.*
+reform as he likes; Claude's own list is `claude/handoff.md`.*
 
 ## Things to try
 
@@ -30,7 +30,7 @@ A path that keeps the tests green at every step:
 3. **Then the runtimes and the Worlds** (`runtime/`, `worlds/`): their unit tests, then
    the compiled suites over them.
 4. **Then the scripts and the docs:** `prism`, `bootstrap/`, `tests/*/run.sh`, `bench/`,
-   every README and `docs/`.
+   every README and `claude/`.
 5. **Last, the seeds:** `bootstrap/bootstrap.sh --update` and `make bootstrap-cpp-update`
    from your own compiler, so the archives are yours too.
 

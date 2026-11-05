@@ -1,4 +1,4 @@
-//! The CLI World against programs written by hand in the shape docs/backend.md gives the
+//! The CLI World against programs written by hand in the shape claude/backend.md gives the
 //! templates (as runtime/rust/tests/counter.rs is), driven by `prism_rtl::drive`.
 
 use std::rc::Rc;

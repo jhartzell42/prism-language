@@ -1,6 +1,6 @@
 # check/blocks/
 
-The module `Check.Blocks` (docs/modules-style-pass.md): Blocks (Semantics ch.
+The module `Check.Blocks` (claude/modules-style-pass.md): Blocks (Semantics ch.
 
 - `mod.prism`: the main file: the header; widget blocks.
 - `borrows.prism`: a section; `&` blocks.

@@ -51,7 +51,7 @@ match self {
 }
 </rust>
 
-# A type with its own `^Show` crosses as its text and its structure (docs/backend.md,
+# A type with its own `^Show` crosses as its text and its structure (claude/backend.md,
 # "Printing"): a key prints `0/[e2]/0` and still matches structurally.
 ShownPod: fn Text -> Text
 fn ShownPod structure = inline_text <rust>
@@ -227,7 +227,7 @@ fn Method doc, signature, body = inline_text <rust>
 }
 </rust>
 
-# A `for`'s builder (docs/backend.md, "Dynamic structure"), run at the build and in the
+# A `for`'s builder (claude/backend.md, "Dynamic structure"), run at the build and in the
 # build list after a tick that changed its source, once. A kept row reads its entry through
 # the block's `{{source}}` getter at its own read point: the builder writes nothing to it. A
 # host's rows are built the same way over its child's document, with the host as their

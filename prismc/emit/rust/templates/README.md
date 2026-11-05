@@ -1,6 +1,6 @@
 # emit/rust/templates/
 
-The module `Emit.Rust.Templates` (docs/modules-style-pass.md): The Rust template set (Templates ch.
+The module `Emit.Rust.Templates` (claude/modules-style-pass.md): The Rust template set (Templates ch.
 
 - `mod.prism`: the main file: the header; comments, files.
 - `items.prism`: a section; types, functions and jobs, nodes, expressions and statements that take several lines.

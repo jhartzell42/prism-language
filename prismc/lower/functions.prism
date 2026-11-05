@@ -2,7 +2,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # ---------------------------------------------------------------------------------------
-# Functions (docs/backend.md: a plain function is a Rust `fn` taking references, its
+# Functions (claude/backend.md: a plain function is a Rust `fn` taking references, its
 # clauses one `match`; generics are Rust's, monomorphized by rustc, doubt MO)
 # ---------------------------------------------------------------------------------------
 
@@ -178,7 +178,7 @@ fn LetGetter lx, qk, l:
     FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=[[]], params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True)
 
 # ---------------------------------------------------------------------------------------
-# Traits and impls (docs/backend.md: a trait is a Rust trait, `derive` impls; a program's
+# Traits and impls (claude/backend.md: a trait is a Rust trait, `derive` impls; a program's
 # own `impl ^Show` prints by `p.raw`)
 # ---------------------------------------------------------------------------------------
 

@@ -22,7 +22,7 @@ fn NodeParts cp, n:
     let answerDecl = if (Len n.answers) == 0: [[]] else: [["Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override;"]]
     let rowDecl = if n.rowKind == NotARow: [[]] else: [["void leave_row(Cx& cx) override;"]]
     let decls = Join (Append (Append (Append (Append (Append [[makeDecl]], methodDecls), builderDecls), hookDecls), answerDecl), rowDecl), "\n"
-    let doc = CppSourceDoc "`{n.prism}`: a node of its own (docs/backend.md, \"A widget block\").", n.doc
+    let doc = CppSourceDoc "`{n.prism}`: a node of its own (claude/backend.md, \"A widget block\").", n.doc
     let decl = NodeClass doc, n.name, base, fields, consts, "{n.name}({ctorParams}) : {ctorInits} \{\}", decls
     # the constructor's arguments in the order the fields are declared
     let byField = Each n.fields, \|((f, ignore, ignore))| Or (Fold n.inits, nil, \|?found, ((g, v))| if g == f: ? v else: ?found), (XVar f)

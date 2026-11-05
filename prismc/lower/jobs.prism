@@ -2,7 +2,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # ---------------------------------------------------------------------------------------
-# Unbounded functions as step machines (Semantics ch. 7; D6; docs/backend.md, "Unbounded
+# Unbounded functions as step machines (Semantics ch. 7; D6; claude/backend.md, "Unbounded
 # functions and `@Run`")
 # ---------------------------------------------------------------------------------------
 
@@ -420,7 +420,7 @@ fn Frame lx, env, call, restText, Cont = match call.kind:
         if (Len dos) == 0: enter else: XBlock dos, enter
     otherwise: Cont env
 
-# A local whose value is an unbounded function: its `Start` (docs/backend.md).
+# A local whose value is an unbounded function: its `Start` (claude/backend.md).
 ?LocalJobFn: unbounded fn Lx, Env, Expr -> ?Vl
 fn ?LocalJobFn lx, env, c = match c.kind:
     EName n:

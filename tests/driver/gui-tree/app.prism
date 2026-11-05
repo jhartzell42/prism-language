@@ -1,5 +1,5 @@
 # A tree whose root emits `Gui.*`: `prism run --print-world` reads the directory as a tree
-# (docs/modules-style-pass.md) and picks the canvas World from app.prism's row.
+# (claude/modules-style-pass.md) and picks the canvas World from app.prism's row.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Gui.*
 mod title

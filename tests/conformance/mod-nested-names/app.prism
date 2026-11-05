@@ -1,4 +1,4 @@
-# Modules as directories (docs/modules-style-pass.md): `A.Types` beside a top-level
+# Modules as directories (claude/modules-style-pass.md): `A.Types` beside a top-level
 # `Types`, each with a type `Amount`. A qualified name is a full path from the root, never
 # relative, so inside `A` `Types.Amount` is the top-level one: the C++ target qualifies every
 # reference from the global namespace (an inner `a::types` would hide `types`), and the

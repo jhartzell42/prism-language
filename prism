@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The `prism` command (docs/architecture.md, "Single commands"), a thin shell over a
+# The `prism` command (claude/architecture.md, "Single commands"), a thin shell over a
 # native prismc:
 #
 #   ./prism compile [--target T] SRC... -o OUT   the program in OUT: a Rust crate, or C++
@@ -13,7 +13,7 @@
 # overrides, e.g. `-O0 -g` to debug a failing test), and runs its tests
 # under the C++ Test World; `run` under the C++ target takes the CLI World only.
 #
-# SRC is a directory, which goes to prismc as it is, a tree (docs/modules-style-pass.md):
+# SRC is a directory, which goes to prismc as it is, a tree (claude/modules-style-pass.md):
 # its app.prism, lib.prism or mod.prism; or a loose `.prism` file. `test` and `check` read
 # test modules (prismc's `--tests`), `compile` and `run` never do. `test` runs every test
 # module under the compiled Test World, each transcript byte-equal to the `.expected` of

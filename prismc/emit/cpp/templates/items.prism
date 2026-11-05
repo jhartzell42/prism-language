@@ -128,7 +128,7 @@ fn NodeMake name, signature, lets, args, rest = inline_text <cpp>
 }
 </cpp>
 
-# A `for`'s builder (docs/backend.md, "Dynamic structure").
+# A `for`'s builder (claude/backend.md, "Dynamic structure").
 ForBuildTemplate: fn Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
 fn ForBuildTemplate owner, name, at, keyTy, valueTy, rowMake, source, parent, passed = inline_text <cpp>
 /// The rows of the `for` at `{{at}}`: rows whose key left are torn down, new keys are

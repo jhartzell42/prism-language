@@ -1,4 +1,4 @@
-# The single commands (docs/architecture.md, "Single commands"). Written by Claude,
+# The single commands (claude/architecture.md, "Single commands"). Written by Claude,
 # 2 November 2026, on the claude-self-hosting branch. Subject to change.
 
 .PHONY: test test-sanitize bootstrap bootstrap-update bootstrap-cpp bootstrap-cpp-update chess

@@ -7,7 +7,7 @@
 
 # A dynamic expression as its reader: the plain expression over the current values, each
 # hold read at the read point (`self.x.get(cx)`), and the holds and getters it reads, for
-# the marks (docs/backend.md, "Marks"). Lifting is the checker's; at one moment a lifted
+# the marks (claude/backend.md, "Marks"). Lifting is the checker's; at one moment a lifted
 # expression is the plain one.
 DynamicExpr: unbounded fn Wx, Env, Expr -> ((Ex, [Read]))
 fn DynamicExpr wx, menv, e:

@@ -1,6 +1,6 @@
 # check/typed/
 
-The module `Check.Typed` (docs/modules-style-pass.md): The checker's typed output, for the back end (Type System ch.
+The module `Check.Typed` (claude/modules-style-pass.md): The checker's typed output, for the back end (Type System ch.
 
 - `mod.prism`: the main file: the header.
 - `print.prism`: a section; printing.

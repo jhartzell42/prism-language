@@ -1,7 +1,7 @@
 # The prelude of every compiled program (Semantics Appendix B; prelude/prelude.prism):
 # its builtins and the functions it writes in Prism, as Rust over `prism_rtl`, emitted as
 # `src/prelude.rs` word for word. Every function takes its arguments by reference and
-# gives back a value, as emitted functions do (docs/backend.md); a closure parameter is
+# gives back a value, as emitted functions do (claude/backend.md); a closure parameter is
 # a `&dyn Fn`. Where one Prism name serves an array, a text and a map (doubt LZ), the
 # variants are `len`, `len_text`, `len_map`, and lowering picks by the argument's type.
 # The runner helpers `main` calls are here too.
@@ -677,7 +677,7 @@ impl Row for prism_rtl::HostRow<crate::Elem, crate::Answer> {
 }
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
-/// kept for its leaving (docs/backend.md: `Port::subscribe`).
+/// kept for its leaving (claude/backend.md: `Port::subscribe`).
 pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &std::cell::Cell<Option<Handle>>) {
     let Some(parent) = parent else { return };
     let me = Rc::downgrade(node);
@@ -692,7 +692,7 @@ pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Optio
 
 // ---- Jobs -------------------------------------------------------------------------------
 
-/// A frame of a job's stack (D6; docs/backend.md, "Unbounded functions and `@Run`"): the
+/// A frame of a job's stack (D6; claude/backend.md, "Unbounded functions and `@Run`"): the
 /// caller of `callee`, a call of an unbounded function that was not in tail position,
 /// waiting for its result. Entering the call is a cycle point; the result resumes `then`
 /// in the cycle the callee finishes. Frames nest, the innermost call deepest, so a job's

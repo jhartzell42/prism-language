@@ -1,4 +1,4 @@
-# Modules as directories (docs/modules-style-pass.md): a root divided into sections, each a
+# Modules as directories (claude/modules-style-pass.md): a root divided into sections, each a
 # file the header declares by `mod`. Every section sees the others' names bare, and the
 # test module `tests.prism` sees them all; `prism run` reads no test module.
 # Written by Claude on the claude-self-hosting branch; subject to change.

@@ -25,4 +25,4 @@ MIT license, available in `LICENSE.md`.
 
 Each directory has a README: `prismc/` (the compiler), `prelude/`, `runtime/rust/` and
 `runtime/cpp/` (the runtimes), `worlds/{cli,canvas}/{rust,cpp}/` (the Worlds), `bench/`, `bootstrap/`,
-`tests/`, `examples/chess/`, `docs/`.
+`tests/`, `examples/chess/`, `claude/`.

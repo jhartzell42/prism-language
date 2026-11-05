@@ -91,7 +91,7 @@ fn ModHeader s, p, isTest, itemStart = match Kind p:
     KName n if n.sigils == "" and (Len n.path) == 1 and not (isTest and n.case == CaseUpper):
         let line = ModLine(name=Ident(name=(Or n.path[0], ""), span=(Here p)), isTest=isTest, span=(To itemStart, (Here p)))
         update s:
-            &_.p <= if s.stage > 3: NoteError (Adv p), itemStart, "`mod` lines come after `emit` and above `use` (docs/modules-style-pass.md)" else: Adv p
+            &_.p <= if s.stage > 3: NoteError (Adv p), itemStart, "`mod` lines come after `emit` and above `use` (claude/modules-style-pass.md)" else: Adv p
             &_.m.mods <= Push &_.m.mods, line
             &_.stage <= 3
     otherwise: update s:

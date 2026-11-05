@@ -1,5 +1,5 @@
 # A tree that checks clean: the root, a section, a submodule and a test module
-# (docs/modules-style-pass.md).
+# (claude/modules-style-pass.md).
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
 mod words

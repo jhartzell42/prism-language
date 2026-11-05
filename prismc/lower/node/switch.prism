@@ -2,7 +2,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # ---------------------------------------------------------------------------------------
-# `rebuild` and `@Switch` (docs/backend.md, "Dynamic structure"; Compiler ch. 3)
+# `rebuild` and `@Switch` (claude/backend.md, "Dynamic structure"; Compiler ch. 3)
 # ---------------------------------------------------------------------------------------
 
 # A row's environments from its block's: `_` the generation's value (or the `for` entry),
@@ -350,7 +350,7 @@ fn ForwardGen gd:
     let isCurrent = XBin "==", (XBin "+", (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
     XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
 
-# `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (docs/backend.md, "Dynamic structure";
+# `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (claude/backend.md, "Dynamic structure";
 # Semantics ch. 7): a field with the current inner, a hold of the generation's `Dynamic`,
 # adopted at the build from the `rebuild`'s dynamic and afterwards among the first firings
 # of the tick after the one in which the `rebuild`'s dynamic moved (`MovedBy`); the

@@ -1,6 +1,6 @@
 # syntax/parser/
 
-The module `Syntax.Parser` (docs/modules-style-pass.md): The parser: tokens to the tree of ast.prism (Semantics ch.
+The module `Syntax.Parser` (claude/modules-style-pass.md): The parser: tokens to the tree of ast.prism (Semantics ch.
 
 - `mod.prism`: the main file: the header; the cursor, names.
 - `blocks.prism`: a section; blocks and statements.

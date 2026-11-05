@@ -2,7 +2,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # ---------------------------------------------------------------------------------------
-# Types (docs/backend.md, "Types")
+# Types (claude/backend.md, "Types")
 # ---------------------------------------------------------------------------------------
 
 # A checker type as a Rust type. The time layers outside are the caller's to peel: a `$a`
@@ -137,7 +137,7 @@ fn LayerOf t = match t:
     otherwise: LyPlain
 
 # Whether a constructor's fields hold their type's own values by value (directly, in an
-# optional or a tuple), so they go behind an `Rc` (docs/backend.md: recursive payloads
+# optional or a tuple), so they go behind an `Rc` (claude/backend.md: recursive payloads
 # behind `Rc`). Arrays and maps are behind a pointer already.
 Layouts: unbounded fn G -> (Text ==> [Bool])
 fn Layouts g = Fold (Values g.ctors), {}, \|m, c| Insert m, c.name, (Each c.args, \|a| Reaches g, a, c.owner, [[]])
@@ -318,7 +318,7 @@ fn ?ThroughParent x = match x:
         nil: nil
     otherwise: nil
 
-# The value, owned: a place is cloned (values are cheap to clone, docs/backend.md).
+# The value, owned: a place is cloned (values are cheap to clone, claude/backend.md).
 Own: fn Vl -> Ex
 fn Own (VlPlace x, RcRef, ignore) = XClone (XDeref (XDeref x))
 fn Own (VlPlace x, RcOwned, ignore) = XClone (XDeref x)

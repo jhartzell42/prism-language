@@ -2,7 +2,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # ---------------------------------------------------------------------------------------
-# Elements (docs/backend.md: each place goes out with `cx.added` in its `Level`; an answer
+# Elements (claude/backend.md: each place goes out with `cx.added` in its `Level`; an answer
 # calls the input method; a request field's firing is `cx.request`)
 # ---------------------------------------------------------------------------------------
 
@@ -92,7 +92,7 @@ fn ElementOutput wx, menv, tg, out, pos, ?bound, level:
 
 # A bundle's output (`Gui.Window`'s `((WindowId, !WindowInput))`), taken apart by its
 # tuple pattern: the plain parts are the place's first value (one part itself, several a
-# tuple), the event part its answers (docs/backend.md, "Answers"; the World protocol's
+# tuple), the event part its answers (claude/backend.md, "Answers"; the World protocol's
 # bundle). A `$` part, or a second event part, is not lowered yet; nor is a bundle in a
 # hosted scope, whose `Answer` variant would carry two types.
 BundleOutput: unbounded fn Wx, TagInfo, OutTy, Pos, [?Bn], Ex -> ((Wx, Wres))

@@ -1,6 +1,6 @@
 # lower/node/
 
-The module `Lower.Node` (docs/modules-style-pass.md): `Lower.Node`: widget blocks lowered to nodes (Compiler ch.
+The module `Lower.Node` (claude/modules-style-pass.md): `Lower.Node`: widget blocks lowered to nodes (Compiler ch.
 
 - `mod.prism`: the main file: the header; widget blocks: one node per block, children in static positions merged in.
 - `def.prism`: a section; a node from a widget definition.

@@ -5,7 +5,7 @@
 // holds, states and transitions) emitted from code templates. This library is what is
 // left: the part of a compiled program that is not generated per block, written once
 // and shared by every program. It is a port of the Rust crate `prism_rtl`
-// (runtime/rust/), whose contract with the emitter is docs/backend.md; README.md
+// (runtime/rust/), whose contract with the emitter is claude/backend.md; README.md
 // beside this directory maps each Rust name to its C++ one.
 //
 // The headers, from the bottom up:

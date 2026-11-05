@@ -1,4 +1,4 @@
-// Hosting (Semantics ch. 9, "`@HostDocument` and its forms"; docs/backend.md, "Hosting"):
+// Hosting (Semantics ch. 9, "`@HostDocument` and its forms"; claude/backend.md, "Hosting"):
 // what is the same in every program when a host document is lowered as a `for` over its
 // child's document.
 //
@@ -86,7 +86,7 @@ concept AnswerOf = std::copyable<A> && requires(const E& e, const Pod& p) {
 template <class E, class A>
 class HostOf;
 
-/// Where a node's places go (docs/backend.md, "Hosting"): the document (`hosted` null),
+/// Where a node's places go (claude/backend.md, "Hosting"): the document (`hosted` null),
 /// or an enclosing host's document, which answers a first-value query itself.
 template <class E, class A>
 struct Scope {
@@ -96,7 +96,7 @@ struct Scope {
     bool is_world() const { return !hosted; }
 };
 
-/// `@o` as a value (docs/backend.md, "Types"): built at a path with the sink that answers
+/// `@o` as a value (claude/backend.md, "Types"): built at a path with the sink that answers
 /// the child's place, in the scope of the host whose row builds it.
 template <class E, class A>
 using Blueprint = std::function<Result<Supplied<A>>(Path, Sink<A>, const Scope<E, A>&, Cx&)>;

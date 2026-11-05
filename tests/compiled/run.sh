@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every conformance program, and chess, through `./prism test`: compiled by prismc, built,
 # each test module run under the compiled Test World, its transcript byte-equal to the
-# `.expected` of its name. Every program is a tree (docs/modules-style-pass.md): all of
+# `.expected` of its name. Every program is a tree (claude/modules-style-pass.md): all of
 # them, every time: each tests/conformance/NAME/ holding an app.prism; examples/chess/rules
 # alone (its test module) and examples/chess (the board's and the rules'); and prismc's
 # lexer and parser checks (the test modules of prismc/syntax/lexer and prismc/syntax/parser).
@@ -44,7 +44,7 @@ run() { # name, sources...
     failed+=("$name ($step)")
     echo "FAILED $name: $step($log)"
 }
-# every program, a tree (docs/modules-style-pass.md): a directory with an app.prism, each
+# every program, a tree (claude/modules-style-pass.md): a directory with an app.prism, each
 # test module's transcript its NAME.expected
 for dir in tests/conformance/*/; do
     [ -f "$dir/app.prism" ] && run "$(basename "$dir")" "${dir%/}"

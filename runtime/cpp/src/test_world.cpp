@@ -405,7 +405,7 @@ Expected<CheckBlock, Err> parse_check(std::size_t no, std::string_view head, std
     return c;
 }
 
-/// A declaration at the left edge of a test module (docs/modules-style-pass.md) beside its
+/// A declaration at the left edge of a test module (claude/modules-style-pass.md) beside its
 /// tests: a helper type, function or value, its `derive` or signature line. The compiled
 /// program holds it, so the script passes over it, body and all.
 bool is_declaration(std::string_view head) {

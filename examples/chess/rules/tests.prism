@@ -1,4 +1,4 @@
-# The rules' test module (docs/modules-style-pass.md): the checks, and the positions and
+# The rules' test module (claude/modules-style-pass.md): the checks, and the positions and
 # moves they are written with, which only `prism test` and `prism check` read.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 

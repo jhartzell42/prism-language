@@ -27,7 +27,7 @@ under `tests/compiled/run.sh`.*
 Each module with tests has:
 
 - **`tests.prism`**: its test module (`test mod tests` in its header,
-  docs/modules-style-pass.md): its `test` and `check` declarations, in the Conformance
+  claude/modules-style-pass.md): its `test` and `check` declarations, in the Conformance
   book's test language (Conformance ch. 1 and App. A), and the helpers they need; it has
   no header, and only `prism test` and `prism check` read it.
 - **`tests.expected`**: the transcripts its tests print under the Test World, byte for byte
@@ -99,7 +99,7 @@ Each module with tests has:
 Each is a place where the books disagree with each other, with the running program, or
 with the parser, or say nothing; with Claude's first ruling, for Jimmy to overturn.
 
-- **FL Float.** `docs/decisions.md` puts `Float` arithmetic out of this compiler, and
+- **FL Float.** `claude/decisions.md` puts `Float` arithmetic out of this compiler, and
   `prism_syntax` flags every `Float` (257 in `window.prism`). The window library is `Float`
   throughout, as layout.md's Q-V3 (logical points as floats) and Pitch ch. 5's quoted
   window have it. *First ruling:* `Float`, since the layout design stays unchanged; chess

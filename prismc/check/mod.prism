@@ -34,7 +34,7 @@ derive ^Eq, ^Show
 
 # The whole checker over a program's files (each already parsed): the environment, every
 # definition, the separate checkers, the root row against `world` when one is named. `pre`
-# are the front end's own diagnostics at the program's files (a tree's, docs/
+# are the front end's own diagnostics at the program's files (a tree's, claude/
 # modules-style-pass.md), sorted in with the checker's.
 CheckProgram: unbounded fn [Src], [Module], [Text], Nat, Bool, Bool, [CDiag] -> Report
 fn CheckProgram srcs, trees, world, shown, recording, unused, pre:

@@ -1,6 +1,6 @@
 # syntax/
 
-The module `Syntax` (docs/modules-style-pass.md): The tree of Prism, as `prismc` builds it: `prism_syntax/src/ast.rs` one to one, node for node and field for field, so the two parsers print the same S-expressions (sexp.prism).
+The module `Syntax` (claude/modules-style-pass.md): The tree of Prism, as `prismc` builds it: `prism_syntax/src/ast.rs` one to one, node for node and field for field, so the two parsers print the same S-expressions (sexp.prism).
 
 - `mod.prism`: the main file: the header; positions and diagnostics, names, the file, types, patterns, literals, expressions, blocks and statements, templates.
 - `decls.prism`: a section; declarations, tests.

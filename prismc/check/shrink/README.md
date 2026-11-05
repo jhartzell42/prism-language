@@ -1,6 +1,6 @@
 # check/shrink/
 
-The module `Check.Shrink` (docs/modules-style-pass.md): `Check.Shrink`: the shrink check (Semantics ch.
+The module `Check.Shrink` (claude/modules-style-pass.md): `Check.Shrink`: the shrink check (Semantics ch.
 
 - `mod.prism`: the main file: the header; the shrink check.
 - `calls.prism`: a section; pick CT, the call test for closures.

@@ -79,7 +79,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
                     &_.build <= Push &_.build, (RefusalDo "a widget this back end does not lower yet")
                 ((wx2, WrUnit))
 
-# A host (docs/backend.md, "Hosting"; prism_rtl's `host`; pick HO): the child, a named
+# A host (claude/backend.md, "Hosting"; prism_rtl's `host`; pick HO): the child, a named
 # widget or a widget parameter's argument, is inlined into this node in a scope of its own,
 # `k`, its places counted from 0 and keyed by their path relative to the child; they go to no
 # document. The host is a `for p, e <- $doc` in this node: `$doc` is the getter `host_k_doc`

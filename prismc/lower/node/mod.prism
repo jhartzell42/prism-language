@@ -1,4 +1,4 @@
-# `Lower.Node`: widget blocks lowered to nodes (Compiler ch. 4; docs/backend.md): one
+# `Lower.Node`: widget blocks lowered to nodes (Compiler ch. 4; claude/backend.md): one
 # node per block, its places, dynamics, holds, `for` and `rebuild`, and its build.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r
@@ -19,7 +19,7 @@ use Lower.*
 use Lower.Model.*
 # ---------------------------------------------------------------------------------------
 # Widget blocks: one node per block, children in static positions merged in (Compiler
-# ch. 3, "The translation"; docs/backend.md, "A widget block")
+# ch. 3, "The translation"; claude/backend.md, "A widget block")
 # ---------------------------------------------------------------------------------------
 
 # An event as an expression reaches it: a node of the block's graph (a source, a named
@@ -113,14 +113,14 @@ type Sk = choice:
 
 # A place of the block: its position, its level as the program's `crate::Elem` (its
 # snapshot, `to_pod` for the document), and when a live field reads a dynamic its getter
-# (the patch pass pulls it after the tick, docs/backend.md "Marks").
+# (the patch pass pulls it after the tick, claude/backend.md "Marks").
 type Place = record:
     pos: Pos
     level: Ex
     getter: Text
     reads: [Read]
 
-# What a dynamic reads, for the marks (docs/backend.md, "Marks"): a hold or a dynamic
+# What a dynamic reads, for the marks (claude/backend.md, "Marks"): a hold or a dynamic
 # `let`'s getter of this node by its field or method name, or, in a row, one of its block's
 # read through the parent (gap DY), whose writes in the block mark the rows.
 type Read = choice:

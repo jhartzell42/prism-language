@@ -1,6 +1,6 @@
 # syntax/lexer/
 
-The module `Syntax.Lexer` (docs/modules-style-pass.md): The lexer: characters to tokens, with layout (Semantics ch.
+The module `Syntax.Lexer` (claude/modules-style-pass.md): The lexer: characters to tokens, with layout (Semantics ch.
 
 - `mod.prism`: the main file: the header; tokens, the lexer's state, token kinds, pushing tokens.
 - `chars.prism`: a section; small helpers over texts and arrays, characters, reading characters.

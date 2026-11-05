@@ -97,7 +97,7 @@ fn UnusedDefs defs, refs, shown:
     let own = Filter defs, \|d| d.file < shown and not (HasKey used, d.qk) and d.name != "@main" and not (IsMethodDef d) and not (IsTestingDef d)
     Each own, \|d| CDiag(code="unused", file=d.file, span=d.span, message="nothing uses `{d.name}`", fix="delete it, or use it")
 
-# Nothing outside a test module names what one declares (`test-only-reached`, docs/
+# Nothing outside a test module names what one declares (`test-only-reached`, claude/
 # modules-style-pass.md): a definition in no test module whose references reach a
 # definition in one. With the test modules dropped, as `prism run` drops them, no other
 # declaration's meaning changes.

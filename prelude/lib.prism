@@ -1,4 +1,4 @@
-# The prelude, a library tree (docs/modules-style-pass.md): `Prelude`, the types, traits and
+# The prelude, a library tree (claude/modules-style-pass.md): `Prelude`, the types, traits and
 # functions every module sees, and the families the Worlds answer.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 mod Prelude

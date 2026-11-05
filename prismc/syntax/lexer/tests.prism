@@ -1,5 +1,5 @@
 # The lexer's test module: its checks and the helpers they need, which only
-# `prism test` and `prism check` read (docs/modules-style-pass.md).
+# `prism test` and `prism check` read (claude/modules-style-pass.md).
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # The helpers of prismc's lexer checks (the checks below): each renders a text's

@@ -84,7 +84,7 @@ $(WORLD_LIBS): FORCE | $(LIB)
 CppDeclHeader: fn Text, Text, Text, Text -> Text
 fn CppDeclHeader title, includes, forward, handles = inline_text <cpp>
 // {{title}}: its types, nodes and jobs declared, and its choices' handles, emitted by
-// prismc (docs/backend.md). Edit the Prism source, not this file.
+// prismc (claude/backend.md). Edit the Prism source, not this file.
 #pragma once
 
 #include "prelude.hpp"
@@ -104,7 +104,7 @@ using namespace prelude;
 CppTypesHeader: fn Text, Text, Text, Text -> Text
 fn CppTypesHeader title, includes, values, cases = inline_text <cpp>
 // {{title}}: its records, tags and newtypes (each after the types it holds) and its
-// choices' cases, emitted by prismc (docs/backend.md). Edit the Prism source, not this file.
+// choices' cases, emitted by prismc (claude/backend.md). Edit the Prism source, not this file.
 #pragma once
 
 {{includes}}
@@ -126,7 +126,7 @@ CppTypesInGroup: fn Text, Text -> Text
 fn CppTypesInGroup title, group = inline_text <cpp>
 // {{title}}: its records, tags and newtypes and its choices' cases are defined with those
 // of the modules whose types it holds by value and which hold its own, in `{{group}}.types.hpp`,
-// emitted by prismc (docs/backend.md). Edit the Prism source, not this file.
+// emitted by prismc (claude/backend.md). Edit the Prism source, not this file.
 #pragma once
 
 #include <{{group}}.types.hpp>
@@ -135,7 +135,7 @@ fn CppTypesInGroup title, group = inline_text <cpp>
 CppModHeader: fn Text, Text, Text, Text, Text -> Text
 fn CppModHeader title, includes, protos, outer, classes = inline_text <cpp>
 // {{title}}: its functions' prototypes and its nodes and jobs, emitted by prismc
-// (docs/backend.md). Edit the Prism source, not this file.
+// (claude/backend.md). Edit the Prism source, not this file.
 #pragma once
 
 {{includes}}
@@ -159,7 +159,7 @@ using namespace prelude;
 CppGenericHeader: fn Text, Text, Text -> Text
 fn CppGenericHeader title, includes, generic = inline_text <cpp>
 // {{title}}: its generic functions' and types' definitions, emitted by prismc
-// (docs/backend.md). Edit the Prism source, not this file.
+// (claude/backend.md). Edit the Prism source, not this file.
 #pragma once
 
 {{includes}}
@@ -178,7 +178,7 @@ using namespace prelude;
 CppElemDecl: fn Text, Text, Text, Text -> Text
 fn CppElemDecl includes, forward, handles, rows = inline_text <cpp>
 // The program's `Elem` and `Answer` declared, their handles, and the prelude's rows,
-// emitted by prismc (docs/backend.md). Edit the Prism sources, not this file.
+// emitted by prismc (claude/backend.md). Edit the Prism sources, not this file.
 #pragma once
 
 #include "prelude.hpp"
@@ -203,7 +203,7 @@ namespace prelude {
 
 CppElemTypes: fn Text, Text -> Text
 fn CppElemTypes includes, cases = inline_text <cpp>
-// The cases of the program's `Elem` and `Answer`, emitted by prismc (docs/backend.md).
+// The cases of the program's `Elem` and `Answer`, emitted by prismc (claude/backend.md).
 // Edit the Prism sources, not this file.
 #pragma once
 
@@ -223,7 +223,7 @@ using namespace prelude;
 CppModule: fn Text, Text, Text, Text, Text -> Text
 fn CppModule prism, path, ns, includes, defs = inline_text <cpp>
 // {{prism}}, from `{{path}}`, emitted by prismc: its functions, its nodes' methods, its
-// types' printers (docs/backend.md). Edit the Prism source, not this file.
+// types' printers (claude/backend.md). Edit the Prism source, not this file.
 {{includes}}
 
 namespace crate::{{ns}} {
@@ -237,7 +237,7 @@ namespace crate::{{ns}} {
 # driver linking the program, bench/gui/prism/driver.cpp, need).
 CppProgramsHeader: fn Text, Text, Text -> Text
 fn CppProgramsHeader name, includes, programs = inline_text <cpp>
-// The programs of `{{name}}`, emitted by prismc (docs/backend.md): each root's class, over
+// The programs of `{{name}}`, emitted by prismc (claude/backend.md): each root's class, over
 // every module's header. Edit the Prism sources, not this file.
 #pragma once
 
@@ -256,7 +256,7 @@ using namespace prelude;
 # compiled `check` block, and `main`, which picks the World.
 CppMain: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
 fn CppMain name, includes, registrations, checks, scripts, world, runRoot, crateDefs = inline_text <cpp>
-// The program `{{name}}`, emitted by prismc from Prism (docs/backend.md): C++ over
+// The program `{{name}}`, emitted by prismc from Prism (claude/backend.md): C++ over
 // `prism_rtl`, run under the Test World. Edit the Prism sources, not these files.
 {{includes}}
 

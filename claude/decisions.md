@@ -129,7 +129,7 @@ which only `prism test` and `prism check` read. A tree's root is `app.prism` (a 
 or `lib.prism` (`mod` lines only). prismc reads a module's files as one source, each after
 a newline, so the checker sees one module per namespace as before; each diagnostic names
 the file and line it is in. Files on the command line stay loose (Semantics ch. 6). The
-design, its rulings and the refused alternatives are docs/modules-style-pass.md.
+design, its rulings and the refused alternatives are claude/modules-style-pass.md.
 
 ## Features in and out
 

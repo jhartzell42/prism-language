@@ -1,5 +1,5 @@
 # Lowering: the checked program to the core form a printer spells (Compiler ch. 3,
-# "The translation, construct by construct"; docs/backend.md, the contract). The input is
+# "The translation, construct by construct"; claude/backend.md, the contract). The input is
 # the tree as parsed, the checker's environment (CheckEnv's `G`: every module, type,
 # constructor, tag, trait and impl, every definition with its clauses) and its typed
 # tables (typed.prism's `TProgram`: the type of every expression, the lifting decision at
@@ -165,7 +165,7 @@ fn Camel name:
 let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache", "Case", "Cell", "Clickable", "Collector", "Cursor", "Cx", "Defer", "Demand", "Document", "Done", "DynShow", "Dynamic", "Edit", "Err", "Event", "F64", "Fallible", "Fields", "Finishing", "Fn", "Forward", "FromPod", "Gathered", "Gen", "Handle", "Hold", "Host", "HostOf", "HostRow", "Inert", "IsShared", "IsValue", "Job", "JobRef", "Later", "Link", "List", "Live", "MakeNew", "MutElements", "Nanos", "NeverEvent", "NewSnapshot", "Node", "NodeRef", "None", "Ok", "OkUnit", "Option", "Outcome", "Panic", "Patch", "Path", "Pattern", "Pod", "Port", "Pos", "Printer", "Program", "Rc", "ReadyMap", "ReadyState", "RefCell", "Report", "Request", "Result", "Row", "Rows", "Runtime", "Scope", "Segment", "ShowRef", "ShownText", "Sink", "Slot", "Snapshot", "Some", "Stamped", "String", "Subscribed", "Subscriber", "Supplied", "Supplier", "TestWorld", "Tick", "TickIn", "TickOut", "ToPod", "Unexpected", "Unit", "Vec", "Weak", "World", "XorShift"]]
 
 # A Prism module's Rust module, by its path from the crate: `Check.Env` is `check::env`
-# (docs/modules-style-pass.md), the root `program`.
+# (claude/modules-style-pass.md), the root `program`.
 RustModName: fn Text -> Text
 fn RustModName m = if m == "": "program" else: Join (Each (Split m, "."), \|s| Snake s), "::"
 

@@ -108,7 +108,7 @@ fn SinkCode sk, target, y = match target:
         [[(DoMatch (XMethod (XMethod (XField XSelf, "{job}"), "get", [[XCx]]), "cycle", [[]]), [[(((PaCtor "prism_rtl::Turn::More", [[PaBind "next"]]), more)), (((PaCtor "prism_rtl::Turn::Finished", [[PaBind "b"]]), fin))]])]]
 
 # What a write of hold `f` (or of the pseudo-hold behind a host's document, `host_k_doc`,
-# when a node of the hosted child wrote behind it) marks, after the `set` (docs/backend.md,
+# when a node of the hosted child wrote behind it) marks, after the `set` (claude/backend.md,
 # "Marks"): the node is dirtied when a place reads it; a hosted node tells its host that a
 # place of its may have moved (`document_moved`); the builders and generations over it are
 # listed for the build; the rows of its `for`s that read it are dirtied and told; the

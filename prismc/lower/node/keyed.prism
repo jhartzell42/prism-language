@@ -2,7 +2,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # ---------------------------------------------------------------------------------------
-# `for` (docs/backend.md, "Dynamic structure"): a builder node of rows keyed by the
+# `for` (claude/backend.md, "Dynamic structure"): a builder node of rows keyed by the
 # source's keys, each row a node of its own whose `$_` (or `$v`) is a projection of the
 # source, the block's `{name}_source` getter at the row's key, read at the row's read
 # point and written by nobody (pick RE); a row's event result gathers into the block's

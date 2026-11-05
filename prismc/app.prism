@@ -7,7 +7,7 @@
 # A file with a lexical or parse error is written all the same, and then the program gives
 # up with the diagnostics, which the CLI World prints before it exits 1.
 #
-# With `--check FILE|DIR...` it reads the program (a directory as a tree, docs/
+# With `--check FILE|DIR...` it reads the program (a directory as a tree, claude/
 # modules-style-pass.md; test modules with `--tests`), parses it, adds the prelude's
 # modules from `--prelude DIR` (`prelude` when not given) that it does not replace, and runs
 # the checker (README, Checker): the diagnostics, then a count, go to `--out OUT` when

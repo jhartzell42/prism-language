@@ -83,7 +83,7 @@ fn ShownPart v = match ValueTy v:
     otherwise: XCall "show", [[Ref v]]
 
 # ---------------------------------------------------------------------------------------
-# Plain expressions (docs/backend.md, "Functions and lifting": a plain function takes
+# Plain expressions (claude/backend.md, "Functions and lifting": a plain function takes
 # references, its clauses one `match`)
 # ---------------------------------------------------------------------------------------
 
@@ -512,7 +512,7 @@ fn ArgsFor lx, env, v, args:
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0))
 
-# A constructor applied (docs/backend.md: a record is a struct, a choice an enum with
+# A constructor applied (claude/backend.md: a record is a struct, a choice an enum with
 # recursive payloads behind `Rc`, a newtype a tuple struct, a unit type a unit struct).
 CtorApp: unbounded fn Lx, Env, CtorInfo, [Arg], Range -> Vl
 fn CtorApp lx, env, c, args, span:
@@ -826,7 +826,7 @@ fn LambdaExprs (LbExpr x) = ExprsIn x
 fn LambdaExprs (LbBlock b) = BlockExprs b
 
 # A lambda as a value: `Rc::new(move |..| ..)`, its captures cloned in first
-# (docs/backend.md, "`fn a -> b` as a value").
+# (claude/backend.md, "`fn a -> b` as a value").
 LambdaValue: unbounded fn Lx, Env, Expr, [Pattern], LambdaBody -> Vl
 fn LambdaValue lx, env, e, ps, body:
     let ft = OutTyOf lx, (Peel (TypeAt lx, e.span))
@@ -885,7 +885,7 @@ fn IsKnownTy t = match t:
     otherwise: True
 
 # A lambda of unbounded type as a value: a `Start` like a named unbounded function's
-# (docs/backend.md), `Rc<dyn Fn(A) -> Rc<dyn Job<B>>>`, whose job is the lambda's body
+# (claude/backend.md), `Rc<dyn Fn(A) -> Rc<dyn Job<B>>>`, whose job is the lambda's body
 # lowered as a job body (`once_job`): a call in it is a tail call or a frame, as in any
 # job. The arguments come as one value, a tuple when there are several; each borrowed
 # local the body reads is cloned in, and cloned again per call, since the body's job

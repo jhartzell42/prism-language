@@ -3,7 +3,7 @@
 *Written by Claude on the claude-self-hosting branch; subject to change. Jimmy's
 direction of 4 November 2026 is marked Jimmy's; every other call is Claude's, with the
 alternative refused, and Jimmy overrules by editing. It comes after the performance queue
-and before the regex code (docs/handoff.md, "The order"). Book citations are to
+and before the regex code (claude/handoff.md, "The order"). Book citations are to
 `prism-notes/claude/prism/`: Semantics (01), Type System (02), Conformance (04),
 Platform (08).*
 

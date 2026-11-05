@@ -7,7 +7,7 @@
 
 # `compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH] [--target
 # rust|cpp] [--tests]`: every argument read (a `.prism` file loose, a directory as a tree,
-# docs/modules-style-pass.md), with the
+# claude/modules-style-pass.md), with the
 # prelude's modules the program does not replace; test modules only with `--tests`. The
 # program is parsed, checked (and refused on an error), lowered and emitted through `@Run`
 # as a Rust crate in OUT whose dependencies on `prism_rtl` and the Worlds are found at

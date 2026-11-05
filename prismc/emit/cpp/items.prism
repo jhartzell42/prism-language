@@ -151,7 +151,7 @@ fn CaseStruct cp, gens, head, c, eq, ord:
     let cmps = Join (Filter [[(if eq: "bool operator==(const {c.name}&) const = default;" else: ""), (if ord: "auto operator<=>(const {c.name}&) const = default;" else: "")]], \|s| s != ""), "\n"
     CaseDecl gens, "{head}::{c.name}", (Join (Filter [[fields, cmps]], \|s| s != ""), "\n")
 
-# A type's printer and plain data (docs/backend.md, "Printing").
+# A type's printer and plain data (claude/backend.md, "Printing").
 TypeDefs: unbounded fn Cp, TyDef, Text -> Text
 fn TypeDefs cp, t, head:
     let gens = CppTemplateHead t.params

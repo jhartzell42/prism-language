@@ -1,4 +1,4 @@
-# Modules as directories (docs/modules-style-pass.md): `mod Shapes` reads shapes/mod.prism,
+# Modules as directories (claude/modules-style-pass.md): `mod Shapes` reads shapes/mod.prism,
 # whose own `mod` lines declare `Shapes.Circle` and `Shapes.Square`, each named by its path
 # from the root. A qualified name's last segment is the declaration, the rest its module;
 # `use Shapes.Circle.*` makes the circle's names bare.
