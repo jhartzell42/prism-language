@@ -9,7 +9,6 @@
 #
 # Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
-module CppPreludeTemplate
 emit r
 
 CppPreludeSource: fn Text -> Text

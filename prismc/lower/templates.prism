@@ -1,0 +1,340 @@
+# `Lower`'s section `templates`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Templates, `given:` and `update` blocks
+# ---------------------------------------------------------------------------------------
+
+# A code template in a plain function (Templates ch. 2, the function form): its text
+# built run by run; a placeholder alone on its line indents its text's lines to its
+# column (`place`, the prelude's).
+TemplateValue: unbounded fn Lx, Env, Template -> Vl
+fn TemplateValue lx, env, tp:
+    let start = [[(DoLet (PaMut "out"), (XCall "String::new", [[]]))]]
+    let dos = Fold tp.parts, start, \|acc, part| Append acc, (TemplatePartDos lx, env, part)
+    VlOwned (XBlock dos, (XCall "Text::from", [[(XVar "out")]])), OutText
+
+TemplatePartDos: unbounded fn Lx, Env, TemplatePart -> [Do]
+fn TemplatePartDos lx, env, part = match part:
+    TpText t: [[DoExpr (XMethod (XVar "out"), "push_str", [[(XStr t)]])]]
+    TpPlaceholder x, ?col:
+        let v = ValueOf lx, env, x
+        let column = match ?col:
+            ? c: XCtor "Some", [[XIndex c]]
+            nil: XNone
+        [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), ShownText v, column]])]]
+    TpBlock b:
+        let v = BlockValue lx, env, b
+        if (ValueTy v) == OutUnit: [[DoExpr (Own v)]]
+        else: [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), ShownText v, XNone]])]]
+    TpCall n, args, ?parts, ignore:
+        let plain = SName(sigils=(AfterFirst n.sigils), path=n.path, span=n.span)
+        let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
+        let ((?qk2, ignore)) = ResolveValue lx.g, lx.home, plain
+        let callee = match ?qk:
+            ? q: ValuePath lx, q
+            nil: match ?qk2:
+                ? q: ValuePath lx, q
+                nil: Snake (SNameKey n)
+        let body = match ?parts:
+            ? ps:
+                let inner = Fold ps, [[(DoLet (PaMut "out"), (XCall "String::new", [[]]))]], \|acc, p| Append acc, (TemplatePartDos lx, env, p)
+                [[(XRef (XBlock inner, (XCall "Text::from", [[(XVar "out")]])))]]
+            nil: [[]]
+        let passed = match ?qk:
+            ? q: TemplateArgs lx, env, q, args, body
+            nil: match ?qk2:
+                ? q: TemplateArgs lx, env, q, args, body
+                nil: Append (Each args, \|a| Argument lx, env, a.value), body
+        let call = XCall callee, passed
+        [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), (XRef call), XNone]])]]
+
+# A template call's arguments in place order (pick TK, as the checker reads them): the
+# body, when there is one, fills the last place; each attribute fills the one place any
+# clause names it at, its pattern seen through parentheses and without its marks (`$text`,
+# `?x` name `text`, `x`); the written order is never used.
+TemplateArgs: unbounded fn Lx, Env, Text, [Arg], [Ex] -> [Ex]
+fn TemplateArgs lx, env, qk, args, body:
+    let clauses = ClausesOf lx.g, qk
+    let arity = Len (Or clauses[0], dummyClause).params
+    Each (Range0 arity), \|j|
+        if (Len body) > 0 and j + 1 == arity: Or body[0], (XUnit)
+        else: match ?AttrAt clauses, j, args:
+            ? a: Argument lx, env, a.value
+            nil: Refusal "a template call that fills no argument at place {j}"
+
+?AttrAt: fn [FnClause], Nat, [Arg] -> ?Arg
+fn ?AttrAt clauses, j, args:
+    let names = Fold clauses, [[]], \|acc, c| match c.params[j]:
+        ? p: match ?PlaceName p:
+            ? n: AddText acc, n
+            nil: acc
+        nil: acc
+    Fold args, nil, \|?found, a| match a.?name:
+        ? n: if HasText names, n.name: ? a else: ?found
+        nil: ?found
+
+# The name a parameter's pattern gives its place: a name, through parentheses, less its
+# marks; any other pattern names nothing.
+?PlaceName: fn Pattern -> ?Text
+fn ?PlaceName p = match p.kind:
+    PName n: ? (Dotted n.path)
+    PGroup q: ?PlaceName q
+    otherwise: nil
+
+
+# A value as a template or interpolation places it: a text as it is, any other value as
+# it shows.
+ShownText: fn Vl -> Ex
+fn ShownText v = match ValueTy v:
+    OutText: Ref v
+    otherwise: XRef (XCall "show_text", [[Ref v]])
+
+# `given:` (Semantics ch. 4): `let`s, binds that fail on `nil` (or on an `Error`), the
+# guards, and the answer last; a failed guard under `~` is `Prelude.Unmet` with the
+# guard's source text (D11).
+GivenValue: unbounded fn Lx, Env, Block, OutTy, Range -> Vl
+fn GivenValue lx, env, b, t, span:
+    let label = "'g{span.start}"
+    let isTry = match t:
+        OutRes ignore: True
+        otherwise: False
+    let n = Len b.stmts
+    let ((dos, env2, ?last)) = Fold (Range0 n), (([[]], env, nil)), \|((acc, en, ?lv)), i|
+        let s = Or b.stmts[i], dummyStmtL
+        let fail = if isTry: XCtor "Err", [[(XCall "Error::new", [[(XStr "Prelude.Unmet"), (XStr (SourceText lx, s.span))]])]] else: XNone
+        match s.kind:
+            SBind p, x, nil:
+                let v = ValueOf lx, en, x
+                let po = RustPat lx, p, (InnerTy (TypeAt lx, x.span)), Owned, "g{s.span.start}"
+                (((Push acc, (GivenBind isTry, po.pa, (Own v), label, (OutTyOf lx, (InnerTy (TypeAt lx, x.span))))), (BindAll en, po.binds), ?lv))
+            SRequire c: (((Push acc, (DoIf (XUnary "!", (AsBool (ValueOf lx, en, c))), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
+            SForbid c: (((Push acc, (DoIf (AsBool (ValueOf lx, en, c)), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
+            SExpr x:
+                if i + 1 == n: ((acc, en, ? (ValueOf lx, en, x)))
+                else: (((Push acc, (DoExpr (Own (ValueOf lx, en, x)))), en, ?lv))
+            otherwise:
+                let ((more, en2)) = BlockStmt lx, en, s
+                (((Append acc, more), en2, ?lv))
+    let last = Or ?last, (VlOwned (XNone), t)
+    VlOwned (XLabeled label, dos, (Own last), t), t
+
+# A bind in `given:`: `let Some(p) = e else { break 'g None; }`, or under `~` the error
+# passed on.
+GivenBind: fn Bool, Pa, Ex, Text, OutTy -> Do
+fn GivenBind isTry, pa, x, label, t:
+    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor "Ok", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor "Err", [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor "Err", [[XVar "e"]])))]], False, t)
+    else: DoLetElse (PaCtor "Some", [[pa]]), x, (XBreak label, XNone)
+
+# The source a range covers, in the file being lowered.
+SourceText: fn Lx, Range -> Text
+fn SourceText lx, r = match lx.g.srcs[lx.file]:
+    ? src: SpanText src, r
+    nil: ""
+
+# `update x: ...` (Semantics ch. 5, `&` blocks): native mutation of a fresh copy, which
+# `Rc::make_mut` and the persistent collections update in place when it is unique
+# (Compiler ch. 3, "Unique values"). `&_` is `this`; a `let &i` is a `mut` local.
+UpdateValue: unbounded fn Lx, Env, Expr, Block, OutTy, Range -> Vl
+fn UpdateValue lx, env, target, b, t, span:
+    let tv = ValueOf lx, env, target
+    let env1 = Bind env, "&_", (BnLocal (XVar "this"), Owned, t)
+    let ((dos, ignore)) = UpdStmts lx, env1, b.stmts
+    VlOwned (XBlock (Append [[(DoLet (PaTyped (PaMut "this"), t), (Own tv))]], dos), (XVar "this")), t
+
+UpdStmts: unbounded fn Lx, Env, [Stmt] -> (([Do], Env))
+fn UpdStmts lx, env, stmts = Fold stmts, (([[]], env)), \|((acc, en)), s|
+    let ((more, en2)) = UpdStmt lx, en, s
+    (((Append acc, more), en2))
+
+UpdStmt: unbounded fn Lx, Env, Stmt -> (([Do], Env))
+fn UpdStmt lx, env, s = match s.kind:
+    SSet target, value:
+        let v = Own (ValueOf lx, env, value)
+        (([[(Assign lx, env, target, v)]], env))
+    SAccum target, op, value:
+        let cur = PlaceOf lx, env, target
+        let tt = OutTyOf lx, (Peel (TypeAt lx, target.span))
+        let rv = ValueOf lx, env, value
+        let bin = Head op
+        let next = OpValue lx, bin, (VlPlace cur, Owned, tt), rv, s.span, tt
+        (([[(Assign lx, env, target, (Own next))]], env))
+    SLet p, ignore, x:
+        let v = Own (ValueOf lx, env, x)
+        match p.kind:
+            PName n:
+                if (HasPrefix n.sigils, "&"):
+                    let rs = LocalName lx, (SNameKey n)
+                    let bt = OutTyOf lx, (Peel (BinderTy lx, n.span))
+                    let pa = if IsKnownTy bt: PaTyped (PaMut "{rs}"), bt else: PaMut "{rs}"
+                    (([[(DoLet pa, v)]], (Bind env, (SNameKey n), (BnLocal (XVar rs), Owned, bt))))
+                else: BlockStmt lx, env, s
+            otherwise: BlockStmt lx, env, s
+    SWhile c, body:
+        let ((inner, ignore)) = UpdStmts lx, env, body.stmts
+        match c:
+            CondExpr x: (([[(DoWhile (AsBool (ValueOf lx, env, x)), inner)]], env))
+            CondBind p, x, ?g:
+                let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "w{s.span.start}"
+                let envB = BindAll env, po.binds
+                let ((inner2, ignore)) = UpdStmts lx, envB, body.stmts
+                # The pattern's conditions and the guard (`while ? left <- &fuel -? 1 if c:`)
+                # end the loop as a failed match does: a `break` when they do not hold.
+                let conds = Append po.conds, (GuardConds lx, envB, ?g)
+                let tests = Fold conds, [[]], \|acc, c| match c:
+                    CcIf t: Push acc, t
+                    otherwise: acc
+                let lets = Fold conds, False, \|f, c| f or IsLetCond c
+                let stop = if (Len tests) == 0: [[]] else: [[(DoIf (XUnary "!", (AllOf tests)), [[DoExpr (XVar "break")]], [[]])]]
+                let body2 = if lets: [[RefusalDo "a `while` whose pattern matches through an `Rc`"]] else: Append stop, inner2
+                (([[(DoWhileLet po.pa, (Own (ValueOf lx, env, x)), body2)]], env))
+    SExpr x: match x.kind:
+        EIf c, thenB, ?elseB: (([[(UpdIf lx, env, c, thenB, ?elseB)]], env))
+        EMatch scrut, arms: (([[(UpdMatch lx, env, scrut, arms)]], env))
+        EFor ?binders, source, body: (([[(UpdFor lx, env, ?binders, source, body, x.span)]], env))
+        otherwise: (([[DoExpr (Own (ValueOf lx, env, x))]], env))
+    otherwise: BlockStmt lx, env, s
+
+# `for` as a statement of an `update` block (Semantics ch. 4, keyed iteration in plain
+# code): a Rust `for` over the source's entries, owned and in key order. Over an array the
+# key is the index, which `ix` also names; one binder is the entry, two the key and the
+# entry, none bind `key` and `_`.
+UpdFor: unbounded fn Lx, Env, ?ForBinders, Expr, Block, Range -> Do
+fn UpdFor lx, env, ?binders, source, body, span:
+    let sty = Peel (TypeAt lx, source.span)
+    match ?RefBinder ?binders:
+        ? n: if IsRefPath source: UpdForRefs lx, env, n, source, body, span, sty else: UpdForValues lx, env, ?binders, source, body, span, sty
+        nil: UpdForValues lx, env, ?binders, source, body, span, sty
+
+# `for &s <- &_:` (Semantics ch. 5): a reference per entry of the array the path names, in
+# place; `ix` is its index. A map's entries are not handed by reference here.
+UpdForRefs: unbounded fn Lx, Env, SName, Expr, Block, Range, Ty -> Do
+fn UpdForRefs lx, env, n, source, body, span, sty = match sty:
+    TyArray v:
+        let keyName = "k{span.start}"
+        let refName = "r{span.start}"
+        let env1 = Bind (Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, OutNat)), "ix", (BnLocal (XVar keyName), Owned, OutNat)), (SNameKey n), (BnLocal (XTarget (XVar refName)), Owned, (OutTyOf lx, v))
+        let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
+        let head = DoLet (PaBind keyName), (XCall "nat_of", [[(XVar "i{span.start}")]])
+        DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
+    otherwise: RefusalDo "a `for` by reference over what is not an array"
+
+# The one binder of a `for` when it is a reference, `&s`.
+?RefBinder: fn ?ForBinders -> ?SName
+fn ?RefBinder (? fb) = match fb.?second:
+    nil: match fb.first.kind:
+        PName n: if (HasPrefix n.sigils, "&"): ? n else: nil
+        otherwise: nil
+    otherwise: nil
+fn ?RefBinder nil = nil
+
+# A reference path: `&_`, a local `&x`, or a path from one.
+IsRefPath: fn Expr -> Bool
+fn IsRefPath e = match e.kind:
+    EName n: (HasPrefix n.sigils, "&")
+    EField r, ignore, ignore: IsRefPath r
+    EIndex r, ignore: IsRefPath r
+    EGroup x: IsRefPath x
+    otherwise: False
+
+UpdForValues: unbounded fn Lx, Env, ?ForBinders, Expr, Block, Range, Ty -> Do
+fn UpdForValues lx, env, ?binders, source, body, span, sty:
+    let src = Own (ValueOf lx, env, source)
+    let ((kt, vt, isArray)) = match sty:
+        TyArray v: ((OutNat, (OutTyOf lx, v), True))
+        TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), False))
+        otherwise: ((OutUnit, OutUnit, True))
+    let ((vty, kty)) = match sty:
+        TyArray v: ((v, (TyCon "Nat", [[]])))
+        TyMap k, v: ((v, k))
+        otherwise: ((TyErr, TyErr))
+    let keyName = "k{span.start}"
+    let valName = "v{span.start}"
+    let env1 = Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, kt)), "_", (BnLocal (XVar valName), Owned, vt)
+    let env2 = if isArray: Bind env1, "ix", (BnLocal (XVar keyName), Owned, kt) else: env1
+    let ((binds, env3)) = match ?binders:
+        nil: (([[]], env2))
+        ? fb: match fb.?second:
+            nil:
+                let po = RustPat lx, fb.first, vty, Owned, "e{span.start}"
+                (([[(DoLet po.pa, (XClone (XVar valName)))]], (BindAll env2, po.binds)))
+            ? second:
+                let pk = RustPat lx, fb.first, kty, Owned, "k{span.start}_"
+                let pv = RustPat lx, second, vty, Owned, "e{span.start}"
+                ((([[(DoLet pk.pa, (XClone (XVar keyName))), (DoLet pv.pa, (XClone (XVar valName)))]]), (BindAll (BindAll env2, pk.binds), pv.binds)))
+    let ((dos, ignore)) = UpdStmts lx, env3, body.stmts
+    if isArray:
+        let head = DoLet (PaBind keyName), (XCall "nat_of", [[(XVar "i{span.start}")]])
+        DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind valName)]]), (XMethod (XMethod src, "into_iter", [[]]), "enumerate", [[]]), (Append (Push [[]], head), (Append binds, dos))
+    else: DoFor (PaTuple [[(PaBind keyName), (PaBind valName)]]), (XMethod src, "into_iter", [[]]), (Append binds, dos)
+
+UpdIf: unbounded fn Lx, Env, Cond, Block, ?Block -> Do
+fn UpdIf lx, env, c, thenB, ?elseB:
+    let ((elseDos, ignore)) = match ?elseB:
+        ? b: UpdStmts lx, env, b.stmts
+        nil: (([[]], env))
+    match c:
+        CondExpr x:
+            let ((thenDos, ignore)) = UpdStmts lx, env, thenB.stmts
+            DoIf (AsBool (ValueOf lx, env, x)), thenDos, elseDos
+        CondBind p, x, ignore:
+            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{x.span.start}"
+            let ((thenDos, ignore)) = UpdStmts lx, (BindAll env, po.binds), thenB.stmts
+            DoIfLet po.pa, (Own (ValueOf lx, env, x)), thenDos, elseDos
+
+UpdMatch: unbounded fn Lx, Env, Expr, [Arm] -> Do
+fn UpdMatch lx, env, scrut, arms:
+    let sv = ValueOf lx, env, scrut
+    let sty = TypeAt lx, scrut.span
+    let arms3 = Each (Range0 (Len arms)), \|i|
+        let arm = Or arms[i], dummyArm
+        let po = ArmPat lx, arm.?pattern, sty, ByRef, "u{scrut.span.start}_{i}"
+        let ((dos, ignore)) = UpdStmts lx, (BindAll env, po.binds), arm.body.stmts
+        let guarded = Append po.conds, (GuardConds lx, (BindAll env, po.binds), arm.?guard)
+        XArm(pat=po.pa, conds=guarded, body=(XBlock dos, (XUnit)))
+    # Arms with conditions (a guard, a literal, a payload behind an `Rc`) are the
+    # value-`match`'s arms, a `match` with guards or an if-let chain; others a plain one.
+    if Fold arms3, False, \|f, a| f or (Len a.conds) > 0: DoExpr (Own (ArmsValue (Ref sv), arms3, "'u{scrut.span.start}", OutUnit))
+    else: DoMatch (Ref sv), (Each arms3, \|a| ((a.pat, (ArmDos a.body))))
+
+# Conditions joined by `&&`.
+AllOf: fn [Ex] -> Ex
+fn AllOf [[one]] = one
+fn AllOf xs = Fold (Drop xs, 1), (Or xs[0], (XBool True)), \|acc, x| XBin "&&", acc, x
+
+ArmDos: fn Ex -> [Do]
+fn ArmDos (XBlock dos, ignore) = dos
+fn ArmDos x = [[DoExpr x]]
+
+GuardConds: unbounded fn Lx, Env, ?Expr -> [Cc]
+fn GuardConds lx, env, (? ge) = [[CcIf (AsBool (ValueOf lx, env, ge))]]
+fn GuardConds lx, env, nil = [[]]
+
+# The place a reference path names: `&_.f.g`, `&i`, `&_[k].f`.
+PlaceOf: unbounded fn Lx, Env, Expr -> Ex
+fn PlaceOf lx, env, e = match e.kind:
+    EName n: match env.names[SNameKey n]:
+        ? (BnLocal rs, ignore, ignore): rs
+        otherwise: XVar (Snake (SNameKey n))
+    EField r, ignore, name: XField (PlaceOf lx, env, r), (Snake name.name)
+    EIndex r, k:
+        let rt = OutTyOf lx, (Peel (TypeAt lx, r.span))
+        let f = match rt:
+            OutMap ignore, ignore: "at_mut_map"
+            otherwise: "at_mut"
+        XDeref (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]])
+    EGroup x: PlaceOf lx, env, x
+    otherwise: Refusal "a reference path this back end does not lower"
+
+# `&p <= v`. An index path's part is optional (Semantics ch. 5: an array's part type,
+# `?a`): `? x` writes the entry, and `nil` removes a map's key.
+Assign: unbounded fn Lx, Env, Expr, Ex -> Do
+fn Assign lx, env, target, v = match target.kind:
+    EIndex r, k:
+        let rt = OutTyOf lx, (Peel (TypeAt lx, r.span))
+        let f = match rt:
+            OutMap ignore, ignore: "set_key"
+            otherwise: "set_index"
+        DoExpr (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k), v]])
+    EGroup x: Assign lx, env, x, v
+    otherwise: DoAssign (PlaceOf lx, env, target), v

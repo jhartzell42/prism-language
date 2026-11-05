@@ -1,0 +1,400 @@
+# `Lower.Node`'s section `def`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# A node from a widget definition
+# ---------------------------------------------------------------------------------------
+
+# A widget (`@name:` or `fn @Name params:` with one clause) as a node: its parameters are
+# its constructor's and fields; its block lowers into the node.
+NodeDefOf: unbounded fn Lx, Text, [Pattern], Block, Scheme, Bool -> NodeDef
+fn NodeDefOf lx, qk, params, body, sc, isRoot:
+    let name = Camel (BareName qk)
+    let ptys = match sc.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    let wx0 = NewWx lx, name, [[]], [[]], [[]], [[]], {}, nodeHooks, 0, nil
+    let ((ps, wx1, benv, menv)) = Fold (Range0 (Len params)), (([[]], wx0, emptyEnv, emptyEnv)), \|((acc, w, be, me)), i|
+        let p = Or params[i], dummyPat
+        let nkey = PlainBinder lx, p
+        let base = if nkey == "": "arg{i}" else: Snake nkey
+        let ((rs, w2)) = FreshName w, base
+        let t = OutTyOf lx, (Peel (Or ptys[i], TyErr))
+        let w3 = update w2:
+            &_.fields <= Push &_.fields, ((rs, t, "a parameter"))
+            &_.inits <= Push &_.inits, ((rs, (XClone (XVar rs))))
+        let ((be2, me2)) = BindPlain be, me, nkey, rs, t
+        (((Push acc, ((rs, t))), w3, be2, me2))
+    let wx2 = BlockInto wx1, benv, menv, body
+    let wx3 = if isRoot: RootResult wx2 else: wx2
+    FinishNode wx3, qk, ps, False
+
+# The root's result goes to the World (docs/backend.md: `cx.result(..)`).
+RootResult: fn Wx -> Wx
+fn RootResult wx = match wx.result:
+    WrEv r: Connect wx, r, SkResult
+    WrDyn x, rds, t: update wx:
+        &_.rootDyn <= ? ((x, rds, t))
+        &_.getters <= Push &_.getters, MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxRef, ret=OutPod, body=[[]], tail=(XMethod x, "to_pod", [[]]), doc="The root's dynamic result, pulled after the tick.")
+        &_.fields <= Push &_.fields, (("result_last", (OutCell (OutOpt OutPod)), "the result the World last heard"))
+        &_.moves <= Push &_.moves, (("result_last", (XCall "RefCell::new", [[XNone]])))
+        &_.build <= Push &_.build, (DoScope (ResultTold (XVar "node")))
+    WrPlain x, ignore: update wx:
+        &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "result", [[(XCtor "Outcome::Value", [[(XMethod x, "to_pod", [[]])]])]]))
+    otherwise: wx
+
+# A block's statements into the node, names bound before any line is read (one binding
+# group): the bound events, holds and dynamics first, then every line in page order.
+BlockInto: unbounded fn Wx, Env, Env, Block -> Wx
+fn BlockInto wx, benv, menv, b:
+    let ((wx1, be1, me1)) = Fold b.stmts, ((wx, benv, menv)), \|((w, be, me)), s| PreBind w, be, me, s
+    let n = Len b.stmts
+    let ((wx2, ignore, ignore)) = Fold (Range0 n), ((wx1, be1, me1)), \|((w, be, me)), i| WidgetStmt w, be, me, (Or b.stmts[i], dummyStmtL), i + 1 == n
+    wx2
+
+# Names first: a bound event is a node of its own, a hold or a bound dynamic a field, a
+# dynamic `let` a getter.
+PreBind: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
+fn PreBind wx, benv, menv, s = match s.kind:
+    SBind p, init, ?step: match p.kind:
+        PName n: PreBindName wx, benv, menv, n, (HowBound ?step)
+        PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
+            PName n: PreBindName w, be, me, n, AsBind
+            otherwise: ((w, be, me))
+        otherwise: ((wx, benv, menv))
+    SLet p, ignore, ignore: match p.kind:
+        PName n: PreBindName wx, benv, menv, n, AsLet
+        otherwise: ((wx, benv, menv))
+    SFn c:
+        let fname = DefNameText c.name
+        ((wx, (Bind benv, fname, (BnLocalFn c)), (Bind menv, fname, (BnLocalFn c))))
+    otherwise: ((wx, benv, menv))
+
+# How a line binds its name: `$x <- init then step` (a hold), `p <- e` (a bind), `let`.
+type HowBound = choice:
+    AsHold
+    AsBind
+    AsLet
+derive ^Eq, ^Show
+
+HowBound: fn ?Expr -> HowBound
+fn HowBound (? ignore) = AsHold
+fn HowBound nil = AsBind
+
+PreBindName: unbounded fn Wx, Env, Env, SName, HowBound -> ((Wx, Env, Env))
+fn PreBindName wx, benv, menv, n, how:
+    let lx = WidgetLetLx wx.lx, n.span
+    let nkey = SNameKey n
+    let full = BinderTy lx, n.span
+    let layer = LayerOf full
+    let t = OutTyOf lx, (Peel full)
+    let ((rs, wx1)) = FreshName wx, (Snake nkey)
+    if layer == LyEv or IsSwitched full:
+        let et = OutTyOf lx, (Peel (Peel full))
+        let ((id, wx2)) = AddGn wx1, rs, et, GnNamed, 0
+        let b = BnEv (EvRefOf wx2, id), t
+        # Its value form (`!x` passed to a function, read by a supplier): a port the event
+        # fires, made before the node so that a closure in the build can hold it.
+        let pf = "{rs}_v_port"
+        let pt = OutRc (OutPort et)
+        let wx3 = update (Connect wx2, (EvRefOf wx2, id), (SkPort "{rs}_v")):
+            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall "Rc::new", [[(XCall "Port::new", [[]])]]))
+            &_.fields <= Push &_.fields, ((pf, pt, "`{nkey}` as a value: the port it fires"))
+            &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
+        let be = Bind (Bind benv, nkey, b), "{nkey}#port", (BnLocal (XVar pf), Owned, pt)
+        let me = Bind (Bind menv, nkey, b), "{nkey}#port", (BnLocal (XField XSelf, pf), Owned, pt)
+        ((wx3, be, me))
+    else: match ((layer, how)):
+        ((LyDyn, AsLet)):
+            let b = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
+            ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
+        ((LyDyn, ignore)):
+            let b = BnHold rs, t
+            ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
+        otherwise: match ?ManyInstances wx.lx, n.span:
+            # A generalized `let` used at several instantiations (gap LW, first ruling): a
+            # field per instantiation, each use bound to its own, as `GenericLet` binds a
+            # local per instantiation.
+            ? insts: Fold (Range0 (Len insts)), ((wx1, benv, menv)), \|((w, be, me)), k|
+                let inst = Or insts[k], (([[]], [[]]))
+                let lxk = AtInstance wx.lx, inst
+                let tk = OutTyOf lxk, (Peel (BinderTy lxk, n.span))
+                let ((rk, w2)) = if k == 0: ((rs, w)) else: FreshName w, "{rs}_{k}"
+                let bkey = if k == 0: nkey else: "{nkey}#inst{k}"
+                let ((be2, me2)) = BindPlain be, me, bkey, rk, tk
+                let ukey = "{nkey}#{Show inst}"
+                ((w2, (WithUse be2, ukey, bkey), (WithUse me2, ukey, bkey)))
+            nil:
+                let ((be, me)) = BindPlain benv, menv, nkey, rs, t
+                ((wx1, be, me))
+
+WithUse: fn Env, Text, Text -> Env
+fn WithUse env, ukey, bkey = update env:
+    &_.uses <= Insert &_.uses, ukey, bkey
+
+# A widget block's generalized `let`'s instantiations, when its uses have several.
+?ManyInstances: unbounded fn Lx, Range -> ?[(([((Text, Ty))], [((Text, Col))]))]
+fn ?ManyInstances lx, span = match lx.gens[PlaceKey lx, span]:
+    ? gn:
+        let insts = Instantiations lx, gn
+        if (Len insts) > 1: ? insts else: nil
+    nil: nil
+
+# `$!a`: a dynamic of events, which `@Switch` hears (a `rebuild` handing back an event is a
+# builder and a switch in one path, round 46 RD): it binds as the event its generation
+# forwards.
+IsSwitched: fn Ty -> Bool
+fn IsSwitched t = match t:
+    TySig "$", (TySig "!", ignore): True
+    otherwise: False
+
+# The binding a prebound name has.
+?BindingOf: fn Env, Pattern -> ?Bn
+fn ?BindingOf env, p = match p.kind:
+    PName n: env.names[SNameKey n]
+    PTuple ps: ? (BnParts (Each ps, \|q| ?BindingOfName env, q))
+    otherwise: nil
+
+?BindingOfName: fn Env, Pattern -> ?Bn
+fn ?BindingOfName env, p = match p.kind:
+    PName n: env.names[SNameKey n]
+    otherwise: nil
+
+# One statement of a widget block.
+WidgetStmt: unbounded fn Wx, Env, Env, Stmt, Bool -> ((Wx, Env, Env))
+fn WidgetStmt wx, benv, menv, s, last:
+    let lx = wx.lx
+    match s.kind:
+        SBind p, e, nil:
+            let ((wx2, res)) = BuildLine wx, benv, menv, e, (?BindingOf menv, p)
+            let wx3 = BindRes wx2, menv, p, res
+            match ((res, p.kind)):
+                (((WrDyn ex, rds, t), PName n)):
+                    let b = BnDyn ex, rds, t
+                    ((wx3, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
+                (((WrHosted inner, doc), PTuple ps)): BindHosted wx3, benv, menv, inner, doc, ps
+                otherwise: ((wx3, benv, menv))
+        SBind p, init, (? step):
+            let ((wx2, be2)) = HoldLine wx, benv, menv, p, init, step
+            ((wx2, be2, menv))
+        SIgnore e:
+            let ((wx2, ignore)) = BuildLine wx, benv, menv, e, nil
+            ((wx2, benv, menv))
+        SLet p, ignore, e:
+            let ((wx2, be2)) = LetLine wx, benv, menv, p, e
+            ((wx2, be2, menv))
+        SExpr e: match e.kind:
+            EFreeSigil "@", x:
+                let ((res, wx2)) = ResultOf wx, benv, menv, x
+                let wx3 = update wx2:
+                    &_.result <= res
+                ((wx3, benv, menv))
+            otherwise:
+                let ((wx2, res)) = BuildLine wx, benv, menv, e, nil
+                let wx3 = if last: SetResult wx2, res else: wx2
+                ((wx3, benv, menv))
+        SEmit ignore: ((wx, benv, menv))
+        SSignature ignore: ((wx, benv, menv))
+        SFn c: ((wx, benv, menv))
+        otherwise:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "a statement this back end does not lower yet")
+            ((wx2, benv, menv))
+
+# A host's child's result bound to the first part of the line's pattern, whatever type
+# the checker gave the name (a generic `a` in the window library's `((r, $elems))`): an
+# event or a dynamic as itself, so `@ r` gives it on. The child's document is bound to the
+# second part: a dynamic of the owner's, its getter `host_k_doc` (pick HO), in place of the
+# hold the prebinding took it for.
+BindHosted: fn Wx, Env, Env, Wres, Bn, [Pattern] -> ((Wx, Env, Env))
+fn BindHosted wx, benv, menv, res, doc, ps:
+    let ?r = match res:
+        WrEv r: ? (BnEv r, OutUnit)
+        WrDyn ex, rds, t: ? (BnDyn ex, rds, t)
+        otherwise: nil
+    let ((be1, me1)) = BindPart benv, menv, ps[0], ?r
+    BindPart2 wx, be1, me1, ps[1], (? doc)
+
+BindPart: fn Env, Env, ?Pattern, ?Bn -> ((Env, Env))
+fn BindPart benv, menv, ?p, ?b = match ((?p, ?b)):
+    ((? p, ? b)): match p.kind:
+        PName n: (((Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
+        otherwise: ((benv, menv))
+    otherwise: ((benv, menv))
+
+BindPart2: fn Wx, Env, Env, ?Pattern, ?Bn -> ((Wx, Env, Env))
+fn BindPart2 wx, benv, menv, ?p, ?b:
+    let ((be, me)) = BindPart benv, menv, ?p, ?b
+    ((wx, be, me))
+
+SetResult: fn Wx, Wres -> Wx
+fn SetResult wx, res = update wx:
+    &_.result <= res
+
+# `@ v`: what the block gives back, by its layer.
+ResultOf: unbounded fn Wx, Env, Env, Expr -> ((Wres, Wx))
+fn ResultOf wx, benv, menv, x:
+    let lx = wx.lx
+    let full = TypeAt lx, x.span
+    let t = OutTyOf lx, (Peel full)
+    let ?bound = match x.kind:
+        EName n: if (Len n.path) == 1: menv.names[SNameKey n] else: nil
+        otherwise: nil
+    match ?bound:
+        ? (BnEv r, ignore): ((WrEv r, wx))
+        ? (BnDyn ex, rds, bt): (((WrDyn ex, rds, bt), wx))
+        otherwise: ResultOfTyped wx, benv, menv, x, full, t
+
+ResultOfTyped: unbounded fn Wx, Env, Env, Expr, Ty, OutTy -> ((Wres, Wx))
+fn ResultOfTyped wx, benv, menv, x, full, t:
+    let lx = wx.lx
+    match LayerOf full:
+        LyEv:
+            let ((r, wx2)) = EventRef wx, menv, x
+            ((WrEv r, wx2))
+        LyDyn:
+            let ((ex, reads)) = DynamicExpr wx, menv, x
+            (((WrDyn ex, reads, t), wx))
+        otherwise:
+            if t == OutUnit: ((WrUnit, wx))
+            else: (((WrPlain (Own (ValueOf lx, benv, x)), t), wx))
+
+# `$x <- init then step`: a `Hold` field; the step event writes it. Its initial value stands
+# in the local `{f}_init` first, the hold's value at the build, which a supplier's dynamic
+# answer reads while the node is being made (`InitEnv`, round 3 DY); the build environment
+# binds it under `{name}#init`.
+HoldLine: unbounded fn Wx, Env, Env, Pattern, Expr, Expr -> ((Wx, Env))
+fn HoldLine wx, benv, menv, p, init, step:
+    let lx = wx.lx
+    match ?BindingOf menv, p:
+        ? (BnHold f, t):
+            let iv = Own (ValueOf lx, benv, init)
+            let wx1 = AddField wx, f, (OutHold t), "`{PatText p}`", (XCall "Hold::new", [[(XClone (XVar "{f}_init")), XCx]])
+            let ((r, wx2)) = EventRef wx1, menv, step
+            let wx3 = update (Connect wx2, r, (SkHold f)):
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{f}_init"), t), iv)
+                &_.inited <= Push &_.inited, f
+            ((wx3, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
+        otherwise: ((wx, benv))
+
+# The build environment with every name that has a value at the build (`{name}#init`) read
+# as that local: what a supplier's dynamic answer evaluates to while the owner's node is
+# being made (round 3 DY). Every other name keeps its binding.
+InitEnv: fn Env -> Env
+fn InitEnv env = Fold (Keys env.names), env, \|en, k| match (((?BeforeSuffix k, "#init"), env.names[k])):
+    ((? name, ? b)): Bind en, name, b
+    otherwise: en
+
+# Whether every read behind a dynamic has a value at the build: a hold or a dynamic `let`
+# with its `{f}_init`, nothing structural, nothing of a parent.
+AllInited: fn Wx, [Read] -> Bool
+fn AllInited wx, reads = Fold (ReadsClosed wx.dynReads, reads), True, \|ok, r| ok and match r:
+    OwnRead f: HasText wx.inited, f
+    ParentRead ignore: False
+
+PatText: fn Pattern -> Text
+fn PatText p = match p.kind:
+    PName n: SNameKey n
+    otherwise: "_"
+
+# `let` in a widget block: an event names a node fed by its expression; a dynamic a
+# getter, and, when everything it reads has a value at the build, that value in the local
+# `{rs}_init` too (`InitEnv`, round 3 DY); a plain value a field computed at the build.
+LetLine: unbounded fn Wx, Env, Env, Pattern, Expr -> ((Wx, Env))
+fn LetLine wx, benv, menv, p, e:
+    let lx = wx.lx
+    match ?BindingOf menv, p:
+        ? (BnEv er, t):
+            let ((r, wx2)) = EventRef wx, menv, e
+            let fed = OutTyOf lx, (Peel (Peel (TypeAt lx, e.span)))
+            let r2 = match t:
+                OutEvent (OutRes ignore): if fed == OutError: ErrPipe r else: r
+                OutRes ignore: if fed == OutError: ErrPipe r else: r
+                otherwise: r
+            (((Connect wx2, r2, (SkNode er.node)), benv))
+        ? (BnDyn ignore, ignore, t):
+            let rs = Snake (PatText p)
+            let ((ex, reads)) = DynamicExpr wx, menv, e
+            let getter = MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{PatText p}`")
+            let wx2 = update wx:
+                &_.getters <= Push &_.getters, getter
+                &_.dynReads <= Insert &_.dynReads, rs, reads
+            if AllInited wx2, reads:
+                let wx3 = update wx2:
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{rs}_init"), t), (Own (ValueOf lx, (InitEnv benv), e)))
+                    &_.inited <= Push &_.inited, rs
+                ((wx3, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{rs}_init"), Owned, t))))
+            else: ((wx2, benv))
+        ? (BnLocal rs, ignore, t):
+            let ?insts = match p.kind:
+                PName n: ?ManyInstances lx, n.span
+                otherwise: nil
+            match ?insts:
+                # a field per instantiation (gap LW), each the value lowered at it
+                ? insts: match p.kind:
+                    PName n:
+                        let nkey = SNameKey n
+                        let wxn = Fold (Range0 (Len insts)), wx, \|w, k|
+                            let lxk = AtInstance lx, (Or insts[k], (([[]], [[]])))
+                            let bkey = if k == 0: nkey else: "{nkey}#inst{k}"
+                            match menv.names[bkey]:
+                                ? (BnLocal rk, ignore, tk): WidgetLetField w, (PlaceStem rk), tk, (Own (ValueOf lxk, benv, e)), "`{nkey}` at its instantiation {k}"
+                                otherwise: update w:
+                                    &_.build <= Push &_.build, (RefusalDo "`{nkey}` at its instantiation {k}, which has no binding")
+                        ((wxn, benv))
+                    otherwise: ((wx, benv))
+                nil:
+                    let lxw = match p.kind:
+                        PName n: WidgetLetLx lx, n.span
+                        otherwise: lx
+                    let v = Own (ValueOf lxw, benv, e)
+                    (((WidgetLetField wx, (PlaceStem rs), t, v, "`{PatText p}`"), benv))
+        otherwise: ((wx, benv))
+
+# A widget block's plain `let` as a node field: computed in the build's `let`s, moved in.
+WidgetLetField: fn Wx, Text, OutTy, Ex, Text -> Wx
+fn WidgetLetField wx, f, t, v, doc = update wx:
+    &_.lets <= Push &_.lets, (DoLet (PaBind f), v)
+    &_.fields <= Push &_.fields, ((f, t, doc))
+    &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+
+# An event of `Error`s feeding a `!~T`: each firing is the `~T`'s failure.
+ErrPipe: fn EvRef -> EvRef
+fn ErrPipe r = EvRef(node=r.node, owner=r.owner, pipe=(\|x, K| r.pipe x, \|y| K (XCtor "Err", [[y]])))
+
+# An owned value where a `~T` is wanted: a bare `Error` is its failure (the checker's
+# pick ER lets an `Error(..)` wait for its type).
+OwnAs: fn OutTy, Vl -> Ex
+fn OwnAs t, v = match t:
+    OutRes ignore: if (ValueTy v) == OutError: XCtor "Err", [[Own v]] else: Own v
+    otherwise: Own v
+
+# `p <- e`: an element or a blueprint, its output or result bound.
+BindRes: fn Wx, Env, Pattern, Wres -> Wx
+fn BindRes wx2, menv, p, res = match ?BindingOf menv, p:
+        ? (BnEv er, ignore): match res:
+            WrEv r:
+                if er.owner != wx2.node: Crossed wx2, "the bound event of node `{er.owner}` (its graph node {er.node})"
+                else: if r.node == er.node: wx2 else: Connect wx2, r, (SkNode er.node)
+            otherwise: wx2
+        otherwise: wx2
+
+# A line that builds: an element (a place), a widget applied (inlined), or a builder. The
+# bound name, when there is one, is where the output goes.
+BuildLine: unbounded fn Wx, Env, Env, Expr, ?Bn -> ((Wx, Wres))
+fn BuildLine wx, benv, menv, e, ?bound:
+    let lx = wx.lx
+    let full = TypeAt lx, e.span
+    match e.kind:
+        EGroup x: BuildLine wx, benv, menv, x, ?bound
+        EWidgetBlock b: InlineBlock wx, benv, menv, b, lx
+        EFor ?binders, source, body: ForLine wx, benv, menv, ?binders, source, body, e, ?bound
+        ERebuild scrut, body: RebuildLine wx, benv, menv, scrut, body, e, ?bound
+        EIf (CondExpr c), thenB, (? elseB): IfGenLine wx, menv, c, thenB, elseB, e
+        otherwise: match Peel full:
+            TyElem ignore, ignore: ElementLine wx, benv, menv, e, ?bound
+            TyAt ignore, ignore: WidgetLine wx, benv, menv, e, ?bound
+            otherwise:
+                let wx2 = update wx:
+                    &_.build <= Push &_.build, (RefusalDo "a building line this back end does not lower yet")
+                ((wx2, WrUnit))

@@ -1,0 +1,266 @@
+# `Emit.Cpp.Templates`'s section `items`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------------------
+
+# A choice's handle: its cases declared, the shared variant of them.
+ChoiceHandle: fn Text, Text, Text, Text, Text, Text -> Text
+fn ChoiceHandle doc, gens, name, decls, names, members = inline_text <cpp>
+{{doc}}
+{{gens}}class {{name}} {
+public:
+    using prism_value = void;
+    {{decls}}
+    using Cases = std::variant<{{names}}>;
+    template <class C>
+        requires prism_rtl::one_of<C, {{names}}>
+    {{name}}(C c) : cases_(prism_rtl::make_rc<const Cases>(std::move(c))) {}
+    const Cases& cases() const;
+    {{members}}
+
+private:
+    prism_rtl::Rc<const Cases> cases_;
+};
+</cpp>
+
+# A case of a choice: its fields by position.
+CaseDecl: fn Text, Text, Text -> Text
+fn CaseDecl gens, path, fields = inline_text <cpp>
+{{gens}}struct {{path}} {
+    {{fields}}
+};
+</cpp>
+
+# A record, a newtype or a unit type.
+ValueStruct: fn Text, Text, Text, Text, Text -> Text
+fn ValueStruct doc, gens, name, fields, members = inline_text <cpp>
+{{doc}}
+{{gens}}struct {{name}} {
+    using prism_value = void;
+    {{fields}}
+    const {{name}}* operator->() const { return this; }
+    {{name}}* operator->() { return this; }
+    {{members}}
+};
+</cpp>
+
+# A tag's struct: an element tag's `Level`.
+CppTagStruct: fn Text, Text, Text, Text, Text -> Text
+fn CppTagStruct doc, name, fields, tagName, members = inline_text <cpp>
+{{doc}}
+struct {{name}} {
+    using prism_value = void;
+    /// The tag's qualified name, as its `Pod` carries it.
+    static constexpr const char* TAG = "{{tagName}}";
+    {{fields}}
+    const {{name}}* operator->() const { return this; }
+    {{name}}* operator->() { return this; }
+    Pod to_pod() const;
+    void show(Printer& p) const;
+    {{members}}
+};
+</cpp>
+
+# ---------------------------------------------------------------------------------------
+# Functions, jobs, traits
+# ---------------------------------------------------------------------------------------
+
+CppFunction: fn Text, Text, Text -> Text
+fn CppFunction doc, signature, body = inline_text <cpp>
+{{doc}}
+{{signature}} {
+    {{body}}
+}
+</cpp>
+
+# An unbounded function's step machine (D6), stopped at a cycle point.
+JobStruct: fn Text, Text, Text, Text, Text, Text -> Text
+fn JobStruct doc, gens, name, ret, fields, ctor = inline_text <cpp>
+/// The step machine of `{{name}}`, stopped at a cycle point: the call about to be
+/// entered. A tail call leaves no frame; any other call waits in a `Frame` around the
+/// callee's job, so the job's stack is its frames.
+///
+{{doc}}
+{{gens}}struct {{name}} : prism_rtl::Job<{{ret}}> {
+    {{fields}}
+    {{ctor}}
+    prism_rtl::Turn<{{ret}}> cycle() const override;
+};
+</cpp>
+
+TraitNamespace: fn Text, Text -> Text
+fn TraitNamespace name, body = inline_text <cpp>
+namespace {{name}} {
+{{body}}
+}  // namespace {{name}}</cpp>
+
+# ---------------------------------------------------------------------------------------
+# Nodes and programs
+# ---------------------------------------------------------------------------------------
+
+NodeClass: fn Text, Text, Text, Text, Text, Text, Text -> Text
+fn NodeClass doc, name, base, fields, consts, ctor, decls = inline_text <cpp>
+{{doc}}
+class {{name}} : public {{base}} {
+public:
+    Path path;
+    {{fields}}
+    {{consts}}
+    {{ctor}}
+    {{name}}(const {{name}}&) = delete;
+    {{decls}}
+};
+</cpp>
+
+# A node's constructor (`build` in Rust): built after propagation; holds take their initial
+# values, places go out with `cx.added`, and nothing fires.
+NodeMake: fn Text, Text, Text, Text, Text -> Text
+fn NodeMake name, signature, lets, args, rest = inline_text <cpp>
+/// Built after propagation: holds take their initial values, places go out with
+/// `cx.added`, and nothing fires.
+{{signature}} {
+    {{lets}}
+    prism_rtl::RcPlace<{{name}}> _place;
+    auto node = _place.take(new (_place.at()) {{name}}({{args}}));
+    {{rest}}
+}
+</cpp>
+
+# A `for`'s builder (docs/backend.md, "Dynamic structure").
+ForBuildTemplate: fn Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn ForBuildTemplate owner, name, at, keyTy, valueTy, rowMake, source, parent, passed = inline_text <cpp>
+/// The rows of the `for` at `{{at}}`: rows whose key left are torn down, new keys are
+/// built under it at `[k]` from the values after the tick; kept rows keep reading their
+/// entry out of the source.
+Done {{owner}}::{{name}}_build(Cx& cx) {
+    Map<{{keyTy}}, {{valueTy}}> items = {{source}}(cx);
+    auto old = deref(this->{{name}});
+    for (auto&& [k, row] : old) {
+        if (!items.contains(k)) {
+            row->leave_row(cx);
+            cx.leave_later(row);
+        }
+    }
+    decltype(old) next;
+    for (auto&& [k, v] : items) {
+        if (auto row = old.get(k)) next.insert(k, *row);
+        else next.insert(k, TRY({{rowMake}}({{at}}.child(Segment::key(prism_rtl::to_pod(k))), k, v, {{parent}}{{passed}}, cx)));
+    }
+    deref(this->{{name}}) = next;
+    // What the block reads of its rows (a `for` that gives a dynamic) moved.
+    cx.dirty(prism_rtl::share(this));
+    return {};
+}
+</cpp>
+
+# A `rebuild`'s builder: one generation at a time.
+GenBuildTemplate: fn Text, Text, Text, Text, Text, Text, Text -> Text
+fn GenBuildTemplate owner, name, at, path, source, valueTy, select = inline_text <cpp>
+/// The `rebuild` at `{{at}}`: the old generation torn down (it ran to the end of the
+/// tick), the next built at `{{path}}` from the source after the tick.
+Done {{owner}}::{{name}}_build(Cx& cx) {
+    if (auto old = std::exchange(this->{{name}}, std::nullopt)) {
+        (*old)->leave_row(cx);
+        cx.leave_later(*old);
+    }
+    std::uint32_t g = this->{{name}}_count;
+    this->{{name}}_count = g + 1;
+    Path path = {{path}};
+    {{valueTy}} value = {{source}};
+    prism_rtl::Rc<Row> row = {{select}};
+    this->{{name}} = row;
+    return {};
+}
+</cpp>
+
+# The program around a root node, as every World drives it.
+ProgramClass: fn Text, Text, Text, Text, Text -> Text
+fn ProgramClass name, prism, node, decode, root = inline_text <cpp>
+/// The program of `@{{prism}}`: the root node and the runtime.
+class {{name}} : public Program {
+public:
+    static Built<{{name}}> build(std::span<const Pod> args, const ReadyState& ready) {
+        {{decode}}
+        auto p = std::make_unique<{{name}}>();
+        Cx cx = p->rt.build(ready);
+        p->root = {{root}};
+        TickOut out = TRY(p->rt.close(std::move(cx)));
+        return std::pair<std::unique_ptr<{{name}}>, TickOut>(std::move(p), std::move(out));
+    }
+    Result<TickOut> tick(const TickIn& input, const ReadyState& ready) override {
+        return rt.tick(root, input, ready);
+    }
+    void compact() override { rt.compact(); }
+
+    Runtime rt;
+    prism_rtl::Rc<{{node}}> root;
+};
+</cpp>
+
+# ---------------------------------------------------------------------------------------
+# Expressions and statements that take several lines
+# ---------------------------------------------------------------------------------------
+
+# A block's statements and value, as a GNU statement expression.
+StmtExpr: fn Text, Text -> Text
+fn StmtExpr stmts, tail = inline_text <cpp>
+({
+    {{stmts}}
+    {{tail}};
+})</cpp>
+
+# A `match`: the arms set `_v` and jump to `_done`.
+MatchExpr: fn Text, Text -> Text
+fn MatchExpr ty, arms = inline_text <cpp>
+({
+    __label__ _done;
+    prism_rtl::Slot<{{ty}}> _v;
+    {{arms}}
+_done:
+    _v.take();
+})</cpp>
+
+# A labelled block: a `break` sets `L_v` and jumps to `L`.
+LabeledExpr: fn Text, Text, Text -> Text
+fn LabeledExpr label, ty, body = inline_text <cpp>
+({
+    __label__ {{label}};
+    prism_rtl::Slot<{{ty}}> {{label}}_v;
+    {
+        {{body}}
+    }
+{{label}}:
+    {{label}}_v.take();
+})</cpp>
+
+CondExpr: fn Text, Text, Text -> Text
+fn CondExpr cond, thenX, elseX = inline_text <cpp>
+{{cond}}
+    ? {{thenX}}
+    : {{elseX}}</cpp>
+
+Lambda: fn Text, Text, Text -> Text
+fn Lambda capture, params, body = inline_text <cpp>
+[{{capture}}]({{params}} {
+    {{body}}
+}</cpp>
+
+Block: fn Text, Text -> Text
+fn Block head, body = inline_text <cpp>
+{{head}} {
+    {{body}}
+}</cpp>
+
+IfBlock: fn Text, Text -> Text
+fn IfBlock cond, body = inline_text <cpp>
+if ({{cond}}) {
+    {{body}}
+}</cpp>
+
+Braced: fn Text -> Text
+fn Braced body = inline_text <cpp>
+{
+    {{body}}
+}</cpp>

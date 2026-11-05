@@ -8,7 +8,6 @@
 #
 # Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
-module PreludeTemplate
 emit r
 
 PreludeSource: fn Text -> Text

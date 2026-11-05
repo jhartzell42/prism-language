@@ -1,0 +1,348 @@
+# `Lower`'s section `types`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Types (docs/backend.md, "Types")
+# ---------------------------------------------------------------------------------------
+
+# A checker type as a Rust type. The time layers outside are the caller's to peel: a `$a`
+# or `!a` that is a value is `Dynamic` or `Event`.
+OutTyOf: unbounded fn Lx, Ty -> OutTy
+fn OutTyOf lx, t = match t:
+    TyCon "Nat", [[]]: OutNat
+    TyCon "Int", [[]]: OutInt
+    TyCon "U8", [[]]: OutU8
+    TyCon "Float", [[]]: OutFloat
+    TyCon "Bool", [[]]: OutBool
+    TyCon "Char", [[]]: OutChar
+    TyCon "Text", [[]]: OutText
+    TyCon "unit", [[]]: OutUnit
+    TyCon "Path", [[]]: OutPath
+    TyCon "Cursor", [[]]: OutCursor
+    TyCon "Duration", [[]]: OutDuration
+    TyCon "Prelude.Error", [[]]: OutError
+    TyCon "\u{0}Self", [[]]: OutNamed "Self", [[]]
+    TyCon "Buffer", [[a]]: OutArray (OutTyOf lx, a)
+    TyCon "Table", [[k, v]]: OutArray (OutTuple [[(OutTyOf lx, k), (OutTyOf lx, v)]])
+    TyCon "\u{0}Event", [[a]]: OutEvent (OutTyOf lx, a)
+    TyCon n, args: NamedTy lx, n, (Each args, \|a| OutTyOf lx, a)
+    TyFn c, ps, res:
+        # A function value of any color but bounded is a `Start` (D8: a color variable may
+        # be unbounded), so one representation serves both instantiations.
+        let c2 = InstCol lx, c
+        if c2 == CBound: OutFn (Each ps, \|p| OutTyOf lx, p), (OutTyOf lx, res)
+        else: if IsQuantCol lx, c2: OutQuantified (Or lx.quants[ColName c2], "")
+        else: OutJobFn (RustTyOfParams lx, (Each ps, \|p| JobParam p)), (OutTyOf lx, res)
+    TyTuple [[]]: OutUnit
+    TyTuple ts: OutTuple (Each ts, \|a| OutTyOf lx, a)
+    TyArray e: OutArray (OutTyOf lx, e)
+    TyMap k, v: OutMap (OutTyOf lx, k), (OutTyOf lx, v)
+    TySig "?", i: OutOpt (OutTyOf lx, i)
+    TySig "~", i: OutRes (OutTyOf lx, i)
+    TySig "!", i: OutEvent (OutTyOf lx, i)
+    TySig "$", i: OutDyn (OutTyOf lx, i)
+    TySig "&", i: OutTyOf lx, i
+    TySig ignore, i: OutTyOf lx, i
+    TyQ n: OutGen (Camel n)
+    TyRigid n: OutGen (Camel n)
+    TyFlex n: match lx.subst["'{n}"]:
+        ? x: OutTyOf lx, x
+        nil: match lx.quants["'{n}"]:
+            ? b: OutQuantified b
+            nil: OutUnit
+    TyAny ignore: OutShowAny
+    TyElem ignore, ignore: OutLive (OutNamed "crate::Elem", [[]])
+    TyElemAny ignore: OutNamed "crate::Elem", [[]]
+    TyAt i, ignore: blueprintTy
+    TyAssoc ignore, ignore: OutUnknown "an associated type"
+    TyErr: OutUnknown "a type the checker did not find"
+
+# A blueprint as a value, `@o` (a supplier's answer): prism_rtl's, over the program's
+# element and answer enums (pick HO).
+let blueprintTy = OutNamed "prism_rtl::Blueprint", [[(OutNamed "crate::Elem", [[]]), (OutNamed "crate::Answer", [[]])]]
+
+# The program's element and answer enums, `crate::Elem` and `crate::Answer`, and a host as
+# its rows reach it.
+let elemTy = OutNamed "crate::Elem", [[]]
+let answerTy = OutNamed "crate::Answer", [[]]
+let hostOfTy = OutObj (OutNamed "prism_rtl::HostOf", [[(OutNamed "crate::Elem", [[]]), (OutNamed "crate::Answer", [[]])]])
+
+# Whether a type gives a blueprint (`@o`, `?@o`).
+HasBlueprint: fn Ty -> Bool
+fn HasBlueprint t = match t:
+    TyAt ignore, ignore: True
+    TySig ignore, i: HasBlueprint i
+    otherwise: False
+
+# An event parameter taken as an event value: a type `Peel` leaves and `OutTyOf` spells
+# `Event<A>`.
+EventParam: fn Ty -> Ty
+fn EventParam t = match t:
+    TySig "!", i: TyCon "\u{0}Event", [[(Peel i)]]
+    otherwise: t
+
+# A `Start`'s function parameter is a `Start` whatever its color: a caller may pass an
+# unbounded one where the callee's own type says bounded (a parameter's color is
+# contravariant), and a `Start` serves both.
+JobParam: fn Ty -> Ty
+fn JobParam (TyFn ignore, ps, r) = TyFn CUnbound, ps, r
+fn JobParam t = t
+
+# An unbounded function's parameter as a job function's: one parameter is itself, several
+# a tuple.
+RustTyOfParams: unbounded fn Lx, [Ty] -> OutTy
+fn RustTyOfParams lx, ps = match ps:
+    [[p]]: OutTyOf lx, p
+    otherwise: OutTuple (Each ps, \|p| OutTyOf lx, p)
+
+# A declared type: an alias is its target; a prelude type is the prelude module's.
+NamedTy: unbounded fn Lx, Text, [OutTy] -> OutTy
+fn NamedTy lx, n, args = match lx.g.types[n]:
+    ? ti: match ti.body:
+        BAlias a: OutTyOf lx, a
+        # A fault kind is its name (`Error`'s `kind`); any other row kind is its enum.
+        BRowKind: if n == "Prelude.Fault": OutPod else: OutNamed (PathIn lx, ti.home, (Camel (BareName n))), [[]]
+        otherwise: OutNamed (PathIn lx, ti.home, (Camel (BareName n))), args
+    nil: if HasKey lx.g.families, n: OutPod else: OutNamed (Camel (BareName n)), args
+
+# A type with its time layers peeled: what a value of it holds at one moment.
+Peel: fn Ty -> Ty
+fn Peel t = match t:
+    TySig "$", i: Peel i
+    TySig "!", i: Peel i
+    TySig "&", i: Peel i
+    otherwise: t
+
+# What a blueprint gives, its layers peeled: `@!Term` holds a `Term` at a firing.
+OutOf: fn Ty -> Ty
+fn OutOf t = match t:
+    TyAt i, ignore: Peel i
+    otherwise: Peel t
+
+# The outermost time layer of a type: a dynamic (`$`), an event (`!`), a blueprint (`@`)
+# or none, a plain value.
+type Layer = choice:
+    LyPlain
+    LyDyn
+    LyEv
+    LyBlueprint
+derive ^Eq, ^Show
+
+LayerOf: fn Ty -> Layer
+fn LayerOf t = match t:
+    TySig "$", ignore: LyDyn
+    TySig "!", ignore: LyEv
+    TySig "&", i: LayerOf i
+    TyAt ignore, ignore: LyBlueprint
+    otherwise: LyPlain
+
+# Whether a constructor's fields hold their type's own values by value (directly, in an
+# optional or a tuple), so they go behind an `Rc` (docs/backend.md: recursive payloads
+# behind `Rc`). Arrays and maps are behind a pointer already.
+Layouts: unbounded fn G -> (Text ==> [Bool])
+fn Layouts g = Fold (Values g.ctors), {}, \|m, c| Insert m, c.name, (Each c.args, \|a| Reaches g, a, c.owner, [[]])
+
+Reaches: unbounded fn G, Ty, Text, [Text] -> Bool
+fn Reaches g, t, target, seen = match t:
+    TyCon n, args:
+        if n == target: True
+        else: if HasText seen, n: False
+        else: if Fold args, False, \|f, a| f or Reaches g, a, target, seen: True
+        else: match g.types[n]:
+            ? ti: match ti.body:
+                BRecord fs: Fold fs, False, \|f, ((ignore, ft))| f or Reaches g, ft, target, (Push seen, n)
+                BChoice cs: Fold cs, False, \|f, ((ignore, ats))| f or Fold ats, False, \|f2, at| f2 or Reaches g, at, target, (Push seen, n)
+                BAlias a: Reaches g, a, target, (Push seen, n)
+                otherwise: False
+            nil: False
+    TySig "?", i: Reaches g, i, target, seen
+    TySig "~", i: Reaches g, i, target, seen
+    TyTuple ts: Fold ts, False, \|f, a| f or Reaches g, a, target, seen
+    otherwise: False
+
+# Whether constructor `ctor`'s field `i` is behind an `Rc`.
+RcField: fn Lx, Text, Nat -> Bool
+fn RcField lx, ctor, i = Or (Or lx.layouts[ctor], [[]])[i], False
+
+# Whether a type holds a `Float` anywhere, which keeps it out of `Eq` and `Ord`.
+Floaty: unbounded fn G, Ty, [Text] -> Bool
+fn Floaty g, t, seen = match t:
+    TyCon "Float", [[]]: True
+    TyCon n, args:
+        if Fold args, False, \|f, a| f or Floaty g, a, seen: True
+        else: if HasText seen, n: False
+        else: match g.types[n]:
+            ? ti: match ti.body:
+                BRecord fs: Fold fs, False, \|f, ((ignore, ft))| f or Floaty g, ft, (Push seen, n)
+                BChoice cs: Fold cs, False, \|f, ((ignore, ats))| f or Fold ats, False, \|f2, at| f2 or Floaty g, at, (Push seen, n)
+                otherwise: False
+            nil: False
+    TySig ignore, i: Floaty g, i, seen
+    TyTuple ts: Fold ts, False, \|f, a| f or Floaty g, a, seen
+    TyArray e: Floaty g, e, seen
+    TyMap k, v: (Floaty g, k, seen) or Floaty g, v, seen
+    otherwise: False
+
+# Whether a Rust type can cross to a World (`ToPod`, `FromPod`).
+Podable: unbounded fn OutTy -> Bool
+fn Podable t = match t:
+    OutFn ignore, ignore: False
+    OutJobFn ignore, ignore: False
+    OutJob ignore: False
+    OutEvent ignore: False
+    OutDyn ignore: False
+    OutShowAny: False
+    OutLive ignore: False
+    OutUnknown ignore: False
+    OutGen ignore: True
+    OutNamed ignore, args: Fold args, True, \|ok, a| ok and Podable a
+    OutOpt i: Podable i
+    OutRes i: Podable i
+    OutRc i: Podable i
+    OutTuple ts: Fold ts, True, \|ok, a| ok and Podable a
+    OutArray e: Podable e
+    OutMap k, v: (Podable k) and Podable v
+    otherwise: True
+
+# ---------------------------------------------------------------------------------------
+# Values: what a Prism name stands for, and how a value is borrowed or owned (Compiler
+# ch. 4, "The ownership layer": a function takes references and returns a value)
+# ---------------------------------------------------------------------------------------
+
+# How a Rust place holds its value (pick OW of the README): `ByRef` a `&T`, `Owned` a `T`
+# (a local, a field), `RcRef` a `&Rc<T>` (a payload behind an `Rc`, matched through a
+# reference), `RcOwned` an `Rc<T>`.
+type Holding = choice:
+    ByRef
+    Owned
+    RcRef
+    RcOwned
+derive ^Eq, ^Show
+
+# A name where it is read. `BnLocal` is a place and how it holds its value. In a
+# widget block a hold reads at the read point, a derived dynamic is a reader, and an event
+# is a node of the block's graph.
+type Bn = choice:
+    BnLocal Ex, Holding, OutTy
+    BnHold Text, OutTy
+    BnDyn Ex, [Read], OutTy
+    BnEv EvRef, OutTy
+    # A tuple pattern's parts, each its name's binding (`((id, !incoming)) <- Gui.Window(..)`),
+    # where a bundle's output goes.
+    BnParts [?Bn]
+    # A widget parameter's argument (`@child`, given `@widget: ..` or `@$board`): the
+    # blueprint expression with the caller's environments and context, a closure lowered
+    # where the parameter is applied (pick WB).
+    BnWidget Expr, Env, Env, Lx
+    # A local function of a block (`fn Paired k, v = ((k, v))`): its clause, inlined
+    # where it is called.
+    BnLocalFn FnClause
+
+type Env = record:
+    names: (Text ==> Bn)
+    spans: (Text ==> Vl)
+    # The instantiations of each generalized `let` (pick LG): the name and the
+    # instantiation, with the key of its binding (`Twin#inst1`).
+    uses: (Text ==> Text)
+
+let emptyEnv = Env(names={}, spans={}, uses={})
+
+# The key of the binding a name names at a place: a generalized `let`'s instantiation
+# there (pick LG), else the name's own.
+NameKeyAt: fn Lx, Env, SName, Range -> Text
+fn NameKeyAt lx, env, n, span = match lx.useInsts[PlaceKey lx, span]:
+    ? u: Or env.uses["{SNameKey n}#{Show (InstAt lx, u)}"], (SNameKey n)
+    nil: SNameKey n
+
+# Names a closure reads, with the instantiations of each that is a generalized `let`
+# lowered more than once (pick LG): a capture takes them all.
+WithInstances: fn Env, [Text] -> [Text]
+fn WithInstances env, names = Fold names, names, \|acc, n| Append acc, (Filter (Keys env.names), \|k| HasPrefix k, "{n}#inst")
+
+BindSpan: fn Env, Text, Vl -> Env
+fn BindSpan env, nkey, v = update env:
+    &_.spans <= Insert &_.spans, nkey, v
+
+Bind: fn Env, Text, Bn -> Env
+fn Bind env, name, b = update env:
+    &_.names <= Insert &_.names, name, b
+
+# A lowered value: a place with how it holds its value, or an owned temporary.
+type Vl = choice:
+    VlPlace Ex, Holding, OutTy
+    VlOwned Ex, OutTy
+
+ValueTy: fn Vl -> OutTy
+fn ValueTy (VlPlace ignore, ignore, t) = t
+fn ValueTy (VlOwned ignore, t) = t
+
+LocalPlace: fn Ex, Holding, OutTy -> Vl
+fn LocalPlace x, mode, t = VlPlace x, mode, t
+
+# A place's last name: a local's own, a field's (`self.count` is `count`), what a copy of it
+# in a closure is named after.
+PlaceStem: fn Ex -> Text
+fn PlaceStem x = match x:
+    XVar n: n
+    XField ignore, f: f
+    XTarget y: PlaceStem y
+    XPart y, k: "{PlaceStem y}_{k}"
+    otherwise: "place"
+
+# Whether a place is read through the node (`self.count`), which a closure cannot capture.
+OnSelf: fn Ex -> Bool
+fn OnSelf x = match x:
+    XField XSelf, ignore: True
+    XField y, ignore: OnSelf y
+    XPart y, ignore: OnSelf y
+    XMethod y, ignore, ignore: OnSelf y
+    XUpgrade y: OnSelf y
+    otherwise: False
+
+# A place of the block read through a row's `parent` field, as the row's build reads it,
+# through its `parent` argument; `nil` for a place that is not the block's.
+?ThroughParent: fn Ex -> ?Ex
+fn ?ThroughParent x = match x:
+    XField XSelf, "parent": ? (XVar "parent")
+    XField y, f: match ?ThroughParent y:
+        ? z: ? (XField z, f)
+        nil: nil
+    XPart y, k: match ?ThroughParent y:
+        ? z: ? (XPart z, k)
+        nil: nil
+    XMethod y, m, xs: match ?ThroughParent y:
+        ? z: ? (XMethod z, m, xs)
+        nil: nil
+    XUpgrade y: match ?ThroughParent y:
+        ? z: ? (XUpgrade z)
+        nil: nil
+    otherwise: nil
+
+# The value, owned: a place is cloned (values are cheap to clone, docs/backend.md).
+Own: fn Vl -> Ex
+fn Own (VlPlace x, RcRef, ignore) = XClone (XDeref (XDeref x))
+fn Own (VlPlace x, RcOwned, ignore) = XClone (XDeref x)
+fn Own (VlPlace x, mode, t) = if IsCopy t: Copy (VlPlace x, mode, t) else: XClone x
+fn Own (VlOwned e, ignore) = e
+
+# The value, borrowed: what a parameter takes.
+Ref: fn Vl -> Ex
+fn Ref (VlPlace x, ByRef, ignore) = x
+fn Ref (VlPlace x, RcRef, ignore) = XRef (XDeref (XDeref x))
+fn Ref (VlPlace x, RcOwned, ignore) = XRef (XDeref x)
+fn Ref (VlPlace x, ignore, ignore) = XRef x
+fn Ref (VlOwned e, ignore) = XRef e
+
+# A copy type's value: `bool`, `f64`, `u8`, `char`, `()`.
+Copy: fn Vl -> Ex
+fn Copy (VlPlace x, ByRef, ignore) = XDeref x
+fn Copy (VlPlace x, RcRef, ignore) = XDeref (XDeref (XDeref x))
+fn Copy (VlPlace x, ignore, ignore) = x
+fn Copy (VlOwned e, ignore) = e
+
+IsCopy: fn OutTy -> Bool
+fn IsCopy t = t == OutBool or t == OutFloat or t == OutU8 or t == OutChar or t == OutUnit
+
+# A value used as a condition or an operand of `and`.
+AsBool: fn Vl -> Ex
+fn AsBool v = Copy v

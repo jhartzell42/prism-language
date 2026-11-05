@@ -1,0 +1,520 @@
+# `Lower.Model`: the core form lowering decides (docs/backend.md), which the printers
+# (`Emit.Rust`, `Emit.Cpp`) spell and nothing after it changes (K9).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.*
+use Syntax.Lexer.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Env.*
+use Check.Typed.*
+use Lower.*
+use Lower.Node.*
+# ---------------------------------------------------------------------------------------
+# The core form
+# ---------------------------------------------------------------------------------------
+
+# A type of the output program (docs/backend.md, "Types"): the value types, and the
+# runtime's cells, ports, references and shared pointers a node is made of.
+type OutTy = choice:
+    OutNat
+    OutInt
+    OutU8
+    OutFloat
+    OutBool
+    OutChar
+    OutText
+    OutCursor
+    OutUnit
+    OutPath
+    OutDuration
+    OutError
+    OutNamed Text, [OutTy]
+    OutOpt OutTy
+    OutRes OutTy
+    OutTuple [OutTy]
+    OutArray OutTy
+    OutMap OutTy, OutTy
+    OutFn [OutTy], OutTy
+    OutJobFn OutTy, OutTy
+    OutJob OutTy
+    OutEvent OutTy
+    OutDyn OutTy
+    OutGen Text
+    OutRc OutTy
+    OutRef OutTy
+    OutPod
+    OutShowAny
+    OutHold OutTy
+    OutStamped OutTy
+    # A structural dynamic's snapshot (pick ST).
+    OutSnapshot OutTy
+    OutDefer OutTy
+    OutWeak Text
+    OutCell OutTy
+    OutWakes
+    # A machine count (a generation's number), a shared reference to a trait object (a
+    # node, a row, a host), and a slice.
+    OutCount
+    OutObj OutTy
+    OutSlice OutTy
+    OutPort OutTy
+    # A live element (`Element r o`, pick RV): its level at the build and its level over time.
+    OutLive OutTy
+    # A quantified type variable of a generalized local `let` that no instantiation gave a
+    # type (pick LG): the printer refuses it, naming the binding.
+    OutQuantified Text
+    OutUnknown Text
+derive ^Eq, ^Show
+
+# An expression. Each node names an operation, never its spelling: a printer spells it
+# for its target. Text in a node is a name (a local, a field, a method, a function's or a
+# constructor's qualified path) or a literal's digits, never syntax.
+type Ex = choice:
+    # A local: a parameter, a `let`, a pattern's binder.
+    XVar Text
+    # A global item by its qualified path: a function, a getter, a unit constructor.
+    XPath Text
+    # The node a method runs on, the read point, and a constant of the node's (a height).
+    XSelf
+    XCx
+    XConst Text
+    XUnit
+    XNone
+    XBool Bool
+    # Number literals: a `Nat` and an `Int` by their decimal digits (an `Int` signed), a
+    # byte, a float spelled with its point, a machine integer (a count, an index).
+    XNat Text
+    XInt Text
+    XByte Text
+    XFloat Text
+    XIndex Nat
+    # A character and a string literal (not a `Text`: a fault's message, a name), as the
+    # source has them; the printer escapes.
+    XChar Text
+    XStr Text
+    # A reference to a place, a mutable one, and the place a reference points to.
+    XRef Ex
+    XRefMut Ex
+    XDeref Ex
+    # The element a `for &s <- &xs:` loop updates in place, through its mutable reference.
+    XTarget Ex
+    # A copy of a shared value; a weak reference to a node, and the node again if it lives.
+    XClone Ex
+    XWeak Ex
+    XUpgrade Ex
+    # A labelled block's exit with its value, and a loop's exit.
+    XBreak Text, Ex
+    XBreakLoop
+    # A callback the runtime runs after the tick's answers (`Later`): the call, and done.
+    XLater Ex
+    # A message formatted from literal runs and values (a fault's), not a `Text`.
+    XFormatStr [Ex]
+    # Whether a value is one of these constructors, whatever their payloads.
+    XIsCase Ex, [Text]
+    # What lowering cannot lower (`Refusal`), and an arm no value reaches.
+    XRefusal Text
+    XUnreachable
+    XCall Text, [Ex]
+    XApply Ex, [Ex]
+    XMethod Ex, Text, [Ex]
+    XBin Text, Ex, Ex
+    XUnary Text, Ex
+    XCtor Text, [Ex]
+    XRecord Text, [((Text, Ex))]
+    XTuple [Ex]
+    XVec [Ex]
+    XText Text
+    XFormat [Ex]
+    # A `match`, an if-let chain and a labelled block, with the type of their value (a
+    # printer without expression blocks declares it).
+    XMatch Ex, [XArm], Bool, OutTy
+    XChain Text, Ex, [XArm], OutTy
+    XIf Ex, Ex, Ex
+    XBlock [Do], Ex
+    XLabeled Text, [Do], Ex, OutTy
+    XClosure Bool, [Pa], Ex
+    # `?`: the failure passed on, else the value; whether the operand is a temporary,
+    # which a target that copies a named one moves (C++'s `TRY`; Rust's `?` moves either).
+    XTry Ex
+    XField Ex, Text
+    # A tuple's part by its position.
+    XPart Ex, Nat
+    XDecode OutTy, Ex
+    XCast Ex, OutTy
+    # An expression with its type said, where a printer cannot infer it (an empty array
+    # or map passed to a generic function).
+    XTyped Ex, OutTy
+derive ^Eq, ^Show
+
+# One arm of a `match` or of an if-let chain: the pattern, the conditions after it (a
+# guard, or a `let` through a reference counted payload), the value.
+type XArm = record:
+    pat: Pa
+    conds: [Cc]
+    body: Ex
+derive ^Eq, ^Show
+
+type Cc = choice:
+    CcIf Ex
+    CcLet Pa, Ex
+derive ^Eq, ^Show
+
+# A pattern.
+type Pa = choice:
+    PaWild
+    PaBind Text
+    # A binder whose value the body changes in place.
+    PaMut Text
+    PaCtor Text, [Pa]
+    PaUnit Text
+    PaRecord Text, [((Text, Pa))], Bool
+    PaTuple [Pa]
+    PaChar Text
+    PaBool Bool
+    # A machine integer, a constant of the node's (a height).
+    PaIndex Nat
+    PaConst Text
+    # A slice's elements; `PaRest` the rest of it, bound to a name unless the name is "".
+    PaSlice [Pa]
+    PaRest Text
+    PaTyped Pa, OutTy
+derive ^Eq, ^Show
+
+# A statement of a method body.
+type Do = choice:
+    DoLet Pa, Ex
+    DoLetElse Pa, Ex, Ex
+    DoAssign Ex, Ex
+    DoWhile Ex, [Do]
+    DoWhileLet Pa, Ex, [Do]
+    DoFor Pa, Ex, [Do]
+    DoExpr Ex
+    DoIf Ex, [Do], [Do]
+    DoIfLet Pa, Ex, [Do], [Do]
+    DoMatch Ex, [((Pa, [Do]))]
+    DoReturn Ex
+    # Statements in a scope of their own, over lines (`DoBlock`) or on one (`DoScope`), and
+    # statements kept on one line as they are.
+    DoBlock [Do]
+    DoScope [Do]
+    DoLine [Do]
+    DoNote Text
+derive ^Eq, ^Show
+
+# A type declaration: a record (one case named as the type, named fields), a choice
+# (cases with positional fields), a newtype or a unit type.
+type TyDef = record:
+    name: Text
+    prism: Text
+    params: [Text]
+    shape: TyShape
+    cases: [CaseDef]
+    eq: Bool
+    ord: Bool
+    floaty: Bool
+    show: Shown
+    pod: Bool
+    doc: Text
+derive ^Eq, ^Show
+
+type TyShape = choice:
+    ShapeRecord
+    ShapeChoice
+    ShapeNewtype
+    ShapeUnit
+derive ^Eq, ^Show
+
+# Where a type's `Show` comes from: the program's own `impl ^Show` (it then crosses as
+# `Pod::Shown`), a `derive ^Show`, or nowhere.
+type Shown = choice:
+    ShownOwn
+    ShownDerived
+    NotShown
+derive ^Eq, ^Show
+
+type CaseDef = record:
+    name: Text
+    prism: Text
+    fields: [((Text, OutTy))]
+derive ^Eq, ^Show
+
+# An element tag: the `Level` struct (its plain and dynamic fields, as values after the
+# tick) and the tag's qualified name.
+type TagDef = record:
+    name: Text
+    tagName: Text
+    fields: [((Text, Text, OutTy))]
+    doc: Text
+    # Every field is plain data (`Podable`): the struct is `Clone` and `PartialEq` and
+    # reads back from a `Pod`, so a value holding it (a `[Draw]` in a record) can be data.
+    pod: Bool
+derive ^Eq, ^Show
+
+# A row kind's values as plain data (pick RV): one Rust enum whose variants are the tags
+# of the kind across the program, each holding its tag's struct. A `type Draw = row` is
+# `Draw` in its module; `Elem r`, a document's element, is `crate::Elem` over every
+# `Element` tag.
+type RowDef = record:
+    name: Text
+    prism: Text
+    cases: [((Text, Text))]
+    pod: Bool
+    doc: Text
+derive ^Eq, ^Show
+
+# A plain function, a top-level `let` (a getter with no parameters), or a check line.
+type FnDef = record:
+    name: Text
+    generics: [((Text, [Text]))]
+    params: [((Text, OutTy))]
+    ret: OutTy
+    body: Ex
+    doc: Text
+    public: Bool
+derive ^Eq, ^Show
+
+# A step machine (D6): one per unbounded function that `@Run` is given or that a job
+# calls. A tail call is the callee's job (`Normalize`); any other call is a `Frame`
+# around it, the caller's continuation waiting for the result (`Total`).
+type JobDef = record:
+    name: Text
+    start: Text
+    generics: [((Text, [Text]))]
+    fields: [((Text, OutTy))]
+    ret: OutTy
+    body: Ex
+    doc: Text
+derive ^Eq, ^Show
+
+# A method of a node.
+type MethDef = record:
+    name: Text
+    recv: Recv
+    params: [((Text, OutTy))]
+    cx: CxArg
+    ret: OutTy
+    body: [Do]
+    tail: Ex
+    doc: Text
+derive ^Eq, ^Show
+
+# A method's receiver: `self: &Rc<Self>` (it may hand the node to the runtime), `&self`, or
+# `self: Rc<Self>` (a `Node` or `Row` hook's).
+type Recv = choice:
+    RecvRc
+    RecvRef
+    RecvOwned
+derive ^Eq, ^Show
+
+# The read point a method takes: `cx: &mut Cx`, `cx: &Cx`, or none.
+type CxArg = choice:
+    CxMut
+    CxRef
+    CxNone
+derive ^Eq, ^Show
+
+# A node: one widget block's storage and methods (docs/backend.md, "A widget block").
+type NodeDef = record:
+    name: Text
+    prism: Text
+    doc: Text
+    params: [((Text, OutTy))]
+    fields: [((Text, OutTy, Text))]
+    consts: [((Text, Nat, Text))]
+    lets: [Do]
+    # The fields' initializers in the order written: the ones that clone a local before
+    # the locals moved in.
+    inits: [((Text, Ex))]
+    build: [Do]
+    fallible: Bool
+    methods: [MethDef]
+    answers: [((Pa, Ex))]
+    hooks: [((Text, [Do]))]
+    builders: [ForDef]
+    wakes: Bool
+    children: [NodeDef]
+    gens: [GenDef]
+    subs: [((Text, Text, OutTy))]
+    # The node's greatest height: a `for` row's, which its block's gather sits above.
+    top: Nat
+    rowKind: RowKind
+    # A hosted row's `Row` methods (pick HO): `deliver`, `document`, `document_moved`.
+    hosted: [MethDef]
+derive ^Eq, ^Show
+
+# What a node is a row of: a `for` (it has a `key`), a `rebuild`'s generation, or nothing
+# (a root widget's node).
+type RowKind = choice:
+    ForRow
+    GenerationRow
+    NotARow
+derive ^Eq, ^Show
+
+# A place's position in a node (pick HO): `scope` 0 is the node's own places, `k` from 1 the
+# places of the child of host `scopes[k - 1]` of the node, which count from 0 and are keyed
+# by their path relative to the child in the host's document. A position is spelled by
+# `PlaceAt` and matched by `PosPat`; `PlaceText` is its text in a name or a doc comment.
+type Pos = record:
+    scope: Nat
+    at: Nat
+derive ^Eq, ^Show
+
+let pos0 = Pos(scope=0, at=0)
+
+# The next position in the same scope.
+NextPos: fn Pos -> Pos
+fn NextPos p = update p:
+    &_.at <= &_.at + 1
+
+# The first position of host `k`'s child (`k` from 1).
+ScopePos: fn Nat -> Pos
+fn ScopePos k = Pos(scope=k, at=0)
+
+# A position as text, in a name (`place_1`, `place_h1_2`) or a doc comment: the node's own
+# by its number, a hosted child's by its scope and number, `h{k}_{at}`.
+PlaceText: fn Pos -> Text
+fn PlaceText p = if p.scope == 0: "{p.at}" else: "h{p.scope}_{p.at}"
+
+# A `rebuild` (docs/backend.md, "Dynamic structure"): one generation at `path/n/#g`,
+# torn down and built anew from the source after a tick that changed it; the clause of a
+# widget of several clauses chosen by matching its arguments.
+type GenDef = record:
+    name: Text
+    pos: Pos
+    # The place's path, read from `self` (`PlaceAt`).
+    at: Ex
+    source: Ex
+    valueTy: OutTy
+    select: Ex
+    # A widget of several clauses in a static position (Semantics ch. 8): its one
+    # generation's node stands at the caller's path, its `width` places numbered from the
+    # caller's position `pos`, where an inlined widget's places stand.
+    transparent: Bool
+    width: Nat
+derive ^Eq, ^Show
+
+# A `for` builder (docs/backend.md, "Dynamic structure"): a map of rows, each a node of
+# its own at `path/n/[k]`, rebuilt from the source after the tick.
+type ForDef = record:
+    name: Text
+    pos: Pos
+    # The place's path, read from `self` (`PlaceAt`).
+    at: Ex
+    keyTy: OutTy
+    valueTy: OutTy
+    rowNode: Text
+    keyed: Bool
+    # The block's getter the builder and the rows' entries read the source from.
+    source: Text
+    # What a row's `build` takes as its parent: the block, weakly, or for a host's rows the
+    # host (pick HO).
+    parent: Ex
+    # The block's plain values the rows read, as the block passes them to a row's `build`.
+    passed: [Ex]
+derive ^Eq, ^Show
+
+# The program of a root widget, as a World drives it.
+type ProgDef = record:
+    name: Text
+    prism: Text
+    node: Text
+    params: [((Text, OutTy))]
+    fallible: Bool
+    world: Text
+derive ^Eq, ^Show
+
+# A compiled `check` block: each line's value as plain data.
+type CheckDef = record:
+    name: Text
+    lines: [Ex]
+derive ^Eq, ^Show
+
+# A program's own trait: each method an associated function over `Self`, a default's body.
+type TraitDef = record:
+    name: Text
+    methods: [FnDef]
+    defaults: [Text]
+    doc: Text
+derive ^Eq, ^Show
+
+# An `impl`: of a program's trait, its methods; of `^Show`, `^Eq` or `^Ord`, the Rust
+# trait the emitted code's operators and printer read, over a function of its own.
+type ImplDef = record:
+    cls: Text
+    tr: Text
+    head: OutTy
+    generics: [((Text, [Text]))]
+    methods: [FnDef]
+    doc: Text
+derive ^Eq, ^Show
+
+type Item = choice:
+    ItTrait TraitDef
+    ItImpl ImplDef
+    ItType TyDef
+    ItTag TagDef
+    ItRow RowDef
+    ItFn FnDef
+    ItJob JobDef
+    ItNode NodeDef
+    ItNote Text
+    # What lowering cannot lower, as a `compile_error!` item (`Refusal`).
+    ItRefused Text
+derive ^Eq, ^Show
+
+# One Prism module as one module of the output.
+type ModDef = record:
+    name: Text
+    prism: Text
+    path: Text
+    uses: [Text]
+    # What a target that declares a module before it defines it needs of the others (the
+    # C++ printer's per-module headers; the Rust printer ignores it): `complete`, the
+    # modules whose records, newtypes, unit types or tags this module's own types hold by
+    # value, defined first; `declared`, the others it may name (every module its `use`s
+    # and emitted families reach), whose declarations are enough.
+    # `typesWith`, the modules whose value types are defined together with this one's,
+    # itself among them: a cycle of `complete` (each module holding the next one's types
+    # by value, with no cycle among the types themselves) is one group, in which the types
+    # are put in order across the modules.
+    complete: [Text]
+    declared: [Text]
+    typesWith: [Text]
+    items: [Item]
+derive ^Eq, ^Show
+
+type Model = record:
+    name: Text
+    mods: [ModDef]
+    programs: [ProgDef]
+    root: ?ProgDef
+    checks: [CheckDef]
+    # `crate::Elem`, emitted in `main.rs`
+    elem: RowDef
+    # `crate::Answer`, beside it
+    answer: AnswerDef
+    # What `Elem` and `Answer` need of the modules, as `ModDef.complete` and `declared`
+    # say.
+    elemComplete: [Text]
+    elemDeclared: [Text]
+    scripts: [Text]
+    notes: [Text]
+derive ^Eq, ^Show
+
+# `crate::Answer` (pick HO): an answer to an element, typed by its tag, what a host's
+# supplier answers a child place with and what a World's answer to a forwarded element
+# decodes to. A variant per element tag of the program, carrying the tag's output type.
+type AnswerDef = record:
+    cases: [AnswerCase]
+derive ^Eq, ^Show
+
+type AnswerCase = record:
+    # The variant, the tag's struct name (`UiButton`); the accessor that takes its value
+    # out (`ui_button`); the tag's struct path (`ui::UiButton`) and qualified name.
+    variant: Text
+    accessor: Text
+    structPath: Text
+    tagName: Text
+    ty: OutTy
+derive ^Eq, ^Show

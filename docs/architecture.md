@@ -25,10 +25,17 @@ serialization or checkpoints.
 runtime/rust/  prism_rtl, the runtime library every compiled program links:
                     nodes, heights, holds, keyed for, patches, first values, @Defer
                     and pending, jobs, the Test World (docs/backend.md)
-prismc/             the compiler, in Prism: lexer, parser, checker, lowering, emission
-                    through code templates, the driver (a rebuild over the source set)
+prismc/             the compiler, in Prism, a tree (docs/modules-style-pass.md):
+  app.prism         the root: the driver (a rebuild over the source set), with its
+                    sections reading, checking and compile
+  fs/               Fs, the prelude's with Fs.List
+  syntax/           Syntax, the tree; lexer/, parser/ (each with a test module), sexp/
+  check/            Check, the checker; errors/ types/ env/ expr/ blocks/ passes/
+                    shrink/ typed/
+  lower/            Lower, lowering; model/ (the core form), node/ (widget blocks)
+  emit/             the printers: rust/ and cpp/, each with templates/ and prelude/
 prelude/            the Prism prelude the checker reads; its Rust is prismc's
-                    templates/prelude.prism, emitted beside every program
+                    emit/rust/prelude/, emitted beside every program
 examples/           chess (rules, board, window library)
 runtime/{rust,cpp}/ the runtimes the emitted code runs on, one per target
 worlds/cli/{rust,cpp}/   the CLI World: Fs, Process, Time, Prelude.Unwrap

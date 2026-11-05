@@ -1,0 +1,274 @@
+# `Lower`'s section `functions`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Functions (docs/backend.md: a plain function is a Rust `fn` taking references, its
+# clauses one `match`; generics are Rust's, monomorphized by rustc, doubt MO)
+# ---------------------------------------------------------------------------------------
+
+# A trait bound as Rust's: `^Eq` is `PartialEq`, `^Ord` `PartialOrd` (a `Float` has no
+# total order in Rust), `^Show` the printer's, `^Num` the prelude's.
+BoundOf: fn Lx, Text -> [Text]
+fn BoundOf lx, "Prelude.Eq" = [["PartialEq"]]
+fn BoundOf lx, "Prelude.Ord" = [["PartialOrd"]]
+fn BoundOf lx, "Prelude.Show" = [["Show"]]
+fn BoundOf lx, "Prelude.Num" = [["Num"]]
+fn BoundOf lx, "Prelude.Pod" = [["ToPod", "FromPod"]]
+fn BoundOf lx, cls = match lx.g.traits[cls]:
+    ? tr: [[(PathIn lx, tr.home, (Camel (BareName cls)))]]
+    nil: [[]]
+
+# A scheme's type variables as Rust generics with their bounds.
+SchemeGenerics: fn Lx, Scheme -> [((Text, [Text]))]
+fn SchemeGenerics lx, sc = Each sc.qs, \|q|
+    let bs = Fold sc.bounds, [["Clone"]], \|acc, ((v, cls))| if v == q: UnionTexts acc, (BoundOf lx, cls) else: acc
+    ((Camel q, bs))
+
+# The parameters of a function's clauses: a name every clause binds at a position names
+# the parameter; any other position is matched, named after its type.
+ParamNames: fn Lx, [FnClause], [OutTy] -> [((Text, Bool))]
+fn ParamNames lx, clauses, pts = Each (Range0 (Len pts)), \|i|
+    let names = Each clauses, \|c| PlainBinder lx, (Or c.params[i], dummyPat)
+    let first = Or names[0], ""
+    let same = first != "" and Fold names, True, \|ok, n| ok and n == first
+    if same: (((LocalName lx, first), False)) else: (((ParamWord (Or pts[i], OutUnit), i), True))
+
+# The binder a parameter pattern is, when it is one: its name with sigils.
+PlainBinder: fn Lx, Pattern -> Text
+fn PlainBinder lx, p = match p.kind:
+    PName n:
+        let ((?qk, why)) = ResolveValue lx.g, lx.home, n
+        let isCtor = match ?qk:
+            ? qk: (HasKey lx.g.ctors, qk) and ((IsUpperText (Base (SNameKey n))) or IsUnitCtor lx, qk)
+            nil: False
+        if isCtor: "" else: SNameKey n
+    PGroup q: PlainBinder lx, q
+    otherwise: ""
+
+# A matched parameter's name: its type's (`term` for a `Term`), else `arg`.
+ParamWord: fn OutTy, Nat -> Text
+fn ParamWord t, i:
+    let base = match t:
+        OutNamed n, ignore: Snake (Or (?Last (Split n, "::")), "arg")
+        OutText: "text"
+        OutNat: "n"
+        OutInt: "i"
+        OutArray ignore: "xs"
+        OutMap ignore, ignore: "map"
+        OutOpt ignore: "opt"
+        otherwise: "arg"
+    "{base}{i}"
+
+# A function's clauses as one body over its parameters (each a reference, `ref`).
+ClausesBody: unbounded fn Lx, Env, [FnClause], [((Text, Bool))], [Ty], (fn Lx, Env, FnBody -> Ex), Text, OutTy -> Ex
+fn ClausesBody lx, env, clauses, names, ptys, Body, label, t:
+    let env1 = Fold (Range0 (Len names)), env, \|en, i|
+        let ((rs, matched)) = Or names[i], (("", True))
+        if matched: en
+        else: Bind en, (PlainBinder lx, (Or (Or clauses[0], dummyClause).params[i], dummyPat)), (BnLocal (XVar rs), ByRef, (OutTyOf lx, (Peel (Or ptys[i], TyErr))))
+    let scrutIx = Filter (Range0 (Len names)), \|i| match names[i]:
+        ? ((ignore, True)): True
+        otherwise: False
+    if (Len scrutIx) == 0:
+        let c = Or clauses[0], dummyClause
+        Body lx, env1, c.body
+    else:
+        let scrut = match scrutIx:
+            [[i]]: XVar (Or (Each names, \|((n, ignore))| n)[i], "arg")
+            otherwise: XTuple (Each scrutIx, \|i| XVar (Or (Each names, \|((n, ignore))| n)[i], "arg"))
+        let arms = Each (Range0 (Len clauses)), \|ci|
+            let c = Or clauses[ci], dummyClause
+            let pos = Each scrutIx, \|i| RustPat lx, (Or c.params[i], dummyPat), (Or ptys[i], TyErr), ByRef, "{label}{ci}_{i}"
+            let pa = match pos:
+                [[o]]: o.pa
+                otherwise: PaTuple (Each pos, \|o| o.pa)
+            let conds = Fold pos, [[]], \|acc, o| Append acc, o.conds
+            let binds = Fold pos, [[]], \|acc, o| Append acc, o.binds
+            XArm(pat=pa, conds=conds, body=(Body lx, (BindAll env1, binds), c.body))
+        Own (ArmsValue scrut, arms, "'{label}", t)
+
+let dummyClause = FnClause(name=(DefOp "", Range(start=0, end=0)), params=[[]], body=(BodyExpr (Expr(kind=EError, span=Range(start=0, end=0)))), span=Range(start=0, end=0))
+
+FnBodyValue: unbounded fn Lx, Env, FnBody -> Ex
+fn FnBodyValue lx, env, (BodyExpr x) = Own (ValueOf lx, env, x)
+fn FnBodyValue lx, env, (BodyBlock b) = Own (BlockValue lx, env, b)
+
+# A plain function: its scheme's types, its clauses as a `match`.
+FnDefOf: unbounded fn Lx, Text, [FnClause], Scheme -> FnDef
+fn FnDefOf lx, qk, clauses, sc:
+    let ((ptys0, res)) = match sc.ty:
+        TyFn ignore, ps, r: ((ps, r))
+        other: (([[]], other))
+    # A function that gives a blueprint is not lifted over its `!` parameters: it takes
+    # each as an event value (`?Boxed p, e, !in` builds `@ !Filter (?ClickTo p, !in)`).
+    let ptys = if HasBlueprint res: Each ptys0, \|p| EventParam p else: ptys0
+    let pts = Each ptys, \|p| OutTyOf lx, (Peel p)
+    let names = ParamNames lx, clauses, pts
+    let body = ClausesBody lx, emptyEnv, clauses, names, ptys, FnBodyValue, "c", (OutTyOf lx, (Peel res))
+    let params = Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (OutRef (Or pts[i], OutUnit))))
+    let ret = OutTyOf lx, (Peel res)
+    # A type variable the Rust signature erases (a supplier's `o`, under a blueprint and a
+    # live element) is no Rust type parameter: rustc could not infer it.
+    let used = Fold (Push pts, ret), [[]], \|acc, t| UnionTexts acc, (TyParamsIn t)
+    let generics = Filter (SchemeGenerics lx, sc), \|((g, ignore))| HasText used, g
+    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=generics, params=params, ret=ret, body=body, doc=(SignatureText lx, qk), public=True)
+
+# The type parameters a Rust type names.
+TyParamsIn: fn OutTy -> [Text]
+fn TyParamsIn t = match t:
+    OutGen n: [[n]]
+    OutNamed ignore, ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsIn x)
+    OutTuple ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsIn x)
+    OutFn ts, r: Fold ts, (TyParamsIn r), \|acc, x| UnionTexts acc, (TyParamsIn x)
+    OutJobFn a, r: UnionTexts (TyParamsIn a), (TyParamsIn r)
+    OutMap k, v: UnionTexts (TyParamsIn k), (TyParamsIn v)
+    OutOpt x: TyParamsIn x
+    OutRes x: TyParamsIn x
+    OutArray x: TyParamsIn x
+    OutJob x: TyParamsIn x
+    OutEvent x: TyParamsIn x
+    OutDyn x: TyParamsIn x
+    OutRc x: TyParamsIn x
+    OutRef x: TyParamsIn x
+    OutHold x: TyParamsIn x
+    OutCell x: TyParamsIn x
+    OutLive x: TyParamsIn x
+    otherwise: [[]]
+
+# A definition's Prism signature, for the doc comment.
+SignatureText: fn Lx, Text -> Text
+fn SignatureText lx, qk = match lx.g.vals[qk]:
+    ? v: match lx.g.srcs[v.file]:
+        ? src: Trim (SpanText src, v.span)
+        nil: BareName qk
+    nil: BareName qk
+
+# A definition's whole Prism source, its signature with it.
+DefinitionText: fn Lx, Text -> Text
+fn DefinitionText lx, qk:
+    let spans = Fold lx.g.defs, [[]], \|acc, d| if d.qk == qk: Push acc, ((d.file, d.span)) else: acc
+    let sig = match lx.g.vals[qk]:
+        ? v: if v.span.start < (Or (Each spans, \|((ignore, r))| r.start)[0], 0): [[((v.file, v.span))]] else: [[]]
+        nil: [[]]
+    Join (Each (Append sig, spans), \|((f, r))| SrcText lx, f, r), "\n"
+
+SrcText: fn Lx, Nat, Range -> Text
+fn SrcText lx, f, r = match lx.g.srcs[f]:
+    ? src: DropTrailingComments (SpanText src, r)
+    nil: ""
+
+# A definition's span runs to the next one, so it takes the comments that introduce the
+# next (or a test file's header): the quote stops at its last line of code.
+DropTrailingComments: fn Text -> Text
+fn DropTrailingComments t:
+    let lines = Split t, "\n"
+    let keep = Fold (Range0 (Len lines)), 0, \|k, i| if IsCodeLine (Or lines[i], ""): i + 1 else: k
+    TrimEnd (Join (Take lines, keep), "\n")
+
+IsCodeLine: fn Text -> Bool
+fn IsCodeLine l:
+    let s = Trim l
+    s != "" and (not (HasPrefix s, "#"))
+
+# A top-level `let`: a getter computing its value (pick TL of the README).
+LetGetter: unbounded fn Lx, Text, LetDecl -> FnDef
+fn LetGetter lx, qk, l:
+    let t = OutTyOf lx, (Peel (TypeAt lx, l.value.span))
+    let v = ValueOf lx, emptyEnv, l.value
+    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=[[]], params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True)
+
+# ---------------------------------------------------------------------------------------
+# Traits and impls (docs/backend.md: a trait is a Rust trait, `derive` impls; a program's
+# own `impl ^Show` prints by `p.raw`)
+# ---------------------------------------------------------------------------------------
+
+HasOwnShow: fn Lx, Text -> Bool
+fn HasOwnShow lx, tn = Fold (Or lx.g.impls["Prelude.Show"], [[]]), False, \|f, im| f or ((not im.derived) and (HeadName im.head) == tn)
+
+HeadName: fn Ty -> Text
+fn HeadName (TyCon n, ignore) = n
+fn HeadName other = ""
+
+# A trait's parameter as `Self` in its methods' types.
+SelfIn: unbounded fn Ty, Text -> Ty
+fn SelfIn t, param = Instantiated t, [[param]], [[(TyCon "\u{0}Self", [[]])]]
+
+TraitDefOf: unbounded fn Lx, TraitInfo -> TraitDef
+fn TraitDefOf lx0, tr:
+    let lx = InModule lx0, tr.file, tr.home
+    let methods = Each tr.methods, \|mq|
+        let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+        let sc = update v.scheme:
+            &_.ty <= SelfIn &_.ty, tr.param
+            &_.qs <= Filter &_.qs, \|q| q != tr.param
+            &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+        let defaultQk = Fold tr.defaults, "", \|f, dq| if (BareName dq) == (BareName mq): dq else: f
+        let clauses = if defaultQk == "": [[]] else: DefaultClauses lx.g, defaultQk
+        let fd = FnDefOf lx, mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
+        update fd:
+            &_.public <= (Len clauses) > 0
+    TraitDef(name=(Camel (BareName tr.name)), methods=methods, defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(name=tr.name, home=tr.home, params=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
+
+DefaultClauses: fn G, Text -> [FnClause]
+fn DefaultClauses g, qk = Fold g.defs, [[]], \|acc, d| if d.qk == qk: DefaultOf d, acc else: acc
+
+DefaultOf: fn Def, [FnClause] -> [FnClause]
+fn DefaultOf d, other = match d.body:
+    DbDefault cs, ignore: cs
+    otherwise: other
+
+# An impl's methods, each with its trait's scheme at the impl's head.
+ImplDefOf: unbounded fn Lx, ImplInfo -> ImplDef
+fn ImplDefOf lx, im:
+    let tr = Or lx.g.traits[im.cls], dummyTraitInfo
+    let head = OutTyOf lx, im.head
+    let defs = Filter lx.g.defs, \|d| IsMethodOf d, im
+    let methods = Each defs, \|d|
+        let mq = Fold tr.methods, "", \|found, q| if (BareName q) == d.name: q else: found
+        let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+        let sc = update v.scheme:
+            &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
+            &_.qs <= Filter &_.qs, \|q| q != tr.param
+            &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+        let fd = FnDefOf lx, mq, (MethodClauses d), sc
+        if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{Snake (BareName (HeadName im.head))}" else: fd
+    let generics = Each im.qs, \|q| ((Camel q, [["Clone"]]))
+    ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (Camel (BareName im.cls))), head=head, generics=generics, methods=methods, doc="")
+
+Renamed: fn FnDef, Text -> FnDef
+fn Renamed fd, n = update fd:
+    &_.name <= n
+
+IsMethodOf: fn Def, ImplInfo -> Bool
+fn IsMethodOf d, im = match d.body:
+    DbMethod ignore, cls, other: cls == im.cls and other.span == im.span and other.file == im.file
+    otherwise: False
+
+MethodClauses: fn Def -> [FnClause]
+fn MethodClauses d = match d.body:
+    DbMethod cs, ignore, ignore: cs
+    otherwise: [[]]
+
+# A building `if` over a plain condition (Semantics ch. 4: it picks its arm once, at the
+# build): each arm a generation of its own, one built (pick BI of the README: under its
+# place `n/#0`, where the book's arms are transparent).
+IfGenLine: unbounded fn Wx, Env, Expr, Block, Block, Expr -> ((Wx, Wres))
+fn IfGenLine wx, menv, c, thenB, elseB, e:
+    let lx = wx.lx
+    let pos = wx.pos
+    let wx1 = update wx:
+        &_.pos <= NextPos &_.pos
+    let ((name, wx2)) = FreshName wx1, "arm"
+    let base = "{wx.node}{Camel name}{RowSuffix wx}"
+    let yes = GenRowOf wx2, menv, thenB, OutUnit, "{base}Then", name
+    let no = GenRowOf yes.parent, menv, elseB, OutUnit, "{base}Else", name
+    let cond = AsBool (ValueOf lx, menv, c)
+    let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
+    let Mk = \|n| XCast (TryOf (XCall "{n.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))), (OutObj (OutNamed "Row", [[]]))
+    let select = XIf cond, (Mk yes.node), (Mk no.node)
+    let wx3 = update no.parent:
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=False, width=0)
+        &_.genHolds <= Push &_.genHolds, ((name, [[]]))
+        &_.rows <= Append (Append (Append (Push &_.rows, yes.node), yes.node.children), [[no.node]]), no.node.children
+        &_.getters <= Push &_.getters, (MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", OutUnit))]], cx=CxMut, ret=OutUnit, body=[[]], tail=(XUnit), doc="An arm's result, which a building `if` of widgets drops."))
+    ((wx3, WrUnit))

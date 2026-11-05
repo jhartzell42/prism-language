@@ -1,0 +1,244 @@
+# `Lower.Node`'s section `dynamics`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Dynamics and events inside a block
+# ---------------------------------------------------------------------------------------
+
+# A dynamic expression as its reader: the plain expression over the current values, each
+# hold read at the read point (`self.x.get(cx)`), and the holds and getters it reads, for
+# the marks (docs/backend.md, "Marks"). Lifting is the checker's; at one moment a lifted
+# expression is the plain one.
+DynamicExpr: unbounded fn Wx, Env, Expr -> ((Ex, [Read]))
+fn DynamicExpr wx, menv, e:
+    let v = ValueOf wx.lx, menv, e
+    let reads = Fold (ExprsIn e), [[]], \|acc, x| match x.kind:
+        EName n: match menv.names[SNameKey n]:
+            ? (BnHold f, ignore): AddRead acc, (OwnRead f)
+            ? (BnDyn ignore, rs, ignore): UnionReads acc, rs
+            otherwise: acc
+        otherwise: acc
+    ((Own v, reads))
+
+# A node that never fires (`never`).
+NeverEvent: fn Wx, OutTy -> ((EvRef, Wx))
+fn NeverEvent wx, t:
+    let ((id, wx2)) = AddGn wx, "never", t, GnNever, 0
+    (((EvRefOf wx2, id), wx2))
+
+# An event expression as a reference into the block's graph (Compiler ch. 3): a pure
+# transform extends the pipe and calls straight through; `<|` is a combinator, a merge
+# that records its inputs and decides in the node's wake (option (c)).
+EventRef: unbounded fn Wx, Env, Expr -> ((EvRef, Wx))
+fn EventRef wx, menv, e:
+    let lx = wx.lx
+    let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
+    match e.kind:
+        EGroup x: EventRef wx, menv, x
+        EName n: match menv.names[SNameKey n]:
+            ? (BnEv r, ignore):
+                if r.owner == wx.node: ((r, wx))
+                else: NeverEvent (Crossed wx, "the event `{SNameKey n}`, of node `{r.owner}`,"), t
+            otherwise: NeverEvent wx, t
+        EBinary "<|", l, r:
+            let ((lr, w1)) = EventRef wx, menv, l
+            let ((rr, w2)) = EventRef w1, menv, r
+            let ((nm, w3)) = FreshName w2, "anon"
+            let ((id, w4)) = Merge w3, nm, t, lr, rr
+            (((EvRefOf w4, id), w4))
+        EBinary "on", l, r:
+            let ((rr, w1)) = EventRef wx, menv, r
+            let value = Own (ValueOf lx, menv, l)
+            ((EvRef(node=rr.node, owner=rr.owner, pipe=(\|x, K| rr.pipe x, \|ignore| K value)), w1))
+        ECall c, args, ignore, ignore: match CalleeKey lx, c:
+            "Prelude.!Filter": FilterEvent wx, menv, args, False
+            "Prelude.!Present": FilterEvent wx, menv, args, True
+            "Prelude.!Gate": GateEvent wx, menv, args
+            "Prelude.!Union": PairEvent wx, menv, args, GnUnion, t
+            "Prelude.!Both": PairEvent wx, menv, args, GnBoth, t
+            "Prelude.!Except": PairEvent wx, menv, args, GnExcept, t
+            "Prelude.!MergeAll": MergeAllEvent wx, menv, args, t
+            "Prelude.!Updated": UpdatedEvent wx, menv, args, t
+            otherwise: EventMap wx, menv, e
+        EIf (CondExpr c), thenB, (? elseB): match ((?BlockExpr thenB, ?BlockExpr elseB)):
+            ((? a, ? b)): EventIf wx, menv, c, a, b, t
+            otherwise: EventMap wx, menv, e
+        otherwise: EventMap wx, menv, e
+
+# `if $c: !a else: !b`, an `if` lifted to events (Type System ch. 4): each branch gated by
+# the condition at its firing, the two merged.
+EventIf: unbounded fn Wx, Env, Expr, Expr, Expr, OutTy -> ((EvRef, Wx))
+fn EventIf wx, menv, c, a, b, t:
+    let cond = AsBool (ValueOf wx.lx, menv, c)
+    let ((ra, w1)) = EventRef wx, menv, a
+    let ((rb, w2)) = EventRef w1, menv, b
+    let ga = EvRef(node=ra.node, owner=ra.owner, pipe=(\|x, K| ra.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]))
+    let gb = EvRef(node=rb.node, owner=rb.owner, pipe=(\|x, K| rb.pipe x, \|y| [[(DoIf (XBin "==", cond, (XBool False)), (K y), [[]])]]))
+    let ((nm, w3)) = FreshName w2, "chosen"
+    let ((id, w4)) = Merge w3, nm, t, ga, gb
+    (((EvRefOf w4, id), w4))
+
+# A block that is one expression: that expression.
+?BlockExpr: fn Block -> ?Expr
+fn ?BlockExpr b = match b.stmts:
+    [[st]]: match st.kind:
+        SExpr x: ? x
+        otherwise: nil
+    otherwise: nil
+
+CalleeKey: fn Lx, Expr -> Text
+fn CalleeKey lx, c = match c.kind:
+    EName n:
+        let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+        Or ?q, ""
+    otherwise: ""
+
+# `!Union`, `!Both`, `!Except`: combinators of two events, deciding in the wake.
+PairEvent: unbounded fn Wx, Env, [Arg], GnKind, OutTy -> ((EvRef, Wx))
+fn PairEvent wx, menv, args, kind, t = match ((args[0], args[1])):
+    ((? a, ? b)):
+        let ((ra, w1)) = EventRef wx, menv, a.value
+        let ((rb, w2)) = EventRef w1, menv, b.value
+        let lt = OutTyOf wx.lx, (Peel (TypeAt wx.lx, a.value.span))
+        let rt = OutTyOf wx.lx, (Peel (TypeAt wx.lx, b.value.span))
+        let ((nm, w3)) = FreshName w2, (KindWord kind)
+        let ((id, w4)) = Combinator w3, nm, t, kind, ra, rb, lt, rt
+        (((EvRefOf w4, id), w4))
+    otherwise: NeverEvent wx, t
+
+# `!MergeAll [[!a, ..]]`: every input that fired this tick, in the list's order, one
+# firing of the list (a combinator of as many inputs as the literal has). A list that is
+# not a literal is not lowered yet.
+MergeAllEvent: unbounded fn Wx, Env, [Arg], OutTy -> ((EvRef, Wx))
+fn MergeAllEvent wx, menv, args, t = match args[0]:
+    ? a: match a.value.kind:
+        EArray es:
+            let et = match t:
+                OutArray x: x
+                otherwise: OutUnit
+            let ((nm, w1)) = FreshName wx, "merged"
+            let ((id, w2)) = AddGn w1, nm, t, GnMergeAll, 1
+            let ins = Each (Range0 (Len es)), \|i| "{nm}_{i}"
+            let w3 = Fold ins, w2, \|w, f| AddFieldLast w, f, (OutStamped et), "an input of `!MergeAll`", (XCall "Stamped::new", [[]])
+            let w4 = update w3:
+                &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, ins else: n
+            let w5 = Fold (Range0 (Len es)), w4, \|w, i|
+                let ((r, w6)) = EventRef w, menv, (Or es[i], a.value)
+                Connect w6, r, (SkIn id, i)
+            (((EvRefOf w5, id), w5))
+        otherwise:
+            let ((r, w1)) = NeverEvent wx, t
+            let w2 = update w1:
+                &_.build <= Push &_.build, (RefusalDo "`!MergeAll` of a list that is not a literal")
+            ((r, w2))
+    nil: NeverEvent wx, t
+
+# `!Updated $d`: the event half of a dynamic (Semantics R3; README pick UP). A graph node
+# of kind "updated", decided in the wake like a merge, one above every node whose sink
+# writes a hold the dynamic reads: a write to one of them sets the node's `_moved` flag and
+# asks the wake; the decision takes the flag (once a tick, so a double firing cannot
+# happen) and fires the dynamic's value after the tick, read through `Cx::after`. A sample
+# of the same dynamic in that tick reads the value as the tick opened (R2). The node keeps
+# the dynamic's reads; they are closed over the dynamic `let`s and the writers found when
+# the node is finished, since a `let $b` may follow its `!Updated`.
+UpdatedEvent: unbounded fn Wx, Env, [Arg], OutTy -> ((EvRef, Wx))
+fn UpdatedEvent wx, menv, args, t = match args[0]:
+    ? a:
+        let ((ex, reads)) = DynamicExpr wx, menv, a.value
+        let ((nm, w1)) = FreshName wx, "updated"
+        let ((id, w2)) = AddGn w1, nm, t, GnUpdated, 1
+        let w3 = AddFieldLast w2, "{nm}_moved", (OutNamed "Cell", [[OutBool]]), "a hold `!{nm}`'s dynamic reads was written this tick", (XCall "Cell::new", [[XBool False]])
+        let w4 = update w3:
+            &_.gns <= Each &_.gns, \|n| if n.id == id: WithReads n, reads else: n
+            &_.getters <= Push &_.getters, (MethDef(name="{nm}_value", recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="The dynamic `!{nm}` is the event half of, which the wake reads after the tick."))
+        (((EvRefOf w4, id), w4))
+    nil: NeverEvent wx, t
+
+# `!Filter !?a` fires the present values; `!Present` fires `unit` for them.
+FilterEvent: unbounded fn Wx, Env, [Arg], Bool -> ((EvRef, Wx))
+fn FilterEvent wx, menv, args, isUnit:
+    match args[0]:
+        nil: NeverEvent wx, OutUnit
+        ? a:
+            let ((r, w1)) = EventRef wx, menv, a.value
+            let bound = if isUnit: PaWild else: PaBind "w"
+            let pipe = \|x, K| r.pipe x, \|y| [[(DoIfLet (PaCtor "Some", [[bound]]), y, (K (if isUnit: XUnit else: XVar "w")), [[]])]]
+            ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
+
+# `!Gate $b, !e` fires `!e` while `$b` reads true.
+GateEvent: unbounded fn Wx, Env, [Arg] -> ((EvRef, Wx))
+fn GateEvent wx, menv, args = match args[1]:
+    nil: NeverEvent wx, OutUnit
+    ? a:
+        let ((r, w1)) = EventRef wx, menv, a.value
+        let cond = match args[0]:
+            ? b: AsBool (ValueOf wx.lx, menv, b.value)
+            nil: (XBool False)
+        let pipe = \|x, K| r.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]
+        ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
+
+# Any other event expression maps the one event among its operands: the event's value is
+# bound at its place in the source, and the expression lowers as a plain one over it.
+EventMap: unbounded fn Wx, Env, Expr -> ((EvRef, Wx))
+fn EventMap wx, menv, e:
+    let lx = wx.lx
+    let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
+    let evs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyEv
+    match evs:
+        [[one]]:
+            let ((r, w1)) = EventRef wx, menv, one
+            let et = OutTyOf lx, (Peel (TypeAt lx, one.span))
+            let k = PlaceKey lx, one.span
+            let pipe = \|x, K| r.pipe x, \|y| K (Own (ValueOf lx, (BindSpan menv, k, (FiringValue y, et)), e))
+            ((EvRef(node=r.node, owner=r.owner, pipe=pipe), w1))
+        otherwise: NeverEvent wx, t
+
+# A firing's value where an expression reads it: a local is a place, anything else an
+# owned temporary.
+FiringValue: fn Ex, OutTy -> Vl
+fn FiringValue (XVar n), t = VlPlace (XVar n), Owned, t
+fn FiringValue XUnit, t = VlPlace XUnit, Owned, t
+fn FiringValue x, t = VlOwned x, t
+
+# The operands of an expression, one level down.
+Operands: fn Expr -> [Expr]
+fn Operands e = match e.kind:
+    ECall c, args, ignore, ignore: Append [[c]], (Each args, \|a| a.value)
+    EMethod r, ignore, args: Append [[r]], (Each args, \|a| a.value)
+    EBinary ignore, l, r: [[l, r]]
+    EUnary ignore, x: [[x]]
+    EFreeSigil ignore, x: [[x]]
+    EGroup x: [[x]]
+    EField r, ignore, ignore: [[r]]
+    EIndex r, i: [[r, i]]
+    ETuple es: es
+    EArray es: es
+    EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, [[k, v]]
+    ELit l: match l.kind:
+        LText segs: Fold segs, [[]], \|acc, sg| match sg:
+            SegPlaceholder x: Push acc, x
+            otherwise: acc
+        otherwise: [[]]
+    otherwise: [[]]
+
+# A merge `l <| r` (CXb: the left wins): a combinator node with a stamped field per input.
+Merge: fn Wx, Text, OutTy, EvRef, EvRef -> ((Nat, Wx))
+fn Merge wx, name, t, l, r = Combinator wx, name, t, GnMerge, l, r, t, t
+
+# A combinator of two inputs: its stamped fields, its node, its inputs connected.
+Combinator: fn Wx, Text, OutTy, GnKind, EvRef, EvRef, OutTy, OutTy -> ((Nat, Wx))
+fn Combinator wx, name, t, kind, l, r, lt, rt:
+    let ((id, wx1)) = AddGn wx, name, t, kind, 1
+    let wx2 = AddFieldLast wx1, "{name}_left", (OutStamped lt), "`{name}`'s left input", (XCall "Stamped::new", [[]])
+    let wx3 = AddFieldLast wx2, "{name}_right", (OutStamped rt), "its right input", (XCall "Stamped::new", [[]])
+    let wx4 = update wx3:
+        &_.gns <= Each &_.gns, \|n| if n.id == id: WithInputs n, [["{name}_left", "{name}_right"]] else: n
+    ((id, (Connect (Connect wx4, l, (SkIn id, 0)), r, (SkIn id, 1))))
+
+WithInputs: fn Gn, [Text] -> Gn
+fn WithInputs n, ins = update n:
+    &_.inputs <= ins
+
+WithReads: fn Gn, [Read] -> Gn
+fn WithReads n, reads = update n:
+    &_.reads <= reads

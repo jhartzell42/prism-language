@@ -1,0 +1,495 @@
+# `Emit.Cpp`'s section `expr`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Expressions
+# ---------------------------------------------------------------------------------------
+
+# Whether an expression must be parenthesized as an operand or a receiver.
+CppLoose: fn Ex -> Bool
+fn CppLoose x = match x:
+    XBlock [[]], inner: CppLoose inner
+    XBin ignore, ignore, ignore: True
+    XUnary ignore, ignore: True
+    XIf ignore, ignore, ignore: True
+    XRef y: CppLoose y
+    XRefMut y: CppLoose y
+    XDeref y: CppLoose y
+    XClone y: CppLoose y
+    otherwise: False
+
+CppTight: unbounded fn Cp, Ex -> Text
+fn CppTight cp, x = if CppLoose x: "({CppExpr cp, x})" else: CppExpr cp, x
+
+CppArgs: unbounded fn Cp, [Ex] -> Text
+fn CppArgs cp, xs = Join (Each xs, \|x| CppExpr cp, x), ", "
+
+CppExpr: unbounded fn Cp, Ex -> Text
+fn CppExpr cp, x = match x:
+    XVar n: VarName cp, n
+    XPath p: PathValue cp, p
+    XSelf: "prism_rtl::share(this)"
+    XCx: "cx"
+    XConst n: n
+    XUnit: "Unit\{\}"
+    XNone: "std::nullopt"
+    XBool b: if b: "true" else: "false"
+    XNat d: if (Len d) <= 9: "Nat({d}u)" else: "*Nat::from_int({CppExpr cp, (XInt d)})"
+    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int({d}ll)" else: "*Int::parse(\"{d}\")"
+    XByte d: "std::uint8_t({d})"
+    XFloat d: d
+    XIndex n: "{n}u"
+    XChar c: "U'{CppCharEscape c}'"
+    XStr t: CppString t
+    XRef y: CppExpr cp, y
+    XRefMut y: CppExpr cp, y
+    XDeref y: CppExpr cp, y
+    XTarget y: CppExpr cp, y
+    XClone y: CppExpr cp, y
+    XWeak y: "prism_rtl::weaken({CppExpr cp, y})"
+    XUpgrade y: "prism_rtl::upgrade({CppExpr cp, y})"
+    XBreak l, y: "({CppBreak cp, l, y})"
+    XBreakLoop: "(\{ break; \})"
+    XLater y: "[=](Cx& cx) -> Done \{ {CppExpr cp, y}; return \{\}; \}"
+    XFormatStr parts: CppFormat cp, parts, "prism_rtl::str"
+    XIsCase y, [[]]: "false"
+    XIsCase y, cs: "({Join (Each cs, \|c| CaseTest cp, c, (CppTight cp, y)), " || "})"
+    XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
+    XUnreachable: "throw prism_rtl::Panic(\"entered unreachable code\")"
+    XCall f, args: CppCall cp, f, args
+    XApply f, args: "{CppTight cp, f}({CppArgs cp, args})"
+    XMethod r, m, args: CppMethod cp, r, m, args
+    XBin op, l, r: "{CppTight cp, l} {op} {CppTight cp, r}"
+    XUnary op, y: "{op}{CppTight cp, y}"
+    XCtor p, args: CppCtor cp, p, args
+    XRecord p, fs: CppRecord cp, p, fs
+    XTuple xs: "std::tuple\{{CppArgs cp, xs}\}"
+    XVec [[]]: "\{\}"
+    XVec xs: "std::vector\{{CppArgs cp, xs}\}"
+    XText t: "Text::lit({CppString t})"
+    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text::lit({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
+    XMatch s, arms, fallback, t: CppMatch cp, s, arms, t
+    XChain label, s, arms, t: CppMatch cp, s, arms, t
+    XIf c, t, e: CppIf cp, c, t, e
+    XBlock [[]], e: CppExpr cp, e
+    XBlock dos, e:
+        let ((st, cp2)) = CppStatementsCp cp, dos
+        StmtExpr st, (Unvexed (CppExpr cp2, e))
+    XLabeled label, dos, e, t: CppLabeled cp, label, dos, e, t
+    XClosure mv, ps, body: CppClosure cp, mv, ps, body
+    XTry y: "TRY({CppExpr cp, y})"
+    XField r, f: CppField cp, r, f
+    XPart r, k: "std::get<{k}>({CppExpr cp, r})"
+    XDecode t, y: "TRY(prism_rtl::from_pod<{CppType cp, t}>({CppExpr cp, y}))"
+    XCast y, t: "static_cast<{CppType cp, t}>({CppExpr cp, y})"
+    XTyped y, t:
+        let e = CppExpr cp, y
+        if e == "\{\}" or e == "std::nullopt": "{CppType cp, t}\{\}"
+        else: if (IsCtor y, "Ok") or IsCtor y, "Err": "{CppType cp, t}({e})"
+        else: e
+
+# A string literal: a NUL as `\000` (an octal escape takes three digits at most), and the
+# literal a `std::string_view` (`""sv`) when it holds one, which a `const char*` would end.
+CppString: fn Text -> Text
+fn CppString t = if Contains t, "\u{0}": "\"{CppEscape t}\"sv" else: "\"{CppEscape t}\""
+
+CppEscape: fn Text -> Text
+fn CppEscape t = MapChars t, \|c| if c == "\u{0}": "\\000" else: CharEscape c
+
+IsTextPiece: fn Ex -> Bool
+fn IsTextPiece (XText ignore) = True
+fn IsTextPiece other = False
+
+TextPiece: fn Ex -> Text
+fn TextPiece (XText t) = t
+fn TextPiece other = ""
+
+# `format!(..)` as `str(..)` (a message) or `cat(..)` (a `Text`): the pieces in order.
+CppFormat: unbounded fn Cp, [Ex], Text -> Text
+fn CppFormat cp, parts, how = "{how}({Join (Each parts, \|p| FormatArg cp, p), ", "})"
+
+FormatArg: unbounded fn Cp, Ex -> Text
+fn FormatArg cp, (XText t) = CppString t
+fn FormatArg cp, x = CppExpr cp, x
+
+CppCharEscape: fn Text -> Text
+fn CppCharEscape "'" = "\\'"
+fn CppCharEscape c = CharEscape c
+
+# A path as a value: a unit constructor, or a function.
+PathValue: fn Cp, Text -> Text
+fn PathValue cp, p = if IsNodeMethod cp, p: "&{TypePath (ParentPath p)}::{NodeMethodName cp, (LastSegment p)}" else: match ?CaseOf cp, p:
+    ? ty: "{TypePath ty}({TypePath p}\{\})"
+    nil: match ?TypeOf cp, p:
+        ? info: if info.kind == "unit": "{TypePath p}\{\}" else: TypePath p
+        nil: TypePath p
+
+# A node's method by its path (`Host::host_1_answer`), a member function as a value.
+IsNodeMethod: fn Cp, Text -> Bool
+fn IsNodeMethod cp, p:
+    let named = match cp.methods[LastSegment p]:
+        ? ignore: True
+        nil: False
+    named and IsNodeType cp, (ParentPath p)
+
+IsNodeType: fn Cp, Text -> Bool
+fn IsNodeType cp, p = match ?TypeOf cp, p:
+    ? info: info.kind == "node"
+    nil: False
+
+# A field: a node's member through its pointer, a value's directly; `self`'s through
+# `this`; a tuple struct's `0` its `a0`.
+CppField: unbounded fn Cp, Ex, Text -> Text
+fn CppField cp, XSelf, f = "this->{FieldId f}"
+fn CppField cp, r, f:
+    let name = if IsDigits f: "a{f}" else: FieldId f
+    # by the receiver's type where it is known, else by whether some node has the member
+    let through = match ?Pointer cp, r:
+        ? b: if b: "->" else: "."
+        nil: match cp.members[f]:
+            ? ignore: "->"
+            nil: "."
+    "{CppTight cp, r}{through}{name}"
+
+IsDigits: fn Text -> Bool
+fn IsDigits t = t != "" and FoldChars t, True, \|ok, c| ok and Contains "0123456789", c
+
+# A constructor: a choice's case wrapped in its handle, a newtype's or unit type's value, the
+# runtime's cases by their C++ names.
+CppCtor: unbounded fn Cp, Text, [Ex] -> Text
+fn CppCtor cp, p, args = match p:
+    "Some": "std::optional({CppArgs cp, args})"
+    "Ok": if args == [[XUnit]]: "prism_rtl::ok()" else: CppArgs cp, args
+    "Err": "unexpected({CppArgs cp, args})"
+    "prism_rtl::Turn::More": "prism_rtl::more({CppArgs cp, args})"
+    "prism_rtl::Turn::Finished": "prism_rtl::finished({CppArgs cp, args})"
+    "Outcome::Fired": "Outcome::fired({CppArgs cp, args})"
+    "Outcome::Value": "Outcome::value({CppArgs cp, args})"
+    "Segment::Pos": "Segment::pos({CppArgs cp, args})"
+    "Segment::Gen": "Segment::gen({CppArgs cp, args})"
+    "Segment::Key": "Segment::key({CppArgs cp, args})"
+    otherwise: match ?CaseOf cp, p:
+        ? ty: "{TypePath ty}({TypePath p}\{{CppArgs cp, args}\})"
+        nil: "{TypePath p}\{{CppArgs cp, args}\}"
+
+# A record: its fields in the order declared (designated initializers); a job's by its
+# constructor.
+CppRecord: unbounded fn Cp, Text, [((Text, Ex))] -> Text
+fn CppRecord cp, p, fs:
+    let ordered = match ?TypeOf cp, p:
+        ? info: Each info.fields, \|f| Or (Fold fs, nil, \|?found, ((g, v))| if g == f: ? v else: ?found), XUnit
+        nil: Each fs, \|((ignore, v))| v
+    let names = match ?TypeOf cp, p:
+        ? info: info.fields
+        nil: Each fs, \|((g, ignore))| g
+    let kind = match ?TypeOf cp, p:
+        ? info: info.kind
+        nil: ""
+    if kind == "job": "{TypePath p}({CppArgs cp, ordered})"
+    else: "{TypePath p}\{{Join (Each (Range0 (Len names)), \|i| ".{FieldId (Or names[i], "")} = {CppExpr cp, (Or ordered[i], XUnit)}"), ", "}\}"
+
+# A call of a named function: the runtime's constructors by their C++ names (`Hold::new` is
+# `Hold(..)`), anything else by its path.
+CppCall: unbounded fn Cp, Text, [Ex] -> Text
+fn CppCall cp, f, args:
+    let a = CppArgs cp, args
+    match f:
+        "Rc::new": if a == "\{\}": "prism_rtl::make_new()" else: "prism_rtl::rc({a})"
+        "is_some": "prism_rtl::is_some({a})"
+        "is_none": "prism_rtl::is_none({a})"
+        "RefCell::new": a
+        "Cell::new": a
+        "Hold::new": "\{{a}\}"
+        "Snapshot::new": "snapshot({a})"
+        "Path::root": "Path::root()"
+        "Fault::answer": "Fault::answer({a})"
+        "Error::new": "Error({a})"
+        "Text::from": "Text({a})"
+        "String::new": "std::string()"
+        "Array::from": "Array({a})"
+        "prism_rtl::Dynamic::of": "dynamic_of({a})"
+        "Dynamic::of": "dynamic_of({a})"
+        "prism_rtl::Event::of": "event_of({a})"
+        "prism_rtl::Host::new": "host_new({a})"
+        "prism_rtl::forward_on_none": "prism_rtl::forward_on_none<crate::Elem, crate::Answer>({a})"
+        "Event::never": "never_event()"
+        otherwise: if IsFresh f: "\{\}" else: "{FreeCallPath cp, f}({a})"
+
+# A function's path where a node's member of the same name would hide it: qualified.
+FreeCallPath: fn Cp, Text -> Text
+fn FreeCallPath cp, f:
+    let p = CallPath f
+    let hidden = match cp.members[f]:
+        ? ignore: True
+        nil: (InList stdNames, p) or InList cp.mods, p
+    if Contains p, ":": p
+    else: if hidden: QualifiedCall cp, f, p
+    else: p
+
+QualifiedCall: fn Cp, Text, Text -> Text
+fn QualifiedCall cp, f, p = match cp.fns["{cp.home}::{f}"]:
+    ? ignore: "crate::{cp.home}::{p}"
+    nil: "crate::prelude::{p}"
+
+# The standard library's functions a call by argument-dependent lookup may find instead of
+# the program's or the prelude's of the same name (an argument of a `std` type).
+let stdNames = [["apply", "begin", "end", "size", "empty", "data", "get", "swap", "move", "forward", "find", "count", "copy", "fill", "sort", "min", "max", "visit", "invoke", "merge", "remove", "replace", "reverse", "unique", "transform", "accumulate", "distance", "next", "prev", "exchange", "tie", "to_string", "clamp", "partition", "equal", "mismatch", "erase", "search", "rotate"]]
+
+# The runtime's constructors of an empty value, whose type the context gives.
+IsFresh: fn Text -> Bool
+fn IsFresh f = InList [["Stamped::new", "Cache::new", "Port::new", "Map::new", "Array::new", "Vec::new", "Default::default", "Wakes::default", "Defer::new"]], f
+
+# A function's path: a node's constructor is `make` (`build` is the C++ runtime's virtual
+# build-list method), the rest as written.
+CallPath: fn Text -> Text
+fn CallPath f:
+    let last = LastSegment f
+    let owner = LastSegment (ParentPath f)
+    let isType = (ParentPath f) != "" and Contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ", (Head owner)
+    if last == "build" and isType: "{TypePath (ParentPath f)}::make"
+    else: if last == "new": TypePath (ParentPath f)
+    else: CppPathId (TypePath f)
+
+# A method call through the table of the Rust runtime's methods, a node's member through
+# its pointer, anything else as a member.
+CppMethod: unbounded fn Cp, Ex, Text, [Ex] -> Text
+fn CppMethod cp, r, m, args:
+    let recv = if r == XSelf: "this" else: CppTight cp, r
+    let a = CppArgs cp, args
+    let n = Len args
+    let sep = if n == 0: "" else: ", "
+    match MethodForm m, n:
+        "id": recv
+        "deref": match ?Pointer cp, r:
+            ? b: if b: "(*{recv})" else: recv
+            nil: recv
+        "assign": "{recv} = {a}"
+        "take": "std::exchange({recv}, \{\})"
+        "free": "{FreeName m}({recv}{sep}{a})"
+        "arrow":
+            let through = match ?Pointer cp, r:
+                ? b: if b: "->" else: "."
+                nil: "->"
+            "{recv}{through}{MemberName m}({a})"
+        "exchange": "std::exchange({recv}, {a})"
+        otherwise:
+            let through = match ?Pointer cp, r:
+                ? b: if b: "->" else: "."
+                nil: match cp.members[m]:
+                    ? ignore: "->"
+                    nil: "."
+            "{recv}{through}{NodeMethodName cp, m}({a})"
+
+# A node's method: a C++ class cannot have a field and a method of one name, so a method
+# named as some node's field takes a `_` after it.
+NodeMethodName: fn Cp, Text -> Text
+fn NodeMethodName cp, m = match ((cp.methods[m], cp.fieldNames[m])):
+    ((? ignore, ? ignore)): "{CppId m}_"
+    otherwise: MemberName m
+
+# Whether a receiver is reached through a pointer, where the model says: `self`, a field
+# of the node or job being printed by its type.
+?Pointer: fn Cp, Ex -> ?Bool
+fn ?Pointer cp, r = match r:
+    XSelf: ? True
+    XCx: ? False
+    XVar n: cp.pointers[n]
+    XClone y: ?Pointer cp, y
+    XRef y: ?Pointer cp, y
+    XField XSelf, f: match cp.fields[f]:
+        ? t: ? (IsPointerTy cp, t)
+        nil: nil
+    XField (XVar "node"), f: match cp.fields[f]:
+        ? t: ? (IsPointerTy cp, t)
+        nil: nil
+    otherwise: nil
+
+IsPointerTy: fn Cp, OutTy -> Bool
+fn IsPointerTy cp, t = match t:
+    OutNamed "prism_rtl::Rows", ignore: True
+    OutPort ignore: False
+    OutRc i: not (IsValueTy cp, i)
+    OutObj ignore: True
+    OutJob ignore: True
+    OutShowAny: True
+    otherwise: False
+
+# How a method of the Rust runtime is spelled: `id` the receiver itself (a `RefCell`'s
+# borrow), `assign` (a `Cell`'s `set`), `take` (`Option::take`), `free` a function of the
+# C++ runtime taking the receiver first, `arrow` a member through a shared pointer, `dot` a
+# member.
+MethodForm: fn Text, Nat -> Text
+fn MethodForm m, n = match ((m, n)):
+    (("borrow", 0)): "deref"
+    (("borrow_mut", 0)): "deref"
+    (("clone", 0)): "id"
+    (("iter", 0)): "id"
+    (("collect", 0)): "id"
+    (("unwrap_or_default", 0)): "free"
+    (("for_each", 1)): "free"
+    (("into_iter", 0)): "id"
+    (("as_ref", 0)): "id"
+    (("get", 0)): "id"
+    (("set", 1)): "assign"
+    (("take", 0)): "take"
+    (("replace", 1)): "exchange"
+    (("values", 0)): "free"
+    (("keys", 0)): "free"
+    (("enumerate", 0)): "free"
+    (("fire", 2)): "arrow"
+    (("subscribe", 1)): "arrow"
+    (("unsubscribe", 1)): "arrow"
+    (("cycle", 0)): "arrow"
+    (("upgrade", 0)): "free"
+    (("expect", 1)): "free"
+    (("to_pod", 0)): "free"
+    (("cloned", 0)): "free"
+    (("ok", 0)): "free"
+    (("ok_or", 1)): "free"
+    (("map", 1)): "free"
+    (("iter_mut", 0)): "free"
+    (("to_vec", 0)): "free"
+    (("filter_some", 0)): "free"
+    otherwise: "dot"
+
+FreeName: fn Text -> Text
+fn FreeName m = match m:
+    "to_pod": "prism_rtl::to_pod"
+    "ok": "prism_rtl::ignore"
+    "map": "prism_rtl::fmap"
+    "to_vec": "path_of"
+    "values": "crate::prelude::values"
+    "keys": "crate::prelude::keys"
+    "enumerate": "prism_rtl::enumerate"
+    "unwrap_or_default": "prism_rtl::unwrap_or_default"
+    "for_each": "prism_rtl::for_each"
+    otherwise: m
+
+MemberName: fn Text -> Text
+fn MemberName m = match m:
+    "push_str": "append"
+    "len": "size"
+    "is_empty": "empty"
+    "push": "push_back"
+    "contains_key": "contains"
+    "build": "make"
+    otherwise: CppId m
+
+# The test of a constructor against a value, as a C++ condition.
+CaseTest: fn Cp, Text, Text -> Text
+fn CaseTest cp, c, v = match c:
+    "Some": "prism_rtl::is_some({v})"
+    "None": "prism_rtl::is_none({v})"
+    "Ok": "prism_rtl::is_ok({v})"
+    "Err": "prism_rtl::is_err({v})"
+    "prism_rtl::Turn::More": "{v}.if_more()"
+    "prism_rtl::Turn::Finished": "{v}.if_finished()"
+    otherwise: match ?CaseOf cp, c:
+        ? ignore: "prism_rtl::is<{CaseType c}>({v})"
+        nil: if IsRuntimeCase c: "prism_rtl::is<{CaseType c}>({v})" else: "true"
+
+# A constructor's case type: a choice's case, or a runtime constructor's pattern tag.
+CaseType: fn Text -> Text
+fn CaseType c = match c:
+    "Segment::Pos": "pat::Pos"
+    "Segment::Gen": "pat::Gen"
+    "Segment::Key": "pat::Key"
+    otherwise: TypePath c
+
+# The payload of a constructor's field `i` in a value.
+Payload: fn Cp, Text, Text, Nat -> Text
+fn Payload cp, c, v, i = match c:
+    "Some": "prism_rtl::some_of({v})"
+    "Ok": "*{v}"
+    "Err": "{v}.error()"
+    "prism_rtl::Turn::More": "{v}.if_more()->next"
+    "prism_rtl::Turn::Finished": "{v}.if_finished()->value"
+    otherwise: match ?CaseOf cp, c:
+        ? ignore: "prism_rtl::as<{CaseType c}>({v}).a{i}"
+        nil: if IsRuntimeCase c: "prism_rtl::as<{CaseType c}>({v}).a{i}" else: "{v}.a{i}"
+
+IsRuntimeCase: fn Text -> Bool
+fn IsRuntimeCase c = (HasPrefix c, "Segment::")
+
+# `if`: a conditional expression.
+CppIf: unbounded fn Cp, Ex, Ex, Ex -> Text
+fn CppIf cp, c, t, e:
+    let ct = CppExpr cp, c
+    let ?err = match ((?ErrOf t, ?ErrOf e)):
+        ((? y, ignore)): ? y
+        ((nil, ? y)): ? y
+        otherwise: nil
+    let tt = match ?err:
+        ? y: OkBranch cp, t, y
+        nil: CppExpr cp, t
+    let et = match ?err:
+        ? y: OkBranch cp, e, y
+        nil: CppExpr cp, e
+    let short = not (Contains "{tt}{et}", "\n") and (Len "{ct}{tt}{et}") < 70
+    if short: "{ct} ? {tt} : {et}" else: CondExpr ct, tt, et
+
+IsCtor: fn Ex, Text -> Bool
+fn IsCtor (XCtor p, ignore), c = p == c
+fn IsCtor x, c = False
+
+# The failure a branch gives: `Err(y)`, or a block that ends in one.
+?ErrOf: fn Ex -> ?Ex
+fn ?ErrOf x = match x:
+    XCtor "Err", [[y]]: ? y
+    XBlock ignore, tail: ?ErrOf tail
+    otherwise: nil
+
+# A branch beside an `Err(y)`: an `Ok(x)` (or a block ending in one) as the `Expected` the
+# other branch converts to, of `x`'s type and `y`'s.
+OkBranch: unbounded fn Cp, Ex, Ex -> Text
+fn OkBranch cp, x, y = match x:
+    XCtor "Ok", [[v]]: "Expected<std::decay_t<decltype({CppExpr cp, v})>, std::decay_t<decltype({CppExpr cp, y})>>({CppExpr cp, v})"
+    XBlock dos, (XCtor "Ok", [[v]]):
+        let ((st, cp2)) = CppStatementsCp cp, dos
+        StmtExpr st, "Expected<std::decay_t<decltype({CppExpr cp2, v})>, std::decay_t<decltype({CppExpr cp2, y})>>({CppExpr cp2, v})"
+    otherwise: CppExpr cp, x
+
+# A closure: a lambda capturing by value (`move`) or by reference.
+CppClosure: unbounded fn Cp, Bool, [Pa], Ex -> Text
+fn CppClosure cp0, mv, ps, body:
+    let cp = Unbind cp0, (Concat2 (Each ps, \|p| PatNames p))
+    let params = Join (Each (Range0 (Len ps)), \|i| ClosureParam cp, (Or ps[i], PaWild), i), ", "
+    let binds = Concat (Each (Range0 (Len ps)), \|i| ClosureBinds cp, (Or ps[i], PaWild), i)
+    let capture = if mv: "=" else: "&"
+    let b = CppExpr cp, body
+    let ((ret, value)) = match body:
+        XRef ignore: ((" -> decltype(auto)", "({b})"))
+        XRefMut ignore: ((" -> decltype(auto)", "({b})"))
+        otherwise: (("", b))
+    if binds == "" and not (Contains b, "\n"): "[{capture}]({params}){ret} \{ return {value}; \}"
+    else: Lambda capture, "{params}){ret}", "{binds}return {value};"
+
+ClosureParam: unbounded fn Cp, Pa, Nat -> Text
+fn ClosureParam cp, (PaTyped (PaBind n), t), i = "{ParamType cp, t} {CppId n}"
+fn ClosureParam cp, (PaTyped (PaMut n), t), i = "{CppType cp, (Unref t)} {CppId n}"
+fn ClosureParam cp, (PaTyped p, t), i = "{ParamType cp, t} _p{i}"
+fn ClosureParam cp, (PaBind n), i = "auto&& {CppId n}"
+fn ClosureParam cp, (PaMut n), i = "auto {CppId n}"
+fn ClosureParam cp, PaWild, i = "const auto&"
+fn ClosureParam cp, p, i = "const auto& _p{i}"
+
+ClosureBinds: unbounded fn Cp, Pa, Nat -> Text
+fn ClosureBinds cp, (PaTyped (PaBind n), t), i = ""
+fn ClosureBinds cp, (PaTyped (PaMut n), t), i = ""
+fn ClosureBinds cp, (PaTyped p, t), i = ClosureBinds cp, p, i
+fn ClosureBinds cp, (PaBind n), i = ""
+fn ClosureBinds cp, (PaMut n), i = ""
+fn ClosureBinds cp, PaWild, i = ""
+fn ClosureBinds cp, p, i = Concat (Each (PatBinds cp, p, "_p{i}"), \|b| "{b}\n")
+
+Unref: fn OutTy -> OutTy
+fn Unref (OutRef t) = t
+fn Unref t = t
+
+# A parameter's type: a value by `const&`, a reference as its referent's.
+ParamType: unbounded fn Cp, OutTy -> Text
+fn ParamType cp, t = match t:
+    OutRef ignore: CppType cp, t
+    OutSlice ignore: CppType cp, t
+    OutUnit: "Unit"
+    otherwise: CppType cp, t
