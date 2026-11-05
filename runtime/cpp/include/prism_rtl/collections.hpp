@@ -5,18 +5,18 @@
 // "Unique values"); `inserted`, `removed`, `pushed` and `updated` leave it alone and
 // answer the new one. Neither ever changes another value that shares the contents.
 //
-// The cost promises are Semantics Appendix B's, as the Rust library's persistent
-// structures keep them: a `Map` is a persistent AVL tree (an update copies the path to its
-// key, logarithmic); an `Array` is a view of a shared buffer of chunks, so `take` and
-// `drop_front` are constant and so is a `push_back` onto the newest view of its buffer
-// (the way an array built by a fold grows); an element's address never moves. A `Text`
-// is a view of a shared UTF-8 buffer (a cursor's `before` and `after` are constant) and
-// copies on concatenation.
+// The costs are Semantics Appendix B's promises, each kept (runtime/cpp/README.md, "Arrays
+// and maps: the costs"): a `Map` is a persistent AVL tree (an update copies the path to its
+// key, logarithmic); an `Array` a persistent balanced tree of chunks with a tail (indexing
+// and `concat` logarithmic, `push_back` amortised constant, any update copying one path
+// and one chunk at most). A `Text` is a view of a shared UTF-8 buffer (a cursor's
+// `before` and `after` are constant) and copies on concatenation.
 
 #pragma once
 
 #include "prism_rtl/rc.hpp"
 #include <algorithm>
+#include <bit>
 #include <compare>
 #include <cstdint>
 #include <initializer_list>
@@ -299,6 +299,19 @@ public:
         m.remove(k);
         return m;
     }
+    /// `Union a, b` (`a.united(b)`): this map's entries over `b`'s. The smaller map's
+    /// entries go into the larger: `min(n, m) log (n + m)`.
+    Map united(const Map& b) const {
+        if (b.size() <= size()) {
+            Map m = *this;
+            for (const auto& [k, v] : b)
+                if (!m.contains(k)) m.insert(k, v);
+            return m;
+        }
+        Map m = b;
+        for (const auto& [k, v] : *this) m.insert(k, v);
+        return m;
+    }
 
     const_iterator begin() const { return const_iterator(root_.get()); }
     const_iterator end() const { return const_iterator(); }
@@ -316,102 +329,333 @@ private:
 
 // ---- Array ------------------------------------------------------------------------------
 
-/// `[[a]]`: a view (an offset and a length) of a buffer of fixed-size chunks that views
-/// share. A `push_back` onto the view that ends where the buffer does appends in place;
-/// any other update copies the view's elements into a buffer of its own first.
+/// `[[a]]`: a persistent array, a balanced tree of chunks and a tail, the design of the
+/// Rust runtime's `Array` (runtime/rust/src/collections/array.rs).
+///
+/// - **The tail** is a chunk of the last elements, at most 64, in a vector that grows 1, 2,
+///   4, ..., 64 slots while the array is small (64 at once in an array of 64 or more). A
+///   push lands there: in place when the array holds the tail alone, else after copying it
+///   (64 elements at most). A full tail goes into the tree whole, no element copied.
+/// - **The tree's** leaves are chunks of 1 to 64 elements, and above them nodes of two
+///   children, each with its length and height, balanced as an AVL tree is. Two trees are
+///   concatenated by the AVL join, a tree is cut at an index by joining the pieces along
+///   the path to it, and a single chunk that fits beside its neighbour merges into it.
+/// - **Copies** share every node; an update copies the nodes on the path to what it
+///   changes that another array shares (`own`), so no array sharing them sees it.
+///
+/// Costs (runtime/cpp/README.md, "Arrays and maps: the costs"): `size` constant; indexing
+/// log (constant in the tail); `push_back` amortised constant; `concat` log; `take`,
+/// `drop_front`, `set`, `mut_at` log, copying one path and one chunk at most; iteration
+/// linear. A reference from `mut_at` or `[]` holds until the array is next pushed onto or
+/// copied for a write elsewhere: a push may move the tail's elements as its vector grows.
 template <class T>
 class Array {
-    static constexpr std::size_t CHUNK = 64;
-    struct Slot {
-        alignas(T) unsigned char bytes[sizeof(T)];
-    };
-    struct Buffer {
-        std::vector<std::unique_ptr<Slot[]>> chunks;
-        std::size_t size = 0;
-        Buffer() = default;
-        Buffer(const Buffer&) = delete;
-        Buffer& operator=(const Buffer&) = delete;
-        ~Buffer() {
-            for (std::size_t i = 0; i < size; ++i) at(i).~T();
-        }
-        T& at(std::size_t i) { return *std::launder(reinterpret_cast<T*>(chunks[i / CHUNK][i % CHUNK].bytes)); }
-        void push(T x) {
-            if (size % CHUNK == 0) chunks.push_back(std::make_unique<Slot[]>(CHUNK));
-            new (chunks[size / CHUNK][size % CHUNK].bytes) T(std::move(x));
-            ++size;
-        }
+public:
+    /// A chunk's slot: the element itself (a `std::vector<Elem>` is a plain vector, where a
+    /// `std::vector<bool>` would pack bits and give no `bool&`).
+    struct Elem {
+        T v;
+        Elem(const T& x) : v(x) {}
+        Elem(T&& x) : v(std::move(x)) {}
     };
 
+private:
+    static constexpr std::size_t CHUNK = 64;
+    /// A chunk when `left` is null (`elems`), else a join of two (`len`, `height`).
+    struct Node {
+        std::vector<Elem> elems;
+        Rc<Node> left, right;
+        std::size_t len = 0;
+        unsigned char height = 0;
+        std::size_t size() const { return left ? len : elems.size(); }
+    };
+    using Ptr = Rc<Node>;
+
+    static Ptr chunk(std::vector<Elem>&& v) { return make_rc<Node>(Node{std::move(v), nullptr, nullptr, 0, 0}); }
+    /// Two siblings whose heights differ by one at most, under a node.
+    static Ptr join(Ptr l, Ptr r) {
+        std::size_t len = l->size() + r->size();
+        unsigned char h = static_cast<unsigned char>(std::max(l->height, r->height) + 1);
+        return make_rc<Node>(Node{{}, std::move(l), std::move(r), len, h});
+    }
+    /// Two siblings whose heights differ by two at most, rotated to balance.
+    static Ptr balance(Ptr l, Ptr r) {
+        if (l->height > r->height + 1) {
+            Ptr ll = l->left, lr = l->right;
+            if (ll->height >= lr->height) return join(std::move(ll), join(std::move(lr), std::move(r)));
+            return join(join(std::move(ll), lr->left), join(lr->right, std::move(r)));
+        }
+        if (r->height > l->height + 1) {
+            Ptr rl = r->left, rr = r->right;
+            if (rr->height >= rl->height) return join(join(std::move(l), std::move(rl)), std::move(rr));
+            return join(join(std::move(l), rl->left), join(rl->right, std::move(rr)));
+        }
+        return join(std::move(l), std::move(r));
+    }
+    /// `l`'s elements, then `r`'s: the AVL join, log in the taller's height.
+    static Ptr concat(Ptr l, Ptr r) {
+        if (l->height > r->height + 1) return balance(l->left, concat(l->right, std::move(r)));
+        if (r->height > l->height + 1) return balance(concat(std::move(l), r->left), r->right);
+        return join(std::move(l), std::move(r));
+    }
+    /// The node at `p` this array's own: copied first when another array shares it (a
+    /// chunk's elements copied, with room for `room` more).
+    static Node& own(Ptr& p, std::size_t room = 0) {
+        if (p.use_count() > 1) {
+            if (p->left) {
+                p = make_rc<Node>(Node{{}, p->left, p->right, p->len, p->height});
+            } else {
+                std::vector<Elem> v;
+                v.reserve(p->elems.size() + room);
+                v.insert(v.end(), p->elems.begin(), p->elems.end());
+                p = chunk(std::move(v));
+            }
+        }
+        return *p;
+    }
+    static std::size_t last_size(const Node* n) {
+        while (n->left) n = n->right.get();
+        return n->elems.size();
+    }
+    static std::size_t first_size(const Node* n) {
+        while (n->left) n = n->left.get();
+        return n->elems.size();
+    }
+    /// `extra` at the end of the last chunk, which has room for it.
+    static void extend_last(Ptr& p, const std::vector<Elem>& extra) {
+        Node& n = own(p, extra.size());
+        if (n.left) {
+            extend_last(n.right, extra);
+            n.len += extra.size();
+            return;
+        }
+        n.elems.reserve(n.elems.size() + extra.size());
+        n.elems.insert(n.elems.end(), extra.begin(), extra.end());
+    }
+    /// `extra` at the start of the first chunk, which has room for it.
+    static void extend_first(Ptr& p, const std::vector<Elem>& extra) {
+        Node& n = own(p);
+        if (n.left) {
+            extend_first(n.left, extra);
+            n.len += extra.size();
+            return;
+        }
+        std::vector<Elem> v;
+        v.reserve(extra.size() + n.elems.size());
+        v.insert(v.end(), extra.begin(), extra.end());
+        v.insert(v.end(), std::make_move_iterator(n.elems.begin()), std::make_move_iterator(n.elems.end()));
+        n.elems = std::move(v);
+    }
+    /// `l`'s elements, then `r`'s, a single chunk merged into its neighbour where it fits.
+    /// The trees are values; `l` and `r` are left as they were if anything throws.
+    static Ptr seam(Ptr l, Ptr r) {
+        if (!r->left && last_size(l.get()) + r->elems.size() <= CHUNK) {
+            extend_last(l, r->elems);
+            return l;
+        }
+        if (!l->left && first_size(r.get()) + l->elems.size() <= CHUNK) {
+            extend_first(r, l->elems);
+            return r;
+        }
+        return concat(std::move(l), std::move(r));
+    }
+    /// The first `k` elements, `0 < k < size`.
+    static Ptr take_tree(const Ptr& n, std::size_t k) {
+        if (!n->left) return chunk(std::vector<Elem>(n->elems.begin(), n->elems.begin() + std::ptrdiff_t(k)));
+        std::size_t ll = n->left->size();
+        if (k == ll) return n->left;
+        if (k < ll) return take_tree(n->left, k);
+        return concat(n->left, take_tree(n->right, k - ll));
+    }
+    /// Everything after the first `k` elements, `0 < k < size`.
+    static Ptr drop_tree(const Ptr& n, std::size_t k) {
+        if (!n->left) return chunk(std::vector<Elem>(n->elems.begin() + std::ptrdiff_t(k), n->elems.end()));
+        std::size_t ll = n->left->size();
+        if (k == ll) return n->right;
+        if (k > ll) return drop_tree(n->right, k - ll);
+        return concat(drop_tree(n->left, k), n->right);
+    }
+    static T& at_mut(Ptr& p, std::size_t i) {
+        Node& n = own(p);
+        if (!n.left) return n.elems[i].v;
+        std::size_t ll = n.left->size();
+        return i < ll ? at_mut(n.left, i) : at_mut(n.right, i - ll);
+    }
+    /// A tree of `cs[lo, hi)`, balanced (siblings' sizes differ by one at most).
+    static Ptr balanced(const std::vector<Ptr>& cs, std::size_t lo, std::size_t hi) {
+        if (hi - lo == 1) return cs[lo];
+        std::size_t mid = lo + (hi - lo) / 2;
+        return join(balanced(cs, lo, mid), balanced(cs, mid, hi));
+    }
+    static std::size_t slots(const Node* n) {
+        return n->left ? slots(n->left.get()) + slots(n->right.get()) : n->elems.capacity();
+    }
+    static void chunks_mut(Ptr& p, std::vector<std::pair<Elem*, std::size_t>>& out) {
+        Node& n = own(p);
+        if (n.left) {
+            chunks_mut(n.left, out);
+            chunks_mut(n.right, out);
+        } else if (!n.elems.empty()) {
+            out.emplace_back(n.elems.data(), n.elems.size());
+        }
+    }
+
+    std::size_t tail_size() const { return tail_ ? tail_->elems.size() : 0; }
+    /// The slots a tail of `have` elements grows to: doubling while the array is small, a
+    /// whole chunk once it is not.
+    std::size_t grown(std::size_t have) const {
+        return len_ >= CHUNK ? CHUNK : std::min(CHUNK, std::max<std::size_t>(1, 2 * have));
+    }
+
 public:
+    /// In order, chunk by chunk: the chunk being read, and the index the next one starts
+    /// at, found from the root when the chunk ends (log, once per chunk of 64), so an
+    /// iterator allocates nothing.
     class const_iterator {
     public:
-        using iterator_category = std::random_access_iterator_tag;
+        using iterator_category = std::forward_iterator_tag;
         using value_type = T;
         using difference_type = std::ptrdiff_t;
         using pointer = const T*;
         using reference = const T&;
         const_iterator() = default;
-        const_iterator(const Array* a, std::size_t i) : a_(a), i_(i) {}
-        reference operator*() const { return (*a_)[i_]; }
-        pointer operator->() const { return &(*a_)[i_]; }
+        reference operator*() const { return at_->v; }
+        pointer operator->() const { return &at_->v; }
         const_iterator& operator++() {
-            ++i_;
+            ++at_;
+            --left_;
+            if (at_ == stop_ && left_ > 0) refill();
             return *this;
         }
         const_iterator operator++(int) {
             const_iterator t = *this;
-            ++i_;
+            ++*this;
             return t;
         }
-        const_iterator& operator--() {
-            --i_;
-            return *this;
-        }
-        const_iterator& operator+=(difference_type d) {
-            i_ = std::size_t(difference_type(i_) + d);
-            return *this;
-        }
-        const_iterator operator+(difference_type d) const { return const_iterator(a_, std::size_t(difference_type(i_) + d)); }
-        difference_type operator-(const const_iterator& o) const { return difference_type(i_) - difference_type(o.i_); }
-        reference operator[](difference_type d) const { return (*a_)[std::size_t(difference_type(i_) + d)]; }
-        friend bool operator==(const const_iterator& a, const const_iterator& b) { return a.i_ == b.i_; }
-        friend auto operator<=>(const const_iterator& a, const const_iterator& b) { return a.i_ <=> b.i_; }
+        friend bool operator==(const const_iterator& a, const const_iterator& b) { return a.left_ == b.left_; }
 
     private:
+        friend class Array;
+        explicit const_iterator(const Array& a) : a_(&a), left_(a.len_) {
+            if (left_ > 0) refill();
+        }
+        /// The chunk holding element `next_`, read from there.
+        void refill() {
+            std::size_t i = next_, in_tree = a_->len_ - a_->tail_size();
+            const Node* n;
+            if (i >= in_tree) {
+                n = a_->tail_.get();
+                i -= in_tree;
+            } else {
+                n = a_->tree_.get();
+                while (n->left) {
+                    std::size_t ll = n->left->size();
+                    if (i < ll) {
+                        n = n->left.get();
+                    } else {
+                        i -= ll;
+                        n = n->right.get();
+                    }
+                }
+            }
+            at_ = n->elems.data() + i;
+            stop_ = n->elems.data() + n->elems.size();
+            next_ += std::size_t(stop_ - at_);
+        }
         const Array* a_ = nullptr;
-        std::size_t i_ = 0;
+        const Elem* at_ = nullptr;
+        const Elem* stop_ = nullptr;
+        std::size_t left_ = 0, next_ = 0;
     };
     using iterator = const_iterator;
 
     Array() = default;
-    Array(std::initializer_list<T> xs) {
-        for (const T& x : xs) push_back(x);
-    }
+    Array(std::initializer_list<T> xs) : Array(std::vector<T>(xs)) {}
+    /// Chunks of 64 moved out of the vector, and the rest as the tail: each element moved
+    /// once, into storage of exactly its count.
     explicit Array(std::vector<T> xs) {
-        for (std::size_t i = 0; i < xs.size(); ++i) push_back(T(std::move(xs[i])));
+        std::size_t n = xs.size();
+        if (n == 0) return;
+        std::size_t full = (n - 1) / CHUNK;
+        auto from = [&](std::size_t lo, std::size_t hi) {
+            std::vector<Elem> v;
+            v.reserve(hi - lo);
+            for (std::size_t i = lo; i < hi; ++i) v.emplace_back(std::move(xs[i]));
+            return chunk(std::move(v));
+        };
+        if (full > 0) {
+            std::vector<Ptr> cs;
+            cs.reserve(full);
+            for (std::size_t c = 0; c < full; ++c) cs.push_back(from(c * CHUNK, (c + 1) * CHUNK));
+            tree_ = balanced(cs, 0, full);
+        }
+        tail_ = from(full * CHUNK, n);
+        len_ = n;
     }
 
     std::size_t size() const { return len_; }
     bool empty() const { return len_ == 0; }
     /// The element at `i`, or null.
-    const T* get(std::size_t i) const { return i < len_ ? &(*this)[i] : nullptr; }
-    const T& operator[](std::size_t i) const { return b_->at(off_ + i); }
+    const T* get(std::size_t i) const {
+        if (i >= len_) return nullptr;
+        std::size_t in_tree = len_ - tail_size();
+        if (i >= in_tree) return &tail_->elems[i - in_tree].v;
+        const Node* n = tree_.get();
+        while (n->left) {
+            std::size_t ll = n->left->size();
+            if (i < ll) {
+                n = n->left.get();
+            } else {
+                i -= ll;
+                n = n->right.get();
+            }
+        }
+        return &n->elems[i].v;
+    }
+    const T& operator[](std::size_t i) const { return *get(i); }
+    /// The slots of storage this array's chunks and tail hold (shared with the arrays
+    /// sharing them): for the tests and for measurement.
+    std::size_t capacity() const { return (tree_ ? slots(tree_.get()) : 0) + (tail_ ? tail_->elems.capacity() : 0); }
 
     void push_back(T x) {
-        if (!b_ || off_ + len_ != b_->size) own();
-        b_->push(std::move(x));
+        std::size_t have = tail_size();
+        if (have == CHUNK) {
+            // The full tail joins the tree as it is; a fresh tail takes `x`. Everything
+            // that can throw (the allocations, `x`'s move) happens before the array changes.
+            Ptr fresh = chunk({});
+            fresh->elems.reserve(CHUNK);
+            fresh->elems.emplace_back(std::move(x));
+            Ptr tree = tree_ ? concat(tree_, tail_) : tail_;
+            tree_ = std::move(tree);
+            tail_ = std::move(fresh);
+        } else if (!tail_ || tail_.use_count() > 1) {
+            std::vector<Elem> v;
+            v.reserve(std::max(have + 1, grown(have)));
+            if (tail_) v.insert(v.end(), tail_->elems.begin(), tail_->elems.end());
+            v.emplace_back(std::move(x));
+            tail_ = chunk(std::move(v));
+        } else {
+            std::vector<Elem>& v = tail_->elems;
+            if (v.size() == v.capacity()) v.reserve(std::max(have + 1, grown(have)));
+            v.emplace_back(std::move(x));
+        }
         ++len_;
     }
-    void set(std::size_t i, T x) {
-        if (i >= len_) throw std::out_of_range("Array::set");
-        unique();
-        b_->at(i) = std::move(x);
-    }
-    /// The element at `i` to update in place (this view's elements made its own first).
+    void set(std::size_t i, T x) { mut_at(i) = std::move(x); }
+    /// The element at `i` to update in place (the path to it this array's own first).
     T& mut_at(std::size_t i) {
         if (i >= len_) throw std::out_of_range("Array::mut_at");
-        unique();
-        return b_->at(i);
+        std::size_t in_tree = len_ - tail_size();
+        if (i >= in_tree) return own(tail_).elems[i - in_tree].v;
+        return at_mut(tree_, i);
+    }
+    /// Every element to update in place, chunk by chunk (every node this array's own
+    /// first): `iter_mut`, linear.
+    std::vector<std::pair<Elem*, std::size_t>> chunks_mut() {
+        std::vector<std::pair<Elem*, std::size_t>> out;
+        if (tree_) chunks_mut(tree_, out);
+        if (tail_) chunks_mut(tail_, out);
+        return out;
     }
     Array pushed(T x) const {
         Array a = *this;
@@ -423,50 +667,71 @@ public:
         a.set(i, std::move(x));
         return a;
     }
+    /// This array's elements, then `o`'s: log, copying a chunk or two at most.
     Array concat(const Array& o) const {
-        Array a = *this;
-        for (const T& x : o) a.push_back(x);
+        if (o.len_ == 0) return *this;
+        if (len_ == 0) return o;
+        Array a;
+        a.len_ = len_ + o.len_;
+        if (!o.tree_ && tail_size() + o.tail_size() <= CHUNK) {
+            std::vector<Elem> v;
+            v.reserve(tail_size() + o.tail_size());
+            if (tail_) v.insert(v.end(), tail_->elems.begin(), tail_->elems.end());
+            v.insert(v.end(), o.tail_->elems.begin(), o.tail_->elems.end());
+            a.tree_ = tree_;
+            a.tail_ = chunk(std::move(v));
+            return a;
+        }
+        Ptr left = tree_;
+        if (tail_) left = left ? seam(std::move(left), tail_) : tail_;
+        a.tree_ = !left ? o.tree_ : !o.tree_ ? std::move(left) : seam(std::move(left), o.tree_);
+        a.tail_ = o.tail_;
         return a;
     }
-    /// The first `n` elements.
+    /// The first `n` elements (all of them when there are fewer).
     Array take(std::size_t n) const {
-        Array a = *this;
-        a.len_ = std::min(n, len_);
+        if (n >= len_) return *this;
+        if (n == 0) return Array();
+        Array a;
+        a.len_ = n;
+        std::size_t in_tree = len_ - tail_size();
+        if (n >= in_tree) {
+            a.tree_ = tree_;
+            if (n > in_tree) a.tail_ = chunk(std::vector<Elem>(tail_->elems.begin(), tail_->elems.begin() + std::ptrdiff_t(n - in_tree)));
+        } else {
+            a.tree_ = take_tree(tree_, n);
+        }
         return a;
     }
     /// Everything after the first `n`.
     Array drop_front(std::size_t n) const {
-        Array a = *this;
-        std::size_t k = std::min(n, len_);
-        a.off_ += k;
-        a.len_ -= k;
+        if (n == 0) return *this;
+        if (n >= len_) return Array();
+        Array a;
+        a.len_ = len_ - n;
+        std::size_t in_tree = len_ - tail_size();
+        if (n >= in_tree) {
+            a.tail_ = chunk(std::vector<Elem>(tail_->elems.begin() + std::ptrdiff_t(n - in_tree), tail_->elems.end()));
+        } else {
+            a.tree_ = drop_tree(tree_, n);
+            a.tail_ = tail_;
+        }
         return a;
     }
 
-    const_iterator begin() const { return const_iterator(this, 0); }
-    const_iterator end() const { return const_iterator(this, len_); }
+    const_iterator begin() const { return const_iterator(*this); }
+    const_iterator end() const { return const_iterator(); }
 
     friend bool operator==(const Array& a, const Array& b) {
-        return a.len_ == b.len_ && (a.len_ == 0 || (a.b_ == b.b_ && a.off_ == b.off_) || std::equal(a.begin(), a.end(), b.begin()));
+        return a.len_ == b.len_ && ((a.tree_ == b.tree_ && a.tail_ == b.tail_) || std::equal(a.begin(), a.end(), b.begin()));
     }
     friend auto operator<=>(const Array& a, const Array& b) {
         return std::lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end());
     }
 
 private:
-    /// This view's elements in a buffer of their own.
-    void own() {
-        auto fresh = make_rc<Buffer>();
-        for (std::size_t i = 0; i < len_; ++i) fresh->push((*this)[i]);
-        b_ = std::move(fresh);
-        off_ = 0;
-    }
-    /// The buffer this view's alone: no other view, nothing outside the view.
-    void unique() {
-        if (!b_ || b_.use_count() > 1 || off_ != 0 || len_ != b_->size) own();
-    }
-    Rc<Buffer> b_;
-    std::size_t off_ = 0, len_ = 0;
+    Ptr tree_, tail_;
+    std::size_t len_ = 0;
 };
 
 }  // namespace prism_rtl
