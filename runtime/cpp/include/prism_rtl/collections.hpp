@@ -296,8 +296,15 @@ public:
         m.remove(k);
         return m;
     }
-    /// `Union a, b` (`a.united(b)`): this map's entries over `b`'s.
+    /// `Union a, b` (`a.united(b)`): this map's entries over `b`'s. The smaller map's
+    /// entries go into the larger: `min(n, m) log (n + m)`.
     Map united(const Map& b) const {
+        if (b.size() <= size()) {
+            Map m = *this;
+            for (const auto& [k, v] : b)
+                if (!m.contains(k)) m.insert(k, v);
+            return m;
+        }
         Map m = b;
         for (const auto& [k, v] : *this) m.insert(k, v);
         return m;

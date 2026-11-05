@@ -137,7 +137,7 @@ counts again.
   - persistence: a map's and an array's update never reaches a value sharing them;
   - `lang.hpp`: `TRY` on a named value leaves it as it was, a `Slot` of an option holds
     `nil` as a value.
-- **All 55 tests pass** under g++ and clang++. They also pass under AddressSanitizer,
+- **All 57 tests pass** under g++ and clang++. They also pass under AddressSanitizer,
   LeakSanitizer and UBSan with g++, and LSan reports no leaks. That includes the zombie
   loop, which the collector frees, and the host teardown. Clang's sanitizer runtime
   (`libclang-rt-18-dev`) is not installed on this machine; `make test` runs clang under
@@ -181,9 +181,8 @@ the size of the collection and `m` of the second, against this library
   indexing, `?First`: "log", kept (an update copies the path to its key). `Keys`,
   `Values`: "linear, in key order", kept. `Size`: "constant", kept (the root's count).
   `Map` of pairs: "`n` log `n`, the later pair winning", kept. `Union`: "the left
-  winning; `m` log `(n+m)`": the C++ prelude's `union_` (prismc/templates/cpp_prelude.prism)
-  inserts the left map's entries into the right, `n log (n + m)`: **not kept** when the
-  left map is the larger.
+  winning; `m` log `(n+m)`", kept: `Map::united` puts the smaller map's entries into the
+  larger, whichever side it is (`tests/test_maps.cpp` counts the key copies).
 - **The tests** (`tests/test_arrays.cpp`) check the behaviour at the sizes around a
   chunk's edges, the storage (`capacity`), and the costs, by counting the copies and moves
   of an element type that counts them.
