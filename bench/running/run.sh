@@ -2,7 +2,7 @@
 # Running Prism once compiled (bench/running/README.md): how fast compiled Prism code runs,
 # all-Rust against all-C++. Two workloads: prismc itself, built at each configuration by
 # bench/building/run.sh, compiling prismc/ to its own language and compiling
-# tests/conformance/sem-ch07-normalize.prism (wall time, peak memory, instructions
+# tests/conformance/sem-ch07-normalize (wall time, peak memory, instructions
 # retired); and the GUI table under each target's canvas World (bench/gui/run.sh, which
 # also runs GTK and Cuis beside it).
 #

@@ -83,12 +83,18 @@ fn ShrinkCheck g, st, defs:
     ((st3, refs))
 
 # `--unused`: a warning at each top-level function or `let` of the program's own files
-# (before `shown`) that no other definition reaches, other than a root (`@main`) and an
-# impl's method, which a call through its trait reaches.
-UnusedDefs: fn [Def], [((Text, [Text]))], Nat -> [CDiag]
+# (before `shown`) that no other definition reaches, other than a root (`@main`, a `check`,
+# a `test`) and an impl's method, which a call through its trait reaches. What a `check`'s
+# lines name is used (a test module's helpers), by its name as written, bare or qualified.
+UnusedDefs: unbounded fn [Def], [((Text, [Text]))], Nat -> [CDiag]
 fn UnusedDefs defs, refs, shown:
-    let used = Fold refs, {}, \|m, ((k, rs))| Fold rs, m, \|m2, r| if r == k: m2 else: Insert m2, r, unit
-    let own = Filter defs, \|d| d.file < shown and not (HasKey used, d.qk) and d.name != "@main" and not (IsMethodDef d)
+    let used0 = Fold refs, {}, \|m, ((k, rs))| Fold rs, m, \|m2, r| if r == k: m2 else: Insert m2, r, unit
+    let used = Fold defs, used0, \|m, d| match d.body:
+        DbCheck c: Fold c.lines, m, \|m2, l| Fold (ExprsIn l.expr), m2, \|m3, e| match e.kind:
+            EName n: Insert (Insert m3, (SNameKey n), unit), (QualKey d.home, (SNameKey n)), unit
+            otherwise: m3
+        otherwise: m
+    let own = Filter defs, \|d| d.file < shown and not (HasKey used, d.qk) and d.name != "@main" and not (IsMethodDef d) and not (IsTestingDef d)
     Each own, \|d| CDiag(code="unused", file=d.file, span=d.span, message="nothing uses `{d.name}`", fix="delete it, or use it")
 
 # Nothing outside a test module names what one declares (`test-only-reached`, docs/
@@ -113,6 +119,12 @@ fn DefRole srcs, d = (SegAt (Or srcs[d.file], (MkSrc "", "")), d.span.start).rol
 
 LastPathPart: fn Text -> Text
 fn LastPathPart p = Or (?Last (Split p, "/")), p
+
+IsTestingDef: fn Def -> Bool
+fn IsTestingDef d = match d.body:
+    DbCheck ignore: True
+    DbTest ignore: True
+    otherwise: False
 
 IsMethodDef: fn Def -> Bool
 fn IsMethodDef d = match d.body:

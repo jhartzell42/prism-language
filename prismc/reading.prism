@@ -407,9 +407,6 @@ fn Stray has, texts, acc, f:
         if main == "": AddTreeDiag acc, f, noSpan, "mod-stray", "`{f}` is in a tree, in no module's directory", "move it into a module's directory and declare it with a `mod` line"
         else: AddTreeDiag acc, f, noSpan, "mod-stray", "`{shown}` is in the directory of `{main}`, which declares no `{line}`", "declare it with `{line}` in {main}, or move it out of the directory"
 
-HasModuleLine: fn Text -> Bool
-fn HasModuleLine text = Fold (HeaderLines text), False, \|g, h| g or h.word == "module"
-
 # A module directory's module and every module it reaches by `use`, in the tree's order.
 ReachTree: unbounded fn [ModFiles], Text -> [ModFiles]
 fn ReachTree units, main:

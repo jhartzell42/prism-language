@@ -236,8 +236,8 @@ fn world() -> TestWorld {
 
 #[test]
 fn two_reductions_take_three_cycles() {
-    let script = include_str!("../../../tests/conformance/sem-ch07-normalize.prismtest");
-    let expected = include_str!("../../../tests/conformance/sem-ch07-normalize.expected");
+    let script = include_str!("../../../tests/conformance/sem-ch07-normalize/tests.prism");
+    let expected = include_str!("../../../tests/conformance/sem-ch07-normalize/tests.expected");
     if let Err(e) = world().verify(script, expected) {
         panic!("{e}");
     }

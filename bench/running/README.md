@@ -6,7 +6,7 @@ How fast compiled Prism code runs, all-Rust against all-C++: the key number. Two
 
 - **prismc itself.** Each binary `bench/building/run.sh` made (a prismc at cargo release, and
   one at clang -O3) compiles `prismc/` to its own language and compiles
-  `tests/conformance/sem-ch07-normalize.prism` (the median of `NORM` runs). For each:
+  `tests/conformance/sem-ch07-normalize` (the median of `NORM` runs). For each:
   wall time, peak resident memory, and instructions retired (macOS's `time -l`, the
   processor's count, which does not move with the machine's load as time does).
 - **The GUI table** (`bench/gui/`): js-framework-benchmark's operations on the same table
