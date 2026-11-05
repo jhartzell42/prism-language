@@ -194,9 +194,7 @@ fn ?FirstDeclLine text:
 # ---- Trees
 
 # A file of a module as read: its path, its text, and its role: in a tree `main`,
-# `section` or `test`; else `loose` (a file argument, or a file of a directory that is no
-# tree), `old` (a one-file module left in a tree, named by its `module` line) or `script`
-# (a `.prismtest`, read after the `.prism` of its name).
+# `section` or `test`; else `loose` (a file argument).
 type Seg = record:
     path: Text
     text: Text
@@ -269,40 +267,34 @@ fn ToRead args, listings = Fold args, [[]], \|acc, a|
     if IsSourcePath a: AddText acc, a
     else: match ?TreeRootOf a, listings:
         ? root: UnionTexts acc, (Or listings[root], [[]])
-        nil: UnionTexts acc, (Or listings[a], [[]])
+        nil: acc
 
 # The modules of a run: each argument in order, then the prelude's; test modules only under
-# `--tests`, and a `.prismtest` only when compiling (`--check` reads none, as before
-# trees).
+# `--tests`.
 Assemble: unbounded fn ReadInput -> Assembled
 fn Assemble input:
     let listings = Map input.listings
     let texts = Map input.texts
     let progs = Fold input.args, noAssembly, \|acc, a| AddArg acc, listings, texts, a
     let pre = AddArg noAssembly, listings, texts, input.prelude
-    let units = Each progs.units, \|u| KeptSegs u, input.tests, input.compiling
+    let units = Each progs.units, \|u| KeptSegs u, input.tests
     let kept = Fold units, [[]], \|acc, u| Append acc, (Each u.segs, \|s| s.path)
     update progs:
         &_.units <= units
-        &_.prelude <= Each pre.units, \|u| KeptSegs u, False, False
+        &_.prelude <= Each pre.units, \|u| KeptSegs u, False
         &_.scripts <= Filter &_.scripts, \|p| HasText kept, p
         &_.warnings <= Append &_.warnings, pre.warnings
         &_.errors <= Append &_.errors, pre.errors
 
-# A unit's files as a run reads them: test modules only under `--tests`, a `.prismtest`
-# only when compiling.
-KeptSegs: fn ModFiles, Bool, Bool -> ModFiles
-fn KeptSegs u, tests, compiling = update u:
-    &_.segs <= Filter &_.segs, \|s| (s.role != "test" or tests) and (s.role != "script" or compiling)
-
-# A unit with one file more, after its others.
-WithSeg: fn ModFiles, Seg -> ModFiles
-fn WithSeg u, s = update u:
-    &_.segs <= Push &_.segs, s
+# A unit's files as a run reads them: test modules only under `--tests`.
+KeptSegs: fn ModFiles, Bool -> ModFiles
+fn KeptSegs u, tests = update u:
+    &_.segs <= Filter &_.segs, \|s| s.role != "test" or tests
 
 AddArg: unbounded fn Assembled, (Text ==> [Text]), (Text ==> Text), Text -> Assembled
 fn AddArg acc, listings, texts, a:
-    if HasSuffix a, ".prismtest": JoinScript acc, a, (Or texts[a], "")
+    if HasSuffix a, ".prismtest": update acc:
+        &_.errors <= Push &_.errors, TreeDiag(path=a, span=noSpan, code="prismtest", message="`{a}`: a `.prismtest` is not read: a module's tests are in its test modules, a loose file's inline", fix="move its declarations into a test module (`test mod tests`), or into the file it tests")
     else: if HasSuffix a, ".prism": update acc:
         &_.units <= Push &_.units, ModFiles(name="", named=False, segs=[[Seg(path=a, text=(Or texts[a], ""), role="loose")]])
     else: match ?TreeRootOf a, listings:
@@ -310,18 +302,12 @@ fn AddArg acc, listings, texts, a:
             let tree = WalkTree root, (Or listings[root], [[]]), texts
             let units = if root == a: tree.units else: ReachTree tree.units, (Under a, "mod.prism")
             let scripts = if root == a: Fold units, [[]], \|s, u| Append s, (TestPaths u) else: Fold (Filter units, \|u| (MainPath u) == (Under a, "mod.prism")), [[]], \|s, u| Append s, (TestPaths u)
-            let olds = Filter units, \|u| not u.named
-            let warnings = Fold olds, [[]], \|w, u| Push w, (OldLayout texts, root, u)
             update acc:
                 &_.units <= Append &_.units, units
                 &_.scripts <= Append &_.scripts, scripts
-                &_.warnings <= Append &_.warnings, warnings
                 &_.errors <= Append &_.errors, tree.diags
-        nil:
-            let files = Or listings[a], [[]]
-            let loose = Fold (Filter files, \|f| HasSuffix f, ".prism"), acc, \|ac, f| update ac:
-                &_.units <= Push &_.units, ModFiles(name="", named=False, segs=[[Seg(path=f, text=(Or texts[f], ""), role="loose")]])
-            Fold (Filter files, \|f| HasSuffix f, ".prismtest"), loose, \|ac, f| JoinScript ac, f, (Or texts[f], "")
+        nil: update acc:
+            &_.errors <= Push &_.errors, TreeDiag(path=a, span=noSpan, code="no-root", message="`{a}` holds no app.prism, lib.prism or mod.prism, and a directory argument is a tree", fix="give it a root, or name its files")
 
 MainPath: fn ModFiles -> Text
 fn MainPath u = match u.segs[0]:
@@ -333,32 +319,12 @@ fn MainText u = match u.segs[0]:
     ? s: s.text
     nil: ""
 
-# The test modules and scripts a compiled program runs.
+# The test modules a compiled program runs.
 TestPaths: fn ModFiles -> [Text]
-fn TestPaths u = Each (Filter u.segs, \|s| s.role == "test" or s.role == "script"), \|s| s.path
-
-# A `.prismtest` read after the `.prism` of its name (a test script holds declarations of
-# its module and has no `module` line of its own).
-JoinScript: fn Assembled, Text, Text -> Assembled
-fn JoinScript acc, path, text:
-    let stem = "{Or (?BeforeSuffix path, ".prismtest"), path}.prism"
-    let found = Fold acc.units, False, \|f, u| f or (MainPath u) == stem
-    if not found: update acc:
-        &_.errors <= Push &_.errors, TreeDiag(path=path, span=noSpan, code="mod-stray", message="`{BaseOf path}` is a test script with no `{BaseOf stem}` beside it", fix="put its declarations in a test module, declared by `test mod tests`")
-    else: update acc:
-        &_.units <= Each &_.units, \|u| if (MainPath u) == stem: WithSeg u, Seg(path=path, text=text, role="script") else: u
-        &_.scripts <= Push &_.scripts, path
-
-# The warning at a one-file module a tree holds and no `mod` line declares.
-OldLayout: fn (Text ==> Text), Text, ModFiles -> TreeDiag
-fn OldLayout texts, root, u:
-    let path = MainPath u
-    let span = Fold (HeaderLines (MainText u)), noSpan, \|sp, h| if h.word == "module": h.span else: sp
-    TreeDiag(path=path, span=span, code="old-layout", message="`{DropPrefix path, "{root}/"}` is a one-file module in the tree of `{root}`: no `mod` line declares it", fix="make it a module directory with a `mod.prism`, declared by a `mod` line")
+fn TestPaths u = Each (Filter u.segs, \|s| s.role == "test"), \|s| s.path
 
 # A tree from its root directory: app.prism or lib.prism and every module their `mod` lines
-# reach, then every other file of the listing: a one-file module (a `module` line) is an
-# old one, read as before trees; anything else is stray.
+# reach; every other file of the listing is stray.
 WalkTree: unbounded fn Text, [Text], (Text ==> Text) -> TreeAcc
 fn WalkTree root, files, texts:
     let has = Fold files, {}, \|m, f| Insert m, f, True
@@ -425,19 +391,12 @@ fn Submodule has, texts, acc, main, dir, h, parent:
     if HasKey has, path: WalkModule has, texts, acc, path, (if parent == "": h.arg else: "{parent}.{h.arg}")
     else: AddTreeDiag acc, main, h.span, "mod-missing", "`mod {h.arg}` declares `{DirName h.arg}/mod.prism`, which is not in the directory", "create {DirName h.arg}/mod.prism, or delete the line"
 
-# A file of a tree that nothing declares: an old one-file module (a `module` line), the
-# `.prismtest` of one, or stray.
+# A file of a tree that nothing declares: stray, a one-file module (a `module` line) and a
+# `.prismtest` among them.
 Stray: fn (Text ==> Bool), (Text ==> Text), TreeAcc, Text -> TreeAcc
 fn Stray has, texts, acc, f:
     let text = Or texts[f], ""
-    if HasSuffix f, ".prismtest":
-        let stem = "{Or (?BeforeSuffix f, ".prismtest"), f}.prism"
-        let joined = Fold acc.units, False, \|g, u| g or (not u.named and (MainPath u) == stem)
-        if joined: update acc:
-            &_.units <= Each &_.units, \|u| if not u.named and (MainPath u) == stem: WithSeg u, Seg(path=f, text=text, role="script") else: u
-        else: AddTreeDiag acc, f, noSpan, "mod-stray", "`{BaseOf f}` is a test script in a tree, beside no one-file module", "put its declarations in a test module, declared by `test mod tests`"
-    else: if HasModuleLine text: update acc:
-        &_.units <= Push &_.units, ModFiles(name="", named=False, segs=[[Seg(path=f, text=text, role="old")]])
+    if HasSuffix f, ".prismtest": AddTreeDiag acc, f, noSpan, "mod-stray", "`{BaseOf f}` is a test script in a tree, where tests are in test modules", "put its declarations in a test module, declared by `test mod tests`"
     else:
         let dir = DirOf f
         let isMain = (BaseOf f) == "mod.prism"

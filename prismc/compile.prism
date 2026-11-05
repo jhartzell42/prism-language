@@ -2,17 +2,17 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # ---------------------------------------------------------------------------------------
-# `compile FILES|DIR... -o OUT`: the back end (lower.prism, emit.prism, templates/)
+# `compile FILES|DIR... -o OUT`: the back end (lower/, emit/)
 # ---------------------------------------------------------------------------------------
 
 # `compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH] [--target
-# rust|cpp] [--tests]`: every argument read (a directory as a tree, or, when it holds no
-# app.prism, lib.prism or mod.prism, as every `.prism` and `.prismtest` under it), with the
+# rust|cpp] [--tests]`: every argument read (a `.prism` file loose, a directory as a tree,
+# docs/modules-style-pass.md), with the
 # prelude's modules the program does not replace; test modules only with `--tests`. The
 # program is parsed, checked (and refused on an error), lowered and emitted through `@Run`
 # as a Rust crate in OUT whose dependencies on `prism_rtl` and the Worlds are found at
 # `--runtime PATH` (by default `..` per directory of OUT, so OUT is under the repository
-# root); with `--target cpp`, as a C++ program over `runtime/cpp` (emit_cpp.prism). An
+# root); with `--target cpp`, as a C++ program over `runtime/cpp` (emit/cpp/). An
 # option it does not know, a target but `rust` or `cpp`, or an option with no value after
 # it is refused.
 @CompileMain: fn [Text] -> @unit

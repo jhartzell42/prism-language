@@ -308,3 +308,22 @@ tests/conformance/NAME/  app.prism, tests.prism, tests.expected (88 programs);
   `examples/window/lib.prism`?
 - **KW** Section files whose natural name is a keyword (`check`, `for`, `rebuild`) take
   another (`checking`, `keyed`, `switch`); acceptable?
+- **SJ** (Claude's, in the implementation) A module's files are read as one source, joined
+  by newlines, so the checker keeps one `ModInfo.file` per module and `Src.segs` maps an
+  offset back to its file and line; or `ModInfo.files: [Nat]` with a file per declaration,
+  as "What changes where" has it? Taken: the join (every pass reads `info.file`; the join
+  changes none of them).
+- **RS** (Claude's) The tree reading (~450 lines) is a root section of its own,
+  `reading.prism`, beside `checking` and `compile`; or part of `compile.prism`? Taken: its
+  own section.
+- **TW** (Claude's) A test module is also the Test World's script, so the Test World passes
+  over its helper declarations (a line at the left edge starting `type`, `derive`, `fn`,
+  `let` or `Name:`); or prismc writes a script holding only the `test` and `check`
+  declarations? Taken: the Test World skips them.
+- **CK** (Claude's) `prism check` now reads test modules, so it takes `test` declarations
+  and `check` patterns out as a compile does (pick PT); or the checker learns to check a
+  test against a `@name:` block with no signature? Taken: taken out; PT's stripping stays,
+  only the `.prismtest` join goes.
+- **PS** (Claude's) Per-section output (a `// check/env/traits.prism` line per section in
+  Rust, a `.cpp` per section in C++) is not done: a module's C++ is chunked by SF as
+  before. Open.

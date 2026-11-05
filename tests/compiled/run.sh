@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 # Every conformance program, and chess, through `./prism test`: compiled by prismc, built,
-# each `.prismtest` and test module run under the compiled Test World, its transcript
-# byte-equal to its `.expected`. A tests/conformance/NAME/ holding an app.prism is a tree
-# (docs/modules-style-pass.md). All of them, every time: `tests/conformance/*.prismtest` (a program's
-# directory of the same name joins it, as sem-ch06-birds's); `examples/chess/rules.prism`
-# alone (rules.prismtest) and `examples/chess` (board.prismtest and rules.prismtest); and
-# prismc's lexer and parser checks (the test modules of prismc/syntax/lexer and
-# prismc/syntax/parser).
+# each test module run under the compiled Test World, its transcript byte-equal to the
+# `.expected` of its name. Every program is a tree (docs/modules-style-pass.md): all of
+# them, every time: each tests/conformance/NAME/ holding an app.prism; examples/chess/rules
+# alone (its test module) and examples/chess (the board's and the rules'); and prismc's
+# lexer and parser checks (the test modules of prismc/syntax/lexer and prismc/syntax/parser).
 #
 #   tests/compiled/run.sh [NAMES...]     # every program, or only those named (chess too)
 #   tests/compiled/run.sh --target cpp [NAMES...]   # the same through the C++ target
 #
 # prismc is the `prism` script's (`$PRISMC`, else the newest binary). Logs go to
 # target/compiled/NAME.log (target/compiled-cpp/ for C++). Exits 1 listing the programs
-# that fail, and at which step. Under C++ chess is its `rules.prismtest` and
-# `board.prismtest` only (the Test World; the C++ target has no canvas World).
+# that fail, and at which step. Under C++ chess is its test modules only (the Test World).
 #
 # Written by Claude, 2 November 2026, on the claude-self-hosting branch. Subject to change.
 set -u
@@ -47,15 +44,8 @@ run() { # name, sources...
     failed+=("$name ($step)")
     echo "FAILED $name: $step($log)"
 }
-for script in tests/conformance/*.prismtest; do
-    [ -e "$script" ] || continue
-    base=${script%.prismtest}
-    files=("$base.prism")
-    [ -d "$base" ] && files+=("$base")
-    run "$(basename "$base")" "${files[@]}"
-done
-# the programs that are trees (docs/modules-style-pass.md): a directory with an app.prism,
-# each test module's transcript its NAME.expected
+# every program, a tree (docs/modules-style-pass.md): a directory with an app.prism, each
+# test module's transcript its NAME.expected
 for dir in tests/conformance/*/; do
     [ -f "$dir/app.prism" ] && run "$(basename "$dir")" "${dir%/}"
 done

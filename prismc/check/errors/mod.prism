@@ -116,13 +116,12 @@ fn RenderCDiag srcs, d = match srcs[d.file]:
         let fix = if d.fix == "": "" else: "  fix: {d.fix}\n"
         "{SrcPlace src, d.span.start}: {Severity d}[{d.code}]: {d.message}\n    {text}\n{carets}\n{fix}"
 
-# `warning` for the diagnostics that fail nothing (`unused`, and `old-layout`, a one-file
-# module left in a tree directory), else `error`.
+# `warning` for the one diagnostic that fails nothing (`unused`), else `error`.
 Severity: fn CDiag -> Text
 fn Severity d = if IsWarning d: "warning" else: "error"
 
 IsWarning: fn CDiag -> Bool
-fn IsWarning d = d.code == "unused" or d.code == "old-layout"
+fn IsWarning d = d.code == "unused"
 
 # Diagnostics in order of file, then position, then the order they were found; duplicates
 # dropped.

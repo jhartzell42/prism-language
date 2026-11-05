@@ -1439,13 +1439,11 @@ Each is Claude's, for Jimmy to overturn.
   `Node::wake` is not told its height (contract gap WH below).
 - **PT Tests.** A test module (`test mod tests`, docs/modules-style-pass.md) is read
   after its module's other files, and only under `--tests` (`prism test`, `prism check`);
-  a `.prismtest` is read joined after the `.prism` of its name (a test holds declarations
-  of its module and has no `module` line, examples/README.md), when compiling. `test`
-  declarations are taken out before checking a compile (a test's blueprint names a
-  `@name:` block, which has no signature for the checker to read) and a `check` line's
-  pattern too (the Test World reads patterns from the script; the checker mistypes
-  `Show (? 3) => "? 3"`). A test's root is found by name; its arguments arrive as `Pod`s.
-  The compiled program's scripts are its test modules and `.prismtest`s; each transcript
+  a loose file's tests are inline. `test` declarations are taken out before checking (a
+  test's blueprint names a `@name:` block, which has no signature for the checker to read)
+  and a `check` line's pattern too (the Test World reads patterns from the script; the
+  checker mistypes `Show (? 3) => "? 3"`). A test's root is found by name; its arguments
+  arrive as `Pod`s. The compiled program's scripts are its test modules; each transcript
   is the `.expected` of its name (`tests.expected` for `tests.prism`), and the Test World
   passes over a test module's helper declarations.
 - **FV First values.** A place whose element answers a dynamic asks `cx.first_value` at
@@ -1468,15 +1466,14 @@ Each is Claude's, for Jimmy to overturn.
 - **TR2 Trees** (docs/modules-style-pass.md). A directory argument holding an app.prism
   or lib.prism is a tree; one holding a mod.prism is that module of the tree whose root
   is the nearest directory above it, with the modules it reaches by `use`; any other is
-  every `.prism` and `.prismtest` under it. The front end reads each main file's header
-  from its text, walks the `mod` lines, and gives each module its files (main, sections
-  in `mod` order, test modules) as one source joined by newlines, whose `Src.segs` say
-  where each file starts, so a diagnostic names its own file and line. `mod-missing`,
-  `mod-stray`, `mod-clash`, `section-header`, `module-line`, `two-roots` and `lib-header`
+  refused (`no-root`). The front end reads each main file's header from its text, walks
+  the `mod` lines, and gives each module its files (main, sections in `mod` order, test
+  modules) as one source joined by newlines, whose `Src.segs` say where each file
+  starts, so a diagnostic names its own file and line. `mod-missing`, `mod-stray` (a
+  one-file module or a `.prismtest` no `mod` line declares among them), `mod-clash`,
+  `section-header`, `module-line`, `two-roots`, `lib-header`, `no-root` and `prismtest`
   stop the run before parsing; `test-outside` and `test-declares` are found over the
-  parsed trees, `test-only-reached` over the checker's references. A one-file module (a
-  `module` line) no `mod` line declares is read as before trees, with an `old-layout`
-  warning.
+  parsed trees, `test-only-reached` over the checker's references.
 - **RT The runtime path.** `Cargo.toml` finds the library and the Worlds at `--runtime
   PATH`, by default one `..` per directory of OUT (OUT under the repository root), so the
   stages emit the same file.
