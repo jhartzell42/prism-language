@@ -120,16 +120,18 @@ World boundary is the only place values are plain data (`Pod`). Refused: a dynam
 typed `Value` representation shared by compiled code and an interpreter (Jimmy: the
 checker is not a gate in front of a dynamic runtime; there is no interpreter).
 
-## D17. Modules are directories; test modules are declared (Jimmy's)
+## D17. Modules nest as Rust's do; test modules are declared child modules (Jimmy's)
 
-A module is one file, or a directory whose `mod.prism` heads it: its header's `mod name`
-lines declare its sections (`name.prism`, the same namespace), `mod Name` its submodules
-(`name/mod.prism`, named by their path from the root), `test mod name` its test modules,
-which only `prism test` and `prism check` read. A tree's root is `app.prism` (a program)
-or `lib.prism` (`mod` lines only). prismc reads a module's files as one source, each after
-a newline, so the checker sees one module per namespace as before; each diagnostic names
-the file and line it is in. Files on the command line stay loose (Semantics ch. 6). The
-design, its rulings and the refused alternatives are claude/modules-style-pass.md.
+Every file is one module with its own header (`emit`, `mod`, `use`). A `mod Name` line
+declares the child module `Parent.Name`, its file `name.prism` beside the declaring file,
+or `name/mod.prism` when it has children; to any depth; both files there, or a lowercase
+`mod`, is refused. `test mod Name` declares a child test module, which only `prism test`
+and `prism check` read and which reaches its parent by `use Parent.*` (`use App.*` for a
+program tree's root). A tree's root is `app.prism` (a program) or `lib.prism` (`mod`
+lines only). A module is reached only through `use`, by full path; no namespace is shared
+across files. One module is one Rust module (`src/PATH/mod.rs`) and one C++ unit. Files
+on the command line stay loose (Semantics ch. 6). The design, its rulings and the refused
+alternatives are claude/modules-style-pass.md.
 
 ## Features in and out
 

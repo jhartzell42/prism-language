@@ -62,15 +62,10 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 
 - **The queue below, items 2 to 5, 7 to 9** (1 and 6 are done). The emitter changes first,
   then one fixed point at the end.
-- **Then the style pass** (Jimmy, 4 November), after the queue and before the regex code:
-  - a module divided into sections becomes separate files; more hierarchy in the tree;
-  - every module's main file is `mod.prism` (Rust's rule); `lib.prism`, `mod.prism` or
-    `app.prism` declares its submodules, and `app.prism` the main widget;
-  - top-level items that exist only for testability move out of the module into a
-    `test.prism` beside it, run as `.prismtest` is today.
-  A module-system change as much as a reshuffle: prismc's front end, the checker's module
-  graph, the `prism` script and the Semantics chapter on modules. Write the design as a
-  short note first, do it, and put the calls in it as doubts.
+- **The style pass is done** (Jimmy, 4 November; his ruling of 5 November): modules nest
+  as Rust's do, every file one module, test modules child modules, and prismc, the
+  prelude, chess, the bench and the conformance programs are trees of them
+  (claude/modules-style-pass.md, whose doubts are open for Jimmy).
 - **Then regular expressions** (the code; the books are written on `claude-regex-books`).
   Jimmy (4 November): the design is done and good; no design round.
 - **Then the final benchmarks** (bench/building, bench/running, bench/gui), on a quiet
@@ -118,8 +113,8 @@ All the emitter changes go first; then one fixed point at the end.
    a `String` built and then copied into a `Text`, `format!` into a temporary and then
    `Text::new`, `to_string()` in comparisons, character-by-character pushes. Fix what's
    cheap, list the rest. Instruction counts before and after on the normalize compile.
-7. **(h) Split `prismc/lower.prism`** (about 7,000 lines): folded into the style pass below
-   (a module's sections become separate files), which does it for every module at once.
+7. **(h) Split `prismc/lower.prism`**: done by the style pass (`Lower` and its child
+   modules).
 8. **The final fixed point:** `make bootstrap-cpp`, the C++-built prismc's Rust output
    byte-identical to the Rust-built prismc's, then both seeds (`bootstrap/bootstrap.sh
    --update` for the Rust seed if Rust emission changed; write

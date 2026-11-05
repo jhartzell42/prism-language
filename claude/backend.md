@@ -336,7 +336,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
 
 `prismc compile --target cpp` prints the same model as C++20 over `runtime/cpp` (the C++
 `prism_rtl`, whose README maps each Rust type of the library to its C++ form), through
-emit_cpp.prism and templates/cpp.prism. Everything above holds construct for construct;
+prismc/emit/cpp/ and its templates (`Emit.Cpp.Templates`). Everything above holds construct for construct;
 what differs is how C++ spells it.
 
 - **The program** is `Makefile`; per module, in its directory (`src/DIR/`, `check/env`

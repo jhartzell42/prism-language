@@ -15,6 +15,14 @@ keeps no binary; it keeps one archive.
   the binary `./prism` uses.
 - **`bootstrap.sh --update`** also rewrites the seed from the new fixed point, after a
   change to the compiler.
+- **A seed is packed with no macOS extended attributes** (COPYFILE_DISABLE=1, and
+  `--no-xattrs` where the tar takes it), so unpacking it on Linux prints no warnings.
+- **`bootstrap.sh --seed-at DIR`** and **`bootstrap-cpp.sh --seed-at DIR`** only unpack
+  and build a seed in DIR. **`test-seed.sh`** builds both three levels under the root in
+  a directory that is a symlink out of the repository, as `target/` is in every worktree
+  here, and checks a file with each: cargo is given the seed's crate by its path from
+  the root (never run inside it, where `../../../runtime/rust` would resolve from the
+  physical directory), and the C++ seed's Makefile takes `PRISM_ROOT`.
 - **From the repository root:** `make bootstrap`, `make bootstrap-update`.
 
 ## The C++ target
@@ -37,7 +45,8 @@ The same bootstrap runs through C++ (`prismc compile --target cpp`, prismc/READM
 - **`CXX`, `OPT`, `JOBS`** choose the compiler (g++), its optimization (`-O3`) and make's
   jobs (1: the largest file, `lower.cpp`, needs most of a small machine's memory).
 - **From the repository root:** `make bootstrap-cpp`, `make bootstrap-cpp-update`.
-- **The last run** (4 November 2026, Apple M2 Pro, clang++ `-O3`, 12 jobs): the Rust
-  prismc compiled `prismc/` to C++ in about 72 s; make built it in about 100 s wall; the
-  C++ prismc compiled itself in about 61 s (154,462 lines of C++, byte-equal to what it
-  was built from); its Rust was byte-equal to the Rust prismc's.
+- **The last run** (5 November 2026, Apple M2 Pro, clang++ `-O3`, 8 jobs, other work on
+  the machine): the Rust prismc compiled `prismc/` to C++ in about 88 s; make built it in
+  about 189 s wall; the C++ prismc compiled itself in about 75 s (181,483 lines of C++ in
+  one unit per module, byte-equal to what it was built from); its Rust (109,349 lines) was
+  byte-equal to the Rust prismc's.

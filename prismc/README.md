@@ -12,31 +12,35 @@ The lexer, parser and tree of Prism, written in Prism and run by compiler zero
 
 ## Files
 
-prismc is a tree (claude/modules-style-pass.md): each module a directory whose `mod.prism`
-heads it, its sections the other `.prism` files there, each directory's README listing
-them.
+prismc is a tree of nested modules (claude/modules-style-pass.md): each module one file,
+`name.prism`, or a directory whose `mod.prism` is the module when it has children; each
+directory's README lists its modules.
 
-- `app.prism` (the root): the driver, `@main`, `@FrontMain`; its sections `reading.prism`
-  (files and trees read, parsed: `Assemble`, `ParseProgram`), `checking.prism`
-  (`--check`, `--typed`) and `compile.prism` (`compile`).
-- `fs/` (`Fs`): the prelude's `Fs` with `Fs.List` (pick FL).
+- `app.prism` (the root): the driver, `@main`, `@FrontMain`; its child modules
+  `reading.prism` (`Reading`: files and trees read, parsed: `Assemble`, `ParseProgram`),
+  `checking.prism` (`Checking`: `--check`, `--typed`) and `compile.prism` (`Compile`).
+- `fs.prism` (`Fs`): the prelude's `Fs` with `Fs.List` (pick FL).
 - `syntax/` (`Syntax`): the tree, `prism_syntax/src/ast.rs` one to one, with a `Range` on
-  every node; `Diag`, the diagnostic. `syntax/lexer/` (`Syntax.Lexer`): characters to
-  tokens with layout (Semantics ch. 2, the ten layout rules, the template frame;
+  every node; `Diag`, the diagnostic; `Syntax.Decls`. `syntax/lexer/` (`Syntax.Lexer` and
+  its children `Chars`, `Layout`, `Words`, `Literals`, `Templates`, `Corpus`): characters
+  to tokens with layout (Semantics ch. 2, the ten layout rules, the template frame;
   Conformance A.1 and A.2), as an `&` block over the text (Q-L1 (b)); `RenderTokens`, the
-  layout corpus's notation; Rust's `{:?}` escaping. `syntax/parser/` (`Syntax.Parser`):
-  `unbounded` recursive descent over a token cursor (D7), with the pairing rule, a Pratt
-  loop over the 14-level table, recovery at statement boundaries, out-of-scope
-  diagnostics, and the test language. `syntax/sexp/` (`Syntax.Sexp`): the S-expression
-  printer, `prism_syntax/src/sexp.rs` exactly. The lexer and the parser each have a test
-  module, `tests.prism`.
-- `check/` (`Check`, `CheckProgram`) and its submodules `errors/`, `types/`, `env/`,
-  `expr/`, `blocks/`, `passes/`, `shrink/`, `typed/`: the checker (Checker, below).
-- `lower/` (`Lower`), `lower/model/` (`Lower.Model`, the core form) and `lower/node/`
-  (`Lower.Node`, widget blocks as nodes): lowering (Back end, below).
-- `emit/` (`Emit`, `mod` lines only): `emit/rust/` (`Emit.Rust`) with `templates/` and
-  `prelude/` (the Rust templates and the emitted prelude), `emit/cpp/` (`Emit.Cpp`) with
-  the same two for C++.
+  layout corpus's notation; Rust's `{:?}` escaping. `syntax/parser/` (`Syntax.Parser`
+  and its children `Decls`, `Expr`, `Blocks`, `Types`, `TestLanguage`): `unbounded`
+  recursive descent over a token cursor (D7), with the pairing rule, a Pratt loop over
+  the 14-level table, recovery at statement boundaries, out-of-scope diagnostics, and the
+  test language. `syntax/sexp.prism` (`Syntax.Sexp`): the S-expression printer,
+  `prism_syntax/src/sexp.rs` exactly. The lexer and the parser each have a test module,
+  `Tests` (`tests.prism`).
+- `check/` (`Check`, `CheckProgram`), `check/errors.prism` and the directories `types/`,
+  `env/`, `expr/`, `blocks/`, `passes/`, `shrink/`, `typed/`, each a module with child
+  modules: the checker (Checker, below).
+- `lower/` (`Lower` and its children `Types`, `Expr`, `Patterns`, `Templates`,
+  `Functions`, `Jobs`, `Program`), `lower/model.prism` (`Lower.Model`, the core form) and
+  `lower/node/` (`Lower.Node`, widget blocks as nodes): lowering (Back end, below).
+- `emit/` (`Emit`, `mod` lines only): `emit/rust/` (`Emit.Rust`, `Emit.Rust.Items`) with
+  `templates/` and `prelude.prism` (the Rust templates and the emitted prelude),
+  `emit/cpp/` (`Emit.Cpp` and its children) with the same two for C++.
 
 ## Running it
 
@@ -57,7 +61,7 @@ the CLI World prints to standard error before it exits 1. Out-of-scope features 
 reported in the output and do not fail the run.
 
 The lexer's and the parser's checks are their modules' test modules
-(`syntax/lexer/tests.prism`, `syntax/parser/tests.prism`, claude/modules-style-pass.md),
+(`Syntax.Lexer.Tests` and `Syntax.Parser.Tests`, claude/modules-style-pass.md),
 `check`s on small inputs over the helpers declared beside them; they run compiled with
 the modules they reach, transcripts byte-equal to the `tests.expected` beside each:
 
@@ -281,7 +285,7 @@ lines.
 
 ### Files
 
-- `check/errors/` (`Check.Errors`): a diagnostic, a source file, rendering, sorting.
+- `check/errors.prism` (`Check.Errors`): a diagnostic, a source file, rendering, sorting.
 - `check/types/` (`Check.Types`): the three layers of a type (plain, stack, color),
   the inference state, unification with rows (Rémy's algorithm with families for labels,
   lacks sets) and colors, schemes, the color's joins and their solution, and the typed
@@ -902,24 +906,25 @@ one is the program's own (prismc's `--check --world Ui`). `make chess` is
 
 ### Files
 
-- `lower/` (`Lower`), `lower/model/` (`Lower.Model`, the core form) and `lower/node/`
-  (`Lower.Node`, a widget block's node): lowering. It reads the checker's environment
+- `lower/` (`Lower` and its child modules), `lower/model.prism` (`Lower.Model`, the core
+  form) and `lower/node/` (`Lower.Node` and its child modules, a widget block's node):
+  lowering. It reads the checker's environment
   (`Check.Env.BuildG`: modules, types, constructors, tags, traits,
   impls, every definition's clauses) and the typed tables (`TProgram`, indexed by place)
   and decides everything: names, types, borrows and clones, each widget's node (its
   fields, event graph, heights, places, answers, hooks, rows and generations), each
   unbounded function's job.
-- `emit/rust/` (`Emit.Rust`): the Rust printer, the core form spelled; one function per
+- `emit/rust/` (`Emit.Rust`, `Emit.Rust.Items`): the Rust printer, the core form spelled; one function per
   construct, nothing decided (K9).
 - `emit/rust/templates/` (`Emit.Rust.Templates`): every item and every
   multi-line expression as a function-form code template with doubled braces;
   placeholders alone on a line indent to their column; doc comments quote the Prism
   source through a `<@Quoted text={{..}}/>` call.
-- `emit/rust/prelude/` (`Emit.Rust.Prelude`): the prelude in Rust,
+- `emit/rust/prelude.prism` (`Emit.Rust.Prelude`): the prelude in Rust,
   emitted as `src/prelude.rs` beside every program (pick PL).
-- `fs/` (`Fs`): the prelude's `Fs` with `Fs.List`, which `compile DIR` reads (pick FL).
-- `compile.prism`, a section of the root: `@main`'s `compile` branch (`@CompileMain`,
-  `CompileProgram`).
+- `fs.prism` (`Fs`): the prelude's `Fs` with `Fs.List`, which `compile DIR` reads (pick FL).
+- `compile.prism` (`Compile`, a child module of the root): `@main`'s `compile` branch
+  (`@CompileMain`, `CompileProgram`).
 
 The emitted crate: `Cargo.toml` (`prism_rtl`, `prism_world_cli`, and
 `prism_world_canvas_rtl` behind the `canvas` feature, on by default when the root emits
@@ -983,7 +988,7 @@ qualified path, a label) or a literal's digits, never syntax.
   functions in `XCall` (`Hold::new`, `Rc::new`, `prism_rtl::Dynamic::of`), method names
   (`get`, `set`, `borrow`), a `for` row's node path (`ForDef.rowNode`, with its type
   arguments for a host's rows). The C++ printer maps them to its runtime's names
-  (`CallName`'s cases and `MethodForm` in emit_cpp.prism).
+  (`CallName`'s cases and `MethodForm` in `Emit.Cpp`).
 - **Types where a printer needs them:** a `match`, an if-let chain and a labelled block
   carry their value's type (`XMatch`, `XChain`, `XLabeled`), and `XTyped` says the type
   of an expression whose type C++ cannot infer (an empty array or map, `nil`, a loop
@@ -1061,7 +1066,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
 
 `compile --target cpp` (`./prism compile|test|run --target cpp`) prints the model through
 emit/cpp/ (`Emit.Cpp`), emit/cpp/templates/ (`Emit.Cpp.Templates`) and
-emit/cpp/prelude/ (`Emit.Cpp.Prelude`, the prelude in C++, function for
+emit/cpp/prelude.prism (`Emit.Cpp.Prelude`, the prelude in C++, function for
 function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli/cpp`
 (claude/backend.md, "The C++ side"). `./prism test --target cpp` builds it with make and
 `$CXX` (g++ by default) into `target/prism-cpp/NAME` and runs its tests under the C++
@@ -1244,8 +1249,10 @@ Each is Claude's, for Jimmy to overturn.
   no Prism module is gets a file of its `pub mod` lines only). A prelude module (`Ui`,
   `Fs`, ...) is emitted only when a program module uses it or names its family on its
   `emit` line. A reference to another module is from the crate, `crate::ui::Click`, so a
-  submodule named as a top-level module (`a::types` beside `types`) never stands in for
-  it (`mod-nested-names`); a module file has no `use` of the others.
+  child named as a top-level module (`a::types` beside `types`) never stands in for it
+  (`mod-nested-names`); a module file has no `use` of the others. Every module is
+  `src/PATH/mod.rs`, a module of one Prism file too (claude/modules-style-pass.md, doubt
+  RF), and a path segment that is a Rust or a C++ keyword takes a `_` (`shapes::switch_`).
 - **OW Ownership.** A function takes every argument by reference and returns a value;
   lowering tracks how each Rust place holds its value (`ByRef`, `Owned`, `RcRef`,
   `RcOwned`) and spells a use as a borrow or a clone accordingly. A closure passed to a
@@ -1284,7 +1291,7 @@ Each is Claude's, for Jimmy to overturn.
 - **UP `&` blocks.** `update x:` is a block over `let mut this = x.clone()`: `&_.f <= v`
   is an assignment, `+=` an assignment of the sum, `&m[k] <= v` an `insert`, `&xs[i]` the
   prelude's `at_mut`, `let &i` a `mut` local, `while` a Rust `while`.
-- **PL The prelude** is Rust written once in `emit/rust/prelude/` and emitted per
+- **PL The prelude** is Rust written once in `emit/rust/prelude.prism` and emitted per
   program, not compiled from `prelude/prelude.prism`: most of the prelude is builtins
   with no Prism body, and the Prism-written ones (`Each`, `Filter`, `Or`, `Max`) are a
   line of Rust each. A name serving an array, a text and a map has variants (`len`,
@@ -1437,15 +1444,15 @@ Each is Claude's, for Jimmy to overturn.
 - **WH Wakes by height.** A node with combinators at several heights records the heights
   it asked for (prelude `Wakes`) and its `wake` runs the lowest one asked, since
   `Node::wake` is not told its height (contract gap WH below).
-- **PT Tests.** A test module (`test mod tests`, claude/modules-style-pass.md) is read
-  after its module's other files, and only under `--tests` (`prism test`, `prism check`);
+- **PT Tests.** A test module (`test mod Tests`, a child module,
+  claude/modules-style-pass.md) is read only under `--tests` (`prism test`, `prism check`);
   a loose file's tests are inline. `test` declarations are taken out before checking (a
   test's blueprint names a `@name:` block, which has no signature for the checker to read)
   and a `check` line's pattern too (the Test World reads patterns from the script; the
   checker mistypes `Show (? 3) => "? 3"`). A test's root is found by name; its arguments
   arrive as `Pod`s. The compiled program's scripts are its test modules; each transcript
   is the `.expected` of its name (`tests.expected` for `tests.prism`), and the Test World
-  passes over a test module's helper declarations.
+  passes over a test module's header and helper declarations.
 - **FV First values.** A place whose element answers a dynamic asks `cx.first_value` at
   the build (a hosted place asks its host, `host_k.first_value`, which builds the
   supplier row for the place early, pick HO) and fails the build when there is none; its
@@ -1465,15 +1472,15 @@ Each is Claude's, for Jimmy to overturn.
   the tree's root.
 - **TR2 Trees** (claude/modules-style-pass.md). A directory argument holding an app.prism
   or lib.prism is a tree; one holding a mod.prism is that module of the tree whose root
-  is the nearest directory above it, with the modules it reaches by `use`; any other is
-  refused (`no-root`). The front end reads each main file's header from its text, walks
-  the `mod` lines, and gives each module its files (main, sections in `mod` order, test
-  modules) as one source joined by newlines, whose `Src.segs` say where each file
-  starts, so a diagnostic names its own file and line. `mod-missing`, `mod-stray` (a
-  one-file module or a `.prismtest` no `mod` line declares among them), `mod-clash`,
-  `section-header`, `module-line`, `two-roots`, `lib-header`, `no-root` and `prismtest`
-  stop the run before parsing; `test-outside` and `test-declares` are found over the
-  parsed trees, `test-only-reached` over the checker's references.
+  is the nearest directory above it, with its test modules and the modules they reach by
+  `use`; any other is refused (`no-root`). The front end reads each file's header from
+  its text, walks the `mod` lines (each child `name.prism` or `name/mod.prism`), and
+  gives each module its one file, named by its path. `mod-missing`, `mod-both`,
+  `mod-leaf`, `mod-self`, `mod-lowercase`, `mod-stray` (a one-file module or a
+  `.prismtest` no `mod` line declares among them), `module-line`, `two-roots`,
+  `lib-header`, `no-root` and `prismtest` stop the run before parsing; `test-outside` and
+  `test-declares` are found over the parsed trees, `test-only-reached` over the checker's
+  references. `App` names a program tree's root in a `use` line or a qualified name.
 - **RT The runtime path.** `Cargo.toml` finds the library and the Worlds at `--runtime
   PATH`, by default one `..` per directory of a relative OUT (OUT under the repository
   root, as `./prism` and the bootstraps call prismc), so the stages emit the same file
