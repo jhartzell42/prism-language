@@ -12,6 +12,12 @@ mod items
 mod Templates
 mod Prelude
 use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
 use Check.Errors.*
 use Lower.*
 use Lower.Model.*

@@ -1,5 +1,21 @@
-# `Syntax.Parser`'s section `types`.
+# `Syntax.Parser.Types`, a child module of `Syntax.Parser`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Sexp.*
 
 # ---------------------------------------------------------------------------------------
 # Types, rows and bounds (types.rs). Appendix A.5's type order, tightest first:

@@ -1,5 +1,7 @@
-# `Syntax`'s section `decls`.
+# `Syntax.Decls`, a child module of `Syntax`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.*
 
 # ---------------------------------------------------------------------------------------
 # Declarations

@@ -11,7 +11,14 @@
 # depth `d` it stands at and gives back its text.
 emit r
 use Syntax.*
+use Syntax.Decls.*
 use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
 
 # A new line at depth `d`.
 Nl: fn Nat -> Text

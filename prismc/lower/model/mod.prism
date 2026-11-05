@@ -3,7 +3,14 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r
 use Syntax.*
+use Syntax.Decls.*
 use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
 use Check.Errors.*
 use Check.Types.*
 use Check.Types.Recording.*

@@ -1,5 +1,14 @@
-# `Syntax.Lexer`'s section `templates`.
+# `Syntax.Lexer.Templates`, a child module of `Syntax.Lexer`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Corpus.*
+use Syntax.*
+use Syntax.Decls.*
 
 # ---------------------------------------------------------------------------------------
 # Templates (Templates ch. 2; Semantics ch. 2, "The template frame")

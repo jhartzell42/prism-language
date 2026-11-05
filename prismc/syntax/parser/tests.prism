@@ -1,6 +1,23 @@
 # The parser's test module: its checks and the helpers they need, which only
 # `prism test` and `prism check` read (claude/modules-style-pass.md).
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Sexp.*
 
 # The helpers of prismc's parser checks (the checks below): each prints a text's
 # tree in S-expression notation, or its diagnostics, as `prismc FILE` does.

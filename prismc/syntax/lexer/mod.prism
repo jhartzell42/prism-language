@@ -1,6 +1,6 @@
 # The lexer: characters to tokens, with layout (Semantics ch. 2; Templates ch. 2, Lexing;
 # Conformance Appendix A.1 and A.2). `prism_syntax/src/lexer.rs` is the oracle, rule for
-# rule; the two must give the same tokens, and `prismc/front.prism --tokens` prints them in
+# rule; the two must give the same tokens, and `prismc --tokens` prints them in
 # the layout corpus's notation so the two can be diffed.
 #
 # Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
@@ -15,14 +15,21 @@
 # same text and hands its tokens back as one token's contents, so the recursion is the third
 # stack, the template frames.
 emit r
-mod chars
-mod layout
-mod words
-mod literals
-mod templates
-mod corpus
-test mod tests
+mod Chars
+mod Layout
+mod Words
+mod Literals
+mod Templates
+mod Corpus
+test mod Tests
 use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
 
 # ---------------------------------------------------------------------------------------
 # Tokens (prism_syntax/src/token.rs)

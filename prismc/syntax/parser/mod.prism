@@ -32,15 +32,27 @@
 #   13  prefix `-` `+`                 `ParsePrefix`
 #   14  `.f`, `[i]`, `.Method`, `<<T>>` `ParsePostfix`
 emit r
-mod decls
-mod expr
-mod blocks
-mod types
-mod test_language
-test mod tests
+mod Decls
+mod Expr
+mod Blocks
+mod Types
+mod TestLanguage
+test mod Tests
 use Syntax.*
+use Syntax.Decls.*
 use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
 use Syntax.Sexp.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
 
 # ---------------------------------------------------------------------------------------
 # The cursor (mod.rs)

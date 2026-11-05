@@ -14,7 +14,14 @@ mod Reading
 mod Decls
 mod Traits
 use Syntax.*
+use Syntax.Decls.*
 use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
 use Check.Errors.*
 use Check.Types.*
 use Check.Types.Recording.*

@@ -13,10 +13,11 @@
 # constructors share one namespace per module; and a `Range` is the prelude's `Span` under a
 # name the prelude does not take.
 emit r
-mod decls
+mod Decls
 mod Lexer
 mod Parser
 mod Sexp
+use Syntax.Decls.*
 
 # ---------------------------------------------------------------------------------------
 # Positions and diagnostics

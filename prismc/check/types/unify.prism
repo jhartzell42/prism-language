@@ -6,7 +6,14 @@ use Check.Types.Recording.*
 use Check.Types.Schemes.*
 use Check.Types.Colors.*
 use Syntax.*
+use Syntax.Decls.*
 use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
 use Check.Errors.*
 use Check.Typed.*
 use Check.Typed.Print.*

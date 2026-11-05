@@ -2,7 +2,7 @@
 
 The module `Check.Shrink` (claude/modules-style-pass.md): `Check.Shrink`: the shrink check (Semantics ch. 7, "Every tick ends"; prismc/README.md, Checker): every cycle of calls shrinks, or is `unbounded`.
 
-- `mod.prism`: `Check.Shrink` itself: the shrink check (Semantics ch. 7, Every tick ends).
+- `mod.prism`: `Check.Shrink` itself: The shrink check (Semantics ch. 7, Every tick ends).
 - `calls.prism`: `Check.Shrink.Calls`, a child module.
 - `locals.prism`: `Check.Shrink.Locals`, a child module.
 - `relations.prism`: `Check.Shrink.Relations`, a child module.
