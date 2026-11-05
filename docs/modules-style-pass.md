@@ -16,6 +16,28 @@ Platform (08).*
 - Every module's main file is `mod.prism` (Rust's rule); `lib.prism`, `mod.prism` or
   `app.prism` declares the submodules, and `app.prism` the main widget.
 
+## Jimmy's ruling of 5 November: modules nest, and there are no sections
+
+"We are NOT doing a hardline distinction between modules and sections, why can't modules
+just nest indefinitely a la Rust." This overrules everything below that speaks of a
+section, and the rest of this note is being brought to it.
+
+- **Every `mod Name` line declares a child module**, with its own namespace, named by the
+  dotted path (`Check.Env.Traits`). Its file is `name.prism` beside the declaring file, or
+  `name/mod.prism` when it has children of its own (Rust's `foo.rs` or `foo/mod.rs`); both
+  present is an error. Modules nest to any depth.
+- **Every file is one module and has its own header**: `emit`, `mod` lines, `use` lines.
+  It reaches its parent, siblings and children only through `use`, by full path.
+- **No lowercase `mod name`, no shared namespace across files.** What were sections
+  (`reading`, `checking`, `compile` under the root; `expr`, `functions`, ... under `Lower`)
+  are child modules. A family's cases are all in one file again.
+- **A test module is a child module declared `test mod Tests`** (`tests.prism`,
+  `Parent.Tests`), read only by `prism test` and `prism check`, as Rust's
+  `#[cfg(test)] mod tests`; it names its parent's declarations through `use Parent.*`.
+  The rules on what it may declare and on nothing outside naming it stand.
+- **Output follows:** one module is one Rust file and one C++ unit (cut by size only past
+  SF's limit), so the per-section output this note once asked for has no meaning.
+
 ## The layout
 
 - **A module is a directory whose main file is `mod.prism`.** Its sections are sibling
