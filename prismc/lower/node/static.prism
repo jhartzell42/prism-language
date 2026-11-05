@@ -329,7 +329,8 @@ fn DeferLine wx, menv, args, e, ?target:
 
 # `$y <- @Distinct $x` (Jimmy, 5 November, reversing Appendix B's D-DT): `$x`'s value,
 # whose update event fires only when it changed. A hold of an option, `None` until the
-# build sets it to `$x`'s value after the tick (as `@Flatten` adopts its first inner),
+# build sets it to `$x`'s value after the tick (as `@Flatten` adopts its first inner;
+# a read before that reads `$x`),
 # written by `$x`'s `!Updated` only when the value differs from the one it holds
 # (`SkDistinct`); its readers read the hold, so they are marked only then.
 DistinctLine: unbounded fn Wx, Env, [Arg], Expr, ?Bn -> ((Wx, Wres))
@@ -350,7 +351,9 @@ fn DistinctLine wx, menv, args, e, ?bound:
             let source = "{name}_source"
             let ((ex, reads)) = DynamicExpr wx1, menv, a.value
             let first = DoExpr (XMethod (XField (XVar "node"), kept), "set", [[(XCtor "Some", [[(XMethod (XVar "node"), source, [[XCx]])]]), XCx]])
-            let sample = XMethod (XMethod (XField XSelf, kept), "get", [[XCx]]), "expect", [[(XStr "`@Distinct` holds its source's value from the build")]]
+            # before the build sets it (a builder of the same node reading it first), its
+            # source's value, which is the same
+            let sample = XMatch (XMethod (XField XSelf, kept), "get", [[XCx]]), [[XArm(pat=(PaCtor "Some", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaUnit "None"), conds=[[]], body=(XMethod (XSelf), source, [[XCx]]))]], False, t
             let wx2 = update wx1:
                 &_.taken <= Append &_.taken, [[kept, source]]
                 &_.fields <= Push &_.fields, ((kept, (OutHold (OutOpt t)), "`@Distinct`'s value: its source's, written only when it changes"))
