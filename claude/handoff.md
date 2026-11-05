@@ -163,6 +163,16 @@ program's) shrinks.
   re2c) may serve the lexer better than separate regexes tried in turn. Both can sit on
   the same `Regex` primitive.
 
+## From the cloud GUI run (5 November), after the queue
+
+- **The window library re-lays out the whole tree on every change**
+  (`claude/bugs/window-relayout-every-change.md`). Jimmy: "bare minimum bone simple"
+  refactoring, and the layout *stays* in Prism; an `^Eq` refire-dropping combinator is
+  the only new piece allowed.
+- **C++ `Union` is quadratic in a fold** (`claude/bugs/cpp-union-big-into-small.md`).
+- **The Cuis table crashes on `▶`; Linux Cuis times measure software painting**
+  (`claude/bugs/bench-cuis-latin1-and-software-paint.md`).
+
 ## Smaller items
 
 - **An absolute `-o` points the Rust crate at `/runtime/rust`**
