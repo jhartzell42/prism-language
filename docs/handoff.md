@@ -178,14 +178,8 @@ program's) shrinks.
 
 ## Smaller items
 
-- **An absolute `-o` gets runtime paths relative to the wrong directory.** Run from a
-  directory other than the repository root, `target/bootstrap/prismc compile prismc
-  ... -o /abs/path/target/bench/r2r` wrote `prism_rtl = { path =
-  "../../../../../../runtime/rust" }` into the crate's `Cargo.toml`, which resolves to
-  `/runtime/rust` (seen on the cloud box, 5 November). The relative path is computed from
-  the current directory, not from the output directory. `./prism` hides it by passing
-  `--runtime` for an absolute output. prismc should compute it from the output's own
-  location, or use `PRISM_ROOT` as the C++ Makefiles do. Failing test first.
+- **An absolute `-o` points the Rust crate at `/runtime/rust`**
+  (`docs/bugs/absolute-out-runtime-path.md`).
 - **The seeds carry macOS extended attributes.** Written on the Mac, both
   `bootstrap/prismc-rust.tar.xz` and `bootstrap/prismc-cpp.tar.xz` hold
   `LIBARCHIVE.xattr.com.apple.provenance` headers, so unpacking them on Linux prints one
