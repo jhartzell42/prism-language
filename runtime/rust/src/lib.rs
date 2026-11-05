@@ -15,6 +15,8 @@
 //!   (a `~T`'s failure) and [`Fault`] (a failed tick).
 //! - [`mod@print`]: the transcript's spelling, as the printer API derived `^Show` calls.
 //! - [`read`]: reading that spelling back, and the test language's patterns.
+//! - [`mod@regex`]: regular expressions over `Text` (the dialect checked in
+//!   `regex_dialect`), on `regex-automata`.
 //! - [`cells`]: the node primitives: `Hold`, `Stamped`, `Cache`, `Port`, `Event`,
 //!   `Dynamic`, `Defer`, and the `Job` an unbounded function's step machine implements.
 //! - [`cx`]: the [`Node`] interface, the tick context [`Cx`], and the [`Runtime`] that
@@ -36,6 +38,8 @@ pub mod num;
 pub mod pod;
 pub mod print;
 pub mod read;
+pub mod regex;
+mod regex_dialect;
 pub mod world;
 
 pub use cells::{Cache, Defer, Demand, Dynamic, Event, Handle, Hold, Job, Live, Port, Snapshot, Stamped, Tick, Turn};
@@ -46,5 +50,6 @@ pub use host::{AnswerOf, Blueprint, Host, HostOf, HostRow, Link, Rows, Scope, Si
 pub use num::{Int, Nat};
 pub use pod::{Error, Fault, FromPod, Path, Pod, Segment, ToPod};
 pub use print::{Printer, Show, show, show_text};
+pub use regex::{Group, Match, Regex, RegexError, RegexPart, RegexReplacement};
 pub use world::test_world::TestWorld;
 pub use world::{Outcome, Program, ReadyMap, ReadyState, TickIn, TickOut, World, drive};

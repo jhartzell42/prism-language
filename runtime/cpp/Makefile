@@ -7,6 +7,11 @@
 #                      Everything at -O3 (Jimmy: lower levels mask undefined behaviour).
 #   make check         the tests once, with $(CXX) into build/$(CONFIG)
 #   make lib           build/$(CONFIG)/libprism_rtl.a
+#
+# Regular expressions (src/regex.cpp) are on RE2, found with pkg-config (`brew install re2`;
+# `apt install libre2-dev`): without it the build stops and says so. Only that object
+# sees RE2's headers, and a program links `$(pkg-config --libs re2)` only if it uses a
+# regex (the archive's member is pulled in by reference).
 
 CXX ?= g++
 # LeakSanitizer does not run on macOS on arm64.
@@ -25,6 +30,11 @@ TEST_SRCS := $(wildcard tests/*.cpp)
 OBJS := $(SRCS:src/%.cpp=$(BUILD)/src/%.o)
 TEST_OBJS := $(TEST_SRCS:tests/%.cpp=$(BUILD)/tests/%.o)
 HEADERS := $(wildcard include/prism_rtl/*.hpp) $(wildcard tests/*.hpp)
+
+# RE2's flags, its headers as system headers so that -Werror does not judge them.
+RE2_CFLAGS := $(patsubst -I%,-isystem %,$(shell pkg-config --cflags re2 2>/dev/null))
+RE2_LIBS := $(shell pkg-config --libs re2 2>/dev/null)
+RE2_READY = @pkg-config --exists re2 || { echo "runtime/cpp needs RE2 for regular expressions, found with pkg-config: brew install re2 (macOS), apt install libre2-dev pkg-config (Debian, Ubuntu)"; false; }
 
 .PHONY: test check lib clean
 
@@ -65,7 +75,13 @@ $(BUILD)/libprism_rtl.a: $(OBJS)
 	ar rcs $@ $^
 
 $(BUILD)/prism_rtl_tests: $(TEST_OBJS) $(BUILD)/libprism_rtl.a
-	$(CXX) $(FLAGS) -o $@ $(TEST_OBJS) $(BUILD)/libprism_rtl.a
+	$(RE2_READY)
+	$(CXX) $(FLAGS) -o $@ $(TEST_OBJS) $(BUILD)/libprism_rtl.a $(RE2_LIBS)
+
+$(BUILD)/src/regex.o: src/regex.cpp $(HEADERS)
+	$(RE2_READY)
+	@mkdir -p $(dir $@)
+	$(CXX) $(FLAGS) $(RE2_CFLAGS) -c $< -o $@
 
 $(BUILD)/src/%.o: src/%.cpp $(HEADERS)
 	@mkdir -p $(dir $@)

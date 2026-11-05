@@ -176,3 +176,36 @@ counts again.
   Failures sit beside the transcript, never inside it.
 - **TW: a hold written twice.** The Rust debug build asserts as well as failing the tick.
   Here the tick fails (`Runtime.TwoWrites`) with no assertion.
+
+## Regular expressions
+
+`include/prism_rtl/regex.hpp` and `src/regex.cpp`, the twins of the Rust runtime's
+`regex.rs` and `regex_dialect.rs`: `Regex`, `RegexReplacement`, `Group`, `Match`, and
+`match_at`, `find`, `matches`, `split`, `replace` behind `?Match`, `?Find`, `Matches`,
+`Split` and `Replace`, with `Regex::parse` behind `?Regex`.
+
+- **The dialect** is checked by this runtime's own parse (`claude/regex-dialect.md`, the
+  Rust runtime's procedure function for function), which then spells the pattern for RE2;
+  RE2 never sees the pattern as written. Its diagnostics are the Rust runtime's, byte for
+  byte: the shared corpus `tests/regex/corpus.txt` is `tests/test_regex.cpp`'s.
+- **RE2** comes from pkg-config (`brew install re2`; `apt install libre2-dev pkg-config`),
+  and the build stops naming the package when it is missing. Only `src/regex.o` sees
+  RE2's headers (as system headers, so `-Werror` does not judge them); `regex.hpp`
+  includes none of them, so a program compiles without RE2's flags and links
+  `$(pkg-config --libs re2)` only when it uses a regex.
+- **RE2 under the sanitizers.** Homebrew's RE2 and abseil are built against the
+  system's libc++, and the sanitizer run links Homebrew LLVM's: the test binary loads
+  both. What crosses between them is `absl::string_view` (which is `std::string_view`)
+  and RE2's `const std::string&` error, read in place; libc++'s ABI is the same in both
+  (version 1); and every allocation is freed by the side that made it: this library
+  allocates and deletes the `RE2` object, whose constructor and destructor, RE2's code,
+  manage its insides. The corpus passes under ASan and UBSan that way.
+- **Lifetimes.** RE2 sees a searched text as a view into its `Text`'s buffer for one
+  `RE2::Match` call, which the caller's `Text` outlives; the submatches become byte
+  offsets before the call returns; every text and cursor a match holds is a counted
+  view of that buffer. An empty match RE2 reports inside a character (`\B` in `é`) is
+  skipped, as the books say, and the search goes on at the next character.
+- **The costs** are the Rust runtime's (its README): a search `p·n`, an anchored one `p`
+  times the bytes it reads, iteration `p·n·(k+1)` at worst; RE2's `max_mem` is 1 GiB so
+  that every pattern in the dialect compiles (the bound's worst, 10,000 atoms of
+  `(?i)\pL`, takes about 3.5 s).
