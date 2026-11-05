@@ -6,5 +6,6 @@ breaks, the design question under the fix if there is one, and the fix with its 
 A bug leaves this directory when its fix lands.
 - **`absolute-out-runtime-path.md`**: an absolute `-o` gives the Rust crate runtime paths
   that climb to `/`, silently.
-- **`small-arrays-whole-chunks.md`**: every array allocates whole 64-element chunks in both
-  runtimes; the Rust binary's 2.4 GB peak.
+- **`small-arrays-whole-chunks.md`**: every Rust array allocates a whole 64-element chunk
+  (`im_rc::Vector`); the C++ half and Rust's `Map` are fixed, the Rust `Array` waits on
+  Appendix B's `Append` and `Push` promises.

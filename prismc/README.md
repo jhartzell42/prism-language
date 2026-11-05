@@ -1118,10 +1118,12 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
 - **PB: a pattern binds by reference into its value**, which therefore lives as long as
   the bindings: the scrutinee is a local (`_m`), and a guard's `let` over a value that
   is no place binds it to a local (`_c1`) first (`ts-ch06-array-in-case`, under ASan).
-- **PC: persistent collections.** The C++ runtime's `Map` is a persistent AVL tree and its
-  `Array` a view of a shared buffer of chunks (runtime/cpp/include/prism_rtl/collections.hpp),
-  so a fold that inserts into a map or pushes onto an array is as cheap as Rust's
-  `im_rc`; with copy-on-write ones prismc's own lexer was quadratic.
+- **PC: persistent collections.** The C++ runtime's `Map` is a persistent AVL tree (the
+  Rust runtime's too, ported) and its `Array` a view of a shared buffer of chunks
+  (runtime/cpp/include/prism_rtl/collections.hpp), so a fold that inserts into a map or
+  pushes onto an array is as cheap as Rust's `im_rc`; with copy-on-write ones prismc's
+  own lexer was quadratic. `Append`, and `Push` onto a view that is not its buffer's
+  newest, are linear in C++ (runtime/cpp/README.md, "Arrays and maps: the costs").
 - **MH: per-module headers.** No header holds the whole program. Each module has
   `NAME.decl.hpp` (its types, nodes and jobs declared, its choices' handles),
   `NAME.types.hpp` (its records, tags and newtypes, each after the types it holds, and its
@@ -1795,6 +1797,38 @@ What stays, and why:
   character is examined anyway; runs of plain characters could go in one append.
 - **SC7 A cursor's step copies its text** (a count's increment and decrement, both
   targets): `?Step` returns a new cursor, which holds the text. Non-atomic in C++ now.
+
+### Arrays and maps: what they hold
+
+Peak memory, wall time and instructions retired (`/usr/bin/time -l`) of each prismc
+compiling itself (`compile prismc --prelude prelude --name prismc`, to its own target)
+and `examples/chess`, before and after the runtimes' arrays and maps were sized to their
+contents (claude/bugs/small-arrays-whole-chunks.md; runtime/cpp/README.md, "Arrays and
+maps: the costs"). Apple M2 Pro, 5 November 2026, cargo release and clang++ -O3, other
+agents' jobs running (load average 3 to 10), so the wall times are rough; "footprint" is
+macOS's peak memory footprint, "RSS" the maximum resident set; instructions are the
+least of three runs on chess, one run (two before) on the self-compile.
+
+| Run | footprint | RSS | wall | instructions |
+|---|---|---|---|---|
+| C++ prismc, self, before | 996 MB | 1,168 to 1,174 MB | 61 to 64 s | 725.6 G to 726.0 G |
+| C++ prismc, self, first chunks of 1 to 64 slots | 293 MB | 395 MB | 62 s | 750.1 G |
+| Rust prismc, self, before (`im_rc` `Vector` and `OrdMap`) | 2,878 to 2,890 MB | 2,808 to 2,896 MB | 75 to 83 s | 723.1 G to 723.4 G |
+| Rust prismc, self, `Map` an AVL tree (`Array` still `im_rc`) | 2,722 to 2,731 MB | 3,072 to 3,293 MB | 57 s | 692.6 G to 694.1 G |
+| C++ prismc, chess, before | 71 MB | 96 MB | 1.1 s | 13.0 G |
+| C++ prismc, chess, after | 25 MB | 50 MB | 1.1 s | 12.9 G |
+| Rust prismc, chess, before | 146 MB | 159 MB | 1.2 s | 12.4 G |
+| Rust prismc, chess, `Map` an AVL tree | 144 MB | 157 MB | 1.0 s | 12.0 G |
+
+- **C++:** the self-compile's footprint falls by 70% (996 MB to 293 MB); instructions
+  rise by 3% (more, smaller chunk allocations while an array is small, and the index's
+  `bit_width`), the wall time within noise.
+- **Rust:** the `Map` port takes 4% of the instructions and 5% of the footprint; the RSS
+  moved the other way between runs (memory compression under the other jobs). Most of
+  the Rust footprint is `im_rc::Vector`'s chunks, whose fix waits for the ruling in the
+  bug report.
+- **Emitted code is unchanged** by both: the runtimes' APIs stayed, the fixed points
+  were reached from the installed compilers, and the seeds are as they were.
 
 ### Not lowered yet
 
