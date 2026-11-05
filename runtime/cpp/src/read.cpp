@@ -34,6 +34,23 @@ Pattern Pattern::any() { return Pattern{Pod::name(ANY)}; }
 
 static bool matches(const Pod& p, const Pod& whole);
 
+// Whether a pattern's qualified case name (`Sizes.Large`) names the value's case, which
+// prints bare (`Large`): its last segment is the case. The module path is the checker's to
+// resolve; the Test World holds no types to check it against.
+static bool names_case(const std::string& c, const std::string& d) {
+    if (d.find('.') != std::string::npos) return false;
+    auto dot = c.rfind('.');
+    return dot != std::string::npos && c.compare(dot + 1, std::string::npos, d) == 0;
+}
+
+// A qualified name whose last segment is a case's (`Sizes.Large`), not a family's `.*`.
+static bool qualified_case(const std::string& n) {
+    auto dot = n.rfind('.');
+    if (dot == std::string::npos || dot + 1 >= n.size()) return false;
+    std::u32string last = utf8_decode(n.substr(dot + 1));
+    return !last.empty() && char_is_uppercase(last[0]);
+}
+
 static bool all(const std::vector<Pod>& ps, const std::vector<Pod>& vs) {
     if (ps.size() != vs.size()) return false;
     for (std::size_t i = 0; i < ps.size(); ++i)
@@ -73,7 +90,8 @@ static bool matches(const Pod& p, const Pod& whole) {
     if (p.is(K::Choice) && v.is(K::Element))
         return p.if_choice()->args.empty() && v.if_element()->fields.empty() && p.if_choice()->ctor == v.if_element()->name;
     if (p.is(K::Choice) && v.is(K::Choice))
-        return p.if_choice()->ctor == v.if_choice()->ctor && all(p.if_choice()->args, v.if_choice()->args);
+        return (p.if_choice()->ctor == v.if_choice()->ctor || names_case(p.if_choice()->ctor, v.if_choice()->ctor)) &&
+               all(p.if_choice()->args, v.if_choice()->args);
     if (p.is(K::Tuple) && v.is(K::Tuple)) return all(*p.if_tuple(), *v.if_tuple());
     if (p.is(K::Array) && v.is(K::Array)) return all(*p.if_array(), *v.if_array());
     if (p.is(K::Map) && v.is(K::Map)) {
@@ -318,7 +336,7 @@ struct Parser {
         const std::string& n = t->s;
         bool upper = !n.empty() && char_is_uppercase(utf8_decode(n)[0]);
         bool call = at + 1 < toks.size() && toks[at + 1].is_p("call(");
-        if (upper && n.find('.') == std::string::npos && !call && n != "True" && n != "False") return n;
+        if (upper && (n.find('.') == std::string::npos || qualified_case(n)) && !call && n != "True" && n != "False") return n;
         return std::nullopt;
     }
     /// A value; `app` lets a choice take several arguments with no parentheses, which the

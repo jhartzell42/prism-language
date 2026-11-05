@@ -6,7 +6,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
 mod Sizes
-test mod tests
+test mod Tests
 use Ui
 
 @main: @unit
