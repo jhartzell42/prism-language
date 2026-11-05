@@ -56,6 +56,7 @@ declare -A emit_s build_s total_s size_mb emitted_lines
 for subject in "${subjects[@]}"; do
     read -r -a src <<< "$(sources_of "$subject")"
     name=${src[${#src[@]}-1]}
+    mkdir -p "$out/$subject"
     for lang in rust cpp; do
         # one emit per language; the levels build the same emitted program
         dir=$out/$subject/emit-$lang
