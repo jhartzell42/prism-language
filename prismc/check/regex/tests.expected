@@ -96,6 +96,9 @@ check classes
 35: ok
 36: ok
 37: ok
+38: ok
+39: ok
+40: ok
 
 check properties
 1: ok
@@ -425,6 +428,9 @@ check refused_classes
 40: ok
 41: ok
 42: ok
+43: ok
+44: ok
+45: ok
 
 check refused_groups
 1: ok

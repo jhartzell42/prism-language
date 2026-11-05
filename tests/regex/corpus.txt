@@ -95,6 +95,9 @@ find	[^\W]+	⟨⟩	⟨-⟩	-ab-	1-3
 find	[\S]+	⟨⟩	⟨-⟩	 ab 	1-3
 find	[\t\n\x{41}-\x{43}]+	⟨⟩	⟨-⟩	x⟨9⟩A⟨A⟩C	1-5
 find	[\x{1F600}-\x{1F64F}]	⟨⟩	⟨-⟩	a😀	1-5
+find	[\x{e8}-é]+	⟨⟩	⟨-⟩	aèéb	1-5
+find	[é-\x{ea}]	⟨⟩	⟨-⟩	ê	0-2
+find	[\x{1F600}-😀]	⟨⟩	⟨-⟩	😀	0-4
 find	[\pL]+	⟨⟩	⟨-⟩	1aé2	1-4
 find	[\P{L}]+	⟨⟩	⟨-⟩	aé12	3-5
 find	[\p{Greek}\d]+	⟨⟩	⟨-⟩	aα1b	1-4
@@ -460,6 +463,9 @@ refuse	[\d-z]	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a - in a class that is neither a 
 refuse	[[:alpha:]-z]	⟨⟩	⟨-⟩	⟨-⟩	pattern@10 a - in a class that is neither a range nor first or last: write \-
 refuse	[z-a]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
 refuse	[é-a]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
+refuse	[é-\x{e8}]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
+refuse	[\x{ea}-é]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
+refuse	[😀-\x{1F5FF}]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
 refuse	[a-\d]	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a range end that is a class
 refuse	[a-\pL]	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a range end that is a class
 refuse	[a-[]	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a [ inside a class: write \[ (nested classes are Rust's only)

@@ -8,8 +8,8 @@
 # A pattern is read by byte offsets and one-character texts: a code point is a
 # one-character `Text`, and since UTF-8 orders bytewise as it orders code points, two
 # literal characters compare as texts. A code point named by `\x` is a number, compared
-# with a literal character by its UTF-8 length; two of the same length are not compared
-# yet (`rxUnordered`, a diagnostic of prismc's own, prismc/README.md, gap RO).
+# with a literal character by its UTF-8 length, and at the same length by a class of the
+# dialect itself (`RxPast`).
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r
 test mod Tests
@@ -83,10 +83,6 @@ let rxRNoNumber = "the pattern has no group of that number"
 let rxRNoName = "the pattern has no group of that name"
 let rxRUnicode = "a \\u\{...\} escape needs one to six hex digits naming a character"
 let rxREscape = "an unknown escape in a replacement: the escapes are \\\\, \\n, \\t, \\u\{hex\} and \\/"
-
-# prismc's own: a range between a literal character and a `\x` escape whose UTF-8 is as
-# long (prismc/README.md, gap RO).
-let rxUnordered = "prismc cannot yet order a character past ASCII against a \\x escape of the same UTF-8 length in a range"
 
 # ---------------------------------------------------------------------------------------
 # The names the dialect accepts
@@ -276,12 +272,33 @@ fn RxCpOf v = if v < 128: RxLit (RxCharAt rxAscii, v) else: RxNum v
 RxWidth: fn Nat -> Nat
 fn RxWidth v = if v < 128: 1 else: if v < 2048: 2 else: if v < 65536: 3 else: 4
 
-# Whether `a` is past `b` by code point; `nil` when prismc cannot tell (`rxUnordered`).
-?RxPast: fn RxCp, RxCp -> ?Bool
-fn ?RxPast (RxLit a), (RxLit b) = ? (a > b)
-fn ?RxPast (RxNum a), (RxNum b) = ? (a > b)
-fn ?RxPast (RxLit a), (RxNum b) = if (Len a) == (RxWidth b): nil else: ? ((Len a) > (RxWidth b))
-fn ?RxPast (RxNum a), (RxLit b) = if (RxWidth a) == (Len b): nil else: ? ((RxWidth a) > (Len b))
+# Whether `a` is past `b` by code point. Two characters compare as texts, two numbers as
+# numbers, a character and a number by their UTF-8 lengths, and at the same length by
+# whether the character falls in a class from the number: Prism has no code point of a
+# character, and a regular expression reads one.
+RxPast: fn RxCp, RxCp -> Bool
+fn RxPast (RxLit a), (RxLit b) = a > b
+fn RxPast (RxNum a), (RxNum b) = a > b
+fn RxPast (RxLit a), (RxNum b) = if (Len a) != (RxWidth b): (Len a) > (RxWidth b) else: not (RxInRange a, 0, b)
+fn RxPast (RxNum a), (RxLit b) = if (RxWidth a) != (Len b): (RxWidth a) > (Len b) else: not (RxInRange b, a, 1114111)
+
+# Whether the character `c` is a code point from `lo` to `hi`, two code points that are
+# neither surrogates nor past U+10FFFF (both come from checked `\x` escapes or are the
+# bounds), so that the class is always in the dialect.
+RxInRange: fn Text, Nat, Nat -> Bool
+fn RxInRange c, lo, hi = match ?Regex "[\\x\{{RxHexText lo}\}-\\x\{{RxHexText hi}\}]":
+    ? r: (?Find r, c) != nil
+    nil: False
+
+# A code point as six hexadecimal digits, as `\x{...}` takes them.
+RxHexText: fn Nat -> Text
+fn RxHexText n = update "":
+    let &k = n
+    let &fuel: Nat = 6
+    while ? left <- &fuel -? 1:
+        &fuel <= left
+        &_ <= "{RxCharAt "0123456789abcdef", (Or (?Mod &k, 16), 0)}{&_}"
+        &k <= Or (?Div &k, 16), 0
 
 # ---------------------------------------------------------------------------------------
 # The check
@@ -583,10 +600,7 @@ fn RxClassRange st, open, fi:
                     if RxBad st3: st3
                     else: match ?hi:
                         nil: RxFail st3, right, rxClassRangeSet
-                        ? hi: match ?RxPast lo, hi:
-                            ? True: RxFail st3, at, rxClassOrder
-                            ? False: st3
-                            nil: RxFail st3, at, rxUnordered
+                        ? hi: if RxPast lo, hi: RxFail st3, at, rxClassOrder else: st3
 
 # One character inside a class: a code point, or `nil` for a set (`\d`, `\p{...}`, ...).
 RxClassAtom: unbounded fn RxState, Bool -> ((?RxCp, RxState))
