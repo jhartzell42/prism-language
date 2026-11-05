@@ -12,5 +12,7 @@
   program under `neg/` gives exactly its `.expected` diagnostic; `run.sh` runs them. A
   directory under `pos/` or `neg/` is one program, a tree, its `.expected` beside it.
 - **`driver/run.sh`**: which World `./prism run` picks for a root.
+- **`cost/run.sh`**: work counted, not time (macOS): a costly `let` read by ten places
+  costs under twice one reader's instructions.
 - **`make test`** from the repository root runs all of them, cargo's tests and the
   bootstrap.

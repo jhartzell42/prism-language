@@ -72,27 +72,27 @@ What the table shows, none of it traced to a cause yet (each becomes a report un
 
 ## After the window fix
 
-`bench/gui/run.sh prism-cpp prism-rust` with `RUNS=5 WARMUP=1`, on the same Mac (load
-average 7 to 26 before, 5 to 7 after, other agents building), before at `3fb9362` and
-after at `a494136` (branch `claude-layout`): medians in ms, peak resident memory in MB.
-Prism only; the window library is the only change (layout.prism, widgets.prism,
-hits.prism, hosting.prism).
+`bench/gui/run.sh prism-cpp prism-rust` with `RUNS=5 WARMUP=1`, on the same Mac with other
+agents building (load average 7 to 26 before, about 8 after): before at `3fb9362`, after
+at `2c6d8be` (branch `claude-incremental`: the window draws only what shows and holds its
+document with `@Distinct`; the lowering caches multiply-read `let`s and a `for`'s builder
+touches only the keys that changed; the arrays work of `claude-self-hosting` merged in).
+Medians in ms, peak resident memory in MB; Prism only.
 
 | Operation | C++ before | C++ after | Rust before | Rust after |
 |---|---|---|---|---|
-| create1k | 702 (197 MB) | 53 (169 MB) | 515 (289 MB) | 53 (240 MB) |
-| replace1k | 798 (211 MB) | 79 (183 MB) | 1,428 (322 MB) | 92 (271 MB) |
-| update10th | 822 (199 MB) | 78 (171 MB) | 1,642 (305 MB) | 91 (255 MB) |
-| select | 797 (198 MB) | 76 (171 MB) | 1,651 (304 MB) | 88 (254 MB) |
-| swap | 783 (197 MB) | 70 (171 MB) | 1,426 (304 MB) | 79 (255 MB) |
-| remove | 773 (197 MB) | 63 (171 MB) | 1,413 (292 MB) | 73 (254 MB) |
-| create10k | 57,638 (692 MB) | 471 (418 MB) | 29,046 (1,236 MB) | 481 (758 MB) |
-| append1k | 2,718 (254 MB) | 95 (198 MB) | 2,287 (381 MB) | 108 (311 MB) |
-| clear | 102 (198 MB) | 38 (169 MB) | 937 (288 MB) | 51 (240 MB) |
+| create1k | 702 (197 MB) | 55 (171 MB) | 515 (289 MB) | 47 (218 MB) |
+| replace1k | 798 (211 MB) | 65 (184 MB) | 1,428 (322 MB) | 54 (220 MB) |
+| update10th | 822 (199 MB) | 48 (173 MB) | 1,642 (305 MB) | 40 (208 MB) |
+| select | 797 (198 MB) | 46 (173 MB) | 1,651 (304 MB) | 38 (208 MB) |
+| swap | 783 (197 MB) | 39 (172 MB) | 1,426 (304 MB) | 32 (208 MB) |
+| remove | 773 (197 MB) | 41 (172 MB) | 1,413 (292 MB) | 36 (208 MB) |
+| create10k | 57,638 (692 MB) | 423 (361 MB) | 29,046 (1,236 MB) | 349 (397 MB) |
+| append1k | 2,718 (254 MB) | 68 (193 MB) | 2,287 (381 MB) | 56 (228 MB) |
+| clear | 102 (198 MB) | 26 (171 MB) | 937 (288 MB) | 20 (218 MB) |
 
-- **Ten to a hundred times faster, and create10k is linear again** (C++ 57.6 s to 0.47 s):
-  the window draws only what shows, and its word set no longer goes through `Union`.
-- **Small changes still cost more than create1k** (select 76 ms against 53 in C++), so
-  `bench/gui/prism/check.sh`'s second check still fails: select retires about 0.97 G
-  instructions against create1k's 0.69 G. GTK selects in 1.1 ms. Where the rest goes is
-  in `claude/bugs/window-relayout-every-change.md`.
+- **Fifteen to forty times faster on small changes, and create10k is linear again.**
+- **A small change still costs most of a create1k** (select 46 ms against 55 in C++, 0.53 G
+  instructions against 0.71 G), so `bench/gui/prism/check.sh`'s second check still fails;
+  GTK selects in 1.1 ms. What is left needs a design:
+  `claude/bugs/window-relayout-every-change.md`.

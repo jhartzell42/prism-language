@@ -167,11 +167,10 @@ program's) shrinks.
 
 ## From the cloud GUI run (5 November), after the queue
 
-- **A small change to the window still costs more than create1k**
-  (`claude/bugs/window-relayout-every-change.md`, branch `claude-layout`): the window
-  draws only what shows and the table is ten to a hundred times faster, but select lays
-  the window out six times for one change. What is left needs an `^Eq` refire-dropping
-  builtin (doubt DQ, against Appendix B's D-DT) or lowering work on the hosts.
+- **A small change to the window still costs most of a create1k**
+  (`claude/bugs/window-relayout-every-change.md`, branch `claude-incremental`): fifteen
+  to forty times faster than it was, with `@Distinct` and cached `let`s; what is left
+  (a whole layout, word set and host document per change) needs a design.
 - **C++ `Union` is quadratic in a fold** (`claude/bugs/cpp-union-big-into-small.md`).
 - **The Cuis table crashes on `▶`; Linux Cuis times measure software painting**
   (`claude/bugs/bench-cuis-latin1-and-software-paint.md`).
