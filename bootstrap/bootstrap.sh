@@ -59,7 +59,7 @@ build_seed() {
     rm -rf "$1" && mkdir -p "$1"
     tar -C "$1" -xJf "$seed"
     # Every build here is offline; a fresh machine has no crates yet, so get them first.
-    (cd "$1" && cargo fetch -q)
+    cargo fetch -q --manifest-path "$PWD/$1/Cargo.toml"
     build_crate "$1"
 }
 if [ -n "$seed_at" ]; then build_seed "$seed_at"; echo "seed: built $seed_at/prismc"; exit 0; fi
