@@ -9,3 +9,5 @@ A bug leaves this directory when its fix lands.
   per change, each needing a design to go.
 - **`bench-cuis-latin1-and-software-paint.md`**: the Cuis table crashes on `▶` in a
   Latin-1 `String`; on Linux its times measure software painting.
+- **`lifted-field-read.md`**: a field read through a `?` checks and then reaches cargo as a
+  field of an `Option`; the book's regex example `m.named["key"].text` needs it.

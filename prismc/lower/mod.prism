@@ -80,6 +80,10 @@ type Lx = record:
     home: Text
     site: Text
     rsMods: (Text ==> Text)
+    # Every segment of every module's path as the printers name it: a C++ namespace that
+    # a bare prelude call of the same name would find instead (`regex`, `?Regex`, beside
+    # a module `Regex`).
+    modSegments: (Text ==> Bool)
     rsNames: (Text ==> Text)
     layouts: (Text ==> [Bool])
     unbs: [Text]
@@ -199,7 +203,7 @@ let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache",
 # directories are the same path, so a segment that is a C++ keyword takes a `_` too
 # (`Shapes.Switch` is `shapes::switch_` in both).
 RustModName: fn Text -> Text
-fn RustModName m = if m == "": "program" else: Join (Each (Split m, "."), \|s| ModSegment s), "::"
+fn RustModName m = if m == "": "program" else: Join (Each (SplitOn m, "."), \|s| ModSegment s), "::"
 
 ModSegment: fn Text -> Text
 fn ModSegment s:
@@ -220,9 +224,11 @@ fn PathIn lx, owner, name:
     else: "crate::{Or lx.rsMods[owner], (RustModName owner)}::{name}"
 
 # A prelude function's Rust path from the site: bare, or qualified where the site's own
-# value of the same Rust name hides it (`?Step`, `step`, beside a program's `Step`).
+# value of the same Rust name hides it (`?Step`, `step`, beside a program's `Step`), or
+# where a module of the program has that name, whose C++ namespace would hide it
+# (`regex`, beside prismc's `Check.Regex`).
 PreludePath: fn Lx, Text -> Text
-fn PreludePath lx, name = if HasKey lx.globals, "{lx.site}.{name}": "crate::prelude::{name}" else: name
+fn PreludePath lx, name = if (HasKey lx.globals, "{lx.site}.{name}") or (HasKey lx.modSegments, name): "crate::prelude::{name}" else: name
 
 # The Rust name of a top-level value of a module: its snake case, with a suffix by its
 # sigil when another value of the module has the same base (`?ParseNat` and `~ParseNat`).
@@ -256,7 +262,7 @@ fn LocalName lx, nkey:
 
 BaseKey: fn Text -> Text
 fn BaseKey k:
-    let parts = Split k, "."
+    let parts = SplitOn k, "."
     let last = Or (?Last parts), k
     "{Join (Take parts, (Dec (Len parts))), "."}.{Snake last}"
 
@@ -289,9 +295,9 @@ fn ValuePath lx, qk:
 # The module a qualified key belongs to: everything before its last segment.
 OwnerOf: fn Text -> Text
 fn OwnerOf qk:
-    let parts = Split qk, "."
+    let parts = SplitOn qk, "."
     Join (Take parts, (Dec (Len parts))), "."
 
 # A tag's Rust struct: its family and name run together (`Ui.Button` is `UiButton`).
 TagStruct: fn Text -> Text
-fn TagStruct tn = Concat (Each (Split tn, "."), \|p| Camel p)
+fn TagStruct tn = Concat (Each (SplitOn tn, "."), \|p| Camel p)

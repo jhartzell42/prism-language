@@ -7,6 +7,7 @@ use Syntax.Lexer.Layout.*
 use Syntax.Lexer.Literals.*
 use Syntax.Lexer.Templates.*
 use Syntax.Lexer.Corpus.*
+use Syntax.Lexer.Regexes.*
 use Syntax.*
 use Syntax.Decls.*
 
@@ -49,6 +50,7 @@ fn LexTokenAt l, start, c = match c:
     ":": PushTok (Bump l), KColon, start, start + 1
     ";": PushTok (Bump l), KSemi, start, start + 1
     "\\": LexBackslash l, start
+    "%": LexRegex l, "", start
     "|": LexBar l, start
     ".": LexDot l, start
     otherwise: match ?LexOperator l, start:
@@ -120,11 +122,12 @@ fn PushOpSuffix l, op, start:
         PushTok l2, (KSuffixed op, path), start, l2.pos
     else: PushTok l, (KOp op, False), start, l.pos
 
-# The first operator of the table at the cursor, or `""`.
+# The first symbol operator at the cursor, or `""` (ch. 2, "Operators and punctuation":
+# longest match): the table as one alternation, longer before their prefixes, which a
+# leftmost-first search tries left to right (Appendix B), with `=>` only in a test's
+# checks.
 FirstOp: fn Lex -> Text
-fn FirstOp l:
-    let fat = FatArrowOn l
-    Fold opTable, "", \|found, s| if found == "" and (s != "=>" or fat) and (StartsWith l, s): s else: found
+fn FirstOp l = MatchHere (if FatArrowOn l: %/==>|<-|<=|<\||->|-=|-\?|\+=|\+\?|\*=|\*\?|\/=|==|>=|=>|<|>|-|\+|\*|\/|=/ else: %/==>|<-|<=|<\||->|-=|-\?|\+=|\+\?|\*=|\*\?|\/=|==|>=|<|>|-|\+|\*|\/|=/), l
 
 # "A `+` touching a closing double bracket or brace, with whitespace, a comma, a close
 # bracket or the end of the line after it, is the non-empty mark."
@@ -203,7 +206,7 @@ fn LexSigils l0:
     let ((sigils, caret, l)) = ReadSigils l0
     let next = Peek l
     if caret: LexCaret l, start, sigils, next
-    else: if (IsIdentStart next) or (IsDigit next) or next == "\"": LexAttached l, start, sigils, next
+    else: if (IsIdentStart next) or (IsDigit next) or next == "\"" or next == "%": LexAttached l, start, sigils, next
     else: if sigils == "&" and next == "." and (IsLower (PeekAt l, 1)): PushTok (Bump l), KLensDot, start, l.pos + 1
     else: FreeSigils l, start, sigils
 
@@ -247,6 +250,7 @@ fn LexAttached l, start, sigils, next:
     else: if IsDigit next:
         let ((kind, l2)) = LexNumber l, sigils
         PushTok l2, kind, start, l2.pos
+    else: if next == "%": LexRegex l, sigils, start
     else: LexWordToken l, sigils, start
 
 # Free. A run of several sigils before a bracket is several free sigils, each the prefix
@@ -293,10 +297,9 @@ fn LexQualifiedPath l0 = update (([[]], l0)):
 
 LexIdent: unbounded fn Lex -> ((Text, Lex))
 fn LexIdent l0:
+    let word = MatchHere %/[A-Za-z0-9_]*/, l0
     let l = update l0:
-        while IsIdentChar (Peek &_):
-            &_.pos += 1
-    let word = Slice l, l0.pos, l.pos
+        &_.pos += Len word
     ((word, l))
 
 # A word: a keyword, a name, a qualified name, a family pattern `Ui.*`, the topic or a hole;
@@ -320,8 +323,7 @@ fn LexWordToken l0, sigils, start:
 SkipNonAscii: unbounded fn Lex, Nat -> Lex
 fn SkipNonAscii l0, wStart:
     let l = update l0:
-        while (IsIdentChar (Peek &_)) or (IsNonAscii (Peek &_)):
-            &_.pos += Len (Peek &_)
+        &_.pos <= MatchEnd %/[A-Za-z0-9_\x{80}-\x{10FFFF}]*/, &_.src, &_.pos
     LexErr l, wStart, l.pos, "names are ASCII letters, digits and underscores"
 
 LexKeyword: unbounded fn Lex, Text, Text, Nat -> Lex

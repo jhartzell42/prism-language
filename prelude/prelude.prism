@@ -167,7 +167,7 @@ Union: fn (k ==> v), (k ==> v) -> (k ==> v)
 
 # A text is UTF-8: a position in it is a byte index, and its characters are walked with a
 # cursor. Nothing counts or indexes characters; `t[i]`, `Take` and `Drop` on a text are
-# type errors. Texts order bytewise. Each constant but `Upper`, `Lower` and `Split`.
+# type errors. Texts order bytewise. Each constant but `Upper`, `Lower` and `SplitOn`.
 Front: fn Text -> Cursor
 Back: fn Text -> Cursor
 ?Step: fn Cursor -> ?((Char, Cursor))
@@ -181,8 +181,9 @@ Upper: fn Text -> Text
 # form, quoted, Type System ch. 5).
 Text: fn Char -> Text
 Lower: fn Text -> Text
-# Not in Appendix B: the pieces between the separators; an empty separator is refused.
-Split: fn Text, Text -> [Text]
+# Not in Appendix B, whose `Split` is a regular expression's (below): the pieces between
+# the separators; an empty separator is refused.
+SplitOn: fn Text, Text -> [Text]
 ?ParseNat: fn Text -> ?Nat
 
 ~ParseNat: fn Text -> ~Nat
@@ -192,6 +193,43 @@ fn ~ParseNat text = match ?ParseNat text:
 
 # The POD printed form (Type System ch. 2): one top-level node per line.
 Print: fn [[t]] -> Text where t: ^Pod
+
+# ---------------------------------------------------------------------------------------
+# Regular expressions (Appendix B, Regular expressions; claude/regex-dialect.md)
+# ---------------------------------------------------------------------------------------
+
+# `Regex` and `RegexReplacement` are the runtime's own and opaque, the types of the
+# literals `%/.../` and `%/.../.../` (Semantics ch. 2), checked against the dialect before
+# tick 0. A match's texts are views of the searched text, its cursors cursors into it.
+type Group = record:
+    text: Text
+    front: Cursor
+    back: Cursor
+derive ^Eq, ^Show
+
+# `groups[0]` is the whole match, `nil` a group that took no part; `named` holds each
+# named group that took part.
+type Match = record:
+    text: Text
+    front: Cursor
+    back: Cursor
+    groups: [?Group]
+    named: Text ==> Group
+derive ^Eq, ^Show
+
+# `p` the pattern's size, `n` the text's length in bytes, `k` the matches.
+# Linear in the text and in `p`; `nil` outside the dialect, with no flags.
+?Regex: fn Text -> ?Regex
+# The match that starts at the cursor: `p` times the bytes the search reads.
+?Match: fn Regex, Cursor -> ?Match
+# The leftmost-first match; `p·n`.
+?Find: fn Regex, Text -> ?Match
+# Every match by the iteration rule; `p·n·(k+1)` at worst (doubt QM).
+Matches: fn Regex, Text -> [Match]
+# Every match replaced; `Matches`'s cost and the result's length.
+Replace: fn RegexReplacement, Text -> Text
+# The `k + 1` texts between the matches, each a view; `Matches`'s cost.
+Split: fn Regex, Text -> [Text]
 
 # ---------------------------------------------------------------------------------------
 # Numbers

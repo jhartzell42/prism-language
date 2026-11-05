@@ -192,6 +192,20 @@ type LitKind = choice:
     LDuration Text, Text
     LChar Text
     LText [TextSeg]
+    LRegex RegexLit
+derive ^Eq, ^Show
+
+# A regular-expression literal (Semantics ch. 2, Regular expressions): its pattern and,
+# for a `RegexReplacement`, its replacement, each as written between its delimiters, and
+# its flags; each with the byte offset in the source where it begins, so that a
+# diagnostic of the dialect (claude/regex-dialect.md) points at its character.
+type RegexLit = record:
+    pattern: Text
+    patternAt: Nat
+    replacement: ?Text
+    replacementAt: Nat
+    flags: Text
+    flagsAt: Nat
 derive ^Eq, ^Show
 
 type TextSeg = choice:

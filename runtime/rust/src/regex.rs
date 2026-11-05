@@ -20,6 +20,7 @@ use regex_automata::util::syntax;
 use regex_automata::{Anchored, Input, meta};
 
 use crate::collections::{Array, Cursor, Map, Text};
+use crate::pod::{Fault, FromPod, Pod, ShownText, ToPod, mismatch};
 use crate::print::{Printer, Show};
 pub use crate::regex_dialect::{RegexError, RegexPart};
 use crate::regex_dialect::{Piece, check, check_replacement};
@@ -330,3 +331,50 @@ impl Show for Match {
         p.record("Match", &[("text", &self.text), ("front", &self.front), ("back", &self.back), ("groups", &self.groups), ("named", &self.named)]);
     }
 }
+
+// ---- Plain data, on the way out only ----------------------------------------------------
+// A regular expression has no `^Pod` (Type System ch. 2, RX-EQ), and neither has a match,
+// whose cursors are opaque; but an emitted record derives the runtime's `ToPod` and
+// `FromPod` whatever its fields, and a `check` line's value is plain data. So, as a
+// `Cursor` is: out as it shows (a regex as its spelling, which is how it compares), and
+// never read back.
+
+fn spelled(s: String) -> Pod {
+    Pod::Shown(ShownText(s.as_str().into()), Box::new(Pod::text(s.as_str())))
+}
+
+impl ToPod for Regex {
+    fn to_pod(&self) -> Pod {
+        spelled(spelling(self.pattern(), None, self.flags()))
+    }
+}
+
+impl ToPod for RegexReplacement {
+    fn to_pod(&self) -> Pod {
+        spelled(spelling(self.regex.pattern(), Some(&self.replacement), self.regex.flags()))
+    }
+}
+
+impl ToPod for Group {
+    fn to_pod(&self) -> Pod {
+        Pod::record("Group", vec![("text", self.text.to_pod()), ("front", self.front.to_pod()), ("back", self.back.to_pod())])
+    }
+}
+
+impl ToPod for Match {
+    fn to_pod(&self) -> Pod {
+        Pod::record("Match", vec![("text", self.text.to_pod()), ("front", self.front.to_pod()), ("back", self.back.to_pod()), ("groups", self.groups.to_pod()), ("named", self.named.to_pod())])
+    }
+}
+
+macro_rules! never_read_back {
+    ($($t:ty, $what:literal);*) => {$(
+        impl FromPod for $t {
+            fn from_pod(p: &Pod) -> Result<Self, Fault> {
+                mismatch(concat!($what, ", which has no plain form to read back"), p)
+            }
+        }
+    )*};
+}
+
+never_read_back!(Regex, "a Regex"; RegexReplacement, "a RegexReplacement"; Group, "a Group"; Match, "a Match");

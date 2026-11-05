@@ -1,0 +1,17 @@
+# `Split`: declarations of sem-appB-regex-split.
+emit r
+use App.*
+
+check split:
+    Split %/,/, "a,,b" => [["a", "", "b"]]
+    Split %/,/, "" => [[""]]
+    Split %//, "abc" => [["", "a", "b", "c", ""]]
+    Split %//, "" => [["", ""]]
+    Split %/,/, "a," => [["a", ""]]
+    Split %/,/, ",a" => [["", "a"]]
+    Split %/,/, "abc" => [["abc"]]
+    Split %/\s+/, "a  b\tc" => [["a", "b", "c"]]
+    Split %/x*/, "ab" => [["", "a", "b", ""]]
+    Split %/é/, "aébé" => [["a", "b", ""]]
+    Fields "one , two,,three" => [["one", "two", "", "three"]]
+    Len (Split %/;/, "a;b;c;d") => 4

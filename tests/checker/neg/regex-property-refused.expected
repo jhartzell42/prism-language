@@ -1,0 +1,4 @@
+tests/checker/neg/regex-property-refused.prism:2: error[regex]: the property is refused: RE2 and Rust disagree on C, Cn, Cs and LC
+    let r = %/\pC/
+              ^
+1 error

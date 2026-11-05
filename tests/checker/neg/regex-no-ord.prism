@@ -1,0 +1,3 @@
+# `regex-no-ord`: a `Regex` has `^Eq` and `^Show` by its spelling, and no `^Ord` (Type System ch. 2, RX-EQ).
+Earlier: fn Regex, Regex -> Bool
+fn Earlier a, b = a < b

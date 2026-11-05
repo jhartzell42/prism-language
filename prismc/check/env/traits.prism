@@ -28,7 +28,7 @@ use Check.Types.Colors.*
 # The derived impls, from every `derive` line: structural, each type parameter bounded.
 DerivedImpls: fn G -> G
 fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
-    ? ti: Fold ti.derives, gg, \|g2, tr| match ?ResolveTrait g2, ti.home, (Split tr, "."):
+    ? ti: Fold ti.derives, gg, \|g2, tr| match ?ResolveTrait g2, ti.home, (SplitOn tr, "."):
         ? cls:
             let im = ImplInfo(cls=cls, head=(TyCon ti.name, (Each ti.params, \|p| TyQ p)), qs=ti.params, bounds=(Each ti.params, \|p| ((p, cls))), home=ti.home, file=ti.file, span=ti.span, derived=True, assocs=[[]], methods=[[]])
             update g2:
@@ -123,7 +123,10 @@ BuiltinHas: fn Text, Text -> Bool
 fn BuiltinHas cls, con:
     let bare = BareName cls
     if bare == "Num": con == "Nat" or con == "Int" or con == "U8" or con == "Float"
-    else: if bare == "Eq" or bare == "Ord" or bare == "Show": (IsPrimType con) or con == "Fault" or con == "Prelude.Fault"
+    else: if bare == "Eq" or bare == "Show": (IsPrimType con) or con == "Fault" or con == "Prelude.Fault"
+    # A regular expression compares by its spelling and has no order (Type System ch. 2,
+    # RX-EQ).
+    else: if bare == "Ord": ((IsPrimType con) and not (IsRegexType con)) or con == "Fault" or con == "Prelude.Fault"
     else: False
 
 # Solve the wanted constraints above `level` that can be solved now; keep the rest. With
@@ -248,7 +251,7 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
                         let wants = Each im, \|((ty, cls))| Want(cls=cls, ty=ty, file=w.file, span=w.span, level=w.level)
                         ((wants, (NoteChoice (Solved s2, w, t, how), w.file, w.span, w.cls, ch)))
                     nil:
-                        let fix = if bare == "Num" and con == "Text": "" else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
+                        let fix = if (bare == "Num" and con == "Text") or (IsRegexType con): "" else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
                         (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`", fix)))
             otherwise: (([[]], st))
 

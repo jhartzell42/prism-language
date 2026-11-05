@@ -152,6 +152,7 @@ fn LitText l = match l.kind:
     LChar c: "'{c}'"
     LText segs: Concat (Each segs, LitSegText)
     LDuration d, u: "{d}{u}"
+    LRegex r: "%/{r.pattern}/"
 
 LitSegText: fn TextSeg -> Text
 fn LitSegText (SegPlain t) = t
@@ -209,7 +210,7 @@ fn Useful env, st, rows, q, tys = match q[0]:
                     nil: Useful env, st, (DefaultRows rows), (Drop q, 1), rest
 
 CtorFamily: fn Ctor -> Text
-fn CtorFamily c = if (HasPrefix c.name, "tag:"): Dotted (Pop (Split (DropPrefix c.name, "tag:"), ".")) else: ""
+fn CtorFamily c = if (HasPrefix c.name, "tag:"): Dotted (Pop (SplitOn (DropPrefix c.name, "tag:"), ".")) else: ""
 
 Wilds: fn Nat -> [Pat]
 fn Wilds n = Each (Range0 n), \|ignore| PtAny

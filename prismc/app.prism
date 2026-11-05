@@ -125,7 +125,7 @@ fn RenderDiag text, starts, d:
 # Where each line begins, as a byte offset.
 LineStarts: fn Text -> [Nat]
 fn LineStarts text:
-    let ((starts, ignore)) = Fold (Split text, "\n"), (([[]], 0)), \|((acc, at)), line| (((Push acc, at), at + (Len line) + 1))
+    let ((starts, ignore)) = Fold (SplitOn text, "\n"), (([[]], 0)), \|((acc, at)), line| (((Push acc, at), at + (Len line) + 1))
     starts
 
 # The zero-based line holding an offset: the last line that starts at or before it.

@@ -286,6 +286,7 @@ fn ParsePattern p, commas0:
         KDuration ignore, ignore, ignore: LiteralPattern p
         KChar ignore, ignore: LiteralPattern p
         KText ignore, ignore: LiteralPattern p
+        KRegex ignore, ignore: ((noPattern, (ErrorAt p, start, "a regular expression is not a pattern: match a text with `?Match` or `?Find`")))
         # "In a pattern `-40` is a literal."
         KOp "-", True:
             let p1 = Adv p

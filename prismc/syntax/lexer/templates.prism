@@ -19,8 +19,7 @@ use Syntax.Decls.*
 MaybeTemplate: unbounded fn Lex, Text -> Lex
 fn MaybeTemplate l0, kw:
     let l = update l0:
-        while (Peek &_) == " ":
-            &_.pos += 1
+        &_.pos <= MatchEnd %/ */, &_.src, &_.pos
     if (Peek l) == "<" and (TemplateTagAhead l) != "":
         let keyword = if kw == "output": "Output" else: if kw == "inline_text": "InlineText" else: "Raw"
         let ((kind, l2)) = LexTemplate l, keyword, l.pos
@@ -127,10 +126,9 @@ fn TemplateBody l0, close, delims, isRaw, firstContinues, openStart:
 
 TemplateStep: unbounded fn TplRead, TplHow -> TplRead
 fn TemplateStep s, how:
-    let rest = RestOfLine s.l
     let c = Peek s.l
     # A brace block: the opener alone on its line.
-    if s.atLineStart and not how.isRaw and (Trim rest) == how.open: BraceBlockLine s, rest, how
+    if s.atLineStart and not how.isRaw and (Trim (RestOfLine s.l)) == how.open: BraceBlockLine s, (RestOfLine s.l), how
     else: if StartsWith s.l, how.close: CloseTemplate s, how
     else: if c == "":
         update s:
@@ -185,7 +183,13 @@ fn TemplateItem l, how:
         let item = RiPlaceholder toks, Range(start=ps, end=l2.pos)
         ((item, l2))
     else: if live and (StartsWith l, "<@") and (IsUpper (PeekAt l, 2)): TemplateCall l, how.delims, how.open
-    else: ((RiText (Peek l), (Bump l)))
+    # A run of characters none of which begins an item, a line's end or the closing tag.
+    else:
+        let run = MatchHere %/[^\\{<\n]+/, l
+        let n = if run == "": Len (Peek l) else: Len run
+        let l2 = update l:
+            &_.pos += n
+        ((RiText (Slice l, l.pos, l2.pos), l2))
 
 # The state of reading a template call's attributes.
 type CallRead = record:
@@ -213,8 +217,7 @@ fn TemplateCall l0, delims, open:
 CallStep: unbounded fn CallRead, Nat, Text, Text, Text -> CallRead
 fn CallStep s0, start, close, delims, open:
     let l = update s0.l:
-        while Contains " \n\u{d}", (Peek &_):
-            &_.pos += 1
+        &_.pos <= MatchEnd %/[ \n\r]*/, &_.src, &_.pos
     let s = update s0:
         &_.l <= l
     let at = l.pos

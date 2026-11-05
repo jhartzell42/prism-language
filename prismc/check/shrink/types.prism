@@ -297,7 +297,7 @@ fn SigKeyOf sk, k = match sk.byKey[k]:
 
 # How a message names a definition: an impl's method by the method's name.
 ShownKey: fn Text -> Text
-fn ShownKey k = BareName (Or (Split (Or (?Last (Split k, " impl ")), k), " #")[0], k)
+fn ShownKey k = BareName (Or (SplitOn (Or (?Last (SplitOn k, " impl ")), k), " #")[0], k)
 
 IsUnboundedKey: fn G, Text -> Bool
 fn IsUnboundedKey g, k = match g.vals[k]:

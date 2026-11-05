@@ -51,6 +51,7 @@ use Check.Expr.Calls.*
 use Check.Expr.Patterns.*
 use Check.Expr.Lifting.*
 use Check.Expr.Lets.*
+use Check.Regex.*
 
 # What an expression is checked in: the program, the module and file, the names in scope
 # with their schemes, the scope's row, the givens (bounds in force, by rigid name), the
@@ -313,9 +314,26 @@ fn InferLit env, st, l, negative, span:
         LDuration ignore, ignore: (((TyCon "Duration", [[]]), st))
         LChar ignore: ((tChar, st))
         LText segs: InferText env, st, segs, (Contains sigils, "$"), span
+        LRegex r: InferRegex st, r
     if (Contains sigils, "$") and (HeadSigil st2, base) == "$": ((base, st2))
     else: if Contains sigils, "$": (((WithMarks sigils, base, env.scope), (NoteApp st2, span, "$", "const", "$", [[]], "", CBound)))
     else: (((WithMarks sigils, base, env.scope), st2))
+
+# A regular-expression literal (Semantics ch. 2): a `Regex`, or a `RegexReplacement`
+# when it has a replacement, read against the dialect before tick 0 (claude/regex-dialect.md,
+# `Check.Regex`); a refused literal is a `regex` diagnostic at the character the dialect
+# names, and an unknown flag's fix names the hashed form (doubt RX-R).
+InferRegex: unbounded fn St, RegexLit -> ((Ty, St))
+fn InferRegex st, r:
+    let t = TyCon (if r.?replacement == nil: "Regex" else: "RegexReplacement"), [[]]
+    match ?RegexRefusal r.pattern, r.flags, r.?replacement:
+        nil: ((t, st))
+        ? d:
+            let ((base, text)) = if d.part == "flags": ((r.flagsAt, r.flags)) else: if d.part == "pattern": ((r.patternAt, r.pattern)) else: ((r.replacementAt, (Or r.?replacement, "")))
+            let start = base + d.at
+            let span = Range(start=start, end=start + (Max (Len (RxCharAt text, d.at)), 1))
+            if d.message == rxUnknownFlag: ((t, (ErrFix st, "regex", span, d.message, "a replacement that starts with letters and holds anything but letters is written in the hashed form, `%#/x/#hello world/#`")))
+            else: ((t, (Err st, "regex", span, d.message)))
 
 # A literal's range, checked once its type is known (`literal-range`).
 AddRange: fn St, Ty, Text, Bool, Range -> St

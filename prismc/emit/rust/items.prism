@@ -335,7 +335,7 @@ fn EmitCrate model, runtime, scripts:
 # `check::env` when no Prism module is `Check`), in order.
 RustModPaths: fn [ModDef] -> [Text]
 fn RustModPaths mods = Fold mods, [[]], \|acc, m|
-    let segs = Split m.name, "::"
+    let segs = SplitOn m.name, "::"
     Fold (Range0 (Len segs)), acc, \|a, i| AddPath a, (Join (Take segs, i + 1), "::")
 
 AddPath: fn [Text], Text -> [Text]
@@ -343,7 +343,7 @@ fn AddPath ps, p = if Fold ps, False, \|f, q| f or q == p: ps else: Push ps, p
 
 # A module's file: `src/program.rs` for the root, else `src/PATH/mod.rs`.
 RustModFile: fn Text -> Text
-fn RustModFile p = if p == "program": "src/program.rs" else: "src/{Join (Split p, "::"), "/"}/mod.rs"
+fn RustModFile p = if p == "program": "src/program.rs" else: "src/{Join (SplitOn p, "::"), "/"}/mod.rs"
 
 # The `pub mod` lines of a module path's children.
 KidsOf: fn [Text], Text -> Text

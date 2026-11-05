@@ -61,7 +61,7 @@ fn CppStatementsCp cp, dos:
 # `out`), parenthesized.
 Unvexed: fn Text -> Text
 fn Unvexed t:
-    let head = Or (Split t, "(")[0], ""
+    let head = Or (SplitOn t, "(")[0], ""
     let typeLike = (Contains head, ":") or Contains "ABCDEFGHIJKLMNOPQRSTUVWXYZ", (Head head)
     let vexing = (LastChar t) == ")" and (not (Contains head, " ")) and head != "" and typeLike
     if vexing: "({t})" else: t
@@ -151,7 +151,7 @@ fn VarName cp, n = Or cp.renames[n], (CppId n)
 # beside it.
 CppMentions: fn Text, Text -> Bool
 fn CppMentions t, n:
-    let parts = Split t, n
+    let parts = SplitOn t, n
     let k = Len parts
     Fold (Range0 (Dec k)), False, \|f, i| f or ((not (CppEndsIdent (Or parts[i], ""))) and not (CppStartsIdent (Or parts[i + 1], "")))
 

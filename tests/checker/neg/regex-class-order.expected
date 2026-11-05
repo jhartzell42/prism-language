@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-order.prism:2: error[regex]: a range whose ends are out of order
+    let r = %/[z-a]/
+               ^
+1 error

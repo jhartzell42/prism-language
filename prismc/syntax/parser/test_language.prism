@@ -276,7 +276,7 @@ fn PlainOf ignore = ""
 # A number literal's value: underscores dropped, a radix prefix read; 0 when it is none.
 ParseNatText: fn Text -> Nat
 fn ParseNatText text0:
-    let text = Concat (Split text0, "_")
+    let text = Concat (SplitOn text0, "_")
     if HasPrefix text, "0x": Or (?ParseHex (DropPrefix text, "0x")), 0
     else: if HasPrefix text, "0o": Or (?ParseRadix (DropPrefix text, "0o"), 8), 0
     else: if HasPrefix text, "0b": Or (?ParseRadix (DropPrefix text, "0b"), 2), 0

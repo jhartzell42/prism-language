@@ -88,7 +88,7 @@ fn PlainBinder lx, p = match p.kind:
 ParamWord: fn OutTy, Nat -> Text
 fn ParamWord t, i:
     let base = match t:
-        OutNamed n, ignore: Snake (Or (?Last (Split n, "::")), "arg")
+        OutNamed n, ignore: Snake (Or (?Last (SplitOn n, "::")), "arg")
         OutText: "text"
         OutNat: "n"
         OutInt: "i"
@@ -200,7 +200,7 @@ fn SrcText lx, f, r = match lx.g.srcs[f]:
 # next (or a test file's header): the quote stops at its last line of code.
 DropTrailingComments: fn Text -> Text
 fn DropTrailingComments t:
-    let lines = Split t, "\n"
+    let lines = SplitOn t, "\n"
     let keep = Fold (Range0 (Len lines)), 0, \|k, i| if IsCodeLine (Or lines[i], ""): i + 1 else: k
     TrimEnd (Join (Take lines, keep), "\n")
 

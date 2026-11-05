@@ -22,3 +22,11 @@ check recovery
 1: ok
 2: ok
 3: ok
+
+check regexes
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok

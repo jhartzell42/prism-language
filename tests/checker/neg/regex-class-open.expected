@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-open.prism:2: error[regex]: a class opened here is never closed
+    let r = %/[a/
+              ^
+1 error

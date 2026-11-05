@@ -24,7 +24,7 @@
 #
 # prismc is `$PRISMC`, or the newest of target/bootstrap/prismc and target/keep/prismc-*
 # (the old dynamic chain's binary left out). The crate goes to target/prism/NAME, the
-# build to target/prism-build (debug for `test`, release for `run`).
+# build to target/prism-build (release, for `test` and `run` alike: Jimmy).
 #
 # Written by Claude, 2 November 2026, on the claude-self-hosting branch. Subject to change.
 set -eu
@@ -177,8 +177,8 @@ build() { # profile flags...
 }
 
 if [ "$cmd" = test ]; then
-    build
-    exec target/prism-build/debug/"$name" test
+    build --release
+    exec target/prism-build/release/"$name" test
 fi
 
 # run: the World prismc took from the root's row (`const WORLD` of the crate's main.rs),

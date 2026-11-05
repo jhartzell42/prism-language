@@ -1,0 +1,4 @@
+tests/checker/neg/regex-brace.prism:2: error[regex]: a brace that opens no count: a literal one is \{
+    let r = %/a{/
+               ^
+1 error

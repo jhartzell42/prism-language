@@ -1,0 +1,4 @@
+tests/checker/neg/regex-hex-braces.prism:2: error[regex]: a \x{...} escape needs one to six hex digits
+    let r = %/\x{}/
+              ^
+1 error

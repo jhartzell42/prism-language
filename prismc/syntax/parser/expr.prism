@@ -253,6 +253,7 @@ fn ArgStartsHere p:
         KDuration ignore, ignore, ignore: True
         KChar ignore, ignore: True
         KText ignore, ignore: True
+        KRegex ignore, ignore: True
         KTemplate ignore: True
         KFree ignore: True
         KLensDot: True
@@ -338,6 +339,7 @@ fn ParsePrimary p, commas:
         KDuration ignore, ignore, ignore: LiteralPrimary p
         KChar ignore, ignore: LiteralPrimary p
         KText ignore, ignore: LiteralPrimary p
+        KRegex ignore, ignore: LiteralPrimary p
         KTemplate t:
             let ((tpl, q)) = ParseTemplate (Adv p), t, tok.span
             ((Expr(kind=(ETemplate tpl), span=tok.span), False, q))
@@ -538,6 +540,7 @@ fn ParseLiteral p:
         KFloat s, t: ((Literal(marks=s, kind=(LFloat t), span=span), p1))
         KDuration s, n, u: ((Literal(marks=s, kind=(LDuration n, u), span=span), p1))
         KChar s, c: ((Literal(marks=s, kind=(LChar c), span=span), p1))
+        KRegex s, r: ((Literal(marks=s, kind=(LRegex r), span=span), p1))
         KText s, segs:
             let ((out, q)) = Fold segs, (([[]], p1)), \|((acc, pp)), seg| TextSegment acc, pp, seg
             ((Literal(marks=s, kind=(LText out), span=span), q))

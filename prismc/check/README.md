@@ -7,6 +7,7 @@ The module `Check` (claude/modules-style-pass.md): `Check`, the checker (prismc/
 - `blocks/`: `Check.Blocks`, a child module with children of its own (its README).
 - `env/`: `Check.Env`, a child module with children of its own (its README).
 - `expr/`: `Check.Expr`, a child module with children of its own (its README).
+- `regex/`: `Check.Regex`, a child module (its README).
 - `passes/`: `Check.Passes`, a child module with children of its own (its README).
 - `shrink/`: `Check.Shrink`, a child module with children of its own (its README).
 - `typed/`: `Check.Typed`, a child module with children of its own (its README).

@@ -1,0 +1,4 @@
+tests/checker/neg/regex-not-replacement.prism:3: error[mismatch]: expected `RegexReplacement`, found `Regex`
+    fn Dashed t = Replace %/_/, t
+                          ^^^^
+1 error

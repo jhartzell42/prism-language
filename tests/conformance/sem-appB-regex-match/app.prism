@@ -1,0 +1,39 @@
+# Semantics Appendix B, Regular expressions: `?Match` is anchored at its cursor, and a
+# search started past the front sees the whole text (`^`, `\A`, `\b`); Appendix B's
+# lexer step, a name read at a cursor.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+# The cursor `n` bytes into `t`.
+Cut: fn Text, Nat -> Cursor
+fn Cut t, n = Or (?CursorAt t, n), (Back t)
+
+# Appendix B's lexer step: a name at the cursor, and the cursor past it.
+?Ident: fn Cursor -> ?((Text, Cursor))
+fn ?Ident c = match ?Match %/[a-z_][a-z0-9_]*/, c:
+    ? m: ? ((m.text, m.back))
+    nil: nil
+
+Stepped: fn ?((Text, Cursor)) -> Text
+fn Stepped nil = "nil"
+fn Stepped (? ((t, c))) = "{t}@{At c}"
+
+# What lies before a match, the match, and what lies after it, each a view.
+Around: fn ?Match -> Text
+fn Around nil = "nil"
+fn Around (? m) = "{Before m.front}|{m.text}|{After m.back}"
+
+# A match as tests/regex/corpus.txt writes it: each numbered group's bytes `a-b`, group 0
+# (the whole match) first and `nil` for a group that took no part, then each named group
+# that took part, by name, `name=a-b`.
+Spans: fn ?Match -> Text
+fn Spans nil = "nil"
+fn Spans (? m) = Spaced (Append (Each m.groups, GroupSpan), (Fold m.named, [[]], \|acc, k, g| Push acc, "{k}={At g.front}-{At g.back}"))
+
+GroupSpan: fn ?Group -> Text
+fn GroupSpan nil = "nil"
+fn GroupSpan (? g) = "{At g.front}-{At g.back}"
+
+# The texts with a space between each two.
+Spaced: fn [Text] -> Text
+fn Spaced ts = Fold ts, "", \|acc, t| if acc == "": t else: "{acc} {t}"

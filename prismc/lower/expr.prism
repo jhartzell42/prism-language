@@ -61,7 +61,7 @@ fn CharEscape c = c
 # A number literal of a numeric type.
 Number: fn OutTy, Text, Bool -> Ex
 fn Number t, digits, neg:
-    let clean = DecimalDigits (Concat (Split digits, "_"))
+    let clean = DecimalDigits (Concat (SplitOn digits, "_"))
     let signed = if neg: "-{clean}" else: clean
     match t:
         OutNat: XNat clean
@@ -90,6 +90,9 @@ fn LiteralValue lx, env, l, span, neg:
         LChar c: VlOwned (XChar c), OutChar
         LDuration d, u: VlOwned (Refusal "a Duration literal"), OutDuration
         LText segs: TextValue lx, env, segs
+        LRegex r: match r.?replacement:
+            nil: VlOwned (XRegex r.pattern, r.flags), OutRegex
+            ? t: VlOwned (XReplacement r.pattern, t, r.flags), OutReplacement
 
 # A text, interpolated: `Text::from(format!(..))`, a `Text` placed as it is and any other
 # value through `^Show` (Type System ch. 4).

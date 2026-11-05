@@ -92,7 +92,7 @@ fn ?RuntimeOf ?named, ?root, out = match ?named:
 # `..` per directory of OUT, which is relative to the repository root.
 RuntimeFor: fn Text -> Text
 fn RuntimeFor out:
-    let parts = Filter (Split out, "/"), \|p| p != "" and p != "."
+    let parts = Filter (SplitOn out, "/"), \|p| p != "" and p != "."
     if (Len parts) == 0: "." else: Join (Each parts, \|ignore| ".."), "/"
 
 # What the back end is asked to compile, and what it gives back.
@@ -134,8 +134,8 @@ fn CompileProgram job:
 Refusals: fn Text -> [Text]
 fn Refusals text:
     let marker = "compile_error!(\"prismc does not lower "
-    let parts = Split text, marker
-    Fold (Drop parts, 1), [[]], \|acc, part| AddText acc, (Or (Split part, "\")")[0], part)
+    let parts = SplitOn text, marker
+    Fold (Drop parts, 1), [[]], \|acc, part| AddText acc, (Or (SplitOn part, "\")")[0], part)
 
 # A tree without its `test` declarations: the checker reads a test's blueprint by its
 # root's signature, which a `@name:` block has none of, so tests are checked by running

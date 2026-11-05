@@ -75,6 +75,11 @@ fn CppExpr cp, x = match x:
     XIndex n: "{n}u"
     XChar c: "U'{CppCharEscape c}'"
     XStr t: CppString t
+    # One literal, one compiled regex: a function-local static of the literal's own lambda,
+    # built on its first call (thread-safe since C++11) and alive until exit; each use
+    # copies it, which counts a reference.
+    XRegex p, f: "([]() -> const Regex& \{ static const Regex r = Regex::lit({CppString p}, {CppString f}); return r; \}())"
+    XReplacement p, r, f: "([]() -> const RegexReplacement& \{ static const RegexReplacement r = RegexReplacement::lit({CppString p}, {CppString f}, {CppString r}); return r; \}())"
     XRef y: CppExpr cp, y
     XRefMut y: CppExpr cp, y
     XDeref y: CppExpr cp, y

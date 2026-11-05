@@ -3,8 +3,9 @@
 # each test module run under the compiled Test World, its transcript byte-equal to the
 # `.expected` of its name. Every program is a tree (claude/modules-style-pass.md): all of
 # them, every time: each tests/conformance/NAME/ holding an app.prism; examples/chess/rules
-# alone (its test module) and examples/chess (the board's and the rules'); the prelude's own checks
-# (tests/prelude/maps); and prismc's lexer and parser checks (the test modules of prismc/syntax/lexer and prismc/syntax/parser).
+# alone (its test module) and examples/chess (the board's and the rules'); the prelude's own
+# checks (tests/prelude/maps); and prismc's lexer, parser and dialect checks (the test
+# modules of prismc/syntax/lexer, prismc/syntax/parser and prismc/check/regex).
 #
 #   tests/compiled/run.sh [NAMES...]     # every program, or only those named (chess too)
 #   tests/compiled/run.sh --target cpp [NAMES...]   # the same through the C++ target
@@ -57,6 +58,7 @@ run chess examples/chess
 # of prismc's tree, with the modules it reaches by `use`
 run lexer prismc/syntax/lexer
 run parser prismc/syntax/parser
+run regex prismc/check/regex
 if [ ${#failed[@]} -gt 0 ]; then
     echo "failed (${#failed[@]}):"
     printf '  %s\n' "${failed[@]}"

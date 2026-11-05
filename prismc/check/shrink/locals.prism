@@ -75,7 +75,7 @@ fn WithLocals sk, found:
         ((bs2, os2, cs2, ws2))
     let fnDefs = Fold (Keys clauses), [[]], \|acc, qk| match ((owners[qk], clauses[qk])):
         ((? oq, ? cl)): match sk.byKey[oq]:
-            ? d: Push acc, Def(qk=qk, name=(Or (Split qk, " #")[0], qk), home=d.home, file=d.file, span=d.span, body=(DbFn cl))
+            ? d: Push acc, Def(qk=qk, name=(Or (SplitOn qk, " #")[0], qk), home=d.home, file=d.file, span=d.span, body=(DbFn cl))
             nil: acc
         otherwise: acc
     let wDefs = Fold (Keys wdecls), [[]], \|acc, qk| match wdecls[qk]:
@@ -150,7 +150,7 @@ fn IsOpText n = (Len n) > 0 and not (FoldChars n, False, \|seen, ch| seen or (Is
 ?ResolveName: fn G, Text, Text -> ?Text
 fn ?ResolveName g, m, n:
     let marks = MarksOf n
-    let path = Split (DropPrefix n, marks), "."
+    let path = SplitOn (DropPrefix n, marks), "."
     let ((?k, ignore)) = ResolveValue g, m, (SName(sigils=marks, path=path, span=Range(start=0, end=0)))
     ?k
 

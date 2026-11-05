@@ -55,6 +55,10 @@ type OutTy = choice:
     OutChar
     OutText
     OutCursor
+    # The opaque types of the regular-expression literals (Type System ch. 2): the
+    # runtimes' `Regex` and `RegexReplacement`.
+    OutRegex
+    OutReplacement
     OutUnit
     OutPath
     OutDuration
@@ -123,6 +127,11 @@ type Ex = choice:
     # source has them; the printer escapes.
     XChar Text
     XStr Text
+    # A regular-expression literal, built once per literal and shared (claude/backend.md,
+    # "Regular expressions"): its pattern and flags, and a replacement's pattern,
+    # replacement and flags, each as written between its delimiters.
+    XRegex Text, Text
+    XReplacement Text, Text, Text
     # A reference to a place, a mutable one, and the place a reference points to.
     XRef Ex
     XRefMut Ex

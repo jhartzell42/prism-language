@@ -149,7 +149,7 @@ DefRole: fn [Src], Def -> Text
 fn DefRole srcs, d = (SegAt (Or srcs[d.file], (MkSrc "", "")), d.span.start).role
 
 LastPathPart: fn Text -> Text
-fn LastPathPart p = Or (?Last (Split p, "/")), p
+fn LastPathPart p = Or (?Last (SplitOn p, "/")), p
 
 IsTestingDef: fn Def -> Bool
 fn IsTestingDef d = match d.body:

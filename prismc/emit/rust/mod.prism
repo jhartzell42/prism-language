@@ -55,6 +55,8 @@ fn Type t = match t:
     OutChar: "char"
     OutText: "Text"
     OutCursor: "Cursor"
+    OutRegex: "Regex"
+    OutReplacement: "RegexReplacement"
     OutUnit: "()"
     OutPath: "Path"
     OutDuration: "Duration"
@@ -153,6 +155,10 @@ fn Expression x = match x:
     XIndex n: "{n}"
     XChar c: "'{CharEscape c}'"
     XStr t: "\"{Escape t}\""
+    # One literal, one compiled regex per thread: the static is built on its first use and
+    # each use clones it, which counts a reference (prism_rtl's `Regex` is an `Rc`).
+    XRegex p, f: "\{ thread_local!(static R: Regex = Regex::lit(\"{Escape p}\", \"{Escape f}\")); R.with(Regex::clone) \}"
+    XReplacement p, r, f: "\{ thread_local!(static R: RegexReplacement = RegexReplacement::lit(\"{Escape p}\", \"{Escape f}\", \"{Escape r}\")); R.with(RegexReplacement::clone) \}"
     XRef y: "&{Operand y}"
     XRefMut y: "&mut {Operand y}"
     XDeref y: "*{Operand y}"
@@ -180,7 +186,7 @@ fn Expression x = match x:
     XVec xs: "vec![{Args xs}]"
     XText t: "Text::lit(\"{Escape t}\")"
     XFormat parts: Format parts
-    XMatch s, arms, fallback, ignore: Match (Expression s), (Arms arms, fallback)
+    XMatch s, arms, fallback, ignore: MatchBlock (Expression s), (Arms arms, fallback)
     XChain label, s, arms, ignore: Chain (Label label), s, arms
     XIf c, t, e: IfExpression c, t, e
     XBlock [[]], e: Expression e
@@ -316,7 +322,7 @@ fn IsBound x = match x:
 # A text placed after other text on an indented line: its later lines take the indent.
 Continued: fn Text, Text -> Text
 fn Continued t, pad:
-    let ls = Split t, "\n"
+    let ls = SplitOn t, "\n"
     Join (Each (Range0 (Len ls)), \|i| if i == 0 or (Or ls[i], "") == "": Or ls[i], "" else: "{pad}{Or ls[i], ""}"), "\n"
 
 # A function's body: a block's statements and value without its braces.
@@ -326,7 +332,7 @@ fn BodyLines x = Expression x
 
 # Every line of a text four spaces in.
 Indent: fn Text -> Text
-fn Indent t = Join (Each (Split t, "\n"), \|l| if l == "": "" else: "    {l}"), "\n"
+fn Indent t = Join (Each (SplitOn t, "\n"), \|l| if l == "": "" else: "    {l}"), "\n"
 
 # ---------------------------------------------------------------------------------------
 # Patterns and statements
@@ -370,7 +376,7 @@ fn Statement d = match d:
     DoExpr x: "{Expression x};"
     DoIf c, t, e: "{IfStmt "if {Expression c}", (Statements t)}{ElseBranch e}"
     DoIfLet p, x, t, e: "{IfStmt "if let {Pattern p} = {Expression x}", (Statements t)}{ElseBranch e}"
-    DoMatch x, cases: Match (Expression x), (Join (Each cases, \|((p, body))| ArmBlock (Pattern p), (Statements body)), "\n")
+    DoMatch x, cases: MatchBlock (Expression x), (Join (Each cases, \|((p, body))| ArmBlock (Pattern p), (Statements body)), "\n")
     DoReturn x: "return {Expression x};"
     DoBlock body: Scope (Statements body)
     DoScope body: "\{ {InlineStatements body} \};"

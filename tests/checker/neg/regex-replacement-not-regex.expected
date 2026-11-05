@@ -1,0 +1,4 @@
+tests/checker/neg/regex-replacement-not-regex.prism:3: error[mismatch]: expected `Regex`, found `RegexReplacement`
+    fn ?First t = ?Find %/a/b/, t
+                        ^^^^^^
+1 error

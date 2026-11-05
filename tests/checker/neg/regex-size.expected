@@ -1,0 +1,4 @@
+tests/checker/neg/regex-size.prism:2: error[regex]: the pattern expands past 10,000 atoms
+    let r = %/(?:abcdefghijk){1000}/
+              ^
+1 error

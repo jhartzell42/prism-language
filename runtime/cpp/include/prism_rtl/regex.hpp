@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "prism_rtl/collections.hpp"
+#include "prism_rtl/pod.hpp"
 #include "prism_rtl/print.hpp"
 #include "prism_rtl/rc.hpp"
 
@@ -137,6 +138,53 @@ private:
     Regex regex_;
     Rc<const std::string> replacement_;
     Rc<const std::vector<detail::ReplacementPiece>> pieces_;
+};
+
+// ---- Plain data, on the way out only ----------------------------------------------------
+// A regular expression has no `^Pod` (Type System ch. 2, RX-EQ), and neither has a match,
+// whose cursors are opaque; but an emitted record derives the runtime's `ToPod` and
+// `FromPod` whatever its fields, and a `check` line's value is plain data. So, as a
+// `Cursor` is: out as it shows (a regex as its spelling, which is how it compares), and
+// never read back.
+
+template <>
+struct ToPod<Regex> {
+    static Pod to_pod(const Regex& r) { return Pod::shown(show(r), Pod::text(show_text(r))); }
+};
+template <>
+struct ToPod<RegexReplacement> {
+    static Pod to_pod(const RegexReplacement& r) { return Pod::shown(show(r), Pod::text(show_text(r))); }
+};
+template <>
+struct ToPod<Group> {
+    static Pod to_pod(const Group& g) {
+        return Pod::record("Group", {{"text", prism_rtl::to_pod(g.text)}, {"front", prism_rtl::to_pod(g.front)}, {"back", prism_rtl::to_pod(g.back)}});
+    }
+};
+template <>
+struct ToPod<Match> {
+    static Pod to_pod(const Match& m) {
+        return Pod::record("Match", {{"text", prism_rtl::to_pod(m.text)}, {"front", prism_rtl::to_pod(m.front)}, {"back", prism_rtl::to_pod(m.back)},
+                                     {"groups", prism_rtl::to_pod(m.groups)}, {"named", prism_rtl::to_pod(m.named)}});
+    }
+};
+template <>
+struct FromPod<Regex> {
+    static Result<Regex> from_pod(const Pod& p) { return mismatch<Regex>("a Regex, which has no plain form to read back", p); }
+};
+template <>
+struct FromPod<RegexReplacement> {
+    static Result<RegexReplacement> from_pod(const Pod& p) {
+        return mismatch<RegexReplacement>("a RegexReplacement, which has no plain form to read back", p);
+    }
+};
+template <>
+struct FromPod<Group> {
+    static Result<Group> from_pod(const Pod& p) { return mismatch<Group>("a Group, which has no plain form to read back", p); }
+};
+template <>
+struct FromPod<Match> {
+    static Result<Match> from_pod(const Pod& p) { return mismatch<Match>("a Match, which has no plain form to read back", p); }
 };
 
 }  // namespace prism_rtl

@@ -6,9 +6,10 @@ The books fix the dialect (Semantics Appendix B, "Regular expressions" and "The 
 chapter 2, "Regular expressions"; rulings round 5, RX to RX-DOC; Type System chapter 2).
 This file is the procedure that turns those pages into one accept/refuse decision, one
 error position and one message, so that the Rust runtime (`runtime/rust/src/regex.rs`,
-`regex_dialect.rs`), the C++ runtime (`runtime/cpp/src/regex.cpp`) and, later, prismc's
-checker (in Prism) refuse the same patterns the same way. The shared corpus
-`tests/regex/corpus.txt` pins every row below; both runtimes' tests read it.
+`regex_dialect.rs`), the C++ runtime (`runtime/cpp/src/regex.cpp`) and prismc's
+checker (`prismc/check/regex/`, in Prism) refuse the same patterns the same way. The
+shared corpus `tests/regex/corpus.txt` pins every row below; both runtimes' tests read
+it, and prismc's test module is written from it.
 
 Where the books are silent or the two libraries could not be made to agree, the
 construct is refused and the call is a doubt with a two-letter code (the last section).

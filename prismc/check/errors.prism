@@ -80,7 +80,7 @@ fn DiagFix code, file, span, message, fix = CDiag(code=code, file=file, span=spa
 # Where each line begins, as a byte offset.
 CLineStarts: fn Text -> [Nat]
 fn CLineStarts text:
-    let ((starts, ignore)) = Fold (Split text, "\n"), (([[]], 0)), \|((acc, at)), line| (((Push acc, at), at + (Len line) + 1))
+    let ((starts, ignore)) = Fold (SplitOn text, "\n"), (([[]], 0)), \|((acc, at)), line| (((Push acc, at), at + (Len line) + 1))
     starts
 
 # The zero-based line holding an offset.

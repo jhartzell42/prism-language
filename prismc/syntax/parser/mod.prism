@@ -382,6 +382,7 @@ fn Describe KLaySep = "the end of the line"
 fn Describe KLayClose = "the end of the block"
 fn Describe KEof = "the end of the input"
 fn Describe (KText ignore, ignore) = "a text literal"
+fn Describe (KRegex ignore, ignore) = "a regular expression"
 fn Describe (KTemplate ignore) = "a template"
 fn Describe k = "`{TokenText k}`"
 

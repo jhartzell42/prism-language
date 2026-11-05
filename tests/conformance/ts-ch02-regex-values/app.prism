@@ -1,0 +1,24 @@
+# Type System ch. 2, "Text, cursors and regular expressions": `Regex` and
+# `RegexReplacement` are values with `^Eq` and `^Show` by their spelling, passed to
+# functions, and held in records and arrays; `Group` and `Match` are plain records deriving `^Eq` and `^Show`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+type Rule = record:
+    name: Text
+    pattern: Regex
+derive ^Eq, ^Show
+
+let rules = [[Rule(name="number", pattern=%/^\d+$/), Rule(name="word", pattern=%/^[a-z]+$/i)]]
+
+# The name of the first rule whose pattern matches the text, or `none`.
+Classify: fn Text -> Text
+fn Classify t = Fold rules, "none", \|found, r| if found == "none" and (?Find r.pattern, t) != nil: r.name else: found
+
+# How many times a pattern matches.
+Count: fn Regex, Text -> Nat
+fn Count r, t = Len (Matches r, t)
+
+# A replacement applied twice.
+Twice: fn RegexReplacement, Text -> Text
+fn Twice r, t = Replace r, (Replace r, t)

@@ -171,8 +171,12 @@ type G = record:
 derive ^Eq, ^Show
 
 # The primitive types (prism_rt's own; prelude.prism declares none of them).
+# The two opaque types of the regular-expression literals (Type System ch. 2).
+IsRegexType: fn Text -> Bool
+fn IsRegexType n = n == "Regex" or n == "RegexReplacement"
+
 IsPrimType: fn Text -> Bool
-fn IsPrimType n = HasText [["Bool", "unit", "Char", "Text", "Nat", "Int", "U8", "Float", "Path", "Duration", "Cursor"]], n
+fn IsPrimType n = HasText [["Bool", "unit", "Char", "Text", "Nat", "Int", "U8", "Float", "Path", "Duration", "Cursor", "Regex", "RegexReplacement"]], n
 
 QualKey: fn Text, Text -> Text
 fn QualKey m, name = if m == "": name else: "{m}.{name}"

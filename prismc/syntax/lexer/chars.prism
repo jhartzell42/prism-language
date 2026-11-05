@@ -151,7 +151,7 @@ LeadingIn: fn Text, Text -> Nat
 fn LeadingIn t, set = Or ((Len t) -? (Len (TrimLeading t, set))), 0
 
 Contains: fn Text, Text -> Bool
-fn Contains set, c = c != "" and (Len (Split set, c)) > 1
+fn Contains set, c = c != "" and (Len (SplitOn set, c)) > 1
 
 # ---------------------------------------------------------------------------------------
 # Characters (ASCII only: "Names are ASCII letters, digits and underscores")
@@ -207,7 +207,7 @@ fn CharAtByte t, n = match ?CursorAt t, n:
 HexValue: fn Text -> Nat
 fn HexValue c:
     let l = Lower c
-    if l == "": 16 else: Len (Or (Split hexDigits, l)[0], hexDigits)
+    if l == "": 16 else: Len (Or (SplitOn hexDigits, l)[0], hexDigits)
 
 ?ParseHex: fn Text -> ?Nat
 fn ?ParseHex t:
@@ -268,15 +268,23 @@ fn NextIsSpace l, n:
     let c = PeekAt l, n
     c == "" or (IsSpaceChar c)
 
+# Where the match of `r` anchored at byte `at` of `src` ends (Semantics Appendix B,
+# `?Match`: what a lexer wants); `at` itself when it matches nothing there. Every token
+# class the lexer reads by a pattern is read through this.
+MatchEnd: fn Regex, Text, Nat -> Nat
+fn MatchEnd r, src, at = match ?CursorAt src, at:
+    ? c: match ?Match r, c:
+        ? m: At m.back
+        nil: at
+    nil: at
+
+# The match of `r` at the lexer's position, its text, or `""`.
+MatchHere: fn Regex, Lex -> Text
+fn MatchHere r, l = Between l.src, l.pos, (MatchEnd r, l.src, l.pos)
+
 # Where the current line ends: the next newline, or the end of the text.
 LineEnd: fn Lex -> Nat
-fn LineEnd l = match ?CursorAt l.src, l.pos:
-    ? c:
-        let end = update c:
-            while ? ((ch, next)) <- ?Step &_ if ch != '\n':
-                &_ <= next
-        At end
-    nil: l.pos
+fn LineEnd l = MatchEnd %/[^\n]*/, l.src, l.pos
 
 # The rest of the current line from the cursor, without its newline.
 RestOfLine: unbounded fn Lex -> Text

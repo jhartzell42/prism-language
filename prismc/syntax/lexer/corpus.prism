@@ -33,7 +33,7 @@ fn IsBracket (KClose ignore) = True
 fn IsBracket ignore = False
 
 RenderInner: fn [Tok] -> Text
-fn RenderInner tokens = Join (Split (TrimEnd (TrimNewlines (RenderTokens tokens))), "\n"), " "
+fn RenderInner tokens = Join (SplitOn (TrimEnd (TrimNewlines (RenderTokens tokens))), "\n"), " "
 
 TrimNewlines: fn Text -> Text
 fn TrimNewlines t = TrimTrailing t, "\n \t"
@@ -51,6 +51,7 @@ fn TokenText (KFloat s, t) = "{s}{t}"
 fn TokenText (KDuration s, t, u) = "{s}{t}{u}"
 fn TokenText (KChar s, c) = "{s}{DebugChar c}"
 fn TokenText (KText s, segs) = "{s}TEXT({Concat (Each segs, SegText)})"
+fn TokenText (KRegex s, r) = "{s}REGEX({DebugText r.pattern}/{ReplacementText r.?replacement}{r.flags})"
 fn TokenText (KTemplate t) = "TEMPLATE<{t.lang}>({Concat (Each t.parts, PartText)})"
 fn TokenText (KOp op, True) = "{op}pre"
 fn TokenText (KOp op, False) = op
@@ -75,6 +76,10 @@ fn TokenText KLayOpen = "open"
 fn TokenText KLaySep = "sep"
 fn TokenText KLayClose = "close"
 fn TokenText KEof = "eof"
+
+ReplacementText: fn ?Text -> Text
+fn ReplacementText nil = ""
+fn ReplacementText (? t) = "{DebugText t}/"
 
 SegText: fn TextSegTok -> Text
 fn SegText (TsPlain p) = EscapeBraces (EscapeDebug p, True, True)
@@ -135,7 +140,7 @@ fn EscapeChar c, single, double = match c:
 # The code point of an ASCII character (128 for anything else): its byte index in
 # `asciiText`.
 CodeOf: fn Text -> Nat
-fn CodeOf c = if c == "": 128 else: Len (Or (Split asciiText, c)[0], asciiText)
+fn CodeOf c = if c == "": 128 else: Len (Or (SplitOn asciiText, c)[0], asciiText)
 
 HexOf: fn Nat -> Text
 fn HexOf n = HexDigits n, n

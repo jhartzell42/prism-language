@@ -10,6 +10,7 @@ mod Blocks
 mod Passes
 mod Shrink
 mod Typed
+mod Regex
 use Syntax.*
 use Syntax.Decls.*
 use Syntax.Lexer.*

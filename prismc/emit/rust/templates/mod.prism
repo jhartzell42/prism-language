@@ -16,7 +16,7 @@ use Emit.Rust.Templates.Items.*
 
 # A doc comment: each line of `text` after `///`.
 Doc: fn Text -> Text
-fn Doc text = if text == "": "" else: Concat (Each (Split text, "\n"), \|l| if l == "": "///\n" else: "/// {l}\n")
+fn Doc text = if text == "": "" else: Concat (Each (SplitOn text, "\n"), \|l| if l == "": "///\n" else: "/// {l}\n")
 
 # A doc comment that quotes Prism source.
 SourceDoc: fn Text, Text -> Text
@@ -39,7 +39,7 @@ fn SourceLed lead, source = inline_text <rust>
 </rust>
 
 Quoted: fn Text -> Text
-fn Quoted text = Joined (Each (Split text, "\n"), \|l| if l == "": "///" else: "/// {l}"), "\n"
+fn Quoted text = Joined (Each (SplitOn text, "\n"), \|l| if l == "": "///" else: "/// {l}"), "\n"
 
 Joined: fn [Text], Text -> Text
 fn Joined xs, sep = match xs[0]:

@@ -10,6 +10,11 @@ to one source and never compared with each other:
 - Rust: `runtime/rust/tests/regex.rs` (`cargo test --release -p prism_rtl --test regex`);
 - C++: `runtime/cpp/tests/test_regex.cpp` (`make -C runtime/cpp test`, test `regex_corpus`).
 
+prismc's checker is held to its refusals and acceptances too: `Check.Regex.Tests`
+(`prismc/check/regex/tests.prism`) is written from this file by `gen-tests.py` beside it
+(`tests/compiled/run.sh regex`), and tests/checker/regex-neg.py writes one checker program
+per message from its first refused literal. Run both after changing this file.
+
 ## The format
 
 One case a line, six fields separated by tabs; `#` begins a comment line, and blank lines

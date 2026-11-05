@@ -1,0 +1,4 @@
+tests/checker/neg/regex-stray-bracket.prism:2: error[regex]: a ] outside a class: a literal one is \]
+    let r = %/a]/
+               ^
+1 error

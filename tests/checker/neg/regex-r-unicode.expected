@@ -1,0 +1,4 @@
+tests/checker/neg/regex-r-unicode.prism:2: error[regex]: a \u{...} escape needs one to six hex digits naming a character
+    let r = %/(a)/\u{}/
+                  ^
+1 error

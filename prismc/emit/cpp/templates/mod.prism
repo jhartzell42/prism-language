@@ -38,10 +38,13 @@ SRCS := src/main.cpp {{sources}}
 OBJS := $(SRCS:src/%.cpp=build/%.o)
 WORLD_LIBS :=
 SYS_LIBS :=
+# The runtime's regular expressions are on RE2 (runtime/cpp/README.md), which the library
+# needs at link time whenever a program reaches them.
+RE2_LIBS := $(shell pkg-config --libs re2)
 {{canvas}}
 
 {{name}}: $(OBJS) build/cli.o $(LIB) $(WORLD_LIBS)
-	$(CXX) $(FLAGS) -o $@ $(OBJS) build/cli.o $(WORLD_LIBS) $(LIB) $(SYS_LIBS)
+	$(CXX) $(FLAGS) -o $@ $(OBJS) build/cli.o $(WORLD_LIBS) $(LIB) $(RE2_LIBS) $(SYS_LIBS)
 
 build/cli.o: $(WORLD)/src/cli.cpp $(WORLD)/include/prism_world_cli/cli.hpp
 	@mkdir -p build

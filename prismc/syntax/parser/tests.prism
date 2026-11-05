@@ -57,3 +57,13 @@ check recovery:
     Errors "fn F x = (1 +\nlet y = 2" => [["expected an expression, found `let`"]]
     Errors "let a = 1\n$x <- 2\nlet b = 3" => [["a bind or hold is a statement of a widget block: nothing at top level is built (Semantics ch. 6)"]]
     Dump "let a = )\nlet b = 3" => "(module\n  (let b 3))\n"
+
+# A regular expression is a literal: its pattern and replacement as written, then its
+# flags (Semantics ch. 2).
+check regexes:
+    Dump "let r = %/a/i" => "(module\n  (let r (regex \"a\" \"i\")))\n"
+    Dump "let r = %/a\\/b/" => "(module\n  (let r (regex \"a\\\\/b\" \"\")))\n"
+    Dump "let r = %#/a/b/#m" => "(module\n  (let r (regex \"a/b\" \"m\")))\n"
+    Dump "let r = %/_/-/" => "(module\n  (let r (regex-replacement \"_\" \"-\" \"\")))\n"
+    Dump "let r = $%/a/" => "(module\n  (let r ($regex \"a\" \"\")))\n"
+    Dump "let n = Len [[%/a/,%/b/]]" => "(module\n  (let n (call Len (array (regex \"a\" \"\") (regex \"b\" \"\")))))\n"

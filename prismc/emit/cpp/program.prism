@@ -208,11 +208,11 @@ fn GroupTypesFile pairs, group:
 
 # A group's file name: its modules' paths, `_` for `::`, `-` between them.
 GroupName: fn [Text] -> Text
-fn GroupName group = Join (Each group, \|n| Join (Split n, "::"), "_"), "-"
+fn GroupName group = Join (Each group, \|n| Join (SplitOn n, "::"), "_"), "-"
 
 # A module's directory under `src/`: its path's segments (`check::env` is `check/env`).
 ModDir: fn Text -> Text
-fn ModDir m = Join (Split m, "::"), "/"
+fn ModDir m = Join (SplitOn m, "::"), "/"
 
 Among: fn [Text], Text -> Bool
 fn Among xs, x = Fold xs, False, \|f, y| f or y == x

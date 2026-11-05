@@ -1,0 +1,5 @@
+tests/checker/neg/regex-unknown-flag.prism:2: error[regex]: an unknown flag: the flags are i, m and s
+    let r = %/a/x
+                ^
+  fix: a replacement that starts with letters and holds anything but letters is written in the hashed form, `%#/x/#hello world/#`
+1 error

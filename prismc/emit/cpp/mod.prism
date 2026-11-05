@@ -108,7 +108,7 @@ fn FieldId f = if InList [["show", "to_pod", "from_pod", "cases"]], f: "{f}_" el
 
 # A path as C++, each segment an identifier.
 CppPathId: fn Text -> Text
-fn CppPathId p = Join (Each (Split p, "::"), \|s| CppId s), "::"
+fn CppPathId p = Join (Each (SplitOn p, "::"), \|s| CppId s), "::"
 
 InList: fn [Text], Text -> Bool
 fn InList xs, x = Fold xs, False, \|seen, y| seen or y == x
@@ -145,18 +145,18 @@ fn ?CaseOf cp, p:
 # A path without its last segment.
 ParentPath: fn Text -> Text
 fn ParentPath p:
-    let segs = Split p, "::"
+    let segs = SplitOn p, "::"
     Join (Take segs, (Dec (Len segs))), "::"
 
 LastSegment: fn Text -> Text
-fn LastSegment p = Or (?Last (Split p, "::")), p
+fn LastSegment p = Or (?Last (SplitOn p, "::")), p
 
 # The context of a model: every module's types, constructors and node members.
 Context: fn Model -> Cp
 fn Context model:
     let names = Each model.mods, \|m| m.name
     let tops = Fold names, [[]], \|acc, n|
-        let top = Or (Split n, "::")[0], n
+        let top = Or (SplitOn n, "::")[0], n
         if (InList names, top) or InList acc, top: acc else: Push acc, top
     let mods = Push (Append names, tops), "prelude"
     let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fns={}, fields={}, renames={}, pointers={})
@@ -244,6 +244,8 @@ fn CppType cp, t = match t:
     OutChar: "char32_t"
     OutText: "Text"
     OutCursor: "Cursor"
+    OutRegex: "Regex"
+    OutReplacement: "RegexReplacement"
     OutUnit: "Unit"
     OutPath: "Path"
     OutDuration: "Duration"
@@ -307,9 +309,9 @@ fn OwnTypePath cp, n:
 # left to deduction.
 TypePath: fn Text -> Text
 fn TypePath p:
-    let noFish = Join (Split p, "::<"), "<"
-    let noHoles = Join (Split noFish, ", _>"), ">"
-    Join (Split noHoles, "<_>"), ""
+    let noFish = Join (SplitOn p, "::<"), "<"
+    let noHoles = Join (SplitOn noFish, ", _>"), ">"
+    Join (SplitOn noHoles, "<_>"), ""
 
 # A type whose values are shared by copying (the C++ runtime's `IsValue`): an `Rc` of one
 # is the value itself.

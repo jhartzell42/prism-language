@@ -436,10 +436,10 @@ inline Text text(char32_t c) {
 inline Text upper(const Text& t) { return text_upper(t); }
 inline Text lower(const Text& t) { return text_lower(t); }
 
-/// `Split t, sep`: the pieces between the separators. An empty separator is refused: a
-/// text's characters are walked with a cursor (Appendix B, Text).
-inline Array<Text> split(const Text& t, const Text& sep) {
-    if (sep.is_empty()) panic("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
+/// `SplitOn t, sep`: the pieces between the separators (not in Appendix B, whose `Split`
+/// is a regular expression's). An empty separator is refused.
+inline Array<Text> split_on(const Text& t, const Text& sep) {
+    if (sep.is_empty()) panic("`SplitOn` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
     return Array<Text>(t.split(sep.view()));
 }
 
@@ -467,6 +467,26 @@ inline Text after(const Cursor& c) { return c.after(); }
 inline Nat at(const Cursor& c) { return nat_of(c.at()); }
 /// `?CursorAt: fn Text, Nat -> ?Cursor`.
 inline std::optional<Cursor> cursor_at(const Text& t, const Nat& n) { return Cursor::at_byte(t, ix(n)); }
+
+// ---- Regular expressions (Appendix B; claude/regex-dialect.md) --------------------------
+// A literal is built where it stands (`Regex::lit`, a function-local static per literal);
+// these are the prelude's functions over prism_rtl's regex.hpp, each the runtime's search.
+// `Group` and `Match` are the runtime's records, seen through `using namespace prism_rtl`.
+
+/// `?Regex: fn Text -> ?Regex`: the text as a pattern with no flags, none outside the
+/// dialect; linear in the text.
+inline std::optional<Regex> regex(const Text& t) { return Regex::parse(t); }
+/// `?Match: fn Regex, Cursor -> ?Match`: the match that starts at the cursor, seeing the
+/// whole text before it.
+inline std::optional<Match> match_(const Regex& r, const Cursor& c) { return r.match_at(c); }
+/// `?Find: fn Regex, Text -> ?Match`: the leftmost-first match.
+inline std::optional<Match> find(const Regex& r, const Text& t) { return r.find(t); }
+/// `Matches: fn Regex, Text -> [Match]`: every match, by the iteration rule.
+inline Array<Match> matches(const Regex& r, const Text& t) { return r.matches(t); }
+/// `Replace: fn RegexReplacement, Text -> Text`: every match replaced.
+inline Text replace(const RegexReplacement& r, const Text& t) { return r.replace(t); }
+/// `Split: fn Regex, Text -> [Text]`: the `k + 1` views between the `k` matches.
+inline Array<Text> split(const Regex& r, const Text& t) { return r.split(t); }
 
 /// `?ParseNat`.
 inline std::optional<Nat> parse_nat_opt(const Text& t) {

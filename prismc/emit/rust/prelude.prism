@@ -533,11 +533,11 @@ pub fn lower(t: &Text) -> Text {
     Text::from(t.as_str().to_lowercase())
 }
 
-/// `Split t, sep`: the pieces between the separators. An empty separator is refused: a
-/// text's characters are walked with a cursor (Appendix B, Text).
-pub fn split(t: &Text, sep: &Text) -> Array<Text> {
+/// `SplitOn t, sep`: the pieces between the separators (not in Appendix B, whose `Split`
+/// is a regular expression's). An empty separator is refused.
+pub fn split_on(t: &Text, sep: &Text) -> Array<Text> {
     if sep.is_empty() {
-        panic!("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
+        panic!("`SplitOn` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
     }
     t.split(sep.as_str()).collect()
 }
@@ -580,6 +580,46 @@ pub fn at(c: &Cursor) -> Nat {
 /// `?CursorAt: fn Text, Nat -> ?Cursor`.
 pub fn cursor_at(t: &Text, n: &Nat) -> Option<Cursor> {
     Cursor::at_byte(t, ix(n))
+}
+
+// ---- Regular expressions (Appendix B; claude/regex-dialect.md) --------------------------
+// A literal is built where it stands (`Regex::lit`, once per literal); these are the
+// prelude's functions over `prism_rtl::regex`, each the runtime's search.
+
+/// `type Group = record: text, front, back` and `type Match = record: text, front, back,
+/// groups, named`: the runtime's own records, with their `==` and `Show`.
+pub use prism_rtl::{Group, Match};
+
+/// `?Regex: fn Text -> ?Regex`: the text as a pattern with no flags, `None` outside the
+/// dialect; linear in the text.
+pub fn regex(t: &Text) -> Option<Regex> {
+    Regex::parse(t)
+}
+
+/// `?Match: fn Regex, Cursor -> ?Match`: the match that starts at the cursor, seeing the
+/// whole text before it.
+pub fn match_(r: &Regex, c: &Cursor) -> Option<Match> {
+    r.match_at(c)
+}
+
+/// `?Find: fn Regex, Text -> ?Match`: the leftmost-first match.
+pub fn find(r: &Regex, t: &Text) -> Option<Match> {
+    r.find(t)
+}
+
+/// `Matches: fn Regex, Text -> [Match]`: every match, by the iteration rule.
+pub fn matches(r: &Regex, t: &Text) -> Array<Match> {
+    r.matches(t)
+}
+
+/// `Replace: fn RegexReplacement, Text -> Text`: every match replaced.
+pub fn replace(r: &RegexReplacement, t: &Text) -> Text {
+    r.replace(t)
+}
+
+/// `Split: fn Regex, Text -> [Text]`: the `k + 1` views between the `k` matches.
+pub fn split(r: &Regex, t: &Text) -> Array<Text> {
+    r.split(t)
 }
 
 /// `?ParseNat`.
