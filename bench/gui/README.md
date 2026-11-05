@@ -108,5 +108,5 @@ A failed check fails the run and says what it saw.
   again on any change); GTK moves the two children; Prism moves two rows' values between
   their places.
 - **No scrolling in Prism:** the window library has no scroll pane, so the Prism window
-  lays out every row and clips to the window; GTK and Cuis lay out every row too, in a
-  scroll pane.
+  lays out every row and draws those that start inside the window; GTK and Cuis lay out
+  every row too, in a scroll pane.
