@@ -77,15 +77,8 @@ fn ?RouteKey ?focus, k = match ?focus:
     nil: nil
 
 # focus names the focused place by its chain of paths, which is its identity while it lives;
-# it moves by a click on a text input, or by Tab to the next input in drawing order
-?Refocus: fn [Hit], ?[Path], WindowInput -> ?[Path]
-fn ?Refocus hits, ?focus, w = match w:
-    Press p: match ?HitAt hits, p:
-        ? h if h.kind == Focus: ? h.chain
-        otherwise: ?focus
-    Pressed Tab: ?NextFocus hits, ?focus
-    otherwise: ?focus
-
+# it moves by a press on a text input (`?FocusChain` of the hit), or by Tab to the next input
+# in drawing order
 ?NextFocus: fn [Hit], ?[Path] -> ?[Path]
 fn ?NextFocus hits, ?focus:
     let inputs = Fold hits, [[]], \|acc, h| if h.kind == Focus: Push acc, h.chain else: acc
@@ -121,4 +114,16 @@ fn ?PressedOf w = match w:
 ?ResizeOf: fn WindowInput -> ?Extent
 fn ?ResizeOf w = match w:
     Resized x: ? x
+    otherwise: nil
+
+# a press on an input: the focus moves to its place
+?FocusChain: fn Hit -> ?[Path]
+fn ?FocusChain h = if h.kind == Focus: ? h.chain else: nil
+
+?Focused: fn [Path] -> ?[Path]
+fn ?Focused chain = ? chain
+
+?TabOf: fn WindowInput -> ?unit
+fn ?TabOf w = match w:
+    Pressed Tab: ? unit
     otherwise: nil

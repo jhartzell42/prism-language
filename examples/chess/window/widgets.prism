@@ -124,10 +124,13 @@ fn @Window $title, start, @app:
     $sizes <- for text, ignore <- TextsIn $kids:                         # 2/[text]
         Gui.Metrics(text=text)                                           # 2/[text]/0
     $size <- start then !Filter (?ResizeOf !incoming)
-    $?focus <- nil then ?Refocus $placed.hits, $?focus, !incoming
+    $?focus <- nil then (?Focused !Filter (?FocusChain !hit)) <| ((?NextFocus $placed.hits, $?focus) on !Filter (?TabOf !incoming))
     let $placed = PlaceAt (LayRoot (EnvOf $sizes, $?focus), $kids, $size), (Point 0.0, 0.0), (Whole $size)
     Gui.Scene(window=id, draw=$placed.draw)                              # 3
-    Gui.Focus(window=id, at=(?FocusRect $placed.hits, $?focus))          # 4
+    let $?ring = match $?focus:                                          # laid out only when focused
+        ? chain: ?FocusRect $placed.hits, (? chain)
+        nil: nil
+    Gui.Focus(window=id, at=$?ring)                                      # 4
     let !hit = !Filter (?HitAt $placed.hits, !Filter (?PressOf !incoming))
     let !clicks = !Filter (?ClickFor !hit)
     let !keys = !Filter (?RouteKey $?focus, !Filter (?PressedOf !incoming))
