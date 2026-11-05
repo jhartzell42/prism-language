@@ -167,10 +167,11 @@ program's) shrinks.
 
 ## From the cloud GUI run (5 November), after the queue
 
-- **The window library re-lays out the whole tree on every change**
-  (`claude/bugs/window-relayout-every-change.md`). Jimmy: "bare minimum bone simple"
-  refactoring, and the layout *stays* in Prism; an `^Eq` refire-dropping combinator is
-  the only new piece allowed.
+- **A small change to the window still costs more than create1k**
+  (`claude/bugs/window-relayout-every-change.md`, branch `claude-layout`): the window
+  draws only what shows and the table is ten to a hundred times faster, but select lays
+  the window out six times for one change. What is left needs an `^Eq` refire-dropping
+  builtin (doubt DQ, against Appendix B's D-DT) or lowering work on the hosts.
 - **C++ `Union` is quadratic in a fold** (`claude/bugs/cpp-union-big-into-small.md`).
 - **The Cuis table crashes on `▶`; Linux Cuis times measure software painting**
   (`claude/bugs/bench-cuis-latin1-and-software-paint.md`).

@@ -16,9 +16,10 @@ fn IsUi e = match e:
     Ui.*: True
     otherwise: False
 
-# the entries of a document a box claims: its library elements
+# the entries of a document a box claims: its library elements; the document itself when
+# they are all the library's, as they usually are
 Claimed: fn (Path ==> Elem) -> (Path ==> Elem)
-fn Claimed m = Fold (Keys m), {}, \|acc, k| match m[k]:
+fn Claimed m = if Fold (Values m), True, \|all, e| all and IsUi e: m else: Fold (Keys m), {}, \|acc, k| match m[k]:
     ? e if IsUi e: Insert acc, k, e
     otherwise: acc
 

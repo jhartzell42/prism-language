@@ -69,3 +69,30 @@ What the table shows, none of it traced to a cause yet (each becomes a report un
   sit together, select printed nothing, and the run was cut.
 - **A GUI run needs the display awake.** The first attempt hung in GTK for two and a half
   hours at 0% CPU when the display slept; `bench/gui/run.sh` should hold it awake itself.
+
+## After the window fix
+
+`bench/gui/run.sh prism-cpp prism-rust` with `RUNS=5 WARMUP=1`, on the same Mac (load
+average 7 to 26 before, 5 to 7 after, other agents building), before at `3fb9362` and
+after at `a494136` (branch `claude-layout`): medians in ms, peak resident memory in MB.
+Prism only; the window library is the only change (layout.prism, widgets.prism,
+hits.prism, hosting.prism).
+
+| Operation | C++ before | C++ after | Rust before | Rust after |
+|---|---|---|---|---|
+| create1k | 702 (197 MB) | 53 (169 MB) | 515 (289 MB) | 53 (240 MB) |
+| replace1k | 798 (211 MB) | 79 (183 MB) | 1,428 (322 MB) | 92 (271 MB) |
+| update10th | 822 (199 MB) | 78 (171 MB) | 1,642 (305 MB) | 91 (255 MB) |
+| select | 797 (198 MB) | 76 (171 MB) | 1,651 (304 MB) | 88 (254 MB) |
+| swap | 783 (197 MB) | 70 (171 MB) | 1,426 (304 MB) | 79 (255 MB) |
+| remove | 773 (197 MB) | 63 (171 MB) | 1,413 (292 MB) | 73 (254 MB) |
+| create10k | 57,638 (692 MB) | 471 (418 MB) | 29,046 (1,236 MB) | 481 (758 MB) |
+| append1k | 2,718 (254 MB) | 95 (198 MB) | 2,287 (381 MB) | 108 (311 MB) |
+| clear | 102 (198 MB) | 38 (169 MB) | 937 (288 MB) | 51 (240 MB) |
+
+- **Ten to a hundred times faster, and create10k is linear again** (C++ 57.6 s to 0.47 s):
+  the window draws only what shows, and its word set no longer goes through `Union`.
+- **Small changes still cost more than create1k** (select 76 ms against 53 in C++), so
+  `bench/gui/prism/check.sh`'s second check still fails: select retires about 0.97 G
+  instructions against create1k's 0.69 G. GTK selects in 1.1 ms. Where the rest goes is
+  in `claude/bugs/window-relayout-every-change.md`.

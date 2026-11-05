@@ -12,6 +12,7 @@ mod Hosting
 mod Widgets
 mod Layout
 mod Hits
+test mod Tests
 use Window.Ui.*
 use Window.Hosting.*
 use Window.Widgets.*

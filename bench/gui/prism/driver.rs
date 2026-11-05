@@ -5,6 +5,9 @@
 // next `Hooks::settled`: every tick it caused has run and every window has presented.
 //
 //   driver OP RUNS WARMUP     prints `OP RUN MS` per timed run, then `peak_rss_bytes N`
+//   driver OP RUNS WARMUP check
+//                             also counts each step's work and fails the run when it is
+//                             out of proportion (bench/gui/README.md, "The checks")
 //
 // bench/gui/prism/Makefile includes this file at the end of the emitted main.rs, whose own
 // `main` it renames `prism_emitted_main`.
@@ -106,34 +109,158 @@ mod bench_driver {
         None
     }
 
-    /// What the screen must show after an operation's timed step: the rows (one "x"
-    /// each), and a text that must start or end with the marker, if any.
-    fn expected(op: &str) -> (usize, &'static str) {
-        match op {
-            "update10th" => (1000, " !!!"),
-            "select" => (1000, "\u{25b6} "),
-            "remove" => (999, ""),
-            "create10k" => (10000, ""),
-            "append1k" => (2000, ""),
-            "clear" => (0, ""),
-            _ => (1000, ""),
+    /// The table the program should have, as driver.cpp's `Model` follows it: the ids its
+    /// rows were made with, in slot order, the rows Update every 10th row marked, and the
+    /// selected row's position counting from 1 (0 for none).
+    #[derive(Default)]
+    struct Model {
+        next: u64,
+        ids: Vec<u64>,
+        banged: Vec<bool>,
+        selected: usize,
+    }
+
+    impl Model {
+        fn new() -> Model {
+            Model { next: 1, ..Model::default() }
+        }
+
+        fn press(&mut self, p: &Press) {
+            fn add(m: &mut Model, n: usize) {
+                for _ in 0..n {
+                    m.ids.push(m.next);
+                    m.banged.push(false);
+                    m.next += 1;
+                }
+            }
+            if p.row != 0 && p.text == "x" {
+                self.ids.remove(p.row - 1);
+                self.banged.remove(p.row - 1);
+                if self.selected == p.row {
+                    self.selected = 0;
+                } else if self.selected > p.row {
+                    self.selected -= 1;
+                }
+            } else if p.row != 0 {
+                self.selected = p.row;
+            } else if p.text == CREATE_1K || p.text == CREATE_10K {
+                // the new rows take new slots
+                self.ids.clear();
+                self.banged.clear();
+                self.selected = 0;
+                add(self, if p.text == CREATE_1K { 1000 } else { 10000 });
+            } else if p.text == APPEND_1K {
+                add(self, 1000);
+            } else if p.text == CLEAR {
+                self.ids.clear();
+                self.banged.clear();
+                self.selected = 0;
+            } else if p.text == SWAP && self.ids.len() >= 999 {
+                self.ids.swap(1, 998);
+                self.banged.swap(1, 998);
+            } else if p.text == UPDATE {
+                for i in (0..self.banged.len()).step_by(10) {
+                    self.banged[i] = true;
+                }
+            }
         }
     }
 
-    /// Whether the screen shows what the operation asks for; says what it saw when not.
-    fn shows(s: &dyn Session, op: &str) -> bool {
-        let (want, marker) = expected(op);
+    /// The rows the screen shows, top to bottom, as (id, label, the label's y): a row's
+    /// texts are its id, its label (the select button's) and its remove button's "x".
+    fn rows_shown(s: &dyn Session) -> Vec<(String, String, f64)> {
         let mut all = Vec::new();
         for scene in s.shared().scenes.values() {
             texts(&scene.draw, &mut all);
         }
-        let rows = all.iter().filter(|(_, _, t)| t == "x").count();
-        let marked = marker.is_empty() || all.iter().any(|(_, _, t)| t.starts_with(marker) || t.ends_with(marker));
-        if rows == want && marked {
+        let mut rows = Vec::new();
+        for i in 2..all.len() {
+            if all[i].2 == "x" {
+                rows.push((all[i - 2].2.clone(), all[i - 1].2.clone(), all[i - 1].1));
+            }
+        }
+        rows
+    }
+
+    /// Whether the screen shows the table the model says, as driver.cpp's `shows` checks
+    /// it; says what it saw when not.
+    fn shows(s: &dyn Session, m: &Model) -> bool {
+        let rows = rows_shown(s);
+        let h = s.shared().windows.values().next().map_or(0.0, |w| w.size.1);
+        let fail = |why: String| {
+            eprintln!("driver: the screen shows {} rows of {}: {why}", rows.len(), m.ids.len());
+            false
+        };
+        if rows.len() > m.ids.len() {
+            return fail("more than the table has".into());
+        }
+        if !m.ids.is_empty() && rows.is_empty() {
+            return fail("none".into());
+        }
+        if rows.len() < m.ids.len() && rows.last().is_some_and(|r| r.2 < h - 60.0) {
+            return fail("they stop short of the window's bottom edge".into());
+        }
+        for (i, (id, label, _)) in rows.iter().enumerate() {
+            let n = i + 1;
+            if *id != m.ids[i].to_string() {
+                return fail(format!("row {n} is id {id}, not {}", m.ids[i]));
+            }
+            let sel = label.starts_with("\u{25b6} ");
+            if sel != (m.selected == n) {
+                return fail(format!("row {n} {} marked selected", if sel { "is" } else { "is not" }));
+            }
+            if label.ends_with(" !!!") != m.banged[i] {
+                return fail(format!("row {n}'s label is {label:?}"));
+            }
+        }
+        true
+    }
+
+    /// Instructions retired by the whole process so far, every thread's (macOS's
+    /// `proc_pid_rusage`, as driver.cpp's `instructions`).
+    #[cfg(target_os = "macos")]
+    fn instructions() -> u64 {
+        // `struct rusage_info_v4` (sys/resource.h) is 296 bytes, its `ri_instructions` the
+        // 32nd 8-byte word (byte 248, after a 16-byte uuid and 29 counters); the buffer is
+        // that size exactly, 8-aligned.
+        let mut u = [0u64; 37];
+        let r = unsafe { proc_pid_rusage(std::process::id() as i32, 4, u.as_mut_ptr().cast()) };
+        if r != 0 {
+            eprintln!("driver: proc_pid_rusage failed");
+            std::process::exit(1);
+        }
+        u[31]
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn instructions() -> u64 {
+        eprintln!("driver: check counts instructions with macOS's proc_pid_rusage, which this system lacks");
+        std::process::exit(2);
+    }
+
+    #[cfg(target_os = "macos")]
+    unsafe extern "C" {
+        fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut std::ffi::c_void) -> i32;
+    }
+
+    /// `check`'s first check, as driver.cpp's `drawn_inside`.
+    fn drawn_inside(s: &dyn Session) -> bool {
+        let Some((ww, wh)) = s.shared().windows.values().next().map(|w| w.size) else { return true };
+        let mut all = Vec::new();
+        for scene in s.shared().scenes.values() {
+            texts(&scene.draw, &mut all);
+        }
+        let outside = all.iter().filter(|(x, y, _)| *x > ww + 8.0 || *y > wh + 8.0 || *x < -8.0 || *y < -8.0).count();
+        if outside == 0 {
             return true;
         }
-        eprintln!("driver: the screen shows {rows} rows (wanted {want}){}", if marked { "" } else { ", and no marked label" });
+        eprintln!("driver: check: {outside} of the scenes' {} texts are drawn outside the {ww}x{wh} window", all.len());
         false
+    }
+
+    /// `check`'s second check, as driver.cpp's `small_op`.
+    fn small_op(op: &str) -> bool {
+        matches!(op, "update10th" | "select" | "swap" | "remove")
     }
 
     fn peak_rss_bytes() -> i64 {
@@ -157,12 +284,13 @@ mod bench_driver {
 
     pub fn main() {
         let args: Vec<String> = std::env::args().skip(1).collect();
-        let (op, runs, warmup) = match args.as_slice() {
-            [op, r, w] => (op.clone(), r.parse::<usize>().unwrap_or(0), w.parse::<usize>().ok()),
-            _ => (String::new(), 0, None),
+        let (op, runs, warmup, check) = match args.as_slice() {
+            [op, r, w] => (op.clone(), r.parse::<usize>().unwrap_or(0), w.parse::<usize>().ok(), false),
+            [op, r, w, c] if c == "check" => (op.clone(), r.parse::<usize>().unwrap_or(0), w.parse::<usize>().ok(), true),
+            _ => (String::new(), 0, None, false),
         };
         let (Some(one), Some(warmup)) = (script(&op), warmup) else {
-            eprintln!("usage: driver OP RUNS WARMUP (OP: create1k replace1k update10th select swap remove create10k append1k clear)");
+            eprintln!("usage: driver OP RUNS WARMUP [check] (OP: create1k replace1k update10th select swap remove create10k append1k clear)");
             std::process::exit(2);
         };
         if runs == 0 {
@@ -182,17 +310,38 @@ mod bench_driver {
         let mut waiting = false;
         let mut timing = false;
         let mut t0 = Instant::now();
+        let (mut i0, mut setup) = (0u64, 0u64);
+        let mut model = Model::new();
         let failed = std::rc::Rc::new(std::cell::Cell::new(false));
         let failed_in = failed.clone();
         let hooks = Hooks {
             settled: Some(Box::new(move |s: &mut dyn Session| {
-                if waiting && timing {
-                    run += 1;
-                    println!("{op} {run} {:.3}", t0.elapsed().as_secs_f64() * 1e3);
-                    if !shows(s, &op) {
-                        failed_in.set(true);
-                        s.exit(1);
-                        return;
+                if waiting {
+                    let work = if check { instructions() - i0 } else { 0 };
+                    if timing {
+                        run += 1;
+                        println!("{op} {run} {:.3}", t0.elapsed().as_secs_f64() * 1e3);
+                        if !shows(s, &model) {
+                            failed_in.set(true);
+                            s.exit(1);
+                            return;
+                        }
+                    }
+                    if check {
+                        let p = &steps[next - 1];
+                        println!("check {op} step {next} ({} row {}): {work} instructions", p.text, p.row);
+                        if !timing && p.text == CREATE_1K {
+                            setup = work;
+                        }
+                        let small = !timing || !small_op(&op) || work * 10 < setup;
+                        if !small {
+                            eprintln!("driver: check: {op} retired {work} instructions, not under a tenth of Create 1,000 rows' {setup}");
+                        }
+                        if !drawn_inside(s) || !small {
+                            failed_in.set(true);
+                            s.exit(1);
+                            return;
+                        }
                     }
                 }
                 waiting = false;
@@ -212,6 +361,10 @@ mod bench_driver {
                 };
                 waiting = true;
                 timing = p.timed;
+                model.press(&p);
+                if check {
+                    i0 = instructions();
+                }
                 t0 = Instant::now();
                 s.input(&window, gui::press(x, y));
             })),
