@@ -3,7 +3,7 @@
 # `Twice`, which calls `F` twice, so three calls and four cycles. Written for prismc's back
 # end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Inc: unbounded fn Nat -> Nat
 fn Inc n = n + 1

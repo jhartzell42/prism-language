@@ -1,3 +1,6 @@
+emit r
+use App.*
+
 check steps_agree:
     Step boot, (Add 3) => Vm(pc=1, regs=Regs(acc=3, x=5), steps=1)
     (Step boot, (Add 3)) == (ByHand boot, (Add 3))

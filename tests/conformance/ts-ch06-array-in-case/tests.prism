@@ -1,4 +1,6 @@
 # The payload list pattern's tests: declarations of ts-ch06-array-in-case.prism.
+emit Ui.*
+use App.*
 
 test a_list_in_a_case_binds_its_elements, @shown:
     build

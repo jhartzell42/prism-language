@@ -4,7 +4,7 @@
 # node's with `->` (gap FA of prismc/README.md). Written for prismc's back end; subject to
 # change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 type Note = record:

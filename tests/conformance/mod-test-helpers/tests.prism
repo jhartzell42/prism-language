@@ -1,4 +1,7 @@
 # A test module's helpers: a type and a function, for the checks alone.
+emit Ui.*
+use App.*
+
 type Pair = record:
     left: Nat
     right: Nat

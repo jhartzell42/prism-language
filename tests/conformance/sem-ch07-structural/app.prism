@@ -7,7 +7,7 @@
 # document one tick behind, and once in a tick where both move. Written for prismc's back
 # end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 @child: @unit

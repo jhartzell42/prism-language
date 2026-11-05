@@ -7,7 +7,7 @@
 # new one, and a label over `Size $doc` shows the new size one tick after the structure
 # changed. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 @child: @unit

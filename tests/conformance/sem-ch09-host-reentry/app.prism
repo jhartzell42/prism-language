@@ -4,7 +4,7 @@
 # input once a tick, so the owner's hold takes one write (Semantics R3). Written for
 # prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 ?Echo: fn Path, Element o, !Click -> ?@o

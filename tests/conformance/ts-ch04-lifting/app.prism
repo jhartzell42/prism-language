@@ -1,7 +1,7 @@
 # Type System ch. 4: the rows of the lifting table, one program each, and `match` and
 # `if` as lifting.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @diamond: @unit
 @diamond:

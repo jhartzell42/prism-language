@@ -1,7 +1,7 @@
 # Conformance ch. 1, "A journal under construction one tick late": each page's file writes
 # a footer as the page turns. `Write` is the Fs library's request.
 emit Ui.* | Fs.*
-test mod tests
+test mod Tests
 use Fs.*
 
 PageFile: fn Nat -> Text

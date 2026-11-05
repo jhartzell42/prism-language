@@ -1,7 +1,7 @@
 # Semantics ch. 4, "The switch hears the birth": the program and its test as the book
 # writes them; the transcript in sem-ch04-birth.expected is the book's.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @birth: @unit
 @birth:

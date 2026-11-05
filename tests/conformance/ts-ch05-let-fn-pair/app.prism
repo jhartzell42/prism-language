@@ -2,7 +2,7 @@
 # Rust names would be the same, `digits` and `Digits`. Written for prismc's back end. Work in
 # progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 let digits = "0123456789"
 

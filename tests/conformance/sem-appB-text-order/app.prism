@@ -2,6 +2,6 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 
 # A map's keys come in the texts' order.
-test mod tests
+test mod Tests
 Sorted: fn [Text] -> [Text]
 fn Sorted ts = Keys (Fold ts, {}, \|m, t| Insert m, t, True)

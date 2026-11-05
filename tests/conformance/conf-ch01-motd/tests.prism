@@ -1,3 +1,7 @@
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
 test reads_once_at_the_start, @motd:
     build
         => expect Ui.Label(text="(reading...)")

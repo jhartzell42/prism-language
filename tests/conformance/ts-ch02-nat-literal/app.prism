@@ -2,7 +2,7 @@
 # `Nat` (prismc/README.md, pick CH), in a clause and in a `match`. Written for prismc's
 # back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Name: fn Nat -> Text
 fn Name 0 = "zero"

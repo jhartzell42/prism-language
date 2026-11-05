@@ -4,13 +4,13 @@ use Counter.*
 
 type Run = record:
     from: Nat
-    times: Nat
+    twice: Bool
 derive ^Eq, ^Show
 
 Stepped: fn Run -> Nat
-fn Stepped r = Fold (Range0 r.times), r.from, \|acc, ignore| Step acc
+fn Stepped r = if r.twice: Step (Step r.from) else: Step r.from
 
 check steps:
     Step 3 => 6
-    Stepped Run(from=1, times=3) => 8
-    Show Run(from=1, times=2) => "Run(from=1, times=2)"
+    Stepped Run(from=1, twice=True) => 4
+    Show Run(from=1, twice=False) => "Run(from=1, twice=False)"

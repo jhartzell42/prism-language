@@ -1,4 +1,6 @@
 # The generalized local let's tests: declarations of ts-ch05-let-generic.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
 
 test each_use_its_own_types, @shown:
     build

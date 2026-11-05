@@ -3,7 +3,7 @@
 # parameter `K` beside a plain local `k`, which Rust's case would make one name. Written
 # for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Twice: u fn Nat, (u fn Nat -> Nat) -> Nat
 fn Twice x, F = F (F x)

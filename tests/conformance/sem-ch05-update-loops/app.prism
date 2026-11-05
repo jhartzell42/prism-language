@@ -2,7 +2,7 @@
 # entry and `ix`) and over a map (key and entry), and a `match` whose arms have guards
 # and literals. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Tally: fn [Nat], (Text ==> Nat) -> Text
 fn Tally xs, m = update "":

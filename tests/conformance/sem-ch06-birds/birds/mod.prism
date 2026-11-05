@@ -1,6 +1,6 @@
 # Semantics ch. 6: the library half of the bird counter, as the book writes it.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui
 
 type Species = choice:

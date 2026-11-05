@@ -2,7 +2,7 @@
 # program a static widget compiles to one class from. Its tests are in half-counter.prismtest.
 # Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @halfcounter: @unit
 @halfcounter:

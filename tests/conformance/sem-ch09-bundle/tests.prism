@@ -1,4 +1,6 @@
 # The bundle's tests: declarations of sem-ch09-bundle.prism (Semantics chapter 6).
+emit Ui.* | Pad.*
+use App.*
 
 test doors_answer_in_parts, @doors:
     with Pad.Door(name="front") = "door 1", build

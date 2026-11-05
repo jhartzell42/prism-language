@@ -1,7 +1,7 @@
 # Semantics Appendix B, Text: `?Step` walks a text one character at a time, `nil` at
 # the end; the walk's measure is what is left of the text (Semantics ch. 7).
 # Written by Claude on the claude-self-hosting branch; subject to change.
-test mod tests
+test mod Tests
 
 let sample = "héllo→世界"
 

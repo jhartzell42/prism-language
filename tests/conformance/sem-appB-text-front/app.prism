@@ -1,6 +1,6 @@
 # Semantics Appendix B, Text: `Front` is the cursor at a text's start.
 # Written by Claude on the claude-self-hosting branch; subject to change.
-test mod tests
+test mod Tests
 
 let sample = "héllo→世界"
 

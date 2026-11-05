@@ -1,6 +1,8 @@
 # `Birds`' test module (claude/modules-style-pass.md): the library's own check and test, which
 # stood inline in birds.prism; only `prism test` and `prism check` read it.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+use Birds.*
 
 check calls:
     Call Heron => "fraaank"

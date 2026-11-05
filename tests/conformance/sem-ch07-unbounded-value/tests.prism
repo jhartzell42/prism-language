@@ -1,5 +1,7 @@
 # Audited: Run's entry, Twice, and Inc twice through F are the four cycles; 5 + 2 = 7.
 # The unbounded value's tests: declarations of sem-ch07-unbounded-value.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
 
 test a_function_value_is_a_call_per_cycle, @Counted 5:
     build

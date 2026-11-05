@@ -1,4 +1,6 @@
 # `Before`: declarations of sem-appB-text-before.prism.
+emit r
+use App.*
 
 check before:
     Before (Into sample, 0) => ""

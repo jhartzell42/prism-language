@@ -3,7 +3,7 @@
 # and a color-polymorphic function (`u fn`, D8) called with a bounded closure and with an
 # unbounded one. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 type Shape = choice:
     Circle Nat

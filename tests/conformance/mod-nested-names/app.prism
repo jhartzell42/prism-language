@@ -7,7 +7,7 @@
 emit Ui.*
 mod A
 mod Types
-test mod tests
+test mod Tests
 use Ui
 
 @main: @unit

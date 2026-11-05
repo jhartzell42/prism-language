@@ -6,7 +6,7 @@
 # event fires on every click). Written for prismc's back end. Work in progress, subject to
 # change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 @halves: @unit

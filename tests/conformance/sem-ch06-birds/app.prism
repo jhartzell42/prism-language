@@ -2,7 +2,7 @@
 # line, using `Birds.*`.
 emit Ui.*
 mod Birds
-test mod tests
+test mod Tests
 use Birds.*
 use Ui
 

@@ -1,4 +1,6 @@
 # `?ParseNat` past 18 digits and past 64 bits: declarations of sem-appB-parse-nat.prism.
+emit r
+use App.*
 
 check parse_nat:
     Parsed "0" => "0"

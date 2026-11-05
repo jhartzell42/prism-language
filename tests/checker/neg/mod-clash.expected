@@ -1,5 +1,0 @@
-tests/checker/neg/mod-clash/app.prism:4: error[mod-clash]: `mod Shapes` and `mod shapes` in one header: the section `shapes.prism` and the submodule `shapes/` have one name
-    mod Shapes
-    ^^^^^^^^^^
-  fix: rename the section or the submodule
-1 error

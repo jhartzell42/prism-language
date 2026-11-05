@@ -1,6 +1,6 @@
 # Semantics ch. 4, `given:`; ch. 10's `~` sharing it (round 47 GV); decisions.md D11 and
 # D15: a failed guard under a `~` name gives up into `Prelude.Unmet` with its source text.
-test mod tests
+test mod Tests
 use Fs.*
 
 type Cabin = record:

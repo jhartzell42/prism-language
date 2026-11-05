@@ -60,7 +60,7 @@ fn CompileProgram job:
         let pp = ParseProgram read
         if pp.errors != "": Compiled(files=[[]], failed=True, report="{pp.errors}parse errors")
         else:
-            let pre = TreeDeclDiags pp.srcs, pp.trees, pp.shown
+            let pre = TreeDeclDiags pp
             let report = CheckProgram pp.srcs, (Each pp.trees, \|t| WithoutTests t), [[]], pp.shown, True, False, pre
             if report.errors > 0: Compiled(files=[[]], failed=True, report="{report.text}{report.errors} error{if report.errors == 1: "" else: "s"}")
             else:

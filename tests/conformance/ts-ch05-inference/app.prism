@@ -4,7 +4,7 @@
 # A choice holding a record that holds a function is not plain data, so it gets no
 # `ToPod`. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 ?FirstOver: fn [Nat], Nat -> ?Nat
 fn ?FirstOver xs, n = Fold xs, nil, \|?found, x| match ?found:

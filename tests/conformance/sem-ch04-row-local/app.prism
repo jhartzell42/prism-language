@@ -2,7 +2,7 @@
 # widget's parameter, and a `rebuild` choosing between two clauses, one binding a field of
 # an error record. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @Tagged: fn Text -> @unit
 fn @Tagged prefix:

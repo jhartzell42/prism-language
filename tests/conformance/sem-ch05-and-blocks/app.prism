@@ -1,6 +1,6 @@
 # Semantics ch. 5: the toy machine's `Step` three ways (constructors, then the `&` block),
 # `Run` with fuel, `Idents` over a cursor, and union-find over a `Buffer`.
-test mod tests
+test mod Tests
 type Regs = record:
     acc: Int
     x: Int

@@ -1,5 +1,7 @@
 # Audited: Go's entry, Run entered, Id (through the record's field), the lambda given to Id entered and Grow are the five cycles, by D6 as ruled (a call of an unbounded lambda is a cycle point); Run gives K the 4 Wrap closed over, and Grow 4 = 5.
 # The pipe's tests: declarations of sem-ch07-pipe-record.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
 
 test the_pipe_runs, @Piped 4:
     build

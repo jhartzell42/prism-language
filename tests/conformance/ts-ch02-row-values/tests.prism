@@ -1,4 +1,6 @@
 # The row values' tests: declarations of ts-ch02-row-values.prism (Semantics chapter 6).
+emit Ui.* | Pad.*
+use App.*
 
 test marks_are_data, @sketch:
     build

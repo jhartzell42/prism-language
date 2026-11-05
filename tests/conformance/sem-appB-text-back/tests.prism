@@ -1,4 +1,6 @@
 # `Back`: declarations of sem-appB-text-back.prism.
+emit r
+use App.*
 
 check back:
     At (Back sample) => 15

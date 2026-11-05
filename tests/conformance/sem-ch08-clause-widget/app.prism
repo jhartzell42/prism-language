@@ -2,7 +2,7 @@
 # its plain arguments (`@Note ?title, text`, as prismc's own `@WriteOut`). Written for
 # prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @Note: fn ?Text, Text -> @unit
 fn @Note nil, text:

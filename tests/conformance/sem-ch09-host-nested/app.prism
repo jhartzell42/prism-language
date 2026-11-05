@@ -6,7 +6,7 @@
 # the leaf hears it in the same tick. Written for prismc's back end. Work in progress,
 # subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 @leaf: @unit

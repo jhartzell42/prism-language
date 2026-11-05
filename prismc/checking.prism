@@ -24,7 +24,7 @@ fn CheckFiles job:
         let pp = ParseProgram read
         if pp.errors != "": Outcome(text="{pp.errors}parse errors\n", failed=True, report="{pp.errors}parse errors")
         else:
-            let pre = Append (WarningDiags pp.srcs, read.warnings), (TreeDeclDiags pp.srcs, pp.trees, pp.shown)
+            let pre = Append (WarningDiags pp.srcs, read.warnings), (TreeDeclDiags pp)
             # tests are checked by running them, and a `check` line's pattern is the Test
             # World's to read, as in a compile (pick PT)
             let checked = Each pp.trees, \|t| WithoutTests t

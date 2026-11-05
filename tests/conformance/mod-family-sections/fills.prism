@@ -1,3 +1,0 @@
-# The section `fills`: the other tag of `Ink`.
-tag Ink.Fill of Ink:
-    width: Nat

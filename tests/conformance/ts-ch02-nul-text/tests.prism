@@ -1,4 +1,6 @@
 # The NUL text's tests: declarations of ts-ch02-nul-text.prism.
+emit Ui.*
+use App.*
 
 test a_nul_is_a_character, @shown:
     build

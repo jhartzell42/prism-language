@@ -1,8 +1,12 @@
-# A test module that declares a tag.
+# A test module that declares a family of its own and a tag of it.
 emit r
 use App.*
 
-tag Ink.Dot of Ink
+type Mark = row
+derive ^Eq, ^Show
 
-check inks:
-    Ink.Dot == Ink.Dot => True
+tag Mark.Dot of Mark
+
+check marks:
+    Mark.Dot == Mark.Dot => True
+    Total 1, 2 => 3

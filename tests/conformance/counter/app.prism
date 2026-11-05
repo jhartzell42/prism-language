@@ -3,7 +3,7 @@
 # `@Window`, since the canvas World answers only `Gui` (README). Its tests are in
 # counter.prismtest. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @counter: @unit
 @counter:

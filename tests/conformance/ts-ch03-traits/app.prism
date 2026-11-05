@@ -1,6 +1,6 @@
 # Type System ch. 3: `derive`, a module's own `impl ^Show`, bounds, a trait of a
 # program's own with a default method, and the three built in.
-test mod tests
+test mod Tests
 type Sq = record:
     file: Nat
     rank: Nat

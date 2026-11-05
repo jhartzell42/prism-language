@@ -1,4 +1,4 @@
-# Derived by hand: each qualified name resolves to the module its full path names, at any depth (Semantics ch. 2, "Qualified names and families"), and the arithmetic follows: Total 1 is 3 + 1 + 4 + 5.
+# Derived by hand: each qualified name resolves to the module its full path names, at any depth (Semantics ch. 2, "Qualified names and families"), and the arithmetic follows: Total 1 is 3 + 1 + 4 + 4.
 check nested_names
 1: ok
 2: ok

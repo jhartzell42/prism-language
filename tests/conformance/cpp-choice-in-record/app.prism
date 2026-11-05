@@ -4,7 +4,7 @@
 # the choice's `==` is declared with its handle). Written for prismc's back end; subject
 # to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 type Spec = record:

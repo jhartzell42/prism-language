@@ -1,7 +1,7 @@
 # Conformance ch. 1's opening program: the message of the day, read once when it starts.
 # `ShowResponse` is Semantics ch. 8's.
 emit Ui.* | Fs.*
-test mod tests
+test mod Tests
 use Fs.*
 
 ShowResponse: fn ~Contents -> Text

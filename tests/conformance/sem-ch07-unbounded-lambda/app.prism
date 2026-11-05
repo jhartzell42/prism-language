@@ -3,7 +3,7 @@
 # unbounded function from an unbounded function is a cycle point (D6), a lambda's body
 # included. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Inc: unbounded fn Nat -> Nat
 fn Inc n = n + 1

@@ -3,7 +3,7 @@
 emit Ui.*
 mod Left
 mod Right
-test mod tests
+test mod Tests
 use Left
 use Right
 

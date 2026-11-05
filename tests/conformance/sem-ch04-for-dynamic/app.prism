@@ -3,7 +3,7 @@
 # the rows' results by key, and a new row moves it. Written for prismc's back end. Work
 # in progress, subject to change.
 emit Ui.* | Fs.*
-test mod tests
+test mod Tests
 use Fs.*
 
 Keyed: fn [Text] -> (Text ==> unit)

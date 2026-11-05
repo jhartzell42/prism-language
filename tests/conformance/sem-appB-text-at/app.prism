@@ -1,6 +1,6 @@
 # Semantics Appendix B, Text: `At` is a cursor's byte index; cursors compare by it.
 # Written by Claude on the claude-self-hosting branch; subject to change.
-test mod tests
+test mod Tests
 
 let sample = "héllo→世界"
 

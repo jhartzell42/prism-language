@@ -3,7 +3,7 @@
 # Text; `Second`, whose first parameter is unused, at (Text, Nat) and at (Nat, Text).
 # Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Describe: fn Nat -> Text
 fn Describe n:

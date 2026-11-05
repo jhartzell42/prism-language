@@ -1,6 +1,6 @@
 # Conformance ch. 1, "The transcript": the counter.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @counter:
     !inc <- Ui.Button(label=$"Increment")

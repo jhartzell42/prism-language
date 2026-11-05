@@ -109,7 +109,7 @@ fn TestOnlyReached srcs, defs, refs:
         let byKey = Fold defs, {}, \|m, d| Insert m, d.qk, d
         Fold refs, [[]], \|acc, ((k, rs))| match byKey[k]:
             ? d: if (DefRole srcs, d) == "test": acc else: Fold rs, acc, \|a, r| match inTest[r]:
-                ? t: Push a, CDiag(code="test-only-reached", file=d.file, span=d.span, message="`{d.name}` names `{t.name}`, which a test module declares ({LastPathPart (SegAt (Or srcs[t.file], (MkSrc "", "")), t.span.start).path}): only test modules name it", fix="move `{t.name}` out of the test module, or `{d.name}` into one")
+                ? t: Push a, CDiag(code="test-only-reached", file=d.file, span=d.span, message="`{d.name}` names `{t.qk}`, which a test module declares ({LastPathPart (SegAt (Or srcs[t.file], (MkSrc "", "")), t.span.start).path}): only test modules name it", fix="move `{t.qk}` out of the test module, or `{d.name}` into one")
                 nil: a
             nil: acc
 

@@ -4,7 +4,7 @@
 # quantified at it, so an inline supplier answers each tag at that tag's own output, as a
 # named one with a signature does (tests/checker/pos/supplier-named).
 emit Ui.* | Fs.*
-test mod tests
+test mod Tests
 use Fs.*
 
 Shown: fn ~Contents -> Text

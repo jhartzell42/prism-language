@@ -2,7 +2,7 @@
 # closure's parameters borrowed, and an `update` local that starts empty and is pushed
 # to. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Weigh: fn [((Text, Nat))] -> Text
 fn Weigh items:

@@ -8,7 +8,7 @@
 # count beside the label as the tick opened, and the moved label in the tick after.
 # Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 @child: @unit

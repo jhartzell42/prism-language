@@ -1,4 +1,7 @@
 # Audited: the child's label shows the host's hold at the build (its first value, read in the birth tick); a click on the host's button changes the hold in its tick, and the child hears the new text as the next tick's input, the owed tick.
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
 
 test a_dynamic_answer_pushes_next_tick, @host:
     build

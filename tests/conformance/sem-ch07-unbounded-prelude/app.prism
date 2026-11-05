@@ -2,7 +2,7 @@
 # with it, so each call of `Double` is a cycle point (D6), three calls and four cycles.
 # Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Double: unbounded fn Nat -> Nat
 fn Double n = n + n

@@ -4,7 +4,7 @@
 # caller's next positions (transparent, Semantics ch. 8) and each application has its own
 # holds. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @Titled: fn Text, @unit -> @unit
 fn @Titled title, @inner:

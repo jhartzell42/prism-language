@@ -1,4 +1,7 @@
 # The chorus of cpp-trait-across-modules: declarations of cpp-trait-across-modules.prism.
+emit Ui.*
+use App.*
+use Aloud.*
 
 test the_impl_reaches_the_generic_function, @sung:
     build

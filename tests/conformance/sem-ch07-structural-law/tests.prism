@@ -1,4 +1,7 @@
 # The structural dynamics' law: declarations of sem-ch07-structural-law.prism (Semantics chapter 7).
+emit Ui.*
+use App.*
+use Ui.*
 
 test the_event_tick_samples_the_old_value, @host:
     build

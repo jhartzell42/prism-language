@@ -1,3 +1,7 @@
+emit r
+use App.*
+use Fs.*
+
 check quotes:
     ?Quote cabins, "Oak", 4, 2 => ? 300
     ?Quote cabins, "Birch", 4, 2 => nil

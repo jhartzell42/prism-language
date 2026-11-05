@@ -1,6 +1,6 @@
 # The Compiler book, ch. 3: half the counter, which has no merge.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @halfcounter:
     !increment <- Ui.Button(label=$"Increment")

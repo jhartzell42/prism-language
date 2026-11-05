@@ -10,7 +10,7 @@
 # after its key is gone, and reads its last value. Written for prismc's back end. Work in
 # progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 @entries: @unit

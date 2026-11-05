@@ -2,7 +2,7 @@
 # result is its child's, and the World hears the root's value at the build and whenever
 # it moves. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @Wrap: fn @a -> @a
 fn @Wrap @child:

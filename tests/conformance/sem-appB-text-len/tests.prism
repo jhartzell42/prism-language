@@ -1,4 +1,6 @@
 # `Len` counts bytes: declarations of sem-appB-text-len.prism.
+emit r
+use App.*
 
 check len:
     Len "" => 0

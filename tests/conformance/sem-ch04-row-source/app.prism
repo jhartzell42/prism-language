@@ -5,7 +5,7 @@
 # answer to that place. Every row reads the source's new value in the tick of the write
 # (gap SR: the source computed once per write, not per read).
 emit Ui.* | Fs.*
-test mod tests
+test mod Tests
 use Fs.*
 
 Shown: fn ~Contents -> Text

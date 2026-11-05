@@ -36,7 +36,7 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         let family = Dotted (Take t.name.path, (Dec (Len t.name.path)))
         let tags = Or g.families[family], [[]]
         let owner = Or g.famOwner[family], info.name
-        let st2 = if owner != info.name: Err st, "collision", d.span, "the family `{family}` is declared in `{owner}`; every tag of a family is declared in its family's module" else: st
+        let st2 = if owner != info.name: Err st, "collision", d.span, "the family `{family}` is declared in {if owner == "": "the root" else: "`{owner}`"}; every tag of a family is declared in its family's module" else: st
         let isElem = match t.ofType.kind:
             TName n, ignore: (Dotted n.path) == "Element"
             otherwise: False
@@ -75,7 +75,7 @@ fn BuildTables g, st, m = match g.mods[m]:
         let s0 = update st:
             &_.file <= info.file
         let s1 = Fold info.uses, s0, \|s, ((u, ignore))| if (HasKey g.mods, u) or u == "Prelude": s else: Err s, "unknown-name", info.tree.span, "no module `{u}` among the program's files"
-        let starred = Filter (Each info.uses, \|((u, star))| if star: u else: ""), \|u| u != "" and u != m
+        let starred = Fold info.uses, [[]], \|acc, ((u, star))| if star and u != m: Push acc, u else: acc
         let sources = AddText (Append [[m]], starred), "Prelude"
         let vals = Fold sources, {}, \|acc, src| BareValuesOf g, src, acc
         let tys = Fold sources, {}, \|acc, src| BareTypesOf g, src, acc
@@ -206,9 +206,9 @@ fn ResolveValue g, m, n:
         else: if HasKey g.ctors, name: ((? name, ""))
         else: ((nil, "unknown"))
     else:
-        let qual = Dotted (Take n.path, (Dec (Len n.path)))
+        let qual = QualModule g, (Take n.path, (Dec (Len n.path)))
         let last = Or (?Last n.path), ""
-        let qk = "{qual}.{marks}{last}"
+        let qk = QualKey qual, "{marks}{last}"
         if (Len marks) == 0 and (HasKey g.tags, (Dotted n.path)): ((? (Dotted n.path), "tag"))
         else: if (HasKey g.vals, qk) or (HasKey g.ctors, qk): ((? qk, ""))
         else: ((nil, "unknown"))
@@ -221,7 +221,7 @@ fn ResolveType g, m, path:
         else: if (Len keys) > 1: ((? (OwnFirst m, keys), "collision"))
         else: ((nil, "unknown"))
     else:
-        let qk = Dotted path
+        let qk = QualKey (QualModule g, (Take path, (Dec (Len path)))), (Or (?Last path), "")
         if HasKey g.types, qk: ((? qk, "")) else: ((nil, "unknown"))
 
 # Of two candidates for a bare name, the one checking goes on with after reporting the
@@ -237,5 +237,5 @@ fn ?ResolveTrait g, m, path:
         let keys = Or (Or g.bareTraits[m], {})[Or path[0], ""], [[]]
         keys[0]
     else:
-        let qk = Dotted path
+        let qk = QualKey (QualModule g, (Take path, (Dec (Len path)))), (Or (?Last path), "")
         if HasKey g.traits, qk: ? qk else: nil

@@ -165,9 +165,20 @@ fn Camel name:
 let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache", "Case", "Cell", "Clickable", "Collector", "Cursor", "Cx", "Defer", "Demand", "Document", "Done", "DynShow", "Dynamic", "Edit", "Err", "Event", "F64", "Fallible", "Fields", "Finishing", "Fn", "Forward", "FromPod", "Gathered", "Gen", "Handle", "Hold", "Host", "HostOf", "HostRow", "Inert", "IsShared", "IsValue", "Job", "JobRef", "Later", "Link", "List", "Live", "MakeNew", "MutElements", "Nanos", "NeverEvent", "NewSnapshot", "Node", "NodeRef", "None", "Ok", "OkUnit", "Option", "Outcome", "Panic", "Patch", "Path", "Pattern", "Pod", "Port", "Pos", "Printer", "Program", "Rc", "ReadyMap", "ReadyState", "RefCell", "Report", "Request", "Result", "Row", "Rows", "Runtime", "Scope", "Segment", "ShowRef", "ShownText", "Sink", "Slot", "Snapshot", "Some", "Stamped", "String", "Subscribed", "Subscriber", "Supplied", "Supplier", "TestWorld", "Tick", "TickIn", "TickOut", "ToPod", "Unexpected", "Unit", "Vec", "Weak", "World", "XorShift"]]
 
 # A Prism module's Rust module, by its path from the crate: `Check.Env` is `check::env`
-# (claude/modules-style-pass.md), the root `program`.
+# (claude/modules-style-pass.md), the root `program`. The C++ target's namespaces and
+# directories are the same path, so a segment that is a C++ keyword takes a `_` too
+# (`Shapes.Switch` is `shapes::switch_` in both).
 RustModName: fn Text -> Text
-fn RustModName m = if m == "": "program" else: Join (Each (Split m, "."), \|s| Snake s), "::"
+fn RustModName m = if m == "": "program" else: Join (Each (Split m, "."), \|s| ModSegment s), "::"
+
+ModSegment: fn Text -> Text
+fn ModSegment s:
+    let n = Snake s
+    if HasText cppKeywords, n: "{n}_" else: n
+
+# The C++ keywords and the names the C++ standard library reaches bare (`errno`, `assert`).
+let cppKeywords = [["explicit", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool", "case", "catch", "char", "char8_t", "char16_t", "char32_t", "class", "compl", "concept", "const_cast", "consteval", "constexpr", "constinit", "co_await", "co_return", "co_yield", "decltype", "default", "delete", "double", "dynamic_cast", "explicit", "export", "extern", "float", "friend", "goto", "inline", "int", "long", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected", "public", "register", "reinterpret_cast", "requires", "short", "signed", "sizeof", "static_assert", "static_cast", "switch", "template", "this", "thread_local", "throw", "try", "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "xor", "xor_eq", "errno", "assert", "NULL", "EOF", "stdin", "stdout", "stderr", "major", "minor"]]
+
 
 # The Rust path of a module's item `name` as written in module `here`: another module's
 # from the crate (`crate::check::env::BuildG`), so a submodule of the same name as a

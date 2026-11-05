@@ -14,4 +14,4 @@ test counting_up, @main:
 check captions:
     Caption 2 => "4 steps"
     App.Caption 1 => "2 steps"
-    Caption (Stepped Run(from=1, times=2)) => "8 steps"
+    Caption (Stepped Run(from=1, twice=True)) => "8 steps"

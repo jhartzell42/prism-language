@@ -1,4 +1,6 @@
 # `?StepBack`: declarations of sem-appB-text-step-back.prism.
+emit r
+use App.*
 
 check step_back:
     WalkBack sample => [['界', '世', '→', 'o', 'l', 'l', 'é', 'h']]

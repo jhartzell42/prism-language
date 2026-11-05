@@ -4,7 +4,7 @@
 # other than the first name places too. Written for prismc's back end. Work in progress,
 # subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Card: fn Nat, ?Text, Text -> Text
 fn Card 0, (?note), body = "[empty] {body}{Or ?note, ""}"

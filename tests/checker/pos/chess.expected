@@ -1,0 +1,29 @@
+examples/chess/app.prism:9: warning[section]: `test mod tests` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    test mod tests
+    ^^^^^^^^^^^^^^
+  fix: write `test mod Tests`, and give tests.prism a header of its own
+examples/chess/rules/mod.prism:8: warning[section]: `test mod tests` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    test mod tests
+    ^^^^^^^^^^^^^^
+  fix: write `test mod Tests`, and give tests.prism a header of its own
+examples/chess/window/mod.prism:10: warning[section]: `mod ui` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod ui
+    ^^^^^^
+  fix: write `mod Ui`, and give ui.prism a header of its own
+examples/chess/window/mod.prism:11: warning[section]: `mod hosting` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod hosting
+    ^^^^^^^^^^^
+  fix: write `mod Hosting`, and give hosting.prism a header of its own
+examples/chess/window/mod.prism:12: warning[section]: `mod widgets` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod widgets
+    ^^^^^^^^^^^
+  fix: write `mod Widgets`, and give widgets.prism a header of its own
+examples/chess/window/mod.prism:13: warning[section]: `mod layout` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod layout
+    ^^^^^^^^^^
+  fix: write `mod Layout`, and give layout.prism a header of its own
+examples/chess/window/mod.prism:14: warning[section]: `mod hits` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod hits
+    ^^^^^^^^
+  fix: write `mod Hits`, and give hits.prism a header of its own
+no errors

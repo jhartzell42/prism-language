@@ -3,7 +3,7 @@
 # `010` as octal and has no `0o`. Written by Claude on the claude-self-hosting branch;
 # subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @shown: @unit
 @shown:

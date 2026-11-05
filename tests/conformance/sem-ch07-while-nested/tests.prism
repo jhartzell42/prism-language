@@ -1,5 +1,7 @@
 # Audited: Top turns a cycle a test of its condition (5 ticks for 3), and InIf and Nested must count the same way (gap LP).
 # The nested loops' tests: declarations of sem-ch07-while-nested.prism (Semantics chapter 7).
+emit Ui.*
+use App.*
 
 test a_top_loop_turns_a_cycle_each, @TopShown 3:
     build

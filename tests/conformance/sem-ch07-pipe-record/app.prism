@@ -4,7 +4,7 @@
 # a `Start`'s function parameters are `Start`s whatever color the lambda's own type gives
 # them. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 type Pipe = record:
     run: unbounded fn Nat, (unbounded fn Nat -> Nat) -> Nat

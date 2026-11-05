@@ -1,7 +1,7 @@
 # Semantics Appendix B, Widgets and Events: `@Defer` (D6), the holds of the prelude
 # written in Prism (`@Once`, `@AfterFirst`, `@Numbered`), `@Machine`, `!MergeAll`.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Tally: fn Nat, Nat -> ((Nat, ?Nat))
 fn Tally total, n = ((total + n, if total + n > 4: ? (total + n) else: nil))

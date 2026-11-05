@@ -11,4 +11,4 @@ check nested_names:
     Shapes.Flat.Area 3 => 9
     Shapes.Static.Sides Shapes.Static.Triangle => 3
     Shapes.Switch.Pick True, 1 => 4
-    Shapes.Total 1 => 13
+    Shapes.Total 1 => 12

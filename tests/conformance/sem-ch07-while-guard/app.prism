@@ -4,7 +4,7 @@
 # turns are one unit of work (D6).
 # Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Count: unbounded fn Nat -> Nat
 fn Count n = update 0:

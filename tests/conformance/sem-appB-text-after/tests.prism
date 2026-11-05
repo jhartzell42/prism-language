@@ -1,4 +1,6 @@
 # `After`: declarations of sem-appB-text-after.prism.
+emit r
+use App.*
 
 check after:
     After (Into sample, 0) => "héllo→世界"

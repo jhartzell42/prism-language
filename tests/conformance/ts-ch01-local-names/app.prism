@@ -2,7 +2,7 @@
 # scope, and a local named as a function of the module (`kind` beside `Kind`). Written
 # for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Kind: fn Nat -> Text
 fn Kind n = if n > 9: "big" else: "small"

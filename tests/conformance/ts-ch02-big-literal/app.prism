@@ -2,7 +2,7 @@
 # past 32 bits, past 64, and an `Int` past 64 bits, in an expression and in a pattern.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Minute: fn Nat -> Text
 fn Minute 60_000_000_000 = "minute"

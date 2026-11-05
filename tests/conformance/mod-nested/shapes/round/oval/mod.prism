@@ -7,4 +7,4 @@ Width: fn Nat, Nat -> Nat
 fn Width a, b = 2 * (a + b)
 
 Squashed: fn Nat -> Nat
-fn Squashed r = Shapes.Round.Circle.Area r + 1
+fn Squashed r = (Shapes.Round.Circle.Area r) + 1

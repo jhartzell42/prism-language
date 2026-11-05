@@ -2,7 +2,7 @@
 # (one byte), and a character compares equal to it. Written for prismc's C++ target, whose string literals
 # end at a NUL unless written as a `std::string_view`. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Nul: fn Text -> Bool
 fn Nul c = c == "\u{0}"

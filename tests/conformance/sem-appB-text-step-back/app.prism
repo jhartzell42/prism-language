@@ -1,7 +1,7 @@
 # Semantics Appendix B, Text: `?StepBack` walks a text back one character at a time,
 # `nil` at the start; Semantics ch. 8's text box takes Backspace so.
 # Written by Claude on the claude-self-hosting branch; subject to change.
-test mod tests
+test mod Tests
 
 let sample = "héllo→世界"
 

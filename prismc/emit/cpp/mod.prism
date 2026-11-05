@@ -69,11 +69,11 @@ type Cp = record:
     pointers: (Text ==> Bool)
 
 # A name as a C++ identifier: a C++ keyword that is no Rust keyword (lowering escaped
-# those) takes a `_` after it, as the prelude's `or_` and `int_` do.
+# those) takes a `_` after it, as the prelude's `or_` and `int_` do (`cppKeywords` is
+# Lower's, which escapes a module's name in both targets).
 CppId: fn Text -> Text
 fn CppId n = if InList cppKeywords, n: "{n}_" else: n
 
-let cppKeywords = [["explicit", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool", "case", "catch", "char", "char8_t", "char16_t", "char32_t", "class", "compl", "concept", "const_cast", "consteval", "constexpr", "constinit", "co_await", "co_return", "co_yield", "decltype", "default", "delete", "double", "dynamic_cast", "explicit", "export", "extern", "float", "friend", "goto", "inline", "int", "long", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected", "public", "register", "reinterpret_cast", "requires", "short", "signed", "sizeof", "static_assert", "static_cast", "switch", "template", "this", "thread_local", "throw", "try", "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "xor", "xor_eq", "errno", "assert", "NULL", "EOF", "stdin", "stdout", "stderr", "major", "minor"]]
 
 # A record's field: an identifier that is not a member every value type has (`show`,
 # `to_pod`, `from_pod`, a choice's `cases`).

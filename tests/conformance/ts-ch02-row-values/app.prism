@@ -5,7 +5,7 @@
 # program here has either, so `TextOf` and `KindOf` are only compiled (hosting gives
 # them their values). Written for prismc's back end. Work in progress, subject to change.
 emit Ui.* | Pad.*
-test mod tests
+test mod Tests
 
 type Box = record:
     w: Nat

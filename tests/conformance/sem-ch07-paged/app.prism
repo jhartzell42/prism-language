@@ -1,7 +1,7 @@
 # Semantics ch. 7's paged viewer: an outer `rebuild` over the page, an inner one over the
 # image file, and a log request per image when it is born. The transcript is the book's.
 emit Ui.* | Test.*
-test mod tests
+test mod Tests
 
 @loggedPages:
     !next <- Ui.Button(label=$"Next")                       # 0

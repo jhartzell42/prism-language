@@ -2,7 +2,7 @@
 # case's, not a record pattern of its type. Written for prismc's back end; subject to
 # change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 type Shape = choice:

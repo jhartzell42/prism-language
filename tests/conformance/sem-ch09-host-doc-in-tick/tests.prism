@@ -1,4 +1,7 @@
 # The in-tick document's tests: declarations of sem-ch09-host-doc-in-tick.prism (Semantics chapter 9).
+emit Ui.*
+use App.*
+use Ui.*
 
 test the_document_moves_within_the_tick, @owner:
     build

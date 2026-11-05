@@ -2,7 +2,7 @@
 # for its type): in a branch of an `if`, and as an event's value under a `~` signature.
 # Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 ~Check: fn Bool -> ~unit
 fn ~Check ok = if ok: ~ unit else: Error(kind=Prelude.NotANumber, message="no")

@@ -2,7 +2,7 @@
 # live, a watch whose `path` is identity, rebuilt per path, and a label through
 # `@Flatten`, two ticks behind the watch under pick ST (the transcript says why).
 emit Ui.* | Fs.*
-test mod tests
+test mod Tests
 use Fs.*
 use Ui.*
 

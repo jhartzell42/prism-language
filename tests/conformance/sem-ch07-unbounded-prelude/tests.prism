@@ -1,5 +1,7 @@
 # Audited: Doubles's entry and three calls of Double inside Each are the four cycles; each item doubled.
 # The adapted value's tests: declarations of sem-ch07-unbounded-prelude.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
 
 test each_takes_an_unbounded_function, @Listed [[1, 2, 3]]:
     build

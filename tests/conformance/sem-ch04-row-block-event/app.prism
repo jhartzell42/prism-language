@@ -3,7 +3,7 @@
 # row's hold over the block's `!go` and a result over it fire the tick `go` is clicked;
 # the row's own `!b` is another event, which the row's `$c` does not count.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @host: @unit
 @host:

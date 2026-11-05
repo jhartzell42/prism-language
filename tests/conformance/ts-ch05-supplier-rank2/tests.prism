@@ -1,4 +1,8 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
 test inline_supplier, @inline:
     build
     click at 0/[0]/0

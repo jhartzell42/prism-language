@@ -1,7 +1,7 @@
 # A tuple of three prints as the books print it (`prism_rtl` shows and pods tuples up to
 # six). Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 type Edge = record:
     ends: ((Nat, Nat, Bool))

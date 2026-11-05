@@ -7,7 +7,7 @@
 emit Ui.*
 mod Aloud
 mod Zoo
-test mod tests
+test mod Tests
 use Aloud.*
 
 let birds = [[Zoo.Robin, Zoo.Wren, Zoo.Robin]]

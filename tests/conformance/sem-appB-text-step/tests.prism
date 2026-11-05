@@ -1,4 +1,6 @@
 # `?Step`: declarations of sem-appB-text-step.prism.
+emit r
+use App.*
 
 check step:
     Walk sample => [['h', 'é', 'l', 'l', 'o', '→', '世', '界']]

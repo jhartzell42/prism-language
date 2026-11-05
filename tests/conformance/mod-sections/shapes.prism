@@ -1,9 +1,0 @@
-# The root's section `shapes`: no header, its names the root's; `Times` is `labels`'.
-type Shape = choice:
-    Square Nat
-    Box Nat, Nat
-derive ^Eq, ^Show
-
-Area: fn Shape -> Nat
-fn Area (Square s) = Times s, s
-fn Area (Box w, h) = Times w, h

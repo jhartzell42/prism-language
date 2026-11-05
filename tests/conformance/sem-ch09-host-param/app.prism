@@ -4,7 +4,7 @@
 # back out of the host as the host's own (`((r, $doc))`, `@ r`). Written for prismc's
 # back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @Boxed: fn @a -> @a
 fn @Boxed @child:

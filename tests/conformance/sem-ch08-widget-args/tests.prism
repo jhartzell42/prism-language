@@ -1,4 +1,6 @@
 # The widget arguments' tests: declarations of sem-ch08-widget-args.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
 
 test arguments_are_inlined, @page:
     build

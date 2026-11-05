@@ -1,6 +1,6 @@
 # Semantics ch. 7, "a switch over a newborn hears the newborn's birth, one tick late".
 emit Ui.*
-test mod tests
+test mod Tests
 
 @births:
     !again <- Ui.Button(label=$"Again")                     # 0

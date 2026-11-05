@@ -1,4 +1,6 @@
 # `At`: declarations of sem-appB-text-at.prism.
+emit r
+use App.*
 
 check at:
     At (Into sample, 0) => 0

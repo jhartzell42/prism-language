@@ -1,3 +1,7 @@
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
 test the_footer_goes_to_the_old_page, @journal:
     build
     click Ui.Button(label="Next page")

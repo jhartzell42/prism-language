@@ -1,5 +1,7 @@
 # Audited: the child's button is forwarded at 1/[0]/0 (the host at 1, the child's place 0); a click on go moves $n, which the child reads; a click on the forwarded button fires the child's !b, the host's result, so $m counts it.
 # The hosted parameter's tests: declarations of sem-ch09-host-param.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
 
 test the_child_reads_and_answers_out, @page:
     build

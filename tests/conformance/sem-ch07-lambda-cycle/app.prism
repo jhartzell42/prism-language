@@ -4,7 +4,7 @@
 # recursion would run inside one tick, however deep. Written for prismc's back end. Work
 # in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 type Parity = record:
     even: unbounded fn Nat, Parity -> Bool

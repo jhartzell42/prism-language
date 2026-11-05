@@ -3,7 +3,7 @@
 # a top-level one's is (gap LP). The `Int` countdown does not shrink a `Nat`, so no loop
 # here is cleared. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 # The reference: a loop at the block's top level, one cycle a turn.
 Top: unbounded fn Int -> Int

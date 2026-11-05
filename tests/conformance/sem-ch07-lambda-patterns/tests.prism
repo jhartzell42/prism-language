@@ -1,5 +1,7 @@
 # Audited: six cycles, by D6 as ruled (a call of an unbounded lambda is a cycle point): Run's entry, the call of Sums, and per element of the fold the lambda entered and Grow; (0, 100) then (12, 102) then (26, 106).
 # The lambda patterns' tests: declarations of sem-ch07-lambda-patterns.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
 
 test lambdas_take_their_parameters_apart, @Summed 10:
     build

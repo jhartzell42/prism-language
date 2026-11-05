@@ -4,7 +4,7 @@
 # examples/todos.prism in the books' spelling. Its tests are in todos.prismtest. Work in
 # progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 type Todo = record:
     label: Text

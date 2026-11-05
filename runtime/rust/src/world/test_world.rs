@@ -600,11 +600,12 @@ fn indent(line: &str) -> usize {
     line.len() - line.trim_start().len()
 }
 
-/// A declaration at the left edge of a test module (claude/modules-style-pass.md) beside its
-/// tests: a helper type, function or value, its `derive` or signature line. The compiled
-/// program holds it, so the script passes over it, body and all.
+/// A line at the left edge of a test module (claude/modules-style-pass.md) beside its tests:
+/// a line of its header (`emit`, `mod`, `test mod`, `use`), or a helper type, function or
+/// value, its `derive` or signature line. The compiled program holds it, so the script
+/// passes over it, body and all.
 fn is_declaration(head: &str) -> bool {
-    if ["type ", "derive ", "fn ", "let "].iter().any(|k| head.starts_with(k)) {
+    if ["emit ", "mod ", "test mod ", "use ", "type ", "derive ", "fn ", "let "].iter().any(|k| head.starts_with(k)) {
         return true;
     }
     match head.split_once(':') {

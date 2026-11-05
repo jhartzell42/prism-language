@@ -1,5 +1,8 @@
 # Audited: a tap alone moves only the host's hold, and the lifted pair's event still lands in the owed tick (2 places at 1 click); a child click and a tap in one tick grow the document and the count together, the label over `Size $doc` shows 3 places in that tick, and the owed tick hears `!Updated $doc` once and the pair as (3, 2), never (2, 2) or (3, 1); the gathered `for`'s event lands in the owed tick after the row is born.
 # The structural dynamics' tests: declarations of sem-ch07-structural.prism (Semantics chapter 7).
+emit Ui.*
+use App.*
+use Ui.*
 
 test one_state_in_the_sample_and_the_event, @host:
     build

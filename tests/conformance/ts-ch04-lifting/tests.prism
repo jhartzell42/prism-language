@@ -1,3 +1,6 @@
+emit Ui.*
+use App.*
+
 test the_change_law, @diamond:
     build
         => expect Ui.Label(text="1")

@@ -1,11 +1,11 @@
-# Modules as directories (claude/modules-style-pass.md): top-level items that exist only for
-# the tests live in a declared test module. `tests.prism` declares a helper type with its
-# `derive` and a function over it; `more.prism`, a second test module, names them, as a
-# test module may name another's helpers. Neither is read by `prism run`.
+# Test modules (claude/modules-style-pass.md): top-level items that exist only for the
+# tests live in a declared test module, a child module of its own. `Tests` declares a helper
+# type with its `derive` and a function over it; `More`, a second test module, names them by
+# `use Tests.*`, as a test module may name another's helpers. Neither is read by `prism run`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
-test mod tests
-test mod more
+test mod Tests
+test mod More
 use Ui
 
 Add: fn Nat, Nat -> Nat

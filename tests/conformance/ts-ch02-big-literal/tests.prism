@@ -4,6 +4,8 @@
 # 2^32 = 60000000000 - 13 * 4294967296 = 4165425152, the value a 32-bit cut would give,
 # which is not the minute.
 # The literals' tests: declarations of ts-ch02-big-literal.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
 
 test big_literals_keep_their_digits, @shown:
     build

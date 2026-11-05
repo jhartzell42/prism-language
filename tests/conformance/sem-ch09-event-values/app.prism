@@ -4,7 +4,7 @@
 # library's `?Boxed` answers each claimed element; the supplier hands it the host's own
 # event. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 ?Keep: fn Path, Click -> ?Click

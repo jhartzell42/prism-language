@@ -1,4 +1,7 @@
 # A record's equality through a choice it holds: declarations of cpp-choice-in-record.prism.
+emit Ui.*
+use App.*
+use Ui.*
 
 test records_compare_through_their_choice, @specs:
     build

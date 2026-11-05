@@ -4,7 +4,7 @@
 # first ruling), as an expression block's is a local per instantiation (pick LG). `Twin`
 # is used at Nat, in a plain label and over a hold, and at Bool.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @shown: @unit
 @shown:

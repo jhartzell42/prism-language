@@ -1,6 +1,0 @@
-# The root's section `labels`: it names `shapes`' declarations bare, as they name its.
-Times: fn Nat, Nat -> Nat
-fn Times a, b = a * b
-
-Caption: fn Nat -> Text
-fn Caption n = "a square of area {Area (Square n)}"

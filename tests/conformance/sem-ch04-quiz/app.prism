@@ -1,7 +1,7 @@
 # Semantics ch. 4's quiz: a `given:` body, a widget block, a `rebuild` that hands back a
 # dynamic of its round's marks, a `for` over a plain map, `@Switch`, and a lifted `match`.
 emit Ui.*
-test mod tests
+test mod Tests
 
 type Question = record:
     prompt: Text

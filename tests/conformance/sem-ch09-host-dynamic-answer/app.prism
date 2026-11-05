@@ -6,7 +6,7 @@
 # and a click changes it.
 # Written for prismc's back end. Work in progress, subject to change.
 emit Ui.* | Fs.*
-test mod tests
+test mod Tests
 use Fs.*
 
 ShowResponse: fn ~Contents -> Text

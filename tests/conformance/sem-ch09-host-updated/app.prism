@@ -5,7 +5,7 @@
 # document's updates there and shows the child's label text out of the new document. Written
 # for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 @child: @unit

@@ -1,4 +1,6 @@
 # The half counter's tests: declarations of half-counter.prism (Semantics chapter 6). Not yet run.
+emit Ui.*
+use App.*
 
 test the_half_counter_only_counts_up, @halfcounter:
     build

@@ -1,4 +1,8 @@
-# A second test module of the root, naming the first one's helpers.
+# `More`, a second test module of the root, naming the first one's helpers by `use Tests.*`.
+emit Ui.*
+use App.*
+use Tests.*
+
 check shared:
     Total Pair(left=4, right=4) => 8
     Add (Total Pair(left=1, right=1)), 1 => 3

@@ -3,7 +3,7 @@
 # never collide. A `for` makes a row node, whose base class is the runtime's `Row`, beside
 # the program's `Row` record. Written for prismc's back end; subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 type Row = record:

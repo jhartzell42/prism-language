@@ -5,7 +5,7 @@
 # answered by the World, and the child hears that in the SAME tick: a host that forwards is
 # observably not there. Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 use Ui.*
 
 @child: @unit

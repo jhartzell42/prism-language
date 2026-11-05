@@ -4,7 +4,7 @@
 # of the lambda, which calls it, is a cycle point (D6, D8). Written for prismc's back
 # end. Work in progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 Grow: unbounded fn Nat -> Nat
 fn Grow n = n + 1

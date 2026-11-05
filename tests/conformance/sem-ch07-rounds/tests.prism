@@ -1,3 +1,6 @@
+emit Ui.*
+use App.*
+
 test hold_starts_over, @rounds:
     build
         => expect Ui.Label(text="round 0: 0")

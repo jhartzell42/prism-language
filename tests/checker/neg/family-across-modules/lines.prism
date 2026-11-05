@@ -1,0 +1,7 @@
+# `Lines`, a child module: a tag of the root's family `Ink`.
+emit r
+use App.*
+
+tag Ink.Line of Ink:
+    from: Nat
+    to: Nat

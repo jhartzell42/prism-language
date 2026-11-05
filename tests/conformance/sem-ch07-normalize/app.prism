@@ -3,7 +3,7 @@
 # `turing/lambda.prism` is not in the books; this is a lambda calculus of de Bruijn
 # indices small enough to read, written for this test.
 emit Ui.*
-test mod tests
+test mod Tests
 
 type Term = choice:
     Var Nat

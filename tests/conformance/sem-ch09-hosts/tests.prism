@@ -1,3 +1,7 @@
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
 test a_supplier_per_child_place, @mocked:
     build
         => expect_none Fs.Contents(..)

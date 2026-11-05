@@ -1,4 +1,6 @@
 # The todo list's tests: declarations of todos.prism (Semantics chapter 6). Not yet run.
+emit Ui.*
+use App.*
 
 test todos_keep_their_rows, @todos:
     build

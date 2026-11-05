@@ -1,5 +1,5 @@
-tests/checker/neg/old-module/extra.prism:1: error[mod-stray]: `extra.prism` is in the directory of `app.prism`, which declares no `mod extra`
+tests/checker/neg/old-module/extra.prism:1: error[mod-stray]: `extra.prism` is in the directory of `app.prism`, which declares no `mod Extra`
     module Extra
     ^
-  fix: declare it with `mod extra` in app.prism, or move it out of the directory
+  fix: declare it with `mod Extra` in app.prism, or move it out of the directory
 1 error

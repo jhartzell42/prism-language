@@ -1,4 +1,7 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+use App.*
+
 test go_once, @host:
     build
     click at 0

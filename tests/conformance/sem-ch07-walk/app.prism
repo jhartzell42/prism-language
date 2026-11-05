@@ -4,7 +4,7 @@
 # Written for this test, to count the cycles of a recursion that is not a loop. Work in
 # progress, subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 type Tree = choice:
     Leaf Nat

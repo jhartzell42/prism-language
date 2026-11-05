@@ -1,4 +1,7 @@
 # Ticks 1 and 3 are the ticks the newborns are owed (Semantics ch. 7).
+emit Ui.* | Test.*
+use App.*
+
 test paged_viewer_builds_once, @loggedPages:
     build
     tick

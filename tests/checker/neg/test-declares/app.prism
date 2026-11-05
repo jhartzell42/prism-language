@@ -2,8 +2,5 @@
 # Written by Claude on the claude-self-hosting branch; subject to change.
 test mod Tests
 
-type Ink = row
-derive ^Eq, ^Show
-
-tag Ink.Line of Ink:
-    length: Nat
+Total: fn Nat, Nat -> Nat
+fn Total a, b = a + b

@@ -1,0 +1,253 @@
+prismc/app.prism:22: warning[section]: `mod reading` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod reading
+    ^^^^^^^^^^^
+  fix: write `mod Reading`, and give reading.prism a header of its own
+prismc/app.prism:23: warning[section]: `mod checking` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod checking
+    ^^^^^^^^^^^^
+  fix: write `mod Checking`, and give checking.prism a header of its own
+prismc/app.prism:24: warning[section]: `mod compile` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod compile
+    ^^^^^^^^^^^
+  fix: write `mod Compile`, and give compile.prism a header of its own
+prismc/check/types/mod.prism:10: warning[section]: `mod recording` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod recording
+    ^^^^^^^^^^^^^
+  fix: write `mod Recording`, and give recording.prism a header of its own
+prismc/check/types/mod.prism:11: warning[section]: `mod unify` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod unify
+    ^^^^^^^^^
+  fix: write `mod Unify`, and give unify.prism a header of its own
+prismc/check/types/mod.prism:12: warning[section]: `mod schemes` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod schemes
+    ^^^^^^^^^^^
+  fix: write `mod Schemes`, and give schemes.prism a header of its own
+prismc/check/types/mod.prism:13: warning[section]: `mod colors` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod colors
+    ^^^^^^^^^^
+  fix: write `mod Colors`, and give colors.prism a header of its own
+prismc/check/env/mod.prism:12: warning[section]: `mod names` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod names
+    ^^^^^^^^^
+  fix: write `mod Names`, and give names.prism a header of its own
+prismc/check/env/mod.prism:13: warning[section]: `mod reading` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod reading
+    ^^^^^^^^^^^
+  fix: write `mod Reading`, and give reading.prism a header of its own
+prismc/check/env/mod.prism:14: warning[section]: `mod decls` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod decls
+    ^^^^^^^^^
+  fix: write `mod Decls`, and give decls.prism a header of its own
+prismc/check/env/mod.prism:15: warning[section]: `mod traits` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod traits
+    ^^^^^^^^^^
+  fix: write `mod Traits`, and give traits.prism a header of its own
+prismc/check/expr/mod.prism:10: warning[section]: `mod operators` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod operators
+    ^^^^^^^^^^^^^
+  fix: write `mod Operators`, and give operators.prism a header of its own
+prismc/check/expr/mod.prism:11: warning[section]: `mod calls` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod calls
+    ^^^^^^^^^
+  fix: write `mod Calls`, and give calls.prism a header of its own
+prismc/check/expr/mod.prism:12: warning[section]: `mod patterns` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod patterns
+    ^^^^^^^^^^^^
+  fix: write `mod Patterns`, and give patterns.prism a header of its own
+prismc/check/expr/mod.prism:13: warning[section]: `mod lifting` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod lifting
+    ^^^^^^^^^^^
+  fix: write `mod Lifting`, and give lifting.prism a header of its own
+prismc/check/expr/mod.prism:14: warning[section]: `mod lets` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod lets
+    ^^^^^^^^
+  fix: write `mod Lets`, and give lets.prism a header of its own
+prismc/check/blocks/mod.prism:10: warning[section]: `mod structure` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod structure
+    ^^^^^^^^^^^^^
+  fix: write `mod Structure`, and give structure.prism a header of its own
+prismc/check/blocks/mod.prism:11: warning[section]: `mod borrows` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod borrows
+    ^^^^^^^^^^^
+  fix: write `mod Borrows`, and give borrows.prism a header of its own
+prismc/check/passes/mod.prism:13: warning[section]: `mod cycles` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod cycles
+    ^^^^^^^^^^
+  fix: write `mod Cycles`, and give cycles.prism a header of its own
+prismc/check/passes/mod.prism:14: warning[section]: `mod borrows` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod borrows
+    ^^^^^^^^^^^
+  fix: write `mod Borrows`, and give borrows.prism a header of its own
+prismc/check/shrink/mod.prism:5: warning[section]: `mod types` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod types
+    ^^^^^^^^^
+  fix: write `mod Types`, and give types.prism a header of its own
+prismc/check/shrink/mod.prism:6: warning[section]: `mod calls` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod calls
+    ^^^^^^^^^
+  fix: write `mod Calls`, and give calls.prism a header of its own
+prismc/check/shrink/mod.prism:7: warning[section]: `mod locals` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod locals
+    ^^^^^^^^^^
+  fix: write `mod Locals`, and give locals.prism a header of its own
+prismc/check/shrink/mod.prism:8: warning[section]: `mod relations` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod relations
+    ^^^^^^^^^^^^^
+  fix: write `mod Relations`, and give relations.prism a header of its own
+prismc/check/shrink/mod.prism:9: warning[section]: `mod walk` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod walk
+    ^^^^^^^^
+  fix: write `mod Walk`, and give walk.prism a header of its own
+prismc/check/shrink/mod.prism:10: warning[section]: `mod summaries` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod summaries
+    ^^^^^^^^^^^^^
+  fix: write `mod Summaries`, and give summaries.prism a header of its own
+prismc/check/typed/mod.prism:13: warning[section]: `mod print` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod print
+    ^^^^^^^^^
+  fix: write `mod Print`, and give print.prism a header of its own
+prismc/syntax/mod.prism:16: warning[section]: `mod decls` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod decls
+    ^^^^^^^^^
+  fix: write `mod Decls`, and give decls.prism a header of its own
+prismc/syntax/lexer/mod.prism:18: warning[section]: `mod chars` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod chars
+    ^^^^^^^^^
+  fix: write `mod Chars`, and give chars.prism a header of its own
+prismc/syntax/lexer/mod.prism:19: warning[section]: `mod layout` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod layout
+    ^^^^^^^^^^
+  fix: write `mod Layout`, and give layout.prism a header of its own
+prismc/syntax/lexer/mod.prism:20: warning[section]: `mod words` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod words
+    ^^^^^^^^^
+  fix: write `mod Words`, and give words.prism a header of its own
+prismc/syntax/lexer/mod.prism:21: warning[section]: `mod literals` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod literals
+    ^^^^^^^^^^^^
+  fix: write `mod Literals`, and give literals.prism a header of its own
+prismc/syntax/lexer/mod.prism:22: warning[section]: `mod templates` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod templates
+    ^^^^^^^^^^^^^
+  fix: write `mod Templates`, and give templates.prism a header of its own
+prismc/syntax/lexer/mod.prism:23: warning[section]: `mod corpus` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod corpus
+    ^^^^^^^^^^
+  fix: write `mod Corpus`, and give corpus.prism a header of its own
+prismc/syntax/lexer/mod.prism:24: warning[section]: `test mod tests` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    test mod tests
+    ^^^^^^^^^^^^^^
+  fix: write `test mod Tests`, and give tests.prism a header of its own
+prismc/syntax/parser/mod.prism:35: warning[section]: `mod decls` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod decls
+    ^^^^^^^^^
+  fix: write `mod Decls`, and give decls.prism a header of its own
+prismc/syntax/parser/mod.prism:36: warning[section]: `mod expr` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod expr
+    ^^^^^^^^
+  fix: write `mod Expr`, and give expr.prism a header of its own
+prismc/syntax/parser/mod.prism:37: warning[section]: `mod blocks` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod blocks
+    ^^^^^^^^^^
+  fix: write `mod Blocks`, and give blocks.prism a header of its own
+prismc/syntax/parser/mod.prism:38: warning[section]: `mod types` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod types
+    ^^^^^^^^^
+  fix: write `mod Types`, and give types.prism a header of its own
+prismc/syntax/parser/mod.prism:39: warning[section]: `mod test_language` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod test_language
+    ^^^^^^^^^^^^^^^^^
+  fix: write `mod Test_language`, and give test_language.prism a header of its own
+prismc/syntax/parser/mod.prism:40: warning[section]: `test mod tests` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    test mod tests
+    ^^^^^^^^^^^^^^
+  fix: write `test mod Tests`, and give tests.prism a header of its own
+prismc/lower/mod.prism:21: warning[section]: `mod types` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod types
+    ^^^^^^^^^
+  fix: write `mod Types`, and give types.prism a header of its own
+prismc/lower/mod.prism:22: warning[section]: `mod expr` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod expr
+    ^^^^^^^^
+  fix: write `mod Expr`, and give expr.prism a header of its own
+prismc/lower/mod.prism:23: warning[section]: `mod patterns` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod patterns
+    ^^^^^^^^^^^^
+  fix: write `mod Patterns`, and give patterns.prism a header of its own
+prismc/lower/mod.prism:24: warning[section]: `mod templates` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod templates
+    ^^^^^^^^^^^^^
+  fix: write `mod Templates`, and give templates.prism a header of its own
+prismc/lower/mod.prism:25: warning[section]: `mod functions` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod functions
+    ^^^^^^^^^^^^^
+  fix: write `mod Functions`, and give functions.prism a header of its own
+prismc/lower/mod.prism:26: warning[section]: `mod jobs` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod jobs
+    ^^^^^^^^
+  fix: write `mod Jobs`, and give jobs.prism a header of its own
+prismc/lower/mod.prism:27: warning[section]: `mod program` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod program
+    ^^^^^^^^^^^
+  fix: write `mod Program`, and give program.prism a header of its own
+prismc/lower/node/mod.prism:5: warning[section]: `mod def` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod def
+    ^^^^^^^
+  fix: write `mod Def`, and give def.prism a header of its own
+prismc/lower/node/mod.prism:6: warning[section]: `mod elements` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod elements
+    ^^^^^^^^^^^^
+  fix: write `mod Elements`, and give elements.prism a header of its own
+prismc/lower/node/mod.prism:7: warning[section]: `mod static` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod static
+    ^^^^^^^^^^
+  fix: write `mod Static`, and give static.prism a header of its own
+prismc/lower/node/mod.prism:8: warning[section]: `mod dynamics` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod dynamics
+    ^^^^^^^^^^^^
+  fix: write `mod Dynamics`, and give dynamics.prism a header of its own
+prismc/lower/node/mod.prism:9: warning[section]: `mod finish` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod finish
+    ^^^^^^^^^^
+  fix: write `mod Finish`, and give finish.prism a header of its own
+prismc/lower/node/mod.prism:10: warning[section]: `mod keyed` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod keyed
+    ^^^^^^^^^
+  fix: write `mod Keyed`, and give keyed.prism a header of its own
+prismc/lower/node/mod.prism:11: warning[section]: `mod switch` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod switch
+    ^^^^^^^^^^
+  fix: write `mod Switch`, and give switch.prism a header of its own
+prismc/emit/rust/mod.prism:11: warning[section]: `mod items` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod items
+    ^^^^^^^^^
+  fix: write `mod Items`, and give items.prism a header of its own
+prismc/emit/rust/templates/mod.prism:10: warning[section]: `mod items` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod items
+    ^^^^^^^^^
+  fix: write `mod Items`, and give items.prism a header of its own
+prismc/emit/cpp/mod.prism:27: warning[section]: `mod expr` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod expr
+    ^^^^^^^^
+  fix: write `mod Expr`, and give expr.prism a header of its own
+prismc/emit/cpp/mod.prism:28: warning[section]: `mod patterns` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod patterns
+    ^^^^^^^^^^^^
+  fix: write `mod Patterns`, and give patterns.prism a header of its own
+prismc/emit/cpp/mod.prism:29: warning[section]: `mod stmts` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod stmts
+    ^^^^^^^^^
+  fix: write `mod Stmts`, and give stmts.prism a header of its own
+prismc/emit/cpp/mod.prism:30: warning[section]: `mod items` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod items
+    ^^^^^^^^^
+  fix: write `mod Items`, and give items.prism a header of its own
+prismc/emit/cpp/mod.prism:31: warning[section]: `mod program` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod program
+    ^^^^^^^^^^^
+  fix: write `mod Program`, and give program.prism a header of its own
+prismc/emit/cpp/templates/mod.prism:10: warning[section]: `mod items` is the old form, a section in its module's namespace: every `mod` line declares a module, its name capitalised
+    mod items
+    ^^^^^^^^^
+  fix: write `mod Items`, and give items.prism a header of its own
+no errors

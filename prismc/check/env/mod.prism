@@ -150,6 +150,7 @@ type G = record:
     programRow: Rw
     elemFams: [Text]
     rootModule: ?Text
+    appRoot: Bool
     fnAt: (Text ==> Nat)
     preludeFrom: Nat
 derive ^Eq, ^Show
@@ -188,7 +189,7 @@ fn IsUpperText t = IsUpper (Head t)
 # The program's files, parsed: the environment, and the diagnostics of every declaration.
 BuildG: unbounded fn [Src], [Module] -> ((G, St))
 fn BuildG srcs, trees:
-    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], rootModule=nil, fnAt={}, preludeFrom=(Len trees))
+    let g0 = G(mods={}, types={}, ctors={}, tags={}, families={}, famOwner={}, vals={}, traits={}, impls={}, bare={}, bareTypes={}, bareTraits={}, srcs=srcs, defs=[[]], programRow=emptyRow, elemFams=[[]], rootModule=nil, appRoot=(AppRoot srcs, trees), fnAt={}, preludeFrom=(Len trees))
     let st0 = NewSt 0
     let ((g1, st1)) = Fold (Range0 (Len trees)), ((g0, st0)), \|((g, st)), i| AddModule g, st, i, (Or trees[i], emptyModule)
     let g2 = AddBuiltins g1
@@ -209,6 +210,27 @@ fn ModName m = match m.?name:
     ? q: Dotted q.path
     nil: ""
 
+# Whether `App` names the root (claude/modules-style-pass.md, doubt RA): the program's root
+# is a tree's `app.prism` (its file read as a tree's, not loose), and no module is named
+# `App`. A child module reaches the root's declarations by `use App.*` or `App.Name`, as a
+# Rust module names the crate root's by `crate::`; a loose root file stays out of reach
+# (Semantics ch. 6: nothing can `use` a root file).
+AppRoot: fn [Src], [Module] -> Bool
+fn AppRoot srcs, trees = Fold (Range0 (Len trees)), False, \|seen, i|
+    let t = Or trees[i], emptyModule
+    let name = ModName t
+    if name == "App": False
+    else: if name == "" and (SegAt (Or srcs[i], (MkSrc "", "")), 0).role != "loose": True
+    else: seen
+
+# A `use` line's module, `App` read as the root's `""` when it names the root.
+UseName: fn G, Text -> Text
+fn UseName g, u = if g.appRoot and u == "App": "" else: u
+
+# A qualified name's module, likewise.
+QualModule: fn G, [Text] -> Text
+fn QualModule g, parts = UseName g, (Dotted parts)
+
 AddModule: fn G, St, Nat, Module -> ((G, St))
 fn AddModule g, st, i, tree:
     let name = ModName tree
@@ -218,7 +240,7 @@ fn AddModule g, st, i, tree:
         let what = if name == "": "two files have no `module` line" else: "two files declare `module {name}`"
         ((g, (Err s, "collision", tree.span, what)))
     else:
-        let info = ModInfo(name=name, file=i, emitRw=emptyRow, rowVar="", uses=(Each tree.uses, \|u| ((Dotted u.target.path, u.star))), root=(name == ""), tree=tree)
+        let info = ModInfo(name=name, file=i, emitRw=emptyRow, rowVar="", uses=(Each tree.uses, \|u| (((UseName g, (Dotted u.target.path)), u.star))), root=(name == ""), tree=tree)
         let g2 = update g:
             &_.mods <= Insert &_.mods, name, info
             if name == "":

@@ -1,4 +1,6 @@
 # The counter's tests: declarations of counter.prism (Semantics chapter 6). Not yet run.
+emit Ui.*
+use App.*
 
 # Conformance chapter 1's
 test counter_counts, @counter:

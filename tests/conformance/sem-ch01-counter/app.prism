@@ -1,6 +1,6 @@
 # Semantics ch. 1 (and ch. 3, ch. 7, Type System ch. 4): the counter.
 emit Ui.*
-test mod tests
+test mod Tests
 
 @counter:
     !inc <- Ui.Button(label=$"Increment")
