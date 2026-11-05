@@ -94,7 +94,10 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 - **Both canvas Worlds run natively:** `worlds/canvas/rust` (winit) and `worlds/canvas/cpp`
   (`src/app_macos.mm`, Cocoa). Each has `Hooks` and a smoke test driven through them
   (`hooks_smoke`, `macos_smoke`); the Xvfb tests and the XTest robot are Linux-only.
-- **Homebrew:** `cairo freetype pkg-config gtk+3 llvm` (llvm for the sanitizer run).
+- **Homebrew:** `cairo freetype pkg-config gtk+3 llvm re2` (llvm for the sanitizer run).
+- **RE2 is a prerequisite of every C++ build** (`brew install re2`; Linux: `apt install
+  libre2-dev pkg-config`): the C++ runtime's library holds the regex engine, and its
+  Makefile stops with that instruction when RE2 is missing.
 - **Timings:** quit everything else, plug in power; `bench/run.sh` and
   `bench/compiler/run.sh` record the machine and the load average.
 - **Instruction counts** come from macOS's `time -l` ("instructions retired"); valgrind
