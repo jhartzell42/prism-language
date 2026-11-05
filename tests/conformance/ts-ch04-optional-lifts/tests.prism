@@ -1,0 +1,38 @@
+# The lifts' tests: declarations of ts-ch04-optional-lifts.
+emit Ui.*
+use App.*
+
+let ps = {"x": P(a=1, b="one")}
+
+check fields:
+    ?A ps, "x" => ? 1
+    ?A ps, "y" => nil
+    ?TwiceA ps, "x" => ? 2
+    ?TwiceA ps, "y" => nil
+    ~HalfB (~ P(a=2, b="two")) => ~ "two"
+    ?Key "name = 3" => ? "name"
+    ?Key "= 3" => nil
+
+check operands:
+    ?Sum (? 1), (? 2) => ? 3
+    ?Sum nil, (? 2) => nil
+    ?Sum (? 1), nil => nil
+    ?Size (? {"k": [[1, 2]]}), "k" => ? 2
+    ?Size (? {"k": [[1, 2]]}), "j" => nil
+    ?Size nil, "k" => nil
+    ?Shown (? P(a=1, b="u")) => ? "P(a=1, b=\"u\")"
+    ?Shown nil => nil
+
+check faults:
+    Shown (~Halves 4, 6) => "5"
+    Shown (~Halves 3, 6) => "error: 3 is odd"
+    Shown (~Halves 4, 5) => "error: 5 is odd"
+    Shown (~Halves 3, 5) => "error: 3 is odd"
+
+test under_a_dynamic, @Lookup:
+    build
+        => expect Ui.Label(text="four 8")
+    click Ui.Button(..)
+        => expect Ui.Label(text="seven 14")
+    click Ui.Button(..)
+        => expect Ui.Label(text="none 0")
