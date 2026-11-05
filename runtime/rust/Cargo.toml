@@ -9,7 +9,6 @@ license-file = "../LICENSE.md"
 path = "src/lib.rs"
 
 [dependencies]
-im-rc = "15.1.0"
 num-bigint = "0.5.1"
 num-traits = "0.2.19"
 regex-automata = "0.4.14"
