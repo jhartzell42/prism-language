@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-first-bracket.prism:2: error[regex]: a ] first in a class: write \]
+    let r = %/[]a]/
+               ^
+1 error

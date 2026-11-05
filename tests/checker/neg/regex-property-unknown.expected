@@ -1,0 +1,4 @@
+tests/checker/neg/regex-property-unknown.prism:2: error[regex]: an unknown property: general categories by short name, scripts and Any
+    let r = %/\p{Letter}/
+              ^
+1 error

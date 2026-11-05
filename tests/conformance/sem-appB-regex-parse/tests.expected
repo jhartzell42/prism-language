@@ -1,0 +1,12 @@
+# Derived by hand from Semantics Appendix B, `?Regex`, and ch. 2, "No interpolation": a text is checked against the dialect as a literal's pattern is, with no flags, so a repetition of a repetition, a backreference, a lookaround and an unclosed class are `nil`; a valid one equals the literal spelled alike (Type System ch. 2, RX-EQ); `(?i)` inside sets its flags; a pattern built from a text at run time searches as a literal would.
+check parse
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+10: ok

@@ -1,0 +1,15 @@
+# `?Regex`: declarations of sem-appB-regex-parse.
+emit r
+use App.*
+
+check parse:
+    (?Regex "a+") == ? %/a+/ => True
+    ?Regex "a**" => nil
+    ?Regex "\\1" => nil
+    ?Regex "(?=a)" => nil
+    ?Regex "[a" => nil
+    (?Regex "") == ? %// => True
+    Spans (?Find (Or (?Regex "(?i)b+"), %/x/), "aBBc") => "1-3"
+    Whole "cat", "a cat sat" => "2-5"
+    Whole "cat", "concatenate" => "nil"
+    Whole "(", "x" => "refused"

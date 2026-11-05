@@ -1,0 +1,4 @@
+tests/checker/neg/regex-unknown-escape.prism:2: error[regex]: an unknown escape
+    let r = %/\Z/
+              ^
+1 error

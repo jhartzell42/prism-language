@@ -1,0 +1,4 @@
+tests/checker/neg/regex-lookaround.prism:2: error[regex]: a lookaround: refused so that every match is linear in its text
+    let r = %/(?=a)/
+              ^
+1 error

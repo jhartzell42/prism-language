@@ -1,0 +1,4 @@
+tests/checker/neg/regex-property-name.prism:2: error[regex]: a \p escape needs a property name
+    let r = %/\p/
+              ^
+1 error

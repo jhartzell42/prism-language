@@ -1,0 +1,19 @@
+# Derived by hand from Semantics Appendix B, the iteration rule: the first search starts at the front and each next one where the last match ended; an empty match where the previous one ended is not reported and the search goes on one character later (`a*` over "baaa" is the empty match at 0 and 1-4; the empty pattern matches at every character boundary, never inside é); each search is leftmost-first, alternatives left to right, a lazy repetition as little as it can.
+check iteration
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+
+check leftmost
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok

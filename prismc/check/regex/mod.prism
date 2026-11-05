@@ -1,0 +1,17 @@
+# `Check.Regex`: a literal's pattern, flags and replacement read against the dialect
+# (claude/regex-dialect.md), the first diagnostic or none, as both runtimes read them.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+test mod Tests
+
+# A refusal: the part (`flags`, `pattern` or `replacement`), the byte offset in it, and
+# one of the dialect's fixed messages.
+type RxDiag = record:
+    part: Text
+    at: Nat
+    message: Text
+derive ^Eq, ^Show
+
+# Not written yet: every literal is accepted (the tests beside it fail).
+?RegexRefusal: fn Text, Text, ?Text -> ?RxDiag
+fn ?RegexRefusal pattern, flags, ?replacement = nil

@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-negated-under-i.prism:2: error[regex]: a negated class inside a class under i: write it outside the class
+    let r = %/[\W]/i
+               ^
+1 error

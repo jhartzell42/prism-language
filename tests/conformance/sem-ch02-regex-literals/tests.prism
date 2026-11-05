@@ -1,0 +1,35 @@
+# The literal's forms and the lookahead rule: declarations of sem-ch02-regex-literals.
+emit r
+use App.*
+
+check examples:
+    Spans (?Find word, "Hello world_1!") => "1-5"
+    Spans (?Find yes, "YES") => "0-3 0-3"
+    Spans (?Find yes, "yesno") => "nil"
+    Spans (?Find bin, "/usr/bin/prism") => "0-14 9-14"
+    Spans (?Find host, "https://example.com/x") => "0-19 8-19"
+    Replace dash, "a_b_c" => "a-b-c"
+    Replace swap, "hello world" => "world hello"
+
+check forms:
+    Show %/a/ => "%/a/"
+    Show %/a/ims => "%/a/ims"
+    Show %/a\/b/ => "%/a\\/b/"
+    Show %#/a/b/# => "%/a\\/b/"
+    Show %##/a/#b/## => "%/a\\/#b/"
+    Show %/a//i => "%/a//i"
+    Show %/_/-/ => "%/_/-/"
+    Spans (?Find %/a\/b/, "xa/b") => "1-4"
+    Spans (?Find %#/a/b/#, "xa/b") => "1-4"
+    Spans (?Find %##/a/#b/##, "a/#b") => "0-4"
+    Spans (?Find %/\//, "a/b") => "1-2"
+
+check lookahead:
+    Len [[%/a/,%/b/]] => 2
+    Spans (?Find %/b/i, "aBc") => "1-2"
+    Replace %/a/b/, "banana" => "bbnbnb"
+    Replace %/a//, "banana" => "bnn"
+    Replace %/x/-y/, "axb" => "a-yb"
+    Replace %/x/$0$0/, "axb" => "axxb"
+    Replace %#/x/#hello world/#, "axb" => "ahello worldb"
+    Replace %#/ /#_/#, "a b" => "a_b"

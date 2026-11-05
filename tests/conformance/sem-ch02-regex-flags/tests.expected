@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 2, "Flags", and Appendix B, The dialect: `i` folds case by Unicode simple case folding (K, U+212A KELVIN SIGN, three bytes, folds with `k`; `ß` never matches `ss`); without `m`, `^` and `$` are the text's ends, with it also after and before each `\n`; without `s`, `.` is never `\n`; a flag group sets the flags to the end of its enclosing group, across `|`, and a scoped one only inside itself.
+check flags
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+10: ok
+11: ok
+
+check inline
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
