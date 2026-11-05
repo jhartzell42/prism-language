@@ -149,25 +149,28 @@ fn Finished done, word = if (Len word) > 0: Push done, word else: done
 Joined: fn [Text], Text -> Text
 fn Joined ws, sep = Fold ws, "", \|acc, w| if acc == "": w else: "{acc}{sep}{w}"
 
-WordSet: fn Text -> (Text ==> unit)
-fn WordSet t = Fold (Words t), {" ": unit}, \|acc, w| Insert acc, w, unit
-
+# Each element's texts go into one set as the tree is walked, a word at a time, so no step
+# joins two sets.
 TextsIn: fn (Path ==> Elem) -> (Text ==> unit)
-fn TextsIn cs = Fold (Values cs), {}, \|acc, e| Union acc, (TextsOf e)
+fn TextsIn cs = TextsInto {}, cs
 
-TextsOf: fn Elem -> (Text ==> unit)
-fn TextsOf e = match e:
-    Ui.Label(text=$t): WordSet $t
-    Ui.Button(label=$l): {$l: unit}
-    Ui.TextInput(text=$t, cursor=$c, ..): {$t: unit, (TextBefore $t, $c): unit}
-    Ui.VBox(children=$cs): TextsIn $cs
-    Ui.HBox(children=$cs): TextsIn $cs
-    Ui.Row(children=$cs, ..): TextsIn $cs
-    Ui.Column(children=$cs, ..): TextsIn $cs
-    Ui.Layers(children=$cs): TextsIn $cs
-    Ui.Frame(children=$cs, ..): TextsIn $cs
-    Ui.Grid(children=$cs, ..): TextsIn $cs
-    otherwise: {}
+TextsInto: fn (Text ==> unit), (Path ==> Elem) -> (Text ==> unit)
+fn TextsInto acc, cs = Fold (Values cs), acc, \|a, e| TextsOf a, e
+
+# a label's words and the space; a button's label; an input's text and its text to the cursor
+TextsOf: fn (Text ==> unit), Elem -> (Text ==> unit)
+fn TextsOf acc, e = match e:
+    Ui.Label(text=$t): Fold (Words $t), (Insert acc, " ", unit), \|a, w| Insert a, w, unit
+    Ui.Button(label=$l): Insert acc, $l, unit
+    Ui.TextInput(text=$t, cursor=$c, ..): Insert (Insert acc, $t, unit), (TextBefore $t, $c), unit
+    Ui.VBox(children=$cs): TextsInto acc, $cs
+    Ui.HBox(children=$cs): TextsInto acc, $cs
+    Ui.Row(children=$cs, ..): TextsInto acc, $cs
+    Ui.Column(children=$cs, ..): TextsInto acc, $cs
+    Ui.Layers(children=$cs): TextsInto acc, $cs
+    Ui.Frame(children=$cs, ..): TextsInto acc, $cs
+    Ui.Grid(children=$cs, ..): TextsInto acc, $cs
+    otherwise: acc
 
 # ---- labels, wrapped by words at the room's width
 
