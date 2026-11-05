@@ -296,6 +296,12 @@ public:
         m.remove(k);
         return m;
     }
+    /// `Union a, b` (`a.united(b)`): this map's entries over `b`'s.
+    Map united(const Map& b) const {
+        Map m = b;
+        for (const auto& [k, v] : *this) m.insert(k, v);
+        return m;
+    }
 
     const_iterator begin() const { return const_iterator(root_.get()); }
     const_iterator end() const { return const_iterator(); }
