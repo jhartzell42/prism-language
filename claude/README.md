@@ -12,6 +12,9 @@ Claude-written prose lives here, under this name, and nowhere else.
 - **`bugs/`**: bugs in prismc, investigated: the cause, the books' rule, the fix.
 - **`decisions.md`**: the choices the books leave to this implementation, with reasons.
 - **`handoff.md`**: everything still to do on the self-hosting branch, in order.
+- **`regex-dialect.md`**: the regular-expression dialect as one procedure: every
+  construct accepted or refused, each diagnostic's position and message, how each runtime
+  spells a pattern to its library, and the doubts.
 - **`modules-style-pass.md`**: modules as directories (`mod.prism`, sections, `test.prism`),
   and the reshuffle of prismc's sources into that tree.
 - **`todo-for-jimmy.md`**: Jimmy's list: things to try, making the code his, a shell

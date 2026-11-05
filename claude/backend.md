@@ -315,6 +315,13 @@ it make every program an interpreter run, and every type mistake a runtime fault
 - `pod`: `Pod`, `Path`, `Segment`, `ToPod`, `FromPod`, `mismatch`, `Error`, `Fault`.
 - `print`: `Show`, `Printer`, `show`, `show_text`; `read`: `value`, `pattern`, `path`,
   `Pattern`.
+- `regex`: `Regex` (`new`, `lit`, `parse`, `match_at`, `find`, `matches`, `split`),
+  `RegexReplacement` (`new`, `lit`, `replace`), `Group`, `Match`, `RegexError`,
+  `RegexPart`. A literal `%/p/f` is `Regex::lit(p, f)` and `%/p/r/f`
+  `RegexReplacement::lit(p, f, r)`, `p` and `r` as written between the delimiters, each
+  built once in a `thread_local!` and cloned at each use; the C++ runtime's spelling is
+  `Regex::lit`, `RegexReplacement::lit` in a function-local `static`, and `compile` for
+  `new` (runtime/cpp/README.md, "Regular expressions").
 - `cells`: `Tick`, `Hold`, `Stamped`, `Cache`, `Snapshot` (`mark`, `marked`, `take`,
   `take_compared`, `queue`, `published`, `get`, `current`), `Port` (`subscribe`, `unsubscribe`, `lien`, `release`,
   `demand`, `fire`, `kept`), `Handle`, `Demand`, `Event`, `Dynamic`, `Defer`, `Job`,
