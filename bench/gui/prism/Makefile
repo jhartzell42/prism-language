@@ -38,8 +38,8 @@ cpp: $(OUT)/driver
 
 # The program, emitted afresh whenever the sources or the installed prismc are newer than
 # its main.cpp.
-PRISMC := $(wildcard $(REPO)/target/bootstrap/prismc)
-$(SRC)/main.cpp: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) $(PRISMC)
+INSTALLED_PRISMC := $(wildcard $(REPO)/target/bootstrap/prismc)
+$(SRC)/main.cpp: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) $(INSTALLED_PRISMC)
 	cd $(REPO) && ./prism compile --target cpp bench/gui/prism examples/chess/window -o target/bench/prism
 
 $(RTLIB): FORCE
@@ -85,7 +85,7 @@ RSBUILD := $(REPO)/target/bench/prism-rs-build
 
 rust: $(RS)/driver
 
-$(RS)/src/main.rs: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) driver.rs $(PRISMC)
+$(RS)/src/main.rs: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) driver.rs $(INSTALLED_PRISMC)
 	cd $(REPO) && ./prism compile bench/gui/prism examples/chess/window -o target/bench/prism-rs
 	sed -i.emitted 's/^fn main() {$$/fn prism_emitted_main() {/' $@
 	echo 'include!("$(abspath driver.rs)");' >> $@
