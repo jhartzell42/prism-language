@@ -1,4 +1,7 @@
 # The building `if`'s tests.
+emit Ui.*
+use App.*
+
 test the_shouting_clause, @Pick (Shout "hi"):
     build
         => expect Ui.Label(text="hi!")

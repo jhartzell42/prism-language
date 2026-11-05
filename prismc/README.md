@@ -1784,9 +1784,6 @@ ruling taken (Claude's).
   `n` documents (`sem-ch09-hosts`, `sem-ch04-row-source`'s hosted test). *Next, if it
   shows in a profile:* the snapshot updated per place from the child's writes, each
   place's level recomputed only when its own reads moved.
-- **CL Clause choice.** A `rebuild` or a building `match`/`if` whose arms are widgets of
-  several clauses needs the clause chosen at the build; generations do it for one clause
-  only.
 - **SR A `for`'s source is computed once per write behind it.** The block's source getter
   (`{name}_source`, `Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`), which the
   builder and every row's entry read (pick RE), keeps its value in an `rt::Cache`

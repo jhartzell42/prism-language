@@ -4,7 +4,7 @@
 # as a blueprint (gap AW).
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
-test mod tests
+test mod Tests
 
 type Mode = choice:
     Shout Text

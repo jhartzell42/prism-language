@@ -136,7 +136,9 @@ fn ClauseWidgetLine wx, menv, scrut, call, qk, v, e:
     let ((srcEx, reads)) = DynamicExpr wx, menv, scrut
     let vt = OutTyOf lx, (Peel (TypeAt lx, scrut.span))
     let ((name, wx1)) = FreshName wx, "generation"
-    let ((upId, wx2)) = AddGn wx1, "{name}_fired", (OutTyOf lx, (Peel (TypeAt lx, e.span))), GnNamed, 0
+    # what the call gives when built: the type at `e` is the blueprint's where the call is an
+    # `if` arm's value (gap AW), its output where a bind takes it
+    let ((upId, wx2)) = AddGn wx1, "{name}_fired", (OutTyOf lx, (OutOf (TypeAt lx, e.span))), GnNamed, 0
     let clauses = ClausesOf lx.g, qk
     let rowName = "{wx.node}Gen{RowSuffix wx}"
     let ((rows, wx3)) = Fold (Range0 (Len clauses)), (([[]], wx2)), \|((acc, w)), i|
@@ -227,7 +229,11 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent:
     let ptys = match v.scheme.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]
-    let binders = Fold c.params, [[]], \|acc, p| Append acc, (PatternBinders p)
+    let pos = Each (Range0 (Len c.params)), \|i| RustPat lxc, (Or c.params[i], dummyPat), (Or ptys[i], TyErr), ByRef, "c{i}"
+    let pa = PaTuple (Each pos, \|o| o.pa)
+    let binds = Fold pos, {}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
+    # the names the clause's patterns bind: a bare case name (`Quiet`) binds nothing (gap AW)
+    let binders = Filter (Fold c.params, [[]], \|acc, p| Append acc, (PatternBinders p)), \|((bn, ignore))| HasKey binds, bn
     let fields = Each binders, \|((bn, r))| (((Snake bn), (OutTyOf lxc, (Peel (BinderTy lxc, r))), bn))
     let rowFields = Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))
     let rowInits = Each fields, \|((f, ignore, ignore))| ((f, (XClone (XVar f))))
@@ -247,9 +253,6 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent:
         otherwise: r2
     let node = FinishNode r3, rowName, (Append (Push (Each fields, \|((f, t, ignore))| ((f, t))), (("parent", (OutWeak wx.node)))), (HostedParams wx)), True
     let p2 = GenMarked p1, genName, r3
-    let pos = Each (Range0 (Len c.params)), \|i| RustPat lxc, (Or c.params[i], dummyPat), (Or ptys[i], TyErr), ByRef, "c{i}"
-    let pa = PaTuple (Each pos, \|o| o.pa)
-    let binds = Fold pos, {}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
     let passed = Each fields, \|((f, t, bn))| match binds[bn]:
         ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)
         otherwise: XClone (XVar f)

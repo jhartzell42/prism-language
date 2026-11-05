@@ -1,18 +1,18 @@
-# Derived by hand: the `if` builds its taken arm, and the arm's call builds the clause its argument chooses (Semantics ch. 8), each label at the caller's place 0.
+# Derived by hand: the `if` builds its taken arm, and the arm's call builds the clause its argument chooses (Semantics ch. 8). prismc builds the arm as a generation under the `if`'s place (prismc/README.md, pick BI: `0/#0`, where the book's arms add no segment), and the clause stands transparent at the arm's path, its label at the arm's place 0.
 test the_shouting_clause
 
 tick 0
   added:
-    0: Ui.Label(text="hi!")
+    0/#0/0: Ui.Label(text="hi!")
 
 test the_quiet_clause
 
 tick 0
   added:
-    0: Ui.Label(text="...")
+    0/#0/0: Ui.Label(text="...")
 
 test the_other_arm
 
 tick 0
   added:
-    0: Ui.Label(text="off")
+    0/#0/0: Ui.Label(text="off")
