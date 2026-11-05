@@ -1803,8 +1803,8 @@ What stays, and why:
 Peak memory, wall time and instructions retired (`/usr/bin/time -l`) of each prismc
 compiling itself (`compile prismc --prelude prelude --name prismc`, to its own target)
 and `examples/chess`, before and after the runtimes' arrays and maps were sized to their
-contents (claude/bugs/small-arrays-whole-chunks.md; runtime/cpp/README.md, "Arrays and
-maps: the costs"). Apple M2 Pro, 5 November 2026, cargo release and clang++ -O3, other
+contents (runtime/rust/README.md; runtime/cpp/README.md, "Arrays and maps: the
+costs"). Apple M2 Pro, 5 November 2026, cargo release and clang++ -O3, other
 agents' jobs running (load average 3 to 10), so the wall times are rough; "footprint" is
 macOS's peak memory footprint, "RSS" the maximum resident set; instructions are the
 least of three runs on chess, one run (two before) on the self-compile.

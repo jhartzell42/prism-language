@@ -13,8 +13,7 @@
 //! constant (the root's count); `iter`, `keys` and `values` are linear, in key order;
 //! collecting `n` pairs is `n log n`, the later pair winning a shared key; `union` is
 //! `m log (n + m)`, `m` the smaller map's size. An empty map allocates nothing and a map
-//! of `n` entries holds `n` nodes (claude/bugs/small-arrays-whole-chunks.md: `im_rc`'s
-//! `OrdMap` allocated a node of 64 entries for every map, an empty one included).
+//! of `n` entries holds `n` nodes.
 //!
 //! No `unsafe`. A panic partway through an update (a key's `cmp` or a clone panicking)
 //! leaves a valid tree that may have lost the entries under the node being rebuilt;

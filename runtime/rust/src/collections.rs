@@ -1,8 +1,8 @@
 //! The collections Prism's types compile to, with Semantics Appendix B's cost promises:
 //! `Text` a view of a shared UTF-8 buffer ([`Text`]: `Len` in bytes, constant; a
 //! [`Cursor`]'s `Before` and `After` constant views), `k ==> v` a persistent AVL tree
-//! ([`Map`], `collections/map.rs`), `[[a]]` a persistent RRB vector ([`Array`],
-//! `im_rc::Vector`). Each clones in constant time.
+//! ([`Map`], `collections/map.rs`), `[[a]]` a persistent balanced tree of chunks with
+//! a tail ([`Array`], `collections/array.rs`). Each clones in constant time.
 //! They are generics rustc instantiates per element type, so they cost the library
 //! nothing per program (Compiler ch. 5, "The heap"); a unique value updates in place
 //! through `Rc::make_mut` on the emitted side (Compiler ch. 3).
@@ -11,11 +11,12 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
+mod array;
 mod map;
+/// `[[a]]`.
+pub use array::Array;
 /// `k ==> v`.
 pub use map::Map;
-/// `[[a]]`.
-pub type Array<T> = im_rc::Vector<T>;
 
 thread_local! {
     static EMPTY: Rc<str> = Rc::from("");

@@ -26,22 +26,48 @@ is the part that is not generated per block, written once and shared.
   one difference: `a.union(b)` keeps `b`'s value on a shared key (as `extend` does),
   where `im_rc` kept the larger map's, so the prelude's `Union a, b` (`b.union(a)`) now
   has `a` winning, as Semantics Appendix B and the C++ prelude say. No `unsafe`.
-- **`Array`** is `im_rc::Vector`, an RRB tree of 64-element chunks: a vector that
-  outgrows the few elements held inline takes a whole chunk, however small
-  (claude/bugs/small-arrays-whole-chunks.md, open for Rust).
+- **`Array`** (`src/collections/array.rs`) is a persistent balanced tree of chunks with a
+  tail. The tail holds the last elements,
+  at most 64, in a vector that grows 1, 2, 4, ..., 64 slots while the array is small; a
+  full tail goes into the tree whole, as a chunk. The tree's leaves are chunks of 1 to 64
+  elements and its nodes have two children, each with its length and height, balanced
+  as an AVL tree is; two trees are concatenated by the AVL join and cut by joins along
+  the path to the cut. An update goes through `Rc::make_mut` on the path to its element.
+  It is a binary tree of chunks rather than a radix tree: Appendix B asks for `Append` in
+  log "(a relaxed radix balanced tree or the like)", and the AVL join keeps its balance
+  by a local rule (no node fill to restore after a cut). It has `im_rc::Vector`'s
+  methods that emitted code and the runtime call (`new`, `unit`, `len`, `get`,
+  `get_mut`, indexing, `push_back`, `push_front`, `append`, `take`, `skip`, `set`,
+  `update`, `iter`, `iter_mut`, `into_iter`, `collect`, `extend`, `From<Vec>`, `Eq`,
+  `Ord`, `Hash`, `Debug`), so emitted code is unchanged; `take` and `skip` past the end
+  panic, as `im_rc`'s did. No `unsafe`. `im-rc` is no longer a dependency.
 - **The costs against Semantics Appendix B**, `n` the size of the collection and `m` of
-  the second:
-  - `Map`: `Insert`, `Remove`, `?Get` and indexing, `?First`: log, kept (the height is at
-    most about 1.44 log n and an update copies one path at most); `Size`: constant, kept;
-    `Keys`, `Values`: linear in key order, kept; `Map` of pairs: `n log n`, the later
-    winning, kept; `Union`: `m log (n + m)`, kept (the smaller map's entries go into the
-    larger).
-  - `Array` (`im_rc`'s promises): `Len` constant; indexing log (base 64); `Append` log;
-    `Push` amortised constant, on a shared vector too (it copies at most a chunk and
-    one path); `Each`, `Fold`, `Sum` linear. All kept.
+  the second; the book's words first:
+  - `Map`: `Insert`, `Remove`, `?Get` and indexing, `?First`: "log", kept (the height is
+    at most about 1.44 log n and an update copies one path at most); `Size`: "constant",
+    kept; `Keys`, `Values`: "linear, in key order", kept; `Map` of pairs: "`n` log `n`,
+    the later pair winning", kept; `Union`: "`m` log `(n+m)`", kept (the smaller map's
+    entries go into the larger).
+  - `Array`, `Len`: "constant", kept (a count).
+  - Indexing `xs[i]`: "constant or log", kept: constant in the tail (an array of 64
+    elements or fewer is all tail), log in the tree (its height, about 1.44 log2 of the
+    chunks, then an index into a chunk).
+  - `Append`: "log (a relaxed radix balanced tree or the like)", kept: the AVL join of
+    the two trees, with at most two chunks copied (a tail that fits beside its
+    neighbour, a shared one cloned).
+  - `Push`: "amortised constant", kept: at most the tail (64 elements) copied when
+    another array shares it, and once every 64 pushes the full tail joined to the tree
+    (one path, log) with no element copied.
+  - `Each`, `Fold`: "`n·t`"; `Sum`: "linear", kept (the iterator walks the chunks).
+  - `Take`, `Drop` and an element's update (`set`, `update`, `&xs[i] <= v` in an `&`
+    block): Appendix B lists no cost; Semantics ch. 5 asks that a statement on a shared
+    part copy "the path from `&_` to the part once per block". Here each is log and
+    copies one path and at most one chunk (64 elements), the path once: after it the
+    nodes are the array's own and later updates are in place.
+  - Storage: at most `2n + 1` slots while the array is small, `n + 64` beyond, and a
+    node per chunk; an array from a `Vec` holds exactly `n` (chunks of 64 moved out).
   - `tests/arrays.rs` and `tests/maps.rs` check the behaviour at the sizes around a
-    chunk's edges and the storage each holds (`tests/storage` counts the test binary's
-    allocations); the `Array` storage test is ignored while the Rust half of the bug is
-    open.
+    chunk's edges, the storage each holds (`tests/storage` counts the test binary's
+    allocations) and the costs (elements cloned, counted by the element type).
 - **Build and test:** `cargo test -p prism_rtl` from the repository root.
 - **Its C++ twin** is `runtime/cpp`, module for module.

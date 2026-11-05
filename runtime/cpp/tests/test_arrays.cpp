@@ -4,8 +4,8 @@
 // `push_back`, `pushed`, a `std::vector` and a list; a view that shares its buffer written
 // at each size; `take` and `drop_front` then written; `concat`, also with itself; `set`,
 // `mut_at`, iteration, equality and order; a write that throws halfway; and the storage an
-// array holds, which is linear in its length (claude/bugs/small-arrays-whole-chunks.md:
-// every array used to take whole 64-element chunks).
+// array holds, which is linear in its length, never a whole chunk for a few elements; and
+// the costs, by counting the elements copied and moved.
 
 #include <cstdint>
 #include <numeric>

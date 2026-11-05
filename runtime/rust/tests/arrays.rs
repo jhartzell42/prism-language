@@ -5,8 +5,8 @@
 //! and an iterator; a clone that shares the elements written at each size; `take` and
 //! `skip` then written; `append`, also of an array to itself; `set`, `update`, indexing in
 //! place, iteration, equality and order; and the storage an array holds, which must be
-//! linear in its length (claude/bugs/small-arrays-whole-chunks.md: every array takes whole
-//! 64-element chunks). The storage is counted by this test binary's allocator (`storage`).
+//! linear in its length, never a whole chunk for a few elements; and the costs, by counting
+//! the elements cloned. The storage is counted by this test binary's allocator (`storage`).
 
 mod storage;
 
@@ -267,9 +267,49 @@ fn an_array_from_a_vec_clones_nothing_into_storage_of_its_size() {
     for n in SIZES {
         let v: Vec<Big> = (0..n).map(big).collect();
         let (a, bytes) = held(|| Array::from(v));
-        assert!(bytes <= 256 + n * std::mem::size_of::<Big>(), "{n} elements from a Vec hold {bytes} bytes");
+        // the elements' own bytes, and 128 for each chunk of 64 (its count and node)
+        assert!(bytes <= 256 + n * std::mem::size_of::<Big>() + n / 64 * 128, "{n} elements from a Vec hold {bytes} bytes");
         assert!(a.iter().cloned().eq((0..n).map(big)));
         let (_c, k) = clones(|| Array::from((0..n).map(Counted).collect::<Vec<_>>()));
         assert_eq!(k, 0);
     }
+}
+
+#[test]
+fn iter_mut_updates_every_element_of_this_array_only() {
+    for n in SIZES {
+        let a = counting(n);
+        let mut b = a.clone();
+        for (i, x) in b.iter_mut().enumerate() {
+            *x += i + 1;
+        }
+        assert!(counts(&a, n, 0));
+        assert!(b.iter().copied().eq((0..n).map(|i| 2 * i + 1)), "n = {n}");
+    }
+}
+
+#[test]
+fn arrays_cut_and_joined_in_many_ways_hold_their_elements_in_order() {
+    // pieces of every size, joined in order, then cut at every 37th place both ways
+    let mut whole: Array<usize> = Array::new();
+    let mut next = 0;
+    for size in (0..40).chain([63, 64, 65, 127, 128, 129, 500, 1000]) {
+        let piece: Array<usize> = (next..next + size).collect();
+        next += size;
+        whole.append(piece);
+        assert!(counts(&whole, next, 0), "after a piece of {size}");
+    }
+    for k in (0..=next).step_by(37) {
+        assert!(counts(&whole.take(k), k, 0) && counts(&whole.skip(k), next - k, k), "k = {k}");
+        let mut rejoined = whole.take(k);
+        rejoined.append(whole.skip(k));
+        assert!(counts(&rejoined, next, 0));
+        let mut fronted = whole.skip(k);
+        for i in (0..k.min(70)).rev() {
+            fronted.push_front(k - 70.min(k) + i);
+        }
+        assert!(counts(&fronted, next - k + k.min(70), k - k.min(70)));
+    }
+    let owned: Vec<usize> = whole.clone().into_iter().collect();
+    assert!(owned.into_iter().eq(0..next));
 }

@@ -6,8 +6,7 @@
 //! shares the entries written at each size; `update`, `without`, `get_min`, `union` (the
 //! prelude's `Union a, b`, `a`'s entries winning), collecting pairs (the later winning),
 //! iteration in key order, equality, order, hashing and `Debug`; and the storage a map
-//! holds, which must be linear in its entries (claude/bugs/small-arrays-whole-chunks.md:
-//! `im_rc::OrdMap` allocates a 64-entry node for every map, an empty one included).
+//! holds, which must be linear in its entries (nothing for an empty map).
 
 mod storage;
 
