@@ -407,9 +407,7 @@ Map<K, V> map(const Array<std::tuple<K, V>>& entries) {
 /// `Union a, b`: `a`'s entries over `b`'s.
 template <class K, class V>
 Map<K, V> union_(const Map<K, V>& a, const Map<K, V>& b) {
-    Map<K, V> m = b;
-    for (const auto& [k, v] : a) m.insert(k, v);
-    return m;
+    return a.united(b);
 }
 template <class K, class V, class F>
 auto each_map(const Map<K, V>& m, const F& f) {
