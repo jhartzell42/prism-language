@@ -393,6 +393,9 @@ public:
     /// The element at `i`, or null.
     const T* get(std::size_t i) const { return i < len_ ? &(*this)[i] : nullptr; }
     const T& operator[](std::size_t i) const { return b_->at(off_ + i); }
+    /// The slots of storage this view's buffer holds, shared with the views sharing it:
+    /// for the tests and for measurement.
+    std::size_t capacity() const { return b_ ? b_->chunks.size() * CHUNK : 0; }
 
     void push_back(T x) {
         if (!b_ || off_ + len_ != b_->size) own();
