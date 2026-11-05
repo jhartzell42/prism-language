@@ -14,6 +14,7 @@
 // - rc.hpp: `Rc` and `Weak`, reference counting with plain counts (one thread).
 // - num.hpp: `Nat` and `Int`, arbitrary precision with a small-value fast path.
 // - collections.hpp: `Text`, `Map` and `Array`, immutable values copied on write.
+// - text_case.hpp: `Upper` and `Lower`, Unicode's full case mapping.
 // - pod.hpp: `Pod`, the plain data a World sees; paths; the `^Pod` traits; `Error` (a
 //   `~T`'s failure).
 // - print.hpp: the transcript's spelling, as the printer API derived `^Show` calls.
@@ -47,4 +48,5 @@
 #include "prism_rtl/result.hpp"
 #include "prism_rtl/scene.hpp"
 #include "prism_rtl/test_world.hpp"
+#include "prism_rtl/text_case.hpp"
 #include "prism_rtl/world.hpp"
