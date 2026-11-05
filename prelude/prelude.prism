@@ -177,6 +177,9 @@ After: fn Cursor -> Text
 At: fn Cursor -> Nat
 ?CursorAt: fn Text, Nat -> ?Cursor
 Upper: fn Text -> Text
+# Not in Appendix B: a character as the one-character text it is (`"{c}"` is its `Show`
+# form, quoted, Type System ch. 5).
+Text: fn Char -> Text
 Lower: fn Text -> Text
 # Not in Appendix B: the pieces between the separators; an empty separator is refused.
 Split: fn Text, Text -> [Text]

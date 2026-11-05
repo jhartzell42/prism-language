@@ -22,7 +22,7 @@ fn Apply e, k = match ?CursorAt e.text, e.cursor:
     nil: e
     ? at: match k:
         Char c:
-            let typed = "{c}"
+            let typed = Text c
             Edit "{Before at}{typed}{After at}", e.cursor + (Len typed)
         Left: match ?StepBack at:
             ? ((ignore, prev)): Edit e.text, (At prev)

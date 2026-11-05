@@ -520,6 +520,11 @@ pub fn filter_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>, keep: &dyn Fn(&K, &V)
 
 // ---- Text -------------------------------------------------------------------------------
 
+/// `Text: fn Char -> Text`: the character as a one-character text.
+pub fn text(c: &char) -> Text {
+    Text::from(c.to_string())
+}
+
 pub fn upper(t: &Text) -> Text {
     Text::from(t.as_str().to_uppercase())
 }

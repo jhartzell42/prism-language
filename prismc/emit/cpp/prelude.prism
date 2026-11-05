@@ -427,6 +427,12 @@ Map<K, V> filter_map(const Map<K, V>& m, const F& keep) {
 
 // ---- Text -------------------------------------------------------------------------------
 
+/// `Text: fn Char -> Text`: the character as a one-character text, its UTF-8.
+inline Text text(char32_t c) {
+    std::string s;
+    prism_rtl::utf8_push(s, c);
+    return Text::of_utf8(std::move(s));
+}
 inline Text upper(const Text& t) {
     std::string s = t.to_string();
     for (auto& c : s)
