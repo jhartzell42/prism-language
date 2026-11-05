@@ -107,6 +107,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
         "Prelude.@Switch": SwitchLine wx, menv, args
         "Prelude.@Flatten": FlattenLine wx, menv, args, ?bound
         "Prelude.@Defer": DeferLine wx, menv, args, e, ?target
+        "Prelude.@Distinct": DistinctLine wx, menv, args, e, ?bound
         "Prelude.@Run": RunLine wx, benv, args, e, ?target
         "Prelude.@Machine": MachineLine wx, benv, menv, args, e, ?target
         "Prelude.@HostDocument": HostLine wx, benv, menv, HostEach, args, ?bound
@@ -325,6 +326,40 @@ fn DeferLine wx, menv, args, e, ?target:
             let ((r, wx5)) = EventRef wx4, menv, a.value
             (((Connect wx5, r, (SkArm field)), (WrEv (EvRefOf wx5, id))))
         nil: ((wx4, (WrEv (EvRefOf wx4, id))))
+
+# `$y <- @Distinct $x` (Jimmy, 5 November, reversing Appendix B's D-DT): `$x`'s value,
+# whose update event fires only when it changed. A hold of an option, `None` until the
+# build sets it to `$x`'s value after the tick (as `@Flatten` adopts its first inner),
+# written by `$x`'s `!Updated` only when the value differs from the one it holds
+# (`SkDistinct`); its readers read the hold, so they are marked only then.
+DistinctLine: unbounded fn Wx, Env, [Arg], Expr, ?Bn -> ((Wx, Wres))
+fn DistinctLine wx, menv, args, e, ?bound:
+    let lx = wx.lx
+    match args[0]:
+        nil:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "an `@Distinct` without its dynamic")
+            ((wx2, WrUnit))
+        ? a:
+            # the type of the values: its argument's, one layer peeled
+            let t = OutTyOf lx, (Peel (TypeAt lx, a.value.span))
+            let ((name, wx1)) = match ?bound:
+                ? (BnHold f, ignore): ((f, wx))
+                otherwise: FreshName wx, "distinct"
+            let kept = "{name}_kept"
+            let source = "{name}_source"
+            let ((ex, reads)) = DynamicExpr wx1, menv, a.value
+            let first = DoExpr (XMethod (XField (XVar "node"), kept), "set", [[(XCtor "Some", [[(XMethod (XVar "node"), source, [[XCx]])]]), XCx]])
+            let sample = XMethod (XMethod (XField XSelf, kept), "get", [[XCx]]), "expect", [[(XStr "`@Distinct` holds its source's value from the build")]]
+            let wx2 = update wx1:
+                &_.taken <= Append &_.taken, [[kept, source]]
+                &_.fields <= Push &_.fields, ((kept, (OutHold (OutOpt t)), "`@Distinct`'s value: its source's, written only when it changes"))
+                &_.moves <= Push &_.moves, ((kept, (XCall "Hold::new", [[XNone, XCx]])))
+                &_.build <= Push &_.build, first
+                &_.getters <= Append &_.getters, [[(MethDef(name=source, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`@Distinct`'s source, read at the build.")), (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@Distinct`'s dynamic: the value it holds at the read point."))]]
+                &_.dynReads <= Insert (Insert &_.dynReads, name, [[OwnRead kept]]), source, reads
+            let ((r, wx3)) = UpdatedEvent wx2, menv, args, t
+            (((Connect wx3, r, (SkDistinct kept)), (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead kept]], t)))
 
 # `@Run F, x` (Semantics Appendix B, over `@started`, `@Defer` and `@Machine`): it takes
 # a number for its `@started`; the job is a `Hold`, the merge `!started <| !again` cycles

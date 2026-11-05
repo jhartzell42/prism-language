@@ -140,6 +140,8 @@ type Sk = choice:
     SkPort Text
     # `@Machine`: the state hold, the step function's path, the output node.
     SkMachine Text, Text, Nat
+    # `@Distinct`: its hold, written only by a value unequal to the one it holds.
+    SkDistinct Text
 
 # A place of the block: its position, its level as the program's `crate::Elem` (its
 # snapshot, `to_pod` for the document), and when a live field reads a dynamic its getter
