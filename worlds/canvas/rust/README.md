@@ -4,7 +4,7 @@
 change: implementers use their discretion.*
 
 The canvas World in Rust: the World a program prismc compiled to Rust runs under when its
-root emits `Gui.*`, speaking compiled programs' protocol (`docs/backend.md`), a
+root emits `Gui.*`, speaking compiled programs' protocol (`claude/backend.md`), a
 `prism_rtl::Program` and `prism_rtl::World` with everything crossing as a `Pod`. It
 answers four tags, `Gui.Window`, `Gui.Scene`, `Gui.Metrics` and `Gui.Focus`, and paints
 in software: winit for the windows and their events, softbuffer for the pixels on the
@@ -49,7 +49,7 @@ prism_world_canvas_rtl::run_hooked::<MyProgram>(wrap, hooks)   // with Hooks, fo
     patch read into windows and scenes, the input queue, every draw command painted
     offscreen at scale 1 and 2, and the font.
 - **Under Xvfb** (`tests/xvfb_smoke.rs`, part of `cargo test`)
-  - A program written by hand in `docs/backend.md`'s shape opens one window with a red
+  - A program written by hand in `claude/backend.md`'s shape opens one window with a red
     rectangle.
   - A second X client reads the screen until the rectangle's centre is red, then clicks
     it through XTest.

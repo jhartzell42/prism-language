@@ -99,7 +99,7 @@ Each program `X.prism` has:
 Each is a place where the books disagree with each other, with the running program, or
 with the parser, or say nothing; with Claude's first ruling, for Jimmy to overturn.
 
-- **FL Float.** `docs/decisions.md` puts `Float` arithmetic out of this compiler, and
+- **FL Float.** `claude/decisions.md` puts `Float` arithmetic out of this compiler, and
   `prism_syntax` flags every `Float` (257 in `window.prism`). The window library is `Float`
   throughout, as layout.md's Q-V3 (logical points as floats) and Pitch ch. 5's quoted
   window have it. *First ruling:* `Float`, since the layout design stays unchanged; chess

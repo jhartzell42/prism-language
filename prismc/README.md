@@ -862,7 +862,7 @@ What the checker does not do yet, each with Claude's first ruling.
 ## Back end
 
 `compile` checks the program, lowers it to a core form and emits a typed Rust crate over
-`prism_rtl` through code templates. `docs/backend.md` is the contract: what Rust each
+`prism_rtl` through code templates. `claude/backend.md` is the contract: what Rust each
 construct becomes and which library call it makes. The old back end, which emitted
 `prism_rt` values and applied them through the dynamic layer (D16), is gone.
 
@@ -1049,7 +1049,7 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
 emit_cpp.prism (module `EmitCpp`), templates/cpp.prism (`CppTemplates`) and
 templates/cpp_prelude.prism (`CppPreludeTemplate`, the prelude in C++, function for
 function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli/cpp`
-(docs/backend.md, "The C++ side"). `./prism test --target cpp` builds it with make and
+(claude/backend.md, "The C++ side"). `./prism test --target cpp` builds it with make and
 `$CXX` (g++ by default) into `target/prism-cpp/NAME` and runs its tests under the C++
 Test World; `tests/compiled/run.sh --target cpp` runs every program so.
 
@@ -1280,7 +1280,7 @@ Each is Claude's, for Jimmy to overturn.
   marks the node dirty when a place reads it, through dynamic `let`s.
 - **HT Heights** come from the node's graph (a source at 0, a named event at what fires
   it, a combinator one above its inputs), not from the checker's group order, which
-  counts reads through a hold's `then` as edges (gap DG; docs/backend.md cuts them).
+  counts reads through a hold's `then` as edges (gap DG; claude/backend.md cuts them).
 - **RN `@Run`** expands to its Appendix B parts in the node: `@started` (it takes a
   number, Semantics ch. 8 RP), an `@Defer`, the merge `!started <| !again`, and the job's
   `Hold`, cycled once per firing.
@@ -1375,7 +1375,7 @@ Each is Claude's, for Jimmy to overturn.
   `!Updated $_`, pick UD). A key that leaves ends its row at the end of that tick (R8):
   the entry after that tick does not exist, so a read that finds the key gone reads the
   source as the tick opened (`Cx::before`), and the leaving keeps that value in
-  `left_entry`, the row's constant from then on (docs/backend.md, "Leaving"). The build
+  `left_entry`, the row's constant from then on (claude/backend.md, "Leaving"). The build
   still takes the entry after the tick as an argument (`value`), for the holds and plain
   `let`s computed at the build: the same value the projection reads there. In the build
   `$_` is that argument; in the methods the projection. `sem-ch04-row-entry`. *Refused:*
@@ -1430,7 +1430,7 @@ Each is Claude's, for Jimmy to overturn.
 - **TR Traits.** A program's trait is a Rust trait whose methods are associated
   functions over `Self` (`Loud::loud(&x)`), defaults in the trait; an impl is a Rust
   impl. An `impl ^Show` is a function of its own (`show_sq`) and `impl Show` over it,
-  and the type then crosses as `Pod::Shown` (docs/backend.md, "Printing"); an `impl ^Eq`
+  and the type then crosses as `Pod::Shown` (claude/backend.md, "Printing"); an `impl ^Eq`
   is `PartialEq` over its `==`.
 - **FL `Fs.List`.** prismc's own `fs.prism` replaces the prelude's `Fs` to declare it,
   since a family's tags are declared in the family's module (Semantics ch. 6) and the CLI
@@ -1609,7 +1609,7 @@ Each is Claude's, for Jimmy to overturn.
 
 ### Contract gaps
 
-Where docs/backend.md is silent or the library lacks what it describes, with the first
+Where claude/backend.md is silent or the library lacks what it describes, with the first
 ruling taken (Claude's).
 
 - **UV An unbounded function value.** The contract has `fn(A) -> Rc<dyn rt::Job<B>>`, a

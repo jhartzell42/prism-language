@@ -1,6 +1,6 @@
 // `Rc<T>` and `Weak<T>`: reference counting with plain (non-atomic) counts, the C++ twin
 // of Rust's `std::rc::Rc` and `std::rc::Weak`, in place of `std::shared_ptr` and
-// `std::weak_ptr`, whose counts are atomic. A program is single-threaded (docs/decisions.md,
+// `std::weak_ptr`, whose counts are atomic. A program is single-threaded (claude/decisions.md,
 // D4), and no World hands a counted value from one thread to another while both run
 // (README.md, "Threads"), so nothing here is synchronized.
 //

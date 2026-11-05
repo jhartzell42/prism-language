@@ -1,5 +1,5 @@
 # Lowering: the checked program to the core form a printer spells (Compiler ch. 3,
-# "The translation, construct by construct"; docs/backend.md, the contract). The input is
+# "The translation, construct by construct"; claude/backend.md, the contract). The input is
 # the tree as parsed, the checker's environment (CheckEnv's `G`: every module, type,
 # constructor, tag, trait and impl, every definition with its clauses) and its typed
 # tables (typed.prism's `TProgram`: the type of every expression, the lifting decision at
@@ -30,7 +30,7 @@ use Typed.*
 # The core form
 # ---------------------------------------------------------------------------------------
 
-# A type of the output program (docs/backend.md, "Types"): the value types, and the
+# A type of the output program (claude/backend.md, "Types"): the value types, and the
 # runtime's cells, ports, references and shared pointers a node is made of.
 type OutTy = choice:
     OutNat
@@ -330,7 +330,7 @@ type CxArg = choice:
     CxNone
 derive ^Eq, ^Show
 
-# A node: one widget block's storage and methods (docs/backend.md, "A widget block").
+# A node: one widget block's storage and methods (claude/backend.md, "A widget block").
 type NodeDef = record:
     name: Text
     prism: Text
@@ -392,7 +392,7 @@ fn ScopePos k = Pos(scope=k, at=0)
 PlaceText: fn Pos -> Text
 fn PlaceText p = if p.scope == 0: "{p.at}" else: "h{p.scope}_{p.at}"
 
-# A `rebuild` (docs/backend.md, "Dynamic structure"): one generation at `path/n/#g`,
+# A `rebuild` (claude/backend.md, "Dynamic structure"): one generation at `path/n/#g`,
 # torn down and built anew from the source after a tick that changed it; the clause of a
 # widget of several clauses chosen by matching its arguments.
 type GenDef = record:
@@ -410,7 +410,7 @@ type GenDef = record:
     width: Nat
 derive ^Eq, ^Show
 
-# A `for` builder (docs/backend.md, "Dynamic structure"): a map of rows, each a node of
+# A `for` builder (claude/backend.md, "Dynamic structure"): a map of rows, each a node of
 # its own at `path/n/[k]`, rebuilt from the source after the tick.
 type ForDef = record:
     name: Text
@@ -752,7 +752,7 @@ TagStruct: fn Text -> Text
 fn TagStruct tn = Concat (Each (Split tn, "."), \|p| Camel p)
 
 # ---------------------------------------------------------------------------------------
-# Types (docs/backend.md, "Types")
+# Types (claude/backend.md, "Types")
 # ---------------------------------------------------------------------------------------
 
 # A checker type as a Rust type. The time layers outside are the caller's to peel: a `$a`
@@ -887,7 +887,7 @@ fn LayerOf t = match t:
     otherwise: LyPlain
 
 # Whether a constructor's fields hold their type's own values by value (directly, in an
-# optional or a tuple), so they go behind an `Rc` (docs/backend.md: recursive payloads
+# optional or a tuple), so they go behind an `Rc` (claude/backend.md: recursive payloads
 # behind `Rc`). Arrays and maps are behind a pointer already.
 Layouts: unbounded fn G -> (Text ==> [Bool])
 fn Layouts g = Fold (Values g.ctors), {}, \|m, c| Insert m, c.name, (Each c.args, \|a| Reaches g, a, c.owner, [[]])
@@ -1068,7 +1068,7 @@ fn ?ThroughParent x = match x:
         nil: nil
     otherwise: nil
 
-# The value, owned: a place is cloned (values are cheap to clone, docs/backend.md).
+# The value, owned: a place is cloned (values are cheap to clone, claude/backend.md).
 Own: fn Vl -> Ex
 fn Own (VlPlace x, RcRef, ignore) = XClone (XDeref (XDeref x))
 fn Own (VlPlace x, RcOwned, ignore) = XClone (XDeref x)
@@ -1179,7 +1179,7 @@ fn ShownPart v = match ValueTy v:
     otherwise: XCall "show", [[Ref v]]
 
 # ---------------------------------------------------------------------------------------
-# Plain expressions (docs/backend.md, "Functions and lifting": a plain function takes
+# Plain expressions (claude/backend.md, "Functions and lifting": a plain function takes
 # references, its clauses one `match`)
 # ---------------------------------------------------------------------------------------
 
@@ -1608,7 +1608,7 @@ fn ArgsFor lx, env, v, args:
 
 let dummyExpr = Expr(kind=EError, span=Range(start=0, end=0))
 
-# A constructor applied (docs/backend.md: a record is a struct, a choice an enum with
+# A constructor applied (claude/backend.md: a record is a struct, a choice an enum with
 # recursive payloads behind `Rc`, a newtype a tuple struct, a unit type a unit struct).
 CtorApp: unbounded fn Lx, Env, CtorInfo, [Arg], Range -> Vl
 fn CtorApp lx, env, c, args, span:
@@ -1922,7 +1922,7 @@ fn LambdaExprs (LbExpr x) = ExprsIn x
 fn LambdaExprs (LbBlock b) = BlockExprs b
 
 # A lambda as a value: `Rc::new(move |..| ..)`, its captures cloned in first
-# (docs/backend.md, "`fn a -> b` as a value").
+# (claude/backend.md, "`fn a -> b` as a value").
 LambdaValue: unbounded fn Lx, Env, Expr, [Pattern], LambdaBody -> Vl
 fn LambdaValue lx, env, e, ps, body:
     let ft = OutTyOf lx, (Peel (TypeAt lx, e.span))
@@ -1981,7 +1981,7 @@ fn IsKnownTy t = match t:
     otherwise: True
 
 # A lambda of unbounded type as a value: a `Start` like a named unbounded function's
-# (docs/backend.md), `Rc<dyn Fn(A) -> Rc<dyn Job<B>>>`, whose job is the lambda's body
+# (claude/backend.md), `Rc<dyn Fn(A) -> Rc<dyn Job<B>>>`, whose job is the lambda's body
 # lowered as a job body (`once_job`): a call in it is a tail call or a frame, as in any
 # job. The arguments come as one value, a tuple when there are several; each borrowed
 # local the body reads is cloned in, and cloned again per call, since the body's job
@@ -2965,7 +2965,7 @@ fn Assign lx, env, target, v = match target.kind:
     otherwise: DoAssign (PlaceOf lx, env, target), v
 
 # ---------------------------------------------------------------------------------------
-# Functions (docs/backend.md: a plain function is a Rust `fn` taking references, its
+# Functions (claude/backend.md: a plain function is a Rust `fn` taking references, its
 # clauses one `match`; generics are Rust's, monomorphized by rustc, doubt MO)
 # ---------------------------------------------------------------------------------------
 
@@ -3141,7 +3141,7 @@ fn LetGetter lx, qk, l:
     FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=[[]], params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True)
 
 # ---------------------------------------------------------------------------------------
-# Unbounded functions as step machines (Semantics ch. 7; D6; docs/backend.md, "Unbounded
+# Unbounded functions as step machines (Semantics ch. 7; D6; claude/backend.md, "Unbounded
 # functions and `@Run`")
 # ---------------------------------------------------------------------------------------
 
@@ -3559,7 +3559,7 @@ fn Frame lx, env, call, restText, Cont = match call.kind:
         if (Len dos) == 0: enter else: XBlock dos, enter
     otherwise: Cont env
 
-# A local whose value is an unbounded function: its `Start` (docs/backend.md).
+# A local whose value is an unbounded function: its `Start` (claude/backend.md).
 ?LocalJobFn: unbounded fn Lx, Env, Expr -> ?Vl
 fn ?LocalJobFn lx, env, c = match c.kind:
     EName n:
@@ -3698,7 +3698,7 @@ fn JobClauses lx, clauses, names, ptys, pts:
 
 # ---------------------------------------------------------------------------------------
 # Widget blocks: one node per block, children in static positions merged in (Compiler
-# ch. 3, "The translation"; docs/backend.md, "A widget block")
+# ch. 3, "The translation"; claude/backend.md, "A widget block")
 # ---------------------------------------------------------------------------------------
 
 # An event as an expression reaches it: a node of the block's graph (a source, a named
@@ -3792,14 +3792,14 @@ type Sk = choice:
 
 # A place of the block: its position, its level as the program's `crate::Elem` (its
 # snapshot, `to_pod` for the document), and when a live field reads a dynamic its getter
-# (the patch pass pulls it after the tick, docs/backend.md "Marks").
+# (the patch pass pulls it after the tick, claude/backend.md "Marks").
 type Place = record:
     pos: Pos
     level: Ex
     getter: Text
     reads: [Read]
 
-# What a dynamic reads, for the marks (docs/backend.md, "Marks"): a hold or a dynamic
+# What a dynamic reads, for the marks (claude/backend.md, "Marks"): a hold or a dynamic
 # `let`'s getter of this node by its field or method name, or, in a row, one of its block's
 # read through the parent (gap DY), whose writes in the block mark the rows.
 type Read = choice:
@@ -4061,7 +4061,7 @@ fn NodeDefOf lx, qk, params, body, sc, isRoot:
     let wx3 = if isRoot: RootResult wx2 else: wx2
     FinishNode wx3, qk, ps, False
 
-# The root's result goes to the World (docs/backend.md: `cx.result(..)`).
+# The root's result goes to the World (claude/backend.md: `cx.result(..)`).
 RootResult: fn Wx -> Wx
 fn RootResult wx = match wx.result:
     WrEv r: Connect wx, r, SkResult
@@ -4432,7 +4432,7 @@ fn BuildLine wx, benv, menv, e, ?bound:
                 ((wx2, WrUnit))
 
 # ---------------------------------------------------------------------------------------
-# Elements (docs/backend.md: each place goes out with `cx.added` in its `Level`; an answer
+# Elements (claude/backend.md: each place goes out with `cx.added` in its `Level`; an answer
 # calls the input method; a request field's firing is `cx.request`)
 # ---------------------------------------------------------------------------------------
 
@@ -4522,7 +4522,7 @@ fn ElementOutput wx, menv, tg, out, pos, ?bound, level:
 
 # A bundle's output (`Gui.Window`'s `((WindowId, !WindowInput))`), taken apart by its
 # tuple pattern: the plain parts are the place's first value (one part itself, several a
-# tuple), the event part its answers (docs/backend.md, "Answers"; the World protocol's
+# tuple), the event part its answers (claude/backend.md, "Answers"; the World protocol's
 # bundle). A `$` part, or a second event part, is not lowered yet; nor is a bundle in a
 # hosted scope, whose `Answer` variant would carry two types.
 BundleOutput: unbounded fn Wx, TagInfo, OutTy, Pos, [?Bn], Ex -> ((Wx, Wres))
@@ -4745,7 +4745,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
                     &_.build <= Push &_.build, (RefusalDo "a widget this back end does not lower yet")
                 ((wx2, WrUnit))
 
-# A host (docs/backend.md, "Hosting"; prism_rtl's `host`; pick HO): the child, a named
+# A host (claude/backend.md, "Hosting"; prism_rtl's `host`; pick HO): the child, a named
 # widget or a widget parameter's argument, is inlined into this node in a scope of its own,
 # `k`, its places counted from 0 and keyed by their path relative to the child; they go to no
 # document. The host is a `for p, e <- $doc` in this node: `$doc` is the getter `host_k_doc`
@@ -5124,7 +5124,7 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, pty, arg:
 
 # A dynamic expression as its reader: the plain expression over the current values, each
 # hold read at the read point (`self.x.get(cx)`), and the holds and getters it reads, for
-# the marks (docs/backend.md, "Marks"). Lifting is the checker's; at one moment a lifted
+# the marks (claude/backend.md, "Marks"). Lifting is the checker's; at one moment a lifted
 # expression is the plain one.
 DynamicExpr: unbounded fn Wx, Env, Expr -> ((Ex, [Read]))
 fn DynamicExpr wx, menv, e:
@@ -5467,7 +5467,7 @@ fn SinkCode sk, target, y = match target:
         [[(DoMatch (XMethod (XMethod (XField XSelf, "{job}"), "get", [[XCx]]), "cycle", [[]]), [[(((PaCtor "prism_rtl::Turn::More", [[PaBind "next"]]), more)), (((PaCtor "prism_rtl::Turn::Finished", [[PaBind "b"]]), fin))]])]]
 
 # What a write of hold `f` (or of the pseudo-hold behind a host's document, `host_k_doc`,
-# when a node of the hosted child wrote behind it) marks, after the `set` (docs/backend.md,
+# when a node of the hosted child wrote behind it) marks, after the `set` (claude/backend.md,
 # "Marks"): the node is dirtied when a place reads it; a hosted node tells its host that a
 # place of its may have moved (`document_moved`); the builders and generations over it are
 # listed for the build; the rows of its `for`s that read it are dirtied and told; the
@@ -6319,7 +6319,7 @@ fn JobRoots lx:
     Fold (Range0 8), direct, \|acc, ignore| Fold acc, acc, \|a, qk| UnionTexts a, (TailTargets lx, qk)
 
 # The unbounded functions a definition names as values, not called: each value is its
-# `Start` (docs/backend.md), so each has a job.
+# `Start` (claude/backend.md), so each has a job.
 UnboundedValues: unbounded fn Lx, Def -> [Text]
 fn UnboundedValues lx, d:
     let es = match d.body:
@@ -6459,7 +6459,7 @@ fn DefItems lx, d, roots:
 NodeItems: fn NodeDef -> [Item]
 fn NodeItems n = Append [[ItNode n]], (Each n.children, \|c| ItNode c)
 
-# A declared type's Rust type (docs/backend.md, "Types").
+# A declared type's Rust type (claude/backend.md, "Types").
 TyDefs: unbounded fn Lx, TyInfo -> [Item]
 fn TyDefs lx, ti:
     let derives = Each ti.derives, \|dn| BareName dn
@@ -6621,7 +6621,7 @@ CheckDefOf: unbounded fn Lx, CheckDecl -> CheckDef
 fn CheckDefOf lx, c = CheckDef(name=c.name.name, lines=(Each c.lines, \|l| XCtor "Ok", [[(XMethod (Own (ValueOf lx, emptyEnv, l.expr)), "to_pod", [[]])]]))
 
 # ---------------------------------------------------------------------------------------
-# `for` (docs/backend.md, "Dynamic structure"): a builder node of rows keyed by the
+# `for` (claude/backend.md, "Dynamic structure"): a builder node of rows keyed by the
 # source's keys, each row a node of its own whose `$_` (or `$v`) is a projection of the
 # source, the block's `{name}_source` getter at the row's key, read at the row's read
 # point and written by nobody (pick RE); a row's event result gathers into the block's
@@ -6848,7 +6848,7 @@ GnTyNamed: fn Wx, Text -> OutTy
 fn GnTyNamed wx, n = Fold wx.gns, OutUnit, \|acc, g| if g.name == n: g.ty else: acc
 
 # ---------------------------------------------------------------------------------------
-# `rebuild` and `@Switch` (docs/backend.md, "Dynamic structure"; Compiler ch. 3)
+# `rebuild` and `@Switch` (claude/backend.md, "Dynamic structure"; Compiler ch. 3)
 # ---------------------------------------------------------------------------------------
 
 # A row's environments from its block's: `_` the generation's value (or the `for` entry),
@@ -7196,7 +7196,7 @@ fn ForwardGen gd:
     let isCurrent = XBin "==", (XBin "+", (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
     XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
 
-# `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (docs/backend.md, "Dynamic structure";
+# `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (claude/backend.md, "Dynamic structure";
 # Semantics ch. 7): a field with the current inner, a hold of the generation's `Dynamic`,
 # adopted at the build from the `rebuild`'s dynamic and afterwards among the first firings
 # of the tick after the one in which the `rebuild`'s dynamic moved (`MovedBy`); the
@@ -7242,7 +7242,7 @@ fn SwitchLine wx, menv, args = match args[0]:
     nil: ((wx, WrUnit))
 
 # ---------------------------------------------------------------------------------------
-# Traits and impls (docs/backend.md: a trait is a Rust trait, `derive` impls; a program's
+# Traits and impls (claude/backend.md: a trait is a Rust trait, `derive` impls; a program's
 # own `impl ^Show` prints by `p.raw`)
 # ---------------------------------------------------------------------------------------
 

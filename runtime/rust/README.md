@@ -9,7 +9,7 @@ is the part that is not generated per block, written once and shared.
   `Event`, `Dynamic`, `Defer`, `Job`), the tick (`cx`), the document and patch (`doc`),
   the zombie collector (`gc`), hosting (`host`), and the World protocol with the Test
   World (`world`). `src/lib.rs` describes each.
-- **The contract** between this crate and the emitted code is `docs/backend.md`.
+- **The contract** between this crate and the emitted code is `claude/backend.md`.
 - **`Text`** (Semantics Appendix B, Text; round 4 TX) is UTF-8: an `Rc<str>` and a byte
   range of it, so a clone is a count and a `Cursor`'s `before` and `after` are views of
   the same buffer, constant. `len` is bytes; order and equality are bytewise.

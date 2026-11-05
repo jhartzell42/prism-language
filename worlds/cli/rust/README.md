@@ -4,7 +4,7 @@
 change: implementers use their discretion.*
 
 The World compiled programs run under at the command line, over `prism_rtl`'s protocol
-(`docs/backend.md`): a `Program` built and ticked by `prism_rtl::drive`, everything
+(`claude/backend.md`): a `Program` built and ticked by `prism_rtl::drive`, everything
 crossing as a `Pod`. It answers the `Fs`, `Process` and `Time` families of `prelude/`, the
 prelude's `Prelude.Unwrap` and `Prelude.Exceptions`, and one tag of its own, `Fs.List`.
 
@@ -117,7 +117,7 @@ tag Fs.List of Element $[Text]:
 ## Tests
 
 `cargo test -p prism_world_cli`. `tests/cli.rs` holds programs written by hand in the
-shape `docs/backend.md` gives the templates, as `runtime/rust/tests/counter.rs` does:
+shape `claude/backend.md` gives the templates, as `runtime/rust/tests/counter.rs` does:
 
 - reading a file through `Fs.File` and `Prelude.Unwrap`, writing it upper-cased through
   `Fs.Output`, and exiting 42 on `Written`, over the in-memory and the real file system;

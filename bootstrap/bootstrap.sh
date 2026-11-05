@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The bootstrap and its fixed point (docs/architecture.md, "The goal").
+# The bootstrap and its fixed point (claude/architecture.md, "The goal").
 #
 # A starting prismc compiles prismc/ into the crate target/bootstrap/gen1, cargo builds it,
 # and gen1's binary compiles prismc/ again into gen2. When the two crates are byte-equal,

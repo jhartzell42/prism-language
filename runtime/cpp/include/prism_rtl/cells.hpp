@@ -1,5 +1,5 @@
 // The node primitives emitted code calls: the few generic pieces of state a template
-// would otherwise emit identically in every program (docs/backend.md, "Node
+// would otherwise emit identically in every program (claude/backend.md, "Node
 // primitives").
 //
 // Every primitive is a plain member of its node (the library is single-threaded, so

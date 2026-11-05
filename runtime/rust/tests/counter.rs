@@ -1,4 +1,4 @@
-//! The counter and the half counter, written by hand as docs/backend.md says the
+//! The counter and the half counter, written by hand as claude/backend.md says the
 //! templates emit them, run by the Test World against the books' transcripts byte for
 //! byte (Conformance ch. 1, Semantics ch. 1, Compiler ch. 3).
 

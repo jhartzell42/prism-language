@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The `prism` command (docs/architecture.md, "Single commands"), a thin shell over a
+# The `prism` command (claude/architecture.md, "Single commands"), a thin shell over a
 # native prismc:
 #
 #   ./prism compile [--target T] SRC... -o OUT   the program in OUT: a Rust crate, or C++

@@ -1,4 +1,4 @@
-# An unbounded function as a value (docs/backend.md: its `Start`), called through a
+# An unbounded function as a value (claude/backend.md: its `Start`), called through a
 # parameter from an unbounded function: each call a cycle point (D6). `Run` tail-calls
 # `Twice`, which calls `F` twice, so three calls and four cycles. Written for prismc's back
 # end. Work in progress, subject to change.

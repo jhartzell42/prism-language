@@ -1,4 +1,4 @@
-# Lambdas of unbounded type (docs/backend.md: an unbounded function value is its `Start`):
+# Lambdas of unbounded type (claude/backend.md: an unbounded function value is its `Start`):
 # one bound by `let` and called, one passed to an unbounded parameter. Each call of an
 # unbounded function from an unbounded function is a cycle point (D6), a lambda's body
 # included. Written for prismc's back end. Work in progress, subject to change.

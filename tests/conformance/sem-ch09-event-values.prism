@@ -1,4 +1,4 @@
-# Event values (docs/backend.md, "Types": `!a` in a value is `rt::Event<A>`): a plain
+# Event values (claude/backend.md, "Types": `!a` in a value is `rt::Event<A>`): a plain
 # function with an event parameter returns an event blueprint built from it, a lifted
 # call and `!Filter` over the event as the library's combinators, as the window
 # library's `?Boxed` answers each claimed element; the supplier hands it the host's own

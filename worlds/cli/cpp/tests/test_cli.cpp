@@ -1,4 +1,4 @@
-// The CLI World in C++ against programs written by hand in the shape docs/backend.md gives
+// The CLI World in C++ against programs written by hand in the shape claude/backend.md gives
 // the templates, driven by `prism_rtl::drive`: the C++ form of worlds/cli/rust/tests/cli.rs and
 // the unit tests of its fs.rs and prelude.rs, test for test.
 //

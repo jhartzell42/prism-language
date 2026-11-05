@@ -1,4 +1,4 @@
-// The smoke tests' program, hand-written in docs/backend.md's shape: one `Gui.Window`
+// The smoke tests' program, hand-written in claude/backend.md's shape: one `Gui.Window`
 // with a `Gui.Scene` that fills a red rectangle, and on the window's first `Press` both
 // places leave. With no window left and nothing owed, the World ends the run with 0.
 // xvfb_smoke.cpp clicks it through XTest, macos_smoke.cpp through `Hooks`.

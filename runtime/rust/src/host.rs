@@ -1,4 +1,4 @@
-//! Hosting (Semantics ch. 9, "`@HostDocument` and its forms"; docs/backend.md, "Hosting"):
+//! Hosting (Semantics ch. 9, "`@HostDocument` and its forms"; claude/backend.md, "Hosting"):
 //! what is the same in every program when a host document is lowered as a `for` over its
 //! child's document.
 //!
@@ -63,7 +63,7 @@ pub struct Supplied<A> {
     pub forwards: bool,
 }
 
-/// `@o` as a value (docs/backend.md, "Types"): built at a path with the sink that answers
+/// `@o` as a value (claude/backend.md, "Types"): built at a path with the sink that answers
 /// the child's place, in the scope of the host whose row builds it.
 pub type Blueprint<E, A> = Rc<dyn Fn(Path, Sink<A>, &Scope<E, A>, &mut Cx) -> Result<Supplied<A>, Fault>>;
 
@@ -85,7 +85,7 @@ pub trait AnswerOf<E>: Clone + 'static {
     fn decode(element: &E, v: &Pod) -> Result<Self, Fault>;
 }
 
-/// Where a node's places go (docs/backend.md, "Hosting"): the document, or an enclosing
+/// Where a node's places go (claude/backend.md, "Hosting"): the document, or an enclosing
 /// host's document, which answers a first-value query itself.
 pub enum Scope<E, A> {
     World,

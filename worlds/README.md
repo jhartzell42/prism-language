@@ -12,5 +12,5 @@ The Worlds a compiled program runs under, each in both targets' languages, mirro
   Cocoa with cairo and FreeType). Each has `Hooks`, which the benchmark and the smoke
   tests drive the program through.
 
-prismc picks the World from the root's `emit` row (`docs/architecture.md`); the emitted
+prismc picks the World from the root's `emit` row (`claude/architecture.md`); the emitted
 program's Cargo.toml or Makefile names these directories by path.

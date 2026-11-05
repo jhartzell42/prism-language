@@ -4,7 +4,7 @@
 //! resolved at compile time, and each widget's graph (its nodes, heights, propagation,
 //! holds, states and transitions) emitted from code templates. This crate is what is
 //! left: the part of a compiled program that is not generated per block, written once
-//! and shared by every program. `docs/backend.md` is the contract between the two.
+//! and shared by every program. `claude/backend.md` is the contract between the two.
 //!
 //! The modules, from the bottom up:
 //!

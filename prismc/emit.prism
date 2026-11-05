@@ -448,7 +448,7 @@ fn RustJob j:
     let startBody = "Rc::new({j.name} \{ {Join (Each j.fields, \|((n, ignore))| n), ", "} \})"
     Job (SourceDoc "", j.doc), j.name, gnames, bounded, fields, (Type j.ret), (BodyLines j.body), start, startBody
 
-# A type, its derives, and its printer and plain-data impls (docs/backend.md, "Printing").
+# A type, its derives, and its printer and plain-data impls (claude/backend.md, "Printing").
 TypeDecl: unbounded fn TyDef -> Text
 fn TypeDecl t:
     let eq = t.eq and not t.floaty
@@ -571,7 +571,7 @@ fn RustNode n:
     let builders = Concat (Append (Each n.builders, \|b| "\n{ForBuilder b}"), (Each n.gens, \|gd| "\n{GenBuilder gd}"))
     let rowImpl = if n.rowKind == NotARow: "" else: "\n{RustRowImpl n}"
     let hooks = Join (Each n.hooks, \|((h, body))| if h == "push": PushHook (Statements body) else: Hook h, (Statements body)), "\n"
-    let doc = SourceDoc "`{n.prism}`: a node of its own (docs/backend.md, \"A widget block\").", n.doc
+    let doc = SourceDoc "`{n.prism}`: a node of its own (claude/backend.md, \"A widget block\").", n.doc
     "{Node doc, n.name, fields, consts, build, "{methods}{builders}", hooks, answer}{rowImpl}"
 
 # A `for`'s builder: rows that left torn down, new keys built.

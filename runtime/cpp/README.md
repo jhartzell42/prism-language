@@ -4,7 +4,7 @@
 progress and subject to change: implementers use their discretion.*
 
 This is the runtime library for the C++ target. It ports the Rust crate `prism_rtl`
-(`runtime/rust/`), whose contract with the emitter is `docs/backend.md`. Names,
+(`runtime/rust/`), whose contract with the emitter is `claude/backend.md`. Names,
 structure and semantics follow the Rust library. The headers carry the Rust module
 headers' explanations, adapted to C++. The emitter that targets C++ reads this file,
 then that contract.
@@ -116,7 +116,7 @@ counts again.
   dynamic one tick behind it (`get`, `queue`, `published`). The CLI World in C++ is
   `worlds/cli/cpp`, beside this library; there is no canvas World in C++.
 - **The emitter's C++ is `prismc compile --target cpp`** (prismc/README.md, "The C++
-  target"; docs/backend.md, "The C++ side"). What it needs beyond the library's types is
+  target"; claude/backend.md, "The C++ side"). What it needs beyond the library's types is
   `prism_rtl/lang.hpp`: the value slot of a `match`, `TRY`, the pattern helpers, `rc`,
   `share`, `upgrade`, `Fn`, `str`/`cat`, `deref`, `host_new`, and the constructors whose
   type the context gives. For it the library also has `Turn::Value`, `Port::Value` and

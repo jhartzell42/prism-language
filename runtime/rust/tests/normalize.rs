@@ -1,4 +1,4 @@
-//! `@Normal` and `Normalize` through `@Run`, written by hand as docs/backend.md says the
+//! `@Normal` and `Normalize` through `@Run`, written by hand as claude/backend.md says the
 //! templates emit them, against Conformance ch. 1's "A job, computed": `compute until
 //! idle: 3 ticks, 1 to 3`, byte for byte.
 

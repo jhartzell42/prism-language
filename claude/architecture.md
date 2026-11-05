@@ -24,7 +24,7 @@ serialization or checkpoints.
 ```
 runtime/rust/  prism_rtl, the runtime library every compiled program links:
                     nodes, heights, holds, keyed for, patches, first values, @Defer
-                    and pending, jobs, the Test World (docs/backend.md)
+                    and pending, jobs, the Test World (claude/backend.md)
 prismc/             the compiler, in Prism: lexer, parser, checker, lowering, emission
                     through code templates, the driver (a rebuild over the source set)
 prelude/            the Prism prelude the checker reads; its Rust is prismc's

@@ -1,6 +1,6 @@
 // The Test World against the books' transcripts, byte for byte: the counter and the half
 // counter (runtime/rust/tests/counter.rs) and `@Normal` with `Normalize` through
-// `@Run` (tests/normalize.rs), written by hand as docs/backend.md says the templates emit
+// `@Run` (tests/normalize.rs), written by hand as claude/backend.md says the templates emit
 // them, in C++; and runtime.rs's Test World rules.
 
 #include <fstream>

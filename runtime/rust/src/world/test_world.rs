@@ -23,7 +23,7 @@
 //! left side is read as a value.
 //!
 //! A tick that aborts leaves no state to go on from, since this implementation keeps no
-//! checkpoints: the test's later steps fail (doubt AB in docs/backend.md).
+//! checkpoints: the test's later steps fail (doubt AB in claude/backend.md).
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;

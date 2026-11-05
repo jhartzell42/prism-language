@@ -51,7 +51,7 @@ it be.*
   tester written in Prism answers a hosted child's first values already (a supplier's
   dynamic output, read in the birth tick), so this part works; it fails only because of
   the first bullet.
-- **The Prism World is out of this compiler** (`docs/decisions.md`, "Features in and
+- **The Prism World is out of this compiler** (`claude/decisions.md`, "Features in and
   out"), and the books describe it only in a sentence (Semantics ch. 9: "one graph can be
   another graph's World").
 

@@ -547,7 +547,7 @@ private:
 
 // ---- Jobs -------------------------------------------------------------------------------
 
-/// A frame of a job's stack (D6; docs/backend.md, "Unbounded functions and `@Run`"): the
+/// A frame of a job's stack (D6; claude/backend.md, "Unbounded functions and `@Run`"): the
 /// caller of `callee`, a call of an unbounded function that was not in tail position,
 /// waiting for its result. A continuation runs once.
 template <class A, class B>
@@ -861,7 +861,7 @@ public:
 };
 
 /// A row subscribing to its block's port for one event: the row heard weakly, the handle
-/// kept for its leaving (docs/backend.md: `Port::subscribe`).
+/// kept for its leaving (claude/backend.md: `Port::subscribe`).
 template <class N, class P, class Port, class Call>
 void subscribe_row(const prism_rtl::Rc<N>& node, std::optional<prism_rtl::Rc<P>> parent, Port port, Call call, std::optional<Handle>& slot) {
     if (!parent) return;

@@ -5,6 +5,18 @@ the cloud container to a local macOS run; subject to change. Everything still to
 the state each item is in. Delete an item when it is done; delete the file when it is
 empty.*
 
+## The `claude/` directory (Jimmy)
+
+- **Claude-written prose lives in `claude/`, never in a directory called `docs/`.** Jimmy:
+  calling Claude's write-ups "docs" "was not something I did or ever would sign off on.
+  Slop code can be mixed with human code but docs hell no." The old `docs/` is now
+  `claude/`, and every reference moved with it (`git mv` plus a rewrite of `docs/` to
+  `claude/` across the tree).
+- **Never create `docs/` again,** and never call these files docs in a commit, a README or
+  a PR. New write-ups (bug reports, designs, the handoff) go under `claude/`.
+- **The seeds were rewritten after the move,** since the templates' comments name these
+  files and the emitted code changed with them.
+
 ## Where things are
 
 - **Branch `claude-self-hosting`** is green on macOS (an M2 Pro): the Rust and the C++
@@ -12,7 +24,7 @@ empty.*
   compiled suites, the checker, the driver tests, the C++ runtime's and Worlds' tests
   (ASan+UBSan under Homebrew clang; Apple clang's hangs at startup on macOS 26).
 - **Merged today (4 November):** per-module C++ headers (queue item 1); the three bugs of
-  `docs/bugs/` and gaps LP, LW, SR (DM is documentation); `Text` as UTF-8 with cursors
+  `claude/bugs/` and gaps LP, LW, SR (DM is documentation); `Text` as UTF-8 with cursors
   (item 6). Running: an agent on items 2–5 and gap NL (branch `claude-perf`).
 - **The books** are `jhartzell42/prism-notes` at `e66aba7` or later. The Semantics
   RULINGS file ends with round 4 (TX, Text).
@@ -179,7 +191,7 @@ program's) shrinks.
 ## Smaller items
 
 - **An absolute `-o` points the Rust crate at `/runtime/rust`**
-  (`docs/bugs/absolute-out-runtime-path.md`).
+  (`claude/bugs/absolute-out-runtime-path.md`).
 - **The seeds carry macOS extended attributes.** Written on the Mac, both
   `bootstrap/prismc-rust.tar.xz` and `bootstrap/prismc-cpp.tar.xz` hold
   `LIBARCHIVE.xattr.com.apple.provenance` headers, so unpacking them on Linux prints one
@@ -215,7 +227,7 @@ program's) shrinks.
   - pick CS, place numbering;
   - the driver refuses Ui-only roots;
   - the per-module-header cycle refusal.
-- **The Test World in Prism:** `docs/test-world-in-prism.md`; Claude recommends (a),
+- **The Test World in Prism:** `claude/test-world-in-prism.md`; Claude recommends (a),
   programs as values with a uniquely owned handle. Nothing to do until Jimmy rules.
 
 ## The umbrella PR
