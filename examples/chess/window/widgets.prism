@@ -125,7 +125,7 @@ fn @Window $title, start, @app:
         Gui.Metrics(text=text)                                           # 2/[text]/0
     $size <- start then !Filter (?ResizeOf !incoming)
     $?focus <- nil then ?Refocus $placed.hits, $?focus, !incoming
-    let $placed = PlaceAt (LayRoot (EnvOf $sizes, $?focus), $kids, $size), (Point 0.0, 0.0)
+    let $placed = PlaceAt (LayRoot (EnvOf $sizes, $?focus), $kids, $size), (Point 0.0, 0.0), (Whole $size)
     Gui.Scene(window=id, draw=$placed.draw)                              # 3
     Gui.Focus(window=id, at=(?FocusRect $placed.hits, $?focus))          # 4
     let !hit = !Filter (?HitAt $placed.hits, !Filter (?PressOf !incoming))
