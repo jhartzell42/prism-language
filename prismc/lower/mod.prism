@@ -18,13 +18,13 @@
 # Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 emit r
-mod types
-mod expr
-mod patterns
-mod templates
-mod functions
-mod jobs
-mod program
+mod Types
+mod Expr
+mod Patterns
+mod Templates
+mod Functions
+mod Jobs
+mod Program
 mod Model
 mod Node
 use Syntax.*
@@ -51,6 +51,20 @@ use Check.Typed.*
 use Check.Typed.Print.*
 use Lower.Model.*
 use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
 
 # ---------------------------------------------------------------------------------------
 # The context: the environment, the typed tables by place, the module being lowered

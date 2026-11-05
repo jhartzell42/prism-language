@@ -1,5 +1,39 @@
-# `Emit.Cpp`'s section `items`.
+# `Emit.Cpp.Items`, a child module of `Emit.Cpp`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Emit.Cpp.*
+use Emit.Cpp.Expr.*
+use Emit.Cpp.Patterns.*
+use Emit.Cpp.Stmts.*
+use Emit.Cpp.Program.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+use Emit.Cpp.Templates.*
+use Emit.Cpp.Templates.Items.*
+use Emit.Cpp.Prelude.*
 
 # ---------------------------------------------------------------------------------------
 # Items

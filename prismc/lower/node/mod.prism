@@ -2,13 +2,13 @@
 # node per block, its places, dynamics, holds, `for` and `rebuild`, and its build.
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit r
-mod def
-mod elements
-mod static
-mod dynamics
-mod finish
-mod keyed
-mod switch
+mod Def
+mod Elements
+mod Static
+mod Dynamics
+mod Finish
+mod Keyed
+mod Switch
 use Syntax.*
 use Syntax.Decls.*
 use Syntax.Lexer.*
@@ -32,7 +32,21 @@ use Check.Env.Traits.*
 use Check.Typed.*
 use Check.Typed.Print.*
 use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
 use Lower.Model.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
 # ---------------------------------------------------------------------------------------
 # Widget blocks: one node per block, children in static positions merged in (Compiler
 # ch. 3, "The translation"; claude/backend.md, "A widget block")

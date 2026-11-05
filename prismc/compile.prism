@@ -123,8 +123,8 @@ fn CompileProgram job:
             let report = CheckProgram pp.srcs, (Each pp.trees, \|t| WithoutTests t), [[]], pp.shown, True, False, pre
             if report.errors > 0: Compiled(files=[[]], failed=True, report="{report.text}{report.errors} error{if report.errors == 1: "" else: "s"}")
             else:
-                let model = Lower.LowerProgram pp.srcs, pp.trees, pp.shown, report.typed, job.name
-                let files = if job.target == "cpp": Emit.Cpp.EmitCpp model, job.runtime, read.scripts else: Emit.Rust.EmitCrate model, job.runtime, read.scripts
+                let model = Lower.Program.LowerProgram pp.srcs, pp.trees, pp.shown, report.typed, job.name
+                let files = if job.target == "cpp": Emit.Cpp.Program.EmitCpp model, job.runtime, read.scripts else: Emit.Rust.Items.EmitCrate model, job.runtime, read.scripts
                 let refused = Fold files, [[]], \|acc, ((path, text))| Fold (Refusals text), acc, \|a, r| AddText a, "{path}: {r}"
                 if (Len refused) == 0: Compiled(files=files, failed=False, report="")
                 else: Compiled(files=files, failed=True, report="{Concat (Each refused, \|r| "error[not-lowered]: {r}\n")}{Len refused} construct{if (Len refused) == 1: "" else: "s"} the back end does not lower (the crate is written, with a `compile_error!` at each)")

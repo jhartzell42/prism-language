@@ -1,5 +1,7 @@
-# `Emit.Rust.Templates`'s section `items`.
+# `Emit.Rust.Templates.Items`, a child module of `Emit.Rust.Templates`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Emit.Rust.Templates.*
 
 # ---------------------------------------------------------------------------------------
 # Types

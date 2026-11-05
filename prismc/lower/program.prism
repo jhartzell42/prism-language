@@ -1,5 +1,44 @@
-# `Lower`'s section `program`.
+# `Lower.Program`, a child module of `Lower`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
 
 # ---------------------------------------------------------------------------------------
 # The program

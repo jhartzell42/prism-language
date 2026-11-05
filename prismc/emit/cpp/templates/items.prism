@@ -1,5 +1,7 @@
-# `Emit.Cpp.Templates`'s section `items`.
+# `Emit.Cpp.Templates.Items`, a child module of `Emit.Cpp.Templates`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Emit.Cpp.Templates.*
 
 # ---------------------------------------------------------------------------------------
 # Types
