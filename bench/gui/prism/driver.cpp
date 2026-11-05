@@ -5,12 +5,19 @@
 // run, the frame is painted and handed to the window server.
 //
 //   driver OP RUNS WARMUP     prints `OP RUN MS` per timed run, then `peak_rss_bytes N`
+//   driver OP RUNS WARMUP check
+//                             also counts each step's work and fails the run when it is
+//                             out of proportion (bench/gui/README.md, "The checks")
 //
 // The emitted main.cpp is linked beside this with its `main` renamed (bench/gui/prism/Makefile).
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
 
 #include <sys/resource.h>
+#include <unistd.h>
+#ifdef __APPLE__
+#include <libproc.h>
+#endif
 
 #include <chrono>
 #include <cstdio>
@@ -68,6 +75,13 @@ struct Shown {
     std::string text;
 };
 
+/// A row of the table as the screen shows it: its id's text, its label, and where the
+/// label is.
+struct RowShown {
+    std::string id, label;
+    double y;
+};
+
 double number(const Pod* p) {
     auto v = p ? p->as_f64() : std::nullopt;
     return v ? *v : 0;
@@ -111,39 +125,118 @@ std::optional<std::pair<double, double>> target(const Session& s, const Press& p
     return std::nullopt;
 }
 
-/// What the screen must show after an operation's timed step: the rows (one "x" each),
-/// and a text that must be there, if any. A wrong number fails the run.
-struct Expect {
-    int rows;
-    std::string marker;  // a text that starts with this ("▶ ") or ends with it (" !!!")
+/// The table the program should have, followed as the app follows it: the ids its rows
+/// were made with (each Create takes the next ids, as `AddRow` does), in slot order, the
+/// selected row and the rows Update every 10th row marked.
+struct Model {
+    long next = 1;
+    std::vector<long> ids;
+    std::vector<bool> banged;
+    long selected = 0;  // the selected row's position, counting from 1; 0 for none
+
+    void press(const Press& p) {
+        auto add = [&](int n) {
+            for (int i = 0; i < n; ++i) ids.push_back(next++), banged.push_back(false);
+        };
+        if (p.row != 0 && p.text == "x") {
+            ids.erase(ids.begin() + (p.row - 1)), banged.erase(banged.begin() + (p.row - 1));
+            if (selected == p.row) selected = 0;
+            else if (selected > p.row) --selected;
+        } else if (p.row != 0) {
+            selected = p.row;
+        } else if (p.text == CREATE_1K || p.text == CREATE_10K) {
+            ids.clear(), banged.clear(), selected = 0;  // the new rows take new slots
+            add(p.text == CREATE_1K ? 1000 : 10000);
+        } else if (p.text == APPEND_1K) {
+            add(1000);
+        } else if (p.text == CLEAR) {
+            ids.clear(), banged.clear(), selected = 0;
+        } else if (p.text == SWAP && ids.size() >= 999) {
+            std::swap(ids[1], ids[998]);
+            bool b = banged[1];
+            banged[1] = banged[998], banged[998] = b;
+        } else if (p.text == UPDATE) {
+            for (std::size_t i = 0; i < banged.size(); i += 10) banged[i] = true;
+        }
+    }
 };
 
-Expect expected(const std::string& op) {
-    static const std::map<std::string, Expect> all = {
-        {"create1k", {1000, ""}}, {"replace1k", {1000, ""}}, {"update10th", {1000, " !!!"}},
-        {"select", {1000, "\u25b6 "}}, {"swap", {1000, ""}}, {"remove", {999, ""}},
-        {"create10k", {10000, ""}}, {"append1k", {2000, ""}}, {"clear", {0, ""}},
-    };
-    return all.at(op);
-}
-
-/// Whether the screen shows what `e` asks for; says what it saw when not.
-bool shows(const Session& s, const Expect& e) {
+/// The rows the screen shows, top to bottom: a row's texts are its id, its label (the
+/// select button's) and its remove button's "x".
+std::vector<RowShown> rows_shown(const Session& s) {
     std::vector<Shown> all;
     for (const auto& [_, scene] : s.shared().scenes) texts(scene.draw, all);
-    int rows = 0;
-    bool marked = e.marker.empty();
-    for (const Shown& t : all) {
-        if (t.text == "x") ++rows;
-        const std::string& m = e.marker;
-        if (!m.empty() && t.text.size() >= m.size() &&
-            (t.text.compare(0, m.size(), m) == 0 || t.text.compare(t.text.size() - m.size(), m.size(), m) == 0))
-            marked = true;
+    std::vector<RowShown> rows;
+    for (std::size_t i = 2; i < all.size(); ++i)
+        if (all[i].text == "x") rows.push_back({all[i - 2].text, all[i - 1].text, all[i - 1].y});
+    return rows;
+}
+
+bool ends_with(const std::string& t, const std::string& m) {
+    return t.size() >= m.size() && t.compare(t.size() - m.size(), m.size(), m) == 0;
+}
+
+/// Whether the screen shows the table the model says, as far as the window reaches: the
+/// first rows in order, each with its id, its "▶ " when selected and its " !!!" when
+/// updated, and, when there are more rows than fit, rows down to near the window's bottom
+/// edge (a row is about 30 high). Says what it saw when not.
+bool shows(const Session& s, const Model& m) {
+    auto rows = rows_shown(s);
+    double h = s.shared().windows.empty() ? 0 : s.shared().windows.begin()->second.h;
+    auto fail = [&](const std::string& why) {
+        std::fprintf(stderr, "driver: the screen shows %zu rows of %zu: %s\n", rows.size(), m.ids.size(), why.c_str());
+        return false;
+    };
+    if (rows.size() > m.ids.size()) return fail("more than the table has");
+    if (!m.ids.empty() && rows.empty()) return fail("none");
+    if (rows.size() < m.ids.size() && rows.back().y < h - 60) return fail("they stop short of the window's bottom edge");
+    const std::string marker = "\u25b6 ";
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        const RowShown& r = rows[i];
+        std::string n = std::to_string(i + 1);
+        if (r.id != std::to_string(m.ids[i])) return fail("row " + n + " is id " + r.id + ", not " + std::to_string(m.ids[i]));
+        bool sel = r.label.compare(0, marker.size(), marker) == 0;
+        if (sel != (m.selected == long(i + 1))) return fail("row " + n + (sel ? " is" : " is not") + " marked selected");
+        if (ends_with(r.label, " !!!") != m.banged[i]) return fail("row " + n + "'s label is \"" + r.label + "\"");
     }
-    if (rows == e.rows && marked) return true;
-    std::fprintf(stderr, "driver: the screen shows %d rows (wanted %d)%s\n", rows, e.rows, marked ? "" : ", and no marked label");
+    return true;
+}
+
+/// Instructions retired by the whole process so far, every thread's: the work a step
+/// costs, which nothing else running on the machine changes (macOS's `proc_pid_rusage`).
+long long instructions() {
+#ifdef __APPLE__
+    rusage_info_v4 u{};
+    if (proc_pid_rusage(getpid(), RUSAGE_INFO_V4, reinterpret_cast<rusage_info_t*>(&u)) != 0) {
+        std::perror("driver: proc_pid_rusage");
+        std::exit(1);
+    }
+    return static_cast<long long>(u.ri_instructions);
+#else
+    std::fprintf(stderr, "driver: check counts instructions with macOS's proc_pid_rusage, which this system lacks\n");
+    std::exit(2);
+#endif
+}
+
+/// `check`'s first check, after each step settles: every `Draw.Text` in the scenes starts
+/// inside the window, or within 8 of its edges, so the window library draws only what the
+/// window shows.
+bool drawn_inside(const Session& s) {
+    if (s.shared().windows.empty()) return true;
+    const WindowPlace& w = s.shared().windows.begin()->second;
+    std::vector<Shown> all;
+    for (const auto& [_, scene] : s.shared().scenes) texts(scene.draw, all);
+    int outside = 0;
+    for (const Shown& t : all)
+        if (t.x > w.w + 8 || t.y > w.h + 8 || t.x < -8 || t.y < -8) ++outside;
+    if (outside == 0) return true;
+    std::fprintf(stderr, "driver: check: %d of the scenes' %zu texts are drawn outside the %gx%g window\n", outside, all.size(), w.w, w.h);
     return false;
 }
+
+/// `check`'s second check: these operations' timed step retires under a tenth of the
+/// instructions of their setup, Create 1,000 rows.
+bool small_op(const std::string& op) { return op == "update10th" || op == "select" || op == "swap" || op == "remove"; }
 
 long peak_rss_bytes() {
     rusage u{};
@@ -158,8 +251,9 @@ long peak_rss_bytes() {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 4) {
-        std::fprintf(stderr, "usage: driver OP RUNS WARMUP (OP: create1k replace1k update10th select swap remove create10k append1k clear)\n");
+    bool check = argc == 5 && std::strcmp(argv[4], "check") == 0;
+    if (argc != 4 && !check) {
+        std::fprintf(stderr, "usage: driver OP RUNS WARMUP [check] (OP: create1k replace1k update10th select swap remove create10k append1k clear)\n");
         return 2;
     }
     std::string op = argv[1];
@@ -181,17 +275,36 @@ int main(int argc, char** argv) {
     int run = 0;
     bool waiting = false, timing = false;
     Clock::time_point t0;
+    long long i0 = 0, setup = 0;
     int failed = 0;
+    Model model;
     Hooks hooks;
     hooks.settled = [&](Session& s) {
-        if (waiting && timing) {
-            double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
-            std::printf("%s %d %.3f\n", op.c_str(), ++run, ms);
-            std::fflush(stdout);
-            if (!shows(s, expected(op))) {
-                failed = 1;
-                s.exit(1);
-                return;
+        if (waiting) {
+            long long work = check ? instructions() - i0 : 0;
+            if (timing) {
+                double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+                std::printf("%s %d %.3f\n", op.c_str(), ++run, ms);
+                std::fflush(stdout);
+                if (!shows(s, model)) {
+                    failed = 1;
+                    s.exit(1);
+                    return;
+                }
+            }
+            if (check) {
+                const Press& p = steps[next - 1];
+                std::printf("check %s step %zu (%s row %d): %lld instructions\n", op.c_str(), next, p.text.c_str(), p.row, work);
+                std::fflush(stdout);
+                if (!timing && p.text == CREATE_1K) setup = work;
+                bool small = !timing || !small_op(op) || work * 10 < setup;
+                if (!small)
+                    std::fprintf(stderr, "driver: check: %s retired %lld instructions, not under a tenth of Create 1,000 rows' %lld\n", op.c_str(), work, setup);
+                if (!drawn_inside(s) || !small) {
+                    failed = 1;
+                    s.exit(1);
+                    return;
+                }
             }
         }
         waiting = false;
@@ -211,6 +324,8 @@ int main(int argc, char** argv) {
         }
         waiting = true;
         timing = p.timed;
+        model.press(p);
+        if (check) i0 = instructions();
         t0 = Clock::now();
         s.input(s.shared().windows.begin()->first, gui::press(at->first, at->second));
     };

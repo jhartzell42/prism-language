@@ -8,5 +8,6 @@ The module `Window` (claude/modules-style-pass.md): The window library: the Ui f
 - `layout.prism`: `Window.Layout`, a child module: layout as plain functions (prism-reflex's layout.md): room down, size up, placed by the parent.
 - `ui.prism`: `Window.Ui`, a child module: the `Ui` family, leaves and containers.
 - `widgets.prism`: `Window.Widgets`, a child module: the widget functions, each keeping a hold or hosting its child, and `@Window`.
+- `tests.prism`: `Window.Tests`, its test module: a column taller than the window draws only what shows (`tests.expected`).
 
 Written by Claude on the claude-self-hosting branch; subject to change.

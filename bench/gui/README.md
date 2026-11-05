@@ -51,8 +51,10 @@ From the input to the frame that shows its result, handed to the window system.
   `Hooks::settled`: every tick the press caused has run, the layout and the scene are
   recomputed, and the frame is painted and presented (`[CATransaction flush]` in C++,
   softbuffer's `present` in Rust). After each timed step the driver checks the screen
-  shows the rows and the marker it should, and fails the run otherwise. C++ is built at
-  -O3 with clang; Rust as a cargo release build (opt-level 3).
+  against the table the script should have made: the rows from the top down to the
+  window's bottom edge, each with its id, its `▶` when selected and its ` !!!` when
+  updated; it fails the run otherwise. C++ is built at -O3 with clang; Rust as a cargo
+  release build (opt-level 3).
 - **GTK** (`gtk/`): C with GTK 3 over Quartz. `gtk_button_clicked`, then the window's
   next frame-clock `after-paint`, then `gdk_display_sync`. Rows are boxes of a label and
   two buttons in a scrolled window.
@@ -65,11 +67,26 @@ From the input to the frame that shows its result, handed to the window system.
 The median of RUNS timed runs, after WARMUP untimed ones, with the fastest and the
 slowest. Peak memory is each process's maximum resident set size from `/usr/bin/time -l`.
 
+## The checks
+
+`prism/check.sh` (macOS) runs create1k, update10th, select, swap, remove and clear once
+each under both drivers with `driver OP 1 0 check`, which counts work rather than time:
+
+- **What the scene draws:** after every step, no `Draw.Text` in the scenes starts more
+  than 8 outside the window, so the window library draws what the window shows, not the
+  whole table.
+- **What a small change costs:** the instructions the whole process retires (every
+  thread's, `proc_pid_rusage`) from the press to the settled frame. Update10th, select,
+  swap and remove must each retire under a tenth of what their setup's Create 1,000 rows
+  did.
+
+A failed check fails the run and says what it saw.
+
 ## The files
 
 - `run.sh`: builds, runs, and writes `RESULTS.md`.
-- `prism/`: `bench.prism`, `driver.cpp`, `driver.rs`, and the `Makefile` that builds both
-  drivers (the emitted `main` renamed, the driver beside it).
+- `prism/`: `app.prism`, `driver.cpp`, `driver.rs`, the `Makefile` that builds both
+  drivers (the emitted `main` renamed, the driver beside it), and `check.sh`.
 - `gtk/`: `table.c` and its `Makefile`.
 - `cuis/`: `table.st` (one expression, run with `-s`), `run.sh`, and `setup.sh`, which
   clones Cuis-Smalltalk-Dev into `target/bench/deps`.
@@ -91,5 +108,5 @@ slowest. Peak memory is each process's maximum resident set size from `/usr/bin/
   again on any change); GTK moves the two children; Prism moves two rows' values between
   their places.
 - **No scrolling in Prism:** the window library has no scroll pane, so the Prism window
-  lays out every row and clips to the window; GTK and Cuis lay out every row too, in a
-  scroll pane.
+  lays out every row and draws those that start inside the window; GTK and Cuis lay out
+  every row too, in a scroll pane.

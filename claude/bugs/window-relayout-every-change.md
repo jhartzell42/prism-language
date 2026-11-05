@@ -1,87 +1,95 @@
-# The window library lays out, draws and hit-tests the whole tree on every change
+# A small change to the window still costs more than building it
 
 *Written by Claude on the claude-self-hosting branch, 5 November 2026; subject to change.
-A performance bug in `examples/chess/window.prism`: the programs are right, and any
-change costs as much as building the whole window.*
+A performance bug in the window library (`examples/chess/window/`) and in what the
+compiled hosts do each tick: the programs are right, and a change to one row still costs
+about as much as creating the table.*
 
 ## The scenario
 
-The GUI table (`bench/gui/`) on the cloud box (2 cores, Xvfb, 5 November), medians in ms:
+The GUI table (`bench/gui/`) on Jimmy's Mac, `RUNS=5 WARMUP=1`, medians in ms
+(`claude/benchmarks-preliminary.md`, "After the window fix"):
 
 | op | Prism C++ | Prism Rust | GTK |
 |---|---|---|---|
-| create1k | 1,055 | 717 | 482 |
-| update10th | 1,218 | 2,567 | 53 |
-| select | 1,217 | 2,591 | 6 |
-| swap | 1,174 | 2,142 | 121 |
-| remove | 1,073 | 2,149 | 31 |
+| create1k | 53 | 53 | 277 |
+| update10th | 78 | 91 | 36 |
+| select | 76 | 88 | 1.1 |
+| swap | 70 | 79 | 61 |
+| remove | 63 | 73 | 6.7 |
 
-- **Selecting one row costs as much as creating a thousand.** GTK selects in 6 ms;
-  Prism takes 1.2 s in C++ and 2.6 s in Rust.
-- **Every edit that touches one row or a hundred costs about one create1k.** The work is
-  proportional to the window's size, not to the change.
+- **Selecting one row costs more than creating a thousand.** `bench/gui/prism/check.sh`
+  fails on update10th, select, swap and remove under both targets: each retires more
+  instructions than its setup's create1k (select 0.97 G against 0.69 G in C++), where the
+  check asks for under a tenth.
+- **It was ten to twenty times worse** (select 797 ms in C++, 1,651 in Rust) before the
+  window drew only what shows and stopped joining word sets with `Union`; that part is
+  fixed, and pinned by `Window.Tests` and the check's first half.
 
 ## The mechanism
 
-`@Window` (window.prism, about line 901) computes everything from the whole element tree
-as plain functions of one behavior:
+One select is about eight ticks: the press, then a tick per host layer (the window
+answers the column, the column the row, the row the button; Semantics ch. 9) and the
+owed ticks of the structural dynamics that moved (ch. 7, round 3 ST). Measured on the
+C++ select (the emitted code instrumented by hand):
 
-- **The layout,** `$placed = PlaceAt (LayRoot (EnvOf $sizes, $?focus), $kids, $size), ...`
-  (line 910): one call over every element. A changed label in row 2 re-lays out all
-  1,000 rows: `LayStack` measures every child (`natural`), sizes it again (`Final`), and
-  with `Stretch` lays it out a third time (`Restretch`).
-- **The draw list:** `StackAt` folds `Merged` over the rows, appending each row's
-  `[Draw]` and `[Hit]` to the accumulator, so the list is rebuilt whole.
-- **The scene:** `Gui.Scene(window=id, draw=$placed.draw)` hands the World the whole
-  list, and the World repaints all of it, rows scrolled off the window included.
-- **The measured words:** `TextsIn $kids` (line 906) rebuilds the set of every word in
-  the tree. In C++ that set is also quadratic (`cpp-union-big-into-small.md`).
-- **Hit testing and focus:** `?HitAt` and `?FocusRect` fold over every hit, which is
-  fine per click, but the hits are rebuilt with the layout.
+- **The window lays the whole tree out in six of those ticks, about 5 ms each, though its
+  document changes in one.** In every other tick `$kids` is equal to the tick before;
+  its update event fires anyway, as R3 allows ("may fire in a tick where it was
+  recomputed to the same value"), and `$placed` and the scene follow it.
+- **`$placed` is recomputed at every read.** It is a `let`, and the lowering caches only a
+  `for`'s source, so the scene, the hit test and (when something has focus) the focus
+  ring each lay the window out again. The window now reads it once per tick where it can
+  (the focus reuses the hit; the ring is laid out only when focused).
+- **About half of the samples are the hosts' own work:** each tick a host rebuilds its
+  child's document whole (`host_N_doc_now`) and its rows' map key by key
+  (`host_N_rows_build`), and the Metrics `for` recomputes `TextsIn` over the tree, all
+  proportional to the table.
+- **Routing a click is a filter per child:** `?Boxed` gives every child of a box a filter
+  of the box's one `!in` event, so a click runs a thousand filters at the column. Cheap,
+  but proportional to the table.
 
-Profiles agree (gdb stack samples, 5 November):
+## What would fix the rest, and why this branch stops here
 
-- **C++ select:** 21 of 30 samples in `texts_in` / `union_` under `rows_build`, and the
-  rest in `placed` and `scene`.
-- **Rust select:** 26 of 30 in `Main::placed`, 25 of those in `lay_stack`'s fold, mostly
-  `im_rc` `Vector::append` and `merge_rebalance` on the `Hit` and `Draw` lists (memcpy
-  at the top).
+Jimmy's ruling stands: "bare minimum bone simple" refactoring, the layout engine stays
+in Prism, no new semantics except one possible combinator that drops spurious refires of
+a dynamic holding an `^Eq` value.
 
-Prism's dynamics already know which row changed; the window library throws that away by
-laying out the tree as one function of one value.
+- **That combinator is what the six spurious layouts need, and it cannot be written in
+  Prism.** The books give dynamics no deduping: "nothing dedupes by default" (Semantics
+  ch. 7, "A dynamic is a sample and an update event"), and Appendix B rules it out of the
+  prelude (D-DT, round 47: "No `$Distinct`: a distinct-until-changed keeps state, so it
+  would be a widget binding, `$y <- @Distinct $x` with `^Eq`, and the prelude does not
+  have one"). As a widget in Prism it needs a hold whose first value is `$x`'s at the
+  build, and a hold's initial value is plain (`$kept <- $x then ...` is refused,
+  mark-stack and two-layers). So it is a builtin, which means lowering in both printers,
+  under `prismc/`, which another branch owns. Doubt **DQ** below.
+- **Per-child dynamics** (a `for` over the children, each child's layout and draw list
+  its own dynamic) would add a tick: a `for`'s gathered `$(K ==> T)` is a structural
+  dynamic whose update event fires at n+1 (ch. 7, "Structural dynamics"), so the parent
+  that combines its children's sizes would lag them, and chess's and the window's
+  transcripts, which print every tick, would change. Doubt **PC**.
+- **The hosts' per-tick rebuilds and the uncached `let`** are the lowering's and the
+  runtime's (`runtime/*/host`), not the window's.
 
-## Is it a bug?
+## Doubts
 
-Yes, in the library, not the language. A window whose cost per change is the whole tree
-cannot run a list of ten thousand rows, and the benchmark exists to show what Prism's
-incremental model buys. Cuis's Morphic, redrawing damaged rectangles only, does
-update10th in 1 ms on the same box.
-
-## The fix: bare-minimum, bone-simple refactoring, staying in Prism (Jimmy)
-
-Jimmy: the fix is "bare minimum bone simple" refactoring, and the layout engine *stays*
-in Prism. No new semantics, with one possible exception below.
-
-- **Per-child dynamics instead of one function of the tree.** Lay out each child where
-  the tree already has a place for it (a `for` over the children by path), so a
-  child's `Laid`, its `[Draw]` and its words refire only when that child changes. The
-  stack then combines children's sizes, which is cheap, instead of re-laying them out.
-- **One layout per child per change.** `natural`, `Final` and `Restretch` each call
-  `Lay`; reuse the first result when the room did not change.
-- **Draw only what the window shows.** Skip children whose rectangle falls outside the
-  window before building their draw commands.
-- **The word set per child,** unioned at the parent, so a changed label re-measures only
-  its own words.
-- **Allowed new piece:** a combinator that removes spurious refires from a dynamic
-  holding a value of an `^Eq` type (refire only when the new value differs). Jimmy: "we
-  might want" it; nothing else new.
-- **Keep it small.** Do not build a general retained-mode layout system, a diffing World
-  protocol, or damage regions in the World; those are designs, not this fix.
+- **DQ** Whether to add `@Distinct: fn $a -> @$a where a: ^Eq` as a builtin (both
+  runtimes and the lowering) against D-DT; it would remove five of the six layouts per
+  select and the spurious Metrics recomputes.
+- **PC** Whether per-child layout is worth a tick of lag per box, or whether the window
+  keeps one plain function of the tree.
+- **CQ** `@TextInput`'s `Apply` types `"{c}"` for a `Char c`, which interpolates its
+  `Show` form: pressing `q` in an input inserts `'q'`, quotes included (seen in a
+  Window.Tests draft; no test pins it).
+- **AT** The C++ printer writes every `path.at(n)` in a node as `path->at(n)` when the node
+  has a dynamic named `at` (`let $?at = ...` in `@Window` did not compile; it is `$?ring`).
 
 ## Tests and measurement
 
-- **The existing window tests and chess's transcripts** pin behavior; they must not
-  change.
-- **The bench is the measure:** `bench/gui/run.sh prism-cpp prism-rust`, before and
-  after. Success is select, swap, remove and update10th well under create1k (tens of
-  milliseconds, the order of GTK), with create1k no slower.
+- **`Window.Tests`** (`examples/chess/window/tests.prism`): a column taller than its
+  window draws only the leaves that start inside it, and a change below the edge leaves
+  the scene alone; the focus moves by press and by Tab.
+- **`bench/gui/prism/check.sh`**: no text drawn outside the window (passes); a small
+  change under a tenth of create1k's instructions (fails, as above).
+- **The bench:** `bench/gui/run.sh prism-cpp prism-rust`.
