@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "check.hpp"
+#include "prism_rtl/lang.hpp"
 #include "prism_rtl/prism_rtl.hpp"
 
 using namespace prism_rtl;
@@ -178,12 +179,12 @@ TEST(a_write_that_throws_halfway_leaves_the_array_as_it_was) {
     for (std::size_t n : SIZES) {
         Array<Brittle> a;
         for (std::size_t i = 0; i < n; ++i) a.push_back(Brittle(int(i)));
-        // a view that no longer ends where its buffer does copies itself before a push;
-        // the copy throws partway
+        // a push onto a shared array copies its tail first (unless the tail is full and
+        // goes into the tree whole); the copy, or the push, throws partway
         Array<Brittle> grown = a;
         grown.push_back(Brittle(-3));
         Array<Brittle> b = a;
-        Brittle::budget = int(n / 2);
+        Brittle::budget = int((n % 64) / 2);  // half the tail's elements, or none
         bool threw = false;
         try {
             b.push_back(Brittle(-1));
@@ -215,20 +216,48 @@ TEST(a_write_that_throws_halfway_leaves_the_array_as_it_was) {
     }
 }
 
-TEST(an_elements_address_holds_while_its_buffer_grows) {
-    Array<Int> a;
+TEST(an_elements_address_holds_while_the_array_is_read_and_its_others_updated) {
+    Array<Int> a = counting(300);
     std::vector<const Int*> at;
-    for (std::size_t i = 0; i < 300; ++i) {
-        a.push_back(Int(std::int64_t(i)));
-        at.push_back(&a[i]);
-    }
+    for (std::size_t i = 0; i < 300; ++i) at.push_back(&a[i]);
+    Array<Int> shared = a;
+    shared.push_back(Int(-1));  // the pushes of a copy leave `a`'s elements where they are
     for (std::size_t i = 0; i < 300; ++i) CHECK(&a[i] == at[i] && *at[i] == Int(std::int64_t(i)));
     // updates in place through several references at once (`iter_mut().enumerate()`)
-    Array<Int> b = a.take(10);
-    std::vector<Int*> refs;
-    for (std::size_t i = 0; i < b.size(); ++i) refs.push_back(&b.mut_at(i));
-    for (std::size_t i = 0; i < refs.size(); ++i) *refs[i] = Int(std::int64_t(100 + i));
-    CHECK(counts(b, 10, 100) && counts(a, 300));
+    for (std::size_t len : {std::size_t(10), std::size_t(64), std::size_t(200)}) {
+        Array<Int> b = a.take(len);
+        std::vector<Int*> refs;
+        for (std::size_t i = 0; i < b.size(); ++i) refs.push_back(&b.mut_at(i));
+        for (std::size_t i = 0; i < refs.size(); ++i) *refs[i] = Int(std::int64_t(100 + i));
+        CHECK(counts(b, len, 100) && counts(a, 300));
+        Array<Int> c = a.take(len);
+        std::size_t i = 0;
+        for (auto& [k, x] : enumerate(iter_mut(c))) {
+            CHECK(k == i++);
+            x = Int(std::int64_t(1000 + k));
+        }
+        CHECK(counts(c, len, 1000) && counts(a, 300));
+    }
+}
+
+TEST(arrays_cut_and_joined_in_many_ways_hold_their_elements_in_order) {
+    Array<Int> whole;
+    std::int64_t next = 0;
+    std::vector<std::size_t> pieces;
+    for (std::size_t k = 0; k < 40; ++k) pieces.push_back(k);
+    for (std::size_t k : {63, 64, 65, 127, 128, 129, 500, 1000}) pieces.push_back(k);
+    for (std::size_t size : pieces) {
+        Array<Int> piece;
+        for (std::size_t i = 0; i < size; ++i) piece.push_back(Int(next + std::int64_t(i)));
+        next += std::int64_t(size);
+        whole = whole.concat(piece);
+        CHECK(counts(whole, std::size_t(next)));
+    }
+    std::size_t total = std::size_t(next);
+    for (std::size_t k = 0; k <= total; k += 37) {
+        CHECK(counts(whole.take(k), k) && counts(whole.drop_front(k), total - k, std::int64_t(k)));
+        CHECK(whole.take(k).concat(whole.drop_front(k)) == whole);
+    }
 }
 
 // ---- Costs (Semantics Appendix B, Arrays), by counting the elements copied and moved -------

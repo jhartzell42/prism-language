@@ -27,7 +27,7 @@ is the part that is not generated per block, written once and shared.
   where `im_rc` kept the larger map's, so the prelude's `Union a, b` (`b.union(a)`) now
   has `a` winning, as Semantics Appendix B and the C++ prelude say. No `unsafe`.
 - **`Array`** (`src/collections/array.rs`) is a persistent balanced tree of chunks with a
-  tail. The tail holds the last elements,
+  tail, the same design as the C++ runtime's `Array`. The tail holds the last elements,
   at most 64, in a vector that grows 1, 2, 4, ..., 64 slots while the array is small; a
   full tail goes into the tree whole, as a chunk. The tree's leaves are chunks of 1 to 64
   elements and its nodes have two children, each with its length and height, balanced

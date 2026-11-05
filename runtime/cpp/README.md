@@ -74,7 +74,7 @@ counts again.
 | `collections::Text` | `Text` (UTF-8: a byte range of a shared `std::string`; `len` in bytes, `view`, `concat`, `chars` decoded, `to_string`) | collections.hpp |
 | `collections::Cursor` | `Cursor` (a `Text` and a byte index on a character boundary; `front`, `back`, `at_byte`, `at`, `step`, `step_back`, `before`, `after`, the last two views of the same buffer) | collections.hpp |
 | `collections::Map<K, V>` (a persistent AVL tree, ported from this one) | `Map<K, V>` (a persistent AVL tree): `get` → pointer, `mut_get` (the path copied), `contains`, `insert`/`remove` (this value), `inserted`/`removed` (new value), `unit`, ordered iteration | collections.hpp |
-| `collections::Array<T>` (`im_rc::Vector`) | `Array<T>` (a view of a shared buffer of chunks): `get`, `[]`, `mut_at`, `push_back`/`set` (this value), `pushed`/`updated`, `concat`, `take`, `drop_front` | collections.hpp |
+| `collections::Array<T>` (a persistent balanced tree of chunks, the same design) | `Array<T>` (a persistent balanced tree of chunks with a tail): `get`, `[]`, `mut_at`, `push_back`/`set` (this value), `pushed`/`updated`, `concat`, `take`, `drop_front` | collections.hpp |
 | `pod::Pod` | `Pod`: factories `unit`, `boolean`, `integer`, `int64` (Rust's `Pod::int`), `floating`, `character`, `text`, `duration`, `record`, `choice`, `name`, `element`, `tuple`, `array`, `map`, `nil`, `some`, `ok`, `failed`, `path`, `shown`; `kind()` and `if_<kind>()` accessors; `structure`, `field`, `tag`, `as_text`, `as_f64`, `elements`, `to_string` | pod.hpp |
 | `pod::F64`, `pod::ShownText` | `F64` (total order); a `Shown`'s text is `Pod::Shown::text` | pod.hpp |
 | `pod::Segment`, `pod::Path` | `Segment` (`pos`, `gen`, `key`, `kind`, `number`, `key_value`, `is_pos`), `Path` (`root`, `child`, `at`, `join`, `segments` → `std::span`, `len`, `to_string`); `path_of(span)` is Rust's `Path(at.to_vec())` | pod.hpp |
@@ -137,7 +137,7 @@ counts again.
   - persistence: a map's and an array's update never reaches a value sharing them;
   - `lang.hpp`: `TRY` on a named value leaves it as it was, a `Slot` of an option holds
     `nil` as a value.
-- **All 50 tests pass** under g++ and clang++. They also pass under AddressSanitizer,
+- **All 55 tests pass** under g++ and clang++. They also pass under AddressSanitizer,
   LeakSanitizer and UBSan with g++, and LSan reports no leaks. That includes the zombie
   loop, which the collector frees, and the host teardown. Clang's sanitizer runtime
   (`libclang-rt-18-dev`) is not installed on this machine; `make test` runs clang under
@@ -145,36 +145,48 @@ counts again.
 
 ## Arrays and maps: the costs
 
-Each of Semantics Appendix B's promises for arrays and maps, `n` the size of the collection and
-`m` of the second, against this library (`collections.hpp`); "the newest view" is the
-view that ends where its buffer does, the way an array built by a fold grows.
+Each of Semantics Appendix B's promises for arrays and maps (the book's words first), `n`
+the size of the collection and `m` of the second, against this library
+(`collections.hpp`). The Rust runtime's `Array` and `Map` are the same designs
+(runtime/rust/README.md).
 
-- **An `Array`'s storage:** a buffer's first seven chunks hold 1, 2, 4, ..., 64 slots
-  (127 in all), each allocated when the buffer first reaches it, and every chunk after
-  them 64; a chunk never moves or grows. So a buffer of `n` elements holds at most
-  `2n + 1` slots, an empty array none, and a copy for a write allocates for the elements
-  there are (`tests/test_arrays.cpp`, `an_array_holds_storage_linear_in_its_length`).
-- **`Len`, constant:** kept (the view's length).
-- **Indexing, constant or log:** kept, constant: the chunk and slot of element `i` are
-  `bit_width(i + 1) - 1` and the rest below 127, a division by 64 beyond.
-- **`Push`, amortised constant:** kept onto the newest view (constant, a chunk allocated
-  now and then, no element moved). **Not kept** onto any other view: a second push onto
-  one array, or onto a `Take` or `Drop` that does not end the buffer, copies the view
-  first, linear in it.
-- **`Append`, log:** **not kept.** `concat` pushes the second array's elements, linear in
-  `m`, after copying the first unless it is the newest view (`n + m`).
-- **`Each`, `Fold`: `n·t`; `Sum` linear:** kept (iteration is indexing, constant per
-  element).
-- **`Take`, `Drop`** (no promise in Appendix B): constant, a view.
-- **An update in place** (`set`, `mut_at`: an `&` block's `&xs[i]`): constant on a
-  buffer the view has alone; otherwise the view is copied first, linear.
-- **A `Map`:** an AVL tree of counted nodes, one per entry. `Insert`, `Remove`, `?Get`
-  and indexing: log, kept (an update copies the path to its key). `?First`: log, kept.
-  `Keys`, `Values`: linear in key order, kept. `Size`: constant, kept (the root's count).
-  `Map` of pairs: `n log n`, the later winning, kept. `Union`: the C++ prelude's
-  `union_` (prismc/templates/cpp_prelude.prism) inserts the left map's entries into the
-  right, `n log (n + m)`, where the promise is `m log (n + m)`: **not kept** when the
+- **An `Array`** is a persistent balanced tree of chunks with a tail. The tail is a chunk
+  of the last elements, at most 64, in a vector that grows 1, 2, 4, ..., 64 slots while
+  the array is small; a full tail goes into the tree whole. The tree's leaves are chunks
+  of 1 to 64 elements and its nodes have two children, each with its length and height,
+  balanced as an AVL tree is; two trees are concatenated by the AVL join and cut by joins
+  along the path to the cut, and a single chunk that fits beside its neighbour merges
+  into it. A binary tree of chunks rather than a radix tree: the book asks for `Append`
+  "log (a relaxed radix balanced tree or the like)", and the AVL join keeps its balance by
+  a local rule.
+- **Storage:** at most `2n + 1` slots while the array is small, `n + 64` beyond, plus a
+  node per chunk; an array from a `std::vector` holds exactly `n`, each element moved once.
+- **`Len`, "constant":** kept (a count).
+- **Indexing, "constant or log":** kept: constant in the tail (an array of 64 elements or
+  fewer is all tail), log in the tree (its height, about 1.44 log2 of the chunks).
+- **`Append`, "log":** kept: the AVL join, copying two chunks at most (a tail that fits
+  beside its neighbour).
+- **`Push`, "amortised constant":** kept, onto any array: at most the tail (64 elements)
+  copied when another array shares it, and once every 64 pushes the full tail joined to
+  the tree (one path) with no element copied.
+- **`Each`, `Fold`: "`n·t`"; `Sum`: "linear":** kept (the iterator walks the chunks; an `&`
+  block's `iter_mut` is linear too, every node made the array's own once).
+- **`Take`, `Drop`, an element's update** (`set`, `updated`, `mut_at`: `&xs[i] <= v` in an
+  `&` block): Appendix B lists no cost; Semantics ch. 5 asks that a statement on a shared
+  part copy "the path from `&_` to the part once per block". Each is log here and copies
+  one path and at most one chunk, the path once (after it the nodes are the array's own).
+- **References:** an element's address holds while the array is read and while its other
+  elements are updated in place; a push may move the tail's elements as its vector grows.
+- **A `Map`:** an AVL tree of counted nodes, one per entry. `Insert`, `Remove`, `?Get` and
+  indexing, `?First`: "log", kept (an update copies the path to its key). `Keys`,
+  `Values`: "linear, in key order", kept. `Size`: "constant", kept (the root's count).
+  `Map` of pairs: "`n` log `n`, the later pair winning", kept. `Union`: "the left
+  winning; `m` log `(n+m)`": the C++ prelude's `union_` (prismc/templates/cpp_prelude.prism)
+  inserts the left map's entries into the right, `n log (n + m)`: **not kept** when the
   left map is the larger.
+- **The tests** (`tests/test_arrays.cpp`) check the behaviour at the sizes around a
+  chunk's edges, the storage (`capacity`), and the costs, by counting the copies and moves
+  of an element type that counts them.
 
 ## Doubts
 
@@ -184,9 +196,8 @@ view that ends where its buffer does, the way an array built by a fold grows.
   host panics as a bug. The test `a_host_torn_down_with_its_rows_frees_everything` holds
   it. *Ruling (the coordinator's):* weak, and Rust gets the same fix.
 - **CW: persistent collections.** A `Map` is a persistent AVL tree (an update copies
-  the path to its key); an `Array` is a view of a shared buffer of chunks
-  (`take` and `drop_front` are constant, so is a `push_back` onto the view that ends where
-  its buffer does, and an element's address never moves). Copy on write, as this library
+  the path to its key); an `Array` is a persistent balanced tree of chunks with a tail
+  (this README's "Arrays and maps: the costs"). Copy on write, as this library
   first had it, made prismc compiled to C++ quadratic in its own lexer and checker: the
   program showed the cost. *Ruling (Claude's):* these two structures. A `Text` is a
   byte range of a shared UTF-8 `std::string` (a literal's, `Text::lit`, of the program's

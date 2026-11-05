@@ -1,6 +1,7 @@
 //! Written by Claude on the claude-self-hosting branch; subject to change.
 //!
-//! `[[a]]`: a persistent array, a balanced tree of chunks and a tail.
+//! `[[a]]`: a persistent array, a balanced tree of chunks and a tail, the same design as
+//! the C++ runtime's `Array` (runtime/cpp/include/prism_rtl/collections.hpp).
 //!
 //! - **The tail** holds the last elements, at most 64, in a vector of its own that grows
 //!   1, 2, 4, ..., 64 slots while the array is small (64 at once in an array of 64 or

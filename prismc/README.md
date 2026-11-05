@@ -1119,11 +1119,11 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   the bindings: the scrutinee is a local (`_m`), and a guard's `let` over a value that
   is no place binds it to a local (`_c1`) first (`ts-ch06-array-in-case`, under ASan).
 - **PC: persistent collections.** The C++ runtime's `Map` is a persistent AVL tree (the
-  Rust runtime's too, ported) and its `Array` a view of a shared buffer of chunks
-  (runtime/cpp/include/prism_rtl/collections.hpp), so a fold that inserts into a map or
-  pushes onto an array is as cheap as Rust's `im_rc`; with copy-on-write ones prismc's
-  own lexer was quadratic. `Append`, and `Push` onto a view that is not its buffer's
-  newest, are linear in C++ (runtime/cpp/README.md, "Arrays and maps: the costs").
+  Rust runtime's too) and its `Array` a persistent balanced tree of chunks with a tail,
+  the Rust runtime's design (runtime/cpp/include/prism_rtl/collections.hpp), so a fold
+  that inserts into a map or pushes onto an array is cheap in both; with copy-on-write
+  ones prismc's own lexer was quadratic (runtime/cpp/README.md, "Arrays and maps: the
+  costs").
 - **MH: per-module headers.** No header holds the whole program. Each module has
   `NAME.decl.hpp` (its types, nodes and jobs declared, its choices' handles),
   `NAME.types.hpp` (its records, tags and newtypes, each after the types it holds, and its

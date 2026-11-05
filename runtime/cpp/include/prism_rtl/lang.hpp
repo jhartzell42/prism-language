@@ -247,30 +247,35 @@ std::vector<std::pair<std::size_t, T>> enumerate(const Array<T>& xs) {
     return out;
 }
 
-/// `Vector::iter_mut()`: an array's elements to update in place, the array's own
-/// (copied first when shared).
+/// `Vector::iter_mut()`: an array's elements to update in place, the array's own (its
+/// shared nodes copied first), chunk by chunk: linear.
 template <class T>
 struct MutElements {
-    Array<T>& xs;
+    using Elem = typename Array<T>::Elem;
+    std::vector<std::pair<Elem*, std::size_t>> chunks;
     struct iterator {
-        Array<T>* xs;
-        std::size_t i;
-        T& operator*() const { return xs->mut_at(i); }
+        const std::vector<std::pair<Elem*, std::size_t>>* cs;
+        std::size_t c, i;
+        T& operator*() const { return (*cs)[c].first[i].v; }
         iterator& operator++() {
-            ++i;
+            if (++i == (*cs)[c].second) {
+                ++c;
+                i = 0;
+            }
             return *this;
         }
-        bool operator!=(const iterator& o) const { return i != o.i; }
+        bool operator!=(const iterator& o) const { return c != o.c || i != o.i; }
     };
-    iterator begin() const { return {&xs, 0}; }
-    iterator end() const { return {&xs, xs.size()}; }
+    iterator begin() const { return {&chunks, 0, 0}; }
+    iterator end() const { return {&chunks, chunks.size(), 0}; }
 };
 
 /// `iter_mut().enumerate()`: each element, to update in place, with its index.
 template <class T>
 std::vector<std::pair<std::size_t, T&>> enumerate(MutElements<T> xs) {
     std::vector<std::pair<std::size_t, T&>> out;
-    for (std::size_t i = 0; i < xs.xs.size(); ++i) out.emplace_back(i, xs.xs.mut_at(i));
+    std::size_t i = 0;
+    for (T& x : xs) out.emplace_back(i++, x);
     return out;
 }
 
@@ -279,7 +284,7 @@ template <class T>
 T unwrap_or_default(const std::optional<T>& o) { return o ? *o : T(); }
 
 template <class T>
-MutElements<T> iter_mut(Array<T>& xs) { return MutElements<T>{xs}; }
+MutElements<T> iter_mut(Array<T>& xs) { return MutElements<T>{xs.chunks_mut()}; }
 
 // ---- The runtime's constructors whose type the context gives --------------------------------
 
