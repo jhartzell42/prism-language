@@ -505,8 +505,9 @@ private:
     }
 
 public:
-    /// In order: the nodes still to visit on a stack (the tail at its bottom), and the
-    /// chunk being read.
+    /// In order, chunk by chunk: the chunk being read, and the index the next one starts
+    /// at, found from the root when the chunk ends (log, once per chunk of 64), so an
+    /// iterator allocates nothing.
     class const_iterator {
     public:
         using iterator_category = std::forward_iterator_tag;
@@ -520,7 +521,7 @@ public:
         const_iterator& operator++() {
             ++at_;
             --left_;
-            if (at_ == stop_) refill();
+            if (at_ == stop_ && left_ > 0) refill();
             return *this;
         }
         const_iterator operator++(int) {
@@ -532,30 +533,36 @@ public:
 
     private:
         friend class Array;
-        explicit const_iterator(const Array& a) : left_(a.len_) {
-            if (a.tail_) stack_.push_back(a.tail_.get());
-            if (a.tree_) stack_.push_back(a.tree_.get());
-            refill();
+        explicit const_iterator(const Array& a) : a_(&a), left_(a.len_) {
+            if (left_ > 0) refill();
         }
+        /// The chunk holding element `next_`, read from there.
         void refill() {
-            while (!stack_.empty()) {
-                const Node* n = stack_.back();
-                stack_.pop_back();
-                if (n->left) {
-                    stack_.push_back(n->right.get());
-                    stack_.push_back(n->left.get());
-                } else if (!n->elems.empty()) {
-                    at_ = n->elems.data();
-                    stop_ = at_ + n->elems.size();
-                    return;
+            std::size_t i = next_, in_tree = a_->len_ - a_->tail_size();
+            const Node* n;
+            if (i >= in_tree) {
+                n = a_->tail_.get();
+                i -= in_tree;
+            } else {
+                n = a_->tree_.get();
+                while (n->left) {
+                    std::size_t ll = n->left->size();
+                    if (i < ll) {
+                        n = n->left.get();
+                    } else {
+                        i -= ll;
+                        n = n->right.get();
+                    }
                 }
             }
-            at_ = stop_ = nullptr;
+            at_ = n->elems.data() + i;
+            stop_ = n->elems.data() + n->elems.size();
+            next_ += std::size_t(stop_ - at_);
         }
-        std::vector<const Node*> stack_;
+        const Array* a_ = nullptr;
         const Elem* at_ = nullptr;
         const Elem* stop_ = nullptr;
-        std::size_t left_ = 0;
+        std::size_t left_ = 0, next_ = 0;
     };
     using iterator = const_iterator;
 
