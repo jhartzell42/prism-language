@@ -1,0 +1,18 @@
+# Derived by hand: the `if` builds its taken arm, and the arm's call builds the clause its argument chooses (Semantics ch. 8), each label at the caller's place 0.
+test the_shouting_clause
+
+tick 0
+  added:
+    0: Ui.Label(text="hi!")
+
+test the_quiet_clause
+
+tick 0
+  added:
+    0: Ui.Label(text="...")
+
+test the_other_arm
+
+tick 0
+  added:
+    0: Ui.Label(text="off")
