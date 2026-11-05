@@ -72,7 +72,8 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let useInsts = Fold tp.insts, {}, \|m, n| Insert m, (AtKey n.at), n
     let mods = NeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (RustModName m)
-    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, subst={}, csubst={})
+    let modSegments = Fold (Values rsMods), {}, \|acc, p| Fold (SplitOn p, "::"), acc, \|a2, seg| Insert a2, seg, True
+    let lx0 = Lx(g=g, tys=tys, apps=apps, binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, subst={}, csubst={})
     let lx = update lx0:
         &_.unbs <= JobRoots lx0
     let roots = RootWidgets lx

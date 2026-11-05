@@ -80,6 +80,10 @@ type Lx = record:
     home: Text
     site: Text
     rsMods: (Text ==> Text)
+    # Every segment of every module's path as the printers name it: a C++ namespace that
+    # a bare prelude call of the same name would find instead (`regex`, `?Regex`, beside
+    # a module `Regex`).
+    modSegments: (Text ==> Bool)
     rsNames: (Text ==> Text)
     layouts: (Text ==> [Bool])
     unbs: [Text]
@@ -220,9 +224,11 @@ fn PathIn lx, owner, name:
     else: "crate::{Or lx.rsMods[owner], (RustModName owner)}::{name}"
 
 # A prelude function's Rust path from the site: bare, or qualified where the site's own
-# value of the same Rust name hides it (`?Step`, `step`, beside a program's `Step`).
+# value of the same Rust name hides it (`?Step`, `step`, beside a program's `Step`), or
+# where a module of the program has that name, whose C++ namespace would hide it
+# (`regex`, beside prismc's `Check.Regex`).
 PreludePath: fn Lx, Text -> Text
-fn PreludePath lx, name = if HasKey lx.globals, "{lx.site}.{name}": "crate::prelude::{name}" else: name
+fn PreludePath lx, name = if (HasKey lx.globals, "{lx.site}.{name}") or (HasKey lx.modSegments, name): "crate::prelude::{name}" else: name
 
 # The Rust name of a top-level value of a module: its snake case, with a suffix by its
 # sigil when another value of the module has the same base (`?ParseNat` and `~ParseNat`).
