@@ -1,4 +1,4 @@
-# Derived from the window library's culling (layout.prism): the 200 by 100 window draws the button and the four labels that start inside it, and the Bump press changes only the measured words, since the label it changes starts far below the window's edge.
+# Derived from the window library's culling (layout.prism): the 200 by 100 window draws the button and the four labels that start inside it, and the Bump press changes only the measured words, since the label it changes starts far below the window's edge. The focus test's transcript is the window's before its focus stopped laying out on every input: a press on the first input focuses it, Tab moves to the second, a press on the button leaves the focus alone.
 test a_column_taller_than_the_window_draws_what_shows
 
 tick 0
@@ -33,3 +33,39 @@ tick 5
     2/["1"]/0: Gui.Metrics(text="1")
   torn down:
     2/["0"]/0: Gui.Metrics(text="0")
+
+test the_focus_moves_by_press_and_by_tab
+
+tick 0
+  added:
+    1: Gui.Window(title="Form", size=Extent(w=300.0, h=200.0))
+    2/["Go"]/0: Gui.Metrics(text="Go")
+    2/["x"]/0: Gui.Metrics(text="x")
+    2/["y"]/0: Gui.Metrics(text="y")
+    3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="x"), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Form", at=nil)
+  result: "xy"
+
+tick 1
+  in:
+    1: Press Point(x=100.0, y=11.0)
+  changed:
+    3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="x"), Draw.Rect(rect=Rect(x=13.0, y=3.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Form", at=? Rect(x=0.0, y=0.0, w=200.0, h=22.0))
+
+compute until idle: 0 ticks
+
+tick 2
+  in:
+    1: Pressed Tab
+  changed:
+    3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="x"), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Rect(rect=Rect(x=13.0, y=25.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Form", at=? Rect(x=0.0, y=22.0, w=200.0, h=22.0))
+
+compute until idle: 2 ticks, 3 to 4
+
+tick 5
+  in:
+    1: Press Point(x=17.0, y=59.0)
+
+compute until idle: 2 ticks, 6 to 7

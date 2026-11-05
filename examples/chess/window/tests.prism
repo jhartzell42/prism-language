@@ -1,5 +1,5 @@
 # The window library's tests (`Window.Tests`, a test module of `Window`): what the window
-# draws of a column taller than it. Under the Test World a text is 9 wide a character and
+# draws of a column taller than it, and how the focus moves. Under the Test World a text is 9 wide a character and
 # 14 high, so the button is 30 high and each label 22: in the 200 by 100 window the button
 # and the first four labels show (the fourth starts at 96), and the window draws those
 # alone. The Bump button changes the last label, which is far below the window's edge, so
@@ -42,3 +42,31 @@ test a_column_taller_than_the_window_draws_what_shows, @$window:
     compute until idle
         => returns "1"
         => expect Gui.Metrics(text="1")
+
+# Focus: a press on an input focuses it (its caret shows and the focus ring is its box), Tab
+# moves it to the next input in drawing order, and a press on a button leaves it where it was.
+@$form: @$Text
+@$form:
+    $typed <- @Column 0.0, @widget:
+        $first <- @TextInput "a", "x"
+        $second <- @TextInput "b", "y"
+        ignore <- Ui.Button(label=$"Go")
+        @ "{$first}{$second}"
+    @ $typed
+
+@$formWindow: @$Text
+@$formWindow:
+    @Window $"Form", (Extent 300.0, 200.0), @$form
+
+test the_focus_moves_by_press_and_by_tab, @$formWindow:
+    build
+        => expect Gui.Focus(at=nil, ..)
+    click element 0
+    compute until idle
+        => expect Gui.Focus(at=(? Rect(x=0.0, y=0.0, w=200.0, h=22.0)), ..)
+    send Gui.Window(..), Pressed Tab
+    compute until idle
+        => expect Gui.Focus(at=(? Rect(x=0.0, y=22.0, w=200.0, h=22.0)), ..)
+    click element 2
+    compute until idle
+        => expect Gui.Focus(at=(? Rect(x=0.0, y=22.0, w=200.0, h=22.0)), ..)
