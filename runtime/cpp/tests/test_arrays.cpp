@@ -194,22 +194,24 @@ TEST(a_write_that_throws_halfway_leaves_the_array_as_it_was) {
         CHECK(threw);
         CHECK(a.size() == n && b.size() == (threw ? n : n + 1));
         for (std::size_t i = 0; i < n; ++i) CHECK(a[i].v == int(i) && b[i].v == int(i));
-        // the newest view's push throws as the element moves into its slot (after any
-        // storage for it is allocated); the next pushes still land
-        Brittle::budget = 1;
+        // a buffer's only view, pushed onto, throws as the element moves into its slot
+        // (after the storage for it is allocated); the next pushes still land, in it
+        Array<Brittle> c;
+        for (std::size_t i = 0; i < n; ++i) c.push_back(Brittle(int(i)));
+        Brittle::budget = 0;
         threw = false;
         try {
-            a.push_back(Brittle(-2));
+            c.push_back(Brittle(-2));
         } catch (const std::runtime_error&) {
             threw = true;
         }
         Brittle::budget = -1;
-        CHECK(threw && a.size() == n);
-        a.push_back(Brittle(int(n)));
-        a.push_back(Brittle(int(n + 1)));
-        CHECK(a.size() == n + 2 && a[n].v == int(n) && a[n + 1].v == int(n + 1));
-        for (std::size_t i = 0; i < n; ++i) CHECK(a[i].v == int(i));
-        CHECK(a.capacity() <= bound(n + 2));
+        CHECK(threw && c.size() == n);
+        c.push_back(Brittle(int(n)));
+        c.push_back(Brittle(int(n + 1)));
+        CHECK(c.size() == n + 2 && c[n].v == int(n) && c[n + 1].v == int(n + 1));
+        for (std::size_t i = 0; i < n; ++i) CHECK(c[i].v == int(i));
+        CHECK(c.capacity() <= bound(n + 2));
     }
 }
 

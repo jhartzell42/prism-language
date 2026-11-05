@@ -137,11 +137,44 @@ counts again.
   - persistence: a map's and an array's update never reaches a value sharing them;
   - `lang.hpp`: `TRY` on a named value leaves it as it was, a `Slot` of an option holds
     `nil` as a value.
-- **All 42 tests pass** under g++ and clang++. They also pass under AddressSanitizer,
+- **All 50 tests pass** under g++ and clang++. They also pass under AddressSanitizer,
   LeakSanitizer and UBSan with g++, and LSan reports no leaks. That includes the zombie
   loop, which the collector frees, and the host teardown. Clang's sanitizer runtime
   (`libclang-rt-18-dev`) is not installed on this machine; `make test` runs clang under
   the sanitizers when it is.
+
+## Arrays and maps: the costs
+
+Each of Semantics Appendix B's promises for arrays and maps, `n` the size of the collection and
+`m` of the second, against this library (`collections.hpp`); "the newest view" is the
+view that ends where its buffer does, the way an array built by a fold grows.
+
+- **An `Array`'s storage:** a buffer's first seven chunks hold 1, 2, 4, ..., 64 slots
+  (127 in all), each allocated when the buffer first reaches it, and every chunk after
+  them 64; a chunk never moves or grows. So a buffer of `n` elements holds at most
+  `2n + 1` slots, an empty array none, and a copy for a write allocates for the elements
+  there are (`tests/test_arrays.cpp`, `an_array_holds_storage_linear_in_its_length`).
+- **`Len`, constant:** kept (the view's length).
+- **Indexing, constant or log:** kept, constant: the chunk and slot of element `i` are
+  `bit_width(i + 1) - 1` and the rest below 127, a division by 64 beyond.
+- **`Push`, amortised constant:** kept onto the newest view (constant, a chunk allocated
+  now and then, no element moved). **Not kept** onto any other view: a second push onto
+  one array, or onto a `Take` or `Drop` that does not end the buffer, copies the view
+  first, linear in it.
+- **`Append`, log:** **not kept.** `concat` pushes the second array's elements, linear in
+  `m`, after copying the first unless it is the newest view (`n + m`).
+- **`Each`, `Fold`: `n·t`; `Sum` linear:** kept (iteration is indexing, constant per
+  element).
+- **`Take`, `Drop`** (no promise in Appendix B): constant, a view.
+- **An update in place** (`set`, `mut_at`: an `&` block's `&xs[i]`): constant on a
+  buffer the view has alone; otherwise the view is copied first, linear.
+- **A `Map`:** an AVL tree of counted nodes, one per entry. `Insert`, `Remove`, `?Get`
+  and indexing: log, kept (an update copies the path to its key). `?First`: log, kept.
+  `Keys`, `Values`: linear in key order, kept. `Size`: constant, kept (the root's count).
+  `Map` of pairs: `n log n`, the later winning, kept. `Union`: the C++ prelude's
+  `union_` (prismc/templates/cpp_prelude.prism) inserts the left map's entries into the
+  right, `n log (n + m)`, where the promise is `m log (n + m)`: **not kept** when the
+  left map is the larger.
 
 ## Doubts
 
@@ -151,7 +184,7 @@ counts again.
   host panics as a bug. The test `a_host_torn_down_with_its_rows_frees_everything` holds
   it. *Ruling (the coordinator's):* weak, and Rust gets the same fix.
 - **CW: persistent collections.** A `Map` is a persistent AVL tree (an update copies
-  the path to its key); an `Array` is a view of a shared buffer of fixed-size chunks
+  the path to its key); an `Array` is a view of a shared buffer of chunks
   (`take` and `drop_front` are constant, so is a `push_back` onto the view that ends where
   its buffer does, and an element's address never moves). Copy on write, as this library
   first had it, made prismc compiled to C++ quadratic in its own lexer and checker: the

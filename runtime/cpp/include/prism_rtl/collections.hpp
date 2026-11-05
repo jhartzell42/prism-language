@@ -5,18 +5,21 @@
 // "Unique values"); `inserted`, `removed`, `pushed` and `updated` leave it alone and
 // answer the new one. Neither ever changes another value that shares the contents.
 //
-// The cost promises are Semantics Appendix B's, as the Rust library's persistent
-// structures keep them: a `Map` is a persistent AVL tree (an update copies the path to its
+// The costs, against Semantics Appendix B's promises (runtime/cpp/README.md, "Arrays and
+// maps: the costs"): a `Map` is a persistent AVL tree (an update copies the path to its
 // key, logarithmic); an `Array` is a view of a shared buffer of chunks, so `take` and
 // `drop_front` are constant and so is a `push_back` onto the newest view of its buffer
-// (the way an array built by a fold grows); an element's address never moves. A `Text`
-// is a view of a shared UTF-8 buffer (a cursor's `before` and `after` are constant) and
+// (the way an array built by a fold grows), while a push onto any other view, and
+// `concat`, copy (linear: Appendix B promises `Push` amortised constant and `Append`
+// logarithmic, which these do not keep); an element's address never moves. A `Text` is
+// a view of a shared UTF-8 buffer (a cursor's `before` and `after` are constant) and
 // copies on concatenation.
 
 #pragma once
 
 #include "prism_rtl/rc.hpp"
 #include <algorithm>
+#include <bit>
 #include <compare>
 #include <cstdint>
 #include <initializer_list>
@@ -313,28 +316,73 @@ private:
 
 // ---- Array ------------------------------------------------------------------------------
 
-/// `[[a]]`: a view (an offset and a length) of a buffer of fixed-size chunks that views
-/// share. A `push_back` onto the view that ends where the buffer does appends in place;
-/// any other update copies the view's elements into a buffer of its own first.
+/// `[[a]]`: a view (an offset and a length) of a buffer of chunks that views share. A
+/// `push_back` onto a view that ends where the buffer does appends in place; any other
+/// update copies the view's elements into a buffer of their own first.
+///
+/// The buffer's first seven chunks hold 1, 2, 4, ..., 64 slots (127 in all), each allocated
+/// when the buffer first reaches it, so a buffer of `n` elements holds at most `2n + 1`
+/// slots, and a copy for a write allocates for the elements there are; every chunk after
+/// them holds 64. A chunk never moves or grows, so an element's address holds while its
+/// buffer grows (an `&` block's `mut_at` references, several at once).
 template <class T>
 class Array {
     static constexpr std::size_t CHUNK = 64;
+    /// The chunks of 1, 2, ..., 64 slots, and the slots in them.
+    static constexpr std::size_t SMALL = 7;
+    static constexpr std::size_t SMALL_SLOTS = (std::size_t(1) << SMALL) - 1;
     struct Slot {
         alignas(T) unsigned char bytes[sizeof(T)];
     };
+    /// Element `i`'s chunk and its slot there.
+    struct Where {
+        std::size_t chunk, slot;
+    };
+    static Where where(std::size_t i) {
+        if (i < SMALL_SLOTS) {
+            std::size_t k = std::size_t(std::bit_width(i + 1)) - 1;
+            return {k, i + 1 - (std::size_t(1) << k)};
+        }
+        std::size_t j = i - SMALL_SLOTS;
+        return {SMALL + j / CHUNK, j % CHUNK};
+    }
+    /// The slots of the first `n` chunks.
+    static std::size_t slots_of(std::size_t n) {
+        return n <= SMALL ? (std::size_t(1) << n) - 1 : SMALL_SLOTS + (n - SMALL) * CHUNK;
+    }
+    /// Slots `0` to `size - 1` hold elements, constructed in order; the rest are raw. A
+    /// chunk is allocated before the element that first needs it is constructed, and stays
+    /// when that construction throws, for the next push to use (`chunks` counts them).
     struct Buffer {
-        std::vector<std::unique_ptr<Slot[]>> chunks;
+        std::unique_ptr<Slot[]> small[SMALL];
+        std::vector<std::unique_ptr<Slot[]>> big;
         std::size_t size = 0;
+        std::size_t chunks = 0;
         Buffer() = default;
         Buffer(const Buffer&) = delete;
         Buffer& operator=(const Buffer&) = delete;
         ~Buffer() {
             for (std::size_t i = 0; i < size; ++i) at(i).~T();
         }
-        T& at(std::size_t i) { return *std::launder(reinterpret_cast<T*>(chunks[i / CHUNK][i % CHUNK].bytes)); }
-        void push(T x) {
-            if (size % CHUNK == 0) chunks.push_back(std::make_unique<Slot[]>(CHUNK));
-            new (chunks[size / CHUNK][size % CHUNK].bytes) T(std::move(x));
+        Slot* chunk(std::size_t k) const { return k < SMALL ? small[k].get() : big[k - SMALL].get(); }
+        T& at(std::size_t i) const {
+            Where w = where(i);
+            return *std::launder(reinterpret_cast<T*>(chunk(w.chunk)[w.slot].bytes));
+        }
+        std::size_t capacity() const { return slots_of(chunks); }
+        template <class U>
+        void push(U&& x) {
+            Where w = where(size);
+            if (w.chunk == chunks) {
+                if (w.chunk < SMALL) {
+                    small[w.chunk] = std::make_unique_for_overwrite<Slot[]>(std::size_t(1) << w.chunk);
+                } else {
+                    auto c = std::make_unique_for_overwrite<Slot[]>(CHUNK);
+                    big.push_back(std::move(c));
+                }
+                ++chunks;
+            }
+            ::new (static_cast<void*>(chunk(w.chunk)[w.slot].bytes)) T(std::forward<U>(x));
             ++size;
         }
     };
@@ -385,7 +433,7 @@ public:
         for (const T& x : xs) push_back(x);
     }
     explicit Array(std::vector<T> xs) {
-        for (std::size_t i = 0; i < xs.size(); ++i) push_back(T(std::move(xs[i])));
+        for (std::size_t i = 0; i < xs.size(); ++i) push_back(std::move(xs[i]));
     }
 
     std::size_t size() const { return len_; }
@@ -395,7 +443,7 @@ public:
     const T& operator[](std::size_t i) const { return b_->at(off_ + i); }
     /// The slots of storage this view's buffer holds, shared with the views sharing it:
     /// for the tests and for measurement.
-    std::size_t capacity() const { return b_ ? b_->chunks.size() * CHUNK : 0; }
+    std::size_t capacity() const { return b_ ? b_->capacity() : 0; }
 
     void push_back(T x) {
         if (!b_ || off_ + len_ != b_->size) own();
@@ -457,7 +505,7 @@ private:
     /// This view's elements in a buffer of their own.
     void own() {
         auto fresh = make_rc<Buffer>();
-        for (std::size_t i = 0; i < len_; ++i) fresh->push((*this)[i]);
+        for (std::size_t i = 0; i < len_; ++i) fresh->push(b_->at(off_ + i));
         b_ = std::move(fresh);
         off_ = 0;
     }
