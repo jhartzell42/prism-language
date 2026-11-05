@@ -4,7 +4,8 @@
 # `.expected`. All of them, every time: `tests/conformance/*.prismtest` (a program's
 # directory of the same name joins it, as sem-ch06-birds's); `examples/chess/rules.prism`
 # alone (rules.prismtest) and `examples/chess` (board.prismtest and rules.prismtest); and
-# prismc's lexer and parser checks (tests/prismc/lexer-checks.prismtest,
+# the prelude's checks (tests/prelude/maps.prismtest); prismc's lexer and parser checks
+# (tests/prismc/lexer-checks.prismtest,
 # parser-checks.prismtest).
 #
 #   tests/compiled/run.sh [NAMES...]     # every program, or only those named (chess too)
@@ -53,6 +54,8 @@ for script in tests/conformance/*.prismtest; do
     run "$(basename "$base")" "${files[@]}"
 done
 run chess-rules examples/chess/rules.prism
+# the prelude's own checks (tests/prelude/)
+run prelude-maps tests/prelude/maps.prism
 run chess examples/chess
 # prismc's own front end, checked through its modules (tests/prismc/)
 run lexer-checks tests/prismc/lexer-checks.prism prismc/ast.prism prismc/lexer.prism
