@@ -105,8 +105,8 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 ## Performance work still open
 
 - **Gap OC** (prismc/README.md): Rust still clones an owned match binding used once.
-- **SC1 to SC7** (prismc/README.md, "Strings: what is copied"): the string copies left,
-  among them SC3, C++ `Upper`/`Lower` being ASCII only where Rust maps all of Unicode.
+- **SC1, SC2, SC4 to SC7** (prismc/README.md, "Strings: what is copied"): the string
+  copies left.
 - **The performance table for the PR** comes from `bench/building/run.sh` and
   `bench/running/run.sh`: cargo release against clang `-O3` only.
 
