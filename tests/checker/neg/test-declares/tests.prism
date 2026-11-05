@@ -1,4 +1,7 @@
 # A test module that declares a tag.
+emit r
+use App.*
+
 tag Ink.Dot of Ink
 
 check inks:

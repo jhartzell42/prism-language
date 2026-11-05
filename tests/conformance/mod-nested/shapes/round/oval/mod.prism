@@ -1,0 +1,10 @@
+# `Shapes.Round.Oval`: a directory at depth 3, with a child at depth 4.
+emit r
+mod Egg
+use Shapes.Round.Circle
+
+Width: fn Nat, Nat -> Nat
+fn Width a, b = 2 * (a + b)
+
+Squashed: fn Nat -> Nat
+fn Squashed r = Shapes.Round.Circle.Area r + 1

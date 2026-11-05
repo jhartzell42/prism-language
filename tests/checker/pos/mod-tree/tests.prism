@@ -1,4 +1,8 @@
-# The root's test module.
+# The root's test module: the root's children by `use`.
+emit r
+use Words.*
+use Geometry.*
+
 Twice: fn Nat -> Text
 fn Twice n = Name (Double n)
 

@@ -1,3 +1,5 @@
-# The declared section.
+# The declared module.
+emit r
+
 Kept: fn Nat -> Nat
 fn Kept n = n

@@ -1,0 +1,4 @@
+# A lowercase `mod` line: refused (mod-lowercase). Every `mod` line declares a child
+# module with a namespace of its own, and a module's name is capitalised.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+mod shapes

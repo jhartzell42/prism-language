@@ -1,0 +1,8 @@
+# The qualified case patterns, beside the bare ones.
+check qualified_cases:
+    Sizes.Of 3 => Small
+    Sizes.Of 3 => Sizes.Small
+    Sizes.Of 20 => Sizes.Large 20
+    Sizes.Of 20 => Sizes.Large ignore
+    ?Sizes.Maybe 4 => ? Sizes.Small
+    [[Sizes.Of 1, Sizes.Of 11]] => [[Sizes.Small, Sizes.Large 11]]

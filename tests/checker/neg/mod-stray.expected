@@ -1,5 +1,5 @@
-tests/checker/neg/mod-stray/stray.prism:1: error[mod-stray]: `stray.prism` is in the directory of `app.prism`, which declares no `mod stray`
-    # A section no header declares.
+tests/checker/neg/mod-stray/stray.prism:1: error[mod-stray]: `stray.prism` is in the directory of `app.prism`, which declares no `mod Stray`
+    # A module no header declares.
     ^
-  fix: declare it with `mod stray` in app.prism, or move it out of the directory
+  fix: declare it with `mod Stray` in app.prism, or move it out of the directory
 1 error

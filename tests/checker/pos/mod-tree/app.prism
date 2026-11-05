@@ -1,11 +1,12 @@
-# A tree that checks clean: the root, a section, a submodule and a test module
-# (claude/modules-style-pass.md).
+# A tree that checks clean: the root, a child module in a file, one in a directory with a
+# child of its own, and a test module (claude/modules-style-pass.md).
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.*
-mod words
+mod Words
 mod Geometry
-test mod tests
+test mod Tests
 use Ui
+use Words.*
 use Geometry.*
 
 @main: @unit

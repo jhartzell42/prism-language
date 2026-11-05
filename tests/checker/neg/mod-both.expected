@@ -1,0 +1,5 @@
+tests/checker/neg/mod-both/app.prism:4: error[mod-both]: `mod Shapes` declares `shapes.prism` or `shapes/mod.prism`, and both are there
+    mod Shapes
+    ^^^^^^^^^^
+  fix: keep one: shapes/mod.prism when the module has children, else shapes.prism
+1 error

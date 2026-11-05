@@ -1,0 +1,16 @@
+# `Counter.Tests`: its parent's names by `use`, a helper type and a function for the checks.
+emit r
+use Counter.*
+
+type Run = record:
+    from: Nat
+    times: Nat
+derive ^Eq, ^Show
+
+Stepped: fn Run -> Nat
+fn Stepped r = Fold (Range0 r.times), r.from, \|acc, ignore| Step acc
+
+check steps:
+    Step 3 => 6
+    Stepped Run(from=1, times=3) => 8
+    Show Run(from=1, times=2) => "Run(from=1, times=2)"

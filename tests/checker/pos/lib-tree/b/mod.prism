@@ -1,6 +1,6 @@
 # `B`, the library's other module, with a test module of its own.
 emit r
-test mod tests
+test mod Tests
 use A
 
 Dec: fn Nat -> Nat

@@ -1,0 +1,6 @@
+# `Shapes.Flat`: a file at depth 2, using its parent.
+emit r
+use Shapes
+
+Area: fn Nat -> Nat
+fn Area n = Shapes.Unit (n * n)

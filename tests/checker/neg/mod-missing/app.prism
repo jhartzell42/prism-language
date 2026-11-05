@@ -1,3 +1,3 @@
 # A `mod` line whose file is not there: refused (mod-missing).
 # Written by Claude on the claude-self-hosting branch; subject to change.
-mod gone
+mod Gone

@@ -1,4 +1,7 @@
-# `Geometry`, a submodule of the root, named by its path.
+# `Geometry`, a child module of the root, a directory for its child `Geometry.Scale`.
 emit r
+mod Scale
+use Geometry.Scale
+
 Double: fn Nat -> Nat
-fn Double n = n * 2
+fn Double n = Geometry.Scale.By 2, n
