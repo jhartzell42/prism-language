@@ -70,3 +70,13 @@ test the_focus_moves_by_press_and_by_tab, @$formWindow:
     click element 2
     compute until idle
         => expect Gui.Focus(at=(? Rect(x=0.0, y=22.0, w=200.0, h=22.0)), ..)
+
+# Typing: a key goes to the focused input as the character it is.
+test a_key_types_its_character, @$formWindow:
+    build
+        => returns "xy"
+    click element 0
+    compute until idle
+    send Gui.Window(..), Pressed (Char 'q')
+    compute until idle
+        => returns "xqy"
