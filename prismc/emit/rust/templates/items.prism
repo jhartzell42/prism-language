@@ -242,19 +242,20 @@ fn ForBuild name, at, keyTy, valueTy, rowNode, source, parent, passed = inline_t
 fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     let items: Map<{{keyTy}}, {{valueTy}}> = self.{{source}}(cx);
     let old = self.{{name}}.borrow().clone();
+    // the kept rows stay where they are: only the keys that left or came are touched
+    let mut next = old.clone();
     for (k, row) in old.iter() {
         if !items.contains_key(k) {
             row.leave_row(cx);
             cx.leave_later(row.clone());
+            next.remove(k);
         }
     }
-    let mut next = Map::new();
     for (k, v) in items.iter() {
-        let row = match old.get(k) {
-            Some(row) => row.clone(),
-            None => {{rowNode}}::build({{at}}.child(Segment::Key(k.to_pod())), k.clone(), v.clone(), {{parent}}{{passed}}, cx)?,
-        };
-        next.insert(k.clone(), row);
+        if !old.contains_key(k) {
+            let row = {{rowNode}}::build({{at}}.child(Segment::Key(k.to_pod())), k.clone(), v.clone(), {{parent}}{{passed}}, cx)?;
+            next.insert(k.clone(), row);
+        }
     }
     *self.{{name}}.borrow_mut() = next;
     // What the block reads of its rows (a `for` that gives a dynamic) moved.

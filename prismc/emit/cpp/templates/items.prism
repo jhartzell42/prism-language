@@ -139,16 +139,17 @@ fn ForBuildTemplate owner, name, at, keyTy, valueTy, rowMake, source, parent, pa
 Done {{owner}}::{{name}}_build(Cx& cx) {
     Map<{{keyTy}}, {{valueTy}}> items = {{source}}(cx);
     auto old = deref(this->{{name}});
+    // the kept rows stay where they are: only the keys that left or came are touched
+    auto next = old;
     for (auto&& [k, row] : old) {
         if (!items.contains(k)) {
             row->leave_row(cx);
             cx.leave_later(row);
+            next.remove(k);
         }
     }
-    decltype(old) next;
     for (auto&& [k, v] : items) {
-        if (auto row = old.get(k)) next.insert(k, *row);
-        else next.insert(k, TRY({{rowMake}}({{at}}.child(Segment::key(prism_rtl::to_pod(k))), k, v, {{parent}}{{passed}}, cx)));
+        if (!old.contains(k)) next.insert(k, TRY({{rowMake}}({{at}}.child(Segment::key(prism_rtl::to_pod(k))), k, v, {{parent}}{{passed}}, cx)));
     }
     deref(this->{{name}}) = next;
     // What the block reads of its rows (a `for` that gives a dynamic) moved.
