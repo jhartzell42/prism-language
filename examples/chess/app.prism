@@ -6,9 +6,14 @@
 emit Ui.* | Gui.*
 mod Rules
 mod Window
-test mod tests
+test mod Tests
 use Rules.*
 use Window.*
+use Window.Ui.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
 
 # the grid's places, keyed in reading order from a8, since a grid lays its children out in
 # their paths' order; a spot prints as its square, `e2` (README, doubt SP)

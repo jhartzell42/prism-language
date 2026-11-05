@@ -7,6 +7,15 @@
 # through two computing layers of hosts (the window answers the grid, the grid answers the
 # square), each a tick late (Semantics ch. 9 as ruled), so every press is followed by
 # `compute until idle`, two owed ticks.
+emit Ui.* | Gui.*
+use App.*
+use Rules.*
+use Window.*
+use Window.Ui.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
 
 test the_board_alone_shows_the_opening, @$board:
     build

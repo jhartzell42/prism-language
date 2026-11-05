@@ -7,11 +7,16 @@
 # card games will use rows, layers and turned frames. Chess runs on it under both canvas
 # Worlds, and the GUI benchmark (bench/gui) drives it. Subject to change.
 emit r | Ui.* | Gui.*
-mod ui
-mod hosting
-mod widgets
-mod layout
-mod hits
+mod Ui
+mod Hosting
+mod Widgets
+mod Layout
+mod Hits
+use Window.Ui.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
 
 # ---------------------------------------------------------------------------
 # Geometry and paint

@@ -5,7 +5,7 @@
 # move's manner as a value. Its checks are in tests.prism. Work in progress, subject to
 # change.
 emit r
-test mod tests
+test mod Tests
 
 type Color = choice:
     White

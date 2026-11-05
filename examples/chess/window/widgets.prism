@@ -1,5 +1,11 @@
-# The window library's section `widgets`.
+# `Window.Widgets`, a child module of `Window`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r | Ui.* | Gui.*
+use Window.*
+use Window.Ui.*
+use Window.Hosting.*
+use Window.Layout.*
+use Window.Hits.*
 
 # ---------------------------------------------------------------------------
 # The widget functions: each composes, keeping a hold or hosting its child (D10)

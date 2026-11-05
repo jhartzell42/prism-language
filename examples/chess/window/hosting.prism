@@ -1,5 +1,11 @@
-# The window library's section `hosting`.
+# `Window.Hosting`, a child module of `Window`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r | Ui.* | Gui.*
+use Window.*
+use Window.Ui.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
 
 # ---------------------------------------------------------------------------
 # Hosting: a box claims its child's Ui elements and answers each with the inputs routed to its

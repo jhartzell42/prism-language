@@ -1,5 +1,11 @@
-# The window library's section `layout`.
+# `Window.Layout`, a child module of `Window`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r | Ui.* | Gui.*
+use Window.*
+use Window.Ui.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Hits.*
 
 # ---------------------------------------------------------------------------
 # Layout and hit testing as plain functions (layout.md): room down, size up, placed by the

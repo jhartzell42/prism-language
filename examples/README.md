@@ -16,8 +16,9 @@ under `tests/compiled/run.sh`.*
   - `app.prism`, the root: sixty-four `Ui.Image` squares in a `@Grid`, a hold for the
     selection, a hold for the game, a status label, all inside `@Window`. Its root is
     `@$main`.
-  - `window/`, module `Window`: the window library. It declares the `Ui`, `Gui` and
-    `Draw` families, the container host documents (`@Grid`, `@Row`, `@Column`, `@Layers`,
+  - `window/`, module `Window` and its child modules `Window.Ui` (the `Ui` family),
+    `Window.Hosting`, `Window.Widgets`, `Window.Layout`, `Window.Hits`: the window
+    library. It declares the `Ui`, `Gui` and `Draw` families, the container host documents (`@Grid`, `@Row`, `@Column`, `@Layers`,
     `@Framed` and its modifiers, `@VBox`, `@HBox`), `@TextInput`, the layout and hit testing
     of prism-reflex's `layout.md`, and `@Window`. It is general on purpose: the card games
     will use its rows, layers and turned frames.
@@ -26,10 +27,11 @@ under `tests/compiled/run.sh`.*
 
 Each module with tests has:
 
-- **`tests.prism`**: its test module (`test mod tests` in its header,
-  claude/modules-style-pass.md): its `test` and `check` declarations, in the Conformance
-  book's test language (Conformance ch. 1 and App. A), and the helpers they need; it has
-  no header, and only `prism test` and `prism check` read it.
+- **`tests.prism`**: its test module (`test mod Tests` in its module's header,
+  claude/modules-style-pass.md), a child module: its `test` and `check` declarations, in
+  the Conformance book's test language (Conformance ch. 1 and App. A), and the helpers
+  they need; its header uses the module it tests (`use Rules.*`, or `use App.*` for the
+  root's), and only `prism test` and `prism check` read it.
 - **`tests.expected`**: the transcripts its tests print under the Test World, byte for byte
   after the `# not yet run` line, which the test runner ignores. The rules' checks and the
   board's scenes were confirmed with a small model of `rules.prism` and of the window
