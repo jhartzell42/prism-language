@@ -1,5 +1,15 @@
-# `Check.Types`'s section `recording`.
+# `Check.Types.Recording`, a child module of `Check.Types`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Types.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Syntax.*
+use Syntax.Lexer.*
+use Check.Errors.*
+use Check.Typed.*
+use Check.Typed.Print.*
 
 # ---------------------------------------------------------------------------------------
 # The typed output (typed.prism), recorded only when it is asked for

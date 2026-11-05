@@ -1,5 +1,18 @@
-# `Check.Env`'s section `traits`.
+# `Check.Env.Traits`, a child module of `Check.Env`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Syntax.*
+use Syntax.Lexer.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
 
 # ---------------------------------------------------------------------------------------
 # Coherence (ch. 3; ch. 5: impl headers unified pairwise per trait, before any body)

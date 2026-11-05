@@ -1,5 +1,40 @@
-# `Check.Shrink`'s section `summaries`.
+# `Check.Shrink.Summaries`, a child module of `Check.Shrink`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Syntax.*
+use Syntax.Lexer.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
 
 # ---- Summaries: a function that returns parts of its parameter `i` (Semantics ch. 7, the
 # size-change principle across the call). A clause's result is within parameter `i` when

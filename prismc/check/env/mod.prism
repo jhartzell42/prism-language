@@ -9,14 +9,22 @@
 # Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 emit r
-mod names
-mod reading
-mod decls
-mod traits
+mod Names
+mod Reading
+mod Decls
+mod Traits
 use Syntax.*
 use Syntax.Lexer.*
 use Check.Errors.*
 use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
 
 # ---------------------------------------------------------------------------------------
 # What the environment holds

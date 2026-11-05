@@ -19,9 +19,9 @@
 # Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 emit Fs.* | Process.* | Prelude.*
-mod reading
-mod checking
-mod compile
+mod Reading
+mod Checking
+mod Compile
 mod Fs
 mod Check
 mod Syntax
@@ -34,13 +34,32 @@ use Syntax.Parser.*
 use Syntax.Sexp.*
 use Check.Errors.*
 use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
 use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
 use Check.*
 use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
 use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
 use Check.Typed
 use Lower
 use Emit.Rust
+use Reading.*
+use Checking.*
+use Compile.*
 
 # What the driver asks of the front end, and what it hands back.
 type Job = record:

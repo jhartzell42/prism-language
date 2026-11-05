@@ -13,8 +13,17 @@ use Syntax.*
 use Syntax.Lexer.*
 use Check.Errors.*
 use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
 use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
 use Check.Typed.*
+use Check.Typed.Print.*
 use Lower.*
 use Lower.Model.*
 # ---------------------------------------------------------------------------------------

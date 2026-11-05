@@ -1,5 +1,15 @@
-# `Check.Typed`'s section `print`.
+# `Check.Typed.Print`, a child module of `Check.Typed`.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Typed.*
+use Syntax.*
+use Syntax.Lexer.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
 
 # ---------------------------------------------------------------------------------------
 # Printing

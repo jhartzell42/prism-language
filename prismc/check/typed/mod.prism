@@ -10,11 +10,16 @@
 # Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 emit r
-mod print
+mod Print
 use Syntax.*
 use Syntax.Lexer.*
 use Check.Errors.*
 use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Typed.Print.*
 
 # Where a node stands: its file's index in the program and its range.
 type SrcAt = record:

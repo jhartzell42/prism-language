@@ -1,5 +1,39 @@
-# `the root`'s section `checking`.
+# `Checking`, a child module of the root.
 # Written by Claude on the claude-self-hosting branch; subject to change.
+emit Fs.* | Process.* | Prelude.*
+use App.*
+use Reading.*
+use Compile.*
+use Fs.*
+use Syntax.*
+use Syntax.Lexer.*
+use Syntax.Parser.*
+use Syntax.Sexp.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Check.Typed
+use Lower
+use Emit.Rust
 
 # ---------------------------------------------------------------------------------------
 # `--check`: the checker's report
@@ -30,7 +64,7 @@ fn CheckFiles job:
             let checked = Each pp.trees, \|t| WithoutTests t
             let report = CheckProgram pp.srcs, checked, job.world, pp.shown, job.typed, job.unused, pre
             let summary = if report.errors == 0: "no errors\n" else: "{report.errors} error{if report.errors == 1: "" else: "s"}\n"
-            let shown = if job.typed: "{Check.Typed.TypedSexp pp.srcs, checked, pp.shown, report.typed}{Commented "{report.text}{summary}"}" else: "{report.text}{summary}"
+            let shown = if job.typed: "{Check.Typed.Print.TypedSexp pp.srcs, checked, pp.shown, report.typed}{Commented "{report.text}{summary}"}" else: "{report.text}{summary}"
             Outcome(text=shown, failed=(report.errors > 0), report="{report.text}{summary}")
 
 # Text as `;` comment lines, after the typed program.
