@@ -367,7 +367,7 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restText, Cont:
 
 # The name an instantiation's key is of (`Twin#inst1`, pick LG); any other key itself.
 InstanceOf: fn Text -> Text
-fn InstanceOf k = Or (Split k, "#inst")[0], k
+fn InstanceOf k = Or (SplitOn k, "#inst")[0], k
 
 # The locals of `env` a source text names, other than `skip`: each to clone into a closure.
 CapsIn: fn Env, Text, [Text] -> [((Text, Ex, Holding, OutTy))]
@@ -500,7 +500,7 @@ fn RestText lx, from, call, to = match lx.g.srcs[lx.file]:
 # comment or a text only clones one more local).
 Mentions: fn Text, Text -> Bool
 fn Mentions text, name:
-    let parts = Split text, name
+    let parts = SplitOn text, name
     let last = Dec (Len parts)
     # Between parts i and i + 1 stands an occurrence; an empty part is two occurrences
     # side by side (`ee` in `callee` for `e`), so its edge is the name's own letter.

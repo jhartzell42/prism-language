@@ -440,13 +440,6 @@ inline Text lower(const Text& t) {
     return Text::of_utf8(std::move(s));
 }
 
-/// `Split t, sep`: the pieces between the separators. An empty separator is refused: a
-/// text's characters are walked with a cursor (Appendix B, Text).
-inline Array<Text> split(const Text& t, const Text& sep) {
-    if (sep.is_empty()) panic("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
-    return Array<Text>(t.split(sep.view()));
-}
-
 /// `SplitOn t, sep`: the pieces between the separators (not in Appendix B, whose `Split`
 /// is a regular expression's). An empty separator is refused.
 inline Array<Text> split_on(const Text& t, const Text& sep) {
@@ -496,6 +489,8 @@ inline std::optional<Match> find(const Regex& r, const Text& t) { return r.find(
 inline Array<Match> matches(const Regex& r, const Text& t) { return r.matches(t); }
 /// `Replace: fn RegexReplacement, Text -> Text`: every match replaced.
 inline Text replace(const RegexReplacement& r, const Text& t) { return r.replace(t); }
+/// `Split: fn Regex, Text -> [Text]`: the `k + 1` views between the `k` matches.
+inline Array<Text> split(const Regex& r, const Text& t) { return r.split(t); }
 
 /// `?ParseNat`.
 inline std::optional<Nat> parse_nat_opt(const Text& t) {

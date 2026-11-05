@@ -124,12 +124,12 @@ fn FnParts cp, f:
 
 # A doc comment, `///` per line.
 CppDoc: fn Text -> Text
-fn CppDoc text = if text == "": "" else: Concat (Each (Split text, "\n"), \|l| if l == "": "///\n" else: "/// {l}\n")
+fn CppDoc text = if text == "": "" else: Concat (Each (SplitOn text, "\n"), \|l| if l == "": "///\n" else: "/// {l}\n")
 
 # A doc comment quoting the Prism source, after a lead line.
 CppSourceDoc: fn Text, Text -> Text
 fn CppSourceDoc lead, source:
-    let quoted = Concat (Each (Split source, "\n"), \|l| if l == "": "///\n" else: "/// {l}\n")
+    let quoted = Concat (Each (SplitOn source, "\n"), \|l| if l == "": "///\n" else: "/// {l}\n")
     if source == "": CppDoc lead
     else: if lead == "": "/// ```prism\n{quoted}/// ```\n" else: "/// {lead}\n///\n/// ```prism\n{quoted}/// ```\n"
 
@@ -268,7 +268,7 @@ PrismField: fn Text -> Text
 fn PrismField f = if (LastChar f) == "_": BeforeLast f else: f
 
 IndentCpp: fn Text -> Text
-fn IndentCpp t = Join (Each (Split t, "\n"), \|l| if l == "": "" else: "    {l}"), "\n"
+fn IndentCpp t = Join (Each (SplitOn t, "\n"), \|l| if l == "": "" else: "    {l}"), "\n"
 
 # An element tag's `Level`: a struct of its fields, its tag, its plain data.
 TagParts: unbounded fn Cp, TagDef -> Parts
@@ -371,7 +371,7 @@ fn ImplParts cp, i:
         otherwise:
             let tr = DropPrefix (TypePath i.tr), "crate::"
             let own = not (Contains tr, "::")
-            let ns = if own: tr else: "impl_{Join (Split tr, "::"), "_"}"
+            let ns = if own: tr else: "impl_{Join (SplitOn tr, "::"), "_"}"
             let inTrait = Each i.methods, \|f| TraitNamespace ns, (FnDefinition cp, (WithGenerics f, i.generics))
             let protos = Each i.methods, \|f| TraitNamespace ns, "{FnSignature cp, (WithGenerics f, i.generics)};"
             let outer = if own: [[]] else: [[(TraitNamespace tr, (Join (Each i.methods, \|f| "using ::crate::{cp.home}::{ns}::{CppId f.name};"), "\n"))]]

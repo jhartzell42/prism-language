@@ -96,7 +96,7 @@ fn Exponent l, decimal:
 # Whether `digits[.frac]` times `scale` nanoseconds is whole.
 WholeNanoseconds: fn Text, Nat -> Bool
 fn WholeNanoseconds text, scale:
-    let parts = Split (Concat (Split text, "_")), "."
+    let parts = SplitOn (Concat (SplitOn text, "_")), "."
     match parts[1]:
         nil: True
         ? frac0:

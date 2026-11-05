@@ -33,7 +33,7 @@ fn IsBracket (KClose ignore) = True
 fn IsBracket ignore = False
 
 RenderInner: fn [Tok] -> Text
-fn RenderInner tokens = Join (Split (TrimEnd (TrimNewlines (RenderTokens tokens))), "\n"), " "
+fn RenderInner tokens = Join (SplitOn (TrimEnd (TrimNewlines (RenderTokens tokens))), "\n"), " "
 
 TrimNewlines: fn Text -> Text
 fn TrimNewlines t = TrimTrailing t, "\n \t"
@@ -140,7 +140,7 @@ fn EscapeChar c, single, double = match c:
 # The code point of an ASCII character (128 for anything else): its byte index in
 # `asciiText`.
 CodeOf: fn Text -> Nat
-fn CodeOf c = if c == "": 128 else: Len (Or (Split asciiText, c)[0], asciiText)
+fn CodeOf c = if c == "": 128 else: Len (Or (SplitOn asciiText, c)[0], asciiText)
 
 HexOf: fn Nat -> Text
 fn HexOf n = HexDigits n, n

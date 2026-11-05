@@ -213,7 +213,7 @@ fn SortTexts xs = Fold xs, [[]], \|acc, x| if HasText acc, x: acc else: Append (
 
 # The last segment of a qualified name: `Chess.Sq` prints as `Sq`.
 BareName: fn Text -> Text
-fn BareName q = Or (?Last (Split q, ".")), q
+fn BareName q = Or (?Last (SplitOn q, ".")), q
 
 # ---------------------------------------------------------------------------------------
 # Fresh variables and the substitution

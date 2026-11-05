@@ -199,7 +199,7 @@ let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache",
 # directories are the same path, so a segment that is a C++ keyword takes a `_` too
 # (`Shapes.Switch` is `shapes::switch_` in both).
 RustModName: fn Text -> Text
-fn RustModName m = if m == "": "program" else: Join (Each (Split m, "."), \|s| ModSegment s), "::"
+fn RustModName m = if m == "": "program" else: Join (Each (SplitOn m, "."), \|s| ModSegment s), "::"
 
 ModSegment: fn Text -> Text
 fn ModSegment s:
@@ -256,7 +256,7 @@ fn LocalName lx, nkey:
 
 BaseKey: fn Text -> Text
 fn BaseKey k:
-    let parts = Split k, "."
+    let parts = SplitOn k, "."
     let last = Or (?Last parts), k
     "{Join (Take parts, (Dec (Len parts))), "."}.{Snake last}"
 
@@ -289,9 +289,9 @@ fn ValuePath lx, qk:
 # The module a qualified key belongs to: everything before its last segment.
 OwnerOf: fn Text -> Text
 fn OwnerOf qk:
-    let parts = Split qk, "."
+    let parts = SplitOn qk, "."
     Join (Take parts, (Dec (Len parts))), "."
 
 # A tag's Rust struct: its family and name run together (`Ui.Button` is `UiButton`).
 TagStruct: fn Text -> Text
-fn TagStruct tn = Concat (Each (Split tn, "."), \|p| Camel p)
+fn TagStruct tn = Concat (Each (SplitOn tn, "."), \|p| Camel p)

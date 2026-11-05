@@ -401,8 +401,8 @@ impl Program for {{name}} {
 # Expressions and statements that take several lines
 # ---------------------------------------------------------------------------------------
 
-Match: fn Text, Text -> Text
-fn Match scrut, arms = inline_text <rust>
+MatchBlock: fn Text, Text -> Text
+fn MatchBlock scrut, arms = inline_text <rust>
 match {{scrut}} {
     {{arms}}
 }</rust>

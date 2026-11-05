@@ -151,7 +151,7 @@ LeadingIn: fn Text, Text -> Nat
 fn LeadingIn t, set = Or ((Len t) -? (Len (TrimLeading t, set))), 0
 
 Contains: fn Text, Text -> Bool
-fn Contains set, c = c != "" and (Len (Split set, c)) > 1
+fn Contains set, c = c != "" and (Len (SplitOn set, c)) > 1
 
 # ---------------------------------------------------------------------------------------
 # Characters (ASCII only: "Names are ASCII letters, digits and underscores")
@@ -207,7 +207,7 @@ fn CharAtByte t, n = match ?CursorAt t, n:
 HexValue: fn Text -> Nat
 fn HexValue c:
     let l = Lower c
-    if l == "": 16 else: Len (Or (Split hexDigits, l)[0], hexDigits)
+    if l == "": 16 else: Len (Or (SplitOn hexDigits, l)[0], hexDigits)
 
 ?ParseHex: fn Text -> ?Nat
 fn ?ParseHex t:

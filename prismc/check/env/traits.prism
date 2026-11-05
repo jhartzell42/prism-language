@@ -28,7 +28,7 @@ use Check.Types.Colors.*
 # The derived impls, from every `derive` line: structural, each type parameter bounded.
 DerivedImpls: fn G -> G
 fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
-    ? ti: Fold ti.derives, gg, \|g2, tr| match ?ResolveTrait g2, ti.home, (Split tr, "."):
+    ? ti: Fold ti.derives, gg, \|g2, tr| match ?ResolveTrait g2, ti.home, (SplitOn tr, "."):
         ? cls:
             let im = ImplInfo(cls=cls, head=(TyCon ti.name, (Each ti.params, \|p| TyQ p)), qs=ti.params, bounds=(Each ti.params, \|p| ((p, cls))), home=ti.home, file=ti.file, span=ti.span, derived=True, assocs=[[]], methods=[[]])
             update g2:

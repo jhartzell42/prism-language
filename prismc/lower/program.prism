@@ -124,7 +124,7 @@ fn NamedMods g, srcs, tp, ms:
         nil: acc
     Fold ms, {}, \|acc, m| match g.mods[m]:
         ? info:
-            let code = Join (Filter (Split (Or srcs[info.file], (MkSrc "", "")).text, "\n"), \|l| not (HasPrefix (TrimStart l), "#")), "\n"
+            let code = Join (Filter (SplitOn (Or srcs[info.file], (MkSrc "", "")).text, "\n"), \|l| not (HasPrefix (TrimStart l), "#")), "\n"
             let qualified = Filter ms, \|o| o != m and o != "" and Contains code, "{o}."
             Insert acc, m, (UnionTexts (UnionTexts (ModRefs g, m), qualified), (Or solved[m], [[]]))
         nil: acc
@@ -134,7 +134,7 @@ fn NamedMods g, srcs, tp, ms:
 ImplPath: fn Text -> Text
 fn ImplPath how:
     let rest = Or (?AfterPrefix how, "impl "), (Or (?AfterPrefix how, "derived "), "")
-    let parts = Split rest, ":"
+    let parts = SplitOn rest, ":"
     Join (Take parts, (Dec (Len parts))), ":"
 
 # The program's types held by value where they are held (records, newtypes, unit types
@@ -203,7 +203,7 @@ fn StartsWithModule names, q = Fold names, False, \|f, n| f or (n != "" and HasP
 
 ParentOf: fn Text -> Text
 fn ParentOf p:
-    let segs = Split p, "::"
+    let segs = SplitOn p, "::"
     Join (Take segs, (Dec (Len segs))), "::"
 
 # Each module with the modules its value types are ordered with (`ModDef.typesWith`): the

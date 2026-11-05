@@ -528,15 +528,6 @@ pub fn lower(t: &Text) -> Text {
     Text::from(t.as_str().to_lowercase())
 }
 
-/// `Split t, sep`: the pieces between the separators. An empty separator is refused: a
-/// text's characters are walked with a cursor (Appendix B, Text).
-pub fn split(t: &Text, sep: &Text) -> Array<Text> {
-    if sep.is_empty() {
-        panic!("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
-    }
-    t.split(sep.as_str()).collect()
-}
-
 /// `SplitOn t, sep`: the pieces between the separators (not in Appendix B, whose `Split`
 /// is a regular expression's). An empty separator is refused.
 pub fn split_on(t: &Text, sep: &Text) -> Array<Text> {
@@ -619,6 +610,11 @@ pub fn matches(r: &Regex, t: &Text) -> Array<Match> {
 /// `Replace: fn RegexReplacement, Text -> Text`: every match replaced.
 pub fn replace(r: &RegexReplacement, t: &Text) -> Text {
     r.replace(t)
+}
+
+/// `Split: fn Regex, Text -> [Text]`: the `k + 1` views between the `k` matches.
+pub fn split(r: &Regex, t: &Text) -> Array<Text> {
+    r.split(t)
 }
 
 /// `?ParseNat`.

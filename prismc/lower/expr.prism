@@ -60,7 +60,7 @@ fn CharEscape c = c
 # A number literal of a numeric type.
 Number: fn OutTy, Text, Bool -> Ex
 fn Number t, digits, neg:
-    let clean = DecimalDigits (Concat (Split digits, "_"))
+    let clean = DecimalDigits (Concat (SplitOn digits, "_"))
     let signed = if neg: "-{clean}" else: clean
     match t:
         OutNat: XNat clean

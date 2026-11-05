@@ -178,7 +178,7 @@ IsLocalMaker: fn Text -> Bool
 fn IsLocalMaker qk = HasText [["Buffer.Numbered", "Buffer.Empty", "Table.Empty"]], qk
 
 LocalOutside: fn St, Text, Range -> St
-fn LocalOutside st, qk, span = ErrFix st, "local-escapes", span, "a `{Or (Split qk, ".")[0], qk}` lives only in an `&` block's local", "make it inside `update ...:` as `let &b = {qk} ...`, and `Freeze &b` for the plain value"
+fn LocalOutside st, qk, span = ErrFix st, "local-escapes", span, "a `{Or (SplitOn qk, ".")[0], qk}` lives only in an `&` block's local", "make it inside `update ...:` as `let &b = {qk} ...`, and `Freeze &b` for the plain value"
 
 # The callee's type, at its name and at the callee expression (`F<<T>>` has both).
 NoteCallee: fn St, Range, Range, Ty -> St

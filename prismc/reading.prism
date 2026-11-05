@@ -170,10 +170,10 @@ fn IsSourcePath f = (HasSuffix f, ".prism") or HasSuffix f, ".prismtest"
 # ---- Paths
 
 DirOf: fn Text -> Text
-fn DirOf p = Join (Pop (Split p, "/")), "/"
+fn DirOf p = Join (Pop (SplitOn p, "/")), "/"
 
 BaseOf: fn Text -> Text
-fn BaseOf p = Or (?Last (Split p, "/")), p
+fn BaseOf p = Or (?Last (SplitOn p, "/")), p
 
 Under: fn Text, Text -> Text
 fn Under d, n = if d == "" or d == ".": n else: "{d}/{n}"
@@ -181,7 +181,7 @@ fn Under d, n = if d == "" or d == ".": n else: "{d}/{n}"
 # The directories above `d`, nearest first: `a/b/c` has `a/b` and `a`.
 Ancestors: fn Text -> [Text]
 fn Ancestors d:
-    let parts = Split d, "/"
+    let parts = SplitOn d, "/"
     let n = Len parts
     Filter (Each (Range0 (Dec n)), \|i| Join (Take parts, (Or ((Dec n) -? i), 0)), "/"), \|a| a != "" and a != "."
 
@@ -196,7 +196,7 @@ fn DirName name:
 # A directory's module name, as the `mod` line that declares it spells it (`check_env/` is
 # `CheckEnv`).
 ModOfDir: fn Text -> Text
-fn ModOfDir d = Concat (Each (Split d, "_"), \|w| "{Upper (Head w)}{AfterFirst w}")
+fn ModOfDir d = Concat (Each (SplitOn d, "_"), \|w| "{Upper (Head w)}{AfterFirst w}")
 
 # ---- Headers, read from the text
 
@@ -213,7 +213,7 @@ derive ^Eq, ^Show
 # (an `emit` row carried over) is part of it. The first other line ends it.
 HeaderLines: fn Text -> [HeadLine]
 fn HeaderLines text:
-    let ((lines, ignore, ignore)) = Fold (Split text, "\n"), (([[]], 0, True)), \|((acc, at, open)), line|
+    let ((lines, ignore, ignore)) = Fold (SplitOn text, "\n"), (([[]], 0, True)), \|((acc, at, open)), line|
         let next = at + (Len line) + 1
         if not open: ((acc, next, False))
         else: if (Trim line) == "" or (HasPrefix line, "#") or (HasPrefix line, " "): ((acc, next, True))
@@ -224,8 +224,8 @@ fn HeaderLines text:
 
 ?HeadLineOf: fn Text, Nat -> ?HeadLine
 fn ?HeadLineOf line, at:
-    let code = TrimEnd (Or (Split line, " #")[0], line)
-    let words = Filter (Split code, " "), \|w| w != ""
+    let code = TrimEnd (Or (SplitOn line, " #")[0], line)
+    let words = Filter (SplitOn code, " "), \|w| w != ""
     let first = Or words[0], ""
     let second = Or words[1], ""
     let span = Range(start=at, end=at + (Len code))
@@ -236,7 +236,7 @@ fn ?HeadLineOf line, at:
 # The first line of a file that is no comment, no blank line and no header line.
 ?FirstDeclLine: fn Text -> ?Range
 fn ?FirstDeclLine text:
-    let ((?found, ignore)) = Fold (Split text, "\n"), ((nil, 0)), \|((?f, at)), line|
+    let ((?found, ignore)) = Fold (SplitOn text, "\n"), ((nil, 0)), \|((?f, at)), line|
         let next = at + (Len line) + 1
         if ?f != nil or (Trim line) == "" or (HasPrefix line, "#") or (HasPrefix line, " ") or (?HeadLineOf line, at) != nil: ((?f, next))
         else: ((? Range(start=at, end=at + (Len (TrimEnd line))), next))
@@ -526,7 +526,7 @@ fn ParseUnit u:
     let parsed = ParseFile src.text
     let t0 = parsed.tree
     let tree = if not u.named: t0 else: update t0:
-        &_.name <= if u.name == "": nil else: ? QualName(path=(Split u.name, "."), span=noSpan)
+        &_.name <= if u.name == "": nil else: ? QualName(path=(SplitOn u.name, "."), span=noSpan)
     ((src, Parsed(tree=tree, diags=parsed.diags)))
 
 # The program's units parsed, and the prelude's it does not replace (a module of the same

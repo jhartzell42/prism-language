@@ -4,10 +4,10 @@ use App.*
 
 check parse:
     (?Regex "a+") == ? %/a+/ => True
-    ?Regex "a**" => nil
-    ?Regex "\\1" => nil
-    ?Regex "(?=a)" => nil
-    ?Regex "[a" => nil
+    (?Regex "a**") == nil => True
+    (?Regex "\\1") == nil => True
+    (?Regex "(?=a)") == nil => True
+    (?Regex "[a") == nil => True
     (?Regex "") == ? %// => True
     Spans (?Find (Or (?Regex "(?i)b+"), %/x/), "aBBc") => "1-3"
     Whole "cat", "a cat sat" => "2-5"
