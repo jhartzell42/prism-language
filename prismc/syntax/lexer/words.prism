@@ -1,0 +1,357 @@
+# `Syntax.Lexer`'s section `words`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Tokens
+# ---------------------------------------------------------------------------------------
+
+LexToken: unbounded fn Lex -> Lex
+fn LexToken l0:
+    let start = l0.pos
+    let c = Peek l0
+    let l = update l0:
+        &_.pathNext <= False
+    # Conformance A.2: a path after `at`, read by the test lexer.
+    if l0.pathNext and ((IsDigit c) or c == "#" or c == "["): LexPathToken l, start
+    else: LexTokenAt l, start, c
+
+LexPathToken: unbounded fn Lex, Nat -> Lex
+fn LexPathToken l, start:
+    let ((segs, l2)) = LexPath l
+    PushTok l2, (KPath segs), start, l2.pos
+
+LexTokenAt: unbounded fn Lex, Nat, Text -> Lex
+fn LexTokenAt l, start, c = match c:
+    "\"":
+        let ((text, l2)) = LexText l
+        PushTok l2, (KText "", text), start, l2.pos
+    "'":
+        let ((ch, l2)) = LexChar l
+        PushTok l2, (KChar "", ch), start, l2.pos
+    ignore if IsDigit c:
+        let ((kind, l2)) = LexNumber l, ""
+        PushTok l2, kind, start, l2.pos
+    ignore if IsIdentStart c: LexWordToken l, "", start
+    ignore if Contains "$@?~&^", c: LexSigils l
+    "!": if (PeekAt l, 1) == "=": PushOpSuffix (Forward l, 2), "!=", start else: LexSigils l
+    ignore if Contains "([\{", c: LexOpen l, c, start
+    ignore if Contains ")]\}", c: LexClose l, c, start
+    ",": PushTok (Bump l), KComma, start, start + 1
+    ":": PushTok (Bump l), KColon, start, start + 1
+    ";": PushTok (Bump l), KSemi, start, start + 1
+    "\\": LexBackslash l, start
+    "|": LexBar l, start
+    ".": LexDot l, start
+    otherwise: match ?LexOperator l, start:
+        ? l2: l2
+        nil:
+            let l1 = Bump l
+            let l2 = LexErr l1, start, l1.pos, "unexpected character `{c}`"
+            update l2:
+                &_.lastWs <= True
+
+# The spacing rule applies to a single `[`; the pairing rule decides doubles in the parser.
+LexOpen: fn Lex, Text, Nat -> Lex
+fn LexOpen l, c, start:
+    let prefix = c == "[" and (PrefixPosition l) and not (NextIsSpace l, 1)
+    let l2 = update (Bump l):
+        &_.frames <= Push &_.frames, c
+    PushTok l2, (KOpen c, prefix), start, l2.pos
+
+LexClose: fn Lex, Text, Nat -> Lex
+fn LexClose l, c, start:
+    let kind = OpenOf c
+    let l1 = Bump l
+    let l2 = match ?Last l1.frames:
+        ? k if k == kind: update l1:
+            &_.frames <= Pop &_.frames
+        ? "<<": LexErr l1, start, l1.pos, "`{c}` inside `<<`: expected `>>`"
+        ? k:
+            let l3 = LexErr l1, start, l1.pos, "`{c}` closes a `{k}`"
+            update l3:
+                &_.frames <= Pop &_.frames
+        nil: LexErr l1, start, l1.pos, "`{c}` closes nothing"
+    PushTok l2, (KClose kind), start, l2.pos
+
+# "A `|` immediately after `\` opens a parameter list."
+LexBackslash: fn Lex, Nat -> Lex
+fn LexBackslash l, start:
+    let l1 = PushTok (Bump l), KBackslash, start, start + 1
+    if (Peek l1) == "|":
+        let l2 = update (Bump l1):
+            &_.lambdaOpen <= True
+        PushTok l2, (KLambdaBar True), l1.pos, l1.pos + 1
+    else: l1
+
+# "... which closes at the next `|` on the same line"; any other `|` separates the families
+# of a row, and the parser reports it elsewhere.
+LexBar: fn Lex, Nat -> Lex
+fn LexBar l, start:
+    let l1 = Bump l
+    if l1.lambdaOpen:
+        let l2 = update l1:
+            &_.lambdaOpen <= False
+        PushTok l2, (KLambdaBar False), start, l2.pos
+    else: PushTok l1, KBar, start, l1.pos
+
+LexDot: fn Lex, Nat -> Lex
+fn LexDot l, start:
+    if StartsWith l, "..": PushTok (Forward l, 2), KDotDot, start, start + 2
+    else:
+        let prefix = (PrefixPosition l) and not (NextIsSpace l, 1)
+        let l1 = if prefix and (IsDigit (PeekAt l, 1)): LexErr l, start, start + 1, "a decimal literal has digits on both sides of its point: write `0.5`, not `.5`" else: l
+        PushTok (Bump l1), (KDot prefix), start, start + 1
+
+# Suffixed operators (ch. 2): "a symbol operator followed, with no space, by an uppercase
+# name is one token".
+PushOpSuffix: unbounded fn Lex, Text, Nat -> Lex
+fn PushOpSuffix l, op, start:
+    if (TakesSuffix op) and (IsUpper (Peek l)):
+        let ((path, l2)) = LexQualifiedPath l
+        PushTok l2, (KSuffixed op, path), start, l2.pos
+    else: PushTok l, (KOp op, False), start, l.pos
+
+# The first operator of the table at the cursor, or `""`.
+FirstOp: fn Lex -> Text
+fn FirstOp l:
+    let fat = FatArrowOn l
+    Fold opTable, "", \|found, s| if found == "" and (s != "=>" or fat) and (StartsWith l, s): s else: found
+
+# "A `+` touching a closing double bracket or brace, with whitespace, a comma, a close
+# bracket or the end of the line after it, is the non-empty mark."
+EndsMark: fn Text -> Bool
+fn EndsMark a = a == "" or (Contains " \n\u{d},)]\}", a)
+
+ClosesSquareOrBrace: fn ?Tok -> Bool
+fn ClosesSquareOrBrace (? t) = t.kind == (KClose "[") or t.kind == (KClose "\{")
+fn ClosesSquareOrBrace nil = False
+
+# Longest match over the operator table, with the two marks a sign makes against a closing
+# bracket and the `<<`/`>>` pair.
+?LexOperator: unbounded fn Lex, Nat -> ?Lex
+fn ?LexOperator l, start:
+    let c = Peek l
+    let after = PeekAt l, 1
+    let nonEmpty = c == "+" and not l.lastWs and (ClosesSquareOrBrace (?Last l.tokens)) and ((EndsMark after) or (after == "?" and (EndsMark (PeekAt l, 2))))
+    if c == "-" and (Contains ",)]\}", after): ? (PushTok (Bump l), KAbsent, start, start + 1)
+    else: if nonEmpty: ? (NonEmptyMark l, start, after)
+    else: if StartsWith l, "<<": ? (OpenTypeArgs l, start)
+    else: if (StartsWith l, ">>") and (?Last l.frames) == ? "<<": ? (CloseTypeArgs l, start)
+    else: if StartsWith l, ">>": ? (LexErr (PushTok (Forward l, 2), KGtGt, start, start + 2), start, start + 2, "`>>` closes explicit type arguments, and none is open (Prism has no shift operators)")
+    else: match FirstOp l:
+        "": nil
+        op: ? (PushOperator l, op, start)
+
+NonEmptyMark: fn Lex, Nat, Text -> Lex
+fn NonEmptyMark l, start, after:
+    let l1 = PushTok (Bump l), KNonEmpty, start, start + 1
+    # `as [Text]+?`: the non-empty mark, then the checked cast's `?` (doubt PQ).
+    if after == "?": PushTok (Bump l1), (KFree "?"), l1.pos, l1.pos + 1 else: l1
+
+# "`<<` touching a name on its left opens explicit type arguments ... Anywhere else, `<<`
+# and `>>` are errors."
+OpenTypeArgs: fn Lex, Nat -> Lex
+fn OpenTypeArgs l, start:
+    let touching = not l.lastWs and (IsNameTok (?Last l.tokens))
+    let l1 = Forward l, 2
+    let l2 = if touching: l1 else: LexErr l1, start, l1.pos, "`<<` opens explicit type arguments and must touch a name on its left (Prism has no shift operators)"
+    let l3 = update l2:
+        &_.frames <= Push &_.frames, "<<"
+    PushTok l3, KLtLt, start, l3.pos
+
+IsNameTok: fn ?Tok -> Bool
+fn IsNameTok (? t) = match t.kind:
+    KName ignore: True
+    otherwise: False
+fn IsNameTok nil = False
+
+CloseTypeArgs: fn Lex, Nat -> Lex
+fn CloseTypeArgs l, start:
+    let l1 = update (Forward l, 2):
+        &_.frames <= Pop &_.frames
+    PushTok l1, KGtGt, start, l1.pos
+
+PushOperator: unbounded fn Lex, Text, Nat -> Lex
+fn PushOperator l, op, start:
+    let l1 = Forward l, (Len op)
+    # "a token that can be prefix or binary is prefix when whitespace, an open bracket, a
+    # comma, an operator or the start of a line comes before it and a non-whitespace
+    # character comes after it."
+    if (op == "+" or op == "-" or op == "-?") and not (IsUpper (Peek l1)):
+        PushTok l1, (KOp op, (PrefixPosition l1) and not (NextIsSpace l1, 0)), start, l1.pos
+    else: PushOpSuffix l1, op, start
+
+# ---------------------------------------------------------------------------------------
+# Sigils and words
+# ---------------------------------------------------------------------------------------
+
+# A run of sigils and what follows it (ch. 2, "The attachment rule"): attached "when the
+# character after it is a letter, a digit, `_`, `"`, `.` (for `&` only), or another sigil.
+# Otherwise it is free."
+LexSigils: unbounded fn Lex -> Lex
+fn LexSigils l0:
+    let start = l0.pos
+    let ((sigils, caret, l)) = ReadSigils l0
+    let next = Peek l
+    if caret: LexCaret l, start, sigils, next
+    else: if (IsIdentStart next) or (IsDigit next) or next == "\"": LexAttached l, start, sigils, next
+    else: if sigils == "&" and next == "." and (IsLower (PeekAt l, 1)): PushTok (Bump l), KLensDot, start, l.pos + 1
+    else: FreeSigils l, start, sigils
+
+# The sigils at the cursor, and whether a `^` ended them.
+ReadSigils: unbounded fn Lex -> ((Text, Bool, Lex))
+fn ReadSigils l0 = update (("", False, l0)):
+    let &l = l0
+    let &sigils = ""
+    let &caret = False
+    let &going = True
+    while &going:
+        let c = Peek &l
+        if c == "^":
+            &l <= Bump &l
+            &caret <= True
+            &going <= False
+        else:
+            if (IsSigilChar c) and not (c == "!" and (PeekAt &l, 1) == "="):
+                &l <= Bump &l
+                &sigils <= "{&sigils}{c}"
+            else:
+                &going <= False
+    &_ <= ((&sigils, &caret, &l))
+
+# `^` is a mark that attaches by the same rule, to a trait name.
+LexCaret: unbounded fn Lex, Nat, Text, Text -> Lex
+fn LexCaret l, start, sigils, next:
+    if (IsUpper next) and sigils == "":
+        let ((path, l2)) = LexQualifiedPath l
+        PushTok l2, (KTrait path), start, l2.pos
+    else:
+        let ((ignore, skipped)) = LexQualifiedPath l
+        let l2 = if IsIdentStart next: skipped else: l
+        LexErr l2, start, (Max l2.pos, l.pos), "`^` marks a trait and attaches to its uppercase name: no trait is a value"
+
+LexAttached: unbounded fn Lex, Nat, Text, Text -> Lex
+fn LexAttached l, start, sigils, next:
+    if next == "\"":
+        let ((text, l2)) = LexText l
+        PushTok l2, (KText sigils, text), start, l2.pos
+    else: if IsDigit next:
+        let ((kind, l2)) = LexNumber l, sigils
+        PushTok l2, kind, start, l2.pos
+    else: LexWordToken l, sigils, start
+
+# Free. A run of several sigils before a bracket is several free sigils, each the prefix
+# over what follows (`@!(Text ==> ?Nat)` in a type).
+FreeSigils: fn Lex, Nat, Text -> Lex
+fn FreeSigils l0, start, sigils = update l0:
+    let spaceAfter = NextIsSpace &_, 0
+    let all = FoldChars sigils, [[]], \|acc, c| Push acc, c
+    for s <- all:
+        let at = start + ix
+        if spaceAfter and ix + 1 == (Len all):
+            if s == "!":
+                &_ <= LexErr &_, at, at + 1, "`!` is never free: no event fires a constant (write `!e` touching its name)"
+            if s == "&":
+                &_ <= LexErr &_, at, at + 1, "`&` is never free: no reference exists outside the value an `update` block names"
+        &_ <= PushTok &_, (KFree s), at, at + 1
+
+# `Ui.Button`, `Rust.templatetext`: uppercase segments joined by `.` with nothing between,
+# the last possibly one of the reserved lowercase constructors.
+LexQualifiedPath: unbounded fn Lex -> (([Text], Lex))
+fn LexQualifiedPath l0 = update (([[]], l0)):
+    let ((first, l1)) = LexIdent l0
+    let &path = [[first]]
+    let &l = l1
+    let &going = True
+    while &going:
+        let last = Or (?Last &path), ""
+        let next = PeekAt &l, 1
+        if (Peek &l) != "." or not (IsUpper (Head last)):
+            &going <= False
+        else:
+            if IsUpper next:
+                let ((seg, l2)) = LexIdent (Bump &l)
+                &path <= Push &path, seg
+                &l <= l2
+            else:
+                &going <= False
+                if IsIdentStart next:
+                    let ((w, l2)) = LexIdent (Bump &l)
+                    if IsReservedCtor w:
+                        &path <= Push &path, w
+                        &l <= l2
+    &_ <= ((&path, &l))
+
+LexIdent: unbounded fn Lex -> ((Text, Lex))
+fn LexIdent l0:
+    let l = update l0:
+        while IsIdentChar (Peek &_):
+            &_.pos += 1
+    let word = Slice l, l0.pos, l.pos
+    ((word, l))
+
+# A word: a keyword, a name, a qualified name, a family pattern `Ui.*`, the topic or a hole;
+# with `sigils` already read.
+LexWordToken: unbounded fn Lex, Text, Nat -> Lex
+fn LexWordToken l0, sigils, start:
+    let wStart = l0.pos
+    let ((path, l1)) = LexQualifiedPath l0
+    let l = if IsNonAscii (Peek l1): SkipNonAscii l1, wStart else: l1
+    let first = Or path[0], ""
+    # `Ui.*` is one token, "and the only place `*` touches a `.`".
+    if (StartsWith l, ".*") and (IsUpper (Head first)):
+        let l2 = Forward l, 2
+        let l3 = if sigils != "": LexErr l2, start, l2.pos, "a family pattern takes no sigil" else: l2
+        PushTok l3, (KFamily path), start, l3.pos
+    else: if (Len path) == 1 and (IsKeyword first) and not ((IsBoundWord first) and sigils != ""):
+        LexKeyword l, first, sigils, start
+    else: LexName l, path, sigils, start, wStart
+
+# A non-ASCII letter glued to a name: "Names are ASCII letters, digits and underscores."
+SkipNonAscii: unbounded fn Lex, Nat -> Lex
+fn SkipNonAscii l0, wStart:
+    let l = update l0:
+        while (IsIdentChar (Peek &_)) or (IsNonAscii (Peek &_)):
+            &_.pos += Len (Peek &_)
+    LexErr l, wStart, l.pos, "names are ASCII letters, digits and underscores"
+
+LexKeyword: unbounded fn Lex, Text, Text, Nat -> Lex
+fn LexKeyword l, w, sigils, start:
+    let l1 = if sigils != "" and not (w == "widget" or w == "unit" or w == "nil"): LexErr l, start, l.pos, "`{w}` is a keyword and takes no sigil" else: l
+    let l2 = if w == "widget" and sigils != "@": LexErr l1, start, l1.pos, "`widget` is a block only as `@widget:`" else: l1
+    let l3 = PushTok l2, (KKw w, sigils), start, l2.pos
+    if w == "output" or w == "inline_text" or w == "raw": MaybeTemplate l3, w else: l3
+
+LexName: unbounded fn Lex, [Text], Text, Nat, Nat -> Lex
+fn LexName l, path, sigils, start, wStart:
+    let ((case, l1)) = NameCaseOf l, path, wStart
+    # Conformance A.2: "A path after `at` or `click element` is read by the test lexer".
+    let l2 = if IsPathWord l1, sigils, path: update l1:
+        &_.pathNext <= True
+    else: l1
+    PushTok l2, (KName NameTok(sigils=sigils, path=path, case=case)), start, l2.pos
+
+NameCaseOf: fn Lex, [Text], Nat -> ((NameCase, Lex))
+fn NameCaseOf l, path, wStart:
+    let last = Or (?Last path), ""
+    if last == "_": ((CaseTopic, l))
+    else: if (Head last) == "_" and (AllChars (AfterFirst last), IsDigit): ((CaseHole, l))
+    else: if (Head last) == "_": ((CaseLower, (LexErr l, wStart, l.pos, "`_` followed by a letter is not a name: `_` alone is the topic, `_1` a hole")))
+    else: if IsReservedCtor last: ((CaseReserved, l))
+    else: if IsUpper (Head last):
+        let underscored = Fold path, False, \|seen, seg| seen or (Contains seg, "_")
+        if underscored: ((CaseUpper, (LexErr l, wStart, l.pos, "`{Join path, "."}`: a capital promises UpperCamelCase")))
+        else: ((CaseUpper, l))
+    else: ((CaseLower, l))
+
+# `at` after a delivery word, `element` after `click`, inside a `test` block.
+IsPathWord: fn Lex, Text, [Text] -> Bool
+fn IsPathWord l, sigils, path:
+    let w = Or path[0], ""
+    let words = if w == "at": [["send", "click", "answer"]] else: [["click"]]
+    let prev = match ?Last l.tokens:
+        ? t: match t.kind:
+            KName n if n.sigils == "" and (Len n.path) == 1: Or n.path[0], ""
+            otherwise: ""
+        nil: ""
+    l.?testDepth != nil and sigils == "" and (Len path) == 1 and (w == "at" or w == "element") and (Fold words, False, \|seen, x| seen or x == prev)

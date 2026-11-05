@@ -5,8 +5,8 @@
 # (docs/modules-style-pass.md). All of them, every time: `tests/conformance/*.prismtest` (a program's
 # directory of the same name joins it, as sem-ch06-birds's); `examples/chess/rules.prism`
 # alone (rules.prismtest) and `examples/chess` (board.prismtest and rules.prismtest); and
-# prismc's lexer and parser checks (tests/prismc/lexer-checks.prismtest,
-# parser-checks.prismtest).
+# prismc's lexer and parser checks (the test modules of prismc/syntax/lexer and
+# prismc/syntax/parser).
 #
 #   tests/compiled/run.sh [NAMES...]     # every program, or only those named (chess too)
 #   tests/compiled/run.sh --target cpp [NAMES...]   # the same through the C++ target
@@ -60,9 +60,10 @@ for dir in tests/conformance/*/; do
 done
 run chess-rules examples/chess/rules.prism
 run chess examples/chess
-# prismc's own front end, checked through its modules (tests/prismc/)
-run lexer-checks tests/prismc/lexer-checks.prism prismc/ast.prism prismc/lexer.prism
-run parser-checks tests/prismc/parser-checks.prism prismc/ast.prism prismc/lexer.prism prismc/parser.prism prismc/sexp.prism
+# prismc's own front end, checked through its modules' test modules: a module directory
+# of prismc's tree, with the modules it reaches by `use`
+run lexer prismc/syntax/lexer
+run parser prismc/syntax/parser
 if [ ${#failed[@]} -gt 0 ]; then
     echo "failed (${#failed[@]}):"
     printf '  %s\n' "${failed[@]}"

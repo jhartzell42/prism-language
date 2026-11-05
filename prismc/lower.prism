@@ -19,8 +19,8 @@
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 module Lower
 emit r
-use Ast.*
-use Lexer.*
+use Syntax.*
+use Syntax.Lexer.*
 use Check.Errors.*
 use Check.Types.*
 use Check.Env.*

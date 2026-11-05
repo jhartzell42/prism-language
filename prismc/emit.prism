@@ -9,7 +9,7 @@
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 module Emit
 emit r
-use Lexer.*
+use Syntax.Lexer.*
 use Check.Errors.*
 use Lower.*
 use RustTemplates.*

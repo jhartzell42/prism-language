@@ -8,8 +8,8 @@ mod locals
 mod relations
 mod walk
 mod summaries
-use Ast.*
-use Lexer.*
+use Syntax.*
+use Syntax.Lexer.*
 use Check.Errors.*
 use Check.Types.*
 use Check.Env.*

@@ -9,10 +9,9 @@
 #
 # sexp.rs writes into one buffer and keeps the depth in a field; here each printer takes the
 # depth `d` it stands at and gives back its text.
-module Sexp
 emit r
-use Ast.*
-use Lexer.*
+use Syntax.*
+use Syntax.Lexer.*
 
 # A new line at depth `d`.
 Nl: fn Nat -> Text

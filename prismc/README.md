@@ -44,13 +44,14 @@ then gives up through `Prelude.Unwrap` with the rendered diagnostics as its mess
 the CLI World prints to standard error before it exits 1. Out-of-scope features are
 reported in the output and do not fail the run.
 
-`tests/prismc/lexer-checks.prismtest` and `tests/prismc/parser-checks.prismtest` are
-`check`s on small inputs, over the helpers in the `.prism` of their names; they run
-compiled with the front end's modules, transcripts byte-equal to their `.expected`:
+The lexer's and the parser's checks are their modules' test modules
+(`syntax/lexer/tests.prism`, `syntax/parser/tests.prism`, docs/modules-style-pass.md),
+`check`s on small inputs over the helpers declared beside them; they run compiled with
+the modules they reach, transcripts byte-equal to the `tests.expected` beside each:
 
 ```
-tests/compiled/run.sh lexer-checks parser-checks
-./prism test tests/prismc/lexer-checks.prism prismc/ast.prism prismc/lexer.prism
+tests/compiled/run.sh lexer parser
+./prism test prismc/syntax/lexer
 ```
 
 ## Where it stands

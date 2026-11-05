@@ -24,11 +24,12 @@ mod checking
 mod compile
 mod Fs
 mod Check
+mod Syntax
 use Fs.*
-use Ast.*
-use Lexer.*
-use Parser.*
-use Sexp.*
+use Syntax.*
+use Syntax.Lexer.*
+use Syntax.Parser.*
+use Syntax.Sexp.*
 use Check.Errors.*
 use Check.Types.*
 use Check.Env.*

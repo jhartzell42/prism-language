@@ -5,8 +5,8 @@
 # Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
 emit r
-use Ast.*
-use Lexer.*
+use Syntax.*
+use Syntax.Lexer.*
 
 # One diagnostic. `code` is ch. 5's name for the error (`mismatch`, `row-lacks`, ...), or
 # one of the checker's own names its README lists (`unknown-name`, `collision`); `file`

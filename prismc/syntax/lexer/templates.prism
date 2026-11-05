@@ -1,0 +1,335 @@
+# `Syntax.Lexer`'s section `templates`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Templates (Templates ch. 2; Semantics ch. 2, "The template frame")
+# ---------------------------------------------------------------------------------------
+
+# After `output`, `inline_text` or `raw`, a language tag begins a template ("The language
+# tag is a token form").
+MaybeTemplate: unbounded fn Lex, Text -> Lex
+fn MaybeTemplate l0, kw:
+    let l = update l0:
+        while (Peek &_) == " ":
+            &_.pos += 1
+    if (Peek l) == "<" and (TemplateTagAhead l) != "":
+        let keyword = if kw == "output": "Output" else: if kw == "inline_text": "InlineText" else: "Raw"
+        let ((kind, l2)) = LexTemplate l, keyword, l.pos
+        let l3 = update l2:
+            &_.lastWs <= True
+        PushTok l3, kind, l.pos, l3.pos
+    else: LexErr l0, l0.pos, l0.pos, "`{kw}` is followed by a language tag, `<rust>`"
+
+# `<` touching a lowercase name touching `>`: the name, if one is here, else `""`.
+TemplateTagAhead: unbounded fn Lex -> Text
+fn TemplateTagAhead l:
+    let ((name, ignore)) = LexIdent (Bump l)
+    let after = PeekAt l, (Len name) + 1
+    if (Peek l) == "<" and name != "" and (IsLower (Head name)) and after == ">": name else: ""
+
+# The template token's kind, and the lexer after its closing tag.
+LexTemplate: unbounded fn Lex, Text, Nat -> ((TokKind, Lex))
+fn LexTemplate l0, keyword, start:
+    let lang = TemplateTagAhead l0
+    let l1 = Forward l0, (Len lang) + 2
+    let delims = if lang == "markdown" or lang == "html": "single" else: "double"
+    # "When the language tag ends its line, the newline after it is not text."
+    let endsLine = (Peek l1) == "\n" or (StartsWith l1, "\u{d}\n")
+    let skip = if (Peek l1) == "\u{d}": 2 else: 1
+    let l2 = if endsLine: Forward l1, skip else: l1
+    let ((parts, l3)) = TemplateBody l2, "</{lang}>", delims, keyword == "Raw", not endsLine, start
+    let kind = KTemplate TemplateTok(keyword=keyword, lang=lang, delims=delims, parts=parts)
+    ((kind, l3))
+
+# One raw line of a template: its items, whether a newline ended it, and whether it was a
+# brace block.
+type RawLine = record:
+    items: [RawItem]
+    newline: Bool
+    block: Bool
+derive ^Eq, ^Show
+
+type RawItem = choice:
+    RiText Text
+    RiPlaceholder [Tok], Range
+    RiBlock [Tok], Range
+    RiCall NameTok, [AttrTok], ?[TPartTok], Range
+derive ^Eq, ^Show
+
+let emptyLine = RawLine(items=[[]], newline=False, block=False)
+
+# An item onto a line, a character merged into the text run before it.
+AddItem: fn RawLine, RawItem -> RawLine
+fn AddItem line, item = update line:
+    &_.items <= AddRaw &_.items, item
+
+AddRaw: fn [RawItem], RawItem -> [RawItem]
+fn AddRaw items, (RiText t) = match ?Last items:
+    ? (RiText s): Push (Pop items), (RiText "{s}{t}")
+    otherwise: Push items, (RiText t)
+fn AddRaw items, item = Push items, item
+
+OnlyWhitespace: fn RawLine -> Bool
+fn OnlyWhitespace line = Fold line.items, True, \|ok, it| ok and (IsBlankText it)
+
+IsBlankText: fn RawItem -> Bool
+fn IsBlankText (RiText s) = AllChars s, \|c| c == " " or c == "\u{d}"
+fn IsBlankText ignore = False
+
+TextLen: fn RawLine -> Nat
+fn TextLen line = Fold line.items, 0, \|n, it| n + (TextLenOf it)
+
+TextLenOf: fn RawItem -> Nat
+fn TextLenOf (RiText s) = Len s
+fn TextLenOf ignore = 0
+
+# The state of reading a template's body.
+type TplRead = record:
+    l: Lex
+    lines: [RawLine]
+    cur: RawLine
+    closingCol: ?Nat
+    closed: Bool
+    atLineStart: Bool
+    going: Bool
+derive ^Eq, ^Show
+
+# What every step of a template's body needs to know.
+type TplHow = record:
+    close: Text
+    delims: Text
+    open: Text
+    isRaw: Bool
+    firstContinues: Bool
+derive ^Eq, ^Show
+
+# Reads a template's text up to `close` and applies Templates ch. 2's whitespace rules.
+# `firstContinues` is true when the first line of text shares the opening tag's line.
+TemplateBody: unbounded fn Lex, Text, Text, Bool, Bool, Nat -> (([TPartTok], Lex))
+fn TemplateBody l0, close, delims, isRaw, firstContinues, openStart:
+    let open = if delims == "double": "\{\{" else: "\{"
+    let how = TplHow(close=close, delims=delims, open=open, isRaw=isRaw, firstContinues=firstContinues)
+    let start = TplRead(l=l0, lines=[[]], cur=emptyLine, closingCol=nil, closed=False, atLineStart=(not firstContinues), going=True)
+    let r = update start:
+        while &_.going:
+            &_ <= TemplateStep &_, how
+    let l1 = if r.closed: r.l else: LexErr r.l, openStart, r.l.pos, "a template never closes: expected `{close}`"
+    FinishTemplateLines l1, (Push r.lines, r.cur), (Or r.?closingCol, 0), firstContinues
+
+TemplateStep: unbounded fn TplRead, TplHow -> TplRead
+fn TemplateStep s, how:
+    let rest = RestOfLine s.l
+    let c = Peek s.l
+    # A brace block: the opener alone on its line.
+    if s.atLineStart and not how.isRaw and (Trim rest) == how.open: BraceBlockLine s, rest, how
+    else: if StartsWith s.l, how.close: CloseTemplate s, how
+    else: if c == "":
+        update s:
+            &_.atLineStart <= False
+            &_.going <= False
+    else: if c == "\n":
+        update s:
+            &_.l <= Bump &_.l
+            &_.cur.newline <= True
+            &_.lines <= Push &_.lines, &_.cur
+            &_.cur <= emptyLine
+            &_.atLineStart <= True
+    else:
+        let ((item, l2)) = TemplateItem s.l, how
+        update s:
+            &_.atLineStart <= False
+            &_.l <= l2
+            &_.cur <= AddItem &_.cur, item
+
+BraceBlockLine: unbounded fn TplRead, Text, TplHow -> TplRead
+fn BraceBlockLine s, rest, how:
+    let bs = s.l.pos
+    let past = Forward s.l, (Len rest)
+    let at = if (Peek past) == "\n": Bump past else: past
+    let ((toks, l2)) = Nested at, (MBrace how.delims)
+    let line = RawLine(items=[[(RiBlock toks, Range(start=bs, end=l2.pos))]], newline=False, block=True)
+    update s:
+        &_.lines <= Push &_.lines, line
+        &_.l <= l2
+
+# "The frame ends at the first matching closing tag in text." When the closing tag begins
+# its line, its column is stripped from every line, and the newline before it is text.
+CloseTemplate: fn TplRead, TplHow -> TplRead
+fn CloseTemplate s, how = update s:
+    &_.atLineStart <= False
+    if (OnlyWhitespace &_.cur) and ((Len &_.lines) > 0 or not how.firstContinues):
+        &_.closingCol <= ? (TextLen &_.cur)
+        &_.cur.items <= [[]]
+    &_.l <= Forward &_.l, (Len how.close)
+    &_.closed <= True
+    &_.going <= False
+
+# One item of a template line: an escaped opener, a placeholder, a call, or a character.
+TemplateItem: unbounded fn Lex, TplHow -> ((RawItem, Lex))
+fn TemplateItem l, how:
+    let live = not how.isRaw
+    if live and how.delims == "double" and (StartsWith l, "\\\{\{"): ((RiText "\{\{", (Forward l, 3)))
+    else: if live and how.delims == "single" and (StartsWith l, "\\\{"): ((RiText "\{", (Forward l, 2)))
+    else: if live and (StartsWith l, how.open):
+        let ps = l.pos
+        let ((toks, l2)) = Nested (Forward l, (Len how.open)), (MPlaceholder how.delims)
+        let item = RiPlaceholder toks, Range(start=ps, end=l2.pos)
+        ((item, l2))
+    else: if live and (StartsWith l, "<@") and (IsUpper (PeekAt l, 2)): TemplateCall l, how.delims, how.open
+    else: ((RiText (Peek l), (Bump l)))
+
+# The state of reading a template call's attributes.
+type CallRead = record:
+    l: Lex
+    attrs: [AttrTok]
+    body: ?[TPartTok]
+    going: Bool
+derive ^Eq, ^Show
+
+# `<@Name attr={{v}} attr="t"/>` or `<@Name ...>body</@Name>` (Templates ch. 2, "`<@` is
+# the only call form").
+TemplateCall: unbounded fn Lex, Text, Text -> ((RawItem, Lex))
+fn TemplateCall l0, delims, open:
+    let start = l0.pos
+    let ((sigils, ignore, l1)) = ReadSigils (Bump l0)
+    let ((path, l2)) = LexQualifiedPath l1
+    let name = NameTok(sigils=sigils, path=path, case=CaseUpper)
+    let close = "</{sigils}{Join path, "."}>"
+    let r = update CallRead(l=l2, attrs=[[]], body=nil, going=True):
+        while &_.going:
+            &_ <= CallStep &_, start, close, delims, open
+    let item = RiCall name, r.attrs, r.?body, Range(start=start, end=r.l.pos)
+    ((item, r.l))
+
+CallStep: unbounded fn CallRead, Nat, Text, Text, Text -> CallRead
+fn CallStep s0, start, close, delims, open:
+    let l = update s0.l:
+        while Contains " \n\u{d}", (Peek &_):
+            &_.pos += 1
+    let s = update s0:
+        &_.l <= l
+    let at = l.pos
+    if StartsWith l, "/>":
+        update s:
+            &_.l <= Forward l, 2
+            &_.going <= False
+    else: if (Peek l) == ">":
+        let past = Bump l
+        let continues = (Peek past) != "\n"
+        let from = if continues: past else: Bump past
+        let ((parts, l3)) = TemplateBody from, close, delims, False, continues, start
+        update s:
+            &_.body <= ? parts
+            &_.l <= l3
+            &_.going <= False
+    else: if not (IsIdentStart (Peek l)):
+        update s:
+            &_.l <= LexErr l, at, at + 1, "expected an attribute `name=value`, `/>` or `>` in a template call"
+            &_.going <= False
+    else:
+        let ((aname, l3)) = LexIdent l
+        if (Peek l3) != "=":
+            update s:
+                &_.l <= LexErr l3, at, l3.pos, "an attribute is `name=value`"
+        else:
+            let ((tokens, l4)) = AttrValue (Bump l3), delims, open
+            update s:
+                &_.attrs <= Push &_.attrs, AttrTok(name=aname, tokens=tokens, span=Range(start=at, end=l4.pos))
+                &_.l <= l4
+
+AttrValue: unbounded fn Lex, Text, Text -> (([Tok], Lex))
+fn AttrValue l, delims, open:
+    if StartsWith l, open: Nested (Forward l, (Len open)), (MPlaceholder delims)
+    else: if (Peek l) == "\"":
+        let ((text, l2)) = LexText l
+        let tok = Tok(kind=(KText "", text), span=Range(start=l.pos, end=l2.pos), touches=False, lineStart=False)
+        (([[tok]], l2))
+    else: (([[]], (LexErr l, l.pos, l.pos, "an attribute's value is a placeholder `{open}...` or a text literal")))
+
+# The whitespace rules of Templates ch. 2 ("Whitespace and escapes"): the closing tag's
+# column is stripped from every line, and an under-indented line is an error (Q-CT3); a
+# placeholder alone on its line stands for whole lines; `{{` and `}}` alone on their lines
+# leave no line.
+FinishTemplateLines: fn Lex, [RawLine], Nat, Bool -> (([TPartTok], Lex))
+fn FinishTemplateLines l0, lines, strip, firstContinues = update (([[]], l0)):
+    let &l = l0
+    let &parts = [[]]
+    for line <- lines:
+        if line.block:
+            &parts <= Append &parts, (BlockParts line.items)
+        else:
+            let first = ix == 0 and firstContinues
+            let ((items, l2)) = if not first and strip > 0: StripLine line, strip, &l else: ((line.items, &l))
+            &l <= l2
+            # A placeholder alone on its line.
+            let nonBlank = Fold items, [[]], \|acc, it| if IsBlankOrEmpty it: acc else: Push acc, it
+            let alone = not first and line.newline and (Len nonBlank) == 1 and (IsPlaceholderItem (Or nonBlank[0], (RiText "")))
+            if alone:
+                &parts <= Push &parts, (AlonePlaceholder items)
+            else:
+                &parts <= Fold items, &parts, PushPart
+                if line.newline:
+                    &parts <= PushPart &parts, (RiText "\n")
+    &_ <= ((&parts, &l))
+
+BlockParts: fn [RawItem] -> [TPartTok]
+fn BlockParts items = Fold items, [[]], \|acc, it| match it:
+    RiBlock tokens, span: Push acc, (TptBlock tokens, span)
+    otherwise: acc
+
+# Strips the closing tag's column from a line's leading spaces.
+StripLine: fn RawLine, Nat, Lex -> (([RawItem], Lex))
+fn StripLine line, strip, l:
+    let blank = OnlyWhitespace line
+    let n = match line.items[0]:
+        ? (RiText s): LeadingIn s, " "
+        otherwise: 0
+    let items = match line.items[0]:
+        ? (RiText s):
+            let rest = match ?CursorAt s, (Min n, strip):
+                ? c: After c
+                nil: s
+            Append [[RiText rest]], (Drop line.items, 1)
+        otherwise: line.items
+    let l2 = if n < strip and not blank: LexErr l, (FirstItemSpan items).start, (FirstItemSpan items).end, "a template line is indented less than its closing tag (Q-CT3)" else: l
+    let kept = if items[0] == ? (RiText ""): Drop items, 1 else: items
+    ((kept, l2))
+
+IsBlankOrEmpty: fn RawItem -> Bool
+fn IsBlankOrEmpty (RiText s) = (Trim s) == ""
+fn IsBlankOrEmpty ignore = False
+
+IsPlaceholderItem: fn RawItem -> Bool
+fn IsPlaceholderItem (RiPlaceholder ignore, ignore) = True
+fn IsPlaceholderItem ignore = False
+
+# The span of a line's first item that is not text, for its error.
+FirstItemSpan: fn [RawItem] -> Range
+fn FirstItemSpan items = Or (Fold items, nil, \|?found, it| if ?found != nil: ?found else: ?ItemSpan it), Range(start=0, end=0)
+
+?ItemSpan: fn RawItem -> ?Range
+fn ?ItemSpan (RiPlaceholder ignore, span) = ? span
+fn ?ItemSpan (RiBlock ignore, span) = ? span
+fn ?ItemSpan (RiCall ignore, ignore, ignore, span) = ? span
+fn ?ItemSpan ignore = nil
+
+# The placeholder of a line it stands alone on, at the column of its line's indentation.
+AlonePlaceholder: fn [RawItem] -> TPartTok
+fn AlonePlaceholder items:
+    let ((ignore, part)) = Fold items, ((0, (TptText ""))), \|((c, p)), it| AloneStep c, p, it
+    part
+
+AloneStep: fn Nat, TPartTok, RawItem -> ((Nat, TPartTok))
+fn AloneStep c, (TptText ""), (RiText s) = if c == 0: (((LeadingIn s, " "), (TptText ""))) else: ((c, (TptText "")))
+fn AloneStep c, (TptText ""), (RiPlaceholder tokens, span) = ((c, (TptPlaceholder tokens, (? c), span)))
+fn AloneStep c, p, ignore = ((c, p))
+
+# A raw item as a template part, a text run merged into the run before it.
+PushPart: fn [TPartTok], RawItem -> [TPartTok]
+fn PushPart parts, (RiText "") = parts
+fn PushPart parts, (RiText t) = match ?Last parts:
+    ? (TptText s): Push (Pop parts), (TptText "{s}{t}")
+    otherwise: Push parts, (TptText t)
+fn PushPart parts, (RiPlaceholder tokens, span) = Push parts, (TptPlaceholder tokens, nil, span)
+fn PushPart parts, (RiBlock tokens, span) = Push parts, (TptBlock tokens, span)
+fn PushPart parts, (RiCall name, attrs, ?body, span) = Push parts, (TptCall name, attrs, ?body, span)

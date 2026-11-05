@@ -1,0 +1,251 @@
+# `Syntax.Lexer`'s section `literals`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Literals
+# ---------------------------------------------------------------------------------------
+
+# Numbers and durations (ch. 2, Literals: Numbers, Durations).
+LexNumber: unbounded fn Lex, Text -> ((TokKind, Lex))
+fn LexNumber l, sigils:
+    if (Peek l) == "0" and (Contains "xob", (PeekAt l, 1)): LexRadix l, sigils
+    else: LexDecimal l, sigils
+
+RadixDigit: fn Text, Text -> Bool
+fn RadixDigit "x", c = IsHexDigit c
+fn RadixDigit "o", c = "0" <= c and c <= "7"
+fn RadixDigit ignore, c = c == "0" or c == "1"
+
+LexRadix: unbounded fn Lex, Text -> ((TokKind, Lex))
+fn LexRadix l0, sigils:
+    let start = l0.pos
+    let radix = PeekAt l0, 1
+    let l1 = Forward l0, 2
+    let l2 = update l1:
+        while (RadixDigit radix, (Peek &_)) or (Peek &_) == "_":
+            &_.pos += 1
+    let l3 = if l2.pos == l1.pos: LexErr l2, start, l2.pos, "a radix prefix needs digits after it" else: l2
+    let l4 = CheckNoSuffix l3, start
+    let kind = KInt sigils, (Slice l4, start, l4.pos)
+    ((kind, l4))
+
+SkipDigits: unbounded fn Lex -> Lex
+fn SkipDigits l = update l:
+    while (IsDigit (Peek &_)) or (Peek &_) == "_":
+        &_.pos += 1
+
+LexDecimal: unbounded fn Lex, Text -> ((TokKind, Lex))
+fn LexDecimal l0, sigils:
+    let start = l0.pos
+    let l1 = SkipDigits l0
+    let next = PeekAt l1, 1
+    if (Peek l1) == "." and (IsDigit next): NumberTail (SkipDigits (Bump l1)), sigils, start, True
+    # `1.` is an error: "A decimal-spelled literal has digits on both sides of its one `.`".
+    # A `.` before a name is field access, which the parser refuses on a literal; `1..` is a
+    # range.
+    else: if (Peek l1) == "." and next != "." and next != "" and not (IsIdentStart next):
+        let l2 = Bump l1
+        let l3 = LexErr l2, start, l2.pos, "`{Slice l2, start, l2.pos}` is not a number: a decimal literal has digits on both sides of its point"
+        let kind = KFloat sigils, (Slice l3, start, (Dec l2.pos))
+        ((kind, l3))
+    else: NumberTail l1, sigils, start, False
+
+# The duration units and their scale in nanoseconds, in the order lexer.rs tries them.
+let durationUnits = [[(("ns", 1)), (("us", 1000)), (("ms", 1000000)), (("min", 60000000000)), (("s", 1000000000)), (("h", 3600000000000))]]
+
+?UnitAt: fn Lex -> ?((Text, Nat))
+fn ?UnitAt l = Fold durationUnits, nil, \|?found, u| if ?found == nil and (UnitHere l, u): ? u else: ?found
+
+UnitHere: fn Lex, ((Text, Nat)) -> Bool
+fn UnitHere l, ((u, ignore)) = (StartsWith l, u) and not (IsIdentChar (PeekAt l, (Len u)))
+
+# A duration, an exponent, or the number as it stands.
+NumberTail: unbounded fn Lex, Text, Nat, Bool -> ((TokKind, Lex))
+fn NumberTail l, sigils, start, decimal = match ?UnitAt l:
+    ? ((u, scale)):
+        # A duration: "a digit string, with at most one point, followed with nothing between
+        # by one of `ns`, `us`, `ms`, `s`, `min` and `h`".
+        let digits = Slice l, start, l.pos
+        let l2 = Forward l, (Len u)
+        let l3 = if WholeNanoseconds digits, scale: l2 else: LexErr l2, start, l2.pos, "`{digits}{u}` does not name a whole number of nanoseconds"
+        let kind = KDuration sigils, digits, u
+        ((kind, l3))
+    nil:
+        let ((dec, l2)) = Exponent l, decimal
+        let l3 = CheckNoSuffix l2, start
+        let text = Slice l3, start, l3.pos
+        let kind = if dec: KFloat sigils, text else: KInt sigils, text
+        ((kind, l3))
+
+Exponent: unbounded fn Lex, Bool -> ((Bool, Lex))
+fn Exponent l, decimal:
+    let l1 = Bump l
+    let l2 = if (Peek l1) == "+" or (Peek l1) == "-": Bump l1 else: l1
+    if ((Peek l) == "e" or (Peek l) == "E") and (IsDigit (Peek l2)): ((True, SkipDigits l2))
+    else: ((decimal, l))
+
+# Whether `digits[.frac]` times `scale` nanoseconds is whole.
+WholeNanoseconds: fn Text, Nat -> Bool
+fn WholeNanoseconds text, scale:
+    let parts = Split (Concat (Split text, "_")), "."
+    match parts[1]:
+        nil: True
+        ? frac0:
+            let frac = TrimZeros frac0
+            let k = Len frac
+            let f = if frac == "": 0 else: Or (?ParseNat frac), 1
+            let tens = FoldChars frac, 1, \|p, ignore| p * 10
+            k <= 30 and (Or (?Mod (f * scale), tens), 1) == 0
+
+TrimZeros: fn Text -> Text
+fn TrimZeros t = TrimTrailing t, "0"
+
+# "A literal has no type suffix; `255U8` is not a token" (round 47 BI; doubt LS).
+CheckNoSuffix: unbounded fn Lex, Nat -> Lex
+fn CheckNoSuffix l0, start:
+    if IsIdentChar (Peek l0):
+        let l = update l0:
+            while IsIdentChar (Peek &_):
+                &_.pos += 1
+        LexErr l, start, l.pos, "`{Slice l, start, l.pos}` is not a token: a number literal has no suffix (write a type annotation)"
+    else: l0
+
+# One escape after `\` (ch. 2, Text): what it writes, and the lexer after it.
+LexEscape: unbounded fn Lex -> ((Text, Lex))
+fn LexEscape l0:
+    let start = l0.pos
+    let l1 = Bump l0
+    let c = Peek l1
+    let l2 = Bump l1
+    match c:
+        "\\": (("\\", l2))
+        "\"": (("\"", l2))
+        "'": (("'", l2))
+        "n": (("\n", l2))
+        "t": (("\t", l2))
+        "\{": (("\{", l2))
+        "\}": (("\}", l2))
+        "u": UnicodeEscape l2, start
+        "": (("", (LexErr l1, start, l1.pos, "a text literal ends inside an escape")))
+        otherwise: (("", (LexErr l2, start, l2.pos, "`\\{c}` is not an escape: the escapes are \\\\ \\\" \\n \\t \\\{ \\\} \\u\{hex\}")))
+
+UnicodeEscape: unbounded fn Lex, Nat -> ((Text, Lex))
+fn UnicodeEscape l, start:
+    if (Peek l) != "\{": (("", (LexErr l, start, l.pos, "`\\u` is written `\\u\{hex\}`")))
+    else:
+        let hs = l.pos + 1
+        let l1 = update (Bump l):
+            while IsHexDigit (Peek &_):
+                &_.pos += 1
+        let hex = Slice l1, hs, l1.pos
+        if (Peek l1) != "\}": (("", (LexErr l1, start, l1.pos, "`\\u\{` needs its closing `\}`")))
+        else:
+            let l2 = Bump l1
+            match ?AsciiChar (Or (?ParseHex hex), 1114112):
+                ? ch: ((ch, l2))
+                nil: (("", (LexErr l2, start, l2.pos, "`\\u\{{hex}\}` is past ASCII, which prismc cannot write yet (prismc/README.md, gap UC)")))
+
+# `"..."` on one line, with placeholders read as token streams.
+LexText: unbounded fn Lex -> (([TextSegTok], Lex))
+fn LexText l0 = update (([[]], l0)):
+    let start = l0.pos
+    let &l = Bump l0
+    let &segs = [[]]
+    let &cur = ""
+    let &going = True
+    while &going:
+        let c = Peek &l
+        if c == "" or c == "\n":
+            &l <= LexErr &l, start, &l.pos, "a text literal ends on its line: close it with `\"`, or write a multiline text as `raw <markdown>...</markdown>`"
+            &going <= False
+        else:
+            match c:
+                "\"":
+                    &l <= Bump &l
+                    &going <= False
+                "\\":
+                    let ((s, l2)) = LexEscape &l
+                    &cur <= "{&cur}{s}"
+                    &l <= l2
+                "\{":
+                    if &cur != "":
+                        &segs <= Push &segs, (TsPlain &cur)
+                        &cur <= ""
+                    let ps = &l.pos
+                    # "A placeholder is read as ordinary tokens, nested literals and brackets
+                    # included, until the matching brace, with layout suspended."
+                    let ((toks, l2)) = Nested (Bump &l), (MPlaceholder "single")
+                    &segs <= Push &segs, (TsPlaceholder toks, Range(start=ps, end=l2.pos))
+                    &l <= l2
+                "\}":
+                    &l <= LexErr (Bump &l), &l.pos, &l.pos + 1, "a `\}` in text is written `\\\}`"
+                    &cur <= "{&cur}\}"
+                otherwise:
+                    &l <= Bump &l
+                    &cur <= "{&cur}{c}"
+    if &cur != "":
+        &segs <= Push &segs, (TsPlain &cur)
+    &_ <= ((&segs, &l))
+
+# `'c'`, one code point.
+LexChar: unbounded fn Lex -> ((Text, Lex))
+fn LexChar l0:
+    let start = l0.pos
+    let l1 = Bump l0
+    let c = Peek l1
+    let ((s, l2)) = if c == "\\": LexEscape l1 else: if c == "'" or c == "\n" or c == "": (("", l1)) else: ((c, (Bump l1)))
+    let ok = (Peek l2) == "'"
+    let l3 = if ok: Bump l2 else: CharTail l2, start
+    let l4 = if s == "": LexErr l3, start, l3.pos, "a character literal holds one code point: `'c'`" else: l3
+    let ch = if s == "": "\u{0}" else: s
+    ((ch, l4))
+
+CharTail: unbounded fn Lex, Nat -> Lex
+fn CharTail l0, start:
+    let l1 = update l0:
+        while (Peek &_) != "'" and (Peek &_) != "\n" and (Peek &_) != "":
+            &_.pos += Len (Peek &_)
+    let l2 = if (Peek l1) == "'": Bump l1 else: l1
+    LexErr l2, start, l2.pos, "a character literal holds one code point: `'c'`"
+
+# ---------------------------------------------------------------------------------------
+# The test language's path (Conformance A.2): "a segment is a number, `#` and a number, or
+# `[` a Prism expression `]`; segments are joined by `/`, with no spaces".
+# ---------------------------------------------------------------------------------------
+
+LexPath: unbounded fn Lex -> (([PathSegTok], Lex))
+fn LexPath l0 = update (([[]], l0)):
+    let &l = l0
+    let &segs = [[]]
+    let &going = True
+    while &going:
+        let s = &l.pos
+        let c = Peek &l
+        if c == "#":
+            let digits = update (Bump &l):
+                while IsDigit (Peek &_):
+                    &_.pos += 1
+            let text = Slice digits, s + 1, digits.pos
+            &l <= if text == "": LexErr digits, s, digits.pos, "a generation segment is `#` and a number" else: digits
+            &segs <= Push &segs, (PstGen (Or (?ParseNat text), 0))
+        else:
+            if IsDigit c:
+                let digits = update &l:
+                    while IsDigit (Peek &_):
+                        &_.pos += 1
+                &segs <= Push &segs, (PstNum (Or (?ParseNat (Slice digits, s, digits.pos)), 0))
+                &l <= digits
+            else:
+                if c == "[":
+                    let ((toks, l2)) = Nested (Bump &l), MPathKey
+                    &segs <= Push &segs, (PstKey toks)
+                    &l <= l2
+                else:
+                    &l <= LexErr &l, s, s, "expected a path segment: a number, `#` and a number, or `[key]`"
+                    &going <= False
+        if &going:
+            if (Peek &l) == "/":
+                &l <= Bump &l
+            else:
+                &going <= False
+    &_ <= ((&segs, &l))

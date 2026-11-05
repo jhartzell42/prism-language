@@ -1,0 +1,375 @@
+# `Syntax.Parser`'s section `types`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------------------
+# Types, rows and bounds (types.rs). Appendix A.5's type order, tightest first:
+# "application by juxtaposition; sigil stacks; `[a]`, `K ==> V` and `((a, b))`; `|` between
+# row terms; `emit` clauses on a blueprint type; `->`, right associative; `where` bounds."
+#
+#   type      ::= "unbounded"? "fn" params "->" type | emit_type
+#   params    ::= emit_type ("," emit_type)*
+#   emit_type ::= union ("emit" union)?
+#   union     ::= map ("|" map)*
+#   map       ::= sigiled ("==>" map)?
+#   sigiled   ::= free-sigil* app
+#   app       ::= atom atom*            (the head a name; arguments atoms)
+#   atom      ::= name | "unit" | "any" trait | hole | Fam.* | "(" type ")"
+#               | "((" type ("," type)* "))" | "[" type "]" | "[[" type "]]" | free-sigil+ atom
+# ---------------------------------------------------------------------------------------
+
+ParseType: unbounded fn Ps -> ((Type, Ps))
+fn ParseType p:
+    let start = Here p
+    # A color variable "written before its `fn`s" (Semantics ch. 7, doubt CV).
+    let colorVar = (IsPlainLowerOne (Kind p)) and (IsFnKw (KindAt p, 1))
+    let ((color, p1)) = if AtKw p, "unbounded": ((Unbounded, (Adv p))) else: if colorVar: ColorVarOf p else: ((Bounded, p))
+    if AtKw p1, "fn":
+        let p2 = Adv p1
+        let ((params, p3)) = if AtOp p2, "->": (([[]], p2)) else: Commas p2, ParseEmitType
+        let ((result, p4)) = ParseType (ExpectOp p3, "->")
+        ((Type(kind=(TFn color, params, result), span=(To start, result.span)), p4))
+    else: if color != Bounded: ((noType, (ErrorHere p1, "a color (`unbounded`, or a color variable) is written before a function type's `fn`")))
+    else:
+        let ((t, q)) = ParseEmitType p1
+        if AtOp q, "->": ((t, (ErrorAt q, (Here q), "a function type begins with `fn`: `fn A -> B`"))) else: ((t, q))
+
+IsPlainLowerOne: fn TokKind -> Bool
+fn IsPlainLowerOne (KName n) = n.sigils == "" and n.case == CaseLower and (Len n.path) == 1
+fn IsPlainLowerOne ignore = False
+
+IsFnKw: fn TokKind -> Bool
+fn IsFnKw (KKw "fn", ignore) = True
+fn IsFnKw ignore = False
+
+ColorVarOf: fn Ps -> ((Color, Ps))
+fn ColorVarOf p:
+    let ((i, q)) = ParseIdent p
+    ((ColorVar i, q))
+
+ParseEmitType: unbounded fn Ps -> ((Type, Ps))
+fn ParseEmitType p:
+    let start = Here p
+    let ((t, p1)) = ParseUnionType p
+    if AtKw p1, "emit":
+        let ((r, q)) = ParseUnionType (Adv p1)
+        ((Type(kind=(TEmit t, r), span=(To start, r.span)), q))
+    else: ((t, p1))
+
+ParseUnionType: unbounded fn Ps -> ((Type, Ps))
+fn ParseUnionType p:
+    let start = Here p
+    let ((first, p1)) = ParseMapType p
+    if (Kind p1) != KBar: ((first, p1))
+    else:
+        let r = update (([[first]], p1)):
+            let &terms = [[first]]
+            let &q = p1
+            while (Kind &q) == KBar and not &q.bad:
+                let ((t, q2)) = ParseMapType (Adv &q)
+                &terms <= Push &terms, t
+                &q <= q2
+            &_ <= ((&terms, &q))
+        let ((terms, q)) = r
+        ((Type(kind=(TRowUnion terms), span=(To start, (Prev q))), q))
+
+ParseMapType: unbounded fn Ps -> ((Type, Ps))
+fn ParseMapType p:
+    let start = Here p
+    let ((k, p1)) = ParseSigiledType p
+    if AtOp p1, "==>":
+        let ((value, q)) = ParseMapType (Adv p1)
+        ((Type(kind=(TMap k, value), span=(To start, value.span)), q))
+    else: ((k, p1))
+
+ParseSigiledType: unbounded fn Ps -> ((Type, Ps))
+fn ParseSigiledType p:
+    let start = Here p
+    let ((sigils, p1)) = FreeSigilRun p
+    let ((inner, q)) = ParseAppType p1
+    if sigils == "": ((inner, q)) else: ((Type(kind=(TSigiled sigils, inner), span=(To start, inner.span)), q))
+
+FreeSigilRun: fn Ps -> ((Text, Ps))
+fn FreeSigilRun p0 = update (("", p0)):
+    let &sigils = ""
+    let &p = p0
+    let &fuel = Len p0.toks
+    while ? left <- &fuel -? 1:
+        &fuel <= left
+        match Kind &p:
+            KFree s:
+                &sigils <= "{&sigils}{s}"
+                &p <= Adv &p
+            otherwise: &fuel <= 0
+    &_ <= ((&sigils, &p))
+
+ParseAppType: unbounded fn Ps -> ((Type, Ps))
+fn ParseAppType p:
+    let start = Here p
+    let ((head, p1)) = ParseTypeAtom p
+    match head.kind:
+        TName name, [[]] if TypeAtomStartsHere p1:
+            let r = update (([[]], p1)):
+                let &args = [[]]
+                let &q = p1
+                while (TypeAtomStartsHere &q) and not &q.bad:
+                    let ((a, q2)) = ParseTypeAtom &q
+                    &args <= Push &args, a
+                    &q <= q2
+                &_ <= ((&args, &q))
+            let ((args, q)) = r
+            ((Type(kind=(TName name, args), span=(To start, (Prev q))), q))
+        otherwise: ((head, p1))
+
+TypeAtomStartsHere: fn Ps -> Bool
+fn TypeAtomStartsHere p = match Kind p:
+    KName ignore: True
+    KFamily ignore: True
+    KFree ignore: True
+    KOpen ignore, ignore: True
+    KKw w, ignore: w == "unit" or w == "any"
+    otherwise: False
+
+ParseTypeAtom: unbounded fn Ps -> ((Type, Ps))
+fn ParseTypeAtom p:
+    let start = Here p
+    match Kind p:
+        # A free sigil before an atom is a sigiled type, with no non-empty mark after it.
+        KFree ignore: ParseSigiledType p
+        otherwise:
+            let ((t, p1)) = TypeAtomBody p, start
+            if (Kind p1) == KNonEmpty:
+                let m = Here p1
+                let q = OutOfScope (Adv p1), m, "non-empty arrays", "the non-empty array type `[a]+` is out of this compiler"
+                ((Type(kind=(TNonEmpty t), span=(To start, m)), q))
+            else: ((t, p1))
+
+TypeAtomBody: unbounded fn Ps, Range -> ((Type, Ps))
+fn TypeAtomBody p, start = match Kind p:
+    KName n:
+        let name = SName(sigils=n.sigils, path=n.path, span=start)
+        # "`_` followed by digits is a hole, legal only in an `impl` header"; `impl
+        # ^Timeline !_:` writes the topic there too.
+        if n.case == CaseTopic or n.case == CaseHole: ((Type(kind=(THole name), span=start), (Adv p)))
+        else: ((Type(kind=(TName name, [[]]), span=start), (CheckTypeNameScope (Adv p), name)))
+    KKw "unit", sigils: ((Type(kind=(TUnit sigils), span=start), (Adv p)))
+    KKw "any", ignore:
+        let ((tr, q)) = ParseTraitRef (Adv p)
+        ((Type(kind=(TAny tr), span=(To start, (Prev q))), q))
+    KFamily path: ((Type(kind=(TFamily QualName(path=path, span=start)), span=start), (Adv p)))
+    KAbsent: ((Type(kind=TAbsent, span=start), (OutOfScope (Adv p), start, "sparse tuples", "a sparse tuple type is out of this compiler")))
+    KOpen "(", ignore:
+        if AtDoubleOpen p, "(":
+            let ((elems, p1)) = Commas (OpenDouble p), ParseType
+            let p2 = CloseDouble p1, "("
+            ((Type(kind=(TTuple elems), span=(To start, (Prev p2))), p2))
+        else:
+            let ((inner, p1)) = ParseType (Adv p)
+            let p2 = ExpectClose p1, "("
+            ((Type(kind=(TGroup inner), span=(To start, (Prev p2))), p2))
+    KOpen "[", ignore:
+        let doubled = AtDoubleOpen p, "["
+        let ((elem, p1)) = ParseType (if doubled: OpenDouble p else: Adv p)
+        let p2 = if doubled: CloseDouble p1, "[" else: ExpectClose p1, "["
+        ((Type(kind=(TArray elem, doubled), span=(To start, (Prev p2))), p2))
+    otherwise: ((noType, (ErrorHere p, "expected a type")))
+
+# `where a: ^Ord, b: ^Show, ^Eq`: after a comma, a trait continues the same variable's list
+# and `name:` begins the next.
+ParseBounds: unbounded fn Ps -> (([Bound], Ps))
+fn ParseBounds p0 = update (([[]], p0)):
+    let &bounds = [[]]
+    let &p = p0
+    let &going = True
+    while &going and not &p.bad:
+        let ((b, q)) = ParseBound &p
+        &bounds <= Push &bounds, b
+        &p <= q
+        if (AtComma &p) and (IsNameKind (KindAt &p, 1)) and (KindAt &p, 2) == KColon:
+            &p <= Adv &p
+        else:
+            &going <= False
+    &_ <= ((&bounds, &p))
+
+IsNameKind: fn TokKind -> Bool
+fn IsNameKind (KName ignore) = True
+fn IsNameKind ignore = False
+
+IsTraitKind: fn TokKind -> Bool
+fn IsTraitKind (KTrait ignore) = True
+fn IsTraitKind ignore = False
+
+ParseBound: unbounded fn Ps -> ((Bound, Ps))
+fn ParseBound p:
+    let start = Here p
+    let ((var, p1)) = ParseIdent p
+    let ((first, p2)) = ParseTraitRef (ExpectColon p1)
+    let r = update (([[first]], p2)):
+        let &traits = [[first]]
+        let &q = p2
+        while (AtComma &q) and (IsTraitKind (KindAt &q, 1)) and not &q.bad:
+            let ((t, q2)) = ParseTraitRef (Adv &q)
+            &traits <= Push &traits, t
+            &q <= q2
+        &_ <= ((&traits, &q))
+    let ((traits, q)) = r
+    ((Bound(var=var, traits=traits, span=(To start, (Prev q))), q))
+
+# A row in an `emit` line or statement: `Ui.* | Net.*`, `r`, `r | Ui.*`, `Element`.
+ParseRow: unbounded fn Ps -> ((Row, Ps))
+fn ParseRow p:
+    let start = Here p
+    let ((first, p1)) = ParseRowTerm p
+    let r = update (([[first]], p1)):
+        let &terms = [[first]]
+        let &q = p1
+        while (Kind &q) == KBar and not &q.bad:
+            let ((t, q2)) = ParseRowTerm (Adv &q)
+            &terms <= Push &terms, t
+            &q <= q2
+        &_ <= ((&terms, &q))
+    let ((terms, q)) = r
+    ((Row(terms=terms, span=(To start, (Prev q))), q))
+
+ParseRowTerm: unbounded fn Ps -> ((RowTerm, Ps))
+fn ParseRowTerm p = match Kind p:
+    KFamily path: ((RFamily QualName(path=path, span=(Here p)), (Adv p)))
+    KName n if (IsPlainLowerOne (KName n)) and not (TypeAtomAfterName p):
+        ((RVar Ident(name=(Or n.path[0], ""), span=(Here p)), (Adv p)))
+    otherwise:
+        let ((t, q)) = ParseMapType p
+        ((RType t, q))
+
+TypeAtomAfterName: fn Ps -> Bool
+fn TypeAtomAfterName p = match KindAt p, 1:
+    KName ignore: True
+    KOpen ignore, ignore: True
+    KFamily ignore: True
+    otherwise: False
+
+# ---------------------------------------------------------------------------------------
+# Patterns (patterns.rs): a pattern reads like the expression that would build the value.
+# The comma rule is the expression rule: a constructor's paren-less arguments take the
+# commas unless the constructor is itself an argument.
+# ---------------------------------------------------------------------------------------
+
+ParsePattern: unbounded fn Ps, Bool -> ((Pattern, Ps))
+fn ParsePattern p, commas0:
+    let commas = commas0 and not p.stepMode
+    let start = Here p
+    match Kind p:
+        KFree s if s == "?" or s == "~":
+            let ((inner, q)) = ParsePattern (Adv p), commas
+            ((Pattern(kind=(PSigil s, inner), span=(To start, inner.span)), q))
+        KFree s: ((noPattern, (ErrorAt p, start, "a free `{s}` is not a pattern: only `? p` and `~ p` take a value apart")))
+        KName n: NamePattern p, n, commas
+        KKw "ignore", ignore: ((Pattern(kind=PIgnore, span=start), (Adv p)))
+        KKw "unit", ignore: ((Pattern(kind=PUnit, span=start), (Adv p)))
+        KKw "nil", ignore: ((Pattern(kind=PNil, span=start), (Adv p)))
+        KInt ignore, ignore: LiteralPattern p
+        KFloat ignore, ignore: LiteralPattern p
+        KDuration ignore, ignore, ignore: LiteralPattern p
+        KChar ignore, ignore: LiteralPattern p
+        KText ignore, ignore: LiteralPattern p
+        # "In a pattern `-40` is a literal."
+        KOp "-", True:
+            let p1 = Adv p
+            if IsNumberKind (Kind p1):
+                let ((lit, q)) = ParseLiteral p1
+                ((Pattern(kind=(PNeg lit), span=(To start, lit.span)), q))
+            else: ((noPattern, (ErrorHere p1, "a `-` in a pattern is the sign of a number literal")))
+        KOpen "(", ignore:
+            if AtDoubleOpen p, "(":
+                let ((elems, p1)) = Commas (OpenDouble p), \|q| ParsePattern q, False
+                let p2 = CloseDouble p1, "("
+                ((Pattern(kind=(PTuple elems), span=(To start, (Prev p2))), p2))
+            else:
+                # A step's comma rule stops at the bracket (Conformance A.3), so `=> fired
+                # Press (Point x, y)` gives its comma to `Point`.
+                let ((inner, p1)) = Bracketed (Adv p), \|q| ParsePattern q, True
+                let p2 = ExpectClose p1, "("
+                ((Pattern(kind=(PGroup inner), span=(To start, (Prev p2))), p2))
+        KOpen "[", ignore if AtDoubleOpen p, "[":
+            let p1 = OpenDouble p
+            let ((elems, p2)) = if AtClose p1, "[": (([[]], p1)) else: Commas p1, \|q| ParsePattern q, False
+            let p3 = CloseDouble p2, "["
+            ((Pattern(kind=(PArray elems), span=(To start, (Prev p3))), p3))
+        KFamily path: ((Pattern(kind=(PFamily QualName(path=path, span=start)), span=start), (Adv p)))
+        KAbsent: ((Pattern(kind=PIgnore, span=start), (OutOfScope (Adv p), start, "sparse tuples", "an absent component `-` is a sparse tuple's, out of this compiler")))
+        otherwise: ((noPattern, (ErrorHere p, "expected a pattern")))
+
+IsNumberKind: fn TokKind -> Bool
+fn IsNumberKind (KInt ignore, ignore) = True
+fn IsNumberKind (KFloat ignore, ignore) = True
+fn IsNumberKind (KDuration ignore, ignore, ignore) = True
+fn IsNumberKind ignore = False
+
+LiteralPattern: unbounded fn Ps -> ((Pattern, Ps))
+fn LiteralPattern p:
+    let ((lit, q)) = ParseLiteral p
+    ((Pattern(kind=(PLit lit), span=lit.span), q))
+
+NamePattern: unbounded fn Ps, NameTok, Bool -> ((Pattern, Ps))
+fn NamePattern p0, n, commas:
+    let start = Here p0
+    let name = SName(sigils=n.sigils, path=n.path, span=start)
+    let p = Adv p0
+    if (IsCallee name) and (AtSingleOpen p, "(") and (Tk p).touches: ParseRecordPattern p, name
+    else: if (IsCallee name) and (PatArgStartsHere p):
+        let ((first, p1)) = ParsePattern p, False
+        let r = update (([[first]], p1)):
+            let &args = [[first]]
+            let &q = p1
+            while commas and (AtComma &q) and not &q.bad:
+                let ((a, q2)) = ParsePattern (Adv &q), False
+                &args <= Push &args, a
+                &q <= q2
+            &_ <= ((&args, &q))
+        let ((args, q)) = r
+        ((Pattern(kind=(PCtor name, args), span=(To start, (Prev q))), q))
+    else: ((Pattern(kind=(PName name), span=start), p))
+
+# Whether the cursor can begin a constructor pattern's argument.
+PatArgStartsHere: fn Ps -> Bool
+fn PatArgStartsHere p = match Kind p:
+    KName ignore: True
+    KInt ignore, ignore: True
+    KFloat ignore, ignore: True
+    KDuration ignore, ignore, ignore: True
+    KChar ignore, ignore: True
+    KText ignore, ignore: True
+    KFamily ignore: True
+    KFree s: s == "?" or s == "~"
+    KOpen "(", ignore: not (Tk p).touches or (AtDoubleOpen p, "(")
+    KOpen "[", ignore: AtDoubleOpen p, "["
+    KOp "-", True: True
+    KKw w, ignore: w == "ignore" or w == "unit" or w == "nil"
+    otherwise: False
+
+# `Name(field=p, p, ..)`.
+type FieldsRead = record:
+    fields: [FieldPat]
+    rest: Bool
+    p: Ps
+    going: Bool
+derive ^Eq, ^Show
+
+ParseRecordPattern: unbounded fn Ps, SName -> ((Pattern, Ps))
+fn ParseRecordPattern p0, name:
+    let p = Adv p0
+    let r = update FieldsRead(fields=[[]], rest=False, p=p, going=not (AtClose p, "(")):
+        while &_.going and not &_.p.bad:
+            if (Kind &_.p) == KDotDot:
+                &_.p <= Adv &_.p
+                &_.rest <= True
+            else:
+                let fstart = Here &_.p
+                let ((?fname, p1)) = ParseArgName &_.p
+                let ((pattern, p2)) = ParsePattern p1, False
+                &_.fields <= Push &_.fields, FieldPat(name=?fname, pattern=pattern, span=(To fstart, pattern.span))
+                &_.p <= p2
+            if AtComma &_.p:
+                &_.p <= Adv &_.p
+            else:
+                &_.going <= False
+    let q = ExpectClose r.p, "("
+    ((Pattern(kind=(PRecord name, r.fields, r.rest), span=(To name.span, (Prev q))), q))

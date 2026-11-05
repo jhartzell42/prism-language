@@ -9,8 +9,8 @@
 emit r
 mod structure
 mod borrows
-use Ast.*
-use Lexer.*
+use Syntax.*
+use Syntax.Lexer.*
 use Check.Errors.*
 use Check.Types.*
 use Check.Env.*

@@ -11,8 +11,8 @@ mod recording
 mod unify
 mod schemes
 mod colors
-use Ast.*
-use Lexer.*
+use Syntax.*
+use Syntax.Lexer.*
 use Check.Errors.*
 use Check.Typed.*
 

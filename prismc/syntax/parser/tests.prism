@@ -1,4 +1,17 @@
-# The parser's checks, declarations of parser-checks.prism's module (examples/README.md).
+# The parser's test module: its checks and the helpers they need, which only
+# `prism test` and `prism check` read (docs/modules-style-pass.md).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# The helpers of prismc's parser checks (the checks below): each prints a text's
+# tree in S-expression notation, or its diagnostics, as `prismc FILE` does.
+
+Dump: unbounded fn Text -> Text
+fn Dump src = SexpModule (ParseFile src).tree
+
+Errors: unbounded fn Text -> [Text]
+fn Errors src = Each (ParseFile src).diags, \|d| d.message
+
+# The checks.
 check declarations:
     Dump "let x = 1" => "(module\n  (let x 1))\n"
     Dump "F: fn Nat -> Nat\nfn F n = n + 1" => "(module\n  (sig F (fn Nat -> Nat))\n  (fn F (params n)\n    (+ n 1)))\n"

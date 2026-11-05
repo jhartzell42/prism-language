@@ -1,7 +1,3 @@
-prismc/ast.prism:15: warning[old-layout]: `ast.prism` is a one-file module in the tree of `prismc`: no `mod` line declares it
-    module Ast
-    ^^^^^^^^^^
-  fix: make it a module directory with a `mod.prism`, declared by a `mod` line
 prismc/emit.prism:10: warning[old-layout]: `emit.prism` is a one-file module in the tree of `prismc`: no `mod` line declares it
     module Emit
     ^^^^^^^^^^^
@@ -10,21 +6,9 @@ prismc/emit_cpp.prism:26: warning[old-layout]: `emit_cpp.prism` is a one-file mo
     module EmitCpp
     ^^^^^^^^^^^^^^
   fix: make it a module directory with a `mod.prism`, declared by a `mod` line
-prismc/lexer.prism:17: warning[old-layout]: `lexer.prism` is a one-file module in the tree of `prismc`: no `mod` line declares it
-    module Lexer
-    ^^^^^^^^^^^^
-  fix: make it a module directory with a `mod.prism`, declared by a `mod` line
 prismc/lower.prism:20: warning[old-layout]: `lower.prism` is a one-file module in the tree of `prismc`: no `mod` line declares it
     module Lower
     ^^^^^^^^^^^^
-  fix: make it a module directory with a `mod.prism`, declared by a `mod` line
-prismc/parser.prism:34: warning[old-layout]: `parser.prism` is a one-file module in the tree of `prismc`: no `mod` line declares it
-    module Parser
-    ^^^^^^^^^^^^^
-  fix: make it a module directory with a `mod.prism`, declared by a `mod` line
-prismc/sexp.prism:12: warning[old-layout]: `sexp.prism` is a one-file module in the tree of `prismc`: no `mod` line declares it
-    module Sexp
-    ^^^^^^^^^^^
   fix: make it a module directory with a `mod.prism`, declared by a `mod` line
 prismc/templates/cpp.prism:9: warning[old-layout]: `templates/cpp.prism` is a one-file module in the tree of `prismc`: no `mod` line declares it
     module CppTemplates
