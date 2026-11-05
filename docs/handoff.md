@@ -178,6 +178,18 @@ program's) shrinks.
 
 ## Smaller items
 
+- **The seeds carry macOS extended attributes.** Written on the Mac, both
+  `bootstrap/prismc-rust.tar.xz` and `bootstrap/prismc-cpp.tar.xz` hold
+  `LIBARCHIVE.xattr.com.apple.provenance` headers, so unpacking them on Linux prints one
+  `tar: Ignoring unknown extended header keyword` warning per file (seen on the cloud box,
+  5 November). Harmless, but noise in every fresh bootstrap. `--update` in both bootstrap
+  scripts should pack without them: `COPYFILE_DISABLE=1` before `tar`, or bsdtar's
+  `--no-xattrs` (GNU tar ignores it, so test the flag on both). Then rewrite both seeds.
+- **The C++ Worlds moved and leave old build directories behind.** Since `15d1ab8` they
+  are `worlds/{cli,canvas}/cpp`; a checkout that built at the old paths keeps
+  `worlds/cli-cpp/build` and `worlds/canvas-cpp/build`, which show as untracked. Nothing
+  to fix in the repo; delete them by hand.
+
 - **Lexer simplifications** (ideas Jimmy asked about; "don't do it just noodle"):
   - walk with cursors (part of item 6);
   - layout as a separate pass over the token stream, the way Haskell's layout algorithm
