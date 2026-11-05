@@ -40,11 +40,11 @@ sources_of() { # subject: prismc's arguments naming its sources and its name
         *) echo "bench: unknown subject $1 (prismc chess table)" >&2; exit 2 ;;
     esac
 }
-lines_of() { # subject: Prism lines
+lines_of() { # subject: Prism lines, every file of its trees
     case "$1" in
-        prismc) cat prismc/*.prism prelude/*.prism | wc -l | tr -d ' ' ;;
-        chess) cat examples/chess/*.prism prelude/*.prism | wc -l | tr -d ' ' ;;
-        table) cat bench/gui/prism/app.prism examples/chess/window/*.prism prelude/*/mod.prism | wc -l | tr -d ' ' ;;
+        prismc) find prismc prelude -name '*.prism' -exec cat {} + | wc -l | tr -d ' ' ;;
+        chess) find examples/chess prelude -name '*.prism' -exec cat {} + | wc -l | tr -d ' ' ;;
+        table) find bench/gui/prism examples/chess/window prelude -name '*.prism' -exec cat {} + | wc -l | tr -d ' ' ;;
     esac
 }
 now() { python3 -c 'import time; print(time.time())'; }
@@ -56,6 +56,7 @@ declare -A emit_s build_s total_s size_mb emitted_lines
 for subject in "${subjects[@]}"; do
     read -r -a src <<< "$(sources_of "$subject")"
     name=${src[${#src[@]}-1]}
+    mkdir -p "$out/$subject"
     for lang in rust cpp; do
         # one emit per language; the levels build the same emitted program
         dir=$out/$subject/emit-$lang
