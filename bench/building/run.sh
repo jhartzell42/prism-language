@@ -36,7 +36,7 @@ sources_of() { # subject: prismc's arguments naming its sources and its name
     case "$1" in
         prismc) echo "prismc --prelude prelude --name prismc" ;;
         chess) echo "examples/chess --name chess" ;;
-        table) echo "bench/gui/prism/bench.prism examples/chess/window.prism --name bench" ;;
+        table) echo "bench/gui/prism examples/chess/window --name bench" ;;
         *) echo "bench: unknown subject $1 (prismc chess table)" >&2; exit 2 ;;
     esac
 }
@@ -44,7 +44,7 @@ lines_of() { # subject: Prism lines
     case "$1" in
         prismc) cat prismc/*.prism prelude/*.prism | wc -l | tr -d ' ' ;;
         chess) cat examples/chess/*.prism prelude/*.prism | wc -l | tr -d ' ' ;;
-        table) cat bench/gui/prism/bench.prism examples/chess/window.prism prelude/*.prism | wc -l | tr -d ' ' ;;
+        table) cat bench/gui/prism/app.prism examples/chess/window/*.prism prelude/*/mod.prism | wc -l | tr -d ' ' ;;
     esac
 }
 now() { python3 -c 'import time; print(time.time())'; }

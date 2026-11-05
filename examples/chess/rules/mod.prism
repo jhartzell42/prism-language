@@ -1,0 +1,263 @@
+# Chess, the rule book: plain functions with no time in them (Pitch chapter 11). Ported from
+# prism-reflex's examples/chess.prism, itself the rule engine of jhartzell42/reflex-chess
+# (Common/Chess.hs), into the books' spelling and the book's design: a board from squares to
+# pieces, castling rights as a list of unspent corners, one record of ranks per color, and a
+# move's manner as a value. Its checks are in tests.prism. Work in progress, subject to
+# change.
+emit r
+test mod tests
+
+type Color = choice:
+    White
+    Black
+derive ^Eq, ^Show
+
+type Man = choice:
+    King
+    Queen
+    Rook
+    Bishop
+    Knight
+    Pawn
+derive ^Eq, ^Show
+
+type Piece = record:
+    color: Color
+    man: Man
+derive ^Eq, ^Show
+
+type Sq = record:
+    file: Nat                  # a to h, as 0 to 7
+    rank: Nat                  # 1 to 8, as 0 to 7
+derive ^Eq, ^Ord
+
+let letters = [["a", "b", "c", "d", "e", "f", "g", "h"]]
+
+# a square prints as a player reads it, `e2` (Type System chapter 3)
+impl ^Show Sq:
+    fn Show sq = "{Or letters[sq.file], "?"}{sq.rank + 1}"
+
+type Game = record:
+    board: Sq ==> Piece        # an absent key is an empty square
+    turn: Color
+    corners: [Sq]              # the rook corners whose castling right is unspent
+    passed: ?Sq                # the square a pawn's double step just passed over
+derive ^Eq, ^Show
+
+# every color-dependent rank, so that the rules say `own.forward`
+type Ranks = record:
+    home: Nat                  # the back rank
+    pawns: Nat                 # where the pawns start
+    forward: Int               # the direction a pawn moves, up the ranks or down
+    last: Nat                  # where a pawn promotes
+derive ^Eq, ^Show
+
+RanksOf: fn Color -> Ranks
+fn RanksOf White = Ranks(home=0, pawns=1, forward=1, last=7)
+fn RanksOf Black = Ranks(home=7, pawns=6, forward=-1, last=0)
+
+Opponent: fn Color -> Color
+fn Opponent White = Black
+fn Opponent Black = White
+
+# how a legal move moves: what the position after it needs to know beyond the two squares
+type Manner = choice:
+    Ordinary
+    Double Sq                  # a pawn's two steps, and the square it passed over
+    EnPassant Sq               # a capture in passing, and the square of the pawn it takes
+    Castling Sq, Sq            # the rook's corner, and the square the rook lands on
+derive ^Eq, ^Show
+
+# ---------------------------------------------------------------------------
+# Small helpers over arrays, the names kept apart from the prelude's (README, doubt PN)
+
+AnyOf: fn [a], (fn a -> Bool) -> Bool
+fn AnyOf xs, P = Fold xs, False, \|seen, x| seen or P x
+
+AllOf: fn [a], (fn a -> Bool) -> Bool
+fn AllOf xs, P = Fold xs, True, \|ok, x| ok and P x
+
+Kept: fn [a], (fn a -> Bool) -> [a]
+fn Kept xs, P = Fold xs, [[]], \|acc, x| if P x: Push acc, x else: acc
+
+?FindOf: fn [a], (fn a -> Bool) -> ?a where a: ^Eq
+fn ?FindOf xs, P = Fold xs, nil, \|?found, x| if ?found == nil and P x: ? x else: ?found
+
+# the distance between two files or two ranks
+Gap: fn Nat, Nat -> Nat
+fn Gap a, b = if a < b: Or (b -? a), 0 else: Or (a -? b), 0
+
+# from `a`, `i` steps toward `b`
+Toward: fn Nat, Nat, Nat -> Nat
+fn Toward a, b, i = if a < b: a + i else: if b < a: Or (a -? i), 0 else: a
+
+# how far `to` is ahead of `from` for the side whose ranks are `own`: negative is backward
+Ahead: fn Ranks, Sq, Sq -> Int
+fn Ahead own, from, to = ((Int to.rank) - (Int from.rank)) * own.forward
+
+# ---------------------------------------------------------------------------
+# The position
+
+let eight = [[0, 1, 2, 3, 4, 5, 6, 7]]
+
+let squares = Fold eight, [[]], \|acc, f| Append acc, (Each eight, \|r| Sq f, r)
+
+BackRank: fn Nat -> Man
+fn BackRank file = match file:
+    0: Rook
+    1: Knight
+    2: Bishop
+    3: Queen
+    4: King
+    5: Bishop
+    6: Knight
+    otherwise: Rook
+
+# the opening position, a file at a time
+Opening: fn (Sq ==> Piece), Nat -> (Sq ==> Piece)
+fn Opening board, file:
+    let man = BackRank file
+    let b1 = Insert board, (Sq file, 0), (Piece White, man)
+    let b2 = Insert b1, (Sq file, 1), (Piece White, Pawn)
+    let b3 = Insert b2, (Sq file, 6), (Piece Black, Pawn)
+    Insert b3, (Sq file, 7), (Piece Black, man)
+
+let allCorners = [[(Sq 0, 0), (Sq 7, 0), (Sq 0, 7), (Sq 7, 7)]]
+
+let initial = Game(board=(Fold eight, {}, Opening), turn=White, corners=allCorners, passed=nil)
+
+?At: fn Game, Sq -> ?Piece
+fn ?At g, sq = g.board[sq]
+
+Owns: fn Game, Sq, Color -> Bool
+fn Owns g, sq, color = match ?At g, sq:
+    ? pc: pc.color == color
+    nil: False
+
+# the squares strictly between two squares on a line (meaningless for a knight, and unused there)
+Between: fn Sq, Sq -> [Sq]
+fn Between from, to:
+    let n = Max (Gap from.file, to.file), (Gap from.rank, to.rank)
+    let steps = Kept eight, \|i| i > 0 and i < n
+    Each steps, \|i| Sq (Toward from.file, to.file, i), (Toward from.rank, to.rank, i)
+
+Clear: fn Game, Sq, Sq -> Bool
+fn Clear g, from, to = AllOf (Between from, to), \|sq| (?At g, sq) == nil
+
+# whether a piece standing on `from` attacks `to`: geometry and empty squares only, so that
+# castling can ask it without recursing into castling (a king never attacks two squares away)
+Attacks: fn Game, Piece, Sq, Sq -> Bool
+fn Attacks g, pc, from, to:
+    let across = Gap from.file, to.file
+    let up = Gap from.rank, to.rank
+    let ahead = Ahead (RanksOf pc.color), from, to
+    let line = not (from == to) and Clear g, from, to
+    match pc.man:
+        Pawn: ahead == 1 and across == 1
+        Knight: (across == 1 and up == 2) or (across == 2 and up == 1)
+        King: across <= 1 and up <= 1 and not (from == to)
+        Bishop: across == up and line
+        Rook: (across == 0 or up == 0) and line
+        Queen: (across == up or across == 0 or up == 0) and line
+
+Attacked: fn Game, Sq, Color -> Bool
+fn Attacked g, sq, by = AnyOf (Keys g.board), \|from| match ?At g, from:
+    ? pc if pc.color == by: Attacks g, pc, from, sq
+    otherwise: False
+
+?KingOf: fn Game, Color -> ?Sq
+fn ?KingOf g, color = ?FindOf (Keys g.board), \|sq| (?At g, sq) == ? (Piece color, King)
+
+InCheck: fn Game, Color -> Bool
+fn InCheck g, color = match ?KingOf g, color:
+    ? k: Attacked g, k, (Opponent color)
+    nil: False
+
+# ---------------------------------------------------------------------------
+# The move
+
+?TwoSteps: fn Game, Ranks, Sq, Sq -> ?Manner
+fn ?TwoSteps g, own, from, to:
+    require from.rank == own.pawns
+    let over = Sq from.file, (Toward from.rank, to.rank, 1)
+    require (?At g, over) == nil and (?At g, to) == nil
+    ? Double over
+
+?CastleTo: fn Game, Color, Sq, Sq -> ?Manner
+fn ?CastleTo g, color, from, to:
+    let home = (RanksOf color).home
+    require from == (Sq 4, home) and to.rank == home
+    let short = to.file == 6
+    let corner = Sq (if short: 7 else: 0), home
+    let landing = Sq (if short: 5 else: 3), home
+    require (AnyOf g.corners, \|c| c == corner)          # the right is unspent
+    require (?At g, corner) == ? (Piece color, Rook)     # and the rook is there
+    require (Clear g, from, corner)                       # nothing stands between them
+    forbid (Attacked g, from, (Opponent color))          # not out of check
+    forbid (Attacked g, landing, (Opponent color))       # not through check
+    ? Castling corner, landing
+
+# whether the piece can get there, and in what manner; the check test is ?Move's
+?Legal: fn Game, Piece, Sq, Sq -> ?Manner
+fn ?Legal g, pc, from, to:
+    let own = RanksOf pc.color
+    let across = Gap from.file, to.file
+    let up = Gap from.rank, to.rank
+    let ahead = Ahead own, from, to
+    let empty = (?At g, to) == nil
+    match pc.man:
+        Pawn: match ((across, ahead)):
+            ((0, 1)) if empty: ? Ordinary                # one step, onto an empty square
+            ((0, 2)): ?TwoSteps g, own, from, to
+            ((1, 1)) if not empty: ? Ordinary            # a diagonal capture
+            ((1, 1)) if g.?passed == ? to:               # a capture in passing
+                ? EnPassant (Sq to.file, from.rank)
+            otherwise: nil
+        King if across == 2 and up == 0: ?CastleTo g, pc.color, from, to
+        otherwise: given:
+            require (Attacks g, pc, from, to)
+            ? Ordinary
+
+# the corners whose right survives a move: a king's move spends both of its side's, and a move
+# from or onto a corner spends that one
+Unspent: fn [Sq], Piece, Sq, Sq -> [Sq]
+fn Unspent corners, pc, from, to:
+    let home = (RanksOf pc.color).home
+    Kept corners, \|c| not (c == from or c == to or (pc.man == King and c.rank == home))
+
+AfterMove: fn Game, Piece, Sq, Sq, Man, Manner -> Game
+fn AfterMove g, pc, from, to, promo, manner:
+    let promotes = pc.man == Pawn and to.rank == (RanksOf pc.color).last
+    let placed = if promotes: (Piece pc.color, promo) else: pc
+    let moved = Insert (Remove g.board, from), to, placed
+    let board = match manner:
+        EnPassant taken: Remove moved, taken
+        Castling corner, landing: Insert (Remove moved, corner), landing, (Piece pc.color, Rook)
+        otherwise: moved
+    let ?passed = match manner:
+        Double over: ? over
+        otherwise: nil
+    Game(board=board, turn=(Opponent g.turn), corners=(Unspent g.corners, pc, from, to), passed=?passed)
+
+?Move: fn Game, Sq, Sq, Man -> ?Game
+fn ?Move g, from, to, promo:
+    pc <- ?At g, from
+    require pc.color == g.turn
+    forbid (Owns g, to, g.turn)                    # never onto one's own piece
+    forbid promo == King or promo == Pawn          # a pawn becomes a piece
+    manner <- ?Legal g, pc, from, to
+    let next = AfterMove g, pc, from, to, promo, manner
+    forbid (InCheck next, g.turn)                  # never into check, never left in it
+    ? next
+
+HasMove: fn Game -> Bool
+fn HasMove g = AnyOf (Keys g.board), \|from| (Owns g, from, g.turn) and AnyOf squares, \|to| (?Move g, from, to, Queen) != nil
+
+Status: fn Game -> Text
+fn Status g:
+    let side = Show g.turn
+    match ((HasMove g, (InCheck g, g.turn))):
+        ((False, True)): "{side} has been checkmated"
+        ((False, False)): "{side} would be next, but it's a stalemate"
+        ((True, True)): "{side}'s turn, to get out of check"
+        ((True, False)): "{side}'s turn"

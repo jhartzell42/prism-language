@@ -1,0 +1,54 @@
+# The todo list of the comparison run (Pitch chapter 11): rows keyed by id in a `for`, each row
+# with a Star, a hold of its own the model never sees, where identity goes wrong in other
+# languages. The `Todo` record is Type System chapter 2's; the rest is prism-reflex's
+# examples/todos.prism in the books' spelling. Its tests are in todos.prismtest. Work in
+# progress, subject to change.
+emit Ui.*
+test mod tests
+
+type Todo = record:
+    label: Text
+    done: Bool
+derive ^Eq, ^Show
+
+type Change = choice:
+    Add Text
+    Toggle
+    Delete
+derive ^Eq, ^Show
+
+Step: fn (Nat ==> Todo), Nat, Change -> (Nat ==> Todo)
+fn Step items, id, change = match change:
+    Add label: Insert items, id, (Todo label, False)
+    Toggle: match items[id]:
+        ? t: Insert items, id, (Todo t.label, not t.done)
+        nil: items
+    Delete: Remove items, id
+
+StepAll: fn (Nat ==> Todo), (Nat ==> Change) -> (Nat ==> Todo)
+fn StepAll items, changes = Fold (Keys changes), items, \|acc, id| match changes[id]:
+    ? c: Step acc, id, c
+    nil: acc
+
+Describe: fn Todo, Bool -> Text
+fn Describe t, starred:
+    let box = if t.done: "[x]" else: "[ ]"
+    let star = if starred: " *" else: ""
+    "{box} {t.label}{star}"
+
+Added: fn Nat -> Change
+fn Added n = Add "item {n}"
+
+@todos: @unit
+@todos:
+    !add <- Ui.Button(label=$"Add")                                 # 0
+    $next <- 0 then $next + 1 on !add
+    let !adds = {$next: Added $next} on !add
+    !rows <- for $items:                                            # 1/[key]
+        !toggle <- Ui.Button(label=$"Toggle")                       # 1/[key]/0
+        !delete <- Ui.Button(label=$"Delete")                       # 1/[key]/1
+        !star <- Ui.Button(label=$"Star")                           # 1/[key]/2
+        $starred <- False then not $starred on !star
+        Ui.Label(text=(Describe $_, $starred))                      # 1/[key]/3
+        @ Toggle on !toggle <| Delete on !delete
+    $items <- {} then StepAll $items, (!Union !adds, !rows)

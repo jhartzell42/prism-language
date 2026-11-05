@@ -35,9 +35,9 @@ expect() {
 expect chess canvas examples/chess
 expect cli-root cli tests/driver/cli-root.prism
 expect gui-tree canvas tests/driver/gui-tree
-expect birds refused tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
-expect birds-as-cli cli --world cli tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
-expect counter-no-root refused tests/conformance/counter.prism
+expect birds refused tests/conformance/sem-ch06-birds
+expect birds-as-cli cli --world cli tests/conformance/sem-ch06-birds
+expect counter-no-root refused tests/conformance/counter
 
 prismc=${PRISMC:-$(ls -t target/bootstrap/prismc target/keep/prismc-* 2>/dev/null | grep -v old-chain | head -1)}
 out=target/driver

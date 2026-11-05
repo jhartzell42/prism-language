@@ -48,6 +48,7 @@ run() { # name, sources...
     echo "FAILED $name: $step($log)"
 }
 for script in tests/conformance/*.prismtest; do
+    [ -e "$script" ] || continue
     base=${script%.prismtest}
     files=("$base.prism")
     [ -d "$base" ] && files+=("$base")
@@ -58,7 +59,7 @@ done
 for dir in tests/conformance/*/; do
     [ -f "$dir/app.prism" ] && run "$(basename "$dir")" "${dir%/}"
 done
-run chess-rules examples/chess/rules.prism
+run chess-rules examples/chess/rules
 run chess examples/chess
 # prismc's own front end, checked through its modules' test modules: a module directory
 # of prismc's tree, with the modules it reaches by `use`

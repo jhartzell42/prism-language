@@ -1,0 +1,34 @@
+# Type System ch. 3: `derive`, a module's own `impl ^Show`, bounds, a trait of a
+# program's own with a default method, and the three built in.
+test mod tests
+type Sq = record:
+    file: Nat
+    rank: Nat
+derive ^Eq, ^Ord
+
+let letters = [["a", "b", "c", "d", "e", "f", "g", "h"]]
+
+impl ^Show Sq:
+    fn Show sq = "{Or letters[sq.file], "?"}{sq.rank + 1}"
+
+type Species = choice:
+    Robin
+    Wren
+    Heron
+derive ^Eq, ^Ord, ^Show
+
+trait ^Loud a:
+    Loud: fn a -> Text
+    Shout: fn a -> Text
+    fn Shout x = "{Loud x}!"
+
+impl ^Loud Species:
+    fn Loud Robin = "CHEERILY"
+    fn Loud Wren = "TIT"
+    fn Loud Heron = "FRAAANK"
+
+Describe: fn [a] -> Text where a: ^Show
+fn Describe xs = Fold xs, "", \|acc, x| if acc == "": Show x else: "{acc}, {Show x}"
+
+Clamp: fn a, a, a -> a where a: ^Ord
+fn Clamp lo, hi, x = if x < lo: lo else: if hi < x: hi else: x

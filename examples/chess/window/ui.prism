@@ -1,0 +1,83 @@
+# The window library's section `ui`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# ---------------------------------------------------------------------------
+# The Ui family: leaves answer the inputs routed to them; containers hold their children's
+# elements in a live field and answer with inputs addressed by a child's path
+
+type Click = click
+
+type Routed = record:                  # an input for the place at `path`
+    path: Path
+    input: Input
+derive ^Eq, ^Show
+
+type Input = choice:
+    Clicked
+    Typed Key
+    Inner Routed                       # for a place inside the container at `path`
+derive ^Eq, ^Show
+
+tag Ui.Label of Element unit:
+    text: $Text                        # live: new text, same label
+
+tag Ui.Button of Element !Click:
+    label: $Text
+
+tag Ui.TextInput of Element !Key:
+    name: Text                         # identity
+    text: $Text
+    cursor: $Nat
+
+tag Ui.Image of Element !Click:        # a picture on a painted cell, clickable: a chess square
+    src: $Text
+    paint: $Paint
+
+type Align = choice:
+    Start
+    Middle
+    End
+    Stretch
+derive ^Eq, ^Show
+
+tag Ui.VBox of Element !Routed:        # a column with no spacing
+    children: $(Path ==> Elem)
+
+tag Ui.HBox of Element !Routed:        # a row with no spacing
+    children: $(Path ==> Elem)
+
+tag Ui.Row of Element !Routed:
+    spacing: Float                     # negative overlaps: a hand of cards
+    align: Align                       # across the row
+    children: $(Path ==> Elem)
+
+tag Ui.Column of Element !Routed:
+    spacing: Float
+    align: Align
+    children: $(Path ==> Elem)
+
+tag Ui.Layers of Element !Routed:      # children on top of each other, each at its frame's anchor
+    children: $(Path ==> Elem)
+
+type FrameSpec = record:
+    pad: Float
+    width: ?Float
+    height: ?Float
+    aspect: ?Float                     # width over height
+    flex: Float                        # a share of a row's or column's free room; 0 takes its natural size
+    anchor: Point                      # in layers: where in the room, as fractions
+    offset: Point                      # in layers: and then how far, in points
+    turn: Float                        # degrees about the frame's centre
+    scale: Float
+    bg: ?Paint
+derive ^Eq, ^Show
+
+tag Ui.Frame of Element !Routed:
+    spec: FrameSpec
+    children: $(Path ==> Elem)
+
+tag Ui.Grid of Element !Routed:        # children in rows of `columns`, each cell the size of the largest child
+    columns: Nat
+    children: $(Path ==> Elem)
+
+let plain = FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil

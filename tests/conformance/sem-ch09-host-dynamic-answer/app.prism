@@ -1,0 +1,30 @@
+# A supplier answers a child's `$` place with a dynamic of the host (Semantics ch. 9, "How
+# a supplier answers"; round 3 DY): the blueprint `@ $d` gives the place its first value in
+# the birth tick, read synchronously as a first-value query is, and each later change of
+# `$d` is a push delivered to the child's place as the next tick's input, owing that tick.
+# Here the host's hold `$motd`, lifted through `~Motd`, answers the child's `Fs.Contents`,
+# and a click changes it.
+# Written for prismc's back end. Work in progress, subject to change.
+emit Ui.* | Fs.*
+test mod tests
+use Fs.*
+
+ShowResponse: fn ~Contents -> Text
+fn ShowResponse (~ c) = c.text
+fn ShowResponse (Error(..)) = "(cannot read)"
+
+~Motd: fn Text -> ~Contents
+fn ~Motd text = ~ Contents(text=text)
+
+@child: @unit
+@child:
+    $~motd <- Fs.Contents(path="/etc/motd")                     # 0
+    Ui.Label(text=$"{ShowResponse $~motd}")                     # 1
+
+@host: @unit
+@host:
+    !change <- Ui.Button(label=$"change")                       # 0
+    $motd <- "first" then "second" on !change
+    ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
+        Fs.Contents(..): @ ~Motd $motd
+        otherwise: @Element e

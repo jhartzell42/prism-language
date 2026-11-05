@@ -1,0 +1,28 @@
+# A `for` row's entry is a projection of its source (Semantics ch. 4): `$_` (here `$v`) is
+# `$items[k]`, a dynamic derived from the block's holds, read at the row's read point and
+# written by nobody. So `!Updated $v` is the entry's event half: it fires in the tick a block
+# hold behind the source moves, at its height above that hold's writer, with the entry after
+# the tick; the label over `$v` and the count of its updates move in the same tick. The
+# event fires whenever the source is recomputed, deduped by nobody (pick UD): an edit of key
+# 0 counts in row 1 too. A row reading a block hold through its parent has the same event
+# half: `!Updated $twice`, over `$edits`, fires in the tick of the edit. A key that leaves
+# ends its row at the end of that tick (R8); the row's label is read in the leaving tick,
+# after its key is gone, and reads its last value. Written for prismc's back end. Work in
+# progress, subject to change.
+emit Ui.*
+test mod tests
+use Ui.*
+
+@entries: @unit
+@entries:
+    !add <- Ui.Button(label=$"add")                                        # 0
+    !edit <- Ui.Button(label=$"edit")                                      # 1
+    !drop <- Ui.Button(label=$"drop")                                      # 2
+    $next <- 1 then $next + 1 on !add
+    $edits <- 0 then $edits + 1 on !edit
+    $items <- {0: "a"} then (Insert $items, $next, "b{$next}") on !add <| (Insert $items, 0, "e{$edits}") on !edit <| (Remove $items, 0) on !drop
+    for k, $v <- $items:                                                   # 3/[k]
+        $n <- 0 then $n + 1 on (!Updated $v)
+        let $twice = $edits * 2
+        $m <- 0 then $m + 1 on (!Updated $twice)
+        Ui.Label(text=$"{k}: {$v} changed {$n}, edits {$m}")               # 3/[k]/0

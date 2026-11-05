@@ -1,0 +1,25 @@
+# A `for` whose rows give a dynamic, each row's place answered with a first value (as the
+# window library's `$sizes` gathers a `Gui.Metrics` per word): the block's dynamic is
+# the rows' results by key, and a new row moves it. Written for prismc's back end. Work
+# in progress, subject to change.
+emit Ui.* | Fs.*
+test mod tests
+use Fs.*
+
+Keyed: fn [Text] -> (Text ==> unit)
+fn Keyed names = Fold names, {}, \|m, n| Insert m, n, unit
+
+TextOf: fn ~Contents -> Text
+fn TextOf (~ c) = c.text
+fn TextOf (Error(..)) = "?"
+
+Joined: fn (Text ==> ~Contents) -> Text
+fn Joined m = Fold (Values m), "", \|acc, ~c| if acc == "": TextOf ~c else: "{acc} {TextOf ~c}"
+
+@files: @unit
+@files:
+    !add <- Ui.Button(label=$"add")                             # 0
+    $names <- [["a"]] then [["a", "b"]] on !add
+    $found <- for path, ignore <- Keyed $names:                  # 1/[path]
+        Fs.Contents(path=path)                                   # 1/[path]/0
+    Ui.Label(text=$"{Joined $found}")                            # 2

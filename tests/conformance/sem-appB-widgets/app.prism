@@ -1,0 +1,33 @@
+# Semantics Appendix B, Widgets and Events: `@Defer` (D6), the holds of the prelude
+# written in Prism (`@Once`, `@AfterFirst`, `@Numbered`), `@Machine`, `!MergeAll`.
+emit Ui.*
+test mod tests
+
+Tally: fn Nat, Nat -> ((Nat, ?Nat))
+fn Tally total, n = ((total + n, if total + n > 4: ? (total + n) else: nil))
+
+Shown: fn ((Nat, a)) -> Text where a: ^Show
+fn Shown p = Show p
+
+Past: fn Nat -> Text
+fn Past t = "past {t}"
+
+Count: fn [Nat] -> Text
+fn Count xs = "{Len xs}"
+
+@bindings: @unit
+@bindings:
+    !go <- Ui.Button(label=$"Go")                           # 0
+    !again <- @Defer !go
+    !first <- @Once !go
+    !later <- @AfterFirst !go
+    !numbered <- @Numbered !go
+    !over <- @Machine Tally, 0, (2 on !go)
+    let !both = !MergeAll [[(1 on !go), (2 on !again)]]
+    $echoes <- 0 then $echoes + 1 on !again
+    $firsts <- 0 then $firsts + 1 on !first
+    $laters <- 0 then $laters + 1 on !later
+    $last <- "none" then Shown !numbered
+    $past <- "no" then Past !over
+    $merged <- "[]" then Count !both
+    Ui.Label(text=$"{$echoes} {$firsts} {$laters} {$last} {$past} {$merged}")   # 1

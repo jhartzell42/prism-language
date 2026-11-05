@@ -1,0 +1,54 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# A `while` the shrink check does not clear, in an arm of a `match` and in the body of a
+# `for` of an unbounded function's `update` block: each of its turns is a cycle point (D6
+# as ruled), as one at the block's top level or under an `if` is (sem-ch07-while-nested;
+# gap LP). The `Int` countdowns do not shrink a `Nat`, so no loop here is cleared.
+emit Ui.*
+test mod tests
+
+# The loop in a `match` arm: `Top` of sem-ch07-while-nested under a `match`.
+InMatch: unbounded fn Int -> Int
+fn InMatch n = update 0:
+    let &i = n
+    match n:
+        0: &_ += 100
+        otherwise:
+            while &i > 0:
+                &i <= &i - 1
+                &_ += 1
+
+# The loop in a `for`'s body: one countdown per entry.
+InFor: unbounded fn [Int] -> Int
+fn InFor xs = update 0:
+    for x <- xs:
+        let &i = x
+        while &i > 0:
+            &i <= &i - 1
+            &_ += 1
+
+# The same over a map, its key read after the loop.
+InForMap: unbounded fn (Text ==> Int) -> Text
+fn InForMap m = update "":
+    for k, v <- m:
+        let &i = v
+        while &i > 0:
+            &i <= &i - 1
+            &_ <= "{&_}{k}"
+
+@MatchShown: fn Int -> @unit
+fn @MatchShown n:
+    !done <- @Run InMatch, n                                # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                   # 1
+
+@ForShown: fn [Int] -> @unit
+fn @ForShown xs:
+    !done <- @Run InFor, xs                                 # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                   # 1
+
+@MapShown: fn (Text ==> Int) -> @unit
+fn @MapShown m:
+    !done <- @Run InForMap, m                               # 0
+    $shown <- "working" then !done
+    Ui.Label(text=$shown)                                   # 1

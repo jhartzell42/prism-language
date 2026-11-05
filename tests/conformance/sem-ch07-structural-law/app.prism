@@ -1,0 +1,38 @@
+# The dynamic law for structural dynamics (Semantics R2/R3; ch. 7, "A dynamic is a sample and
+# an update event"): in the tick a dynamic's update event fires, every sample reads the old
+# value. A structural dynamic (a host's `$doc`, a `for`'s gathered `$(K ==> T)`) runs one tick
+# behind the structure it describes: with S(n) the snapshot taken as the last act of tick n's
+# construction, its value after m is S(m-1), and its update event fires at n+1 with S(n). So
+# a hold sampling `$doc` on `!Updated $doc` gets the old size while the event's value has the
+# new one, and a label over `Size $doc` shows the new size one tick after the structure
+# changed. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod tests
+use Ui.*
+
+@child: @unit
+@child:
+    !add <- Ui.Button(label=$"add")                                          # 0
+    $names <- {1: "k1"} then Insert $names, (Size $names) + 1, "k{(Size $names) + 1}" on !add
+    for k, $name <- $names:                                                  # 1/[k]
+        Ui.Label(text=$name)                                                 # 1/[k]/0
+
+@host: @unit
+@host:
+    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e              # 0/[p]/0
+    $old <- 0 then Size $doc on (!Updated $doc)
+    $new <- 0 then Size (!Updated $doc)
+    Ui.Label(text=$"old {$old}, new {$new}")                                 # 1
+    Ui.Label(text=$"size {Size $doc}")                                       # 2
+
+# A `for`'s gathered dynamic keeps the same law.
+@gathered: @unit
+@gathered:
+    !add <- Ui.Button(label=$"add")                                          # 0
+    $names <- {1: "one"} then Insert $names, (Size $names) + 1, "more" on !add
+    $lens <- for k, $name <- $names:                                         # 1/[k]
+        Ui.Label(text=$name)                                                 # 1/[k]/0
+        @ Len $name
+    $old <- 0 then Size $lens on (!Updated $lens)
+    $new <- 0 then Size (!Updated $lens)
+    Ui.Label(text=$"old {$old}, new {$new}, size {Size $lens}")              # 2

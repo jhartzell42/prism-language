@@ -1,0 +1,88 @@
+# The chess board: the root of the chess program. Sixty-four `Ui.Image` squares in a `@Grid`,
+# a hold for the selected square, a hold for the game fed by `?Move` on a click, and a status
+# label, in a window (Pitch chapter 11). Ported from prism-reflex's examples/gui/chess.prism
+# (the UI of jhartzell42/reflex-chess, Frontend/Chess.hs) into the books' spelling. Its tests
+# are in tests.prism. Work in progress, subject to change.
+emit Ui.* | Gui.*
+mod Rules
+mod Window
+test mod tests
+use Rules.*
+use Window.*
+
+# the grid's places, keyed in reading order from a8, since a grid lays its children out in
+# their paths' order; a spot prints as its square, `e2` (README, doubt SP)
+type Spot = record:
+    down: Nat                  # 0 is the eighth rank, at the top
+    across: Nat                # 0 is the a file
+derive ^Eq, ^Ord
+
+impl ^Show Spot:
+    fn Show s = Show (SqOf s)
+
+SqOf: fn Spot -> Sq
+fn SqOf s = Sq s.across, (Or (7 -? s.down), 0)
+
+SpotOf: fn Sq -> Spot
+fn SpotOf sq = Spot (Or (7 -? sq.rank), 0), sq.file
+
+ShadeOf: fn Sq -> Paint
+fn ShadeOf sq = if (sq.file + sq.rank) mod 2 == 0: Grey else: Paper
+
+# each square's paint, by its spot
+let shades = Fold squares, {}, \|m, sq| Insert m, (SpotOf sq), (ShadeOf sq)
+
+# the selected square is yellow
+Tint: fn Paint, Sq, ?Sq -> Paint
+fn Tint shade, sq, ?selected = if ?selected == (? sq): Yellow else: shade
+
+Letter: fn Man -> Text
+fn Letter King = "k"
+fn Letter Queen = "q"
+fn Letter Rook = "r"
+fn Letter Bishop = "b"
+fn Letter Knight = "n"
+fn Letter Pawn = "p"
+
+Shade: fn Color -> Text
+fn Shade White = "l"
+fn Shade Black = "d"
+
+Picture: fn ?Piece -> Text
+fn Picture nil = "examples/chess/pieces/blank.png"
+fn Picture (? pc) = "examples/chess/pieces/{Letter pc.man}{Shade pc.color}.png"
+
+# a first click on one's own piece selects it; a second click, anywhere, clears the selection
+?Select: fn ?Sq, Game, Sq -> ?Sq
+fn ?Select ?selected, g, sq = match ?selected:
+    ? ignore: nil
+    nil: if (Owns g, sq, g.turn): ? sq else: nil
+
+# the second click moves the selected piece if the move is legal, and the game stands otherwise
+Play: fn Game, ?Sq, Sq -> Game
+fn Play g, ?selected, sq = match ?selected:
+    ? from: Or (?Move g, from, sq, Queen), g
+    nil: g
+
+# the square picked first, in the spots' order, when two picks land in one tick
+?Picked: fn (Spot ==> Sq) -> ?Sq
+fn ?Picked picks:
+    ((ignore, sq)) <- ?First picks
+    ? sq
+
+@$board: @$Text
+@$board:
+    !picks <- @Grid 8, @widget:                                      # 0/[p] hosts; 1 is the grid
+        !squares <- for spot, $paint <- $ shades:                    # 0/[spot] in the grid's child
+            let sq = SqOf spot
+            !c <- Ui.Image(src=(Picture (?At $game, sq)), paint=(Tint $paint, sq, $?selected))  # 0/[spot]/0
+            @ sq on !c
+        @ !Filter (?Picked !squares)
+    $?selected <- nil then ?Select $?selected, $game, !picks
+    $game <- initial then Play $game, $?selected, !picks
+    Ui.Label(text=Status $game)                                      # 2
+    @ Status $game
+
+@$main: @$Text
+@$main:
+    @Window $"Chess", (Extent 512.0, 560.0), @$board

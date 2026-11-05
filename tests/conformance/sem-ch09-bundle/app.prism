@@ -1,0 +1,16 @@
+# A bundle's answer (the World protocol's bundle, docs/backend.md "Answers"): a tag whose
+# output is a tuple of a plain part and an event part, taken apart where it is bound, as
+# the window library binds `((id, !incoming)) <- Gui.Window(..)`. The plain part is the
+# place's first value; the event part fires on each answer to the place. Written for
+# prismc's back end. Work in progress, subject to change.
+emit Ui.* | Pad.*
+test mod tests
+
+tag Pad.Door of Element ((Text, !Nat)):
+    name: Text
+
+@doors: @unit
+@doors:
+    ((door, !knocks)) <- Pad.Door(name="front")              # 0
+    $count <- 0 then $count + !knocks
+    Ui.Label(text=$"{door}: {$count}")                       # 1

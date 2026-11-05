@@ -1,0 +1,9 @@
+# Semantics Appendix B: `?ParseNat` reads any natural number written in decimal digits,
+# however many: a `Nat` has no bound. Both targets agree past 18 digits and past 64 bits.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod tests
+
+Parsed: fn Text -> Text
+fn Parsed t = match ?ParseNat t:
+    ? n: "{n}"
+    nil: "nil"

@@ -1,0 +1,21 @@
+# An unbounded function as a value (docs/backend.md: its `Start`), called through a
+# parameter from an unbounded function: each call a cycle point (D6). `Run` tail-calls
+# `Twice`, which calls `F` twice, so three calls and four cycles. Written for prismc's back
+# end. Work in progress, subject to change.
+emit Ui.*
+test mod tests
+
+Inc: unbounded fn Nat -> Nat
+fn Inc n = n + 1
+
+Twice: unbounded fn (unbounded fn Nat -> Nat), Nat -> Nat
+fn Twice F, n = F (F n)
+
+Run: unbounded fn Nat -> Nat
+fn Run n = Twice Inc, n
+
+@Counted: fn Nat -> @unit
+fn @Counted n:
+    !done <- @Run Run, n                                    # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                   # 1

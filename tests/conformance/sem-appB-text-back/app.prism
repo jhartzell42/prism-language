@@ -1,0 +1,11 @@
+# Semantics Appendix B, Text: `Back` is the cursor at a text's end.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod tests
+
+let sample = "héllo→世界"
+
+# The last character, through the cursor at the back.
+?LastChar: fn Text -> ?Char
+fn ?LastChar t = match ?StepBack (Back t):
+    ? ((c, ignore)): ? c
+    nil: nil

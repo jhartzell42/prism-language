@@ -1,0 +1,19 @@
+# Statements of an `update` block that lowering once refused: a `for` over an array (its
+# entry and `ix`) and over a map (key and entry), and a `match` whose arms have guards
+# and literals. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod tests
+
+Tally: fn [Nat], (Text ==> Nat) -> Text
+fn Tally xs, m = update "":
+    for x <- xs:
+        match x:
+            0: &_ <= "{&_}z"
+            n if n > 5: &_ <= "{&_}B{ix}"
+            otherwise: &_ <= "{&_}s"
+    for k, v <- m:
+        &_ <= "{&_} {k}={v}"
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$(Tally [[0, 7, 2, 9]], {"a": 1, "b": 2}))   # 0

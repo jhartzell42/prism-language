@@ -1,0 +1,25 @@
+# A `while` over a fuel pattern with a guard (`while ? left <- &fuel -? 1 if &i < n:`), as
+# prismc's lexer closes its layout: the guard ends the loop as a failed match does. The
+# fuel is a `Nat`, as the lexer's `Len` is, so the shrink check clears the loop and its
+# turns are one unit of work (D6).
+# Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod tests
+
+Count: unbounded fn Nat -> Nat
+fn Count n = update 0:
+    let &fuel = n + 100
+    let &i = 0
+    while ? left <- &fuel -? 1 if &i < n:
+        &fuel <= left
+        &i += 1
+        &_ += 2
+
+Counts: unbounded fn Nat -> Text
+fn Counts n = "{Count n} {Count 0}"
+
+@Shown: fn Nat -> @unit
+fn @Shown n:
+    !done <- @Run Counts, n                                 # 0
+    $shown <- "working" then !done
+    Ui.Label(text=$shown)                                   # 1

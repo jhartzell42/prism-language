@@ -1,0 +1,16 @@
+# Semantics Appendix B, Text: `After` is the text from a cursor on, a view of the same
+# bytes.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod tests
+
+let sample = "héllo→世界"
+
+# The cursor `n` characters into `t`, or the back.
+Into: fn Text, Nat -> Cursor
+fn Into t, n = update Front t:
+    let &k = n
+    while ? left <- &k -? 1:
+        &k <= left
+        match ?Step &_:
+            ? ((ignore, next)): &_ <= next
+            nil: &k <= 0

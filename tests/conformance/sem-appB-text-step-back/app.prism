@@ -1,0 +1,27 @@
+# Semantics Appendix B, Text: `?StepBack` walks a text back one character at a time,
+# `nil` at the start; Semantics ch. 8's text box takes Backspace so.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod tests
+
+let sample = "héllo→世界"
+
+# Semantics ch. 8's `Edit` on Backspace: one step back from the end, and a cut.
+Backspace: fn Text -> Text
+fn Backspace text = match ?StepBack (Back text):
+    ? ((ignore, c)): Before c
+    nil: text
+
+# Every character, back to front. `?StepBack` shrinks nothing the shrink check knows
+# (Semantics ch. 7 names `?Step`), so the walk takes fuel: a text has no more characters
+# than bytes.
+WalkBack: fn Text -> [Char]
+fn WalkBack t = update [[]]:
+    let &c = Back t
+    let &fuel = Len t
+    while ? left <- &fuel -? 1:
+        &fuel <= left
+        match ?StepBack &c:
+            ? ((ch, prev)):
+                &_ <= Push &_, ch
+                &c <= prev
+            nil: &fuel <= 0

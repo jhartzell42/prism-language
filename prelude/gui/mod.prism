@@ -1,0 +1,107 @@
+# The `Gui` family, as prism_rt's Worlds answer it (prism_rt/src/families.rs, `gui`): the
+# four tags a drawing World accepts (Pitch chapters 5 and 6), spelled as the chess window
+# library declares them (examples/chess/window.prism). A library, not the prelude; a program
+# that declares a `Gui` tag of its own replaces this file. Geometry is `Float` (D14).
+emit Gui.*
+
+type Point = record:
+    x: Float
+    y: Float
+derive ^Eq, ^Show
+
+type Extent = record:
+    w: Float
+    h: Float
+derive ^Eq, ^Show
+
+type Rect = record:
+    x: Float
+    y: Float
+    w: Float
+    h: Float
+derive ^Eq, ^Show
+
+# What a scene draws: a row kind with no output, each command a tag. The Test World reads
+# `Draw.Clickable` to click an element by path (D9), through `Draw.Group` and `Draw.Clip`.
+type Draw = row
+
+tag Draw.Rect of Draw:
+    rect: Rect
+    paint: Paint
+
+tag Draw.Text of Draw:
+    at: Point
+    text: Text
+
+tag Draw.Image of Draw:
+    rect: Rect
+    src: Text
+
+tag Draw.Clip of Draw:
+    rect: Rect
+    draws: [Draw]
+
+tag Draw.Group of Draw:
+    turn: Gui.Turn
+    draws: [Draw]
+
+tag Draw.Clickable of Draw:
+    rect: Rect
+    path: Path
+
+type Paint = choice:
+    Paper
+    Grey
+    Blue
+    Ink
+    Yellow
+    Red
+    Green
+    Felt
+    Rgb Float, Float, Float
+derive ^Eq, ^Show
+
+# a turn about a pivot, then a scale
+type Turn = record:
+    x: Float
+    y: Float
+    angle: Float
+    scale: Float
+derive ^Eq, ^Show
+
+type Key = choice:
+    Char Char
+    Left
+    Right
+    Backspace
+    Tab
+    Enter
+derive ^Eq, ^Show
+
+type WindowInput = choice:
+    Press Point
+    Pressed Key
+    Resized Extent
+derive ^Eq, ^Show
+
+# the World's handle for a window, answered once
+type WindowId = WindowId Text
+derive ^Eq, ^Show
+
+# a bundle: the window's id, answered once by the first-value query, and its inputs
+tag Gui.Window of Element ((WindowId, !WindowInput)):
+    title: $Text
+    size: Extent
+
+tag Gui.Scene of Element unit:
+    window: WindowId
+    draw: $[Draw]
+
+# the size of a text, a fact about fonts
+tag Gui.Metrics of Element $Extent:
+    text: Text
+
+# where the platform's focus and input method go
+tag Gui.Focus of Element unit:
+    window: WindowId
+    at: $?Rect

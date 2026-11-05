@@ -1,0 +1,52 @@
+# A `while` the shrink check does not clear, nested in an `if` and in another `while` of an
+# unbounded function's `update` block: each of its turns is a cycle point (D6 as ruled), as
+# a top-level one's is (gap LP). The `Int` countdown does not shrink a `Nat`, so no loop
+# here is cleared. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod tests
+
+# The reference: a loop at the block's top level, one cycle a turn.
+Top: unbounded fn Int -> Int
+fn Top n = update 0:
+    let &i = n
+    while &i > 0:
+        &i <= &i - 1
+        &_ += 1
+
+# The same loop under an `if`.
+InIf: unbounded fn Int -> Int
+fn InIf n = update 0:
+    let &i = n
+    if &i > 0:
+        while &i > 0:
+            &i <= &i - 1
+            &_ += 1
+
+# Two loops, one inside the other: 2 outer turns of 2 inner turns each.
+Nested: unbounded fn Int -> Int
+fn Nested n = update 0:
+    let &i = n
+    while &i > 0:
+        &i <= &i - 1
+        let &j = n
+        while &j > 0:
+            &j <= &j - 1
+            &_ += 1
+
+@TopShown: fn Int -> @unit
+fn @TopShown n:
+    !done <- @Run Top, n                                    # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                   # 1
+
+@InIfShown: fn Int -> @unit
+fn @InIfShown n:
+    !done <- @Run InIf, n                                   # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                   # 1
+
+@NestedShown: fn Int -> @unit
+fn @NestedShown n:
+    !done <- @Run Nested, n                                 # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                   # 1

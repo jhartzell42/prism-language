@@ -1,0 +1,25 @@
+# Lambdas of unbounded type (docs/backend.md: an unbounded function value is its `Start`):
+# one bound by `let` and called, one passed to an unbounded parameter. Each call of an
+# unbounded function from an unbounded function is a cycle point (D6), a lambda's body
+# included. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod tests
+
+Inc: unbounded fn Nat -> Nat
+fn Inc n = n + 1
+
+Apply: unbounded fn (unbounded fn Nat -> Nat), Nat -> Nat
+fn Apply F, n = F n
+
+Work: unbounded fn Nat -> Nat
+fn Work n:
+    let Add2 = \|m| Inc (Inc m)
+    let a = Add2 n
+    let Inc1 = \|k| Inc k
+    Apply Inc1, a
+
+@Counted: fn Nat -> @unit
+fn @Counted n:
+    !done <- @Run Work, n                                   # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                   # 1

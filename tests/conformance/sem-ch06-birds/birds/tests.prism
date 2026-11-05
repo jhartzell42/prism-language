@@ -1,0 +1,14 @@
+# `Birds`' test module (docs/modules-style-pass.md): the library's own check and test, which
+# stood inline in birds.prism; only `prism test` and `prism check` read it.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+check calls:
+    Call Heron => "fraaank"
+    Len flock => 3
+
+test spotting_a_wren, @Spotter Wren:
+    build
+        => expect Ui.Button(label="Wren: tit-tit-tit")
+        => quiet
+    click Ui.Button(..)
+        => fired Wren

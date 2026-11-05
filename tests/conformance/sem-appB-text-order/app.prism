@@ -1,0 +1,7 @@
+# Semantics Appendix B, Text: texts order bytewise, which for UTF-8 is code-point order.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+# A map's keys come in the texts' order.
+test mod tests
+Sorted: fn [Text] -> [Text]
+fn Sorted ts = Keys (Fold ts, {}, \|m, t| Insert m, t, True)

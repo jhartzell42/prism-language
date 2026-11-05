@@ -1,0 +1,24 @@
+# A bounded `Fold` whose lambda takes a tuple element apart (`\|acc, ((n, w))|`), the
+# closure's parameters borrowed, and an `update` local that starts empty and is pushed
+# to. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod tests
+
+Weigh: fn [((Text, Nat))] -> Text
+fn Weigh items:
+    let total = Fold items, 0, \|acc, ((ignore, w))| acc + w
+    let names = update [[]]:
+        let &seen = [[]]
+        let &i = 0
+        let &fuel = Len items
+        while ? left <- &fuel -? 1:
+            &fuel <= left
+            let ((n, ignore)) = Or items[&i], (("", 0))
+            &seen <= Push &seen, n
+            &i += 1
+        &_ <= &seen
+    "{Concat names} {total}"
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$(Weigh [[(("a", 2)), (("b", 3))]]))         # 0

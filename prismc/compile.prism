@@ -85,11 +85,6 @@ WithoutTests: fn Module -> Module
 fn WithoutTests m = update m:
     &_.decls <= Each (Filter &_.decls, \|d| not (IsTestDecl d)), \|d| WithoutPatterns d
 
-# A tree with its `check` lines' patterns taken out (pick PT), its `test` declarations kept.
-WithoutCheckPatterns: fn Module -> Module
-fn WithoutCheckPatterns m = update m:
-    &_.decls <= Each &_.decls, \|d| WithoutPatterns d
-
 # A `check` line's pattern is the Test World's to read from the script, not the
 # checker's: the line's expression is checked alone (pick PT).
 WithoutPatterns: fn Decl -> Decl

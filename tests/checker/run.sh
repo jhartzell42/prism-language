@@ -65,20 +65,13 @@ compare() {
 
 wanted() { [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$1" ] && return 0; done; return 1; }
 
-# The positive set: every program of the corpus, by its files.
+# The positive set: every program of the corpus, each a tree (docs/modules-style-pass.md).
 declare -A programs
-# A program's directory of the same name joins it (its other modules), as in
-# tests/compiled/run.sh.
-for f in tests/conformance/*.prism; do
-    n=$(basename "$f" .prism)
-    programs[$n]="$f"
-    [ -d "${f%.prism}" ] && programs[$n]="$f $(ls "${f%.prism}"/*.prism | tr '\n' ' ')"
+for d in tests/conformance/*/; do
+    [ -f "$d/app.prism" ] && programs[$(basename "$d")]="${d%/}"
 done
-programs[counter]=tests/conformance/counter.prism
-programs[half-counter]=tests/conformance/half-counter.prism
-programs[todos]=tests/conformance/todos.prism
-programs[chess]="examples/chess/board.prism examples/chess/rules.prism examples/chess/window.prism"
-programs[prelude]="$(ls prelude/*.prism | tr '\n' ' ')"
+programs[chess]=examples/chess
+programs[prelude]=prelude
 programs[prismc]=prismc
 for f in "$here"/pos/*.prism; do [ -e "$f" ] && programs[$(basename "$f" .prism)]="$f"; done
 # a directory under pos/ is one program, a tree (docs/modules-style-pass.md)
@@ -118,8 +111,8 @@ done
 
 # The typed output: complete (no expression without a known type) for these programs.
 declare -A typed
-typed[typed-chess]="examples/chess/board.prism examples/chess/rules.prism examples/chess/window.prism"
-typed[typed-counter]=tests/conformance/conf-ch01-counter.prism
+typed[typed-chess]=examples/chess
+typed[typed-counter]=tests/conformance/conf-ch01-counter
 for name in $(printf '%s\n' "${!typed[@]}" | sort); do
     wanted "$name" || continue
     rm -f "$tmp/$name.typed"

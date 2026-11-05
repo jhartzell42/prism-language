@@ -1,0 +1,16 @@
+# Conformance ch. 1's opening program: the message of the day, read once when it starts.
+# `ShowResponse` is Semantics ch. 8's.
+emit Ui.* | Fs.*
+test mod tests
+use Fs.*
+
+ShowResponse: fn ~Contents -> Text
+fn ShowResponse (~ c) = c.text
+fn ShowResponse (Error(kind=Fs.NotFound, ..)) = "(no such file)"
+fn ShowResponse (Error(..)) = "(cannot read)"
+
+@motd:
+    !started <- @started                                              # 0
+    !~motd <- Fs.File(path="/etc/motd", requests=(Read on !started))   # 1
+    $text <- "(reading...)" then ShowResponse !~motd
+    Ui.Label(text=$text)                                              # 2

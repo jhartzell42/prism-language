@@ -1,0 +1,15 @@
+# Two modules that use each other's types (ts-ch05-crossed-modules/left.prism says why),
+# weighed from the root. Work in progress, subject to change.
+emit Ui.*
+mod Left
+mod Right
+test mod tests
+use Left
+use Right
+
+let inner = Left.Shape(name="inner", first=(Right.Plain 2), rest=[[(Right.Plain 3)]])
+let outer = Left.Shape(name="outer", first=(Right.Nested inner), rest=[[(Right.Plain 4), (Right.Nested inner)]])
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$"{Left.Weigh outer} {Show (Right.Plain 1)}")     # 0

@@ -1,0 +1,32 @@
+# Hosts nest, and each computing layer costs a tick while a forwarding layer costs none
+# (Semantics ch. 9 as ruled). The inner host answers the leaf's button with its own `!go`;
+# the outer host answers the inner's `go` button with its own `!tap`: a click on tap reaches
+# the leaf two ticks later, each an owed tick (`compute until idle` runs both). The leaf's
+# text input is forwarded by both hosts, so the World answers it under the doubled path and
+# the leaf hears it in the same tick. Written for prismc's back end. Work in progress,
+# subject to change.
+emit Ui.*
+test mod tests
+use Ui.*
+
+@leaf: @unit
+@leaf:
+    !hit <- Ui.Button(label=$"hit")                              # 0, answered by the inner host's !go
+    !key <- Ui.TextInput(name="in", text=$"")                    # 1, forwarded twice over
+    $hits <- 0 then $hits + 1 on !hit
+    $keys <- 0 then $keys + 1 on !key
+    Ui.Label(text=$"{$hits} hits, {$keys} keys")                 # 2, forwarded twice over
+
+@inner: @unit
+@inner:
+    !go <- Ui.Button(label=$"go")                                # 0, answered by the outer host's !tap
+    ignore <- @HostDocument @leaf, \|p, e| match e:             # 1/[p]
+        Ui.Button(..): @ !go
+        otherwise: @Element e
+
+@outer: @unit
+@outer:
+    !tap <- Ui.Button(label=$"tap")                              # 0
+    ignore <- @HostDocument @inner, \|p, e| match e:            # 1/[p]
+        Ui.Button(..): @ !tap
+        otherwise: @Element e

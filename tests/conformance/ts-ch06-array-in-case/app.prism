@@ -1,0 +1,20 @@
+# A list pattern inside a constructor's payload: `Many [[x]]` matches a one-element array
+# held by a case, its element bound out of the array. Written for prismc's C++ target,
+# where a pattern binds by reference: the element is bound out of the value the pattern
+# tests, which must live as long as the binding. Work in progress, subject to change.
+emit Ui.*
+test mod tests
+
+type Bag = choice:
+    Many [Text]
+derive ^Eq, ^Show
+
+Only: fn Bag -> Text
+fn Only (Many [[x]]) = "one {x}"
+fn Only (Many [[x, y]]) = "two {x}{y}"
+fn Only (Many ignore) = "some"
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$"{Only (Many [["a"]])}, {Only (Many [["b", "c"]])}, {Only (Many [[]])}")     # 0
+# Audited: one element, then two, then none (the last clause).

@@ -1,0 +1,6 @@
+# Semantics Appendix B, Text: `Len` on a text is its length in bytes (round 4 TX).
+# "héllo→世界" is h (1 byte), é (2), l, l, o (1 each), → (3), 世 (3), 界 (3).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod tests
+
+let sample = "héllo→世界"
