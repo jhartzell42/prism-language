@@ -23,17 +23,28 @@ empty.*
   fixed points, the C++ prismc emitting the Rust prismc's Rust byte for byte, both
   compiled suites, the checker, the driver tests, the C++ runtime's and Worlds' tests
   (ASan+UBSan under Homebrew clang; Apple clang's hangs at startup on macOS 26).
-- **Merged today (4 November):** per-module C++ headers (queue item 1); the three bugs of
-  `claude/bugs/` and gaps LP, LW, SR (DM is documentation); `Text` as UTF-8 with cursors
-  (item 6). Running: an agent on items 2–5 and gap NL (branch `claude-perf`).
-- **The books** are `jhartzell42/prism-notes` at `e66aba7` or later. The Semantics
-  RULINGS file ends with round 4 (TX, Text).
-- **The bootstrap.** Both seeds exist and match the tree: `bootstrap/prismc-rust.tar.xz`
-  (the Rust crate) and `bootstrap/prismc-cpp.tar.xz` (the C++ program), each written from
-  its fixed point on 4 November. Queue item 8 rewrites them once more at the end.
-- **The benchmarks** are `bench/` (the GUI table, four ways) and `bench/compiler/` (Rust
-  against C++, each all one language); `RESULTS.md` beside each is the last run.
-- **No agents are running**, and no scheduled watchdogs remain.
+  Everything builds and tests at cargo release and `-O3`, nothing lower (Jimmy).
+- **Merged:** per-module C++ headers; the first three bugs and gaps LP, LW, SR; `Text` as
+  UTF-8 with cursors; the performance queue (a non-atomic `prism_rtl::Rc`, less string
+  churn, gap NL, `?ParseNat`, the emitted-code cleanups).
+- **Branches in flight, each an agent's, merged here when green:**
+  - `claude-style`: modules as a tree. Jimmy's rulings: test modules are declared
+    (`test mod Tests`) and read only by `prism test`; modules nest as Rust's do and there
+    are no sections (`claude/modules-style-pass.md`). Also on it: the two lowering and
+    Test World bugs the first pass found (AW, QP), `claude/bugs/absolute-out-runtime-path.md`,
+    seeds packed without macOS extended attributes, the seed build through a symlinked
+    `target/`.
+  - `claude-arrays`: `claude/bugs/small-arrays-whole-chunks.md`. The C++ array's first
+    chunks sized to fit and Rust's `Map` as the C++ AVL tree are done; one persistent
+    tree-of-chunks `Array` in both runtimes, keeping Appendix B's costs (which the C++
+    view breaks for `Append` and for `Push` onto an older view), is in progress.
+- **The books** are `jhartzell42/prism-notes` `main` at `8260397` or later: Semantics
+  round 4 (TX, Text), round 5 (regular expressions), round 6 (MT, TD: the module tree and
+  test modules); Type System rounds 4 and 5.
+- **The bootstrap.** Both seeds match the tree: `bootstrap/prismc-rust.tar.xz` and
+  `bootstrap/prismc-cpp.tar.xz`, each written from its fixed point.
+- **The benchmarks** are `bench/building`, `bench/running` and `bench/gui`; each writes a
+  `RESULTS.md` beside itself. The numbers so far are `claude/benchmarks-preliminary.md`.
 
 ## Measured so far
 
@@ -60,28 +71,23 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 
 ## The order (Jimmy's)
 
-- **The queue below, items 2 to 5, 7 to 9** (1 and 6 are done). The emitter changes first,
-  then one fixed point at the end.
-- **Then the style pass** (Jimmy, 4 November), after the queue and before the regex code:
-  - a module divided into sections becomes separate files; more hierarchy in the tree;
-  - every module's main file is `mod.prism` (Rust's rule); `lib.prism`, `mod.prism` or
-    `app.prism` declares its submodules, and `app.prism` the main widget;
-  - top-level items that exist only for testability move out of the module into a
-    `test.prism` beside it, run as `.prismtest` is today.
-  A module-system change as much as a reshuffle: prismc's front end, the checker's module
-  graph, the `prism` script and the Semantics chapter on modules. Write the design as a
-  short note first, do it, and put the calls in it as doubts.
-- **Then regular expressions** (the code; the books are written on `claude-regex-books`).
-  Jimmy (4 November): the design is done and good; no design round.
-- **Then the final benchmarks** (bench/building, bench/running, bench/gui), on a quiet
-  machine, and from them **a recommendation: Rust or C++ as the default back end**, argued
-  from both models, running and building (Jimmy).
-- **Makefiles and paths (IC):** the emitted Makefile takes `PRISM_ROOT` from the
-  environment, the relative path only as the fallback, and `prism`, the bootstrap scripts
-  and the test runners export it from their own location (`pwd -P`), so a build tree
-  reached through a symlink (a `target/` moved out of iCloud) still finds the runtime.
-  Check what cargo does with a symlinked manifest directory and fix the Rust side the
-  same way. Right after the current merges.
+1. **Nested modules** (`claude-style`) and **the array fix** (`claude-arrays`), merged.
+2. **Regular expressions**, the code, the lexer first (the books are written). Jimmy: the
+   design is done and good; no design round.
+3. **The layout bug** another agent is reporting under `claude/bugs/` (Jimmy: after regex
+   in the lexer).
+4. **The GUI table's costs**, traced and written up under `claude/bugs/`
+   (`claude/benchmarks-preliminary.md`: every small operation costs what building the
+   table costs on both targets; create-10,000 is 57 s in C++ against 8 s in Rust).
+5. **The final fixed point and both seeds**, then **the final benchmarks** on a quiet
+   machine, and from them **a recommendation: Rust or C++ as the default back end**,
+   argued from both models, running and building (Jimmy).
+6. **The umbrella PR's write-up** (below).
+
+- **Other agents push to this branch** (bug reports under `claude/bugs/`, notes here):
+  fetch before starting and before every merge.
+- **A GUI benchmark opens windows on Jimmy's screen** and needs the display awake: ask or
+  wait for a time he gives; the other benchmarks and every test are headless or brief.
 
 ## On macOS
 
@@ -94,45 +100,14 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 - **Instruction counts** come from macOS's `time -l` ("instructions retired"); valgrind
   does not run on arm64 macOS.
 
-## The queue, in order
+## Performance work still open
 
-All the emitter changes go first; then one fixed point at the end.
+- **Gap OC** (prismc/README.md): Rust still clones an owned match binding used once.
+- **SC1 to SC7** (prismc/README.md, "Strings: what is copied"): the string copies left,
+  among them SC3, C++ `Upper`/`Lower` being ASCII only where Rust maps all of Unicode.
+- **The performance table for the PR** comes from `bench/building/run.sh` and
+  `bench/running/run.sh`: cargo release against clang `-O3` only.
 
-2. **Re-time the C++ build at `make -j$(nproc)`** and record cargo's parallelism (codegen
-   units), since the -j1 number was unfair (Jimmy).
-3. **Cleanups that change emitted code**, one commit each, with build and self-compile
-   times before and after:
-   - (b) a `match` that is a whole function body lowers to an `if`/`return` chain, not
-     `({ __label__ _done; Slot; goto })` (see `subst` in `sem-ch07-normalize`);
-   - (c) drop `mutable` from node fields (only level readers like `label` are `const`,
-     and they must not write);
-   - (d) drop the `if (true)` / `if true` wrapper around merges in `wake`, in both
-     targets;
-   - (e) Rust: skip the clone of a binding used once, e.g. `Some(b2) =>
-     Some(Term::Lam(Rc::new(b2.clone())))` in `?Reduce`, if cheap; otherwise list it.
-4. **(f) A non-atomic count in C++:** a `prism_rtl::Rc<T>` (one allocation, non-atomic,
-   weak where the runtime needs weak) in place of `std::shared_ptr`. Programs are
-   single-threaded (D4). First check that no World and no `on_big_stack` hands values
-   across threads concurrently; if one does, report it instead.
-5. **The string-churn audit (Jimmy: "super important")** in both runtimes and templates:
-   a `String` built and then copied into a `Text`, `format!` into a temporary and then
-   `Text::new`, `to_string()` in comparisons, character-by-character pushes. Fix what's
-   cheap, list the rest. Instruction counts before and after on the normalize compile.
-7. **(h) Split `prismc/lower.prism`** (about 7,000 lines): folded into the style pass below
-   (a module's sections become separate files), which does it for every module at once.
-8. **The final fixed point:** `make bootstrap-cpp`, the C++-built prismc's Rust output
-   byte-identical to the Rust-built prismc's, then both seeds (`bootstrap/bootstrap.sh
-   --update` for the Rust seed if Rust emission changed; write
-   `bootstrap/prismc-cpp.tar.xz`). Re-install `target/bootstrap/prismc` so `./prism` uses
-   a current compiler.
-9. **The performance table**, for the PR:
-   - C++ at -O0, -O2 and -O3 with `make -j$(nproc)`; Rust as a cargo debug build and a
-     release build (opt-level 3).
-   - For each: build time, the four like-for-like self-compiles (both binaries to Rust
-     and to C++), peak memory, and instruction counts on the normalize compile.
-   - Jimmy: "that last data point—which amounts to, which compiled code is faster—is
-     key."
-   - If -O3 runs out of memory on a file, say which and how much.
 ## Regular expressions as a primitive (Jimmy's direction; the design is settled)
 
 Jimmy (4 November): implement it as below, the `%` literals included; the books first
