@@ -99,7 +99,7 @@ group only inside itself.
 | `C`, `Cn`, `Cs`, `LC` | `the property is refused: RE2 and Rust disagree on C, Cn, Cs and LC` (doubt PC) |
 | any other name (long names, `gc=`, `sc=`, binary properties, script extensions, lowercase spellings, spaces) | `an unknown property: general categories by short name, scripts and Any` |
 
-- **General categories (33):** `Cc Cf Co L Ll Lm Lo Lt Lu M Mc Me Mn N Nd Nl No P Pc Pd Pe
+- **General categories (34):** `Cc Cf Co L Ll Lm Lo Lt Lu M Mc Me Mn N Nd Nl No P Pc Pd Pe
   Pf Pi Po Ps S Sc Sk Sm So Z Zl Zp Zs`; one letter may be written bare (`\pL`).
 - **Any.**
 - **Scripts (163, Unicode 15.0's, the names both libraries accept):** Adlam Ahom
@@ -172,7 +172,7 @@ The ASCII classes: `alnum` `[0-9A-Za-z]`, `alpha` `[A-Za-z]`, `ascii` `[\x00-\x7
 | a name used before in the pattern | `a group name used twice` |
 | the end of the pattern inside a group | `a group opened here is never closed` (at the innermost open `(`) |
 | `)` with no group open | `a ) that closes no group` (at the `)`) |
-| opening a group while 100 are open | `groups and repetitions nested more than 100 deep` (at 0; the nesting check below, made early) |
+| a group whose opening (`(`, `(?:`, `(?<name>`, `(?flags:`) has been read while 100 are open | `groups and repetitions nested more than 100 deep` (at 0; the nesting check below, made early, after the opening's own diagnostics) |
 
 Flags inside `(?` ... `)` or `(?` ... `:`: letters and one `-`, every diagnostic at the
 character named but the empty group's:

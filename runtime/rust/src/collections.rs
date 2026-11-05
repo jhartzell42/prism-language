@@ -172,6 +172,11 @@ impl Cursor {
     pub fn at(&self) -> usize {
         self.at
     }
+    /// The whole text the cursor is in (what `?Match` searches, seeing the bytes before
+    /// the cursor).
+    pub fn text(&self) -> &Text {
+        &self.text
+    }
     /// `?Step`: the character at the cursor and the cursor past it, `None` at the end.
     pub fn step(&self) -> Option<(char, Cursor)> {
         let c = self.text.as_str()[self.at..].chars().next()?;
