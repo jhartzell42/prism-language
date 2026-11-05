@@ -19,7 +19,7 @@ instructions() { # binary: instructions its `test` run retires
 count() { # NAME: build and check tests/cost/NAME, then count its run
     local name=$1 bin
     ./prism test --target "$target" "tests/cost/$name" > /dev/null 2>&1 || { echo "cost: tests/cost/$name fails its transcript" >&2; echo 0; return; }
-    if [ "$target" = cpp ]; then bin=target/prism-cpp/${name//-/_}/${name//-/_}; else bin=target/prism-build/debug/${name//-/_}; fi
+    if [ "$target" = cpp ]; then bin=target/prism-cpp/${name//-/_}/${name//-/_}; else bin=target/prism-build/release/${name//-/_}; fi
     instructions "$bin"
 }
 one=$(count one-reader)
