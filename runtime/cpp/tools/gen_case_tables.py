@@ -1,0 +1,162 @@
+# Writes src/case_tables.inc, the tables of `Upper` and `Lower` (src/text_case.cpp), from
+# the Unicode Character Database: UnicodeData.txt (the simple mappings),
+# SpecialCasing.txt (the unconditional full mappings, which replace them; the conditional
+# lines are skipped: Final_Sigma is coded in text_case.cpp, the language-tailored ones are
+# refused) and DerivedCoreProperties.txt (Cased and Case_Ignorable, for Final_Sigma).
+# The three files must be of one Unicode version, which the table records. See README.md.
+#
+#   python3 -I gen_case_tables.py UCD_DIR > ../src/case_tables.inc
+#
+# Written by Claude on the claude-self-hosting branch; subject to change.
+import os
+import re
+import sys
+
+BLOCK = 128  # code points per stage-2 block
+MAX_CP = 0x110000
+
+
+def version_of(path):
+    with open(path, encoding="utf-8") as f:
+        first = f.readline()
+    m = re.match(r"# \w+-(\d+\.\d+\.\d+)\.txt", first)
+    if not m:
+        sys.exit(f"{path}: no version on its first line (expected '# Name-X.Y.Z.txt')")
+    return m.group(1)
+
+
+def data_lines(path):
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.split("#", 1)[0].strip()
+            if line:
+                yield [field.strip() for field in line.split(";")]
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit("usage: gen_case_tables.py UCD_DIR")
+    ucd = sys.argv[1]
+    files = {n: os.path.join(ucd, n) for n in ("UnicodeData.txt", "SpecialCasing.txt", "DerivedCoreProperties.txt")}
+    versions = {version_of(p) for n, p in files.items() if n != "UnicodeData.txt"}
+    if len(versions) != 1:
+        sys.exit(f"the files are of different Unicode versions: {sorted(versions)}")
+    version = versions.pop()
+
+    upper = {}  # code point -> tuple of code points (only where it differs from itself)
+    lower = {}
+    for f in data_lines(files["UnicodeData.txt"]):
+        cp = int(f[0], 16)
+        if f[12]:
+            upper[cp] = (int(f[12], 16),)
+        if f[13]:
+            lower[cp] = (int(f[13], 16),)
+    for f in data_lines(files["SpecialCasing.txt"]):
+        # code; lower; title; upper; (condition_list;)
+        if len(f) > 4 and f[4]:
+            continue  # conditional: Final_Sigma (coded) or a language's tailoring (refused)
+        cp = int(f[0], 16)
+        for table, field in ((lower, f[1]), (upper, f[3])):
+            seq = tuple(int(x, 16) for x in field.split())
+            if seq == (cp,):
+                table.pop(cp, None)
+            else:
+                table[cp] = seq
+
+    cased, ignorable = set(), set()
+    for f in data_lines(files["DerivedCoreProperties.txt"]):
+        if f[1] not in ("Cased", "Case_Ignorable"):
+            continue
+        a, _, b = f[0].partition("..")
+        rng = range(int(a, 16), int(b or a, 16) + 1)
+        (cased if f[1] == "Cased" else ignorable).update(rng)
+
+    # The sequences of more than one code point, index 0 meaning none.
+    seqs = [(0, 0, 0)]
+    seq_index = {}
+
+    def encode(table, cp):
+        """(delta, seq): the mapping as a delta from cp, or as an index into seqs."""
+        m = table.get(cp)
+        if m is None:
+            return 0, 0
+        if len(m) == 1:
+            return m[0] - cp, 0
+        if any(x >= MAX_CP or 0xD800 <= x <= 0xDFFF for x in m):
+            sys.exit(f"U+{cp:04X} maps to something that is not a scalar value")
+        if len(m) > 3:
+            sys.exit(f"U+{cp:04X} maps to {len(m)} code points; the table holds three")
+        key = m + (0,) * (3 - len(m))
+        if key not in seq_index:
+            seq_index[key] = len(seqs)
+            seqs.append(key)
+        return 0, seq_index[key]
+
+    # Context class for Final_Sigma: 1 Case_Ignorable (skipped, whatever else it is),
+    # 2 Cased and not Case_Ignorable, 0 neither.
+    def context(cp):
+        return 1 if cp in ignorable else 2 if cp in cased else 0
+
+    records = [(0, 0, 0, 0, 0)]
+    record_index = {records[0]: 0}
+    per_cp = []
+    for cp in range(MAX_CP):
+        ud, us = encode(upper, cp)
+        ld, ls = encode(lower, cp)
+        r = (ud, ld, us, ls, context(cp))
+        if r not in record_index:
+            record_index[r] = len(records)
+            records.append(r)
+        per_cp.append(record_index[r])
+
+    # The last block holding anything; past it every code point is record 0.
+    last = max(i for i, r in enumerate(per_cp) if r) // BLOCK + 1
+    blocks = []
+    block_index = {}
+    stage1 = []
+    for b in range(last):
+        blk = tuple(per_cp[b * BLOCK:(b + 1) * BLOCK])
+        if blk not in block_index:
+            block_index[blk] = len(blocks)
+            blocks.append(blk)
+        stage1.append(block_index[blk])
+
+    if len(records) > 0xFFFF or len(blocks) > 0xFF or len(seqs) > 0xFFFF:
+        sys.exit(f"the tables outgrew their types: {len(records)} records, {len(blocks)} blocks, {len(seqs)} sequences")
+
+    size = len(stage1) * 1 + len(blocks) * BLOCK * 2 + len(records) * 16 + len(seqs) * 12
+    out = sys.stdout
+    out.write(f"""// Generated by runtime/cpp/tools/gen_case_tables.py from the Unicode Character Database
+// {version} (UnicodeData.txt, SpecialCasing.txt, DerivedCoreProperties.txt). Do not edit:
+// regenerate (runtime/cpp/tools/README.md). {len(records)} records, {len(blocks)} blocks of {BLOCK},
+// {len(seqs) - 1} sequences, stage 1 to U+{last * BLOCK - 1:04X}: {size} bytes.
+
+inline constexpr char unicode_version[] = "{version}";
+inline constexpr std::uint32_t block_size = {BLOCK};
+/// Code points from here on map to themselves and are of context class 0.
+inline constexpr std::uint32_t table_end = 0x{last * BLOCK:X};
+
+""")
+    out.write(f"inline constexpr std::uint8_t stage1[{len(stage1)}] = {{\n")
+    for i in range(0, len(stage1), 24):
+        out.write("    " + ", ".join(str(x) for x in stage1[i:i + 24]) + ",\n")
+    out.write("};\n\n")
+    out.write(f"inline constexpr std::uint16_t stage2[{len(blocks)}][{BLOCK}] = {{\n")
+    for blk in blocks:
+        out.write("    {\n")
+        for i in range(0, BLOCK, 16):
+            out.write("        " + ", ".join(str(x) for x in blk[i:i + 16]) + ",\n")
+        out.write("    },\n")
+    out.write("};\n\n")
+    out.write(f"inline constexpr Record records[{len(records)}] = {{\n")
+    for ud, ld, us, ls, c in records:
+        out.write(f"    {{{ud}, {ld}, {us}, {ls}, {c}}},\n")
+    out.write("};\n\n")
+    out.write(f"inline constexpr Seq seqs[{len(seqs)}] = {{\n")
+    for s in seqs:
+        out.write("    {{" + ", ".join(f"0x{x:X}" for x in s) + "}},\n")
+    out.write("};\n")
+    print(f"{len(records)} records, {len(blocks)} blocks, {len(seqs)} seqs, {len(stage1)} stage1, {size} bytes", file=sys.stderr)
+
+
+main()

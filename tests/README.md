@@ -11,6 +11,8 @@
 - **`checker/`**: the checker's own tests: every corpus program checks clean, every
   program under `neg/` gives exactly its `.expected` diagnostic; `run.sh` runs them. A
   directory under `pos/` or `neg/` is one program, a tree, its `.expected` beside it.
+- **`text/`**: `case.txt`, what `Upper` and `Lower` answer, which both runtimes' tests
+  read (its README states the mapping).
 - **`driver/run.sh`**: which World `./prism run` picks for a root.
 - **`make test`** from the repository root runs all of them, cargo's tests and the
   bootstrap.

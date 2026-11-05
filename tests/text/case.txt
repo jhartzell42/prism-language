@@ -1,0 +1,90 @@
+# `Upper` and `Lower` (Semantics Appendix B, Text): what both runtimes answer, character
+# for character. Written by Claude on the claude-self-hosting branch; subject to change.
+# The format and the statement are tests/text/README.md's.
+# input	upper	lower
+
+# ---- the empty text, ASCII, and texts already in the target case
+		
+Hello, World! 123	HELLO, WORLD! 123	hello, world! 123
+ALREADY UPPER 42	ALREADY UPPER 42	already upper 42
+already lower 42	ALREADY LOWER 42	already lower 42
+iI	II	ii
+\\ \u{0} \u{7f} ~	\\ \u{0} \u{7f} ~	\\ \u{0} \u{7f} ~
+
+# ---- Latin-1 and Latin Extended
+àéîõüýÿ ÀÉÎÕÜÝ	ÀÉÎÕÜÝŸ ÀÉÎÕÜÝ	àéîõüýÿ àéîõüý
+µ × ÷ ª º	Μ × ÷ ª º	µ × ÷ ª º
+ŁÓDŹ łódź	ŁÓDŹ ŁÓDŹ	łódź łódź
+ſ ŉ ǰ	S \u{2BC}N J\u{30C}	ſ ŉ ǰ
+
+# ---- ß and ẞ
+Straße	STRASSE	straße
+ẞ ß	ẞ SS	ß ß
+
+# ---- ligatures
+ﬀ ﬁ ﬂ ﬃ ﬄ ﬅ ﬆ	FF FI FL FFI FFL ST ST	ﬀ ﬁ ﬂ ﬃ ﬄ ﬅ ﬆ
+ﬓ ﬗ	ՄՆ ՄԽ	ﬓ ﬗ
+
+# ---- dotted and dotless i: no locale's tailoring
+İstanbul	İSTANBUL	i\u{307}stanbul
+ıI iİ	II Iİ	ıi ii\u{307}
+
+# ---- titlecase digraphs
+ǅ ǈ ǋ ǲ	Ǆ Ǉ Ǌ Ǳ	ǆ ǉ ǌ ǳ
+Ǆ ǆ	Ǆ Ǆ	ǆ ǆ
+
+# ---- Greek, and the final sigma
+Ὀδυσσεύς	ὈΔΥΣΣΕΎΣ	ὀδυσσεύς
+ΟΔΥΣΣΕΥΣ	ΟΔΥΣΣΕΥΣ	οδυσσευς
+Σ	Σ	σ
+ΑΣ	ΑΣ	ας
+ΣΑΣ ΣΑΣ	ΣΑΣ ΣΑΣ	σας σας
+ΑΣ.	ΑΣ.	ας.
+ΑΣ Β	ΑΣ Β	ας β
+ΑΣΑ	ΑΣΑ	ασα
+ΑΣ'Α	ΑΣ'Α	ασ'α
+Α'Σ	Α'Σ	α'ς
+'Σ	'Σ	'σ
+1Σ	1Σ	1σ
+ΑΣ\u{301}	ΑΣ\u{301}	ας\u{301}
+ΑΣ\u{301}Α	ΑΣ\u{301}Α	ασ\u{301}α
+AΣ	AΣ	aς
+ΑΣA	ΑΣA	ασa
+ς σ	Σ Σ	ς σ
+άέήίόύώ	ΆΈΉΊΌΎΏ	άέήίόύώ
+ΐ ΰ	\u{399}\u{308}\u{301} \u{3A5}\u{308}\u{301}	ΐ ΰ
+ᾳ ᾼ ᾀ ᾈ	ΑΙ ΑΙ ἈΙ ἈΙ	ᾳ ᾳ ᾀ ᾀ
+α\u{345}	ΑΙ	α\u{345}
+
+# ---- Cyrillic
+Привет, Мир! Ёлка	ПРИВЕТ, МИР! ЁЛКА	привет, мир! ёлка
+Ѐѐ Ѡѡ Ӂӂ	ЀЀ ѠѠ ӁӁ	ѐѐ ѡѡ ӂӂ
+
+# ---- Armenian
+Հայաստան	ՀԱՅԱՍՏԱՆ	հայաստան
+և	ԵՒ	և
+
+# ---- Georgian: Mkhedruli's capitals are Mtavruli; Asomtavruli and Nuskhuri
+ქართული	ᲥᲐᲠᲗᲣᲚᲘ	ქართული
+ᲥᲐᲠᲗᲣᲚᲘ	ᲥᲐᲠᲗᲣᲚᲘ	ქართული
+Ⴀⴀ	ႠႠ	ⴀⴀ
+
+# ---- Cherokee: the capitals came first; ᏸ and ꭰ map up
+ᏣᎳᎩ	ᏣᎳᎩ	ꮳꮃꭹ
+ꮳꮃꭹ ᏸ	ᏣᎳᎩ Ᏸ	ꮳꮃꭹ ᏸ
+
+# ---- the astral plane: Deseret, Osage, Adlam, Garay (Unicode 16.0)
+\u{10400}\u{10428}	\u{10400}\u{10400}	\u{10428}\u{10428}
+\u{104B0}\u{104D8}	\u{104B0}\u{104B0}	\u{104D8}\u{104D8}
+\u{1E900}\u{1E922}	\u{1E900}\u{1E900}	\u{1E922}\u{1E922}
+\u{10D50}\u{10D70}	\u{10D50}\u{10D50}	\u{10D70}\u{10D70}
+
+# ---- letterlike symbols that lowercase to a letter
+\u{212A} \u{212B} \u{2126}	\u{212A} \u{212B} \u{2126}	k å ω
+
+# ---- no case
+123 ✓ 中文 日本語 한국어 😀 \u{200D}	123 ✓ 中文 日本語 한국어 😀 \u{200D}	123 ✓ 中文 日本語 한국어 😀 \u{200D}
+
+# ---- combining sequences
+e\u{301} E\u{301}	E\u{301} E\u{301}	e\u{301} e\u{301}
+a\u{308}\u{304} \u{301}	A\u{308}\u{304} \u{301}	a\u{308}\u{304} \u{301}

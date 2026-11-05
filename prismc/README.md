@@ -1822,6 +1822,11 @@ interpolation's and `Concat`'s result in C++, which skips the UTF-8 check its pi
 already passed (`Text::of_utf8`). On the normalize compile this took the C++ prismc
 from 1.777G to 1.516G instructions and its self-compile from 836.9G to 727.4G (68.7 s
 to 60.6 s); the Rust prismc moved within noise (1.403G to 1.400G; 725.2G to 724.0G).
+`Upper` and `Lower` map all of Unicode on both targets, the same on every code point
+(Semantics Appendix B; `tests/text/README.md`): Rust's `str::to_uppercase` and
+`to_lowercase`, which write one `String` that `Text::from` copies once; C++'s
+`text_upper` and `text_lower` (runtime/cpp/README.md, "Upper and Lower"), one pass into
+one buffer, answering a text with nothing to change as itself.
 What stays, and why:
 
 - **SC1 A Rust text literal is a buffer of its own** (`Text::lit` is `Text::new`), made
@@ -1833,9 +1838,6 @@ What stays, and why:
   the `String` is copied once more into the `Rc<str>`, which cannot take a `String`'s
   buffer over. Writing straight into a counted buffer needs a builder the runtime does
   not have; C++ moves its `std::string` into the block instead.
-- **SC3 C++ `Upper` and `Lower` are ASCII only; Rust maps all of Unicode**
-  (`str::to_uppercase`): the targets disagree on a non-ASCII letter (`"é"`). No test has
-  one; the fix is the Unicode tables in C++, or the books narrowing the functions.
 - **SC4 A runtime-made C++ text is checked for UTF-8 each time** (`Text(std::string_view)`:
   a World's input, a `Pod`'s name), as Rust's `str` is by construction; it is the guard
   that a text never holds broken bytes, so it stays.

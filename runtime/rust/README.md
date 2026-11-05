@@ -69,6 +69,18 @@ is the part that is not generated per block, written once and shared.
   - `tests/arrays.rs` and `tests/maps.rs` check the behaviour at the sizes around a
     chunk's edges, the storage each holds (`tests/storage` counts the test binary's
     allocations) and the costs (elements cloned, counted by the element type).
+- **`Upper` and `Lower`** (Semantics Appendix B, Text) are the prelude's, not this
+  crate's: the Rust prelude (prismc/emit/rust/prelude.prism) answers
+  `Text::from(t.as_str().to_uppercase())` and `.to_lowercase()`. `std`'s mapping is
+  the statement both targets meet (`tests/text/README.md`): Unicode's default full case
+  mapping (`SpecialCasing.txt`'s unconditional mappings over `UnicodeData.txt`'s simple
+  ones: `ß` → `SS`, `ﬁ` → `FI`, `İ` → `i̇`), Final_Sigma in `Lower` (`Σ` → `ς` at the end
+  of a word, the one conditional mapping `std` applies), no locale's tailoring (no
+  Turkish dotless `ı`), no normalization; linear, one pass, with a copy into the
+  counted buffer even when nothing changes. Its tables are Unicode 17.0.0's in Rust 1.98
+  (`char::UNICODE_VERSION`), the version the C++ runtime's tables are generated from;
+  `tests/case.rs` runs the prelude's bodies over the shared `tests/text/case.txt` and
+  checks the version.
 - **Build and test:** `cargo test -p prism_rtl` from the repository root.
 - **Its C++ twin** is `runtime/cpp`, module for module.
 - **Regular expressions** (Semantics Appendix B, "Regular expressions"): `src/regex.rs`
