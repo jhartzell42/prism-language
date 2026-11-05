@@ -124,6 +124,9 @@ public:
     static std::optional<Cursor> at_byte(const Text& t, std::size_t n);
     /// `At`: the byte index.
     std::size_t at() const { return at_; }
+    /// The whole text the cursor is in (what `?Match` searches, seeing the bytes before
+    /// the cursor).
+    const Text& text() const { return text_; }
     /// `?Step`: the character at the cursor and the cursor past it, none at the end.
     std::optional<std::pair<char32_t, Cursor>> step() const;
     /// `?StepBack`: the character before the cursor and the cursor at its start, none at
