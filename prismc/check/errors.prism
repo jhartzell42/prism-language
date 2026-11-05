@@ -1,0 +1,160 @@
+# The checker's diagnostics: Type System ch. 5's errors, each with its name, its position
+# and its fix, and how one prints (ch. 5, "The errors": `file:line:`, the line below, the
+# source with carets, and the fix).
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+
+# One diagnostic. `code` is ch. 5's name for the error (`mismatch`, `row-lacks`, ...), or
+# one of the checker's own names its README lists (`unknown-name`, `collision`); `file`
+# is the file's index in the program; `fix` is empty when the message is the fix.
+type CDiag = record:
+    code: Text
+    file: Nat
+    span: Range
+    message: Text
+    fix: Text
+derive ^Eq, ^Show
+
+# A source as the checker holds it: its path, its text, where its lines start, and the
+# files it holds. A module of a tree is one file (claude/modules-style-pass.md); `segs`
+# says where each file begins and its role, so a diagnostic names the file and line it is
+# in.
+type Src = record:
+    path: Text
+    text: Text
+    starts: [Nat]
+    segs: [SrcSeg]
+derive ^Eq, ^Show
+
+# One file of a source: its path, the offset and the line of the text it starts at, and its
+# role (`main` or `test` in a tree, `loose` else). A tree's module is one file, so its source
+# has one; the checker's sources keep the list for a source of several files.
+type SrcSeg = record:
+    path: Text
+    start: Nat
+    line: Nat
+    role: Text
+derive ^Eq, ^Show
+
+MkSrc: fn Text, Text -> Src
+fn MkSrc path, text = Src(path=path, text=text, starts=(CLineStarts text), segs=[[SrcSeg(path=path, start=0, line=0, role="loose")]])
+
+# A source of several files, each `((path, text, role))`, joined by newlines.
+MkJoinedSrc: fn [((Text, Text, Text))] -> Src
+fn MkJoinedSrc files:
+    let text = Join (Each files, \|((ignore, t, ignore))| t), "\n"
+    let starts = CLineStarts text
+    let ((segs, ignore)) = Fold files, (([[]], 0)), \|((acc, at)), ((path, t, role))| (((Push acc, SrcSeg(path=path, start=at, line=(CLineOf starts, at), role=role)), at + (Len t) + 1))
+    let first = match files[0]:
+        ? ((path, ignore, ignore)): path
+        nil: ""
+    Src(path=first, text=text, starts=starts, segs=segs)
+
+# The file of a source holding an offset: the last that starts at or before it.
+SegAt: fn Src, Nat -> SrcSeg
+fn SegAt src, offset = Fold src.segs, (Or src.segs[0], SrcSeg(path=src.path, start=0, line=0, role="loose")), \|found, s| if s.start <= offset: s else: found
+
+# `path:line` of an offset, the line counted in its own file.
+SrcPlace: fn Src, Nat -> Text
+fn SrcPlace src, offset:
+    let seg = SegAt src, offset
+    "{seg.path}:{(Or ((CLineOf src.starts, offset) -? seg.line), 0) + 1}"
+
+Diag0: fn Text, Nat, Range, Text -> CDiag
+fn Diag0 code, file, span, message = CDiag(code=code, file=file, span=span, message=message, fix="")
+
+DiagFix: fn Text, Nat, Range, Text, Text -> CDiag
+fn DiagFix code, file, span, message, fix = CDiag(code=code, file=file, span=span, message=message, fix=fix)
+
+# Where each line begins, as a byte offset.
+CLineStarts: fn Text -> [Nat]
+fn CLineStarts text:
+    let ((starts, ignore)) = Fold (Split text, "\n"), (([[]], 0)), \|((acc, at)), line| (((Push acc, at), at + (Len line) + 1))
+    starts
+
+# The zero-based line holding an offset.
+CLineOf: fn [Nat], Nat -> Nat
+fn CLineOf starts, offset = Dec (Fold starts, 0, \|n, s| if s <= offset: n + 1 else: n)
+
+# The text of line `n` (zero-based), without its newline.
+LineText: fn Src, Nat -> Text
+fn LineText src, n:
+    let from = Or src.starts[n], 0
+    let to = Or src.starts[n + 1], ((Len src.text) + 1)
+    Between src.text, from, (Max from, (Or (to -? 1), 0))
+
+# The source a range covers.
+SpanText: fn Src, Range -> Text
+fn SpanText src, r = Between src.text, r.start, (Max r.start, r.end)
+
+Repeat: fn Text, Nat -> Text
+fn Repeat t, n = Concat (Fold (Range0 n), [[]], \|acc, ignore| Push acc, t)
+
+# The numbers below `n`, without a block-local `Buffer` outside its block.
+Range0: fn Nat -> [Nat]
+fn Range0 n = update [[]]:
+    let &i = 0
+    let &left = n
+    while ? m <- &left -? 1:
+        &left <= m
+        &_ <= Push &_, &i
+        &i += 1
+
+# `file:line: error[code]: message`, the line, carets under the range, and the fix.
+RenderCDiag: fn [Src], CDiag -> Text
+fn RenderCDiag srcs, d = match srcs[d.file]:
+    nil: "?: {Severity d}[{d.code}]: {d.message}\n"
+    ? src:
+        let line = CLineOf src.starts, d.span.start
+        let col = ColumnOf src.text, (Or src.starts[line], 0), d.span.start
+        let text = LineText src, line
+        let width = Max 1, (Min (CountChars (SpanText src, d.span)), (Or ((CountChars text) -? col), 1))
+        let carets = "    {Repeat " ", col}{Repeat "^", width}"
+        let fix = if d.fix == "": "" else: "  fix: {d.fix}\n"
+        "{SrcPlace src, d.span.start}: {Severity d}[{d.code}]: {d.message}\n    {text}\n{carets}\n{fix}"
+
+# `warning` for the one diagnostic that fails nothing (`unused`), else `error`.
+Severity: fn CDiag -> Text
+fn Severity d = if IsWarning d: "warning" else: "error"
+
+IsWarning: fn CDiag -> Bool
+fn IsWarning d = d.code == "unused"
+
+# Diagnostics in order of file, then position, then the order they were found; duplicates
+# dropped.
+SortDiags: fn [CDiag] -> [CDiag]
+fn SortDiags ds = Fold ds, [[]], \|acc, d| InsertSorted acc, d
+
+InsertSorted: fn [CDiag], CDiag -> [CDiag]
+fn InsertSorted acc, d:
+    let before = Filter acc, \|x| not (DiagBefore2 d, x)
+    let after = Filter acc, \|x| DiagBefore2 d, x
+    if AnyIs acc, d: acc else: Append (Push before, d), after
+
+AnyIs: fn [CDiag], CDiag -> Bool
+fn AnyIs xs, d = Fold xs, False, \|seen, x| seen or x == d
+
+DiagBefore2: fn CDiag, CDiag -> Bool
+fn DiagBefore2 a, b:
+    if a.file != b.file: a.file < b.file
+    else: a.span.start < b.span.start
+
+# English for small counts, as ch. 5's `kind` message spells them.
+CountWord: fn Nat -> Text
+fn CountWord 0 = "no"
+fn CountWord 1 = "one"
+fn CountWord 2 = "two"
+fn CountWord 3 = "three"
+fn CountWord 4 = "four"
+fn CountWord n = Show n

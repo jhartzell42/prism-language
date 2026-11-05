@@ -184,7 +184,7 @@ struct HalfCounterProgram : Program {
 TestWorld counters() { return TestWorld().program<CounterProgram>("counter").program<HalfCounterProgram>("halfcounter"); }
 
 void verify(const TestWorld& w, const std::string& name) {
-    auto r = w.verify(slurp(name + ".prismtest"), slurp(name + ".expected"));
+    auto r = w.verify(slurp(name + "/tests.prism"), slurp(name + "/tests.expected"));
     if (!r) check::fail(__FILE__, __LINE__, name + ": " + r.error());
 }
 
@@ -196,7 +196,7 @@ TEST(the_example_counter_keeps_the_left) { verify(counters(), "counter"); }
 TEST(the_half_counter_calls_straight_through) { verify(counters(), "compiler-ch03-halfcounter"); }
 
 TEST(the_semantics_transcript_is_byte_for_byte) {
-    Report report = counters().run(slurp("sem-ch01-counter.prismtest"));
+    Report report = counters().run(slurp("sem-ch01-counter/tests.prism"));
     CHECK(report.failures.empty());
     CHECK(report.transcript.ends_with("  changed:\n    2: Ui.Label(text=\"Count: -1\")\n"));
 }
@@ -424,7 +424,7 @@ TestWorld normals() { return TestWorld().program<NormalProgram>("Normal"); }
 
 TEST(two_reductions_take_three_cycles) {
     verify(normals(), "sem-ch07-normalize");
-    Report report = normals().run(slurp("sem-ch07-normalize.prismtest"));
+    Report report = normals().run(slurp("sem-ch07-normalize/tests.prism"));
     CHECK(report.transcript.find("compute until idle: 3 ticks, 1 to 3\n") != std::string::npos);
 }
 

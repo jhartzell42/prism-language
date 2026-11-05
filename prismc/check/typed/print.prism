@@ -1,0 +1,232 @@
+# `Check.Typed.Print`, a child module of `Check.Typed`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Typed.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+
+# ---------------------------------------------------------------------------------------
+# Printing
+# ---------------------------------------------------------------------------------------
+
+# A type as an S-expression; `unknown` for a type inference could not find.
+TySexp: unbounded fn Ty -> Text
+fn TySexp t = match t:
+    TyFlex n: "(var t{n})"
+    TyRigid n: "(rigid {n})"
+    TyQ n: "(q {n})"
+    TyCon n, [[]]: n
+    TyCon n, args: "({n}{Concat (Each args, \|a| " {TySexp a}")})"
+    TyFn c, ps, res: "(fn {ColSexp c} ({Join (Each ps, TySexp), " "}) {TySexp res})"
+    TyTuple ts: "(tuple{Concat (Each ts, \|a| " {TySexp a}")})"
+    TyArray e: "(array {TySexp e})"
+    TyMap k, v: "(map {TySexp k} {TySexp v})"
+    TySig s, i: "({s} {TySexp i})"
+    TyAt i, rw: "(@ {TySexp i} {RowSexp rw})"
+    TyElem rw, o: "(element {RowSexp rw} {TySexp o})"
+    TyElemAny rw: "(elem {RowSexp rw})"
+    TyAssoc n, a: "(assoc {n} {TySexp a})"
+    TyAny trs: "(any{Concat (Each trs, \|x| " ^{x}")})"
+    TyErr: "unknown"
+
+ColSexp: fn Col -> Text
+fn ColSexp CBound = "bounded"
+fn ColSexp CUnbound = "unbounded"
+fn ColSexp (CRigid n) = "(color {n})"
+fn ColSexp (CQ n) = "(color {n})"
+fn ColSexp (CFlex n) = "(color c{n})"
+
+RowSexp: fn Rw -> Text
+fn RowSexp rw:
+    let tail = match rw.tail:
+        TlClosed: ""
+        TlFlex n: " (tail r{n})"
+        TlRigid n: " (tail {n})"
+        TlQ n: " (tail {n})"
+    let minus = if (Len rw.minus) == 0: "" else: " (minus{Concat (Each rw.minus, \|m| " {m}")})"
+    "(row{Concat (Each rw.fams, \|f| " {f}.*")}{tail}{minus})"
+
+SchemeSexp: unbounded fn Scheme -> Text
+fn SchemeSexp sc:
+    let qs = if (Len sc.qs) == 0: "" else: " (forall{Concat (Each sc.qs, \|q| " {q}")})"
+    let rqs = if (Len sc.rqs) == 0: "" else: " (rows{Concat (Each sc.rqs, \|q| " {q}")})"
+    let cqs = if (Len sc.cqs) == 0: "" else: " (colors{Concat (Each sc.cqs, \|q| " {q}")})"
+    let bs = if (Len sc.bounds) == 0: "" else: " (where{Concat (Each sc.bounds, \|((v, c))| " {v}:^{c}")})"
+    "(scheme{qs}{rqs}{cqs}{bs} {TySexp sc.ty})"
+
+# `path:line:col-line:col`.
+AtText: fn [Src], SrcAt -> Text
+fn AtText srcs, a = match srcs[a.file]:
+    nil: "?:{a.span.start}"
+    ? src: "{(SegAt src, a.span.start).path}:{PosText src, a.span.start}-{PosText src, a.span.end}"
+
+# `line:col` of an offset, the line counted in the file of the source holding the start.
+PosText: fn Src, Nat -> Text
+fn PosText src, offset:
+    let line = CLineOf src.starts, offset
+    let col = ColumnOf src.text, (Or src.starts[line], 0), offset
+    "{(Or (line -? (SegAt src, offset).line), 0) + 1}:{col + 1}"
+
+# The whole typed program: per definition its scheme; then per file every expression in
+# the order the tree has it, with its type (`unknown` when none was found); then the tables.
+TypedSexp: unbounded fn [Src], [Module], Nat, TProgram -> Text
+fn TypedSexp srcs, trees, shown, tp:
+    let tys = Fold tp.exprs, {}, \|m, n| Insert m, (AtKey n.at), n.ty
+    let files = Filter (Range0 (Len trees)), \|i| i < shown
+    let defs = Concat (Each (Filter tp.defs, \|d| d.at.file < shown), \|d| "  (def {d.name} {AtText srcs, d.at} {SchemeSexp d.scheme})\n")
+    let exprs = Concat (Each files, \|i| ExprsOfFile srcs, tys, i, (Or trees[i], emptyMod))
+    let Mine = \|a| Shown a, shown
+    let apps = Concat (Each (Filter tp.apps, \|x| Mine x.at), \|x| "  (app {AtText srcs, x.at} {Quote x.callee} {x.kind} {LayerWord x.layer} (lifted{Concat (Each x.lifted, \|i| " {i}")}) {LayerWord x.inner} {ColSexp x.color})\n")
+    let fns = Concat (Each (Filter tp.fns, \|x| Mine x.at), \|x| "  (fn {Quote x.name} {AtText srcs, x.at} {ColSexp x.declared} {ColSexp x.body})\n")
+    let methods = Concat (Each (Filter tp.methods, \|x| Mine x.at), \|x| "  (method {AtText srcs, x.at} {x.method} ^{x.cls})\n")
+    let impls = Concat (Each (Filter tp.impls, \|x| Mine x.at), \|x| "  (impl {AtText srcs, x.at} ^{x.cls} {TySexp x.ty} {x.how})\n")
+    let groups = Concat (Each (Filter tp.groups, \|x| Mine x.at), \|x| "  (group {x.kind} {AtText srcs, x.at}{Concat (Each x.order, \|c| " ({Join (Each c, \|i| "{i}"), " "})")})\n")
+    let binders = Concat (Each (Filter tp.binders, \|x| Mine x.at), \|x| "  (binder {Quote x.name} {AtText srcs, x.at} {TySexp x.ty})\n")
+    let gens = Concat (Each (Filter tp.gens, \|x| Mine x.at), \|x| "  (gen {Quote x.name} {AtText srcs, x.at}{Concat (Each x.tys, \|q| " {q}")}{Concat (Each x.cols, \|q| " {q}")})\n")
+    let insts = Concat (Each (Filter tp.insts, \|x| Mine x.at), \|x| "  (inst {Quote x.name} {AtText srcs, x.at}{Concat (Each x.tys, \|((q, t))| " ({q} {TySexp t})")}{Concat (Each x.cols, \|((q, c))| " ({q} {ColSexp c})")})\n")
+    "(typed\n (defs\n{defs} )\n (exprs\n{exprs} )\n (apps\n{apps} )\n (fns\n{fns} )\n (methods\n{methods} )\n (impls\n{impls} )\n (groups\n{groups} )\n (binders\n{binders} )\n (gens\n{gens} )\n (insts\n{insts} ))\n"
+
+Shown: fn SrcAt, Nat -> Bool
+fn Shown a, shown = a.file < shown
+
+let emptyMod = Module(name=nil, emitRow=nil, mods=[[]], uses=[[]], decls=[[]], template=nil, span=Range(start=0, end=0))
+
+Quote: fn Text -> Text
+fn Quote t = "\"{t}\""
+
+LayerWord: fn Text -> Text
+fn LayerWord "" = "-"
+fn LayerWord s = s
+
+# Every expression of a file, in the tree's order, with its type.
+ExprsOfFile: unbounded fn [Src], (Text ==> Ty), Nat, Module -> Text
+fn ExprsOfFile srcs, tys, file, m:
+    let es = Fold m.decls, [[]], \|acc, d| Append acc, (DeclExprs d)
+    Concat (Each es, \|e| ExprLine srcs, tys, SrcAt(file=file, span=e.span))
+
+ExprLine: unbounded fn [Src], (Text ==> Ty), SrcAt -> Text
+fn ExprLine srcs, tys, a = "  (expr {AtText srcs, a} {TySexp (Or tys[AtKey a], TyErr)})\n"
+
+DeclExprs: unbounded fn Decl -> [Expr]
+fn DeclExprs d = match d.kind:
+    DFn f: BodyExprs f.body
+    DLet l: ExprsIn l.value
+    DWidget w: StmtsExprs w.body.stmts
+    DTrait t: Fold t.items, [[]], \|acc, it| match it:
+        TiFn f: Append acc, (BodyExprs f.body)
+        otherwise: acc
+    DImpl i: Fold i.items, [[]], \|acc, it| match it:
+        TiFn f: Append acc, (BodyExprs f.body)
+        otherwise: acc
+    DCheck c: Fold c.lines, [[]], \|acc, l| Append acc, (ExprsIn l.expr)
+    DTest t: ExprsIn t.blueprint
+    otherwise: [[]]
+
+BodyExprs: unbounded fn FnBody -> [Expr]
+fn BodyExprs (BodyExpr e) = ExprsIn e
+fn BodyExprs (BodyBlock b) = StmtsExprs b.stmts
+
+StmtsExprs: unbounded fn [Stmt] -> [Expr]
+fn StmtsExprs stmts = Fold stmts, [[]], \|acc, s| Append acc, (StmtExprs s)
+
+StmtExprs: unbounded fn Stmt -> [Expr]
+fn StmtExprs s = match s.kind:
+    SBind ignore, e, ?t: match ?t:
+        ? x: Append (ExprsIn e), (ExprsIn x)
+        nil: ExprsIn e
+    SIgnore e: ExprsIn e
+    SLet ignore, ignore, e: ExprsIn e
+    SFn f: BodyExprs f.body
+    SWidget w: StmtsExprs w.body.stmts
+    SSet t, v: Append (ExprsIn t), (ExprsIn v)
+    SAccum t, ignore, v: Append (ExprsIn t), (ExprsIn v)
+    SRequire c: ExprsIn c
+    SForbid c: ExprsIn c
+    SWhile c, b: Append (CondExprs c), (StmtsExprs b.stmts)
+    SReturn e: ExprsIn e
+    SExpr e: ExprsIn e
+    otherwise: [[]]
+
+CondExprs: unbounded fn Cond -> [Expr]
+fn CondExprs (CondExpr e) = ExprsIn e
+fn CondExprs (CondBind ignore, e, ?g) = Append (ExprsIn e), (OptExprs ?g)
+
+ArgsExprs: unbounded fn [Arg] -> [Expr]
+fn ArgsExprs args = Fold args, [[]], \|acc, a| Append acc, (ExprsIn a.value)
+
+BlockExprs: unbounded fn Block -> [Expr]
+fn BlockExprs b = StmtsExprs b.stmts
+
+# An expression and every expression inside it, outermost first. A record or tag field's
+# name is not an expression; a `..` rest stands for no value.
+ExprsIn: unbounded fn Expr -> [Expr]
+fn ExprsIn e:
+    let inner = match e.kind:
+        ETuple es: Fold es, [[]], \|acc, x| Append acc, (ExprsIn x)
+        EArray es: Fold es, [[]], \|acc, x| Append acc, (ExprsIn x)
+        EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append (Append acc, (ExprsIn k)), (ExprsIn v)
+        EGroup x: ExprsIn x
+        ECall c, args, ignore, ignore: Append (ExprsIn c), (ArgsExprs args)
+        EBinary ignore, l, r: Append (ExprsIn l), (ExprsIn r)
+        EUnary ignore, x: ExprsIn x
+        EFreeSigil ignore, x: ExprsIn x
+        EField r, ignore, ignore: ExprsIn r
+        EIndex r, i: Append (ExprsIn r), (ExprsIn i)
+        ETopicIndex x: ExprsIn x
+        EMethod r, ignore, args: Append (ExprsIn r), (ArgsExprs args)
+        ETypeArgs x, ignore: ExprsIn x
+        ECast x, ignore, ignore: ExprsIn x
+        ELambda ignore, body: match body:
+            LbExpr x: ExprsIn x
+            LbBlock b: BlockExprs b
+        EIf c, t, ?el: Append (Append (CondExprs c), (BlockExprs t)), (OptBlockExprs ?el)
+        EMatch s, arms: Fold arms, (ExprsIn s), \|acc, a| Append (Append acc, (OptExprs a.?guard)), (BlockExprs a.body)
+        ERebuild s, b: Append (ExprsIn s), (BlockExprs b)
+        EFor ignore, s, b: Append (ExprsIn s), (BlockExprs b)
+        EGiven b: BlockExprs b
+        EUpdate t, b: Append (ExprsIn t), (BlockExprs b)
+        EWidgetBlock b: BlockExprs b
+        EAny x: ExprsIn x
+        ELit l: match l.kind:
+            LText segs: Fold segs, [[]], \|acc, sg| match sg:
+                SegPlaceholder x: Append acc, (ExprsIn x)
+                otherwise: acc
+            otherwise: [[]]
+        ETemplate t: TemplateExprs t.parts
+        otherwise: [[]]
+    match e.kind:
+        ERest: inner
+        EError: inner
+        otherwise: Append [[e]], inner
+
+TemplateExprs: unbounded fn [TemplatePart] -> [Expr]
+fn TemplateExprs parts = Fold parts, [[]], \|acc, p| match p:
+    TpPlaceholder x, ignore: Append acc, (ExprsIn x)
+    TpBlock b: Append acc, (BlockExprs b)
+    TpCall ignore, args, ?ps, ignore: Append (Append acc, (ArgsExprs args)), (OptParts ?ps)
+    otherwise: acc
+
+OptParts: unbounded fn ?[TemplatePart] -> [Expr]
+fn OptParts (? ps) = TemplateExprs ps
+fn OptParts nil = [[]]
+
+OptBlockExprs: unbounded fn ?Block -> [Expr]
+fn OptBlockExprs (? b) = BlockExprs b
+fn OptBlockExprs nil = [[]]
+
+OptExprs: unbounded fn ?Expr -> [Expr]
+fn OptExprs (? x) = ExprsIn x
+fn OptExprs nil = [[]]

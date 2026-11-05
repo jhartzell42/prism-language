@@ -1,0 +1,25 @@
+# Teardown is seen at the host, never by the child (Semantics ch. 9): when a key of a hosted
+# child's `for` leaves, its places leave the host's document at the end of that tick (R8),
+# the forwarded element among them is torn down in that tick's patch, and a computed answer
+# in flight to a place under the key (the host's `!tap`, which reaches the child as the next
+# tick's input) is dropped, while the kept row hears it. Written for prismc's back end. Work
+# in progress, subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@child: @unit
+@child:
+    !drop <- Ui.TextInput(name="drop", text=$"")                 # 0, forwarded: any key drops row 2
+    $names <- {1: "one", 2: "two"} then Remove $names, 2 on !drop
+    for k, $name <- $names:                                      # 1/[k]
+        !hit <- Ui.Button(label=$name)                           # 1/[k]/0, answered by the host's !tap
+        $n <- 0 then $n + 1 on !hit
+        Ui.Label(text=$"{$name}: {$n}")                          # 1/[k]/1, forwarded
+
+@host: @unit
+@host:
+    !tap <- Ui.Button(label=$"tap")                              # 0
+    ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
+        Ui.Button(..): @ !tap
+        otherwise: @Element e

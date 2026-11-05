@@ -1,6 +1,5 @@
 # The `Fs` family, as prism_rt's CLI World answers it (prism_rt/src/world/cli.rs;
 # Semantics ch. 8 and ch. 10; prism-reflex ch. 6). There is no directory listing (TD-W1).
-module Fs
 emit Fs.*
 
 type Contents = record:

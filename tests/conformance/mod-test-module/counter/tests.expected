@@ -1,0 +1,5 @@
+# Derived by hand: `Counter.Tests` sees `Step` by `use Counter.*`, and its own helpers bare; a record shows with its named fields (Type System ch. 2).
+check steps
+1: ok
+2: ok
+3: ok

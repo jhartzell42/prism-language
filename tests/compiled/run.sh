@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 # Every conformance program, and chess, through `./prism test`: compiled by prismc, built,
-# each `.prismtest` run under the compiled Test World, its transcript byte-equal to its
-# `.expected`. All of them, every time: `tests/conformance/*.prismtest` (a program's
-# directory of the same name joins it, as sem-ch06-birds's); `examples/chess/rules.prism`
-# alone (rules.prismtest) and `examples/chess` (board.prismtest and rules.prismtest); and
-# prismc's lexer and parser checks (tests/prismc/lexer-checks.prismtest,
-# parser-checks.prismtest).
+# each test module run under the compiled Test World, its transcript byte-equal to the
+# `.expected` of its name. Every program is a tree (claude/modules-style-pass.md): all of
+# them, every time: each tests/conformance/NAME/ holding an app.prism; examples/chess/rules
+# alone (its test module) and examples/chess (the board's and the rules'); and prismc's
+# lexer and parser checks (the test modules of prismc/syntax/lexer and prismc/syntax/parser).
 #
 #   tests/compiled/run.sh [NAMES...]     # every program, or only those named (chess too)
 #   tests/compiled/run.sh --target cpp [NAMES...]   # the same through the C++ target
 #
 # prismc is the `prism` script's (`$PRISMC`, else the newest binary). Logs go to
 # target/compiled/NAME.log (target/compiled-cpp/ for C++). Exits 1 listing the programs
-# that fail, and at which step. Under C++ chess is its `rules.prismtest` and
-# `board.prismtest` only (the Test World; the C++ target has no canvas World).
+# that fail, and at which step. Under C++ chess is its test modules only (the Test World).
 #
 # Written by Claude, 2 November 2026, on the claude-self-hosting branch. Subject to change.
 set -u
@@ -46,17 +44,17 @@ run() { # name, sources...
     failed+=("$name ($step)")
     echo "FAILED $name: $step($log)"
 }
-for script in tests/conformance/*.prismtest; do
-    base=${script%.prismtest}
-    files=("$base.prism")
-    [ -d "$base" ] && files+=("$base")
-    run "$(basename "$base")" "${files[@]}"
+# every program, a tree (claude/modules-style-pass.md): a directory with an app.prism, each
+# test module's transcript its NAME.expected
+for dir in tests/conformance/*/; do
+    [ -f "$dir/app.prism" ] && run "$(basename "$dir")" "${dir%/}"
 done
-run chess-rules examples/chess/rules.prism
+run chess-rules examples/chess/rules
 run chess examples/chess
-# prismc's own front end, checked through its modules (tests/prismc/)
-run lexer-checks tests/prismc/lexer-checks.prism prismc/ast.prism prismc/lexer.prism
-run parser-checks tests/prismc/parser-checks.prism prismc/ast.prism prismc/lexer.prism prismc/parser.prism prismc/sexp.prism
+# prismc's own front end, checked through its modules' test modules: a module directory
+# of prismc's tree, with the modules it reaches by `use`
+run lexer prismc/syntax/lexer
+run parser prismc/syntax/parser
 if [ ${#failed[@]} -gt 0 ]; then
     echo "failed (${#failed[@]}):"
     printf '  %s\n' "${failed[@]}"

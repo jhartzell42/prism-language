@@ -1,4 +1,0 @@
-# `(..)` on a positional case: declarations of positional-rest.prism.
-
-test the_rest_pattern_matches_the_case, @shapes:
-    build

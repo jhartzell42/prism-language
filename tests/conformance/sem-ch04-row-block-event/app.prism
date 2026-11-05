@@ -1,0 +1,48 @@
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# Semantics ch. 4: a `for` row reads its block's names, its block's events among them. A
+# row's hold over the block's `!go` and a result over it fire the tick `go` is clicked;
+# the row's own `!b` is another event, which the row's `$c` does not count.
+emit Ui.*
+test mod Tests
+
+@host: @unit
+@host:
+    !go <- Ui.Button(label=$"go")                                 # 0
+    let $names = $ {"a": unit}
+    !heard <- for k, ignore <- $names:                            # 1/[k]
+        $c <- 0 then $c + 1 on !go
+        Ui.Label(text=$"row {$c}")                                # 1/[k]/0
+        !b <- Ui.Button(label=$"row button")                      # 1/[k]/1
+        @ ((1 on !go) <| (5 on !b))
+    $n <- 0 then $n + 1 on !heard
+    Ui.Label(text=$"{$n}")                                        # 2
+
+# The same with no event of the row's own: the block's event is the row's only one.
+@alone: @unit
+@alone:
+    !go <- Ui.Button(label=$"go")                                 # 0
+    let $names = $ {"a": unit}
+    !heard <- for k, ignore <- $names:                            # 1/[k]
+        $c <- 0 then $c + 1 on !go
+        Ui.Label(text=$"row {$c}")                                # 1/[k]/0
+        @ (1 on !go)
+    $n <- 0 then $n + 1 on !heard
+    Ui.Label(text=$"{$n}")                                        # 2
+
+# A row of a row hears the outermost block's event, through the outer row.
+@nested: @unit
+@nested:
+    !go <- Ui.Button(label=$"go")                                 # 0
+    let $outer = $ {"a": unit}
+    !heard <- for k, ignore <- $outer:                            # 1/[k]
+        !b <- Ui.Button(label=$"outer")                           # 1/[k]/0
+        $d <- 0 then $d + 1 on !b
+        Ui.Label(text=$"outer {$d}")                              # 1/[k]/1
+        let $inner = $ {"x": unit}
+        for j, ignore <- $inner:                                  # 1/[k]/2/[j]
+            !ib <- Ui.Button(label=$"inner")                      # 1/[k]/2/[j]/0
+            $c <- 0 then $c + 1 on !go
+            Ui.Label(text=$"inner {$c}")                          # 1/[k]/2/[j]/1
+            @ ((1 on !go) <| (5 on !ib))
+    $n <- 0 then $n + 1 on !heard
+    Ui.Label(text=$"{$n}")                                        # 2

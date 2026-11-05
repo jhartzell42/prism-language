@@ -1,0 +1,12 @@
+# A test module that declares a family of its own and a tag of it.
+emit r
+use App.*
+
+type Mark = row
+derive ^Eq, ^Show
+
+tag Mark.Dot of Mark
+
+check marks:
+    Mark.Dot == Mark.Dot => True
+    Total 1, 2 => 3

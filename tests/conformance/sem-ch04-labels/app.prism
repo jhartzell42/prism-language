@@ -1,0 +1,39 @@
+# Semantics ch. 4: a list fed from its rows' events, a loop through a hold; and `@Shelf`,
+# a `for` over a dynamic map with a live value and a plain key.
+emit Ui.*
+test mod Tests
+
+type Change = choice:
+    Added
+    Removed
+
+Apply: fn (Nat ==> Text), (Nat ==> Change) -> (Nat ==> Text)
+fn Apply tags, changes = Fold changes, tags, \|acc, k, c| match c:
+    Added: Insert acc, k, "tag {k}"
+    Removed: Remove acc, k
+
+@labels: @unit
+@labels:
+    !add <- Ui.Button(label=$"Add a tag")                       # 0
+    $next <- 1 then $next + 1 on !add
+    let !adds = {$next: Added} on !add
+    !removes <- for $tags:                                      # 1/[key]
+        Ui.Label(text=$_)                                       # 1/[key]/0
+        !remove <- Ui.Button(label=$"Remove")                   # 1/[key]/1
+        @ Removed on !remove
+    $tags <- {} then Apply $tags, (!Union !adds, !removes)
+
+@Shelf: fn $(Text ==> Nat) -> @!(Text ==> ?Nat)
+fn @Shelf $stock:
+    for title, $count <- $stock:
+        Ui.Label(text=$"{title}: {$count} left")
+        !sell <- Ui.Button(label=$"Sell one")
+        @ $count -? 1 on !sell
+
+@shop: @unit
+@shop:
+    $stock <- {"Dune": 2, "Emma": 0} then Restock $stock, !sold
+    !sold <- @Shelf $stock
+
+Restock: fn (Text ==> Nat), (Text ==> ?Nat) -> (Text ==> Nat)
+fn Restock stock, sold = Fold sold, stock, \|acc, t, ?left| Insert acc, t, (Or ?left, 0)

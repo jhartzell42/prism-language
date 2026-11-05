@@ -3,7 +3,9 @@
 # every corpus program checks clean, or gives exactly the diagnostics its
 # `pos/NAME.expected` records (the programs the README lists as wrong by the books), and so
 # does every program of its own under `pos/`; every
-# negative program under `neg/` gives exactly its `.expected` diagnostic. A `# args: ...`
+# negative program under `neg/` gives exactly its `.expected` diagnostic. A directory under
+# `pos/` or `neg/` is one program, a tree (claude/modules-style-pass.md), its `.expected`
+# beside it; every program is checked with `--tests`, its test modules read. A `# args: ...`
 # first line passes options (`--world Ui`). Then the typed output (prismc/typed.prism):
 # `--typed` over chess and the conformance counter annotates every expression with a type,
 # none of them `unknown`; a `pos/NAME.colors` holds every `(app` and `(fn` line of
@@ -39,7 +41,7 @@ trap 'rm -rf "$tmp"' EXIT
 check() {
     local name=$1; shift
     rm -f "$tmp/$name.out"
-    "$prismc" --check "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
+    "$prismc" --check --tests "$@" --out "$tmp/$name.out" > "$tmp/$name.err" 2>&1
     if [ ! -f "$tmp/$name.out" ]; then
         { echo "(the checker wrote nothing)"; tail -3 "$tmp/$name.err"; } > "$tmp/$name.out"
     fi
@@ -63,22 +65,17 @@ compare() {
 
 wanted() { [ ${#only[@]} -eq 0 ] && return 0; for o in "${only[@]}"; do [ "$o" = "$1" ] && return 0; done; return 1; }
 
-# The positive set: every program of the corpus, by its files.
+# The positive set: every program of the corpus, each a tree (claude/modules-style-pass.md).
 declare -A programs
-# A program's directory of the same name joins it (its other modules), as in
-# tests/compiled/run.sh.
-for f in tests/conformance/*.prism; do
-    n=$(basename "$f" .prism)
-    programs[$n]="$f"
-    [ -d "${f%.prism}" ] && programs[$n]="$f $(ls "${f%.prism}"/*.prism | tr '\n' ' ')"
+for d in tests/conformance/*/; do
+    [ -f "$d/app.prism" ] && programs[$(basename "$d")]="${d%/}"
 done
-programs[counter]=tests/conformance/counter.prism
-programs[half-counter]=tests/conformance/half-counter.prism
-programs[todos]=tests/conformance/todos.prism
-programs[chess]="examples/chess/board.prism examples/chess/rules.prism examples/chess/window.prism"
-programs[prelude]="$(ls prelude/*.prism | tr '\n' ' ')"
-programs[prismc]="$(ls prismc/*.prism prismc/templates/*.prism | tr '\n' ' ')"
+programs[chess]=examples/chess
+programs[prelude]=prelude
+programs[prismc]=prismc
 for f in "$here"/pos/*.prism; do [ -e "$f" ] && programs[$(basename "$f" .prism)]="$f"; done
+# a directory under pos/ is one program, a tree (claude/modules-style-pass.md)
+for d in "$here"/pos/*/; do [ -d "$d" ] && programs[$(basename "$d")]="${d%/}"; done
 
 for name in $(printf '%s\n' "${!programs[@]}" | sort); do
     wanted "$name" || continue
@@ -102,10 +99,20 @@ for f in "$here"/neg/*.prism; do
     echo "neg $name: $(head -1 "$tmp/neg-$name.out")"
 done
 
+# The negative trees: a directory under neg/ is one program, its `.expected` beside it.
+for d in "$here"/neg/*/; do
+    [ -d "$d" ] || continue
+    name=$(basename "$d")
+    wanted "$name" || continue
+    check "neg-$name" "${d%/}"
+    compare "neg-$name" "$here/neg/$name.expected"
+    echo "neg $name: $(head -1 "$tmp/neg-$name.out")"
+done
+
 # The typed output: complete (no expression without a known type) for these programs.
 declare -A typed
-typed[typed-chess]="examples/chess/board.prism examples/chess/rules.prism examples/chess/window.prism"
-typed[typed-counter]=tests/conformance/conf-ch01-counter.prism
+typed[typed-chess]=examples/chess
+typed[typed-counter]=tests/conformance/conf-ch01-counter
 for name in $(printf '%s\n' "${!typed[@]}" | sort); do
     wanted "$name" || continue
     rm -f "$tmp/$name.typed"

@@ -1,0 +1,38 @@
+# The todo list's tests: declarations of todos.prism (Semantics chapter 6). Not yet run.
+emit Ui.*
+use App.*
+
+test todos_keep_their_rows, @todos:
+    build
+        => expect Ui.Button(label="Add")
+        => expect_none Ui.Label(..)
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="[ ] item 0")
+        => expect_count Ui.Button(..), 4
+    click Ui.Button(label="Star")
+        => expect Ui.Label(text="[ ] item 0 *")
+    click Ui.Button(label="Toggle")
+        => expect Ui.Label(text="[x] item 0 *")
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="[ ] item 1")
+        => expect Ui.Label(text="[x] item 0 *")
+        => expect_count Ui.Label(..), 2
+    click Ui.Button(label="Add")
+        => expect_count Ui.Label(..), 3
+
+# the comparison run's identity test: deleting item 1 leaves item 2's star on item 2
+test the_star_follows_its_item, @todos:
+    build
+        => expect_none Ui.Label(..)
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="[ ] item 0")
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="[ ] item 1")
+    click Ui.Button(label="Add")
+        => expect Ui.Label(text="[ ] item 2")
+    click at 1/[2]/2
+        => expect Ui.Label(text="[ ] item 2 *")
+    click at 1/[1]/1
+        => expect_none Ui.Label(text="[ ] item 1")
+        => expect Ui.Label(text="[ ] item 2 *")
+        => expect_count Ui.Label(..), 2

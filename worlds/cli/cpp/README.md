@@ -6,7 +6,7 @@ change: implementers use their discretion.*
 The C++ form of `worlds/cli/rust` (the Rust crate `prism_world_cli`): the World a program
 compiled to C++ runs under at the command line, over `runtime/cpp`'s protocol. It answers
 what the Rust one answers, the same way: `Fs.Contents`, `Fs.Output`, `Fs.File`, `Fs.List`,
-`Process.Args`, `Process.Exit`, `Time.After`, and the prelude's `Prelude.Unwrap` and
+`Process.Args`, `Process.Env`, `Process.Exit`, `Time.After`, and the prelude's `Prelude.Unwrap` and
 `Prelude.Exceptions` (worlds/cli/rust/README.md, "What it answers", holds word for word).
 
 ```cpp

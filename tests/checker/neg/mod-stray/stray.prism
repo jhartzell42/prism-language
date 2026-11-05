@@ -1,0 +1,5 @@
+# A module no header declares.
+emit r
+
+Stray: fn Nat -> Nat
+fn Stray n = n

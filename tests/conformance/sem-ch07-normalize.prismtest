@@ -1,5 +1,0 @@
-test two_reductions_take_three_cycles, @Normal (App (Lam (Var 0)), (App (Lam (Var 0)), (Lam (Var 0)))):
-    build
-        => expect Ui.Label(text="working")
-    compute until idle
-        => expect Ui.Label(text="Lam (Var 0)")

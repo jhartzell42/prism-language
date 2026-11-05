@@ -2,7 +2,6 @@
 # four tags a drawing World accepts (Pitch chapters 5 and 6), spelled as the chess window
 # library declares them (examples/chess/window.prism). A library, not the prelude; a program
 # that declares a `Gui` tag of its own replaces this file. Geometry is `Float` (D14).
-module Gui
 emit Gui.*
 
 type Point = record:

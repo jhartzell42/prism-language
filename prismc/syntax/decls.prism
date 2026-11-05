@@ -1,0 +1,228 @@
+# `Syntax.Decls`, a child module of `Syntax`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.*
+
+# ---------------------------------------------------------------------------------------
+# Declarations
+# ---------------------------------------------------------------------------------------
+
+type Decl = record:
+    kind: DeclKind
+    span: Range
+derive ^Eq, ^Show
+
+type DeclKind = choice:
+    DSignature Signature
+    DFn FnClause
+    DLet LetDecl
+    DWidget WidgetDecl
+    DType TypeDecl
+    DTag TagDecl
+    DDerive [TraitRef]
+    DTrait TraitDecl
+    DImpl ImplDecl
+    DCheck CheckDecl
+    DTest TestDecl
+    DStmt Stmt
+derive ^Eq, ^Show
+
+# The name a signature or a definition is for: a name, or in a trait an operator.
+type DefName = choice:
+    DefSName SName
+    DefOp Text, Range
+derive ^Eq, ^Show
+
+type Signature = record:
+    name: DefName
+    ty: Type
+    bounds: [Bound]
+    span: Range
+derive ^Eq, ^Show
+
+type Bound = record:
+    var: Ident
+    traits: [TraitRef]
+    span: Range
+derive ^Eq, ^Show
+
+type FnClause = record:
+    name: DefName
+    params: [Pattern]
+    body: FnBody
+    span: Range
+derive ^Eq, ^Show
+
+type FnBody = choice:
+    BodyExpr Expr
+    BodyBlock Block
+derive ^Eq, ^Show
+
+type LetDecl = record:
+    pattern: Pattern
+    ty: ?Type
+    value: Expr
+    span: Range
+derive ^Eq, ^Show
+
+type WidgetDecl = record:
+    name: SName
+    body: Block
+    span: Range
+derive ^Eq, ^Show
+
+type TypeDecl = record:
+    name: QualName
+    params: [Ident]
+    body: ?TypeBody
+    span: Range
+derive ^Eq, ^Show
+
+type TypeBody = choice:
+    TbRecord [Field]
+    TbChoice [Case]
+    TbRow
+    TbNewtype Case
+    TbUnit Ident
+    TbAlias Type
+derive ^Eq, ^Show
+
+type Field = record:
+    name: Ident
+    ty: Type
+    span: Range
+derive ^Eq, ^Show
+
+type Case = record:
+    name: SName
+    args: [Type]
+    indexed: ?Type
+    span: Range
+derive ^Eq, ^Show
+
+type TagDecl = record:
+    name: QualName
+    ofType: Type
+    bounds: [Bound]
+    fields: [Field]
+    span: Range
+derive ^Eq, ^Show
+
+type TraitDecl = record:
+    name: TraitRef
+    params: [Ident]
+    bounds: [Bound]
+    items: [TraitItem]
+    span: Range
+derive ^Eq, ^Show
+
+type TraitItem = choice:
+    TiSignature Signature
+    TiFn FnClause
+    TiAssocType Ident, [Ident], ?Type, Range
+    TiAssocRow SName, Range
+derive ^Eq, ^Show
+
+type ImplDecl = record:
+    traitRef: TraitRef
+    ty: Type
+    bounds: [Bound]
+    items: [TraitItem]
+    span: Range
+derive ^Eq, ^Show
+
+# ---------------------------------------------------------------------------------------
+# Tests (Conformance ch. 1 and Appendix A)
+# ---------------------------------------------------------------------------------------
+
+type CheckDecl = record:
+    name: Ident
+    lines: [CheckLine]
+    span: Range
+derive ^Eq, ^Show
+
+type CheckLine = record:
+    expr: Expr
+    pattern: ?Pattern
+    span: Range
+derive ^Eq, ^Show
+
+type TestDecl = record:
+    name: Ident
+    blueprint: Expr
+    seed: ?Nat
+    steps: [TestStep]
+    span: Range
+derive ^Eq, ^Show
+
+type TestStep = record:
+    withs: [Entry]
+    action: StepAction
+    checks: [TestCheck]
+    span: Range
+derive ^Eq, ^Show
+
+type Entry = record:
+    element: Expr
+    value: Expr
+    span: Range
+derive ^Eq, ^Show
+
+type StepAction = choice:
+    SaBuild
+    SaTick
+    SaCompute Bool
+    SaPush Entry
+    SaDeliver [Delivery]
+    SaWithOnly
+derive ^Eq, ^Show
+
+type Delivery = record:
+    kind: DeliveryKind
+    target: Target
+    span: Range
+derive ^Eq, ^Show
+
+type DeliveryKind = choice:
+    DkSend Expr
+    DkClick
+    DkAnswer
+derive ^Eq, ^Show
+
+type Target = choice:
+    TgPattern Pattern
+    TgPath TestPath
+    TgElement TestPath
+derive ^Eq, ^Show
+
+type TestPath = record:
+    segments: [PathSeg]
+    span: Range
+derive ^Eq, ^Show
+
+type PathSeg = choice:
+    PsNum Nat
+    PsGen Nat
+    PsKey Expr
+derive ^Eq, ^Show
+
+type TestCheck = record:
+    kind: TestCheckKind
+    span: Range
+derive ^Eq, ^Show
+
+type TestCheckKind = choice:
+    CkExpect Pattern
+    CkExpectNone Pattern
+    CkExpectCount Pattern, Nat
+    CkExpectTop Pattern
+    CkExpectTopNone Pattern
+    CkRequested Pattern, Pattern
+    CkUnrequested Pattern
+    CkReturns Pattern
+    CkFired Pattern
+    CkQuiet
+    CkSettles
+    CkAborted
+    CkSnapshot Text
+derive ^Eq, ^Show

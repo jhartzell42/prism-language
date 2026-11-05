@@ -18,6 +18,8 @@
 #
 #   bootstrap/bootstrap-cpp.sh            # bootstrap, check against Rust, install
 #   bootstrap/bootstrap-cpp.sh --update   # also rewrite the seed from the new fixed point
+#   bootstrap/bootstrap-cpp.sh --seed-at DIR   # only unpack and build the seed in DIR
+#                                              # (bootstrap/test-seed.sh)
 #
 # Written by Claude, 4 November 2026, on the claude-self-hosting branch. Subject to change.
 set -eu
@@ -25,25 +27,45 @@ cd "$(dirname "$0")/.."
 export PRISM_ROOT=$PWD  # for the emitted Makefiles
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 update=0
-[ "${1:-}" = "--update" ] && update=1
+seed_at=""
+case "${1:-}" in
+    --update) update=1 ;;
+    --seed-at) seed_at=${2:?--seed-at takes a directory} ;;
+esac
 b=target/bootstrap
 seed=bootstrap/prismc-cpp.tar.xz
 CXX=${CXX:-g++}
 OPT=${OPT:--O3}
 mkdir -p "$b"
+# pack ARCHIVE DIR FILES...: FILES of DIR as an xz tar with no macOS extended attributes,
+# which a Linux tar warns about once per file: COPYFILE_DISABLE stops bsdtar's AppleDouble
+# entries, and --no-xattrs, where the tar takes it, its LIBARCHIVE.xattr headers.
+pack() {
+    local out=$1 dir=$2; shift 2
+    local flags=()
+    if tar --no-xattrs -cf /dev/null -T /dev/null 2> /dev/null; then flags=(--no-xattrs); fi
+    COPYFILE_DISABLE=1 tar ${flags[@]+"${flags[@]}"} -C "$dir" -cJf "$out" "$@"
+}
 # build_cpp DIR: make builds the program in DIR, its binary at DIR/prismc (one job: the
 # largest file needs most of the memory a small machine has)
 build_cpp() {
     make -s -C "$1" -j"${JOBS:-1}" CXX="$CXX" OPT="$OPT" > "$1.log" 2>&1 || { tail -30 "$1.log" >&2; exit 1; }
 }
+# build_seed DIR: the seed unpacked into DIR and built, its binary at DIR/prismc. The
+# Makefile finds the runtime at PRISM_ROOT, exported above, never by `..` from DIR's
+# physical place, which under a symlinked target/ is not in the repository.
+build_seed() {
+    [ -f "$seed" ] || { echo "no starting prismc: set PRISMC, or keep $seed" >&2; exit 2; }
+    echo "seed: building prismc from $seed in $1"
+    rm -rf "$1" && mkdir -p "$1"
+    tar -C "$1" -xJf "$seed"
+    build_cpp "$1"
+}
+if [ -n "$seed_at" ]; then build_seed "$seed_at"; echo "seed: built $seed_at/prismc"; exit 0; fi
 start=${PRISMC:-}
 if [ -z "$start" ] && [ -x "$b/prismc" ]; then start=$b/prismc; fi
 if [ -z "$start" ]; then
-    [ -f "$seed" ] || { echo "no starting prismc: set PRISMC, or keep $seed" >&2; exit 2; }
-    echo "seed: building prismc from $seed"
-    rm -rf "$b/cpp-seed" && mkdir -p "$b/cpp-seed"
-    tar -C "$b/cpp-seed" -xJf "$seed"
-    build_cpp "$b/cpp-seed"
+    build_seed "$b/cpp-seed"
     start=$b/cpp-seed/prismc
 fi
 rm -rf "$b/cpp-gen1" "$b/cpp-gen2" "$b/cpp-gen3" "$b/cpp-src" "$b/cpp-rust"
@@ -77,7 +99,7 @@ if ! same 1 2; then
     fi
     fixed=2
 fi
-echo "C++ fixed point: cpp-gen$fixed and cpp-gen$((fixed + 1)) are byte-equal ($(cat "$b/cpp-gen$fixed"/src/*.cpp "$b/cpp-gen$fixed"/src/*.hpp | wc -l) lines of C++)"
+echo "C++ fixed point: cpp-gen$fixed and cpp-gen$((fixed + 1)) are byte-equal ($(find "$b/cpp-gen$fixed/src" -name '*.[ch]pp' -exec cat {} + | wc -l) lines of C++)"
 # The C++ compiler's Rust against the Rust compiler's ($RUST_PRISMC, else the Rust
 # bootstrap's, which must be built from the same prismc/: run `make bootstrap` first).
 rust=${RUST_PRISMC:-$b/prismc}
@@ -97,6 +119,6 @@ fi
 cp "$b/cpp-gen$fixed/prismc" "$b/prismc-cpp.new" && mv "$b/prismc-cpp.new" "$b/prismc-cpp"
 echo "installed $b/prismc-cpp (cpp-gen$fixed)"
 if [ $update = 1 ]; then
-    tar -C "$b/cpp-gen$fixed" -cJf "$seed.new" src Makefile && mv "$seed.new" "$seed"
+    pack "$seed.new" "$b/cpp-gen$fixed" src Makefile && mv "$seed.new" "$seed"
     echo "seed: wrote $seed from cpp-gen$fixed ($(du -h "$seed" | cut -f1))"
 fi

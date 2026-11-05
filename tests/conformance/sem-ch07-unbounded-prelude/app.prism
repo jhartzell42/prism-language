@@ -1,0 +1,17 @@
+# An unbounded function given to a prelude function (`Each`): D8 makes `Each` unbounded
+# with it, so each call of `Double` is a cycle point (D6), three calls and four cycles.
+# Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+
+Double: unbounded fn Nat -> Nat
+fn Double n = n + n
+
+Doubles: unbounded fn [Nat] -> [Nat]
+fn Doubles xs = Each xs, Double
+
+@Listed: fn [Nat] -> @unit
+fn @Listed xs:
+    !done <- @Run Doubles, xs                               # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                   # 1

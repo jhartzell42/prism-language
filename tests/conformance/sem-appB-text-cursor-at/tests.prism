@@ -1,0 +1,14 @@
+# `?CursorAt`: declarations of sem-appB-text-cursor-at.prism.
+emit r
+use App.*
+
+check cursor_at:
+    Boundaries sample, 20 => [[0, 1, 3, 4, 5, 6, 9, 12, 15]]
+    From sample, 0 => "héllo→世界"
+    From sample, 3 => "llo→世界"
+    From sample, 2 => "-"
+    From sample, 10 => "-"
+    From sample, 15 => ""
+    From sample, 16 => "-"
+    From "", 0 => ""
+    At (Or (?CursorAt sample, 9), (Front sample)) => 9

@@ -1,8 +1,0 @@
-test a_switch_hears_the_birth, @births:
-    build
-        => expect Ui.Label(text="heard=0")
-    tick
-        => expect Ui.Label(text="heard=1")
-    click Ui.Button(label="Again")
-    tick
-        => expect Ui.Label(text="heard=2")

@@ -1,0 +1,268 @@
+# `Lower.Node.Keyed`, a child module of `Lower.Node`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Switch.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+
+# ---------------------------------------------------------------------------------------
+# `for` (claude/backend.md, "Dynamic structure"): a builder node of rows keyed by the
+# source's keys, each row a node of its own whose `$_` (or `$v`) is a projection of the
+# source, the block's `{name}_source` getter at the row's key, read at the row's read
+# point and written by nobody (pick RE); a row's event result gathers into the block's
+# `!(K ==> T)`, one firing a tick
+# ---------------------------------------------------------------------------------------
+
+ForLine: unbounded fn Wx, Env, Env, ?ForBinders, Expr, Block, Expr, ?Bn -> ((Wx, Wres))
+fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
+    let lx = wx.lx
+    let pos = wx.pos
+    let wx1 = update wx:
+        &_.pos <= NextPos &_.pos
+    let ((srcEx, reads)) = DynamicExpr wx1, menv, source
+    let srcTy = Peel (TypeAt lx, source.span)
+    let ((kt, vt, keyed)) = match srcTy:
+        TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), True))
+        TyArray v: ((OutNat, (OutTyOf lx, v), False))
+        otherwise: ((OutUnit, OutUnit, True))
+    let src = if keyed: srcEx else: XCall "indexed", [[(XRef srcEx)]]
+    let base = match ?bound:
+        ? (BnEv er, ignore): (GnOf wx1, er.node).name
+        otherwise: "rows"
+    let ((name, wx2a)) = FreshName wx1, base
+    # The source as a getter of the block, which the builder and every row's entry read: a
+    # dynamic `let` of the block for the marks.
+    let srcGetter = "{name}_source"
+    # Computed once per write behind it (gap SR): an `rt::Cache`, marked by every write
+    # path through `MovedBy` (`SourceMarks`).
+    let srcCached = XMethod (XField XSelf, "{srcGetter}_cache"), "get", [[XCx, (XClosure False, [[]], src)]]
+    let srcDef = MethDef(name=srcGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=(OutMap kt, vt), body=[[]], tail=srcCached, doc="The source of the `for` at place {PlaceText pos} by key, at the read point: what its builder and its rows' entries read, computed once per write behind it.")
+    let rowName = "{wx.node}{RowSuffix wx}Row"
+    let locals = RowLocals benv, menv, body
+    let rowFields = Append [[(("key", kt, "the row's key")), (("left_entry", (OutCell (OutOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (OutWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))
+    let rowMoves = Append [[(("key", (XClone (XVar "key")))), (("left_entry", (XCall "RefCell::new", [[XNone]]))), (("parent", (XVar "parent")))]], (Each locals, \|l| ((l.field, (XVar l.field))))
+    let rowTaken = Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)
+    let rowWx0 = NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.depth, (?HostedRows wx)
+    # The block's events the body names reach the row through ports, as a generation's do
+    # (`RowEnv`): a port node in the row, subscribed to the block's port, which the block's
+    # event fires. The row's own graph indexes none of the block's events.
+    let ((wx2p, rowWx0p, ports)) = RowEnv wx2a, rowWx0, menv, body
+    let wx2 = update (AddField wx2p, "{srcGetter}_cache", (OutNamed "Cache", [[(OutMap kt, vt)]]), "the source of the `for` at place {PlaceText pos}, cached (gap SR)", (XCall "Cache::new", [[]])):
+        &_.taken <= Append &_.taken, [[srcGetter, "{srcGetter}_cache"]]
+        &_.getters <= Push &_.getters, srcDef
+        &_.dynReads <= Insert &_.dynReads, srcGetter, reads
+    let keyB = BnLocal (XVar "key"), Owned, kt
+    let keyM = BnLocal (XField XSelf, "key"), Owned, kt
+    let benvL = EventsOf ports, (Fold locals, (RowReads benv, parentArg), \|en, l| Bind en, l.name, (BnLocal (XVar l.field), Owned, l.ty))
+    let menvL = EventsOf ports, (Fold locals, (RowReads menv, parentRef), \|en, l| Bind en, l.name, (BnLocal (XField XSelf, l.field), Owned, l.ty))
+    let passed = Append (HostedPassed wx), (Each locals, \|l| l.passed)
+    let rowParams = Append (Append [[(("key", kt)), (("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), (Each locals, \|l| ((l.field, l.ty)))
+    # `$_`: in the build the entry after the tick, which the builder passes; in the methods the
+    # projection, marked by the block's writes behind the source.
+    let entryM = BnDyn (XMethod (XSelf), "entry", [[XCx]]), [[ParentRead srcGetter]], vt
+    let ((rbe, rme)) = ForEnvs benvL, menvL, ?binders, keyB, keyM, (BnLocal (XVar "value"), Owned, vt), entryM, vt
+    let rowWx = BlockInto rowWx0p, rbe, rme, body
+    let wx3 = update wx2:
+        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=name, reads=(RowPlaceReads rowWx), wrote=(RowHears rowWx), kind=ForRow)
+    let full = TypeAt lx, e.span
+    let outTy = OutTyOf lx, (Peel full)
+    match rowWx.result:
+        WrEv r:
+            let ((gid, wx4)) = AddGn wx3, "{name}_all", outTy, GnGather, 1
+            let wx5 = AddFieldLast wx4, "{name}_gathered", (OutStamped outTy), "the rows' firings this tick, by key", (XCall "Stamped::new", [[]])
+            let wx6 = update wx5:
+                &_.gns <= Each &_.gns, \|n| if n.id == gid: WithInputs n, [["{name}_gathered"]] else: n
+            let rowDone = Connect rowWx, r, (SkUp "{name}_all_in")
+            let wx7 = AddBuilder wx6, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gather=(? gid))), passed
+            ((wx7, (WrEv (EvRefOf wx7, gid))))
+        WrDyn ex, resultReads, rt:
+            # The gathered dynamic `$(K ==> T)` is structural (pick ST): the rows' results by
+            # key are computed live by `{name}_all_now`, snapshotted after the builder has run,
+            # and the program reads the lagged dynamic, published the tick after a snapshot
+            # moved. A row whose own hold behind its result is written marks the snapshot
+            # through `{name}_all_moved`; the block's writes behind the results, read through
+            # the parent, mark it as the live computation's own reads.
+            let gathered = "{name}_all"
+            let gatheredTy = OutMap kt, rt
+            let ownBehind = Filter (ReadsClosed rowWx.dynReads, resultReads), \|r| match r:
+                OwnRead ignore: True
+                ParentRead ignore: False
+            let rowDone = update rowWx:
+                &_.getters <= Push &_.getters, (MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The row's result, which the block gathers by key."))
+                &_.resultMoved <= if (Len ownBehind) > 0: ? (("{gathered}_moved", ownBehind)) else: nil
+            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowDone, qk=rowName, params=rowParams, gather=nil)), passed
+            let all = (XMethod (XMethod (XMethod (XMethod (XField XSelf, name), "borrow", [[]]), "iter", [[]]), "map", [[(XClosure False, [[PaTuple [[PaBind "k", PaBind "row"]]]], (XTuple [[XClone (XVar "k"), (XMethod (XVar "row"), "result", [[XCx]])]]))]]), "collect", [[]])
+            let what = "the dynamic gathered by the `for` at place {PlaceText pos}"
+            let wx5 = update wx4:
+                &_.taken <= Append &_.taken, [[gathered, "{gathered}_now", "{gathered}_snap", "{gathered}_moved", "{gathered}_publish"]]
+                &_.getters <= Append &_.getters, [[(MethDef(name="{gathered}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=gatheredTy, body=[[]], tail=all, doc="The rows' results by key, computed live: what the snapshot of the `for`'s dynamic is taken from (pick ST).")), (SnapGetter gathered, gatheredTy, "The `for`'s dynamic, the rows' results by key, a structural dynamic (pick ST): one tick behind the rows, the snapshot of the tick before the tick the read point is after.")]]
+                &_.fields <= Push &_.fields, (("{gathered}_snap", (OutSnapshot gatheredTy), "the `for` at place {PlaceText pos}'s gathered dynamic, structural: its snapshots, the rows' results and the lagged dynamic (pick ST)"))
+                &_.inits <= Push &_.inits, (("{gathered}_snap", (XCall "Snapshot::new", [[XStr what]])))
+                &_.snaps <= Push &_.snaps, SnapDef(name=gathered, live="{gathered}_now", ty=gatheredTy, eq=(TyHasEq lx, (Peel full), [[]]), builder=name, before=False, what=what)
+                &_.dynReads <= Insert &_.dynReads, "{gathered}_now", (UnionReads reads, (BlockReads (ReadsClosed rowWx.dynReads, resultReads)))
+            ((wx5, (WrDyn (XMethod (XSelf), gathered, [[XCx]]), [[OwnRead gathered]], gatheredTy)))
+        otherwise:
+            let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWx, qk=rowName, params=rowParams, gather=nil)), passed
+            ((wx4, WrUnit))
+
+# A row's entry, `$_`: the block's source at the row's key, at the read point (a projection
+# of the block's holds, written by nobody, pick RE). From the row's leaving on, the value as
+# the leaving tick opened: a key that leaves ends its row at the end of that tick (R8), and
+# the entry after that tick does not exist, so the leaving reads it as the tick opened
+# (`Cx::before`) and keeps it in `left_entry`.
+EntryGetter: fn Text, OutTy -> MethDef
+fn EntryGetter srcGetter, vt:
+    let found = XMethod (XMethod (XMethod (XVar "parent"), srcGetter, [[XCx]]), "get", [[(XRef (XField XSelf, "key"))]]), "cloned", [[]]
+    let opened = XMethod (XMethod (XCx), "before", [[(XClosure False, [[PaBind "cx"]], found)]]), "expect", [[(XStr "a row's key is in its source as its tick opened")]]
+    let body = [[(DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XMethod (XField XSelf, "left_entry"), "borrow", [[]]), "as_ref", [[]]), [[(DoReturn (XClone (XVar "v")))]], [[]]), (DoLet (PaBind "parent"), parentRef)]]
+    let tail = XMatch found, [[XArm(pat=(PaCtor "Some", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaUnit "None"), conds=[[]], body=opened)]], False, vt
+    MethDef(name="entry", recv=RecvRef, params=[[]], cx=CxRef, ret=vt, body=body, tail=tail, doc="The row's entry, `$_`: the block's source at this key, at the read point; from the row's leaving on, the value as the leaving tick opened.")
+
+AddBuilder: fn Wx, Text, Pos, OutTy, OutTy, Text, Bool, [Read], PendingRow, [Ex] -> Wx
+fn AddBuilder wx, name, pos, kt, vt, rowName, keyed, reads, waiting, passed:
+    let wx0 = AddFieldLast wx, name, (OutCell (OutMap kt, (OutRc (OutNamed rowName, [[]])))), "the rows of the `for` at place {PlaceText pos}", (XCall "RefCell::new", [[(XCall "Map::new", [[]])]])
+    update wx0:
+        &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, source="{name}_source", parent=(XWeak XSelf), passed=passed)
+        &_.buildHolds <= UnionReads &_.buildHolds, reads
+        &_.pending <= Push &_.pending, waiting
+
+# What a row's places read of its block, as the block's own reads: the block's writes of
+# these mark the rows (`RowMarks`).
+RowPlaceReads: fn Wx -> [Read]
+fn RowPlaceReads rowWx = Fold rowWx.places, [[]], \|acc, pl| UnionReads acc, (BlockReads (ReadsClosed rowWx.dynReads, pl.reads))
+
+# A row of a hosted child's `for` or `rebuild` (or of a hosted row) takes the host whose
+# document its places are entries of, `enclosing`, as a parameter of its `build` and keeps
+# it (pick HO): its places ask their first values of it, and a host of its own builds in
+# its scope.
+HostedParams: fn Wx -> [((Text, OutTy))]
+fn HostedParams wx = match ?HostedRows wx:
+    ? ignore: [[(("enclosing", hostOfTy))]]
+    nil: [[]]
+
+HostedPassed: fn Wx -> [Ex]
+fn HostedPassed wx = match ?HostedRows wx:
+    ? ignore: [[(XClone (HostFieldEx wx, wx.pos))]]
+    nil: [[]]
+
+# A row's view of its block's holds and dynamic `let`s: read through the parent at the
+# row's read point, each a `ParentRead` in what it reads, so the row's places that read
+# one are live and the block's writes of it mark the rows (gap DY).
+RowReads: fn Env, Ex -> Env
+fn RowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
+    ? (BnHold f, t): Bind en, k, (BnDyn (XMethod (XField pref, f), "get", [[XCx]]), [[ParentRead f]], t)
+    ? (BnDyn (XMethod (XSelf), m, xs), ignore, t): Bind en, k, (BnDyn (XMethod pref, m, xs), [[ParentRead m]], t)
+    otherwise: en
+
+# The event bindings of a row's port environment (`RowEnv`) over a row's environment: the
+# block's events as the row's ports.
+EventsOf: fn Env, Env -> Env
+fn EventsOf ports, env = Fold (Keys ports.names), env, \|en, k| match ports.names[k]:
+    ? (BnEv er, t): Bind en, k, (BnEv er, t)
+    otherwise: en
+
+# A row's reads of its block, as the block's own reads: the block's writes of these mark
+# the rows.
+BlockReads: fn [Read] -> [Read]
+fn BlockReads reads = Fold reads, [[]], \|acc, r| match r:
+    ParentRead f: AddRead acc, (OwnRead f)
+    OwnRead ignore: acc
+
+# The block's plain values a row reads (a parameter, a plain `let`): each a field of the
+# row, which the block passes to its `build`, since a row's build has no block to read.
+type RowLocal = record:
+    name: Text
+    field: Text
+    ty: OutTy
+    passed: Ex
+
+RowLocals: unbounded fn Env, Env, Block -> [RowLocal]
+fn RowLocals benv, menv, body = Fold (ReadNames (BlockExprs body)), [[]], \|acc, n| match menv.names[n]:
+    ? (BnLocal rs, mode, t):
+        let field = Snake n
+        if field == "key" or field == "value" or field == "parent" or field == "path": acc
+        else: Push acc, (RowLocal(name=n, field=field, ty=t, passed=(Own (VlPlace rs, mode, t))))
+    otherwise: acc
+
+# A row's environments: the block's names, `key`, `$_`, and the `for`'s binders.
+ForEnvs: unbounded fn Env, Env, ?ForBinders, Bn, Bn, Bn, Bn, OutTy -> ((Env, Env))
+fn ForEnvs benv, menv, ?binders, keyB, keyM, valB, valM, vt:
+    let be0 = Bind (Bind benv, "key", keyB), "$_", valB
+    let me0 = Bind (Bind menv, "key", keyM), "$_", valM
+    match ?binders:
+        nil: ((be0, me0))
+        ? fb: match fb.?second:
+            ? second:
+                let be1 = BindPat be0, fb.first, keyB, (XVar "key"), kt0
+                let me1 = BindPat me0, fb.first, keyM, (XField XSelf, "key"), kt0
+                (((BindPat be1, second, valB, (XVar "value"), vt), (BindPat me1, second, valM, XUnit, vt)))
+            nil: (((BindPat be0, fb.first, valB, (XVar "value"), vt), (BindPat me0, fb.first, valM, XUnit, vt)))
+
+let kt0 = OutUnit
+
+# A `for` binder: a name binds the key or the entry; a tuple binds its parts, each the
+# part of the entry (`for ((path, text)) <- files:`).
+BindPat: fn Env, Pattern, Bn, Ex, OutTy -> Env
+fn BindPat env, p, b, whole, t = match p.kind:
+    PName n: Bind env, (SNameKey n), b
+    PGroup q: BindPat env, q, b, whole, t
+    PTuple ps:
+        let ts = match t:
+            OutTuple xs: xs
+            otherwise: [[]]
+        Fold (Range0 (Len ps)), env, \|en, i| match ps[i]:
+            ? q: match q.kind:
+                PName n: Bind en, (SNameKey n), (PartBn b, whole, i, (Or ts[i], OutUnit))
+                otherwise: en
+            nil: en
+    otherwise: env
+
+# Part `i` of a tuple entry: of the build's value, or of the row's entry projection.
+PartBn: fn Bn, Ex, Nat, OutTy -> Bn
+fn PartBn (BnDyn x, rds, ignore), whole, i, t = BnDyn (XPart x, i), rds, t
+fn PartBn other, whole, i, t = BnLocal (XPart whole, i), Owned, t
+
+# What tells a node's rows apart in their names: nothing for the first, a count for the
+# rest (the finished rows, with their children, and the `for` rows still pending).
+RowSuffix: fn Wx -> Text
+fn RowSuffix wx:
+    let n = (Len wx.rows) + (Len wx.pending)
+    if n == 0: "" else: "{n}"
+
+GnTyNamed: fn Wx, Text -> OutTy
+fn GnTyNamed wx, n = Fold wx.gns, OutUnit, \|acc, g| if g.name == n: g.ty else: acc

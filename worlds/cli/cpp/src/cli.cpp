@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -237,6 +238,21 @@ bool tagged(const Pod& e, const char* tag) {
     return t && *t == tag;
 }
 
+}  // namespace
+
+// `Process.Env`'s answer: `? value`, or `nil` when the variable is unset or not UTF-8. The
+// value is copied out of the environment at once; nothing in the program changes the
+// environment, so the pointer `getenv` gives is read before anything could invalidate it.
+Pod env_value(const std::string& name) {
+    const char* v = std::getenv(name.c_str());
+    if (!v) return Pod::nil();
+    std::string s(v);
+    if (prism_rtl::utf8_error_at(s)) return Pod::nil();
+    return Pod::some(Pod::text(prism_rtl::Text(s)));
+}
+
+namespace {
+
 struct CliReady : prism_rtl::ReadyState {
     prism_rtl::Rc<FileSystem> fs;
     prism_rtl::Rc<const std::vector<std::string>> args;
@@ -255,6 +271,11 @@ struct CliReady : prism_rtl::ReadyState {
             return listing(fs->list(*d));
         }
         if (*tag == "Process.Args") return listing(*args);
+        if (*tag == "Process.Env") {
+            auto n = text_field(e, "name");
+            if (!n) return std::nullopt;
+            return env_value(*n);
+        }
         return std::nullopt;
     }
 };

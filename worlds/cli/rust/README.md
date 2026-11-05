@@ -31,6 +31,8 @@ prism_rtl::drive::<MyProgram>(&mut CliWorld::new(MemFs::default(), args), &[], p
     or an `Error`.
 - **`Fs.List(dir)`**, `$[Text]`, this crate's own tag (below)
 - **`Process.Args`**, `[Text]`: the arguments, plain, once.
+- **`Process.Env(name)`**, `?Text`: the variable's value, plain, once; `nil` when it is
+  unset or not UTF-8.
 - **`Process.Exit(code=!U8)`**
   - It ends the program with `code` after every request of its tick is performed, in
     document order, so a write fired beside the exit lands first.

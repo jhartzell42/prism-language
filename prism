@@ -3,7 +3,7 @@
 # native prismc:
 #
 #   ./prism compile [--target T] SRC... -o OUT   the program in OUT: a Rust crate, or C++
-#   ./prism test [--target T] SRC...     compile, build, run the .prismtest scripts
+#   ./prism test [--target T] SRC...     compile, build, run the test modules
 #   ./prism run [--world W] [--print-world] SRC... [-- ARGS...]   compile, build, run the root
 #   ./prism check [--world FAMS] [--unused] SRC...  the checker's report; --unused also
 #                                        warns at each definition nothing uses
@@ -13,10 +13,11 @@
 # overrides, e.g. `-O0 -g` to debug a failing test), and runs its tests
 # under the C++ Test World; `run` under the C++ target takes the CLI World only.
 #
-# SRC is a directory (every `.prism` and `.prismtest` under it), a `.prism` file (with the
-# `.prismtest` of its name beside it, when there is one) or a `.prismtest` file. `test`
-# runs every script under the compiled Test World, each transcript byte-equal to the
-# `.expected` of its name. `run` builds with the World the root's `emit` row asks for, as
+# SRC is a directory, which goes to prismc as it is, a tree (claude/modules-style-pass.md):
+# its app.prism, lib.prism or mod.prism; or a loose `.prism` file. `test` and `check` read
+# test modules (prismc's `--tests`), `compile` and `run` never do. `test` runs every test
+# module under the compiled Test World, each transcript byte-equal to the `.expected` of
+# its name (`tests.expected` for `tests.prism`). `run` builds with the World the root's `emit` row asks for, as
 # prismc decides it from the root module's row: `Gui.*` the canvas World, anything else
 # the CLI World; `--world cli|canvas` overrides. A root whose row has `Ui.*` without
 # `Gui.*` is refused: no World answers Ui elements alone.
@@ -57,7 +58,7 @@ while [ $# -gt 0 ]; do
         --unused) unused=1; shift ;;
         --) shift; progargs=("$@"); break ;;
         *)
-            if [ -d "$1" ] || [[ "$1" == *.prism ]] || [[ "$1" == *.prismtest ]]; then
+            if [ -d "$1" ] || [[ "$1" == *.prism ]]; then
                 srcs+=("$1"); shift
             else
                 progargs=("$@"); break
@@ -103,32 +104,16 @@ if [ -z "$prismc" ]; then
     [ -n "$prismc" ] || { echo "prism: no prismc binary (target/keep/prismc-*, or make bootstrap)" >&2; exit 2; }
 fi
 
-# The sources as prismc takes them: a `.prism` file with the `.prismtest` of its name.
-sources=()
-for s in "${rel[@]}"; do
-    sources+=("$s")
-    if [[ "$s" == *.prism ]] && [ -f "${s%.prism}.prismtest" ]; then
-        t="${s%.prism}.prismtest"
-        case " ${rel[*]} " in *" $t "*) ;; *) sources+=("$t") ;; esac
-    fi
-done
-
-# Every `.prism` file the sources name, directories walked.
-prism_files() {
-    for s in "${rel[@]}"; do
-        if [ -d "$s" ]; then find "$s" -name '*.prism' | sort; elif [[ "$s" == *.prism ]]; then echo "$s"; fi
-    done
-}
+sources=("${rel[@]}")
 
 if [ "$cmd" = check ]; then
     tmp=$(mktemp)
     trap 'rm -f "$tmp"' EXIT
-    mapfile -t files < <(prism_files)
-    opts=()
-    [ -n "$world" ] && opts=(--world "$world")
+    opts=(--tests)
+    [ -n "$world" ] && opts+=(--world "$world")
     [ "$unused" = 1 ] && opts+=(--unused)
     code=0
-    "$prismc" --check "${opts[@]}" "${files[@]}" --out "$tmp" > /dev/null 2>&1 || code=$?
+    "$prismc" --check "${opts[@]}" "${rel[@]}" --out "$tmp" > /dev/null 2>&1 || code=$?
     if [ -s "$tmp" ]; then cat "$tmp"; else echo "prism: the checker wrote nothing" >&2; fi
     exit $code
 fi
@@ -153,6 +138,7 @@ case "$target" in rust|cpp) ;; *) echo "prism: unknown target $target (rust, cpp
 rm -rf "$out"
 targetopt=()
 [ "$target" = cpp ] && targetopt=(--target cpp)
+[ "$cmd" = test ] && targetopt+=(--tests)
 "$prismc" compile "${sources[@]}" -o "$out" --name "$name" "${runtime[@]}" "${targetopt[@]}"
 # The program is the target asked for: a prismc that took `--target` without knowing it
 # would have written a Rust crate.

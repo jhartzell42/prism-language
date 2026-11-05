@@ -1,7 +1,7 @@
 # The Prism table under the canvas World, C++ and Rust, built for the benchmark (bench/gui/README.md).
 #
 #   make            both drivers
-#   make cpp        target/bench/prism/driver: bench.prism, with examples/chess's window
+#   make cpp        target/bench/prism/driver: app.prism, with examples/chess's window
 #                   library, compiled to C++ by the prism script's prismc, at -O3
 #   make rust       target/bench/prism-rs/driver: the same compiled to Rust, cargo
 #                   release (opt-level 3)
@@ -36,8 +36,8 @@ all: cpp rust
 cpp: $(OUT)/driver
 
 # The program, emitted afresh whenever the sources are newer than its main.cpp.
-$(SRC)/main.cpp: bench.prism $(REPO)/examples/chess/window.prism
-	cd $(REPO) && ./prism compile --target cpp bench/gui/prism/bench.prism examples/chess/window.prism -o target/bench/prism
+$(SRC)/main.cpp: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism)
+	cd $(REPO) && ./prism compile --target cpp bench/gui/prism examples/chess/window -o target/bench/prism
 
 $(RTLIB): FORCE
 	@$(MAKE) -s -C $(RT) lib CXX=$(CXX) CONFIG=$(CONFIG) OPT="$(OPT)"
@@ -49,14 +49,15 @@ $(CANVASLIB): FORCE | $(RTLIB)
 emitted: $(SRC)/main.cpp
 	@$(MAKE) -s -f $(abspath Makefile) objects
 
-PROG_SRCS = $(filter-out $(SRC)/main.cpp,$(wildcard $(SRC)/*.cpp))
+# the emitted sources are nested as the program's modules are (src/DIR/mod.cpp)
+PROG_SRCS = $(filter-out $(SRC)/main.cpp,$(shell find $(SRC) -name '*.cpp' 2>/dev/null))
 PROG_OBJS = $(PROG_SRCS:$(SRC)/%.cpp=$(BUILD)/%.o)
 
 .PHONY: objects
 objects: $(PROG_OBJS) $(BUILD)/emitted_main.o $(BUILD)/driver.o
 
 $(BUILD)/%.o: $(SRC)/%.cpp
-	@mkdir -p $(BUILD)
+	@mkdir -p $(dir $@)
 	$(CXX) $(FLAGS) -MMD -MP -c $< -o $@
 
 $(BUILD)/emitted_main.o: $(SRC)/main.cpp
@@ -67,12 +68,12 @@ $(BUILD)/driver.o: driver.cpp $(SRC)/programs.hpp
 	@mkdir -p $(BUILD)
 	$(CXX) $(FLAGS) -MMD -MP -c $< -o $@
 
--include $(wildcard $(BUILD)/*.d)
+-include $(shell find $(BUILD) -name '*.d' 2>/dev/null)
 
 # The objects are globbed when the link runs: on a clean build none exist when make reads
 # this file, before prismc has emitted their sources.
 $(OUT)/driver: emitted $(CANVASLIB) $(RTLIB)
-	$(CXX) $(FLAGS) -o $@ $(BUILD)/*.o $(CANVASLIB) $(RTLIB) $(SYS_LIBS)
+	$(CXX) $(FLAGS) -o $@ $(shell find $(BUILD) -name '*.o') $(CANVASLIB) $(RTLIB) $(SYS_LIBS)
 
 # ---- Rust ---------------------------------------------------------------------------
 
@@ -81,13 +82,13 @@ RSBUILD := $(REPO)/target/bench/prism-rs-build
 
 rust: $(RS)/driver
 
-$(RS)/src/main.rs: bench.prism $(REPO)/examples/chess/window.prism driver.rs
-	cd $(REPO) && ./prism compile bench/gui/prism/bench.prism examples/chess/window.prism -o target/bench/prism-rs
+$(RS)/src/main.rs: app.prism $(wildcard $(REPO)/examples/chess/window/*.prism) driver.rs
+	cd $(REPO) && ./prism compile bench/gui/prism examples/chess/window -o target/bench/prism-rs
 	sed -i.emitted 's/^fn main() {$$/fn prism_emitted_main() {/' $@
 	echo 'include!("$(abspath driver.rs)");' >> $@
 
 $(RS)/driver: $(RS)/src/main.rs FORCE
 	CARGO_TARGET_DIR=$(RSBUILD) cargo build --offline --release -q --manifest-path $(RS)/Cargo.toml
-	cp $(RSBUILD)/release/bench $@
+	cp $(RSBUILD)/release/prism $@
 
 FORCE:

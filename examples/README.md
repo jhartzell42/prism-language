@@ -11,26 +11,28 @@ under `tests/compiled/run.sh`.*
 
 - **`chess/`**: chess in three modules, the program the self-hosting branch compiles and
   opens in a window.
-  - `rules.prism`, module `Chess`: the rule book as plain functions, with no time in them
+  - `rules/`, module `Rules`: the rule book as plain functions, with no time in them
     (Pitch ch. 11). A game is a value; `?Move` gives the next game or `nil`.
-  - `board.prism`, the root file: sixty-four `Ui.Image` squares in a `@Grid`, a hold for the
+  - `app.prism`, the root: sixty-four `Ui.Image` squares in a `@Grid`, a hold for the
     selection, a hold for the game, a status label, all inside `@Window`. Its root is
     `@$main`.
-  - `window.prism`, module `Window`: the window library. It declares the `Ui`, `Gui` and
-    `Draw` families, the container host documents (`@Grid`, `@Row`, `@Column`, `@Layers`,
+  - `window/`, module `Window` and its child modules `Window.Ui` (the `Ui` family),
+    `Window.Hosting`, `Window.Widgets`, `Window.Layout`, `Window.Hits`: the window
+    library. It declares the `Ui`, `Gui` and `Draw` families, the container host documents (`@Grid`, `@Row`, `@Column`, `@Layers`,
     `@Framed` and its modifiers, `@VBox`, `@HBox`), `@TextInput`, the layout and hit testing
     of prism-reflex's `layout.md`, and `@Window`. It is general on purpose: the card games
     will use its rows, layers and turned frames.
   - `pieces/`: the thirteen 64-by-64 PNGs the squares show, from prism-reflex.
   with a Star that is the row's own hold.
 
-Each program `X.prism` has:
+Each module with tests has:
 
-- **`X.prismtest`**: its `test` and `check` declarations, in the Conformance book's test
-  language (Conformance ch. 1 and App. A). A `.prismtest` file holds declarations of the
-  module in the `.prism` file of the same name, as tests are declarations of their module
-  and have no `use` lines of their own (Semantics ch. 6; doubt TF).
-- **`X.expected`**: the transcripts its tests print under the Test World, byte for byte
+- **`tests.prism`**: its test module (`test mod Tests` in its module's header,
+  claude/modules-style-pass.md), a child module: its `test` and `check` declarations, in
+  the Conformance book's test language (Conformance ch. 1 and App. A), and the helpers
+  they need; its header uses the module it tests (`use Rules.*`, or `use App.*` for the
+  root's), and only `prism test` and `prism check` read it.
+- **`tests.expected`**: the transcripts its tests print under the Test World, byte for byte
   after the `# not yet run` line, which the test runner ignores. The rules' checks and the
   board's scenes were confirmed with a small model of `rules.prism` and of the window
   library's layout for the board's one tree; the model is not an implementation, and the
@@ -38,10 +40,10 @@ Each program `X.prism` has:
 
 ## How they will run
 
-- **Tests:** `./prism test examples/chess` compiles the three files with prismc, builds
-  them, and runs `board.prismtest` and `rules.prismtest` under the compiled Test World,
-  each transcript byte-equal to its `.expected`. `board.prism` is the one file with no
-  `module` line, so its `@$main` is the root (Semantics ch. 6).
+- **Tests:** `./prism test examples/chess` compiles the tree with prismc, builds it, and
+  runs `tests.prism` and `rules/tests.prism` under the compiled Test World, each
+  transcript byte-equal to its `tests.expected`. `app.prism` is the root, so its `@$main`
+  is the program's (Semantics ch. 6).
 - **Chess in a window:** `./prism run examples/chess` (`make chess`) builds it with the
   canvas World, which the root's `Gui.*` row asks for, and opens it.
 - **Today** prismc checks chess clean and refuses to compile it: the window library

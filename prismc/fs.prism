@@ -1,6 +1,5 @@
 # The `Fs` family as prismc sees it: the prelude's `prelude/fs.prism`, and `Fs.List`, the
 # CLI World's listing, which `compile DIR` reads (prismc/README.md, Back end, pick FL).
-module Fs
 emit Fs.*
 
 type Contents = record:

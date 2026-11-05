@@ -1,0 +1,55 @@
+# `Window.Hosting`, a child module of `Window`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r | Ui.* | Gui.*
+use Window.*
+use Window.Ui.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
+
+# ---------------------------------------------------------------------------
+# Hosting: a box claims its child's Ui elements and answers each with the inputs routed to its
+# path; anything else it declines, and the host forwards it
+
+IsUi: fn Elem -> Bool
+fn IsUi e = match e:
+    Ui.*: True
+    otherwise: False
+
+# the entries of a document a box claims: its library elements
+Claimed: fn (Path ==> Elem) -> (Path ==> Elem)
+fn Claimed m = Fold (Keys m), {}, \|acc, k| match m[k]:
+    ? e if IsUi e: Insert acc, k, e
+    otherwise: acc
+
+?ClickTo: fn Path, Routed -> ?Click
+fn ?ClickTo p, r = match r.input:
+    Clicked if r.path == p: ? click
+    otherwise: nil
+
+?KeyTo: fn Path, Routed -> ?Key
+fn ?KeyTo p, r = match r.input:
+    Typed k if r.path == p: ? k
+    otherwise: nil
+
+?InnerTo: fn Path, Routed -> ?Routed
+fn ?InnerTo p, r = match r.input:
+    Inner inner if r.path == p: ? inner
+    otherwise: nil
+
+# what a box answers one claimed element with: the inputs routed to its path, as that tag's own
+# answer; `nil`, not mine, for anything that is not the library's
+?Boxed: fn Path, Element o, !Routed -> ?@o
+fn ?Boxed p, e, !in = match e:
+    Ui.Label(..): ? @ unit
+    Ui.Button(..): ? @ !Filter (?ClickTo p, !in)
+    Ui.Image(..): ? @ !Filter (?ClickTo p, !in)
+    Ui.TextInput(..): ? @ !Filter (?KeyTo p, !in)
+    Ui.VBox(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.HBox(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Row(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Column(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Layers(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Frame(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Grid(..): ? @ !Filter (?InnerTo p, !in)
+    otherwise: nil

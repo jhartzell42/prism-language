@@ -1,0 +1,4 @@
+# Derived by hand: a test module names another test module's helpers.
+check shared
+1: ok
+2: ok

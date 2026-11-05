@@ -1,0 +1,356 @@
+# The C++ template set (Templates ch. 2, code templates; Compiler ch. 4, "Templates, and
+# two template sets"): every item of the emitted C++ as a function-form template with
+# doubled braces. A placeholder alone on its line stands for whole lines indented to its
+# column. The templates decide nothing (K9): lowering decided, `Emit.Cpp` spelled each
+# part and chose the template.
+#
+# Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+mod Items
+use Emit.Cpp.Templates.Items.*
+
+# ---------------------------------------------------------------------------------------
+# Files
+# ---------------------------------------------------------------------------------------
+
+# The `Makefile`: the program's sources against `runtime/cpp`'s library, which it builds,
+# and the lines of the canvas World when the root's row asks for it (`CppMakefileCanvas`).
+CppMakefile: fn Text, Text, Text, Text -> Text
+fn CppMakefile name, runtime, sources, canvas = inline_text <cpp>
+# Emitted by prismc. Edit the Prism sources, not this file.
+#   make                   the program, with $(CXX) (g++ by default)
+#   make CXX=clang++
+.DEFAULT_GOAL := {{name}}
+# The repository root: PRISM_ROOT from the environment (the prism script and the bootstrap
+# export their own location), else from this Makefile's path, which keeps a symlinked
+# build directory's logical path where `make -C`'s current directory would not.
+HERE := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+PRISM_ROOT ?= $(if $(filter /%,{{runtime}}),{{runtime}},$(abspath $(HERE)/{{runtime}}))
+RT := $(PRISM_ROOT)/runtime/cpp
+WORLD := $(PRISM_ROOT)/worlds/cli/cpp
+CXX ?= g++
+OPT ?= -O3
+CONFIG ?= prog-$(notdir $(CXX))$(subst $() ,,$(OPT))
+LIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
+FLAGS := -std=gnu++20 $(OPT) -I$(RT)/include -I$(WORLD)/include -Isrc -Wall -Wno-unused -Wno-unused-parameter -Wno-unused-label
+SRCS := src/main.cpp {{sources}}
+OBJS := $(SRCS:src/%.cpp=build/%.o)
+WORLD_LIBS :=
+SYS_LIBS :=
+{{canvas}}
+
+{{name}}: $(OBJS) build/cli.o $(LIB) $(WORLD_LIBS)
+	$(CXX) $(FLAGS) -o $@ $(OBJS) build/cli.o $(WORLD_LIBS) $(LIB) $(SYS_LIBS)
+
+build/cli.o: $(WORLD)/src/cli.cpp $(WORLD)/include/prism_world_cli/cli.hpp
+	@mkdir -p build
+	$(CXX) $(FLAGS) -c $< -o $@
+
+build/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(FLAGS) -MMD -MP -c $< -o $@
+
+-include $(OBJS:.o=.d)
+
+$(LIB): FORCE
+	@$(MAKE) -s -C $(RT) lib CXX=$(CXX) CONFIG=$(CONFIG) OPT="$(OPT)"
+
+FORCE:
+.PHONY: FORCE
+</cpp>
+
+# The Makefile's lines for a root under the canvas World (worlds/canvas/cpp), whose library
+# its own Makefile builds after runtime/cpp's, and the system's libraries under it.
+CppMakefileCanvas: fn Text -> Text
+fn CppMakefileCanvas runtime = inline_text <cpp>
+CANVAS := $(PRISM_ROOT)/worlds/canvas/cpp
+FLAGS += -I$(CANVAS)/include $(shell pkg-config --cflags cairo freetype2)
+WORLD_LIBS := $(CANVAS)/build/$(CONFIG)/libprism_world_canvas.a
+ifeq ($(shell uname -s),Darwin)
+SYS_LIBS := $(shell pkg-config --libs cairo freetype2) -framework Cocoa -framework QuartzCore
+else
+SYS_LIBS := $(shell pkg-config --libs cairo freetype2 x11 xext)
+endif
+
+$(WORLD_LIBS): FORCE | $(LIB)
+	@$(MAKE) -s -C $(CANVAS) lib CXX=$(CXX) CONFIG=$(CONFIG) OPT="$(OPT)"
+</cpp>
+
+# A module's headers, three layers and a fourth for templates (prismc/README.md, pick MH):
+# `NAME.decl.hpp`, its types and nodes declared and its choices' handles; `NAME.types.hpp`,
+# its records (each after the types it holds) and its choices' cases; `NAME.hpp`, its
+# functions' prototypes and its nodes and jobs; `NAME.generic.hpp`, when it has any, the
+# definitions of its generic functions and types.
+CppDeclHeader: fn Text, Text, Text, Text -> Text
+fn CppDeclHeader title, includes, forward, handles = inline_text <cpp>
+// {{title}}: its types, nodes and jobs declared, and its choices' handles, emitted by
+// prismc (claude/backend.md). Edit the Prism source, not this file.
+#pragma once
+
+#include "prelude.hpp"
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{forward}}
+
+{{handles}}
+
+}  // namespace crate
+</cpp>
+
+CppTypesHeader: fn Text, Text, Text, Text -> Text
+fn CppTypesHeader title, includes, values, cases = inline_text <cpp>
+// {{title}}: its records, tags and newtypes (each after the types it holds) and its
+// choices' cases, emitted by prismc (claude/backend.md). Edit the Prism source, not this file.
+#pragma once
+
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{values}}
+
+{{cases}}
+
+}  // namespace crate
+</cpp>
+
+# A module's types header when its value types are defined with other modules' (a group,
+# `ModDef.typesWith`): the group's header.
+CppTypesInGroup: fn Text, Text -> Text
+fn CppTypesInGroup title, group = inline_text <cpp>
+// {{title}}: its records, tags and newtypes and its choices' cases are defined with those
+// of the modules whose types it holds by value and which hold its own, in `{{group}}.types.hpp`,
+// emitted by prismc (claude/backend.md). Edit the Prism source, not this file.
+#pragma once
+
+#include <{{group}}.types.hpp>
+</cpp>
+
+CppModHeader: fn Text, Text, Text, Text, Text -> Text
+fn CppModHeader title, includes, protos, outer, classes = inline_text <cpp>
+// {{title}}: its functions' prototypes and its nodes and jobs, emitted by prismc
+// (claude/backend.md). Edit the Prism source, not this file.
+#pragma once
+
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{protos}}
+
+{{outer}}
+
+{{classes}}
+
+}  // namespace crate
+</cpp>
+
+# `NAME.generic.hpp`: a module's generic functions' and types' definitions, which a source
+# file includes after every module's `NAME.hpp` it includes, so that a template sees every
+# overload of a trait's method (an impl's, in whichever module) the file declares.
+CppGenericHeader: fn Text, Text, Text -> Text
+fn CppGenericHeader title, includes, generic = inline_text <cpp>
+// {{title}}: its generic functions' and types' definitions, emitted by prismc
+// (claude/backend.md). Edit the Prism source, not this file.
+#pragma once
+
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{generic}}
+
+}  // namespace crate
+</cpp>
+
+# `elem.decl.hpp`: `Elem` and `Answer` declared, their handles, and what the prelude says of
+# the program's rows; `elem.types.hpp`: their cases.
+CppElemDecl: fn Text, Text, Text, Text -> Text
+fn CppElemDecl includes, forward, handles, rows = inline_text <cpp>
+// The program's `Elem` and `Answer` declared, their handles, and the prelude's rows,
+// emitted by prismc (claude/backend.md). Edit the Prism sources, not this file.
+#pragma once
+
+#include "prelude.hpp"
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{forward}}
+
+{{handles}}
+
+namespace prelude {
+
+{{rows}}
+
+}  // namespace prelude
+
+}  // namespace crate
+</cpp>
+
+CppElemTypes: fn Text, Text -> Text
+fn CppElemTypes includes, cases = inline_text <cpp>
+// The cases of the program's `Elem` and `Answer`, emitted by prismc (claude/backend.md).
+// Edit the Prism sources, not this file.
+#pragma once
+
+#include "elem.decl.hpp"
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{cases}}
+
+}  // namespace crate
+</cpp>
+
+# One Prism module's definitions.
+CppModule: fn Text, Text, Text, Text, Text -> Text
+fn CppModule prism, path, ns, includes, defs = inline_text <cpp>
+// {{prism}}, from `{{path}}`, emitted by prismc: its functions, its nodes' methods, its
+// types' printers (claude/backend.md). Edit the Prism source, not this file.
+{{includes}}
+
+namespace crate::{{ns}} {
+
+{{defs}}
+
+}  // namespace crate::{{ns}}
+</cpp>
+
+# `programs.hpp`: the program classes, over every module's header (what `main.cpp` and a
+# driver linking the program, bench/gui/prism/driver.cpp, need).
+CppProgramsHeader: fn Text, Text, Text -> Text
+fn CppProgramsHeader name, includes, programs = inline_text <cpp>
+// The programs of `{{name}}`, emitted by prismc (claude/backend.md): each root's class, over
+// every module's header. Edit the Prism sources, not this file.
+#pragma once
+
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{programs}}
+
+}  // namespace crate
+</cpp>
+
+# `main.cpp`: the crate's own types' definitions, the Test World with every program and
+# compiled `check` block, and `main`, which picks the World.
+CppMain: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn CppMain name, includes, registrations, checks, scripts, world, runRoot, crateDefs = inline_text <cpp>
+// The program `{{name}}`, emitted by prismc from Prism (claude/backend.md): C++ over
+// `prism_rtl`, run under the Test World. Edit the Prism sources, not these files.
+{{includes}}
+
+namespace crate {
+
+using namespace prelude;
+
+{{crateDefs}}
+
+/// The Test World with every root a test names, and the compiled `check` blocks.
+TestWorld test_world() {
+    TestWorld world;
+    world{{registrations}}{{checks}};
+    return world;
+}
+
+/// The test scripts compiled with the program: `test` runs these when given none.
+const std::vector<std::string> SCRIPTS = {
+    {{scripts}}
+};
+
+/// The World the root's row asks for: `canvas`, `cli`, or `none` (a row with `Ui` and no
+/// `Gui`, which no World answers).
+const std::string WORLD = "{{world}}";
+
+/// The root under the World `world`.
+int run_root(const std::string& world, const std::vector<std::string>& args) {
+    {{runRoot}}
+}
+
+}  // namespace crate
+
+int main(int argc, char** argv) {
+    std::vector<std::string> args(argv + 1, argv + argc);
+    // The canvas World keeps the main thread for its windows (AppKit's rule on macOS) and
+    // ticks on a big stack of its own.
+    if (auto [world, rest] = crate::prelude::world_option(args, crate::WORLD); world == "canvas" && (args.empty() || args[0] != "test"))
+        return crate::run_root(world, rest);
+    return crate::prelude::on_big_stack([&] {
+        auto [world, rest] = crate::prelude::world_option(args, crate::WORLD);
+        if ((!args.empty() && args[0] == "test") || world == "test") {
+            std::vector<std::string> scripts;
+            for (const auto& a : rest)
+                if (a != "test") scripts.push_back(a);
+            return crate::prelude::run_scripts(crate::test_world(), scripts, crate::SCRIPTS);
+        }
+        return crate::run_root(world, rest);
+    });
+}
+</cpp>
+
+# A `main` with no root: only the tests run.
+CppNoRoot: fn Text -> Text
+fn CppNoRoot name = inline_text <cpp>
+static_cast<void>(world);
+static_cast<void>(args);
+std::fprintf(stderr, "{{name}}: the program has no `@main`; `{{name}} test` runs its tests\n");
+return 2;
+</cpp>
+
+# A root under the World its row asks for; `canvas` is `CppCanvasRun` or `CppNoCanvas`.
+CppRunRoot: fn Text, Text -> Text
+fn CppRunRoot program, canvas = inline_text <cpp>
+if (world == "cli") return crate::prelude::run_cli<{{program}}>(args);
+if (world == "canvas") {
+    {{canvas}}
+}
+if (world == "none") {
+    std::fprintf(stderr, "the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world\n");
+    return 2;
+}
+std::fprintf(stderr, "no World %s (cli, canvas, test)\n", world.c_str());
+return 2;
+</cpp>
+
+# The canvas branch of a root whose row asks for the canvas World, which takes no
+# arguments.
+CppCanvasRun: fn Text -> Text
+fn CppCanvasRun program = inline_text <cpp>
+static_cast<void>(args);
+return prism_world_canvas::run<{{program}}>();
+</cpp>
+
+# The canvas branch of a root whose row does not ask for it: the program is built without
+# the World.
+CppNoCanvas: fn Text -> Text
+fn CppNoCanvas program = inline_text <cpp>
+std::fprintf(stderr, "the root's row emits no Gui.*, so this program is built without the canvas World\n");
+return 2;
+</cpp>
+
+# The include of the canvas World, for a root that runs under it.
+CppCanvasInclude: fn Text -> Text
+fn CppCanvasInclude ignore = inline_text <cpp>
+#include "prism_world_canvas/canvas.hpp"
+</cpp>

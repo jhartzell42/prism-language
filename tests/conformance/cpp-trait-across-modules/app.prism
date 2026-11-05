@@ -1,0 +1,17 @@
+# A trait's generic function, in one module, instantiated from the root at a type whose
+# impl is in another module the trait's module never names; and that module named only
+# qualified (`Zoo.Robin`), with no `use`. A target that declares before it calls (the C++
+# printer's per-module headers, prismc/README.md pick MH) must declare the impl's overload
+# before the generic function's definition, and must find `Zoo` though the root does not
+# use it. Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Aloud
+mod Zoo
+test mod Tests
+use Aloud.*
+
+let birds = [[Zoo.Robin, Zoo.Wren, Zoo.Robin]]
+
+@sung: @unit
+@sung:
+    Ui.Label(text=$"{Chorus birds} / {Shout Zoo.Wren}")     # 0

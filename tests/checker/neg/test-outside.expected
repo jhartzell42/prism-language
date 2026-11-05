@@ -1,0 +1,5 @@
+tests/checker/neg/test-outside/app.prism:7: error[test-outside]: a `check` in a tree stands only in a test module
+    check sums:
+    ^^^^^^^^^^^
+  fix: move it to a test module: `test mod Tests` in app.prism, and tests.prism
+1 error

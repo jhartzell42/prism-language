@@ -1,0 +1,135 @@
+# `Window.Widgets`, a child module of `Window`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r | Ui.* | Gui.*
+use Window.*
+use Window.Ui.*
+use Window.Hosting.*
+use Window.Layout.*
+use Window.Hits.*
+
+# ---------------------------------------------------------------------------
+# The widget functions: each composes, keeping a hold or hosting its child (D10)
+
+# A text and where its caret is, a byte offset (Semantics Appendix B, Text): it is kept as
+# a number because every key makes a new text, and made a cursor again with `?CursorAt`.
+type Edit = record:
+    text: Text
+    cursor: Nat
+derive ^Eq, ^Show
+
+Apply: fn Edit, Key -> Edit
+fn Apply e, k = match ?CursorAt e.text, e.cursor:
+    nil: e
+    ? at: match k:
+        Char c:
+            let typed = "{c}"
+            Edit "{Before at}{typed}{After at}", e.cursor + (Len typed)
+        Left: match ?StepBack at:
+            ? ((ignore, prev)): Edit e.text, (At prev)
+            nil: e
+        Right: match ?Step at:
+            ? ((ignore, next)): Edit e.text, (At next)
+            nil: e
+        Backspace: match ?StepBack at:
+            ? ((ignore, prev)): Edit "{Before prev}{After at}", (At prev)
+            nil: e
+        Tab: e
+        Enter: e
+
+# The text before byte `n` of `t`, where an input's caret is; all of it when `n` is no
+# character boundary.
+TextBefore: fn Text, Nat -> Text
+fn TextBefore t, n = match ?CursorAt t, n:
+    ? at: Before at
+    nil: t
+
+@TextInput: fn Text, Text -> @$Text
+fn @TextInput name, initial:
+    !key <- Ui.TextInput(name=name, text=$edit.text, cursor=$edit.cursor)
+    $edit <- Edit initial, (Len initial) then Apply $edit, !key
+    @ $edit.text
+
+@Grid: fn Nat, @a -> @a
+fn @Grid columns, @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Grid(columns=columns, children=Claimed $elems)
+    @ r
+
+@VBox: fn @a -> @a
+fn @VBox @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.VBox(children=Claimed $elems)
+    @ r
+
+@HBox: fn @a -> @a
+fn @HBox @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.HBox(children=Claimed $elems)
+    @ r
+
+@Row: fn Float, @a -> @a
+fn @Row spacing, @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Row(spacing=spacing, align=Start, children=Claimed $elems)
+    @ r
+
+@Column: fn Float, @a -> @a
+fn @Column spacing, @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Column(spacing=spacing, align=Start, children=Claimed $elems)
+    @ r
+
+@Layers: fn @a -> @a
+fn @Layers @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Layers(children=Claimed $elems)
+    @ r
+
+@Framed: fn FrameSpec, @a -> @a
+fn @Framed spec, @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Frame(spec=spec, children=Claimed $elems)
+    @ r
+
+# the modifiers: each is one frame around its child
+@Pad: fn Float, @a -> @a
+fn @Pad p, @child = @Framed (FrameSpec p, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
+
+@Fill: fn Float, @a -> @a
+fn @Fill f, @child = @Framed (FrameSpec 0.0, nil, nil, nil, f, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
+
+@Sized: fn Float, Float, @a -> @a
+fn @Sized w, h, @child = @Framed (FrameSpec 0.0, (? w), (? h), nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
+
+@Aspect: fn Float, @a -> @a
+fn @Aspect ratio, @child = @Framed (FrameSpec 0.0, nil, nil, (? ratio), 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil), @child
+
+@Anchor: fn Point, Point, @a -> @a
+fn @Anchor at, off, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, at, off, 0.0, 1.0, nil), @child
+
+@Turned: fn Float, @a -> @a
+fn @Turned deg, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), deg, 1.0, nil), @child
+
+@Backed: fn Paint, Float, @a -> @a
+fn @Backed c, p, @child = @Framed (FrameSpec p, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, (? c)), @child
+
+# ---------------------------------------------------------------------------
+# The window (Pitch chapter 5's, with `EnvOf` for the constructor; README, doubt EN)
+
+@Window: fn $Text, Extent, @a -> @a
+fn @Window $title, start, @app:
+    ((result, $elems)) <- @HostSome @app, \|p, e| ?Boxed p, e, !route    # 0/[p]
+    ((id, !incoming)) <- Gui.Window(title=$title, size=start)                 # 1
+    let $kids = Claimed $elems
+    $sizes <- for text, ignore <- TextsIn $kids:                         # 2/[text]
+        Gui.Metrics(text=text)                                           # 2/[text]/0
+    $size <- start then !Filter (?ResizeOf !incoming)
+    $?focus <- nil then ?Refocus $placed.hits, $?focus, !incoming
+    let $placed = PlaceAt (LayRoot (EnvOf $sizes, $?focus), $kids, $size), (Point 0.0, 0.0)
+    Gui.Scene(window=id, draw=$placed.draw)                              # 3
+    Gui.Focus(window=id, at=(?FocusRect $placed.hits, $?focus))          # 4
+    let !hit = !Filter (?HitAt $placed.hits, !Filter (?PressOf !incoming))
+    let !clicks = !Filter (?ClickFor !hit)
+    let !keys = !Filter (?RouteKey $?focus, !Filter (?PressedOf !incoming))
+    let !route = !clicks <| !keys
+    @ result

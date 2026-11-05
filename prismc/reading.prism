@@ -1,0 +1,589 @@
+# `Reading`, a child module of the root.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Fs.* | Process.* | Prelude.*
+use App.*
+use Checking.*
+use Compile.*
+use Fs.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.Sexp.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Check.Typed
+use Lower
+use Emit.Rust
+
+# ---------------------------------------------------------------------------------------
+# Reading a program: files, and directories read as trees (claude/modules-style-pass.md)
+# ---------------------------------------------------------------------------------------
+
+# What a run does once it has read its files: the checker's report (`--check`, `--typed`)
+# or a compile.
+type ReadMode = choice:
+    Checking CheckOpts
+    Compiling CompileSettings
+derive ^Eq, ^Show
+
+IsCompiling: fn ReadMode -> Bool
+fn IsCompiling (Compiling ignore) = True
+fn IsCompiling (Checking ignore) = False
+
+type CheckOpts = record:
+    world: [Text]
+    out: ?Text
+    typed: Bool
+    unused: Bool
+derive ^Eq, ^Show
+
+type CompileSettings = record:
+    out: Text
+    prelude: Text
+    name: Text
+    runtime: Text
+    target: Text
+derive ^Eq, ^Show
+
+# Everything a run read: its arguments (files and directories), the prelude's directory,
+# every directory it listed and every file it read, whether test modules are read
+# (`--tests`: `prism test` and `prism check`), and whether it compiles.
+type ReadInput = record:
+    args: [Text]
+    prelude: Text
+    listings: [((Text, [Text]))]
+    paths: [Text]
+    texts: [((Text, Text))]
+    tests: Bool
+    compiling: Bool
+derive ^Eq, ^Show
+
+# Every directory argument is listed (`Fs.List`, which prismc's `Fs` declares), with the
+# prelude's; then the ancestors of a module directory, to find the root above it; then every
+# file is read; then the run.
+@ReadSources: fn ReadMode, [Text], Text, Bool -> @unit
+fn @ReadSources mode, args, prelude, tests:
+    let dirs = Push (Filter args, \|a| not (IsSourcePath a)), prelude
+    $listed <- for d <- dirs:
+        Fs.List(dir=d)
+    ignore <- rebuild $listed:
+        @ReadUp mode, args, prelude, tests, (Pairs dirs, _)
+
+@ReadUp: fn ReadMode, [Text], Text, Bool, [((Text, [Text]))] -> @unit
+fn @ReadUp mode, args, prelude, tests, listings:
+    let ups = Fold listings, [[]], \|acc, ((d, files))| if IsModuleDir d, files: UnionTexts acc, (Ancestors d) else: acc
+    $up <- for a <- ups:
+        Fs.List(dir=a)
+    ignore <- rebuild $up:
+        @ReadTexts mode, args, prelude, tests, (Append listings, (Pairs ups, _))
+
+@ReadTexts: fn ReadMode, [Text], Text, Bool, [((Text, [Text]))] -> @unit
+fn @ReadTexts mode, args, prelude, tests, listings:
+    let paths = ToRead (Push args, prelude), (Map listings)
+    $sources <- for p <- paths:
+        Fs.Contents(path=p)
+    ignore <- rebuild $sources:
+        @ReadRun mode, ReadInput(args=args, prelude=prelude, listings=listings, paths=paths, texts=[[]], tests=tests, compiling=(IsCompiling mode)), _
+
+# Every file read, or the run refused naming each that could not be.
+@ReadRun: fn ReadMode, ReadInput, (Nat ==> ~Contents) -> @unit
+fn @ReadRun mode, input, contents:
+    let failed = Fold (Range0 (Len input.paths)), [[]], \|acc, i|
+        let why = ReadFailure contents[i]
+        if why == "": acc else: Push acc, "cannot read {Or input.paths[i], ""}: {why}"
+    let texts = Each (Range0 (Len input.paths)), \|i| (((Or input.paths[i], ""), (ContentsText (Or contents[i], (~ Contents(text=""))))))
+    let full = update input:
+        &_.texts <= texts
+    if (Len failed) > 0: @Refuse (Join failed, "; ")
+    else: @RunRead mode, full
+
+@RunRead: fn ReadMode, ReadInput -> @unit
+fn @RunRead (Compiling s), input:
+    @CompileRun s, input
+fn @RunRead (Checking o), input:
+    @CheckRun o, input
+
+@CheckRun: fn CheckOpts, ReadInput -> @unit
+fn @CheckRun o, input:
+    !done <- @Run CheckFiles, CheckJob(read=input, world=o.world, typed=o.typed, unused=o.unused)
+    $?outcome <- nil then ? !done
+    ignore <- rebuild $?outcome:
+        @FinishCheck o.?out, _
+
+@CompileRun: fn CompileSettings, ReadInput -> @unit
+fn @CompileRun s, input:
+    !done <- @Run CompileProgram, CompileJob(read=input, name=s.name, runtime=s.runtime, target=s.target)
+    $?outcome <- nil then ? !done
+    ignore <- rebuild $?outcome:
+        @FinishCompile s.out, _
+
+Pairs: fn [Text], (Nat ==> [Text]) -> [((Text, [Text]))]
+fn Pairs ds, m = Each (Range0 (Len ds)), \|i| (((Or ds[i], ""), (Or m[i], [[]])))
+
+ReadFailure: fn ?~Contents -> Text
+fn ReadFailure (? ~c) = ContentsFailure ~c
+fn ReadFailure nil = "nothing was read"
+
+ContentsFailure: fn ~Contents -> Text
+fn ContentsFailure (~ c) = ""
+fn ContentsFailure (Error(message=m, ..)) = m
+
+ContentsText: fn ~Contents -> Text
+fn ContentsText (~ c) = c.text
+fn ContentsText (Error(..)) = ""
+
+IsSourcePath: fn Text -> Bool
+fn IsSourcePath f = (HasSuffix f, ".prism") or HasSuffix f, ".prismtest"
+
+# ---- Paths
+
+DirOf: fn Text -> Text
+fn DirOf p = Join (Pop (Split p, "/")), "/"
+
+BaseOf: fn Text -> Text
+fn BaseOf p = Or (?Last (Split p, "/")), p
+
+Under: fn Text, Text -> Text
+fn Under d, n = if d == "" or d == ".": n else: "{d}/{n}"
+
+# The directories above `d`, nearest first: `a/b/c` has `a/b` and `a`.
+Ancestors: fn Text -> [Text]
+fn Ancestors d:
+    let parts = Split d, "/"
+    let n = Len parts
+    Filter (Each (Range0 (Dec n)), \|i| Join (Take parts, (Or ((Dec n) -? i), 0)), "/"), \|a| a != "" and a != "."
+
+# A submodule's directory: its name in snake case (`CheckEnv` is `check_env/`).
+DirName: fn Text -> Text
+fn DirName name:
+    let ((out, ignore)) = FoldChars name, (("", "")), \|((acc, prev)), c|
+        let sep = if (IsUpper c) and ((IsLower prev) or (IsDigit prev)): "_" else: ""
+        ((("{acc}{sep}{if IsUpper c: Lower c else: c}"), c))
+    out
+
+# A directory's module name, as the `mod` line that declares it spells it (`check_env/` is
+# `CheckEnv`).
+ModOfDir: fn Text -> Text
+fn ModOfDir d = Concat (Each (Split d, "_"), \|w| "{Upper (Head w)}{AfterFirst w}")
+
+# ---- Headers, read from the text
+
+# A line of a header: its keyword (`module`, `emit`, `mod`, `test mod`, `use`), the name
+# after it (`.*` dropped from a `use`), and where it stands.
+type HeadLine = record:
+    word: Text
+    arg: Text
+    span: Range
+derive ^Eq, ^Show
+
+# The header of a file, read from its text before it is parsed: after comments and blank
+# lines, the lines at its top that start with a header keyword; a line indented under one
+# (an `emit` row carried over) is part of it. The first other line ends it.
+HeaderLines: fn Text -> [HeadLine]
+fn HeaderLines text:
+    let ((lines, ignore, ignore)) = Fold (Split text, "\n"), (([[]], 0, True)), \|((acc, at, open)), line|
+        let next = at + (Len line) + 1
+        if not open: ((acc, next, False))
+        else: if (Trim line) == "" or (HasPrefix line, "#") or (HasPrefix line, " "): ((acc, next, True))
+        else: match ?HeadLineOf line, at:
+            ? h: (((Push acc, h), next, True))
+            nil: ((acc, next, False))
+    lines
+
+?HeadLineOf: fn Text, Nat -> ?HeadLine
+fn ?HeadLineOf line, at:
+    let code = TrimEnd (Or (Split line, " #")[0], line)
+    let words = Filter (Split code, " "), \|w| w != ""
+    let first = Or words[0], ""
+    let second = Or words[1], ""
+    let span = Range(start=at, end=at + (Len code))
+    if first == "test" and second == "mod": ? HeadLine(word="test mod", arg=(Or words[2], ""), span=span)
+    else: if HasText [["module", "emit", "mod", "use"]], first: ? HeadLine(word=first, arg=(Or (?BeforeSuffix second, ".*"), second), span=span)
+    else: nil
+
+# The first line of a file that is no comment, no blank line and no header line.
+?FirstDeclLine: fn Text -> ?Range
+fn ?FirstDeclLine text:
+    let ((?found, ignore)) = Fold (Split text, "\n"), ((nil, 0)), \|((?f, at)), line|
+        let next = at + (Len line) + 1
+        if ?f != nil or (Trim line) == "" or (HasPrefix line, "#") or (HasPrefix line, " ") or (?HeadLineOf line, at) != nil: ((?f, next))
+        else: ((? Range(start=at, end=at + (Len (TrimEnd line))), next))
+    ?found
+
+# ---- Trees
+
+# A module's file as read: its path, its text, and its role: in a tree `main` or `test`
+# (a test module's); else `loose` (a file argument).
+type Seg = record:
+    path: Text
+    text: Text
+    role: Text
+derive ^Eq, ^Show
+
+# One module as the checker is given it: its one file (role `main`, `test` for a test
+# module, `loose` for a file argument). A tree's module is
+# `named` by its path (`name`, `""` the root); any other by its `module` line. `parent` is
+# the file whose `mod` line declares it (`""` for a root or a loose file).
+type ModFiles = record:
+    name: Text
+    named: Bool
+    segs: [Seg]
+    parent: Text
+derive ^Eq, ^Show
+
+# A diagnostic of the reading, before anything is parsed, at a file of the listing.
+type TreeDiag = record:
+    path: Text
+    span: Range
+    code: Text
+    message: Text
+    fix: Text
+derive ^Eq, ^Show
+
+# What the reading gives: the program's modules and the prelude's, the test scripts the
+# compiled program runs, and the errors (which stop the run).
+type Assembled = record:
+    units: [ModFiles]
+    prelude: [ModFiles]
+    scripts: [Text]
+    errors: [TreeDiag]
+derive ^Eq, ^Show
+
+let noAssembly = Assembled(units=[[]], prelude=[[]], scripts=[[]], errors=[[]])
+let noSpan = Range(start=0, end=0)
+
+# A tree being walked: its modules so far, every file a root or a `mod` line declares, and
+# its diagnostics.
+type TreeAcc = record:
+    units: [ModFiles]
+    declared: (Text ==> Bool)
+    diags: [TreeDiag]
+derive ^Eq, ^Show
+
+AddTreeDiag: fn TreeAcc, Text, Range, Text, Text, Text -> TreeAcc
+fn AddTreeDiag acc, path, span, code, message, fix = update acc:
+    &_.diags <= Push &_.diags, TreeDiag(path=path, span=span, code=code, message=message, fix=fix)
+
+# A directory with a `mod.prism` and no root: a module of the tree above it.
+IsModuleDir: fn Text, [Text] -> Bool
+fn IsModuleDir d, files = (HasText files, (Under d, "mod.prism")) and not (HasText files, (Under d, "app.prism")) and not (HasText files, (Under d, "lib.prism"))
+
+IsRootDir: fn Text, [Text] -> Bool
+fn IsRootDir d, files = (HasText files, (Under d, "app.prism")) or HasText files, (Under d, "lib.prism")
+
+# The root of the tree a directory argument is: the directory, when it holds an app.prism
+# or a lib.prism; for a module directory, the nearest directory above it that does.
+?TreeRootOf: fn Text, (Text ==> [Text]) -> ?Text
+fn ?TreeRootOf d, listings:
+    let files = Or listings[d], [[]]
+    if IsRootDir d, files: ? d
+    else: if IsModuleDir d, files: Fold (Ancestors d), nil, \|?found, a| if ?found == nil and IsRootDir a, (Or listings[a], [[]]): ? a else: ?found
+    else: nil
+
+# The files a run reads: each file argument, every file of each directory's listing (a
+# module directory's whole tree, from its root).
+ToRead: fn [Text], (Text ==> [Text]) -> [Text]
+fn ToRead args, listings = Fold args, [[]], \|acc, a|
+    if IsSourcePath a: AddText acc, a
+    else: match ?TreeRootOf a, listings:
+        ? root: UnionTexts acc, (Or listings[root], [[]])
+        nil: acc
+
+# The modules of a run: each argument in order, then the prelude's; test modules only under
+# `--tests`.
+Assemble: unbounded fn ReadInput -> Assembled
+fn Assemble input:
+    let listings = Map input.listings
+    let texts = Map input.texts
+    let progs = Fold input.args, noAssembly, \|acc, a| AddArg acc, listings, texts, a
+    let pre = AddArg noAssembly, listings, texts, input.prelude
+    let units = Filter (Each progs.units, \|u| KeptSegs u, input.tests), \|u| (Len u.segs) > 0
+    let kept = Fold units, [[]], \|acc, u| Append acc, (Each u.segs, \|s| s.path)
+    update progs:
+        &_.units <= units
+        &_.prelude <= Filter (Each pre.units, \|u| KeptSegs u, False), \|u| (Len u.segs) > 0
+        &_.scripts <= Filter &_.scripts, \|p| HasText kept, p
+        &_.errors <= Append &_.errors, pre.errors
+
+# A unit's files as a run reads them: test modules only under `--tests` (a test module
+# left with no file is no unit).
+KeptSegs: fn ModFiles, Bool -> ModFiles
+fn KeptSegs u, tests = update u:
+    &_.segs <= Filter &_.segs, \|s| s.role != "test" or tests
+
+AddArg: unbounded fn Assembled, (Text ==> [Text]), (Text ==> Text), Text -> Assembled
+fn AddArg acc, listings, texts, a:
+    if HasSuffix a, ".prismtest": update acc:
+        &_.errors <= Push &_.errors, TreeDiag(path=a, span=noSpan, code="prismtest", message="`{a}`: a `.prismtest` is not read: a module's tests are in its test modules, a loose file's inline", fix="move its declarations into a test module (`test mod tests`), or into the file it tests")
+    else: if HasSuffix a, ".prism": update acc:
+        &_.units <= Push &_.units, ModFiles(name="", named=False, segs=[[Seg(path=a, text=(Or texts[a], ""), role="loose")]], parent="")
+    else: match ?TreeRootOf a, listings:
+        ? root:
+            let tree = WalkTree root, (Or listings[root], [[]]), texts
+            let start = Under a, "mod.prism"
+            let units = if root == a: tree.units else: ReachTree tree.units, start
+            let scripts = if root == a: Fold units, [[]], \|s, u| Append s, (TestPaths u) else: Fold (Filter units, \|u| (MainPath u) == start or u.parent == start), [[]], \|s, u| Append s, (TestPaths u)
+            update acc:
+                &_.units <= Append &_.units, units
+                &_.scripts <= Append &_.scripts, scripts
+                &_.errors <= Append &_.errors, tree.diags
+        nil: update acc:
+            &_.errors <= Push &_.errors, TreeDiag(path=a, span=noSpan, code="no-root", message="`{a}` holds no app.prism, lib.prism or mod.prism, and a directory argument is a tree", fix="give it a root, or name its files")
+
+MainPath: fn ModFiles -> Text
+fn MainPath u = match u.segs[0]:
+    ? s: s.path
+    nil: ""
+
+MainText: fn ModFiles -> Text
+fn MainText u = match u.segs[0]:
+    ? s: s.text
+    nil: ""
+
+# The test modules a compiled program runs.
+TestPaths: fn ModFiles -> [Text]
+fn TestPaths u = Each (Filter u.segs, \|s| s.role == "test"), \|s| s.path
+
+# A tree from its root directory: app.prism or lib.prism and every module their `mod` lines
+# reach; every other file of the listing is stray.
+WalkTree: unbounded fn Text, [Text], (Text ==> Text) -> TreeAcc
+fn WalkTree root, files, texts:
+    let has = Fold files, {}, \|m, f| Insert m, f, True
+    let app = Under root, "app.prism"
+    let lib = Under root, "lib.prism"
+    let acc0 = TreeAcc(units=[[]], declared={}, diags=[[]])
+    let acc1 = if (HasKey has, app) and (HasKey has, lib): AddTreeDiag acc0, lib, noSpan, "two-roots", "`app.prism` and `lib.prism` in one directory: a tree has one root", "keep app.prism for a program or lib.prism for a library" else: acc0
+    let acc2 = if HasKey has, app: WalkModule has, texts, acc1, app, "", "", False else: WalkLib has, texts, acc1, lib
+    let acc3 = update acc2:
+        &_.declared <= Insert &_.declared, lib, True
+    Fold files, acc3, \|a, f| if HasKey a.declared, f: a else: Stray has, texts, a, f
+
+# A library's root: `mod Name` lines only, each a top-level module.
+WalkLib: unbounded fn (Text ==> Bool), (Text ==> Text), TreeAcc, Text -> TreeAcc
+fn WalkLib has, texts, acc, lib:
+    let text = Or texts[lib], ""
+    let heads = HeaderLines text
+    let bad = Filter heads, \|h| not (h.word == "mod" and IsUpperText h.arg)
+    let acc1 = Fold bad, acc, \|a, h| AddTreeDiag a, lib, h.span, "lib-header", "lib.prism holds only `mod Name` lines, the library's modules: `{h.word}` belongs in a module", "move the line to a module's mod.prism"
+    let acc2 = match ?FirstDeclLine text:
+        ? r: AddTreeDiag acc1, lib, r, "lib-header", "lib.prism holds only `mod Name` lines, the library's modules", "move the declaration to a module"
+        nil: acc1
+    let dir = DirOf lib
+    Fold (Filter heads, \|h| h.word == "mod" and IsUpperText h.arg), acc2, \|a, h| Child has, texts, a, lib, dir, h, "", False
+
+# A module from its file `main`, named by its path (`name.Sub`, `Sub` at the root, whose
+# `name` is `""`) and declared by `parent`: the file, one module with its own header, and
+# every child module its `mod` and `test mod` lines declare (a test module's children are
+# test modules too). A lowercase `mod` line is refused (`mod-lowercase`): every `mod` line
+# declares a module with a namespace of its own.
+WalkModule: unbounded fn (Text ==> Bool), (Text ==> Text), TreeAcc, Text, Text, Text, Bool -> TreeAcc
+fn WalkModule has, texts, acc, main, name, parent, inTest:
+    let dir = DirOf main
+    let text = Or texts[main], ""
+    let heads = HeaderLines text
+    let mods = Filter heads, \|h| h.word == "mod" or h.word == "test mod"
+    let subs = Filter mods, \|h| IsUpperText h.arg
+    let lower = Filter mods, \|h| not (IsUpperText h.arg)
+    let named = if name == "": "its path makes it the root" else: "its path names the module `{name}`"
+    let acc1 = Fold (Filter heads, \|h| h.word == "module"), acc, \|a, h| AddTreeDiag a, main, h.span, "module-line", "a module's file has no `module` line: {named}", "delete the line"
+    let leaf = not (HasText [["mod.prism", "app.prism", "lib.prism"]], (BaseOf main))
+    let stem = Or (?BeforeSuffix (BaseOf main), ".prism"), main
+    let acc2 = if leaf: Fold mods, acc1, \|a, h| AddTreeDiag a, main, h.span, "mod-leaf", "`{BaseOf main}` declares `{h.word} {h.arg}`, and a module with children is a directory", "move {BaseOf main} to {stem}/mod.prism" else: acc1
+    let acc3 = Fold lower, acc2, \|a, h| Lowercase a, main, dir, h
+    let acc4 = update acc3:
+        &_.declared <= Insert &_.declared, main, True
+        &_.units <= Push &_.units, ModFiles(name=name, named=True, segs=[[Seg(path=main, text=text, role=(if inTest: "test" else: "main"))]], parent=parent)
+    if leaf: acc4 else: Fold subs, acc4, \|a, h| Child has, texts, a, main, dir, h, name, inTest
+
+# A lowercase `mod name` line: refused, its file `name.prism` taken as declared so the
+# refusal is the one error.
+Lowercase: fn TreeAcc, Text, Text, HeadLine -> TreeAcc
+fn Lowercase a, main, dir, h:
+    let up = "{Upper (Head h.arg)}{AfterFirst h.arg}"
+    let marked = update a:
+        &_.declared <= Insert &_.declared, (Under dir, "{h.arg}.prism"), True
+    AddTreeDiag marked, main, h.span, "mod-lowercase", "`{h.word} {h.arg}`: a module's name is capitalised, and every `mod` line declares a module with a namespace of its own", "write `{h.word} {up}` (its file {h.arg}.prism, with a header of its own)"
+
+# A `mod Name` or `test mod Name` line of `main`: the child module `parent.Name`, its file
+# `name.prism` beside `main`, or `name/mod.prism` when it has children (Rust's `name.rs`
+# or `name/mod.rs`), never both.
+Child: unbounded fn (Text ==> Bool), (Text ==> Text), TreeAcc, Text, Text, HeadLine, Text, Bool -> TreeAcc
+fn Child has, texts, acc, main, dir, h, parent, inTest:
+    let snake = DirName h.arg
+    let file = Under dir, "{snake}.prism"
+    let nested = Under dir, "{snake}/mod.prism"
+    let name = if parent == "": h.arg else: "{parent}.{h.arg}"
+    let isTest = inTest or h.word == "test mod"
+    let line = "{h.word} {h.arg}"
+    if file == main or nested == main: AddTreeDiag acc, main, h.span, "mod-self", "`{line}` names `{BaseOf main}`, the file that declares it", "rename the module"
+    else: if (HasKey has, file) and (HasKey has, nested):
+        let both = update acc:
+            &_.declared <= Insert (Insert &_.declared, file, True), nested, True
+        AddTreeDiag both, main, h.span, "mod-both", "`{line}` declares `{snake}.prism` or `{snake}/mod.prism`, and both are there", "keep one: {snake}/mod.prism when the module has children, else {snake}.prism"
+    else: if HasKey has, file: WalkModule has, texts, acc, file, name, main, isTest
+    else: if HasKey has, nested: WalkModule has, texts, acc, nested, name, main, isTest
+    else: AddTreeDiag acc, main, h.span, "mod-missing", "`{line}` declares `{snake}.prism` or `{snake}/mod.prism`, and neither is there", "create {snake}.prism, or delete the line"
+
+# A file of a tree that nothing declares: stray, a one-file module (a `module` line) and a
+# `.prismtest` among them.
+Stray: fn (Text ==> Bool), (Text ==> Text), TreeAcc, Text -> TreeAcc
+fn Stray has, texts, acc, f:
+    let text = Or texts[f], ""
+    if HasSuffix f, ".prismtest": AddTreeDiag acc, f, noSpan, "mod-stray", "`{BaseOf f}` is a test script in a tree, where tests are in test modules", "put its declarations in a test module, declared by `test mod Tests`"
+    else:
+        let dir = DirOf f
+        let isMain = (BaseOf f) == "mod.prism"
+        let home = if isMain: DirOf dir else: dir
+        let main = Fold [["mod.prism", "app.prism", "lib.prism"]], "", \|m, n| if m == "" and HasKey has, (Under home, n): n else: m
+        let line = if isMain: "mod {ModOfDir (BaseOf dir)}" else: "mod {ModOfDir (Or (?BeforeSuffix (BaseOf f), ".prism"), f)}"
+        let shown = if isMain: "{BaseOf dir}/mod.prism" else: BaseOf f
+        if main == "": AddTreeDiag acc, f, noSpan, "mod-stray", "`{f}` is in a tree, in no module's directory", "move it into a module's directory and declare it with a `mod` line"
+        else: AddTreeDiag acc, f, noSpan, "mod-stray", "`{shown}` is in the directory of `{main}`, which declares no `{line}`", "declare it with `{line}` in {main}, or move it out of the directory"
+
+# A module directory's module, its test modules, and every module they reach by `use`, in
+# the tree's order.
+ReachTree: unbounded fn [ModFiles], Text -> [ModFiles]
+fn ReachTree units, main:
+    let byName = Fold units, {}, \|m, u| Insert m, (UnitName u), u
+    let start = Fold units, [[]], \|s, u| if (MainPath u) == main or (u.parent == main and IsTestUnit u): Push s, (UnitName u) else: s
+    let reached = ReachNames byName, start, start
+    Filter units, \|u| HasText reached, (UnitName u)
+
+ReachNames: unbounded fn (Text ==> ModFiles), [Text], [Text] -> [Text]
+fn ReachNames byName, seen, todo = match todo[0]:
+    nil: seen
+    ? n:
+        let uses = match byName[n]:
+            ? u: Each (Filter (HeaderLines (MainText u)), \|h| h.word == "use"), \|h| UseTarget byName, h.arg
+            nil: [[]]
+        let fresh = Filter uses, \|x| not (HasText seen, x) and HasKey byName, x
+        ReachNames byName, (UnionTexts seen, fresh), (Append (Drop todo, 1), fresh)
+
+# A `use` line's module: `App`, in a tree with no module of that name, is the root (the
+# root of a program tree, named by its file, as Rust's `crate`: claude/modules-style-pass.md,
+# doubt RA).
+UseTarget: fn (Text ==> ModFiles), Text -> Text
+fn UseTarget byName, u = if u == "App" and not (HasKey byName, "App"): "" else: u
+
+IsTestUnit: fn ModFiles -> Bool
+fn IsTestUnit u = match u.segs[0]:
+    ? s: s.role == "test"
+    nil: False
+
+# A unit's module name: its path's, or its `module` line's.
+UnitName: fn ModFiles -> Text
+fn UnitName u = if u.named: u.name else: Fold (HeaderLines (MainText u)), "", \|n, h| if h.word == "module": h.arg else: n
+
+# A tree's diagnostic as the checker prints one, at the file it names.
+RenderTreeDiag: fn (Text ==> Text), TreeDiag -> Text
+fn RenderTreeDiag texts, d = RenderCDiag [[(MkSrc d.path, (Or texts[d.path], ""))]], CDiag(code=d.code, file=0, span=d.span, message=d.message, fix=d.fix)
+
+# The errors of a reading, and their count, as the run's report.
+TreeReport: fn ReadInput, [TreeDiag] -> Text
+fn TreeReport input, ds:
+    let texts = Map input.texts
+    let n = Len ds
+    "{Concat (Each ds, \|d| RenderTreeDiag texts, d)}{n} error{if n == 1: "" else: "s"}"
+
+# ---- Parsing
+
+# A unit parsed: its one file, named by its path when it is a tree's.
+ParseUnit: unbounded fn ModFiles -> ((Src, Parsed))
+fn ParseUnit u:
+    let src = MkJoinedSrc (Each u.segs, \|s| ((s.path, s.text, s.role)))
+    let parsed = ParseFile src.text
+    let t0 = parsed.tree
+    let tree = if not u.named: t0 else: update t0:
+        &_.name <= if u.name == "": nil else: ? QualName(path=(Split u.name, "."), span=noSpan)
+    ((src, Parsed(tree=tree, diags=parsed.diags)))
+
+# The program's units parsed, and the prelude's it does not replace (a module of the same
+# name, or a tag of its family, replaces one): each unit's source and tree, the program's
+# first; or the parse errors.
+type ParsedProgram = record:
+    srcs: [Src]
+    trees: [Module]
+    shown: Nat
+    parents: [Text]
+    errors: Text
+derive ^Eq, ^Show
+
+ParseProgram: unbounded fn Assembled -> ParsedProgram
+fn ParseProgram read:
+    let parsed = Each read.units, \|u| ParseUnit u
+    let userMods = Fold parsed, [[]], \|acc, ((ignore, p))| Push acc, (ModName p.tree)
+    let userFams = Fold parsed, [[]], \|acc, ((ignore, p))| Append acc, (TagFamilies p.tree)
+    let preParsed = Each read.prelude, \|u| ParseUnit u
+    let kept = Filter preParsed, \|((ignore, p))| not (HasText userMods, (ModName p.tree)) and not (AnyIn (TagFamilies p.tree), userFams)
+    let all = Append parsed, kept
+    let errors = Fold all, "", \|acc, ((src, p))| if AnyErrors p.diags: "{acc}{RenderParse src, p.diags}" else: acc
+    ParsedProgram(srcs=(Each all, \|((s, ignore))| s), trees=(Each all, \|((ignore, p))| p.tree), shown=(Len parsed), parents=(Each read.units, \|u| u.parent), errors=errors)
+
+# In a tree, `test` and `check` stand only in a test module (`test-outside`), and a test
+# module declares no tag, trait or impl (`test-declares`).
+TreeDeclDiags: fn ParsedProgram -> [CDiag]
+fn TreeDeclDiags pp = Fold (Range0 pp.shown), [[]], \|acc, i| match pp.srcs[i]:
+    ? src: Fold (Or pp.trees[i], emptyModule).decls, acc, \|a, d| Append a, (DeclRoleDiags src, (Or pp.parents[i], ""), i, d)
+    nil: acc
+
+# `parent` is the file that declares a test module, whose module it tests.
+DeclRoleDiags: fn Src, Text, Nat, Decl -> [CDiag]
+fn DeclRoleDiags src, parent, i, d:
+    let seg = SegAt src, d.span.start
+    let role = seg.role
+    let main = BaseOf src.path
+    let tested = if seg.path == src.path and parent != "": BaseOf parent else: main
+    let what = match d.kind:
+        DTest ignore: "test"
+        DCheck ignore: "check"
+        DTag ignore: "tag"
+        DTrait ignore: "trait"
+        DImpl ignore: "impl"
+        otherwise: ""
+    if role == "main" and (what == "test" or what == "check"): [[CDiag(code="test-outside", file=i, span=d.span, message="a `{what}` in a tree stands only in a test module", fix="move it to a test module: `test mod Tests` in {main}, and tests.prism")]]
+    else: if role == "test" and (what == "tag" or what == "trait" or what == "impl"): [[CDiag(code="test-declares", file=i, span=d.span, message="a test module declares no tag, trait or impl", fix="declare it in {tested}, the module the test module tests")]]
+    else: [[]]
+
+TagFamilies: fn Module -> [Text]
+fn TagFamilies m = Fold m.decls, [[]], \|acc, d| match d.kind:
+    DTag t: Push acc, (Join (Take t.name.path, (Dec (Len t.name.path))), ".")
+    otherwise: acc
+
+AnyIn: fn [Text], [Text] -> Bool
+fn AnyIn xs, ys = Fold xs, False, \|seen, x| seen or HasText ys, x
+
+# Parse errors, `path:line:col: message`, each at the file of its unit it is in.
+RenderParse: fn Src, [Diag] -> Text
+fn RenderParse src, ds = Concat (Each (Filter ds, \|d| d.stage != "out"), \|d| "{SrcPlace src, d.span.start}:{(ColumnOf src.text, (Or src.starts[CLineOf src.starts, d.span.start], 0), d.span.start) + 1}: {d.message}\n")

@@ -1,6 +1,0 @@
-# The bundle's tests: declarations of sem-ch09-bundle.prism (Semantics chapter 6).
-
-test doors_answer_in_parts, @doors:
-    with Pad.Door(name="front") = "door 1", build
-    send Pad.Door(..), 3
-    send Pad.Door(..), 4

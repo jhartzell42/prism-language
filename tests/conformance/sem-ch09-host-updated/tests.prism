@@ -1,0 +1,12 @@
+# Audited: a click on the forwarded child button moves the child's label in its tick; the host hears `!Updated $doc` in the owed tick after it (round 3 ST), with the document after the click, and counts it there.
+# The host document's event half: declarations of sem-ch09-host-updated.prism (Semantics chapter 9).
+emit Ui.*
+use App.*
+use Ui.*
+
+test the_document_updates_in_its_tick, @counter:
+    build
+    click at 0/[0]/0
+    compute
+    click at 0/[0]/0
+    compute

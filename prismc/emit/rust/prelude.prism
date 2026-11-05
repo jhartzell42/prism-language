@@ -1,0 +1,987 @@
+# The prelude of every compiled program (Semantics Appendix B; prelude/prelude.prism):
+# its builtins and the functions it writes in Prism, as Rust over `prism_rtl`, emitted as
+# `src/prelude.rs` word for word. Every function takes its arguments by reference and
+# gives back a value, as emitted functions do (claude/backend.md); a closure parameter is
+# a `&dyn Fn`. Where one Prism name serves an array, a text and a map (doubt LZ), the
+# variants are `len`, `len_text`, `len_map`, and lowering picks by the argument's type.
+# The runner helpers `main` calls are here too.
+#
+# Written by Claude, 1 November 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+
+PreludeSource: fn Text -> Text
+fn PreludeSource unused = inline_text <rust>
+//! The prelude (Semantics Appendix B), emitted by prismc beside every program: the
+//! builtins and the prelude's own functions as Rust over `prism_rtl`.
+
+use std::rc::Rc;
+
+use prism_rtl::*;
+
+// ---- Types ------------------------------------------------------------------------------
+
+/// `type Ordering = choice: Less | Equal | Greater; derive ^Eq, ^Ord, ^Show`.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Ordering {
+    Less,
+    Equal,
+    Greater,
+}
+
+impl Show for Ordering {
+    fn show(&self, p: &mut Printer) {
+        p.choice(match self { Ordering::Less => "Less", Ordering::Equal => "Equal", Ordering::Greater => "Greater" }, &[]);
+    }
+}
+
+impl ToPod for Ordering {
+    fn to_pod(&self) -> Pod {
+        Pod::name(match self { Ordering::Less => "Less", Ordering::Equal => "Equal", Ordering::Greater => "Greater" })
+    }
+}
+
+/// `type Span = record: file, line, column, binding`.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Span {
+    pub file: Text,
+    pub line: Nat,
+    pub column: Nat,
+    pub binding: Text,
+}
+
+impl ToPod for Span {
+    fn to_pod(&self) -> Pod {
+        Pod::record("Span", vec![("file", self.file.to_pod()), ("line", self.line.to_pod()), ("column", self.column.to_pod()), ("binding", self.binding.to_pod())])
+    }
+}
+
+impl FromPod for Span {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        Ok(Span { file: FromPod::from_pod(field(p, "file")?)?, line: FromPod::from_pod(field(p, "line")?)?, column: FromPod::from_pod(field(p, "column")?)?, binding: FromPod::from_pod(field(p, "binding")?)? })
+    }
+}
+
+/// `type Exception = record: kind, message, spans, path`.
+#[derive(Clone, PartialEq)]
+pub struct Exception {
+    pub kind: Text,
+    pub message: Text,
+    pub spans: Array<Span>,
+    pub path_: Option<Path>,
+}
+
+impl ToPod for Exception {
+    fn to_pod(&self) -> Pod {
+        Pod::record("Exception", vec![("kind", self.kind.to_pod()), ("message", self.message.to_pod()), ("spans", self.spans.to_pod()), ("path", self.path_.to_pod())])
+    }
+}
+
+impl FromPod for Exception {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        Ok(Exception { kind: FromPod::from_pod(field(p, "kind")?)?, message: FromPod::from_pod(field(p, "message")?)?, spans: FromPod::from_pod(field(p, "spans")?)?, path_: FromPod::from_pod(field(p, "path")?)? })
+    }
+}
+
+/// `type Turn b = choice: More | Done b` (the prelude's; `prism_rtl::Turn` is the job's).
+#[derive(Clone, PartialEq, Eq)]
+pub enum PreludeTurn<B> {
+    More,
+    Done(B),
+}
+
+/// `tag Prelude.Unwrap of Element !a: value: !~a`. The prelude's element tags are variants
+/// of `crate::Elem` and `crate::Answer` like any program's (a hosted child may emit them).
+#[derive(Clone, PartialEq)]
+pub struct PreludeUnwrap {}
+
+impl PreludeUnwrap {
+    pub const TAG: &'static str = "Prelude.Unwrap";
+}
+
+impl ToPod for PreludeUnwrap {
+    fn to_pod(&self) -> Pod {
+        Pod::element("Prelude.Unwrap", vec![])
+    }
+}
+
+impl FromPod for PreludeUnwrap {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        match p.tag() {
+            Some("Prelude.Unwrap") => Ok(PreludeUnwrap {}),
+            _ => prism_rtl::pod::mismatch("a Prelude.Unwrap", p),
+        }
+    }
+}
+
+/// `tag Prelude.Exceptions of Element !Exception`.
+#[derive(Clone, PartialEq)]
+pub struct PreludeExceptions {}
+
+impl PreludeExceptions {
+    pub const TAG: &'static str = "Prelude.Exceptions";
+}
+
+impl ToPod for PreludeExceptions {
+    fn to_pod(&self) -> Pod {
+        Pod::element("Prelude.Exceptions", vec![])
+    }
+}
+
+impl FromPod for PreludeExceptions {
+    fn from_pod(p: &Pod) -> Result<Self, Fault> {
+        match p.tag() {
+            Some("Prelude.Exceptions") => Ok(PreludeExceptions {}),
+            _ => prism_rtl::pod::mismatch("a Prelude.Exceptions", p),
+        }
+    }
+}
+
+/// `Duration`: nanoseconds (D14 keeps its arithmetic out).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Duration(pub i128);
+
+impl Show for Duration {
+    fn show(&self, p: &mut Printer) {
+        p.duration(self.0);
+    }
+}
+
+impl ToPod for Duration {
+    fn to_pod(&self) -> Pod {
+        Pod::Duration(self.0)
+    }
+}
+
+impl FromPod for Duration {
+    fn from_pod(p: &Pod) -> Result<Duration, Fault> {
+        match p.structure() {
+            Pod::Duration(ns) => Ok(Duration(*ns)),
+            other => prism_rtl::pod::mismatch("a Duration", other),
+        }
+    }
+}
+
+// ---- Numbers ----------------------------------------------------------------------------
+
+/// `^Num` (Type System ch. 3) over a type variable: the operators by name.
+pub trait Num: Clone {
+    fn zero() -> Self;
+    fn add(a: &Self, b: &Self) -> Self;
+    fn sub(a: &Self, b: &Self) -> Self;
+    fn mul(a: &Self, b: &Self) -> Self;
+    fn div_opt(a: &Self, b: &Self) -> Option<Self>;
+    fn add_opt(a: &Self, b: &Self) -> Option<Self> {
+        Some(Self::add(a, b))
+    }
+    fn sub_opt(a: &Self, b: &Self) -> Option<Self> {
+        Some(Self::sub(a, b))
+    }
+    fn mul_opt(a: &Self, b: &Self) -> Option<Self> {
+        Some(Self::mul(a, b))
+    }
+}
+
+impl Num for Nat {
+    fn zero() -> Nat {
+        Nat::from(0u32)
+    }
+    fn add(a: &Nat, b: &Nat) -> Nat {
+        a + b
+    }
+    fn sub(a: &Nat, b: &Nat) -> Nat {
+        a.checked_sub(b).unwrap_or_else(|| Nat::from(0u32))
+    }
+    fn mul(a: &Nat, b: &Nat) -> Nat {
+        a * b
+    }
+    fn div_opt(a: &Nat, b: &Nat) -> Option<Nat> {
+        a.div(b)
+    }
+    fn sub_opt(a: &Nat, b: &Nat) -> Option<Nat> {
+        a.checked_sub(b)
+    }
+}
+
+impl Num for Int {
+    fn zero() -> Int {
+        Int::from(0)
+    }
+    fn add(a: &Int, b: &Int) -> Int {
+        a + b
+    }
+    fn sub(a: &Int, b: &Int) -> Int {
+        a - b
+    }
+    fn mul(a: &Int, b: &Int) -> Int {
+        a * b
+    }
+    fn div_opt(a: &Int, b: &Int) -> Option<Int> {
+        a.div(b)
+    }
+}
+
+impl Num for f64 {
+    fn zero() -> f64 {
+        0.0
+    }
+    fn add(a: &f64, b: &f64) -> f64 {
+        a + b
+    }
+    fn sub(a: &f64, b: &f64) -> f64 {
+        a - b
+    }
+    fn mul(a: &f64, b: &f64) -> f64 {
+        a * b
+    }
+    fn div_opt(a: &f64, b: &f64) -> Option<f64> {
+        Some(a / b)
+    }
+}
+
+impl Num for u8 {
+    fn zero() -> u8 {
+        0
+    }
+    fn add(a: &u8, b: &u8) -> u8 {
+        a.wrapping_add(*b)
+    }
+    fn sub(a: &u8, b: &u8) -> u8 {
+        a.wrapping_sub(*b)
+    }
+    fn mul(a: &u8, b: &u8) -> u8 {
+        a.wrapping_mul(*b)
+    }
+    fn div_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_div(*b)
+    }
+    fn add_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_add(*b)
+    }
+    fn sub_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_sub(*b)
+    }
+    fn mul_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_mul(*b)
+    }
+}
+
+/// A `Nat` as an index; one too large for memory indexes nothing.
+pub fn ix(n: &Nat) -> usize {
+    n.as_int().to_i64().map_or(usize::MAX, |i| i as usize)
+}
+
+pub fn nat_of(n: usize) -> Nat {
+    Nat::from_int(Int::from(n as i64)).unwrap_or_else(|| Nat::from(0u32))
+}
+
+/// `Int: fn Nat -> Int`.
+pub fn int(n: &Nat) -> Int {
+    n.as_int().clone()
+}
+
+/// `?Nat: fn Int -> ?Nat`.
+pub fn nat(i: &Int) -> Option<Nat> {
+    Nat::from_int(i.clone())
+}
+
+/// `?U8: fn Int -> ?U8`.
+pub fn u8_(i: &Int) -> Option<u8> {
+    i.to_i64().and_then(|n| u8::try_from(n).ok())
+}
+
+/// `?Div`, `?Mod`.
+pub fn div<A: Num>(a: &A, b: &A) -> Option<A> {
+    A::div_opt(a, b)
+}
+
+pub fn mod_<A: Modulo>(a: &A, b: &A) -> Option<A> {
+    A::mod_opt(a, b)
+}
+
+/// `?Mod` over each numeric type that has a remainder.
+pub trait Modulo: Sized {
+    fn mod_opt(a: &Self, b: &Self) -> Option<Self>;
+}
+
+impl Modulo for Int {
+    fn mod_opt(a: &Int, b: &Int) -> Option<Int> {
+        (b != &Int::from(0)).then(|| a.modulo(b))
+    }
+}
+
+impl Modulo for Nat {
+    fn mod_opt(a: &Nat, b: &Nat) -> Option<Nat> {
+        (b != &Nat::from(0u32)).then(|| a.modulo(b))
+    }
+}
+
+impl Modulo for u8 {
+    fn mod_opt(a: &u8, b: &u8) -> Option<u8> {
+        a.checked_rem(*b)
+    }
+}
+
+/// `Float`, `ToFloat`: an `Int` as a double.
+pub fn float(i: &Int) -> f64 {
+    i.to_i64().map_or_else(|| i.to_string().parse().unwrap_or(f64::NAN), |n| n as f64)
+}
+
+pub fn to_float(i: &Int) -> f64 {
+    float(i)
+}
+
+pub fn cos(x: &f64) -> f64 {
+    x.cos()
+}
+
+pub fn sin(x: &f64) -> f64 {
+    x.sin()
+}
+
+pub fn abs<A: Num + PartialOrd>(a: &A) -> A {
+    if *a < A::zero() { A::sub(&A::zero(), a) } else { a.clone() }
+}
+
+pub fn sign<A: Num + PartialOrd + From<i8>>(a: &A) -> A {
+    if *a < A::zero() { A::from(-1) } else if *a > A::zero() { A::from(1) } else { A::zero() }
+}
+
+pub fn sum<A: Num>(xs: &Array<A>) -> A {
+    xs.iter().fold(A::zero(), |s, x| A::add(&s, x))
+}
+
+pub fn max<A: PartialOrd + Clone>(a: &A, b: &A) -> A {
+    if a < b { b.clone() } else { a.clone() }
+}
+
+pub fn min<A: PartialOrd + Clone>(a: &A, b: &A) -> A {
+    if b < a { b.clone() } else { a.clone() }
+}
+
+/// `Compare` of `^Ord`.
+pub fn compare<A: PartialOrd>(a: &A, b: &A) -> Ordering {
+    match a.partial_cmp(b) {
+        Some(std::cmp::Ordering::Less) => Ordering::Less,
+        Some(std::cmp::Ordering::Greater) => Ordering::Greater,
+        _ => Ordering::Equal,
+    }
+}
+
+// ---- Optionals --------------------------------------------------------------------------
+
+/// `Or: fn ?a, a -> a`.
+pub fn or<A: Clone>(o: &Option<A>, d: &A) -> A {
+    o.clone().unwrap_or_else(|| d.clone())
+}
+
+// ---- Arrays -----------------------------------------------------------------------------
+
+pub fn len<A: Clone>(xs: &Array<A>) -> Nat {
+    nat_of(xs.len())
+}
+
+pub fn len_text(t: &Text) -> Nat {
+    nat_of(t.len())
+}
+
+pub fn len_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Nat {
+    nat_of(m.len())
+}
+
+pub fn append<A: Clone>(a: &Array<A>, b: &Array<A>) -> Array<A> {
+    let mut out = a.clone();
+    out.append(b.clone());
+    out
+}
+
+pub fn push<A: Clone>(xs: &Array<A>, x: &A) -> Array<A> {
+    let mut out = xs.clone();
+    out.push_back(x.clone());
+    out
+}
+
+pub fn fold<A: Clone, B: Clone>(xs: &Array<A>, init: &B, f: &dyn Fn(&B, &A) -> B) -> B {
+    xs.iter().fold(init.clone(), |acc, x| f(&acc, x))
+}
+
+pub fn fold_map<K: Ord + Clone, V: Clone, B: Clone>(m: &Map<K, V>, init: &B, f: &dyn Fn(&B, &K, &V) -> B) -> B {
+    m.iter().fold(init.clone(), |acc, (k, v)| f(&acc, k, v))
+}
+
+pub fn each<A: Clone, B: Clone>(xs: &Array<A>, f: &dyn Fn(&A) -> B) -> Array<B> {
+    xs.iter().map(f).collect()
+}
+
+pub fn filter<A: Clone>(xs: &Array<A>, keep: &dyn Fn(&A) -> bool) -> Array<A> {
+    xs.iter().filter(|x| keep(x)).cloned().collect()
+}
+
+pub fn concat(xs: &Array<Text>) -> Text {
+    let mut s = String::with_capacity(xs.iter().map(Text::len).sum());
+    xs.iter().for_each(|t| s.push_str(t.as_str()));
+    Text::from(s)
+}
+
+/// `xs[i]`.
+pub fn index<A: Clone>(xs: &Array<A>, i: &Nat) -> Option<A> {
+    xs.get(ix(i)).cloned()
+}
+
+/// `&xs[i]` in an `&` block.
+pub fn at_mut<'a, A: Clone>(xs: &'a mut Array<A>, i: &Nat) -> &'a mut A {
+    &mut xs[ix(i)]
+}
+
+pub fn at_mut_map<'a, K: Ord + Clone, V: Clone>(m: &'a mut Map<K, V>, k: &K) -> &'a mut V {
+    m.get_mut(k).expect("an `&` path to a key the map does not hold")
+}
+
+/// `&xs[i] <= v` in an `&` block: the part is optional (Semantics ch. 5), `? x` writes the
+/// entry; an array has no entry to remove.
+pub fn set_index<A: Clone>(xs: &mut Array<A>, i: &Nat, v: Option<A>) {
+    match v {
+        Some(x) => xs[ix(i)] = x,
+        None => panic!("`&xs[{i}] <= nil`: an array's entry cannot be removed"),
+    }
+}
+
+/// `&m[k] <= v` in an `&` block: `? x` writes the key, `nil` removes it.
+pub fn set_key<K: Ord + Clone, V: Clone>(m: &mut Map<K, V>, k: &K, v: Option<V>) {
+    match v {
+        Some(x) => {
+            m.insert(k.clone(), x);
+        }
+        None => {
+            m.remove(k);
+        }
+    }
+}
+
+pub fn take<A: Clone>(xs: &Array<A>, n: &Nat) -> Array<A> {
+    xs.take(ix(n).min(xs.len()))
+}
+
+pub fn drop<A: Clone>(xs: &Array<A>, n: &Nat) -> Array<A> {
+    xs.skip(ix(n).min(xs.len()))
+}
+
+// ---- Maps -------------------------------------------------------------------------------
+
+pub fn map_of<K: Ord + Clone, V: Clone>(entries: Vec<(K, V)>) -> Map<K, V> {
+    entries.into_iter().collect()
+}
+
+pub fn insert<K: Ord + Clone, V: Clone>(m: &Map<K, V>, k: &K, v: &V) -> Map<K, V> {
+    m.update(k.clone(), v.clone())
+}
+
+pub fn remove<K: Ord + Clone, V: Clone>(m: &Map<K, V>, k: &K) -> Map<K, V> {
+    m.without(k)
+}
+
+/// `?Get`, and `m[k]`.
+pub fn get<K: Ord + Clone, V: Clone>(m: &Map<K, V>, k: &K) -> Option<V> {
+    m.get(k).cloned()
+}
+
+/// `?First`.
+pub fn first<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Option<(K, V)> {
+    m.get_min().cloned()
+}
+
+pub fn keys<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Array<K> {
+    m.keys().cloned().collect()
+}
+
+pub fn values<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Array<V> {
+    m.values().cloned().collect()
+}
+
+pub fn size<K: Ord + Clone, V: Clone>(m: &Map<K, V>) -> Nat {
+    nat_of(m.len())
+}
+
+pub fn map<K: Ord + Clone, V: Clone>(entries: &Array<(K, V)>) -> Map<K, V> {
+    entries.iter().cloned().collect()
+}
+
+pub fn union<K: Ord + Clone, V: Clone>(a: &Map<K, V>, b: &Map<K, V>) -> Map<K, V> {
+    b.clone().union(a.clone())
+}
+
+pub fn each_map<K: Ord + Clone, V: Clone, B: Clone>(m: &Map<K, V>, f: &dyn Fn(&K, &V) -> B) -> Array<B> {
+    m.iter().map(|(k, v)| f(k, v)).collect()
+}
+
+pub fn filter_map<K: Ord + Clone, V: Clone>(m: &Map<K, V>, keep: &dyn Fn(&K, &V) -> bool) -> Map<K, V> {
+    m.iter().filter(|(k, v)| keep(k, v)).map(|(k, v)| (k.clone(), v.clone())).collect()
+}
+
+// ---- Text -------------------------------------------------------------------------------
+
+pub fn upper(t: &Text) -> Text {
+    Text::from(t.as_str().to_uppercase())
+}
+
+pub fn lower(t: &Text) -> Text {
+    Text::from(t.as_str().to_lowercase())
+}
+
+/// `Split t, sep`: the pieces between the separators. An empty separator is refused: a
+/// text's characters are walked with a cursor (Appendix B, Text).
+pub fn split(t: &Text, sep: &Text) -> Array<Text> {
+    if sep.is_empty() {
+        panic!("`Split` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
+    }
+    t.split(sep.as_str()).collect()
+}
+
+/// `Front: fn Text -> Cursor`.
+pub fn front(t: &Text) -> Cursor {
+    Cursor::front(t)
+}
+
+/// `Back: fn Text -> Cursor`.
+pub fn back(t: &Text) -> Cursor {
+    Cursor::back(t)
+}
+
+/// `?Step: fn Cursor -> ?((Char, Cursor))`.
+pub fn step(c: &Cursor) -> Option<(char, Cursor)> {
+    c.step()
+}
+
+/// `?StepBack: fn Cursor -> ?((Char, Cursor))`.
+pub fn step_back(c: &Cursor) -> Option<(char, Cursor)> {
+    c.step_back()
+}
+
+/// `Before: fn Cursor -> Text`.
+pub fn before(c: &Cursor) -> Text {
+    c.before()
+}
+
+/// `After: fn Cursor -> Text`.
+pub fn after(c: &Cursor) -> Text {
+    c.after()
+}
+
+/// `At: fn Cursor -> Nat`.
+pub fn at(c: &Cursor) -> Nat {
+    nat_of(c.at())
+}
+
+/// `?CursorAt: fn Text, Nat -> ?Cursor`.
+pub fn cursor_at(t: &Text, n: &Nat) -> Option<Cursor> {
+    Cursor::at_byte(t, ix(n))
+}
+
+/// `?ParseNat`.
+pub fn parse_nat_opt(t: &Text) -> Option<Nat> {
+    let s = t.as_str();
+    if s.is_empty() || !s.bytes().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Int::parse(s).and_then(Nat::from_int)
+}
+
+/// `~ParseNat`.
+pub fn parse_nat_try(t: &Text) -> Result<Nat, Error> {
+    parse_nat_opt(t).ok_or_else(|| Error::new("Prelude.NotANumber", format!("not a number: {t}")))
+}
+
+/// `Buffer.Numbered n`: `0` to `n - 1`, linear.
+pub fn numbered(n: &Nat) -> Array<Nat> {
+    (0..ix(n)).map(nat_of).collect()
+}
+
+/// `Freeze`: a `Buffer` is an array already.
+pub fn freeze<A: Clone>(a: &A) -> A {
+    a.clone()
+}
+
+/// A code template's placeholder (Templates ch. 2): alone on its line, its text's lines
+/// indented to its column, a final newline dropped, an empty text no line; sharing a line,
+/// the text as it is.
+pub fn place(out: &mut String, text: &Text, column: Option<usize>) {
+    let text = text.as_str();
+    match column {
+        Some(c) => {
+            let text = text.strip_suffix('\n').unwrap_or(text);
+            if text.is_empty() {
+                return;
+            }
+            for l in text.split('\n') {
+                if !l.is_empty() {
+                    out.extend(std::iter::repeat_n(' ', c));
+                }
+                out.push_str(l);
+                out.push('\n');
+            }
+        }
+        None => out.push_str(text),
+    }
+}
+
+/// A derived `FromPod`'s field.
+pub fn field<'a>(p: &'a Pod, name: &str) -> Result<&'a Pod, Fault> {
+    p.field(name).ok_or_else(|| Fault::answer(format!("no field {name} in {p}")))
+}
+
+/// An array as the map from each index to its entry, for a `for` over an array.
+pub fn indexed<A: Clone>(xs: &Array<A>) -> Map<Nat, A> {
+    xs.iter().enumerate().map(|(i, x)| (nat_of(i), x.clone())).collect()
+}
+
+/// The heights a node with combinators at several heights asked for this tick: its wake
+/// runs the lowest one asked (`Node::wake` is not told its height, prismc/README.md WH).
+#[derive(Default)]
+pub struct Wakes(std::cell::RefCell<std::collections::BTreeSet<u32>>);
+
+impl Wakes {
+    pub fn ask(&self, h: u32) {
+        self.0.borrow_mut().insert(h);
+    }
+    pub fn next(&self) -> u32 {
+        self.0.borrow_mut().pop_first().unwrap_or(u32::MAX)
+    }
+}
+
+/// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
+/// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
+/// own places, by their paths relative to the row, and a host's typed answer to one of them.
+pub trait Row: Node {
+    fn leave_row(&self, cx: &mut Cx);
+    fn document(&self, cx: &Cx) -> Vec<(Path, crate::Elem)> {
+        let _ = cx;
+        Vec::new()
+    }
+    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Answer, cx: &mut Cx) -> Done {
+        let _ = (v, cx);
+        Err(Fault::answer(format!("no hosted place at {} to answer: the row is not hosted", Path(at.to_vec()))))
+    }
+}
+
+/// A host's own rows (prism_rtl's), which its `for` builds and tears down like any row.
+impl Row for prism_rtl::HostRow<crate::Elem, crate::Answer> {
+    fn leave_row(&self, cx: &mut Cx) {
+        prism_rtl::HostRow::leave_row(self, cx)
+    }
+    fn document(&self, cx: &Cx) -> Vec<(Path, crate::Elem)> {
+        prism_rtl::HostRow::document(self, cx)
+    }
+    fn deliver(self: Rc<Self>, at: &[Segment], v: &crate::Answer, cx: &mut Cx) -> Done {
+        prism_rtl::HostRow::deliver(&self, at, v, cx)
+    }
+}
+
+/// A row subscribing to its block's port for one event: the row heard weakly, the handle
+/// kept for its leaving (claude/backend.md: `Port::subscribe`).
+pub fn subscribe_row<N: Node, P, T: Clone + 'static>(node: &Rc<N>, parent: Option<Rc<P>>, port: impl Fn(&P) -> &Port<T>, call: impl Fn(&Rc<N>, &T, &mut Cx) + 'static, slot: &std::cell::Cell<Option<Handle>>) {
+    let Some(parent) = parent else { return };
+    let me = Rc::downgrade(node);
+    let h = port(&parent).subscribe(Rc::new(move |v: &T, cx: &mut Cx| {
+        if let Some(n) = me.upgrade() {
+            call(&n, v, cx);
+        }
+        Ok(())
+    }));
+    slot.set(Some(h));
+}
+
+// ---- Jobs -------------------------------------------------------------------------------
+
+/// A frame of a job's stack (D6; claude/backend.md, "Unbounded functions and `@Run`"): the
+/// caller of `callee`, a call of an unbounded function that was not in tail position,
+/// waiting for its result. Entering the call is a cycle point; the result resumes `then`
+/// in the cycle the callee finishes. Frames nest, the innermost call deepest, so a job's
+/// state is its stack of pending callers. A continuation runs once, so it may move what
+/// it owns: a cycled frame hands it on to the next.
+pub struct Frame<A, B> {
+    callee: Rc<dyn Job<A>>,
+    then: std::cell::RefCell<Option<Box<dyn FnOnce(A) -> Turn<B>>>>,
+}
+
+impl<A: 'static, B: 'static> Job<B> for Frame<A, B> {
+    fn cycle(&self) -> Turn<B> {
+        let then = self.then.borrow_mut().take().expect("a job's frame is cycled once");
+        match self.callee.cycle() {
+            Turn::More(next) => Turn::More(Rc::new(Frame { callee: next, then: std::cell::RefCell::new(Some(then)) })),
+            Turn::Finished(a) => then(a),
+        }
+    }
+}
+
+/// A call that is not in tail position: a cycle point, with `then` the continuation.
+pub fn call_then<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
+    Turn::More(Rc::new(Frame { callee, then: std::cell::RefCell::new(Some(Box::new(then))) }))
+}
+
+/// A call through an unbounded function value that is not in tail position: the value's
+/// job runs its first cycle now. A named function's value is `entered`, so entering it
+/// is still a cycle point (D6); a lambda's body is not a named function and runs on.
+pub fn call_value<A: 'static, B: 'static>(callee: Rc<dyn Job<A>>, then: impl FnOnce(A) -> Turn<B> + 'static) -> Turn<B> {
+    Frame { callee, then: std::cell::RefCell::new(Some(Box::new(then))) }.cycle()
+}
+
+/// A named unbounded function's job as its value gives it: entering it is a cycle point.
+pub struct Entered<B>(Rc<dyn Job<B>>);
+
+impl<B> Job<B> for Entered<B> {
+    fn cycle(&self) -> Turn<B> {
+        Turn::More(self.0.clone())
+    }
+}
+
+pub fn entered<B: 'static>(job: Rc<dyn Job<B>>) -> Rc<dyn Job<B>> {
+    Rc::new(Entered(job))
+}
+
+/// A `while` in an `update` block of an unbounded function as a job (D6: every turn of a
+/// `while` in an unbounded `&` block is a cycle point): `step` takes the block's state
+/// (`this` and its `&` locals) one turn, `Ok` to turn again, `Err` when the condition
+/// fails; each turn is a cycle.
+pub struct Looping<S> {
+    state: std::cell::RefCell<Option<S>>,
+    step: Rc<dyn Fn(S) -> Result<S, S>>,
+}
+
+impl<S: 'static> Job<S> for Looping<S> {
+    fn cycle(&self) -> Turn<S> {
+        let s = self.state.borrow_mut().take().expect("a loop's turn is cycled once");
+        match (self.step)(s) {
+            Ok(next) => Turn::More(Rc::new(Looping { state: std::cell::RefCell::new(Some(next)), step: self.step.clone() })),
+            Err(done) => Turn::Finished(done),
+        }
+    }
+}
+
+pub fn loop_job<S: 'static>(state: S, step: impl Fn(S) -> Result<S, S> + 'static) -> Rc<dyn Job<S>> {
+    Rc::new(Looping { state: std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
+}
+
+/// A `while` whose body holds a cycle-point loop of its own (D6): a turn is a job, `Ok` to
+/// turn again in the next cycle, `Err` when the condition fails; each turn starts a cycle.
+pub struct LoopingTurns<S> {
+    state: std::cell::RefCell<Option<S>>,
+    step: Rc<dyn Fn(S) -> Turn<Result<S, S>>>,
+}
+
+impl<S: 'static> Job<S> for LoopingTurns<S> {
+    fn cycle(&self) -> Turn<S> {
+        let state = self.state.borrow_mut().take().expect("a loop's turn is cycled once");
+        let step = self.step.clone();
+        let again = move |r: Result<S, S>| match r {
+            Ok(next) => Turn::More(Rc::new(LoopingTurns { state: std::cell::RefCell::new(Some(next)), step }) as Rc<dyn Job<S>>),
+            Err(done) => Turn::Finished(done),
+        };
+        match (self.step)(state) {
+            Turn::Finished(r) => again(r),
+            Turn::More(turn) => Turn::More(Rc::new(Frame { callee: turn, then: std::cell::RefCell::new(Some(Box::new(again))) })),
+        }
+    }
+}
+
+pub fn loop_turns<S: 'static>(state: S, step: impl Fn(S) -> Turn<Result<S, S>> + 'static) -> Rc<dyn Job<S>> {
+    Rc::new(LoopingTurns { state: std::cell::RefCell::new(Some(state)), step: Rc::new(step) })
+}
+
+/// A `for` of an `update` block whose body holds a cycle-point loop (D6, gap LP): a loop
+/// over its entries as `loop_turns` is over its condition, taking the next entry its
+/// test; `step` takes the block's state and an entry, a turn a job.
+fn for_turns<E: Clone + 'static, S: 'static>(entries: Vec<E>, state: S, step: impl Fn(S, E) -> Turn<S> + 'static) -> Rc<dyn Job<S>> {
+    let entries = Rc::new(entries);
+    let job = loop_turns((state, 0usize), move |(s, i): (S, usize)| match entries.get(i).cloned() {
+        Some(e) => match step(s, e) {
+            Turn::Finished(s2) => Turn::Finished(Ok((s2, i + 1))),
+            Turn::More(j) => call_then(j, move |s2| Turn::Finished(Ok((s2, i + 1)))),
+        },
+        None => Turn::Finished(Err((s, i))),
+    });
+    map_job(job, |(s, _)| s)
+}
+
+/// `for` over a map in a job (`for_turns`): the key and the entry, in key order.
+pub fn for_turns_keyed<K: Clone + 'static, V: Clone + 'static, S: 'static>(entries: impl IntoIterator<Item = (K, V)>, state: S, step: impl Fn(S, K, V) -> Turn<S> + 'static) -> Rc<dyn Job<S>> {
+    for_turns(entries.into_iter().collect(), state, move |s, (k, v)| step(s, k, v))
+}
+
+/// `for` over an array in a job (`for_turns`): the index and the entry.
+pub fn for_turns_indexed<V: Clone + 'static, S: 'static>(entries: impl IntoIterator<Item = V>, state: S, step: impl Fn(S, Nat, V) -> Turn<S> + 'static) -> Rc<dyn Job<S>> {
+    for_turns(entries.into_iter().enumerate().collect(), state, move |s, (i, v)| step(s, nat_of(i), v))
+}
+
+/// The job of a lambda of unbounded type: its body, run as a job body from its first
+/// cycle (prismc/README.md, pick JB).
+pub struct Once<B>(std::cell::RefCell<Option<Box<dyn FnOnce() -> Turn<B>>>>);
+
+impl<B> Job<B> for Once<B> {
+    fn cycle(&self) -> Turn<B> {
+        (self.0.borrow_mut().take().expect("a lambda's job is cycled once"))()
+    }
+}
+
+pub fn once_job<B: 'static>(body: impl FnOnce() -> Turn<B> + 'static) -> Rc<dyn Job<B>> {
+    Rc::new(Once(std::cell::RefCell::new(Some(Box::new(body)))))
+}
+
+/// A job's result, mapped: `g` runs in the cycle the job finishes (entering is free).
+pub fn map_job<B: 'static, C: 'static>(job: Rc<dyn Job<B>>, g: impl FnOnce(B) -> C + 'static) -> Rc<dyn Job<C>> {
+    Rc::new(Frame { callee: job, then: std::cell::RefCell::new(Some(Box::new(move |b| Turn::Finished(g(b))))) })
+}
+
+// ---- The higher-order functions as jobs (D8): given an unbounded closure, `Fold`, `Each`
+// and `Filter` call it as a job, each call a cycle point when it enters a named function
+// (D6), so that a closure's calls cost the cycles the books count.
+
+fn fold_from<A: Clone + 'static, B: Clone + 'static>(xs: Array<A>, i: usize, acc: B, f: Rc<dyn Fn((B, A)) -> Rc<dyn Job<B>>>) -> Turn<B> {
+    match xs.get(i).cloned() {
+        None => Turn::Finished(acc),
+        Some(x) => {
+            let g = f.clone();
+            call_value(f((acc, x)), move |b| fold_from(xs, i + 1, b, g))
+        }
+    }
+}
+
+pub fn fold_job<A: Clone + 'static, B: Clone + 'static>(xs: Array<A>, init: B, f: Rc<dyn Fn((B, A)) -> Rc<dyn Job<B>>>) -> Rc<dyn Job<B>> {
+    once_job(move || fold_from(xs, 0, init, f))
+}
+
+pub fn fold_map_job<K: Ord + Clone + 'static, V: Clone + 'static, B: Clone + 'static>(m: Map<K, V>, init: B, f: Rc<dyn Fn((B, K, V)) -> Rc<dyn Job<B>>>) -> Rc<dyn Job<B>> {
+    let pairs: Array<(K, V)> = m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    fold_job(pairs, init, Rc::new(move |(acc, (k, v)): (B, (K, V))| f((acc, k, v))))
+}
+
+pub fn each_job<A: Clone + 'static, B: Clone + 'static>(xs: Array<A>, f: Rc<dyn Fn(A) -> Rc<dyn Job<B>>>) -> Rc<dyn Job<Array<B>>> {
+    fold_job(xs, Array::new(), Rc::new(move |(acc, x): (Array<B>, A)| {
+        map_job(f(x), move |b| {
+            let mut acc = acc;
+            acc.push_back(b);
+            acc
+        })
+    }))
+}
+
+pub fn each_map_job<K: Ord + Clone + 'static, V: Clone + 'static, B: Clone + 'static>(m: Map<K, V>, f: Rc<dyn Fn((K, V)) -> Rc<dyn Job<B>>>) -> Rc<dyn Job<Array<B>>> {
+    let pairs: Array<(K, V)> = m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    each_job(pairs, f)
+}
+
+pub fn filter_job<A: Clone + 'static>(xs: Array<A>, keep: Rc<dyn Fn(A) -> Rc<dyn Job<bool>>>) -> Rc<dyn Job<Array<A>>> {
+    fold_job(xs, Array::new(), Rc::new(move |(acc, x): (Array<A>, A)| {
+        map_job(keep(x.clone()), move |k| {
+            let mut acc = acc;
+            if k {
+                acc.push_back(x);
+            }
+            acc
+        })
+    }))
+}
+
+pub fn filter_map_job<K: Ord + Clone + 'static, V: Clone + 'static>(m: Map<K, V>, keep: Rc<dyn Fn((K, V)) -> Rc<dyn Job<bool>>>) -> Rc<dyn Job<Map<K, V>>> {
+    let pairs: Array<(K, V)> = m.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    fold_job(pairs, Map::new(), Rc::new(move |(acc, (k, v)): (Map<K, V>, (K, V))| {
+        map_job(keep((k.clone(), v.clone())), move |keep| {
+            let mut acc = acc;
+            if keep {
+                acc.insert(k, v);
+            }
+            acc
+        })
+    }))
+}
+
+/// A job run to its result inside the cycle: a call of an unbounded function value from
+/// direct-style code (gap DS of prismc/README.md).
+pub fn run_to_end<B>(job: Rc<dyn Job<B>>) -> B {
+    let mut job = job;
+    loop {
+        match job.cycle() {
+            Turn::More(next) => job = next,
+            Turn::Finished(b) => return b,
+        }
+    }
+}
+
+// ---- Running ----------------------------------------------------------------------------
+
+/// `--world NAME` as the first argument: the World, and the arguments without the
+/// option. Only the first: a `--world` later on is the program's own (prismc's `--check
+/// --world Ui` names the World the checker checks against).
+pub fn world_option(args: &[String], default: &str) -> (String, Vec<String>) {
+    match args.first().map(String::as_str) {
+        Some("--world") if args.len() > 1 => (args[1].clone(), args[2..].to_vec()),
+        Some(a) if a.starts_with("--world=") => (a["--world=".len()..].to_string(), args[1..].to_vec()),
+        _ => (default.to_string(), args.to_vec()),
+    }
+}
+
+/// Run on a thread with a large stack: unbounded code runs direct-style within a cycle
+/// (doubt DS of prismc/README.md), and Rust's default stack is 8 MB.
+pub fn on_big_stack(f: impl FnOnce() -> u8 + Send + 'static) -> u8 {
+    std::thread::Builder::new().stack_size(1 << 30).spawn(f).map_or(1, |h| h.join().unwrap_or(1))
+}
+
+/// `test`: each script under the Test World. With `--print` the transcripts go to
+/// standard output as they are; otherwise each is compared byte for byte with the
+/// `.expected` beside it (`tests.expected` for the test module `tests.prism`), and `ok`
+/// or the difference is printed.
+pub fn run_scripts(world: &TestWorld, given: &[String], compiled: &[&str]) -> u8 {
+    let print = given.iter().any(|a| a == "--print");
+    let mut paths: Vec<String> = given.iter().filter(|a| *a != "--print").cloned().collect();
+    if paths.is_empty() {
+        paths = compiled.iter().map(|s| s.to_string()).collect();
+    }
+    let mut code = 0;
+    for path in paths {
+        let script = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("{path}: {e}");
+                code = 2;
+                continue;
+            }
+        };
+        if print {
+            let report = world.run(&script);
+            print!("{}", report.transcript);
+            report.failures.iter().for_each(|f| eprintln!("{path}: {f}"));
+            code = code.max(report.exit_code);
+            continue;
+        }
+        let stem = path.strip_suffix(".prism").unwrap_or(&path);
+        let expected_path = format!("{stem}.expected");
+        match std::fs::read_to_string(&expected_path) {
+            Ok(expected) => match world.verify(&script, &expected) {
+                Ok(_) => println!("ok {path}"),
+                Err(e) => {
+                    println!("FAILED {path}: {e}");
+                    code = 1;
+                }
+            },
+            Err(_) => {
+                let report = world.run(&script);
+                print!("{}", report.transcript);
+                report.failures.iter().for_each(|f| eprintln!("{path}: {f}"));
+                code = code.max(report.exit_code);
+            }
+        }
+    }
+    code
+}
+
+/// The canvas World, when the crate is built with it.
+#[cfg(feature = "canvas")]
+pub fn run_canvas<P: Program>() -> u8 {
+    prism_world_canvas_rtl::run::<P>()
+}
+
+#[cfg(not(feature = "canvas"))]
+pub fn run_canvas<P: Program>() -> u8 {
+    eprintln!("this program was built without the canvas World: cargo build --features canvas");
+    1
+}
+</rust>

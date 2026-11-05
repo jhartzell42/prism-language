@@ -1,0 +1,414 @@
+# The S-expression dump of the tree, without spans: `prism_syntax/src/sexp.rs` exactly, so
+# that `prismc`'s tree and `prism_syntax`'s can be diffed (tests/prismc/compare.sh). Every
+# node prints as `(kind child ...)`; names print with their sigils as written, literals as
+# their source spelling; blocks print their statements one per line, indented two spaces a
+# level, so a dump reads like the program's outline.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+#
+# sexp.rs writes into one buffer and keeps the depth in a field; here each printer takes the
+# depth `d` it stands at and gives back its text.
+emit r
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+
+# A new line at depth `d`.
+Nl: fn Nat -> Text
+fn Nl d = "\n{Indent d}"
+
+# Two spaces per level.
+Indent: fn Nat -> Text
+fn Indent d = match d -? 1:
+    ? m: "  {Indent m}"
+    nil: ""
+
+# `F x` for each of `xs`, each after a space.
+Spaced: fn [a], (fn a -> Text) -> Text
+fn Spaced xs, F = Concat (Each xs, \|x| " {F x}")
+
+Path: fn [Text] -> Text
+fn Path p = Join p, "."
+
+SNameText: fn SName -> Text
+fn SNameText n = "{n.sigils}{Path n.path}"
+
+SexpModule: fn Module -> Text
+fn SexpModule m:
+    let name = match m.?name:
+        ? n: "{Nl 1}(name {Path n.path})"
+        nil: ""
+    let emits = match m.?emitRow:
+        ? r: "{Nl 1}(emit {SexpRow r})"
+        nil: ""
+    let mods = Concat (Each m.mods, \|l| "{Nl 1}({if l.isTest: "test-mod" else: "mod"} {l.name.name})")
+    let uses = Concat (Each m.uses, \|u| "{Nl 1}(use {Path u.target.path}{if u.star: ".*" else: ""})")
+    let template = match m.?template:
+        ? t: "{Nl 1}{SexpTemplate t, 1}"
+        nil: ""
+    let decls = Concat (Each m.decls, \|d| "{Nl 1}{SexpDecl d, 1}")
+    "(module{name}{emits}{mods}{uses}{template}{decls})\n"
+
+SexpRow: fn Row -> Text
+fn SexpRow r = "(row{Spaced r.terms, SexpRowTerm})"
+
+SexpRowTerm: fn RowTerm -> Text
+fn SexpRowTerm (RFamily q) = "{Path q.path}.*"
+fn SexpRowTerm (RVar v) = "(var {v.name})"
+fn SexpRowTerm (RType t) = SexpType t
+
+# ---------------------------------------------------------------------------------------
+# Declarations
+# ---------------------------------------------------------------------------------------
+
+SexpDecl: fn Decl, Nat -> Text
+fn SexpDecl d, depth = match d.kind:
+    DSignature s: SexpSignature s
+    DFn f: SexpFn f, depth
+    DLet l: "(let {SexpPattern l.pattern, depth}{OptType l.?ty} {SexpExpr l.value, depth})"
+    DWidget w: "(widget {SNameText w.name}{SexpBlock w.body, depth})"
+    DType t: "(type {Path t.name.path}{Concat (Each t.params, \|p| " {p.name}")}{SexpTypeBody t.?body, depth})"
+    DTag t: "(tag {Path t.name.path} {SexpType t.ofType}{SexpBounds t.bounds}{SexpFields t.fields, depth})"
+    DDerive ts: "(derive{Concat (Each ts, \|t| " ^{Path t.path}")})"
+    DTrait t: "(trait ^{Path t.name.path}{Concat (Each t.params, \|p| " {p.name}")}{SexpBounds t.bounds}{SexpItems t.items, depth})"
+    DImpl i: "(impl ^{Path i.traitRef.path} {SexpType i.ty}{SexpBounds i.bounds}{SexpItems i.items, depth})"
+    DCheck c: "(check {c.name.name}{Concat (Each c.lines, \|l| "{Nl depth + 1}(line {SexpExpr l.expr, depth + 1}{CheckPattern l.?pattern, depth + 1})")})"
+    DTest t: SexpTest t, depth
+    DStmt s: SexpStmt s, depth
+
+OptType: fn ?Type -> Text
+fn OptType nil = ""
+fn OptType (? t) = " {SexpType t}"
+
+CheckPattern: fn ?Pattern, Nat -> Text
+fn CheckPattern nil, ignore = ""
+fn CheckPattern (? p), d = " => {SexpPattern p, d}"
+
+SexpTypeBody: fn ?TypeBody, Nat -> Text
+fn SexpTypeBody nil, ignore = " opaque"
+fn SexpTypeBody (? b), depth = match b:
+    TbRecord fs: " record{SexpFields fs, depth}"
+    TbChoice cs: " choice{Concat (Each cs, \|c| "{Nl depth + 1}{SexpCase c}")}"
+    TbRow: " row"
+    TbNewtype c: " newtype {SexpCase c}"
+    TbUnit i: " unit {i.name}"
+    TbAlias t: " alias {SexpType t}"
+
+SexpSignature: fn Signature -> Text
+fn SexpSignature s = "(sig {SexpDefName s.name} {SexpType s.ty}{SexpBounds s.bounds})"
+
+SexpDefName: fn DefName -> Text
+fn SexpDefName (DefSName n) = SNameText n
+fn SexpDefName (DefOp o, ignore) = "(op {o})"
+
+SexpBounds: fn [Bound] -> Text
+fn SexpBounds bs = Concat (Each bs, \|b| " (where {b.var.name}{Concat (Each b.traits, \|t| " ^{Path t.path}")})")
+
+SexpFn: fn FnClause, Nat -> Text
+fn SexpFn f, depth:
+    let body = match f.body:
+        BodyExpr e: "{Nl depth + 1}{SexpExpr e, depth + 1}"
+        BodyBlock b: SexpBlock b, depth
+    "(fn {SexpDefName f.name} (params{Concat (Each f.params, \|p| " {SexpPattern p, depth}")}){body})"
+
+SexpFields: fn [Field], Nat -> Text
+fn SexpFields fs, depth = Concat (Each fs, \|f| "{Nl depth + 1}(field {f.name.name} {SexpType f.ty})")
+
+SexpCase: fn Case -> Text
+fn SexpCase c:
+    let indexed = match c.?indexed:
+        ? r: " -> {SexpType r}"
+        nil: ""
+    "(case {SNameText c.name}{Spaced c.args, SexpType}{indexed})"
+
+SexpItems: fn [TraitItem], Nat -> Text
+fn SexpItems items, depth = Concat (Each items, \|it| "{Nl depth + 1}{SexpItem it, depth + 1}")
+
+SexpItem: fn TraitItem, Nat -> Text
+fn SexpItem (TiSignature s), ignore = SexpSignature s
+fn SexpItem (TiFn f), d = SexpFn f, d
+fn SexpItem (TiAssocType name, params, ?value, ignore), ignore = "(assoc-type {name.name}{Concat (Each params, \|p| " {p.name}")}{OptType ?value})"
+fn SexpItem (TiAssocRow name, ignore), ignore = "(assoc-row {SNameText name})"
+
+# ---------------------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------------------
+
+SexpTest: fn TestDecl, Nat -> Text
+fn SexpTest t, depth:
+    let seed = match t.?seed:
+        ? s: " (seed {s})"
+        nil: ""
+    "(test {t.name.name} {SexpExpr t.blueprint, depth}{seed}{Concat (Each t.steps, \|s| "{Nl depth + 1}{SexpStep s, depth + 1}")})"
+
+SexpStep: fn TestStep, Nat -> Text
+fn SexpStep s, d:
+    let withs = Concat (Each s.withs, \|w| " (with {SexpExpr w.element, d} {SexpExpr w.value, d})")
+    let checks = Concat (Each s.checks, \|c| "{Nl d + 1}{SexpCheck c, d + 1}")
+    "(step{withs} {SexpAction s.action, d}{checks})"
+
+SexpAction: fn StepAction, Nat -> Text
+fn SexpAction SaBuild, ignore = "build"
+fn SexpAction SaTick, ignore = "tick"
+fn SexpAction (SaCompute True), ignore = "compute-until-idle"
+fn SexpAction (SaCompute False), ignore = "compute"
+fn SexpAction SaWithOnly, ignore = "with-only"
+fn SexpAction (SaPush e), d = "(push {SexpExpr e.element, d} {SexpExpr e.value, d})"
+fn SexpAction (SaDeliver ds), d = Join (Each ds, \|x| SexpDelivery x, d), " "
+
+SexpDelivery: fn Delivery, Nat -> Text
+fn SexpDelivery x, d:
+    let word = match x.kind:
+        DkSend ignore: "send"
+        DkClick: "click"
+        DkAnswer: "answer"
+    let value = match x.kind:
+        DkSend v: " {SexpExpr v, d}"
+        otherwise: ""
+    "({word} {SexpTarget x.target, d}{value})"
+
+SexpTarget: fn Target, Nat -> Text
+fn SexpTarget (TgPattern p), d = SexpPattern p, d
+fn SexpTarget (TgPath p), d = SexpPath "at", p, d
+fn SexpTarget (TgElement p), d = SexpPath "element", p, d
+
+SexpPath: fn Text, TestPath, Nat -> Text
+fn SexpPath word, p, d = "({word}{Concat (Each p.segments, \|s| SexpPathSeg s, d)})"
+
+SexpPathSeg: fn PathSeg, Nat -> Text
+fn SexpPathSeg (PsNum n), ignore = " {n}"
+fn SexpPathSeg (PsGen n), ignore = " #{n}"
+fn SexpPathSeg (PsKey e), d = " [{SexpExpr e, d}]"
+
+SexpCheck: fn TestCheck, Nat -> Text
+fn SexpCheck c, d = match c.kind:
+    CkExpect p: "(=> expect {SexpPattern p, d})"
+    CkExpectNone p: "(=> expect_none {SexpPattern p, d})"
+    CkExpectCount p, n: "(=> expect_count {SexpPattern p, d} {n})"
+    CkExpectTop p: "(=> expect_top {SexpPattern p, d})"
+    CkExpectTopNone p: "(=> expect_top_none {SexpPattern p, d})"
+    CkRequested p, v: "(=> requested {SexpPattern p, d} {SexpPattern v, d})"
+    CkUnrequested p: "(=> unrequested {SexpPattern p, d})"
+    CkReturns p: "(=> returns {SexpPattern p, d})"
+    CkFired p: "(=> fired {SexpPattern p, d})"
+    CkQuiet: "(=> quiet)"
+    CkSettles: "(=> settles)"
+    CkAborted: "(=> aborted)"
+    CkSnapshot s: "(=> snapshot {DebugText s})"
+
+# ---------------------------------------------------------------------------------------
+# Blocks and statements
+# ---------------------------------------------------------------------------------------
+
+SexpBlock: fn Block, Nat -> Text
+fn SexpBlock b, d:
+    if b.inline: " (inline{Concat (Each b.stmts, \|s| " {SexpStmt s, d}")})"
+    else: Concat (Each b.stmts, \|s| "{Nl d + 1}{SexpStmt s, d + 1}")
+
+SexpStmt: fn Stmt, Nat -> Text
+fn SexpStmt s, d = match s.kind:
+    SEmit r: "(emit {SexpRow r})"
+    SBind p, v, nil: "(bind {SexpPattern p, d} {SexpExpr v, d})"
+    SBind p, v, (? t): "(hold {SexpPattern p, d} {SexpExpr v, d} then {SexpExpr t, d})"
+    SIgnore e: "(ignore {SexpExpr e, d})"
+    SLet p, ?ty, v: "(let {SexpPattern p, d}{OptType ?ty} {SexpExpr v, d})"
+    SSignature sg: SexpSignature sg
+    SFn f: SexpFn f, d
+    SWidget w: "(widget {SNameText w.name}{SexpBlock w.body, d})"
+    SSet t, v: "(set {SexpExpr t, d} {SexpExpr v, d})"
+    SAccum t, op, v: "({op} {SexpExpr t, d} {SexpExpr v, d})"
+    SRequire c: "(require {SexpExpr c, d})"
+    SForbid c: "(forbid {SexpExpr c, d})"
+    SWhile c, body: "(while {SexpCond c, d}{SexpBlock body, d})"
+    SReturn e: "(return {SexpExpr e, d})"
+    SExpr e: SexpExpr e, d
+
+SexpCond: fn Cond, Nat -> Text
+fn SexpCond (CondExpr e), d = SexpExpr e, d
+fn SexpCond (CondBind p, v, ?g), d = "(<- {SexpPattern p, d} {SexpExpr v, d}{SexpGuard ?g, d})"
+
+SexpGuard: fn ?Expr, Nat -> Text
+fn SexpGuard nil, ignore = ""
+fn SexpGuard (? g), d = " (if {SexpExpr g, d})"
+
+# ---------------------------------------------------------------------------------------
+# Literals and expressions
+# ---------------------------------------------------------------------------------------
+
+SexpLiteral: fn Literal, Nat -> Text
+fn SexpLiteral l, d = match l.kind:
+    LInt s: "{l.marks}{s}"
+    LFloat s: "{l.marks}{s}"
+    LDuration digits, u: "{l.marks}{digits}{u}"
+    LChar c: "{l.marks}{DebugChar c}"
+    LText segs:
+        if AllPlainSegs segs: "{l.marks}{DebugText (Concat (Each segs, PlainSegText))}"
+        else: "({l.marks}text{Concat (Each segs, \|s| " {SexpSeg s, d}")})"
+
+AllPlainSegs: fn [TextSeg] -> Bool
+fn AllPlainSegs segs = Fold segs, True, \|ok, s| ok and (IsPlainTextSeg s)
+
+IsPlainTextSeg: fn TextSeg -> Bool
+fn IsPlainTextSeg (SegPlain ignore) = True
+fn IsPlainTextSeg ignore = False
+
+PlainSegText: fn TextSeg -> Text
+fn PlainSegText (SegPlain s) = s
+fn PlainSegText ignore = ""
+
+SexpSeg: fn TextSeg, Nat -> Text
+fn SexpSeg (SegPlain p), ignore = DebugText p
+fn SexpSeg (SegPlaceholder e), d = "\{{SexpExpr e, d}\}"
+
+SexpArgs: fn [Arg], Nat -> Text
+fn SexpArgs args, d = Concat (Each args, \|a| " {ArgName a.?name}{SexpExpr a.value, d}")
+
+ArgName: fn ?Ident -> Text
+fn ArgName nil = ""
+fn ArgName (? n) = "{n.name}="
+
+SexpExprs: fn [Expr], Nat -> Text
+fn SexpExprs es, d = Concat (Each es, \|x| " {SexpExpr x, d}")
+
+SexpExpr: fn Expr, Nat -> Text
+fn SexpExpr e, d = match e.kind:
+    EName n: SNameText n
+    ELit l: SexpLiteral l, d
+    EUnit s: "{s}unit"
+    ENil s: "{s}nil"
+    EBound b: b
+    ETuple es: "(tuple{SexpExprs es, d})"
+    EArray es: "(array{SexpExprs es, d})"
+    EMap es: "(map{Concat (Each es, \|((k, v))| " ({SexpExpr k, d}: {SexpExpr v, d})")})"
+    EGroup x: "(group {SexpExpr x, d})"
+    ECall callee, args, parens, rest: "({if parens: "call()" else: "call"} {SexpExpr callee, d}{SexpArgs args, d}{if rest: " .." else: ""})"
+    EBinary op, lhs, rhs: "({op} {SexpExpr lhs, d} {SexpExpr rhs, d})"
+    ESuffixed op, ty, lhs, rhs: "({op}{Path ty.path} {SexpExpr lhs, d} {SexpExpr rhs, d})"
+    EUnary op, operand: "({op} {SexpExpr operand, d})"
+    EFreeSigil s, operand: "(free{s} {SexpExpr operand, d})"
+    EField recv, sigils, name: "(. {SexpExpr recv, d} {sigils}{name.name})"
+    EIndex recv, index: "(index {SexpExpr recv, d} {SexpExpr index, d})"
+    ETopicField n: "(. _ {n.name})"
+    ETopicIndex i: "(index _ {SexpExpr i, d})"
+    EMethod recv, method, args: "(.{SNameText method} {SexpExpr recv, d}{SexpArgs args, d})"
+    ETypeArgs target, types: "(<<>> {SexpExpr target, d}{Spaced types, SexpType})"
+    ECast x, ty, checked: "({if checked: "as?" else: "as"} {SexpExpr x, d} {SexpType ty})"
+    ENonEmpty x: "(nonempty {SexpExpr x, d})"
+    EAbsent: "absent"
+    ERest: ".."
+    ELambda ?params, body: "(lambda{SexpLambdaParams ?params, d}{SexpLambdaBody body, d})"
+    EIf c, thenBlock, ?elseBlock: "(if {SexpCond c, d}{SexpBlock thenBlock, d}{SexpElse ?elseBlock, d})"
+    EMatch scrutinee, arms: "(match {SexpExpr scrutinee, d}{Concat (Each arms, \|a| "{Nl d + 1}{SexpArm a, d + 1}")})"
+    ERebuild scrutinee, body: "(rebuild {SexpExpr scrutinee, d}{SexpBlock body, d})"
+    EFor ?binders, source, body: "(for{SexpBinders ?binders, d} {SexpExpr source, d}{SexpBlock body, d})"
+    EGiven b: "(given{SexpBlock b, d})"
+    EUpdate target, body: "(update {SexpExpr target, d}{SexpBlock body, d})"
+    EWidgetBlock b: "(@widget{SexpBlock b, d})"
+    EMonad m, body: "(monad {SexpExpr m, d}{SexpBlock body, d})"
+    ETemplate t: SexpTemplate t, d
+    EAny x: "(any {SexpExpr x, d})"
+    ELens path: "(lens {Join (Each path, \|i| i.name), "."})"
+    EError: "<error>"
+
+SexpLambdaParams: fn ?[Pattern], Nat -> Text
+fn SexpLambdaParams nil, ignore = " topic"
+fn SexpLambdaParams (? ps), d = " (params{Concat (Each ps, \|p| " {SexpPattern p, d}")})"
+
+SexpLambdaBody: fn LambdaBody, Nat -> Text
+fn SexpLambdaBody (LbExpr e), d = " {SexpExpr e, d}"
+fn SexpLambdaBody (LbBlock b), d = SexpBlock b, d
+
+SexpElse: fn ?Block, Nat -> Text
+fn SexpElse nil, ignore = ""
+fn SexpElse (? b), d = "{if b.inline: "" else: Nl d} else{SexpBlock b, d}"
+
+SexpArm: fn Arm, Nat -> Text
+fn SexpArm a, d:
+    let pattern = match a.?pattern:
+        ? p: SexpPattern p, d
+        nil: "otherwise"
+    "(arm {pattern}{SexpGuard a.?guard, d}{SexpBlock a.body, d})"
+
+SexpBinders: fn ?ForBinders, Nat -> Text
+fn SexpBinders nil, ignore = ""
+fn SexpBinders (? b), d:
+    let second = match b.?second:
+        ? s: ", {SexpPattern s, d}"
+        nil: ""
+    " {SexpPattern b.first, d}{second} <-"
+
+# ---------------------------------------------------------------------------------------
+# Templates
+# ---------------------------------------------------------------------------------------
+
+SexpTemplate: fn Template, Nat -> Text
+fn SexpTemplate t, d = "(template {t.keyword} <{t.lang}>{SexpParts t.parts, d + 1})"
+
+SexpParts: fn [TemplatePart], Nat -> Text
+fn SexpParts parts, d = Concat (Each parts, \|p| "{Nl d}{SexpPart p, d}")
+
+SexpPart: fn TemplatePart, Nat -> Text
+fn SexpPart (TpText s), ignore = DebugText s
+fn SexpPart (TpPlaceholder e, ?col), d = "\{\{{SexpExpr e, d}\}\}{ColumnText ?col}"
+fn SexpPart (TpBlock b), d = "(brace-block{SexpBlock b, d})"
+fn SexpPart (TpCall name, attrs, ?body, ignore), d = "(call {SNameText name}{SexpArgs attrs, d}{CallParts ?body, d})"
+
+ColumnText: fn ?Nat -> Text
+fn ColumnText nil = ""
+fn ColumnText (? c) = " @col {c}"
+
+CallParts: fn ?[TemplatePart], Nat -> Text
+fn CallParts nil, ignore = ""
+fn CallParts (? parts), d = SexpParts parts, d + 1
+
+# ---------------------------------------------------------------------------------------
+# Patterns and types
+# ---------------------------------------------------------------------------------------
+
+SexpPattern: fn Pattern, Nat -> Text
+fn SexpPattern p, d = match p.kind:
+    PName n: SNameText n
+    PIgnore: "ignore"
+    PLit l: SexpLiteral l, d
+    PNeg l: "-{SexpLiteral l, d}"
+    PUnit: "unit"
+    PNil: "nil"
+    PCtor name, args: "(ctor {SNameText name}{Concat (Each args, \|a| " {SexpPattern a, d}")})"
+    PRecord name, fields, rest: "(record {SNameText name}{Concat (Each fields, \|f| " {ArgName f.?name}{SexpPattern f.pattern, d}")}{if rest: " .." else: ""})"
+    PSigil s, inner: "(free{s} {SexpPattern inner, d})"
+    PTuple ps: "(tuple{Concat (Each ps, \|x| " {SexpPattern x, d}")})"
+    PArray ps: "(array{Concat (Each ps, \|x| " {SexpPattern x, d}")})"
+    PGroup x: "(group {SexpPattern x, d})"
+    PFamily q: "{Path q.path}.*"
+
+SexpType: fn Type -> Text
+fn SexpType t = match t.kind:
+    TName name, [[]]: SNameText name
+    TName name, args: "({SNameText name}{Concat (Each args, \|a| " {SexpType a}")})"
+    TSigiled sigils, inner: "(free{sigils} {SexpType inner})"
+    TArray elem, True: "[[{SexpType elem}]]"
+    TArray elem, False: "[{SexpType elem}]"
+    TTuple ts: "(tuple{Concat (Each ts, \|x| " {SexpType x}")})"
+    TGroup x: "(group {SexpType x})"
+    TMap k, v: "(==> {SexpType k} {SexpType v})"
+    TFn color, params, result: "({ColorText color}fn{Concat (Each params, \|x| " {SexpType x}")} -> {SexpType result})"
+    TEmit ty, r: "(emit {SexpType ty} {SexpType r})"
+    TRowUnion ts: "(|{Concat (Each ts, \|x| " {SexpType x}")})"
+    TFamily q: "{Path q.path}.*"
+    TAny tr: "(any ^{Path tr.path})"
+    TUnit s: "{s}unit"
+    THole n: SNameText n
+    TAbsent: "absent"
+    TNonEmpty x: "(nonempty {SexpType x})"
+
+ColorText: fn Color -> Text
+fn ColorText Bounded = ""
+fn ColorText Unbounded = "unbounded "
+fn ColorText (ColorVar v) = "{v.name} "

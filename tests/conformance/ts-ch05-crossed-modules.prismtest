@@ -1,5 +1,0 @@
-# The crossed modules' tests: declarations of ts-ch05-crossed-modules.prism.
-
-test the_modules_weigh_each_others_types, @shown:
-    build
-        => expect Ui.Label(text="14 Plain 1")

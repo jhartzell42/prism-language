@@ -1,0 +1,33 @@
+emit r
+use App.*
+
+check printing:
+    Show (Sq 4, 1) => "e2"
+    "{Sq 4, 3}" => "e4"
+    Describe [[(Sq 0, 0), (Sq 7, 7)]] => "a1, h8"
+    Show Wren => "Wren"
+    Show (? 3) => "? 3"
+
+check order:
+    Wren < Heron
+    Heron > Robin
+    (Sq 1, 7) < (Sq 2, 0)
+    Compare Robin, Robin => Equal
+    Clamp 0, 10, 42 => 10
+    Clamp "b", "d", "a" => "b"
+    Max Wren, Robin => Wren
+
+check own_traits:
+    Loud Heron => "FRAAANK"
+    Shout Wren => "TIT!"
+
+check numbers:
+    10 / 3 => ? 3
+    10 / 0 => nil
+    (Len "abc") -? 5 => nil
+    (Len "abc") -? 1 => ? 2
+    -7 mod 3 => 2
+    (1.5 + 2) == 3.5                                # prism_rt reads no float pattern
+    (1.0 / 4.0) == 0.25
+    "{0.1 + 0.2}" => "0.30000000000000004"
+    (Cos 0.0) == 1.0

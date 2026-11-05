@@ -1,0 +1,13 @@
+# The counter, the program every book returns to (Semantics chapters 1 and 3, Pitch chapter 3).
+# Bare `Ui` elements: it runs under its tests in the Test World, or inside the window library's
+# `@Window`, since the canvas World answers only `Gui` (README). Its tests are in
+# counter.prismtest. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+
+@counter: @unit
+@counter:
+    !inc <- Ui.Button(label=$"Increment")                 # 0
+    !dec <- Ui.Button(label=$"Decrement")                 # 1
+    $count <- 0 then $count + (-1 on !dec <| +1 on !inc)
+    Ui.Label(text=$"Count: {$count}")                     # 2

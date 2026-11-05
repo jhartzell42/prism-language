@@ -129,6 +129,16 @@ fn copy_world(files: &[(&str, &str)]) -> CliWorld<MemFs> {
 }
 
 #[test]
+fn an_environment_variable_is_answered_plain_or_nil() {
+    let world = copy_world(&[]);
+    let ready = world.ready();
+    let env = |n: &str| ready.first_value(&Pod::element("Process.Env", vec![("name", Pod::text(n))]));
+    let path = std::env::var("PATH").expect("PATH is set where the tests run");
+    assert_eq!(env("PATH"), Some(Pod::Some(Box::new(Pod::text(path.as_str())))));
+    assert_eq!(env("PRISM_TEST_SURELY_UNSET_VARIABLE"), Some(Pod::Nil));
+}
+
+#[test]
 fn a_program_reads_a_file_writes_one_and_exits_42() {
     let mut world = copy_world(&[("in.txt", "hello")]);
     assert_eq!(drive::<Prog<Copy>>(&mut world, &[], 100), 42);

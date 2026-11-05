@@ -1,0 +1,18 @@
+# A template call by the attribute rule (prismc/README.md, pick TK): the body fills the
+# last place, attributes fill the places their names have in any clause, written in any
+# order, a name read without its marks (`?note`) and through parentheses, and clauses
+# other than the first name places too. Written for prismc's back end. Work in progress,
+# subject to change.
+emit Ui.*
+test mod Tests
+
+Card: fn Nat, ?Text, Text -> Text
+fn Card 0, (?note), body = "[empty] {body}{Or ?note, ""}"
+fn Card depth, ?note, body = "[{depth}] {body}{Or ?note, ""}"
+
+Page: fn Nat -> Text
+fn Page n = inline_text <t><@Card note={{? " (see below)"}} depth={{n}}>body text</@Card></t>
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$"{Page 0} / {Page 2}")                  # 0

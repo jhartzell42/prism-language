@@ -1,0 +1,8 @@
+# Audited: attributes bind by name, so left is "first"; one place.
+# The template call's tests: declarations of ts-ch05-template-attrs.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
+
+test attributes_bind_by_name, @shown:
+    build
+        => expect Ui.Label(text="first before second")

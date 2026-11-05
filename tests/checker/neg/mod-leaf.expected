@@ -1,0 +1,5 @@
+tests/checker/neg/mod-leaf/shapes.prism:3: error[mod-leaf]: `shapes.prism` declares `mod Square`, and a module with children is a directory
+    mod Square
+    ^^^^^^^^^^
+  fix: move shapes.prism to shapes/mod.prism
+1 error

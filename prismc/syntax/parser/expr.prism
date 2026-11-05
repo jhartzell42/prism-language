@@ -1,0 +1,722 @@
+# `Syntax.Parser.Expr`, a child module of `Syntax.Parser`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Sexp.*
+
+# ---------------------------------------------------------------------------------------
+# Expressions (expr.rs). A paren-less call, a lambda and a free sigil each "take the rest"
+# of their expression, so they are parsed where an operand is expected and swallow every
+# operator after them: `F a <| G b` is `F (a <| G b)`, `Size $k + 1` is `Size ($k + 1)`,
+# while `$count + 1 on !click` stays `($count + 1) on !click`. "A paren-less call takes the
+# rest of its expression, commas and all, and a paren-less call inside an argument takes no
+# commas": `commas` says whether this expression's calls may take them.
+# ---------------------------------------------------------------------------------------
+
+ParseExpr: unbounded fn Ps -> ((Expr, Ps))
+fn ParseExpr p = ParseExprCtx p, True
+
+ParseArgExpr: unbounded fn Ps -> ((Expr, Ps))
+fn ParseArgExpr p = ParseExprCtx p, False
+
+ParseExprCtx: unbounded fn Ps, Bool -> ((Expr, Ps))
+fn ParseExprCtx p, commas = ParseBinary p, 4, (commas and not p.stepMode)
+
+# An expression on the right of a statement's `=`, `<-` or `then`, with layout rule 9: "A
+# `.Method` that begins a continuation line closes the call above it and takes it as its
+# receiver" (Appendix A.4: "everything above it, back to the statement's `=`, `<-` or
+# `then`").
+ParseRhsExpr: unbounded fn Ps -> ((Expr, Ps))
+fn ParseRhsExpr p0 = update (ParseExpr p0):
+    let ((e0, p1)) = &_
+    let &e = e0
+    let &p = p1
+    while AtLineMethod &p:
+        let ((method, p2)) = ParseSName (Adv &p)
+        let ((args, p3)) = if ArgStartsHere p2: ParseCallArgs p2, True else: (([[]], p2))
+        &e <= Expr(kind=(EMethod &e, method, args), span=(To &e.span, (Prev p3)))
+        &p <= p3
+    &_ <= ((&e, &p))
+
+# A `.Method` at the start of a continuation line (rule 9).
+AtLineMethod: fn Ps -> Bool
+fn AtLineMethod p = (Kind p) == (KDot True) and (Tk p).lineStart and (IsPlainUpper (KindAt p, 1))
+
+IsPlainUpper: fn TokKind -> Bool
+fn IsPlainUpper (KName n) = n.case == CaseUpper and n.sigils == ""
+fn IsPlainUpper ignore = False
+
+IsUpperTok: fn TokKind -> Bool
+fn IsUpperTok (KName n) = n.case == CaseUpper
+fn IsUpperTok ignore = False
+
+# The binary operator at the cursor, if any, with its type suffix.
+?PeekBinop: fn Ps -> ?((Text, ?[Text]))
+fn ?PeekBinop p = match Kind p:
+    # A sign the spacing rule made prefix is not binary; `-?` is binary by longest match
+    # whatever its spacing (doubt MQ).
+    KOp op, prefix if not prefix or op == "-?": if IsBinop op: ? ((op, nil)) else: nil
+    KSuffixed op, ty: if IsBinop op: ? ((op, (? ty))) else: nil
+    KKw "on", "": ? (("on", nil))
+    KKw "or", "": ? (("or", nil))
+    KKw "and", "": ? (("and", nil))
+    KKw "mod", "": ? (("mod", nil))
+    otherwise: nil
+
+IsBinop: fn Text -> Bool
+fn IsBinop op = Fold [["<|", "==", "!=", "<", "<=", ">", ">=", "+", "-", "+?", "-?", "*", "/", "*?"]], False, \|seen, o| seen or o == op
+
+# The level in the precedence table, loosest 4 to tightest 11.
+Level: fn Text -> Nat
+fn Level "<|" = 4
+fn Level "on" = 5
+fn Level "or" = 6
+fn Level "and" = 7
+fn Level "+" = 10
+fn Level "-" = 10
+fn Level "+?" = 10
+fn Level "-?" = 10
+fn Level "*" = 11
+fn Level "/" = 11
+fn Level "*?" = 11
+fn Level "mod" = 11
+fn Level ignore = 9
+
+# The Pratt loop: operators at `min` and tighter, left-associative ("operators at one level
+# associate to the left, except `then`").
+type Climb = record:
+    lhs: Expr
+    p: Ps
+    going: Bool
+derive ^Eq, ^Show
+
+ParseBinary: unbounded fn Ps, Nat, Bool -> ((Expr, Ps))
+fn ParseBinary p0, min, commas:
+    let ((lhs, p1)) = ParsePrefix p0, min, commas
+    let r = update Climb(lhs=lhs, p=p1, going=True):
+        while &_.going and not &_.p.bad:
+            &_ <= ClimbStep &_, min, commas
+    ((r.lhs, r.p))
+
+ClimbStep: unbounded fn Climb, Nat, Bool -> Climb
+fn ClimbStep c, min, commas:
+    let p = c.p
+    # `as`, level 12: "a cast, a type on its right".
+    if (AtKw p, "as") and min <= 12:
+        let ((ty, p2)) = ParseType (Adv p)
+        # `ranks as [Text]+?`: the checked cast's `?` (doubt PQ).
+        let checked = (Kind p2) == (KFree "?") and (Tk p2).touches
+        let p3 = if checked: Adv p2 else: p2
+        update c:
+            &_.lhs <= Expr(kind=(ECast &_.lhs, ty, checked), span=(To &_.lhs.span, (Prev p3)))
+            &_.p <= p3
+    else: match ?PeekBinop p:
+        nil: update c:
+            &_.going <= False
+            &_.p <= NoOperator p
+        ? ((op, ?suffix)):
+            if (Level op) < min: update c:
+                &_.going <= False
+            else:
+                # Doubt MQ: "longest match wins, with a soft error naming `-(?x)`".
+                let p1 = if (Kind p) == (KOp "-?", True): NoteError p, (Here p), "`-?` is the checked subtraction by longest match; to subtract or negate an optional, write `-(?x)`" else: p
+                let opTok = Tk p1
+                let ((rhs, p2)) = ParseBinary (Adv p1), (Level op) + 1, commas
+                let span = To c.lhs.span, rhs.span
+                let kind = match ?suffix:
+                    nil: EBinary op, c.lhs, rhs
+                    ? ty: ESuffixed op, QualName(path=ty, span=opTok.span), c.lhs, rhs
+                let p3 = if ?suffix == nil: p2 else: OutOfScope p2, opTok.span, "suffixed operators", "the suffixed operator `{TokenText opTok.kind}` is out of this compiler"
+                update c:
+                    &_.lhs <= Expr(kind=kind, span=span)
+                    &_.p <= p3
+
+# Where no binary operator follows: three mistakes the Pratt loop names.
+NoOperator: fn Ps -> Ps
+fn NoOperator p = match Kind p:
+    # A prefix sign after a value: the spacing rule's surprise (X5): "the error asks 'did you
+    # mean `a - 1`?'"
+    KOp o, True if (o == "-" or o == "+") and not (Tk p).lineStart: ErrorAt p, (Here p), "`{o}` here is a prefix sign by the spacing rule (a space before it and none after); did you mean `a {o} 1`, with spaces on both sides?"
+    KBar: ErrorAt p, (Here p), "a bare `|` is not an operator: the merge is `<|`, and `|` separates the families of a row"
+    KDot True if not (AtLineMethod p) and (IsUpperTok (KindAt p, 1)): ErrorAt p, (Here p), "a spaced `.Method` begins its own line, below the call it takes as its receiver (layout rule 9)"
+    otherwise: p
+
+# Prefix operators: `not` (level 8) and the signs (level 13).
+ParsePrefix: unbounded fn Ps, Nat, Bool -> ((Expr, Ps))
+fn ParsePrefix p, min, commas:
+    let start = Here p
+    if AtKw p, "not":
+        # "`not a == b` is `not (a == b)`": the operand is a comparison.
+        let ((operand, q)) = ParseBinary (Adv p), (Max 9, min), commas
+        ((Expr(kind=(EUnary "not", operand), span=(To start, operand.span)), q))
+    else: match Kind p:
+        KOp op, True if op == "-" or op == "+":
+            let ((operand, q)) = ParsePostfixExpr (Adv p), commas
+            let name = if op == "-": "neg" else: "pos"
+            ((Expr(kind=(EUnary name, operand), span=(To start, operand.span)), q))
+        # Doubt MQ: "longest match wins, with a soft error naming `-(?x)`".
+        KOp "-?", ignore: ((noExpr, (ErrorAt p, (Here p), "`-?` is the checked subtraction and needs a left operand; to negate an optional write `-(?x)`")))
+        otherwise: ParsePostfixExpr p, commas
+
+# A primary and its postfix operators.
+ParsePostfixExpr: unbounded fn Ps, Bool -> ((Expr, Ps))
+fn ParsePostfixExpr p, commas:
+    let ((e, tookRest, q)) = ParsePrimary p, commas
+    if tookRest: ((e, q)) else: ParsePostfix e, q, commas
+
+# Level 14: `.f`, `[i]`, `.Method`, `<<T>>`, the non-empty mark.
+ParsePostfix: unbounded fn Expr, Ps, Bool -> ((Expr, Ps))
+fn ParsePostfix e0, p0, commas = update ((e0, p0)):
+    let &e = e0
+    let &p = p0
+    let &going = True
+    while &going and not &p.bad:
+        let ((e2, p2, more)) = PostfixStep &e, &p, commas
+        &e <= e2
+        &p <= p2
+        &going <= more
+    &_ <= ((&e, &p))
+
+# One postfix operator, and whether another may follow.
+PostfixStep: unbounded fn Expr, Ps, Bool -> ((Expr, Ps, Bool))
+fn PostfixStep e, p, commas = match Kind p:
+    KDot False: FieldOrMethod e, p, commas
+    KOpen "[", False if (Tk p).touches and not (AtDoubleOpen p, "["):
+        let ((index, p1)) = Bracketed (Adv p), ParseExpr
+        let p2 = ExpectClose p1, "["
+        ((Expr(kind=(EIndex e, index), span=(To e.span, (Prev p2))), p2, True))
+    KLtLt:
+        let ((types, q)) = ParseTypeArgs p
+        ((Expr(kind=(ETypeArgs e, types), span=(To e.span, (Prev q))), q, True))
+    KNonEmpty:
+        let span = Here p
+        let q = OutOfScope (Adv p), span, "non-empty arrays", "the non-empty mark `+` is out of this compiler"
+        ((Expr(kind=(ENonEmpty e), span=(To e.span, span)), q, True))
+    otherwise: ((e, p, False))
+
+FieldOrMethod: unbounded fn Expr, Ps, Bool -> ((Expr, Ps, Bool))
+fn FieldOrMethod e, p0, commas:
+    let dot = Here p0
+    let p = Adv p0
+    match Kind p:
+        # "A field access shows the field's stack: the marks between the dot and the field
+        # name" (Type System ch. 1): `g.?passed`, `input.!changed`.
+        KName n if (Len n.path) == 1 and (n.case == CaseLower or n.case == CaseTopic):
+            let t = Here p
+            let field = Expr(kind=(EField e, n.sigils, Ident(name=(Or n.path[0], ""), span=t)), span=(To e.span, t))
+            let p1 = Adv p
+            # A field holding a function is applied like a callee: `p.run input` (pick FA).
+            if (ArgStartsHere p1) and not (Tk p1).lineStart:
+                let ((args, p2)) = ParseCallArgs p1, commas
+                ((Expr(kind=(ECall field, args, False, False), span=(To field.span, (Prev p2))), p2, False))
+            else: ((field, p1, True))
+        # "a record may still have a field named `key`".
+        KKw w, "" if IsBoundWord w:
+            let t = Here p
+            ((Expr(kind=(EField e, "", Ident(name=w, span=t)), span=(To e.span, t)), (Adv p), True))
+        # `.Method`, and `.?Move`: a function's name shows its sigil (D10).
+        KName n if n.case == CaseUpper or n.case == CaseReserved:
+            let ((method, p1)) = ParseSName p
+            let ((args, p2)) = if ArgStartsHere p1: ParseCallArgs p1, commas else: (([[]], p1))
+            ((Expr(kind=(EMethod e, method, args), span=(To e.span, (Prev p2))), p2, False))
+        otherwise: ((e, (ErrorAt p, dot, "expected a field name or a `.Method` after `.`"), False))
+
+# `<<T, U>>` after a name.
+ParseTypeArgs: unbounded fn Ps -> (([Type], Ps))
+fn ParseTypeArgs p:
+    let ((types, q)) = Commas (Adv p), ParseType
+    if (Kind q) == KGtGt: ((types, (Adv q))) else: ((types, (ErrorHere q, "expected `>>` to close the type arguments")))
+
+# ----- calls -----
+
+# Whether the token at the cursor can begin an argument of a paren-less call.
+ArgStartsHere: fn Ps -> Bool
+fn ArgStartsHere p:
+    let t = Tk p
+    match t.kind:
+        KName ignore: True
+        KInt ignore, ignore: True
+        KFloat ignore, ignore: True
+        KDuration ignore, ignore, ignore: True
+        KChar ignore, ignore: True
+        KText ignore, ignore: True
+        KTemplate ignore: True
+        KFree ignore: True
+        KLensDot: True
+        KBackslash: True
+        KAbsent: True
+        # A touching single `[` indexes the callee; a touching `(` was its argument list.
+        KOpen "[", prefix: prefix or not t.touches or (AtDoubleOpen p, "[")
+        KOpen ignore, ignore: True
+        KOp op, True: op == "+" or op == "-"
+        KDot True: not (AtLineMethod p)
+        KKw w, ignore: Fold argWords, False, \|seen, x| seen or x == w
+        otherwise: False
+
+let argWords = [["unit", "nil", "key", "ix", "jx", "kx", "not", "any", "given", "update", "match",
+    "rebuild", "widget", "output", "inline_text", "raw"]]
+
+# Paren-less arguments: the first, then (when this call may take commas) the rest.
+ParseCallArgs: unbounded fn Ps, Bool -> (([Arg], Ps))
+fn ParseCallArgs p, commas = if commas and not p.stepMode: Commas p, ParseArg else: ParseOneArg p
+
+ParseOneArg: unbounded fn Ps -> (([Arg], Ps))
+fn ParseOneArg p:
+    let ((a, q)) = ParseArg p
+    (([[a]], q))
+
+ParseArg: unbounded fn Ps -> ((Arg, Ps))
+fn ParseArg p:
+    let ((value, q)) = ParseArgExpr p
+    ((Arg(name=nil, value=value, span=value.span), q))
+
+# `F(a, b)`, `Ui.Button(label=$"Go")`, `Error(kind=Fs.NotFound, ..)`: arguments in
+# touching parentheses, each named or not, and whether `..` ended them.
+type ArgsRead = record:
+    args: [Arg]
+    rest: Bool
+    p: Ps
+    going: Bool
+derive ^Eq, ^Show
+
+ParseParenArgs: unbounded fn Ps -> (([Arg], Bool, Ps))
+fn ParseParenArgs p0:
+    let p = Adv p0
+    if AtClose p, "(": (([[]], False, (Adv p)))
+    else:
+        let r = update ArgsRead(args=[[]], rest=False, p=p, going=True):
+            while &_.going and not &_.p.bad:
+                if (Kind &_.p) == KDotDot:
+                    &_.p <= Adv &_.p
+                    &_.rest <= True
+                else:
+                    let start = Here &_.p
+                    let ((?name, p1)) = ParseArgName &_.p
+                    let ((value, p2)) = ParseArgExpr p1
+                    &_.args <= Push &_.args, Arg(name=?name, value=value, span=(To start, value.span))
+                    &_.p <= p2
+                if AtComma &_.p:
+                    &_.p <= Adv &_.p
+                else:
+                    &_.p <= ExpectClose &_.p, "("
+                    &_.going <= False
+        ((r.args, r.rest, r.p))
+
+# `name=` before a named argument.
+ParseArgName: fn Ps -> ((?Ident, Ps))
+fn ParseArgName p = match Kind p:
+    KName n if n.sigils == "" and (Len n.path) == 1 and n.case == CaseLower and (AtOp (Adv p), "="):
+        ((? Ident(name=(Or n.path[0], ""), span=(Here p)), (Adv (Adv p))))
+    otherwise: ((nil, p))
+
+# ----- primaries -----
+
+# An operand, and whether it "took the rest" (a paren-less call, a lambda, a free sigil, a
+# block form), so that no postfix operator follows it.
+ParsePrimary: unbounded fn Ps, Bool -> ((Expr, Bool, Ps))
+fn ParsePrimary p, commas:
+    let start = Here p
+    let tok = Tk p
+    match tok.kind:
+        KName n: NamePrimary p, n, commas
+        KKw w, sigils: KeywordPrimary p, w, sigils, commas
+        KInt ignore, ignore: LiteralPrimary p
+        KFloat ignore, ignore: LiteralPrimary p
+        KDuration ignore, ignore, ignore: LiteralPrimary p
+        KChar ignore, ignore: LiteralPrimary p
+        KText ignore, ignore: LiteralPrimary p
+        KTemplate t:
+            let ((tpl, q)) = ParseTemplate (Adv p), t, tok.span
+            ((Expr(kind=(ETemplate tpl), span=tok.span), False, q))
+        KOpen "(", ignore: ParenPrimary p
+        KOpen "[", ignore: SquarePrimary p
+        KOpen ignore, ignore: MapPrimary p
+        KDot True:
+            let p1 = Adv p
+            match Kind p1:
+                KName n if n.sigils == "" and (Len n.path) == 1 and n.case == CaseLower:
+                    let t = Here p1
+                    ((Expr(kind=(ETopicField Ident(name=(Or n.path[0], ""), span=t)), span=(To start, t)), False, (Adv p1)))
+                # Rule 9: "On one line a spaced `.Method` is an error asking for its own line."
+                KName n if n.case == CaseUpper: ((noExpr, False, (ErrorAt p1, start, "a spaced `.{Join n.path, "."}` begins its own line, below the call it takes as its receiver (layout rule 9)")))
+                otherwise: ((noExpr, False, (ErrorAt p1, start, "a prefix `.` takes a field name, applied to the topic `_`")))
+        KLensDot: LensPrimary p
+        KFree s:
+            if s == "!": ((noExpr, True, (ErrorAt (Adv p), tok.span, "`!` is never free: no event fires a constant")))
+            else: if s == "&": ((noExpr, True, (ErrorAt (Adv p), tok.span, "`&` is never free: no reference exists outside the value an `update` block names")))
+            else:
+                # "a free sigil applies to everything to its right, to the end of the
+                # expression it stands in, as a paren-less call does."
+                let ((operand, q)) = ParseExprCtx (Adv p), commas
+                ((Expr(kind=(EFreeSigil s, operand), span=(To start, operand.span)), True, q))
+        KBackslash:
+            let ((e, q)) = ParseLambda p
+            ((e, True, q))
+        KAbsent:
+            let q = OutOfScope (Adv p), tok.span, "sparse tuples", "an absent component `-` makes a sparse tuple, which is out of this compiler"
+            ((Expr(kind=EAbsent, span=tok.span), False, q))
+        KDotDot: ((Expr(kind=ERest, span=tok.span), False, (Adv p)))
+        KTrait ignore: ((noExpr, False, (ErrorAt p, tok.span, "no trait is a value: a `^Trait` stands in a type, a bound, `derive`, `trait` or `impl`")))
+        KFamily path: ((noExpr, False, (ErrorAt p, tok.span, "`{Join path, "."}.*` names every tag of a family: it stands in a pattern, an `emit` row or a `use`, not in an expression")))
+        KBar: ((noExpr, False, (ErrorAt p, tok.span, "a bare `|` is not an operator: the merge is `<|`, and `|` separates the families of a row")))
+        otherwise: ((noExpr, False, (ErrorHere p, "expected an expression")))
+
+LiteralPrimary: unbounded fn Ps -> ((Expr, Bool, Ps))
+fn LiteralPrimary p:
+    let ((lit, q)) = ParseLiteral p
+    ((Expr(kind=(ELit lit), span=lit.span), False, q))
+
+NamePrimary: unbounded fn Ps, NameTok, Bool -> ((Expr, Bool, Ps))
+fn NamePrimary p0, n, commas:
+    let start = Here p0
+    let name = SName(sigils=n.sigils, path=n.path, span=start)
+    let p1 = CheckNameScope (Adv p0), name
+    let plain = Expr(kind=(EName name), span=start)
+    let ((e, p)) = if (Kind p1) == KLtLt: TypeArgsOn plain, p1, start else: ((plain, p1))
+    if IsCallee name:
+        # `F(a, b)`: parentheses touching the callee hold its arguments.
+        if (AtSingleOpen p, "(") and (Tk p).touches:
+            let ((args, rest, q)) = ParseParenArgs p
+            ((Expr(kind=(ECall e, args, True, rest), span=(To start, (Prev q))), False, q))
+        # `Parser monad:` (out of this compiler).
+        else: if AtKw p, "monad":
+            let kw = Here p
+            let ((body, q)) = ParseBlockAfterColon (OutOfScope (Adv p), kw, "`T monad:` blocks and `^Monad`", "monad blocks are out of this compiler")
+            ((Expr(kind=(EMonad e, body), span=(To start, body.span)), True, q))
+        else: if ArgStartsHere p:
+            let ((args, q)) = ParseCallArgs p, commas
+            ((Expr(kind=(ECall e, args, False, False), span=(To start, (Prev q))), True, q))
+        else: ((e, False, p))
+    else: if (AtSingleOpen p, "(") and (Tk p).touches and not (IsTopic name):
+        ((e, False, (ErrorAt p, (Here p), "`{NameText name}` is a value and is not applied: a function's name is uppercase (case is a mark)")))
+    else: ((e, False, p))
+
+TypeArgsOn: unbounded fn Expr, Ps, Range -> ((Expr, Ps))
+fn TypeArgsOn e, p, start:
+    let ((types, q)) = ParseTypeArgs p
+    ((Expr(kind=(ETypeArgs e, types), span=(To start, (Prev q))), q))
+
+# `((a, b))` a tuple ("A comma belongs to the nearest bracket around it"), or `(e)` a group.
+ParenPrimary: unbounded fn Ps -> ((Expr, Bool, Ps))
+fn ParenPrimary p:
+    let start = Here p
+    if AtDoubleOpen p, "(":
+        let ((elems, p1)) = Commas (OpenDouble p), ParseArgExpr
+        let p2 = CloseDouble p1, "("
+        ((Expr(kind=(ETuple elems), span=(To start, (Prev p2))), False, p2))
+    else:
+        # Inside a bracket the step's comma rule is over (Conformance A.3).
+        let ((inner, p1)) = Bracketed (Adv p), ParseRhsExpr
+        if AtComma p1: ((noExpr, False, (ErrorAt p1, (Here p1), "a group holds one expression: a comma here needs a call at the group's head, or `((` `))` for a tuple")))
+        else:
+            let p2 = ExpectClose p1, "("
+            ((Expr(kind=(EGroup inner), span=(To start, (Prev p2))), False, p2))
+
+# `[[a, b]]` an array, or `[i]` an index on the topic (the spacing rule's prefix `[`).
+SquarePrimary: unbounded fn Ps -> ((Expr, Bool, Ps))
+fn SquarePrimary p:
+    let start = Here p
+    if AtDoubleOpen p, "[":
+        let p1 = OpenDouble p
+        let ((elems, p2)) = if AtClose p1, "[": (([[]], p1)) else: Commas p1, ParseArgExpr
+        let p3 = CloseDouble p2, "["
+        ((Expr(kind=(EArray elems), span=(To start, (Prev p3))), False, p3))
+    else:
+        let ((index, p1)) = Bracketed (Adv p), ParseExpr
+        let p2 = ExpectClose p1, "["
+        ((Expr(kind=(ETopicIndex index), span=(To start, (Prev p2))), False, p2))
+
+# A map: `{"ada": 3}`, `{}`.
+MapPrimary: unbounded fn Ps -> ((Expr, Bool, Ps))
+fn MapPrimary p:
+    let start = Here p
+    let p1 = Adv p
+    let ((entries, p2)) = if AtClose p1, "\{": (([[]], p1)) else: Commas p1, ParseMapEntry
+    let p3 = ExpectClose p2, "\{"
+    ((Expr(kind=(EMap entries), span=(To start, (Prev p3))), False, p3))
+
+ParseMapEntry: unbounded fn Ps -> ((((Expr, Expr)), Ps))
+fn ParseMapEntry p:
+    let ((k, p1)) = ParseArgExpr p
+    let ((v, p2)) = ParseArgExpr (ExpectColon p1)
+    ((((k, v)), p2))
+
+# `&.score.home`, a lens value (Type System ch. 3).
+LensPrimary: unbounded fn Ps -> ((Expr, Bool, Ps))
+fn LensPrimary p0:
+    let start = Here p0
+    let r = update (([[]], (Adv p0))):
+        let &path = [[]]
+        let &p = Adv p0
+        let &going = True
+        while &going and not &p.bad:
+            match Kind &p:
+                KName n if n.sigils == "" and n.case == CaseLower and (Len n.path) == 1:
+                    &path <= Push &path, Ident(name=(Or n.path[0], ""), span=(Here &p))
+                    &p <= Adv &p
+                    if (Kind &p) == (KDot False):
+                        &p <= Adv &p
+                    else:
+                        &going <= False
+                otherwise: &p <= ErrorHere &p, "expected a field name in a lens path"
+        &_ <= ((&path, &p))
+    let ((path, q)) = r
+    ((Expr(kind=(ELens path), span=(To start, (Prev q))), False, q))
+
+# Primaries that begin with a keyword.
+KeywordPrimary: unbounded fn Ps, Text, Text, Bool -> ((Expr, Bool, Ps))
+fn KeywordPrimary p, w, sigils, commas:
+    let start = Here p
+    match w:
+        "unit": ((Expr(kind=(EUnit sigils), span=start), False, (Adv p)))
+        "nil": ((Expr(kind=(ENil sigils), span=start), False, (Adv p)))
+        ignore if IsBoundWord w: ((Expr(kind=(EBound w), span=start), False, (Adv p)))
+        "if": Took (ParseIf p)
+        "match": Took (ParseMatch p)
+        "rebuild":
+            let ((scrutinee, p1)) = ParseExpr (Adv p)
+            let ((body, p2)) = ParseBlockAfterColon p1
+            ((Expr(kind=(ERebuild scrutinee, body), span=(To start, body.span)), True, p2))
+        "for": Took (ParseFor p)
+        "given":
+            let ((body, q)) = ParseBlockAfterColon (Adv p)
+            ((Expr(kind=(EGiven body), span=(To start, body.span)), True, q))
+        "update":
+            let ((target, p1)) = ParseExpr (Adv p)
+            let ((body, p2)) = ParseBlockAfterColon p1
+            ((Expr(kind=(EUpdate target, body), span=(To start, body.span)), True, p2))
+        # `@widget:` is one token (ch. 2, Keywords).
+        "widget":
+            let ((body, q)) = ParseBlockAfterColon (Adv p)
+            ((Expr(kind=(EWidgetBlock body), span=(To start, body.span)), True, q))
+        "any":
+            let ((operand, q)) = ParseExprCtx (Adv p), commas
+            ((Expr(kind=(EAny operand), span=(To start, operand.span)), True, q))
+        "not":
+            let ((e, q)) = ParseBinary p, 8, commas
+            ((e, True, q))
+        # The lexer made the template the next token, or reported its absence.
+        ignore if w == "output" or w == "inline_text" or w == "raw":
+            let p1 = Adv p
+            match Kind p1:
+                KTemplate t:
+                    let tspan = Here p1
+                    let ((tpl, q)) = ParseTemplate (Adv p1), t, tspan
+                    ((Expr(kind=(ETemplate tpl), span=(To start, tspan)), False, q))
+                otherwise: ((noExpr, False, (Fail p1)))
+        "then": ((noExpr, False, (ErrorAt p, start, "`then` belongs to a hold: `$x <- start then step`")))
+        "else": ((noExpr, False, (ErrorAt p, start, "`else` without its `if`")))
+        "ignore": ((noExpr, False, (ErrorAt p, start, "`ignore` stands only inside a pattern or as the left side of a bind")))
+        "return": ((noExpr, False, (ErrorAt p, start, "`return` ends a monad block, as its last statement")))
+        otherwise: ((noExpr, False, (ErrorHere p, "expected an expression")))
+
+# A block form, which takes the rest.
+Took: fn ((Expr, Ps)) -> ((Expr, Bool, Ps))
+fn Took ((e, p)) = ((e, True, p))
+
+# ----- literals and templates -----
+
+ParseLiteral: unbounded fn Ps -> ((Literal, Ps))
+fn ParseLiteral p:
+    let span = Here p
+    let p1 = Adv p
+    match Kind p:
+        KInt s, t: ((Literal(marks=s, kind=(LInt t), span=span), p1))
+        KFloat s, t: ((Literal(marks=s, kind=(LFloat t), span=span), p1))
+        KDuration s, n, u: ((Literal(marks=s, kind=(LDuration n, u), span=span), p1))
+        KChar s, c: ((Literal(marks=s, kind=(LChar c), span=span), p1))
+        KText s, segs:
+            let ((out, q)) = Fold segs, (([[]], p1)), \|((acc, pp)), seg| TextSegment acc, pp, seg
+            ((Literal(marks=s, kind=(LText out), span=span), q))
+        otherwise: ((Literal(marks="", kind=(LInt ""), span=span), (ErrorAt p1, span, "expected a literal")))
+
+TextSegment: unbounded fn [TextSeg], Ps, TextSegTok -> (([TextSeg], Ps))
+fn TextSegment acc, p, (TsPlain s) = (((Push acc, (SegPlain s)), p))
+fn TextSegment acc, p, (TsPlaceholder toks, span):
+    let ((e, q)) = ParseNested p, toks, span
+    (((Push acc, (SegPlaceholder e)), q))
+
+# A nested token stream (a placeholder's) as one expression; a broken one is an error node,
+# its diagnostics merged into this parser's.
+ParseNested: unbounded fn Ps, [Tok], Range -> ((Expr, Ps))
+fn ParseNested p, toks, span:
+    let sub = WithStepMode (Sub p, toks, (AtEnd span)), False
+    let ((e, s1)) = ParseRhsExpr sub
+    let s2 = if not s1.bad and not (AtEof s1): NoteError s1, (Here s1), "expected the end of the placeholder, found {Describe (Kind s1)}" else: s1
+    let s3 = if s2.bad and (Len s2.diags) == 0: NoteError (Unbad s2), span, "expected an expression in the placeholder" else: s2
+    let q = Absorb p, s3
+    if s1.bad: ((Expr(kind=EError, span=span), q)) else: ((e, q))
+
+# A template token to its tree (Templates ch. 2).
+ParseTemplate: unbounded fn Ps, TemplateTok, Range -> ((Template, Ps))
+fn ParseTemplate p0, t, span:
+    let p1 = if t.delims == "single" and t.keyword != "Raw": OutOfScope p0, span, "the template notation", "a `<{t.lang}>` template is the template notation for an element language, out of this compiler (code templates only)" else: p0
+    let p2 = if t.keyword == "File": OutOfScope p1, span, "the template notation", "a file whose first token is a language tag is a template file, out of this compiler (code templates only)" else: p1
+    let ((parts, p3)) = TemplateParts p2, t.parts
+    ((Template(keyword=t.keyword, lang=t.lang, delims=t.delims, parts=parts, span=span), p3))
+
+TemplateParts: unbounded fn Ps, [TPartTok] -> (([TemplatePart], Ps))
+fn TemplateParts p, parts = Fold parts, (([[]], p)), \|((acc, q)), part| TemplatePartOf acc, q, part
+
+TemplatePartOf: unbounded fn [TemplatePart], Ps, TPartTok -> (([TemplatePart], Ps))
+fn TemplatePartOf acc, p, (TptText s) = (((Push acc, (TpText s)), p))
+fn TemplatePartOf acc, p, (TptPlaceholder toks, ?col, span):
+    let ((e, q)) = ParseNested p, toks, span
+    (((Push acc, (TpPlaceholder e, ?col)), q))
+fn TemplatePartOf acc, p, (TptBlock toks, span):
+    let sub = Sub p, toks, (AtEnd span)
+    let ((block, s1)) = ParseBlockUntilEof sub, span
+    (((Push acc, (TpBlock block)), (Absorb p, s1)))
+fn TemplatePartOf acc, p, (TptCall name, attrs, ?body, span):
+    let sname = SName(sigils=name.sigils, path=name.path, span=span)
+    let ((args, p1)) = Fold attrs, (([[]], p)), \|((done, q)), a| AttrArg done, q, a
+    let ((?inner, p2)) = match ?body:
+        ? b:
+            let ((ps, q)) = TemplateParts p1, b
+            ((? ps, q))
+        nil: ((nil, p1))
+    (((Push acc, (TpCall sname, args, ?inner, span)), p2))
+
+AttrArg: unbounded fn [Arg], Ps, AttrTok -> (([Arg], Ps))
+fn AttrArg done, p, a:
+    let ((value, q)) = ParseNested p, a.tokens, a.span
+    (((Push done, Arg(name=(? Ident(name=a.name, span=a.span)), value=value, span=a.span)), q))
+
+# ----- lambdas and block forms -----
+
+# `\|a, b| body`, `\body` on the topic: "the lambda's body takes the rest". A closing bar
+# last on its line opens a block (rule 3): "The lines before the last are `let`s, and the
+# last is the lambda's body."
+ParseLambda: unbounded fn Ps -> ((Expr, Ps))
+fn ParseLambda p0:
+    let start = Here p0
+    let p = Adv p0
+    let ((?params, p1)) = if (Kind p) == (KLambdaBar True): LambdaParams (Adv p) else: ((nil, p))
+    if AtOpenL p1:
+        let ((block, q)) = ParseIndentedBlock p1
+        ((Expr(kind=(ELambda ?params, (LbBlock block)), span=(To start, block.span)), q))
+    else:
+        let ((body, q)) = ParseExpr p1
+        ((Expr(kind=(ELambda ?params, (LbExpr body)), span=(To start, body.span)), q))
+
+LambdaParams: unbounded fn Ps -> ((?[Pattern], Ps))
+fn LambdaParams p:
+    let ((ps, p1)) = if (Kind p) == (KLambdaBar False): (([[]], p)) else: Commas p, \|q| ParsePattern q, False
+    if (Kind p1) == (KLambdaBar False): ((? ps, (Adv p1)))
+    else: ((nil, (ErrorHere p1, "expected `|` to close the lambda's parameters")))
+
+# A condition, or `pattern <- e` with an optional guard.
+ParseCond: unbounded fn Ps, Bool -> ((Cond, Ps))
+fn ParseCond p, allowGuard:
+    let ((pattern, q)) = ParsePattern p, True
+    if not q.bad and (AtOp q, "<-"):
+        let ((value, q1)) = ParseExpr (Adv q)
+        if allowGuard and (AtKw q1, "if"):
+            let ((guard, q2)) = ParseExpr (Adv q1)
+            (((CondBind pattern, value, (? guard)), q2))
+        else: (((CondBind pattern, value, nil), q1))
+    else:
+        let ((e, q1)) = ParseExpr p
+        ((CondExpr e, q1))
+
+# `if c: a else: b`, inline or in blocks; rule 8 attaches an `else` at the `if`'s column.
+ParseIf: unbounded fn Ps -> ((Expr, Ps))
+fn ParseIf p0:
+    let start = Here p0
+    let ((cond, p1)) = ParseCond (Adv p0), False
+    let ((thenBlock, p2)) = ParseBlockAfterColon p1
+    let p3 = if (AtSep p2) and (IsElse (KindAt p2, 1)): Adv p2 else: p2
+    if AtKw p3, "else":
+        let ((elseBlock, q)) = ParseBlockAfterColon (Adv p3)
+        ((Expr(kind=(EIf cond, thenBlock, (? elseBlock)), span=(To start, elseBlock.span)), q))
+    else: ((Expr(kind=(EIf cond, thenBlock, nil), span=(To start, thenBlock.span)), p3))
+
+IsElse: fn TokKind -> Bool
+fn IsElse (KKw "else", ignore) = True
+fn IsElse ignore = False
+
+# `match e:` and its arms: "An arm is a pattern, a guard if it has one, and a colon, with
+# its body on the line or in a block"; the catch-all is `otherwise:`.
+ParseMatch: unbounded fn Ps -> ((Expr, Ps))
+fn ParseMatch p0:
+    let start = Here p0
+    let ((scrutinee, p1)) = ParseExpr (Adv p0)
+    let p2 = ExpectColon p1
+    if AtOpenL p2:
+        let ((arms, q)) = MatchArms (Adv p2)
+        ((Expr(kind=(EMatch scrutinee, arms), span=(To start, (Prev q))), q))
+    else: ((noExpr, (ErrorHere p2, "a `match`'s arms stand in an indented block after its `:`")))
+
+MatchArms: unbounded fn Ps -> (([Arm], Ps))
+fn MatchArms p0 = update (([[]], p0)):
+    let &arms = [[]]
+    let &p = p0
+    let &going = True
+    while &going:
+        let ((arm, q)) = ParseArm &p
+        if not q.bad:
+            &arms <= Push &arms, arm
+        &p <= Recovered q
+        match Kind &p:
+            KLaySep: &p <= Adv &p
+            KLayClose:
+                &p <= Adv &p
+                &going <= False
+            KEof: &going <= False
+            otherwise: &p <= Recover (Complain &p, "expected the end of the arm")
+    &_ <= ((&arms, &p))
+
+ParseArm: unbounded fn Ps -> ((Arm, Ps))
+fn ParseArm p:
+    let start = Here p
+    if AtKw p, "otherwise":
+        let ((body, q)) = ParseBlockAfterColon (Adv p)
+        ((Arm(pattern=nil, guard=nil, body=body, span=(To start, body.span)), q))
+    else: if (AtKw p, "ignore") and (KindAt p, 1) == KColon:
+        ((Arm(pattern=nil, guard=nil, body=noBlock, span=start), (ErrorAt p, (Here p), "an arm beginning `ignore:` would read as \"ignore these cases\": the catch-all is `otherwise:`")))
+    else:
+        let ((pattern, p1)) = ParsePattern p, True
+        let ((?guard, p2)) = if AtKw p1, "if": OptionalExpr (Adv p1) else: ((nil, p1))
+        let ((body, p3)) = ParseBlockAfterColon p2
+        ((Arm(pattern=(? pattern), guard=?guard, body=body, span=(To start, body.span)), p3))
+
+OptionalExpr: unbounded fn Ps -> ((?Expr, Ps))
+fn OptionalExpr p:
+    let ((e, q)) = ParseExpr p
+    ((? e, q))
+
+# `for k, v <- e:`, `for x <- e:`, `for e:` (binding `key` and `_`).
+ParseFor: unbounded fn Ps -> ((Expr, Ps))
+fn ParseFor p0:
+    let start = Here p0
+    let p = Adv p0
+    let ((?binders, p1)) = ForBindersOf p
+    let ((source, p2)) = ParseExpr p1
+    let ((body, p3)) = ParseBlockAfterColon p2
+    ((Expr(kind=(EFor ?binders, source, body), span=(To start, body.span)), p3))
+
+# The binders and their `<-`, by speculation: none when no `<-` follows a pattern.
+ForBindersOf: unbounded fn Ps -> ((?ForBinders, Ps))
+fn ForBindersOf p:
+    let ((first, q1)) = ParsePattern p, False
+    let ((?second, q2)) = if AtComma q1: OptionalPattern (Adv q1) else: ((nil, q1))
+    if not q2.bad and (AtOp q2, "<-"): ((? ForBinders(first=first, second=?second), (Adv q2)))
+    else: ((nil, p))
+
+OptionalPattern: unbounded fn Ps -> ((?Pattern, Ps))
+fn OptionalPattern p:
+    let ((pat, q)) = ParsePattern p, False
+    ((? pat, q))

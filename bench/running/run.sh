@@ -2,7 +2,7 @@
 # Running Prism once compiled (bench/running/README.md): how fast compiled Prism code runs,
 # all-Rust against all-C++. Two workloads: prismc itself, built at each configuration by
 # bench/building/run.sh, compiling prismc/ to its own language and compiling
-# tests/conformance/sem-ch07-normalize.prism (wall time, peak memory, instructions
+# tests/conformance/sem-ch07-normalize (wall time, peak memory, instructions
 # retired); and the GUI table under each target's canvas World (bench/gui/run.sh, which
 # also runs GTK and Cuis beside it).
 #
@@ -25,7 +25,7 @@ else configs=(); for d in rust-release cpp-O3; do [ -x "$built/$d/prismc.bin" ] 
 [ ${#configs[@]} -gt 0 ] || { echo "bench: no prismc built under $built (run bench/building/run.sh prismc)" >&2; exit 2; }
 out=target/bench/running
 mkdir -p "$out"
-normal=tests/conformance/sem-ch07-normalize.prism
+normal=tests/conformance/sem-ch07-normalize
 
 now() { python3 -c 'import time; print(time.time())'; }
 secs() { python3 -c "import sys; print(f'{float(sys.argv[2]) - float(sys.argv[1]):.1f}')" "$1" "$2"; }

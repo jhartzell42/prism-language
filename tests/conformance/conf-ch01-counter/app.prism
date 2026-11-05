@@ -1,0 +1,9 @@
+# Conformance ch. 1, "The transcript": the counter.
+emit Ui.*
+test mod Tests
+
+@counter:
+    !inc <- Ui.Button(label=$"Increment")
+    !dec <- Ui.Button(label=$"Decrement")
+    $count <- 0 then $count + (-1 on !dec <| +1 on !inc)
+    Ui.Label(text=$"Count: {$count}")

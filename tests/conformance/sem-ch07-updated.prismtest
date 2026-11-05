@@ -1,6 +1,0 @@
-# The two halves' tests: declarations of sem-ch07-updated.prism (Semantics chapter 7).
-
-test event_half_is_new_behavior_half_is_old, @halves:
-    build
-    click at 0
-    click at 0

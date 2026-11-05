@@ -1,0 +1,197 @@
+# `Check.Shrink.Relations`, a child module of `Check.Shrink`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+
+# ---- Relations are scoped. A name relates to what its own binding makes of it: bound
+# again (a `let`, a pattern, a lambda's parameter, a `for`'s binder, a local `fn`), it
+# relates to nothing but what its new definition relates to; a `match` arm's or an `if`'s
+# bindings are seen only in that arm. A part is what a `match` takes apart in the arm that
+# took it (Semantics ch. 7), not a name another arm happens to share.
+
+# Forget what outer bindings said of these names, and mark them local where they are
+# bound: a call of one is not a call of a global of the same name, a `Fold` bound here is
+# not the prelude's. The map's other entries have a `:` in their keys, which no name has:
+# `local:NAME`, `pre:NAME` (the name resolves to the prelude's declaration), `fn:NAME`
+# (a summary, pick SM), `acc:NAME:J` and `sum:NAME:J:Q` (a closure parameter, pick CT),
+# `lam:` (inside a closure that may run later), `ne:NAME` (the name is known non-empty
+# here, pick SM), `lamlet:NAME` (a block's `let NAME = \|..| ..`, by where the lambda
+# starts, pick PS), `lfn:NAME` (a local `fn` or widget, by where its block's first
+# clause of it starts, pick LF), `file:` (the file the walk is in) and `nat:FILE:START:END` (a `-?` the
+# solver made a `Nat`'s, pick SW). Binding a name again forgets its `ne:` and `lamlet:`.
+Hide: fn (Text ==> Rel), [Text] -> (Text ==> Rel)
+fn Hide m, names = Fold names, m, \|m2, n| Insert (Remove (Remove (Remove (Remove m2, n), "ne:{n}"), "lamlet:{n}"), "lfn:{n}"), "local:{n}", noRel
+
+let noRel = Rel(param=0, strict=False)
+
+IsLocal: fn (Text ==> Rel), Text -> Bool
+fn IsLocal m, n = HasKey m, "local:{n}"
+
+# Whether a name, where it stands, is the prelude's declaration `Prelude.BARE` (bare or
+# qualified).
+PreIs: fn (Text ==> Rel), Text, Text -> Bool
+fn PreIs m, n, bare = (n == bare or n == "Prelude.{bare}") and (HasKey m, "pre:{n}") and not (IsLocal m, n)
+
+# The prelude's names the checks read for what they mean, and the spellings of each that
+# resolve to the prelude's own declaration from module `h`: the module `Prelude`'s, never
+# a local's or a program module's of the same name.
+let preludeNames = [["Drop", "Take", "Filter", "Remove", "Min", "Values", "Keys", "?Step", "Fold", "Each", "Push", "Insert", "Append", "Freeze", "-?", "@Defer", "@Later", "@Run", "@Machine", "@started"]]
+
+PreludeSeeds: fn G, Text -> (Text ==> Rel)
+fn PreludeSeeds g, h = Fold preludeNames, {}, \|m, n|
+    let q = "Prelude.{n}"
+    if not (IsPreludeKey g, q): m
+    else: Fold [[n, q]], m, \|m2, sp| if (?ResolveCallee g, h, sp) == ? q: Insert m2, "pre:{sp}", noRel else: m2
+
+# A key is the prelude's when module `Prelude` declares it in one of the prelude's own
+# files (from `g.preludeFrom` on), by module identity, never by the text of the name: a
+# program's own `module Prelude` is one of the program's files.
+IsPreludeKey: fn G, Text -> Bool
+fn IsPreludeKey g, q = match g.vals[q]:
+    ? v: (HasPrefix q, "Prelude.") and v.home == "Prelude" and v.file >= g.preludeFrom
+    nil: False
+
+# A block is one binding group, so its names hide the outer ones on every line of it; then
+# each `let` and bind, in page order, relates its names from its subject.
+BlockRels: unbounded fn [Stmt], (Text ==> Rel) -> (Text ==> Rel)
+fn BlockRels stmts, m = Fold stmts, (LocalFnMarks stmts, (Hide m, (StmtsBinders stmts))), \|m2, s| LamLetRels s, (StmtRels s, m2)
+
+# Each local `fn` and widget of a block, by where its first clause starts (pick LF).
+LocalFnMarks: fn [Stmt], (Text ==> Rel) -> (Text ==> Rel)
+fn LocalFnMarks stmts, m = Fold stmts, m, \|m2, s|
+    let ?n = match s.kind:
+        SFn f: ? (DefNameText f.name)
+        SWidget w: ? (SNameKey w.name)
+        otherwise: nil
+    match ?n:
+        ? n: if HasKey m2, "lfn:{n}": m2 else: Insert m2, "lfn:{n}", Rel(param=s.span.start, strict=False)
+        nil: m2
+
+# The names a block's own statements bind.
+StmtsBinders: unbounded fn [Stmt] -> [Text]
+fn StmtsBinders stmts = Fold stmts, [[]], \|acc, s| match s.kind:
+    SLet p, ignore, ignore: UnionTexts acc, (PatternNames p)
+    SBind p, ignore, ignore: UnionTexts acc, (PatternNames p)
+    SFn f: AddText acc, (DefNameText f.name)
+    SWidget w: AddText acc, (SNameKey w.name)
+    otherwise: acc
+
+StmtRels: unbounded fn Stmt, (Text ==> Rel) -> (Text ==> Rel)
+fn StmtRels s, m = match s.kind:
+    SLet p, ignore, e: BindRels p, e, m, False
+    SBind p, e, nil: BindRels p, e, m, True
+    otherwise: m
+
+# The relations a `match` arm's or a bind's pattern makes from its subject: the pattern's
+# names hide what outer bindings said of them, then relate to what the subject is no
+# larger than.
+BindRels: unbounded fn Pattern, Expr, (Text ==> Rel), Bool -> (Text ==> Rel)
+fn BindRels p, e, m, refutable:
+    let ?base = ?RelOf m, e
+    let ?dec = ?DecrementOf m, e
+    let h = NonEmptyRels (Hide m, (PatternNames p)), p, e, refutable
+    match p.kind:
+        PName n: match ?base:
+            ? r: Insert h, (SNameKey n), r
+            nil: match ?dec:
+                ? r: if refutable: Insert h, (SNameKey n), r else: h
+                nil: h
+        PSigil "?", inner: match ?dec:
+            ? r: Fold (PatternNames inner), h, \|m2, n| Insert m2, n, r
+            nil: match ?base:
+                ? r: Fold (PatternNames inner), h, \|m2, n| Insert m2, n, Rel(param=r.param, strict=True)
+                nil: h
+        otherwise: match ?base:
+            ? r: Fold (PatternNames p), h, \|m2, n| Insert m2, n, Rel(param=r.param, strict=True)
+            nil: h
+
+# A refutable pattern that took an element shows the collection non-empty where it binds
+# (pick SM, `Drop`): the `? x` of `xs[i]`, or an array pattern of one element or more on
+# `xs`. A pattern that binds the collection's name again shows nothing.
+NonEmptyRels: unbounded fn (Text ==> Rel), Pattern, Expr, Bool -> (Text ==> Rel)
+fn NonEmptyRels m, p, e, refutable = if not refutable: m else: match ?NonEmptyName p, e:
+    ? n: if HasText (PatternNames p), n: m else: Insert m, "ne:{n}", noRel
+    nil: m
+
+?NonEmptyName: fn Pattern, Expr -> ?Text
+fn ?NonEmptyName p, e = match e.kind:
+    EGroup x: ?NonEmptyName p, x
+    EIndex r, ignore: match p.kind:
+        PSigil "?", ignore: ?NameOf r
+        PGroup q: ?NonEmptyName q, e
+        otherwise: nil
+    EName n: match p.kind:
+        PArray ps: if (Len ps) > 0: ? (SNameKey n) else: nil
+        PGroup q: ?NonEmptyName q, e
+        otherwise: nil
+    otherwise: nil
+
+?NameOf: fn Expr -> ?Text
+fn ?NameOf e = match e.kind:
+    EName n: ? (SNameKey n)
+    EGroup x: ?NameOf x
+    otherwise: nil
+
+# A `match` arm's relations before its block: its pattern's, from the subject.
+ArmPatRels: unbounded fn Expr, Arm, (Text ==> Rel) -> (Text ==> Rel)
+fn ArmPatRels s, a, m = match a.?pattern:
+    ? p: BindRels p, s, m, True
+    nil: m
+
+# An `if`'s `then` block's relations before the block: a `? x <- e` condition's pattern's.
+CondRels: unbounded fn Cond, (Text ==> Rel) -> (Text ==> Rel)
+fn CondRels c, m = match c:
+    CondBind p, x, ignore: BindRels p, x, m, True
+    CondExpr ignore: m
+
+# The prelude's traversals hand their closure the collection's elements, each a part of
+# it (Semantics ch. 7, Keep shrinking; doubt TR): `Fold xs, z, \|acc, x| ...`, `Each xs,
+# \|x| ...` and `Filter xs, \|x| ...` over a collection no larger than a parameter bind
+# the element strictly smaller than the parameter; a `Fold` over a map binds its key and
+# value so. Every parameter of the step hides the outer names it shares.
+StepRels: unbounded fn (Text ==> Rel), Expr, [Pattern], Nat -> (Text ==> Rel)
+fn StepRels m, coll, ps, at:
+    let h = Hide m, (Fold ps, [[]], \|a, p| UnionTexts a, (PatternNames p))
+    match ?RelOf m, coll:
+        ? r: Fold (Drop ps, at), h, \|m2, p| Fold (PatternNames p), m2, \|m3, n| Insert m3, n, Rel(param=r.param, strict=True)
+        nil: h

@@ -1,0 +1,295 @@
+# `Emit.Cpp.Program`, a child module of `Emit.Cpp`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Emit.Cpp.*
+use Emit.Cpp.Expr.*
+use Emit.Cpp.Patterns.*
+use Emit.Cpp.Stmts.*
+use Emit.Cpp.Items.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+use Emit.Cpp.Templates.*
+use Emit.Cpp.Templates.Items.*
+use Emit.Cpp.Prelude.*
+
+# ---------------------------------------------------------------------------------------
+# Nodes and programs
+# ---------------------------------------------------------------------------------------
+
+NodeParts: unbounded fn Cp, NodeDef -> Parts
+fn NodeParts cp, n:
+    let ncp = WithFields cp, (Each n.fields, \|((f, t, ignore))| ((f, t)))
+    let base = if n.rowKind == NotARow and (Len n.hosted) == 0: "Node" else: "Row"
+    let fields = Join (Each n.fields, \|((f, t, doc))| "{CppDoc doc}{CppType cp, t} {FieldId f};"), "\n"
+    let consts = Join (Each n.consts, \|((c, h, doc))| "{CppDoc "The {doc}."}static constexpr std::uint32_t {c} = {h};"), "\n"
+    let ctorParams = Join (Append [["Path path"]], (Each n.fields, \|((f, t, ignore))| "{CppType cp, t} {FieldId f}")), ", "
+    let ctorInits = Join (Append [["path(std::move(path))"]], (Each n.fields, \|((f, ignore, ignore))| "{FieldId f}(std::move({FieldId f}))")), ", "
+    let params = Concat (Each n.params, \|((p, t))| "{ParamType cp, t} {p}, ")
+    let ret = if n.fallible: "Result<prism_rtl::Rc<{n.name}>>" else: "prism_rtl::Rc<{n.name}>"
+    let makeDecl = "static {ret} make(Path path, {params}Cx& cx);"
+    let methodDecls = Each (Append n.methods, n.hosted), \|m| "{MethodSig ncp, m, ""};"
+    let builderDecls = Append (Each n.builders, \|b| "Done {b.name}_build(Cx& cx);"), (Each n.gens, \|g| "Done {g.name}_build(Cx& cx);")
+    let hookDecls = Each n.hooks, \|((h, ignore))| "{HookSig h, ""} override;"
+    let answerDecl = if (Len n.answers) == 0: [[]] else: [["Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override;"]]
+    let rowDecl = if n.rowKind == NotARow: [[]] else: [["void leave_row(Cx& cx) override;"]]
+    let decls = Join (Append (Append (Append (Append (Append [[makeDecl]], methodDecls), builderDecls), hookDecls), answerDecl), rowDecl), "\n"
+    let doc = CppSourceDoc "`{n.prism}`: a node of its own (claude/backend.md, \"A widget block\").", n.doc
+    let decl = NodeClass doc, n.name, base, fields, consts, "{n.name}({ctorParams}) : {ctorInits} \{\}", decls
+    # the constructor's arguments in the order the fields are declared
+    let byField = Each n.fields, \|((f, ignore, ignore))| Or (Fold n.inits, nil, \|?found, ((g, v))| if g == f: ? v else: ?found), (XVar f)
+    let ((letsText, lcp)) = CppStatementsCp ncp, n.lets
+    let args = Join (Append [["path"]], (Each byField, \|v| CppExpr lcp, v)), ", "
+    let tail = if n.fallible: "return node;" else: "return node;"
+    let make = NodeMake n.name, "{ret} {n.name}::make(Path path, {params}Cx& cx)", letsText, args, (Join (Filter [[(CppStatements (Pointing lcp, "node"), n.build), tail]], \|s| s != ""), "\n")
+    let methods = Each (Append n.methods, n.hosted), \|m| MethodDef ncp, n.name, m
+    let builders = Append (Each n.builders, \|b| ForBuildCpp ncp, n.name, b), (Each n.gens, \|g| GenBuildCpp ncp, n.name, g)
+    let hooks = Each n.hooks, \|((h, body))| CppFunction "", (HookSig h, "{n.name}::"), "{CppStatements ncp, body}\nreturn \{\};"
+    let answer = if (Len n.answers) == 0: [[]] else: [[(AnswerDefCpp ncp, n)]]
+    let leaving = if n.rowKind == NotARow: [[]] else: [[(RowLeaving ncp, n)]]
+    let defs = Append (Append (Append (Append (Append [[make]], methods), builders), hooks), answer), leaving
+    let own = Parts(forward=[["class {n.name};"]], handles=[[]], values=[[]], cases=[[]], protos=[[]], classes=[[decl]], outer=[[]], generic=[[]], defs=defs)
+    own
+
+MethodSig: unbounded fn Cp, MethDef, Text -> Text
+fn MethodSig cp, m, owner:
+    let cx = match m.cx:
+        CxMut: [["Cx& cx"]]
+        CxRef: [["const Cx& cx"]]
+        CxNone: [[]]
+    let params = Join (Append (Each m.params, \|((p, t))| "{ParamType cp, t} {p}"), cx), ", "
+    let constness = if m.recv == RecvRef: " const" else: ""
+    "{CppType cp, m.ret} {owner}{NodeMethodName cp, m.name}({params}){constness}"
+
+MethodDef: unbounded fn Cp, Text, MethDef -> Text
+fn MethodDef cp, owner, m:
+    let ((st, cp2)) = CppStatementsCp cp, m.body
+    let body = if m.ret == OutUnit: "{st}\nreturn Unit\{\};" else: if (Len m.body) == 0: CppBody cp, m.tail else: "{st}\n{CppBody cp2, m.tail}"
+    CppFunction (CppDoc m.doc), (MethodSig cp, m, "{owner}::"), body
+
+HookSig: fn Text, Text -> Text
+fn HookSig "push", owner = "Done {owner}push(const Pod& element, const Pod& v, Cx& cx)"
+fn HookSig h, owner = "Done {owner}{h}(Cx& cx)"
+
+AnswerDefCpp: unbounded fn Cp, NodeDef -> Text
+fn AnswerDefCpp cp, n:
+    let arms = Each n.answers, \|((pat, call))|
+        let tests = PatConds cp, pat, "at"
+        let binds = PatBinds cp, pat, "at"
+        ((tests, (Join (Push binds, "{CppExpr cp, call};"), "\n")))
+    let blocks = Each (Range0 (Len arms)), \|i|
+        let ((tests, inner)) = Or arms[i], (([[]], ""))
+        Block "{if i == 0: "if" else: "else if"} ({Conds tests})", inner
+    CppFunction "", "Done {n.name}::answer(std::span<const Segment> at, const Pod& v, Cx& cx)", "{Join blocks, " "} else \{\n    return unexpected(Fault::answer(str(\"no answering place at \", path_of(at))));\n\}\nreturn \{\};"
+
+# A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, its places
+# are torn down, its subscriptions let go.
+RowLeaving: unbounded fn Cp, NodeDef -> Text
+fn RowLeaving cp, n:
+    let kept = if n.rowKind == ForRow: [["this->left_entry = entry(cx);"]] else: [[]]
+    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if (auto p = parent.lock(); p && {m}_sub) deref(p->{ev}_port).unsubscribe(*std::exchange({m}_sub, std::nullopt));"
+    CppFunction "", "void {n.name}::leave_row(Cx& cx)", (Join (Append (Push kept, "remove_places(cx);"), unsubscribe), "\n")
+
+ForBuildCpp: unbounded fn Cp, Text, ForDef -> Text
+fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), (CallPath "{b.rowNode}::build"), b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}"))
+
+GenBuildCpp: unbounded fn Cp, Text, GenDef -> Text
+fn GenBuildCpp cp, owner, gd:
+    let path = if gd.transparent: "this->path" else: "{CppExpr cp, gd.at}.child(Segment::gen(g))"
+    GenBuildTemplate owner, gd.name, (CppExpr cp, gd.at), path, (CppExpr cp, gd.source), (CppType cp, gd.valueTy), (CppExpr cp, gd.select)
+
+ProgramCpp: unbounded fn Cp, ProgDef, Bool -> Text
+fn ProgramCpp cp, p, fallible:
+    let n = Len p.params
+    let names = Each p.params, \|((a, ignore))| a
+    let plural = if n == 1: "" else: "s"
+    let decode = if n == 0: "static_cast<void>(args);" else: Join (Append [["if (args.size() != {n}) return unexpected(Fault::answer(\"@{p.prism} takes {n} argument{plural}\"));"]], (Each (Range0 n), \|i| DecodeArg cp, p.params, i)), "\n"
+    let call = "{CallPath "{p.node}::build"}(Path::root(), {Concat (Each names, \|a| "{a}, ")}cx)"
+    let root = if fallible: "TRY({call})" else: call
+    ProgramClass p.name, p.prism, (TypePath p.node), decode, root
+
+DecodeArg: unbounded fn Cp, [((Text, OutTy))], Nat -> Text
+fn DecodeArg cp, ps, i = match ps[i]:
+    ? ((a, t)): "auto {a} = TRY(prism_rtl::from_pod<{CppType cp, t}>(args[{i}]));"
+    nil: ""
+
+# ---------------------------------------------------------------------------------------
+# The program
+# ---------------------------------------------------------------------------------------
+
+# A module's parts, in the module's namespace.
+ModuleParts: unbounded fn Cp, ModDef -> Parts
+fn ModuleParts cp, m:
+    let mcp = InHome cp, m.name
+    let all = Fold m.items, noParts, \|acc, it| JoinParts acc, (ItemParts mcp, it)
+    Parts(forward=(InNs m.name, all.forward), handles=(InNs m.name, all.handles), values=(Each all.values, \|v| InNsValue m.name, v), cases=(InNs m.name, all.cases), protos=(InNs m.name, all.protos), classes=(InNs m.name, all.classes), outer=all.outer, generic=(InNs m.name, all.generic), defs=all.defs)
+
+InNsValue: fn Text, ValueDecl -> ValueDecl
+fn InNsValue ns, v = update v:
+    &_.text <= "namespace {ns} \{\n\n{&_.text}\n\n\}  // namespace {ns}"
+
+InNs: fn Text, [Text] -> [Text]
+fn InNs ns, [[]] = [[]]
+fn InNs ns, xs = [["namespace {ns} \{\n\n{Join xs, "\n\n"}\n\n\}  // namespace {ns}"]]
+
+# Whether a node is built fallibly: the program's `TRY`.
+NodeFallibleCpp: fn Model, Text -> Bool
+fn NodeFallibleCpp model, path = Fold model.mods, False, \|f, m| Fold m.items, f, \|f2, it| match it:
+    ItNode n: f2 or ("{m.name}::{n.name}" == path and n.fallible)
+    otherwise: f2
+
+# The program's files: path and text.
+EmitCpp: unbounded fn Model, Text, [Text] -> [((Text, Text))]
+fn EmitCpp model, runtime, scripts:
+    let cp = Context model
+    let crate = InHome cp, ""
+    let elem = RowParts crate, "", model.elem
+    let answer = AnswerParts crate, model.answer
+    let mods = Each model.mods, \|m| ModuleParts cp, m
+    let programs = Join (Each (AllProgramsCpp model), \|p| ProgramCpp crate, p, (NodeFallibleCpp model, p.node)), "\n\n"
+    let regs = Concat (Each model.programs, \|p| "\n.program<{p.name}>(\"{p.prism}\")")
+    let checks = Concat (Each model.checks, \|c| "\n.check(\"{c.name}\", [] \{ return std::vector<Result<Pod>>\{{Join (Each c.lines, \|l| CppExpr crate, l), ", "}\}; \})")
+    let scriptList = Join (Each scripts, \|s| "\"{Escape s}\","), "\n"
+    let world = match model.?root:
+        ? r: r.world
+        nil: "test"
+    let canvas = world == "canvas"
+    let runRoot = match model.?root:
+        ? r: CppRunRoot r.name, (if canvas: CppCanvasRun r.name else: CppNoCanvas r.name)
+        nil: CppNoRoot model.name
+    let both = JoinParts elem, answer
+    let elemDecl = CppElemDecl (Includes "decl", (Append model.elemComplete, model.elemDeclared)), (Join both.forward, "\n\n"), (Join both.handles, "\n\n"), (CppPreludeRows "")
+    let elemTypes = CppElemTypes (Join (Filter [[(Includes "types", model.elemComplete), (Includes "decl", model.elemDeclared)]], \|t| t != ""), "\n"), (Join both.cases, "\n\n")
+    let pairs = Each (Range0 (Len model.mods)), \|i| (((Or model.mods[i], noMod), (Or mods[i], noParts)))
+    let generics = Fold pairs, [[]], \|acc, ((m, p))| if (Len p.generic) > 0: Push acc, m.name else: acc
+    let perModule = Each pairs, \|((m, p))| ModuleFiles m, p, generics
+    let mainIncludes = Join (Append (Append [["#include \"elem.types.hpp\""]], [[(Includes "", (Each model.mods, \|m| m.name))]]), [[(Includes "generic", generics)]]), "\n"
+    let canvasInclude = if canvas: CppCanvasInclude "" else: ""
+    let main = CppMain model.name, "#include \"programs.hpp\"\n{canvasInclude}", regs, checks, scriptList, world, runRoot, (Join (Concat2 (Each [[elem, answer]], \|p| p.defs)), "\n\n")
+    let groups = Each (Filter model.mods, \|m| (Len m.typesWith) > 1 and (Or m.typesWith[0], "") == m.name), \|m| GroupTypesFile pairs, m.typesWith
+    let files = Fold perModule, [[]], \|acc, fs| Append acc, fs
+    let sources = Join (Filter (Each files, \|((f, ignore))| f), \|f| Contains f, ".cpp"), " "
+    Append [[(("Makefile", (CppMakefile model.name, runtime, sources, (if canvas: CppMakefileCanvas runtime else: "")))), (("src/elem.decl.hpp", elemDecl)), (("src/elem.types.hpp", elemTypes)), (("src/programs.hpp", (CppProgramsHeader model.name, mainIncludes, programs))), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], (Append groups, files)
+
+let noMod = ModDef(name="", prism="", path="", uses=[[]], complete=[[]], declared=[[]], typesWith=[[]], items=[[]])
+
+# The types header of a group of modules (`ModDef.typesWith`): their value types in order
+# across them, and their choices' cases, which each member's own `NAME.types.hpp` includes.
+GroupTypesFile: unbounded fn [((ModDef, Parts))], [Text] -> ((Text, Text))
+fn GroupTypesFile pairs, group:
+    let members = Filter pairs, \|((m, ignore))| Among group, m.name
+    let p = Fold members, noParts, \|acc, ((ignore, q))| JoinParts acc, q
+    let complete = Fold members, [[]], \|acc, ((m, ignore))| Fold m.complete, acc, \|a, n| if (Among a, n) or (Among group, n): a else: Push a, n
+    let declared = Fold members, [[]], \|acc, ((m, ignore))| Fold m.declared, acc, \|a, n| if (Among a, n) or (Among group, n) or (Among complete, n): a else: Push a, n
+    let title = "The modules {Join (Each group, \|n| "`{n}`"), ", "}"
+    (("src/{GroupName group}.types.hpp", (TypesHeader title, group, declared, complete, p)))
+
+# A group's file name: its modules' paths, `_` for `::`, `-` between them.
+GroupName: fn [Text] -> Text
+fn GroupName group = Join (Each group, \|n| Join (Split n, "::"), "_"), "-"
+
+# A module's directory under `src/`: its path's segments (`check::env` is `check/env`).
+ModDir: fn Text -> Text
+fn ModDir m = Join (Split m, "::"), "/"
+
+Among: fn [Text], Text -> Bool
+fn Among xs, x = Fold xs, False, \|f, y| f or y == x
+
+# A types header: the value types of these modules (one, or a group) in an order C++
+# accepts, each after the types it holds, and their choices' cases, after the headers they
+# need: their own declarations, the declarations of the modules they name and the types of
+# the modules whose types they hold.
+TypesHeader: unbounded fn Text, [Text], [Text], [Text], Parts -> Text
+fn TypesHeader title, members, declared, complete, p:
+    let includes = Join (Filter [[(Includes "decl", members), "#include \"elem.decl.hpp\"", (Includes "decl", declared), (Includes "types", complete)]], \|t| t != ""), "\n"
+    let values = Join (OrderValues p.values, (Fold p.values, {}, \|acc, v| Insert acc, v.path, False), [[]]), "\n\n"
+    CppTypesHeader title, includes, values, (Join p.cases, "\n\n")
+
+# `#include` lines for these modules' headers of one layer (`decl`, `types`, `generic`, or
+# `` for the whole header, `module.hpp`), each from `src/` in angle brackets: a quoted name
+# is looked up beside the including file first, where a submodule of the same name
+# (`a/types/` beside the top-level `types/`) would answer.
+Includes: fn Text, [Text] -> Text
+fn Includes layer, ms = Join (Each ms, \|m| "#include <{ModDir m}/{if layer == "": "module" else: layer}.hpp>"), "\n"
+
+# A module's definitions in files of about `chunkSize` characters each, so that no file
+# needs more memory to compile than a small machine has (`lower.cpp` alone would): the
+# first is `src/DIR/mod.cpp`, the next `src/DIR/mod_2.cpp`, and so on.
+Chunks: fn [Text] -> [ [Text] ]
+fn Chunks defs:
+    let ((done, current, size)) = Fold defs, (([[]], [[]], 0)), \|((acc, cur, n)), d|
+        if n > chunkSize and (Len cur) > 0: (((Push acc, cur), [[d]], (Len d)))
+        else: ((acc, (Push cur, d), n + (Len d)))
+    if (Len current) == 0 and (Len done) > 0: done else: Push done, current
+
+let chunkSize = 250000
+
+# A module's files: its headers (`CppDeclHeader` says what each layer holds) and its source
+# files. A source file includes its own module's `DIR/module.hpp` and those of the modules
+# it needs, then the `DIR/generic.hpp` of those that have one (`generics`).
+ModuleFiles: unbounded fn ModDef, Parts, [Text] -> [((Text, Text))]
+fn ModuleFiles m, p, generics:
+    let title = if m.prism == "": "The root module" else: "The module `{m.prism}`"
+    let needed = Append m.complete, m.declared
+    let decl = CppDeclHeader title, "", (Join p.forward, "\n\n"), (Join p.handles, "\n\n")
+    let types = if (Len m.typesWith) > 1: CppTypesInGroup title, (GroupName m.typesWith) else: TypesHeader title, [[m.name]], m.declared, m.complete, p
+    let headIncludes = Join (Filter [[("{Includes "types", [[m.name]]}\n#include \"elem.types.hpp\""), (Includes "types", needed)]], \|t| t != ""), "\n"
+    let head = CppModHeader title, headIncludes, (Join p.protos, "\n"), (Join p.outer, "\n\n"), (Join p.classes, "\n\n")
+    let withMine = Append [[m.name]], needed
+    let generic = if (Len p.generic) == 0: [[]] else: [[(("src/{ModDir m.name}/generic.hpp", (CppGenericHeader title, (Includes "", withMine), (Join p.generic, "\n\n"))))]]
+    let bodyIncludes = Join (Filter [[(Includes "", withMine), (Includes "generic", (Filter withMine, \|n| Among generics, n))]], \|t| t != ""), "\n"
+    let chunks = Chunks p.defs
+    let sources = Each (Range0 (Len chunks)), \|k| (((ChunkFile m.name, k), (CppModule title, m.path, m.name, bodyIncludes, (Join (Or chunks[k], [[]]), "\n\n"))))
+    let dir = ModDir m.name
+    Append (Append [[(("src/{dir}/decl.hpp", decl)), (("src/{dir}/types.hpp", types)), (("src/{dir}/module.hpp", head))]], generic), sources
+
+ChunkFile: fn Text, Nat -> Text
+fn ChunkFile m, k = if k == 0: "src/{ModDir m}/mod.cpp" else: "src/{ModDir m}/mod_{k + 1}.cpp"
+
+# Every program, the root's among them, once.
+AllProgramsCpp: fn Model -> [ProgDef]
+fn AllProgramsCpp model = match model.?root:
+    ? r: if Fold model.programs, False, \|f, p| f or p.name == r.name: model.programs else: Push model.programs, r
+    nil: model.programs
+
+# The value types in an order C++ accepts: each after the types it holds by value, rounds
+# of the ones whose types are all declared. A cycle of records by value (which `Rc` breaks
+# in Rust, and a choice's handle here only when a choice is on it) is left as it is, and
+# does not compile (gap CY of the README).
+OrderValues: unbounded fn [ValueDecl], (Text ==> Bool), [Text] -> [Text]
+fn OrderValues left, done, acc:
+    let ready = Filter left, \|v| Fold v.deps, True, \|ok, d| ok and (d == v.path or Declared done, d)
+    if (Len left) == 0: acc
+    else: if (Len ready) == 0: Append acc, (Each left, \|v| v.text)
+    else:
+        let later = Filter left, \|v| not (Fold v.deps, True, \|ok, d| ok and (d == v.path or Declared done, d))
+        let done2 = Fold ready, done, \|m, v| Insert m, v.path, True
+        OrderValues later, done2, (Append acc, (Each ready, \|v| v.text))
+
+# Whether a value type is declared: one not among the program's value types counts.
+Declared: fn (Text ==> Bool), Text -> Bool
+fn Declared done, d = match done[d]:
+    ? b: b
+    nil: True

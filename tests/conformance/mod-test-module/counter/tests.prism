@@ -1,0 +1,16 @@
+# `Counter.Tests`: its parent's names by `use`, a helper type and a function for the checks.
+emit r
+use Counter.*
+
+type Run = record:
+    from: Nat
+    twice: Bool
+derive ^Eq, ^Show
+
+Stepped: fn Run -> Nat
+fn Stepped r = if r.twice: Step (Step r.from) else: Step r.from
+
+check steps:
+    Step 3 => 6
+    Stepped Run(from=1, twice=True) => 4
+    Show Run(from=1, twice=False) => "Run(from=1, twice=False)"

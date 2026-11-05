@@ -1,0 +1,28 @@
+# Semantics ch. 4, `given:`; ch. 10's `~` sharing it (round 47 GV); decisions.md D11 and
+# D15: a failed guard under a `~` name gives up into `Prelude.Unmet` with its source text.
+test mod Tests
+use Fs.*
+
+type Cabin = record:
+    beds: Nat
+    rate: Nat
+
+let cabins = {"Birch": Cabin(beds=2, rate=80), "Oak": Cabin(beds=6, rate=150)}
+
+?Quote: fn (Text ==> Cabin), Text, Nat, Nat -> ?Nat
+fn ?Quote cabins, name, guests, nights:
+    cabin <- cabins[name]
+    require guests <= cabin.beds
+    forbid nights == 0
+    ? cabin.rate * nights
+
+~Port: fn Text -> ~Nat
+fn ~Port text:
+    port <- ~ParseNat text
+    require port <= 65535
+    ~ port
+
+Message: fn ~Contents -> Text
+fn Message (~ c) = c.text
+fn Message (Error(kind=Fs.NotFound, ..)) = "no message today"
+fn Message (Error(message=m, ..)) = "cannot read the message: {m}"

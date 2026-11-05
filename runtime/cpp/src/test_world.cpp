@@ -405,6 +405,25 @@ Expected<CheckBlock, Err> parse_check(std::size_t no, std::string_view head, std
     return c;
 }
 
+/// A line at the left edge of a test module (claude/modules-style-pass.md) beside its tests:
+/// a line of its header (`emit`, `mod`, `test mod`, `use`), or a helper type, function or
+/// value, its `derive` or signature line. The compiled program holds it, so the script
+/// passes over it, body and all.
+bool is_declaration(std::string_view head) {
+    for (std::string_view k : {"emit ", "mod ", "test mod ", "use ", "type ", "derive ", "fn ", "let "})
+        if (head.substr(0, k.size()) == k) return true;
+    std::size_t colon = head.find(':');
+    if (colon == std::string_view::npos || colon == 0) return false;
+    std::string_view name = head.substr(0, colon);
+    bool letter = false;
+    for (char c : name) {
+        bool alpha = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+        if (!alpha && !(c >= '0' && c <= '9') && std::string_view("_@$!?~&").find(c) == std::string_view::npos) return false;
+        letter = letter || alpha;
+    }
+    return letter;
+}
+
 Expected<std::vector<Block>, Err> parse_script(std::string_view src) {
     Lines ls;
     std::size_t no = 0;
@@ -419,6 +438,10 @@ Expected<std::vector<Block>, Err> parse_script(std::string_view src) {
         std::size_t end = i + 1;
         while (end < ls.size() && indent(ls[end].second) != 0) ++end;
         std::span<const std::pair<std::size_t, std::string_view>> body(ls.data() + i + 1, end - i - 1);
+        if (is_declaration(head)) {
+            i = end;
+            continue;
+        }
         if (auto rest = strip_prefix(head, "test "); rest && indent(head) == 0) {
             auto t = parse_test(n, *rest, body);
             if (!t) return unexpected(t.error());

@@ -11,7 +11,6 @@
 # lifts it by this signature (Type System ch. 4, "Where the table looks"). Each builtin's
 # cost promise is Appendix B's and is stated in its Rust doc comment.
 
-module Prelude
 emit r
 
 # ---------------------------------------------------------------------------------------

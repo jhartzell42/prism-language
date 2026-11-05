@@ -1,0 +1,290 @@
+# `Syntax.Lexer.Chars`, a child module of `Syntax.Lexer`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Lexer.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.*
+use Syntax.Decls.*
+
+# ---------------------------------------------------------------------------------------
+# Small helpers over texts and arrays
+# ---------------------------------------------------------------------------------------
+
+Dec: fn Nat -> Nat
+fn Dec n = Or (n -? 1), 0
+
+?Last: fn [a] -> ?a
+fn ?Last xs = xs[Dec (Len xs)]
+
+Pop: fn [a] -> [a]
+fn Pop xs = Take xs, (Dec (Len xs))
+
+Join: fn [Text], Text -> Text
+fn Join xs, sep = match xs[0]:
+    ? first: Concat (Fold (Drop xs, 1), [[first]], \|acc, x| Push (Push acc, sep), x)
+    nil: ""
+
+# Texts are walked with cursors (Semantics Appendix B, Text): a position is a byte index,
+# and a character is reached by stepping to it. A character here is a one-character text,
+# a view of the text it is in (README, pick CH).
+
+# The character at a cursor, or `""` at the end.
+CharAt: fn Cursor -> Text
+fn CharAt c = match ?Step (Front (After c)):
+    ? ((ignore, one)): Before one
+    nil: ""
+
+# The first character of `t`, and `t` after it.
+Head: fn Text -> Text
+fn Head t = CharAt (Front t)
+
+AfterFirst: fn Text -> Text
+fn AfterFirst t = match ?Step (Front t):
+    ? ((ignore, c)): After c
+    nil: ""
+
+# The last character of `t`, and `t` before it.
+LastChar: fn Text -> Text
+fn LastChar t = match ?StepBack (Back t):
+    ? ((ignore, c)): After c
+    nil: ""
+
+BeforeLast: fn Text -> Text
+fn BeforeLast t = match ?StepBack (Back t):
+    ? ((ignore, c)): Before c
+    nil: ""
+
+# The bytes of `t` from `a` to `b`, two character boundaries (a span's ends, a lexer's
+# positions); `""` when either is not one.
+Between: fn Text, Nat, Nat -> Text
+fn Between t, a, b = match ?CursorAt t, b:
+    ? cb: match ?CursorAt (Before cb), a:
+        ? ca: After ca
+        nil: ""
+    nil: ""
+
+# `t` after the prefix `p`, when it starts with it.
+?AfterPrefix: fn Text, Text -> ?Text
+fn ?AfterPrefix t, p = match ?CursorAt t, (Len p):
+    ? c: if (Before c) == p: ? (After c) else: nil
+    nil: nil
+
+HasPrefix: fn Text, Text -> Bool
+fn HasPrefix t, p = (?AfterPrefix t, p) != nil
+
+# `t` without `p` at its start; `t` itself when it does not start with it.
+DropPrefix: fn Text, Text -> Text
+fn DropPrefix t, p = Or (?AfterPrefix t, p), t
+
+# `t` before the suffix `s`, when it ends with it.
+?BeforeSuffix: fn Text, Text -> ?Text
+fn ?BeforeSuffix t, s = match (Len t) -? (Len s):
+    ? n: match ?CursorAt t, n:
+        ? c: if (After c) == s: ? (Before c) else: nil
+        nil: nil
+    nil: nil
+
+HasSuffix: fn Text, Text -> Bool
+fn HasSuffix t, s = (?BeforeSuffix t, s) != nil
+
+# `Fold` over the characters of `t`, front to back.
+FoldChars: fn Text, b, (fn b, Text -> b) -> b
+fn FoldChars t, z, F = update z:
+    let &c = Front t
+    while ? ((ignore, next)) <- ?Step &c:
+        &_ <= F &_, (CharAt &c)
+        &c <= next
+
+# Each character of `t` replaced by a text.
+MapChars: fn Text, (fn Text -> Text) -> Text
+fn MapChars t, F = Concat (FoldChars t, [[]], \|acc, c| Push acc, (F c))
+
+# How many characters `t` has: a column on a screen, in a line of source.
+CountChars: fn Text -> Nat
+fn CountChars t = FoldChars t, 0, \|n, ignore| n + 1
+
+# The column of byte `offset` in a line that starts at byte `from`, in characters.
+ColumnOf: fn Text, Nat, Nat -> Nat
+fn ColumnOf text, from, offset = CountChars (Between text, from, offset)
+
+# Every character of `t` satisfies `P`.
+AllChars: fn Text, (fn Text -> Bool) -> Bool
+fn AllChars t, P = FoldChars t, True, \|ok, c| ok and P c
+
+# `t` without the characters among `set` at its start, or at its end.
+TrimLeading: fn Text, Text -> Text
+fn TrimLeading t, set:
+    let c = update Front t:
+        while ? ((ignore, next)) <- ?Step &_ if Contains set, (CharAt &_):
+            &_ <= next
+    After c
+
+# `?StepBack` shrinks nothing the shrink check knows (Semantics ch. 7 names `?Step`), so a
+# walk back takes fuel: a text has no more characters than bytes.
+TrimTrailing: fn Text, Text -> Text
+fn TrimTrailing t, set:
+    let c = update Back t:
+        let &fuel = Len t
+        while ? left <- &fuel -? 1:
+            &fuel <= left
+            match ?StepBack &_:
+                ? ((ignore, prev)) if Contains set, (CharAt prev): &_ <= prev
+                otherwise: &fuel <= 0
+    Before c
+
+# `t` without the spaces and carriage returns at its start, its end, or both.
+TrimStart: fn Text -> Text
+fn TrimStart t = TrimLeading t, " \u{d}"
+
+TrimEnd: fn Text -> Text
+fn TrimEnd t = TrimTrailing t, " \u{d}"
+
+Trim: fn Text -> Text
+fn Trim t = TrimEnd (TrimStart t)
+
+# How many bytes at the start of `t` are characters among `set` (for spaces, a count).
+LeadingIn: fn Text, Text -> Nat
+fn LeadingIn t, set = Or ((Len t) -? (Len (TrimLeading t, set))), 0
+
+Contains: fn Text, Text -> Bool
+fn Contains set, c = c != "" and (Len (Split set, c)) > 1
+
+# ---------------------------------------------------------------------------------------
+# Characters (ASCII only: "Names are ASCII letters, digits and underscores")
+# ---------------------------------------------------------------------------------------
+
+IsDigit: fn Text -> Bool
+fn IsDigit c = "0" <= c and c <= "9"
+
+IsUpper: fn Text -> Bool
+fn IsUpper c = "A" <= c and c <= "Z"
+
+IsLower: fn Text -> Bool
+fn IsLower c = "a" <= c and c <= "z"
+
+IsIdentStart: fn Text -> Bool
+fn IsIdentStart c = (IsLower c) or (IsUpper c) or c == "_"
+
+IsIdentChar: fn Text -> Bool
+fn IsIdentChar c = (IsIdentStart c) or (IsDigit c)
+
+IsHexDigit: fn Text -> Bool
+fn IsHexDigit c = (IsDigit c) or ("a" <= c and c <= "f") or ("A" <= c and c <= "F")
+
+# Past ASCII. A non-ASCII letter glued to a name is an error; prismc counts every non-ASCII
+# character a letter there (README, pick NA).
+IsNonAscii: fn Text -> Bool
+fn IsNonAscii c = c > "\u{7f}"
+
+IsSigilChar: fn Text -> Bool
+fn IsSigilChar c = Contains "$!@?~&", c
+
+IsSpaceChar: fn Text -> Bool
+fn IsSpaceChar c = c == " " or c == "\n" or c == "\u{d}" or c == "\t"
+
+# The two lowercase constructors the prelude reserves (ch. 2, "Case is a mark").
+IsReservedCtor: fn Text -> Bool
+fn IsReservedCtor w = w == "templatetext" or w == "templateplaceholder"
+
+# The ASCII characters by code point, one byte each, so a character's code point is its
+# byte index: what `\u{hex}` can name in prismc (README, gap UC), and how the
+# S-expression printer names a control character.
+let asciiText = "\u{0}\u{1}\u{2}\u{3}\u{4}\u{5}\u{6}\u{7}\u{8}\u{9}\u{a}\u{b}\u{c}\u{d}\u{e}\u{f}\u{10}\u{11}\u{12}\u{13}\u{14}\u{15}\u{16}\u{17}\u{18}\u{19}\u{1a}\u{1b}\u{1c}\u{1d}\u{1e}\u{1f} !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz\{|\}~\u{7f}"
+
+let hexDigits = "0123456789abcdef"
+
+# The character at byte `n` of `t`, `""` when there is none.
+CharAtByte: fn Text, Nat -> Text
+fn CharAtByte t, n = match ?CursorAt t, n:
+    ? c: CharAt c
+    nil: ""
+
+# The value of a hexadecimal digit (16 for anything else): its byte index in `hexDigits`.
+HexValue: fn Text -> Nat
+fn HexValue c:
+    let l = Lower c
+    if l == "": 16 else: Len (Or (Split hexDigits, l)[0], hexDigits)
+
+?ParseHex: fn Text -> ?Nat
+fn ?ParseHex t:
+    require t != "" and (AllChars t, IsHexDigit)
+    ? FoldChars t, 0, \|n, c| n * 16 + (HexValue c)
+
+# The character at a code point below 0x80.
+?AsciiChar: fn Nat -> ?Text
+fn ?AsciiChar n = if n < 128: ? (CharAtByte asciiText, n) else: nil
+
+# ---------------------------------------------------------------------------------------
+# Reading characters
+# ---------------------------------------------------------------------------------------
+
+# The text from the lexer's position on. Positions are byte offsets into `src`, always on
+# a character boundary.
+Rest: fn Lex -> Text
+fn Rest l = match ?CursorAt l.src, l.pos:
+    ? c: After c
+    nil: ""
+
+# The character at the position, or `""` at the end.
+Peek: fn Lex -> Text
+fn Peek l = CharAtByte l.src, l.pos
+
+# The character `n` characters past the position, or `""` past the end.
+PeekAt: fn Lex, Nat -> Text
+fn PeekAt l, n:
+    let rest = update Rest l:
+        let &k = n
+        while ? left <- &k -? 1:
+            &k <= left
+            &_ <= AfterFirst &_
+    Head rest
+
+StartsWith: fn Lex, Text -> Bool
+fn StartsWith l, s = HasPrefix (Rest l), s
+
+# The text from `a` to `b`.
+Slice: fn Lex, Nat, Nat -> Text
+fn Slice l, a, b = Between l.src, a, b
+
+# Past the character at the position.
+Bump: fn Lex -> Lex
+fn Bump l = update l:
+    &_.pos += Len (Peek &_)
+
+# Past `n` characters.
+Forward: fn Lex, Nat -> Lex
+fn Forward l, n = update l:
+    let &k = n
+    while ? left <- &k -? 1:
+        &k <= left
+        &_.pos += Len (Peek &_)
+
+NextIsSpace: fn Lex, Nat -> Bool
+fn NextIsSpace l, n:
+    let c = PeekAt l, n
+    c == "" or (IsSpaceChar c)
+
+# Where the current line ends: the next newline, or the end of the text.
+LineEnd: fn Lex -> Nat
+fn LineEnd l = match ?CursorAt l.src, l.pos:
+    ? c:
+        let end = update c:
+            while ? ((ch, next)) <- ?Step &_ if ch != '\n':
+                &_ <= next
+        At end
+    nil: l.pos
+
+# The rest of the current line from the cursor, without its newline.
+RestOfLine: unbounded fn Lex -> Text
+fn RestOfLine l = Slice l, l.pos, (LineEnd l)
+
+LexErr: fn Lex, Nat, Nat, Text -> Lex
+fn LexErr l, start, end, message = update l:
+    &_.diags <= Push &_.diags, (LexDiag (Range(start=start, end=(Max end, start))), message)
+
+LexDiag: fn Range, Text -> Diag
+fn LexDiag span, message = Diag(stage="lex", span=span, message=message, feature=nil)

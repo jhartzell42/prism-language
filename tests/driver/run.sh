@@ -4,7 +4,8 @@
 # World, a row with `Ui.*` and no `Gui.*` refused (no World answers Ui elements alone), and
 # `--world` over all of it; a program with no `@main` has no root to run. Then prismc's
 # own options: an option it does not know, an unknown target, or an option missing its
-# value is refused, never ignored, and `prism compile --target cpp` writes C++. Last, chess
+# value is refused, never ignored; an absolute `-o` finds the runtime at PRISM_ROOT or is
+# refused, naming `--runtime`; and `prism compile --target cpp` writes C++. Last, chess
 # compiled to C++ runs under the C++ canvas World: its `main` calls the World and its
 # Makefile links it.
 #
@@ -34,9 +35,10 @@ expect() {
 }
 expect chess canvas examples/chess
 expect cli-root cli tests/driver/cli-root.prism
-expect birds refused tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
-expect birds-as-cli cli --world cli tests/conformance/sem-ch06-birds.prism tests/conformance/sem-ch06-birds
-expect counter-no-root refused tests/conformance/counter.prism
+expect gui-tree canvas tests/driver/gui-tree
+expect birds refused tests/conformance/sem-ch06-birds
+expect birds-as-cli cli --world cli tests/conformance/sem-ch06-birds
+expect counter-no-root refused tests/conformance/counter
 
 prismc=${PRISMC:-$(ls -t target/bootstrap/prismc target/keep/prismc-* 2>/dev/null | grep -v old-chain | head -1)}
 out=target/driver
@@ -56,6 +58,33 @@ refuse unknown-option "unknown option --bogus" compile --bogus tests/driver/cli-
 refuse unknown-target "unknown target wasm" compile --target wasm tests/driver/cli-root.prism -o "$out/unknown-target"
 refuse missing-value "--target takes a value" compile tests/driver/cli-root.prism -o "$out/missing-value" --target
 refuse check-unknown-option "unknown option --bogus" --check --bogus tests/driver/cli-root.prism
+# An absolute -o: the Rust crate finds the runtime at PRISM_ROOT, and builds; with neither
+# PRISM_ROOT nor --runtime it is refused, naming --runtime, since `..` per segment of an
+# absolute OUT would climb to `/`. A relative -o with no PRISM_ROOT keeps `..` per
+# segment, OUT being relative to the repository root (the bootstraps' and ./prism's call).
+abs=$PWD/$out/abs-rust
+abslog=target/driver-absolute.log
+if "$prismc" compile tests/driver/cli-root.prism -o "$abs" > "$abslog" 2>&1 &&
+    CARGO_TARGET_DIR=$PWD/target/prism-build cargo build --offline --release -q --manifest-path "$abs/Cargo.toml" >> "$abslog" 2>&1; then
+    echo "ok absolute-out: the crate finds the runtime at PRISM_ROOT and builds"
+else
+    failed+=(absolute-out)
+    echo "FAILED absolute-out: an absolute -o with PRISM_ROOT set does not build ($abslog)"
+fi
+said=$(env -u PRISM_ROOT "$prismc" compile tests/driver/cli-root.prism -o "$PWD/$out/absolute-out-bare" 2>&1); code=$?
+if [ $code -ne 0 ] && echo "$said" | grep -q -- "an absolute -o needs --runtime PATH or PRISM_ROOT" && [ ! -e "$out/absolute-out-bare" ]; then
+    echo "ok absolute-out-bare: refused, naming --runtime"
+else
+    failed+=(absolute-out-bare)
+    echo "FAILED absolute-out-bare: wanted a refusal naming --runtime, got exit $code: $said"
+fi
+if env -u PRISM_ROOT "$prismc" compile tests/driver/cli-root.prism -o "$out/relative" > /dev/null 2>&1 &&
+    grep -q 'path = "../../../runtime/rust"' "$out/relative/Cargo.toml"; then
+    echo "ok relative-out: .. per segment of a relative OUT"
+else
+    failed+=(relative-out)
+    echo "FAILED relative-out: a relative -o with no PRISM_ROOT does not find the runtime by .. per segment"
+fi
 if ./prism compile --target cpp tests/driver/cli-root.prism -o "$out/cpp" > /dev/null 2>&1 && [ -f "$out/cpp/src/main.cpp" ] && [ ! -e "$out/cpp/Cargo.toml" ]; then
     echo "ok compile-cpp: C++ written"
 else

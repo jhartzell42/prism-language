@@ -1,0 +1,233 @@
+# `Check.Expr.Lifting`, a child module of `Check.Expr`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lets.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+
+# ---------------------------------------------------------------------------------------
+# `match` and `if` as lifting (ch. 5, Lifted `match` and `if`)
+# ---------------------------------------------------------------------------------------
+
+# The scrutinee's layer is read; arm values unify at the plain layer. The result is an
+# event when any arm is one, else a dynamic when the scrutinee or an arm is one, else
+# plain. A tag arm over an element with a rigid output assumes the output's equality.
+InferMatch: unbounded fn Env, St, Expr, [Arm], Range, ?Ty -> ((Ty, St))
+fn InferMatch env, st, scrut, arms, span, ?expected:
+    let ((stTy, st1)) = Infer env, st, scrut
+    let sh = HeadSigil st1, stTy
+    let plainScrut = if IsTimeSigil sh: InnerOf st1, stTy else: stTy
+    let st2 = if sh == "@": Err st1, "blueprint-operand", scrut.span, "`match` over a blueprint; bind it first" else: st1
+    let ?rigidOut = match Walk st2, plainScrut:
+        TyElem ignore, o: match Walk st2, o:
+            TyRigid name: ? name
+            otherwise: nil
+        otherwise: nil
+    let ((res, st3)) = FreshVar st2, False, ""
+    let checking = ?expected != nil and not (IsTimeSigil sh)
+    let scrutName = ExprName scrut
+    let ((layers, st4, ignore)) = Fold arms, (([[]], st3, [[]])), \|((acc, s, taken)), arm|
+        let envArm = Narrowed env, s, arm, scrutName, plainScrut, taken
+        let ((acc2, s2)) = InferArm envArm, s, arm, plainScrut, res, (if checking: ?expected else: nil), ?rigidOut, acc
+        ((acc2, s2, (TakenBy env, arm, taken)))
+    let st5 = MatchCoverage env, st4, plainScrut, arms, span
+    match ?expected:
+        ? want: if checking: ((want, st5)) else: MatchResult env, st5, sh, layers, res, span
+        nil: MatchResult env, st5, sh, layers, res, span
+
+# The tags an arm takes for the arms below it: a tag arm without a guard its tag, a family
+# arm every tag of its family.
+TakenBy: fn Env, Arm, [Text] -> [Text]
+fn TakenBy env, arm, taken = if arm.?guard != nil: taken else: match arm.?pattern:
+    ? p: match p.kind:
+        PFamily q: UnionTexts taken, (Or env.g.families[Dotted q.path], [[]])
+        otherwise: match ?TagOfPattern env, p:
+            ? tg: AddText taken, tg.name
+            nil: taken
+    nil: taken
+
+# In an arm that may emit its scrutinee, the scrutinee's name has the remainder's row: what
+# the arms above have not taken (ch. 5, Refinement at tag matches, doubt RM).
+Narrowed: unbounded fn Env, St, Arm, Text, Ty, [Text] -> Env
+fn Narrowed env, st, arm, name, t, taken:
+    let forwards = match arm.?pattern:
+        ? p: match p.kind:
+            PFamily ignore: True
+            otherwise: False
+        nil: True
+    if not forwards or name == "" or (Len taken) == 0: env
+    else: match Walk st, t:
+        TyElem rw, o:
+            let w = WalkRow st, rw
+            WithLocal env, name, (Mono (TyElem (Rw(fams=w.fams, minus=(UnionTexts w.minus, taken), tail=w.tail)), o))
+        otherwise: env
+
+# One arm: its pattern bound, its guard a `Bool`, its body's plain layer unified with the
+# others'. The arm's time layer goes into `acc`.
+InferArm: unbounded fn Env, St, Arm, Ty, Ty, ?Ty, ?Text, [((Text, Range))] -> (([((Text, Range))], St))
+fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
+    let ((env2, st1)) = match arm.?pattern:
+        ? p: BindPattern env, st, p, scrutTy, True
+        nil: ((env, st))
+    let ?refinedOut = match ?rigidOut:
+        ? o: match arm.?pattern:
+            ? p: match ?TagOfPattern env, p:
+                ? tg: ? ((o, tg.out))
+                nil: nil
+            nil: nil
+        nil: nil
+    let st2 = match arm.?guard:
+        ? gd: CheckCond env2, st1, gd
+        nil: st1
+    match ?expected:
+        ? want:
+            let refined = match ?refinedOut:
+                ? ((o, out)): SubstRigid o, out, (Zonk st2, want)
+                nil: want
+            let ((bt, st3)) = InferExprBlock env2, st2, arm.body
+            ((acc, (ArmAgainst st3, refined, bt, arm.body.span, (arm.?pattern == nil or (IsFamilyArm arm)))))
+        nil:
+            let ((bt, st3)) = InferExprBlock env2, st2, arm.body
+            let head = HeadSigil st3, bt
+            let plainBt = if IsTimeSigil head: InnerOf st3, bt else: bt
+            let st4 = UnifyArm st3, res, plainBt, arm.body.span
+            let acc2 = if IsTimeSigil head: Push acc, ((head, arm.body.span)) else: Push acc, (("", arm.body.span))
+            let acc3 = if head == "@": Push acc2, (("@", arm.body.span)) else: acc2
+            ((acc3, st4))
+
+# An arm's value against the type the match is checked at: a blueprint's row goes in an
+# obligation, which at an arm that may forward is the forwarding check (ch. 5, pass 5).
+ArmAgainst: unbounded fn St, Ty, Ty, Range, Bool -> St
+fn ArmAgainst st, want, bt, span, forwards = match (((Walk st, want), (Walk st, bt))):
+    (((TyAt w1, r1), (TyAt b1, r2))):
+        let st2 = Unify st, w1, b1, span
+        update st2:
+            &_.incls <= Push &_.incls, Incl(sub=r2, sup=r1, file=&_.file, span=span, what="arm", forward=forwards)
+    otherwise: Unify st, want, bt, span
+
+IsFamilyArm: fn Arm -> Bool
+fn IsFamilyArm arm = match arm.?pattern:
+    ? p: match p.kind:
+        PFamily ignore: True
+        otherwise: False
+    nil: False
+
+# A guard or condition: a `Bool`, peeled of a time layer (the guard of a lifted arm).
+CheckCond: unbounded fn Env, St, Expr -> St
+fn CheckCond env, st, e:
+    let ((t, st2)) = Infer env, st, e
+    let inner = if IsTimeSigil (HeadSigil st2, t): InnerOf st2, t else: t
+    Unify st2, tBool, inner, e.span
+
+?TagOfPattern: fn Env, Pattern -> ?TagInfo
+fn ?TagOfPattern env, p = match p.kind:
+    PRecord n, ignore, ignore: env.g.tags[Dotted n.path]
+    PCtor n, ignore: env.g.tags[Dotted n.path]
+    PName n: env.g.tags[Dotted n.path]
+    PGroup q: ?TagOfPattern env, q
+    otherwise: nil
+
+# A rigid variable replaced by a type: the local equality a tag arm assumes.
+SubstRigid: unbounded fn Text, Ty, Ty -> Ty
+fn SubstRigid name, by, t = match t:
+    TyRigid n: if n == name: by else: t
+    TyCon n, args: TyCon n, (Each args, \|a| SubstRigid name, by, a)
+    TyFn c, ps, r: TyFn c, (Each ps, \|a| SubstRigid name, by, a), (SubstRigid name, by, r)
+    TyTuple ts: TyTuple (Each ts, \|a| SubstRigid name, by, a)
+    TyArray e: TyArray (SubstRigid name, by, e)
+    TyMap k, v: TyMap (SubstRigid name, by, k), (SubstRigid name, by, v)
+    TySig s, i: TySig s, (SubstRigid name, by, i)
+    TyAt i, rw: TyAt (SubstRigid name, by, i), rw
+    TyElem rw, o: TyElem rw, (SubstRigid name, by, o)
+    other: other
+
+MatchResult: unbounded fn Env, St, Text, [((Text, Range))], Ty, Range -> ((Ty, St))
+fn MatchResult env, st, sh, layers, res, span:
+    let events = Filter layers, \|((h, ignore))| h == "!"
+    let dyns = Filter layers, \|((h, ignore))| h == "$"
+    let blue = Filter layers, \|((h, ignore))| h == "@"
+    let st2 = if (Len blue) > 0 and (IsTimeSigil sh): ErrFix st, "building-match", span, "a blueprint in a match over a dynamic; use `rebuild`", "write `rebuild` over the scrutinee, with `match _:` inside" else: st
+    let st3 = if sh == "!" and (Len events) > 0: ErrFix st2, "two-events", span, "two events in one operation", "an arm over an event's scrutinee fires with the scrutinee; read a dynamic in the arm, not an event" else: st2
+    if (Len events) > 0: (((TySig "!", res), (Elab st3, span, "match", "gate", "!")))
+    else: if sh == "$" or (Len dyns) > 0: (((TySig "$", res), (Elab st3, span, "match", "map", "$")))
+    else: if sh == "!": (((TySig "!", res), (Elab st3, span, "match", "map", "!")))
+    else: ((res, st3))
+
+# `if` is a `match` over a `Bool`; with no `else` its branch is `unit`.
+InferIf: unbounded fn Env, St, Cond, Block, ?Block, Range, ?Ty -> ((Ty, St))
+fn InferIf env, st, c, thenB, ?elseB, span, ?expected = match c:
+    CondExpr e:
+        let ((ct, st1)) = Infer env, st, e
+        let sh = HeadSigil st1, ct
+        let inner = if IsTimeSigil sh: InnerOf st1, ct else: ct
+        let st2 = Unify st1, tBool, inner, e.span
+        let ((res, st3)) = FreshVar st2, False, ""
+        let ((layers, st4)) = IfBranches env, st3, env, thenB, ?elseB, res
+        MatchResult env, st4, sh, layers, res, span
+    CondBind p, e, ?gd:
+        let ((et, st1)) = Infer env, st, e
+        let ((env2, st2)) = BindPattern env, st1, p, et, True
+        let st3 = match ?gd:
+            ? g: CheckCond env2, st2, g
+            nil: st2
+        let ((res, st4)) = FreshVar st3, False, ""
+        let ((layers, st5)) = IfBranches env2, st4, env, thenB, ?elseB, res
+        MatchResult env, st5, "", layers, res, span
+
+# An arm's plain layer against the match's: an arm that is a bare `Error` waits for the
+# others, so `if c: Error(..) else: ~ unit` is a `~unit` (pick ER).
+UnifyArm: unbounded fn St, Ty, Ty, Range -> St
+fn UnifyArm st, res, t, span = if (IsFlexVar st, res) and (Walk st, t) == (TyCon "Prelude.Error", [[]]): Defer st, res, t, span else: Unify st, res, t, span
+
+LayerHead: fn Text -> Text
+fn LayerHead h = if IsTimeSigil h: h else: if h == "@": "@" else: ""
+
+IfBranches: unbounded fn Env, St, Env, Block, ?Block, Ty -> (([((Text, Range))], St))
+fn IfBranches thenEnv, st, elseEnv, thenB, ?elseB, res:
+    let ((t1, st1)) = InferExprBlock thenEnv, st, thenB
+    let h1 = HeadSigil st1, t1
+    let st2 = UnifyArm st1, res, (if IsTimeSigil h1: InnerOf st1, t1 else: t1), thenB.span
+    let l1 = [[(((LayerHead h1), thenB.span))]]
+    match ?elseB:
+        ? b:
+            let ((t2, st3)) = InferExprBlock elseEnv, st2, b
+            let h2 = HeadSigil st3, t2
+            let st4 = UnifyArm st3, res, (if IsTimeSigil h2: InnerOf st3, t2 else: t2), b.span
+            (((Push l1, (((LayerHead h2), b.span))), st4))
+        nil: ((l1, (Unify st2, res, tUnit, thenB.span)))

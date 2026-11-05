@@ -1,0 +1,6 @@
+# `Counter`: a directory, since its test module is a child of its own.
+emit r
+test mod Tests
+
+Step: fn Nat -> Nat
+fn Step n = n * 2

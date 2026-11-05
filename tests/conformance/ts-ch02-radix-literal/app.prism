@@ -1,0 +1,16 @@
+# A radix literal and a decimal one with leading zeros mean their value on both targets:
+# lowering writes every number literal in plain decimal (`DecimalDigits`), since C++ reads
+# `010` as octal and has no `0o`. Written by Claude on the claude-self-hosting branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+
+@shown: @unit
+@shown:
+    let a: Nat = 0o17
+    let b: Nat = 010
+    let c: Nat = 0xff_ff
+    let d: Nat = 0b1010
+    let e: Nat = 0x1_0000_0000_0000_0000
+    let f: U8 = 0o377
+    Ui.Label(text=$"{a} {b} {c} {d} {e} {f}")     # 0

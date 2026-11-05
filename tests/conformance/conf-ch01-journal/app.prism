@@ -1,0 +1,14 @@
+# Conformance ch. 1, "A journal under construction one tick late": each page's file writes
+# a footer as the page turns. `Write` is the Fs library's request.
+emit Ui.* | Fs.*
+test mod Tests
+use Fs.*
+
+PageFile: fn Nat -> Text
+fn PageFile n = "page{n}.txt"
+
+@journal:
+    !turn <- Ui.Button(label=$"Next page")                              # 0
+    $page <- 1 then $page + 1 on !turn
+    ignore <- rebuild $page:                                            # 1/#g
+        ignore <- Fs.File(path=PageFile _, requests=((Write "end of page {_}\n") on !turn))

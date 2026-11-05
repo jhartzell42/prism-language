@@ -24,16 +24,14 @@ empty.*
   compiled suites, the checker, the driver tests, the C++ runtime's and Worlds' tests
   (ASan+UBSan under Homebrew clang; Apple clang's hangs at startup on macOS 26).
   Everything builds and tests at cargo release and `-O3`, nothing lower (Jimmy).
-- **Merged:** per-module C++ headers; the first three bugs and gaps LP, LW, SR; `Text` as
+- **Merged:** modules as a tree (Jimmy: they nest as Rust's do, `mod Name`, no sections;
+  test modules are declared `test mod Tests` and read only by `prism test`;
+  `claude/modules-style-pass.md`, whose doubts are open for him); regular expressions in
+  both runtimes (`claude/regex-dialect.md`, `tests/regex/corpus.txt`), not yet in the
+  compiler; per-module C++ headers; the first three bugs and gaps LP, LW, SR; `Text` as
   UTF-8 with cursors; the performance queue (a non-atomic `prism_rtl::Rc`, less string
   churn, gap NL, `?ParseNat`, the emitted-code cleanups).
 - **Branches in flight, each an agent's, merged here when green:**
-  - `claude-style`: modules as a tree. Jimmy's rulings: test modules are declared
-    (`test mod Tests`) and read only by `prism test`; modules nest as Rust's do and there
-    are no sections (`claude/modules-style-pass.md`). Also on it: the two lowering and
-    Test World bugs the first pass found (AW, QP), `claude/bugs/absolute-out-runtime-path.md`,
-    seeds packed without macOS extended attributes, the seed build through a symlinked
-    `target/`.
   - `claude-arrays`: `claude/bugs/small-arrays-whole-chunks.md`. The C++ array's first
     chunks sized to fit and Rust's `Map` as the C++ AVL tree are done; one persistent
     tree-of-chunks `Array` in both runtimes, keeping Appendix B's costs (which the C++
@@ -71,8 +69,9 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 
 ## The order (Jimmy's)
 
-1. **Nested modules** (`claude-style`) and **the array fix** (`claude-arrays`), merged.
-2. **Regular expressions**, the code, the lexer first (the books are written). Jimmy: the
+1. **The array fix** (`claude-arrays`), merged.
+2. **Regular expressions in the compiler** (lexer, parser, checker, lowering, both
+   printers, the prelude), then prismc's own lexer written with them. Jimmy: the
    design is done and good; no design round.
 3. **The layout bug** another agent is reporting under `claude/bugs/` (Jimmy: after regex
    in the lexer).
@@ -178,15 +177,6 @@ program's) shrinks.
 
 ## Smaller items
 
-- **An absolute `-o` points the Rust crate at `/runtime/rust`**
-  (`claude/bugs/absolute-out-runtime-path.md`).
-- **The seeds carry macOS extended attributes.** Written on the Mac, both
-  `bootstrap/prismc-rust.tar.xz` and `bootstrap/prismc-cpp.tar.xz` hold
-  `LIBARCHIVE.xattr.com.apple.provenance` headers, so unpacking them on Linux prints one
-  `tar: Ignoring unknown extended header keyword` warning per file (seen on the cloud box,
-  5 November). Harmless, but noise in every fresh bootstrap. `--update` in both bootstrap
-  scripts should pack without them: `COPYFILE_DISABLE=1` before `tar`, or bsdtar's
-  `--no-xattrs` (GNU tar ignores it, so test the flag on both). Then rewrite both seeds.
 - **The C++ Worlds moved and leave old build directories behind.** Since `15d1ab8` they
   are `worlds/{cli,canvas}/cpp`; a checkout that built at the old paths keeps
   `worlds/cli-cpp/build` and `worlds/canvas-cpp/build`, which show as untracked. Nothing

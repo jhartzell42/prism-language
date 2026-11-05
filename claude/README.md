@@ -15,8 +15,9 @@ Claude-written prose lives here, under this name, and nowhere else.
 - **`regex-dialect.md`**: the regular-expression dialect as one procedure: every
   construct accepted or refused, each diagnostic's position and message, how each runtime
   spells a pattern to its library, and the doubts.
-- **`modules-style-pass.md`**: modules as directories (`mod.prism`, sections, `test.prism`),
-  and the reshuffle of prismc's sources into that tree.
+- **`modules-style-pass.md`**: modules nested as Rust's (`mod Name`: `name.prism`, or
+  `name/mod.prism` with children), test modules as child modules (`test mod Tests`), and
+  prismc's sources in that tree.
 - **`todo-for-jimmy.md`**: Jimmy's list: things to try, making the code his, a shell
   World.
 - **`test-world-in-prism.md`**: why the Test World is not a Prism program yet, and what

@@ -1,0 +1,27 @@
+# Event values (claude/backend.md, "Types": `!a` in a value is `rt::Event<A>`): a plain
+# function with an event parameter returns an event blueprint built from it, a lifted
+# call and `!Filter` over the event as the library's combinators, as the window
+# library's `?Boxed` answers each claimed element; the supplier hands it the host's own
+# event. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Keep: fn Path, Click -> ?Click
+fn ?Keep p, c = ? c
+
+?Remote: fn Path, Element o, !Click -> ?@o
+fn ?Remote p, e, !go = match e:
+    Ui.Button(..): ? @ !Filter (?Keep p, !go)
+    otherwise: nil
+
+@pad: @unit
+@pad:
+    !b <- Ui.Button(label=$"pad")
+    $hits <- 0 then $hits + 1 on !b
+    Ui.Label(text=$"{$hits} hits")
+
+@remote: @unit
+@remote:
+    !go <- Ui.Button(label=$"go")                               # 0
+    ignore <- @HostSome @pad, \|p, e| ?Remote p, e, !go         # 1/[p]

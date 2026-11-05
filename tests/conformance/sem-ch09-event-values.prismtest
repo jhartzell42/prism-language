@@ -1,9 +1,0 @@
-# Audited: the supplier answers the pad's button (child place 0, so no element of its own) with go's clicks and forwards the label (1/[1]/0); a click on go is a hit, heard by the pad as the next tick's input (a computed answer is a tick late, Semantics ch. 9 as ruled), so each click is followed by the owed tick.
-# The event values' tests: declarations of sem-ch09-event-values.prism (Semantics chapter 6).
-
-test an_event_answers_a_child, @remote:
-    build
-    click at 0
-    compute
-    click at 0
-    compute

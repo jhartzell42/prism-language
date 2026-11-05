@@ -1,6 +1,0 @@
-# Audited: tick 0 shows ~Check False's "no" and the ~ unit; @started (place 0) fires at tick 1, so both holds take their Errors there, in the one compute tick.
-# The failures' tests: declarations of sem-ch10-error-try.prism (Semantics chapter 6).
-
-test errors_are_failures, @Shown True:
-    build
-    compute until idle

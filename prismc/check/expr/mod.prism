@@ -1,0 +1,365 @@
+# Expressions (Type System ch. 5, The plain layer and Lifting): Hindley-Milner in checking
+# mode under the signature, names typed by their marks before anything is unified (I2),
+# local `let`s generalized when they hold no node, lifting decided per application after
+# the plain layer unifies (plain arguments, then lambdas, then layered arguments), lifted
+# `match` and `if`, literals as `^Num` defaulting to `Int`, `<<T>>`, existentials.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+mod Operators
+mod Calls
+mod Patterns
+mod Lifting
+mod Lets
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+
+# What an expression is checked in: the program, the module and file, the names in scope
+# with their schemes, the scope's row, the givens (bounds in force, by rigid name), the
+# mark of the enclosing definition's name (which a `given:` body gives up into), whether
+# the code is inside an `update` block, the definition's name, and the refinements a tag
+# arm assumes (a rigid output's local equality, ch. 5, Refinement at tag matches).
+type Env = record:
+    g: G
+    home: Text
+    file: Nat
+    src: Src
+    locals: (Text ==> Scheme)
+    scope: Rw
+    givens: [((Text, Text))]
+    mark: Text
+    inUpdate: Bool
+    defName: Text
+    refine: (Text ==> Ty)
+    pending: [Text]
+derive ^Eq, ^Show
+
+WithLocal: fn Env, Text, Scheme -> Env
+fn WithLocal env, name, sc = update env:
+    &_.locals <= Insert &_.locals, name, sc
+
+SrcText: fn Env, Range -> Text
+fn SrcText env, r = SpanText env.src, r
+
+# Comparisons peel time layers, never `?` or `~` (ch. 5, doubt CM).
+IsComparison: fn Text -> Bool
+fn IsComparison n = HasText [["==", "!=", "<", "<=", ">", ">=", "Compare", "?", "~", "$"]], n
+
+HasTimeMark: fn Text -> Bool
+fn HasTimeMark marks = (Contains marks, "$") or (Contains marks, "!")
+
+IsTimeSigil: fn Text -> Bool
+fn IsTimeSigil s = s == "$" or s == "!"
+
+IsPlainSigil: fn Text -> Bool
+fn IsPlainSigil s = s == "?" or s == "~"
+
+# The type under the outermost layer.
+InnerOf: unbounded fn St, Ty -> Ty
+fn InnerOf st, t = match Walk st, t:
+    TySig ignore, i: i
+    TyAt i, ignore: i
+    other: other
+
+IsLambda: fn Expr -> Bool
+fn IsLambda e = match e.kind:
+    ELambda ignore, ignore: True
+    ETopicField ignore: True
+    ETopicIndex ignore: True
+    EGroup x: IsLambda x
+    otherwise: False
+
+# ---------------------------------------------------------------------------------------
+# Inference
+# ---------------------------------------------------------------------------------------
+
+Infer: unbounded fn Env, St, Expr -> ((Ty, St))
+fn Infer env, st, e:
+    let ((t, st2)) = InferKind env, st, e
+    ((t, (NoteTy st2, e.span, t)))
+
+InferKind: unbounded fn Env, St, Expr -> ((Ty, St))
+fn InferKind env, st, e = match e.kind:
+    EName n: InferName env, st, n, e.span
+    ELit l: InferLit env, st, l, False, e.span
+    EUnit marks: (((WithMarks marks, tUnit, env.scope), st))
+    ENil marks:
+        let ((v, st2)) = FreshVar st, False, ""
+        (((WithMarks marks, (TySig "?", v), env.scope), st2))
+    EBound b: InferBound env, st, b, e.span
+    ETuple es:
+        let ((ts, st2)) = InferAll env, st, es
+        ((TyTuple ts, st2))
+    EArray es: InferArray env, st, es, e.span
+    EMap entries: InferMap env, st, entries, e.span
+    EGroup x: Infer env, st, x
+    ECall callee, args, ignore, ignore: InferCall env, st, callee, args, e.span
+    EBinary op, lhs, rhs: InferBinary env, st, op, lhs, rhs, e.span
+    EUnary op, x: InferUnary env, st, op, x, e.span
+    ESuffixed ignore, ignore, ignore, ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement suffixed operators")))
+    EFreeSigil s, x: InferFreeSigil env, st, s, x, e.span
+    EField recv, sigils, name: InferField env, st, recv, sigils, name, e.span
+    EIndex recv, idx: InferIndex env, st, recv, idx, e.span
+    ETopicField ignore: InferLambda env, st, e, nil
+    ETopicIndex ignore: InferLambda env, st, e, nil
+    EMethod recv, m, args: InferCall env, st, (Expr(kind=(EName m), span=m.span)), (Append [[Arg(name=nil, value=recv, span=recv.span)]], args), e.span
+    ETypeArgs target, ignore: InferCall env, st, e, [[]], e.span
+    ECast x, ty, checked:
+        if checked: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement non-empty arrays")))
+        else:
+            let cx = EnvCx env
+            let ((t, st2)) = ConvType cx, st, ty
+            let st3 = Check env, st2, x, t
+            ((t, st3))
+    ENonEmpty ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement non-empty arrays")))
+    EAbsent: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement sparse tuples")))
+    ERest: ((TyErr, st))
+    ELambda ignore, ignore: InferLambda env, st, e, nil
+    EIf c, thenB, ?elseB: InferIf env, st, c, thenB, ?elseB, e.span, nil
+    EMatch scrut, arms: InferMatch env, st, scrut, arms, e.span, nil
+    ERebuild scrut, body: InferRebuild env, st, scrut, body, e.span
+    EFor ?binders, source, body: InferFor env, st, ?binders, source, body, e.span
+    EGiven b: InferGiven env, st, b, e.span
+    EUpdate target, body: InferUpdate env, st, target, body, e.span
+    EWidgetBlock b:
+        let ((t, st2)) = InferWidgetBlock env, st, b
+        (((TyAt t, env.scope), st2))
+    EMonad ignore, ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement `T monad:` blocks")))
+    ETemplate t: InferTemplate env, st, t
+    EAny x:
+        let ((t, st2)) = Infer env, st, x
+        ((TyAny [[]], st2))
+    ELens ignore: ((TyErr, (Err st, "unsupported", e.span, "this checker does not implement named lenses and `Over`")))
+    EError: ((TyErr, st))
+
+InferAll: unbounded fn Env, St, [Expr] -> (([Ty], St))
+fn InferAll env, st, es = Fold es, (([[]], st)), \|((acc, s)), x|
+    let ((t, s2)) = Infer env, s, x
+    (((Push acc, t), s2))
+
+# Check an expression against a type: lambdas, matches and blocks take it inward; anything
+# else is inferred and unified.
+Check: unbounded fn Env, St, Expr, Ty -> St
+fn Check env, st, e, expected = match e.kind:
+    ELambda ignore, ignore:
+        let ((t, st2)) = InferLambda env, st, e, (? expected)
+        Unify (NoteTy st2, e.span, t), expected, t, e.span
+    EGroup x: NoteTy (Check env, st, x, expected), e.span, expected
+    EMatch scrut, arms:
+        let ((t, st2)) = InferMatch env, st, scrut, arms, e.span, (? expected)
+        Unify (NoteTy st2, e.span, t), expected, t, e.span
+    EIf c, thenB, ?elseB:
+        let ((t, st2)) = InferIf env, st, c, thenB, ?elseB, e.span, (? expected)
+        Unify (NoteTy st2, e.span, t), expected, t, e.span
+    EAny x: NoteTy (CheckAny env, st, x, expected, e.span), e.span, expected
+    otherwise:
+        let ((t, st2)) = Infer env, st, e
+        Unify st2, expected, t, e.span
+
+# `any e` against `any ^Show`: the bounds are solved at `e`'s type (ch. 5, Existentials).
+CheckAny: unbounded fn Env, St, Expr, Ty, Range -> St
+fn CheckAny env, st, x, expected, span = match Walk st, expected:
+    TyAny trs:
+        let ((t, st2)) = Infer env, st, x
+        Fold trs, st2, \|s, tr| AddWant s, tr, t, span
+    other:
+        let ((t, st2)) = Infer env, st, x
+        Unify st2, other, (TyAny [[]]), span
+
+AddWant: fn St, Text, Ty, Range -> St
+fn AddWant st, cls, t, span = update st:
+    &_.wants <= Push &_.wants, Want(cls=cls, ty=t, file=&_.file, span=span, level=&_.level)
+
+EnvCx: fn Env -> Cx
+fn EnvCx env:
+    let base = CxOf env.g, env.home
+    update base:
+        &_.scope <= env.scope
+
+# ---------------------------------------------------------------------------------------
+# Names
+# ---------------------------------------------------------------------------------------
+
+InferName: unbounded fn Env, St, SName, Range -> ((Ty, St))
+fn InferName env, st, n, span:
+    let local = SNameKey n
+    if env.inUpdate and (HasTimeMark n.sigils): ((TyErr, (ErrFix st, "time-in-update", span, "`{local}` in an `update` block", "an `&` block cannot see time: pass the plain value in, and lift the function")))
+    else: InferNameIn env, st, n, span
+
+InferNameIn: unbounded fn Env, St, SName, Range -> ((Ty, St))
+fn InferNameIn env, st, n, span:
+    let local = SNameKey n
+    match env.locals[local]:
+        ? sc: InstantiateLocal st, sc, span, local
+        nil: InferGlobal env, st, n, span
+
+# A local's scheme instantiated at a use; a generalized `let`'s use is noted with its
+# instantiation, for lowering (pick LG of the README).
+InstantiateLocal: unbounded fn St, Scheme, Range, Text -> ((Ty, St))
+fn InstantiateLocal st, sc, span, name:
+    if (Len sc.qs) == 0 and (Len sc.cqs) == 0: Instantiate st, sc, span
+    else:
+        let ((t, st2, inst)) = InstantiateWith st, sc, span, [[]]
+        ((t, (NoteInst st2, span, name, sc, inst)))
+
+InferGlobal: unbounded fn Env, St, SName, Range -> ((Ty, St))
+fn InferGlobal env, st0, n, span:
+    let ((?qk, why)) = ResolveValue env.g, env.home, n
+    let st = CollisionAt env, st0, why, (SNameKey n), span
+    match ?qk:
+        nil: ((TyErr, (Err st, "unknown-name", span, "nothing declares `{SNameKey n}` here")))
+        ? qk:
+            if why == "tag": TagValue env, st, qk, span
+            else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
+            else: match env.g.vals[qk]:
+                ? v: Instantiate (NoteMethodUse st, v, span), v.scheme, span
+                nil: match env.g.ctors[qk]:
+                    ? c: CtorValue env, st, c, span
+                    nil: ((TyErr, (Err st, "unknown-name", span, "`{SNameKey n}` has no signature line or type")))
+
+# Two bare candidates (Semantics ch. 6) are an error at the use; checking goes on with the
+# file's own declaration, else the first, so the rest of the line still checks.
+CollisionAt: fn Env, St, Text, Text, Range -> St
+fn CollisionAt env, st, why, name, span:
+    if why != "collision": st
+    else:
+        let keys = Or (Or env.g.bare[env.home], {})[name], [[]]
+        let others = Filter keys, \|k| Contains k, "."
+        ErrFix st, "collision", span, "`{name}` is declared by more than one module this file reaches by a bare name: {Join (Each keys, \|k| "`{k}`"), ", "}", "write the one meant qualified, as `{Or others[0], name}`, or rename this file's own"
+
+# A constructor named without arguments: a nullary one is its type's value; one with
+# arguments is a function that takes them whole.
+CtorValue: unbounded fn Env, St, CtorInfo, Range -> ((Ty, St))
+fn CtorValue env, st, c, span:
+    let sc = Scheme(qs=c.params, plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=(if (Len c.args) == 0: c.ty else: TyFn CBound, c.args, c.ty))
+    Instantiate st, sc, span
+
+# A tag named without arguments: an element with no fields (`Process.Args`), or a fault
+# (`Fs.NotFound`), a value of its row kind.
+TagValue: unbounded fn Env, St, Text, Range -> ((Ty, St))
+fn TagValue env, st, name, span = match env.g.tags[name]:
+    nil: ((TyErr, (Err st, "unknown-name", span, "no tag `{name}`")))
+    ? tg:
+        if tg.kind == "Element":
+            let ((rw, st2)) = FreshRow st, [[tg.family]]
+            let erow = Rw(fams=[[tg.family]], minus=[[]], tail=rw.tail)
+            let ((out, st3)) = Instantiate st2, (Scheme(qs=tg.qs, plainQs=[[]], rqs=tg.rqs, cqs=[[]], cjoins=[[]], bounds=tg.bounds, ty=tg.out)), span
+            (((TyElem erow, out), st3))
+        else: (((TyCon tg.kind, [[]]), st))
+
+InferBound: fn Env, St, Text, Range -> ((Ty, St))
+fn InferBound env, st, b, span = match env.locals[b]:
+    ? sc: ((sc.ty, st))
+    nil:
+        if b == "key": ((TyErr, (Err st, "unknown-name", span, "`key` is bound only in a loop over a map")))
+        else: ((tNat, st))
+
+# ---------------------------------------------------------------------------------------
+# Literals
+# ---------------------------------------------------------------------------------------
+
+# An integer literal is a fresh plain-headed variable with `^Num` (ch. 5, Literals); a
+# literal with a point is a `Float`. `negative` marks a `-` in front, which `Nat` refuses.
+InferLit: unbounded fn Env, St, Literal, Bool, Range -> ((Ty, St))
+fn InferLit env, st, l, negative, span:
+    let sigils = FoldChars l.marks, "", \|acc, c| if IsMarkChar c: "{acc}{c}" else: acc
+    let signed = negative or (Contains l.marks, "-")
+    let ((base, st2)) = match l.kind:
+        LInt digits:
+            let ((v, s1)) = FreshVar st, True, ""
+            let s2 = AddWant s1, "Prelude.Num", v, span
+            let s3 = if signed: AddWant s2, "Prelude.Signed", v, span else: s2
+            let s4 = AddRange s3, v, digits, signed, span
+            ((v, s4))
+        LFloat ignore: ((tFloat, st))
+        LDuration ignore, ignore: (((TyCon "Duration", [[]]), st))
+        LChar ignore: ((tChar, st))
+        LText segs: InferText env, st, segs, (Contains sigils, "$"), span
+    if (Contains sigils, "$") and (HeadSigil st2, base) == "$": ((base, st2))
+    else: if Contains sigils, "$": (((WithMarks sigils, base, env.scope), (NoteApp st2, span, "$", "const", "$", [[]], "", CBound)))
+    else: (((WithMarks sigils, base, env.scope), st2))
+
+# A literal's range, checked once its type is known (`literal-range`).
+AddRange: fn St, Ty, Text, Bool, Range -> St
+fn AddRange st, v, digits, signed, span = update st:
+    &_.wants <= Push &_.wants, Want(cls="Range {if signed: "-" else: ""}{digits}", ty=v, file=&_.file, span=span, level=&_.level)
+
+# A text with placeholders is the text builder applied to each (ch. 5, Free sigils and
+# text): it lifts; a `$"…"` is a `$Text`, constant when nothing is dynamic, and an event
+# placeholder in it is `event-in-text`.
+InferText: unbounded fn Env, St, [TextSeg], Bool, Range -> ((Ty, St))
+fn InferText env, st, segs, dollar, span:
+    let holes = Fold segs, [[]], \|acc, sg| match sg:
+        SegPlaceholder x: Push acc, x
+        otherwise: acc
+    if (Len holes) == 0: ((tText, st))
+    else:
+        let ((events, dyns, opts, st2, lifted)) = Fold (Range0 (Len holes)), (([[]], 0, [[]], st, [[]])), \|((ev, dy, op, s, li)), hi|
+            let x = Or holes[hi], Expr(kind=EError, span=span)
+            let ((t, s2)) = Infer env, s, x
+            let head = HeadSigil s2, t
+            let inner = if IsTimeSigil head: InnerOf s2, t else: t
+            let ih = HeadSigil s2, inner
+            let plainT = if IsPlainSigil ih: InnerOf s2, inner else: inner
+            let s3 = if head == "@": Err s2, "blueprint-operand", x.span, "a text over a blueprint; bind it first" else: s2
+            let s4 = ShowWant s3, plainT, x.span
+            let ev2 = if head == "!": Push ev, x.span else: ev
+            let dy2 = if head == "$": dy + 1 else: dy
+            let op2 = if IsPlainSigil ih: AddText op, ih else: op
+            let li2 = if IsTimeSigil head: Push li, hi else: li
+            ((ev2, dy2, op2, s4, li2))
+        let st3 = if dollar and (Len events) > 0: Err st2, "event-in-text", (Or events[0], span), "an event in a dynamic text"
+            else: if (Len events) > 1: ErrFix st2, "two-events", (Or events[1], span), "two events in one operation", "merge them with `<|`, or hold one first"
+            else: st2
+        let st4 = if (Len opts) > 1: Err st3, "optional-and-fault", span, "`?` and `~` in one operation" else: st3
+        let withOpt = match opts[0]:
+            ? o: TySig o, tText
+            nil: tText
+        let layer = if (Len events) > 0 and not dollar: "!" else: if dyns > 0 or dollar: "$" else: ""
+        let res = if layer == "": withOpt else: TySig layer, withOpt
+        let kind = if layer == "": "plain" else: if (Len lifted) == 0: "const" else: "map"
+        ((res, (NoteApp st4, span, "text", kind, layer, lifted, (Or opts[0], ""), CBound)))
+
+# A placeholder that is not a text prints through `^Show`.
+ShowWant: unbounded fn St, Ty, Range -> St
+fn ShowWant st, t, span = match Walk st, t:
+    TyCon "Text", [[]]: st
+    other: AddWant st, "Prelude.Show", other, span

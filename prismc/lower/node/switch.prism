@@ -1,0 +1,438 @@
+# `Lower.Node.Switch`, a child module of `Lower.Node`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+
+# ---------------------------------------------------------------------------------------
+# `rebuild` and `@Switch` (claude/backend.md, "Dynamic structure"; Compiler ch. 3)
+# ---------------------------------------------------------------------------------------
+
+# A row's environments from its block's: `_` the generation's value (or the `for` entry),
+# and each event of the block the row's body names a source of the row, fed by the
+# block's port for it.
+RowEnv: unbounded fn Wx, Wx, Env, Block -> ((Wx, Wx, Env))
+fn RowEnv parent, rowWx, menv, body:
+    let names = ReadNames (BlockExprs body)
+    Fold names, ((parent, rowWx, emptyEnv)), \|((p, r, env)), n| match menv.names[n]:
+        ? (BnLocal rs, mode, t): ((p, r, (Bind env, n, (BnLocal (OverParent rs), Owned, t))))
+        ? (BnEv er, t):
+            let pname = (GnOf p, er.node).name
+            let ((rs, r1)) = FreshName r, (Snake n)
+            let ((id, r2)) = AddGn r1, rs, t, GnPort, 0
+            let r3 = update r2:
+                &_.subs <= Push &_.subs, ((pname, rs, t))
+            let p2 = if HasText p.ports, pname: p else: Connect (WithPort p, pname), (EvRefOf p, er.node), (SkPort pname)
+            ((p2, r3, (Bind env, n, (BnEv (EvRefOf r3, id), t))))
+        # The block's dynamics and holds, read through the parent at the row's read point,
+        # each a `ParentRead` in what it reads, so a generation's place that reads one is
+        # live and the block's writes of it mark the generation (gap DY).
+        ? (BnDyn (XMethod recv, m, xs), ignore, t):
+            if recv == (XSelf): ((p, r, (Bind env, n, (BnDyn (XMethod parentRef, m, xs), [[ParentRead m]], t))))
+            else: ((p, r, env))
+        ? (BnHold f, t): ((p, r, (Bind env, n, (BnDyn (XMethod (XField parentRef, f), "get", [[XCx]]), [[ParentRead f]], t))))
+        otherwise: ((p, r, env))
+
+# A place of the block as a row's methods read it: through the parent (a row of a row reads
+# its own parent's places through that row's parent in turn).
+OverParent: fn Ex -> Ex
+fn OverParent x = match x:
+    XSelf: parentRef
+    XField y, f: XField (OverParent y), f
+    XPart y, k: XPart (OverParent y), k
+    XMethod y, m, xs: XMethod (OverParent y), m, xs
+    XUpgrade y: XUpgrade (OverParent y)
+    otherwise: XField parentRef, (PlaceStem x)
+
+# The block, as a row's methods read it through the row's `parent` field, and as the
+# row's build reads it through its `parent` argument.
+let parentRef = XMethod (XUpgrade (XField XSelf, "parent")), "expect", [[XStr "the block outlives its rows"]]
+let parentArg = XMethod (XUpgrade (XVar "parent")), "expect", [[XStr "the block outlives its rows"]]
+
+WithPort: fn Wx, Text -> Wx
+fn WithPort wx, pname = update wx:
+    &_.ports <= Push &_.ports, pname
+
+RebuildLine: unbounded fn Wx, Env, Env, Expr, Block, Expr, ?Bn -> ((Wx, Wres))
+fn RebuildLine wx, benv, menv, scrut, body, e, ?bound:
+    let lx = wx.lx
+    let pos = wx.pos
+    let wx1 = update wx:
+        &_.pos <= NextPos &_.pos
+    let ((srcEx, reads)) = DynamicExpr wx1, menv, scrut
+    let vt = OutTyOf lx, (Peel (TypeAt lx, scrut.span))
+    let ((name, wx2)) = FreshName wx1, "generation"
+    if GivesDynamic (TypeAt lx, e.span): RebuildDynamic wx2, menv, body, srcEx, reads, vt, name, pos
+    else:
+        let ((upId, wx3)) = match ?bound:
+            ? (BnEv er, ignore): ((er.node, wx2))
+            otherwise: AddGn wx2, "{name}_fired", (OutTyOf lx, (Peel (TypeAt lx, e.span))), GnNamed, 0
+        let ((cases, wx4)) = GenCases wx3, menv, body, vt, name
+        let rowDefs = Each cases, \|c| c.node
+        let select = GenSelect wx4, menv, body, cases, pos
+        let wx5 = update wx4:
+            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0)
+            &_.genHolds <= Push &_.genHolds, ((name, reads))
+            &_.rows <= Fold rowDefs, &_.rows, \|acc, rd| Append (Push acc, rd), rd.children
+            &_.getters <= Push &_.getters, (GenUp name, (GnOf wx4, upId).name, (GnOf wx4, upId).ty)
+        ((wx5, (WrEv (EvRefOf wx5, upId))))
+
+# Whether a `rebuild` hands back a dynamic, `$$a` (its generations give `$a`), rather than
+# an event, `$!a`.
+GivesDynamic: fn Ty -> Bool
+fn GivesDynamic t = match t:
+    TySig "$", (TySig "$", ignore): True
+    TyAt i, ignore: GivesDynamic i
+    otherwise: False
+
+# A `rebuild` that hands back a dynamic (Semantics ch. 7): the current generation's result
+# as a `Dynamic` (`result_dynamic`), a structural dynamic of the block (pick ST). The build
+# keeps the newborn generation's dynamic in `{name}_result_live` and marks the snapshot,
+# which the construction step takes after the generation is built, so the `rebuild`'s
+# dynamic `{name}_result` takes the newborn's result one tick behind and is published the
+# tick after; `@Flatten` adopts it from there (`FlattenLine`). A generation whose own hold
+# behind its result is written tells the block through `{name}_result_moved`.
+RebuildDynamic: unbounded fn Wx, Env, Block, Ex, [Read], OutTy, Text, Pos -> ((Wx, Wres))
+fn RebuildDynamic wx, menv, body, srcEx, reads, vt, name, pos:
+    let rowName = "{wx.node}Gen{RowSuffix wx}"
+    let whole = GenRowOf wx, menv, body, vt, rowName, name
+    match whole.?dynResult:
+        nil:
+            let wx2 = update whole.parent:
+                &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose generation gives a dynamic it does not lower")
+            ((wx2, WrUnit))
+        ? rt:
+            let dynTy = OutDyn rt
+            let result = "{name}_result"
+            let live = "{result}_live"
+            let what = "the dynamic of the `rebuild` at place {PlaceText pos}"
+            let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
+            let built = TryOf (XCall "{whole.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
+            let kept = DoAssign (XDeref (XMethod (XField XSelf, live), "borrow_mut", [[]])), (XCtor "Some", [[(XMethod (XVar "row"), "result_dynamic", [[]])]])
+            let marked = DoExpr (XMethod (XField XSelf, "{result}_snap"), "mark", [[XCx]])
+            let select = XBlock [[(DoLet (PaBind "row"), built), kept, marked]], (XVar "row")
+            let current = XMethod (XClone (XMethod (XField XSelf, "{live}"), "borrow", [[]])), "expect", [[(XStr "a `rebuild` has a generation from its build on")]]
+            let wx2 = update whole.parent:
+                &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=False, width=0)
+                &_.genHolds <= Push &_.genHolds, ((name, reads))
+                &_.rows <= Append (Push &_.rows, whole.node), whole.node.children
+                &_.taken <= Append &_.taken, [[result, live, "{result}_now", "{result}_snap", "{result}_publish", "{result}_moved"]]
+                &_.fields <= Append &_.fields, [[((live, (OutCell (OutOpt dynTy)), "the current generation's result, which the snapshot of the `rebuild`'s dynamic is taken from")), (("{result}_snap", (OutSnapshot dynTy), "the `rebuild` at place {PlaceText pos}'s dynamic, structural: its snapshots, the generations' results and the lagged dynamic (pick ST)"))]]
+                &_.moves <= Push &_.moves, ((live, (XCall "RefCell::new", [[XNone]])))
+                &_.inits <= Push &_.inits, (("{result}_snap", (XCall "Snapshot::new", [[XStr what]])))
+                &_.getters <= Append &_.getters, [[(MethDef(name="{result}_now", recv=RecvRef, params=[[]], cx=CxRef, ret=dynTy, body=[[]], tail=current, doc="The current generation's result: what the snapshot of the `rebuild`'s dynamic is taken from (pick ST).")), (SnapGetter result, dynTy, "The `rebuild`'s dynamic, its generation's result, a structural dynamic (pick ST): one tick behind the generations, the snapshot of the tick before the tick the read point is after.")]]
+                &_.snaps <= Push &_.snaps, SnapDef(name=result, live="{result}_now", ty=dynTy, eq=False, builder=name, before=False, what=what)
+            ((wx2, (WrDyn (XMethod (XSelf), result, [[XCx]]), [[OwnRead result]], dynTy)))
+
+# A widget of several clauses in a static position (Semantics ch. 8): the clause is chosen
+# at the build from the arguments, which are plain, so it is a generation built once (its
+# source, the first argument, never changes), each clause a row (`ClauseRowOf`). The
+# generation is transparent: its node stands at the caller's path and its places take the
+# caller's positions from the call's on, as an inlined widget's do, the caller forwarding
+# the World's answers there to it. Clauses with different numbers of places take the
+# widest one's positions, so the caller's later places have one position whichever clause
+# is chosen (pick CS).
+ClauseWidgetLine: unbounded fn Wx, Env, Expr, Block, Text, ValInfo, Expr -> ((Wx, Wres))
+fn ClauseWidgetLine wx, menv, scrut, call, qk, v, e:
+    let lx = wx.lx
+    let pos = wx.pos
+    let ((srcEx, reads)) = DynamicExpr wx, menv, scrut
+    let vt = OutTyOf lx, (Peel (TypeAt lx, scrut.span))
+    let ((name, wx1)) = FreshName wx, "generation"
+    # what the call gives when built: the type at `e` is the blueprint's where the call is an
+    # `if` arm's value (gap AW), its output where a bind takes it
+    let ((upId, wx2)) = AddGn wx1, "{name}_fired", (OutTyOf lx, (OutOf (TypeAt lx, e.span))), GnNamed, 0
+    let clauses = ClausesOf lx.g, qk
+    let rowName = "{wx.node}Gen{RowSuffix wx}"
+    let ((rows, wx3)) = Fold (Range0 (Len clauses)), (([[]], wx2)), \|((acc, w)), i|
+        let c = Or clauses[i], dummyClause
+        let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, True
+        (((Push acc, cr), cr.parent))
+    # clauses of different widths take the widest one's positions (pick CS)
+    let width = Fold rows, 0, \|acc, cr| Max acc, cr.width
+    let cases = Each rows, \|cr| cr.case
+    if IsHostedScope wx:
+        let wx4 = update wx3:
+            &_.build <= Push &_.build, (RefusalDo "a widget of several clauses in a static position of a hosted scope")
+        ((wx4, WrUnit))
+    else:
+        let select = GenSelect wx3, menv, call, cases, pos
+        let wx4 = update wx3:
+            &_.pos <= Pos(scope=pos.scope, at=pos.at + width)
+            &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=srcEx, valueTy=vt, select=select, transparent=True, width=width)
+            &_.genHolds <= Push &_.genHolds, ((name, reads))
+            &_.rows <= Fold cases, &_.rows, \|acc, gc| Append (Push acc, gc.node), gc.node.children
+            &_.getters <= Push &_.getters, (GenUp name, (GnOf wx3, upId).name, (GnOf wx3, upId).ty)
+        ((wx4, (WrEv (EvRefOf wx4, upId))))
+
+# Whether the node's places go to a host's document rather than the World's.
+IsHostedScope: fn Wx -> Bool
+fn IsHostedScope wx = wx.pos.scope > 0 or (IsSome wx.?hostedBy)
+
+IsSome: fn ?a -> Bool
+fn IsSome (? ignore) = True
+fn IsSome nil = False
+
+# One generation's node, for the block or for one clause of the widget it applies.
+type GenCase = record:
+    node: NodeDef
+    params: [((Text, OutTy))]
+    pat: Pa
+    conds: [Cc]
+    # What each parameter is built from: the arm's binders, owned.
+    passed: [Ex]
+
+GenCases: unbounded fn Wx, Env, Block, OutTy, Text -> (([GenCase], Wx))
+fn GenCases wx, menv, body, vt, name:
+    let lx = wx.lx
+    let rowName = "{wx.node}Gen{RowSuffix wx}"
+    match ?ClauseCall lx, body:
+        ? ((qk, args)):
+            let clauses = ClausesOf lx.g, qk
+            let v = ValOf lx, qk
+            Fold (Range0 (Len clauses)), (([[]], wx)), \|((acc, w)), i|
+                let c = Or clauses[i], dummyClause
+                let cr = ClauseRowOf w, menv, c, v, "{rowName}{i}", name, False
+                (((Push acc, cr.case), cr.parent))
+        nil:
+            let whole = GenRowOf wx, menv, body, vt, rowName, name
+            ((([[GenCase(node=whole.node, params=[[(("value", vt))]], pat=PaWild, conds=[[]], passed=[[(XVar "value")]])]]), whole.parent))
+
+# A generation's body that is one application of a widget of several clauses: the widget
+# and the arguments.
+?ClauseCall: fn Lx, Block -> ?((Text, [Arg]))
+fn ?ClauseCall lx, body = match body.stmts:
+    [[st]]: match st.kind:
+        SExpr x: ?ClauseCallX lx, x
+        SIgnore x: ?ClauseCallX lx, x
+        otherwise: nil
+    otherwise: nil
+
+?ClauseCallX: fn Lx, Expr -> ?((Text, [Arg]))
+fn ?ClauseCallX lx, x = match x.kind:
+    ECall c, args, ignore, ignore:
+        let qk = BlueprintQk lx, c
+        if (Len (ClausesOf lx.g, qk)) > 1: ? ((qk, args)) else: nil
+    otherwise: nil
+
+type ClauseRow = record:
+    case: GenCase
+    parent: Wx
+    # How many places the clause has: the positions it takes in its caller when it stands
+    # there (`ClauseWidgetLine`).
+    width: Nat
+
+# One clause's generation: its parameters' binders the row's fields, chosen by matching
+# the arguments (in the block, `_` the generation's value).
+ClauseRowOf: unbounded fn Wx, Env, FnClause, ValInfo, Text, Text, Bool -> ClauseRow
+fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent:
+    let upName = "{genName}_up"
+    let lx = wx.lx
+    let lxc = InModuleAt lx, v.file, v.home, lx.site
+    let ptys = match v.scheme.ty:
+        TyFn ignore, ps, ignore: ps
+        otherwise: [[]]
+    let pos = Each (Range0 (Len c.params)), \|i| RustPat lxc, (Or c.params[i], dummyPat), (Or ptys[i], TyErr), ByRef, "c{i}"
+    let pa = PaTuple (Each pos, \|o| o.pa)
+    let binds = Fold pos, {}, \|m, o| Fold o.binds, m, \|m2, ((n, b))| Insert m2, n, b
+    # the names the clause's patterns bind: a bare case name (`Quiet`) binds nothing (gap AW)
+    let binders = Filter (Fold c.params, [[]], \|acc, p| Append acc, (PatternBinders p)), \|((bn, ignore))| HasKey binds, bn
+    let fields = Each binders, \|((bn, r))| (((Snake bn), (OutTyOf lxc, (Peel (BinderTy lxc, r))), bn))
+    let rowFields = Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))
+    let rowInits = Each fields, \|((f, ignore, ignore))| ((f, (XClone (XVar f))))
+    let rowTaken = Append nodeHooks, (Push (Each fields, \|((f, ignore, ignore))| f), "parent")
+    let r00 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XVar "parent")))]], [[]], {}, rowTaken, wx.depth, (?HostedRows wx)
+    # standing in its caller, the clause's places are numbered from the caller's position
+    let r0 = if transparent: (update r00:
+        &_.pos <= wx.pos) else: r00
+    let body = match c.body:
+        BodyBlock b: b
+        BodyExpr x: Block(stmts=[[(Stmt(kind=(SExpr x), span=x.span))]], inline=True, span=x.span)
+    let ((p1, r1, ports)) = RowEnv wx, r0, menv, body
+    let ((be, me)) = Fold fields, ((emptyEnv, emptyEnv)), \|((b, m)), ((f, t, bn))| BindPlain b, m, bn, f, t
+    let r2 = BlockInto r1, be, me, body
+    let r3 = match r2.result:
+        WrEv r: Connect r2, r, (SkUp upName)
+        otherwise: r2
+    let node = FinishNode r3, rowName, (Append (Push (Each fields, \|((f, t, ignore))| ((f, t))), (("parent", (OutWeak wx.node)))), (HostedParams wx)), True
+    let p2 = GenMarked p1, genName, r3
+    let passed = Each fields, \|((f, t, bn))| match binds[bn]:
+        ? (BnLocal rs, mode, bt): Own (VlPlace rs, mode, bt)
+        otherwise: XClone (XVar f)
+    ClauseRow(case=GenCase(node=node, params=(Each fields, \|((f, t, ignore))| ((f, t))), pat=pa, conds=(Fold pos, [[]], \|acc, o| Append acc, o.conds), passed=passed), parent=p2, width=(Or (r2.pos.at -? r0.pos.at), 0))
+
+
+type GenRow = record:
+    node: NodeDef
+    parent: Wx
+    # The generation's result when it is a dynamic: its type (the row has `result` and
+    # `result_dynamic`).
+    dynResult: ?OutTy
+
+# A generation's node: its `_` a plain field, the block's events it names through ports,
+# its result forwarded up to the `rebuild`'s.
+GenRowOf: unbounded fn Wx, Env, Block, OutTy, Text, Text -> GenRow
+fn GenRowOf wx, menv, body, vt, rowName, genName:
+    let lx = wx.lx
+    let upName = "{genName}_up"
+    let r0 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XVar "parent")))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.depth, (?HostedRows wx)
+    let ((p1, r1, ports)) = RowEnv wx, r0, menv, body
+    let be = Bind (BuildSpelling ports), "_", (BnLocal (XVar "value"), Owned, vt)
+    let me = Bind ports, "_", (BnLocal (XField XSelf, "value"), Owned, vt)
+    let r2 = BlockInto r1, be, me, body
+    let ((r3, ?dynResult)) = match r2.result:
+        WrEv r: (((Connect r2, r, (SkUp upName)), nil))
+        WrDyn ex, resultReads, rt: (((GenResult r2, genName, ex, resultReads, rt), ? rt))
+        otherwise: ((r2, nil))
+    GenRow(node=(FinishNode r3, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), dynResult=?dynResult)
+
+# A generation's dynamic result (a `rebuild` handing back `$$a`): the getter `result`, the
+# `Dynamic` the block keeps of it, and the block told through `{genName}_result_moved` when
+# a hold of the generation's own behind it is written.
+GenResult: fn Wx, Text, Ex, [Read], OutTy -> Wx
+fn GenResult r, genName, ex, resultReads, rt:
+    let ownBehind = Filter (ReadsClosed r.dynReads, resultReads), \|rd| match rd:
+        OwnRead ignore: True
+        ParentRead ignore: False
+    let made = XCall "Dynamic::of", [[(XClosure True, [[PaBind "cx"]], (XMethod (XVar "me"), "result", [[XCx]])), (XRef (XCall "Rc::new", [[(XCall "Port::new", [[]])]]))]]
+    let doc = "The generation's result as a dynamic, which the block keeps while the generation is current; the block hears it move through `{genName}_result_moved`, not through the dynamic's port."
+    update r:
+        &_.getters <= Append &_.getters, [[(MethDef(name="result", recv=RecvRef, params=[[]], cx=CxRef, ret=rt, body=[[]], tail=ex, doc="The generation's result, which the `rebuild` hands back.")), (MethDef(name="result_dynamic", recv=RecvRc, params=[[]], cx=CxNone, ret=(OutDyn rt), body=[[(DoLet (PaBind "me"), (XClone XSelf))]], tail=made, doc=doc))]]
+        &_.resultMoved <= if (Len ownBehind) > 0: ? (("{genName}_result_moved", ownBehind)) else: nil
+
+# The block's writes behind what a generation's places read mark the generation (gap DY;
+# `RowMarks` of kind `GenerationRow`: the current one is dirtied, and told nothing).
+GenMarked: fn Wx, Text, Wx -> Wx
+fn GenMarked parent, genName, rowWx:
+    let reads = RowPlaceReads rowWx
+    if (Len reads) == 0: parent
+    else: update parent:
+        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=genName, reads=reads, wrote=[[]], kind=GenerationRow)
+
+# A row's names as its constructor spells them: the block through the `parent` argument.
+BuildSpelling: fn Env -> Env
+fn BuildSpelling env = Fold (Keys env.names), env, \|en, k| match env.names[k]:
+    ? (BnLocal rs, mode, t): match ?ThroughParent rs:
+        ? x: Bind en, k, (BnLocal x, mode, t)
+        nil: en
+    ? (BnDyn (XMethod rs, m, xs), ds, t): match ?ThroughParent rs:
+        ? x: Bind en, k, (BnDyn (XMethod x, m, xs), ds, t)
+        nil: en
+    otherwise: en
+
+# The generation built: the one case, its row's constructor.
+GenSelect: unbounded fn Wx, Env, Block, [GenCase], Pos -> Ex
+fn GenSelect wx, menv, body, cases, pos:
+    let tail = Append (Append [[(XWeak XSelf)]], (HostedPassed wx)), [[XCx]]
+    match ?ClauseCall wx.lx, body:
+        nil: match cases[0]:
+            ? c: TryOf (XCall "{c.node.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))
+            nil: Refusal "a `rebuild` with no generation"
+        ? ((qk, args)):
+            let env = Bind menv, "_", (BnLocal (XVar "value"), Owned, OutUnit)
+            let scrut = XTuple (Each args, \|a| Argument wx.lx, env, a.value)
+            let arms = Each cases, \|c|
+                let made = TryOf (XCall "{c.node.name}::build", (Append (Append [[(XClone (XVar "path"))]], c.passed), tail))
+                XArm(pat=c.pat, conds=c.conds, body=(XCast made, (OutObj (OutNamed "Row", [[]]))))
+            Own (ArmsValue scrut, arms, "'select", (OutObj (OutNamed "Row", [[]])))
+
+# The `rebuild`'s up-forwarding: a generation's result fires the block's event.
+GenUp: fn Text, Text, OutTy -> MethDef
+fn GenUp name, upName, t = MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", t))]], cx=CxMut, ret=OutUnit, body=[[(SelfCall upName, [[(XVar "v")]])]], tail=(XUnit), doc="The current generation's result fires the `rebuild`'s.")
+
+# The answers a generation's places get through the block: under `pos/#g` to the current
+# generation; for a transparent one, at each of its positions in the block, whole.
+GenForwards: fn GenDef -> [((Pa, Ex))]
+fn GenForwards gd:
+    if gd.transparent: Each (Range0 gd.width), \|i|
+        let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
+        let body = XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "at"), (XVar "v"), XCx]]))]], [[]])]], (XUnit)
+        (((PosPat (Pos(scope=gd.pos.scope, at=gd.pos.at + i)), [[PaRest ""]]), body))
+    else: [[(((PosPat gd.pos, genTail), (ForwardGen gd)))]]
+
+ForwardGen: fn GenDef -> Ex
+fn ForwardGen gd:
+    let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
+    let isCurrent = XBin "==", (XBin "+", (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
+    XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
+
+# `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (claude/backend.md, "Dynamic structure";
+# Semantics ch. 7): a field with the current inner, a hold of the generation's `Dynamic`,
+# adopted at the build from the `rebuild`'s dynamic and afterwards among the first firings
+# of the tick after the one in which the `rebuild`'s dynamic moved (`MovedBy`); the
+# `@Flatten`'s dynamic samples the inner at the read point, so after n it has the value
+# after n of the inner its outer held after n-1.
+FlattenLine: unbounded fn Wx, Env, [Arg], ?Bn -> ((Wx, Wres))
+fn FlattenLine wx, menv, args, ?bound:
+    let ?outer = match args[0]:
+        ? a: match a.value.kind:
+            EName n: match menv.names[SNameKey n]:
+                ? (BnDyn (XMethod (XSelf), m, ignore), ignore, (OutDyn t)): Fold wx.gens, nil, \|?acc, gd| if "{gd.name}_result" == m: ? ((m, gd.name, t)) else: ?acc
+                otherwise: nil
+            otherwise: nil
+        nil: nil
+    match ?outer:
+        nil:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "`@Flatten` of a dynamic that is not a `rebuild`'s")
+            ((wx2, WrUnit))
+        ? ((m, gen, t)):
+            let ((name, wx1)) = match ?bound:
+                ? (BnHold f, ignore): ((f, wx))
+                otherwise: FreshName wx, "flatten"
+            let inner = "{name}_inner"
+            let first = DoExpr (XMethod (XField (XVar "node"), "{inner}"), "set", [[(XCtor "Some", [[(XMethod (XVar "node"), m, [[XCx]])]]), XCx]])
+            let sample = XMethod (XMethod (XMethod (XField XSelf, "{inner}"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]), "sample", [[XCx]]
+            let wx2 = update wx1:
+                &_.taken <= Append &_.taken, [[inner, "{name}_adopt"]]
+                &_.fields <= Push &_.fields, ((inner, (OutHold (OutOpt (OutDyn t))), "`@Flatten`'s current inner: the dynamic of the generation it adopted"))
+                &_.moves <= Push &_.moves, ((inner, (XCall "Hold::new", [[XNone, XCx]])))
+                &_.build <= Push &_.build, first
+                &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@Flatten`'s dynamic: its current inner at the read point."))
+                &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]
+                &_.flattens <= Push &_.flattens, FlatDef(name=name, outer=m, generation=gen, ty=t)
+            ((wx2, (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead inner]], t)))
+
+# `@Switch $!a`: the event its `rebuild` forwards.
+SwitchLine: unbounded fn Wx, Env, [Arg] -> ((Wx, Wres))
+fn SwitchLine wx, menv, args = match args[0]:
+    ? a:
+        let ((r, wx2)) = EventRef wx, menv, a.value
+        ((wx2, (WrEv r)))
+    nil: ((wx, WrUnit))

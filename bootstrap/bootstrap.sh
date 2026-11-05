@@ -17,6 +17,8 @@
 #
 #   bootstrap/bootstrap.sh            # bootstrap and install
 #   bootstrap/bootstrap.sh --update   # also rewrite the seed from the new fixed point
+#   bootstrap/bootstrap.sh --seed-at DIR   # only unpack and build the seed in DIR, three
+#                                          # levels under the root (bootstrap/test-seed.sh)
 #
 # Written by Claude on the claude-self-hosting branch. Subject to change.
 set -eu
@@ -24,26 +26,47 @@ cd "$(dirname "$0")/.."
 export PRISM_ROOT=$PWD  # for the emitted Makefiles; cargo gets the crate by --manifest-path
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 update=0
-[ "${1:-}" = "--update" ] && update=1
+seed_at=""
+case "${1:-}" in
+    --update) update=1 ;;
+    --seed-at) seed_at=${2:?--seed-at takes a directory three levels under the repository root} ;;
+esac
 b=target/bootstrap
 seed=bootstrap/prismc-rust.tar.xz
 mkdir -p "$b"
+# pack ARCHIVE DIR FILES...: FILES of DIR as an xz tar with no macOS extended attributes,
+# which a Linux tar warns about once per file: COPYFILE_DISABLE stops bsdtar's AppleDouble
+# entries, and --no-xattrs, where the tar takes it, its LIBARCHIVE.xattr headers.
+pack() {
+    local out=$1 dir=$2; shift 2
+    local flags=()
+    if tar --no-xattrs -cf /dev/null -T /dev/null 2> /dev/null; then flags=(--no-xattrs); fi
+    COPYFILE_DISABLE=1 tar ${flags[@]+"${flags[@]}"} -C "$dir" -cJf "$out" "$@"
+}
 # build_crate DIR: cargo builds the crate in DIR, its binary at DIR/prismc
 build_crate() {
     local log; log="$(pwd)/$1.log"
     CARGO_TARGET_DIR="$PWD/$b/build" cargo build --offline --release -q --manifest-path "$PWD/$1/Cargo.toml" 2> "$log"
     cp "$b/build/release/prismc" "$1/prismc"
 }
+# build_seed DIR: the seed unpacked into DIR and built, its binary at DIR/prismc. cargo
+# is given the crate by its path from the repository root, never run inside DIR: the
+# crate's `../../../runtime/rust` would then resolve from DIR's physical place, which under
+# a target/ that is a symlink out of the repository is not in it.
+build_seed() {
+    [ -f "$seed" ] || { echo "no starting prismc: set PRISMC, or keep $seed" >&2; exit 2; }
+    echo "seed: building prismc from $seed in $1"
+    rm -rf "$1" && mkdir -p "$1"
+    tar -C "$1" -xJf "$seed"
+    # Every build here is offline; a fresh machine has no crates yet, so get them first.
+    cargo fetch -q --manifest-path "$PWD/$1/Cargo.toml"
+    build_crate "$1"
+}
+if [ -n "$seed_at" ]; then build_seed "$seed_at"; echo "seed: built $seed_at/prismc"; exit 0; fi
 start=${PRISMC:-}
 if [ -z "$start" ] && [ -x "$b/prismc" ]; then start=$b/prismc; fi
 if [ -z "$start" ]; then
-    [ -f "$seed" ] || { echo "no starting prismc: set PRISMC, or keep $seed" >&2; exit 2; }
-    echo "seed: building prismc from $seed"
-    rm -rf "$b/seed" && mkdir -p "$b/seed"
-    tar -C "$b/seed" -xJf "$seed"
-    # Every build here is offline; a fresh machine has no crates yet, so get them first.
-    (cd "$b/seed" && cargo fetch -q)
-    build_crate "$b/seed"
+    build_seed "$b/seed"
     start=$b/seed/prismc
 fi
 rm -rf "$b/gen1" "$b/gen2" "$b/gen3" "$b/src"
@@ -77,10 +100,10 @@ if ! same 1 2; then
     fi
     fixed=2
 fi
-echo "fixed point: gen$fixed and gen$((fixed + 1)) are byte-equal ($(cat "$b/gen$fixed"/src/*.rs | wc -l) lines of Rust)"
+echo "fixed point: gen$fixed and gen$((fixed + 1)) are byte-equal ($(find "$b/gen$fixed/src" -name '*.rs' -exec cat {} + | wc -l) lines of Rust)"
 cp "$b/gen$fixed/prismc" "$b/prismc.new" && mv "$b/prismc.new" "$b/prismc"
 echo "installed $b/prismc (gen$fixed)"
 if [ $update = 1 ]; then
-    tar -C "$b/gen$fixed" -cJf "$seed.new" src Cargo.toml && mv "$seed.new" "$seed"
+    pack "$seed.new" "$b/gen$fixed" src Cargo.toml && mv "$seed.new" "$seed"
     echo "seed: wrote $seed from gen$fixed ($(du -h "$seed" | cut -f1))"
 fi

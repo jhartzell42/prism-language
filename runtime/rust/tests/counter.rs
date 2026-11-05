@@ -235,35 +235,35 @@ fn verify(script: &str, expected: &str) {
 #[test]
 fn two_clicks_in_one_tick_print_count_minus_one() {
     verify(
-        include_str!("../../../tests/conformance/sem-ch01-counter.prismtest"),
-        include_str!("../../../tests/conformance/sem-ch01-counter.expected"),
+        include_str!("../../../tests/conformance/sem-ch01-counter/tests.prism"),
+        include_str!("../../../tests/conformance/sem-ch01-counter/tests.expected"),
     );
 }
 
 #[test]
 fn the_conformance_counter_counts() {
     verify(
-        include_str!("../../../tests/conformance/conf-ch01-counter.prismtest"),
-        include_str!("../../../tests/conformance/conf-ch01-counter.expected"),
+        include_str!("../../../tests/conformance/conf-ch01-counter/tests.prism"),
+        include_str!("../../../tests/conformance/conf-ch01-counter/tests.expected"),
     );
 }
 
 #[test]
 fn the_example_counter_keeps_the_left() {
-    verify(include_str!("../../../tests/conformance/counter.prismtest"), include_str!("../../../tests/conformance/counter.expected"));
+    verify(include_str!("../../../tests/conformance/counter/tests.prism"), include_str!("../../../tests/conformance/counter/tests.expected"));
 }
 
 #[test]
 fn the_half_counter_calls_straight_through() {
     verify(
-        include_str!("../../../tests/conformance/compiler-ch03-halfcounter.prismtest"),
-        include_str!("../../../tests/conformance/compiler-ch03-halfcounter.expected"),
+        include_str!("../../../tests/conformance/compiler-ch03-halfcounter/tests.prism"),
+        include_str!("../../../tests/conformance/compiler-ch03-halfcounter/tests.expected"),
     );
 }
 
 #[test]
 fn the_semantics_transcript_is_byte_for_byte() {
-    let report = world().run(include_str!("../../../tests/conformance/sem-ch01-counter.prismtest"));
+    let report = world().run(include_str!("../../../tests/conformance/sem-ch01-counter/tests.prism"));
     assert!(report.failures.is_empty(), "{:?}", report.failures);
     assert!(report.transcript.ends_with("  changed:\n    2: Ui.Label(text=\"Count: -1\")\n"), "{}", report.transcript);
 }

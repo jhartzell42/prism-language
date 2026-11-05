@@ -1,7 +1,0 @@
-# Audited by hand: 0o17 = 15, 010 = 10, 0xffff = 65535, 0b1010 = 10, 0x1 followed by 16
-# hexadecimal zeros = 2^64 = 18446744073709551616, 0o377 = 255.
-# The literals' tests: declarations of ts-ch02-radix-literal.prism (Semantics chapter 6).
-
-test radix_literals_mean_their_value, @shown:
-    build
-        => expect Ui.Label(text="15 10 65535 10 18446744073709551616 255")

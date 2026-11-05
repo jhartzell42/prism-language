@@ -1,5 +1,4 @@
 # The `Time` family (Pitch ch. 6; Semantics Appendix B, `@Later`).
-module Time
 emit Time.*
 
 type Wake = record:

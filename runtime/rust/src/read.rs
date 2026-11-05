@@ -45,12 +45,24 @@ fn matches(p: &Pod, v: &Pod) -> bool {
         (Pod::Record(n, ps), Pod::Record(m, fs)) | (Pod::Element(n, ps), Pod::Element(m, fs)) => n == m && fields(ps, fs),
         // A bare qualified name is a fault kind, or an element with no fields.
         (Pod::Choice(c, a), Pod::Element(t, fs)) => a.is_empty() && fs.is_empty() && c == t,
-        (Pod::Choice(c, ps), Pod::Choice(d, vs)) => c == d && all(ps, vs),
+        (Pod::Choice(c, ps), Pod::Choice(d, vs)) => (c == d || names_case(c, d)) && all(ps, vs),
         (Pod::Tuple(ps), Pod::Tuple(vs)) | (Pod::Array(ps), Pod::Array(vs)) => all(ps, vs),
         (Pod::Map(ps), Pod::Map(es)) => ps.len() == es.len() && ps.iter().zip(es).all(|((pk, pv), (k, v))| matches(pk, k) && matches(pv, v)),
         (Pod::Some(p), Pod::Some(v)) | (Pod::Ok(p), Pod::Ok(v)) | (Pod::Failed(p), Pod::Failed(v)) => matches(p, v),
         (p, v) => p == v,
     }
+}
+
+/// Whether a pattern's qualified case name (`Sizes.Large`) names the value's case, which
+/// prints bare (`Large`): its last segment is the case. The module path is the checker's
+/// to resolve; the Test World holds no types to check it against.
+fn names_case(c: &str, d: &str) -> bool {
+    !d.contains('.') && c.rsplit_once('.').is_some_and(|(_, last)| last == d)
+}
+
+/// A qualified name whose last segment is a case's (`Sizes.Large`), not a family's `.*`.
+fn qualified_case(n: &str) -> bool {
+    n.rsplit_once('.').is_some_and(|(_, last)| last.chars().next().is_some_and(char::is_uppercase))
 }
 
 /// Read a value.
@@ -250,13 +262,15 @@ impl Parser {
             None => false,
         }
     }
-    /// An uppercase constructor that is not a record, an element or a Bool.
+    /// An uppercase constructor that is not a record, an element or a Bool: bare
+    /// (`Large`), or qualified by its module (`Sizes.Large`, whose arguments only a case
+    /// takes).
     fn bare_ctor(&self) -> Option<String> {
         match self.peek() {
             Some(Tok::Name(n)) if !self.split_close => {
                 let upper = n.chars().next().is_some_and(char::is_uppercase);
                 let call = matches!(self.toks.get(self.at + 1), Some(Tok::P("call(")));
-                (upper && !n.contains('.') && !call && n != "True" && n != "False").then(|| n.clone())
+                (upper && (!n.contains('.') || qualified_case(n)) && !call && n != "True" && n != "False").then(|| n.clone())
             }
             _ => None,
         }

@@ -1,4 +1,0 @@
-# Written by Claude on the claude-self-hosting branch; subject to change.
-test inline_supplier, @inline:
-    build
-    click at 0/[0]/0

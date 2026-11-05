@@ -33,6 +33,9 @@ using prism_rtl::Pod;
 /// The families this World answers.
 inline const std::vector<std::string> FAMILIES = {"Fs", "Process", "Time", "Prelude"};
 
+/// `Process.Env`'s answer: `? value`, or `nil` when the variable is unset or not UTF-8.
+Pod env_value(const std::string& name);
+
 /// What `Fs.*` reads and writes: the disk, or memory in tests.
 class FileSystem {
 public:

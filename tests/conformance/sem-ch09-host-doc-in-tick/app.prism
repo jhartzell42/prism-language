@@ -1,0 +1,44 @@
+# A host's child document is a dynamic within the tick (Semantics ch. 9): `$doc` is a
+# function of the child's live element levels, read at its current value like any `$`,
+# never a hold and never something the end-of-tick patch pass produces. Here the owner's
+# `for` runs over a source that reads both `$doc` and the owner's own hold `$clicks`, and
+# one tick writes both (a click on the forwarded child button and a click on the owner's
+# own). The rows are built once, after propagation, from the values after the tick:
+# `$doc` is structural (round 3 ST), one tick behind the child, so a kept row shows the new
+# count beside the label as the tick opened, and the moved label in the tick after.
+# Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@child: @unit
+@child:
+    !inc <- Ui.Button(label=$"inc")                              # 0
+    $n <- 0 then $n + 1 on !inc
+    Ui.Label(text=$"{$n}")                                       # 1
+
+TextOf: fn Elem Ui.* -> Text
+fn TextOf e = match e:
+    Ui.Label(text=$t): $t
+    Ui.Button(label=l): l
+    Ui.*: ""
+
+type Tagged = record:
+    text: Text
+    count: Nat
+derive ^Eq, ^Show
+
+# each place's text, paired with the owner's count
+Tag: fn (Path ==> Elem Ui.*), Nat -> (Path ==> Tagged)
+fn Tag doc, n = Fold (Keys doc), {}, \|acc, p| match ?Get doc, p:
+    ? e: Insert acc, p, (Tagged (TextOf e), n)
+    nil: acc
+
+@owner: @unit
+@owner:
+    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
+    !tap <- Ui.Button(label=$"tap")                              # 1
+    $clicks <- 0 then $clicks + 1 on !tap
+    let $tagged = Tag $doc, $clicks
+    for p, $pair <- $tagged:                                     # 2/[p]/0
+        Ui.Label(text=$"{$pair.text} after {$pair.count}")

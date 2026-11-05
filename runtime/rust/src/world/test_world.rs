@@ -600,6 +600,22 @@ fn indent(line: &str) -> usize {
     line.len() - line.trim_start().len()
 }
 
+/// A line at the left edge of a test module (claude/modules-style-pass.md) beside its tests:
+/// a line of its header (`emit`, `mod`, `test mod`, `use`), or a helper type, function or
+/// value, its `derive` or signature line. The compiled program holds it, so the script
+/// passes over it, body and all.
+fn is_declaration(head: &str) -> bool {
+    if ["emit ", "mod ", "test mod ", "use ", "type ", "derive ", "fn ", "let "].iter().any(|k| head.starts_with(k)) {
+        return true;
+    }
+    match head.split_once(':') {
+        Some((name, _)) => {
+            !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || "_@$!?~&".contains(c)) && name.chars().any(|c| c.is_ascii_alphabetic())
+        }
+        None => false,
+    }
+}
+
 fn parse_script(src: &str) -> Result<Vec<Block>, String> {
     let lines: Vec<(usize, &str)> =
         src.lines().enumerate().map(|(i, l)| (i + 1, strip_comment(l).trim_end())).filter(|(_, l)| !l.trim().is_empty()).collect();
@@ -609,6 +625,10 @@ fn parse_script(src: &str) -> Result<Vec<Block>, String> {
         let end = (i + 1..lines.len()).find(|&j| indent(lines[j].1) == 0).unwrap_or(lines.len());
         let body = &lines[i + 1..end];
         let head_err = || format!("line {no}: expected `test` or `check` at the left edge");
+        if is_declaration(head) {
+            i = end;
+            continue;
+        }
         let block = match head.strip_prefix("test ") {
             Some(rest) if indent(head) == 0 => Block::Test(parse_test(no, rest, body)?),
             _ => match head.strip_prefix("check ") {
