@@ -74,7 +74,7 @@ fn @CompileMain opts:
     else:
         let prelude = NoSlash (Or (?OptionValue opts, "--prelude"), "prelude")
         let settings = CompileSettings(out=out, prelude=prelude, name=(Or (?OptionValue opts, "--name"), "program"), runtime=(Or ?runtime, ""), target=target)
-        @ReadSources ReadMode(compiling=True, checking=noCheckOpts, compile=settings), (PlainArgs opts, compileValued), prelude, (HasText opts, "--tests")
+        @ReadSources (Compiling settings), (PlainArgs opts, compileValued), prelude, (HasText opts, "--tests")
 
 # The options of `compile` that take a value.
 let compileValued = [["-o", "--prelude", "--name", "--runtime", "--target"]]

@@ -82,9 +82,9 @@ type Module = record:
     span: Range
 derive ^Eq, ^Show
 
-# `mod name` (a section, `name.prism` beside the main file), `mod Name` (a submodule,
-# `name/mod.prism`) or `test mod name` (a test module, `name.prism`): a main file's header
-# says what its module is made of (claude/modules-style-pass.md).
+# `mod Name` (a child module, `name.prism` beside the declaring file or `name/mod.prism`)
+# or `test mod Name` (a child test module): a file's header says what its module's
+# children are (claude/modules-style-pass.md).
 type ModLine = record:
     name: Ident
     isTest: Bool

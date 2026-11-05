@@ -1,6 +1,6 @@
-# Emission: the model lowering decided (lower.prism) spelled as a Rust crate through the
-# templates (templates/rust.prism, templates/prelude.prism): `Cargo.toml`, `src/main.rs`,
-# `src/prelude.rs` and one `src/NAME.rs` per Prism module. Each function here spells one
+# Emission: the model lowering decided (`Lower`) spelled as a Rust crate through the
+# templates (`Emit.Rust.Templates`, `Emit.Rust.Prelude`): `Cargo.toml`, `src/main.rs`,
+# `src/prelude.rs` and one `src/PATH/mod.rs` per Prism module. Each function here spells one
 # construct of the core form; nothing here decides (K9). An expression's text is
 # relative to the column it starts at, so a template's placeholder alone on its line
 # indents a piece of several lines as a person would.

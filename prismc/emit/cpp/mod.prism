@@ -1,6 +1,6 @@
-# Emission for C++: the model lowering decided (lower.prism) spelled as a C++20 program over
+# Emission for C++: the model lowering decided (`Lower`) spelled as a C++20 program over
 # `runtime/cpp` (`prism_rtl` in C++, whose README maps every Rust type of the library to its
-# C++ form) through the templates (templates/cpp.prism, templates/cpp_prelude.prism):
+# C++ form) through the templates (`Emit.Cpp.Templates`, `Emit.Cpp.Prelude`):
 # `Makefile`, three headers per Prism module in its directory (`src/DIR/decl.hpp`,
 # `src/DIR/types.hpp`, `src/DIR/module.hpp`, DIR its path, `check/env` for `Check.Env`) and a
 # fourth when it has generic definitions (`src/DIR/generic.hpp`),

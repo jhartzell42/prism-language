@@ -27,9 +27,9 @@ type CDiag = record:
 derive ^Eq, ^Show
 
 # A source as the checker holds it: its path, its text, where its lines start, and the
-# files it joins. A module of a tree is its main file, its sections and its test modules
-# read as one text, each file after a newline (claude/modules-style-pass.md); `segs` says
-# where each begins, so a diagnostic names the file and line it is in.
+# files it holds. A module of a tree is one file (claude/modules-style-pass.md); `segs`
+# says where each file begins and its role, so a diagnostic names the file and line it is
+# in.
 type Src = record:
     path: Text
     text: Text
@@ -37,8 +37,9 @@ type Src = record:
     segs: [SrcSeg]
 derive ^Eq, ^Show
 
-# One file of a source: its path, the offset and the line of the joined text it starts at,
-# and its role (`main`, `section` or `test` in a tree; `loose`, `old` or `script` else).
+# One file of a source: its path, the offset and the line of the text it starts at, and its
+# role (`main` or `test` in a tree, `loose` else). A tree's module is one file, so its source
+# has one; the checker's sources keep the list for a source of several files.
 type SrcSeg = record:
     path: Text
     start: Nat
@@ -123,13 +124,12 @@ fn RenderCDiag srcs, d = match srcs[d.file]:
         let fix = if d.fix == "": "" else: "  fix: {d.fix}\n"
         "{SrcPlace src, d.span.start}: {Severity d}[{d.code}]: {d.message}\n    {text}\n{carets}\n{fix}"
 
-# `warning` for the diagnostics that fail nothing (`unused`, and `section`, the old form of
-# a `mod` line), else `error`.
+# `warning` for the one diagnostic that fails nothing (`unused`), else `error`.
 Severity: fn CDiag -> Text
 fn Severity d = if IsWarning d: "warning" else: "error"
 
 IsWarning: fn CDiag -> Bool
-fn IsWarning d = d.code == "unused" or d.code == "section"
+fn IsWarning d = d.code == "unused"
 
 # Diagnostics in order of file, then position, then the order they were found; duplicates
 # dropped.

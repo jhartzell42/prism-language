@@ -1,5 +1,0 @@
-tests/checker/neg/section-header/part.prism:3: error[section-header]: a section has no header: `use` belongs in app.prism, the file of its module
-    use Ui
-    ^^^^^^
-  fix: move the line to app.prism
-1 error

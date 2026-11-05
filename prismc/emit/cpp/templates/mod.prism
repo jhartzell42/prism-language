@@ -1,7 +1,7 @@
 # The C++ template set (Templates ch. 2, code templates; Compiler ch. 4, "Templates, and
 # two template sets"): every item of the emitted C++ as a function-form template with
 # doubled braces. A placeholder alone on its line stands for whole lines indented to its
-# column. The templates decide nothing (K9): lowering decided, emit_cpp.prism spelled each
+# column. The templates decide nothing (K9): lowering decided, `Emit.Cpp` spelled each
 # part and chose the template.
 #
 # Written by Claude, 3 November 2026, on the claude-self-hosting branch. Subject to change:
