@@ -29,7 +29,7 @@ SRCS := $(wildcard src/*.cpp)
 TEST_SRCS := $(wildcard tests/*.cpp)
 OBJS := $(SRCS:src/%.cpp=$(BUILD)/src/%.o)
 TEST_OBJS := $(TEST_SRCS:tests/%.cpp=$(BUILD)/tests/%.o)
-HEADERS := $(wildcard include/prism_rtl/*.hpp) $(wildcard tests/*.hpp)
+HEADERS := $(wildcard include/prism_rtl/*.hpp) $(wildcard tests/*.hpp) $(wildcard src/*.inc)
 
 # RE2's flags, its headers as system headers so that -Werror does not judge them.
 RE2_CFLAGS := $(patsubst -I%,-isystem %,$(shell pkg-config --cflags re2 2>/dev/null))
