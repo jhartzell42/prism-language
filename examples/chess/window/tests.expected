@@ -69,3 +69,47 @@ tick 5
     1: Press Point(x=17.0, y=59.0)
 
 compute until idle: 2 ticks, 6 to 7
+
+test a_key_types_its_character
+
+tick 0
+  added:
+    1: Gui.Window(title="Form", size=Extent(w=300.0, h=200.0))
+    2/["Go"]/0: Gui.Metrics(text="Go")
+    2/["x"]/0: Gui.Metrics(text="x")
+    2/["y"]/0: Gui.Metrics(text="y")
+    3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="x"), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Form", at=nil)
+  result: "xy"
+
+tick 1
+  in:
+    1: Press Point(x=100.0, y=11.0)
+  changed:
+    3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="x"), Draw.Rect(rect=Rect(x=13.0, y=3.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Form", at=? Rect(x=0.0, y=0.0, w=200.0, h=22.0))
+
+compute until idle: 0 ticks
+
+tick 2
+  in:
+    1: Pressed (Char 'q')
+
+compute until idle: 5 ticks, 3 to 7
+
+tick 4
+  result: "xqy"
+
+tick 6
+  added:
+    2/["xq"]/0: Gui.Metrics(text="xq")
+  changed:
+    3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=8.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=6.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="xq"), Draw.Rect(rect=Rect(x=4.0, y=3.0, w=2.0, h=2.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=8.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=8.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=9.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=12.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=8.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=32.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=38.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=32.0, w=30.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Form", at=? Rect(x=0.0, y=0.0, w=200.0, h=8.0))
+  torn down:
+    2/["x"]/0: Gui.Metrics(text="x")
+
+tick 7
+  changed:
+    3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="xq"), Draw.Rect(rect=Rect(x=22.0, y=3.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Form", at=? Rect(x=0.0, y=0.0, w=200.0, h=22.0))

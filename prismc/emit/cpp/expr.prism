@@ -322,11 +322,20 @@ fn NodeMethodName cp, m = match ((cp.methods[m], cp.fieldNames[m])):
     otherwise: MemberName m
 
 # Whether a receiver is reached through a pointer, where the model says: `self`, a field
-# of the node or job being printed by its type.
+# of the node or job being printed by its type; a place's path (a node's `path`, the
+# `path` a node is made at), the root path and a path
+# made from one by the runtime's `at`, `child` and `join`, which are values (a node's
+# member of one of those names says nothing about a path).
 ?Pointer: fn Cp, Ex -> ?Bool
 fn ?Pointer cp, r = match r:
     XSelf: ? True
     XCx: ? False
+    XVar "path": ? False
+    XField ignore, "path": ? False
+    XCall "Path::root", ignore: ? False
+    XMethod y, m, ignore if m == "at" or m == "child" or m == "join": match ?Pointer cp, y:
+        ? False: ? False
+        otherwise: nil
     XVar n: cp.pointers[n]
     XClone y: ?Pointer cp, y
     XRef y: ?Pointer cp, y

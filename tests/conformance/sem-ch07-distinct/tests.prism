@@ -1,0 +1,16 @@
+# `@Distinct`: declarations of sem-ch07-distinct.
+emit Ui.*
+use App.*
+use Ui.*
+
+test refires_only_on_change, @distinct:
+    build
+        => expect Ui.Label(text="5: 0 changes, 0 updates")
+    click at 0
+        => expect Ui.Label(text="5: 0 changes, 1 updates")
+    click at 1
+        => expect Ui.Label(text="6: 1 changes, 2 updates")
+    click at 0
+        => expect Ui.Label(text="6: 1 changes, 3 updates")
+    click at 1
+        => expect Ui.Label(text="7: 2 changes, 4 updates")

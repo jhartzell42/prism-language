@@ -1,0 +1,19 @@
+# `$y <- @Distinct $x` (Jimmy's ruling of 5 November 2026, reversing Appendix B's D-DT;
+# Semantics ch. 7, "Spurious firings are allowed": a program that wants the event only on
+# change asks for it): `$d` has `$n`'s value always, the first included, and its update
+# event fires only when the value changed. "same" writes `$n` with the value it has, so
+# `$n`'s update fires and `$d`'s does not; "next" changes it, and both fire. Written for
+# prismc's back end; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@distinct: @unit
+@distinct:
+    !same <- Ui.Button(label=$"same")                           # 0
+    !next <- Ui.Button(label=$"next")                           # 1
+    $n <- 5 then ($n on !same) <| ($n + 1 on !next)
+    $d <- @Distinct $n
+    $changes <- 0 then $changes + 1 on !Updated $d
+    $updates <- 0 then $updates + 1 on !Updated $n
+    Ui.Label(text=$"{$d}: {$changes} changes, {$updates} updates")  # 2

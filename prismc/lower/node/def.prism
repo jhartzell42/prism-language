@@ -354,8 +354,18 @@ fn LetLine wx, benv, menv, p, e:
         ? (BnDyn ignore, ignore, t):
             let rs = Snake (PatText p)
             let ((ex, reads)) = DynamicExpr wx, menv, e
-            let getter = MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{PatText p}`")
-            let wx2 = update wx:
+            # Computed once per write behind it (Graph ch. 4, "Invalidation by stamped marks")
+            # when everything it reads is the node's own, whose write paths mark the cache; a
+            # read through the parent is marked by no write of this node, and is computed at
+            # every read.
+            let cached = (Len reads) > 0 and Fold (ReadsAll wx.dynReads, reads), True, \|ok, r| ok and IsOwnRead r
+            let tail = if cached: XMethod (XField XSelf, "{rs}_cache"), "get", [[XCx, (XClosure False, [[]], ex)]] else: ex
+            let getter = MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=tail, doc="`{PatText p}`")
+            let wx1 = if cached: update (AddField wx, "{rs}_cache", (OutNamed "Cache", [[t]]), "`{PatText p}`, cached", (XCall "Cache::new", [[]])):
+                &_.letCaches <= Push &_.letCaches, rs
+                &_.taken <= Push &_.taken, "{rs}_cache"
+            else: wx
+            let wx2 = update wx1:
                 &_.getters <= Push &_.getters, getter
                 &_.dynReads <= Insert &_.dynReads, rs, reads
             if AllInited wx2, reads:

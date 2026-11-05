@@ -22,7 +22,7 @@ fn Apply e, k = match ?CursorAt e.text, e.cursor:
     nil: e
     ? at: match k:
         Char c:
-            let typed = "{c}"
+            let typed = Text c
             Edit "{Before at}{typed}{After at}", e.cursor + (Len typed)
         Left: match ?StepBack at:
             ? ((ignore, prev)): Edit e.text, (At prev)
@@ -120,7 +120,7 @@ fn @Backed c, p, @child = @Framed (FrameSpec p, nil, nil, nil, 0.0, (Point 0.0, 
 fn @Window $title, start, @app:
     ((result, $elems)) <- @HostSome @app, \|p, e| ?Boxed p, e, !route    # 0/[p]
     ((id, !incoming)) <- Gui.Window(title=$title, size=start)                 # 1
-    let $kids = Claimed $elems
+    $kids <- @Distinct (Claimed $elems)                                  # the hosts refire it unchanged
     $sizes <- for text, ignore <- TextsIn $kids:                         # 2/[text]
         Gui.Metrics(text=text)                                           # 2/[text]/0
     $size <- start then !Filter (?ResizeOf !incoming)

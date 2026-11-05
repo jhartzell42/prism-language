@@ -177,6 +177,9 @@ After: fn Cursor -> Text
 At: fn Cursor -> Nat
 ?CursorAt: fn Text, Nat -> ?Cursor
 Upper: fn Text -> Text
+# Not in Appendix B: a character as the one-character text it is (`"{c}"` is its `Show`
+# form, quoted, Type System ch. 5).
+Text: fn Char -> Text
 Lower: fn Text -> Text
 # Not in Appendix B: the pieces between the separators; an empty separator is refused.
 Split: fn Text, Text -> [Text]
@@ -236,6 +239,9 @@ fn Or (? x), ignore = x
 @HostList: fn @a emit c, !(Path ==> Answer c), (fn Path, Element c o -> @o) -> @((a, $(Path ==> Wired c)))
 @Switch: fn $!a -> @!a
 @Flatten: fn $$a -> @$a
+# `$y <- @Distinct $x`: `$x`'s value, whose update event fires only when the value changed
+# (Jimmy, 5 November 2026, reversing Appendix B's D-DT; a builtin of the lowering).
+@Distinct: fn $a -> @$a where a: ^Eq
 @Defer: fn !a -> @!a
 @Later: fn !a -> @!a
 @Machine: fn (fn s, a -> ((s, ?b))), s, !a -> @!b

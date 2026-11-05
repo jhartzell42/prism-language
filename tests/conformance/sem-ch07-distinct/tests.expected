@@ -1,0 +1,32 @@
+# Derived by hand from Jimmy's ruling of 5 November 2026 (`@Distinct`) and Semantics ch. 7 (R3): `$d` is 5 at the build; a write of 5 fires `$n`'s update and not `$d`'s; each change fires both.
+test refires_only_on_change
+
+tick 0
+  added:
+    0: Ui.Button(label="same")
+    1: Ui.Button(label="next")
+    2: Ui.Label(text="5: 0 changes, 0 updates")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="5: 0 changes, 1 updates")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="6: 1 changes, 2 updates")
+
+tick 3
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="6: 1 changes, 3 updates")
+
+tick 4
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="7: 2 changes, 4 updates")

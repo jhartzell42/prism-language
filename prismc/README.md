@@ -1807,7 +1807,15 @@ ruling taken (Claude's).
   (`{name}_source_cache`), marked by every write path through `MovedBy`
   (`SourceMarks`): a hold's sink, an answer or a push at a place, a snapshot's
   publication, `@Machine`'s state, the block's write a row hears through its parent
-  (`sem-ch04-row-source`).
+  (`sem-ch04-row-source`). A dynamic `let` whose closed reads are all its node's own has
+  the same `Cache` (`{name}_cache`, `letCaches`), marked by the same paths through `let`s
+  of any depth (`ReadsAll`); one that reads through the parent is computed at every read
+  (`tests/cost`).
+- **DI `@Distinct`.** `$y <- @Distinct $x` (Jimmy, 5 November 2026, reversing Appendix B's
+  D-DT) is a builtin of the lowering (`DistinctLine`): a hold of an option, set at the
+  build to `$x`'s value, written by `$x`'s `!Updated` only when the value differs
+  (`SkDistinct`), read as `$x` before the build sets it (`sem-ch07-distinct`; the checker
+  asks `^Eq`, `distinct-needs-eq`).
 
 ### Strings: what is copied
 

@@ -81,6 +81,7 @@ fn Feeds (SkIn m, ignore), n = m == n.id
 fn Feeds (SkCycle ignore, ignore, m), n = m == n.id
 fn Feeds (SkMachine f, ignore, m), n = m == n.id or Writes f, n
 fn Feeds (SkHold f), n = Writes f, n
+fn Feeds (SkDistinct f), n = Writes f, n
 fn Feeds other, n = False
 
 # Whether a write to hold `f` moves an "updated" node's dynamic.
@@ -125,6 +126,12 @@ fn SinkCode sk, target, y = match target:
         let g = GnOf sk.wx, m
         Append [[DoExpr (XMethod (XField XSelf, "{Or g.inputs[i], ""}"), "set", [[y, XCx]])]], (AskWake sk, g.height)
     SkHold f: Append [[(DoExpr (XMethod (XField XSelf, "{f}"), "set", [[y, XCx]]))]], (HoldWritten sk, f)
+    # the value it holds as the tick opened, against the source's after it: equal, nothing
+    # is written and nothing marked
+    SkDistinct f:
+        let differs = XBin "!=", (XMethod (XField XSelf, "{f}"), "get", [[XCx]]), (XCtor "Some", [[XClone y]])
+        let write = DoExpr (XMethod (XField XSelf, "{f}"), "set", [[(XCtor "Some", [[XClone y]]), XCx]])
+        [[(DoIf differs, (Append [[write]], (HoldWritten sk, f)), [[]])]]
     SkRequest pos, field:
         let fieldEx = if field == "": XNone else: (XCtor "Some", [[XStr field]])
         # a hosted place's request goes to its host: out with a forwarded element, else nowhere
@@ -202,7 +209,20 @@ fn MovedBy sk, r:
 # hold's sink, an answer or push at a place, a snapshot's publication, the block's write
 # a row hears, reaches here.
 SourceMarks: fn Wx, Read -> [Do]
-fn SourceMarks wx, r = Fold wx.builders, [[]], \|acc, b| if HasRead (ReadsClosed wx.dynReads, (Or wx.dynReads[b.source], [[]])), r: Push acc, (DoExpr (XMethod (XField XSelf, "{b.source}_cache"), "mark", [[XCx]])) else: acc
+fn SourceMarks wx, r:
+    let fors = Fold wx.builders, [[]], \|acc, b| if HasRead (ReadsClosed wx.dynReads, (Or wx.dynReads[b.source], [[]])), r: Push acc, (DoExpr (XMethod (XField XSelf, "{b.source}_cache"), "mark", [[XCx]])) else: acc
+    # and every cached `let` the write lies behind, through any depth of `let`s
+    Fold wx.letCaches, fors, \|acc, c| if HasRead (ReadsAll wx.dynReads, (Or wx.dynReads[c], [[]])), r: Push acc, (DoExpr (XMethod (XField XSelf, "{c}_cache"), "mark", [[XCx]])) else: acc
+
+# Every read a read set reaches through the node's getters, to the end (a `let` of `let`s
+# of any depth): the reads grow until a pass adds none, at most once per getter.
+ReadsAll: fn (Text ==> [Read]), [Read] -> [Read]
+fn ReadsAll dyn, reads = Fold (Range0 ((Size dyn) + 1)), reads, \|acc, ignore| Fold acc, acc, \|a, r| UnionReads a, (GetterReads dyn, r)
+
+IsOwnRead: fn Read -> Bool
+fn IsOwnRead r = match r:
+    OwnRead ignore: True
+    ParentRead ignore: False
 
 # The snapshots a write behind a read marks: the structure itself (a host's `host_k_moved`
 # writes behind `host_k_doc_now` with no hold), or one whose live reads reach it.
@@ -468,6 +488,7 @@ fn WritesHold g, f = Fold g.outs, False, \|acc, o| acc or SinkWritesHold o.sink,
 
 SinkWritesHold: fn Sk, Text -> Bool
 fn SinkWritesHold (SkHold h), f = h == f
+fn SinkWritesHold (SkDistinct h), f = h == f
 fn SinkWritesHold (SkMachine h, ignore, ignore), f = h == f
 fn SinkWritesHold other, f = False
 

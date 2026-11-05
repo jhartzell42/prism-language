@@ -55,6 +55,7 @@ fn CharEscape "\n" = "\\n"
 fn CharEscape "\t" = "\\t"
 fn CharEscape "\u{d}" = "\\r"
 fn CharEscape "\u{0}" = "\\0"
+fn CharEscape "'" = "\\'"
 fn CharEscape c = c
 
 # A number literal of a numeric type.

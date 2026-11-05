@@ -425,6 +425,12 @@ Map<K, V> filter_map(const Map<K, V>& m, const F& keep) {
 
 // ---- Text -------------------------------------------------------------------------------
 
+/// `Text: fn Char -> Text`: the character as a one-character text, its UTF-8.
+inline Text text(char32_t c) {
+    std::string s;
+    prism_rtl::utf8_push(s, c);
+    return Text::of_utf8(std::move(s));
+}
 /// `Upper`, `Lower`: Unicode's default full case mapping, as Rust's `str::to_uppercase`
 /// and `to_lowercase` (runtime/cpp/README.md, "Upper and Lower").
 inline Text upper(const Text& t) { return text_upper(t); }
