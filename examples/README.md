@@ -13,14 +13,20 @@ under `tests/compiled/run.sh`.*
   opens in a window.
   - `rules/`, module `Rules`: the rule book as plain functions, with no time in them
     (Pitch ch. 11). A game is a value; `?Move` gives the next game or `nil`.
-  - `app.prism`, the root: sixty-four `Ui.Image` squares in a `@Grid`, a hold for the
-    selection, a hold for the game, a status label, all inside `@Window`. Its root is
-    `@$main`.
+  - `app.prism`, the root: sixty-four `Ui.Image` squares in a `@Grid` on a border; a
+    panel with the status, a move counter, Back, Forward, Reset and Settings buttons and
+    the list of moves; and a settings dialog over it (the interface's copy, the players'
+    names, the squares' colours as `#rrggbb`, the border by a slider and a box), all
+    inside `@Window`. Its holds are the game's record (every position, and the one
+    shown), the selection, and whether the dialog is open; the settings live in the
+    dialog's holds and start at their defaults every run. Its root is `@$main`
+    (chess/README.md, "The interface").
   - `window/`, module `Window` and its child modules `Window.Ui` (the `Ui` family),
     `Window.Hosting`, `Window.Widgets`, `Window.Layout`, `Window.Hits`: the window
     library. It declares the `Ui`, `Gui` and `Draw` families, the container host documents (`@Grid`, `@Row`, `@Column`, `@Layers`,
-    `@Framed` and its modifiers, `@VBox`, `@HBox`), `@TextInput`, the layout and hit testing
-    of prism-reflex's `layout.md`, and `@Window`. It is general on purpose: the card games
+    `@Framed` and its modifiers, `@FramedBy` and `@Bordered`, `@ShowIf`, `@VBox`, `@HBox`),
+    `@TextInput`, `@TextField`, `Ui.Slider`, `@Overlay` (a dialog), the layout and hit
+    testing of prism-reflex's `layout.md`, and `@Window` (chess/window/README.md). It is general on purpose: the card games
     will use its rows, layers and turned frames.
   - `pieces/`: the thirteen 64-by-64 PNGs the squares show, from prism-reflex.
   with a Star that is the row's own hold.

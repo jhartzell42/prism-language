@@ -154,6 +154,24 @@ separate pass over the token stream was not in this work.
 - **The Cuis table crashes on `▶`; Linux Cuis times measure software painting**
   (`claude/bugs/bench-cuis-latin1-and-software-paint.md`); Jimmy paused the Cuis runs.
 
+## The chess interface
+
+- **Chess has a fuller interface** (Jimmy: "a slightly more mature user interface for me to
+  start iterating from"; branch `claude-chess-ui`): beside the board a panel with the
+  status, a move counter, Back, Forward, Reset and Settings, and the list of moves; a
+  settings dialog in the window's bottom right corner edits the interface's copy, the players' names, the
+  squares' colours as `#rrggbb` and the board's border (a slider and a box in step), live.
+  The settings start at their defaults every run and live in the dialog's holds; nothing
+  touches a file. examples/chess/README.md, "The interface", says what each part does and
+  the choices made (a move from an earlier position discards the later moves; Reset
+  forgets the moves and keeps the settings).
+- **The window library gained** `Ui.Slider`, `Ui.Shown` (`@ShowIf`), `@Overlay`,
+  `@TextField`, a live frame spec (`@FramedBy`, `@Bordered`), a grid whose columns and rows
+  size to their children, opaque backgrounds, and keys only to an input that shows
+  (examples/chess/window/README.md, with doubts DG, OP, HS, FS).
+- **Open for Jimmy:** dragging a slider needs pointer motion from the canvas Worlds (doubt
+  DG); `click element` by a whole chain would let a form be built of rows (chess doubt PC).
+
 ## Smaller items
 
 - **The C++ Worlds moved and leave old build directories behind.** Since `15d1ab8` they
