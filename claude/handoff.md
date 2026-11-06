@@ -177,8 +177,18 @@ separate pass over the token stream was not in this work.
   `@TextField`, a live frame spec (`@FramedBy`, `@Bordered`), a grid whose columns and rows
   size to their children, opaque backgrounds, and keys only to an input that shows
   (examples/chess/window/README.md, with doubts DG, OP, HS, FS).
+- **The lowering fixes it needed** (prismc/README.md, gap ID and the not-lowered list):
+  only a widget's own recursion is bounded, so widgets nest as deep as written and a
+  widget parameter no longer lowers to nothing past depth 32; a widget block's bundle
+  result is taken apart where it is bound; a block reads a widget's result on a line
+  above its binding, and a `for` row reads a widget's `$` parameter; an element's first
+  value at the build reads a parameter's value then; a map-keyed type variable is `Ord`
+  in Rust. Each has a conformance test (`sem-ch08-widget-depth`,
+  `sem-ch04-bundle-result`, `sem-ch08-widget-reads`). Filed, not fixed:
+  `claude/bugs/widget-plain-result-unbound.md`.
 - **Open for Jimmy:** dragging a slider needs pointer motion from the canvas Worlds (doubt
-  DG); `click element` by a whole chain would let a form be built of rows (chess doubt PC).
+  DG); `click element` by a whole chain would let a form be built of rows (chess doubt PC);
+  the windowed chess transcript is 2.5 MB (chess doubt TS).
 
 ## Smaller items
 
