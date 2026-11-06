@@ -1,0 +1,21 @@
+# A `for` inside a `for` row over a field of the row's entry (Semantics ch. 4: the entry
+# `$_` is a projection of the source, RE): the block's write that gives row 0's entry a
+# child builds that child's row in the inner `for`, at the end of the tick (R7). Written
+# by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Tree = record:
+    name: Text
+    kids: Nat ==> Tree
+derive ^Eq, ^Show
+
+@main: @unit
+@main:
+    !grow <- Ui.Button(label=$"grow")                            # 0
+    $t <- (Tree "a", {0: (Tree "b", {})}) then (Tree "a", {0: (Tree "b", {0: (Tree "c", {})})}) on !grow
+    for k, $c <- $t.kids:                                        # 1/[k]
+        Ui.Label(text=$c.name)                                   # 1/[k]/0
+        for j, $d <- $c.kids:                                    # 1/[k]/1/[j]
+            Ui.Label(text=$d.name)
