@@ -3,7 +3,7 @@
 # (claude/incremental-host-document.md, part 4): `$flat` is that `for`'s gathered dynamic,
 # and `!Updated $flat` its event half. A click on the forwarded child button moves the
 # child's label in its tick; the label's entry is published in the tick after (the host
-# level's tick, round 3 ST), its row's `@Flatten` follows it there, and the gathered `$flat`
+# level's tick, round 3 ST), its row's `$e` follows it there, and the gathered `$flat`
 # is published in the tick after that (the gathered `for`'s tick): the host counts `$flat`'s
 # updates there and shows the child's label text out of it. Written for prismc's back end.
 # Work in progress, subject to change.
@@ -25,8 +25,7 @@ fn Texts doc = Fold (Values doc), "", \|acc, e| match e:
 @counter: @unit
 @counter:
     ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
-    $flat <- for p, $$d <- $doc:                                  # 1/[p], no places
-        $e <- @Flatten $$d
+    $flat <- for p, $e <- $doc:                                   # 1/[p], no places
         @ $e
     let !moved = !Updated $flat
     $moves <- 0 then $moves + 1 on !moved

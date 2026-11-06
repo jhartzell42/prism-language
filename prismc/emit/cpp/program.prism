@@ -113,7 +113,18 @@ fn RowLeaving cp, n:
     CppFunction "", "void {n.name}::leave_row(Cx& cx)", (Join (Append (Push kept, "remove_places(cx);"), unsubscribe), "\n")
 
 ForBuildCpp: unbounded fn Cp, Text, ForDef -> Text
-fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), (CallPath "{b.rowNode}::build"), b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}")), (MovedCallCpp b.moved)
+fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), (CallPath "{b.rowNode}::build"), b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}")), (MovedCallCpp b.moved), (FromKeptCpp b.name, b.replaced), (ReplacedCallCpp b.replaced)
+
+# The source the rows were last built from, kept: over a map of dynamics the walk reads the
+# one it replaces, to compare each kept key's dynamic with the one its row was built from.
+FromKeptCpp: fn Text, [Text] -> Text
+fn FromKeptCpp name, replaced = if (Len replaced) == 0: "this->{name}_from = items;" else: "auto from = std::exchange(this->{name}_from, items);"
+
+# A kept key whose dynamic is another than the one its row was built from (ruling FV): the
+# row is told, and adopts it among the next tick's first firings. `Map::get` is a pointer,
+# null for a missing key; a kept key is in both maps.
+ReplacedCallCpp: fn [Text] -> Text
+fn ReplacedCallCpp replaced = if (Len replaced) == 0: "" else: " else if (auto was = from.get(k), is = items.get(k); !was || !is || !(*was == *is)) \{\n            // the dynamic under a kept key was replaced: that row follows it from the next tick\n{Concat (Each replaced, \|m| "            row->{m}(cx);\n")}        \}"
 
 # A builder whose rows' places are a host's document tells the host its child's places came
 # or went (`$(Path ==> $Elem c)`'s outer moves).

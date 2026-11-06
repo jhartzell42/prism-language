@@ -188,7 +188,7 @@ fn HostLine wx, benv, menv, form, args, ?bound:
                 &_.snaps <= Push &_.snaps, SnapDef(name=docGetter, live="{docGetter}_now", ty=hostDocTy, eq=True, builder=rowsName, before=True, what=what)
                 &_.getters <= Append &_.getters, [[(MethDef(name=docGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=docTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "get", [[XCx]]), "doc"), doc="The document of the child hosted at place {PlaceText pos}, `$doc`, its outer a structural dynamic (pick ST): one tick behind the child's places, the snapshot of the tick before the tick the read point is after; each entry the place's own dynamic.")), (MethDef(name="{docGetter}_direct", recv=RecvRef, params=[[]], cx=CxRef, ret=directTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "current", [[XCx]]), "places"), doc="The places of the child hosted at place {PlaceText pos}, not the lagged `$doc`: the snapshot taken in this tick's construction step, the places as the tick opened during propagation. The host's own `for` reads it, so a newborn child place gets its row in the tick it is born (pick ST)."))]]
                 &_.scopes <= Push &_.scopes, hf
-                &_.builders <= Push &_.builders, ForDef(name=rowsName, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=OutPath, valueTy=entryTy, rowNode="prism_rtl::HostRow::<crate::Elem, crate::Answer>", keyed=True, source="{docGetter}_direct", parent=(XClone (XField XSelf, hf)), passed=[[]], moved=(Or (?HostedRows wx), ""))
+                &_.builders <= Push &_.builders, ForDef(name=rowsName, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=OutPath, valueTy=entryTy, rowNode="prism_rtl::HostRow::<crate::Elem, crate::Answer>", keyed=True, source="{docGetter}_direct", parent=(XClone (XField XSelf, hf)), passed=[[]], moved=(Or (?HostedRows wx), ""), replaced=[[]])
                 &_.buildHolds <= AddRead &_.buildHolds, (OwnRead "{docGetter}_now")
                 &_.fallible <= True
             let inner = update wx2:
@@ -371,9 +371,9 @@ fn DistinctLine wx, menv, args, e, ?bound:
 # `$m`'s value after the tick (a read before that sets it up first), and written by `$m`'s
 # `!Updated` (`SkPerKey`): each kept key whose value changed by `==` has its inner written
 # and fired there, and only a key that came or went writes the outer, so its readers (a
-# `for` over it and that `for`'s rows) are marked only then. A row's `@Flatten` of its
-# inner follows the inner's update event (`EntryFlatten`), so a value change reaches that
-# key's row alone, in the tick of the write.
+# `for` over it and that `for`'s rows) are marked only then. A row's `$v` over it follows
+# its inner's update event (`EntryFlatten`), so a value change reaches that key's row
+# alone, in the tick of the write.
 PerKeyLine: unbounded fn Wx, Env, [Arg], ?Bn -> ((Wx, Wres))
 fn PerKeyLine wx, menv, args, ?bound:
     let lx = wx.lx

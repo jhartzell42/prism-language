@@ -265,7 +265,17 @@ fn RustNode n:
 
 # A `for`'s builder: rows that left torn down, new keys built.
 ForBuilder: unbounded fn ForDef -> Text
-fn ForBuilder b = ForBuild b.name, (Expression b.at), (Type b.keyTy), (Type b.valueTy), b.rowNode, b.source, (Expression b.parent), (Concat (Each b.passed, \|x| ", {Expression x}")), (MovedCall b.name, b.moved)
+fn ForBuilder b = ForBuild b.name, (Expression b.at), (Type b.keyTy), (Type b.valueTy), b.rowNode, b.source, (Expression b.parent), (Concat (Each b.passed, \|x| ", {Expression x}")), (MovedCall b.name, b.moved), (FromKept b.name, b.replaced), (ReplacedCall b.replaced)
+
+# The source the rows were last built from, kept: over a map of dynamics the walk reads the
+# one it replaces, to compare each kept key's dynamic with the one its row was built from.
+FromKept: fn Text, [Text] -> Text
+fn FromKept name, replaced = if (Len replaced) == 0: "*self.{name}_from.borrow_mut() = items.clone();" else: "let from = std::mem::replace(&mut *self.{name}_from.borrow_mut(), items.clone());"
+
+# A kept key whose dynamic is another than the one its row was built from (ruling FV): the
+# row is told, and adopts it among the next tick's first firings.
+ReplacedCall: fn [Text] -> Text
+fn ReplacedCall replaced = if (Len replaced) == 0: "" else: " else if from.get(k) != items.get(k) \{\n            // the dynamic under a kept key was replaced: that row follows it from the next tick\n{Concat (Each replaced, \|m| "            row.{m}(cx);\n")}        \}"
 
 # A builder whose rows' places are a host's document tells the host its child's places came
 # or went (`$(Path ==> $Elem c)`'s outer moves).

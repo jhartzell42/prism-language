@@ -1,8 +1,8 @@
 # `$each <- @PerKey $m` (Semantics Appendix B; round 9 PK, Jimmy's): a dynamic map taken
 # apart by key. The outer `$(k ==> $v)` fires only when a key comes or goes; each key's
 # inner holds that key's value and fires only when a write gives it a value unequal (`==`)
-# to the one it holds. A row of `for k, $$d <- $each:` reads its own inner with
-# `@Flatten $$d`. "same" writes `$m` with a fresh map of equal values (a key put in and
+# to the one it holds. A row of `for k, $v <- $each:` reads its own inner as `$v`
+# (ruling FV). "same" writes `$m` with a fresh map of equal values (a key put in and
 # taken out again): nothing fires.
 # "edit 0" changes key 0 only: its row counts one change, key 1's none, the outer none.
 # "drop 1" and "back 1": the key leaves and comes back with another value, and gets a new
@@ -26,7 +26,6 @@ use Ui.*
     $each <- @PerKey $m
     $outer <- 0 then $outer + 1 on !Updated $each
     Ui.Label(text=$"outer {$outer}")                            # 5
-    for k, $$d <- $each:                                        # 6/[k]
-        $v <- @Flatten $$d
+    for k, $v <- $each:                                         # 6/[k]
         $n <- 0 then $n + 1 on !Updated $v
         Ui.Label(text=$"{k}: {$v} changed {$n}")                # 6/[k]/0

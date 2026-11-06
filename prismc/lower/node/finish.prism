@@ -275,11 +275,7 @@ fn FinishNode wx0, qk, params, isRow:
     # the patch pass sends the World the places that go to it, and takes the entry of each
     # hosted place in its host's document (`$(Path ==> $Elem c)`)
     let patchBody0 = Fold live, [[]], \|acc, p| Append acc, (if Emits wx, p.pos: PatchPlace wx, p else: [[(EntryTake XSelf, p)]])
-    # a row's entry flattened whose entry is now another dynamic than its inner (the block
-    # wrote behind it, so the row is patched): the adoption queued for the start of the next
-    # tick, which is owed (rulings VL, TK)
-    let adopting = Each (Filter wx.flattens, \|fl| fl.generation == ""), \|fl| DoIf (XBin "!=", (XMethod (XField XSelf, "{fl.name}_inner"), "get", [[XCx]]), (XCtor "Some", [[(XMethod (XSelf), "entry", [[XCx]])]])), (Adoption fl), [[]]
-    let patchBody = Append (Append patchBody0, adopting), (RootDynPatch wx)
+    let patchBody = Append patchBody0, (RootDynPatch wx)
     let buildBody = BuildSteps sinks, False
     let pushBody = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin "==", (XVar "element"), (XRef (XField XSelf, "{f}_element"))), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
     let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
@@ -323,28 +319,38 @@ fn FinishNode wx0, qk, params, isRow:
 IsGeneration: fn Wx, Text -> Bool
 fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
 
-# The `@Flatten`s' methods (`FlattenLine`): each adoption, the current inner written as a
-# hold is; and per `rebuild` handing back a dynamic, what its current generation's result
-# moving marks: the readers of every `@Flatten` over it, as for a write of the inner (a
-# flatten whose inner is another generation reads its value again, unchanged).
+# The flattens' methods (`FlattenLine`, `EntryFlatten`): each adoption, the current inner
+# written as a hold is; and per `rebuild` handing back a dynamic, what its current
+# generation's result moving marks: the readers of every `@Flatten` over it, as for a write
+# of the inner (a flatten whose inner is another generation reads its value again,
+# unchanged).
 FlattenMethods: fn Sinks -> [MethDef]
 fn FlattenMethods sk:
     let wx = sk.wx
-    # a row's entry flattened: the inner's move, and the adoption of another entry
+    # a row's entry flattened (`for k, $v <- $(k ==> $v)`, ruling FV): the inner's move; the
+    # `for`'s builder telling the row that the dynamic under its kept key was replaced,
+    # which queues the adoption for the start of the next tick, owed (rulings VL, TK); and
+    # the adoption itself
     let entries = Fold (Filter wx.flattens, \|fl| fl.generation == ""), [[]], \|acc, fl|
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor "Some", [[(XMethod (XSelf), "entry", [[XCx]])]]), XCx]])
         let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow", [[(XRef (XField (XMethod (XSelf), "entry", [[XCx]]), "updates")), (XRef (XClone XSelf)), (XPath "{wx.node}::{fl.name}_moved")]])
-        let moved = MethDef(name="{fl.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{fl.name}_inner"), tail=(XUnit), doc="`@Flatten`'s inner moved: what reads the flatten reads it again.")
-        let adopt = MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set, followed]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`@Flatten` adopts the row's entry of the tick before, among this tick's first firings: from here on it reads that inner (Semantics ch. 7).")
-        Append acc, [[moved, adopt]]
+        let moved = MethDef(name="{fl.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{fl.name}_inner"), tail=(XUnit), doc="`{fl.name}`'s inner moved: what reads it reads it again.")
+        let replaced = MethDef(name="{fl.name}_replaced", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Adoption fl), tail=(XUnit), doc="The `for`'s builder found another dynamic than `{fl.name}`'s inner under this row's key: the adoption is queued for the first firings of the next tick, which is owed (Semantics ch. 4).")
+        let adopt = MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set, followed]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`{fl.name}` adopts the dynamic under its row's key as the tick before left it, among this tick's first firings: from here on it reads that inner (Semantics ch. 4).")
+        Append acc, [[moved, replaced, adopt]]
     let adopts0 = Each (Filter wx.flattens, \|fl| fl.generation != ""), \|fl|
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor "Some", [[(XMethod (XSelf), fl.outer, [[XCx]])]]), XCx]])
         MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`@Flatten` adopts the inner its `rebuild`'s dynamic held after the tick before, among this tick's first firings: from here on it reads that inner (Semantics ch. 7).")
     let adopts = Append adopts0, entries
+    # a `rebuild`'s current generation's result moved: the readers of every `@Flatten` over
+    # it in this node, and the update event of the dynamic the block keeps for it, which a
+    # reader outside the node follows (a `for` gathering `$$r`s into `$(k ==> $r)`, whose
+    # rows' `$v` follow their inners: `sem-ch04-for-replaced-inner`)
     let dynGens = Filter wx.gens, \|gd| (Len (Filter wx.snaps, \|sn| sn.builder == gd.name)) > 0
     let moved = Each dynGens, \|gd|
         let marks = Fold (Filter wx.flattens, \|fl| fl.generation == gd.name), [[]], \|acc, fl| Append acc, (HoldWritten sk, "{fl.name}_inner")
-        MethDef(name="{gd.name}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=marks, tail=(XUnit), doc="The current generation's result moved: what reads a `@Flatten` over it reads it again.")
+        let fired = DoIfLet (PaCtor "Some", [[PaBind "d"]]), (XMethod (XMethod (XField XSelf, "{gd.name}_result_live"), "borrow", [[]]), "as_ref", [[]]), [[(DoExpr (XMethod (XMethod (XMethod (XField (XVar "d"), "updates"), "fire", [[XUnit, XCx]]), "ok", [[]]))]], [[]]
+        MethDef(name="{gd.name}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Push marks, fired), tail=(XUnit), doc="The current generation's result moved: what reads a `@Flatten` over it reads it again, and the dynamic kept for it fires its update event for whoever follows it outside this node.")
     Append adopts, moved
 
 # A node of the hosted child wrote behind the host's document (a row's own hold): what a
@@ -600,7 +606,7 @@ fn ResultKept node = DoAssign (XDeref (XMethod (XField node, "result_last"), "bo
 
 let resultTell = DoExpr (XMethod XCx, "result", [[(XCtor "Outcome::Value", [[XVar "r"]])]])
 
-# `@Flatten`'s adoption queued for the first firings of the next tick.
+# A flatten's adoption queued for the first firings of the next tick.
 Adoption: fn FlatDef -> [Do]
 fn Adoption fl:
     let adopt = XLater (XMethod (XVar "node"), "{fl.name}_adopt", [[XCx]])

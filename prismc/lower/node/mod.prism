@@ -265,15 +265,18 @@ type Wx = record:
     # bound in the build environment under `{name}#init`: what a supplier's dynamic answer
     # reads while the owner's node is being made (round 3 DY).
     inited: [Text]
-    # The node's `@Flatten`s over its `rebuild`s' dynamics (Semantics ch. 7).
+    # The node's flattens: `@Flatten` over a `rebuild`'s dynamic, and a `for` row's `$v`
+    # over a map of dynamics (Semantics ch. 4, ch. 7).
     flattens: [FlatDef]
 
-# `$a <- @Flatten $$x` over a `rebuild`'s dynamic `$$x` (Semantics ch. 7, "`rebuild`,
-# `@Switch` and `@Flatten` across ticks"): `{name}_inner` is the current inner, a hold;
-# the getter `name` samples it. `outer` is the `rebuild`'s structural dynamic, whose
-# publication queues the adoption (`{name}_adopt`) for the first firings of the next tick,
-# and `generation` the `rebuild`, whose current generation tells the block when its result
-# moved (`{generation}_result_moved`).
+# A flatten: `$a <- @Flatten $$x` over a `rebuild`'s dynamic `$$x` (Semantics ch. 7,
+# "`rebuild`, `@Switch` and `@Flatten` across ticks"), or a `for` row's `$v` over
+# `$(k ==> $v)` (ch. 4, ruling FV; `EntryFlatten`). `{name}_inner` is the current inner, a
+# hold; the getter `name` samples it. For a `rebuild`'s, `outer` is its structural dynamic,
+# whose publication queues the adoption (`{name}_adopt`) for the first firings of the next
+# tick, and `generation` the `rebuild`, whose current generation tells the block when its
+# result moved (`{generation}_result_moved`). For a row's, `outer` is `entry` and
+# `generation` empty: the `for`'s builder queues the adoption (`{name}_replaced`).
 type FlatDef = record:
     name: Text
     outer: Text

@@ -130,9 +130,10 @@ fn NodeMake name, signature, lets, args, rest = inline_text <cpp>
 }
 </cpp>
 
-# A `for`'s builder (claude/backend.md, "Dynamic structure").
-ForBuildTemplate: fn Text, Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
-fn ForBuildTemplate owner, name, at, keyTy, valueTy, rowMake, source, parent, passed, moved = inline_text <cpp>
+# A `for`'s builder (claude/backend.md, "Dynamic structure"; the Rust template says what
+# each piece does, the kept-key check of a map of dynamics included).
+ForBuildTemplate: fn Text, Text, Text, Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn ForBuildTemplate owner, name, at, keyTy, valueTy, rowMake, source, parent, passed, moved, from, replaced = inline_text <cpp>
 /// The rows of the `for` at `{{at}}`: rows whose key left are torn down, new keys are
 /// built under it at `[k]` from the values after the tick; kept rows keep reading their
 /// entry out of the source. Nothing to do when the source is the map last built from (one
@@ -140,7 +141,7 @@ fn ForBuildTemplate owner, name, at, keyTy, valueTy, rowMake, source, parent, pa
 Done {{owner}}::{{name}}_build(Cx& cx) {
     Map<{{keyTy}}, {{valueTy}}> items = {{source}}(cx);
     if (this->{{name}}_from.same(items)) return {};
-    this->{{name}}_from = items;
+    {{from}}
     auto old = deref(this->{{name}});
     // the kept rows stay where they are: only the keys that left or came are touched
     auto next = old;
@@ -149,7 +150,7 @@ Done {{owner}}::{{name}}_build(Cx& cx) {
             row->leave_row(cx);
             cx.leave_later(row);
             next.remove(k);
-        }
+        }{{replaced}}
     }
     for (auto&& [k, v] : items) {
         if (!old.contains(k)) next.insert(k, TRY({{rowMake}}({{at}}.child(Segment::key(prism_rtl::to_pod(k))), k, v, {{parent}}{{passed}}, cx)));

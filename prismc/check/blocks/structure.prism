@@ -111,10 +111,13 @@ fn LoopIndices env:
         nil: e2
 
 # The binders show the mark of what they stand for: a row's key plain, its value live over
-# a dynamic collection (`$_`, `$count`); with none, `key` and `_` (or `$_`).
+# a dynamic collection (`$_`, `$count`); with none, `key` and `_` (or `$_`). Over a map of
+# dynamics, `$(k ==> $v)`, the value binder is the value under the row's key, `$v`, which
+# follows a replaced dynamic (Semantics ch. 4, ruling FV): a `$$d` binder is refused.
 BindForBinders: unbounded fn Env, St, ?ForBinders, Ty, Ty, Bool -> ((Env, St))
 fn BindForBinders env, st, ?binders, k, v, live:
-    let vt = if live: TySig "$", v else: v
+    let inner = live and (HeadSigil st, v) == "$"
+    let vt = if live and not inner: TySig "$", v else: v
     match ?binders:
         nil:
             let e1 = WithTopic env, (if live: "$_" else: "_"), vt
@@ -122,10 +125,26 @@ fn BindForBinders env, st, ?binders, k, v, live:
         ? bs: match bs.?second:
             ? second:
                 let ((e1, st1)) = BindPattern (Unpending env), st, bs.first, k, False
-                BindPattern e1, st1, second, vt, False
+                let ((st2, vt2)) = ForInnerMark st1, inner, second, v, vt
+                BindPattern e1, st2, second, vt2, False
             nil:
                 let e1 = WithTopic env, "key", k
-                BindPattern (Unpending e1), st, bs.first, vt, False
+                let ((st2, vt2)) = ForInnerMark st, inner, bs.first, v, vt
+                BindPattern (Unpending e1), st2, bs.first, vt2, False
+
+# A `for` over a map of dynamics whose value binder shows `$$`: the binder is the value
+# under the key, one layer, so it is `$v` (ruling FV; the old form flattened `$$d` on the
+# next line). Reported once here, and the binder then binds as `$$` so the line reports
+# nothing else.
+ForInnerMark: fn St, Bool, Pattern, Ty, Ty -> ((St, Ty))
+fn ForInnerMark st, inner, p, v, vt = match p.kind:
+    PName n:
+        if inner and n.sigils == "$$":
+            let name = SNameKey n
+            let bare = DropPrefix name, "$$"
+            (((ErrFix st, "mark-stack", n.span, "`{name}` shows `$$`, a dynamic of a dynamic; a `for` over `$(k ==> $v)` binds the value under the row's key, which follows a replaced dynamic (Semantics ch. 4)", "write `${bare}`, and read it where `@Flatten {name}` was"), (TySig "$", v)))
+        else: ((st, vt))
+    otherwise: ((st, vt))
 
 Unpending: fn Env -> Env
 fn Unpending env = update env:

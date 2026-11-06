@@ -93,10 +93,20 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let passed = Append (HostedPassed wx), (Each locals, \|l| l.passed)
     let rowParams = Append (Append [[(("key", kt)), (("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), (Each locals, \|l| ((l.field, l.ty)))
     # `$_`: in the build the entry after the tick, which the builder passes; in the methods the
-    # projection, marked by the block's writes behind the source.
-    let entryM = BnDyn (XMethod (XSelf), "entry", [[XCx]]), [[ParentRead srcGetter]], vt
-    let ((rbe, rme)) = ForEnvs benvL, menvL, ?binders, keyB, keyM, (BnLocal (XVar "value"), Owned, vt), entryM, vt
-    let rowWx = BlockInto rowWx0p, rbe, rme, body
+    # projection, marked by the block's writes behind the source. Over a map of dynamics,
+    # `$(k ==> $v)` (ruling FV), the binder is the value under the row's key: the row's
+    # entry flattened (`EntryFlatten`), the same in both, which follows a replaced dynamic.
+    let ((rowWx0f, valB, valM, inner)) = match vt:
+        OutDyn t:
+            let ((fname, rowWxN)) = FreshName rowWx0p, (Snake (ForValueName ?binders))
+            let ((rowWxF, fres)) = EntryFlatten rowWxN, t, (? (BnHold fname, t))
+            let fb = BundleBn fres
+            ((rowWxF, fb, fb, t))
+        otherwise:
+            let entryM = BnDyn (XMethod (XSelf), "entry", [[XCx]]), [[ParentRead srcGetter]], vt
+            ((rowWx0p, (BnLocal (XVar "value"), Owned, vt), entryM, vt))
+    let ((rbe, rme)) = ForEnvs benvL, menvL, ?binders, keyB, keyM, valB, valM, inner
+    let rowWx = BlockInto rowWx0f, rbe, rme, body
     let wx3 = update wx2:
         &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=name, reads=(RowPlaceReads rowWx), wrote=(RowHears rowWx), kind=ForRow)
     let full = TypeAt lx, e.span
@@ -161,18 +171,35 @@ AddBuilder: fn Wx, Text, Pos, OutTy, OutTy, Text, Bool, [Read], PendingRow, [Ex]
 fn AddBuilder wx, name, pos, kt, vt, rowName, keyed, reads, waiting, passed:
     let wx0 = AddFieldLast wx, name, (OutCell (OutMap kt, (OutRc (OutNamed rowName, [[]])))), "the rows of the `for` at place {PlaceText pos}", (XCall "RefCell::new", [[(XCall "Map::new", [[]])]])
     let wx1 = AddFieldLast wx0, "{name}_from", (OutCell (OutMap kt, vt)), "the source the rows of the `for` at place {PlaceText pos} were last built from", (XCall "RefCell::new", [[(XCall "Map::new", [[]])]])
+    # over a map of dynamics, the rows' flattens of their entries, each told when the
+    # dynamic under its kept key was replaced (`{name}_replaced`, ruling FV)
+    let replaced = Each (Filter waiting.wx.flattens, \|fl| fl.generation == ""), \|fl| "{fl.name}_replaced"
     update wx1:
-        &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, source="{name}_source", parent=(XWeak XSelf), passed=passed, moved=(Or (?HostedRows wx), ""))
+        &_.builders <= Push &_.builders, ForDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=kt, valueTy=vt, rowNode=rowName, keyed=keyed, source="{name}_source", parent=(XWeak XSelf), passed=passed, moved=(Or (?HostedRows wx), ""), replaced=replaced)
         &_.buildHolds <= UnionReads &_.buildHolds, reads
         &_.pending <= Push &_.pending, waiting
 
+# The name a `for` over a map of dynamics binds its value to (`for k, $v <- $each:`), which
+# names the row's flatten; `flatten` for a `for` with no binder for it.
+ForValueName: fn ?ForBinders -> Text
+fn ForValueName ?binders = match ?binders:
+    ? fb: match fb.?second:
+        ? p: PatternNameOr p, "flatten"
+        nil: PatternNameOr fb.first, "flatten"
+    nil: "flatten"
+
+PatternNameOr: fn Pattern, Text -> Text
+fn PatternNameOr p, other = match p.kind:
+    PName n: SNameKey n
+    PGroup q: PatternNameOr q, other
+    otherwise: other
+
 # What a row's places read of its block, as the block's own reads: the block's writes of
-# these mark the rows (`RowMarks`).
+# these mark the rows (`RowMarks`). A row's flatten of its entry is not among them: the
+# `for`'s builder, walking the keys after a write of the source, tells the row whose
+# dynamic was replaced (`{name}_replaced`, `ForBuild`), so no row is woken to ask.
 RowPlaceReads: fn Wx -> [Read]
-fn RowPlaceReads rowWx:
-    # a `@Flatten` of the row's entry checks its entry in the row's patch pass
-    let flats = Fold (Filter rowWx.flattens, \|fl| fl.generation == ""), [[]], \|acc, fl| UnionReads acc, (BlockReads (ReadsClosed rowWx.dynReads, [[OwnRead fl.outer]]))
-    Fold rowWx.places, flats, \|acc, pl| UnionReads acc, (BlockReads (ReadsClosed rowWx.dynReads, pl.reads))
+fn RowPlaceReads rowWx = Fold rowWx.places, [[]], \|acc, pl| UnionReads acc, (BlockReads (ReadsClosed rowWx.dynReads, pl.reads))
 
 # A row of a hosted child's `for` or `rebuild` (or of a hosted row) takes the host whose
 # document its places are entries of, `enclosing`, as a parameter of its `build` and keeps
