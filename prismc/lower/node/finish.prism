@@ -296,7 +296,10 @@ fn FinishNode wx0, qk, params, isRow:
         ? m: [[DocumentMoved m]]
         nil: [[]]
     let rowMethods = if isRow: RowMethods wx else: [[]]
-    let heard = Each (RowHears wx), \|m| MethDef(name="parent_wrote_{m}", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append (MovedBy sinks, (ParentRead m)), (Fold wx.rowMarks, [[]], \|acc, rm| Append acc, (RowWritten wx, rm, (ParentRead m)))), tail=(XUnit), doc="The block wrote behind its `{m}`, which this row reads through the parent: the `!Updated` nodes over it are told and the wake asked at their heights; the rows of this row's own `for`s that read it are marked.")
+    # a row's own builders over what the block wrote are listed for the build, as a hold's
+    # write lists them (`HoldWritten`), once
+    let HeardBuild = \|m| if (HasRead sinks.builds, (ParentRead m)) and not (ListsBuild sinks, (ParentRead m)): [[DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]])]] else: [[]]
+    let heard = Each (RowHears wx), \|m| MethDef(name="parent_wrote_{m}", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append (Append (MovedBy sinks, (ParentRead m)), (HeardBuild m)), (Fold wx.rowMarks, [[]], \|acc, rm| Append acc, (RowWritten wx, rm, (ParentRead m)))), tail=(XUnit), doc="The block wrote behind its `{m}`, which this row reads through the parent: the `!Updated` nodes over it are told and the wake asked at their heights; the row's own builders over it are listed for the build; the rows of this row's own `for`s that read it are marked.")
     let top = Fold wx.gns, 0, \|hi, g| Max hi, g.height
     let wakesField = if many: [[(("wakes", OutWakes, "the heights asked for this tick, lowest first"))]] else: [[]]
     let wakesInit = if many: [[(("wakes", (XCall "Wakes::default", [[]])))]] else: [[]]
