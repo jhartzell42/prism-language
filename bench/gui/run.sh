@@ -16,12 +16,13 @@
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu
+self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")  # absolute, for the run under xvfb-run below
 cd "$(dirname "$0")/../.."
 . bench/lib.sh
 if [ "$bench_os" != Darwin ] && [ -z "${DISPLAY:-}" ]; then
     command -v xvfb-run > /dev/null || bench_die "no DISPLAY and no xvfb-run to make one (apt install xvfb)"
     echo "bench: no DISPLAY; running under xvfb-run -a" >&2
-    PRISM_BENCH_XVFB=1 exec xvfb-run -a "$0" "$@"
+    PRISM_BENCH_XVFB=1 exec xvfb-run -a "$self" "$@"
 fi
 timecmd=$(time_cmd)
 runs=${RUNS:-10}
