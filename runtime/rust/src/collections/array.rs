@@ -27,6 +27,13 @@
 //! indexing in place log, copying one chunk at most; iteration linear. Storage: at most
 //! `2n + 1` slots while the array is small, `n + 64` beyond, plus a node per chunk.
 //!
+//! `==` answers at once for a node both arrays share at the same index, when every element
+//! under it is known to equal itself: a join remembers that once it has been asked (the
+//! map's `SelfEqual`), a chunk is compared with itself (64 elements at most), and an
+//! update forgets it on the path it copies or changes. A shared node holding a value equal
+//! to nothing (a `Float` NaN, IEEE equality: Type System ch. 2) stays unequal, as the
+//! structural comparison has it, so sharing stays invisible (Semantics ch. 11).
+//!
 //! No `unsafe`. A panic partway through an update (an element's `clone` panicking) leaves
 //! a valid array, possibly without the elements of the node being rebuilt; programs do
 //! not catch panics (a panic ends the program), so nothing reads it.
@@ -38,12 +45,14 @@ use std::iter::FromIterator;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 
+use super::map::SelfEqual;
+
 const CHUNK: usize = 64;
 
 #[derive(Clone)]
 enum Node<T> {
     Leaf(Vec<T>),
-    Join { left: Rc<Node<T>>, right: Rc<Node<T>>, len: usize, height: u8 },
+    Join { left: Rc<Node<T>>, right: Rc<Node<T>>, len: usize, height: u8, same: SelfEqual },
 }
 
 impl<T> Node<T> {
@@ -61,11 +70,22 @@ impl<T> Node<T> {
     }
 }
 
+/// The node at `n`, this array's own (copied first when another array shares it), to be
+/// changed: every change to a tree node goes through this, which forgets what a join knew
+/// of itself.
+fn own<T: Clone>(n: &mut Rc<Node<T>>) -> &mut Node<T> {
+    let n = Rc::make_mut(n);
+    if let Node::Join { same, .. } = n {
+        same.forget();
+    }
+    n
+}
+
 /// Two siblings whose heights differ by one at most, under a node.
 fn join<T>(left: Rc<Node<T>>, right: Rc<Node<T>>) -> Rc<Node<T>> {
     let len = left.len() + right.len();
     let height = left.height().max(right.height()) + 1;
-    Rc::new(Node::Join { left, right, len, height })
+    Rc::new(Node::Join { left, right, len, height, same: SelfEqual::new() })
 }
 
 fn children<T>(n: &Rc<Node<T>>) -> (Rc<Node<T>>, Rc<Node<T>>) {
@@ -116,7 +136,7 @@ fn concat<T>(l: Rc<Node<T>>, r: Rc<Node<T>>) -> Rc<Node<T>> {
 /// `extra` at the end of the tree's last chunk, which has room for it; the path to it
 /// this tree's own.
 fn extend_last<T: Clone>(n: &mut Rc<Node<T>>, extra: Vec<T>) {
-    match Rc::make_mut(n) {
+    match own(n) {
         Node::Leaf(v) => {
             v.reserve_exact(extra.len());
             v.extend(extra);
@@ -130,7 +150,7 @@ fn extend_last<T: Clone>(n: &mut Rc<Node<T>>, extra: Vec<T>) {
 
 /// `extra` at the start of the tree's first chunk, which has room for it.
 fn extend_first<T: Clone>(n: &mut Rc<Node<T>>, mut extra: Vec<T>) {
-    match Rc::make_mut(n) {
+    match own(n) {
         Node::Leaf(v) => {
             extra.reserve_exact(v.len());
             extra.append(v);
@@ -231,7 +251,7 @@ fn drop_tree<T: Clone>(n: &Rc<Node<T>>, k: usize) -> Rc<Node<T>> {
 }
 
 fn get_mut<T: Clone>(n: &mut Rc<Node<T>>, i: usize) -> &mut T {
-    match Rc::make_mut(n) {
+    match own(n) {
         Node::Leaf(v) => &mut v[i],
         Node::Join { left, right, .. } => {
             let ll = left.len();
@@ -473,7 +493,7 @@ impl<T: Clone> Array<T> {
     /// (the shared ones copied, linear at worst), then each chunk's slice.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> + '_ {
         fn chunks<'a, T: Clone>(n: &'a mut Rc<Node<T>>, out: &mut Vec<&'a mut [T]>) {
-            match Rc::make_mut(n) {
+            match own(n) {
                 Node::Leaf(v) => out.push(&mut v[..]),
                 Node::Join { left, right, .. } => {
                     chunks(left, out);
@@ -644,9 +664,104 @@ impl<T: Clone> IntoIterator for Array<T> {
     }
 }
 
+/// Whether every element under `n` equals itself: remembered in a join, computed for a
+/// chunk (64 elements at most).
+fn self_equal<T: PartialEq>(n: &Node<T>) -> bool {
+    match n {
+        Node::Leaf(v) => v.iter().all(|x| x == x),
+        Node::Join { left, right, same, .. } => same.get(|| self_equal(left) && self_equal(right)),
+    }
+}
+
+/// What is left to compare of one side, in order from the top of the stack: a whole
+/// subtree, or the rest of a chunk (or of the tail).
+enum Pending<'a, T> {
+    Tree(&'a Node<T>),
+    Run(&'a [T]),
+}
+
+/// The subtree `n` on top of `stack` replaced by its children, or a chunk by its run.
+fn open<'a, T>(stack: &mut Vec<Pending<'a, T>>, n: &'a Node<T>) {
+    stack.pop();
+    match n {
+        Node::Leaf(v) => stack.push(Pending::Run(v)),
+        Node::Join { left, right, .. } => {
+            stack.push(Pending::Tree(right));
+            stack.push(Pending::Tree(left));
+        }
+    }
+}
+
+/// The stack of what is left of `a`: its tail under its tree.
+fn pending<T>(a: &Array<T>) -> Vec<Pending<'_, T>> {
+    let mut s = Vec::new();
+    if let Some(t) = a.tail.as_deref().filter(|t| !t.is_empty()) {
+        s.push(Pending::Run(&t[..]));
+    }
+    if let Some(n) = a.tree.as_deref() {
+        s.push(Pending::Tree(n));
+    }
+    s
+}
+
 impl<T: PartialEq> PartialEq for Array<T> {
+    /// The elements compared in order, as `iter().eq()` would, except that a node both
+    /// arrays have at the same index is compared with itself, which [`self_equal`] answers
+    /// from the node once it is known. Equal lengths make the indices line up, so a
+    /// subtree is opened only while the other side's next item is not the same node: the
+    /// longer of two, or a subtree against a run; two runs compare the elements they
+    /// overlap by. Runs are never shared nodes, so the tail (64 at most) is compared
+    /// element by element.
     fn eq(&self, other: &Self) -> bool {
-        self.len == other.len && self.iter().eq(other.iter())
+        if self.len != other.len {
+            return false;
+        }
+        // An array of a chunk or less is walked as it is.
+        if self.len <= CHUNK {
+            return self.iter().eq(other.iter());
+        }
+        let (mut sa, mut sb) = (pending(self), pending(other));
+        loop {
+            let (Some(a), Some(b)) = (sa.last_mut(), sb.last_mut()) else { return sa.is_empty() && sb.is_empty() };
+            match (a, b) {
+                (Pending::Tree(x), Pending::Tree(y)) => {
+                    let (x, y) = (*x, *y);
+                    if std::ptr::eq(x, y) {
+                        if !self_equal(x) {
+                            return false;
+                        }
+                        sa.pop();
+                        sb.pop();
+                    } else if x.len() >= y.len() {
+                        open(&mut sa, x);
+                    } else {
+                        open(&mut sb, y);
+                    }
+                }
+                (Pending::Run(p), Pending::Run(q)) => {
+                    let m = p.len().min(q.len());
+                    if p[..m] != q[..m] {
+                        return false;
+                    }
+                    (*p, *q) = (&p[m..], &q[m..]);
+                    let (pe, qe) = (p.is_empty(), q.is_empty());
+                    if pe {
+                        sa.pop();
+                    }
+                    if qe {
+                        sb.pop();
+                    }
+                }
+                (Pending::Tree(x), Pending::Run(_)) => {
+                    let x = *x;
+                    open(&mut sa, x);
+                }
+                (Pending::Run(_), Pending::Tree(y)) => {
+                    let y = *y;
+                    open(&mut sb, y);
+                }
+            }
+        }
     }
 }
 

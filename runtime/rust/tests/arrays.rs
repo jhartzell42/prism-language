@@ -313,3 +313,83 @@ fn arrays_cut_and_joined_in_many_ways_hold_their_elements_in_order() {
     let owned: Vec<usize> = whole.clone().into_iter().collect();
     assert!(owned.into_iter().eq(0..next));
 }
+
+// ---- Equality on shared structure, by counting the elements compared ----------------------
+
+thread_local! {
+    static COMPARED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// An element that counts its comparisons; `Cmp(NAN)` is equal to nothing, itself
+/// included, as a `Float` NaN is under IEEE equality (Type System ch. 2).
+#[derive(Clone, Debug)]
+struct Cmp(usize);
+
+const NAN: usize = usize::MAX;
+
+impl PartialEq for Cmp {
+    fn eq(&self, other: &Cmp) -> bool {
+        COMPARED.with(|c| c.set(c.get() + 1));
+        self.0 == other.0 && self.0 != NAN
+    }
+}
+
+fn compared<R>(f: impl FnOnce() -> R) -> (R, usize) {
+    let before = COMPARED.with(|c| c.get());
+    let r = f();
+    (r, COMPARED.with(|c| c.get()) - before)
+}
+
+fn cmps(n: usize) -> Array<Cmp> {
+    let mut a = Array::new();
+    for i in 0..n {
+        a.push_back(Cmp(i));
+    }
+    a
+}
+
+#[test]
+fn an_array_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_elements() {
+    for n in [0, 1, 64, 65, 300, BIG] {
+        let a = cmps(n);
+        let b = a.clone();
+        // the first comparison may look at every element once; after it, shared nodes
+        // answer at once
+        assert!(a == b);
+        let (eq, k) = compared(|| a == b);
+        assert!(eq && k <= BOUNDED, "an array of {n} compared with its clone compared {k} elements");
+        if n > 0 {
+            let c = a.update(n / 2, Cmp(n / 2));
+            let (eq, k) = compared(|| a == c);
+            assert!(eq && k <= BOUNDED, "an array of {n} compared with an equal update compared {k} elements");
+            let d = a.update(n / 2, Cmp(n + 1));
+            let (eq, k) = compared(|| a == d);
+            assert!(!eq && k <= BOUNDED, "an array of {n} compared with a changed update compared {k} elements");
+        }
+    }
+}
+
+#[test]
+fn a_shared_array_holding_a_nan_is_not_equal_to_itself() {
+    for n in [1, 64, 65, 300, BIG] {
+        let a = cmps(n).update(n - 1, Cmp(NAN));
+        let b = a.clone();
+        assert!(a != b && a != b, "an array of {n} with a NaN at its end");
+        let c = cmps(n).update(0, Cmp(NAN));
+        let tail = c.skip(0);
+        assert!(c != tail && c != c.clone(), "an array of {n} with a NaN at its start");
+    }
+    let floats: Array<f64> = Array::from(vec![1.0, f64::NAN, 3.0]);
+    assert!(floats != floats.clone());
+}
+
+#[test]
+fn arrays_of_arrays_compare_shared_inner_arrays_at_once() {
+    let inner = cmps(BIG);
+    let outer = |k: usize| -> Array<Array<Cmp>> { (0..10).map(|_| inner.clone()).chain([cmps(k)]).collect() };
+    let (a, b) = (outer(3), outer(3));
+    assert!(a == b);
+    let (eq, k) = compared(|| a == b);
+    // each inner array's tree at once; its tail, under 64, element by element
+    assert!(eq && k <= 10 * 64 + BOUNDED, "two arrays of ten shared inner arrays compared {k} elements");
+}

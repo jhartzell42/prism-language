@@ -11,6 +11,12 @@
 // and `concat` logarithmic, `push_back` amortised constant, any update copying one path
 // and one chunk at most). A `Text` is a view of a shared UTF-8 buffer (a cursor's
 // `before` and `after` are constant) and copies on concatenation.
+//
+// `==` on a map or an array answers at once for a node both sides share at the same place,
+// when every value under it is known to equal itself: a node remembers that once asked
+// (`same`), and an update forgets it on what it changes. A shared node holding a value
+// equal to nothing (a `Float` NaN, IEEE equality: Type System ch. 2) stays unequal, as the
+// structural comparison has it, so sharing stays invisible (Semantics ch. 11).
 
 #pragma once
 
@@ -147,6 +153,11 @@ private:
 
 // ---- Map --------------------------------------------------------------------------------
 
+namespace detail {
+/// What a map's or an array's node knows of whether every value under it equals itself.
+inline constexpr std::uint8_t UNKNOWN = 0, YES = 1, NO = 2;
+}  // namespace detail
+
 /// `k ==> v`: a persistent ordered map, an AVL tree whose updates copy the path to the
 /// key they change and share the rest.
 template <class K, class V>
@@ -160,8 +171,68 @@ private:
         Rc<const Node> left, right;
         int height;
         std::size_t count;
+        /// Whether every entry under this node equals itself, once asked (`self_equal`):
+        /// `detail::UNKNOWN`, `YES` or `NO`. A node never changes once made (an update
+        /// makes new ones), so what it knows holds; mutable only to remember it.
+        mutable std::uint8_t same = detail::UNKNOWN;
     };
     using Ptr = Rc<const Node>;
+    static bool self_equal(const Node* n) {
+        if (n->same == detail::UNKNOWN)
+            n->same = (!n->left || self_equal(n->left.get())) && (!n->right || self_equal(n->right.get())) && n->kv == n->kv
+                          ? detail::YES
+                          : detail::NO;
+        return n->same == detail::YES;
+    }
+    /// The two trees' entries compared in key order, as `std::equal` over them would,
+    /// except that a subtree both have at the same place in the order is one node: its
+    /// entries compared with themselves, which `self_equal` answers from the nodes once
+    /// known. Equal counts line the orders up, so a subtree is opened only while the other
+    /// side's next item is not the same node: the larger of two, or a subtree against an
+    /// entry. Each item is a node, whole (`entry` false) or its own entry alone (its right
+    /// subtree below it on the stack).
+    static bool equal_trees(const Node* a, const Node* b) {
+        struct Item {
+            const Node* n;
+            bool entry;
+        };
+        // an in-order walk holds at most two items per level, and one more
+        std::size_t room = 2 * std::size_t(std::max(a ? a->height : 0, b ? b->height : 0)) + 2;
+        std::vector<Item> sa, sb;
+        sa.reserve(room);
+        sb.reserve(room);
+        if (a) sa.push_back({a, false});
+        if (b) sb.push_back({b, false});
+        auto open = [](std::vector<Item>& s, const Node* n) {
+            s.pop_back();
+            if (n->right) s.push_back({n->right.get(), false});
+            s.push_back({n, true});
+            if (n->left) s.push_back({n->left.get(), false});
+        };
+        while (!sa.empty() && !sb.empty()) {
+            Item x = sa.back(), y = sb.back();
+            if (!x.entry && !y.entry) {
+                if (x.n == y.n) {
+                    if (!self_equal(x.n)) return false;
+                    sa.pop_back();
+                    sb.pop_back();
+                } else if (x.n->count >= y.n->count) {
+                    open(sa, x.n);
+                } else {
+                    open(sb, y.n);
+                }
+            } else if (x.entry && y.entry) {
+                if (!(x.n->kv == y.n->kv)) return false;
+                sa.pop_back();
+                sb.pop_back();
+            } else if (!x.entry) {
+                open(sa, x.n);
+            } else {
+                open(sb, y.n);
+            }
+        }
+        return sa.empty() && sb.empty();
+    }
     static int height(const Ptr& n) { return n ? n->height : 0; }
     static std::size_t count(const Ptr& n) { return n ? n->count : 0; }
     static Ptr make(value_type kv, Ptr l, Ptr r) {
@@ -317,7 +388,9 @@ public:
     const_iterator end() const { return const_iterator(); }
 
     friend bool operator==(const Map& a, const Map& b) {
-        return a.root_ == b.root_ || (a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin()));
+        if (a.size() != b.size()) return false;
+        if (a.root_ && a.root_ == b.root_) return self_equal(a.root_.get());
+        return equal_trees(a.root_.get(), b.root_.get());
     }
     friend auto operator<=>(const Map& a, const Map& b) {
         return std::lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end());
@@ -367,9 +440,79 @@ private:
         Rc<Node> left, right;
         std::size_t len = 0;
         unsigned char height = 0;
+        /// Whether every element under this node equals itself, once asked (`self_equal`):
+        /// `detail::UNKNOWN`, `YES` or `NO`. Every change to a node goes through `own`, or
+        /// the in-place push onto a tail this array alone holds, and each forgets it.
+        mutable std::uint8_t same = detail::UNKNOWN;
         std::size_t size() const { return left ? len : elems.size(); }
     };
     using Ptr = Rc<Node>;
+
+    static bool self_equal(const Node* n) {
+        if (n->same == detail::UNKNOWN) {
+            bool r = n->left ? self_equal(n->left.get()) && self_equal(n->right.get())
+                             : std::all_of(n->elems.begin(), n->elems.end(), [](const Elem& e) { return e.v == e.v; });
+            n->same = r ? detail::YES : detail::NO;
+        }
+        return n->same == detail::YES;
+    }
+    /// The two arrays' elements compared in order, as `std::equal` would, except that a
+    /// node both have at the same index is compared with itself, which `self_equal`
+    /// answers from the node once known. Equal lengths line the indices up, so a node is
+    /// opened only while the other side's next item is not the same node: the longer of
+    /// two, or a node against a run; two runs compare the elements they overlap by. Each
+    /// item is a node (`run` null) or the rest of a chunk.
+    static bool equal_arrays(const Array& a, const Array& b) {
+        struct Item {
+            const Node* n;
+            const Elem* run;
+            std::size_t len;
+        };
+        auto start = [](const Array& x) {
+            std::vector<Item> s;
+            if (x.tail_ && !x.tail_->elems.empty()) s.push_back({x.tail_.get(), nullptr, x.tail_->elems.size()});
+            if (x.tree_) s.push_back({x.tree_.get(), nullptr, x.tree_->size()});
+            return s;
+        };
+        auto open = [](std::vector<Item>& s, const Node* n) {
+            s.pop_back();
+            if (n->left) {
+                s.push_back({n->right.get(), nullptr, n->right->size()});
+                s.push_back({n->left.get(), nullptr, n->left->size()});
+            } else {
+                s.push_back({nullptr, n->elems.data(), n->elems.size()});
+            }
+        };
+        std::vector<Item> sa = start(a), sb = start(b);
+        while (!sa.empty() && !sb.empty()) {
+            Item& x = sa.back();
+            Item& y = sb.back();
+            if (x.n && y.n) {
+                if (x.n == y.n) {
+                    if (!self_equal(x.n)) return false;
+                    sa.pop_back();
+                    sb.pop_back();
+                } else if (x.len >= y.len) {
+                    open(sa, x.n);
+                } else {
+                    open(sb, y.n);
+                }
+            } else if (!x.n && !y.n) {
+                std::size_t m = std::min(x.len, y.len);
+                for (std::size_t i = 0; i < m; ++i)
+                    if (!(x.run[i].v == y.run[i].v)) return false;
+                x.run += m, x.len -= m, y.run += m, y.len -= m;
+                bool xe = x.len == 0, ye = y.len == 0;
+                if (xe) sa.pop_back();
+                if (ye) sb.pop_back();
+            } else if (x.n) {
+                open(sa, x.n);
+            } else {
+                open(sb, y.n);
+            }
+        }
+        return sa.empty() && sb.empty();
+    }
 
     static Ptr chunk(std::vector<Elem>&& v) { return make_rc<Node>(Node{std::move(v), nullptr, nullptr, 0, 0}); }
     /// Two siblings whose heights differ by one at most, under a node.
@@ -411,6 +554,7 @@ private:
                 p = chunk(std::move(v));
             }
         }
+        p->same = detail::UNKNOWN;  // about to change: a copy knows nothing yet, nor does a node changed in place
         return *p;
     }
     static std::size_t last_size(const Node* n) {
@@ -635,6 +779,7 @@ public:
             v.emplace_back(std::move(x));
             tail_ = chunk(std::move(v));
         } else {
+            tail_->same = detail::UNKNOWN;
             std::vector<Elem>& v = tail_->elems;
             if (v.size() == v.capacity()) v.reserve(std::max(have + 1, grown(have)));
             v.emplace_back(std::move(x));
@@ -723,7 +868,10 @@ public:
     const_iterator end() const { return const_iterator(); }
 
     friend bool operator==(const Array& a, const Array& b) {
-        return a.len_ == b.len_ && ((a.tree_ == b.tree_ && a.tail_ == b.tail_) || std::equal(a.begin(), a.end(), b.begin()));
+        if (a.len_ != b.len_) return false;
+        // An array of a chunk or less is walked as it is.
+        if (a.len_ <= CHUNK) return std::equal(a.begin(), a.end(), b.begin(), [](const T& x, const T& y) { return x == y; });
+        return equal_arrays(a, b);
     }
     friend auto operator<=>(const Array& a, const Array& b) {
         return std::lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end());

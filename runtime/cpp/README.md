@@ -184,6 +184,15 @@ the size of the collection and `m` of the second, against this library
   `Map` of pairs: "`n` log `n`, the later pair winning", kept. `Union`: "the left
   winning; `m` log `(n+m)`", kept: `Map::united` puts the smaller map's entries into the
   larger, whichever side it is (`tests/test_maps.cpp` counts the key copies).
+- **`==` on a `Map` or an `Array`** (Appendix B states no cost): linear at worst, and a
+  node both sides share at the same place answers at once once its values are known to
+  equal themselves, which the node remembers (`same`, forgotten by any change through
+  `own`); so a value compared with a clone, or with an update of itself, costs about the
+  path the update copied after the first comparison. A shared node holding a NaN (`Float`
+  `==` is IEEE equality, Type System ch. 2) stays unequal, as the element-by-element
+  comparison has it: pointer equality is never the answer, so sharing stays invisible
+  (Semantics ch. 11). `tests/test_maps.cpp` and `tests/test_arrays.cpp` count the values
+  compared.
 - **The tests** (`tests/test_arrays.cpp`) check the behaviour at the sizes around a
   chunk's edges, the storage (`capacity`), and the costs, by counting the copies and moves
   of an element type that counts them.

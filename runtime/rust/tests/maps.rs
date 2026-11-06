@@ -154,3 +154,84 @@ fn a_map_holds_storage_linear_in_its_entries() {
         assert!(bytes <= bound(depth), "an update of a {n}-entry map holds {bytes} bytes more, more than its path");
     }
 }
+
+// ---- Equality on shared structure, by counting the entries compared -----------------------
+
+thread_local! {
+    static COMPARED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// A value that counts its comparisons; `Cmp(NAN)` is equal to nothing, itself included,
+/// as a `Float` NaN is under IEEE equality (Type System ch. 2).
+#[derive(Clone, Debug)]
+struct Cmp(usize);
+
+const NAN: usize = usize::MAX;
+
+impl PartialEq for Cmp {
+    fn eq(&self, other: &Cmp) -> bool {
+        COMPARED.with(|c| c.set(c.get() + 1));
+        self.0 == other.0 && self.0 != NAN
+    }
+}
+
+fn compared<R>(f: impl FnOnce() -> R) -> (R, usize) {
+    let before = COMPARED.with(|c| c.get());
+    let r = f();
+    (r, COMPARED.with(|c| c.get()) - before)
+}
+
+fn cmps(n: usize) -> Map<usize, Cmp> {
+    scattered(n).into_iter().map(|k| (k, Cmp(k))).collect()
+}
+
+/// The entries one comparison may look at whatever the map's size: a few per level of a
+/// tree of 20,000 (height at most 21).
+const BOUNDED: usize = 128;
+const BIG: usize = 20000;
+
+#[test]
+fn a_map_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_entries() {
+    for n in [0, 1, 2, 64, 65, 300, BIG] {
+        let a = cmps(n);
+        let b = a.clone();
+        // the first comparison may look at every entry once; after it, shared nodes answer
+        // at once
+        assert!(a == b);
+        let (eq, k) = compared(|| a == b);
+        assert!(eq && k <= BOUNDED, "a map of {n} compared with its clone compared {k} entries");
+        if n > 0 {
+            let c = a.update(n / 2, Cmp(n / 2));
+            let (eq, k) = compared(|| a == c);
+            assert!(eq && k <= BOUNDED, "a map of {n} compared with an equal update compared {k} entries");
+            let d = a.update(n / 2, Cmp(n + 1));
+            let (eq, k) = compared(|| a == d);
+            assert!(!eq && k <= BOUNDED, "a map of {n} compared with a changed update compared {k} entries");
+            let e = a.update(n, Cmp(n));
+            let (eq, k) = compared(|| e.without(&n) == a);
+            assert!(eq && k <= BOUNDED, "a map of {n} compared with itself grown and cut compared {k} entries");
+        }
+    }
+}
+
+#[test]
+fn a_shared_map_holding_a_nan_is_not_equal_to_itself() {
+    for n in [1, 2, 64, 65, 300, BIG] {
+        let a = cmps(n).update(n / 3, Cmp(NAN));
+        let b = a.clone();
+        assert!(a != b && a != b, "a map of {n} with a NaN");
+        assert!(a.update(n, Cmp(n)) != a.update(n, Cmp(n)));
+    }
+    let floats: Map<u8, f64> = [(1, 1.0), (2, f64::NAN)].into_iter().collect();
+    assert!(floats != floats.clone());
+}
+
+#[test]
+fn maps_of_maps_compare_shared_inner_maps_at_once() {
+    let inner = cmps(BIG);
+    let outer = || -> Map<usize, (Map<usize, Cmp>, u8)> { (0..10usize).map(|k| (k, (inner.clone(), 1u8))).collect() };
+    let (a, b) = (outer(), outer());
+    assert!(a == b);
+    let (eq, k) = compared(|| a == b);
+    assert!(eq && k <= BOUNDED, "two maps of ten shared inner maps (in a tuple, as a record holds them) compared {k} entries");
+}

@@ -186,7 +186,8 @@ public:
         return put(std::move(v), cx, [](const T&, const T&) { return true; });
     }
     /// The snapshot taken and compared with the one that stood before this tick: whether
-    /// the dynamic moved (R3: its update event fires only when the value changed).
+    /// the dynamic moved (R3: its update event fires only when the value changed). When it
+    /// did not, the snapshot that stood is kept and `v` dropped.
     bool take_compared(T v, const Cx& cx) {
         return put(std::move(v), cx, [](const T& a, const T& b) { return !(a == b); });
     }
@@ -235,12 +236,15 @@ private:
         if (!newest_) {
             newest_.emplace(std::move(v), cx.tick());
         } else if (newest_->second == cx.tick()) {
+            // A take equal to the snapshot it is compared with keeps that snapshot, so its
+            // sharing survives the tick and the next comparison of it is cheap: no program
+            // tells two equal values apart (Semantics ch. 11, "sharing is invisible").
             if (older_) moved = differs(older_->first, v);
-            newest_->first = std::move(v);
+            newest_->first = older_ && !moved ? older_->first : std::move(v);
         } else {
             moved = differs(newest_->first, v);
             older_ = std::move(newest_);
-            newest_.emplace(std::move(v), cx.tick());
+            newest_.emplace(moved ? std::move(v) : older_->first, cx.tick());
         }
         moved_ = moved ? std::optional<Tick>(cx.tick()) : std::nullopt;
         marked_.reset();

@@ -54,6 +54,7 @@ std::optional<Pod> Cx::first_value(const Pod& element) const {
 Cx Runtime::build(const ReadyState& ready) { return Cx(0, 1, Cx::Phase::Constructing, ready, {}); }
 
 Result<TickOut> Runtime::tick(const NodeRef& root, const TickIn& input, const ReadyState& ready) {
+    probe::enter(probe::Phase::Propagate);
     for (auto& n : std::exchange(cleanups_, {})) n->clean_up();
     Tick n = tick_ + 1;
     Cx cx(n, n, Cx::Phase::Propagating, ready, input.pushes);
@@ -86,9 +87,11 @@ Result<TickOut> Runtime::close(Cx&& cx) {
     // A walk can list nodes for an earlier one (a builder's new row is patched; a row
     // built in the patch pass is built): the walks run again until nothing new is listed.
     for (;;) {
+        probe::enter(probe::Phase::Build);
         TRY(detail::walk(cx.g_, &Gathered::builds, &Node::build, cx));
         TRY(detail::walk(cx.g_, &Gathered::swaps, &Node::swap, cx));
         TRY(detail::walk(cx.g_, &Gathered::leaves, &Node::leave, cx));
+        probe::enter(probe::Phase::Patch);
         TRY(detail::walk(cx.g_, &Gathered::patches, &Node::patch, cx));
         const Gathered& g = cx.g_;
         auto done = [](const detail::List& l) { return l.walked >= l.nodes.size(); };
@@ -111,6 +114,7 @@ Result<TickOut> Runtime::close(Cx&& cx) {
     armed_ = std::move(g.armed.nodes);
     later_ = std::move(g.later);
     tick_ = cx.tick_;
+    probe::enter(probe::Phase::Diff);
     TickOut out;
     out.tick = cx.tick_;
     out.patch = document_.diff(std::move(g.edits));

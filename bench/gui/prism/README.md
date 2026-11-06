@@ -7,4 +7,5 @@ benchmark's table in Prism (bench/gui/README.md), under examples/chess's window 
 - `driver.cpp`, `driver.rs`: the drivers that run it under each target's canvas World, time
   each operation, check the screen, and with `check` count each step's work.
 - `Makefile`: builds both drivers into `target/bench/` (`make cpp`, `make rust`).
-- `check.sh`: both drivers' cost checks (bench/gui/README.md, "The checks").
+- `check.sh`: both drivers' cost checks and the table of instructions by phase
+  (bench/gui/README.md, "The checks").

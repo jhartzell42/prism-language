@@ -235,12 +235,17 @@ impl<T: Clone> Snapshot<T> {
             // the node's first tick: the dynamic's value after it is this snapshot
             None => ((v, cx.tick(), None), false),
             Some((_, stamp, None)) if stamp == cx.tick() => ((v, stamp, None), false),
+            // A take equal to the snapshot it is compared with keeps that snapshot, so its
+            // sharing survives the tick and the next comparison of it is cheap: no program
+            // tells two equal values apart (Semantics ch. 11, "sharing is invisible").
             Some((_, stamp, Some((older, ostamp)))) if stamp == cx.tick() => {
                 let moved = differs(&older, &v);
+                let v = if moved { v } else { older.clone() };
                 ((v, stamp, Some((older, ostamp))), moved)
             }
             Some((newest, stamp, _)) => {
                 let moved = differs(&newest, &v);
+                let v = if moved { v } else { newest.clone() };
                 ((v, cx.tick(), Some((newest, stamp))), moved)
             }
         };
@@ -300,7 +305,8 @@ impl<T: Clone> Snapshot<T> {
 
 impl<T: Clone + PartialEq> Snapshot<T> {
     /// The snapshot taken and compared with the one that stood before this tick: whether
-    /// the dynamic moved (R3: its update event fires only when the value changed).
+    /// the dynamic moved (R3: its update event fires only when the value changed). When it
+    /// did not, the snapshot that stood is kept and `v` dropped.
     pub fn take_compared(&self, v: T, cx: &Cx) -> bool {
         self.put(v, cx, |a, b| a != b)
     }

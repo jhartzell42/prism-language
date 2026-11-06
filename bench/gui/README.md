@@ -80,7 +80,13 @@ each under both drivers with `driver OP 1 0 check`, which counts work rather tha
   swap and remove must each retire under a tenth of what their setup's Create 1,000 rows
   did.
 
-A failed check fails the run and says what it saw.
+A failed check fails the run and says what it saw. Then `check.sh` prints a table of each
+timed step's instructions by phase, millions, against the same target's create1k: the
+drivers set `prism_rtl`'s probe hook (Rust `world::probe`, C++ `probe` in `world.hpp`),
+the runtime marks propagation, the build walks, the patch pass and the diff inside a
+tick, the canvas World marks performing, compacting and painting, and each thread's
+instructions between its marks (macOS's `thread_selfcounts`) go to the phase it was in;
+`other` is the process's other threads.
 
 ## The files
 

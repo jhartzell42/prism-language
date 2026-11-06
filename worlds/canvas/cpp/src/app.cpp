@@ -168,6 +168,7 @@ void App::tick_here(TickIn input) {
         return std::move(built.value().second);
     }();
     if (!result) {
+        prism_rtl::probe::enter(prism_rtl::probe::Phase::Loop);
         exit(world_->failed(result.error()));
         return;
     }
@@ -177,9 +178,12 @@ void App::tick_here(TickIn input) {
     // read (the xvfb run of chess checks its status this way).
     if (results_ && out.result && out.result->kind == prism_rtl::Outcome::Kind::Value)
         std::fprintf(stderr, "result: %s\n", out.result->pod.to_string().c_str());
+    prism_rtl::probe::enter(prism_rtl::probe::Phase::Perform);
     world_->perform(out);
     if (auto code = world_->exit_code()) exit(*code);
+    prism_rtl::probe::enter(prism_rtl::probe::Phase::Compact);
     if (program_) program_->compact();
+    prism_rtl::probe::enter(prism_rtl::probe::Phase::Loop);
 }
 
 bool App::run_ticks() {
@@ -482,7 +486,9 @@ int App::run() {
         reconcile();
         if (exit_) break;
         if (!pending_) {
+            prism_rtl::probe::enter(prism_rtl::probe::Phase::Paint);
             int painted = paint();
+            prism_rtl::probe::enter(prism_rtl::probe::Phase::Loop);
             if (painted && hooks_.presented) hooks_.presented(*this, painted);
         }
         if (exit_) break;

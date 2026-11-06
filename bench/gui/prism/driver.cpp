@@ -19,7 +19,9 @@
 #include <libproc.h>
 #endif
 
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -218,6 +220,89 @@ long long instructions() {
 #endif
 }
 
+/// Instructions the calling thread has retired so far: libsystem_kernel's
+/// `thread_selfcounts` (exported, in no header), whose flavour 1 fills the thread's
+/// instructions and cycles, two 64-bit counts.
+#ifdef __APPLE__
+extern "C" int thread_selfcounts(int flavor, void* buffer, std::size_t bytes);
+#endif
+std::uint64_t thread_instructions() {
+#ifdef __APPLE__
+    std::uint64_t c[2] = {0, 0};
+    if (thread_selfcounts(1, c, sizeof c) != 0) {
+        std::fprintf(stderr, "driver: thread_selfcounts failed\n");
+        std::exit(1);
+    }
+    return c[0];
+#else
+    return std::uint64_t(instructions());
+#endif
+}
+
+/// The work of each phase (prism_rtl's `probe`), by the instructions each thread retired
+/// between its marks: each thread's current phase and its count at its last mark, and the
+/// totals per phase over every thread. The canvas World ticks on its big stack's thread and
+/// paints on the main one, so a thread's count is its own.
+namespace phases {
+
+using prism_rtl::probe::Phase;
+using prism_rtl::probe::PHASES;
+
+std::atomic<std::uint64_t> total[PHASES];
+std::atomic<std::uint64_t> ticks{0};
+
+struct At {
+    bool set = false;
+    Phase phase = Phase::Loop;
+    std::uint64_t since = 0;
+};
+thread_local At at;
+
+/// The probe's hook: the instructions since this thread's last mark go to the phase it
+/// was in.
+void mark(Phase next) {
+    std::uint64_t now = thread_instructions();
+    if (at.set) total[std::size_t(at.phase)].fetch_add(now - at.since, std::memory_order_relaxed);
+    if (next == Phase::Propagate) ticks.fetch_add(1, std::memory_order_relaxed);
+    at = At{true, next, now};
+}
+
+struct Totals {
+    std::uint64_t phase[PHASES] = {};
+    std::uint64_t ticks = 0;
+};
+
+/// The totals so far, this thread's instructions since its last mark counted to its phase.
+Totals now() {
+    if (at.set) {
+        std::uint64_t c = thread_instructions();
+        total[std::size_t(at.phase)].fetch_add(c - at.since, std::memory_order_relaxed);
+        at.since = c;
+    }
+    Totals t;
+    for (std::size_t i = 0; i < PHASES; ++i) t.phase[i] = total[i].load(std::memory_order_relaxed);
+    t.ticks = ticks.load(std::memory_order_relaxed);
+    return t;
+}
+
+/// One step's line: each phase's instructions from `from` to `to`, the rest of the
+/// process's (`all`, every thread's) as `other`, and the ticks.
+void print(const std::string& op, const char* kind, const Totals& from, const Totals& to, long long all) {
+    static const char* names[PHASES] = {"loop", "propagate", "build", "patch", "diff", "perform", "compact", "paint"};
+    std::printf("phases %s %s", op.c_str(), kind);
+    std::uint64_t sum = 0;
+    for (std::size_t i = 0; i < PHASES; ++i) {
+        std::uint64_t d = to.phase[i] - from.phase[i];
+        sum += d;
+        std::printf(" %s=%llu", names[i], (unsigned long long)d);
+    }
+    unsigned long long a = (unsigned long long)all;
+    std::printf(" other=%llu total=%llu ticks=%llu\n", a > sum ? a - sum : 0ull, a, (unsigned long long)(to.ticks - from.ticks));
+    std::fflush(stdout);
+}
+
+}  // namespace phases
+
 /// `check`'s first check, after each step settles: every `Draw.Text` in the scenes starts
 /// inside the window, or within 8 of its edges, so the window library draws only what the
 /// window shows.
@@ -276,12 +361,18 @@ int main(int argc, char** argv) {
     bool waiting = false, timing = false;
     Clock::time_point t0;
     long long i0 = 0, setup = 0;
+    phases::Totals p0, p1;
+    if (check && !prism_rtl::probe::set_hook(phases::mark)) {
+        std::fprintf(stderr, "driver: the phase probe's hook was set already\n");
+        return 1;
+    }
     int failed = 0;
     Model model;
     Hooks hooks;
     hooks.settled = [&](Session& s) {
         if (waiting) {
             long long work = check ? instructions() - i0 : 0;
+            if (check) p1 = phases::now();
             if (timing) {
                 double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
                 std::printf("%s %d %.3f\n", op.c_str(), ++run, ms);
@@ -296,6 +387,7 @@ int main(int argc, char** argv) {
                 const Press& p = steps[next - 1];
                 std::printf("check %s step %zu (%s row %d): %lld instructions\n", op.c_str(), next, p.text.c_str(), p.row, work);
                 std::fflush(stdout);
+                phases::print(op, timing ? "timed" : p.text == CREATE_1K ? "setup" : "untimed", p0, p1, work);
                 if (!timing && p.text == CREATE_1K) setup = work;
                 bool small = !timing || !small_op(op) || work * 10 < setup;
                 if (!small)
@@ -325,7 +417,10 @@ int main(int argc, char** argv) {
         waiting = true;
         timing = p.timed;
         model.press(p);
-        if (check) i0 = instructions();
+        if (check) {
+            p0 = phases::now();
+            i0 = instructions();
+        }
         t0 = Clock::now();
         s.input(s.shared().windows.begin()->first, gui::press(at->first, at->second));
     };
