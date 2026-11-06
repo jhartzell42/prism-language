@@ -6,6 +6,8 @@
 #include "prism_world_canvas/damage.hpp"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace prism_world_canvas {
@@ -128,6 +130,13 @@ Damage Painter::paint(Renderer& renderer, cairo_surface_t* target, float scale, 
         scratch_ = nullptr;
     }
     if (!scratch_) scratch_ = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
+    // Both surfaces must hold pixels: a surface in error has none, and the rows below are
+    // copied by hand. Neither is a state to paint around.
+    if (cairo_surface_status(scratch_) != CAIRO_STATUS_SUCCESS || cairo_surface_status(target) != CAIRO_STATUS_SUCCESS ||
+        !cairo_image_surface_get_data(target)) {
+        std::fprintf(stderr, "prism canvas: cannot paint the damage: %s\n", cairo_status_to_string(cairo_surface_status(scratch_)));
+        std::abort();
+    }
     auto [br, bg, bb] = BACKGROUND;
     std::vector<const Pod*> meeting;
     for (const IRect& r : boxes) {
