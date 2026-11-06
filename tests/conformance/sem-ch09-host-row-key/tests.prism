@@ -1,0 +1,10 @@
+# A hosted row's constant place that reads its key: declarations of sem-ch09-host-row-key.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test the_rows_label_reads_its_own_key, @forwarded:
+    build
+    click at 0/[0]/0
+    compute
