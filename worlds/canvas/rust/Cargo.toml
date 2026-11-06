@@ -33,3 +33,9 @@ harness = false
 [[test]]
 name = "hooks_smoke"
 harness = false
+
+# A window whose scene changes step by step, each presented frame checked against a full
+# repaint, through Hooks on the main thread.
+[[test]]
+name = "damage_smoke"
+harness = false

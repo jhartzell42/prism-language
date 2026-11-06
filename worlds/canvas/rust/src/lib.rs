@@ -52,7 +52,7 @@ pub fn run_with<P: Program>(wrap: impl FnOnce(CanvasWorld) -> Box<dyn World>) ->
 
 /// What a hook may do to a running World: queue window input as the window system would,
 /// end the run, and read back what reached the screen. A benchmark or a test drives the
-/// program through it (worlds/canvas/cpp's `Session`, the same four calls).
+/// program through it (worlds/canvas/cpp's `Session`, the same five calls).
 pub trait Session {
     /// The document's windows and scenes, as the World last read them.
     fn shared(&self) -> std::cell::Ref<'_, Shared>;
@@ -63,6 +63,11 @@ pub trait Session {
     /// The last presented frame's colour, 0xRRGGBB, at logical `(x, y)` in the window for
     /// the place at `window`; none outside it or before its first frame.
     fn pixel(&self, window: &prism_rtl::Path, x: f64, y: f64) -> Option<u32>;
+    /// The last presented frame's width and height in physical pixels, and its scale
+    /// (physical pixels per logical pixel), for the window for the place at `window`; none
+    /// before its first frame. A test reads every pixel of the frame through `pixel` at
+    /// `(px / scale, py / scale)`.
+    fn frame_size(&self, window: &prism_rtl::Path) -> Option<(u32, u32, f64)>;
 }
 
 /// Calls into a hook from the loop. Each may be empty.

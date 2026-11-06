@@ -6,15 +6,23 @@
 //! the new commands with the last ones position by position; each position whose command
 //! differs (or exists in only one of the two) damages the bounds of the old command and of
 //! the new. It then merges the damaged boxes, and for each box clears it to the background
-//! and paints, clipped to it, every new command whose bounds meet it, in order.
+//! in a scratch frame, paints there every new command whose bounds meet the box, in order,
+//! each whole and unclipped, and copies the box alone into the frame.
 //!
 //! Why that equals a full repaint: outside the damage, every command that touches a pixel,
 //! old or new, sits at a position whose command did not change, so the commands touching
 //! that pixel are the same ones in the same order, and the pixel is what it was. Inside a
-//! box the pixel is painted afresh from the background by every command that can touch it.
-//! Bounds are taken from the very placement the renderer uses (the transform, each glyph's
-//! rounded position), rounded outward to whole pixels and one pixel wider for
-//! anti-aliasing, and each box is whole pixels, so its clip has no partial edge.
+//! box the pixel is painted afresh from the background by every command that can touch it,
+//! through the very calls a full repaint makes, on a pixmap of the same size. Bounds are
+//! taken from the placement the renderer uses (the transform, each glyph's rounded
+//! position), rounded outward to whole pixels and one pixel wider for anti-aliasing.
+//! (Clipping to the box instead is not exact: tiny-skia blends a masked draw by other
+//! arithmetic than an unmasked one, a unit apart at anti-aliased edges.)
+//!
+//! What it costs: the comparison is one equality test per top-level command (a table of
+//! 1,000 rows draws only the rows inside the window, about 150 commands); bounds are
+//! computed for the commands that changed; the repaint is of the damaged boxes, and the
+//! scratch frame is a second pixmap of the window's size.
 //!
 //! The whole frame is painted (and [`Damage::Full`] returned) on the first frame, when the
 //! frame's size or scale changes, after [`Painter::forget`], and when a damaged command
@@ -59,9 +67,24 @@ pub enum Damage {
     Rects(Vec<IRect>),
 }
 
+/// More damaged boxes than this are painted as the one box around them all.
+const MAX_BOXES: usize = 32;
+
 /// One window's last painted commands.
 #[derive(Default)]
-pub struct Painter {}
+pub struct Painter {
+    last: Option<Painted>,
+    /// Where a damaged box is painted afresh, each command whole and unclipped exactly
+    /// as a full repaint paints it, before the box alone is copied into the frame.
+    scratch: Option<Pixmap>,
+}
+
+/// A painted frame: its size and scale, and each top-level command with its bounds.
+struct Painted {
+    size: (u32, u32),
+    scale: u32,
+    drawn: Vec<(Pod, Bounds)>,
+}
 
 impl Painter {
     pub fn new() -> Painter {
@@ -69,14 +92,134 @@ impl Painter {
     }
 
     /// Forget what was painted: the next paint is of the whole frame.
-    pub fn forget(&mut self) {}
+    pub fn forget(&mut self) {
+        self.last = None;
+    }
 
     /// Paint `draw_lists` onto `pixmap`, which holds this painter's last frame, at `scale`:
     /// only where the scene changed (the module's header).
     pub fn paint(&mut self, renderer: &mut Renderer, pixmap: &mut Pixmap, scale: f32, draw_lists: &[Pod]) -> Damage {
-        renderer.render(pixmap, scale, draw_lists);
-        Damage::Full
+        let size = (pixmap.width(), pixmap.height());
+        let commands: Vec<&Pod> = draw_lists
+            .iter()
+            .filter_map(|l| match l.structure() {
+                Pod::Array(items) => Some(items.iter()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let old = match self.last.take() {
+            Some(p) if p.size == size && p.scale == scale.to_bits() => p.drawn,
+            _ => {
+                renderer.render(pixmap, scale, draw_lists);
+                let drawn = commands.iter().map(|c| ((*c).clone(), renderer.bounds(c, scale, size))).collect();
+                self.last = Some(Painted { size, scale: scale.to_bits(), drawn });
+                return Damage::Full;
+            }
+        };
+        let mut boxes = Vec::new();
+        let mut whole = false;
+        let mut damage = |b: Bounds| match b {
+            Bounds::Empty => {}
+            Bounds::Box(r) => boxes.push(r),
+            Bounds::Whole => whole = true,
+        };
+        let mut drawn = Vec::with_capacity(commands.len());
+        let mut old = old.into_iter();
+        for (i, new) in commands.iter().enumerate() {
+            match old.next() {
+                Some((o, b)) if o == **new => drawn.push((o, b)),
+                was => {
+                    if let Some((_, b)) = was {
+                        damage(b);
+                    }
+                    let b = renderer.bounds(new, scale, size);
+                    damage(b);
+                    drawn.push(((*new).clone(), b));
+                }
+            }
+            debug_assert_eq!(drawn.len(), i + 1);
+        }
+        for (_, b) in old {
+            damage(b);
+        }
+        self.last = Some(Painted { size, scale: scale.to_bits(), drawn });
+        if whole {
+            renderer.render(pixmap, scale, draw_lists);
+            return Damage::Full;
+        }
+        let boxes = merge(boxes);
+        if !boxes.is_empty() {
+            let scratch = match &mut self.scratch {
+                Some(p) if (p.width(), p.height()) == size => p,
+                slot => slot.insert(Pixmap::new(size.0, size.1).expect("a pixmap of the frame's size, which exists")),
+            };
+            let drawn = &self.last.as_ref().expect("just set").drawn;
+            for r in &boxes {
+                fill(scratch.data_mut(), size.0, r, &BACKGROUND_PX);
+                for (c, b) in drawn {
+                    let meets = match b {
+                        Bounds::Empty => false,
+                        Bounds::Box(cb) => cb.x0 < r.x1 && r.x0 < cb.x1 && cb.y0 < r.y1 && r.y0 < cb.y1,
+                        Bounds::Whole => true,
+                    };
+                    if meets {
+                        renderer.draw_one(scratch, scale, c);
+                    }
+                }
+                copy(scratch.data(), pixmap.data_mut(), size.0, r);
+            }
+        }
+        Damage::Rects(boxes)
     }
+}
+
+/// The background as a premultiplied RGBA pixel, as `Pixmap::fill` writes it.
+const BACKGROUND_PX: [u8; 4] = [crate::render::BACKGROUND.0, crate::render::BACKGROUND.1, crate::render::BACKGROUND.2, 255];
+
+/// Copy the pixels of `r` from one RGBA frame of rows of `width` pixels to another.
+fn copy(from: &[u8], to: &mut [u8], width: u32, r: &IRect) {
+    for y in r.y0..r.y1 {
+        let row = (y as usize * width as usize + r.x0 as usize) * 4..(y as usize * width as usize + r.x1 as usize) * 4;
+        to[row.clone()].copy_from_slice(&from[row]);
+    }
+}
+
+/// Set every pixel of `r` in rows of `width` pixels of `px.len()` bytes each to `px`.
+fn fill(data: &mut [u8], width: u32, r: &IRect, px: &[u8]) {
+    let n = px.len();
+    for y in r.y0..r.y1 {
+        let row = (y as usize * width as usize + r.x0 as usize) * n..(y as usize * width as usize + r.x1 as usize) * n;
+        for d in data[row].chunks_exact_mut(n) {
+            d.copy_from_slice(px);
+        }
+    }
+}
+
+/// The boxes, with every two that overlap or touch made one, until none do; more than
+/// `MAX_BOXES` become the one box around them all.
+fn merge(mut boxes: Vec<IRect>) -> Vec<IRect> {
+    if boxes.len() > MAX_BOXES {
+        let all = boxes.iter().copied().reduce(union).expect("more than none");
+        return vec![all];
+    }
+    'again: loop {
+        for i in 0..boxes.len() {
+            for j in i + 1..boxes.len() {
+                let (a, b) = (boxes[i], boxes[j]);
+                if a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1 {
+                    boxes[i] = union(a, b);
+                    boxes.swap_remove(j);
+                    continue 'again;
+                }
+            }
+        }
+        return boxes;
+    }
+}
+
+fn union(a: IRect, b: IRect) -> IRect {
+    IRect { x0: a.x0.min(b.x0), y0: a.y0.min(b.y0), x1: a.x1.max(b.x1), y1: a.y1.max(b.y1) }
 }
 
 #[cfg(test)]

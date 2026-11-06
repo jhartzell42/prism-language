@@ -32,6 +32,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId as OsWindowId};
 
+use crate::damage::{Damage, Painter};
 use crate::render::Renderer;
 use crate::world::{Shared, gui};
 use crate::{Hooks, Session};
@@ -53,8 +54,14 @@ struct OsWindow {
     cursor: PhysicalPosition<f64>,
     /// Asked to redraw and not yet presented.
     damaged: bool,
-    /// The last frame presented, and its scale, for `Session::pixel`.
-    last: Option<(Pixmap, f64)>,
+    /// The frame, painted again where the scene changed (`damage.rs`), with the scale it
+    /// was painted at; `Session::pixel` reads it once it has been presented.
+    frame: Option<(Pixmap, f64)>,
+    painter: Painter,
+    /// The frame as the screen takes it, 0x00RRGGBB, updated where it was painted.
+    xrgb: Vec<u32>,
+    /// The frame has been presented since it was last painted.
+    presented: bool,
 }
 
 /// The program, its World, and the windows.
@@ -183,7 +190,10 @@ impl<P: Program> App<P> {
                     size: place.size,
                     cursor: PhysicalPosition::new(0.0, 0.0),
                     damaged: true,
-                    last: None,
+                    frame: None,
+                    painter: Painter::new(),
+                    xrgb: Vec::new(),
+                    presented: false,
                 })
             });
             match opened {
@@ -211,26 +221,53 @@ impl<P: Program> App<P> {
         }
     }
 
-    /// Paint one window's scenes and show them.
+    /// Paint one window's scenes where they changed, and show the frame. The whole frame
+    /// is handed to softbuffer: its macOS buffer starts empty every time (`age` 0), and on
+    /// X11 a redraw for an expose cannot be told from one for a new scene.
     fn redraw(&mut self, path: &Path) {
         let Some(w) = self.windows.get_mut(path) else { return };
         let size = w.window.inner_size();
         let (Some(width), Some(height)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else { return };
-        let Some(mut pixmap) = Pixmap::new(size.width, size.height) else { return };
+        let scale = w.window.scale_factor();
+        if w.frame.as_ref().map(|(p, _)| (p.width(), p.height())) != Some((size.width, size.height)) {
+            let Some(pixmap) = Pixmap::new(size.width, size.height) else { return };
+            w.frame = Some((pixmap, scale));
+            w.xrgb = vec![0; size.width as usize * size.height as usize];
+        }
+        let Some((pixmap, painted_at)) = w.frame.as_mut() else { return };
+        *painted_at = scale;
         let draws = self.shared.borrow().draw_lists(&w.id);
-        self.renderer.render(&mut pixmap, w.window.scale_factor() as f32, &draws);
+        let damage = w.painter.paint(&mut self.renderer, pixmap, scale as f32, &draws);
+        // Every pixel is opaque (the background is), so premultiplied is plain RGB.
+        let xrgb = |px: &tiny_skia::PremultipliedColorU8| (px.red() as u32) << 16 | (px.green() as u32) << 8 | px.blue() as u32;
+        let pixels = pixmap.pixels();
+        match &damage {
+            Damage::Full => {
+                for (dst, px) in w.xrgb.iter_mut().zip(pixels) {
+                    *dst = xrgb(px);
+                }
+            }
+            Damage::Rects(boxes) => {
+                for r in boxes {
+                    for y in r.y0..r.y1 {
+                        let row = (y * size.width + r.x0) as usize..(y * size.width + r.x1) as usize;
+                        for (dst, px) in w.xrgb[row.clone()].iter_mut().zip(&pixels[row]) {
+                            *dst = xrgb(px);
+                        }
+                    }
+                }
+            }
+        }
+        w.presented = false;
         let shown = w.surface.resize(width, height).and_then(|()| {
             let mut buffer = w.surface.buffer_mut()?;
-            // Every pixel is opaque (the background is), so premultiplied is plain RGB.
-            for (dst, px) in buffer.iter_mut().zip(pixmap.pixels()) {
-                *dst = (px.red() as u32) << 16 | (px.green() as u32) << 8 | px.blue() as u32;
-            }
+            buffer.copy_from_slice(&w.xrgb);
             buffer.present()
         });
         match shown {
             Ok(()) => {
                 w.damaged = false;
-                w.last = Some((pixmap, w.window.scale_factor()));
+                w.presented = true;
             }
             Err(e) => eprintln!("prism canvas: cannot paint {:?}: {e}", w.title),
         }
@@ -366,12 +403,25 @@ impl<P: Program> Session for HookSession<'_, P> {
         self.app.exit.get_or_insert(code);
     }
     fn pixel(&self, window: &Path, x: f64, y: f64) -> Option<u32> {
-        let (pixmap, scale) = self.app.windows.get(window)?.last.as_ref()?;
+        let w = self.app.windows.get(window)?;
+        if !w.presented {
+            return None;
+        }
+        let (pixmap, scale) = w.frame.as_ref()?;
         let (px, py) = ((x * scale).round(), (y * scale).round());
         if px < 0.0 || py < 0.0 {
             return None;
         }
-        let p = pixmap.pixel(px as u32, py as u32)?;
-        Some((p.red() as u32) << 16 | (p.green() as u32) << 8 | p.blue() as u32)
+        let (px, py) = (px as u32, py as u32);
+        if px >= pixmap.width() || py >= pixmap.height() {
+            return None;
+        }
+        // what was handed to the screen
+        w.xrgb.get(py as usize * pixmap.width() as usize + px as usize).copied()
+    }
+    fn frame_size(&self, window: &Path) -> Option<(u32, u32, f64)> {
+        let w = self.app.windows.get(window)?;
+        let (pixmap, scale) = w.frame.as_ref().filter(|_| w.presented)?;
+        Some((pixmap.width(), pixmap.height(), *scale))
     }
 }
