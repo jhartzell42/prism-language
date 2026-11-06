@@ -485,3 +485,170 @@ tick 0 and again by each runtime).
   the scene) is about 2,000 lines; the Test World adds about 1,300. *First ruling
   (Claude's):* both stay in this crate, as the brief asks. *If otherwise:* the Test World
   moves to `worlds/test`, and `prism_rtl` is the library alone.
+
+## Rust or C++ as the default back end
+
+prismc emits either, and both reach a fixed point; `./prism compile` takes `--target rust`
+when none is named, and the question is whether it should. This is Claude's recommendation,
+Jimmy's to overrule: **Rust as the default**, C++ kept as the second target. The numbers are from Jimmy's Mac M2 Pro (12
+cores, 16 GB); the building figures and the GUI table were measured with Low Power Mode on,
+so every absolute time is pessimistic and the ratios between the two targets are the
+evidence. Nothing in this section was measured on Linux. Where another figure comes from a
+run on the same Mac under load, it says so.
+
+### Running
+
+The GUI table (bench/gui): js-framework-benchmark's operations on one table, median wall
+time in ms over 10 runs, Mac M2 Pro with Low Power Mode on, the Prism rows before the
+table's rows went over `@PerKey`; GTK 3 is the toolkit written in C beside it.
+
+| Operation | Prism C++ | Prism Rust | GTK 3 |
+|---|---|---|---|
+| create 1,000 rows | 50 | 44 | 279 |
+| replace 1,000 rows | 67 | 60 | 320 |
+| update every 10th | 5.4 | 7.1 | 34.5 |
+| select a row | 3.1 | 4.8 | 1.0 |
+| swap two rows | 3.4 | 4.8 | 61 |
+| remove a row | 12.2 | 10.2 | 5.9 |
+| create 10,000 rows | 585 | 514 | 11,659 |
+| append 1,000 rows | 59 | 48 | 390 |
+| clear | 20 | 17 | 42 |
+
+- **Rust wins the bulk operations by a tenth to a fifth**: create 1,000 rows 44 ms against
+  50, replace 60 against 67, create 10,000 rows 514 against 585, append 48 against 59, clear
+  17 against 20, remove 10.2 against 12.2. Both beat GTK 3 by five to twenty times on the
+  creates, the replace and the append (create 1,000 rows: 279 ms in GTK) and by two times
+  on clear; GTK removes a row faster (5.9 ms against 10.2 and 12.2).
+- **C++ wins the three smallest operations by a quarter to a third**: update every 10th 5.4
+  ms against 7.1, select 3.1 against 4.8, swap 3.4 against 4.8. GTK 3 selects in 1.0 ms,
+  three to five times faster than either.
+- **The small-operation gap is the Rust World's frame, not the emitted code.** A select
+  after `@PerKey` retires 20.5 million instructions in C++ and 30.5 million in Rust (Mac M2
+  Pro, Low Power Mode). The phase table (`bench/gui/prism/check.sh`, same Mac, one run
+  each, claude/bugs/window-relayout-every-change.md) puts a Rust select at 31.1 M with 12.7
+  M of it painting and a C++ select at 20.6 M with 1.4 M painting: the program's own ticks
+  are 18.4 M in Rust against 19.2 M in C++, equal within 5%. About 11 M of every Rust
+  frame is softbuffer presenting the whole frame on macOS, a new zeroed buffer per frame
+  copied whole and made a `CGImage` (worlds/canvas/rust/README.md, "Painting"); the C++
+  World sets its layer's image from its own buffer, and on X11 presents only the damaged
+  boxes. That is a change to `worlds/canvas/rust`, which touches no template; if the Rust
+  World presented as the C++ one does, the select column would read, by the instruction
+  counts, about 3 ms on both.
+- **Remove runs the other way: C++ 128 million instructions against Rust 80 million** (Mac
+  M2 Pro, Low Power Mode), 1.6 times. The column's document is gathered an insert at a
+  time, and C++'s persistent `Map` copies a path per insert where Rust's updates its own
+  nodes in place (claude/bugs/window-relayout-every-change.md). Also a runtime matter, in
+  `runtime/cpp`, and it stands either way.
+- **prismc as the workload: Rust does less work.** Each compiler compiling itself (Mac M2
+  Pro, 5 November, other jobs at load 3 to 13, prismc/README.md "Arrays and maps: what
+  they hold"): the Rust prismc 586 G instructions, 45 to 46 s, 275 MB peak footprint; the
+  C++ prismc 738 G, 65 to 68 s, 310 to 324 MB. Rust retires 21% fewer instructions and
+  holds about 10% less memory on a compiler-shaped program.
+- **Memory on the GUI table goes to C++.** On the table's small operations (Mac M2 Pro, 5
+  November, other agents building, claude/benchmarks-preliminary.md "After the window
+  fix") C++ peaks at about 172 MB and Rust at about 208 MB: C++ holds about a sixth less.
+  The two memory results point opposite ways and neither gap is large.
+- **Taken together:** one of the two models is ahead by a tenth to a fifth on everything
+  but three operations, and those three come down to the frame present of one World. On
+  running alone the two are close enough that running does not decide; it only rules out
+  C++ being the faster target by nature.
+
+### Building
+
+Building prismc from clean, each pipeline all one language, Mac M2 Pro with Low Power Mode
+on (`bench/building/run.sh`):
+
+- **Rust: emit 65.9 s + build 100.1 s = 166.0 s, a 25.9 MB binary. C++: emit 86.2 s +
+  build 134.6 s = 220.8 s, a 63.8 MB binary.** C++ takes a third longer on the wall and the
+  binary is 2.5 times the size.
+- **The emit itself favours Rust:** 65.9 s against 86.2 s. The Rust printer writes about
+  115,000 lines for prismc; the C++ printer writes 185,385 lines across 63 translation
+  units and 280 headers (prismc/README.md, "The C++ bootstrap"): per-module headers, each
+  type declared, defined and its cases laid out in separate files, where Rust's `mod` needs
+  one file.
+- **The build's CPU, not its wall time, is the large gap.** On 12 cores (Mac M2 Pro, 4
+  November, other jobs running, prismc/README.md "Building prismc, C++ against Rust")
+  cargo spends 255 s of CPU on the emitted crate with its dependencies, 2.8 cores busy on
+  average; `make -j12 CXX=clang++ OPT=-O3` spends 1,003 s, about 10 cores busy throughout,
+  and with the module tree's 62 units 1,306 to 1,314 s (5 November, pick SF's table).
+  Four to five times the CPU for the same program: every unit re-parses the standard
+  library and `prism_rtl`'s headers (about 114,000 preprocessed lines for a module with
+  no definitions) and re-optimizes every inline function and template it instantiates.
+  On a machine with fewer cores, or a laptop on battery, this is the number that shows:
+  the C++ build's wall time rises toward its CPU time where Rust's does not.
+- **Small programs are close, Rust slightly ahead:** chess 19.5 s against 23.2 s, the GUI
+  table 19.7 s against 23.5 s (Mac M2 Pro, Low Power Mode), most of either being the
+  runtime library and the World built from clean. A second build that reuses the runtime
+  library is not measured.
+- **Taken together:** building favours Rust on every axis measured, by a third on the wall,
+  four to five times on CPU, and 2.5 times on binary size.
+
+### What the numbers do not say
+
+- **rustc checks the emitted code; clang does not.** A template that reads a moved value,
+  misses a `match` arm, or holds a borrow across a firing is a compile error in Rust. In
+  C++ at `-O3` the same slip is undefined behaviour, which the compiler may silently turn
+  into anything (Jimmy's rule: reason about undefined behaviour in C++). The sanitizer runs
+  (ASan and UBSan under Homebrew clang on macOS, g++ on Linux; `runtime/cpp` and
+  `worlds/canvas/cpp` `make test`) are the check the C++ side has, and a sanitizer finds
+  only what a test exercises. The Rust runtime has no `unsafe` (runtime/rust/README.md);
+  the Rust canvas World has one `unsafe` block, the macOS colour-space call. So a wrong
+  template fails loudly on the Rust side and may run quietly on the C++ side; with Rust as
+  the default, every compiled program is checked by rustc before it runs, and the C++
+  target is checked against it (the C++ prismc emits the Rust prismc's Rust byte for byte).
+- **C++'s emitted code leans on GNU extensions.** Every block, `match` and `TRY` is a GNU
+  statement expression (claude/handoff.md; prismc/README.md picks SE and TR): g++ and
+  clang++ take them, and a compiler without the extension cannot build the output. Rust's
+  emitted code is Rust.
+- **Portability goes two ways.** The C++ canvas World has a Cocoa path and an X11 path
+  written here (`app_macos.mm`, `app.cpp`), each a window system done by hand, and its
+  X11 path is the only one that presents just the damage; a third window system would be a
+  third file. The Rust canvas World sits on winit, softbuffer, tiny-skia and fontdue, which
+  cargo fetches and builds, so another window system is the crates' to support, not a
+  file of ours. The C++ build needs RE2, cairo, FreeType and the X11 or Cocoa headers from
+  the system (Homebrew or apt); the Rust build needs cargo and a network, or a vendored
+  registry. A target with a C++ compiler and no Rust toolchain would turn this around, and
+  the C++ target exists for it.
+- **Binary size and stack.** The C++ prismc is 63.8 MB against Rust's 25.9 MB (Mac M2 Pro,
+  Low Power Mode). The emitted C++ runs its program on a 4 GB stack, the Rust program on a
+  1 GB one (pick BS): a C++ frame of the emitted code is larger.
+- **Two targets are worth more than one.** Whichever is the default, the other is the
+  check that the model is the model and not one language's habits; the byte-equal Rust out
+  of the C++ prismc is that check, and the sanitizer run is the C++ side's. Dropping
+  the C++ target would save the 220.8 s build in the bootstrap and nothing in the design.
+
+### The recommendation, and what would change it
+
+- **Rust as the default back end** (Claude's pick, Jimmy's to overrule). Reasons, in
+  order of weight: the build costs a third less wall time and a quarter of the CPU and
+  gives a binary two fifths the size (Mac M2 Pro, Low Power Mode; the CPU from the 4
+  November run); rustc checks every emitted program where C++ at `-O3` runs it; running is
+  a tie or a Rust win everywhere but three small GUI operations, and those are the Rust
+  World's frame present (11 M instructions a frame), not the emitted code.
+- **C++ as the default would be the pick if latency on small interactive steps were the
+  one thing that mattered** and the Rust World kept presenting whole frames: 3.1 ms
+  against 4.8 ms on a select is a difference a user cannot see, but a design that counted
+  every millisecond under a pointer would take it. It would pay four to five times the CPU
+  on every build for it.
+- **What would change the recommendation**, each a measurement on the same machine under
+  the same conditions for both targets:
+  - **A Rust select still a third slower than C++ once the Rust World presents only the
+    damage.** As measured, the program's own ticks are 18.4 M instructions in Rust against
+    19.2 M in C++ (the phase table above); if, with painting taken out, Rust's select read 1.33
+    times C++'s or more, the emitted Rust would be the slow half, and that is the back
+    end's.
+  - **The C++ prismc build from clean at or under Rust's 166.0 s wall and under twice
+    Rust's CPU** (so under about 510 s against 255 s, or the same ratio against a fresh
+    Rust figure): a C++ build that cheap, by precompiled headers, C++ modules or far fewer
+    units, would take the building argument away, and the sanitizer run and rustc's
+    checking would be weighed alone.
+  - **The Rust prismc compiling itself in more instructions than the C++ one** (as
+    measured, 586 G against 738 G): if the Rust model fell behind on a compiler-shaped workload by any
+    margin, running would stop being a tie and start arguing for C++.
+  - **Rust peaking above C++ by half or more on the compiler workload** (as measured,
+    275 MB against 310 to 324 MB): memory is close both ways, and a Rust footprint of 1.5 times
+    C++'s would matter on a 16 GB machine building beside other jobs.
+  - **A requirement, not a measurement:** a platform Prism must run on that has a C++
+    compiler and no Rust toolchain, or a host program that links Prism as C++ (an existing
+    C++ application embedding a Prism widget). Either makes C++ the default for that
+    platform and leaves Rust the default elsewhere.
