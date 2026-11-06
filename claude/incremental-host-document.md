@@ -134,9 +134,10 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
   `Claimed` (doubt CL) are gone.
 - **No hold cache is built:** each `for` row keeps its child's last result while its entry
   does not move, which is what a cache would have kept.
-- **Every element nests about a dozen containers deep at most** below the window: the
-  lowering inlines a recursive widget sixteen levels (gap ID); a deeper tree faults at its
-  build, loudly.
+- **Every element nests sixteen containers deep at most** below the window: the lowering
+  inlines a recursive widget (`@Laid`) sixteen levels of its own (gap ID); a deeper tree
+  faults at its build, loudly. The widgets a program writes around its containers (the
+  library's modifiers, a dialog) do not count against it.
 
 ### One select, tick by tick
 

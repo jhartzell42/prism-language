@@ -1,0 +1,11 @@
+# The deep widgets' tests: declarations of sem-ch08-widget-depth.
+emit Ui.*
+use App.*
+
+test widgets_nest_as_deep_as_they_are_written, @page:
+    build
+        => expect Ui.Label(text="deep 0")
+        => returns "0"
+    click at 0
+        => expect Ui.Label(text="deep 1")
+        => returns "1"

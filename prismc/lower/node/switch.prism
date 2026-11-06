@@ -65,9 +65,16 @@ fn RowEnv parent, rowWx, menv, body:
         # live and the block's writes of it mark the generation (gap DY).
         ? (BnDyn (XMethod recv, m, xs), ignore, t):
             if recv == (XSelf): ((p, r, (Bind env, n, (BnDyn (XMethod parentRef, m, xs), [[ParentRead m]], t))))
-            else: ((p, r, env))
+            else: RowParamEnv p, r, env, menv, n
+        ? (BnDyn ignore, ignore, ignore): RowParamEnv p, r, env, menv, n
         ? (BnHold f, t): ((p, r, (Bind env, n, (BnDyn (XMethod (XField parentRef, f), "get", [[XCx]]), [[ParentRead f]], t))))
         otherwise: ((p, r, env))
+
+# A widget parameter's dynamic as a row reads it: through its getter (`BindParam`).
+RowParamEnv: fn Wx, Wx, Env, Env, Text -> ((Wx, Wx, Env))
+fn RowParamEnv p, r, env, menv, n = match menv.names["{n}#row"]:
+    ? (BnDyn (XMethod ignore, m, xs), ignore, t): ((p, r, (Bind env, n, (BnDyn (XMethod parentRef, m, xs), [[ParentRead m]], t))))
+    otherwise: ((p, r, env))
 
 # A place of the block as a row's methods read it: through the parent (a row of a row reads
 # its own parent's places through that row's parent in turn).
@@ -277,7 +284,7 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent:
     let rowFields = Push (Each fields, \|((f, t, bn))| ((f, t, "`{bn}`"))), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))
     let rowInits = Each fields, \|((f, ignore, ignore))| ((f, (XClone (XVar f))))
     let rowTaken = Append nodeHooks, (Push (Each fields, \|((f, ignore, ignore))| f), "parent")
-    let r00 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XVar "parent")))]], [[]], {}, rowTaken, wx.depth, (?HostedRows wx)
+    let r00 = NewWx lxc, rowName, rowFields, rowInits, [[(("parent", (XVar "parent")))]], [[]], {}, rowTaken, wx.inlining, (?HostedRows wx)
     # standing in its caller, the clause's places are numbered from the caller's position
     let r0 = if transparent: (update r00:
         &_.pos <= wx.pos) else: r00
@@ -289,6 +296,8 @@ fn ClauseRowOf wx, menv, c, v, rowName, genName, transparent:
     let r2 = BlockInto r1, be, me, body
     let r3 = match r2.result:
         WrEv r: Connect r2, r, (SkUp upName)
+        WrParts ignore: update r2:
+            &_.build <= Push &_.build, (RefusalDo "a widget of several clauses whose clause ends on a bundle")
         otherwise: r2
     let node = FinishNode r3, rowName, (Append (Push (Each fields, \|((f, t, ignore))| ((f, t))), (("parent", (OutWeak wx.node)))), (HostedParams wx)), True
     let p2 = GenMarked p1, genName, r3
@@ -311,7 +320,7 @@ GenRowOf: unbounded fn Wx, Env, Block, OutTy, Text, Text -> GenRow
 fn GenRowOf wx, menv, body, vt, rowName, genName:
     let lx = wx.lx
     let upName = "{genName}_up"
-    let r0 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XVar "parent")))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.depth, (?HostedRows wx)
+    let r0 = NewWx lx, rowName, [[(("value", vt, "the generation's value, `_`")), (("parent", (OutWeak wx.node), "the node of the `rebuild`"))]], [[(("value", (XClone (XVar "value"))))]], [[(("parent", (XVar "parent")))]], [[]], {}, (Append nodeHooks, [["value", "parent", "result", "result_dynamic"]]), wx.inlining, (?HostedRows wx)
     let ((p1, r1, ports)) = RowEnv wx, r0, menv, body
     let be = Bind (BuildSpelling ports), "_", (BnLocal (XVar "value"), Owned, vt)
     let me = Bind ports, "_", (BnLocal (XField XSelf, "value"), Owned, vt)
@@ -319,6 +328,10 @@ fn GenRowOf wx, menv, body, vt, rowName, genName:
     let ((r3, ?dynResult)) = match r2.result:
         WrEv r: (((Connect r2, r, (SkUp upName)), nil))
         WrDyn ex, resultReads, rt: (((GenResult r2, genName, ex, resultReads, rt), ? rt))
+        WrParts ignore:
+            let r2b = update r2:
+                &_.build <= Push &_.build, (RefusalDo "a `rebuild` whose block ends on a bundle")
+            ((r2b, nil))
         otherwise: ((r2, nil))
     GenRow(node=(FinishNode r3, rowName, (Append [[(("value", vt)), (("parent", (OutWeak wx.node)))]], (HostedParams wx)), True), parent=(GenMarked p1, genName, r3), dynResult=?dynResult)
 

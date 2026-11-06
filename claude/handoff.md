@@ -154,6 +154,34 @@ separate pass over the token stream was not in this work.
 - **The Cuis table crashes on `▶`; Linux Cuis times measure software painting**
   (`claude/bugs/bench-cuis-latin1-and-software-paint.md`); Jimmy paused the Cuis runs.
 
+## The chess interface
+
+- **Chess has a fuller interface** (Jimmy: "a slightly more mature user interface for me to
+  start iterating from"; branch `claude-chess-ui`): beside the board a panel with the
+  status, a move counter, Back, Forward, Reset and Settings, and the list of moves; a
+  settings dialog in the window's bottom right corner edits the interface's copy, the players' names, the
+  squares' colours as `#rrggbb` and the board's border (a slider and a box in step), live.
+  The settings start at their defaults every run and live in the dialog's holds; nothing
+  touches a file. examples/chess/README.md, "The interface", says what each part does and
+  the choices made (a move from an earlier position discards the later moves; Reset
+  forgets the moves and keeps the settings).
+- **The window library gained** `Ui.Slider`, `Ui.Shown` (`@ShowIf`), `@Overlay`,
+  `@TextField`, a live frame spec (`@FramedBy`, `@Bordered`), a grid whose columns and rows
+  size to their children, opaque backgrounds, and keys only to an input that shows
+  (examples/chess/window/README.md, with doubts DG, OP, HS, FS).
+- **The lowering fixes it needed** (prismc/README.md, gap ID and the not-lowered list):
+  only a widget's own recursion is bounded, so widgets nest as deep as written and a
+  widget parameter no longer lowers to nothing past depth 32; a widget block's bundle
+  result is taken apart where it is bound; a block reads a widget's result on a line
+  above its binding, and a `for` row reads a widget's `$` parameter; an element's first
+  value at the build reads a parameter's value then; a map-keyed type variable is `Ord`
+  in Rust. Each has a conformance test (`sem-ch08-widget-depth`,
+  `sem-ch04-bundle-result`, `sem-ch08-widget-reads`). Filed, not fixed:
+  `claude/bugs/widget-plain-result-unbound.md`.
+- **Open for Jimmy:** dragging a slider needs pointer motion from the canvas Worlds (doubt
+  DG); `click element` by a whole chain would let a form be built of rows (chess doubt PC);
+  the windowed chess transcript is 2.5 MB (chess doubt TS).
+
 ## Smaller items
 
 - **The C++ Worlds moved and leave old build directories behind.** Since `15d1ab8` they

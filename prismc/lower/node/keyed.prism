@@ -77,7 +77,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let rowFields = Append [[(("key", kt, "the row's key")), (("left_entry", (OutCell (OutOpt vt)), "the entry as the tick its key left opened, kept from the row's leaving on (R8)")), (("parent", (OutWeak wx.node), "the node of the `for`"))]], (Each locals, \|l| ((l.field, l.ty, "`{l.name}`, the block's")))
     let rowMoves = Append [[(("key", (XClone (XVar "key")))), (("left_entry", (XCall "RefCell::new", [[XNone]]))), (("parent", (XVar "parent")))]], (Each locals, \|l| ((l.field, (XVar l.field))))
     let rowTaken = Append (Append nodeHooks, [["key", "value", "parent", "entry", "left_entry"]]), (Each locals, \|l| l.field)
-    let rowWx0 = NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.depth, (?HostedRows wx)
+    let rowWx0 = NewWx lx, rowName, rowFields, [[]], rowMoves, [[(EntryGetter srcGetter, vt)]], {"entry": [[ParentRead srcGetter]]}, rowTaken, wx.inlining, (?HostedRows wx)
     # The block's events the body names reach the row through ports, as a generation's do
     # (`RowEnv`): a port node in the row, subscribed to the block's port, which the block's
     # event fires. The row's own graph indexes none of the block's events.
@@ -136,6 +136,10 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
                 &_.snaps <= Push &_.snaps, SnapDef(name=gathered, live="{gathered}_now", ty=gatheredTy, eq=(TyHasEq lx, (Peel full), [[]]), builder=name, before=False, what=what)
                 &_.dynReads <= Insert &_.dynReads, "{gathered}_now", (UnionReads reads, (BlockReads (ReadsClosed rowWx.dynReads, resultReads)))
             ((wx5, (WrDyn (XMethod (XSelf), gathered, [[XCx]]), [[OwnRead gathered]], gatheredTy)))
+        WrParts ignore:
+            let wx4 = update wx3:
+                &_.build <= Push &_.build, (RefusalDo "a `for` whose rows end on a bundle (Semantics ch. 4: gathered part by part)")
+            ((wx4, WrUnit))
         otherwise:
             let wx4 = AddBuilder wx3, name, pos, kt, vt, rowName, keyed, reads, (PendingRow(wx=rowWx, qk=rowName, params=rowParams, gather=nil)), passed
             ((wx4, WrUnit))
@@ -191,6 +195,10 @@ RowReads: fn Env, Ex -> Env
 fn RowReads env, pref = Fold (Keys env.names), env, \|en, k| match env.names[k]:
     ? (BnHold f, t): Bind en, k, (BnDyn (XMethod (XField pref, f), "get", [[XCx]]), [[ParentRead f]], t)
     ? (BnDyn (XMethod (XSelf), m, xs), ignore, t): Bind en, k, (BnDyn (XMethod pref, m, xs), [[ParentRead m]], t)
+    # a widget parameter's dynamic, through its getter (`BindParam`)
+    ? (BnDyn ignore, ignore, ignore): match env.names["{k}#row"]:
+        ? (BnDyn (XMethod ignore, m, xs), ignore, t): Bind en, k, (BnDyn (XMethod pref, m, xs), [[ParentRead m]], t)
+        otherwise: en
     otherwise: en
 
 # The event bindings of a row's port environment (`RowEnv`) over a row's environment: the

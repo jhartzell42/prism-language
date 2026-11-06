@@ -70,15 +70,34 @@ fn Wrapped ?inner, input = match ?inner:
     ? r: Inner r
     nil: input
 
-?ClickFor: fn Hit -> ?Routed
-fn ?ClickFor h = match h.kind:
+# what a press at `p` on a hit says to its place: a click, or a slider's step; an input
+# takes the focus instead (`?FocusChain`), and a background takes the press and says nothing
+?PressFor: fn Hit, Point -> ?Routed
+fn ?PressFor h, p = match h.kind:
     Clickable: ?Deliver h.chain, Clicked
+    Track low, high: ?Deliver h.chain, (Slid (StepAt low, high, (Ratio ((Local h, p).x - h.rect.x - 4.0), (h.rect.w - 8.0))))
     Focus: nil
+    Opaque: nil
 
-?RouteKey: fn ?[Path], Key -> ?Routed
-fn ?RouteKey ?focus, k = match ?focus:
-    ? chain: ?Deliver chain, (Typed k)
-    nil: nil
+?ClickAt: fn [Hit], Point -> ?Routed
+fn ?ClickAt hits, p:
+    h <- ?HitAt hits, p
+    ?PressFor h, p
+
+# the step from `low` to `high` nearest a fraction of the way along: a slider's knob is
+# centred 4 points in from either end of its track
+StepAt: fn Nat, Nat, Float -> Nat
+fn StepAt low, high, along:
+    let n = Or (high -? low), 0
+    let x = (Clamp along, 0.0, 1.0) * (Float (Int n))
+    low + Fold (Indices n), 0, \|count, i| if (Float (Int i)) + 0.5 <= x: count + 1 else: count
+
+# a key goes to the focused input while it shows: not to one in a closed dialog
+?RouteKey: fn [Hit], ?[Path], Key -> ?Routed
+fn ?RouteKey hits, ?focus, k:
+    chain <- ?focus
+    require (?FocusRect hits, ?focus) != nil
+    ?Deliver chain, (Typed k)
 
 # focus names the focused place by its chain of paths, which is its identity while it lives;
 # it moves by a press on a text input (`?FocusChain` of the hit), or by Tab to the next input

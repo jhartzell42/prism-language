@@ -1,4 +1,4 @@
-# Derived from the window library's culling (layout.prism): the 200 by 100 window draws the button and the four labels that start inside it, and the Bump press changes only the measured words (each label's own, in its row: `2/[1]/0/[k]/1/[word]/0`, the column being the program's place 1), since the label it changes starts far below the window's edge; the press reaches the button through two hosts, and the new word is measured the tick the label's entry is published (Jimmy's `$(Path ==> $Elem c)`, round 3 ST), the window laying out a row per element, a gathered tick per level. The focus test: a press on the first input focuses it, Tab moves to the second, a press on the button leaves the focus alone; the focus is placing, not layout, so it moves in the tick of the press. Typing: the input's new text is laid out at the old width (h=8) for one tick before its extent arrives (doubt MT).
+# Derived from the window library's culling (layout.prism): the 200 by 100 window draws the button and the four labels that start inside it, and the Bump press changes only the measured words (each label's own, in its row: `2/[1]/0/[k]/1/[word]/0`, the column being the program's place 1), since the label it changes starts far below the window's edge; the press reaches the button through two hosts, and the new word is measured the tick the label's entry is published (Jimmy's `$(Path ==> $Elem c)`, round 3 ST), the window laying out a row per element, a gathered tick per level. The focus test: a press on the first input focuses it, Tab moves to the second, a press on the button leaves the focus alone; the focus is placing, not layout, so it moves in the tick of the press. Typing: the input's new text is laid out at the old width (h=8) for one tick before its extent arrives (doubt MT). The slider: a press on the track answers the step nearest it (its knob 4 in from either end), and the box kept in step with it is set at its end. The dialog: hidden, it draws nothing and the button beneath hears its press; shown, its background takes the press; its box keeps its text while it is hidden, and a key typed then reaches nobody. The grid: the captions' column is as wide as its widest caption, the boxes' as a box.
 test a_column_taller_than_the_window_draws_what_shows
 
 tick 0
@@ -122,3 +122,232 @@ tick 8
   changed:
     3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="xq"), Draw.Rect(rect=Rect(x=22.0, y=3.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
     4: Gui.Focus(window=WindowId "Form", at=? Rect(x=0.0, y=0.0, w=200.0, h=22.0))
+
+test a_slider_and_its_box_move_together
+
+tick 0
+  added:
+    1: Gui.Window(title="Slide", size=Extent(w=300.0, h=100.0))
+    2/[1]/0/[1]/1/["3"]/0: Gui.Metrics(text="3")
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=61.599999999999994, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=57.599999999999994, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="3"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1)]])
+    4: Gui.Focus(window=WindowId "Slide", at=nil)
+  result: "3 3"
+
+tick 1
+  in:
+    1: Press Point(x=100.0, y=11.0)
+
+compute until idle: 6 ticks, 2 to 7
+
+tick 3
+  result: "5 5"
+
+tick 4
+  added:
+    2/[1]/0/[1]/1/["5"]/0: Gui.Metrics(text="5")
+  torn down:
+    2/[1]/0/[1]/1/["3"]/0: Gui.Metrics(text="3")
+
+tick 6
+  changed:
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=100.0, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=96.0, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=8.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=6.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="5"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=8.0), path=1)]])
+
+tick 7
+  changed:
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=100.0, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=96.0, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="5"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1)]])
+
+tick 8
+  in:
+    1: Press Point(x=196.0, y=11.0)
+
+compute until idle: 6 ticks, 9 to 14
+
+tick 10
+  result: "10 10"
+
+tick 11
+  added:
+    2/[1]/0/[1]/1/["10"]/0: Gui.Metrics(text="10")
+  torn down:
+    2/[1]/0/[1]/1/["5"]/0: Gui.Metrics(text="5")
+
+tick 13
+  changed:
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=196.0, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=192.0, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=8.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=6.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="10"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=8.0), path=1)]])
+
+tick 14
+  changed:
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=196.0, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=192.0, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="10"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1)]])
+
+tick 15
+  in:
+    1: Press Point(x=1.0, y=11.0)
+
+compute until idle: 6 ticks, 16 to 21
+
+tick 17
+  result: "0 0"
+
+tick 18
+  added:
+    2/[1]/0/[1]/1/["0"]/0: Gui.Metrics(text="0")
+  torn down:
+    2/[1]/0/[1]/1/["10"]/0: Gui.Metrics(text="10")
+
+tick 20
+  changed:
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=4.0, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=0.0, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=8.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=6.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="0"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=8.0), path=1)]])
+
+tick 21
+  changed:
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=4.0, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=0.0, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="0"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1)]])
+
+tick 22
+  in:
+    1: Press Point(x=100.0, y=33.0)
+  changed:
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=4.0, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=0.0, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="0"), Draw.Rect(rect=Rect(x=13.0, y=25.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1)]])
+    4: Gui.Focus(window=WindowId "Slide", at=? Rect(x=0.0, y=22.0, w=200.0, h=22.0))
+
+compute until idle: 0 ticks
+
+tick 23
+  in:
+    1: Pressed (Char '7')
+
+compute until idle: 6 ticks, 24 to 29
+
+tick 25
+  result: "7 07"
+
+tick 26
+  added:
+    2/[1]/0/[1]/1/["07"]/0: Gui.Metrics(text="07")
+  torn down:
+    2/[1]/0/[1]/1/["0"]/0: Gui.Metrics(text="0")
+
+tick 28
+  changed:
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=138.39999999999998, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=134.39999999999998, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=8.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=6.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="07"), Draw.Rect(rect=Rect(x=4.0, y=25.0, w=2.0, h=2.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=8.0), path=1)]])
+    4: Gui.Focus(window=WindowId "Slide", at=? Rect(x=0.0, y=22.0, w=200.0, h=8.0))
+
+tick 29
+  changed:
+    3: Gui.Scene(window=WindowId "Slide", draw=[[Draw.Rect(rect=Rect(x=0.0, y=9.0, w=200.0, h=4.0), paint=Grey), Draw.Rect(rect=Rect(x=0.0, y=9.0, w=138.39999999999998, h=4.0), paint=Blue), Draw.Rect(rect=Rect(x=134.39999999999998, y=2.0, w=8.0, h=18.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="07"), Draw.Rect(rect=Rect(x=22.0, y=25.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1)]])
+    4: Gui.Focus(window=WindowId "Slide", at=? Rect(x=0.0, y=22.0, w=200.0, h=22.0))
+
+test a_dialog_hides_shows_and_keeps_its_text
+
+tick 0
+  added:
+    1: Gui.Window(title="Overlay", size=Extent(w=400.0, h=200.0))
+    2/[1]/0/[0]/1/["Under the dialog"]/0: Gui.Metrics(text="Under the dialog")
+    2/[1]/0/[2]/0/[1]/0/[1]/0/[1]/0/[0]/1/["hi"]/0: Gui.Metrics(text="hi")
+    2/[2]/1/["Toggle"]/0: Gui.Metrics(text="Toggle")
+    3: Gui.Scene(window=WindowId "Overlay", draw=[[Draw.Rect(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=8.0), text="Under the dialog"), Draw.Clickable(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), path=0), Draw.Rect(rect=Rect(x=2.0, y=32.0, w=66.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=38.0), text="Toggle"), Draw.Clickable(rect=Rect(x=2.0, y=32.0, w=66.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Overlay", at=nil)
+  result: "0 hi"
+
+tick 1
+  in:
+    1: Press Point(x=8.0, y=8.0)
+
+compute until idle: 2 ticks, 2 to 3
+
+tick 3
+  result: "1 hi"
+
+tick 4
+  in:
+    1: Press Point(x=35.0, y=45.0)
+
+compute until idle: 5 ticks, 5 to 9
+
+tick 9
+  changed:
+    3: Gui.Scene(window=WindowId "Overlay", draw=[[Draw.Rect(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=8.0), text="Under the dialog"), Draw.Clickable(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=0.0, w=228.0, h=50.0), paint=Ink), Draw.Rect(rect=Rect(x=2.0, y=2.0, w=224.0, h=46.0), paint=Paper), Draw.Rect(rect=Rect(x=14.0, y=14.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=15.0, y=15.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=18.0, y=18.0), text="hi"), Draw.Clickable(rect=Rect(x=14.0, y=14.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=2.0, y=52.0, w=66.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=58.0), text="Toggle"), Draw.Clickable(rect=Rect(x=2.0, y=52.0, w=66.0, h=26.0), path=2)]])
+
+tick 10
+  in:
+    1: Press Point(x=4.0, y=4.0)
+
+compute until idle: 0 ticks
+
+tick 11
+  in:
+    1: Press Point(x=100.0, y=25.0)
+  changed:
+    3: Gui.Scene(window=WindowId "Overlay", draw=[[Draw.Rect(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=8.0), text="Under the dialog"), Draw.Clickable(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=0.0, w=228.0, h=50.0), paint=Ink), Draw.Rect(rect=Rect(x=2.0, y=2.0, w=224.0, h=46.0), paint=Paper), Draw.Rect(rect=Rect(x=14.0, y=14.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=15.0, y=15.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=18.0, y=18.0), text="hi"), Draw.Rect(rect=Rect(x=36.0, y=17.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=14.0, y=14.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=2.0, y=52.0, w=66.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=58.0), text="Toggle"), Draw.Clickable(rect=Rect(x=2.0, y=52.0, w=66.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Overlay", at=? Rect(x=14.0, y=14.0, w=200.0, h=22.0))
+
+compute until idle: 0 ticks
+
+tick 12
+  in:
+    1: Pressed (Char '!')
+
+compute until idle: 14 ticks, 13 to 26
+
+tick 18
+  result: "1 hi!"
+
+tick 19
+  added:
+    2/[1]/0/[2]/0/[1]/0/[1]/0/[1]/0/[0]/1/["hi!"]/0: Gui.Metrics(text="hi!")
+  torn down:
+    2/[1]/0/[2]/0/[1]/0/[1]/0/[1]/0/[0]/1/["hi"]/0: Gui.Metrics(text="hi")
+
+tick 25
+  changed:
+    3: Gui.Scene(window=WindowId "Overlay", draw=[[Draw.Rect(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=8.0), text="Under the dialog"), Draw.Clickable(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=0.0, w=228.0, h=36.0), paint=Ink), Draw.Rect(rect=Rect(x=2.0, y=2.0, w=224.0, h=32.0), paint=Paper), Draw.Rect(rect=Rect(x=14.0, y=14.0, w=200.0, h=8.0), paint=Blue), Draw.Rect(rect=Rect(x=15.0, y=15.0, w=198.0, h=6.0), paint=Paper), Draw.Text(at=Point(x=18.0, y=18.0), text="hi!"), Draw.Rect(rect=Rect(x=18.0, y=17.0, w=2.0, h=2.0), paint=Ink), Draw.Clickable(rect=Rect(x=14.0, y=14.0, w=200.0, h=8.0), path=0), Draw.Rect(rect=Rect(x=2.0, y=38.0, w=66.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=44.0), text="Toggle"), Draw.Clickable(rect=Rect(x=2.0, y=38.0, w=66.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Overlay", at=? Rect(x=14.0, y=14.0, w=200.0, h=8.0))
+
+tick 26
+  changed:
+    3: Gui.Scene(window=WindowId "Overlay", draw=[[Draw.Rect(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=8.0), text="Under the dialog"), Draw.Clickable(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=0.0, w=228.0, h=50.0), paint=Ink), Draw.Rect(rect=Rect(x=2.0, y=2.0, w=224.0, h=46.0), paint=Paper), Draw.Rect(rect=Rect(x=14.0, y=14.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=15.0, y=15.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=18.0, y=18.0), text="hi!"), Draw.Rect(rect=Rect(x=45.0, y=17.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=14.0, y=14.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=2.0, y=52.0, w=66.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=58.0), text="Toggle"), Draw.Clickable(rect=Rect(x=2.0, y=52.0, w=66.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Overlay", at=? Rect(x=14.0, y=14.0, w=200.0, h=22.0))
+
+tick 27
+  in:
+    1: Press Point(x=35.0, y=65.0)
+
+compute until idle: 5 ticks, 28 to 32
+
+tick 32
+  changed:
+    3: Gui.Scene(window=WindowId "Overlay", draw=[[Draw.Rect(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=8.0), text="Under the dialog"), Draw.Clickable(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), path=0), Draw.Rect(rect=Rect(x=2.0, y=32.0, w=66.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=38.0), text="Toggle"), Draw.Clickable(rect=Rect(x=2.0, y=32.0, w=66.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Overlay", at=nil)
+
+tick 33
+  in:
+    1: Pressed (Char '?')
+
+compute until idle: 0 ticks
+
+tick 34
+  in:
+    1: Press Point(x=35.0, y=45.0)
+
+compute until idle: 5 ticks, 35 to 39
+
+tick 39
+  changed:
+    3: Gui.Scene(window=WindowId "Overlay", draw=[[Draw.Rect(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=8.0), text="Under the dialog"), Draw.Clickable(rect=Rect(x=2.0, y=2.0, w=156.0, h=26.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=0.0, w=228.0, h=50.0), paint=Ink), Draw.Rect(rect=Rect(x=2.0, y=2.0, w=224.0, h=46.0), paint=Paper), Draw.Rect(rect=Rect(x=14.0, y=14.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=15.0, y=15.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=18.0, y=18.0), text="hi!"), Draw.Rect(rect=Rect(x=45.0, y=17.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=14.0, y=14.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=2.0, y=52.0, w=66.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=58.0), text="Toggle"), Draw.Clickable(rect=Rect(x=2.0, y=52.0, w=66.0, h=26.0), path=2)]])
+    4: Gui.Focus(window=WindowId "Overlay", at=? Rect(x=14.0, y=14.0, w=200.0, h=22.0))
+
+test a_grid_sizes_each_column_to_its_widest_child
+
+tick 0
+  added:
+    1: Gui.Window(title="Grid", size=Extent(w=500.0, h=100.0))
+    2/[1]/0/[0]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[0]/1/["Name"]/0: Gui.Metrics(text="Name")
+    2/[1]/0/[1]/1/["x"]/0: Gui.Metrics(text="x")
+    2/[1]/0/[2]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[2]/1/["A"]/0: Gui.Metrics(text="A")
+    2/[1]/0/[2]/1/["caption"]/0: Gui.Metrics(text="caption")
+    2/[1]/0/[2]/1/["longer"]/0: Gui.Metrics(text="longer")
+    2/[1]/0/[3]/1/["y"]/0: Gui.Metrics(text="y")
+    3: Gui.Scene(window=WindowId "Grid", draw=[[Draw.Text(at=Point(x=4.0, y=4.0), text="Name"), Draw.Rect(rect=Rect(x=152.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=153.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=156.0, y=4.0), text="x"), Draw.Clickable(rect=Rect(x=152.0, y=0.0, w=200.0, h=22.0), path=1), Draw.Text(at=Point(x=4.0, y=26.0), text="A longer caption"), Draw.Rect(rect=Rect(x=152.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=153.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=156.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=152.0, y=22.0, w=200.0, h=22.0), path=3)]])
+    4: Gui.Focus(window=WindowId "Grid", at=nil)
+  result: "xy"

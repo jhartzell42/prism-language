@@ -1,0 +1,15 @@
+# Derived by hand: the button is place 0 and the label place 1 (a widget is transparent, Semantics ch. 8); the click moves the count and the hold fed by the bundle's event in the same tick.
+test a_bundle_result_is_taken_apart
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="0 after 0")
+  result: "0"
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1 after 1")
+  result: "1"

@@ -80,3 +80,110 @@ test a_key_types_its_character, @$formWindow:
     send Gui.Window(..), Pressed (Char 'q')
     compute until idle
         => returns "xqy"
+
+# A slider from 0 to 10 and a text box kept in step with it (`@TextField`): a press on the
+# track answers the step nearest it, and the box shows it; a number typed in the box moves
+# the knob. The slider is 200 wide, its knob's centre 4 in from either end, so a step is 19.2.
+@$slide: @$Text
+@$slide:
+    $shown <- @Column 0.0, @widget:
+        !slid <- Ui.Slider(value=$level, low=0, high=10)
+        $typed <- @TextField "level", "3", (StepText !slid)
+        $level <- 3 then !slid <| !Filter (?ParseNat (!Updated $typed))
+        @ "{$level} {$typed}"
+    @ $shown
+
+StepText: fn Nat -> Text
+fn StepText n = "{n}"
+
+@$slideWindow: @$Text
+@$slideWindow:
+    @Window $"Slide", (Extent 300.0, 100.0), @$slide
+
+test a_slider_and_its_box_move_together, @$slideWindow:
+    build
+        => returns "3 3"
+    click element 0                                         # the track's middle: step 5
+    compute until idle
+        => returns "5 5"
+    send Gui.Window(..), Press Point(x=196.0, y=11.0)       # the right end: step 10
+    compute until idle
+        => returns "10 10"
+    send Gui.Window(..), Press Point(x=1.0, y=11.0)         # the left end: step 0
+    compute until idle
+        => returns "0 0"
+    click element 1                                         # the box, then a 7 after its 0
+    compute until idle
+    send Gui.Window(..), Pressed (Char '7')
+    compute until idle
+        => returns "7 07"
+
+# A dialog over a button (`@Overlay` in `@Layers`): hidden, it draws nothing and the button
+# under it hears its press; shown, its background takes the press. Its text box keeps its
+# text while hidden, and a key typed while it is hidden reaches nobody.
+@$overlaid: @$Text
+@$overlaid:
+    $said <- @Layers @widget:
+        !under <- Ui.Button(label=$"Under the dialog")
+        $typed <- @Overlay $open, (Point 0.0, 0.0), @widget:
+            $t <- @TextInput "note", "hi"
+            @ $t
+        $presses <- 0 then $presses + 1 on !under
+        $open <- False then (not $open) on !toggle
+        @ "{$presses} {$typed}"
+    !toggle <- Ui.Button(label=$"Toggle")
+    @ $said
+
+@$overlaidWindow: @$Text
+@$overlaidWindow:
+    @Window $"Overlay", (Extent 400.0, 200.0), @$overlaid
+
+test a_dialog_hides_shows_and_keeps_its_text, @$overlaidWindow:
+    build
+        => returns "0 hi"
+        => expect_none Draw.Text(text="hi", ..)
+    send Gui.Window(..), Press Point(x=8.0, y=8.0)          # the button under the hidden dialog
+    compute until idle
+        => returns "1 hi"
+    click element 2                                         # Toggle (the layers are places 0 and 1): the dialog opens
+    compute until idle
+        => expect Draw.Text(text="hi", ..)
+    send Gui.Window(..), Press Point(x=4.0, y=4.0)          # the dialog's edge, over the button
+    compute until idle
+        => returns "1 hi"
+    send Gui.Window(..), Press Point(x=100.0, y=25.0)       # its box: focused, then typed in
+    compute until idle
+    send Gui.Window(..), Pressed (Char '!')
+    compute until idle
+        => returns "1 hi!"
+    click element 2                                         # Toggle: it closes, and keeps its text
+    compute until idle
+        => expect_none Draw.Text(text="hi!", ..)
+    send Gui.Window(..), Pressed (Char '?')                 # to the hidden box: nobody hears it
+    compute until idle
+        => returns "1 hi!"
+    click element 2
+    compute until idle
+        => expect Draw.Text(text="hi!", ..)
+
+# A grid's columns each as wide as their widest child, its rows as tall as their tallest:
+# the captions' column is as wide as "A longer caption" and the boxes' as a text box.
+@$form2: @$Text
+@$form2:
+    $both <- @Grid 2, @widget:
+        Ui.Label(text=$"Name")
+        $a <- @TextInput "a", "x"
+        Ui.Label(text=$"A longer caption")
+        $b <- @TextInput "b", "y"
+        @ "{$a}{$b}"
+    @ $both
+
+@$form2Window: @$Text
+@$form2Window:
+    @Window $"Grid", (Extent 500.0, 100.0), @$form2
+
+test a_grid_sizes_each_column_to_its_widest_child, @$form2Window:
+    build
+        => returns "xy"
+        => expect Draw.Clickable(rect=Rect(x=152.0, y=0.0, w=200.0, h=22.0), ..)
+        => expect Draw.Clickable(rect=Rect(x=152.0, y=22.0, w=200.0, h=22.0), ..)

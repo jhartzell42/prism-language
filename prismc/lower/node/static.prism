@@ -68,7 +68,9 @@ fn WidgetLine wx, benv, menv, e, ?bound:
 
 # A widget parameter applied (`@child` as a statement): its argument lowered here, in its
 # caller's environments and context, so its places take this node's next positions
-# (transparent, Semantics ch. 8). A blueprint parameter applied to arguments is not
+# (transparent, Semantics ch. 8). It needs no bound of its own: the argument is the
+# caller's text, one frame out, so an application recurses only through a widget's
+# recursion, which `InlineWidget` bounds. A blueprint parameter applied to arguments is not
 # lowered yet.
 ApplyWidgetParam: unbounded fn Wx, Expr, Env, Env, Lx, Nat -> ((Wx, Wres))
 fn ApplyWidgetParam wx, x, cbenv, cmenv, clx, nargs:
@@ -76,16 +78,13 @@ fn ApplyWidgetParam wx, x, cbenv, cmenv, clx, nargs:
         let wx2 = update wx:
             &_.build <= Push &_.build, (RefusalDo "a widget parameter applied to arguments")
         ((wx2, WrUnit))
-    else: if wx.depth > 32: ((wx, WrUnit))
     else:
         let lx = wx.lx
         let inner = update wx:
             &_.lx <= clx
-            &_.depth <= &_.depth + 1
         let ((done, res)) = BuildLine inner, cbenv, cmenv, x, nil
         let back = update done:
             &_.lx <= lx
-            &_.depth <= wx.depth
         ((back, res))
 
 # A widget block in a static position, `@widget:` applied: its statements lowered into this
@@ -469,7 +468,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                             &_.build <= Push &_.build, (RefusalDo "a widget of several clauses that takes no arguments")
                         ((wx2, WrUnit))
         ? body:
-            if wx.depth > 16: TooDeep wx, qk, e
+            if (Recursion wx.inlining, qk) > 16: TooDeep wx, qk, e
             else:
                 let lxc = InModuleAt lx, v.file, v.home, lx.site
                 let ptys = match v.scheme.ty:
@@ -484,16 +483,21 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                         ? a: BindParam w, benv, menv, be, me, nkey, pty, a.value
                 let inner = update wx1:
                     &_.lx <= lxc
-                    &_.depth <= &_.depth + 1
+                    &_.inlining <= Push &_.inlining, qk
                     &_.result <= WrUnit
                 let done = BlockInto inner, be1, me1, body
                 let back = update done:
                     &_.lx <= lx
-                    &_.depth <= wx.depth
+                    &_.inlining <= wx.inlining
                     &_.result <= wx.result
                 ((back, done.result))
 
-# A widget recursing deeper than the lowering inlines it (`depth` 16): the node at that
+# How many times the widget `qk` is already being inlined around this call: its recursion,
+# which alone is bounded; widgets that call other widgets nest as deep as they are written.
+Recursion: fn [Text], Text -> Nat
+fn Recursion inlining, qk = Fold inlining, 0, \|n, k| if k == qk: n + 1 else: n
+
+# A widget recursing deeper than the lowering inlines it (sixteen levels): the node at that
 # depth faults at its build, so only a tree that deep stops the program, and loudly; the call
 # gives a result of its type that is never read (the build faults first).
 TooDeep: unbounded fn Wx, Text, Expr -> ((Wx, Wres))
@@ -537,9 +541,30 @@ fn BindParam wx, cbenv, cmenv, be, me, nkey, pty, arg:
             let b = BnEv r, t
             ((wx2, (Bind be, nkey, b), (Bind me, nkey, b)))
         LyDyn:
+            # the argument's expression where the widget reads it; for a row of the widget's
+            # (a `for` in it), which reads the node through its parent, a getter of it too,
+            # under `{name}#row` (`RowEnv`)
             let ((ex, reads)) = DynamicExpr wx, cmenv, arg
             let b = BnDyn ex, reads, t
-            ((wx, (Bind be, nkey, b), (Bind me, nkey, b)))
+            # its value at the build, when the argument has one (`InitEnv`, round 3 DY): what an
+            # element's first value or a supplier reads while the node is being made
+            let ((wx0, be0)) = if (AllInited wx, reads) and (NamesInited cbenv, arg):
+                let ((rsi, wxi)) = FreshName wx, "{Snake nkey}_arg"
+                let wxj = update wxi:
+                    &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{rsi}_init"), t), (Own (ValueOf lx, (InitEnv cbenv), arg)))
+                    &_.inited <= Push &_.inited, rsi
+                ((wxj, (Bind be, "{nkey}#init", (BnLocal (XVar "{rsi}_init"), Owned, t))))
+            else: ((wx, be))
+            match ex:
+                XMethod XSelf, ignore, ignore: ((wx0, (Bind be0, nkey, b), (Bind me, nkey, b)))
+                otherwise:
+                    let ((rs, wx2)) = FreshName wx0, (Snake nkey)
+                    let getter = MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{nkey}`, a widget's parameter, as its rows read it")
+                    let wx3 = update wx2:
+                        &_.getters <= Push &_.getters, getter
+                        &_.dynReads <= Insert &_.dynReads, rs, reads
+                    let rb = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
+                    ((wx3, (Bind (Bind be0, nkey, b), "{nkey}#row", rb), (Bind (Bind me, nkey, b), "{nkey}#row", rb)))
         otherwise:
             let ((rs, wx2)) = FreshName wx, (Snake nkey)
             let v = Own (ValueOf lx, cbenv, arg)
