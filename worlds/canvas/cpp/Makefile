@@ -46,7 +46,7 @@ WARN ?= -Wall -Wextra -Werror
 FLAGS := $(STD) $(WARN) $(OPT) $(SANITIZE) -Iinclude -I$(RT)/include -I$(CLI)/include $(PKG_CFLAGS)
 RTLIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
 LIB := $(BUILD)/libprism_world_canvas.a
-LIB_SRCS := src/world.cpp src/font.cpp src/render.cpp src/big_stack.cpp
+LIB_SRCS := src/world.cpp src/font.cpp src/render.cpp src/damage.cpp src/big_stack.cpp
 LIB_OBJS := $(LIB_SRCS:src/%.cpp=$(BUILD)/%.o) $(BUILD)/app.o $(BUILD)/cli.o
 # the runtime's headers too: an object of this World holds the runtime's types by value
 HEADERS := $(wildcard include/prism_world_canvas/*.hpp) $(wildcard $(RT)/include/prism_rtl/*.hpp)

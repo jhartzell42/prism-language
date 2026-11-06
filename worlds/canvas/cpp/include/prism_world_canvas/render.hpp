@@ -50,6 +50,22 @@ std::optional<RectF> rect_of(const Pod& v);
 /// A number field: a `Float`, or an integer; 0 when absent.
 double number(const Pod* v);
 
+/// A box of physical pixels, `x0..x1` by `y0..y1`, inside the frame and not empty.
+struct IRect {
+    std::uint32_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    std::uint64_t area() const { return std::uint64_t(x1 - x0) * std::uint64_t(y1 - y0); }
+    friend bool operator==(const IRect&, const IRect&) = default;
+};
+
+/// What one top-level command can touch: nothing (a `Draw.Clickable`, an empty rectangle,
+/// a command off the frame), a box, or the whole frame (a coordinate or transform that is
+/// not finite).
+struct Bounds {
+    enum class Kind { Empty, Box, Whole } kind = Kind::Empty;
+    IRect box{};
+    friend bool operator==(const Bounds&, const Bounds&) = default;
+};
+
 /// Paints draw lists. It keeps every image and glyph it has loaded, so a scene that
 /// changes one square does not reread sixty-four files.
 class Renderer {
@@ -62,6 +78,16 @@ public:
     /// Clear `target` to the background and paint each draw list on it, in order.
     /// `scale` is the window's scale factor: physical pixels per logical pixel.
     void render(cairo_surface_t* target, float scale, const std::vector<const Pod*>& draw_lists);
+
+    /// Paint these top-level commands of draw lists onto `target`, in order, as `render`
+    /// paints each (with no clear): the damage painter's repaint of a box (damage.hpp).
+    void draw_some(cairo_surface_t* target, float scale, const std::vector<const Pod*>& commands);
+
+    /// The physical pixels of a `w` by `h` frame that the top-level command `e` can touch
+    /// at `scale`: the box of everything `draw` would place, through the same transforms
+    /// and glyph positions, rounded out to whole pixels and one pixel wider for
+    /// anti-aliasing (an image three, for its filter), cut to the frame.
+    Bounds bounds(const Pod& e, float scale, int w, int h);
 
 private:
     struct Glyph {

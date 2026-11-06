@@ -312,12 +312,12 @@ impl Extent {
         }
     }
 
-    /// Within a clip: a clip cuts an unbounded inside to itself.
+    /// Within a clip. Anything not finite is unbounded, inside a clip or not, as the C++
+    /// World's cairo stops drawing at a non-finite transform.
     fn intersect(self, clip: Extent) -> Extent {
         match (self, clip) {
+            (Extent::Whole, _) | (_, Extent::Whole) => Extent::Whole,
             (Extent::Nothing, _) | (_, Extent::Nothing) => Extent::Nothing,
-            (e, Extent::Whole) => e,
-            (Extent::Whole, c) => c,
             (Extent::Box(a0, b0, a1, b1), Extent::Box(c0, d0, c1, d1)) => {
                 let (x0, y0, x1, y1) = (a0.max(c0), b0.max(d0), a1.min(c1), b1.min(d1));
                 if x1 < x0 || y1 < y0 { Extent::Nothing } else { Extent::Box(x0, y0, x1, y1) }

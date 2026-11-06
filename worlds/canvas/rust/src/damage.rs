@@ -436,5 +436,10 @@ mod tests {
         let group = el("Draw.Group", vec![("turn", turn), ("draws", Pod::Array(vec![rect(1.0, 1.0, 5.0, 5.0, "Red")]))]);
         let lists = [Pod::Array(vec![rect(1.0, 1.0, 5.0, 5.0, "Red"), group])];
         assert_eq!(painter.paint(&mut renderer, &mut pixmap, 1.0, &lists), Damage::Full);
+        // inside a clip too
+        let nan_text = el("Draw.Text", vec![("at", gui::point(f64::NAN, 3.0)), ("text", Pod::text("a"))]);
+        let clip = el("Draw.Clip", vec![("rect", gui::rect(0.0, 0.0, 1e30, 50.0)), ("draws", Pod::Array(vec![nan_text]))]);
+        let lists = [Pod::Array(vec![rect(1.0, 1.0, 5.0, 5.0, "Red"), clip])];
+        assert_eq!(painter.paint(&mut renderer, &mut pixmap, 1.0, &lists), Damage::Full);
     }
 }

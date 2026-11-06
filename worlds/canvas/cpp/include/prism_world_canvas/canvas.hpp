@@ -10,6 +10,7 @@
 //
 // - world.hpp: the `World` the tick loop calls, with no display in it.
 // - render.hpp: a draw list painted onto a cairo image surface.
+// - damage.hpp: a window's frame painted again only where its scene changed.
 // - font.hpp: the bundled DejaVu Sans, through FreeType.
 // - this file: the loop, over Xlib with MIT-SHM images (app.cpp) or over Cocoa
 //   (app_macos.mm).
@@ -25,6 +26,7 @@
 #include <span>
 
 #include "prism_world_canvas/font.hpp"
+#include "prism_world_canvas/damage.hpp"
 #include "prism_world_canvas/render.hpp"
 #include "prism_world_canvas/world.hpp"
 
