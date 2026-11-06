@@ -19,6 +19,14 @@ set -eu
 self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")  # absolute, for the run under xvfb-run below
 cd "$(dirname "$0")/../.."
 . bench/lib.sh
+# installed_at FILE: its modification time, to the minute (BSD stat on macOS, GNU stat else;
+# `stat -f` is a file-system query under GNU stat, so the platform chooses)
+installed_at() {
+    case "$bench_os" in
+        Darwin) stat -f %Sm -t '%F %R' "$1" ;;
+        *) stat -c %y "$1" | cut -c1-16 ;;
+    esac
+}
 if [ "$bench_os" != Darwin ] && [ -z "${DISPLAY:-}" ]; then
     command -v xvfb-run > /dev/null || bench_die "no DISPLAY and no xvfb-run to make one (apt install xvfb)"
     echo "bench: no DISPLAY; running under xvfb-run -a" >&2
@@ -102,7 +110,7 @@ rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`'s bytes 
         *) echo "- **Machine:** $(machine_line); display $DISPLAY$( [ -n "${PRISM_BENCH_XVFB:-}" ] && echo ", Xvfb under xvfb-run (no real display: the frame is handed to a server that shows nothing)")" ;;
     esac
     echo "- **Load average:** $load_start at the start, $load_end at the end"
-    echo "- **prism-language:** $(git rev-parse --short HEAD)$(git diff --quiet || echo ' (with uncommitted changes)'); prismc installed $(stat -f %Sm -t '%F %R' target/bootstrap/prismc 2>/dev/null || stat -c %y target/bootstrap/prismc | cut -c1-16)"
+    echo "- **prism-language:** $(git rev-parse --short HEAD)$(git diff --quiet || echo ' (with uncommitted changes)'); prismc installed $(installed_at target/bootstrap/prismc)"
     echo "- **C++:** $(clang++ --version | head -1), -O3; **Rust:** $(rustc --version), cargo release (opt-level 3)"
     echo "- **GTK:** $(pkg-config --modversion gtk+-3.0), cc -O2"
     case " ${impls[*]} " in *" cuis "*)
