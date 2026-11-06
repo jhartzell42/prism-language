@@ -346,6 +346,8 @@ fn DistinctLine wx, menv, args, e, ?bound:
             let t = OutTyOf lx, (Peel (TypeAt lx, a.value.span))
             let ((name, wx1)) = match ?bound:
                 ? (BnHold f, ignore): ((f, wx))
+                # bound as a widget's result (`IsGetterBuiltin`): the getter the name was pre-bound to
+                ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
                 otherwise: FreshName wx, "distinct"
             let kept = "{name}_kept"
             let source = "{name}_source"
@@ -389,6 +391,8 @@ fn PerKeyLine wx, menv, args, ?bound:
             let t = OutMap kt, (OutDyn vt)
             let ((name, wx1)) = match ?bound:
                 ? (BnHold f, ignore): ((f, wx))
+                # bound as a widget's result (`IsGetterBuiltin`): the getter the name was pre-bound to
+                ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
                 otherwise: FreshName wx, "per_key"
             let kept = "{name}_kept"
             let source = "{name}_source"
