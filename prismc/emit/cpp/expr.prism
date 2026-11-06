@@ -242,6 +242,7 @@ fn CppCall cp, f, args:
         "Snapshot::new": "snapshot({a})"
         "Path::root": "Path::root()"
         "Fault::answer": "Fault::answer({a})"
+        "Fault::too_deep": "Fault::too_deep({a})"
         "Error::new": "Error({a})"
         "Text::from": "Text({a})"
         "String::new": "std::string()"

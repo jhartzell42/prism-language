@@ -236,6 +236,10 @@ impl Fault {
     pub fn answer(message: impl Into<String>) -> Fault {
         Fault::new("Runtime.Answer", message)
     }
+    /// A row of a recursive widget deeper than the compiler inlined it was built.
+    pub fn too_deep(message: impl Into<String>) -> Fault {
+        Fault::new("Runtime.TooDeep", message)
+    }
 }
 
 impl fmt::Display for Fault {

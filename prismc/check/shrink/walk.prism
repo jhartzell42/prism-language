@@ -470,6 +470,8 @@ fn ?NoLargerArg m, c, args = match ?CalleeName c:
     nil: nil
 
 # The prelude's functions that return no more than their first argument (pick SW), as the
-# prelude declares them.
+# prelude declares them; and `@Flatten`, whose dynamic is its outer's inner, so a `for`
+# row's entry flattened is still a part of the row's source (a host document's entry: the
+# window lays out a child of a container's document, as deep as the tree).
 IsNoLargerPrelude: fn G, Text -> Bool
-fn IsNoLargerPrelude g, k = (HasText [["Prelude.Take", "Prelude.Drop", "Prelude.Filter", "Prelude.Remove", "Prelude.Min"]], k) and IsPreludeKey g, k
+fn IsNoLargerPrelude g, k = (HasText [["Prelude.Take", "Prelude.Drop", "Prelude.Filter", "Prelude.Remove", "Prelude.Min", "Prelude.@Flatten"]], k) and IsPreludeKey g, k

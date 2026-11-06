@@ -52,43 +52,43 @@ fn @TextInput name, initial:
 @Grid: fn Nat, @a -> @a
 fn @Grid columns, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Grid(columns=columns, children=Claimed $elems)
+    !in <- Ui.Grid(columns=columns, children=$elems)
     @ r
 
 @VBox: fn @a -> @a
 fn @VBox @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.VBox(children=Claimed $elems)
+    !in <- Ui.VBox(children=$elems)
     @ r
 
 @HBox: fn @a -> @a
 fn @HBox @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.HBox(children=Claimed $elems)
+    !in <- Ui.HBox(children=$elems)
     @ r
 
 @Row: fn Float, @a -> @a
 fn @Row spacing, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Row(spacing=spacing, align=Start, children=Claimed $elems)
+    !in <- Ui.Row(spacing=spacing, align=Start, children=$elems)
     @ r
 
 @Column: fn Float, @a -> @a
 fn @Column spacing, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Column(spacing=spacing, align=Start, children=Claimed $elems)
+    !in <- Ui.Column(spacing=spacing, align=Start, children=$elems)
     @ r
 
 @Layers: fn @a -> @a
 fn @Layers @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Layers(children=Claimed $elems)
+    !in <- Ui.Layers(children=$elems)
     @ r
 
 @Framed: fn FrameSpec, @a -> @a
 fn @Framed spec, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Frame(spec=spec, children=Claimed $elems)
+    !in <- Ui.Frame(spec=spec, children=$elems)
     @ r
 
 # the modifiers: each is one frame around its child
@@ -114,18 +114,42 @@ fn @Turned deg, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0,
 fn @Backed c, p, @child = @Framed (FrameSpec p, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, (? c)), @child
 
 # ---------------------------------------------------------------------------
-# The window (Pitch chapter 5's, with `EnvOf` for the constructor; README, doubt EN)
+# The window (Pitch chapter 5's). Its child's document is `$(Path ==> $Elem)` (Jimmy, 6
+# November 2026): the window lays each top element out in a `for` row of its own, `@Laid`,
+# which lays each child of a container out in a row of its own in turn, so a change of one
+# element re-lays the rows on its path, each the one tick a gathered `for` adds; the placing
+# is one plain pass over the window's layout (`PlaceAt`), of what shows.
+
+# One element laid out in the room its parent gives it: a `for` row per child, each the
+# child's own `@Laid` in the room this element lays its children in first (`KidRoom`), and,
+# for a leaf, a `Gui.Metrics` per text it measures (each its own World place, answered in
+# its birth tick). It ends on the element's `Res`, plain data with `^Eq`, so an equal result
+# moves nothing above it; the room is a hold of the row's own (`@Distinct`), so the result
+# is computed once per write behind it.
+@Laid: fn $Elem, $Room, [Path] -> @$Res
+fn @Laid $e, $outer, chain:
+    $room <- @Distinct $outer
+    $kids <- for p, $$d <- KidsOf $e:                                    # 0/[p]
+        $c <- @Flatten $$d
+        $r <- @Laid $c, (KidRoom (KindOf $e), $room), (Push chain, p)
+        @ $r
+    $sizes <- for text, ignore <- TextsOf $e:                            # 1/[text]
+        Gui.Metrics(text=text)                                           # 1/[text]/0
+    let $res = ResOf $e, $room, $kids, $sizes, chain
+    @ $res
 
 @Window: fn $Text, Extent, @a -> @a
 fn @Window $title, start, @app:
     ((result, $elems)) <- @HostSome @app, \|p, e| ?Boxed p, e, !route    # 0/[p]
     ((id, !incoming)) <- Gui.Window(title=$title, size=start)                 # 1
-    $kids <- @Distinct (Claimed $elems)                                  # the hosts refire it unchanged
-    $sizes <- for text, ignore <- TextsIn $kids:                         # 2/[text]
-        Gui.Metrics(text=text)                                           # 2/[text]/0
     $size <- start then !Filter (?ResizeOf !incoming)
+    $topRoom <- @Distinct (TopRoom (Size $elems), $size)
+    $tops <- for p, $$d <- $elems:                                       # 2/[p]
+        $e <- @Flatten $$d
+        $r <- @Laid $e, $topRoom, [[p]]
+        @ $r
     $?focus <- nil then (?Focused !Filter (?FocusChain !hit)) <| ((?NextFocus $placed.hits, $?focus) on !Filter (?TabOf !incoming))
-    let $placed = PlaceAt (LayRoot (EnvOf $sizes, $?focus), $kids, $size), (Point 0.0, 0.0), (Whole $size)
+    let $placed = PlaceAt (LayTop $tops, $size), (Point 0.0, 0.0), (Whole $size), $?focus
     Gui.Scene(window=id, draw=$placed.draw)                              # 3
     let $?ring = match $?focus:                                          # laid out only when focused
         ? chain: ?FocusRect $placed.hits, (? chain)

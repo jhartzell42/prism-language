@@ -1,20 +1,27 @@
-# Derived from the window library's culling (layout.prism): the 200 by 100 window draws the button and the four labels that start inside it, and the Bump press changes only the measured words, since the label it changes starts far below the window's edge. The focus test's transcript is the window's before its focus stopped laying out on every input: a press on the first input focuses it, Tab moves to the second, a press on the button leaves the focus alone.
+# Derived from the window library's culling (layout.prism): the 200 by 100 window draws the button and the four labels that start inside it, and the Bump press changes only the measured words (each label's own, in its row: `2/[1]/0/[k]/1/[word]/0`, the column being the program's place 1), since the label it changes starts far below the window's edge; the press reaches the button through two hosts, and the new word is measured the tick the label's entry is published (Jimmy's `$(Path ==> $Elem c)`, round 3 ST), the window laying out a row per element, a gathered tick per level. The focus test: a press on the first input focuses it, Tab moves to the second, a press on the button leaves the focus alone; the focus is placing, not layout, so it moves in the tick of the press. Typing: the input's new text is laid out at the old width (h=8) for one tick before its extent arrives (doubt MT).
 test a_column_taller_than_the_window_draws_what_shows
 
 tick 0
   added:
     1: Gui.Window(title="Tall", size=Extent(w=200.0, h=100.0))
-    2/[" "]/0: Gui.Metrics(text=" ")
-    2/["0"]/0: Gui.Metrics(text="0")
-    2/["Bump"]/0: Gui.Metrics(text="Bump")
-    2/["five"]/0: Gui.Metrics(text="five")
-    2/["four"]/0: Gui.Metrics(text="four")
-    2/["last"]/0: Gui.Metrics(text="last")
-    2/["one"]/0: Gui.Metrics(text="one")
-    2/["seven"]/0: Gui.Metrics(text="seven")
-    2/["six"]/0: Gui.Metrics(text="six")
-    2/["three"]/0: Gui.Metrics(text="three")
-    2/["two"]/0: Gui.Metrics(text="two")
+    2/[1]/0/[0]/1/["Bump"]/0: Gui.Metrics(text="Bump")
+    2/[1]/0/[1]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[1]/1/["one"]/0: Gui.Metrics(text="one")
+    2/[1]/0/[2]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[2]/1/["two"]/0: Gui.Metrics(text="two")
+    2/[1]/0/[3]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[3]/1/["three"]/0: Gui.Metrics(text="three")
+    2/[1]/0/[4]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[4]/1/["four"]/0: Gui.Metrics(text="four")
+    2/[1]/0/[5]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[5]/1/["five"]/0: Gui.Metrics(text="five")
+    2/[1]/0/[6]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[6]/1/["six"]/0: Gui.Metrics(text="six")
+    2/[1]/0/[7]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[7]/1/["seven"]/0: Gui.Metrics(text="seven")
+    2/[1]/0/[8]/1/[" "]/0: Gui.Metrics(text=" ")
+    2/[1]/0/[8]/1/["0"]/0: Gui.Metrics(text="0")
+    2/[1]/0/[8]/1/["last"]/0: Gui.Metrics(text="last")
     3: Gui.Scene(window=WindowId "Tall", draw=[[Draw.Rect(rect=Rect(x=2.0, y=2.0, w=48.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=8.0), text="Bump"), Draw.Clickable(rect=Rect(x=2.0, y=2.0, w=48.0, h=26.0), path=0), Draw.Text(at=Point(x=4.0, y=34.0), text="one"), Draw.Text(at=Point(x=4.0, y=56.0), text="two"), Draw.Text(at=Point(x=4.0, y=78.0), text="three"), Draw.Text(at=Point(x=4.0, y=100.0), text="four")]])
     4: Gui.Focus(window=WindowId "Tall", at=nil)
   result: "0"
@@ -23,25 +30,25 @@ tick 1
   in:
     1: Press Point(x=26.0, y=15.0)
 
-compute until idle: 5 ticks, 2 to 6
+compute until idle: 6 ticks, 2 to 7
 
 tick 3
   result: "1"
 
-tick 5
+tick 4
   added:
-    2/["1"]/0: Gui.Metrics(text="1")
+    2/[1]/0/[8]/1/["1"]/0: Gui.Metrics(text="1")
   torn down:
-    2/["0"]/0: Gui.Metrics(text="0")
+    2/[1]/0/[8]/1/["0"]/0: Gui.Metrics(text="0")
 
 test the_focus_moves_by_press_and_by_tab
 
 tick 0
   added:
     1: Gui.Window(title="Form", size=Extent(w=300.0, h=200.0))
-    2/["Go"]/0: Gui.Metrics(text="Go")
-    2/["x"]/0: Gui.Metrics(text="x")
-    2/["y"]/0: Gui.Metrics(text="y")
+    2/[1]/0/[0]/1/["x"]/0: Gui.Metrics(text="x")
+    2/[1]/0/[1]/1/["y"]/0: Gui.Metrics(text="y")
+    2/[1]/0/[2]/1/["Go"]/0: Gui.Metrics(text="Go")
     3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="x"), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
     4: Gui.Focus(window=WindowId "Form", at=nil)
   result: "xy"
@@ -75,9 +82,9 @@ test a_key_types_its_character
 tick 0
   added:
     1: Gui.Window(title="Form", size=Extent(w=300.0, h=200.0))
-    2/["Go"]/0: Gui.Metrics(text="Go")
-    2/["x"]/0: Gui.Metrics(text="x")
-    2/["y"]/0: Gui.Metrics(text="y")
+    2/[1]/0/[0]/1/["x"]/0: Gui.Metrics(text="x")
+    2/[1]/0/[1]/1/["y"]/0: Gui.Metrics(text="y")
+    2/[1]/0/[2]/1/["Go"]/0: Gui.Metrics(text="Go")
     3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="x"), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
     4: Gui.Focus(window=WindowId "Form", at=nil)
   result: "xy"
@@ -95,21 +102,23 @@ tick 2
   in:
     1: Pressed (Char 'q')
 
-compute until idle: 5 ticks, 3 to 7
+compute until idle: 6 ticks, 3 to 8
 
 tick 4
   result: "xqy"
 
-tick 6
+tick 5
   added:
-    2/["xq"]/0: Gui.Metrics(text="xq")
+    2/[1]/0/[0]/1/["xq"]/0: Gui.Metrics(text="xq")
+  torn down:
+    2/[1]/0/[0]/1/["x"]/0: Gui.Metrics(text="x")
+
+tick 7
   changed:
     3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=8.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=6.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="xq"), Draw.Rect(rect=Rect(x=4.0, y=3.0, w=2.0, h=2.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=8.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=8.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=9.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=12.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=8.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=32.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=38.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=32.0, w=30.0, h=26.0), path=2)]])
     4: Gui.Focus(window=WindowId "Form", at=? Rect(x=0.0, y=0.0, w=200.0, h=8.0))
-  torn down:
-    2/["x"]/0: Gui.Metrics(text="x")
 
-tick 7
+tick 8
   changed:
     3: Gui.Scene(window=WindowId "Form", draw=[[Draw.Rect(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=1.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=4.0), text="xq"), Draw.Rect(rect=Rect(x=22.0, y=3.0, w=2.0, h=16.0), paint=Ink), Draw.Clickable(rect=Rect(x=0.0, y=0.0, w=200.0, h=22.0), path=0), Draw.Rect(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), paint=Blue), Draw.Rect(rect=Rect(x=1.0, y=23.0, w=198.0, h=20.0), paint=Paper), Draw.Text(at=Point(x=4.0, y=26.0), text="y"), Draw.Clickable(rect=Rect(x=0.0, y=22.0, w=200.0, h=22.0), path=1), Draw.Rect(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), paint=Grey), Draw.Text(at=Point(x=8.0, y=52.0), text="Go"), Draw.Clickable(rect=Rect(x=2.0, y=46.0, w=30.0, h=26.0), path=2)]])
     4: Gui.Focus(window=WindowId "Form", at=? Rect(x=0.0, y=0.0, w=200.0, h=22.0))

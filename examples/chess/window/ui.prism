@@ -8,8 +8,10 @@ use Window.Layout.*
 use Window.Hits.*
 
 # ---------------------------------------------------------------------------
-# The Ui family: leaves answer the inputs routed to them; containers hold their children's
-# elements in a live field and answer with inputs addressed by a child's path
+# The Ui family: leaves answer the inputs routed to them; containers hold their children in a
+# live field, their host's document as it is, `$(Path ==> $Elem)` (each child's element a
+# dynamic of its own; Jimmy, 6 November 2026), and answer with inputs addressed by a child's
+# path
 
 type Click = click
 
@@ -47,23 +49,23 @@ type Align = choice:
 derive ^Eq, ^Show
 
 tag Ui.VBox of Element !Routed:        # a column with no spacing
-    children: $(Path ==> Elem)
+    children: $(Path ==> $Elem)
 
 tag Ui.HBox of Element !Routed:        # a row with no spacing
-    children: $(Path ==> Elem)
+    children: $(Path ==> $Elem)
 
 tag Ui.Row of Element !Routed:
     spacing: Float                     # negative overlaps: a hand of cards
     align: Align                       # across the row
-    children: $(Path ==> Elem)
+    children: $(Path ==> $Elem)
 
 tag Ui.Column of Element !Routed:
     spacing: Float
     align: Align
-    children: $(Path ==> Elem)
+    children: $(Path ==> $Elem)
 
 tag Ui.Layers of Element !Routed:      # children on top of each other, each at its frame's anchor
-    children: $(Path ==> Elem)
+    children: $(Path ==> $Elem)
 
 type FrameSpec = record:
     pad: Float
@@ -80,10 +82,10 @@ derive ^Eq, ^Show
 
 tag Ui.Frame of Element !Routed:
     spec: FrameSpec
-    children: $(Path ==> Elem)
+    children: $(Path ==> $Elem)
 
 tag Ui.Grid of Element !Routed:        # children in rows of `columns`, each cell the size of the largest child
     columns: Nat
-    children: $(Path ==> Elem)
+    children: $(Path ==> $Elem)
 
 let plain = FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, nil

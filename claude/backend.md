@@ -172,12 +172,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `result_dynamic`), a structural dynamic of the block (below): the build keeps the
   newborn's dynamic and marks the snapshot, taken after the generation is built.
 - **Structural dynamics** (Semantics ch. 7, "Structural dynamics"; round 3 ST): a `for`'s
-  gathered `$(K ==> T)` and a host's `$doc` are lawful dynamics one tick behind the
-  structure they describe. Each is an `rt::Snapshot` field. The live computation
-  (`rows_all_now`, `host_k_doc_now`) is read once per tick, in the node's construction step
-  where the structure behind it has settled (a gathered dynamic after its builder; `$doc`
-  after the child's builders, before the host's `for` over it), when a write marked it:
-  the snapshot S(n). The getter (`rows_all`, `host_k_doc`) answers the dynamic, whose value
+  gathered `$(K ==> T)`, a host's `$doc` (its outer, and each place's entry, below) are
+  lawful dynamics one tick behind the structure they describe. Each is an `rt::Snapshot`
+  field. The live computation (`rows_all_now`, `host_k_doc_now`) is read once per tick, in
+  the node's construction step where the structure behind it has settled (a gathered
+  dynamic after its builder; `$doc` after the child's builders, before the host's `for` over
+  it), when a write marked it: the snapshot S(n). The getter (`rows_all`, `host_k_doc`) answers the dynamic, whose value
   after m is S(m−1) (after the build, the build's snapshot). When S(n) differs from S(n−1)
   (compared where the type has equality, else whenever taken) the node queues
   `{name}_publish` with `cx.answer_later`, once a tick, and at n+1, among that owed tick's
@@ -188,6 +188,15 @@ it make every program an interpreter run, and every type mistake a runtime fault
   structure itself, `host_k_doc_direct` (S(n) from n's construction step on; a read of a
   marked snapshot there before it is taken is a panic, not a value), so a newborn child
   place gets its row in its birth tick (prismc/README.md, pick ST).
+- **`@Flatten $$a` over a `for` row's entry** (a host document's entry, `$$Elem`) → the
+  current inner `Hold<Option<Dynamic<A>>>` (`{name}_inner`), set at the row's construction
+  from the `value` its builder hands it, and an `rt::Follow` (`{name}_follow`), the
+  subscription to the inner's update port, which calls `{name}_moved`: what reads the
+  flatten is marked as for a write of the inner, in the tick the inner moved. The block's
+  writes behind the row's entry patch the row (the flatten's reads are among the row's
+  place reads); its patch pass compares the entry with the inner (a dynamic equal only to
+  itself) and, when it is another dynamic, queues `{name}_adopt` with `cx.answer_later`, so
+  the adoption is among the next tick's first firings, which is owed (rulings VL, TK).
 - **`@Switch $!a`** → a field with the current inner `Event` and its `Handle`, and an
   invalidation edge on the outer whose mark calls `cx.swap_later(self)`. `swap` pulls
   the outer after the tick; on a new inner it subscribes first, with no catch-up, then
@@ -218,32 +227,43 @@ it make every program an interpreter run, and every type mistake a runtime fault
   by their path relative to the child (`0`, `1`, `2/[k]/0`), and emit into no document.
   There is no protocol and no plain data at the host: the owner reads the child's places
   as values and answers them by calling their input methods.
-- **The child's document `$doc` is a structural dynamic** of the owner (Dynamic structure,
-  above): the construction step takes the snapshot `host_k_doc_snap` from `host_k_doc_now`,
-  every child place as the program's `Elem` enum (the static places by their getters or
-  constants, and under each `for` and `rebuild` of the child the rows' own
-  `Row::document`, recursively), after the child's builders have run and before the host's
-  `for` over it builds its rows. The host's `for` and its rows' entries read the structure,
-  `host_k_doc_direct(&self, cx) -> Map<Path, Elem>`; the program's `$doc` is the getter
-  `host_k_doc`, one tick behind. The live computation's reads are everything the child's
-  places, builders, generations and rows read, so a write behind any of them marks the
-  snapshot, lists the build and dirties the host's rows, and touches no reader of `$doc`;
-  when the snapshot moved, `host_k_doc_publish` at the start of the next tick marks the
-  owner's places over `$doc` and `!Updated $doc` fires there with the document after the
-  tick before. A row of the child that writes a hold of its own tells the owner through
-  `document_moved` → `host_k_moved`, which marks the same way.
+- **The child's document `$doc` is `$(Path ==> $Elem c)`** (Jimmy, 6 November 2026): an
+  outer dynamic that moves when a place comes or goes, and one dynamic per place that moves
+  when that place's element changes. Both levels are structural (Dynamic structure, above).
+  - **Each hosted place is an `rt::Entry<Elem>`**, a field of the node the place is in (the
+    owner for the child's own places, a row for a row's), made before the node (a
+    first-value query hands it to the host) and holding the place's own snapshot. A live
+    place's entry takes its first snapshot at the build in its scope's turn (after the
+    scope's builders, before the host over it builds its rows); a constant place's at once.
+    A write behind a hosted place dirties its node, as for a World place, and the patch
+    pass takes the entry (`Entry::take`, compared on the level, a dynamic it holds equal
+    only to itself: doubt EQ); a take that moved it dirties the host rows reading the place
+    as it stands and queues its publication, so the entry's dynamic, which samples the
+    snapshot of the tick before, fires its update at the start of the next tick, owed.
+  - **The outer is the snapshot `host_k_doc_snap` of an `rt::HostDoc<Elem>`**: each place's
+    dynamic by its path relative to the child (`doc`, what the program's `$doc` reads,
+    `host_k_doc`) and each place's entry (`places`, what the host's own `for` reads,
+    `host_k_doc_direct`). `host_k_doc_now` gathers the entries (the child's own places,
+    and under each `for` and `rebuild` of the child its rows' `Row::document`, recursively;
+    a host's own rows give their forwarded places' entries, `HostRow::entries`). Nothing a
+    place reads marks it: a builder or a generation of the child whose rows came or went
+    calls `host_k_moved` (or, in a hosted row, `document_moved`, which its parent carries
+    to the host), which marks the snapshot and lists the build; it is taken after the
+    child's builders, compared by the entries it holds, and published the tick after, when
+    `!Updated $doc` fires. A value change of a place never moves the outer.
 - **The host is `for p, e <- $doc: supplier p, e`** in the owner: an ordinary builder
   (`host_k_rows_build`, the `for` template) over the getter, whose rows are `rt::HostRow`s,
   one per child place, built at `hostpos/[p]` when the key is in `$doc` after a tick and not
   before (R7), kept while it stays, and torn down at the end of the tick its key leaves
   (R8). The owner holds the host as `rt::Host<Elem, Answer, Owner>`: the supplier, the rows,
-  the enclosing host when the line stands in a hosted scope, and the owner's two emitted
-  methods, the document and the typed dispatch, linked to the node once it is made. The
+  the enclosing host when the line stands in a hosted scope, and the owner's emitted typed
+  dispatch, linked to the node once it is made. The
   host holds its owner and each row holds the host weakly (the host outlives its rows), so
   no count cycle runs through a host and a torn-down host is freed with its rows (D5).
-- **`e` is the live element**, `rt::Live<Elem>`: its identity (the level at the build) and
-  its level over time, a `Dynamic<Elem>` whose read is the row's entry, the projection
-  `$doc[p]` through the owner.
+- **`e` is the live element**, `rt::Live<Elem>`: its identity (the level at the build), its
+  level over time (a `Dynamic<Elem>` reading the place's entry as it stands, whose update is
+  the host row's patch), and the entry itself, which a forward into an enclosing host's
+  document hands on as the same place.
 - **The way back is typed.** `crate::Answer` is emitted beside `crate::Elem` in `main.rs`:
   one variant per element tag carrying that tag's output type, an accessor per variant
   (`ui_button() -> Result<Click, Fault>`), and the decode of a World's answer by the
@@ -257,12 +277,17 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `Scope`):
   - `@Element e` (`rt::element_blueprint`) is re-emission: a `Forward` node whose place
     `hostpos/[p]/0` goes out with `cx.added` (the identity's level), follows `e`'s level
-    (the row is dirtied by the owner's marks; its patch fires the level's update port and
-    the forward re-emits with `cx.changed`), and hands every answer and push the World
+    (the row is dirtied by its place's entry when a take moved it; its patch fires the
+    level's update port and the forward re-emits with `cx.changed`), and hands every answer and push the World
     sends it to the sink **in the same tick**, as the tick's inputs. Its first value is the
     World's. A host that forwards everything is observably not there. A forward in a hosted
-    scope (nested hosts) emits nothing: it is an entry of the enclosing host's document
-    (`HostRow::document`), and its first value is the enclosing host's.
+    scope (nested hosts) emits nothing: its place is the child's own entry in the enclosing
+    host's document (`HostRow::entries`), and its first value is the enclosing host's.
+  - **A level that holds dynamics** (a container whose children are its document) goes to
+    a World deep: `Elem` implements `rt::Level`, each dynamic sampled at the read point
+    (`level_pod`), and a World place over one keeps an `rt::Watch` on the dynamics it holds,
+    so a move of a nested entry sends it again (doubt WD). A forward re-emits through the
+    same `level_pod`.
   - `@ x` and a constant `@ $ v` (`rt::plain_blueprint`) are the first value once; `@ never`
     (`rt::never_blueprint`) answers nothing.
   - `@ !e` (`rt::event_blueprint`) and `@ $d` (`rt::dynamic_blueprint`, `$d` any dynamic
@@ -277,7 +302,7 @@ it make every program an interpreter run, and every type mistake a runtime fault
     whose key left is dropped. Nested hosts add one tick per computing layer and none per
     forwarding layer.
 - **First values.** A child place with a first value asks the host at its build
-  (`host_k.first_value(&place, &elem, cx)`), before the owner's node exists: the host builds
+  (`host_k.first_value(&place, &elem, &entry, cx)`), before the owner's node exists: the host builds
   the supplier row for the place early and keeps it in the rows, where the builder finds it
   present. This is the only early construction; it is why `Host` reaches its owner through
   a link filled in after `Rc::new`.

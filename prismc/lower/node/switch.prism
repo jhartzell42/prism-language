@@ -437,7 +437,8 @@ fn FlattenLine wx, menv, args, ?bound:
 
 # `$a <- @Flatten $d` over a `for` row's entry `$d`, a `$$a` (a host document's entry,
 # `$(Path ==> $Elem c)`; Semantics ch. 7): `{name}_inner` is the current inner, a hold set at
-# the row's build to the entry's value, and `{name}_follow` its subscription to the inner's
+# the row's construction to the entry's value (the `value` its builder hands it, so the row's
+# own builders read the flatten from the start), and `{name}_follow` its subscription to the inner's
 # update event, which tells the row through `{name}_moved` (what reads the flatten reads it
 # again, in that tick). The block's writes behind the row's entry patch the row
 # (`RowPlaceReads`), and its patch pass adopts an entry that is another dynamic than the
@@ -450,14 +451,13 @@ fn EntryFlatten wx, t, ?bound:
         otherwise: FreshName wx, "flatten"
     let inner = "{name}_inner"
     let follow = "{name}_follow"
-    let first = DoExpr (XMethod (XField (XVar "node"), "{inner}"), "set", [[(XCtor "Some", [[(XMethod (XVar "node"), "entry", [[XCx]])]]), XCx]])
     let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow", [[(XRef (XField (XMethod (XVar "node"), "entry", [[XCx]]), "updates")), (XRef (XVar "node")), (XPath "{wx.node}::{name}_moved")]])
     let sample = XMethod (XMethod (XMethod (XField XSelf, "{inner}"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]), "sample", [[XCx]]
     let wx2 = update wx1:
         &_.taken <= Append &_.taken, [[inner, follow, "{name}_adopt", "{name}_moved"]]
         &_.fields <= Append &_.fields, [[((inner, (OutHold (OutOpt (OutDyn t))), "`@Flatten`'s current inner: the row's entry it adopted")), ((follow, (OutNamed "prism_rtl::Follow", [[]]), "the subscription to the inner's update event"))]]
-        &_.moves <= Append &_.moves, [[((inner, (XCall "Hold::new", [[XNone, XCx]]))), ((follow, (XCall "prism_rtl::Follow::new", [[]])))]]
-        &_.build <= Append &_.build, [[first, followed]]
+        &_.moves <= Append &_.moves, [[((inner, (XCall "Hold::new", [[(XCtor "Some", [[(XClone (XVar "value"))]]), XCx]]))), ((follow, (XCall "prism_rtl::Follow::new", [[]])))]]
+        &_.build <= Push &_.build, followed
         &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@Flatten`'s dynamic: its current inner at the read point."))
         &_.dynReads <= Insert &_.dynReads, name, [[OwnRead inner]]
         &_.flattens <= Push &_.flattens, FlatDef(name=name, outer="entry", generation="", ty=t)

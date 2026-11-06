@@ -36,6 +36,51 @@ fn DerivedImpls g = Fold (Keys g.types), g, \|gg, k| match gg.types[k]:
         nil: g2
     nil: gg
 
+# `derive ^Eq` (or `^Ord`, `^Show`) on a type a field of which holds a dynamic or an event,
+# below any layer of its own (a box's children, `$(Path ==> $Elem)`): refused, since a
+# dynamic has no `^Eq` (Type System ch. 2) and no trait has an impl at a sigiled type (T6),
+# so no program compares or shows one (doubt EQ).
+DerivedDynamics: fn G, St -> St
+fn DerivedDynamics g, st = Fold (Keys g.types), st, \|s, k| match g.types[k]:
+    ? ti:
+        let held = Filter ti.derives, \|d| HasText [["Eq", "Ord", "Show"]], (BareName d)
+        match ?FieldHolding ti.body:
+            ? f if (Len held) > 0: WithFile (ErrFix (WithFile s, ti.file), "derive-dynamic", ti.span, "`derive ^{BareName (Or held[0], "")}` on `{BareName ti.name}`, whose `{f}` holds a dynamic or an event, which does not compare or print", "drop the derive"), s.file
+            otherwise: s
+    nil: s
+
+# The first field (or a choice's case) of a type's body whose type holds a dynamic or an
+# event.
+?FieldHolding: fn TyBody -> ?Text
+fn ?FieldHolding b = match b:
+    BRecord fs: Fold fs, nil, \|?found, ((f, t))| if ?found == nil and HoldsLayer t: ? f else: ?found
+    BChoice cs: Fold cs, nil, \|?found, ((c, ts))| if ?found == nil and Fold ts, False, \|h, t| h or HoldsLayer t: ? c else: ?found
+    otherwise: nil
+
+# Whether a type holds a `$` or `!` layer anywhere in its structure (not inside a named type,
+# whose own derive answers for it).
+HoldsLayer: fn Ty -> Bool
+fn HoldsLayer t = match t:
+    TySig "$", ignore: True
+    TySig "!", ignore: True
+    TySig ignore, i: HoldsLayer i
+    TyTuple ts: Fold ts, False, \|h, x| h or HoldsLayer x
+    TyArray e: HoldsLayer e
+    TyMap k, v: (HoldsLayer k) or HoldsLayer v
+    otherwise: False
+
+# Whether an element row's tags hold dynamics below their own live fields (a box's
+# `children: $(Path ==> $Elem)`): then its `Elem` neither compares nor prints (doubt EQ). A
+# row's open tail stands for tags no one knows, judged by the ones it names (Claude's, ET).
+RowHoldsDynamics: fn G, Rw -> Bool
+fn RowHoldsDynamics g, w = Fold (Values g.tags), False, \|h, tg| h or (tg.kind == "Element" and (HasText w.fams, tg.family) and (not (HasText w.minus, tg.name)) and Fold tg.fields, False, \|f, ((ignore, ft))| f or HoldsLayer (Unlive ft))
+
+# A tag field's type without its own live layer: `$T`'s `T`.
+Unlive: fn Ty -> Ty
+fn Unlive t = match t:
+    TySig "$", i: i
+    other: other
+
 Coherence: unbounded fn G, St -> St
 fn Coherence g, st = Fold (Keys g.impls), st, \|s, cls|
     let impls = Or g.impls[cls], [[]]
@@ -241,8 +286,8 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
             else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
         nil: match t:
             TySig ignore, ignore: (([[]], st))
-            TyElem ignore, ignore: if bare == "Eq" or bare == "Show": (([[]], (Solved st, w, t, "builtin"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
-            TyElemAny ignore: if bare == "Eq" or bare == "Show": (([[]], (Solved st, w, t, "builtin"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+            TyElem rw, ignore: ElemTrait g, st, s0, Restore, w, t, bare, rw
+            TyElemAny rw: ElemTrait g, st, s0, Restore, w, t, bare, rw
             TyAny trs: if (HasText trs, w.cls) or (Fold trs, False, \|seen, tr| seen or (HasText (SuperClosure g, tr), w.cls)): (([[]], (Solved st, w, t, "packed"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
             TyCon con, args:
                 if BuiltinHas w.cls, con: (([[]], (Solved st, w, t, "builtin")))
@@ -254,6 +299,13 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
                         let fix = if (bare == "Num" and con == "Text") or (IsRegexType con): "" else: "derive `^{bare}` on `{BareName con}`, or write `impl ^{bare} {BareName con}`"
                         (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`", fix)))
             otherwise: (([[]], st))
+
+# An element's `^Eq` and `^Show` are built in, unless its row's tags hold dynamics (doubt EQ).
+ElemTrait: unbounded fn G, St, St, (fn St -> St), Want, Ty, Text, Rw -> (([Want], St))
+fn ElemTrait g, st, s0, Restore, w, t, bare, rw:
+    if not (bare == "Eq" or bare == "Show"): (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
+    else: if RowHoldsDynamics g, (WalkRow st, rw): (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`: a tag of its row holds dynamics (a container's children, `$(Path ==> $Elem)`), which do not compare or print", "compare or show what the element holds, a field at a time")))
+    else: (([[]], (Solved st, w, t, "builtin")))
 
 # The one impl whose header matches, by one-way matching (T1): its `where` bounds as
 # wanted constraints on the matched types, and the choice the shrink check reads

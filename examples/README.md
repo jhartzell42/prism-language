@@ -175,8 +175,26 @@ with the parser, or say nothing; with Claude's first ruling, for Jimmy to overtu
   with the type's name (`Int n`, `U32 b`). *First ruling:* `Float n`, by the same rule.
 - **EN `Env $sizes, $?focus`.** Pitch ch. 5's quoted window builds the layout environment
   with the record constructor over two dynamics, but a constructor takes its arguments
-  whole (Type System ch. 2), so that is a bundle, not a `$Env`. *First ruling:* `EnvOf
-  $sizes, $?focus`, a function, which lifts.
+  whole (Type System ch. 2), so that is a bundle, not a `$Env`. *Now moot:* the window has
+  no environment; each leaf's row measures its own texts (its `Res.sizes`, doubt MW) and
+  the placing pass takes the focus (`PlaceAt`), so a focus change re-places and lays out
+  nothing.
+- **CL A container's children are its whole document** (Claude's; the host document is
+  `$(Path ==> $Elem c)`, Jimmy, 6 November 2026). A plain function cannot sample a child's
+  `$Elem` to test its tag, so `Claimed` went: `@Column` and the rest write
+  `children=$elems`, and the layout lays an element that is not the library's as nothing
+  (`KNone`). *The other way:* a typed way to read a `$Elem`'s tag without a sample, a new
+  piece, not taken.
+- **MW Each leaf measures its own texts** (Claude's; claude/incremental-host-document.md).
+  The window's word set and its one `Metrics` `for` went with the flat document: each leaf's
+  `@Laid` row has a `for` over its texts (a label's words and the space, a button's label,
+  an input's text and its text to the cursor), one `Gui.Metrics` per text at
+  `.../1/[text]/0`, so a word is measured once per label that holds it, not once per
+  window. The design note's spelling was `rebuild $text: Gui.Metrics(...)`, one extent per
+  text; a label wraps by words, so it needs each word's, and a `rebuild` and its `@Flatten`
+  would add two ticks where the `for` adds one. A new word's extent still reaches its
+  leaf's layout a tick after the word (doubt MT of claude/bugs/window-relayout-every-change.md
+  is now the window's own: an input's new text is laid out at the old width for one tick).
 - **AN How a box answers.** Semantics ch. 9 refuses `Response` (HL) and types answers sent
   down by path with `^Responds`'s `@Answered`, whose blueprint argument no book explains.
   *First ruling:* `?Boxed` matches each `Ui` tag and answers with that tag's own output

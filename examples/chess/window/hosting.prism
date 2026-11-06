@@ -8,20 +8,10 @@ use Window.Layout.*
 use Window.Hits.*
 
 # ---------------------------------------------------------------------------
-# Hosting: a box claims its child's Ui elements and answers each with the inputs routed to its
-# path; anything else it declines, and the host forwards it
-
-IsUi: fn Elem -> Bool
-fn IsUi e = match e:
-    Ui.*: True
-    otherwise: False
-
-# the entries of a document a box claims: its library elements; the document itself when
-# they are all the library's, as they usually are
-Claimed: fn (Path ==> Elem) -> (Path ==> Elem)
-fn Claimed m = if Fold (Values m), True, \|all, e| all and IsUi e: m else: Fold (Keys m), {}, \|acc, k| match m[k]:
-    ? e if IsUi e: Insert acc, k, e
-    otherwise: acc
+# Hosting: a box answers each of its child's Ui elements with the inputs routed to its path;
+# anything else it declines, and the host forwards it. Its children are its whole document
+# (`children=$elems`): an element that is not the library's is laid out as nothing (README,
+# doubt CL).
 
 ?ClickTo: fn Path, Routed -> ?Click
 fn ?ClickTo p, r = match r.input:

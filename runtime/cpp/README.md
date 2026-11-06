@@ -100,6 +100,8 @@ counts again.
 | `host::Host`, `HostRow`, `HostOf`, `Rows`, `Scope`, `Link`, `Sink`, `Supplied`, `Blueprint`, `Supplier` | the same names. `Host::new` is `Host::make`, `HostRow::build` is `HostRow::make`. `Rows<E, A>` is an `Rc<Map<..>>` (`new_rows<E, A>()`). `Scope` is `{hosted}`, with `world()`, `in(h)`, `is_world()` | host.hpp |
 | `host::AnswerOf<E>` | the concept `AnswerOf<A, E>`: `static Result<A> A::decode(const E&, const Pod&)` | host.hpp |
 | the blueprint forms, `forward_on_none` | `plain_blueprint<E, A>`, `never_blueprint`, `event_blueprint`, `dynamic_blueprint`, `element_blueprint`, `forward_on_none` | host.hpp |
+| `host::Entry`, `HostDoc`, `Follow`, `Watch`, `Level`, `dynamics_pod`, `dynamics_ports` | the same names (`Entry::new` is `Entry::make`, or `entry_new(what)` where the type is the context's); `Level` is a member `level_pod(cx)` (and `level_ports`) the free `level_pod(e, cx)` calls, a type without one going as its `to_pod` | host.hpp |
+| `Fault::too_deep` | the same | result.hpp |
 | `world::Program` | `Program` (virtual `tick`, `compact`); a program type `P` also has `static Built<P> build(std::span<const Pod>, const ReadyState&)`, where `Built<P>` = `Result<pair<unique_ptr<P>, TickOut>>` | world.hpp |
 | `world::TickIn`, `TickOut`, `Outcome`, `ReadyState`, `ReadyMap`, `World`, `drive`, `EXIT_*` | the same; `Outcome::value(p)`/`fired(p)` with `kind` and `pod`; `ReadyMap::entries` | world.hpp |
 | `world::scene::find_clickables`, `Clickable` | the same | scene.hpp |

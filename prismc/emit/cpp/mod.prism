@@ -169,7 +169,7 @@ let preludeTypes = {"prelude::Ordering": TyInfo(kind="choice", fields=[[]], para
 let preludeCtors = {"prelude::Ordering::Less": "choice", "prelude::Ordering::Equal": "choice", "prelude::Ordering::Greater": "choice"}
 
 # What every node has: its path, and the runtime's methods a node is called by.
-let nodeBase = {"make": True, "push": True, "wake": True, "started": True, "deferred": True, "build": True, "swap": True, "leave": True, "patch": True, "edges": True, "release": True, "clean_up": True, "path": True, "leave_row": True, "answer": True, "document": True, "deliver": True, "document_moved": True, "me": True, "result_dynamic": True}
+let nodeBase = {"make": True, "push": True, "wake": True, "started": True, "deferred": True, "build": True, "swap": True, "leave": True, "patch": True, "edges": True, "release": True, "clean_up": True, "path": True, "leave_row": True, "answer": True, "document": True, "entries": True, "deliver": True, "document_moved": True, "me": True, "result_dynamic": True}
 
 AddModelItem: fn Cp, Text, Item -> Cp
 fn AddModelItem cp, m, it = match it:

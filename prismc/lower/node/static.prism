@@ -469,7 +469,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                             &_.build <= Push &_.build, (RefusalDo "a widget of several clauses that takes no arguments")
                         ((wx2, WrUnit))
         ? body:
-            if wx.depth > 16: ((wx, WrUnit))
+            if wx.depth > 16: TooDeep wx, qk, e
             else:
                 let lxc = InModuleAt lx, v.file, v.home, lx.site
                 let ptys = match v.scheme.ty:
@@ -492,6 +492,27 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     &_.depth <= wx.depth
                     &_.result <= wx.result
                 ((back, done.result))
+
+# A widget recursing deeper than the lowering inlines it (`depth` 16): the node at that
+# depth faults at its build, so only a tree that deep stops the program, and loudly; the call
+# gives a result of its type that is never read (the build faults first).
+TooDeep: unbounded fn Wx, Text, Expr -> ((Wx, Wres))
+fn TooDeep wx, qk, e:
+    let lx = wx.lx
+    let what = "`{BareName qk}` recurses deeper than the compiler inlines it (16 levels)"
+    let wx1 = update wx:
+        &_.build <= Push &_.build, (DoReturn (XCtor "Err", [[(XCall "Fault::too_deep", [[XStr what]])]]))
+        &_.fallible <= True
+    let t = OutTyOf lx, (OutOf (TypeAt lx, e.span))
+    let called = match TypeAt lx, e.span:
+        TyAt i, ignore: i
+        other: other
+    match LayerOf called:
+        LyDyn: ((wx1, (WrDyn XUnreachable, [[]], t)))
+        LyEv:
+            let ((id, wx2)) = AddGn wx1, "too_deep", t, GnNever, 0
+            ((wx2, (WrEv (EvRefOf wx2, id))))
+        otherwise: if t == OutUnit: ((wx1, WrUnit)) else: ((wx1, (WrPlain XUnreachable, t)))
 
 ?WidgetDeclOf: fn G, Text -> ?WidgetDecl
 fn ?WidgetDeclOf g, qk = Fold g.defs, nil, \|?found, d| if d.qk == qk: ?DefWidget d, ?found else: ?found

@@ -474,7 +474,7 @@ fn UpdatedGaps wx, gns, isGen:
         OwnRead f:
             if (HasText holds, f) or (HasText derived, f) or (HasText roots, f): a
             else: Push a, (RefusalDo "`!Updated` of a dynamic that reads `{f}`, which no sink of this node writes (no height for its event)")
-    Fold wx.pending, own, \|acc, p| Fold (RowHears p.wx), acc, \|a, m|
+    Fold wx.pending, own, \|acc, p| Fold (UpdatedHears p.wx), acc, \|a, m|
         let behind = ReadsClosed wx.dynReads, [[OwnRead m]]
         let written = Fold behind, False, \|w, r| w or match r:
             OwnRead h: HasText holds, h
@@ -532,9 +532,20 @@ RowHears: fn Wx -> [Text]
 fn RowHears wx:
     let fromUpdated = Fold (Filter wx.gns, \|g| g.kind == GnUpdated), [[]], \|acc, g| UnionReads acc, (ReadsClosed wx.dynReads, g.reads)
     let fromRows = Fold wx.rowMarks, [[]], \|acc, rm| UnionReads acc, (ReadsClosed wx.dynReads, (Append rm.reads, (Each rm.wrote, \|m| OwnRead m)))
-    Fold (UnionReads fromUpdated, fromRows), [[]], \|acc, r| match r:
+    # what the row's own builders read through the parent: their sources, and so the
+    # snapshots gathered over them (a row's `for` whose rows have no places of their own)
+    let fromBuilds = ReadsClosed wx.dynReads, wx.buildHolds
+    Fold (UnionReads (UnionReads fromUpdated, fromRows), fromBuilds), [[]], \|acc, r| match r:
         ParentRead m: AddText acc, m
         OwnRead ignore: acc
+
+# The block's names a row's own `!Updated` nodes read through the parent: what gap SU's
+# refusal is about (a row's builders hearing a structural dynamic's publication is marked
+# like any write).
+UpdatedHears: fn Wx -> [Text]
+fn UpdatedHears wx = Fold (Filter wx.gns, \|g| g.kind == GnUpdated), [[]], \|acc, g| Fold (ReadsClosed wx.dynReads, g.reads), acc, \|a, r| match r:
+    ParentRead m: AddText a, m
+    OwnRead ignore: a
 
 # A write behind a read of the block (a hold of it, or a name it reads through its own
 # parent): the rows of a `for` whose places read it are dirtied, and the rows that hear it

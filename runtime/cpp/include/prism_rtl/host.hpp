@@ -3,19 +3,21 @@
 // child's document.
 //
 // A host is Prism inside the same graph and the same tick. The compiler inlines the hosted
-// child into the node of the host's block (its owner), in a scope of its own, and emits
-// for the host two typed methods on the owner: the child's document `$doc` as a getter
-// (`host_k_doc`: every child place by its path relative to the child, each a snapshot
-// `Elem`) and a dispatch from a child place's path and a typed answer into the child's
-// input method (`host_k_answer`). The owner holds a `Host` made of those two, and a `for`
-// over the document whose rows are `HostRow`s: one per child place, built when the key
-// appears in `$doc` after a tick and torn down at the end of the tick its key leaves (R7,
-// R8, the `for` machinery of the emitted code). Nothing here is plain data: the child's
+// child into the node of the host's block (its owner), in a scope of its own. The child's
+// document is `$(Path ==> $Elem c)` (Jimmy, 6 November 2026): each child place is an
+// `Entry`, a structural dynamic of its own kept in the node the place is in, and the outer
+// is a `HostDoc` the owner keeps as a snapshot, taken when a place came or went (the
+// program reads its dynamics; the host's own rows its entries, `host_k_doc_direct`). The
+// owner emits a dispatch from a child place's path and a typed answer into the child's
+// input method (`host_k_answer`), and holds a `Host` made of it, and a `for` over the
+// places whose rows are `HostRow`s: one per child place, built when the key appears in the
+// child's places after a tick and torn down at the end of the tick its key leaves (R7, R8,
+// the `for` machinery of the emitted code). Nothing here is plain data: the child's
 // elements are `E`, the program's `Elem` type, and an answer is `A`, the program's
 // `Answer` type (one alternative per tag, carrying that tag's output type).
 //
 // A row calls the supplier with the place's path and its live element (`Live`: the
-// identity, and the level over time read through the owner's document) and builds the
+// identity, the level over time read through the place's entry, and the entry) and builds the
 // blueprint it answers with at `host/[p]`, handing it a `Sink`, the typed way back into
 // the child's place. The blueprint forms decide *when* an answer reaches the child:
 //
@@ -168,8 +170,8 @@ public:
     Follow& operator=(Follow&&) = default;
     ~Follow() { drop_sub(); }
     /// From now on the inner `updates` tells `node` through `moved`.
-    template <class N>
-    void follow(const Rc<Port<Unit>>& updates, const Rc<N>& node, void (N::*moved)(Cx&)) {
+    template <class N, class R>
+    void follow(const Rc<Port<Unit>>& updates, const Rc<N>& node, R (N::*moved)(Cx&)) {
         drop_sub();
         Weak<N> weak = node;
         Handle h = updates->subscribe([weak, moved](const Unit&, Cx& cx) -> Done {
