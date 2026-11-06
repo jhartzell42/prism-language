@@ -49,16 +49,20 @@ use Check.Shrink.Summaries.*
 use Check.Blocks.Structure.*
 use Check.Blocks.Borrows.*
 
-# Statements of a group in the order they are checked (doubt BG): holds first, since a
+# Statements of a group in the order they are checked (pick BG): holds first, since a
 # hold's initial value is where a block most often says what its names are; then `let`s
-# and local functions; then the rest, in the page's order.
-GroupOrder: fn [Stmt] -> [Nat]
+# and local functions; then the rest in their dependency order among themselves (a line
+# after the lines binding a name it reads, ties and cycles in the page's order), so a `for`
+# above the bind of the map it runs over is checked with the map's type (Semantics ch. 4:
+# one binding group).
+GroupOrder: unbounded fn [Stmt] -> [Nat]
 fn GroupOrder stmts:
     let all = Range0 (Len stmts)
     let holds = Filter all, \|i| IsHold (Or stmts[i], dummyStmt2)
     let lets = Filter all, \|i| IsLetLike (Or stmts[i], dummyStmt2)
     let rest = Filter all, \|i| not (IsHold (Or stmts[i], dummyStmt2)) and not (IsLetLike (Or stmts[i], dummyStmt2))
-    Append (Append holds, lets), rest
+    let ordered = Fold (DepOrder (Each rest, \|i| Or stmts[i], dummyStmt2)), [[]], \|acc, comp| Append acc, (Each comp, \|j| Or rest[j], 0)
+    Append (Append holds, lets), ordered
 
 # The dependency order of a binding group (ch. 5, blocks by binding group), for the typed
 # output: its statements in strongly connected components of the graph from each
