@@ -196,7 +196,11 @@ private:
             const Node* n;
             bool entry;
         };
+        // an in-order walk holds at most two items per level, and one more
+        std::size_t room = 2 * std::size_t(std::max(a ? a->height : 0, b ? b->height : 0)) + 2;
         std::vector<Item> sa, sb;
+        sa.reserve(room);
+        sb.reserve(room);
         if (a) sa.push_back({a, false});
         if (b) sb.push_back({b, false});
         auto open = [](std::vector<Item>& s, const Node* n) {
@@ -383,7 +387,11 @@ public:
     const_iterator begin() const { return const_iterator(root_.get()); }
     const_iterator end() const { return const_iterator(); }
 
-    friend bool operator==(const Map& a, const Map& b) { return a.size() == b.size() && equal_trees(a.root_.get(), b.root_.get()); }
+    friend bool operator==(const Map& a, const Map& b) {
+        if (a.size() != b.size()) return false;
+        if (a.root_ && a.root_ == b.root_) return self_equal(a.root_.get());
+        return equal_trees(a.root_.get(), b.root_.get());
+    }
     friend auto operator<=>(const Map& a, const Map& b) {
         return std::lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end());
     }
@@ -859,7 +867,12 @@ public:
     const_iterator begin() const { return const_iterator(*this); }
     const_iterator end() const { return const_iterator(); }
 
-    friend bool operator==(const Array& a, const Array& b) { return a.len_ == b.len_ && equal_arrays(a, b); }
+    friend bool operator==(const Array& a, const Array& b) {
+        if (a.len_ != b.len_) return false;
+        // An array of a chunk or less is walked as it is.
+        if (a.len_ <= CHUNK) return std::equal(a.begin(), a.end(), b.begin(), [](const T& x, const T& y) { return x == y; });
+        return equal_arrays(a, b);
+    }
     friend auto operator<=>(const Array& a, const Array& b) {
         return std::lexicographical_compare_three_way(a.begin(), a.end(), b.begin(), b.end());
     }

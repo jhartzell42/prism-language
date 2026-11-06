@@ -716,6 +716,10 @@ impl<T: PartialEq> PartialEq for Array<T> {
         if self.len != other.len {
             return false;
         }
+        // An array of a chunk or less is walked as it is.
+        if self.len <= CHUNK {
+            return self.iter().eq(other.iter());
+        }
         let (mut sa, mut sb) = (pending(self), pending(other));
         loop {
             let (Some(a), Some(b)) = (sa.last_mut(), sb.last_mut()) else { return sa.is_empty() && sb.is_empty() };

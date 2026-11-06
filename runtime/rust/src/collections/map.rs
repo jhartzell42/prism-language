@@ -552,8 +552,11 @@ fn open<'a, K, V>(stack: &mut Vec<Pending<'a, K, V>>, n: &'a Node<K, V>) {
 /// next item is not the same node: the larger of two subtrees, or a subtree against an
 /// entry.
 fn eq_trees<K: PartialEq, V: PartialEq>(a: &Link<K, V>, b: &Link<K, V>) -> bool {
-    let mut sa: Vec<Pending<K, V>> = a.as_deref().map(Pending::Tree).into_iter().collect();
-    let mut sb: Vec<Pending<K, V>> = b.as_deref().map(Pending::Tree).into_iter().collect();
+    // an in-order walk holds at most two items per level, and one more
+    let room = 2 * usize::from(height(a).max(height(b))) + 2;
+    let (mut sa, mut sb) = (Vec::with_capacity(room), Vec::with_capacity(room));
+    sa.extend(a.as_deref().map(Pending::Tree));
+    sb.extend(b.as_deref().map(Pending::Tree));
     loop {
         match (sa.last(), sb.last()) {
             (None, None) => return true,
@@ -587,7 +590,11 @@ fn eq_trees<K: PartialEq, V: PartialEq>(a: &Link<K, V>, b: &Link<K, V>) -> bool 
 
 impl<K: PartialEq, V: PartialEq> PartialEq for Map<K, V> {
     fn eq(&self, other: &Self) -> bool {
-        self.len() == other.len() && eq_trees(&self.root, &other.root)
+        self.len() == other.len()
+            && match (self.root.as_deref(), other.root.as_deref()) {
+                (Some(a), Some(b)) if std::ptr::eq(a, b) => self_equal(a),
+                _ => eq_trees(&self.root, &other.root),
+            }
     }
 }
 
