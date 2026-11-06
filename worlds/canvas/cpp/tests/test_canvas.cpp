@@ -390,6 +390,17 @@ TEST(a_small_change_damages_a_small_box) {
     std::uint64_t area = 0;
     for (const IRect& r : d.rects) area += r.area();
     CHECK(area * 50 < std::uint64_t(w) * std::uint64_t(h));
+    // A command that comes (a caret) or goes near the top of the list moves every later
+    // one along a position, and damages only itself.
+    for (bool caret : {true, false}) {
+        std::vector<Pod> items = *t.scene().structure().if_array();
+        if (caret) items.insert(items.begin() + 2, d_rect(30, 3, 2, 16, "Ink"));
+        Pod scene = Pod::array(std::move(items));
+        Damage c = painter.paint(renderer, frame.s, scale, {&scene});
+        std::uint64_t ca = 0;
+        for (const IRect& r : c.rects) ca += r.area();
+        CHECK(!c.full && !c.rects.empty() && ca * 50 < std::uint64_t(w) * std::uint64_t(h));
+    }
     painter.forget();
     CHECK(painter.paint(renderer, frame.s, scale, {&s2}) == (Damage{true, {}}));
     Canvas bigger(cairo_image_surface_create(CAIRO_FORMAT_RGB24, w + 10, h));

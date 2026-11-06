@@ -419,6 +419,19 @@ mod tests {
         };
         let area: u64 = boxes.iter().map(IRect::area).sum();
         assert!(!boxes.is_empty() && area * 50 < u64::from(size.0 * size.1), "a select damaged {boxes:?}");
+        // A command that comes (a caret) or goes near the top of the list moves every later
+        // one along a position, and damages only itself.
+        for caret in [true, false] {
+            let mut scene = t.scene();
+            if caret {
+                scene.insert(2, rect(30.0, 3.0, 2.0, 16.0, "Ink"));
+            }
+            let Damage::Rects(boxes) = painter.paint(&mut renderer, &mut pixmap, scale, &[Pod::Array(scene)]) else {
+                panic!("a caret repainted the whole frame")
+            };
+            let area: u64 = boxes.iter().map(IRect::area).sum();
+            assert!(!boxes.is_empty() && area * 50 < u64::from(size.0 * size.1), "a caret damaged {boxes:?}");
+        }
         painter.forget();
         assert_eq!(painter.paint(&mut renderer, &mut pixmap, scale, &[Pod::Array(t.scene())]), Damage::Full);
         let mut bigger = Pixmap::new(size.0 + 10, size.1).unwrap();
