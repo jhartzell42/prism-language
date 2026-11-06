@@ -265,11 +265,28 @@ impl<K, V> Map<K, V> {
     pub fn new() -> Self {
         Map::default()
     }
+    /// Whether `other` has this map's keys, in order (its values aside).
+    pub fn same_keys<W>(&self, other: &Map<K, W>) -> bool
+    where
+        K: PartialEq,
+    {
+        self.len() == other.len() && self.keys().eq(other.keys())
+    }
     pub fn len(&self) -> usize {
         count(&self.root)
     }
     pub fn is_empty(&self) -> bool {
         self.root.is_none()
+    }
+    /// Whether the two are one map, the same root node (both empty included): then they
+    /// are equal. No program asks this (Prism has no identity); a builder uses it to skip
+    /// a source it already built from.
+    pub fn same(&self, other: &Self) -> bool {
+        match (&self.root, &other.root) {
+            (None, None) => true,
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
     }
     /// The entries in key order.
     pub fn iter(&self) -> Iter<'_, K, V> {
@@ -504,10 +521,41 @@ where
     V: Clone + From<RV>,
 {
     fn extend<I: IntoIterator<Item = (RK, RV)>>(&mut self, i: I) {
+        // into an empty map, entries in strictly ascending key order (a map of a map's
+        // entries by the same keys, as a `for`'s gathered results are) build it at once
+        if self.root.is_none() {
+            let es: Vec<(K, V)> = i.into_iter().map(|(k, v)| (K::from(k), V::from(v))).collect();
+            if es.windows(2).all(|w| w[0].0 < w[1].0) {
+                let mut es = es.into_iter().map(Some).collect::<Vec<_>>();
+                let n = es.len();
+                self.root = built(&mut es, 0, n);
+                return;
+            }
+            for (k, v) in es {
+                self.insert(k, v);
+            }
+            return;
+        }
         for (k, v) in i {
             self.insert(K::from(k), V::from(v));
         }
     }
+}
+
+/// A balanced tree of `es[lo..hi]`, entries in ascending key order: one node each.
+fn built<K, V>(es: &mut [Option<(K, V)>], lo: usize, hi: usize) -> Link<K, V> {
+    if lo == hi {
+        return None;
+    }
+    let mid = lo + (hi - lo) / 2;
+    let left = built(es, lo, mid);
+    let right = built(es, mid + 1, hi);
+    let (k, v) = es[mid].take().expect("each entry is built once");
+    let mut n = Node::leaf(k, v);
+    n.left = left;
+    n.right = right;
+    n.fix();
+    Some(Rc::new(n))
 }
 
 impl<K, V, BK> Index<&BK> for Map<K, V>

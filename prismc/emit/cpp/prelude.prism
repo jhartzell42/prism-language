@@ -862,11 +862,12 @@ CppPreludeRows: fn Text -> Text
 fn CppPreludeRows unused = inline_text <cpp>
 /// A row of a `for` or a generation of a `rebuild`: a node its builder tears down. A row
 /// of a hosted child's (prismc/README.md, pick HO) is an entry of its host's document: its
-/// own places, by their paths relative to the row, and a host's typed answer to one of them.
+/// own places' entries, by their paths relative to the row, and a host's typed answer to
+/// one of them.
 class Row : public Node {
 public:
     virtual void leave_row(Cx& cx) = 0;
-    virtual std::vector<std::tuple<Path, Elem>> document(const Cx& cx) {
+    virtual std::vector<std::tuple<Path, prism_rtl::Rc<prism_rtl::Entry<Elem>>>> document(const Cx& cx) const {
         static_cast<void>(cx);
         return {};
     }

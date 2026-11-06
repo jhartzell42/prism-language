@@ -1,0 +1,12 @@
+# The host document's outer and inner dynamics: declarations of sem-ch09-host-doc-entries.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_value_change_does_not_move_the_outer_document, @counter:
+    build
+    click at 0/[0]/0
+    compute
+    click at 0/[1]/0
+    compute

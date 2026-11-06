@@ -219,6 +219,11 @@ impl<T: Clone> Snapshot<T> {
     pub fn mark(&self, cx: &Cx) {
         self.marked.set(Some(cx.tick()));
     }
+    /// Whether a snapshot was ever taken: a place's entry takes its first at its node's
+    /// build, uncompared.
+    pub fn taken(&self) -> bool {
+        self.slots.borrow().is_some()
+    }
     /// Whether a write marked the structure this tick and the snapshot is not taken yet.
     pub fn marked(&self, cx: &Cx) -> bool {
         self.marked.get() == Some(cx.tick())
@@ -477,17 +482,56 @@ impl<T: Clone + 'static> Dynamic<T> {
     }
 }
 
+/// Two dynamics are equal when they are the same dynamic: the same read and the same update
+/// event, never by their values (a dynamic has no `^Eq` in Prism, Type System ch. 2, and no
+/// program compares one). This is what the runtime's own comparisons see where a value
+/// holds dynamics (a host document's entries, an element whose children are dynamics): a
+/// place's entry is the same dynamic for as long as the place lives, so an element whose
+/// children hold the same dynamics has not moved (claude/incremental-host-document.md, doubt
+/// EQ).
+impl<T> PartialEq for Dynamic<T> {
+    fn eq(&self, other: &Dynamic<T>) -> bool {
+        std::ptr::addr_eq(Rc::as_ptr(&self.read), Rc::as_ptr(&other.read)) && Rc::ptr_eq(&self.updates, &other.updates)
+    }
+}
+
+/// A dynamic is not plain data: a World reads a level that holds dynamics deep, each
+/// sampled at the read point (`crate::host::Level`). Reaching this is a bug of the compiler,
+/// never a value.
+impl<T> crate::pod::ToPod for Dynamic<T> {
+    fn to_pod(&self) -> crate::pod::Pod {
+        panic!("a dynamic made plain data without a read point: a level that holds dynamics is read with `Level`")
+    }
+}
+
+/// No World hands a program a dynamic.
+impl<T> crate::pod::FromPod for Dynamic<T> {
+    fn from_pod(p: &crate::pod::Pod) -> Result<Dynamic<T>, crate::pod::Fault> {
+        crate::pod::mismatch("a dynamic, which is never plain data", p)
+    }
+}
+
+/// A dynamic does not print (no `^Show`); reaching this is a bug of the compiler.
+impl<T> crate::print::Show for Dynamic<T> {
+    fn show(&self, _: &mut crate::print::Printer) {
+        panic!("a dynamic shown: a dynamic has no `^Show`")
+    }
+}
+
 /// A live element, `Element r o`: what a host's supplier receives for each of its child's
 /// places. `identity` is the place's level at its build, whose tag and plain fields never
-/// change while it lives; `level` is its level over time, which a `$` field reads.
+/// change while it lives; `level` is its level over time, which a `$` field reads; `entry`
+/// is the place's entry in its host's document (a forwarded element's place in an
+/// enclosing host's document is the same entry).
 pub struct Live<E> {
     pub identity: E,
     pub level: Dynamic<E>,
+    pub entry: Rc<crate::host::Entry<E>>,
 }
 
 impl<E: Clone> Clone for Live<E> {
     fn clone(&self) -> Live<E> {
-        Live { identity: self.identity.clone(), level: self.level.clone() }
+        Live { identity: self.identity.clone(), level: self.level.clone(), entry: self.entry.clone() }
     }
 }
 

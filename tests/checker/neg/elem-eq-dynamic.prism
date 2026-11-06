@@ -1,0 +1,9 @@
+# `no-impl`: an element whose row has a tag holding its children as dynamics (a container,
+# `children: $(Path ==> $Elem)`) neither compares nor prints (doubt EQ).
+emit Ui.* | Box.*
+
+tag Box.Column of Element unit:
+    children: $(Path ==> $Elem)
+
+Same: fn Elem Box.*, Elem Box.* -> Bool
+fn Same a, b = a == b

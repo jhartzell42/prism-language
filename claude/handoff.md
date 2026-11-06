@@ -76,8 +76,9 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 ## The order (Jimmy's)
 
 1. **The array fix** and **regular expressions in the compiler and its lexer**: done.
-2. **The layout bug** (The window, below): the library's part is done, the rest waits on
-   Jimmy's rulings. He asked for no full benchmark run until it is fixed.
+2. **The layout bug** (The window, below): the host document as `$(Path ==> $Elem c)`,
+   built (branch `claude-window-cache`); what a small change still costs is in its bug
+   note. He asked for no full benchmark run until it is fixed.
 3. **The final fixed point and both seeds**, then **the final benchmarks** on a quiet
    machine, and from them **a recommendation: Rust or C++ as the default back end**,
    argued from both models, running and building (Jimmy).
@@ -124,16 +125,22 @@ separate pass over the token stream was not in this work.
 
 ## The window
 
-- **A small change to the window still costs most of a create1k**
-  (`claude/bugs/window-relayout-every-change.md`). Merged so far: `@Distinct`, cached
-  `let`s, `for` builders that keep unchanged rows, equality that stops at shared nodes
-  (create1k 702 ms to about 50 ms in C++, select 797 ms to about 42 ms, create10k 57 s to
-  0.4 s). Jimmy's bar is a select under a tenth of a create1k; it stands at about 0.8 by
-  instructions, split by phase in `claude/benchmarks-preliminary.md`.
-- **The rest is designed, not built:** `claude/incremental-host-document.md` recommends an
-  incremental host document and a `Cached` combinator, and asks Jimmy four things first
-  (LG, CA, PB, RA there). Build nothing of it before he answers. His limits: the simplest
-  thing that works, layout stays in Prism, no general retained-mode system.
+- **The host document is `$(Path ==> $Elem c)`** (Jimmy, 6 November 2026: "No, change
+  everything for this"), built on both targets: each hosted place an `Entry` of its own,
+  the outer moving only when a place comes or goes (`sem-ch09-host-doc-entries`). The
+  window lays each element out in a `for` row of its own (`@Laid`), each ending on plain
+  layout data with `^Eq`, with one placing pass at the window; each leaf measures its own
+  texts. `claude/incremental-host-document.md` is the design as built, with its doubts
+  (CL, WD, EP, MW, EQ, ET, PB, SE, RF).
+- **A select costs 166 M instructions in C++ and 177 M in Rust** (create1k 747 M and
+  646 M), 141 M and 155 M of it painting the frame; it was 494 M and 436 M.
+  `bench/gui/prism/check.sh` reports the phase table and fails on none (Jimmy threw out
+  the bar of a tenth). What remains is `claude/bugs/window-relayout-every-change.md`.
+- **Jimmy's rulings:** no `Cached` prelude function and no hidden runtime cache; one tick
+  per level (every host level and every gathered `for`), no route D.
+- **The books' sentences that change** with the type are listed in the report of the
+  agent that built it (Semantics chs. 2, 7, 8, 9 and RULINGS; Type System chs. 1, 2 and
+  RULINGS WL; Pitch chs. 4, 5), for the coordinator to edit.
 - **The Cuis table crashes on `▶`; Linux Cuis times measure software painting**
   (`claude/bugs/bench-cuis-latin1-and-software-paint.md`); Jimmy paused the Cuis runs.
 

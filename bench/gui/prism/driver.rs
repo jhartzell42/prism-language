@@ -6,8 +6,9 @@
 //
 //   driver OP RUNS WARMUP     prints `OP RUN MS` per timed run, then `peak_rss_bytes N`
 //   driver OP RUNS WARMUP check
-//                             also counts each step's work and fails the run when it is
-//                             out of proportion (bench/gui/README.md, "The checks")
+//                             also counts each step's work by phase, and fails the run
+//                             when a scene draws outside the window (bench/gui/README.md,
+//                             "The checks")
 //
 // bench/gui/prism/Makefile includes this file at the end of the emitted main.rs, whose own
 // `main` it renames `prism_emitted_main`.
@@ -341,11 +342,6 @@ mod bench_driver {
         false
     }
 
-    /// `check`'s second check, as driver.cpp's `small_op`.
-    fn small_op(op: &str) -> bool {
-        matches!(op, "update10th" | "select" | "swap" | "remove")
-    }
-
     fn peak_rss_bytes() -> i64 {
         let mut u: libc_rusage = unsafe { std::mem::zeroed() };
         unsafe { getrusage(0, &mut u) };
@@ -393,7 +389,7 @@ mod bench_driver {
         let mut waiting = false;
         let mut timing = false;
         let mut t0 = Instant::now();
-        let (mut i0, mut setup) = (0u64, 0u64);
+        let mut i0 = 0u64;
         let mut p0 = ([0u64; prism_rtl::world::probe::PHASES], 0u64);
         if check && !prism_rtl::world::probe::set_hook(phases::mark) {
             eprintln!("driver: the phase probe's hook was set already");
@@ -421,14 +417,7 @@ mod bench_driver {
                         println!("check {op} step {next} ({} row {}): {work} instructions", p.text, p.row);
                         let kind = if timing { "timed" } else if p.text == CREATE_1K { "setup" } else { "untimed" };
                         println!("{}", phases::line(&op, kind, &p0, &p1, work));
-                        if !timing && p.text == CREATE_1K {
-                            setup = work;
-                        }
-                        let small = !timing || !small_op(&op) || work * 10 < setup;
-                        if !small {
-                            eprintln!("driver: check: {op} retired {work} instructions, not under a tenth of Create 1,000 rows' {setup}");
-                        }
-                        if !drawn_inside(s) || !small {
+                        if !drawn_inside(s) {
                             failed_in.set(true);
                             s.exit(1);
                             return;

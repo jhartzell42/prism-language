@@ -63,29 +63,52 @@ fn ElementLine wx, benv, menv, e, ?bound:
             let wx1 = update wx:
                 &_.pos <= NextPos &_.pos
             let structPath = PathIn lx, tg.home, (TagStruct tg.name)
-            let ((liveFields, constFields, reads, wx2)) = Fold tg.fields, (([[]], [[]], [[]], wx1)), \|((lf, cf, rd, w)), ((fname, fty))|
+            # each field three ways: live in the methods, constant at the build, and constant
+            # in the methods (a row's `document`, where a row's key is its own field)
+            let ((liveFields, constFields, methodConsts, reads, wx2)) = Fold tg.fields, (([[]], [[]], [[]], [[]], wx1)), \|((lf, cf, mf, rd, w)), ((fname, fty))|
                 match ?TagArg args, fname:
-                    nil: ((lf, cf, rd, w))
+                    nil: ((lf, cf, mf, rd, w))
                     ? arg:
                         match LayerOf fty:
                             LyEv:
                                 let ((r, w2)) = EventRef w, menv, arg
-                                ((lf, cf, rd, (Connect w2, r, (SkRequest pos, (RequestField tg, fname)))))
+                                ((lf, cf, mf, rd, (Connect w2, r, (SkRequest pos, (RequestField tg, fname)))))
                             otherwise:
                                 let ((ex, rds)) = DynamicExpr w, menv, arg
                                 let cv = Own (ValueOf lx, benv, arg)
-                                (((Push lf, ((Snake fname, ex))), (Push cf, ((Snake fname, cv))), (UnionReads rd, rds), w))
+                                let mv = Own (ValueOf lx, menv, arg)
+                                (((Push lf, ((Snake fname, ex))), (Push cf, ((Snake fname, cv))), (Push mf, ((Snake fname, mv))), (UnionReads rd, rds), w))
             let live = (Len reads) > 0
             let ((getter, wx3)) = if live: FreshName wx2, (Snake (BareName tg.name)) else: (("", wx2))
             let variant = VariantOf lx, tg
             # the place's level as the program's `Elem`: read by its getter in the methods when
-            # a field is live, else the constant; at the build the constant fields' value
-            let level = XCtor variant, [[(XRecord structPath, (if live: liveFields else: constFields))]]
+            # a field is live, else the constant as the methods spell it; at the build the constant
+            # fields' value
+            let level = XCtor variant, [[(XRecord structPath, (if live: liveFields else: methodConsts))]]
             let atBuild = XCtor variant, [[(XRecord structPath, constFields)]]
-            let added = if live: XMethod (XVar "node"), getter, [[XCx]] else: level
-            let wx4 = update wx3:
-                &_.places <= Push &_.places, Place(pos=pos, level=level, getter=getter, reads=reads)
-                &_.build <= if Emits wx3, pos: Push &_.build, (DoExpr (XMethod (XCx), "added", [[(PlaceAt wx3, "node", pos), (XMethod added, "to_pod", [[]])]])) else: &_.build
+            let added = if live: XMethod (XVar "node"), getter, [[XCx]] else: atBuild
+            let emits = Emits wx3, pos
+            # a hosted place is an entry of its host's document (`$(Path ==> $Elem c)`): its
+            # `Entry`, made before the node (a first-value query hands it to the host) and
+            # taken at the build in its scope's turn (`BuildSteps`) and in the patch pass; a
+            # World place whose level holds dynamics watches them (doubt WD)
+            let ((entry, wx3e)) = if emits: (("", wx3)) else: FreshName wx3, "entry_{PlaceText pos}"
+            let deep = emits and TagHoldsDyn lx, tg
+            let ((watch, wx3w)) = if deep: FreshName wx3e, "watch_{PlaceText pos}" else: (("", wx3e))
+            let what = "place {PlaceText pos} ({tg.name}) of `{wx.node}`"
+            # a constant place's entry takes its one snapshot at once; a live one's waits for
+            # its scope's builders (`BuildSteps`)
+            let constTake = if live: [[]] else: [[(DoExpr (XMethod (XVar entry), "take", [[atBuild, XCx]]))]]
+            let wx3h = if emits: wx3w else: update wx3w:
+                &_.lets <= Append (Push &_.lets, (DoLet (PaTyped (PaBind entry), entryTy), (XCall "prism_rtl::Entry::new", [[XStr what]]))), constTake
+                &_.fields <= Push &_.fields, ((entry, entryTy, "{what}, an entry of its host's document"))
+                &_.moves <= Push &_.moves, ((entry, (XClone (XVar entry))))
+            let wx3d = if deep: AddFieldLast wx3h, watch, (OutNamed "prism_rtl::Watch", [[]]), "the dynamics place {PlaceText pos}'s level holds, watched so a move sends it again (doubt WD)", (XCall "prism_rtl::Watch::new", [[]]) else: wx3h
+            let sent = if deep: [[(DoLet (PaBind "sent"), added), (DoExpr (XMethod (XCx), "added", [[(PlaceAt wx3, "node", pos), (XMethod (XVar "sent"), "level_pod", [[XCx]])]])), (DoExpr (XMethod (XField (XVar "node"), watch), "renew", [[(XRef (XVar "sent")), (XCast (XClone (XVar "node")), (OutObj (OutNamed "Node", [[]]))), XCx]]))]]
+                else: [[(DoExpr (XMethod (XCx), "added", [[(PlaceAt wx3, "node", pos), (XMethod added, "level_pod", [[XCx]])]]))]]
+            let wx4 = update wx3d:
+                &_.places <= Push &_.places, Place(pos=pos, level=level, getter=getter, reads=reads, entry=entry, watch=watch)
+                &_.build <= if emits: (if deep: Push &_.build, (DoScope sent) else: Append &_.build, sent) else: &_.build
             ElementOutput wx4, menv, tg, (ElementOut lx, tg, full), pos, ?bound, atBuild
 
 # An element's output type at this application: the tag's, instantiated by the checker
@@ -212,7 +235,8 @@ fn FirstValueLet wx, pos, tg, level:
         DoLet (PaBind "first_{PlaceText pos}"), (TryOf (XMethod asked, "ok_or", [[missing]]))
     else:
         let host = HostLocal wx, pos
-        let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, "", pos)), (XRef level), XCx]])
+        let entry = Or (Fold wx.places, nil, \|?e, pl| if pl.pos == pos: ? pl.entry else: ?e), ""
+        let asked = TryOf (XMethod (XVar host), "first_value", [[(XRef (PlaceAt wx, "", pos)), (XRef level), (XRef (XVar entry)), XCx]])
         DoLet (PaBind "first_{PlaceText pos}"), (TryOf (XMethod (TryOf (XMethod asked, "ok_or", [[missing]])), (AnswerAccessor tg), [[]]))
 
 # The host whose document a position's place is an entry of, as the build spells it (a

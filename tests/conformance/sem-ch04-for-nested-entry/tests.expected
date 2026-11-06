@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 (RE: a row's entry is the source at its key; a `for` builds a row for each new key) and ch. 7 (R7: built at the end of the tick): the click gives row 0's entry the child "c", and the inner `for` builds its row in that tick.
+test the_inner_for_builds_the_new_child
+
+tick 0
+  added:
+    0: Ui.Button(label="grow")
+    1/[0]/0: Ui.Label(text="b")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/[0]/1/[0]/0: Ui.Label(text="c")

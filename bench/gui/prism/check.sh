@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # The window library's cost checks (bench/gui/README.md, "The checks"): both drivers built,
 # then each operation run once with `check`, which fails a run whose scene draws texts
-# outside the window, or whose update10th, select, swap or remove retires a tenth or more
-# of the instructions of the Create 1,000 rows before it. Opens a window for each run, so
-# the display must be awake. macOS only (the instruction count is `proc_pid_rusage`'s).
-# Then a table of each timed step's instructions by phase (prism_rtl's probe; the
-# drivers' `phases` lines), millions, against the same target's create1k.
+# outside the window or whose screen does not show the table the operation should leave.
+# Opens a window for each run, so the display must be awake. macOS only (the instruction
+# count is `proc_pid_rusage`'s). Then a table of each timed step's instructions by phase
+# (prism_rtl's probe; the drivers' `phases` lines), millions, and each step's total and
+# paint against the same target's create1k: reported, never a failure.
 #
 #   bench/gui/prism/check.sh [IMPL...]     # prism-cpp prism-rust, or those named
 #

@@ -7,7 +7,8 @@ is the part that is not generated per block, written once and shared.
 - **Modules:** numbers (`num`), persistent collections, `Pod` and paths, the transcript's
   printer and reader, the node primitives (`cells`: `Hold`, `Stamped`, `Cache`, `Port`,
   `Event`, `Dynamic`, `Defer`, `Job`), the tick (`cx`), the document and patch (`doc`),
-  the zombie collector (`gc`), hosting (`host`), and the World protocol with the Test
+  the zombie collector (`gc`), hosting (`host`: a host's rows over its child's document,
+  `$(Path ==> $Elem c)`, each child place an `Entry` of its own), and the World protocol with the Test
   World (`world`). `src/lib.rs` describes each.
 - **The contract** between this crate and the emitted code is `claude/backend.md`.
 - **`Text`** (Semantics Appendix B, Text; round 4 TX) is UTF-8: an `Rc<str>` and a byte

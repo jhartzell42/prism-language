@@ -14,6 +14,7 @@
 
 #include "check.hpp"
 #include "prism_rtl/prism_rtl.hpp"
+#include "prism_rtl/lang.hpp"
 
 using namespace prism_rtl;
 
@@ -162,4 +163,23 @@ TEST(maps_of_maps_compare_shared_inner_maps_at_once) {
     CHECK(a == b);
     bool eq = false;
     CHECK(compared([&] { eq = a == b; }) <= BOUNDED && eq);
+}
+
+TEST(a_map_built_from_entries_in_key_order_is_the_map_inserted_one_by_one) {
+    for (int n : {0, 1, 2, 3, 64, 65, 300, BIG}) {
+        std::vector<std::pair<int, int>> es;
+        Map<int, int> inserted;
+        for (int k = 0; k < n; ++k) es.emplace_back(k, 2 * k), inserted.insert(k, 2 * k);
+        Map<int, int> built = Map<int, int>::from_sorted(es);
+        CHECK(built == inserted && built.size() == std::size_t(n));
+        for (int k = 0; k < n; ++k) CHECK(built.get(k) && *built.get(k) == 2 * k);
+        built.insert(n, 1);
+        CHECK(built.size() == std::size_t(n + 1));
+    }
+    // a map of a map's entries: in key order, built; out of order, inserted
+    Map<int, int> m;
+    for (int k = 0; k < 5; ++k) m.insert(k, k);
+    auto same_keys = prism_rtl::fmap(m, [](const auto& e) { return std::tuple{e.first, e.second + 1}; });
+    auto turned = prism_rtl::fmap(m, [](const auto& e) { return std::tuple{-e.first, e.second}; });
+    CHECK(same_keys.size() == 5 && *same_keys.get(4) == 5 && turned.size() == 5 && *turned.get(-4) == 4);
 }

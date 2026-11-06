@@ -168,44 +168,44 @@ fn HostLine wx, benv, menv, form, args, ?bound:
             let supplier = if (Len dynLets) == 0: supplier0 else: XBlock dynLets, supplier0
             # the scope the host's rows build in: the World's, or the enclosing host's
             let enclosing = if Emits wx, pos: XNone else: XCtor "Some", [[(XCast (XClone (XVar (HostLocal wx, pos))), hostOfTy)]]
-            let made = XCall "prism_rtl::Host::new", [[(PlaceAt wx, "", pos), (XClone (XVar rowsName)), supplier, enclosing, (XPath "{wx.node}::{docGetter}_direct"), (XPath "{wx.node}::{hf}_answer")]]
+            let made = XCall "prism_rtl::Host::new", [[(PlaceAt wx, "", pos), (XClone (XVar rowsName)), supplier, enclosing, (XPath "{wx.node}::{hf}_answer")]]
             let hostTy = OutRc (OutNamed "prism_rtl::Host", [[elemTy, answerTy, (OutNamed wx.node, [[]])]])
             let rowsTy = OutNamed "prism_rtl::Rows", [[elemTy, answerTy]]
-            let docTy = OutMap OutPath, elemTy
+            # the document is `$(Path ==> $Elem c)` (Jimmy, 6 November 2026): the owner keeps
+            # its outer as one structural dynamic (`HostDoc`: each place's dynamic for the
+            # program, each place's entry for the host's own rows), taken when a place came or
+            # went; each place's entry is its own structural dynamic (`Entry`)
+            let docTy = OutMap OutPath, (OutDyn elemTy)
+            let directTy = OutMap OutPath, entryTy
             let what = "the document of the child hosted at place {PlaceText pos}"
             let wx2 = update wxd:
                 &_.pos <= NextPos &_.pos
                 &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind rowsName), rowsTy), (XCall "Rc::new", [[(XCall "RefCell::new", [[(XCall "Map::new", [[]])]])]])), (DoLet (PaBind hf), made)]]
-                &_.fields <= Append &_.fields, [[((hf, hostTy, "the host at place {PlaceText pos}: its supplier, its rows, and the way back into its child (pick HO)")), ((rowsName, rowsTy, "the rows of the host at place {PlaceText pos}: `for p, e <- $doc`, one supplier blueprint per child place")), (("{docGetter}_snap", (OutSnapshot docTy), "`$doc` of the host at place {PlaceText pos}, a structural dynamic: its snapshots, the structure and the lagged dynamic (pick ST)"))]]
+                &_.fields <= Append &_.fields, [[((hf, hostTy, "the host at place {PlaceText pos}: its supplier, its rows, and the way back into its child (pick HO)")), ((rowsName, rowsTy, "the rows of the host at place {PlaceText pos}: `for p, e <- $doc`, one supplier blueprint per child place")), (("{rowsName}_from", (OutCell directTy), "the places the rows of the host at place {PlaceText pos} were last built from")), (("{docGetter}_snap", (OutSnapshot hostDocTy), "`$doc` of the host at place {PlaceText pos}, its outer, a structural dynamic: its snapshots, the places and the lagged dynamic (pick ST)"))]]
                 &_.moves <= Append &_.moves, [[((hf, (XClone (XVar hf)))), ((rowsName, (XClone (XVar rowsName))))]]
-                &_.inits <= Push &_.inits, (("{docGetter}_snap", (XCall "Snapshot::new", [[XStr what]])))
+                &_.inits <= Append &_.inits, [[(("{docGetter}_snap", (XCall "Snapshot::new", [[XStr what]]))), (("{rowsName}_from", (XCall "RefCell::new", [[(XCall "Map::new", [[]])]])))]]
                 &_.hosts <= Push &_.hosts, HostDef(pos=pos, name=hf, scope=k)
-                &_.snaps <= Push &_.snaps, SnapDef(name=docGetter, live="{docGetter}_now", ty=docTy, eq=True, builder=rowsName, before=True, what=what)
-                &_.getters <= Append &_.getters, [[(SnapGetter docGetter, docTy, "The document of the child hosted at place {PlaceText pos}, `$doc`, a structural dynamic (pick ST): one tick behind the child's structure, the snapshot of the tick before the tick the read point is after."), (MethDef(name="{docGetter}_direct", recv=RecvRef, params=[[]], cx=CxRef, ret=docTy, body=[[]], tail=(XMethod (XField XSelf, "{docGetter}_snap"), "current", [[XCx]]), doc="The structure of the child hosted at place {PlaceText pos}, not the lagged `$doc`: the snapshot taken in this tick's construction step, the document as the tick opened during propagation. The host's own `for` and its rows' entries read it, so a newborn child place gets its row in the tick it is born (pick ST)."))]]
+                &_.snaps <= Push &_.snaps, SnapDef(name=docGetter, live="{docGetter}_now", ty=hostDocTy, eq=True, builder=rowsName, before=True, what=what)
+                &_.getters <= Append &_.getters, [[(MethDef(name=docGetter, recv=RecvRef, params=[[]], cx=CxRef, ret=docTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "get", [[XCx]]), "doc"), doc="The document of the child hosted at place {PlaceText pos}, `$doc`, its outer a structural dynamic (pick ST): one tick behind the child's places, the snapshot of the tick before the tick the read point is after; each entry the place's own dynamic.")), (MethDef(name="{docGetter}_direct", recv=RecvRef, params=[[]], cx=CxRef, ret=directTy, body=[[]], tail=(XField (XMethod (XField XSelf, "{docGetter}_snap"), "current", [[XCx]]), "places"), doc="The places of the child hosted at place {PlaceText pos}, not the lagged `$doc`: the snapshot taken in this tick's construction step, the places as the tick opened during propagation. The host's own `for` reads it, so a newborn child place gets its row in the tick it is born (pick ST)."))]]
                 &_.scopes <= Push &_.scopes, hf
-                &_.builders <= Push &_.builders, ForDef(name=rowsName, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=OutPath, valueTy=elemTy, rowNode="prism_rtl::HostRow::<crate::Elem, crate::Answer>", keyed=True, source="{docGetter}_direct", parent=(XClone (XField XSelf, hf)), passed=[[]])
+                &_.builders <= Push &_.builders, ForDef(name=rowsName, pos=pos, at=(PlaceAt wx, "self", pos), keyTy=OutPath, valueTy=entryTy, rowNode="prism_rtl::HostRow::<crate::Elem, crate::Answer>", keyed=True, source="{docGetter}_direct", parent=(XClone (XField XSelf, hf)), passed=[[]], moved=(Or (?HostedRows wx), ""))
                 &_.buildHolds <= AddRead &_.buildHolds, (OwnRead "{docGetter}_now")
-                &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=rowsName, reads=[[OwnRead "{docGetter}_now"]], wrote=[[]], kind=ForRow)
                 &_.fallible <= True
             let inner = update wx2:
                 &_.pos <= ScopePos k
                 &_.result <= WrUnit
             let ((done, res)) = BuildLine inner, benv, menv, child.value, nil
-            # the child's: its places (at any depth of scopes, a nested host's included), its
-            # builders' sources and its generations' sources, and what its rows read of this
-            # node, as this node's own reads
+            # the outer moves only when a place of the child came or went: its builders and
+            # generations tell the host so (`host_k_moved`), and no write behind a place's
+            # level marks it, since each place's entry is its own
             let childPlaces = Drop done.places, (Len wx2.places)
-            let childBuilds = Filter done.buildHolds, \|h| not (HasRead wx2.buildHolds, h)
-            let childGens = Fold (Drop done.genHolds, (Len wx2.genHolds)), [[]], \|acc, ((ignore, hs))| UnionReads acc, hs
-            let childRows = Fold (Drop done.rowMarks, (Len wx2.rowMarks)), [[]], \|acc, rm| UnionReads acc, rm.reads
-            let docReads = Fold childPlaces, (UnionReads (UnionReads childBuilds, childGens), childRows), \|acc, pl| UnionReads acc, pl.reads
             let InScope = \|p| p.scope == k
             let getter = HostDocGetter "{docGetter}_now", pos, (Filter childPlaces, \|pl| InScope pl.pos), (Filter (Drop done.builders, (Len wx2.builders)), \|b| InScope b.pos), (Filter (Drop done.gens, (Len wx2.gens)), \|gd| InScope gd.pos)
             let back = update done:
                 &_.pos <= wx2.pos
                 &_.result <= wx.result
                 &_.getters <= Push &_.getters, getter
-                &_.dynReads <= Insert &_.dynReads, "{docGetter}_now", docReads
+                &_.dynReads <= Insert &_.dynReads, "{docGetter}_now", [[]]
             let docBn = BnDyn (XMethod (XSelf), docGetter, [[XCx]]), [[OwnRead docGetter]], docTy
             ((back, (WrHosted res, docBn)))
         otherwise:
@@ -280,16 +280,16 @@ fn ?DynamicAnswer lx, x:
 DynKey: fn Expr -> Text
 fn DynKey x = "{x.span.start}:{x.span.end}"
 
-# The hosted child's document as the owner computes it live, `host_k_doc_now` (pick HO):
-# every place of the child at the read point, keyed by its path relative to the child: the
-# places in the child's scope, and under each of its `for`s and `rebuild`s their rows' own
-# documents. Only the snapshot (`SnapGetter`) reads it, once per tick in the construction
-# step (pick ST).
+# The hosted child's places as the owner gathers them, `host_k_doc_now` (pick HO): each
+# place's entry, keyed by its path relative to the child: the places in the child's scope,
+# and under each of its `for`s and `rebuild`s their rows' own. Only the snapshot of the
+# outer reads it, in the construction step of a tick in which a place came or went (pick
+# ST).
 HostDocGetter: fn Text, Pos, [Place], [ForDef], [GenDef] -> MethDef
 fn HostDocGetter name, pos, places, builders, gens:
-    let start = DoLet (PaTyped (PaMut "doc"), (OutMap OutPath, elemTy)), (XCall "Map::new", [[]])
+    let start = DoLet (PaTyped (PaMut "doc"), hostDocTy), (XCall "prism_rtl::HostDoc::new", [[]])
     let body = DocumentBody MapInsert, places, builders, gens
-    MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=(OutMap OutPath, elemTy), body=(Append [[start]], body), tail=(XVar "doc"), doc="The document of the child hosted at place {PlaceText pos} computed live: each of its places by its path relative to the child, its level at the read point (pick HO). Read only by the snapshot `$doc` answers from (pick ST).")
+    MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=hostDocTy, body=(Append [[start]], body), tail=(XVar "doc"), doc="The places of the child hosted at place {PlaceText pos}: each place's entry by its path relative to the child (pick HO). Read only by the snapshot of `$doc`'s outer (pick ST).")
 
 # A structural dynamic's getter (pick ST): its snapshot at the read point.
 SnapGetter: fn Text, OutTy, Text -> MethDef
@@ -469,7 +469,7 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                             &_.build <= Push &_.build, (RefusalDo "a widget of several clauses that takes no arguments")
                         ((wx2, WrUnit))
         ? body:
-            if wx.depth > 16: ((wx, WrUnit))
+            if wx.depth > 16: TooDeep wx, qk, e
             else:
                 let lxc = InModuleAt lx, v.file, v.home, lx.site
                 let ptys = match v.scheme.ty:
@@ -492,6 +492,27 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     &_.depth <= wx.depth
                     &_.result <= wx.result
                 ((back, done.result))
+
+# A widget recursing deeper than the lowering inlines it (`depth` 16): the node at that
+# depth faults at its build, so only a tree that deep stops the program, and loudly; the call
+# gives a result of its type that is never read (the build faults first).
+TooDeep: unbounded fn Wx, Text, Expr -> ((Wx, Wres))
+fn TooDeep wx, qk, e:
+    let lx = wx.lx
+    let what = "`{BareName qk}` recurses deeper than the compiler inlines it (16 levels)"
+    let wx1 = update wx:
+        &_.build <= Push &_.build, (DoReturn (XCtor "Err", [[(XCall "Fault::too_deep", [[XStr what]])]]))
+        &_.fallible <= True
+    let t = OutTyOf lx, (OutOf (TypeAt lx, e.span))
+    let called = match TypeAt lx, e.span:
+        TyAt i, ignore: i
+        other: other
+    match LayerOf called:
+        LyDyn: ((wx1, (WrDyn XUnreachable, [[]], t)))
+        LyEv:
+            let ((id, wx2)) = AddGn wx1, "too_deep", t, GnNever, 0
+            ((wx2, (WrEv (EvRefOf wx2, id))))
+        otherwise: if t == OutUnit: ((wx1, WrUnit)) else: ((wx1, (WrPlain XUnreachable, t)))
 
 ?WidgetDeclOf: fn G, Text -> ?WidgetDecl
 fn ?WidgetDeclOf g, qk = Fold g.defs, nil, \|?found, d| if d.qk == qk: ?DefWidget d, ?found else: ?found

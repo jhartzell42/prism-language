@@ -99,6 +99,42 @@ impl Show for {{name}} {
 }
 </rust>
 
+# A level that holds dynamics as a World reads it (doubt WD): plain data with each dynamic
+# sampled at the read point, deep, and the update events of the dynamics it holds.
+TagLevel: fn Text, Text, Text, Text -> Text
+fn TagLevel name, tagName, pods, ports = inline_text <rust>
+impl {{name}} {
+    /// The level as a World reads it: each dynamic it holds sampled at the read point.
+    pub fn level_pod(&self, cx: &Cx) -> Pod {
+        Pod::element("{{tagName}}", vec![{{pods}}])
+    }
+    /// The update events of the dynamics it holds, and of theirs.
+    pub fn level_ports(&self, cx: &Cx, out: &mut Vec<Rc<Port<()>>>) {
+        let _ = (cx, &out);{{ports}}
+    }
+}
+</rust>
+
+# `crate::Elem`'s levels as a World reads them (doubt WD): a tag that holds dynamics deep,
+# any other as its plain data.
+RowLevel: fn Text, Text, Text -> Text
+fn RowLevel name, pods, ports = inline_text <rust>
+impl prism_rtl::Level for {{name}} {
+    fn level_pod(&self, cx: &Cx) -> Pod {
+        let _ = cx;
+        match self {
+            {{pods}}_ => self.to_pod(),
+        }
+    }
+    fn level_ports(&self, cx: &Cx, out: &mut Vec<Rc<Port<()>>>) {
+        let _ = (cx, &out);
+        match self {
+            {{ports}}_ => {}
+        }
+    }
+}
+</rust>
+
 # A tag's struct read back from its `Pod`.
 TagFromPod: fn Text, Text, Text -> Text
 fn TagFromPod name, tagName, reads = inline_text <rust>
@@ -233,14 +269,20 @@ fn Method doc, signature, body = inline_text <rust>
 # build list after a tick that changed its source, once. A kept row reads its entry through
 # the block's `{{source}}` getter at its own read point: the builder writes nothing to it. A
 # host's rows are built the same way over its child's document, with the host as their
-# parent (pick HO).
-ForBuild: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
-fn ForBuild name, at, keyTy, valueTy, rowNode, source, parent, passed = inline_text <rust>
+# parent (pick HO). A source that is the very map the rows were last built from (one node,
+# `same`) has the same keys, so the builder does nothing (no program can tell: Semantics
+# ch. 11, sharing is invisible).
+ForBuild: fn Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn ForBuild name, at, keyTy, valueTy, rowNode, source, parent, passed, moved = inline_text <rust>
 /// The rows of the `for` at `{{at}}`: rows whose key left are torn down, new keys are
 /// built under it at `[k]` from the values after the tick; kept rows keep reading their
-/// entry out of the source.
+/// entry out of the source. Nothing to do when the source is the map last built from.
 fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     let items: Map<{{keyTy}}, {{valueTy}}> = self.{{source}}(cx);
+    if self.{{name}}_from.borrow().same(&items) {
+        return Ok(());
+    }
+    *self.{{name}}_from.borrow_mut() = items.clone();
     let old = self.{{name}}.borrow().clone();
     // the kept rows stay where they are: only the keys that left or came are touched
     let mut next = old.clone();
@@ -259,15 +301,15 @@ fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     }
     *self.{{name}}.borrow_mut() = next;
     // What the block reads of its rows (a `for` that gives a dynamic) moved.
-    cx.dirty(self.clone());
+    cx.dirty(self.clone());{{moved}}
     Ok(())
 }
 </rust>
 
 # A `rebuild`'s builder: one generation at a time, at `{{pos}}/#g` (a widget of several
 # clauses in a static position: at its caller's path).
-GenBuild: fn Text, Text, Text, Text, Text, Text -> Text
-fn GenBuild name, at, path, source, valueTy, select = inline_text <rust>
+GenBuild: fn Text, Text, Text, Text, Text, Text, Text -> Text
+fn GenBuild name, at, path, source, valueTy, select, moved = inline_text <rust>
 /// The `rebuild` at `{{at}}`: the old generation torn down (it ran to the end of the
 /// tick), the next built at `{{path}}` from the source after the tick.
 fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
@@ -280,7 +322,7 @@ fn {{name}}_build(self: &Rc<Self>, cx: &mut Cx) -> Done {
     let path = {{path}};
     let value: {{valueTy}} = {{source}};
     let row: Rc<dyn Row> = {{select}};
-    *self.{{name}}.borrow_mut() = Some(row);
+    *self.{{name}}.borrow_mut() = Some(row);{{moved}}
     Ok(())
 }
 </rust>

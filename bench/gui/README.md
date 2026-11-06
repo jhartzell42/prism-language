@@ -75,10 +75,11 @@ each under both drivers with `driver OP 1 0 check`, which counts work rather tha
 - **What the scene draws:** after every step, no `Draw.Text` in the scenes starts more
   than 8 outside the window, so the window library draws what the window shows, not the
   whole table.
-- **What a small change costs:** the instructions the whole process retires (every
-  thread's, `proc_pid_rusage`) from the press to the settled frame. Update10th, select,
-  swap and remove must each retire under a tenth of what their setup's Create 1,000 rows
-  did.
+- **What the screen shows:** after every timed step, the table the operation should
+  leave (the timed runs check this with or without `check`).
+- **What a step costs, reported:** the instructions the whole process retires (every
+  thread's, `proc_pid_rusage`) from the press to the settled frame, printed per step; no
+  ratio fails a run (Jimmy: the numbers are reported, not held to a bar).
 
 A failed check fails the run and says what it saw. Then `check.sh` prints a table of each
 timed step's instructions by phase, millions, against the same target's create1k: the
@@ -115,4 +116,9 @@ instructions between its marks (macOS's `thread_selfcounts`) go to the phase it 
   their places.
 - **No scrolling in Prism:** the window library has no scroll pane, so the Prism window
   lays out every row and draws those that start inside the window; GTK and Cuis lay out
-  every row too, in a scroll pane.
+  every row too, in a scroll pane. Its host documents are `$(Path ==> $Elem)` (Jimmy, 6
+  November 2026), and the window lays each element out in a row of its own: a small change
+  re-lays the rows on its path, re-stacks the column's 1,001 laid-out rows once per level
+  of the moved path, and places what shows; one select is 166 M instructions in C++ and
+  177 M in Rust, painting the frame 141 M and 155 M of it
+  (claude/incremental-host-document.md; claude/benchmarks-preliminary.md).

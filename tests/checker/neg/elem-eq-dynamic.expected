@@ -1,0 +1,5 @@
+tests/checker/neg/elem-eq-dynamic.prism:9: error[no-impl]: no impl of `^Eq` for `Elem Box.*`: a tag of its row holds dynamics (a container's children, `$(Path ==> $Elem)`), which do not compare or print
+    fn Same a, b = a == b
+                   ^^^^^^
+  fix: compare or show what the element holds, a field at a time
+1 error

@@ -43,6 +43,8 @@ struct Fault {
     Fault(std::string kind, std::string message) : kind(std::move(kind)), message(std::move(message)) {}
     /// A World answered no place, or with data of the wrong type.
     static Fault answer(std::string message) { return Fault("Runtime.Answer", std::move(message)); }
+    /// A row of a recursive widget deeper than the compiler inlined it was built.
+    static Fault too_deep(std::string message) { return Fault("Runtime.TooDeep", std::move(message)); }
     /// `kind: message`, as the transcript's `| ...` line shows it.
     std::string to_string() const { return kind + ": " + message; }
     bool operator==(const Fault&) const = default;

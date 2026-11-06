@@ -1,0 +1,25 @@
+# A `for` over a large map whose hold is written with the value it has (tests/cost/README.md):
+# the source is the very map the rows were built from, so the builder does nothing; a write
+# costs a constant, not a walk of the keys. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+# 0 to n - 1 as keys
+Big: fn Nat -> (Nat ==> Nat)
+fn Big n = update {}:
+    let &i = 0
+    let &left = n
+    while ? m <- &left -? 1:
+        &left <= m
+        &_ <= Insert &_, &i, &i
+        &i += 1
+
+@rows: @unit
+@rows:
+    !same <- Ui.Button(label=$"same")                        # 0
+    $m <- (Big 20000) then $m on !same
+    for k, $v <- $m:                                         # 1/[k]
+        @ unit
+    Ui.Label(text=$"{Size $m}")                              # 2

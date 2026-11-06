@@ -1,9 +1,12 @@
-# A host's child document is a dynamic, and `!Updated $doc` is its event half. `$doc` is
-# structural (Semantics ch. 7, "Structural dynamics"; round 3 ST): a click on the forwarded
-# child button moves the child's label in its tick, and the event fires in the tick after,
-# the first firing of that owed tick, with the document after the click; the host counts the
-# document's updates there and shows the child's label text out of the new document. Written
-# for prismc's back end. Work in progress, subject to change.
+# A host's child document is `$(Path ==> $Elem c)` (Jimmy, 6 November 2026), and a program
+# that wants it as one flat value of elements writes the `for` that flattens each entry
+# (claude/incremental-host-document.md, part 4): `$flat` is that `for`'s gathered dynamic,
+# and `!Updated $flat` its event half. A click on the forwarded child button moves the
+# child's label in its tick; the label's entry is published in the tick after (the host
+# level's tick, round 3 ST), its row's `@Flatten` follows it there, and the gathered `$flat`
+# is published in the tick after that (the gathered `for`'s tick): the host counts `$flat`'s
+# updates there and shows the child's label text out of it. Written for prismc's back end.
+# Work in progress, subject to change.
 emit Ui.*
 test mod Tests
 use Ui.*
@@ -22,7 +25,10 @@ fn Texts doc = Fold (Values doc), "", \|acc, e| match e:
 @counter: @unit
 @counter:
     ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
-    let !moved = !Updated $doc
+    $flat <- for p, $$d <- $doc:                                  # 1/[p], no places
+        $e <- @Flatten $$d
+        @ $e
+    let !moved = !Updated $flat
     $moves <- 0 then $moves + 1 on !moved
     $latest <- "" then Texts !moved
-    Ui.Label(text=$"{$moves} moves, latest {$latest}")           # 1
+    Ui.Label(text=$"{$moves} moves, latest {$latest}")           # 2

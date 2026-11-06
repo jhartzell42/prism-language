@@ -1,0 +1,26 @@
+# A widget function that recurses as deep as its data (Semantics ch. 4: "widget functions
+# recurse as deep as their data (`@Outline` over subtopics)"): each row of the `for` over a
+# tree's children lays out the child's own outline, the child a part of the tree, so the
+# recursion checker accepts it. A click grows the tree a level: the new row is built at the
+# end of the tick (R7). Written by Claude on the claude-self-hosting branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Tree = record:
+    name: Text
+    kids: Nat ==> Tree
+derive ^Eq, ^Show
+
+@Outline: fn $Tree -> @unit
+fn @Outline $t:
+    Ui.Label(text=$t.name)                                       # 0
+    for k, $c <- $t.kids:                                        # 1/[k]
+        @Outline $c
+
+@outline: @unit
+@outline:
+    !grow <- Ui.Button(label=$"grow")                            # 0
+    $t <- (Tree "a", {0: (Tree "b", {})}) then (Tree "a", {0: (Tree "b", {0: (Tree "c", {})})}) on !grow
+    @Outline $t                                                  # 1, 2/[k]

@@ -288,6 +288,10 @@ type TagDef = record:
     # Every field is plain data (`Podable`): the struct is `Clone` and `PartialEq` and
     # reads back from a `Pod`, so a value holding it (a `[Draw]` in a record) can be data.
     pod: Bool
+    # Every field is plain data or holds dynamics (`RuntimeEq`): the struct is `PartialEq`
+    # for the runtime's comparisons (a place's entry), a dynamic equal only to itself
+    # (doubt EQ). A field that holds dynamics is read deep by a World (`Level`, doubt WD).
+    eq: Bool
 derive ^Eq, ^Show
 
 # A row kind's values as plain data (pick RV): one Rust enum whose variants are the tags
@@ -300,6 +304,11 @@ type RowDef = record:
     cases: [((Text, Text))]
     pod: Bool
     doc: Text
+    # As a tag's `eq`; whether this is `crate::Elem`, whose levels a World reads deep
+    # (`prism_rtl::Level`, doubt WD); and the variants whose tags hold dynamics.
+    eq: Bool
+    level: Bool
+    deep: [Text]
 derive ^Eq, ^Show
 
 # A plain function, a top-level `let` (a getter with no parameters), or a check line.
@@ -431,6 +440,8 @@ type GenDef = record:
     # caller's position `pos`, where an inlined widget's places stand.
     transparent: Bool
     width: Nat
+    # As a `for`'s `moved`: what a new generation tells when its places are a host's.
+    moved: Text
 derive ^Eq, ^Show
 
 # A `for` builder (claude/backend.md, "Dynamic structure"): a map of rows, each a node of
@@ -451,6 +462,10 @@ type ForDef = record:
     parent: Ex
     # The block's plain values the rows read, as the block passes them to a row's `build`.
     passed: [Ex]
+    # When the rows' places are entries of a host's document: the block's method that tells
+    # the host its child's places came or went (`host_k_moved`, `document_moved`), which
+    # the builder calls when a row came or left; "" otherwise.
+    moved: Text
 derive ^Eq, ^Show
 
 # The program of a root widget, as a World drives it.

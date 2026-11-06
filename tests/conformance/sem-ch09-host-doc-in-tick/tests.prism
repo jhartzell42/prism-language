@@ -5,7 +5,8 @@ use Ui.*
 
 test the_document_moves_within_the_tick, @owner:
     build
-    click at 1
-    click at 0/[0]/0, click at 1
+    click at 2
+    click at 0/[0]/0, click at 2
     click at 0/[0]/0
+    compute
     compute

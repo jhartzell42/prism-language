@@ -16,28 +16,25 @@ impl AnswerOf<Pod> for Answer {
     }
 }
 
-/// One generation: the host at place 0, and its rows.
+/// One generation: the host at place 0, its rows, and its child's one place's entry.
 struct Generation {
     host: Rc<Host<Pod, Answer, Generation>>,
     rows: Rows<Pod, Answer>,
+    place: Rc<Entry<Pod>>,
 }
 
 impl Generation {
     fn build(path: Path, cx: &mut Cx) -> Result<Rc<Generation>, Fault> {
         let rows: Rows<Pod, Answer> = Rc::new(std::cell::RefCell::new(Map::new()));
         let supplier: Supplier<Pod, Answer> = Rc::new(|_: &Path, _: &Live<Pod>| plain_blueprint(Answer));
-        let host = Host::new(path.at(0), rows.clone(), supplier, None, Generation::document, Generation::deliver);
+        let host = Host::new(path.at(0), rows.clone(), supplier, None, Generation::deliver);
         // The child's one place asks its first value at its build: the host builds its row.
-        host.first_value(&Path::root().at(0), &Pod::int(1), cx)?;
-        let node = Rc::new(Generation { host: host.clone(), rows });
+        let place = Entry::new("the child's place 0");
+        host.first_value(&Path::root().at(0), &Pod::int(1), &place, cx)?;
+        let node = Rc::new(Generation { host: host.clone(), rows, place });
         host.link(&node);
+        node.place.take(Pod::int(1), cx);
         Ok(node)
-    }
-
-    fn document(_: &Generation, _: &Cx) -> Map<Path, Pod> {
-        let mut doc = Map::new();
-        doc.insert(Path::root().at(0), Pod::int(1));
-        doc
     }
 
     fn deliver(_: &Rc<Generation>, _: &Path, _: &Answer, _: &mut Cx) -> Done {

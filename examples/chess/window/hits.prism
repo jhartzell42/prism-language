@@ -44,11 +44,15 @@ fn Untransform q, t:
 Local: fn Hit, Point -> Point
 fn Local h, p = Fold h.turns, p, \|q, t| Untransform q, t
 
-# the window's root: a program's one top element gets the whole window; several stack in a column
-LayRoot: fn Env, (Path ==> Elem), Extent -> Laid
-fn LayRoot env, kids, size = match Kids kids:
-    [[((k, e))]]: Lay env, e, (Loose size.w, size.h), [[k]]
-    otherwise: LayStack env, kids, (Loose size.w, size.h), [[]], True, 0.0, Start
+# the window's root: a program's one top element gets the whole window; several stack in a
+# column, each first in the column's room
+TopRoom: fn Nat, Extent -> Room
+fn TopRoom count, size = if count == 1: Loose size.w, size.h else: NaturalRoom True, (Loose size.w, size.h)
+
+LayTop: fn (Path ==> Res), Extent -> Plan
+fn LayTop tops, size = match Kids tops:
+    [[r]]: PlanIn r, (Loose size.w, size.h)
+    otherwise: LayStack tops, (Loose size.w, size.h), True, 0.0, Start
 
 # the topmost hit under the pointer: the last drawn wins
 ?HitAt: fn [Hit], Point -> ?Hit

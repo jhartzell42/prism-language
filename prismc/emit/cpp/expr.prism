@@ -242,6 +242,7 @@ fn CppCall cp, f, args:
         "Snapshot::new": "snapshot({a})"
         "Path::root": "Path::root()"
         "Fault::answer": "Fault::answer({a})"
+        "Fault::too_deep": "Fault::too_deep({a})"
         "Error::new": "Error({a})"
         "Text::from": "Text({a})"
         "String::new": "std::string()"
@@ -250,6 +251,7 @@ fn CppCall cp, f, args:
         "Dynamic::of": "dynamic_of({a})"
         "prism_rtl::Event::of": "event_of({a})"
         "prism_rtl::Host::new": "host_new({a})"
+        "prism_rtl::Entry::new": "entry_new({a})"
         "prism_rtl::forward_on_none": "prism_rtl::forward_on_none<crate::Elem, crate::Answer>({a})"
         "Event::never": "never_event()"
         otherwise: if IsFresh f: "\{\}" else: "{FreeCallPath cp, f}({a})"
@@ -276,7 +278,7 @@ let stdNames = [["apply", "begin", "end", "size", "empty", "data", "get", "swap"
 
 # The runtime's constructors of an empty value, whose type the context gives.
 IsFresh: fn Text -> Bool
-fn IsFresh f = InList [["Stamped::new", "Cache::new", "Port::new", "Map::new", "Array::new", "Vec::new", "Default::default", "Wakes::default", "Defer::new"]], f
+fn IsFresh f = InList [["Stamped::new", "Cache::new", "Port::new", "Map::new", "Array::new", "Vec::new", "Default::default", "Wakes::default", "Defer::new", "prism_rtl::HostDoc::new", "prism_rtl::Watch::new"]], f
 
 # A function's path: a node's constructor is `make` (`build` is the C++ runtime's virtual
 # build-list method), the rest as written.
