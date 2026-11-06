@@ -123,7 +123,17 @@ fn ExprKids e, m = match e.kind:
         let names = match ?fb:
             ? fb: UnionTexts (PatternNames fb.first), (OptNames fb.?second)
             nil: [[]]
-        [[(KidExpr s, m), (KidStmts b.stmts, (Hide m, names))]]
+        # a row's key and entry are parts of the source, as `Keys` and `Values` give them
+        # (Semantics ch. 4: widget functions recurse as deep as their data, `@Outline` over
+        # subtopics)
+        let inBody = match ?fb:
+            ? fb:
+                let withFirst = BindRels fb.first, (PartOf s), (Hide m, names), False
+                match fb.?second:
+                    ? p2: BindRels p2, (PartOf s), withFirst, False
+                    nil: withFirst
+            nil: Hide m, names
+        [[(KidExpr s, m), (KidStmts b.stmts, inBody)]]
     EGiven b: [[(KidStmts b.stmts, m)]]
     EWidgetBlock b: [[(KidStmts b.stmts, (Later m))]]
     ETemplate t: TemplateKids t.parts, m
