@@ -76,8 +76,8 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 ## The order (Jimmy's)
 
 1. **The array fix** and **regular expressions in the compiler and its lexer**: done.
-2. **The layout bug** (The window, below): the library's part is done, the rest waits on
-   Jimmy's rulings. He asked for no full benchmark run until it is fixed.
+2. **The layout bug** (The window, below): the host document as `$(Path ==> $Elem c)`,
+   designed, to build. He asked for no full benchmark run until it is fixed.
 3. **The final fixed point and both seeds**, then **the final benchmarks** on a quiet
    machine, and from them **a recommendation: Rust or C++ as the default back end**,
    argued from both models, running and building (Jimmy).
@@ -125,15 +125,20 @@ separate pass over the token stream was not in this work.
 ## The window
 
 - **A small change to the window still costs most of a create1k**
-  (`claude/bugs/window-relayout-every-change.md`). Merged so far: `@Distinct`, cached
-  `let`s, `for` builders that keep unchanged rows, equality that stops at shared nodes
-  (create1k 702 ms to about 50 ms in C++, select 797 ms to about 42 ms, create10k 57 s to
-  0.4 s). Jimmy's bar is a select under a tenth of a create1k; it stands at about 0.8 by
-  instructions, split by phase in `claude/benchmarks-preliminary.md`.
-- **The rest is designed, not built:** `claude/incremental-host-document.md` recommends an
-  incremental host document and a `Cached` combinator, and asks Jimmy four things first
-  (LG, CA, PB, RA there). Build nothing of it before he answers. His limits: the simplest
-  thing that works, layout stays in Prism, no general retained-mode system.
+  (`claude/bugs/window-relayout-every-change.md`): C++ select 530 M instructions against
+  create1k's 719 M; `bench/gui/prism/check.sh` reports the phase table and the ratios and
+  fails on none (Jimmy threw out the bar of a tenth). Merged so far: `@Distinct`, cached
+  `let`s, `for` builders that keep unchanged rows and skip a source they last built from,
+  equality that stops at shared nodes.
+- **Jimmy's rulings:** no `Cached` prelude function and no hidden runtime cache; one tick
+  per level (every host level and every gathered `for`), no route D; and on 6 November
+  2026 the host document becomes `$(Path ==> $Elem c)`, everywhere ("No, change
+  everything for this"), which drops route B.
+- **The type change is designed, not built:** `claude/incremental-host-document.md`, "The
+  host document as `$(Path ==> $Elem c)`", with its doubts (CL, WD, EP, MW, WR) and the
+  list of what it touches. Its failing test, `tests/conformance/sem-ch09-host-doc-entries`,
+  is committed and red on both targets until it lands. The window's hold cache is not
+  built: under the new type each per-child `for` row is the cache.
 - **The Cuis table crashes on `▶`; Linux Cuis times measure software painting**
   (`claude/bugs/bench-cuis-latin1-and-software-paint.md`); Jimmy paused the Cuis runs.
 

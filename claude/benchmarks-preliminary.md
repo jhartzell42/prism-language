@@ -170,3 +170,36 @@ before, 12 to 17 after):
   nodes, and then a comparison costs the changed paths), not a gain of their own.
 - **Not done, because it is not the runtimes':** a builder skipping when its source is the
   node it last built from is emitted code (`ForBuild`, prismc's printer templates).
+
+## A builder over the source it last built from
+
+`bench/gui/prism/check.sh`, one run each, on Jimmy's Mac with the tree's own seeds rebuilt
+(branch `claude-window-cache`, from `d30829d`): before is that tree, after adds a `for`'s
+builder that does nothing when its source is the very map it last built from (`ForBuild`
+in both printers, `Map::same` in both runtimes; a host's rows over its document included).
+Millions of instructions; the transcripts are unchanged.
+
+| target | op | ticks | build before | build after | patch | paint | total before | total after | after ÷ create1k |
+|---|---|---|---|---|---|---|---|---|---|
+| C++ | create1k | 7 | 269.8 | 260.4 | 178.4 | 141.8 | 718.5 | 636.2 | 1.000 |
+| C++ | update10th | 8 | 195.8 | 173.1 | 165.2 | 141.2 | 555.4 | 521.4 | 0.820 |
+| C++ | select | 8 | 192.1 | 168.6 | 164.3 | 141.1 | 530.0 | 493.3 | 0.775 |
+| C++ | swap | 7 | 192.6 | 170.4 | 83.7 | 141.1 | 440.1 | 412.8 | 0.649 |
+| C++ | remove | 7 | 143.8 | 127.9 | 163.5 | 141.1 | 472.2 | 449.8 | 0.707 |
+| Rust | create1k | 7 | 152.7 | 144.9 | 194.0 | 155.4 | 476.1 | 581.3 | 1.000 |
+| Rust | update10th | 8 | 108.1 | 87.8 | 184.9 | 155.2 | 608.6 | 461.5 | 0.794 |
+| Rust | select | 8 | 105.4 | 84.7 | 184.3 | 155.0 | 587.4 | 437.4 | 0.752 |
+| Rust | swap | 7 | 105.9 | 85.5 | 93.7 | 154.9 | 497.7 | 345.5 | 0.594 |
+| Rust | remove | 7 | 88.5 | 73.8 | 183.3 | 154.8 | 449.4 | 423.4 | 0.728 |
+
+- **The build phase falls by a tenth to a fifth** (C++ select 192 M to 169 M, Rust 105 M
+  to 85 M): in the ticks after the table's write the builders of the root node, and the
+  hosts' rows over an unchanged snapshot, no longer walk their key sets. Propagation,
+  patch, diff and paint are unchanged within 1%.
+- **The before run's Rust totals are not comparable:** its frames' painting fell partly
+  into the loop phase (127 M of "loop" in update10th, select and swap, and create1k's paint
+  at 33 M), so compare the build column; the after run's Rust paint is 155 M throughout,
+  as in every earlier run.
+- **What is left is the flat host document** (`claude/incremental-host-document.md`): the
+  1,000 row documents and the hosts' whole documents in the build phase, two whole
+  layouts in the patch phase, and a whole frame painted.

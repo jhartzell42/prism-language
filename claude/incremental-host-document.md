@@ -1,9 +1,10 @@
-# A small change to the window: an incremental host document, and what else it needs
+# A small change to the window: the host document as a map of dynamics
 
-*Written by Claude on the claude-self-hosting branch; subject to change. A design note for
-Jimmy to choose from: no code is changed by it. Jimmy's words are quoted and marked as
-his; every other call is Claude's, with the alternative refused, and Jimmy overrules by
-editing. Book citations are to `prism-notes/claude/prism/`: Semantics (01), Compiler (07),
+*Written by Claude on the claude-self-hosting branch; subject to change. A design note:
+what a small change to the window costs and why, Jimmy's rulings on it, and the design of
+the host document as `$(Path ==> $Elem c)`, which he ruled on 6 November 2026 and which is
+designed here and not yet built. Jimmy's words are quoted and marked as his; every other
+call is Claude's, with the alternative refused, and Jimmy overrules by editing. Book citations are to `prism-notes/claude/prism/`: Semantics (01), Compiler (07),
 Platform (08). Line numbers in emitted code are of `prism compile bench/gui/prism
 examples/chess/window` by the installed bootstrap prismc at 8127014 (`program.rs`, Rust;
 `program/mod.cpp` has the same functions); the phase table is `bench/gui/prism/check.sh`'s,
@@ -13,11 +14,10 @@ on the merged tree with both seeds rebuilt (`885c89d`).*
 
 - **The GUI table** (`bench/gui/`, js-framework-benchmark's operations over 1,000 rows,
   each an id label, a select button and a remove button) runs a small change in 32 to
-  46 ms where GTK takes 1 to 60, and `bench/gui/prism/check.sh`'s second check fails:
-  update10th, select, swap and remove each retire 0.6 to 0.85 times the instructions of
-  Create 1,000 rows (C++ select 523 M against 650 M), where the bar is under a tenth
-  (`claude/bugs/window-relayout-every-change.md`; `claude/benchmarks-preliminary.md`,
-  "Instructions by phase, and the cheap runtime fixes").
+  46 ms where GTK takes 1 to 60: update10th, select, swap and remove each retire 0.6 to
+  0.85 times the instructions of Create 1,000 rows (C++ select 530 M against 719 M);
+  `bench/gui/prism/check.sh` reports the ratios and fails on none
+  (`claude/bugs/window-relayout-every-change.md`; `claude/benchmarks-preliminary.md`).
 - **The bug note's measurement of one C++ select:** two whole-window layouts (about 5 ms
   each), one walk of every label for the word set, five whole host-document rebuilds
   (`host_1_doc_now` in three ticks, `host_2_doc_now` in two, about 1,000 places each),
@@ -31,6 +31,17 @@ on the merged tree with both seeds rebuilt (`885c89d`).*
   "STAYS IN PRISM"; "bare minimum bone simple"; no general retained-mode layout system,
   no diffing World protocol, no damage regions in the World; the one new semantic piece
   allowed so far is `@Distinct` (built: `$y <- @Distinct $x`, `^Eq`).
+- **From his rulings of 5 and 6 November 2026** (as relayed by the coordinator):
+  - no `Cached` prelude function and no hidden runtime cache: a cache, if any, is a hold
+    in the window library in plain Prism;
+  - no bar of a tenth of create1k ("never his"): the check reports the numbers;
+  - one tick per level stands: every host level and every gathered `for` adds exactly one
+    tick, and prismc is right as it is; route D (nested documents settled within a tick)
+    is refused, and so, under the flat document, was route A (per-child `for` rows for
+    layout);
+  - the host document is `$(Path ==> $Elem c)`: "No, change everything for this. The
+    other way is quite stupid." This drops route B, the flat document patched in place:
+    with this type the owner never fuses its rows into one map.
 - **From his earlier rulings** (Semantics RULINGS): on hosts, "hosting means inserting
   delay" (HO); on structural dynamics, "Inconsistent state shouldn't be visible. Either
   the entire thing fires in the next tick (reasonable actually) or it doesn't" (ST); an
@@ -152,7 +163,7 @@ the dirtied rows is in the patch phase with the layouts.
   - A tick per nesting level: an outer document's live computation reads the inner `$doc`
     through its lagged getter (`host_2_doc`, `Snapshot::get`, S(n−1)), so the window's
     document moves two ticks after the column's (prismc/README.md, ST: "The dynamic's
-    value after m is S(m−1)"). Doubt LG asks whether the books mean that.
+    value after m is S(m−1)"): one tick per level, as Jimmy rules.
   - Every builder of a node runs on every build of the node, and diffs whole key sets.
   - A host document is a new map each tick, so `==` on it walks every entry.
   - `Port::fire` copies the subscriber list before calling it (cells.rs:385).
@@ -165,280 +176,201 @@ the dirtied rows is in the patch phase with the layouts.
   - `?Boxed` answers each child with its own filter over the box's one `!in`, so a routed
     input visits every child of the box.
 
-## Route B: an incremental host document
+## The host document as `$(Path ==> $Elem c)` (Jimmy, 6 November 2026; designed, not built)
 
-**What "the places that changed" means:** the owner already knows, per tick, which child
-places' levels may have moved, because it marks them: a row's document published
-(`document_moved`), a row built or torn down (its builder), a hold written behind one of
-the child scope's own places (`HoldWritten`, finish.prism:164). B threads that knowledge
-into the snapshot instead of discarding it.
+Jimmy, asked whether the document "should be `$(Path ==> $Elem c)`": "No, change
+everything for this. The other way is quite stupid." The outer `$` moves when a place
+comes or goes; each inner `$` moves when that one place's element changes. The flat
+`$(Path ==> Elem c)` goes everywhere. What follows settles the design from the books and
+the compiler as they stand; every call marked "(Claude's)" is a doubt below.
 
-- **Data structures, per host k in its owner** (Claude's):
-  - `host_k_doc_snap` as today: a `Snapshot<Map<Path, Elem>>`, persistent.
-  - `host_k_own_moved: Cell<bool>`: a hold behind one of the child scope's own places
-    was written (the scope's own places are few, statically known: re-read all of them).
-  - `{for}_touched: RefCell<Set<K>>` per `for` in the child's scope: the keys whose row
-    published its document, came, or left this tick.
-  - Per hosted row, `doc_paths: RefCell<Vec<Path>>`: the paths it contributed last time,
-    so its old entries can be removed exactly (a row with forwarded places under it
-    contributes several).
-- **What lowering emits:**
-  - `host_k_doc_next(prev) -> (Map, moved, came, left)` in place of `host_k_doc_now`
-    (`HostDocGetter`): start from the newest snapshot; if `own_moved`, re-insert each own
-    place's level; for each touched key, remove its row's `doc_paths` and insert its
-    current `document()`; keys that left are removed. `moved` is whether any re-inserted
-    entry differs from the one it replaced, or any key came or left: a comparison per
-    touched entry, not per document.
-  - `document_moved` (finish.prism:401) passes the row's key: `parent.host_k_moved_row_m(key)`
-    records it, then marks as `host_k_moved` does today.
-  - `HostMoved` (finish.prism:335) sets `own_moved` when the write is behind an own place.
-  - A child `for`'s builder in a hosted scope adds the keys it builds and tears down.
-  - The host's own `for` (`host_k_rows_build`) builds and ends rows from `came` and `left`
-    instead of diffing the document's keys.
-  - The take is `take_moved(v, moved)`, publishing exactly when `take_compared` would.
-- **What the runtimes hold:** nothing new but `Snapshot::take_moved` (about 15 lines each)
-  and a `Row` method for the paths (`doc_paths`); `Map`'s `insert` and `remove` are
-  enough.
-- **What the window library writes:** nothing.
-- **What the books would say:** Semantics is unchanged (the document's value is the same).
-  Appendix B, Widgets: "**`@HostDocument`, `@HostSome`, `@HostList`:** chapter 9's
-  signatures; constant per child place, plus the supplier" gains: "a tick costs each
-  child place whose level may have moved, logarithmic in the document, and nothing for
-  the places that did not". prismc/README.md gap DM becomes the design.
-- **Transcripts:** none change. The snapshot is the map today's rebuild makes, published
-  in the same ticks.
-- **Cost per tick afterwards,** with c touched places at a level of n and depth d:
-  c log n per level, d levels, in the ticks that already exist. A select touches one row
-  per level. The 1,000 row documents of n+3 remain (the rows read the selection) at about
-  a map of three each.
-- **What B does not fix:** any reader of `$doc` that walks it: `Claimed` (one `IsUi` per
-  child each time the column's entry is re-read), `@Distinct`'s `==` unless equality
-  skips shared nodes, `TextsIn`, both layouts, the routing fan-out, the tick per nesting
-  level, painting. B makes readers proportional to the change *possible*; it makes none
-  so. *Refused:* a change set carried beside `$doc` for Prism readers (a `!Changed` of
-  paths): a new semantic piece, and a reader would still need somewhere to keep per-child
-  results, which is route A or C.
+### 1. The signatures, and what an element holds
 
-## Route A: per-child layout and word sets in the window library
+```prism
+@HostDocument: fn @a emit c, (fn Path, Element c o -> @o) -> @((a, $(Path ==> $Elem c)))
+@HostSome: fn @a emit c, (fn Path, Element c o -> ?@o) -> @((a, $(Path ==> $Elem c)))
+@HostList: fn @a emit c, !(Path ==> Answer c), (fn Path, Element c o -> @o)
+    -> @((a, $(Path ==> $Wired c)))
+```
 
-- **The design:** the window splits its children with `for p, $e <- $kids` and lays each
-  out in its row, `@ $(LayKid $e ...)`; the gathered `$(Path ==> Laid)` feeds the
-  window's stack. A box's children are a value inside its element, not places the window
-  hosts, so a second level needs a `for` over a dynamic lifted from the row's entry
-  (`let $cs = ChildrenOf $e`), and so on per level.
-- **The lag is real, with or without `@Distinct`.** A gathered `$(K ==> T)` is structural,
-  and so is any dynamic lifted from it (ch. 7, ST: "and every dynamic lifted from one of
-  these"); `@Distinct` drops equal refires and adds no promptness. Two levels, a label in
-  a row in the column, under ST as prismc implements it:
+- **`type Elem r = any o: Element r o` is unchanged:** an element with its output
+  forgotten, its `$` fields holding values. An entry `$Elem c` is the place's element
+  over time, the dynamic the supplier's `e` already carries (the runtimes' `Live::level`).
+- **A box's children take the document's shape:** the window library's boxes declare
+  `children: $(Path ==> $Elem)`, and a box writes its document there unchanged
+  (`Ui.Column(spacing=g, align=a, children=$elems)`). Sampled, the field is a plain map
+  from each child's path to that child's dynamic; the field moves when a child comes or
+  goes, not when one changes. So an `Elem` holds dynamics wherever it holds children.
+- **`Claimed` goes (Claude's, doubt CL):** it kept the library's elements by testing each
+  one's tag, and a plain function cannot sample a `$Elem` to see its tag (the tag is
+  identity, Semantics ch. 8, "A plain field is identity", but the type does not say so).
+  A box's children are its whole document; layout lays an element that is not the
+  library's as nothing, as `Lay`'s `otherwise: unlaid` does today.
+- **What a World reads (Claude's, doubt WD):** an element holding dynamics is not `^Pod`
+  (Type System ch. 2: "A function, dynamic or event refuses the derive"), and the root
+  document goes to a World. The World reads a place deep: its level with every nested
+  entry sampled, printed as today, reported changed in the tick any nested entry moves.
+  That keeps every Test World transcript's printed elements as they are.
 
-  | Tick | Level 2 (the row's `for` over its leaves) | Level 1 (the window's `for` over rows) | `$placed` |
-  |---|---|---|---|
-  | m | the label's `$(LayLeaf $c)` moves; gathered S2(m) taken, published m+1 | its row reads S2(m−1): no change | old |
-  | m+1 | | the row's `$(Stack $inner)` moves; gathered S1(m+1) taken, published m+2 | old |
-  | m+2 | | | new, in the patch |
+### 2. What the document is sampled as, and when each part fires
 
-  A tick per level after the document's own lag; a World that presents only settled
-  states (PS) shows no torn frame, but every window transcript (Window.Tests, chess)
-  gains the depth in owed ticks per change.
-- **`Laid` holds a closure and has no `^Eq`,** so a gathered `$(Path ==> Laid)` cannot be
-  compared: every take moves and every change owes a publication per level, unchanged
-  rows included.
-- **What it fixes:** layout and the word set proportional to the rows that changed, plus
-  the stacks' combining passes. **What it does not:** the documents (B), the routing,
-  painting.
-- *Refused (Claude's):* per-box layout carried in the elements (`Ui.Column(laid=$laid)`,
-  each box widget laying out its own children): it removes the window's `for`s but is a
-  retained layout spread over every box, which Jimmy refused.
+- **The outer is structural** (ch. 7, round 3 ST): sampled at n, the map of the child's
+  places as the tick opened, paths relative to the child's root, each entry that place's
+  dynamic; its value after n fixed as the last act of n's construction; its update at
+  n+1, owing the tick, only when a place came or went. An entry is the same dynamic for
+  as long as its place lives, so a value change cannot move the outer.
+- **Each entry is published per place (Claude's, doubt EP):** sampled at n it is the
+  place's element after n-1; its value after n is fixed in n's construction; its update
+  fires at n+1 when that element differs (elements have `^Eq`), owing the tick. This is
+  today's whole-document rule applied to one place, so a value change crosses a host
+  level in exactly the one tick it does today (HO: "hosting means inserting delay"), and a
+  box's element, whose children are its own host's structural document, is lifted from a
+  structural dynamic and so structural by ST anyway. *Refused:* the entry as the place's
+  live level, prompt for a plain one: a value change would cross a host in no tick while a
+  structural change still costs one, which breaks Jimmy's "every host level adds exactly
+  one tick".
+- **Chapter 9's sentence becomes** "sampled at n it is the map of the child's places as
+  the tick opened, paths relative to the child's root, each the place's element as a
+  dynamic, `$Elem c`, whose sample at n is the element with its `$` fields' values after
+  n-1. Both levels are structural (chapter 7): the map's value after n is fixed as the
+  last act of n's construction and `!Updated $doc` fires at n+1 when a place came or
+  went; each entry's value after n is fixed there too and its update fires at n+1 when
+  that place's element changed."
+- **A World paints only settled states** (PS): unchanged; the owed ticks are the ones
+  above.
 
-## Route C: a cached call (the third route, and the one Claude recommends with B)
+### 3. How the window lays out a map of dynamics
 
-Layout and the word set need somewhere to keep each child's last result. A `for` row is
-such a place (route A) and costs a tick per level. A cache keyed by position is the other,
-and costs nothing in the semantics: Prism "exposes no identity operation", so "sharing is
-invisible" (Semantics ch. 11), and a cached pure call is sharing.
+- **A plain function cannot sample a dynamic,** and `Lay` is plain. The window reads a
+  child only inside a place that holds its dynamic: a `for p, $d <- $children` row, whose
+  entry `$d` is `$$Elem` (the row's entry is the source's value at its key, Semantics
+  ch. 4), followed with `$e <- @Flatten $d`, laid out as `$(LayOne ...)`.
+- **What a gathered `for` gives today:** each row ends on `$T`, the `for` gives `$(K ==>
+  T)`, structural (ST): a row's result that moves at n is in the gathered map published
+  at n+1. So a `for` per level of boxes adds a tick per level, as Jimmy's story says every
+  gathered `for` does. Under the flat document this was route A, which he refused; under
+  `$(Path ==> $Elem)` it is the only way the window hears one child change without
+  flattening the tree back into one value (part 4), so the window's layout goes per child,
+  one `for` per box level, through one recursive widget (Semantics ch. 4: "widget
+  functions recurse as deep as their data"; whether prismc lowers widget recursion under a
+  `for` row is unchecked, doubt WR).
+- **What a row returns:** plain data with `^Eq` (a child's size, a leaf's lines and ink,
+  its kind and chain), not `Laid`, whose closure has no `^Eq`, so an equal take keeps the
+  gathered map and nothing above it moves. The placing (draw commands and hits for what
+  shows) is one plain pass over the gathered data at the window, as `PlaceAt` is today.
+- **Text extents per leaf (Claude's, doubt MW):** each leaf row asks for its own texts'
+  extents (`rebuild $text: Gui.Metrics(text=$text)`, since `text` is an identity field),
+  answered synchronously in the birth tick; the window's word set and its Metrics `for`
+  go. The other way, a word set gathered per level into one Metrics `for`, adds the
+  gathered ticks twice (once for the word, once for its extent) and recomputes every leaf
+  when the extents map moves.
+- **The hold cache (job 2) is not built (Claude's, by design):** each `for` row already
+  keeps its child's last layout while its entry does not move, and recomputes only when
+  it does, so the window no longer lays out unchanged children and a hold would cache
+  nothing. That cannot be measured until the type change is built.
 
-- **The prelude function** (Claude's spelling): `Cached: fn (fn k, a -> b), k, a -> b
-  where k: ^Ord, a: ^Eq`. `Cached F, k, x` is `F k, x`: no program can tell them apart.
-  The cost promise: when the last `Cached F, k, _` call with this `k` had an argument
-  `==` to `x`, the call costs one lookup (log in the keys) and one `==`; otherwise it
-  costs `F k, x` and keeps the result under `k`. One slot per key.
-  - `F` is a named top-level function (`cached-needs-name` for a lambda, whose captures
-    would be part of its meaning); `k` is where the result belongs (a chain of paths, a
-    text), `x` everything else `F` reads.
-  - *Refused:* `Memo F, x` keyed by the whole argument (needs `^Ord` on records of
-    `Float`s, which I did not check the printers derive, and a table that grows with every
-    distinct argument); memoising by the lowering's choice with no mark in the text (a
-    program's cost would stop being a property of its text, Appendix B TD-V2); a
-    `let`-cache generalised to calls inside plain functions (a plain function has no node
-    to hold it).
-- **What lowering emits:** a builtin, beside `DistinctLine` (static.prism:337): a call
-  `Cached F, k, x` becomes a lookup in a table for `F` (a thread-local in Rust, a function
-  `static` in C++), `F`'s ordinary call on a miss. The checker types it from its prelude
-  signature.
-- **What the runtimes hold:** `prism_rtl::Cached<K, A, B>`: an ordered map from `k` to
-  `(x, result)`, and a sweep. *Eviction (Claude's):* each slot records whether it was used
-  since the last sweep; a sweep runs when the calls since the last one reach twice the
-  table's size, dropping the unused slots; so the table holds at most about twice what
-  one pass over the tree uses, and nothing is swept between two layouts with no calls in
-  between. The results are plain values (a plain function makes no node or port).
-- **What the window library writes** (Prism, layout.prism):
-  - `Words` through the cache, keyed by the text: `fn CachedWords t = Cached WordsOf, t,
-    unit`; `TextsOf`, `LayLabel` and `Wrap` call it. The word-set fold stays one walk of
-    the tree, at a few `Insert`s per label.
-  - A label's laying out through the cache, keyed by its chain: `LayLabel` computes the
-    extents of its own words and of `" "` (the only part of `env` it reads) and calls
-    `Cached LabelAt, chain, ((t, room, extents))`, where `LabelAt` is today's `LayLabel`
-    body over those extents instead of `env`. A new word elsewhere (`▶`) changes no other
-    label's key, so layout two re-lays only the selected row's label.
-  - Containers are not cached: a stack's passes over its children stay, at a few
-    operations per child once the leaves hit.
-- **What the books would say:** Appendix B, a new entry beside `@Distinct`: "**`Cached:
-  fn (fn k, a -> b), k, a -> b where k: ^Ord, a: ^Eq`:** `F k, x`. When the last call of
-  `F` through `Cached` with key `k` had an argument equal to `x`, one lookup and one
-  `==`; otherwise `F k, x`, kept under `k`." Semantics ch. 11 gains one sentence: a
-  cached call is sharing, so no program sees it. Platform I's terms refuse "memoization
-  (caching, not propagation)" as a word for incrementality; `Cached` is caching and is
-  not called incrementality.
-- **Transcripts:** none change.
-- **Cost per layout afterwards,** n rows, c changed, v visible: the stacks' passes, a few
-  operations per row; c leaf layouts; the word walk at a few inserts per row; draw
-  commands for v. Still a pass over the rows, with a small constant per row.
-- **What C does not fix:** the documents (B), the tick per level, the second layout's
-  existence (it becomes cheap, not gone), routing, painting.
+One select under the new type, derived from the books (not run). The press is tick n; the
+routing ticks are today's. L1 is the window's row for the column, L2 the column's rows,
+L3 a row's leaves.
 
-## Route D: settle nested structural dynamics within the tick (needs a reading, doubt LG)
+| Tick | What fires | What is recomputed |
+|---|---|---|
+| n to n+2 | the press, the window's and the column's deliveries | as today |
+| n+3 | row k's `!sel`, the block's `!op`, `$table` written | 1,000 buttons' labels (each reads `$table.?selected`); row k's and the old row's button levels move; their entries are taken in row k's host |
+| n+4 | the two entries published | in the window: the two L3 rows' `@Flatten` follow; each `rebuild $text` builds a new Metrics place (its first value synchronous); the rebuilds' results are taken |
+| n+5 | the rebuilds' results published | the two L3 rows' leaf data; the L3 gathered maps taken |
+| n+6 | L3 gathered published | the two L2 rows re-stack their three children; the L2 gathered map taken |
+| n+7 | L2 gathered published | the L1 row re-stacks the column's 1,001 sizes; the L1 gathered map taken |
+| n+8 | L1 gathered published | the placing pass over the window's data (the rows that show), then the paint |
 
-- **The reading (Claude's):** ST fixes a structural dynamic's "value after n ... as the
-  last act of construction", and "a builder in n's construction step and the tick's
-  outputs read the value after n" (ch. 7). An outer document whose entry's `$` field is
-  lifted from the inner `$doc` would then include the inner document after n. prismc
-  takes the value after m to be S(m−1), and reads the inner through it; ruling VL already
-  accepted one such extra tick ("following ST as `prismc` implements it").
-- **The design:** inner snapshots are taken first (they are: `BuildSteps` runs scope by
-  scope, innermost first; a row's snapshot is taken in its own build), an outer live
-  computation reads the inner's S(n) (`Snapshot::current`), a row whose snapshot moved
-  lists its owner's build again in the same construction step, and the patch reads S(n).
-- **What it buys:** a select's documents in one tick (two rebuilds, not five, without B;
-  one entry per level with B); one layout, with `▶` measured (doubt MT goes); four fewer
-  owed ticks.
-- **What it costs:** every transcript with a nested host or a gathered `for` read by a
-  place moves (fewer ticks); the books say which reading holds. Not needed for the bar if
-  C is built.
+- **Nine ticks where today there are eight,** with no second layout: the new word's extent
+  arrives with the word. Per tick the work is the rows that moved plus one re-stack per
+  level of the moved path (the column's 1,001 sizes once); painting stays a whole frame.
+  The 1,000 button labels recomputed at n+3 remain: every row reads the selection
+  (doubt SE).
+- **No outer document fires** in the select: the column's and row k's elements are the
+  same values (their children fields hold the same dynamics).
+
+### 4. Reading a map of dynamics as one value, and `@Flatten`
+
+- **The only way is a `for` with a flatten per row:** `for p, $d <- $doc: @Flatten $d`
+  gives `$(Path ==> Elem)`, the flat document, one gathered tick after the entries and
+  structural, firing whenever any entry moves. Each row's `@Flatten` adopts its outer's
+  new inner at the end of a tick in which the outer moved (ch. 7; ruling VL) and owes that
+  tick (ruling TK), so a structural change costs one tick more per level read this way.
+- **The window needs it nowhere as one value;** it needs `@Flatten` in each row of its
+  `for`s, to read the row's `$$Elem` entry as `$Elem`. That flatten moves only when the
+  outer moved (a child came or went), owing a tick then.
+- **A program that wants the old flat value** (sem-ch09-host-updated's `Texts`) writes the
+  `for` above and pays its tick.
+
+### What the change touches, and where it stands
+
+- **Built so far:** the failing conformance test `sem-ch09-host-doc-entries` (a value
+  change of a place leaves the outer's count where it was; a new place moves it).
+- **Still to build:** the prelude's three signatures; the checker (the hosting forms'
+  typing and the supplier's `e`, a field of type `$(Path ==> $Elem)` inside a tag, the
+  World's deep read); lowering (`HostDocGetter`, `DocumentBody`, `Row::document`: an entry
+  per place holding the place's published level; the host's rows over the outer); both
+  printers' templates; both runtimes (a per-place snapshot, the World's deep `to_pod`);
+  the window library (per-child rows, per-leaf metrics, no `Claimed`, no word set); chess;
+  the GUI benchmark program; every hosting test (`sem-ch09-*`, `sem-ch07-structural*`,
+  `sem-ch04-row-source`, `ts-ch05-supplier-rank2`, the checker's hosting tests) and every
+  transcript that prints a window's ticks (`examples/chess/tests.expected`,
+  `examples/chess/window/tests.expected`) or counts `!Updated $doc`.
+
+## Routes refused or dropped
+
+- **Route B, the flat document updated in place:** dropped with the flat type.
+- **Route C, a `Cached` prelude function:** refused by Jimmy: no new prelude piece and
+  no hidden runtime cache; a cache would be a hold in the window library.
+- **Route D, nested structural dynamics settled within a tick:** refused by Jimmy: one
+  tick per level stands. Doubt LG (whether ST meant a nested document settles in its
+  tick) is withdrawn: his story is one tick per level, and the second layout of a select
+  comes from the Metrics `for` publishing a tick after the new word arrives.
+- **Route A under the flat type,** per-child `for` rows for layout over one whole-tree
+  document: refused by Jimmy. Doubt RA is withdrawn with it. Under `$(Path ==> $Elem)`
+  per-child rows are the design above.
 
 ## Without a route: values that keep their sharing (no transcript changes)
 
 - **Built, both runtimes:** `Snapshot::take_compared` keeps the snapshot that stood when
-  the new one is equal to it, so an unchanged row's document and every element built from
-  it keep their nodes across ticks; `==` on maps and arrays answers at once for a node
-  both sides share at the same place, at any depth, once the node knows its values equal
-  themselves (a shared NaN stays unequal: `Float` `==` is IEEE equality, Type System ch.
-  2, so pointer equality is never the answer). Safe by Semantics ch. 11: "sharing is
-  invisible"; the same values, the same moves, the same firings.
-- **Measured, they move nothing** (`claude/benchmarks-preliminary.md`: every instruction
-  ratio within 1% of 1): the host documents are new maps each tick, so the comparisons
-  still walk every entry. With B they make a document compare cost its changed paths.
-- **Not built: a builder skips when its source is the node it last built from**
-  (`ForBuild`, both printers): `row_ops_2_build` in ticks n+4 to n+6 reads the cached
-  source, unchanged. It is emitted code, in prismc's templates.
-
-## Recommendation
-
-**B and C (the runtime fixes above are in); D held for Jimmy's reading; A refused.**
-
-- **Why both:** the bug note's own figures put one whole layout at about 5 ms against
-  create1k's 55 ms, so a single whole layout is already about the bar; the layout reader
-  must stop re-laying unchanged rows, which B cannot do, since B changes what `$doc` is
-  computed from, not what reads it. And the documents are five whole rebuilds plus the
-  comparisons and builder diffs around them, which C cannot touch. Each is the smallest
-  piece for its half: B is the gap DM's own next step, invisible to programs; C is one
-  prelude function, invisible to programs.
-- **Why not A:** a tick per box level on top of the documents' own, every window
-  transcript moved, and a `Laid` that cannot be compared. Under D's reading A's lag at
-  outputs would go, and A would be the books' own route (Compiler ch. 1: "A translator
-  hosted as a document recomputes its output where its input changed, by the semantics
-  of `for` and of live fields"); it would still owe a tick per level.
-- **The strongest argument against:** C is a second new semantic piece where Jimmy has
-  allowed one, and its efficiency rests on a sweep policy no book states, so how often a
-  cache hits is the implementation's, not the text's; and neither B nor C delivers
-  Platform I's "a tick's work is proportional to the dynamics reachable from the inputs
-  that changed": a pass over the rows with a small constant remains (the stacks, the word
-  walk, the 1,000 labels that read the selection, the routing fan-out, the patch visits).
-  The bar is a ratio, so a small constant per row may pass; "a change costs the change"
-  it is not.
-- **The first step, done:** `check.sh` splits each step's instructions by phase (the table
-  in "The cost today"). Painting alone is 0.22 to 0.26 of create1k, so the bar is not
-  reachable while the World paints the whole frame (doubt PB); C and B together could
-  bring the build and patch phases down, not painting.
-- **Size (Claude's estimates, not counted):**
-  - C: the prelude line; about 80 lines of lowering (the builtin, the checker's refusal);
-    about 80 lines per runtime; about 30 lines of window library.
-  - B: about 250 lines of lowering (`static.prism`'s getter, `finish.prism`'s
-    `HostMoved`, `DocumentMoved`, `HoldWritten`, the host rows' builder), about 80 lines
-    per printer's templates, about 30 per runtime.
+  the new one is equal to it, so an unchanged structure keeps its nodes across ticks;
+  `==` on maps and arrays answers at once for a node both sides share at the same place,
+  once the node knows its values equal themselves (a shared NaN stays unequal: `Float`
+  `==` is IEEE equality, Type System ch. 2). Safe by Semantics ch. 11: "sharing is
+  invisible". Measured, they move nothing by themselves (`claude/benchmarks-preliminary.md`).
+- **Built, both printers:** a `for`'s builder (`ForBuild`) keeps the source it last built
+  from and does nothing when the new source is that very map (`Map::same`, one root node,
+  in both runtimes); a host's own rows do the same over the document. `tests/cost`'s
+  builder pair pins it: forty writes of a 20,000-key map with the value it has cost under
+  twice one write.
 
 ## The books' sentences that change
 
-- **For B:** Appendix B, Widgets: the `@HostDocument` line gains the per-tick promise
-  above. Nothing in Semantics ch. 8 or 9: the document's value and its ticks are unchanged.
-- **For C:** Appendix B gains `Cached` beside `@Distinct`; ch. 11 gains the sentence on a
-  cached call; Appendix B's `@Distinct` entry ("Nothing dedupes unasked (chapter 7); this
-  is the opt-in") is the model for the wording.
-- **For D:** ch. 7's ST paragraph gains: a structural dynamic lifted from another's value
-  reads its value after n in n's construction step, so nested documents settle in one
-  tick; RULINGS VL is revisited.
-- **For A:** none; it is Prism code under today's rules.
-
-## Failing tests first
-
-- **`tests/cost/host-one-row-100` and `-1000`** (the Test World, a `@HostSome` box over a
-  `for` of N labels, one label changed): the thousand must cost under twice the hundred.
-  Fails today; passes with B.
-- **`tests/cost/window-one-label-100` and `-1000`** (the window library under the Test
-  World, as `Window.Tests` runs it; N rows, one label changed): under twice. Fails today;
-  needs C and B.
-- **`tests/conformance/prelude-cached`** (both targets): `Cached F, k, x` equals `F k, x`
-  across ticks, through an argument that changes under a kept key, two keys, and a sweep.
-  Checker `neg/cached-needs-name` (a lambda), `neg/cached-needs-ord`.
-- **`tests/conformance/host-doc-row-returns`:** a key that leaves and comes back in one
-  tick, with forwarded places under a nested row, the delta's hard case; today's host
-  tests (`sem-ch09-hosts`, `sem-ch09-host-nested`, `sem-ch04-row-source`) pin B's values
-  unchanged. *Refused:* checking B's document against a whole rebuild in a debug mode, a
-  second implementation as the oracle.
-- **`bench/gui/prism/check.sh`, the second check:** the gate.
-
-## Migration order
-
-1. The phase split in the check: done.
-2. The runtime fixes (but the builder's skip, which is prismc's): done, no measurable gain.
-3. C: Appendix B and ch. 11 first, then the builtin, the runtimes, the window library.
-4. B: gap DM's next step, then its cost test.
-5. The check rerun; the bug note updated or removed.
-6. D, if Jimmy rules the reading; then every moved transcript, derived by hand.
-7. Painting, by Jimmy's answer to PB.
+Listed in Claude's report to the coordinator, who edits the books: Semantics ch. 7 (ST's
+list of structural dynamics), ch. 8 ("The element tree is a dynamic"), ch. 9 (the forms,
+"The result"), Appendix B's hosting entry; Type System ch. 2 (`Elem r`, the primitives);
+RULINGS (the ruling itself, LG and RA withdrawn).
 
 ## Doubts
 
-- **PB** (Claude's) Painting one frame is 143 M instructions in C++ and 155 M in Rust,
-  0.22 and 0.26 of create1k (measured by phase), so the bar is unreachable while the World
-  paints the whole frame. Count the program's phases only (propagate, build, patch, diff),
-  or the whole process as today?
-- **CA** `Cached` as the second new prelude piece after `@Distinct`: yes, or no and live
-  with a whole layout per change?
-- **CK** (Claude's) `Cached F, k, x`, one slot per key; or `Memo F, x`, keyed by the whole
-  argument? Taken: the key.
-- **EV** (Claude's) The sweep (unused slots dropped when calls reach twice the table) is
-  the implementation's and no book's; or should Appendix B state it?
-- **LG** Does ST mean a nested document settles in the tick (Claude's reading of ch. 7:
-  the value after n read in n's construction step), or a tick per level (prismc, and
-  ruling VL for `@Flatten`)?
-- **AB** Appendix B's "constant per child place" for `@HostDocument`: is today's whole
-  rebuild per tick outside that promise (then B is a fix, not an optimisation)?
-- **RA** (Claude's) Route A refused for its tick per level and its transcripts: agree?
+- **CL** (Claude's) `Claimed` goes and a box's children are its whole document, a
+  non-library element laid as nothing; or a typed way to read a `$Elem`'s tag without a
+  sample (a new piece, so not taken).
+- **WD** (Claude's) A World reads an element holding dynamics deep (each nested entry
+  sampled, a change reported when any moves), so printed transcripts keep their shape;
+  or elements with children never go to a World (chess's board test emits a `Ui.Grid` to
+  the Test World directly).
+- **EP** (Claude's) Each entry published per place, structural, one tick per host level
+  for a value change as today; or the entry as the place's live level, prompt.
+- **MW** (Claude's) Text extents per leaf through `rebuild $text: Gui.Metrics(...)`, the
+  word set gone; or the word set gathered per level into one Metrics `for`.
+- **WR** Whether prismc lowers a recursive widget under a `for` row (the books allow it);
+  the per-child window needs one.
+- **PB** Painting one frame is 143 M instructions in C++ and 155 M in Rust whatever
+  changed, a fifth to a quarter of create1k; a small change stays above that floor.
 - **SE** (Claude's) The table's rows each read `$table.?selected`, so a select recomputes
-  1,000 small row documents: leave the benchmark in js-framework-benchmark's natural
-  spelling? Taken: leave it.
-- **WS** (Claude's) `Words` built a character at a time: take `SplitOn` (prelude.prism:186,
-  its pieces views of the text) as well, a constant factor for every miss?
-- **RF** (Claude's) Routing visits every child of a box through its own filter (1,001
-  at the column per press): leave it, linear and small; or route by path, a runtime
-  piece?
+  1,000 small labels: left in js-framework-benchmark's natural spelling.
+- **RF** (Claude's) Routing visits every child of a box through its own filter (1,001 at
+  the column per press): left, linear and small.
