@@ -5,7 +5,9 @@
 # `/usr/bin/time -l` for the instructions it retires. Ten readers of a costly `let` must
 # cost under twice one reader's (a `let` is computed once per write behind it, not once per
 # read); forty writes of a large `for`'s source with the value it has must cost under twice
-# one write's (a builder whose source is the map it last built from does nothing).
+# one write's (a builder whose source is the map it last built from does nothing); forty
+# edits of one key each of a large map under `@PerKey` must cost under twice one edit's (only
+# the changed key's row does its work).
 # macOS only (`time -l` reports instructions there).
 #
 #   tests/cost/run.sh [--target cpp]       # Rust by default (its test build), or C++ at -O3
@@ -40,4 +42,5 @@ pair() {
 }
 pair "a let read by ten" one-reader ten-readers
 pair "a builder over its last source" builder-one-write builder-many-writes
+pair "a row per key changed" per-key-one-edit per-key-many-edits
 [ $failed = 0 ] && echo "cost: ok" || { echo "cost: some failed"; exit 1; }

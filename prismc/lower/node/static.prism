@@ -107,6 +107,7 @@ fn WidgetCall wx, benv, menv, e, ?bound, qk, args, ?target:
         "Prelude.@Flatten": FlattenLine wx, menv, args, ?bound
         "Prelude.@Defer": DeferLine wx, menv, args, e, ?target
         "Prelude.@Distinct": DistinctLine wx, menv, args, e, ?bound
+        "Prelude.@PerKey": PerKeyLine wx, menv, args, ?bound
         "Prelude.@Run": RunLine wx, benv, args, e, ?target
         "Prelude.@Machine": MachineLine wx, benv, menv, args, e, ?target
         "Prelude.@HostDocument": HostLine wx, benv, menv, HostEach, args, ?bound
@@ -345,6 +346,8 @@ fn DistinctLine wx, menv, args, e, ?bound:
             let t = OutTyOf lx, (Peel (TypeAt lx, a.value.span))
             let ((name, wx1)) = match ?bound:
                 ? (BnHold f, ignore): ((f, wx))
+                # bound as a widget's result (`IsGetterBuiltin`): the getter the name was pre-bound to
+                ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
                 otherwise: FreshName wx, "distinct"
             let kept = "{name}_kept"
             let source = "{name}_source"
@@ -362,6 +365,49 @@ fn DistinctLine wx, menv, args, e, ?bound:
                 &_.dynReads <= Insert (Insert &_.dynReads, name, [[OwnRead kept]]), source, reads
             let ((r, wx3)) = UpdatedEvent wx2, menv, args, t
             (((Connect wx3, r, (SkDistinct kept)), (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead kept]], t)))
+
+# `$each <- @PerKey $m` (Semantics Appendix B; round 9 PK, Jimmy's): `$m` taken apart by
+# key, `$(k ==> v)` into `$(k ==> $v)`. A `prism_rtl::PerKey`, set up at the build from
+# `$m`'s value after the tick (a read before that sets it up first), and written by `$m`'s
+# `!Updated` (`SkPerKey`): each kept key whose value changed by `==` has its inner written
+# and fired there, and only a key that came or went writes the outer, so its readers (a
+# `for` over it and that `for`'s rows) are marked only then. A row's `@Flatten` of its
+# inner follows the inner's update event (`EntryFlatten`), so a value change reaches that
+# key's row alone, in the tick of the write.
+PerKeyLine: unbounded fn Wx, Env, [Arg], ?Bn -> ((Wx, Wres))
+fn PerKeyLine wx, menv, args, ?bound:
+    let lx = wx.lx
+    match args[0]:
+        nil:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "an `@PerKey` without its dynamic")
+            ((wx2, WrUnit))
+        ? a:
+            # the map's key and value types: its argument's, one layer peeled
+            let ((kt, vt)) = match Peel (TypeAt lx, a.value.span):
+                TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v)))
+                otherwise: ((OutUnit, OutUnit))
+            let srcTy = OutMap kt, vt
+            let t = OutMap kt, (OutDyn vt)
+            let ((name, wx1)) = match ?bound:
+                ? (BnHold f, ignore): ((f, wx))
+                # bound as a widget's result (`IsGetterBuiltin`): the getter the name was pre-bound to
+                ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
+                otherwise: FreshName wx, "per_key"
+            let kept = "{name}_kept"
+            let source = "{name}_source"
+            let ((ex, reads)) = DynamicExpr wx1, menv, a.value
+            let first = DoExpr (XMethod (XField (XVar "node"), kept), "start", [[(XMethod (XVar "node"), source, [[XCx]]), XCx]])
+            let sample = XMethod (XField XSelf, kept), "outer", [[XCx, (XClosure False, [[]], (XMethod (XSelf), source, [[XCx]]))]]
+            let wx2 = update wx1:
+                &_.taken <= Append &_.taken, [[kept, source]]
+                &_.fields <= Push &_.fields, ((kept, (OutNamed "prism_rtl::PerKey", [[kt, vt]]), "`@PerKey`'s outer and each key's inner"))
+                &_.moves <= Push &_.moves, ((kept, (XCall "prism_rtl::PerKey::new", [[]])))
+                &_.build <= Push &_.build, first
+                &_.getters <= Append &_.getters, [[(MethDef(name=source, recv=RecvRef, params=[[]], cx=CxRef, ret=srcTy, body=[[]], tail=ex, doc="`@PerKey`'s source, read at the build.")), (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=sample, doc="`@PerKey`'s outer: each key's inner by key, at the read point."))]]
+                &_.dynReads <= Insert (Insert &_.dynReads, name, [[OwnRead kept]]), source, reads
+            let ((r, wx3)) = UpdatedEvent wx2, menv, args, srcTy
+            (((Connect wx3, r, (SkPerKey kept)), (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead kept]], t)))
 
 # `@Run F, x` (Semantics Appendix B, over `@started`, `@Defer` and `@Machine`): it takes
 # a number for its `@started`; the job is a `Hold`, the merge `!started <| !again` cycles

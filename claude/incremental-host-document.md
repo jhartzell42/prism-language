@@ -17,10 +17,10 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
   host document was one value of the whole tree, rebuilt when any place moved, and the
   window laid out the whole tree as one function of it, twice per change, with a word set
   walked over every label (`claude/bugs/window-relayout-every-change.md`).
-- **With the document as `$(Path ==> $Elem c)`** a select costs 24 M in C++ and 33 M in
-  Rust, now that the canvas Worlds paint only the damage of a new scene (doubt PB); it was
-  166 M and 177 M painting the whole frame, and before the document changed, 494 M and
-  436 M.
+- **With the document as `$(Path ==> $Elem c)`** a select costs 21 M in C++ and 31 M in
+  Rust, now that the canvas Worlds paint only the damage of a new scene (doubt PB) and the
+  table's rows read their values through `@PerKey`; it was 166 M and 177 M painting the
+  whole frame, and before the document changed, 494 M and 436 M.
 
 ## Jimmy's constraints
 
@@ -148,7 +148,7 @@ row's), each a computed answer a tick late.
 | Tick | What fires | What is recomputed |
 |---|---|---|
 | n to n+2 | the press; the window's, then the column's delivery | each box's `?Boxed` filters (the column's 1,001) |
-| n+3 | row k's `!sel`, the block's `!op`, `$table` written | 1,000 buttons' labels (each reads `$table.?selected`), their entries taken; row k's and the old row's moved |
+| n+3 | row k's `!sel`, the block's `!op`, `$table` written | `@PerKey` over `$table.rows` (the same map: one `==`, no inner fires); each row's selected flag (`@Distinct`, 1,000 comparisons), two of which move; those two buttons' labels and entries taken |
 | n+4 | the two entries published | the two buttons' `@Laid` rows: their `@Flatten`s move, each new word's `Gui.Metrics` row built, their results taken; the two rows' gathered results taken |
 | n+5 | the leaves' measured texts and the rows' gathered results published | the two buttons' results again (now with the new word's extent); the two rows' results; the column's gathered results taken |
 | n+6 | the column's gathered results (first wave) and the rows' (second) | the column's result: one re-stack of 1,001 plans; the window's tops taken |
@@ -169,12 +169,33 @@ row's), each a computed answer a tick late.
 
 - **Painting** (doubt PB): only the damage of a new scene; a select paints 1.3 M in C++
   and 8.8 M in Rust (most of that presenting the whole frame through softbuffer).
-- **The 1,000 button labels** recomputed at n+3, each reading the selection (doubt SE).
+- **The 1,000 selected flags** compared at n+3, each row's `@Distinct` reading the
+  selection (doubt SE); no row whose value the write leaves alone is marked for the patch
+  pass (`@PerKey`, below).
+- **A structural change marks every row** of the table's `for` for the patch pass, which
+  checks each row's entry for adoption (claude/bugs/window-relayout-every-change.md).
 - **A structural change** (remove, create, clear) gathers the outer of its host's document
   from every place's entry, once, and the window re-stacks the column's children.
 - **A structural change costs C++ three times Rust's** (remove's build 90 M against 29 M):
   the outer's maps are built an insert at a time, and C++'s persistent map copies a path
   per insert (claude/bugs/window-relayout-every-change.md).
+
+### The table's rows over `@PerKey`
+
+- **`$rows <- @PerKey $table.rows`** (Semantics Appendix B, round 9 PK, Jimmy's) gives
+  `$(Nat ==> $Row)`, and the table's `for slot, $$d <- $rows:` reads each row's value with
+  `$entry <- @Flatten $$d`. The plain `for slot, $entry <- $table.rows` handed each row a
+  projection whose event fired on every write of `$table` (pick UD), and every row was
+  marked for the patch pass and recomputed its elements on every select, swap and remove.
+- **What a write costs:** `@PerKey` compares the new map with the one it last took (one
+  `==`, at once for the same map) and else each kept key's value with the one its inner
+  holds; only a changed key's inner fires, and only a key that came or went writes the
+  outer, which marks the `for` and its rows. A select writes the same map, so no row is
+  reached through its value; a swap or update10th reaches the rows that changed.
+- **No tick is added:** a kept key's inner fires in the tick of the write, at `@PerKey`'s
+  height, and the row's `@Flatten` follows it in that tick; a new key's row is built at the
+  end of the tick with its inner, which it reads from the start. A select is nine ticks, as
+  before.
 
 ## Routes refused or dropped
 
@@ -239,7 +260,7 @@ ch. 1 (`@Grid`, doubt GR), ch. 2 (`Elem r`, the primitives), RULINGS (WL); the P
   last (worlds/canvas/rust/src/damage.rs), and each window is in sRGB so Core Animation no
   longer converts every frame on the CPU: a select's paint is 1.3 M instructions in C++
   and 8.8 M in Rust, where the whole frame was 141 M and 155 M.
-- **SE** (Claude's) The table's rows each read `$table.?selected`, so a select recomputes
-  1,000 small labels: left in js-framework-benchmark's natural spelling.
+- **SE** The table's rows each hold `@Distinct` of whether they are the selected one, so a
+  select compares 1,000 flags and moves two labels.
 - **RF** (Claude's) Routing visits every child of a box through its own filter (1,001 at
   the column per press): left, linear and small.

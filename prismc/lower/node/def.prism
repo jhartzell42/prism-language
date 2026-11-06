@@ -139,13 +139,19 @@ fn GivesResult lx, menv, e = match e.kind:
                 otherwise:
                     let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
                     match ?q:
-                        ? q: (not (IsPreludeName q)) and (lx.g.vals[q] != nil) and IsWidgetTy (Peel (TypeAt lx, e.span))
+                        ? q: (IsGetterBuiltin q) or ((not (IsPreludeName q)) and (lx.g.vals[q] != nil) and IsWidgetTy (Peel (TypeAt lx, e.span)))
                         nil: False
             otherwise: False
 
 # a prelude widget (`@Distinct`, `@Flatten`, a host) may write the name it is bound to
 IsPreludeName: fn Text -> Bool
 fn IsPreludeName q = (?Find %/^Prelude\./, q) != nil
+
+# A builtin whose dynamic is a getter of the node named for the name it is bound to
+# (`DistinctLine`, `PerKeyLine`, `FlattenLine`): bound as a widget's result, so a line above
+# it reads the getter.
+IsGetterBuiltin: fn Text -> Bool
+fn IsGetterBuiltin q = q == "Prelude.@Distinct" or q == "Prelude.@PerKey" or q == "Prelude.@Flatten"
 
 IsWidgetTy: fn Ty -> Bool
 fn IsWidgetTy t = match t:

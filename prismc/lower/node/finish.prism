@@ -82,6 +82,7 @@ fn Feeds (SkCycle ignore, ignore, m), n = m == n.id
 fn Feeds (SkMachine f, ignore, m), n = m == n.id or Writes f, n
 fn Feeds (SkHold f), n = Writes f, n
 fn Feeds (SkDistinct f), n = Writes f, n
+fn Feeds (SkPerKey f), n = Writes f, n
 fn Feeds other, n = False
 
 # Whether a write to hold `f` moves an "updated" node's dynamic.
@@ -132,6 +133,9 @@ fn SinkCode sk, target, y = match target:
         let differs = XBin "!=", (XMethod (XField XSelf, "{f}"), "get", [[XCx]]), (XCtor "Some", [[XClone y]])
         let write = DoExpr (XMethod (XField XSelf, "{f}"), "set", [[(XCtor "Some", [[XClone y]]), XCx]])
         [[(DoIf differs, (Append [[write]], (HoldWritten sk, f)), [[]])]]
+    # the map after the tick taken apart: the changed inners written and fired by the
+    # runtime; the outer's readers marked only when a key came or went
+    SkPerKey f: [[(DoIf (XMethod (XField XSelf, "{f}"), "written", [[(XClone y), XCx]]), (HoldWritten sk, f), [[]])]]
     SkRequest pos, field:
         let fieldEx = if field == "": XNone else: (XCtor "Some", [[XStr field]])
         # a hosted place's request goes to its host: out with a forwarded element, else nowhere
@@ -514,6 +518,7 @@ fn WritesHold g, f = Fold g.outs, False, \|acc, o| acc or SinkWritesHold o.sink,
 SinkWritesHold: fn Sk, Text -> Bool
 fn SinkWritesHold (SkHold h), f = h == f
 fn SinkWritesHold (SkDistinct h), f = h == f
+fn SinkWritesHold (SkPerKey h), f = h == f
 fn SinkWritesHold (SkMachine h, ignore, ignore), f = h == f
 fn SinkWritesHold other, f = False
 
@@ -772,6 +777,8 @@ fn ForwardAnswer b:
 
 IsHold: fn OutTy -> Bool
 fn IsHold (OutHold ignore) = True
+# `@PerKey`'s outer: a hold its sink writes (`SkPerKey`)
+fn IsHold (OutNamed "prism_rtl::PerKey", ignore) = True
 fn IsHold other = False
 
 # A row's own methods: its places torn down (the ones that went to the World; a hosted

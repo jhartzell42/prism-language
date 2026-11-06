@@ -434,6 +434,8 @@ fn FlattenLine wx, menv, args, ?bound:
         ? ((m, gen, t)):
             let ((name, wx1)) = match ?bound:
                 ? (BnHold f, ignore): ((f, wx))
+                # bound as a widget's result (`IsGetterBuiltin`): the getter the name was pre-bound to
+                ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
                 otherwise: FreshName wx, "flatten"
             let inner = "{name}_inner"
             let first = DoExpr (XMethod (XField (XVar "node"), "{inner}"), "set", [[(XCtor "Some", [[(XMethod (XVar "node"), m, [[XCx]])]]), XCx]])
@@ -461,6 +463,8 @@ EntryFlatten: unbounded fn Wx, OutTy, ?Bn -> ((Wx, Wres))
 fn EntryFlatten wx, t, ?bound:
     let ((name, wx1)) = match ?bound:
         ? (BnHold f, ignore): ((f, wx))
+        # bound as a widget's result (`IsGetterBuiltin`): the getter the name was pre-bound to
+        ? (BnDyn (XMethod (XSelf), f, ignore), ignore, ignore): ((f, wx))
         otherwise: FreshName wx, "flatten"
     let inner = "{name}_inner"
     let follow = "{name}_follow"
