@@ -75,10 +75,11 @@ each under both drivers with `driver OP 1 0 check`, which counts work rather tha
 - **What the scene draws:** after every step, no `Draw.Text` in the scenes starts more
   than 8 outside the window, so the window library draws what the window shows, not the
   whole table.
-- **What a small change costs:** the instructions the whole process retires (every
-  thread's, `proc_pid_rusage`) from the press to the settled frame. Update10th, select,
-  swap and remove must each retire under a tenth of what their setup's Create 1,000 rows
-  did.
+- **What the screen shows:** after every timed step, the table the operation should
+  leave (the timed runs check this with or without `check`).
+- **What a step costs, reported:** the instructions the whole process retires (every
+  thread's, `proc_pid_rusage`) from the press to the settled frame, printed per step; no
+  ratio fails a run (Jimmy: the numbers are reported, not held to a bar).
 
 A failed check fails the run and says what it saw. Then `check.sh` prints a table of each
 timed step's instructions by phase, millions, against the same target's create1k: the

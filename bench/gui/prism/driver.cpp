@@ -6,8 +6,9 @@
 //
 //   driver OP RUNS WARMUP     prints `OP RUN MS` per timed run, then `peak_rss_bytes N`
 //   driver OP RUNS WARMUP check
-//                             also counts each step's work and fails the run when it is
-//                             out of proportion (bench/gui/README.md, "The checks")
+//                             also counts each step's work by phase, and fails the run
+//                             when a scene draws outside the window (bench/gui/README.md,
+//                             "The checks")
 //
 // The emitted main.cpp is linked beside this with its `main` renamed (bench/gui/prism/Makefile).
 //
@@ -319,10 +320,6 @@ bool drawn_inside(const Session& s) {
     return false;
 }
 
-/// `check`'s second check: these operations' timed step retires under a tenth of the
-/// instructions of their setup, Create 1,000 rows.
-bool small_op(const std::string& op) { return op == "update10th" || op == "select" || op == "swap" || op == "remove"; }
-
 long peak_rss_bytes() {
     rusage u{};
     getrusage(RUSAGE_SELF, &u);
@@ -360,7 +357,7 @@ int main(int argc, char** argv) {
     int run = 0;
     bool waiting = false, timing = false;
     Clock::time_point t0;
-    long long i0 = 0, setup = 0;
+    long long i0 = 0;
     phases::Totals p0, p1;
     if (check && !prism_rtl::probe::set_hook(phases::mark)) {
         std::fprintf(stderr, "driver: the phase probe's hook was set already\n");
@@ -388,11 +385,7 @@ int main(int argc, char** argv) {
                 std::printf("check %s step %zu (%s row %d): %lld instructions\n", op.c_str(), next, p.text.c_str(), p.row, work);
                 std::fflush(stdout);
                 phases::print(op, timing ? "timed" : p.text == CREATE_1K ? "setup" : "untimed", p0, p1, work);
-                if (!timing && p.text == CREATE_1K) setup = work;
-                bool small = !timing || !small_op(op) || work * 10 < setup;
-                if (!small)
-                    std::fprintf(stderr, "driver: check: %s retired %lld instructions, not under a tenth of Create 1,000 rows' %lld\n", op.c_str(), work, setup);
-                if (!drawn_inside(s) || !small) {
+                if (!drawn_inside(s)) {
                     failed = 1;
                     s.exit(1);
                     return;
