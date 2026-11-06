@@ -31,14 +31,19 @@ empty.*
   prismc's lexer reading by them (Regular expressions, below); per-module C++ headers; the first three bugs and gaps LP, LW, SR; `Text` as
   UTF-8 with cursors; the performance queue (a non-atomic `prism_rtl::Rc`, less string
   churn, gap NL, `?ParseNat`, the emitted-code cleanups).
-- **Branches in flight, each an agent's, merged here when green:**
-  - `claude-arrays`: `claude/bugs/small-arrays-whole-chunks.md`. The C++ array's first
-    chunks sized to fit and Rust's `Map` as the C++ AVL tree are done; one persistent
-    tree-of-chunks `Array` in both runtimes, keeping Appendix B's costs (which the C++
-    view breaks for `Append` and for `Push` onto an older view), is in progress.
-- **The books** are `jhartzell42/prism-notes` `main` at `8260397` or later: Semantics
+- **Also merged:** one persistent tree of chunks as `Array` in both runtimes and an AVL
+  `Map` in Rust (`im-rc` gone; the Rust prismc compiling itself fell from 2.9 GB and 75 s
+  to 275 MB and 45 s); `Upper` and `Lower` by Unicode 17's full case mapping in both
+  runtimes; `@Distinct`, a dynamic `let` read in several places computed once, and the
+  window library's first speedups (The window, below).
+- **Branch in flight:** `claude-lowering-fixes` (lifts over `?` and `~` in lowering, a
+  program's names kept off the runtime's helpers, both bootstraps' `--from-seed`, gap OC,
+  small modules sharing C++ translation units), merged here when green.
+- **The books** are `jhartzell42/prism-notes` `main` at `32597b0` or later: Semantics
   round 4 (TX, Text), round 5 (regular expressions), round 6 (MT, TD: the module tree and
-  test modules); Type System rounds 4 and 5.
+  test modules), round 7 (CM, case mapping), round 8 (DU, `@Distinct`; CT, `Text` of a
+  `Char`); Type System rounds 4 and 5; Conformance round 2. Claude edits them in the
+  worktree `prism-notes-claude` and pushes to `main` fast-forward (Jimmy).
 - **The bootstrap.** Both seeds match the tree: `bootstrap/prismc-rust.tar.xz` and
   `bootstrap/prismc-cpp.tar.xz`, each written from its fixed point.
 - **The benchmarks** are `bench/building`, `bench/running` and `bench/gui`; each writes a
@@ -63,24 +68,20 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
   `ropey` rope gone); per-module C++ headers (C++ build CPU down about a sixth); the
   non-atomic `prism_rtl::Rc` and less string churn (C++ 1.79 G → 1.52 G, the C++
   self-compile 77 s → 61 s).
-- **The benchmarks proper** are `bench/building/run.sh` and `bench/running/run.sh`, to be
-  run on a quiet machine after the style pass and regex (item 8), and they write
-  `RESULTS.md` beside themselves.
+- **This table predates the arrays, regex and module work;** the later preliminary numbers
+  are `claude/benchmarks-preliminary.md`. The benchmarks proper are
+  `bench/building/run.sh` and `bench/running/run.sh`, to be run on a quiet machine once
+  the window is fixed, and they write `RESULTS.md` beside themselves.
 
 ## The order (Jimmy's)
 
-1. **The array fix** (`claude-arrays`), merged.
-2. **Regular expressions in the compiler**, then prismc's own lexer written with them,
-   done (Regular expressions, below).
-3. **The layout bug** another agent is reporting under `claude/bugs/` (Jimmy: after regex
-   in the lexer).
-4. **The GUI table's costs**, traced and written up under `claude/bugs/`
-   (`claude/benchmarks-preliminary.md`: every small operation costs what building the
-   table costs on both targets; create-10,000 is 57 s in C++ against 8 s in Rust).
-5. **The final fixed point and both seeds**, then **the final benchmarks** on a quiet
+1. **The array fix** and **regular expressions in the compiler and its lexer**: done.
+2. **The layout bug** (The window, below): the library's part is done, the rest waits on
+   Jimmy's rulings. He asked for no full benchmark run until it is fixed.
+3. **The final fixed point and both seeds**, then **the final benchmarks** on a quiet
    machine, and from them **a recommendation: Rust or C++ as the default back end**,
    argued from both models, running and building (Jimmy).
-6. **The umbrella PR's write-up** (below).
+4. **The umbrella PR's write-up** (below).
 
 - **Other agents push to this branch** (bug reports under `claude/bugs/`, notes here):
   fetch before starting and before every merge.
@@ -120,15 +121,20 @@ a percent (prismc/README.md, Regular expressions; claude/backend.md; D18). Left:
 lexer generator doubt (a token table as one automaton) stands, unmeasured; layout as a
 separate pass over the token stream was not in this work.
 
-## From the cloud GUI run (5 November), after the queue
+## The window
 
 - **A small change to the window still costs most of a create1k**
-  (`claude/bugs/window-relayout-every-change.md`, branch `claude-incremental`): fifteen
-  to forty times faster than it was, with `@Distinct` and cached `let`s; what is left
-  (a whole layout, word set and host document per change) needs a design.
-- **C++ `Union` is quadratic in a fold** (`claude/bugs/cpp-union-big-into-small.md`).
+  (`claude/bugs/window-relayout-every-change.md`). Merged so far: `@Distinct`, cached
+  `let`s, `for` builders that keep unchanged rows, equality that stops at shared nodes
+  (create1k 702 ms to about 50 ms in C++, select 797 ms to about 42 ms, create10k 57 s to
+  0.4 s). Jimmy's bar is a select under a tenth of a create1k; it stands at about 0.8 by
+  instructions, split by phase in `claude/benchmarks-preliminary.md`.
+- **The rest is designed, not built:** `claude/incremental-host-document.md` recommends an
+  incremental host document and a `Cached` combinator, and asks Jimmy four things first
+  (LG, CA, PB, RA there). Build nothing of it before he answers. His limits: the simplest
+  thing that works, layout stays in Prism, no general retained-mode system.
 - **The Cuis table crashes on `▶`; Linux Cuis times measure software painting**
-  (`claude/bugs/bench-cuis-latin1-and-software-paint.md`).
+  (`claude/bugs/bench-cuis-latin1-and-software-paint.md`); Jimmy paused the Cuis runs.
 
 ## Smaller items
 
