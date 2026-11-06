@@ -1,0 +1,27 @@
+# Derived by hand from Jimmy's ruling of 6 November 2026 (the host document is `$(Path ==> $Elem c)`) and Semantics ch. 7 (round 3 ST, both levels structural; TK, an owed tick is not skipped): the click on "inc" moves the label's entry, published in the owed tick 2, and not the outer, so the count stays; the click on "add" makes a place, the row is built and forwarded in its tick, and the outer moves in the owed tick 4.
+test a_value_change_does_not_move_the_outer_document
+
+tick 0
+  added:
+    0/[0]/0: Ui.Button(label="inc")
+    0/[1]/0: Ui.Button(label="add")
+    0/[2]/0: Ui.Label(text="0")
+    1: Ui.Label(text="0 moves")
+
+tick 1
+  in:
+    0/[0]/0: click
+  changed:
+    0/[2]/0: Ui.Label(text="1")
+
+tick 2
+
+tick 3
+  in:
+    0/[1]/0: click
+  added:
+    0/[3/[0]/0]/0: Ui.Label(text="item 0")
+
+tick 4
+  changed:
+    1: Ui.Label(text="1 moves")
