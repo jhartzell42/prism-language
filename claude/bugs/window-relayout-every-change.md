@@ -60,8 +60,7 @@ placing, and each moved place's entry) is 12 M, and the paint is the damaged box
   `!Updated` over a row's entry firing in every row is the language's (pick UD,
   tests/conformance/sem-ch04-row-entry); skipping an unmoved row's patch would not touch
   it. Not done: Jimmy is deciding.
-- **The routing of a press** (doubt SE was the labels, above), and the routing of a press through the column's 1,001
-  filters (doubt RF).
+- **The routing of a press** through the column's 1,001 filters (doubt RF).
 - **MT** A new word's extent reaches its leaf's layout a tick after the word (each leaf
   measures its own texts, in a gathered `for`), so a layout with a new word runs twice and
   an input shows its new text at the old width (`h=8`) for one owed tick
