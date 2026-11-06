@@ -1,0 +1,38 @@
+# A `for` over `@PerKey` of a large map, each row's work costly, its hold written with one
+# key changed per click (tests/cost/README.md): only the changed key's inner fires, so a
+# click costs one row's work and a walk of the keys, not every row's work (Semantics
+# Appendix B, `@PerKey`; round 9 PK). Written by Claude on the claude-self-hosting branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+# 0 to n - 1 as keys
+Big: fn Nat -> (Nat ==> Nat)
+fn Big n = update {}:
+    let &i = 0
+    let &left = n
+    while ? m <- &left -? 1:
+        &left <= m
+        &_ <= Insert &_, &i, &i
+        &i += 1
+
+# a row's work: a thousand steps of arithmetic
+Costly: fn Nat -> Nat
+fn Costly v = update v:
+    let &left = 1000
+    while ? m <- &left -? 1:
+        &left <= m
+        &_ <= (&_ * 31 + m) mod 1000003
+
+@rows: @unit
+@rows:
+    !edit <- Ui.Button(label=$"edit")                        # 0
+    $i <- 0 then $i + 1 on !edit
+    $m <- (Big 2000) then (Insert $m, $i, $i + 5000) on !edit
+    $each <- @PerKey $m
+    for k, $$d <- $each:                                     # 1/[k]
+        $v <- @Flatten $$d
+        $c <- 0 then (Costly $v) on !Updated $v
+        @ unit
+    Ui.Label(text=$"{Size $m}")                              # 2

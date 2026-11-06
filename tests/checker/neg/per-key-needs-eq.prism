@@ -1,0 +1,10 @@
+# `per-key-needs-eq`: `@PerKey` compares each key's new value with the one its inner
+# holds, so the map's value type must have `^Eq`.
+emit Ui.*
+type Opaque = Opaque Nat
+
+@seen: @unit
+@seen:
+    !go <- @started
+    $o <- {0: (Opaque 1)} then {0: (Opaque 2)} on !go
+    $each <- @PerKey $o
