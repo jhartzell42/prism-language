@@ -57,6 +57,16 @@ type AppNote = record:
     color: Col
 derive ^Eq, ^Show
 
+# An expression lifted over a `?` or `~` at the plain layer (ch. 4, `?` and `~` at the
+# plain layer): an application, an operator or a field read, `sigil` the layer peeled and
+# `operands` the places of the operands it was peeled from (a field read's receiver, the
+# arguments of an application in order), each under its time layer if it had one.
+type LiftNote = record:
+    at: SrcAt
+    sigil: Text
+    operands: [Range]
+derive ^Eq, ^Show
+
 # A function's color (ch. 5, The color): what its signature declares and the join of what
 # its body applies. A lambda's declared color is its body's.
 type FnNote = record:
@@ -132,6 +142,7 @@ derive ^Eq, ^Show
 type TProgram = record:
     exprs: [TyNote]
     apps: [AppNote]
+    lifts: [LiftNote]
     fns: [FnNote]
     impls: [ImplNote]
     methods: [MethodNote]
@@ -145,7 +156,7 @@ type TProgram = record:
     unshrunk: [SrcAt]
 derive ^Eq, ^Show
 
-let emptyTyped = TProgram(exprs=[[]], apps=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
+let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
 
 AtKey: fn SrcAt -> Text
 fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"

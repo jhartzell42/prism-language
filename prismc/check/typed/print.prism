@@ -90,6 +90,7 @@ fn TypedSexp srcs, trees, shown, tp:
     let exprs = Concat (Each files, \|i| ExprsOfFile srcs, tys, i, (Or trees[i], emptyMod))
     let Mine = \|a| Shown a, shown
     let apps = Concat (Each (Filter tp.apps, \|x| Mine x.at), \|x| "  (app {AtText srcs, x.at} {Quote x.callee} {x.kind} {LayerWord x.layer} (lifted{Concat (Each x.lifted, \|i| " {i}")}) {LayerWord x.inner} {ColSexp x.color})\n")
+    let lifts = Concat (Each (Filter tp.lifts, \|x| Mine x.at), \|x| "  (lift {AtText srcs, x.at} {x.sigil}{Concat (Each x.operands, \|r| " {AtText srcs, SrcAt(file=x.at.file, span=r)}")})\n")
     let fns = Concat (Each (Filter tp.fns, \|x| Mine x.at), \|x| "  (fn {Quote x.name} {AtText srcs, x.at} {ColSexp x.declared} {ColSexp x.body})\n")
     let methods = Concat (Each (Filter tp.methods, \|x| Mine x.at), \|x| "  (method {AtText srcs, x.at} {x.method} ^{x.cls})\n")
     let impls = Concat (Each (Filter tp.impls, \|x| Mine x.at), \|x| "  (impl {AtText srcs, x.at} ^{x.cls} {TySexp x.ty} {x.how})\n")
@@ -97,7 +98,7 @@ fn TypedSexp srcs, trees, shown, tp:
     let binders = Concat (Each (Filter tp.binders, \|x| Mine x.at), \|x| "  (binder {Quote x.name} {AtText srcs, x.at} {TySexp x.ty})\n")
     let gens = Concat (Each (Filter tp.gens, \|x| Mine x.at), \|x| "  (gen {Quote x.name} {AtText srcs, x.at}{Concat (Each x.tys, \|q| " {q}")}{Concat (Each x.cols, \|q| " {q}")})\n")
     let insts = Concat (Each (Filter tp.insts, \|x| Mine x.at), \|x| "  (inst {Quote x.name} {AtText srcs, x.at}{Concat (Each x.tys, \|((q, t))| " ({q} {TySexp t})")}{Concat (Each x.cols, \|((q, c))| " ({q} {ColSexp c})")})\n")
-    "(typed\n (defs\n{defs} )\n (exprs\n{exprs} )\n (apps\n{apps} )\n (fns\n{fns} )\n (methods\n{methods} )\n (impls\n{impls} )\n (groups\n{groups} )\n (binders\n{binders} )\n (gens\n{gens} )\n (insts\n{insts} ))\n"
+    "(typed\n (defs\n{defs} )\n (exprs\n{exprs} )\n (apps\n{apps} )\n (lifts\n{lifts} )\n (fns\n{fns} )\n (methods\n{methods} )\n (impls\n{impls} )\n (groups\n{groups} )\n (binders\n{binders} )\n (gens\n{gens} )\n (insts\n{insts} ))\n"
 
 Shown: fn SrcAt, Nat -> Bool
 fn Shown a, shown = a.file < shown

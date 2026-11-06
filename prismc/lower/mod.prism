@@ -74,6 +74,8 @@ type Lx = record:
     g: G
     tys: (Text ==> Ty)
     apps: (Text ==> AppNote)
+    # The expressions lifted over a `?` or `~` at the plain layer, by place.
+    lifts: (Text ==> LiftNote)
     binders: (Text ==> Ty)
     impls: (Text ==> [ImplNote])
     file: Nat

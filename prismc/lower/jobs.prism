@@ -455,7 +455,9 @@ fn Frame lx, env, call, restText, Cont = match call.kind:
                 nil: match ?PreludeJobCall lx, env2, call:
                     ? pj: ((pj, "call_value"))
                     nil: (((Refusal "a call this frame cannot enter"), "call_then"))
-        let enter = XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
+        # An unbounded call lifted over a `?` or `~` would enter its job only when every
+        # peeled argument is present: not lowered yet.
+        let enter = if IsLiftedAt lx, call.span: Refusal "an unbounded call lifted over `?` or `~` (`{SrcText lx, lx.file, call.span}`)" else: XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]
         if (Len dos) == 0: enter else: XBlock dos, enter
     otherwise: Cont env
 

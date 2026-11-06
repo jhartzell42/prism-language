@@ -81,6 +81,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   transform of an event calls straight through; `$x on !e` samples at the read point;
   `$x + 1` is a getter, or an `rt::Cache` field when several readers share it; a lifted
   `match` or `if` is a computed behavior over its scrutinee.
+- **`?` and `~` at the plain layer** (Type System ch. 4): the checker notes each
+  application, operator or field read it lifts over a `?` or `~`, with the operands it
+  peeled (`TProgram.lifts`); lowering makes it a `match` of each operand in turn, left to
+  right, whose present arm is the plain expression over the peeled values, wrapped back
+  (`match get(ps, k) { Some(o) => Some(o.a.clone()), None => None }`), and whose absent arm
+  is `None` (the leftmost `Err`). An unbounded call lifted so is refused, naming it.
 - **`&` blocks** → native mutation of a fresh or unique value: `Rc::make_mut`, and the
   persistent collections' in-place updates (Compiler ch. 3, "Unique values").
 - **Fault `~`**: a fallible expression is a `Result<_, rt::Error>` and `?` propagates;

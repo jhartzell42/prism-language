@@ -28,9 +28,10 @@ fn ?TwiceA ps, k = Twice ps[k].a
 ?Sum: fn ?Nat, ?Nat -> ?Nat
 fn ?Sum ?x, ?y = ?x + ?y
 
-# An index of an optional map, and a prelude function over the optional it gives.
+# An index of an optional map, a `??[Nat]` (the `?` is never lost), one layer taken off,
+# and a prelude function over the optional left.
 ?Size: fn ?(Text ==> [Nat]), Text -> ?Nat
-fn ?Size ?m, k = Len ?m[k]
+fn ?Size ?m, k = Len (Or ?m[k], nil)
 
 # A method call (a trait's) through the `?`.
 ?Shown: fn ?P -> ?Text

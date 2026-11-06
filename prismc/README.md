@@ -320,6 +320,9 @@ every type followed to its end once the program's last defaults are in.
   lifted `match` or `if`: the node kind (`plain`, `const`, `map`, `sample`, `gate`), the
   result's time layer, the arguments peeled by position, the `?` or `~` peeled under it,
   the call's color.
+- `lifts: [LiftNote]`: every application, operator, index and field read lifted over a
+  `?` or `~` at the plain layer (Type System ch. 4), with the places of the operands it
+  peeled, which lowering matches (claude/backend.md, "Functions and lifting").
 - `fns: [FnNote]`: the color of every function, lambda and widget: declared, and the join
   of what its body applies. A lambda's two are its color as solved (below).
 - `methods: [MethodNote]` and `impls: [ImplNote]`: every method call with its trait, and how
@@ -1911,7 +1914,7 @@ function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s,
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), an `@Machine` whose step is
 not a named function, a local function whose
-parameters are not names or used as a value, `!MergeAll` of a list that is not a
+parameters are not names or used as a value, an unbounded call lifted over a `?` or `~`, `!MergeAll` of a list that is not a
 literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
 and `if`, a widget of several clauses in a static position of a hosted scope (pick CS),
 `Time.After`, and the zombie and
