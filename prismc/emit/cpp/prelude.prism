@@ -866,7 +866,7 @@ fn CppPreludeRows unused = inline_text <cpp>
 class Row : public Node {
 public:
     virtual void leave_row(Cx& cx) = 0;
-    virtual std::vector<std::tuple<Path, Elem>> document(const Cx& cx) {
+    virtual std::vector<std::tuple<Path, Elem>> document(const Cx& cx) const {
         static_cast<void>(cx);
         return {};
     }
