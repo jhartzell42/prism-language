@@ -13,10 +13,15 @@
 # The starting prismc is, in order: $PRISMC; the installed target/bootstrap/prismc; or,
 # on a fresh clone, the seed: bootstrap/prismc-rust.tar.xz, the Rust crate prismc emitted
 # for itself at its last fixed point, unpacked and built with cargo. Nothing compiled is
-# kept in the repository except that archive.
+# kept in the repository except that archive. An installed compiler older than the source's
+# syntax cannot compile prismc/: the bootstrap then stops with one line saying so and
+# naming --from-seed, the compiler's diagnostics in target/bootstrap/gen1-compile.log.
 #
 #   bootstrap/bootstrap.sh            # bootstrap and install
 #   bootstrap/bootstrap.sh --update   # also rewrite the seed from the new fixed point
+#   bootstrap/bootstrap.sh --from-seed   # start from the seed, ignoring $PRISMC and the
+#                                        # installed compiler (with --update too)
+#   bootstrap/bootstrap.sh --show-start  # only say which compiler it would start from
 #   bootstrap/bootstrap.sh --seed-at DIR   # only unpack and build the seed in DIR, three
 #                                          # levels under the root (bootstrap/test-seed.sh)
 #
@@ -27,11 +32,19 @@ export PRISM_ROOT=$PWD  # for the emitted Makefiles; cargo gets the crate by --m
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 update=0
 seed_at=""
-case "${1:-}" in
-    --update) update=1 ;;
-    --seed-at) seed_at=${2:?--seed-at takes a directory three levels under the repository root} ;;
-esac
-b=target/bootstrap
+from_seed=0
+show_start=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --update) update=1; shift ;;
+        --from-seed) from_seed=1; shift ;;
+        --show-start) show_start=1; shift ;;
+        --seed-at) seed_at=${2:?--seed-at takes a directory three levels under the repository root}; shift 2 ;;
+        *) echo "unknown option $1" >&2; exit 2 ;;
+    esac
+done
+# The working directory: target/bootstrap, or PRISM_BOOTSTRAP (bootstrap/test-start.sh).
+b=${PRISM_BOOTSTRAP:-target/bootstrap}
 seed=bootstrap/prismc-rust.tar.xz
 mkdir -p "$b"
 # pack ARCHIVE DIR FILES...: FILES of DIR as an xz tar with no macOS extended attributes,
@@ -63,9 +76,21 @@ build_seed() {
     build_crate "$1"
 }
 if [ -n "$seed_at" ]; then build_seed "$seed_at"; echo "seed: built $seed_at/prismc"; exit 0; fi
+# The starting compiler: $PRISMC, else the installed $b/prismc, else the seed; with
+# --from-seed, the seed whatever is set or installed.
 start=${PRISMC:-}
-if [ -z "$start" ] && [ -x "$b/prismc" ]; then start=$b/prismc; fi
-if [ -z "$start" ]; then
+from=prismc
+if [ -z "$start" ] && [ -x "$b/prismc" ]; then start=$b/prismc; from=installed; fi
+if [ -z "$start" ] || [ $from_seed = 1 ]; then start=""; from=seed; fi
+if [ $show_start = 1 ]; then
+    case $from in
+        prismc) echo "start: \$PRISMC ($start)" ;;
+        installed) echo "start: the installed $start" ;;
+        seed) echo "start: the seed $seed" ;;
+    esac
+    exit 0
+fi
+if [ $from = seed ]; then
     build_seed "$b/seed"
     start=$b/seed/prismc
 fi
@@ -75,8 +100,14 @@ cp -r prismc prelude "$b/src/"
 src=("$b/src/prismc" --prelude "$b/src/prelude")
 # compile N BINARY: prismc/ compiled by BINARY into genN
 compile() {
-    local t=$(date +%s)
-    "$2" compile "${src[@]}" -o "$b/gen$1" --name prismc
+    local t=$(date +%s) log="$b/gen$1-compile.log"
+    if ! "$2" compile "${src[@]}" -o "$b/gen$1" --name prismc > "$log" 2>&1; then
+        tail -20 "$log" >&2
+        if [ "$1" = 1 ] && [ $from = installed ]; then
+            echo "the installed $start cannot compile this tree (it is older than the source's syntax); re-run with --from-seed" >&2
+        fi
+        exit 1
+    fi
     echo "gen$1: prismc/ compiled by $2 in $(( $(date +%s) - t ))s"
 }
 # build N: genN built by cargo

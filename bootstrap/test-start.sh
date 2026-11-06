@@ -39,7 +39,7 @@ for s in bootstrap cpp; do
     out=$(PRISM_BOOTSTRAP=$work $script 2>&1); code=$?
     expect "$s old installed: status" "1" "$code"
     expect "$s old installed: the line" "the installed $work/prismc cannot compile this tree (it is older than the source's syntax); re-run with --from-seed" "$(printf '%s\n' "$out" | tail -1)"
-    log=$work/gen1.log; [ $s = cpp ] && log=$work/cpp-gen1.log
+    log=$work/gen1-compile.log; [ $s = cpp ] && log=$work/cpp-gen1-compile.log
     expect "$s old installed: diagnostics kept" "1" "$(grep -c 'expected a declaration' "$log" 2>/dev/null || echo 0)"
     expect "$s old installed: no seed built" "" "$(printf '%s\n' "$out" | grep 'seed: building')"
 done

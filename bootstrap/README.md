@@ -15,6 +15,17 @@ keeps no binary; it keeps one archive.
   the binary `./prism` uses.
 - **`bootstrap.sh --update`** also rewrites the seed from the new fixed point, after a
   change to the compiler.
+- **`--from-seed`** (either script, with or without `--update`) starts from the committed
+  seed, ignoring `$PRISMC` and the installed compiler. An installed compiler is older than
+  the tree whenever the source's syntax moved past it (nested `mod` lines, regex
+  literals): when the installed one fails to compile `prismc/`, the bootstrap stops with
+  one line, "the installed target/bootstrap/prismc cannot compile this tree (it is older
+  than the source's syntax); re-run with --from-seed", the compiler's diagnostics kept in
+  `target/bootstrap/gen1-compile.log` (`cpp-gen1-compile.log`); it never retries from the
+  seed on its own. **`--show-start`** only says which compiler it would start from.
+  **`test-start.sh`** checks all of it under a scratch working directory
+  (`PRISM_BOOTSTRAP`), with stand-in compilers. `make bootstrap` and `make bootstrap-cpp`
+  are unchanged.
 - **A seed is packed with no macOS extended attributes** (COPYFILE_DISABLE=1, and
   `--no-xattrs` where the tar takes it), so unpacking it on Linux prints no warnings.
 - **`bootstrap.sh --seed-at DIR`** and **`bootstrap-cpp.sh --seed-at DIR`** only unpack
