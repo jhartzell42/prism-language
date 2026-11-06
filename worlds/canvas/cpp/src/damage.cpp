@@ -90,19 +90,32 @@ Damage Painter::paint(Renderer& renderer, cairo_surface_t* target, float scale, 
         if (b.kind == Bounds::Kind::Whole) whole = true;
     };
     std::vector<std::pair<Pod, Bounds>> old = std::move(last_->drawn);
+    // The commands both lists begin with and end with stay; between them, the old and the
+    // new are compared position by position.
+    std::size_t n = old.size(), m = commands.size(), prefix = 0, suffix = 0;
+    while (prefix < n && prefix < m && old[prefix].first == *commands[prefix]) ++prefix;
+    while (suffix < n - prefix && suffix < m - prefix && old[n - 1 - suffix].first == *commands[m - 1 - suffix]) ++suffix;
     std::vector<std::pair<Pod, Bounds>> drawn;
-    drawn.reserve(commands.size());
-    for (std::size_t i = 0; i < commands.size(); ++i) {
-        if (i < old.size() && old[i].first == *commands[i]) {
-            drawn.push_back(std::move(old[i]));
+    drawn.reserve(m);
+    for (std::size_t i = 0; i < prefix; ++i) drawn.push_back(std::move(old[i]));
+    std::size_t old_mid = n - suffix - prefix, new_mid = m - suffix - prefix;
+    for (std::size_t k = 0; k < std::max(old_mid, new_mid); ++k) {
+        std::pair<Pod, Bounds>* was = k < old_mid ? &old[prefix + k] : nullptr;
+        if (k >= new_mid) {
+            damage(was->second);
             continue;
         }
-        if (i < old.size()) damage(old[i].second);
-        Bounds b = renderer.bounds(*commands[i], scale, w, h);
+        const Pod& now = *commands[prefix + k];
+        if (was && was->first == now) {
+            drawn.push_back(std::move(*was));
+            continue;
+        }
+        if (was) damage(was->second);
+        Bounds b = renderer.bounds(now, scale, w, h);
         damage(b);
-        drawn.emplace_back(*commands[i], b);
+        drawn.emplace_back(now, b);
     }
-    for (std::size_t i = commands.size(); i < old.size(); ++i) damage(old[i].second);
+    for (std::size_t i = n - suffix; i < n; ++i) drawn.push_back(std::move(old[i]));
     last_->drawn = std::move(drawn);
     if (whole) {
         renderer.render(target, scale, draw_lists);

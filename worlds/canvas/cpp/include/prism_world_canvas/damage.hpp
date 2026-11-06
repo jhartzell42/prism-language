@@ -3,9 +3,10 @@
 //
 // A `Painter` keeps, for one window's frame, the top-level draw commands it last painted
 // (every scene's draw list for the window, in document order, concatenated) and each one's
-// bounds in physical pixels. A new settled scene is compared with them position by
-// position; each position whose command differs (or exists in only one of the two) damages
-// the old command's bounds and the new one's. The damaged boxes are merged (more than 32
+// bounds in physical pixels. A new settled scene's commands are compared with them: those
+// both lists begin with and end with stay, and the rest are compared position by position;
+// each position whose command differs (or exists in only one of the two) damages the old
+// command's bounds and the new one's. The damaged boxes are merged (more than 32
 // become the one box around them all), and each is cleared to the background in a scratch
 // surface of the frame's size, every command meeting it painted there whole and unclipped,
 // as a full repaint paints it, and the box alone copied into the frame. The whole frame is

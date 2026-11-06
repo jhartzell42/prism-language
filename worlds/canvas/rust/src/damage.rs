@@ -2,16 +2,18 @@
 //!
 //! A [`Painter`] keeps, for one window's frame, the top-level draw commands it last painted
 //! (every scene's draw list for the window, in document order, concatenated) and each one's
-//! bounds: the physical pixels it can touch. When a new settled scene arrives it compares
-//! the new commands with the last ones position by position; each position whose command
-//! differs (or exists in only one of the two) damages the bounds of the old command and of
-//! the new. It then merges the damaged boxes, and for each box clears it to the background
+//! bounds: the physical pixels it can touch. When a new settled scene arrives it sets aside
+//! the commands the old and the new lists both begin with and both end with, and compares
+//! the rest position by position; each position whose command differs (or exists in only
+//! one of the two) damages the bounds of the old command and of the new. (So a command
+//! that comes or goes, a caret, damages itself and not every command after it.) It then merges the damaged boxes, and for each box clears it to the background
 //! in a scratch frame, paints there every new command whose bounds meet the box, in order,
 //! each whole and unclipped, and copies the box alone into the frame.
 //!
 //! Why that equals a full repaint: outside the damage, every command that touches a pixel,
-//! old or new, sits at a position whose command did not change, so the commands touching
-//! that pixel are the same ones in the same order, and the pixel is what it was. Inside a
+//! old or new, is in the common beginning, the common end, or at a position of the middle
+//! whose command did not change, so the commands touching that pixel are the same ones in
+//! the same order, and the pixel is what it was. Inside a
 //! box the pixel is painted afresh from the background by every command that can touch it,
 //! through the very calls a full repaint makes, on a pixmap of the same size. Bounds are
 //! taken from the placement the renderer uses (the transform, each glyph's rounded
@@ -19,7 +21,7 @@
 //! (Clipping to the box instead is not exact: tiny-skia blends a masked draw by other
 //! arithmetic than an unmasked one, a unit apart at anti-aliased edges.)
 //!
-//! What it costs: the comparison is one equality test per top-level command (a table of
+//! What it costs: the comparison is about one equality test per top-level command (a table of
 //! 1,000 rows draws only the rows inside the window, about 150 commands); bounds are
 //! computed for the commands that changed; the repaint is of the damaged boxes, and the
 //! scratch frame is a second pixmap of the window's size.
@@ -124,25 +126,37 @@ impl Painter {
             Bounds::Box(r) => boxes.push(r),
             Bounds::Whole => whole = true,
         };
-        let mut drawn = Vec::with_capacity(commands.len());
-        let mut old = old.into_iter();
-        for (i, new) in commands.iter().enumerate() {
-            match old.next() {
-                Some((o, b)) if o == **new => drawn.push((o, b)),
+        // The commands both lists begin with and end with stay; between them, the old and
+        // the new are compared position by position.
+        let (n, m) = (old.len(), commands.len());
+        let prefix = old.iter().zip(&commands).take_while(|((o, _), c)| o == **c).count();
+        let suffix = old[prefix..].iter().rev().zip(commands[prefix..].iter().rev()).take_while(|((o, _), c)| o == **c).count();
+        let mut old: Vec<Option<(Pod, Bounds)>> = old.into_iter().map(Some).collect();
+        let mut drawn = Vec::with_capacity(m);
+        drawn.extend(old[..prefix].iter_mut().map(|o| o.take().expect("each old command taken once")));
+        let (old_mid, new_mid) = (prefix..n - suffix, prefix..m - suffix);
+        for k in 0..old_mid.len().max(new_mid.len()) {
+            let was = if k < old_mid.len() { old[old_mid.start + k].take() } else { None };
+            let Some(new) = (k < new_mid.len()).then(|| commands[new_mid.start + k]) else {
+                if let Some((_, b)) = was {
+                    damage(b);
+                }
+                continue;
+            };
+            match was {
+                Some((o, b)) if o == *new => drawn.push((o, b)),
                 was => {
                     if let Some((_, b)) = was {
                         damage(b);
                     }
                     let b = renderer.bounds(new, scale, size);
                     damage(b);
-                    drawn.push(((*new).clone(), b));
+                    drawn.push((new.clone(), b));
                 }
             }
-            debug_assert_eq!(drawn.len(), i + 1);
         }
-        for (_, b) in old {
-            damage(b);
-        }
+        drawn.extend(old[n - suffix..].iter_mut().map(|o| o.take().expect("each old command taken once")));
+        debug_assert_eq!(drawn.len(), m);
         self.last = Some(Painted { size, scale: scale.to_bits(), drawn });
         if whole {
             renderer.render(pixmap, scale, draw_lists);
