@@ -1158,9 +1158,37 @@ fn MatchValue lx, env, s, arms, t, span:
         let guard = match arm.?guard:
             ? ge: [[CcIf (AsBool (ValueOf lx, env2, ge))]]
             nil: [[]]
-        XArm(pat=po.pa, conds=(Append po.conds, guard), body=(Own (BlockValue lx, env2, arm.body)))
+        let env3 = if owned: MovedOnce lx, env2, arm, po.binds else: env2
+        XArm(pat=po.pa, conds=(Append po.conds, guard), body=(Own (BlockValue lx, env3, arm.body)))
     let scrut = if owned: Own sv else: Ref sv
     ArmsValue scrut, xarms, label, t
+
+# Gap OC: a binder of an owned scrutinee that its arm's body reads once is moved there, not
+# cloned: its one read is bound by its place to the binder as a value. Only where that is
+# plain to see: the name once in the body's text and not in the guard's, and no lambda or
+# loop in the body (a read there may run more than once, or outlive the arm).
+MovedOnce: unbounded fn Lx, Env, Arm, [((Text, Bn))] -> Env
+fn MovedOnce lx, env, arm, binds = Fold binds, env, \|en, ((nkey, bn))| match bn:
+    BnLocal (XVar rs), Owned, bt: match ?OnlyRead lx, arm, nkey:
+        ? x: BindSpan en, (PlaceKey lx, x.span), (VlOwned (XVar rs), bt)
+        nil: en
+    otherwise: en
+
+?OnlyRead: unbounded fn Lx, Arm, Text -> ?Expr
+fn ?OnlyRead lx, arm, nkey:
+    let text = SrcText lx, lx.file, arm.body.span
+    let inGuard = match arm.?guard:
+        ? ge: (WordCount (SrcText lx, lx.file, ge.span), nkey) > 0
+        nil: False
+    let reads = Filter (BlockExprs arm.body), \|x| match x.kind:
+        EName n: (Len n.path) == 1 and (SNameKey n) == nkey
+        otherwise: False
+    let plain = not inGuard and (WordCount text, nkey) == 1 and not (Contains text, "\\|") and (Len (Matches %/\b(while|for)\b/, text)) == 0
+    if plain and (Len reads) == 1: reads[0] else: nil
+
+# How often a name stands in a text as a whole word, its sigils included.
+WordCount: fn Text, Text -> Nat
+fn WordCount text, name = Len (Filter (Matches %/[?~$!@&]*[A-Za-z_][A-Za-z0-9_]*/, text), \|m| m.text == name)
 
 let dummyArm = Arm(pattern=nil, guard=nil, body=Block(stmts=[[]], inline=True, span=Range(start=0, end=0)), span=Range(start=0, end=0))
 

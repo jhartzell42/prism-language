@@ -1267,18 +1267,17 @@ Each is Claude's, for Jimmy to overturn.
   parameter is a borrowed `&dyn Fn`; a closure as a value is `Rc<dyn Fn(&A) -> B>`, its
   captures cloned in. A recursive payload is behind `Rc` (a type that reaches itself by
   value, directly, through `?` or a tuple).
-- **OC A binding of an owned scrutinee is cloned at its one use** (`Some(b2) =>
-  Some(Term::Lam(Rc::new(b2.clone())))` in `sem-ch07-normalize`'s `?Reduce`), where a
-  move would do. Not cheap to decide in lowering: each read is spelled on its own as the
-  arm's body is lowered (`Own` of an `Owned` place is a clone), knowing nothing of the
-  reads after it, and a move is right only for the last read on every path, outside a
-  loop and outside a closure's body. Deciding it needs a count of the binder's reads
-  before the body is lowered (`ExprsIn` gives the mentions, but a mention is not one
-  read: an interpolation or a `?` of it lowers to several), and a `Holding` for "owned,
-  read once" that each of lowering's 82 tests of a mode would have to take; or a pass
-  over the model's `Ex` rewriting the one `XClone`, a walker over its 50 forms that
-  lowering does not have. Each such clone is a count's increment (a `Term` holds `Rc`s);
-  C++ has the same copy (`prism_rtl::rc(b2)` of an `auto&&`).
+- **OC A binding of an owned scrutinee read once is moved.** In a `match` over an owned
+  value, a binder its arm's body reads once is bound at that read's place as a value, so
+  the read is a move (`Some(b2) => Some(Term::Lam(Rc::new(b2)))` in `sem-ch07-normalize`'s
+  `?Reduce`), where it was a clone (`MovedOnce` in lower/expr.prism). Only where that is
+  plain from the source: the name stands once in the body's text and not in the guard's,
+  and the body has no lambda and no loop (a read there may run more than once or outlive
+  the arm). Left: a binder read on several paths (once in each branch of an `if`), or
+  under a lambda or loop, is still cloned at every read; deciding those needs the count of
+  reads per path that E's note asked for (a `Holding` for "owned, read once", or a pass
+  over the model's `Ex`). C++ prints the same move as the copy it printed before (a
+  pattern binds by reference into its scrutinee, pick PB).
 - **CH Clauses and patterns.** A function's clauses are one `match` over the parameters
   that are not the same name in every clause; a number or text literal in a pattern is a
   binder and an equality guard, a number of the scrutinee's type (`0` against a `Nat` is
