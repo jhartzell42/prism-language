@@ -245,3 +245,66 @@ is under 0.05 M and left out.
   per change (C++ select 287 M before that, Rust 260 M), a map of a map's entries is built
   at once (C++ select 230 M before that), and a hosted builder gathers its host's outer
   only when its rows' keys changed (C++ swap 237 M before that).
+
+## Painting only the damage
+
+`bench/gui/prism/check.sh`, one run each, on Jimmy's Mac (on mains power, load about 3,
+nothing else building), branch `claude-damage`: before is `f6c16a2`, the canvas Worlds
+painting the whole frame for every settled scene; after, each World paints only the
+boxes a new scene's draw commands damage (worlds/canvas/rust/src/damage.rs), and each
+window's colour space is sRGB. Millions of instructions; the compact round is under
+0.05 M and left out; "loop" is the loop's own marks, where Core Animation's commit of a
+Rust frame can fall.
+
+| target | op | ticks | build | patch | paint before → after | loop before → after | total before → after | ÷ create1k after |
+|---|---|---|---|---|---|---|---|---|
+| C++ | create1k | 8 | 421.2 | 30.4 | 145.7 → 19.3 | 58.2 → 62.4 | 814.1 → 688.6 | 1.000 |
+| C++ | update10th | 9 | 14.5 | 12.6 | 143.8 → 2.7 | 0.8 → 0.7 | 183.7 → 41.7 | 0.061 |
+| C++ | select | 9 | 6.3 | 11.7 | 144.7 → 1.3 | 0.6 → 0.6 | 168.2 → 24.5 | 0.036 |
+| C++ | swap | 9 | 7.3 | 11.7 | 145.0 → 1.3 | 0.6 → 0.6 | 169.5 → 25.4 | 0.037 |
+| C++ | remove | 8 | 89.8 | 11.7 | 146.1 → 17.1 | 0.5 → 0.5 | 255.2 → 125.3 | 0.182 |
+| C++ | clear | 8 | 82.0 | 8.3 | 146.2 → 9.4 | 13.2 → 5.5 | 340.6 → 197.9 | 0.287 |
+| Rust | create1k | 8 | 248.9 | 29.0 | 32.9 → 42.1 | 100.8 → 7.0 | 631.0 → 540.0 | 1.000 |
+| Rust | update10th | 9 | 12.0 | 12.9 | 33.6 → 16.1 | 4.4 → 18.2 | 77.0 → 75.1 | 0.139 |
+| Rust | select | 9 | 4.6 | 12.1 | 32.6 → 8.8 | 0.3 → 2.3 | 55.1 → 33.3 | 0.062 |
+| Rust | swap | 9 | 5.6 | 11.9 | 33.7 → 8.7 | 4.4 → 4.4 | 61.1 → 36.0 | 0.067 |
+| Rust | remove | 8 | 29.3 | 10.9 | 33.6 → 28.6 | 4.4 → 5.1 | 84.4 → 80.3 | 0.149 |
+| Rust | clear | 8 | 39.8 | 9.0 | 144.0 → 10.8 | 138.5 → 5.1 | 431.0 → 156.1 | 0.289 |
+
+Wall time, `driver OP 20 3` run by hand (not `bench/gui/run.sh`), medians of 20 runs in ms
+with the fastest and slowest, before → after:
+
+| op | C++ | Rust |
+|---|---|---|
+| select | 15.8 (14.7–16.8) → 3.2 (2.6–3.8) | 14.9 (14.1–16.0) → 5.3 (3.7–7.4) |
+| update10th | 17.9 (16.8–19.0) → 5.5 (4.8–6.1) | 17.6 (16.4–19.6) → 7.6 (6.5–8.9) |
+| remove | 22.4 (21.4–23.6) → 12.3 (11.6–13.2) | 18.1 (17.0–19.9) → 10.1 (9.1–11.3) |
+| create1k | 60.0 (58.9–62.1) → 50.3 (49.0–51.1) | 50.8 (40.1–60.5) → 43.9 (41.7–45.3) |
+
+- **Most of the frame's cost was not painting but colour matching.** Of C++'s 145 M paint,
+  about 125 M was Core Animation converting every pixel of the frame from sRGB to the
+  screen's colour space on the CPU, in this process, when the frame was committed; cairo
+  painting the whole frame was about 20 M. With the window's colour space set to sRGB, the
+  frame's own, the conversion is gone (the window server matches colours as it
+  composites). The same conversion is the Rust table's 100 to 140 M bursts in "loop" and
+  "paint" (create1k and clear before): softbuffer's frame is committed with the run loop's
+  transaction, which falls inside the timed step or after it from run to run, so the
+  Rust before row is low in paint for most steps only because the conversion was counted
+  elsewhere or not at all.
+- **A select now paints 1.3 M (C++) and 8.8 M (Rust):** two labels' boxes. In Rust about
+  11 M of each frame is presenting it through softbuffer, whatever the damage: its macOS
+  buffer is a new zeroed allocation per frame, the whole frame is copied in, and it
+  becomes a new `CGImage` (worlds/canvas/rust/README.md, "Painting"). Rust's update10th
+  and select vary by a few M from run to run in "loop" for the same reason as before, the
+  commit's timing.
+- **A remove, a create and a clear damage most of the frame** (every row below the removed
+  one moves; every row comes or goes): C++ 17 M, 19 M and 9 M, Rust 29 M, 42 M and 11 M,
+  about what painting the whole frame costs in each, with the comparison's cost in it.
+  The Prism window has no scroll pane; a scroll would move every row and cost as a remove.
+- **A small change is now the program's own work:** a C++ select is 24.5 M, 22 M of it the
+  ticks (build, patch, propagate, diff, perform). What is left of the window's per-change
+  cost is `claude/bugs/window-relayout-every-change.md`.
+- **The wall times fall by four to five times on the small steps**: a select is 3.2 ms in
+  C++ and 5.3 ms in Rust (GTK's is about 1.1 ms in the table above). The instruction
+  counts miss what the window server does with a frame after the flush; the clock here
+  stops at the flush, as before.

@@ -77,6 +77,9 @@ each under both drivers with `driver OP 1 0 check`, which counts work rather tha
   whole table.
 - **What the screen shows:** after every timed step, the table the operation should
   leave (the timed runs check this with or without `check`).
+  The canvas Worlds paint a new scene only where it differs from the last; their tests
+  hold that equal to a full repaint, pixel for pixel (worlds/canvas/rust/README.md,
+  "Painting").
 - **What a step costs, reported:** the instructions the whole process retires (every
   thread's, `proc_pid_rusage`) from the press to the settled frame, printed per step; no
   ratio fails a run (Jimmy: the numbers are reported, not held to a bar).
@@ -119,6 +122,8 @@ instructions between its marks (macOS's `thread_selfcounts`) go to the phase it 
   every row too, in a scroll pane. Its host documents are `$(Path ==> $Elem)` (Jimmy, 6
   November 2026), and the window lays each element out in a row of its own: a small change
   re-lays the rows on its path, re-stacks the column's 1,001 laid-out rows once per level
-  of the moved path, and places what shows; one select is 166 M instructions in C++ and
-  177 M in Rust, painting the frame 141 M and 155 M of it
-  (claude/incremental-host-document.md; claude/benchmarks-preliminary.md).
+  of the moved path, and places what shows; the canvas Worlds paint only the boxes a new
+  scene's draw commands damage. One select is 24 M instructions in C++ and 33 M in Rust,
+  painting 1.3 M and 8.8 M of it, and 3.2 ms and 5.3 ms on the clock
+  (claude/incremental-host-document.md; claude/benchmarks-preliminary.md, "Painting only
+  the damage"). A remove moves every row below it, so it damages most of the frame.
