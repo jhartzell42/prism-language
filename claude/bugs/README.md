@@ -10,3 +10,5 @@ A bug leaves this directory when its fix lands.
   to five times Rust's, and a structural change's pass over every place's entry.
 - **`bench-cuis-latin1-and-software-paint.md`**: the Cuis table crashes on `▶` in a
   Latin-1 `String`; on Linux its times measure software painting.
+- **`widget-param-depth-silent.md`**: a widget parameter applied past depth 32 lowers to
+  nothing, silently; it should fault as a recursive widget past sixteen levels does.
