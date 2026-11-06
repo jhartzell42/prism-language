@@ -119,6 +119,14 @@ else
     failed+=(chess-cpp-canvas)
     echo "FAILED chess-cpp-canvas: chess compiled to C++ does not call or link the canvas World ($out/chess-cpp.log)"
 fi
+# a hosted row's `document` overrides the base `Row`'s (both const): a call through the base
+# would otherwise get the base's empty document, silently
+if [ -f "$out/chess-cpp.log" ] && ! grep -q 'hides overloaded virtual' "$out/chess-cpp.log"; then
+    echo "ok cpp-row-document: a row's document overrides Row::document"
+else
+    failed+=(cpp-row-document)
+    echo "FAILED cpp-row-document: an emitted row's document hides Row::document ($out/chess-cpp.log)"
+fi
 
 if [ ${#failed[@]} -gt 0 ]; then
     echo "failed: ${failed[*]}"
