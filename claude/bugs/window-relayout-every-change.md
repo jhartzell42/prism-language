@@ -47,8 +47,20 @@ placing, and each moved place's entry) is 12 M, and the paint is the damaged box
 - **One re-stack per level of the moved path:** the column's result is computed again from
   its 1,001 children's plans (each reused), and the placing pass visits each plan to cull
   what does not show: linear, a few million instructions.
-- **The 1,000 button labels** recomputed when the selection moves, each reading
-  `$table.?selected` (doubt SE), and the routing of a press through the column's 1,001
+- **Every row is listed for the patch pass on any write of the hold its `for` reads.**
+  The emitted `Main::op` writes `$table` and marks every row of the `for` over
+  `$table.rows` dirty, whether or not that row's entry moved; each marked row recomputes
+  the elements it shows (the table's row: its label, its button, its row) and compares
+  each with what it held. About half of the 11.6 M a select, swap or remove spends in the
+  patch pass (a profile of repeated selects; the proportions are approximate, the profile
+  also holds the setup). The rest: the window's placing over the column's 1,001 plans
+  (about a quarter), the scene made a `Pod` (about a tenth), the moved rows' layout.
+  The table's rows read the selection through `@Distinct` now, which stops the label's
+  value moving and not the row being marked: a select's count did not move with it.
+  `!Updated` over a row's entry firing in every row is the language's (pick UD,
+  tests/conformance/sem-ch04-row-entry); skipping an unmoved row's patch would not touch
+  it. Not done: Jimmy is deciding.
+- **The routing of a press** (doubt SE was the labels, above), and the routing of a press through the column's 1,001
   filters (doubt RF).
 - **MT** A new word's extent reaches its leaf's layout a tick after the word (each leaf
   measures its own texts, in a gathered `for`), so a layout with a new word runs twice and

@@ -4,7 +4,7 @@
 # bench/building/run.sh, compiling prismc/ to its own language and compiling
 # tests/conformance/sem-ch07-normalize (wall time, peak memory, instructions
 # retired); and the GUI table under each target's canvas World (bench/gui/run.sh, which
-# also runs GTK and Cuis beside it).
+# also runs GTK beside it).
 #
 #   bench/running/run.sh                       # both configurations, the GUI table too
 #   CONFIGS="rust-release" GUI=0 NORM=5 bench/running/run.sh
@@ -93,7 +93,7 @@ fi
         echo "## The GUI table as the workload"
         echo
         echo "bench/gui/RESULTS.md's timings (prism-cpp is the table compiled to C++ at -O3, prism-rust"
-        echo "compiled to Rust as a release build; GTK and Cuis beside them for scale):"
+        echo "compiled to Rust as a release build; GTK beside them for scale):"
         echo
         sed -n '/^| Operation |/,/^$/p' bench/gui/RESULTS.md | head -12
     fi

@@ -14,7 +14,8 @@ the C++-built prismc emits C++ and make builds it. Nothing mixes the two.
   from clean: prismc's emit plus cargo's or make's build, for `prismc/`, chess and the
   table, at cargo release against clang -O3 (Jimmy: the shipping configurations only).
 - **`gui/`: the table**, js-framework-benchmark's operations, written four ways: Prism
-  (C++ and Rust), C with GTK 3, Cuis Smalltalk on the Cog VM.
+  (C++ and Rust), C with GTK 3, Cuis Smalltalk on the Cog VM. The scripted runs leave
+  Cuis out (Jimmy: its creates take minutes a run); `bench/gui/run.sh cuis` still runs it.
 
 ```
 make bootstrap bootstrap-cpp     # the two fixed points that do the emitting
