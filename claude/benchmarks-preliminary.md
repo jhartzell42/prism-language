@@ -96,3 +96,77 @@ Medians in ms, peak resident memory in MB; Prism only.
   instructions against 0.71 G), so `bench/gui/prism/check.sh`'s second check still fails;
   GTK selects in 1.1 ms. What is left needs a design:
   `claude/bugs/window-relayout-every-change.md`.
+
+## Instructions by phase, and the cheap runtime fixes
+
+`bench/gui/prism/check.sh` now prints each timed step's instructions by phase on both
+targets, through `prism_rtl`'s probe (`world::probe` in Rust, `probe` in `world.hpp`):
+the runtime marks propagation, the build/swap/leave walks, the patch pass and the
+document diff inside a tick, and the canvas World marks performing the outputs, the
+compact round and painting. Each thread's instructions between its marks go to the phase
+it was in (macOS's `thread_selfcounts`; the C++ World ticks on its big stack's thread and
+paints on the main one); `other` is the rest of the process's (`proc_pid_rusage`), its
+other threads. One run each, on Jimmy's Mac with agents building (load 8 to 16), at the
+merged tree with both seeds rebuilt (`885c89d` merged), the fixes below in. Millions of
+instructions:
+
+| target | op | ticks | propagate | build | patch | diff | perform | paint | loop + other | total | ÷ create1k | paint ÷ create1k |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| C++ | create1k | 7 | 19.5 | 270.1 | 179.4 | 24.6 | 7.9 | 141.6 | 7.3 | 650.4 | 1.000 | 0.218 |
+| C++ | update10th | 8 | 33.2 | 195.3 | 165.3 | 4.9 | 1.3 | 143.2 | 4.8 | 548.0 | 0.843 | 0.220 |
+| C++ | select | 8 | 12.5 | 192.2 | 164.9 | 3.8 | 0.8 | 143.3 | 5.5 | 523.0 | 0.804 | 0.220 |
+| C++ | swap | 7 | 12.7 | 192.3 | 83.8 | 3.0 | 0.4 | 143.3 | 4.4 | 440.0 | 0.677 | 0.220 |
+| C++ | remove | 7 | 11.9 | 143.8 | 163.6 | 2.9 | 0.5 | 143.5 | 5.2 | 471.3 | 0.725 | 0.221 |
+| C++ | clear | 7 | 11.5 | 79.5 | 4.7 | 26.9 | 4.5 | 138.5 | 7.2 | 272.8 | 0.419 | 0.213 |
+| Rust | create1k | 7 | 47.3 | 152.0 | 194.2 | 20.3 | 13.3 | 157.9 | 4.5 | 589.6 | 1.000 | 0.268 |
+| Rust | update10th | 8 | 23.8 | 107.7 | 185.1 | 3.5 | 3.0 | 155.2 | 2.1 | 480.4 | 0.815 | 0.263 |
+| Rust | select | 8 | 5.4 | 104.9 | 184.5 | 2.5 | 2.2 | 154.9 | 2.2 | 456.7 | 0.775 | 0.263 |
+| Rust | swap | 7 | 5.6 | 105.7 | 93.9 | 2.1 | 1.1 | 154.9 | 1.6 | 364.9 | 0.619 | 0.263 |
+| Rust | remove | 7 | 5.2 | 88.5 | 183.9 | 2.2 | 1.2 | 155.5 | 1.2 | 437.7 | 0.742 | 0.264 |
+| Rust | clear | 7 | 5.1 | 39.4 | 6.0 | 21.2 | 6.4 | 139.5 | 1.0 | 218.6 | 0.371 | 0.237 |
+
+The compact round is under 0.05 M in every step and is left out.
+
+- **Painting alone is a fifth to a quarter of create1k** (C++ 143 M of 650 M, Rust 155 M of
+  590 M), whatever the step: clearing the table paints as much as selecting a row. The
+  canvas Worlds paint the whole 900 by 800 window (at the backing scale) once per settled
+  state, so while they do, no small change can come under a tenth of create1k: the bar is
+  out of reach by painting alone, by a factor of 2.2 in C++ and 2.6 in Rust (doubt PB).
+- **The rest of a select is the build walks and the patch pass:** in C++ 192 M of build
+  (the 1,000 row documents and the host documents rebuilt, and every builder's walk) and
+  165 M of patch (the layouts), against create1k's 270 M and 179 M; Rust spends less in the
+  builds (105 M) and more in the patch (185 M). Propagation, the diff and the World's
+  perform are each under 3% of the step.
+- **Swap's patch is half the others'** (84 M, 94 M): one layout where the others lay out
+  twice (`claude/bugs/window-relayout-every-change.md`, doubt MT: no new word, so no second
+  layout).
+
+**The cheap runtime fixes** (claude/incremental-host-document.md, "Without a route"): `==`
+on a `Map` or an `Array` answers at once for a node both sides share once its values are
+known to equal themselves, a NaN staying unequal; and a structural dynamic's equal snapshot
+keeps the value it had. Before is the same tree with those two runtime changes reverted
+(the probe in both). Instructions from `check.sh`, one run each; times from
+`bench/gui/run.sh prism-cpp prism-rust`, `RUNS=5 WARMUP=1`, medians in ms (load 7 to 9
+before, 12 to 17 after):
+
+| op | C++ before | C++ after | C++ ratio | Rust before | Rust after | Rust ratio | C++ ms before → after | Rust ms before → after |
+|---|---|---|---|---|---|---|---|---|
+| create1k | 649.2 M | 650.4 M | 1.002 | 590.9 M | 589.6 M | 0.998 | 53.3 → 49.5 | 43.9 → 44.2 |
+| update10th | 549.9 M | 548.0 M | 0.997 | 483.9 M | 480.4 M | 0.993 | 46.1 → 45.3 | 38.0 → 38.5 |
+| select | 517.4 M | 523.0 M | 1.011 | 459.3 M | 456.7 M | 0.994 | 43.2 → 41.8 | 36.8 → 36.7 |
+| swap | 440.4 M | 440.0 M | 0.999 | 367.8 M | 364.9 M | 0.992 | 37.8 → 36.2 | 29.8 → 29.4 |
+| remove | 469.9 M | 471.3 M | 1.003 | 436.9 M | 437.7 M | 1.002 | 40.7 → 38.3 | 35.2 → 34.4 |
+| clear | 275.0 M | 272.8 M | 0.992 | 217.1 M | 218.6 M | 1.007 | 25.1 → 23.6 | 17.9 → 17.8 |
+
+(replace1k 63.2 → 61.0 and 52.8 → 52.1, create10k 423 → 407 and 345 → 348, append1k 66.1 →
+63.5 and 55.1 → 55.4 ms; peak memory unchanged within 3 MB.)
+
+- **They change nothing measurable here:** every ratio is within 1% of 1, and the times
+  move within the runs' spread. The comparisons they make cheap are not where the steps
+  spend: each host document is rebuilt as a new map every tick (no node of it shared with
+  the last snapshot), so its comparison still walks every entry; what the fixes save is
+  the walk into each entry's shared children, a small part of the build phase. They are
+  the precondition the note gives them (route B's per-place snapshot keeps the map's
+  nodes, and then a comparison costs the changed paths), not a gain of their own.
+- **Not done, because it is not the runtimes':** a builder skipping when its source is the
+  node it last built from is emitted code (`ForBuild`, prismc's printer templates).

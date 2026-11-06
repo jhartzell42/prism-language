@@ -6,17 +6,18 @@ his; every other call is Claude's, with the alternative refused, and Jimmy overr
 editing. Book citations are to `prism-notes/claude/prism/`: Semantics (01), Compiler (07),
 Platform (08). Line numbers in emitted code are of `prism compile bench/gui/prism
 examples/chess/window` by the installed bootstrap prismc at 8127014 (`program.rs`, Rust;
-`program/mod.cpp` has the same functions); nothing was run but that compile.*
+`program/mod.cpp` has the same functions); the phase table is `bench/gui/prism/check.sh`'s,
+on the merged tree with both seeds rebuilt (`885c89d`).*
 
 ## The question
 
 - **The GUI table** (`bench/gui/`, js-framework-benchmark's operations over 1,000 rows,
   each an id label, a select button and a remove button) runs a small change in 32 to
-  48 ms where GTK takes 1 to 60, and `bench/gui/prism/check.sh`'s second check fails:
-  update10th, select, swap and remove each retire 0.6 to 1.2 times the instructions of
-  Create 1,000 rows (C++ select 0.53 G against 0.71 G), where the bar is under a tenth
+  46 ms where GTK takes 1 to 60, and `bench/gui/prism/check.sh`'s second check fails:
+  update10th, select, swap and remove each retire 0.6 to 0.85 times the instructions of
+  Create 1,000 rows (C++ select 523 M against 650 M), where the bar is under a tenth
   (`claude/bugs/window-relayout-every-change.md`; `claude/benchmarks-preliminary.md`,
-  "After the window fix").
+  "Instructions by phase, and the cheap runtime fixes").
 - **The bug note's measurement of one C++ select:** two whole-window layouts (about 5 ms
   each), one walk of every label for the word set, five whole host-document rebuilds
   (`host_1_doc_now` in three ticks, `host_2_doc_now` in two, about 1,000 places each),
@@ -37,6 +38,19 @@ examples/chess/window` by the installed bootstrap prismc at 8127014 (`program.rs
   on caching, "of course we want to cache multiply-read lets" (tests/cost/README.md).
 
 ## The cost today: one select, tick by tick
+
+**Measured by phase** (`check.sh`'s table, millions of instructions; the merged tree with
+both seeds rebuilt and the runtime fixes below in):
+
+| target | ticks | propagate | build | patch | diff | perform | paint | the rest | total | create1k |
+|---|---|---|---|---|---|---|---|---|---|---|
+| C++ | 8 | 12.5 | 192.2 | 164.9 | 3.8 | 0.8 | 143.3 | 5.5 | 523.0 | 650.4 |
+| Rust | 8 | 5.4 | 104.9 | 184.5 | 2.5 | 2.2 | 154.9 | 2.2 | 456.7 | 589.6 |
+
+The build walks (ticks n+3 to n+6 below: the row documents, the host documents, the
+builders' diffs) and the patch pass (the two layouts and the word set) are two thirds of
+the step; painting one frame is the rest but a few percent, and is 0.22 (C++) and 0.26
+(Rust) of create1k by itself (doubt PB).
 
 The press is tick n. Names are the emitted ones: `Main` is the root node (the window, the
 table's block and the column, all inlined), `MainRow` a row of the table's `for`
@@ -82,11 +96,13 @@ the scene's draws).
 - **`host_1_doc_now`** (program.rs:838): one entry, the column's element, whose
   `children = Claimed (host_2_doc)` folds `IsUi` over 1,001 values (hosting.prism:21),
   plus a visit of `host_2`'s 1,001 `HostRow`s, none of which forwards.
-- **Each snapshot is then compared whole** (`Snapshot::take_compared`, cells.rs:304): the
-  Rust `Map`'s `==` walks both maps entry by entry (collections/map.rs:469); the C++
-  `Map`'s returns at once when the roots are one node (collections.hpp:319) and walks
-  otherwise. `Snapshot::put` (cells.rs:232, cells.hpp:233) stores the new value even when
-  it equals the old, so an unchanged structure loses its sharing with the last tick.
+- **Each snapshot is then compared whole** (`Snapshot::take_compared`): `==` on a `Map` or
+  an `Array` answers at once for a node both sides share (once its values are known to
+  equal themselves, a NaN staying unequal) and walks the rest in order. A host document
+  is a new map each tick, no node of it shared with the last snapshot, so its comparison
+  walks every entry; each entry's children, shared with the row's kept snapshot, answer at
+  once. An equal take keeps the snapshot it had, so an unchanged structure keeps its
+  sharing with the last tick.
 - **Tick n+6, the window** (examples/chess/window/widgets.prism:120): `$kids <- @Distinct
   (Claimed $elems)` compares the new children with the held ones (one `==` of the column
   element, its 1,001-entry children map walked to the first difference); `$sizes <- for
@@ -101,13 +117,14 @@ the scene's draws).
   The lag is the Metrics `for`'s: its gathered `$(Text ==> Extent)` is a structural
   dynamic, published at n+7 (`rows_all_publish`), so layout one used `▶` at zero width
   and layout two corrects it (the bug note's doubt MT).
-- **Painting:** one 900 by 800 frame per settled state, whatever the change.
+- **Painting:** one 900 by 800 frame per settled state, whatever the change: 143 M
+  instructions in C++, 155 M in Rust, as much for clearing the table as for a select.
 
-What this adds to the bug note's list (derived from the code, not measured): the 1,000-row
-marking and row documents at n+3, the whole-key-set diffs of every builder in four ticks,
-the whole-map comparisons, the routing fan-out at n+1, and the patch pass over the dirtied
-rows. I could not apportion the two thirds of the samples the bug note does not name
-among these without running the instrumented driver, which opens a window.
+What this adds to the bug note's list (derived from the code; the phase table measures
+them only as a group): the 1,000-row marking and row documents at n+3, the whole-key-set
+diffs of every builder in four ticks, and the whole-map comparisons are the build phase;
+the routing fan-out at n+1 is in propagation (under 3% of the step); the patch pass over
+the dirtied rows is in the patch phase with the layouts.
 
 ### Why each is proportional to the table
 
@@ -137,7 +154,7 @@ among these without running the instrumented driver, which opens a window.
     document moves two ticks after the column's (prismc/README.md, ST: "The dynamic's
     value after m is S(m−1)"). Doubt LG asks whether the books mean that.
   - Every builder of a node runs on every build of the node, and diffs whole key sets.
-  - `==` walks whole maps; an equal snapshot is replaced, losing its sharing.
+  - A host document is a new map each tick, so `==` on it walks every entry.
   - `Port::fire` copies the subscriber list before calling it (cells.rs:385).
 - **The window library's own structure:**
   - Layout is one function of the whole tree (`$placed`); so is the word set
@@ -310,19 +327,23 @@ invisible" (Semantics ch. 11), and a cached pure call is sharing.
 
 ## Without a route: values that keep their sharing (no transcript changes)
 
-- **`Snapshot::put` keeps the old value when the new one is equal** (cells.rs:232,
-  cells.hpp:233), so an unchanged row's document and every element built from it keep
-  their nodes across ticks.
-- **`==` on maps and arrays returns at once on one node at any depth**, in both runtimes
-  (Rust has no shortcut at all today; C++ only at the root).
-- **A builder skips when its source is the node it last built from** (`ForBuild`, both
-  printers): `row_ops_2_build` in ticks n+4 to n+6 reads the cached source, unchanged.
-- **Each is a constant factor, not a design;** with B they make a document compare cost
-  its changed paths.
+- **Built, both runtimes:** `Snapshot::take_compared` keeps the snapshot that stood when
+  the new one is equal to it, so an unchanged row's document and every element built from
+  it keep their nodes across ticks; `==` on maps and arrays answers at once for a node
+  both sides share at the same place, at any depth, once the node knows its values equal
+  themselves (a shared NaN stays unequal: `Float` `==` is IEEE equality, Type System ch.
+  2, so pointer equality is never the answer). Safe by Semantics ch. 11: "sharing is
+  invisible"; the same values, the same moves, the same firings.
+- **Measured, they move nothing** (`claude/benchmarks-preliminary.md`: every instruction
+  ratio within 1% of 1): the host documents are new maps each tick, so the comparisons
+  still walk every entry. With B they make a document compare cost its changed paths.
+- **Not built: a builder skips when its source is the node it last built from**
+  (`ForBuild`, both printers): `row_ops_2_build` in ticks n+4 to n+6 reads the cached
+  source, unchanged. It is emitted code, in prismc's templates.
 
 ## Recommendation
 
-**B and C, after the runtime fixes above; D held for Jimmy's reading; A refused.**
+**B and C (the runtime fixes above are in); D held for Jimmy's reading; A refused.**
 
 - **Why both:** the bug note's own figures put one whole layout at about 5 ms against
   create1k's 55 ms, so a single whole layout is already about the bar; the layout reader
@@ -344,15 +365,11 @@ invisible" (Semantics ch. 11), and a cached pure call is sharing.
   walk, the 1,000 labels that read the selection, the routing fan-out, the patch visits).
   The bar is a ratio, so a small constant per row may pass; "a change costs the change"
   it is not.
-- **The smallest first step, measured on `check.sh`:** split the check's instruction
-  count by phase (the propagation, the construction step, the patch pass with the layout,
-  and the World's painting), in the drivers and the canvas Worlds' `Hooks`. It decides the
-  order and whether the bar is reachable at all (doubt PB). The first change after it is
-  the runtime fixes, then C, then B.
+- **The first step, done:** `check.sh` splits each step's instructions by phase (the table
+  in "The cost today"). Painting alone is 0.22 to 0.26 of create1k, so the bar is not
+  reachable while the World paints the whole frame (doubt PB); C and B together could
+  bring the build and patch phases down, not painting.
 - **Size (Claude's estimates, not counted):**
-  - The phase split: about 60 lines in each driver and World.
-  - The runtime fixes: about 150 lines over `collections/map.rs`, `collections/array.rs`,
-    `cells.rs`, `collections.hpp`, `cells.hpp`, and the two `ForBuild` templates.
   - C: the prelude line; about 80 lines of lowering (the builtin, the checker's refusal);
     about 80 lines per runtime; about 30 lines of window library.
   - B: about 250 lines of lowering (`static.prism`'s getter, `finish.prism`'s
@@ -391,8 +408,8 @@ invisible" (Semantics ch. 11), and a cached pure call is sharing.
 
 ## Migration order
 
-1. The phase split in the check; rerun the bug note's measurement with it.
-2. The runtime fixes; the cost tests and the check, rerun.
+1. The phase split in the check: done.
+2. The runtime fixes (but the builder's skip, which is prismc's): done, no measurable gain.
 3. C: Appendix B and ch. 11 first, then the builtin, the runtimes, the window library.
 4. B: gap DM's next step, then its cost test.
 5. The check rerun; the bug note updated or removed.
@@ -401,11 +418,10 @@ invisible" (Semantics ch. 11), and a cached pure call is sharing.
 
 ## Doubts
 
-- **PB** (Claude's) Painting one frame may itself be near a tenth of create1k: the bug
-  note gives it a seventh of a select's samples, about 6.5 ms against create1k's 55
-  (derived from time, not instructions). If so the bar is unreachable while the World
-  paints the whole frame. Count the program's instructions only, or the whole process as
-  today?
+- **PB** (Claude's) Painting one frame is 143 M instructions in C++ and 155 M in Rust,
+  0.22 and 0.26 of create1k (measured by phase), so the bar is unreachable while the World
+  paints the whole frame. Count the program's phases only (propagate, build, patch, diff),
+  or the whole process as today?
 - **CA** `Cached` as the second new prelude piece after `@Distinct`: yes, or no and live
   with a whole layout per change?
 - **CK** (Claude's) `Cached F, k, x`, one slot per key; or `Memo F, x`, keyed by the whole
