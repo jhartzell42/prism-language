@@ -1082,11 +1082,12 @@ Test World; `tests/compiled/run.sh --target cpp` runs every program so.
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
-- **The C++ bootstrap:** prismc itself compiles to C++ (about 163,000 lines: 38 source
-  files and 73 headers, pick MH) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
+- **The C++ bootstrap:** prismc itself compiles to C++ (185,385 lines: 63 units and 280
+  headers, picks MH and SF) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
   takes it to its fixed point and checks its Rust against the Rust prismc's
-  (bootstrap/README.md). clang++ -O3 builds it in about 100 s wall (1,003 s CPU) with
-  twelve jobs on an M2 Pro; g++ -O1 took about 14 minutes on two cores, one file at a time.
+  (bootstrap/README.md). clang++ -O3 builds it in about 165 s wall (1,310 s CPU) with
+  twelve jobs on an M2 Pro beside other agents' builds (pick SF's table); g++ -O1 took
+  about 14 minutes on two cores, one file at a time.
 
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 
