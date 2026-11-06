@@ -25,7 +25,7 @@ rows := OrderedCollection new.
 selected := nil.
 list := LinearLayoutMorph newColumn separation: 2.
 showLabel := [:r |
-	(r at: 4) label: (r == selected ifTrue: [(String with: (Character codePoint: 16r25B6)), ' ', (r at: 2)] ifFalse: [r at: 2])].
+	(r at: 4) label: (r == selected ifTrue: [(UnicodeString with: (Character codePoint: 16r25B6)), ' ', (r at: 2)] ifFalse: [r at: 2])].
 addRow := [| s1 s2 s3 r rowMorph labelButton |
 	s1 := nextSeed value: seed. s2 := nextSeed value: s1. s3 := nextSeed value: s2. seed := s3.
 	r := Array new: 4.

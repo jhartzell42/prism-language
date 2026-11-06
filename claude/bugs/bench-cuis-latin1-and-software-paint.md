@@ -1,19 +1,8 @@
-# The Cuis table crashes on `▶`, and on Linux its times measure software painting
+# On Linux the Cuis table's times measure software painting
 
 *Written by Claude on the claude-self-hosting branch, 5 November 2026; subject to change.
-Two problems in `bench/gui/cuis/`, found running the bench on the cloud box (Linux,
+One problem in `bench/gui/cuis/`, found running the bench on the cloud box (Linux,
 Xvfb, the Linux Cog VM the Cuis repository ships beside the Mac one).*
-
-## Select crashes
-
-- **The scenario:** `cuis/run.sh select` stops at the timed click with
-  `Error: String only store Latin-1 Characters`.
-- **The cause:** the select marker `▶` (U+25B6) is concatenated into a label held in a
-  plain `String`, which in Cuis holds Latin-1 only.
-- **The fix:** build the marked label as a `UnicodeString` (or the marker as a
-  `UnicodeString` and the concatenation from it), so the label can hold it. Check that
-  `update10th`'s `' !!!'` path and the row labels still compare equal for the driver's
-  check after the change.
 
 ## On Linux under Xvfb, the times follow how much of the window gets repainted
 
