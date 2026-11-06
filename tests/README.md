@@ -7,7 +7,10 @@
   (`sem-ch06-birds/birds/`, `mod-nested/shapes/`). Its README says how they are named.
 - **`compiled/run.sh`**: every program above, plus chess and prismc's lexer and parser
   checks (the test modules of prismc/syntax/lexer and prismc/syntax/parser), compiled by
-  `prismc` and run under the Test World, byte-equal to `.expected`.
+  `prismc` and run under the Test World, byte-equal to `.expected`. No transcript over
+  10 KB is kept in the repository (Jimmy; `run.sh` refuses one): a test module without
+  its `.expected` prints its transcript and passes on its own checks, as chess's board
+  and window library do.
 - **`checker/`**: the checker's own tests: every corpus program checks clean, every
   program under `neg/` gives exactly its `.expected` diagnostic; `run.sh` runs them. A
   directory under `pos/` or `neg/` is one program, a tree, its `.expected` beside it.

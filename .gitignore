@@ -1,2 +1,6 @@
 target/
 .vscode/
+# iCloud's duplicates of files it failed to merge ("name 2.ext"): never part of the tree
+* [0-9]
+* [0-9].*
+* [0-9][0-9].*
