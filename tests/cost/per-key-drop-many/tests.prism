@@ -1,0 +1,47 @@
+# Forty keys removed, one per click: declarations of the program beside it.
+emit Ui.*
+use App.*
+use Ui.*
+
+test forty_drops, @rows:
+    build
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
