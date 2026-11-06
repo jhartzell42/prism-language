@@ -142,6 +142,8 @@ type Sk = choice:
     SkMachine Text, Text, Nat
     # `@Distinct`: its hold, written only by a value unequal to the one it holds.
     SkDistinct Text
+    # `@PerKey`: its `prism_rtl::PerKey`, whose outer is written only when a key came or went.
+    SkPerKey Text
 
 # A place of the block: its position, its level as the program's `crate::Elem` (its
 # snapshot, `level_pod` for the document), and when a live field reads a dynamic its getter

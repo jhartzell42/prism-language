@@ -46,7 +46,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
-use crate::cells::{Dynamic, Event, Handle, Live, Port, Snapshot, Stamped};
+use crate::cells::{Dynamic, Event, Handle, Hold, Live, Port, Snapshot, Stamped};
 use crate::collections::Map;
 use crate::cx::{Cx, Done, Node};
 use crate::pod::{Fault, Path, Pod, Segment, ToPod};
@@ -271,6 +271,131 @@ impl<E: Clone + PartialEq + 'static> Default for HostDoc<E> {
 impl<E> PartialEq for HostDoc<E> {
     fn eq(&self, other: &HostDoc<E>) -> bool {
         self.places.len() == other.places.len() && self.places.iter().zip(other.places.iter()).all(|((k1, e1), (k2, e2))| k1 == k2 && Rc::ptr_eq(e1, e2))
+    }
+}
+
+/// `$each <- @PerKey $m` (Semantics Appendix B; round 9 PK, Jimmy's): a dynamic map taken
+/// apart by key, `$(k ==> v)` into `$(k ==> $v)`, the shape a host's document has. The
+/// outer is a hold the node's readers read, written only when a key came or went; each
+/// key's inner is a hold of its own with its own update event, the same dynamic for as long
+/// as the key stays (keys are identity, ch. 4), written and fired only when a write of `$m`
+/// gives the key a value unequal (`==`) to the one it holds (`@Distinct`, per key). A new
+/// key's inner starts at its value and fires nothing in its birth tick (R7); a key that
+/// leaves drops out of the outer and its inner keeps its last value for the row that
+/// still reads it in the leaving tick (R8), and a key that comes back gets a new inner. A
+/// write of `$m` costs one `==` of the maps (at once when the map is the one last taken,
+/// sharing being invisible, ch. 11) and otherwise one `==` per kept key.
+pub struct PerKey<K, V> {
+    outer: RefCell<Option<Hold<Map<K, Dynamic<V>>>>>,
+    inners: RefCell<Map<K, PerKeyInner<V>>>,
+    last: RefCell<Map<K, V>>,
+}
+
+/// One key's inner: its hold and update event, and the dynamic over them the outer holds.
+#[derive(Clone)]
+struct PerKeyInner<V> {
+    cell: Rc<(Hold<V>, Rc<Port<()>>)>,
+    dynamic: Dynamic<V>,
+}
+
+impl<V: Clone + 'static> PerKeyInner<V> {
+    fn new(v: V, cx: &Cx) -> PerKeyInner<V> {
+        let cell = Rc::new((Hold::new(v, cx), Rc::new(Port::new())));
+        let held = cell.clone();
+        let dynamic = Dynamic { owner: None, read: Rc::new(move |cx: &Cx| held.0.get(cx)), updates: cell.1.clone() };
+        PerKeyInner { cell, dynamic }
+    }
+}
+
+impl<K: Ord + Clone + 'static, V: Clone + PartialEq + 'static> Default for PerKey<K, V> {
+    fn default() -> PerKey<K, V> {
+        PerKey { outer: RefCell::new(None), inners: RefCell::new(Map::new()), last: RefCell::new(Map::new()) }
+    }
+}
+
+impl<K: Ord + Clone + 'static, V: Clone + PartialEq + 'static> PerKey<K, V> {
+    pub fn new() -> PerKey<K, V> {
+        PerKey::default()
+    }
+    /// At the build: an inner per key of the source, each at its value, and the outer over
+    /// them. Once; a read before the build has done it.
+    pub fn start(&self, source: Map<K, V>, cx: &Cx) {
+        if self.outer.borrow().is_some() {
+            return;
+        }
+        let inners: Map<K, PerKeyInner<V>> = source.iter().map(|(k, v)| (k.clone(), PerKeyInner::new(v.clone(), cx))).collect();
+        let outer: Map<K, Dynamic<V>> = inners.iter().map(|(k, i)| (k.clone(), i.dynamic.clone())).collect();
+        *self.outer.borrow_mut() = Some(Hold::new(outer, cx));
+        *self.inners.borrow_mut() = inners;
+        *self.last.borrow_mut() = source;
+    }
+    /// The outer at the read point; before the build, set up from `source` first.
+    pub fn outer(&self, cx: &Cx, source: impl FnOnce() -> Map<K, V>) -> Map<K, Dynamic<V>> {
+        if self.outer.borrow().is_none() {
+            self.start(source(), cx);
+        }
+        self.outer.borrow().as_ref().expect("`@PerKey` is set up").get(cx)
+    }
+    /// `$m` written with `source` (its update event's value): each kept key whose value
+    /// changed has its inner written and fired, the new keys get inners, and the outer is
+    /// written when a key came or went. Answers whether the outer moved.
+    pub fn written(&self, source: Map<K, V>, cx: &mut Cx) -> bool {
+        if self.outer.borrow().is_none() {
+            self.start(source, cx);
+            return false;
+        }
+        if source == *self.last.borrow() {
+            return false;
+        }
+        // one walk of both in key order: the kept keys compared, the new ones given inners
+        let old = self.inners.borrow().clone();
+        let mut fired: Vec<Rc<Port<()>>> = Vec::new();
+        let mut born: Vec<(K, PerKeyInner<V>)> = Vec::new();
+        let mut moved = false;
+        let mut olds = old.iter().peekable();
+        for (k, v) in source.iter() {
+            // the keys that left before this one
+            while olds.peek().is_some_and(|(ok, _)| *ok < k) {
+                olds.next();
+                moved = true;
+            }
+            match olds.peek() {
+                Some((ok, inner)) if *ok == k => {
+                    if inner.cell.0.newest() != *v {
+                        inner.cell.0.set(v.clone(), cx);
+                        fired.push(inner.cell.1.clone());
+                    }
+                    olds.next();
+                }
+                _ => {
+                    born.push((k.clone(), PerKeyInner::new(v.clone(), cx)));
+                    moved = true;
+                }
+            }
+        }
+        if olds.next().is_some() {
+            moved = true;
+        }
+        // a key came or went: the inners by the source's keys, and the outer over them
+        if moved {
+            let mut born = born.into_iter().peekable();
+            let next: Vec<(K, PerKeyInner<V>)> = source
+                .keys()
+                .map(|k| match old.get(k) {
+                    Some(i) => (k.clone(), i.clone()),
+                    None => born.next().expect("a new key has its inner"),
+                })
+                .collect();
+            let outer: Map<K, Dynamic<V>> = next.iter().map(|(k, i)| (k.clone(), i.dynamic.clone())).collect();
+            *self.inners.borrow_mut() = next.into_iter().collect();
+            self.outer.borrow().as_ref().expect("`@PerKey` is set up").set(outer, cx);
+        }
+        *self.last.borrow_mut() = source;
+        for p in fired {
+            let done = p.fire((), cx);
+            cx.keep(done);
+        }
+        moved
     }
 }
 

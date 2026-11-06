@@ -51,7 +51,7 @@ pub fn same_keys<K: Ord + Clone + PartialEq, V: Clone, W: Clone>(a: &Map<K, V>, 
 }
 pub use cx::{Cx, Done, Later, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
-pub use host::{AnswerOf, Blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, Rows, Scope, Sink, Supplied, Supplier, Watch, dynamic_blueprint, dynamics_pod, dynamics_ports, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
+pub use host::{AnswerOf, Blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, PerKey, Rows, Scope, Sink, Supplied, Supplier, Watch, dynamic_blueprint, dynamics_pod, dynamics_ports, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};
 pub use num::{Int, Nat};
 pub use pod::{Error, Fault, FromPod, Path, Pod, Segment, ToPod};
 pub use print::{Printer, Show, show, show_text};

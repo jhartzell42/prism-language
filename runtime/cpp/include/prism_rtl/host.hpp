@@ -284,6 +284,122 @@ struct HostDoc {
     }
 };
 
+/// `$each <- @PerKey $m` (Semantics Appendix B; round 9 PK, Jimmy's): a dynamic map taken
+/// apart by key, `$(k ==> v)` into `$(k ==> $v)`, the shape a host's document has. The
+/// outer is a hold the node's readers read, written only when a key came or went; each
+/// key's inner is a hold of its own with its own update event, the same dynamic for as long
+/// as the key stays (keys are identity, ch. 4), written and fired only when a write of `$m`
+/// gives the key a value unequal (`==`) to the one it holds (`@Distinct`, per key). A new
+/// key's inner starts at its value and fires nothing in its birth tick (R7); a key that
+/// leaves drops out of the outer and its inner keeps its last value for the row that
+/// still reads it in the leaving tick (R8), and a key that comes back gets a new inner. A
+/// write of `$m` costs one `==` of the maps (at once when the map is the one last taken,
+/// sharing being invisible, ch. 11) and otherwise one `==` per kept key. The Rust
+/// runtime's `PerKey` is the same.
+template <class K, class V>
+class PerKey {
+public:
+    /// At the build: an inner per key of the source, each at its value, and the outer over
+    /// them. Once; a read before the build has done it.
+    void start(Map<K, V> source, const Cx& cx) const {
+        if (outer_) return;
+        std::vector<std::pair<K, Inner>> inners;
+        std::vector<std::pair<K, Dynamic<V>>> outer;
+        inners.reserve(source.size());
+        outer.reserve(source.size());
+        for (const auto& [k, v] : source) {
+            Inner i = inner(v, cx);
+            outer.emplace_back(k, i.dynamic);
+            inners.emplace_back(k, std::move(i));
+        }
+        outer_.emplace(Map<K, Dynamic<V>>::from_sorted(std::move(outer)), cx);
+        inners_ = Map<K, Inner>::from_sorted(std::move(inners));
+        last_ = std::move(source);
+    }
+    /// The outer at the read point; before the build, set up from `source` first.
+    template <class F>
+    Map<K, Dynamic<V>> outer(const Cx& cx, F source) const {
+        if (!outer_) start(source(), cx);
+        return outer_->get(cx);
+    }
+    /// `$m` written with `source` (its update event's value): each kept key whose value
+    /// changed has its inner written and fired, the new keys get inners, and the outer is
+    /// written when a key came or went. Answers whether the outer moved.
+    bool written(Map<K, V> source, Cx& cx) {
+        if (!outer_) {
+            start(std::move(source), cx);
+            return false;
+        }
+        if (source == last_) return false;
+        // one walk of both in key order: the kept keys compared, the new ones given inners
+        Map<K, Inner> old = inners_;
+        std::vector<Rc<Port<Unit>>> fired;
+        std::vector<Inner> born;
+        bool moved = false;
+        auto o = old.begin();
+        for (const auto& [k, v] : source) {
+            // the keys that left before this one
+            while (o != old.end() && (*o).first < k) {
+                ++o;
+                moved = true;
+            }
+            if (o != old.end() && (*o).first == k) {
+                const Inner& i = (*o).second;
+                if (!(i.cell->hold.newest() == v)) {
+                    i.cell->hold.set(v, cx);
+                    fired.push_back(i.cell->updates);
+                }
+                ++o;
+            } else {
+                born.push_back(inner(v, cx));
+                moved = true;
+            }
+        }
+        if (o != old.end()) moved = true;
+        // a key came or went: the inners by the source's keys, and the outer over them
+        if (moved) {
+            std::vector<std::pair<K, Inner>> next;
+            std::vector<std::pair<K, Dynamic<V>>> outer;
+            next.reserve(source.size());
+            outer.reserve(source.size());
+            std::size_t b = 0;
+            for (const auto& [k, v] : source) {
+                const Inner* kept = old.get(k);
+                Inner i = kept ? *kept : born.at(b++);
+                outer.emplace_back(k, i.dynamic);
+                next.emplace_back(k, std::move(i));
+            }
+            inners_ = Map<K, Inner>::from_sorted(std::move(next));
+            outer_->set(Map<K, Dynamic<V>>::from_sorted(std::move(outer)), cx);
+        }
+        last_ = std::move(source);
+        for (const auto& p : fired) cx.keep(p->fire(Unit{}, cx));
+        return moved;
+    }
+
+private:
+    /// One key's hold and update event.
+    struct Cell {
+        Hold<V> hold;
+        Rc<Port<Unit>> updates;
+    };
+    /// One key's inner: its cell, and the dynamic over it the outer holds.
+    struct Inner {
+        Rc<Cell> cell;
+        Dynamic<V> dynamic;
+        bool operator==(const Inner& o) const { return cell.get() == o.cell.get(); }
+    };
+    static Inner inner(const V& v, const Cx& cx) {
+        Rc<Cell> cell = make_rc<Cell>(Cell{Hold<V>(v, cx), make_rc<Port<Unit>>()});
+        auto read = make_rc<const std::function<V(const Cx&)>>([cell](const Cx& cx) { return cell->hold.get(cx); });
+        return Inner{cell, Dynamic<V>{nullptr, read, cell->updates}};
+    }
+    // mutable as a cell's state is (Rust's `RefCell`): a read before the build sets it up
+    mutable std::optional<Hold<Map<K, Dynamic<V>>>> outer_;
+    mutable Map<K, Inner> inners_;
+    mutable Map<K, V> last_;
+};
+
 /// The way back into a child's place: a typed answer, delivered now.
 template <class A>
 using Sink = std::function<Done(const A&, Cx&)>;
