@@ -349,7 +349,10 @@ fn FlattenMethods sk:
     let dynGens = Filter wx.gens, \|gd| (Len (Filter wx.snaps, \|sn| sn.builder == gd.name)) > 0
     let moved = Each dynGens, \|gd|
         let marks = Fold (Filter wx.flattens, \|fl| fl.generation == gd.name), [[]], \|acc, fl| Append acc, (HoldWritten sk, "{fl.name}_inner")
-        let fired = DoIfLet (PaCtor "Some", [[PaBind "d"]]), (XMethod (XMethod (XField XSelf, "{gd.name}_result_live"), "borrow", [[]]), "as_ref", [[]]), [[(DoExpr (XMethod (XMethod (XMethod (XField (XVar "d"), "updates"), "fire", [[XUnit, XCx]]), "ok", [[]]))]], [[]]
+        let live = XMethod (XMethod (XField XSelf, "{gd.name}_result_live"), "borrow", [[]]), "as_ref", [[]]
+        let port = XField (XVar "d"), "updates"
+        let fire = XMethod (XMethod port, "fire", [[XUnit, XCx]]), "ok", [[]]
+        let fired = DoIfLet (PaCtor "Some", [[PaBind "d"]]), live, [[(DoExpr fire)]], [[]]
         MethDef(name="{gd.name}_result_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Push marks, fired), tail=(XUnit), doc="The current generation's result moved: what reads a `@Flatten` over it reads it again, and the dynamic kept for it fires its update event for whoever follows it outside this node.")
     Append adopts, moved
 
