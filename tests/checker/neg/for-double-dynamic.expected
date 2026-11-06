@@ -1,0 +1,5 @@
+tests/checker/neg/for-double-dynamic.prism:11: error[mark-stack]: `$$d` shows `$$`, a dynamic of a dynamic; a `for` over `$(k ==> $v)` binds the value under the row's key, which follows a replaced dynamic (Semantics ch. 4)
+        for k, $$d <- $each:
+               ^^^
+  fix: write `$d`, and read it where `@Flatten $$d` was
+1 error

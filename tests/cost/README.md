@@ -26,3 +26,10 @@ under-twice bar means the same under each; the absolute counts differ between co
   not every row's (Semantics Appendix B, `@PerKey`; round 9 PK). Over the plain `for k, $v
   <- $m`, every row's `$v` fires on every write (pick UD), and forty clicks cost forty
   times the rows.
+
+- `per-key-drop-one/`, `per-key-drop-many/`: the same `for k, $v <- $each:` over `@PerKey`
+  of a 2,000-key map, each row's label costly to send, the map written with one key removed
+  per click, once and forty times. Forty must cost under twice one: the outer moves, and the
+  `for`'s walk over the keys finds every kept key's dynamic the one its row was built from,
+  so no kept row is woken or patched; a click costs the walk (one comparison per key) and
+  the removed row's leaving (Semantics ch. 4, ruling FV).
