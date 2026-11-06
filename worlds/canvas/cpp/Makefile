@@ -9,8 +9,8 @@
 # The tests: test_canvas (no display), and on Linux xvfb_smoke (a window under xvfb-run,
 # clicked through XTest), on macOS macos_smoke (a Cocoa window, pressed through Hooks),
 # and damage_smoke (a window stepped through ten scenes through Hooks, each frame checked
-# against a full repaint; on Linux it needs a DISPLAY and otherwise says so and passes),
-# all run by `check`.
+# against a full repaint; on Linux under the DISPLAY set, else under `xvfb-run -a`), all
+# run by `check`.
 
 CXX ?= g++
 CONFIG ?= default
@@ -40,6 +40,11 @@ APP_FLAGS :=
 FRAMEWORKS :=
 SMOKE := xvfb_smoke
 LEAKS := 1
+# damage_smoke needs a display: the one set, else an Xvfb of its own through xvfb-run,
+# which must be installed (a test that cannot run is a failure, not a pass).
+ifeq ($(DISPLAY),)
+XVFB := $(if $(shell command -v xvfb-run 2>/dev/null),xvfb-run -a,$(error damage_smoke needs a display: set DISPLAY or install xvfb (apt install xvfb)))
+endif
 endif
 PKG_CFLAGS := $(shell pkg-config --cflags $(PKGS))
 PKG_LIBS := $(shell pkg-config --libs $(PKGS)) $(FRAMEWORKS)
@@ -81,7 +86,7 @@ test:
 check: $(BUILD)/canvas_tests $(BUILD)/$(SMOKE) $(BUILD)/damage_smoke
 	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/canvas_tests
 	$(BUILD)/$(SMOKE)
-	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/damage_smoke
+	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(XVFB) $(BUILD)/damage_smoke
 
 lib: $(LIB)
 
