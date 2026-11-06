@@ -10,3 +10,7 @@ families the Worlds answer: `ui.prism`, `gui.prism`, `fs.prism`, `process.prism`
   builtins are in `prismc/emit/rust/prelude/` and `prismc/emit/cpp/prelude/`.
 - **Changing a signature here changes the language** a program sees; the books (Semantics
   Appendix B) describe the same prelude.
+- **Widgets with no body** (`@Switch`, `@Flatten`, `@Distinct`, `@PerKey`, the hosts) are
+  builtins of the lowering (prismc/lower/node/static.prism and switch.prism, with their
+  state in the runtimes' `prism_rtl`); the checker reads only their signatures, so a
+  `where` on one (`@PerKey`'s `v: ^Eq`) is checked like any other.

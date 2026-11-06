@@ -387,9 +387,11 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   every node, which doubles ast.prism's forty expression forms and has to follow every
   change to them.
 - **BG Check order in a block.** Holds first (a hold's start value is where a block most
-  often says what its names are), then `let`s and local functions, then the rest in page
-  order, every name pre-bound to its marked type. The dependency order is computed for the
-  typed program, not used for checking (gap DG).
+  often says what its names are), then `let`s and local functions, then the rest in their
+  dependency order among themselves (ties and cycles in page order), every name pre-bound
+  to its marked type: a `for` above the bind of the map it runs over is checked with the
+  map's type (`pos/bind-read-above`). The holds and the `let`s are not ordered by
+  dependency (gap DG).
 - **FD A field of a record nothing has decided yet waits.** When several records have the
   field, its type is a fresh variable, read once a later line decides the record, and
   `ambiguous` at the end of the definition (ch. 5's principle: defer what a later line can
@@ -870,8 +872,8 @@ What the checker does not do yet, each with Claude's first ruling.
   a `mismatch` (`neg/supplier-not-polymorphic`). Only element outputs: `fn (fn Nat -> b)
   -> unit` still takes `\|n| Show n` (`pos/rank-one-callback`). Explicit type arguments
   are never rigid.
-- **DG Binding groups.** Blocks are checked in BG's order, not dependency order, so a `let`
-  used above its line is used at its monomorphic pre-bound type, and mutually dependent
+- **DG Binding groups.** Blocks are checked in BG's order, whose holds and `let`s are not
+  in dependency order, so a `let` used above its line is used at its monomorphic pre-bound type, and mutually dependent
   `let`s are not generalized together. *First ruling:* check in the dependency order the
   typed program already computes.
 - **SU Prompt-cycle summaries** are per block, not computed bottom-up over the call graph
@@ -1898,6 +1900,17 @@ ruling taken (Claude's).
   build to `$x`'s value, written by `$x`'s `!Updated` only when the value differs
   (`SkDistinct`), read as `$x` before the build sets it (`sem-ch07-distinct`; the checker
   asks `^Eq`, `distinct-needs-eq`).
+- **PK `@PerKey`.** `$each <- @PerKey $m` (Jimmy, round 9 PK) is a builtin of the
+  lowering (`PerKeyLine`): a `prism_rtl::PerKey` field, set up at the build from `$m`'s
+  value (a read before the build sets it up first), written by `$m`'s `!Updated`
+  (`SkPerKey`). The runtime walks the new map against the inners it holds: a kept key whose
+  value differs by `==` has its inner written and fired; a new key gets an inner at its
+  value; only a key that came or went writes the outer, so only then are its readers
+  marked. A row's `@Flatten $$d` follows its inner (`EntryFlatten`). A name `@Distinct`,
+  `@PerKey` or `@Flatten` binds is pre-bound as a widget's result (`IsGetterBuiltin`), so a
+  line above reads its getter (`sem-appB-per-key`, `sem-ch04-bind-read-above`; the
+  checker asks `^Eq`, `per-key-needs-eq`; the cost pair `per-key-one-edit`,
+  `per-key-many-edits`).
 
 ### Strings: what is copied
 

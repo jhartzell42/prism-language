@@ -140,12 +140,20 @@ separate pass over the token stream was not in this work.
   Each window is in sRGB, so Core Animation no longer converts every frame on the CPU
   (125 M of the 145 M a C++ frame cost). Only C++ on X11 presents just the damage; macOS
   and the Rust World present the whole frame.
-- **A select costs 24.5 M instructions in C++ and 33 M in Rust** (create1k 689 M and
-  540 M), 1.3 M and 8.8 M of it painting; 3.2 ms and 5.3 ms on the clock (GTK about
-  1.1 ms). It was 166 M and 177 M painting the whole frame, and 494 M and 436 M with the
-  flat document (claude/benchmarks-preliminary.md, "Painting only the damage").
-  `bench/gui/prism/check.sh` reports the phase table and fails on none (Jimmy threw out
-  the bar of a tenth). What remains is `claude/bugs/window-relayout-every-change.md`.
+- **A select costs 20.6 M instructions in C++ and 31 M in Rust** (create1k 632 M and
+  533 M), 1.4 M and 12.7 M of it painting, nine ticks (`bench/gui/prism/check.sh`, which
+  reports the phase table and fails on none; Jimmy threw out the bar of a tenth). It was
+  25.7 M and 35.3 M before the table's rows went over `@PerKey`, 166 M and 177 M painting
+  the whole frame, and 494 M and 436 M with the flat document. What remains is
+  `claude/bugs/window-relayout-every-change.md`.
+- **`@PerKey`** (Jimmy, round 9 PK: "A combinator that turns `$(k ==> v)` into `$(k ==>
+  $v)` ... that requires `v: ^Eq`"; branch `claude-per-key`): `$each <- @PerKey $m` in the
+  prelude, the lowering (`PerKeyLine`) and both runtimes (`prism_rtl::PerKey`). The outer
+  fires only when a key comes or goes, each key's inner only when its value changes by
+  `==`; a row of `for k, $$d <- $each:` reads its own with `@Flatten $$d`, in the tick of
+  the write (no tick added). The plain `for` is unchanged (pick UD). Pinned by
+  `sem-appB-per-key`, the cost pair `per-key-one-edit`/`per-key-many-edits` and the
+  checker's `per-key-needs-eq`; the table's rows use it.
 - **Jimmy's rulings:** no `Cached` prelude function and no hidden runtime cache; one tick
   per level (every host level and every gathered `for`), no route D.
 - **The books' sentences that change** with the type are listed in the report of the

@@ -4,32 +4,31 @@
 A performance report on what the window library and the compiled hosts still do per
 change, after the host document became `$(Path ==> $Elem c)`
 (claude/incremental-host-document.md) and the canvas Worlds began painting only the damage
-of a new scene: the programs are right, and a small change no longer lays out, documents
+of a new scene, and the table's rows read their values through `@PerKey`: the programs are right, and a small change no longer lays out, documents
 or paints the whole table, but some of it is still proportional to the table.*
 
 ## The scenario
 
-`bench/gui/prism/check.sh` on Jimmy's Mac (`claude/benchmarks-preliminary.md`, "Painting
-only the damage"), millions of instructions, one run each, with the canvas Worlds painting
-only the damage of a new scene:
+`bench/gui/prism/check.sh` on Jimmy's Mac, millions of instructions, one run each, with the
+canvas Worlds painting only the damage of a new scene and the table's rows over `@PerKey`
+of its rows (`bench/gui/prism/app.prism`):
 
 | target | op | ticks | build | patch | paint | total | ÷ create1k |
 |---|---|---|---|---|---|---|---|
-| C++ | create1k | 8 | 421.2 | 30.4 | 19.3 | 688.6 | 1.000 |
-| C++ | update10th | 9 | 14.5 | 12.6 | 2.7 | 41.7 | 0.061 |
-| C++ | select | 9 | 6.3 | 11.7 | 1.3 | 24.5 | 0.036 |
-| C++ | swap | 9 | 7.3 | 11.7 | 1.3 | 25.4 | 0.037 |
-| C++ | remove | 8 | 89.8 | 11.7 | 17.1 | 125.3 | 0.182 |
-| Rust | create1k | 8 | 248.9 | 29.0 | 42.1 | 540.0 | 1.000 |
-| Rust | update10th | 9 | 12.0 | 12.9 | 16.1 | 75.1 | 0.139 |
-| Rust | select | 9 | 4.6 | 12.1 | 8.8 | 33.3 | 0.062 |
-| Rust | swap | 9 | 5.6 | 11.9 | 8.7 | 36.0 | 0.067 |
-| Rust | remove | 8 | 29.3 | 10.9 | 28.6 | 80.3 | 0.149 |
+| C++ | create1k | 8 | 422.2 | 30.1 | 22.6 | 631.6 | 1.000 |
+| C++ | update10th | 9 | 13.7 | 8.4 | 2.7 | 37.8 | 0.060 |
+| C++ | select | 9 | 6.3 | 7.1 | 1.4 | 20.6 | 0.033 |
+| C++ | swap | 9 | 6.5 | 7.1 | 1.3 | 20.9 | 0.033 |
+| C++ | remove | 8 | 90.4 | 11.4 | 18.4 | 130.7 | 0.207 |
+| Rust | create1k | 8 | 248.6 | 28.4 | 38.4 | 532.9 | 1.000 |
+| Rust | update10th | 9 | 11.4 | 9.3 | 14.2 | 49.7 | 0.093 |
+| Rust | select | 9 | 4.6 | 8.0 | 12.7 | 31.1 | 0.058 |
+| Rust | swap | 9 | 4.8 | 8.0 | 12.8 | 31.7 | 0.060 |
+| Rust | remove | 8 | 29.3 | 10.7 | 32.7 | 81.3 | 0.152 |
 
-A select was 494 M (C++) and 436 M (Rust) with the flat document, and 166 M and 177 M with
-the document as a map of dynamics while the Worlds painted the whole frame; no row is laid
-out but the ones that moved, no document of the whole table is built, the patch pass (the
-placing, and each moved place's entry) is 12 M, and the paint is the damaged boxes.
+No row is laid out but the ones that moved, no document of the whole table is built, a
+write of `$table` that leaves a row's value alone does not mark that row for the patch
+pass, and the paint is the damaged boxes.
 
 ## What remains
 
@@ -47,19 +46,19 @@ placing, and each moved place's entry) is 12 M, and the paint is the damaged box
 - **One re-stack per level of the moved path:** the column's result is computed again from
   its 1,001 children's plans (each reused), and the placing pass visits each plan to cull
   what does not show: linear, a few million instructions.
-- **Every row is listed for the patch pass on any write of the hold its `for` reads.**
-  The emitted `Main::op` writes `$table` and marks every row of the `for` over
-  `$table.rows` dirty, whether or not that row's entry moved; each marked row recomputes
-  the elements it shows (the table's row: its label, its button, its row) and compares
-  each with what it held. About half of the 11.6 M a select, swap or remove spends in the
-  patch pass (a profile of repeated selects; the proportions are approximate, the profile
-  also holds the setup). The rest: the window's placing over the column's 1,001 plans
-  (about a quarter), the scene made a `Pod` (about a tenth), the moved rows' layout.
-  The table's rows read the selection through `@Distinct` now, which stops the label's
-  value moving and not the row being marked: a select's count did not move with it.
-  `!Updated` over a row's entry firing in every row is the language's (pick UD,
-  tests/conformance/sem-ch04-row-entry); skipping an unmoved row's patch would not touch
-  it. Not done: Jimmy is deciding.
+- **Every row still hears a write of `$table`** through its selected flag, `$mine <-
+  @Distinct ($table.?selected == (? slot))`: 1,000 small comparisons a write, and two rows'
+  labels move on a select. A row's value reaches it through `@PerKey` and is marked only
+  when it changed.
+- **A structural change marks every row for the patch pass** (remove, create, clear): a
+  key that came or went writes `@PerKey`'s outer, and every row of the `for` over it reads
+  the outer, to check whether its entry became another dynamic (`@Flatten`'s adoption,
+  `RowPlaceReads`). Under `@PerKey` a kept key's entry is the same dynamic for as long as
+  the key stays, so the check never adopts; its pass over 1,000 rows is most of remove's
+  11.4 M patch. Not done: skipping it needs the lowering to know that the source's
+  entries are stable per key (a `@PerKey` outer or a host document).
+- **The rest of a select's 7.1 M patch pass:** the window's placing over the column's
+  1,001 plans, the scene made a `Pod`, the two moved rows' layout.
 - **The routing of a press** through the column's 1,001 filters (doubt RF).
 - **MT** A new word's extent reaches its leaf's layout a tick after the word (each leaf
   measures its own texts, in a gathered `for`), so a layout with a new word runs twice and
@@ -78,5 +77,6 @@ placing, and each moved place's entry) is 12 M, and the paint is the damaged box
   the table (both pass); then the table of each step's instructions by phase, with the
   ratios, reported.
 - **`tests/cost/run.sh`**: a `let` read by ten places costs one computation; a builder over
-  the source it last built from costs nothing (both pass).
+  the source it last built from costs nothing; forty one-key edits of a map under
+  `@PerKey` cost one row's work each (all pass).
 - **The bench:** `bench/gui/run.sh prism-cpp prism-rust`.
