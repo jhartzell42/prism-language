@@ -252,6 +252,14 @@ private:
         }
         return make(std::move(kv), std::move(l), std::move(r));
     }
+    /// A balanced tree of `es[lo, hi)`, entries in ascending key order: one node each.
+    static Ptr built(std::vector<std::pair<K, V>>& es, std::size_t lo, std::size_t hi) {
+        if (lo == hi) return nullptr;
+        std::size_t mid = lo + (hi - lo) / 2;
+        Ptr l = built(es, lo, mid);
+        Ptr r = built(es, mid + 1, hi);
+        return make(value_type(std::move(es[mid].first), std::move(es[mid].second)), std::move(l), std::move(r));
+    }
     static Ptr put(const Ptr& n, const K& k, const V& v) {
         if (!n) return make(value_type(k, v), nullptr, nullptr);
         if (k < n->kv.first) return balance(n->kv, put(n->left, k, v), n->right);
@@ -390,6 +398,14 @@ public:
 
     const_iterator begin() const { return const_iterator(root_.get()); }
     const_iterator end() const { return const_iterator(); }
+
+    /// The map of entries given in strictly ascending key order, built balanced at once (a
+    /// node per entry, no key compared): what a map of a map's entries, key by key, is.
+    static Map from_sorted(std::vector<std::pair<K, V>> es) {
+        Map m;
+        m.root_ = built(es, 0, es.size());
+        return m;
+    }
 
     friend bool operator==(const Map& a, const Map& b) {
         if (a.size() != b.size()) return false;

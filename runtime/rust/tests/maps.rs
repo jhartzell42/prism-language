@@ -235,3 +235,20 @@ fn maps_of_maps_compare_shared_inner_maps_at_once() {
     let (eq, k) = compared(|| a == b);
     assert!(eq && k <= BOUNDED, "two maps of ten shared inner maps (in a tuple, as a record holds them) compared {k} entries");
 }
+
+#[test]
+fn a_map_collected_in_key_order_is_the_map_inserted_one_by_one() {
+    for n in [0usize, 1, 2, 3, 64, 65, 300, BIG] {
+        let built: Map<usize, usize> = (0..n).map(|k| (k, k * 2)).collect();
+        let mut inserted = Map::new();
+        (0..n).for_each(|k| _ = inserted.insert(k, k * 2));
+        assert!(built == inserted && built.len() == n, "{n} entries in order");
+        assert!((0..n).all(|k| built.get(&k) == Some(&(k * 2))));
+        let mut grown = built.clone();
+        grown.insert(n, 1);
+        assert_eq!(grown.len(), n + 1, "a built map takes inserts");
+    }
+    // out of order, and with a key twice: inserted, the last one standing
+    let mixed: Map<u8, u8> = [(3, 0), (1, 1), (3, 2)].into_iter().collect();
+    assert!(mixed.len() == 2 && mixed.get(&3) == Some(&2) && mixed.get(&1) == Some(&1));
+}

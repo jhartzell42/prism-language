@@ -228,11 +228,20 @@ auto fmap(const Array<T>& xs, F f) {
 template <class K, class V, class F>
 auto fmap(const Map<K, V>& m, F f) {
     using R = std::decay_t<std::invoke_result_t<F, const std::pair<const K, V>&>>;
-    Map<std::decay_t<std::tuple_element_t<0, R>>, std::decay_t<std::tuple_element_t<1, R>>> out;
+    using K2 = std::decay_t<std::tuple_element_t<0, R>>;
+    using V2 = std::decay_t<std::tuple_element_t<1, R>>;
+    // keys that come out in ascending order (a map of a map's entries by the same keys, as
+    // a `for`'s gathered results are) build the map at once; any other order inserts
+    std::vector<std::pair<K2, V2>> es;
+    bool sorted = true;
     for (const auto& e : m) {
         R r = f(e);
-        out.insert(std::get<0>(r), std::get<1>(r));
+        if (!es.empty() && !(es.back().first < std::get<0>(r))) sorted = false;
+        es.emplace_back(std::move(std::get<0>(r)), std::move(std::get<1>(r)));
     }
+    if (sorted) return Map<K2, V2>::from_sorted(std::move(es));
+    Map<K2, V2> out;
+    for (auto& [k, v] : es) out.insert(std::move(k), std::move(v));
     return out;
 }
 template <class T, class F>

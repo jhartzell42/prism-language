@@ -76,12 +76,13 @@ type Part = choice:
 derive ^Eq, ^Show
 
 # A laid-out element, as its row ends on it: its kind, the room its parent gave it, its
-# children's (the row's own `for` over them, by path), a leaf's measured texts, and its
-# layout in that room. A parent that lays a child in another room (flex, stretch, a grid's
-# cells) lays it again from this.
+# chain of paths from the window, its children's (the row's own `for` over them, by path), a
+# leaf's measured texts, and its layout in that room. A parent that lays a child in another
+# room (flex, stretch, a grid's cells) lays it again from this.
 type Res = record:
     kind: Kind
     room: Room
+    chain: [Path]
     kids: Path ==> Res
     sizes: Text ==> Extent
     plan: Plan
@@ -139,10 +140,9 @@ fn TextExtent sizes, t = Or sizes[t], (Extent 0.0, 0.0)
 Padded: fn Extent, Float -> Extent
 fn Padded e, p = Extent e.w + 2.0 * p, e.h + 2.0 * p
 
-Kids: fn (Path ==> Res) -> [((Path, Res))]
-fn Kids cs = Fold (Keys cs), [[]], \|acc, k| match cs[k]:
-    ? r: Push acc, ((k, r))
-    nil: acc
+# a container's children in their paths' order (each knows its own chain)
+Kids: fn (Path ==> Res) -> [Res]
+fn Kids cs = Values cs
 
 # the place at the end of a chain, the path a test clicks by
 ?Innermost: fn [Path] -> ?Path
@@ -309,11 +309,11 @@ fn LayImage src, paint, room, chain = Plan (Fit room, (Extent cell, cell)), (PIm
 # ---- a child's layout in a room: its row's own when it is the room its row was laid in,
 # else laid again from its result
 
-PlanIn: fn Res, Room, [Path] -> Plan
-fn PlanIn r, room, chain = if room == r.room: r.plan else: LayRes r, room, chain
+PlanIn: fn Res, Room -> Plan
+fn PlanIn r, room = if room == r.room: r.plan else: LayRes r, room
 
-LayRes: fn Res, Room, [Path] -> Plan
-fn LayRes r, room, chain = LayKind r.kind, r.sizes, r.kids, room, chain
+LayRes: fn Res, Room -> Plan
+fn LayRes r, room = LayKind r.kind, r.sizes, r.kids, room, r.chain
 
 # The room a container lays its children in first, from its own: what each child's row is
 # laid in (`@Laid`), so the container reuses its children's layouts where that room stands.
@@ -358,24 +358,24 @@ fn ExtentOf down, m, c = if down: Extent c, m else: Extent m, c
 PointOf: fn Bool, Point, Float, Float -> Point
 fn PointOf down, p, m, c = if down: Point p.x + c, p.y + m else: Point p.x + m, p.y + c
 
-FixedMain: fn Bool, [((Path, Res))], [Plan], Nat -> Float
+FixedMain: fn Bool, [Res], [Plan], Nat -> Float
 fn FixedMain down, kids, natural, i = match kids[i]:
-    ? ((ignore, r)): if (FlexOf r) > 0.0: 0.0 else: MainOf down, (Or natural[i], unplanned).size
+    ? r: if (FlexOf r) > 0.0: 0.0 else: MainOf down, (Or natural[i], unplanned).size
     nil: 0.0
 
-Final: fn [((Path, Res))], [Plan], Nat, Bool, Float, Float, [Path], Room -> Plan
-fn Final kids, natural, i, down, free, weights, chain, room = match kids[i]:
-    ? ((k, r)) if (FlexOf r) > 0.0 and weights > 0.0:
+Final: fn [Res], [Plan], Nat, Bool, Float, Float, Room -> Plan
+fn Final kids, natural, i, down, free, weights, room = match kids[i]:
+    ? r if (FlexOf r) > 0.0 and weights > 0.0:
         let m = Ratio (free * (FlexOf r)), weights
-        PlanIn r, (RoomFor down, m, m, 0.0, (CrossMax down, room)), (Push chain, k)
+        PlanIn r, (RoomFor down, m, m, 0.0, (CrossMax down, room))
     ? ignore: Or natural[i], unplanned
     nil: unplanned
 
-Restretch: fn [((Path, Res))], [Plan], Nat, Bool, Float, [Path] -> Plan
-fn Restretch kids, sized, i, down, crossSize, chain = match kids[i]:
-    ? ((k, r)):
+Restretch: fn [Res], [Plan], Nat, Bool, Float -> Plan
+fn Restretch kids, sized, i, down, crossSize = match kids[i]:
+    ? r:
         let m = MainOf down, (Or sized[i], unplanned).size
-        PlanIn r, (RoomFor down, m, m, crossSize, crossSize), (Push chain, k)
+        PlanIn r, (RoomFor down, m, m, crossSize, crossSize)
     nil: unplanned
 
 StackStep: fn Bool, Float, Align, Float, Point, Rect, ?[Path], ((Float, Placed)), Plan -> ((Float, Placed))
@@ -393,21 +393,27 @@ fn StackAt down, spacing, align, crossSize, plans, p, v, ?focus:
     let ((ignore, placed)) = Fold plans, ((0.0, nothing)), \|acc, l| StackStep down, spacing, align, crossSize, p, v, ?focus, acc, l
     placed
 
-LayStack: fn (Path ==> Res), Room, [Path], Bool, Float, Align -> Plan
-fn LayStack cs, room, chain, down, spacing, align:
+LayStack: fn (Path ==> Res), Room, Bool, Float, Align -> Plan
+fn LayStack cs, room, down, spacing, align:
     let kids = Kids cs
-    let idx = Indices (Len kids)
     let gaps = spacing * (Max ((Float (Int (Len kids))) - 1.0), 0.0)
-    let natural = Each kids, \|((k, r))| PlanIn r, (NaturalRoom down, room), (Push chain, k)
-    let fixed = Fold idx, 0.0, \|acc, i| acc + (FixedMain down, kids, natural, i)
-    let weights = Fold kids, 0.0, \|acc, ((ignore, r))| acc + (FlexOf r)
-    let free = if (Bounded (MainMax down, room)) and weights > 0.0: Max ((MainMax down, room) - fixed - gaps), 0.0 else: 0.0
-    let sized = Each idx, \|i| Final kids, natural, i, down, free, weights, chain, room
+    let natural = Each kids, \|r| PlanIn r, (NaturalRoom down, room)
+    let weights = Fold kids, 0.0, \|acc, r| acc + (FlexOf r)
+    # with no flex the natural layouts stand; with it, the fixed length first, then the shares
+    let sized = if weights > 0.0: Flexed kids, natural, down, spacing, gaps, weights, room else: natural
     let crossSize = Fold sized, (if down: room.minW else: room.minH), \|m, l| Max m, (CrossOf down, l.size)
-    let plans = if align == Stretch: Each idx, \|i| Restretch kids, sized, i, down, crossSize, chain else: sized
+    let plans = if align == Stretch: Each (Indices (Len kids)), \|i| Restretch kids, sized, i, down, crossSize else: sized
     let mainSize = (Fold plans, 0.0, \|acc, l| acc + (MainOf down, l.size)) + gaps
     let size = Fit room, (ExtentOf down, mainSize, crossSize)
     Plan size, (PStack down, spacing, align, (CrossOf down, size), plans)
+
+# a stack's children with the free room shared by flex
+Flexed: fn [Res], [Plan], Bool, Float, Float, Float, Room -> [Plan]
+fn Flexed kids, natural, down, spacing, gaps, weights, room:
+    let idx = Indices (Len kids)
+    let fixed = Fold idx, 0.0, \|acc, i| acc + (FixedMain down, kids, natural, i)
+    let free = if Bounded (MainMax down, room): Max ((MainMax down, room) - fixed - gaps), 0.0 else: 0.0
+    Each idx, \|i| Final kids, natural, i, down, free, weights, room
 
 # ---- layers: each child in the whole room, at its frame's anchor and offset; later is on top
 
@@ -416,14 +422,14 @@ fn AnchorOf r = match r.kind:
     KFrame s: ((s.anchor, s.offset))
     otherwise: (((Point 0.0, 0.0), (Point 0.0, 0.0)))
 
-LayerOf: fn Room, [Path], ((Path, Res)) -> ((Point, Point, Plan))
-fn LayerOf room, chain, ((k, r)):
+LayerOf: fn Room, Res -> ((Point, Point, Plan))
+fn LayerOf room, r:
     let ((a, o)) = AnchorOf r
-    ((a, o, (PlanIn r, (Loose room.maxW, room.maxH), (Push chain, k))))
+    ((a, o, (PlanIn r, (Loose room.maxW, room.maxH))))
 
-LayLayers: fn (Path ==> Res), Room, [Path] -> Plan
-fn LayLayers cs, room, chain:
-    let layers = Each (Kids cs), \|kid| LayerOf room, chain, kid
+LayLayers: fn (Path ==> Res), Room -> Plan
+fn LayLayers cs, room:
+    let layers = Each (Kids cs), \|r| LayerOf room, r
     let biggest = Fold layers, (Extent 0.0, 0.0), \|m, ((ignore, ignore, l))| Extent (Max m.w, l.size.w), (Max m.h, l.size.h)
     let size = Fit room, (Extent (if (Bounded room.maxW): room.maxW else: biggest.w), (if (Bounded room.maxH): room.maxH else: biggest.h))
     Plan size, (PLayers layers)
@@ -476,11 +482,11 @@ fn FrameAt s, child, size, p, v, ?focus:
     let flat = Placed (Append bg, inner.draw), inner.hits
     if level: flat else: TurnPlaced (Turn p.x + size.w * 0.5, p.y + size.h * 0.5, s.turn, s.scale), flat
 
-LayFrame: fn FrameSpec, (Path ==> Res), Room, [Path] -> Plan
-fn LayFrame s, cs, room, chain:
+LayFrame: fn FrameSpec, (Path ==> Res), Room -> Plan
+fn LayFrame s, cs, room:
     let pad2 = 2.0 * s.pad
     let outer = FrameRoom s, room
-    let child = LayStack cs, (FrameInner s, room), chain, True, 0.0, Stretch
+    let child = LayStack cs, (FrameInner s, room), True, 0.0, Stretch
     Plan (Fit outer, (Extent child.size.w + pad2, child.size.h + pad2)), (PFrame s, child)
 
 # ---- the grid: equal cells, each the size of the largest child, in the children's path order
@@ -492,14 +498,14 @@ fn GridStep n, cellSize, p, v, ?focus, ((i, placed)), l:
     let at = Point p.x + cellSize.w * column, p.y + cellSize.h * down
     ((i + 1, (Merged placed, (PlaceAt l, at, v, ?focus))))
 
-LayGrid: fn Nat, (Path ==> Res), Room, [Path] -> Plan
-fn LayGrid n, cs, room, chain:
+LayGrid: fn Nat, (Path ==> Res), Room -> Plan
+fn LayGrid n, cs, room:
     let kids = Kids cs
-    let natural = Each kids, \|((k, r))| PlanIn r, (Loose huge, huge), (Push chain, k)
+    let natural = Each kids, \|r| PlanIn r, (Loose huge, huge)
     let cellSize = Fold natural, (Extent 0.0, 0.0), \|m, l| Extent (Max m.w, l.size.w), (Max m.h, l.size.h)
     let rows = RowsFor (Len kids), n
     let size = Fit room, (Extent cellSize.w * (Float (Int n)), cellSize.h * (Float (Int rows)))
-    let plans = Each kids, \|((k, r))| PlanIn r, (Tight cellSize), (Push chain, k)
+    let plans = Each kids, \|r| PlanIn r, (Tight cellSize)
     Plan size, (PGrid n, cellSize, plans)
 
 # how many rows `count` children take, `n` to a row
@@ -519,17 +525,17 @@ fn LayKind k, sizes, cs, room, chain = match k:
     KButton l: LayButton sizes, l, room, chain
     KInput t, c: LayInput sizes, t, c, room, chain
     KImage s, b: LayImage s, b, room, chain
-    KStack down, g, a: LayStack cs, room, chain, down, g, a
-    KLayers: LayLayers cs, room, chain
-    KFrame s: LayFrame s, cs, room, chain
-    KGrid n: LayGrid n, cs, room, chain
+    KStack down, g, a: LayStack cs, room, down, g, a
+    KLayers: LayLayers cs, room
+    KFrame s: LayFrame s, cs, room
+    KGrid n: LayGrid n, cs, room
     KNone: unplanned
 
 # an element's result in the room its parent gave it: what its row ends on
 ResOf: fn Elem, Room, (Path ==> Res), (Text ==> Extent), [Path] -> Res
 fn ResOf e, room, cs, sizes, chain:
     let k = KindOf e
-    Res(kind=k, room=room, kids=cs, sizes=sizes, plan=(LayKind k, sizes, cs, room, chain))
+    Res(kind=k, room=room, chain=chain, kids=cs, sizes=sizes, plan=(LayKind k, sizes, cs, room, chain))
 
 PlaceAt: fn Plan, Point, Rect, ?[Path] -> Placed
 fn PlaceAt l, p, v, ?focus = match l.part:

@@ -51,8 +51,8 @@ fn TopRoom count, size = if count == 1: Loose size.w, size.h else: NaturalRoom T
 
 LayTop: fn (Path ==> Res), Extent -> Plan
 fn LayTop tops, size = match Kids tops:
-    [[((k, r))]]: PlanIn r, (Loose size.w, size.h), [[k]]
-    otherwise: LayStack tops, (Loose size.w, size.h), [[]], True, 0.0, Start
+    [[r]]: PlanIn r, (Loose size.w, size.h)
+    otherwise: LayStack tops, (Loose size.w, size.h), True, 0.0, Start
 
 # the topmost hit under the pointer: the last drawn wins
 ?HitAt: fn [Hit], Point -> ?Hit
