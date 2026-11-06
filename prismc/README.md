@@ -1834,9 +1834,12 @@ ruling taken (Claude's).
   computation `host_k_doc_now` still builds the child's whole document (every place's
   level, every row's) when the child's writes marked it, once in that tick's
   construction step: a tick that moves one of `n` places costs one document of `n`, not
-  `n` documents (`sem-ch09-hosts`, `sem-ch04-row-source`'s hosted test). *Next, if it
-  shows in a profile:* the snapshot updated per place from the child's writes, each
-  place's level recomputed only when its own reads moved.
+  `n` documents (`sem-ch09-hosts`, `sem-ch04-row-source`'s hosted test). The host's rows'
+  builder does nothing when the snapshot is the map it last built from (`ForBuild`,
+  `Map::same`). *Next, by Jimmy's ruling of 6 November 2026:* the document becomes
+  `$(Path ==> $Elem c)`, an outer map that moves when a place comes or goes and one
+  published dynamic per place, so no flat document is built at all
+  (claude/incremental-host-document.md; `sem-ch09-host-doc-entries`, red until then).
 - **SR A `for`'s source is computed once per write behind it.** The block's source getter
   (`{name}_source`, `Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`), which the
   builder and every row's entry read (pick RE), keeps its value in an `rt::Cache`

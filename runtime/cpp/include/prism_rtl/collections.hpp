@@ -335,6 +335,10 @@ public:
 
     std::size_t size() const { return count(root_); }
     bool empty() const { return !root_; }
+    /// Whether the two are one map, the same root node (both empty included): then they
+    /// are equal. No program asks this (Prism has no identity); a builder uses it to skip
+    /// a source it already built from.
+    bool same(const Map& o) const { return root_.get() == o.root_.get(); }
     /// The value at `k`, or null.
     const V* get(const K& k) const {
         for (const Node* n = root_.get(); n;) {

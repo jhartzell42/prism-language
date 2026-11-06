@@ -271,6 +271,16 @@ impl<K, V> Map<K, V> {
     pub fn is_empty(&self) -> bool {
         self.root.is_none()
     }
+    /// Whether the two are one map, the same root node (both empty included): then they
+    /// are equal. No program asks this (Prism has no identity); a builder uses it to skip
+    /// a source it already built from.
+    pub fn same(&self, other: &Self) -> bool {
+        match (&self.root, &other.root) {
+            (None, None) => true,
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
     /// The entries in key order.
     pub fn iter(&self) -> Iter<'_, K, V> {
         let mut it = Iter { stack: Vec::with_capacity(usize::from(height(&self.root))), left: self.len() };
