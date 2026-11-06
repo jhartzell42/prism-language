@@ -671,12 +671,6 @@ impl<E: Clone + PartialEq + 'static, A: Clone + 'static> HostRow<E, A> {
         if self.forwards() { vec![(Path::root().at(0), self.place.clone())] } else { Vec::new() }
     }
 
-    /// The row's own places as levels: what a prelude emitted before the document held
-    /// entries calls (the seeds' prismc, until the seeds are rewritten). Bootstrap only.
-    pub fn document(&self, cx: &Cx) -> Vec<(Path, E)> {
-        if self.forwards() { vec![(Path::root().at(0), self.entry(cx))] } else { Vec::new() }
-    }
-
     /// An enclosing host's typed answer to a place under the row: the forwarded element's,
     /// handed to the child's place now.
     pub fn deliver(&self, at: &[Segment], v: &A, cx: &mut Cx) -> Done {

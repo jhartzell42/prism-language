@@ -601,13 +601,6 @@ public:
         return {};
     }
 
-    /// The row's own places as levels: what a prelude emitted before the document held
-    /// entries calls (the seeds' prismc, until the seeds are rewritten). Bootstrap only.
-    std::vector<std::pair<Path, E>> document(const Cx& cx) const {
-        if (forwards()) return {{Path::root().at(0), entry(cx)}};
-        return {};
-    }
-
     /// An enclosing host's typed answer to a place under the row: the forwarded element's,
     /// handed to the child's place now.
     Done deliver(std::span<const Segment> at, const A& v, Cx& cx) const {
