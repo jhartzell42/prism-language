@@ -11,9 +11,11 @@
 //!
 //! - [`world`]: the [`World`] the tick loop calls, with no display in it.
 //! - [`render`]: a draw list painted onto a pixmap (tiny-skia).
+//! - [`damage`]: a window's frame painted again only where its scene changed.
 //! - [`font`]: the bundled DejaVu Sans, `worlds/canvas/rust/src/font.rs` itself.
 //! - `app`: winit's event loop, the windows and their surfaces (softbuffer).
 
+pub mod damage;
 pub mod font;
 pub mod render;
 pub mod world;
