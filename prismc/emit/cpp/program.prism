@@ -118,12 +118,16 @@ fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at)
 # A builder whose rows' places are a host's document tells the host its child's places came
 # or went (`$(Path ==> $Elem c)`'s outer moves).
 MovedCallCpp: fn Text -> Text
-fn MovedCallCpp m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    this->{m}(cx);"
+fn MovedCallCpp m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    if (!prism_rtl::same_keys(next, old)) this->{m}(cx);"
+
+# A generation's builder: a new generation's places always came.
+GenMovedCallCpp: fn Text -> Text
+fn GenMovedCallCpp m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    this->{m}(cx);"
 
 GenBuildCpp: unbounded fn Cp, Text, GenDef -> Text
 fn GenBuildCpp cp, owner, gd:
     let path = if gd.transparent: "this->path" else: "{CppExpr cp, gd.at}.child(Segment::gen(g))"
-    GenBuildTemplate owner, gd.name, (CppExpr cp, gd.at), path, (CppExpr cp, gd.source), (CppType cp, gd.valueTy), (CppExpr cp, gd.select), (MovedCallCpp gd.moved)
+    GenBuildTemplate owner, gd.name, (CppExpr cp, gd.at), path, (CppExpr cp, gd.source), (CppType cp, gd.valueTy), (CppExpr cp, gd.select), (GenMovedCallCpp gd.moved)
 
 ProgramCpp: unbounded fn Cp, ProgDef, Bool -> Text
 fn ProgramCpp cp, p, fallible:

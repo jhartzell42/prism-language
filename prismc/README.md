@@ -1565,23 +1565,33 @@ Each is Claude's, for Jimmy to overturn.
   `Pos`, a scope and a number (scope 0 the node's own places, scope `k` the child of host
   `k`'s), a hosted position is spelled `place_h{k}_{n}` in names and doc comments, and a
   hosted place emits into no document: it is keyed by its path relative to the child
-  (`Path::root().at(n)`, `PlaceAt`) in the host's document. The owner gets, per host:
-  - the snapshot `host_k_doc_snap`, taken in the construction step from `host_k_doc_now`,
-    every child place as the program's `crate::Elem` (its static places by getter or
-    constant, and under each `for` and `rebuild` of the child the rows' `Row::document`,
-    recursively); the structure itself is `host_k_doc_direct(&self, cx) -> Map<Path,
-    Elem>`, which the host's `for` and its rows' entries read, and the program's `$doc` is
-    the getter `host_k_doc`, a structural dynamic one tick behind (pick ST). The live
-    computation's reads (`dynReads` of `host_k_doc_now`) are everything the child's places,
-    builders, generations and rows read, so a write behind any of them marks the snapshot,
-    lists the build and dirties the host's rows; the owner's places over `$doc` are marked
-    when it is published, `host_k_doc_publish`, the tick after. A child row that writes a
-    hold of its own tells the owner through `document_moved` → `host_k_moved`, which marks
-    the same (`HoldWritten` of `host_k_doc_now`);
-  - the builder `host_k_rows_build`, the ordinary `for` template over the structure, whose rows
+  (`Path::root().at(n)`, `PlaceAt`) in the host's document, `$(Path ==> $Elem c)` (Jimmy,
+  6 November 2026: an outer that moves when a place comes or goes, one dynamic per place
+  that moves when that place's element changes). Each hosted place has its own
+  `prism_rtl::Entry` (`Place.entry`), a field of the node it is in, made before the node
+  (its first-value query hands it to the host), taken at the build in its scope's turn
+  (`BuildSteps`: after the scope's builders, before the host over it builds its rows; a
+  constant place's at once), and again in the patch pass whenever a write behind the place
+  dirtied its node (`EntryTake`), as a World place is sent; a take that moved it dirties the
+  host rows reading the place and publishes the entry's dynamic the tick after (doubt EP).
+  The owner gets, per host:
+  - the snapshot `host_k_doc_snap` of the outer, a `prism_rtl::HostDoc` (each place's
+    dynamic, which the program's `$doc` reads through the getter `host_k_doc`, and each
+    place's entry, which the host's own `for` reads through `host_k_doc_direct`), taken in
+    the construction step from `host_k_doc_now`, which gathers the entries (the child's own
+    places, and under each `for` and `rebuild` of the child the rows' `Row::document`,
+    recursively; a host's own rows give `HostRow::entries`). Nothing a place reads marks
+    it (`dynReads` of `host_k_doc_now` is empty): a builder or generation of the child
+    whose rows came or went calls `host_k_moved` (`ForDef.moved`, `GenDef.moved`; in a
+    hosted row `document_moved`, which its parent carries on), the `HoldWritten` of
+    `host_k_doc_now`, which marks the snapshot and lists the build; it is compared by the
+    entries it holds and published the tick after, `host_k_doc_publish`, where the owner's
+    places over `$doc` are marked and `!Updated $doc` fires (pick ST);
+  - the builder `host_k_rows_build`, the ordinary `for` template over the places, whose rows
     are prism_rtl's `HostRow`s at `hostpos/[p]`, one per child place: built when the key is
-    in the child's document after a tick and not before (R7), kept while it stays, torn down at the end of
-    the tick its key leaves (R8), each marked by the owner's writes as any row (`RowMarks`);
+    in the child's places after a tick and not before (R7), kept while it stays, torn down
+    at the end of the tick its key leaves (R8); a row reads its place's entry as it stands
+    and is dirtied by it (`Entry::watch`), so a forwarded element re-emits in the tick;
   - the typed dispatch `host_k_answer(self: &Rc<Self>, place: &Path, v: &crate::Answer,
     cx) -> Done` from a child place's path into the child's input method, a hold the
     place's element answers (`DynPlaceWrite`, every mark a hold's sink makes), or the row of
@@ -1589,10 +1599,21 @@ Each is Claude's, for Jimmy to overturn.
     tag is a fault of the tick;
   - the field `host_k: Rc<prism_rtl::Host<Elem, Answer, Owner>>`: the supplier (a lowered
     closure or named function over `&Path` and `&Live<crate::Elem>`), the rows, the
-    enclosing host when the line stands in a hosted scope, and the two methods above as
-    function pointers, made in the build before the node and linked to it after
+    enclosing host when the line stands in a hosted scope, and the dispatch above as a
+    function pointer, made in the build before the node and linked to it after
     (`host_k.link(&node)`), since a child place's first value asks the host before the node
     exists.
+
+  A level that holds dynamics (a container whose `children` are its document) has no plain
+  data: `crate::Elem` implements `prism_rtl::Level` (`RowDef.level`, `deep`; a tag holding
+  dynamics emits `level_pod` and `level_ports`, `TagHoldsDyn`), every World place is sent
+  by `level_pod(cx)`, and one whose tag holds dynamics keeps a `prism_rtl::Watch`
+  (`Place.watch`) renewed each time it is sent, so a move of a nested entry sends it again
+  (doubt WD). A tag field holding a dynamic of any shape but `$Elem` or a map of them stops
+  the build with `compile_error!`. Its struct is `PartialEq` for the runtime alone (`eq`,
+  `RuntimeEq`: a dynamic equal only to itself, doubt EQ); the checker refuses `^Eq` and
+  `^Show` there (`derive-dynamic`, and `no-impl` for an `Elem` whose row's tags hold
+  dynamics).
 
   `crate::Answer` is emitted beside `crate::Elem` in `main.rs` (`AnswerEnum`): a variant
   per element tag carrying the tag's output type (a bundle's event part; an open type
@@ -1788,14 +1809,22 @@ ruling taken (Claude's).
   block in their tick. A `rebuild` that hands back a dynamic, `$$a`, is a structural
   dynamic too (`{gen}_result`): the build keeps the newborn generation's result as a
   `Dynamic` (`result_dynamic`, kept in `{gen}_result_live`) and marks the snapshot, which
-  the construction step takes after the generation is built. `@Flatten $$a` keeps its
+  the construction step takes after the generation is built. `@Flatten $$a` of a `for`
+  row's entry (a host document's entry, `EntryFlatten`) keeps its current inner in a
+  `Hold` set at the row's construction from the `value` its builder hands it and follows
+  the inner's update port (`prism_rtl::Follow`, `{name}_moved`, marking what reads it in
+  the tick the inner moved); the block's writes behind the entry patch the row
+  (`RowPlaceReads`), whose patch pass queues an adoption of an entry that is another
+  dynamic (`{name}_adopt`, owed; the shrink check reads `@Flatten` as no larger than its
+  argument, so a widget recurses over its rows' flattened entries). `@Flatten $$a` of a
+  `rebuild`'s dynamic keeps its
   current inner in a `Hold` (`{name}_inner`), adopted at the build and, when the
   `rebuild`'s dynamic is published, among the first firings of the tick after
   (`{name}_adopt`, queued with `Cx::answer_later`, so that tick is owed); its dynamic
   samples the inner at the read point, and a write behind the current generation's result
   marks its readers (`{gen}_result_moved`). So a generation built at n is the `rebuild`'s
   dynamic after n+1 and the `@Flatten`'s from n+2: `sem-ch08-viewer`'s label lags the watch
-  by two ticks, where the book has one (its transcript derives it). `@Flatten` of anything but a
+  by two ticks, where the book has one (its transcript derives it). `@Flatten` of anything but a row's entry or a
   `rebuild`'s dynamic is refused. *Refused:* the whole dynamic a tick late, the host's
   rows included (a host's `for` would build a newborn's row a tick after the child did,
   breaking forwarding parity); the snapshot of n read by samples at n+1 beside the event
@@ -1822,24 +1851,35 @@ ruling taken (Claude's).
   the build, as a value, so it is refused there too; `Lx.inNode` is never set). An element
   applied as a plain value (not a place, not a supplier's argument) is refused too: only a
   host makes a live element. *If otherwise:* lifted functions take `&Cx`.
+- **ID A widget recursing deeper than it is inlined.** A widget function that recurses as
+  deep as its data (Semantics ch. 4) is inlined into each row it builds, a node type per
+  level, sixteen levels deep (`InlineWidget`'s `depth`). At that depth the call gives a
+  result of its type that is never read, and the node there faults at its build
+  (`Fault::too_deep`, `TooDeep`): a tree that deep stops the program loudly, and every
+  shallower one runs (`sem-ch04-widget-recursion-result`; the window's `@Laid` is such a
+  widget, so it lays out containers about a dozen deep below the window). *Next:* the rows
+  of one recursive widget share a node type, built at any depth. A widget parameter applied
+  past depth 32 (`ApplyWidgetParam`) still lowers to nothing.
 - **SU A row's `!Updated` over its block's structural dynamic.** A row hears the block's
   writes through `parent_wrote_{m}` and decides its `!Updated` nodes in its wake; the
   block's publication of a structural dynamic (pick ST) is `HoldWritten` of its name, so
   the row's marks are already in it, but no test pins a row's `!Updated` over one. *First
-  ruling:* refused loudly (`UpdatedGaps`). *Next:* a test, then the refusal goes.
-- **DM The document is built whole once per marked tick.** A host row's entry
-  (`HostRow::entry`), the owner's places over `$doc` and the host's builder read the
-  document's snapshot (pick ST: `host_k_doc` and `host_k_doc_direct`), a persistent map
-  in both runtimes, so a read is a shared copy and a lookup, not a document. The live
-  computation `host_k_doc_now` still builds the child's whole document (every place's
-  level, every row's) when the child's writes marked it, once in that tick's
-  construction step: a tick that moves one of `n` places costs one document of `n`, not
-  `n` documents (`sem-ch09-hosts`, `sem-ch04-row-source`'s hosted test). The host's rows'
-  builder does nothing when the snapshot is the map it last built from (`ForBuild`,
-  `Map::same`). *Next, by Jimmy's ruling of 6 November 2026:* the document becomes
-  `$(Path ==> $Elem c)`, an outer map that moves when a place comes or goes and one
-  published dynamic per place, so no flat document is built at all
-  (claude/incremental-host-document.md; `sem-ch09-host-doc-entries`, red until then).
+  ruling:* refused loudly for the row's own `!Updated` nodes (`UpdatedGaps`, over
+  `UpdatedHears`); a row's builders and `@Flatten`s hearing such a publication are marked
+  like any write (`RowHears` takes the reads behind the row's own builders' sources, so a
+  `for` in a row whose rows have no places rebuilds when the block writes behind it:
+  `sem-ch04-widget-recursion-result`). *Next:* a test, then the refusal goes.
+- **DM The document is `$(Path ==> $Elem c)`, built per place.** (Jimmy, 6 November
+  2026.) No flat document is built: each hosted place's entry is taken in its own node's
+  patch pass when a write behind it dirtied the node, so a tick that moves one of `n`
+  places costs that place's level and its comparison; the outer (`host_k_doc_now`, the
+  places' entries) is gathered only in a tick in which a builder or generation of the child
+  changed its rows, once, `n` entries (`sem-ch09-host-doc-entries`: a value change leaves
+  the outer's `!Updated` silent; `sem-ch09-hosts`, `sem-ch04-row-source`'s hosted test).
+  The host's rows' builder does nothing when the snapshot holds the places it last built
+  from (`ForBuild`, `Map::same`). A program that wants the old flat value writes the `for`
+  that flattens each entry and pays its tick (`sem-ch09-host-updated`,
+  `sem-ch09-host-doc-in-tick`; claude/incremental-host-document.md).
 - **SR A `for`'s source is computed once per write behind it.** The block's source getter
   (`{name}_source`, `Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`), which the
   builder and every row's entry read (pick RE), keeps its value in an `rt::Cache`
@@ -1943,7 +1983,7 @@ naming the construct, and `CompileProgram` reports every distinct one as
 a node, not a value; a lambda supplier is lowered); a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); an element applied as a plain value and a live element's `$` field read in a plain
-function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s,
+function (gap LE), `@Flatten` of a dynamic that is neither a `rebuild`'s nor a `for` row's entry,
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), an `@Machine` whose step is
 not a named function, a local function whose

@@ -340,6 +340,18 @@ Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::optional<H
                     enclosing ? Rc<HostOf<E, A>>(*enclosing) : nullptr, deliver);
 }
 
+/// Whether two maps have the same keys, in order: a builder whose rows came or went.
+template <class K, class V, class W>
+bool same_keys(const Map<K, V>& a, const Map<K, W>& b) {
+    if (a.size() != b.size()) return false;
+    auto j = b.begin();
+    for (const auto& [k, v] : a) {
+        if (!(k == (*j).first)) return false;
+        ++j;
+    }
+    return true;
+}
+
 /// `Entry::new(what)`: a place's entry in its host's document, of the element type the
 /// context gives.
 struct NewEntry {

@@ -1,88 +1,61 @@
-# A small change to the window still costs most of a create1k
+# What a small change to the window still costs
 
-*Written by Claude on the claude-self-hosting branch, 5 November 2026; subject to change.
-A performance bug in what the window library and the compiled hosts do per change: the
-programs are right, and a change to one row costs work proportional to the table.*
+*Written by Claude on the claude-self-hosting branch, 6 November 2026; subject to change.
+A performance report on what the window library and the compiled hosts still do per
+change, after the host document became `$(Path ==> $Elem c)`
+(claude/incremental-host-document.md): the programs are right, and a small change no longer
+lays out or documents the whole table, but some of it is still proportional to the
+table.*
 
 ## The scenario
 
-The GUI table (`bench/gui/`) on Jimmy's Mac, `RUNS=5 WARMUP=1`, on the merged tree with
-both seeds rebuilt (`885c89d` merged, branch `claude-host-cheap`), medians in ms
-(`claude/benchmarks-preliminary.md`, "Instructions by phase, and the cheap runtime
-fixes"; GTK from "After the window fix"):
+`bench/gui/prism/check.sh` on Jimmy's Mac (`claude/benchmarks-preliminary.md`, "The host
+document as a map of dynamics"), millions of instructions, one run each:
 
-| op | Prism C++ | Prism Rust | GTK |
-|---|---|---|---|
-| create1k | 50 | 44 | 277 |
-| update10th | 45 | 39 | 36 |
-| select | 42 | 37 | 1.1 |
-| swap | 36 | 29 | 61 |
-| remove | 38 | 34 | 6.7 |
-
-- **`bench/gui/prism/check.sh` reports** each step's instructions by phase and its ratio
-  to create1k, and fails on no ratio (Jimmy threw out the bar of a tenth): update10th,
-  select, swap and remove each retire 0.6 to 0.85 times the instructions of create1k
-  (C++ select 530 M against 719 M).
-- **What is fixed** (select 797 ms in C++ and 1,651 in Rust before): the window draws only
-  what shows; its word set goes through no `Union`; `$kids <- @Distinct (Claimed $elems)`
-  drops the hosts' unchanged refires, so the window lays out once per change of its
-  document where it laid out six times; a multiply-read `let` is cached; a `for`'s builder
-  touches only the keys that came or left; `==` on maps and arrays answers at once for a
-  shared node, and an equal snapshot keeps its value (neither moves these numbers); a
-  `for`'s builder whose source is the very map it last built from does nothing.
-
-## The mechanism, measured
-
-**By phase** (`check.sh`'s table; millions of instructions, one select):
-
-| target | propagate | build | patch | paint | the rest | total | create1k |
+| target | op | ticks | build | patch | paint | total | ÷ create1k |
 |---|---|---|---|---|---|---|---|
-| C++ | 12.5 | 192.2 | 164.9 | 143.3 | 10.1 | 523.0 | 650.4 |
-| Rust | 5.4 | 104.9 | 184.5 | 154.9 | 7.0 | 456.7 | 589.6 |
+| C++ | create1k | 8 | 420.9 | 30.4 | 141.7 | 747.1 | 1.000 |
+| C++ | update10th | 9 | 14.5 | 12.6 | 141.2 | 181.8 | 0.243 |
+| C++ | select | 9 | 6.3 | 11.7 | 141.3 | 165.9 | 0.222 |
+| C++ | swap | 9 | 7.3 | 11.7 | 141.1 | 166.8 | 0.223 |
+| C++ | remove | 8 | 90.0 | 11.6 | 141.1 | 250.7 | 0.336 |
+| Rust | create1k | 8 | 246.8 | 28.2 | 155.3 | 646.6 | 1.000 |
+| Rust | update10th | 9 | 11.7 | 12.8 | 155.1 | 193.5 | 0.299 |
+| Rust | select | 9 | 4.5 | 11.9 | 155.0 | 176.9 | 0.274 |
+| Rust | swap | 9 | 5.3 | 11.9 | 155.0 | 177.9 | 0.275 |
+| Rust | remove | 8 | 29.0 | 10.9 | 154.9 | 202.9 | 0.314 |
 
-- **Painting** one 900 by 800 frame costs 143 M (C++) and 155 M (Rust) whatever changed,
-  0.22 and 0.26 of create1k: more than twice the bar on its own (doubt PB).
-- **The build walks** (192 M, 105 M): the 1,000 row documents rebuilt because every row
-  reads the selection; the host documents rebuilt whole in several ticks; every builder of
-  the root diffing its whole key set in each of them.
-- **The patch pass** (165 M, 185 M): two whole layouts, one when the row's label reaches
-  the window's document and one a tick later when the new word `▶`'s extent arrives
-  through the Metrics `for` (`$sizes` moves; swap, with no new word, lays out once and
-  spends half), plus the word set: `TextsIn $kids` walks every label.
-
-One C++ select, the emitted code instrumented by hand (each line one computation), as
-measured before the phase split:
-
-- **Two whole layouts,** each over all 1,000 rows' sizes, about 5 ms; only the leaves that
-  show build draw commands.
-- **One whole word set** per change of `$kids`.
-- **Five whole documents:** the window's host rebuilds its child's document
-  (`host_1_doc_now`) in three ticks and the column's (`host_2_doc_now`) in two, a thousand
-  places each, because a host's document is computed live from every place's level when
-  any place below it moved (prismc/README.md, gap DM).
+A select was 494 M (C++) and 436 M (Rust) with the flat document; no row is laid out but
+the ones that moved, no document of the whole table is built, and the patch pass (the
+placing, and each moved place's entry) is 12 M.
 
 ## What remains
 
-Each of the costs above but painting is proportional to the table because the structure it
-reads is one value of the whole tree. Jimmy's ruling of 6 November 2026 changes that value:
-the host document becomes `$(Path ==> $Elem c)`, an outer dynamic that moves when a place
-comes or goes and one dynamic per place. It is designed in
-`claude/incremental-host-document.md` ("The host document as `$(Path ==> $Elem c)`") and
-not built; its failing test is `tests/conformance/sem-ch09-host-doc-entries`. With it the
-window lays out per child, one `for` per box level (each adding the one tick Jimmy's story
-gives a gathered `for`), and a select recomputes the rows that moved plus one re-stack per
-level. Until it is built every number above stands; painting one frame (doubt PB) stays.
+- **Painting one frame** (doubt PB): 141 M in C++, 155 M in Rust, whatever changed, the
+  floor under every small change while the canvas Worlds paint every pixel per settled
+  state (damage regions in the World are refused).
+- **A structural change** (remove, create, clear) gathers the outer of the column's
+  document from every place's entry (3,003 entries), once, and the window re-stacks the
+  column's children: per change, a pass over every row's entry and every row's plan, not
+  over its layout. In C++ it is three times Rust's (remove's build 90 M against 29 M):
+  `HostDoc::insert` puts the entries in one at a time, and C++'s persistent map copies a
+  path per insert where Rust's updates its own nodes in place (a profile of swap, while
+  it still gathered the outer, showed `Map::put` of the outer's two maps on top).
+- **One re-stack per level of the moved path:** the column's result is computed again from
+  its 1,001 children's plans (each reused), and the placing pass visits each plan to cull
+  what does not show: linear, a few million instructions.
+- **The 1,000 button labels** recomputed when the selection moves, each reading
+  `$table.?selected` (doubt SE), and the routing of a press through the column's 1,001
+  filters (doubt RF).
+- **MT** A new word's extent reaches its leaf's layout a tick after the word (each leaf
+  measures its own texts, in a gathered `for`), so a layout with a new word runs twice and
+  an input shows its new text at the old width (`h=8`) for one owed tick
+  (Window.Tests' `a_key_types_its_character` pins it).
 
 ## Doubts
 
 - **TX** `Text: fn Char -> Text` is in the prelude and not in Appendix B, which has no way
   to make a `Char` a text; `@TextInput` needs one.
-- **PB** Painting the whole frame is a fifth to a quarter of create1k by itself, whatever
-  changed: a floor under every small change while the canvas Worlds paint every pixel per
-  settled state (damage regions in the World are refused).
-- **MT** A new word's metrics reach the window a tick after the word, so an input shows
-  its new text at the old width (`h=8`) for one tick (Window.Tests'
-  a_key_types_its_character pins it).
 
 ## Tests and measurement
 

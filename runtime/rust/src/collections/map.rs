@@ -265,6 +265,13 @@ impl<K, V> Map<K, V> {
     pub fn new() -> Self {
         Map::default()
     }
+    /// Whether `other` has this map's keys, in order (its values aside).
+    pub fn same_keys<W>(&self, other: &Map<K, W>) -> bool
+    where
+        K: PartialEq,
+    {
+        self.len() == other.len() && self.keys().eq(other.keys())
+    }
     pub fn len(&self) -> usize {
         count(&self.root)
     }

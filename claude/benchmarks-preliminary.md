@@ -203,3 +203,45 @@ Millions of instructions; the transcripts are unchanged.
 - **What is left is the flat host document** (`claude/incremental-host-document.md`): the
   1,000 row documents and the hosts' whole documents in the build phase, two whole
   layouts in the patch phase, and a whole frame painted.
+
+## The host document as a map of dynamics
+
+`bench/gui/prism/check.sh`, one run each, on Jimmy's Mac (machine shared with nothing
+heavy but this agent's builds), branch `claude-window-cache`: before is `ebaf3cf`, the flat
+document `$(Path ==> Elem c)` with the window laying out the whole tree as one function;
+after is the document as `$(Path ==> $Elem c)` with the window laying out a row per
+element (claude/incremental-host-document.md). Millions of instructions; the compact round
+is under 0.05 M and left out.
+
+| target | op | ticks before → after | build before → after | patch before → after | paint | total before → after | ÷ create1k after |
+|---|---|---|---|---|---|---|---|
+| C++ | create1k | 7 → 8 | 260.5 → 420.9 | 178.5 → 30.4 | 141.7 | 636.4 → 747.1 | 1.000 |
+| C++ | update10th | 8 → 9 | 173.8 → 14.5 | 165.6 → 12.6 | 141.2 | 522.2 → 181.8 | 0.243 |
+| C++ | select | 8 → 9 | 169.0 → 6.3 | 164.5 → 11.7 | 141.3 | 493.7 → 165.9 | 0.222 |
+| C++ | swap | 7 → 9 | 170.7 → 7.3 | 84.0 → 11.7 | 141.1 | 414.2 → 166.8 | 0.223 |
+| C++ | remove | 7 → 8 | 127.3 → 90.0 | 163.8 → 11.6 | 141.1 | 449.1 → 250.7 | 0.336 |
+| C++ | clear | 7 → 8 | 71.9 → 82.0 | 4.6 → 8.3 | 140.5 | 258.8 → 330.8 | 0.443 |
+| Rust | create1k | 7 → 8 | 145.0 → 246.8 | 193.6 → 28.2 | 155.3 | 580.9 → 646.6 | 1.000 |
+| Rust | update10th | 8 → 9 | 88.3 → 11.7 | 184.9 → 12.8 | 155.1 | 461.9 → 193.5 | 0.299 |
+| Rust | select | 8 → 9 | 85.6 → 4.5 | 184.0 → 11.9 | 155.0 | 436.1 → 176.9 | 0.274 |
+| Rust | swap | 7 → 9 | 86.1 → 5.3 | 93.6 → 11.9 | 155.0 | 346.0 → 177.9 | 0.275 |
+| Rust | remove | 7 → 8 | 73.9 → 29.0 | 183.2 → 10.9 | 154.9 | 423.5 → 202.9 | 0.314 |
+| Rust | clear | 7 → 8 | 31.5 → 39.3 | 5.7 → 9.0 | 149.0 | 207.2 → 293.0 | 0.453 |
+
+- **A small change is the paint and a little:** select, swap and update10th spend 18 to
+  33 M besides painting (C++) where they spent 250 to 380 M; no row is laid out but the
+  moved ones and no document of the table is built. Painting is now four fifths of a
+  select.
+- **Building the table costs more:** create1k's build is 421 M (C++) and 247 M (Rust)
+  against 261 M and 145 M, a node per element of the window's layout and per measured
+  label, and clear's diff and build grow with them (tearing those down); create1k's
+  patch falls from 179 M to 30 M (one placing pass, no whole layout).
+- **A tick more per press** (eight to nine, seven to nine for swap): the window lays out
+  a gathered `for` per level of the tree (Jimmy's story: every gathered `for` adds one).
+- **Remove still costs C++ three times Rust** (90 M against 29 M of build): the outer of
+  the column's document is gathered from its 3,003 entries an insert at a time
+  (claude/bugs/window-relayout-every-change.md).
+- On the way: the layout no longer builds an array of (path, result) pairs per container
+  per change (C++ select 287 M before that, Rust 260 M), a map of a map's entries is built
+  at once (C++ select 230 M before that), and a hosted builder gathers its host's outer
+  only when its rows' keys changed (C++ swap 237 M before that).

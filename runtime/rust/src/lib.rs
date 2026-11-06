@@ -44,6 +44,11 @@ pub mod world;
 
 pub use cells::{Cache, Defer, Demand, Dynamic, Event, Handle, Hold, Job, Live, Port, Snapshot, Stamped, Tick, Turn};
 pub use collections::{Array, Cursor, Map, Text};
+
+/// Whether two maps have the same keys, in order: a builder whose rows came or went.
+pub fn same_keys<K: Ord + Clone + PartialEq, V: Clone, W: Clone>(a: &Map<K, V>, b: &Map<K, W>) -> bool {
+    a.same_keys(b)
+}
 pub use cx::{Cx, Done, Later, Node, Runtime};
 pub use doc::{Document, Edit, Patch, Request};
 pub use host::{AnswerOf, Blueprint, Entry, Follow, Host, HostDoc, HostOf, HostRow, Level, Link, Rows, Scope, Sink, Supplied, Supplier, Watch, dynamic_blueprint, dynamics_pod, dynamics_ports, element_blueprint, event_blueprint, forward_on_none, never_blueprint, plain_blueprint};

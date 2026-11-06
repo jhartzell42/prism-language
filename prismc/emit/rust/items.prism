@@ -265,12 +265,16 @@ fn RustNode n:
 
 # A `for`'s builder: rows that left torn down, new keys built.
 ForBuilder: unbounded fn ForDef -> Text
-fn ForBuilder b = ForBuild b.name, (Expression b.at), (Type b.keyTy), (Type b.valueTy), b.rowNode, b.source, (Expression b.parent), (Concat (Each b.passed, \|x| ", {Expression x}")), (MovedCall b.moved)
+fn ForBuilder b = ForBuild b.name, (Expression b.at), (Type b.keyTy), (Type b.valueTy), b.rowNode, b.source, (Expression b.parent), (Concat (Each b.passed, \|x| ", {Expression x}")), (MovedCall b.name, b.moved)
 
 # A builder whose rows' places are a host's document tells the host its child's places came
 # or went (`$(Path ==> $Elem c)`'s outer moves).
-MovedCall: fn Text -> Text
-fn MovedCall m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    self.{m}(cx);"
+MovedCall: fn Text, Text -> Text
+fn MovedCall name, m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    if !prism_rtl::same_keys(&self.{name}.borrow(), &old) \{\n        self.{m}(cx);\n    \}"
+
+# A generation's builder: a new generation's places always came.
+GenMovedCall: fn Text -> Text
+fn GenMovedCall m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    self.{m}(cx);"
 
 # A `rebuild`'s builder: the old generation torn down, the next one built.
 GenBuilder: unbounded fn GenDef -> Text
@@ -278,7 +282,7 @@ fn GenBuilder gd:
     # a transparent generation (a widget of several clauses in a static position) stands at
     # its caller's path
     let path = if gd.transparent: "self.path.clone()" else: "{Expression gd.at}.child(Segment::Gen(g))"
-    GenBuild gd.name, (Expression gd.at), path, (Expression gd.source), (Type gd.valueTy), (Expression gd.select), (MovedCall gd.moved)
+    GenBuild gd.name, (Expression gd.at), path, (Expression gd.source), (Type gd.valueTy), (Expression gd.select), (GenMovedCall gd.moved)
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, since
 # its key is gone from the source after it (R8); its places are torn down; its

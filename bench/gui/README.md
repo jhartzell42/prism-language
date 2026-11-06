@@ -116,4 +116,9 @@ instructions between its marks (macOS's `thread_selfcounts`) go to the phase it 
   their places.
 - **No scrolling in Prism:** the window library has no scroll pane, so the Prism window
   lays out every row and draws those that start inside the window; GTK and Cuis lay out
-  every row too, in a scroll pane.
+  every row too, in a scroll pane. Its host documents are `$(Path ==> $Elem)` (Jimmy, 6
+  November 2026), and the window lays each element out in a row of its own: a small change
+  re-lays the rows on its path, re-stacks the column's 1,001 laid-out rows once per level
+  of the moved path, and places what shows; one select is 166 M instructions in C++ and
+  177 M in Rust, painting the frame 141 M and 155 M of it
+  (claude/incremental-host-document.md; claude/benchmarks-preliminary.md).
