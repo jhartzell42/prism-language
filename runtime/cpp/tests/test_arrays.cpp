@@ -5,8 +5,11 @@
 // at each size; `take` and `drop_front` then written; `concat`, also with itself; `set`,
 // `mut_at`, iteration, equality and order; a write that throws halfway; and the storage an
 // array holds, which is linear in its length, never a whole chunk for a few elements; and
-// the costs, by counting the elements copied and moved.
+// the costs, by counting the elements copied and moved; and `==` on arrays that share
+// nodes, by counting the elements compared: a shared node answers at once, and a NaN (a
+// value equal to nothing, itself included) keeps an array unequal to itself.
 
+#include <cmath>
 #include <cstdint>
 #include <numeric>
 #include <stdexcept>
@@ -367,4 +370,77 @@ TEST(an_array_from_a_vector_moves_each_element_once_into_storage_of_its_size) {
         CHECK_EQ(a.capacity(), n);
         CHECK(counts_from(a, n, 0));
     }
+}
+
+// ---- Equality on shared structure, by counting the elements compared -------------------
+
+namespace {
+
+/// An element that counts its comparisons; `Cmp{NAN_}` is equal to nothing, itself
+/// included, as a `Float` NaN is under IEEE equality (Type System ch. 2).
+struct Cmp {
+    static inline std::size_t compared = 0;
+    int v = 0;
+    friend bool operator==(const Cmp& a, const Cmp& b) {
+        ++compared;
+        return a.v == b.v && a.v != -1;
+    }
+};
+constexpr int NAN_ = -1;
+
+Array<Cmp> cmps(std::size_t n) {
+    Array<Cmp> a;
+    for (std::size_t i = 0; i < n; ++i) a.push_back(Cmp{int(i)});
+    return a;
+}
+
+template <class F>
+std::size_t compared(F f) {
+    std::size_t before = Cmp::compared;
+    f();
+    return Cmp::compared - before;
+}
+
+}  // namespace
+
+TEST(an_array_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_elements) {
+    for (std::size_t n : {std::size_t(0), std::size_t(1), std::size_t(64), std::size_t(65), std::size_t(300), BIG}) {
+        Array<Cmp> a = cmps(n), b = a;
+        // the first comparison may look at every element once; after it, shared nodes
+        // answer at once
+        CHECK(a == b);
+        bool eq = false;
+        CHECK(compared([&] { eq = a == b; }) <= BOUNDED && eq);
+        if (n == 0) continue;
+        Array<Cmp> c = a.updated(n / 2, Cmp{int(n / 2)});
+        CHECK(compared([&] { eq = a == c; }) <= BOUNDED && eq);
+        Array<Cmp> d = a.updated(n / 2, Cmp{int(n) + 1});
+        CHECK(compared([&] { eq = a == d; }) <= BOUNDED && !eq);
+    }
+}
+
+TEST(a_shared_array_holding_a_nan_is_not_equal_to_itself) {
+    for (std::size_t n : {std::size_t(1), std::size_t(64), std::size_t(65), std::size_t(300), BIG}) {
+        Array<Cmp> a = cmps(n).updated(n - 1, Cmp{NAN_}), b = a;
+        CHECK(!(a == b) && !(a == b) && !(a == a));
+        Array<Cmp> c = cmps(n).updated(0, Cmp{NAN_}), d = c;
+        CHECK(!(c == d) && !(c == d));
+    }
+    Array<double> floats{1.0, std::nan(""), 3.0};
+    Array<double> same = floats;
+    CHECK(!(floats == same));
+}
+
+TEST(arrays_of_arrays_compare_shared_inner_arrays_at_once) {
+    Array<Cmp> inner = cmps(BIG);
+    auto outer = [&] {
+        Array<Array<Cmp>> o;
+        for (int k = 0; k < 10; ++k) o.push_back(inner);
+        o.push_back(cmps(3));
+        return o;
+    };
+    Array<Array<Cmp>> a = outer(), b = outer();
+    CHECK(a == b);
+    bool eq = false;
+    CHECK(compared([&] { eq = a == b; }) <= BOUNDED && eq);
 }

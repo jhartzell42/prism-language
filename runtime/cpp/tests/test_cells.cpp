@@ -234,6 +234,52 @@ TEST(a_snapshot_answers_the_structure_and_the_dynamic_one_tick_behind) {
     CHECK(w->log == (std::vector<std::string>{"during 1", "after panics", "moved yes", "after 2", "construction 2", "dynamic 1"}));
 }
 
+namespace {
+
+/// A value whose equality ignores its `id`: the id tells which of two equal values a
+/// snapshot holds, which no Prism program can (Semantics ch. 11, "sharing is invisible").
+struct Tagged {
+    int v = 0, id = 0;
+    friend bool operator==(const Tagged& a, const Tagged& b) { return a.v == b.v; }
+};
+
+}  // namespace
+
+TEST(an_equal_snapshot_keeps_the_value_it_had_so_its_sharing_survives) {
+    ReadyMap r = ready();
+    Runtime rt;
+    Cx build = rt.build(r);
+    Snapshot<Tagged> s("$s");
+    CHECK(!s.take_compared(Tagged{1, 1}, build));
+    (void)rt.close(std::move(build)).value();
+    struct Taker : Node {
+        Snapshot<Tagged>* s;
+        std::vector<Tagged> takes;
+        std::vector<std::string> log;
+        Done answer(std::span<const Segment>, const Pod&, Cx& cx) override {
+            cx.build_later(me());
+            return {};
+        }
+        Done build(Cx& cx) override {
+            Tagged next = takes.front();
+            takes.erase(takes.begin());
+            bool moved = s->take_compared(next, cx);
+            log.push_back(std::string("moved ") + (moved ? "true" : "false") + " current " + std::to_string(s->current(cx).id) +
+                          " dynamic " + std::to_string(s->get(cx).id));
+            return {};
+        }
+    };
+    auto t = prism_rtl::make_rc<Taker>();
+    t->s = &s;
+    t->takes = {Tagged{1, 2}, Tagged{2, 3}, Tagged{2, 4}, Tagged{2, 5}};
+    NodeRef root = t;
+    for (int i = 0; i < 4; ++i) (void)rt.tick(root, TickIn::none().answer(Path::root().at(0), Pod::unit()), r).value();
+    // A take equal to the snapshot before it keeps that snapshot (ids 1, then 3): the same
+    // moves, and the dynamic's values equal to those of a take that kept the new value.
+    CHECK(t->log == (std::vector<std::string>{"moved false current 1 dynamic 1", "moved true current 3 dynamic 1",
+                                              "moved false current 3 dynamic 3", "moved false current 3 dynamic 3"}));
+}
+
 // ---- Pushes, first values, requests -----------------------------------------------------
 
 namespace {

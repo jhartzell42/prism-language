@@ -442,3 +442,65 @@ fn scripts_parse_or_exit_two_and_checks_print_ok_or_the_value() {
     assert_eq!(compiled.run("check sums:\n    1 + 2 => 3\n    \"a\" + \"b\" => \"b\"\n    True\n").exit_code, 0);
     assert_eq!(strip_comment_header("# a note\n#\ntest t\n"), "test t\n");
 }
+
+// ---- A structural dynamic's equal snapshot keeps its value -------------------------------
+
+/// A value whose equality ignores its `id`: the id tells which of two equal values a
+/// snapshot holds, which no Prism program can (Semantics ch. 11, "sharing is invisible").
+#[derive(Clone, Debug)]
+struct Tagged {
+    v: u32,
+    id: u32,
+}
+
+impl PartialEq for Tagged {
+    fn eq(&self, other: &Tagged) -> bool {
+        self.v == other.v
+    }
+}
+
+/// A node that takes the next of `takes` as its snapshot in each tick's construction step
+/// and logs whether it moved, the structure's id after the take, and the dynamic's.
+struct Taker {
+    s: Snapshot<Tagged>,
+    takes: RefCell<Vec<Tagged>>,
+    seen: RefCell<Vec<String>>,
+}
+
+impl Node for Taker {
+    fn answer(self: Rc<Self>, _: &[Segment], _: &Pod, cx: &mut Cx) -> Done {
+        cx.build_later(self.clone());
+        Ok(())
+    }
+    fn build(self: Rc<Self>, cx: &mut Cx) -> Done {
+        let next = self.takes.borrow_mut().remove(0);
+        let moved = self.s.take_compared(next, cx);
+        let line = format!("moved {moved} current {} dynamic {}", self.s.current(cx).id, self.s.get(cx).id);
+        self.seen.borrow_mut().push(line);
+        Ok(())
+    }
+}
+
+#[test]
+fn an_equal_snapshot_keeps_the_value_it_had_so_its_sharing_survives() {
+    let r = ready();
+    let mut rt = Runtime::new();
+    let cx = rt.build(&r);
+    let t = Rc::new(Taker {
+        s: Snapshot::new("$s"),
+        takes: RefCell::new(vec![Tagged { v: 1, id: 2 }, Tagged { v: 2, id: 3 }, Tagged { v: 2, id: 4 }, Tagged { v: 2, id: 5 }]),
+        seen: RefCell::new(Vec::new()),
+    });
+    assert!(!t.s.take_compared(Tagged { v: 1, id: 1 }, &cx));
+    rt.close(cx).unwrap();
+    let root: Rc<dyn Node> = t.clone();
+    for _ in 0..4 {
+        rt.tick(&root, &TickIn::none().answer(Path::root().at(0), Pod::Unit), &r).unwrap();
+    }
+    // A take equal to the snapshot before it keeps that snapshot (ids 1, then 3): the same
+    // moves, and the dynamic's values equal to those of a take that kept the new value.
+    assert_eq!(
+        *t.seen.borrow(),
+        vec!["moved false current 1 dynamic 1", "moved true current 3 dynamic 1", "moved false current 3 dynamic 3", "moved false current 3 dynamic 3"]
+    );
+}
