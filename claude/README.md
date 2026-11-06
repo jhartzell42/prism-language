@@ -12,6 +12,8 @@ Claude-written prose lives here, under this name, and nowhere else.
 - **`bugs/`**: bugs in prismc, investigated: the cause, the books' rule, the fix.
 - **`decisions.md`**: the choices the books leave to this implementation, with reasons.
 - **`handoff.md`**: everything still to do on the self-hosting branch, in order.
+- **`cloud-prompt.md`**: the prompt for the cloud session that finishes the branch and
+  hands it to Jimmy; deleted when that is done.
 - **`incremental-host-document.md`**: what one select in the GUI table recomputes, tick by
   tick, and the routes to a small change costing a small amount: an incremental host
   document, per-child layout, a cached call, nested documents settled in one tick.
