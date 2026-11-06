@@ -25,14 +25,27 @@ file in `claude/bugs/` before changing anything.
   `@PerKey: fn $(k ==> v) -> @$(k ==> $v) where v: ^Eq`; no transcript over 10 KB in the
   repository (chess's board and window transcripts are deliberately absent).
 
-## What this machine cannot do
+## Benchmarks and this machine
 
-It is Linux with no display. Say so plainly in the report rather than working around it.
+It is Linux with no display. Jimmy: "we have Linux-side support for some benchmarks, tell
+it to figure out how to run at least the compilation time benchmarks."
 
-- `tests/cost/run.sh` and `bench/gui/prism/check.sh` count instructions with macOS's
-  `time -l`, and the GUI and running benchmarks need a Mac with a screen. Do not port
-  them or invent substitutes. Leave their numbers as recorded and list them as "to rerun
-  on the Mac".
+- **The building benchmark runs here, and you run it.** Read `bench/README.md` and
+  `bench/building/README.md`, work out what `bench/building/run.sh` needs on Linux, fix
+  what stops it (root cause, in the script), and run it for both shipping configurations
+  (cargo release, clang -O3) with nothing else building. Commit its `RESULTS.md` with the
+  machine, the core count and the load named in it.
+- **Then the others, as far as they go.** `bench/running/run.sh`, `tests/cost/run.sh` and
+  `bench/gui/prism/check.sh` read macOS's `/usr/bin/time -l` for instructions and peak
+  memory. Linux has the same facts (`/usr/bin/time -v` for memory, `perf stat` for
+  instructions where the machine allows it). `bench/gui/prism/Makefile` already has an
+  X11 branch, and `bench/gui/run.sh` already reads `/proc/loadavg`. Find out what each
+  needs, make the scripts choose by platform without changing what they do on macOS, and
+  run what then runs (the GUI ones under Xvfb). Where a script cannot run here, say
+  exactly what stopped it.
+- **Label every number with its machine.** Numbers from here are not comparable with the
+  Mac's below; keep the two sets apart, each with its units and what it is compared to.
+  Anything you could not run goes in the report as "to rerun on the Mac".
 - The canvas Worlds' Linux (X11) paths, damage painting on Linux, and on-screen colours
   after the sRGB change have never been checked. If you can build and run them headless
   (Xvfb), do, and report; otherwise list them as unverified.
@@ -72,7 +85,7 @@ else. Jimmy: "Do you need `$$k`?" then "Yes, bind $v".
   cannot, write up what you found with a recommendation and stop that item.
 - Failing tests first: a conformance test with an outer that replaces the dynamic under
   a kept key, and a cost pair (one key removed from 2,000 costs no wake per kept row;
-  it can only be run on the Mac, so commit it and say it is unrun).
+  run it here if the cost script runs here; if not, commit it and say it is unrun).
 - Then the books: Semantics ch. 4 (the `for` forms), ch. 9 (the flattening `for`),
   appendix B (`@PerKey`), Platform ch. 3, and close FV in RULINGS.
 
@@ -88,8 +101,8 @@ else. Jimmy: "Do you need `$$k`?" then "Yes, bind $v".
   published per place) is still Claude's pick, his to overrule.
 - `bench/building/run.sh`: the "emitted lines" count for prismc is wrong (it printed
   7,080; the Rust fixed point is about 115,000 lines). Fix the count, and add emit lines
-  per second and a second-build time that reuses the runtime library. Do not publish
-  timings from this machine as benchmark results.
+  per second and a second-build time that reuses the runtime library, then run it
+  (see "Benchmarks and this machine").
 - `claude/todo-for-jimmy.md` is stale (it names files that no longer exist). Rewrite it
   against the tree as it is.
 - `claude/benchmarks-preliminary.md`: fold in the building numbers and the table in item 3
