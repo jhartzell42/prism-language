@@ -23,6 +23,11 @@ fn ?KeyTo p, r = match r.input:
     Typed k if r.path == p: ? k
     otherwise: nil
 
+?SlideTo: fn Path, Routed -> ?Nat
+fn ?SlideTo p, r = match r.input:
+    Slid step if r.path == p: ? step
+    otherwise: nil
+
 ?InnerTo: fn Path, Routed -> ?Routed
 fn ?InnerTo p, r = match r.input:
     Inner inner if r.path == p: ? inner
@@ -36,11 +41,13 @@ fn ?Boxed p, e, !in = match e:
     Ui.Button(..): ? @ !Filter (?ClickTo p, !in)
     Ui.Image(..): ? @ !Filter (?ClickTo p, !in)
     Ui.TextInput(..): ? @ !Filter (?KeyTo p, !in)
+    Ui.Slider(..): ? @ !Filter (?SlideTo p, !in)
     Ui.VBox(..): ? @ !Filter (?InnerTo p, !in)
     Ui.HBox(..): ? @ !Filter (?InnerTo p, !in)
     Ui.Row(..): ? @ !Filter (?InnerTo p, !in)
     Ui.Column(..): ? @ !Filter (?InnerTo p, !in)
     Ui.Layers(..): ? @ !Filter (?InnerTo p, !in)
+    Ui.Shown(..): ? @ !Filter (?InnerTo p, !in)
     Ui.Frame(..): ? @ !Filter (?InnerTo p, !in)
     Ui.Grid(..): ? @ !Filter (?InnerTo p, !in)
     otherwise: nil

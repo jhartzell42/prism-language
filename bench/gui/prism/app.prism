@@ -2,8 +2,8 @@
 # operations over a table of rows, each an id, a label and a remove button, under the
 # window library of examples/chess. Each row is a place keyed by its slot; a new row takes
 # a new slot, so "create" replaces every row's place and "swap" moves two rows' values
-# between their places. The selected row's label is marked with a leading `▶`: a frame's
-# background is not live in the window library, a label is.
+# between their places. The selected row's label is marked with a leading `▶`, a change
+# of one label's text, as js-framework-benchmark's select is a change of one row's class.
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 emit Ui.* | Gui.*

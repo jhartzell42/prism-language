@@ -49,6 +49,17 @@ fn @TextInput name, initial:
     $edit <- Edit initial, (Len initial) then Apply $edit, !key
     @ $edit.text
 
+# A text input whose text is also set from outside: each firing of `!set` replaces it, the
+# caret at its end; a text box kept in step with a slider.
+@TextField: fn Text, Text, !Text -> @$Text
+fn @TextField name, initial, !set:
+    !key <- Ui.TextInput(name=name, text=$edit.text, cursor=$edit.cursor)
+    $edit <- Edit initial, (Len initial) then (AtEnd !set) <| (Apply $edit, !key)
+    @ $edit.text
+
+AtEnd: fn Text -> Edit
+fn AtEnd t = Edit t, (Len t)
+
 @Grid: fn Nat, @a -> @a
 fn @Grid columns, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
@@ -86,9 +97,20 @@ fn @Layers @child:
     @ r
 
 @Framed: fn FrameSpec, @a -> @a
-fn @Framed spec, @child:
+fn @Framed spec, @child = @FramedBy ($ spec), @child
+
+# a frame whose spec is live: its padding or background follows a setting
+@FramedBy: fn $FrameSpec, @a -> @a
+fn @FramedBy $spec, @child:
     ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
-    !in <- Ui.Frame(spec=spec, children=$elems)
+    !in <- Ui.Frame(spec=$spec, children=$elems)
+    @ r
+
+# its children in a column drawn only while `$shown`; hidden, they keep their state
+@ShowIf: fn $Bool, @a -> @a
+fn @ShowIf $shown, @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Boxed p, e, !in
+    !in <- Ui.Shown(shown=$shown, children=$elems)
     @ r
 
 # the modifiers: each is one frame around its child
@@ -111,7 +133,27 @@ fn @Anchor at, off, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, at, off
 fn @Turned deg, @child = @Framed (FrameSpec 0.0, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), deg, 1.0, nil), @child
 
 @Backed: fn Paint, Float, @a -> @a
-fn @Backed c, p, @child = @Framed (FrameSpec p, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, (? c)), @child
+fn @Backed c, p, @child = @Framed (BandSpec p, c), @child
+
+# its child on a band of `paint` all round, `$width` wide: a board's border
+@Bordered: fn $Float, Paint, @a -> @a
+fn @Bordered $width, paint, @child = @FramedBy (BandSpec $width, paint), @child
+
+BandSpec: fn Float, Paint -> FrameSpec
+fn BandSpec width, paint = FrameSpec width, nil, nil, nil, 0.0, (Point 0.0, 0.0), (Point 0.0, 0.0), 0.0, 1.0, (? paint)
+
+# A panel over the layers below it (inside `@Layers`), at `at` in their room as fractions
+# (`Point 1.0, 0.5` is the middle of the right edge), on paper with a dark edge, drawn only
+# while `$open`. Its background takes the presses its children do not, so nothing beneath
+# it hears them; hidden, its children keep their state (a dialog's text boxes their texts).
+@Overlay: fn $Bool, Point, @a -> @a
+fn @Overlay $open, at, @child = @Anchor at, (Point 0.0, 0.0), @widget:
+    r <- @ShowIf $open, @widget:
+        inner <- @Backed Ink, 2.0, @widget:
+            panel <- @Backed Paper, 12.0, @child
+            @ panel
+        @ inner
+    @ r
 
 # ---------------------------------------------------------------------------
 # The window (Pitch chapter 5's). Its child's document is `$(Path ==> $Elem)` (Jimmy, 6
@@ -155,8 +197,9 @@ fn @Window $title, start, @app:
         ? chain: ?FocusRect $placed.hits, (? chain)
         nil: nil
     Gui.Focus(window=id, at=$?ring)                                      # 4
-    let !hit = !Filter (?HitAt $placed.hits, !Filter (?PressOf !incoming))
-    let !clicks = !Filter (?ClickFor !hit)
-    let !keys = !Filter (?RouteKey $?focus, !Filter (?PressedOf !incoming))
+    let !press = !Filter (?PressOf !incoming)
+    let !hit = !Filter (?HitAt $placed.hits, !press)
+    let !clicks = !Filter (?ClickAt $placed.hits, !press)
+    let !keys = !Filter (?RouteKey $placed.hits, $?focus, !Filter (?PressedOf !incoming))
     let !route = !clicks <| !keys
     @ result

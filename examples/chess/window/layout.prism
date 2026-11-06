@@ -22,6 +22,8 @@ use Window.Hits.*
 type HitKind = choice:
     Clickable
     Focus
+    Track Nat, Nat                            # a slider's, from low to high
+    Opaque                                    # a frame's background: it takes the press, and answers nothing
 derive ^Eq, ^Show
 
 type Hit = record:
@@ -49,8 +51,10 @@ type Kind = choice:
     KButton Text
     KInput Text, Nat
     KImage Text, Paint
+    KSlider Nat, Nat, Nat                  # value, low, high
     KStack Bool, Float, Align              # down, spacing, align: VBox, HBox, Row, Column
     KLayers
+    KShown Bool
     KFrame FrameSpec
     KGrid Nat
     KNone
@@ -69,10 +73,11 @@ type Part = choice:
     PButton Extent, Text, [Path]                  # ink, label, chain
     PInput Extent, Text, Nat, Float, [Path]       # ink, text, cursor, the text to the cursor's width, chain
     PImage Text, Paint, [Path]
+    PSlider Float, Nat, Nat, [Path]               # how far along, low, high, chain
     PStack Bool, Float, Align, Float, [Plan]      # down, spacing, align, cross size, children
     PLayers [((Point, Point, Plan))]              # each child's anchor, offset and layout
     PFrame FrameSpec, Plan
-    PGrid Nat, Extent, [Plan]                     # columns, cell size, children
+    PGrid Nat, [Float], [Float], [Plan]           # columns, their widths, the rows' heights, children
 derive ^Eq, ^Show
 
 # A laid-out element, as its row ends on it: its kind, the room its parent gave it, its
@@ -165,12 +170,14 @@ fn KindOf e = match e:
     Ui.Button(label=$l): KButton $l
     Ui.TextInput(text=$t, cursor=$c, ..): KInput $t, $c
     Ui.Image(src=$s, paint=$b): KImage $s, $b
+    Ui.Slider(value=$v, low=lo, high=hi): KSlider $v, lo, hi
     Ui.VBox(..): KStack True, 0.0, Start
     Ui.HBox(..): KStack False, 0.0, Start
     Ui.Column(spacing=g, align=a, ..): KStack True, g, a
     Ui.Row(spacing=g, align=a, ..): KStack False, g, a
     Ui.Layers(..): KLayers
-    Ui.Frame(spec=s, ..): KFrame s
+    Ui.Shown(shown=$s, ..): KShown $s
+    Ui.Frame(spec=$s, ..): KFrame $s
     Ui.Grid(columns=n, ..): KGrid n
     otherwise: KNone
 
@@ -182,6 +189,7 @@ fn KidsOf e = match e:
     Ui.Row(children=$cs, ..): $cs
     Ui.Column(children=$cs, ..): $cs
     Ui.Layers(children=$cs): $cs
+    Ui.Shown(children=$cs, ..): $cs
     Ui.Frame(children=$cs, ..): $cs
     Ui.Grid(children=$cs, ..): $cs
     otherwise: {}
@@ -306,6 +314,22 @@ fn ImageAt r, src, paint, chain:
 LayImage: fn Text, Paint, Room, [Path] -> Plan
 fn LayImage src, paint, room, chain = Plan (Fit room, (Extent cell, cell)), (PImage src, paint, chain)
 
+# a track, its filled part and a knob; a press on it answers a step (`Track`)
+SliderAt: fn Point, Extent, Float, Nat, Nat, [Path] -> Placed
+fn SliderAt p, size, along, low, high, chain:
+    let r = Rect p.x, p.y, size.w, size.h
+    let mid = p.y + size.h * 0.5
+    let knobX = p.x + (size.w - 8.0) * along
+    let draws = [[Draw.Rect(rect=(Rect p.x, mid - 2.0, size.w, 4.0), paint=Grey), Draw.Rect(rect=(Rect p.x, mid - 2.0, knobX + 4.0 - p.x, 4.0), paint=Blue), Draw.Rect(rect=(Rect knobX, p.y + 2.0, 8.0, size.h - 4.0), paint=Ink)]]
+    Placed (Append draws, (ClickableAt r, chain)), [[(Hit r, chain, (Track low, high), [[]])]]
+
+# how far along from `low` to `high` a value is, from 0 to 1
+Along: fn Nat, Nat, Nat -> Float
+fn Along v, low, high = Clamp (Ratio (Float (Int (Or (v -? low), 0))), (Float (Int (Or (high -? low), 0)))), 0.0, 1.0
+
+LaySlider: fn Nat, Nat, Nat, Room, [Path] -> Plan
+fn LaySlider v, low, high, room, chain = Plan (Fit room, (Extent 200.0, 22.0)), (PSlider (Along v, low, high), low, high, chain)
+
 # ---- a child's layout in a room: its row's own when it is the room its row was laid in,
 # else laid again from its result
 
@@ -321,6 +345,7 @@ KidRoom: fn Kind, Room -> Room
 fn KidRoom k, room = match k:
     KStack down, ignore, ignore: NaturalRoom down, room
     KLayers: Loose room.maxW, room.maxH
+    KShown ignore: NaturalRoom True, room
     KFrame s: NaturalRoom True, (FrameInner s, room)
     KGrid ignore: Loose huge, huge
     otherwise: room
@@ -475,11 +500,14 @@ FrameAt: fn FrameSpec, Plan, Extent, Point, Rect, ?[Path] -> Placed
 fn FrameAt s, child, size, p, v, ?focus:
     let level = s.turn == 0.0 and s.scale == 1.0
     let view = if level: v else: everywhere
+    let box = Rect p.x, p.y, size.w, size.h
     let bg = match s.?bg:
-        ? c if Shown (Rect p.x, p.y, size.w, size.h), view: [[Draw.Rect(rect=(Rect p.x, p.y, size.w, size.h), paint=c)]]
+        ? c if Shown box, view: [[Draw.Rect(rect=box, paint=c)]]
         otherwise: [[]]
+    # a background takes the presses its children do not: a dialog over a board
+    let shield = if (Len bg) > 0: [[(Hit box, [[]], Opaque, [[]])]] else: [[]]
     let inner = PlaceAt child, (Point p.x + s.pad, p.y + s.pad), view, ?focus
-    let flat = Placed (Append bg, inner.draw), inner.hits
+    let flat = Placed (Append bg, inner.draw), (Append shield, inner.hits)
     if level: flat else: TurnPlaced (Turn p.x + size.w * 0.5, p.y + size.h * 0.5, s.turn, s.scale), flat
 
 LayFrame: fn FrameSpec, (Path ==> Res), Room -> Plan
@@ -489,32 +517,55 @@ fn LayFrame s, cs, room:
     let child = LayStack cs, (FrameInner s, room), True, 0.0, Stretch
     Plan (Fit outer, (Extent child.size.w + pad2, child.size.h + pad2)), (PFrame s, child)
 
-# ---- the grid: equal cells, each the size of the largest child, in the children's path order
+# ---- the grid: in the children's path order, `n` to a row; each column as wide as its widest
+# child and each row as tall as its tallest, every child laid out to fill its cell
 
-GridStep: fn Nat, Extent, Point, Rect, ?[Path], ((Nat, Placed)), Plan -> ((Nat, Placed))
-fn GridStep n, cellSize, p, v, ?focus, ((i, placed)), l:
-    let column = Float (Int (i mod n))
-    let down = Float (Int (Or (i / n), 0))
-    let at = Point p.x + cellSize.w * column, p.y + cellSize.h * down
+# the widest child of column `c`, and the tallest of row `c`
+ColumnWidth: fn [Plan], Nat, Nat -> Float
+fn ColumnWidth natural, n, c = Fold (Indices (Len natural)), 0.0, \|m, i| if i mod n == c: Max m, (Or natural[i], unplanned).size.w else: m
+
+RowHeight: fn [Plan], Nat, Nat -> Float
+fn RowHeight natural, n, c = Fold (Indices (Len natural)), 0.0, \|m, i| if (Or (i / n), 0) == c: Max m, (Or natural[i], unplanned).size.h else: m
+
+Total: fn [Float] -> Float
+fn Total xs = Fold xs, 0.0, \|acc, x| acc + x
+
+# where each column or row starts: the sum of those before it
+Starts: fn [Float] -> [Float]
+fn Starts xs:
+    let ((ignore, starts)) = Fold xs, ((0.0, [[]])), \|((at, acc)), x| ((at + x, (Push acc, at)))
+    starts
+
+# child `i`'s cell: its column's width and its row's height
+CellOf: fn Nat, [Float], [Float], Nat -> Extent
+fn CellOf n, widths, heights, i = Extent (Or widths[i mod n], 0.0), (Or heights[Or (i / n), 0], 0.0)
+
+GridStep: fn Nat, [Float], [Float], Point, Rect, ?[Path], ((Nat, Placed)), Plan -> ((Nat, Placed))
+fn GridStep n, xs, ys, p, v, ?focus, ((i, placed)), l:
+    let at = Point p.x + (Or xs[i mod n], 0.0), p.y + (Or ys[Or (i / n), 0], 0.0)
     ((i + 1, (Merged placed, (PlaceAt l, at, v, ?focus))))
 
 LayGrid: fn Nat, (Path ==> Res), Room -> Plan
 fn LayGrid n, cs, room:
     let kids = Kids cs
     let natural = Each kids, \|r| PlanIn r, (Loose huge, huge)
-    let cellSize = Fold natural, (Extent 0.0, 0.0), \|m, l| Extent (Max m.w, l.size.w), (Max m.h, l.size.h)
-    let rows = RowsFor (Len kids), n
-    let size = Fit room, (Extent cellSize.w * (Float (Int n)), cellSize.h * (Float (Int rows)))
-    let plans = Each kids, \|r| PlanIn r, (Tight cellSize)
-    Plan size, (PGrid n, cellSize, plans)
+    let widths = Each (Indices n), \|c| ColumnWidth natural, n, c
+    let heights = Each (Indices (RowsFor (Len kids), n)), \|c| RowHeight natural, n, c
+    let size = Fit room, (Extent (Total widths), (Total heights))
+    let plans = Each (Indices (Len kids)), \|i| match kids[i]:
+        ? r: PlanIn r, (Tight (CellOf n, widths, heights, i))
+        nil: unplanned
+    Plan size, (PGrid n, widths, heights, plans)
 
 # how many rows `count` children take, `n` to a row
 RowsFor: fn Nat, Nat -> Nat
 fn RowsFor count, n = Or ((Or (count + n -? 1), 0) / n), 0
 
-GridAt: fn Nat, Extent, [Plan], Point, Rect, ?[Path] -> Placed
-fn GridAt n, cellSize, plans, p, v, ?focus:
-    let ((ignore, placed)) = Fold plans, ((0, nothing)), \|acc, l| GridStep n, cellSize, p, v, ?focus, acc, l
+GridAt: fn Nat, [Float], [Float], [Plan], Point, Rect, ?[Path] -> Placed
+fn GridAt n, widths, heights, plans, p, v, ?focus:
+    let xs = Starts widths
+    let ys = Starts heights
+    let ((ignore, placed)) = Fold plans, ((0, nothing)), \|acc, l| GridStep n, xs, ys, p, v, ?focus, acc, l
     placed
 
 # ---- the one layout, of a kind over its children's results, and the one placing
@@ -525,8 +576,10 @@ fn LayKind k, sizes, cs, room, chain = match k:
     KButton l: LayButton sizes, l, room, chain
     KInput t, c: LayInput sizes, t, c, room, chain
     KImage s, b: LayImage s, b, room, chain
+    KSlider v, lo, hi: LaySlider v, lo, hi, room, chain
     KStack down, g, a: LayStack cs, room, down, g, a
     KLayers: LayLayers cs, room
+    KShown shown: if shown: LayStack cs, room, True, 0.0, Start else: Plan (Fit room, (Extent 0.0, 0.0)), PNothing
     KFrame s: LayFrame s, cs, room
     KGrid n: LayGrid n, cs, room
     KNone: unplanned
@@ -544,7 +597,8 @@ fn PlaceAt l, p, v, ?focus = match l.part:
     PButton ink, t, chain: if Shown (Rect p.x, p.y, (Max l.size.w, ink.w), (Max l.size.h, ink.h)), v: ButtonAt p, l.size, t, chain else: nothing
     PInput ink, t, ignore, beforeW, chain: if Shown (Rect p.x, p.y, (Max l.size.w, ink.w), (Max l.size.h, ink.h)), v: InputAt ?focus, p, l.size, t, beforeW, chain else: nothing
     PImage src, paint, chain: if Shown (Rect p.x, p.y, l.size.w, l.size.h), v: ImageAt (Rect p.x, p.y, l.size.w, l.size.h), src, paint, chain else: nothing
+    PSlider along, low, high, chain: if Shown (Rect p.x, p.y, l.size.w, l.size.h), v: SliderAt p, l.size, along, low, high, chain else: nothing
     PStack down, g, a, crossSize, plans: StackAt down, g, a, crossSize, plans, p, v, ?focus
     PLayers layers: LayersAt layers, l.size, p, v, ?focus
     PFrame s, child: FrameAt s, child, l.size, p, v, ?focus
-    PGrid n, cellSize, plans: GridAt n, cellSize, plans, p, v, ?focus
+    PGrid n, widths, heights, plans: GridAt n, widths, heights, plans, p, v, ?focus
