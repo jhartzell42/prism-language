@@ -242,6 +242,8 @@ type Peeled = record:
     events: [Range]
     dyns: [Range]
     opts: [Text]
+    # The arguments peeled at the plain layer, by place.
+    optArgs: [Range]
     lifted: Text
     broken: Bool
 derive ^Eq, ^Show
@@ -287,7 +289,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
                 otherwise: Unify (NoteTy s2, a.value.span, lt), p, lt, a.value.span
             ((m, s3))
         else: ((m, s))
-    let ((pl, st4)) = Fold (Range0 n), ((Peeled(events=[[]], dyns=[[]], opts=[[]], lifted="", broken=False), st3)), \|((acc, s)), i|
+    let ((pl, st4)) = Fold (Range0 n), ((Peeled(events=[[]], dyns=[[]], opts=[[]], optArgs=[[]], lifted="", broken=False), st3)), \|((acc, s)), i|
         let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
         let at = Or argTys[i], TyErr
         if (IsLambda a.value) or (HasNat whole, i) or ((StackOf s, at) == "" and not (IsFreeHeaded s, at)): ((acc, s))
@@ -313,7 +315,8 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
     let kind = if layer == "!" and (Len pl.dyns) > 0: "sample" else: if layer != "": "map" else: if fname == "$": "const" else: "plain"
     let peeled = Append pl.events, pl.dyns
     let lifted = Filter (Range0 n), \|i| HasRange peeled, (Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)).value.span
-    ((result, (NoteApp st9, span, fname, kind, layer, lifted, (Or pl.opts[0], ""), callCol)))
+    let st10 = if pl.broken or (Len pl.opts) != 1: st9 else: NoteLift st9, span, (Or pl.opts[0], ""), pl.optArgs
+    ((result, (NoteApp st10, span, fname, kind, layer, lifted, (Or pl.opts[0], ""), callCol)))
 
 HasRange: fn [Range], Range -> Bool
 fn HasRange rs, r = Fold rs, False, \|seen, x| seen or x == r
@@ -369,6 +372,7 @@ fn LayeredArg env, st, acc, fname, cmp, param, at, a:
                 else:
                     let acc3 = update acc2:
                         &_.opts <= AddText &_.opts, ih
+                        &_.optArgs <= Push &_.optArgs, span
                     ((acc3, (Unify st, p, inner2, span)))
             else: ((acc2, (Unify st, p, inner, span)))
         else: if (IsPlainSigil head) and not cmp:
@@ -379,6 +383,7 @@ fn LayeredArg env, st, acc, fname, cmp, param, at, a:
             else:
                 let acc2 = update acc:
                     &_.opts <= AddText &_.opts, head
+                    &_.optArgs <= Push &_.optArgs, span
                 ((acc2, (Unify st, p, inner, span)))
         else: if head == "&": ((acc, (Unify st, p, (InnerOf st, at), span)))
         else: ((acc, (Unify st, p, at, span)))

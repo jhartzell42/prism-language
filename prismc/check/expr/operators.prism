@@ -187,7 +187,8 @@ fn InferField env, st, recv, sigils, name, span:
     let withOpt = if IsPlainSigil ih: TySig ih, ft else: ft
     let res = if IsTimeSigil head: TySig head, withOpt else: withOpt
     let st5 = if IsTimeSigil head: Elab st4, span, ".{name.name}", "map", head else: st4
-    ((res, st5))
+    let st6 = if IsPlainSigil ih: NoteLift st5, span, ih, [[recv.span]] else: st5
+    ((res, st6))
 
 # The type of a field of a record type, or of a tag element's field; on a type nothing
 # has decided yet, the one record that has the field.
@@ -235,10 +236,12 @@ fn InferIndex env, st, recv, idx, span:
     let inner = if IsTimeSigil head: InnerOf st1, rt else: rt
     let ((v, st2)) = FreshVar st1, False, ""
     let ((k, st3)) = FreshVar st2, True, ""
-    match Walk st3, inner:
+    # The collection is decided under a `?` or `~`, which the application then peels.
+    let coll0 = if IsPlainSigil (HeadSigil st3, inner): InnerOf st3, inner else: inner
+    match Walk st3, coll0:
         TyCon "Text", [[]]: ((TyErr, (ErrFix st3, "mismatch", span, "a text has no index: a position in a text is a cursor", "walk it with `Front` and `?Step`, or make a cursor from a byte offset with `?CursorAt`")))
         otherwise:
-            let ((coll, keyTy)) = match Walk st3, inner:
+            let ((coll, keyTy)) = match Walk st3, coll0:
                 TyMap ignore, ignore: (((TyMap k, v), k))
                 TyCon "Table", ignore: (((TyCon "Table", [[k, v]]), k))
                 TyCon "Buffer", ignore: (((TyCon "Buffer", [[v]]), tNat))

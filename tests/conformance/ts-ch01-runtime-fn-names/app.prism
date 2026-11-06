@@ -1,0 +1,68 @@
+# A program's functions and locals named as the helpers the emitted code calls bare: the
+# preludes' (`field`, which every `FromPod` impl calls; `get` and `index`, which indexing
+# calls; `map_of`, a map literal's; `call_value`, `call_then`, `entered`, `once_job` and
+# `run_to_end`, a job's frames') and the runtimes' (`mismatch`, `show`, `rc`, `drive`).
+# Each is the program's own, and the helpers stay the runtimes': the names never collide on
+# either target (back-end pick SH).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Locals
+test mod Tests
+
+type P = record:
+    a: Nat
+    b: Text
+derive ^Eq, ^Show
+
+Field: fn Nat -> Nat
+fn Field n = n + 1
+
+Get: fn Nat -> Nat
+fn Get n = n + 2
+
+Index: fn Nat -> Nat
+fn Index n = n + 3
+
+MapOf: fn Nat -> Nat
+fn MapOf n = n + 4
+
+Mismatch: fn Nat -> Nat
+fn Mismatch n = n + 5
+
+Rc: fn Nat -> Nat
+fn Rc n = n + 6
+
+Drive: fn Nat -> Nat
+fn Drive n = n + 7
+
+CallValue: fn Nat -> Nat
+fn CallValue n = n + 8
+
+CallThen: fn Nat -> Nat
+fn CallThen n = n + 9
+
+Entered: fn Nat -> Nat
+fn Entered n = n + 10
+
+OnceJob: fn Nat -> Nat
+fn OnceJob n = n + 11
+
+RunToEnd: fn Nat -> Nat
+fn RunToEnd n = n + 12
+
+# Every one of them, beside an index of a map and of an array and a map literal.
+All: fn (Text ==> P), [Nat] -> Nat
+fn All m, xs = (Or m["k"], P(a=0, b="")).a + (Or xs[0], 0) + (Or {"z": 1}["z"], 0) + Field 0 + Get 0 + Index 0 + MapOf 0 + Mismatch 0 + Rc 0 + Drive 0 + CallValue 0 + CallThen 0 + Entered 0 + OnceJob 0 + RunToEnd 0
+
+# A job whose frames call the runtime's `call_value` and `call_then` beside the program's.
+Step: unbounded fn Nat -> Nat
+fn Step n = n + (CallValue 0) + (Entered 0)
+
+Twice: unbounded fn Nat -> Nat
+fn Twice n = (Step n) + (Step (OnceJob n)) + (CallThen 0) + (RunToEnd 0)
+
+@Counted: fn Nat -> @unit
+fn @Counted n:
+    !done <- @Run Twice, n
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)

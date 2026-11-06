@@ -223,8 +223,79 @@ fn EventValueOf lx, env, e:
                     VlOwned (XBlock (Push dos, (DoLet (PaBind "src_ev"), src)), (XMethod (XVar "src_ev"), "map", [[(XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], body)]])), et
                 otherwise: VlOwned (Refusal "an event value of several events"), et
 
+# An expression the checker lifted over a `?` or `~` at the plain layer is its plain value
+# under a `match` of each operand it peeled; any other is lowered by its kind.
 ValueByKind: unbounded fn Lx, Env, Expr -> Vl
-fn ValueByKind lx, env, e:
+fn ValueByKind lx, env, e = match lx.lifts[PlaceKey lx, e.span]:
+    ? ln if (Len ln.operands) > 0: LiftedValue lx, env, e, ln
+    otherwise: PlainValueByKind lx, env, e
+
+# A plain-layer lift (Type System ch. 4, `?` and `~` at the plain layer): each operand the
+# checker peeled is matched in turn, left to right, and the expression is its plain value
+# over the peeled values, wrapped back: `nil` (an `Error`, the leftmost) if any operand was
+# one. Inside, each operand's place holds its peeled value, typed so, and the expression
+# its plain type, with no lift left at it.
+LiftedValue: unbounded fn Lx, Env, Expr, LiftNote -> Vl
+fn LiftedValue lx, env, e, ln:
+    let at = PlaceKey lx, e.span
+    let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
+    let inner = InnerTy (TypeAt lx, e.span)
+    let selfOperand = Fold ln.operands, False, \|f, r| f or r == e.span
+    let missing = Fold ln.operands, False, \|f, r| f or (?OperandAt e, r) == nil
+    if inner == TyErr or selfOperand or missing: VlOwned (Refusal "a lift over `{ln.sigil}` at `{SrcText lx, lx.file, e.span}` of {KindWords e.kind}"), t
+    else:
+        let lx1 = update lx:
+            &_.tys <= Insert &_.tys, at, inner
+            &_.lifts <= Insert &_.lifts, at, LiftNote(at=ln.at, sigil=ln.sigil, operands=[[]])
+        let lx2 = Fold ln.operands, lx1, \|l, r| update l:
+            &_.tys <= Insert &_.tys, (PlaceKey lx, r), (InnerTy (TypeAt lx, r))
+        VlOwned (LiftOperands lx, lx2, env, e, ln.sigil, ln.operands, t), t
+
+# The operands from the first: its value matched, the rest inside its arm.
+LiftOperands: unbounded fn Lx, Lx, Env, Expr, Text, [Range], OutTy -> Ex
+fn LiftOperands lx, lxIn, env, e, sigil, operands, t = match operands:
+    [[]]: XCtor (if sigil == "~": "Ok" else: "Some"), [[Own (PlainValueByKind lxIn, env, e)]]
+    otherwise:
+        let r = Or operands[0], e.span
+        let sv = ValueOf lx, env, (Or (?OperandAt e, r), dummyExpr)
+        let it = OutTyOf lx, (InnerTy (TypeAt lx, r))
+        let owned = match sv:
+            VlOwned ignore, ignore: True
+            otherwise: False
+        let mode = if owned: Owned else: ByRef
+        let x = "o{r.start}_{r.end}"
+        let env2 = BindSpan env, (PlaceKey lx, r), (VlPlace (XVar x), mode, it)
+        let body = LiftOperands lx, lxIn, env2, e, sigil, (Drop operands, 1), t
+        let failArm = if sigil == "~": XArm(pat=(PaCtor "Err", [[PaBind "{x}_e"]]), conds=[[]], body=(XCtor "Err", [[Own (VlPlace (XVar "{x}_e"), mode, OutError)]]))
+        else: XArm(pat=(PaUnit "None"), conds=[[]], body=(XTyped (XNone), t))
+        let arms = [[XArm(pat=(PaCtor (if sigil == "~": "Ok" else: "Some"), [[PaBind x]]), conds=[[]], body=body), failArm]]
+        XMatch (if owned: Own sv else: Ref sv), arms, False, t
+
+IsLiftedAt: fn Lx, Range -> Bool
+fn IsLiftedAt lx, r = match lx.lifts[PlaceKey lx, r]:
+    ? ln: (Len ln.operands) > 0
+    nil: False
+
+# The operand of an expression at a place: a field read's receiver, an argument, an
+# operator's operand.
+?OperandAt: fn Expr, Range -> ?Expr
+fn ?OperandAt e, r = Fold (DirectOperands e), nil, \|?found, x| if ?found == nil and x.span == r: ? x else: ?found
+
+DirectOperands: fn Expr -> [Expr]
+fn DirectOperands e = match e.kind:
+    EGroup x: DirectOperands x
+    ECall ignore, args, ignore, ignore: Each args, \|a| a.value
+    EMethod r, ignore, args: Append [[r]], (Each args, \|a| a.value)
+    EBinary ignore, l, r: [[l, r]]
+    EUnary ignore, x: [[x]]
+    EFreeSigil ignore, x: [[x]]
+    EField r, ignore, ignore: [[r]]
+    EIndex r, i: [[r, i]]
+    EMap kvs: Fold kvs, [[]], \|acc, ((k, v))| Append acc, [[k, v]]
+    otherwise: [[]]
+
+PlainValueByKind: unbounded fn Lx, Env, Expr -> Vl
+fn PlainValueByKind lx, env, e:
     let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
     match e.kind:
         EName n: NameValue lx, env, n, e.span
@@ -1087,9 +1158,37 @@ fn MatchValue lx, env, s, arms, t, span:
         let guard = match arm.?guard:
             ? ge: [[CcIf (AsBool (ValueOf lx, env2, ge))]]
             nil: [[]]
-        XArm(pat=po.pa, conds=(Append po.conds, guard), body=(Own (BlockValue lx, env2, arm.body)))
+        let env3 = if owned: MovedOnce lx, env2, arm, po.binds else: env2
+        XArm(pat=po.pa, conds=(Append po.conds, guard), body=(Own (BlockValue lx, env3, arm.body)))
     let scrut = if owned: Own sv else: Ref sv
     ArmsValue scrut, xarms, label, t
+
+# Gap OC: a binder of an owned scrutinee that its arm's body reads once is moved there, not
+# cloned: its one read is bound by its place to the binder as a value. Only where that is
+# plain to see: the name once in the body's text and not in the guard's, and no lambda or
+# loop in the body (a read there may run more than once, or outlive the arm).
+MovedOnce: unbounded fn Lx, Env, Arm, [((Text, Bn))] -> Env
+fn MovedOnce lx, env, arm, binds = Fold binds, env, \|en, ((nkey, bn))| match bn:
+    BnLocal (XVar rs), Owned, bt: match ?OnlyRead lx, arm, nkey:
+        ? x: BindSpan en, (PlaceKey lx, x.span), (VlOwned (XVar rs), bt)
+        nil: en
+    otherwise: en
+
+?OnlyRead: unbounded fn Lx, Arm, Text -> ?Expr
+fn ?OnlyRead lx, arm, nkey:
+    let text = SrcText lx, lx.file, arm.body.span
+    let inGuard = match arm.?guard:
+        ? ge: (WordCount (SrcText lx, lx.file, ge.span), nkey) > 0
+        nil: False
+    let reads = Filter (BlockExprs arm.body), \|x| match x.kind:
+        EName n: (Len n.path) == 1 and (SNameKey n) == nkey
+        otherwise: False
+    let plain = not inGuard and (WordCount text, nkey) == 1 and not (Contains text, "\\|") and (Len (Matches %/\b(while|for)\b/, text)) == 0
+    if plain and (Len reads) == 1: reads[0] else: nil
+
+# How often a name stands in a text as a whole word, its sigils included.
+WordCount: fn Text, Text -> Nat
+fn WordCount text, name = Len (Filter (Matches %/[?~$!@&]*[A-Za-z_][A-Za-z0-9_]*/, text), \|m| m.text == name)
 
 let dummyArm = Arm(pattern=nil, guard=nil, body=Block(stmts=[[]], inline=True, span=Range(start=0, end=0)), span=Range(start=0, end=0))
 

@@ -7,9 +7,7 @@ test mod Tests
 # Type System ch. 2's example: the key of a `key = value` line.
 ?Key: fn Text -> ?Text
 fn ?Key line = match ?Find %/^(?<key>[a-z_]+)\s*=/, line:
-    ? m: match m.named["key"]:
-        ? g: ? g.text
-        nil: nil
+    ? m: m.named["key"].text
     nil: nil
 
 # Each group's text, `-` for one that took no part.

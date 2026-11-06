@@ -17,8 +17,8 @@ check show:
     Show %/a\/b/i => "%/a\\/b/i"
     Show %/(\w+) (\w+)/$2 $1/ => "%/(\\w+) (\\w+)/$2 $1/"
     Show Rule(name="n", pattern=%/x/) => "Rule(name=\"n\", pattern=%/x/)"
-    Show (?Find %/b/, "ab") => "? Match(text=\"b\", front=Cursor(at=1), back=Cursor(at=2), groups=[[? Group(text=\"b\", front=Cursor(at=1), back=Cursor(at=2))]], named=\{\})"
-    Show (?Find %/(?<x>c)|d/, "c") => "? Match(text=\"c\", front=Cursor(at=0), back=Cursor(at=1), groups=[[? Group(text=\"c\", front=Cursor(at=0), back=Cursor(at=1)), ? Group(text=\"c\", front=Cursor(at=0), back=Cursor(at=1))]], named=\{\"x\": Group(text=\"c\", front=Cursor(at=0), back=Cursor(at=1))\})"
+    Show (?Find %/b/, "ab") => ? "Match(text=\"b\", front=Cursor(at=1), back=Cursor(at=2), groups=[[? Group(text=\"b\", front=Cursor(at=1), back=Cursor(at=2))]], named=\{\})"
+    Show (?Find %/(?<x>c)|d/, "c") => ? "Match(text=\"c\", front=Cursor(at=0), back=Cursor(at=1), groups=[[? Group(text=\"c\", front=Cursor(at=0), back=Cursor(at=1)), ? Group(text=\"c\", front=Cursor(at=0), back=Cursor(at=1))]], named=\{\"x\": Group(text=\"c\", front=Cursor(at=0), back=Cursor(at=1))\})"
 
 check passing:
     Classify "42" => "number"

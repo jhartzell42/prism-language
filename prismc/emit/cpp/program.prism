@@ -184,12 +184,15 @@ fn EmitCpp model, runtime, scripts:
     let elemTypes = CppElemTypes (Join (Filter [[(Includes "types", model.elemComplete), (Includes "decl", model.elemDeclared)]], \|t| t != ""), "\n"), (Join both.cases, "\n\n")
     let pairs = Each (Range0 (Len model.mods)), \|i| (((Or model.mods[i], noMod), (Or mods[i], noParts)))
     let generics = Fold pairs, [[]], \|acc, ((m, p))| if (Len p.generic) > 0: Push acc, m.name else: acc
-    let perModule = Each pairs, \|((m, p))| ModuleFiles m, p, generics
+    let perModule = Each pairs, \|((m, p))| ModuleFiles m, p
+    let pieces = Fold perModule, [[]], \|acc, ((ignore, ps))| Append acc, ps
+    let units = Units pieces
+    let unitFiles = Each (Range0 (Len units)), \|k| UnitFile k, (Or units[k], [[]]), generics
     let mainIncludes = Join (Append (Append [["#include \"elem.types.hpp\""]], [[(Includes "", (Each model.mods, \|m| m.name))]]), [[(Includes "generic", generics)]]), "\n"
     let canvasInclude = if canvas: CppCanvasInclude "" else: ""
     let main = CppMain model.name, "#include \"programs.hpp\"\n{canvasInclude}", regs, checks, scriptList, world, runRoot, (Join (Concat2 (Each [[elem, answer]], \|p| p.defs)), "\n\n")
     let groups = Each (Filter model.mods, \|m| (Len m.typesWith) > 1 and (Or m.typesWith[0], "") == m.name), \|m| GroupTypesFile pairs, m.typesWith
-    let files = Fold perModule, [[]], \|acc, fs| Append acc, fs
+    let files = Append (Fold perModule, [[]], \|acc, ((fs, ignore))| Append acc, fs), unitFiles
     let sources = Join (Filter (Each files, \|((f, ignore))| f), \|f| Contains f, ".cpp"), " "
     Append [[(("Makefile", (CppMakefile model.name, runtime, sources, (if canvas: CppMakefileCanvas runtime else: "")))), (("src/elem.decl.hpp", elemDecl)), (("src/elem.types.hpp", elemTypes)), (("src/programs.hpp", (CppProgramsHeader model.name, mainIncludes, programs))), (("src/main.cpp", main)), (("src/prelude.hpp", (CppPreludeSource "")))]], (Append groups, files)
 
@@ -234,9 +237,8 @@ fn TypesHeader title, members, declared, complete, p:
 Includes: fn Text, [Text] -> Text
 fn Includes layer, ms = Join (Each ms, \|m| "#include <{ModDir m}/{if layer == "": "module" else: layer}.hpp>"), "\n"
 
-# A module's definitions in files of about `chunkSize` characters each, so that no file
-# needs more memory to compile than a small machine has (`lower.cpp` alone would): the
-# first is `src/DIR/mod.cpp`, the next `src/DIR/mod_2.cpp`, and so on.
+# A module's definitions in chunks of about `chunkSize` characters each, so that no unit
+# needs more memory to compile than a small machine has (`lower.cpp` alone would).
 Chunks: fn [Text] -> [ [Text] ]
 fn Chunks defs:
     let ((done, current, size)) = Fold defs, (([[]], [[]], 0)), \|((acc, cur, n)), d|
@@ -246,11 +248,21 @@ fn Chunks defs:
 
 let chunkSize = 250000
 
-# A module's files: its headers (`CppDeclHeader` says what each layer holds) and its source
-# files. A source file includes its own module's `DIR/module.hpp` and those of the modules
-# it needs, then the `DIR/generic.hpp` of those that have one (`generics`).
-ModuleFiles: unbounded fn ModDef, Parts, [Text] -> [((Text, Text))]
-fn ModuleFiles m, p, generics:
+# A module's definitions, or a chunk of them, for a unit: the modules whose headers they
+# need (their own first) and the definitions.
+type Piece = record:
+    title: Text
+    prism: Text
+    path: Text
+    ns: Text
+    needs: [Text]
+    defs: Text
+derive ^Eq, ^Show
+
+# A module's files, its headers (`CppDeclHeader` says what each layer holds), and its
+# definitions in chunks for the units (`Units`).
+ModuleFiles: unbounded fn ModDef, Parts -> (([((Text, Text))], [Piece]))
+fn ModuleFiles m, p:
     let title = if m.prism == "": "The root module" else: "The module `{m.prism}`"
     let needed = Append m.complete, m.declared
     let decl = CppDeclHeader title, "", (Join p.forward, "\n\n"), (Join p.handles, "\n\n")
@@ -259,14 +271,37 @@ fn ModuleFiles m, p, generics:
     let head = CppModHeader title, headIncludes, (Join p.protos, "\n"), (Join p.outer, "\n\n"), (Join p.classes, "\n\n")
     let withMine = Append [[m.name]], needed
     let generic = if (Len p.generic) == 0: [[]] else: [[(("src/{ModDir m.name}/generic.hpp", (CppGenericHeader title, (Includes "", withMine), (Join p.generic, "\n\n"))))]]
-    let bodyIncludes = Join (Filter [[(Includes "", withMine), (Includes "generic", (Filter withMine, \|n| Among generics, n))]], \|t| t != ""), "\n"
-    let chunks = Chunks p.defs
-    let sources = Each (Range0 (Len chunks)), \|k| (((ChunkFile m.name, k), (CppModule title, m.path, m.name, bodyIncludes, (Join (Or chunks[k], [[]]), "\n\n"))))
+    let chunks = if (Len p.defs) == 0: [[]] else: Chunks p.defs
+    let pieces = Each chunks, \|c| Piece(title=title, prism=m.prism, path=m.path, ns=m.name, needs=withMine, defs=(Join c, "\n\n"))
     let dir = ModDir m.name
-    Append (Append [[(("src/{dir}/decl.hpp", decl)), (("src/{dir}/types.hpp", types)), (("src/{dir}/module.hpp", head))]], generic), sources
+    (((Append [[(("src/{dir}/decl.hpp", decl)), (("src/{dir}/types.hpp", types)), (("src/{dir}/module.hpp", head))]], generic), pieces))
 
-ChunkFile: fn Text, Nat -> Text
-fn ChunkFile m, k = if k == 0: "src/{ModDir m}/mod.cpp" else: "src/{ModDir m}/mod_{k + 1}.cpp"
+# The build's translation units (pick SF): the modules' definitions in the modules' order,
+# as many to a unit as fit in `unitSize` characters (a larger one is a unit of its own), so that the headers every module includes are read once a unit instead of once
+# a module.
+Units: fn [Piece] -> [ [Piece] ]
+fn Units pieces:
+    let ((done, current, size)) = Fold pieces, (([[]], [[]], 0)), \|((acc, cur, n)), pc|
+        if (Len cur) > 0 and n + (Len pc.defs) > unitSize: (((Push acc, cur), [[pc]], (Len pc.defs)))
+        else: ((acc, (Push cur, pc), n + (Len pc.defs)))
+    if (Len current) == 0: done else: Push done, current
+
+let unitSize = 125000
+
+# A unit's file, `src/unit_N.cpp`: the `DIR/module.hpp` of every module its definitions
+# need, each once, in the order the definitions first need them, then the `DIR/generic.hpp`
+# of those that have one (a template's qualified call sees every overload a header of the
+# unit declares), then the definitions, each module's in its namespace.
+UnitFile: fn Nat, [Piece], [Text] -> ((Text, Text))
+fn UnitFile k, pieces, generics:
+    let needs = Fold pieces, [[]], \|acc, pc| Fold pc.needs, acc, \|a, n| if Among a, n: a else: Push a, n
+    let includes = Join (Filter [[(Includes "", needs), (Includes "generic", (Filter needs, \|n| Among generics, n))]], \|t| t != ""), "\n"
+    let names = Fold pieces, [[]], \|acc, pc| if Among acc, pc.prism: acc else: Push acc, pc.prism
+    let title = if (Len names) == 1: (Or pieces[0], dummyPiece).title else: "The modules {Join (Each names, \|n| if n == "": "the root" else: "`{n}`"), ", "}"
+    let parts = Join (Each pieces, \|pc| CppUnitPart pc.title, pc.path, pc.ns, pc.defs), "\n\n"
+    (("src/unit_{k + 1}.cpp", (CppUnit title, includes, parts)))
+
+let dummyPiece = Piece(title="", prism="", path="", ns="", needs=[[]], defs="")
 
 # Every program, the root's among them, once.
 AllProgramsCpp: fn Model -> [ProgDef]

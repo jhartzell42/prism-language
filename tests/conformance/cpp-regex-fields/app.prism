@@ -1,0 +1,26 @@
+# A `Match`'s and a `Group`'s fields read through a lambda's parameter in a program whose
+# nodes have members of the same names (`text`, `front`): the C++ printer writes `->` for a
+# member name some node has (pick PT), so the runtime's `Match` and `Group`, records like
+# the program's, answer `->` with themselves.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+# Each word of a text.
+Words: fn Text -> Text
+fn Words t = Fold (Matches %/[a-z]+/, t), "", \|acc, m| if acc == "": m.text else: "{acc},{m.text}"
+
+# Where each word starts: its first group's front.
+Fronts: fn Text -> Text
+fn Fronts t = Fold (Matches %/([a-z])[a-z]*/, t), "", \|acc, m| "{acc}{Or (Each m.groups, \|?g| Start ?g)[1], "?"} "
+
+Start: fn ?Group -> Text
+fn Start (? g) = "{At g.front}"
+fn Start nil = "-"
+
+@Shown: @unit
+@Shown:
+    !next <- Ui.Button(label=$"Next")
+    $text <- "ab cd" then "e fg" on !next
+    $front <- 0 then 1 on !next
+    Ui.Label(text=$"{Words $text} {Fronts $text}{$front}")

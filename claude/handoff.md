@@ -104,7 +104,8 @@ their history are in prismc/README.md ("What it costs", "Strings: what is copied
 
 ## Performance work still open
 
-- **Gap OC** (prismc/README.md): Rust still clones an owned match binding used once.
+- **Gap OC** (prismc/README.md): Rust still clones an owned match binding read on several
+  paths, or under a lambda or loop; one read once is moved.
 - **SC1, SC2, SC4 to SC7** (prismc/README.md, "Strings: what is copied"): the string
   copies left.
 - **The performance table for the PR** comes from `bench/building/run.sh` and

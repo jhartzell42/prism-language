@@ -1,0 +1,18 @@
+# Derived by hand: each function is the program's own and each helper the runtime's, so the sums are 100 + 1000 + 1 + (1 + 2 + ... + 12) = 1179 and 100 + 1000 + 1 + (1 + ... + 7) = 1129; the job is Twice's entry and two calls of Step, three cycles by D6, the `@Run` place 0 and the label place 1, (1 + 8 + 10) + (12 + 8 + 10) + 9 + 12 = 70.
+check names
+1: ok
+2: ok
+3: ok
+4: ok
+
+test a_job_beside_them
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 3 ticks, 1 to 3
+
+tick 3
+  changed:
+    1: Ui.Label(text="70")

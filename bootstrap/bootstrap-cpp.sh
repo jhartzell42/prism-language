@@ -14,10 +14,15 @@
 #
 # The starting prismc is, in order: $PRISMC; target/bootstrap/prismc (the Rust bootstrap's);
 # or, on a fresh clone, the seed bootstrap/prismc-cpp.tar.xz, the C++ prismc emitted for
-# itself at its last fixed point, unpacked and built with make.
+# itself at its last fixed point, unpacked and built with make. An installed compiler older
+# than the source's syntax cannot compile prismc/: the bootstrap then stops with one line
+# saying so and naming --from-seed, the diagnostics in target/bootstrap/cpp-gen1-compile.log.
 #
 #   bootstrap/bootstrap-cpp.sh            # bootstrap, check against Rust, install
 #   bootstrap/bootstrap-cpp.sh --update   # also rewrite the seed from the new fixed point
+#   bootstrap/bootstrap-cpp.sh --from-seed   # start from the C++ seed, ignoring $PRISMC and
+#                                            # the installed compiler (with --update too)
+#   bootstrap/bootstrap-cpp.sh --show-start  # only say which compiler it would start from
 #   bootstrap/bootstrap-cpp.sh --seed-at DIR   # only unpack and build the seed in DIR
 #                                              # (bootstrap/test-seed.sh)
 #
@@ -28,11 +33,19 @@ export PRISM_ROOT=$PWD  # for the emitted Makefiles
 ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
 update=0
 seed_at=""
-case "${1:-}" in
-    --update) update=1 ;;
-    --seed-at) seed_at=${2:?--seed-at takes a directory} ;;
-esac
-b=target/bootstrap
+from_seed=0
+show_start=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --update) update=1; shift ;;
+        --from-seed) from_seed=1; shift ;;
+        --show-start) show_start=1; shift ;;
+        --seed-at) seed_at=${2:?--seed-at takes a directory}; shift 2 ;;
+        *) echo "unknown option $1" >&2; exit 2 ;;
+    esac
+done
+# The working directory: target/bootstrap, or PRISM_BOOTSTRAP (bootstrap/test-start.sh).
+b=${PRISM_BOOTSTRAP:-target/bootstrap}
 seed=bootstrap/prismc-cpp.tar.xz
 CXX=${CXX:-g++}
 OPT=${OPT:--O3}
@@ -62,9 +75,21 @@ build_seed() {
     build_cpp "$1"
 }
 if [ -n "$seed_at" ]; then build_seed "$seed_at"; echo "seed: built $seed_at/prismc"; exit 0; fi
+# The starting compiler: $PRISMC, else the installed $b/prismc, else the seed; with
+# --from-seed, the seed whatever is set or installed.
 start=${PRISMC:-}
-if [ -z "$start" ] && [ -x "$b/prismc" ]; then start=$b/prismc; fi
-if [ -z "$start" ]; then
+from=prismc
+if [ -z "$start" ] && [ -x "$b/prismc" ]; then start=$b/prismc; from=installed; fi
+if [ -z "$start" ] || [ $from_seed = 1 ]; then start=""; from=seed; fi
+if [ $show_start = 1 ]; then
+    case $from in
+        prismc) echo "start: \$PRISMC ($start)" ;;
+        installed) echo "start: the installed $start" ;;
+        seed) echo "start: the seed $seed" ;;
+    esac
+    exit 0
+fi
+if [ $from = seed ]; then
     build_seed "$b/cpp-seed"
     start=$b/cpp-seed/prismc
 fi
@@ -74,8 +99,14 @@ cp -r prismc prelude "$b/cpp-src/"
 src=("$b/cpp-src/prismc" --prelude "$b/cpp-src/prelude")
 # compile N BINARY: prismc/ compiled to C++ by BINARY into cpp-genN
 compile() {
-    local t=$(date +%s)
-    "$2" compile "${src[@]}" -o "$b/cpp-gen$1" --name prismc --target cpp
+    local t=$(date +%s) log="$b/cpp-gen$1-compile.log"
+    if ! "$2" compile "${src[@]}" -o "$b/cpp-gen$1" --name prismc --target cpp > "$log" 2>&1; then
+        tail -20 "$log" >&2
+        if [ "$1" = 1 ] && [ $from = installed ]; then
+            echo "the installed $start cannot compile this tree (it is older than the source's syntax); re-run with --from-seed" >&2
+        fi
+        exit 1
+    fi
     echo "cpp-gen$1: prismc/ compiled to C++ by $2 in $(( $(date +%s) - t ))s"
 }
 # build N: cpp-genN built by make

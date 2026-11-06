@@ -51,6 +51,8 @@ struct Group {
     Cursor front, back;
     friend bool operator==(const Group& a, const Group& b) { return a.text == b.text && a.front == b.front && a.back == b.back; }
     void show(Printer& p) const;
+    /// Itself, as every emitted record answers `->` (prismc/README.md, pick PT).
+    const Group* operator->() const { return this; }
 };
 
 /// `Match = record: text, front, back, groups: [?Group], named: Text ==> Group`.
@@ -63,6 +65,8 @@ struct Match {
         return a.text == b.text && a.front == b.front && a.back == b.back && a.groups == b.groups && a.named == b.named;
     }
     void show(Printer& p) const;
+    /// Itself, as every emitted record answers `->` (prismc/README.md, pick PT).
+    const Match* operator->() const { return this; }
 };
 
 namespace detail {

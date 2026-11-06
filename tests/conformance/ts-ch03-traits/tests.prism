@@ -6,7 +6,7 @@ check printing:
     "{Sq 4, 3}" => "e4"
     Describe [[(Sq 0, 0), (Sq 7, 7)]] => "a1, h8"
     Show Wren => "Wren"
-    Show (? 3) => "? 3"
+    Show (? 3) => ? "3"
 
 check order:
     Wren < Heron

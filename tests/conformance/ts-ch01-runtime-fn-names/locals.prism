@@ -1,0 +1,14 @@
+# `Locals`: locals named as the helpers a function body calls bare.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+
+Total: fn (Text ==> Nat), [Nat] -> Nat
+fn Total m, xs:
+    let field = 1
+    let get = 2
+    let index = 3
+    let mapOf = 4
+    let rc = 5
+    let show = 6
+    let mismatch = 7
+    (Or m["k"], 0) + (Or xs[0], 0) + (Or {"z": 1}["z"], 0) + field + get + index + mapOf + rc + show + mismatch

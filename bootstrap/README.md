@@ -15,6 +15,17 @@ keeps no binary; it keeps one archive.
   the binary `./prism` uses.
 - **`bootstrap.sh --update`** also rewrites the seed from the new fixed point, after a
   change to the compiler.
+- **`--from-seed`** (either script, with or without `--update`) starts from the committed
+  seed, ignoring `$PRISMC` and the installed compiler. An installed compiler is older than
+  the tree whenever the source's syntax moved past it (nested `mod` lines, regex
+  literals): when the installed one fails to compile `prismc/`, the bootstrap stops with
+  one line, "the installed target/bootstrap/prismc cannot compile this tree (it is older
+  than the source's syntax); re-run with --from-seed", the compiler's diagnostics kept in
+  `target/bootstrap/gen1-compile.log` (`cpp-gen1-compile.log`); it never retries from the
+  seed on its own. **`--show-start`** only says which compiler it would start from.
+  **`test-start.sh`** checks all of it under a scratch working directory
+  (`PRISM_BOOTSTRAP`), with stand-in compilers. `make bootstrap` and `make bootstrap-cpp`
+  are unchanged.
 - **A seed is packed with no macOS extended attributes** (COPYFILE_DISABLE=1, and
   `--no-xattrs` where the tar takes it), so unpacking it on Linux prints no warnings.
 - **`bootstrap.sh --seed-at DIR`** and **`bootstrap-cpp.sh --seed-at DIR`** only unpack
@@ -45,8 +56,8 @@ The same bootstrap runs through C++ (`prismc compile --target cpp`, prismc/READM
 - **`CXX`, `OPT`, `JOBS`** choose the compiler (g++), its optimization (`-O3`) and make's
   jobs (1: the largest file, `lower.cpp`, needs most of a small machine's memory).
 - **From the repository root:** `make bootstrap-cpp`, `make bootstrap-cpp-update`.
-- **The last run** (5 November 2026, Apple M2 Pro, clang++ `-O3`, 8 jobs, other work on
-  the machine): the Rust prismc compiled `prismc/` to C++ in about 88 s; make built it in
-  about 189 s wall; the C++ prismc compiled itself in about 75 s (181,483 lines of C++ in
-  one unit per module, byte-equal to what it was built from); its Rust (109,349 lines) was
+- **The last run** (5 November 2026, Apple M2 Pro, clang++ `-O3`, 6 jobs, other agents'
+  builds on the machine): the Rust prismc compiled `prismc/` to C++ in 66 s; make built
+  it in 168 s wall; the C++ prismc compiled itself in 83 s (185,385 lines of C++ in 63
+  units, pick SF, byte-equal to what it was built from); its Rust (113,073 lines) was
   byte-equal to the Rust prismc's.

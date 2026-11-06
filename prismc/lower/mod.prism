@@ -74,6 +74,8 @@ type Lx = record:
     g: G
     tys: (Text ==> Ty)
     apps: (Text ==> AppNote)
+    # The expressions lifted over a `?` or `~` at the plain layer, by place.
+    lifts: (Text ==> LiftNote)
     binders: (Text ==> Ty)
     impls: (Text ==> [ImplNote])
     file: Nat
@@ -198,6 +200,23 @@ fn Camel name:
 # names the runtime's by path, or they are the runtime's own.
 let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache", "Case", "Cell", "Clickable", "Collector", "Cursor", "Cx", "Defer", "Demand", "Document", "Done", "DynShow", "Dynamic", "Edit", "Err", "Event", "F64", "Fallible", "Fields", "Finishing", "Fn", "Forward", "FromPod", "Gathered", "Gen", "Handle", "Hold", "Host", "HostOf", "HostRow", "Inert", "IsShared", "IsValue", "Job", "JobRef", "Later", "Link", "List", "Live", "MakeNew", "MutElements", "Nanos", "NeverEvent", "NewSnapshot", "Node", "NodeRef", "None", "Ok", "OkUnit", "Option", "Outcome", "Panic", "Patch", "Path", "Pattern", "Pod", "Port", "Pos", "Printer", "Program", "Rc", "ReadyMap", "ReadyState", "RefCell", "Report", "Request", "Result", "Row", "Rows", "Runtime", "Scope", "Segment", "ShowRef", "ShownText", "Sink", "Slot", "Snapshot", "Some", "Stamped", "String", "Subscribed", "Subscriber", "Supplied", "Supplier", "TestWorld", "Tick", "TickIn", "TickOut", "ToPod", "Unexpected", "Unit", "Vec", "Weak", "World", "XorShift"]]
 
+# The free functions the emitted code reaches bare, or a runtime template may reach by
+# argument-dependent lookup (pick SH): the emitted preludes' (Rust's `crate::prelude::*`,
+# C++'s `crate::prelude`, every function either writes, whichever a program needs), the
+# runtimes' (Rust's `prism_rtl::*` and `prism_rtl::pod::mismatch`, every free function and
+# variable of C++'s `prism_rtl` namespace), and Rust's `drop`. A program's top-level value
+# or local of one of these names takes a `_` (two, where the name with one is also here:
+# `or` beside C++'s `or_`), so neither target's helper is ever the program's. Audited
+# against emit/rust/prelude.prism, emit/cpp/prelude.prism, runtime/rust/src/lib.rs and the
+# C++ runtime's headers (claude/bugs is where a miss is reported).
+let runtimeFns = Fold [["abs", "after", "append", "as", "ask", "at", "at_mut", "at_mut_map", "back", "before", "call_then", "call_value", "case_unicode_version", "cat", "char_is_alphabetic", "char_is_alphanumeric", "char_is_uppercase", "char_is_whitespace", "cloned", "compare", "concat", "cos", "cursor_at", "deref", "diff", "display", "div", "drive", "drop", "dynamic_blueprint", "dynamic_of", "each", "each_job", "each_map", "each_map_job", "element_blueprint", "entered", "enumerate", "event_blueprint", "event_of", "expect", "field", "filter", "filter_job", "filter_map", "filter_map_job", "filter_some", "find", "find_clickables", "finished", "first", "float", "float_", "float_digits", "fmap", "fold", "fold_from", "fold_job", "fold_map", "fold_map_job", "for_each", "for_turns", "for_turns_indexed", "for_turns_keyed", "forward_on_none", "freeze", "from_pod", "front", "get", "host_new", "ignore", "index", "indexed", "insert", "int", "int_", "is", "is_err", "is_none", "is_ok", "is_some", "iter_mut", "ix", "keys", "len", "len_map", "len_text", "loop_job", "loop_turns", "lower", "make_new", "make_rc", "map", "map_job", "map_of", "match_", "matches", "max", "min", "mismatch", "mismatch_fault", "mod_", "more", "named", "nat", "nat_of", "never_blueprint", "never_event", "new_rows", "next", "numbered", "ok", "ok_or", "on_big_stack", "once_job", "or", "or_", "pairs_of", "panic", "parse_nat_opt", "parse_nat_try", "path_of", "place", "plain_blueprint", "print_path", "print_tick", "push", "rc", "rc_placed", "rc_static_cast", "read_file", "regex", "remove", "replace", "run_canvas", "run_cli", "run_scripts", "run_to_end", "set_index", "set_key", "share", "show", "show_ref", "show_text", "sign", "sin", "size", "snapshot", "some_of", "split", "split_on", "step", "step_back", "str", "strip_comment_header", "subscribe_row", "sum", "take", "text", "text_lower", "text_upper", "to_float", "to_pod", "to_string", "u8_", "unexpected", "union", "union_", "unreachable", "unwrap_or_default", "upgrade", "upper", "utf8_decode", "utf8_encode", "utf8_error_at", "utf8_push", "values", "weaken", "world_option"]], {}, \|m, n| Insert m, n, True
+
+# A program's name kept off the runtimes' (`runtimeFns`).
+Unclash: fn Text -> Text
+fn Unclash n:
+    let n1 = if HasKey runtimeFns, n: "{n}_" else: n
+    if HasKey runtimeFns, n1: "{n1}_" else: n1
+
 # A Prism module's Rust module, by its path from the crate: `Check.Env` is `check::env`
 # (claude/modules-style-pass.md), the root `program`. The C++ target's namespaces and
 # directories are the same path, so a segment that is a C++ keyword takes a `_` too
@@ -239,7 +258,12 @@ fn ValueNames g:
         otherwise: acc
     let keys = UnionTexts (Keys g.vals), lets
     let bases = Fold keys, {}, \|m, k| Insert m, (BaseKey k), (Push (Or m[BaseKey k], [[]]), k)
-    Fold keys, {}, \|m, k| Insert m, k, (ValueName k, (Len (Or bases[BaseKey k], [[]])))
+    Fold keys, {}, \|m, k|
+        let name = ValueName k, (Len (Or bases[BaseKey k], [[]]))
+        let runtimes = (OwnerOf k) == "Prelude" or match g.vals[k]:
+            ? v: v.sort == "builtin" or v.home == "Prelude"
+            nil: False
+        Insert m, k, (if runtimes: name else: Unclash name)
 
 GlobalNames: fn G -> (Text ==> Bool)
 fn GlobalNames g:
@@ -248,7 +272,8 @@ fn GlobalNames g:
 
 # A local's Rust name (pick NM): a `?x` is `x_opt`, a `~x` is `x_try` and a `K` is
 # `k_fn`, so that it never hides a plain `x` or `k` of the same scope; a local whose name a function of the module
-# or the prelude has takes a `_` (`kind_` beside the function `kind`).
+# or the prelude has takes a `_` (`kind_` beside the function `kind`), as does one named as a
+# runtime's helper (`runtimeFns`).
 LocalName: fn Lx, Text -> Text
 fn LocalName lx, nkey:
     let marks = MarksOf nkey
@@ -258,7 +283,7 @@ fn LocalName lx, nkey:
     # A capitalised local is a function value (`K`, `Pipe`); Rust's case would make it
     # the plain `k` beside it.
     let s1 = if IsUpperText (Head bare): "{s0}_fn" else: s0
-    if (HasKey lx.globals, "{lx.site}.{s1}") or HasKey lx.globals, "Prelude.{s1}": "{s1}_" else: s1
+    Unclash (if (HasKey lx.globals, "{lx.site}.{s1}") or HasKey lx.globals, "Prelude.{s1}": "{s1}_" else: s1)
 
 BaseKey: fn Text -> Text
 fn BaseKey k:

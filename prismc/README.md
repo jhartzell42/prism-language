@@ -320,6 +320,9 @@ every type followed to its end once the program's last defaults are in.
   lifted `match` or `if`: the node kind (`plain`, `const`, `map`, `sample`, `gate`), the
   result's time layer, the arguments peeled by position, the `?` or `~` peeled under it,
   the call's color.
+- `lifts: [LiftNote]`: every application, operator, index and field read lifted over a
+  `?` or `~` at the plain layer (Type System ch. 4), with the places of the operands it
+  peeled, which lowering matches (claude/backend.md, "Functions and lifting").
 - `fns: [FnNote]`: the color of every function, lambda and widget: declared, and the join
   of what its body applies. A lambda's two are its color as solved (below).
 - `methods: [MethodNote]` and `impls: [ImplNote]`: every method call with its trait, and how
@@ -1079,11 +1082,12 @@ Test World; `tests/compiled/run.sh --target cpp` runs every program so.
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
-- **The C++ bootstrap:** prismc itself compiles to C++ (about 163,000 lines: 38 source
-  files and 73 headers, pick MH) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
+- **The C++ bootstrap:** prismc itself compiles to C++ (185,385 lines: 63 units and 280
+  headers, picks MH and SF) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
   takes it to its fixed point and checks its Rust against the Rust prismc's
-  (bootstrap/README.md). clang++ -O3 builds it in about 100 s wall (1,003 s CPU) with
-  twelve jobs on an M2 Pro; g++ -O1 took about 14 minutes on two cores, one file at a time.
+  (bootstrap/README.md). clang++ -O3 builds it in about 165 s wall (1,310 s CPU) with
+  twelve jobs on an M2 Pro beside other agents' builds (pick SF's table); g++ -O1 took
+  about 14 minutes on two cores, one file at a time.
 
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 
@@ -1132,8 +1136,34 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   constructors (`Hold::new` is `{init, cx}`, `Port::new` inside `Rc::new` `make_new()`).
 - **NC: a node's constructor takes its fields in declared order**, the initializers the
   model orders by moves being copies in C++.
-- **SF: a module's definitions in files of about 250,000 characters** (`lower/mod.cpp`,
-  `lower/mod_2.cpp`, ...): one file of `lower.prism`'s needs more than 7 GB to compile.
+- **SF: translation units of up to 125,000 characters of definitions.** The modules'
+  definitions, in the modules' order, are packed into `src/unit_N.cpp` as many to a unit
+  as fit in 125,000 characters; a module's own definitions are cut into chunks of about
+  250,000 (one file of the old `lower.prism`'s needed more than 7 GB), a chunk larger
+  than a unit is a unit of its own. A unit includes every `DIR/module.hpp` its modules
+  need, each once, then their `DIR/generic.hpp`s (MH's order: every overload a header
+  declares comes before every template), then each module's definitions in its own
+  namespace; the headers stay per module. What it buys, measured on prismc (5 November
+  2026, Apple M2 Pro, 12 cores, 16 GB, `make -j12 CXX=clang++ OPT=-O3` from clean with
+  the runtime's library built, other agents' builds running beside it at load averages
+  of 8 to 31, so the wall times are rough; user and system CPU):
+
+  | Units | Of up to | Wall | CPU | Largest unit |
+  |---|---|---|---|---|
+  | 91 (one a module) | | 167 to 185 s | 1,368 to 1,384 s | 246,623 characters, 24 s, 1.48 GB |
+  | 82 | 60,000 | 177 to 188 s | 1,356 to 1,406 s | the same |
+  | **62** | **125,000** | **165 to 188 s** | **1,306 to 1,314 s** | the same |
+  | 34 | 250,000 | 199 to 227 s | 1,398 to 1,522 s | the same |
+
+  A unit's headers cost about a second of clang's front end (114,000 lines preprocessed
+  for a module of no definitions, most of them the standard library and `prism_rtl`), and
+  the inline functions and templates every unit instantiates are optimized again in each:
+  62 units save about 6% of the CPU and the most wall time. 34 units save more user time
+  (1,144 s against 1,332) but each holds more of the program at once: twelve such
+  compiles beside another agent's paged (system time 254 to 370 s) and finished later.
+  The rest of the CPU is the definitions themselves, which batching cannot share; the
+  build was 1,003 s for 38 files on 4 November, before the module tree, with 20% fewer
+  lines.
 - **BS: a 4 GB stack.** `main` runs on a thread with a 4 GB stack (committed as used), as
   the Rust program runs on a 1 GB one: unbounded code runs direct-style within a cycle,
   and a C++ frame of the emitted code is larger than Rust's.
@@ -1264,18 +1294,17 @@ Each is Claude's, for Jimmy to overturn.
   parameter is a borrowed `&dyn Fn`; a closure as a value is `Rc<dyn Fn(&A) -> B>`, its
   captures cloned in. A recursive payload is behind `Rc` (a type that reaches itself by
   value, directly, through `?` or a tuple).
-- **OC A binding of an owned scrutinee is cloned at its one use** (`Some(b2) =>
-  Some(Term::Lam(Rc::new(b2.clone())))` in `sem-ch07-normalize`'s `?Reduce`), where a
-  move would do. Not cheap to decide in lowering: each read is spelled on its own as the
-  arm's body is lowered (`Own` of an `Owned` place is a clone), knowing nothing of the
-  reads after it, and a move is right only for the last read on every path, outside a
-  loop and outside a closure's body. Deciding it needs a count of the binder's reads
-  before the body is lowered (`ExprsIn` gives the mentions, but a mention is not one
-  read: an interpolation or a `?` of it lowers to several), and a `Holding` for "owned,
-  read once" that each of lowering's 82 tests of a mode would have to take; or a pass
-  over the model's `Ex` rewriting the one `XClone`, a walker over its 50 forms that
-  lowering does not have. Each such clone is a count's increment (a `Term` holds `Rc`s);
-  C++ has the same copy (`prism_rtl::rc(b2)` of an `auto&&`).
+- **OC A binding of an owned scrutinee read once is moved.** In a `match` over an owned
+  value, a binder its arm's body reads once is bound at that read's place as a value, so
+  the read is a move (`Some(b2) => Some(Term::Lam(Rc::new(b2)))` in `sem-ch07-normalize`'s
+  `?Reduce`), where it was a clone (`MovedOnce` in lower/expr.prism). Only where that is
+  plain from the source: the name stands once in the body's text and not in the guard's,
+  and the body has no lambda and no loop (a read there may run more than once or outlive
+  the arm). Left: a binder read on several paths (once in each branch of an `if`), or
+  under a lambda or loop, is still cloned at every read; deciding those needs the count of
+  reads per path that E's note asked for (a `Holding` for "owned, read once", or a pass
+  over the model's `Ex`). C++ prints the same move as the copy it printed before (a
+  pattern binds by reference into its scrutinee, pick PB).
 - **CH Clauses and patterns.** A function's clauses are one `match` over the parameters
   that are not the same name in every clause; a number or text literal in a pattern is a
   binder and an equality guard, a number of the scrutinee's type (`0` against a `Nat` is
@@ -1713,11 +1742,15 @@ ruling taken (Claude's).
   emitted code writes bare (`prism_rtl`'s `Row`, `Node`, `Hold`, `Cx`, `Pod`, `Path`...,
   and Rust's `Rc`, `Cell`, `Vec`...) takes a `_` in both targets (`lower.prism`'s
   `runtimeNames`, through `Camel`), as a Rust keyword does through `Snake`; printed
-  values keep the Prism name (`cpp-runtime-names`). *Not yet:* a function whose Rust name
-  is one of the runtime's free functions the emitted code calls bare (`call_value`,
-  `entered`, `once_job`) still shadows it: a `CallValue` in a module with jobs breaks that
-  module's frames, and a local `startBody` beside an unbounded `Body` is that function's
-  `start_body`.
+  values keep the Prism name (`cpp-runtime-names`). A top-level value or local whose
+  Rust name is a free function of either emitted prelude or either runtime (`field`,
+  which every `FromPod` impl calls, `get` and `index` of indexing, `call_value`,
+  `entered` and `once_job` of a job's frames, prism_rtl's `mismatch`, `rc`, `show`;
+  `runtimeFns` in lower/mod.prism, 179 names) takes a `_`, two where the name with one is
+  also there (`or__`, beside C++'s `or_`), so neither target's helper is ever the
+  program's, whether the emitted code calls it bare or a runtime template finds it by
+  argument-dependent lookup (`ts-ch01-runtime-fn-names`). *Not yet:* a local `startBody`
+  beside an unbounded `Body` is that function's `start_body`, a name lowering makes.
 - **PF A port's fault.** `Port::fire` returns `Done`, and an event method returns
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
@@ -1911,7 +1944,7 @@ function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s,
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), an `@Machine` whose step is
 not a named function, a local function whose
-parameters are not names or used as a value, `!MergeAll` of a list that is not a
+parameters are not names or used as a value, an unbounded call lifted over a `?` or `~`, `!MergeAll` of a list that is not a
 literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
 and `if`, a widget of several clauses in a static position of a hosted scope (pick CS),
 `Time.After`, and the zombie and

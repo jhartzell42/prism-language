@@ -81,6 +81,12 @@ it make every program an interpreter run, and every type mistake a runtime fault
   transform of an event calls straight through; `$x on !e` samples at the read point;
   `$x + 1` is a getter, or an `rt::Cache` field when several readers share it; a lifted
   `match` or `if` is a computed behavior over its scrutinee.
+- **`?` and `~` at the plain layer** (Type System ch. 4): the checker notes each
+  application, operator or field read it lifts over a `?` or `~`, with the operands it
+  peeled (`TProgram.lifts`); lowering makes it a `match` of each operand in turn, left to
+  right, whose present arm is the plain expression over the peeled values, wrapped back
+  (`match get(ps, k) { Some(o) => Some(o.a.clone()), None => None }`), and whose absent arm
+  is `None` (the leftmost `Err`). An unbounded call lifted so is refused, naming it.
 - **`&` blocks** → native mutation of a fresh or unique value: `Rc::make_mut`, and the
   persistent collections' in-place updates (Compiler ch. 3, "Unique values").
 - **Fault `~`**: a fallible expression is a `Result<_, rt::Error>` and `?` propagates;
@@ -354,7 +360,8 @@ what differs is how C++ spells it.
   layers of the modules it needs (prismc/README.md, pick MH); `src/elem.decl.hpp` and
   `src/elem.types.hpp` for `crate::Elem` and `crate::Answer`; `src/programs.hpp` (the
   program classes); `src/main.cpp` (`Elem`'s and `Answer`'s definitions, `test_world()`,
-  `main`), `src/prelude.hpp` and one `src/DIR/mod.cpp` (or several) per module. The
+  `main`), `src/prelude.hpp` and the modules' definitions in translation units,
+  `src/unit_N.cpp`, several small modules to a unit (prismc/README.md, pick SF). The
   modules are the namespaces `crate::check::env`, nested as their names are, and every
   reference to another module's item is from `crate::`. A program class has the static `build(args, ready)`
   and the virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a

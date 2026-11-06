@@ -1,0 +1,16 @@
+# The helpers' names: declarations of ts-ch01-runtime-fn-names.
+emit Ui.*
+use App.*
+use Locals
+
+check names:
+    All {"k": P(a=100, b="p")}, [[1000]] => 1179
+    Locals.Total {"k": 100}, [[1000]] => 1129
+    Field 1 => 2
+    Show P(a=1, b="x") => "P(a=1, b=\"x\")"
+
+test a_job_beside_them, @Counted 1:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="70")

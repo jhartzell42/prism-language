@@ -223,13 +223,22 @@ using namespace prelude;
 }  // namespace crate
 </cpp>
 
-# One Prism module's definitions.
-CppModule: fn Text, Text, Text, Text, Text -> Text
-fn CppModule prism, path, ns, includes, defs = inline_text <cpp>
-// {{prism}}, from `{{path}}`, emitted by prismc: its functions, its nodes' methods, its
-// types' printers (claude/backend.md). Edit the Prism source, not this file.
+# A translation unit of the build (pick SF): the definitions of the modules it holds, after
+# the headers they need.
+CppUnit: fn Text, Text, Text -> Text
+fn CppUnit title, includes, parts = inline_text <cpp>
+// {{title}}, emitted by prismc: the functions, nodes' methods and types' printers
+// (claude/backend.md), one translation unit of the build. Edit the Prism sources, not this
+// file.
 {{includes}}
 
+{{parts}}
+</cpp>
+
+# One module's definitions in a unit, or a chunk of them.
+CppUnitPart: fn Text, Text, Text, Text -> Text
+fn CppUnitPart prism, path, ns, defs = inline_text <cpp>
+// {{prism}}, from `{{path}}`.
 namespace crate::{{ns}} {
 
 {{defs}}

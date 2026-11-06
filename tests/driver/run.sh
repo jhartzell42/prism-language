@@ -7,7 +7,8 @@
 # value is refused, never ignored; an absolute `-o` finds the runtime at PRISM_ROOT or is
 # refused, naming `--runtime`; and `prism compile --target cpp` writes C++. Last, chess
 # compiled to C++ runs under the C++ canvas World: its `main` calls the World and its
-# Makefile links it.
+# Makefile links it. Between them, a binder an arm reads once is moved (gap OC), and a program's small
+# modules share one C++ translation unit (pick SF).
 #
 #   tests/driver/run.sh
 #
@@ -90,6 +91,24 @@ if ./prism compile --target cpp tests/driver/cli-root.prism -o "$out/cpp" > /dev
 else
     failed+=(compile-cpp)
     echo "FAILED compile-cpp: prism compile --target cpp wrote no C++ program (or a Cargo.toml)"
+fi
+# Pick SF: small modules' definitions share a translation unit; headers stay per module.
+if ./prism compile --target cpp tests/conformance/mod-nested-names -o "$out/units" > /dev/null 2>&1 &&
+    [ -f "$out/units/src/unit_1.cpp" ] && [ ! -e "$out/units/src/unit_2.cpp" ] &&
+    [ -z "$(find "$out/units/src" -name 'mod*.cpp')" ] && [ -f "$out/units/src/a/types/module.hpp" ] &&
+    [ "$(grep -c '^namespace crate::' "$out/units/src/unit_1.cpp")" -ge 3 ]; then
+    echo "ok cpp-units: a program's small modules in one unit, their headers per module"
+else
+    failed+=(cpp-units)
+    echo "FAILED cpp-units: mod-nested-names' C++ is not one unit over per-module headers ($out/units/src)"
+fi
+# Gap OC: a binder of an owned scrutinee its arm reads once is moved, not cloned.
+if ./prism compile tests/conformance/sem-ch07-normalize -o "$out/normalize" > /dev/null 2>&1 &&
+    grep -q 'Some(b2) => Some(Term::Lam(Rc::new(b2))),' "$out/normalize/src/program.rs"; then
+    echo "ok owned-binder-moved: a binder read once is moved"
+else
+    failed+=(owned-binder-moved)
+    echo "FAILED owned-binder-moved: ?Reduce's b2 is not moved at its one read ($out/normalize/src/program.rs)"
 fi
 if ./prism compile --target cpp examples/chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
     grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&

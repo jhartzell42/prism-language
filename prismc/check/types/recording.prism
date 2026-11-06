@@ -47,6 +47,12 @@ NoteApp: fn St, Range, Text, Text, Text, [Nat], Text, Col -> St
 fn NoteApp st, span, callee, kind, layer, lifted, inner, col = if not st.recording: st else: update st:
     &_.typed.apps <= Push &_.typed.apps, AppNote(at=(AtHere st, span), callee=callee, kind=kind, layer=layer, lifted=lifted, inner=inner, color=col)
 
+# An application, operator or field read lifted over `sigil` at the plain layer, peeled
+# from the operands at `operands`.
+NoteLift: fn St, Range, Text, [Range] -> St
+fn NoteLift st, span, sigil, operands = if not st.recording or (Len operands) == 0: st else: update st:
+    &_.typed.lifts <= Push &_.typed.lifts, LiftNote(at=(AtHere st, span), sigil=sigil, operands=operands)
+
 NoteFn: fn St, Range, Text, Col, Col -> St
 fn NoteFn st, span, name, declared, body = if not st.recording: st else: update st:
     &_.typed.fns <= Push &_.typed.fns, FnNote(at=(AtHere st, span), name=name, declared=declared, body=body)
