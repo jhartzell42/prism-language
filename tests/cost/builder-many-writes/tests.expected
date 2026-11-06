@@ -1,0 +1,167 @@
+# Derived by hand: the label shows the map's size, 20,000, and each write of the same map changes nothing.
+test forty_writes
+
+tick 0
+  added:
+    0: Ui.Button(label="same")
+    2: Ui.Label(text="20000")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  in:
+    0: click
+
+tick 3
+  in:
+    0: click
+
+tick 4
+  in:
+    0: click
+
+tick 5
+  in:
+    0: click
+
+tick 6
+  in:
+    0: click
+
+tick 7
+  in:
+    0: click
+
+tick 8
+  in:
+    0: click
+
+tick 9
+  in:
+    0: click
+
+tick 10
+  in:
+    0: click
+
+tick 11
+  in:
+    0: click
+
+tick 12
+  in:
+    0: click
+
+tick 13
+  in:
+    0: click
+
+tick 14
+  in:
+    0: click
+
+tick 15
+  in:
+    0: click
+
+tick 16
+  in:
+    0: click
+
+tick 17
+  in:
+    0: click
+
+tick 18
+  in:
+    0: click
+
+tick 19
+  in:
+    0: click
+
+tick 20
+  in:
+    0: click
+
+tick 21
+  in:
+    0: click
+
+tick 22
+  in:
+    0: click
+
+tick 23
+  in:
+    0: click
+
+tick 24
+  in:
+    0: click
+
+tick 25
+  in:
+    0: click
+
+tick 26
+  in:
+    0: click
+
+tick 27
+  in:
+    0: click
+
+tick 28
+  in:
+    0: click
+
+tick 29
+  in:
+    0: click
+
+tick 30
+  in:
+    0: click
+
+tick 31
+  in:
+    0: click
+
+tick 32
+  in:
+    0: click
+
+tick 33
+  in:
+    0: click
+
+tick 34
+  in:
+    0: click
+
+tick 35
+  in:
+    0: click
+
+tick 36
+  in:
+    0: click
+
+tick 37
+  in:
+    0: click
+
+tick 38
+  in:
+    0: click
+
+tick 39
+  in:
+    0: click
+
+tick 40
+  in:
+    0: click
