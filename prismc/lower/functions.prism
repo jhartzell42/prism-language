@@ -306,7 +306,7 @@ fn IfGenLine wx, menv, c, thenB, elseB, e:
     let Mk = \|n| XCast (TryOf (XCall "{n.name}::build", (Append [[(XVar "path"), (XVar "value")]], tail))), (OutObj (OutNamed "Row", [[]]))
     let select = XIf cond, (Mk yes.node), (Mk no.node)
     let wx3 = update no.parent:
-        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=False, width=0)
+        &_.gens <= Push &_.gens, GenDef(name=name, pos=pos, at=(PlaceAt wx, "self", pos), source=(XUnit), valueTy=OutUnit, select=select, transparent=False, width=0, moved=(Or (?HostedRows wx), ""))
         &_.genHolds <= Push &_.genHolds, ((name, [[]]))
         &_.rows <= Append (Append (Append (Push &_.rows, yes.node), yes.node.children), [[no.node]]), no.node.children
         &_.getters <= Push &_.getters, (MethDef(name="{name}_up", recv=RecvRc, params=[[(("v", OutUnit))]], cx=CxMut, ret=OutUnit, body=[[]], tail=(XUnit), doc="An arm's result, which a building `if` of widgets drops."))

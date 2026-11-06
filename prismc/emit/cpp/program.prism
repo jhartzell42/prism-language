@@ -113,12 +113,17 @@ fn RowLeaving cp, n:
     CppFunction "", "void {n.name}::leave_row(Cx& cx)", (Join (Append (Push kept, "remove_places(cx);"), unsubscribe), "\n")
 
 ForBuildCpp: unbounded fn Cp, Text, ForDef -> Text
-fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), (CallPath "{b.rowNode}::build"), b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}"))
+fn ForBuildCpp cp, owner, b = ForBuildTemplate owner, b.name, (CppExpr cp, b.at), (CppType cp, b.keyTy), (CppType cp, b.valueTy), (CallPath "{b.rowNode}::build"), b.source, (CppExpr cp, b.parent), (Concat (Each b.passed, \|x| ", {CppExpr cp, x}")), (MovedCallCpp b.moved)
+
+# A builder whose rows' places are a host's document tells the host its child's places came
+# or went (`$(Path ==> $Elem c)`'s outer moves).
+MovedCallCpp: fn Text -> Text
+fn MovedCallCpp m = if m == "": "" else: "\n    // the places of the host's child came or went: its document's outer moves\n    this->{m}(cx);"
 
 GenBuildCpp: unbounded fn Cp, Text, GenDef -> Text
 fn GenBuildCpp cp, owner, gd:
     let path = if gd.transparent: "this->path" else: "{CppExpr cp, gd.at}.child(Segment::gen(g))"
-    GenBuildTemplate owner, gd.name, (CppExpr cp, gd.at), path, (CppExpr cp, gd.source), (CppType cp, gd.valueTy), (CppExpr cp, gd.select)
+    GenBuildTemplate owner, gd.name, (CppExpr cp, gd.at), path, (CppExpr cp, gd.source), (CppType cp, gd.valueTy), (CppExpr cp, gd.select), (MovedCallCpp gd.moved)
 
 ProgramCpp: unbounded fn Cp, ProgDef, Bool -> Text
 fn ProgramCpp cp, p, fallible:

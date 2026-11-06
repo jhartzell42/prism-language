@@ -106,6 +106,10 @@ let blueprintTy = OutNamed "prism_rtl::Blueprint", [[(OutNamed "crate::Elem", [[
 # its rows reach it.
 let elemTy = OutNamed "crate::Elem", [[]]
 let answerTy = OutNamed "crate::Answer", [[]]
+# A hosted place's entry in its host's document (`$(Path ==> $Elem c)`), and the host's
+# document, its outer, as the owner keeps it.
+let entryTy = OutRc (OutNamed "prism_rtl::Entry", [[(OutNamed "crate::Elem", [[]])]])
+let hostDocTy = OutNamed "prism_rtl::HostDoc", [[(OutNamed "crate::Elem", [[]])]]
 let hostOfTy = OutObj (OutNamed "prism_rtl::HostOf", [[(OutNamed "crate::Elem", [[]]), (OutNamed "crate::Answer", [[]])]])
 
 # Whether a type gives a blueprint (`@o`, `?@o`).
@@ -244,6 +248,34 @@ fn Podable t = match t:
     OutArray e: Podable e
     OutMap k, v: (Podable k) and Podable v
     otherwise: True
+
+# Whether a Rust type compares in the runtime: plain data, or values that hold dynamics, a
+# dynamic equal only to itself (prism_rtl's `Dynamic`; doubt EQ). No Prism code compares
+# one (the checker refuses `^Eq` there); a place's entry does.
+RuntimeEq: unbounded fn OutTy -> Bool
+fn RuntimeEq t = match t:
+    OutDyn ignore: True
+    OutNamed ignore, args: Fold args, True, \|ok, a| ok and RuntimeEq a
+    OutOpt i: RuntimeEq i
+    OutRes i: RuntimeEq i
+    OutRc i: RuntimeEq i
+    OutTuple ts: Fold ts, True, \|ok, a| ok and RuntimeEq a
+    OutArray e: RuntimeEq e
+    OutMap k, v: (RuntimeEq k) and RuntimeEq v
+    other: Podable other
+
+# Whether a Rust type holds a dynamic, so a World reads it deep (doubt WD).
+HoldsDyn: unbounded fn OutTy -> Bool
+fn HoldsDyn t = match t:
+    OutDyn ignore: True
+    OutNamed ignore, args: Fold args, False, \|f, a| f or HoldsDyn a
+    OutOpt i: HoldsDyn i
+    OutRes i: HoldsDyn i
+    OutRc i: HoldsDyn i
+    OutTuple ts: Fold ts, False, \|f, a| f or HoldsDyn a
+    OutArray e: HoldsDyn e
+    OutMap k, v: (HoldsDyn k) or HoldsDyn v
+    otherwise: False
 
 # ---------------------------------------------------------------------------------------
 # Values: what a Prism name stands for, and how a value is borrowed or owned (Compiler

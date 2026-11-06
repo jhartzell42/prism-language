@@ -347,19 +347,24 @@ struct Answer {
 };
 
 /// An owner hosting one child button at child path `0`, every place forwarded: the child's
-/// label is a hold, and a click on the forwarded element reaches the child in the tick.
+/// label is a hold, and a click on the forwarded element reaches the child in the tick. The
+/// child's place is an entry of the host's document, taken in the owner's patch pass.
 struct Owner : Node {
     Rows<Elem, Answer> rows = new_rows<Elem, Answer>();
     prism_rtl::Rc<Host<Elem, Answer, Owner>> host;
     std::optional<Hold<Text>> label;
+    prism_rtl::Rc<Entry<Elem>> place = Entry<Elem>::make("the child's place 0");
     int clicks = 0;
 
-    Map<Path, Elem> doc(const Cx& cx) const { return Map<Path, Elem>::unit(Path::root().at(0), Elem{label->get(cx)}); }
     Done deliver(const Path& place, const Answer&, Cx& cx) {
         if (!place.segments()[0].is_pos(0)) return unexpected(Fault::answer("no such child place"));
         ++clicks;
         label->set(Text("clicked"), cx);
-        for (const auto& [_, row] : *rows) cx.dirty(row);  // the owner's marks dirty the rows over `$doc`
+        cx.dirty(rc_from_this());  // the place reads the label: its entry is taken again
+        return {};
+    }
+    Done patch(Cx& cx) override {
+        place->take(Elem{label->get(cx)}, cx);
         return {};
     }
     Done answer(std::span<const Segment> at, const Pod& v, Cx& cx) override {
@@ -389,17 +394,17 @@ struct OwnerProgram : Program {
         owner->label.emplace(Text("press"), cx);
         Supplier<Elem, Answer> supplier = [](const Path&, const Live<Elem>& e) { return element_blueprint<Elem, Answer>(e); };
         owner->host = Host<Elem, Answer, Owner>::make(
-            Path::root().at(5), owner->rows, supplier, nullptr, [](const Owner& o, const Cx& cx) { return o.doc(cx); },
+            Path::root().at(5), owner->rows, supplier, nullptr,
             [](const prism_rtl::Rc<Owner>& o, const Path& place, const Answer& a, Cx& cx) {
                 return o->deliver(place, a, cx);
             });
         owner->host->link(owner);
+        owner->place->take(Elem{owner->label->get(cx)}, cx);
         // The host's `for` over `$doc`, as the emitted builder makes its rows.
-        for (const auto& [key, elem] : owner->doc(cx)) {
-            prism_rtl::Rc<HostOf<Elem, Answer>> h = owner->host;
-            auto row = TRY((HostRow<Elem, Answer>::make(Path::root().at(5).child(Segment::key(to_pod(key))), key, elem, h, cx)));
-            owner->rows->insert(key, row);
-        }
+        Path key = Path::root().at(0);
+        prism_rtl::Rc<HostOf<Elem, Answer>> h = owner->host;
+        auto row = TRY((HostRow<Elem, Answer>::make(Path::root().at(5).child(Segment::key(to_pod(key))), key, owner->place, h, cx)));
+        owner->rows->insert(key, row);
         p->root = owner;
         auto out = TRY(p->rt.close(std::move(cx)));
         return std::pair{std::move(p), std::move(out)};
@@ -421,7 +426,9 @@ TEST(a_forwarding_host_is_observably_not_there) {
     TickOut t1 = program->tick(TickIn::none().answer(at, Pod::name("click")), ready).value();
     CHECK_EQ(program->root->clicks, 1);  // in the same tick
     CHECK(t1.patch.changed.size() == 1 && t1.patch.changed[0].second.to_string() == "Ui.Button(label=\"clicked\")");
-    CHECK(!t1.pending);
+    CHECK(t1.pending);  // the place's entry moved: its publication is the next tick's, owed
+    TickOut t2 = program->tick(TickIn::none(), ready).value();
+    CHECK(!t2.pending && t2.patch.changed.empty());
     auto bad = program->tick(TickIn::none().answer(at, Pod::int64(1)), ready);
     CHECK(!bad.has_value() && bad.error().kind == "Runtime.Answer");
 }

@@ -201,6 +201,9 @@ public:
     /// At the start of tick `n + 1`: whether S(n) still differs from S(n-1), so the
     /// publication writes the dynamic.
     bool published(const Cx& cx) const { return moved_ && *moved_ + 1 == cx.tick(); }
+    /// Whether a snapshot was ever taken: a place's entry takes its first at its node's
+    /// build, uncompared.
+    bool taken() const { return newest_.has_value(); }
     /// The dynamic at the read point: its value after the tick before the read point, the
     /// snapshot of the tick before that (S(m-1) after `m`); the build's snapshot until then.
     T get(const Cx& cx) const {
@@ -385,6 +388,12 @@ struct Dynamic {
         return Dynamic{nullptr, make_rc<const std::function<T(const Cx&)>>(std::move(read)), updates};
     }
     T sample(const Cx& cx) const { return (*read)(cx); }
+    /// Two dynamics are equal when they are the same dynamic: the same read and the same
+    /// update event, never by their values (a dynamic has no `^Eq` in Prism, and no program
+    /// compares one). This is what the runtime's own comparisons see where a value holds
+    /// dynamics (a host document's entries, an element whose children are dynamics): a
+    /// place's entry is the same dynamic for as long as the place lives (doubt EQ).
+    bool operator==(const Dynamic& o) const { return read == o.read && updates == o.updates; }
     /// The dynamic `f` of this one: the same owner and update event, the read mapped.
     template <class F>
     auto map(F f) const -> Dynamic<std::invoke_result_t<F, const T&>> {
@@ -395,13 +404,19 @@ struct Dynamic {
     }
 };
 
+template <class E>
+class Entry;
+
 /// A live element, `Element r o`: what a host's supplier receives for each of its child's
 /// places. `identity` is the place's level at its build, whose tag and plain fields never
-/// change while it lives; `level` is its level over time, which a `$` field reads.
+/// change while it lives; `level` is its level over time, which a `$` field reads; `entry`
+/// is the place's entry in its host's document (a forwarded element's place in an
+/// enclosing host's document is the same entry).
 template <class E>
 struct Live {
     E identity;
     Dynamic<E> level;
+    Rc<Entry<E>> entry;
 };
 
 // ---------------------------------------------------------------------------------------

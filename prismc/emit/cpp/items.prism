@@ -276,28 +276,55 @@ fn TagParts cp, t:
     let fields = Join (Each t.fields, \|((ignore, f, ft))| "{CppType cp, ft} {FieldId f};"), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "\{\"{p}\", prism_rtl::to_pod({FieldId f})\}"), ", "
     let reads = Join (Each t.fields, \|((p, f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(p, \"{p}\"))))"), ", "
-    let eq = if t.pod: "bool operator==(const {t.name}&) const = default;" else: ""
+    let eq = if t.eq: "bool operator==(const {t.name}&) const = default;" else: ""
     let back = if t.pod: "static Result<{t.name}> from_pod(const Pod& p);" else: ""
-    let decl = CppTagStruct (CppSourceDoc "The `Level` of `{t.tagName}`:", t.doc), t.name, fields, t.tagName, (Join (Filter [[eq, back]], \|s| s != ""), "\n")
+    # a level that holds dynamics as a World reads it, deep (doubt WD)
+    let deep = Fold t.fields, False, \|d, ((ignore, ignore, ft))| d or HoldsDyn ft
+    let levelDecl = if deep: "/// The level as a World reads it: each dynamic it holds sampled at the read point.\nPod level_pod(const Cx& cx) const;\n/// The update events of the dynamics it holds, and of theirs.\nvoid level_ports(const Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<Unit>>>& out) const;" else: ""
+    let decl = CppTagStruct (CppSourceDoc "The `Level` of `{t.tagName}`:", t.doc), t.name, fields, t.tagName, (Join (Filter [[eq, back, levelDecl]], \|s| s != ""), "\n")
+    let deepPods = Join (Each t.fields, \|((p, f, ft))| CppDeepField p, f, ft), ", "
+    let deepPorts = Join (Filter (Each t.fields, \|((ignore, f, ft))| CppDeepPorts f, ft), \|s| s != ""), "\n"
+    let levelDefs = if deep: [[(CppFunction "", "Pod {t.name}::level_pod(const Cx& cx) const", "static_cast<void>(cx);\nreturn Pod::element(TAG, \{{deepPods}\});"), (CppFunction "", "void {t.name}::level_ports(const Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<Unit>>>& out) const", "static_cast<void>(cx);\nstatic_cast<void>(out);{if deepPorts == "": "" else: "\n{deepPorts}"}")]] else: [[]]
     let toPod = CppFunction "", "Pod {t.name}::to_pod() const", "return Pod::element(TAG, \{{pods}\});"
     let show = CppFunction "", "void {t.name}::show(Printer& p) const", "prism_rtl::to_pod(*this).structure();\nShow<Pod>::show(prism_rtl::to_pod(*this), p);"
     let fromPod = if t.pod: [[(CppFunction "", "Result<{t.name}> {t.name}::from_pod(const Pod& p)", "if (auto t = p.tag(); t && *t == TAG) return {t.name}\{{reads}\};\nreturn mismatch<{t.name}>(\"a {t.tagName}\", p);")]] else: [[]]
     let deps = Concat2 (Each t.fields, \|((ignore, ignore, ft))| ValueDeps cp, ft)
-    Parts(forward=[["struct {t.name};"]], handles=[[]], values=[[ValueDecl(path="{cp.home}::{t.name}", deps=deps, text=decl)]], cases=[[]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[toPod, show]], fromPod))
+    Parts(forward=[["struct {t.name};"]], handles=[[]], values=[[ValueDecl(path="{cp.home}::{t.name}", deps=deps, text=decl)]], cases=[[]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
+
+# A level field as a World reads it (doubt WD): plain data as it is; a map of dynamics or a
+# dynamic sampled deep. Any other shape holding a dynamic stops the build, loudly.
+CppDeepField: unbounded fn Text, Text, OutTy -> Text
+fn CppDeepField p, f, ft = "\{\"{p}\", {CppDeepPod f, ft}\}"
+
+CppDeepPod: unbounded fn Text, OutTy -> Text
+fn CppDeepPod f, ft = match ft:
+    OutMap ignore, (OutDyn (OutNamed "crate::Elem", ignore)): "prism_rtl::dynamics_pod({FieldId f}, cx)"
+    OutDyn (OutNamed "crate::Elem", ignore): "prism_rtl::level_pod({FieldId f}.sample(cx), cx)"
+    other: if HoldsDyn other: "[] \{ static_assert(false, \"prismc: a tag field holding a dynamic other than `$Elem` or a map of them is not read deep (claude/incremental-host-document.md, doubt WD)\"); return Pod(); \}()" else: "prism_rtl::to_pod({FieldId f})"
+
+CppDeepPorts: unbounded fn Text, OutTy -> Text
+fn CppDeepPorts f, ft = match ft:
+    OutMap ignore, (OutDyn (OutNamed "crate::Elem", ignore)): "prism_rtl::dynamics_ports({FieldId f}, cx, out);"
+    OutDyn (OutNamed "crate::Elem", ignore): "out.push_back({FieldId f}.updates);\nprism_rtl::level_ports({FieldId f}.sample(cx), cx, out);"
+    otherwise: ""
 
 # A row kind's values (pick RV): a choice of the kind's tags, each holding its tag's struct.
 RowParts: unbounded fn Cp, Text, RowDef -> Parts
 fn RowParts cp, m, r:
     let names = Each r.cases, \|((v, ignore))| v
-    let pod = "Pod to_pod() const;\nvoid show(Printer& p) const;{if r.pod: "\nstatic Result<{r.name}> from_pod(const Pod& p);" else: ""}"
+    let levels = if r.level: "\nPod level_pod(const Cx& cx) const;\nvoid level_ports(const Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<Unit>>>& out) const;" else: ""
+    let pod = "Pod to_pod() const;\nvoid show(Printer& p) const;{if r.pod: "\nstatic Result<{r.name}> from_pod(const Pod& p);" else: ""}{levels}"
     let handle = ChoiceHandle (CppSourceDoc "`{r.prism}`, a row kind's values:", r.doc), "", r.name, (Join (Each names, \|n| "struct {n};"), "\n"), (Join names, ", "), pod
-    let cases = Each r.cases, \|((v, st))| CaseDecl "", "{r.name}::{v}", "{RowStruct m, st} a0;{if r.pod: "\nbool operator==(const {v}&) const = default;" else: ""}"
-    let eq = if r.pod: [["inline bool operator==(const {r.name}& a, const {r.name}& b) \{ return a.cases() == b.cases(); \}"]] else: [[]]
+    let cases = Each r.cases, \|((v, st))| CaseDecl "", "{r.name}::{v}", "{RowStruct m, st} a0;{if r.eq: "\nbool operator==(const {v}&) const = default;" else: ""}"
+    let eq = if r.eq: [["inline bool operator==(const {r.name}& a, const {r.name}& b) \{ return a.cases() == b.cases(); \}"]] else: [[]]
+    # `crate::Elem`'s levels as a World reads them (doubt WD): a tag that holds dynamics
+    # deep, any other as its plain data
+    let levelDefs = if r.level: [[(CppFunction "", "Pod {r.name}::level_pod(const Cx& cx) const", "return std::visit([&](const auto& c) \{ return prism_rtl::level_pod(c.a0, cx); \}, cases());"), (CppFunction "", "void {r.name}::level_ports(const Cx& cx, std::vector<prism_rtl::Rc<prism_rtl::Port<Unit>>>& out) const", "std::visit([&](const auto& c) \{ prism_rtl::level_ports(c.a0, cx, out); \}, cases());")]] else: [[]]
     let toPod = CppFunction "", "Pod {r.name}::to_pod() const", "return std::visit([](const auto& c) \{ return prism_rtl::to_pod(c.a0); \}, cases());"
     let show = CppFunction "", "void {r.name}::show(Printer& p) const", "Show<Pod>::show(to_pod(), p);"
     let reads = Join (Each r.cases, \|((v, st))| "if (*t == {RowStruct m, st}::TAG) return {r.name}({v}\{TRY(prism_rtl::from_pod<{RowStruct m, st}>(p))\});"), "\n"
     let fromPod = if r.pod: [[(CppFunction "", "Result<{r.name}> {r.name}::from_pod(const Pod& p)", "if (auto t = p.tag()) \{\n{IndentCpp reads}\n\}\nreturn mismatch<{r.name}>(\"a {r.name}\", p);")]] else: [[]]
-    Parts(forward=[["class {r.name};"]], handles=[[handle]], values=[[]], cases=(Append (Push cases, (CasesAccessor "", r.name)), eq), protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append [[toPod, show]], fromPod))
+    Parts(forward=[["class {r.name};"]], handles=[[handle]], values=[[]], cases=(Append (Push cases, (CasesAccessor "", r.name)), eq), protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=(Append (Append [[toPod, show]], fromPod), levelDefs))
 
 # A row case's struct, by its path from the crate (the case's own name would name the case).
 RowStruct: fn Text, Text -> Text

@@ -313,26 +313,32 @@ auto dynamic_of(F read, const Rc<Port<Unit>>& updates) {
     return Dynamic<T>::of(std::move(read), updates);
 }
 
-/// `Host::new(at, rows, supplier, enclosing, document, deliver)`: the host's types are its
-/// rows' and its owner's, whose methods `document` and `deliver` are.
-template <class E, class A, class P, class S, class D1, class D2>
-Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, Rc<HostOf<E, A>> enclosing,
-                                        D1 P::*document, D2 P::*deliver) {
+/// `Host::new(at, rows, supplier, enclosing, deliver)`: the host's types are its rows' and
+/// its owner's, whose method `deliver` is.
+template <class E, class A, class P, class S, class D>
+Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, Rc<HostOf<E, A>> enclosing, D P::*deliver) {
     using H = Host<E, A, P>;
     return H::make(std::move(at), std::move(rows), Supplier<E, A>(std::move(supplier)), std::move(enclosing),
-                   typename H::DocumentFn(document), typename H::DeliverFn(deliver));
+                   typename H::DeliverFn(deliver));
 }
-template <class E, class A, class P, class S, class D1, class D2>
-Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::nullopt_t, D1 P::*document,
-                                        D2 P::*deliver) {
-    return host_new(std::move(at), std::move(rows), std::move(supplier), Rc<HostOf<E, A>>(), document, deliver);
+template <class E, class A, class P, class S, class D>
+Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::nullopt_t, D P::*deliver) {
+    return host_new(std::move(at), std::move(rows), std::move(supplier), Rc<HostOf<E, A>>(), deliver);
 }
-template <class E, class A, class P, class S, class D1, class D2, class H>
-Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::optional<H> enclosing,
-                                        D1 P::*document, D2 P::*deliver) {
+template <class E, class A, class P, class S, class D, class H>
+Rc<Host<E, A, P>> host_new(Path at, Rows<E, A> rows, S supplier, std::optional<H> enclosing, D P::*deliver) {
     return host_new(std::move(at), std::move(rows), std::move(supplier),
-                    enclosing ? Rc<HostOf<E, A>>(*enclosing) : nullptr, document, deliver);
+                    enclosing ? Rc<HostOf<E, A>>(*enclosing) : nullptr, deliver);
 }
+
+/// `Entry::new(what)`: a place's entry in its host's document, of the element type the
+/// context gives.
+struct NewEntry {
+    std::string what;
+    template <class E>
+    operator Rc<Entry<E>>() const { return Entry<E>::make(what); }
+};
+inline NewEntry entry_new(std::string what) { return {std::move(what)}; }
 
 /// `Turn::More(job)`: the next turn is the job's.
 template <class J>

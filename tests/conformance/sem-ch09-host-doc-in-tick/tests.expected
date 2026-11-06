@@ -1,37 +1,40 @@
-# Derived by hand from Semantics ch. 9 (a host's child document is the child's elements, a dynamic), R7 (rows built after the tick from the values after it) and ch. 7 as ruled (round 3 ST): `$doc` after m is the child's structure after m-1, so a kept row shows the new count with the document one tick behind, and the moved label in the owed tick after.
+# Derived by hand from Semantics ch. 9 (a host's child document is a dynamic), R7 (rows built after the tick from the values after it) and ch. 7 as ruled (round 3 ST), with the document `$(Path ==> $Elem c)` (Jimmy, 6 November 2026): the label's entry after m is the child's label after m-1 and the flattening `for`'s `$flat` a tick behind that, so a kept row shows the new count with the label two ticks behind, and the moved label in the two owed ticks after.
 test the_document_moves_within_the_tick
 
 tick 0
   added:
     0/[0]/0: Ui.Button(label="inc")
     0/[1]/0: Ui.Label(text="0")
-    1: Ui.Button(label="tap")
-    2/[0]/0: Ui.Label(text="inc after 0")
-    2/[1]/0: Ui.Label(text="0 after 0")
+    2: Ui.Button(label="tap")
+    3/[0]/0: Ui.Label(text="inc after 0")
+    3/[1]/0: Ui.Label(text="0 after 0")
 
 tick 1
   in:
-    1: click
+    2: click
   changed:
-    2/[0]/0: Ui.Label(text="inc after 1")
-    2/[1]/0: Ui.Label(text="0 after 1")
+    3/[0]/0: Ui.Label(text="inc after 1")
+    3/[1]/0: Ui.Label(text="0 after 1")
 
 tick 2
   in:
     0/[0]/0: click
-    1: click
+    2: click
   changed:
     0/[1]/0: Ui.Label(text="1")
-    2/[0]/0: Ui.Label(text="inc after 2")
-    2/[1]/0: Ui.Label(text="0 after 2")
+    3/[0]/0: Ui.Label(text="inc after 2")
+    3/[1]/0: Ui.Label(text="0 after 2")
 
 tick 3
   in:
     0/[0]/0: click
   changed:
     0/[1]/0: Ui.Label(text="2")
-    2/[1]/0: Ui.Label(text="1 after 2")
 
 tick 4
   changed:
-    2/[1]/0: Ui.Label(text="2 after 2")
+    3/[1]/0: Ui.Label(text="1 after 2")
+
+tick 5
+  changed:
+    3/[1]/0: Ui.Label(text="2 after 2")

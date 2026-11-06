@@ -164,10 +164,10 @@ HoldWritten: fn Sinks, Text -> [Do]
 fn HoldWritten sk, f:
     let r = OwnRead f
     let readByPlace = HasRead sk.dirty, r
-    # a hosted node's places are all entries of hosts' documents: nothing of its own to patch
-    let ((dirty, told)) = match sk.wx.?hostedBy:
-        ? ignore: (([[]], (if readByPlace: [[DoExpr (XMethod (XSelf), "document_moved", [[XCx]])]] else: [[]])))
-        nil: (((if readByPlace: [[DoExpr (XMethod (XCx), "dirty", [[(XClone XSelf)]])]] else: [[]]), [[]]))
+    # a place that reads it is sent again in the patch pass: to the World, or, a hosted
+    # place, into its entry of its host's document (`$(Path ==> $Elem c)`)
+    let dirty = if readByPlace: [[DoExpr (XMethod (XCx), "dirty", [[(XClone XSelf)]])]] else: [[]]
+    let told = [[]]
     let stales = Fold sk.wx.genHolds, [[]], \|acc, ((gname, hs))| if HasRead (ReadsClosed sk.wx.dynReads, hs), r: Push acc, (DoExpr (XMethod (XField XSelf, "{gname}_stale"), "set", [[(XBool True)]])) else: acc
     let rowMarks = Fold sk.wx.rowMarks, [[]], \|acc, rm| Append acc, (RowWritten sk.wx, rm, r)
     let builds = (HasRead sk.builds, r) or (Len stales) > 0
@@ -202,7 +202,7 @@ fn MovedBy sk, r:
     let answers = Each (Filter sk.wx.dynAnswers, \|((ignore, rds))| HasRead (ReadsClosed sk.wx.dynReads, rds), r), \|((name, ignore))| DoExpr (XMethod (XMethod (XField XSelf, "{name}_port"), "fire", [[XUnit, XCx]]), "ok", [[]])
     # a `@Flatten` over a `rebuild`'s dynamic that moved: the adoption among the next tick's
     # first firings, which is owed (Semantics ch. 7)
-    let adoptions = Each (Filter sk.wx.flattens, \|fl| r == (OwnRead fl.outer)), \|fl| DoScope (Adoption fl)
+    let adoptions = Each (Filter sk.wx.flattens, \|fl| fl.generation != "" and r == (OwnRead fl.outer)), \|fl| DoScope (Adoption fl)
     Append (Append (Append (Append (Append (Fold heights, flags, \|acc, h| Append acc, (AskWake sk, h)), marks), listed), answers), adoptions), (SourceMarks sk.wx, r)
 
 # A write behind a `for`'s source marks the source's cache (gap SR): every write path, a
@@ -268,10 +268,14 @@ fn FinishNode wx0, qk, params, isRow:
     let wakeBody = if many: [[(WakeByHeight combs, heights)]] else: Each combs, \|g| Decide g
     let startedBody = Each wx.started, \|st| SelfCall (GnOf wx, st).name, [[XUnit]]
     let deferredBody = Each wx.defers, \|((f, id))| DoIfLet (PaCtor "Some", [[PaBind "v"]]), (XMethod (XField XSelf, "{f}"), "fired", [[XCx]]), [[(SelfCall (GnOf wx, id).name, [[(XVar "v")]])]], [[]]
-    # the patch pass sends the World the places that go to it; a hosted place is read out
-    # of its host's document
-    let patchBody0 = Fold (Filter live, \|p| Emits wx, p.pos), [[]], \|acc, p| Append acc, (PatchPlace wx, p)
-    let patchBody = Append patchBody0, (RootDynPatch wx)
+    # the patch pass sends the World the places that go to it, and takes the entry of each
+    # hosted place in its host's document (`$(Path ==> $Elem c)`)
+    let patchBody0 = Fold live, [[]], \|acc, p| Append acc, (if Emits wx, p.pos: PatchPlace wx, p else: [[(EntryTake XSelf, p)]])
+    # a row's entry flattened whose entry is now another dynamic than its inner (the block
+    # wrote behind it, so the row is patched): the adoption queued for the start of the next
+    # tick, which is owed (rulings VL, TK)
+    let adopting = Each (Filter wx.flattens, \|fl| fl.generation == ""), \|fl| DoIf (XBin "!=", (XMethod (XField XSelf, "{fl.name}_inner"), "get", [[XCx]]), (XCtor "Some", [[(XMethod (XSelf), "entry", [[XCx]])]])), (Adoption fl), [[]]
+    let patchBody = Append (Append patchBody0, adopting), (RootDynPatch wx)
     let buildBody = BuildSteps sinks, False
     let pushBody = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin "==", (XVar "element"), (XRef (XField XSelf, "{f}_element"))), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
     let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
@@ -322,9 +326,17 @@ fn IsGeneration wx, name = (Len (Filter wx.gens, \|gd| gd.name == name)) > 0
 FlattenMethods: fn Sinks -> [MethDef]
 fn FlattenMethods sk:
     let wx = sk.wx
-    let adopts = Each wx.flattens, \|fl|
+    # a row's entry flattened: the inner's move, and the adoption of another entry
+    let entries = Fold (Filter wx.flattens, \|fl| fl.generation == ""), [[]], \|acc, fl|
+        let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor "Some", [[(XMethod (XSelf), "entry", [[XCx]])]]), XCx]])
+        let followed = DoExpr (XMethod (XField XSelf, "{fl.name}_follow"), "follow", [[(XRef (XField (XMethod (XSelf), "entry", [[XCx]]), "updates")), (XRef (XClone XSelf)), (XPath "{wx.node}::{fl.name}_moved")]])
+        let moved = MethDef(name="{fl.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(HoldWritten sk, "{fl.name}_inner"), tail=(XUnit), doc="`@Flatten`'s inner moved: what reads the flatten reads it again.")
+        let adopt = MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set, followed]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`@Flatten` adopts the row's entry of the tick before, among this tick's first firings: from here on it reads that inner (Semantics ch. 7).")
+        Append acc, [[moved, adopt]]
+    let adopts0 = Each (Filter wx.flattens, \|fl| fl.generation != ""), \|fl|
         let set = DoExpr (XMethod (XField XSelf, "{fl.name}_inner"), "set", [[(XCtor "Some", [[(XMethod (XSelf), fl.outer, [[XCx]])]]), XCx]])
         MethDef(name="{fl.name}_adopt", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=(Append [[set]], (HoldWritten sk, "{fl.name}_inner")), tail=(XUnit), doc="`@Flatten` adopts the inner its `rebuild`'s dynamic held after the tick before, among this tick's first firings: from here on it reads that inner (Semantics ch. 7).")
+    let adopts = Append adopts0, entries
     let dynGens = Filter wx.gens, \|gd| (Len (Filter wx.snaps, \|sn| sn.builder == gd.name)) > 0
     let moved = Each dynGens, \|gd|
         let marks = Fold (Filter wx.flattens, \|fl| fl.generation == gd.name), [[]], \|acc, fl| Append acc, (HoldWritten sk, "{fl.name}_inner")
@@ -358,10 +370,20 @@ fn BuildSteps sk, atBuild:
     let Gen = \|gd|
         let built = if atBuild: DoExpr (TryOf (XMethod recv, "{gd.name}_build", [[XCx]])) else: DoIf (XMethod (XField XSelf, "{gd.name}_stale"), "replace", [[(XBool False)]]), [[DoExpr (TryOf (XMethod (XSelf), "{gd.name}_build", [[XCx]]))]], [[]]
         Append [[built]], (Each (Filter wx.snaps, \|sn| (not sn.before) and sn.builder == gd.name), Take)
+    # at the build, a scope's live hosted places take their entries once its builders and
+    # generations have run (the structure they read has settled), before the host whose
+    # child they are builds its rows over them
+    let Entries = \|k| if atBuild: Each (Filter wx.places, \|pl| pl.pos.scope == k and pl.entry != "" and pl.getter != ""), \|pl| EntryTake recv, pl else: [[]]
     Fold (Range0 ((Len wx.scopes) + 1)), [[]], \|acc, i|
         let k = Or ((Len wx.scopes) -? i), 0
         let builders = Fold (Filter wx.builders, \|b| b.pos.scope == k), [[]], \|a, b| Append a, (Builder b)
-        Append (Append acc, builders), (Fold (Filter wx.gens, \|gd| gd.pos.scope == k), [[]], \|a, gd| Append a, (Gen gd))
+        Append (Append (Append acc, builders), (Fold (Filter wx.gens, \|gd| gd.pos.scope == k), [[]], \|a, gd| Append a, (Gen gd))), (Entries k)
+
+# A hosted live place's entry taken, its level read from `recv` (the node in its build,
+# `self` in the patch pass): compared with the one that stood, published the tick after if
+# it moved (prism_rtl's `Entry::take`).
+EntryTake: fn Ex, Place -> Do
+fn EntryTake recv, pl = DoExpr (XMethod (XField recv, pl.entry), "take", [[(XMethod recv, pl.getter, [[XCx]]), XCx]])
 
 # The snapshot taken at the build: the structure as built.
 SnapTakeAtBuild: fn SnapDef -> Do
@@ -390,29 +412,29 @@ fn SnapPublish sk, sn = MethDef(name="{sn.name}_publish", recv=RecvRc, params=[[
 GatheredMoved: fn SnapDef -> MethDef
 fn GatheredMoved sn = MethDef(name="{sn.name}_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=[[(DoExpr (XMethod (XField XSelf, "{sn.name}_snap"), "mark", [[XCx]])), (DoExpr (XMethod (XCx), "build_later", [[(XClone XSelf)]]))]], tail=(XUnit), doc="A row's result moved: the `for`'s gathered dynamic is marked, and its snapshot taken after the builder (pick ST).")
 
-# A hosted row's own places, for its host's document (`Row::document`): each by its path
-# relative to the row, and under its `for`s and `rebuild`s their rows'.
+# A hosted row's own places, for its host's document (`Row::document`): each place's entry
+# by its path relative to the row, and under its `for`s and `rebuild`s their rows'.
 DocumentGetter: fn Wx -> MethDef
 fn DocumentGetter wx:
     let IsOwn = \|p| p.scope == 0
     let body = DocumentBody VecPush, (Filter wx.places, \|pl| IsOwn pl.pos), (Filter wx.builders, \|b| IsOwn b.pos), (Filter wx.gens, \|gd| IsOwn gd.pos)
-    MethDef(name="document", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutNamed "Vec", [[(OutTuple [[OutPath, elemTy]])]]), body=(Append [[(DoLet (PaTyped (PaMut "doc"), (OutNamed "Vec", [[(OutTuple [[OutPath, elemTy]])]])), (XCall "Vec::new", [[]]))]], body), tail=(XVar "doc"), doc="The row's own places, entries of its host's document, by their paths relative to the row (pick HO).")
+    MethDef(name="document", recv=RecvRef, params=[[]], cx=CxRef, ret=(OutNamed "Vec", [[(OutTuple [[OutPath, entryTy]])]]), body=(Append [[(DoLet (PaTyped (PaMut "doc"), (OutNamed "Vec", [[(OutTuple [[OutPath, entryTy]])]])), (XCall "Vec::new", [[]]))]], body), tail=(XVar "doc"), doc="The row's own places, entries of its host's document, by their paths relative to the row (pick HO).")
 
 # A hosted row's place may have moved (a hold it reads was written): its parent is told,
 # and tells its host in turn.
 DocumentMoved: fn Text -> MethDef
 fn DocumentMoved m = MethDef(name="document_moved", recv=RecvRc, params=[[]], cx=CxMut, ret=OutUnit, body=[[(DoIfLet (PaCtor "Some", [[PaBind "parent"]]), (XUpgrade (XField XSelf, "parent")), [[DoExpr (XMethod (XVar "parent"), m, [[XCx]])]], [[]])]], tail=(XUnit), doc="A place of this row may have moved: its host's document moved, and the host's readers and rows are marked (pick HO).")
 
-# The entries of a document: each place at the read point (its getter when a field is live,
-# else its constant), and under each `for` and `rebuild` the rows' own documents, keyed
-# under the place's path. `Add` spells the collection's insert of `path, e`: into the `doc`
-# map (`MapInsert`) or onto the `doc` vector (`VecPush`).
+# The entries of a document (`$(Path ==> $Elem c)`): each place's entry, and under each
+# `for` and `rebuild` the rows' own documents, keyed under the place's path. `Add` spells
+# the collection's insert of `path, e`: into the `doc` host document (`MapInsert`) or onto
+# the `doc` vector (`VecPush`).
 DocumentBody: fn (fn Ex, Ex -> Do), [Place], [ForDef], [GenDef] -> [Do]
 fn DocumentBody Add, places, builders, gens:
-    let statics = Each places, \|pl|
-        let level = if pl.getter == "": pl.level else: XMethod (XSelf), pl.getter, [[XCx]]
-        Add (XMethod (XCall "Path::root", [[]]), "at", [[XIndex pl.pos.at]]), level
-    let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (XMethod (XMethod (XMethod (XCall "Path::root", [[]]), "at", [[XIndex b.pos.at]]), "child", [[(XCtor "Segment::Key", [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
+    let statics = Each places, \|pl| Add (XMethod (XCall "Path::root", [[]]), "at", [[XIndex pl.pos.at]]), (XClone (XField XSelf, pl.entry))
+    # a host's own rows (prism_rtl's) give their forwarded places' entries
+    let RowDoc = \|b| if HasPrefix b.rowNode, "prism_rtl::HostRow": XMethod (XVar "row"), "entries", [[]] else: XMethod (XVar "row"), "document", [[XCx]]
+    let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (RowDoc b), [[(Add (XMethod (XMethod (XMethod (XCall "Path::root", [[]]), "at", [[XIndex b.pos.at]]), "child", [[(XCtor "Segment::Key", [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
     let generations = Each gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[(DoLet (PaBind "g"), (XBin "-", (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]]), (XIndex 1))), (DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (XMethod (XMethod (XMethod (XCall "Path::root", [[]]), "at", [[XIndex gd.pos.at]]), "child", [[(XCtor "Segment::Gen", [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]], [[]]
     Append (Append statics, rows), generations
 
@@ -527,12 +549,15 @@ fn RowWritten wx, rm, r:
         GenerationRow: [[(DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "as_ref", [[]]), body, [[]])]]
         otherwise: [[(DoFor (PaBind "row"), (XMethod (XMethod (XField XSelf, rm.builder), "borrow", [[]]), "values", [[]]), body)]]
 
-# The patch pass for one live place: its level read and sent as changed.
+# The patch pass for one live place: its level read and sent as changed, deep (`Level`); a
+# level that holds dynamics renews its watch of them (doubt WD).
 PatchPlace: fn Wx, Place -> [Do]
 fn PatchPlace wx, p:
     let pull = DoLet (PaBind p.getter), (XMethod (XSelf), p.getter, [[XCx]])
     let at = PlaceAt wx, "self", p.pos
-    [[pull, (DoExpr (XMethod (XCx), "changed", [[at, (XMethod (XVar p.getter), "to_pod", [[]])]]))]]
+    let sent = DoExpr (XMethod (XCx), "changed", [[at, (XMethod (XVar p.getter), "level_pod", [[XCx]])]])
+    let renew = if p.watch == "": [[]] else: [[DoExpr (XMethod (XField XSelf, p.watch), "renew", [[(XRef (XVar p.getter)), (XCast (XClone XSelf), (OutObj (OutNamed "Node", [[]]))), XCx]])]]
+    Append [[pull, sent]], renew
 
 # Whether a position's place goes out to the World's document: the node's own, when the
 # node is not itself in a hosted scope. Any other place is an entry of a host's document
@@ -742,7 +767,7 @@ fn IsHold other = False
 # row's leave its host's document with the row), its rows' and generations' too.
 RowMethods: fn Wx -> [MethDef]
 fn RowMethods wx:
-    let removes = Each (Filter wx.places, \|p| Emits wx, p.pos), \|p| DoExpr (XMethod (XCx), "removed", [[(PlaceAt wx, "self", p.pos)]])
+    let removes = Fold (Filter wx.places, \|p| Emits wx, p.pos), [[]], \|acc, p| Append acc, (Append [[DoExpr (XMethod (XCx), "removed", [[(PlaceAt wx, "self", p.pos)]])]], (if p.watch == "": [[]] else: [[DoExpr (XMethod (XField XSelf, p.watch), "drop_all", [[]])]]))
     let nested = Append (Each wx.builders, \|b| DoExpr (XMethod (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "values", [[]]), "for_each", [[(XClosure False, [[PaBind "row"]], (XMethod (XVar "row"), "leave_row", [[XCx]]))]])), (Each wx.gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[DoExpr (XMethod (XVar "row"), "leave_row", [[XCx]])]], [[]])
     [[MethDef(name="remove_places", recv=RecvRef, params=[[]], cx=CxMut, ret=OutUnit, body=(Append removes, nested), tail=(XUnit), doc="The row left: its places are torn down.")]]
 

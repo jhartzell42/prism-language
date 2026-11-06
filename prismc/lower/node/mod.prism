@@ -144,13 +144,19 @@ type Sk = choice:
     SkDistinct Text
 
 # A place of the block: its position, its level as the program's `crate::Elem` (its
-# snapshot, `to_pod` for the document), and when a live field reads a dynamic its getter
-# (the patch pass pulls it after the tick, claude/backend.md "Marks").
+# snapshot, `level_pod` for the document), and when a live field reads a dynamic its getter
+# (the patch pass pulls it after the tick, claude/backend.md "Marks"). A place in a hosted
+# scope is an entry of its host's document (Jimmy, 6 November 2026: `$(Path ==> $Elem c)`):
+# `entry` is its `prism_rtl::Entry` field, taken at the build and in the patch pass. A
+# place that goes to the World and holds dynamics (a box's children) has a `watch`, its
+# `prism_rtl::Watch`, so a move of a nested entry sends it again (doubt WD).
 type Place = record:
     pos: Pos
     level: Ex
     getter: Text
     reads: [Read]
+    entry: Text
+    watch: Text
 
 # What a dynamic reads, for the marks (claude/backend.md, "Marks"): a hold or a dynamic
 # `let`'s getter of this node by its field or method name, or, in a row, one of its block's

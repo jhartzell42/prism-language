@@ -58,8 +58,229 @@
 #include "prism_rtl/collections.hpp"
 #include "prism_rtl/cx.hpp"
 #include "prism_rtl/pod.hpp"
+#include "prism_rtl/print.hpp"
 
 namespace prism_rtl {
+
+// ---------------------------------------------------------------------------------------
+// The document as `$(Path ==> $Elem c)`: one entry per place, the outer keyed by places
+// ---------------------------------------------------------------------------------------
+
+/// A dynamic is not plain data: a World reads a level that holds dynamics deep, each sampled
+/// at the read point (`level_pod`). Reaching this is a bug of the compiler, never a value.
+template <class T>
+struct ToPod<Dynamic<T>> {
+    [[noreturn]] static Pod to_pod(const Dynamic<T>&) {
+        panic("a dynamic made plain data without a read point: a level that holds dynamics is read with `level_pod`");
+    }
+};
+
+/// No World hands a program a dynamic.
+template <class T>
+struct FromPod<Dynamic<T>> {
+    static Result<Dynamic<T>> from_pod(const Pod& p) { return mismatch<Dynamic<T>>("a dynamic, which is never plain data", p); }
+};
+
+/// A dynamic does not print (no `^Show`); reaching this is a bug of the compiler.
+template <class T>
+struct Show<Dynamic<T>> {
+    [[noreturn]] static void show(const Dynamic<T>&, Printer&) { panic("a dynamic shown: a dynamic has no `^Show`"); }
+};
+
+/// A level as a World reads it (claude/incremental-host-document.md, doubt WD): plain data,
+/// with every dynamic it holds sampled at the read point, deep. The program's `Elem` has a
+/// member `level_pod`; anything else (a test's `Pod`) is its plain data.
+template <class E>
+Pod level_pod(const E& e, const Cx& cx) {
+    if constexpr (requires { e.level_pod(cx); }) return e.level_pod(cx);
+    else return to_pod(e);
+}
+
+/// The update events of the dynamics a level holds, and of theirs.
+template <class E>
+void level_ports(const E& e, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
+    if constexpr (requires { e.level_ports(cx, out); }) e.level_ports(cx, out);
+}
+
+/// A map of dynamics as a World reads it: each entry sampled at the read point, deep.
+template <class K, class E>
+Pod dynamics_pod(const Map<K, Dynamic<E>>& m, const Cx& cx) {
+    std::vector<std::pair<Pod, Pod>> out;
+    for (const auto& [k, d] : m) out.emplace_back(to_pod(k), level_pod(d.sample(cx), cx));
+    return Pod::map(std::move(out));
+}
+
+/// The update events of a map of dynamics and of every dynamic their values hold.
+template <class K, class E>
+void dynamics_ports(const Map<K, Dynamic<E>>& m, const Cx& cx, std::vector<Rc<Port<Unit>>>& out) {
+    for (const auto& [k, d] : m) {
+        out.push_back(d.updates);
+        level_ports(d.sample(cx), cx, out);
+    }
+}
+
+/// A World place whose level holds dynamics: subscribed to every one of them as it was last
+/// sent, so a move of any nested entry patches the place again in the tick it moves (doubt
+/// WD). Renewed each time the place is sent.
+class Watch {
+public:
+    Watch() = default;
+    Watch(const Watch&) = delete;
+    Watch& operator=(const Watch&) = delete;
+    Watch(Watch&&) = default;
+    Watch& operator=(Watch&&) = default;
+    ~Watch() { drop_all(); }
+    /// The level sent as `node`'s place: its nested dynamics watched from now on.
+    template <class E>
+    void renew(const E& level, const NodeRef& node, const Cx& cx) {
+        drop_all();
+        std::vector<Rc<Port<Unit>>> ports;
+        level_ports(level, cx, ports);
+        Weak<Node> weak = node;
+        for (auto& p : ports) {
+            Handle h = p->subscribe([weak](const Unit&, Cx& cx) -> Done {
+                if (auto n = weak.lock()) cx.dirty(n);
+                return {};
+            });
+            subs_.emplace_back(p, h);
+        }
+    }
+    /// The place left: nothing is watched.
+    void drop_all() {
+        for (auto& [p, h] : subs_) p->unsubscribe(h);
+        subs_.clear();
+    }
+
+private:
+    std::vector<std::pair<Rc<Port<Unit>>, Handle>> subs_;
+};
+
+/// `@Flatten` over a dynamic the node holds as a value (a `for` row's entry `$$a`, a host
+/// document's entry): the subscription to its current inner's update event, which tells the
+/// node (`moved`, its emitted method) that the inner moved, so what reads the flatten reads
+/// it again. Following another inner lets go of the last; dropped with its node.
+class Follow {
+public:
+    Follow() = default;
+    Follow(const Follow&) = delete;
+    Follow& operator=(const Follow&) = delete;
+    Follow(Follow&&) = default;
+    Follow& operator=(Follow&&) = default;
+    ~Follow() { drop_sub(); }
+    /// From now on the inner `updates` tells `node` through `moved`.
+    template <class N>
+    void follow(const Rc<Port<Unit>>& updates, const Rc<N>& node, void (N::*moved)(Cx&)) {
+        drop_sub();
+        Weak<N> weak = node;
+        Handle h = updates->subscribe([weak, moved](const Unit&, Cx& cx) -> Done {
+            if (auto n = weak.lock()) ((*n).*moved)(cx);
+            return {};
+        });
+        sub_.emplace(updates, h);
+    }
+
+private:
+    void drop_sub() {
+        if (sub_) updates_unsubscribe();
+    }
+    void updates_unsubscribe() {
+        sub_->first->unsubscribe(sub_->second);
+        sub_.reset();
+    }
+    std::optional<std::pair<Rc<Port<Unit>>, Handle>> sub_;
+};
+
+/// One place of a hosted child, as its host's document holds it (Jimmy, 6 November 2026:
+/// the document is `$(Path ==> $Elem c)`): a structural dynamic of its own (Semantics ch. 7,
+/// round 3 ST, doubt EP). Its node takes a snapshot of the place's level at its build and
+/// again whenever the place may have moved (its node's patch pass, as a World place is
+/// sent); the dynamic the document holds for the place samples the snapshot of the tick
+/// before (S(m-1) after `m`), and its update event fires at the start of the tick after a
+/// take that changed the level, which that tick owes. Its comparison is the level's own
+/// equality, a dynamic it holds equal only to itself (doubt EQ). The rows that read the
+/// place as it stands (a host's row forwarding it, at any depth of hosts) are dirtied by a
+/// take that moved it, so a forwarded element re-emits in the same tick.
+template <class E>
+class Entry : public RcFromThis<Entry<E>> {
+public:
+    /// An entry with no snapshot yet; `what` names the place in a fault.
+    static Rc<Entry> make(std::string what) {
+        auto entry = rc_placed<Entry>([&](void* place) { return new (place) Entry(std::move(what)); });
+        Weak<Entry> weak = entry;
+        auto read = make_rc<const std::function<E(const Cx&)>>([weak](const Cx& cx) {
+            auto e = weak.lock();
+            if (!e) panic("a place's entry is read only while its place lives");
+            return e->snap_.get(cx);
+        });
+        entry->dynamic_ = Dynamic<E>{nullptr, read, entry->published_};
+        return entry;
+    }
+    /// The place's level now: the first snapshot at its node's build, then each time the
+    /// place may have moved, compared with the one that stood. A take that moved the level
+    /// dirties the rows reading it as it stands and queues the publication, once per tick.
+    void take(E level, Cx& cx) {
+        if (!snap_.taken()) {
+            snap_.take(std::move(level), cx);
+            return;
+        }
+        if (!snap_.take_compared(std::move(level), cx)) return;
+        std::vector<NodeRef> rows;
+        std::erase_if(watchers_, [](const Weak<Node>& w) { return !w.lock(); });
+        for (auto& w : watchers_)
+            if (auto r = w.lock()) rows.push_back(r);
+        for (auto& r : rows) cx.dirty(r);
+        if (snap_.queue(cx)) {
+            Rc<Entry> me = rc_static_cast<Entry>(this->rc_from_this());
+            cx.answer_later([me](Cx& cx) { return me->publish(cx); });
+        }
+    }
+    /// The place's level as it stands: the snapshot taken this tick from the construction
+    /// step on, the one before during propagation.
+    E current(const Cx& cx) const { return snap_.current(cx); }
+    /// The dynamic the document holds for this place, `$Elem`: the same one for as long as
+    /// the place lives.
+    const Dynamic<E>& dynamic() const { return dynamic_; }
+    /// A row that reads the place as it stands: dirtied when a take moves it.
+    void watch(Weak<Node> row) { watchers_.push_back(std::move(row)); }
+
+private:
+    explicit Entry(std::string what) : snap_(std::move(what)), published_(make_rc<Port<Unit>>()) {}
+    /// At the start of the tick after a take that moved it: the entry's update event fires.
+    Done publish(Cx& cx) {
+        if (snap_.published(cx)) return published_->fire(Unit{}, cx);
+        return {};
+    }
+    Snapshot<E> snap_;
+    Rc<Port<Unit>> published_;
+    Dynamic<E> dynamic_;
+    std::vector<Weak<Node>> watchers_;
+};
+
+/// A host's child document as one structural dynamic of the owner (pick ST): the outer of
+/// `$(Path ==> $Elem c)`. `doc` is what the program reads, each place's dynamic by its path
+/// relative to the child; `places` the entries themselves, which the host's own rows read.
+/// It is taken when a place of the child came or went, and two are equal when they hold the
+/// same entries at the same paths, so a value change of a place never moves it.
+template <class E>
+struct HostDoc {
+    Map<Path, Dynamic<E>> doc;
+    Map<Path, Rc<Entry<E>>> places;
+    void insert(Path path, Rc<Entry<E>> entry) {
+        doc.insert(path, entry->dynamic());
+        places.insert(std::move(path), std::move(entry));
+    }
+    bool operator==(const HostDoc& o) const {
+        if (places.size() != o.places.size()) return false;
+        auto a = places.begin();
+        auto b = o.places.begin();
+        for (; a != places.end(); ++a, ++b) {
+            const auto& [k1, e1] = *a;
+            const auto& [k2, e2] = *b;
+            if (!(k1 == k2) || e1.get() != e2.get()) return false;
+        }
+        return true;
+    }
+};
 
 /// The way back into a child's place: a typed answer, delivered now.
 template <class A>
@@ -249,7 +470,7 @@ Blueprint<E, A> element_blueprint(const Live<E>& e) {
         Path at = path.at(0);
         // The level at the build is the identity: a row is built from the entry after the
         // tick, and an early row's entry cannot be read until its host's node is made.
-        Pod element = to_pod(e.identity);
+        Pod element = level_pod(e.identity, cx);
         std::optional<A> first;
         if (scope.is_world()) {
             if (auto v = cx.first_value(element)) {
@@ -257,14 +478,15 @@ Blueprint<E, A> element_blueprint(const Live<E>& e) {
                 first = std::move(a);
             }
         } else {
-            auto f = TRY(scope.hosted->first_value(at, e.identity, cx));
+            // the forwarded element is the same place for the enclosing host: its entry
+            auto f = TRY(scope.hosted->first_value(at, e.identity, e.entry, cx));
             first = std::move(f);
         }
         auto node = make_rc<detail::Forward<E, A>>(at, e.identity, e.level, std::move(sink));
         if (scope.is_world()) {
             Weak<detail::Forward<E, A>> weak = node;
             node->handle = e.level.updates->subscribe([weak](const Unit&, Cx& cx) -> Done {
-                if (auto n = weak.lock()) cx.changed(n->at, to_pod(n->level.sample(cx)));
+                if (auto n = weak.lock()) cx.changed(n->at, level_pod(n->level.sample(cx), cx));
                 return {};
             });
             cx.added(at, element);
@@ -289,17 +511,17 @@ Supplier<E, A> forward_on_none(std::function<std::optional<Blueprint<E, A>>(cons
 // The host and the rows of its `for`
 // ---------------------------------------------------------------------------------------
 
-/// A host as its rows reach it: the hosted child's document at the read point, the typed
-/// dispatch into the child's places, a child place's first value (the early construction),
-/// the supplier, and the scope the rows' blueprints build in. Implemented by `Host`,
-/// which erases the owner's type.
+/// A host as its rows reach it: the typed dispatch into the child's places, a child place's
+/// first value (the early construction), the supplier, and the scope the rows' blueprints
+/// build in. Implemented by `Host`, which erases the owner's type. A row reads its place
+/// through the place's entry, not through the host.
 template <class E, class A>
 class HostOf {
 public:
     virtual ~HostOf() = default;
-    virtual Map<Path, E> document(const Cx& cx) const = 0;
     virtual Done deliver(const Path& place, const A& v, Cx& cx) const = 0;
-    virtual Result<std::optional<A>> first_value(const Path& place, const E& element, Cx& cx) = 0;
+    virtual Result<std::optional<A>> first_value(const Path& place, const E& element, const Rc<Entry<E>>& entry,
+                                                 Cx& cx) = 0;
     virtual const Supplier<E, A>& supplier() const = 0;
     virtual Scope<E, A> scope() const = 0;
 };
@@ -317,9 +539,9 @@ Rows<E, A> new_rows() {
 }
 
 /// One row of a host's `for p, e <- $doc`: the supplier's blueprint for child place `key`,
-/// built at `host/[key]`. Its entry is the projection `$doc[key]` (pick RE), read through
-/// the host while the key is in the document; the row ends at the end of the tick its key
-/// leaves (R8), its blueprint's node with it, and nothing reads its entry after.
+/// built at `host/[key]`. Its entry is the place's own (pick RE), which it reads as it
+/// stands; the row ends at the end of the tick its key leaves (R8), its blueprint's node
+/// with it, and nothing reads its entry after.
 template <class E, class A>
 class HostRow : public Node {
 public:
@@ -328,9 +550,19 @@ public:
     /// host's scope. The `for` machinery of the emitted code calls this with the host as
     /// the row's parent. (Rust's `HostRow::build`: in C++ `build` is the virtual
     /// build-list method, which a static of that name would hide.)
-    static Result<Rc<HostRow>> make(Path path, Path key, E value, const Rc<HostOf<E, A>>& host,
+    static Result<Rc<HostRow>> make(Path path, Path key, Rc<Entry<E>> value, const Rc<HostOf<E, A>>& host,
                                                   Cx& cx) {
-        auto node = rc_placed<HostRow>([&](void* place) { return new (place) HostRow(std::move(path), std::move(key), host); });
+        E identity = value->current(cx);
+        return early(std::move(path), std::move(key), std::move(identity), std::move(value), host, cx);
+    }
+
+    /// Built with the place's identity given: a first-value query at the place's build,
+    /// before its entry has a snapshot (the early construction).
+    static Result<Rc<HostRow>> early(Path path, Path key, E value, Rc<Entry<E>> entry, const Rc<HostOf<E, A>>& host,
+                                     Cx& cx) {
+        auto node = rc_placed<HostRow>(
+            [&](void* place) { return new (place) HostRow(std::move(path), std::move(key), std::move(entry), host); });
+        node->place_->watch(Weak<Node>(NodeRef(node)));
         Weak<HostRow> row = node;
         node->sink_ = [row](const A& v, Cx& cx) -> Done {
             // An answer to a row that left, or one that is gone, is dropped (Semantics
@@ -350,16 +582,9 @@ public:
     /// The blueprint's first value: the place's, when its output has one.
     std::optional<A> first() const { return supplied_ ? supplied_->first : std::nullopt; }
 
-    /// The row's entry, `$doc[key]`, at the read point. The document is the child's
-    /// places as they stand, so a key that left is gone from it at once: the leaving
-    /// unsubscribes every reader of the entry first (`leave_row`), and a read after that
-    /// is a bug of the compiler, not a value.
-    E entry(const Cx& cx) const {
-        Map<Path, E> doc = host()->document(cx);
-        const E* e = doc.get(key_);
-        if (!e) panic("a host row's entry is read only while its key is in the child's document");
-        return *e;
-    }
+    /// The row's entry at the read point: the place's level as it stands (its snapshot of
+    /// this tick from the construction step on).
+    E entry(const Cx& cx) const { return place_->current(cx); }
 
     /// The child place's request: out with the forwarded element, or nowhere when the
     /// supplier answered the place.
@@ -368,7 +593,14 @@ public:
     }
 
     /// The row's own places, for an enclosing host's document: the forwarded element at
-    /// `0`, when there is one.
+    /// `0`, when there is one, which is the child's place itself (its entry).
+    std::vector<std::pair<Path, Rc<Entry<E>>>> entries() const {
+        if (forwards()) return {{Path::root().at(0), place_}};
+        return {};
+    }
+
+    /// The row's own places as levels: what a prelude emitted before the document held
+    /// entries calls (the seeds' prismc, until the seeds are rewritten). Bootstrap only.
     std::vector<std::pair<Path, E>> document(const Cx& cx) const {
         if (forwards()) return {{Path::root().at(0), entry(cx)}};
         return {};
@@ -411,8 +643,9 @@ public:
     const Path& key() const { return key_; }
 
 private:
-    HostRow(Path path, Path key, const Rc<HostOf<E, A>>& host)
-        : path_(std::move(path)), key_(std::move(key)), host_(host), level_moved_(make_rc<Port<Unit>>()) {}
+    HostRow(Path path, Path key, Rc<Entry<E>> place, const Rc<HostOf<E, A>>& host)
+        : path_(std::move(path)), key_(std::move(key)), place_(std::move(place)), host_(host),
+          level_moved_(make_rc<Port<Unit>>()) {}
 
     Rc<HostOf<E, A>> host() const {
         auto h = host_.lock();
@@ -430,11 +663,12 @@ private:
             if (!r) panic("a live element outlives its host's row");
             return r->entry(cx);
         });
-        return Live<E>{std::move(identity), Dynamic<E>{nullptr, read, level_moved_}};
+        return Live<E>{std::move(identity), Dynamic<E>{nullptr, read, level_moved_}, place_};
     }
 
     Path path_;
     Path key_;
+    Rc<Entry<E>> place_;
     Weak<HostOf<E, A>> host_;
     /// The key left: a computed answer in flight to the place is dropped.
     bool left_ = false;
@@ -447,21 +681,20 @@ private:
 
 /// A host of owner `P` (the node its line and its child are inlined into): its place, its
 /// rows, its supplier, the enclosing host when the line stands in a hosted scope, and the
-/// owner's two emitted methods, the child's document and the typed dispatch.
+/// owner's emitted typed dispatch.
 template <class E, class A, class P>
     requires AnswerOf<A, E>
 class Host : public HostOf<E, A>, public RcFromThis<Host<E, A, P>> {
 public:
-    using DocumentFn = std::function<Map<Path, E>(const P&, const Cx&)>;
     using DeliverFn = std::function<Done(const Rc<P>&, const Path&, const A&, Cx&)>;
 
     /// Made in the owner's build, before its node: `rows` is the field the `for` keeps,
     /// `enclosing` the host whose scope the line stands in, if any.
     static Rc<Host> make(Path at, Rows<E, A> rows, Supplier<E, A> supplier,
-                                      Rc<HostOf<E, A>> enclosing, DocumentFn document, DeliverFn deliver) {
+                                      Rc<HostOf<E, A>> enclosing, DeliverFn deliver) {
         return rc_placed<Host>([&](void* place) {
             return new (place) Host(std::move(at), std::move(rows), std::move(supplier), std::move(enclosing),
-                                    std::move(document), std::move(deliver));
+                                    std::move(deliver));
         });
     }
 
@@ -480,14 +713,14 @@ public:
                                         at_.to_string()));
     }
 
-    Map<Path, E> document(const Cx& cx) const override { return document_(*owner(), cx); }
     Done deliver(const Path& place, const A& v, Cx& cx) const override { return deliver_(owner(), place, v, cx); }
     /// A child place's first value, asked at its build (Semantics ch. 9, "Queries are
     /// sync"): the supplier row for the place is built now, before the owner's node, and
     /// kept where the builder finds it. The one early construction.
-    Result<std::optional<A>> first_value(const Path& place, const E& element, Cx& cx) override {
+    Result<std::optional<A>> first_value(const Path& place, const E& element, const Rc<Entry<E>>& entry,
+                                         Cx& cx) override {
         Rc<HostOf<E, A>> me = this->rc_from_this();
-        auto row = TRY((HostRow<E, A>::make(at_.child(Segment::key(to_pod(place))), place, element, me, cx)));
+        auto row = TRY((HostRow<E, A>::early(at_.child(Segment::key(to_pod(place))), place, element, entry, me, cx)));
         std::optional<A> first = row->first();
         rows_->insert(place, row);
         return first;
@@ -498,10 +731,9 @@ public:
     const Rows<E, A>& rows() const { return rows_; }
 
 private:
-    Host(Path at, Rows<E, A> rows, Supplier<E, A> supplier, Rc<HostOf<E, A>> enclosing, DocumentFn document,
-         DeliverFn deliver)
+    Host(Path at, Rows<E, A> rows, Supplier<E, A> supplier, Rc<HostOf<E, A>> enclosing, DeliverFn deliver)
         : at_(std::move(at)), rows_(std::move(rows)), supplier_(std::move(supplier)), enclosing_(std::move(enclosing)),
-          document_(std::move(document)), deliver_(std::move(deliver)) {}
+          deliver_(std::move(deliver)) {}
 
     Rc<P> owner() const {
         auto o = owner_.lock();
@@ -514,7 +746,6 @@ private:
     Rows<E, A> rows_;
     Supplier<E, A> supplier_;
     Rc<HostOf<E, A>> enclosing_;
-    DocumentFn document_;
     DeliverFn deliver_;
 };
 

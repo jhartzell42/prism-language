@@ -1,11 +1,11 @@
-# Derived by hand from Semantics ch. 9 (a host's child document is a dynamic of the child's elements) and ch. 7, "Structural dynamics" (round 3 ST): `$doc` is structural, so its update event fires at n+1 with the document after n, owing that tick, where today's rule fired it at n.
+# Derived by hand from Jimmy's ruling of 6 November 2026 (the host document is `$(Path ==> $Elem c)`) and Semantics ch. 7 (round 3 ST): a click moves the child's label at n; its entry is published at n+1 (the host level's tick), where its row's `@Flatten` follows it and the gathered `$flat` is taken; `$flat` is published at n+2 (the gathered `for`'s tick), and `!Updated $flat` fires there with the flat document after the click, both ticks owed.
 test the_document_updates_in_its_tick
 
 tick 0
   added:
     0/[0]/0: Ui.Button(label="inc")
     0/[1]/0: Ui.Label(text="0")
-    1: Ui.Label(text="0 moves, latest ")
+    2: Ui.Label(text="0 moves, latest ")
 
 tick 1
   in:
@@ -14,15 +14,19 @@ tick 1
     0/[1]/0: Ui.Label(text="1")
 
 tick 2
-  changed:
-    1: Ui.Label(text="1 moves, latest [1]")
 
 tick 3
+  changed:
+    2: Ui.Label(text="1 moves, latest [1]")
+
+tick 4
   in:
     0/[0]/0: click
   changed:
     0/[1]/0: Ui.Label(text="2")
 
-tick 4
+tick 5
+
+tick 6
   changed:
-    1: Ui.Label(text="2 moves, latest [2]")
+    2: Ui.Label(text="2 moves, latest [2]")

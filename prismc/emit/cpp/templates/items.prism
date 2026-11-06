@@ -131,8 +131,8 @@ fn NodeMake name, signature, lets, args, rest = inline_text <cpp>
 </cpp>
 
 # A `for`'s builder (claude/backend.md, "Dynamic structure").
-ForBuildTemplate: fn Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
-fn ForBuildTemplate owner, name, at, keyTy, valueTy, rowMake, source, parent, passed = inline_text <cpp>
+ForBuildTemplate: fn Text, Text, Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn ForBuildTemplate owner, name, at, keyTy, valueTy, rowMake, source, parent, passed, moved = inline_text <cpp>
 /// The rows of the `for` at `{{at}}`: rows whose key left are torn down, new keys are
 /// built under it at `[k]` from the values after the tick; kept rows keep reading their
 /// entry out of the source. Nothing to do when the source is the map last built from (one
@@ -156,14 +156,14 @@ Done {{owner}}::{{name}}_build(Cx& cx) {
     }
     deref(this->{{name}}) = next;
     // What the block reads of its rows (a `for` that gives a dynamic) moved.
-    cx.dirty(prism_rtl::share(this));
+    cx.dirty(prism_rtl::share(this));{{moved}}
     return {};
 }
 </cpp>
 
 # A `rebuild`'s builder: one generation at a time.
-GenBuildTemplate: fn Text, Text, Text, Text, Text, Text, Text -> Text
-fn GenBuildTemplate owner, name, at, path, source, valueTy, select = inline_text <cpp>
+GenBuildTemplate: fn Text, Text, Text, Text, Text, Text, Text, Text -> Text
+fn GenBuildTemplate owner, name, at, path, source, valueTy, select, moved = inline_text <cpp>
 /// The `rebuild` at `{{at}}`: the old generation torn down (it ran to the end of the
 /// tick), the next built at `{{path}}` from the source after the tick.
 Done {{owner}}::{{name}}_build(Cx& cx) {
@@ -176,7 +176,7 @@ Done {{owner}}::{{name}}_build(Cx& cx) {
     Path path = {{path}};
     {{valueTy}} value = {{source}};
     prism_rtl::Rc<Row> row = {{select}};
-    this->{{name}} = row;
+    this->{{name}} = row;{{moved}}
     return {};
 }
 </cpp>

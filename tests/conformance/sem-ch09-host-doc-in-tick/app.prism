@@ -1,11 +1,14 @@
-# A host's child document is a dynamic within the tick (Semantics ch. 9): `$doc` is a
-# function of the child's live element levels, read at its current value like any `$`,
-# never a hold and never something the end-of-tick patch pass produces. Here the owner's
-# `for` runs over a source that reads both `$doc` and the owner's own hold `$clicks`, and
-# one tick writes both (a click on the forwarded child button and a click on the owner's
-# own). The rows are built once, after propagation, from the values after the tick:
-# `$doc` is structural (round 3 ST), one tick behind the child, so a kept row shows the new
-# count beside the label as the tick opened, and the moved label in the tick after.
+# A host's child document is a dynamic (Semantics ch. 9), `$(Path ==> $Elem c)` (Jimmy, 6
+# November 2026): its entries are the child's places, each its own dynamic, read here as one
+# flat value through the `for` that flattens each entry (`$flat`, its gathered dynamic;
+# claude/incremental-host-document.md, part 4), never a hold and never something the
+# end-of-tick patch pass produces. The owner's `for` runs over a source that reads both
+# `$flat` and the owner's own hold `$clicks`, and one tick writes both (a click on the
+# forwarded child button and a click on the owner's own). The rows are built once, after
+# propagation, from the values after the tick: the label's entry is published a tick after
+# the child moved it (the host level) and `$flat` a tick after that (the gathered `for`;
+# round 3 ST), so a kept row shows the new count beside the label as the tick opened, and
+# the moved label two ticks after.
 # Written for prismc's back end. Work in progress, subject to change.
 emit Ui.*
 test mod Tests
@@ -37,8 +40,11 @@ fn Tag doc, n = Fold (Keys doc), {}, \|acc, p| match ?Get doc, p:
 @owner: @unit
 @owner:
     ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
-    !tap <- Ui.Button(label=$"tap")                              # 1
+    $flat <- for p, $$d <- $doc:                                  # 1/[p], no places
+        $e <- @Flatten $$d
+        @ $e
+    !tap <- Ui.Button(label=$"tap")                              # 2
     $clicks <- 0 then $clicks + 1 on !tap
-    let $tagged = Tag $doc, $clicks
-    for p, $pair <- $tagged:                                     # 2/[p]/0
+    let $tagged = Tag $flat, $clicks
+    for p, $pair <- $tagged:                                     # 3/[p]/0
         Ui.Label(text=$"{$pair.text} after {$pair.count}")
