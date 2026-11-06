@@ -252,8 +252,10 @@ the compiler as they stand; every call marked "(Claude's)" is a doubt below.
   `$(Path ==> $Elem)` it is the only way the window hears one child change without
   flattening the tree back into one value (part 4), so the window's layout goes per child,
   one `for` per box level, through one recursive widget (Semantics ch. 4: "widget
-  functions recurse as deep as their data"; whether prismc lowers widget recursion under a
-  `for` row is unchecked, doubt WR).
+  functions recurse as deep as their data"; prismc lowers it, `sem-ch04-widget-recursion`,
+  a row's entry being a part of the source for the recursion checker).
+- **Route A's refusal is withdrawn** (the coordinator's, made under the flat type, against
+  Jimmy's "change everything for this"): the window is one child per `for` row.
 - **What a row returns:** plain data with `^Eq` (a child's size, a leaf's lines and ink,
   its kind and chain), not `Laid`, whose closure has no `^Eq`, so an equal take keeps the
   gathered map and nothing above it moves. The placing (draw commands and hits for what
@@ -307,7 +309,10 @@ L3 a row's leaves.
 ### What the change touches, and where it stands
 
 - **Built so far:** the failing conformance test `sem-ch09-host-doc-entries` (a value
-  change of a place leaves the outer's count where it was; a new place moves it).
+  change of a place leaves the outer's count where it was; a new place moves it), and
+  what the per-child window needs of the compiler: a widget recursing over a `for` row's
+  entry (`sem-ch04-widget-recursion`) and a `for` over a field of a row's entry rebuilding
+  when the block writes it (`sem-ch04-for-nested-entry`).
 - **Still to build:** the prelude's three signatures; the checker (the hosting forms'
   typing and the supplier's `e`, a field of type `$(Path ==> $Elem)` inside a tag, the
   World's deep read); lowering (`HostDocGetter`, `DocumentBody`, `Row::document`: an entry
@@ -366,8 +371,11 @@ RULINGS (the ruling itself, LG and RA withdrawn).
   for a value change as today; or the entry as the place's live level, prompt.
 - **MW** (Claude's) Text extents per leaf through `rebuild $text: Gui.Metrics(...)`, the
   word set gone; or the word set gathered per level into one Metrics `for`.
-- **WR** Whether prismc lowers a recursive widget under a `for` row (the books allow it);
-  the per-child window needs one.
+- **EQ** (Claude's) An element whose tag holds children holds dynamics, and a dynamic has
+  no `^Eq`, so `Elem` of the window's row loses `^Eq` (Type System ch. 2's derive refuses a
+  dynamic); the per-place publication compares deep-sampled levels in the runtimes, where a
+  spurious firing is allowed (round 3 DH) and nothing in Prism sees the comparison. Or
+  dynamics compared by identity in Prism, which would make identity observable (refused).
 - **PB** Painting one frame is 143 M instructions in C++ and 155 M in Rust whatever
   changed, a fifth to a quarter of create1k; a small change stays above that floor.
 - **SE** (Claude's) The table's rows each read `$table.?selected`, so a select recomputes
