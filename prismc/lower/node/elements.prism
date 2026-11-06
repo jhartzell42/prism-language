@@ -63,26 +63,30 @@ fn ElementLine wx, benv, menv, e, ?bound:
             let wx1 = update wx:
                 &_.pos <= NextPos &_.pos
             let structPath = PathIn lx, tg.home, (TagStruct tg.name)
-            let ((liveFields, constFields, reads, wx2)) = Fold tg.fields, (([[]], [[]], [[]], wx1)), \|((lf, cf, rd, w)), ((fname, fty))|
+            # each field three ways: live in the methods, constant at the build, and constant
+            # in the methods (a row's `document`, where a row's key is its own field)
+            let ((liveFields, constFields, methodConsts, reads, wx2)) = Fold tg.fields, (([[]], [[]], [[]], [[]], wx1)), \|((lf, cf, mf, rd, w)), ((fname, fty))|
                 match ?TagArg args, fname:
-                    nil: ((lf, cf, rd, w))
+                    nil: ((lf, cf, mf, rd, w))
                     ? arg:
                         match LayerOf fty:
                             LyEv:
                                 let ((r, w2)) = EventRef w, menv, arg
-                                ((lf, cf, rd, (Connect w2, r, (SkRequest pos, (RequestField tg, fname)))))
+                                ((lf, cf, mf, rd, (Connect w2, r, (SkRequest pos, (RequestField tg, fname)))))
                             otherwise:
                                 let ((ex, rds)) = DynamicExpr w, menv, arg
                                 let cv = Own (ValueOf lx, benv, arg)
-                                (((Push lf, ((Snake fname, ex))), (Push cf, ((Snake fname, cv))), (UnionReads rd, rds), w))
+                                let mv = Own (ValueOf lx, menv, arg)
+                                (((Push lf, ((Snake fname, ex))), (Push cf, ((Snake fname, cv))), (Push mf, ((Snake fname, mv))), (UnionReads rd, rds), w))
             let live = (Len reads) > 0
             let ((getter, wx3)) = if live: FreshName wx2, (Snake (BareName tg.name)) else: (("", wx2))
             let variant = VariantOf lx, tg
             # the place's level as the program's `Elem`: read by its getter in the methods when
-            # a field is live, else the constant; at the build the constant fields' value
-            let level = XCtor variant, [[(XRecord structPath, (if live: liveFields else: constFields))]]
+            # a field is live, else the constant as the methods spell it; at the build the constant
+            # fields' value
+            let level = XCtor variant, [[(XRecord structPath, (if live: liveFields else: methodConsts))]]
             let atBuild = XCtor variant, [[(XRecord structPath, constFields)]]
-            let added = if live: XMethod (XVar "node"), getter, [[XCx]] else: level
+            let added = if live: XMethod (XVar "node"), getter, [[XCx]] else: atBuild
             let wx4 = update wx3:
                 &_.places <= Push &_.places, Place(pos=pos, level=level, getter=getter, reads=reads)
                 &_.build <= if Emits wx3, pos: Push &_.build, (DoExpr (XMethod (XCx), "added", [[(PlaceAt wx3, "node", pos), (XMethod added, "to_pod", [[]])]])) else: &_.build
