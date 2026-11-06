@@ -16,8 +16,9 @@
 // root from the prelude's wrapper), when the user closes a window (code 0), or when the
 // document holds no window and nothing can cause another tick (code 0, as `drive`).
 //
-// Painting goes through MIT-SHM: cairo paints straight into the shared image, and
-// `XShmPutImage` then `XSync` puts it on the screen. A display without MIT-SHM (a remote
+// Painting goes through MIT-SHM: cairo paints straight into the shared image, again only
+// where the scene changed (damage.hpp), and `XShmPutImage` of each damaged box (the whole
+// image after a map, an expose or a resize) then `XSync` puts it on the screen. A display without MIT-SHM (a remote
 // one) is told so once on standard error and painted through `XPutImage`.
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
@@ -73,6 +74,11 @@ struct OsWindow {
     XShmSegmentInfo shm{};
     bool shm_attached = false;
     std::vector<std::uint32_t> heap;  // the pixels without MIT-SHM
+    /// The image's frame, painted again where the scene changed (damage.hpp).
+    Painter painter;
+    /// The server's copy of the window is not the image's: mapped, exposed or remade, so
+    /// the next paint puts the whole image, not only the damage.
+    bool exposed = true;
 };
 
 class App final : public Session {
@@ -90,6 +96,7 @@ public:
         if (!exit_) exit_ = code;
     }
     std::optional<std::uint32_t> pixel(const Path& window, double x, double y) const override;
+    std::optional<FrameSize> frame_size(const Path& window) const override;
 
 private:
     /// One tick, on the big stack: `tick_here` there.
@@ -335,12 +342,20 @@ int App::paint() {
         w.damaged = false;
         auto* data = reinterpret_cast<unsigned char*>(w.image->data);
         cairo_surface_t* surface = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_RGB24, w.pw, w.ph, w.image->bytes_per_line);
-        renderer_.render(surface, scale_, shared_->draw_lists(w.id));
+        Damage damage = w.painter.paint(renderer_, surface, scale_, shared_->draw_lists(w.id));
         cairo_surface_destroy(surface);
-        if (w.shm_attached)
-            XShmPutImage(dpy_, w.xid, gc_, w.image, 0, 0, 0, 0, unsigned(w.pw), unsigned(w.ph), False);
-        else
-            XPutImage(dpy_, w.xid, gc_, w.image, 0, 0, 0, 0, unsigned(w.pw), unsigned(w.ph));
+        // Only the damage goes to the server, unless its copy of the window is not the
+        // image's; each box is inside the image (`Renderer::bounds` cuts it to the frame).
+        if (damage.full || w.exposed) damage.rects = {IRect{0, 0, std::uint32_t(w.pw), std::uint32_t(w.ph)}};
+        w.exposed = false;
+        for (const IRect& r : damage.rects) {
+            int x = int(r.x0), y = int(r.y0);
+            unsigned bw = r.x1 - r.x0, bh = r.y1 - r.y0;
+            if (w.shm_attached)
+                XShmPutImage(dpy_, w.xid, gc_, w.image, x, y, x, y, bw, bh, False);
+            else
+                XPutImage(dpy_, w.xid, gc_, w.image, x, y, x, y, bw, bh);
+        }
         ++painted;
     }
     // The frame is on the server, and the shared image free to paint again.
@@ -356,6 +371,12 @@ std::optional<std::uint32_t> App::pixel(const Path& window, double x, double y) 
     if (px < 0 || py < 0 || px >= w.pw || py >= w.ph) return std::nullopt;
     auto* row = reinterpret_cast<const std::uint32_t*>(w.image->data + std::ptrdiff_t(py) * w.image->bytes_per_line);
     return row[px] & 0xffffff;
+}
+
+std::optional<Session::FrameSize> App::frame_size(const Path& window) const {
+    auto it = windows_.find(window);
+    if (it == windows_.end() || !it->second.image) return std::nullopt;
+    return FrameSize{it->second.pw, it->second.ph, double(scale_)};
 }
 
 OsWindow* App::window_of(::Window xid, Path* path) {
@@ -411,9 +432,13 @@ void App::event(XEvent& ev) {
         case MapNotify:
             w->mapped = true;
             w->damaged = true;
+            w->exposed = true;
             break;
         case UnmapNotify: w->mapped = false; break;
-        case Expose: w->damaged = true; break;
+        case Expose:
+            w->damaged = true;
+            w->exposed = true;
+            break;
         case ButtonPress:
             if (ev.xbutton.button == Button1)
                 shared.push_input(path, gui::press(ev.xbutton.x / double(scale_), ev.xbutton.y / double(scale_)));
@@ -430,7 +455,9 @@ void App::event(XEvent& ev) {
                     std::fprintf(stderr, "prism canvas: cannot make an image for the window \"%s\"\n", w->title.c_str());
                     exit(prism_rtl::EXIT_FAILED);
                 }
+                w->painter.forget();
                 w->damaged = true;
+                w->exposed = true;
             }
             double lw = pw / double(scale_), lh = ph / double(scale_);
             if (lw != w->w || lh != w->h) {

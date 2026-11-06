@@ -75,6 +75,12 @@ public:
     Renderer(Renderer&&) = default;
     Renderer(const Renderer&) = delete;
 
+    /// What a command can touch, in physical pixels before rounding: render.cpp.
+    struct Extent {
+        enum class Kind { Nothing, Box, Whole } kind = Kind::Nothing;
+        double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    };
+
     /// Clear `target` to the background and paint each draw list on it, in order.
     /// `scale` is the window's scale factor: physical pixels per logical pixel.
     void render(cairo_surface_t* target, float scale, const std::vector<const Pod*>& draw_lists);
@@ -96,6 +102,8 @@ private:
         float left = 0;
         float top = 0;
     };
+    Extent extent(const Pod& e, float scale, const cairo_matrix_t& m);
+    Extent extent_all(const Pod& list, float scale, const cairo_matrix_t& m);
     void draw_all(cairo_t* cr, float scale, const Pod& list);
     void draw(cairo_t* cr, float scale, const Pod& e);
     void text(cairo_t* cr, float scale, double x, double y, const prism_rtl::Text& text);

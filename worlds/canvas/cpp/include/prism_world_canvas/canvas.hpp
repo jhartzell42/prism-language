@@ -47,6 +47,14 @@ public:
     /// the place at `window`; none outside it or before its first frame. A driver checks
     /// what reached the screen this way, with no robot.
     virtual std::optional<std::uint32_t> pixel(const Path& window, double x, double y) const = 0;
+    /// The frame's width and height in physical pixels, and its scale (physical pixels
+    /// per logical pixel), for the window for the place at `window`. A test reads every
+    /// pixel of the frame through `pixel` at `(px / scale, py / scale)`.
+    struct FrameSize {
+        int w = 0, h = 0;
+        double scale = 1;
+    };
+    virtual std::optional<FrameSize> frame_size(const Path& window) const = 0;
 };
 
 /// Calls into a hook from the loop. Each may be empty.

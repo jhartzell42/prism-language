@@ -118,6 +118,9 @@ impl Renderer {
                 };
                 let text = text.to_string();
                 let (x, y) = (number(at.field("x")), number(at.field("y")));
+                if !(x as f32).is_finite() || !(y as f32).is_finite() {
+                    return Extent::Whole;
+                }
                 let px = FONT_PX * scale;
                 let baseline = self.font.ascent(scale);
                 let origin = t.pre_translate(x as f32, y as f32).pre_scale(1.0 / scale, 1.0 / scale);

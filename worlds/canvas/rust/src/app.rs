@@ -198,6 +198,7 @@ impl<P: Program> App<P> {
             });
             match opened {
                 Ok(w) => {
+                    srgb_window(&w.window);
                     self.places.insert(w.window.id(), path.clone());
                     self.windows.insert(path.clone(), w);
                     self.opened_any = true;
@@ -307,6 +308,33 @@ impl<P: Program> App<P> {
         }
     }
 }
+
+/// Give the window the frame's colour space, sRGB: Core Animation then hands the frame
+/// to the window server as it is, where with the screen's colour space it converts every
+/// pixel of every frame on the CPU, in this process, before the frame reaches the screen
+/// (on an M2 Pro's built-in screen, about 125 M instructions a 900 by 800 frame). The
+/// colours on the screen are the same: the window server matches sRGB to the screen.
+#[cfg(target_os = "macos")]
+fn srgb_window(window: &Window) {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let Ok(handle) = window.window_handle() else { return };
+    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else { return };
+    let view: *mut AnyObject = appkit.ns_view.as_ptr().cast();
+    // SAFETY: `view` is the live NSView winit made for this window, on the main thread;
+    // `window`, `sRGBColorSpace` and `setColorSpace:` are AppKit's own methods.
+    unsafe {
+        let ns_window: *mut AnyObject = msg_send![view, window];
+        let srgb: *mut AnyObject = msg_send![class!(NSColorSpace), sRGBColorSpace];
+        if !ns_window.is_null() {
+            let _: () = msg_send![ns_window, setColorSpace: srgb];
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn srgb_window(_: &Window) {}
 
 /// A key as the window library's `Key`: `Char c`, `Left`, `Right`, `Backspace`, `Tab`,
 /// `Enter`; Delete is taken as Backspace and Space as `Char ' '`, as prism-reflex's Gloss

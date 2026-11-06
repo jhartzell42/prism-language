@@ -18,6 +18,12 @@ tiny-skia = { version = "0.11", default-features = false, features = ["std", "si
 winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11"] }
 softbuffer = { version = "0.4", default-features = false, features = ["x11", "x11-dlopen"] }
 
+# macOS: the window's colour space is set to sRGB, the frame's own, so Core Animation does
+# not convert every pixel of every frame on the CPU (app.rs, `srgb_window`).
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5"
+raw-window-handle = "0.6"
+
 # The smoke test reads a pixel and clicks through Xlib and XTest, as no X tools are assumed.
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 x11-dl = "2.21"

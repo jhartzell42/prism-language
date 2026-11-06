@@ -12,9 +12,11 @@
 //   otherwise it sleeps in `nextEventMatchingMask:untilDate:distantFuture`.
 //
 // Painting: cairo paints into a buffer of the window's size in physical pixels (the
-// backing scale factor, 2 on a Retina screen), which becomes a `CGImage` set as the
-// view's layer contents; `[CATransaction flush]` then hands the frame to the window
-// server. That flush is what "on the screen" means here, as `XSync` is on X11.
+// backing scale factor, 2 on a Retina screen), again only where the scene changed
+// (damage.hpp), which becomes a `CGImage` set as the view's layer contents, the whole
+// frame (a layer's contents are one image); `[CATransaction flush]` then hands the frame
+// to the window server. That flush is what "on the screen" means here, as `XSync` is on
+// X11. The window's colour space is sRGB, the image's, so the frame goes as it is.
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
 
@@ -81,8 +83,10 @@ struct OsWindow {
     bool mapped = false;
     /// Asked to paint: a resize, a scale change, or a patch that moved a scene.
     bool damaged = true;
-    /// The pixels painted into, cairo's RGB24 (0x00RRGGBB, native order), `pw` by `ph`.
+    /// The pixels painted into, cairo's RGB24 (0x00RRGGBB, native order), `pw` by `ph`:
+    /// the frame, painted again where the scene changed (damage.hpp).
     std::vector<std::uint32_t> pixels;
+    Painter painter;
 };
 
 NSString* ns(const std::string& s) { return [NSString stringWithUTF8String:s.c_str()]; }
@@ -102,6 +106,7 @@ public:
         if (!exit_) exit_ = code;
     }
     std::optional<std::uint32_t> pixel(const Path& window, double x, double y) const override;
+    std::optional<FrameSize> frame_size(const Path& window) const override;
 
     // From the view and the delegate.
     void pressed_at(OsWindow& w, NSPoint p) { shared_->push_input(w.path, gui::press(p.x, p.y)); }
@@ -210,6 +215,7 @@ void App::geometry_changed(OsWindow& w) {
         w.ph = ph;
         w.scale = scale;
         w.pixels.assign(std::size_t(std::max(pw, 0)) * std::size_t(std::max(ph, 0)), 0xffffff);
+        w.painter.forget();
         w.view.layer.contentsScale = scale;
         w.damaged = true;
     }
@@ -242,6 +248,11 @@ bool App::open(const Path& path, const WindowPlace& place) {
     }
     w.window.releasedWhenClosed = NO;
     w.window.title = ns(place.title);
+    // The frame's own colour space: with the screen's, Core Animation converts every pixel
+    // of every frame on the CPU, in this process, before the frame reaches the window
+    // server (about 125 M instructions a 900 by 800 frame on an M2 Pro's built-in screen).
+    // The colours on the screen are the same: the window server matches sRGB to the screen.
+    w.window.colorSpace = NSColorSpace.sRGBColorSpace;
     w.view = [[PrismCanvasView alloc] initWithFrame:frame];
     w.view.app = this;
     w.view.place = &w;
@@ -278,6 +289,11 @@ void App::reconcile() {
             OsWindow& w = it->second;
             if (w.title != place.title) {
                 w.window.title = ns(place.title);
+    // The frame's own colour space: with the screen's, Core Animation converts every pixel
+    // of every frame on the CPU, in this process, before the frame reaches the window
+    // server (about 125 M instructions a 900 by 800 frame on an M2 Pro's built-in screen).
+    // The colours on the screen are the same: the window server matches sRGB to the screen.
+    w.window.colorSpace = NSColorSpace.sRGBColorSpace;
                 w.title = place.title;
             }
             continue;
@@ -301,7 +317,7 @@ int App::paint() {
         int stride = w.pw * 4;
         auto* data = reinterpret_cast<unsigned char*>(w.pixels.data());
         cairo_surface_t* surface = cairo_image_surface_create_for_data(data, CAIRO_FORMAT_RGB24, w.pw, w.ph, stride);
-        renderer_.render(surface, float(w.scale), shared_->draw_lists(w.id));
+        w.painter.paint(renderer_, surface, float(w.scale), shared_->draw_lists(w.id));
         cairo_surface_flush(surface);
         cairo_surface_destroy(surface);
         // RGB24 is 0x00RRGGBB in native (little-endian) order: Quartz's 32-bit little
@@ -334,6 +350,12 @@ std::optional<std::uint32_t> App::pixel(const Path& window, double x, double y) 
     long px = std::lround(x * w.scale), py = std::lround(y * w.scale);
     if (px < 0 || py < 0 || px >= w.pw || py >= w.ph) return std::nullopt;
     return w.pixels[std::size_t(py) * std::size_t(w.pw) + std::size_t(px)] & 0xffffff;
+}
+
+std::optional<Session::FrameSize> App::frame_size(const Path& window) const {
+    auto it = windows_.find(window);
+    if (it == windows_.end() || it->second.pw <= 0 || it->second.ph <= 0) return std::nullopt;
+    return FrameSize{it->second.pw, it->second.ph, it->second.scale};
 }
 
 /// A key as the window library's `Key`: `Char c`, `Left`, `Right`, `Backspace`, `Tab`,
