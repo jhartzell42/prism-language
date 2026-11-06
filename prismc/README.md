@@ -347,7 +347,7 @@ an empty array's element), or one a local `let` quantified (`gens` names those).
 
 `tests/checker/run.sh` checks every program of the corpus, the programs of its own
 under `pos/` (`lambda-color`, clean, with its colors in `pos/lambda-color.colors`), the
-88 negative cases and the two typed dumps. Every corpus program checks clean; a book program the checker refused
+175 negative cases (162 programs and 13 module trees) and the two typed dumps. Every corpus program checks clean; a book program the checker refused
 was a slip in the book, corrected there and here (Semantics round 3 CK).
 
 - **Clean:** `compiler-ch03-halfcounter`, `conf-ch01-counter`, `conf-ch01-journal`,
@@ -359,8 +359,9 @@ was a slip in the book, corrected there and here (Semantics round 3 CK).
 - **`prismc`** (clean): the checker over prismc's own tree (`prismc/`, its test modules
   read), the back end included.
 
-The negative cases (`neg/`, 88) give one diagnostic each, the error their name says, or a
-case of it (`live-field-bare` is a `mark-stack`; `values-not-shrinking` and
+The negative cases (`neg/`, 175) give one diagnostic each, the error their name says, or a
+case of it (`live-field-bare` is a `mark-stack`, and so is `for-double-dynamic`, a `for`
+over `$(k ==> $v)` binding `$$d` where ruling FV binds `$v`, with the fix in the message; `values-not-shrinking` and
 `summary-not-parts` are `may-not-end`s that keep doubt TR's map rule and pick SM's
 summaries from accepting a cycle that grows; `drop-unknown` and `long-cycle` are
 `may-not-end`s for pick SM's `Drop` rule and the closure's fixed point, `int-minus`,
@@ -1005,7 +1006,9 @@ qualified path, a label) or a literal's digits, never syntax.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: all 81 pass, chess's board included.
+`tests/compiled/run.sh`, which runs every program every time: all 132 pass (the 126
+conformance programs, chess and chess's rules alone, the prelude's maps, and prismc's
+lexer, parser and regex checks), chess's board included.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -1034,7 +1037,9 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `sem-ch09-host-doc-in-tick`, `sem-ch09-host-delay`, `sem-ch09-host-nested` and `sem-ch09-host-teardown` (pick
   HO), `sem-ch07-updated` (pick UP), `sem-ch09-host-updated`, `sem-ch07-structural` and `sem-ch07-structural-law`
   (pick ST),
-  `sem-ch04-row-entry` (pick RE).
+  `sem-ch04-row-entry` (pick RE), `sem-ch04-for-replaced-inner` (pick FV: a `for` over
+  `$(k ==> $r)` gathered from `rebuild`s' dynamics, its rows following a replaced inner
+  without a rebuild; a hand-derived transcript, passing on both targets).
   `sem-ch08-clause-widget` (pick CS). The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
@@ -1078,13 +1083,21 @@ emit/cpp/prelude.prism (`Emit.Cpp.Prelude`, the prelude in C++, function for
 function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli/cpp`
 (claude/backend.md, "The C++ side"). `./prism test --target cpp` builds it with make and
 `$CXX` (g++ by default) into `target/prism-cpp/NAME` and runs its tests under the C++
-Test World; `tests/compiled/run.sh --target cpp` runs every program so.
+Test World; `tests/compiled/run.sh --target cpp` runs every program so. `./prism run
+--target cpp` runs the root under the World its row asks for, as the Rust target does: a
+root with `Gui.*` is linked with `worlds/canvas/cpp` (X11 on Linux, Cocoa on macOS; the
+emitted Makefile's `CppMakefileCanvas` lines build its library after `runtime/cpp`'s),
+any other with the CLI World (`CppRunRoot`: `run_cli` or `prism_world_canvas::run`).
+`--world` names the World the binary is run with; it cannot add the canvas World to a
+program whose row did not ask for it, since that program is built without it
+(`CppNoCanvas` says so and exits 2), and a root whose row has `Ui.*` without `Gui.*` is
+refused by the binary with the Rust target's message.
 
 - **Where it stands:** every program of `tests/compiled/run.sh` passes under C++ (every
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
-- **The C++ bootstrap:** prismc itself compiles to C++ (185,385 lines: 63 units and 280
+- **The C++ bootstrap:** prismc itself compiles to C++ (188,493 lines: 63 units and 280
   headers, picks MH and SF) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
   takes it to its fixed point and checks its Rust against the Rust prismc's
   (bootstrap/README.md). clang++ -O3 builds it in about 165 s wall (1,310 s CPU) with
@@ -1231,8 +1244,6 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
 
 Gaps:
 
-- **No canvas World in C++**: `./prism run --target cpp` runs the CLI World only; chess's
-  window is the Rust target's.
 - **CY:** a cycle of records held by value with no choice on it.
 - **GC:** a generic choice's case constructor (`Tree(Tree::Node{..})`) needs its type
   arguments, which CTAD cannot deduce from a nested case; no program here has one.
@@ -1811,23 +1822,22 @@ ruling taken (Claude's).
   block in their tick. A `rebuild` that hands back a dynamic, `$$a`, is a structural
   dynamic too (`{gen}_result`): the build keeps the newborn generation's result as a
   `Dynamic` (`result_dynamic`, kept in `{gen}_result_live`) and marks the snapshot, which
-  the construction step takes after the generation is built. `@Flatten $$a` of a `for`
-  row's entry (a host document's entry, `EntryFlatten`) keeps its current inner in a
-  `Hold` set at the row's construction from the `value` its builder hands it and follows
-  the inner's update port (`prism_rtl::Follow`, `{name}_moved`, marking what reads it in
-  the tick the inner moved); the block's writes behind the entry patch the row
-  (`RowPlaceReads`), whose patch pass queues an adoption of an entry that is another
-  dynamic (`{name}_adopt`, owed; the shrink check reads `@Flatten` as no larger than its
-  argument, so a widget recurses over its rows' flattened entries). `@Flatten $$a` of a
+  the construction step takes after the generation is built. A `for` over the document,
+  `for k, $v <- $(Path ==> $Elem c)`, binds each row's entry flattened (pick FV: the row's
+  `$v` is the dynamic under its key, `EntryFlatten`; a `for` over a map of dynamics never
+  binds `$$d`). `@Flatten $$a` of a
   `rebuild`'s dynamic keeps its
   current inner in a `Hold` (`{name}_inner`), adopted at the build and, when the
   `rebuild`'s dynamic is published, among the first firings of the tick after
   (`{name}_adopt`, queued with `Cx::answer_later`, so that tick is owed); its dynamic
   samples the inner at the read point, and a write behind the current generation's result
-  marks its readers (`{gen}_result_moved`). So a generation built at n is the `rebuild`'s
+  marks its readers (`{gen}_result_moved`), which also fires the update port of the
+  `Dynamic` kept in `{gen}_result_live`, so a follower outside the node (a `for` gathering
+  `$$r`s into `$(k ==> $r)`, whose rows follow their inners) sees the result move
+  (`sem-ch04-for-replaced-inner`). So a generation built at n is the `rebuild`'s
   dynamic after n+1 and the `@Flatten`'s from n+2: `sem-ch08-viewer`'s label lags the watch
-  by two ticks, where the book has one (its transcript derives it). `@Flatten` of anything but a row's entry or a
-  `rebuild`'s dynamic is refused. *Refused:* the whole dynamic a tick late, the host's
+  by two ticks, where the book has one (its transcript derives it). `@Flatten` of anything but a
+  `rebuild`'s dynamic is refused (`FlattenLine`, naming the `for` form). *Refused:* the whole dynamic a tick late, the host's
   rows included (a host's `for` would build a newborn's row a tick after the child did,
   breaking forwarding parity); the snapshot of n read by samples at n+1 beside the event
   carrying it (a sample in the event's tick would read the new value, against R2/R3); the
@@ -1870,10 +1880,13 @@ ruling taken (Claude's).
   block's publication of a structural dynamic (pick ST) is `HoldWritten` of its name, so
   the row's marks are already in it, but no test pins a row's `!Updated` over one. *First
   ruling:* refused loudly for the row's own `!Updated` nodes (`UpdatedGaps`, over
-  `UpdatedHears`); a row's builders and `@Flatten`s hearing such a publication are marked
+  `UpdatedHears`); a row's builders hearing such a publication are marked
   like any write (`RowHears` takes the reads behind the row's own builders' sources, so a
   `for` in a row whose rows have no places rebuilds when the block writes behind it:
-  `sem-ch04-widget-recursion-result`). *Next:* a test, then the refusal goes.
+  `sem-ch04-widget-recursion-result`; and the reads behind the row's `rebuild`s' sources,
+  `genHolds`, so a row's `rebuild $gen` whose `$gen` is the block's hold hears the block's
+  write through `parent_wrote_{m}`, which marks the generation stale and lists the build,
+  `HeardBuild`: `sem-ch04-for-replaced-inner`). *Next:* a test, then the refusal goes.
 - **DM The document is `$(Path ==> $Elem c)`, built per place.** (Jimmy, 6 November
   2026.) No flat document is built: each hosted place's entry is taken in its own node's
   patch pass when a write behind it dirtied the node, so a tick that moves one of `n`
@@ -1883,7 +1896,7 @@ ruling taken (Claude's).
   the outer's `!Updated` silent; `sem-ch09-hosts`, `sem-ch04-row-source`'s hosted test).
   The host's rows' builder does nothing when the snapshot holds the places it last built
   from (`ForBuild`, `Map::same`). A program that wants the old flat value writes the `for`
-  that flattens each entry and pays its tick (`sem-ch09-host-updated`,
+  over the document, `for p, $e <- $doc:` (pick FV: `$e` is the entry under `p`), and pays its tick (`sem-ch09-host-updated`,
   `sem-ch09-host-doc-in-tick`; claude/incremental-host-document.md).
 - **SR A `for`'s source is computed once per write behind it.** The block's source getter
   (`{name}_source`, `Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`), which the
@@ -1906,11 +1919,40 @@ ruling taken (Claude's).
   (`SkPerKey`). The runtime walks the new map against the inners it holds: a kept key whose
   value differs by `==` has its inner written and fired; a new key gets an inner at its
   value; only a key that came or went writes the outer, so only then are its readers
-  marked. A row's `@Flatten $$d` follows its inner (`EntryFlatten`). A name `@Distinct`,
+  marked. A `for` over `$each` binds each row's inner, `for k, $v <- $each:` (pick FV; no
+  rule of the `for` is `@PerKey`'s own). A name `@Distinct`,
   `@PerKey` or `@Flatten` binds is pre-bound as a widget's result (`IsGetterBuiltin`), so a
   line above reads its getter (`sem-appB-per-key`, `sem-ch04-bind-read-above`; the
   checker asks `^Eq`, `per-key-needs-eq`; the cost pair `per-key-one-edit`,
   `per-key-many-edits`).
+- **FV A `for` over a map of dynamics binds the value under the key.** `for k, $v <-
+  $each:` over a `$(k ==> $v)` (a host document `$(Path ==> $Elem c)`, `@PerKey`'s output,
+  a `for` gathering `rebuild`s' dynamics) binds `$v` directly (Jimmy, round 9 FV; Semantics
+  ch. 4): the row's binder is its entry flattened (`ForLine` makes it an `EntryFlatten`
+  when the source's value type is a dynamic), a `Hold` of the current inner
+  (`{v}_inner`) set at the row's construction from the `value` its builder hands it, and a
+  `prism_rtl::Follow` (`{v}_follow`) on the inner's update port, which calls `{v}_moved`:
+  what reads `$v` reads it again in the tick the inner moved. A replaced dynamic is found
+  by the `for`'s builder, not by the row: `ForBuild` (both printers' templates, `FromKept`
+  and `ReplacedCall` in emit/rust/items.prism, `FromKeptCpp` and `ReplacedCallCpp` in
+  emit/cpp/program.prism) walks the kept keys and compares each one's dynamic in the new
+  source with the one in the map the rows were last built from (`{name}_from`; a
+  `Dynamic` equals only itself, in both runtimes), and calls that row's `{v}_replaced`
+  (`ForDef.replaced` lists the rows' methods), which queues `{v}_adopt` with
+  `Cx::answer_later`, so the row reads the new inner among the next tick's first firings,
+  owed (rulings VL, TK). The row's entry is not among `RowPlaceReads`, so a write of the
+  outer wakes no kept row, and a row is never rebuilt for a replaced dynamic (Semantics
+  ch. 11: a rebuilt row could tell two dynamics apart). `@PerKey` gets nothing of its own:
+  its output is a map of dynamics like any other. The old form, `for k, $$d <- $each:`
+  with `$v <- @Flatten $$d` on the next line, is a `mark-stack` in the checker with the
+  fix in the message (`tests/checker/neg/for-double-dynamic`), and `FlattenLine` refuses
+  `@Flatten` of anything but a `rebuild`'s dynamic. `sem-ch04-for-replaced-inner`; the
+  cost pair `per-key-drop-one`, `per-key-drop-many` (no `.expected`: 2,000 places exceed
+  the 10 KB a transcript may keep). *Refused:* the row's patch pass comparing its entry
+  with its inner on every write behind the outer (every kept row woken for a write that
+  replaced one dynamic, `n` comparisons where the builder's key walk already has the
+  map); rebuilding the row under a replaced dynamic (observable, ch. 11); a `@PerKey` rule
+  of its own (Jimmy: one `for` form over every map of dynamics).
 
 ### Strings: what is copied
 
@@ -2001,7 +2043,7 @@ no value at the owner's build, a widget-function blueprint as an answer, and a b
 a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebuild`'s
 generation or a widget clause ending on a bundle (a widget block's bundle result is
 lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); an element applied as a plain value and a live element's `$` field read in a plain
-function (gap LE), `@Flatten` of a dynamic that is neither a `rebuild`'s nor a `for` row's entry,
+function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), an `@Machine` whose step is
 not a named function, a local function whose

@@ -17,7 +17,9 @@
 - **`text/`**: `case.txt`, what `Upper` and `Lower` answer, which both runtimes' tests
   read (its README states the mapping).
 - **`driver/run.sh`**: which World `./prism run` picks for a root.
-- **`cost/run.sh`**: work counted, not time (macOS): a costly `let` read by ten places
-  costs under twice one reader's instructions.
+- **`cost/run.sh`**: work counted, not time (instructions retired, by bench/lib.sh:
+  macOS's `time -l`, `perf stat` on Linux with hardware counters, else valgrind's
+  cachegrind): a costly `let` read by ten places costs under twice one reader's
+  instructions, and the other pairs tests/cost/README.md names.
 - **`make test`** from the repository root runs all of them, cargo's tests and the
   bootstrap.

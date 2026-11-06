@@ -188,15 +188,23 @@ it make every program an interpreter run, and every type mistake a runtime fault
   structure itself, `host_k_doc_direct` (S(n) from n's construction step on; a read of a
   marked snapshot there before it is taken is a panic, not a value), so a newborn child
   place gets its row in its birth tick (prismc/README.md, pick ST).
-- **`@Flatten $$a` over a `for` row's entry** (a host document's entry, `$$Elem`) → the
-  current inner `Hold<Option<Dynamic<A>>>` (`{name}_inner`), set at the row's construction
-  from the `value` its builder hands it, and an `rt::Follow` (`{name}_follow`), the
-  subscription to the inner's update port, which calls `{name}_moved`: what reads the
-  flatten is marked as for a write of the inner, in the tick the inner moved. The block's
-  writes behind the row's entry patch the row (the flatten's reads are among the row's
-  place reads); its patch pass compares the entry with the inner (a dynamic equal only to
-  itself) and, when it is another dynamic, queues `{name}_adopt` with `cx.answer_later`, so
-  the adoption is among the next tick's first firings, which is owed (rulings VL, TK).
+- **`for k, $v <- $each:` over a map of dynamics** (`$(k ==> $v)`: a host document's
+  entries `$(Path ==> $Elem c)`, `@PerKey`'s output, a `for` gathering `rebuild`s'
+  dynamics; ruling FV, prismc/README.md pick FV) → the row's binder is its entry
+  flattened (`ForLine` makes it an `EntryFlatten` when the source's value type is a
+  dynamic): the current inner `Hold<Option<Dynamic<V>>>` (`{v}_inner`), set at the row's
+  construction from the `value` its builder hands it, and an `rt::Follow` (`{v}_follow`),
+  the subscription to the inner's update port, which calls `{v}_moved`: what reads `$v` is
+  marked as for a write of the inner, in the tick the inner moved. The row's entry is not
+  among its place reads (`RowPlaceReads`), so a write of the outer wakes no kept row; the
+  `for`'s builder (`ForBuild`, both printers) walks the kept keys and compares each one's
+  dynamic in the new source with the one in the map the rows were last built from
+  (`{name}_from`; a `Dynamic` equals only itself) and calls that row's `{v}_replaced`
+  (`FlattenMethods`; `ForDef.replaced` lists them), which queues `{v}_adopt` with
+  `cx.answer_later`, so the adoption is among the next tick's first firings, which is owed
+  (rulings VL, TK). The row is kept, never rebuilt for a replaced dynamic (Semantics ch.
+  11). A `$$d` binder with `@Flatten $$d` below it is a `mark-stack` in the checker
+  (`tests/checker/neg/for-double-dynamic`); `sem-ch04-for-replaced-inner`.
 - **`@Switch $!a`** → a field with the current inner `Event` and its `Handle`, and an
   invalidation edge on the outer whose mark calls `cx.swap_later(self)`. `swap` pulls
   the outer after the tick; on a new inner it subscribes first, with no catch-up, then
@@ -207,7 +215,11 @@ it make every program an interpreter run, and every type mistake a runtime fault
   owed, and writes the hold, so the `@Flatten` reads the new inner after n+1 (Semantics
   ch. 7: after n, the inner its outer held after n-1). The getter samples the inner at the
   read point; a write behind the current generation's result marks the `@Flatten`'s
-  readers (`{gen}_result_moved`).
+  readers (`{gen}_result_moved`), and that method also fires the update port of the
+  `Dynamic` kept for the result (`{gen}_result_live`), so a follower outside the node
+  sees it move: a `for` gathering `$$r`s into `$(k ==> $r)`, whose rows' `$v` follow
+  their inners (`sem-ch04-for-replaced-inner`). `@Flatten` of anything but a `rebuild`'s
+  dynamic is refused (`FlattenLine`, naming the `for` form above).
 - **Leaving.** `leave` writes the `state` enum (live, detached, zombie, dead), turns
   holds into their `newest()` constants and the node's own events into `never`, then
   `cx.clean_up_later(self, zombie)`. A `for` row's entry, a projection whose key the

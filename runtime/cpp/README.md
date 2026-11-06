@@ -117,7 +117,9 @@ counts again.
   num, collections, pod, print, read, host, the World protocol, the scene and the Test
   World, and `Snapshot` as the Rust one has it now: the structure (`current`) and the
   dynamic one tick behind it (`get`, `queue`, `published`). The CLI World in C++ is
-  `worlds/cli/cpp`, beside this library; there is no canvas World in C++.
+  `worlds/cli/cpp` and the canvas World `worlds/canvas/cpp` (an X11 loop and a Cocoa
+  loop), both beside this library; `./prism run --target cpp` runs a root under the one
+  its row asks for.
 - **The emitter's C++ is `prismc compile --target cpp`** (prismc/README.md, "The C++
   target"; claude/backend.md, "The C++ side"). What it needs beyond the library's types is
   `prism_rtl/lang.hpp`: the value slot of a `match`, `TRY`, the pattern helpers, `rc`,
