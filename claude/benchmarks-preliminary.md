@@ -1,16 +1,94 @@
-# Benchmarks, preliminary (5 November 2026)
+# Benchmarks, preliminary
 
-*Written by Claude on the claude-self-hosting branch; subject to change.* One run of
+*Written by Claude on the claude-self-hosting branch; subject to change.* Benchmark runs
+on Jimmy's Apple M2 Pro (Mac14,10, 12 cores, 16 GB, macOS 26.6.2), each under its own
+dated section with the conditions it ran under: first the run with Low Power Mode on
+(6 November), the one claude/backend.md's "Rust or C++ as the default back end" argues
+from; then a section kept for the Linux cloud machine; then the 5 November run of
 `bench/building/run.sh` and most of one of `bench/running/run.sh`, at `aa500e5` (after the
-`Text`, header, `Rc` and string work; before nested modules, the array fix and regex), on
-Jimmy's Apple M2 Pro (Mac14,10, 12 cores, 16 GB, macOS 26.6.2) **with agents building
-beside it** (load 4 to 20). Jimmy asked for numbers on a noisy machine; the run on a quiet
-one replaces this file with the scripts' own `RESULTS.md`. Wall times here are rough;
-instruction counts and peak memory are not. Each pipeline is all one language: the Rust
-prismc emits Rust and cargo builds it (release, opt-level 3); the C++ prismc emits C++ and
-make builds it (Apple clang 17, `-O3`).
+`Text`, header, `Rc` and string work; before nested modules, the array fix and regex),
+**with agents building beside it** (load 4 to 20), and after it the GUI runs that measured
+the incremental work, each on the same Mac under the load its section names. Wall times
+on the busy runs are rough; instruction counts and peak memory are not. Each pipeline is
+all one language: the Rust prismc emits Rust and cargo builds it (release, opt-level 3);
+the C++ prismc emits C++ and make builds it (Apple clang 17, `-O3`).
 
-## Building Prism: source to a runnable binary, from clean, seconds
+## On Jimmy's Mac with Low Power Mode on (6 November 2026)
+
+The same Mac M2 Pro, Low Power Mode on: every absolute time is pessimistic, and the ratios
+between the two targets are the evidence. These are the figures claude/backend.md's "Rust
+or C++ as the default back end" argues from; the two files agree on each.
+
+### Building from clean, seconds (`bench/building/run.sh`)
+
+| Subject | Rust: emit + build = total | binary | C++: emit + build = total | binary |
+|---|---|---|---|---|
+| prismc | 65.9 + 100.1 = 166.0 | 25.9 MB | 86.2 + 134.6 = 220.8 | 63.8 MB |
+| chess | 19.5 | | 23.2 | |
+| the table | 19.7 | | 23.5 | |
+
+- **prismc builds a third faster in Rust on the wall** (166.0 s against 220.8 s), and the
+  binary is two fifths the size (25.9 MB against 63.8 MB). The emit itself favours Rust
+  (65.9 s against 86.2 s): the C++ printer writes 185,385 lines across 63 translation units
+  and 280 headers where the Rust printer writes about 115,000.
+- **Small programs are close, Rust slightly ahead** (chess 19.5 s against 23.2 s, the table
+  19.7 s against 23.5 s), most of either being the runtime library and the World built
+  from clean. The 5 November run below read the other way (C++ about 10 s against Rust's
+  13 s); that run had agents building beside it and a smaller C++ printer output.
+
+### The GUI table, before `@PerKey`
+
+js-framework-benchmark's operations on one table (`bench/gui`), median wall time in ms
+over 10 runs, the Prism rows before the table's rows went over `@PerKey`; GTK 3 is the
+toolkit written in C beside it. Prism runs under each target's canvas World.
+
+| Operation | Prism C++ | Prism Rust | GTK 3 |
+|---|---|---|---|
+| create 1,000 rows | 50 | 44 | 279 |
+| replace 1,000 rows | 67 | 60 | 320 |
+| update every 10th | 5.4 | 7.1 | 34.5 |
+| select a row | 3.1 | 4.8 | 1.0 |
+| swap two rows | 3.4 | 4.8 | 61 |
+| remove a row | 12.2 | 10.2 | 5.9 |
+| create 10,000 rows | 585 | 514 | 11,659 |
+| append 1,000 rows | 59 | 48 | 390 |
+| clear | 20 | 17 | 42 |
+
+- **Rust wins the bulk operations by a tenth to a fifth** (create 1,000 rows 44 ms against
+  50, create 10,000 rows 514 against 585, append 48 against 59, clear 17 against 20, remove
+  10.2 against 12.2); both beat GTK 3 by five to twenty times on the creates, the replace
+  and the append, and by two times on clear. GTK removes a row faster (5.9 ms).
+- **C++ wins the three smallest operations by a quarter to a third** (update every 10th
+  5.4 ms against 7.1, select 3.1 against 4.8, swap 3.4 against 4.8); GTK 3 selects in
+  1.0 ms, three to five times faster than either.
+
+### Instructions for one operation, after `@PerKey`
+
+Instructions retired by one operation, millions, with the table's rows over `@PerKey`:
+
+| Operation | Prism C++ | Prism Rust |
+|---|---|---|
+| select a row | 20.5 | 30.5 |
+| remove a row | 128 | 80 |
+
+- **The select gap is the Rust World's frame, not the emitted code:** about 11 M of every
+  Rust frame is softbuffer presenting the whole frame on macOS (worlds/canvas/rust/README.md,
+  "Painting"); the program's own ticks are equal within 5% (the phase table under "Painting
+  only the damage" below).
+- **Remove runs the other way, C++ 1.6 times Rust:** the column's document is gathered an
+  insert at a time, and C++'s persistent `Map` copies a path per insert where Rust's
+  updates its own nodes in place (claude/bugs/window-relayout-every-change.md).
+
+## On the Linux cloud machine (6 November 2026)
+
+Filled in from bench/building/RESULTS.md and bench/running/RESULTS.md by the run on that machine.
+
+## On Jimmy's Mac with agents building beside it (5 November 2026, and the GUI runs after it)
+
+The sections from here on are the 5 November run at `aa500e5` and the GUI runs that
+followed it on the same Mac, each naming the load it ran under.
+
+### Building Prism: source to a runnable binary, from clean, seconds
 
 | Subject | Rust: emit + build = total | binary | C++: emit + build = total | binary |
 |---|---|---|---|---|
@@ -23,7 +101,7 @@ make builds it (Apple clang 17, `-O3`).
   runtime and the World); **the compiler builds faster in Rust** (97 s against 144 s), and
   on CPU time by far (agent E's quieter measurement: 255 s against 1,003 s).
 
-## Running Prism once compiled: prismc as the workload
+### Running Prism once compiled: prismc as the workload
 
 | Run | Rust wall | instructions | peak footprint | C++ wall | instructions | peak footprint |
 |---|---|---|---|---|---|---|
@@ -36,7 +114,7 @@ make builds it (Apple clang 17, `-O3`).
   branch `claude-arrays` the C++ footprint is already 293 MB, and the Rust `Map` port took
   the Rust wall time to about 57 s; the Rust `Array` is in progress.
 
-## Running Prism once compiled: the GUI table
+### Running Prism once compiled: the GUI table
 
 js-framework-benchmark's operations; the median of 10 runs after 2 warm-ups, one process
 per operation, milliseconds; peak footprint where it was read. Prism runs under each
@@ -70,7 +148,7 @@ What the table shows, none of it traced to a cause yet (each becomes a report un
 - **A GUI run needs the display awake.** The first attempt hung in GTK for two and a half
   hours at 0% CPU when the display slept; `bench/gui/run.sh` should hold it awake itself.
 
-## After the window fix
+### After the window fix
 
 `bench/gui/run.sh prism-cpp prism-rust` with `RUNS=5 WARMUP=1`, on the same Mac with other
 agents building (load average 7 to 26 before, about 8 after): before at `3fb9362`, after
@@ -97,7 +175,7 @@ Medians in ms, peak resident memory in MB; Prism only.
   GTK selects in 1.1 ms. What is left needs a design:
   `claude/bugs/window-relayout-every-change.md`.
 
-## Instructions by phase, and the cheap runtime fixes
+### Instructions by phase, and the cheap runtime fixes
 
 `bench/gui/prism/check.sh` now prints each timed step's instructions by phase on both
 targets, through `prism_rtl`'s probe (`world::probe` in Rust, `probe` in `world.hpp`):
@@ -171,7 +249,7 @@ before, 12 to 17 after):
 - **Not done, because it is not the runtimes':** a builder skipping when its source is the
   node it last built from is emitted code (`ForBuild`, prismc's printer templates).
 
-## A builder over the source it last built from
+### A builder over the source it last built from
 
 `bench/gui/prism/check.sh`, one run each, on Jimmy's Mac with the tree's own seeds rebuilt
 (branch `claude-window-cache`, from `d30829d`): before is that tree, after adds a `for`'s
@@ -204,7 +282,7 @@ Millions of instructions; the transcripts are unchanged.
   1,000 row documents and the hosts' whole documents in the build phase, two whole
   layouts in the patch phase, and a whole frame painted.
 
-## The host document as a map of dynamics
+### The host document as a map of dynamics
 
 `bench/gui/prism/check.sh`, one run each, on Jimmy's Mac (machine shared with nothing
 heavy but this agent's builds), branch `claude-window-cache`: before is `ebaf3cf`, the flat
@@ -246,7 +324,7 @@ is under 0.05 M and left out.
   at once (C++ select 230 M before that), and a hosted builder gathers its host's outer
   only when its rows' keys changed (C++ swap 237 M before that).
 
-## Painting only the damage
+### Painting only the damage
 
 `bench/gui/prism/check.sh`, one run each, on Jimmy's Mac (on mains power, load about 3,
 nothing else building), branch `claude-damage`: before is `f6c16a2`, the canvas Worlds
