@@ -7,7 +7,8 @@ the frame on the screen. Prism's two targets are each all one language: the Pris
 compiled to C++ runs under the C++ canvas World, compiled to Rust under the Rust one.
 
 ```
-bench/gui/run.sh                    # build everything, time everything, write RESULTS.md
+bench/gui/run.sh                    # build and time Prism (both targets) and GTK, write RESULTS.md
+bench/gui/run.sh cuis               # Cuis is run only when named (its creates take minutes a run)
 bench/gui/run.sh prism-cpp gtk      # only those
 RUNS=20 WARMUP=3 bench/gui/run.sh
 ```

@@ -102,8 +102,8 @@ fn Step t, (Select s) = update t:
 fn Step t, (Delete s) = update t:
     &_.rows <= Remove t.rows, s
 
-Marked: fn Row, Nat, ?Nat -> Text
-fn Marked r, s, ?selected = if ?selected == (? s): "▶ {r.label}" else: r.label
+Marked: fn Row, Bool -> Text
+fn Marked r, mine = if mine: "▶ {r.label}" else: r.label
 
 IdText: fn Row -> Text
 fn IdText r = "{r.id}"
@@ -125,9 +125,12 @@ fn ?FirstOp ops:
             !f <- Ui.Button(label=$"Swap rows")
             @ ((Create 1000) on !a) <| ((Create 10000) on !b) <| ((AddMore 1000) on !c) <| (UpdateTenth on !d) <| (Clear on !e) <| (Swap on !f)
         !rowOps <- for slot, $entry <- $table.rows:
+            # whether this row is the selected one, refiring only when that changes: a select
+            # moves two rows' labels, not every row's
+            $mine <- @Distinct ($table.?selected == (? slot))
             !acts <- @Row 4.0, @widget:
                 Ui.Label(text=(IdText $entry))
-                !sel <- Ui.Button(label=(Marked $entry, slot, $table.?selected))
+                !sel <- Ui.Button(label=(Marked $entry, $mine))
                 !rm <- Ui.Button(label=$"x")
                 @ ((Select slot) on !sel) <| ((Delete slot) on !rm)
             @ !acts

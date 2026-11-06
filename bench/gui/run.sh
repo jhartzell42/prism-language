@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # The GUI benchmark (bench/gui/README.md): js-framework-benchmark's operations on the same
-# table in Prism compiled to C++ and to Rust, in C with GTK 3, and in Cuis Smalltalk on
-# the Cog VM. Builds each, runs every operation RUNS times after WARMUP untimed runs, one
+# table in Prism compiled to C++ and to Rust, and in C with GTK 3 (the Cuis Smalltalk
+# table is run only when named: Jimmy took it out of the scripted runs). Builds each, runs every operation RUNS times after WARMUP untimed runs, one
 # process per operation and implementation, and writes bench/gui/RESULTS.md: the machine, the
 # versions, the median time of each operation with its spread, and each process's peak
 # memory. The raw numbers go to target/bench/results/.
 #
-#   bench/gui/run.sh [IMPL...]          # prism-cpp prism-rust gtk cuis, or those named
+#   bench/gui/run.sh [IMPL...]          # prism-cpp prism-rust gtk, or those named (cuis too)
 #   RUNS=10 WARMUP=2 bench/gui/run.sh   # the defaults
 #
 # Run it with nothing else running: no builds, no other apps busy. The load average at the
@@ -19,7 +19,7 @@ runs=${RUNS:-10}
 warmup=${WARMUP:-2}
 ops=(create1k replace1k update10th select swap remove create10k append1k clear)
 impls=("$@")
-[ ${#impls[@]} -gt 0 ] || impls=(prism-cpp prism-rust gtk cuis)
+[ ${#impls[@]} -gt 0 ] || impls=(prism-cpp prism-rust gtk)
 raw=target/bench/results
 mkdir -p "$raw"
 
@@ -92,7 +92,9 @@ rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`, bytes o
     echo "- **prism-language:** $(git rev-parse --short HEAD)$(git diff --quiet || echo ' (with uncommitted changes)'); prismc installed $(stat -f %Sm -t '%F %R' target/bootstrap/prismc 2>/dev/null || stat -c %y target/bootstrap/prismc | cut -c1-16)"
     echo "- **C++:** $(clang++ --version | head -1), -O3; **Rust:** $(rustc --version), cargo release (opt-level 3)"
     echo "- **GTK:** $(pkg-config --modversion gtk+-3.0), cc -O2"
-    echo "- **Cuis:** $( [ -f target/bench/deps/cuis.commit ] && echo "Cuis-Smalltalk-Dev $(cut -c1-10 target/bench/deps/cuis.commit), $(basename "$(ls target/bench/deps/cuis/CuisImage/Cuis*.image | head -1)")"); VM $(strings target/bench/deps/cuis/CuisVM.app/Contents/MacOS/Squeak 2>/dev/null | grep -m1 -o 'VMMaker[^ ]*' | tr -d ']' || true)"
+    case " ${impls[*]} " in *" cuis "*)
+        echo "- **Cuis:** $( [ -f target/bench/deps/cuis.commit ] && echo "Cuis-Smalltalk-Dev $(cut -c1-10 target/bench/deps/cuis.commit), $(basename "$(ls target/bench/deps/cuis/CuisImage/Cuis*.image | head -1)")"); VM $(strings target/bench/deps/cuis/CuisVM.app/Contents/MacOS/Squeak 2>/dev/null | grep -m1 -o 'VMMaker[^ ]*' | tr -d ']' || true)" ;;
+    esac
     echo "- **Runs:** $runs timed after $warmup untimed, one process per operation"
     echo
     echo "## Time, ms: median (fastest–slowest)"

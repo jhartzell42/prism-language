@@ -11,7 +11,7 @@ How fast compiled Prism code runs, all-Rust against all-C++: the key number. Two
   processor's count, which does not move with the machine's load as time does).
 - **The GUI table** (`bench/gui/`): js-framework-benchmark's operations on the same table
   compiled to C++ (-O3) and to Rust (release), under each target's own canvas World,
-  timed from the press to the frame on the screen; GTK and Cuis beside them for scale.
+  timed from the press to the frame on the screen; GTK beside them for scale.
 
 ```
 bench/building/run.sh            # first: the binaries
