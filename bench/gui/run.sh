@@ -10,11 +10,21 @@
 #   RUNS=10 WARMUP=2 bench/gui/run.sh   # the defaults
 #
 # Run it with nothing else running: no builds, no other apps busy. The load average at the
-# start and the end is recorded.
+# start and the end is recorded. On Linux with no DISPLAY the whole script runs itself
+# again under `xvfb-run -a`, one virtual X server for every run (and xvfb-run joins its
+# command's stderr to stdout); on macOS the display must be awake.
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu
+self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")  # absolute, for the run under xvfb-run below
 cd "$(dirname "$0")/../.."
+. bench/lib.sh
+if [ "$bench_os" != Darwin ] && [ -z "${DISPLAY:-}" ]; then
+    command -v xvfb-run > /dev/null || bench_die "no DISPLAY and no xvfb-run to make one (apt install xvfb)"
+    echo "bench: no DISPLAY; running under xvfb-run -a" >&2
+    PRISM_BENCH_XVFB=1 exec xvfb-run -a "$self" "$@"
+fi
+timecmd=$(time_cmd)
 runs=${RUNS:-10}
 warmup=${WARMUP:-2}
 ops=(create1k replace1k update10th select swap remove create10k append1k clear)
@@ -54,20 +64,20 @@ stats() {
         }'
 }
 
-load_start=$(sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg)
+load_start=$(load_line)
 for impl in "${impls[@]}"; do
     cmd=$(command_of "$impl")
     for op in "${ops[@]}"; do
         out=$raw/$impl-$op.txt
         err=$raw/$impl-$op.err
         echo "bench: $impl $op ($runs runs after $warmup)" >&2
-        if ! /usr/bin/time -l $cmd "$op" "$runs" "$warmup" > "$out" 2> "$err"; then
+        if ! $timecmd $cmd "$op" "$runs" "$warmup" > "$out" 2> "$err"; then
             echo "bench: $impl $op failed (see $err)" >&2
             echo "failed" >> "$out"
         fi
     done
 done
-load_end=$(sysctl -n vm.loadavg 2>/dev/null || cat /proc/loadavg)
+load_end=$(load_line)
 
 # ---- bench/RESULTS.md ----------------------------------------------------------------
 
@@ -76,8 +86,8 @@ cell() { # impl op: "median (min–max)"
     set -- $s
     if [ "$4" = 0 ]; then echo "failed"; else echo "$1 ($2–$3)"; fi
 }
-rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`, bytes on macOS)
-    awk '/maximum resident set size/ { printf "%.0f", $1 / 1048576 }' "$raw/$1-$2.err"
+rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`'s bytes on macOS, GNU `time -v`'s kbytes)
+    peak_mb_of "$raw/$1-$2.err"
 }
 
 {
@@ -87,7 +97,10 @@ rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`, bytes o
     echo
     echo "## The machine and the versions"
     echo
-    echo "- **Machine:** $(sysctl -n machdep.cpu.brand_string 2>/dev/null), $(sysctl -n hw.ncpu) cores ($(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null) performance, $(sysctl -n hw.perflevel1.physicalcpu 2>/dev/null) efficiency), $(( $(sysctl -n hw.memsize) / 1073741824 )) GB, $(sw_vers -productName) $(sw_vers -productVersion)"
+    case "$bench_os" in
+        Darwin) echo "- **Machine:** $(sysctl -n machdep.cpu.brand_string 2>/dev/null), $(sysctl -n hw.ncpu) cores ($(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null) performance, $(sysctl -n hw.perflevel1.physicalcpu 2>/dev/null) efficiency), $(( $(sysctl -n hw.memsize) / 1073741824 )) GB, $(sw_vers -productName) $(sw_vers -productVersion)" ;;
+        *) echo "- **Machine:** $(machine_line); display $DISPLAY$( [ -n "${PRISM_BENCH_XVFB:-}" ] && echo ", Xvfb under xvfb-run (no real display: the frame is handed to a server that shows nothing)")" ;;
+    esac
     echo "- **Load average:** $load_start at the start, $load_end at the end"
     echo "- **prism-language:** $(git rev-parse --short HEAD)$(git diff --quiet || echo ' (with uncommitted changes)'); prismc installed $(stat -f %Sm -t '%F %R' target/bootstrap/prismc 2>/dev/null || stat -c %y target/bootstrap/prismc | cut -c1-16)"
     echo "- **C++:** $(clang++ --version | head -1), -O3; **Rust:** $(rustc --version), cargo release (opt-level 3)"
@@ -112,7 +125,7 @@ rss_mb() { # impl op: the process's peak resident memory, MB (`time -l`, bytes o
     echo
     echo "## Peak memory, MB"
     echo
-    echo "Each process's maximum resident set size (\`/usr/bin/time -l\`), over its whole run."
+    echo "Each process's maximum resident set size (\`$timecmd\`), over its whole run."
     echo
     printf "| Operation |"; for i in "${impls[@]}"; do printf " %s |" "$i"; done; echo
     printf "|---|"; for i in "${impls[@]}"; do printf "%s" "---|"; done; echo

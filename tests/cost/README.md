@@ -2,8 +2,14 @@
 
 *Written by Claude on the claude-self-hosting branch; subject to change.* Tests that count
 work, not time: `run.sh` builds each program pair here through `./prism test` (whose
-transcripts must match), then counts the instructions each test binary retires
-(`/usr/bin/time -l`, macOS).
+transcripts must match), then counts the instructions each test binary retires. The
+counter is the platform's, chosen by `bench/lib.sh` and named in the output: on macOS
+`/usr/bin/time -l`'s "instructions retired"; on Linux `perf stat -e instructions` when
+the machine has hardware counters, else valgrind's cachegrind (`--cache-sim=no`, its "I
+refs"), which counts every instruction the program executes, the same number on every
+run, at about fifty times the run time. The pairs compare runs under one counter, so the
+under-twice bar means the same under each; the absolute counts differ between counters
+(cachegrind counts user-space instructions of the program and its libraries only).
 
 - `one-reader/`, `ten-readers/`: a costly dynamic `let` read by one place and by ten. Ten
   must cost under twice one: the `let` is computed once per write behind it and shared by

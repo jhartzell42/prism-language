@@ -10,6 +10,14 @@
 //                             when a scene draws outside the window (bench/gui/README.md,
 //                             "The checks")
 //
+// The work is instructions retired where the system counts them: macOS's `proc_pid_rusage`
+// and `thread_selfcounts`, or on Linux a perf_event counter (PERF_COUNT_HW_INSTRUCTIONS)
+// per process and per thread. When the Linux kernel refuses the counter (no PMU in a VM:
+// ENOENT or EOPNOTSUPP; or not permitted: EACCES) the driver counts each thread's CPU
+// nanoseconds instead (`CLOCK_THREAD_CPUTIME_ID`, the process's `CLOCK_PROCESS_CPUTIME_ID`)
+// and every `check` and `phases` line names its unit (`unit=instructions`, `unit=ns`), so
+// nanoseconds are never read as instructions.
+//
 // The emitted main.cpp is linked beside this with its `main` renamed (bench/gui/prism/Makefile).
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
@@ -18,6 +26,13 @@
 #include <unistd.h>
 #ifdef __APPLE__
 #include <libproc.h>
+#endif
+#ifdef __linux__
+#include <linux/perf_event.h>
+#include <sys/ioctl.h>
+#include <sys/syscall.h>
+#include <time.h>
+#include <cerrno>
 #endif
 
 #include <atomic>
@@ -205,9 +220,82 @@ bool shows(const Session& s, const Model& m) {
     return true;
 }
 
-/// Instructions retired by the whole process so far, every thread's: the work a step
-/// costs, which nothing else running on the machine changes (macOS's `proc_pid_rusage`).
-long long instructions() {
+/// What a step's work is counted in: instructions retired, or, on a Linux machine whose
+/// kernel gives no instructions counter, CPU nanoseconds.
+namespace work {
+
+enum class Unit { Instructions, InstructionsUser, Ns };
+
+#ifdef __APPLE__
+Unit unit = Unit::Instructions;
+void choose() {}
+#else
+int process_fd = -1;  // the process-wide counter, every thread's (inherited by threads made after it)
+Unit unit = Unit::Ns;
+
+/// A perf_event instructions counter on the calling thread, with `inherit` counting the
+/// threads it makes afterwards too; `user_only` leaves the kernel's instructions out, which
+/// is all an unprivileged process may count under perf_event_paranoid 2.
+int perf_open(bool inherit, bool user_only) {
+    perf_event_attr a{};
+    a.type = PERF_TYPE_HARDWARE;
+    a.size = sizeof a;
+    a.config = PERF_COUNT_HW_INSTRUCTIONS;
+    a.inherit = inherit;
+    a.exclude_kernel = user_only;
+    a.exclude_hv = user_only;
+    return int(syscall(SYS_perf_event_open, &a, 0, -1, -1, PERF_FLAG_FD_CLOEXEC));
+}
+
+bool refused(int err) { return err == ENOENT || err == EOPNOTSUPP || err == EACCES || err == EPERM || err == ENOSYS; }
+
+/// The unit, chosen once before any other thread exists: the process counter opened with
+/// inherit, all instructions if allowed, else user-space ones, else nanoseconds.
+void choose() {
+    for (bool user_only : {false, true}) {
+        int fd = perf_open(true, user_only);
+        if (fd >= 0) {
+            process_fd = fd;
+            unit = user_only ? Unit::InstructionsUser : Unit::Instructions;
+            if (user_only) std::fprintf(stderr, "driver: counting user-space instructions only (the kernel refused kernel counting: perf_event_paranoid)\n");
+            return;
+        }
+        if (!refused(errno)) {
+            std::perror("driver: perf_event_open");
+            std::exit(1);
+        }
+    }
+    std::fprintf(stderr, "driver: no instructions counter on this machine (perf_event_open: %s); counting CPU nanoseconds instead\n", std::strerror(errno));
+    unit = Unit::Ns;
+}
+
+std::uint64_t read_counter(int fd) {
+    std::uint64_t v = 0;
+    if (read(fd, &v, sizeof v) != ssize_t(sizeof v)) {
+        std::perror("driver: reading the perf_event counter");
+        std::exit(1);
+    }
+    return v;
+}
+
+std::uint64_t cpu_ns(clockid_t clock) {
+    timespec t{};
+    if (clock_gettime(clock, &t) != 0) {
+        std::perror("driver: clock_gettime");
+        std::exit(1);
+    }
+    return std::uint64_t(t.tv_sec) * 1000000000ull + std::uint64_t(t.tv_nsec);
+}
+#endif
+
+const char* name() { return unit == Unit::Instructions ? "instructions" : unit == Unit::InstructionsUser ? "instructions-user" : "ns"; }
+
+}  // namespace work
+
+/// The whole process's work so far, every thread's, in `work::unit`: instructions retired,
+/// which nothing else running on the machine changes (macOS's `proc_pid_rusage`; Linux's
+/// inherited perf_event counter), or CPU nanoseconds.
+long long process_work() {
 #ifdef __APPLE__
     rusage_info_v4 u{};
     if (proc_pid_rusage(getpid(), RUSAGE_INFO_V4, reinterpret_cast<rusage_info_t*>(&u)) != 0) {
@@ -216,18 +304,19 @@ long long instructions() {
     }
     return static_cast<long long>(u.ri_instructions);
 #else
-    std::fprintf(stderr, "driver: check counts instructions with macOS's proc_pid_rusage, which this system lacks\n");
-    std::exit(2);
+    if (work::unit == work::Unit::Ns) return static_cast<long long>(work::cpu_ns(CLOCK_PROCESS_CPUTIME_ID));
+    return static_cast<long long>(work::read_counter(work::process_fd));
 #endif
 }
 
-/// Instructions the calling thread has retired so far: libsystem_kernel's
+/// The calling thread's work so far, in `work::unit`: on macOS libsystem_kernel's
 /// `thread_selfcounts` (exported, in no header), whose flavour 1 fills the thread's
-/// instructions and cycles, two 64-bit counts.
+/// instructions and cycles, two 64-bit counts; on Linux the thread's own perf_event
+/// counter, opened at its first call (inherit off: this thread alone), or its CPU clock.
 #ifdef __APPLE__
 extern "C" int thread_selfcounts(int flavor, void* buffer, std::size_t bytes);
 #endif
-std::uint64_t thread_instructions() {
+std::uint64_t thread_work() {
 #ifdef __APPLE__
     std::uint64_t c[2] = {0, 0};
     if (thread_selfcounts(1, c, sizeof c) != 0) {
@@ -236,12 +325,21 @@ std::uint64_t thread_instructions() {
     }
     return c[0];
 #else
-    return std::uint64_t(instructions());
+    if (work::unit == work::Unit::Ns) return work::cpu_ns(CLOCK_THREAD_CPUTIME_ID);
+    thread_local int fd = -1;
+    if (fd < 0) {
+        fd = work::perf_open(false, work::unit == work::Unit::InstructionsUser);
+        if (fd < 0) {
+            std::perror("driver: perf_event_open for a thread (the process's counter opened)");
+            std::exit(1);
+        }
+    }
+    return work::read_counter(fd);
 #endif
 }
 
-/// The work of each phase (prism_rtl's `probe`), by the instructions each thread retired
-/// between its marks: each thread's current phase and its count at its last mark, and the
+/// The work of each phase (prism_rtl's `probe`), by what each thread did between its marks
+/// (`work::unit`): each thread's current phase and its count at its last mark, and the
 /// totals per phase over every thread. The canvas World ticks on its big stack's thread and
 /// paints on the main one, so a thread's count is its own.
 namespace phases {
@@ -259,10 +357,9 @@ struct At {
 };
 thread_local At at;
 
-/// The probe's hook: the instructions since this thread's last mark go to the phase it
-/// was in.
+/// The probe's hook: this thread's work since its last mark goes to the phase it was in.
 void mark(Phase next) {
-    std::uint64_t now = thread_instructions();
+    std::uint64_t now = thread_work();
     if (at.set) total[std::size_t(at.phase)].fetch_add(now - at.since, std::memory_order_relaxed);
     if (next == Phase::Propagate) ticks.fetch_add(1, std::memory_order_relaxed);
     at = At{true, next, now};
@@ -273,10 +370,10 @@ struct Totals {
     std::uint64_t ticks = 0;
 };
 
-/// The totals so far, this thread's instructions since its last mark counted to its phase.
+/// The totals so far, this thread's work since its last mark counted to its phase.
 Totals now() {
     if (at.set) {
-        std::uint64_t c = thread_instructions();
+        std::uint64_t c = thread_work();
         total[std::size_t(at.phase)].fetch_add(c - at.since, std::memory_order_relaxed);
         at.since = c;
     }
@@ -286,8 +383,8 @@ Totals now() {
     return t;
 }
 
-/// One step's line: each phase's instructions from `from` to `to`, the rest of the
-/// process's (`all`, every thread's) as `other`, and the ticks.
+/// One step's line: each phase's work from `from` to `to`, the rest of the process's
+/// (`all`, every thread's) as `other`, the ticks, and the unit.
 void print(const std::string& op, const char* kind, const Totals& from, const Totals& to, long long all) {
     static const char* names[PHASES] = {"loop", "propagate", "build", "patch", "diff", "perform", "compact", "paint"};
     std::printf("phases %s %s", op.c_str(), kind);
@@ -298,7 +395,7 @@ void print(const std::string& op, const char* kind, const Totals& from, const To
         std::printf(" %s=%llu", names[i], (unsigned long long)d);
     }
     unsigned long long a = (unsigned long long)all;
-    std::printf(" other=%llu total=%llu ticks=%llu\n", a > sum ? a - sum : 0ull, a, (unsigned long long)(to.ticks - from.ticks));
+    std::printf(" other=%llu total=%llu ticks=%llu unit=%s\n", a > sum ? a - sum : 0ull, a, (unsigned long long)(to.ticks - from.ticks), work::name());
     std::fflush(stdout);
 }
 
@@ -359,6 +456,7 @@ int main(int argc, char** argv) {
     Clock::time_point t0;
     long long i0 = 0;
     phases::Totals p0, p1;
+    if (check) work::choose();  // before the World's threads exist, so the process counter inherits to them
     if (check && !prism_rtl::probe::set_hook(phases::mark)) {
         std::fprintf(stderr, "driver: the phase probe's hook was set already\n");
         return 1;
@@ -368,7 +466,7 @@ int main(int argc, char** argv) {
     Hooks hooks;
     hooks.settled = [&](Session& s) {
         if (waiting) {
-            long long work = check ? instructions() - i0 : 0;
+            long long work = check ? process_work() - i0 : 0;
             if (check) p1 = phases::now();
             if (timing) {
                 double ms = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
@@ -382,7 +480,7 @@ int main(int argc, char** argv) {
             }
             if (check) {
                 const Press& p = steps[next - 1];
-                std::printf("check %s step %zu (%s row %d): %lld instructions\n", op.c_str(), next, p.text.c_str(), p.row, work);
+                std::printf("check %s step %zu (%s row %d): %lld %s\n", op.c_str(), next, p.text.c_str(), p.row, work, work::name());
                 std::fflush(stdout);
                 phases::print(op, timing ? "timed" : p.text == CREATE_1K ? "setup" : "untimed", p0, p1, work);
                 if (!drawn_inside(s)) {
@@ -412,7 +510,7 @@ int main(int argc, char** argv) {
         model.press(p);
         if (check) {
             p0 = phases::now();
-            i0 = instructions();
+            i0 = process_work();
         }
         t0 = Clock::now();
         s.input(s.shared().windows.begin()->first, gui::press(at->first, at->second));

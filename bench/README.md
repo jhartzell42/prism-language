@@ -25,3 +25,20 @@ bench/running/run.sh             # uses those binaries; runs gui/; writes runnin
 
 Run them with nothing else running; each `RESULTS.md` records the machine, every
 version and the load average.
+
+## Measuring on each platform
+
+`lib.sh`, sourced by every script here and by `tests/cost/run.sh`, chooses the platform's
+tools by `uname -s`, so the scripts read alike and the macOS run is untouched:
+
+| | macOS | Linux |
+|---|---|---|
+| machine, load | `sysctl`, `sw_vers` | `/proc/cpuinfo`, `/proc/meminfo`, `/etc/os-release`, `/proc/loadavg` |
+| peak memory | `/usr/bin/time -l` (bytes) | GNU `/usr/bin/time -v` (kbytes) |
+| instructions, long runs (`running/`) | `time -l`'s "instructions retired" | `perf stat -e instructions`; with no hardware counters, "n/a" and the reason |
+| instructions, small runs (`tests/cost/`) | the same | `perf stat`, else valgrind's cachegrind ("I refs", exact, slow); the output names the counter |
+| instructions inside the GUI drivers | `proc_pid_rusage`, `thread_selfcounts` | perf_event per process and per thread; else CPU nanoseconds, with `unit=ns` on every line |
+| a display for `gui/` | the desktop | `DISPLAY`, else `xvfb-run -a` around the whole script |
+
+A missing tool is a hard error that names it; no measurement is skipped and passed off as
+a number. A machine with no hardware counters (most VMs) is said so in every result.
