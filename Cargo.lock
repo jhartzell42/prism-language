@@ -1067,8 +1067,10 @@ name = "prism_world_canvas_rtl"
 version = "0.1.0"
 dependencies = [
  "fontdue",
+ "objc2 0.5.3",
  "prism_rtl",
  "prism_world_cli",
+ "raw-window-handle",
  "softbuffer",
  "tiny-skia",
  "winit",

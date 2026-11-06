@@ -17,16 +17,19 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
   host document was one value of the whole tree, rebuilt when any place moved, and the
   window laid out the whole tree as one function of it, twice per change, with a word set
   walked over every label (`claude/bugs/window-relayout-every-change.md`).
-- **With the document as `$(Path ==> $Elem c)`** a select costs 166 M in C++ and 177 M in
-  Rust, of which painting the frame is 141 M and 155 M (doubt PB): 25 M and 22 M besides,
-  where it was 352 M and 281 M.
+- **With the document as `$(Path ==> $Elem c)`** a select costs 24 M in C++ and 33 M in
+  Rust, now that the canvas Worlds paint only the damage of a new scene (doubt PB); it was
+  166 M and 177 M painting the whole frame, and before the document changed, 494 M and
+  436 M.
 
 ## Jimmy's constraints
 
 - **From his ruling on this bug** (as relayed by the coordinator): the layout engine
   "STAYS IN PRISM"; "bare minimum bone simple"; no general retained-mode layout system,
-  no diffing World protocol, no damage regions in the World; the one new semantic piece
-  allowed before this ruling is `@Distinct` (built: `$y <- @Distinct $x`, `^Eq`).
+  no diffing World protocol, no damage regions in the World (since lifted: "allow damage
+  boxes or whatever and not repainting a whole frame", Jimmy, 6 November 2026); the one
+  new semantic piece allowed before this ruling is `@Distinct` (built: `$y <- @Distinct
+  $x`, `^Eq`).
 - **From his rulings of 5 and 6 November 2026** (as relayed by the coordinator):
   - no `Cached` prelude function and no hidden runtime cache;
   - no bar of a tenth of create1k ("never his"): the check reports the numbers;
@@ -163,7 +166,8 @@ row's), each a computed answer a tick late.
 
 ### What a small change still costs
 
-- **Painting one frame** (doubt PB): 141 M in C++, 155 M in Rust, whatever changed.
+- **Painting** (doubt PB): only the damage of a new scene; a select paints 1.3 M in C++
+  and 8.8 M in Rust (most of that presenting the whole frame through softbuffer).
 - **The 1,000 button labels** recomputed at n+3, each reading the selection (doubt SE).
 - **A structural change** (remove, create, clear) gathers the outer of its host's document
   from every place's entry, once, and the window re-stacks the column's children.
@@ -230,9 +234,10 @@ ch. 1 (`@Grid`, doubt GR), ch. 2 (`Elem r`, the primitives), RULINGS (WL); the P
 - **ET** (Claude's) An `Elem r` with an open row is judged by the tags it names: the
   checker refuses its `^Eq` only when one of those holds dynamics; or refused whenever a
   tail could stand for such a tag.
-- **PB** Painting one frame is 141 M instructions in C++ and 155 M in Rust whatever
-  changed: the floor under every small change while the canvas Worlds paint every pixel
-  per settled state (damage regions are refused).
+- **PB** The canvas Worlds paint only where a new scene's draw commands differ from the
+  last (worlds/canvas/rust/src/damage.rs), and each window is in sRGB so Core Animation no
+  longer converts every frame on the CPU: a select's paint is 1.3 M instructions in C++
+  and 8.8 M in Rust, where the whole frame was 141 M and 155 M.
 - **SE** (Claude's) The table's rows each read `$table.?selected`, so a select recomputes
   1,000 small labels: left in js-framework-benchmark's natural spelling.
 - **RF** (Claude's) Routing visits every child of a box through its own filter (1,001 at

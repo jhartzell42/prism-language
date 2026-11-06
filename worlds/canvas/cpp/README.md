@@ -16,17 +16,18 @@ prism_world_canvas::run_with<MyProgram>(wrap, hooks)    // another wrapper; hook
 
 - **`include/prism_world_canvas/`**: `world.hpp` (the World with no display: `Shared`,
   `CanvasReady`, `CanvasWorld`, and `UnwrapWorld`, the prelude's policy around it),
-  `font.hpp`, `render.hpp`, `canvas.hpp` (the loop, `Session`, `Hooks`, `run`),
-  `big_stack.hpp`.
-- **`src/`**: `world.cpp`, `font.cpp`, `render.cpp`, `app.cpp` (the Xlib loop, Linux),
+  `font.hpp`, `render.hpp`, `damage.hpp` (the frame painted again only where the scene
+  changed), `canvas.hpp` (the loop, `Session`, `Hooks`, `run`), `big_stack.hpp`.
+- **`src/`**: `world.cpp`, `font.cpp`, `render.cpp`, `damage.cpp`, `app.cpp` (the Xlib loop, Linux),
   `app_macos.mm` (the Cocoa loop, macOS), and `big_stack.cpp`, the thread ticks run on
   (below).
 - **`tests/`**: `test_canvas.cpp` (the Rust crate's unit tests, test for test, plus the
   Rust World's widths for five texts), `smoke_program.hpp` (a hand-written program with
   one window), `xvfb_smoke.cpp` (Linux: the Rust `xvfb_smoke`, that window clicked
   through XTest), `macos_smoke.cpp` (macOS: that window's pixel read back and pressed
-  through `Hooks`), `chess_smoke.sh` with `robot.cpp` and `robot.hpp` (chess under Xvfb,
-  Linux).
+  through `Hooks`), `damage_smoke.cpp` (the Rust `damage_smoke`: a window stepped through
+  ten scenes through `Hooks`, every pixel of each frame checked against a full repaint),
+  `chess_smoke.sh` with `robot.cpp` and `robot.hpp` (chess under Xvfb, Linux).
 
 ```
 make -C worlds/canvas/cpp test          # g++, clang++, then ASan+UBSan with g++ (clang on a Mac)
@@ -63,6 +64,13 @@ pkg-config`) and the system's Cocoa and QuartzCore.
   showing the document; `Hooks::presented` after each frame is synced to the server. A
   hook queues input through `Session` as a click would. The benchmark (bench/) drives its
   operations this way; nothing calls them otherwise.
+- **Painting only the damage** is the Rust World's (its README, "Painting"; damage.hpp),
+  over cairo: a box is cleared through cairo in a scratch surface, its commands drawn there
+  whole by `Renderer::draw_some`, and its rows copied into the frame. The bounds follow the
+  context's matrix as `draw` sets it, with two more pixels round a scaled image for cairo's
+  filter. **On X11 only the damage is presented**: each damaged box goes to the server
+  through `XShmPutImage` (or `XPutImage`), and the whole image after a map, an expose or a
+  resize. On macOS the whole frame goes (below).
 - **`UnwrapWorld` lives here**, over worlds/cli/cpp's `Prelude`, since worlds/cli/cpp has
   the policy inline in its World only.
 
@@ -83,15 +91,19 @@ program's teardown, on a thread with a 4 GB stack (`BigStack`), the stack the em
   takes events with `nextEventMatchingMask:` on the main thread and sleeps there with
   `distantFuture` when nothing is owed. Everything else (the font, the renderer, the
   World) is the same file on both.
-- **Painting.** Cairo paints into a buffer of the window's size in physical pixels; it
-  becomes a `CGImage` set as the view's layer contents, and `[CATransaction flush]` hands
-  the frame to the window server. `Hooks::settled` runs after that flush.
+- **Painting.** Cairo paints into a buffer of the window's size in physical pixels, again
+  only where the scene changed; it becomes a `CGImage` set as the view's layer contents,
+  the whole frame (a layer's contents are one image), and `[CATransaction flush]` hands
+  the frame to the window server. `Hooks::settled` runs after that flush. The window's
+  colour space is sRGB, the image's: with the screen's, Core Animation converted every
+  pixel of every frame on the CPU before the flush (about 125 M instructions a 900 by 800
+  frame at scale 2).
 - **The scale factor is the window's `backingScaleFactor`** (2 on a Retina screen), so
   text and shapes are drawn at the screen's resolution in logical pixels, as the Rust
   World under winit does.
 - **Keys** are the event's characters, as Unicode, and the named keys by key code.
-- **Tests.** `macos_smoke` needs a logged-in session (a window server) but no
-  accessibility permission: it reads the frame back through `Session::pixel` and presses
+- **Tests.** `macos_smoke` and `damage_smoke` need a logged-in session (a window server) but no
+  accessibility permission: they read the frame back through `Session::pixel` and press
   through `Session::input`. The Xvfb tests and the XTest robot are Linux-only, and
   LeakSanitizer does not run on arm64 macOS, so `check` runs ASan there without leak
   checking.

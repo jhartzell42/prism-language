@@ -97,6 +97,153 @@ void Renderer::render(cairo_surface_t* target, float scale, const std::vector<co
     cairo_surface_flush(target);
 }
 
+void Renderer::draw_some(cairo_surface_t* target, float scale, const std::vector<const Pod*>& commands) {
+    cairo_t* cr = cairo_create(target);
+    cairo_scale(cr, scale, scale);
+    for (const Pod* e : commands) draw(cr, scale, *e);
+    cairo_destroy(cr);
+    cairo_surface_flush(target);
+}
+
+namespace {
+
+using Extent = Renderer::Extent;
+using Kind = Renderer::Extent::Kind;
+
+/// The box around the rectangle `x0, y0, x1, y1` taken through `m`.
+Extent extent_of(const cairo_matrix_t& m, double x0, double y0, double x1, double y1) {
+    double xs[4] = {x0, x1, x0, x1}, ys[4] = {y0, y0, y1, y1};
+    Extent e{Kind::Box, 0, 0, 0, 0};
+    for (int i = 0; i < 4; ++i) {
+        cairo_matrix_transform_point(&m, &xs[i], &ys[i]);
+        if (!finite(xs[i]) || !finite(ys[i])) return Extent{Kind::Whole};
+    }
+    e.x0 = std::min({xs[0], xs[1], xs[2], xs[3]});
+    e.x1 = std::max({xs[0], xs[1], xs[2], xs[3]});
+    e.y0 = std::min({ys[0], ys[1], ys[2], ys[3]});
+    e.y1 = std::max({ys[0], ys[1], ys[2], ys[3]});
+    return e;
+}
+
+Extent unite(const Extent& a, const Extent& b) {
+    if (a.kind == Kind::Whole || b.kind == Kind::Whole) return Extent{Kind::Whole};
+    if (a.kind == Kind::Nothing) return b;
+    if (b.kind == Kind::Nothing) return a;
+    return Extent{Kind::Box, std::min(a.x0, b.x0), std::min(a.y0, b.y0), std::max(a.x1, b.x1), std::max(a.y1, b.y1)};
+}
+
+/// Within a clip; anything not finite is unbounded inside a clip too, as cairo stops
+/// drawing at a non-finite transform.
+Extent within(const Extent& a, const Extent& clip) {
+    if (a.kind == Kind::Whole || clip.kind == Kind::Whole) return Extent{Kind::Whole};
+    if (a.kind == Kind::Nothing || clip.kind == Kind::Nothing) return Extent{};
+    Extent e{Kind::Box, std::max(a.x0, clip.x0), std::max(a.y0, clip.y0), std::min(a.x1, clip.x1), std::min(a.y1, clip.y1)};
+    if (e.x1 < e.x0 || e.y1 < e.y0) return Extent{};
+    return e;
+}
+
+/// How far past its box a scaled image's filter (CAIRO_FILTER_BEST) may paint, in
+/// physical pixels, beyond the pixel every box is widened by.
+constexpr double IMAGE_BLEED = 2;
+
+}  // namespace
+
+Bounds Renderer::bounds(const Pod& e, float scale, int w, int h) {
+    cairo_matrix_t m;
+    cairo_matrix_init_scale(&m, scale, scale);
+    Extent x = extent(e, scale, m);
+    if (x.kind == Kind::Nothing) return Bounds{};
+    if (x.kind == Kind::Whole) return Bounds{Bounds::Kind::Whole, {}};
+    // Rounded out and cut to the frame in double, so no cast sees a value out of range.
+    double x0 = std::clamp(std::floor(x.x0) - 1, 0.0, double(w)), y0 = std::clamp(std::floor(x.y0) - 1, 0.0, double(h));
+    double x1 = std::clamp(std::ceil(x.x1) + 1, 0.0, double(w)), y1 = std::clamp(std::ceil(x.y1) + 1, 0.0, double(h));
+    if (x1 <= x0 || y1 <= y0) return Bounds{};
+    return Bounds{Bounds::Kind::Box, IRect{std::uint32_t(x0), std::uint32_t(y0), std::uint32_t(x1), std::uint32_t(y1)}};
+}
+
+Renderer::Extent Renderer::extent_all(const Pod& list, float scale, const cairo_matrix_t& m) {
+    Extent out;
+    if (auto items = list.structure().if_array())
+        for (const Pod& d : *items) out = unite(out, extent(d, scale, m));
+    return out;
+}
+
+// `draw`, case for case, with the context's matrix as `m`.
+Renderer::Extent Renderer::extent(const Pod& e, float scale, const cairo_matrix_t& m) {
+    const std::string* tag = e.tag();
+    if (!tag) return Extent{};
+    if (*tag == "Draw.Rect") {
+        RectF r{};
+        if (!rect_field(e, r)) return Extent{};
+        return extent_of(m, r.x, r.y, r.x + r.w, r.y + r.h);
+    }
+    if (*tag == "Draw.Text") {
+        const Pod* at = e.field("at");
+        const Pod* t = e.field("text");
+        const prism_rtl::Text* txt = t ? t->as_text() : nullptr;
+        if (!at || !txt) return Extent{};
+        double x = number(at->field("x")), y = number(at->field("y"));
+        if (!finite(float(x)) || !finite(float(y))) return Extent{Kind::Whole};
+        float px = FONT_PX * scale;
+        float baseline = font_->ascent(scale);
+        cairo_matrix_t tm = m;
+        cairo_matrix_translate(&tm, float(x), float(y));
+        cairo_matrix_scale(&tm, 1.0 / scale, 1.0 / scale);
+        float pen = 0;
+        Extent out;
+        for (char32_t c : txt->chars()) {
+            float advance = font_->advance(c, px);
+            const Glyph& g = glyph(c, px);
+            if (g.mask) {
+                double gx = std::round(pen + g.left), gy = std::round(baseline + g.top);
+                out = unite(out, extent_of(tm, gx, gy, gx + cairo_image_surface_get_width(g.mask), gy + cairo_image_surface_get_height(g.mask)));
+            }
+            pen += advance;
+        }
+        return out;
+    }
+    if (*tag == "Draw.Image") {
+        const Pod* s = e.field("src");
+        RectF r{};
+        bool has = rect_field(e, r);
+        const prism_rtl::Text* src = s ? s->as_text() : nullptr;
+        if (!has || !src) return Extent{};
+        cairo_surface_t* img = image(src->to_string());
+        if (!img || r.w == 0 || r.h == 0) return Extent{};
+        int iw = cairo_image_surface_get_width(img), ih = cairo_image_surface_get_height(img);
+        cairo_matrix_t im = m;
+        cairo_matrix_translate(&im, r.x, r.y);
+        cairo_matrix_scale(&im, r.w / iw, r.h / ih);
+        Extent out = extent_of(im, 0, 0, iw, ih);
+        if (out.kind == Kind::Box) out = Extent{Kind::Box, out.x0 - IMAGE_BLEED, out.y0 - IMAGE_BLEED, out.x1 + IMAGE_BLEED, out.y1 + IMAGE_BLEED};
+        return out;
+    }
+    if (*tag == "Draw.Clip") {
+        const Pod* draws = e.field("draws");
+        RectF r{};
+        if (!rect_field(e, r) || !draws) return Extent{};
+        return within(extent_all(*draws, scale, m), extent_of(m, r.x, r.y, r.x + r.w, r.y + r.h));
+    }
+    if (*tag == "Draw.Group") {
+        const Pod* turn = e.field("turn");
+        const Pod* draws = e.field("draws");
+        if (!turn || !draws) return Extent{};
+        double x = float(number(turn->field("x"))), y = float(number(turn->field("y")));
+        double angle = float(number(turn->field("angle")));
+        const Pod* sf = turn->field("scale");
+        double s = float(sf ? number(sf) : 1.0);
+        if (!finite(s) || !finite(x) || !finite(y) || !finite(angle)) return Extent{Kind::Whole};
+        if (s == 0) return Extent{};  // drawn as nothing
+        cairo_matrix_t gm = m;
+        cairo_matrix_translate(&gm, x, y);
+        cairo_matrix_rotate(&gm, angle * PI / 180.0);
+        cairo_matrix_scale(&gm, s, s);
+        cairo_matrix_translate(&gm, -x, -y);
+        return extent_all(*draws, scale, gm);
+    }
+    return Extent{};
+}
+
 void Renderer::draw_all(cairo_t* cr, float scale, const Pod& list) {
     if (auto items = list.structure().if_array())
         for (const Pod& d : *items) draw(cr, scale, d);

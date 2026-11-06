@@ -3,37 +3,40 @@
 *Written by Claude on the claude-self-hosting branch, 6 November 2026; subject to change.
 A performance report on what the window library and the compiled hosts still do per
 change, after the host document became `$(Path ==> $Elem c)`
-(claude/incremental-host-document.md): the programs are right, and a small change no longer
-lays out or documents the whole table, but some of it is still proportional to the
-table.*
+(claude/incremental-host-document.md) and the canvas Worlds began painting only the damage
+of a new scene: the programs are right, and a small change no longer lays out, documents
+or paints the whole table, but some of it is still proportional to the table.*
 
 ## The scenario
 
-`bench/gui/prism/check.sh` on Jimmy's Mac (`claude/benchmarks-preliminary.md`, "The host
-document as a map of dynamics"), millions of instructions, one run each:
+`bench/gui/prism/check.sh` on Jimmy's Mac (`claude/benchmarks-preliminary.md`, "Painting
+only the damage"), millions of instructions, one run each, with the canvas Worlds painting
+only the damage of a new scene:
 
 | target | op | ticks | build | patch | paint | total | ÷ create1k |
 |---|---|---|---|---|---|---|---|
-| C++ | create1k | 8 | 420.9 | 30.4 | 141.7 | 747.1 | 1.000 |
-| C++ | update10th | 9 | 14.5 | 12.6 | 141.2 | 181.8 | 0.243 |
-| C++ | select | 9 | 6.3 | 11.7 | 141.3 | 165.9 | 0.222 |
-| C++ | swap | 9 | 7.3 | 11.7 | 141.1 | 166.8 | 0.223 |
-| C++ | remove | 8 | 90.0 | 11.6 | 141.1 | 250.7 | 0.336 |
-| Rust | create1k | 8 | 246.8 | 28.2 | 155.3 | 646.6 | 1.000 |
-| Rust | update10th | 9 | 11.7 | 12.8 | 155.1 | 193.5 | 0.299 |
-| Rust | select | 9 | 4.5 | 11.9 | 155.0 | 176.9 | 0.274 |
-| Rust | swap | 9 | 5.3 | 11.9 | 155.0 | 177.9 | 0.275 |
-| Rust | remove | 8 | 29.0 | 10.9 | 154.9 | 202.9 | 0.314 |
+| C++ | create1k | 8 | 421.2 | 30.4 | 19.3 | 688.6 | 1.000 |
+| C++ | update10th | 9 | 14.5 | 12.6 | 2.7 | 41.7 | 0.061 |
+| C++ | select | 9 | 6.3 | 11.7 | 1.3 | 24.5 | 0.036 |
+| C++ | swap | 9 | 7.3 | 11.7 | 1.3 | 25.4 | 0.037 |
+| C++ | remove | 8 | 89.8 | 11.7 | 17.1 | 125.3 | 0.182 |
+| Rust | create1k | 8 | 248.9 | 29.0 | 42.1 | 540.0 | 1.000 |
+| Rust | update10th | 9 | 12.0 | 12.9 | 16.1 | 75.1 | 0.139 |
+| Rust | select | 9 | 4.6 | 12.1 | 8.8 | 33.3 | 0.062 |
+| Rust | swap | 9 | 5.6 | 11.9 | 8.7 | 36.0 | 0.067 |
+| Rust | remove | 8 | 29.3 | 10.9 | 28.6 | 80.3 | 0.149 |
 
-A select was 494 M (C++) and 436 M (Rust) with the flat document; no row is laid out but
-the ones that moved, no document of the whole table is built, and the patch pass (the
-placing, and each moved place's entry) is 12 M.
+A select was 494 M (C++) and 436 M (Rust) with the flat document, and 166 M and 177 M with
+the document as a map of dynamics while the Worlds painted the whole frame; no row is laid
+out but the ones that moved, no document of the whole table is built, the patch pass (the
+placing, and each moved place's entry) is 12 M, and the paint is the damaged boxes.
 
 ## What remains
 
-- **Painting one frame** (doubt PB): 141 M in C++, 155 M in Rust, whatever changed, the
-  floor under every small change while the canvas Worlds paint every pixel per settled
-  state (damage regions in the World are refused).
+- **Presenting a Rust frame** is about 11 M instructions whatever changed: softbuffer
+  hands a new zeroed buffer each frame on macOS, the whole frame is copied in and becomes
+  a new `CGImage` (worlds/canvas/rust/README.md, "Painting"). It is most of a Rust select's
+  paint; C++ sets its layer's image from its own buffer.
 - **A structural change** (remove, create, clear) gathers the outer of the column's
   document from every place's entry (3,003 entries), once, and the window re-stacks the
   column's children: per change, a pass over every row's entry and every row's plan, not

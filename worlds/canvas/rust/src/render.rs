@@ -22,8 +22,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use prism_rtl::Pod;
-use tiny_skia::{Color, FillRule, FilterQuality, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Transform};
+use tiny_skia::{Color, FillRule, FilterQuality, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Transform};
 
+use crate::damage::{Bounds, IRect};
 use crate::font::{Font, FONT_PX};
 
 /// The window's background where nothing is drawn: `Paper`.
@@ -61,6 +62,109 @@ impl Renderer {
         let t = Transform::from_scale(scale, scale);
         for list in draw_lists {
             self.draw_all(pixmap, scale, list, t, None);
+        }
+    }
+
+    /// Paint one top-level command of a draw list, as `render` paints each: the damage
+    /// painter's repaint of a box (`damage.rs`).
+    pub fn draw_one(&mut self, pixmap: &mut Pixmap, scale: f32, e: &Pod) {
+        self.draw(pixmap, scale, e, Transform::from_scale(scale, scale), None);
+    }
+
+    /// The physical pixels of a `frame`-sized pixmap that the top-level command `e` can
+    /// touch at `scale`: the box of everything `draw` would place, taken through the same
+    /// transforms and glyph positions, rounded out to whole pixels and one pixel wider for
+    /// anti-aliasing, cut to the frame.
+    pub fn bounds(&mut self, e: &Pod, scale: f32, frame: (u32, u32)) -> Bounds {
+        match self.extent(e, scale, Transform::from_scale(scale, scale)) {
+            Extent::Nothing => Bounds::Empty,
+            Extent::Whole => Bounds::Whole,
+            Extent::Box(x0, y0, x1, y1) => {
+                let (w, h) = (frame.0 as f32, frame.1 as f32);
+                let x0 = ((x0.floor() - 1.0).max(0.0)).min(w);
+                let y0 = ((y0.floor() - 1.0).max(0.0)).min(h);
+                let x1 = ((x1.ceil() + 1.0).max(0.0)).min(w);
+                let y1 = ((y1.ceil() + 1.0).max(0.0)).min(h);
+                if x1 <= x0 || y1 <= y0 {
+                    return Bounds::Empty;
+                }
+                Bounds::Box(IRect { x0: x0 as u32, y0: y0 as u32, x1: x1 as u32, y1: y1 as u32 })
+            }
+        }
+    }
+
+    fn extent_all(&mut self, list: &Pod, scale: f32, t: Transform) -> Extent {
+        let mut out = Extent::Nothing;
+        if let Pod::Array(items) = list.structure() {
+            for d in items.iter() {
+                out = out.union(self.extent(d, scale, t));
+            }
+        }
+        out
+    }
+
+    /// What `draw` of `e` under `t` can touch, in physical pixels, unrounded: `draw` case
+    /// for case.
+    fn extent(&mut self, e: &Pod, scale: f32, t: Transform) -> Extent {
+        let Some(tag) = e.tag() else { return Extent::Nothing };
+        match tag {
+            "Draw.Rect" => match e.field("rect").and_then(rect_of) {
+                Some(r) => Extent::of(t, r.left(), r.top(), r.right(), r.bottom()),
+                None => Extent::Nothing,
+            },
+            "Draw.Text" => {
+                let (Some(at), Some(text)) = (e.field("at"), e.field("text").and_then(Pod::as_text)) else {
+                    return Extent::Nothing;
+                };
+                let text = text.to_string();
+                let (x, y) = (number(at.field("x")), number(at.field("y")));
+                if !(x as f32).is_finite() || !(y as f32).is_finite() {
+                    return Extent::Whole;
+                }
+                let px = FONT_PX * scale;
+                let baseline = self.font.ascent(scale);
+                let origin = t.pre_translate(x as f32, y as f32).pre_scale(1.0 / scale, 1.0 / scale);
+                let mut pen = 0.0f32;
+                let mut out = Extent::Nothing;
+                for c in text.chars() {
+                    let advance = self.font.advance(c, px);
+                    if let Some(g) = self.glyph(c, px) {
+                        let at = origin.pre_translate((pen + g.left).round(), (baseline + g.top).round());
+                        out = out.union(Extent::of(at, 0.0, 0.0, g.pixmap.width() as f32, g.pixmap.height() as f32));
+                    }
+                    pen += advance;
+                }
+                out
+            }
+            "Draw.Image" => {
+                let (Some(rect), Some(src)) = (e.field("rect").and_then(rect_of), e.field("src").and_then(Pod::as_text)) else {
+                    return Extent::Nothing;
+                };
+                let src = src.to_string();
+                let Some(image) = self.image(&src) else { return Extent::Nothing };
+                let (iw, ih) = (image.width() as f32, image.height() as f32);
+                let fit = t.pre_translate(rect.x(), rect.y()).pre_scale(rect.width() / iw, rect.height() / ih);
+                Extent::of(fit, 0.0, 0.0, iw, ih)
+            }
+            "Draw.Clip" => {
+                let (Some(rect), Some(draws)) = (e.field("rect").and_then(rect_of), e.field("draws")) else {
+                    return Extent::Nothing;
+                };
+                let inner = self.extent_all(draws, scale, t);
+                inner.intersect(Extent::of(t, rect.left(), rect.top(), rect.right(), rect.bottom()))
+            }
+            "Draw.Group" => {
+                let (Some(turn), Some(draws)) = (e.field("turn"), e.field("draws")) else { return Extent::Nothing };
+                let (x, y) = (number(turn.field("x")) as f32, number(turn.field("y")) as f32);
+                let angle = number(turn.field("angle")) as f32;
+                let s = turn.field("scale").map(|v| number(Some(v))).unwrap_or(1.0) as f32;
+                if ![x, y, angle, s].iter().all(|v| v.is_finite()) {
+                    return Extent::Whole;
+                }
+                let turned = t.pre_translate(x, y).pre_rotate(angle).pre_scale(s, s).pre_translate(-x, -y);
+                self.extent_all(draws, scale, turned)
+            }
+            _ => Extent::Nothing,
         }
     }
 
@@ -178,6 +282,50 @@ impl Renderer {
                 }
             })
             .as_ref()
+    }
+}
+
+/// What a command can touch, in physical pixels before rounding.
+#[derive(Clone, Copy, Debug)]
+enum Extent {
+    Nothing,
+    /// `x0, y0, x1, y1`, finite.
+    Box(f32, f32, f32, f32),
+    /// Not bounded: a coordinate or a transform that is not finite.
+    Whole,
+}
+
+impl Extent {
+    /// The box around the rectangle `x0, y0, x1, y1` taken through `t`.
+    fn of(t: Transform, x0: f32, y0: f32, x1: f32, y1: f32) -> Extent {
+        let mut corners = [Point::from_xy(x0, y0), Point::from_xy(x1, y0), Point::from_xy(x0, y1), Point::from_xy(x1, y1)];
+        t.map_points(&mut corners);
+        if !corners.iter().all(|p| p.x.is_finite() && p.y.is_finite()) {
+            return Extent::Whole;
+        }
+        let fold = |f: fn(f32, f32) -> f32, g: fn(&Point) -> f32| corners.iter().map(g).reduce(f).unwrap_or(0.0);
+        Extent::Box(fold(f32::min, |p| p.x), fold(f32::min, |p| p.y), fold(f32::max, |p| p.x), fold(f32::max, |p| p.y))
+    }
+
+    fn union(self, other: Extent) -> Extent {
+        match (self, other) {
+            (Extent::Whole, _) | (_, Extent::Whole) => Extent::Whole,
+            (Extent::Nothing, e) | (e, Extent::Nothing) => e,
+            (Extent::Box(a0, b0, a1, b1), Extent::Box(c0, d0, c1, d1)) => Extent::Box(a0.min(c0), b0.min(d0), a1.max(c1), b1.max(d1)),
+        }
+    }
+
+    /// Within a clip. Anything not finite is unbounded, inside a clip or not, as the C++
+    /// World's cairo stops drawing at a non-finite transform.
+    fn intersect(self, clip: Extent) -> Extent {
+        match (self, clip) {
+            (Extent::Whole, _) | (_, Extent::Whole) => Extent::Whole,
+            (Extent::Nothing, _) | (_, Extent::Nothing) => Extent::Nothing,
+            (Extent::Box(a0, b0, a1, b1), Extent::Box(c0, d0, c1, d1)) => {
+                let (x0, y0, x1, y1) = (a0.max(c0), b0.max(d0), a1.min(c1), b1.min(d1));
+                if x1 < x0 || y1 < y0 { Extent::Nothing } else { Extent::Box(x0, y0, x1, y1) }
+            }
+        }
     }
 }
 

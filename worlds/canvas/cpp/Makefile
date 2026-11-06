@@ -8,6 +8,8 @@
 #
 # The tests: test_canvas (no display), and on Linux xvfb_smoke (a window under xvfb-run,
 # clicked through XTest), on macOS macos_smoke (a Cocoa window, pressed through Hooks),
+# and damage_smoke (a window stepped through ten scenes through Hooks, each frame checked
+# against a full repaint; on Linux it needs a DISPLAY and otherwise says so and passes),
 # all run by `check`.
 
 CXX ?= g++
@@ -46,7 +48,7 @@ WARN ?= -Wall -Wextra -Werror
 FLAGS := $(STD) $(WARN) $(OPT) $(SANITIZE) -Iinclude -I$(RT)/include -I$(CLI)/include $(PKG_CFLAGS)
 RTLIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
 LIB := $(BUILD)/libprism_world_canvas.a
-LIB_SRCS := src/world.cpp src/font.cpp src/render.cpp src/big_stack.cpp
+LIB_SRCS := src/world.cpp src/font.cpp src/render.cpp src/damage.cpp src/big_stack.cpp
 LIB_OBJS := $(LIB_SRCS:src/%.cpp=$(BUILD)/%.o) $(BUILD)/app.o $(BUILD)/cli.o
 # the runtime's headers too: an object of this World holds the runtime's types by value
 HEADERS := $(wildcard include/prism_world_canvas/*.hpp) $(wildcard $(RT)/include/prism_rtl/*.hpp)
@@ -76,9 +78,10 @@ test:
 	$(ASAN_READY)
 	$(MAKE) check CXX=$(ASAN_CXX) CONFIG=$(ASAN_CONFIG) OPT="-O3 -g -fno-omit-frame-pointer" SANITIZE="-fsanitize=address,undefined -fno-sanitize-recover=undefined $(ASAN_LIBCXX)"
 
-check: $(BUILD)/canvas_tests $(BUILD)/$(SMOKE)
+check: $(BUILD)/canvas_tests $(BUILD)/$(SMOKE) $(BUILD)/damage_smoke
 	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/canvas_tests
 	$(BUILD)/$(SMOKE)
+	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/damage_smoke
 
 lib: $(LIB)
 
@@ -106,6 +109,9 @@ $(BUILD)/canvas_tests: tests/test_canvas.cpp $(RT)/tests/main.cpp $(LIB) $(RTLIB
 
 $(BUILD)/macos_smoke: tests/macos_smoke.cpp tests/smoke_program.hpp $(LIB) $(RTLIB) $(HEADERS)
 	$(CXX) $(FLAGS) -o $@ tests/macos_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS)
+
+$(BUILD)/damage_smoke: tests/damage_smoke.cpp $(LIB) $(RTLIB) $(HEADERS)
+	$(CXX) $(FLAGS) -o $@ tests/damage_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS)
 
 $(BUILD)/xvfb_smoke: tests/xvfb_smoke.cpp tests/robot.hpp tests/smoke_program.hpp $(LIB) $(RTLIB) $(HEADERS)
 	$(CXX) $(FLAGS) -o $@ tests/xvfb_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS) -lXtst -lpthread

@@ -132,8 +132,18 @@ separate pass over the token stream was not in this work.
   layout data with `^Eq`, with one placing pass at the window; each leaf measures its own
   texts. `claude/incremental-host-document.md` is the design as built, with its doubts
   (CL, WD, EP, MW, EQ, ET, PB, SE, RF).
-- **A select costs 166 M instructions in C++ and 177 M in Rust** (create1k 747 M and
-  646 M), 141 M and 155 M of it painting the frame; it was 494 M and 436 M.
+- **The canvas Worlds paint only the damage** (Jimmy, 6 November 2026: "allow damage
+  boxes or whatever and not repainting a whole frame"; branch `claude-damage`): each
+  window keeps its frame and its last draw commands with their bounds, and a new settled
+  scene repaints the boxes whose commands changed, held equal to a full repaint pixel for
+  pixel by both Worlds' tests (worlds/canvas/rust/src/damage.rs and README, "Painting").
+  Each window is in sRGB, so Core Animation no longer converts every frame on the CPU
+  (125 M of the 145 M a C++ frame cost). Only C++ on X11 presents just the damage; macOS
+  and the Rust World present the whole frame.
+- **A select costs 24.5 M instructions in C++ and 33 M in Rust** (create1k 689 M and
+  540 M), 1.3 M and 8.8 M of it painting; 3.2 ms and 5.3 ms on the clock (GTK about
+  1.1 ms). It was 166 M and 177 M painting the whole frame, and 494 M and 436 M with the
+  flat document (claude/benchmarks-preliminary.md, "Painting only the damage").
   `bench/gui/prism/check.sh` reports the phase table and fails on none (Jimmy threw out
   the bar of a tenth). What remains is `claude/bugs/window-relayout-every-change.md`.
 - **Jimmy's rulings:** no `Cached` prelude function and no hidden runtime cache; one tick
