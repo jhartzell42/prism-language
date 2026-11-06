@@ -50,13 +50,13 @@ pass, and the paint is the damaged boxes.
   @Distinct ($table.?selected == (? slot))`: 1,000 small comparisons a write, and two rows'
   labels move on a select. A row's value reaches it through `@PerKey` and is marked only
   when it changed.
-- **A structural change marks every row for the patch pass** (remove, create, clear): a
-  key that came or went writes `@PerKey`'s outer, and every row of the `for` over it reads
-  the outer, to check whether its entry became another dynamic (`@Flatten`'s adoption,
-  `RowPlaceReads`). Under `@PerKey` a kept key's entry is the same dynamic for as long as
-  the key stays, so the check never adopts; its pass over 1,000 rows is most of remove's
-  11.4 M patch. Not done: skipping it needs the lowering to know that the source's
-  entries are stable per key (a `@PerKey` outer or a host document).
+- **A structural change walks every key of the table's `for`** (remove, create, clear): a
+  key that came or went writes `@PerKey`'s outer, and the `for`'s builder, walking the keys
+  on that write, compares each kept key's dynamic with the one its row was built from and
+  tells only a row whose dynamic was replaced (ruling FV; under `@PerKey` a kept key's
+  dynamic is the same one for as long as the key stays, so none is). The kept rows are not
+  marked for the patch pass; what remains is the walk itself, one comparison per key, for
+  every map of dynamics alike, with nothing special for `@PerKey` (Jimmy refused that).
 - **The rest of a select's 7.1 M patch pass:** the window's placing over the column's
   1,001 plans, the scene made a `Pod`, the two moved rows' layout.
 - **The routing of a press** through the column's 1,001 filters (doubt RF).

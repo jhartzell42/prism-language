@@ -102,7 +102,7 @@ program's teardown, on a thread with a 4 GB stack (`BigStack`), the stack the em
   text and shapes are drawn at the screen's resolution in logical pixels, as the Rust
   World under winit does.
 - **Keys** are the event's characters, as Unicode, and the named keys by key code.
-- **Tests.** `macos_smoke` and `damage_smoke` need a logged-in session (a window server) but no
+- **Tests.** `macos_smoke` and `damage_smoke` need a window server (on Linux, `xvfb-run -a` when no `DISPLAY` is set) but no
   accessibility permission: they read the frame back through `Session::pixel` and press
   through `Session::input`. The Xvfb tests and the XTest robot are Linux-only, and
   LeakSanitizer does not run on arm64 macOS, so `check` runs ASan there without leak
