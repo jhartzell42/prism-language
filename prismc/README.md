@@ -1716,11 +1716,15 @@ ruling taken (Claude's).
   emitted code writes bare (`prism_rtl`'s `Row`, `Node`, `Hold`, `Cx`, `Pod`, `Path`...,
   and Rust's `Rc`, `Cell`, `Vec`...) takes a `_` in both targets (`lower.prism`'s
   `runtimeNames`, through `Camel`), as a Rust keyword does through `Snake`; printed
-  values keep the Prism name (`cpp-runtime-names`). *Not yet:* a function whose Rust name
-  is one of the runtime's free functions the emitted code calls bare (`call_value`,
-  `entered`, `once_job`) still shadows it: a `CallValue` in a module with jobs breaks that
-  module's frames, and a local `startBody` beside an unbounded `Body` is that function's
-  `start_body`.
+  values keep the Prism name (`cpp-runtime-names`). A top-level value or local whose
+  Rust name is a free function of either emitted prelude or either runtime (`field`,
+  which every `FromPod` impl calls, `get` and `index` of indexing, `call_value`,
+  `entered` and `once_job` of a job's frames, prism_rtl's `mismatch`, `rc`, `show`;
+  `runtimeFns` in lower/mod.prism, 179 names) takes a `_`, two where the name with one is
+  also there (`or__`, beside C++'s `or_`), so neither target's helper is ever the
+  program's, whether the emitted code calls it bare or a runtime template finds it by
+  argument-dependent lookup (`ts-ch01-runtime-fn-names`). *Not yet:* a local `startBody`
+  beside an unbounded `Body` is that function's `start_body`, a name lowering makes.
 - **PF A port's fault.** `Port::fire` returns `Done`, and an event method returns
   nothing, so a subscriber's fault is dropped. *First ruling:* event methods return
   `()`; faults in rows' subscribers are lost. *If otherwise:* every event method returns
