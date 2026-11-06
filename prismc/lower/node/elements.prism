@@ -75,7 +75,9 @@ fn ElementLine wx, benv, menv, e, ?bound:
                                 ((lf, cf, mf, rd, (Connect w2, r, (SkRequest pos, (RequestField tg, fname)))))
                             otherwise:
                                 let ((ex, rds)) = DynamicExpr w, menv, arg
-                                let cv = Own (ValueOf lx, benv, arg)
+                                # at the build every name with a value then reads it (`InitEnv`):
+                                # a window's title, asked with its first value before the node is
+                                let cv = Own (ValueOf lx, (InitEnv benv), arg)
                                 let mv = Own (ValueOf lx, menv, arg)
                                 (((Push lf, ((Snake fname, ex))), (Push cf, ((Snake fname, cv))), (Push mf, ((Snake fname, mv))), (UnionReads rd, rds), w))
             let live = (Len reads) > 0

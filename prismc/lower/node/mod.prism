@@ -184,6 +184,9 @@ type Wres = choice:
     # A host's output: its child's result, the first part of the line's tuple pattern, and
     # the child's document, the second part (pick HO).
     WrHosted Wres, Bn
+    # A bundle (Type System ch. 2): a tuple holding events or dynamics, each part its own
+    # result, taken apart where a tuple pattern binds it.
+    WrParts [Wres]
 
 # The state of lowering one node.
 type Wx = record:
@@ -209,7 +212,7 @@ type Wx = record:
     dynReads: (Text ==> [Read])
     taken: [Text]
     fallible: Bool
-    depth: Nat
+    inlining: [Text]           # the widgets being inlined here, outermost first: one recurses at most sixteen levels (gap ID)
     result: Wres
     rows: [NodeDef]
     builders: [ForDef]
@@ -329,15 +332,15 @@ let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "pus
 # no graph and no places yet. `?hostedBy` is set for a row of a hosted child's `for` or
 # `rebuild` (its places are the enclosing host's; the name is the parent's method it tells
 # when one may have moved).
-NewWx: fn Lx, Text, [((Text, OutTy, Text))], [((Text, Ex))], [((Text, Ex))], [MethDef], (Text ==> [Read]), [Text], Nat, ?Text -> Wx
-fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, depth, ?hostedBy:
+NewWx: fn Lx, Text, [((Text, OutTy, Text))], [((Text, Ex))], [((Text, Ex))], [MethDef], (Text ==> [Read]), [Text], [Text], ?Text -> Wx
+fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?hostedBy:
     let hostedFields = match ?hostedBy:
         ? ignore: [[(("enclosing", hostOfTy, "the host whose document this row's places are entries of (pick HO)"))]]
         nil: [[]]
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, depth=depth, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], hostedBy=?hostedBy, rootDyn=nil, rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=nil, dynAnswers=[[]], inited=[[]], flattens=[[]])
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], hostedBy=?hostedBy, rootDyn=nil, rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=nil, dynAnswers=[[]], inited=[[]], flattens=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))

@@ -173,6 +173,13 @@ type Layer = choice:
     LyBlueprint
 derive ^Eq, ^Show
 
+# Whether a type is a bundle: a tuple with an event or a dynamic among its parts, at any
+# depth (Type System ch. 2, "Bundles and sparse tuples").
+IsBundle: fn Ty -> Bool
+fn IsBundle t = match t:
+    TyTuple ts: Fold ts, False, \|found, x| found or (LayerOf x) == LyEv or (LayerOf x) == LyDyn or IsBundle x
+    otherwise: False
+
 LayerOf: fn Ty -> Layer
 fn LayerOf t = match t:
     TySig "$", ignore: LyDyn

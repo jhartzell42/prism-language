@@ -11,5 +11,5 @@ A bug leaves this directory when its fix lands.
   recomputes, and Rust's 11 M to present each frame.
 - **`bench-cuis-latin1-and-software-paint.md`**: on Linux under Xvfb the Cuis table's
   times measure software painting, not Morphic.
-- **`widget-param-depth-silent.md`**: a widget parameter applied past depth 32 lowers to
-  nothing, silently; it should fault as a recursive widget past sixteen levels does.
+- **`widget-plain-result-unbound.md`**: a widget block ending on a plain value, bound with
+  `x <- @W ..`, leaves `x` unbound in the caller; the crate fails at rustc.

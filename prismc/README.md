@@ -1853,13 +1853,16 @@ ruling taken (Claude's).
   host makes a live element. *If otherwise:* lifted functions take `&Cx`.
 - **ID A widget recursing deeper than it is inlined.** A widget function that recurses as
   deep as its data (Semantics ch. 4) is inlined into each row it builds, a node type per
-  level, sixteen levels deep (`InlineWidget`'s `depth`). At that depth the call gives a
-  result of its type that is never read, and the node there faults at its build
-  (`Fault::too_deep`, `TooDeep`): a tree that deep stops the program loudly, and every
+  level, sixteen levels of that widget deep (`InlineWidget`, counting the widget's own
+  inlinings in `Wx.inlining`; widgets that call other widgets, and widget parameters
+  applied, nest as deep as they are written: `sem-ch08-widget-depth`). At that depth the
+  call gives a result of its type that is never read, and the node there faults at its
+  build (`Fault::too_deep`, `TooDeep`): a tree that deep stops the program loudly, and every
   shallower one runs (`sem-ch04-widget-recursion-result`; the window's `@Laid` is such a
-  widget, so it lays out containers about a dozen deep below the window). *Next:* the rows
-  of one recursive widget share a node type, built at any depth. A widget parameter applied
-  past depth 32 (`ApplyWidgetParam`) still lowers to nothing.
+  widget, so it lays out containers sixteen deep below the window). The rows nest a node
+  type per level, past rustc's default limit for drop checking, so the emitted crate sets
+  `recursion_limit` to 512. *Next:* the rows of one recursive widget share a node type,
+  built at any depth.
 - **SU A row's `!Updated` over its block's structural dynamic.** A row hears the block's
   writes through `parent_wrote_{m}` and decides its `!Updated` nodes in its wake; the
   block's publication of a structural dynamic (pick ST) is `HoldWritten` of its name, so
@@ -1982,7 +1985,9 @@ naming the construct, and `CompileProgram` reports every distinct one as
 `@HostList`; a named widget function as a host's supplier (gap NS: a widget function is
 a node, not a value; a lambda supplier is lowered); a supplier's answer `@ x` outside a tag arm, a dynamic answer over what has
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
-a hosted scope (pick HO); an element applied as a plain value and a live element's `$` field read in a plain
+a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebuild`'s
+generation or a widget clause ending on a bundle (a widget block's bundle result is
+lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); an element applied as a plain value and a live element's `$` field read in a plain
 function (gap LE), `@Flatten` of a dynamic that is neither a `rebuild`'s nor a `for` row's entry,
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), an `@Machine` whose step is

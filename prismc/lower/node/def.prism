@@ -52,7 +52,7 @@ fn NodeDefOf lx, qk, params, body, sc, isRoot:
     let ptys = match sc.ty:
         TyFn ignore, ps, ignore: ps
         otherwise: [[]]
-    let wx0 = NewWx lx, name, [[]], [[]], [[]], [[]], {}, nodeHooks, 0, nil
+    let wx0 = NewWx lx, name, [[]], [[]], [[]], [[]], {}, nodeHooks, [[]], nil
     let ((ps, wx1, benv, menv)) = Fold (Range0 (Len params)), (([[]], wx0, emptyEnv, emptyEnv)), \|((acc, w, be, me)), i|
         let p = Or params[i], dummyPat
         let nkey = PlainBinder lx, p
@@ -80,6 +80,8 @@ fn RootResult wx = match wx.result:
         &_.build <= Push &_.build, (DoScope (ResultTold (XVar "node")))
     WrPlain x, ignore: update wx:
         &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "result", [[(XCtor "Outcome::Value", [[(XMethod x, "to_pod", [[]])]])]]))
+    WrParts ignore: update wx:
+        &_.build <= Push &_.build, (RefusalDo "a bundle as the root's result: a World hears a plain value, a dynamic or an event")
     otherwise: wx
 
 # A block's statements into the node, names bound before any line is read (one binding
@@ -95,12 +97,14 @@ fn BlockInto wx, benv, menv, b:
 # dynamic `let` a getter.
 PreBind: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env, Env))
 fn PreBind wx, benv, menv, s = match s.kind:
-    SBind p, init, ?step: match p.kind:
-        PName n: PreBindName wx, benv, menv, n, (HowBound ?step)
-        PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
-            PName n: PreBindName w, be, me, n, AsBind
-            otherwise: ((w, be, me))
-        otherwise: ((wx, benv, menv))
+    SBind p, init, ?step:
+        let how = if ?step == nil and (GivesResult wx.lx, menv, init): AsResult else: HowBound ?step
+        match p.kind:
+            PName n: PreBindName wx, benv, menv, n, how
+            PTuple ps: Fold ps, ((wx, benv, menv)), \|((w, be, me)), q| match q.kind:
+                PName n: PreBindName w, be, me, n, how
+                otherwise: ((w, be, me))
+            otherwise: ((wx, benv, menv))
     SLet p, ignore, ignore: match p.kind:
         PName n: PreBindName wx, benv, menv, n, AsLet
         otherwise: ((wx, benv, menv))
@@ -114,7 +118,39 @@ type HowBound = choice:
     AsHold
     AsBind
     AsLet
+    AsResult                   # `p <- e` where `e` is a widget the node inlines: its result
 derive ^Eq, ^Show
+
+# Whether a bind line's right side is a widget this node inlines, a widget block or a widget
+# parameter applied, whose result is an expression of the node's, never a sink a builtin
+# writes: its dynamic is then a getter of the node, defined when the line is lowered, so a
+# line above may read it (one binding group, Semantics ch. 4).
+GivesResult: unbounded fn Lx, Env, Expr -> Bool
+fn GivesResult lx, menv, e = match e.kind:
+    EGroup x: GivesResult lx, menv, x
+    EWidgetBlock ignore: True
+    otherwise:
+        let callee = match e.kind:
+            ECall c, ignore, ignore, ignore: c
+            otherwise: e
+        match callee.kind:
+            EName n: match menv.names[SNameKey n]:
+                ? (BnWidget ignore, ignore, ignore, ignore): True
+                otherwise:
+                    let ((?q, ignore)) = ResolveValue lx.g, lx.home, n
+                    match ?q:
+                        ? q: (not (IsPreludeName q)) and (lx.g.vals[q] != nil) and IsWidgetTy (Peel (TypeAt lx, e.span))
+                        nil: False
+            otherwise: False
+
+# a prelude widget (`@Distinct`, `@Flatten`, a host) may write the name it is bound to
+IsPreludeName: fn Text -> Bool
+fn IsPreludeName q = (?Find %/^Prelude\./, q) != nil
+
+IsWidgetTy: fn Ty -> Bool
+fn IsWidgetTy t = match t:
+    TyAt ignore, ignore: True
+    otherwise: False
 
 HowBound: fn ?Expr -> HowBound
 fn HowBound (? ignore) = AsHold
@@ -128,7 +164,10 @@ fn PreBindName wx, benv, menv, n, how:
     let layer = LayerOf full
     let t = OutTyOf lx, (Peel full)
     let ((rs, wx1)) = FreshName wx, (Snake nkey)
-    if layer == LyEv or IsSwitched full:
+    # a bundle bound to a name (the window library's generic `r`) is its parts' bindings,
+    # bound where its line is lowered (`BundleBn`)
+    if (how == AsBind or how == AsResult) and IsBundle full: ((wx, benv, menv))
+    else: if layer == LyEv or IsSwitched full:
         let et = OutTyOf lx, (Peel (Peel full))
         let ((id, wx2)) = AddGn wx1, rs, et, GnNamed, 0
         let b = BnEv (EvRefOf wx2, id), t
@@ -145,6 +184,9 @@ fn PreBindName wx, benv, menv, n, how:
         ((wx3, be, me))
     else: match ((layer, how)):
         ((LyDyn, AsLet)):
+            let b = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
+            ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
+        ((LyDyn, AsResult)):
             let b = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
             ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
         ((LyDyn, ignore)):
@@ -210,8 +252,12 @@ fn WidgetStmt wx, benv, menv, s, last:
             match ((res, p.kind)):
                 (((WrDyn ex, rds, t), PName n)):
                     let b = BnDyn ex, rds, t
-                    ((wx3, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
+                    ResultGetter wx3, menv, n, ex, rds, t, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)
                 (((WrHosted inner, doc), PTuple ps)): BindHosted wx3, benv, menv, inner, doc, ps
+                (((WrParts parts), PTuple ps)): BindParts wx2, benv, menv, parts, ps
+                (((WrParts parts), PName n)):
+                    let b = BundleBn res
+                    ((wx3, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
                 otherwise: ((wx3, benv, menv))
         SBind p, init, (? step):
             let ((wx2, be2)) = HoldLine wx, benv, menv, p, init, step
@@ -250,6 +296,7 @@ fn BindHosted wx, benv, menv, res, doc, ps:
     let ?r = match res:
         WrEv r: ? (BnEv r, OutUnit)
         WrDyn ex, rds, t: ? (BnDyn ex, rds, t)
+        WrParts ignore: ? (BundleBn res)
         otherwise: nil
     let ((be1, me1)) = BindPart benv, menv, ps[0], ?r
     BindPart2 wx, be1, me1, ps[1], (? doc)
@@ -265,6 +312,61 @@ BindPart2: fn Wx, Env, Env, ?Pattern, ?Bn -> ((Wx, Env, Env))
 fn BindPart2 wx, benv, menv, ?p, ?b:
     let ((be, me)) = BindPart benv, menv, ?p, ?b
     ((wx, be, me))
+
+# A bundle's parts bound by a tuple pattern, part by part: an event to the node its name
+# was prebound to, a dynamic as itself, a plain value as a local, a nested bundle by its
+# own pattern or as its name's parts.
+BindParts: unbounded fn Wx, Env, Env, [Wres], [Pattern] -> ((Wx, Env, Env))
+fn BindParts wx, benv, menv, parts, ps = Fold (Range0 (Len ps)), ((wx, benv, menv)), \|((w, be, me)), i| match ((ps[i], parts[i])):
+    ((? p, ? part)): match ((part, p.kind)):
+        ((WrEv r, PName ignore)): (((BindRes w, me, p, part), be, me))
+        ((WrParts inner, PTuple qs)): BindParts w, be, me, inner, qs
+        ((ignore, PName n)): match part:
+            WrUnit: ((w, be, me))
+            WrDyn ex, rds, t:
+                let b = BnDyn ex, rds, t
+                ResultGetter w, me, n, ex, rds, t, (Bind be, (SNameKey n), b), (Bind me, (SNameKey n), b)
+            otherwise:
+                let b = BundleBn part
+                ((w, (Bind be, (SNameKey n), b), (Bind me, (SNameKey n), b)))
+        otherwise: ((w, be, me))
+    otherwise: ((w, be, me))
+
+# A widget's dynamic result bound to a name prebound as a getter (`AsResult`): the getter,
+# so the lines above that read it read the result. Any other name is unchanged.
+ResultGetter: fn Wx, Env, SName, Ex, [Read], OutTy, Env, Env -> ((Wx, Env, Env))
+fn ResultGetter wx, menv, n, ex, rds, t, benv2, menv2 = match menv.names[SNameKey n]:
+    ? (BnDyn (XMethod XSelf, rs, ignore), [[OwnRead r0]], ignore) if r0 == rs and not (HasText (Keys wx.dynReads), rs):
+        let getter = MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{SNameKey n}`, a widget's result")
+        let wx2 = update wx:
+            &_.getters <= Push &_.getters, getter
+            &_.dynReads <= Insert &_.dynReads, rs, rds
+        ((wx2, benv2, menv2))
+    otherwise: ((wx, benv2, menv2))
+
+# A result as the binding a name of it has.
+BundleBn: fn Wres -> Bn
+fn BundleBn res = match res:
+    WrEv r: BnEv r, OutUnit
+    WrDyn ex, rds, t: BnDyn ex, rds, t
+    WrPlain ex, t: BnLocal ex, Owned, t
+    WrParts parts: BnParts (Each parts, \|q| ? (BundleBn q))
+    WrHosted inner, ignore: BundleBn inner
+    WrUnit: BnLocal XUnit, Owned, OutUnit
+
+# A binding passed on as a result (`@ r`): a bundle's parts as its parts' results.
+BnRes: fn Bn -> Wres
+fn BnRes b = match b:
+    BnEv r, ignore: WrEv r
+    BnDyn ex, rds, t: WrDyn ex, rds, t
+    BnLocal ex, ignore, t: if t == OutUnit: WrUnit else: WrPlain ex, t
+    BnParts bs: WrParts (Each bs, PartRes)
+    otherwise: WrUnit
+
+PartRes: fn ?Bn -> Wres
+fn PartRes ?b = match ?b:
+    ? b: BnRes b
+    nil: WrUnit
 
 SetResult: fn Wx, Wres -> Wx
 fn SetResult wx, res = update wx:
@@ -282,7 +384,15 @@ fn ResultOf wx, benv, menv, x:
     match ?bound:
         ? (BnEv r, ignore): ((WrEv r, wx))
         ? (BnDyn ex, rds, bt): (((WrDyn ex, rds, bt), wx))
-        otherwise: ResultOfTyped wx, benv, menv, x, full, t
+        ? (BnParts bs): ((BnRes (BnParts bs), wx))
+        otherwise: match x.kind:
+            # a bundle written out, `((!clicks, $count))`: each part its own result
+            ETuple xs if IsBundle full:
+                let ((parts, wx2)) = Fold xs, (([[]], wx)), \|((acc, w)), y|
+                    let ((r, w2)) = ResultOf w, benv, menv, y
+                    (((Push acc, r), w2))
+                ((WrParts parts, wx2))
+            otherwise: ResultOfTyped wx, benv, menv, x, full, t
 
 ResultOfTyped: unbounded fn Wx, Env, Env, Expr, Ty, OutTy -> ((Wres, Wx))
 fn ResultOfTyped wx, benv, menv, x, full, t:
@@ -331,6 +441,16 @@ fn AllInited wx, reads = Fold (ReadsClosed wx.dynReads, reads), True, \|ok, r| o
     OwnRead f: HasText wx.inited, f
     ParentRead ignore: False
 
+# Whether every dynamic name an expression reads has its value at the build in the build
+# environment (`{name}#init`). A name bound to a widget's dynamic result (`$t <- @TextInput
+# ..`) has none, though everything behind it may: its value is read through the node, which
+# does not exist while it is being built.
+NamesInited: unbounded fn Env, Expr -> Bool
+fn NamesInited env, e = Fold (ReadNames (ExprsIn e)), True, \|ok, n| ok and match env.names[n]:
+    ? (BnDyn ignore, ignore, ignore): HasKey env.names, "{n}#init"
+    ? (BnHold ignore, ignore): HasKey env.names, "{n}#init"
+    otherwise: True
+
 PatText: fn Pattern -> Text
 fn PatText p = match p.kind:
     PName n: SNameKey n
@@ -368,7 +488,7 @@ fn LetLine wx, benv, menv, p, e:
             let wx2 = update wx1:
                 &_.getters <= Push &_.getters, getter
                 &_.dynReads <= Insert &_.dynReads, rs, reads
-            if AllInited wx2, reads:
+            if (AllInited wx2, reads) and (NamesInited benv, e):
                 let wx3 = update wx2:
                     &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{rs}_init"), t), (Own (ValueOf lx, (InitEnv benv), e)))
                     &_.inited <= Push &_.inited, rs

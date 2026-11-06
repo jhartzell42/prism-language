@@ -57,11 +57,26 @@ fn BoundOf lx, cls = match lx.g.traits[cls]:
     ? tr: [[(PathIn lx, tr.home, (Camel (BareName cls)))]]
     nil: [[]]
 
-# A scheme's type variables as Rust generics with their bounds.
+# A scheme's type variables as Rust generics with their bounds. A variable a map is keyed
+# by is `Ord` too, whether or not the scheme says `^Ord`: a map's keys are ordered (Semantics
+# App. B, "Maps"), and the runtime's `Map` asks it of every key type.
 SchemeGenerics: fn Lx, Scheme -> [((Text, [Text]))]
 fn SchemeGenerics lx, sc = Each sc.qs, \|q|
     let bs = Fold sc.bounds, [["Clone"]], \|acc, ((v, cls))| if v == q: UnionTexts acc, (BoundOf lx, cls) else: acc
-    ((Camel q, bs))
+    let keyed = if KeysBy sc.ty, q: UnionTexts bs, [["Ord"]] else: bs
+    ((Camel q, keyed))
+
+# Whether the type variable `q` is a map's key anywhere in a type.
+KeysBy: fn Ty, Text -> Bool
+fn KeysBy t, q = match t:
+    TyMap k, v: (k == TyQ q) or (KeysBy k, q) or (KeysBy v, q)
+    TyCon ignore, ts: Fold ts, False, \|found, x| found or KeysBy x, q
+    TyFn ignore, ps, r: (Fold ps, False, \|found, x| found or KeysBy x, q) or (KeysBy r, q)
+    TyTuple ts: Fold ts, False, \|found, x| found or KeysBy x, q
+    TyArray x: KeysBy x, q
+    TySig ignore, x: KeysBy x, q
+    TyAt x, ignore: KeysBy x, q
+    otherwise: False
 
 # The parameters of a function's clauses: a name every clause binds at a position names
 # the parameter; any other position is matched, named after its type.
