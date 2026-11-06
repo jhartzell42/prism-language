@@ -1,0 +1,14 @@
+# The widget reads' tests: declarations of sem-ch08-widget-reads.
+emit Ui.* | Pad.*
+use App.*
+
+test a_block_reads_its_widgets_results, @page:
+    with Pad.Door(name="front") = "door 1", build
+        => expect Ui.Label(text="a and ab")
+        => expect Ui.Label(text="1 a")
+        => expect Ui.Label(text="door 1 3")
+        => returns "ab"
+    click at 1
+        => expect Ui.Label(text="a! and a!b")
+        => expect Ui.Label(text="2 a!")
+        => returns "a!b"
