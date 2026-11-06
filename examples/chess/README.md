@@ -82,3 +82,13 @@ the window library's widgets:
   scrolls its text, which needs the caret's scroll offset in the library.
 - **NT** (Claude's) Moves are written in coordinates (`Ng1-f3`, `e4xd5`), not standard
   algebraic notation, which needs disambiguation and check marks from the rule book.
+- **TS** (Claude's) `tests.expected` is about 2.5 MB: under the window the Test World prints
+  the whole scene (some 25 KB with the board) at every change, and a key typed into the
+  dialog changes it three times (a new word is measured a tick after it is laid out,
+  doubt MT). The tests were cut to the steps that check something. Recommendation: a
+  transcript that prints a scene's changed draw commands rather than the whole list, if
+  the windowed tests grow.
+- **HT** (Claude's) A press on a square runs 13 ticks to idle, where the bare board's ran 5:
+  a square now sits under six hosts (the window, the layers, the column, the row, the
+  border's frame, the grid), each a tick in and a gathered `for` out (Jimmy: one tick per
+  level). The real window shows no lag; recommendation: none until it is felt.
