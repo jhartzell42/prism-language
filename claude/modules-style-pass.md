@@ -162,10 +162,10 @@ just nest indefinitely a la Rust." Everything below follows from it.
   the root is `src/program.rs` (doubt RF). A reference to another module is from the crate
   (`crate::check::env::BuildG`), so a child named as a top-level module (`a::types` beside
   `types`) never stands in for it.
-- **One module is one C++ unit:** namespace `check::env::traits`, headers
-  `src/check/env/traits/{decl,types,module,generic}.hpp`, its source
-  `src/check/env/traits/mod.cpp`, cut into more files only past SF's 250,000-character
-  chunks. Every reference is qualified from the global namespace (`::check::env::BuildG`).
+- **One module is one C++ namespace and one header directory:** namespace
+  `check::env::traits`, headers `src/check/env/traits/{decl,types,module,generic}.hpp`;
+  its definitions go into a translation unit `src/unit_N.cpp` with other modules' up to
+  SF's 125,000 characters (prismc/README.md, pick SF). Every reference is qualified from the global namespace (`::check::env::BuildG`).
 - **A module's name segment that is a Rust or a C++ keyword takes a `_` in both
   targets** (`Shapes.Static` is `shapes::static_`, `Shapes.Switch` is `shapes::switch_`),
   so the two printers name every module alike.

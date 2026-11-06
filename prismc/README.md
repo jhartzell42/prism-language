@@ -1135,8 +1135,34 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   constructors (`Hold::new` is `{init, cx}`, `Port::new` inside `Rc::new` `make_new()`).
 - **NC: a node's constructor takes its fields in declared order**, the initializers the
   model orders by moves being copies in C++.
-- **SF: a module's definitions in files of about 250,000 characters** (`lower/mod.cpp`,
-  `lower/mod_2.cpp`, ...): one file of `lower.prism`'s needs more than 7 GB to compile.
+- **SF: translation units of up to 125,000 characters of definitions.** The modules'
+  definitions, in the modules' order, are packed into `src/unit_N.cpp` as many to a unit
+  as fit in 125,000 characters; a module's own definitions are cut into chunks of about
+  250,000 (one file of the old `lower.prism`'s needed more than 7 GB), a chunk larger
+  than a unit is a unit of its own. A unit includes every `DIR/module.hpp` its modules
+  need, each once, then their `DIR/generic.hpp`s (MH's order: every overload a header
+  declares comes before every template), then each module's definitions in its own
+  namespace; the headers stay per module. What it buys, measured on prismc (5 November
+  2026, Apple M2 Pro, 12 cores, 16 GB, `make -j12 CXX=clang++ OPT=-O3` from clean with
+  the runtime's library built, other agents' builds running beside it at load averages
+  of 8 to 31, so the wall times are rough; user and system CPU):
+
+  | Units | Of up to | Wall | CPU | Largest unit |
+  |---|---|---|---|---|
+  | 91 (one a module) | | 167 to 185 s | 1,368 to 1,384 s | 246,623 characters, 24 s, 1.48 GB |
+  | 82 | 60,000 | 177 to 188 s | 1,356 to 1,406 s | the same |
+  | **62** | **125,000** | **165 to 188 s** | **1,306 to 1,314 s** | the same |
+  | 34 | 250,000 | 199 to 227 s | 1,398 to 1,522 s | the same |
+
+  A unit's headers cost about a second of clang's front end (114,000 lines preprocessed
+  for a module of no definitions, most of them the standard library and `prism_rtl`), and
+  the inline functions and templates every unit instantiates are optimized again in each:
+  62 units save about 6% of the CPU and the most wall time. 34 units save more user time
+  (1,144 s against 1,332) but each holds more of the program at once: twelve such
+  compiles beside another agent's paged (system time 254 to 370 s) and finished later.
+  The rest of the CPU is the definitions themselves, which batching cannot share; the
+  build was 1,003 s for 38 files on 4 November, before the module tree, with 20% fewer
+  lines.
 - **BS: a 4 GB stack.** `main` runs on a thread with a 4 GB stack (committed as used), as
   the Rust program runs on a 1 GB one: unbounded code runs direct-style within a cycle,
   and a C++ frame of the emitted code is larger than Rust's.

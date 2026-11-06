@@ -360,7 +360,8 @@ what differs is how C++ spells it.
   layers of the modules it needs (prismc/README.md, pick MH); `src/elem.decl.hpp` and
   `src/elem.types.hpp` for `crate::Elem` and `crate::Answer`; `src/programs.hpp` (the
   program classes); `src/main.cpp` (`Elem`'s and `Answer`'s definitions, `test_world()`,
-  `main`), `src/prelude.hpp` and one `src/DIR/mod.cpp` (or several) per module. The
+  `main`), `src/prelude.hpp` and the modules' definitions in translation units,
+  `src/unit_N.cpp`, several small modules to a unit (prismc/README.md, pick SF). The
   modules are the namespaces `crate::check::env`, nested as their names are, and every
   reference to another module's item is from `crate::`. A program class has the static `build(args, ready)`
   and the virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a
