@@ -66,6 +66,16 @@ is the part that is not generated per block, written once and shared.
     nodes are the array's own and later updates are in place.
   - Storage: at most `2n + 1` slots while the array is small, `n + 64` beyond, and a
     node per chunk; an array from a `Vec` holds exactly `n` (chunks of 64 moved out).
+  - `==` on a `Map` or an `Array`: Appendix B states no cost. Linear at worst; a node
+    both sides share at the same place answers at once once its values are known to
+    equal themselves, which the node remembers (`SelfEqual` in `map.rs`, in a map's nodes
+    and an array's joins; a chunk, 64 elements at most, is compared with itself; any
+    change through `Rc::make_mut` forgets it), so a value compared with a clone, or with
+    an update of itself, costs about the path the update copied after the first
+    comparison. A shared node holding a NaN (`Float` `==` is IEEE equality, Type System
+    ch. 2) stays unequal, as the element-by-element comparison has it: pointer equality is
+    never the answer, so sharing stays invisible (Semantics ch. 11). The tests count the
+    values compared.
   - `tests/arrays.rs` and `tests/maps.rs` check the behaviour at the sizes around a
     chunk's edges, the storage each holds (`tests/storage` counts the test binary's
     allocations) and the costs (elements cloned, counted by the element type).

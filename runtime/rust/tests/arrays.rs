@@ -390,5 +390,6 @@ fn arrays_of_arrays_compare_shared_inner_arrays_at_once() {
     let (a, b) = (outer(3), outer(3));
     assert!(a == b);
     let (eq, k) = compared(|| a == b);
-    assert!(eq && k <= BOUNDED, "two arrays of ten shared inner arrays compared {k} elements");
+    // each inner array's tree at once; its tail, under 64, element by element
+    assert!(eq && k <= 10 * 64 + BOUNDED, "two arrays of ten shared inner arrays compared {k} elements");
 }

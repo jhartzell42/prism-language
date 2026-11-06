@@ -442,5 +442,6 @@ TEST(arrays_of_arrays_compare_shared_inner_arrays_at_once) {
     Array<Array<Cmp>> a = outer(), b = outer();
     CHECK(a == b);
     bool eq = false;
-    CHECK(compared([&] { eq = a == b; }) <= BOUNDED && eq);
+    // each inner array's tree at once; its tail, under 64, element by element at most
+    CHECK(compared([&] { eq = a == b; }) <= 10 * 64 + BOUNDED && eq);
 }

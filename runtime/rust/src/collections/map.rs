@@ -15,11 +15,19 @@
 //! `m log (n + m)`, `m` the smaller map's size. An empty map allocates nothing and a map
 //! of `n` entries holds `n` nodes.
 //!
+//! `==` answers at once for a subtree both maps share, when every entry under it is known
+//! to equal itself: a node remembers that once it has been asked ([`SelfEqual`]), and an
+//! update forgets it on the path it copies or changes. A shared subtree holding a value
+//! equal to nothing (a `Float` NaN, IEEE equality: Type System ch. 2) stays unequal, as
+//! the structural comparison has it, so sharing stays invisible (Semantics ch. 11). Two
+//! maps differing by one update compare in about the length of the path it copied.
+//!
 //! No `unsafe`. A panic partway through an update (a key's `cmp` or a clone panicking)
 //! leaves a valid tree that may have lost the entries under the node being rebuilt;
 //! programs do not catch panics (a panic ends the program), so nothing reads it.
 
 use std::borrow::Borrow;
+use std::cell::Cell;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -29,6 +37,45 @@ use std::rc::Rc;
 
 type Link<K, V> = Option<Rc<Node<K, V>>>;
 
+/// Whether every value under a node of a persistent collection equals itself, once asked:
+/// what lets `==` answer at once for a node both sides share. Unknown until computed; a
+/// copy starts unknown, and a node changed in place forgets it ([`SelfEqual::forget`]).
+/// The values under a node are plain data that change only through the node, so the
+/// answer, once known, holds until the node changes.
+pub(super) struct SelfEqual(Cell<u8>);
+
+const UNKNOWN: u8 = 0;
+const YES: u8 = 1;
+const NO: u8 = 2;
+
+impl SelfEqual {
+    pub(super) const fn new() -> SelfEqual {
+        SelfEqual(Cell::new(UNKNOWN))
+    }
+    /// The node is about to change: what was known no longer holds.
+    pub(super) fn forget(&mut self) {
+        *self.0.get_mut() = UNKNOWN;
+    }
+    /// The answer, `compute`d the first time it is asked.
+    pub(super) fn get(&self, compute: impl FnOnce() -> bool) -> bool {
+        match self.0.get() {
+            YES => true,
+            NO => false,
+            _ => {
+                let r = compute();
+                self.0.set(if r { YES } else { NO });
+                r
+            }
+        }
+    }
+}
+
+impl Clone for SelfEqual {
+    fn clone(&self) -> SelfEqual {
+        SelfEqual::new()
+    }
+}
+
 #[derive(Clone)]
 struct Node<K, V> {
     entry: (K, V),
@@ -36,6 +83,7 @@ struct Node<K, V> {
     right: Link<K, V>,
     height: u8,
     count: usize,
+    same: SelfEqual,
 }
 
 fn height<K, V>(l: &Link<K, V>) -> u8 {
@@ -48,7 +96,7 @@ fn count<K, V>(l: &Link<K, V>) -> usize {
 
 impl<K, V> Node<K, V> {
     fn leaf(k: K, v: V) -> Node<K, V> {
-        Node { entry: (k, v), left: None, right: None, height: 1, count: 1 }
+        Node { entry: (k, v), left: None, right: None, height: 1, count: 1, same: SelfEqual::new() }
     }
     /// Height and count from the children.
     fn fix(&mut self) {
@@ -60,15 +108,21 @@ impl<K, V> Node<K, V> {
     }
 }
 
-/// The node at `link`, this map's own (copied first when another map shares it).
+/// The node at `link`, this map's own (copied first when another map shares it), to be
+/// changed. Every change to a node goes through this, `take_node` or `get_mut`, each of
+/// which forgets what the node knew of itself.
 fn own<K: Clone, V: Clone>(link: &mut Link<K, V>) -> &mut Node<K, V> {
-    Rc::make_mut(link.as_mut().expect("a node on the path"))
+    let n = Rc::make_mut(link.as_mut().expect("a node on the path"));
+    n.same.forget();
+    n
 }
 
-/// The node at `link`, taken out of the tree by value (copied when shared).
+/// The node at `link`, taken out of the tree by value (copied when shared), to be changed.
 fn take_node<K: Clone, V: Clone>(link: &mut Link<K, V>) -> Node<K, V> {
     let rc = link.take().expect("a node on the path");
-    Rc::try_unwrap(rc).unwrap_or_else(|shared| (*shared).clone())
+    let mut n = Rc::try_unwrap(rc).unwrap_or_else(|shared| (*shared).clone());
+    n.same.forget();
+    n
 }
 
 /// `link`'s left child up in its place.
@@ -182,6 +236,7 @@ where
     BK: Ord + ?Sized,
 {
     let n = Rc::make_mut(link.as_mut()?);
+    n.same.forget();
     match k.cmp(n.entry.0.borrow()) {
         Ordering::Less => get_mut(&mut n.left, k),
         Ordering::Greater => get_mut(&mut n.right, k),
@@ -466,9 +521,73 @@ where
     }
 }
 
+/// Whether every entry under `n` equals itself, remembered in the nodes.
+fn self_equal<K: PartialEq, V: PartialEq>(n: &Node<K, V>) -> bool {
+    n.same.get(|| n.left.as_deref().is_none_or(self_equal) && n.right.as_deref().is_none_or(self_equal) && n.entry == n.entry)
+}
+
+/// What is left to compare of one side, in key order from the top of the stack: a whole
+/// subtree, or a node's own entry (its right subtree below it on the stack).
+enum Pending<'a, K, V> {
+    Tree(&'a Node<K, V>),
+    Entry(&'a Node<K, V>),
+}
+
+/// The subtree on top of `stack` replaced by its left subtree, its entry and its right.
+fn open<'a, K, V>(stack: &mut Vec<Pending<'a, K, V>>, n: &'a Node<K, V>) {
+    stack.pop();
+    if let Some(r) = n.right.as_deref() {
+        stack.push(Pending::Tree(r));
+    }
+    stack.push(Pending::Entry(n));
+    if let Some(l) = n.left.as_deref() {
+        stack.push(Pending::Tree(l));
+    }
+}
+
+/// The two trees' entries compared in key order, as `iter().eq()` would, except that a
+/// subtree both have at the same place in the order is one node: its entries are compared
+/// with themselves, which [`self_equal`] answers from the nodes once it is known. Equal
+/// counts make the two orders line up, so a subtree is opened only while the other side's
+/// next item is not the same node: the larger of two subtrees, or a subtree against an
+/// entry.
+fn eq_trees<K: PartialEq, V: PartialEq>(a: &Link<K, V>, b: &Link<K, V>) -> bool {
+    let mut sa: Vec<Pending<K, V>> = a.as_deref().map(Pending::Tree).into_iter().collect();
+    let mut sb: Vec<Pending<K, V>> = b.as_deref().map(Pending::Tree).into_iter().collect();
+    loop {
+        match (sa.last(), sb.last()) {
+            (None, None) => return true,
+            (None, _) | (_, None) => return false,
+            (Some(&Pending::Tree(x)), Some(&Pending::Tree(y))) if std::ptr::eq(x, y) => {
+                if !self_equal(x) {
+                    return false;
+                }
+                sa.pop();
+                sb.pop();
+            }
+            (Some(&Pending::Entry(x)), Some(&Pending::Entry(y))) => {
+                if x.entry != y.entry {
+                    return false;
+                }
+                sa.pop();
+                sb.pop();
+            }
+            (Some(&Pending::Tree(x)), Some(&Pending::Tree(y))) => {
+                if x.count >= y.count {
+                    open(&mut sa, x);
+                } else {
+                    open(&mut sb, y);
+                }
+            }
+            (Some(&Pending::Tree(x)), Some(&Pending::Entry(_))) => open(&mut sa, x),
+            (Some(&Pending::Entry(_)), Some(&Pending::Tree(y))) => open(&mut sb, y),
+        }
+    }
+}
+
 impl<K: PartialEq, V: PartialEq> PartialEq for Map<K, V> {
     fn eq(&self, other: &Self) -> bool {
-        self.len() == other.len() && self.iter().eq(other.iter())
+        self.len() == other.len() && eq_trees(&self.root, &other.root)
     }
 }
 
