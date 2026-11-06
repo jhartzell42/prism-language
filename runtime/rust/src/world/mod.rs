@@ -12,11 +12,60 @@
 //!   transcripts to the byte.
 //! - [`scene`]: `Draw.Clickable` in a `Gui.Scene`, which the Test World clicks by path
 //!   (decisions.md D9) and the canvas World ignores.
+//! - [`probe`]: phase marks a driver can count work by.
 //!
 //! The CLI and canvas Worlds are crates of their own over this protocol (`worlds/`).
 
 pub mod scene;
 pub mod test_world;
+
+/// Where a tick and the loop around it stand, for a driver that counts work by phase
+/// (bench/gui/prism's `check`). The runtime marks the phases inside a tick, a World the
+/// ones around it; with no hook set a mark is one atomic load and a branch. Nothing a
+/// program computes reads it.
+pub mod probe {
+    use std::sync::OnceLock;
+
+    /// A phase: entered when marked, left at the next mark on the same thread.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    #[repr(u8)]
+    pub enum Phase {
+        /// The World's loop: events, reconciling windows, waiting.
+        Loop,
+        /// A tick's firings and wakes, up to the end of propagation.
+        Propagate,
+        /// The build, swap and leave lists.
+        Build,
+        /// The patch pass: each dirtied node's live fields, the window's layout included.
+        Patch,
+        /// The tick's outputs: the patch diffed against the document last sent.
+        Diff,
+        /// The World performing a tick's outputs.
+        Perform,
+        /// The compact round.
+        Compact,
+        /// The World painting and presenting a frame.
+        Paint,
+    }
+
+    /// How many phases there are, for a table indexed by `phase as usize`.
+    pub const PHASES: usize = 8;
+
+    static HOOK: OnceLock<fn(Phase)> = OnceLock::new();
+
+    /// Set the hook every mark calls, once per process; false when one was set already.
+    pub fn set_hook(hook: fn(Phase)) -> bool {
+        HOOK.set(hook).is_ok()
+    }
+
+    /// Enter `phase` on this thread.
+    #[inline]
+    pub fn enter(phase: Phase) {
+        if let Some(hook) = HOOK.get() {
+            hook(phase)
+        }
+    }
+}
 
 use std::collections::BTreeMap;
 use std::rc::Rc;

@@ -241,6 +241,89 @@ mod bench_driver {
     #[cfg(target_os = "macos")]
     unsafe extern "C" {
         fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut std::ffi::c_void) -> i32;
+        /// libsystem_kernel's `thread_selfcounts` (exported, in no header): flavour 1
+        /// fills the calling thread's instructions and cycles retired, two `u64`s.
+        fn thread_selfcounts(flavor: i32, buffer: *mut u64, bytes: usize) -> i32;
+    }
+
+    /// Instructions the calling thread has retired so far.
+    #[cfg(target_os = "macos")]
+    fn thread_instructions() -> u64 {
+        let mut c = [0u64; 2];
+        // Safety: `c` is two writable, aligned `u64`s and the call is told so in bytes;
+        // flavour 1 writes exactly that much (instructions, then cycles) and keeps no
+        // pointer to it.
+        let r = unsafe { thread_selfcounts(1, c.as_mut_ptr(), std::mem::size_of_val(&c)) };
+        if r != 0 {
+            eprintln!("driver: thread_selfcounts failed");
+            std::process::exit(1);
+        }
+        c[0]
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn thread_instructions() -> u64 {
+        instructions()
+    }
+
+    /// The work of each phase (prism_rtl's `world::probe`), by the instructions each
+    /// thread retired between its marks: each thread's current phase and its count at its
+    /// last mark, and the totals per phase over every thread.
+    mod phases {
+        use std::cell::Cell;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        use prism_rtl::world::probe::{PHASES, Phase};
+
+        pub static TOTAL: [AtomicU64; PHASES] = [const { AtomicU64::new(0) }; PHASES];
+        pub static TICKS: AtomicU64 = AtomicU64::new(0);
+
+        thread_local! {
+            static AT: Cell<Option<(Phase, u64)>> = const { Cell::new(None) };
+        }
+
+        /// The probe's hook: the instructions since this thread's last mark go to the
+        /// phase it was in.
+        pub fn mark(next: Phase) {
+            let now = super::thread_instructions();
+            if let Some((was, since)) = AT.get() {
+                TOTAL[was as usize].fetch_add(now - since, Ordering::Relaxed);
+            }
+            if next == Phase::Propagate {
+                TICKS.fetch_add(1, Ordering::Relaxed);
+            }
+            AT.set(Some((next, now)));
+        }
+
+        /// This thread's instructions since its last mark, counted to its phase.
+        pub fn flush() {
+            if let Some((was, since)) = AT.get() {
+                let now = super::thread_instructions();
+                TOTAL[was as usize].fetch_add(now - since, Ordering::Relaxed);
+                AT.set(Some((was, now)));
+            }
+        }
+
+        /// The totals so far, and the ticks.
+        pub fn now() -> ([u64; PHASES], u64) {
+            flush();
+            (std::array::from_fn(|i| TOTAL[i].load(Ordering::Relaxed)), TICKS.load(Ordering::Relaxed))
+        }
+
+        /// One step's line: each phase's instructions from `from` to `to`, the rest of
+        /// the process's (`all`, every thread's) as `other`, and the ticks.
+        pub fn line(op: &str, kind: &str, from: &([u64; PHASES], u64), to: &([u64; PHASES], u64), all: u64) -> String {
+            let names = ["loop", "propagate", "build", "patch", "diff", "perform", "compact", "paint"];
+            let mut out = format!("phases {op} {kind}");
+            let mut sum = 0;
+            for i in 0..PHASES {
+                let d = to.0[i] - from.0[i];
+                sum += d;
+                out += &format!(" {}={d}", names[i]);
+            }
+            out += &format!(" other={} total={all} ticks={}", all.saturating_sub(sum), to.1 - from.1);
+            out
+        }
     }
 
     /// `check`'s first check, as driver.cpp's `drawn_inside`.
@@ -311,6 +394,11 @@ mod bench_driver {
         let mut timing = false;
         let mut t0 = Instant::now();
         let (mut i0, mut setup) = (0u64, 0u64);
+        let mut p0 = ([0u64; prism_rtl::world::probe::PHASES], 0u64);
+        if check && !prism_rtl::world::probe::set_hook(phases::mark) {
+            eprintln!("driver: the phase probe's hook was set already");
+            std::process::exit(1);
+        }
         let mut model = Model::new();
         let failed = std::rc::Rc::new(std::cell::Cell::new(false));
         let failed_in = failed.clone();
@@ -318,6 +406,7 @@ mod bench_driver {
             settled: Some(Box::new(move |s: &mut dyn Session| {
                 if waiting {
                     let work = if check { instructions() - i0 } else { 0 };
+                    let p1 = if check { phases::now() } else { p0 };
                     if timing {
                         run += 1;
                         println!("{op} {run} {:.3}", t0.elapsed().as_secs_f64() * 1e3);
@@ -330,6 +419,8 @@ mod bench_driver {
                     if check {
                         let p = &steps[next - 1];
                         println!("check {op} step {next} ({} row {}): {work} instructions", p.text, p.row);
+                        let kind = if timing { "timed" } else if p.text == CREATE_1K { "setup" } else { "untimed" };
+                        println!("{}", phases::line(&op, kind, &p0, &p1, work));
                         if !timing && p.text == CREATE_1K {
                             setup = work;
                         }
@@ -363,6 +454,7 @@ mod bench_driver {
                 timing = p.timed;
                 model.press(&p);
                 if check {
+                    p0 = phases::now();
                     i0 = instructions();
                 }
                 t0 = Instant::now();

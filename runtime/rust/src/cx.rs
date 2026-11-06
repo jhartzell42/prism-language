@@ -24,6 +24,7 @@ use crate::cells::Tick;
 use crate::doc::{Document, Edit, Request};
 use crate::gc::Collector;
 use crate::pod::{Fault, Path, Pod, Segment};
+use crate::world::probe::{self, Phase as Mark};
 use crate::world::{Outcome, ReadyState, TickIn, TickOut};
 
 /// What a node method returns: a fault escaping it fails the tick.
@@ -309,6 +310,7 @@ impl Runtime {
 
     /// One tick as a World calls it: open, fire, deliver, close.
     pub fn tick(&mut self, root: &Rc<dyn Node>, input: &TickIn, ready: &dyn ReadyState) -> Result<TickOut, Fault> {
+        probe::enter(Mark::Propagate);
         self.cleanups.drain(..).for_each(Node::clean_up);
         let n = self.tick + 1;
         let mut cx = Cx { tick: n, read_at: Cell::new(n), phase: Cell::new(Phase::Propagating), height: None, ready, pushes: input.pushes.clone(), g: Gathered::default(), late: Default::default() };
@@ -351,9 +353,11 @@ impl Runtime {
         // A walk can list nodes for an earlier one (a builder's new row is patched; a row
         // built in the patch pass is built): the walks run again until nothing new is listed.
         loop {
+            probe::enter(Mark::Build);
             List::walk(&mut cx, |cx| &mut cx.g.builds, |n, cx| n.build(cx))?;
             List::walk(&mut cx, |cx| &mut cx.g.swaps, |n, cx| n.swap(cx))?;
             List::walk(&mut cx, |cx| &mut cx.g.leaves, |n, cx| n.leave(cx))?;
+            probe::enter(Mark::Patch);
             List::walk(&mut cx, |cx| &mut cx.g.patches, |n, cx| n.patch(cx))?;
             let g = &cx.g;
             if [&g.builds, &g.swaps, &g.leaves, &g.patches].iter().all(|l| l.walked >= l.nodes.len()) {
@@ -379,6 +383,7 @@ impl Runtime {
         self.collector.watch(g.zombies.into_iter());
         self.cleanups.extend(g.cleanups);
         (self.started, self.armed, self.later, self.tick) = (g.started.nodes, g.armed.nodes, g.later, cx.tick);
+        probe::enter(Mark::Diff);
         Ok(TickOut {
             tick: cx.tick,
             patch: self.document.diff(g.edits),

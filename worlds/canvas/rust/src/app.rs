@@ -21,6 +21,7 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use prism_rtl::world::probe::{self, Phase};
 use prism_rtl::{Path, Pod, Program, TickIn, TickOut, World};
 use softbuffer::{Context, Surface};
 use tiny_skia::Pixmap;
@@ -111,9 +112,11 @@ impl<P: Program> App<P> {
                 if let (Some(prism_rtl::Outcome::Value(v)), Ok(_)) = (&out.result, std::env::var("PRISM_RESULTS")) {
                     eprintln!("result: {v}");
                 }
+                probe::enter(Phase::Perform);
                 self.world.perform(&out);
             }
             Err(fault) => {
+                probe::enter(Phase::Loop);
                 let code = self.world.failed(&fault);
                 self.exit.get_or_insert(code);
                 return;
@@ -123,8 +126,10 @@ impl<P: Program> App<P> {
             self.exit.get_or_insert(code);
         }
         if let Some(p) = self.program.as_mut() {
+            probe::enter(Phase::Compact);
             p.compact();
         }
+        probe::enter(Phase::Loop);
     }
 
     /// Tick while the World has input or a tick is owed, for at most a frame. True when
@@ -303,7 +308,11 @@ impl<P: Program> ApplicationHandler for App<P> {
             }
             // A redraw the system asks for while ticks are owed waits for them too.
             WindowEvent::RedrawRequested if self.pending => self.shared.borrow_mut().dirty = true,
-            WindowEvent::RedrawRequested => self.redraw(&path),
+            WindowEvent::RedrawRequested => {
+                probe::enter(Phase::Paint);
+                self.redraw(&path);
+                probe::enter(Phase::Loop);
+            }
             other => self.input(&path, &other),
         }
     }

@@ -12,10 +12,12 @@
 //   transcripts to the byte.
 // - scene.hpp: `Draw.Clickable` in a `Gui.Scene`, which the Test World clicks by path
 //   (decisions.md D9) and the canvas World ignores.
+// - `probe`, below: phase marks a driver can count work by.
 
 #pragma once
 
 #include "prism_rtl/rc.hpp"
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -29,6 +31,46 @@
 #include "prism_rtl/pod.hpp"
 
 namespace prism_rtl {
+
+/// Where a tick and the loop around it stand, for a driver that counts work by phase
+/// (bench/gui/prism's `check`; the Rust crate's `world::probe`). The runtime marks the
+/// phases inside a tick, a World the ones around it; with no hook set a mark is one atomic
+/// load and a branch. Nothing a program computes reads it. The hook is process-wide (the
+/// canvas World ticks on its big stack's thread and paints on the main one) and may be
+/// called from any thread, one at a time.
+namespace probe {
+
+/// A phase: entered when marked, left at the next mark on the same thread.
+enum class Phase : std::uint8_t {
+    Loop,       ///< the World's loop: events, reconciling windows, waiting
+    Propagate,  ///< a tick's firings and wakes, up to the end of propagation
+    Build,      ///< the build, swap and leave lists
+    Patch,      ///< the patch pass: each dirtied node's live fields, the window's layout included
+    Diff,       ///< the tick's outputs: the patch diffed against the document last sent
+    Perform,    ///< the World performing a tick's outputs
+    Compact,    ///< the compact round
+    Paint,      ///< the World painting and presenting a frame
+};
+
+/// How many phases there are, for a table indexed by the phase.
+inline constexpr std::size_t PHASES = 8;
+
+using Hook = void (*)(Phase);
+
+inline std::atomic<Hook> hook{nullptr};
+
+/// Set the hook every mark calls, once per process; false when one was set already.
+inline bool set_hook(Hook h) {
+    Hook none = nullptr;
+    return hook.compare_exchange_strong(none, h, std::memory_order_acq_rel);
+}
+
+/// Enter `phase` on the calling thread.
+inline void enter(Phase phase) {
+    if (Hook h = hook.load(std::memory_order_acquire)) h(phase);
+}
+
+}  // namespace probe
 
 /// A tick's inputs: answers by path, to places that existed as the tick opened, and
 /// pushes keyed by element value, to every place with that element.
