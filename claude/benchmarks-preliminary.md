@@ -81,7 +81,115 @@ Instructions retired by one operation, millions, with the table's rows over `@Pe
 
 ## On the Linux cloud machine (6 November 2026)
 
-Filled in from bench/building/RESULTS.md and bench/running/RESULTS.md by the run on that machine.
+The cloud VM the branch was finished on: an Intel Xeon with 2 cores and 8 GB, Ubuntu
+24.04, clang++ 18 `-O3`, rustc 1.97, nothing else running, no display (the GUI runs under
+Xvfb) and no hardware counters (`perf` reports `instructions` as not supported), at
+`7d68a86` (the `for` change in). None of these numbers compares with the Mac's above; what
+compares is each pair's ratio. The scripts' own files are `bench/building/RESULTS.md`,
+`bench/running/RESULTS.md` and `bench/gui/RESULTS.md`.
+
+### Building from clean, seconds (bench/building/run.sh)
+
+| Subject | Rust: emit + build = total | rebuild | binary | C++: emit + build = total | rebuild | binary |
+|---|---|---|---|---|---|---|
+| prismc (33,506 lines of Prism; 115,103 of Rust, 188,493 of C++) | 55.0 + 140.9 = 195.9 | 121.2 | 29.5 MB | 79.9 + 789.8 = 869.7 | 765.2 | 50.8 MB |
+| chess (3,076 lines; 18,293 of Rust, 23,698 of C++) | 1.5 + 72.9 = 74.4 | 19.4 | 7.4 MB | 2.2 + 72.9 = 75.1 | 47.4 | 6.3 MB |
+| the table (2,133 lines; 14,391 of Rust, 18,711 of C++) | 1.0 + 69.8 = 70.8 | 16.4 | 6.9 MB | 1.6 + 63.4 = 65.0 | 42.6 | 5.3 MB |
+
+- **Rebuild** is the same build after the emitted program's own sources are touched: the
+  program compiled again over the runtime library and the dependencies the clean build left,
+  what an edit to a Prism program costs after its first build.
+- **On two cores the C++ compiler build is 5.6 times the Rust one** (790 s against 141 s);
+  on the Mac's twelve it was a third longer. The C++ build's CPU is the number that shows
+  on a small machine (claude/backend.md).
+- **prismc emits about 2,100 lines of Rust a second and 2,360 of C++ on itself**, against
+  12,000 to 14,000 on chess and the table: the emit time grows faster than the input.
+- **Small programs are a tie from clean** (73 s both for chess; most of it the runtime and
+  the World), and a Rust rebuild is 16 to 19 s against 43 to 47 s in C++.
+
+### Running prismc (bench/running/run.sh)
+
+| Configuration | prismc compiling itself: s | peak MB | normalize: s | peak MB |
+|---|---|---|---|---|
+| rust-release | 55.0 | 301 | 0.1 | 22 |
+| cpp-O3 | 79.2 | 420 | 0.2 | 36 |
+
+- Instructions are not counted here (no counters; valgrind is too slow for a run this long):
+  to rerun on the Mac. On the clock the Rust prismc compiles itself in 55 s against 79 s,
+  and holds 301 MB against 420 MB.
+
+### The GUI table under Xvfb (bench/gui/run.sh, 10 runs after 2)
+
+Milliseconds, the median with the fastest and slowest; peak memory in MB. The frame goes
+to an Xvfb server that shows nothing, so these are the programs' and the Worlds' own costs
+without a compositor; the C++ World presents only the damaged boxes on X11, the Rust World
+the whole frame.
+
+| Operation | Prism C++ | Prism Rust | GTK 3 |
+|---|---|---|---|
+| create 1,000 rows | 76.5 (72.0–81.6), 69 MB | 58.6 (52.5–60.6), 94 MB | 328.5 (313.2–429.1), 100 MB |
+| replace 1,000 rows | 128.0 (117.7–142.5) | 94.8 (82.5–133.5) | 383.5 (376.9–441.4) |
+| update every 10th | 10.2 (8.9–11.1) | 7.6 (6.4–8.9) | 37.1 (36.6–37.4) |
+| select a row | 7.1 (5.9–8.0) | 5.3 (4.1–6.4) | 4.1 (4.0–4.4) |
+| swap two rows | 6.8 (6.0–7.4) | 5.2 (4.2–6.0) | 83.1 (82.8–83.4) |
+| remove a row | 15.6 (14.4–16.9) | 10.2 (8.9–11.1) | 16.9 (16.8–20.4) |
+| create 10,000 rows | 1,200.5 (1,139.1–1,511.0), 555 MB | 1,065.0 (829.9–1,196.7), 598 MB | 26,976.3 (26,384.4–28,112.1), 311 MB |
+| append 1,000 rows | 78.2 (74.1–84.8) | 58.9 (52.7–63.5) | 807.0 (791.6–823.5) |
+| clear | 48.1 (44.6–56.9) | 36.6 (33.0–39.8) | 65.4 (64.1–65.7) |
+
+- **Rust is ahead on every operation here, by a fifth to a third**, where the Mac had C++
+  ahead on the three smallest. The difference is the frame: on the Mac the Rust World's
+  softbuffer present cost about 11 M instructions a frame against the C++ World's layer
+  image; under Xvfb a whole frame is a copy to a server that shows nothing, and the C++
+  World's damage-only present buys less. The Mac's ordering stands for the Mac.
+- **GTK 3 selects faster than either** (4.1 ms against 5.3 and 7.1) and is three to five
+  times slower on the creates, as on the Mac.
+
+### The GUI check by phase (bench/gui/prism/check.sh)
+
+Every operation's checks pass on both Worlds under Xvfb: no text drawn outside the window,
+and the screen shows the table the operation should leave (a pixel comparison: the X11
+paths, damage painting on X11 and the on-screen colours after the sRGB change are checked
+by it). With no counters the phase table is CPU milliseconds, one run each; a select is
+nine ticks, as on the Mac and as before the `for` change.
+
+| target | op | ticks | propagate | build | patch | diff | perform | paint | loop | total | ÷ create1k |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| C++ | create1k | 8 | 2.1 | 40.7 | 3.1 | 11.2 | 3.9 | 1.6 | 0.7 | 63.5 | 1.000 |
+| C++ | update10th | 9 | 1.4 | 2.8 | 2.5 | 0.8 | 0.4 | 0.2 | 0.5 | 8.5 | 0.134 |
+| C++ | select | 9 | 0.8 | 1.4 | 2.1 | 0.4 | 0.2 | 0.2 | 0.4 | 5.5 | 0.087 |
+| C++ | swap | 9 | 0.6 | 1.2 | 1.8 | 0.4 | 0.2 | 0.2 | 0.4 | 4.7 | 0.075 |
+| C++ | remove | 8 | 1.4 | 8.8 | 1.5 | 0.4 | 0.1 | 0.7 | 0.3 | 13.2 | 0.207 |
+| C++ | clear | 8 | 1.0 | 11.1 | 6.6 | 11.2 | 3.4 | 0.3 | 2.0 | 35.5 | 0.559 |
+| Rust | create1k | 8 | 2.5 | 27.5 | 3.6 | 10.6 | 4.7 | 2.2 | 0.1 | 51.2 | 1.000 |
+| Rust | update10th | 9 | 0.8 | 2.2 | 1.6 | 0.6 | 0.5 | 0.5 | 0.1 | 6.4 | 0.125 |
+| Rust | select | 9 | 0.4 | 1.1 | 1.2 | 0.2 | 0.2 | 0.4 | 0.1 | 3.6 | 0.070 |
+| Rust | swap | 9 | 0.4 | 1.2 | 1.2 | 0.2 | 0.2 | 0.4 | 0.1 | 3.8 | 0.074 |
+| Rust | remove | 8 | 0.7 | 5.0 | 0.9 | 0.3 | 0.1 | 1.3 | 0.1 | 8.4 | 0.165 |
+| Rust | clear | 8 | 0.6 | 7.4 | 3.3 | 11.9 | 4.3 | 0.7 | 0.1 | 28.4 | 0.555 |
+
+- **Remove's build is still C++ 8.8 ms against Rust 5.0 ms**, the shape of the Mac's 90 M
+  against 29 M instructions (claude/bugs/window-relayout-every-change.md), at a smaller
+  ratio on the clock.
+
+### The cost pairs (tests/cost/run.sh, valgrind's cachegrind, instructions)
+
+| Pair | one | forty | Rust | one | forty | C++ |
+|---|---|---|---|---|---|---|
+| a `let` read by ten | 2,907 M | 2,916 M | ok | 4,613 M | 4,674 M | ok |
+| a builder over its last source | 252.7 M | 253.5 M | ok | 488.5 M | 489.5 M | ok |
+| a row per key changed (`@PerKey`) | 32.1 M | 66.0 M | fails by 3% | 55.6 M | 78.8 M | ok |
+| no kept row woken by a removed key (ruling FV) | 1,239 M | 1,616 M | ok | 678 M | 1,165 M | ok |
+
+- **The `@PerKey` edit pair fails on Rust here by 3%** (forty edits cost 66.0 M against the
+  bar of twice 32.1 M), and fails identically with the compiler and sources from before the
+  `for` change (32.10 M against 65.98 M): forty one-key edits cost about 0.85 M each, one
+  row's work and a walk of 2,000 keys, which is what the pair asserts, but the whole-program
+  base the bar doubles is small under this counter. It passes with the Mac's counter and on
+  the C++ target here. Claude's pick, Jimmy's to rule: compare an edit's marginal cost
+  against the build's per-row cost instead of doubling the whole program.
+- **A removed key costs about 9.4 M in Rust and 12 M in C++** with 2,000 kept rows, none
+  of them woken: the `@PerKey` walk, the `for`'s key walk and the removed row's leaving.
 
 ## On Jimmy's Mac with agents building beside it (5 November 2026, and the GUI runs after it)
 
