@@ -5,3 +5,7 @@ use Ui.*
 
 test recursive_payloads, @demo:
     build
+
+test payload_matched_in_a_continuation, @tally:
+    build
+    compute until idle

@@ -65,6 +65,35 @@ let e3 = Pair (Neg (Num 3)), (Maybe (? (Num 4)))
 let c1 = Chain(head=1, rest=(? (Chain(head=2, rest=(? (Chain(head=3, rest=nil)))))))
 let c2 = Chain(head=1, rest=(? (Chain(head=2, rest=nil))))
 
+# A payload behind `Rc` bound by a pattern, copied into an unbounded function's
+# continuation (Rust: `let sub = (**sub).clone()`, a shadowing `let`) and matched there:
+# the `match` must read the copy, the value, not the `Rc` the pattern bound.
+type Tree = choice:
+    Leaf Nat
+    Node ?Tree, Nat
+derive ^Eq, ^Show
+
+Count: unbounded fn Tree -> Nat
+fn Count (Leaf n) = n
+fn Count (Node ?sub, n):
+    let k = Count (Leaf n)
+    let below = match ?sub:
+        ? t: Nodes t
+        nil: 0
+    k + below
+
+Nodes: fn Tree -> Nat
+fn Nodes (Leaf n) = 1
+fn Nodes (Node ?sub, n) = match ?sub:
+    ? t: 1 + (Nodes t)
+    nil: 1
+
+@tally: @unit
+@tally:
+    !done <- @Run Count, (Node (? (Node nil, 2)), 3)                                       # 0
+    $shown <- "working" then Show !done
+    Ui.Label(text=$shown)                                                                  # 1
+
 @demo: @unit
 @demo:
     Ui.Label(text=$"{Eval e1} {Eval e2} {Depth e1} {Depth e2} {Total c1}")                # 0

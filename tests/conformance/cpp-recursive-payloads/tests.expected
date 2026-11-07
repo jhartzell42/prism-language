@@ -1,4 +1,4 @@
-# Derived by hand from the program: `Eval e1` is -3+4, `e2` (2+5)*3, both depths 3, the chain 1+2+3; `e1` equals itself and sorts before `Both` (a later case), `Neg e1` equals itself, `c1` is greater than `c2` (a longer rest) and `c2` equals itself; two boxes of equal expressions are the same; `Neg (Maybe nil)` shown.
+# Derived by hand from the program: `Eval e1` is -3+4, `e2` (2+5)*3, both depths 3, the chain 1+2+3; `e1` equals itself and sorts before `Both` (a later case), `Neg e1` equals itself, `c1` is greater than `c2` (a longer rest) and `c2` equals itself; two boxes of equal expressions are the same; `Neg (Maybe nil)` shown. `Count` of the tree is 3 (the leaf) plus the size of the node below it, 1: 4.
 test recursive_payloads
 
 tick 0
@@ -7,3 +7,15 @@ tick 0
     1: Ui.Label(text="equal less equal greater equal")
     2: Ui.Label(text="same")
     3: Ui.Label(text="Neg (Maybe nil)")
+
+test payload_matched_in_a_continuation
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 2 ticks, 1 to 2
+
+tick 2
+  changed:
+    1: Ui.Label(text="4")
