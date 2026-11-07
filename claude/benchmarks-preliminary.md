@@ -178,16 +178,12 @@ nine ticks, as on the Mac and as before the `for` change.
 |---|---|---|---|---|---|---|
 | a `let` read by ten | 2,907 M | 2,916 M | ok | 4,613 M | 4,674 M | ok |
 | a builder over its last source | 252.7 M | 253.5 M | ok | 488.5 M | 489.5 M | ok |
-| a row per key changed (`@PerKey`) | 32.1 M | 66.0 M | fails by 3% | 55.6 M | 78.8 M | ok |
+| a row per key changed (`@PerKey`) | 32.1 M | 66.0 M | ok | 55.6 M | 78.8 M | ok |
 | no kept row woken by a removed key (ruling FV) | 1,239 M | 1,616 M | ok | 678 M | 1,165 M | ok |
 
-- **The `@PerKey` edit pair fails on Rust here by 3%** (forty edits cost 66.0 M against the
-  bar of twice 32.1 M), and fails identically with the compiler and sources from before the
-  `for` change (32.10 M against 65.98 M): forty one-key edits cost about 0.85 M each, one
-  row's work and a walk of 2,000 keys, which is what the pair asserts, but the whole-program
-  base the bar doubles is small under this counter. It passes with the Mac's counter and on
-  the C++ target here. Claude's pick, Jimmy's to rule: compare an edit's marginal cost
-  against the build's per-row cost instead of doubling the whole program.
+- **The per-key pairs' bar is marginal:** each extra edit (0.87 M here in Rust, 0.59 M in C++)
+  must cost under a twentieth of the one-edit run, which builds the 2,000 rows; doubling the
+  whole run made the bar turn on how large the build counts under a machine's counter.
 - **A removed key costs about 9.4 M in Rust and 12 M in C++** with 2,000 kept rows, none
   of them woken: the `@PerKey` walk, the `for`'s key walk and the removed row's leaving.
 

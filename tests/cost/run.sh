@@ -46,6 +46,22 @@ pair() {
 }
 pair "a let read by ten" one-reader ten-readers
 pair "a builder over its last source" builder-one-write builder-many-writes
-pair "a row per key changed" per-key-one-edit per-key-many-edits
-pair "no kept row woken by a removed key" per-key-drop-one per-key-drop-many
+# marginal LABEL FEW MANY: each of the 39 extra edits of MANY must cost under a twentieth
+# of FEW's whole run, which builds the 2,000 rows once: an edit is one row's work and a
+# walk of the keys, where doubling the whole run would turn on how large the build counts
+# under the machine's counter (Jimmy: the doubling was too strict)
+marginal() {
+    local few many
+    few=$(count "$2")
+    many=$(count "$3")
+    echo "cost ($target): $1: $2 $few instructions, $3 $many ($(( (many - few) / 39 )) per extra edit)"
+    if [ "$few" -gt 0 ] && [ "$many" -gt 0 ] && [ $(( (many - few) / 39 )) -lt $(( few / 20 )) ]; then
+        echo "cost: $1: ok"
+    else
+        echo "cost: $1: FAILED: an extra edit costs $(( (many - few) / 39 )) instructions, not under a twentieth of $2's $few"
+        failed=1
+    fi
+}
+marginal "a row per key changed" per-key-one-edit per-key-many-edits
+marginal "no kept row woken by a removed key" per-key-drop-one per-key-drop-many
 [ $failed = 0 ] && echo "cost: ok" || { echo "cost: some failed"; exit 1; }

@@ -105,12 +105,6 @@ Each has Claude's pick where it stands; his word overrules by editing.
   Rust (claude/bugs/window-relayout-every-change.md); prismc's emit time grows faster than
   its input (about 2,100 lines a second on itself here against 12,000 to 14,000 on chess
   and the table, cause unknown); gap OC and the string copies SC1 to SC7 (prismc/README.md).
-- **The cost pair `per-key-one-edit`/`-many-edits`** fails on this machine by 3% (66.0 M
-  against twice 32.1 M instructions under valgrind), with the old compiler and sources
-  too, so the bar is the matter, not the change: forty one-key edits cost about 0.85 M
-  each here, one row's work, but the whole-program base is small. Claude's pick: compare
-  the marginal cost of an edit against the per-row cost of the build. It passes with the
-  Mac's counter and on the C++ target here.
 - **The bugs filed, not fixed:** `claude/bugs/widget-plain-result-unbound.md`,
   `claude/bugs/bench-cuis-latin1-and-software-paint.md` (Cuis is out of the scripted runs).
 - **Remote branches to delete** (merged into `claude-self-hosting`; Claude deletes none):
