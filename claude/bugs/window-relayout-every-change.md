@@ -40,9 +40,12 @@ pass, and the paint is the damaged boxes.
   document from every place's entry (3,003 entries), once, and the window re-stacks the
   column's children: per change, a pass over every row's entry and every row's plan, not
   over its layout. In C++ it is three times Rust's (remove's build 90 M against 29 M):
-  `HostDoc::insert` puts the entries in one at a time, and C++'s persistent map copies a
-  path per insert where Rust's updates its own nodes in place (a profile of swap, while
-  it still gathered the outer, showed `Map::put` of the outer's two maps on top).
+  `HostDoc::insert` puts the entries in one at a time (a profile of swap, while it still
+  gathered the outer, showed `Map::put` of the outer's two maps on top). Both runtimes'
+  maps change their own nodes in place and copy only a node another map shares; with
+  that, on the Linux machine, remove's build is 7.5 ms of CPU in C++ against 8.8 before
+  (one run each), so the path copies were a part of the gap, not its body: what remains
+  is to profile.
 - **One re-stack per level of the moved path:** the column's result is computed again from
   its 1,001 children's plans (each reused), and the placing pass visits each plan to cull
   what does not show: linear, a few million instructions.

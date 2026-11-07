@@ -189,9 +189,10 @@ row's), each a computed answer a tick late.
   (claude/bugs/window-relayout-every-change.md).
 - **A structural change** (remove, create, clear) gathers the outer of its host's document
   from every place's entry, once, and the window re-stacks the column's children.
-- **A structural change costs C++ three times Rust's** (remove's build 90 M against 29 M):
-  the outer's maps are built an insert at a time, and C++'s persistent map copies a path
-  per insert (claude/bugs/window-relayout-every-change.md).
+- **A structural change costs C++ three times Rust's** (remove's build 90 M against 29 M
+  on the Mac): the outer's maps are built an insert at a time
+  (claude/bugs/window-relayout-every-change.md, which says what the map's in-place
+  update took off it and what is left to profile).
 
 ### The table's rows over `@PerKey`
 
