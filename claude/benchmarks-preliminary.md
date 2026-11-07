@@ -187,6 +187,65 @@ nine ticks, as on the Mac and as before the `for` change.
 - **A removed key costs about 9.4 M in Rust and 12 M in C++** with 2,000 kept rows, none
   of them woken: the `@PerKey` walk, the `for`'s key walk and the removed row's leaving.
 
+### Choices as inline variants (C++), 7 November 2026
+
+The C++ target's choices changed from a handle (a class holding `Rc<const std::variant>`,
+with `Rc<T>` of a value printed as `T` itself) to a `std::variant` held by value, with each
+recursive payload a `prism_rtl::Val<T>` (prismc/README.md, pick CH; runtime/cpp/README.md,
+"Sharing"). Measured on the same cloud VM as above (Intel Xeon, 2 cores, 8 GB, Ubuntu 24.04,
+clang++ 18 `-O3`, no counters, nothing else running), the same day, before and after at the
+same base commit (`fb6e462`, the Map's in-place nodes in): the before is a C++ prismc
+bootstrapped from the branch point in a scratch worktree, the after the branch's
+(`claude-cpp-inline-choices`). Neither is the 6 November row above, whose binary predates
+the Map change.
+
+- **The C++ prismc compiling itself to C++** (`prismc compile prismc --target cpp`,
+  `/usr/bin/time -v`, six runs each, interleaved; the 6 November row had 79.2 s and 420 MB):
+
+  | Layout | wall, s (median; runs) | peak RSS | binary | emitted C++ | built with clang++ -O3, two jobs |
+  |---|---|---|---|---|---|
+  | handles (before) | 85.8 (82.9, 85.7, 85.8, 85.8, 90.2, 91.6) | 429 MB | 53.0 MB | 188,493 lines | 886 s |
+  | inline variants (after) | 93.4 (91.0, 91.2, 92.6, 94.2, 97.1, 109.4) | 457 MB | 56.1 MB | 188,690 lines | 921 s |
+
+  The variants cost about 9% of the time and 6.5% of the memory on prismc, which is
+  mostly trees of choices (`Ty`, `Ex`, `Pa`, `OutTy`). What moved: a choice value is now
+  as large as its largest case wherever it is held (an `Array<Ty>`'s elements, a tuple, a
+  record field), where a handle was two pointers; copying one copies the case's fields
+  (several counts, one per `Text`, `Array` or `Val` in it) where a handle was one count,
+  and the emitted C++ copies where Rust moves (pick NC); and a tree node's recursive
+  payloads are each an allocation (`Val`) where the handle's one allocation held the whole
+  case. On the other side, a case with no recursive payload (`Var Nat`, most `OutTy`s) is
+  no allocation at all. The two about cancel in allocations, and the copies and the size
+  win, against this program.
+- **The GUI table by phase** (`bench/gui/prism/check.sh prism-cpp`, CPU milliseconds, one
+  run each as the table above; two runs of the after, to show the noise):
+
+  | layout | op | propagate | build | patch | diff | perform | paint | total |
+  |---|---|---|---|---|---|---|---|---|
+  | before | create1k | 1.9 | 36.7 | 4.0 | 13.8 | 3.4 | 2.7 | 63.4 |
+  | after | create1k | 1.8 / 2.8 | 36.0 / 53.7 | 3.4 / 4.8 | 12.5 / 15.1 | 3.3 / 3.6 | 1.6 / 2.3 | 59.2 / 83.6 |
+  | before | update10th | 1.5 | 2.8 | 2.4 | 0.8 | 0.4 | 0.3 | 8.6 |
+  | after | update10th | 1.3 / 1.9 | 2.8 / 4.5 | 2.0 / 3.2 | 0.7 / 1.1 | 0.4 / 0.6 | 0.2 / 0.3 | 7.7 / 12.4 |
+  | before | select | 1.0 | 2.2 | 2.7 | 0.6 | 0.4 | 0.2 | 7.6 |
+  | after | select | 0.8 / 0.7 | 1.4 / 1.4 | 1.7 / 1.8 | 0.4 / 0.3 | 0.2 / 0.2 | 0.1 / 0.2 | 4.9 / 5.1 |
+  | before | swap | 0.9 | 1.6 | 2.3 | 0.5 | 0.2 | 0.2 | 5.9 |
+  | after | swap | 0.9 / 1.5 | 1.4 / 2.4 | 1.8 / 2.8 | 0.3 / 0.5 | 0.2 / 0.2 | 0.2 / 0.2 | 5.2 / 8.5 |
+  | before | remove | 1.9 | 10.8 | 2.3 | 0.7 | 0.2 | 0.9 | 17.2 |
+  | after | remove | 2.3 / 1.6 | 11.1 / 8.2 | 1.9 / 1.4 | 0.6 / 0.4 | 0.2 / 0.1 | 0.8 / 1.0 | 17.2 / 13.3 |
+  | before | clear | 1.4 | 14.6 | 8.6 | 19.3 | 7.8 | 0.4 | 55.3 |
+  | after | clear | 1.5 / 1.3 | 15.6 / 13.1 | 9.1 / 8.1 | 15.6 / 18.3 | 5.8 / 6.2 | 0.3 / 0.3 | 50.4 / 50.3 |
+
+  The two after runs differ by up to 40% on the same operation (create1k's build 36.0
+  against 53.7 ms), more than any before/after gap: on this VM, with CPU nanoseconds for
+  a counter, the table says only that the GUI is not slower in a way one run shows. The
+  table's values (records of `Text`s and `Float`s, few choices) are where the inline layout
+  should cost least; prismc's trees are where it costs most.
+- **The cost pairs** (`tests/cost/run.sh --target cpp`, cachegrind) after: a `let` read by
+  ten 4,613 M / 4,653 M; a builder over its last source 267.3 M / 268.2 M; a row per key
+  changed 39.4 M / 65.4 M (0.67 M per extra edit); no kept row woken 756 M / 1,252 M (12.7 M
+  per extra edit); all four within their bars. The 6 November row's per-key one-edit run was
+  55.6 M and its drop-one 678 M; the Map change sits between the two runs too.
+
 ## On Jimmy's Mac with agents building beside it (5 November 2026, and the GUI runs after it)
 
 The sections from here on are the 5 November run at `aa500e5` and the GUI runs that

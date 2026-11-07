@@ -1097,7 +1097,7 @@ refused by the binary with the Rust target's message.
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
-- **The C++ bootstrap:** prismc itself compiles to C++ (188,493 lines: 63 units and 280
+- **The C++ bootstrap:** prismc itself compiles to C++ (188,690 lines: 64 units and 280
   headers, picks MH and SF) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
   takes it to its fixed point and checks its Rust against the Rust prismc's
   (bootstrap/README.md). clang++ -O3 builds it in about 165 s wall (1,310 s CPU) with
@@ -1279,6 +1279,16 @@ Gaps:
 
 C++ doubts:
 
+- **CH1** The inline layout is measured slower on prismc: compiling itself, the C++ prismc
+  takes about 9% more time and 6.5% more memory than with handles (claude/benchmarks-preliminary.md,
+  "Choices as inline variants (C++)", the same machine and base commit, six runs each),
+  the GUI table within its noise. prismc is trees of choices held in arrays, tuples and
+  records, where a value as large as its largest case, and a copy that counts every field
+  (the emitted C++ copies where Rust moves, pick NC), cost more than the handle's one
+  allocation saved. *First ruling (Claude's):* the layout mirrors Rust, as the brief asked,
+  and the numbers are recorded for Jimmy to rule on; *if otherwise:* the handle comes back
+  from `7dc334d^`, or a `Val` learns to compare pointers first where the type has no
+  `Float` (Rust's `Rc<T: Eq>` does), which this run did not try.
 - **MH1** A module's qualified references are found in its source text: a line that is no
   comment and holds a module's name and a dot (`Zoo.`) names that module. A text literal
   holding one adds a module the file does not need (more includes, never fewer); the
