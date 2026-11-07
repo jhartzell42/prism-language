@@ -548,9 +548,9 @@ table's rows went over `@PerKey`; GTK 3 is the toolkit written in C beside it.
   counts, about 3 ms on both.
 - **Remove runs the other way: C++ 128 million instructions against Rust 80 million** (Mac
   M2 Pro, Low Power Mode), 1.6 times. The column's document is gathered an insert at a
-  time, and C++'s persistent `Map` copies a path per insert where Rust's updates its own
-  nodes in place (claude/bugs/window-relayout-every-change.md). Also a runtime matter, in
-  `runtime/cpp`, and it stands either way.
+  time (claude/bugs/window-relayout-every-change.md). A runtime matter, in `runtime/cpp`,
+  which stands either way; the C++ `Map` changing its own nodes in place, as Rust's does,
+  took about a seventh off remove's build on the Linux machine, and the rest is unprofiled.
 - **prismc as the workload: Rust does less work.** Each compiler compiling itself (Mac M2
   Pro, 5 November, other jobs at load 3 to 13, prismc/README.md "Arrays and maps: what
   they hold"): the Rust prismc 586 G instructions, 45 to 46 s, 275 MB peak footprint; the

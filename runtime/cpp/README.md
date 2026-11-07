@@ -74,7 +74,7 @@ counts again.
 | `collections::Text` | `Text` (UTF-8: a byte range of a shared `std::string`; `len` in bytes, `view`, `concat`, `chars` decoded, `to_string`) | collections.hpp |
 | the prelude's `upper`, `lower` (`str::to_uppercase`, `to_lowercase`) | `text_upper`, `text_lower` ("Upper and Lower" below) | text_case.hpp |
 | `collections::Cursor` | `Cursor` (a `Text` and a byte index on a character boundary; `front`, `back`, `at_byte`, `at`, `step`, `step_back`, `before`, `after`, the last two views of the same buffer) | collections.hpp |
-| `collections::Map<K, V>` (a persistent AVL tree, ported from this one) | `Map<K, V>` (a persistent AVL tree): `get` → pointer, `mut_get` (the path copied), `contains`, `insert`/`remove` (this value), `inserted`/`removed` (new value), `unit`, ordered iteration | collections.hpp |
+| `collections::Map<K, V>` (a persistent AVL tree, ported from this one) | `Map<K, V>` (a persistent AVL tree whose updates change this map's own nodes in place and copy only a node another map shares, as Rust's `Rc::make_mut` does): `get` → pointer, `mut_get` (the path owned), `contains`, `insert`/`remove` (this value), `inserted`/`removed` (new value), `unit`, ordered iteration | collections.hpp |
 | `collections::Array<T>` (a persistent balanced tree of chunks, the same design) | `Array<T>` (a persistent balanced tree of chunks with a tail): `get`, `[]`, `mut_at`, `push_back`/`set` (this value), `pushed`/`updated`, `concat`, `take`, `drop_front` | collections.hpp |
 | `pod::Pod` | `Pod`: factories `unit`, `boolean`, `integer`, `int64` (Rust's `Pod::int`), `floating`, `character`, `text`, `duration`, `record`, `choice`, `name`, `element`, `tuple`, `array`, `map`, `nil`, `some`, `ok`, `failed`, `path`, `shown`; `kind()` and `if_<kind>()` accessors; `structure`, `field`, `tag`, `as_text`, `as_f64`, `elements`, `to_string` | pod.hpp |
 | `pod::F64`, `pod::ShownText` | `F64` (total order); a `Shown`'s text is `Pod::Shown::text` | pod.hpp |
@@ -183,7 +183,7 @@ the size of the collection and `m` of the second, against this library
 - **References:** an element's address holds while the array is read and while its other
   elements are updated in place; a push may move the tail's elements as its vector grows.
 - **A `Map`:** an AVL tree of counted nodes, one per entry. `Insert`, `Remove`, `?Get` and
-  indexing, `?First`: "log", kept (an update copies the path to its key). `Keys`,
+  indexing, `?First`: "log", kept (an update touches the path to its key, copying only a node another map shares). `Keys`,
   `Values`: "linear, in key order", kept. `Size`: "constant", kept (the root's count).
   `Map` of pairs: "`n` log `n`, the later pair winning", kept. `Union`: "the left
   winning; `m` log `(n+m)`", kept: `Map::united` puts the smaller map's entries into the
@@ -208,8 +208,10 @@ the size of the collection and `m` of the second, against this library
   back-pointer is a `Weak`: the host outlives its rows, and a row that outlives its
   host panics as a bug. The test `a_host_torn_down_with_its_rows_frees_everything` holds
   it. *Ruling (the coordinator's):* weak, and Rust gets the same fix.
-- **CW: persistent collections.** A `Map` is a persistent AVL tree (an update copies
-  the path to its key); an `Array` is a persistent balanced tree of chunks with a tail
+- **CW: persistent collections.** A `Map` is a persistent AVL tree (an update changes
+  this map's own nodes on the path to its key in place, and copies a node another map
+  shares, as Rust's `Rc::make_mut` does); an `Array` is a persistent balanced tree of
+  chunks with a tail
   (this README's "Arrays and maps: the costs"). Copy on write, as this library
   first had it, made prismc compiled to C++ quadratic in its own lexer and checker: the
   program showed the cost. *Ruling (Claude's):* these two structures. A `Text` is a
