@@ -113,15 +113,15 @@ fn Leaves x = match x:
     XUnreachable: True
     otherwise: False
 
-# A `match` or an if-let chain: the scrutinee bound once, each arm tested in turn; the arm
-# that holds sets the value and leaves. A guard that fails, or a `let` after the pattern
+# A `match` or an if-let chain: the scrutinee bound once (a name through its rename, pick
+# RN), each arm tested in turn; the arm that holds sets the value and leaves. A guard that fails, or a `let` after the pattern
 # that does not match, goes on to the next arm (Rust's semantics of both).
 CppMatch: unbounded fn Cp, Ex, [XArm], OutTy -> Text
 fn CppMatch cp, s, arms, (OutUnknown what) = TernaryMatch cp, s, arms
 fn CppMatch cp, s, arms, t:
     let ?bound = match s:
-        XVar n: ? (CppId n)
-        XRef (XVar n): ? (CppId n)
+        XVar n: ? (VarName cp, n)
+        XRef (XVar n): ? (VarName cp, n)
         otherwise: nil
     let subject = Or ?bound, "_m"
     let bind = match ?bound:
@@ -137,8 +137,8 @@ ReturnMatch: unbounded fn Cp, Ex, [XArm], OutTy -> Text
 fn ReturnMatch cp, s, arms, (OutUnknown what) = "return {TernaryMatch cp, s, arms};"
 fn ReturnMatch cp, s, arms, t:
     let ?bound = match s:
-        XVar n: ? (CppId n)
-        XRef (XVar n): ? (CppId n)
+        XVar n: ? (VarName cp, n)
+        XRef (XVar n): ? (VarName cp, n)
         otherwise: nil
     let subject = Or ?bound, "_m"
     let bind = match ?bound:

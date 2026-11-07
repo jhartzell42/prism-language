@@ -117,20 +117,47 @@ fn DepPath cp, n:
         ? ignore: abs
         nil: q
 
-# Whether a type holds a `Val` (an `Rc` of a value) anywhere: a struct holding one defines
-# its comparisons after itself, since a defaulted one would be defined at once, and clang
-# then instantiates the `Val`'s comparison of a type still incomplete (`Val<std::optional<T>>`
-# in `T`'s own case).
-HoldsRc: unbounded fn OutTy -> Bool
-fn HoldsRc t = match t:
+# Whether a field's type names a type that may be incomplete where the struct is defined,
+# and whose comparison a defaulted one would instantiate at once (clang defines a defaulted
+# comparison where it is declared): a `Val` (an `Rc` of a value) of anything, since the value
+# may be the type being defined; or a program type (a choice, a record) behind an array, a
+# map, a function, a dynamic or an event, where nothing orders it before this struct
+# (`ValueDeps` orders only what is held by value), and a standard template over it
+# (`Array<std::tuple<Text, T>>`) needs it complete. A struct holding one declares its
+# comparisons and defines them in the module's definitions, where every type is complete.
+Behind: unbounded fn Cp, OutTy -> Bool
+fn Behind cp, t = match t:
     OutRc ignore: True
-    OutOpt i: HoldsRc i
-    OutRes i: HoldsRc i
-    OutCell i: HoldsRc i
-    OutArray i: HoldsRc i
-    OutMap k, v: (HoldsRc k) or HoldsRc v
-    OutTuple ts: Fold ts, False, \|f, x| f or HoldsRc x
-    OutNamed ignore, args: Fold args, False, \|f, x| f or HoldsRc x
+    OutOpt i: Behind cp, i
+    OutRes i: Behind cp, i
+    OutCell i: Behind cp, i
+    OutTuple ts: Fold ts, False, \|f, x| f or Behind cp, x
+    OutArray i: NamesProgramType cp, i
+    OutMap k, v: (NamesProgramType cp, k) or NamesProgramType cp, v
+    OutFn ps, r: Fold ps, (NamesProgramType cp, r), \|f, x| f or NamesProgramType cp, x
+    OutDyn i: NamesProgramType cp, i
+    OutEvent i: NamesProgramType cp, i
+    OutNamed ignore, args: Fold args, False, \|f, x| f or Behind cp, x
+    otherwise: False
+
+# Whether a type names one of the program's value types anywhere.
+NamesProgramType: unbounded fn Cp, OutTy -> Bool
+fn NamesProgramType cp, t = match t:
+    OutNamed n, args:
+        let own = match ?TypeOf cp, n:
+            ? info: info.kind != "node" and info.kind != "job"
+            nil: False
+        own or Fold args, False, \|f, x| f or NamesProgramType cp, x
+    OutOpt i: NamesProgramType cp, i
+    OutRes i: NamesProgramType cp, i
+    OutRc i: NamesProgramType cp, i
+    OutCell i: NamesProgramType cp, i
+    OutArray i: NamesProgramType cp, i
+    OutMap k, v: (NamesProgramType cp, k) or NamesProgramType cp, v
+    OutTuple ts: Fold ts, False, \|f, x| f or NamesProgramType cp, x
+    OutFn ps, r: Fold ps, (NamesProgramType cp, r), \|f, x| f or NamesProgramType cp, x
+    OutDyn i: NamesProgramType cp, i
+    OutEvent i: NamesProgramType cp, i
     otherwise: False
 
 let noParts = Parts(forward=[[]], values=[[]], protos=[[]], classes=[[]], outer=[[]], generic=[[]], defs=[[]])
@@ -182,19 +209,17 @@ fn TypeParts cp, t:
     let members = Members (t.show != NotShown), t.pod, head
     let generic = (Len t.params) > 0
     let fwd = "{gens}{if t.shape == ShapeChoice: "class" else: "struct"} {t.name};"
-    let defs = TypeDefs cp, t, head
     let deps = Concat2 (Each t.cases, \|c| Concat2 (Each c.fields, \|((ignore, ft))| ValueDeps cp, ft))
-    let text = match t.shape:
+    let ((text, cmpDefs)) = match t.shape:
         ShapeChoice:
             let names = Each t.cases, \|c| c.name
             let cases = Join (Each t.cases, \|c| CaseStruct cp, c, eq, ord), "\n"
             let cls = ChoiceClass doc, gens, t.name, cases, (Join names, ", "), members
-            # the choice's comparisons declared before the cases' definitions, which a case's
-            # `Val` of the choice calls; defined after them, over the variant
-            let protos = CmpProtos gens, head, eq, ord
-            let caseDefs = Join (Filter (Each t.cases, \|c| CaseCmpDefs cp, gens, head, c, eq, ord), \|s| s != ""), "\n"
+            # the choice's comparisons over the variant, after its cases; the cases' own, where
+            # declared (`Behind`), among the module's definitions
             let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline std::strong_ordering operator<=>(const {head}& a, const {head}& b) \{ return prism_rtl::as_strong(a.cases() <=> b.cases()); \}" else: "")]], \|s| s != ""), "\n"
-            Join (Filter [[cls, protos, caseDefs, cmp]], \|s| s != ""), "\n"
+            let caseDefs = Filter (Each t.cases, \|c| CaseCmpDefs cp, gens, head, c, eq, ord), \|s| s != ""
+            (((Join (Filter [[cls, cmp]], \|s| s != ""), "\n"), caseDefs))
         otherwise:
             let first = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
             let fields = match t.shape:
@@ -205,19 +230,20 @@ fn TypeParts cp, t:
                 ShapeRecord: Each first.fields, \|((f, ignore))| FieldId f
                 ShapeNewtype: Each (Range0 (Len first.fields)), \|i| "a{i}"
                 otherwise: [[]]
-            let behind = Fold first.fields, False, \|f, ((ignore, ft))| f or HoldsRc ft
+            let behind = Fold first.fields, False, \|f, ((ignore, ft))| f or Behind cp, ft
             let ((cmps, cmpDefs)) = Comparisons gens, head, t.name, names, eq, ord, behind
             let decl = ValueStruct doc, gens, t.name, fields, (Join (Filter [[cmps, members]], \|s| s != ""), "\n")
-            Join (Filter [[decl, cmpDefs]], \|s| s != ""), "\n"
-    Parts(forward=[[fwd]], values=[[ValueDecl(path=(DeclPath cp, t.name), deps=deps, text=text)]], protos=[[]], classes=[[]], outer=[[]], generic=(if generic: [[defs]] else: [[]]), defs=(if generic: [[]] else: [[defs]]))
+            ((decl, (if cmpDefs == "": [[]] else: [[cmpDefs]])))
+    let defs = Append cmpDefs, [[(TypeDefs cp, t, head)]]
+    Parts(forward=[[fwd]], values=[[ValueDecl(path=(DeclPath cp, t.name), deps=deps, text=text)]], protos=[[]], classes=[[]], outer=[[]], generic=(if generic: defs else: [[]]), defs=(if generic: [[]] else: defs))
 
 # A value type's path in `ValueDecl`: in its module, or the crate's own.
 DeclPath: fn Cp, Text -> Text
 fn DeclPath cp, name = if cp.home == "": name else: "{cp.home}::{name}"
 
-# A struct's comparisons: defaulted, in the struct, unless a field holds a `Val` (`HoldsRc`),
-# when they are declared in the struct and defined after it (and after the choice it is a
-# case of): `==` over the fields in order, `<=>` lexicographic and total.
+# A struct's comparisons: defaulted, in the struct, unless a field's type may be incomplete
+# there (`Behind`), when they are declared in the struct and defined among the module's
+# definitions: `==` over the fields in order, `<=>` lexicographic and total.
 Comparisons: fn Text, Text, Text, [Text], Bool, Bool, Bool -> ((Text, Text))
 fn Comparisons gens, owner, self, names, eq, ord, behind:
     if not behind: (((Join (Filter [[(if eq: "bool operator==(const {self}&) const = default;" else: ""), (if ord: "auto operator<=>(const {self}&) const = default;" else: "")]], \|s| s != ""), "\n"), ""))
@@ -225,12 +251,8 @@ fn Comparisons gens, owner, self, names, eq, ord, behind:
         let decls = Join (Filter [[(if eq: "bool operator==(const {self}&) const;" else: ""), (if ord: "std::strong_ordering operator<=>(const {self}&) const;" else: "")]], \|s| s != ""), "\n"
         let eqBody = if (Len names) == 0: "true" else: Join (Each names, \|n| "{n} == o.{n}"), " && "
         let ordBody = if (Len names) == 0: "std::strong_ordering::equal" else: "prism_rtl::as_strong(std::tie({Join names, ", "}) <=> std::tie({Join (Each names, \|n| "o.{n}"), ", "}))"
-        let defs = Join (Filter [[(if eq: "{gens}inline bool {owner}::operator==(const {self}& o) const \{ return {eqBody}; \}" else: ""), (if ord: "{gens}inline std::strong_ordering {owner}::operator<=>(const {self}& o) const \{ return {ordBody}; \}" else: "")]], \|s| s != ""), "\n"
+        let defs = Join (Filter [[(if eq: "{gens}bool {owner}::operator==(const {self}& o) const \{ return {eqBody}; \}" else: ""), (if ord: "{gens}std::strong_ordering {owner}::operator<=>(const {self}& o) const \{ return {ordBody}; \}" else: "")]], \|s| s != ""), "\n"
         ((decls, defs))
-
-# A choice's comparisons declared, before its cases' are defined.
-CmpProtos: fn Text, Text, Bool, Bool -> Text
-fn CmpProtos gens, head, eq, ord = Join (Filter [[(if eq: "{gens}bool operator==(const {head}& a, const {head}& b);" else: ""), (if ord: "{gens}std::strong_ordering operator<=>(const {head}& a, const {head}& b);" else: "")]], \|s| s != ""), "\n"
 
 # The members a value type declares for the runtime: its printer and its plain data.
 Members: fn Bool, Bool, Text -> Text
@@ -243,20 +265,20 @@ fn Members shown, pod, head:
 CaseStruct: unbounded fn Cp, CaseDef, Bool, Bool -> Text
 fn CaseStruct cp, c, eq, ord:
     let fields = PositionalFields cp, c.fields
-    let ((cmps, ignore)) = Comparisons "", "", c.name, (CaseNames c), eq, ord, (CaseBehind c)
+    let ((cmps, ignore)) = Comparisons "", "", c.name, (CaseNames c), eq, ord, (CaseBehind cp, c)
     CaseDecl c.name, (Join (Filter [[fields, cmps]], \|s| s != ""), "\n")
 
-# A case's comparisons defined after its choice, when a field holds a `Val`.
+# A case's comparisons defined among the module's definitions, when a field is `Behind`.
 CaseCmpDefs: unbounded fn Cp, Text, Text, CaseDef, Bool, Bool -> Text
 fn CaseCmpDefs cp, gens, head, c, eq, ord:
-    let ((ignore, defs)) = Comparisons gens, "{head}::{c.name}", c.name, (CaseNames c), eq, ord, (CaseBehind c)
+    let ((ignore, defs)) = Comparisons gens, "{head}::{c.name}", c.name, (CaseNames c), eq, ord, (CaseBehind cp, c)
     defs
 
 CaseNames: fn CaseDef -> [Text]
 fn CaseNames c = Each (Range0 (Len c.fields)), \|i| "a{i}"
 
-CaseBehind: unbounded fn CaseDef -> Bool
-fn CaseBehind c = Fold c.fields, False, \|f, ((ignore, ft))| f or HoldsRc ft
+CaseBehind: unbounded fn Cp, CaseDef -> Bool
+fn CaseBehind cp, c = Fold c.fields, False, \|f, ((ignore, ft))| f or Behind cp, ft
 
 # A type's printer and plain data (claude/backend.md, "Printing").
 TypeDefs: unbounded fn Cp, TyDef, Text -> Text

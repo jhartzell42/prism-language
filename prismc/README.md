@@ -1125,14 +1125,17 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   with `Rc<T>` of any value type printed as `T` itself, so that every `*`, `&` and
   `.clone()` was a no-op and no payload needed a box; it cost an allocation and a count per
   choice value, and a record holding choices was that many pointers. What the layout asks
-  of the printer: a struct holding a `Val` (`HoldsRc`) declares its comparisons and defines
-  them after the choice is complete, since a defaulted one is defined at once and clang
-  then instantiates the `Val`'s comparison of a type still incomplete
-  (`Val<std::optional<T>>` in `T`'s own case); `<=>` is `std::strong_ordering` throughout
-  (Rust's `Ord` is total; `prism_rtl::as_strong`), so no return type waits on another's
-  deduction; `decl.hpp` holds declarations only, and a types header that holds `Elem` or
-  `Answer` by value includes `elem.types.hpp`. A cycle of records by value with no choice on
-  it does not compile (gap CY).
+  of the printer: a struct whose field names a type that may be incomplete where the struct
+  is defined (`Behind`: a `Val` of anything, or a program type behind an array, a map, a
+  function, a dynamic or an event, which nothing orders before it) declares its comparisons
+  and defines them among the module's definitions, out of line, since a defaulted one is
+  defined where it is declared and clang then instantiates a standard template over the
+  incomplete type (`Val<std::optional<T>>`, `Array<std::tuple<Text, T>>` in `T`'s own
+  case; g++ waits); `<=>` is `std::strong_ordering` throughout (Rust's `Ord` is total;
+  `prism_rtl::as_strong`), so no return type waits on another's deduction; `decl.hpp`
+  holds declarations only, and a types header that holds `Elem` or `Answer` by value
+  includes `elem.types.hpp`. A cycle of records by value with no choice on it does not
+  compile (gap CY).
 - **SE: statement expressions.** A block is `({ ...; value; })`, a `match` a statement
   expression whose `Slot<T>` (`T` the model's type for it) the arm that holds sets before
   `goto _done`; a labelled block's `break` sets its slot and jumps to its label. What it
