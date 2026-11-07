@@ -16,6 +16,10 @@
 // - `RcFromThis<T>`, as `std::enable_shared_from_this`, gives an object made by `make_rc`
 //   or `rc_placed` its own `Rc` (`rc_from_this()`); asking an object no `Rc` owns is a
 //   panic.
+// - `Val<T>` is Rust's `Rc<T>` of a value: an immutable value shared by copying the
+//   pointer, which compares, orders, prints and goes out as plain data by the value
+//   (Rust's `Rc<T: PartialEq>` compares the values too). `Rc<T>` keeps a pointer's
+//   identity for nodes and cells; a recursive payload of a choice or record is a `Val`.
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
 
@@ -363,6 +367,65 @@ private:
         return b;
     }
 };
+
+/// An ordering as Rust's `Ord` gives it: total. A weak one (equivalent values that are not
+/// equal) is read as total; a partial one has no conversion, and a type whose ordering is
+/// partial (one holding a `Float`) has no `^Ord` in Prism, so none is asked for.
+inline std::strong_ordering as_strong(std::strong_ordering c) noexcept { return c; }
+inline std::strong_ordering as_strong(std::weak_ordering c) noexcept {
+    return c < 0 ? std::strong_ordering::less : c > 0 ? std::strong_ordering::greater : std::strong_ordering::equal;
+}
+
+/// An immutable shared value: Rust's `Rc<T>` where `T` is a value (a recursive payload of a
+/// choice, `Lam(Rc<Term>)`). A copy shares the one allocation; `*v` and `v->` reach the
+/// value; `==` and `<=>` compare the values, never the pointers (Semantics ch. 11: sharing
+/// is invisible), and so do `show` and `to_pod` (pod.hpp, print.hpp). `T` may be incomplete
+/// where a `Val<T>` is declared as a member: nothing here needs its size until a value is
+/// made, read or compared.
+template <class T>
+class Val {
+public:
+    using prism_value = void;
+    using element_type = T;
+
+    explicit Val(T x) : p_(make_rc<const T>(std::move(x))) {}
+    Val(const Val&) noexcept = default;
+    Val(Val&&) noexcept = default;
+    Val& operator=(const Val&) noexcept = default;
+    Val& operator=(Val&&) noexcept = default;
+
+    const T& operator*() const noexcept { return *p_; }
+    const T* operator->() const noexcept { return p_.get(); }
+    const T* get() const noexcept { return p_.get(); }
+
+    bool operator==(const Val& o) const { return *p_ == *o.p_; }
+    std::strong_ordering operator<=>(const Val& o) const { return as_strong(*p_ <=> *o.p_); }
+
+private:
+    Rc<const T> p_;
+};
+
+template <class T>
+struct IsVal : std::false_type {};
+template <class T>
+struct IsVal<Val<T>> : std::true_type {};
+
+/// `*x` as the model writes it: the value behind a `Val`, or the place itself (Rust's `*` of
+/// a reference, which C++ has no need of). A temporary comes back as a value, so a
+/// reference bound to the result outlives nothing.
+template <class T>
+const T& val(const Val<T>& v) noexcept { return *v; }
+template <class T>
+T val(Val<T>&& v) { return *v; }
+template <class T>
+    requires(!IsVal<T>::value)
+T& val(T& x) noexcept { return x; }
+template <class T>
+    requires(!IsVal<T>::value)
+const T& val(const T& x) noexcept { return x; }
+template <class T>
+    requires(!IsVal<std::remove_cv_t<T>>::value && !std::is_lvalue_reference_v<T>)
+T val(T&& x) { return std::move(x); }
 
 }  // namespace prism_rtl
 

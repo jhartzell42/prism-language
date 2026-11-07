@@ -193,6 +193,11 @@ template <class T>
 struct Show<Rc<const T>> {
     static void show(const Rc<const T>& x, Printer& p) { Show<T>::show(*x, p); }
 };
+/// A recursive payload, `Rc<T>` in Rust, prints as its value.
+template <class T>
+struct Show<Val<T>> {
+    static void show(const Val<T>& x, Printer& p) { Show<T>::show(*x, p); }
+};
 
 template <class T>
 struct Show<std::optional<T>> {

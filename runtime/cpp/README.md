@@ -40,6 +40,35 @@ make -C runtime/cpp lib     # build/$(CONFIG)/libprism_rtl.a
 | `Rc<dyn Fn(..)>` (subscribers, reads) | `Rc<const std::function<..>>` |
 | `Rc::new_cyclic` | `rc_placed` (over `RcPlace`), then the weak self set afterwards (`HostRow::make`) |
 
+## Sharing
+
+How a Prism value is shared between the places that hold it, and what the emitted code
+pays for it (prismc/README.md, pick CH; the Rust runtime's forms in claude/backend.md,
+"Types"):
+
+- **A choice is its variant.** An emitted choice class holds `std::variant<Cases...>` by
+  value, the case structs nested in it; `cases()` is the variant by reference, and a copy
+  of the choice copies the variant, case struct and all, as Rust copies an enum. No
+  allocation and no count belong to the choice itself. A record is a plain struct, copied
+  by value.
+- **A recursive payload is a `Val<T>`** (rc.hpp): what the lowering puts behind `Rc`
+  because the payload's type reaches its own (`Lam(Rc<Term>)`). It holds an `Rc<const T>`;
+  a copy shares the allocation, `*v` and `v->` reach the value, and `==` and `<=>` compare
+  the values, never the pointers, as Rust's `Rc<T: PartialEq>` does, so sharing stays
+  invisible (Semantics ch. 11). Its `<=>` is `std::strong_ordering` (`as_strong`), as the
+  emitted comparisons are throughout: Rust's `Ord` is total. `Show`, `ToPod` and `FromPod`
+  go through to the value. `IsValue<Val<T>>` holds, and `rc(x)` of a value makes a `Val`.
+- **`val(x)`** is the model's `*x`: the value behind a `Val`, or `x` itself when it is no
+  `Val` (Rust's `*` of a reference, which C++ has no need of). A temporary comes back as a
+  value, so a reference bound to the result outlives nothing.
+- **`Rc<T>` keeps identity** for nodes, cells and the runtime's own structures: two `Rc`s
+  are equal when they point to the same block (`Dynamic`'s equality, the node lists).
+- **What the alternative cost.** Until 7 November 2026 a choice was a handle, a class
+  holding `Rc<const std::variant<..>>`, and `Rc<T>` of any value type was `T` itself, so no
+  payload needed a box and every `*` of the model was a no-op: one allocation and one count
+  per choice value, three for `Pair (Num 2), (Num 5)` where Rust has two, and a record of
+  choices was that many pointers.
+
 ## Threads
 
 `Rc`'s counts are plain integers, as Rust's are, because no two threads ever touch a

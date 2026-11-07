@@ -63,8 +63,8 @@ bool is_ok(const Expected<T, E>& e) { return e.has_value(); }
 template <class T, class E>
 bool is_err(const Expected<T, E>& e) { return !e.has_value(); }
 
-/// A case of a choice (`Shape::Circle`) against a value of the choice: the choice is a
-/// handle on its `cases()`, a `std::variant`.
+/// A case of a choice (`Shape::Circle`) against a value of the choice: the choice holds its
+/// `cases()`, a `std::variant`, by value; `as` is a reference into the value tested.
 template <class C, class V>
 struct Case {
     static bool is(const V& v) { return std::holds_alternative<C>(v.cases()); }
@@ -101,9 +101,10 @@ struct Case<pat::Key, Segment> {
 
 // ---- Sharing -----------------------------------------------------------------------------
 
-/// Whether a type is a Prism value, as opposed to a node or a cell: a value is shared by
-/// copying it (a choice is a handle on its cases already), so `Rc<T>` of a value is `T`,
-/// and `Rc::new` of one is the value itself. Emitted types say so with `prism_value`.
+/// Whether a type is a Prism value, as opposed to a node or a cell: `Rc<T>` of a value is a
+/// `Val<T>` (rc.hpp), an immutable shared value that compares by its value, and `Rc::new`
+/// of one makes a `Val`; of a node or a cell, a counted pointer with its identity. Emitted
+/// types say so with `prism_value`.
 template <class T>
 struct IsValue : std::bool_constant<std::is_arithmetic_v<T> || requires { typename T::prism_value; }> {};
 template <> struct IsValue<Unit> : std::true_type {};
@@ -119,11 +120,12 @@ template <class K, class V> struct IsValue<Map<K, V>> : std::true_type {};
 template <class T, class E> struct IsValue<Expected<T, E>> : std::true_type {};
 template <class... T> struct IsValue<std::tuple<T...>> : std::true_type {};
 
-/// `Rc::new(x)`: a value (or a closure, which a `Fn` takes) as it is; a node or a runtime
-/// cell on the heap.
+/// `Rc::new(x)`: a value as a `Val` (a recursive payload); a closure (which a `Fn` takes)
+/// as it is; a node or a runtime cell on the heap.
 template <class T>
 auto rc(T x) {
-    if constexpr (IsValue<T>::value || std::is_pointer_v<T> || requires { &T::operator(); }) return x;
+    if constexpr (std::is_pointer_v<T> || requires { &T::operator(); }) return x;
+    else if constexpr (IsValue<T>::value) return Val<T>(std::move(x));
     else return make_rc<T>(std::move(x));
 }
 

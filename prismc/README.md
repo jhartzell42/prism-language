@@ -1106,12 +1106,33 @@ refused by the binary with the Rust target's message.
 
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 
-- **CH: a choice is a handle.** A choice (and a row kind's values, `Elem`, `Answer`) is a
-  class holding a `prism_rtl::Rc` to a `std::variant` of its case structs. What it buys:
-  `Rc<T>` of any value type is `T` itself (`IsValueTy`), so a recursive type needs no box,
-  every `*` and `&` of the model is a no-op in C++, and `.` reaches a value's fields
-  whatever the Rust side derefs. A record is a plain struct; a cycle of records by value
-  with no choice on it does not compile (gap CY).
+- **CH: a choice is an inline variant, a recursive payload a `Val`.** A choice (and a row
+  kind's values, `Elem`, `Answer`) is a class holding a `std::variant` of its case structs
+  by value, the cases nested in it and complete before it, as Rust's enum is by value; a
+  record is a plain struct; and a payload the lowering puts behind `Rc` (a case or field
+  whose type reaches its own, claude/backend.md "Types") is a `prism_rtl::Val<T>`, an
+  immutable shared value: a copy shares its one allocation, `*v` reaches the value, and
+  `==`, `<=>`, `show` and `to_pod` go by the value, as Rust's `Rc<T>` of a value does. The
+  model's `*x` prints as `prism_rtl::val(x)`, the value behind a `Val` or the place itself
+  (Rust's `*` of a reference): the printer does not know every receiver's type, so the
+  runtime tells the two apart by overload, and a field or tuple part of a receiver of
+  unknown type goes through `val` too (Rust reaches a payload's fields through the `Rc`
+  unwritten). What it buys: a choice value is its variant, with no allocation and no count
+  of its own, and a record is copied by value as Rust copies it; `Pair (Num 2), (Num 5)` is
+  two allocations (the payloads' `Val`s), as in Rust, where the handle made three. A cycle
+  through a choice orders in the types header, since a `Val<T>` needs only `T` declared.
+  The alternative refused: the handle, a class holding `prism_rtl::Rc<const std::variant>`,
+  with `Rc<T>` of any value type printed as `T` itself, so that every `*`, `&` and
+  `.clone()` was a no-op and no payload needed a box; it cost an allocation and a count per
+  choice value, and a record holding choices was that many pointers. What the layout asks
+  of the printer: a struct holding a `Val` (`HoldsRc`) declares its comparisons and defines
+  them after the choice is complete, since a defaulted one is defined at once and clang
+  then instantiates the `Val`'s comparison of a type still incomplete
+  (`Val<std::optional<T>>` in `T`'s own case); `<=>` is `std::strong_ordering` throughout
+  (Rust's `Ord` is total; `prism_rtl::as_strong`), so no return type waits on another's
+  deduction; `decl.hpp` holds declarations only, and a types header that holds `Elem` or
+  `Answer` by value includes `elem.types.hpp`. A cycle of records by value with no choice on
+  it does not compile (gap CY).
 - **SE: statement expressions.** A block is `({ ...; value; })`, a `match` a statement
   expression whose `Slot<T>` (`T` the model's type for it) the arm that holds sets before
   `goto _done`; a labelled block's `break` sets its slot and jumps to its label. What it
@@ -1133,11 +1154,13 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   tail (`OutUnknown "the job's turn"`); such a `match` is a chain of `?:`, whose type C++
   works out from the arms (`finished(..)` converts to any `Turn<B>`); a guard binds the
   pattern twice, once for its test and once for the value.
-- **PT: `->` and `.`.** A node is reached through a `prism_rtl::Rc`, a value directly. The
-  printer writes `->` where the model says a receiver is a pointer (`self`, a field or a
-  `let` of a pointer type, `node` in a constructor) and, elsewhere, for a member name some
-  node has; every record has an `operator->` returning itself, so the second rule is
-  harmless on a value.
+- **PT: `->` and `.`.** A node is reached through a `prism_rtl::Rc`, a recursive payload
+  through a `prism_rtl::Val`, a value directly. The printer writes `->` where the model says
+  a receiver is a pointer (`self`, a field or a `let` of a pointer type, a `Val` among them,
+  `node` in a constructor) and, elsewhere, for a member name some node has; every record has
+  an `operator->` returning itself, so the second rule is harmless on a value. A receiver
+  of unknown type that is no node's member is read through `prism_rtl::val` (pick CH), in
+  case it is a `Val`.
 - **RN: a `let` that rebinds a name from itself** (Rust's shadowing, an `&` block's
   `let mut fuel = fuel.clone()`) binds a new name (`fuel_1`), which the statements after
   it read; a scope that binds the name anew hides the rename.
@@ -1184,7 +1207,10 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   and a C++ frame of the emitted code is larger than Rust's.
 - **PB: a pattern binds by reference into its value**, which therefore lives as long as
   the bindings: the scrutinee is a local (`_m`), and a guard's `let` over a value that
-  is no place binds it to a local (`_c1`) first (`ts-ch06-array-in-case`, under ASan).
+  is no place binds it to a local (`_c1`) first (`ts-ch06-array-in-case`, under ASan). A
+  payload behind a `Val` is matched as the value behind it, which lowering derefs
+  (`BehindRc`): the pattern's bindings are references into the `Val`'s allocation, which
+  the scrutinee keeps alive.
 - **PC: persistent collections.** The C++ runtime's `Map` is a persistent AVL tree (the
   Rust runtime's too) and its `Array` a persistent balanced tree of chunks with a tail,
   the Rust runtime's design (runtime/cpp/include/prism_rtl/collections.hpp), so a fold
@@ -1193,8 +1219,8 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   costs").
 - **MH: per-module headers.** No header holds the whole program. Each module has, in its
   directory (`src/check/env/` for `Check.Env`, whose namespace is `crate::check::env`),
-  `decl.hpp` (its types, nodes and jobs declared, its choices' handles), `types.hpp` (its
-  records, tags and newtypes, each after the types it holds, and its choices' cases),
+  `decl.hpp` (its types, nodes and jobs declared), `types.hpp` (its records, tags, newtypes
+  and choices with their cases, each after the types it holds by value),
   `module.hpp` (its prototypes, nodes and jobs) and, when it has templates, `generic.hpp`,
   each included from `src/` in angle brackets (`#include <check/env/decl.hpp>`: a quoted
   name is looked up beside the including file first, where `a/types/` would answer for the

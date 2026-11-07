@@ -54,18 +54,18 @@ public:
     using Cases = std::variant<Less, Equal, Greater>;
     template <class C>
         requires prism_rtl::one_of<C, Less, Equal, Greater>
-    Ordering(C c) : cases_(prism_rtl::make_rc<const Cases>(std::move(c))) {}
-    const Cases& cases() const { return *cases_; }
+    Ordering(C c) : cases_(std::move(c)) {}
+    const Cases& cases() const { return cases_; }
     const char* name() const {
         return std::holds_alternative<Less>(cases()) ? "Less" : std::holds_alternative<Equal>(cases()) ? "Equal" : "Greater";
     }
     void show(Printer& p) const { p.choice(name(), {}); }
     Pod to_pod() const { return Pod::name(name()); }
     friend bool operator==(const Ordering& a, const Ordering& b) { return a.cases() == b.cases(); }
-    friend auto operator<=>(const Ordering& a, const Ordering& b) { return a.cases() <=> b.cases(); }
+    friend std::strong_ordering operator<=>(const Ordering& a, const Ordering& b) { return prism_rtl::as_strong(a.cases() <=> b.cases()); }
 
 private:
-    prism_rtl::Rc<const Cases> cases_;
+    Cases cases_;
 };
 
 /// A derived `FromPod`'s field.

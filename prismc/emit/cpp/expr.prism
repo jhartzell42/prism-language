@@ -48,7 +48,6 @@ fn CppLoose x = match x:
     XIf ignore, ignore, ignore: True
     XRef y: CppLoose y
     XRefMut y: CppLoose y
-    XDeref y: CppLoose y
     XClone y: CppLoose y
     otherwise: False
 
@@ -80,9 +79,12 @@ fn CppExpr cp, x = match x:
     # copies it, which counts a reference.
     XRegex p, f: "([]() -> const Regex& \{ static const Regex r = Regex::lit({CppString p}, {CppString f}); return r; \}())"
     XReplacement p, r, f: "([]() -> const RegexReplacement& \{ static const RegexReplacement r = RegexReplacement::lit({CppString p}, {CppString f}, {CppString r}); return r; \}())"
+    # `&x` and `x.clone()` are the value itself (a reference is `const T&`, a copy shares);
+    # `*x` is the value behind a `Val` (a recursive payload), or the place itself when `x`
+    # is no `Val` (Rust's `*` of a reference), which the runtime's `val` tells apart
     XRef y: CppExpr cp, y
     XRefMut y: CppExpr cp, y
-    XDeref y: CppExpr cp, y
+    XDeref y: "prism_rtl::val({CppExpr cp, y})"
     XTarget y: CppExpr cp, y
     XClone y: CppExpr cp, y
     XWeak y: "prism_rtl::weaken({CppExpr cp, y})"
@@ -118,7 +120,7 @@ fn CppExpr cp, x = match x:
     XClosure mv, ps, body: CppClosure cp, mv, ps, body
     XTry y: "TRY({CppExpr cp, y})"
     XField r, f: CppField cp, r, f
-    XPart r, k: "std::get<{k}>({CppExpr cp, r})"
+    XPart r, k: "std::get<{k}>({AsValue cp, r})"
     XDecode t, y: "TRY(prism_rtl::from_pod<{CppType cp, t}>({CppExpr cp, y}))"
     XCast y, t: "static_cast<{CppType cp, t}>({CppExpr cp, y})"
     XTyped y, t:
@@ -177,23 +179,31 @@ fn IsNodeType cp, p = match ?TypeOf cp, p:
     nil: False
 
 # A field: a node's member through its pointer, a value's directly; `self`'s through
-# `this`; a tuple struct's `0` its `a0`.
+# `this`; a tuple struct's `0` its `a0`. A receiver whose type the printer does not know may
+# be a `Val` (Rust reaches a payload's fields through the `Rc` unwritten): `val` gives the
+# value behind one, or the receiver itself.
 CppField: unbounded fn Cp, Ex, Text -> Text
 fn CppField cp, XSelf, f = "this->{FieldId f}"
 fn CppField cp, r, f:
     let name = if IsDigits f: "a{f}" else: FieldId f
     # by the receiver's type where it is known, else by whether some node has the member
-    let through = match ?Pointer cp, r:
-        ? b: if b: "->" else: "."
+    match ?Pointer cp, r:
+        ? b: "{CppTight cp, r}{if b: "->" else: "."}{name}"
         nil: match cp.members[f]:
-            ? ignore: "->"
-            nil: "."
-    "{CppTight cp, r}{through}{name}"
+            ? ignore: "{CppTight cp, r}->{name}"
+            nil: "{AsValue cp, r}.{name}"
+
+# A receiver as a value: itself where the printer knows it is one, else through `val`, in
+# case it is a `Val`.
+AsValue: unbounded fn Cp, Ex -> Text
+fn AsValue cp, r = match ?Pointer cp, r:
+    ? False: CppExpr cp, r
+    otherwise: "prism_rtl::val({CppExpr cp, r})"
 
 IsDigits: fn Text -> Bool
 fn IsDigits t = t != "" and FoldChars t, True, \|ok, c| ok and Contains "0123456789", c
 
-# A constructor: a choice's case wrapped in its handle, a newtype's or unit type's value, the
+# A constructor: a choice's case moved into the choice, a newtype's or unit type's value, the
 # runtime's cases by their C++ names.
 CppCtor: unbounded fn Cp, Text, [Ex] -> Text
 fn CppCtor cp, p, args = match p:
@@ -354,11 +364,12 @@ fn ?Pointer cp, r = match r:
         nil: nil
     otherwise: nil
 
+# Whether a type's members are reached by `->`: a shared pointer's, and a `Val`'s (pick PT).
 IsPointerTy: fn Cp, OutTy -> Bool
 fn IsPointerTy cp, t = match t:
     OutNamed "prism_rtl::Rows", ignore: True
     OutPort ignore: False
-    OutRc i: not (IsValueTy cp, i)
+    OutRc ignore: True
     OutObj ignore: True
     OutJob ignore: True
     OutShowAny: True

@@ -390,7 +390,20 @@ struct FromPod<Fallible<T>> {
     }
 };
 
-/// A recursive payload, `Rc<T>` in Rust.
+/// A recursive payload, `Rc<T>` in Rust: a `Val<T>` goes out as its value and comes back as
+/// one made from it.
+template <class T>
+struct ToPod<Val<T>> {
+    static Pod to_pod(const Val<T>& x) { return prism_rtl::to_pod(*x); }
+};
+template <class T>
+struct FromPod<Val<T>> {
+    static Result<Val<T>> from_pod(const Pod& p) {
+        auto v = prism_rtl::from_pod<T>(p);
+        if (!v) return unexpected(v.error());
+        return Val<T>(std::move(v).value());
+    }
+};
 template <class T>
 struct ToPod<Rc<const T>> {
     static Pod to_pod(const Rc<const T>& x) { return prism_rtl::to_pod(*x); }

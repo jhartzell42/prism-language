@@ -390,12 +390,13 @@ prismc/emit/cpp/ and its templates (`Emit.Cpp.Templates`). Everything above hold
 what differs is how C++ spells it.
 
 - **The program** is `Makefile`; per module, in its directory (`src/DIR/`, `check/env`
-  for `Check.Env`), the headers `decl.hpp` (its types declared, its choices' handles),
-  `types.hpp` (its value types, each after the types it holds by value, and its choices'
-  cases), `module.hpp` (prototypes, nodes and jobs) and, when it has templates,
+  for `Check.Env`), the headers `decl.hpp` (its types declared),
+  `types.hpp` (its value types, choices with their cases among them, each after the types
+  it holds by value), `module.hpp` (prototypes, nodes and jobs) and, when it has templates,
   `generic.hpp`, each including only the
   layers of the modules it needs (prismc/README.md, pick MH); `src/elem.decl.hpp` and
-  `src/elem.types.hpp` for `crate::Elem` and `crate::Answer`; `src/programs.hpp` (the
+  `src/elem.types.hpp` for `crate::Elem` and `crate::Answer` (declared, and defined with
+  their cases); `src/programs.hpp` (the
   program classes); `src/main.cpp` (`Elem`'s and `Answer`'s definitions, `test_world()`,
   `main`), `src/prelude.hpp` and the modules' definitions in translation units,
   `src/unit_N.cpp`, several small modules to a unit (prismc/README.md, pick SF). The
@@ -404,11 +405,14 @@ what differs is how C++ spells it.
   and the virtual `tick` and `compact`; `main` runs `test` under the C++ Test World and a
   `@main` root under the C++ CLI World (worlds/cli/cpp).
 - **Types.** A record, a tag's `Level`, a newtype and a unit type are structs (fields in
-  order, designated initializers); a choice and a row kind's values are a handle on a
-  shared `std::variant` of case structs (`Term::Var`), so a value behind an `Rc` is the
-  value itself and a recursive type needs no box. `?a` is `std::optional`, `~a`
-  `Fallible`, a tuple `std::tuple`, `Rc<dyn Fn>` `prism_rtl::Fn`, a job `JobRef`. A
-  node is a class deriving from `Node` (or the prelude's `Row`), held by
+  order, designated initializers); a choice and a row kind's values are a class holding a
+  `std::variant` of nested case structs (`Term::Var`) by value, as the Rust enum is; a
+  recursive payload (`Rc<T>` above) is a `prism_rtl::Val<T>`, an immutable shared value
+  that compares, orders, prints and goes out as plain data by its value, as Rust's `Rc<T>`
+  of a value does (prismc/README.md, pick CH). The model's `*x` is `prism_rtl::val(x)`: the
+  value behind a `Val`, or the place itself when `x` is a reference. `?a` is
+  `std::optional`, `~a` `Fallible`, a tuple `std::tuple`, `Rc<dyn Fn>` `prism_rtl::Fn`, a
+  job `JobRef`. A node is a class deriving from `Node` (or the prelude's `Row`), held by
   `prism_rtl::Rc` (plain counts, one thread); its constructor is `make` and its methods
   are members.
 - **Expressions.** A block, a `match`, an if-let chain and a labelled block are GNU
@@ -420,7 +424,8 @@ what differs is how C++ spells it.
   temporaries, and refuses `?` of a place. A
   pattern tests with `prism_rtl::is<Case>` and binds `prism_rtl::as<Case>(v).aN`.
 - **What the library adds for the emitter** is `prism_rtl/lang.hpp`: `Slot`, `TRY`, the
-  pattern helpers, `rc` (`Rc::new`: a value as it is, a node or a cell on the heap),
+  pattern helpers, `rc` (`Rc::new`: a value as a `Val`, a node or a cell on the heap),
+  `val` (rc.hpp: `*x`),
   `share`/`weaken`/`upgrade`, `Fn`, `str`/`cat` (`format!`), `deref` (Rust's auto-deref of
   a cell), `host_new`, and the constructors whose type the context gives (`make_new`,
   `snapshot`, `finished`).

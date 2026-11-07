@@ -81,14 +81,14 @@ $(WORLD_LIBS): FORCE | $(LIB)
 </cpp>
 
 # A module's headers, three layers and a fourth for templates (prismc/README.md, pick MH):
-# `NAME.decl.hpp`, its types and nodes declared and its choices' handles; `NAME.types.hpp`,
-# its records (each after the types it holds) and its choices' cases; `NAME.hpp`, its
-# functions' prototypes and its nodes and jobs; `NAME.generic.hpp`, when it has any, the
-# definitions of its generic functions and types.
-CppDeclHeader: fn Text, Text, Text, Text -> Text
-fn CppDeclHeader title, includes, forward, handles = inline_text <cpp>
-// {{title}}: its types, nodes and jobs declared, and its choices' handles, emitted by
-// prismc (claude/backend.md). Edit the Prism source, not this file.
+# `NAME.decl.hpp`, its types and nodes declared; `NAME.types.hpp`, its value types (records,
+# tags, newtypes and choices with their cases, each after the types it holds by value);
+# `NAME.hpp`, its functions' prototypes and its nodes and jobs; `NAME.generic.hpp`, when it
+# has any, the definitions of its generic functions and types.
+CppDeclHeader: fn Text, Text, Text -> Text
+fn CppDeclHeader title, includes, forward = inline_text <cpp>
+// {{title}}: its types, nodes and jobs declared, emitted by prismc (claude/backend.md).
+// Edit the Prism source, not this file.
 #pragma once
 
 #include "prelude.hpp"
@@ -100,15 +100,14 @@ using namespace prelude;
 
 {{forward}}
 
-{{handles}}
-
 }  // namespace crate
 </cpp>
 
-CppTypesHeader: fn Text, Text, Text, Text -> Text
-fn CppTypesHeader title, includes, values, cases = inline_text <cpp>
-// {{title}}: its records, tags and newtypes (each after the types it holds) and its
-// choices' cases, emitted by prismc (claude/backend.md). Edit the Prism source, not this file.
+CppTypesHeader: fn Text, Text, Text -> Text
+fn CppTypesHeader title, includes, values = inline_text <cpp>
+// {{title}}: its value types (records, tags, newtypes and choices with their cases), each
+// after the types it holds by value, emitted by prismc (claude/backend.md). Edit the Prism
+// source, not this file.
 #pragma once
 
 {{includes}}
@@ -118,8 +117,6 @@ namespace crate {
 using namespace prelude;
 
 {{values}}
-
-{{cases}}
 
 }  // namespace crate
 </cpp>
@@ -177,12 +174,12 @@ using namespace prelude;
 }  // namespace crate
 </cpp>
 
-# `elem.decl.hpp`: `Elem` and `Answer` declared, their handles, and what the prelude says of
-# the program's rows; `elem.types.hpp`: their cases.
-CppElemDecl: fn Text, Text, Text, Text -> Text
-fn CppElemDecl includes, forward, handles, rows = inline_text <cpp>
-// The program's `Elem` and `Answer` declared, their handles, and the prelude's rows,
-// emitted by prismc (claude/backend.md). Edit the Prism sources, not this file.
+# `elem.decl.hpp`: `Elem` and `Answer` declared, and what the prelude says of the program's
+# rows; `elem.types.hpp`: the two classes with their cases.
+CppElemDecl: fn Text, Text, Text -> Text
+fn CppElemDecl includes, forward, rows = inline_text <cpp>
+// The program's `Elem` and `Answer` declared, and the prelude's rows, emitted by prismc
+// (claude/backend.md). Edit the Prism sources, not this file.
 #pragma once
 
 #include "prelude.hpp"
@@ -194,8 +191,6 @@ using namespace prelude;
 
 {{forward}}
 
-{{handles}}
-
 namespace prelude {
 
 {{rows}}
@@ -206,8 +201,8 @@ namespace prelude {
 </cpp>
 
 CppElemTypes: fn Text, Text -> Text
-fn CppElemTypes includes, cases = inline_text <cpp>
-// The cases of the program's `Elem` and `Answer`, emitted by prismc (claude/backend.md).
+fn CppElemTypes includes, values = inline_text <cpp>
+// The program's `Elem` and `Answer` with their cases, emitted by prismc (claude/backend.md).
 // Edit the Prism sources, not this file.
 #pragma once
 
@@ -218,7 +213,7 @@ namespace crate {
 
 using namespace prelude;
 
-{{cases}}
+{{values}}
 
 }  // namespace crate
 </cpp>

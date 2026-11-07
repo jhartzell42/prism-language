@@ -14,9 +14,11 @@
 # constructors, the order of a record's fields, which names are a node's members (reached
 # through the node's shared pointer, `->`).
 #
-# The C++ forms (prismc/README.md, "The C++ target"): a record is a struct, a choice a
-# handle on a shared `std::variant` of its cases (so a value behind an `Rc` is the value
-# itself, and a recursive type needs no box); a node is a class deriving from `Node`, held
+# The C++ forms (prismc/README.md, "The C++ target"): a record is a struct, a choice a class
+# holding a `std::variant` of its cases by value, as Rust's enum is by value, and a
+# recursive payload (the lowering's `OutRc`) a `prism_rtl::Val`, an immutable shared value
+# that compares by its value as Rust's `Rc<T>` does; `*x` of the model is `prism_rtl::val(x)`,
+# the value behind a `Val` or the place itself. A node is a class deriving from `Node`, held
 # by `prism_rtl::Rc`; a `match`, an if-let chain and a labelled block are GNU statement
 # expressions whose value is a `Slot`, except a function's closing `match`, which returns
 # from its arms.
@@ -270,7 +272,7 @@ fn CppType cp, t = match t:
     OutEvent i: "Event<{CppType cp, i}>"
     OutDyn i: "Dynamic<{CppType cp, i}>"
     OutGen n: n
-    OutRc i: if IsValueTy cp, i: CppType cp, i else: "prism_rtl::Rc<{CppType cp, i}>"
+    OutRc i: if IsValueTy cp, i: "prism_rtl::Val<{CppType cp, i}>" else: "prism_rtl::Rc<{CppType cp, i}>"
     OutPod: "Pod"
     OutShowAny: "prism_rtl::Rc<const DynShow>"
     OutHold i: "Hold<{CppType cp, i}>"
@@ -314,7 +316,7 @@ fn TypePath p:
     Join (SplitOn noHoles, "<_>"), ""
 
 # A type whose values are shared by copying (the C++ runtime's `IsValue`): an `Rc` of one
-# is the value itself.
+# is a `prism_rtl::Val`, an immutable shared value; of a node or a cell, a `prism_rtl::Rc`.
 IsValueTy: fn Cp, OutTy -> Bool
 fn IsValueTy cp, t = match t:
     OutNamed n, ignore: match ?TypeOf cp, n:
