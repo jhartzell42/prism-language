@@ -1,0 +1,9 @@
+# Derived by hand from the program: `Eval e1` is -3+4, `e2` (2+5)*3, both depths 3, the chain 1+2+3; `e1` equals itself and sorts before `Both` (a later case), `Neg e1` equals itself, `c1` is greater than `c2` (a longer rest) and `c2` equals itself; two boxes of equal expressions are the same; `Neg (Maybe nil)` shown.
+test recursive_payloads
+
+tick 0
+  added:
+    0: Ui.Label(text="1 21 3 3 6")
+    1: Ui.Label(text="equal less equal greater equal")
+    2: Ui.Label(text="same")
+    3: Ui.Label(text="Neg (Maybe nil)")

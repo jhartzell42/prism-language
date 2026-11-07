@@ -1,0 +1,7 @@
+# Recursive payloads compared, ordered, shown: declarations of app.prism.
+emit Ui.*
+use App.*
+use Ui.*
+
+test recursive_payloads, @demo:
+    build

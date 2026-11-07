@@ -1,0 +1,73 @@
+# Recursive payloads behind `Rc` (claude/backend.md, "Types"): a choice whose cases hold
+# itself directly, in an optional and in a tuple; a record recursive through an optional; a
+# record holding the choice by value; each compared, ordered and shown. Written for prismc's
+# C++ back end (prismc/README.md, pick CH: a choice holds its variant by value and a
+# recursive payload is a `prism_rtl::Val`, so a struct holding one defines its comparisons
+# after the choice is complete); subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Expr = choice:
+    Num Int
+    Neg Expr
+    Pair Expr, Expr
+    Maybe ?Expr
+    Both ((Expr, Nat))
+derive ^Eq, ^Ord, ^Show
+
+type Chain = record:
+    head: Nat
+    rest: ?Chain
+derive ^Eq, ^Ord, ^Show
+
+type Boxed = record:
+    label: Text
+    expr: Expr
+derive ^Eq, ^Show
+
+Eval: fn Expr -> Int
+fn Eval (Num n) = n
+fn Eval (Neg e) = 0 - (Eval e)
+fn Eval (Pair a, b) = (Eval a) + (Eval b)
+fn Eval (Maybe nil) = 0
+fn Eval (Maybe (? e)) = Eval e
+fn Eval (Both ((e, k))) = (Eval e) * (Int k)
+
+Depth: fn Expr -> Nat
+fn Depth (Num n) = 1
+fn Depth (Neg e) = 1 + (Depth e)
+fn Depth (Pair a, b) = 1 + (Larger (Depth a), (Depth b))
+fn Depth (Maybe nil) = 1
+fn Depth (Maybe (? e)) = 1 + (Depth e)
+fn Depth (Both ((e, k))) = 1 + (Depth e)
+
+Larger: fn Nat, Nat -> Nat
+fn Larger a, b = if a < b: b else: a
+
+Total: fn Chain -> Nat
+fn Total c = match c.?rest:
+    ? r: c.head + (Total r)
+    nil: c.head
+
+Order: fn Expr, Expr -> Text
+fn Order a, b = if a == b: "equal" else: if a < b: "less" else: "greater"
+
+ChainOrder: fn Chain, Chain -> Text
+fn ChainOrder a, b = if a == b: "equal" else: if a < b: "less" else: "greater"
+
+Same: fn Boxed, Boxed -> Text
+fn Same a, b = if a == b: "same" else: "different"
+
+let e1 = Pair (Neg (Num 3)), (Maybe (? (Num 4)))
+let e2 = Both (((Pair (Num 2), (Num 5)), 3))
+let e3 = Pair (Neg (Num 3)), (Maybe (? (Num 4)))
+let c1 = Chain(head=1, rest=(? (Chain(head=2, rest=(? (Chain(head=3, rest=nil)))))))
+let c2 = Chain(head=1, rest=(? (Chain(head=2, rest=nil))))
+
+@demo: @unit
+@demo:
+    Ui.Label(text=$"{Eval e1} {Eval e2} {Depth e1} {Depth e2} {Total c1}")                # 0
+    Ui.Label(text=$"{Order e1, e1} {Order e1, e2} {Order (Neg e1), (Neg e1)} {ChainOrder c1, c2} {ChainOrder c2, c2}")  # 1
+    Ui.Label(text=$(Same (Boxed(label="a", expr=e1)), (Boxed(label="a", expr=e3))))        # 2
+    Ui.Label(text=$(Show (Neg (Maybe nil))))                                               # 3
