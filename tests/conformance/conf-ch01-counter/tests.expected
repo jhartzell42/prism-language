@@ -1,0 +1,21 @@
+# Conformance ch. 1's transcript, byte for byte.
+test counter_counts
+
+tick 0
+  added:
+    0: Ui.Button(label="Increment")
+    1: Ui.Button(label="Decrement")
+    2: Ui.Label(text="Count: 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="Count: 1")
+
+tick 2
+  in:
+    0: click
+    1: click
+  changed:
+    2: Ui.Label(text="Count: 0")

@@ -1,0 +1,6 @@
+# A submodule's main file.
+
+module Sub
+
+Part: fn Nat -> Nat
+fn Part n = n

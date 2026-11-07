@@ -1,0 +1,4 @@
+# `Title`, a child module of the root: the text the root measures.
+emit r
+
+let windowTitle = "a tree"

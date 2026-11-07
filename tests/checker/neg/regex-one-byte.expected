@@ -1,0 +1,4 @@
+tests/checker/neg/regex-one-byte.prism:2: error[regex]: \C, one byte, is RE2's only
+    let r = %/\C/
+              ^
+1 error

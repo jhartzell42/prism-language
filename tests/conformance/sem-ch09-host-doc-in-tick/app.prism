@@ -1,0 +1,49 @@
+# A host's child document is a dynamic (Semantics ch. 9), `$(Path ==> $Elem c)` (Jimmy, 6
+# November 2026): its entries are the child's places, each its own dynamic, read here as one
+# flat value through the `for` that flattens each entry (`$flat`, its gathered dynamic;
+# claude/incremental-host-document.md, part 4), never a hold and never something the
+# end-of-tick patch pass produces. The owner's `for` runs over a source that reads both
+# `$flat` and the owner's own hold `$clicks`, and one tick writes both (a click on the
+# forwarded child button and a click on the owner's own). The rows are built once, after
+# propagation, from the values after the tick: the label's entry is published a tick after
+# the child moved it (the host level) and `$flat` a tick after that (the gathered `for`;
+# round 3 ST), so a kept row shows the new count beside the label as the tick opened, and
+# the moved label two ticks after.
+# Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@child: @unit
+@child:
+    !inc <- Ui.Button(label=$"inc")                              # 0
+    $n <- 0 then $n + 1 on !inc
+    Ui.Label(text=$"{$n}")                                       # 1
+
+TextOf: fn Elem Ui.* -> Text
+fn TextOf e = match e:
+    Ui.Label(text=$t): $t
+    Ui.Button(label=l): l
+    Ui.*: ""
+
+type Tagged = record:
+    text: Text
+    count: Nat
+derive ^Eq, ^Show
+
+# each place's text, paired with the owner's count
+Tag: fn (Path ==> Elem Ui.*), Nat -> (Path ==> Tagged)
+fn Tag doc, n = Fold (Keys doc), {}, \|acc, p| match ?Get doc, p:
+    ? e: Insert acc, p, (Tagged (TextOf e), n)
+    nil: acc
+
+@owner: @unit
+@owner:
+    ((ignore, $doc)) <- @HostDocument @child, \|p, e| @Element e    # 0/[p]/0
+    $flat <- for p, $e <- $doc:                                   # 1/[p], no places
+        @ $e
+    !tap <- Ui.Button(label=$"tap")                              # 2
+    $clicks <- 0 then $clicks + 1 on !tap
+    let $tagged = Tag $flat, $clicks
+    for p, $pair <- $tagged:                                     # 3/[p]/0
+        Ui.Label(text=$"{$pair.text} after {$pair.count}")

@@ -1,0 +1,152 @@
+# `Syntax.Lexer.Corpus`, a child module of `Syntax.Lexer`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.*
+use Syntax.Decls.*
+
+# ---------------------------------------------------------------------------------------
+# The layout corpus's notation (prism_syntax/src/corpus.rs): what `prismc --tokens`
+# prints, to diff the two lexers
+# ---------------------------------------------------------------------------------------
+
+RenderTokens: fn [Tok] -> Text
+fn RenderTokens tokens:
+    let ((out, ignore)) = Fold tokens, (("", nil)), \|((acc, ?prev)), t| RenderStep acc, ?prev, t
+    "{out}\n"
+
+RenderStep: fn Text, ?Tok, Tok -> ((Text, ?Tok))
+fn RenderStep acc, ?prev, t:
+    let gap = match ?prev:
+        nil: ""
+        ? p: if IsLayout t.kind: "\n" else: if (IsBracket p.kind) and (IsBracket t.kind) and t.touches: "·" else: " "
+    if t.kind == KEof: ((acc, (? t))) else: (("{acc}{gap}{TokenText t.kind}", (? t)))
+
+IsBracket: fn TokKind -> Bool
+fn IsBracket (KOpen ignore, ignore) = True
+fn IsBracket (KClose ignore) = True
+fn IsBracket ignore = False
+
+RenderInner: fn [Tok] -> Text
+fn RenderInner tokens = Join (SplitOn (TrimEnd (TrimNewlines (RenderTokens tokens))), "\n"), " "
+
+TrimNewlines: fn Text -> Text
+fn TrimNewlines t = TrimTrailing t, "\n \t"
+
+# One token's text in the corpus notation.
+TokenText: fn TokKind -> Text
+fn TokenText (KName n) = "{n.sigils}{Join n.path, "."}"
+fn TokenText (KFamily p) = "{Join p, "."}.*"
+fn TokenText (KTrait p) = "^{Join p, "."}"
+fn TokenText (KKw w, s) = "{s}{w}"
+fn TokenText (KFree s) = "free{s}"
+fn TokenText KLensDot = "&."
+fn TokenText (KInt s, t) = "{s}{t}"
+fn TokenText (KFloat s, t) = "{s}{t}"
+fn TokenText (KDuration s, t, u) = "{s}{t}{u}"
+fn TokenText (KChar s, c) = "{s}{DebugChar c}"
+fn TokenText (KText s, segs) = "{s}TEXT({Concat (Each segs, SegText)})"
+fn TokenText (KRegex s, r) = "{s}REGEX({DebugText r.pattern}/{ReplacementText r.?replacement}{r.flags})"
+fn TokenText (KTemplate t) = "TEMPLATE<{t.lang}>({Concat (Each t.parts, PartText)})"
+fn TokenText (KOp op, True) = "{op}pre"
+fn TokenText (KOp op, False) = op
+fn TokenText (KSuffixed op, ty) = "{op}{Join ty, "."}"
+fn TokenText (KDot True) = ".pre"
+fn TokenText (KDot False) = "."
+fn TokenText KDotDot = ".."
+fn TokenText KComma = ","
+fn TokenText KColon = ":"
+fn TokenText KSemi = ";"
+fn TokenText KBackslash = "\\"
+fn TokenText (KLambdaBar ignore) = "|"
+fn TokenText KBar = "|"
+fn TokenText KLtLt = "<<"
+fn TokenText KGtGt = ">>"
+fn TokenText (KOpen k, ignore) = k
+fn TokenText (KClose k) = CloseChar k
+fn TokenText KAbsent = "absent"
+fn TokenText KNonEmpty = "nonempty"
+fn TokenText (KPath segs) = "PATH({Join (Each segs, PathSegText), "/"})"
+fn TokenText KLayOpen = "open"
+fn TokenText KLaySep = "sep"
+fn TokenText KLayClose = "close"
+fn TokenText KEof = "eof"
+
+ReplacementText: fn ?Text -> Text
+fn ReplacementText nil = ""
+fn ReplacementText (? t) = "{DebugText t}/"
+
+SegText: fn TextSegTok -> Text
+fn SegText (TsPlain p) = EscapeBraces (EscapeDebug p, True, True)
+fn SegText (TsPlaceholder toks, ignore) = "\{{RenderInner toks}\}"
+
+EscapeBraces: fn Text -> Text
+fn EscapeBraces t = MapChars t, \|c| if c == "\{" or c == "\}": "\\{c}" else: c
+
+PathSegText: fn PathSegTok -> Text
+fn PathSegText (PstNum n) = "{n}"
+fn PathSegText (PstGen n) = "#{n}"
+fn PathSegText (PstKey toks) = "[{RenderInner toks}]"
+
+PartText: fn TPartTok -> Text
+fn PartText (TptText t) = DebugText t
+fn PartText (TptPlaceholder toks, ?col, ignore) = "\{\{{RenderInner toks}\}\}{ColText ?col}"
+fn PartText (TptBlock toks, ignore) = "BLOCK\{ {RenderInner toks} \}"
+fn PartText (TptCall name, attrs, ?body, ignore) = "<{name.sigils}{Join name.path, "."}{Concat (Each attrs, AttrText)}{CallBody name, ?body}"
+
+ColText: fn ?Nat -> Text
+fn ColText nil = ""
+fn ColText (? c) = "@col{c}"
+
+AttrText: fn AttrTok -> Text
+fn AttrText a = " {a.name}=\{{RenderInner a.tokens}\}"
+
+CallBody: fn NameTok, ?[TPartTok] -> Text
+fn CallBody ignore, nil = "/>"
+fn CallBody name, (? parts) = ">{Concat (Each parts, PartText)}</{name.sigils}{Join name.path, "."}>"
+
+# ---------------------------------------------------------------------------------------
+# Rust's `{:?}` and `escape_debug` for texts and characters, which both printers use
+# ---------------------------------------------------------------------------------------
+
+# A text as Rust's `{:?}` prints it: in double quotes, a double quote escaped.
+DebugText: fn Text -> Text
+fn DebugText t = "\"{EscapeDebug t, False, True}\""
+
+# A character as Rust's `{:?}` prints it: in single quotes, a single quote escaped.
+DebugChar: fn Text -> Text
+fn DebugChar c = "'{EscapeDebug c, True, False}'"
+
+EscapeDebug: fn Text, Bool, Bool -> Text
+fn EscapeDebug t, single, double = MapChars t, \|c| EscapeChar c, single, double
+
+EscapeChar: fn Text, Bool, Bool -> Text
+fn EscapeChar c, single, double = match c:
+    "\u{0}": "\\0"
+    "\t": "\\t"
+    "\u{d}": "\\r"
+    "\n": "\\n"
+    "\\": "\\\\"
+    "'" if single: "\\'"
+    "\"" if double: "\\\""
+    ignore if c < " " or c == "\u{7f}": "\\u\{{HexOf (CodeOf c)}\}"
+    otherwise: c
+
+# The code point of an ASCII character (128 for anything else): its byte index in
+# `asciiText`.
+CodeOf: fn Text -> Nat
+fn CodeOf c = if c == "": 128 else: Len (Or (SplitOn asciiText, c)[0], asciiText)
+
+HexOf: fn Nat -> Text
+fn HexOf n = HexDigits n, n
+
+# `n` in hexadecimal; `fuel`, at least its number of digits, shrinks on every call.
+HexDigits: fn Nat, Nat -> Text
+fn HexDigits n, fuel = match fuel -? 1:
+    ? left if n >= 16: "{HexDigits (Or (?Div n, 16), 0), left}{CharAtByte hexDigits, (Or (?Mod n, 16), 0)}"
+    otherwise: if n < 16: CharAtByte hexDigits, n else: "0"

@@ -1,0 +1,6 @@
+# A test module declares no tag, trait or impl: refused (test-declares).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+Total: fn Nat, Nat -> Nat
+fn Total a, b = a + b

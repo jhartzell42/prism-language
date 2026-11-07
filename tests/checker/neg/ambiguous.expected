@@ -1,0 +1,5 @@
+tests/checker/neg/ambiguous.prism:3: error[ambiguous]: nothing decides `t3` in `^Show t3`; annotate, or write a suffixed operator
+    fn Empty n = Show [[]]
+                 ^^^^^^^^^
+  fix: annotate the value's type
+1 error

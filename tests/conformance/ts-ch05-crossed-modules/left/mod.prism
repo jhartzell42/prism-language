@@ -1,0 +1,15 @@
+# Two modules that use each other, each holding the other's types: `Left.Shape` holds
+# `Right.Part`s (a list of them and one by value) and `Right.Part`'s case holds a
+# `Left.Shape`. Written for prismc's C++ target, whose per-module headers must declare
+# each module's types before the other's need them. Work in progress, subject to change.
+emit Ui.*
+use Right
+
+type Shape = record:
+    name: Text
+    first: Right.Part
+    rest: [Right.Part]
+derive ^Eq, ^Show
+
+Weigh: fn Shape -> Nat
+fn Weigh s = Fold s.rest, (Right.Weight s.first), \|n, p| n + (Right.Weight p)

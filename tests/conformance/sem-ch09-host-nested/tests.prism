@@ -1,0 +1,14 @@
+# Audited: tap (tick 1) fires the inner's go as tick 2's input, which fires the leaf's hit as tick 3's input, both ticks owed; the leaf's text input, forwarded by the inner host at 1/[1]/0 and by the outer at 1/[1/[1]/0]/0, hears a key in its own tick.
+# The nested hosts' tests: declarations of sem-ch09-host-nested.prism (Semantics chapter 9).
+emit Ui.*
+use App.*
+use Ui.*
+
+test two_computing_layers_cost_two_ticks, @outer:
+    build
+    click at 0
+        => expect Ui.Label(text="0 hits, 0 keys")
+    compute until idle
+        => expect Ui.Label(text="1 hits, 0 keys")
+    send at 1/[1/[1]/0]/0, Letter "x"
+        => expect Ui.Label(text="1 hits, 1 keys")

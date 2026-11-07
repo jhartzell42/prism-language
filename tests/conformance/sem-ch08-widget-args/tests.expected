@@ -1,0 +1,39 @@
+# Derived by hand from Semantics ch. 8: an inlined widget's places take the caller's next positions; each application of a widget parameter is its own widget, with its own holds.
+test arguments_are_inlined
+
+tick 0
+  added:
+    0: Ui.Button(label="poke")
+    1: Ui.Label(text="A")
+    2: Ui.Label(text="inside")
+    3: Ui.Label(text="B")
+    4: Ui.Button(label="+")
+    5: Ui.Label(text="0")
+    6: Ui.Button(label="+")
+    7: Ui.Label(text="0")
+    8: Ui.Button(label="+")
+    9: Ui.Label(text="0")
+
+tick 1
+  in:
+    6: click
+  changed:
+    7: Ui.Label(text="1")
+
+tick 2
+  in:
+    4: click
+  changed:
+    5: Ui.Label(text="1")
+
+tick 3
+  in:
+    6: click
+  changed:
+    7: Ui.Label(text="2")
+
+tick 4
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="poked")

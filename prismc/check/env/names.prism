@@ -1,0 +1,261 @@
+# `Check.Env.Names`, a child module of `Check.Env`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Env.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+
+# ---------------------------------------------------------------------------------------
+# First pass: every declared name, before any type is read
+# ---------------------------------------------------------------------------------------
+
+CollectNames: unbounded fn G, St, Text -> ((G, St))
+fn CollectNames g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s0 = update st:
+            &_.file <= info.file
+        let ((g2, s2, ignore)) = Fold info.tree.decls, ((g, s0, nil)), \|((gg, s, ?lastType)), d| CollectDecl gg, s, info, d, ?lastType
+        ((g2, s2))
+
+# One declaration's names. `?lastType` is the type a following `derive` line belongs to.
+CollectDecl: unbounded fn G, St, ModInfo, Decl, ?Text -> ((G, St, ?Text))
+fn CollectDecl g, st, info, d, ?lastType = match d.kind:
+    DType t:
+        let name = QualKey info.name, (Dotted t.name.path)
+        let ti = TyInfo(name=name, home=info.name, params=(Each t.params, \|p| p.name), body=BOpaque, derives=[[]], file=info.file, span=d.span)
+        if HasKey g.types, name: ((g, (Err st, "collision", d.span, "a second type `{Dotted t.name.path}`"), ?lastType))
+        else:
+            let upd = update g:
+                &_.types <= Insert &_.types, name, ti
+            ((upd, st, ? name))
+    DDerive trs: match ?lastType:
+        ? tn:
+            let upd = update g:
+                &_.types <= Insert &_.types, tn, (AddDerives (Or g.types[tn], dummyTyInfo), (Each trs, \|tr| Dotted tr.path))
+            ((upd, st, ?lastType))
+        nil: ((g, (Err st, "mismatch", d.span, "a `derive` line follows a type declaration"), nil))
+    DTag t:
+        let name = Dotted t.name.path
+        let family = Dotted (Take t.name.path, (Dec (Len t.name.path)))
+        let tags = Or g.families[family], [[]]
+        let owner = Or g.famOwner[family], info.name
+        let st2 = if owner != info.name: Err st, "collision", d.span, "the family `{family}` is declared in {if owner == "": "the root" else: "`{owner}`"}; every tag of a family is declared in its family's module" else: st
+        let isElem = match t.ofType.kind:
+            TName n, ignore: (Dotted n.path) == "Element"
+            otherwise: False
+        let g2 = update g:
+            &_.families <= Insert &_.families, family, (Push tags, name)
+            &_.famOwner <= Insert &_.famOwner, family, owner
+            if isElem:
+                &_.elemFams <= AddText &_.elemFams, family
+        ((g2, st2, nil))
+    DTrait t:
+        let name = QualKey info.name, (Dotted t.name.path)
+        let ti = TraitInfo(name=name, home=info.name, param=(Or (Each t.params, \|p| p.name)[0], "a"), supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=info.file, span=d.span)
+        let upd = update g:
+            &_.traits <= Insert &_.traits, name, ti
+        ((upd, st, nil))
+    otherwise: ((g, st, nil))
+
+let dummyTyInfo = TyInfo(name="", home="", params=[[]], body=BOpaque, derives=[[]], file=0, span=Range(start=0, end=0))
+
+AddDerives: fn TyInfo, [Text] -> TyInfo
+fn AddDerives ti, trs = update ti:
+    &_.derives <= Append &_.derives, trs
+
+# The program row (Semantics ch. 6): every family of `Element` tags the program declares.
+ProgramRow: fn G -> Rw
+fn ProgramRow g = Closed g.elemFams
+
+# ---------------------------------------------------------------------------------------
+# Second pass: what each module reaches by a bare name
+# ---------------------------------------------------------------------------------------
+
+BuildTables: unbounded fn G, St, Text -> ((G, St))
+fn BuildTables g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s0 = update st:
+            &_.file <= info.file
+        let s1 = Fold info.uses, s0, \|s, ((u, ignore))| if (HasKey g.mods, u) or u == "Prelude": s else: Err s, "unknown-name", info.tree.span, "no module `{u}` among the program's files"
+        let starred = Fold info.uses, [[]], \|acc, ((u, star))| if star and u != m: Push acc, u else: acc
+        let sources = AddText (Append [[m]], starred), "Prelude"
+        let vals = Fold sources, {}, \|acc, src| BareValuesOf g, src, acc
+        let tys = Fold sources, {}, \|acc, src| BareTypesOf g, src, acc
+        let trs = Fold sources, {}, \|acc, src| BareTraitsOf g, src, acc
+        let ((rw, rv, s2)) = ModuleRow g, s1, info
+        let info2 = update info:
+            &_.emitRw <= rw
+            &_.rowVar <= rv
+        let upd = update g:
+            &_.bare <= Insert &_.bare, m, vals
+            &_.bareTypes <= Insert &_.bareTypes, m, tys
+            &_.bareTraits <= Insert &_.bareTraits, m, trs
+            &_.mods <= Insert &_.mods, m, info2
+        ((upd, s2))
+
+AddBare: fn (Text ==> [Text]), Text, Text -> (Text ==> [Text])
+fn AddBare acc, name, qk:
+    let have = Or acc[name], [[]]
+    if HasText have, qk: acc else: Insert acc, name, (Push have, qk)
+
+# The bare names a module declares: its functions, values and constructors.
+BareValuesOf: unbounded fn G, Text, (Text ==> [Text]) -> (Text ==> [Text])
+fn BareValuesOf g, src, acc = match g.mods[src]:
+    nil: acc
+    ? info: Fold info.tree.decls, acc, \|a, d| BareOfDecl src, a, d
+
+BareOfDecl: unbounded fn Text, (Text ==> [Text]), Decl -> (Text ==> [Text])
+fn BareOfDecl m, acc, d = match d.kind:
+    DSignature s: AddBare acc, (DefNameText s.name), (QualKey m, (DefNameText s.name))
+    DFn f: AddBare acc, (DefNameText f.name), (QualKey m, (DefNameText f.name))
+    DLet l: Fold (PatternNames l.pattern), acc, \|a, n| AddBare a, n, (QualKey m, n)
+    DWidget w: AddBare acc, (SNameKey w.name), (QualKey m, (SNameKey w.name))
+    DType t: Fold (CtorNamesOf t), acc, \|a, c| AddBare a, c, (QualKey m, c)
+    DTrait t: Fold t.items, acc, \|a, it| match it:
+        TiSignature s: AddBare a, (DefNameText s.name), (QualKey m, (DefNameText s.name))
+        otherwise: a
+    otherwise: acc
+
+CtorNamesOf: fn TypeDecl -> [Text]
+fn CtorNamesOf t = match t.?body:
+    ? (TbRecord ignore): [[Dotted t.name.path]]
+    ? (TbChoice cs): Each cs, \|c| SNameKey c.name
+    ? (TbNewtype c): [[SNameKey c.name]]
+    ? (TbUnit i): [[i.name]]
+    otherwise: [[]]
+
+# The names a top-level `let` pattern binds.
+PatternNames: unbounded fn Pattern -> [Text]
+fn PatternNames p = match p.kind:
+    PName n: [[SNameKey n]]
+    PCtor ignore, ps: Fold ps, [[]], \|acc, q| Append acc, (PatternNames q)
+    PRecord ignore, fs, ignore: Fold fs, [[]], \|acc, f| Append acc, (PatternNames f.pattern)
+    PSigil ignore, q: PatternNames q
+    PTuple ps: Fold ps, [[]], \|acc, q| Append acc, (PatternNames q)
+    PArray ps: Fold ps, [[]], \|acc, q| Append acc, (PatternNames q)
+    PGroup q: PatternNames q
+    otherwise: [[]]
+
+# The names a pattern binds, with where each binder stands.
+PatternBinders: unbounded fn Pattern -> [((Text, Range))]
+fn PatternBinders p = match p.kind:
+    PName n: [[((SNameKey n, n.span))]]
+    PCtor ignore, ps: Fold ps, [[]], \|acc, q| Append acc, (PatternBinders q)
+    PRecord ignore, fs, ignore: Fold fs, [[]], \|acc, f| Append acc, (PatternBinders f.pattern)
+    PSigil ignore, q: PatternBinders q
+    PTuple ps: Fold ps, [[]], \|acc, q| Append acc, (PatternBinders q)
+    PArray ps: Fold ps, [[]], \|acc, q| Append acc, (PatternBinders q)
+    PGroup q: PatternBinders q
+    otherwise: [[]]
+
+BareTypesOf: fn G, Text, (Text ==> [Text]) -> (Text ==> [Text])
+fn BareTypesOf g, src, acc = Fold (Keys g.types), acc, \|a, k| match g.types[k]:
+    ? ti: if ti.home == src: AddBare a, (BareName ti.name), k else: a
+    nil: a
+
+BareTraitsOf: fn G, Text, (Text ==> [Text]) -> (Text ==> [Text])
+fn BareTraitsOf g, src, acc = Fold (Keys g.traits), acc, \|a, k| match g.traits[k]:
+    ? ti: if ti.home == src: AddBare a, (BareName ti.name), k else: a
+    nil: a
+
+# A module's `emit` row (Semantics ch. 6): families and at most one variable; a library's
+# bare `Element` is `emit-element`; a single tag is `row-single-tag`. A root file with no
+# line has the program row.
+ModuleRow: unbounded fn G, St, ModInfo -> ((Rw, Text, St))
+fn ModuleRow g, st, info = match info.tree.?emitRow:
+    nil:
+        if info.root: ((g.programRow, "", st))
+        else: ((emptyRow, "", (Err st, "emit-element", info.tree.span, "a library writes its own row; this one writes no `emit` line")))
+    ? rowDecl:
+        let ((fams, vars, s2)) = Fold rowDecl.terms, (([[]], [[]], st)), \|((fs, vs, s)), term| RowTermOf g, s, info, term, fs, vs
+        let s3 = if (Len vars) > 1: ErrFix s2, "row-two-tails", rowDecl.span, "a row has one variable; `{Join vars, " | "}` names two", "keep one variable" else: s2
+        let tail = match vars[0]:
+            ? v: TlQ v
+            nil: TlClosed
+        ((Rw(fams=(SortTexts fams), minus=[[]], tail=tail), (Or vars[0], ""), s3))
+
+RowTermOf: fn G, St, ModInfo, RowTerm, [Text], [Text] -> (([Text], [Text], St))
+fn RowTermOf g, s, info, term, fs, vs = match term:
+    RFamily q: (((Push fs, (Dotted q.path)), vs, (CheckFamily g, s, (Dotted q.path), q.span)))
+    RVar v: ((fs, (Push vs, v.name), s))
+    RType t: match t.kind:
+        TName n, [[]]:
+            let name = Dotted n.path
+            if name == "Element" and info.root: (((Append fs, g.programRow.fams), vs, s))
+            else: if name == "Element": ((fs, vs, (Err s, "emit-element", t.span, "a library writes its own row; `emit Element` names the program's")))
+            else: if (HasKey g.tags, name) or (Len n.path) > 1: ((fs, vs, (ErrFix s, "row-single-tag", t.span, "a row names families, not tags: `{name}`", "write `{Dotted (Take n.path, (Dec (Len n.path)))}.*`")))
+            else: ((fs, vs, (Err s, "kind", t.span, "`{name}` is not a row")))
+        otherwise: ((fs, vs, (Err s, "kind", t.span, "this is not a row")))
+
+CheckFamily: fn G, St, Text, Range -> St
+fn CheckFamily g, s, fam, span = if HasKey g.families, fam: s else: Err s, "unknown-name", span, "no family `{fam}`: no module declares a `{fam}.` tag"
+
+# ---------------------------------------------------------------------------------------
+# Name resolution
+# ---------------------------------------------------------------------------------------
+
+# A bare or qualified value name from module `m`: the key it resolves to, or a message.
+ResolveValue: fn G, Text, SName -> ((?Text, Text))
+fn ResolveValue g, m, n:
+    let marks = n.sigils
+    if (Len n.path) == 1:
+        let name = "{marks}{Or n.path[0], ""}"
+        let table = Or g.bare[m], {}
+        let keys = Or table[name], [[]]
+        if (Len keys) == 1: ((keys[0], ""))
+        else: if (Len keys) > 1: ((? (OwnFirst m, keys), "collision"))
+        else: if name == "never": ((? "Prelude.never", ""))
+        else: if HasKey g.ctors, name: ((? name, ""))
+        else: ((nil, "unknown"))
+    else:
+        let qual = QualModule g, (Take n.path, (Dec (Len n.path)))
+        let last = Or (?Last n.path), ""
+        let qk = QualKey qual, "{marks}{last}"
+        if (Len marks) == 0 and (HasKey g.tags, (Dotted n.path)): ((? (Dotted n.path), "tag"))
+        else: if (HasKey g.vals, qk) or (HasKey g.ctors, qk): ((? qk, ""))
+        else: ((nil, "unknown"))
+
+ResolveType: fn G, Text, [Text] -> ((?Text, Text))
+fn ResolveType g, m, path:
+    if (Len path) == 1:
+        let keys = Or (Or g.bareTypes[m], {})[Or path[0], ""], [[]]
+        if (Len keys) == 1: ((keys[0], ""))
+        else: if (Len keys) > 1: ((? (OwnFirst m, keys), "collision"))
+        else: ((nil, "unknown"))
+    else:
+        let qk = QualKey (QualModule g, (Take path, (Dec (Len path)))), (Or (?Last path), "")
+        if HasKey g.types, qk: ((? qk, "")) else: ((nil, "unknown"))
+
+# Of two candidates for a bare name, the one checking goes on with after reporting the
+# collision: the file's own declaration, else the first.
+OwnFirst: fn Text, [Text] -> Text
+fn OwnFirst m, keys:
+    let own = Filter keys, \|k| (QualKey m, (BareName k)) == k or (m == "" and not (Contains k, "."))
+    Or own[0], (Or keys[0], "")
+
+?ResolveTrait: fn G, Text, [Text] -> ?Text
+fn ?ResolveTrait g, m, path:
+    if (Len path) == 1:
+        let keys = Or (Or g.bareTraits[m], {})[Or path[0], ""], [[]]
+        keys[0]
+    else:
+        let qk = QualKey (QualModule g, (Take path, (Dec (Len path)))), (Or (?Last path), "")
+        if HasKey g.traits, qk: ? qk else: nil

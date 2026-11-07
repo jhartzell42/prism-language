@@ -1,0 +1,166 @@
+# Derived by hand: `$heavy` is 0 + 1 + ... + 199,999 + n = 19,999,900,000 + n after n clicks.
+test ten_writes
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="1: 19999900000")
+    2: Ui.Label(text="2: 19999900000")
+    3: Ui.Label(text="3: 19999900000")
+    4: Ui.Label(text="4: 19999900000")
+    5: Ui.Label(text="5: 19999900000")
+    6: Ui.Label(text="6: 19999900000")
+    7: Ui.Label(text="7: 19999900000")
+    8: Ui.Label(text="8: 19999900000")
+    9: Ui.Label(text="9: 19999900000")
+    10: Ui.Label(text="10: 19999900000")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900001")
+    2: Ui.Label(text="2: 19999900001")
+    3: Ui.Label(text="3: 19999900001")
+    4: Ui.Label(text="4: 19999900001")
+    5: Ui.Label(text="5: 19999900001")
+    6: Ui.Label(text="6: 19999900001")
+    7: Ui.Label(text="7: 19999900001")
+    8: Ui.Label(text="8: 19999900001")
+    9: Ui.Label(text="9: 19999900001")
+    10: Ui.Label(text="10: 19999900001")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900002")
+    2: Ui.Label(text="2: 19999900002")
+    3: Ui.Label(text="3: 19999900002")
+    4: Ui.Label(text="4: 19999900002")
+    5: Ui.Label(text="5: 19999900002")
+    6: Ui.Label(text="6: 19999900002")
+    7: Ui.Label(text="7: 19999900002")
+    8: Ui.Label(text="8: 19999900002")
+    9: Ui.Label(text="9: 19999900002")
+    10: Ui.Label(text="10: 19999900002")
+
+tick 3
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900003")
+    2: Ui.Label(text="2: 19999900003")
+    3: Ui.Label(text="3: 19999900003")
+    4: Ui.Label(text="4: 19999900003")
+    5: Ui.Label(text="5: 19999900003")
+    6: Ui.Label(text="6: 19999900003")
+    7: Ui.Label(text="7: 19999900003")
+    8: Ui.Label(text="8: 19999900003")
+    9: Ui.Label(text="9: 19999900003")
+    10: Ui.Label(text="10: 19999900003")
+
+tick 4
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900004")
+    2: Ui.Label(text="2: 19999900004")
+    3: Ui.Label(text="3: 19999900004")
+    4: Ui.Label(text="4: 19999900004")
+    5: Ui.Label(text="5: 19999900004")
+    6: Ui.Label(text="6: 19999900004")
+    7: Ui.Label(text="7: 19999900004")
+    8: Ui.Label(text="8: 19999900004")
+    9: Ui.Label(text="9: 19999900004")
+    10: Ui.Label(text="10: 19999900004")
+
+tick 5
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900005")
+    2: Ui.Label(text="2: 19999900005")
+    3: Ui.Label(text="3: 19999900005")
+    4: Ui.Label(text="4: 19999900005")
+    5: Ui.Label(text="5: 19999900005")
+    6: Ui.Label(text="6: 19999900005")
+    7: Ui.Label(text="7: 19999900005")
+    8: Ui.Label(text="8: 19999900005")
+    9: Ui.Label(text="9: 19999900005")
+    10: Ui.Label(text="10: 19999900005")
+
+tick 6
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900006")
+    2: Ui.Label(text="2: 19999900006")
+    3: Ui.Label(text="3: 19999900006")
+    4: Ui.Label(text="4: 19999900006")
+    5: Ui.Label(text="5: 19999900006")
+    6: Ui.Label(text="6: 19999900006")
+    7: Ui.Label(text="7: 19999900006")
+    8: Ui.Label(text="8: 19999900006")
+    9: Ui.Label(text="9: 19999900006")
+    10: Ui.Label(text="10: 19999900006")
+
+tick 7
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900007")
+    2: Ui.Label(text="2: 19999900007")
+    3: Ui.Label(text="3: 19999900007")
+    4: Ui.Label(text="4: 19999900007")
+    5: Ui.Label(text="5: 19999900007")
+    6: Ui.Label(text="6: 19999900007")
+    7: Ui.Label(text="7: 19999900007")
+    8: Ui.Label(text="8: 19999900007")
+    9: Ui.Label(text="9: 19999900007")
+    10: Ui.Label(text="10: 19999900007")
+
+tick 8
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900008")
+    2: Ui.Label(text="2: 19999900008")
+    3: Ui.Label(text="3: 19999900008")
+    4: Ui.Label(text="4: 19999900008")
+    5: Ui.Label(text="5: 19999900008")
+    6: Ui.Label(text="6: 19999900008")
+    7: Ui.Label(text="7: 19999900008")
+    8: Ui.Label(text="8: 19999900008")
+    9: Ui.Label(text="9: 19999900008")
+    10: Ui.Label(text="10: 19999900008")
+
+tick 9
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900009")
+    2: Ui.Label(text="2: 19999900009")
+    3: Ui.Label(text="3: 19999900009")
+    4: Ui.Label(text="4: 19999900009")
+    5: Ui.Label(text="5: 19999900009")
+    6: Ui.Label(text="6: 19999900009")
+    7: Ui.Label(text="7: 19999900009")
+    8: Ui.Label(text="8: 19999900009")
+    9: Ui.Label(text="9: 19999900009")
+    10: Ui.Label(text="10: 19999900009")
+
+tick 10
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1: 19999900010")
+    2: Ui.Label(text="2: 19999900010")
+    3: Ui.Label(text="3: 19999900010")
+    4: Ui.Label(text="4: 19999900010")
+    5: Ui.Label(text="5: 19999900010")
+    6: Ui.Label(text="6: 19999900010")
+    7: Ui.Label(text="7: 19999900010")
+    8: Ui.Label(text="8: 19999900010")
+    9: Ui.Label(text="9: 19999900010")
+    10: Ui.Label(text="10: 19999900010")

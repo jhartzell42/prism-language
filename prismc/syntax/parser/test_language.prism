@@ -1,0 +1,288 @@
+# `Syntax.Parser.TestLanguage`, a child module of `Syntax.Parser`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Sexp.*
+
+# ---------------------------------------------------------------------------------------
+# The test language (tests.rs; Conformance ch. 1 and Appendix A). The lexer did the test
+# frame's lexing; what is left is position: "the first word of a step line, the word after
+# a delivery's comma, `at` after a delivery word, `seed` after the test's blueprint", and
+# the two kinds of comma (A.3).
+# ---------------------------------------------------------------------------------------
+
+let deliveryWords = [["send", "click", "answer"]]
+
+IsDeliveryWord: fn Text -> Bool
+fn IsDeliveryWord w = Fold deliveryWords, False, \|seen, d| seen or d == w
+
+StepWord: fn Ps -> Text
+fn StepWord p = match Kind p:
+    KName n if n.sigils == "" and (Len n.path) == 1 and n.case == CaseLower: Or n.path[0], ""
+    otherwise: ""
+
+AtWord: fn Ps, Text -> Bool
+fn AtWord p, w = (StepWord p) == w
+
+# `check name:` and lines `expr => pattern` (or a bare expression, short for `=> True`).
+ParseCheckDecl: unbounded fn Ps -> ((CheckDecl, Ps))
+fn ParseCheckDecl p0:
+    let start = Here p0
+    let ((name, p1)) = ParseIdent (Adv p0)
+    let p2 = ExpectColon p1
+    if AtOpenL p2:
+        let ((lines, q)) = LayoutItems (Adv p2), ParseCheckLine
+        ((CheckDecl(name=name, lines=lines, span=(To start, (Prev q))), q))
+    else: ((CheckDecl(name=name, lines=[[]], span=start), (ErrorHere p2, "a `check` block's lines stand in an indented block")))
+
+ParseCheckLine: unbounded fn Ps -> ((CheckLine, Ps))
+fn ParseCheckLine p:
+    let start = Here p
+    let ((expr, p1)) = ParseRhsExpr p
+    let ((?pattern, q)) = if AtOp p1, "=>": OptionalPatternTop (Adv p1) else: ((nil, p1))
+    ((CheckLine(expr=expr, pattern=?pattern, span=(To start, (Prev q))), q))
+
+OptionalPatternTop: unbounded fn Ps -> ((?Pattern, Ps))
+fn OptionalPatternTop p:
+    let ((pat, q)) = ParsePattern p, True
+    ((? pat, q))
+
+# `test name, @blueprint (, seed n)?:` and its steps (A.4, `testdecl`).
+ParseTestDecl: unbounded fn Ps -> ((TestDecl, Ps))
+fn ParseTestDecl p0:
+    let start = Here p0
+    let ((name, p1)) = ParseIdent (Adv p0)
+    let fallback = TestDecl(name=name, blueprint=noExpr, seed=nil, steps=[[]], span=start)
+    if not (AtComma p1): ((fallback, (ErrorHere p1, "a test names its blueprint: `test name, @blueprint:`")))
+    else:
+        let ((blueprint, p2)) = ParseArgExpr (Adv p1)
+        let ((?seed, p3)) = if AtComma p2: ParseSeed (Adv p2) else: ((nil, p2))
+        let p4 = ExpectColon p3
+        if AtOpenL p4:
+            let saved = p4.stepMode
+            let ((steps, p5)) = LayoutItems (Adv p4), \|s| StepIn s, saved
+            let q = WithStepMode p5, saved
+            ((TestDecl(name=name, blueprint=blueprint, seed=?seed, steps=steps, span=(To start, (Prev q))), q))
+        else: ((fallback, (ErrorHere p4, "a test's steps stand in an indented block")))
+
+ParseSeed: fn Ps -> ((?Nat, Ps))
+fn ParseSeed p:
+    if not (AtWord p, "seed"): ((nil, (ErrorHere p, "after the blueprint, a test takes only `seed n`")))
+    else:
+        let p1 = Adv p
+        match Kind p1:
+            KInt "", text: ((? (ParseNatText text), (Adv p1)))
+            otherwise: ((nil, (ErrorHere p1, "`seed` takes a number")))
+
+# One step, read in step mode: inside a step no comma belongs to a paren-less call
+# (Conformance A.3).
+StepIn: unbounded fn Ps, Bool -> ((TestStep, Ps))
+fn StepIn p, saved:
+    let ((s, q)) = ParseStep (WithStepMode p, True)
+    ((s, (WithStepMode q, saved)))
+
+# `step ::= line (OPEN check (SEP check)* CLOSE)?`.
+ParseStep: unbounded fn Ps -> ((TestStep, Ps))
+fn ParseStep p0:
+    let start = Here p0
+    let ((withs, p1)) = WithEntries p0
+    let ((action, p2)) = StepActionOf p1, withs
+    if p2.bad: ((TestStep(withs=withs, action=action, checks=[[]], span=start), p2))
+    else: if AtOpenL p2:
+        let ((checks, q)) = LayoutItems (Adv p2), ParseTestCheck
+        ((TestStep(withs=withs, action=action, checks=checks, span=(To start, (Prev q))), q))
+    else: if AtComma p2: ((TestStep(withs=withs, action=action, checks=[[]], span=start), (ErrorAt p2, (Here p2), "a comma in a step begins a delivery; a value with commas in it is written in parentheses")))
+    else: ((TestStep(withs=withs, action=action, checks=[[]], span=(To start, (Prev p2))), p2))
+
+# `with entry = v`, before the step's action.
+WithEntries: unbounded fn Ps -> (([Entry], Ps))
+fn WithEntries p0 = update (([[]], p0)):
+    let &withs = [[]]
+    let &p = p0
+    let &going = AtWord p0, "with"
+    while &going and not &p.bad:
+        let ((e, q)) = ParseEntry (Adv &p)
+        &withs <= Push &withs, e
+        if AtComma q:
+            &p <= Adv q
+            &going <= AtWord &p, "with"
+        else:
+            &p <= q
+            &going <= False
+    &_ <= ((&withs, &p))
+
+StepActionOf: unbounded fn Ps, [Entry] -> ((StepAction, Ps))
+fn StepActionOf p, withs:
+    let w = StepWord p
+    match w:
+        "build": ((SaBuild, (Adv p)))
+        "tick": ((SaTick, (Adv p)))
+        "compute":
+            let p1 = Adv p
+            # "`until idle` after `compute`".
+            if AtWord p1, "until":
+                let p2 = Adv p1
+                if AtWord p2, "idle": ((SaCompute True, (Adv p2))) else: ((SaCompute True, (ErrorHere p2, "`compute until` is followed by `idle`")))
+            else: ((SaCompute False, p1))
+        "push":
+            let ((e, q)) = ParseEntry (Adv p)
+            ((SaPush e, q))
+        ignore if IsDeliveryWord w: Deliveries p
+        ignore if (Len withs) > 0 and ((AtOpenL p) or (AtStmtBoundary p)): ((SaWithOnly, p))
+        otherwise: ((SaBuild, (ErrorHere p, "expected a step: `build`, `tick`, `compute`, `send`, `click`, `answer`, `with` or `push`")))
+
+# One or more deliveries, simultaneous: a comma followed by a delivery word begins the next.
+Deliveries: unbounded fn Ps -> ((StepAction, Ps))
+fn Deliveries p0 = update ((SaBuild, p0)):
+    let ((first, p1)) = ParseDelivery p0
+    let &ds = [[first]]
+    let &p = p1
+    while (AtComma &p) and not &p.bad:
+        if IsDeliveryName (KindAt &p, 1):
+            let ((d, q)) = ParseDelivery (Adv &p)
+            &ds <= Push &ds, d
+            &p <= q
+        else:
+            &p <= ErrorAt &p, (Here &p), "a comma in a step begins a delivery (`click p, click q`); a value with commas in it is written in parentheses: `send p, (Min a, b)`"
+    &_ <= ((SaDeliver &ds, &p))
+
+IsDeliveryName: fn TokKind -> Bool
+fn IsDeliveryName (KName n) = (Len n.path) == 1 and (IsDeliveryWord (Or n.path[0], ""))
+fn IsDeliveryName ignore = False
+
+# `element = value`, for `with` and `push`.
+ParseEntry: unbounded fn Ps -> ((Entry, Ps))
+fn ParseEntry p:
+    let start = Here p
+    let ((element, p1)) = ParseArgExpr p
+    let ((value, q)) = ParseArgExpr (ExpectOp p1, "=")
+    ((Entry(element=element, value=value, span=(To start, (Prev q))), q))
+
+# `send target, v`, `click target`, `answer target`.
+ParseDelivery: unbounded fn Ps -> ((Delivery, Ps))
+fn ParseDelivery p:
+    let start = Here p
+    let word = StepWord p
+    let ((target, p1)) = ParseTarget (Adv p)
+    let ((kind, q)) = if word == "send": SendValue p1 else: if word == "click": ((DkClick, p1)) else: ((DkAnswer, p1))
+    ((Delivery(kind=kind, target=target, span=(To start, (Prev q))), q))
+
+SendValue: unbounded fn Ps -> ((DeliveryKind, Ps))
+fn SendValue p:
+    if AtComma p:
+        let ((v, q)) = ParseArgExpr (Adv p)
+        ((DkSend v, q))
+    else: ((DkClick, (ErrorHere p, "`send` takes a target and a value: `send p, v`")))
+
+ParseTarget: unbounded fn Ps -> ((Target, Ps))
+fn ParseTarget p:
+    let element = (AtWord p, "element") and (IsPathKind (KindAt p, 1))
+    if (AtWord p, "at") or element:
+        let p1 = Adv p
+        match Kind p1:
+            KPath segs:
+                let span = Here p1
+                let ((segments, q)) = Fold segs, (([[]], (Adv p1))), \|((acc, pp)), seg| PathSegOf acc, pp, seg, span
+                let path = TestPath(segments=segments, span=span)
+                if element: ((TgElement path, q)) else: ((TgPath path, q))
+            otherwise: ((TgPattern noPattern, (ErrorHere p1, "`at` takes a path, `1/#0/0`")))
+    else:
+        let ((pat, q)) = ParsePattern p, False
+        ((TgPattern pat, q))
+
+IsPathKind: fn TokKind -> Bool
+fn IsPathKind (KPath ignore) = True
+fn IsPathKind ignore = False
+
+PathSegOf: unbounded fn [PathSeg], Ps, PathSegTok, Range -> (([PathSeg], Ps))
+fn PathSegOf acc, p, (PstNum n), ignore = (((Push acc, (PsNum n)), p))
+fn PathSegOf acc, p, (PstGen n), ignore = (((Push acc, (PsGen n)), p))
+fn PathSegOf acc, p, (PstKey toks), span:
+    let ((e, q)) = ParseNested p, toks, span
+    (((Push acc, (PsKey e)), q))
+
+# One `=> check` line (A.4, `check`).
+ParseTestCheck: unbounded fn Ps -> ((TestCheck, Ps))
+fn ParseTestCheck p0:
+    let start = Here p0
+    let p = ExpectOp p0, "=>"
+    let word = StepWord p
+    if p.bad: ((TestCheck(kind=CkQuiet, span=start), p))
+    else: if word == "": ((TestCheck(kind=CkQuiet, span=start), (ErrorHere p, "expected a check after `=>`: `expect`, `returns`, `fired`, `quiet`, ...")))
+    else:
+        let ((kind, q)) = CheckKindOf (Adv p), word
+        ((TestCheck(kind=kind, span=(To start, (Prev q))), q))
+
+CheckKindOf: unbounded fn Ps, Text -> ((TestCheckKind, Ps))
+fn CheckKindOf p, word = match word:
+    "expect": OnePattern p, CkExpect
+    "expect_none": OnePattern p, CkExpectNone
+    "expect_top": OnePattern p, CkExpectTop
+    "expect_top_none": OnePattern p, CkExpectTopNone
+    "unrequested": OnePattern p, CkUnrequested
+    "returns": OnePattern p, CkReturns
+    "fired": OnePattern p, CkFired
+    "expect_count":
+        let ((pat, p1)) = ParsePattern p, False
+        if not (AtComma p1): ((CkQuiet, (ErrorHere p1, "`expect_count` takes a pattern and a count: `expect_count p, n`")))
+        else:
+            let p2 = Adv p1
+            match Kind p2:
+                KInt "", text: (((CkExpectCount pat, (ParseNatText text)), (Adv p2)))
+                otherwise: ((CkQuiet, (ErrorHere p2, "`expect_count` takes a number")))
+    "requested":
+        let ((place, p1)) = ParsePattern p, False
+        if not (AtComma p1): ((CkQuiet, (ErrorHere p1, "`requested` takes a place and a value: `requested p, v`")))
+        else:
+            let ((value, q)) = ParsePattern (Adv p1), False
+            (((CkRequested place, value), q))
+    "quiet": ((CkQuiet, p))
+    "settles": ((CkSettles, p))
+    "aborted": ((CkAborted, p))
+    "snapshot": match Kind p:
+        KText "", segs if AllPlain segs: ((CkSnapshot (Concat (Each segs, PlainOf)), (Adv p)))
+        otherwise: ((CkQuiet, (ErrorHere p, "`snapshot` takes a file name, a text literal")))
+    otherwise: ((CkQuiet, (ErrorAt p, (Prev p), "`{word}` is not a check: the checks are expect, expect_none, expect_count, expect_top, expect_top_none, requested, unrequested, returns, fired, quiet, settles, aborted, snapshot")))
+
+OnePattern: unbounded fn Ps, (fn Pattern -> TestCheckKind) -> ((TestCheckKind, Ps))
+fn OnePattern p, Make:
+    let ((pat, q)) = ParsePattern p, False
+    ((Make pat, q))
+
+AllPlain: fn [TextSegTok] -> Bool
+fn AllPlain segs = Fold segs, True, \|ok, s| ok and (IsPlainSeg s)
+
+IsPlainSeg: fn TextSegTok -> Bool
+fn IsPlainSeg (TsPlain ignore) = True
+fn IsPlainSeg ignore = False
+
+PlainOf: fn TextSegTok -> Text
+fn PlainOf (TsPlain s) = s
+fn PlainOf ignore = ""
+
+# A number literal's value: underscores dropped, a radix prefix read; 0 when it is none.
+ParseNatText: fn Text -> Nat
+fn ParseNatText text0:
+    let text = Concat (SplitOn text0, "_")
+    if HasPrefix text, "0x": Or (?ParseHex (DropPrefix text, "0x")), 0
+    else: if HasPrefix text, "0o": Or (?ParseRadix (DropPrefix text, "0o"), 8), 0
+    else: if HasPrefix text, "0b": Or (?ParseRadix (DropPrefix text, "0b"), 2), 0
+    else: Or (?ParseNat text), 0
+
+?ParseRadix: fn Text, Nat -> ?Nat
+fn ?ParseRadix t, radix:
+    require t != "" and (AllChars t, \|c| (IsDigit c) and (HexValue c) < radix)
+    ? FoldChars t, 0, \|n, c| n * radix + (HexValue c)

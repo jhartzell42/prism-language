@@ -1,0 +1,231 @@
+# `Check.Blocks.Structure`, a child module of `Check.Blocks`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Blocks.*
+use Check.Blocks.Borrows.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+
+# ---------------------------------------------------------------------------------------
+# `rebuild` and `for`
+# ---------------------------------------------------------------------------------------
+
+# `rebuild $x:` builds its block for the current value of `$x`; `_` is that value, plain.
+# It hands back a dynamic of the current generation's result (round 46 RD), `unit` for a
+# block that ends on `unit` (doubt UN).
+InferRebuild: unbounded fn Env, St, Expr, Block, Range -> ((Ty, St))
+fn InferRebuild env, st, scrut, body, span:
+    let ((t, st1)) = Infer env, st, scrut
+    let ((inner, st2)) = match Walk st1, t:
+        TySig "$", i: ((i, st1))
+        TyErr: ((TyErr, st1))
+        TyFlex ignore:
+            let ((v, s2)) = FreshVar st1, False, ""
+            ((v, (Unify s2, (TySig "$", v), t, scrut.span)))
+        other: ((TyErr, (ErrFix st1, "mismatch", scrut.span, "`rebuild` builds over a dynamic; this is `{ShowTy st1, other}`", "a plain value is built once: write the block's lines in place")))
+    let env2 = WithTopic env, "_", inner
+    let ((res, st3)) = InferWidgetBlock env2, st2, body
+    match Walk st3, res:
+        TyCon "unit", [[]]: ((tUnit, st3))
+        other: (((TySig "$", other), st3))
+
+WithTopic: fn Env, Text, Ty -> Env
+fn WithTopic env, name, t = update (WithLocal env, name, (Mono t)):
+    &_.pending <= Filter &_.pending, \|x| x != name
+
+# `for` (Semantics ch. 4): over a dynamic map or array, keyed, each row built once per key;
+# over a plain one, built once. In an `update` block it is a loop (ch. 5).
+InferFor: unbounded fn Env, St, ?ForBinders, Expr, Block, Range -> ((Ty, St))
+fn InferFor env, st, ?binders, source, body, span:
+    if env.inUpdate: ((tUnit, (UpdateFor env, st, ?binders, source, body, span)))
+    else:
+        let ((t, st1)) = Infer env, st, source
+        let sh = HeadSigil st1, t
+        let coll = if sh == "$": InnerOf st1, t else: t
+        let st2 = if sh == "!" or sh == "@": Err st1, "mismatch", source.span, "`for` runs over a map or an array, plain or dynamic; this is `{ShowTy st1, t}`" else: st1
+        let ((k, v, st3)) = CollParts st2, coll, source.span
+        let live = sh == "$"
+        let env1 = LoopIndices env
+        let ((env2, st4)) = BindForBinders env1, st3, ?binders, k, v, live
+        let ((res, st5)) = InferWidgetBlock env2, st4, body
+        Gather st5, res, k, live
+
+# The key and value types of a collection.
+CollParts: unbounded fn St, Ty, Range -> ((Ty, Ty, St))
+fn CollParts st, t, span = match Walk st, t:
+    TyMap k, v: ((k, v, st))
+    TyArray v: ((tNat, v, st))
+    TyCon "Buffer", [[v]]: ((tNat, v, st))
+    TyErr: ((TyErr, TyErr, st))
+    TyFlex ignore:
+        let ((v, st2)) = FreshVar st, False, ""
+        ((tNat, v, (Unify st2, (TyArray v), t, span)))
+    other: ((TyErr, TyErr, (Err st, "mismatch", span, "`for` runs over a map or an array; this is `{ShowTy st, other}`")))
+
+# Every loop body has `ix`, `jx` the enclosing loop's and `kx` the one around that.
+LoopIndices: fn Env -> Env
+fn LoopIndices env:
+    let ?outer1 = env.locals["ix"]
+    let ?outer2 = env.locals["jx"]
+    let e1 = WithLocal env, "ix", (Mono tNat)
+    let e2 = match ?outer1:
+        ? sc: WithLocal e1, "jx", sc
+        nil: e1
+    match ?outer2:
+        ? sc: WithLocal e2, "kx", sc
+        nil: e2
+
+# The binders show the mark of what they stand for: a row's key plain, its value live over
+# a dynamic collection (`$_`, `$count`); with none, `key` and `_` (or `$_`). Over a map of
+# dynamics, `$(k ==> $v)`, the value binder is the value under the row's key, `$v`, which
+# follows a replaced dynamic (Semantics ch. 4, ruling FV): a `$$d` binder is refused.
+BindForBinders: unbounded fn Env, St, ?ForBinders, Ty, Ty, Bool -> ((Env, St))
+fn BindForBinders env, st, ?binders, k, v, live:
+    let inner = live and (HeadSigil st, v) == "$"
+    let vt = if live and not inner: TySig "$", v else: v
+    match ?binders:
+        nil:
+            let e1 = WithTopic env, (if live: "$_" else: "_"), vt
+            (((WithTopic e1, "key", k), st))
+        ? bs: match bs.?second:
+            ? second:
+                let ((e1, st1)) = BindPattern (Unpending env), st, bs.first, k, False
+                let ((st2, vt2)) = ForInnerMark st1, inner, second, v, vt
+                BindPattern e1, st2, second, vt2, False
+            nil:
+                let e1 = WithTopic env, "key", k
+                let ((st2, vt2)) = ForInnerMark st, inner, bs.first, v, vt
+                BindPattern (Unpending e1), st2, bs.first, vt2, False
+
+# A `for` over a map of dynamics whose value binder shows `$$`: the binder is the value
+# under the key, one layer, so it is `$v` (ruling FV; the old form flattened `$$d` on the
+# next line). Reported once here, and the binder then binds as `$$` so the line reports
+# nothing else.
+ForInnerMark: fn St, Bool, Pattern, Ty, Ty -> ((St, Ty))
+fn ForInnerMark st, inner, p, v, vt = match p.kind:
+    PName n:
+        if inner and n.sigils == "$$":
+            let name = SNameKey n
+            let bare = DropPrefix name, "$$"
+            (((ErrFix st, "mark-stack", n.span, "`{name}` shows `$$`, a dynamic of a dynamic; a `for` over `$(k ==> $v)` binds the value under the row's key, which follows a replaced dynamic (Semantics ch. 4)", "write `${bare}`, and read it where `@Flatten {name}` was"), (TySig "$", v)))
+        else: ((st, vt))
+    otherwise: ((st, vt))
+
+Unpending: fn Env -> Env
+fn Unpending env = update env:
+    &_.pending <= [[]]
+
+# What a `for` gives (Semantics ch. 4's table): rows ending on `!T` give `!(K ==> T)`, on
+# `$T` give `$(K ==> T)`, on a plain `T` a `$(K ==> T)` over a dynamic collection and a
+# `K ==> T` over a plain one, a bundle gathered field by field, `unit` gives `unit`.
+Gather: unbounded fn St, Ty, Ty, Bool -> ((Ty, St))
+fn Gather st, res, k, live = match Walk st, res:
+    TyCon "unit", [[]]: ((tUnit, st))
+    TySig "!", t: (((TySig "!", (TyMap k, t)), st))
+    TySig "$", t: (((TySig "$", (TyMap k, t)), st))
+    TyTuple ts:
+        if Fold ts, False, \|seen, x| seen or IsTimeSigil (HeadSigil st, x):
+            let ((parts, st2)) = Fold ts, (([[]], st)), \|((acc, s)), x|
+                let ((g, s2)) = Gather s, x, k, live
+                (((Push acc, g), s2))
+            ((TyTuple parts, st2))
+        else: (((LiveMap live, k, (TyTuple ts)), st))
+    other: (((LiveMap live, k, other), st))
+
+LiveMap: fn Bool, Ty, Ty -> Ty
+fn LiveMap live, k, v = if live: TySig "$", (TyMap k, v) else: TyMap k, v
+
+# ---------------------------------------------------------------------------------------
+# `given:`
+# ---------------------------------------------------------------------------------------
+
+# A `given:` block (Semantics ch. 4): binds through `?` or `~` with `<-`, guards with
+# `require` and `forbid`, ends on its answer; a line sees only the lines above. The mark
+# of the enclosing name, or of the first bind, says which (round 47 GV).
+InferGiven: unbounded fn Env, St, Block, Range -> ((Ty, St))
+fn InferGiven env, st, b, span:
+    let mark = if env.mark == "?" or env.mark == "~": env.mark else: GivenMarkOf b.stmts
+    InferGivenBlock env, st, b, mark
+
+GivenMarkOf: fn [Stmt] -> Text
+fn GivenMarkOf stmts = Fold stmts, "?", \|m, s| m
+
+InferGivenBlock: unbounded fn Env, St, Block, Text -> ((Ty, St))
+fn InferGivenBlock env, st, b, mark:
+    let n = Len b.stmts
+    let ((env2, st2, ?res)) = Fold (Range0 n), ((env, st, nil)), \|((en, s, ?r)), i|
+        let stmt = Or b.stmts[i], dummyStmt2
+        GivenStmt en, s, stmt, mark, i + 1 == n, ?r
+    match ?res:
+        ? t: ((t, st2))
+        nil:
+            let ((v, st3)) = FreshVar st2, False, ""
+            (((TySig mark, v), st3))
+
+GivenStmt: unbounded fn Env, St, Stmt, Text, Bool, ?Ty -> ((Env, St, ?Ty))
+fn GivenStmt env, st, s, mark, last, ?res = match s.kind:
+    SBind p, e, nil:
+        let ((t, st1)) = Infer env, st, e
+        let ((v, st2)) = FreshVar st1, False, ""
+        let st3 = Unify st2, (TySig mark, v), t, e.span
+        let ((env2, st4)) = BindPattern (Unpending env), st3, p, v, True
+        ((env2, st4, ?res))
+    SRequire c: ((env, (CheckCond env, st, c), ?res))
+    SForbid c: ((env, (CheckCond env, st, c), ?res))
+    SLet p, ?ty, e:
+        let ((env2, st2)) = CheckLet env, st, p, ?ty, e, s.span
+        ((env2, st2, ?res))
+    SFn f:
+        let ((env1, st1)) = PreBind env, st, s
+        let ((env2, st2)) = CheckLocalFn env1, st1, f, s.span
+        ((env2, st2, ?res))
+    SSignature ignore:
+        let ((env2, st2)) = PreBind env, st, s
+        ((env2, st2, ?res))
+    SExpr e:
+        if last:
+            let ((t, st1)) = Infer env, st, e
+            let ((v, st2)) = FreshVar st1, False, ""
+            let st3 = Unify st2, (TySig mark, v), t, e.span
+            # The answer is `?v` (or `~v`) whether or not the last line was one, so a
+            # last line that is not reports once, here.
+            ((env, st3, ? (TySig mark, v)))
+        else:
+            let ((t, st1)) = Infer env, st, e
+            ((env, (Discarded st1, t, e.span), ?res))
+    otherwise: ((env, (Err st, "mismatch", s.span, "this statement belongs in a widget or `update` block"), ?res))

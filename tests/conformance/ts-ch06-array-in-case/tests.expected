@@ -1,0 +1,6 @@
+# The Rust target's transcript, checked by hand: one element, then two, then none.
+test a_list_in_a_case_binds_its_elements
+
+tick 0
+  added:
+    0: Ui.Label(text="one a, two bc, some")

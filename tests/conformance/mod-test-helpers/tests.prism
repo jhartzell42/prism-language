@@ -1,0 +1,16 @@
+# A test module's helpers: a type and a function, for the checks alone.
+emit Ui.*
+use App.*
+
+type Pair = record:
+    left: Nat
+    right: Nat
+derive ^Eq, ^Show
+
+Total: fn Pair -> Nat
+fn Total p = Add p.left, p.right
+
+check helpers:
+    Total Pair(left=2, right=3) => 5
+    Pair(left=1, right=2) == Pair(left=1, right=2) => True
+    Show Pair(left=1, right=2) => "Pair(left=1, right=2)"

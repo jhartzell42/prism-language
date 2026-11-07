@@ -1,0 +1,4 @@
+tests/checker/neg/regex-r-dollar.prism:2: error[regex]: a $ that is not $n, ${n}, ${name} or $$
+    let r = %/(a)/$a/
+                  ^
+1 error

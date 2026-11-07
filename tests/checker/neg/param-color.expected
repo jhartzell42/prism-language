@@ -1,0 +1,5 @@
+tests/checker/neg/param-color.prism:10: error[calls-unbounded]: bounded `Step` calls unbounded `Apply`
+    fn Step n = Apply n, \|y| Grow y
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: mark `Step` `unbounded fn`, or run the call through `@Run`
+1 error

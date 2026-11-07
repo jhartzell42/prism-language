@@ -1,0 +1,7 @@
+# `kind`: `Pair` takes two types.
+type Pair a b = record:
+    first: a
+    second: b
+
+First: fn (Pair Int) -> Int
+fn First p = p.first

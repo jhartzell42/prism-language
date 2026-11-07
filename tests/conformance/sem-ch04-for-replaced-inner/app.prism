@@ -1,0 +1,28 @@
+# `for k, $v <- $each:` over `$(k ==> $v)` binds the value under the row's key (Semantics
+# ch. 4; round 9 FV, Jimmy's): `$v` is whatever dynamic the outer holds there, and when the
+# outer later holds another one under a kept key, `$v` follows it from the tick after the
+# outer moved, owed; the row is kept, never rebuilt (a rebuilt row could tell two dynamics
+# apart, ch. 11). The outer here is a `for` whose rows each end on a `rebuild`'s dynamic
+# `$$r`, gathered into `$(Nat ==> $Int)`: "swap" rebuilds every row's generation, so each
+# key's dynamic is replaced by the new generation's; "bump" writes the current generations'
+# holds, which the inner rows see in the tick of the write through the dynamic they follow.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@replaced: @unit
+@replaced:
+    !swap <- Ui.Button(label=$"swap")                            # 0
+    !bump <- Ui.Button(label=$"bump")                            # 1
+    $gen <- 0 then $gen + 1 on !swap
+    let keys = {0: "a", 1: "b"}
+    $each <- for k, v <- keys:                                   # 2/[k]
+        $$r <- rebuild $gen:                                     # 2/[k]/0/#g
+            let start = _ * 100
+            $h <- start then $h + 1 on !bump
+            @ $h
+        @ $$r
+    for k, $v <- $each:                                          # 3/[k]
+        $n <- 0 then $n + 1 on !Updated $v
+        Ui.Label(text=$"{k}: {$v} changed {$n}")                 # 3/[k]/0

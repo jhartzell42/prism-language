@@ -1,0 +1,22 @@
+# Semantics Appendix B, Maps: `Union` keeps the left map's value on a shared key, whichever
+# map is the larger (the C++ prelude once inserted the left map into a copy of the right,
+# and im_rc's union kept the larger map's value). Written by Claude on the
+# claude-self-hosting branch; subject to change.
+test mod Tests
+
+# The keys `from` to `to - 1` (below 200), each with the value `v`.
+Keyed: fn Nat, Nat, Text -> (Nat ==> Text)
+fn Keyed from, to, v = Fold Tens, {}, \|m, t| Fold Ones, m, \|m2, o| KeyedAt m2, (t * 10 + o), from, to, v
+
+KeyedAt: fn (Nat ==> Text), Nat, Nat, Nat, Text -> (Nat ==> Text)
+fn KeyedAt m, k, from, to, v = if k < from: m else: if k < to: Insert m, k, v else: m
+
+Tens: [Nat]
+let Tens = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]]
+
+Ones: [Nat]
+let Ones = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]]
+
+# The values of `Union a, b` at the keys `ks`, in order, "-" where it has none.
+ValuesAt: fn (Nat ==> Text), [Nat] -> Text
+fn ValuesAt m, ks = Concat (Each ks, \|k| Or (?Get m, k), "-")

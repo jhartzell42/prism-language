@@ -1,0 +1,34 @@
+# A record holding a choice by value, the record defined before the choice's cases, and
+# two records compared with `==`: the record's derived equality reaches the choice's
+# (in C++ a defaulted `operator==`, which clang decides where the record is defined, so
+# the choice's `==` is declared with its handle). Written for prismc's back end; subject
+# to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Spec = record:
+    width: Nat
+    bg: ?Shade
+derive ^Eq, ^Show
+
+type Shade = choice:
+    Light
+    Dark
+    Mixed Nat
+derive ^Eq, ^Show
+
+Same: fn Spec, Spec -> Text
+fn Same a, b = if a == b: "same" else: "different"
+
+SpecFor: fn Bool -> Spec
+fn SpecFor dark = Spec(width=2, bg=(if dark: ? Dark else: ? (Mixed 3)))
+
+Verdict: fn Bool -> Text
+fn Verdict dark = Same (Spec(width=2, bg=(? (Mixed 3)))), (SpecFor dark)
+
+@specs: @unit
+@specs:
+    !flip <- Ui.Button(label=$"flip")                                         # 0
+    $dark <- False then not $dark on !flip
+    Ui.Label(text=(Verdict $dark))                                            # 1

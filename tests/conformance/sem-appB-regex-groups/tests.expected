@@ -1,0 +1,18 @@
+# Derived by hand from Semantics Appendix B, Regular expressions, and Type System ch. 2: groups are numbered by their opening parenthesis from 1, with `groups[0]` the whole match, so a match has one more group than the pattern has captures, `(?:...)` not counted and a group that can never take part (`(a){0}`) counted all the same; a group that took no part is `nil`; `named` holds a named group only when it took part, and a map is in key order.
+check numbered
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+
+check named
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok

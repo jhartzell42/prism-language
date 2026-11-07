@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-nested.prism:2: error[regex]: a [ inside a class: write \[ (nested classes are Rust's only)
+    let r = %/[a[b]/
+                ^
+1 error

@@ -1,0 +1,27 @@
+# Semantics ch. 2, Regular expressions: the literal's forms (plain, hashed, more hashes,
+# a replacement), ch. 2's own examples, and the one character of lookahead past the
+# pattern's closing slash that tells a `Regex` from a `RegexReplacement`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+let word = %/[a-z_][a-z0-9_]*/
+let yes = %/^(y|yes)$/i
+let bin = %/^\/usr\/bin\/(\w+)$/
+let host = %#/^https?://([^/]+)/#
+let dash = %/_/-/
+let swap = %#/(\w+) (\w+)/#$2 $1/#
+
+# A match as tests/regex/corpus.txt writes it: each numbered group's bytes `a-b`, group 0
+# (the whole match) first and `nil` for a group that took no part, then each named group
+# that took part, by name, `name=a-b`.
+Spans: fn ?Match -> Text
+fn Spans nil = "nil"
+fn Spans (? m) = Spaced (Append (Each m.groups, GroupSpan), (Fold m.named, [[]], \|acc, k, g| Push acc, "{k}={At g.front}-{At g.back}"))
+
+GroupSpan: fn ?Group -> Text
+fn GroupSpan nil = "nil"
+fn GroupSpan (? g) = "{At g.front}-{At g.back}"
+
+# The texts with a space between each two.
+Spaced: fn [Text] -> Text
+fn Spaced ts = Fold ts, "", \|acc, t| if acc == "": t else: "{acc} {t}"

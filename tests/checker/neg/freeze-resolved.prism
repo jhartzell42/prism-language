@@ -1,0 +1,15 @@
+# `frozen`: `Freeze` is the prelude's where the name resolves to it (pick RN), in either
+# spelling. `Numbers` freezes `&parent` as `Prelude.Freeze` and then sets it; `Kept` calls
+# its own local `Freeze`, which leaves `&parent` alive, and checks clean.
+Numbers: fn Nat -> [Nat]
+fn Numbers n = update [[]]:
+    let &parent = Buffer.Numbered n
+    &_ <= Prelude.Freeze &parent
+    &parent[0] <= ? 1
+
+Kept: fn Nat -> [Nat]
+fn Kept n = update [[]]:
+    fn Freeze b = [[]]
+    let &parent = Buffer.Numbered n
+    &_ <= Freeze &parent
+    &parent[0] <= ? 1

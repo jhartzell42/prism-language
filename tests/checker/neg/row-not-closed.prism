@@ -1,0 +1,11 @@
+# `row-not-closed`: a match over a row with a variable needs `otherwise:`.
+module Open
+emit r
+use Ui
+
+Name: fn Element (Ui.* | r) o -> Text
+fn Name e = match e:
+    Ui.Button(..): "button"
+    Ui.Label(..): "label"
+    Ui.TextInput(..): "input"
+    Ui.Image(..): "image"

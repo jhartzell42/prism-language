@@ -1,0 +1,7 @@
+# `discarded`: a line with something to say before the last one.
+emit Ui.*
+
+@buttons: @unit
+@buttons:
+    Ui.Button(label=$"Ignored")
+    Ui.Label(text=$"x")

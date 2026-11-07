@@ -1,0 +1,5 @@
+tests/checker/neg/nested-set.prism:9: error[may-not-end]: this loop in `Spin` may not end: nothing it sets gets smaller on every turn
+        while ? less <- &fuel -? 1:
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: set a local from `&x -? 1` through a pattern, as `while ? left <- &fuel -? 1:`, or mark `Spin` `unbounded fn`
+1 error

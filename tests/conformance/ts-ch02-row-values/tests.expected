@@ -1,0 +1,25 @@
+# Derived by hand from Semantics ch. 7 and 8 (places, the patch's `changed`) and Type System ch. 2's printing (a row value prints as its tag with named fields).
+test marks_are_data
+
+tick 0
+  added:
+    0: Ui.Button(label="Add")
+    1: Pad.Sheet(title="sketch", marks=[[Ink.Line(from=0, to=1), Ink.Fill(box=Box(w=1, h=2), marks=[[Ink.Line(from=1, to=2)]])]])
+    2: Ui.Label(text="2 2 False")
+    3: Ui.Label(text="Ink.Line(from=1, to=9)")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Pad.Sheet(title="sketch", marks=[[Ink.Line(from=0, to=2), Ink.Fill(box=Box(w=2, h=2), marks=[[Ink.Line(from=1, to=2)]])]])
+    2: Ui.Label(text="4 2 False")
+    3: Ui.Label(text="Ink.Line(from=2, to=9)")
+
+check inks
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok

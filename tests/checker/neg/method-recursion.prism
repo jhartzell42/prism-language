@@ -1,0 +1,11 @@
+# `may-not-end`: `recv.Method args` is the call `Method recv, args`, so a call inside a
+# method call's arguments is a call. `Spin` calls itself only inside `Max`'s argument, on
+# the number it was given, so it never ends; `Depth` does the same on a smaller number and
+# checks clean.
+Spin: fn Nat -> Nat
+fn Spin n = n.Max (Spin n)
+
+Depth: fn Nat -> Nat
+fn Depth n = match n -? 1:
+    ? m: m.Max (Depth m)
+    nil: 0

@@ -1,0 +1,5 @@
+# A library tree: `lib.prism` holds only `mod` lines, its top-level modules
+# (claude/modules-style-pass.md).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+mod A
+mod B

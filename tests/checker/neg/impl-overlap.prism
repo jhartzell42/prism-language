@@ -1,0 +1,13 @@
+# `impl-overlap`: two impls whose headers meet at `Pair Int Text`.
+type Pair a b = record:
+    first: a
+    second: b
+
+trait ^Loud a:
+    Loud: fn a -> Text
+
+impl ^Loud (Pair Int b):
+    fn Loud p = "int"
+
+impl ^Loud (Pair a Text):
+    fn Loud p = "text"

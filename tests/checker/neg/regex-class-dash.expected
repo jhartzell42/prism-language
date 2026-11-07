@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-dash.prism:2: error[regex]: a - in a class that is neither a range nor first or last: write \-
+    let r = %/[a-c-e]/
+                  ^
+1 error

@@ -1,0 +1,6 @@
+# prism_zero's transcript, checked by hand against pick TK.
+test the_body_is_the_last_place
+
+tick 0
+  added:
+    0: Ui.Label(text="[empty] body text (see below) / [2] body text (see below)")

@@ -1,0 +1,23 @@
+# Derived by hand from Semantics ch. 9 as ruled (a supplier's computed answer, here go's click filtered by ?Remote, is an input of the next tick, which is owed: the pad's hit lands in the compute tick after each click), ch. 9's forwarding (the label re-emitted at 1/[1]/0) and R3.
+test an_event_answers_a_child
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/[1]/0: Ui.Label(text="0 hits")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/[1]/0: Ui.Label(text="1 hits")
+
+tick 3
+  in:
+    0: click
+
+tick 4
+  changed:
+    1/[1]/0: Ui.Label(text="2 hits")

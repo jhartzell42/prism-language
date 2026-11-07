@@ -1,0 +1,5 @@
+# `occurs`: a function applied to itself would contain itself.
+Self: fn Int -> Int
+fn Self n:
+    let Loop = \|F| F F
+    n

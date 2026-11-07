@@ -1,0 +1,22 @@
+# Derived by hand from Semantics Appendix B, Regular expressions: `?Match` is the match that starts at the cursor or `nil`, never one further on (`[a-z]+` at byte 1 of "12abc3" is `nil`); a repeated group reports its last repetition (é is two bytes, so `(é)+` from 1 is 1-5 and its group 3-5); the cursors are the searched text's, so `Before` and `After` of them are what lies around the match; a search past the front sees the whole text, so `^` and `\A` match only at byte 0 (or after a `\n` under `m`), `\b` looks at the character before, and `$` is the text's back.
+check anchored
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+10: ok
+
+check context
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok

@@ -1,0 +1,16 @@
+# A widget of several clauses in a static position: the clause is chosen at the build from
+# its plain arguments (`@Note ?title, text`, as prismc's own `@WriteOut`). Written for
+# prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+
+@Note: fn ?Text, Text -> @unit
+fn @Note nil, text:
+    Ui.Label(text=$"untitled: {text}")                       # 0
+fn @Note (? title), text:
+    Ui.Label(text=$"{title}: {text}")                        # 0
+
+@Notes: fn ?Text -> @unit
+fn @Notes ?title:
+    Ui.Label(text=$"notes")                                 # 0
+    ignore <- @Note ?title, "first"                         # 1

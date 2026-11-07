@@ -1,0 +1,17 @@
+# `may-not-end`: a local widget is a definition of the shrink check (pick LF). `@inner`
+# binds itself, so `@outer` never finishes building; `@fine`'s local widget binds a label,
+# and checks clean.
+emit Ui.*
+
+@outer: @unit
+@outer:
+    @inner:
+        Ui.Label(text=$"x")
+        @inner
+    @inner
+
+@fine: @unit
+@fine:
+    @inner:
+        Ui.Label(text=$"y")
+    @inner

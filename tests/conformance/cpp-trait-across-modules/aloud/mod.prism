@@ -1,0 +1,12 @@
+# The trait of cpp-trait-across-modules (the root says why): a method, a default method,
+# and a generic function over the trait. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+emit Ui.*
+
+trait ^Loud a:
+    Loud: fn a -> Text
+    Shout: fn a -> Text
+    fn Shout x = "{Loud x}!"
+
+Chorus: fn [a] -> Text where a: ^Loud
+fn Chorus xs = Fold xs, "", \|acc, x| if acc == "": Loud x else: "{acc} {Loud x}"

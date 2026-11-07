@@ -1,0 +1,14 @@
+# The top-level `Types`.
+emit r
+type Amount = record:
+    n: Nat
+derive ^Eq, ^Show
+
+Make: fn Nat -> Amount
+fn Make n = Amount(n=n)
+
+Grow: fn Amount -> Amount
+fn Grow s = Amount(n=s.n + 1)
+
+Count: fn Amount -> Nat
+fn Count s = s.n

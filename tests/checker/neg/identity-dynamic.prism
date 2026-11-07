@@ -1,0 +1,8 @@
+# `identity-dynamic`: a dynamic where a plain field goes; write `rebuild`.
+emit Ui.*
+
+@pictures: @unit
+@pictures:
+    !go <- Ui.Button(label=$"Next")
+    $src <- "a.png" then "b.png" on !go
+    Ui.Image(src=$src)

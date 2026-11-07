@@ -1,0 +1,21 @@
+# A bare `Error(..)` where a `~T` is wanted is that `~T`'s failure (the checker lets it wait
+# for its type): in a branch of an `if`, and as an event's value under a `~` signature.
+# Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+
+~Check: fn Bool -> ~unit
+fn ~Check ok = if ok: ~ unit else: Error(kind=Prelude.NotANumber, message="no")
+
+Describe: fn ~unit -> Text
+fn Describe (~ ignore) = "ok"
+fn Describe (Error(message=m, ..)) = "failed: {m}"
+
+@Shown: fn Bool -> @unit
+fn @Shown ok:
+    !started <- @started
+    let !~verdict = (if ok: Error(kind=Prelude.NotANumber, message="refused") else: ~ unit) on !started
+    let !~gaveUp: !~unit = Error(kind=Prelude.NotANumber, message="given up") on !started
+    $~first <- (~Check (not ok)) then !~verdict
+    $~second <- (~ unit) then !~gaveUp
+    Ui.Label(text=$"{Describe $~first} / {Describe $~second}")      # 1

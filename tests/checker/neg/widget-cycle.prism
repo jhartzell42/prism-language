@@ -1,0 +1,23 @@
+# `may-not-end`: a top-level widget block is a definition of the shrink check (Semantics
+# ch. 7: "a widget function that binds itself is held to the same test"). `@looped` binds
+# `@again`, which binds `@looped`, so building either never ends; `@fine` binds a widget
+# that binds a label, and checks clean.
+emit Ui.*
+
+@looped: @unit
+@looped:
+    Ui.Label(text=$"x")
+    @again
+
+@again: @unit
+@again:
+    @looped
+
+@fine: @unit
+@fine:
+    @leaf
+    Ui.Label(text=$"y")
+
+@leaf: @unit
+@leaf:
+    Ui.Label(text=$"z")

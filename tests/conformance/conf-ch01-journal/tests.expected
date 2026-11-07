@@ -1,0 +1,17 @@
+# Conformance ch. 1 prints tick 1 of this run; Pitch ch. 8 prints tick 0. Byte for byte.
+test the_footer_goes_to_the_old_page
+
+tick 0
+  added:
+    0: Ui.Button(label="Next page")
+    1/#0/0: Fs.File(path="page1.txt")
+
+tick 1
+  in:
+    0: click
+  added:
+    1/#1/0: Fs.File(path="page2.txt")
+  torn down:
+    1/#0/0: Fs.File(path="page1.txt")
+  requested:
+    1/#0/0: Write "end of page 1\n"

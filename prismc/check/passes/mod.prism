@@ -1,0 +1,419 @@
+# The separate checkers (Type System ch. 5, "The separate checkers, in order"), run over
+# the elaborated program after inference, a definition that failed inference skipped: the
+# prompt-cycle check per block with its summaries, the shrink check by the size-change
+# principle with the `unbounded` color and D6's cycle rule, borrows and escapes in `&`
+# blocks, the element bind table's remaining rows, inclusion with the forwarding-arm
+# remainder, the root row, the full-stack name check (most of it made where each name is
+# bound), and exhaustiveness over rows and choices (Maranget's usefulness, from memory).
+# `CheckProgram` runs the whole checker over a program's files.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+emit r
+mod Cycles
+mod Borrows
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Check.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+
+# ---------------------------------------------------------------------------------------
+# Exhaustiveness and reachability
+# ---------------------------------------------------------------------------------------
+
+# A pattern as the usefulness check reads it: anything, a constructor with its arguments,
+# a literal (which never covers its type), a family arm (which matches its family's tags).
+type Pat = choice:
+    PtAny
+    PtCon Text, [Pat]
+    PtLit Text
+    PtFam Text
+derive ^Eq, ^Show
+
+# A constructor of a type: its name as patterns spell it, its arity, its argument types,
+# how a witness prints it.
+type Ctor = record:
+    name: Text
+    arity: Nat
+    args: [Ty]
+    shown: Text
+derive ^Eq, ^Show
+
+# The constructors of a type when it has finitely many: a choice's, `Bool`'s, an optional's,
+# a fault's, a tuple's, a record's, `unit`'s, a closed row's tags. `nil` for a type no
+# finite set of constructors covers (numbers, texts, arrays, functions, open rows).
+?CtorsOf: unbounded fn Env, St, Ty -> ?[Ctor]
+fn ?CtorsOf env, st, t = match Walk st, t:
+    TyCon "Bool", [[]]: ? [[Ctor(name="True", arity=0, args=[[]], shown="True"), Ctor(name="False", arity=0, args=[[]], shown="False")]]
+    TyCon "unit", [[]]: ? [[Ctor(name="unit", arity=0, args=[[]], shown="unit")]]
+    TySig "?", i: ? [[Ctor(name="?", arity=1, args=[[i]], shown="? _"), Ctor(name="nil", arity=0, args=[[]], shown="nil")]]
+    TySig "~", i: ? [[Ctor(name="~", arity=1, args=[[i]], shown="~ _"), Ctor(name="Error", arity=2, args=[[(TyCon "Prelude.Fault", [[]]), tText]], shown="Error(..)")]]
+    TyTuple ts: ? [[Ctor(name="tuple", arity=(Len ts), args=ts, shown="(({Join (Each ts, \|ignore| "_"), ", "}))")]]
+    TyCon "Prelude.Error", [[]]: ? [[Ctor(name="Error", arity=2, args=[[(TyCon "Prelude.Fault", [[]]), tText]], shown="Error(..)")]]
+    TyCon n, args: match env.g.types[n]:
+        ? ti: match ti.body:
+            BChoice cases: ? (Each cases, \|((cn, cargs))| CtorOfCase ti, cn, cargs, args)
+            BRecord fields: ? [[Ctor(name=n, arity=(Len fields), args=(Each fields, \|((ignore, ft))| SubstQ (ParamInst ti.params, args), ft), shown="{BareName n}(..)")]]
+            BRowKind: if IsRootModule env: ? (Each (TagsOfKind env, n), \|tg| TagCtor tg) else: nil
+            otherwise: nil
+        nil: if n == "Fault" or n == "Prelude.Fault": (if IsRootModule env: ? (Each (TagsOfKind env, "Prelude.Fault"), \|tg| TagCtor tg) else: nil) else: nil
+    TyElem rw, ignore:
+        let w = WalkRow st, rw
+        if w.tail != TlClosed: nil
+        else: ? (Each (TagsOfRow env, w), \|tg| TagCtor tg)
+    TyElemAny rw:
+        let w = WalkRow st, rw
+        if w.tail != TlClosed: nil
+        else: ? (Each (TagsOfRow env, w), \|tg| TagCtor tg)
+    otherwise: nil
+
+CtorOfCase: unbounded fn TyInfo, Text, [Ty], [Ty] -> Ctor
+fn CtorOfCase ti, cn, cargs, args:
+    let qk = QualKey ti.home, cn
+    Ctor(name=qk, arity=(Len cargs), args=(Each cargs, \|a| SubstQ (ParamInst ti.params, args), a), shown=(if (Len cargs) == 0: cn else: "{cn} {Join (Each cargs, \|ignore| "_"), ", "}"))
+
+TagCtor: fn TagInfo -> Ctor
+fn TagCtor tg = Ctor(name="tag:{tg.name}", arity=(Len tg.fields), args=(Each tg.fields, \|((ignore, ft))| TyErr), shown=tg.name)
+
+IsRootModule: fn Env -> Bool
+fn IsRootModule env = env.home == ""
+
+TagsOfKind: fn Env, Text -> [TagInfo]
+fn TagsOfKind env, kind = Filter (Values env.g.tags), \|tg| tg.kind == kind or ((BareName tg.kind) == "Fault" and (BareName kind) == "Fault")
+
+# The tags of a row: its families' element tags, less the tags an arm above took.
+TagsOfRow: fn Env, Rw -> [TagInfo]
+fn TagsOfRow env, w = Filter (Values env.g.tags), \|tg| tg.kind == "Element" and (HasText w.fams, tg.family) and not (HasText w.minus, tg.name)
+
+# A pattern as a `Pat`, against the type it matches.
+ToPat: unbounded fn Env, Pattern -> Pat
+fn ToPat env, p = match p.kind:
+    PName n:
+        let bare = Or n.path[0], ""
+        if (Len n.path) > 1 and HasKey env.g.tags, (Dotted n.path): PtCon "tag:{Dotted n.path}", [[]]
+        else: if (IsUpperText bare) and (Len n.sigils) == 0 and (IsCtorName env, n): PtCon (CtorKey env, n), [[]]
+        else: PtAny
+    PIgnore: PtAny
+    PLit l: PtLit (LitText l)
+    PNeg l: PtLit "-{LitText l}"
+    PUnit: PtCon "unit", [[]]
+    PNil: PtCon "nil", [[]]
+    PCtor n, args:
+        if HasKey env.g.tags, (Dotted n.path): PtCon "tag:{Dotted n.path}", [[]]
+        else: PtCon (CtorKey env, n), (Each args, \|a| ToPat env, a)
+    PRecord n, fields, ignore: RecordPat env, n, fields
+    PSigil s, q: PtCon s, [[(ToPat env, q)]]
+    PTuple ps: PtCon "tuple", (Each ps, \|q| ToPat env, q)
+    PArray ps: PtCon "len{Len ps}", (Each ps, \|q| ToPat env, q)
+    PGroup q: ToPat env, q
+    PFamily q: PtFam (Dotted q.path)
+
+LitText: fn Literal -> Text
+fn LitText l = match l.kind:
+    LInt d: d
+    LFloat d: d
+    LChar c: "'{c}'"
+    LText segs: Concat (Each segs, LitSegText)
+    LDuration d, u: "{d}{u}"
+    LRegex r: "%/{r.pattern}/"
+
+LitSegText: fn TextSeg -> Text
+fn LitSegText (SegPlain t) = t
+fn LitSegText ignore = "\{\}"
+
+CtorKey: fn Env, SName -> Text
+fn CtorKey env, n:
+    let ((?qk, ignore)) = ResolveValue env.g, env.home, n
+    Or ?qk, (SNameKey n)
+
+# A record or tag pattern, its fields in declaration order (`..` leaves the rest open).
+RecordPat: unbounded fn Env, SName, [FieldPat] -> Pat
+fn RecordPat env, n, fields:
+    let name = Dotted n.path
+    match env.g.tags[name]:
+        ? tg:
+            let names = Each tg.fields, \|((f, ignore))| f
+            PtCon "tag:{name}", (Each names, \|f| FieldPatFor env, fields, names, f)
+        nil:
+            let qk = CtorKey env, n
+            let fnames = if (BareName qk) == "Error": [["kind", "message"]] else: (Or env.g.ctors[qk], dummyCtor).fields
+            let pkey = if (BareName qk) == "Error": "Error" else: qk
+            PtCon pkey, (Each fnames, \|f| FieldPatFor env, fields, fnames, f)
+
+let dummyCtor = CtorInfo(name="", owner="", params=[[]], args=[[]], fields=[[]], ty=TyErr, index=0)
+
+FieldPatFor: unbounded fn Env, [FieldPat], [Text], Text -> Pat
+fn FieldPatFor env, fields, names, f = Fold (Range0 (Len fields)), PtAny, \|acc, i| match fields[i]:
+    ? fp: if (FieldPatName fp, names, i) == f: ToPat env, fp.pattern else: acc
+    nil: acc
+
+# Whether `q` is useful against the rows of `p` (Maranget's algorithm U), the columns
+# typed by `tys`.
+Useful: unbounded fn Env, St, [ [Pat] ], [Pat], [Ty] -> Bool
+fn Useful env, st, rows, q, tys = match q[0]:
+    nil: (Len rows) == 0
+    ? q1:
+        let t1 = Or tys[0], TyErr
+        let rest = Drop tys, 1
+        match q1:
+            PtCon c, args:
+                let ctor = CtorNamed env, st, t1, c, (Len args)
+                Useful env, st, (Specialize rows, ctor), (Append args, (Drop q, 1)), (Append ctor.args, rest)
+            PtLit l: Useful env, st, (SpecializeLit rows, l), (Drop q, 1), rest
+            PtFam f: match ?CtorsOf env, st, t1:
+                ? cs: Fold (Filter cs, \|c| (CtorFamily c) == f), False, \|seen, c| seen or Useful env, st, (Specialize rows, c), (Append (Wilds c.arity), (Drop q, 1)), (Append c.args, rest)
+                nil: Useful env, st, (DefaultRows rows), (Drop q, 1), rest
+            PtAny:
+                let heads = HeadNames rows
+                match ?CtorsOf env, st, t1:
+                    ? cs:
+                        if Complete cs, heads, rows:
+                            Fold cs, False, \|seen, c| seen or Useful env, st, (Specialize rows, c), (Append (Wilds c.arity), (Drop q, 1)), (Append c.args, rest)
+                        else: Useful env, st, (DefaultRows rows), (Drop q, 1), rest
+                    nil: Useful env, st, (DefaultRows rows), (Drop q, 1), rest
+
+CtorFamily: fn Ctor -> Text
+fn CtorFamily c = if (HasPrefix c.name, "tag:"): Dotted (Pop (SplitOn (DropPrefix c.name, "tag:"), ".")) else: ""
+
+Wilds: fn Nat -> [Pat]
+fn Wilds n = Each (Range0 n), \|ignore| PtAny
+
+# The constructor a pattern names, with its argument types.
+CtorNamed: unbounded fn Env, St, Ty, Text, Nat -> Ctor
+fn CtorNamed env, st, t, c, arity = match ?CtorsOf env, st, t:
+    ? cs: match ?FindCtor cs, c:
+        ? found: found
+        nil: Ctor(name=c, arity=arity, args=(Each (Range0 arity), \|ignore| TyErr), shown=c)
+    nil: Ctor(name=c, arity=arity, args=(Each (Range0 arity), \|ignore| TyErr), shown=c)
+
+?FindCtor: fn [Ctor], Text -> ?Ctor
+fn ?FindCtor cs, c = Fold cs, nil, \|?found, x| match ?found:
+    ? f: ? f
+    nil: if x.name == c or (BareName x.name) == (BareName c): ? x else: nil
+
+# The rows that match constructor `c`, with its arguments spread.
+Specialize: fn [ [Pat] ], Ctor -> [ [Pat] ]
+fn Specialize rows, c = Fold rows, [[]], \|acc, prow| match prow[0]:
+    ? (PtCon d, args): if d == c.name or (BareName d) == (BareName c.name): Push acc, (Append (Pad args, c.arity), (Drop prow, 1)) else: acc
+    ? PtAny: Push acc, (Append (Wilds c.arity), (Drop prow, 1))
+    ? (PtFam f): if (CtorFamily c) == f: Push acc, (Append (Wilds c.arity), (Drop prow, 1)) else: acc
+    otherwise: acc
+
+Pad: fn [Pat], Nat -> [Pat]
+fn Pad args, n = if (Len args) >= n: Take args, n else: Append args, (Wilds (Or (n -? (Len args)), 0))
+
+SpecializeLit: fn [ [Pat] ], Text -> [ [Pat] ]
+fn SpecializeLit rows, l = Fold rows, [[]], \|acc, prow| match prow[0]:
+    ? (PtLit m): if m == l: Push acc, (Drop prow, 1) else: acc
+    ? PtAny: Push acc, (Drop prow, 1)
+    otherwise: acc
+
+DefaultRows: fn [ [Pat] ] -> [ [Pat] ]
+fn DefaultRows rows = Fold rows, [[]], \|acc, prow| match prow[0]:
+    ? PtAny: Push acc, (Drop prow, 1)
+    otherwise: acc
+
+HeadNames: fn [ [Pat] ] -> [Text]
+fn HeadNames rows = Fold rows, [[]], \|acc, prow| match prow[0]:
+    ? (PtCon c, ignore): AddText acc, c
+    ? (PtFam f): AddText acc, "fam:{f}"
+    otherwise: acc
+
+# Whether the first column names every constructor (a family arm names its family's).
+Complete: fn [Ctor], [Text], [ [Pat] ] -> Bool
+fn Complete cs, heads, rows = (Len cs) > 0 and Fold cs, True, \|ok, c| ok and ((HasText heads, c.name) or (HasText (Each heads, \|h| BareName h), (BareName c.name)) or (HasText heads, "fam:{CtorFamily c}"))
+
+# A value no row matches (Maranget's algorithm I), printed, or `nil` when the rows cover.
+?Witness: unbounded fn Env, St, [ [Pat] ], [Ty] -> ?[Text]
+fn ?Witness env, st, rows, tys = match tys[0]:
+    nil: if (Len rows) == 0: ? [[]] else: nil
+    ? t1:
+        let rest = Drop tys, 1
+        let heads = HeadNames rows
+        match ?CtorsOf env, st, t1:
+            ? cs:
+                if Complete cs, heads, rows:
+                    Fold cs, nil, \|?found, c| match ?found:
+                        ? f: ? f
+                        nil: match ?Witness env, st, (Specialize rows, c), (Append c.args, rest):
+                            ? w: ? (Append [[(ShowWitness c, (Take w, c.arity))]], (Drop w, c.arity))
+                            nil: nil
+                else: match ?Witness env, st, (DefaultRows rows), rest:
+                    ? w:
+                        let missing = Filter cs, \|c| not ((HasText heads, c.name) or (HasText heads, "fam:{CtorFamily c}"))
+                        let shown = match missing[0]:
+                            ? c: c.shown
+                            nil: "_"
+                        ? (Append [[shown]], w)
+                    nil: nil
+            nil: match ?Witness env, st, (DefaultRows rows), rest:
+                ? w: ? (Append [["_"]], w)
+                nil: nil
+
+ShowWitness: fn Ctor, [Text] -> Text
+fn ShowWitness c, args:
+    if c.name == "?": "? {Or args[0], "_"}"
+    else: if c.name == "~": "~ {Or args[0], "_"}"
+    else: if c.name == "tuple": "(({Join args, ", "}))"
+    else: if (Len args) == 0 or (Fold args, True, \|ok, a| ok and a == "_"): c.shown
+    else: "{BareName c.name} {Join args, ", "}"
+
+# A match's arms (ch. 5, Closing): without `otherwise:` over an open row it is
+# `row-not-closed`; a missing case is `not-exhaustive`; an arm nothing reaches is
+# `unreachable`, except `otherwise:` over another module's families (Q-RW6).
+MatchCoverage: unbounded fn Env, St, Ty, [Arm], Range -> St
+fn MatchCoverage env, st, t, arms, span:
+    let hasOtherwise = Fold arms, False, \|seen, a| seen or a.?pattern == nil
+    let tys = [[t]]
+    let ((rows, st2)) = Fold arms, (([[]], st)), \|((acc, s)), arm|
+        let q = match arm.?pattern:
+            ? p: [[(ToPat env, p)]]
+            nil: [[PtAny]]
+        let reachable = Useful env, s, acc, q, tys
+        let ownsAll = OwnsRow env, s, t
+        let s2 = if reachable: s else: if arm.?pattern == nil and not ownsAll: s else: ErrFix s, "unreachable", (ArmSpan arm), "this arm is never reached", "remove it, or put it above the arm that covers it"
+        let acc2 = if arm.?guard == nil: Push acc, q else: acc
+        ((acc2, s2))
+    if hasOtherwise: st2
+    else: if IsOpenRow env, st2, t: ErrFix st2, "row-not-closed", span, "a match over `{ShowTy st2, t}` needs `otherwise:`", "add an `otherwise:` arm: the row's variable may hold tags this match cannot name"
+    else: match ?Witness env, st2, rows, tys:
+        ? w: ErrFix st2, "not-exhaustive", span, "this match misses `{Join w, ", "}`", "add an arm for it, or `otherwise:`"
+        nil: st2
+
+ArmSpan: fn Arm -> Range
+fn ArmSpan a = match a.?pattern:
+    ? p: p.span
+    nil: a.span
+
+# A row the match cannot close: an element row with a tail, or a fault row in a library.
+IsOpenRow: unbounded fn Env, St, Ty -> Bool
+fn IsOpenRow env, st, t = match Walk st, t:
+    TyElem rw, ignore: (WalkRow st, rw).tail != TlClosed
+    TyElemAny rw: (WalkRow st, rw).tail != TlClosed
+    TyCon n, [[]]: match env.g.types[n]:
+        ? ti: ti.body == BRowKind and not (IsRootModule env)
+        nil: (n == "Fault" or n == "Prelude.Fault") and not (IsRootModule env)
+    otherwise: False
+
+# Whether every family a row names is the matching module's own (Q-RW6).
+OwnsRow: unbounded fn Env, St, Ty -> Bool
+fn OwnsRow env, st, t = match Walk st, t:
+    TyElem rw, ignore: Fold (WalkRow st, rw).fams, True, \|ok, f| ok and (Or env.g.famOwner[f], "") == env.home
+    TyCon n, [[]]: match env.g.types[n]:
+        ? ti: ti.body != BRowKind
+        nil: not (n == "Fault" or n == "Prelude.Fault")
+    otherwise: True
+
+# A function's clauses are one match over its parameters.
+ClauseCoverage: unbounded fn Env, St, [FnClause], [Ty], Range -> St
+fn ClauseCoverage env, st, clauses, params, span:
+    let ((rows, st2)) = Fold clauses, (([[]], st)), \|((acc, s)), c|
+        let q = Each c.params, \|p| ToPat env, p
+        let reachable = (Len q) != (Len params) or Useful env, s, acc, q, params
+        let s2 = if reachable: s else: ErrFix s, "unreachable", c.span, "this clause is never reached", "remove it, or put it above the clause that covers it"
+        (((Push acc, q), s2))
+    if (Len params) == 0: st2
+    else: match ?Witness env, st2, rows, params:
+        ? w: ErrFix st2, "not-exhaustive", span, "these clauses miss `{Join w, ", "}`", "add a clause for it"
+        nil: st2
+
+# ---------------------------------------------------------------------------------------
+# Inclusion and the forwarding-arm remainder (ch. 5, pass 5)
+# ---------------------------------------------------------------------------------------
+
+# Every `R1 ≤ R2` from index `from` on: a child's row within its scope's (`row-outside`),
+# and at an arm that emits its scrutinee, the remainder within the host's row
+# (`forwarding`, naming each tag left). A flexible tail unsolved on the left becomes empty
+# (doubt RI).
+DischargeIncls: unbounded fn G, St, Nat -> St
+fn DischargeIncls g, st, from:
+    let batch = Drop st.incls, from
+    Fold batch, st, \|s, inc| DischargeOne g, s, (Through s, inc, batch)
+
+# An obligation into a row still unknown that another obligation of the batch puts within
+# a known one is checked against the known one: a supplier's arms emit into the row a host
+# document's bind then puts in the host's scope.
+Through: unbounded fn St, Incl, [Incl] -> Incl
+fn Through st, inc, batch:
+    let sup = WalkRow st, inc.sup
+    match sup.tail:
+        TlFlex n:
+            if (Len sup.fams) > 0: inc
+            else: Fold batch, inc, \|acc, other|
+                let sub = WalkRow st, other.sub
+                if (Len sub.fams) == 0 and sub.tail == (TlFlex n) and other != inc:
+                    update acc:
+                        &_.sup <= other.sup
+                else: acc
+        otherwise: inc
+
+DischargeOne: unbounded fn G, St, Incl -> St
+fn DischargeOne g, st, inc:
+    let sub = WalkRow st, inc.sub
+    let sup = WalkRow st, inc.sup
+    let st1 = match sub.tail:
+        TlFlex n: CloseTail st, n
+        otherwise: st
+    let sub2 = WalkRow st1, inc.sub
+    let left = Filter sub2.fams, \|f| not (HasText sup.fams, f) and (Len (TagsLeft g, f, sub2.minus)) > 0
+    let tailBad = match ((sub2.tail, sup.tail)):
+        ((TlRigid a, TlRigid b)): a != b
+        ((TlRigid ignore, ignore)): True
+        otherwise: False
+    if (Len left) == 0 and not tailBad: st1
+    else:
+        let s0 = update st1:
+            &_.file <= inc.file
+        let tags = Fold left, [[]], \|acc, f| Append acc, (TagsLeft g, f, sub2.minus)
+        let s1 = if inc.forward: ErrFix s0, "forwarding", inc.span, "forwarding {Join tags, ", "} from a scope that emits {ShowRow sup}", "answer {if (Len tags) == 1: "it" else: "them"} above this arm, for example `{Or tags[0], ""}(..): @ never`" else: ErrFix s0, "row-outside", inc.span, "a child that emits `{ShowRow sub2}` in a scope that emits `{ShowRow sup}`", "widen the scope's `emit` row, or host the child with `@HostDocument`"
+        update s1:
+            &_.file <= st1.file
+
+TagsLeft: fn G, Text, [Text] -> [Text]
+fn TagsLeft g, fam, minus = Filter (Or g.families[fam], [[]]), \|t| not (HasText minus, t) and (IsElementTag g, t)
+
+IsElementTag: fn G, Text -> Bool
+fn IsElementTag g, t = match g.tags[t]:
+    ? tg: tg.kind == "Element"
+    nil: False
+
+CloseTail: fn St, Nat -> St
+fn CloseTail st, n = update st:
+    &_.rows <= Insert &_.rows, n, emptyRow

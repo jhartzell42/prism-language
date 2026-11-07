@@ -1,0 +1,22 @@
+# A text holds any character, a NUL among them (`\u{0}`): its length in bytes counts it
+# (one byte), and a character compares equal to it. Written for prismc's C++ target, whose string literals
+# end at a NUL unless written as a `std::string_view`. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+
+Nul: fn Text -> Bool
+fn Nul c = c == "\u{0}"
+
+# The second character of a text, walked to with a cursor.
+Second: fn Text -> Text
+fn Second t = match ?Step (Front t):
+    ? ((ignore, c)): match ?Step (Front (After c)):
+        ? ((ignore2, d)): Before d
+        nil: ""
+    nil: ""
+
+@shown: @unit
+@shown:
+    let t = "a\u{0}b"
+    Ui.Label(text=$"{Len t} {Nul (Second t)} {Len (Split %/\x{0}/, t)}")     # 0
+# Audited: three bytes (`Len` is bytes); the middle character is the NUL; split at it, two pieces.

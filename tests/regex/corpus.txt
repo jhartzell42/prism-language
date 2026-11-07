@@ -1,0 +1,573 @@
+# The regular-expression corpus: what both runtimes must answer, byte for byte.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# The format is tests/regex/README.md's; the dialect is claude/regex-dialect.md's.
+# kind	pattern	flags	arg	input	expected
+
+# ---- literals and escapes
+find	abc	⟨⟩	⟨-⟩	xabcx	1-4
+find	a b	⟨⟩	⟨-⟩	a b	0-3
+find	é	⟨⟩	⟨-⟩	aé	1-3
+find	\.	⟨⟩	⟨-⟩	a.b	1-2
+find	\/	⟨⟩	⟨-⟩	a/b	1-2
+find	/	⟨⟩	⟨-⟩	a/b	1-2
+find	#	⟨⟩	⟨-⟩	a#	1-2
+find	\_\#\&\~\-\%\@\,\;\:\=\!\'\"\`	⟨⟩	⟨-⟩	_#&~-%@,;:=!'"`	0-15
+find	\\\.\+\*\?\(\)\|\[\]\{\}\^\$	⟨⟩	⟨-⟩	x\.+*?()|[]{}^$	1-15
+find	\t\n\r\f\v\a	⟨⟩	⟨-⟩	⟨9⟩⟨A⟩⟨D⟩⟨C⟩⟨B⟩⟨7⟩	0-6
+find	\x41\x{42}\x{1F600}	⟨⟩	⟨-⟩	AB😀	0-6
+find	\x{e9}\x{E9}\xe9\xE9	⟨⟩	⟨-⟩	éééé	0-8
+find	\x{10FFFF}	⟨⟩	⟨-⟩	⟨10FFFF⟩	0-4
+find	\x{0}	⟨⟩	⟨-⟩	a⟨0⟩	1-2
+find	⟨A⟩	⟨⟩	⟨-⟩	a⟨A⟩b	1-2
+find	😀	⟨⟩	⟨-⟩	a😀	1-5
+find	x{1000}	⟨⟩	⟨-⟩	xx	nil
+find	(?:abcdefghij){1000}	⟨⟩	⟨-⟩	abcdefghij	nil
+
+# ---- . and newlines
+find	a.c	⟨⟩	⟨-⟩	aéc	0-4
+find	.	⟨⟩	⟨-⟩	⟨A⟩x	1-2
+find	.	⟨⟩	⟨-⟩	😀	0-4
+find	.	s	⟨-⟩	⟨A⟩x	0-1
+find	(?s).	⟨⟩	⟨-⟩	⟨A⟩	0-1
+find	(?s:.)	⟨⟩	⟨-⟩	⟨A⟩	0-1
+find	(?s).(?-s).	⟨⟩	⟨-⟩	⟨A⟩⟨A⟩x	1-3
+find	[.]	⟨⟩	⟨-⟩	a.	1-2
+find	.	⟨⟩	⟨-⟩	⟨D⟩	0-1
+
+# ---- anchors, ^ and $ under m
+find	^a	⟨⟩	⟨-⟩	ba	nil
+find	^a	⟨⟩	⟨-⟩	b⟨A⟩a	nil
+find	^a	m	⟨-⟩	b⟨A⟩a	2-3
+find	a$	⟨⟩	⟨-⟩	a⟨A⟩	nil
+find	a$	m	⟨-⟩	a⟨A⟩	0-1
+find	a$	⟨⟩	⟨-⟩	ba	1-2
+find	a$	m	⟨-⟩	a⟨D⟩⟨A⟩	nil
+find	\Aa	m	⟨-⟩	b⟨A⟩a	nil
+find	a\z	m	⟨-⟩	a⟨A⟩	nil
+find	(?m)^b$	⟨⟩	⟨-⟩	a⟨A⟩b⟨A⟩c	2-3
+all	^	m	⟨-⟩	a⟨A⟩	[0-0] [2-2]
+all	$	m	⟨-⟩	a⟨A⟩	[1-1] [2-2]
+all	^	⟨⟩	⟨-⟩	a⟨A⟩	[0-0]
+all	$	⟨⟩	⟨-⟩	a⟨A⟩	[2-2]
+all	(?m)^	⟨⟩	⟨-⟩	⟨A⟩⟨A⟩	[0-0] [1-1] [2-2]
+all	(?m)$	⟨⟩	⟨-⟩	⟨A⟩⟨A⟩	[0-0] [1-1] [2-2]
+all	(?m)^\w+	⟨⟩	⟨-⟩	ab⟨A⟩cd	[0-2] [3-5]
+
+# ---- \b and \B are ASCII; no empty match inside a character
+all	\b	⟨⟩	⟨-⟩	aéb	[0-0] [1-1] [3-3] [4-4]
+all	\b	⟨⟩	⟨-⟩	éa	[2-2] [3-3]
+all	\b	⟨⟩	⟨-⟩	ab cd	[0-0] [2-2] [3-3] [5-5]
+all	\B	⟨⟩	⟨-⟩	aé	[3-3]
+all	\B	⟨⟩	⟨-⟩	é	[0-0] [2-2]
+all	\B	⟨⟩	⟨-⟩	ab	[1-1]
+find	\bé	⟨⟩	⟨-⟩	aé	1-3
+find	\B	⟨⟩	⟨-⟩	é世	0-0
+find	é\B	⟨⟩	⟨-⟩	é世	0-2
+
+# ---- \d \w \s are ASCII
+find	\d+	⟨⟩	⟨-⟩	٣12	2-4
+find	\w+	⟨⟩	⟨-⟩	éab_9é	2-6
+find	\s+	⟨⟩	⟨-⟩	a⟨B⟩⟨C⟩ b	1-4
+find	\s+	⟨⟩	⟨-⟩	x⟨9⟩⟨A⟩⟨B⟩⟨C⟩⟨D⟩ y	1-7
+find	\s	⟨⟩	⟨-⟩	⟨A0⟩⟨2003⟩⟨85⟩	nil
+find	\D+	⟨⟩	⟨-⟩	12é3	2-4
+find	\W+	⟨⟩	⟨-⟩	ab-é_	2-5
+find	\S+	⟨⟩	⟨-⟩	 ⟨A0⟩ 	1-3
+
+# ---- classes
+find	[abc]+	⟨⟩	⟨-⟩	xcabx	1-4
+find	[^abc]+	⟨⟩	⟨-⟩	abéc	2-4
+find	[a-c]	⟨⟩	⟨-⟩	xyzb	3-4
+find	[α-ω]+	⟨⟩	⟨-⟩	aβγ	1-5
+find	[^a]	⟨⟩	⟨-⟩	a⟨A⟩	1-2
+find	[-a]+	⟨⟩	⟨-⟩	x-a-	1-4
+find	[a-]+	⟨⟩	⟨-⟩	x-a-	1-4
+find	[-]	⟨⟩	⟨-⟩	a-	1-2
+find	[^-]+	⟨⟩	⟨-⟩	--ab-	2-4
+find	[\]\[\-\&\~\^\\]+	⟨⟩	⟨-⟩	x][-&~^\x	1-8
+find	[\[-\]]+	⟨⟩	⟨-⟩	a[\]	1-4
+find	[a^]+	⟨⟩	⟨-⟩	x^a	1-3
+find	[&~.$|(){}*+?]+	⟨⟩	⟨-⟩	x&~.$|(){}*+?	1-13
+find	[\d\s]+	⟨⟩	⟨-⟩	a1 2b	1-4
+find	[\D]+	⟨⟩	⟨-⟩	12ab3	2-4
+find	[\W\d]+	⟨⟩	⟨-⟩	ab-1é_	2-6
+find	[^\W]+	⟨⟩	⟨-⟩	-ab-	1-3
+find	[\S]+	⟨⟩	⟨-⟩	 ab 	1-3
+find	[\t\n\x{41}-\x{43}]+	⟨⟩	⟨-⟩	x⟨9⟩A⟨A⟩C	1-5
+find	[\x{1F600}-\x{1F64F}]	⟨⟩	⟨-⟩	a😀	1-5
+find	[\x{e8}-é]+	⟨⟩	⟨-⟩	aèéb	1-5
+find	[é-\x{ea}]	⟨⟩	⟨-⟩	ê	0-2
+find	[\x{1F600}-😀]	⟨⟩	⟨-⟩	😀	0-4
+find	[\pL]+	⟨⟩	⟨-⟩	1aé2	1-4
+find	[\P{L}]+	⟨⟩	⟨-⟩	aé12	3-5
+find	[\p{Greek}\d]+	⟨⟩	⟨-⟩	aα1b	1-4
+find	[[:alpha:]]+	⟨⟩	⟨-⟩	1aZé	1-3
+find	[[:^alpha:]]+	⟨⟩	⟨-⟩	ab1é	2-5
+find	[[:digit:][:upper:]_]+	⟨⟩	⟨-⟩	a1A_b	1-4
+find	[[:punct:]]+	⟨⟩	⟨-⟩	a!/:@[`{~b	1-9
+find	[[:space:]]+	⟨⟩	⟨-⟩	a⟨9⟩⟨B⟩ b	1-4
+find	[[:word:]]+	⟨⟩	⟨-⟩	-a_1é	1-4
+find	[[:xdigit:]]+	⟨⟩	⟨-⟩	xFa9g	1-4
+find	[[:cntrl:]]+	⟨⟩	⟨-⟩	a⟨0⟩⟨1F⟩⟨7F⟩b	1-4
+find	[[:print:]]+	⟨⟩	⟨-⟩	⟨9⟩a ~⟨7F⟩	1-4
+find	[[:graph:]]+	⟨⟩	⟨-⟩	 a~ 	1-3
+find	[[:blank:]]+	⟨⟩	⟨-⟩	a⟨9⟩ ⟨A⟩	1-3
+find	[[:ascii:]]+	⟨⟩	⟨-⟩	é⟨7F⟩a⟨80⟩	2-4
+find	[[:lower:]]+	⟨⟩	⟨-⟩	Aabé	1-3
+find	[[:alnum:]]+	⟨⟩	⟨-⟩	-a1é	1-3
+
+# ---- properties
+find	\pL+	⟨⟩	⟨-⟩	1aé世2	1-7
+find	\p{L}+	⟨⟩	⟨-⟩	1aé世2	1-7
+find	\p{Lu}	⟨⟩	⟨-⟩	aÉ	1-3
+find	\PL+	⟨⟩	⟨-⟩	a12b	1-3
+find	\P{Lu}+	⟨⟩	⟨-⟩	ABcd	2-4
+find	\p{Greek}+	⟨⟩	⟨-⟩	aαβ	1-5
+find	\P{Greek}	⟨⟩	⟨-⟩	αa	2-3
+find	\p{Han}	⟨⟩	⟨-⟩	a世	1-4
+find	\p{Latin}+	⟨⟩	⟨-⟩	1aé世	1-4
+find	\p{Any}+	⟨⟩	⟨-⟩	⟨A⟩é	0-3
+find	\pN+	⟨⟩	⟨-⟩	a1٣	1-4
+find	\p{Nd}	⟨⟩	⟨-⟩	a٣	1-3
+find	\p{Common}+	⟨⟩	⟨-⟩	a1 b	1-3
+find	\p{Inherited}	⟨⟩	⟨-⟩	é⟨301⟩	2-4
+find	\p{Zs}	⟨⟩	⟨-⟩	a⟨A0⟩	1-3
+find	\p{Sc}	⟨⟩	⟨-⟩	a€	1-4
+find	\p{Co}	⟨⟩	⟨-⟩	a⟨E000⟩	1-4
+find	\p{Cc}	⟨⟩	⟨-⟩	a⟨A⟩	1-2
+find	\p{Cf}	⟨⟩	⟨-⟩	a⟨200B⟩	1-4
+find	\p{Mn}	⟨⟩	⟨-⟩	e⟨301⟩	1-3
+find	\pP+	⟨⟩	⟨-⟩	a.,!b	1-4
+find	\pS	⟨⟩	⟨-⟩	a+	1-2
+find	\pZ	⟨⟩	⟨-⟩	a b	1-2
+find	\pM	⟨⟩	⟨-⟩	e⟨301⟩	1-3
+find	\p{Cyrillic}	⟨⟩	⟨-⟩	aж	1-3
+
+# ---- case folding under i (Unicode simple case folding)
+find	k	i	⟨-⟩	⟨212A⟩	0-3
+find	K	i	⟨-⟩	k	0-1
+find	\x{212A}	i	⟨-⟩	k	0-1
+find	s	i	⟨-⟩	ſ	0-2
+find	[a-z]+	i	⟨-⟩	-ABK⟨212A⟩ſ-	1-9
+find	[^a-z]	i	⟨-⟩	A⟨212A⟩ſ1	6-7
+find	[k]	i	⟨-⟩	⟨212A⟩	0-3
+find	[^k]	i	⟨-⟩	⟨212A⟩k1	4-5
+find	\w+	i	⟨-⟩	-a⟨212A⟩ſ-	1-7
+find	\w+	⟨⟩	⟨-⟩	-a⟨212A⟩ſ-	1-2
+find	\W	i	⟨-⟩	⟨212A⟩-	3-4
+find	[^\w]	i	⟨-⟩	ſ-	2-3
+find	[[:upper:]]	i	⟨-⟩	a	0-1
+find	[[:lower:]]+	i	⟨-⟩	-AB⟨212A⟩-	1-6
+find	\d	i	⟨-⟩	a1	1-2
+find	ß	i	⟨-⟩	⟨1E9E⟩	0-3
+find	\x{1E9E}	i	⟨-⟩	ß	0-2
+find	ss	i	⟨-⟩	ß	nil
+find	ß	i	⟨-⟩	ss	nil
+find	σ	i	⟨-⟩	Σς	0-2
+all	σ	i	⟨-⟩	Σςσ	[0-2] [2-4] [4-6]
+find	[α-ω]	i	⟨-⟩	Σ	0-2
+find	\p{Lu}	i	⟨-⟩	a	0-1
+find	\p{Ll}+	i	⟨-⟩	aB	0-2
+find	\P{Lu}	i	⟨-⟩	aB	nil
+find	\p{Greek}	i	⟨-⟩	Ω	0-2
+find	[\p{Lu}]	i	⟨-⟩	a	0-1
+find	[^\p{Lu}]	i	⟨-⟩	aB1	2-3
+find	[\p{Greek}]	i	⟨-⟩	Ω	0-2
+find	[^A-Z]	i	⟨-⟩	aK⟨212A⟩	nil
+find	i	i	⟨-⟩	İı	nil
+find	\x{130}	i	⟨-⟩	i	nil
+find	é	i	⟨-⟩	aÉé	1-3
+find	(?i)k	⟨⟩	⟨-⟩	⟨212A⟩	0-3
+find	(?i:k)k	⟨⟩	⟨-⟩	KK	nil
+find	(?i:k)k	⟨⟩	⟨-⟩	Kk	0-2
+find	a(?i)b|c	⟨⟩	⟨-⟩	C	0-1
+find	(?:a(?i)b)|c	⟨⟩	⟨-⟩	C	nil
+find	(?i)a(?-i)b	⟨⟩	⟨-⟩	AB Ab	3-5
+find	(?i-s:a.)	s	⟨-⟩	A⟨A⟩ Ax	3-5
+find	(?-i)a	i	⟨-⟩	Aa	1-2
+find	(?i:)a	⟨⟩	⟨-⟩	Aa	1-2
+find	a(?i)	⟨⟩	⟨-⟩	Aa	1-2
+
+# ---- groups, captures, alternation, leftmost-first
+find	(a)(b)?	⟨⟩	⟨-⟩	ac	0-1 0-1 nil
+find	(a|ab)(c|bcd)(d*)	⟨⟩	⟨-⟩	abcd	0-4 0-1 1-4 4-4
+find	(?:a(b))+	⟨⟩	⟨-⟩	abab	0-4 3-4
+find	((a)|b)+	⟨⟩	⟨-⟩	ab	0-2 1-2 0-1
+find	(?:(a)|(b))+	⟨⟩	⟨-⟩	ab	0-2 0-1 1-2
+find	(a|b)*	⟨⟩	⟨-⟩	abc	0-2 1-2
+find	(a*)+	⟨⟩	⟨-⟩	b	0-0 0-0
+find	(a*)*	⟨⟩	⟨-⟩	aab	0-2 0-2
+find	(a?)+?	⟨⟩	⟨-⟩	aa	0-1 0-1
+find	()*	⟨⟩	⟨-⟩	x	0-0 0-0
+find	(a){0}(b)(c){0}	⟨⟩	⟨-⟩	bc	0-1 nil 0-1 nil
+find	(a){0,1}	⟨⟩	⟨-⟩	b	0-0 nil
+find	(?<key>[a-z_]+)\s*=	⟨⟩	⟨-⟩	 name = 1	1-7 1-5 key=1-5
+find	(?P<a>x)|(?P<b>y)	⟨⟩	⟨-⟩	y	0-1 nil 0-1 b=0-1
+find	(?<_x1>a)	⟨⟩	⟨-⟩	a	0-1 0-1 _x1=0-1
+find	()	⟨⟩	⟨-⟩	a	0-0 0-0
+find	(é)(世)	⟨⟩	⟨-⟩	aé世	1-6 1-3 3-6
+find	(?:)	⟨⟩	⟨-⟩	a	0-0
+find	⟨⟩	⟨⟩	⟨-⟩	⟨⟩	0-0
+find	⟨⟩	⟨⟩	⟨-⟩	ab	0-0
+find	a|	⟨⟩	⟨-⟩	b	0-0
+find	|a	⟨⟩	⟨-⟩	a	0-0
+find	a|ab	⟨⟩	⟨-⟩	ab	0-1
+find	ab|a	⟨⟩	⟨-⟩	ab	0-2
+find	(a+|b+)+	⟨⟩	⟨-⟩	aabb	0-4 2-4
+find	x	⟨⟩	⟨-⟩	⟨⟩	nil
+
+# ---- repetition
+find	a*?	⟨⟩	⟨-⟩	aa	0-0
+find	a+?	⟨⟩	⟨-⟩	aa	0-1
+find	a??b	⟨⟩	⟨-⟩	ab	0-2
+find	a?	⟨⟩	⟨-⟩	ba	0-0
+find	a{2}	⟨⟩	⟨-⟩	aaa	0-2
+find	a{2,}	⟨⟩	⟨-⟩	aaaa	0-4
+find	a{2,}?	⟨⟩	⟨-⟩	aaaa	0-2
+find	a{1,2}	⟨⟩	⟨-⟩	aaa	0-2
+find	a{1,2}?	⟨⟩	⟨-⟩	aaa	0-1
+find	a{0}b	⟨⟩	⟨-⟩	ab	1-2
+find	a{0,0}b	⟨⟩	⟨-⟩	ab	1-2
+find	é{2}	⟨⟩	⟨-⟩	éé	0-4
+find	(?:ab){2}	⟨⟩	⟨-⟩	ababab	0-4
+find	(?:(?:a{10}){10}){10}	⟨⟩	⟨-⟩	a	nil
+find	\pL{1000}	i	⟨-⟩	a	nil
+find	(?:a*)*b	⟨⟩	⟨-⟩	aab	0-3
+find	(?:^)*a	⟨⟩	⟨-⟩	ba	1-2
+
+# ---- ?Match: anchored at a cursor, seeing the text before it
+at	[a-z]+	⟨⟩	2	ab cd	nil
+at	[a-z]+	⟨⟩	3	ab cd	3-5
+at	[a-z]+	⟨⟩	0	abc	0-3
+at	b	⟨⟩	0	ab	nil
+at	\bcd	⟨⟩	3	ab cd	3-5
+at	\bb	⟨⟩	1	ab	nil
+at	\Bb	⟨⟩	1	ab	1-2
+at	\bb	⟨⟩	2	éb	2-3
+at	^b	⟨⟩	1	ab	nil
+at	^b	m	2	a⟨A⟩b	2-3
+at	^b	m	1	ab	nil
+at	\Ab	⟨⟩	1	ab	nil
+at	x*	⟨⟩	1	axx	1-3
+at	x*	⟨⟩	0	axx	0-0
+at	a|ab	⟨⟩	0	ab	0-1
+at	ab|a	⟨⟩	0	ab	0-2
+at	a*b|a	⟨⟩	0	aaa	0-1
+at	b	⟨⟩	2	éb	2-3
+at	$	⟨⟩	2	ab	2-2
+at	⟨⟩	⟨⟩	5	ab世	5-5
+at	⟨⟩	⟨⟩	2	ab世	2-2
+at	(é)(.)	⟨⟩	1	aéb	1-4 1-3 3-4
+at	(?<n>\d+)	⟨⟩	2	x 42!	2-4 2-4 n=2-4
+at	.	⟨⟩	5	ab世	nil
+at	世	⟨⟩	2	ab世	2-5
+
+# ---- Matches: the iteration rule
+all	a*	⟨⟩	⟨-⟩	baaa	[0-0] [1-4]
+all	a*	⟨⟩	⟨-⟩	⟨⟩	[0-0]
+all	⟨⟩	⟨⟩	⟨-⟩	abc	[0-0] [1-1] [2-2] [3-3]
+all	⟨⟩	⟨⟩	⟨-⟩	é世	[0-0] [2-2] [5-5]
+all	b|	⟨⟩	⟨-⟩	ab	[0-0] [1-2]
+all	a|	⟨⟩	⟨-⟩	ab	[0-1] [2-2]
+all	\d+	⟨⟩	⟨-⟩	a1b22c333	[1-2] [3-5] [6-9]
+all	x	⟨⟩	⟨-⟩	abc	none
+all	a*?	⟨⟩	⟨-⟩	aa	[0-0] [1-1] [2-2]
+all	a*b|a	⟨⟩	⟨-⟩	aaa	[0-1] [1-2] [2-3]
+all	(\w)(\d)?	⟨⟩	⟨-⟩	a1b	[0-2 0-1 1-2] [2-3 2-3 nil]
+all	(?<w>\w+)	⟨⟩	⟨-⟩	ab c	[0-2 0-2 w=0-2] [3-4 3-4 w=3-4]
+all	x*	⟨⟩	⟨-⟩	axxb	[0-0] [1-3] [4-4]
+all	é	⟨⟩	⟨-⟩	aébé	[1-3] [4-6]
+
+# ---- Split
+split	,	⟨⟩	⟨-⟩	a,,b	0-1 2-2 3-4
+split	,	⟨⟩	⟨-⟩	⟨⟩	0-0
+split	,	⟨⟩	⟨-⟩	,a,	0-0 1-2 3-3
+split	,	⟨⟩	⟨-⟩	abc	0-3
+split	⟨⟩	⟨⟩	⟨-⟩	abc	0-0 0-1 1-2 2-3 3-3
+split	⟨⟩	⟨⟩	⟨-⟩	⟨⟩	0-0 0-0
+split	\s*	⟨⟩	⟨-⟩	a b	0-0 0-1 2-3 3-3
+split	é	⟨⟩	⟨-⟩	aébéc	0-1 3-4 6-7
+split	x*	⟨⟩	⟨-⟩	axxb	0-0 0-1 3-4 4-4
+split	(,)	⟨⟩	⟨-⟩	a,b	0-1 2-3
+split	\B	⟨⟩	⟨-⟩	é	0-0 0-2 2-2
+split	\s+	⟨⟩	⟨-⟩	 a  b 	0-0 1-2 4-5 6-6
+
+# ---- Replace: every match, the replacement read by claude/regex-dialect.md
+replace	_	⟨⟩	-	a_b_c	a-b-c
+replace	(\w+) (\w+)	⟨⟩	$2 $1	hello world	world hello
+replace	a	⟨⟩	⟨⟩	banana	bnn
+replace	a*	⟨⟩	-	baaac	-b-c-
+replace	⟨⟩	⟨⟩	-	ab	-a-b-
+replace	(a)|b	⟨⟩	[$1]	ab	[a][]
+replace	(?<x>\d+)	⟨⟩	<${x}>	a12b3	a<12>b<3>
+replace	(\d)	⟨⟩	${1}0	a5	a50
+replace	x	⟨⟩	$$	axb	a$b
+replace	x	⟨⟩	\\\n\t\/\u{e9}\u{1F600}	x	\⟨A⟩⟨9⟩/é😀
+replace	x	⟨⟩	$0$0	axb	axxb
+replace	x	⟨⟩	${0}	axb	axb
+replace	x	⟨⟩	a b"c	x	a b"c
+replace	(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)	⟨⟩	$10$1a	abcdefghij	jaa
+replace	é	i	E	aÉé	aEE
+replace	\b	⟨⟩	|	ab cd	|ab| |cd|
+replace	x	⟨⟩	y	⟨⟩	⟨⟩
+replace	^	m	>	a⟨A⟩b	>a⟨A⟩>b
+replace	(?<w>\w+)	⟨⟩	${w}${w}	ab cd	abab cdcd
+replace	\d	⟨⟩	$$1	a1	a$1
+
+# ---- refused: flags
+refuse	a	x	⟨-⟩	⟨-⟩	flags@0 an unknown flag: the flags are i, m and s
+refuse	a	ig	⟨-⟩	⟨-⟩	flags@1 an unknown flag: the flags are i, m and s
+refuse	a	U	⟨-⟩	⟨-⟩	flags@0 an unknown flag: the flags are i, m and s
+refuse	a	é	⟨-⟩	⟨-⟩	flags@0 an unknown flag: the flags are i, m and s
+refuse	a	ii	⟨-⟩	⟨-⟩	flags@1 a flag written twice
+refuse	a	msm	⟨-⟩	⟨-⟩	flags@2 a flag written twice
+refuse	a**	x	⟨-⟩	⟨-⟩	flags@0 an unknown flag: the flags are i, m and s
+
+# ---- refused: repetition
+refuse	a**	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a repetition of a repetition: write (?:a*)* to say it
+refuse	a+*	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a repetition of a repetition: write (?:a*)* to say it
+refuse	a{2}{3}	⟨⟩	⟨-⟩	⟨-⟩	pattern@4 a repetition of a repetition: write (?:a*)* to say it
+refuse	a???	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a repetition of a repetition: write (?:a*)* to say it
+refuse	a*?+	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a repetition of a repetition: write (?:a*)* to say it
+refuse	a{2}*	⟨⟩	⟨-⟩	⟨-⟩	pattern@4 a repetition of a repetition: write (?:a*)* to say it
+refuse	*a	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a repetition with nothing to repeat
+refuse	a|*	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a repetition with nothing to repeat
+refuse	(*)	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a repetition with nothing to repeat
+refuse	(?i)*	⟨⟩	⟨-⟩	⟨-⟩	pattern@4 a repetition with nothing to repeat
+refuse	a(?i)+	⟨⟩	⟨-⟩	⟨-⟩	pattern@5 a repetition with nothing to repeat
+refuse	{2}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a repetition with nothing to repeat
+refuse	?	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a repetition with nothing to repeat
+refuse	^*	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a repetition of an assertion
+refuse	\b+	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a repetition of an assertion
+refuse	$?	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a repetition of an assertion
+refuse	\A{2}	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a repetition of an assertion
+refuse	\z*	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a repetition of an assertion
+refuse	\B?	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a repetition of an assertion
+refuse	a{	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a brace that opens no count: a literal one is \{
+refuse	a{,3}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a brace that opens no count: a literal one is \{
+refuse	a{x}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a brace that opens no count: a literal one is \{
+refuse	a{ 2}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a brace that opens no count: a literal one is \{
+refuse	a{2 }	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a brace that opens no count: a literal one is \{
+refuse	a{2	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a brace that opens no count: a literal one is \{
+refuse	a{2,3	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a brace that opens no count: a literal one is \{
+refuse	a{-1}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a brace that opens no count: a literal one is \{
+refuse	a{+1}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a brace that opens no count: a literal one is \{
+refuse	{	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a brace that opens no count: a literal one is \{
+refuse	a{01}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a count with a leading zero
+refuse	a{1,02}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a count with a leading zero
+refuse	a{00,}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a count with a leading zero
+refuse	a{1001}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a count above 1000
+refuse	a{2,1001}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a count above 1000
+refuse	a{99999999999999999999}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a count above 1000
+refuse	a{3,2}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a count whose minimum exceeds its maximum
+refuse	(?:a{10}){101}	⟨⟩	⟨-⟩	⟨-⟩	pattern@9 nested counts multiplying past 1000
+refuse	(?:(?:a{2}){2}){251}	⟨⟩	⟨-⟩	⟨-⟩	pattern@15 nested counts multiplying past 1000
+refuse	(?:a{1000}|b){2}	⟨⟩	⟨-⟩	⟨-⟩	pattern@13 nested counts multiplying past 1000
+refuse	(?:a{2,}){501}	⟨⟩	⟨-⟩	⟨-⟩	pattern@9 nested counts multiplying past 1000
+refuse	(?:abcdefghijk){1000}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 the pattern expands past 10,000 atoms
+refuse	(?:(?:abcdefghij){1000}x)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 the pattern expands past 10,000 atoms
+
+# ---- refused: escapes
+refuse	\	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \ at the end of the pattern
+refuse	ab\	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a \ at the end of the pattern
+refuse	\1	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a backreference: refused so that every match is linear in its text
+refuse	(a)\1	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a backreference: refused so that every match is linear in its text
+refuse	\9	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a backreference: refused so that every match is linear in its text
+refuse	\0	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an octal escape is RE2's only: write \x
+refuse	\012	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an octal escape is RE2's only: write \x
+refuse	\Q*\E	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 \Q...\E is RE2's only: escape each character
+refuse	a\E	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 \Q...\E is RE2's only: escape each character
+refuse	\C	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 \C, one byte, is RE2's only
+refuse	\<	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 \< and \> are Rust's only: write \b
+refuse	a\>	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 \< and \> are Rust's only: write \b
+refuse	\b{start}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 \b{...} is Rust's only: write \b
+refuse	\b{2}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 \b{...} is Rust's only: write \b
+refuse	\Z	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\e	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\u{41}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\⟨20⟩	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\é	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\G	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\K	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\h	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\R	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\X	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\N	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\cA	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\⟨A⟩	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown escape
+refuse	\x	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x escape needs two hex digits or braces
+refuse	\x4	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x escape needs two hex digits or braces
+refuse	a\x4g	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a \x escape needs two hex digits or braces
+refuse	\x{}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x{...} escape needs one to six hex digits
+refuse	\x{1234567}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x{...} escape needs one to six hex digits
+refuse	\x{12	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x{...} escape needs one to six hex digits
+refuse	\x{g}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x{...} escape needs one to six hex digits
+refuse	\x{ 41}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x{...} escape needs one to six hex digits
+refuse	\x{D800}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x escape names no character: a surrogate or past U+10FFFF
+refuse	\x{DFFF}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x escape names no character: a surrogate or past U+10FFFF
+refuse	\x{110000}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x escape names no character: a surrogate or past U+10FFFF
+refuse	\x{FFFFFF}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \x escape names no character: a surrogate or past U+10FFFF
+refuse	a]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a ] outside a class: a literal one is \]
+refuse	a}	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a } outside a count: a literal one is \}
+
+# ---- refused: properties
+refuse	\p	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \p escape needs a property name
+refuse	\p1	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \p escape needs a property name
+refuse	a\P	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a \p escape needs a property name
+refuse	\pé	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \p escape needs a property name
+refuse	\p{L	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \p{ that is never closed
+refuse	\p{^L}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a negated property is written \P{...}
+refuse	\P{^L}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a negated property is written \P{...}
+refuse	\pC	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 the property is refused: RE2 and Rust disagree on C, Cn, Cs and LC
+refuse	\p{C}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 the property is refused: RE2 and Rust disagree on C, Cn, Cs and LC
+refuse	\p{Cn}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 the property is refused: RE2 and Rust disagree on C, Cn, Cs and LC
+refuse	\P{Cs}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 the property is refused: RE2 and Rust disagree on C, Cn, Cs and LC
+refuse	\p{LC}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 the property is refused: RE2 and Rust disagree on C, Cn, Cs and LC
+refuse	\p{Letter}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{greek}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{gc=L}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{sc=Greek}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{Alphabetic}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{ L}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{Garay}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{L&}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\pX	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{Zyyy}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{any}	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown property: general categories by short name, scripts and Any
+refuse	\p{Lu	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a \p{ that is never closed
+
+# ---- refused: classes
+refuse	[a	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a class opened here is never closed
+refuse	x[^	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a class opened here is never closed
+refuse	[[:alpha:]	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a class opened here is never closed
+refuse	[a\	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a \ at the end of the pattern
+refuse	[]a]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a ] first in a class: write \]
+refuse	[]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a ] first in a class: write \]
+refuse	[^]	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a ] first in a class: write \]
+refuse	[a[b]	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a [ inside a class: write \[ (nested classes are Rust's only)
+refuse	[[:alpha]]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a [ inside a class: write \[ (nested classes are Rust's only)
+refuse	[[=a=]]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a [ inside a class: write \[ (nested classes are Rust's only)
+refuse	[[.a.]]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a [ inside a class: write \[ (nested classes are Rust's only)
+refuse	[[:foo:]]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 an unknown ASCII class
+refuse	[[:Alpha:]]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 an unknown ASCII class
+refuse	[[:^foo:]]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 an unknown ASCII class
+refuse	[a&&b]	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 &&, ~~ and -- in a class are Rust's set operations: escape them
+refuse	[a~~b]	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 &&, ~~ and -- in a class are Rust's set operations: escape them
+refuse	[a--b]	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 &&, ~~ and -- in a class are Rust's set operations: escape them
+refuse	[--]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 &&, ~~ and -- in a class are Rust's set operations: escape them
+refuse	[a-&&]	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 &&, ~~ and -- in a class are Rust's set operations: escape them
+refuse	[&&]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 &&, ~~ and -- in a class are Rust's set operations: escape them
+refuse	[a-c-e]	⟨⟩	⟨-⟩	⟨-⟩	pattern@4 a - in a class that is neither a range nor first or last: write \-
+refuse	[\d-z]	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a - in a class that is neither a range nor first or last: write \-
+refuse	[[:alpha:]-z]	⟨⟩	⟨-⟩	⟨-⟩	pattern@10 a - in a class that is neither a range nor first or last: write \-
+refuse	[z-a]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
+refuse	[é-a]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
+refuse	[é-\x{e8}]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
+refuse	[\x{ea}-é]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
+refuse	[😀-\x{1F5FF}]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a range whose ends are out of order
+refuse	[a-\d]	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a range end that is a class
+refuse	[a-\pL]	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a range end that is a class
+refuse	[a-[]	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a [ inside a class: write \[ (nested classes are Rust's only)
+refuse	[\b]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 an escape that a class cannot hold
+refuse	[\A]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 an escape that a class cannot hold
+refuse	[\1]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 an escape that a class cannot hold
+refuse	[\<]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 an escape that a class cannot hold
+refuse	[\Q]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 an escape that a class cannot hold
+refuse	[\x{D800}]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a \x escape names no character: a surrogate or past U+10FFFF
+refuse	[\x4]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a \x escape needs two hex digits or braces
+refuse	[\p{Cn}]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 the property is refused: RE2 and Rust disagree on C, Cn, Cs and LC
+refuse	[\p{Nope}]	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 an unknown property: general categories by short name, scripts and Any
+refuse	[\W]	i	⟨-⟩	⟨-⟩	pattern@1 a negated class inside a class under i: write it outside the class
+refuse	(?i)[\P{Lu}]	⟨⟩	⟨-⟩	⟨-⟩	pattern@5 a negated class inside a class under i: write it outside the class
+refuse	[[:^alpha:]]	i	⟨-⟩	⟨-⟩	pattern@1 a negated class inside a class under i: write it outside the class
+refuse	[a\D]	i	⟨-⟩	⟨-⟩	pattern@2 a negated class inside a class under i: write it outside the class
+refuse	(?i:[\S])	⟨⟩	⟨-⟩	⟨-⟩	pattern@5 a negated class inside a class under i: write it outside the class
+
+# ---- refused: groups
+refuse	(?=a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a lookaround: refused so that every match is linear in its text
+refuse	(?!a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a lookaround: refused so that every match is linear in its text
+refuse	x(?<=a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a lookaround: refused so that every match is linear in its text
+refuse	(?<!a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a lookaround: refused so that every match is linear in its text
+refuse	(?P=n)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a backreference: refused so that every match is linear in its text
+refuse	(?P>n)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a backreference: refused so that every match is linear in its text
+refuse	(?#c)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown group: the groups are (re), (?:re), (?<name>re), (?P<name>re) and the flag groups
+refuse	(?>a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown group: the groups are (re), (?:re), (?<name>re), (?P<name>re) and the flag groups
+refuse	(?|a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown group: the groups are (re), (?:re), (?<name>re), (?P<name>re) and the flag groups
+refuse	(?Px)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown group: the groups are (re), (?:re), (?<name>re), (?P<name>re) and the flag groups
+refuse	(?1)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown group: the groups are (re), (?:re), (?<name>re), (?P<name>re) and the flag groups
+refuse	(?i!)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown group: the groups are (re), (?:re), (?<name>re), (?P<name>re) and the flag groups
+refuse	(?é)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an unknown group: the groups are (re), (?:re), (?<name>re), (?P<name>re) and the flag groups
+refuse	(?	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a group opened here is never closed
+refuse	(?i	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a group opened here is never closed
+refuse	(?P	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a group opened here is never closed
+refuse	(?<n	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a group name that is never closed
+refuse	(?<>a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a group name is a lowercase value name, [a-z_][a-z0-9_]*
+refuse	(?<Name>a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a group name is a lowercase value name, [a-z_][a-z0-9_]*
+refuse	(?<1a>a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a group name is a lowercase value name, [a-z_][a-z0-9_]*
+refuse	(?<a-b>x)	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a group name is a lowercase value name, [a-z_][a-z0-9_]*
+refuse	(?<aB>x)	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a group name is a lowercase value name, [a-z_][a-z0-9_]*
+refuse	(?P<Name>a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@4 a group name is a lowercase value name, [a-z_][a-z0-9_]*
+refuse	(?<n>a)(?<n>b)	⟨⟩	⟨-⟩	⟨-⟩	pattern@7 a group name used twice
+refuse	(?P<n>a)(?<n>b)	⟨⟩	⟨-⟩	⟨-⟩	pattern@8 a group name used twice
+refuse	(a	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a group opened here is never closed
+refuse	(a(b)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 a group opened here is never closed
+refuse	a((b)	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a group opened here is never closed
+refuse	((a	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a group opened here is never closed
+refuse	a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@1 a ) that closes no group
+refuse	())	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a ) that closes no group
+refuse	(?)	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 an empty flag group
+refuse	(?x)	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 an unknown flag: the flags are i, m and s
+refuse	(?U)	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 an unknown flag: the flags are i, m and s
+refuse	(?u)	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 an unknown flag: the flags are i, m and s
+refuse	(?R)	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 an unknown flag: the flags are i, m and s
+refuse	(?im-x:a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@5 an unknown flag: the flags are i, m and s
+refuse	(?ii)	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a flag written twice
+refuse	(?i-i)	⟨⟩	⟨-⟩	⟨-⟩	pattern@4 a flag written twice
+refuse	(?i-m-s)	⟨⟩	⟨-⟩	⟨-⟩	pattern@5 a second - in a flag group
+refuse	(?i-)	⟨⟩	⟨-⟩	⟨-⟩	pattern@3 a - that turns off no flag
+refuse	(?-)	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a - that turns off no flag
+refuse	(?-:a)	⟨⟩	⟨-⟩	⟨-⟩	pattern@2 a - that turns off no flag
+
+# ---- refused: replacements (the arg is the replacement)
+refuse	(a)	⟨⟩	$2	⟨-⟩	replacement@0 the pattern has no group of that number
+refuse	(a)	⟨⟩	$1$2	⟨-⟩	replacement@2 the pattern has no group of that number
+refuse	(a)	⟨⟩	$99999999999999999999	⟨-⟩	replacement@0 the pattern has no group of that number
+refuse	(a)	⟨⟩	${2}	⟨-⟩	replacement@0 the pattern has no group of that number
+refuse	(a)	⟨⟩	x$	⟨-⟩	replacement@1 a $ that is not $n, ${n}, ${name} or $$
+refuse	(a)	⟨⟩	$a	⟨-⟩	replacement@0 a $ that is not $n, ${n}, ${name} or $$
+refuse	(a)	⟨⟩	$⟨20⟩	⟨-⟩	replacement@0 a $ that is not $n, ${n}, ${name} or $$
+refuse	(?<x>a)	⟨⟩	${y}	⟨-⟩	replacement@0 the pattern has no group of that name
+refuse	(?<x>a)	⟨⟩	$x	⟨-⟩	replacement@0 a $ that is not $n, ${n}, ${name} or $$
+refuse	(a)	⟨⟩	${	⟨-⟩	replacement@0 a ${...} that is neither a group number nor a group name
+refuse	(a)	⟨⟩	${1	⟨-⟩	replacement@0 a ${...} that is neither a group number nor a group name
+refuse	(a)	⟨⟩	${}	⟨-⟩	replacement@0 a ${...} that is neither a group number nor a group name
+refuse	(a)	⟨⟩	${A}	⟨-⟩	replacement@0 a ${...} that is neither a group number nor a group name
+refuse	(a)	⟨⟩	${⟨20⟩1}	⟨-⟩	replacement@0 a ${...} that is neither a group number nor a group name
+refuse	(a)	⟨⟩	${1a}	⟨-⟩	replacement@0 a ${...} that is neither a group number nor a group name
+refuse	(a)	⟨⟩	$01	⟨-⟩	replacement@0 a group number with a leading zero
+refuse	(a)	⟨⟩	${01}	⟨-⟩	replacement@0 a group number with a leading zero
+refuse	(a)	⟨⟩	$00	⟨-⟩	replacement@0 a group number with a leading zero
+refuse	(a)	⟨⟩	\x	⟨-⟩	replacement@0 an unknown escape in a replacement: the escapes are \\, \n, \t, \u{hex} and \/
+refuse	(a)	⟨⟩	ab\	⟨-⟩	replacement@2 an unknown escape in a replacement: the escapes are \\, \n, \t, \u{hex} and \/
+refuse	(a)	⟨⟩	\1	⟨-⟩	replacement@0 an unknown escape in a replacement: the escapes are \\, \n, \t, \u{hex} and \/
+refuse	(a)	⟨⟩	\"	⟨-⟩	replacement@0 an unknown escape in a replacement: the escapes are \\, \n, \t, \u{hex} and \/
+refuse	(a)	⟨⟩	\⟨20⟩	⟨-⟩	replacement@0 an unknown escape in a replacement: the escapes are \\, \n, \t, \u{hex} and \/
+refuse	(a)	⟨⟩	\r	⟨-⟩	replacement@0 an unknown escape in a replacement: the escapes are \\, \n, \t, \u{hex} and \/
+refuse	(a)	⟨⟩	\u{}	⟨-⟩	replacement@0 a \u{...} escape needs one to six hex digits naming a character
+refuse	(a)	⟨⟩	\u{D800}	⟨-⟩	replacement@0 a \u{...} escape needs one to six hex digits naming a character
+refuse	(a)	⟨⟩	\u41	⟨-⟩	replacement@0 a \u{...} escape needs one to six hex digits naming a character
+refuse	(a)	⟨⟩	\u{1234567}	⟨-⟩	replacement@0 a \u{...} escape needs one to six hex digits naming a character
+refuse	(a)	⟨⟩	\u{110000}	⟨-⟩	replacement@0 a \u{...} escape needs one to six hex digits naming a character
+refuse	(a)	⟨⟩	\u{41	⟨-⟩	replacement@0 a \u{...} escape needs one to six hex digits naming a character
+refuse	a**	⟨⟩	$5	⟨-⟩	pattern@2 a repetition of a repetition: write (?:a*)* to say it
+refuse	a	x	$5	⟨-⟩	flags@0 an unknown flag: the flags are i, m and s
+
+# ---- nesting (generated lines: 100 and 101 groups deep)
+find	((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))	⟨⟩	⟨-⟩	ba	1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2 1-2
+refuse	(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 groups and repetitions nested more than 100 deep
+refuse	((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a*))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 groups and repetitions nested more than 100 deep
+refuse	((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((()**	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 groups and repetitions nested more than 100 deep
+refuse	((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a**))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))	⟨⟩	⟨-⟩	⟨-⟩	pattern@102 a repetition of a repetition: write (?:a*)* to say it
+refuse	(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:a))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))*	⟨⟩	⟨-⟩	⟨-⟩	pattern@0 groups and repetitions nested more than 100 deep
+find	(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:(?i:a)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))*	⟨⟩	⟨-⟩	A	0-1

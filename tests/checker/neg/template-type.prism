@@ -1,0 +1,15 @@
+# `mismatch`: a template call's arguments are checked against the callee's signature.
+# `Broken` passes a `Nat` where `Quote` takes a `Text`; `Fine` passes a text, and checks
+# clean.
+Quote: fn Text -> Text
+fn Quote text = "> {text}"
+
+Broken: fn Nat -> Text
+fn Broken n = inline_text <txt>
+<@Quote text={{n}}/>
+</txt>
+
+Fine: fn Text -> Text
+fn Fine t = inline_text <txt>
+<@Quote text={{t}}/>
+</txt>

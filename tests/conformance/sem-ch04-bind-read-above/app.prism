@@ -1,0 +1,27 @@
+# A block is one binding group (Semantics ch. 4: "any line may use any name the block
+# binds"): a line may read a name a prelude widget binds on a line below it. `@Shown $d`
+# and `@Rows $each` are lowered before `$d <- @Distinct $n` and `$each <- @PerKey $m`,
+# and read their dynamics as the lines below define them. Written by Claude on the
+# claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Shown: fn $Text -> @unit
+fn @Shown $t:
+    Ui.Label(text=$t)
+
+@Rows: fn $(Nat ==> $Text) -> @unit
+fn @Rows $each:
+    for k, $v <- $each:
+        Ui.Label(text=$"{k}: {$v}")
+
+@main: @unit
+@main:
+    !go <- Ui.Button(label=$"go")                               # 0
+    @Shown $d                                                   # 1
+    @Rows $each                                                 # 2/[k]
+    $n <- "a" then "b" on !go
+    $d <- @Distinct $n
+    $m <- {0: "a"} then {0: "b", 1: "c"} on !go
+    $each <- @PerKey $m

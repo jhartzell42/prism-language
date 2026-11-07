@@ -1,0 +1,2 @@
+# `no-signature`: a top-level function needs its signature line.
+fn Twice n = n + n

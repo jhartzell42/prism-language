@@ -1,0 +1,37 @@
+# tests/cost/
+
+*Written by Claude on the claude-self-hosting branch; subject to change.* Tests that count
+work, not time: `run.sh` builds each program pair here through `./prism test` (whose
+transcripts must match), then counts the instructions each test binary retires. The
+counter is the platform's, chosen by `bench/lib.sh` and named in the output: on macOS
+`/usr/bin/time -l`'s "instructions retired"; on Linux `perf stat -e instructions` when
+the machine has hardware counters, else valgrind's cachegrind (`--cache-sim=no`, its "I
+refs"), which counts every instruction the program executes, the same number on every
+run, at about fifty times the run time. The pairs compare runs under one counter, so the
+under-twice bar means the same under each; the absolute counts differ between counters
+(cachegrind counts user-space instructions of the program and its libraries only).
+
+- `one-reader/`, `ten-readers/`: a costly dynamic `let` read by one place and by ten. Ten
+  must cost under twice one: the `let` is computed once per write behind it and shared by
+  its readers (Graph ch. 4, "Invalidation by stamped marks"; Jimmy, 5 November: "of course
+  we want to cache multiply-read lets").
+- `builder-one-write/`, `builder-many-writes/`: a `for` over 20,000 keys whose hold is
+  written with the value it has, once and forty times. Forty must cost under twice one: a
+  builder whose source is the very map it last built from (one node) does nothing, rather
+  than walking both key sets (claude/incremental-host-document.md, "Without a route").
+- `per-key-one-edit/`, `per-key-many-edits/`: a `for` over `@PerKey` of a 2,000-key map,
+  each row doing a thousand steps of arithmetic when its value moves, the map written with
+  one key changed per click, once and forty times. Each extra edit must cost under a
+  twentieth of the one-edit run (which builds the 2,000 rows once): only
+  the changed key's inner fires, so a click costs one row's work and a walk of the keys,
+  not every row's (Semantics Appendix B, `@PerKey`; round 9 PK). Over the plain `for k, $v
+  <- $m`, every row's `$v` fires on every write (pick UD), and forty clicks cost forty
+  times the rows.
+
+- `per-key-drop-one/`, `per-key-drop-many/`: the same `for k, $v <- $each:` over `@PerKey`
+  of a 2,000-key map, each row's label costly to send, the map written with one key removed
+  per click, once and forty times. Each extra removal must cost under a twentieth of the
+  one-removal run: the outer moves, and the
+  `for`'s walk over the keys finds every kept key's dynamic the one its row was built from,
+  so no kept row is woken or patched; a click costs the walk (one comparison per key) and
+  the removed row's leaving (Semantics ch. 4, ruling FV).

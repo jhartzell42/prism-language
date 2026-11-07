@@ -1,0 +1,4 @@
+# `Shapes.Round`: a directory at depth 2 holding a file and a directory.
+emit r
+mod Circle
+mod Oval

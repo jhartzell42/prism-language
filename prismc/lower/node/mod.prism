@@ -1,0 +1,404 @@
+# `Lower.Node`: widget blocks lowered to nodes (Compiler ch. 4; claude/backend.md): one
+# node per block, its places, dynamics, holds, `for` and `rebuild`, and its build.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+mod Def
+mod Elements
+mod Static
+mod Dynamics
+mod Finish
+mod Keyed
+mod Switch
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Functions.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Lower.Model.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+# ---------------------------------------------------------------------------------------
+# Widget blocks: one node per block, children in static positions merged in (Compiler
+# ch. 3, "The translation"; claude/backend.md, "A widget block")
+# ---------------------------------------------------------------------------------------
+
+# An event as an expression reaches it: a node of the block's graph (a source, a named
+# event or a combinator) and the pipe of pure transforms after it, which calls straight
+# through (Compiler ch. 3, the half counter): given the node's value and what to do with
+# the result, the code.
+type EvRef = record:
+    node: Nat
+    # The node (`Wx.node`) whose graph `node` indexes: an event crosses into a row only
+    # through a port, so a reference used in any other node is a lowering bug, refused.
+    owner: Text
+    pipe: unbounded fn Ex, (unbounded fn Ex -> [Do]) -> [Do]
+
+IdPipe: unbounded fn Ex, (unbounded fn Ex -> [Do]) -> [Do]
+fn IdPipe x, K = K x
+
+EvRefOf: fn Wx, Nat -> EvRef
+fn EvRefOf wx, n = EvRef(node=n, owner=wx.node, pipe=IdPipe)
+
+# One node of the graph: its method, its value's type, what it is, and what each firing
+# does (`outs`, in page order). A combinator's `inputs` are its stamped fields.
+type Gn = record:
+    id: Nat
+    name: Text
+    ty: OutTy
+    kind: GnKind
+    height: Nat
+    inputs: [Text]
+    # An `!Updated` node's: what its dynamic reads, closed over the dynamic `let`s when the
+    # node is finished.
+    reads: [Read]
+    # The least height a combinator takes: a row's `!Updated` node over what the row reads
+    # through its parent sits above the block's writers of it (pick RE).
+    floor: Nat
+    outs: [Out]
+
+# What a node of the graph is: a source (a place's answer, `@started`, an `@Defer`, a row's
+# port), a named event, or a combinator decided in the wake (a merge, `!Union`, `!Both`,
+# `!Except`, `!MergeAll`, a `for`'s gather, `!Updated`); `never` fires nothing.
+type GnKind = choice:
+    GnNamed
+    GnAnswer
+    GnStarted
+    GnDeferred
+    GnPort
+    GnMerge
+    GnUnion
+    GnBoth
+    GnExcept
+    GnMergeAll
+    GnGather
+    GnUpdated
+    GnNever
+derive ^Eq, ^Show
+
+# A kind's word, which names its node when nothing else does.
+KindWord: fn GnKind -> Text
+fn KindWord k = match k:
+    GnNamed: "named"
+    GnAnswer: "answer"
+    GnStarted: "started"
+    GnDeferred: "deferred"
+    GnPort: "port"
+    GnMerge: "merge"
+    GnUnion: "union"
+    GnBoth: "both"
+    GnExcept: "except"
+    GnMergeAll: "mergeall"
+    GnGather: "gather"
+    GnUpdated: "updated"
+    GnNever: "never"
+
+type Out = record:
+    pipe: unbounded fn Ex, (unbounded fn Ex -> [Do]) -> [Do]
+    sink: Sk
+
+# Where a firing goes: another node's method, a combinator's stamped input, a hold, a
+# request field, the root's result, an `@Defer`, `@Run`'s machine.
+type Sk = choice:
+    SkNode Nat
+    SkIn Nat, Nat
+    SkHold Text
+    SkRequest Pos, Text
+    SkResult
+    SkArm Text
+    SkCycle Text, Text, Nat
+    SkUp Text
+    SkPort Text
+    # `@Machine`: the state hold, the step function's path, the output node.
+    SkMachine Text, Text, Nat
+    # `@Distinct`: its hold, written only by a value unequal to the one it holds.
+    SkDistinct Text
+    # `@PerKey`: its `prism_rtl::PerKey`, whose outer is written only when a key came or went.
+    SkPerKey Text
+
+# A place of the block: its position, its level as the program's `crate::Elem` (its
+# snapshot, `level_pod` for the document), and when a live field reads a dynamic its getter
+# (the patch pass pulls it after the tick, claude/backend.md "Marks"). A place in a hosted
+# scope is an entry of its host's document (Jimmy, 6 November 2026: `$(Path ==> $Elem c)`):
+# `entry` is its `prism_rtl::Entry` field, taken at the build and in the patch pass. A
+# place that goes to the World and holds dynamics (a box's children) has a `watch`, its
+# `prism_rtl::Watch`, so a move of a nested entry sends it again (doubt WD).
+type Place = record:
+    pos: Pos
+    level: Ex
+    getter: Text
+    reads: [Read]
+    entry: Text
+    watch: Text
+
+# What a dynamic reads, for the marks (claude/backend.md, "Marks"): a hold or a dynamic
+# `let`'s getter of this node by its field or method name, or, in a row, one of its block's
+# read through the parent (gap DY), whose writes in the block mark the rows.
+type Read = choice:
+    OwnRead Text
+    ParentRead Text
+derive ^Eq, ^Show
+
+HasRead: fn [Read], Read -> Bool
+fn HasRead rs, r = Fold rs, False, \|seen, x| seen or x == r
+
+AddRead: fn [Read], Read -> [Read]
+fn AddRead rs, r = if HasRead rs, r: rs else: Push rs, r
+
+UnionReads: fn [Read], [Read] -> [Read]
+fn UnionReads xs, ys = Fold ys, xs, \|acc, y| AddRead acc, y
+
+# What a block (or an inlined widget) gives back.
+type Wres = choice:
+    WrEv EvRef
+    WrDyn Ex, [Read], OutTy
+    WrPlain Ex, OutTy
+    WrUnit
+    # A host's output: its child's result, the first part of the line's tuple pattern, and
+    # the child's document, the second part (pick HO).
+    WrHosted Wres, Bn
+    # A bundle (Type System ch. 2): a tuple holding events or dynamics, each part its own
+    # result, taken apart where a tuple pattern binds it.
+    WrParts [Wres]
+
+# The state of lowering one node.
+type Wx = record:
+    lx: Lx
+    node: Text
+    pos: Pos
+    gns: [Gn]
+    fields: [((Text, OutTy, Text))]
+    # Field initializers: the computed ones (a clone of a local among them), then `moves`,
+    # the locals moved into the node and the fresh cells, written after the ones that read
+    # them.
+    inits: [((Text, Ex))]
+    moves: [((Text, Ex))]
+    lets: [Do]
+    build: [Do]
+    places: [Place]
+    # The places whose element answers an event: position, the graph node the answer fires,
+    # its type, and the tag's `Answer` accessor (a hosted place is answered typed, pick HO).
+    answers: [((Pos, Nat, OutTy, Text))]
+    started: [Nat]
+    defers: [((Text, Nat))]
+    getters: [MethDef]
+    dynReads: (Text ==> [Read])
+    taken: [Text]
+    fallible: Bool
+    inlining: [Text]           # the widgets being inlined here, outermost first: one recurses at most sixteen levels (gap ID)
+    result: Wres
+    rows: [NodeDef]
+    builders: [ForDef]
+    # The dynamic `let`s computed once per write behind them, each a `Cache` the write
+    # paths mark (`SourceMarks`), as a `for`'s source is.
+    letCaches: [Text]
+    buildHolds: [Read]
+    upSink: Text
+    gens: [GenDef]
+    genHolds: [((Text, [Read]))]
+    ports: [Text]
+    subs: [((Text, Text, OutTy))]
+    parentEnv: Env
+    # The hosts of the block (`@HostDocument`, `@HostSome`), in order (pick HO): host `k`
+    # (from 1) is `hosts[k - 1]`, and a position of scope `k` is a place of its child.
+    hosts: [HostDef]
+    # The places whose element answers a dynamic: position, the hold, its type, and the
+    # tag's `Answer` accessor. An answer or a push there writes the hold.
+    dynPlaces: [((Pos, Text, OutTy, Text))]
+    # The hosts' fields, `hosts[k - 1].name` (`host_k`): kept apart for the positions'
+    # spelling.
+    scopes: [Text]
+    # Where this node's own places (scope 0) go: nowhere when `nil`, the World's document;
+    # when set, an enclosing host's document, and the parent's method that this node calls
+    # when a place of its own may have moved (`host_k_moved` of the owner for a row of a
+    # hosted child's `for`, `document_moved` of a row of such a row).
+    hostedBy: ?Text
+    # The root's dynamic result: what it reads and its type (the World hears it at the
+    # build and whenever it moves).
+    rootDyn: ?((Ex, [Read], OutTy))
+    # The `for`s whose rows read the block: what the rows read of it, by builder (gap DY).
+    rowMarks: [RowMarks]
+    # The `for`s' rows, lowered and waiting for the block's heights (pick RE).
+    pending: [PendingRow]
+    # A row's: the heights above which its block's names are written, by the name the row
+    # reads through the parent, set when the row is finished (pick RE).
+    floors: (Text ==> Nat)
+    # The node's structural dynamics (pick ST), each kept as a snapshot taken in the
+    # construction step: a host's child document, a `for`'s gathered dynamic.
+    snaps: [SnapDef]
+    # A row whose result its block gathers (pick ST): the block's method that marks the
+    # gathered snapshot, and the row's reads behind the result, a write of which calls it.
+    resultMoved: ?((Text, [Read]))
+    # A host's dynamic answers to its child's places (`@ $d`, round 3 DY): the owner's
+    # getter for each, and what it reads, a write behind which fires the getter's port.
+    dynAnswers: [((Text, [Read]))]
+    # The holds and dynamic `let`s whose value at the build stands in a local, `{f}_init`,
+    # bound in the build environment under `{name}#init`: what a supplier's dynamic answer
+    # reads while the owner's node is being made (round 3 DY).
+    inited: [Text]
+    # The node's flattens: `@Flatten` over a `rebuild`'s dynamic, and a `for` row's `$v`
+    # over a map of dynamics (Semantics ch. 4, ch. 7).
+    flattens: [FlatDef]
+
+# A flatten: `$a <- @Flatten $$x` over a `rebuild`'s dynamic `$$x` (Semantics ch. 7,
+# "`rebuild`, `@Switch` and `@Flatten` across ticks"), or a `for` row's `$v` over
+# `$(k ==> $v)` (ch. 4, ruling FV; `EntryFlatten`). `{name}_inner` is the current inner, a
+# hold; the getter `name` samples it. For a `rebuild`'s, `outer` is its structural dynamic,
+# whose publication queues the adoption (`{name}_adopt`) for the first firings of the next
+# tick, and `generation` the `rebuild`, whose current generation tells the block when its
+# result moved (`{generation}_result_moved`). For a row's, `outer` is `entry` and
+# `generation` empty: the `for`'s builder queues the adoption (`{name}_replaced`).
+type FlatDef = record:
+    name: Text
+    outer: Text
+    generation: Text
+    ty: OutTy
+
+# A `for`'s rows' (or a `rebuild`'s generation's) reads of their block, as the block's own
+# names (gap DY): the builder's field; what the rows' places read, whose writes in the block
+# mark every row; and the names the rows' `!Updated` nodes read, a write behind one of
+# which tells every row through its `parent_wrote_{m}` (pick RE; a generation hears none,
+# `UpdatedGaps`).
+type RowMarks = record:
+    builder: Text
+    reads: [Read]
+    wrote: [Text]
+    kind: RowKind
+
+# A host of the block (`@HostDocument`, `@HostSome`; pick HO): its line's position, its
+# field (`host_k`, `k` the scope of its child's places), and that scope.
+type HostDef = record:
+    pos: Pos
+    name: Text
+    scope: Nat
+
+# A structural dynamic of the node (Semantics ch. 7, "Structural dynamics"; pick ST): a
+# lawful dynamic one tick behind the structure it describes. The construction step takes a
+# snapshot, `prism_rtl::Snapshot` in the field `{name}_snap`, from the live computation
+# `{name}_now` once the structure behind it has settled: before the host's `for` over the
+# child's document runs (the child's builders have), or after the gathering `for` has built
+# its rows. The getter `name` answers the dynamic, the snapshot of the tick before the
+# tick the read point is after; a snapshot that moved is published at the start of the next
+# tick by `{name}_publish`, a write of `name` as of a hold. The reads behind the structure
+# are `live`'s (`{name}_now`), so a write behind them marks the snapshot and touches no
+# reader of `name`. `eq` says the snapshot compares, so the dynamic moves only when the
+# value did; `what` names it in a fault.
+type SnapDef = record:
+    name: Text
+    live: Text
+    ty: OutTy
+    eq: Bool
+    builder: Text
+    before: Bool
+    what: Text
+
+# A `for`'s row, lowered but not finished: its `!Updated` nodes over what it reads through
+# the parent sit above the block's writers of it, so the row's heights wait for the block's
+# (pick RE), and the block's gather sits one above the rows' heights.
+type PendingRow = record:
+    wx: Wx
+    qk: Text
+    params: [((Text, OutTy))]
+    gather: ?Nat
+
+# The names a node's own methods and the `Node` interface take.
+let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "push", "swap", "leave", "patch", "clean_up", "edges", "release", "leave_row", "remove_places"]]
+
+# A fresh node state: its fields, initializers, getters, dynamic reads and taken names given,
+# no graph and no places yet. `?hostedBy` is set for a row of a hosted child's `for` or
+# `rebuild` (its places are the enclosing host's; the name is the parent's method it tells
+# when one may have moved).
+NewWx: fn Lx, Text, [((Text, OutTy, Text))], [((Text, Ex))], [((Text, Ex))], [MethDef], (Text ==> [Read]), [Text], [Text], ?Text -> Wx
+fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?hostedBy:
+    let hostedFields = match ?hostedBy:
+        ? ignore: [[(("enclosing", hostOfTy, "the host whose document this row's places are entries of (pick HO)"))]]
+        nil: [[]]
+    let hostedInits = match ?hostedBy:
+        ? ignore: [[(("enclosing", (XVar "enclosing")))]]
+        nil: [[]]
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], hostedBy=?hostedBy, rootDyn=nil, rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], resultMoved=nil, dynAnswers=[[]], inited=[[]], flattens=[[]])
+
+# A name not yet taken in the node: `base`, else `base_2`, `base_3`.
+FreshName: fn Wx, Text -> ((Text, Wx))
+fn FreshName wx, base:
+    let pick = if not (HasText wx.taken, base): base else: "{base}_{FirstFree wx.taken, base, 2}"
+    let wx2 = update wx:
+        &_.taken <= Push &_.taken, pick
+    ((pick, wx2))
+
+FirstFree: fn [Text], Text, Nat -> Nat
+fn FirstFree taken, base, from = Fold (Range0 (Len taken)), from, \|n, ignore| if HasText taken, "{base}_{n}": n + 1 else: n
+
+# A new node of the graph.
+AddGn: fn Wx, Text, OutTy, GnKind, Nat -> ((Nat, Wx))
+fn AddGn wx, name, ty, kind, height:
+    let id = Len wx.gns
+    let wx2 = update wx:
+        &_.gns <= Push &_.gns, Gn(id=id, name=name, ty=ty, kind=kind, height=height, inputs=[[]], reads=[[]], floor=0, outs=[[]])
+    ((id, wx2))
+
+# An event reference given a consumer.
+Connect: fn Wx, EvRef, Sk -> Wx
+fn Connect wx, r, sink:
+    if r.owner != wx.node: Crossed wx, "an event of node `{r.owner}` (its graph node {r.node})"
+    else: update wx:
+        &_.gns <= Each &_.gns, \|n| if n.id == r.node: AddOut n, (Out(pipe=r.pipe, sink=sink)) else: n
+
+# An event reference used in a node other than its own: it crossed a node boundary without
+# a port, which is always a lowering bug (the index would name another node's event, or
+# none). Refused at the node's build, naming what crossed.
+Crossed: fn Wx, Text -> Wx
+fn Crossed wx, what = update wx:
+    &_.build <= Push &_.build, (DoExpr (Refusal "{what} read in node `{wx.node}` without a port (a lowering bug)"))
+
+AddOut: fn Gn, Out -> Gn
+fn AddOut n, o = update n:
+    &_.outs <= Push &_.outs, o
+
+AddField: fn Wx, Text, OutTy, Text, Ex -> Wx
+fn AddField wx, name, t, doc, init = update wx:
+    &_.fields <= Push &_.fields, ((name, t, doc))
+    &_.inits <= Push &_.inits, ((name, init))
+
+# A field whose initializer is a fresh cell, written with the moved locals.
+AddFieldLast: fn Wx, Text, OutTy, Text, Ex -> Wx
+fn AddFieldLast wx, name, t, doc, init = update wx:
+    &_.fields <= Push &_.fields, ((name, t, doc))
+    &_.moves <= Push &_.moves, ((name, init))
+
+GnOf: fn Wx, Nat -> Gn
+fn GnOf wx, n = Or wx.gns[n], (Gn(id=n, name="never", ty=OutUnit, kind=GnNever, height=0, inputs=[[]], reads=[[]], floor=0, outs=[[]]))
+
+# A plain value of the block, bound at the build and kept as a field: the build reads the
+# Rust local, the methods the field.
+BindPlain: fn Env, Env, Text, Text, OutTy -> ((Env, Env))
+fn BindPlain benv, menv, nkey, rs, t = (((Bind benv, nkey, (BnLocal (XVar rs), Owned, t)), (Bind menv, nkey, (BnLocal (XField XSelf, rs), Owned, t))))

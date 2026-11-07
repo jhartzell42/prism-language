@@ -1,0 +1,177 @@
+# `Compile`, a child module of the root.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Fs.* | Process.* | Prelude.*
+use App.*
+use Reading.*
+use Checking.*
+use Fs.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.Sexp.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.*
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Check.Passes.Borrows.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+use Check.Typed
+use Lower
+use Emit.Rust
+
+# ---------------------------------------------------------------------------------------
+# `compile FILES|DIR... -o OUT`: the back end (lower/, emit/)
+# ---------------------------------------------------------------------------------------
+
+# `compile FILES|DIR... -o OUT [--name NAME] [--prelude DIR] [--runtime PATH] [--target
+# rust|cpp] [--tests]`: every argument read (a `.prism` file loose, a directory as a tree,
+# claude/modules-style-pass.md), with the
+# prelude's modules the program does not replace; test modules only with `--tests`. The
+# program is parsed, checked (and refused on an error), lowered and emitted through `@Run`
+# as a Rust crate in OUT whose dependencies on `prism_rtl` and the Worlds are found at
+# `--runtime PATH` (`RuntimeOf` gives the default); with `--target cpp`, as a C++ program
+# over `runtime/cpp` (emit/cpp/). An
+# option it does not know, a target but `rust` or `cpp`, or an option with no value after
+# it is refused.
+@CompileMain: fn [Text] -> @unit
+fn @CompileMain opts:
+    ?root <- Process.Env(name="PRISM_ROOT")
+    let bad = BadOptions opts, [["--tests"]], compileValued
+    let target = Or (?OptionValue opts, "--target"), "rust"
+    let out = Or (?OptionValue opts, "-o"), "prismc-out"
+    let ?runtime = ?RuntimeOf (?OptionValue opts, "--runtime"), ?root, out
+    if (Len bad) > 0: @Refuse "{Join bad, "; "} (compile takes -o OUT, --name NAME, --prelude DIR, --runtime PATH, --target rust|cpp, --tests)"
+    else: if target != "rust" and target != "cpp": @Refuse "unknown target {target} (rust, cpp)"
+    else: if ?runtime == nil: @Refuse "an absolute -o needs --runtime PATH or PRISM_ROOT: the runtime's path from {out} cannot be told from its segments"
+    else:
+        let prelude = NoSlash (Or (?OptionValue opts, "--prelude"), "prelude")
+        let settings = CompileSettings(out=out, prelude=prelude, name=(Or (?OptionValue opts, "--name"), "program"), runtime=(Or ?runtime, ""), target=target)
+        @ReadSources (Compiling settings), (PlainArgs opts, compileValued), prelude, (HasText opts, "--tests")
+
+# The options of `compile` that take a value.
+let compileValued = [["-o", "--prelude", "--name", "--runtime", "--target"]]
+
+# Where the crate finds the runtime: `--runtime PATH`; else, for a relative OUT, `..` per
+# directory of OUT, which is relative to the repository root (as `./prism` and the
+# bootstraps call prismc, so an emitted crate, and the seed, name no machine's paths); else,
+# for an absolute OUT, `PRISM_ROOT`; else nothing, and the compile is refused
+# (prismc/README.md, pick AR).
+?RuntimeOf: fn ?Text, ?Text, Text -> ?Text
+fn ?RuntimeOf ?named, ?root, out = match ?named:
+    ? r: ? r
+    nil: if not (HasPrefix out, "/"): ? (RuntimeFor out) else: ?root
+
+# `..` per directory of OUT, which is relative to the repository root.
+RuntimeFor: fn Text -> Text
+fn RuntimeFor out:
+    let parts = Filter (SplitOn out, "/"), \|p| p != "" and p != "."
+    if (Len parts) == 0: "." else: Join (Each parts, \|ignore| ".."), "/"
+
+# What the back end is asked to compile, and what it gives back.
+type CompileJob = record:
+    read: ReadInput
+    name: Text
+    runtime: Text
+    target: Text
+derive ^Eq, ^Show
+
+type Compiled = record:
+    files: [((Text, Text))]
+    failed: Bool
+    report: Text
+derive ^Eq, ^Show
+
+# The back end over a program: its files read as trees and parsed, the checker (refusing on
+# an error, as `--check` reports it), then lowering and emission.
+CompileProgram: unbounded fn CompileJob -> Compiled
+fn CompileProgram job:
+    let read = Assemble job.read
+    if (Len read.errors) > 0: Compiled(files=[[]], failed=True, report=(TreeReport job.read, read.errors))
+    else:
+        let pp = ParseProgram read
+        if pp.errors != "": Compiled(files=[[]], failed=True, report="{pp.errors}parse errors")
+        else:
+            let pre = TreeDeclDiags pp
+            let report = CheckProgram pp.srcs, (Each pp.trees, \|t| WithoutTests t), [[]], pp.shown, True, False, pre
+            if report.errors > 0: Compiled(files=[[]], failed=True, report="{report.text}{report.errors} error{if report.errors == 1: "" else: "s"}")
+            else:
+                let model = Lower.Program.LowerProgram pp.srcs, pp.trees, pp.shown, report.typed, job.name
+                let files = if job.target == "cpp": Emit.Cpp.Program.EmitCpp model, job.runtime, read.scripts else: Emit.Rust.Items.EmitCrate model, job.runtime, read.scripts
+                let refused = Fold files, [[]], \|acc, ((path, text))| Fold (Refusals text), acc, \|a, r| AddText a, "{path}: {r}"
+                if (Len refused) == 0: Compiled(files=files, failed=False, report="")
+                else: Compiled(files=files, failed=True, report="{Concat (Each refused, \|r| "error[not-lowered]: {r}\n")}{Len refused} construct{if (Len refused) == 1: "" else: "s"} the back end does not lower (the crate is written, with a `compile_error!` at each)")
+
+# What lowering refused, as the emitted text marks it (`Lower.Refusal`, whose words these
+# are): each distinct message once.
+Refusals: fn Text -> [Text]
+fn Refusals text:
+    let marker = "compile_error!(\"prismc does not lower "
+    let parts = SplitOn text, marker
+    Fold (Drop parts, 1), [[]], \|acc, part| AddText acc, (Or (SplitOn part, "\")")[0], part)
+
+# A tree without its `test` declarations: the checker reads a test's blueprint by its
+# root's signature, which a `@name:` block has none of, so tests are checked by running
+# them (pick PT); `check` blocks stay, and are checked.
+WithoutTests: fn Module -> Module
+fn WithoutTests m = update m:
+    &_.decls <= Each (Filter &_.decls, \|d| not (IsTestDecl d)), \|d| WithoutPatterns d
+
+# A `check` line's pattern is the Test World's to read from the script, not the
+# checker's: the line's expression is checked alone (pick PT).
+WithoutPatterns: fn Decl -> Decl
+fn WithoutPatterns d = match d.kind:
+    DCheck c: update d:
+        &_.kind <= DCheck (CheckWithoutPatterns c)
+    otherwise: d
+
+CheckWithoutPatterns: fn CheckDecl -> CheckDecl
+fn CheckWithoutPatterns c = update c:
+    &_.lines <= Each &_.lines, \|l| LineWithoutPattern l
+
+LineWithoutPattern: fn CheckLine -> CheckLine
+fn LineWithoutPattern l = update l:
+    &_.pattern <= nil
+
+IsTestDecl: fn Decl -> Bool
+fn IsTestDecl d = match d.kind:
+    DTest ignore: True
+    otherwise: False
+
+# Writes the crate, and gives up with the diagnostics when the compile failed.
+@FinishCompile: fn Text, ?Compiled -> @unit
+fn @FinishCompile out, nil:
+    @ unit
+fn @FinishCompile out, (? o):
+    ignore <- for ((path, text)) <- o.files:
+        Fs.Output(path="{out}/{path}", text=$ text)
+    !started <- @started
+    let !~verdict = (if o.failed: Error(kind=Prismc.Refused, message=o.report) else: ~ unit) on !started
+    ignore <- Prelude.Unwrap(value=!~verdict)

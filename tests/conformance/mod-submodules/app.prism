@@ -1,0 +1,14 @@
+# Modules as directories (claude/modules-style-pass.md): `mod Shapes` reads shapes/mod.prism,
+# whose own `mod` lines declare `Shapes.Circle` and `Shapes.Square`, each named by its path
+# from the root. A qualified name's last segment is the declaration, the rest its module;
+# `use Shapes.Circle.*` makes the circle's names bare.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Shapes
+test mod Tests
+use Ui
+use Shapes.Circle.*
+
+@main: @unit
+@main:
+    Ui.Label(text=$"{Area 2} {Shapes.Square.Area 2}")

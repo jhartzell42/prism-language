@@ -1,0 +1,15 @@
+# `bind-read-above`: a block is one binding group (Semantics ch. 4: "any line may use any
+# name the block binds"), so a `for` above the bind of the map it runs over is checked with
+# that map's type. The checker checks a block's lines other than holds, `let`s and local
+# functions in their dependency order, so `$each` is known when the `for` is checked (pick
+# BG; gap DG).
+emit Ui.*
+use Ui.*
+
+@main: @unit
+@main:
+    !go <- Ui.Button(label=$"go")
+    for k, $v <- $each:
+        Ui.Label(text=$v)
+    $m <- {0: "a"} then $m on !go
+    $each <- @PerKey $m

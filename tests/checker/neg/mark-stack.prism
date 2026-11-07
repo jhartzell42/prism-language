@@ -1,0 +1,9 @@
+# `mark-stack`: a name shows its type's whole stack.
+emit Ui.*
+
+@counter: @unit
+@counter:
+    !inc <- Ui.Button(label=$"+")
+    $count <- 0 then $count + 1 on !inc
+    let shown = $count + 1
+    Ui.Label(text=$"{shown}")

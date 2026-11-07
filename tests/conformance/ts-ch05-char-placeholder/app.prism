@@ -1,0 +1,13 @@
+# A `Char` in a text's placeholder goes through `Show` (Type System ch. 5, "Free sigils
+# and text": "An interpolation applies the text builder to every placeholder, through
+# `Show` for non-text"), so `"{c}"` is `'q'`, quotes included; `Text c` is the character
+# itself as a text. Written for prismc's back end; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+let quote = Text '\''
+
+@chars: @unit
+@chars:
+    Ui.Label(text=$"{'q'} {Text 'q'} {Text 'é'}{quote}")      # 0

@@ -1,0 +1,4 @@
+tests/checker/neg/supplier-not-polymorphic.prism:17: error[mismatch]: expected `fn Path, Element (Fs.* | Ui.*) o'11 -> @o'11`, found `fn Path, Element (Fs.* | Ui.*) $~Contents -> @$~Contents`
+        ignore <- @HostDocument @child, @Fixed                        # 0/[p]
+                                        ^^^^^^
+1 error

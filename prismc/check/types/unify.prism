@@ -1,0 +1,271 @@
+# `Check.Types.Unify`, a child module of `Check.Types`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Typed.*
+use Check.Typed.Print.*
+
+# ---------------------------------------------------------------------------------------
+# Unification
+# ---------------------------------------------------------------------------------------
+
+# Unify the expected type with the found one at `span`. A failure that is a plain
+# disagreement reports `mismatch` with the two whole types; the special failures
+# (`occurs`, `mark-stack`, `row-lacks`) report themselves.
+Unify: unbounded fn St, Ty, Ty, Range -> St
+fn Unify st, expected, found, span:
+    let ((verdict, st2)) = UnifyIn st, expected, found, span
+    if verdict == "mismatch":
+        let e = ShowTy st2, expected
+        let f = ShowTy st2, found
+        if e == f: Err st2, "mismatch", span, "expected `{ShowTyQ st2, expected}`, found `{ShowTyQ st2, found}`"
+        else: Err st2, "mismatch", span, "expected `{e}`, found `{f}`"
+    else: st2
+
+# A type with its names qualified, for two types that print alike.
+ShowTyQ: unbounded fn St, Ty -> Text
+fn ShowTyQ st, t = match Zonk st, t:
+    TyCon n, [[]]: n
+    TyCon n, args: "({n}{Concat (Each args, \|a| " {ShowTyQ st, a}")})"
+    TySig s, i: "{s}{ShowTyQ st, i}"
+    TyArray e:
+        let inner = ShowTyQ st, e
+        if (HasPrefix inner, "["): "[ {inner} ]" else: "[{inner}]"
+    TyMap k, v: "({ShowTyQ st, k} ==> {ShowTyQ st, v})"
+    TyAt i, rw: "@{ShowTyQ st, i} emit {ShowRowIn rw, True}"
+    other: ShowTy st, other
+
+# Unify, and say whether it worked, with no diagnostic for a plain mismatch: for the
+# application rule, which reports its own message.
+TryUnify: unbounded fn St, Ty, Ty, Range -> ((Bool, St))
+fn TryUnify st, expected, found, span:
+    let ((verdict, st2)) = UnifyIn st, expected, found, span
+    ((verdict == "", st2))
+
+# "" when the two unify, "mismatch" when they do not, "reported" when a special error was
+# already added.
+UnifyIn: unbounded fn St, Ty, Ty, Range -> ((Text, St))
+fn UnifyIn st, expected, found, span:
+    let e = NormAssoc st, (Walk st, expected)
+    let f = NormAssoc st, (Walk st, found)
+    if (IsWaitingAssoc st, e) or (IsWaitingAssoc st, f):
+        if e == f: (("", st)) else: (("", (Defer st, e, f, span)))
+    else: UnifyHeads st, e, f, span
+
+# An associated type normalizes before comparing (ch. 5, Traits): `Quotient Float` is
+# `Float`, `Quotient Int` is `?Int` (Type System ch. 3); at a flexible variable it waits
+# for the variable to be bound.
+NormAssoc: unbounded fn St, Ty -> Ty
+fn NormAssoc st, t = match t:
+    TyAssoc "Quotient", a: match Walk st, a:
+        TyCon "Float", [[]]: tFloat
+        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: t
+        otherwise: t
+    other: other
+
+IsWaitingAssoc: unbounded fn St, Ty -> Bool
+fn IsWaitingAssoc st, t = match t:
+    TyAssoc ignore, a: IsFlexVar st, a
+    otherwise: False
+
+Defer: fn St, Ty, Ty, Range -> St
+fn Defer st, e, f, span = update st:
+    &_.deferred <= Push &_.deferred, ((e, f, span))
+
+# The waiting equations, retried once their variables are bound.
+RetryDeferred: unbounded fn St -> St
+fn RetryDeferred st:
+    let waiting = st.deferred
+    let cleared = update st:
+        &_.deferred <= [[]]
+    Fold waiting, cleared, \|s, ((e, f, span))| Unify s, e, f, span
+
+UnifyHeads: unbounded fn St, Ty, Ty, Range -> ((Text, St))
+fn UnifyHeads st, e, f, span:
+    match ((e, f)):
+        ((TyErr, ignore)): (("", st))
+        ((ignore, TyErr)): (("", st))
+        (((TySig "~", ignore), (TyCon "Prelude.Error", [[]]))): (("", st))
+        (((TyCon "Prelude.Error", [[]]), (TySig "~", ignore))): (("", st))
+        ((TyFlex a, TyFlex b)): if a == b: (("", st)) else: (("", (MergeVars st, a, b)))
+        ((TyFlex a, t)): BindVar st, a, t, span
+        ((t, TyFlex b)): BindVar st, b, t, span
+        ((TyRigid a, TyRigid b)): if a == b: (("", st)) else: (("mismatch", st))
+        ((TyQ a, TyQ b)): if a == b: (("", st)) else: (("mismatch", st))
+        (((TyCon a, xs), (TyCon b, ys))):
+            if a == b and (Len xs) == (Len ys): UnifyAll st, xs, ys, span
+            else: (("mismatch", st))
+        (((TyFn c1, ps, r1), (TyFn c2, qs, r2))):
+            if (Len ps) == (Len qs):
+                let ((v, st2)) = UnifyCol st, c1, c2
+                if v != "": ((v, st2)) else: UnifyAll st2, (Push ps, r1), (Push qs, r2), span
+            else: (("mismatch", st))
+        ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): UnifyAll st, xs, ys, span else: (("mismatch", st))
+        ((TyArray x, TyArray y)): UnifyIn st, x, y, span
+        (((TyMap k1, v1), (TyMap k2, v2))): UnifyAll st, [[k1, v1]], [[k2, v2]], span
+        (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: UnifyIn st, i1, i2, span else: (("mismatch", st))
+        (((TyAt i1, r1), (TyAt i2, r2))):
+            let ((v, st2)) = UnifyIn st, i1, i2, span
+            if v != "": ((v, st2)) else: UnifyRow st2, r1, r2, span
+        (((TyElem r1, o1), (TyElem r2, o2))):
+            let ((v, st2)) = UnifyRow st, r1, r2, span
+            if v != "": ((v, st2)) else: UnifyIn st2, o1, o2, span
+        ((TyElemAny r1, TyElemAny r2)): UnifyRow st, r1, r2, span
+        (((TyAssoc n1, a1), (TyAssoc n2, a2))): if n1 == n2: UnifyIn st, a1, a2, span else: (("mismatch", st))
+        ((TyAny xs, TyAny ys)): if (SortTexts xs) == (SortTexts ys): (("", st)) else: (("mismatch", st))
+        otherwise: (("mismatch", st))
+
+UnifyAll: unbounded fn St, [Ty], [Ty], Range -> ((Text, St))
+fn UnifyAll st, xs, ys, span = Fold (Range0 (Len xs)), (("", st)), \|((v, s)), i| if v != "": ((v, s)) else: UnifyIn s, (Or xs[i], TyErr), (Or ys[i], TyErr), span
+
+# Two variables become one: the merged variable is plain-headed if either was, at the lower
+# level, and keeps a binder's name.
+MergeVars: fn St, Nat, Nat -> St
+fn MergeVars st, a, b:
+    let ia = InfoOf st, a
+    let ib = InfoOf st, b
+    let merged = VInfo(plain=(ia.plain or ib.plain), level=(Min ia.level, ib.level), name=(if ib.name == "": ia.name else: ib.name))
+    update st:
+        &_.tys <= Insert &_.tys, a, (TyFlex b)
+        &_.infos <= Insert &_.infos, b, merged
+
+BindVar: unbounded fn St, Nat, Ty, Range -> ((Text, St))
+fn BindVar st, n, t, span:
+    let info = InfoOf st, n
+    let stack = StackOf st, t
+    if HasNat (FreeVars st, t), n:
+        (("reported", (Err st, "occurs", span, "`t{n}` would contain itself: `t{n} = {ShowTy st, t}`")))
+    else: if info.plain and stack != "":
+        if info.name != "":
+            let marks = MarksOf info.name
+            let whole = "{marks}{ShowTyIn st, (Zonk st, t), True}"
+            let at = Or st.binderAt[n], span
+            let st2 = ErrFix st, "mark-stack", at, "`{info.name}` has type `{whole}`, whose stack is `{marks}{stack}`; the name shows `{marks}`", "rename to `{marks}{stack}{DropPrefix info.name, marks}`"
+            # Reported once, at the binder: the name then has the type its value has, so
+            # neither its binder nor its uses report it again.
+            (("", update (LowerLevels st2, (Append (FreeVars st2, t), (FreeColVars st2, t)), info.level):
+                &_.tys <= Insert &_.tys, n, t))
+        else: (("mismatch", st))
+    else:
+        let lowered = LowerLevels st, (Append (FreeVars st, t), (FreeColVars st, t)), info.level
+        (("", update lowered:
+            &_.tys <= Insert &_.tys, n, t))
+
+# The marks a name was written with: `$?user` has `$?`.
+MarksOf: fn Text -> Text
+fn MarksOf name:
+    let c = update Front name:
+        while ? ((ignore, next)) <- ?Step &_ if IsMarkChar (CharAt &_):
+            &_ <= next
+    Before c
+
+IsMarkChar: fn Text -> Bool
+fn IsMarkChar c = c == "$" or c == "!" or c == "@" or c == "?" or c == "~" or c == "&"
+
+LowerLevels: fn St, [Nat], Nat -> St
+fn LowerLevels st, vs, level = Fold vs, st, \|s, v| LowerOne s, v, level
+
+LowerOne: fn St, Nat, Nat -> St
+fn LowerOne s, v, level:
+    let i = InfoOf s, v
+    if i.level <= level: s
+    else: update s:
+        &_.infos <= Insert &_.infos, v, VInfo(plain=i.plain, level=level, name=i.name)
+
+# Rows (ch. 5, Rows): families as the unit, one tail, Rémy's algorithm with families for
+# labels; a family put into a tail that lacks it is `row-lacks`.
+UnifyRow: unbounded fn St, Rw, Rw, Range -> ((Text, St))
+fn UnifyRow st, a0, b0, span:
+    let a = WalkRow st, a0
+    let b = WalkRow st, b0
+    let onlyA = MinusTexts a.fams, b.fams
+    let onlyB = MinusTexts b.fams, a.fams
+    match ((a.tail, b.tail)):
+        ((TlClosed, TlClosed)): if (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
+        ((TlFlex x, TlFlex y)):
+            if x == y:
+                if (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
+            else:
+                let lacking = UnionTexts (UnionTexts (LacksOf st, x), (LacksOf st, y)), (UnionTexts a.fams, b.fams)
+                let ((fresh, st2)) = FreshRow st, lacking
+                let ((v1, st3)) = BindRow st2, x, (Rw(fams=onlyB, minus=[[]], tail=fresh.tail)), span
+                if v1 != "": ((v1, st3)) else: BindRow st3, y, (Rw(fams=onlyA, minus=[[]], tail=fresh.tail)), span
+        ((TlFlex x, other)): if (Len onlyA) == 0: BindRow st, x, (Rw(fams=onlyB, minus=b.minus, tail=other)), span else: (("mismatch", st))
+        ((other, TlFlex y)): if (Len onlyB) == 0: BindRow st, y, (Rw(fams=onlyA, minus=a.minus, tail=other)), span else: (("mismatch", st))
+        ((TlRigid x, TlRigid y)): if x == y and (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
+        ((TlQ x, TlQ y)): if x == y and (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
+        otherwise: (("mismatch", st))
+
+# A field access whose record nothing had decided yet: the receiver, the field, the type
+# its value takes, where, and the records that have such a field.
+type FieldQ = record:
+    recv: Ty
+    field: Text
+    result: Ty
+    span: Range
+    file: Nat
+    owners: [Text]
+derive ^Eq, ^Show
+
+AskField: fn St, Ty, Text, Ty, Range, [Text] -> St
+fn AskField st, recv, field, result, span, owners = update st:
+    &_.fieldQs <= Push &_.fieldQs, FieldQ(recv=recv, field=field, result=result, span=span, file=&_.file, owners=owners)
+
+# An argument whose outer layer was still a variable where it met a plain or variable
+# parameter (ch. 5, When an outer layer is still a variable): taken whole there, and asked
+# about at the end of the definition.
+AskLayer: fn St, Ty, Range, Text -> St
+fn AskLayer st, t, span, fname = update st:
+    &_.layerQs <= Push &_.layerQs, ((t, span, fname))
+
+# The end of a definition: an argument whose layer is still a variable, or turned out to
+# be a dynamic or an event after it was taken whole, is `layer-unknown`.
+LayerQuestions: unbounded fn St -> St
+fn LayerQuestions st:
+    let qs = st.layerQs
+    let cleared = update st:
+        &_.layerQs <= [[]]
+    Fold qs, cleared, \|s, ((t, span, fname))|
+        let h = HeadSigil s, t
+        if (IsFreeHeaded s, t) or h == "$" or h == "!":
+            ErrFix s, "layer-unknown", span, "the layer of this argument to `{fname}` is not known here", "say it where the value is made: a name whose marks declare the layer (`let $x = ...`), `<<T>>` at the application that made it, or a signature on the enclosing `let`"
+        else: s
+
+# A row variable made from a signature's remembers the signature's name for it.
+NameRow: fn St, Tail, Text -> St
+fn NameRow st, (TlFlex n), q = update st:
+    &_.rowNames <= Insert &_.rowNames, n, q
+fn NameRow st, ignore, ignore = st
+
+RowName: fn St, Nat -> Text
+fn RowName st, n = Or st.rowNames[n], "r{n}"
+
+LacksOf: fn St, Nat -> [Text]
+fn LacksOf st, n = Or st.lacks[n], [[]]
+
+BindRow: unbounded fn St, Nat, Rw, Range -> ((Text, St))
+fn BindRow st, n, rw, span:
+    let bad = InterTexts (LacksOf st, n), rw.fams
+    if (Len bad) > 0:
+        let fam = Or bad[0], ""
+        (("reported", (ErrFix st, "row-lacks", span, "`{RowName st, n} | {fam}.*` promises `{RowName st, n}` has no `{fam}` tags", "answer the `{fam}` tags before this point, or widen the row")))
+    else:
+        let st2 = match rw.tail:
+            TlFlex m: update st:
+                &_.lacks <= Insert &_.lacks, m, (UnionTexts (LacksOf st, m), (LacksOf st, n))
+            otherwise: st
+        (("", update st2:
+            &_.rows <= Insert &_.rows, n, rw))

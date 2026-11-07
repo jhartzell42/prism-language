@@ -1,0 +1,6 @@
+# prism_zero's transcript, checked by hand against the books' rules.
+test each_use_its_own_types
+
+tick 0
+  added:
+    0: Ui.Label(text="6 abab 3 ab")

@@ -1,0 +1,19 @@
+# prism_zero's transcript; the book prints none for this program, and it was checked by hand against the book's rules.
+test a_switch_hears_the_birth
+
+tick 0
+  added:
+    0: Ui.Button(label="Again")
+    2: Ui.Label(text="heard=0")
+
+tick 1
+  changed:
+    2: Ui.Label(text="heard=1")
+
+tick 2
+  in:
+    0: click
+
+tick 3
+  changed:
+    2: Ui.Label(text="heard=2")

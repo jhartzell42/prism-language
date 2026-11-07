@@ -1,0 +1,17 @@
+# `may-not-end`: `Min a, b` is no larger than `a` only on `Nat`s (pick SW). On trees it
+# is the smaller by `^Ord`, which may be `b`: `Node` comes first, so `Min l, (Node l, r)`
+# is the bigger tree whenever `l` is a `Leaf`, and `Climb` never ends. `Settle` takes the
+# `Min` of two `Nat`s, and checks clean.
+type Tree = choice:
+    Node Tree, Tree
+    Leaf Nat
+derive ^Eq, ^Ord
+
+Climb: fn Tree -> Nat
+fn Climb (Leaf n) = n
+fn Climb (Node l, r) = Climb (Min l, (Node l, r))
+
+Settle: fn Nat -> Nat
+fn Settle n = match n -? 1:
+    nil: 0
+    ? m: Settle (Min m, 10)

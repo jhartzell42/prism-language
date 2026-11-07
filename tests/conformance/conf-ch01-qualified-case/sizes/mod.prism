@@ -1,0 +1,13 @@
+# `Sizes`: a choice whose cases a check names qualified.
+emit r
+
+type Size = choice:
+    Small
+    Large Nat
+derive ^Eq, ^Show
+
+Of: fn Nat -> Size
+fn Of n = if n < 10: Small else: Large n
+
+?Maybe: fn Nat -> ?Size
+fn ?Maybe n = if n == 0: nil else: ? (Of n)

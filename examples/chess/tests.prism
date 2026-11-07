@@ -1,0 +1,303 @@
+# The board's tests: declarations of board.prism's root, as tests are declarations of their
+# module (Semantics chapter 6). Under `@$main` the window claims every Ui element, so the
+# document a test reads is the window's (Gui.Window at 1, a Gui.Metrics per word at
+# .../1/[text]/0, Gui.Scene at 3, Gui.Focus at 4) and the board shows through `returns` (the
+# status) and the scene's draw commands (`expect Draw.Text(..)`, which the Test World finds
+# inside the scene); the interface's own elements are read under `@$alone` (README,
+# doubt EV). A square's place in the grid's document is 0/[e2]/0, the square as its spot
+# prints; a panel button's is 0/[GoBack]/0, its action as it prints; the settings dialog's
+# boxes are its grid's odd places, 1 to 35 (the slider is 33), and its Close button is 4. A
+# press reaches a square through computing layers of hosts, each a tick late (Semantics ch.
+# 9 as ruled), so every press is followed by `compute until idle`.
+#
+# Under the Test World a character is 9 wide and a line 14 high: the title takes 22 and the
+# column's spacing 8, and the border 8, so the board's top left corner is at (8, 38) and e2's
+# centre at (296, 454).
+emit Ui.* | Gui.*
+use App.*
+use Rules.*
+use Window.*
+use Window.Ui.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+use Window.Hits.*
+
+# the interface without its window, its status as its result
+@$alone: @$Text
+@$alone:
+    ((!titles, $status)) <- @chess
+    $title <- "" then !titles
+    @ "{$title}{$status}"
+
+test the_interface_alone_shows_the_opening, @$alone:
+    build
+        => expect_count Ui.Image(..), 64
+        => expect_count Ui.Image(src="examples/chess/pieces/blank.png", ..), 32
+        => expect_count Ui.Image(paint=(Rgb 0.9411764705882353, 0.8509803921568627, 0.7098039215686275), ..), 32
+        => expect Ui.Image(src="examples/chess/pieces/ql.png", paint=(Rgb 0.9411764705882353, 0.8509803921568627, 0.7098039215686275))      # d1, a light square
+        => expect Ui.Label(text="White's turn")
+        => expect Ui.Label(text="Move 0 of 0")
+        => expect Ui.Button(label="Settings")
+        => expect Ui.Shown(shown=False, ..)
+        => returns "White's turn"
+
+# Pitch chapter 8's test: the pointer pressed at coordinates, through the window library's
+# own layout and hit testing
+test pawn_to_e4_by_pointer, @$main:
+    build
+        => returns "White's turn"
+    send Gui.Window(..), Press Point(x=296.0, y=454.0)        # the pawn on e2
+    compute until idle
+        => returns "White's turn"
+    send Gui.Window(..), Press Point(x=296.0, y=326.0)        # the square e4
+    compute until idle
+        => returns "Black's turn"
+        => expect Draw.Text(text="Black's turn", ..)
+        => expect Draw.Text(text="1. [e2-e4]", ..)
+
+# A short game by path: each click is the Press the Test World finds from the scene's
+# Draw.Clickable for that square (Conformance chapter 1, D9)
+test fools_mate_by_path, @$main:
+    build
+        => returns "White's turn"
+    click element 0/[f2]/0
+    compute until idle
+        => returns "White's turn"
+    click element 0/[f3]/0
+    compute until idle
+        => returns "Black's turn"
+    click element 0/[e7]/0
+    compute until idle
+        => returns "Black's turn"
+    click element 0/[e5]/0
+    compute until idle
+        => returns "White's turn"
+    click element 0/[g2]/0
+    compute until idle
+    click element 0/[g4]/0
+    compute until idle
+        => returns "Black's turn"
+    click element 0/[d8]/0
+    compute until idle
+        => settles
+    click element 0/[h4]/0
+    compute until idle
+        => returns "White has been checkmated"
+        => expect Draw.Text(text="White has been checkmated", ..)
+        => expect Draw.Text(text="1. f2-f3 e7-e5", ..)
+        => expect Draw.Text(text="2. g2-g4 [Qd8-h4]", ..)
+
+test a_second_click_that_cannot_move_only_clears, @$main:
+    build
+        => returns "White's turn"
+    click element 0/[e2]/0                                  # selects the pawn
+    compute until idle
+        => returns "White's turn"
+    click element 0/[e5]/0                                  # three squares: no move, and the selection clears
+    compute until idle
+        => returns "White's turn"
+    click element 0/[e4]/0                                  # nothing selected, and an empty square
+    compute until idle
+        => returns "White's turn"
+        => expect Gui.Scene(..)
+
+# ---------------------------------------------------------------------------
+# The settings dialog
+
+# Settings opens the dialog in the bottom right corner; Close closes it, and so does Settings again.
+test the_settings_button_opens_and_closes_the_dialog, @$main:
+    build
+        => expect_none Draw.Text(text="Title", ..)
+    click element 0/[OpenSettings]/0
+    compute until idle
+        => expect Draw.Text(text="Title", ..)
+        => expect Draw.Text(text="Close", ..)
+    click element 4                                         # Close
+    compute until idle
+        => expect_none Draw.Text(text="Title", ..)
+    click element 0/[OpenSettings]/0
+    compute until idle
+        => expect Draw.Text(text="Title", ..)
+    click element 0/[OpenSettings]/0
+    compute until idle
+        => expect_none Draw.Text(text="Title", ..)
+        => returns "White's turn"
+
+# A text typed into the dialog applies as it is typed: the title (the window's and the
+# label's), a status line's template, and a player's name ("White" loses its "e").
+test the_copy_and_the_names_take_effect, @$main:
+    build
+        => expect Gui.Window(title="Chess", ..)
+    click element 0/[OpenSettings]/0
+    compute until idle
+    click element 1                                         # the title's box
+    compute until idle
+    send Gui.Window(..), Pressed (Char '!')
+    compute until idle
+        => expect Gui.Window(title="Chess!", ..)
+        => expect Draw.Text(text="Chess!", ..)
+    click element 17                                        # the turn's template
+    compute until idle
+    send Gui.Window(..), Pressed (Char '!')
+    compute until idle
+        => returns "White's turn!"
+    click element 25                                        # White's name
+    compute until idle
+    send Gui.Window(..), Pressed Backspace
+    compute until idle
+        => returns "Whit's turn!"
+        => expect Draw.Text(text="Whit's turn!", ..)
+
+# A colour that is not `#rrggbb` leaves the squares their last good colour and its caption
+# says so; a good one repaints them. The dark squares' "#b58863" loses its blue, "63", and
+# gains "ff".
+test an_invalid_colour_keeps_the_last_good_one, @$main:
+    build
+        => expect Draw.Rect(rect=Rect(x=72.0, y=38.0, w=64.0, h=64.0), paint=(Rgb 0.7098039215686275, 0.5333333333333333, 0.38823529411764707))     # b8, a dark square
+    click element 0/[OpenSettings]/0
+    compute until idle
+    click element 29                                        # the dark squares' box
+    compute until idle
+    send Gui.Window(..), Pressed Backspace
+    compute until idle
+    send Gui.Window(..), Pressed Backspace
+    compute until idle
+        => expect Draw.Text(text="Dark squares: not #rrggbb", ..)
+        => expect Draw.Rect(rect=Rect(x=72.0, y=38.0, w=64.0, h=64.0), paint=(Rgb 0.7098039215686275, 0.5333333333333333, 0.38823529411764707))
+    send Gui.Window(..), Pressed (Char 'f')
+    compute until idle
+    send Gui.Window(..), Pressed (Char 'F')
+    compute until idle
+        => expect_none Draw.Text(text="Dark squares: not #rrggbb", ..)
+        => expect Draw.Rect(rect=Rect(x=72.0, y=38.0, w=64.0, h=64.0), paint=(Rgb 0.7098039215686275, 0.5333333333333333, 1.0))
+
+# The border's slider and its box move together: a press on the slider's middle makes the
+# border 16, the box says 16 and the board moves 8 down and right; a number typed in the box
+# moves the slider; an empty box or a number out of range is refused, its caption says so,
+# and the border stands.
+test the_border_slider_and_its_box_move_together, @$main:
+    build
+        => expect Draw.Image(rect=Rect(x=8.0, y=38.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+    click element 0/[OpenSettings]/0
+    compute until idle
+    click element 33                                        # the slider's middle
+    compute until idle
+        => expect Draw.Text(text="16", ..)
+        => expect Draw.Image(rect=Rect(x=16.0, y=46.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+    click element 35                                        # the box: "16" becomes "1", then ""
+    compute until idle
+    send Gui.Window(..), Pressed Backspace
+    compute until idle
+        => expect Draw.Image(rect=Rect(x=1.0, y=31.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+    send Gui.Window(..), Pressed Backspace
+    compute until idle
+        => expect Draw.Text(text="Border, points: not 0 to 32", ..)
+        => expect Draw.Image(rect=Rect(x=1.0, y=31.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+    send Gui.Window(..), Pressed (Char '9')                 # "9": the border is 9
+    compute until idle
+        => expect_none Draw.Text(text="Border, points: not 0 to 32", ..)
+        => expect Draw.Image(rect=Rect(x=9.0, y=39.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+    send Gui.Window(..), Pressed (Char '9')                 # "99": refused, and the border stays 9
+    compute until idle
+        => expect Draw.Text(text="Border, points: not 0 to 32", ..)
+        => expect Draw.Image(rect=Rect(x=9.0, y=39.0, w=64.0, h=64.0), src="examples/chess/pieces/rd.png")
+
+# ---------------------------------------------------------------------------
+# The move list, Back, Forward and Reset
+
+# Every move is listed, a full move a line, the move that led to the position shown in
+# brackets; Back shows the position before it and Forward the one after, and each stops at
+# its end.
+test back_and_forward_step_through_the_moves, @$main:
+    build
+        => returns "White's turn"
+        => expect Draw.Text(text="Move 0 of 0", ..)
+    click element 0/[e2]/0
+    compute until idle
+    click element 0/[e4]/0
+    compute until idle
+    click element 0/[e7]/0
+    compute until idle
+    click element 0/[e5]/0
+    compute until idle
+        => returns "White's turn"
+        => expect Draw.Text(text="Move 2 of 2", ..)
+        => expect Draw.Text(text="1. e2-e4 [e7-e5]", ..)
+    click element 0/[GoBack]/0
+    compute until idle
+        => returns "Black's turn"
+        => expect Draw.Text(text="Move 1 of 2", ..)
+        => expect Draw.Text(text="1. [e2-e4] e7-e5", ..)
+        => expect Draw.Image(rect=Rect(x=264.0, y=230.0, w=64.0, h=64.0), src="examples/chess/pieces/blank.png")     # e5 is empty again
+        => expect Draw.Image(rect=Rect(x=264.0, y=102.0, w=64.0, h=64.0), src="examples/chess/pieces/pd.png")        # and the pawn is back on e7
+    click element 0/[GoBack]/0
+    compute until idle
+    click element 0/[GoBack]/0                              # past the opening: it stays
+    compute until idle
+        => returns "White's turn"
+        => expect Draw.Text(text="Move 0 of 2", ..)
+        => expect Draw.Text(text="1. e2-e4 e7-e5", ..)
+    click element 0/[GoForward]/0
+    compute until idle
+        => returns "Black's turn"
+        => expect Draw.Text(text="Move 1 of 2", ..)
+    click element 0/[GoForward]/0
+    compute until idle
+    click element 0/[GoForward]/0                           # past the last move: it stays
+    compute until idle
+        => returns "White's turn"
+        => expect Draw.Text(text="Move 2 of 2", ..)
+        => expect Draw.Text(text="1. e2-e4 [e7-e5]", ..)
+
+# A move made on an earlier position discards the moves after it, and the game goes on from
+# there.
+test a_move_from_an_earlier_position_discards_the_later_ones, @$main:
+    build
+    click element 0/[e2]/0
+    compute until idle
+    click element 0/[e4]/0
+    compute until idle
+    click element 0/[e7]/0
+    compute until idle
+    click element 0/[e5]/0
+    compute until idle
+    click element 0/[GoBack]/0
+    compute until idle
+        => expect Draw.Text(text="Move 1 of 2", ..)
+    click element 0/[c7]/0
+    compute until idle
+    click element 0/[c5]/0
+    compute until idle
+        => returns "White's turn"
+        => expect Draw.Text(text="Move 2 of 2", ..)
+        => expect Draw.Text(text="1. e2-e4 [c7-c5]", ..)
+        => expect_none Draw.Text(text="1. e2-e4 e7-e5", ..)
+    click element 0/[GoForward]/0                           # there is nothing after it now
+    compute until idle
+        => expect Draw.Text(text="Move 2 of 2", ..)
+
+# Reset starts the game over and forgets its moves; the settings stay.
+test reset_starts_over_and_keeps_the_settings, @$main:
+    build
+    click element 0/[OpenSettings]/0
+    compute until idle
+    click element 1                                         # the title's box
+    compute until idle
+    send Gui.Window(..), Pressed (Char '!')
+    compute until idle
+    click element 0/[OpenSettings]/0                        # closed again
+    compute until idle
+    click element 0/[e2]/0
+    compute until idle
+    click element 0/[e4]/0
+    compute until idle
+        => returns "Black's turn"
+        => expect Draw.Text(text="Move 1 of 1", ..)
+    click element 0/[StartOver]/0
+    compute until idle
+        => returns "White's turn"
+        => expect Draw.Text(text="Move 0 of 0", ..)
+        => expect_none Draw.Text(text="1. e2-e4", ..)
+        => expect Draw.Text(text="Chess!", ..)
+        => expect Gui.Window(title="Chess!", ..)

@@ -1,0 +1,5 @@
+tests/checker/neg/local-widget.prism:10: error[may-not-end]: `@inner` calls itself, not smaller than what it was given
+            @inner
+            ^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+1 error

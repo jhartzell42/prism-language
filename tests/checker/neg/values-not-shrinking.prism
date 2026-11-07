@@ -1,0 +1,12 @@
+# `may-not-end`: `Values` of a map hands out parts of that map only; here each turn folds
+# over a bigger map than the one it was given, so its elements are not smaller.
+type Tree = choice:
+    Leaf Nat
+    Node (Text ==> Tree)
+
+Total: fn (Text ==> Tree) -> Nat
+fn Total m = Fold (Values (Insert m, "more", (Node m))), 0, \|acc, t| acc + (Weigh t)
+
+Weigh: fn Tree -> Nat
+fn Weigh (Leaf n) = n
+fn Weigh (Node m) = Total m

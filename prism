@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+# The `prism` command (claude/architecture.md, "Single commands"), a thin shell over a
+# native prismc:
+#
+#   ./prism compile [--target T] SRC... -o OUT   the program in OUT: a Rust crate, or C++
+#   ./prism test [--target T] SRC...     compile, build, run the test modules
+#   ./prism run [--world W] [--print-world] SRC... [-- ARGS...]   compile, build, run the root
+#   ./prism check [--world FAMS] [--unused] SRC...  the checker's report; --unused also
+#                                        warns at each definition nothing uses
+#
+# `--target rust` (the default) or `--target cpp`: the C++ program (runtime/cpp) is built
+# with make and `$CXX` (g++ by default) into target/prism-cpp/NAME at -O3 (`PRISM_OPT`
+# overrides, e.g. `-O0 -g` to debug a failing test), and runs its tests
+# under the C++ Test World; `run` under the C++ target runs the root under the World its
+# row asks for (worlds/cli/cpp, or worlds/canvas/cpp for a `Gui.*` row, linked at the
+# build), and `--world` is handed to the binary, which refuses a World it was not built
+# with.
+#
+# SRC is a directory, which goes to prismc as it is, a tree (claude/modules-style-pass.md):
+# its app.prism, lib.prism or mod.prism; or a loose `.prism` file. `test` and `check` read
+# test modules (prismc's `--tests`), `compile` and `run` never do. `test` runs every test
+# module under the compiled Test World, each transcript byte-equal to the `.expected` of
+# its name (`tests.expected` for `tests.prism`). `run` builds with the World the root's `emit` row asks for, as
+# prismc decides it from the root module's row: `Gui.*` the canvas World, anything else
+# the CLI World; `--world cli|canvas` overrides. A root whose row has `Ui.*` without
+# `Gui.*` is refused: no World answers Ui elements alone.
+#
+# prismc is `$PRISMC`, or the newest of target/bootstrap/prismc and target/keep/prismc-*
+# (the old dynamic chain's binary left out). The crate goes to target/prism/NAME, the
+# build to target/prism-build (release, for `test` and `run` alike: Jimmy).
+#
+# Written by Claude, 2 November 2026, on the claude-self-hosting branch. Subject to change.
+set -eu
+here=$PWD
+root=$(cd "$(dirname "$0")" && pwd)
+# The emitted Makefiles read it; the logical path, so a target/ reached through a symlink
+# still finds the runtime. cargo gets the crate by --manifest-path for the same reason.
+export PRISM_ROOT=$root
+usage() { sed -n '4,9p' "$0" | sed 's/^# //' >&2; exit 2; }
+cmd=${1:-}
+[ -n "$cmd" ] || usage
+shift
+
+# The arguments: sources, options, and after `--` (or the first argument that is no
+# source) the program's own.
+srcs=()
+out=""
+world=""
+target=rust
+print_world=0
+unused=0
+progargs=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -o) out=$2; shift 2 ;;
+        --world) world=$2; shift 2 ;;
+        --target) target=$2; shift 2 ;;
+        --target=*) target=${1#--target=}; shift ;;
+        --world=*) world=${1#--world=}; shift ;;
+        --print-world) print_world=1; shift ;;
+        --unused) unused=1; shift ;;
+        --) shift; progargs=("$@"); break ;;
+        *)
+            if [ -d "$1" ] || [[ "$1" == *.prism ]]; then
+                srcs+=("$1"); shift
+            else
+                progargs=("$@"); break
+            fi ;;
+    esac
+done
+[ ${#srcs[@]} -gt 0 ] || usage
+
+# relative PATH: the absolute PATH relative to the repository root, `.` and `..` resolved
+# by spelling alone (PATH need not exist); `../PATH` when it is outside the root.
+relative() {
+    local part parts=() IFS=/
+    for part in $1; do
+        case "$part" in
+            ''|.) ;;
+            ..) [ ${#parts[@]} -gt 0 ] && unset 'parts[${#parts[@]}-1]' ;;
+            *) parts+=("$part") ;;
+        esac
+    done
+    local full="/${parts[*]}"
+    case "$full" in
+        "$root") echo . ;;
+        "$root"/*) echo "${full#"$root"/}" ;;
+        *) echo "../$full" ;;
+    esac
+}
+
+# Paths relative to the repository root, where prismc and the crate expect them.
+rel=()
+for s in "${srcs[@]}"; do
+    case "$s" in /*) a=$s ;; *) a=$here/$s ;; esac
+    [ -e "$a" ] || { echo "prism: no such file or directory: $s" >&2; exit 2; }
+    r=$(relative "$a")
+    case "$r" in ../*) echo "prism: $s is outside the repository" >&2; exit 2 ;; esac
+    rel+=("$r")
+done
+cd "$root"
+ulimit -s unlimited 2>/dev/null || ulimit -s 1048576 2>/dev/null || true
+
+prismc=${PRISMC:-}
+if [ -z "$prismc" ]; then
+    prismc=$(ls -t target/bootstrap/prismc target/keep/prismc-* 2>/dev/null | grep -v old-chain | head -1 || true)
+    [ -n "$prismc" ] || { echo "prism: no prismc binary (target/keep/prismc-*, or make bootstrap)" >&2; exit 2; }
+fi
+
+sources=("${rel[@]}")
+
+if [ "$cmd" = check ]; then
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    opts=(--tests)
+    [ -n "$world" ] && opts+=(--world "$world")
+    [ "$unused" = 1 ] && opts+=(--unused)
+    code=0
+    "$prismc" --check "${opts[@]}" "${rel[@]}" --out "$tmp" > /dev/null 2>&1 || code=$?
+    if [ -s "$tmp" ]; then cat "$tmp"; else echo "prism: the checker wrote nothing" >&2; fi
+    exit $code
+fi
+
+first=${rel[0]%/}
+name=$(basename "${first%.prism*}" | tr -c 'a-zA-Z0-9_\n' '_')
+case "$name" in [0-9]*) name="p_$name" ;; esac
+case "$cmd" in
+    compile)
+        [ -n "$out" ] || { echo "prism compile: -o OUT is required" >&2; exit 2; }
+        case "$out" in /*) ;; *) out=$here/$out ;; esac
+        r=$(relative "$out")
+        case "$r" in ../*) ;; *) out=$r ;; esac ;;
+    test|run) if [ "$target" = cpp ]; then out=target/prism-cpp/$name; else out=target/prism/$name; fi ;;
+    *) echo "prism: unknown command $cmd (compile, test, run, check)" >&2; exit 2 ;;
+esac
+# The crate finds prism_rtl and the Worlds at the repository root: by `..`s when OUT is
+# under it (prismc's default), else by the absolute path.
+runtime=()
+case "$out" in /*) runtime=(--runtime "$root") ;; esac
+case "$target" in rust|cpp) ;; *) echo "prism: unknown target $target (rust, cpp)" >&2; exit 2 ;; esac
+rm -rf "$out"
+targetopt=()
+[ "$target" = cpp ] && targetopt=(--target cpp)
+[ "$cmd" = test ] && targetopt+=(--tests)
+"$prismc" compile "${sources[@]}" -o "$out" --name "$name" "${runtime[@]}" "${targetopt[@]}"
+# The program is the target asked for: a prismc that took `--target` without knowing it
+# would have written a Rust crate.
+if [ "$target" = cpp ]; then marker=$out/src/main.cpp; else marker=$out/Cargo.toml; fi
+[ -f "$marker" ] || { echo "prism: $prismc wrote no $target program to $out (no $marker)" >&2; exit 2; }
+[ "$cmd" = compile ] && exit 0
+
+if [ "$target" = cpp ]; then
+    # The C++ program: make builds runtime/cpp's library and the program with $CXX.
+    # -O3, the shipping level, for test and run alike (Jimmy); PRISM_OPT="-O0 -g" to debug a
+    # failing test with a build that keeps its variables
+    opt=${PRISM_OPT:--O3}
+    # PRISM_SANITIZE=1: the program and the runtime under AddressSanitizer and UBSan, with
+    # Homebrew's clang on macOS (Apple clang's sanitizer hangs at startup on macOS 26), so
+    # a test suite run finds undefined behavior the optimizer would otherwise hide.
+    cxx=${CXX:-g++}
+    if [ "${PRISM_SANITIZE:-0}" = 1 ]; then
+        opt="$opt -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined"
+        if [ "$(uname -s)" = Darwin ]; then
+            cxx=/opt/homebrew/opt/llvm/bin/clang++
+            [ -x "$cxx" ] || { echo "prism: PRISM_SANITIZE needs Homebrew's clang (brew install llvm)" >&2; exit 2; }
+            opt="$opt -L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++ -Wno-unused-command-line-argument"
+        fi
+        export ASAN_OPTIONS=${ASAN_OPTIONS:-detect_leaks=0}
+    fi
+    make -s -C "$out" -j"${PRISM_JOBS:-$(getconf _NPROCESSORS_ONLN)}" CXX="$cxx" OPT="$opt" >&2
+    if [ "$cmd" = test ]; then exec "$out/$name" test; fi
+    asked=$(sed -n 's/^const std::string WORLD = "\(.*\)";$/\1/p' "$out/src/main.cpp")
+    [ -n "$world" ] || world=$asked
+    if [ "$print_world" = 1 ]; then echo "$world"; exit 0; fi
+    exec "$out/$name" --world "$world" "${progargs[@]}"
+fi
+
+build() { # profile flags...
+    CARGO_TARGET_DIR="$root/target/prism-build" cargo build --offline -q --manifest-path "$root/$out/Cargo.toml" "$@"
+}
+
+if [ "$cmd" = test ]; then
+    build --release
+    exec target/prism-build/release/"$name" test
+fi
+
+# run: the World prismc took from the root's row (`const WORLD` of the crate's main.rs),
+# unless --world names one; --print-world prints it and stops before the build.
+asked=$(sed -n 's/^const WORLD: &str = "\(.*\)";$/\1/p' "$out/src/main.rs")
+if [ "$asked" = test ]; then
+    echo "prism run: the program has no @main root to run (prism test runs its tests)" >&2
+    exit 2
+fi
+if [ -z "$world" ]; then
+    if [ "$asked" = none ]; then
+        echo "prism run: the root's row has Ui.* without Gui.*: no World answers Ui elements alone; emit Gui.* for the canvas World, or pass --world" >&2
+        exit 2
+    fi
+    world=$asked
+fi
+if [ "$print_world" = 1 ]; then
+    echo "$world"
+    exit 0
+fi
+case "$world" in
+    canvas) build --release --features canvas ;;
+    cli) build --release ;;
+    *) echo "prism run: unknown World $world (cli, canvas)" >&2; exit 2 ;;
+esac
+exec target/prism-build/release/"$name" --world "$world" "${progargs[@]}"

@@ -1,0 +1,22 @@
+# Derived by hand from Semantics R2 (a sample reads the tick's opening) and R3 (a dynamic's update event fires at n with the value after n); pick UD for `$same`.
+test event_half_is_new_behavior_half_is_old
+
+tick 0
+  added:
+    0: Ui.Button(label="bump")
+    1: Ui.Label(text="b 0 was 0")
+    2: Ui.Label(text="a fired 0, same fired 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="b 2 was 1")
+    2: Ui.Label(text="a fired 1, same fired 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="b 3 was 2")
+    2: Ui.Label(text="a fired 2, same fired 2")

@@ -1,0 +1,13 @@
+# Audited by hand: 2^32 - 1 = 4294967295 and 2^32 = 4294967296; 60,000,000,000 is the
+# lexer's nanoseconds in a minute, and plus one 60000000001; 2^64 = 18446744073709551616
+# and twice it 36893488147419103232; -(2^63) - 1 = -9223372036854775809. 60000000000 mod
+# 2^32 = 60000000000 - 13 * 4294967296 = 4165425152, the value a 32-bit cut would give,
+# which is not the minute.
+# The literals' tests: declarations of ts-ch02-big-literal.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
+
+test big_literals_keep_their_digits, @shown:
+    build
+        => expect Ui.Label(text="4294967295 4294967296 60000000000 60000000001 18446744073709551616 36893488147419103232 -9223372036854775809 123456789012345678901234567890")
+        => expect Ui.Label(text="minute other")

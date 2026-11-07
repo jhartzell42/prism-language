@@ -1,0 +1,16 @@
+# `row-lacks`: `r | Ui.*` promises `r` has no `Ui` tags.
+emit Ui.*
+
+@Both: fn @b emit r, @a emit r | Ui.* -> @unit emit r | Ui.*
+fn @Both @x, @y:
+    first <- @x
+    second <- @y
+    @ unit
+
+@one: @unit
+@one:
+    Ui.Label(text=$"one")
+
+@main: @unit
+@main:
+    @Both @one, @one

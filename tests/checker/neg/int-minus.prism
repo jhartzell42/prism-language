@@ -1,0 +1,12 @@
+# `may-not-end`: the `? m` of `n -? 1` is smaller than `n` only when the solver made `n` a
+# `Nat` (pick SW). An `Int` goes down forever, so `Down 0` never ends; `Steps` counts a
+# `Nat` down, and checks clean.
+Down: fn Int -> Nat
+fn Down n = match n -? 1:
+    nil: 0
+    ? m: Down m
+
+Steps: fn Nat -> Nat
+fn Steps n = match n -? 1:
+    nil: 0
+    ? m: 1 + (Steps m)

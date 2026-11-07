@@ -1,0 +1,296 @@
+# The lexer: characters to tokens, with layout (Semantics ch. 2; Templates ch. 2, Lexing;
+# Conformance Appendix A.1 and A.2). `prism_syntax/src/lexer.rs` is the oracle, rule for
+# rule; the two must give the same tokens, and `prismc --tokens` prints them in
+# the layout corpus's notation so the two can be diffed.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+#
+# Q-L1 (b): the lexer is an `&` block with a loop over the text (`LexStream`). Its whole
+# state is what Semantics ch. 2's constraint X3 allows: the stack of block columns
+# (`layout`), the stack of open brackets (`frames`), and whether the last character was
+# whitespace (`lastWs`), plus the bits the books add where they need them (the lambda's
+# open bar, the `:` that ended the previous line, the test frame). A placeholder, a template
+# and a test path's key open a stream of their own: `Nested` runs `LexStream` again over the
+# same text and hands its tokens back as one token's contents, so the recursion is the third
+# stack, the template frames.
+emit r
+mod Chars
+mod Layout
+mod Words
+mod Literals
+mod Templates
+mod Corpus
+mod Regexes
+test mod Tests
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Lexer.Regexes.*
+
+# ---------------------------------------------------------------------------------------
+# Tokens (prism_syntax/src/token.rs)
+# ---------------------------------------------------------------------------------------
+
+# The case mark of a name's last segment (Semantics ch. 2, "Case is a mark").
+type NameCase = choice:
+    CaseLower
+    CaseUpper
+    CaseTopic
+    CaseHole
+    CaseReserved
+derive ^Eq, ^Show
+
+# A name token: attached sigils, then one or more `.`-joined segments.
+type NameTok = record:
+    sigils: Text
+    path: [Text]
+    case: NameCase
+derive ^Eq, ^Show
+
+# A bracket kind is its opening character, `"("`, `"["` or `"{"`. A keyword, an operator
+# and a sigil are their spelling; `sigils` is a run of sigils as written.
+type TokKind = choice:
+    KName NameTok
+    KFamily [Text]
+    KTrait [Text]
+    KKw Text, Text
+    KFree Text
+    KLensDot
+    KInt Text, Text
+    KFloat Text, Text
+    KDuration Text, Text, Text
+    KChar Text, Text
+    KText Text, [TextSegTok]
+    KRegex Text, RegexLit
+    KTemplate TemplateTok
+    KOp Text, Bool
+    KSuffixed Text, [Text]
+    KDot Bool
+    KDotDot
+    KComma
+    KColon
+    KSemi
+    KBackslash
+    KLambdaBar Bool
+    KBar
+    KLtLt
+    KGtGt
+    KOpen Text, Bool
+    KClose Text
+    KAbsent
+    KNonEmpty
+    KPath [PathSegTok]
+    KLayOpen
+    KLaySep
+    KLayClose
+    KEof
+derive ^Eq, ^Show
+
+type Tok = record:
+    kind: TokKind
+    span: Range
+    touches: Bool
+    lineStart: Bool
+derive ^Eq, ^Show
+
+type TextSegTok = choice:
+    TsPlain Text
+    TsPlaceholder [Tok], Range
+derive ^Eq, ^Show
+
+# `keyword` is `"Output"`, `"InlineText"`, `"Raw"` or `"File"`; `delims` `"single"` or
+# `"double"` (Q-CT1 (a)).
+type TemplateTok = record:
+    keyword: Text
+    lang: Text
+    delims: Text
+    parts: [TPartTok]
+derive ^Eq, ^Show
+
+type TPartTok = choice:
+    TptText Text
+    TptPlaceholder [Tok], ?Nat, Range
+    TptBlock [Tok], Range
+    TptCall NameTok, [AttrTok], ?[TPartTok], Range
+derive ^Eq, ^Show
+
+type AttrTok = record:
+    name: Text
+    tokens: [Tok]
+    span: Range
+derive ^Eq, ^Show
+
+type PathSegTok = choice:
+    PstNum Nat
+    PstGen Nat
+    PstKey [Tok]
+derive ^Eq, ^Show
+
+# ---------------------------------------------------------------------------------------
+# The lexer's state
+# ---------------------------------------------------------------------------------------
+
+# How a stream ends, and whether layout is on inside it: the file, a template's brace block
+# (layout on), a placeholder in a text or a template (layout suspended), a path's key.
+type Mode = choice:
+    MFile
+    MBrace Text
+    MPlaceholder Text
+    MPathKey
+derive ^Eq, ^Show
+
+# The text, the cursor and the diagnostics, which every stream shares, and one stream's own
+# state, which `Fresh` starts over for a nested stream.
+type Lex = record:
+    src: Text
+    pos: Nat
+    diags: [Diag]
+    mode: Mode
+    tokens: [Tok]
+    layout: [Nat]
+    frames: [Text]
+    lastWs: Bool
+    lambdaOpen: Bool
+    pendingOpen: Bool
+    pendingSpan: Range
+    lineFirst: Nat
+    markLineStart: Bool
+    firstLine: Bool
+    testPending: Text
+    testDepth: ?Nat
+    checkDepth: ?Nat
+    pathNext: Bool
+derive ^Eq, ^Show
+
+Fresh: fn Lex, Mode -> Lex
+fn Fresh l, mode = Lex(src=l.src, pos=l.pos, diags=l.diags, mode=mode, tokens=[[]], layout=[[]],
+    frames=[[]], lastWs=True, lambdaOpen=False, pendingOpen=False, pendingSpan=Range(start=0, end=0),
+    lineFirst=0, markLineStart=False, firstLine=True, testPending="", testDepth=nil,
+    checkDepth=nil, pathNext=False)
+
+# What a file lexes to.
+type Lexed = record:
+    tokens: [Tok]
+    diags: [Diag]
+derive ^Eq, ^Show
+
+# ---------------------------------------------------------------------------------------
+# Token kinds
+# ---------------------------------------------------------------------------------------
+
+# A layout token or the end: such a token never touches the one before it.
+IsLayoutOrEof: fn TokKind -> Bool
+fn IsLayoutOrEof KLayOpen = True
+fn IsLayoutOrEof KLaySep = True
+fn IsLayoutOrEof KLayClose = True
+fn IsLayoutOrEof KEof = True
+fn IsLayoutOrEof ignore = False
+
+IsLayout: fn TokKind -> Bool
+fn IsLayout KLayOpen = True
+fn IsLayout KLaySep = True
+fn IsLayout KLayClose = True
+fn IsLayout ignore = False
+
+# Whether a token ends an operand, so that a touching `+`, `-`, `.` or `[` after it is
+# binary (the spacing rule).
+EndsOperand: fn TokKind -> Bool
+fn EndsOperand (KName ignore) = True
+fn EndsOperand (KFamily ignore) = True
+fn EndsOperand (KInt ignore, ignore) = True
+fn EndsOperand (KFloat ignore, ignore) = True
+fn EndsOperand (KDuration ignore, ignore, ignore) = True
+fn EndsOperand (KChar ignore, ignore) = True
+fn EndsOperand (KText ignore, ignore) = True
+fn EndsOperand (KRegex ignore, ignore) = True
+fn EndsOperand (KTemplate ignore) = True
+fn EndsOperand (KClose ignore) = True
+fn EndsOperand KGtGt = True
+fn EndsOperand KNonEmpty = True
+fn EndsOperand KAbsent = True
+fn EndsOperand (KKw w, ignore) = IsValueWord w
+fn EndsOperand ignore = False
+
+IsValueWord: fn Text -> Bool
+fn IsValueWord w = w == "unit" or w == "nil" or (IsBoundWord w)
+
+IsBoundWord: fn Text -> Bool
+fn IsBoundWord w = w == "key" or w == "ix" or w == "jx" or w == "kx"
+
+# Keywords, reserved everywhere (Semantics ch. 2, Keywords; Appendix A.2).
+let keywordList = [["module", "emit", "use", "type", "record", "choice", "row", "tag", "of",
+    "derive", "trait", "impl", "where", "any", "let", "fn", "test", "check", "widget",
+    "rebuild", "for", "given", "monad", "update", "while", "match", "if", "else", "otherwise",
+    "require", "forbid", "return", "ignore", "then", "on", "not", "and", "or", "mod", "as",
+    "output", "inline_text", "raw", "unbounded", "unit", "nil", "key", "ix", "jx", "kx"]]
+
+let keywordSet = Map (Each keywordList, \|w| ((w, True)))
+
+IsKeyword: fn Text -> Bool
+fn IsKeyword w = keywordSet[w] != nil
+
+# The operators that take a type suffix when an uppercase name touches them.
+TakesSuffix: fn Text -> Bool
+fn TakesSuffix op = Fold [["<=", "==", "!=", "<", ">", ">=", "+", "-", "*", "/", "+?", "-?", "*?"]], False, \|seen, o| seen or o == op
+
+CloseChar: fn Text -> Text
+fn CloseChar "(" = ")"
+fn CloseChar "[" = "]"
+fn CloseChar ignore = "\}"
+
+OpenOf: fn Text -> Text
+fn OpenOf ")" = "("
+fn OpenOf "]" = "["
+fn OpenOf ignore = "\{"
+
+# ---------------------------------------------------------------------------------------
+# Pushing tokens
+# ---------------------------------------------------------------------------------------
+
+# The spacing rule's left half: "whitespace, an open bracket, a comma, an operator or the
+# start of a line comes before it".
+PrefixPosition: fn Lex -> Bool
+fn PrefixPosition l = l.lastWs or (NoOperandBefore (?Last l.tokens))
+
+NoOperandBefore: fn ?Tok -> Bool
+fn NoOperandBefore nil = True
+fn NoOperandBefore (? t) = not (EndsOperand t.kind)
+
+TestWordOf: fn TokKind -> Text
+fn TestWordOf (KKw "test", ignore) = "test"
+fn TestWordOf (KKw "check", ignore) = "check"
+fn TestWordOf ignore = ""
+
+AllLayout: fn [Tok] -> Bool
+fn AllLayout ts = Fold ts, True, \|ok, t| ok and (IsLayout t.kind)
+
+PushTok: fn Lex, TokKind, Nat, Nat -> Lex
+fn PushTok l, kind, start, end = update l:
+    let layout = IsLayoutOrEof kind
+    let touches = not &_.lastWs and (Len &_.tokens) > 0 and not layout
+    let lineStart = not layout and &_.markLineStart
+    if not layout:
+        &_.markLineStart <= False
+    # The test language's frame: `test` or `check` beginning a top-level statement.
+    let word = TestWordOf kind
+    if word != "" and &_.mode == MFile and (Len &_.layout) == 1 and (AllLayout (Drop &_.tokens, &_.lineFirst)):
+        &_.testPending <= word
+    &_.tokens <= Push &_.tokens, Tok(kind=kind, span=Range(start=start, end=end), touches=touches, lineStart=lineStart)
+    &_.lastWs <= False
+
+LayoutOn: fn Mode -> Bool
+fn LayoutOn MFile = True
+fn LayoutOn (MBrace ignore) = True
+fn LayoutOn ignore = False
+
+LayoutActive: fn Lex -> Bool
+fn LayoutActive l = (LayoutOn l.mode) and (Len l.frames) == 0
+
+FatArrowOn: fn Lex -> Bool
+fn FatArrowOn l = l.?testDepth != nil or l.?checkDepth != nil

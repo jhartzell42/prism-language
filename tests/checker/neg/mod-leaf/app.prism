@@ -1,0 +1,4 @@
+# A module in a file of its own that declares a child: refused (mod-leaf). A module with
+# children is a directory, `shapes/mod.prism`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+mod Shapes

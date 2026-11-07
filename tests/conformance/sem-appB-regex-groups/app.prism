@@ -1,0 +1,40 @@
+# Semantics Appendix B, Regular expressions, and Type System ch. 2, "Groups are typed
+# alike": `groups[i]` is capture group `i` numbered by its opening parenthesis, `nil`
+# for one that took no part, and `named` holds each named group that took part.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+# Type System ch. 2's example: the key of a `key = value` line.
+?Key: fn Text -> ?Text
+fn ?Key line = match ?Find %/^(?<key>[a-z_]+)\s*=/, line:
+    ? m: m.named["key"].text
+    nil: nil
+
+# Each group's text, `-` for one that took no part.
+Texts: fn ?Match -> Text
+fn Texts nil = "nil"
+fn Texts (? m) = Spaced (Each m.groups, GroupText)
+
+GroupText: fn ?Group -> Text
+fn GroupText nil = "-"
+fn GroupText (? g) = g.text
+
+# How many groups a match has, group 0 counted.
+Count: fn ?Match -> Nat
+fn Count nil = 0
+fn Count (? m) = Len m.groups
+
+# A match as tests/regex/corpus.txt writes it: each numbered group's bytes `a-b`, group 0
+# (the whole match) first and `nil` for a group that took no part, then each named group
+# that took part, by name, `name=a-b`.
+Spans: fn ?Match -> Text
+fn Spans nil = "nil"
+fn Spans (? m) = Spaced (Append (Each m.groups, GroupSpan), (Fold m.named, [[]], \|acc, k, g| Push acc, "{k}={At g.front}-{At g.back}"))
+
+GroupSpan: fn ?Group -> Text
+fn GroupSpan nil = "nil"
+fn GroupSpan (? g) = "{At g.front}-{At g.back}"
+
+# The texts with a space between each two.
+Spaced: fn [Text] -> Text
+fn Spaced ts = Fold ts, "", \|acc, t| if acc == "": t else: "{acc} {t}"

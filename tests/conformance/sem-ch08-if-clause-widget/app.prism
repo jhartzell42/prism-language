@@ -1,0 +1,31 @@
+# A building `if` whose arm calls a widget of several pattern clauses: the arm builds the
+# clause its plain arguments choose, as a single-clause widget's call does (Semantics ch.
+# 8). prismc's front end once worked around a back end that lowered such an arm's result
+# as a blueprint (gap AW).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Mode = choice:
+    Shout Text
+    Quiet
+    Off
+derive ^Eq, ^Show
+
+@Say: fn Mode -> @unit
+fn @Say (Shout t):
+    Ui.Label(text=$"{t}!")                                  # 0
+fn @Say Quiet:
+    Ui.Label(text=$"...")                                   # 0
+fn @Say Off:
+    Ui.Label(text=$"not built")                             # 0
+
+@Pick: fn Mode -> @unit
+fn @Pick m:
+    if m != Off: @Say m
+    else: Ui.Label(text=$"off")
+
+@main: @unit
+@main:
+    Ui.Label(text=$"top")                                   # 0
+    ignore <- @Pick (Shout "hi")                      # 1

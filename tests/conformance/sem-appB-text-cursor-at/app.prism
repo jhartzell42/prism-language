@@ -1,0 +1,22 @@
+# Semantics Appendix B, Text: `?CursorAt` makes a cursor from a byte offset, `nil` past
+# the end or inside a character.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+let sample = "héllo→世界"
+
+# The byte offsets `0` to `n` at which `t` has a cursor.
+Boundaries: fn Text, Nat -> [Nat]
+fn Boundaries t, n = update [[]]:
+    let &i = 0
+    let &left = n + 1
+    while ? m <- &left -? 1:
+        &left <= m
+        if (?CursorAt t, &i) != nil: &_ <= Push &_, &i
+        &i += 1
+
+# The text after byte `n`, or `"-"` when there is no cursor there.
+From: fn Text, Nat -> Text
+fn From t, n = match ?CursorAt t, n:
+    ? c: After c
+    nil: "-"

@@ -1,0 +1,55 @@
+# Types rustc cannot infer from use, which the back end writes out: a lambda's parameters
+# given to `Fold` from a `nil`, a mutable local of an `update` that starts empty, and a
+# generic unbounded function as a job (its type parameter lives as long as the job).
+# A choice holding a record that holds a function is not plain data, so it gets no
+# `ToPod`. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+
+?FirstOver: fn [Nat], Nat -> ?Nat
+fn ?FirstOver xs, n = Fold xs, nil, \|?found, x| match ?found:
+    ? f: ? f
+    nil: if x > n: ? x else: nil
+
+Evens: fn [Nat] -> [Nat]
+fn Evens xs = update [[]]:
+    let &kept = [[]]
+    let &i = 0
+    let &fuel = Len xs
+    while ? left <- &fuel -? 1:
+        &fuel <= left
+        let x = Or xs[&i], 0
+        if (Or (?Mod x, 2), 1) == 0:
+            &kept <= Push &kept, x
+        &i += 1
+    &_ <= &kept
+
+Last: unbounded fn [a], a -> a
+fn Last xs, d = Fold xs, d, \|ignore, x| x
+
+LastOf: unbounded fn [Nat] -> Nat
+fn LastOf ys = Last ys, 0
+
+type Op = record:
+    name: Text
+    step: fn Nat -> Nat
+
+type Tagged = choice:
+    Plain Nat
+    WithOp Op, Nat
+
+Value: fn Tagged -> Nat
+fn Value (Plain n) = n
+fn Value (WithOp o, n) = o.step n
+
+Found: fn ?Nat -> Text
+fn Found (? n) = "{n}"
+fn Found nil = "none"
+
+@Shown: fn [Nat] -> @unit
+fn @Shown xs:
+    !done <- @Run LastOf, (Evens xs)                          # 0
+    let op = Op(name="none", step=(\|n| n))
+    let first = "{Found (?FirstOver xs, 2)}{Value (WithOp op, 0)}"
+    $shown <- first then "{first} {Show !done}"
+    Ui.Label(text=$shown)                                   # 1

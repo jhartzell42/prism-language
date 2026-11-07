@@ -1,0 +1,26 @@
+# A host's computed answer is a tick late (Semantics ch. 9, "How a supplier answers", as
+# ruled): a supplier that answers a child place with an event of the host's own (`@ !tap`)
+# hands each firing to the child's place as an input of the NEXT tick, and that tick is owed
+# (`pending`), so the test writes `compute` for it. A forwarded element (`@Element e`) is
+# answered by the World, and the child hears that in the SAME tick: a host that forwards is
+# observably not there. Written for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@child: @unit
+@child:
+    !hit <- Ui.Button(label=$"hit")                              # 0, answered by the host's !tap
+    !key <- Ui.TextInput(name="in", text=$"")                    # 1, forwarded
+    $hits <- 0 then $hits + 1 on !hit
+    $keys <- 0 then $keys + 1 on !key
+    Ui.Label(text=$"{$hits} hits, {$keys} keys")                 # 2, forwarded
+
+@host: @unit
+@host:
+    !tap <- Ui.Button(label=$"tap")                              # 0
+    ignore <- @HostDocument @child, \|p, e| match e:            # 1/[p]
+        Ui.Button(..): @ !tap
+        otherwise: @Element e
+    $taps <- 0 then $taps + 1 on !tap
+    Ui.Label(text=$"{$taps} taps")                               # 2

@@ -1,0 +1,175 @@
+# `Check.Types.Schemes`, a child module of `Check.Types`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Colors.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Typed.*
+use Check.Typed.Print.*
+
+# ---------------------------------------------------------------------------------------
+# Schemes: instantiation and generalization
+# ---------------------------------------------------------------------------------------
+
+Mono: fn Ty -> Scheme
+fn Mono t = Scheme(qs=[[]], plainQs=[[]], rqs=[[]], cqs=[[]], cjoins=[[]], bounds=[[]], ty=t)
+
+# A type's quantified names replaced: type variables, row tails, colors.
+type Inst = record:
+    tys: (Text ==> Ty)
+    rows: (Text ==> Tail)
+    cols: (Text ==> Col)
+derive ^Eq, ^Show
+
+SubstQ: unbounded fn Inst, Ty -> Ty
+fn SubstQ m, t = match t:
+    TyQ n: Or m.tys[n], (TyQ n)
+    TyCon n, args: TyCon n, (Each args, \|a| SubstQ m, a)
+    TyFn c, ps, res: TyFn (SubstCol m, c), (Each ps, \|p| SubstQ m, p), (SubstQ m, res)
+    TyTuple ts: TyTuple (Each ts, \|a| SubstQ m, a)
+    TyArray e: TyArray (SubstQ m, e)
+    TyMap k, v: TyMap (SubstQ m, k), (SubstQ m, v)
+    TySig s, i: TySig s, (SubstQ m, i)
+    TyAt i, rw: TyAt (SubstQ m, i), (SubstRowQ m, rw)
+    TyElem rw, o: TyElem (SubstRowQ m, rw), (SubstQ m, o)
+    TyElemAny rw: TyElemAny (SubstRowQ m, rw)
+    TyAssoc n, a: TyAssoc n, (SubstQ m, a)
+    other: other
+
+SubstRowQ: fn Inst, Rw -> Rw
+fn SubstRowQ m, rw = match rw.tail:
+    TlQ n: match m.rows[n]:
+        ? t: Rw(fams=rw.fams, minus=rw.minus, tail=t)
+        nil: rw
+    otherwise: rw
+
+SubstCol: fn Inst, Col -> Col
+fn SubstCol m, (CQ n) = Or m.cols[n], (CQ n)
+fn SubstCol m, c = c
+
+# A scheme instantiated with fresh variables: its type, the bounds as wanted constraints,
+# and the instance map (for `<<T>>`, which fills the variables in order).
+Instantiate: unbounded fn St, Scheme, Range -> ((Ty, St))
+fn Instantiate st, sc, span:
+    let ((t, st2, ignore)) = InstantiateWith st, sc, span, [[]]
+    ((t, st2))
+
+# The same, with the first variables given (`<<T>>`): `explicit` fills `qs` then `rqs` in
+# order; a row is given as a type `TyElemAny row`.
+InstantiateWith: unbounded fn St, Scheme, Range, [Ty] -> ((Ty, St, Inst))
+fn InstantiateWith st, sc, span, explicit:
+    let ((tys, st1)) = Fold (Range0 (Len sc.qs)), (({}, st)), \|((m, s)), i|
+        let q = Or sc.qs[i], ""
+        match explicit[i]:
+            ? g: (((Insert m, q, g), s))
+            nil:
+                let ((v, s2)) = FreshVar s, (HasText sc.plainQs, q), ""
+                (((Insert m, q, v), s2))
+    let nq = Len sc.qs
+    let ((rows, st2)) = Fold sc.rqs, (({}, st1)), \|((m, s)), q|
+        let ((rw, s2)) = FreshRow s, (LacksIn sc.ty, q)
+        (((Insert m, q, rw.tail), (NameRow s2, rw.tail, q)))
+    let ((cols, st2b)) = Fold sc.cqs, (({}, st2)), \|((m, s)), q|
+        let ((c, s2)) = FreshCol s
+        (((Insert m, q, c), s2))
+    let inst = Inst(tys=tys, rows=rows, cols=cols)
+    let st2c = Fold sc.cjoins, st2b, \|s, ((lo, hi))| AddLeq s, (Or cols[lo], CBound), (Or cols[hi], CBound), span, "arg", "", ""
+    let st3 = Fold sc.bounds, st2c, \|s, ((v, tr))| update s:
+        &_.wants <= Push &_.wants, Want(cls=tr, ty=(Or tys[v], TyErr), file=s.file, span=span, level=s.level)
+    (((SubstQ inst, sc.ty), st3, inst))
+
+# The families a scheme's row variable is extended with: `r | Net.*` promises `r` has no
+# `Net` tags (ch. 5, Rows).
+LacksIn: unbounded fn Ty, Text -> [Text]
+fn LacksIn t, q = match t:
+    TyCon ignore, args: Fold args, [[]], \|acc, a| UnionTexts acc, (LacksIn a, q)
+    TyFn ignore, ps, r: Fold ps, (LacksIn r, q), \|acc, a| UnionTexts acc, (LacksIn a, q)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (LacksIn a, q)
+    TyArray e: LacksIn e, q
+    TyMap k, v: UnionTexts (LacksIn k, q), (LacksIn v, q)
+    TySig ignore, i: LacksIn i, q
+    TyAt i, rw: UnionTexts (LacksIn i, q), (RowLacks rw, q)
+    TyElem rw, o: UnionTexts (LacksIn o, q), (RowLacks rw, q)
+    TyElemAny rw: RowLacks rw, q
+    otherwise: [[]]
+
+RowLacks: fn Rw, Text -> [Text]
+fn RowLacks rw, q = if rw.tail == (TlQ q): rw.fams else: [[]]
+
+# A scheme whose quantified variables are rigid: a signature as its body sees it.
+Skolemize: unbounded fn Scheme -> Ty
+fn Skolemize sc:
+    let tys = Fold sc.qs, {}, \|m, q| Insert m, q, (TyRigid q)
+    let rows = Fold sc.rqs, {}, \|m, q| Insert m, q, (TlRigid q)
+    let cols = Fold sc.cqs, {}, \|m, q| Insert m, q, (CRigid q)
+    SubstQ Inst(tys=tys, rows=rows, cols=cols), sc.ty
+
+# Generalize a type over the variables above the current level (a local `let`, ch. 5):
+# `keep` lists variables that must stay monomorphic (constrained ones of a non-lambda).
+# Its color variables first settle their joins (GeneralizeCols), then are quantified
+# like its type variables (D8).
+Generalize: unbounded fn St, Ty, [Nat], [((Nat, Text))] -> ((Scheme, St))
+fn Generalize st0, t, keep, bounds:
+    # A variable a waiting field access still decides stays monomorphic: the access is
+    # answered by the uses of the name.
+    let waiting = Fold st0.fieldQs, [[]], \|acc, q| FreeVarsInto st0, (FreeVarsInto st0, acc, q.recv), q.result
+    let st = GeneralizeCols (LowerLevels st0, waiting, st0.level)
+    let z = Zonk st, t
+    let vs = Filter (FreeVars st, z), \|v| (InfoOf st, v).level > st.level and not (HasNat keep, v)
+    let cvs = Filter (FreeColVars st, z), \|v| (InfoOf st, v).level > st.level
+    let tys = Fold vs, {}, \|m, v| Insert m, v, (TyQ "'{v}")
+    let cols = Fold cvs, {}, \|m, v| Insert m, v, (CQ "'c{v}")
+    let named = SubstFlex tys, cols, z
+    let plains = Each (Filter vs, \|v| (InfoOf st, v).plain), \|v| "'{v}"
+    let bs = Each (Filter bounds, \|((v, ignore))| HasNat vs, v), \|((v, tr))| (("'{v}", tr))
+    let st2 = update st:
+        &_.colQ <= Fold cvs, &_.colQ, \|m, v| Insert m, v, "'c{v}"
+    ((Scheme(qs=(Each vs, \|v| "'{v}"), plainQs=plains, rqs=[[]], cqs=(Each cvs, \|v| "'c{v}"), cjoins=[[]], bounds=bs, ty=named), st2))
+
+SubstFlex: unbounded fn (Nat ==> Ty), (Nat ==> Col), Ty -> Ty
+fn SubstFlex m, cm, t = match t:
+    TyFlex n: Or m[n], (TyFlex n)
+    TyCon n, args: TyCon n, (Each args, \|a| SubstFlex m, cm, a)
+    TyFn c, ps, res:
+        let c2 = match c:
+            CFlex n: Or cm[n], c
+            other: other
+        TyFn c2, (Each ps, \|p| SubstFlex m, cm, p), (SubstFlex m, cm, res)
+    TyTuple ts: TyTuple (Each ts, \|a| SubstFlex m, cm, a)
+    TyArray e: TyArray (SubstFlex m, cm, e)
+    TyMap k, v: TyMap (SubstFlex m, cm, k), (SubstFlex m, cm, v)
+    TySig s, i: TySig s, (SubstFlex m, cm, i)
+    TyAt i, rw: TyAt (SubstFlex m, cm, i), rw
+    TyElem rw, o: TyElem rw, (SubstFlex m, cm, o)
+    TyAssoc n, a: TyAssoc n, (SubstFlex m, cm, a)
+    other: other
+
+# Whether a type has a `$` or `!` outside every function arrow (ch. 5: a `let` holding a
+# node never generalizes, round 1 DB1a).
+HoldsNode: unbounded fn St, Ty -> Bool
+fn HoldsNode st, t = match Walk st, t:
+    TySig s, i: s == "$" or s == "!" or HoldsNode st, i
+    TyTuple ts: Fold ts, False, \|seen, x| seen or HoldsNode st, x
+    TyArray e: HoldsNode st, e
+    TyMap k, v: (HoldsNode st, k) or HoldsNode st, v
+    TyCon ignore, args: Fold args, False, \|seen, x| seen or HoldsNode st, x
+    otherwise: False
+
+EnterLevel: fn St -> St
+fn EnterLevel st = update st:
+    &_.level += 1
+
+LeaveLevel: fn St -> St
+fn LeaveLevel st = update st:
+    &_.level <= Or (&_.level -? 1), 0

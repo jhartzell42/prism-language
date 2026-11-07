@@ -1,0 +1,207 @@
+# `Check.Passes.Borrows`, a child module of `Check.Passes`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Passes.*
+use Check.Passes.Cycles.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Expr.*
+use Check.Expr.Operators.*
+use Check.Expr.Calls.*
+use Check.Expr.Patterns.*
+use Check.Expr.Lifting.*
+use Check.Expr.Lets.*
+use Check.Blocks.*
+use Check.Blocks.Structure.*
+use Check.Blocks.Borrows.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Check.*
+use Check.Shrink.*
+use Check.Shrink.Types.*
+use Check.Shrink.Calls.*
+use Check.Shrink.Locals.*
+use Check.Shrink.Relations.*
+use Check.Shrink.Walk.*
+use Check.Shrink.Summaries.*
+
+# ---------------------------------------------------------------------------------------
+# `&` blocks: escapes, freezes, borrows (Semantics ch. 5)
+# ---------------------------------------------------------------------------------------
+
+IsLocalType: unbounded fn St, Ty -> Bool
+fn IsLocalType st, t = match Walk st, t:
+    TyCon "Buffer", ignore: True
+    TyCon "Table", ignore: True
+    TyArray e: IsLocalType st, e
+    TyTuple ts: Fold ts, False, \|seen, x| seen or IsLocalType st, x
+    TyMap k, v: (IsLocalType st, k) or IsLocalType st, v
+    TySig ignore, i: IsLocalType st, i
+    otherwise: False
+
+# A block-local type only in `&` locals (`local-escapes`), nothing used after `Freeze`
+# (`frozen`), one live reference per part (`borrow-overlap`).
+AndBlockChecks: unbounded fn Env, St, Block, Ty -> St
+fn AndBlockChecks env, st, b, t:
+    let st1 = if IsLocalType st, t: ErrFix st, "local-escapes", b.span, "a `{BlockLocalName st, t}` cannot leave its block", "`Freeze` it into a plain value first" else: st
+    let st2 = EscapeStmts env, st1, b.stmts
+    let ((ignore, st3)) = FrozenStmts env, st2, b.stmts, {}
+    BorrowStmts env, st3, b.stmts, [[]]
+
+BlockLocalName: unbounded fn St, Ty -> Text
+fn BlockLocalName st, t = match Walk st, t:
+    TyCon n, ignore: n
+    otherwise: "Buffer"
+
+EscapeStmts: unbounded fn Env, St, [Stmt] -> St
+fn EscapeStmts env, st, stmts = Fold stmts, st, \|s, stmt| match stmt.kind:
+    SLet p, ignore, e: match p.kind:
+        PName n:
+            if (HasPrefix n.sigils, "&"): s
+            else: match env.locals[SNameKey n]:
+                ? ignore: s
+                nil: if CallsLocalMaker env, e: ErrFix s, "local-escapes", stmt.span, "a `Buffer` cannot leave its block: `{SNameKey n}` is no `&` local", "write `let &{SNameKey n} = ...`" else: s
+        otherwise: s
+    SWhile ignore, body: EscapeStmts env, s, body.stmts
+    SExpr e: match e.kind:
+        EIf ignore, tb, ?eb:
+            let s2 = EscapeStmts env, s, tb.stmts
+            match ?eb:
+                ? x: EscapeStmts env, s2, x.stmts
+                nil: s2
+        EMatch ignore, arms: Fold arms, s, \|s3, a| EscapeStmts env, s3, a.body.stmts
+        EFor ignore, ignore, body: EscapeStmts env, s, body.stmts
+        otherwise: s
+    otherwise: s
+
+# A call of a block-local maker, `Buffer.Numbered n`, `Buffer.Empty` or `Table.Empty`, by
+# what the name resolves to where it stands (the checker's own builtins), never by its text.
+CallsLocalMaker: fn Env, Expr -> Bool
+fn CallsLocalMaker env, e = match e.kind:
+    ECall c, ignore, ignore, ignore: (?MakerOf env, c) != nil
+    EName ignore: match ?MakerOf env, e:
+        ? k: k != "Buffer.Numbered"
+        nil: False
+    EGroup x: CallsLocalMaker env, x
+    otherwise: False
+
+?MakerOf: fn Env, Expr -> ?Text
+fn ?MakerOf env, c = match ?CalleeName c:
+    ? n:
+        if HasKey env.locals, n: nil
+        else: match ?ResolveName env.g, env.home, n:
+            ? k: if (IsLocalMaker k) and (Or env.g.vals[k], dummyVal).sort == "builtin": ? k else: nil
+            nil: nil
+    nil: nil
+
+# After `Freeze &x`, `&x` is gone, as a Rust value after a move. A statement freezes what
+# a call of the prelude's `Freeze` is given anywhere in it (resolved where it stands, pick
+# RN: a local or a program's own `Freeze` freezes nothing), and a statement after it that
+# names the local anywhere in it is `frozen`; a `let` that binds the name again makes a
+# new local.
+FrozenStmts: unbounded fn Env, St, [Stmt], (Text ==> Nat) -> (((Text ==> Nat), St))
+fn FrozenStmts env, st, stmts, frozen:
+    let pre = PreludeSeeds env.g, env.home
+    let seeds = Fold (Keys pre), pre, \|m, k| if HasKey env.locals, (DropPrefix k, "pre:"): Remove m, k else: m
+    let bm = BlockRels stmts, seeds
+    Fold stmts, ((frozen, st)), \|((fz, s)), stmt|
+        let spots = StmtSpots stmt, bm
+        let reads = Fold spots, [[]], \|acc, sp| Append acc, (SpotRefs sp)
+        let s2 = Fold reads, s, \|s1, ((n, sp))| match fz[n]:
+            ? line: ErrFix s1, "frozen", sp, "`{n}` was frozen on line {line + 1}", "use the frozen value, or make a new local"
+            nil: s1
+        let fz1 = match stmt.kind:
+            SLet p, ignore, ignore: Fold (PatternNames p), fz, \|m, n| Remove m, n
+            otherwise: fz
+        let fz2 = Fold spots, fz1, \|m, sp| Fold (SpotFreezes sp), m, \|m2, n| Insert m2, n, (CLineOf env.src.starts, stmt.span.start)
+        ((fz2, s2))
+
+# The `&` names a spot reads, with where.
+SpotRefs: fn Spot -> [((Text, Range))]
+fn SpotRefs (SpotExpr e, ignore) = match e.kind:
+    EName n: if (HasPrefix n.sigils, "&"): [[((SNameKey n, n.span))]] else: [[]]
+    otherwise: [[]]
+fn SpotRefs (SpotStmt ignore, ignore) = [[]]
+
+# The `&` locals a spot's call of the prelude's `Freeze` is given.
+SpotFreezes: unbounded fn Spot -> [Text]
+fn SpotFreezes (SpotExpr e, m) = match ?CallOf e:
+    ? ((c, args)): match ?CalleeName c:
+        ? n: if PreIs m, n, "Freeze": Fold args, [[]], \|acc, a| Append acc, (Each (RefsIn a.value), \|((n2, ignore))| n2) else: [[]]
+        nil: [[]]
+    nil: [[]]
+fn SpotFreezes (SpotStmt ignore, ignore) = [[]]
+
+RefsIn: unbounded fn Expr -> [((Text, Range))]
+fn RefsIn e = match e.kind:
+    EName n: if (HasPrefix n.sigils, "&"): [[((SNameKey n, n.span))]] else: [[]]
+    ECall c, args, ignore, ignore: Fold args, (RefsIn c), \|acc, a| Append acc, (RefsIn a.value)
+    EBinary ignore, l, r: Append (RefsIn l), (RefsIn r)
+    EUnary ignore, x: RefsIn x
+    EFreeSigil ignore, x: RefsIn x
+    EField r, ignore, ignore: RefsIn r
+    EIndex r, i: Append (RefsIn r), (RefsIn i)
+    EGroup x: RefsIn x
+    ETuple es: Fold es, [[]], \|acc, x| Append acc, (RefsIn x)
+    EArray es: Fold es, [[]], \|acc, x| Append acc, (RefsIn x)
+    otherwise: [[]]
+
+# Inside `for &s <- &p:` the path `&p` is lent to the loop: a set through a path that
+# overlaps it is `borrow-overlap`.
+BorrowStmts: unbounded fn Env, St, [Stmt], [ [Text] ] -> St
+fn BorrowStmts env, st, stmts, lent = Fold stmts, st, \|s, stmt| match stmt.kind:
+    SSet t, ignore: CheckLent env, s, t, lent
+    SAccum t, ignore, ignore: CheckLent env, s, t, lent
+    SWhile ignore, body: BorrowStmts env, s, body.stmts, lent
+    SExpr e: match e.kind:
+        EFor ?binders, source, body:
+            let path = RefPath source
+            let lent2 = if (Len path) > 0 and ?binders != nil: Push lent, path else: lent
+            BorrowStmts env, s, body.stmts, lent2
+        EIf ignore, tb, ?eb:
+            let s2 = BorrowStmts env, s, tb.stmts, lent
+            match ?eb:
+                ? x: BorrowStmts env, s2, x.stmts, lent
+                nil: s2
+        EMatch ignore, arms: Fold arms, s, \|s3, a| BorrowStmts env, s3, a.body.stmts, lent
+        otherwise: s
+    otherwise: s
+
+CheckLent: unbounded fn Env, St, Expr, [ [Text] ] -> St
+fn CheckLent env, st, t, lent:
+    let path = RefPath t
+    Fold lent, st, \|s, l| if (Len path) > 0 and (IsPrefix l, path) or (IsPrefix path, l): ErrFix s, "borrow-overlap", t.span, "`{Join l, "."}` is lent to the `for`", "set it after the loop, or loop over a copy" else: s
+
+IsPrefix: fn [Text], [Text] -> Bool
+fn IsPrefix a, b = (Len a) <= (Len b) and (Take b, (Len a)) == a
+
+# A reference's path: its root `&` name and field steps (an index step ends it).
+RefPath: unbounded fn Expr -> [Text]
+fn RefPath e = match e.kind:
+    EName n: if (HasPrefix n.sigils, "&"): [[SNameKey n]] else: [[]]
+    EField r, ignore, f:
+        let p = RefPath r
+        if (Len p) > 0: Push p, f.name else: p
+    EIndex r, ignore:
+        let p = RefPath r
+        if (Len p) > 0: Push p, "[]" else: p
+    EGroup x: RefPath x
+    otherwise: [[]]

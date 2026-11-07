@@ -1,0 +1,498 @@
+# The parser: tokens to the tree of ast.prism (Semantics ch. 3 to 6 and Appendix A;
+# Templates ch. 2; Conformance ch. 1 and Appendix A). `prism_syntax/src/parser/` is the
+# oracle, function for function: mod.rs (the cursor, the pairing rule, recovery), decls.rs,
+# expr.rs (the Pratt loop over the precedence table), types.rs, patterns.rs and tests.rs.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+#
+# D7: ordinary recursive descent over a token cursor, `unbounded`, its cycle points
+# generated. The cursor is a value, `Ps`, that each step takes and hands back with what it
+# parsed, `((tree, ps))`. A step that fails marks the cursor `bad` (pick PF in README): a bad
+# cursor sees the end of the input and moves no more, so every step after a failure falls
+# through at once to the nearest place that recovers (a statement boundary) or rolls back (a
+# speculation), which is where the Rust parser's `?` lands. Diagnostics live in the cursor,
+# so rolling back a speculation drops its diagnostics with its position, as `speculate`
+# does.
+#
+# The precedence table, loosest first (Semantics ch. 2; Appendix A.5):
+#
+#   1   `<-`, `=`, `<=` `+=` ...       statements: `ParseStmt`
+#   2   `then`                         the hold, in `ParseStmt`; does not associate
+#   3   application, `\`, free sigils  `ParsePrimary`: each takes the rest
+#   4   `<|`                           the Pratt loop, `ParseBinary`
+#   5   `on`
+#   6   `or`
+#   7   `and`
+#   8   `not`                          `ParsePrefix`
+#   9   `==` `!=` `<` `<=` `>` `>=`
+#   10  `+` `-` `+?` `-?`
+#   11  `*` `/` `*?` `mod`
+#   12  `as`                           in the Pratt loop, a type on its right
+#   13  prefix `-` `+`                 `ParsePrefix`
+#   14  `.f`, `[i]`, `.Method`, `<<T>>` `ParsePostfix`
+emit r
+mod Decls
+mod Expr
+mod Blocks
+mod Types
+mod TestLanguage
+test mod Tests
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Sexp.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+
+# ---------------------------------------------------------------------------------------
+# The cursor (mod.rs)
+# ---------------------------------------------------------------------------------------
+
+# The pairing of one bracket token: its partner, and whether it is the outer or the inner
+# bracket of a double.
+type Pair = record:
+    partner: ?Nat
+    outer: Bool
+    inner: Bool
+derive ^Eq, ^Show
+
+type Ps = record:
+    toks: [Tok]
+    pairs: [Pair]
+    pos: Nat
+    diags: [Diag]
+    out: [Diag]
+    stepMode: Bool
+    inTrait: Bool
+    bad: Bool
+derive ^Eq, ^Show
+
+# What a parse gives: the tree, and every diagnostic in source order.
+type Parsed = record:
+    tree: Module
+    diags: [Diag]
+derive ^Eq, ^Show
+
+let noRange = Range(start=0, end=0)
+let eofTok = Tok(kind=KEof, span=noRange, touches=False, lineStart=False)
+let noPair = Pair(partner=nil, outer=False, inner=False)
+
+# Parses a file as a module (Semantics ch. 6: one file is one module).
+ParseFile: unbounded fn Text -> Parsed
+fn ParseFile src:
+    let lexed = LexFile src
+    let ((m, p)) = ParseModule (NewPs lexed.tokens), False
+    Parsed(tree=m, diags=(FinishDiags (Append (Append lexed.diags, p.diags), p.out)))
+
+# A run of statements and declarations at column 0, as the books' snippets are written:
+# declarations parse as declarations, anything else as a `DStmt`.
+ParseFragment: unbounded fn Text -> Parsed
+fn ParseFragment src:
+    let lexed = LexFile src
+    let ((m, p)) = ParseModule (NewPs lexed.tokens), True
+    Parsed(tree=m, diags=(FinishDiags (Append (Append lexed.diags, p.diags), p.out)))
+
+NewPs: unbounded fn [Tok] -> Ps
+fn NewPs toks0:
+    let ends = match ?Last toks0:
+        ? t: t.kind == KEof
+        nil: False
+    let end = match ?Last toks0:
+        ? t: Range(start=t.span.end, end=t.span.end)
+        nil: noRange
+    let toks = if ends: toks0 else: Push toks0, Tok(kind=KEof, span=end, touches=False, lineStart=False)
+    Ps(toks=toks, pairs=(PairBrackets toks), pos=0, diags=[[]], out=[[]], stepMode=False, inTrait=False, bad=False)
+
+# A parser over a nested token stream (a placeholder, a brace block), sharing this parser's
+# step mode; `Absorb` merges its diagnostics back.
+Sub: unbounded fn Ps, [Tok], Range -> Ps
+fn Sub p, toks, end:
+    let q = NewPs (Push toks, Tok(kind=KEof, span=end, touches=False, lineStart=False))
+    update q:
+        &_.stepMode <= p.stepMode
+
+Absorb: fn Ps, Ps -> Ps
+fn Absorb p, sub = update p:
+    &_.diags <= Append &_.diags, sub.diags
+    &_.out <= Append &_.out, sub.out
+
+# Every diagnostic in source order, lexical before parse before out-of-scope at one place;
+# an error found twice (a lexer and a parser both seeing one mistake) is reported once.
+FinishDiags: fn [Diag] -> [Diag]
+fn FinishDiags ds:
+    let sorted = Fold ds, [[]], InsertDiag
+    Fold sorted, [[]], \|acc, d| match ?Last acc:
+        ? e if e.span == d.span and e.message == d.message: acc
+        otherwise: Push acc, d
+
+StageRank: fn Text -> Nat
+fn StageRank "lex" = 0
+fn StageRank "parse" = 1
+fn StageRank ignore = 2
+
+DiagBefore: fn Diag, Diag -> Bool
+fn DiagBefore a, b = a.span.start < b.span.start or (a.span.start == b.span.start and (StageRank a.stage) < (StageRank b.stage))
+
+# A stable insertion: `d` goes after every diagnostic not after it.
+InsertDiag: fn [Diag], Diag -> [Diag]
+fn InsertDiag sorted, d:
+    let before = Fold sorted, [[]], \|acc, e| if DiagBefore d, e: acc else: Push acc, e
+    let after = Fold sorted, [[]], \|acc, e| if DiagBefore d, e: Push acc, e else: acc
+    Append (Push before, d), after
+
+# Matches brackets by kind and finds the doubles, outermost first (Semantics ch. 2, "The
+# bracket pairing rule"): "If the open is followed at once by a second open of the same
+# kind, and that second open's close comes at once before the first one's close, the two
+# pairs are one double bracket, and pairing continues inside the inner one."
+PairBrackets: unbounded fn [Tok] -> [Pair]
+fn PairBrackets toks = update (Each toks, \|t| noPair):
+    let &stack = [[]]
+    for t <- toks:
+        if ? k <- ?OpenKindOf t.kind:
+            &stack <= Push &stack, ((ix, k))
+        if ? k <- ?CloseKindOf t.kind:
+            if ? ((j, k2)) <- ?Last &stack:
+                if k2 == k:
+                    &stack <= Pop &stack
+                    &_[ix].partner <= ? j
+                    &_[j].partner <= ? ix
+    # Scanning left to right meets the outermost open of a nest first, so the double goes to
+    # the outer two of `(((`.
+    for t <- toks:
+        let i = ix
+        if ? kind <- ?OpenKindOf t.kind:
+            if kind != "\{" and not (Or &_[i], noPair).inner:
+                if ? j <- (Or &_[i], noPair).?partner:
+                    if DoubleAt &_, toks, i, j, kind:
+                        &_[i].outer <= True
+                        &_[j].outer <= True
+                        &_[i + 1].inner <= True
+                        &_[Dec j].inner <= True
+
+# The open at `i` (closed at `j`) and the open after it are one double bracket.
+DoubleAt: fn [Pair], [Tok], Nat, Nat, Text -> Bool
+fn DoubleAt pairs, toks, i, j, kind:
+    let next = Or toks[i + 1], eofTok
+    let ?innerClose = (Or pairs[i + 1], noPair).?partner
+    (IsOpenOf next.kind, kind) and next.touches and ?innerClose == (? (Dec j)) and (Or toks[j], eofTok).touches
+
+?OpenKindOf: fn TokKind -> ?Text
+fn ?OpenKindOf (KOpen k, ignore) = ? k
+fn ?OpenKindOf ignore = nil
+
+?CloseKindOf: fn TokKind -> ?Text
+fn ?CloseKindOf (KClose k) = ? k
+fn ?CloseKindOf ignore = nil
+
+IsOpenOf: fn TokKind, Text -> Bool
+fn IsOpenOf (KOpen k, ignore), kind = k == kind
+fn IsOpenOf ignore, ignore = False
+
+# The token at the cursor; a bad cursor is at the end.
+Tk: fn Ps -> Tok
+fn Tk p = if p.bad: eofTok else: Or p.toks[Min p.pos, (Dec (Len p.toks))], eofTok
+
+TkAt: fn Ps, Nat -> Tok
+fn TkAt p, n = if p.bad: eofTok else: Or p.toks[Min (p.pos + n), (Dec (Len p.toks))], eofTok
+
+Kind: fn Ps -> TokKind
+fn Kind p = (Tk p).kind
+
+KindAt: fn Ps, Nat -> TokKind
+fn KindAt p, n = (TkAt p, n).kind
+
+Here: fn Ps -> Range
+fn Here p = (Tk p).span
+
+# The span of the last token consumed.
+Prev: fn Ps -> Range
+fn Prev p = (Or p.toks[Dec p.pos], eofTok).span
+
+# The span covering both.
+To: fn Range, Range -> Range
+fn To a, b = Range(start=(Min a.start, b.start), end=(Max a.end, b.end))
+
+AtEnd: fn Range -> Range
+fn AtEnd r = Range(start=r.end, end=r.end)
+
+Adv: fn Ps -> Ps
+fn Adv p = if p.bad or p.pos + 1 >= (Len p.toks): p else: update p:
+    &_.pos += 1
+
+PairAt: fn Ps -> Pair
+fn PairAt p = Or p.pairs[Min p.pos, (Dec (Len p.pairs))], noPair
+
+AtEof: fn Ps -> Bool
+fn AtEof p = (Kind p) == KEof
+
+# A keyword with no sigil on it.
+AtKw: fn Ps, Text -> Bool
+fn AtKw p, w = (Kind p) == (KKw w, "")
+
+AtOp: fn Ps, Text -> Bool
+fn AtOp p, op = match Kind p:
+    KOp o, ignore: o == op
+    otherwise: False
+
+AtSep: fn Ps -> Bool
+fn AtSep p = (Kind p) == KLaySep
+
+AtOpenL: fn Ps -> Bool
+fn AtOpenL p = (Kind p) == KLayOpen
+
+AtCloseL: fn Ps -> Bool
+fn AtCloseL p = (Kind p) == KLayClose
+
+AtComma: fn Ps -> Bool
+fn AtComma p = (Kind p) == KComma
+
+AtColon: fn Ps -> Bool
+fn AtColon p = (Kind p) == KColon
+
+IsOpenKind: fn TokKind, Text -> Bool
+fn IsOpenKind (KOpen k, ignore), kind = k == kind
+fn IsOpenKind ignore, ignore = False
+
+# The cursor is at the outer open of a double bracket of this kind.
+AtDoubleOpen: fn Ps, Text -> Bool
+fn AtDoubleOpen p, kind = (IsOpenKind (Kind p), kind) and (PairAt p).outer
+
+# The cursor is at a single (not doubled) open bracket of this kind.
+AtSingleOpen: fn Ps, Text -> Bool
+fn AtSingleOpen p, kind = (IsOpenKind (Kind p), kind) and not (PairAt p).outer
+
+AtClose: fn Ps, Text -> Bool
+fn AtClose p, kind = (Kind p) == (KClose kind)
+
+OpenDouble: fn Ps -> Ps
+fn OpenDouble p = Adv (Adv p)
+
+# The two closes of a double bracket.
+CloseDouble: fn Ps, Text -> Ps
+fn CloseDouble p, kind:
+    let c = CloseChar kind
+    let p1 = Adv p
+    if (AtClose p, kind) and (PairAt p).inner and (AtClose p1, kind) and (PairAt p1).outer: Adv p1
+    else: if (AtClose p, kind) and (PairAt p).inner: ErrorHere p1, "expected `{c}{c}` to close the double bracket"
+    else: ErrorHere p, "expected `{c}{c}` to close the double bracket"
+
+ExpectClose: fn Ps, Text -> Ps
+fn ExpectClose p, kind = if AtClose p, kind: Adv p else: ErrorHere p, "expected `{CloseChar kind}`"
+
+# ----- diagnostics -----
+
+ParseDiag: fn Range, Text -> Diag
+fn ParseDiag span, message = Diag(stage="parse", span=span, message=message, feature=nil)
+
+# Records an error and fails; on a cursor that already failed, nothing.
+ErrorAt: fn Ps, Range, Text -> Ps
+fn ErrorAt p, span, message = if p.bad: p else: update p:
+    &_.diags <= Push &_.diags, (ParseDiag span, message)
+    &_.bad <= True
+
+ErrorHere: fn Ps, Text -> Ps
+fn ErrorHere p, message = ErrorAt p, (Here p), "{message}, found {Describe (Kind p)}"
+
+# Fails with no diagnostic: a speculation's way of saying no.
+Fail: fn Ps -> Ps
+fn Fail p = update p:
+    &_.bad <= True
+
+# Back from a failure, to recover or roll back.
+Unbad: fn Ps -> Ps
+fn Unbad p = update p:
+    &_.bad <= False
+
+# Records an error without failing.
+NoteError: fn Ps, Range, Text -> Ps
+fn NoteError p, span, message = if p.bad: p else: update p:
+    &_.diags <= Push &_.diags, (ParseDiag span, message)
+
+# Records an error where the cursor is, without failing.
+Complain: fn Ps, Text -> Ps
+fn Complain p, message = Unbad (ErrorHere p, message)
+
+# Records an out-of-scope feature (decisions.md, "Features in and out").
+OutOfScope: fn Ps, Range, Text, Text -> Ps
+fn OutOfScope p, span, feature, message = if p.bad: p else: update p:
+    &_.out <= Push &_.out, Diag(stage="out", span=span, message=message, feature=(? feature))
+
+ExpectColon: fn Ps -> Ps
+fn ExpectColon p = if AtColon p: Adv p else: ErrorHere p, "expected `:`"
+
+ExpectOp: fn Ps, Text -> Ps
+fn ExpectOp p, op = if AtOp p, op: Adv p else: ErrorHere p, "expected `{op}`"
+
+ExpectKw: fn Ps, Text -> Ps
+fn ExpectKw p, w = if AtKw p, w: Adv p else: ErrorHere p, "expected `{w}`"
+
+# Recovery: skips to the `sep` or `close` that ends the current statement, past any blocks
+# the statement opened.
+Recover: unbounded fn Ps -> Ps
+fn Recover p0 = update (Unbad p0):
+    let &depth = 0
+    let &going = True
+    while &going:
+        match Kind &_:
+            KEof: &going <= False
+            KLayOpen:
+                &depth += 1
+                &_ <= Adv &_
+            KLayClose:
+                if &depth == 0:
+                    &going <= False
+                else:
+                    &depth <= Dec &depth
+                    &_ <= Adv &_
+            KLaySep if &depth == 0: &going <= False
+            otherwise: &_ <= Adv &_
+
+# A failed step recovers; a good one stands.
+Recovered: unbounded fn Ps -> Ps
+fn Recovered p = if p.bad: Recover p else: p
+
+# The statement or declaration ends here: the next token is `sep`, `close` or the end.
+AtStmtBoundary: fn Ps -> Bool
+fn AtStmtBoundary p = match Kind p:
+    KLaySep: True
+    KLayClose: True
+    KEof: True
+    otherwise: False
+
+# After a statement: expects its boundary, and recovers if something else follows.
+ExpectStmtEnd: unbounded fn Ps, Text -> Ps
+fn ExpectStmtEnd p, what:
+    if AtStmtBoundary p: p
+    else: Recover (NoteError p, (Here p), "expected the end of the {what}, found {Describe (Kind p)}")
+
+# How a token is named in an error message.
+Describe: fn TokKind -> Text
+fn Describe KLayOpen = "an indented block"
+fn Describe KLaySep = "the end of the line"
+fn Describe KLayClose = "the end of the block"
+fn Describe KEof = "the end of the input"
+fn Describe (KText ignore, ignore) = "a text literal"
+fn Describe (KRegex ignore, ignore) = "a regular expression"
+fn Describe (KTemplate ignore) = "a template"
+fn Describe k = "`{TokenText k}`"
+
+# A step with its own step mode off: inside a bracket, where a test step's comma rule
+# (Conformance A.3, "a comma at bracket depth zero") does not reach.
+Bracketed: fn Ps, (fn Ps -> ((a, Ps))) -> ((a, Ps))
+fn Bracketed p, F:
+    let ((v, q)) = F (WithStepMode p, False)
+    ((v, (WithStepMode q, p.stepMode)))
+
+WithStepMode: fn Ps, Bool -> Ps
+fn WithStepMode p, flag = update p:
+    &_.stepMode <= flag
+
+# Items of an indented block (after its `open`) up to its `close`, recovering at each.
+LayoutItems: unbounded fn Ps, (fn Ps -> ((a, Ps))) -> (([a], Ps))
+fn LayoutItems p0, F = update (([[]], p0)):
+    let &items = [[]]
+    let &p = p0
+    let &going = True
+    while &going:
+        let ((item, q)) = F &p
+        if not q.bad:
+            &items <= Push &items, item
+        &p <= Recovered q
+        match Kind &p:
+            KLaySep: &p <= Adv &p
+            KLayClose:
+                &p <= Adv &p
+                &going <= False
+            KEof: &going <= False
+            otherwise: &p <= Recover (Complain &p, "expected the end of the line")
+    &_ <= ((&items, &p))
+
+# Items separated by commas: `F` once, then again after each comma.
+Commas: unbounded fn Ps, (fn Ps -> ((a, Ps))) -> (([a], Ps))
+fn Commas p0, F = update (([[]], p0)):
+    let ((first, p1)) = F p0
+    let &items = [[first]]
+    let &p = p1
+    while (AtComma &p) and not &p.bad:
+        let ((item, q)) = F (Adv &p)
+        &items <= Push &items, item
+        &p <= q
+    &_ <= ((&items, &p))
+
+# ---------------------------------------------------------------------------------------
+# Names (types.rs, expr.rs)
+# ---------------------------------------------------------------------------------------
+
+let noSName = SName(sigils="", path=[[]], span=noRange)
+let noIdent = Ident(name="", span=noRange)
+
+IsUpperName: fn SName -> Bool
+fn IsUpperName n = IsUpper (Head (Or (?Last n.path), ""))
+
+# Applied later: an uppercase name or a reserved lowercase constructor.
+IsCallee: fn SName -> Bool
+fn IsCallee n = (IsUpperName n) or (IsReservedCtor (Or (?Last n.path), ""))
+
+IsTopic: fn SName -> Bool
+fn IsTopic n = n.path == [["_"]]
+
+NameText: fn SName -> Text
+fn NameText n = "{n.sigils}{Join n.path, "."}"
+
+ParseSName: fn Ps -> ((SName, Ps))
+fn ParseSName p = match Kind p:
+    KName n: ((SName(sigils=n.sigils, path=n.path, span=(Here p)), (Adv p)))
+    otherwise: ((noSName, (ErrorHere p, "expected a name")))
+
+ParseIdent: fn Ps -> ((Ident, Ps))
+fn ParseIdent p = match Kind p:
+    KName n if n.sigils == "" and (Len n.path) == 1 and n.case == CaseLower: ((Ident(name=(Or n.path[0], ""), span=(Here p)), (Adv p)))
+    KKw "key", "": ((Ident(name="key", span=(Here p)), (Adv p)))
+    otherwise: ((noIdent, (ErrorHere p, "expected a lowercase name")))
+
+ParseQualName: fn Ps -> ((QualName, Ps))
+fn ParseQualName p = match Kind p:
+    KName n if n.sigils == "" and n.case == CaseUpper: ((QualName(path=n.path, span=(Here p)), (Adv p)))
+    otherwise: ((QualName(path=[[]], span=noRange), (ErrorHere p, "expected an uppercase name")))
+
+ParseTraitRef: fn Ps -> ((TraitRef, Ps))
+fn ParseTraitRef p = match Kind p:
+    KTrait path:
+        let span = Here p
+        let q = if path == [["Monad"]]: OutOfScope p, span, "`T monad:` blocks and `^Monad`", "`^Monad` is out of this compiler" else: p
+        ((TraitRef(path=path, span=span), (Adv q)))
+    otherwise: ((TraitRef(path=[[]], span=noRange), (ErrorHere p, "expected a trait, `^Name`")))
+
+# Names whose use is out of this compiler (decisions.md, "Features in and out").
+CheckNameScope: fn Ps, SName -> Ps
+fn CheckNameScope p, name:
+    let text = NameText name
+    let feature = match text:
+        "!Align": "`!Align`"
+        "@Collect": "POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`)"
+        "@View": "POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`)"
+        "@Edit": "POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`)"
+        "@Translate": "POD hosting (`@Collect`, `@View`, `@Edit`, `@Translate`)"
+        "Over": "named lenses `&Home` and `Over`"
+        otherwise: ""
+    if feature == "": p else: OutOfScope p, name.span, feature, "`{text}` is out of this compiler"
+
+# Type names out of this compiler: sized integers other than `U8`, and `Instant`.
+CheckTypeNameScope: fn Ps, SName -> Ps
+fn CheckTypeNameScope p, name:
+    let b = Or (?Last name.path), ""
+    let sized = Fold [["U16", "U32", "U64", "U128", "I8", "I16", "I32", "I64", "I128"]], False, \|seen, s| seen or s == b
+    if (Len name.path) != 1: p
+    else: if sized: OutOfScope p, name.span, "sized ints other than `U8`", "`{b}` is out of this compiler: the sized integer it has is `U8`"
+    else: if b == "Instant": OutOfScope p, name.span, "`Instant`", "`Instant` is out of this compiler"
+    else: p

@@ -1,0 +1,4 @@
+tests/checker/neg/regex-repeat-repeat.prism:2: error[regex]: a repetition of a repetition: write (?:a*)* to say it
+    let r = %/a**/
+                ^
+1 error

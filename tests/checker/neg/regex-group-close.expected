@@ -1,0 +1,4 @@
+tests/checker/neg/regex-group-close.prism:2: error[regex]: a ) that closes no group
+    let r = %/a)/
+               ^
+1 error

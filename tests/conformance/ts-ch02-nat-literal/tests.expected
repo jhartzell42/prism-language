@@ -1,0 +1,6 @@
+# prism_zero's transcript, checked by hand against the books' rules.
+test literals_match_nats
+
+tick 0
+  added:
+    0: Ui.Label(text="zero one many even odd")

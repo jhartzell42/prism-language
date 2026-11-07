@@ -1,0 +1,17 @@
+# prism_zero's transcript; the book prints none for this program, and it was checked by hand against the book's rules.
+test reads_once_at_the_start
+
+tick 0
+  added:
+    1: Fs.File(path="/etc/motd")
+    2: Ui.Label(text="(reading...)")
+
+tick 1
+  requested:
+    1: Read
+
+tick 2
+  in:
+    1: ~ Contents(text="hello")
+  changed:
+    2: Ui.Label(text="hello")

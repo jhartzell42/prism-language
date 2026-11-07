@@ -1,0 +1,4 @@
+tests/checker/neg/regex-r-zero.prism:2: error[regex]: a group number with a leading zero
+    let r = %/(a)/$01/
+                  ^
+1 error

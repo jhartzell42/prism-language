@@ -1,0 +1,18 @@
+# Function values in their places: a lambda written as the argument of a color-polymorphic
+# parameter, a `Start` passed by reference (`&(Rc::new(..) as T)`), and a function
+# parameter `K` beside a plain local `k`, which Rust's case would make one name. Written
+# for prismc's back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+
+Twice: u fn Nat, (u fn Nat -> Nat) -> Nat
+fn Twice x, F = F (F x)
+
+Pipe: fn Nat, (fn Nat -> Nat) -> Nat
+fn Pipe n, K:
+    let k = n + 1
+    K k
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$"{Twice 3, \|m| m + m} {Pipe 4, \|j| j * 10}")     # 0

@@ -1,0 +1,8 @@
+# `row-not-here`: a tag arm needs its family among the row's families.
+emit Ui.* | Fs.*
+use Fs.*
+
+Name: fn Element (Ui.*) o -> Text
+fn Name e = match e:
+    Fs.Contents(..): "file"
+    otherwise: "other"
