@@ -183,7 +183,7 @@ the size of the collection and `m` of the second, against this library
 - **References:** an element's address holds while the array is read and while its other
   elements are updated in place; a push may move the tail's elements as its vector grows.
 - **A `Map`:** an AVL tree of counted nodes, one per entry. `Insert`, `Remove`, `?Get` and
-  indexing, `?First`: "log", kept (an update copies the path to its key). `Keys`,
+  indexing, `?First`: "log", kept (an update touches the path to its key, copying only a node another map shares). `Keys`,
   `Values`: "linear, in key order", kept. `Size`: "constant", kept (the root's count).
   `Map` of pairs: "`n` log `n`, the later pair winning", kept. `Union`: "the left
   winning; `m` log `(n+m)`", kept: `Map::united` puts the smaller map's entries into the
