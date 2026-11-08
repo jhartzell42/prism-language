@@ -420,7 +420,7 @@ public:
     /// Whether the two are one map, the same root node (both empty included): then they
     /// are equal. No program asks this (Prism has no identity); a builder uses it to skip
     /// a source it already built from.
-    bool same(const Map& o) const { return root_.get() == o.root_.get(); }
+    bool same(const Map& o) const { return ptr_eq(root_, o.root_); }
     /// The value at `k`, or null.
     const V* get(const K& k) const {
         for (const Node* n = root_.get(); n;) {
@@ -477,7 +477,7 @@ public:
 
     friend bool operator==(const Map& a, const Map& b) {
         if (a.size() != b.size()) return false;
-        if (a.root_ && a.root_ == b.root_) return self_equal(a.root_.get());
+        if (a.root_ && ptr_eq(a.root_, b.root_)) return self_equal(a.root_.get());
         return equal_trees(a.root_.get(), b.root_.get());
     }
     friend auto operator<=>(const Map& a, const Map& b) {

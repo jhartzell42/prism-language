@@ -393,7 +393,7 @@ struct Dynamic {
     /// compares one). This is what the runtime's own comparisons see where a value holds
     /// dynamics (a host document's entries, an element whose children are dynamics): a
     /// place's entry is the same dynamic for as long as the place lives (doubt EQ).
-    bool operator==(const Dynamic& o) const { return read == o.read && updates == o.updates; }
+    bool operator==(const Dynamic& o) const { return ptr_eq(read, o.read) && ptr_eq(updates, o.updates); }
     /// The dynamic `f` of this one: the same owner and update event, the read mapped.
     template <class F>
     auto map(F f) const -> Dynamic<std::invoke_result_t<F, const T&>> {

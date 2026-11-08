@@ -52,11 +52,15 @@ fn CppLoose x = match x:
     otherwise: False
 
 CppTight: unbounded fn Cp, Ex -> Text
-fn CppTight cp, x = if CppLoose x: "({CppExpr cp, x})" else: CppExpr cp, x
+fn CppTight cp, x = if CppLoose x: "({CppExpr cp, x})" else: Starred (CppExpr cp, x)
+
+# A `*x` as an operand or a receiver, parenthesized (`(*x).f`, where `*x.f` is `*(x.f)`).
+Starred: fn Text -> Text
+fn Starred t = if HasPrefix t, "*": "({t})" else: t
 
 # A receiver or an operand of `&`, `*`, `.clone()`: a place, which no read moves from.
 CppTightPlace: unbounded fn Cp, Ex -> Text
-fn CppTightPlace cp, x = if CppLoose x: "({CppPlace cp, x})" else: CppPlace cp, x
+fn CppTightPlace cp, x = if CppLoose x: "({CppPlace cp, x})" else: Starred (CppPlace cp, x)
 
 # An expression as a place: a local by its name, where a value position would move it
 # (pick MV); anything else as the expression it is.
@@ -105,11 +109,15 @@ fn CppExpr cp, x = match x:
     XRegex p, f: "([]() -> const Regex& \{ static const Regex r = Regex::lit({CppString p}, {CppString f}); return r; \}())"
     XReplacement p, r, f: "([]() -> const RegexReplacement& \{ static const RegexReplacement r = RegexReplacement::lit({CppString p}, {CppString f}, {CppString r}); return r; \}())"
     # `&x` and `x.clone()` are the value itself (a reference is `const T&`, a copy shares);
-    # `*x` is the value behind a `Val` (a recursive payload), or the place itself when `x`
-    # is no `Val` (Rust's `*` of a reference), which the runtime's `val` tells apart
+    # `*x` is the value behind an `Rc` (a recursive payload), or the place itself when `x`
+    # is a reference (Rust's `*` of one), by `x`'s type where the printer knows it, else
+    # through `prism_rtl::deref`, which tells the two apart by overload (pick PT)
     XRef y: CppPlace cp, y
     XRefMut y: CppPlace cp, y
-    XDeref y: "prism_rtl::val({CppPlace cp, y})"
+    XDeref y: match ?ExTy cp, y:
+        ? (OutRc ignore): "*{CppTightPlace cp, y}"
+        ? (OutRef ignore): CppPlace cp, y
+        otherwise: "prism_rtl::deref({CppPlace cp, y})"
     XTarget y: CppPlace cp, y
     XClone y: CppPlace cp, y
     XWeak y: "prism_rtl::weaken({CppExpr cp, y})"
@@ -210,8 +218,8 @@ fn IsNodeType cp, p = match ?TypeOf cp, p:
 
 # A field: a node's member through its pointer, a value's directly; `self`'s through
 # `this`; a tuple struct's `0` its `a0`. A receiver whose type the printer does not know may
-# be a `Val` (Rust reaches a payload's fields through the `Rc` unwritten): `val` gives the
-# value behind one, or the receiver itself.
+# be an `Rc` of a value (Rust reaches a payload's fields through the `Rc` unwritten):
+# `deref` gives the value behind one, or the receiver itself.
 CppField: unbounded fn Cp, Ex, Text -> Text
 fn CppField cp, XSelf, f = "this->{FieldId f}"
 fn CppField cp, r, f:
@@ -223,12 +231,28 @@ fn CppField cp, r, f:
             ? ignore: "{CppTightPlace cp, r}->{name}"
             nil: "{AsValue cp, r}.{name}"
 
-# A receiver as a value: itself where the printer knows it is one, else through `val`, in
-# case it is a `Val`.
+# A receiver as a value: itself where the printer knows it is one, else through `deref`,
+# in case it is an `Rc`.
 AsValue: unbounded fn Cp, Ex -> Text
 fn AsValue cp, r = match ?Pointer cp, r:
-    ? False: CppPlace cp, r
-    otherwise: "prism_rtl::val({CppPlace cp, r})"
+    ? False: CppTightPlace cp, r
+    otherwise: "prism_rtl::deref({CppPlace cp, r})"
+
+# The model's type of an expression, where the printer knows it: a local the scope typed
+# (`localTypes`), a field of the node or job being printed, and a `*` or `&` of one.
+?ExTy: fn Cp, Ex -> ?OutTy
+fn ?ExTy cp, x = match x:
+    XVar n: cp.localTypes[n]
+    XField XSelf, f: cp.fields[f]
+    XField (XVar "node"), f: cp.fields[f]
+    XRef y: match ?ExTy cp, y:
+        ? t: ? (OutRef t)
+        nil: nil
+    XDeref y: match ?ExTy cp, y:
+        ? (OutRef t): ? t
+        ? (OutRc t): ? t
+        otherwise: nil
+    otherwise: nil
 
 IsDigits: fn Text -> Bool
 fn IsDigits t = t != "" and FoldChars t, True, \|ok, c| ok and Contains "0123456789", c
@@ -387,6 +411,9 @@ fn ?Pointer cp, r = match r:
     XVar n: cp.pointers[n]
     XClone y: ?Pointer cp, y
     XRef y: ?Pointer cp, y
+    XDeref y: match ?ExTy cp, r:
+        ? t: ? (IsPointerTy cp, (Unref t))
+        nil: nil
     XField XSelf, f: match cp.fields[f]:
         ? t: ? (IsPointerTy cp, t)
         nil: nil
@@ -395,7 +422,8 @@ fn ?Pointer cp, r = match r:
         nil: nil
     otherwise: nil
 
-# Whether a type's members are reached by `->`: a shared pointer's, and a `Val`'s (pick PT).
+# Whether a type's members are reached by `->`: a shared pointer's, an `Rc` of a value's
+# among them (pick PT).
 IsPointerTy: fn Cp, OutTy -> Bool
 fn IsPointerTy cp, t = match t:
     OutNamed "prism_rtl::Rows", ignore: True

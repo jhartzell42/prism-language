@@ -76,7 +76,12 @@ fn Rebound cp, d = match d:
     DoLet p, x: match ?LetName p:
         ? n:
             let pointing = if IsPointerLet cp, p, x: Pointing cp, n else: KnownValue cp, p, n
-            let holding = if IsValueLet p, x: Owning pointing, n else: Disowning pointing, n
+            let held = if IsValueLet p, x: Owning pointing, n else: Disowning pointing, n
+            let holding = match p:
+                PaTyped ignore, t: update held:
+                    &_.localTypes <= Insert &_.localTypes, n, t
+                otherwise: update held:
+                    &_.localTypes <= Remove &_.localTypes, n
             if CppMentions (CppExpr cp, x), (VarName cp, n):
                 let fresh = "{VarName cp, n}_{Inc (Len (Keys cp.renames))}"
                 update holding:
@@ -142,6 +147,7 @@ fn Unbind cp, names = update cp:
     &_.renames <= Fold names, &_.renames, \|m, n| Remove m, n
     &_.pointers <= Fold names, &_.pointers, \|m, n| Remove m, n
     &_.owned <= Fold names, &_.owned, \|m, n| Remove m, n
+    &_.localTypes <= Fold names, &_.localTypes, \|m, n| Remove m, n
 
 # A local the context knows is a shared pointer: its members are reached by `->`.
 Pointing: fn Cp, Text -> Cp

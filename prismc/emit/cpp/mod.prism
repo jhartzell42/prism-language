@@ -100,6 +100,9 @@ type Cp = record:
     pointers: (Text ==> Bool)
     owned: (Text ==> Bool)
     moveCaptures: [Text]
+    # The model's type of each local whose type the scope says (a parameter, a typed
+    # `let`), which tells a `*` of a reference from a `*` of an `Rc` (pick PT).
+    localTypes: (Text ==> OutTy)
 
 # A name as a C++ identifier: a C++ keyword that is no Rust keyword (lowering escaped
 # those) takes a `_` after it, as the prelude's `or_` and `int_` do (`cppKeywords` is
@@ -166,7 +169,7 @@ fn Context model:
         let top = Or (SplitOn n, "::")[0], n
         if (InList names, top) or InList acc, top: acc else: Push acc, top
     let mods = Push (Append names, tops), "prelude"
-    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fns={}, fields={}, renames={}, pointers={}, owned={}, moveCaptures=[[]])
+    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fns={}, fields={}, renames={}, pointers={}, owned={}, moveCaptures=[[]], localTypes={})
     let withElem = AddRow (AddAnswer base, model.answer), "", model.elem
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 
@@ -277,7 +280,7 @@ fn CppType cp, t = match t:
     OutEvent i: "Event<{CppType cp, i}>"
     OutDyn i: "Dynamic<{CppType cp, i}>"
     OutGen n: n
-    OutRc i: if IsValueTy cp, i: "prism_rtl::Val<{CppType cp, i}>" else: "prism_rtl::Rc<{CppType cp, i}>"
+    OutRc i: if IsValueTy cp, i: "prism_rtl::Rc<const {CppType cp, i}>" else: "prism_rtl::Rc<{CppType cp, i}>"
     OutPod: "Pod"
     OutShowAny: "prism_rtl::Rc<const DynShow>"
     OutHold i: "Hold<{CppType cp, i}>"
@@ -321,7 +324,8 @@ fn TypePath p:
     Join (SplitOn noHoles, "<_>"), ""
 
 # A type whose values are shared by copying (the C++ runtime's `IsValue`): an `Rc` of one
-# is a `prism_rtl::Val`, an immutable shared value; of a node or a cell, a `prism_rtl::Rc`.
+# is a `prism_rtl::Rc<const T>`, an immutable shared value that compares by its value; of a
+# node or a cell, a `prism_rtl::Rc<T>` (pick CH).
 IsValueTy: fn Cp, OutTy -> Bool
 fn IsValueTy cp, t = match t:
     OutNamed n, ignore: match ?TypeOf cp, n:

@@ -1106,31 +1106,32 @@ refused by the binary with the Rust target's message.
 
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 
-- **CH: a choice is an inline variant, a recursive payload a `Val`.** A choice (and a row
-  kind's values, `Elem`, `Answer`) is a class holding a `std::variant` of its case structs
-  by value, the cases nested in it and complete before it, as Rust's enum is by value; a
-  record is a plain struct; and a payload the lowering puts behind `Rc` (a case or field
-  whose type reaches its own, claude/backend.md "Types") is a `prism_rtl::Val<T>`, an
-  immutable shared value: a copy shares its one allocation, `*v` reaches the value, and
-  `==`, `<=>`, `show` and `to_pod` go by the value, as Rust's `Rc<T>` of a value does. The
-  model's `*x` prints as `prism_rtl::val(x)`, the value behind a `Val` or the place itself
-  (Rust's `*` of a reference): the printer does not know every receiver's type, so the
-  runtime tells the two apart by overload, and a field or tuple part of a receiver of
-  unknown type goes through `val` too (Rust reaches a payload's fields through the `Rc`
-  unwritten). What it buys: a choice value is its variant, with no allocation and no count
-  of its own, and a record is copied by value as Rust copies it; `Pair (Num 2), (Num 5)` is
-  two allocations (the payloads' `Val`s), as in Rust, where the handle made three. A cycle
-  through a choice orders in the types header, since a `Val<T>` needs only `T` declared.
+- **CH: a choice is an inline variant, a recursive payload an `Rc<const T>`.** A choice (and
+  a row kind's values, `Elem`, `Answer`) is a class holding a `std::variant` of its case
+  structs by value, the cases nested in it and complete before it, as Rust's enum is by
+  value; a record is a plain struct; and a payload the lowering puts behind `Rc` (a case or
+  field whose type reaches its own, claude/backend.md "Types") is a `prism_rtl::Rc<const
+  T>`, the one `Rc` of the runtime, as Rust has one: a copy shares its allocation, `*v`
+  reaches the value, and `==` and `<=>` are the value's (defined on an `Rc<T>` exactly when
+  `T` has them, so a node's or a cell's `Rc` has none; identity is `prism_rtl::ptr_eq`),
+  and `show` and `to_pod` go by the value, as Rust's `Rc<T>` of a value does
+  (runtime/cpp/README.md, "Sharing"). The `const` says the payload is immutable and costs
+  nothing: an `Rc<const T>` moves and copies as an `Rc<T>` does (only the pointee is
+  `const`), and `make_rc<const T>` builds it. The model's `*x` prints by pick PT. What it
+  buys: a choice value is its variant, with no allocation and no count of its own, and a
+  record is copied by value as Rust copies it; `Pair (Num 2), (Num 5)` is two allocations
+  (the payloads' `Rc`s), as in Rust, where the handle made three. A cycle through a choice
+  orders in the types header, since an `Rc<const T>` needs only `T` declared.
   The alternative refused: the handle, a class holding `prism_rtl::Rc<const std::variant>`,
   with `Rc<T>` of any value type printed as `T` itself, so that every `*`, `&` and
   `.clone()` was a no-op and no payload needed a box; it cost an allocation and a count per
   choice value, and a record holding choices was that many pointers. What the layout asks
   of the printer: a struct whose field names a type that may be incomplete where the struct
-  is defined (`Behind`: a `Val` of anything, or a program type behind an array, a map, a
+  is defined (`Behind`: an `Rc` of anything, or a program type behind an array, a map, a
   function, a dynamic or an event, which nothing orders before it) declares its comparisons
   and defines them among the module's definitions, out of line, since a defaulted one is
   defined where it is declared and clang then instantiates a standard template over the
-  incomplete type (`Val<std::optional<T>>`, `Array<std::tuple<Text, T>>` in `T`'s own
+  incomplete type (`Rc<const std::optional<T>>`, `Array<std::tuple<Text, T>>` in `T`'s own
   case; g++ waits); `<=>` is `std::strong_ordering` throughout (Rust's `Ord` is total;
   `prism_rtl::as_strong`), so no return type waits on another's deduction; `decl.hpp`
   holds declarations only, and a types header that holds `Elem` or `Answer` by value
@@ -1157,13 +1158,23 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   tail (`OutUnknown "the job's turn"`); such a `match` is a chain of `?:`, whose type C++
   works out from the arms (`finished(..)` converts to any `Turn<B>`); a guard binds the
   pattern twice, once for its test and once for the value.
-- **PT: `->` and `.`.** A node is reached through a `prism_rtl::Rc`, a recursive payload
-  through a `prism_rtl::Val`, a value directly. The printer writes `->` where the model says
-  a receiver is a pointer (`self`, a field or a `let` of a pointer type, a `Val` among them,
-  `node` in a constructor) and, elsewhere, for a member name some node has; every record has
-  an `operator->` returning itself, so the second rule is harmless on a value. A receiver
-  of unknown type that is no node's member is read through `prism_rtl::val` (pick CH), in
-  case it is a `Val`.
+- **PT: `->`, `.` and `*`.** A node and a recursive payload are reached through a
+  `prism_rtl::Rc`, a value directly. The printer writes `->` where the model says a
+  receiver is a pointer (`self`, a field or a `let` of a pointer type, a payload's `Rc`
+  among them, `node` in a constructor) and, elsewhere, for a member name some node has;
+  every record has an `operator->` returning itself, so the second rule is harmless on a
+  value. The model's `*x` is Rust's, either the `*` of an `Rc` or the `*` of a reference
+  (`**x` of a `&Rc<T>` is both), and C++ spells only the first: where the printer knows
+  `x`'s type (a parameter, a typed `let`, a field of the node or job, and `*` or `&` of
+  one: `Cp.localTypes`, `?ExTy`), an `Rc` prints `*x` and a reference prints `x`; where it
+  does not (a pattern's binder, a receiver of unknown type, a field or tuple part read
+  through one, since Rust reaches a payload's fields through the `Rc` unwritten), it prints
+  `prism_rtl::deref(x)`, which tells the two apart by overload, the same function that
+  reaches a runtime cell through its `Rc` (runtime/cpp/README.md, "Sharing"). The
+  alternative refused: a function of its own for the model's `*` (`val`) beside `deref`;
+  the two did the same on an lvalue and differed only on a temporary, where `deref` now
+  copies the value out of a temporary `Rc<const T>` (its last owner may be that temporary)
+  and keeps a temporary `Rc<T>`'s place (a node's or a cell's owner keeps it).
 - **RN: a `let` that rebinds a name from itself** (Rust's shadowing, an `&` block's
   `let mut fuel = fuel.clone()`) binds a new name (`fuel_1`), which the statements after
   it read; a scope that binds the name anew hides the rename.
@@ -1243,9 +1254,9 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
 - **PB: a pattern binds by reference into its value**, which therefore lives as long as
   the bindings: the scrutinee is a local (`_m`), and a guard's `let` over a value that
   is no place binds it to a local (`_c1`) first (`ts-ch06-array-in-case`, under ASan). A
-  payload behind a `Val` is matched as the value behind it, which lowering derefs
-  (`BehindRc`): the pattern's bindings are references into the `Val`'s allocation, which
-  the scrutinee keeps alive.
+  payload behind an `Rc` is matched as the value behind it, which lowering derefs
+  (`BehindRc`, printed `prism_rtl::deref`, pick PT): the pattern's bindings are references
+  into the `Rc`'s allocation, which the scrutinee keeps alive.
 - **PC: persistent collections.** The C++ runtime's `Map` is a persistent AVL tree (the
   Rust runtime's too) and its `Array` a persistent balanced tree of chunks with a tail,
   the Rust runtime's design (runtime/cpp/include/prism_rtl/collections.hpp), so a fold
@@ -1328,7 +1339,7 @@ C++ doubts:
   the time either way, and the job machinery of unbounded folds, a `Fn`, a `Frame` and a
   `once_job` allocated per element (`floaty`'s fold over a type's arguments). *First ruling
   (Claude's):* the layout mirrors Rust, as the brief asked, and the numbers are recorded
-  for Jimmy to rule on; *if otherwise:* the handle comes back from `7dc334d^`, or a `Val`
+  for Jimmy to rule on; *if otherwise:* the handle comes back from `7dc334d^`, or `Rc`'s `==`
   learns to compare pointers first where the type has no `Float` (Rust's `Rc<T: Eq>`
   does), which this run did not try; and the fold machinery is a question of its own.
 - **MH1** A module's qualified references are found in its source text: a line that is no

@@ -278,7 +278,7 @@ struct HostDoc {
         for (; a != places.end(); ++a, ++b) {
             const auto& [k1, e1] = *a;
             const auto& [k2, e2] = *b;
-            if (!(k1 == k2) || e1.get() != e2.get()) return false;
+            if (!(k1 == k2) || !ptr_eq(e1, e2)) return false;
         }
         return true;
     }
@@ -387,7 +387,7 @@ private:
     struct Inner {
         Rc<Cell> cell;
         Dynamic<V> dynamic;
-        bool operator==(const Inner& o) const { return cell.get() == o.cell.get(); }
+        bool operator==(const Inner& o) const { return ptr_eq(cell, o.cell); }
     };
     static Inner inner(const V& v, const Cx& cx) {
         Rc<Cell> cell = make_rc<Cell>(Cell{Hold<V>(v, cx), make_rc<Port<Unit>>()});

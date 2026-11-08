@@ -407,10 +407,12 @@ what differs is how C++ spells it.
 - **Types.** A record, a tag's `Level`, a newtype and a unit type are structs (fields in
   order, designated initializers); a choice and a row kind's values are a class holding a
   `std::variant` of nested case structs (`Term::Var`) by value, as the Rust enum is; a
-  recursive payload (`Rc<T>` above) is a `prism_rtl::Val<T>`, an immutable shared value
-  that compares, orders, prints and goes out as plain data by its value, as Rust's `Rc<T>`
-  of a value does (prismc/README.md, pick CH). The model's `*x` is `prism_rtl::val(x)`: the
-  value behind a `Val`, or the place itself when `x` is a reference. `?a` is
+  recursive payload (`Rc<T>` above) is a `prism_rtl::Rc<const T>`, the runtime's one `Rc`,
+  whose `==` and `<=>` are its value's exactly when the value has them, so that a payload
+  compares, orders, prints and goes out as plain data by its value, as Rust's `Rc<T>` of a
+  value does, and a node's `Rc` compares not at all (identity is `ptr_eq`; prismc/README.md,
+  pick CH). The model's `*x` is `*x` where the printer knows `x` is an `Rc`, `x` where it
+  knows `x` is a reference, and `prism_rtl::deref(x)` where it knows neither (pick PT). `?a` is
   `std::optional`, `~a` `Fallible`, a tuple `std::tuple`, `Rc<dyn Fn>` `prism_rtl::Fn`, a
   job `JobRef`. A node is a class deriving from `Node` (or the prelude's `Row`), held by
   `prism_rtl::Rc` (plain counts, one thread); its constructor is `make` and its methods
@@ -424,10 +426,10 @@ what differs is how C++ spells it.
   temporaries, and refuses `?` of a place. A
   pattern tests with `prism_rtl::is<Case>` and binds `prism_rtl::as<Case>(v).aN`.
 - **What the library adds for the emitter** is `prism_rtl/lang.hpp`: `Slot`, `TRY`, the
-  pattern helpers, `rc` (`Rc::new`: a value as a `Val`, a node or a cell on the heap),
-  `val` (rc.hpp: `*x`),
-  `share`/`weaken`/`upgrade`, `Fn`, `str`/`cat` (`format!`), `deref` (Rust's auto-deref of
-  a cell), `host_new`, and the constructors whose type the context gives (`make_new`,
+  pattern helpers, `rc` (`Rc::new`: a value as an `Rc<const T>`, a node or a cell as an
+  `Rc<T>`), `ptr_eq` (rc.hpp: `Rc::ptr_eq`),
+  `share`/`weaken`/`upgrade`, `Fn`, `str`/`cat` (`format!`), `deref` (the model's `*x` of
+  unknown type, and Rust's auto-deref of a cell), `host_new`, and the constructors whose type the context gives (`make_new`,
   `snapshot`, `finished`).
 
 ## Regular expressions

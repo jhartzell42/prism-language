@@ -101,10 +101,10 @@ struct Case<pat::Key, Segment> {
 
 // ---- Sharing -----------------------------------------------------------------------------
 
-/// Whether a type is a Prism value, as opposed to a node or a cell: `Rc<T>` of a value is a
-/// `Val<T>` (rc.hpp), an immutable shared value that compares by its value, and `Rc::new`
-/// of one makes a `Val`; of a node or a cell, a counted pointer with its identity. Emitted
-/// types say so with `prism_value`.
+/// Whether a type is a Prism value, as opposed to a node or a cell: `Rc::new` of a value
+/// makes an `Rc<const T>` (rc.hpp), an immutable shared value that compares by its value;
+/// of a node or a cell, an `Rc<T>`, which has `T`'s comparisons and so none. Emitted types
+/// say so with `prism_value`.
 template <class T>
 struct IsValue : std::bool_constant<std::is_arithmetic_v<T> || requires { typename T::prism_value; }> {};
 template <> struct IsValue<Unit> : std::true_type {};
@@ -119,13 +119,14 @@ template <class T> struct IsValue<Array<T>> : std::true_type {};
 template <class K, class V> struct IsValue<Map<K, V>> : std::true_type {};
 template <class T, class E> struct IsValue<Expected<T, E>> : std::true_type {};
 template <class... T> struct IsValue<std::tuple<T...>> : std::true_type {};
+template <class T> struct IsValue<Rc<const T>> : IsValue<T> {};
 
-/// `Rc::new(x)`: a value as a `Val` (a recursive payload); a closure (which a `Fn` takes)
-/// as it is; a node or a runtime cell on the heap.
+/// `Rc::new(x)`: a value as an `Rc<const T>` (a recursive payload); a closure (which a `Fn`
+/// takes) as it is; a node or a runtime cell on the heap, as an `Rc<T>`.
 template <class T>
 auto rc(T x) {
     if constexpr (std::is_pointer_v<T> || requires { &T::operator(); }) return x;
-    else if constexpr (IsValue<T>::value) return Val<T>(std::move(x));
+    else if constexpr (IsValue<T>::value) return make_rc<const T>(std::move(x));
     else return make_rc<T>(std::move(x));
 }
 
@@ -150,16 +151,26 @@ std::optional<Rc<T>> upgrade(const Weak<T>& w) {
     return std::nullopt;
 }
 
-/// A runtime cell reached as Rust auto-derefs it: through a shared pointer, or as it is.
+/// The model's `*x` where the printer does not know `x`'s type (a pattern's binder, a
+/// receiver), and a runtime cell reached as Rust auto-derefs it: through an `Rc`, the value
+/// behind it; anything else, the place itself (Rust's `*` of a reference, which C++ has no
+/// need of). A temporary `Rc<const T>` of a value comes back as a copy of the value, since
+/// it may be the value's last owner; a temporary `Rc<T>` of a node or a cell as the place,
+/// which its owner keeps; a temporary of anything else as itself, moved.
 template <class T>
 struct IsShared : std::false_type {};
 template <class T>
 struct IsShared<Rc<T>> : std::true_type {};
 template <class T>
     requires(!IsShared<std::remove_cv_t<T>>::value)
-T& deref(T& x) { return x; }
+T& deref(T& x) noexcept { return x; }
 template <class T>
-T& deref(const Rc<T>& p) { return *p; }
+    requires(!IsShared<std::remove_cv_t<T>>::value && !std::is_lvalue_reference_v<T>)
+T deref(T&& x) { return std::move(x); }
+template <class T>
+T& deref(const Rc<T>& p) noexcept { return *p; }
+template <class T>
+T deref(Rc<const T>&& p) { return *p; }
 
 /// `Some(p)`'s payload: an option's value, a live node's pointer (`Weak::upgrade`'s).
 template <class T>

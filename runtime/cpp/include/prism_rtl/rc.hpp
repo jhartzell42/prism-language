@@ -16,16 +16,18 @@
 // - `RcFromThis<T>`, as `std::enable_shared_from_this`, gives an object made by `make_rc`
 //   or `rc_placed` its own `Rc` (`rc_from_this()`); asking an object no `Rc` owns is a
 //   panic.
-// - `Val<T>` is Rust's `Rc<T>` of a value: an immutable value shared by copying the
-//   pointer, which compares, orders, prints and goes out as plain data by the value
-//   (Rust's `Rc<T: PartialEq>` compares the values too). `Rc<T>` keeps a pointer's
-//   identity for nodes and cells; a recursive payload of a choice or record is a `Val`.
+// - `==` and `<=>` on `Rc<T>` are `T`'s, through the pointer, defined exactly when `T` has
+//   them, as Rust's `Rc<T: PartialEq>` and `Rc<T: Ord>` are: an `Rc<const T>` of a value
+//   (a recursive payload of a choice or record) compares, orders, prints and goes out as
+//   plain data by the value, and a node or a cell, which has no `==`, has none through its
+//   `Rc` either. Identity is `ptr_eq` (Rust's `Rc::ptr_eq`), always written out.
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
 
 #pragma once
 
 #include <compare>
+#include <concepts>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -181,14 +183,6 @@ public:
     long use_count() const noexcept { return b_ ? static_cast<long>(b_->strong) : 0; }
 
     friend bool operator==(const Rc& a, std::nullptr_t) noexcept { return a.p_ == nullptr; }
-    template <class U>
-    friend bool operator==(const Rc& a, const Rc<U>& b) noexcept {
-        return a.get() == b.get();
-    }
-    template <class U>
-    friend std::strong_ordering operator<=>(const Rc& a, const Rc<U>& b) noexcept {
-        return std::compare_three_way{}(a.get(), b.get());
-    }
 
 private:
     T* p_ = nullptr;
@@ -218,6 +212,13 @@ private:
     template <class U, class V>
     friend Rc<U> rc_static_cast(const Rc<V>& r) noexcept;
 };
+
+/// Whether two `Rc`s point to the same allocation: Rust's `Rc::ptr_eq`, the one identity
+/// comparison (an `Rc`'s `==` is its value's, below).
+template <class T, class U>
+bool ptr_eq(const Rc<T>& a, const Rc<U>& b) noexcept {
+    return static_cast<const void*>(a.get()) == static_cast<const void*>(b.get());
+}
 
 /// The value and its counts in one allocation: `std::make_shared`.
 template <class T, class... A>
@@ -376,60 +377,23 @@ inline std::strong_ordering as_strong(std::weak_ordering c) noexcept {
     return c < 0 ? std::strong_ordering::less : c > 0 ? std::strong_ordering::greater : std::strong_ordering::equal;
 }
 
-/// An immutable shared value: Rust's `Rc<T>` where `T` is a value (a recursive payload of a
-/// choice, `Lam(Rc<Term>)`). A copy shares the one allocation; `*v` and `v->` reach the
-/// value; `==` and `<=>` compare the values, never the pointers (Semantics ch. 11: sharing
-/// is invisible), and so do `show` and `to_pod` (pod.hpp, print.hpp). `T` may be incomplete
-/// where a `Val<T>` is declared as a member: nothing here needs its size until a value is
-/// made, read or compared.
-template <class T>
-class Val {
-public:
-    using prism_value = void;
-    using element_type = T;
-
-    explicit Val(T x) : p_(make_rc<const T>(std::move(x))) {}
-    Val(const Val&) noexcept = default;
-    Val(Val&&) noexcept = default;
-    Val& operator=(const Val&) noexcept = default;
-    Val& operator=(Val&&) noexcept = default;
-
-    const T& operator*() const noexcept { return *p_; }
-    const T* operator->() const noexcept { return p_.get(); }
-    const T* get() const noexcept { return p_.get(); }
-
-    bool operator==(const Val& o) const { return *p_ == *o.p_; }
-    std::strong_ordering operator<=>(const Val& o) const { return as_strong(*p_ <=> *o.p_); }
-
-private:
-    Rc<const T> p_;
-};
-
-template <class T>
-struct IsVal : std::false_type {};
-template <class T>
-struct IsVal<Val<T>> : std::true_type {};
-
-/// `*x` as the model writes it: the value behind a `Val`, or the place itself (Rust's `*` of
-/// a reference, which C++ has no need of). A temporary comes back as a value, so a
-/// reference bound to the result outlives nothing.
-template <class T>
-const T& val(const Val<T>& v) noexcept { return *v; }
-template <class T>
-T val(Val<T>&& v) { return *v; }
-template <class T>
-    requires(!IsVal<T>::value)
-T& val(T& x) noexcept { return x; }
-template <class T>
-    requires(!IsVal<T>::value)
-const T& val(const T& x) noexcept { return x; }
-template <class T>
-    requires(!IsVal<std::remove_cv_t<T>>::value && !std::is_lvalue_reference_v<T>)
-T val(T&& x) { return std::move(x); }
+/// `Rc<T>`'s comparisons, its value's (Rust's `impl<T: PartialEq> PartialEq for Rc<T>`, and
+/// `Ord` likewise): defined exactly when `T`'s are, so that sharing stays invisible
+/// (Semantics ch. 11) and a node's or a cell's `Rc`, whose `T` has none, has none. No
+/// pointer is compared first: a value holding a `Float` NaN is unequal to itself through
+/// one `Rc` as through two. `T` may be incomplete where an `Rc<const T>` is declared as a
+/// member; it must be complete where the `Rc`s are compared.
+template <class T, class U>
+    requires requires(const T& a, const U& b) {
+        { a == b } -> std::convertible_to<bool>;
+    }
+bool operator==(const Rc<T>& a, const Rc<U>& b) {
+    return *a == *b;
+}
+template <class T, class U>
+    requires requires(const T& a, const U& b) { a <=> b; }
+std::strong_ordering operator<=>(const Rc<T>& a, const Rc<U>& b) {
+    return as_strong(*a <=> *b);
+}
 
 }  // namespace prism_rtl
-
-template <class T>
-struct std::hash<prism_rtl::Rc<T>> {
-    std::size_t operator()(const prism_rtl::Rc<T>& r) const noexcept { return std::hash<T*>{}(r.get()); }
-};

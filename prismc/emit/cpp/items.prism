@@ -65,6 +65,7 @@ fn FnDefinition cp, f = CppFunction (CppDoc f.doc), (FnSignature cp, f), (CppBod
 WithParams: fn Cp, [((Text, OutTy))] -> Cp
 fn WithParams cp, ps = Fold ps, cp, \|c, ((n, t))| update c:
     &_.pointers <= Insert &_.pointers, n, (IsPointerTy c, (Unref t))
+    &_.localTypes <= Insert &_.localTypes, n, t
 
 # The parts of a module's items: declarations ahead of the definitions, in the order C++
 # needs (the headers' sections, `ModuleFiles` below): the forward declarations, the value

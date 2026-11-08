@@ -51,18 +51,31 @@ pays for it (prismc/README.md, pick CH; the Rust runtime's forms in claude/backe
   of the choice copies the variant, case struct and all, as Rust copies an enum. No
   allocation and no count belong to the choice itself. A record is a plain struct, copied
   by value.
-- **A recursive payload is a `Val<T>`** (rc.hpp): what the lowering puts behind `Rc`
-  because the payload's type reaches its own (`Lam(Rc<Term>)`). It holds an `Rc<const T>`;
-  a copy shares the allocation, `*v` and `v->` reach the value, and `==` and `<=>` compare
-  the values, never the pointers, as Rust's `Rc<T: PartialEq>` does, so sharing stays
-  invisible (Semantics ch. 11). Its `<=>` is `std::strong_ordering` (`as_strong`), as the
-  emitted comparisons are throughout: Rust's `Ord` is total. `Show`, `ToPod` and `FromPod`
-  go through to the value. `IsValue<Val<T>>` holds, and `rc(x)` of a value makes a `Val`.
-- **`val(x)`** is the model's `*x`: the value behind a `Val`, or `x` itself when it is no
-  `Val` (Rust's `*` of a reference, which C++ has no need of). A temporary comes back as a
-  value, so a reference bound to the result outlives nothing.
-- **`Rc<T>` keeps identity** for nodes, cells and the runtime's own structures: two `Rc`s
-  are equal when they point to the same block (`Dynamic`'s equality, the node lists).
+- **One `Rc`, as in Rust.** A recursive payload (what the lowering puts behind `Rc`
+  because the payload's type reaches its own, `Lam(Rc<Term>)`) is an `Rc<const T>`
+  (rc.hpp), the same counted pointer that holds nodes and cells. `==` and `<=>` on an
+  `Rc<T>` are `T`'s, through the pointer, and defined exactly when `T`'s are (a
+  requires-clause), as Rust's `impl<T: PartialEq> PartialEq for Rc<T>` is: a value's `Rc`
+  compares and orders by the value, so sharing stays invisible (Semantics ch. 11), and a
+  node's or a cell's `Rc` has no `==` at all, since the node or cell has none. No pointer is
+  compared first (a NaN stays unequal to itself). `<=>` is `std::strong_ordering`
+  (`as_strong`), as the emitted comparisons are throughout: Rust's `Ord` is total. `Show`,
+  `ToPod` and `FromPod` of an `Rc<const T>` go through to the value; `IsValue<Rc<const T>>`
+  is `IsValue<T>`, and `rc(x)` of a value makes an `Rc<const T>`, of a node or a cell an
+  `Rc<T>`. The alternative refused: a second class for values (`Val<T>`, wrapping an
+  `Rc<const T>`) beside an `Rc` that compared pointers; two names for Rust's one type, and
+  an `==` on nodes that compiled and meant something no Prism program asks.
+- **Identity is `ptr_eq(a, b)`** (Rust's `Rc::ptr_eq`), always written out: a `Dynamic`'s
+  equality (the same read and the same update event), a `Map`'s `same` and its equality's
+  shortcut for one root, a compiled `Regex`'s `same`, a host document's entries, a
+  per-key inner's cell. These are every place the runtime, the Worlds and the emitted
+  programs compared `Rc`s, found by compiling all of them with `Rc`'s comparisons deleted.
+- **`deref(x)`** is the model's `*x` where the printer does not know `x`'s type (a
+  pattern's binder, a receiver), and Rust's auto-deref of a cell: through an `Rc`, the
+  value behind it; anything else, `x` itself (Rust's `*` of a reference, which C++ has no
+  need of). A temporary `Rc<const T>` comes back as a copy of the value (it may be the
+  value's last owner), a temporary `Rc<T>` of a node or cell as the place its owner keeps.
+  Where the printer knows the type, it writes `*x` (prismc/README.md, pick PT).
 - **What the alternative cost.** Until 7 November 2026 a choice was a handle, a class
   holding `Rc<const std::variant<..>>`, and `Rc<T>` of any value type was `T` itself, so no
   payload needed a box and every `*` of the model was a no-op: one allocation and one count
