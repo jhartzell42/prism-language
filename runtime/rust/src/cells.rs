@@ -308,7 +308,7 @@ impl<T: Clone> Snapshot<T> {
     }
 }
 
-impl<T: Clone + PartialEq> Snapshot<T> {
+impl<T: Clone + Eq> Snapshot<T> {
     /// The snapshot taken and compared with the one that stood before this tick: whether
     /// the dynamic moved (R3: its update event fires only when the value changed). When it
     /// did not, the snapshot that stood is kept and `v` dropped.
@@ -494,6 +494,8 @@ impl<T> PartialEq for Dynamic<T> {
         std::ptr::addr_eq(Rc::as_ptr(&self.read), Rc::as_ptr(&other.read)) && Rc::ptr_eq(&self.updates, &other.updates)
     }
 }
+
+impl<T> Eq for Dynamic<T> {}
 
 /// A dynamic is not plain data: a World reads a level that holds dynamics deep, each
 /// sampled at the read point (`crate::host::Level`). Reaching this is a bug of the compiler,

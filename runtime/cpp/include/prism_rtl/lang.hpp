@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "prism_rtl/float.hpp"
 #include "prism_rtl/rc.hpp"
 #include <charconv>
 #include <functional>
@@ -438,7 +439,7 @@ inline void display(std::string& out, char32_t c) { utf8_push(out, c); }
 inline void display(std::string& out, std::uint8_t b) { out += std::to_string(unsigned(b)); }
 inline void display(std::string& out, std::uint32_t n) { out += std::to_string(n); }
 inline void display(std::string& out, std::size_t n) { out += std::to_string(n); }
-inline void display(std::string& out, double f) { out += float_digits(f); }
+inline void display(std::string& out, Float f) { out += float_digits(f.v); }
 inline void display(std::string& out, bool b) { out += b ? "true" : "false"; }
 inline void display(std::string& out, const Path& p) { out += p.to_string(); }
 inline void display(std::string& out, const Pod& p) { out += p.to_string(); }

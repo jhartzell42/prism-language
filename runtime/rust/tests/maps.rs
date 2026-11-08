@@ -13,7 +13,7 @@ mod storage;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use prism_rtl::Map;
+use prism_rtl::{Float, Map};
 use storage::held;
 
 const SIZES: [usize; 18] = [0, 1, 2, 3, 4, 7, 8, 31, 32, 63, 64, 65, 127, 128, 129, 192, 193, 300];
@@ -161,19 +161,18 @@ thread_local! {
     static COMPARED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// A value that counts its comparisons; `Cmp(NAN)` is equal to nothing, itself included,
-/// as a `Float` NaN is under IEEE equality (Type System ch. 2).
+/// A value that counts its comparisons.
 #[derive(Clone, Debug)]
 struct Cmp(usize);
-
-const NAN: usize = usize::MAX;
 
 impl PartialEq for Cmp {
     fn eq(&self, other: &Cmp) -> bool {
         COMPARED.with(|c| c.set(c.get() + 1));
-        self.0 == other.0 && self.0 != NAN
+        self.0 == other.0
     }
 }
+
+impl Eq for Cmp {}
 
 fn compared<R>(f: impl FnOnce() -> R) -> (R, usize) {
     let before = COMPARED.with(|c| c.get());
@@ -195,9 +194,7 @@ fn a_map_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_entrie
     for n in [0, 1, 2, 64, 65, 300, BIG] {
         let a = cmps(n);
         let b = a.clone();
-        // the first comparison may look at every entry once; after it, shared nodes answer
-        // at once
-        assert!(a == b);
+        // shared nodes answer at once, the first comparison as every later one
         let (eq, k) = compared(|| a == b);
         assert!(eq && k <= BOUNDED, "a map of {n} compared with its clone compared {k} entries");
         if n > 0 {
@@ -215,15 +212,14 @@ fn a_map_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_entrie
 }
 
 #[test]
-fn a_shared_map_holding_a_nan_is_not_equal_to_itself() {
-    for n in [1, 2, 64, 65, 300, BIG] {
-        let a = cmps(n).update(n / 3, Cmp(NAN));
-        let b = a.clone();
-        assert!(a != b && a != b, "a map of {n} with a NaN");
-        assert!(a.update(n, Cmp(n)) != a.update(n, Cmp(n)));
-    }
-    let floats: Map<u8, f64> = [(1, 1.0), (2, f64::NAN)].into_iter().collect();
-    assert!(floats != floats.clone());
+fn a_map_holding_a_nan_equals_itself_and_a_copy() {
+    // Type System round 6 FB: a `Float` is equal exactly when its bits are, and keys a map.
+    let floats: Map<u8, Float> = [(1, Float(1.0)), (2, Float(f64::NAN))].into_iter().collect();
+    assert!(floats == floats.clone() && floats.update(3, Float(3.0)) == floats.update(3, Float(3.0)));
+    let keyed: Map<Float, u8> = [(Float(f64::NAN), 1), (Float(-0.0), 2), (Float(0.0), 3)].into_iter().collect();
+    assert_eq!(keyed.len(), 3);
+    assert_eq!(keyed.get(&Float(f64::NAN)), Some(&1));
+    assert_eq!((keyed.get(&Float(-0.0)), keyed.get(&Float(0.0))), (Some(&2), Some(&3)));
 }
 
 #[test]

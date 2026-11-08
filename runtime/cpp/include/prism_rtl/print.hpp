@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include "prism_rtl/float.hpp"
 #include "prism_rtl/rc.hpp"
 #include <initializer_list>
 #include <memory>
@@ -163,7 +164,7 @@ PRISM_SHOW_WITH(std::uint8_t, p.raw(std::to_string(unsigned(s)));)
 PRISM_SHOW_WITH(std::int64_t, p.raw(std::to_string(s));)
 PRISM_SHOW_WITH(Unit, (void)s; p.raw("unit");)
 PRISM_SHOW_WITH(bool, p.raw(s ? "True" : "False");)
-PRISM_SHOW_WITH(double, p.float64(s);)
+PRISM_SHOW_WITH(Float, p.float64(s.v);)
 PRISM_SHOW_WITH(char32_t, p.quoted(std::u32string_view(&s, 1), U'\'');)
 PRISM_SHOW_WITH(Text, p.text(s.view());)
 PRISM_SHOW_WITH(Cursor, p.record("Cursor", {{"at", ShowRef(Nat(static_cast<std::uint32_t>(s.at())))}});)

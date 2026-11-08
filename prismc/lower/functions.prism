@@ -45,11 +45,11 @@ use Lower.Node.Switch.*
 # clauses one `match`; generics are Rust's, monomorphized by rustc, doubt MO)
 # ---------------------------------------------------------------------------------------
 
-# A trait bound as Rust's: `^Eq` is `PartialEq`, `^Ord` `PartialOrd` (a `Float` has no
-# total order in Rust), `^Show` the printer's, `^Num` the prelude's.
+# A trait bound as Rust's: `^Eq` is `Eq`, `^Ord` `Ord` (a `Float` is both, by its bits:
+# `prism_rtl::Float`), `^Show` the printer's, `^Num` the prelude's.
 BoundOf: fn Lx, Text -> [Text]
-fn BoundOf lx, "Prelude.Eq" = [["PartialEq"]]
-fn BoundOf lx, "Prelude.Ord" = [["PartialOrd"]]
+fn BoundOf lx, "Prelude.Eq" = [["Eq"]]
+fn BoundOf lx, "Prelude.Ord" = [["Ord"]]
 fn BoundOf lx, "Prelude.Show" = [["Show"]]
 fn BoundOf lx, "Prelude.Num" = [["Num"]]
 fn BoundOf lx, "Prelude.Pod" = [["ToPod", "FromPod"]]

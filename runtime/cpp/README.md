@@ -54,15 +54,26 @@ pays for it (prismc/README.md, pick CH; the Rust runtime's forms in claude/backe
   of the choice copies the variant, case struct and all, as Rust copies an enum. No
   allocation and no count belong to the choice itself. A record is a plain struct, copied
   by value.
+- **`Float` is a type of its own** (float.hpp; Type System round 6, ruling FB): a
+  `double` whose `==` is bit identity and whose `<=>` is IEEE 754's totalOrder as a
+  `std::strong_ordering`, the Rust runtime's `prism_rtl::Float` (`f64::total_cmp`);
+  arithmetic is the `double`'s. Why a type and not `double` with a pair of comparison
+  functions: a defaulted `operator==` or `<=>`, and `std::variant`'s, `std::tuple`'s and
+  the containers', call the element's operators, and a `double`'s built-in ones cannot be
+  replaced, so only a type of its own makes every derived comparison bit identity without
+  the compiler knowing which types hold a `Float`. Every ordering a Prism type can hold is
+  then strong, and the emitted `<=>` returns the members' own.
 - **One `Rc`, as in Rust.** A recursive payload (what the lowering puts behind `Rc`
   because the payload's type reaches its own, `Lam(Rc<Term>)`) is an `Rc<const T>`
   (rc.hpp), the same counted pointer that holds nodes and cells. `==` and `<=>` on an
   `Rc<T>` are `T`'s, through the pointer, and defined exactly when `T`'s are (a
-  requires-clause), as Rust's `impl<T: PartialEq> PartialEq for Rc<T>` is: a value's `Rc`
+  requires-clause), as Rust's `impl<T: Eq> PartialEq for Rc<T>` is: a value's `Rc`
   compares and orders by the value, so sharing stays invisible (Semantics ch. 11), and a
-  node's or a cell's `Rc` has no `==` at all, since the node or cell has none. No pointer is
-  compared first (a NaN stays unequal to itself). `<=>` is `std::strong_ordering`
-  (`as_strong`), as the emitted comparisons are throughout: Rust's `Ord` is total. `Show`,
+  node's or a cell's `Rc` has no `==` at all, since the node or cell has none. The pointers
+  are compared first, as Rust's `Rc<T: Eq>` does: every `^Eq` is reflexive (a `Float`
+  compares by its bits, float.hpp), so one value equals itself unread, and `<=>` answers
+  `equal` for one value likewise. `<=>` is `std::strong_ordering`, required of `T`'s, as the
+  emitted comparisons are throughout: Rust's `Ord` is total. `Show`,
   `ToPod` and `FromPod` of an `Rc<const T>` go through to the value; `IsValue<Rc<const T>>`
   is `IsValue<T>`, and `rc(x)` of a value makes an `Rc<const T>`, of a node or a cell an
   `Rc<T>`. The alternative refused: a second class for values (`Val<T>`, wrapping an
@@ -151,11 +162,12 @@ counts again.
 | `collections::Map<K, V>` (a persistent AVL tree, ported from this one) | `Map<K, V>` (a persistent AVL tree whose updates change this map's own nodes in place and copy only a node another map shares, as Rust's `Rc::make_mut` does): `get` → pointer, `mut_get` (the path owned), `contains`, `insert`/`remove` (this value), `inserted`/`removed` (new value), `unit`, ordered iteration | collections.hpp |
 | `collections::Array<T>` (a persistent balanced tree of chunks, the same design) | `Array<T>` (a persistent balanced tree of chunks with a tail): `get`, `[]`, `mut_at`, `push_back`/`set` (this value), `pushed`/`updated`, `concat`, `take`, `drop_front` | collections.hpp |
 | `pod::Pod` | `Pod`: factories `unit`, `boolean`, `integer`, `int64` (Rust's `Pod::int`), `floating`, `character`, `text`, `duration`, `record`, `choice`, `name`, `element`, `tuple`, `array`, `map`, `nil`, `some`, `ok`, `failed`, `path`, `shown`; `kind()` and `if_<kind>()` accessors; `structure`, `field`, `tag`, `as_text`, `as_f64`, `elements`, `to_string` | pod.hpp |
-| `pod::F64`, `pod::ShownText` | `F64` (total order); a `Shown`'s text is `Pod::Shown::text` | pod.hpp |
+| `float::Float` | `Float` (`v`, the `double`): `==` bit identity, `<=>` IEEE's totalOrder as a `std::strong_ordering`, `+ - * /` and unary `-` IEEE's | float.hpp |
+| `pod::ShownText` | a `Shown`'s text is `Pod::Shown::text` | pod.hpp |
 | `pod::Segment`, `pod::Path` | `Segment` (`pos`, `gen`, `key`, `kind`, `number`, `key_value`, `is_pos`), `Path` (`root`, `child`, `at`, `join`, `segments` → `std::span`, `len`, `to_string`); `path_of(span)` is Rust's `Path(at.to_vec())` | pod.hpp |
 | `pod::Fault` | `Fault` (`kind`, `message`, `answer`, `to_string`) | result.hpp |
 | `pod::Error`; `Result<T, Error>` (`~a`) | `Error`; `Fallible<T>` = `Expected<T, Error>` | pod.hpp |
-| `pod::ToPod`, `pod::FromPod` | the class templates `ToPod<T>`, `FromPod<T>` (specialize them, or give the type a member `Pod to_pod() const` and a static `Result<T> from_pod(const Pod&)`), with the helpers `to_pod(x)` and `from_pod<T>(p)`; for `Unit`, `bool`, `Int`, `Nat`, `uint8_t`, `double`, `char32_t`, `Text`, `Path`, `Pod`, `Error`, `std::optional`, `Fallible`, `Rc<const T>`, `Array`, `Map`, `std::tuple` of any arity | pod.hpp |
+| `pod::ToPod`, `pod::FromPod` | the class templates `ToPod<T>`, `FromPod<T>` (specialize them, or give the type a member `Pod to_pod() const` and a static `Result<T> from_pod(const Pod&)`), with the helpers `to_pod(x)` and `from_pod<T>(p)`; for `Unit`, `bool`, `Int`, `Nat`, `uint8_t`, `Float`, `char32_t`, `Text`, `Path`, `Pod`, `Error`, `std::optional`, `Fallible`, `Rc<const T>`, `Array`, `Map`, `std::tuple` of any arity | pod.hpp |
 | `pod::mismatch` | `mismatch<T>(want, got)` | pod.hpp |
 | `print::Show` | the class template `Show<T>` (specialize it, or give the type a member `void show(Printer&) const`); `ShowRef` is `&dyn Show`; an `any ^Show` is `Rc<const DynShow>` | print.hpp |
 | `print::Printer` | `Printer`: `raw`, `text`, `choice(ctor, {args})`, `record(name, {{"f", v}})`, `tuple`, `array`/`array_of`, `map`/`map_of`, `option`, `prefixed`, `float64` (Rust's `float`), `duration` | print.hpp |
@@ -263,13 +275,10 @@ the size of the collection and `m` of the second, against this library
   winning; `m` log `(n+m)`", kept: `Map::united` puts the smaller map's entries into the
   larger, whichever side it is (`tests/test_maps.cpp` counts the key copies).
 - **`==` on a `Map` or an `Array`** (Appendix B states no cost): linear at worst, and a
-  node both sides share at the same place answers at once once its values are known to
-  equal themselves, which the node remembers (`same`, forgotten by any change through
-  `own`); so a value compared with a clone, or with an update of itself, costs about the
-  path the update copied after the first comparison. A shared node holding a NaN (`Float`
-  `==` is IEEE equality, Type System ch. 2) stays unequal, as the element-by-element
-  comparison has it: pointer equality is never the answer, so sharing stays invisible
-  (Semantics ch. 11). `tests/test_maps.cpp` and `tests/test_arrays.cpp` count the values
+  node both sides share at the same place (an array's tail included) answers at once,
+  unread: every `^Eq` is reflexive (a `Float` compares by its bits), so sharing stays
+  invisible (Semantics ch. 11); a value compared with a clone costs a pointer comparison,
+  and with an update of itself about the path the update copied. `tests/test_maps.cpp` and `tests/test_arrays.cpp` count the values
   compared.
 - **The tests** (`tests/test_arrays.cpp`) check the behaviour at the sizes around a
   chunk's edges, the storage (`capacity`), and the costs, by counting the copies and moves

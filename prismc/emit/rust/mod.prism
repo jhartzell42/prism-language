@@ -50,7 +50,7 @@ fn Type t = match t:
     OutNat: "Nat"
     OutInt: "Int"
     OutU8: "u8"
-    OutFloat: "f64"
+    OutFloat: "Float"
     OutBool: "bool"
     OutChar: "char"
     OutText: "Text"
@@ -151,7 +151,7 @@ fn Expression x = match x:
     XNat d: if (Len d) <= 9: "Nat::from({d}u32)" else: if (Len d) <= 18: "Nat::from_int(Int::from({d}i64)).unwrap()" else: "Nat::from_int(Int::parse(\"{d}\").unwrap()).unwrap()"
     XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int::from({d})" else: "Int::parse(\"{d}\").unwrap()"
     XByte d: "{d}u8"
-    XFloat d: d
+    XFloat d: "Float({d})"
     XIndex n: "{n}"
     XChar c: "'{CharEscape c}'"
     XStr t: "\"{Escape t}\""

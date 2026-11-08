@@ -48,7 +48,8 @@ it make every program an interpreter run, and every type mistake a runtime fault
 ## Types
 
 - `Nat`, `Int` → `rt::Nat`, `rt::Int` (bignums with an `i64` fast path); `U8` → `u8`;
-  `Float` → `f64`; `Bool` → `bool`; `Char` → `char`; `Text` → `rt::Text` (UTF-8: a
+  `Float` → `rt::Float` (an `f64` whose `==` is bit identity and whose `Ord` is
+  `total_cmp`, so it is `Eq`, `Ord` and `Hash`: prismc/README.md, pick BF); `Bool` → `bool`; `Char` → `char`; `Text` → `rt::Text` (UTF-8: a
   byte range of a shared `Rc<str>`); `Cursor` → `rt::Cursor` (the text and a byte
   index); `unit` → `()`.
 - A record → a `struct`, fields in declaration order; a choice → an `enum`, recursive
@@ -63,8 +64,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   (`owner` + `Rc<Port<A>>`), `rt::Dynamic<A>` (`owner` + typed read + an update port of `()`, which says the value moved).
   Inside one node they are methods and fields, never values.
 - `@a` as a value → `Rc<dyn Fn(Path, &mut Cx) -> (Rc<dyn Node>, A)>`.
-- A trait → a Rust trait; `derive` → impls; generics → Rust generics, monomorphized by
-  rustc (doubt MO).
+- A trait → a Rust trait; `derive` → impls (`^Eq` → `PartialEq, Eq`, `^Ord` →
+  `PartialOrd, Ord`, whatever the fields: every `^Eq` is reflexive and every `^Ord`
+  total); generics → Rust generics bounded by `Eq` and `Ord` for `^Eq` and `^Ord`,
+  monomorphized by rustc (doubt MO).
 - An existential `any ^Show` → `Rc<dyn Show>`.
 - An element tag → a struct per tag holding its `Level` fields, with `ToPod`, and the Rust
   type of its output.
@@ -408,13 +411,17 @@ what differs is how C++ spells it.
   order, designated initializers); a choice and a row kind's values are a class holding a
   `std::variant` of nested case structs (`Term::Var`) by value, as the Rust enum is; a
   recursive payload (`Rc<T>` above) is a `prism_rtl::Rc<const T>`, the runtime's one `Rc`,
-  whose `==` and `<=>` are its value's exactly when the value has them, so that a payload
+  whose `==` and `<=>` are its value's exactly when the value has them, the pointers
+  compared first as Rust's `Rc<T: Eq>` does, so that a payload
   compares, orders, prints and goes out as plain data by its value, as Rust's `Rc<T>` of a
   value does, and a node's `Rc` compares not at all (identity is `ptr_eq`; prismc/README.md,
   pick CH). The model's `*x` is `*x` where the printer knows `x` is an `Rc`, `x` where it
   knows `x` is a reference, and `prism_rtl::deref(x)` where it knows neither (pick PT). `?a` is
   `std::optional`, `~a` `Fallible`, a tuple `std::tuple`, `Rc<dyn Fn>` `prism_rtl::Fn`, a
-  job `JobRef`. A node is a class deriving from `Node` (or the prelude's `Row`), held by
+  job `JobRef`; `Float` is `prism_rtl::Float`, a `double` whose `==` is bit identity and
+  whose `<=>` the `std::strong_ordering` of IEEE's totalOrder, so the defaulted comparisons
+  of a struct, a variant or a tuple holding one are bit identity and total too (pick BF).
+  A node is a class deriving from `Node` (or the prelude's `Row`), held by
   `prism_rtl::Rc` (plain counts, one thread); its constructor is `make` and its methods
   are members.
 - **Expressions.** A block, a `match`, an if-let chain and a labelled block are GNU

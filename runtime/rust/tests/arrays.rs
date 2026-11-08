@@ -10,7 +10,7 @@
 
 mod storage;
 
-use prism_rtl::Array;
+use prism_rtl::{Array, Float};
 use storage::held;
 
 const SIZES: [usize; 20] = [0, 1, 2, 3, 4, 7, 8, 31, 32, 63, 64, 65, 126, 127, 128, 129, 191, 192, 193, 300];
@@ -320,19 +320,18 @@ thread_local! {
     static COMPARED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// An element that counts its comparisons; `Cmp(NAN)` is equal to nothing, itself
-/// included, as a `Float` NaN is under IEEE equality (Type System ch. 2).
+/// An element that counts its comparisons.
 #[derive(Clone, Debug)]
 struct Cmp(usize);
-
-const NAN: usize = usize::MAX;
 
 impl PartialEq for Cmp {
     fn eq(&self, other: &Cmp) -> bool {
         COMPARED.with(|c| c.set(c.get() + 1));
-        self.0 == other.0 && self.0 != NAN
+        self.0 == other.0
     }
 }
+
+impl Eq for Cmp {}
 
 fn compared<R>(f: impl FnOnce() -> R) -> (R, usize) {
     let before = COMPARED.with(|c| c.get());
@@ -353,9 +352,7 @@ fn an_array_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_ele
     for n in [0, 1, 64, 65, 300, BIG] {
         let a = cmps(n);
         let b = a.clone();
-        // the first comparison may look at every element once; after it, shared nodes
-        // answer at once
-        assert!(a == b);
+        // shared nodes answer at once, the first comparison as every later one
         let (eq, k) = compared(|| a == b);
         assert!(eq && k <= BOUNDED, "an array of {n} compared with its clone compared {k} elements");
         if n > 0 {
@@ -370,17 +367,12 @@ fn an_array_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_ele
 }
 
 #[test]
-fn a_shared_array_holding_a_nan_is_not_equal_to_itself() {
-    for n in [1, 64, 65, 300, BIG] {
-        let a = cmps(n).update(n - 1, Cmp(NAN));
-        let b = a.clone();
-        assert!(a != b && a != b, "an array of {n} with a NaN at its end");
-        let c = cmps(n).update(0, Cmp(NAN));
-        let tail = c.skip(0);
-        assert!(c != tail && c != c.clone(), "an array of {n} with a NaN at its start");
-    }
-    let floats: Array<f64> = Array::from(vec![1.0, f64::NAN, 3.0]);
-    assert!(floats != floats.clone());
+fn an_array_holding_a_nan_equals_itself_and_a_copy() {
+    // Type System round 6 FB: a `Float` is equal exactly when its bits are.
+    let floats: Array<Float> = Array::from(vec![Float(1.0), Float(f64::NAN), Float(3.0)]);
+    let built: Array<Float> = Array::from(vec![Float(1.0), Float(f64::NAN), Float(3.0)]);
+    assert!(floats == floats.clone() && floats == built);
+    assert!(Array::from(vec![Float(0.0)]) != Array::from(vec![Float(-0.0)]));
 }
 
 #[test]

@@ -4,7 +4,7 @@ The runtime library every Rust program `prismc` emits links. Emitted code is typ
 one type per Prism type, with each widget's graph emitted from code templates; this crate
 is the part that is not generated per block, written once and shared.
 
-- **Modules:** numbers (`num`), persistent collections, `Pod` and paths, the transcript's
+- **Modules:** numbers (`num`, and `float`: `Float`, below), persistent collections, `Pod` and paths, the transcript's
   printer and reader, the node primitives (`cells`: `Hold`, `Stamped`, `Cache`, `Port`,
   `Event`, `Dynamic`, `Defer`, `Job`), the tick (`cx`), the document and patch (`doc`),
   the zombie collector (`gc`), hosting (`host`: a host's rows over its child's document,
@@ -19,6 +19,15 @@ is the part that is not generated per block, written once and shared.
   shows, and leaves as plain data, as `Cursor(at=N)`; nothing reads one back. A `Text`
   is made only from a `str`, so it is always UTF-8; the CLI World answers a file that is
   not with `Fs.NotText` (doubt TXU in prismc/README.md).
+- **`Float`** (`src/float.rs`; Type System round 6, ruling FB) is an `f64` whose `==`
+  is bit identity (`to_bits`, so a NaN equals itself and `0.0` is not `-0.0`) and whose
+  `Ord` is `f64::total_cmp`, IEEE 754's totalOrder, equal exactly when the bits are: it is
+  `Eq`, `Ord` and `Hash`, so every emitted `^Eq` is `Eq` and every `^Ord` is `Ord`
+  (prismc/README.md, pick BF), and a `Pod::Float` is one. `+ - * /` and unary `-` are the
+  `f64`'s, IEEE's. `==` by `to_bits` rather than `total_cmp(..).is_eq()`: the two agree,
+  and the bits are one integer comparison where `total_cmp` first flips each side's
+  magnitude bits. The name refused: `F64`, the `Pod`'s old total-order wrapper, which this
+  type replaces; the Prism name says what it holds in the emitted code.
 - **`Map`** (`src/collections/map.rs`) is the C++ runtime's persistent AVL tree,
   ported: one counted node per entry, holding its height and the entries under it; an
   update goes through `Rc::make_mut` on the path to its key, so a node this map alone
@@ -68,15 +77,12 @@ is the part that is not generated per block, written once and shared.
   - Storage: at most `2n + 1` slots while the array is small, `n + 64` beyond, and a
     node per chunk; an array from a `Vec` holds exactly `n` (chunks of 64 moved out).
   - `==` on a `Map` or an `Array`: Appendix B states no cost. Linear at worst; a node
-    both sides share at the same place answers at once once its values are known to
-    equal themselves, which the node remembers (`SelfEqual` in `map.rs`, in a map's nodes
-    and an array's joins; a chunk, 64 elements at most, is compared with itself; any
-    change through `Rc::make_mut` forgets it), so a value compared with a clone, or with
-    an update of itself, costs about the path the update copied after the first
-    comparison. A shared node holding a NaN (`Float` `==` is IEEE equality, Type System
-    ch. 2) stays unequal, as the element-by-element comparison has it: pointer equality is
-    never the answer, so sharing stays invisible (Semantics ch. 11). The tests count the
-    values compared.
+    both sides share at the same place (an array's tail included) answers at once,
+    unread: every `^Eq` is reflexive (a `Float` compares by its bits, `src/float.rs`), so
+    the `==` is defined for `Eq` keys, values and elements alone and sharing stays
+    invisible (Semantics ch. 11). A value compared with a clone costs a pointer
+    comparison, and with an update of itself about the path the update copied. The tests
+    count the values compared.
   - `tests/arrays.rs` and `tests/maps.rs` check the behaviour at the sizes around a
     chunk's edges, the storage each holds (`tests/storage` counts the test binary's
     allocations) and the costs (elements cloned, counted by the element type).

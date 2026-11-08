@@ -1112,8 +1112,9 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   value; a record is a plain struct; and a payload the lowering puts behind `Rc` (a case or
   field whose type reaches its own, claude/backend.md "Types") is a `prism_rtl::Rc<const
   T>`, the one `Rc` of the runtime, as Rust has one: a copy shares its allocation, `*v`
-  reaches the value, and `==` and `<=>` are the value's (defined on an `Rc<T>` exactly when
-  `T` has them, so a node's or a cell's `Rc` has none; identity is `prism_rtl::ptr_eq`),
+  reaches the value, and `==` and `<=>` are the value's, the pointers compared first as
+  Rust's `Rc<T: Eq>` does (pick BF; defined on an `Rc<T>` exactly when `T` has them, so a
+  node's or a cell's `Rc` has none; identity is `prism_rtl::ptr_eq`),
   and `show` and `to_pod` go by the value, as Rust's `Rc<T>` of a value does
   (runtime/cpp/README.md, "Sharing"). The `const` says the payload is immutable and costs
   nothing: an `Rc<const T>` moves and copies as an `Rc<T>` does (only the pointee is
@@ -1132,8 +1133,9 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   and defines them among the module's definitions, out of line, since a defaulted one is
   defined where it is declared and clang then instantiates a standard template over the
   incomplete type (`Rc<const std::optional<T>>`, `Array<std::tuple<Text, T>>` in `T`'s own
-  case; g++ waits); `<=>` is `std::strong_ordering` throughout (Rust's `Ord` is total;
-  `prism_rtl::as_strong`), so no return type waits on another's deduction; `decl.hpp`
+  case; g++ waits); `<=>` is `std::strong_ordering` throughout (Rust's `Ord` is total, and
+  so is every ordering a type can hold, a `Float`'s included: pick BF), so no return type
+  waits on another's deduction; `decl.hpp`
   holds declarations only, and a types header that holds `Elem` or `Answer` by value
   includes `elem.types.hpp`. A cycle of records by value with no choice on it does not
   compile (gap CY).
@@ -1337,7 +1339,7 @@ C++ doubts:
   twenty `Rc` fields costs about what its copy does while the moved-from local's destructor
   still runs. What the profile left was not the printer's copies but allocation, a third of
   the time either way, and the job machinery of unbounded folds, a `Fn`, a `Frame` and a
-  `once_job` allocated per element (`floaty`'s fold over a type's arguments). jemalloc
+  `once_job` allocated per element (a fold over a type's arguments). jemalloc
   (runtime/cpp/README.md, pick AL) took the first down: the self-compile is 75.7 s against
   105.1 s under glibc on the same night, the allocator 13.6% of the samples where it was
   34% ("jemalloc (C++)"). Whether the inline layout still costs against the handle under
@@ -1348,9 +1350,10 @@ C++ doubts:
   maps (`G`, `Lx`, `St`, `TProgram`), moved, copied and destroyed, about 30% of the samples
   between their constructors and destructors, and the folds' per-element jobs. *First ruling
   (Claude's):* the layout mirrors Rust, as the brief asked, and the numbers are recorded
-  for Jimmy to rule on; *if otherwise:* the handle comes back from `7dc334d^`, or `Rc`'s `==`
-  learns to compare pointers first where the type has no `Float` (Rust's `Rc<T: Eq>`
-  does), which this run did not try; and the fold machinery is a question of its own.
+  for Jimmy to rule on; *if otherwise:* the handle comes back from `7dc334d^`; and the fold
+  machinery is a question of its own. `Rc`'s `==` compares pointers first for every type
+  (pick BF); its effect on the self-compile is in claude/benchmarks-preliminary.md, "Float
+  equality as bits".
 - **MH1** A module's qualified references are found in its source text: a line that is no
   comment and holds a module's name and a dot (`Zoo.`) names that module. A text literal
   holding one adds a module the file does not need (more includes, never fewer); the
@@ -1612,7 +1615,25 @@ Each is Claude's, for Jimmy to overturn.
   functions over `Self` (`Loud::loud(&x)`), defaults in the trait; an impl is a Rust
   impl. An `impl ^Show` is a function of its own (`show_sq`) and `impl Show` over it,
   and the type then crosses as `Pod::Shown` (claude/backend.md, "Printing"); an `impl ^Eq`
-  is `PartialEq` over its `==`.
+  is `PartialEq` over its `==`, and `Eq` (pick BF).
+- **BF `Float` compares by its bits** (Type System round 6, ruling FB). `Float` is
+  `prism_rtl::Float` in both runtimes, a double whose `==` is bit identity and whose
+  ordering is IEEE 754's totalOrder (Rust's `f64::total_cmp`), equal exactly when the bits
+  are; arithmetic is the double's own. So every `^Eq` is reflexive and every `^Ord` total,
+  and no compiler code asks whether a type holds a `Float`: `derive ^Eq` is
+  `PartialEq, Eq`, `derive ^Ord` `PartialOrd, Ord`, the bounds `^Eq` and `^Ord` are `Eq`
+  and `Ord`, and a tag's struct and a row's enum that compare are `PartialEq, Eq`; in C++
+  every comparison is the defaulted one or `std::strong_ordering`'s. A literal is
+  `Float(1.5)` in Rust and `Float{1.5}` in C++. With `==` reflexive, an `Rc`'s `==`
+  compares the pointers first (Rust's `Rc<T: Eq>` already does; C++'s `prism_rtl::Rc`
+  does the same), and a map or an array passes over a node both sides share without
+  reading it. What it buys: one rule for every type, a `Float` keying a map, a record of
+  floats ordering, and no compiler pass over the types. Refused: `f64` and `double`
+  themselves, which make a NaN unequal to itself, so a type holding a `Float` is only
+  `PartialEq` and has no `Ord` in Rust and no `std::strong_ordering` in C++, the compiler
+  tracks which types hold one to keep their derives partial, and a shared node must
+  remember whether its values equal themselves before `==` may pass over it.
+  `tests/conformance/ts-ch02-float-bits` pins it.
 - **FL `Fs.List`.** prismc's own `fs.prism` replaces the prelude's `Fs` to declare it,
   since a family's tags are declared in the family's module (Semantics ch. 6) and the CLI
   World answers it for the program that declares it (worlds/cli/rust/README.md). Every
@@ -1646,7 +1667,7 @@ Each is Claude's, for Jimmy to overturn.
   is an `Array<Draw>`. A tag applied in an expression builds the variant; a tag pattern
   is the variant around a struct pattern; `Draw.*` is a `matches!` over the family's
   variants. Every tag struct and row enum is `Clone`, `ToPod` and `Show` (printing as
-  its `Pod`, `Draw.Rect(rect=Rect(..), paint=Grey)`), and `PartialEq` and `FromPod` when
+  its `Pod`, `Draw.Rect(rect=Rect(..), paint=Grey)`), and `PartialEq`, `Eq` and `FromPod` when
   all its fields are plain data. A document's element, `Elem r` (the checker's WL), is
   `crate::Elem`, emitted in `main.rs`: a variant per element tag's `Level`, so a pattern
   binds each field plain (`Ui.Label(text=$t)` binds the text in that tick). A live
@@ -1724,7 +1745,7 @@ Each is Claude's, for Jimmy to overturn.
   by `level_pod(cx)`, and one whose tag holds dynamics keeps a `prism_rtl::Watch`
   (`Place.watch`) renewed each time it is sent, so a move of a nested entry sends it again
   (doubt WD). A tag field holding a dynamic of any shape but `$Elem` or a map of them stops
-  the build with `compile_error!`. Its struct is `PartialEq` for the runtime alone (`eq`,
+  the build with `compile_error!`. Its struct is `PartialEq` and `Eq` for the runtime alone (`eq`,
   `RuntimeEq`: a dynamic equal only to itself, doubt EQ); the checker refuses `^Eq` and
   `^Show` there (`derive-dynamic`, and `no-impl` for an `Elem` whose row's tags hold
   dynamics).

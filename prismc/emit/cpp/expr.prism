@@ -99,7 +99,7 @@ fn CppExpr cp, x = match x:
     XNat d: if (Len d) <= 9: "Nat({d}u)" else: "*Nat::from_int({CppExpr cp, (XInt d)})"
     XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int({d}ll)" else: "*Int::parse(\"{d}\")"
     XByte d: "std::uint8_t({d})"
-    XFloat d: d
+    XFloat d: "Float\{{d}\}"
     XIndex n: "{n}u"
     XChar c: "U'{CppCharEscape c}'"
     XStr t: CppString t

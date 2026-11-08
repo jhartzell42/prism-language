@@ -10,16 +10,6 @@
 
 namespace prism_rtl {
 
-std::strong_ordering operator<=>(F64 a, F64 b) {
-    // IEEE 754's totalOrder, as Rust's `f64::total_cmp`: flip the magnitude bits of a
-    // negative number, then compare as signed integers.
-    auto key = [](double d) {
-        std::int64_t x = std::bit_cast<std::int64_t>(d);
-        return x ^ std::int64_t(std::uint64_t(x >> 63) >> 1);
-    };
-    return key(a.v) <=> key(b.v);
-}
-
 // ---- Segment and Path ----------------------------------------------------------------------
 
 Segment Segment::key(Pod k) { return Segment(Kind::Key, 0, make_rc<const Pod>(std::move(k))); }

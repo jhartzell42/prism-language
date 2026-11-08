@@ -249,7 +249,7 @@ fn CppType cp, t = match t:
     OutNat: "Nat"
     OutInt: "Int"
     OutU8: "std::uint8_t"
-    OutFloat: "double"
+    OutFloat: "Float"
     OutBool: "bool"
     OutChar: "char32_t"
     OutText: "Text"

@@ -448,9 +448,8 @@ TyDefs: unbounded fn Lx, TyInfo -> [Item]
 fn TyDefs lx, ti:
     let derives = Each ti.derives, \|dn| BareName dn
     let params = Each ti.params, \|p| Camel p
-    let floaty = Floaty lx.g, (TyCon ti.name, [[]]), [[]]
     let bare = BareName ti.name
-    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, shape=shape, cases=cases, eq=(HasText derives, "Eq"), ord=(HasText derives, "Ord"), floaty=floaty, show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
+    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, shape=shape, cases=cases, eq=(HasText derives, "Eq"), ord=(HasText derives, "Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
     match ti.body:
         BRecord fs:
             let fields = Each (Range0 (Len fs)), \|i|

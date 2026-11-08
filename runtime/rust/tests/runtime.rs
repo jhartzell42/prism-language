@@ -319,7 +319,7 @@ fn typed_values_print_and_cross_as_pods() {
     assert_eq!(show(&failed), "Error(kind=Fs.NotFound, message=\"gone\")");
     assert_eq!(failed.to_pod().to_string(), show(&failed));
     assert_eq!(Result::<Text, Error>::from_pod(&read::value("Error(kind=Fs.NotFound, message=\"gone\")").unwrap()).unwrap(), failed);
-    assert_eq!(show(&(Nat::from(3u32), 2.5)), "((3, 2.5))");
+    assert_eq!(show(&(Nat::from(3u32), prism_rtl::Float(2.5))), "((3, 2.5))");
     let shown = Pod::Shown("e2".into(), Box::new(Pod::record("Spot", vec![("down", Pod::int(6))])));
     assert_eq!(Path::root().at(0).child(Segment::Key(shown.clone())).at(0).to_string(), "0/[e2]/0");
     assert!(read::pattern("Spot(down=6)").unwrap().matches(&shown));
@@ -458,6 +458,8 @@ impl PartialEq for Tagged {
         self.v == other.v
     }
 }
+
+impl Eq for Tagged {}
 
 /// A node that takes the next of `takes` as its snapshot in each tick's construction step
 /// and logs whether it moved, the structure's id after the take, and the dynamic's.

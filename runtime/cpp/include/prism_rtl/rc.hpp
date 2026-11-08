@@ -214,7 +214,7 @@ private:
 };
 
 /// Whether two `Rc`s point to the same allocation: Rust's `Rc::ptr_eq`, the one identity
-/// comparison (an `Rc`'s `==` is its value's, below).
+/// comparison (an `Rc`'s `==` asks it first, then its value's, below).
 template <class T, class U>
 bool ptr_eq(const Rc<T>& a, const Rc<U>& b) noexcept {
     return static_cast<const void*>(a.get()) == static_cast<const void*>(b.get());
@@ -369,31 +369,29 @@ private:
     }
 };
 
-/// An ordering as Rust's `Ord` gives it: total. A weak one (equivalent values that are not
-/// equal) is read as total; a partial one has no conversion, and a type whose ordering is
-/// partial (one holding a `Float`) has no `^Ord` in Prism, so none is asked for.
-inline std::strong_ordering as_strong(std::strong_ordering c) noexcept { return c; }
-inline std::strong_ordering as_strong(std::weak_ordering c) noexcept {
-    return c < 0 ? std::strong_ordering::less : c > 0 ? std::strong_ordering::greater : std::strong_ordering::equal;
-}
-
 /// `Rc<T>`'s comparisons, its value's (Rust's `impl<T: PartialEq> PartialEq for Rc<T>`, and
 /// `Ord` likewise): defined exactly when `T`'s are, so that sharing stays invisible
-/// (Semantics ch. 11) and a node's or a cell's `Rc`, whose `T` has none, has none. No
-/// pointer is compared first: a value holding a `Float` NaN is unequal to itself through
-/// one `Rc` as through two. `T` may be incomplete where an `Rc<const T>` is declared as a
-/// member; it must be complete where the `Rc`s are compared.
+/// (Semantics ch. 11) and a node's or a cell's `Rc`, whose `T` has none, has none. `==`
+/// compares the pointers first, as Rust's `Rc<T: Eq>` does: every `^Eq` is reflexive (a
+/// `Float` is equal exactly when its bits are, Type System round 6 FB), so one value is
+/// equal to itself without being read. `<=>` is `std::strong_ordering`, as the emitted
+/// comparisons are throughout (Rust's `Ord` is total), and answers `equal` for one value
+/// likewise. `T` may be incomplete where an `Rc<const T>` is declared as a member; it must
+/// be complete where the `Rc`s are compared.
 template <class T, class U>
     requires requires(const T& a, const U& b) {
         { a == b } -> std::convertible_to<bool>;
     }
 bool operator==(const Rc<T>& a, const Rc<U>& b) {
-    return *a == *b;
+    return ptr_eq(a, b) || *a == *b;
 }
 template <class T, class U>
-    requires requires(const T& a, const U& b) { a <=> b; }
+    requires requires(const T& a, const U& b) {
+        { a <=> b } -> std::same_as<std::strong_ordering>;
+    }
 std::strong_ordering operator<=>(const Rc<T>& a, const Rc<U>& b) {
-    return as_strong(*a <=> *b);
+    if (ptr_eq(a, b)) return std::strong_ordering::equal;
+    return *a <=> *b;
 }
 
 }  // namespace prism_rtl

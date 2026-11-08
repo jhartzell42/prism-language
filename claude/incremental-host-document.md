@@ -226,8 +226,8 @@ row's), each a computed answer a tick late.
 
 - **Both runtimes:** `Snapshot::take_compared` keeps the snapshot that stood when the new
   one is equal to it; `==` on maps and arrays answers at once for a node both sides share
-  at the same place, once the node knows its values equal themselves (a shared NaN stays
-  unequal). Safe by Semantics ch. 11: "sharing is invisible".
+  at the same place, every `^Eq` being reflexive (a `Float` compares by its bits,
+  prismc/README.md pick BF). Safe by Semantics ch. 11: "sharing is invisible".
 - **Both printers:** a `for`'s builder does nothing when its source is the very map it last
   built from (`Map::same`); a host's rows do the same over the places.
 - **Both runtimes:** a map collected from entries in ascending key order (a `for`'s

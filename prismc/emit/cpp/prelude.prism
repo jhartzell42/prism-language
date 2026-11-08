@@ -62,7 +62,7 @@ public:
     void show(Printer& p) const { p.choice(name(), {}); }
     Pod to_pod() const { return Pod::name(name()); }
     friend bool operator==(const Ordering& a, const Ordering& b) { return a.cases() == b.cases(); }
-    friend std::strong_ordering operator<=>(const Ordering& a, const Ordering& b) { return prism_rtl::as_strong(a.cases() <=> b.cases()); }
+    friend std::strong_ordering operator<=>(const Ordering& a, const Ordering& b) { return a.cases() <=> b.cases(); }
 
 private:
     Cases cases_;
@@ -160,10 +160,10 @@ inline Int add(const Int& a, const Int& b) { return a + b; }
 inline Int sub(const Int& a, const Int& b) { return a - b; }
 inline Int mul(const Int& a, const Int& b) { return a * b; }
 inline std::optional<Int> div_opt(const Int& a, const Int& b) { return a.div(b); }
-inline double add(double a, double b) { return a + b; }
-inline double sub(double a, double b) { return a - b; }
-inline double mul(double a, double b) { return a * b; }
-inline std::optional<double> div_opt(double a, double b) { return a / b; }
+inline Float add(Float a, Float b) { return a + b; }
+inline Float sub(Float a, Float b) { return a - b; }
+inline Float mul(Float a, Float b) { return a * b; }
+inline std::optional<Float> div_opt(Float a, Float b) { return a / b; }
 inline std::uint8_t add(std::uint8_t a, std::uint8_t b) { return std::uint8_t(a + b); }
 inline std::uint8_t sub(std::uint8_t a, std::uint8_t b) { return std::uint8_t(a - b); }
 inline std::uint8_t mul(std::uint8_t a, std::uint8_t b) { return std::uint8_t(a * b); }
@@ -193,7 +193,7 @@ template <class A>
 A zero();
 template <> inline Nat zero<Nat>() { return Nat(0u); }
 template <> inline Int zero<Int>() { return Int(0); }
-template <> inline double zero<double>() { return 0.0; }
+template <> inline Float zero<Float>() { return Float{0.0}; }
 template <> inline std::uint8_t zero<std::uint8_t>() { return 0; }
 }  // namespace Num
 
@@ -234,13 +234,13 @@ inline std::optional<std::uint8_t> mod_(std::uint8_t a, std::uint8_t b) {
     return std::uint8_t(a % b);
 }
 
-inline double float_(const Int& i) {
+inline Float float_(const Int& i) {
     auto n = i.to_i64();
-    return n ? double(*n) : std::stod(i.to_string());
+    return Float{n ? double(*n) : std::stod(i.to_string())};
 }
-inline double to_float(const Int& i) { return float_(i); }
-inline double cos(double x) { return std::cos(x); }
-inline double sin(double x) { return std::sin(x); }
+inline Float to_float(const Int& i) { return float_(i); }
+inline Float cos(Float x) { return Float{std::cos(x.v)}; }
+inline Float sin(Float x) { return Float{std::sin(x.v)}; }
 
 template <class A>
 A abs(const A& a) { return a < Num::zero<A>() ? Num::sub(Num::zero<A>(), a) : a; }

@@ -251,7 +251,6 @@ type TyDef = record:
     cases: [CaseDef]
     eq: Bool
     ord: Bool
-    floaty: Bool
     show: Shown
     pod: Bool
     doc: Text

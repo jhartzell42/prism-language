@@ -75,17 +75,15 @@ TEST(union_costs_the_smaller_maps_entries_whichever_side_it_is) {
 
 namespace {
 
-/// A value that counts its comparisons; `Cmp{NAN_}` is equal to nothing, itself included,
-/// as a `Float` NaN is under IEEE equality (Type System ch. 2).
+/// A value that counts its comparisons.
 struct Cmp {
     static inline std::size_t compared = 0;
     int v = 0;
     friend bool operator==(const Cmp& a, const Cmp& b) {
         ++compared;
-        return a.v == b.v && a.v != -1;
+        return a.v == b.v;
     }
 };
-constexpr int NAN_ = -1;
 
 /// `0..n` in a scattered order: `i * 7919 mod p` for a prime `p >= n`, kept below `n`.
 std::vector<int> scattered(int n) {
@@ -125,9 +123,7 @@ std::size_t compared(F f) {
 TEST(a_map_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_values) {
     for (int n : {0, 1, 2, 64, 65, 300, BIG}) {
         Map<int, Cmp> a = cmps(n), b = a;
-        // the first comparison may look at every value once; after it, shared nodes answer
-        // at once
-        CHECK(a == b);
+        // shared nodes answer at once, the first comparison as every later one
         bool eq = false;
         CHECK(compared([&] { eq = a == b; }) <= BOUNDED && eq);
         if (n == 0) continue;
@@ -140,16 +136,14 @@ TEST(a_map_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_valu
     }
 }
 
-TEST(a_shared_map_holding_a_nan_is_not_equal_to_itself) {
-    for (int n : {1, 2, 64, 65, 300, BIG}) {
-        Map<int, Cmp> a = cmps(n).inserted(n / 3, Cmp{NAN_});
-        Map<int, Cmp> b = a;
-        CHECK(!(a == b) && !(a == b) && !(a == a));
-        CHECK(!(a.inserted(n, Cmp{n}) == a.inserted(n, Cmp{n})));
-    }
-    Map<int, double> floats{{1, 1.0}, {2, std::nan("")}};
-    Map<int, double> same = floats;
-    CHECK(!(floats == same));
+TEST(a_map_holding_a_nan_equals_itself_and_a_copy) {
+    // Type System round 6 FB: a `Float` is equal exactly when its bits are, and keys a map.
+    Map<int, Float> floats{{1, Float{1.0}}, {2, Float{std::nan("")}}};
+    Map<int, Float> same = floats;
+    CHECK(floats == same && floats == floats && floats.inserted(3, Float{3.0}) == floats.inserted(3, Float{3.0}));
+    Map<Float, int> keyed{{Float{std::nan("")}, 1}, {Float{-0.0}, 2}, {Float{0.0}, 3}};
+    CHECK(keyed.size() == 3 && keyed.get(Float{std::nan("")}) && *keyed.get(Float{std::nan("")}) == 1);
+    CHECK(*keyed.get(Float{-0.0}) == 2 && *keyed.get(Float{0.0}) == 3);
 }
 
 TEST(maps_of_maps_compare_shared_inner_maps_at_once) {

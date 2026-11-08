@@ -12,11 +12,10 @@
 // and one chunk at most). A `Text` is a view of a shared UTF-8 buffer (a cursor's
 // `before` and `after` are constant) and copies on concatenation.
 //
-// `==` on a map or an array answers at once for a node both sides share at the same place,
-// when every value under it is known to equal itself: a node remembers that once asked
-// (`same`), and an update forgets it on what it changes. A shared node holding a value
-// equal to nothing (a `Float` NaN, IEEE equality: Type System ch. 2) stays unequal, as the
-// structural comparison has it, so sharing stays invisible (Semantics ch. 11).
+// `==` on a map or an array answers at once for a node both sides share at the same place:
+// every `^Eq` is reflexive (a `Float` is equal exactly when its bits are, Type System
+// round 6 FB), so a shared node's values equal themselves without being read, and sharing
+// stays invisible (Semantics ch. 11).
 
 #pragma once
 
@@ -153,11 +152,6 @@ private:
 
 // ---- Map --------------------------------------------------------------------------------
 
-namespace detail {
-/// What a map's or an array's node knows of whether every value under it equals itself.
-inline constexpr std::uint8_t UNKNOWN = 0, YES = 1, NO = 2;
-}  // namespace detail
-
 /// `k ==> v`: a persistent ordered map, an AVL tree. An update changes the nodes on the
 /// path to its key in place where this map alone holds them, and copies a node another map
 /// shares before changing it (`own`), so no map sharing it sees the update: the Rust
@@ -174,9 +168,6 @@ private:
         Rc<Node> left, right;
         int height;
         std::size_t count;
-        /// Whether every entry under this node equals itself, once asked (`self_equal`):
-        /// `detail::UNKNOWN`, `YES` or `NO`. Forgotten when the node is changed (`own`).
-        mutable std::uint8_t same = detail::UNKNOWN;
         /// Height and count from the children.
         void fix() {
             height = std::max(Map::height(left), Map::height(right)) + 1;
@@ -184,17 +175,9 @@ private:
         }
     };
     using Ptr = Rc<Node>;
-    static bool self_equal(const Node* n) {
-        if (n->same == detail::UNKNOWN)
-            n->same = (!n->left || self_equal(n->left.get())) && (!n->right || self_equal(n->right.get())) && n->kv == n->kv
-                          ? detail::YES
-                          : detail::NO;
-        return n->same == detail::YES;
-    }
     /// The two trees' entries compared in key order, as `std::equal` over them would,
-    /// except that a subtree both have at the same place in the order is one node: its
-    /// entries compared with themselves, which `self_equal` answers from the nodes once
-    /// known. Equal counts line the orders up, so a subtree is opened only while the other
+    /// except that a subtree both have at the same place in the order is one node, equal
+    /// to itself since every `^Eq` is reflexive, and passed over unread. Equal counts line the orders up, so a subtree is opened only while the other
     /// side's next item is not the same node: the larger of two, or a subtree against an
     /// entry. Each item is a node, whole (`entry` false) or its own entry alone (its right
     /// subtree below it on the stack).
@@ -220,7 +203,6 @@ private:
             Item x = sa.back(), y = sb.back();
             if (!x.entry && !y.entry) {
                 if (x.n == y.n) {
-                    if (!self_equal(x.n)) return false;
                     sa.pop_back();
                     sb.pop_back();
                 } else if (x.n->count >= y.n->count) {
@@ -248,11 +230,9 @@ private:
         return make_rc<Node>(Node{std::move(kv), std::move(l), std::move(r), h, c});
     }
     /// The node at `link`, this map's own (copied first when another map shares it), to be
-    /// changed. Every change to a node goes through this, which forgets what the node knew
-    /// of itself.
+    /// changed. Every change to a node goes through this.
     static Node* own(Ptr& link) {
         if (link.use_count() > 1) link = make_rc<Node>(*link);
-        link->same = detail::UNKNOWN;
         return link.get();
     }
     /// `link`'s left child up in its place.
@@ -477,7 +457,7 @@ public:
 
     friend bool operator==(const Map& a, const Map& b) {
         if (a.size() != b.size()) return false;
-        if (a.root_ && ptr_eq(a.root_, b.root_)) return self_equal(a.root_.get());
+        if (ptr_eq(a.root_, b.root_)) return true;
         return equal_trees(a.root_.get(), b.root_.get());
     }
     friend auto operator<=>(const Map& a, const Map& b) {
@@ -528,25 +508,13 @@ private:
         Rc<Node> left, right;
         std::size_t len = 0;
         unsigned char height = 0;
-        /// Whether every element under this node equals itself, once asked (`self_equal`):
-        /// `detail::UNKNOWN`, `YES` or `NO`. Every change to a node goes through `own`, or
-        /// the in-place push onto a tail this array alone holds, and each forgets it.
-        mutable std::uint8_t same = detail::UNKNOWN;
         std::size_t size() const { return left ? len : elems.size(); }
     };
     using Ptr = Rc<Node>;
 
-    static bool self_equal(const Node* n) {
-        if (n->same == detail::UNKNOWN) {
-            bool r = n->left ? self_equal(n->left.get()) && self_equal(n->right.get())
-                             : std::all_of(n->elems.begin(), n->elems.end(), [](const Elem& e) { return e.v == e.v; });
-            n->same = r ? detail::YES : detail::NO;
-        }
-        return n->same == detail::YES;
-    }
     /// The two arrays' elements compared in order, as `std::equal` would, except that a
-    /// node both have at the same index is compared with itself, which `self_equal`
-    /// answers from the node once known. Equal lengths line the indices up, so a node is
+    /// node both have at the same index (the tail included) is equal to itself, since
+    /// every `^Eq` is reflexive, and passed over unread. Equal lengths line the indices up, so a node is
     /// opened only while the other side's next item is not the same node: the longer of
     /// two, or a node against a run; two runs compare the elements they overlap by. Each
     /// item is a node (`run` null) or the rest of a chunk.
@@ -577,7 +545,6 @@ private:
             Item& y = sb.back();
             if (x.n && y.n) {
                 if (x.n == y.n) {
-                    if (!self_equal(x.n)) return false;
                     sa.pop_back();
                     sb.pop_back();
                 } else if (x.len >= y.len) {
@@ -642,7 +609,6 @@ private:
                 p = chunk(std::move(v));
             }
         }
-        p->same = detail::UNKNOWN;  // about to change: a copy knows nothing yet, nor does a node changed in place
         return *p;
     }
     static std::size_t last_size(const Node* n) {
@@ -867,7 +833,6 @@ public:
             v.emplace_back(std::move(x));
             tail_ = chunk(std::move(v));
         } else {
-            tail_->same = detail::UNKNOWN;
             std::vector<Elem>& v = tail_->elems;
             if (v.size() == v.capacity()) v.reserve(std::max(have + 1, grown(have)));
             v.emplace_back(std::move(x));
@@ -957,6 +922,8 @@ public:
 
     friend bool operator==(const Array& a, const Array& b) {
         if (a.len_ != b.len_) return false;
+        // One array, the same tree and tail: equal, every `^Eq` being reflexive.
+        if (ptr_eq(a.tree_, b.tree_) && ptr_eq(a.tail_, b.tail_)) return true;
         // An array of a chunk or less is walked as it is.
         if (a.len_ <= CHUNK) return std::equal(a.begin(), a.end(), b.begin(), [](const T& x, const T& y) { return x == y; });
         return equal_arrays(a, b);

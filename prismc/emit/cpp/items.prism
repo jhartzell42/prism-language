@@ -203,7 +203,7 @@ fn CppSourceDoc lead, source:
 TypeParts: unbounded fn Cp, TyDef -> Parts
 fn TypeParts cp, t:
     let eq = t.eq
-    let ord = t.ord and not t.floaty
+    let ord = t.ord
     let gens = CppTemplateHead t.params
     let head = HeadOf t.name, t.params
     let doc = CppSourceDoc "`{t.prism}`:", t.doc
@@ -218,7 +218,7 @@ fn TypeParts cp, t:
             let cls = ChoiceClass doc, gens, t.name, cases, (Join names, ", "), members
             # the choice's comparisons over the variant, after its cases; the cases' own, where
             # declared (`Behind`), among the module's definitions
-            let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline std::strong_ordering operator<=>(const {head}& a, const {head}& b) \{ return prism_rtl::as_strong(a.cases() <=> b.cases()); \}" else: "")]], \|s| s != ""), "\n"
+            let cmp = Join (Filter [[(if eq: "{gens}inline bool operator==(const {head}& a, const {head}& b) \{ return a.cases() == b.cases(); \}" else: ""), (if ord: "{gens}inline std::strong_ordering operator<=>(const {head}& a, const {head}& b) \{ return a.cases() <=> b.cases(); \}" else: "")]], \|s| s != ""), "\n"
             let caseDefs = Filter (Each t.cases, \|c| CaseCmpDefs cp, gens, head, c, eq, ord), \|s| s != ""
             (((Join (Filter [[cls, cmp]], \|s| s != ""), "\n"), caseDefs))
         otherwise:
@@ -251,7 +251,7 @@ fn Comparisons gens, owner, self, names, eq, ord, behind:
     else:
         let decls = Join (Filter [[(if eq: "bool operator==(const {self}&) const;" else: ""), (if ord: "std::strong_ordering operator<=>(const {self}&) const;" else: "")]], \|s| s != ""), "\n"
         let eqBody = if (Len names) == 0: "true" else: Join (Each names, \|n| "{n} == o.{n}"), " && "
-        let ordBody = if (Len names) == 0: "std::strong_ordering::equal" else: "prism_rtl::as_strong(std::tie({Join names, ", "}) <=> std::tie({Join (Each names, \|n| "o.{n}"), ", "}))"
+        let ordBody = if (Len names) == 0: "std::strong_ordering::equal" else: "std::tie({Join names, ", "}) <=> std::tie({Join (Each names, \|n| "o.{n}"), ", "})"
         let defs = Join (Filter [[(if eq: "{gens}bool {owner}::operator==(const {self}& o) const \{ return {eqBody}; \}" else: ""), (if ord: "{gens}std::strong_ordering {owner}::operator<=>(const {self}& o) const \{ return {ordBody}; \}" else: "")]], \|s| s != ""), "\n"
         ((decls, defs))
 

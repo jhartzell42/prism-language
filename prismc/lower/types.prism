@@ -216,25 +216,6 @@ fn Reaches g, t, target, seen = match t:
 RcField: fn Lx, Text, Nat -> Bool
 fn RcField lx, ctor, i = Or (Or lx.layouts[ctor], [[]])[i], False
 
-# Whether a type holds a `Float` anywhere, which keeps it out of `Eq` and `Ord`.
-Floaty: unbounded fn G, Ty, [Text] -> Bool
-fn Floaty g, t, seen = match t:
-    TyCon "Float", [[]]: True
-    TyCon n, args:
-        if Fold args, False, \|f, a| f or Floaty g, a, seen: True
-        else: if HasText seen, n: False
-        else: match g.types[n]:
-            ? ti: match ti.body:
-                BRecord fs: Fold fs, False, \|f, ((ignore, ft))| f or Floaty g, ft, (Push seen, n)
-                BChoice cs: Fold cs, False, \|f, ((ignore, ats))| f or Fold ats, False, \|f2, at| f2 or Floaty g, at, (Push seen, n)
-                otherwise: False
-            nil: False
-    TySig ignore, i: Floaty g, i, seen
-    TyTuple ts: Fold ts, False, \|f, a| f or Floaty g, a, seen
-    TyArray e: Floaty g, e, seen
-    TyMap k, v: (Floaty g, k, seen) or Floaty g, v, seen
-    otherwise: False
-
 # Whether a Rust type can cross to a World (`ToPod`, `FromPod`).
 Podable: unbounded fn OutTy -> Bool
 fn Podable t = match t:
