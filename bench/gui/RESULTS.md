@@ -1,12 +1,12 @@
 # GUI benchmark results
 
-*Written by bench/run.sh on 2026-11-06 19:03 EST; regenerate, do not edit.*
+*Written by bench/run.sh on 2026-11-08 11:43 EST; regenerate, do not edit.*
 
 ## The machine and the versions
 
-- **Machine:** Intel(R) Xeon(R) Processor, 2 cores, 8 GB, Ubuntu 24.04.5 LTS, Linux 6.18.44-fc-v260; display :99, Xvfb under xvfb-run (no real display: the frame is handed to a server that shows nothing)
-- **Load average:** 0.98 0.95 1.17 at the start, 1.05 1.01 1.08 at the end
-- **prism-language:** d156742 (with uncommitted changes); prismc installed 2026-11-06 17:32
+- **Machine:** Intel(R) Xeon(R) Processor, 2 cores, 8 GB, Ubuntu 24.04.5 LTS, Linux 6.18.44-fc-v310; display :99, Xvfb under xvfb-run (no real display: the frame is handed to a server that shows nothing)
+- **Load average:** 1.00 1.03 1.30 at the start, 1.00 1.00 1.10 at the end
+- **prism-language:** 83183b7 (with uncommitted changes); prismc installed 2026-11-08 09:43
 - **C++:** Ubuntu clang version 18.1.3 (1ubuntu1), -O3; **Rust:** rustc 1.97.0 (2d8144b78 2026-07-07), cargo release (opt-level 3)
 - **GTK:** 3.24.41, cc -O2
 - **Runs:** 10 timed after 2 untimed, one process per operation
@@ -18,15 +18,15 @@ that shows its result handed to the window system (bench/README.md, "What is tim
 
 | Operation | prism-cpp | prism-rust | gtk |
 |---|---|---|---|
-| create1k | 76.5 (72.0–81.6) | 58.6 (52.5–60.6) | 328.5 (313.2–429.1) |
-| replace1k | 128.0 (117.7–142.5) | 94.8 (82.5–133.5) | 383.5 (376.9–441.4) |
-| update10th | 10.2 (8.9–11.1) | 7.6 (6.4–8.9) | 37.1 (36.6–37.4) |
-| select | 7.1 (5.9–8.0) | 5.3 (4.1–6.4) | 4.1 (4.0–4.4) |
-| swap | 6.8 (6.0–7.4) | 5.2 (4.2–6.0) | 83.1 (82.8–83.4) |
-| remove | 15.6 (14.4–16.9) | 10.2 (8.9–11.1) | 16.9 (16.8–20.4) |
-| create10k | 1200.5 (1139.1–1511.0) | 1065.0 (829.9–1196.7) | 26976.3 (26384.4–28112.1) |
-| append1k | 78.2 (74.1–84.8) | 58.9 (52.7–63.5) | 807.0 (791.6–823.5) |
-| clear | 48.1 (44.6–56.9) | 36.6 (33.0–39.8) | 65.4 (64.1–65.7) |
+| create1k | 47.0 (42.7–58.2) | 60.0 (46.7–93.3) | 395.5 (353.2–435.0) |
+| replace1k | 87.7 (75.0–93.3) | 75.1 (66.1–99.1) | 496.7 (439.2–636.6) |
+| update10th | 10.7 (9.2–14.6) | 10.9 (8.6–15.3) | 49.8 (45.6–79.0) |
+| select | 7.1 (5.2–8.9) | 6.7 (4.8–11.2) | 6.0 (5.2–6.5) |
+| swap | 9.1 (6.4–10.3) | 8.0 (5.1–12.6) | 108.5 (94.9–145.6) |
+| remove | 11.7 (11.0–15.4) | 11.7 (8.7–18.4) | 32.4 (26.5–40.8) |
+| create10k | 725.9 (673.7–1065.0) | 642.5 (537.7–786.3) | 39145.6 (36079.1–42977.0) |
+| append1k | 66.7 (53.7–89.7) | 50.9 (47.2–57.3) | 974.6 (836.7–1222.9) |
+| clear | 25.8 (23.4–36.4) | 29.9 (21.0–44.0) | 100.8 (87.0–122.4) |
 
 ## Peak memory, MB
 
@@ -34,12 +34,12 @@ Each process's maximum resident set size (`/usr/bin/time -v`), over its whole ru
 
 | Operation | prism-cpp | prism-rust | gtk |
 |---|---|---|---|
-| create1k | 69 | 94 | 100 |
-| replace1k | 107 | 137 | 100 |
-| update10th | 69 | 96 | 100 |
-| select | 69 | 95 | 100 |
-| swap | 69 | 96 | 103 |
-| remove | 69 | 95 | 100 |
-| create10k | 554 | 598 | 311 |
-| append1k | 117 | 147 | 123 |
-| clear | 69 | 94 | 100 |
+| create1k | 75 | 100 | 100 |
+| replace1k | 115 | 138 | 100 |
+| update10th | 81 | 102 | 100 |
+| select | 76 | 102 | 100 |
+| swap | 77 | 102 | 104 |
+| remove | 76 | 100 | 100 |
+| create10k | 615 | 622 | 311 |
+| append1k | 178 | 148 | 124 |
+| clear | 75 | 103 | 100 |
