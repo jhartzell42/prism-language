@@ -264,6 +264,7 @@ fn WidgetStmt wx, benv, menv, s, last:
                 (((WrParts parts), PName n)):
                     let b = BundleBn res
                     ((wx3, (Bind benv, (SNameKey n), b), (Bind menv, (SNameKey n), b)))
+                (((WrPlain ex, t), ignore)): (((BindPlainResult wx3, menv, p, ex, t), benv, menv))
                 otherwise: ((wx3, benv, menv))
         SBind p, init, (? step):
             let ((wx2, be2)) = HoldLine wx, benv, menv, p, init, step
@@ -349,6 +350,43 @@ fn ResultGetter wx, menv, n, ex, rds, t, benv2, menv2 = match menv.names[SNameKe
             &_.dynReads <= Insert &_.dynReads, rs, rds
         ((wx2, benv2, menv2))
     otherwise: ((wx, benv2, menv2))
+
+# A widget's plain result (`@ door` last in its block) bound by the line's pattern: the
+# value computed in the build's `let`s and moved into the field the prebinding named
+# (`BindPlain`), so the build reads the local and the methods read the field; a tuple
+# pattern binds each name to its part, `ignore` drops one. Each `let` is typed: a result
+# too deep to inline is `unreachable!()` behind its fault (`TooDeep`). A pattern the
+# prebinding gave no field (a nested tuple, a constructor) is refused.
+BindPlainResult: unbounded fn Wx, Env, Pattern, Ex, OutTy -> Wx
+fn BindPlainResult wx, menv, p, ex, t = match p.kind:
+    PName n: match menv.names[SNameKey n]:
+        ? (BnLocal rx, ignore, bt):
+            let f = PlaceStem rx
+            update wx:
+                &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind f), bt), ex)
+                &_.fields <= Push &_.fields, ((f, bt, "`{SNameKey n}`, a widget's result"))
+                &_.inits <= Push &_.inits, ((f, (XClone (XVar f))))
+        otherwise: RefusePlainResult wx, p
+    PIgnore: wx
+    PGroup q: BindPlainResult wx, menv, q, ex, t
+    PTuple ps:
+        let ((tmp, wx1)) = FreshName wx, "result"
+        let wx2 = update wx1:
+            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind tmp), t), ex)
+        let parts = match t:
+            OutTuple ts: ts
+            otherwise: [[]]
+        Fold (Range0 (Len ps)), wx2, \|w, i| match ps[i]:
+            ? q: match q.kind:
+                PName ignore: BindPlainResult w, menv, q, (XClone (XPart (XVar tmp), i)), (Or parts[i], OutUnit)
+                PIgnore: w
+                otherwise: RefusePlainResult w, q
+            nil: w
+    otherwise: RefusePlainResult wx, p
+
+RefusePlainResult: fn Wx, Pattern -> Wx
+fn RefusePlainResult wx, p = update wx:
+    &_.build <= Push &_.build, (RefusalDo "a widget's plain result bound by this pattern: a name, or a tuple of names, binds one")
 
 # A result as the binding a name of it has.
 BundleBn: fn Wres -> Bn

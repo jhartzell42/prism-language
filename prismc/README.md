@@ -1453,8 +1453,13 @@ Each is Claude's, for Jimmy to overturn.
   its own, which `runtime/rust/` (not this task's to change) would have to host.
 - **WG Widgets in static positions are inlined** (Semantics ch. 8: transparent, their
   places numbered in the caller's sequence): their parameters bound by layer (an event to
-  the caller's event, a dynamic to its reader, a plain value to a field). A node is
-  emitted per root widget only: the ones a test names and `@main`.
+  the caller's event, a dynamic to its reader, a plain value to a field). Their results
+  are bound the same way by the caller's `p <- @W ..`: an event or a dynamic as itself, a
+  bundle part by part (`WrParts`), and a plain value (a block ending on `@ door`) as a field
+  of the node computed in the build's `let`s (`BindPlainResult`, the field the name was
+  prebound to by `BindPlain`), so the build reads the local and the methods the field, as
+  for a plain parameter (`sem-ch08-widget-plain-result`); a tuple pattern binds each name
+  to its part. A node is emitted per root widget only: the ones a test names and `@main`.
 - **EV The event graph.** Within a node an event is a graph node (a source, a named
   `let !x`, a combinator) and a pipe of pure transforms that calls straight through, so
   `increment` calls `delta` calls the hold's write, as in Compiler ch. 3. A named event
@@ -1997,7 +2002,9 @@ ruling taken (Claude's).
   inlinings in `Wx.inlining`; widgets that call other widgets, and widget parameters
   applied, nest as deep as they are written: `sem-ch08-widget-depth`). At that depth the
   call gives a result of its type that is never read, and the node there faults at its
-  build (`Fault::too_deep`, `TooDeep`): a tree that deep stops the program loudly, and every
+  build (`Fault::too_deep`, `TooDeep`; for a plain result the fault is in the build's
+  `let`s, ahead of the value's typed `let`, `unreachable!()` in Rust and
+  `prism_rtl::unreachable_as<T>()` in C++, whose throw expression is `void`): a tree that deep stops the program loudly, and every
   shallower one runs (`sem-ch04-widget-recursion-result`; the window's `@Laid` is such a
   widget, so it lays out containers sixteen deep below the window). The rows nest a node
   type per level, past rustc's default limit for drop checking, so the emitted crate sets
@@ -2170,7 +2177,8 @@ a node, not a value; a lambda supplier is lowered); a supplier's answer `@ x` ou
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebuild`'s
 generation or a widget clause ending on a bundle (a widget block's bundle result is
-lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); an element applied as a plain value and a live element's `$` field read in a plain
+lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); a widget's plain
+result bound by a pattern other than a name, `ignore` or a tuple of those; an element applied as a plain value and a live element's `$` field read in a plain
 function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), an `@Machine` whose step is

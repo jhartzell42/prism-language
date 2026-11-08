@@ -247,7 +247,11 @@ fn CppLet cp, named, p, x = match p:
         XRef ignore: "const auto& {VarName named, n} = {CppExpr cp, x};"
         otherwise: "auto {VarName named, n} = {CppExpr cp, x};"
     PaMut n: "auto {VarName named, n} = {CppExpr cp, x};"
-    PaTyped (PaBind n), t: "{CppType cp, t} {VarName named, n} = {CppExpr cp, x};"
+    PaTyped (PaBind n), t: match x:
+        # a local whose value is never computed (a widget's result too deep to inline,
+        # behind its fault): a throw expression is `void`, so a call of the local's type
+        XUnreachable: "{CppType cp, t} {VarName named, n} = prism_rtl::unreachable_as<{CppType cp, t}>();"
+        otherwise: "{CppType cp, t} {VarName named, n} = {CppExpr cp, x};"
     PaTyped (PaMut n), t: "{CppType cp, t} {VarName named, n} = {CppExpr cp, x};"
     PaTuple ps:
         if Fold ps, True, \|f, q| f and IsName q: "auto [{Join (Each ps, \|q| PatName q), ", "}] = {CppExpr cp, x};"

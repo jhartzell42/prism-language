@@ -562,7 +562,14 @@ fn TooDeep wx, qk, e:
         LyEv:
             let ((id, wx2)) = AddGn wx1, "too_deep", t, GnNever, 0
             ((wx2, (WrEv (EvRefOf wx2, id))))
-        otherwise: if t == OutUnit: ((wx1, WrUnit)) else: ((wx1, (WrPlain XUnreachable, t)))
+        # a plain result is bound in the build's `let`s, before the build's statements: the
+        # fault goes there too, ahead of the value it stands for
+        otherwise:
+            if t == OutUnit: ((wx1, WrUnit))
+            else:
+                let wx2 = update wx1:
+                    &_.lets <= Push &_.lets, (DoReturn (XCtor "Err", [[(XCall "Fault::too_deep", [[XStr what]])]]))
+                ((wx2, (WrPlain XUnreachable, t)))
 
 ?WidgetDeclOf: fn G, Text -> ?WidgetDecl
 fn ?WidgetDeclOf g, qk = Fold g.defs, nil, \|?found, d| if d.qk == qk: ?DefWidget d, ?found else: ?found

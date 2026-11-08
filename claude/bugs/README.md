@@ -12,5 +12,3 @@ A bug leaves this directory when its fix lands.
   present each frame.
 - **`bench-cuis-latin1-and-software-paint.md`**: on Linux under Xvfb the Cuis table's
   times measure software painting, not Morphic.
-- **`widget-plain-result-unbound.md`**: a widget block ending on a plain value, bound with
-  `x <- @W ..`, leaves `x` unbound in the caller; the crate fails at rustc.

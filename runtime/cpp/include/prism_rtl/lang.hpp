@@ -45,6 +45,11 @@ private:
 /// `unreachable!()`, as an expression of any type.
 [[noreturn]] inline void unreachable(const char* what = "entered unreachable code") { panic(what); }
 
+/// `unreachable!()` where a local of type `T` is declared (`let n: T = unreachable!()`): a
+/// throw expression is `void`, so the declaration takes a call that has the type.
+template <class T>
+[[noreturn]] T unreachable_as(const char* what = "entered unreachable code") { panic(what); }
+
 /// Every type `C` is one of `Cs`: a choice's constructor takes one of its cases.
 template <class C, class... Cs>
 concept one_of = (std::is_same_v<std::remove_cvref_t<C>, Cs> || ...);

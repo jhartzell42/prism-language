@@ -3,8 +3,8 @@
 # `@Door` ends on its door's first value, `door <- @Door $called` binds it at the page,
 # and the page reads it in the build (a plain `let`, a hold's initial value, a plain
 # argument of another widget) and in a dynamic a click re-reads on a later tick (a label,
-# an event's mapped value). Written by Claude on the claude-widget-plain branch; subject
-# to change.
+# the hold's step); a tuple of names binds a plain tuple result part by part. Written by
+# Claude on the claude-widget-plain branch; subject to change.
 emit Ui.* | Pad.*
 test mod Tests
 
@@ -21,8 +21,13 @@ fn @Door $name:
 fn @Sign word:
     Ui.Label(text=$"sign {word}")
 
+@Ends: fn Nat -> @((Nat, Nat))
+fn @Ends n:
+    @ ((n, n + 1))
+
 @page: @$Text
 @page:
+    $called <- "front" then "back" on !never
     door <- @Door $called                                   # 0, 1
     let greeting = "hello {door}"
     Ui.Label(text=$"{greeting}")                            # 2
@@ -31,6 +36,8 @@ fn @Sign word:
     $n <- 0 then $n + 1 on !more
     Ui.Label(text=$"{door} knocked {$n}")                   # 5
     $said <- door then "{$said}, {door}" on !more
-    $called <- "front" then "back" on !never
     !never <- Ui.Button(label=$"never")                     # 6
+    ((low, high)) <- @Ends 2
+    ((ignore, top)) <- @Ends high
+    Ui.Label(text=$"{low} to {top} after {$n}")              # 7
     @ $said

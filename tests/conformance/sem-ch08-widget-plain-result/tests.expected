@@ -1,4 +1,4 @@
-# Derived by hand from Semantics ch. 4 and 8: `@Door`'s block ends on `@ door`, the plain part of its door's bundle, so `door <- @Door $called` binds the door's first value, asked at the build with the name its parameter holds there; the inlined widget's places take the page's next positions; the build reads the value (a plain `let`, a plain argument, a hold's initial value), and a click on "more" re-reads it in the label and in the hold's step.
+# Derived by hand from Semantics ch. 4 and 8: `@Door`'s block ends on `@ door`, the plain part of its door's bundle, so `door <- @Door $called` binds the door's first value, asked at the build with the name its parameter holds there; the inlined widget's places take the page's next positions; the build reads the value (a plain `let`, a plain argument, a hold's initial value), and a click on "more" re-reads it in the label and in the hold's step; `((low, high)) <- @Ends 2` binds 2 and 3, and `((ignore, top)) <- @Ends high` binds 4.
 test a_plain_result_is_bound_at_the_caller
 
 tick 0
@@ -10,6 +10,7 @@ tick 0
     4: Ui.Button(label="more")
     5: Ui.Label(text="door 1 knocked 0")
     6: Ui.Button(label="never")
+    7: Ui.Label(text="2 to 4 after 0")
   result: "door 1"
 
 tick 1
@@ -17,4 +18,5 @@ tick 1
     4: click
   changed:
     5: Ui.Label(text="door 1 knocked 1")
+    7: Ui.Label(text="2 to 4 after 1")
   result: "door 1, door 1"

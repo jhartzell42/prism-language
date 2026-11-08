@@ -140,8 +140,8 @@ Each has Claude's pick where it stands; his word overrules by editing.
   path copies were a part of the gap, not its body; what remains is to profile); prismc's emit time grows faster than
   its input (about 2,100 lines a second on itself here against 12,000 to 14,000 on chess
   and the table, cause unknown); gap OC and the string copies SC1 to SC7 (prismc/README.md).
-- **The bugs filed, not fixed:** `claude/bugs/widget-plain-result-unbound.md`,
-  `claude/bugs/bench-cuis-latin1-and-software-paint.md` (Cuis is out of the scripted runs).
+- **The bugs filed, not fixed:** `claude/bugs/bench-cuis-latin1-and-software-paint.md`
+  (Cuis is out of the scripted runs).
 - **Remote branches to delete** (merged into `claude-self-hosting`; Claude deletes none):
   `claude-arrays`, `claude-case`, `claude-chess-ui`, `claude-damage`, `claude-doc-design`,
   `claude-headers-rebased`, `claude-host-cheap`, `claude-incremental`, `claude-layout`,

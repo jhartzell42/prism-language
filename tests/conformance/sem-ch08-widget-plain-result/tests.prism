@@ -9,6 +9,7 @@ test a_plain_result_is_bound_at_the_caller, @page:
         => expect Ui.Label(text="hello door 1")
         => expect Ui.Label(text="sign door 1")
         => expect Ui.Label(text="door 1 knocked 0")
+        => expect Ui.Label(text="2 to 4 after 0")
         => returns "door 1"
     click at 4
         => expect Ui.Label(text="door 1 knocked 1")
