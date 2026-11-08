@@ -423,6 +423,56 @@ the same emitted program and runtime; only the link differs.
   (39.4 M / 65.4 M); no kept row woken 736 M / 1,125 M, 10.0 M per extra edit (760 M /
   1,256 M); all four within their bars.
 
+### jemalloc (Rust), 8 November 2026
+
+Every Rust program prismc emits declares jemalloc its global allocator (`tikv-jemallocator`
+0.7.0, jemalloc 5.3.1; runtime/rust/README.md, pick AL), where the system's `malloc`
+(glibc 2.39) served it. The same VM and night as the sections above (compare only within
+this section), load 0.25 at the start; the before is the Rust prismc at `e8b0aa2` (glibc),
+the after the branch's fixed point at `10211d6`: the same program but for the three lines
+of the allocator in its `main.rs`.
+
+- **The Rust prismc compiling itself to Rust** (`prismc compile prismc --target rust`,
+  `/usr/bin/time -v`, six runs each, interleaved):
+
+  | Allocator | wall, s (median; runs) | peak RSS |
+  |---|---|---|
+  | glibc (before) | 69.9 (64.7, 65.2, 67.7, 72.1, 73.7, 75.5) | 310.8 MB |
+  | jemalloc (after) | 51.6 (49.4, 50.1, 50.7, 52.5, 53.2, 54.0) | 314.6 MB |
+
+  26% less wall time, 4 MB more peak memory. The glibc runs fell from 75.5 s to 64.7 s
+  over the twelve (the jemalloc runs held between 49 and 54 s), so the gap is between 11
+  and 25 s run for run. Against the C++ prismc under jemalloc an hour earlier (75.7 s,
+  "jemalloc (C++)"), the Rust prismc under jemalloc is about a third faster, about where
+  the two stood under glibc.
+- **The GUI table by phase** (`bench/gui/prism/check.sh prism-rust`, CPU milliseconds, one
+  run each, the glibc driver emitted by the before prismc, every check passing on both):
+
+  | allocator | op | propagate | build | patch | diff | perform | paint | total |
+  |---|---|---|---|---|---|---|---|---|
+  | glibc | create1k | 3.4 | 42.1 | 6.3 | 18.1 | 10.8 | 3.8 | 84.7 |
+  | jemalloc | create1k | 2.1 | 34.6 | 3.0 | 11.2 | 4.5 | 2.5 | 58.1 |
+  | glibc | update10th | 1.3 | 3.0 | 2.1 | 0.7 | 0.7 | 0.7 | 8.6 |
+  | jemalloc | update10th | 1.1 | 3.6 | 1.8 | 0.9 | 0.7 | 0.7 | 8.9 |
+  | glibc | select | 0.9 | 1.7 | 1.6 | 0.3 | 0.2 | 0.6 | 5.4 |
+  | jemalloc | select | 0.6 | 1.3 | 1.2 | 0.2 | 0.2 | 0.4 | 4.0 |
+  | glibc | swap | 1.0 | 1.9 | 1.6 | 0.3 | 0.3 | 0.6 | 5.8 |
+  | jemalloc | swap | 0.7 | 1.7 | 1.4 | 0.2 | 0.2 | 0.6 | 4.9 |
+  | glibc | remove | 2.5 | 10.1 | 1.9 | 0.5 | 0.2 | 2.2 | 17.6 |
+  | jemalloc | remove | 1.4 | 6.9 | 1.1 | 0.3 | 0.1 | 1.9 | 11.9 |
+  | glibc | clear | 1.8 | 16.1 | 5.4 | 28.5 | 8.5 | 1.3 | 61.9 |
+  | jemalloc | clear | 1.0 | 7.8 | 0.9 | 7.3 | 2.6 | 0.9 | 20.7 |
+
+  The bulk operations fall the most (create1k 84.7 against 58.1 ms, remove 17.6 against
+  11.9, clear 61.9 against 20.7, its diff 28.5 against 7.3); update10th is equal within one
+  run's noise.
+- **The cost pairs** (`tests/cost/run.sh`, cachegrind) after: a `let` read by ten 2,393 M /
+  2,394 M; a builder over its last source 184.3 M / 185.2 M; a row per key changed 23.3 M /
+  57.1 M (0.87 M per extra edit); no kept row woken 1,228 M / 1,545 M (8.1 M per extra
+  edit); all four within their bars. No glibc run of the pairs at this commit was made;
+  the 6 November row above (2,907 M, 252.7 M, 32.1 M, 1,239 M for the one-run sides) is
+  an older program and runtime, so the difference is not the allocator's alone.
+
 ## On Jimmy's Mac with agents building beside it (5 November 2026, and the GUI runs after it)
 
 The sections from here on are the 5 November run at `aa500e5` and the GUI runs that

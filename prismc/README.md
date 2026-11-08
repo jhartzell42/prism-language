@@ -1341,10 +1341,12 @@ C++ doubts:
   (runtime/cpp/README.md, pick AL) took the first down: the self-compile is 75.7 s against
   105.1 s under glibc on the same night, the allocator 13.6% of the samples where it was
   34% ("jemalloc (C++)"). Whether the inline layout still costs against the handle under
-  jemalloc is not measured (the handle's binary was not rebuilt with it). What remains,
-  by that profile: the records of maps (`G`, `Lx`, `St`, `TProgram`), moved, copied and
-  destroyed, about 30% of the samples between their constructors and destructors, and the
-  folds' per-element jobs. *First ruling
+  jemalloc is not measured (the handle's binary was not rebuilt with it). The Rust prismc
+  took jemalloc too (runtime/rust/README.md, pick AL: 69.9 s to 51.6 s, "jemalloc
+  (Rust)"), so the C++ prismc still runs about a half longer than the Rust one (75.7 s
+  against 51.6 s), as it did under glibc. What remains, by the C++ profile: the records of
+  maps (`G`, `Lx`, `St`, `TProgram`), moved, copied and destroyed, about 30% of the samples
+  between their constructors and destructors, and the folds' per-element jobs. *First ruling
   (Claude's):* the layout mirrors Rust, as the brief asked, and the numbers are recorded
   for Jimmy to rule on; *if otherwise:* the handle comes back from `7dc334d^`, or `Rc`'s `==`
   learns to compare pointers first where the type has no `Float` (Rust's `Rc<T: Eq>`
