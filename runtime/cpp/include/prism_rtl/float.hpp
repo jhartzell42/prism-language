@@ -1,10 +1,12 @@
 // `Float`: an IEEE double whose comparisons are its bits (Type System round 6, ruling FB),
 // as the Rust runtime's `prism_rtl::Float` is (runtime/rust/src/float.rs).
 //
-// `==` is bit identity: two floats are equal exactly when their bits are, so a NaN equals
-// itself (the same NaN's bits) and `0.0` and `-0.0` differ. `<=>` is IEEE 754's totalOrder,
-// Rust's `f64::total_cmp`, a `std::strong_ordering` that is equal exactly when the bits
-// are; so a struct, a variant, a tuple or a container holding one compares by the defaulted
+// `==` is bit identity, except that every NaN is one value (ruling NO): two floats are
+// equal when their bits are or both are NaNs, so `0.0` and `-0.0` differ and a NaN equals
+// every NaN, whatever sign or payload the hardware or the compiler's folding gave it. `<=>`
+// is IEEE 754's totalOrder, Rust's `f64::total_cmp`, over the same bits with every NaN read
+// as the positive quiet NaN, a `std::strong_ordering` that is equal exactly when `==` is;
+// so a struct, a variant, a tuple or a container holding one compares by the defaulted
 // operators like any other. Arithmetic is IEEE's, `double`'s own operators.
 //
 // A type of its own rather than `double` with comparison functions beside it: a defaulted
@@ -27,9 +29,9 @@ namespace prism_rtl {
 struct Float {
     double v;
 
-    /// The bits, compared as one integer.
+    /// The bits, compared as one integer, every NaN read as one.
     friend constexpr bool operator==(Float a, Float b) noexcept {
-        return std::bit_cast<std::uint64_t>(a.v) == std::bit_cast<std::uint64_t>(b.v);
+        return bits(a.v) == bits(b.v);
     }
     /// IEEE 754's totalOrder, as Rust's `f64::total_cmp`: flip the magnitude bits of a
     /// negative number, then compare as signed integers.
@@ -44,8 +46,13 @@ struct Float {
     constexpr Float operator-() const noexcept { return Float{-v}; }
 
 private:
+    /// The bits a comparison reads: the float's own, or the positive quiet NaN's for every
+    /// NaN (the Rust runtime's `key`).
+    static constexpr std::uint64_t bits(double d) noexcept {
+        return d != d ? 0x7ff8000000000000ull : std::bit_cast<std::uint64_t>(d);
+    }
     static constexpr std::int64_t key(double d) noexcept {
-        std::int64_t x = std::bit_cast<std::int64_t>(d);
+        std::int64_t x = std::int64_t(bits(d));
         return x ^ std::int64_t(std::uint64_t(x >> 63) >> 1);
     }
 };

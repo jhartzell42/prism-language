@@ -6,8 +6,8 @@
 // `mut_at`, iteration, equality and order; a write that throws halfway; and the storage an
 // array holds, which is linear in its length, never a whole chunk for a few elements; and
 // the costs, by counting the elements copied and moved; and `==` on arrays that share
-// nodes, by counting the elements compared: a shared node answers at once, and a NaN (a
-// value equal to nothing, itself included) keeps an array unequal to itself.
+// nodes, by counting the elements compared: a shared node answers at once, and an array holding
+// a NaN equals itself and a copy (Type System round 6, rulings FB and NO).
 
 #include <cmath>
 #include <cstdint>

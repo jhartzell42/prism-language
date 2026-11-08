@@ -1618,10 +1618,13 @@ Each is Claude's, for Jimmy to overturn.
   impl. An `impl ^Show` is a function of its own (`show_sq`) and `impl Show` over it,
   and the type then crosses as `Pod::Shown` (claude/backend.md, "Printing"); an `impl ^Eq`
   is `PartialEq` over its `==`, and `Eq` (pick BF).
-- **BF `Float` compares by its bits** (Type System round 6, ruling FB). `Float` is
-  `prism_rtl::Float` in both runtimes, a double whose `==` is bit identity and whose
-  ordering is IEEE 754's totalOrder (Rust's `f64::total_cmp`), equal exactly when the bits
-  are; arithmetic is the double's own. So every `^Eq` is reflexive and every `^Ord` total,
+- **BF `Float` compares by its bits** (Type System round 6, rulings FB and NO). `Float` is
+  `prism_rtl::Float` in both runtimes, a double whose `==` is bit identity with every NaN
+  one value (equal when the bits are, or both are NaNs), and whose ordering is IEEE 754's
+  totalOrder (Rust's `f64::total_cmp`) over the same bits with a NaN read as the positive
+  quiet NaN, after +infinity; arithmetic is the double's own. So a NaN's sign and payload,
+  which the hardware or the compiler's folding choose (x86's fresh NaN is negative, a
+  folded one positive), never reach a comparison, and the two targets agree. So every `^Eq` is reflexive and every `^Ord` total,
   and no compiler code asks whether a type holds a `Float`: `derive ^Eq` is
   `PartialEq, Eq`, `derive ^Ord` `PartialOrd, Ord`, the bounds `^Eq` and `^Ord` are `Eq`
   and `Ord`, and a tag's struct and a row's enum that compare are `PartialEq, Eq`; in C++
@@ -1635,7 +1638,7 @@ Each is Claude's, for Jimmy to overturn.
   `PartialEq` and has no `Ord` in Rust and no `std::strong_ordering` in C++, the compiler
   tracks which types hold one to keep their derives partial, and a shared node must
   remember whether its values equal themselves before `==` may pass over it.
-  `tests/conformance/ts-ch02-float-bits` pins it.
+  `tests/conformance/ts-ch02-float-bits` and `ts-ch02-nan-one` pin it.
 - **FL `Fs.List`.** prismc's own `fs.prism` replaces the prelude's `Fs` to declare it,
   since a family's tags are declared in the family's module (Semantics ch. 6) and the CLI
   World answers it for the program that declares it (worlds/cli/rust/README.md). Every

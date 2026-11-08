@@ -4,8 +4,8 @@
 // `m` log `(n+m)`"): its result, and its cost, counted by the copies of a key type that
 // counts them: the smaller map's entries go into the larger, whichever side it is. And
 // `==` on maps that share nodes, by counting the values compared: a shared node answers at
-// once, and a NaN (a value equal to nothing, itself included) keeps a map unequal to
-// itself, shared or not.
+// once, and a map holding a NaN equals itself and a copy, shared or not (Type System round
+// 6, rulings FB and NO).
 
 #include <cmath>
 #include <cstdint>

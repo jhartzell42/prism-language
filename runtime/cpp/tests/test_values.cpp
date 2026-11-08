@@ -247,12 +247,16 @@ TEST(floats_print_as_rusts_display_and_read_back) {
     CHECK(Pod::floating(-0.0) < Pod::floating(0.0));
 }
 
-TEST(floats_compare_by_their_bits) {
-    // Type System round 6 FB: `==` is bit identity, `<=>` IEEE's totalOrder.
+TEST(floats_compare_by_their_bits_every_nan_one) {
+    // Type System round 6 FB: `==` is bit identity, `<=>` IEEE's totalOrder; NO: every NaN
+    // one value, after +infinity, whatever its sign or payload.
     Float nan{std::nan("")}, zero{0.0}, neg_zero{-0.0}, one{1.0};
     CHECK(nan == nan && !(nan != nan) && (nan <=> nan) == 0);
     CHECK(!(zero == neg_zero) && neg_zero < zero);
-    CHECK(Float{-std::nan("")} < Float{-std::numeric_limits<double>::infinity()});
+    Float other{std::bit_cast<double>(0xfff8000000000001ull)};
+    CHECK(Float{-std::nan("")} == nan && other == nan && (other <=> nan) == 0);
+    CHECK(Float{-std::numeric_limits<double>::infinity()} < Float{-std::nan("")});
+    CHECK(Float{std::numeric_limits<double>::infinity()} < other);
     CHECK(Float{std::numeric_limits<double>::infinity()} < nan);
     CHECK(one < Float{2.0} && Float{-2.0} < neg_zero);
     CHECK(zero + one == one && (zero - zero) == zero && zero * Float{-1.0} == neg_zero);
