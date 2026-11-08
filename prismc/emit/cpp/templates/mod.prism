@@ -41,10 +41,21 @@ SYS_LIBS :=
 # The runtime's regular expressions are on RE2 (runtime/cpp/README.md), which the library
 # needs at link time whenever a program reaches them.
 RE2_LIBS := $(shell pkg-config --libs re2)
+# The allocator is jemalloc, found with pkg-config (runtime/cpp/README.md, pick AL); a
+# sanitizer build (`-fsanitize` in OPT, prism's PRISM_SANITIZE) keeps the C library's,
+# which AddressSanitizer replaces with its own.
+ifeq ($(findstring -fsanitize,$(OPT)),)
+ifneq ($(shell pkg-config --exists jemalloc && echo found),found)
+$(error the C++ program links jemalloc, found with pkg-config, and pkg-config does not find it: apt install libjemalloc-dev pkg-config (Debian, Ubuntu), brew install jemalloc (macOS))
+endif
+ALLOC_LIBS := $(shell pkg-config --libs jemalloc)
+else
+ALLOC_LIBS :=
+endif
 {{canvas}}
 
 {{name}}: $(OBJS) build/cli.o $(LIB) $(WORLD_LIBS)
-	$(CXX) $(FLAGS) -o $@ $(OBJS) build/cli.o $(WORLD_LIBS) $(LIB) $(RE2_LIBS) $(SYS_LIBS)
+	$(CXX) $(FLAGS) -o $@ $(OBJS) build/cli.o $(WORLD_LIBS) $(LIB) $(RE2_LIBS) $(SYS_LIBS) $(ALLOC_LIBS)
 
 build/cli.o: $(WORLD)/src/cli.cpp $(WORLD)/include/prism_world_cli/cli.hpp
 	@mkdir -p build
