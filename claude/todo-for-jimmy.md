@@ -32,6 +32,12 @@ tree as it stands.*
   its transcript `tests.expected`, as `tests/conformance/counter/` is laid out; run it with
   `./prism test examples/NAME` on both targets, and add it to `tests/compiled/run.sh` to
   pin it.
+- **Handles against inline variants under jemalloc** (doubt CH1, prismc/README.md): under
+  glibc the C++ choice as a handle (one shared block per value, `7dc334d^`) compiled prismc
+  about 9% faster than the inline `std::variant`; jemalloc makes allocation cheaper, so the
+  gap may have moved. To measure: bootstrap the C++ prismc from `7dc334d^` with the
+  jemalloc link, then six interleaved self-compiles against the tip's
+  (claude/benchmarks-preliminary.md, "Choices as inline variants (C++)", for the method).
 
 ## Making the code yours
 
