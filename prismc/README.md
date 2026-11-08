@@ -1006,7 +1006,7 @@ qualified path, a label) or a literal's digits, never syntax.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: all 132 pass (the 126
+`tests/compiled/run.sh`, which runs every program every time: all 133 pass (the 127
 conformance programs, chess and chess's rules alone, the prelude's maps, and prismc's
 lexer, parser and regex checks), chess's board included.
 
@@ -1097,7 +1097,7 @@ refused by the binary with the Rust target's message.
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
-- **The C++ bootstrap:** prismc itself compiles to C++ (188,690 lines: 64 units and 280
+- **The C++ bootstrap:** prismc itself compiles to C++ (190,100 lines: 64 units and 280
   headers, picks MH and SF) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
   takes it to its fixed point and checks its Rust against the Rust prismc's
   (bootstrap/README.md). clang++ -O3 builds it in about 165 s wall (1,310 s CPU) with
@@ -1203,9 +1203,12 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   move, where Rust evaluated it first. For the same reason an argument that is a bare
   local is left a place when another argument's text mentions it (`CppArgList`): a call's,
   `cat`'s, a binary operator's, a record's reordered initializers (pick NC). `std::move` of a
-  scalar or a reference-typed local is harmless and not avoided. What it buys: a `G` or an
-  `Lx` (records of twenty maps) captured by a fold's lambda was copied twice where Rust
-  cloned once (claude/benchmarks-preliminary.md, "Moves where Rust moves (C++)").
+  scalar or a reference-typed local is harmless and not avoided. What it buys: the C++ does
+  what the Rust does, and a `G` or an `Lx` (records of twenty maps) captured by a fold's
+  lambda is copied once, as Rust clones it once, where it was copied twice; measured on
+  prismc's self-compile it buys no wall time, since a move of such a record costs about
+  what its copy did (claude/benchmarks-preliminary.md, "Moves where Rust moves (C++)";
+  doubt CH1).
 - **SF: translation units of up to 125,000 characters of definitions.** The modules'
   definitions, in the modules' order, are packed into `src/unit_N.cpp` as many to a unit
   as fit in 125,000 characters; a module's own definitions are cut into chunks of about
@@ -1312,12 +1315,22 @@ C++ doubts:
   takes about 9% more time and 6.5% more memory than with handles (claude/benchmarks-preliminary.md,
   "Choices as inline variants (C++)", the same machine and base commit, six runs each),
   the GUI table within its noise. prismc is trees of choices held in arrays, tuples and
-  records, where a value as large as its largest case, and a copy that counts every field
-  (the emitted C++ copies where Rust moves, pick NC), cost more than the handle's one
-  allocation saved. *First ruling (Claude's):* the layout mirrors Rust, as the brief asked,
-  and the numbers are recorded for Jimmy to rule on; *if otherwise:* the handle comes back
-  from `7dc334d^`, or a `Val` learns to compare pointers first where the type has no
-  `Float` (Rust's `Rc<T: Eq>` does), which this run did not try.
+  records, where a value as large as its largest case, and a copy that counts every field,
+  cost more than the handle's one allocation saved. Printing moves where Rust moves (pick
+  MV) did not recover it: measured the night after on the same machine, six interleaved
+  runs each, the self-compile is 104.4 s and 461.5 MB before against 106.0 s and 464.5 MB
+  after, within the before's spread ("Moves where Rust moves (C++)"; the machine ran a
+  tenth slower that night, so those numbers do not compare with the 93.4 s above). The
+  profile says why: the copies became moves (copy constructors 8.2% of the samples to 5.9%,
+  move constructors 5.0% to 6.5%, destructors 11% either way), and a move of a record of
+  twenty `Rc` fields costs about what its copy does while the moved-from local's destructor
+  still runs. What the profile leaves is not the printer's copies: allocation, a third of
+  the time either way, and the job machinery of unbounded folds, a `Fn`, a `Frame` and a
+  `once_job` allocated per element (`floaty`'s fold over a type's arguments). *First ruling
+  (Claude's):* the layout mirrors Rust, as the brief asked, and the numbers are recorded
+  for Jimmy to rule on; *if otherwise:* the handle comes back from `7dc334d^`, or a `Val`
+  learns to compare pointers first where the type has no `Float` (Rust's `Rc<T: Eq>`
+  does), which this run did not try; and the fold machinery is a question of its own.
 - **MH1** A module's qualified references are found in its source text: a line that is no
   comment and holds a module's name and a dot (`Zoo.`) names that module. A text literal
   holding one adds a module the file does not need (more includes, never fewer); the

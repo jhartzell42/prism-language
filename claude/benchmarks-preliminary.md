@@ -246,6 +246,89 @@ the Map change.
   per extra edit); all four within their bars. The 6 November row's per-key one-edit run was
   55.6 M and its drop-one 678 M; the Map change sits between the two runs too.
 
+### Moves where Rust moves (C++), 8 November 2026
+
+The C++ printer moves where Rust moves (prismc/README.md, pick MV): a bare read of a local
+the scope holds by value is `std::move(x)`, and a move closure takes its capture `let`s by
+moving init-captures (`[=, g_1 = std::move(g_1)]`) where it copied them a second time.
+Measured on the same cloud VM (Intel Xeon, 2 cores, 8 GB, Ubuntu 24.04, clang++ 18 `-O3`,
+no counters, nothing else running, load under 0.3 at the start): the before is the branch
+point's C++ prismc (`8bdd7d2`, the inline variants and the in-place Map, the "after" row of
+the table above), the after the branch's fixed point (`claude-cpp-moves`). The machine ran
+about 10% slower this night than the night before: the same before binary took 93.4 s then
+and 104.4 s now, so only pairs measured in one night compare, never a row of one table with
+a row of another.
+
+- **The C++ prismc compiling itself to C++** (`prismc compile prismc --target cpp`,
+  `/usr/bin/time -v`, six runs each, interleaved):
+
+  | Printer | wall, s (median; runs) | peak RSS | binary | emitted C++ | built with clang++ -O3, two jobs |
+  |---|---|---|---|---|---|
+  | copies (before) | 104.4 (96.8, 102.5, 103.6, 105.1, 106.0, 112.3) | 461.5 MB | 56.1 MB | 188,690 lines | 921 s |
+  | moves (after) | 106.0 (102.4, 103.8, 105.7, 106.2, 107.3, 107.8) | 464.5 MB | 56.7 MB | 190,100 lines | 1,064 s |
+
+  Within the before's spread: the moves bought no measurable wall time, and 3 MB more
+  memory (the emitted program is 1,410 lines longer: the init-capture lists). The self-compile
+  runs the new printer too, so a second pair holds the printer's work equal.
+- **The same two binaries compiling prismc to Rust** (`--target rust`: the Rust printer is
+  unchanged, so the pair measures only the generated code's speed), six runs each,
+  interleaved: before 103.3 s median (101.3, 102.2, 102.7, 103.8, 110.8, 111.6), 454.2 MB;
+  after 104.6 s (100.2, 103.5, 104.5, 104.6, 106.2, 107.1), 455.7 MB. The same reading.
+- **Where the time goes, by the profile** (`perf record -e cpu-clock -F 499` of the
+  self-compile, self time, the symbols grouped; the before has 45,785 samples, the after
+  51,968, the difference the machine's drift above):
+
+  | Group | before | after |
+  |---|---|---|
+  | malloc, free and their helpers | 33.8% | 34.0% |
+  | destructors (`G::~G` 2.9 / 2.7, `Lx`, `St`, `TProgram`, `Rw`) | 11.4% | 11.1% |
+  | copy constructors (`G` 3.80 / 2.12, `Lx` 1.39 / 0.83, `TProgram`, `St`, `Rw`) | 8.2% | 5.9% |
+  | move constructors (`G` 1.88 / 2.55, `Lx` 1.30 / 1.90, `St`, `TProgram`) | 5.0% | 6.5% |
+  | `std::variant` copy, move, visit | 3.5% | 3.7% |
+  | the prelude (`fold_job`, `Frame::cycle`, `run_to_end`, `get`) | 10.2% | 10.7% |
+  | the compiler's own functions (`floaty` 0.77 / 0.99, `has_text`, the checker's) | 8.4% | 9.6% |
+  | `prism_rtl` | 8.4% | 8.8% |
+
+  The copies did become moves: a `G` (the checker's environment, twenty maps and arrays)
+  was copied into every fold's lambda and again into its job, and the second copy is now
+  a move. But a move of a record of twenty `Rc` fields is twenty pointer copies and twenty
+  nulls, about what its copy's twenty count increments cost here, and the moved-from
+  local's destructor still runs its twenty checks: the copy constructors' 2.3 points went to
+  the move constructors' 1.5 and the destructors kept theirs. The printer's own new work
+  (the model walk for a block's captures, the sibling check on a call's arguments) is
+  under 0.2% of the samples. What remains is what the profile had before: allocation, a
+  third of the time, and the job machinery of unbounded folds, which allocate a `Fn`, a
+  `Frame` and a `once_job` per element (`floaty`'s fold over a type's arguments is the
+  example: `fold_job`, `run_to_end` and `Frame<bool, bool>::cycle` are each in the top
+  fifty). Neither is a matter of the printer's copies.
+- **The GUI table by phase** (`bench/gui/prism/check.sh prism-cpp`, CPU milliseconds, one
+  run each, the before emitted by the branch point's prismc, every check passing on both):
+
+  | printer | op | propagate | build | patch | diff | perform | paint | total |
+  |---|---|---|---|---|---|---|---|---|
+  | before | create1k | 2.9 | 57.4 | 5.4 | 22.3 | 5.4 | 1.9 | 96.8 |
+  | after | create1k | 1.9 | 48.2 | 4.3 | 15.7 | 4.1 | 1.9 | 76.9 |
+  | before | update10th | 2.1 | 4.6 | 3.4 | 1.1 | 0.6 | 0.3 | 12.6 |
+  | after | update10th | 1.7 | 3.5 | 2.5 | 0.8 | 0.5 | 0.3 | 9.7 |
+  | before | select | 1.3 | 2.7 | 2.9 | 0.5 | 0.3 | 0.2 | 8.3 |
+  | after | select | 1.1 | 1.9 | 2.2 | 0.4 | 0.2 | 0.2 | 6.3 |
+  | before | swap | 1.3 | 2.7 | 3.1 | 0.5 | 0.3 | 0.2 | 8.6 |
+  | after | swap | 1.1 | 2.0 | 2.2 | 0.4 | 0.2 | 0.2 | 6.5 |
+  | before | remove | 2.1 | 9.5 | 1.7 | 0.6 | 0.1 | 0.8 | 15.1 |
+  | after | remove | 1.7 | 9.9 | 1.7 | 0.5 | 0.2 | 1.1 | 15.5 |
+  | before | clear | 1.4 | 15.0 | 9.7 | 16.2 | 5.8 | 0.5 | 51.2 |
+  | after | clear | 1.5 | 13.7 | 10.9 | 17.0 | 5.6 | 0.4 | 51.2 |
+
+  The after reads a fifth faster on the four small operations and create1k, and equal on
+  remove and clear; with one run each of CPU nanoseconds, where the night before two runs
+  of one binary differed by 40%, that is not a measurement of the moves, only that the GUI
+  is no slower in a way one run shows.
+- **The cost pairs** (`tests/cost/run.sh --target cpp`, cachegrind) after: a `let` read by
+  ten 4,613 M / 4,653 M; a builder over its last source 267.3 M / 268.2 M; a row per key
+  changed 39.4 M / 65.4 M (0.67 M per extra edit); no kept row woken 760 M / 1,256 M (12.7 M
+  per extra edit); all four within their bars, and all within 1% of the 7 November run's
+  (the drop pairs 0.5% more; these programs have few owned locals to move).
+
 ## On Jimmy's Mac with agents building beside it (5 November 2026, and the GUI runs after it)
 
 The sections from here on are the 5 November run at `aa500e5` and the GUI runs that
