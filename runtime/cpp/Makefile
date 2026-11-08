@@ -36,6 +36,18 @@ RE2_CFLAGS := $(patsubst -I%,-isystem %,$(shell pkg-config --cflags re2 2>/dev/n
 RE2_LIBS := $(shell pkg-config --libs re2 2>/dev/null)
 RE2_READY = @pkg-config --exists re2 || { echo "runtime/cpp needs RE2 for regular expressions, found with pkg-config: brew install re2 (macOS), apt install libre2-dev pkg-config (Debian, Ubuntu)"; false; }
 
+# The allocator of every binary linked here is jemalloc (README.md, pick AL), found with
+# pkg-config, except under a sanitizer (SANITIZE set: AddressSanitizer replaces malloc
+# with its own, which jemalloc would take the allocations from). The library itself links
+# nothing; a binary's link stops and names the package when pkg-config does not find it.
+ifeq ($(SANITIZE),)
+ALLOC_LIBS = $(shell pkg-config --libs jemalloc 2>/dev/null)
+ALLOC_READY = @pkg-config --exists jemalloc || { echo "a C++ binary of Prism links jemalloc, found with pkg-config, and pkg-config does not find it: apt install libjemalloc-dev pkg-config (Debian, Ubuntu), brew install jemalloc (macOS)"; false; }
+else
+ALLOC_LIBS =
+ALLOC_READY = @true
+endif
+
 .PHONY: test check lib clean
 
 # The sanitizer run's compiler: g++ on Linux; on macOS Homebrew's clang (`brew install
@@ -76,7 +88,8 @@ $(BUILD)/libprism_rtl.a: $(OBJS)
 
 $(BUILD)/prism_rtl_tests: $(TEST_OBJS) $(BUILD)/libprism_rtl.a
 	$(RE2_READY)
-	$(CXX) $(FLAGS) -o $@ $(TEST_OBJS) $(BUILD)/libprism_rtl.a $(RE2_LIBS)
+	$(ALLOC_READY)
+	$(CXX) $(FLAGS) -o $@ $(TEST_OBJS) $(BUILD)/libprism_rtl.a $(RE2_LIBS) $(ALLOC_LIBS)
 
 $(BUILD)/src/regex.o: src/regex.cpp $(HEADERS)
 	$(RE2_READY)
@@ -89,7 +102,7 @@ $(BUILD)/src/%.o: src/%.cpp $(HEADERS)
 
 $(BUILD)/tests/%.o: tests/%.cpp $(HEADERS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(FLAGS) -DPRISM_TESTS_DIR='"$(TESTS_DIR)"' -c $< -o $@
+	$(CXX) $(FLAGS) -DPRISM_TESTS_DIR='"$(TESTS_DIR)"' -DPRISM_TESTS_JEMALLOC=$(if $(SANITIZE),0,1) -c $< -o $@
 
 clean:
 	rm -rf build

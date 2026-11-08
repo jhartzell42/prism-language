@@ -29,6 +29,11 @@ SYS_LIBS := $(shell pkg-config --libs cairo freetype2) -framework Cocoa -framewo
 else
 SYS_LIBS := $(shell pkg-config --libs cairo freetype2 x11 xext)
 endif
+# The C++ driver's allocator is jemalloc, as every emitted program's (runtime/cpp/README.md,
+# pick AL): without it the C++ driver's link stops and says so (the Rust driver's does not
+# need it).
+ALLOC_LIBS := $(shell pkg-config --libs jemalloc 2>/dev/null)
+ALLOC_READY = @pkg-config --exists jemalloc || { echo "the C++ driver links jemalloc, found with pkg-config, and pkg-config does not find it: apt install libjemalloc-dev pkg-config (Debian, Ubuntu), brew install jemalloc (macOS)"; false; }
 FLAGS := -std=gnu++20 $(OPT) -I$(RT)/include -I$(CLI)/include -I$(CANVAS)/include $(shell pkg-config --cflags cairo freetype2) -I$(SRC) -Wall -Wno-unused -Wno-unused-parameter -Wno-unused-label
 BUILD := $(OUT)/build-driver
 
@@ -76,7 +81,8 @@ $(BUILD)/driver.o: driver.cpp $(SRC)/programs.hpp
 # The objects are globbed when the link runs: on a clean build none exist when make reads
 # this file, before prismc has emitted their sources.
 $(OUT)/driver: emitted $(CANVASLIB) $(RTLIB)
-	$(CXX) $(FLAGS) -o $@ $(shell find $(BUILD) -name '*.o') $(CANVASLIB) $(RTLIB) $(SYS_LIBS)
+	$(ALLOC_READY)
+	$(CXX) $(FLAGS) -o $@ $(shell find $(BUILD) -name '*.o') $(CANVASLIB) $(RTLIB) $(SYS_LIBS) $(ALLOC_LIBS)
 
 # ---- Rust ---------------------------------------------------------------------------
 

@@ -9,8 +9,11 @@ structure and semantics follow the Rust library. The headers carry the Rust modu
 headers' explanations, adapted to C++. The emitter that targets C++ reads this file,
 then that contract.
 
-- **C++20, no dependencies.** It builds with g++ 13 and clang++ 18, with
-  `-Wall -Wextra -Werror`.
+- **C++20, two libraries.** It builds with g++ 13 and clang++ 18, with
+  `-Wall -Wextra -Werror`, over RE2 (regular expressions, "Regular expressions" below) and,
+  for every program and test binary it links into, jemalloc (pick AL, "The allocator"
+  below), both found with pkg-config: `apt install libre2-dev libjemalloc-dev pkg-config`
+  (Debian, Ubuntu), `brew install re2 jemalloc` (macOS).
 - **Header-mostly.** The templates (cells, hosting, the `^Pod` and `^Show` traits,
   collections) live in `include/prism_rtl/*.hpp`. Everything else lives in `src/*.cpp`
   and builds into `libprism_rtl.a`.
@@ -81,6 +84,34 @@ pays for it (prismc/README.md, pick CH; the Rust runtime's forms in claude/backe
   payload needed a box and every `*` of the model was a no-op: one allocation and one count
   per choice value, three for `Pair (Num 2), (Num 5)` where Rust has two, and a record of
   choices was that many pointers.
+
+## The allocator
+
+- **AL: jemalloc for every C++ program.** An emitted program's Makefile links
+  `$(pkg-config --libs jemalloc)` after everything else, as do this library's test binary,
+  both Worlds' test and smoke binaries and the GUI bench's driver: jemalloc's `malloc`,
+  `free` and `operator new`'s calls of them stand in for the C library's for the whole
+  process (on Linux by symbol interposition: `libjemalloc.so` is a `NEEDED` library before
+  libc). Nothing in the runtime or the emitted code names it; it is a link-time choice.
+  What it buys: a third of prismc's self-compile was glibc's `malloc` and `free` (their
+  arenas, `malloc_consolidate`, `unlink_chunk`), the allocation of choice payloads, map
+  and array nodes, texts, counts' blocks and job frames, which jemalloc's thread caches
+  and size classes serve faster (claude/benchmarks-preliminary.md, "jemalloc (C++)").
+- **No silent fallback.** Where pkg-config does not find jemalloc the build stops and
+  names the package: the emitted Makefile with `$(error ..)` when it is read, since its one
+  product links; this library's, the Worlds' and the GUI bench's Makefiles at the link of
+  a binary (`ALLOC_READY`, as `RE2_READY` is), since their libraries (`make lib`) link
+  nothing and need no allocator.
+- **Sanitizer builds keep the C library's.** AddressSanitizer replaces `malloc` with its
+  own to find what it finds, and jemalloc beside it would take the allocations away from
+  it: a build with `-fsanitize` in its flags links no jemalloc. The Makefiles here tell by
+  `SANITIZE` (the `make test` sanitizer runs set it), the emitted Makefile by
+  `-fsanitize` in `OPT` (prism's `PRISM_SANITIZE=1` puts it there). UBSan alone would run
+  with jemalloc; every sanitizer run here is ASan and UBSan together, so the rule is the
+  one flag.
+- **The alternative refused:** `LD_PRELOAD` of jemalloc at run time, which a program run
+  without it silently lacks, and which the bootstrap, the tests and the benchmarks would
+  each have to remember.
 
 ## Threads
 
