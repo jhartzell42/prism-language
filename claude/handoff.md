@@ -38,8 +38,8 @@ PR's description (#20) says the same at more length; the numbers are in
   - both targets allocate with jemalloc (pick AL): the C++ programs link it through
     `pkg-config`, sanitizer builds excepted; the emitted Rust declares
     `prism_rtl::Jemalloc` (tikv-jemallocator) as its global allocator.
-  - `Float`'s `==` is bit identity and its order the IEEE total order (Type System round
-    6 FB): `prism_rtl::Float` in both runtimes (pick BF), every `^Eq` a Rust `Eq`, every
+  - `Float`'s `==` is bit identity with every NaN one value, and its order the IEEE total
+    order over the same bits (Type System round 6 FB and NO): `prism_rtl::Float` in both runtimes (pick BF), every `^Eq` a Rust `Eq`, every
     `^Ord` an `Ord`, `Rc`'s `==` pointer first; prismc no longer looks for floats in types
     (`Floaty` gone), nor do the maps and arrays keep self-equality caches.
   - What it bought, the same night, six interleaved runs each: jemalloc took the C++
@@ -51,7 +51,7 @@ PR's description (#20) says the same at more length; the numbers are in
   Back, Forward, Reset and a settings dialog, on the window library
   `examples/chess/window`), the GUI table `bench/gui/prism` (js-framework-benchmark's
   operations), `bench/gui/gtk` (the same in C with GTK 3), the conformance corpus
-  `tests/conformance/` (128 programs), the checker's corpus (`tests/checker/`, 162
+  `tests/conformance/` (129 programs), the checker's corpus (`tests/checker/`, 162
   negative programs), the cost pairs (`tests/cost/`, four).
 - **Claude's prose** lives under `claude/` and in the READMEs: `architecture.md`,
   `backend.md` (the contract, and "Rust or C++ as the default back end"),
@@ -130,12 +130,14 @@ Each has Claude's pick where it stands; his word overrules by editing.
   moved, copied and destroyed, about 30% of samples, and the unbounded folds' job per
   element. The handle comes back from `7dc334d^`; `Rc`'s `==` could compare pointers
   first where the type has no `Float`, as Rust's `Rc<T: Eq>` does (untried).
-- **FB's two consequences** (prismc/README.md, pick BF): `Sign`, `Max` and `Min` follow the
-  total order, so `Sign -0.0` is -1.0 and a NaN's `Sign` is ±1 by its sign bit (Claude:
-  keep; else IEEE `copysign` for `Sign`); and whether every NaN is one value under `==`
-  and the order ("same bits or both NaN", arithmetic untouched), which makes the targets
-  and machines agree where a NaN's bits come from hardware or constant folding (Claude:
-  yes; else bits stay bits, as built).
+- **`Sign` under the total order** (prismc/README.md, pick BF): `Sign`, `Max` and `Min`
+  use `<`, so `Sign -0.0` is -1.0 and every NaN's `Sign` is 1 (Claude: keep; else IEEE
+  `copysign` for `Sign`).
+- **jemalloc's Rust build** (pick AL): `tikv-jemallocator` compiles jemalloc's C source on
+  every clean Rust build, chess's clean build 73 s → 128 s on this VM (part of it the VM's
+  drift; the crate not timed alone); rebuilds unaffected. Claude: link the system jemalloc
+  through `jemalloc-sys`'s system-library feature, as the C++ target does, with the same
+  hard error when it is missing.
 - **Performance left:** remove still re-stacks the row list, in C++ 7.5 ms of CPU against
   Rust's 5.0 here after the Map change (claude/bugs/window-relayout-every-change.md: the
   path copies were a part of the gap, not its body; what remains is to profile); prismc's emit time grows faster than
