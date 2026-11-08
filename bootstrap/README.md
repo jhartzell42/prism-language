@@ -61,9 +61,9 @@ The same bootstrap runs through C++ (`prismc compile --target cpp`, prismc/READM
   it in 168 s wall; the C++ prismc compiled itself in 83 s (185,385 lines of C++ in 63
   units, pick SF, byte-equal to what it was built from); its Rust (113,073 lines) was
   byte-equal to the Rust prismc's. On Linux (6 November 2026, a cloud VM with 2 cores and
-  7 GB, Ubuntu 24.04, clang++ 18 `-O3`, 2 jobs, nothing else running; 7 November, with the
-  choices as inline variants and the Map's in-place nodes, the seeds' fixed point): the
-  Rust prismc compiled `prismc/` to C++ in 61 s; make built it in 918 s wall; the C++
-  prismc compiled itself in 92 s (188,690 lines of C++ in 64 units, byte-equal); its Rust
-  (115,668 lines) was byte-equal to the Rust prismc's; and the Rust bootstrap on the same
-  machine compiled gen1 in 59 s, cargo built it in 125 s, and compiled gen2 in 57 s.
+  7 GB, Ubuntu 24.04, clang++ 18 `-O3`, 2 jobs, nothing else running; 8 November, the seeds' fixed point, jemalloc on both targets): the
+  Rust bootstrap from the 7 November prismc compiled gen2 in 70 s, cargo built it in 149 s,
+  and gen3 in 47 s (116,536 lines of Rust, gen2 and gen3 byte-equal); the Rust prismc
+  compiled `prismc/` to C++ in 47 s; make built it in 1,129 s wall; the C++ prismc compiled
+  itself in 82 s (190,255 lines of C++, byte-equal); its Rust was byte-equal to the Rust
+  prismc's.

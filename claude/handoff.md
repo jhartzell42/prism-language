@@ -25,20 +25,27 @@ PR's description (#20) says the same at more length; the numbers are in
   `@PerKey`, and `for k, $v <- $each:` over a map of dynamics binding the value under the
   key (ruling FV: the `for`'s key walk tells a row whose dynamic was replaced; no row is
   woken to ask, none is rebuilt).
-- **The C++ target's two 7 November changes,** both asked for by Jimmy: the C++ `Map`
-  changes its nodes in place when nothing else shares them, as the Rust `Map` does through
-  `Rc::make_mut` (runtime/cpp/README.md, "Arrays and maps: the costs"); and a choice is a `std::variant` held
-  by value with each recursive payload a `prism_rtl::Val<T>`, as the Rust enum is, where it
-  was a handle on a shared variant (prismc/README.md, pick CH). Both green on every suite,
-  both measured (claude/benchmarks-preliminary.md, the Linux section's last two
-  subsections): the Map makes the GUI's builds and removals cheaper (builder-one-write
-  489 M → 267 M instructions; remove 8.8 → 7.2–7.8 ms) and the drop pair 12% dearer; the
-  variants cost prismc's self-compile about 9% time and 6.5% memory (doubt CH1).
+- **The C++ target as Rust's twin, and jemalloc on both** (7 and 8 November, each asked
+  for by Jimmy, each green on every suite and measured in claude/benchmarks-preliminary.md's
+  Linux section):
+  - the C++ `Map` changes its nodes in place when nothing else shares them, as the Rust
+    `Map` does through `Rc::make_mut` (runtime/cpp/README.md, "Arrays and maps: the costs");
+  - a choice is a `std::variant` held by value, as the Rust enum is, and a recursive payload
+    a `prism_rtl::Rc<const T>`, whose `==` and `<=>` go by the value where `T` has them, as
+    Rust's `Rc<T>` does; identity is `ptr_eq` (prismc/README.md, picks CH and PT);
+  - the C++ printer moves where Rust moves: a bare read of an owned local, and a move
+    closure's capture `let`s as moving init-captures (pick MV);
+  - both targets allocate with jemalloc (pick AL): the C++ programs link it through
+    `pkg-config`, sanitizer builds excepted; the emitted Rust declares
+    `prism_rtl::Jemalloc` (tikv-jemallocator) as its global allocator.
+  - What it bought, the same night, six interleaved runs each: the C++ prismc compiling
+    itself 105.1 s → 75.7 s with jemalloc, the Rust prismc 69.9 s → 51.6 s; the moves and
+    the one `Rc` flat. C++ still takes about 1.5 times Rust's time (doubt CH1).
 - **Programs:** `examples/chess` (the rules, the board, and a window with a move list,
   Back, Forward, Reset and a settings dialog, on the window library
   `examples/chess/window`), the GUI table `bench/gui/prism` (js-framework-benchmark's
   operations), `bench/gui/gtk` (the same in C with GTK 3), the conformance corpus
-  `tests/conformance/` (126 programs), the checker's corpus (`tests/checker/`, 162
+  `tests/conformance/` (127 programs), the checker's corpus (`tests/checker/`, 162
   negative programs), the cost pairs (`tests/cost/`, four).
 - **Claude's prose** lives under `claude/` and in the READMEs: `architecture.md`,
   `backend.md` (the contract, and "Rust or C++ as the default back end"),
@@ -64,13 +71,14 @@ tests/checker/run.sh; tests/driver/run.sh; tests/cost/run.sh [--target cpp]
 bench/building/run.sh; bench/running/run.sh; bench/gui/prism/check.sh   # with nothing else running
 ```
 
-- **Linux needs** `clang++` or `g++` (C++20), `make`, `pkg-config`, `libre2-dev`,
+- **Linux needs** `clang++` or `g++` (C++20), `make`, `pkg-config`, `libre2-dev`, `libjemalloc-dev`,
   `libcairo2-dev`, `libfreetype-dev`, `libx11-dev`, `libxext-dev`, `libxtst-dev`, `xvfb`,
   GNU `time`, and for the sanitizer builds under clang `libclang-rt-*-dev`; the cost tests
   count instructions with `perf` where the machine has counters and with valgrind's
   cachegrind where it has none (`bench/lib.sh`); the GUI benchmark and `damage_smoke` run
   under `xvfb-run -a` when there is no `DISPLAY`. **macOS needs** Homebrew's `cairo
-  freetype pkg-config gtk+3 llvm re2` (llvm for the sanitizer run).
+  freetype jemalloc pkg-config gtk+3 llvm re2` (llvm for the sanitizer run; jemalloc not
+  yet tried on the Mac).
 - **Time on two cores** (the cloud VM, 6 November): the Rust bootstrap 6.5 min from the
   seed, the C++ bootstrap 18 min, the C++ compiled suite 23 min, the Rust one 5 min, the
   building benchmark 40 min, the GUI benchmark 13 min.
@@ -110,10 +118,12 @@ Each has Claude's pick where it stands; his word overrules by editing.
   lowered yet".
 - **The modules pass's doubts** (claude/modules-style-pass.md) and the Test World in Prism
   (claude/test-world-in-prism.md: Claude recommends (a), programs as values).
-- **CH1, the inline variants' cost** (prismc/README.md, C++ doubts): mirroring Rust's
-  layout costs prismc's self-compile about 9% time and 6.5% memory against the handles;
-  the handle comes back from `7dc334d^` if Jimmy would rather have the speed, or `Val`'s
-  `==` could compare pointers first where the type has no `Float` (untried).
+- **CH1, the C++ self-compile's cost** (prismc/README.md, C++ doubts): under glibc the
+  inline variants cost about 9% against the handles (not measured under jemalloc); what
+  the jemalloc profile shows left is the records of maps (`G`, `Lx`, `St`, `TProgram`)
+  moved, copied and destroyed, about 30% of samples, and the unbounded folds' job per
+  element. The handle comes back from `7dc334d^`; `Rc`'s `==` could compare pointers
+  first where the type has no `Float`, as Rust's `Rc<T: Eq>` does (untried).
 - **Performance left:** remove still re-stacks the row list, in C++ 7.5 ms of CPU against
   Rust's 5.0 here after the Map change (claude/bugs/window-relayout-every-change.md: the
   path copies were a part of the gap, not its body; what remains is to profile); prismc's emit time grows faster than
@@ -128,7 +138,8 @@ Each has Claude's pick where it stands; his word overrules by editing.
   `claude-regex-compiler`, `claude-style`, `claude-text`, `claude-window-cache`, and this
   session's `claude-for-inner`, `claude-linux-bench`, `claude-owed-prose`,
   `claude-backend-rec`, `claude-bench-prelim`, `claude-readme-pass`,
-  `claude-cpp-inline-choices`. Not merged by
+  `claude-cpp-inline-choices`, `claude-cpp-moves`, `claude-cpp-jemalloc-wip`,
+  `claude-cpp-rc-jemalloc`. Not merged by
   ancestry, from October (superseded by their rebased twins or by `main`, for Jimmy to
   judge): `claude`, `claude-reflex`, `claude-lowering`, `claude-cpp-headers-wip`,
   `claude-move-language`, `claude-q-g7-torn-down-request`, `claude-rt-1` to `claude-rt-6`.
