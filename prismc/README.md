@@ -1006,7 +1006,7 @@ qualified path, a label) or a literal's digits, never syntax.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: all 133 pass (the 127
+`tests/compiled/run.sh`, which runs every program every time: all 134 pass (the 128
 conformance programs, chess and chess's rules alone, the prelude's maps, and prismc's
 lexer, parser and regex checks), chess's board included.
 

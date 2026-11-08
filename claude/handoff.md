@@ -38,14 +38,20 @@ PR's description (#20) says the same at more length; the numbers are in
   - both targets allocate with jemalloc (pick AL): the C++ programs link it through
     `pkg-config`, sanitizer builds excepted; the emitted Rust declares
     `prism_rtl::Jemalloc` (tikv-jemallocator) as its global allocator.
-  - What it bought, the same night, six interleaved runs each: the C++ prismc compiling
-    itself 105.1 s → 75.7 s with jemalloc, the Rust prismc 69.9 s → 51.6 s; the moves and
-    the one `Rc` flat. C++ still takes about 1.5 times Rust's time (doubt CH1).
+  - `Float`'s `==` is bit identity and its order the IEEE total order (Type System round
+    6 FB): `prism_rtl::Float` in both runtimes (pick BF), every `^Eq` a Rust `Eq`, every
+    `^Ord` an `Ord`, `Rc`'s `==` pointer first; prismc no longer looks for floats in types
+    (`Floaty` gone), nor do the maps and arrays keep self-equality caches.
+  - What it bought, the same night, six interleaved runs each: jemalloc took the C++
+    prismc's self-compile from 105.1 s to 75.7 s and the Rust prismc's from 69.9 s to
+    51.6 s; FB took them (on a later boot) from 76.9 s to 61.3 s and from 49.9 s to 39.6 s;
+    the moves and the one `Rc` were flat. C++ still takes about 1.5 times Rust's time
+    (doubt CH1).
 - **Programs:** `examples/chess` (the rules, the board, and a window with a move list,
   Back, Forward, Reset and a settings dialog, on the window library
   `examples/chess/window`), the GUI table `bench/gui/prism` (js-framework-benchmark's
   operations), `bench/gui/gtk` (the same in C with GTK 3), the conformance corpus
-  `tests/conformance/` (127 programs), the checker's corpus (`tests/checker/`, 162
+  `tests/conformance/` (128 programs), the checker's corpus (`tests/checker/`, 162
   negative programs), the cost pairs (`tests/cost/`, four).
 - **Claude's prose** lives under `claude/` and in the READMEs: `architecture.md`,
   `backend.md` (the contract, and "Rust or C++ as the default back end"),
@@ -124,6 +130,12 @@ Each has Claude's pick where it stands; his word overrules by editing.
   moved, copied and destroyed, about 30% of samples, and the unbounded folds' job per
   element. The handle comes back from `7dc334d^`; `Rc`'s `==` could compare pointers
   first where the type has no `Float`, as Rust's `Rc<T: Eq>` does (untried).
+- **FB's two consequences** (prismc/README.md, pick BF): `Sign`, `Max` and `Min` follow the
+  total order, so `Sign -0.0` is -1.0 and a NaN's `Sign` is ±1 by its sign bit (Claude:
+  keep; else IEEE `copysign` for `Sign`); and whether every NaN is one value under `==`
+  and the order ("same bits or both NaN", arithmetic untouched), which makes the targets
+  and machines agree where a NaN's bits come from hardware or constant folding (Claude:
+  yes; else bits stay bits, as built).
 - **Performance left:** remove still re-stacks the row list, in C++ 7.5 ms of CPU against
   Rust's 5.0 here after the Map change (claude/bugs/window-relayout-every-change.md: the
   path copies were a part of the gap, not its body; what remains is to profile); prismc's emit time grows faster than
@@ -139,7 +151,7 @@ Each has Claude's pick where it stands; his word overrules by editing.
   session's `claude-for-inner`, `claude-linux-bench`, `claude-owed-prose`,
   `claude-backend-rec`, `claude-bench-prelim`, `claude-readme-pass`,
   `claude-cpp-inline-choices`, `claude-cpp-moves`, `claude-cpp-jemalloc-wip`,
-  `claude-cpp-rc-jemalloc`. Not merged by
+  `claude-cpp-rc-jemalloc`, `claude-float-bits`. Not merged by
   ancestry, from October (superseded by their rebased twins or by `main`, for Jimmy to
   judge): `claude`, `claude-reflex`, `claude-lowering`, `claude-cpp-headers-wip`,
   `claude-move-language`, `claude-q-g7-torn-down-request`, `claude-rt-1` to `claude-rt-6`.
