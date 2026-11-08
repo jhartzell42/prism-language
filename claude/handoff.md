@@ -25,7 +25,7 @@ PR's description (#20) says the same at more length; the numbers are in
   `@PerKey`, and `for k, $v <- $each:` over a map of dynamics binding the value under the
   key (ruling FV: the `for`'s key walk tells a row whose dynamic was replaced; no row is
   woken to ask, none is rebuilt).
-- **The C++ target as Rust's twin, and jemalloc on both** (7 and 8 November, each asked
+- **The C++ target as Rust's twin, and jemalloc for C++** (7 and 8 November, each asked
   for by Jimmy, each green on every suite and measured in claude/benchmarks-preliminary.md's
   Linux section):
   - the C++ `Map` changes its nodes in place when nothing else shares them, as the Rust
@@ -35,18 +35,20 @@ PR's description (#20) says the same at more length; the numbers are in
     Rust's `Rc<T>` does; identity is `ptr_eq` (prismc/README.md, picks CH and PT);
   - the C++ printer moves where Rust moves: a bare read of an owned local, and a move
     closure's capture `let`s as moving init-captures (pick MV);
-  - both targets allocate with jemalloc (pick AL): the C++ programs link it through
-    `pkg-config`, sanitizer builds excepted; the emitted Rust declares
-    `prism_rtl::Jemalloc` (tikv-jemallocator) as its global allocator.
+  - the C++ programs allocate with jemalloc, linked through `pkg-config`, sanitizer builds
+    excepted (pick AL); the Rust programs use the system allocator (jemalloc through
+    `tikv-jemallocator` was measured and taken out: it builds jemalloc from source on every
+    clean build; claude/todo-for-jimmy.md).
   - `Float`'s `==` is bit identity with every NaN one value, and its order the IEEE total
     order over the same bits (Type System round 6 FB and NO): `prism_rtl::Float` in both runtimes (pick BF), every `^Eq` a Rust `Eq`, every
     `^Ord` an `Ord`, `Rc`'s `==` pointer first; prismc no longer looks for floats in types
     (`Floaty` gone), nor do the maps and arrays keep self-equality caches.
   - What it bought, the same night, six interleaved runs each: jemalloc took the C++
     prismc's self-compile from 105.1 s to 75.7 s and the Rust prismc's from 69.9 s to
-    51.6 s; FB took them (on a later boot) from 76.9 s to 61.3 s and from 49.9 s to 39.6 s;
-    the moves and the one `Rc` were flat. C++ still takes about 1.5 times Rust's time
-    (doubt CH1).
+    51.6 s (the Rust target has since gone back to the system allocator); FB took them,
+    both on jemalloc, on a later boot, from 76.9 s to 61.3 s and from 49.9 s to 39.6 s; the
+    moves and the one `Rc` were flat. Under the same allocator C++ takes about 1.5 times
+    Rust's time (doubt CH1); `bench/running/RESULTS.md` has the tip's numbers as built.
 - **Programs:** `examples/chess` (the rules, the board, and a window with a move list,
   Back, Forward, Reset and a settings dialog, on the window library
   `examples/chess/window`), the GUI table `bench/gui/prism` (js-framework-benchmark's
@@ -133,11 +135,6 @@ Each has Claude's pick where it stands; his word overrules by editing.
 - **`Sign` under the total order** (prismc/README.md, pick BF): `Sign`, `Max` and `Min`
   use `<`, so `Sign -0.0` is -1.0 and every NaN's `Sign` is 1 (Claude: keep; else IEEE
   `copysign` for `Sign`).
-- **jemalloc's Rust build** (pick AL): `tikv-jemallocator` compiles jemalloc's C source on
-  every clean Rust build, chess's clean build 73 s → 128 s on this VM (part of it the VM's
-  drift; the crate not timed alone); rebuilds unaffected. Claude: link the system jemalloc
-  through `jemalloc-sys`'s system-library feature, as the C++ target does, with the same
-  hard error when it is missing.
 - **Performance left:** remove still re-stacks the row list, in C++ 7.5 ms of CPU against
   Rust's 5.0 here after the Map change (claude/bugs/window-relayout-every-change.md: the
   path copies were a part of the gap, not its body; what remains is to profile); prismc's emit time grows faster than

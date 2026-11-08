@@ -38,6 +38,16 @@ tree as it stands.*
   gap may have moved. To measure: bootstrap the C++ prismc from `7dc334d^` with the
   jemalloc link, then six interleaved self-compiles against the tip's
   (claude/benchmarks-preliminary.md, "Choices as inline variants (C++)", for the method).
+- **TODO: jemalloc for the Rust target** (runtime/rust/README.md, pick AL). The Rust programs
+  run on the system allocator. jemalloc took the Rust prismc's self-compile from 69.9 s to
+  51.6 s on the Linux VM (claude/benchmarks-preliminary.md, "jemalloc (Rust)"), but
+  through `tikv-jemallocator`, which compiles jemalloc's C sources on every clean build
+  (chess's clean Rust build 73 s → 128 s there). Linking the system's jemalloc, as the C++
+  target does through `pkg-config`, would keep the speed without the build: the
+  `tikv-jemalloc-sys` crate's system-library mode (or a few lines of `#[link]` and a
+  `GlobalAlloc` over `mallocx`), the `#[global_allocator]` line back in the emitted
+  `main.rs` (prismc/emit/rust/templates/mod.prism; commit `10211d6` has it), and the same
+  hard error as C++ when jemalloc is missing.
 
 ## Making the code yours
 

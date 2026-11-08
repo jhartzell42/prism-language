@@ -12,6 +12,3 @@ path = "src/lib.rs"
 num-bigint = "0.5.1"
 num-traits = "0.2.19"
 regex-automata = "0.4.14"
-# The allocator of every Rust binary of Prism (README.md, pick AL): jemalloc, as the C++
-# target's.
-tikv-jemallocator = "0.7.0"
