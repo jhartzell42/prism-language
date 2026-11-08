@@ -525,11 +525,12 @@ fn CppIf cp, c, t, e:
 # value reads stays, since C++ fixes no order between a call's arguments.
 WithMoveCaptures: unbounded fn Cp, [Do], Ex -> Cp
 fn WithMoveCaptures cp, dos, e:
+    # each name once: a `let` that rebinds a name a `let` before it bound (`let name =
+    # name.clone()`) is the one the tail reads, under its rename (pick RN)
     let lets = Fold dos, [[]], \|acc, d| match d:
-        DoLet (PaBind n), ignore: Push acc, n
-        DoLet (PaMut n), ignore: Push acc, n
-        DoLet (PaTyped (PaBind n), ignore), ignore: Push acc, n
-        DoLet (PaTyped (PaMut n), ignore), ignore: Push acc, n
+        DoLet p, ignore: match ?LetName p:
+            ? n: if InList acc, n: acc else: Push acc, n
+            nil: acc
         otherwise: acc
     if (Len lets) == 0: update cp:
         &_.moveCaptures <= [[]]
