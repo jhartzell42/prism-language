@@ -1,0 +1,9 @@
+# Derived by hand from rulings FB and NO: `==` is bit identity except that every NaN equals every NaN; `^Ord` is the IEEE total order with every NaN one value after +infinity. `nan`, `-nan` and `nan + 1.0` are equal and order Equal; each NaN is Greater than infinity and than -infinity, and not less than 0.0. The map's two keys are distinct; a NaN of other bits finds the NaN key; `-0.0` is not `0.0`, so it is missing. An array of NaN equals one of -NaN; `0.0 == -0.0` is false.
+test nan_one
+
+tick 0
+  added:
+    0: Ui.Label(text="T T F E E")
+    1: Ui.Label(text="G G G F")
+    2: Ui.Label(text="2 nan nan missing")
+    3: Ui.Label(text="T F")
