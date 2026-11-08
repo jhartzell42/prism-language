@@ -1175,8 +1175,37 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   a member, a free function of `lang.hpp`, an assignment (`Cell::set`), an exchange
   (`Option::take`) or nothing (`RefCell::borrow`); `CppCall` maps the runtime's
   constructors (`Hold::new` is `{init, cx}`, `Port::new` inside `Rc::new` `make_new()`).
-- **NC: a node's constructor takes its fields in declared order**, the initializers the
-  model orders by moves being copies in C++.
+- **NC: a node's constructor takes its fields in declared order**, and a record's
+  designated initializers stand in declared order too, whatever order the model wrote them
+  in (Rust evaluates a struct literal as written; C++ a designated initializer list in
+  declaration order). An initializer evaluated out of the model's order may run after one
+  the model put before it, so a local that one initializer moves (pick MV) and another
+  reads is left a place in both: the printer checks the initializers' texts for the name,
+  as it does a call's arguments, whose order C++ leaves open.
+- **MV: a bare read of an owned local moves it.** The model is Rust-shaped: lowering writes
+  `XClone` wherever Rust needs a copy, so a bare `XVar` of a non-`Copy` local that the
+  scope holds by value is a move in Rust, and rustc's accepting the Rust output proves it
+  the local's last read. The printer keeps the locals the scope holds by value (`Cp.owned`:
+  a `let` of a value, `auto x = ..` or a typed value; a lambda's by-value parameter) and
+  prints such a read as `std::move(x)` in a value position: an argument, a `let`'s value, a
+  `Slot`'s `set`, a case's or record's field, a tuple's part; a returned local stays bare,
+  since `return x` moves on its own. A read as a place moves nothing: a receiver of a
+  method or a field, the operand of `&`, `*` and `.clone()`, the left side of an
+  assignment, a scrutinee, a `for`'s range. What the scope does not hold by value is never
+  moved: a function parameter (`const T&`), a pattern's binder (a reference into the
+  scrutinee, pick PB), a `let` of a reference, and every capture inside a lambda's body
+  (constant copies in a `[=]` lambda, references in a `[&]` one; `Captured` empties
+  `owned` there). A move closure takes the `let`s lowering puts before it (its captures,
+  cloned in) by moving init-captures, `[=, g_1 = std::move(g_1)]`, as Rust's `move` moves
+  them in, and only those that nothing outside a move closure's body reads in the block's
+  value (`WithMoveCaptures` walks the model, `ReadsOf`): C++ fixes no order among a call's
+  arguments, so a sibling argument's read of the same local would be undefined against the
+  move, where Rust evaluated it first. For the same reason an argument that is a bare
+  local is left a place when another argument's text mentions it (`CppArgList`): a call's,
+  `cat`'s, a binary operator's, a record's reordered initializers (pick NC). `std::move` of a
+  scalar or a reference-typed local is harmless and not avoided. What it buys: a `G` or an
+  `Lx` (records of twenty maps) captured by a fold's lambda was copied twice where Rust
+  cloned once (claude/benchmarks-preliminary.md, "Moves where Rust moves (C++)").
 - **SF: translation units of up to 125,000 characters of definitions.** The modules'
   definitions, in the modules' order, are packed into `src/unit_N.cpp` as many to a unit
   as fit in 125,000 characters; a module's own definitions are cut into chunks of about

@@ -82,7 +82,10 @@ derive ^Eq, ^Show
 
 # The printer's context: the module being printed, the modules, the program's types by
 # path and its constructors (a choice's cases by `Type::Case`), the names of every node's
-# members, and the fields of the node or job being printed.
+# members, and the fields of the node or job being printed. `owned` is every local the
+# scope holds by value (a `let` of a value, a lambda's by-value parameter), which a bare
+# read moves (pick MV of the README); `moveCaptures` the `let`s before a move closure that
+# only its body reads, which it takes by moving init-captures.
 type Cp = record:
     home: Text
     mods: [Text]
@@ -95,6 +98,8 @@ type Cp = record:
     fields: (Text ==> OutTy)
     renames: (Text ==> Text)
     pointers: (Text ==> Bool)
+    owned: (Text ==> Bool)
+    moveCaptures: [Text]
 
 # A name as a C++ identifier: a C++ keyword that is no Rust keyword (lowering escaped
 # those) takes a `_` after it, as the prelude's `or_` and `int_` do (`cppKeywords` is
@@ -161,7 +166,7 @@ fn Context model:
         let top = Or (SplitOn n, "::")[0], n
         if (InList names, top) or InList acc, top: acc else: Push acc, top
     let mods = Push (Append names, tops), "prelude"
-    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fns={}, fields={}, renames={}, pointers={})
+    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fns={}, fields={}, renames={}, pointers={}, owned={}, moveCaptures=[[]])
     let withElem = AddRow (AddAnswer base, model.answer), "", model.elem
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 

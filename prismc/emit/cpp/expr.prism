@@ -54,12 +54,37 @@ fn CppLoose x = match x:
 CppTight: unbounded fn Cp, Ex -> Text
 fn CppTight cp, x = if CppLoose x: "({CppExpr cp, x})" else: CppExpr cp, x
 
+# A receiver or an operand of `&`, `*`, `.clone()`: a place, which no read moves from.
+CppTightPlace: unbounded fn Cp, Ex -> Text
+fn CppTightPlace cp, x = if CppLoose x: "({CppPlace cp, x})" else: CppPlace cp, x
+
+# An expression as a place: a local by its name, where a value position would move it
+# (pick MV); anything else as the expression it is.
+CppPlace: unbounded fn Cp, Ex -> Text
+fn CppPlace cp, (XVar n) = VarName cp, n
+fn CppPlace cp, x = CppExpr cp, x
+
+# A local read as a value: moved when the scope holds it by value (`owned`, pick MV): the
+# model writes `XClone` wherever Rust copies, so a bare read is Rust's move, the last read.
+CppVar: fn Cp, Text -> Text
+fn CppVar cp, n = if Or cp.owned[n], False: "std::move({VarName cp, n})" else: VarName cp, n
+
+# Arguments evaluated in no fixed order (a call's, a record's initializers after pick NC's
+# reordering, `cat`'s): a local moved by one is left a place when another argument reads
+# it, since Rust evaluated that read first and C++ may not (pick MV).
 CppArgs: unbounded fn Cp, [Ex] -> Text
-fn CppArgs cp, xs = Join (Each xs, \|x| CppExpr cp, x), ", "
+fn CppArgs cp, xs = Join (CppArgList cp, xs), ", "
+
+CppArgList: unbounded fn Cp, [Ex] -> [Text]
+fn CppArgList cp, xs:
+    let texts = Each xs, \|x| CppExpr cp, x
+    Each (Range0 (Len xs)), \|i| match Or xs[i], XUnit:
+        XVar n: if Fold (Range0 (Len xs)), False, \|f, j| f or (j != i and CppMentions (Or texts[j], ""), (VarName cp, n)): VarName cp, n else: Or texts[i], ""
+        otherwise: Or texts[i], ""
 
 CppExpr: unbounded fn Cp, Ex -> Text
 fn CppExpr cp, x = match x:
-    XVar n: VarName cp, n
+    XVar n: CppVar cp, n
     XPath p: PathValue cp, p
     XSelf: "prism_rtl::share(this)"
     XCx: "cx"
@@ -82,25 +107,29 @@ fn CppExpr cp, x = match x:
     # `&x` and `x.clone()` are the value itself (a reference is `const T&`, a copy shares);
     # `*x` is the value behind a `Val` (a recursive payload), or the place itself when `x`
     # is no `Val` (Rust's `*` of a reference), which the runtime's `val` tells apart
-    XRef y: CppExpr cp, y
-    XRefMut y: CppExpr cp, y
-    XDeref y: "prism_rtl::val({CppExpr cp, y})"
-    XTarget y: CppExpr cp, y
-    XClone y: CppExpr cp, y
+    XRef y: CppPlace cp, y
+    XRefMut y: CppPlace cp, y
+    XDeref y: "prism_rtl::val({CppPlace cp, y})"
+    XTarget y: CppPlace cp, y
+    XClone y: CppPlace cp, y
     XWeak y: "prism_rtl::weaken({CppExpr cp, y})"
     XUpgrade y: "prism_rtl::upgrade({CppExpr cp, y})"
     XBreak l, y: "({CppBreak cp, l, y})"
     XBreakLoop: "(\{ break; \})"
-    XLater y: "[=](Cx& cx) -> Done \{ {CppExpr cp, y}; return \{\}; \}"
+    XLater y: "[=](Cx& cx) -> Done \{ {CppExpr (Captured cp), y}; return \{\}; \}"
     XFormatStr parts: CppFormat cp, parts, "prism_rtl::str"
     XIsCase y, [[]]: "false"
-    XIsCase y, cs: "({Join (Each cs, \|c| CaseTest cp, c, (CppTight cp, y)), " || "})"
+    XIsCase y, cs: "({Join (Each cs, \|c| CaseTest cp, c, (CppTightPlace cp, y)), " || "})"
     XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
     XUnreachable: "throw prism_rtl::Panic(\"entered unreachable code\")"
     XCall f, args: CppCall cp, f, args
-    XApply f, args: "{CppTight cp, f}({CppArgs cp, args})"
+    XApply f, args: "{CppTightPlace cp, f}({CppArgs cp, args})"
     XMethod r, m, args: CppMethod cp, r, m, args
-    XBin op, l, r: "{CppTight cp, l} {op} {CppTight cp, r}"
+    XBin op, l, r:
+        let ((lt, rt)) = match CppArgList cp, [[l, r]]:
+            [[a, b]]: ((a, b))
+            otherwise: (("", ""))
+        "{if CppLoose l: "({lt})" else: lt} {op} {if CppLoose r: "({rt})" else: rt}"
     XUnary op, y: "{op}{CppTight cp, y}"
     XCtor p, args: CppCtor cp, p, args
     XRecord p, fs: CppRecord cp, p, fs
@@ -115,7 +144,7 @@ fn CppExpr cp, x = match x:
     XBlock [[]], e: CppExpr cp, e
     XBlock dos, e:
         let ((st, cp2)) = CppStatementsCp cp, dos
-        StmtExpr st, (Unvexed (CppExpr cp2, e))
+        StmtExpr st, (Unvexed (CppExpr (WithMoveCaptures cp2, dos, e), e))
     XLabeled label, dos, e, t: CppLabeled cp, label, dos, e, t
     XClosure mv, ps, body: CppClosure cp, mv, ps, body
     XTry y: "TRY({CppExpr cp, y})"
@@ -147,11 +176,12 @@ fn TextPiece other = ""
 
 # `format!(..)` as `str(..)` (a message) or `cat(..)` (a `Text`): the pieces in order.
 CppFormat: unbounded fn Cp, [Ex], Text -> Text
-fn CppFormat cp, parts, how = "{how}({Join (Each parts, \|p| FormatArg cp, p), ", "})"
+fn CppFormat cp, parts, how = "{how}({Join (CppArgList cp, (Each parts, \|p| FormatArg p)), ", "})"
 
-FormatArg: unbounded fn Cp, Ex -> Text
-fn FormatArg cp, (XText t) = CppString t
-fn FormatArg cp, x = CppExpr cp, x
+# A format's literal run as a string literal, which `cat` and `str` take as it is.
+FormatArg: fn Ex -> Ex
+fn FormatArg (XText t) = XStr t
+fn FormatArg x = x
 
 CppCharEscape: fn Text -> Text
 fn CppCharEscape "'" = "\\'"
@@ -188,17 +218,17 @@ fn CppField cp, r, f:
     let name = if IsDigits f: "a{f}" else: FieldId f
     # by the receiver's type where it is known, else by whether some node has the member
     match ?Pointer cp, r:
-        ? b: "{CppTight cp, r}{if b: "->" else: "."}{name}"
+        ? b: "{CppTightPlace cp, r}{if b: "->" else: "."}{name}"
         nil: match cp.members[f]:
-            ? ignore: "{CppTight cp, r}->{name}"
+            ? ignore: "{CppTightPlace cp, r}->{name}"
             nil: "{AsValue cp, r}.{name}"
 
 # A receiver as a value: itself where the printer knows it is one, else through `val`, in
 # case it is a `Val`.
 AsValue: unbounded fn Cp, Ex -> Text
 fn AsValue cp, r = match ?Pointer cp, r:
-    ? False: CppExpr cp, r
-    otherwise: "prism_rtl::val({CppExpr cp, r})"
+    ? False: CppPlace cp, r
+    otherwise: "prism_rtl::val({CppPlace cp, r})"
 
 IsDigits: fn Text -> Bool
 fn IsDigits t = t != "" and FoldChars t, True, \|ok, c| ok and Contains "0123456789", c
@@ -234,8 +264,9 @@ fn CppRecord cp, p, fs:
     let kind = match ?TypeOf cp, p:
         ? info: info.kind
         nil: ""
-    if kind == "job": "{TypePath p}({CppArgs cp, ordered})"
-    else: "{TypePath p}\{{Join (Each (Range0 (Len names)), \|i| ".{FieldId (Or names[i], "")} = {CppExpr cp, (Or ordered[i], XUnit)}"), ", "}\}"
+    let values = CppArgList cp, ordered
+    if kind == "job": "{TypePath p}({Join values, ", "})"
+    else: "{TypePath p}\{{Join (Each (Range0 (Len names)), \|i| ".{FieldId (Or names[i], "")} = {Or values[i], ""}"), ", "}\}"
 
 # A call of a named function: the runtime's constructors by their C++ names (`Hold::new` is
 # `Hold(..)`), anything else by its path.
@@ -305,7 +336,7 @@ fn CallPath f:
 # its pointer, anything else as a member.
 CppMethod: unbounded fn Cp, Ex, Text, [Ex] -> Text
 fn CppMethod cp, r, m, args:
-    let recv = if r == XSelf: "this" else: CppTight cp, r
+    let recv = if r == XSelf: "this" else: CppTightPlace cp, r
     let a = CppArgs cp, args
     let n = Len args
     let sep = if n == 0: "" else: ", "
@@ -489,6 +520,95 @@ fn CppIf cp, c, t, e:
     let short = not (Contains "{tt}{et}", "\n") and (Len "{ct}{tt}{et}") < 70
     if short: "{ct} ? {tt} : {et}" else: CondExpr ct, tt, et
 
+# The context for a block's value: the block's `let`s that only the bodies of move closures
+# in the value read are the closures' to move (`CppClosure`); a `let` any other part of the
+# value reads stays, since C++ fixes no order between a call's arguments.
+WithMoveCaptures: unbounded fn Cp, [Do], Ex -> Cp
+fn WithMoveCaptures cp, dos, e:
+    let lets = Fold dos, [[]], \|acc, d| match d:
+        DoLet (PaBind n), ignore: Push acc, n
+        DoLet (PaMut n), ignore: Push acc, n
+        DoLet (PaTyped (PaBind n), ignore), ignore: Push acc, n
+        DoLet (PaTyped (PaMut n), ignore), ignore: Push acc, n
+        otherwise: acc
+    if (Len lets) == 0: update cp:
+        &_.moveCaptures <= [[]]
+    else:
+        let ((reads, hasMove)) = ReadsOf e, False, (([[]], False))
+        update cp:
+            &_.moveCaptures <= if hasMove: Filter lets, \|n| not (InList reads, n) else: [[]]
+
+# The locals an expression reads, with (`into`) or without those read inside the bodies
+# of its move closures, and whether it holds a move closure.
+ReadsOf: unbounded fn Ex, Bool, (([Text], Bool)) -> (([Text], Bool))
+fn ReadsOf x, into, acc:
+    let ((reads, hasMove)) = acc
+    match x:
+        XVar n: (((Push reads, n), hasMove))
+        XClosure True, ps, body: if into: ReadsOf body, into, ((reads, True)) else: ((reads, True))
+        XClosure False, ps, body: ReadsOf body, into, acc
+        XRef y: ReadsOf y, into, acc
+        XRefMut y: ReadsOf y, into, acc
+        XDeref y: ReadsOf y, into, acc
+        XTarget y: ReadsOf y, into, acc
+        XClone y: ReadsOf y, into, acc
+        XWeak y: ReadsOf y, into, acc
+        XUpgrade y: ReadsOf y, into, acc
+        XBreak ignore, y: ReadsOf y, into, acc
+        XLater y: ReadsOf y, into, acc
+        XFormatStr xs: ReadsEach xs, into, acc
+        XIsCase y, ignore: ReadsOf y, into, acc
+        XCall ignore, xs: ReadsEach xs, into, acc
+        XApply f, xs: ReadsEach (Append [[f]], xs), into, acc
+        XMethod r, ignore, xs: ReadsEach (Append [[r]], xs), into, acc
+        XBin ignore, l, r: ReadsEach [[l, r]], into, acc
+        XUnary ignore, y: ReadsOf y, into, acc
+        XCtor ignore, xs: ReadsEach xs, into, acc
+        XRecord ignore, fs: ReadsEach (Each fs, \|((ignore, v))| v), into, acc
+        XTuple xs: ReadsEach xs, into, acc
+        XVec xs: ReadsEach xs, into, acc
+        XFormat xs: ReadsEach xs, into, acc
+        XMatch s, arms, ignore, ignore: ReadsArms arms, into, (ReadsOf s, into, acc)
+        XChain ignore, s, arms, ignore: ReadsArms arms, into, (ReadsOf s, into, acc)
+        XIf c, t, e: ReadsEach [[c, t, e]], into, acc
+        XBlock dos, e: ReadsOf e, into, (ReadsDos dos, into, acc)
+        XLabeled ignore, dos, e, ignore: ReadsOf e, into, (ReadsDos dos, into, acc)
+        XTry y: ReadsOf y, into, acc
+        XField r, ignore: ReadsOf r, into, acc
+        XPart r, ignore: ReadsOf r, into, acc
+        XDecode ignore, y: ReadsOf y, into, acc
+        XCast y, ignore: ReadsOf y, into, acc
+        XTyped y, ignore: ReadsOf y, into, acc
+        otherwise: acc
+
+ReadsEach: unbounded fn [Ex], Bool, (([Text], Bool)) -> (([Text], Bool))
+fn ReadsEach xs, into, acc = Fold xs, acc, \|a, x| ReadsOf x, into, a
+
+ReadsArms: unbounded fn [XArm], Bool, (([Text], Bool)) -> (([Text], Bool))
+fn ReadsArms arms, into, acc = Fold arms, acc, \|a, arm| ReadsOf arm.body, into, (Fold arm.conds, a, \|a2, c| ReadsCond c, into, a2)
+
+ReadsCond: unbounded fn Cc, Bool, (([Text], Bool)) -> (([Text], Bool))
+fn ReadsCond (CcLet ignore, x), into, acc = ReadsOf x, into, acc
+fn ReadsCond (CcIf x), into, acc = ReadsOf x, into, acc
+
+ReadsDos: unbounded fn [Do], Bool, (([Text], Bool)) -> (([Text], Bool))
+fn ReadsDos dos, into, acc = Fold dos, acc, \|a, d| match d:
+    DoLet ignore, x: ReadsOf x, into, a
+    DoLetElse ignore, x, e: ReadsEach [[x, e]], into, a
+    DoAssign p, x: ReadsEach [[p, x]], into, a
+    DoWhile c, body: ReadsDos body, into, (ReadsOf c, into, a)
+    DoWhileLet ignore, x, body: ReadsDos body, into, (ReadsOf x, into, a)
+    DoFor ignore, x, body: ReadsDos body, into, (ReadsOf x, into, a)
+    DoExpr x: ReadsOf x, into, a
+    DoIf c, t, e: ReadsDos e, into, (ReadsDos t, into, (ReadsOf c, into, a))
+    DoIfLet ignore, x, t, e: ReadsDos e, into, (ReadsDos t, into, (ReadsOf x, into, a))
+    DoMatch x, cases: Fold cases, (ReadsOf x, into, a), \|a2, ((ignore, body))| ReadsDos body, into, a2
+    DoReturn x: ReadsOf x, into, a
+    DoBlock body: ReadsDos body, into, a
+    DoScope body: ReadsDos body, into, a
+    DoLine body: ReadsDos body, into, a
+    DoNote ignore: a
+
 IsCtor: fn Ex, Text -> Bool
 fn IsCtor (XCtor p, ignore), c = p == c
 fn IsCtor x, c = False
@@ -510,14 +630,23 @@ fn OkBranch cp, x, y = match x:
         StmtExpr st, "Expected<std::decay_t<decltype({CppExpr cp2, v})>, std::decay_t<decltype({CppExpr cp2, y})>>({CppExpr cp2, v})"
     otherwise: CppExpr cp, x
 
-# A closure: a lambda capturing by value (`move`) or by reference.
+# A closure: a lambda capturing by value (`move`) or by reference. A move closure takes
+# the `let`s before it that only its body reads by moving init-captures (`[=, g_1 =
+# std::move(g_1)]`, pick MV), as Rust's `move` moves them in; the rest of its captures are
+# copies. Inside, the captures are constants and move nothing (`Captured`); a by-value
+# parameter (`PaMut`) is the body's own.
 CppClosure: unbounded fn Cp, Bool, [Pa], Ex -> Text
 fn CppClosure cp0, mv, ps, body:
-    let cp = Unbind cp0, (Concat2 (Each ps, \|p| PatNames p))
+    let names = Concat2 (Each ps, \|p| PatNames p)
+    let cp = Fold ps, (Unbind (Captured cp0), names), \|c, p| match p:
+        PaMut n: Owning c, n
+        PaTyped (PaMut n), ignore: Owning c, n
+        otherwise: c
     let params = Join (Each (Range0 (Len ps)), \|i| ClosureParam cp, (Or ps[i], PaWild), i), ", "
     let binds = Concat (Each (Range0 (Len ps)), \|i| ClosureBinds cp, (Or ps[i], PaWild), i)
-    let capture = if mv: "=" else: "&"
     let b = CppExpr cp, body
+    let moved = if mv: Filter cp0.moveCaptures, \|n| (Or cp0.owned[n], False) and (not (InList names, n)) and CppMentions b, (VarName cp0, n) else: [[]]
+    let capture = Join (Append [[(if mv: "=" else: "&")]], (Each moved, \|n| "{VarName cp0, n} = std::move({VarName cp0, n})")), ", "
     let ((ret, value)) = match body:
         XRef ignore: ((" -> decltype(auto)", "({b})"))
         XRefMut ignore: ((" -> decltype(auto)", "({b})"))
