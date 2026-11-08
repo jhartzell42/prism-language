@@ -473,6 +473,77 @@ of the allocator in its `main.rs`.
   the 6 November row above (2,907 M, 252.7 M, 32.1 M, 1,239 M for the one-run sides) is
   an older program and runtime, so the difference is not the allocator's alone.
 
+### Float equality as bits, 8 November 2026
+
+`Float`'s `==` is bit identity and its ordering IEEE's totalOrder (prismc/README.md, pick
+BF; Type System round 6, ruling FB): `prism_rtl::Float` in both runtimes, `Floaty` and
+`TyDef.floaty` deleted, the maps' and arrays' self-equality caches gone, an `Rc`'s `==`
+comparing pointers first. A fresh boot of a VM of the same kind (Intel Xeon, 2 cores,
+8 GB, clang++ 18 `-O3`, rustc 1.97, jemalloc on both targets), nothing else running, load
+under 0.3 at the start of each pair; this is not the machine or the boot of the sections
+above, so compare only within this section. The before is each target's prismc at
+`3a5ff1f` (the branch point, the seeds' fixed point), the after the fixed points at
+`01935cb`.
+
+- **The Rust prismc compiling itself to Rust** (`prismc compile prismc --prelude prelude
+  --target rust`, `/usr/bin/time -v`, six runs each, interleaved; load 0.21 at the start):
+
+  | Float | wall, s (median; runs) | peak RSS |
+  |---|---|---|
+  | IEEE `==`, `Floaty` (before) | 49.9 (48.7, 48.9, 49.5, 50.3, 50.4, 51.3) | 314.1 MB |
+  | bits (after) | 39.6 (37.6, 38.9, 39.5, 39.7, 40.1, 40.2) | 314.3 MB |
+
+  21% less wall time, the same memory; every after run is faster than every before run.
+- **The C++ prismc compiling itself to C++** (`--target cpp`, the same way; load 0.20):
+
+  | Float | wall, s (median; runs) | peak RSS |
+  |---|---|---|
+  | IEEE `==`, `Floaty` (before) | 76.9 (73.4, 75.7, 76.5, 77.3, 80.2, 81.4) | 462.8 MB |
+  | bits (after) | 61.3 (60.8, 61.1, 61.3, 61.4, 61.4, 62.7) | 462.7 MB |
+
+  20% less wall time, the same memory, and a tighter spread.
+- **Where the time went** (the Rust pair, one run each under `perf record -e cpu-clock -F
+  499`, self time): 24,695 samples before, 18,764 after. `floaty` itself held 419 (1.7%);
+  the prelude's folds 1,681 against 897, `has_text` 207 against 67 and `Text`'s `==` 752
+  against 411, which is what `floaty` ran per declared type (a fold over its fields and
+  arguments, each step a frame and a job, and `HasText seen` over the types it had
+  passed); the allocator and copying shrank with them. The pointer-first `Rc` and the
+  maps' and arrays' shared nodes add nothing visible here: prismc compares few values that
+  share structure. So the gain is the deleted pass, not the new comparisons.
+- **The GUI table by phase** (`bench/gui/prism/check.sh prism-rust` and `prism-cpp`, CPU
+  milliseconds, one run each, the after only: the before prismc emits `f64` and partial
+  derives, which the after runtime refuses, so no before driver builds on this tree;
+  every check passing on both):
+
+  | impl | op | propagate | build | patch | diff | perform | paint | total |
+  |---|---|---|---|---|---|---|---|---|
+  | prism-rust | create1k | 3.0 | 39.2 | 4.1 | 17.2 | 7.6 | 3.0 | 74.3 |
+  | prism-rust | update10th | 1.2 | 3.1 | 1.7 | 1.0 | 0.8 | 0.6 | 8.5 |
+  | prism-rust | select | 0.6 | 1.4 | 1.1 | 0.2 | 0.2 | 0.5 | 4.0 |
+  | prism-rust | swap | 0.5 | 1.3 | 1.2 | 0.2 | 0.2 | 0.4 | 3.8 |
+  | prism-rust | remove | 1.5 | 4.5 | 1.2 | 0.3 | 0.1 | 1.7 | 9.4 |
+  | prism-rust | clear | 1.3 | 8.6 | 1.5 | 13.5 | 4.1 | 1.1 | 30.3 |
+  | prism-cpp | create1k | 2.4 | 45.4 | 4.5 | 16.9 | 3.8 | 1.8 | 75.7 |
+  | prism-cpp | update10th | 1.0 | 3.1 | 1.5 | 0.6 | 0.3 | 0.3 | 7.2 |
+  | prism-cpp | select | 0.5 | 1.7 | 1.2 | 0.2 | 0.1 | 0.3 | 4.5 |
+  | prism-cpp | swap | 0.6 | 1.8 | 1.2 | 0.2 | 0.1 | 0.2 | 4.6 |
+  | prism-cpp | remove | 1.1 | 4.6 | 1.0 | 0.3 | 0.1 | 1.1 | 8.4 |
+  | prism-cpp | clear | 0.9 | 6.5 | 0.8 | 8.4 | 2.2 | 0.4 | 20.1 |
+
+  The Rust run started at load 0.66, just after the profiles; the C++ run at 0.29. A
+  record of the after, not a pair; with no before on this boot, nothing here says whether
+  the table moved.
+- **The cost pairs** after (`tests/cost/run.sh`, cachegrind): Rust: a `let` read by ten
+  2,392 M / 2,394 M; a builder over its last source 182.1 M / 183.0 M; a row per key
+  changed 23.2 M / 56.9 M (0.87 M per extra edit); no kept row woken 1,228 M / 1,545 M
+  (8.1 M per extra edit). C++ under the default g++: 3,014 M / 3,054 M; 184.6 M / 185.4 M;
+  27.7 M / 53.5 M (0.66 M per extra edit); 735 M / 1,124 M (10.0 M per extra edit); under
+  clang++: 3,176 M / 3,178 M; 186.9 M / 187.6 M; 27.3 M / 48.4 M (0.54 M); 588 M / 1,004 M
+  (10.7 M). All within their bars. Instruction counts do not drift with the machine, so
+  they compare with "jemalloc (C++)" and "jemalloc (Rust)" above (the g++ run matches that
+  C++ row, so it was g++'s): each within 2.5% of its value there, the builder 1 to 2.5%
+  lower.
+
 ## On Jimmy's Mac with agents building beside it (5 November 2026, and the GUI runs after it)
 
 The sections from here on are the 5 November run at `aa500e5` and the GUI runs that

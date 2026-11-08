@@ -1352,8 +1352,10 @@ C++ doubts:
   (Claude's):* the layout mirrors Rust, as the brief asked, and the numbers are recorded
   for Jimmy to rule on; *if otherwise:* the handle comes back from `7dc334d^`; and the fold
   machinery is a question of its own. `Rc`'s `==` compares pointers first for every type
-  (pick BF); its effect on the self-compile is in claude/benchmarks-preliminary.md, "Float
-  equality as bits".
+  (pick BF); across that change the C++ self-compile went from 76.9 s to 61.3 s on a later
+  boot, the Rust profile putting the gain in the per-type fold over fields and arguments
+  that no longer runs, not in the comparisons (claude/benchmarks-preliminary.md, "Float
+  equality as bits").
 - **MH1** A module's qualified references are found in its source text: a line that is no
   comment and holds a module's name and a dot (`Zoo.`) names that module. A text literal
   holding one adds a module the file does not need (more includes, never fewer); the
