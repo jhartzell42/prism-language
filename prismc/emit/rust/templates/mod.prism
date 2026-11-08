@@ -117,6 +117,10 @@ use prism_rtl::*;
 
 use crate::prelude::*;
 
+/// The program's allocator: jemalloc, as the C++ target's (runtime/rust/README.md, pick AL).
+#[global_allocator]
+static PRISM_ALLOCATOR: prism_rtl::Jemalloc = prism_rtl::Jemalloc;
+
 {{programs}}
 
 /// The Test World with every root a test names, and the compiled `check` blocks.

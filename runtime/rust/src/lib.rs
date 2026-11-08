@@ -28,6 +28,11 @@
 //! - [`world`]: the protocol ([`Program`], [`TickIn`], [`TickOut`], [`ReadyState`],
 //!   [`World`], [`drive`]), the Test World, the CLI World, and the scene's clickables.
 
+/// The allocator an emitted program declares its global allocator (README.md, pick AL):
+/// jemalloc, as the C++ target's, through `tikv-jemallocator`, named here so that the
+/// emitted crate needs no dependency of its own.
+pub use tikv_jemallocator::Jemalloc;
+
 pub mod cells;
 pub mod collections;
 pub mod cx;

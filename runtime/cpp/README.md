@@ -93,6 +93,7 @@ pays for it (prismc/README.md, pick CH; the Rust runtime's forms in claude/backe
   `free` and `operator new`'s calls of them stand in for the C library's for the whole
   process (on Linux by symbol interposition: `libjemalloc.so` is a `NEEDED` library before
   libc). Nothing in the runtime or the emitted code names it; it is a link-time choice.
+  The Rust target makes the same choice in its own way (runtime/rust/README.md, pick AL).
   What it buys: a third of prismc's self-compile was glibc's `malloc` and `free` (their
   arenas, `malloc_consolidate`, `unlink_chunk`), the allocation of choice payloads, map
   and array nodes, texts, counts' blocks and job frames, which jemalloc's thread caches

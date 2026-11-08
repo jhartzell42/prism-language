@@ -114,5 +114,20 @@ is the part that is not generated per block, written once and shared.
     `p·n·(k+1)` at worst (doubt QM); `replace` adds the length of the result and gives
     back the text itself, uncopied, when nothing matches.
 - **Its crates:** `regex-automata` 0.4 with its defaults, which bring `regex-syntax`,
-  `aho-corasick` and `memchr` (already in the lock file); `cargo fetch` gets them for an
-  offline build.
+  `aho-corasick` and `memchr` (already in the lock file); `tikv-jemallocator` 0.7, which
+  brings `tikv-jemalloc-sys` (jemalloc 5.3.1, built from its C sources by cargo with the
+  machine's C compiler and make); `cargo fetch` gets them for an offline build.
+- **AL: jemalloc for every emitted program.** The emitted `main.rs` declares
+  `#[global_allocator] static PRISM_ALLOCATOR: prism_rtl::Jemalloc`, the
+  `tikv_jemallocator::Jemalloc` this crate re-exports, so the emitted `Cargo.toml` names
+  no crate of its own for it; the GUI bench's driver, which includes the emitted
+  `main.rs`, gets it too. It is the C++ target's choice (runtime/cpp/README.md, pick AL),
+  for the same reason: the allocator was a third of the C++ prismc's self-compile. A binary
+  has one global allocator, so a program cannot choose another while it is the emitted
+  `main.rs` that declares it; a Rust program embedding the emitted crate's modules with
+  its own `main` chooses its own. The declaration is the program's, not this crate's: a
+  `#[global_allocator]` here would conflict with every binary that declares one, which
+  this crate's own storage tests do (`tests/storage`, a counting allocator over the
+  system's, whose counts are layout sizes and the same under any allocator); this
+  crate's and the Worlds' test binaries run on the system allocator. No Rust build here
+  runs under a sanitizer or Miri.
