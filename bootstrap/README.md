@@ -62,7 +62,7 @@ The same bootstrap runs through C++ (`prismc compile --target cpp`, prismc/READM
   units, pick SF, byte-equal to what it was built from); its Rust (113,073 lines) was
   byte-equal to the Rust prismc's. On Linux (6 November 2026, a cloud VM with 2 cores and
   7 GB, Ubuntu 24.04, clang++ 18 `-O3`, 2 jobs, nothing else running; 8 November, the seeds' fixed point after ruling FB, `Float`'s `==`
-  as bits): the Rust bootstrap compiled gen2 in 40 s, cargo built gen1 in 154 s (116,303
+  as bits): the Rust bootstrap compiled gen2 in 40 s, cargo built gen1 in 154 s (116,299
   lines of Rust, gen1 and gen2 byte-equal), and from the seed alone it reached the same
   fixed point (gen1 built in 137 s, gen2 compiled in 37 s); make built the C++ prismc in
   1,183 s wall; the C++ prismc compiled itself in 59 s (189,869 lines of C++, byte-equal);
