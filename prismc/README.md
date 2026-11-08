@@ -1097,7 +1097,7 @@ refused by the binary with the Rust target's message.
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
-- **The C++ bootstrap:** prismc itself compiles to C++ (190,100 lines: 64 units and 280
+- **The C++ bootstrap:** prismc itself compiles to C++ (190,255 lines: 64 units and 280
   headers, picks MH and SF) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
   takes it to its fixed point and checks its Rust against the Rust prismc's
   (bootstrap/README.md). clang++ -O3 builds it in about 165 s wall (1,310 s CPU) with

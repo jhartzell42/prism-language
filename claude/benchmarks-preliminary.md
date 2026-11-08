@@ -329,6 +329,26 @@ a row of another.
   per extra edit); all four within their bars, and all within 1% of the 7 November run's
   (the drop pairs 0.5% more; these programs have few owned locals to move).
 
+### One `Rc` (C++), 8 November 2026
+
+The C++ runtime's `Val<T>` folded into its `Rc<T>`, whose `==` and `<=>` are now its
+value's where the value has them (prismc/README.md, pick CH; runtime/cpp/README.md,
+"Sharing"): a recursive payload is an `Rc<const T>` and compares as the `Val` did, so
+nothing the program does changes. A sanity check, not a measurement of a cost: the same VM,
+the same night as "Moves where Rust moves (C++)" above, three interleaved self-compiles
+(`prismc compile prismc --target cpp`, `/usr/bin/time -v`), load 0.26 at the start; the
+before is that section's after (`c62e932`), the after `5f87339`.
+
+| Runtime | wall, s (median; runs) | peak RSS | emitted C++ |
+|---|---|---|---|
+| `Val` (before) | 106.6 (106.0, 106.6, 115.1) | 462.9 MB | 190,100 lines |
+| one `Rc` (after) | 108.9 (106.1, 108.9, 115.8) | 463.1 MB | 190,255 lines |
+
+Flat within the runs' spread, as expected: the same allocation, the same counts, the same
+comparisons through the pointer. The emitted program is 155 lines longer (`const ` in
+every payload's type where `Val<` was shorter, and the `*x` the printer now writes where
+it knows the type is an `Rc`).
+
 ## On Jimmy's Mac with agents building beside it (5 November 2026, and the GUI runs after it)
 
 The sections from here on are the 5 November run at `aa500e5` and the GUI runs that
