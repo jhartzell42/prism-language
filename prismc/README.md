@@ -1335,9 +1335,16 @@ C++ doubts:
   profile says why: the copies became moves (copy constructors 8.2% of the samples to 5.9%,
   move constructors 5.0% to 6.5%, destructors 11% either way), and a move of a record of
   twenty `Rc` fields costs about what its copy does while the moved-from local's destructor
-  still runs. What the profile leaves is not the printer's copies: allocation, a third of
+  still runs. What the profile left was not the printer's copies but allocation, a third of
   the time either way, and the job machinery of unbounded folds, a `Fn`, a `Frame` and a
-  `once_job` allocated per element (`floaty`'s fold over a type's arguments). *First ruling
+  `once_job` allocated per element (`floaty`'s fold over a type's arguments). jemalloc
+  (runtime/cpp/README.md, pick AL) took the first down: the self-compile is 75.7 s against
+  105.1 s under glibc on the same night, the allocator 13.6% of the samples where it was
+  34% ("jemalloc (C++)"). Whether the inline layout still costs against the handle under
+  jemalloc is not measured (the handle's binary was not rebuilt with it). What remains,
+  by that profile: the records of maps (`G`, `Lx`, `St`, `TProgram`), moved, copied and
+  destroyed, about 30% of the samples between their constructors and destructors, and the
+  folds' per-element jobs. *First ruling
   (Claude's):* the layout mirrors Rust, as the brief asked, and the numbers are recorded
   for Jimmy to rule on; *if otherwise:* the handle comes back from `7dc334d^`, or `Rc`'s `==`
   learns to compare pointers first where the type has no `Float` (Rust's `Rc<T: Eq>`

@@ -349,6 +349,80 @@ comparisons through the pointer. The emitted program is 155 lines longer (`const
 every payload's type where `Val<` was shorter, and the `*x` the printer now writes where
 it knows the type is an `Rc`).
 
+### jemalloc (C++), 8 November 2026
+
+Every C++ program, test and driver links jemalloc 5.3 (runtime/cpp/README.md, pick AL),
+where the C library's `malloc` (glibc 2.39) served them. The same VM, the same night as the
+two sections above (the drift note of "Moves where Rust moves (C++)" holds: compare only
+within this section), load 0.27 at the start; the before is "One `Rc` (C++)"'s after
+(`546e034`, glibc), the after the branch's fixed point at `e5b941a`. The two binaries are
+the same emitted program and runtime; only the link differs.
+
+- **The C++ prismc compiling itself to C++** (six runs each, interleaved):
+
+  | Allocator | wall, s (median; runs) | peak RSS | built with clang++ -O3, two jobs |
+  |---|---|---|---|
+  | glibc (before) | 105.1 (102.5, 103.9, 104.6, 105.5, 106.7, 107.1) | 464.4 MB | 1,224 s |
+  | jemalloc (after) | 75.7 (73.7, 74.7, 75.4, 76.0, 79.8, 81.1) | 465.3 MB | 1,197 s |
+
+  28% less wall time and the same peak memory. A rough `LD_PRELOAD` run of jemalloc under
+  load (105.9 s against 74.1 s, on the binary before the moves) said the same; these quiet
+  runs replace it.
+- **Where the time goes** (`perf record -e cpu-clock -F 499`, self time; the glibc profile
+  is the after of "Moves where Rust moves (C++)", the same runtime but for the one `Rc`):
+
+  | Group | glibc | jemalloc |
+  |---|---|---|
+  | the allocator (`malloc`, `free`, their helpers, `operator new`) | 34.0% | 13.6% |
+  | samples in the allocator's library (`libc.so.6` / `libjemalloc.so.2`) | | 14.6% |
+  | destructors | 11.1% | 13.0% |
+  | the prelude (folds, job frames) | 10.7% | 11.8% |
+  | the compiler's own functions | 9.6% | 12.5% |
+  | `prism_rtl` | 8.8% | 11.1% |
+  | move constructors | 6.5% | 9.1% |
+  | copy constructors | 5.9% | 7.9% |
+
+  The top of the jemalloc profile: `free` 8.0%, `operator new` 4.6%, `G::G(G&&)` 4.0%,
+  `memcmp` 3.6%, `G::~G` 3.5%, `Runtime::close` 3.3%, `G::G(const G&)` 2.9%,
+  `Lx::Lx(Lx&&)` 2.8%, `floaty` 1.4%, `St::~St` 1.3%, `Lx::~Lx` 1.3%,
+  `_Rb_tree_increment` 1.1%, `Lx::Lx(const Lx&)` 1.1%, `St::St(St&&)` 1.0%,
+  `TProgram::TProgram(TProgram&&)` 1.0%, `has_text` 1.0%, `Array<Text>`'s range insert
+  0.9%, `TProgram::~TProgram` 0.9%, `St::St(const St&)` 0.8%, `Array<Text>::Node::~Node`
+  0.8%, `TProgram::TProgram(const TProgram&)` 0.8%, `Rw::~Rw` 0.8%, `Array<Text>`'s
+  builder 0.7%, `Map<Text, bool>::own` 0.7%, `Map<Text, bool>::put` 0.7%. The allocator's
+  share fell from a third to a seventh, and the rest grew in proportion: the records of
+  maps (`G`, `Lx`, `St`, `TProgram`), moved, copied and destroyed, are now the largest
+  cost, and `Runtime::close` (3.3% in both, likely another function folded into its
+  address by the linker) stands where it stood.
+- **The GUI table by phase** (`bench/gui/prism/check.sh prism-cpp`, CPU milliseconds, one
+  run each; the same emitted objects linked with and without jemalloc, every check
+  passing on both):
+
+  | allocator | op | propagate | build | patch | diff | perform | paint | total |
+  |---|---|---|---|---|---|---|---|---|
+  | glibc | create1k | 2.0 | 48.5 | 4.9 | 17.3 | 5.3 | 2.0 | 81.0 |
+  | jemalloc | create1k | 2.0 | 43.0 | 4.8 | 23.1 | 3.2 | 2.0 | 78.9 |
+  | glibc | update10th | 2.0 | 4.1 | 3.7 | 1.1 | 0.6 | 0.3 | 12.5 |
+  | jemalloc | update10th | 1.6 | 5.3 | 2.6 | 1.0 | 0.5 | 0.4 | 12.0 |
+  | glibc | select | 1.2 | 2.3 | 2.6 | 0.5 | 0.2 | 0.2 | 7.5 |
+  | jemalloc | select | 0.7 | 2.9 | 1.6 | 0.3 | 0.1 | 0.3 | 6.5 |
+  | glibc | swap | 1.6 | 2.8 | 3.0 | 0.6 | 0.3 | 0.2 | 8.9 |
+  | jemalloc | swap | 0.9 | 3.1 | 1.8 | 0.4 | 0.2 | 0.2 | 7.1 |
+  | glibc | remove | 2.8 | 11.9 | 2.2 | 0.8 | 0.3 | 0.9 | 19.3 |
+  | jemalloc | remove | 1.9 | 7.8 | 1.7 | 0.5 | 0.1 | 1.3 | 13.6 |
+  | glibc | clear | 1.7 | 16.0 | 11.9 | 21.8 | 7.9 | 0.4 | 63.2 |
+  | jemalloc | clear | 1.4 | 15.6 | 1.5 | 17.3 | 4.2 | 0.5 | 41.7 |
+
+  jemalloc reads lower on every total, most on clear (63.2 against 41.7 ms: its patch,
+  which frees the thousand rows, 11.9 against 1.5) and remove; one run each, with the
+  noise of the sections above, so only clear's and remove's gaps are larger than it.
+- **The cost pairs** (`tests/cost/run.sh --target cpp`, cachegrind, which counts jemalloc's
+  own code since it replaces only the C library's `malloc`): a `let` read by ten 3,017 M /
+  3,059 M (4,613 M / 4,653 M under glibc); a builder over its last source 189.2 M / 190.0
+  M (267.3 M / 268.2 M); a row per key changed 28.4 M / 54.1 M, 0.66 M per extra edit
+  (39.4 M / 65.4 M); no kept row woken 736 M / 1,125 M, 10.0 M per extra edit (760 M /
+  1,256 M); all four within their bars.
+
 ## On Jimmy's Mac with agents building beside it (5 November 2026, and the GUI runs after it)
 
 The sections from here on are the 5 November run at `aa500e5` and the GUI runs that
