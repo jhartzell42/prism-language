@@ -147,10 +147,9 @@ Each has Claude's pick where it stands; his word overrules by editing.
   `claude-headers-rebased`, `claude-host-cheap`, `claude-incremental`, `claude-layout`,
   `claude-lowering-fixes`, `claude-lowering-rebased`, `claude-perf`, `claude-regex`,
   `claude-regex-compiler`, `claude-style`, `claude-text`, `claude-window-cache`, and this
-  session's `claude-for-inner`, `claude-linux-bench`, `claude-owed-prose`,
-  `claude-backend-rec`, `claude-bench-prelim`, `claude-readme-pass`,
-  `claude-cpp-inline-choices`, `claude-cpp-moves`, `claude-cpp-jemalloc-wip`,
-  `claude-cpp-rc-jemalloc`, `claude-float-bits`. Not merged by
+  session's `claude-for-inner`, `claude-cpp-inline-choices`, `claude-cpp-moves`,
+  `claude-cpp-rc-jemalloc`, `claude-float-bits`; and `claude-cpp-jemalloc-wip`, not an
+  ancestor but superseded (its work came in through `claude-cpp-rc-jemalloc`). Not merged by
   ancestry, from October (superseded by their rebased twins or by `main`, for Jimmy to
   judge): `claude`, `claude-reflex`, `claude-lowering`, `claude-cpp-headers-wip`,
   `claude-move-language`, `claude-q-g7-torn-down-request`, `claude-rt-1` to `claude-rt-6`.
