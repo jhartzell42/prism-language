@@ -1,0 +1,19 @@
+# Written by Claude on the claude-bugs branch; subject to change.
+# Prompt-cycle summaries (Type System ch. 5, the separate checkers, pass 1): a widget
+# function's result depends on its arguments as its body reads them, computed bottom-up
+# over the call graph. `@Delay`'s result samples a hold of its argument on an event of its
+# own, so it is not prompt in its argument, and the loop through it is no cycle.
+emit Ui.*
+
+@Delay: fn !Int -> @!Int
+fn @Delay !e:
+    !go <- Ui.Button(label=$"go")                                 # 0
+    $last <- 0 then !e
+    @ ($last on !go)
+
+@loop: @unit
+@loop:
+    !y <- @Delay !x                                               # 0
+    let !x = !y + 1
+    $seen <- 0 then !y
+    Ui.Label(text=$"{$seen}")                                     # 1
