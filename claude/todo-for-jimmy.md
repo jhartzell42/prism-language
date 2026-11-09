@@ -48,6 +48,12 @@ tree as it stands.*
   `GlobalAlloc` over `mallocx`), the `#[global_allocator]` line back in the emitted
   `main.rs` (prismc/emit/rust/templates/mod.prism; commit `10211d6` has it), and the same
   hard error as C++ when jemalloc is missing.
+- **TODO: recursion past the stack** (prismc/README.md, IB3 and pick BS). Bounded functions
+  recurse on the machine stack (1 GB in Rust, 4 GB in C++), so a walk of a structure
+  millions deep overflows it: Rust prints "thread has overflowed its stack" and aborts, C++
+  segfaults. Unbounded functions are not affected (each call is a cycle point with a heap
+  frame). Left as it is; a depth limit is the same mechanism as gas (a counter threaded
+  through calls, in a register), which Jimmy plans to design.
 
 ## Making the code yours
 
