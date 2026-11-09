@@ -1,0 +1,4 @@
+tests/checker/neg/existential-escape.prism:10: error[existential-escape]: the type hidden in `any ^Show` would leave it here
+        let w = Same v
+                ^^^^^^
+1 error
