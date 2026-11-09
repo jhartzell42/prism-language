@@ -79,6 +79,14 @@ WithLocal: fn Env, Text, Scheme -> Env
 fn WithLocal env, name, sc = update env:
     &_.locals <= Insert &_.locals, name, sc
 
+# A use of a top-level widget gets an id of the local count, which names the copy of the
+# widget lowering inlines there (pick UN).
+CallId: fn St, Text, Range -> St
+fn CallId st, qk, span = if not (HasPrefix (BareName qk), "@"): st else:
+    let s2 = update st:
+        &_.localNext += 1
+    NoteCall s2, span, st.localNext
+
 # A local name bound to its binder at `span` (pick UN): the binder's id, given the first
 # time the binder is bound in its definition, the next of the definition's count.
 BindLocalId: fn Env, St, Text, Range -> ((Env, St))
@@ -274,7 +282,7 @@ fn InferGlobal env, st0, n, span:
             if why == "tag": TagValue env, st, qk, span
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
-                ? v: Instantiate (NoteMethodUse st, v, span), v.scheme, span
+                ? v: Instantiate (NoteMethodUse (CallId st, qk, span), v, span), v.scheme, span
                 nil: match env.g.ctors[qk]:
                     ? c: CtorValue env, st, c, span
                     nil: ((TyErr, (Err st, "unknown-name", span, "`{SNameKey n}` has no signature line or type")))

@@ -38,6 +38,10 @@ NoteLocal: fn St, Range, Nat -> St
 fn NoteLocal st, span, id = if not st.recording: st else: update st:
     &_.typed.locals <= Push &_.typed.locals, LocalNote(at=(AtHere st, span), id=id)
 
+NoteCall: fn St, Range, Nat -> St
+fn NoteCall st, span, id = if not st.recording: st else: update st:
+    &_.typed.calls <= Push &_.typed.calls, LocalNote(at=(AtHere st, span), id=id)
+
 NoteUse: fn St, Range, Nat -> St
 fn NoteUse st, span, id = if not st.recording: st else: update st:
     &_.typed.uses <= Push &_.typed.uses, LocalNote(at=(AtHere st, span), id=id)

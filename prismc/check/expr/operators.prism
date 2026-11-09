@@ -183,7 +183,8 @@ fn InferField env, st, recv, sigils, name, span:
     # A reference path's steps write their labels bare (`&_.rootModule <= ? m`): the
     # parser reads a set only through a bare path, and the `&` is the path's mark.
     let bad = stack != sigils and ft != TyErr and not (IsFlexVar st3, ft) and not (IsRef recv)
-    let st4 = if bad: ErrFix st3, "mark-stack", name.span, "`.{sigils}{name.name}` has type `{ShowTy st3, ft}`, whose stack is `{stack}`; the access shows `{sigils}`", "write `.{stack}{name.name}`" else: st3
+    let st3b = if (IsFlexVar st3, ft) and not (IsRef recv): MarkLastField st3, ft, sigils, name.span else: st3
+    let st4 = if bad: ErrFix st3b, "mark-stack", name.span, "`.{sigils}{name.name}` has type `{ShowTy st3, ft}`, whose stack is `{stack}`; the access shows `{sigils}`", "write `.{stack}{name.name}`" else: st3b
     let withOpt = if IsPlainSigil ih: TySig ih, ft else: ft
     let res = if IsTimeSigil head: TySig head, withOpt else: withOpt
     let st5 = if IsTimeSigil head: Elab st4, span, ".{name.name}", "map", head else: st4

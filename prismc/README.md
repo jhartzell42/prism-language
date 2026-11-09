@@ -395,7 +395,8 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   that order over all its lines, its rest in dependency order: a name bound again there
   is a new binding from its line on, so its lines are not reordered (gap DG).
 - **FD A field of a record nothing has decided yet waits.** When several records have the
-  field, its type is a fresh variable, read once a later line decides the record, and
+  field, its type is a fresh variable, read once a later line decides the record (its
+  marks checked against the field's stack then, `neg/field-marks-waiting`), and
   `ambiguous` at the end of the definition (ch. 5's principle: defer what a later line can
   decide). One record with the field decides it at once.
 - **MS A wrong mark reports once, at the binder,** and the name then has the type its
@@ -863,9 +864,13 @@ What the checker does not do yet, each with Claude's first ruling.
   stack, so no outside name takes a free-headed output, and the rule confines the
   variable to its parameter. *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it,
   with the error, next.
-- **EE `existential-escape`.** `any e` solves its bounds at `e`'s type; an `any` meets only
-  an `any`, and is never unpacked into a rigid variable at a parameter (doubt EP).
-  *First ruling:* unpack at application, as ch. 5 says.
+- **EE `existential-escape`, by its rule's effect.** `any e` solves its bounds at `e`'s
+  type. An `any` meeting a parameter that is still a bare variable of the call, which the
+  result names, is `existential-escape` (`AnyEscape`, `neg/existential-escape`): the
+  rigid type ch. 5 unpacks it into would reach the result. The variable then takes the
+  `any` whole rather than a rigid type with the bounds as givens, so the rest of the call
+  checks, and lowers, as before. *First ruling:* as stated; the unpacking itself only when
+  a program needs a hidden type's own operations.
 - **R2 Rank-2 element outputs** (Type System round 4 R2). An element's output variable
   that appears only inside one function-typed parameter of a signature is quantified at
   that parameter: at a call it is a fresh rigid variable (`RankTwo`, named `o'N`), so a
@@ -881,8 +886,6 @@ What the checker does not do yet, each with Claude's first ruling.
   has it.
 - **SU Prompt-cycle summaries** are per block, not computed bottom-up over the call graph
   (pick PS). *First ruling:* summaries, as ch. 5's pass 1 has them.
-- **FM A field read through a waiting access** (pick FD) is not checked for its marks.
-  *First ruling:* check them when the record is decided.
 - **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
   *First ruling:* read each impl's associated type into the normalizer.
 
@@ -1178,9 +1181,6 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   the two did the same on an lvalue and differed only on a temporary, where `deref` now
   copies the value out of a temporary `Rc<const T>` (its last owner may be that temporary)
   and keeps a temporary `Rc<T>`'s place (a node's or a cell's owner keeps it).
-- **RN: a `let` that rebinds a name from itself** (Rust's shadowing, an `&` block's
-  `let mut fuel = fuel.clone()`) binds a new name (`fuel_1`), which the statements after
-  it read; a scope that binds the name anew hides the rename.
 - **KW, QL: names.** A C++ keyword takes a `_` after it (`or_`, `int_`, `explicit_`); a
   record field named as a value type's member (`show`, `to_pod`, `cases`) too; a node
   method named as some node's field too. A call whose name a node's member, a module or
@@ -1396,6 +1396,9 @@ Each is Claude's, for Jimmy to overturn.
   `prism_rtl::Job` and `prism_rtl::Turn`; the other runtime names (`Cx`, `Fault`, `Pod`,
   `Path`, ...) are still bare, so a program type of one of those names in a module with
   nodes would shadow it (gap SH below). A
+  record's field is its Rust and C++ name in snake case, and the derived `^Show` and the
+  `Pod` carry the field as the program spells it (`CaseDef.labels`: `byName`, not
+  `by_name`; `ts-ch02-field-names-shown`). A
   merge with no name is `anon`; a node's internal names are first come, first served
   (`run`, `run_2`). A tag's `Level` struct is its family and name run together
   (`UiButton`, as `prism_rtl`'s tests have it). *Refused:* the old back end's sigil
@@ -1412,8 +1415,13 @@ Each is Claude's, for Jimmy to overturn.
   So `x` and `$x`, two binders, are `x_p..` and `x_d..`, a local never hides a function or
   a keyword, and the separator is the name's last `_` (a name's own trailing `_` is
   dropped, the topic `_` is `topic`). A generalized `let` lowered once per instantiation
-  adds `w` and the instantiation's index (`same_f2w1`). Names lowering makes for itself
-  (a closure's `a0`, a job's `job_fn`) and the fields of a node or a job keep their
+  adds `w` and the instantiation's index (`same_f2w1`). A widget inlined at a use (pick
+  WG) suffixes its locals with that use's id, which the checker gives every use of a
+  top-level widget from the same count (`calls`), outermost first (`w_p0_7_3`). No `let`
+  rebinds a name from itself: a closure's copy of what it captures is the local's name
+  and `x`, a call's copy of that `y`, a loop continuation's copy `z` (letters outside
+  base 32), so C++ prints every name as the model has it. Names lowering makes for
+  itself (a closure's `a0`, a job's `job_fn`) and the fields of a node or a job keep their
   spellings.
 - **MO Modules.** One Rust module per Prism module (`program` for the root module, in
   `src/program.rs`), nested as the Prism names are: `Check.Env` is `crate::check::env`,

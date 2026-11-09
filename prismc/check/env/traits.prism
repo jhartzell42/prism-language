@@ -213,7 +213,9 @@ fn ResolveField g, st, q, final:
             ? c:
                 let ?i = Fold (Range0 (Len c.fields)), nil, \|?at, k| if c.fields[k] == ? q.field: ? k else: ?at
                 match ?i:
-                    ? i: Unify s, q.result, (SubstQ (ParamInst c.params, args), (Or c.args[i], TyErr)), q.span
+                    ? i:
+                        let ft = SubstQ (ParamInst c.params, args), (Or c.args[i], TyErr)
+                        FieldMarks (Unify s, q.result, ft, q.span), q, ft
                     nil: Err s, "mismatch", q.span, "`{BareName n}` has no field `{q.field}`"
             nil: Err s, "mismatch", q.span, "`{BareName n}` has no fields"
         TyFlex ignore:
@@ -223,7 +225,15 @@ fn ResolveField g, st, q, final:
         TyErr: s
         other: Err s, "mismatch", q.span, "`{ShowTy s, other}` has no field `{q.field}`"
 
-# One constraint: solved (with its impl's `where` clauses wanted), waiting, or `no-impl`.
+# A waiting field read's marks against the field's stack, now that its record is known
+# (gap FM), as `InferField` checks a read whose record was known.
+FieldMarks: unbounded fn St, FieldQ, Ty -> St
+fn FieldMarks st, q, ft = match q.?marks:
+    ? ((sigils, at)):
+        let stack = StackOf st, ft
+        if stack == sigils or ft == TyErr: st
+        else: ErrFix st, "mark-stack", at, "`.{sigils}{q.field}` has type `{ShowTy st, ft}`, whose stack is `{stack}`; the access shows `{sigils}`", "write `.{stack}{q.field}`"
+    nil: st
 SolveOne: unbounded fn G, St, [((Text, Text))], Want -> (([Want], St))
 fn SolveOne g, st, givens, w:
     let t = Walk st, w.ty

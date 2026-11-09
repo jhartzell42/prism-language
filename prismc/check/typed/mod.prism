@@ -158,6 +158,9 @@ type TProgram = record:
     binders: [BinderNote]
     locals: [LocalNote]
     uses: [LocalNote]
+    # Every use of a top-level widget, with an id of the same count as the locals', which
+    # names the copy lowering inlines there (pick UN).
+    calls: [LocalNote]
     gens: [GenNote]
     insts: [InstNote]
     defs: [DefNote]
@@ -166,7 +169,7 @@ type TProgram = record:
     unshrunk: [SrcAt]
 derive ^Eq, ^Show
 
-let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
+let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], calls=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
 
 AtKey: fn SrcAt -> Text
 fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"

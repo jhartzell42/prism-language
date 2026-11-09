@@ -1,0 +1,5 @@
+tests/checker/neg/field-marks-waiting.prism:12: error[mark-stack]: `.n` has type `?Nat`, whose stack is `?`; the access shows ``
+        let Get = \|r| r.n
+                         ^
+  fix: write `.?n`
+1 error

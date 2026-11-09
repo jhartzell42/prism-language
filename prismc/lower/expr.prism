@@ -385,7 +385,7 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x
         let atBuild = Own (ValueOf lx, (InitEnv env), d)
         let arms = [[XArm(pat=(PaCtor "Some", [[PaBind "owner"]]), conds=[[]], body=(XCtor variant, [[(XMethod (XVar "owner"), getter, [[XCx]])]])), XArm(pat=(PaUnit "None"), conds=[[]], body=(XCtor variant, [[(XClone (XVar "at_build"))]]))]]
         let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed "Cx", [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed "crate::Answer", [[]]))
-        let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, (XRef (XVar "{getter}_port"))]])
+        let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, (XRef (XVar "{getter}_portx"))]])
         VlOwned (XCall "prism_rtl::dynamic_blueprint::<crate::Elem, _>", [[dynamic]]), t
     otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a pushed place, a structural dynamic, or a `let` after the host's line)"), t
 
@@ -896,8 +896,8 @@ WrapAsJob: fn Ex, [OutTy], OutTy, OutTy -> Ex
 fn WrapAsJob f, pts, target, a:
     let names = Each (Range0 (Len pts)), \|i| "a{i}"
     let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
-    let call = XApply (XVar "f"), (Each names, \|nm| XRef (XVar nm))
-    let body = XBlock [[(DoLet (PaBind "f"), (XClone (XVar "f")))]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
+    let call = XApply (XVar "fy"), (Each names, \|nm| XRef (XVar nm))
+    let body = XBlock [[(DoLet (PaBind "fy"), (XClone (XVar "f")))]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
     XBlock [[(DoLet (PaBind "f"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], body)]]), target)
 
 # A named function's arguments, owned, as its job's fields take them: a function
@@ -1051,6 +1051,18 @@ fn BlockScopes b = Fold b.stmts, [[]], \|acc, s|
         SFn f: Push own, (((Fold f.params, [[]], \|ps, q| Append ps, (PatternNames q)), f.span))
         otherwise: own
 
+# A local's copy that a closure captures (`x`), and a copy of that each call takes (`y`):
+# names of their own, so no `let` rebinds a name from itself (pick UN).
+CaptureName: fn Ex -> Text
+fn CaptureName rs = "{PlaceStem rs}x"
+
+CopyName: fn Ex -> Text
+fn CopyName rs = "{PlaceStem rs}y"
+
+# A local a loop's continuation takes from before the loop (`z`).
+OuterName: fn Ex -> Text
+fn OuterName rs = "{PlaceStem rs}z"
+
 # The names a lambda's body reads from around it: none its parameters or an inner binder
 # hides, so a parameter named as a local of the block is no capture.
 LambdaReads: unbounded fn [Pattern], LambdaBody -> [Text]
@@ -1082,7 +1094,7 @@ fn PlainLambda lx, env, ps, body, ft:
     let caps = Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
-            let local = PlaceStem rs
+            let local = CaptureName rs
             let d = DoLet (PaBind local), (Own (LocalPlace rs, mode, ct))
             (((Push acc, d), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
         otherwise: ((acc, en))
@@ -1134,17 +1146,18 @@ fn JobLambda lx, env, ps, body, ft, a, enter:
         otherwise: False
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
-            let d = DoLet (PaBind (PlaceStem rs)), (Own (LocalPlace rs, mode, ct))
-            (((Push acc, d), (Bind en, n, (BnLocal (XVar (PlaceStem rs)), Owned, ct))))
+            let d = DoLet (PaBind (CaptureName rs)), (Own (LocalPlace rs, mode, ct))
+            (((Push acc, d), (Bind en, n, (BnLocal (XVar (CaptureName rs)), Owned, ct))))
         otherwise: ((acc, en))
-    let again = Fold caps, [[]], \|acc, n| match env1.names[n]:
-        ? (BnLocal rs, ignore, ct): Push acc, (DoLet (PaBind (PlaceStem rs)), (Own (LocalPlace rs, Owned, ct)))
-        otherwise: acc
+    # each call's own copy of what the lambda captured, which its job takes
+    let ((again, envAgain)) = Fold caps, (([[]], env1)), \|((acc, en)), n| match env1.names[n]:
+        ? (BnLocal rs, ignore, ct): (((Push acc, (DoLet (PaBind (CopyName rs)), (Own (LocalPlace rs, Owned, ct)))), (Bind en, n, (BnLocal (XVar (CopyName rs)), Owned, ct))))
+        otherwise: ((acc, en))
     let pts = match a:
         OutTuple ts: if (Len ps) == 1: [[a]] else: ts
         otherwise: [[a]]
     # The body sees what it captured and its parameters, nothing borrowed from outside.
-    let env1b = OnlyCaptured env1, caps
+    let env1b = OnlyCaptured envAgain, caps
     # Each parameter arrives owned as `p{i}` and is taken apart in the body by its
     # pattern (`\|((en, s)), stmt|`), as any `let` would.
     let pos = Each (Range0 (Len ps)), \|i|

@@ -334,9 +334,9 @@ fn AllProgramsCpp model = match model.?root:
 
 # The value types in an order C++ accepts: each after the types it holds by value, rounds
 # of the ones whose types are all defined. A recursive payload is behind a `Val` (the
-# lowering's `OutRc`), which needs only its type's declaration, so a cycle through a choice
-# orders; a cycle of records by value with no choice on it is left as it is, and does not
-# compile (gap CY of the README).
+# lowering's `OutRc`), which needs only its type's declaration, and every field that
+# reaches its own type is one (pick OW of the README), so every cycle orders; what is left
+# when no round is ready is written as it is.
 OrderValues: unbounded fn [ValueDecl], (Text ==> Bool), [Text] -> [Text]
 fn OrderValues left, done, acc:
     let ready = Filter left, \|v| Fold v.deps, True, \|ok, d| ok and (d == v.path or Declared done, d)

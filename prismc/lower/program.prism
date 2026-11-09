@@ -73,7 +73,7 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let mods = NeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (RustModName m)
     let modSegments = Fold (Values rsMods), {}, \|acc, p| Fold (SplitOn p, "::"), acc, \|a2, seg| Insert a2, seg, True
-    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), subst={}, csubst={})
+    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={})
     let lx = update lx0:
         &_.unbs <= JobRoots lx0
     let roots = RootWidgets lx
@@ -456,11 +456,11 @@ fn TyDefs lx, ti:
                 let ((fname, ft)) = Or fs[i], (("", TyErr))
                 let rt = OutTyOf lx, ft
                 ((Snake fname, (if RcField lx, ti.name, i: OutRc rt else: rt)))
-            [[ItType (Mk ShapeRecord, [[CaseDef(name=(Camel bare), prism=bare, fields=fields)]])]]
+            [[ItType (Mk ShapeRecord, [[CaseDef(name=(Camel bare), prism=bare, fields=fields, labels=(Each fs, \|((fname, ignore))| fname))]])]]
         BChoice cases:
             let defs = Each cases, \|((cn, ats))|
                 let ck = QualKey ti.home, cn
-                CaseDef(name=(Camel cn), prism=cn, fields=(Each (Range0 (Len ats)), \|i| (("", (CaseField lx, ck, i, (Or ats[i], TyErr))))))
+                CaseDef(name=(Camel cn), prism=cn, fields=(Each (Range0 (Len ats)), \|i| (("", (CaseField lx, ck, i, (Or ats[i], TyErr))))), labels=[[]])
             let shape = match cases:
                 [[((cn, [[]]))]]: if IsLowerText cn: ShapeUnit else: ShapeChoice
                 [[((cn, ignore))]]: if cn == bare: ShapeNewtype else: ShapeChoice

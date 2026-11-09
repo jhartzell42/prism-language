@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2: the record shows as it is written, its fields named as the program names them, and inside an array a case with a payload in parentheses.
+test fields_show_as_written
+
+tick 0
+  added:
+    0: Ui.Label(text="Entry(byName=\"door\", isOpen=True) [[(Filled Entry(byName=\"door\", isOpen=True)), Empty]]")
