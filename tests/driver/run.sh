@@ -110,6 +110,15 @@ else
     failed+=(owned-binder-moved)
     echo "FAILED owned-binder-moved: ?Reduce's b2 is not moved at its one read ($out/normalize/src/program.rs)"
 fi
+# Gap LF: a plain function is lowered lifted, its `$` values read at the caller's read point;
+# one whose result holds such a dynamic is refused, naming it, not written for rustc to refuse.
+said=$("$prismc" compile tests/driver/lifted-holds-dynamic.prism -o "$out/lifted-holds-dynamic" 2>&1)
+if echo "$said" | grep -q 'error\[not-lowered\].*`Wrap`'; then
+    echo "ok lifted-holds-dynamic: refused ($(echo "$said" | grep 'not-lowered' | head -1))"
+else
+    failed+=(lifted-holds-dynamic)
+    echo "FAILED lifted-holds-dynamic: wanted error[not-lowered] naming \`Wrap\`, got: $said"
+fi
 if ./prism compile --target cpp examples/chess -o "$out/chess-cpp" > /dev/null 2>&1 &&
     grep -q 'prism_world_canvas::run<' "$out/chess-cpp/src/main.cpp" &&
     make -s -C "$out/chess-cpp" -j"$(getconf _NPROCESSORS_ONLN)" > "$out/chess-cpp.log" 2>&1 &&

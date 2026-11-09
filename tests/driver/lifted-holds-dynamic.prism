@@ -1,0 +1,18 @@
+# A plain function over a `$` parameter whose result holds that dynamic (gap LF): prismc
+# lowers a plain function lifted, its `$` values read at the caller's read point, so the
+# body has the value and not the dynamic, and `[[$a]]` cannot be built. Refused, naming
+# the function, rather than written as a crate rustc refuses.
+# Written for tests/driver/run.sh by Claude on the claude-bugs branch. Subject to change.
+emit Fs.*
+use Fs.*
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@main: @unit
+@main:
+    !started <- @started                                              # 0
+    $n <- 0 then 1 on !started                                        # 1
+    ignore <- Fs.File(path="/etc/motd", requests=(Read on !started))  # 2
+    let k = Len (Wrap $n)
+    @ unit
