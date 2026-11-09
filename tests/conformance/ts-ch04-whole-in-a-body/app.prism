@@ -1,0 +1,20 @@
+# A function whose dynamics are only on top of its types, whose body passes its `$`
+# parameter whole (Type System ch. 4, Application: a sigiled parameter is not lifted over):
+# `$First` gives back the dynamic `Wrap` keeps, so the label follows the count; `Count`
+# only measures the list. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+$First: fn $Nat -> $Nat
+fn $First $a = Or (Wrap $a)[0], ($ 0)
+
+Count: fn $Nat -> Nat
+fn Count $a = Len (Wrap $a)
+
+@shown:
+    !inc <- Ui.Button(label=$"Inc")                             # 0
+    $count <- 0 then $count + 1 on !inc
+    Ui.Label(text=$"first {$First $count} count {Count $count}")  # 1
