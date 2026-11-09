@@ -1,0 +1,21 @@
+# A function that takes a dynamic whole, applied where a node reads it outside a `let`:
+# in an element's argument and in a hold's step (Type System ch. 4, Application: a sigiled
+# parameter is not lifted over; Semantics ch. 7: `x on !e` samples `x` as the tick opened).
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@inElement:
+    !inc <- Ui.Button(label=$"Inc")                             # 0
+    $count <- 0 then $count + 1 on !inc
+    Ui.Label(text=$"first {Or (Wrap $count)[0], ($ 0)}")        # 1
+
+@inStep:
+    !inc <- Ui.Button(label=$"Inc")                             # 0
+    !keep <- Ui.Button(label=$"Keep")                           # 1
+    $count <- 0 then $count + 1 on !inc
+    $kept <- 0 then (Or (Wrap $count)[0], ($ 0)) on !keep
+    Ui.Label(text=$"kept {$kept}")                              # 2

@@ -1,0 +1,21 @@
+# Audited: the element's text follows the count; the hold keeps the count as each Keep
+# tick opened.
+# The tests of ts-ch04-whole-anywhere (Type System chapter 4).
+emit Ui.*
+use App.*
+
+test in_an_element_argument, @inElement:
+    build
+        => expect Ui.Label(text="first 0")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="first 1")
+
+test in_a_hold_step, @inStep:
+    build
+        => expect Ui.Label(text="kept 0")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="kept 0")
+    click Ui.Button(label="Keep")
+        => expect Ui.Label(text="kept 1")
+    click Ui.Button(label="Inc"), click Ui.Button(label="Keep")
+        => expect Ui.Label(text="kept 1")
