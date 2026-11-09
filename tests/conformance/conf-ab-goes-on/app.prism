@@ -1,0 +1,12 @@
+# A tick that aborts (Conformance AB): the World goes on from the state before it, as if
+# the aborted tick's input never came. Here the input is an answer of the wrong type to a
+# button, which no program can take. Written by Claude on the claude-bugs branch; subject
+# to change.
+emit Ui.*
+test mod Tests
+
+@count: @unit
+@count:
+    !inc <- Ui.Button(label=$"Increment")                 # 0
+    $count <- 0 then $count + 1 on !inc
+    Ui.Label(text=$"Count: {$count}")                     # 1

@@ -1,0 +1,15 @@
+# Audited: one click counts 1; the wrong answer aborts its tick and changes nothing; the
+# next click counts 2, from the state before the aborted tick.
+# The tests of conf-ab-goes-on (Conformance AB).
+emit Ui.*
+use App.*
+
+test the_world_goes_on_after_an_abort, @count:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click at 0
+        => expect Ui.Label(text="Count: 1")
+    send at 0, "oops"
+        => aborted
+    click at 0
+        => expect Ui.Label(text="Count: 2")
