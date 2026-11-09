@@ -1,0 +1,52 @@
+# Lambdas as values wherever a value goes (Semantics ch. 3; Type System ch. 2: a function
+# is a value): two in an array folded over, two as an `if`'s and a `match`'s arms, two in
+# a tuple, one in a record's field, one as another's argument, and a function value as a
+# lambda's parameter. Two lambdas that meet where one type is wanted have that type, each
+# being a closure of its own to the targets. Written by Claude on the claude-bugs branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Ops = record:
+    inc: fn Nat -> Nat
+    label: Text
+
+Apply2: fn (fn Nat -> Nat), (fn Nat -> Nat), Nat -> Nat
+fn Apply2 F, G, n = G (F n)
+
+Pair: fn ((fn Nat -> Nat, fn Nat -> Nat)), Nat -> Nat
+fn Pair ((F, G)), n = (F n) + (G n)
+
+Pick: fn Bool -> (fn Nat -> Nat)
+fn Pick b = if b: \|x| x + 1 else: \|x| x * 3
+
+Held: fn Nat -> Nat
+fn Held n:
+    let fs = [[(\|x| x + 1), (\|x| x * 2)]]
+    Fold fs, n, \|acc, F| F acc
+
+Matched: fn ?Nat -> Nat
+fn Matched ?m:
+    let F = match ?m:
+        ? k: \|x| x + k
+        nil: \|x| x
+    Apply2 F, (\|x| x * 2), 1
+
+Nested: fn Nat -> Nat
+fn Nested n = Apply2 (\|x| Apply2 (\|y| y + 1), (\|y| y * 2), x), (\|z| z + 100), n
+
+Tupled: fn Nat -> Nat
+fn Tupled n = Pair (((\|x| x + 1), (\|x| x * 2))), n
+
+Called: fn Nat -> Nat
+fn Called n:
+    let F = Pick True
+    let G = Pick False
+    F (G n)
+
+@page: @unit
+@page:
+    let ops = Ops(inc=(\|k| k + 7), label="ops")
+    Ui.Label(text=$"{Tupled 3} {Held 4} {Matched (? 5)} {Matched nil}")       # 0
+    Ui.Label(text=$"{Nested 1} {Called 2} {ops.inc 1} {ops.label}")            # 1

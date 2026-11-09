@@ -1,0 +1,8 @@
+# Lambdas as values: declarations of sem-ch03-lambda-values. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test lambdas_are_values, @page:
+    build
