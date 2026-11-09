@@ -1,0 +1,40 @@
+# Audited: each count starts at 0 and moves by its button; `Wrap`'s dynamic is the count
+# itself, `$Inc`'s is one more, `$Plus`'s ones plus tens, and `!Bump` fires the count plus
+# one at a Go, held.
+# The tests of ts-ch04-time-taken-whole (Type System chapter 4).
+emit Ui.*
+use App.*
+
+test a_dynamic_kept_whole, @wrapped:
+    build
+        => expect Ui.Label(text="first 0")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="first 1")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="first 2")
+
+test a_lift_over_one, @incremented:
+    build
+        => expect Ui.Label(text="inc 1")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="inc 2")
+
+test a_lift_over_two, @summed:
+    build
+        => expect Ui.Label(text="sum 0")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="sum 1")
+    click Ui.Button(label="Ten")
+        => expect Ui.Label(text="sum 11")
+    click Ui.Button(label="Inc"), click Ui.Button(label="Ten")
+        => expect Ui.Label(text="sum 22")
+
+test an_event_taken_whole, @bumped:
+    build
+        => expect Ui.Label(text="last 0")
+    click Ui.Button(label="Go")
+        => expect Ui.Label(text="last 1")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="last 1")
+    click Ui.Button(label="Inc"), click Ui.Button(label="Go")
+        => expect Ui.Label(text="last 2")
