@@ -96,7 +96,6 @@ type Cp = record:
     fieldNames: (Text ==> Bool)
     fns: (Text ==> Bool)
     fields: (Text ==> OutTy)
-    renames: (Text ==> Text)
     pointers: (Text ==> Bool)
     owned: (Text ==> Bool)
     moveCaptures: [Text]
@@ -169,7 +168,7 @@ fn Context model:
         let top = Or (SplitOn n, "::")[0], n
         if (InList names, top) or InList acc, top: acc else: Push acc, top
     let mods = Push (Append names, tops), "prelude"
-    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fns={}, fields={}, renames={}, pointers={}, owned={}, moveCaptures=[[]], localTypes={})
+    let base = Cp(home="", mods=mods, types=preludeTypes, ctors=preludeCtors, members=nodeBase, methods={}, fieldNames={}, fns={}, fields={}, pointers={}, owned={}, moveCaptures=[[]], localTypes={})
     let withElem = AddRow (AddAnswer base, model.answer), "", model.elem
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 

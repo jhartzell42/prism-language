@@ -66,7 +66,7 @@ fn Unvexed t:
     let vexing = (LastChar t) == ")" and (not (Contains head, " ")) and head != "" and typeLike
     if vexing: "({t})" else: t
 
-# The context after a statement: a `let` of a name its value reads renames it.
+# The context after a statement: what a `let` binds, held or pointing.
 Rebound: unbounded fn Cp, Do -> Cp
 fn Rebound cp, d = match d:
     DoLetElse p, ignore, ignore: Unbind cp, (PatNames p)
@@ -77,16 +77,11 @@ fn Rebound cp, d = match d:
         ? n:
             let pointing = if IsPointerLet cp, p, x: Pointing cp, n else: KnownValue cp, p, n
             let held = if IsValueLet p, x: Owning pointing, n else: Disowning pointing, n
-            let holding = match p:
+            match p:
                 PaTyped ignore, t: update held:
                     &_.localTypes <= Insert &_.localTypes, n, t
                 otherwise: update held:
                     &_.localTypes <= Remove &_.localTypes, n
-            if CppMentions (CppExpr cp, x), (VarName cp, n):
-                let fresh = "{VarName cp, n}_{Inc (Len (Keys cp.renames))}"
-                update holding:
-                    &_.renames <= Insert &_.renames, n, fresh
-            else: holding
         nil: cp
     otherwise: cp
 
@@ -140,11 +135,10 @@ CondNames: unbounded fn Cc -> [Text]
 fn CondNames (CcLet q, ignore) = PatNames q
 fn CondNames (CcIf ignore) = [[]]
 
-# The context inside a scope that binds `names` anew: an outer rename of one is hidden,
-# as is its being a pointer.
+# The context inside a scope that binds `names` anew: an outer one's being a pointer is
+# hidden.
 Unbind: fn Cp, [Text] -> Cp
 fn Unbind cp, names = update cp:
-    &_.renames <= Fold names, &_.renames, \|m, n| Remove m, n
     &_.pointers <= Fold names, &_.pointers, \|m, n| Remove m, n
     &_.owned <= Fold names, &_.owned, \|m, n| Remove m, n
     &_.localTypes <= Fold names, &_.localTypes, \|m, n| Remove m, n
@@ -172,9 +166,6 @@ fn IsPointerLet cp, p, x = match p:
             ? b: b
             nil: False
 
-Inc: fn Nat -> Nat
-fn Inc n = n + 1
-
 ?LetName: fn Pa -> ?Text
 fn ?LetName p = match p:
     PaBind n: ? n
@@ -183,7 +174,7 @@ fn ?LetName p = match p:
     otherwise: nil
 
 VarName: fn Cp, Text -> Text
-fn VarName cp, n = Or cp.renames[n], (CppId n)
+fn VarName cp, n = CppId n
 
 # Whether C++ text names an identifier: it stands there with no identifier character
 # beside it.
