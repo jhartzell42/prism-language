@@ -1,0 +1,9 @@
+# Audited: rows 1 + 2, pod 10, rc 100, option 1, vec 1000 + 2000: 3114; `Some 4` and the
+# row show as written.
+# The tests of ts-ch02-runtime-type-names (Type System chapter 2).
+emit Ui.*
+use App.*
+
+test program_types_named_as_the_runtimes, @shown:
+    build
+        => expect Ui.Label(text="3114 Some 4 Row(label=\"c\", count=3)")

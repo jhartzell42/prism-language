@@ -1,0 +1,52 @@
+# Program types named as the runtimes' and the standard library's (`Row`, `Node`, `Pod`,
+# `Rc`, `Option`, `Vec`) and a constructor named `Some`: the emitted code reaches the
+# runtime's by path, so a program's own never hides one. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Row = record:
+    label: Text
+    count: Nat
+derive ^Eq, ^Show
+
+type Node = record:
+    rows: [Row]
+derive ^Eq, ^Show
+
+type Pod = choice:
+    Some Nat
+    Empty
+derive ^Eq, ^Show
+
+type Rc = record:
+    shared: Nat
+derive ^Eq, ^Show
+
+type Option = choice:
+    Yes
+    No
+derive ^Eq, ^Show
+
+type Vec = record:
+    items: [Nat]
+derive ^Eq, ^Show
+
+Total: fn Node, Pod, Rc, Option, Vec -> Nat
+fn Total n, p, r, o, v:
+    let fromRows = Fold n.rows, 0, \|acc, entry| acc + entry.count
+    let fromPod = match p:
+        Some k: k
+        Empty: 0
+    let fromOption = match o:
+        Yes: 1
+        No: 0
+    fromRows + fromPod + r.shared + fromOption + (Fold v.items, 0, \|acc, i| acc + i)
+
+@shown: @unit
+@shown:
+    let n = Node(rows=[[Row(label="a", count=1), Row(label="b", count=2)]])
+    let total = Total n, (Some 10), (Rc(shared=100)), Yes, (Vec(items=[[1000, 2000]]))
+    let c = Row(label="c", count=3)
+    let p = Some 4
+    Ui.Label(text=$"{total} {p} {c}")             # 0
