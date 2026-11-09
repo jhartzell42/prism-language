@@ -245,7 +245,7 @@ fn SolveOne g, st, givens, w:
         TyErr: (([[]], st))
         TyRigid v:
             if (HasPrefix w.cls, "Range ") or w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], st))
-            else: if Fold givens, False, \|seen, ((gv, gc))| seen or (gv == v and HasText (SuperClosure g, gc), w.cls): (([[]], (Solved st, w, t, "given")))
+            else: if Fold (Append givens, st.anyGivens), False, \|seen, ((gv, gc))| seen or (gv == v and HasText (SuperClosure g, gc), w.cls): (([[]], (Solved st, w, t, "given")))
             else: (([[]], Restore (ErrFix s0, "no-impl", w.span, "no impl of `^{BareName w.cls}` for `{v}`", "add `where {v}: ^{BareName w.cls}` to the signature")))
         TySig s, inner:
             if (s == "?" or s == "~") and (HasText [["Eq", "Ord", "Show"]], (BareName w.cls)): (([[Want(cls=w.cls, ty=inner, file=w.file, span=w.span, level=w.level)]], (Solved st, w, t, "parts")))

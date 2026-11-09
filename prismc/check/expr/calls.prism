@@ -278,7 +278,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
         if IsLambda a.value: ((s, done))
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if (StackOf s, at) != "" or (IsFreeHeaded s, at): ((s, done))
-        else: (((PlainArg env, (AnyEscape s, pnow, at, res, span), fname, (Or params[i], TyErr), at, a), done))
+        else: (((ArgOrUnpack env, s, fname, (Or params[i], TyErr), pnow, at, a, res, span), done))
     let ((ignore, st3)) = Fold (Range0 n), (({}, st2)), \|((m, s)), i|
         let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value:
@@ -318,17 +318,25 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
     let st10 = if pl.broken or (Len pl.opts) != 1: st9 else: NoteLift st9, span, (Or pl.opts[0], ""), pl.optArgs
     ((result, (NoteApp st10, span, fname, kind, layer, lifted, (Or pl.opts[0], ""), callCol)))
 
-# An existential at a parameter that is not one is unpacked there into a fresh rigid
-# type, which may not reach the result (Type System ch. 5, "Existentials are
-# dictionaries"; doubt EP): an `any` meeting a parameter that is still a bare variable of
-# the call, which the result names, is `existential-escape`. The variable then takes the
-# existential whole, so the call checks on.
-AnyEscape: unbounded fn St, Ty, Ty, Ty, Range -> St
-fn AnyEscape st, p, at, res, span = match (((Walk st, p), (Walk st, at))):
-    (((TyFlex n), (TyAny bounds))):
-        if HasNat (FreeVars st, res), n: Err st, "existential-escape", span, "the type hidden in `{ShowTy st, (TyAny bounds)}` would leave it here"
-        else: st
-    otherwise: st
+# An existential at a parameter that is not one is unpacked there (Type System ch. 5,
+# "Existentials are dictionaries"; doubt EP): the parameter's bare variable becomes a fresh
+# rigid type, `e'N`, with the existential's bounds as givens, which may not reach the
+# call's result (`existential-escape`). A second existential meeting that rigid type hides
+# a type of its own, so the two do not meet; an `any` itself has no impl of its bounds.
+ArgOrUnpack: unbounded fn Env, St, Text, Ty, Ty, Ty, Arg, Ty, Range -> St
+fn ArgOrUnpack env, st, fname, param, pnow, at, a, res, span = match Walk st, at:
+    TyAny bounds: match pnow:
+        TyFlex n:
+            let hidden = "e'{st.next}"
+            let st2 = update st:
+                &_.next += 1
+                &_.anyGivens <= Append &_.anyGivens, (Each bounds, \|b| ((hidden, b)))
+            let st3 = Unify st2, pnow, (TyRigid hidden), a.value.span
+            if HasNat (FreeVars st, res), n: Err st3, "existential-escape", span, "the type hidden in `{ShowTy st, at}` would leave it here"
+            else: st3
+        TyRigid r if HasPrefix r, "e'": Err st, "mismatch", a.value.span, "two existentials meet here, each `{ShowTy st, at}` hiding a type of its own"
+        otherwise: PlainArg env, st, fname, param, at, a
+    otherwise: PlainArg env, st, fname, param, at, a
 
 HasRange: fn [Range], Range -> Bool
 fn HasRange rs, r = Fold rs, False, \|seen, x| seen or x == r

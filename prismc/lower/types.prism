@@ -91,7 +91,7 @@ fn OutTyOf lx, t = match t:
         nil: match lx.quants["'{n}"]:
             ? b: OutQuantified b
             nil: OutUnit
-    TyAny ignore: OutShowAny
+    TyAny bounds: if IsShowOnly bounds: OutShowAny else: OutNamed "prism_rtl::Packed", [[]]
     TyElem ignore, ignore: OutLive (OutNamed "crate::Elem", [[]])
     TyElemAny ignore: OutNamed "crate::Elem", [[]]
     TyAt i, ignore: blueprintTy
@@ -187,6 +187,11 @@ fn LayerOf t = match t:
     TySig "&", i: LayerOf i
     TyAt ignore, ignore: LyBlueprint
     otherwise: LyPlain
+
+# An existential bounded by `^Show` alone is a `dyn Show`; any other is a `Packed`, the
+# value and its bounds' impls (runtime existential.rs, print.hpp).
+IsShowOnly: fn [Text] -> Bool
+fn IsShowOnly bounds = Fold bounds, True, \|ok, b| ok and (BareName b) == "Show"
 
 # Whether a constructor's fields hold their type's own values by value (directly, in an
 # optional or a tuple), so they go behind an `Rc` (claude/backend.md: recursive payloads

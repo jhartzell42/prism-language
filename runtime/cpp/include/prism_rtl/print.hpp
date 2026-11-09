@@ -31,7 +31,9 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <compare>
 #include <tuple>
+#include <typeinfo>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -232,6 +234,71 @@ struct Show<std::tuple<Ts...>> {
     static void show(const std::tuple<Ts...>& t, Printer& p) {
         std::apply([&](const Ts&... x) { p.tuple({ShowRef(x)...}); }, t);
     }
+};
+
+/// An existential whose bounds are more than `^Show` (`any ^Eq`): the value and the
+/// dictionary its packing found, one entry per bound (Type System ch. 5, "Existentials are
+/// dictionaries"), as the Rust runtime's `Packed`. The checker unpacks every existential
+/// into a type of its own at a parameter, so a comparison meets two values of one type; one
+/// across two types panics rather than answer.
+class Packed {
+public:
+    template <class T>
+    class Packing {
+    public:
+        explicit Packing(T v) : value_(std::make_shared<const T>(std::move(v))) {}
+        Packing&& with_show() && {
+            show_ = [](const void* x, Printer& p) { Show<T>::show(*static_cast<const T*>(x), p); };
+            return std::move(*this);
+        }
+        Packing&& with_eq() && {
+            eq_ = [](const void* x, const void* y) { return *static_cast<const T*>(x) == *static_cast<const T*>(y); };
+            return std::move(*this);
+        }
+        Packing&& with_ord() && {
+            eq_ = [](const void* x, const void* y) { return *static_cast<const T*>(x) == *static_cast<const T*>(y); };
+            cmp_ = [](const void* x, const void* y) -> std::strong_ordering { return *static_cast<const T*>(x) <=> *static_cast<const T*>(y); };
+            return std::move(*this);
+        }
+        Packed packed() && { return Packed(std::move(value_), &typeid(T), show_, eq_, cmp_); }
+
+    private:
+        std::shared_ptr<const void> value_;
+        void (*show_)(const void*, Printer&) = nullptr;
+        bool (*eq_)(const void*, const void*) = nullptr;
+        std::strong_ordering (*cmp_)(const void*, const void*) = nullptr;
+    };
+
+    template <class T>
+    static Packing<T> of(T v) { return Packing<T>(std::move(v)); }
+
+    void show(Printer& p) const {
+        if (!show_) panic("an existential without ^Show shown");
+        show_(value_.get(), p);
+    }
+    bool operator==(const Packed& o) const {
+        if (!eq_) panic("an existential without ^Eq compared");
+        same(o);
+        return eq_(value_.get(), o.value_.get());
+    }
+    std::strong_ordering operator<=>(const Packed& o) const {
+        if (!cmp_) panic("an existential without ^Ord ordered");
+        same(o);
+        return cmp_(value_.get(), o.value_.get());
+    }
+
+private:
+    Packed(std::shared_ptr<const void> v, const std::type_info* type, void (*show)(const void*, Printer&),
+           bool (*eq)(const void*, const void*), std::strong_ordering (*cmp)(const void*, const void*))
+        : value_(std::move(v)), type_(type), show_(show), eq_(eq), cmp_(cmp) {}
+    void same(const Packed& o) const {
+        if (*type_ != *o.type_) panic("two existentials of different types met (the checker unpacks each into a type of its own)");
+    }
+    std::shared_ptr<const void> value_;
+    const std::type_info* type_;
+    void (*show_)(const void*, Printer&);
+    bool (*eq_)(const void*, const void*);
+    std::strong_ordering (*cmp_)(const void*, const void*);
 };
 
 }  // namespace prism_rtl

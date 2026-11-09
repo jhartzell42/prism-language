@@ -338,8 +338,27 @@ fn PlainValueByKind lx, env, e:
         ETypeArgs x, ignore: ValueOf lx, env, x
         EGiven b: GivenValue lx, env, b, t, e.span
         EUpdate target, b: UpdateValue lx, env, target, b, t, e.span
-        EAny x: VlOwned (XCall "Rc::new", [[Own (ValueOf lx, env, x)]]), OutShowAny
+        EAny x: AnyValue lx, env, x, (TypeAt lx, e.span)
         otherwise: VlOwned (Refusal "{KindWords e.kind} as a value"), t
+
+# `any x` (Type System ch. 5, "Existentials are dictionaries"): the value with the impls of
+# the existential's bounds at its type, taken while its type is known; an `any ^Show` is
+# a `dyn Show`. A bound with no impl in the runtime's packing (a program's own trait) is
+# refused.
+AnyValue: unbounded fn Lx, Env, Expr, Ty -> Vl
+fn AnyValue lx, env, x, t:
+    let v = Own (ValueOf lx, env, x)
+    match Peel t:
+        TyAny bounds:
+            if IsShowOnly bounds: VlOwned (XCall "Rc::new", [[v]]), OutShowAny
+            else:
+                let names = Each bounds, \|b| BareName b
+                let others = Filter names, \|b| not (HasText [["Show", "Eq", "Ord"]], b)
+                if (Len others) > 0: VlOwned (Refusal "an existential of `^{Or others[0], ""}`: a packed value takes `^Eq`, `^Ord` and `^Show`"), (OutNamed "prism_rtl::Packed", [[]])
+                else:
+                    let packing = Fold names, (XCall "prism_rtl::Packed::of", [[v]]), \|acc, b| XMethod acc, "with_{Lower b}", [[]]
+                    VlOwned (XMethod packing, "packed", [[]]), (OutNamed "prism_rtl::Packed", [[]])
+        otherwise: VlOwned (XCall "Rc::new", [[v]]), OutShowAny
 
 # `@ x` as a value (a supplier's arm; pick HO): a blueprint with no places whose output is
 # `x`, typed as the tag's variant of `crate::Answer`, so the arm must stand under a tag
