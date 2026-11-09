@@ -1,0 +1,12 @@
+# Audited: the row's `$d` is the count, so its label moves with each click.
+# The tests of ts-ch04-whole-dynamic-kept (Type System chapter 4).
+emit Ui.*
+use App.*
+
+test a_kept_dynamic_follows, @rows:
+    build
+        => expect Ui.Label(text="row 0")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="row 1")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="row 2")
