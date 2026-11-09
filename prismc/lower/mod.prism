@@ -110,6 +110,10 @@ type Lx = record:
     # Every local binder's id and every use's binder's id, by place (pick UN).
     localIds: (Text ==> Nat)
     useIds: (Text ==> Nat)
+    # Every use of a top-level widget's id, by place, and the ids of the uses a widget
+    # being lowered was inlined at, outermost first, as its locals' suffix (`_7_3`).
+    callIds: (Text ==> Nat)
+    inlined: Text
     subst: (Text ==> Ty)
     csubst: (Text ==> Col)
 derive ^Eq, ^Show
@@ -290,10 +294,11 @@ fn LocalName lx, nkey:
 
 # A local binder's Rust and C++ name (pick UN): its name, `_`, the letter of its type's
 # outer layer and its id in base 32 (`door_p3`, `go_e1`, `x_d4`, `k_o2`), the id the
-# checker gave it; a binder the checker gave none (lowering's own) keeps `LocalName`'s.
+# checker gave it, and in a widget inlined at a use, that use's id (`w_p0_7`); a binder
+# the checker gave none (lowering's own) keeps `LocalName`'s.
 LocalNameAt: unbounded fn Lx, Text, Range -> Text
 fn LocalNameAt lx, nkey, span = match lx.localIds[PlaceKey lx, span]:
-    ? id: "{LocalBase nkey}_{KindLetter (BinderTy lx, span)}{Base32 id}"
+    ? id: "{LocalBase nkey}_{KindLetter (BinderTy lx, span)}{Base32 id}{lx.inlined}"
     nil: LocalName lx, nkey
 
 # A name without its marks, in snake case, without a trailing `_` (so the separator is

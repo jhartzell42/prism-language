@@ -1178,9 +1178,6 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   the two did the same on an lvalue and differed only on a temporary, where `deref` now
   copies the value out of a temporary `Rc<const T>` (its last owner may be that temporary)
   and keeps a temporary `Rc<T>`'s place (a node's or a cell's owner keeps it).
-- **RN: a `let` that rebinds a name from itself** (Rust's shadowing, an `&` block's
-  `let mut fuel = fuel.clone()`) binds a new name (`fuel_1`), which the statements after
-  it read; a scope that binds the name anew hides the rename.
 - **KW, QL: names.** A C++ keyword takes a `_` after it (`or_`, `int_`, `explicit_`); a
   record field named as a value type's member (`show`, `to_pod`, `cases`) too; a node
   method named as some node's field too. A call whose name a node's member, a module or
@@ -1412,8 +1409,13 @@ Each is Claude's, for Jimmy to overturn.
   So `x` and `$x`, two binders, are `x_p..` and `x_d..`, a local never hides a function or
   a keyword, and the separator is the name's last `_` (a name's own trailing `_` is
   dropped, the topic `_` is `topic`). A generalized `let` lowered once per instantiation
-  adds `w` and the instantiation's index (`same_f2w1`). Names lowering makes for itself
-  (a closure's `a0`, a job's `job_fn`) and the fields of a node or a job keep their
+  adds `w` and the instantiation's index (`same_f2w1`). A widget inlined at a use (pick
+  WG) suffixes its locals with that use's id, which the checker gives every use of a
+  top-level widget from the same count (`calls`), outermost first (`w_p0_7_3`). No `let`
+  rebinds a name from itself: a closure's copy of what it captures is the local's name
+  and `x`, a call's copy of that `y`, a loop continuation's copy `z` (letters outside
+  base 32), so C++ prints every name as the model has it. Names lowering makes for
+  itself (a closure's `a0`, a job's `job_fn`) and the fields of a node or a job keep their
   spellings.
 - **MO Modules.** One Rust module per Prism module (`program` for the root module, in
   `src/program.rs`), nested as the Prism names are: `Check.Env` is `crate::check::env`,

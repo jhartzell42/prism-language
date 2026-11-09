@@ -528,8 +528,15 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     match args[i]:
                         nil: ((w, be, me))
                         ? a: BindParam w, benv, menv, be, me, nkey, pty, a.value
+                let callSpan = match e.kind:
+                    ECall c, ignore, ignore, ignore: c.span
+                    otherwise: e.span
+                let lxi = update lxc:
+                    &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
+                        ? id: "{lx.inlined}_{Base32 id}"
+                        nil: lx.inlined
                 let inner = update wx1:
-                    &_.lx <= lxc
+                    &_.lx <= lxi
                     &_.inlining <= Push &_.inlining, qk
                     &_.result <= WrUnit
                 let done = BlockInto inner, be1, me1, body
