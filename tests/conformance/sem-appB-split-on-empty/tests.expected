@@ -1,0 +1,7 @@
+# Derived by hand from Semantics Appendix B, `Split`, as the prelude defines `SplitOn` by it: the pieces between the matches of the separator; an empty separator matches at every character boundary, so it cuts "abc" into its characters with an empty text at each end, "" into two empty texts, and "aé" at its two characters (a boundary is never inside a character's bytes).
+check split_on
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok

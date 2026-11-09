@@ -1,0 +1,9 @@
+# `SplitOn` (the prelude's, not in Appendix B) with an empty separator: what Appendix B's
+# `Split` gives for the regular expression that matches the separator, so an empty one
+# cuts at every character boundary. Written by Claude on the claude-bugs branch; subject
+# to change.
+test mod Tests
+
+# The words of a line, by one space.
+Words: fn Text -> [Text]
+fn Words line = SplitOn line, " "
