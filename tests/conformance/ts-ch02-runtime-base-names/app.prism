@@ -1,0 +1,33 @@
+# Program types named as the runtime's base classes (`Job`, `Node`, `Program`), built,
+# matched and used as values inside a widget, whose C++ is a class deriving from one: the
+# emitted code names every program type by its path from the crate, so a base's own name
+# never captures one. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Job = choice:
+    Idle
+    Busy Nat
+derive ^Eq, ^Show
+
+type Node = choice:
+    Header Text
+    Line Nat
+derive ^Eq, ^Show
+
+type Program = record:
+    jobs: [Job]
+derive ^Eq, ^Show
+
+@shown: @unit
+@shown:
+    let p = Program(jobs=[[Idle, (Busy 3), (Busy 4)]])
+    let busy = Fold p.jobs, 0, \|acc, j| match j:
+        Busy n: acc + n
+        Idle: acc
+    let r = if busy > 5: Line busy else: Header "none"
+    let shown = match r:
+        Line n: "line {n}"
+        Header t: t
+    let idle = Idle
+    Ui.Label(text=$"{shown} {idle} {r}")             # 0
