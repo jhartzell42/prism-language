@@ -222,7 +222,7 @@ fn TypeParts cp, t:
             let caseDefs = Filter (Each t.cases, \|c| CaseCmpDefs cp, gens, head, c, eq, ord), \|s| s != ""
             (((Join (Filter [[cls, cmp]], \|s| s != ""), "\n"), caseDefs))
         otherwise:
-            let first = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
+            let first = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
             let fields = match t.shape:
                 ShapeRecord: Join (Each first.fields, \|((f, ft))| "{CppType cp, ft} {FieldId f};"), "\n"
                 ShapeNewtype: PositionalFields cp, first.fields
@@ -293,8 +293,8 @@ ShowDef: unbounded fn Cp, TyDef, Text, Text -> Text
 fn ShowDef cp, t, head, gens:
     let body = match t.shape:
         ShapeRecord:
-            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            "p.record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismField f}\", {FieldId f}\}"), ", "}\});"
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "p.record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismFieldOf c, f}\", {FieldId f}\}"), ", "}\});"
         ShapeChoice: Join (Each (Range0 (Len t.cases)), \|i| ShowCase t, i), "\n"
         ShapeNewtype: "p.choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "a{k}"), ", "}\});"
         ShapeUnit: "p.choice(\"{FirstCase t}\", \{\});"
@@ -302,16 +302,16 @@ fn ShowDef cp, t, head, gens:
 
 ShowCase: fn TyDef, Nat -> Text
 fn ShowCase t, i:
-    let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]]))
+    let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
     let head = "{if i == 0: "if" else: "else if"} (auto c = std::get_if<{c.name}>(&cases()))"
     "{head} p.choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "c->a{k}"), ", "}\});"
 
 # The Prism name of a newtype's or unit type's one case (`click` of `Click`).
 FirstCase: fn TyDef -> Text
-fn FirstCase t = (Or t.cases[0], (CaseDef(name="", prism=t.prism, fields=[[]]))).prism
+fn FirstCase t = (Or t.cases[0], (CaseDef(name="", prism=t.prism, fields=[[]], labels=[[]]))).prism
 
 FirstArity: fn TyDef -> Nat
-fn FirstArity t = Len (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))).fields
+fn FirstArity t = Len (Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))).fields
 
 FieldTypes: fn [((Text, OutTy))] -> [OutTy]
 fn FieldTypes fs = Each fs, \|((ignore, t))| t
@@ -325,8 +325,8 @@ ToPodDef: unbounded fn Cp, TyDef, Text, Text -> Text
 fn ToPodDef cp, t, head, gens:
     let structure = match t.shape:
         ShapeRecord:
-            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            "Pod::record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismField f}\", prism_rtl::to_pod({FieldId f})\}"), ", "}\})"
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "Pod::record(\"{t.prism}\", \{{Join (Each c.fields, \|((f, ignore))| "\{\"{PrismFieldOf c, f}\", prism_rtl::to_pod({FieldId f})\}"), ", "}\})"
         ShapeChoice: ChoicePod t
         ShapeNewtype: "Pod::choice(\"{FirstCase t}\", \{{Join (Each (Range0 (FirstArity t)), \|k| "prism_rtl::to_pod(a{k})"), ", "}\})"
         ShapeUnit: "Pod::choice(\"{FirstCase t}\", \{\})"
@@ -336,7 +336,7 @@ fn ToPodDef cp, t, head, gens:
 ChoicePod: fn TyDef -> Text
 fn ChoicePod t:
     let arms = Each (Range0 (Len t.cases)), \|i|
-        let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]]))
+        let c = Or t.cases[i], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
         "std::holds_alternative<{c.name}>(cases()) ? Pod::choice(\"{c.prism}\", \{{Join (Each (Range0 (Len c.fields)), \|k| "prism_rtl::to_pod(std::get<{c.name}>(cases()).a{k})"), ", "}\})"
     "{Join arms, "\n    : "}\n    : Pod()"
 
@@ -344,8 +344,8 @@ FromPodDef: unbounded fn Cp, TyDef, Text, Text -> Text
 fn FromPodDef cp, t, head, gens:
     let body = match t.shape:
         ShapeRecord:
-            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            let reads = Join (Each c.fields, \|((f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(whole, \"{PrismField f}\"))))"), ", "
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            let reads = Join (Each c.fields, \|((f, ft))| ".{FieldId f} = TRY(prism_rtl::from_pod<{CppType cp, ft}>(TRY(crate::prelude::field(whole, \"{PrismFieldOf c, f}\"))))"), ", "
             "return {head}\{{reads}\};"
         otherwise:
             let arms = Each t.cases, \|c|
@@ -362,6 +362,12 @@ fn FromPodDef cp, t, head, gens:
 # A field's Prism spelling: the C++ one without the `_` a keyword took.
 PrismField: fn Text -> Text
 fn PrismField f = if (LastChar f) == "_": BeforeLast f else: f
+
+# A record's field as the program spells it (`CaseDef.labels`), by its Rust name.
+PrismFieldOf: fn CaseDef, Text -> Text
+fn PrismFieldOf c, f = Fold (Range0 (Len c.fields)), (PrismField f), \|found, i| match ((c.fields[i], c.labels[i])):
+    ((? ((g, ignore)), ? label)): if g == f: label else: found
+    otherwise: found
 
 IndentCpp: fn Text -> Text
 fn IndentCpp t = Join (Each (SplitOn t, "\n"), \|l| if l == "": "" else: "    {l}"), "\n"

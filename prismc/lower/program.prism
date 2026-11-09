@@ -456,11 +456,11 @@ fn TyDefs lx, ti:
                 let ((fname, ft)) = Or fs[i], (("", TyErr))
                 let rt = OutTyOf lx, ft
                 ((Snake fname, (if RcField lx, ti.name, i: OutRc rt else: rt)))
-            [[ItType (Mk ShapeRecord, [[CaseDef(name=(Camel bare), prism=bare, fields=fields)]])]]
+            [[ItType (Mk ShapeRecord, [[CaseDef(name=(Camel bare), prism=bare, fields=fields, labels=(Each fs, \|((fname, ignore))| fname))]])]]
         BChoice cases:
             let defs = Each cases, \|((cn, ats))|
                 let ck = QualKey ti.home, cn
-                CaseDef(name=(Camel cn), prism=cn, fields=(Each (Range0 (Len ats)), \|i| (("", (CaseField lx, ck, i, (Or ats[i], TyErr))))))
+                CaseDef(name=(Camel cn), prism=cn, fields=(Each (Range0 (Len ats)), \|i| (("", (CaseField lx, ck, i, (Or ats[i], TyErr))))), labels=[[]])
             let shape = match cases:
                 [[((cn, [[]]))]]: if IsLowerText cn: ShapeUnit else: ShapeChoice
                 [[((cn, ignore))]]: if cn == bare: ShapeNewtype else: ShapeChoice

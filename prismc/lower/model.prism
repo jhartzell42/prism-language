@@ -275,6 +275,9 @@ type CaseDef = record:
     name: Text
     prism: Text
     fields: [((Text, OutTy))]
+    # A record's fields as the program spells them, which it shows and a `Pod` carries
+    # (`byName`, not the Rust `by_name`); a choice's case has none.
+    labels: [Text]
 derive ^Eq, ^Show
 
 # An element tag: the `Level` struct (its plain and dynamic fields, as values after the

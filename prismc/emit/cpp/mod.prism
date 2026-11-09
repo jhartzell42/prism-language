@@ -206,7 +206,7 @@ fn AddMember cp, name = update cp:
 AddType: fn Cp, Text, TyDef -> Cp
 fn AddType cp, m, t:
     let path = "{m}::{t.name}"
-    let first = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
+    let first = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
     match t.shape:
         ShapeRecord: AddTy cp, path, TyInfo(kind="record", fields=(Each first.fields, \|((f, ignore))| f), params=t.params)
         ShapeNewtype: AddTy cp, path, TyInfo(kind="newtype", fields=[[]], params=t.params)

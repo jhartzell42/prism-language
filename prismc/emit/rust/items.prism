@@ -121,11 +121,11 @@ fn TypeDecl t:
     let doc = SourceDoc "`{t.prism}`:", t.doc
     let decl = match t.shape:
         ShapeRecord:
-            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
             Struct doc, derives, head, (Join (Each c.fields, \|((f, ft))| "pub {f}: {Type ft},"), "\n")
         ShapeUnit: TupleStruct doc, derives, head, ""
         ShapeNewtype:
-            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
             TupleStruct doc, derives, head, "({Join (Each c.fields, \|((ignore, ft))| "pub {Type ft}"), ", "})"
         otherwise: Enum doc, derives, head, (Join (Each t.cases, \|c| EnumCase c), "\n")
     let show = if t.show == ShownDerived: "\n{ShowImpl t, head}" else: ""
@@ -150,8 +150,8 @@ ShowImpl: unbounded fn TyDef, Text -> Text
 fn ShowImpl t, head:
     let body = match t.shape:
         ShapeRecord:
-            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{PrismField f}\", &self.{f})"), ", "}]);"
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", &self.{f})"), ", "}]);"
         otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (Binders (Len c.fields)), ", "}]),"), "\n")
     Impl (Bounded t.params, "Show"), "Show", head, "fn show(&self, p: &mut Printer)", body
 
@@ -159,12 +159,18 @@ fn ShowImpl t, head:
 PrismField: fn Text -> Text
 fn PrismField f = if (LastChar f) == "_": BeforeLast f else: f
 
+# A record's field as the program spells it (`CaseDef.labels`), by its Rust name.
+PrismFieldOf: fn CaseDef, Text -> Text
+fn PrismFieldOf c, f = Fold (Range0 (Len c.fields)), (PrismField f), \|found, i| match ((c.fields[i], c.labels[i])):
+    ((? ((g, ignore)), ? label)): if g == f: label else: found
+    otherwise: found
+
 ToPodImpl: unbounded fn TyDef, Text -> Text
 fn ToPodImpl t, head:
     let body = match t.shape:
         ShapeRecord:
-            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            "Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{PrismField f}\", self.{f}.to_pod())"), ", "}])"
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", self.{f}.to_pod())"), ", "}])"
         otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => Pod::Choice(\"{c.prism}\".into(), vec![{Join (Each (Binders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"), "\n")
     let shown = if t.show == ShownOwn: ShownPod body else: body
     Impl (Bounded t.params, "ToPod"), "ToPod", head, "fn to_pod(&self) -> Pod", shown
@@ -173,8 +179,8 @@ FromPodImpl: unbounded fn TyDef, Text -> Text
 fn FromPodImpl t, head:
     let body = match t.shape:
         ShapeRecord:
-            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]]))
-            "Ok({t.name} \{ {Join (Each c.fields, \|((f, ignore))| "{f}: FromPod::from_pod(field(p, \"{PrismField f}\")?)?"), ", "} \})"
+            let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
+            "Ok({t.name} \{ {Join (Each c.fields, \|((f, ignore))| "{f}: FromPod::from_pod(field(p, \"{PrismFieldOf c, f}\")?)?"), ", "} \})"
         otherwise:
             let arms = Each t.cases, \|c|
                 let n = Len c.fields

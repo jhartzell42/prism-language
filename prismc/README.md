@@ -1396,6 +1396,9 @@ Each is Claude's, for Jimmy to overturn.
   `prism_rtl::Job` and `prism_rtl::Turn`; the other runtime names (`Cx`, `Fault`, `Pod`,
   `Path`, ...) are still bare, so a program type of one of those names in a module with
   nodes would shadow it (gap SH below). A
+  record's field is its Rust and C++ name in snake case, and the derived `^Show` and the
+  `Pod` carry the field as the program spells it (`CaseDef.labels`: `byName`, not
+  `by_name`; `ts-ch02-field-names-shown`). A
   merge with no name is `anon`; a node's internal names are first come, first served
   (`run`, `run_2`). A tag's `Level` struct is its family and name run together
   (`UiButton`, as `prism_rtl`'s tests have it). *Refused:* the old back end's sigil
