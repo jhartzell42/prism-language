@@ -1,7 +1,7 @@
 # Derived by hand from Type System ch. 4 (a sigiled parameter is not lifted over) and
 # Semantics ch. 7 (`$d on !e` samples the value as the tick opened): `Wrap`'s element is
 # the count, `$Inc` one more, `$Plus` the ones and the tens, and `!Bump` the count at the
-# tick's opening plus one, at a Go.
+# tick's opening plus one, at a Go; `Lifts` the ones and the tens, and the ones plus one.
 test a_dynamic_kept_whole
 
 tick 0
@@ -85,3 +85,23 @@ tick 3
     1: click
   changed:
     2: Ui.Label(text="last 2")
+
+test lifts_kept_whole
+
+tick 0
+  added:
+    0: Ui.Button(label="Inc")
+    1: Ui.Button(label="Ten")
+    2: Ui.Label(text="both 0 next 1")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="both 1 next 2")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="both 11 next 2")

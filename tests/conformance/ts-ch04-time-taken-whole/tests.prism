@@ -38,3 +38,11 @@ test an_event_taken_whole, @bumped:
         => expect Ui.Label(text="last 1")
     click Ui.Button(label="Inc"), click Ui.Button(label="Go")
         => expect Ui.Label(text="last 2")
+
+test lifts_kept_whole, @lifted:
+    build
+        => expect Ui.Label(text="both 0 next 1")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="both 1 next 2")
+    click Ui.Button(label="Ten")
+        => expect Ui.Label(text="both 11 next 2")
