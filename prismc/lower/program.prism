@@ -125,10 +125,31 @@ fn NamedMods g, srcs, tp, ms:
         nil: acc
     Fold ms, {}, \|acc, m| match g.mods[m]:
         ? info:
-            let code = Join (Filter (SplitOn (Or srcs[info.file], (MkSrc "", "")).text, "\n"), \|l| not (HasPrefix (TrimStart l), "#")), "\n"
-            let qualified = Filter ms, \|o| o != m and o != "" and Contains code, "{o}."
+            let named = Append (Each (Filter tp.globals, \|n| n.at.file == info.file), \|n| n.target), (TypesNamedIn tp, info.file)
+            let qualified = Filter ms, \|o| o != m and o != "" and Fold named, False, \|f, k| f or (OwnerOf k) == o
             Insert acc, m, (UnionTexts (UnionTexts (ModRefs g, m), qualified), (Or solved[m], [[]]))
         nil: acc
+
+# The program's types a file's expressions, binders and definitions have, by key: what of
+# the other modules' types its code names, resolved as the checker resolved it.
+TypesNamedIn: unbounded fn TProgram, Nat -> [Text]
+fn TypesNamedIn tp, file:
+    let fromExprs = Fold (Filter tp.exprs, \|n| n.at.file == file), [[]], \|acc, n| UnionTexts acc, (TyConNames n.ty)
+    let fromBinders = Fold (Filter tp.binders, \|n| n.at.file == file), fromExprs, \|acc, n| UnionTexts acc, (TyConNames n.ty)
+    Fold (Filter tp.defs, \|n| n.at.file == file), fromBinders, \|acc, n| UnionTexts acc, (TyConNames n.scheme.ty)
+
+TyConNames: unbounded fn Ty -> [Text]
+fn TyConNames t = match t:
+    TyCon n, args: Fold args, [[n]], \|acc, a| UnionTexts acc, (TyConNames a)
+    TyFn ignore, ps, r: Fold ps, (TyConNames r), \|acc, a| UnionTexts acc, (TyConNames a)
+    TyTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (TyConNames a)
+    TyArray x: TyConNames x
+    TyMap k, v: UnionTexts (TyConNames k), (TyConNames v)
+    TySig ignore, x: TyConNames x
+    TyAt x, ignore: TyConNames x
+    TyElem ignore, x: TyConNames x
+    TyAssoc ignore, x: TyConNames x
+    otherwise: [[]]
 
 # The source path of an impl an `ImplNote` names (`impl PATH:LINE`, `derived PATH:LINE`),
 # or "" for a constraint no written or derived impl solved.

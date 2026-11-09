@@ -72,7 +72,10 @@ CallGlobal: unbounded fn Env, St, SName, [Arg], Range, [Ty], Range -> ((Ty, St))
 fn CallGlobal env, st0, n, args, span, explicit, cspan:
     let ((?qk, why)) = ResolveValue env.g, env.home, n
     let name = SNameKey n
-    let st = CollisionAt env, st0, why, name, n.span
+    let st1 = CollisionAt env, st0, why, name, n.span
+    let st = match ?qk:
+        ? qk: NoteGlobal st1, n.span, qk
+        nil: st1
     match ?qk:
         nil: ((TyErr, (Err st, "unknown-name", n.span, "nothing declares `{name}` here")))
         ? qk:

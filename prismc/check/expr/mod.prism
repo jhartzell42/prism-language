@@ -275,7 +275,10 @@ fn InstantiateLocal st, sc, span, name:
 InferGlobal: unbounded fn Env, St, SName, Range -> ((Ty, St))
 fn InferGlobal env, st0, n, span:
     let ((?qk, why)) = ResolveValue env.g, env.home, n
-    let st = CollisionAt env, st0, why, (SNameKey n), span
+    let st1 = CollisionAt env, st0, why, (SNameKey n), span
+    let st = match ?qk:
+        ? qk: NoteGlobal st1, span, qk
+        nil: st1
     match ?qk:
         nil: ((TyErr, (Err st, "unknown-name", span, "nothing declares `{SNameKey n}` here")))
         ? qk:

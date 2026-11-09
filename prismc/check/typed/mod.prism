@@ -147,6 +147,11 @@ type LocalNote = record:
     id: Nat
 derive ^Eq, ^Show
 
+type GlobalNote = record:
+    at: SrcAt
+    target: Text
+derive ^Eq, ^Show
+
 type TProgram = record:
     exprs: [TyNote]
     apps: [AppNote]
@@ -161,6 +166,9 @@ type TProgram = record:
     # Every use of a top-level widget, with an id of the same count as the locals', which
     # names the copy lowering inlines there (pick UN).
     calls: [LocalNote]
+    # Every name the checker resolved to a top-level value, constructor or tag, by the key
+    # it resolved to: what a module refers to of the others.
+    globals: [GlobalNote]
     gens: [GenNote]
     insts: [InstNote]
     defs: [DefNote]
@@ -169,7 +177,7 @@ type TProgram = record:
     unshrunk: [SrcAt]
 derive ^Eq, ^Show
 
-let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], calls=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
+let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], calls=[[]], globals=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
 
 AtKey: fn SrcAt -> Text
 fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"
