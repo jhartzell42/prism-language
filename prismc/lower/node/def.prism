@@ -328,9 +328,22 @@ fn ?BindingOfName env, p = match p.kind:
     PName n: env.names[SNameKey n]
     otherwise: nil
 
+# The expressions a statement is made of, as a line of a widget block reads them.
+LineExprs: fn Stmt -> [Expr]
+fn LineExprs s = match s.kind:
+    SBind ignore, e, (? step): [[e, step]]
+    SBind ignore, e, nil: [[e]]
+    SIgnore e: [[e]]
+    SLet ignore, ignore, e: [[e]]
+    SExpr e: [[e]]
+    otherwise: [[]]
+
 # One statement of a widget block.
 WidgetStmt: unbounded fn Wx, Env, Env, Stmt, Bool -> ((Wx, Env, Env))
-fn WidgetStmt wx, benv, menv, s, last:
+fn WidgetStmt wx0, benv0, menv0, s, last:
+    # every reader the line passes whole to a function, wherever it stands in the line, as
+    # its live dynamic (gap LF)
+    let ((wx, benv, menv)) = Fold (LineExprs s), ((wx0, benv0, menv0)), \|((w, be, me)), e| WholeArgs w, be, me, e
     let lx = wx.lx
     match s.kind:
         SBind p, e, nil:
@@ -585,8 +598,7 @@ fn PatText p = match p.kind:
 # getter, and, when everything it reads has a value at the build, that value in the local
 # `{rs}_init` too (`InitEnv`, round 3 DY); a plain value a field computed at the build.
 LetLine: unbounded fn Wx, Env, Env, Pattern, Expr -> ((Wx, Env))
-fn LetLine wx0, benv0, menv0, p, e:
-    let ((wx, benv, menv)) = WholeArgs wx0, benv0, menv0, e
+fn LetLine wx, benv, menv, p, e:
     let lx = wx.lx
     match ?BindingOf menv, p:
         ? (BnEv er, t):

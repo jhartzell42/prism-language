@@ -52,10 +52,9 @@ ForLine: unbounded fn Wx, Env, Env, ?ForBinders, Expr, Block, Expr, ?Bn -> ((Wx,
 fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let lx = wx.lx
     let pos = wx.pos
-    let ((wx0, ignore, menvW)) = WholeArgs wx, benv, menv, source
-    let wx1 = update wx0:
+    let wx1 = update wx:
         &_.pos <= NextPos &_.pos
-    let ((srcEx, reads)) = DynamicExpr wx1, menvW, source
+    let ((srcEx, reads)) = DynamicExpr wx1, menv, source
     let srcTy = Peel (TypeAt lx, source.span)
     let ((kt, vt, keyed)) = match srcTy:
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), True))

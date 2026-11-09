@@ -282,7 +282,7 @@ fn WholeArgs wx, benv, menv, e:
         otherwise: False
     let names = Fold calls, [[]], \|acc, c| match c.kind:
         ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Fold (ExprsIn a.value), acc2, \|acc3, y| match y.kind:
-            EName n: match menv.names[SNameKey n]:
+            EName n: if HasKey menv.names, "#whole{DynKey y}": acc3 else: match menv.names[SNameKey n]:
                 ? (BnHold ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
                 ? (BnDyn ignore, ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
                 otherwise: acc3

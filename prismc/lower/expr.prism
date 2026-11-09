@@ -261,7 +261,7 @@ fn WholeValueOf lx, env, e:
                     # a local's value, never written again where it is bound (a root
                     # widget's argument): the constant it is
                     other if local: VlOwned (XCall (Helper "dyn_constant"), [[Own v]]), (OutDyn other)
-                    otherwise: VlOwned (Refusal "`{SrcText lx, lx.file, e.span}` passed whole to a function that takes it so, where it has no live dynamic to give: a reader with no value at the build, or one read outside a `let` or a `for`'s source (gap LF)"), (OutDyn (OutTyOf lx, (Peel full)))
+                    otherwise: VlOwned (Refusal "`{SrcText lx, lx.file, e.span}` passed whole to a function that takes it so, where it has no live dynamic to give: a reader with no value at the build where the line reads it (gap LF)"), (OutDyn (OutTyOf lx, (Peel full)))
         EFreeSigil "$", x: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (Helper "dyn_constant"), [[Own (ValueOf lxp, env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
         otherwise:
             if not (NotLifted lx, e.span): DynamicLift lx, env, e
