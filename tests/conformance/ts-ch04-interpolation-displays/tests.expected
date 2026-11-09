@@ -1,0 +1,7 @@
+# Derived by hand from Jimmy's ruling (interpolation is display, `^Show` is debug): the characters place as themselves, the text and the numbers as they are; the array, the tuple, the record and the truth value place as they show, the characters and the text inside them quoted.
+test interpolation_displays
+
+tick 0
+  added:
+    0: Ui.Label(text="a! t 3 -4 1.5")
+    1: Ui.Label(text="[['a']] (('a', 1)) Note(mark='b', text=\"hi\") True")

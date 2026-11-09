@@ -1,0 +1,22 @@
+# Interpolation displays a value, `^Show` debugs it (Type System ch. 4: interpolation
+# applies the text-building function to every placeholder; Jimmy, 8 November 2026:
+# "Characters should interpolate as themselves not as 'debug' but as 'display'"): a
+# character, a text and the numbers place as themselves; a value with no display of its
+# own (an array, a tuple, a record, a truth value) places as it shows, its
+# characters and texts inside it quoted. Written by Claude on the claude-bugs branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Note = record:
+    mark: Char
+    text: Text
+derive ^Eq, ^Show
+
+@page: @unit
+@page:
+    let c = 'a'
+    let n = Note(mark='b', text="hi")
+    Ui.Label(text=$"{c}{'!'} {"t"} {3} {-4} {1.5}")                            # 0
+    Ui.Label(text=$"{[[c]]} {((c, 1))} {n} {True}")                                  # 1
