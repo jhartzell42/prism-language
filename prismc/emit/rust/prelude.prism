@@ -1001,6 +1001,12 @@ pub fn no_fault(d: Done) {
     }
 }
 
+/// A value as a dynamic, where a function takes the dynamic whole (gap LF): `$ v`, or a
+/// reader's value at the read point.
+pub fn dyn_constant<T: Clone + 'static>(v: T) -> Dynamic<T> {
+    Dynamic::constant(v)
+}
+
 /// `test`: each script under the Test World. With `--print` the transcripts go to
 /// standard output as they are; otherwise each is compared byte for byte with the
 /// `.expected` beside it (`tests.expected` for the test module `tests.prism`), and `ok`

@@ -95,6 +95,12 @@ type Lx = record:
     globals: (Text ==> Bool)
     # Lowering inside a node, which has a read point (`cx`): a host's supplier.
     inNode: Bool
+    # Lowering the body of a function that takes a dynamic or an event whole (a `$` or `!`
+    # below the top of a parameter or its result, Type System ch. 4, Application): its
+    # time values are `Dynamic`s and `Event`s, never samples, and a lift in it maps them.
+    whole: Bool
+    # Lowering a plain function's or a job's body, which has no read point (`cx`).
+    noCx: Bool
     # The `while` loops of unbounded functions the shrink check did not clear, by place:
     # each turn of one is a cycle point (D6).
     unshrunk: (Text ==> Bool)

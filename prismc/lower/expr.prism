@@ -168,8 +168,158 @@ fn ValueOf lx, env, e = match env.spans[PlaceKey lx, e.span]:
 # the source (`Env.spans`), so the map is the plain expression over that value.
 UnboundValueOf: unbounded fn Lx, Env, Expr -> Vl
 fn UnboundValueOf lx, env, e:
-    if IsEventValue lx, env, e: EventValueOf lx, env, e
+    if lx.whole: WholeValueOf lx, env, e
+    else: if IsWholeObject lx, e: SampledObject lx, env, e
+    else: if IsEventValue lx, env, e: EventValueOf lx, env, e
     else: ValueByKind lx, env, e
+
+# ---------------------------------------------------------------------------------------
+# Time taken whole (Type System ch. 4, Application: "A sigiled parameter is not lifted
+# over"; gap LF)
+# ---------------------------------------------------------------------------------------
+
+# Whether a named function takes a dynamic or an event whole: a `$` or `!` below the top of
+# a parameter or of its result. One with them only on top is lowered lifted, its time values
+# read at the caller's read point, which no program can tell apart; one that gives a
+# blueprint takes its events as event values already.
+IsWholeFn: fn Lx, Text -> Bool
+fn IsWholeFn lx, qk = match lx.g.vals[qk]:
+    ? v: IsWholeSig v.scheme.ty
+    nil: False
+
+IsWholeSig: fn Ty -> Bool
+fn IsWholeSig t = match t:
+    TyFn ignore, ps, r: (not (HasBlueprint r)) and Fold (Push ps, r), False, \|seen, p| seen or TimeWithin p
+    otherwise: False
+
+# Whether an expression outside such a function is a `Dynamic` value rather than a reader:
+# a call of one, an application the checker did not lift whose type holds a dynamic and
+# that takes one of these, an index into one, or a name whose type holds a dynamic below
+# the top (a bundle aside, which a node binds part by part).
+IsWholeObject: unbounded fn Lx, Expr -> Bool
+fn IsWholeObject lx, e = match e.kind:
+    EGroup x: IsWholeObject lx, x
+    EIndex r, ignore: IsWholeObject lx, r
+    EName ignore:
+        let t = TypeAt lx, e.span
+        (TimeWithin t) and (LayerOf t) != LyDyn and (LayerOf t) != LyEv and not (IsBundle t)
+    ECall c, args, ignore, ignore:
+        let qk = CalleeKey lx, c
+        # a lifted application of one takes its operands' values (`KidsOf $e`), as any
+        # lifted application does
+        if not (NotLifted lx, e.span): False
+        else: if (qk != "") and IsWholeFn lx, qk: True
+        else: if HasKey lx.g.ctors, qk: False
+        else: (NotLifted lx, e.span) and Fold args, False, \|seen, a| seen or (IsWholeObject lx, a.value) or HoldsTimeWhole lx, a.value
+    otherwise: False
+
+# An argument that can only be taken whole: its type holds a dynamic or an event below the
+# top (`[[(($a, 1))]]` to a generic function), a bundle aside.
+HoldsTimeWhole: fn Lx, Expr -> Bool
+fn HoldsTimeWhole lx, x:
+    let t = TypeAt lx, x.span
+    (TimeWithin t) and not (IsBundle t)
+
+NotLifted: fn Lx, Range -> Bool
+fn NotLifted lx, span = match lx.apps[PlaceKey lx, span]:
+    ? ap: ap.layer != "$" and ap.layer != "!"
+    nil: True
+
+# Such a value where a reader is wanted: built with its time values whole, and sampled at
+# the read point when it is a dynamic. A plain function's body has no read point (gap LE).
+SampledObject: unbounded fn Lx, Env, Expr -> Vl
+fn SampledObject lx, env, e:
+    let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
+    let lxw = update lx:
+        &_.whole <= True
+    let obj = Own (ValueByKind lxw, env, e)
+    if (LayerOf (TypeAt lx, e.span)) != LyDyn: VlOwned obj, (OutTyOf lx, (TypeAt lx, e.span))
+    else: if lx.noCx: VlOwned (Refusal "`{SrcText lx, lx.file, e.span}`, a dynamic a function gives whole, read in a plain function, which has no read point (gap LE)"), t
+    else: VlOwned (XMethod obj, "sample", [[XCx]]), t
+
+# A value in a function that takes time whole, or in a call of one: a dynamic is a
+# `Dynamic`. A node's reader is the live dynamic its line made for it (`WholeArgs`), never a
+# copy of its value; one with none is refused. `$ v` is a constant; a lift the checker made
+# over dynamics maps them (`map`, `map2`, paired up beyond two).
+WholeValueOf: unbounded fn Lx, Env, Expr -> Vl
+fn WholeValueOf lx, env, e:
+    let full = TypeAt lx, e.span
+    let lxp = update lx:
+        &_.whole <= False
+    if (LayerOf full) != LyDyn: if IsEventValue lx, env, e: EventValueOf lx, env, e else: ValueByKind lx, env, e
+    else: match e.kind:
+        EGroup x: ValueOf lx, env, x
+        EName n: match env.names["#whole{e.span.start}:{e.span.end}"]:
+            ? (BnLocal x, mode, dt): LocalPlace x, mode, dt
+            otherwise:
+                let v = ValueByKind lx, env, e
+                let local = (Len n.path) == 1 and match env.names[SNameKey n]:
+                    ? (BnLocal ignore, ignore, ignore): True
+                    otherwise: False
+                match ValueTy v:
+                    OutDyn ignore: v
+                    # a local's value, never written again where it is bound (a root
+                    # widget's argument): the constant it is
+                    other if local: VlOwned (XCall (Helper "dyn_constant"), [[Own v]]), (OutDyn other)
+                    otherwise: VlOwned (Refusal "`{SrcText lx, lx.file, e.span}` passed whole to a function that takes it so, where it has no live dynamic to give: a reader with no value at the build, or one read outside a `let` or a `for`'s source (gap LF)"), (OutDyn (OutTyOf lx, (Peel full)))
+        EFreeSigil "$", x: if (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf lx, env, x else: VlOwned (XCall (Helper "dyn_constant"), [[Own (ValueOf lxp, env, x)]]), (OutDyn (OutTyOf lx, (Peel full)))
+        otherwise:
+            if not (NotLifted lx, e.span): DynamicLift lx, env, e
+            else: ValueByKind lx, env, e
+
+# A lift over the dynamics among an expression's operands, each a `Dynamic`: the plain
+# expression over their values, mapped; two are read together, one update event firing
+# when either moves.
+DynamicLift: unbounded fn Lx, Env, Expr -> Vl
+fn DynamicLift lx, env, e:
+    let full = TypeAt lx, e.span
+    let t = OutTyOf lx, (Peel full)
+    let srcs = Filter (Operands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyDyn
+    let lxp = update lx:
+        &_.whole <= False
+    let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
+        ? (BnLocal ignore, ignore, ignore): True
+        otherwise: False
+    let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
+        ? (BnLocal rs, mode, ct):
+            let local = "{PlaceStem rs}_c"
+            (((Push acc, (DoLet (PaBind local), (Own (LocalPlace rs, mode, ct)))), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
+        otherwise: ((acc, en))
+    let names = Each (Range0 (Len srcs)), \|i| "y_dyn{i}"
+    let env2 = Fold (Range0 (Len srcs)), env1, \|en, i| match srcs[i]:
+        ? x: BindSpan en, (PlaceKey lx, x.span), (VlPlace (XVar (Or names[i], "y")), ByRef, (OutTyOf lx, (Peel (TypeAt lx, x.span))))
+        nil: en
+    let pas = Each (Range0 (Len srcs)), \|i| PaTyped (PaBind (Or names[i], "y")), (OutRef (OutTyOf lx, (Peel (TypeAt lx, (Or srcs[i], e).span))))
+    let body = Own (ValueByKind lxp, env2, e)
+    let objs = Each srcs, \|x| Own (ValueOf lx, env, x)
+    let lets = Each (Range0 (Len objs)), \|i| DoLet (PaBind "src_dyn{i}"), (Or objs[i], XUnit)
+    match objs:
+        [[ignore]]: VlOwned (XBlock (Append dos, lets), (XMethod (XVar "src_dyn0"), "map", [[(XClosure True, pas, body)]])), (OutDyn t)
+        [[ignore, ignore]]: VlOwned (XBlock (Append dos, lets), (XMethod (XVar "src_dyn0"), "map2", [[(XRef (XVar "src_dyn1")), (XClosure True, pas, body)]])), (OutDyn t)
+        otherwise:
+            # three or more: paired up left to right (`map2` into a tuple), then mapped
+            # once; each pairing's update event fires once a tick, so the last one does
+            let tys = Each srcs, \|x| OutTyOf lx, (Peel (TypeAt lx, x.span))
+            let ((paired, pty)) = Fold (Filter (Range0 (Len srcs)), \|i| i > 0), (((XVar "src_dyn0"), (Or tys[0], OutUnit))), \|((acc, at)), i|
+                let it = Or tys[i], OutUnit
+                let pair = XClosure True, [[(PaTyped (PaBind "l"), (OutRef at)), (PaTyped (PaBind "r"), (OutRef it))]], (XTuple [[(XClone (XVar "l")), (XClone (XVar "r"))]])
+                (((XMethod acc, "map2", [[(XRef (XVar "src_dyn{i}")), pair]]), (OutTuple [[at, it]])))
+            let n = Len srcs
+            let unpack = Each (Range0 n), \|i| DoLet (PaBind (Or names[i], "y")), (XClone (TuplePath (XVar "t"), n, i))
+            let env3 = Fold (Range0 n), env1, \|en, i| match srcs[i]:
+                ? x: BindSpan en, (PlaceKey lx, x.span), (VlPlace (XVar (Or names[i], "y")), Owned, (Or tys[i], OutUnit))
+                nil: en
+            let body3 = Own (ValueByKind lxp, env3, e)
+            let last = XClosure True, [[(PaTyped (PaBind "t"), (OutRef pty))]], (XBlock unpack, body3)
+            VlOwned (XBlock (Append dos, lets), (XMethod paired, "map", [[last]])), (OutDyn t)
+
+# Source `i` of `n` in the tuple pairing builds, `((y0, y1), y2)`: the first two under
+# `n - 2` firsts, any later one the second of its pairing.
+TuplePath: fn Ex, Nat, Nat -> Ex
+fn TuplePath t, n, i:
+    let depth = if i == 0: Dec n else: Or (n -? i), 0
+    let inner = Fold (Range0 (Dec depth)), t, \|acc, ignore| XPart acc, 0
+    if i == 0: XPart inner, 0 else: XPart inner, 1
 
 # An expression of an event type outside the pipe that maps it (no event of it is bound
 # by its place): an event value, `prism_rtl::Event`, built by the library's combinators
@@ -1137,7 +1287,7 @@ fn PlainLambda lx, env, ps, body, ft:
             (((Push acc, d), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
         otherwise: ((acc, en))
     let ((pas, env2)) = ClosureParams lx, env1, ps, pts, True
-    let v = LambdaBodyValue lx, env2, body
+    let v = LambdaBodyValue (WholeLambda lx, pts), env2, body
     # Cast to its function type, so that two lambdas meet where one type is wanted (an
     # array's elements, an `if`'s or a `match`'s arms), each a closure type of its own.
     VlOwned (XBlock dos, (XCast (XCall "std::Rc::new", [[(XClosure True, pas, (Own v))]]), ft)), ft
@@ -1252,8 +1402,28 @@ fn CondAsLet (CcIf x) = DoExpr (XUnit)
 LambdaArg: unbounded fn Lx, Env, [Pattern], LambdaBody, [OutTy] -> Ex
 fn LambdaArg lx, env, ps, body, pts:
     let ((pas, env2)) = ClosureParams lx, env, ps, pts, (Len pts) > 0
-    let v = LambdaBodyValue lx, env2, body
+    let v = LambdaBodyValue (WholeLambda lx, pts), env2, body
     XClosure False, pas, (Own v)
+
+# A lambda whose parameters are dynamics or events, or hold them, has them whole (an
+# instantiation can make one so: `MapF (\|v| (Fst v) + 1), [[(($a, 1))]]`, gap LF): its body
+# lifts by mapping them.
+WholeLambda: fn Lx, [OutTy] -> Lx
+fn WholeLambda lx, pts = if lx.whole or not (Fold pts, False, \|seen, t| seen or OutHasTime t): lx else: update lx:
+    &_.whole <= True
+
+OutHasTime: fn OutTy -> Bool
+fn OutHasTime t = match t:
+    OutDyn ignore: True
+    OutEvent ignore: True
+    OutRef x: OutHasTime x
+    OutOpt x: OutHasTime x
+    OutRes x: OutHasTime x
+    OutArray x: OutHasTime x
+    OutMap k, v: (OutHasTime k) or OutHasTime v
+    OutTuple ts: Fold ts, False, \|seen, x| seen or OutHasTime x
+    OutNamed ignore, ts: Fold ts, False, \|seen, x| seen or OutHasTime x
+    otherwise: False
 
 LambdaBodyValue: unbounded fn Lx, Env, LambdaBody -> Vl
 fn LambdaBodyValue lx, env, (LbExpr x) = ValueOf lx, env, x

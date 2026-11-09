@@ -268,6 +268,11 @@ fn PreBindName wx, benv, menv, n, how:
         ((LyDyn, AsLet)):
             let b = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
             ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
+        # a value holding dynamics a function gave whole (gap LF): a reader too, its
+        # dynamics made again from what they read whenever that moves
+        ((ignore, AsLet)) if (TimeWithin full) and not (IsBundle full):
+            let b = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], (OutTyOf lx, full)
+            ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
         ((LyDyn, AsResult)):
             let b = BnDyn (XMethod (XSelf), rs, [[XCx]]), [[OwnRead rs]], t
             ((wx1, (Bind benv, nkey, b), (Bind menv, nkey, b)))
@@ -580,7 +585,8 @@ fn PatText p = match p.kind:
 # getter, and, when everything it reads has a value at the build, that value in the local
 # `{rs}_init` too (`InitEnv`, round 3 DY); a plain value a field computed at the build.
 LetLine: unbounded fn Wx, Env, Env, Pattern, Expr -> ((Wx, Env))
-fn LetLine wx, benv, menv, p, e:
+fn LetLine wx0, benv0, menv0, p, e:
+    let ((wx, benv, menv)) = WholeArgs wx0, benv0, menv0, e
     let lx = wx.lx
     match ?BindingOf menv, p:
         ? (BnEv er, t):

@@ -121,12 +121,6 @@ fn HasBlueprint t = match t:
 
 # Whether a type holds a dynamic or an event anywhere but on top: `[$Nat]`, `(($a, b))`,
 # `?$Nat`; a function type is a function's, and holds none.
-HasTimeOnTop: fn Ty -> Bool
-fn HasTimeOnTop t = match t:
-    TySig "$", ignore: True
-    TySig "!", ignore: True
-    otherwise: False
-
 TimeWithin: fn Ty -> Bool
 fn TimeWithin t = HasTime (Peel t)
 

@@ -401,6 +401,21 @@ struct Dynamic {
         return Dynamic<U>{owner, make_rc<const std::function<U(const Cx&)>>([r, f](const Cx& cx) { return f((*r)(cx)); }),
                           updates};
     }
+    /// The dynamic `f` of this one and `other` (a lift over two dynamics in a function that
+    /// takes them whole, Type System ch. 4): read from both; its update event fires, once a
+    /// tick, when either moves.
+    template <class U, class F>
+    auto map2(const Dynamic<U>& other, F f) const -> Dynamic<std::invoke_result_t<F, const T&, const U&>> {
+        using V = std::invoke_result_t<F, const T&, const U&>;
+        auto a = read;
+        auto b = other.read;
+        auto merged = make_rc<Port<Unit>>();
+        for (const auto& src : {updates, other.updates}) {
+            src->subscribe([merged](const Unit&, Cx& cx) -> Done { return merged->kept(cx) ? Done{} : merged->fire(Unit{}, cx); });
+        }
+        return Dynamic<V>{nullptr, make_rc<const std::function<V(const Cx&)>>([a, b, f](const Cx& cx) { return f((*a)(cx), (*b)(cx)); }),
+                          merged};
+    }
 };
 
 template <class E>

@@ -479,6 +479,18 @@ impl<T: Clone + 'static> Dynamic<T> {
         let read = self.read.clone();
         Dynamic { owner: self.owner.clone(), read: Rc::new(move |cx| f(&read(cx))), updates: self.updates.clone() }
     }
+    /// The dynamic `f` of this one and `other` (a lift over two dynamics in a function that
+    /// takes them whole, Type System ch. 4): read from both; its update event fires, once a
+    /// tick, when either moves.
+    pub fn map2<U: Clone + 'static, V: 'static>(&self, other: &Dynamic<U>, f: impl Fn(&T, &U) -> V + 'static) -> Dynamic<V> {
+        let (a, b) = (self.read.clone(), other.read.clone());
+        let merged: Rc<Port<()>> = Rc::new(Port::new());
+        for src in [&self.updates, &other.updates] {
+            let out = merged.clone();
+            src.subscribe(Rc::new(move |_: &(), cx: &mut Cx| if out.kept(cx).is_some() { Ok(()) } else { out.fire((), cx) }));
+        }
+        Dynamic { owner: None, read: Rc::new(move |cx| f(&a(cx), &b(cx))), updates: merged }
+    }
 }
 
 /// Two dynamics are equal when they are the same dynamic: the same read and the same update

@@ -116,13 +116,18 @@ fn ParamWord t, i:
         otherwise: "arg"
     "{base}{i}"
 
+# A parameter's type as its body sees it: its value, or in a function that takes time whole
+# the dynamic or event itself.
+PeelUnlessWhole: fn Lx, Ty -> Ty
+fn PeelUnlessWhole lx, t = if lx.whole: t else: Peel t
+
 # A function's clauses as one body over its parameters (each a reference, `ref`).
 ClausesBody: unbounded fn Lx, Env, [FnClause], [((Text, Bool))], [Ty], (fn Lx, Env, FnBody -> Ex), Text, OutTy -> Ex
 fn ClausesBody lx, env, clauses, names, ptys, Body, label, t:
     let env1 = Fold (Range0 (Len names)), env, \|en, i|
         let ((rs, matched)) = Or names[i], (("", True))
         if matched: en
-        else: Bind en, (PlainBinder lx, (Or (Or clauses[0], dummyClause).params[i], dummyPat)), (BnLocal (XVar rs), ByRef, (OutTyOf lx, (Peel (Or ptys[i], TyErr))))
+        else: Bind en, (PlainBinder lx, (Or (Or clauses[0], dummyClause).params[i], dummyPat)), (BnLocal (XVar rs), ByRef, (OutTyOf lx, (PeelUnlessWhole lx, (Or ptys[i], TyErr))))
     let scrutIx = Filter (Range0 (Len names)), \|i| match names[i]:
         ? ((ignore, True)): True
         otherwise: False
@@ -159,17 +164,19 @@ fn FnDefOf lx, qk, clauses, sc:
     # A function that gives a blueprint is not lifted over its `!` parameters: it takes
     # each as an event value (`?Boxed p, e, !in` builds `@ !Filter (?ClickTo p, !in)`).
     let ptys = if HasBlueprint res: Each ptys0, \|p| EventParam p else: ptys0
-    let pts = Each ptys, \|p| OutTyOf lx, (Peel p)
-    let names = ParamNames lx, clauses, pts
     # A plain function is lifted: its `$` and `!` values are read at the caller's read point
-    # (gap LE), so its body has their values. One whose result or parameters hold a
-    # dynamic or an event below the top would build them from those values: refused
-    # (gap LF).
-    let lifted = Fold ptys, False, \|seen, p| seen or (HasTimeOnTop p)
-    let holds = Fold (Push ptys, res), False, \|seen, p| seen or TimeWithin p
-    let body = if lifted and holds: Refusal "`{BareName qk}`, a plain function over a dynamic or an event whose types hold one below the top: a sigiled parameter is taken whole (Type System ch. 4, Application), and a function with time parameters is lowered lifted (gap LF)" else: ClausesBody lx, emptyEnv, clauses, names, ptys, FnBodyValue, "c", (OutTyOf lx, (Peel res))
+    # (gap LE), so its body has their values. One whose parameters or result hold a dynamic
+    # or an event below the top takes and gives them whole, `Dynamic`s and `Event`s (Type
+    # System ch. 4, Application; gap LF): its body lifts by mapping them.
+    let whole = IsWholeSig sc.ty
+    let lxb = update lx:
+        &_.whole <= whole
+        &_.noCx <= True
+    let pts = Each ptys, \|p| OutTyOf lx, (if whole: p else: Peel p)
+    let names = ParamNames lx, clauses, pts
+    let ret = OutTyOf lx, (if whole: res else: Peel res)
+    let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret
     let params = Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (OutRef (Or pts[i], OutUnit))))
-    let ret = OutTyOf lx, (Peel res)
     # A type variable the Rust signature erases (a supplier's `o`, under a blueprint and a
     # live element) is no Rust type parameter: rustc could not infer it.
     let used = Fold (Push pts, ret), [[]], \|acc, t| UnionTexts acc, (TyParamsIn t)

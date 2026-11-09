@@ -871,6 +871,11 @@ inline void no_fault(const Done& d) {
     if (!d) panic("a fault reached a port's firing, which has no way to pass it on (PF): " + d.error().to_string());
 }
 
+/// A value as a dynamic, where a function takes the dynamic whole (gap LF): `$ v`, or a
+/// reader's value at the read point.
+template <class T>
+Dynamic<T> dyn_constant(T v) { return Dynamic<T>::constant(std::move(v)); }
+
 /// The root under the CLI World (`worlds/cli/cpp`).
 template <class P>
 int run_cli(const std::vector<std::string>& args) { return prism_world_cli::run<P>(args); }

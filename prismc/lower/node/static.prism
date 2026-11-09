@@ -268,6 +268,55 @@ fn DynamicAnswers wx, benv, menv, hf, sup:
                     ((w2, (Bind en, "#dyn{DynKey y}", (BnLocal (XVar name), Owned, t)), (Push ls, (DoLet (PaBind "{port}x"), (XClone (XVar port))))))
             nil: ((w, en, ls))
 
+# The node's readers a line passes whole to a function that takes them so (Type System ch.
+# 4, Application; gap LF), each a live `Dynamic`: read through the node's link by a getter,
+# its update event a port the writes behind it fire (as a supplier's dynamic answer's,
+# `DynamicAnswers`), made once at the build and kept in a field, so every read of the line
+# passes the same dynamic. Bound under `#whole{span}` for `WholeValueOf`; a reader with no
+# value at the build has no such dynamic, and the call is refused there.
+WholeArgs: unbounded fn Wx, Env, Env, Expr -> ((Wx, Env, Env))
+fn WholeArgs wx, benv, menv, e:
+    let lx = wx.lx
+    let calls = Filter (ExprsIn e), \|x| match x.kind:
+        ECall ignore, ignore, ignore, ignore: IsWholeObject lx, x
+        otherwise: False
+    let names = Fold calls, [[]], \|acc, c| match c.kind:
+        ECall ignore, args, ignore, ignore: Fold args, acc, \|acc2, a| Fold (ExprsIn a.value), acc2, \|acc3, y| match y.kind:
+            EName n: match menv.names[SNameKey n]:
+                ? (BnHold ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
+                ? (BnDyn ignore, ignore, ignore): if (LayerOf (TypeAt lx, y.span)) == LyDyn and not (HasText (Each acc3, \|z| DynKey z), (DynKey y)): Push acc3, y else: acc3
+                otherwise: acc3
+            otherwise: acc3
+        otherwise: acc
+    if (Len names) == 0: ((wx, benv, menv))
+    else:
+        let owner = "whole_owner"
+        let wx1 = if HasText wx.taken, owner: wx else: update wx:
+            &_.taken <= Push &_.taken, owner
+            &_.lets <= Push &_.lets, (DoLet (PaBind owner), (XCall "prism_rtl::Link::<{wx.node}>::new", [[]]))
+            &_.build <= Push &_.build, (DoExpr (XMethod (XVar owner), "link", [[(XRef (XVar "node"))]]))
+        Fold names, ((wx1, benv, menv)), \|((w, be, me)), y|
+            let ((name, w1)) = FreshName w, "whole_{(Snake (SrcText lx, lx.file, y.span))}"
+            let port = "{name}_port"
+            let dyn = "{name}_dyn"
+            let ((ex, reads)) = DynamicExpr w1, me, y
+            let t = OutTyOf lx, (Peel (TypeAt lx, y.span))
+            if not (AllInited w1, reads): ((w1, be, me))
+            else:
+                let atBuild = Own (ValueOf lx, (InitEnv be), y)
+                let arms = [[XArm(pat=(PaCtor "std::Some", [[PaBind "owner"]]), conds=[[]], body=(XMethod (XVar "owner"), name, [[XCx]])), XArm(pat=(PaUnit "std::None"), conds=[[]], body=(XClone (XVar "at_build")))]]
+                let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed "rt::Cx", [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, t)
+                let made = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, (XRef (XVar port))]])
+                let w2 = update w1:
+                    &_.taken <= Append &_.taken, [[port, dyn]]
+                    &_.getters <= Push &_.getters, (MethDef(name=name, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=ex, doc="`{SrcText lx, lx.file, y.span}` passed whole to a function, read at the read point (gap LF)."))
+                    &_.lets <= Append &_.lets, [[(DoLet (PaTyped (PaBind port), (OutRc (OutPort OutUnit))), (XCall "std::Rc::new", [[(XCall "rt::Port::new", [[]])]])), (DoLet (PaTyped (PaBind dyn), (OutDyn t)), made)]]
+                    &_.fields <= Append &_.fields, [[((port, (OutRc (OutPort OutUnit)), "`{name}` moved: its dynamic's update event")), ((dyn, (OutDyn t), "`{SrcText lx, lx.file, y.span}` as the live dynamic a function takes whole"))]]
+                    &_.moves <= Append &_.moves, [[((port, (XClone (XVar port)))), ((dyn, (XClone (XVar dyn))))]]
+                    &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
+                let wkey = "#whole{DynKey y}"
+                ((w2, (Bind be, wkey, (BnLocal (XVar dyn), Owned, (OutDyn t))), (Bind me, wkey, (BnLocal (XField XSelf, dyn), Owned, (OutDyn t)))))
+
 # The dynamic a supplier's `@ x` answers with, when `x` is a dynamic that is not a constant:
 # `x` itself, or the `d` of `$ d` when `d` is a dynamic already.
 ?DynamicAnswer: fn Lx, Expr -> ?Expr
