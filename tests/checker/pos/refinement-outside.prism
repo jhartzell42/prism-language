@@ -1,0 +1,23 @@
+# Written by Claude on the claude-bugs branch; subject to change.
+# A tag arm's equality stays in its arm (Type System ch. 5, "Refinement at tag matches":
+# a variable from outside is untouchable in the arm; its constraint waits until after the
+# match and is solved without the arm's equalities). The `let`'s type is a variable from
+# outside the match: the `otherwise:` arm, which assumes nothing, decides it, `@o`, and
+# each tag arm's value then checks against it under that arm's equality.
+emit Ui.* | Fs.*
+use Fs.*
+
+@child: @unit
+@child:
+    $~text <- Fs.Contents(path="a")                               # 0
+    !~got <- Fs.File(path="b", requests=never)                    # 1
+    Ui.Label(text=$"child")                                       # 2
+
+@viaLet: @unit
+@viaLet:
+    ignore <- @HostDocument @child, \|p, e|                       # 0/[p]
+        let @b = match e:
+            Fs.Contents(..): @ $ (~ Contents(text="A"))
+            Fs.File(..): @ never
+            otherwise: @Element e
+        @b
