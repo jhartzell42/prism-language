@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3: the box's `Shout` shows the item's, "item 3", inside "box of", and `Yell` adds "!".
+test a_generic_impl_uses_its_bounds
+
+tick 0
+  added:
+    0: Ui.Label(text="box of item 3!")

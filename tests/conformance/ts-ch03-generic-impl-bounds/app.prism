@@ -1,0 +1,16 @@
+# A generic impl's `where` clause (Type System ch. 3): `^Loud (Box a)` needs `^Loud a`, so
+# a box of items shouts through the item's impl, which lives in another module; the call
+# goes through a generic function of a third module that reaches neither (`Relay.Pass`).
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+mod Loud
+mod Boxes
+mod Items
+mod Relay
+mod Make
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    Ui.Label(text=$"{Relay.Pass (Make.Boxed 3)}")

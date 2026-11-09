@@ -1,0 +1,6 @@
+# `Relay`, a child module of ts-ch03-generic-impl-bounds.
+emit r
+use Loud.*
+
+Pass: fn a -> Text where a: ^Loud
+fn Pass x = Loud.Yell x
