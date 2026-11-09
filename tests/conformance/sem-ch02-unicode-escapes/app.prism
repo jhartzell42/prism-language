@@ -1,0 +1,14 @@
+# `\u{hex}` names any Unicode scalar value (Semantics ch. 2: the escapes include
+# `\u{hex}`), in a text and in a character literal: one byte, two, three and four of
+# UTF-8; the prelude's `?CharOf` gives the character of a code point and none for a
+# surrogate or past 10FFFF. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    let word = "caf\u{e9} \u{20ac}\u{1f600}\u{41}"
+    let c = '\u{3bb}'
+    Ui.Label(text=$"{word} {Len word} {c}{Text c}")                             # 0
+    Ui.Label(text=$"{Or (?CharOf 955), '-'}{Or (?CharOf 55296), '-'}{Or (?CharOf 1114112), '-'}")  # 1
