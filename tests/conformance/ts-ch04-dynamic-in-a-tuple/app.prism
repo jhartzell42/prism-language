@@ -1,0 +1,17 @@
+# A dynamic held in a tuple in a list, and a lambda that lifts over it (Type System ch. 4,
+# Where the table looks: a constructor takes its argument whole, sigils and all; a
+# function's parameter lifts). `sums` is a `[$Nat]`. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+MapF: fn (fn a -> b), [a] -> [b]
+fn MapF f, xs = Each xs, f
+
+Fst: fn ((a, b)) -> a
+fn Fst ((x, y)) = x
+
+@Shown: fn $Nat -> @unit
+fn @Shown $a:
+    let sums = MapF (\|v| (Fst v) + 1), [[(($a, 1))]]
+    Ui.Label(text=$"{Len sums}")                  # 0
