@@ -70,7 +70,6 @@ fn Type t = match t:
     OutArray e: "Array<{Type e}>"
     OutMap k, v: "Map<{Type k}, {Type v}>"
     OutFn ps, r: "Rc<dyn Fn({RefTypes ps}) -> {Type r}>"
-    OutRef (OutFn ps, r): "&dyn Fn({RefTypes ps}) -> {Type r}"
     OutRef i: "&{Type i}"
     OutJobFn a, b: "Rc<dyn Fn({Type a}) -> Rc<dyn prism_rtl::Job<{Type b}>>>"
     OutJob b: "Rc<dyn prism_rtl::Job<{Type b}>>"

@@ -64,6 +64,19 @@ fn GroupOrder stmts:
     let ordered = Fold (DepOrder (Each rest, \|i| Or stmts[i], dummyStmt2)), [[]], \|acc, comp| Append acc, (Each comp, \|j| Or rest[j], 0)
     Append (Append holds, lets), ordered
 
+# A widget block's statements in the order they are checked: its strongly connected
+# components in dependency order (`DepOrder`, the order the typed program records), so a
+# `let` used above its line is checked first and its uses see its generalized type
+# (Semantics ch. 4: one binding group); within a component, BG's order (holds, then `let`s
+# and local functions, then the rest). An expression block keeps BG's order: a name bound
+# again there is a new binding from its line on, so its lines are not reordered.
+WidgetGroupOrder: unbounded fn [Stmt] -> [Nat]
+fn WidgetGroupOrder stmts = Fold (DepOrder stmts), [[]], \|acc, comp|
+    let holds = Filter comp, \|i| IsHold (Or stmts[i], dummyStmt2)
+    let lets = Filter comp, \|i| IsLetLike (Or stmts[i], dummyStmt2)
+    let rest = Filter comp, \|i| not (IsHold (Or stmts[i], dummyStmt2)) and not (IsLetLike (Or stmts[i], dummyStmt2))
+    Append acc, (Append (Append holds, lets), rest)
+
 # The dependency order of a binding group (ch. 5, blocks by binding group), for the typed
 # output: its statements in strongly connected components of the graph from each
 # statement to the statements defining a name it reads, each component after the ones it
@@ -127,7 +140,7 @@ fn InferWidgetBlock env, st, b:
     let ((env1, st1)) = BlockRow env, st, b.stmts
     let ((env2, st2)) = Fold b.stmts, ((env1, st1)), \|((en, s)), stmt| PreBindStmt en, s, stmt
     let n = Len b.stmts
-    let ((env3, st3, ?res)) = Fold (GroupOrder b.stmts), ((env2, st2, nil)), \|((en, s, ?r)), i|
+    let ((env3, st3, ?res)) = Fold (WidgetGroupOrder b.stmts), ((env2, st2, nil)), \|((en, s, ?r)), i|
         let stmt = Or b.stmts[i], dummyStmt2
         let ((en2, s2, ?r2)) = WidgetStmt en, s, stmt, i + 1 == n
         match ?r2:

@@ -92,18 +92,21 @@ fn RootResult wx = match wx.result:
 BlockInto: unbounded fn Wx, Env, Env, Block -> Wx
 fn BlockInto wx, benv, menv, b:
     let ((wx1, be1, me1)) = Fold b.stmts, ((wx, benv, menv)), \|((w, be, me)), s| PreBind w, be, me, s
-    let ((wx2, be2)) = Fold b.stmts, ((wx1, be1)), \|((w, be)), s| PreInit w, be, me1, s
+    let order = BuildOrder b.stmts
+    let ((wx2, be2)) = Fold order, ((wx1, be1)), \|((w, be)), comp| Fold comp, ((w, be)), \|((w2, be3)), i| PreInit w2, be3, me1, (Or b.stmts[i], dummyStmtL)
     let n = Len b.stmts
     let start = Len wx2.lets
     let ((wx3, ignore, ignore, ends)) = Fold (Range0 n), ((wx2, be2, me1, [[]])), \|((w, be, me, acc)), i|
         let ((w2, be3, me3)) = WidgetStmt w, be, me, (Or b.stmts[i], dummyStmtL), i + 1 == n
         ((w2, be3, me3, (Push acc, (Len w2.lets))))
-    BuildInOrder wx3, b.stmts, start, ends
+    BuildInOrder wx3, b.stmts, order, start, ends
 
-# A hold's value at the build, `{name}#init`: the local `{f}_init` its line computes, bound
-# before any line so that a line above the hold reads it (`InitEnv`); `BuildInOrder` puts
-# the hold's `let` before theirs.
-PreInit: fn Wx, Env, Env, Stmt -> ((Wx, Env))
+# A name's value at the build, `{name}#init`, bound before any line so that a line above
+# reads it (`InitEnv`), in the build's order: a hold's, the local `{f}_init` its line
+# computes; a dynamic `let`'s, the local `{rs}_init`, when everything it reads has a value
+# at the build (as `LetLine` decides it at its line). `BuildInOrder` puts their `let`s
+# before the readers'.
+PreInit: unbounded fn Wx, Env, Env, Stmt -> ((Wx, Env))
 fn PreInit wx, benv, menv, s = match s.kind:
     SBind p, ignore, (? ignore): match ?BindingOf menv, p:
         ? (BnHold f, t):
@@ -111,20 +114,31 @@ fn PreInit wx, benv, menv, s = match s.kind:
                 &_.inited <= AddText &_.inited, f
             ((wx2, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{f}_init"), Owned, t))))
         otherwise: ((wx, benv))
+    SLet p, ignore, e: match ?BindingOf menv, p:
+        ? (BnDyn ignore, ignore, t):
+            let rs = Snake (PatText p)
+            let ((ignore, reads)) = DynamicExpr wx, menv, e
+            let wx2 = update wx:
+                &_.dynReads <= Insert &_.dynReads, rs, reads
+            if (AllInited wx2, reads) and (NamesInited benv, e):
+                let wx3 = update wx2:
+                    &_.inited <= AddText &_.inited, rs
+                ((wx3, (Bind benv, "{PatText p}#init", (BnLocal (XVar "{rs}_init"), Owned, t))))
+            else: ((wx2, benv))
+        otherwise: ((wx, benv))
     otherwise: ((wx, benv))
 
 # The build's `let`s from `start` on, each line's run ending at its entry of `ends`, in the
 # order of what the lines read at the build: a line's run after the runs of the lines that
 # bind a name it reads, ties in page order. Lines that read each other at the build (a
 # cycle the checker let through) cannot be ordered and are refused.
-BuildInOrder: unbounded fn Wx, [Stmt], Nat, [Nat] -> Wx
-fn BuildInOrder wx, stmts, start, ends:
+BuildInOrder: unbounded fn Wx, [Stmt], [ [Nat] ], Nat, [Nat] -> Wx
+fn BuildInOrder wx, stmts, order, start, ends:
     let n = Len stmts
     let last = Or ends[Dec n], start
     let runs = Each (Range0 n), \|i|
         let from = if i == 0: start else: Or ends[Dec i], start
         Take (Drop wx.lets, from), (Or ((Or ends[i], from) -? from), 0)
-    let order = BuildOrder stmts
     let lets = Fold order, (Take wx.lets, start), \|acc, comp| Fold comp, acc, \|acc2, i| Append acc2, (Or runs[i], [[]])
     let cyclic = Filter order, \|comp| (Len comp) > 1 and Fold comp, False, \|seen, i| seen or (Len (Or runs[i], [[]])) > 0
     let wx2 = update wx:
@@ -154,65 +168,6 @@ fn ReadsAtBuild s = match s.kind:
     SBind ignore, init, (? ignore): FreeReads (ExprsIn init), [[]]
     SFn f: FreeReads (StmtExprs s), [[(((Fold f.params, [[]], \|acc, q| Append acc, (PatternNames q)), f.span))]]
     otherwise: FreeReads (StmtExprs s), [[]]
-
-# The one-part names among expressions that no scope hides where they stand; each scope is
-# the names an inner binder binds and the range it binds them over.
-FreeReads: unbounded fn [Expr], [(([Text], Range))] -> [Text]
-fn FreeReads es, outer:
-    let scopes = Fold es, outer, \|acc, e| Append acc, (ScopesOf e)
-    Fold es, [[]], \|acc, e| match e.kind:
-        EName n:
-            let nkey = SNameKey n
-            let hidden = Fold scopes, False, \|seen, ((names, r))| seen or ((HasText names, nkey) and r.start <= e.span.start and e.span.start < r.end)
-            if (Len n.path) != 1 or hidden: acc else: AddText acc, nkey
-        otherwise: acc
-
-# The scopes an expression opens directly (its nested expressions open their own).
-ScopesOf: unbounded fn Expr -> [(([Text], Range))]
-fn ScopesOf e = match e.kind:
-    ELambda ?ps, body:
-        let names = Fold (Or ?ps, [[]]), [[]], \|acc, q| Append acc, (PatternNames q)
-        let inner = match body:
-            LbBlock b: BlockScopes b
-            otherwise: [[]]
-        Push inner, ((names, e.span))
-    EMatch ignore, arms: Fold arms, [[]], \|acc, a|
-        let names = match a.?pattern:
-            ? q: PatternNames q
-            nil: [[]]
-        Append (Push acc, ((names, a.span))), (BlockScopes a.body)
-    EIf c, t, ?el:
-        let bound = match c:
-            CondBind q, ignore, ignore: [[((PatternNames q, t.span))]]
-            otherwise: [[]]
-        let elseScopes = match ?el:
-            ? b: BlockScopes b
-            nil: [[]]
-        Append (Append bound, (BlockScopes t)), elseScopes
-    EFor ?binders, ignore, b:
-        let names = match ?binders:
-            ? fb: Append (PatternNames fb.first), (OptPatternNames fb.?second)
-            nil: [[]]
-        Push (BlockScopes b), ((names, b.span))
-    ERebuild ignore, b: BlockScopes b
-    EGiven b: BlockScopes b
-    EUpdate ignore, b: BlockScopes b
-    EWidgetBlock b: BlockScopes b
-    EMonad ignore, b: BlockScopes b
-    otherwise: [[]]
-
-OptPatternNames: unbounded fn ?Pattern -> [Text]
-fn OptPatternNames (? q) = PatternNames q
-fn OptPatternNames nil = [[]]
-
-# An inner block's names, each from its line to the block's end, and a local function's
-# parameters over its clause.
-BlockScopes: unbounded fn Block -> [(([Text], Range))]
-fn BlockScopes b = Fold b.stmts, [[]], \|acc, s|
-    let own = Push acc, ((Check.Blocks.GroupDefs s, Range(start=s.span.start, end=b.span.end)))
-    match s.kind:
-        SFn f: Push own, (((Fold f.params, [[]], \|ps, q| Append ps, (PatternNames q)), f.span))
-        otherwise: own
 
 # Names first: a bound event is a node of its own, a hold or a bound dynamic a field, a
 # dynamic `let` a getter.

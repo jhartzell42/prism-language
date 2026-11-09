@@ -160,11 +160,18 @@ fn CppExpr cp, x = match x:
     XPart r, k: "std::get<{k}>({AsValue cp, r})"
     XDecode t, y: "TRY(prism_rtl::from_pod<{CppType cp, t}>({CppExpr cp, y}))"
     XCast y, t: "static_cast<{CppType cp, t}>({CppExpr cp, y})"
-    XTyped y, t:
-        let e = CppExpr cp, y
-        if e == "\{\}" or e == "std::nullopt": "{CppType cp, t}\{\}"
-        else: if (IsCtor y, "Ok") or IsCtor y, "Err": "{CppType cp, t}({e})"
-        else: e
+    XTyped y, t: match y:
+        XCtor p, args if IsGenericCase cp, p:
+            let tt = CppType cp, t
+            "{tt}({tt}::{LastSegment (TypePath p)}\{{CppArgs cp, args}\})"
+        XPath p if IsGenericCase cp, p:
+            let tt = CppType cp, t
+            "{tt}({tt}::{LastSegment (TypePath p)}\{\})"
+        otherwise:
+            let e = CppExpr cp, y
+            if e == "\{\}" or e == "std::nullopt": "{CppType cp, t}\{\}"
+            else: if (IsCtor y, "Ok") or IsCtor y, "Err": "{CppType cp, t}({e})"
+            else: e
 
 # A string literal: a NUL as `\000` (an octal escape takes three digits at most), and the
 # literal a `std::string_view` (`""sv`) when it holds one, which a `const char*` would end.
@@ -505,7 +512,7 @@ fn CaseTest cp, c, v = match c:
     "prism_rtl::Turn::More": "{v}.if_more()"
     "prism_rtl::Turn::Finished": "{v}.if_finished()"
     otherwise: match ?CaseOf cp, c:
-        ? ignore: "prism_rtl::is<{CaseType c}>({v})"
+        ? ignore: "prism_rtl::is<{CaseTypeOf cp, c, v}>({v})"
         nil: if IsRuntimeCase c: "prism_rtl::is<{CaseType c}>({v})" else: "true"
 
 # A constructor's case type: a choice's case, or a runtime constructor's pattern tag.
@@ -516,6 +523,19 @@ fn CaseType c = match c:
     "Segment::Key": "pat::Key"
     otherwise: TypePath c
 
+# A choice's case as tested against the value `v`: a generic choice's case by the value's
+# own type, whose arguments the path does not write (`Tree::Leaf` of a `Tree<A>`).
+CaseTypeOf: fn Cp, Text, Text -> Text
+fn CaseTypeOf cp, c, v = if IsGenericCase cp, c: "typename std::remove_cvref_t<decltype({v})>::{LastSegment (TypePath c)}" else: CaseType c
+
+# Whether a constructor path is a case of a choice with type parameters.
+IsGenericCase: fn Cp, Text -> Bool
+fn IsGenericCase cp, p = match ?CaseOf cp, p:
+    ? ty: match ?TypeOf cp, ty:
+        ? info: (Len info.params) > 0
+        nil: False
+    nil: False
+
 # The payload of a constructor's field `i` in a value.
 Payload: fn Cp, Text, Text, Nat -> Text
 fn Payload cp, c, v, i = match c:
@@ -525,7 +545,7 @@ fn Payload cp, c, v, i = match c:
     "prism_rtl::Turn::More": "{v}.if_more()->next"
     "prism_rtl::Turn::Finished": "{v}.if_finished()->value"
     otherwise: match ?CaseOf cp, c:
-        ? ignore: "prism_rtl::as<{CaseType c}>({v}).a{i}"
+        ? ignore: "prism_rtl::as<{CaseTypeOf cp, c, v}>({v}).a{i}"
         nil: if IsRuntimeCase c: "prism_rtl::as<{CaseType c}>({v}).a{i}" else: "{v}.a{i}"
 
 IsRuntimeCase: fn Text -> Bool

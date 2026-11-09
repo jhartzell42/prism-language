@@ -153,12 +153,13 @@ to overturn.
       `Error` of kind `Fs.NotText` (`prelude/fs.prism`), message `PATH: not UTF-8: byte N
       is malformed`, in both Worlds (their tests
       `a_file_that_is_not_utf8_reads_as_fs_not_text`).
-  - **Gaps:**
-    - **CI Interpolating a `Char` shows it quoted.** `"{c}"` with `c: Char` places `'a'`,
-      since a placeholder places a `Text` or a number as it is and anything else as it
-      shows; no prelude function makes a `Text` of a `Char` (gap UC). Chess's text input
-      (`Key`'s `Char Char`) therefore inserts `'a'` for a typed `a`; its caret moves by the
-      inserted text's bytes.
+    - **TXD Interpolation displays, `^Show` debugs** (Jimmy, 8 November 2026: "Characters
+      should interpolate as themselves not as 'debug' but as 'display'"). A placeholder
+      places a `Text`, a `Char` and a number (`Nat`, `Int`, `U8`; a `Float` shows as it
+      displays) as themselves; anything else has no display of its own and places as it
+      shows: an array, a tuple, a record, a choice, a truth value (`True`), a duration, the
+      characters and texts inside quoted (`[['a']]`). A template's placeholder places
+      alike (`ShownText`). `ts-ch04-interpolation-displays`.
 - **UB What is `unbounded`.** Every function that recurses through the grammar or loops
   with no measure a checker could see (the lexer's loops over the text, the parser's
   descent, `Recover`); predicates and cursor primitives are bounded. The closure-taking
@@ -383,12 +384,15 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   and range, and the tree stays `Ast.Module`. *Refused:* a second tree with a type on
   every node, which doubles ast.prism's forty expression forms and has to follow every
   change to them.
-- **BG Check order in a block.** Holds first (a hold's start value is where a block most
-  often says what its names are), then `let`s and local functions, then the rest in their
-  dependency order among themselves (ties and cycles in page order), every name pre-bound
-  to its marked type: a `for` above the bind of the map it runs over is checked with the
-  map's type (`pos/bind-read-above`). The holds and the `let`s are not ordered by
-  dependency (gap DG).
+- **BG Check order in a block.** A widget block's lines in the dependency order the
+  typed program records (`DepOrder`, `WidgetGroupOrder`), every name pre-bound to its
+  marked type: a `let` used above its line is checked first, so its uses see its
+  generalized type (`sem-ch04-generic-let-above`), and a `for` above the bind of the map
+  it runs over is checked with the map's type (`pos/bind-read-above`). Within a cycle,
+  holds first (a hold's start value is where a block most often says what its names are),
+  then `let`s and local functions, then the rest, in page order. An expression block keeps
+  that order over all its lines, its rest in dependency order: a name bound again there
+  is a new binding from its line on, so its lines are not reordered (gap DG).
 - **FD A field of a record nothing has decided yet waits.** When several records have the
   field, its type is a fresh variable, read once a later line decides the record, and
   `ambiguous` at the end of the definition (ch. 5's principle: defer what a later line can
@@ -869,10 +873,11 @@ What the checker does not do yet, each with Claude's first ruling.
   a `mismatch` (`neg/supplier-not-polymorphic`). Only element outputs: `fn (fn Nat -> b)
   -> unit` still takes `\|n| Show n` (`pos/rank-one-callback`). Explicit type arguments
   are never rigid.
-- **DG Binding groups.** Blocks are checked in BG's order, whose holds and `let`s are not
-  in dependency order, so a `let` used above its line is used at its monomorphic pre-bound type, and mutually dependent
-  `let`s are not generalized together. *First ruling:* check in the dependency order the
-  typed program already computes.
+- **DG Binding groups.** A widget block is checked in dependency order (pick BG), an
+  expression block's holds and `let`s in page order, so there a `let` used above its line
+  is used at its monomorphic pre-bound type; mutually dependent `let`s are not
+  generalized together. *First ruling:* generalize a cycle of `let`s together, as ch. 5
+  has it.
 - **SU Prompt-cycle summaries** are per block, not computed bottom-up over the call graph
   (pick PS). *First ruling:* summaries, as ch. 5's pass 1 has them.
 - **FM A field read through a waiting access** (pick FD) is not checked for its marks.
@@ -1133,8 +1138,7 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   so is every ordering a type can hold, a `Float`'s included: pick BF), so no return type
   waits on another's deduction; `decl.hpp`
   holds declarations only, and a types header that holds `Elem` or `Answer` by value
-  includes `elem.types.hpp`. A cycle of records by value with no choice on it does not
-  compile (gap CY).
+  includes `elem.types.hpp`.
 - **SE: statement expressions.** A block is `({ ...; value; })`, a `match` a statement
   expression whose `Slot<T>` (`T` the model's type for it) the arm that holds sets before
   `goto _done`; a labelled block's `break` sets its slot and jumps to its label. What it
@@ -1312,11 +1316,14 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
     255 s of CPU, 2.8 cores busy on average; prismc's own crate is one unit for rustc's
     front end, which runs on one core, and only its 16 codegen units run in parallel.
 
-Gaps:
-
-- **CY:** a cycle of records held by value with no choice on it.
-- **GC:** a generic choice's case constructor (`Tree(Tree::Node{..})`) needs its type
-  arguments, which CTAD cannot deduce from a nested case; no program here has one.
+A generic choice's case is spelled with the choice's type arguments, which class
+template argument deduction cannot find from a nested case: lowering says the type of a
+generic choice's constructor (`XTyped`), so C++ builds `Tree<Nat>(Tree<Nat>::Leaf{..})`,
+and a case test or payload names the case through the tested value's type (`typename
+std::remove_cvref_t<decltype(v)>::Leaf`), which a generic function's `Tree<A>` gives
+(`cpp-generic-choice-cases`). A cycle of records orders like any other type: every field
+that reaches its own record is behind an `Rc` (pick OW), so no cycle is by value
+(`cpp-record-cycles`).
 
 C++ doubts:
 
@@ -1364,8 +1371,8 @@ C++ doubts:
   would miss a type it names only through another module's (a lambda's parameter type
   written out, CH of the back-end picks).
 - **MH3** A group of modules sharing a types header (`typesWith`) is a cycle of modules,
-  not of types; a cycle of types by value (gap CY) stays a C++ error, as in the one
-  header. A group is one header for its modules, not for the program.
+  not of types; no cycle of types is by value (pick OW), so a group orders as the one
+  header does. A group is one header for its modules, not for the program.
 - **MH4** A trait call's overloads are the ones its file declares before the template: an
   impl in a module the instantiating file never reaches would be missed (a `deleted`
   error, not a wrong overload). `declared` follows each constraint's impl to its module,
@@ -1408,7 +1415,12 @@ Each is Claude's, for Jimmy to overturn.
   lowering tracks how each Rust place holds its value (`ByRef`, `Owned`, `RcRef`,
   `RcOwned`) and spells a use as a borrow or a clone accordingly. A closure passed to a
   parameter is a borrowed `&dyn Fn`; a closure as a value is `Rc<dyn Fn(&A) -> B>`, its
-  captures cloned in. A recursive payload is behind `Rc` (a type that reaches itself by
+  captures cloned in: the names its body reads that its parameters or an inner binder do
+  not hide (`LambdaReads`, `sem-ch03-lambda-parameter-shadows`). It is cast to that type
+  (C++ `static_cast<Fn<B(const A&)>>`), so two lambdas meet where one type is wanted, an
+  array's elements or an `if`'s arms, each being a closure type of its own; a lambda's
+  parameter of a function type is `&Rc<dyn Fn>`, as every function value is passed
+  (`sem-ch03-lambda-values`). A recursive payload is behind `Rc` (a type that reaches itself by
   value, directly, through `?` or a tuple).
 - **OC A binding of an owned scrutinee read once is moved.** In a `match` over an owned
   value, a binder its arm's body reads once is bound at that read's place as a value, so
@@ -1462,8 +1474,9 @@ Each is Claude's, for Jimmy to overturn.
   `let`s of the build (a hold's initial value, a plain `let`, a widget's plain result, an
   element's first value) are then put after the `let`s of the lines binding the names it
   reads (`BuildInOrder`, `BuildOrder` in lower/node/def.prism), ties in page order. A
-  hold's value at the build is bound before any line (`PreInit`), so an element above it
-  asks with the initial value. The edges: a hold reads only its initial value (its step is
+  hold's value at the build, and a dynamic `let`'s when everything it reads has one, is
+  bound before any line, in that order (`PreInit`), so an element above either asks with
+  it (`sem-ch04-dynamic-let-above`). The edges: a hold reads only its initial value (its step is
   heard after the build), an event is no edge (its port is made before any line), and a
   name a lambda's or an arm's pattern or an inner block's `let` hides is the inner one
   (`FreeReads`). Lines that still read each other at the build are a cycle the checker let

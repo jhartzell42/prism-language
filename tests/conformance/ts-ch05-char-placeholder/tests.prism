@@ -5,4 +5,4 @@ use Ui.*
 
 test a_char_shows_and_a_text_does_not, @chars:
     build
-        => expect Ui.Label(text="'q' q é'")
+        => expect Ui.Label(text="q q é'")

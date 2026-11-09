@@ -122,11 +122,12 @@ fn ?PlaceName p = match p.kind:
     otherwise: nil
 
 
-# A value as a template or interpolation places it: a text as it is, any other value as
-# it shows.
+# A value as a template's placeholder places it, as interpolation does (`ShownPart`): a
+# text as it is, a character as itself, any other value as it shows.
 ShownText: fn Vl -> Ex
 fn ShownText v = match ValueTy v:
     OutText: Ref v
+    OutChar: XRef (XFormat [[Ref v]])
     otherwise: XRef (XCall "show_text", [[Ref v]])
 
 # `given:` (Semantics ch. 4): `let`s, binds that fail on `nil` (or on an `Error`), the

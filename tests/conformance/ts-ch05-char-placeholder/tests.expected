@@ -1,6 +1,6 @@
-# Derived by hand from Type System ch. 5: the placeholder `{'q'}` goes through `Show`, `'q'`; `Text 'q'` and `Text 'é'` are the characters; `Text '\''` is a quote.
+# Derived by hand from Semantics round 10 IP (interpolation is display): the placeholder `{'q'}` places the character, `q`; `Text 'q'` and `Text 'é'` are the characters; `Text '\''` is a quote.
 test a_char_shows_and_a_text_does_not
 
 tick 0
   added:
-    0: Ui.Label(text="'q' q é'")
+    0: Ui.Label(text="q q é'")
