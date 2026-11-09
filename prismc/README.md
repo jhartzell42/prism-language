@@ -153,6 +153,10 @@ to overturn.
       `Error` of kind `Fs.NotText` (`prelude/fs.prism`), message `PATH: not UTF-8: byte N
       is malformed`, in both Worlds (their tests
       `a_file_that_is_not_utf8_reads_as_fs_not_text`).
+    - **TXE `\u{hex}` names any Unicode scalar value** (Semantics ch. 2), in a text and a
+      character literal, decoded by the prelude's `?CharOf: fn Nat -> ?Char` (not in
+      Appendix B); a surrogate (D800 to DFFF) or a code point past 10FFFF is a lexer
+      error saying so. `sem-ch02-unicode-escapes`.
     - **TXD Interpolation displays, `^Show` debugs** (Jimmy, 8 November 2026: "Characters
       should interpolate as themselves not as 'debug' but as 'display'"). A placeholder
       places a `Text`, a `Char` and a number (`Nat`, `Int`, `U8`; a `Float` shows as it
@@ -179,9 +183,6 @@ to overturn.
 
 Places where compiler zero or the prelude lacks something, worked around in Prism.
 
-- **UC `\u{hex}` reaches only ASCII.** No prelude function makes a `Char` (or a one-
-  character `Text`) from a code point, so the lexer decodes `\u{0}` to `\u{7f}` from a table
-  and reports any higher code point as an error naming this gap. No corpus file writes one.
 - **SK The stack.** compiler zero's evaluator recurses on the Rust stack, about 15 KB per
   Prism call (IB3 below). The default 8 MB holds every corpus file, but brackets nested
   between 80 and 150 deep overflow it; `compare.sh` raises the limit with `ulimit -s`.

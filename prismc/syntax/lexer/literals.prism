@@ -145,9 +145,9 @@ fn UnicodeEscape l, start:
         if (Peek l1) != "\}": (("", (LexErr l1, start, l1.pos, "`\\u\{` needs its closing `\}`")))
         else:
             let l2 = Bump l1
-            match ?AsciiChar (Or (?ParseHex hex), 1114112):
-                ? ch: ((ch, l2))
-                nil: (("", (LexErr l2, start, l2.pos, "`\\u\{{hex}\}` is past ASCII, which prismc cannot write yet (prismc/README.md, gap UC)")))
+            match ?CharOf (Or (?ParseHex hex), 1114112):
+                ? ch: ((Text ch, l2))
+                nil: (("", (LexErr l2, start, l2.pos, "`\\u\{{hex}\}` is no Unicode scalar value: a code point is at most 10FFFF and no surrogate (D800 to DFFF)")))
 
 # `"..."` on one line, with placeholders read as token streams.
 LexText: unbounded fn Lex -> (([TextSegTok], Lex))
