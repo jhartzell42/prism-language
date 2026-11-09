@@ -15,7 +15,7 @@ test the_world_goes_on_after_an_abort, @count:
     click at 0
         => expect Ui.Label(text="Count: 2")
 
-test a_job_goes_on_after_an_abort, @working 5:
+test a_job_goes_on_after_an_abort, @Working 5:
     build
         => expect Ui.Label(text="working")
     send at 0, "oops"

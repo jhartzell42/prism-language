@@ -23,8 +23,8 @@ fn Twice n = Inc (Inc n)
 Run: unbounded fn Nat -> Nat
 fn Run n = Twice n
 
-@working: fn Nat -> @unit
-fn @working n:
+@Working: fn Nat -> @unit
+fn @Working n:
     !poke <- Ui.Button(label=$"poke")                       # 0
     !done <- @Run Run, n                                    # 1
     $shown <- "working" then Show !done
