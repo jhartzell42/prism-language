@@ -177,9 +177,11 @@ After: fn Cursor -> Text
 At: fn Cursor -> Nat
 ?CursorAt: fn Text, Nat -> ?Cursor
 Upper: fn Text -> Text
-# Not in Appendix B: a character as the one-character text it is (`"{c}"` is its `Show`
-# form, quoted, Type System ch. 5).
+# Not in Appendix B: a character as the one-character text it is (as `"{c}"` places it).
 Text: fn Char -> Text
+# Not in Appendix B: the character whose code point is `n`; `nil` past 10FFFF and for a
+# surrogate (D800 to DFFF), which no character is.
+?CharOf: fn Nat -> ?Char
 Lower: fn Text -> Text
 # Not in Appendix B, whose `Split` is a regular expression's (below): the pieces between
 # the separators; an empty separator is refused.

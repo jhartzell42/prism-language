@@ -431,6 +431,14 @@ inline Text text(char32_t c) {
     prism_rtl::utf8_push(s, c);
     return Text::of_utf8(std::move(s));
 }
+
+/// `?CharOf: fn Nat -> ?Char`: the character of a code point, none past `10FFFF` or for a
+/// surrogate.
+inline std::optional<char32_t> char_of(const Nat& n) {
+    auto v = n.as_int().to_i64();
+    if (!v || *v > 0x10FFFF || (*v >= 0xD800 && *v <= 0xDFFF)) return std::nullopt;
+    return char32_t(*v);
+}
 /// `Upper`, `Lower`: Unicode's default full case mapping, as Rust's `str::to_uppercase`
 /// and `to_lowercase` (runtime/cpp/README.md, "Upper and Lower").
 inline Text upper(const Text& t) { return text_upper(t); }

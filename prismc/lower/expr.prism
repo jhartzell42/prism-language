@@ -601,8 +601,48 @@ fn GlobalCall lx, env, qk, args, span, t:
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
-                else: VlOwned (XCall (ValuePath lx, qk), (ArgsFor lx, env, v, args)), t
+                else: AsInstance (XCall (ValuePath lx, qk), (ArgsFor lx, env, v, args)), (ResultRepr lx, v), t
             nil: VlOwned (Refusal "a call of {qk}"), t
+
+# What a named function returns as its Rust signature has it: a function of the
+# function's own color variable is a `Start` (`OutJobFn`), whatever color a call gives it.
+ResultRepr: unbounded fn Lx, ValInfo -> OutTy
+fn ResultRepr lx, v = match v.scheme.ty:
+    TyFn ignore, ignore, r: OutTyOf lx, (Peel r)
+    other: OutTyOf lx, (Peel other)
+
+# A call's result as its instantiation wants it: a `Start` where the call made the
+# function's color bounded is wrapped as the bounded function it is, each call run to its
+# end at once (`run_to_end`, which a bounded job reaches in its first cycles). A
+# `Start` inside another value at such a call is refused: no conversion reaches it.
+AsInstance: unbounded fn Ex, OutTy, OutTy -> Vl
+fn AsInstance call, declared, t = match ((declared, t)):
+    (((OutJobFn ignore, ignore), (OutFn pts, ignore))): VlOwned (WrapAsBounded call, pts, t), t
+    otherwise:
+        if (HasJobFn declared) and not (HasJobFn t): VlOwned (Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded"), t
+        else: VlOwned call, t
+
+HasJobFn: unbounded fn OutTy -> Bool
+fn HasJobFn t = match t:
+    OutJobFn ignore, ignore: True
+    OutOpt i: HasJobFn i
+    OutRes i: HasJobFn i
+    OutArray i: HasJobFn i
+    OutMap k, v: (HasJobFn k) or HasJobFn v
+    OutTuple ts: Fold ts, False, \|f, x| f or HasJobFn x
+    OutNamed ignore, ts: Fold ts, False, \|f, x| f or HasJobFn x
+    OutFn ps, r: Fold ps, (HasJobFn r), \|f, x| f or HasJobFn x
+    otherwise: False
+
+# A `Start` as the bounded function its call made it: each application runs its job to
+# the end.
+WrapAsBounded: fn Ex, [OutTy], OutTy -> Ex
+fn WrapAsBounded f, pts, target:
+    let names = Each (Range0 (Len pts)), \|i| "a{i}"
+    let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
+    let arg = if (Len pts) == 1: XClone (XVar "a0") else: XTuple (Each names, \|nm| XClone (XVar nm))
+    let body = XCall "run_to_end", [[(XApply (XVar "job_fn"), [[arg]])]]
+    XBlock [[(DoLet (PaBind "job_fn"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, pas, body)]]), target)
 
 # A function's arguments, borrowed; a bare `Error(..)` where the parameter is a `~T` is
 # that `~T`'s failure (the checker's pick ER lets it wait for its type).
@@ -1341,11 +1381,11 @@ fn GenericLet lx, env, n, gn, x:
     let nkey = SNameKey n
     let distinct = Instantiations lx, gn
     let one = (Len distinct) == 1
-    let rs = LocalName lx, nkey
+    let rs = LocalNameAt lx, nkey, n.span
     Fold (Range0 (Len distinct)), (([[]], env)), \|((dos, en)), k|
         let ((tys, cols)) = Or distinct[k], (([[]], [[]]))
         let lxk = AtInstance lx, ((tys, cols))
-        let rk = if one: rs else: "{rs}_{k}"
+        let rk = if one: rs else: "{rs}w{k}"
         let bkey = if k == 0: nkey else: "{nkey}#inst{k}"
         let bt = OutTyOf lxk, (Peel (BinderTy lxk, n.span))
         let v = ValueOf lxk, env, x

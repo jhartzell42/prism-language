@@ -96,9 +96,11 @@ fn TypedSexp srcs, trees, shown, tp:
     let impls = Concat (Each (Filter tp.impls, \|x| Mine x.at), \|x| "  (impl {AtText srcs, x.at} ^{x.cls} {TySexp x.ty} {x.how})\n")
     let groups = Concat (Each (Filter tp.groups, \|x| Mine x.at), \|x| "  (group {x.kind} {AtText srcs, x.at}{Concat (Each x.order, \|c| " ({Join (Each c, \|i| "{i}"), " "})")})\n")
     let binders = Concat (Each (Filter tp.binders, \|x| Mine x.at), \|x| "  (binder {Quote x.name} {AtText srcs, x.at} {TySexp x.ty})\n")
+    let locals = Concat (Each (Filter tp.locals, \|x| Mine x.at), \|x| "  (local {x.id} {AtText srcs, x.at})\n")
+    let uses = Concat (Each (Filter tp.uses, \|x| Mine x.at), \|x| "  (use {x.id} {AtText srcs, x.at})\n")
     let gens = Concat (Each (Filter tp.gens, \|x| Mine x.at), \|x| "  (gen {Quote x.name} {AtText srcs, x.at}{Concat (Each x.tys, \|q| " {q}")}{Concat (Each x.cols, \|q| " {q}")})\n")
     let insts = Concat (Each (Filter tp.insts, \|x| Mine x.at), \|x| "  (inst {Quote x.name} {AtText srcs, x.at}{Concat (Each x.tys, \|((q, t))| " ({q} {TySexp t})")}{Concat (Each x.cols, \|((q, c))| " ({q} {ColSexp c})")})\n")
-    "(typed\n (defs\n{defs} )\n (exprs\n{exprs} )\n (apps\n{apps} )\n (lifts\n{lifts} )\n (fns\n{fns} )\n (methods\n{methods} )\n (impls\n{impls} )\n (groups\n{groups} )\n (binders\n{binders} )\n (gens\n{gens} )\n (insts\n{insts} ))\n"
+    "(typed\n (defs\n{defs} )\n (exprs\n{exprs} )\n (apps\n{apps} )\n (lifts\n{lifts} )\n (fns\n{fns} )\n (methods\n{methods} )\n (impls\n{impls} )\n (groups\n{groups} )\n (binders\n{binders} )\n (locals\n{locals} )\n (uses\n{uses} )\n (gens\n{gens} )\n (insts\n{insts} ))\n"
 
 Shown: fn SrcAt, Nat -> Bool
 fn Shown a, shown = a.file < shown

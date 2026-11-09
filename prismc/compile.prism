@@ -142,23 +142,7 @@ fn Refusals text:
 # them (pick PT); `check` blocks stay, and are checked.
 WithoutTests: fn Module -> Module
 fn WithoutTests m = update m:
-    &_.decls <= Each (Filter &_.decls, \|d| not (IsTestDecl d)), \|d| WithoutPatterns d
-
-# A `check` line's pattern is the Test World's to read from the script, not the
-# checker's: the line's expression is checked alone (pick PT).
-WithoutPatterns: fn Decl -> Decl
-fn WithoutPatterns d = match d.kind:
-    DCheck c: update d:
-        &_.kind <= DCheck (CheckWithoutPatterns c)
-    otherwise: d
-
-CheckWithoutPatterns: fn CheckDecl -> CheckDecl
-fn CheckWithoutPatterns c = update c:
-    &_.lines <= Each &_.lines, \|l| LineWithoutPattern l
-
-LineWithoutPattern: fn CheckLine -> CheckLine
-fn LineWithoutPattern l = update l:
-    &_.pattern <= nil
+    &_.decls <= Filter &_.decls, \|d| not (IsTestDecl d)
 
 IsTestDecl: fn Decl -> Bool
 fn IsTestDecl d = match d.kind:

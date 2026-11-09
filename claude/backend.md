@@ -41,6 +41,10 @@ it make every program an interpreter run, and every type mistake a runtime fault
   `build`, `swap`, `leave`, `patch`, `clean_up`, `edges`, `release`, each defaulting to
   nothing; the tick's methods take `self: Rc<Self>` and `&mut Cx`, so a node can put
   itself on a list.
+- **A local is its binder's name and id** (prismc/README.md, pick UN): the model's
+  `XVar` of a program's local is `name_<kind><id>`, the id the checker gave the binder and
+  recorded at its every use, so no two locals of a declaration share a spelling and none
+  hides a function, a runtime name or a keyword.
 - **A node is a plain struct of library cells behind an `Rc`.** Each cell borrows only
   inside its own methods, so no borrow is held across a firing (Compiler ch. 4, "The
   ownership layer") and node methods take `&self`.

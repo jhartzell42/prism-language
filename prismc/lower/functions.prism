@@ -80,12 +80,15 @@ fn KeysBy t, q = match t:
 
 # The parameters of a function's clauses: a name every clause binds at a position names
 # the parameter; any other position is matched, named after its type.
-ParamNames: fn Lx, [FnClause], [OutTy] -> [((Text, Bool))]
+ParamNames: unbounded fn Lx, [FnClause], [OutTy] -> [((Text, Bool))]
 fn ParamNames lx, clauses, pts = Each (Range0 (Len pts)), \|i|
     let names = Each clauses, \|c| PlainBinder lx, (Or c.params[i], dummyPat)
     let first = Or names[0], ""
     let same = first != "" and Fold names, True, \|ok, n| ok and n == first
-    if same: (((LocalName lx, first), False)) else: (((ParamWord (Or pts[i], OutUnit), i), True))
+    let span = match (Or (Or clauses[0], dummyClause).params[i], dummyPat).kind:
+        PName n: n.span
+        otherwise: Range(start=0, end=0)
+    if same: (((LocalNameAt lx, first, span), False)) else: (((ParamWord (Or pts[i], OutUnit), i), True))
 
 # The binder a parameter pattern is, when it is one: its name with sigils.
 PlainBinder: fn Lx, Pattern -> Text

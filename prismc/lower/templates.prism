@@ -204,7 +204,7 @@ fn UpdStmt lx, env, s = match s.kind:
         match p.kind:
             PName n:
                 if (HasPrefix n.sigils, "&"):
-                    let rs = LocalName lx, (SNameKey n)
+                    let rs = LocalNameAt lx, (SNameKey n), n.span
                     let bt = OutTyOf lx, (Peel (BinderTy lx, n.span))
                     let pa = if IsKnownTy bt: PaTyped (PaMut "{rs}"), bt else: PaMut "{rs}"
                     (([[(DoLet pa, v)]], (Bind env, (SNameKey n), (BnLocal (XVar rs), Owned, bt))))

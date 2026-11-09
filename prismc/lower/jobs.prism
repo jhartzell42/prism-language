@@ -567,7 +567,10 @@ fn JobFieldNames lx, qk:
     let clauses = ClausesOf lx.g, qk
     let ((ptys, ignore)) = SchemeParts lx, qk
     let pts = Each ptys, \|p| OutTyOf lx, (Peel p)
-    Each (ParamNames lx, clauses, pts), \|((n, ignore))| n
+    # the parameters' names are their binders', read in the function's own file
+    let lxf = update lx:
+        &_.file <= Fold lx.g.defs, lx.file, \|f, d| if d.qk == qk: d.file else: f
+    Each (ParamNames lxf, clauses, pts), \|((n, ignore))| n
 
 ClausesOf: fn G, Text -> [FnClause]
 fn ClausesOf g, qk = Fold g.defs, [[]], \|acc, d| if d.qk == qk: DefClauses d, acc else: acc

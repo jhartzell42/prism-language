@@ -525,6 +525,12 @@ pub fn text(c: &char) -> Text {
     Text::from(c.to_string())
 }
 
+/// `?CharOf: fn Nat -> ?Char`: the character of a code point, none past `10FFFF` or for a
+/// surrogate.
+pub fn char_of(n: &Nat) -> Option<char> {
+    n.as_int().to_i64().and_then(|v| u32::try_from(v).ok()).and_then(char::from_u32)
+}
+
 pub fn upper(t: &Text) -> Text {
     Text::from(t.as_str().to_uppercase())
 }

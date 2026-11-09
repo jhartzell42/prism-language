@@ -139,6 +139,14 @@ type DefNote = record:
     scheme: Scheme
 derive ^Eq, ^Show
 
+# A local's binder or a use of it, with the binder's id (pick UN): the checker numbers a
+# definition's local binders in the order it binds them, from 0, and a use names the
+# binder the checker resolved it to.
+type LocalNote = record:
+    at: SrcAt
+    id: Nat
+derive ^Eq, ^Show
+
 type TProgram = record:
     exprs: [TyNote]
     apps: [AppNote]
@@ -148,6 +156,8 @@ type TProgram = record:
     methods: [MethodNote]
     groups: [GroupNote]
     binders: [BinderNote]
+    locals: [LocalNote]
+    uses: [LocalNote]
     gens: [GenNote]
     insts: [InstNote]
     defs: [DefNote]
@@ -156,7 +166,7 @@ type TProgram = record:
     unshrunk: [SrcAt]
 derive ^Eq, ^Show
 
-let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
+let emptyTyped = TProgram(exprs=[[]], apps=[[]], lifts=[[]], fns=[[]], impls=[[]], methods=[[]], groups=[[]], binders=[[]], locals=[[]], uses=[[]], gens=[[]], insts=[[]], defs=[[]], unshrunk=[[]])
 
 AtKey: fn SrcAt -> Text
 fn AtKey a = "{a.file}:{a.span.start}:{a.span.end}"

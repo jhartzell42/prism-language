@@ -1386,10 +1386,8 @@ Each is Claude's, for Jimmy to overturn.
 - **NM Names.** Rust's conventions from the program's names: `$count` is the field
   `count`, `!inc` the method `inc`, `ParseNat` the function `parse_nat`, `?Reduce`
   `reduce`. Sigils go; when two values of a module share a base (`?ParseNat`,
-  `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`); so do
-  locals (`?half` is `half_opt` beside `half`; a capitalised local, a function value, is
-  `k_fn` beside a plain `k`, `ts-ch02-closure-names`), and a local named as a function of its
-  module or the prelude takes a `_` (`kind_` beside `Kind`'s `kind`, `ts-ch01-local-names`); a
+  `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`); a local
+  is spelled by pick UN (`ts-ch02-closure-names`, `ts-ch01-local-names`); a
   top-level `let` that shares its base with a function takes `_value` (`let hexDigits`
   is `hex_digits_value()` beside `HexDigits`'s `hex_digits`). A Rust keyword or a name
   the emitted code uses (`cx`, `node`, `path`, `v`) takes a `_`. `Job` and `Turn`, which
@@ -1401,6 +1399,21 @@ Each is Claude's, for Jimmy to overturn.
   (`run`, `run_2`). A tag's `Level` struct is its family and name run together
   (`UiButton`, as `prism_rtl`'s tests have it). *Refused:* the old back end's sigil
   letters (`ld_count`), which read as a mangling.
+- **UN Unique local names.** The checker gives every local binder of a top-level
+  declaration (a parameter, a `let`, a pattern's or a lambda's binder, a hold, a bind, a
+  local function or widget) an id, counted from 0 in the order it binds them; a binder
+  bound twice (ahead of its block, then at its line) keeps one (`BindLocalId`). The typed
+  program records each binder's id and, at each use, the id of the binder the checker
+  resolved it to (`locals`, `uses`). Lowering numbers nothing: a binder is spelled its
+  name in snake case, `_`, the letter of its type's outer layer and its id in base 32
+  (`0`-`9`, `a`-`v`): `e` an event, `d` a dynamic, `b` a blueprint, `f` a function, `o`
+  an optional, `r` a fallible, `p` anything else (`door_p3`, `go_e1`, `x_d4`, `k_o2`).
+  So `x` and `$x`, two binders, are `x_p..` and `x_d..`, a local never hides a function or
+  a keyword, and the separator is the name's last `_` (a name's own trailing `_` is
+  dropped, the topic `_` is `topic`). A generalized `let` lowered once per instantiation
+  adds `w` and the instantiation's index (`same_f2w1`). Names lowering makes for itself
+  (a closure's `a0`, a job's `job_fn`) and the fields of a node or a job keep their
+  spellings.
 - **MO Modules.** One Rust module per Prism module (`program` for the root module, in
   `src/program.rs`), nested as the Prism names are: `Check.Env` is `crate::check::env`,
   in `src/check/env/mod.rs`, declared by `pub mod env;` in `src/check/mod.rs` (a parent
@@ -1629,9 +1642,8 @@ Each is Claude's, for Jimmy to overturn.
 - **PT Tests.** A test module (`test mod Tests`, a child module,
   claude/modules-style-pass.md) is read only under `--tests` (`prism test`, `prism check`);
   a loose file's tests are inline. `test` declarations are taken out before checking (a
-  test's blueprint names a `@name:` block, which has no signature for the checker to read)
-  and a `check` line's pattern too (the Test World reads patterns from the script; the
-  checker mistypes `Show (? 3) => "? 3"`). A test's root is found by name; its arguments
+  test's blueprint names a `@name:` block, which has no signature for the checker to read);
+  a `check` line's pattern is checked against its expression's type, as any pattern is. A test's root is found by name; its arguments
   arrive as `Pod`s. The compiled program's scripts are its test modules; each transcript
   is the `.expected` of its name (`tests.expected` for `tests.prism`), and the Test World
   passes over a test module's header and helper declarations.

@@ -33,6 +33,15 @@ NoteBinder: fn St, Range, Text, Ty -> St
 fn NoteBinder st, span, name, t = if not st.recording: st else: update st:
     &_.typed.binders <= Push &_.typed.binders, BinderNote(at=(AtHere st, span), name=name, ty=t)
 
+# A local's binder and a use of it, by the binder's id (pick UN).
+NoteLocal: fn St, Range, Nat -> St
+fn NoteLocal st, span, id = if not st.recording: st else: update st:
+    &_.typed.locals <= Push &_.typed.locals, LocalNote(at=(AtHere st, span), id=id)
+
+NoteUse: fn St, Range, Nat -> St
+fn NoteUse st, span, id = if not st.recording: st else: update st:
+    &_.typed.uses <= Push &_.typed.uses, LocalNote(at=(AtHere st, span), id=id)
+
 # A generalized local `let`: its binder and the variables its scheme quantified.
 NoteGen: fn St, Range, Text, Scheme -> St
 fn NoteGen st, span, name, sc = if (not st.recording) or ((Len sc.qs) == 0 and (Len sc.cqs) == 0): st else: update st:

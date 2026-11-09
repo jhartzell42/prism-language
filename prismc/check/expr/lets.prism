@@ -96,20 +96,20 @@ PreBind: unbounded fn Env, St, Stmt -> ((Env, St))
 fn PreBind env, st, s = match s.kind:
     SSignature sg:
         let ((sc, st2)) = SigScheme (EnvCx env), st, sg.ty, sg.bounds
-        (((WithLocal env, (DefNameText sg.name), sc), st2))
+        BindLocalId (WithLocal env, (DefNameText sg.name), sc), st2, (DefNameText sg.name), (DefNameSpan sg.name)
     SFn f:
         let name = DefNameText f.name
         match env.locals[name]:
             ? ignore: ((env, st))
             nil:
                 let ((v, st2)) = FreshVar st, False, ""
-                (((WithLocal env, name, (Mono v)), st2))
+                BindLocalId (WithLocal env, name, (Mono v)), st2, name, (DefNameSpan f.name)
     SLet p, ignore, ignore: match p.kind:
         PName n:
             let ((v, st1)) = FreshVar st, True, (SNameKey n)
             let st2 = AtBinder st1, v, n.span
             let ((rw, st3)) = FreshRow st2, [[]]
-            (((WithLocal env, (SNameKey n), (Mono (WithMarks (TypeMarks n.sigils), v, rw))), st3))
+            BindLocalId (WithLocal env, (SNameKey n), (Mono (WithMarks (TypeMarks n.sigils), v, rw))), st3, (SNameKey n), n.span
         otherwise: ((env, st))
     otherwise: ((env, st))
 

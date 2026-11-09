@@ -190,7 +190,7 @@ fn PreBindStmt env, st, s = match s.kind:
     SSignature ignore: PreBind env, st, s
     SWidget w:
         let ((v, st2)) = FreshVar st, False, ""
-        (((WithLocal env, (SNameKey w.name), (Mono (TyAt v, env.scope))), st2))
+        BindLocalId (WithLocal env, (SNameKey w.name), (Mono (TyAt v, env.scope))), st2, (SNameKey w.name), w.name.span
     otherwise: ((env, st))
 
 PreBindPattern: unbounded fn Env, St, Pattern -> ((Env, St))
@@ -201,7 +201,7 @@ fn PreBindPattern env, st, p = Fold (PatternBinders p), ((env, st)), \|((en, s))
     let t = WithMarks (TypeMarks (MarksOf name)), v, rw
     let en2 = update (WithLocal en, name, (Mono t)):
         &_.pending <= AddText &_.pending, name
-    ((en2, s3))
+    BindLocalId en2, s3, name, at
 
 # One statement of a widget block; the last gives the block's result.
 WidgetStmt: unbounded fn Env, St, Stmt, Bool -> ((Env, St, ?Ty))
