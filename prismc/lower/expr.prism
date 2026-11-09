@@ -126,7 +126,7 @@ fn ShownPart v = match ValueTy v:
     OutNat: Ref v
     OutInt: Ref v
     OutU8: Ref v
-    otherwise: XCall "show", [[Ref v]]
+    otherwise: XCall (Helper "show"), [[Ref v]]
 
 # ---------------------------------------------------------------------------------------
 # Plain expressions (claude/backend.md, "Functions and lifting": a plain function takes
@@ -312,7 +312,7 @@ fn PlainValueByKind lx, env, e:
         EArray [[]]: VlOwned (XTyped (XCall "Array::new", [[]]), t), t
         EArray es: VlOwned (XCall "Array::from", [[XVec (Each es, \|x| Own (ValueOf lx, env, x))]]), t
         EMap [[]]: VlOwned (XTyped (XCall "Map::new", [[]]), t), t
-        EMap kvs: VlOwned (XCall "map_of", [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
+        EMap kvs: VlOwned (XCall (Helper "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
         EGroup x: ValueOf lx, env, x
         ECall c, args, ignore, ignore: Application lx, env, c, args, e.span
         EMethod r, m, args: Application lx, env, (Expr(kind=(EName m), span=m.span)), (Append [[Arg(name=nil, value=r, span=r.span)]], args), e.span
@@ -487,7 +487,7 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                         let ((ps, ignore2)) = SchemeParts lx, qk
                         let names = Each (Range0 (Len ps)), \|i| "a{i}"
                         let pa = if (Len ps) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
-                        let f = XClosure False, [[pa]], (XCall "entered", [[(XCall (StartPath lx, qk), (Each names, \|nm| XVar nm))]])
+                        let f = XClosure False, [[pa]], (XCall (Helper "entered"), [[(XCall (StartPath lx, qk), (Each names, \|nm| XVar nm))]])
                         VlOwned (XCast (XCall "Rc::new", [[f]]), t), t
                     otherwise: VlOwned (XCall "Rc::new", [[XPath (ValuePath lx, qk)]]), t
             nil: VlOwned (Refusal "the global {qk}"), t
@@ -519,7 +519,7 @@ fn Application lx, env, callee, args, span:
                     let f = NameValue lx, env, n, callee.span
                     match ValueTy f:
                         OutJobFn ignore, ignore:
-                            VlOwned (XCall "run_to_end", [[(StartCall f, (StartArgs lx, env, f, args))]]), t
+                            VlOwned (XCall (Helper "run_to_end"), [[(StartCall f, (StartArgs lx, env, f, args))]]), t
                         otherwise: VlOwned (XApply (Ref f), (Each args, \|a| Argument lx, env, a.value)), t
                 nil:
                     let ((?qk, why)) = ResolveValue lx.g, lx.home, n
@@ -535,7 +535,7 @@ fn Application lx, env, callee, args, span:
         otherwise:
             let f = ValueOf lx, env, callee
             match ValueTy f:
-                OutJobFn ignore, ignore: VlOwned (XCall "run_to_end", [[(StartCall f, (StartArgs lx, env, f, args))]]), t
+                OutJobFn ignore, ignore: VlOwned (XCall (Helper "run_to_end"), [[(StartCall f, (StartArgs lx, env, f, args))]]), t
                 otherwise: VlOwned (XApply (Ref f), (Each args, \|a| Argument lx, env, a.value)), t
 
 # A local function called: its body inlined, each parameter a local bound to its
@@ -660,7 +660,7 @@ fn WrapAsBounded f, pts, target:
     let names = Each (Range0 (Len pts)), \|i| "a{i}"
     let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
     let arg = if (Len pts) == 1: XClone (XVar "a0") else: XTuple (Each names, \|nm| XClone (XVar nm))
-    let body = XCall "run_to_end", [[(XApply (XVar "job_fn"), [[arg]])]]
+    let body = XCall (Helper "run_to_end"), [[(XApply (XVar "job_fn"), [[arg]])]]
     XBlock [[(DoLet (PaBind "job_fn"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, pas, body)]]), target)
 
 # A function's arguments, borrowed; a bare `Error(..)` where the parameter is a `~T` is
@@ -742,7 +742,7 @@ fn CtorFn lx, c, pts, span, t, job:
             OutJobFn x, ignore: x
             otherwise: OutUnit
         let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
-        VlOwned (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[made]]))]]))]]), t), t
+        VlOwned (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], (XCall (Helper "once_job"), [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[made]]))]]))]]), t), t
     else:
         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
         VlOwned (XCall "Rc::new", [[(XClosure False, pas, made)]]), t
@@ -779,7 +779,7 @@ fn MethodCall lx, env, v, args, span, t:
     if (HasPrefix cls, "Prelude."): PreludeMethod lx, cls, m, vals, span, t
     else:
         let tr = Or lx.g.traits[cls], dummyTraitInfo
-        let path = PathIn lx, tr.home, "{Camel (BareName cls)}::{Snake m}"
+        let path = PathIn lx, tr.home, "{Camel (BareName cls)}::{Or lx.rsNames[v.qk], (Snake m)}"
         VlOwned (XCall path, (Each args, \|a| Argument lx, env, a.value)), t
 
 let dummyTraitInfo = TraitInfo(name="", home="", param="a", supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=0, span=Range(start=0, end=0))
@@ -789,9 +789,9 @@ fn PreludeMethod lx, cls, m, vals, span, t:
     let a = Or vals[0], (VlOwned (XUnit), OutUnit)
     let b = Or vals[1], (VlOwned (XUnit), OutUnit)
     match m:
-        "Show": VlOwned (XCall "show_text", [[Ref a]]), OutText
-        "Compare": VlOwned (XCall "compare", [[Ref a, Ref b]]), t
-        "Children": VlOwned (XCall "children", [[Ref a]]), t
+        "Show": VlOwned (XCall (Helper "show_text"), [[Ref a]]), OutText
+        "Compare": VlOwned (XCall (Helper "compare"), [[Ref a, Ref b]]), t
+        "Children": VlOwned (XCall (Helper "children"), [[Ref a]]), t
         otherwise: OpValue lx, m, a, b, span, t
 
 # A binary operator.
@@ -855,7 +855,7 @@ fn PreludeCall lx, env, qk, args, span, t:
         nil: OutUnit
     let variant = PreludeVariant name, first
     match ?PreludeJob lx, env, variant, args:
-        ? job: VlOwned (XCall "run_to_end", [[job]]), t
+        ? job: VlOwned (XCall (Helper "run_to_end"), [[job]]), t
         nil: VlOwned (XCall (PreludePath lx, variant), (Each args, \|a| Argument lx, env, a.value)), t
 
 # D8 in the back end: `Fold`, `Each` and `Filter` given a closure that is not bounded are
@@ -869,7 +869,7 @@ fn ?PreludeJob lx, env, variant, args:
         match OutTyOf lx, (Peel (TypeAt lx, last.value.span)):
             OutJobFn ignore, ignore:
                 let front = Each (Take args, (Dec (Len args))), \|a| Own (ValueOf lx, env, a.value)
-                ? (XCall "{variant}_job", (Push front, (AsJobValue lx, env, last.value)))
+                ? (XCall (Helper "{variant}_job"), (Push front, (AsJobValue lx, env, last.value)))
             otherwise: nil
     else: nil
 
@@ -923,7 +923,7 @@ fn WrapAsJob f, pts, target, a:
     let names = Each (Range0 (Len pts)), \|i| "a{i}"
     let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
     let call = XApply (XVar "fy"), (Each names, \|nm| XRef (XVar nm))
-    let body = XBlock [[(DoLet (PaBind "fy"), (XClone (XVar "f")))]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
+    let body = XBlock [[(DoLet (PaBind "fy"), (XClone (XVar "f")))]], (XCall (Helper "once_job"), [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
     XBlock [[(DoLet (PaBind "f"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], body)]]), target)
 
 # A named function's arguments, owned, as its job's fields take them: a function
@@ -1004,8 +1004,8 @@ IndexValue: unbounded fn Lx, Env, Expr, Expr, OutTy -> Vl
 fn IndexValue lx, env, r, i, t:
     let rt = OutTyOf lx, (Peel (TypeAt lx, r.span))
     let f = match rt:
-        OutMap ignore, ignore: "get"
-        otherwise: "index"
+        OutMap ignore, ignore: Helper "get"
+        otherwise: Helper "index"
     VlOwned (XCall f, [[(Argument lx, env, r), (Argument lx, env, i)]]), (OutOpt t)
 
 # The names an expression or block reads, for a closure's captures.
@@ -1208,8 +1208,8 @@ fn JobLambda lx, env, ps, body, ft, a, enter:
         LbExpr x: Tail lx, env2, x
         LbBlock bl: TailBlock lx, env2, bl
     let tail = if (Len unpack) == 0: tail0 else: XBlock unpack, tail0
-    let job0 = XCall "once_job", [[(XClosure True, [[]], tail)]]
-    let job = if enter: XCall "entered", [[job0]] else: job0
+    let job0 = XCall (Helper "once_job"), [[(XClosure True, [[]], tail)]]
+    let job = if enter: XCall (Helper "entered"), [[job0]] else: job0
     let call = if (Len again) == 0: job else: XBlock again, job
     VlOwned (XBlock dos, (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], call)]]), ft)), ft
 

@@ -176,25 +176,6 @@ fn ?LetName p = match p:
 VarName: fn Cp, Text -> Text
 fn VarName cp, n = CppId n
 
-# Whether C++ text names an identifier: it stands there with no identifier character
-# beside it.
-CppMentions: fn Text, Text -> Bool
-fn CppMentions t, n:
-    let parts = SplitOn t, n
-    let k = Len parts
-    Fold (Range0 (Dec k)), False, \|f, i| f or ((not (CppEndsIdent (Or parts[i], ""))) and not (CppStartsIdent (Or parts[i + 1], "")))
-
-CppEndsIdent: fn Text -> Bool
-fn CppEndsIdent t:
-    let c = LastChar t
-    (CppIdentChar c) or c == "." or c == ">"
-
-CppStartsIdent: fn Text -> Bool
-fn CppStartsIdent t = CppIdentChar (Head t)
-
-CppIdentChar: fn Text -> Bool
-fn CppIdentChar c = c != "" and Contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", c
-
 CppStatement: unbounded fn Cp, Do -> Text
 fn CppStatement cp, d = match d:
     DoLet p, x: CppLet cp, cp, p, x

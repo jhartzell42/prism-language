@@ -235,8 +235,8 @@ fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let stepFn = Prepend capDos, (XClosure True, [[(PaTyped pat, stTy)]], turn)
-    let looping = if jobs: "loop_turns" else: "loop_job"
-    let enter = XCall "call_then", [[(XCall looping, [[pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
+    let looping = Helper (if jobs: "loop_turns" else: "loop_job")
+    let enter = XCall (Helper "call_then"), [[(XCall looping, [[pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
     Prepend outDos, enter
 
 # A block's statements in an `update` block, then `last`.
@@ -362,7 +362,7 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restText, Cont:
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let looping = if isArray: "for_turns_indexed" else: "for_turns_keyed"
-    let enter = XCall "call_then", [[(XCall looping, [[src, pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
+    let enter = XCall (Helper "call_then"), [[(XCall looping, [[src, pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
     Prepend outDos, enter
 
 # The name an instantiation's key is of (`Twin#inst1`, pick LG); any other key itself.
@@ -449,12 +449,12 @@ fn Frame lx, env, call, restText, Cont = match call.kind:
         let env3 = BindSpan env2, (PlaceKey lx, call.span), (VlOwned (XVar v), t)
         let body = Cont env3
         let ((job, how)) = match ?qk:
-            ? q: (((XCall (PathIn lx, (OwnerOf q), "start_{base}"), vals), (if EntersAtOnce lx, q, args: "call_value" else: "call_then")))
+            ? q: (((XCall (PathIn lx, (OwnerOf q), "start_{base}"), vals), (Helper (if EntersAtOnce lx, q, args: "call_value" else: "call_then"))))
             nil: match ?LocalJobFn lx, env2, c:
-                ? f: (((StartCall f, vals), "call_value"))
+                ? f: (((StartCall f, vals), (Helper "call_value")))
                 nil: match ?PreludeJobCall lx, env2, call:
-                    ? pj: ((pj, "call_value"))
-                    nil: (((Refusal "a call this frame cannot enter"), "call_then"))
+                    ? pj: ((pj, (Helper "call_value")))
+                    nil: (((Refusal "a call this frame cannot enter"), (Helper "call_then")))
         # An unbounded call lifted over a `?` or `~` would enter its job only when every
         # peeled argument is present: not lowered yet.
         let enter = if IsLiftedAt lx, call.span: Refusal "an unbounded call lifted over `?` or `~` (`{SrcText lx, lx.file, call.span}`)" else: XCall how, [[job, (XClosure True, [[(PaTyped (PaBind v), t)]], body)]]

@@ -83,7 +83,7 @@ CppArgList: unbounded fn Cp, [Ex] -> [Text]
 fn CppArgList cp, xs:
     let texts = Each xs, \|x| CppExpr cp, x
     Each (Range0 (Len xs)), \|i| match Or xs[i], XUnit:
-        XVar n: if Fold (Range0 (Len xs)), False, \|f, j| f or (j != i and CppMentions (Or texts[j], ""), (VarName cp, n)): VarName cp, n else: Or texts[i], ""
+        XVar n: if Fold (Range0 (Len xs)), False, \|f, j| f or (j != i and ExReads (Or xs[j], XUnit), n): VarName cp, n else: Or texts[i], ""
         otherwise: Or texts[i], ""
 
 CppExpr: unbounded fn Cp, Ex -> Text
@@ -304,7 +304,7 @@ fn CppRecord cp, p, fs:
 CppCall: unbounded fn Cp, Text, [Ex] -> Text
 fn CppCall cp, f, args:
     let a = CppArgs cp, args
-    match f:
+    match DropPrefix f, "crate::prelude::":
         "Rc::new": if a == "\{\}": "prism_rtl::make_new()" else: "prism_rtl::rc({a})"
         "is_some": "prism_rtl::is_some({a})"
         "is_none": "prism_rtl::is_none({a})"
@@ -319,13 +319,13 @@ fn CppCall cp, f, args:
         "Text::from": "Text({a})"
         "String::new": "std::string()"
         "Array::from": "Array({a})"
-        "prism_rtl::Dynamic::of": "dynamic_of({a})"
-        "Dynamic::of": "dynamic_of({a})"
-        "prism_rtl::Event::of": "event_of({a})"
+        "prism_rtl::Dynamic::of": "prism_rtl::dynamic_of({a})"
+        "Dynamic::of": "prism_rtl::dynamic_of({a})"
+        "prism_rtl::Event::of": "prism_rtl::event_of({a})"
         "prism_rtl::Host::new": "host_new({a})"
         "prism_rtl::Entry::new": "entry_new({a})"
         "prism_rtl::forward_on_none": "prism_rtl::forward_on_none<crate::Elem, crate::Answer>({a})"
-        "Event::never": "never_event()"
+        "Event::never": "prism_rtl::never_event()"
         otherwise: if IsFresh f: "\{\}" else: "{FreeCallPath cp, f}({a})"
 
 # A function's path where a node's member of the same name would hide it: qualified.
@@ -484,7 +484,8 @@ fn FreeName m = match m:
     "to_pod": "prism_rtl::to_pod"
     "ok": "prism_rtl::ignore"
     "map": "prism_rtl::fmap"
-    "to_vec": "path_of"
+    "ok_or": "prism_rtl::ok_or"
+    "to_vec": "prism_rtl::path_of"
     "values": "crate::prelude::values"
     "keys": "crate::prelude::keys"
     "enumerate": "prism_rtl::enumerate"
@@ -694,7 +695,7 @@ fn CppClosure cp0, mv, ps, body:
     let params = Join (Each (Range0 (Len ps)), \|i| ClosureParam cp, (Or ps[i], PaWild), i), ", "
     let binds = Concat (Each (Range0 (Len ps)), \|i| ClosureBinds cp, (Or ps[i], PaWild), i)
     let b = CppExpr cp, body
-    let moved = if mv: Filter cp0.moveCaptures, \|n| (Or cp0.owned[n], False) and (not (InList names, n)) and CppMentions b, (VarName cp0, n) else: [[]]
+    let moved = if mv: Filter cp0.moveCaptures, \|n| (Or cp0.owned[n], False) and (not (InList names, n)) and ExReads body, n else: [[]]
     let capture = Join (Append [[(if mv: "=" else: "&")]], (Each moved, \|n| "{VarName cp0, n} = std::move({VarName cp0, n})")), ", "
     let ((ret, value)) = match body:
         XRef ignore: ((" -> decltype(auto)", "({b})"))

@@ -249,16 +249,22 @@ fn PathIn lx, owner, name:
     else: if owner == "Prelude": PreludePath lx, name
     else: "crate::{Or lx.rsMods[owner], (RustModName owner)}::{name}"
 
-# A prelude function's Rust path from the site: bare, or qualified where the site's own
-# value of the same Rust name hides it (`?Step`, `step`, beside a program's `Step`), or
-# where a module of the program has that name, whose C++ namespace would hide it
-# (`regex`, beside prismc's `Check.Regex`).
+# A prelude function's path, and a helper's of the runtimes or the emitted prelude, from
+# the crate (pick UN): never bare, so neither target finds a program's local or value of
+# the same spelling in its place (`map_of`, beside a `?map` with id 15).
 PreludePath: fn Lx, Text -> Text
-fn PreludePath lx, name = if (HasKey lx.globals, "{lx.site}.{name}") or (HasKey lx.modSegments, name): "crate::prelude::{name}" else: name
+fn PreludePath ignore, name = Helper name
 
-# The Rust name of a top-level value of a module: its snake case, with a suffix by its
-# sigil when another value of the module has the same base (`?ParseNat` and `~ParseNat`).
-ValueNames: fn G -> (Text ==> Text)
+Helper: fn Text -> Text
+fn Helper n = "crate::prelude::{n}"
+
+# The Rust and C++ name of a top-level value of a module (pick UN): its name in snake
+# case, `_` and the letter of its kind, by its sigil (`?` `o`, `~` `r`, `!` `e`, `$` `d`,
+# `@` `b`) or else its type's outer layer (`f` a function, `p` anything plain):
+# `parse_nat_f`, `parse_nat_o`, `limit_p`. So a value never hides a runtime's helper,
+# a local (whose letter has an id after it) or a keyword. The prelude's own keep their
+# runtime spellings.
+ValueNames: unbounded fn G -> (Text ==> Text)
 fn ValueNames g:
     let lets = Fold g.defs, [[]], \|acc, d| match d.body:
         DbLet ignore: AddText acc, d.qk
@@ -266,13 +272,30 @@ fn ValueNames g:
     let keys = UnionTexts (Keys g.vals), lets
     let bases = Fold keys, {}, \|m, k| Insert m, (BaseKey k), (Push (Or m[BaseKey k], [[]]), k)
     Fold keys, {}, \|m, k|
-        let name = ValueName k, (Len (Or bases[BaseKey k], [[]]))
         let runtimes = (OwnerOf k) == "Prelude" or match g.vals[k]:
             ? v: v.sort == "builtin" or v.home == "Prelude"
             nil: False
-        Insert m, k, (if runtimes: name else: Unclash name)
+        Insert m, k, (if runtimes: ValueName k, (Len (Or bases[BaseKey k], [[]])) else: "{GlobalBase k}_{GlobalLetter g, k}")
 
-GlobalNames: fn G -> (Text ==> Bool)
+# A top-level name in snake case without its marks or a trailing `_`.
+GlobalBase: unbounded fn Text -> Text
+fn GlobalBase k:
+    let base = TrimUnderscores (Snake (BareName k))
+    if base == "": "topic" else: base
+
+GlobalLetter: fn G, Text -> Text
+fn GlobalLetter g, k:
+    let marks = MarksOf (BareName k)
+    if Contains marks, "?": "o"
+    else: if Contains marks, "~": "r"
+    else: if Contains marks, "!": "e"
+    else: if Contains marks, "$": "d"
+    else: if Contains marks, "@": "b"
+    else: match g.vals[k]:
+        ? v: KindLetter v.scheme.ty
+        nil: if IsUpperText (Head (BareName k)): "f" else: "p"
+
+GlobalNames: unbounded fn G -> (Text ==> Bool)
 fn GlobalNames g:
     let names = ValueNames g
     Fold (Keys names), {}, \|m, k| Insert m, "{OwnerOf k}.{Or names[k], ""}", True

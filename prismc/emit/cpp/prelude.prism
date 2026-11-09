@@ -36,6 +36,11 @@ using namespace std::literals;
 
 namespace prelude {
 
+// The runtime's functions, reached from the prelude too: the emitted code calls every helper
+// by its path from here (`crate::prelude::index`), never bare (prismc/lower/mod.prism,
+// `Helper`).
+using namespace prism_rtl;
+
 // ---- Types ------------------------------------------------------------------------------
 
 /// `type Ordering = choice: Less | Equal | Greater; derive ^Eq, ^Ord, ^Show`.

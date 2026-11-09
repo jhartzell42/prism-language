@@ -60,7 +60,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
         TyMap k, v: (((OutTyOf lx, k), (OutTyOf lx, v), True))
         TyArray v: ((OutNat, (OutTyOf lx, v), False))
         otherwise: ((OutUnit, OutUnit, True))
-    let src = if keyed: srcEx else: XCall "indexed", [[(XRef srcEx)]]
+    let src = if keyed: srcEx else: XCall (Helper "indexed"), [[(XRef srcEx)]]
     let base = match ?bound:
         ? (BnEv er, ignore): (GnOf wx1, er.node).name
         otherwise: "rows"

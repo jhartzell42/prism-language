@@ -636,3 +636,72 @@ type AnswerCase = record:
     tagName: Text
     ty: OutTy
 derive ^Eq, ^Show
+
+# Whether an expression reads the local `n` anywhere in it (its `XVar`s), as a printer
+# asks of a closure's body or a call's other arguments.
+ExReads: unbounded fn Ex, Text -> Bool
+fn ExReads x, n = match x:
+    XVar m: m == n
+    XRef y: ExReads y, n
+    XRefMut y: ExReads y, n
+    XDeref y: ExReads y, n
+    XTarget y: ExReads y, n
+    XClone y: ExReads y, n
+    XWeak y: ExReads y, n
+    XUpgrade y: ExReads y, n
+    XBreak ignore, y: ExReads y, n
+    XLater y: ExReads y, n
+    XFormatStr ys: AnyReads ys, n
+    XIsCase y, ignore: ExReads y, n
+    XCall ignore, ys: AnyReads ys, n
+    XApply f, ys: (ExReads f, n) or AnyReads ys, n
+    XMethod y, ignore, ys: (ExReads y, n) or AnyReads ys, n
+    XBin ignore, a, b: (ExReads a, n) or ExReads b, n
+    XUnary ignore, y: ExReads y, n
+    XCtor ignore, ys: AnyReads ys, n
+    XRecord ignore, fs: Fold fs, False, \|f, ((ignore, y))| f or ExReads y, n
+    XTuple ys: AnyReads ys, n
+    XVec ys: AnyReads ys, n
+    XFormat ys: AnyReads ys, n
+    XMatch y, arms, ignore, ignore: (ExReads y, n) or ArmsRead arms, n
+    XChain ignore, y, arms, ignore: (ExReads y, n) or ArmsRead arms, n
+    XIf c, a, b: (ExReads c, n) or (ExReads a, n) or ExReads b, n
+    XBlock ds, y: (DosRead ds, n) or ExReads y, n
+    XLabeled ignore, ds, y, ignore: (DosRead ds, n) or ExReads y, n
+    XClosure ignore, ignore, y: ExReads y, n
+    XTry y: ExReads y, n
+    XField y, ignore: ExReads y, n
+    XPart y, ignore: ExReads y, n
+    XDecode ignore, y: ExReads y, n
+    XCast y, ignore: ExReads y, n
+    XTyped y, ignore: ExReads y, n
+    otherwise: False
+
+AnyReads: unbounded fn [Ex], Text -> Bool
+fn AnyReads xs, n = Fold xs, False, \|f, y| f or ExReads y, n
+
+ArmsRead: unbounded fn [XArm], Text -> Bool
+fn ArmsRead arms, n = Fold arms, False, \|f, a| f or (ExReads a.body, n) or Fold a.conds, False, \|g, c| g or match c:
+    CcIf y: ExReads y, n
+    CcLet ignore, y: ExReads y, n
+
+DosRead: unbounded fn [Do], Text -> Bool
+fn DosRead ds, n = Fold ds, False, \|f, d| f or DoReads d, n
+
+DoReads: unbounded fn Do, Text -> Bool
+fn DoReads d, n = match d:
+    DoLet ignore, y: ExReads y, n
+    DoLetElse ignore, y, z: (ExReads y, n) or ExReads z, n
+    DoAssign a, b: (ExReads a, n) or ExReads b, n
+    DoWhile c, ds: (ExReads c, n) or DosRead ds, n
+    DoWhileLet ignore, y, ds: (ExReads y, n) or DosRead ds, n
+    DoFor ignore, y, ds: (ExReads y, n) or DosRead ds, n
+    DoExpr y: ExReads y, n
+    DoIf c, a, b: (ExReads c, n) or (DosRead a, n) or DosRead b, n
+    DoIfLet ignore, y, a, b: (ExReads y, n) or (DosRead a, n) or DosRead b, n
+    DoMatch y, arms: (ExReads y, n) or Fold arms, False, \|f, ((ignore, ds))| f or DosRead ds, n
+    DoReturn y: ExReads y, n
+    DoBlock ds: DosRead ds, n
+    DoScope ds: DosRead ds, n
+    DoLine ds: DosRead ds, n
+    DoNote ignore: False

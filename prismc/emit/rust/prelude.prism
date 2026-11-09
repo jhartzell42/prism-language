@@ -17,7 +17,10 @@ fn PreludeSource unused = inline_text <rust>
 
 use std::rc::Rc;
 
-use prism_rtl::*;
+// The runtime's items, reached through the prelude too: the emitted code calls every helper
+// by its path from here (`crate::prelude::index`), never bare (prismc/lower/mod.prism,
+// `Helper`).
+pub use prism_rtl::*;
 
 // ---- Types ------------------------------------------------------------------------------
 

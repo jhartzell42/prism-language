@@ -284,7 +284,7 @@ fn FinishNode wx0, qk, params, isRow:
     # structural dynamic reads its snapshot at the build), then the places out
     let links = Each wx.hosts, \|h| DoExpr (XMethod (XField (XVar "node"), "{h.name}"), "link", [[(XRef (XVar "node"))]])
     let rowsBuilt = Append links, (BuildSteps sinks, True)
-    let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall "subscribe_row", [[(XRef (XVar "node")), (XUpgrade (XField (XVar "node"), "parent")), (XClosure False, [[PaBind "p"]], (XRef (XField (XVar "p"), "{ev}_port"))), (XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), m, [[XClone (XVar "v"), XCx]])), (XRef (XField (XVar "node"), "{m}_sub"))]])
+    let subscribed = Each wx.subs, \|((ev, m, t))| DoExpr (XCall (Helper "subscribe_row"), [[(XRef (XVar "node")), (XUpgrade (XField (XVar "node"), "parent")), (XClosure False, [[PaBind "p"]], (XRef (XField (XVar "p"), "{ev}_port"))), (XClosure False, [[PaBind "n", PaBind "v", PaBind "cx"]], (XMethod (XVar "n"), m, [[XClone (XVar "v"), XCx]])), (XRef (XField (XVar "node"), "{m}_sub"))]])
     # the World's answers, by path, to the places that go to it; a hosted place is answered
     # typed by its host, through `host_k_answer` (the places of scope `k`) or `deliver` (a
     # hosted node's own)
@@ -774,7 +774,7 @@ fn PairDecide g, kind:
     let left = PaTuple [[sa, (PaUnit "None")]]
     let right = PaTuple [[(PaUnit "None"), sb]]
     let cases = match kind:
-        GnUnion: [[((some2, (Fire (XCall "union", [[(XRef (XVar "a")), (XRef (XVar "b"))]])))), ((left, (Fire (XVar "a")))), ((right, (Fire (XVar "b")))), ((PaWild, [[]]))]]
+        GnUnion: [[((some2, (Fire (XCall (Helper "union"), [[(XRef (XVar "a")), (XRef (XVar "b"))]])))), ((left, (Fire (XVar "a")))), ((right, (Fire (XVar "b")))), ((PaWild, [[]]))]]
         GnBoth: [[((some2, (Fire (XTuple [[(XVar "a"), (XVar "b")]])))), ((PaWild, [[]]))]]
         otherwise: [[((left, (Fire (XVar "a")))), ((PaWild, [[]]))]]
     DoMatch both, cases

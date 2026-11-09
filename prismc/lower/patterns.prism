@@ -347,6 +347,6 @@ fn ArrayPat lx, ps, ty, mode, fresh:
     let arr = LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty))
     let lenCond = CcIf (XBin OpEq, (XMethod (Ref arr), "len", [[]]), (XIndex (Len ps)))
     let subs = Each (Range0 (Len ps)), \|i| ((i, (RustPat lx, (Or ps[i], dummyPat), et, Owned, "{fresh}_{i}")))
-    let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor "Some", [[o.pa]]), (XCall "index", [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds
+    let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor "Some", [[o.pa]]), (XCall (Helper "index"), [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds
     let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
     PatOut(pa=(PaBind fresh), conds=conds, binds=binds)

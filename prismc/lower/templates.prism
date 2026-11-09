@@ -61,11 +61,11 @@ fn TemplatePartDos lx, env, part = match part:
         let column = match ?col:
             ? c: XCtor "Some", [[XIndex c]]
             nil: XNone
-        [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), ShownText v, column]])]]
+        [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), ShownText v, column]])]]
     TpBlock b:
         let v = BlockValue lx, env, b
         if (ValueTy v) == OutUnit: [[DoExpr (Own v)]]
-        else: [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), ShownText v, XNone]])]]
+        else: [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), ShownText v, XNone]])]]
     TpCall n, args, ?parts, ignore:
         let plain = SName(sigils=(AfterFirst n.sigils), path=n.path, span=n.span)
         let ((?qk, ignore)) = ResolveValue lx.g, lx.home, n
@@ -86,7 +86,7 @@ fn TemplatePartDos lx, env, part = match part:
                 ? q: TemplateArgs lx, env, q, args, body
                 nil: Append (Each args, \|a| Argument lx, env, a.value), body
         let call = XCall callee, passed
-        [[DoExpr (XCall "place", [[(XRefMut (XVar "out")), (XRef call), XNone]])]]
+        [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), (XRef call), XNone]])]]
 
 # A template call's arguments in place order (pick TK, as the checker reads them): the
 # body, when there is one, fills the last place; each attribute fills the one place any
@@ -128,7 +128,7 @@ ShownText: fn Vl -> Ex
 fn ShownText v = match ValueTy v:
     OutText: Ref v
     OutChar: XRef (XFormat [[Ref v]])
-    otherwise: XRef (XCall "show_text", [[Ref v]])
+    otherwise: XRef (XCall (Helper "show_text"), [[Ref v]])
 
 # `given:` (Semantics ch. 4): `let`s, binds that fail on `nil` (or on an `Error`), the
 # guards, and the answer last; a failed guard under `~` is `Prelude.Unmet` with the
@@ -255,7 +255,7 @@ fn UpdForRefs lx, env, n, source, body, span, sty = match sty:
         let refName = "r{span.start}"
         let env1 = Bind (Bind (Bind env, "key", (BnLocal (XVar keyName), Owned, OutNat)), "ix", (BnLocal (XVar keyName), Owned, OutNat)), (SNameKey n), (BnLocal (XTarget (XVar refName)), Owned, (OutTyOf lx, v))
         let ((dos, ignore)) = UpdStmts lx, env1, body.stmts
-        let head = DoLet (PaBind keyName), (XCall "nat_of", [[(XVar "i{span.start}")]])
+        let head = DoLet (PaBind keyName), (XCall (Helper "nat_of"), [[(XVar "i{span.start}")]])
         DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind refName)]]), (XMethod (XMethod (PlaceOf lx, env, source), "iter_mut", [[]]), "enumerate", [[]]), (Append [[head]], dos)
     otherwise: RefusalDo "a `for` by reference over what is not an array"
 
@@ -304,7 +304,7 @@ fn UpdForValues lx, env, ?binders, source, body, span, sty:
                 ((([[(DoLet pk.pa, (XClone (XVar keyName))), (DoLet pv.pa, (XClone (XVar valName)))]]), (BindAll (BindAll env2, pk.binds), pv.binds)))
     let ((dos, ignore)) = UpdStmts lx, env3, body.stmts
     if isArray:
-        let head = DoLet (PaBind keyName), (XCall "nat_of", [[(XVar "i{span.start}")]])
+        let head = DoLet (PaBind keyName), (XCall (Helper "nat_of"), [[(XVar "i{span.start}")]])
         DoFor (PaTuple [[(PaBind "i{span.start}"), (PaBind valName)]]), (XMethod (XMethod src, "into_iter", [[]]), "enumerate", [[]]), (Append (Push [[]], head), (Append binds, dos))
     else: DoFor (PaTuple [[(PaBind keyName), (PaBind valName)]]), (XMethod src, "into_iter", [[]]), (Append binds, dos)
 
