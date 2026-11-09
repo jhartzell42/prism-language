@@ -4,9 +4,9 @@
 # of the image so the clone stays clean. Prints `OP RUN MS` per timed run, as the other
 # drivers do.
 #
-#   bench/cuis/run.sh OP RUNS WARMUP
+#   bench/gui/cuis/run.sh OP RUNS WARMUP
 #
-# The image and the VM are under target/bench/deps (bench/cuis/setup.sh fetches them).
+# The image and the VM are under target/bench/deps (bench/gui/cuis/setup.sh fetches them).
 #
 # Written by Claude on the claude-self-hosting branch; subject to change.
 set -eu

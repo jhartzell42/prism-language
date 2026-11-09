@@ -1,4 +1,4 @@
-tests/checker/neg/mark-stack.prism:8: error[mark-stack]: `shown` has type `$t7`, whose stack is `$`; the name shows ``
+tests/checker/neg/mark-stack.prism:8: error[mark-stack]: `shown` has type `$t8`, whose stack is `$`; the name shows ``
         let shown = $count + 1
             ^^^^^
   fix: rename to `$shown`

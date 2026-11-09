@@ -1,7 +1,6 @@
-# A `Char` in a text's placeholder goes through `Show` (Type System ch. 5, "Free sigils
-# and text": "An interpolation applies the text builder to every placeholder, through
-# `Show` for non-text"), so `"{c}"` is `'q'`, quotes included; `Text c` is the character
-# itself as a text. Written for prismc's back end; subject to change.
+# A `Char` in a text's placeholder displays as itself (Semantics round 10 IP:
+# interpolation is display, `^Show` stays debug), so `"{c}"` is `q`, as `Text c`, the
+# character itself as a text, is. Written for prismc's back end; subject to change.
 emit Ui.*
 test mod Tests
 use Ui.*

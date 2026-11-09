@@ -4,7 +4,7 @@
 //!
 //! One size, one line, no kerning or shaping: a text's width is the sum of its
 //! characters' advances. The Test World's font is nine units a character and fourteen
-//! high (`prism_rt::families::gui::test_font_extent`); this one is proportional, and at
+//! high (`runtime/rust/src/world/test_world.rs`, `Gui.Metrics`); this one is proportional, and at
 //! [`FONT_PX`] its line is fourteen units high too, so a layout's rows come out the same
 //! height under both Worlds and only widths differ.
 

@@ -71,8 +71,8 @@ fn CheckFiles job:
         if pp.errors != "": Outcome(text="{pp.errors}parse errors\n", failed=True, report="{pp.errors}parse errors")
         else:
             let pre = TreeDeclDiags pp
-            # tests are checked by running them, and a `check` line's pattern is the Test
-            # World's to read, as in a compile (pick PT)
+            # tests are checked by running them, as in a compile (pick PT); a `check`
+            # line's pattern is checked against its expression
             let checked = Each pp.trees, \|t| WithoutTests t
             let report = CheckProgram pp.srcs, checked, job.world, pp.shown, job.typed, job.unused, pre
             let summary = if report.errors == 0: "no errors\n" else: "{report.errors} error{if report.errors == 1: "" else: "s"}\n"

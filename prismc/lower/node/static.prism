@@ -247,8 +247,9 @@ fn DynamicAnswers wx, benv, menv, hf, sup:
             &_.taken <= Push &_.taken, owner
             &_.lets <= Push &_.lets, (DoLet (PaBind owner), (XCall "prism_rtl::Link::<{wx.node}>::new", [[]]))
             &_.build <= Push &_.build, (DoExpr (XMethod (XVar owner), "link", [[(XRef (XVar "node"))]]))
-        let env0 = Bind benv, "#owner", (BnLocal (XVar owner), Owned, OutUnit)
-        let lets0 = [[(DoLet (PaBind owner), (XClone (XVar owner)))]]
+        # the closure's own copies, named apart from what they copy (pick UN)
+        let env0 = Bind benv, "#owner", (BnLocal (XVar "{owner}x"), Owned, OutUnit)
+        let lets0 = [[(DoLet (PaBind "{owner}x"), (XClone (XVar owner)))]]
         Fold (Range0 (Len dyns)), ((wx1, env0, lets0)), \|((w, en, ls)), j| match dyns[j]:
             ? ((y, d)):
                 let name = "{hf}_dyn_{j + 1}"
@@ -264,7 +265,7 @@ fn DynamicAnswers wx, benv, menv, hf, sup:
                         &_.fields <= Push &_.fields, ((port, (OutRc (OutPort OutUnit)), "the dynamic answer `{name}` moved: its blueprints push the child's place next tick"))
                         &_.moves <= Push &_.moves, ((port, (XClone (XVar port))))
                         &_.dynAnswers <= Push &_.dynAnswers, ((name, reads))
-                    ((w2, (Bind en, "#dyn{DynKey y}", (BnLocal (XVar name), Owned, t)), (Push ls, (DoLet (PaBind port), (XClone (XVar port))))))
+                    ((w2, (Bind en, "#dyn{DynKey y}", (BnLocal (XVar name), Owned, t)), (Push ls, (DoLet (PaBind "{port}x"), (XClone (XVar port))))))
             nil: ((w, en, ls))
 
 # The dynamic a supplier's `@ x` answers with, when `x` is a dynamic that is not a constant:
@@ -527,8 +528,15 @@ fn InlineWidget wx, benv, menv, qk, v, args, e:
                     match args[i]:
                         nil: ((w, be, me))
                         ? a: BindParam w, benv, menv, be, me, nkey, pty, a.value
+                let callSpan = match e.kind:
+                    ECall c, ignore, ignore, ignore: c.span
+                    otherwise: e.span
+                let lxi = update lxc:
+                    &_.inlined <= match lx.callIds[PlaceKey lx, callSpan]:
+                        ? id: "{lx.inlined}_{Base32 id}"
+                        nil: lx.inlined
                 let inner = update wx1:
-                    &_.lx <= lxc
+                    &_.lx <= lxi
                     &_.inlining <= Push &_.inlining, qk
                     &_.result <= WrUnit
                 let done = BlockInto inner, be1, me1, body

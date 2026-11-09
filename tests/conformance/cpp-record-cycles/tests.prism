@@ -1,0 +1,8 @@
+# Records in cycles: declarations of cpp-record-cycles. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test records_in_cycles, @page:
+    build

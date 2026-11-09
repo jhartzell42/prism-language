@@ -128,6 +128,7 @@ fn TopLets g, st:
             let s0 = update s:
                 &_.file <= d.file
                 &_.level <= 1
+                &_.localNext <= 0
             let pre = (Or gg.vals[d.qk], dummyVal).scheme.ty
             let s1 = Check env, s0, l.value, pre
             let s2 = SolveWants gg, s1, [[]], False
@@ -156,7 +157,7 @@ fn DefEnv g, d:
     let scope = match info.emitRw.tail:
         TlQ v: Rw(fams=info.emitRw.fams, minus=[[]], tail=(TlRigid v))
         otherwise: info.emitRw
-    Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={}, pending=[[]])
+    Env(g=g, home=d.home, file=d.file, src=(Or g.srcs[d.file], (MkSrc "", "")), locals={}, scope=scope, givens=[[]], mark="", inUpdate=False, defName=d.name, refine={}, pending=[[]], ids={})
 
 # One definition: its body against its signature; its constraints solved and defaulted;
 # its row obligations discharged.
@@ -167,6 +168,7 @@ fn CheckDef g, st, d:
     let s0 = update st:
         &_.file <= d.file
         &_.level <= 1
+        &_.localNext <= 0
         &_.color <= CBound
         &_.colorWhy <= ""
         &_.colorFlex <= [[]]

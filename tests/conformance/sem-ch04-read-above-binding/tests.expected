@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 and 8: the block is one binding group, so the door's first value is asked at the build with `$called`'s initial value, "front", the plain `let`s read the value `@Word "x"` ends on, and the count's label shows `$count`'s initial value; the holds and `@Word` take no position, so the places are the door, the labels and the buttons, in page order; the click on the bump button makes the count 11.
+test a_build_reads_names_bound_below
+
+tick 0
+  added:
+    0: Pad.Door(name="front")
+    1: Ui.Label(text="door 1, hello x!")
+    2: Ui.Button(label="never")
+    3: Ui.Label(text="10")
+    4: Ui.Button(label="bump")
+  result: "door 1"
+
+tick 1
+  in:
+    4: click
+  changed:
+    3: Ui.Label(text="11")

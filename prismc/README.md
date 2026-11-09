@@ -153,16 +153,17 @@ to overturn.
       `Error` of kind `Fs.NotText` (`prelude/fs.prism`), message `PATH: not UTF-8: byte N
       is malformed`, in both Worlds (their tests
       `a_file_that_is_not_utf8_reads_as_fs_not_text`).
-  - **Gaps:**
-    - **PL A parenthesized lambda argument loses its types.** `MapChars t, (\|c| F c)`
-      checks, but the lambda's parameter reaches lowering with no type (`p0: ()`, "a
-      type the checker did not find") and rustc refuses the crate. Written without the
-      parentheses it lowers; prismc does so. Not fixed.
-    - **CI Interpolating a `Char` shows it quoted.** `"{c}"` with `c: Char` places `'a'`,
-      since a placeholder places a `Text` or a number as it is and anything else as it
-      shows; no prelude function makes a `Text` of a `Char` (gap UC). Chess's text input
-      (`Key`'s `Char Char`) therefore inserts `'a'` for a typed `a`; its caret moves by the
-      inserted text's bytes.
+    - **TXE `\u{hex}` names any Unicode scalar value** (Semantics ch. 2), in a text and a
+      character literal, decoded by the prelude's `?CharOf: fn Nat -> ?Char` (not in
+      Appendix B); a surrogate (D800 to DFFF) or a code point past 10FFFF is a lexer
+      error saying so. `sem-ch02-unicode-escapes`.
+    - **TXD Interpolation displays, `^Show` debugs** (Jimmy, 8 November 2026: "Characters
+      should interpolate as themselves not as 'debug' but as 'display'"). A placeholder
+      places a `Text`, a `Char` and a number (`Nat`, `Int`, `U8`; a `Float` shows as it
+      displays) as themselves; anything else has no display of its own and places as it
+      shows: an array, a tuple, a record, a choice, a truth value (`True`), a duration, the
+      characters and texts inside quoted (`[['a']]`). A template's placeholder places
+      alike (`ShownText`). `ts-ch04-interpolation-displays`.
 - **UB What is `unbounded`.** Every function that recurses through the grammar or loops
   with no measure a checker could see (the lexer's loops over the text, the parser's
   descent, `Recover`); predicates and cursor primitives are bounded. The closure-taking
@@ -182,9 +183,6 @@ to overturn.
 
 Places where compiler zero or the prelude lacks something, worked around in Prism.
 
-- **UC `\u{hex}` reaches only ASCII.** No prelude function makes a `Char` (or a one-
-  character `Text`) from a code point, so the lexer decodes `\u{0}` to `\u{7f}` from a table
-  and reports any higher code point as an error naming this gap. No corpus file writes one.
 - **SK The stack.** compiler zero's evaluator recurses on the Rust stack, about 15 KB per
   Prism call (IB3 below). The default 8 MB holds every corpus file, but brackets nested
   between 80 and 150 deep overflow it; `compare.sh` raises the limit with `ulimit -s`.
@@ -387,14 +385,18 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   and range, and the tree stays `Ast.Module`. *Refused:* a second tree with a type on
   every node, which doubles ast.prism's forty expression forms and has to follow every
   change to them.
-- **BG Check order in a block.** Holds first (a hold's start value is where a block most
-  often says what its names are), then `let`s and local functions, then the rest in their
-  dependency order among themselves (ties and cycles in page order), every name pre-bound
-  to its marked type: a `for` above the bind of the map it runs over is checked with the
-  map's type (`pos/bind-read-above`). The holds and the `let`s are not ordered by
-  dependency (gap DG).
+- **BG Check order in a block.** A widget block's lines in the dependency order the
+  typed program records (`DepOrder`, `WidgetGroupOrder`), every name pre-bound to its
+  marked type: a `let` used above its line is checked first, so its uses see its
+  generalized type (`sem-ch04-generic-let-above`), and a `for` above the bind of the map
+  it runs over is checked with the map's type (`pos/bind-read-above`). Within a cycle,
+  holds first (a hold's start value is where a block most often says what its names are),
+  then `let`s and local functions, then the rest, in page order. An expression block keeps
+  that order over all its lines, its rest in dependency order: a name bound again there
+  is a new binding from its line on, so its lines are not reordered (gap DG).
 - **FD A field of a record nothing has decided yet waits.** When several records have the
-  field, its type is a fresh variable, read once a later line decides the record, and
+  field, its type is a fresh variable, read once a later line decides the record (its
+  marks checked against the field's stack then, `neg/field-marks-waiting`), and
   `ambiguous` at the end of the definition (ch. 5's principle: defer what a later line can
   decide). One record with the field decides it at once.
 - **MS A wrong mark reports once, at the binder,** and the name then has the type its
@@ -862,9 +864,13 @@ What the checker does not do yet, each with Claude's first ruling.
   stack, so no outside name takes a free-headed output, and the rule confines the
   variable to its parameter. *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it,
   with the error, next.
-- **EE `existential-escape`.** `any e` solves its bounds at `e`'s type; an `any` meets only
-  an `any`, and is never unpacked into a rigid variable at a parameter (doubt EP).
-  *First ruling:* unpack at application, as ch. 5 says.
+- **EE `existential-escape`, by its rule's effect.** `any e` solves its bounds at `e`'s
+  type. An `any` meeting a parameter that is still a bare variable of the call, which the
+  result names, is `existential-escape` (`AnyEscape`, `neg/existential-escape`): the
+  rigid type ch. 5 unpacks it into would reach the result. The variable then takes the
+  `any` whole rather than a rigid type with the bounds as givens, so the rest of the call
+  checks, and lowers, as before. *First ruling:* as stated; the unpacking itself only when
+  a program needs a hidden type's own operations.
 - **R2 Rank-2 element outputs** (Type System round 4 R2). An element's output variable
   that appears only inside one function-typed parameter of a signature is quantified at
   that parameter: at a call it is a fresh rigid variable (`RankTwo`, named `o'N`), so a
@@ -873,14 +879,13 @@ What the checker does not do yet, each with Claude's first ruling.
   a `mismatch` (`neg/supplier-not-polymorphic`). Only element outputs: `fn (fn Nat -> b)
   -> unit` still takes `\|n| Show n` (`pos/rank-one-callback`). Explicit type arguments
   are never rigid.
-- **DG Binding groups.** Blocks are checked in BG's order, whose holds and `let`s are not
-  in dependency order, so a `let` used above its line is used at its monomorphic pre-bound type, and mutually dependent
-  `let`s are not generalized together. *First ruling:* check in the dependency order the
-  typed program already computes.
+- **DG Binding groups.** A widget block is checked in dependency order (pick BG), an
+  expression block's holds and `let`s in page order, so there a `let` used above its line
+  is used at its monomorphic pre-bound type; mutually dependent `let`s are not
+  generalized together. *First ruling:* generalize a cycle of `let`s together, as ch. 5
+  has it.
 - **SU Prompt-cycle summaries** are per block, not computed bottom-up over the call graph
   (pick PS). *First ruling:* summaries, as ch. 5's pass 1 has them.
-- **FM A field read through a waiting access** (pick FD) is not checked for its marks.
-  *First ruling:* check them when the record is decided.
 - **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
   *First ruling:* read each impl's associated type into the normalizer.
 
@@ -1006,7 +1011,7 @@ qualified path, a label) or a literal's digits, never syntax.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: all 135 pass (the 129
+`tests/compiled/run.sh`, which runs every program every time: all 136 pass (the 130
 conformance programs, chess and chess's rules alone, the prelude's maps, and prismc's
 lexer, parser and regex checks), chess's board included.
 
@@ -1137,8 +1142,7 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   so is every ordering a type can hold, a `Float`'s included: pick BF), so no return type
   waits on another's deduction; `decl.hpp`
   holds declarations only, and a types header that holds `Elem` or `Answer` by value
-  includes `elem.types.hpp`. A cycle of records by value with no choice on it does not
-  compile (gap CY).
+  includes `elem.types.hpp`.
 - **SE: statement expressions.** A block is `({ ...; value; })`, a `match` a statement
   expression whose `Slot<T>` (`T` the model's type for it) the arm that holds sets before
   `goto _done`; a labelled block's `break` sets its slot and jumps to its label. What it
@@ -1177,9 +1181,6 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   the two did the same on an lvalue and differed only on a temporary, where `deref` now
   copies the value out of a temporary `Rc<const T>` (its last owner may be that temporary)
   and keeps a temporary `Rc<T>`'s place (a node's or a cell's owner keeps it).
-- **RN: a `let` that rebinds a name from itself** (Rust's shadowing, an `&` block's
-  `let mut fuel = fuel.clone()`) binds a new name (`fuel_1`), which the statements after
-  it read; a scope that binds the name anew hides the rename.
 - **KW, QL: names.** A C++ keyword takes a `_` after it (`or_`, `int_`, `explicit_`); a
   record field named as a value type's member (`show`, `to_pod`, `cases`) too; a node
   method named as some node's field too. A call whose name a node's member, a module or
@@ -1316,11 +1317,14 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
     255 s of CPU, 2.8 cores busy on average; prismc's own crate is one unit for rustc's
     front end, which runs on one core, and only its 16 codegen units run in parallel.
 
-Gaps:
-
-- **CY:** a cycle of records held by value with no choice on it.
-- **GC:** a generic choice's case constructor (`Tree(Tree::Node{..})`) needs its type
-  arguments, which CTAD cannot deduce from a nested case; no program here has one.
+A generic choice's case is spelled with the choice's type arguments, which class
+template argument deduction cannot find from a nested case: lowering says the type of a
+generic choice's constructor (`XTyped`), so C++ builds `Tree<Nat>(Tree<Nat>::Leaf{..})`,
+and a case test or payload names the case through the tested value's type (`typename
+std::remove_cvref_t<decltype(v)>::Leaf`), which a generic function's `Tree<A>` gives
+(`cpp-generic-choice-cases`). A cycle of records orders like any other type: every field
+that reaches its own record is behind an `Rc` (pick OW), so no cycle is by value
+(`cpp-record-cycles`).
 
 C++ doubts:
 
@@ -1368,8 +1372,8 @@ C++ doubts:
   would miss a type it names only through another module's (a lambda's parameter type
   written out, CH of the back-end picks).
 - **MH3** A group of modules sharing a types header (`typesWith`) is a cycle of modules,
-  not of types; a cycle of types by value (gap CY) stays a C++ error, as in the one
-  header. A group is one header for its modules, not for the program.
+  not of types; no cycle of types is by value (pick OW), so a group orders as the one
+  header does. A group is one header for its modules, not for the program.
 - **MH4** A trait call's overloads are the ones its file declares before the template: an
   impl in a module the instantiating file never reaches would be missed (a `deleted`
   error, not a wrong overload). `declared` follows each constraint's impl to its module,
@@ -1383,10 +1387,8 @@ Each is Claude's, for Jimmy to overturn.
 - **NM Names.** Rust's conventions from the program's names: `$count` is the field
   `count`, `!inc` the method `inc`, `ParseNat` the function `parse_nat`, `?Reduce`
   `reduce`. Sigils go; when two values of a module share a base (`?ParseNat`,
-  `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`); so do
-  locals (`?half` is `half_opt` beside `half`; a capitalised local, a function value, is
-  `k_fn` beside a plain `k`, `ts-ch02-closure-names`), and a local named as a function of its
-  module or the prelude takes a `_` (`kind_` beside `Kind`'s `kind`, `ts-ch01-local-names`); a
+  `~ParseNat`) the sigiled ones take a suffix (`parse_nat_opt`, `parse_nat_try`); a local
+  is spelled by pick UN (`ts-ch02-closure-names`, `ts-ch01-local-names`); a
   top-level `let` that shares its base with a function takes `_value` (`let hexDigits`
   is `hex_digits_value()` beside `HexDigits`'s `hex_digits`). A Rust keyword or a name
   the emitted code uses (`cx`, `node`, `path`, `v`) takes a `_`. `Job` and `Turn`, which
@@ -1394,10 +1396,33 @@ Each is Claude's, for Jimmy to overturn.
   `prism_rtl::Job` and `prism_rtl::Turn`; the other runtime names (`Cx`, `Fault`, `Pod`,
   `Path`, ...) are still bare, so a program type of one of those names in a module with
   nodes would shadow it (gap SH below). A
+  record's field is its Rust and C++ name in snake case, and the derived `^Show` and the
+  `Pod` carry the field as the program spells it (`CaseDef.labels`: `byName`, not
+  `by_name`; `ts-ch02-field-names-shown`). A
   merge with no name is `anon`; a node's internal names are first come, first served
   (`run`, `run_2`). A tag's `Level` struct is its family and name run together
   (`UiButton`, as `prism_rtl`'s tests have it). *Refused:* the old back end's sigil
   letters (`ld_count`), which read as a mangling.
+- **UN Unique local names.** The checker gives every local binder of a top-level
+  declaration (a parameter, a `let`, a pattern's or a lambda's binder, a hold, a bind, a
+  local function or widget) an id, counted from 0 in the order it binds them; a binder
+  bound twice (ahead of its block, then at its line) keeps one (`BindLocalId`). The typed
+  program records each binder's id and, at each use, the id of the binder the checker
+  resolved it to (`locals`, `uses`). Lowering numbers nothing: a binder is spelled its
+  name in snake case, `_`, the letter of its type's outer layer and its id in base 32
+  (`0`-`9`, `a`-`v`): `e` an event, `d` a dynamic, `b` a blueprint, `f` a function, `o`
+  an optional, `r` a fallible, `p` anything else (`door_p3`, `go_e1`, `x_d4`, `k_o2`).
+  So `x` and `$x`, two binders, are `x_p..` and `x_d..`, a local never hides a function or
+  a keyword, and the separator is the name's last `_` (a name's own trailing `_` is
+  dropped, the topic `_` is `topic`). A generalized `let` lowered once per instantiation
+  adds `w` and the instantiation's index (`same_f2w1`). A widget inlined at a use (pick
+  WG) suffixes its locals with that use's id, which the checker gives every use of a
+  top-level widget from the same count (`calls`), outermost first (`w_p0_7_3`). No `let`
+  rebinds a name from itself: a closure's copy of what it captures is the local's name
+  and `x`, a call's copy of that `y`, a loop continuation's copy `z` (letters outside
+  base 32), so C++ prints every name as the model has it. Names lowering makes for
+  itself (a closure's `a0`, a job's `job_fn`) and the fields of a node or a job keep their
+  spellings.
 - **MO Modules.** One Rust module per Prism module (`program` for the root module, in
   `src/program.rs`), nested as the Prism names are: `Check.Env` is `crate::check::env`,
   in `src/check/env/mod.rs`, declared by `pub mod env;` in `src/check/mod.rs` (a parent
@@ -1412,7 +1437,12 @@ Each is Claude's, for Jimmy to overturn.
   lowering tracks how each Rust place holds its value (`ByRef`, `Owned`, `RcRef`,
   `RcOwned`) and spells a use as a borrow or a clone accordingly. A closure passed to a
   parameter is a borrowed `&dyn Fn`; a closure as a value is `Rc<dyn Fn(&A) -> B>`, its
-  captures cloned in. A recursive payload is behind `Rc` (a type that reaches itself by
+  captures cloned in: the names its body reads that its parameters or an inner binder do
+  not hide (`LambdaReads`, `sem-ch03-lambda-parameter-shadows`). It is cast to that type
+  (C++ `static_cast<Fn<B(const A&)>>`), so two lambdas meet where one type is wanted, an
+  array's elements or an `if`'s arms, each being a closure type of its own; a lambda's
+  parameter of a function type is `&Rc<dyn Fn>`, as every function value is passed
+  (`sem-ch03-lambda-values`). A recursive payload is behind `Rc` (a type that reaches itself by
   value, directly, through `?` or a tuple).
 - **OC A binding of an owned scrutinee read once is moved.** In a `match` over an owned
   value, a binder its arm's body reads once is bound at that read's place as a value, so
@@ -1460,6 +1490,21 @@ Each is Claude's, for Jimmy to overturn.
   prebound to by `BindPlain`), so the build reads the local and the methods the field, as
   for a plain parameter (`sem-ch08-widget-plain-result`); a tuple pattern binds each name
   to its part. A node is emitted per root widget only: the ones a test names and `@main`.
+- **BO The build reads in dependency order** (Semantics ch. 4, "Binding groups and
+  cycles": a block is one binding group and the order of its lines decides positions and
+  nothing else). Lines are lowered in page order, which numbers the places; each line's
+  `let`s of the build (a hold's initial value, a plain `let`, a widget's plain result, an
+  element's first value) are then put after the `let`s of the lines binding the names it
+  reads (`BuildInOrder`, `BuildOrder` in lower/node/def.prism), ties in page order. A
+  hold's value at the build, and a dynamic `let`'s when everything it reads has one, is
+  bound before any line, in that order (`PreInit`), so an element above either asks with
+  it (`sem-ch04-dynamic-let-above`). The edges: a hold reads only its initial value (its step is
+  heard after the build), an event is no edge (its port is made before any line), and a
+  name a lambda's or an arm's pattern or an inner block's `let` hides is the inner one
+  (`FreeReads`). Lines that still read each other at the build are a cycle the checker let
+  through, refused as `not-lowered` naming them (`sem-ch04-read-above-binding`).
+  *Refused:* lowering the lines themselves in dependency order, which would number the
+  places by it.
 - **EV The event graph.** Within a node an event is a graph node (a source, a named
   `let !x`, a combinator) and a pipe of pure transforms that calls straight through, so
   `increment` calls `delta` calls the hold's write, as in Compiler ch. 3. A named event
@@ -1606,9 +1651,8 @@ Each is Claude's, for Jimmy to overturn.
 - **PT Tests.** A test module (`test mod Tests`, a child module,
   claude/modules-style-pass.md) is read only under `--tests` (`prism test`, `prism check`);
   a loose file's tests are inline. `test` declarations are taken out before checking (a
-  test's blueprint names a `@name:` block, which has no signature for the checker to read)
-  and a `check` line's pattern too (the Test World reads patterns from the script; the
-  checker mistypes `Show (? 3) => "? 3"`). A test's root is found by name; its arguments
+  test's blueprint names a `@name:` block, which has no signature for the checker to read);
+  a `check` line's pattern is checked against its expression's type, as any pattern is. A test's root is found by name; its arguments
   arrive as `Pod`s. The compiled program's scripts are its test modules; each transcript
   is the `.expected` of its name (`tests.expected` for `tests.prism`), and the Test World
   passes over a test module's header and helper declarations.
@@ -2186,7 +2230,8 @@ not a named function, a local function whose
 parameters are not names or used as a value, an unbounded call lifted over a `?` or `~`, `!MergeAll` of a list that is not a
 literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
 and `if`, a widget of several clauses in a static position of a hosted scope (pick CS),
-`Time.After`, and the zombie and
+`Time.After`, lines of a block that read each
+other at the build (pick BO), and the zombie and
 dead states (`leave`, `clean_up`, `edges`).
 
 ## Regular expressions

@@ -1,0 +1,15 @@
+# A `let` used above its line at two types (Semantics ch. 4: a block is one binding group,
+# any line may use any name the block binds; Type System ch. 5: a local `let` is
+# generalized): `shown` reads `Same` at a number and at a text, and `total`, all bound
+# below it. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    let shown = "{Same 1} {Same "a"} {total}"
+    Ui.Label(text=$"{shown}")                                                   # 0
+    let Same = \|x| x
+    let total = sum + 1
+    let sum = 2

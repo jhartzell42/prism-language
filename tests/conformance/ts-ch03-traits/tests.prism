@@ -27,7 +27,7 @@ check numbers:
     (Len "abc") -? 5 => nil
     (Len "abc") -? 1 => ? 2
     -7 mod 3 => 2
-    (1.5 + 2) == 3.5                                # prism_rt reads no float pattern
+    (1.5 + 2) == 3.5                                # the Test World reads no float pattern
     (1.0 / 4.0) == 0.25
     "{0.1 + 0.2}" => "0.30000000000000004"
     (Cos 0.0) == 1.0

@@ -107,7 +107,7 @@ fn BindName env, st, n, t:
                 let ((ok, st1)) = TryUnify st, sc.ty, t, n.span
                 let marksAgree = (StackOf st, t) == (TypeMarks n.sigils) or (IsFlexVar st, t)
                 let stA = if ok: st1 else: if marksAgree: Unify st, sc.ty, t, n.span else: ErrFix st, "mark-stack", n.span, "`{name}` has type `{ShowTy st, t}`, whose stack is `{StackOf st, t}`; the name shows `{TypeMarks n.sigils}`", "rename to `{RefMark n.sigils}{StackOf st, t}{DropPrefix name, n.sigils}`"
-                ((env, (NoteBinder stA, n.span, name, t)))
+                BindLocalId env, (NoteBinder stA, n.span, name, t), name, n.span
             nil: BindFresh env, st, n, t
     else: BindFresh env, st, n, t
 
@@ -127,7 +127,7 @@ fn BindFreshMarked env, st, n, marks, t:
         else:
             let stack = StackOf st3, t
             ErrFix st3, "mark-stack", n.span, "`{name}` has type `{ShowTy st3, t}`, whose stack is `{stack}`; the name shows `{marks}`", "rename to `{RefMark n.sigils}{stack}{DropPrefix name, n.sigils}`"
-    (((WithLocal env, name, (Mono t)), (NoteBinder st5, n.span, name, t)))
+    BindLocalId (WithLocal env, name, (Mono t)), (NoteBinder st5, n.span, name, t), name, n.span
 
 # A field of an element seen through a document (`Elem r`, a snapshot) binds its level
 # (doubt WL): a `$` field's value in that tick, plain. The binder may show the field's

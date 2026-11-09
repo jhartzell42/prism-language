@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# `chess`: the chess example in a window, `prism run examples/chess`. Options go to
+# `prism run` (`chess --target cpp` for the C++ build).
+#
+# Written by Claude on the claude-self-hosting branch; subject to change.
+set -eu
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case "$link" in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+bin=$(cd "$(dirname "$self")" && pwd)
+exec "$bin/prism" run "$@" "$bin/../examples/chess"

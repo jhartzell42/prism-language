@@ -69,7 +69,7 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
         if isCtor: CtorPat lx, n, [[]], ty, mode, fresh
         else: if why == "tag" and ?tagged != nil: TagPat lx, (Or ?tagged, dummyTagInfo), [[]], True, ty, mode, fresh
         else:
-            let rs = LocalName lx, nkey
+            let rs = LocalNameAt lx, nkey, n.span
             let bt = OutTyOf lx, (Peel (BinderTy lx, n.span))
             PatOut(pa=(PaBind rs), conds=[[]], binds=[[((nkey, (BnLocal (XVar rs), mode, bt)))]])
     PIgnore: PatOnly PaWild

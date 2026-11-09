@@ -94,8 +94,8 @@ fn LiteralValue lx, env, l, span, neg:
             nil: VlOwned (XRegex r.pattern, r.flags), OutRegex
             ? t: VlOwned (XReplacement r.pattern, t, r.flags), OutReplacement
 
-# A text, interpolated: `Text::from(format!(..))`, a `Text` placed as it is and any other
-# value through `^Show` (Type System ch. 4).
+# A text, interpolated: `Text::from(format!(..))`, a `Text`, a `Char` or a number placed
+# as it is and any other value through `^Show` (Type System ch. 4; `ShownPart`).
 TextValue: unbounded fn Lx, Env, [TextSeg] -> Vl
 fn TextValue lx, env, segs:
     let plain = Fold segs, True, \|ok, s| ok and IsPlainSeg s
@@ -116,10 +116,13 @@ fn SegEx lx, env, (SegPlaceholder e):
     let v = ValueOf lx, env, e
     ShownPart v
 
-# A placeholder's text: a `Text` or a number as it displays, anything else as it shows.
+# A placeholder's text (Jimmy: interpolation is display, `^Show` is debug): a `Text`, a
+# `Char` or a number as it displays, itself; anything else, which has no display of its
+# own, as it shows.
 ShownPart: fn Vl -> Ex
 fn ShownPart v = match ValueTy v:
     OutText: Ref v
+    OutChar: Ref v
     OutNat: Ref v
     OutInt: Ref v
     OutU8: Ref v
@@ -382,7 +385,7 @@ fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x
         let atBuild = Own (ValueOf lx, (InitEnv env), d)
         let arms = [[XArm(pat=(PaCtor "Some", [[PaBind "owner"]]), conds=[[]], body=(XCtor variant, [[(XMethod (XVar "owner"), getter, [[XCx]])]])), XArm(pat=(PaUnit "None"), conds=[[]], body=(XCtor variant, [[(XClone (XVar "at_build"))]]))]]
         let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed "Cx", [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed "crate::Answer", [[]]))
-        let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, (XRef (XVar "{getter}_port"))]])
+        let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, (XRef (XVar "{getter}_portx"))]])
         VlOwned (XCall "prism_rtl::dynamic_blueprint::<crate::Elem, _>", [[dynamic]]), t
     otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a pushed place, a structural dynamic, or a `let` after the host's line)"), t
 
@@ -598,8 +601,48 @@ fn GlobalCall lx, env, qk, args, span, t:
             ? v:
                 if v.sort == "method": MethodCall lx, env, v, args, span, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
-                else: VlOwned (XCall (ValuePath lx, qk), (ArgsFor lx, env, v, args)), t
+                else: AsInstance (XCall (ValuePath lx, qk), (ArgsFor lx, env, v, args)), (ResultRepr lx, v), t
             nil: VlOwned (Refusal "a call of {qk}"), t
+
+# What a named function returns as its Rust signature has it: a function of the
+# function's own color variable is a `Start` (`OutJobFn`), whatever color a call gives it.
+ResultRepr: unbounded fn Lx, ValInfo -> OutTy
+fn ResultRepr lx, v = match v.scheme.ty:
+    TyFn ignore, ignore, r: OutTyOf lx, (Peel r)
+    other: OutTyOf lx, (Peel other)
+
+# A call's result as its instantiation wants it: a `Start` where the call made the
+# function's color bounded is wrapped as the bounded function it is, each call run to its
+# end at once (`run_to_end`, which a bounded job reaches in its first cycles). A
+# `Start` inside another value at such a call is refused: no conversion reaches it.
+AsInstance: unbounded fn Ex, OutTy, OutTy -> Vl
+fn AsInstance call, declared, t = match ((declared, t)):
+    (((OutJobFn ignore, ignore), (OutFn pts, ignore))): VlOwned (WrapAsBounded call, pts, t), t
+    otherwise:
+        if (HasJobFn declared) and not (HasJobFn t): VlOwned (Refusal "a function value of its callee's own color inside the value a call returns, at a call that makes the color bounded"), t
+        else: VlOwned call, t
+
+HasJobFn: unbounded fn OutTy -> Bool
+fn HasJobFn t = match t:
+    OutJobFn ignore, ignore: True
+    OutOpt i: HasJobFn i
+    OutRes i: HasJobFn i
+    OutArray i: HasJobFn i
+    OutMap k, v: (HasJobFn k) or HasJobFn v
+    OutTuple ts: Fold ts, False, \|f, x| f or HasJobFn x
+    OutNamed ignore, ts: Fold ts, False, \|f, x| f or HasJobFn x
+    OutFn ps, r: Fold ps, (HasJobFn r), \|f, x| f or HasJobFn x
+    otherwise: False
+
+# A `Start` as the bounded function its call made it: each application runs its job to
+# the end.
+WrapAsBounded: fn Ex, [OutTy], OutTy -> Ex
+fn WrapAsBounded f, pts, target:
+    let names = Each (Range0 (Len pts)), \|i| "a{i}"
+    let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
+    let arg = if (Len pts) == 1: XClone (XVar "a0") else: XTuple (Each names, \|nm| XClone (XVar nm))
+    let body = XCall "run_to_end", [[(XApply (XVar "job_fn"), [[arg]])]]
+    XBlock [[(DoLet (PaBind "job_fn"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, pas, body)]]), target)
 
 # A function's arguments, borrowed; a bare `Error(..)` where the parameter is a `~T` is
 # that `~T`'s failure (the checker's pick ER lets it wait for its type).
@@ -652,9 +695,19 @@ fn CtorApp lx, env, c, args, span:
                 # a newtype is a tuple struct (a struct in C++), built by its own name
                 let isNewtype = (Len cases) == 1 and (BareName c.name) == (BareName c.owner)
                 let path = if isUnitType or isNewtype: tyPath else: "{tyPath}::{Camel (BareName c.name)}"
-                if (Len c.args) == 0: VlOwned (XPath path), t
-                else: VlOwned (XCtor path, vals), t
+                let made = if (Len c.args) == 0: XPath path else: XCtor path, vals
+                # a generic choice's case with the choice's type said, which a printer
+                # whose target cannot infer the type arguments spells (C++)
+                if (Len owner.params) > 0 and not isUnitType and not isNewtype: VlOwned (XTyped made, (BuiltTy t)), t
+                else: VlOwned made, t
             otherwise: VlOwned (Refusal "a constructor of {c.owner}"), t
+
+# The type a constructor builds: its own, or the result of the function it is used as.
+BuiltTy: fn OutTy -> OutTy
+fn BuiltTy t = match t:
+    OutFn ignore, r: r
+    OutJobFn ignore, r: r
+    otherwise: t
 
 # A constructor used as a function value (`OnePattern p, CkExpect`): a closure building
 # it from its arguments, which a bounded value takes by reference and a `Start` owns.
@@ -843,8 +896,8 @@ WrapAsJob: fn Ex, [OutTy], OutTy, OutTy -> Ex
 fn WrapAsJob f, pts, target, a:
     let names = Each (Range0 (Len pts)), \|i| "a{i}"
     let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
-    let call = XApply (XVar "f"), (Each names, \|nm| XRef (XVar nm))
-    let body = XBlock [[(DoLet (PaBind "f"), (XClone (XVar "f")))]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
+    let call = XApply (XVar "fy"), (Each names, \|nm| XRef (XVar nm))
+    let body = XBlock [[(DoLet (PaBind "fy"), (XClone (XVar "f")))]], (XCall "once_job", [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
     XBlock [[(DoLet (PaBind "f"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], body)]]), target)
 
 # A named function's arguments, owned, as its job's fields take them: a function
@@ -939,6 +992,84 @@ LambdaExprs: unbounded fn LambdaBody -> [Expr]
 fn LambdaExprs (LbExpr x) = ExprsIn x
 fn LambdaExprs (LbBlock b) = BlockExprs b
 
+# The one-part names among expressions that no scope hides where they stand; each scope is
+# the names an inner binder binds and the range it binds them over.
+FreeReads: unbounded fn [Expr], [(([Text], Range))] -> [Text]
+fn FreeReads es, outer:
+    let scopes = Fold es, outer, \|acc, e| Append acc, (ScopesOf e)
+    Fold es, [[]], \|acc, e| match e.kind:
+        EName n:
+            let nkey = SNameKey n
+            let hidden = Fold scopes, False, \|seen, ((names, r))| seen or ((HasText names, nkey) and r.start <= e.span.start and e.span.start < r.end)
+            if (Len n.path) != 1 or hidden: acc else: AddText acc, nkey
+        otherwise: acc
+
+# The scopes an expression opens directly (its nested expressions open their own).
+ScopesOf: unbounded fn Expr -> [(([Text], Range))]
+fn ScopesOf e = match e.kind:
+    ELambda ?ps, body:
+        let names = Fold (Or ?ps, [[]]), [[]], \|acc, q| Append acc, (PatternNames q)
+        let inner = match body:
+            LbBlock b: BlockScopes b
+            otherwise: [[]]
+        Push inner, ((names, e.span))
+    EMatch ignore, arms: Fold arms, [[]], \|acc, a|
+        let names = match a.?pattern:
+            ? q: PatternNames q
+            nil: [[]]
+        Append (Push acc, ((names, a.span))), (BlockScopes a.body)
+    EIf c, t, ?el:
+        let bound = match c:
+            CondBind q, ignore, ignore: [[((PatternNames q, t.span))]]
+            otherwise: [[]]
+        let elseScopes = match ?el:
+            ? b: BlockScopes b
+            nil: [[]]
+        Append (Append bound, (BlockScopes t)), elseScopes
+    EFor ?binders, ignore, b:
+        let names = match ?binders:
+            ? fb: Append (PatternNames fb.first), (OptPatternNames fb.?second)
+            nil: [[]]
+        Push (BlockScopes b), ((names, b.span))
+    ERebuild ignore, b: BlockScopes b
+    EGiven b: BlockScopes b
+    EUpdate ignore, b: BlockScopes b
+    EWidgetBlock b: BlockScopes b
+    EMonad ignore, b: BlockScopes b
+    otherwise: [[]]
+
+OptPatternNames: unbounded fn ?Pattern -> [Text]
+fn OptPatternNames (? q) = PatternNames q
+fn OptPatternNames nil = [[]]
+
+# An inner block's names, each from its line to the block's end, and a local function's
+# parameters over its clause.
+BlockScopes: unbounded fn Block -> [(([Text], Range))]
+fn BlockScopes b = Fold b.stmts, [[]], \|acc, s|
+    let own = Push acc, ((Check.Blocks.GroupDefs s, Range(start=s.span.start, end=b.span.end)))
+    match s.kind:
+        SFn f: Push own, (((Fold f.params, [[]], \|ps, q| Append ps, (PatternNames q)), f.span))
+        otherwise: own
+
+# A local's copy that a closure captures (`x`), and a copy of that each call takes (`y`):
+# names of their own, so no `let` rebinds a name from itself (pick UN).
+CaptureName: fn Ex -> Text
+fn CaptureName rs = "{PlaceStem rs}x"
+
+CopyName: fn Ex -> Text
+fn CopyName rs = "{PlaceStem rs}y"
+
+# A local a loop's continuation takes from before the loop (`z`).
+OuterName: fn Ex -> Text
+fn OuterName rs = "{PlaceStem rs}z"
+
+# The names a lambda's body reads from around it: none its parameters or an inner binder
+# hides, so a parameter named as a local of the block is no capture.
+LambdaReads: unbounded fn [Pattern], LambdaBody -> [Text]
+fn LambdaReads ps, body:
+    let own = Fold ps, [[]], \|acc, q| Append acc, (PatternNames q)
+    Filter (FreeReads (LambdaExprs body), [[]]), \|n| not (HasText own, n)
+
 # A lambda as a value: `Rc::new(move |..| ..)`, its captures cloned in first
 # (claude/backend.md, "`fn a -> b` as a value").
 LambdaValue: unbounded fn Lx, Env, Expr, [Pattern], LambdaBody -> Vl
@@ -953,7 +1084,7 @@ fn PlainLambda lx, env, ps, body, ft:
     let pts = match ft:
         OutFn xs, ignore: xs
         otherwise: [[]]
-    let read = WithInstances env, (ReadNames (LambdaExprs body))
+    let read = WithInstances env, (LambdaReads ps, body)
     let caps0 = Filter read, \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
@@ -963,13 +1094,15 @@ fn PlainLambda lx, env, ps, body, ft:
     let caps = Append (Append caps0, (Filter (Each read, \|n| "{n}#port"), \|n| HasKey env.names, n)), (Filter (Each read, \|n| "{n}#init"), \|n| HasKey env.names, n)
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
-            let local = PlaceStem rs
+            let local = CaptureName rs
             let d = DoLet (PaBind local), (Own (LocalPlace rs, mode, ct))
             (((Push acc, d), (Bind en, n, (BnLocal (XVar local), Owned, ct))))
         otherwise: ((acc, en))
     let ((pas, env2)) = ClosureParams lx, env1, ps, pts, True
     let v = LambdaBodyValue lx, env2, body
-    VlOwned (XBlock dos, (XCall "Rc::new", [[(XClosure True, pas, (Own v))]])), ft
+    # Cast to its function type, so that two lambdas meet where one type is wanted (an
+    # array's elements, an `if`'s or a `match`'s arms), each a closure type of its own.
+    VlOwned (XBlock dos, (XCast (XCall "Rc::new", [[(XClosure True, pas, (Own v))]]), ft)), ft
 
 # A lambda's parameter types, written on the closure so that rustc need not infer them
 # from its use (`fold(&xs, &None, &(|found: &Option<T>, x: &A| ..))`); none when one is
@@ -1008,22 +1141,23 @@ fn IsKnownTy t = match t:
 # wanted answers in its first cycle.
 JobLambda: unbounded fn Lx, Env, [Pattern], LambdaBody, OutTy, OutTy, Bool -> Vl
 fn JobLambda lx, env, ps, body, ft, a, enter:
-    let caps = Filter (WithInstances env, (ReadNames (LambdaExprs body))), \|n| match env.names[n]:
+    let caps = Filter (WithInstances env, (LambdaReads ps, body)), \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
     let ((dos, env1)) = Fold caps, (([[]], env)), \|((acc, en)), n| match env.names[n]:
         ? (BnLocal rs, mode, ct):
-            let d = DoLet (PaBind (PlaceStem rs)), (Own (LocalPlace rs, mode, ct))
-            (((Push acc, d), (Bind en, n, (BnLocal (XVar (PlaceStem rs)), Owned, ct))))
+            let d = DoLet (PaBind (CaptureName rs)), (Own (LocalPlace rs, mode, ct))
+            (((Push acc, d), (Bind en, n, (BnLocal (XVar (CaptureName rs)), Owned, ct))))
         otherwise: ((acc, en))
-    let again = Fold caps, [[]], \|acc, n| match env1.names[n]:
-        ? (BnLocal rs, ignore, ct): Push acc, (DoLet (PaBind (PlaceStem rs)), (Own (LocalPlace rs, Owned, ct)))
-        otherwise: acc
+    # each call's own copy of what the lambda captured, which its job takes
+    let ((again, envAgain)) = Fold caps, (([[]], env1)), \|((acc, en)), n| match env1.names[n]:
+        ? (BnLocal rs, ignore, ct): (((Push acc, (DoLet (PaBind (CopyName rs)), (Own (LocalPlace rs, Owned, ct)))), (Bind en, n, (BnLocal (XVar (CopyName rs)), Owned, ct))))
+        otherwise: ((acc, en))
     let pts = match a:
         OutTuple ts: if (Len ps) == 1: [[a]] else: ts
         otherwise: [[a]]
     # The body sees what it captured and its parameters, nothing borrowed from outside.
-    let env1b = OnlyCaptured env1, caps
+    let env1b = OnlyCaptured envAgain, caps
     # Each parameter arrives owned as `p{i}` and is taken apart in the body by its
     # pattern (`\|((en, s)), stmt|`), as any `let` would.
     let pos = Each (Range0 (Len ps)), \|i|
@@ -1260,11 +1394,11 @@ fn GenericLet lx, env, n, gn, x:
     let nkey = SNameKey n
     let distinct = Instantiations lx, gn
     let one = (Len distinct) == 1
-    let rs = LocalName lx, nkey
+    let rs = LocalNameAt lx, nkey, n.span
     Fold (Range0 (Len distinct)), (([[]], env)), \|((dos, en)), k|
         let ((tys, cols)) = Or distinct[k], (([[]], [[]]))
         let lxk = AtInstance lx, ((tys, cols))
-        let rk = if one: rs else: "{rs}_{k}"
+        let rk = if one: rs else: "{rs}w{k}"
         let bkey = if k == 0: nkey else: "{nkey}#inst{k}"
         let bt = OutTyOf lxk, (Peel (BinderTy lxk, n.span))
         let v = ValueOf lxk, env, x

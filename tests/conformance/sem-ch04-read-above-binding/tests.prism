@@ -1,0 +1,11 @@
+# The reads at the build of names bound below: declarations of sem-ch04-read-above-binding.
+# Written by Claude on the claude-widget-plain branch, extended on claude-bugs; subject to
+# change.
+emit Ui.* | Pad.*
+use App.*
+
+test a_build_reads_names_bound_below, @page:
+    with Pad.Door(name="front") = "door 1", build
+        => expect Ui.Label(text="door 1, hello x!")
+        => returns "door 1"
+    click at 4

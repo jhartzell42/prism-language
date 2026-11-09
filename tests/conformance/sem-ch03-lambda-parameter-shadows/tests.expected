@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 3's lambdas, lexically scoped: inside each lambda `n` is its parameter, so `Shifted 1` is (5 + 1) * 2 = 12, the block's `n` is 5 + 100 = 105, and `Add 1` is 101.
+test a_parameter_hides_the_blocks_name
+
+tick 0
+  added:
+    0: Ui.Label(text="12 105 101")

@@ -6,7 +6,7 @@
 # negative program under `neg/` gives exactly its `.expected` diagnostic. A directory under
 # `pos/` or `neg/` is one program, a tree (claude/modules-style-pass.md), its `.expected`
 # beside it; every program is checked with `--tests`, its test modules read. A `# args: ...`
-# first line passes options (`--world Ui`). Then the typed output (prismc/typed.prism):
+# first line passes options (`--world Ui`). Then the typed output (prismc/check/typed/):
 # `--typed` over chess and the conformance counter annotates every expression with a type,
 # none of them `unknown`; a `pos/NAME.colors` holds every `(app` and `(fn` line of
 # `pos/NAME.prism`'s typed output, the colors it resolves. Exits 1 listing the mismatches,

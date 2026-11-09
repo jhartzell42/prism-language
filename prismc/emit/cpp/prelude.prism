@@ -1,6 +1,6 @@
 # The prelude of every program compiled to C++ (Semantics Appendix B; prelude/prelude.prism):
 # its builtins and the functions it writes in Prism, as C++ over `prism_rtl`, emitted as
-# `src/prelude.hpp` word for word: the C++ form of templates/prelude.prism, function for
+# `src/prelude.hpp` word for word: the C++ form of prismc/emit/rust/prelude.prism, function for
 # function, under the same names (a C++ keyword with `_` after it: `or_`, `int_`). Every
 # function takes its arguments by `const&` and gives back a value, as emitted functions do;
 # a closure parameter is any callable. `CppPreludeRows` is the part that names the
@@ -430,6 +430,14 @@ inline Text text(char32_t c) {
     std::string s;
     prism_rtl::utf8_push(s, c);
     return Text::of_utf8(std::move(s));
+}
+
+/// `?CharOf: fn Nat -> ?Char`: the character of a code point, none past `10FFFF` or for a
+/// surrogate.
+inline std::optional<char32_t> char_of(const Nat& n) {
+    auto v = n.as_int().to_i64();
+    if (!v || *v > 0x10FFFF || (*v >= 0xD800 && *v <= 0xDFFF)) return std::nullopt;
+    return char32_t(*v);
 }
 /// `Upper`, `Lower`: Unicode's default full case mapping, as Rust's `str::to_uppercase`
 /// and `to_lowercase` (runtime/cpp/README.md, "Upper and Lower").

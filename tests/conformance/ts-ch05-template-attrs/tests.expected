@@ -1,5 +1,5 @@
-# Written by hand from the rule that attributes are named arguments; compiler zero binds
-# them in written order and prints "second before first" (prismc/README.md, interpreter bugs).
+# Written by hand from the rule that attributes are named arguments: bound by name, not in
+# written order.
 test attributes_bind_by_name
 
 tick 0

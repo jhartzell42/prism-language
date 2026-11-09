@@ -1,0 +1,11 @@
+# `existential-escape` (Type System ch. 5, "Existentials are dictionaries"): an `any ^Show`
+# given to `Same`'s bare `a` is unpacked into a fresh rigid type, which `Same` hands back,
+# so the hidden type would leave the existential; `Show v` gives a `Text` and is fine, as
+# is pushing an existential into an array of them, whose `a` is already one.
+Same: fn a -> a
+fn Same x = x
+
+Leak: fn (any ^Show) -> Text
+fn Leak v:
+    let w = Same v
+    "{Show v} {Len (Push [[v]], v)}"

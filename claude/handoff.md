@@ -53,7 +53,7 @@ PR's description (#20) says the same at more length; the numbers are in
   Back, Forward, Reset and a settings dialog, on the window library
   `examples/chess/window`), the GUI table `bench/gui/prism` (js-framework-benchmark's
   operations), `bench/gui/gtk` (the same in C with GTK 3), the conformance corpus
-  `tests/conformance/` (129 programs), the checker's corpus (`tests/checker/`, 162
+  `tests/conformance/` (130 programs), the checker's corpus (`tests/checker/`, 162
   negative programs), the cost pairs (`tests/cost/`, four).
 - **Claude's prose** lives under `claude/` and in the READMEs: `architecture.md`,
   `backend.md` (the contract, and "Rust or C++ as the default back end"),
@@ -119,11 +119,10 @@ Each has Claude's pick where it stands; his word overrules by editing.
   change.md: a new word's extent reaches its layout a tick late).
 - **The regex dialect's doubts** (claude/regex-dialect.md): CT, SH among them.
 - **The checker's** (prismc/README.md, "Checker doubts" and "Gaps against ch. 5"): TR,
-  RP, CF, VW, UI, WL; gaps LR, RE, EE, R2, DG (binding groups half ordered), SU, FM, AT;
-  the checker mistypes `Show (? 3)` in a `check` line's pattern (taken out before checking).
+  RP, CF, VW, UI, WL; gaps LR, RE, R2, DG (expression blocks, mutual `let`s), SU, AT;
+  pick EE (`existential-escape` by its effect, the unpacking itself not done).
 - **The back end's** (prismc/README.md, "Back-end picks" and "Contract gaps"): the picks
-  from NM to FV, gaps UV to DI, the C++ gaps CY and GC, doubts MH1 to MH4, and "Not
-  lowered yet".
+  from NM to FV, gaps UV to DI, doubts MH1 to MH4, and "Not lowered yet".
 - **The modules pass's doubts** (claude/modules-style-pass.md) and the Test World in Prism
   (claude/test-world-in-prism.md: Claude recommends (a), programs as values).
 - **CH1, the C++ self-compile's cost** (prismc/README.md, C++ doubts): under glibc the
@@ -148,7 +147,7 @@ Each has Claude's pick where it stands; his word overrules by editing.
   `claude-lowering-fixes`, `claude-lowering-rebased`, `claude-perf`, `claude-regex`,
   `claude-regex-compiler`, `claude-style`, `claude-text`, `claude-window-cache`, and this
   session's `claude-for-inner`, `claude-cpp-inline-choices`, `claude-cpp-moves`,
-  `claude-cpp-rc-jemalloc`, `claude-float-bits`; and `claude-cpp-jemalloc-wip`, not an
+  `claude-cpp-rc-jemalloc`, `claude-float-bits`, `claude-widget-plain`; and `claude-cpp-jemalloc-wip`, not an
   ancestor but superseded (its work came in through `claude-cpp-rc-jemalloc`). Not merged by
   ancestry, from October (superseded by their rebased twins or by `main`, for Jimmy to
   judge): `claude`, `claude-reflex`, `claude-lowering`, `claude-cpp-headers-wip`,

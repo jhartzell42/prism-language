@@ -71,11 +71,38 @@ type Env = record:
     defName: Text
     refine: (Text ==> Ty)
     pending: [Text]
+    # The id of the binder each local name stands for here (pick UN).
+    ids: (Text ==> Nat)
 derive ^Eq, ^Show
 
 WithLocal: fn Env, Text, Scheme -> Env
 fn WithLocal env, name, sc = update env:
     &_.locals <= Insert &_.locals, name, sc
+
+# A use of a top-level widget gets an id of the local count, which names the copy of the
+# widget lowering inlines there (pick UN).
+CallId: fn St, Text, Range -> St
+fn CallId st, qk, span = if not (HasPrefix (BareName qk), "@"): st else:
+    let s2 = update st:
+        &_.localNext += 1
+    NoteCall s2, span, st.localNext
+
+# A local name bound to its binder at `span` (pick UN): the binder's id, given the first
+# time the binder is bound in its definition, the next of the definition's count.
+BindLocalId: fn Env, St, Text, Range -> ((Env, St))
+fn BindLocalId env, st, name, span:
+    let place = "{st.file}:{span.start}:{span.end}"
+    let ((id, st2)) = match st.localIds[place]:
+        ? i: ((i, st))
+        nil:
+            let fresh = st.localNext
+            let s2 = update st:
+                &_.localNext += 1
+                &_.localIds <= Insert &_.localIds, place, fresh
+            ((fresh, (NoteLocal s2, span, fresh)))
+    let env2 = update env:
+        &_.ids <= Insert &_.ids, name, id
+    ((env2, st2))
 
 SrcText: fn Env, Range -> Text
 fn SrcText env, r = SpanText env.src, r
@@ -229,7 +256,11 @@ InferNameIn: unbounded fn Env, St, SName, Range -> ((Ty, St))
 fn InferNameIn env, st, n, span:
     let local = SNameKey n
     match env.locals[local]:
-        ? sc: InstantiateLocal st, sc, span, local
+        ? sc:
+            let st2 = match env.ids[local]:
+                ? id: NoteUse st, span, id
+                nil: st
+            InstantiateLocal st2, sc, span, local
         nil: InferGlobal env, st, n, span
 
 # A local's scheme instantiated at a use; a generalized `let`'s use is noted with its
@@ -251,7 +282,7 @@ fn InferGlobal env, st0, n, span:
             if why == "tag": TagValue env, st, qk, span
             else: if (IsLocalMaker qk) and not env.inUpdate: ((TyErr, (LocalOutside st, qk, span)))
             else: match env.g.vals[qk]:
-                ? v: Instantiate (NoteMethodUse st, v, span), v.scheme, span
+                ? v: Instantiate (NoteMethodUse (CallId st, qk, span), v, span), v.scheme, span
                 nil: match env.g.ctors[qk]:
                     ? c: CtorValue env, st, c, span
                     nil: ((TyErr, (Err st, "unknown-name", span, "`{SNameKey n}` has no signature line or type")))

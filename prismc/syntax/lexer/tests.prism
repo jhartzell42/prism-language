@@ -39,7 +39,7 @@ check operators:
     Toks "f((a, b))" => "f (·( a , b )·)\n"
 
 check texts:
-    Toks "\"hi \{x\} there\"" => "TEXT(hi {x} there)\n"
+    Toks "\"hi \{x\} there\"" => "TEXT(hi \{x\} there)\n"
     Errs "\"open" => 1
 
 # Regular expressions (Semantics ch. 2): the pattern as written between the delimiters,

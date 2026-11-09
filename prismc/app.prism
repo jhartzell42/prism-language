@@ -1,11 +1,13 @@
-# The front end's driver: `prism_zero run prismc/*.prism -- FILE [OUT]` reads FILE through
-# `Fs.Contents`, lexes and parses it, and writes its tree in `prism_syntax`'s S-expression
-# notation, then its diagnostics, through `Fs.Output` to OUT (`FILE.sexp` when OUT is not
-# given): byte for byte what `cargo run -p prism_syntax --example dump -- FILE` prints. With
-# `--tokens` it writes the tokens in the layout corpus's notation instead, as `dump --tokens`
-# does, and with `--fragment` it parses the file as a run of statements (`dump --fragment`).
-# A file with a lexical or parse error is written all the same, and then the program gives
-# up with the diagnostics, which the CLI World prints before it exits 1.
+# prismc's driver. `prismc compile SRC... -o OUT [--target rust|cpp] [--tests] [--name N]
+# [--prelude DIR] [--runtime DIR]` compiles a program (compile.prism); `--check` and
+# `--typed` run the checker (below; checking.prism); anything else is the front end alone:
+# `prismc FILE [OUT]` reads FILE through `Fs.Contents`, lexes and parses it, and writes its
+# tree as S-expressions (sexp.prism), then its diagnostics, through `Fs.Output` to OUT
+# (`FILE.sexp` when OUT is not given). With `--tokens` it writes the tokens in the layout
+# corpus's notation instead, and with `--fragment` it parses the file as a run of
+# statements. A file with a lexical or parse error is written all the same, and then the
+# program gives up with the diagnostics, which the CLI World prints before it exits 1. The
+# `prism` command (bin/prism, claude/usage.md) runs prismc for a person.
 #
 # With `--check FILE|DIR...` it reads the program (a directory as a tree, claude/
 # modules-style-pass.md; test modules with `--tests`), parses it, adds the prelude's
@@ -106,13 +108,13 @@ fn FrontEnd job:
 AnyErrors: fn [Diag] -> Bool
 fn AnyErrors ds = Fold ds, False, \|seen, d| seen or d.stage != "out"
 
-# `line:col: message`, one-based, one per line (prism_syntax/src/diag.rs).
+# `line:col: message`, one-based, one per line.
 RenderDiags: fn Text, [Diag] -> Text
 fn RenderDiags text, ds:
     let starts = LineStarts text
     Join (Each ds, \|d| RenderDiag text, starts, d), "\n"
 
-# Columns count characters, as `prism_syntax` does.
+# Columns count characters, not bytes.
 RenderDiag: fn Text, [Nat], Diag -> Text
 fn RenderDiag text, starts, d:
     let line = LineOf starts, d.span.start

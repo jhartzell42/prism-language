@@ -1,0 +1,9 @@
+# A dynamic `let` read above it: declarations of sem-ch04-dynamic-let-above. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.* | Pad.*
+use App.*
+
+test a_dynamic_let_read_above, @page:
+    with Pad.Door(name="hi 1") = "door", build
+        => returns "door"
+    click at 1
