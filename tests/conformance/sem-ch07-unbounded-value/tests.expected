@@ -1,4 +1,4 @@
-# prism_zero's transcript, checked by hand against the books' rules (D6 for the cycle count).
+# Checked by hand against the books' rules (D6 for the cycle count).
 test a_function_value_is_a_call_per_cycle
 
 tick 0

@@ -1,7 +1,7 @@
 # The parser: tokens to the tree of ast.prism (Semantics ch. 3 to 6 and Appendix A;
-# Templates ch. 2; Conformance ch. 1 and Appendix A). `prism_syntax/src/parser/` is the
-# oracle, function for function: mod.rs (the cursor, the pairing rule, recovery), decls.rs,
-# expr.rs (the Pratt loop over the precedence table), types.rs, patterns.rs and tests.rs.
+# Templates ch. 2; Conformance ch. 1 and Appendix A): this file (the cursor, the pairing
+# rule, recovery), decls.prism, expr.prism (the Pratt loop over the precedence table),
+# types.prism, patterns.prism and tests.prism.
 #
 # Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.

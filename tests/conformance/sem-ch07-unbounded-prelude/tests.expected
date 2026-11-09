@@ -1,4 +1,4 @@
-# prism_zero's transcript: a cycle per call of Double (D6, D8).
+# A cycle per call of Double (D6, D8).
 test each_takes_an_unbounded_function
 
 tick 0

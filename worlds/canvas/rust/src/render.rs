@@ -1,7 +1,7 @@
 //! Painting a scene: a `Gui.Scene`'s `draw` list, in the program's coordinates (origin at
 //! the top left, y down, logical pixels), onto a tiny-skia pixmap of physical pixels.
 //!
-//! The draw commands are the window library's (`examples/chess/window.prism`):
+//! The draw commands are the window library's (`examples/chess/window/`):
 //!
 //! - **`Draw.Rect(rect, paint)`**: a filled rectangle.
 //! - **`Draw.Text(at, text)`**: one line in ink, the top of the line at `at`.

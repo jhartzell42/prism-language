@@ -173,7 +173,7 @@ fn Context model:
     let withElem = AddRow (AddAnswer base, model.answer), "", model.elem
     Fold model.mods, withElem, \|cp, m| Fold m.items, cp, \|c, it| AddModelItem c, m.name, it
 
-# The prelude's own types and constructors (templates/cpp_prelude.prism).
+# The prelude's own types and constructors (prelude.prism beside this file).
 let preludeTypes = {"prelude::Ordering": TyInfo(kind="choice", fields=[[]], params=[[]]), "prelude::Span": TyInfo(kind="record", fields=[["file", "line", "column", "binding"]], params=[[]]), "prelude::Exception": TyInfo(kind="record", fields=[["kind", "message", "spans", "path_"]], params=[[]]), "prelude::Duration": TyInfo(kind="newtype", fields=[[]], params=[[]]), "prelude::PreludeUnwrap": TyInfo(kind="tag", fields=[[]], params=[[]]), "prelude::PreludeExceptions": TyInfo(kind="tag", fields=[[]], params=[[]])}
 
 let preludeCtors = {"prelude::Ordering::Less": "choice", "prelude::Ordering::Equal": "choice", "prelude::Ordering::Greater": "choice"}

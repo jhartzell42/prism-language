@@ -1,7 +1,7 @@
 # The todo list of the comparison run (Pitch chapter 11): rows keyed by id in a `for`, each row
 # with a Star, a hold of its own the model never sees, where identity goes wrong in other
 # languages. The `Todo` record is Type System chapter 2's; the rest is prism-reflex's
-# examples/todos.prism in the books' spelling. Its tests are in todos.prismtest. Work in
+# examples/todos.prism in the books' spelling. Its tests are in tests.prism. Work in
 # progress, subject to change.
 emit Ui.*
 test mod Tests

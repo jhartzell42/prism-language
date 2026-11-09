@@ -1,6 +1,6 @@
-# The `Ui` family, as prism_rt's Worlds answer it (prism_rt/src/families.rs; Semantics
-# ch. 8). A library, not the prelude (Appendix B, Prelude tags); prism_zero supplies it
-# beside the prelude so a program can name `Ui.Button` without shipping the file.
+# The `Ui` family (Semantics ch. 8). A library, not the prelude (Appendix B, Prelude
+# tags); prismc reads it from the prelude directory beside the prelude, so a program can
+# name `Ui.Button` without shipping the file.
 emit Ui.*
 
 # A button's answer (Type System ch. 2, "A unit type has one value, lowercase").

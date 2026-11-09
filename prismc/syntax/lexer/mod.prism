@@ -1,7 +1,6 @@
 # The lexer: characters to tokens, with layout (Semantics ch. 2; Templates ch. 2, Lexing;
-# Conformance Appendix A.1 and A.2). `prism_syntax/src/lexer.rs` is the oracle, rule for
-# rule; the two must give the same tokens, and `prismc --tokens` prints them in
-# the layout corpus's notation so the two can be diffed.
+# Conformance Appendix A.1 and A.2). `prismc --tokens FILE` prints a file's tokens in
+# the layout corpus's notation (corpus.prism).
 #
 # Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
 # Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
@@ -34,7 +33,7 @@ use Syntax.Lexer.Corpus.*
 use Syntax.Lexer.Regexes.*
 
 # ---------------------------------------------------------------------------------------
-# Tokens (prism_syntax/src/token.rs)
+# Tokens
 # ---------------------------------------------------------------------------------------
 
 # The case mark of a name's last segment (Semantics ch. 2, "Case is a mark").

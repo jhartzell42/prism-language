@@ -26,7 +26,7 @@
 # `Gui.*` is refused: no World answers Ui elements alone.
 #
 # prismc is `$PRISMC`, or the newest of target/bootstrap/prismc and target/keep/prismc-*
-# (the old dynamic chain's binary left out). The crate goes to target/prism/NAME, the
+# (a binary named old-chain left out). The crate goes to target/prism/NAME, the
 # build to target/prism-build (release, for `test` and `run` alike: Jimmy).
 #
 # Written by Claude, 2 November 2026, on the claude-self-hosting branch. Subject to change.
