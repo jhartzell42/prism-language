@@ -148,7 +148,7 @@ Each has Claude's pick where it stands; his word overrules by editing.
   `claude-lowering-fixes`, `claude-lowering-rebased`, `claude-perf`, `claude-regex`,
   `claude-regex-compiler`, `claude-style`, `claude-text`, `claude-window-cache`, and this
   session's `claude-for-inner`, `claude-cpp-inline-choices`, `claude-cpp-moves`,
-  `claude-cpp-rc-jemalloc`, `claude-float-bits`; and `claude-cpp-jemalloc-wip`, not an
+  `claude-cpp-rc-jemalloc`, `claude-float-bits`, `claude-widget-plain`; and `claude-cpp-jemalloc-wip`, not an
   ancestor but superseded (its work came in through `claude-cpp-rc-jemalloc`). Not merged by
   ancestry, from October (superseded by their rebased twins or by `main`, for Jimmy to
   judge): `claude`, `claude-reflex`, `claude-lowering`, `claude-cpp-headers-wip`,
