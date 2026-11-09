@@ -53,7 +53,7 @@ PR's description (#20) says the same at more length; the numbers are in
   Back, Forward, Reset and a settings dialog, on the window library
   `examples/chess/window`), the GUI table `bench/gui/prism` (js-framework-benchmark's
   operations), `bench/gui/gtk` (the same in C with GTK 3), the conformance corpus
-  `tests/conformance/` (129 programs), the checker's corpus (`tests/checker/`, 162
+  `tests/conformance/` (130 programs), the checker's corpus (`tests/checker/`, 162
   negative programs), the cost pairs (`tests/cost/`, four).
 - **Claude's prose** lives under `claude/` and in the READMEs: `architecture.md`,
   `backend.md` (the contract, and "Rust or C++ as the default back end"),
