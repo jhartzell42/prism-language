@@ -1,0 +1,8 @@
+# Lambdas in parentheses: declarations of sem-ch03-parenthesized-lambda. Written by Claude
+# on the claude-bugs branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_parenthesized_lambda_is_the_lambda, @page:
+    build
