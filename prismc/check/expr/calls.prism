@@ -278,7 +278,7 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
         if IsLambda a.value: ((s, done))
         else: if wholeNow and (StackOf s, at) != "": (((Unify s, pnow, at, a.value.span), (Push done, i)))
         else: if (StackOf s, at) != "" or (IsFreeHeaded s, at): ((s, done))
-        else: (((PlainArg env, s, fname, (Or params[i], TyErr), at, a), done))
+        else: (((PlainArg env, (AnyEscape s, pnow, at, res, span), fname, (Or params[i], TyErr), at, a), done))
     let ((ignore, st3)) = Fold (Range0 n), (({}, st2)), \|((m, s)), i|
         let a = Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)
         if IsLambda a.value:
@@ -317,6 +317,18 @@ fn ApplyRule env, st, fname, col, params, res, args, span:
     let lifted = Filter (Range0 n), \|i| HasRange peeled, (Or args[i], Arg(name=nil, value=Expr(kind=EError, span=span), span=span)).value.span
     let st10 = if pl.broken or (Len pl.opts) != 1: st9 else: NoteLift st9, span, (Or pl.opts[0], ""), pl.optArgs
     ((result, (NoteApp st10, span, fname, kind, layer, lifted, (Or pl.opts[0], ""), callCol)))
+
+# An existential at a parameter that is not one is unpacked there into a fresh rigid
+# type, which may not reach the result (Type System ch. 5, "Existentials are
+# dictionaries"; doubt EP): an `any` meeting a parameter that is still a bare variable of
+# the call, which the result names, is `existential-escape`. The variable then takes the
+# existential whole, so the call checks on.
+AnyEscape: unbounded fn St, Ty, Ty, Ty, Range -> St
+fn AnyEscape st, p, at, res, span = match (((Walk st, p), (Walk st, at))):
+    (((TyFlex n), (TyAny bounds))):
+        if HasNat (FreeVars st, res), n: Err st, "existential-escape", span, "the type hidden in `{ShowTy st, (TyAny bounds)}` would leave it here"
+        else: st
+    otherwise: st
 
 HasRange: fn [Range], Range -> Bool
 fn HasRange rs, r = Fold rs, False, \|seen, x| seen or x == r

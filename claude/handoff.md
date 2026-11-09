@@ -119,8 +119,8 @@ Each has Claude's pick where it stands; his word overrules by editing.
   change.md: a new word's extent reaches its layout a tick late).
 - **The regex dialect's doubts** (claude/regex-dialect.md): CT, SH among them.
 - **The checker's** (prismc/README.md, "Checker doubts" and "Gaps against ch. 5"): TR,
-  RP, CF, VW, UI, WL; gaps LR, RE, EE, R2, DG (expression blocks, mutual `let`s), SU,
-  FM, AT.
+  RP, CF, VW, UI, WL; gaps LR, RE, R2, DG (expression blocks, mutual `let`s), SU, AT;
+  pick EE (`existential-escape` by its effect, the unpacking itself not done).
 - **The back end's** (prismc/README.md, "Back-end picks" and "Contract gaps"): the picks
   from NM to FV, gaps UV to DI, doubts MH1 to MH4, and "Not lowered yet".
 - **The modules pass's doubts** (claude/modules-style-pass.md) and the Test World in Prism

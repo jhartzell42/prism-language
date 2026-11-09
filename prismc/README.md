@@ -395,7 +395,8 @@ The places where the checker had to choose. Each is Claude's, for Jimmy to overt
   that order over all its lines, its rest in dependency order: a name bound again there
   is a new binding from its line on, so its lines are not reordered (gap DG).
 - **FD A field of a record nothing has decided yet waits.** When several records have the
-  field, its type is a fresh variable, read once a later line decides the record, and
+  field, its type is a fresh variable, read once a later line decides the record (its
+  marks checked against the field's stack then, `neg/field-marks-waiting`), and
   `ambiguous` at the end of the definition (ch. 5's principle: defer what a later line can
   decide). One record with the field decides it at once.
 - **MS A wrong mark reports once, at the binder,** and the name then has the type its
@@ -863,9 +864,13 @@ What the checker does not do yet, each with Claude's first ruling.
   stack, so no outside name takes a free-headed output, and the rule confines the
   variable to its parameter. *First ruling:* OutsideIn(X)'s discipline as ch. 5 has it,
   with the error, next.
-- **EE `existential-escape`.** `any e` solves its bounds at `e`'s type; an `any` meets only
-  an `any`, and is never unpacked into a rigid variable at a parameter (doubt EP).
-  *First ruling:* unpack at application, as ch. 5 says.
+- **EE `existential-escape`, by its rule's effect.** `any e` solves its bounds at `e`'s
+  type. An `any` meeting a parameter that is still a bare variable of the call, which the
+  result names, is `existential-escape` (`AnyEscape`, `neg/existential-escape`): the
+  rigid type ch. 5 unpacks it into would reach the result. The variable then takes the
+  `any` whole rather than a rigid type with the bounds as givens, so the rest of the call
+  checks, and lowers, as before. *First ruling:* as stated; the unpacking itself only when
+  a program needs a hidden type's own operations.
 - **R2 Rank-2 element outputs** (Type System round 4 R2). An element's output variable
   that appears only inside one function-typed parameter of a signature is quantified at
   that parameter: at a call it is a fresh rigid variable (`RankTwo`, named `o'N`), so a
@@ -881,8 +886,6 @@ What the checker does not do yet, each with Claude's first ruling.
   has it.
 - **SU Prompt-cycle summaries** are per block, not computed bottom-up over the call graph
   (pick PS). *First ruling:* summaries, as ch. 5's pass 1 has them.
-- **FM A field read through a waiting access** (pick FD) is not checked for its marks.
-  *First ruling:* check them when the record is decided.
 - **AT Associated types** other than `Quotient` of the built-in numbers do not normalize.
   *First ruling:* read each impl's associated type into the normalizer.
 

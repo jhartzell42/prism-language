@@ -218,11 +218,21 @@ type FieldQ = record:
     span: Range
     file: Nat
     owners: [Text]
+    # The marks the access shows and where the field's name stands, checked against the
+    # field's stack once the record is known (gap FM); none for a reference path's step.
+    marks: ?((Text, Range))
 derive ^Eq, ^Show
 
 AskField: fn St, Ty, Text, Ty, Range, [Text] -> St
 fn AskField st, recv, field, result, span, owners = update st:
-    &_.fieldQs <= Push &_.fieldQs, FieldQ(recv=recv, field=field, result=result, span=span, file=&_.file, owners=owners)
+    &_.fieldQs <= Push &_.fieldQs, FieldQ(recv=recv, field=field, result=result, span=span, file=&_.file, owners=owners, marks=nil)
+
+# The waiting field read whose type is `result` checks its marks when it is read (gap FM).
+MarkLastField: fn St, Ty, Text, Range -> St
+fn MarkLastField st, result, marks, at = update st:
+    &_.fieldQs <= Each &_.fieldQs, \|q| if q.result == result and q.?marks == nil: update q:
+        &_.marks <= ? ((marks, at))
+    else: q
 
 # An argument whose outer layer was still a variable where it met a plain or variable
 # parameter (ch. 5, When an outer layer is still a variable): taken whole there, and asked
