@@ -151,7 +151,7 @@ fn CtorPat lx, n, ps, ty, mode, fresh:
                 let binds = Fold subs, [[]], \|acc, o| Append acc, o.binds
                 let pas = Each subs, \|o| o.pa
                 match owner.body:
-                    BRecord fs: PatOut(pa=(PaRecord tyPath, (Each (Range0 (Len pas)), \|i| (((Snake (Or c.fields[i], "")), (Or pas[i], PaWild)))), ((Len pas) < (Len c.fields))), conds=conds, binds=binds)
+                    BRecord fs: PatOut(pa=(PaRecord tyPath, (Each (Range0 (Len pas)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or pas[i], PaWild)))), ((Len pas) < (Len c.fields))), conds=conds, binds=binds)
                     otherwise:
                         let isUnitType = (Len c.args) == 0 and IsUnitCtor lx, qk
                         # a newtype is a tuple struct, matched by its own name
@@ -225,7 +225,7 @@ fn FieldsPat lx, c, fps, rest, ty, mode, fresh, tyPath:
                     ? id: id.name
                     nil: Or c.fields[i], ""
                 let fix = Fold (Range0 (Len c.fields)), i, \|found, j| if (Or c.fields[j], "") == fname: j else: found
-                ((Snake fname, (SubPat lx, c, fix, fp.pattern, (Instantiated (Or c.args[fix], TyErr), c.params, args), mode, "{fresh}_{i}")))
+                (((FieldSpell (OwnerOf c.owner), fname, (Or c.args[fix], TyErr)), (SubPat lx, c, fix, fp.pattern, (Instantiated (Or c.args[fix], TyErr), c.params, args), mode, "{fresh}_{i}")))
             let conds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.conds
             let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
             PatOut(pa=(PaRecord tyPath, (Each subs, \|((f, o))| ((f, o.pa))), (rest or (Len subs) < (Len c.fields))), conds=conds, binds=binds)
@@ -266,10 +266,10 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
         let ft = Fold tg.fields, TyErr, \|found, ((f, t))| if f == fname: t else: found
         match LayerOf ft:
             LyEv: ((nil, (PatOut(pa=PaWild, conds=[[CcIf (Refusal "an event field in an element pattern ({tg.name}.{fname})")]], binds=[[]]))))
-            LyDyn if live: ((nil, (LiveFieldPat lx, fp.pattern, variant, fname, ft, fresh)))
+            LyDyn if live: ((nil, (LiveFieldPat lx, fp.pattern, variant, fname, (FieldSpell tg.home, fname, ft), ft, fresh)))
             otherwise:
                 let o = RustPat lx, fp.pattern, (Peel ft), subMode, "{fresh}_{i}"
-                ((? (Snake fname), o))
+                ((? (FieldSpell tg.home, fname, ft), o))
     let fieldPas = Fold parts, [[]], \|acc, ((?f, o))| match ?f:
         ? f: Push acc, ((f, o.pa))
         nil: acc
@@ -285,18 +285,18 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
 # projected (`Dynamic::map`). A plain function is lifted, its `$` values read at the
 # caller's read point, which it has no `cx` to read at, so there the binder is refused
 # (gap LE); a host's supplier, lowered in its node, binds the dynamic.
-LiveFieldPat: unbounded fn Lx, Pattern, Text, Text, Ty, Text -> PatOut
-fn LiveFieldPat lx, p, variant, fname, ft, fresh = match p.kind:
+LiveFieldPat: unbounded fn Lx, Pattern, Text, Text, Text, Ty, Text -> PatOut
+fn LiveFieldPat lx, p, variant, fname, rsField, ft, fresh = match p.kind:
     PIgnore: PatOnly PaWild
     PName n:
-        let rs = if lx.inNode: LiveProjection fresh, variant, fname, (OutTyOf lx, (Peel ft)) else: Refusal "a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)"
+        let rs = if lx.inNode: LiveProjection fresh, variant, rsField, (OutTyOf lx, (Peel ft)) else: Refusal "a live element's `$` field ({fname}) in a plain function, which has no read point (gap LE)"
         PatOut(pa=PaWild, conds=[[]], binds=[[((SNameKey n, (BnLocal rs, Owned, (OutDyn (OutTyOf lx, (Peel ft))))))]])
-    PGroup q: LiveFieldPat lx, q, variant, fname, ft, fresh
+    PGroup q: LiveFieldPat lx, q, variant, fname, rsField, ft, fresh
     otherwise: PatOut(pa=PaWild, conds=[[CcIf (Refusal "a pattern inside a live element's `$` field ({fname})")]], binds=[[]])
 
 LiveProjection: fn Text, Text, Text, OutTy -> Ex
 fn LiveProjection fresh, variant, fname, ft:
-    let arm = XArm(pat=(PaCtor variant, [[PaBind "x"]]), conds=[[]], body=(XClone (XField (XVar "x"), (Snake fname))))
+    let arm = XArm(pat=(PaCtor variant, [[PaBind "x"]]), conds=[[]], body=(XClone (XField (XVar "x"), fname)))
     let other = XArm(pat=PaWild, conds=[[]], body=XUnreachable)
     XMethod (XField (XVar fresh), "level"), "map", [[(XClosure True, [[PaBind "l"]], (XMatch (XVar "l"), [[arm, other]], False, ft))]]
 
@@ -326,11 +326,11 @@ fn ErrorPat lx, fps, ty, mode, fresh:
                 PName k:
                     let ((?kq, ignore)) = ResolveValue lx.g, lx.home, k
                     match ?kq:
-                        ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin OpEq, (XRef (XDeref (XField (XVar fresh), "kind"))), (XStr kq))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal (XField (XVar fresh), "kind"), Owned, OutText)))]]))
-                        nil: (([[]], [[((SNameKey k, (BnLocal (XField (XVar fresh), "kind"), Owned, OutText)))]]))
+                        ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin OpEq, (XRef (XDeref (XField (XVar fresh), "kind_p"))), (XStr kq))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal (XField (XVar fresh), "kind_p"), Owned, OutText)))]]))
+                        nil: (([[]], [[((SNameKey k, (BnLocal (XField (XVar fresh), "kind_p"), Owned, OutText)))]]))
                 otherwise: (([[]], [[]]))
             "message": match fp.pattern.kind:
-                PName m: (([[]], [[((SNameKey m, (BnLocal (XField (XVar fresh), "message"), Owned, OutText)))]]))
+                PName m: (([[]], [[((SNameKey m, (BnLocal (XField (XVar fresh), "message_p"), Owned, OutText)))]]))
                 otherwise: (([[]], [[]]))
             otherwise: (([[]], [[]]))
     let wrapped = match Peel ty:

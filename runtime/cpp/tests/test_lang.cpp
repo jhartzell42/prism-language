@@ -43,7 +43,7 @@ TEST(try_moves_a_temporary_and_returns_a_failure) {
     Counted::copies = 0;
     Text failed;
     auto r = moved(failed);
-    CHECK(!r.has_value() && r.error().kind == "Prelude.Unmet");
+    CHECK(!r.has_value() && r.error().kind_p == "Prelude.Unmet");
     CHECK(failed == Text("not yet"));
     CHECK_EQ(Counted::copies, 0);
 }

@@ -82,34 +82,34 @@ inline Result<Pod> field(const Pod& p, const char* name) {
 /// `type Span = record: file, line, column, binding`.
 struct Span {
     using prism_value = void;
-    Text file;
-    Nat line;
-    Nat column;
-    Text binding;
+    Text file_p;
+    Nat line_p;
+    Nat column_p;
+    Text binding_p;
     const Span* operator->() const { return this; }
     auto operator<=>(const Span&) const = default;
     Pod to_pod() const {
-        return Pod::record("Span", { {"file", prism_rtl::to_pod(file)}, {"line", prism_rtl::to_pod(line)}, {"column", prism_rtl::to_pod(column)}, {"binding", prism_rtl::to_pod(binding)} });
+        return Pod::record("Span", { {"file", prism_rtl::to_pod(file_p)}, {"line", prism_rtl::to_pod(line_p)}, {"column", prism_rtl::to_pod(column_p)}, {"binding", prism_rtl::to_pod(binding_p)} });
     }
     static Result<Span> from_pod(const Pod& p) {
-        return Span{.file = TRY(prism_rtl::from_pod<Text>(TRY(field(p, "file")))), .line = TRY(prism_rtl::from_pod<Nat>(TRY(field(p, "line")))), .column = TRY(prism_rtl::from_pod<Nat>(TRY(field(p, "column")))), .binding = TRY(prism_rtl::from_pod<Text>(TRY(field(p, "binding"))))};
+        return Span{.file_p = TRY(prism_rtl::from_pod<Text>(TRY(field(p, "file")))), .line_p = TRY(prism_rtl::from_pod<Nat>(TRY(field(p, "line")))), .column_p = TRY(prism_rtl::from_pod<Nat>(TRY(field(p, "column")))), .binding_p = TRY(prism_rtl::from_pod<Text>(TRY(field(p, "binding"))))};
     }
 };
 
 /// `type Exception = record: kind, message, spans, path`.
 struct Exception {
     using prism_value = void;
-    Text kind;
-    Text message;
-    Array<Span> spans;
-    std::optional<Path> path_;
+    Text kind_p;
+    Text message_p;
+    Array<Span> spans_p;
+    std::optional<Path> path_o;
     const Exception* operator->() const { return this; }
     bool operator==(const Exception&) const = default;
     Pod to_pod() const {
-        return Pod::record("Exception", { {"kind", prism_rtl::to_pod(kind)}, {"message", prism_rtl::to_pod(message)}, {"spans", prism_rtl::to_pod(spans)}, {"path", prism_rtl::to_pod(path_)} });
+        return Pod::record("Exception", { {"kind", prism_rtl::to_pod(kind_p)}, {"message", prism_rtl::to_pod(message_p)}, {"spans", prism_rtl::to_pod(spans_p)}, {"path", prism_rtl::to_pod(path_o)} });
     }
     static Result<Exception> from_pod(const Pod& p) {
-        return Exception{.kind = TRY(prism_rtl::from_pod<Text>(TRY(field(p, "kind")))), .message = TRY(prism_rtl::from_pod<Text>(TRY(field(p, "message")))), .spans = TRY(prism_rtl::from_pod<Array<Span>>(TRY(field(p, "spans")))), .path_ = TRY(prism_rtl::from_pod<std::optional<Path>>(TRY(field(p, "path"))))};
+        return Exception{.kind_p = TRY(prism_rtl::from_pod<Text>(TRY(field(p, "kind")))), .message_p = TRY(prism_rtl::from_pod<Text>(TRY(field(p, "message")))), .spans_p = TRY(prism_rtl::from_pod<Array<Span>>(TRY(field(p, "spans")))), .path_o = TRY(prism_rtl::from_pod<std::optional<Path>>(TRY(field(p, "path"))))};
     }
 };
 

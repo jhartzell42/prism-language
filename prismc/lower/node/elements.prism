@@ -79,7 +79,7 @@ fn ElementLine wx, benv, menv, e, ?bound:
                                 # a window's title, asked with its first value before the node is
                                 let cv = Own (ValueOf lx, (InitEnv benv), arg)
                                 let mv = Own (ValueOf lx, menv, arg)
-                                (((Push lf, ((Snake fname, ex))), (Push cf, ((Snake fname, cv))), (Push mf, ((Snake fname, mv))), (UnionReads rd, rds), w))
+                                (((Push lf, (((FieldSpell tg.home, fname, fty), ex))), (Push cf, (((FieldSpell tg.home, fname, fty), cv))), (Push mf, (((FieldSpell tg.home, fname, fty), mv))), (UnionReads rd, rds), w))
             let live = (Len reads) > 0
             let ((getter, wx3)) = if live: FreshName wx2, (Snake (BareName tg.name)) else: (("", wx2))
             let variant = VariantOf lx, tg

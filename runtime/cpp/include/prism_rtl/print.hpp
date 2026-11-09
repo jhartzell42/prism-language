@@ -177,8 +177,8 @@ PRISM_SHOW_WITH(std::string, p.text(s);)
 template <>
 struct Show<Error> {
     static void show(const Error& e, Printer& p) {
-        Pod kind = Pod::name(e.kind);
-        p.record("Error", {{"kind", kind}, {"message", e.message}});
+        Pod kind = Pod::name(e.kind_p);
+        p.record("Error", {{"kind", kind}, {"message", e.message_p}});
     }
 };
 

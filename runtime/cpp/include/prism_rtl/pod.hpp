@@ -232,9 +232,9 @@ inline Fields named(std::initializer_list<std::pair<std::string, Pod>> fs) { ret
 
 /// Prism's `Error`, a `~T`'s failure: a fault kind (`Fs.NotFound`) and a message.
 struct Error {
-    std::string kind;
-    Text message;
-    Error(std::string kind, Text message) : kind(std::move(kind)), message(std::move(message)) {}
+    std::string kind_p;
+    Text message_p;
+    Error(std::string kind, Text message) : kind_p(std::move(kind)), message_p(std::move(message)) {}
     bool operator==(const Error&) const = default;
     auto operator<=>(const Error&) const = default;
 };
@@ -324,7 +324,7 @@ struct FromPod<Pod> {
 template <>
 struct ToPod<Error> {
     static Pod to_pod(const Error& e) {
-        return Pod::record("Error", {{"kind", Pod::name(e.kind)}, {"message", Pod::text(e.message)}});
+        return Pod::record("Error", {{"kind", Pod::name(e.kind_p)}, {"message", Pod::text(e.message_p)}});
     }
 };
 template <>

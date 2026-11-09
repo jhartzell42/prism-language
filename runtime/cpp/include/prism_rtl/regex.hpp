@@ -47,9 +47,9 @@ struct RegexError {
 
 /// `Group = record: text, front, back` (Appendix B).
 struct Group {
-    Text text;
-    Cursor front, back;
-    friend bool operator==(const Group& a, const Group& b) { return a.text == b.text && a.front == b.front && a.back == b.back; }
+    Text text_p;
+    Cursor front_p, back_p;
+    friend bool operator==(const Group& a, const Group& b) { return a.text_p == b.text_p && a.front_p == b.front_p && a.back_p == b.back_p; }
     void show(Printer& p) const;
     /// Itself, as every emitted record answers `->` (prismc/README.md, pick PT).
     const Group* operator->() const { return this; }
@@ -57,12 +57,12 @@ struct Group {
 
 /// `Match = record: text, front, back, groups: [?Group], named: Text ==> Group`.
 struct Match {
-    Text text;
-    Cursor front, back;
-    Array<std::optional<Group>> groups;
-    Map<Text, Group> named;
+    Text text_p;
+    Cursor front_p, back_p;
+    Array<std::optional<Group>> groups_p;
+    Map<Text, Group> named_p;
     friend bool operator==(const Match& a, const Match& b) {
-        return a.text == b.text && a.front == b.front && a.back == b.back && a.groups == b.groups && a.named == b.named;
+        return a.text_p == b.text_p && a.front_p == b.front_p && a.back_p == b.back_p && a.groups_p == b.groups_p && a.named_p == b.named_p;
     }
     void show(Printer& p) const;
     /// Itself, as every emitted record answers `->` (prismc/README.md, pick PT).
@@ -162,14 +162,14 @@ struct ToPod<RegexReplacement> {
 template <>
 struct ToPod<Group> {
     static Pod to_pod(const Group& g) {
-        return Pod::record("Group", {{"text", prism_rtl::to_pod(g.text)}, {"front", prism_rtl::to_pod(g.front)}, {"back", prism_rtl::to_pod(g.back)}});
+        return Pod::record("Group", {{"text", prism_rtl::to_pod(g.text_p)}, {"front", prism_rtl::to_pod(g.front_p)}, {"back", prism_rtl::to_pod(g.back_p)}});
     }
 };
 template <>
 struct ToPod<Match> {
     static Pod to_pod(const Match& m) {
-        return Pod::record("Match", {{"text", prism_rtl::to_pod(m.text)}, {"front", prism_rtl::to_pod(m.front)}, {"back", prism_rtl::to_pod(m.back)},
-                                     {"groups", prism_rtl::to_pod(m.groups)}, {"named", prism_rtl::to_pod(m.named)}});
+        return Pod::record("Match", {{"text", prism_rtl::to_pod(m.text_p)}, {"front", prism_rtl::to_pod(m.front_p)}, {"back", prism_rtl::to_pod(m.back_p)},
+                                     {"groups", prism_rtl::to_pod(m.groups_p)}, {"named", prism_rtl::to_pod(m.named_p)}});
     }
 };
 template <>

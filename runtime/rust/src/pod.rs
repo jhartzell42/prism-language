@@ -228,13 +228,13 @@ impl std::error::Error for Fault {}
 /// Prism's `Error`, a `~T`'s failure: a fault kind (`Fs.NotFound`) and a message.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Error {
-    pub kind: Rc<str>,
-    pub message: Text,
+    pub kind_p: Rc<str>,
+    pub message_p: Text,
 }
 
 impl Error {
     pub fn new(kind: &str, message: impl Into<Text>) -> Error {
-        Error { kind: kind.into(), message: message.into() }
+        Error { kind_p: kind.into(), message_p: message.into() }
     }
 }
 
@@ -340,13 +340,13 @@ impl<T: FromPod> FromPod for Result<T, Error> {
 
 impl ToPod for Error {
     fn to_pod(&self) -> Pod {
-        Pod::record("Error", vec![("kind", Pod::name(&self.kind)), ("message", Pod::Text(self.message.clone()))])
+        Pod::record("Error", vec![("kind", Pod::name(&self.kind_p)), ("message", Pod::Text(self.message_p.clone()))])
     }
 }
 impl FromPod for Error {
     fn from_pod(p: &Pod) -> Result<Error, Fault> {
         match (p.field("kind").map(Pod::structure), p.field("message").and_then(Pod::as_text)) {
-            (Some(Pod::Choice(kind, a)), Some(m)) if a.is_empty() => Ok(Error { kind: kind.clone(), message: m.clone() }),
+            (Some(Pod::Choice(kind, a)), Some(m)) if a.is_empty() => Ok(Error { kind_p: kind.clone(), message_p: m.clone() }),
             _ => mismatch("an Error", p),
         }
     }

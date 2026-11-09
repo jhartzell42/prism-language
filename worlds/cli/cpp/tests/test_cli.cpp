@@ -163,8 +163,8 @@ TEST(a_file_that_is_not_utf8_reads_as_fs_not_text) {
     write_file(dir / "bad.txt", "ab\xFF" "c");
     auto got = RealFs(dir.string()).read("bad.txt");
     CHECK(!got.has_value());
-    CHECK_EQ(got.error().kind, std::string("Fs.NotText"));
-    CHECK_EQ(got.error().message.to_string(), std::string("bad.txt: not UTF-8: byte 2 is malformed"));
+    CHECK_EQ(got.error().kind_p, std::string("Fs.NotText"));
+    CHECK_EQ(got.error().message_p.to_string(), std::string("bad.txt: not UTF-8: byte 2 is malformed"));
     sfs::remove_all(dir);
 }
 

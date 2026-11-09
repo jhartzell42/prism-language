@@ -47,42 +47,42 @@ impl ToPod for Ordering {
 /// `type Span = record: file, line, column, binding`.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Span {
-    pub file: Text,
-    pub line: Nat,
-    pub column: Nat,
-    pub binding: Text,
+    pub file_p: Text,
+    pub line_p: Nat,
+    pub column_p: Nat,
+    pub binding_p: Text,
 }
 
 impl ToPod for Span {
     fn to_pod(&self) -> Pod {
-        Pod::record("Span", vec![("file", self.file.to_pod()), ("line", self.line.to_pod()), ("column", self.column.to_pod()), ("binding", self.binding.to_pod())])
+        Pod::record("Span", vec![("file", self.file_p.to_pod()), ("line", self.line_p.to_pod()), ("column", self.column_p.to_pod()), ("binding", self.binding_p.to_pod())])
     }
 }
 
 impl FromPod for Span {
     fn from_pod(p: &Pod) -> Result<Self, Fault> {
-        Ok(Span { file: FromPod::from_pod(field(p, "file")?)?, line: FromPod::from_pod(field(p, "line")?)?, column: FromPod::from_pod(field(p, "column")?)?, binding: FromPod::from_pod(field(p, "binding")?)? })
+        Ok(Span { file_p: FromPod::from_pod(field(p, "file")?)?, line_p: FromPod::from_pod(field(p, "line")?)?, column_p: FromPod::from_pod(field(p, "column")?)?, binding_p: FromPod::from_pod(field(p, "binding")?)? })
     }
 }
 
 /// `type Exception = record: kind, message, spans, path`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Exception {
-    pub kind: Text,
-    pub message: Text,
-    pub spans: Array<Span>,
-    pub path_: Option<Path>,
+    pub kind_p: Text,
+    pub message_p: Text,
+    pub spans_p: Array<Span>,
+    pub path_o: Option<Path>,
 }
 
 impl ToPod for Exception {
     fn to_pod(&self) -> Pod {
-        Pod::record("Exception", vec![("kind", self.kind.to_pod()), ("message", self.message.to_pod()), ("spans", self.spans.to_pod()), ("path", self.path_.to_pod())])
+        Pod::record("Exception", vec![("kind", self.kind_p.to_pod()), ("message", self.message_p.to_pod()), ("spans", self.spans_p.to_pod()), ("path", self.path_o.to_pod())])
     }
 }
 
 impl FromPod for Exception {
     fn from_pod(p: &Pod) -> Result<Self, Fault> {
-        Ok(Exception { kind: FromPod::from_pod(field(p, "kind")?)?, message: FromPod::from_pod(field(p, "message")?)?, spans: FromPod::from_pod(field(p, "spans")?)?, path_: FromPod::from_pod(field(p, "path")?)? })
+        Ok(Exception { kind_p: FromPod::from_pod(field(p, "kind")?)?, message_p: FromPod::from_pod(field(p, "message")?)?, spans_p: FromPod::from_pod(field(p, "spans")?)?, path_o: FromPod::from_pod(field(p, "path")?)? })
     }
 }
 

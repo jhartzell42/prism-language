@@ -169,7 +169,7 @@ fn a_file_that_is_not_utf8_reads_as_fs_not_text() {
     let dir = temp_dir("not-text");
     std::fs::write(dir.join("bad.txt"), b"ab\xFFc").unwrap();
     let err = RealFs { root: dir.clone() }.read("bad.txt").unwrap_err();
-    assert_eq!((&*err.kind, err.message.to_string()), ("Fs.NotText", "bad.txt: not UTF-8: byte 2 is malformed".to_string()));
+    assert_eq!((&*err.kind_p, err.message_p.to_string()), ("Fs.NotText", "bad.txt: not UTF-8: byte 2 is malformed".to_string()));
     std::fs::remove_dir_all(dir).unwrap();
 }
 

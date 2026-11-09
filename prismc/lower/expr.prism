@@ -601,14 +601,14 @@ fn TagValue lx, env, tg, args:
         otherwise:
             let named = Fold args, False, \|f, a| f or IsNamedArg a
             let fields = Each (Range0 (Len tg.fields)), \|i|
-                let ((fname, ignore)) = Or tg.fields[i], (("", TyErr))
+                let ((fname, fty)) = Or tg.fields[i], (("", TyErr))
                 let ?arg = if named: ?TagArg args, fname else: match args[i]:
                     ? a: ? a.value
                     nil: nil
                 let v = match ?arg:
                     ? x: Own (ValueOf lx, env, x)
                     nil: (XCall "Default::default", [[]])
-                ((Snake fname, v))
+                (((FieldSpell tg.home, fname, fty), v))
             VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
 
 # A call of a global: a constructor, a trait method, a prelude function, a program's own.
@@ -708,7 +708,7 @@ fn CtorApp lx, env, c, args, span:
         otherwise: match owner.body:
             BRecord fs:
                 if (Len c.fields) == 0: VlOwned (XPath tyPath), t
-                else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((Snake (Or c.fields[i], "")), (Or vals[i], (XCall "Default::default", [[]])))))), t
+                else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or vals[i], (XCall "Default::default", [[]])))))), t
             BChoice cases:
                 let isUnitType = (Len cases) == 1 and (Len c.args) == 0 and IsLowerText (BareName c.name)
                 # a newtype is a tuple struct (a struct in C++), built by its own name
@@ -963,16 +963,17 @@ FieldValue: unbounded fn Lx, Env, Expr, Text -> Vl
 fn FieldValue lx, env, r, name:
     let rv = ValueOf lx, env, r
     let rty = Peel (TypeAt lx, r.span)
-    let ((ft, rc)) = FieldInfo lx, rty, name
-    let f = Snake name
+    let ((ft, rc, f)) = FieldInfo lx, rty, name
     let mode = if rc: RcOwned else: Owned
     match rv:
         VlPlace x, ignore, ignore: VlPlace (XField x, f), mode, ft
         VlOwned x, ignore: VlPlace (XField x, f), mode, ft
 
 # A record field's Rust type and whether it is behind an `Rc`.
-FieldInfo: unbounded fn Lx, Ty, Text -> ((OutTy, Bool))
+FieldInfo: unbounded fn Lx, Ty, Text -> ((OutTy, Bool, Text))
 fn FieldInfo lx, rty, name = match rty:
+    # the runtimes' `Error`, a builtin record: `kind` (a `Fault`) and `message`, both plain
+    TyCon "Prelude.Error", ignore: (((OutRefused "a field {name} of an Error"), False, (FieldSpell "Prelude", name, tText)))
     TyCon n, args: match lx.g.ctors[n]:
         ? c:
             let ?fix = Fold (Range0 (Len c.fields)), nil, \|?found, i| if (Or c.fields[i], "") == name: ? i else: ?found
@@ -980,10 +981,20 @@ fn FieldInfo lx, rty, name = match rty:
                 ? i:
                     let ft = Or c.args[i], TyErr
                     let inst = Instantiated ft, c.params, args
-                    (((OutTyOf lx, inst), (RcField lx, c.name, i)))
-                nil: (((OutRefused "a field {name}"), False))
-        nil: (((OutRefused "a field {name}"), False))
-    otherwise: (((OutRefused "a field {name} of a non-record"), False))
+                    (((OutTyOf lx, inst), (RcField lx, c.name, i), (FieldSpell (OwnerOf c.owner), (Or c.fields[i], name), ft)))
+                nil: (((OutRefused "a field {name}"), False, (FieldByName lx, name)))
+        nil: (((OutRefused "a field {name}"), False, (FieldByName lx, name)))
+    otherwise: (((OutRefused "a field {name} of a non-record"), False, (FieldByName lx, name)))
+
+# A field's spelling where lowering has no record type for the place it is read from (an
+# update's `&_[k].f`, a pattern's binder): the one every record with a field of that name
+# gives it, the record the checker resolved being among them.
+FieldByName: unbounded fn Lx, Text -> Text
+fn FieldByName lx, name:
+    let spellings = Fold (Values lx.g.ctors), [[]], \|acc, c| Fold (Range0 (Len c.fields)), acc, \|a, i| if (Or c.fields[i], "") == name: AddText a, (FieldSpell (OwnerOf c.owner), name, (Or c.args[i], TyErr)) else: a
+    match spellings:
+        [[one]]: one
+        otherwise: Snake name
 
 # A field's declared type with the record's parameters replaced by its arguments.
 Instantiated: unbounded fn Ty, [Text], [Ty] -> Ty

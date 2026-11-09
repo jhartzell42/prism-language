@@ -61,13 +61,13 @@ std::string span(const Text& whole, const Text& text, const Cursor& front, const
     return ab;
 }
 
-std::string group(const Text& whole, const Group& g) { return span(whole, g.text, g.front, g.back); }
+std::string group(const Text& whole, const Group& g) { return span(whole, g.text_p, g.front_p, g.back_p); }
 
 std::string render(const Text& whole, const Match& m) {
-    std::string out = span(whole, m.text, m.front, m.back);
-    if (m.groups.empty() || !m.groups[0] || group(whole, *m.groups[0]) != out) throw Fail{"groups[0] is not the whole match"};
-    for (std::size_t i = 1; i < m.groups.size(); ++i) out += " " + (m.groups[i] ? group(whole, *m.groups[i]) : std::string("nil"));
-    for (const auto& [name, g] : m.named) out += " " + name.to_string() + "=" + group(whole, g);
+    std::string out = span(whole, m.text_p, m.front_p, m.back_p);
+    if (m.groups_p.empty() || !m.groups_p[0] || group(whole, *m.groups_p[0]) != out) throw Fail{"groups[0] is not the whole match"};
+    for (std::size_t i = 1; i < m.groups_p.size(); ++i) out += " " + (m.groups_p[i] ? group(whole, *m.groups_p[i]) : std::string("nil"));
+    for (const auto& [name, g] : m.named_p) out += " " + name.to_string() + "=" + group(whole, g);
     return out;
 }
 
@@ -164,7 +164,7 @@ TEST(regex_runtime_pattern_is_nil_outside_the_dialect) {
     auto re = Regex::parse(Text("(?i)k+"));
     CHECK(re.has_value());
     auto m = re->find(Text("xKk"));
-    CHECK(m.has_value() && m->text == Text("Kk"));
+    CHECK(m.has_value() && m->text_p == Text("Kk"));
 }
 
 TEST(regex_shared_not_copied_and_equal_by_spelling) {
@@ -193,7 +193,7 @@ TEST(regex_match_from_a_view_reports_cursors_into_that_view) {
     Text whole("xx abc");
     Text view = Cursor::at_byte(whole, 3)->after();
     auto m = Regex::compile("b", "")->find(view);
-    CHECK(m && m->front.at() == 1 && m->back.at() == 2 && m->front.before() == Text("a"));
+    CHECK(m && m->front_p.at() == 1 && m->back_p.at() == 2 && m->front_p.before() == Text("a"));
     CHECK(Regex::compile("^a", "")->match_at(*Cursor::at_byte(view, 0)).has_value());
 }
 

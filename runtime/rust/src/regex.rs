@@ -42,19 +42,19 @@ pub struct Regex(Rc<Compiled>);
 /// `Group = record: text, front, back` (Appendix B).
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Group {
-    pub text: Text,
-    pub front: Cursor,
-    pub back: Cursor,
+    pub text_p: Text,
+    pub front_p: Cursor,
+    pub back_p: Cursor,
 }
 
 /// `Match = record: text, front, back, groups: [?Group], named: Text ==> Group`.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Match {
-    pub text: Text,
-    pub front: Cursor,
-    pub back: Cursor,
-    pub groups: Array<Option<Group>>,
-    pub named: Map<Text, Group>,
+    pub text_p: Text,
+    pub front_p: Cursor,
+    pub back_p: Cursor,
+    pub groups_p: Array<Option<Group>>,
+    pub named_p: Map<Text, Group>,
 }
 
 /// The bytes `a..b` of `t` (both character boundaries), as a view: no copy.
@@ -66,7 +66,7 @@ fn view(t: &Text, a: usize, b: usize) -> Text {
 fn group_of(t: &Text, a: usize, b: usize) -> Group {
     let front = Cursor::at_byte(t, a).expect("a group starts on a character boundary");
     let back = Cursor::at_byte(t, b).expect("a group ends on a character boundary");
-    Group { text: view(t, a, b), front, back }
+    Group { text_p: view(t, a, b), front_p: front, back_p: back }
 }
 
 impl Regex {
@@ -126,8 +126,8 @@ impl Regex {
             }
         }
         let g0 = groups[0].clone().expect("group 0 takes part");
-        debug_assert_eq!((g0.front.at(), g0.back.at()), (whole.start, whole.end));
-        Match { text: g0.text, front: g0.front, back: g0.back, groups: groups.into_iter().collect(), named }
+        debug_assert_eq!((g0.front_p.at(), g0.back_p.at()), (whole.start, whole.end));
+        Match { text_p: g0.text_p, front_p: g0.front_p, back_p: g0.back_p, groups_p: groups.into_iter().collect(), named_p: named }
     }
 
     /// `?Match: fn Regex, Cursor -> ?Match`: the match starting at the cursor, which sees
@@ -322,13 +322,13 @@ impl Show for RegexReplacement {
 
 impl Show for Group {
     fn show(&self, p: &mut Printer) {
-        p.record("Group", &[("text", &self.text), ("front", &self.front), ("back", &self.back)]);
+        p.record("Group", &[("text", &self.text_p), ("front", &self.front_p), ("back", &self.back_p)]);
     }
 }
 
 impl Show for Match {
     fn show(&self, p: &mut Printer) {
-        p.record("Match", &[("text", &self.text), ("front", &self.front), ("back", &self.back), ("groups", &self.groups), ("named", &self.named)]);
+        p.record("Match", &[("text", &self.text_p), ("front", &self.front_p), ("back", &self.back_p), ("groups", &self.groups_p), ("named", &self.named_p)]);
     }
 }
 
@@ -357,13 +357,13 @@ impl ToPod for RegexReplacement {
 
 impl ToPod for Group {
     fn to_pod(&self) -> Pod {
-        Pod::record("Group", vec![("text", self.text.to_pod()), ("front", self.front.to_pod()), ("back", self.back.to_pod())])
+        Pod::record("Group", vec![("text", self.text_p.to_pod()), ("front", self.front_p.to_pod()), ("back", self.back_p.to_pod())])
     }
 }
 
 impl ToPod for Match {
     fn to_pod(&self) -> Pod {
-        Pod::record("Match", vec![("text", self.text.to_pod()), ("front", self.front.to_pod()), ("back", self.back.to_pod()), ("groups", self.groups.to_pod()), ("named", self.named.to_pod())])
+        Pod::record("Match", vec![("text", self.text_p.to_pod()), ("front", self.front_p.to_pod()), ("back", self.back_p.to_pod()), ("groups", self.groups_p.to_pod()), ("named", self.named_p.to_pod())])
     }
 }
 

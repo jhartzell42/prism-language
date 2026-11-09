@@ -356,9 +356,11 @@ fn PlaceOf lx, env, e = match e.kind:
     EName n: match env.names[SNameKey n]:
         ? (BnLocal rs, ignore, ignore): rs
         otherwise: XVar (Snake (SNameKey n))
-    EField r, ignore, name: XField (PlaceOf lx, env, r), (Snake name.name)
+    EField r, ignore, name:
+        let ((ignore, ignore, f)) = FieldInfo lx, (Peel (PlaceTy lx, r)), name.name
+        XField (PlaceOf lx, env, r), f
     EIndex r, k:
-        let rt = OutTyOf lx, (Peel (TypeAt lx, r.span))
+        let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
         let f = match rt:
             OutMap ignore, ignore: "at_mut_map"
             otherwise: "at_mut"
@@ -366,12 +368,33 @@ fn PlaceOf lx, env, e = match e.kind:
     EGroup x: PlaceOf lx, env, x
     otherwise: Refusal "a reference path this back end does not lower"
 
+# A reference path's type: the checker's where it recorded one, else from the path's own
+# parts (an index place's element, a field place's declared type).
+PlaceTy: unbounded fn Lx, Expr -> Ty
+fn PlaceTy lx, e = match TypeAt lx, e.span:
+    TyErr: match e.kind:
+        EIndex r, ignore: match Peel (PlaceTy lx, r):
+            TyArray el: el
+            TyMap ignore, v: v
+            otherwise: TyErr
+        EField r, ignore, name: FieldTy lx, (Peel (PlaceTy lx, r)), name.name
+        EGroup x: PlaceTy lx, x
+        otherwise: TyErr
+    t: t
+
+FieldTy: unbounded fn Lx, Ty, Text -> Ty
+fn FieldTy lx, rty, name = match rty:
+    TyCon n, args: match lx.g.ctors[n]:
+        ? c: Fold (Range0 (Len c.fields)), TyErr, \|found, i| if (Or c.fields[i], "") == name: Instantiated (Or c.args[i], TyErr), c.params, args else: found
+        nil: TyErr
+    otherwise: TyErr
+
 # `&p <= v`. An index path's part is optional (Semantics ch. 5: an array's part type,
 # `?a`): `? x` writes the entry, and `nil` removes a map's key.
 Assign: unbounded fn Lx, Env, Expr, Ex -> Do
 fn Assign lx, env, target, v = match target.kind:
     EIndex r, k:
-        let rt = OutTyOf lx, (Peel (TypeAt lx, r.span))
+        let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
         let f = match rt:
             OutMap ignore, ignore: "set_key"
             otherwise: "set_index"

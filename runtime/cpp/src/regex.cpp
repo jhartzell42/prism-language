@@ -1026,7 +1026,7 @@ Match build(const detail::RegexCompiled& c, const Text& t, const std::vector<std
     for (const auto& [name, g] : c.names)
         if (groups[g]) named.insert(name, *groups[g]);
     Group g0 = *groups[0];
-    return Match{g0.text, g0.front, g0.back, Array<std::optional<Group>>(std::move(groups)), std::move(named)};
+    return Match{g0.text_p, g0.front_p, g0.back_p, Array<std::optional<Group>>(std::move(groups)), std::move(named)};
 }
 
 /// Every match by the iteration rule, its spans given to `each`.
@@ -1127,10 +1127,10 @@ Text RegexReplacement::replace(const Text& t) const {
 
 void RegexReplacement::show(Printer& p) const { p.raw(spelling(regex_.pattern(), &*replacement_, regex_.flags())); }
 
-void Group::show(Printer& p) const { p.record("Group", {{"text", ShowRef(text)}, {"front", ShowRef(front)}, {"back", ShowRef(back)}}); }
+void Group::show(Printer& p) const { p.record("Group", {{"text", ShowRef(text_p)}, {"front", ShowRef(front_p)}, {"back", ShowRef(back_p)}}); }
 
 void Match::show(Printer& p) const {
-    p.record("Match", {{"text", ShowRef(text)}, {"front", ShowRef(front)}, {"back", ShowRef(back)}, {"groups", ShowRef(groups)}, {"named", ShowRef(named)}});
+    p.record("Match", {{"text", ShowRef(text_p)}, {"front", ShowRef(front_p)}, {"back", ShowRef(back_p)}, {"groups", ShowRef(groups_p)}, {"named", ShowRef(named_p)}});
 }
 
 }  // namespace prism_rtl

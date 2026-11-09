@@ -479,7 +479,7 @@ fn TyDefs lx, ti:
             let fields = Each (Range0 (Len fs)), \|i|
                 let ((fname, ft)) = Or fs[i], (("", TyErr))
                 let rt = OutTyOf lx, ft
-                ((Snake fname, (if RcField lx, ti.name, i: OutRc rt else: rt)))
+                (((FieldSpell ti.home, fname, ft), (if RcField lx, ti.name, i: OutRc rt else: rt)))
             [[ItType (Mk ShapeRecord, [[CaseDef(name=(Camel bare), prism=bare, fields=fields, labels=(Each fs, \|((fname, ignore))| fname))]])]]
         BChoice cases:
             let defs = Each cases, \|((cn, ats))|
@@ -563,7 +563,7 @@ fn TypeDoc lx, ti = match lx.g.srcs[ti.file]:
 # is a request); any other tag's fields, all plain.
 TagDefOf: unbounded fn Lx, TagInfo -> TagDef
 fn TagDefOf lx, tg:
-    let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (Snake fname), (OutTyOf lx, (Peel ft))))
+    let fields = Each (LevelFields tg), \|((fname, ft))| ((fname, (FieldSpell tg.home, fname, ft), (OutTyOf lx, (Peel ft))))
     TagDef(name=(TagStruct tg.name), tagName=tg.name, fields=fields, doc=(TypeDoc lx, (TyInfo(name=tg.name, home=tg.home, params=[[]], body=BOpaque, derives=[[]], file=tg.file, span=tg.span))), pod=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and Podable t), eq=(Fold fields, True, \|ok, ((ignore, ignore, t))| ok and RuntimeEq t))
 
 LevelFields: fn TagInfo -> [((Text, Ty))]

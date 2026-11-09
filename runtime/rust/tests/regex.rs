@@ -56,25 +56,25 @@ fn span(whole: &Text, text: &Text, front: &Cursor, back: &Cursor) -> Result<Stri
 }
 
 fn group(whole: &Text, g: &Group) -> Result<String, String> {
-    span(whole, &g.text, &g.front, &g.back)
+    span(whole, &g.text_p, &g.front_p, &g.back_p)
 }
 
 fn render(whole: &Text, m: &Match) -> Result<String, String> {
-    let mut out = vec![span(whole, &m.text, &m.front, &m.back)?];
-    let g0 = m.groups.iter().next().and_then(|g| g.as_ref()).ok_or("groups[0] is not the whole match")?;
+    let mut out = vec![span(whole, &m.text_p, &m.front_p, &m.back_p)?];
+    let g0 = m.groups_p.iter().next().and_then(|g| g.as_ref()).ok_or("groups[0] is not the whole match")?;
     if group(whole, g0)? != out[0] {
         return Err("groups[0] is not the whole match".into());
     }
-    for g in m.groups.iter().skip(1) {
+    for g in m.groups_p.iter().skip(1) {
         out.push(match g {
             Some(g) => group(whole, g)?,
             None => "nil".into(),
         });
     }
-    let mut names: Vec<&Text> = m.named.keys().collect();
+    let mut names: Vec<&Text> = m.named_p.keys().collect();
     names.sort();
     for name in names {
-        let g = m.named.get(name).unwrap();
+        let g = m.named_p.get(name).unwrap();
         out.push(format!("{}={}", name.as_str(), group(whole, g)?));
     }
     Ok(out.join(" "))
@@ -156,7 +156,7 @@ fn a_runtime_pattern_is_nil_outside_the_dialect() {
     assert!(Regex::parse(&Text::new("a**")).is_none());
     assert!(Regex::parse(&Text::new("(?=a)")).is_none());
     let re = Regex::parse(&Text::new("(?i)k+")).expect("in the dialect");
-    assert_eq!(re.find(&Text::new("xKk")).map(|m| m.text.as_str().to_string()), Some("Kk".to_string()));
+    assert_eq!(re.find(&Text::new("xKk")).map(|m| m.text_p.as_str().to_string()), Some("Kk".to_string()));
 }
 
 #[test]
@@ -189,7 +189,7 @@ fn a_match_from_a_view_reports_cursors_into_that_view() {
     let whole = Text::new("xx abc");
     let view = Cursor::at_byte(&whole, 3).unwrap().after();
     let m = Regex::new("b", "").unwrap().find(&view).unwrap();
-    assert_eq!((m.front.at(), m.back.at(), m.front.before().as_str()), (1, 2, "a"));
+    assert_eq!((m.front_p.at(), m.back_p.at(), m.front_p.before().as_str()), (1, 2, "a"));
     // ?Match at a cursor of the view sees the view's text before it, not the buffer's.
     let c = Cursor::at_byte(&view, 0).unwrap();
     assert!(Regex::new("^a", "").unwrap().match_at(&c).is_some());
