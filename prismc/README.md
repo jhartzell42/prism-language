@@ -1456,6 +1456,20 @@ Each is Claude's, for Jimmy to overturn.
   prebound to by `BindPlain`), so the build reads the local and the methods the field, as
   for a plain parameter (`sem-ch08-widget-plain-result`); a tuple pattern binds each name
   to its part. A node is emitted per root widget only: the ones a test names and `@main`.
+- **BO The build reads in dependency order** (Semantics ch. 4, "Binding groups and
+  cycles": a block is one binding group and the order of its lines decides positions and
+  nothing else). Lines are lowered in page order, which numbers the places; each line's
+  `let`s of the build (a hold's initial value, a plain `let`, a widget's plain result, an
+  element's first value) are then put after the `let`s of the lines binding the names it
+  reads (`BuildInOrder`, `BuildOrder` in lower/node/def.prism), ties in page order. A
+  hold's value at the build is bound before any line (`PreInit`), so an element above it
+  asks with the initial value. The edges: a hold reads only its initial value (its step is
+  heard after the build), an event is no edge (its port is made before any line), and a
+  name a lambda's or an arm's pattern or an inner block's `let` hides is the inner one
+  (`FreeReads`). Lines that still read each other at the build are a cycle the checker let
+  through, refused as `not-lowered` naming them (`sem-ch04-read-above-binding`).
+  *Refused:* lowering the lines themselves in dependency order, which would number the
+  places by it.
 - **EV The event graph.** Within a node an event is a graph node (a source, a named
   `let !x`, a combinator) and a pipe of pure transforms that calls straight through, so
   `increment` calls `delta` calls the hold's write, as in Compiler ch. 3. A named event
@@ -2182,7 +2196,8 @@ not a named function, a local function whose
 parameters are not names or used as a value, an unbounded call lifted over a `?` or `~`, `!MergeAll` of a list that is not a
 literal, lifted functions with time parameters (`fn !Bump $n, !go`), building `match`
 and `if`, a widget of several clauses in a static position of a hosted scope (pick CS),
-`Time.After`, and the zombie and
+`Time.After`, lines of a block that read each
+other at the build (pick BO), and the zombie and
 dead states (`leave`, `clean_up`, `edges`).
 
 ## Regular expressions

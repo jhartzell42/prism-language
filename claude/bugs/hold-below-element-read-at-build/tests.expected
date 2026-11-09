@@ -1,9 +1,0 @@
-# Derived by hand from Semantics ch. 4 and 8: the block is one binding group, so the door's first value is asked at the build with `$called`'s initial value, "front", and the plain `let` reads the value `@Word "x"` ends on; the hold and `@Word` take no position, so the places are the door, the label and the button, in page order.
-test a_build_reads_names_bound_below
-
-tick 0
-  added:
-    0: Pad.Door(name="front")
-    1: Ui.Label(text="door 1, hello x")
-    2: Ui.Button(label="never")
-  result: "door 1"

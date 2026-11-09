@@ -12,6 +12,3 @@ A bug leaves this directory when its fix lands.
   present each frame.
 - **`bench-cuis-latin1-and-software-paint.md`**: on Linux under Xvfb the Cuis table's
   times measure software painting, not Morphic.
-- **`hold-below-element-read-at-build.md`**: a block's build reads a name bound on a line
-  below it (a hold's initial value in an element's first value, a plain `let`, a widget's
-  plain result); the build's `let`s follow page order and the crate fails at rustc.
