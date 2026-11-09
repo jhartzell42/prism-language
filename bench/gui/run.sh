@@ -87,7 +87,7 @@ for impl in "${impls[@]}"; do
 done
 load_end=$(load_line)
 
-# ---- bench/RESULTS.md ----------------------------------------------------------------
+# ---- bench/gui/RESULTS.md ------------------------------------------------------------
 
 cell() { # impl op: "median (min–max)"
     local s; s=$(stats "$raw/$1-$2.txt")

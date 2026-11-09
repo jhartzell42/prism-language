@@ -11,8 +11,7 @@ use Syntax.*
 use Syntax.Decls.*
 
 # ---------------------------------------------------------------------------------------
-# The layout corpus's notation (prism_syntax/src/corpus.rs): what `prismc --tokens`
-# prints, to diff the two lexers
+# The layout corpus's notation: what `prismc --tokens` prints
 # ---------------------------------------------------------------------------------------
 
 RenderTokens: fn [Tok] -> Text

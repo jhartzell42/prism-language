@@ -1,4 +1,4 @@
-# The `Fs` family, as prism_rt's CLI World answers it (prism_rt/src/world/cli.rs;
+# The `Fs` family, as the CLI Worlds answer it (worlds/cli/rust, worlds/cli/cpp;
 # Semantics ch. 8 and ch. 10; prism-reflex ch. 6). There is no directory listing (TD-W1).
 emit Fs.*
 

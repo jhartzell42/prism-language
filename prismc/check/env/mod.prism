@@ -170,7 +170,7 @@ type G = record:
     preludeFrom: Nat
 derive ^Eq, ^Show
 
-# The primitive types (prism_rt's own; prelude.prism declares none of them).
+# The primitive types (the runtimes' own; prelude.prism declares none of them).
 # The two opaque types of the regular-expression literals (Type System ch. 2).
 IsRegexType: fn Text -> Bool
 fn IsRegexType n = n == "Regex" or n == "RegexReplacement"

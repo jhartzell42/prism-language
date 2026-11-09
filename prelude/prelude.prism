@@ -2,14 +2,15 @@
 # (Semantics ch. 6, "The prelude is used by every file"). Its functions and types come in
 # bare; its tags come with their family, `Prelude.Unwrap`.
 #
-# Written by Claude, 31 October 2026, for compiler zero (prism_zero) on the
-# claude-self-hosting branch. Subject to change; Jimmy rewrites it by hand.
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to
+# change; Jimmy rewrites it by hand.
 #
 # How to read this file: a signature line with `fn` clauses under it is a prelude
-# function written in Prism. A signature line with no clauses is a builtin: prism_zero
-# supplies its body in Rust (`prism_zero/src/builtins.rs`), registered by this name, and
-# lifts it by this signature (Type System ch. 4, "Where the table looks"). Each builtin's
-# cost promise is Appendix B's and is stated in its Rust doc comment.
+# function written in Prism. A signature line with no clauses is a builtin: prismc checks
+# and lifts it by this signature (Type System ch. 4, "Where the table looks") and each back
+# end supplies its body (prismc/emit/rust/prelude.prism and prismc/emit/cpp/prelude.prism,
+# emitted with every program, over runtime/rust and runtime/cpp). Each builtin's cost
+# promise is Appendix B's.
 
 emit r
 
@@ -77,7 +78,7 @@ tag Prelude.NotANumber of Fault
 # Traits (Appendix B, Traits; Type System ch. 3)
 # ---------------------------------------------------------------------------------------
 
-# Derivable and structural. With no `impl`, prism_zero answers each method structurally
+# Derivable and structural. With no `impl`, a `derive` gives each method structurally
 # (Type System ch. 3, "Derive, out loud"); an `impl` for a type replaces it.
 trait ^Eq a:
     ==: fn a, a -> Bool

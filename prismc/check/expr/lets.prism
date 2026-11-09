@@ -321,7 +321,7 @@ fn CheckBody env, st, body, res = match body:
 # Templates
 # ---------------------------------------------------------------------------------------
 
-# A code template is a text (prism_zero's pick TP); each placeholder prints.
+# A code template is a text; each placeholder prints.
 InferTemplate: unbounded fn Env, St, Template -> ((Ty, St))
 fn InferTemplate env, st, t:
     let st2 = Fold t.parts, st, \|s, part| TemplatePartCheck env, s, part

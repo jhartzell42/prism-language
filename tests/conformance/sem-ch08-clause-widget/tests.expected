@@ -1,4 +1,4 @@
-# prism_zero's transcript: an inlined widget's places stand in its caller's sequence (Semantics
+# An inlined widget's places stand in its caller's sequence (Semantics
 # ch. 8). prismc lowers a widget of several clauses in a static position as a generation built
 # once, its place at 1/#0/0 (prismc/README.md, gap CW), so prismc fails this test.
 test the_clause_is_chosen_at_the_build

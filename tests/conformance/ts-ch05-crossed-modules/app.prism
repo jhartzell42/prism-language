@@ -1,4 +1,4 @@
-# Two modules that use each other's types (ts-ch05-crossed-modules/left.prism says why),
+# Two modules that use each other's types (left/mod.prism says why),
 # weighed from the root. Work in progress, subject to change.
 emit Ui.*
 mod Left

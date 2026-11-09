@@ -52,7 +52,7 @@ fn InferArray env, st, es, span:
     let st3 = Fold es, st2, \|s, x| Check env, s, x, v
     ((TyArray v, st3))
 
-# A map literal lifts over a `$` or `!` among its entries (prism_zero's pick ML, which
+# A map literal lifts over a `$` or `!` among its entries (which
 # Semantics ch. 4's `{$next: Added} on !add` needs); its keys are `^Ord`.
 InferMap: unbounded fn Env, St, [((Expr, Expr))], Range -> ((Ty, St))
 fn InferMap env, st, entries, span:
