@@ -1,0 +1,27 @@
+# A block reads at the build a name bound on a line below (Semantics ch. 4: a widget block
+# is one binding group, any line may use any name the block binds, and the order of its
+# lines decides positions and nothing else): the door's first value is asked with the
+# initial value of `$called`, a hold bound below it; a plain `let` reads `word`, a widget's
+# plain result bound below it. Neither the hold nor `@Word` takes a position, so the
+# transcript is the one the same block gives with those lines moved to the top. Written by
+# Claude on the claude-widget-plain branch; subject to change. It moves into
+# tests/conformance/ when the bug is fixed (claude/bugs/hold-below-element-read-at-build.md).
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Door of Element ((Text, !Nat)):
+    name: $Text
+
+@Word: fn Text -> @Text
+fn @Word w:
+    @ w
+
+@page: @Text
+@page:
+    ((door, !knocks)) <- Pad.Door(name=$called)             # 0
+    let greeting = "hello {word}"
+    Ui.Label(text=$"{door}, {greeting}")                    # 1
+    $called <- "front" then "back" on !never
+    word <- @Word "x"
+    !never <- Ui.Button(label=$"never")                     # 2
+    @ door
