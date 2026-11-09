@@ -1,0 +1,30 @@
+# A local whose name and id spell a runtime's helper (pick UN): the sixteenth binder of
+# `Count`, a `?map` (id 15, `f` in base 32), beside a map literal, which the runtimes build
+# with a helper of that spelling. Written by Claude on the claude-bugs branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+
+Count: fn Nat -> Nat
+fn Count n:
+    let a = n + 1
+    let b = a + 1
+    let c = b + 1
+    let d = c + 1
+    let e = d + 1
+    let f = e + 1
+    let g = f + 1
+    let h = g + 1
+    let i = h + 1
+    let j = i + 1
+    let k = j + 1
+    let l = k + 1
+    let m = l + 1
+    let o = m + 1
+    let ?map = ?Div o, 2
+    let seen = {"one": 1, "two": 2}
+    (Or ?map, 0) + (Len seen)
+
+@shown: @unit
+@shown:
+    Ui.Label(text=$"{Count 0}")             # 0
