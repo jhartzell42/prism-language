@@ -148,7 +148,7 @@ fn GivenValue lx, env, b, t, span:
                 let v = ValueOf lx, en, x
                 let po = RustPat lx, p, (InnerTy (TypeAt lx, x.span)), Owned, "g{s.span.start}"
                 (((Push acc, (GivenBind isTry, po.pa, (Own v), label, (OutTyOf lx, (InnerTy (TypeAt lx, x.span))))), (BindAll en, po.binds), ?lv))
-            SRequire c: (((Push acc, (DoIf (XUnary "!", (AsBool (ValueOf lx, en, c))), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
+            SRequire c: (((Push acc, (DoIf (XUnary OpNot, (AsBool (ValueOf lx, en, c))), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
             SForbid c: (((Push acc, (DoIf (AsBool (ValueOf lx, en, c)), [[DoExpr (XBreak label, fail)]], [[]])), en, ?lv))
             SExpr x:
                 if i + 1 == n: ((acc, en, ? (ValueOf lx, en, x)))
@@ -225,7 +225,7 @@ fn UpdStmt lx, env, s = match s.kind:
                     CcIf t: Push acc, t
                     otherwise: acc
                 let lets = Fold conds, False, \|f, c| f or IsLetCond c
-                let stop = if (Len tests) == 0: [[]] else: [[(DoIf (XUnary "!", (AllOf tests)), [[DoExpr (XVar "break")]], [[]])]]
+                let stop = if (Len tests) == 0: [[]] else: [[(DoIf (XUnary OpNot, (AllOf tests)), [[DoExpr (XVar "break")]], [[]])]]
                 let body2 = if lets: [[RefusalDo "a `while` whose pattern matches through an `Rc`"]] else: Append stop, inner2
                 (([[(DoWhileLet po.pa, (Own (ValueOf lx, env, x)), body2)]], env))
     SExpr x: match x.kind:
@@ -340,7 +340,7 @@ fn UpdMatch lx, env, scrut, arms:
 # Conditions joined by `&&`.
 AllOf: fn [Ex] -> Ex
 fn AllOf [[one]] = one
-fn AllOf xs = Fold (Drop xs, 1), (Or xs[0], (XBool True)), \|acc, x| XBin "&&", acc, x
+fn AllOf xs = Fold (Drop xs, 1), (Or xs[0], (XBool True)), \|acc, x| XBin OpAnd, acc, x
 
 ArmDos: fn Ex -> [Do]
 fn ArmDos (XBlock dos, ignore) = dos

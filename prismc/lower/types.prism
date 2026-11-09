@@ -95,8 +95,8 @@ fn OutTyOf lx, t = match t:
     TyElem ignore, ignore: OutLive (OutNamed "crate::Elem", [[]])
     TyElemAny ignore: OutNamed "crate::Elem", [[]]
     TyAt i, ignore: blueprintTy
-    TyAssoc ignore, ignore: OutUnknown "an associated type"
-    TyErr: OutUnknown "a type the checker did not find"
+    TyAssoc ignore, ignore: OutRefused "an associated type"
+    TyErr: OutRefused "a type the checker did not find"
 
 # A blueprint as a value, `@o` (a supplier's answer): prism_rtl's, over the program's
 # element and answer enums (pick HO).
@@ -231,7 +231,7 @@ fn Podable t = match t:
     OutDyn ignore: False
     OutShowAny: False
     OutLive ignore: False
-    OutUnknown ignore: False
+    OutRefused ignore: False
     OutGen ignore: True
     OutNamed ignore, args: Fold args, True, \|ok, a| ok and Podable a
     OutOpt i: Podable i

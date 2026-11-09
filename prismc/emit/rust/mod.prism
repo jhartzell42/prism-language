@@ -91,7 +91,8 @@ fn Type t = match t:
     OutSlice i: "[{Type i}]"
     OutPort i: "Port<{Type i}>"
     OutLive i: "Live<{Type i}>"
-    OutUnknown what: "() /* {what} */"
+    OutTurn: "() /* the job's turn */"
+    OutRefused what: "compile_error!(\"{loweringRefusal}{what}\")"
     OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
 
 Types: unbounded fn [OutTy] -> Text
@@ -176,8 +177,8 @@ fn Expression x = match x:
     XCall f, args: "{f}({Args args})"
     XApply f, args: "{Tight f}({Args args})"
     XMethod r, m, args: "{Tight r}.{m}({Args args})"
-    XBin op, l, r: "{Operand l} {op} {Operand r}"
-    XUnary op, y: "{op}{Operand y}"
+    XBin op, l, r: "{Operand l} {BinOpText op} {Operand r}"
+    XUnary op, y: "{UnOpText op}{Operand y}"
     XCtor p, args: "{p}({Args args})"
     XRecord p, fs: "{p} \{ {Join (Each fs, \|((f, v))| FieldInit f, v), ", "} \}"
     XTuple [[one]]: "({Expression one},)"

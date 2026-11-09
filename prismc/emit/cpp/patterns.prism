@@ -117,7 +117,7 @@ fn Leaves x = match x:
 # RN), each arm tested in turn; the arm that holds sets the value and leaves. A guard that fails, or a `let` after the pattern
 # that does not match, goes on to the next arm (Rust's semantics of both).
 CppMatch: unbounded fn Cp, Ex, [XArm], OutTy -> Text
-fn CppMatch cp, s, arms, (OutUnknown what) = TernaryMatch cp, s, arms
+fn CppMatch cp, s, arms, OutTurn = TernaryMatch cp, s, arms
 fn CppMatch cp, s, arms, t:
     let ?bound = match s:
         XVar n: ? (VarName cp, n)
@@ -134,7 +134,7 @@ fn CppMatch cp, s, arms, t:
 # tests, each arm returning its value (an arm's own `match` returning in turn), with no
 # statement expression, `Slot` or jump.
 ReturnMatch: unbounded fn Cp, Ex, [XArm], OutTy -> Text
-fn ReturnMatch cp, s, arms, (OutUnknown what) = "return {TernaryMatch cp, s, arms};"
+fn ReturnMatch cp, s, arms, OutTurn = "return {TernaryMatch cp, s, arms};"
 fn ReturnMatch cp, s, arms, t:
     let ?bound = match s:
         XVar n: ? (VarName cp, n)

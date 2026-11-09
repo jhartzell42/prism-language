@@ -294,8 +294,8 @@ fn CppType cp, t = match t:
     OutSlice i: "std::span<const {CppType cp, i}>"
     OutPort i: "Port<{CppType cp, i}>"
     OutLive i: "Live<{CppType cp, i}>"
-    OutUnknown "the job's turn": "decltype(this->cycle())"
-    OutUnknown what: "Unit /* {what} */"
+    OutTurn: "decltype(this->cycle())"
+    OutRefused what: "compile_error!(\"{loweringRefusal}{what}\")"
     OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
 
 CppTypes: unbounded fn Cp, [OutTy] -> Text

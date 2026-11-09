@@ -402,7 +402,7 @@ fn GenForwards gd:
 ForwardGen: fn GenDef -> Ex
 fn ForwardGen gd:
     let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
-    let isCurrent = XBin "==", (XBin "+", (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
+    let isCurrent = XBin OpEq, (XBin OpAdd, (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
     XBlock [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "answer", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]], (XUnit)
 
 # `@Flatten $$x` over a `rebuild`'s dynamic `$$x` (claude/backend.md, "Dynamic structure";

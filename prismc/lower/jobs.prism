@@ -276,7 +276,7 @@ fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
         CondBind p, x, ignore:
             let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "u{x.span.start}"
             let thenX = UpdTailFrom lx, (BindAll env, po.binds), (BindAll env, po.binds), thenB, 0, thenB.span, ToK
-            Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=thenX), XArm(pat=PaWild, conds=[[]], body=elseX)]], "'u{x.span.start}", OutUnknown "the job's turn")
+            Own (ArmsValue (Own (ValueOf lx, env, x)), [[XArm(pat=po.pa, conds=po.conds, body=thenX), XArm(pat=PaWild, conds=[[]], body=elseX)]], "'u{x.span.start}", OutTurn)
     Prepend (Push outDos, kDo), choose
 
 # A `match` of an `update` block in a job whose arms hold a cycle-point `while`, as `IfJob`
@@ -307,7 +307,7 @@ fn MatchJob lx, outer, env, scrut, arms, span, restText, Cont:
         let envA = BindAll env, po.binds
         let guarded = Append po.conds, (GuardConds lx, envA, arm.?guard)
         XArm(pat=po.pa, conds=guarded, body=(UpdTailFrom lx, envA, envA, arm.body, 0, arm.body.span, ToK))
-    Prepend (Push outDos, kDo), (Own (ArmsValue (Own (ValueOf lx, env, scrut)), xarms, "'u{scrut.span.start}", OutUnknown "the job's turn"))
+    Prepend (Push outDos, kDo), (Own (ArmsValue (Own (ValueOf lx, env, scrut)), xarms, "'u{scrut.span.start}", OutTurn))
 
 # A `for` of an `update` block in a job whose body holds a cycle-point `while`: a loop over
 # its entries, as `WhileJob`'s `loop_turns` is over a condition, taking the next entry its
@@ -540,7 +540,7 @@ fn TailMatch lx, env, s, arms, span:
         let env2 = BindAll env, po.binds
         XArm(pat=po.pa, conds=(Append po.conds, (GuardConds lx, env2, arm.?guard)), body=(TailBlock lx, env2, arm.body))
     let scrut = if owned: Own sv else: Ref sv
-    Own (ArmsValue scrut, xarms, "'{label}", (OutUnknown "the job's turn"))
+    Own (ArmsValue scrut, xarms, "'{label}", (OutTurn))
 
 # The unbounded function a call in tail position enters, when it has a job.
 ?TailCallee: fn Lx, Env, Expr -> ?Text
@@ -598,5 +598,5 @@ fn JobClauses lx, clauses, names, ptys, pts:
     let lets = Each (Range0 (Len names)), \|i|
         let ((rs, ignore)) = Or names[i], (("arg", True))
         DoLet (PaBind rs), (XRef (XField XSelf, rs))
-    let inner = ClausesBody lx, emptyEnv, clauses, names, ptys, TailBody, "j", (OutUnknown "the job's turn")
+    let inner = ClausesBody lx, emptyEnv, clauses, names, ptys, TailBody, "j", (OutTurn)
     XBlock lets, inner

@@ -98,8 +98,66 @@ type OutTy = choice:
     # A quantified type variable of a generalized local `let` that no instantiation gave a
     # type (pick LG): the printer refuses it, naming the binding.
     OutQuantified Text
-    OutUnknown Text
+    # A job's turn, whose C++ type the printer reads off the job (`decltype(this->cycle())`).
+    OutTurn
+    # A type lowering could not find (the checker found none, an associated type): writing
+    # it anywhere is a prismc refusal naming what it is, never a type a compiler guesses.
+    OutRefused Text
 derive ^Eq, ^Show
+
+# The model's operators, which each printer spells (pick UN: no operator is a string).
+type BinOp = choice:
+    OpAdd
+    OpSub
+    OpMul
+    OpDiv
+    OpEq
+    OpNe
+    OpLt
+    OpLe
+    OpGt
+    OpGe
+    OpAnd
+    OpOr
+derive ^Eq, ^Show
+
+type UnOp = choice:
+    OpNot
+    OpNeg
+derive ^Eq, ^Show
+
+# An operator's spelling, the same in Rust and C++.
+BinOpText: fn BinOp -> Text
+fn BinOpText OpAdd = "+"
+fn BinOpText OpSub = "-"
+fn BinOpText OpMul = "*"
+fn BinOpText OpDiv = "/"
+fn BinOpText OpEq = "=="
+fn BinOpText OpNe = "!="
+fn BinOpText OpLt = "<"
+fn BinOpText OpLe = "<="
+fn BinOpText OpGt = ">"
+fn BinOpText OpGe = ">="
+fn BinOpText OpAnd = "&&"
+fn BinOpText OpOr = "||"
+
+UnOpText: fn UnOp -> Text
+fn UnOpText OpNot = "!"
+fn UnOpText OpNeg = "-"
+
+# Prism's arithmetic and comparison operators as the model's.
+?BinOpOf: fn Text -> ?BinOp
+fn ?BinOpOf "+" = ? OpAdd
+fn ?BinOpOf "-" = ? OpSub
+fn ?BinOpOf "*" = ? OpMul
+fn ?BinOpOf "/" = ? OpDiv
+fn ?BinOpOf "==" = ? OpEq
+fn ?BinOpOf "!=" = ? OpNe
+fn ?BinOpOf "<" = ? OpLt
+fn ?BinOpOf "<=" = ? OpLe
+fn ?BinOpOf ">" = ? OpGt
+fn ?BinOpOf ">=" = ? OpGe
+fn ?BinOpOf ignore = nil
 
 # An expression. Each node names an operation, never its spelling: a printer spells it
 # for its target. Text in a node is a name (a local, a field, a method, a function's or a
@@ -157,8 +215,8 @@ type Ex = choice:
     XCall Text, [Ex]
     XApply Ex, [Ex]
     XMethod Ex, Text, [Ex]
-    XBin Text, Ex, Ex
-    XUnary Text, Ex
+    XBin BinOp, Ex, Ex
+    XUnary UnOp, Ex
     XCtor Text, [Ex]
     XRecord Text, [((Text, Ex))]
     XTuple [Ex]

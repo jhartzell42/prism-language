@@ -137,8 +137,8 @@ fn CppExpr cp, x = match x:
         let ((lt, rt)) = match CppArgList cp, [[l, r]]:
             [[a, b]]: ((a, b))
             otherwise: (("", ""))
-        "{if CppLoose l: "({lt})" else: lt} {op} {if CppLoose r: "({rt})" else: rt}"
-    XUnary op, y: "{op}{CppTight cp, y}"
+        "{if CppLoose l: "({lt})" else: lt} {BinOpText op} {if CppLoose r: "({rt})" else: rt}"
+    XUnary op, y: "{UnOpText op}{CppTight cp, y}"
     XCtor p, args: CppCtor cp, p, args
     XRecord p, fs: CppRecord cp, p, fs
     XTuple xs: "std::tuple\{{CppArgs cp, xs}\}"

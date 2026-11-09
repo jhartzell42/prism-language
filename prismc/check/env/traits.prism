@@ -298,6 +298,9 @@ fn SolveClass g, st, s0, Restore, givens, w, t:
             TySig ignore, ignore: (([[]], st))
             TyElem rw, ignore: ElemTrait g, st, s0, Restore, w, t, bare, rw
             TyElemAny rw: ElemTrait g, st, s0, Restore, w, t, bare, rw
+            # a comparison takes two values of one type, and each existential hides a type
+            # of its own, so an `any` has no `^Eq` or `^Ord` (Jimmy, 9 November 2026)
+            TyAny trs if HasText (SuperClosure g, w.cls), "Prelude.Eq": (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`: each existential hides a type of its own, so two do not compare")))
             TyAny trs: if (HasText trs, w.cls) or (Fold trs, False, \|seen, tr| seen or (HasText (SuperClosure g, tr), w.cls)): (([[]], (Solved st, w, t, "packed"))) else: (([[]], Restore (Err s0, "no-impl", w.span, "no impl of `^{bare}` for `{ShowTy st, t}`")))
             TyCon con, args:
                 if BuiltinHas w.cls, con: (([[]], (Solved st, w, t, "builtin")))

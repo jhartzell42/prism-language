@@ -446,10 +446,13 @@ fn NodeItems n = Append [[ItNode n]], (Each n.children, \|c| ItNode c)
 # A declared type's Rust type (claude/backend.md, "Types").
 TyDefs: unbounded fn Lx, TyInfo -> [Item]
 fn TyDefs lx, ti:
-    let derives = Each ti.derives, \|dn| BareName dn
+    # the derives by the traits they resolve to, as the checker's derived impls read them
+    let derives = Fold ti.derives, [[]], \|acc, dn| match ?ResolveTrait lx.g, ti.home, (SplitOn dn, "."):
+        ? cls: Push acc, cls
+        nil: acc
     let params = Each ti.params, \|p| Camel p
     let bare = BareName ti.name
-    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, shape=shape, cases=cases, eq=(HasText derives, "Eq"), ord=(HasText derives, "Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
+    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, shape=shape, cases=cases, eq=(HasText derives, "Prelude.Eq"), ord=(HasText derives, "Prelude.Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Prelude.Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
     match ti.body:
         BRecord fs:
             let fields = Each (Range0 (Len fs)), \|i|
@@ -518,7 +521,7 @@ fn TyHasEq lx, t, seen = match t:
         else:
             let argsOk = Fold args, True, \|ok, x| ok and TyHasEq lx, x, (Push seen, n)
             argsOk and match lx.g.types[n]:
-                ? ti: (Fold ti.derives, False, \|f, d| f or (BareName d) == "Eq") or HasOwnEq lx, n
+                ? ti: (Fold ti.derives, False, \|f, d| f or (?ResolveTrait lx.g, ti.home, (SplitOn d, ".")) == ? "Prelude.Eq") or HasOwnEq lx, n
                 nil: True
     otherwise: False
 

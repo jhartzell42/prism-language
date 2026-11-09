@@ -317,12 +317,12 @@ fn PlainValueByKind lx, env, e:
         ECall c, args, ignore, ignore: Application lx, env, c, args, e.span
         EMethod r, m, args: Application lx, env, (Expr(kind=(EName m), span=m.span)), (Append [[Arg(name=nil, value=r, span=r.span)]], args), e.span
         EBinary op, l, r: BinaryValue lx, env, op, l, r, e.span
-        EUnary "not", x: VlOwned (XUnary "!", (AsBool (ValueOf lx, env, x))), OutBool
+        EUnary "not", x: VlOwned (XUnary OpNot, (AsBool (ValueOf lx, env, x))), OutBool
         EUnary "neg", x: match x.kind:
             ELit l: LiteralValue lx, env, l, x.span, True
             otherwise:
                 let v = ValueOf lx, env, x
-                if IsCopy t: VlOwned (XUnary "-", (Copy v)), t else: VlOwned (XUnary "-", (Ref v)), t
+                if IsCopy t: VlOwned (XUnary OpNeg, (Copy v)), t else: VlOwned (XUnary OpNeg, (Ref v)), t
         EUnary ignore, x: ValueOf lx, env, x
         EFreeSigil "?", x: VlOwned (XCtor "Some", [[Own (ValueOf lx, env, x)]]), t
         EFreeSigil "~", x: VlOwned (XCtor "Ok", [[Own (ValueOf lx, env, x)]]), t
@@ -799,8 +799,8 @@ BinaryValue: unbounded fn Lx, Env, Text, Expr, Expr, Range -> Vl
 fn BinaryValue lx, env, op, l, r, span:
     let t = OutTyOf lx, (Peel (TypeAt lx, span))
     match op:
-        "and": VlOwned (XBin "&&", (AsBool (ValueOf lx, env, l)), (AsBool (ValueOf lx, env, r))), OutBool
-        "or": VlOwned (XBin "||", (AsBool (ValueOf lx, env, l)), (AsBool (ValueOf lx, env, r))), OutBool
+        "and": VlOwned (XBin OpAnd, (AsBool (ValueOf lx, env, l)), (AsBool (ValueOf lx, env, r))), OutBool
+        "or": VlOwned (XBin OpOr, (AsBool (ValueOf lx, env, l)), (AsBool (ValueOf lx, env, r))), OutBool
         # In a function lifted over an event (`fn !Bump $n, !go = $n + 1 on !go`), the
         # function runs at the event's firing, so `x on !e` is `x` read there.
         "on": ValueOf lx, env, l
@@ -814,19 +814,26 @@ fn OpValue lx, op, a, b, span, t:
     let generic = match at:
         OutGen ignore: True
         otherwise: False
-    if HasText [["==", "!=", "<", "<=", ">", ">="]], op: VlOwned (XBin op, (Ref a), (Ref b)), OutBool
+    if HasText [["==", "!=", "<", "<=", ">", ">="]], op: VlOwned (OpOf op, (Ref a), (Ref b)), OutBool
     else: if op == "mod": VlOwned (XMethod (Ref a), "modulo", [[Ref b]]), t
     else: if generic: VlOwned (XCall "Num::{NumMethod op}", [[Ref a, Ref b]]), t
     else: if op == "/":
-        if at == OutFloat: VlOwned (XBin "/", (Copy a), (Copy b)), t
+        if at == OutFloat: VlOwned (XBin OpDiv, (Copy a), (Copy b)), t
         else: VlOwned (XMethod (Ref a), "div", [[Ref b]]), t
     else: if op == "-?":
         if at == OutNat: VlOwned (XMethod (Ref a), "checked_sub", [[Ref b]]), t
-        else: VlOwned (XCtor "Some", [[(XBin "-", (Ref a), (Ref b))]]), t
-    else: if op == "+?": VlOwned (XCtor "Some", [[(XBin "+", (Ref a), (Ref b))]]), t
-    else: if op == "*?": VlOwned (XCtor "Some", [[(XBin "*", (Ref a), (Ref b))]]), t
-    else: if IsCopy at: VlOwned (XBin op, (Copy a), (Copy b)), t
-    else: VlOwned (XBin op, (Ref a), (Ref b)), t
+        else: VlOwned (XCtor "Some", [[(XBin OpSub, (Ref a), (Ref b))]]), t
+    else: if op == "+?": VlOwned (XCtor "Some", [[(XBin OpAdd, (Ref a), (Ref b))]]), t
+    else: if op == "*?": VlOwned (XCtor "Some", [[(XBin OpMul, (Ref a), (Ref b))]]), t
+    else: if IsCopy at: VlOwned (OpOf op, (Copy a), (Copy b)), t
+    else: VlOwned (OpOf op, (Ref a), (Ref b)), t
+
+# A Prism operator of two operands in the model; one the model has no operator for is
+# refused.
+OpOf: fn Text, Ex, Ex -> Ex
+fn OpOf op, a, b = match ?BinOpOf op:
+    ? o: XBin o, a, b
+    nil: Refusal "the operator `{op}`"
 
 NumMethod: fn Text -> Text
 fn NumMethod "+" = "add"
@@ -974,9 +981,9 @@ fn FieldInfo lx, rty, name = match rty:
                     let ft = Or c.args[i], TyErr
                     let inst = Instantiated ft, c.params, args
                     (((OutTyOf lx, inst), (RcField lx, c.name, i)))
-                nil: (((OutUnknown "a field {name}"), False))
-        nil: (((OutUnknown "a field {name}"), False))
-    otherwise: (((OutUnknown "a field {name} of a non-record"), False))
+                nil: (((OutRefused "a field {name}"), False))
+        nil: (((OutRefused "a field {name}"), False))
+    otherwise: (((OutRefused "a field {name} of a non-record"), False))
 
 # A field's declared type with the record's parameters replaced by its arguments.
 Instantiated: unbounded fn Ty, [Text], [Ty] -> Ty
@@ -1138,7 +1145,7 @@ fn LambdaParamTys lx, e, n:
 
 IsKnownTy: unbounded fn OutTy -> Bool
 fn IsKnownTy t = match t:
-    OutUnknown ignore: False
+    OutRefused ignore: False
     OutOpt x: IsKnownTy x
     OutRes x: IsKnownTy x
     OutArray x: IsKnownTy x
@@ -1247,7 +1254,7 @@ fn ClosureParams lx, env, ps, pts, typed = Fold (Range0 (Len ps)), (([[]], env))
     ? p:
         let po = RustPat lx, p, (BinderTyOfPattern lx, p), ByRef, "a{p.span.start}"
         let en2 = BindAll en, po.binds
-        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (OutUnknown "a parameter"))) else: po.pa
+        let pa = if typed: PaTyped po.pa, (OutRef (Or pts[i], (OutRefused "a parameter"))) else: po.pa
         (((Push acc, pa), en2))
     nil: ((acc, en))
 

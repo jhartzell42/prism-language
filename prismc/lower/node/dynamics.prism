@@ -112,7 +112,7 @@ fn EventIf wx, menv, c, a, b, t:
     let ((ra, w1)) = EventRef wx, menv, a
     let ((rb, w2)) = EventRef w1, menv, b
     let ga = EvRef(node=ra.node, owner=ra.owner, pipe=(\|x, K| ra.pipe x, \|y| [[(DoIf cond, (K y), [[]])]]))
-    let gb = EvRef(node=rb.node, owner=rb.owner, pipe=(\|x, K| rb.pipe x, \|y| [[(DoIf (XBin "==", cond, (XBool False)), (K y), [[]])]]))
+    let gb = EvRef(node=rb.node, owner=rb.owner, pipe=(\|x, K| rb.pipe x, \|y| [[(DoIf (XBin OpEq, cond, (XBool False)), (K y), [[]])]]))
     let ((nm, w3)) = FreshName w2, "chosen"
     let ((id, w4)) = Merge w3, nm, t, ga, gb
     (((EvRefOf w4, id), w4))

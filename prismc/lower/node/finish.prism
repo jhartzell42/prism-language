@@ -130,7 +130,7 @@ fn SinkCode sk, target, y = match target:
     # the value it holds as the tick opened, against the source's after it: equal, nothing
     # is written and nothing marked
     SkDistinct f:
-        let differs = XBin "!=", (XMethod (XField XSelf, "{f}"), "get", [[XCx]]), (XCtor "Some", [[XClone y]])
+        let differs = XBin OpNe, (XMethod (XField XSelf, "{f}"), "get", [[XCx]]), (XCtor "Some", [[XClone y]])
         let write = DoExpr (XMethod (XField XSelf, "{f}"), "set", [[(XCtor "Some", [[XClone y]]), XCx]])
         [[(DoIf differs, (Append [[write]], (HoldWritten sk, f)), [[]])]]
     # the map after the tick taken apart: the changed inners written and fired by the
@@ -277,7 +277,7 @@ fn FinishNode wx0, qk, params, isRow:
     let patchBody0 = Fold live, [[]], \|acc, p| Append acc, (if Emits wx, p.pos: PatchPlace wx, p else: [[(EntryTake XSelf, p)]])
     let patchBody = Append patchBody0, (RootDynPatch wx)
     let buildBody = BuildSteps sinks, False
-    let pushBody = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin "==", (XVar "element"), (XRef (XField XSelf, "{f}_element"))), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
+    let pushBody = Each (Filter wx.dynPlaces, \|((pos, ignore, ignore, ignore))| Emits wx, pos), \|((pos, f, t, ignore))| DoIf (XBin OpEq, (XVar "element"), (XRef (XField XSelf, "{f}_element"))), (DynPlaceWrite sinks, f, (XDecode t, (XVar "v"))), [[]]
     let hooks = Filter [[(("wake", wakeBody)), (("started", startedBody)), (("deferred", deferredBody)), (("build", buildBody)), (("push", pushBody)), (("patch", patchBody))]], \|((ignore, b))| (Len b) > 0
     let startedReg = if (Len wx.started) > 0: [[DoExpr (XMethod (XCx), "on_started", [[(XClone (XVar "node"))]])]] else: [[]]
     # the hosts linked to the node, then the builders and the snapshots (a place over a
@@ -452,7 +452,7 @@ fn DocumentBody Add, places, builders, gens:
     # a host's own rows (prism_rtl's) give their forwarded places' entries
     let RowDoc = \|b| if HasPrefix b.rowNode, "prism_rtl::HostRow": XMethod (XVar "row"), "entries", [[]] else: XMethod (XVar "row"), "document", [[XCx]]
     let rows = Each builders, \|b| DoFor (PaTuple [[PaBind "k", PaBind "row"]]), (XMethod (XMethod (XField XSelf, b.name), "borrow", [[]]), "iter", [[]]), [[(DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (RowDoc b), [[(Add (XMethod (XMethod (XMethod (XCall "Path::root", [[]]), "at", [[XIndex b.pos.at]]), "child", [[(XCtor "Segment::Key", [[(XMethod (XVar "k"), "to_pod", [[]])]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]]
-    let generations = Each gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[(DoLet (PaBind "g"), (XBin "-", (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]]), (XIndex 1))), (DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (XMethod (XMethod (XMethod (XCall "Path::root", [[]]), "at", [[XIndex gd.pos.at]]), "child", [[(XCtor "Segment::Gen", [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]], [[]]
+    let generations = Each gens, \|gd| DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XMethod (XMethod (XField XSelf, gd.name), "borrow", [[]]), "as_ref", [[]]), [[(DoLet (PaBind "g"), (XBin OpSub, (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]]), (XIndex 1))), (DoFor (PaTuple [[PaBind "p", PaBind "e"]]), (XMethod (XVar "row"), "document", [[XCx]]), [[(Add (XMethod (XMethod (XMethod (XCall "Path::root", [[]]), "at", [[XIndex gd.pos.at]]), "child", [[(XCtor "Segment::Gen", [[XVar "g"]])]]), "join", [[XRef (XVar "p")]]), (XVar "e"))]])]], [[]]
     Append (Append statics, rows), generations
 
 MapInsert: fn Ex, Ex -> Do
@@ -607,7 +607,7 @@ ResultMoved: fn Ex -> [Do]
 fn ResultMoved node:
     let r = DoLet (PaBind "r"), (XMethod node, "result_value", [[XCx]])
     let last = XMethod (XMethod (XField node, "result_last"), "borrow", [[]]), "as_ref", [[]]
-    let differs = XBin "!=", last, (XCtor "Some", [[XRef (XVar "r")]])
+    let differs = XBin OpNe, last, (XCtor "Some", [[XRef (XVar "r")]])
     [[r, (DoIf differs, [[(ResultKept node), resultTell]], [[]])]]
 
 ResultKept: fn Ex -> Do
@@ -680,7 +680,7 @@ fn TypedForwardArm b, segs:
 TypedGenArm: fn GenDef -> ((Pa, [Do]))
 fn TypedGenArm gd:
     let current = XClone (XMethod (XField XSelf, "{gd.name}"), "borrow", [[]])
-    let isCurrent = XBin "==", (XBin "+", (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
+    let isCurrent = XBin OpEq, (XBin OpAdd, (XDeref (XVar "g")), (XIndex 1)), (XMethod (XField XSelf, "{gd.name}_count"), "get", [[]])
     (((PosPat gd.pos, genTail), [[(DoLet (PaBind "row"), current), (DoIfLet (PaCtor "Some", [[PaBind "row"]]), (XVar "row"), [[(DoIf isCurrent, [[DoExpr (TryOf (XMethod (XVar "row"), "deliver", [[(XVar "rest"), (XVar "v"), XCx]]))]], [[]])]], [[]])]]))
 
 # The typed dispatch from a child place's path into the child's places (pick HO): the owner's
@@ -750,7 +750,7 @@ fn Decide g = match g.kind:
     GnMergeAll:
         let pushes = Each g.inputs, \|f| DoIfLet (PaCtor "Some", [[PaBind "x"]]), (XMethod (XField XSelf, "{f}"), "take", [[XCx]]), [[DoExpr (XMethod (XVar "all"), "push_back", [[(XVar "x")]])]], [[]]
         let start = DoLet (PaTyped (PaMut "all"), g.ty), (XCall "Array::new", [[]])
-        let fire = DoIf (XUnary "!", (XMethod (XVar "all"), "is_empty", [[]])), [[(SelfCall g.name, [[(XVar "all")]])]], [[]]
+        let fire = DoIf (XUnary OpNot, (XMethod (XVar "all"), "is_empty", [[]])), [[(SelfCall g.name, [[(XVar "all")]])]], [[]]
         DoBlock (Push (Append [[start]], pushes), fire)
     kind: PairDecide g, kind
 

@@ -129,7 +129,7 @@ fn LitPat lx, l, ty, mode, fresh, neg:
                 otherwise: LiteralValue lx, emptyEnv, l, l.span, neg
             let lv = VlOwned (Own lit), t
             let b = LocalPlace (XVar fresh), mode, t
-            PatOut(pa=(PaBind fresh), conds=[[CcIf (XBin "==", (Ref b), (Ref lv))]], binds=[[]])
+            PatOut(pa=(PaBind fresh), conds=[[CcIf (XBin OpEq, (Ref b), (Ref lv))]], binds=[[]])
 
 # `Ctor p, q`: a choice's case, a newtype, a unit type's value, `True`, a record by
 # position. A payload behind an `Rc` matches through a `let` after the pattern.
@@ -183,7 +183,7 @@ fn SubPat lx, c, i, p, ty, mode, fresh:
 BehindRc: unbounded fn Lx, Pattern, Ty, Holding, Text -> PatOut
 fn BehindRc lx, p, ty, rcMode, fresh:
     let inner = RustPat lx, p, ty, ByRef, "{fresh}_r"
-    let place = Ref (LocalPlace (XVar fresh), rcMode, (OutUnknown "a payload"))
+    let place = Ref (LocalPlace (XVar fresh), rcMode, (OutRefused "a payload"))
     PatOut(pa=(PaBind fresh), conds=(Append [[(CcLet inner.pa, place)]], inner.conds), binds=inner.binds)
 
 # `Rec(f=p, ..)` (a record) or `Error(kind=K, ..)` (the prelude's error, matched in `~T`
@@ -326,7 +326,7 @@ fn ErrorPat lx, fps, ty, mode, fresh:
                 PName k:
                     let ((?kq, ignore)) = ResolveValue lx.g, lx.home, k
                     match ?kq:
-                        ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin "==", (XRef (XDeref (XField (XVar fresh), "kind"))), (XStr kq))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal (XField (XVar fresh), "kind"), Owned, OutText)))]]))
+                        ? kq: if HasKey lx.g.tags, kq: ((([[CcIf (XBin OpEq, (XRef (XDeref (XField (XVar fresh), "kind"))), (XStr kq))]]), [[]])) else: (([[]], [[((SNameKey k, (BnLocal (XField (XVar fresh), "kind"), Owned, OutText)))]]))
                         nil: (([[]], [[((SNameKey k, (BnLocal (XField (XVar fresh), "kind"), Owned, OutText)))]]))
                 otherwise: (([[]], [[]]))
             "message": match fp.pattern.kind:
@@ -345,7 +345,7 @@ fn ArrayPat lx, ps, ty, mode, fresh:
         TyArray x: x
         otherwise: TyErr
     let arr = LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty))
-    let lenCond = CcIf (XBin "==", (XMethod (Ref arr), "len", [[]]), (XIndex (Len ps)))
+    let lenCond = CcIf (XBin OpEq, (XMethod (Ref arr), "len", [[]]), (XIndex (Len ps)))
     let subs = Each (Range0 (Len ps)), \|i| ((i, (RustPat lx, (Or ps[i], dummyPat), et, Owned, "{fresh}_{i}")))
     let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor "Some", [[o.pa]]), (XCall "index", [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds
     let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
