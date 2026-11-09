@@ -1,0 +1,31 @@
+# Functions that return functions (Type System ch. 2: a function is a value; ch. 5's
+# colors: a function polymorphic in its color is bounded at a call that gives it bounded
+# functions): `Adder` closes over its argument, `Compose` over its two, and a composition
+# made at a bounded call is called like any bounded function; an array of closures is
+# applied element by element. Written by Claude on the claude-bugs branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Adder: fn Nat -> (fn Nat -> Nat)
+fn Adder k = \|x| x + k
+
+Compose: fn (fn Nat -> Nat), (fn Nat -> Nat) -> (fn Nat -> Nat)
+fn Compose F, G = \|x| G (F x)
+
+Curry: fn Nat -> Nat
+fn Curry n:
+    let H = Compose (Adder n), (Adder 10)
+    let fs = Each [[1, 2, 3]], \|k| Adder k
+    let applied = Each fs, \|F| F n
+    (H 1) + (Fold applied, 0, \|a, b| a + b)
+
+Grid: fn Nat -> [ [Nat] ]
+fn Grid n = Each [[1, 2]], \|r| Each [[1, 2]], \|c| r * c + n
+
+@page: @unit
+@page:
+    !go <- Ui.Button(label=$"go")                                     # 0
+    $n <- 1 then $n + 1 on !go
+    Ui.Label(text=$"{Curry $n} {Grid $n}")                             # 1

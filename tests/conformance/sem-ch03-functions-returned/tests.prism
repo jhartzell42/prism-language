@@ -1,0 +1,9 @@
+# Functions returned: declarations of sem-ch03-functions-returned. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test functions_returned, @page:
+    build
+    click at 0
