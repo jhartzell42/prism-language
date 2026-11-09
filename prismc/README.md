@@ -154,10 +154,6 @@ to overturn.
       is malformed`, in both Worlds (their tests
       `a_file_that_is_not_utf8_reads_as_fs_not_text`).
   - **Gaps:**
-    - **PL A parenthesized lambda argument loses its types.** `MapChars t, (\|c| F c)`
-      checks, but the lambda's parameter reaches lowering with no type (`p0: ()`, "a
-      type the checker did not find") and rustc refuses the crate. Written without the
-      parentheses it lowers; prismc does so. Not fixed.
     - **CI Interpolating a `Char` shows it quoted.** `"{c}"` with `c: Char` places `'a'`,
       since a placeholder places a `Text` or a number as it is and anything else as it
       shows; no prelude function makes a `Text` of a `Char` (gap UC). Chess's text input

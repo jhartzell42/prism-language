@@ -484,12 +484,14 @@ fn LambdaArity e = match e.kind:
 
 # A lambda's marks declare its parameters' layers (ch. 5); against an expected function
 # type its parameters take the expected types. Its color is its body's join.
-# A parenthesized lambda (`IsLambda` sees through the group) is the lambda inside.
+# A parenthesized lambda (`IsLambda` sees through the group) is the lambda inside. The
+# caller notes `e`'s type; every span inside it, the lambda's own included, is noted here,
+# since lowering reads the lambda's type at the lambda's span.
 InferLambda: unbounded fn Env, St, Expr, ?Ty -> ((Ty, St))
 fn InferLambda env, st, e, ?expected = match e.kind:
     EGroup x:
         let ((t, st2)) = InferLambda env, st, x, ?expected
-        ((t, (NoteTy st2, e.span, t)))
+        ((t, (NoteTy st2, x.span, t)))
     otherwise: InferBareLambda env, st, e, ?expected
 
 InferBareLambda: unbounded fn Env, St, Expr, ?Ty -> ((Ty, St))
