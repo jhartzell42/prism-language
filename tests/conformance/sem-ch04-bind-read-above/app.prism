@@ -13,8 +13,7 @@ fn @Shown $t:
 
 @Rows: fn $(Nat ==> $Text) -> @unit
 fn @Rows $each:
-    for k, $$d <- $each:
-        $v <- @Flatten $$d
+    for k, $v <- $each:
         Ui.Label(text=$"{k}: {$v}")
 
 @main: @unit

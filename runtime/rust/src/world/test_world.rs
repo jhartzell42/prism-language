@@ -29,7 +29,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use crate::doc::Document;
-use crate::pod::{F64, Fault, Path, Pod};
+use crate::float::Float;
+use crate::pod::{Fault, Path, Pod};
 use crate::read::{self, Pattern};
 use crate::world::scene::find_clickables;
 use crate::world::{Outcome, Program, ReadyState, TickIn, TickOut};
@@ -231,7 +232,7 @@ impl ReadyState for TestReady<'_> {
             "Gui.Window" => Some(Pod::Choice("WindowId".into(), vec![Pod::text(text("title")?)])),
             "Gui.Metrics" => {
                 let w = 9.0 * text("text")?.chars().count() as f64;
-                Some(Pod::record("Extent", vec![("w", Pod::Float(F64(w))), ("h", Pod::Float(F64(14.0)))]))
+                Some(Pod::record("Extent", vec![("w", Pod::Float(Float(w))), ("h", Pod::Float(Float(14.0)))]))
             }
             _ => None,
         }
@@ -355,7 +356,7 @@ impl Run<'_> {
         let [w] = windows.as_slice() else {
             return Err(format!("the scene at {} draws for {}, and {} windows have that id", c.scene, c.window, windows.len()));
         };
-        let point = Pod::record("Point", vec![("x", Pod::Float(F64(c.x))), ("y", Pod::Float(F64(c.y)))]);
+        let point = Pod::record("Point", vec![("x", Pod::Float(Float(c.x))), ("y", Pod::Float(Float(c.y)))]);
         Ok(((*w).clone(), Pod::Choice("Press".into(), vec![point])))
     }
 

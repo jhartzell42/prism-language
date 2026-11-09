@@ -10,7 +10,8 @@
 use num_bigint::BigInt;
 
 use crate::num::Int;
-use crate::pod::{F64, Path, Pod, Segment};
+use crate::float::Float;
+use crate::pod::{Path, Pod, Segment};
 
 /// A pattern of the test language: a value with wildcards in it.
 #[derive(Clone, Debug, PartialEq)]
@@ -322,7 +323,7 @@ impl Parser {
             Some(Tok::Str(s)) => Pod::text(s.as_str()),
             Some(Tok::Char(c)) => Pod::Char(c),
             Some(Tok::Dur(d)) => Pod::Duration(d),
-            Some(Tok::Float(f)) => Pod::Float(F64(f)),
+            Some(Tok::Float(f)) => Pod::Float(Float(f)),
             Some(Tok::Num(_)) if self.is("/") => {
                 self.at -= 1;
                 Pod::Path(self.path()?)
@@ -358,8 +359,8 @@ impl Parser {
             "nil" => return Ok(Pod::Nil),
             "unit" => return Ok(Pod::Unit),
             "True" | "False" => return Ok(Pod::Bool(n == "True")),
-            "nan" => return Ok(Pod::Float(F64(f64::NAN))),
-            "inf" => return Ok(Pod::Float(F64(f64::INFINITY))),
+            "nan" => return Ok(Pod::Float(Float(f64::NAN))),
+            "inf" => return Ok(Pod::Float(Float(f64::INFINITY))),
             _ if n.ends_with(".*") => return Ok(Pod::Element(n.into(), vec![])),
             _ => {}
         }

@@ -1,0 +1,13 @@
+# Derived by hand from ruling FB: `==` is bit identity, `^Ord` the IEEE total order, arithmetic IEEE. One NaN, `nan`, made by `0.0 / 0.0`, equals itself and orders Equal with itself; `0.0` and `-0.0` differ in the sign bit, so they are unequal and `-0.0` comes first. A record, a choice and a recursive choice built from the same bits equal themselves and each other, order Equal; `Dot 0.0` and `Dot -0.0` differ and the negative one is less. An array of `nan` equals another; `[[-0.0]]` is not `[[0.0]]`. The map's three keys are distinct (the two zeros differ), and each is found by a key of the same bits. `1.0 + 2.0` is exactly 3; `0.1 + 0.2` is not `0.3` under IEEE; `0.0 - 0.0` is `0.0`; `0.0 * -1.0` is `-0.0`.
+test float_bits
+
+tick 0
+  added:
+    0: Ui.Label(text="T F F E")
+    1: Ui.Label(text="F T F L G")
+    2: Ui.Label(text="T T E F")
+    3: Ui.Label(text="T T E F T")
+    4: Ui.Label(text="T T E")
+    5: Ui.Label(text="T F")
+    6: Ui.Label(text="3 nan neg pos")
+    7: Ui.Label(text="T F T T")

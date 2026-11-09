@@ -15,6 +15,10 @@ RUNS=20 WARMUP=3 bench/gui/run.sh
 
 Run it on a quiet machine: power plugged in, nothing building, no other app busy.
 `RESULTS.md` records the machine, every version, and the load average before and after.
+On Linux with no `DISPLAY`, `run.sh` and `prism/check.sh` run themselves again under
+`xvfb-run -a` (a hard error names `xvfb-run` when there is none): the frames go to a
+virtual X server, and `RESULTS.md` says so. Numbers from a Linux machine are not the
+Mac's: the machine line heads every table.
 
 ## The table
 
@@ -45,7 +49,7 @@ js-framework-benchmark sets them up:
 
 From the input to the frame that shows its result, handed to the window system.
 
-- **Prism** (`prism/`): `bench.prism`, with examples/chess's window library, compiled by
+- **Prism** (`prism/`): `app.prism`, with examples/chess's window library, compiled by
   prismc. The driver (`driver.cpp` for C++, `driver.rs` for Rust) runs the root under the
   canvas World with `Hooks`; it finds a button by its `Draw.Text` in the scene and queues
   a press just inside it, as a click would. The clock stops at the next
@@ -56,7 +60,7 @@ From the input to the frame that shows its result, handed to the window system.
   window's bottom edge, each with its id, its `▶` when selected and its ` !!!` when
   updated; it fails the run otherwise. C++ is built at -O3 with clang; Rust as a cargo
   release build (opt-level 3).
-- **GTK** (`gtk/`): C with GTK 3 over Quartz. `gtk_button_clicked`, then the window's
+- **GTK** (`gtk/`): C with GTK 3 (over Quartz on macOS, X11 on Linux). `gtk_button_clicked`, then the window's
   next frame-clock `after-paint`, then `gdk_display_sync`. Rows are boxes of a label and
   two buttons in a scrolled window.
 - **Cuis** (`cuis/`): Cuis Smalltalk 7.9 with Morphic, on the Cog JIT VM the Cuis
@@ -66,12 +70,13 @@ From the input to the frame that shows its result, handed to the window system.
   layouts of a label and two buttons in a scroll pane.
 
 The median of RUNS timed runs, after WARMUP untimed ones, with the fastest and the
-slowest. Peak memory is each process's maximum resident set size from `/usr/bin/time -l`.
+slowest. Peak memory is each process's maximum resident set size from `/usr/bin/time -l`
+on macOS and GNU `/usr/bin/time -v` on Linux (`bench/lib.sh` chooses and reads both).
 
 ## The checks
 
-`prism/check.sh` (macOS) runs create1k, update10th, select, swap, remove and clear once
-each under both drivers with `driver OP 1 0 check`, which counts work rather than time:
+`prism/check.sh` runs create1k, update10th, select, swap, remove and clear once each
+under both drivers with `driver OP 1 0 check`, which counts work rather than time:
 
 - **What the scene draws:** after every step, no `Draw.Text` in the scenes starts more
   than 8 outside the window, so the window library draws what the window shows, not the
@@ -81,21 +86,32 @@ each under both drivers with `driver OP 1 0 check`, which counts work rather tha
   The canvas Worlds paint a new scene only where it differs from the last; their tests
   hold that equal to a full repaint, pixel for pixel (worlds/canvas/rust/README.md,
   "Painting").
-- **What a step costs, reported:** the instructions the whole process retires (every
-  thread's, `proc_pid_rusage`) from the press to the settled frame, printed per step; no
-  ratio fails a run (Jimmy: the numbers are reported, not held to a bar).
+- **What a step costs, reported:** the work the whole process does (every thread's) from
+  the press to the settled frame, printed per step with its unit; no ratio fails a run
+  (Jimmy: the numbers are reported, not held to a bar). The unit is instructions retired
+  where the system counts them: macOS's `proc_pid_rusage`, or on Linux a perf_event
+  counter (`PERF_COUNT_HW_INSTRUCTIONS`, opened with `inherit` before the World's threads
+  exist; user-space instructions only, named `instructions-user`, when the kernel allows
+  no more). When the Linux kernel refuses the counter (a VM with no PMU: `ENOENT` or
+  `EOPNOTSUPP`; or `EACCES`), the drivers count CPU nanoseconds instead
+  (`CLOCK_PROCESS_CPUTIME_ID`), say so on stderr, and every `check` and `phases` line
+  carries `unit=ns`; `check.sh` heads its table with the unit and never shows
+  nanoseconds as instructions. Nanoseconds move with the machine's load; instructions do
+  not.
 
 A failed check fails the run and says what it saw. Then `check.sh` prints a table of each
-timed step's instructions by phase, millions, against the same target's create1k: the
-drivers set `prism_rtl`'s probe hook (Rust `world::probe`, C++ `probe` in `world.hpp`),
-the runtime marks propagation, the build walks, the patch pass and the diff inside a
-tick, the canvas World marks performing, compacting and painting, and each thread's
-instructions between its marks (macOS's `thread_selfcounts`) go to the phase it was in;
-`other` is the process's other threads.
+timed step's work by phase, millions of the unit above, against the same target's
+create1k: the drivers set `prism_rtl`'s probe hook (Rust `world::probe`, C++ `probe` in
+`world.hpp`), the runtime marks propagation, the build walks, the patch pass and the diff
+inside a tick, the canvas World marks performing, compacting and painting, and each
+thread's work between its marks (macOS's `thread_selfcounts`; on Linux the thread's own
+perf_event counter, `inherit` off, or `CLOCK_THREAD_CPUTIME_ID`) goes to the phase it was
+in; `other` is the process's other threads.
 
 ## The files
 
-- `run.sh`: builds, runs, and writes `RESULTS.md`.
+- `run.sh`: builds, runs, and writes `RESULTS.md`; `../lib.sh` is the measuring it shares
+  with the other benchmarks (bench/README.md, "Measuring on each platform").
 - `prism/`: `app.prism`, `driver.cpp`, `driver.rs`, the `Makefile` that builds both
   drivers (the emitted `main` renamed, the driver beside it), and `check.sh`.
 - `gtk/`: `table.c` and its `Makefile`.

@@ -183,7 +183,7 @@ pub struct Entry<E> {
     watchers: RefCell<Vec<std::rc::Weak<dyn Node>>>,
 }
 
-impl<E: Clone + PartialEq + 'static> Entry<E> {
+impl<E: Clone + Eq + 'static> Entry<E> {
     /// An entry with no snapshot yet; `what` names the place in a fault.
     pub fn new(what: &'static str) -> Rc<Entry<E>> {
         let entry = Rc::new(Entry { snap: Snapshot::new(what), published: Rc::new(Port::new()), dynamic: RefCell::new(None), watchers: RefCell::new(Vec::new()) });
@@ -252,7 +252,7 @@ impl<E> Clone for HostDoc<E> {
     }
 }
 
-impl<E: Clone + PartialEq + 'static> HostDoc<E> {
+impl<E: Clone + Eq + 'static> HostDoc<E> {
     pub fn new() -> HostDoc<E> {
         HostDoc { doc: Map::new(), places: Map::new() }
     }
@@ -262,7 +262,7 @@ impl<E: Clone + PartialEq + 'static> HostDoc<E> {
     }
 }
 
-impl<E: Clone + PartialEq + 'static> Default for HostDoc<E> {
+impl<E: Clone + Eq + 'static> Default for HostDoc<E> {
     fn default() -> HostDoc<E> {
         HostDoc::new()
     }
@@ -273,6 +273,8 @@ impl<E> PartialEq for HostDoc<E> {
         self.places.len() == other.places.len() && self.places.iter().zip(other.places.iter()).all(|((k1, e1), (k2, e2))| k1 == k2 && Rc::ptr_eq(e1, e2))
     }
 }
+
+impl<E> Eq for HostDoc<E> {}
 
 /// `$each <- @PerKey $m` (Semantics Appendix B; round 9 PK, Jimmy's): a dynamic map taken
 /// apart by key, `$(k ==> v)` into `$(k ==> $v)`, the shape a host's document has. The
@@ -307,13 +309,13 @@ impl<V: Clone + 'static> PerKeyInner<V> {
     }
 }
 
-impl<K: Ord + Clone + 'static, V: Clone + PartialEq + 'static> Default for PerKey<K, V> {
+impl<K: Ord + Clone + 'static, V: Clone + Eq + 'static> Default for PerKey<K, V> {
     fn default() -> PerKey<K, V> {
         PerKey { outer: RefCell::new(None), inners: RefCell::new(Map::new()), last: RefCell::new(Map::new()) }
     }
 }
 
-impl<K: Ord + Clone + 'static, V: Clone + PartialEq + 'static> PerKey<K, V> {
+impl<K: Ord + Clone + 'static, V: Clone + Eq + 'static> PerKey<K, V> {
     pub fn new() -> PerKey<K, V> {
         PerKey::default()
     }
@@ -421,7 +423,7 @@ pub type Supplier<E, A> = Rc<dyn Fn(&Path, &Live<E>) -> Blueprint<E, A>>;
 
 /// `@HostSome`'s supplier made `@HostDocument`'s (Semantics ch. 9, the derivation): `nil`
 /// means "not mine, forward it".
-pub fn forward_on_none<E: Level + PartialEq, A: AnswerOf<E>>(some: Rc<dyn Fn(&Path, &Live<E>) -> Option<Blueprint<E, A>>>) -> Supplier<E, A> {
+pub fn forward_on_none<E: Level + Eq, A: AnswerOf<E>>(some: Rc<dyn Fn(&Path, &Live<E>) -> Option<Blueprint<E, A>>>) -> Supplier<E, A> {
     Rc::new(move |p: &Path, e: &Live<E>| match some(p, e) {
         Some(b) => b,
         None => element_blueprint(e),
@@ -554,7 +556,7 @@ impl<P> Link<P> {
 /// transparent rule). In the World's scope the place goes out with `cx.added` and its first
 /// value is the World's; in a hosted scope nothing goes out (the enclosing host's document
 /// reads the row), and the first value is the enclosing host's.
-pub fn element_blueprint<E: Level + PartialEq, A: AnswerOf<E>>(e: &Live<E>) -> Blueprint<E, A> {
+pub fn element_blueprint<E: Level + Eq, A: AnswerOf<E>>(e: &Live<E>) -> Blueprint<E, A> {
     let e = e.clone();
     Rc::new(move |path, sink: Sink<A>, scope: &Scope<E, A>, cx| {
         let at = path.at(0);
@@ -646,7 +648,7 @@ pub struct Host<E, A, P> {
     deliver: fn(&Rc<P>, &Path, &A, &mut Cx) -> Done,
 }
 
-impl<E: Level + PartialEq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
+impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
     /// Made in the owner's build, before its node: `rows` is the field the `for` keeps,
     /// `enclosing` the host whose scope the line stands in, if any.
     pub fn new(at: Path, rows: Rows<E, A>, supplier: Supplier<E, A>, enclosing: Option<Rc<dyn HostOf<E, A>>>, deliver: fn(&Rc<P>, &Path, &A, &mut Cx) -> Done) -> Rc<Host<E, A, P>> {
@@ -678,7 +680,7 @@ impl<E: Level + PartialEq, A: AnswerOf<E>, P: 'static> Host<E, A, P> {
     }
 }
 
-impl<E: Level + PartialEq, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
+impl<E: Level + Eq, A: AnswerOf<E>, P: 'static> HostOf<E, A> for Host<E, A, P> {
     fn deliver(&self, place: &Path, v: &A, cx: &mut Cx) -> Done {
         (self.deliver)(&self.owner(), place, v, cx)
     }
@@ -722,7 +724,7 @@ pub struct HostRow<E, A> {
     level_moved: Rc<Port<()>>,
 }
 
-impl<E: Clone + PartialEq + 'static, A: Clone + 'static> HostRow<E, A> {
+impl<E: Clone + Eq + 'static, A: Clone + 'static> HostRow<E, A> {
     /// Built after propagation, from the entry after the tick (R7): the supplier is asked
     /// for the place's blueprint, and the blueprint is built under the row's path, in the
     /// host's scope. The `for` machinery of the emitted code calls this with the host as
@@ -817,7 +819,7 @@ impl<E: Clone + PartialEq + 'static, A: Clone + 'static> HostRow<E, A> {
     }
 }
 
-impl<E: Clone + PartialEq + 'static, A: Clone + 'static> Node for HostRow<E, A> {
+impl<E: Clone + Eq + 'static, A: Clone + 'static> Node for HostRow<E, A> {
     /// A World's answer under the row: to the blueprint's node (a forwarded element).
     fn answer(self: Rc<Self>, at: &[Segment], v: &Pod, cx: &mut Cx) -> Done {
         let inner = self.supplied.borrow().as_ref().map(|s| s.node.clone());

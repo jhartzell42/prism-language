@@ -11,7 +11,10 @@
 # `--target rust` (the default) or `--target cpp`: the C++ program (runtime/cpp) is built
 # with make and `$CXX` (g++ by default) into target/prism-cpp/NAME at -O3 (`PRISM_OPT`
 # overrides, e.g. `-O0 -g` to debug a failing test), and runs its tests
-# under the C++ Test World; `run` under the C++ target takes the CLI World only.
+# under the C++ Test World; `run` under the C++ target runs the root under the World its
+# row asks for (worlds/cli/cpp, or worlds/canvas/cpp for a `Gui.*` row, linked at the
+# build), and `--world` is handed to the binary, which refuses a World it was not built
+# with.
 #
 # SRC is a directory, which goes to prismc as it is, a tree (claude/modules-style-pass.md):
 # its app.prism, lib.prism or mod.prism; or a loose `.prism` file. `test` and `check` read

@@ -40,9 +40,12 @@ pass, and the paint is the damaged boxes.
   document from every place's entry (3,003 entries), once, and the window re-stacks the
   column's children: per change, a pass over every row's entry and every row's plan, not
   over its layout. In C++ it is three times Rust's (remove's build 90 M against 29 M):
-  `HostDoc::insert` puts the entries in one at a time, and C++'s persistent map copies a
-  path per insert where Rust's updates its own nodes in place (a profile of swap, while
-  it still gathered the outer, showed `Map::put` of the outer's two maps on top).
+  `HostDoc::insert` puts the entries in one at a time (a profile of swap, while it still
+  gathered the outer, showed `Map::put` of the outer's two maps on top). Both runtimes'
+  maps change their own nodes in place and copy only a node another map shares; with
+  that, on the Linux machine, remove's build is 7.5 ms of CPU in C++ against 8.8 before
+  (one run each), so the path copies were a part of the gap, not its body: what remains
+  is to profile.
 - **One re-stack per level of the moved path:** the column's result is computed again from
   its 1,001 children's plans (each reused), and the placing pass visits each plan to cull
   what does not show: linear, a few million instructions.
@@ -50,13 +53,13 @@ pass, and the paint is the damaged boxes.
   @Distinct ($table.?selected == (? slot))`: 1,000 small comparisons a write, and two rows'
   labels move on a select. A row's value reaches it through `@PerKey` and is marked only
   when it changed.
-- **A structural change marks every row for the patch pass** (remove, create, clear): a
-  key that came or went writes `@PerKey`'s outer, and every row of the `for` over it reads
-  the outer, to check whether its entry became another dynamic (`@Flatten`'s adoption,
-  `RowPlaceReads`). Under `@PerKey` a kept key's entry is the same dynamic for as long as
-  the key stays, so the check never adopts; its pass over 1,000 rows is most of remove's
-  11.4 M patch. Not done: skipping it needs the lowering to know that the source's
-  entries are stable per key (a `@PerKey` outer or a host document).
+- **A structural change walks every key of the table's `for`** (remove, create, clear): a
+  key that came or went writes `@PerKey`'s outer, and the `for`'s builder, walking the keys
+  on that write, compares each kept key's dynamic with the one its row was built from and
+  tells only a row whose dynamic was replaced (ruling FV; under `@PerKey` a kept key's
+  dynamic is the same one for as long as the key stays, so none is). The kept rows are not
+  marked for the patch pass; what remains is the walk itself, one comparison per key, for
+  every map of dynamics alike, with nothing special for `@PerKey` (Jimmy refused that).
 - **The rest of a select's 7.1 M patch pass:** the window's placing over the column's
   1,001 plans, the scene made a `Pod`, the two moved rows' layout.
 - **The routing of a press** through the column's 1,001 filters (doubt RF).

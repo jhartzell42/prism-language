@@ -697,7 +697,7 @@ fn CtorArgs lx, env, c, args:
         otherwise: (XCall "Default::default", [[]])
 
 # A trait method applied: the operator a builtin, derived or written impl answers (an
-# `impl ^Eq` is emitted as Rust's `PartialEq`, so `==` reaches it), or the method of a
+# `impl ^Eq` is emitted as Rust's `PartialEq` and `Eq`, so `==` reaches it), or the method of a
 # program's own trait.
 MethodCall: unbounded fn Lx, Env, ValInfo, [Arg], Range, OutTy -> Vl
 fn MethodCall lx, env, v, args, span, t:

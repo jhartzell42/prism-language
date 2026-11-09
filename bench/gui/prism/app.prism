@@ -126,8 +126,7 @@ fn ?FirstOp ops:
             @ ((Create 1000) on !a) <| ((Create 10000) on !b) <| ((AddMore 1000) on !c) <| (UpdateTenth on !d) <| (Clear on !e) <| (Swap on !f)
         # each row reads its own row's value, which fires only when that row changed
         # (`@PerKey`): a write of the table reaches no row whose value it leaves alone
-        !rowOps <- for slot, $$d <- $rows:
-            $entry <- @Flatten $$d
+        !rowOps <- for slot, $entry <- $rows:
             # whether this row is the selected one, refiring only when that changes: a select
             # moves two rows' labels, not every row's
             $mine <- @Distinct ($table.?selected == (? slot))

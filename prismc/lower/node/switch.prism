@@ -424,13 +424,10 @@ fn FlattenLine wx, menv, args, ?bound:
         ? ((m, t)): Fold wx.gens, nil, \|?acc, gd| if "{gd.name}_result" == m: ? ((m, gd.name, t)) else: ?acc
         nil: nil
     match ?outer:
-        nil: match ?named:
-            # a `for` row's entry that is a dynamic, `$$a` (a host document's entry)
-            ? (("entry", t)): EntryFlatten wx, t, ?bound
-            otherwise:
-                let wx2 = update wx:
-                    &_.build <= Push &_.build, (RefusalDo "`@Flatten` of a dynamic that is neither a `rebuild`'s nor a `for` row's entry")
-                ((wx2, WrUnit))
+        nil:
+            let wx2 = update wx:
+                &_.build <= Push &_.build, (RefusalDo "`@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, `for k, $v <- $each:`, ruling FV)")
+            ((wx2, WrUnit))
         ? ((m, gen, t)):
             let ((name, wx1)) = match ?bound:
                 ? (BnHold f, ignore): ((f, wx))
@@ -450,15 +447,16 @@ fn FlattenLine wx, menv, args, ?bound:
                 &_.flattens <= Push &_.flattens, FlatDef(name=name, outer=m, generation=gen, ty=t)
             ((wx2, (WrDyn (XMethod (XSelf), name, [[XCx]]), [[OwnRead inner]], t)))
 
-# `$a <- @Flatten $d` over a `for` row's entry `$d`, a `$$a` (a host document's entry,
-# `$(Path ==> $Elem c)`; Semantics ch. 7): `{name}_inner` is the current inner, a hold set at
-# the row's construction to the entry's value (the `value` its builder hands it, so the row's
-# own builders read the flatten from the start), and `{name}_follow` its subscription to the inner's
-# update event, which tells the row through `{name}_moved` (what reads the flatten reads it
-# again, in that tick). The block's writes behind the row's entry patch the row
-# (`RowPlaceReads`), and its patch pass adopts an entry that is another dynamic than the
-# inner, at the start of the tick after (`{name}_adopt`, queued with `Cx::answer_later`, so
-# that tick is owed; rulings VL, TK).
+# `for k, $v <- $each:` over `$(k ==> $v)` (Semantics ch. 4, ruling FV; a host document's
+# entries, `$(Path ==> $Elem c)`, and `@PerKey`'s inners): `$v` is the row's entry flattened.
+# `{name}_inner` is the current inner, a hold set at the row's construction to the entry's
+# value (the `value` its builder hands it, so the row's own builders read `$v` from the
+# start), and `{name}_follow` its subscription to the inner's update event, which tells the
+# row through `{name}_moved` (what reads `$v` reads it again, in that tick). When the
+# `for`'s builder, walking the keys after a write of the source, finds another dynamic than
+# the inner under the row's kept key, it tells the row (`{name}_replaced`, `ForBuild`), which
+# queues the adoption for the start of the tick after (`{name}_adopt`, through
+# `Cx::answer_later`, so that tick is owed; rulings VL, TK). No row is woken to ask.
 EntryFlatten: unbounded fn Wx, OutTy, ?Bn -> ((Wx, Wres))
 fn EntryFlatten wx, t, ?bound:
     let ((name, wx1)) = match ?bound:
@@ -471,7 +469,7 @@ fn EntryFlatten wx, t, ?bound:
     let followed = DoExpr (XMethod (XField (XVar "node"), follow), "follow", [[(XRef (XField (XMethod (XVar "node"), "entry", [[XCx]]), "updates")), (XRef (XVar "node")), (XPath "{wx.node}::{name}_moved")]])
     let sample = XMethod (XMethod (XMethod (XField XSelf, "{inner}"), "get", [[XCx]]), "expect", [[(XStr "`@Flatten` adopts its first inner at the build")]]), "sample", [[XCx]]
     let wx2 = update wx1:
-        &_.taken <= Append &_.taken, [[inner, follow, "{name}_adopt", "{name}_moved"]]
+        &_.taken <= Append &_.taken, [[inner, follow, "{name}_adopt", "{name}_moved", "{name}_replaced"]]
         &_.fields <= Append &_.fields, [[((inner, (OutHold (OutOpt (OutDyn t))), "`@Flatten`'s current inner: the row's entry it adopted")), ((follow, (OutNamed "prism_rtl::Follow", [[]]), "the subscription to the inner's update event"))]]
         &_.moves <= Append &_.moves, [[((inner, (XCall "Hold::new", [[(XCtor "Some", [[(XClone (XVar "value"))]]), XCx]]))), ((follow, (XCall "prism_rtl::Follow::new", [[]])))]]
         &_.build <= Push &_.build, followed

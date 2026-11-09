@@ -63,7 +63,7 @@ impl FromPod for Span {
 }
 
 /// `type Exception = record: kind, message, spans, path`.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Exception {
     pub kind: Text,
     pub message: Text,
@@ -92,7 +92,7 @@ pub enum PreludeTurn<B> {
 
 /// `tag Prelude.Unwrap of Element !a: value: !~a`. The prelude's element tags are variants
 /// of `crate::Elem` and `crate::Answer` like any program's (a hosted child may emit them).
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PreludeUnwrap {}
 
 impl PreludeUnwrap {
@@ -115,7 +115,7 @@ impl FromPod for PreludeUnwrap {
 }
 
 /// `tag Prelude.Exceptions of Element !Exception`.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PreludeExceptions {}
 
 impl PreludeExceptions {
@@ -221,20 +221,20 @@ impl Num for Int {
     }
 }
 
-impl Num for f64 {
-    fn zero() -> f64 {
-        0.0
+impl Num for Float {
+    fn zero() -> Float {
+        Float(0.0)
     }
-    fn add(a: &f64, b: &f64) -> f64 {
+    fn add(a: &Float, b: &Float) -> Float {
         a + b
     }
-    fn sub(a: &f64, b: &f64) -> f64 {
+    fn sub(a: &Float, b: &Float) -> Float {
         a - b
     }
-    fn mul(a: &f64, b: &f64) -> f64 {
+    fn mul(a: &Float, b: &Float) -> Float {
         a * b
     }
-    fn div_opt(a: &f64, b: &f64) -> Option<f64> {
+    fn div_opt(a: &Float, b: &Float) -> Option<Float> {
         Some(a / b)
     }
 }
@@ -323,27 +323,27 @@ impl Modulo for u8 {
 }
 
 /// `Float`, `ToFloat`: an `Int` as a double.
-pub fn float(i: &Int) -> f64 {
-    i.to_i64().map_or_else(|| i.to_string().parse().unwrap_or(f64::NAN), |n| n as f64)
+pub fn float(i: &Int) -> Float {
+    Float(i.to_i64().map_or_else(|| i.to_string().parse().unwrap_or(f64::NAN), |n| n as f64))
 }
 
-pub fn to_float(i: &Int) -> f64 {
+pub fn to_float(i: &Int) -> Float {
     float(i)
 }
 
-pub fn cos(x: &f64) -> f64 {
-    x.cos()
+pub fn cos(x: &Float) -> Float {
+    Float(x.0.cos())
 }
 
-pub fn sin(x: &f64) -> f64 {
-    x.sin()
+pub fn sin(x: &Float) -> Float {
+    Float(x.0.sin())
 }
 
-pub fn abs<A: Num + PartialOrd>(a: &A) -> A {
+pub fn abs<A: Num + Ord>(a: &A) -> A {
     if *a < A::zero() { A::sub(&A::zero(), a) } else { a.clone() }
 }
 
-pub fn sign<A: Num + PartialOrd + From<i8>>(a: &A) -> A {
+pub fn sign<A: Num + Ord + From<i8>>(a: &A) -> A {
     if *a < A::zero() { A::from(-1) } else if *a > A::zero() { A::from(1) } else { A::zero() }
 }
 
@@ -351,20 +351,20 @@ pub fn sum<A: Num>(xs: &Array<A>) -> A {
     xs.iter().fold(A::zero(), |s, x| A::add(&s, x))
 }
 
-pub fn max<A: PartialOrd + Clone>(a: &A, b: &A) -> A {
+pub fn max<A: Ord + Clone>(a: &A, b: &A) -> A {
     if a < b { b.clone() } else { a.clone() }
 }
 
-pub fn min<A: PartialOrd + Clone>(a: &A, b: &A) -> A {
+pub fn min<A: Ord + Clone>(a: &A, b: &A) -> A {
     if b < a { b.clone() } else { a.clone() }
 }
 
 /// `Compare` of `^Ord`.
-pub fn compare<A: PartialOrd>(a: &A, b: &A) -> Ordering {
-    match a.partial_cmp(b) {
-        Some(std::cmp::Ordering::Less) => Ordering::Less,
-        Some(std::cmp::Ordering::Greater) => Ordering::Greater,
-        _ => Ordering::Equal,
+pub fn compare<A: Ord>(a: &A, b: &A) -> Ordering {
+    match a.cmp(b) {
+        std::cmp::Ordering::Less => Ordering::Less,
+        std::cmp::Ordering::Greater => Ordering::Greater,
+        std::cmp::Ordering::Equal => Ordering::Equal,
     }
 }
 

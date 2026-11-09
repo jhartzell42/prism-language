@@ -1,0 +1,25 @@
+# A `let` of an unbounded function bound twice before a loop's continuation: the function's
+# own `let name`, and lowering's `let name = name.clone()` that captures it for the
+# continuation after the `while` (a job's cycle point). The C++ printer takes both for the
+# one local they name (pick MV of prismc/README.md: a moving init-capture, once); a
+# capture list that named it twice did not compile. Written for prismc's back end. Work in
+# progress, subject to change.
+emit Ui.*
+test mod Tests
+
+Step: unbounded fn Nat -> Nat
+fn Step k = k + 1
+
+Count: unbounded fn ((Nat, Text)) -> Text
+fn Count ((n, label)):
+    let name = "{label}!"
+    let r = update 0:
+        while &_ < n:
+            &_ <= Step &_
+    "{name}{r}"
+
+@Counted: fn Nat -> @unit
+fn @Counted n:
+    !done <- @Run Count, ((n, "up"))
+    $shown <- "counting" then !done
+    Ui.Label(text=$shown)                                   # 0

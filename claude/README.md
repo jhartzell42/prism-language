@@ -6,14 +6,16 @@ Claude-written prose lives here, under this name, and nowhere else.
 
 - **`architecture.md`**: the pieces of this repository and how a program flows through
   them.
-- **`backend.md`**: the contract between `prismc`'s emitted code and the runtimes.
-- **`benchmarks-preliminary.md`**: the numbers of 5 November on a busy machine: building,
-  running prismc, the GUI table.
+- **`backend.md`**: the contract between `prismc`'s emitted code and the runtimes, and
+  Claude's recommendation of Rust over C++ as the default back end, from the recorded
+  numbers, with what would change it.
+- **`benchmarks-preliminary.md`**: the benchmark numbers by machine and run: Jimmy's Mac (the
+  Low Power Mode run, the busy runs of 5 November, the GUI phase tables) and the Linux
+  cloud machine, each labelled; the scripts' own `RESULTS.md` sit beside the scripts.
 - **`bugs/`**: bugs in prismc, investigated: the cause, the books' rule, the fix.
 - **`decisions.md`**: the choices the books leave to this implementation, with reasons.
-- **`handoff.md`**: everything still to do on the self-hosting branch, in order.
-- **`cloud-prompt.md`**: the prompt for the cloud session that finishes the branch and
-  hands it to Jimmy; deleted when that is done.
+- **`handoff.md`**: the branch as it stands: what exists, how to build and test it from a
+  fresh clone, what is Jimmy's to decide, what to rerun on the Mac.
 - **`incremental-host-document.md`**: what one select in the GUI table recomputes, tick by
   tick, and the routes to a small change costing a small amount: an incremental host
   document, per-child layout, a cached call, nested documents settled in one tick.

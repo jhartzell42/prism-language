@@ -12,7 +12,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use prism_rtl::pod::F64;
+use prism_rtl::Float;
 use prism_rtl::*;
 use prism_world_canvas_rtl::font::Font;
 use prism_world_canvas_rtl::render::Renderer;
@@ -64,7 +64,7 @@ fn steps() -> Vec<Pod> {
     out.push(table(&labels, &[]));
     let turn = Pod::record(
         "Turn",
-        vec![("x", Pod::Float(F64(100.0))), ("y", Pod::Float(F64(120.0))), ("angle", Pod::Float(F64(30.0))), ("scale", Pod::Float(F64(0.8)))],
+        vec![("x", Pod::Float(Float(100.0))), ("y", Pod::Float(Float(120.0))), ("angle", Pod::Float(Float(30.0))), ("scale", Pod::Float(Float(0.8)))],
     );
     let group = el("Draw.Group", vec![("turn", turn), ("draws", Pod::Array(vec![rect(80.0, 110.0, 60.0, 9.0, "Green"), text(90.0, 120.0, "turned")]))]);
     let clip = el("Draw.Clip", vec![("rect", gui::rect(30.5, 60.0, 50.0, 30.25)), ("draws", Pod::Array(vec![rect(0.0, 0.0, 200.0, 300.0, "Yellow")]))]);

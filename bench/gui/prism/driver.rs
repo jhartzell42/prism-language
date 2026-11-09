@@ -10,6 +10,12 @@
 //                             when a scene draws outside the window (bench/gui/README.md,
 //                             "The checks")
 //
+// The work is counted as driver.cpp counts it: instructions retired on macOS
+// (`proc_pid_rusage`, `thread_selfcounts`) and on Linux through a perf_event counter per
+// process and per thread; when the Linux kernel refuses one (ENOENT, EOPNOTSUPP, EACCES),
+// each thread's CPU nanoseconds instead, and every `check` and `phases` line names its
+// unit (`unit=instructions`, `unit=ns`). No libc crate: the few calls are declared here.
+//
 // bench/gui/prism/Makefile includes this file at the end of the emitted main.rs, whose own
 // `main` it renames `prism_emitted_main`.
 //
@@ -217,10 +223,10 @@ mod bench_driver {
         true
     }
 
-    /// Instructions retired by the whole process so far, every thread's (macOS's
-    /// `proc_pid_rusage`, as driver.cpp's `instructions`).
+    /// The whole process's work so far, every thread's: instructions retired (macOS's
+    /// `proc_pid_rusage`, as driver.cpp's `process_work`).
     #[cfg(target_os = "macos")]
-    fn instructions() -> u64 {
+    fn process_work() -> u64 {
         // `struct rusage_info_v4` (sys/resource.h) is 296 bytes, its `ri_instructions` the
         // 32nd 8-byte word (byte 248, after a 16-byte uuid and 29 counters); the buffer is
         // that size exactly, 8-aligned.
@@ -233,12 +239,6 @@ mod bench_driver {
         u[31]
     }
 
-    #[cfg(not(target_os = "macos"))]
-    fn instructions() -> u64 {
-        eprintln!("driver: check counts instructions with macOS's proc_pid_rusage, which this system lacks");
-        std::process::exit(2);
-    }
-
     #[cfg(target_os = "macos")]
     unsafe extern "C" {
         fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut std::ffi::c_void) -> i32;
@@ -249,7 +249,7 @@ mod bench_driver {
 
     /// Instructions the calling thread has retired so far.
     #[cfg(target_os = "macos")]
-    fn thread_instructions() -> u64 {
+    fn thread_work() -> u64 {
         let mut c = [0u64; 2];
         // Safety: `c` is two writable, aligned `u64`s and the call is told so in bytes;
         // flavour 1 writes exactly that much (instructions, then cycles) and keeps no
@@ -262,14 +262,233 @@ mod bench_driver {
         c[0]
     }
 
-    #[cfg(not(target_os = "macos"))]
-    fn thread_instructions() -> u64 {
-        instructions()
+    #[cfg(target_os = "macos")]
+    mod work {
+        /// macOS counts instructions; nothing to choose.
+        pub fn choose() {}
+        pub fn name() -> &'static str {
+            "instructions"
+        }
     }
 
-    /// The work of each phase (prism_rtl's `world::probe`), by the instructions each
-    /// thread retired between its marks: each thread's current phase and its count at its
-    /// last mark, and the totals per phase over every thread.
+    /// What a step's work is counted in on Linux: a perf_event instructions counter
+    /// (PERF_COUNT_HW_INSTRUCTIONS) when the kernel opens one, all instructions if allowed
+    /// and user-space ones under perf_event_paranoid 2, else CPU nanoseconds.
+    #[cfg(target_os = "linux")]
+    mod work {
+        use std::cell::Cell;
+        use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
+
+        pub const INSTRUCTIONS: u8 = 0;
+        pub const INSTRUCTIONS_USER: u8 = 1;
+        pub const NS: u8 = 2;
+        static UNIT: AtomicU8 = AtomicU8::new(NS);
+        /// The process-wide counter, inherited by the threads made after it.
+        static PROCESS_FD: AtomicI32 = AtomicI32::new(-1);
+
+        /// `struct perf_event_attr`'s first 128 bytes (PERF_ATTR_SIZE_VER7): the kernel
+        /// takes any size from 64 up with the unused tail zero.
+        #[repr(C)]
+        struct PerfEventAttr {
+            type_: u32,
+            size: u32,
+            config: u64,
+            sample_period: u64,
+            sample_type: u64,
+            read_format: u64,
+            flags: u64,
+            rest: [u64; 10],
+        }
+        const PERF_TYPE_HARDWARE: u32 = 0;
+        const PERF_COUNT_HW_INSTRUCTIONS: u64 = 1;
+        const PERF_FLAG_FD_CLOEXEC: u64 = 8;
+        const FLAG_INHERIT: u64 = 1 << 1;
+        const FLAG_EXCLUDE_KERNEL: u64 = 1 << 5;
+        const FLAG_EXCLUDE_HV: u64 = 1 << 6;
+        #[cfg(target_arch = "x86_64")]
+        const SYS_PERF_EVENT_OPEN: i64 = 298;
+        #[cfg(target_arch = "aarch64")]
+        const SYS_PERF_EVENT_OPEN: i64 = 241;
+        pub const CLOCK_PROCESS_CPUTIME_ID: i32 = 2;
+        pub const CLOCK_THREAD_CPUTIME_ID: i32 = 3;
+        const EPERM: i32 = 1;
+        const ENOENT: i32 = 2;
+        const EACCES: i32 = 13;
+        const ENOSYS: i32 = 38;
+        const EOPNOTSUPP: i32 = 95;
+
+        #[repr(C)]
+        struct Timespec {
+            tv_sec: i64,
+            tv_nsec: i64,
+        }
+
+        unsafe extern "C" {
+            fn syscall(num: i64, ...) -> i64;
+            fn read(fd: i32, buf: *mut std::ffi::c_void, count: usize) -> isize;
+            fn clock_gettime(clock: i32, t: *mut Timespec) -> i32;
+        }
+
+        /// A counter on the calling thread, `inherit` counting the threads it makes
+        /// afterwards too; the fd, or the errno.
+        fn perf_open(inherit: bool, user_only: bool) -> Result<i32, i32> {
+            let mut flags = 0;
+            if inherit {
+                flags |= FLAG_INHERIT;
+            }
+            if user_only {
+                flags |= FLAG_EXCLUDE_KERNEL | FLAG_EXCLUDE_HV;
+            }
+            let attr = PerfEventAttr {
+                type_: PERF_TYPE_HARDWARE,
+                size: std::mem::size_of::<PerfEventAttr>() as u32,
+                config: PERF_COUNT_HW_INSTRUCTIONS,
+                sample_period: 0,
+                sample_type: 0,
+                read_format: 0,
+                flags,
+                rest: [0; 10],
+            };
+            // Safety: perf_event_open(attr, pid 0 = this thread, cpu -1 = any, no group,
+            // flags); the kernel reads `attr.size` bytes of `attr`, which is that size.
+            let fd = unsafe { syscall(SYS_PERF_EVENT_OPEN, &attr as *const PerfEventAttr, 0i32, -1i32, -1i32, PERF_FLAG_FD_CLOEXEC) };
+            if fd >= 0 { Ok(fd as i32) } else { Err(std::io::Error::last_os_error().raw_os_error().unwrap_or(0)) }
+        }
+
+        fn refused(err: i32) -> bool {
+            matches!(err, ENOENT | EOPNOTSUPP | EACCES | EPERM | ENOSYS)
+        }
+
+        /// Chooses the unit, once, before any other thread exists: the process counter
+        /// opened with inherit, all instructions if allowed, else user-space ones, else
+        /// nanoseconds. Says on stderr when it is not all instructions.
+        pub fn choose() {
+            for user_only in [false, true] {
+                match perf_open(true, user_only) {
+                    Ok(fd) => {
+                        PROCESS_FD.store(fd, Ordering::Relaxed);
+                        UNIT.store(if user_only { INSTRUCTIONS_USER } else { INSTRUCTIONS }, Ordering::Relaxed);
+                        if user_only {
+                            eprintln!("driver: counting user-space instructions only (the kernel refused kernel counting: perf_event_paranoid)");
+                        }
+                        return;
+                    }
+                    Err(e) if refused(e) => {
+                        if user_only {
+                            eprintln!("driver: no instructions counter on this machine (perf_event_open: {}); counting CPU nanoseconds instead", std::io::Error::from_raw_os_error(e));
+                            UNIT.store(NS, Ordering::Relaxed);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("driver: perf_event_open: {}", std::io::Error::from_raw_os_error(e));
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+
+        pub fn unit() -> u8 {
+            UNIT.load(Ordering::Relaxed)
+        }
+
+        pub fn name() -> &'static str {
+            match unit() {
+                INSTRUCTIONS => "instructions",
+                INSTRUCTIONS_USER => "instructions-user",
+                _ => "ns",
+            }
+        }
+
+        pub fn read_counter(fd: i32) -> u64 {
+            let mut v = 0u64;
+            // Safety: a perf counter's read fills one u64, and `v` is one.
+            let n = unsafe { read(fd, (&mut v as *mut u64).cast(), 8) };
+            if n != 8 {
+                eprintln!("driver: reading the perf_event counter: {}", std::io::Error::last_os_error());
+                std::process::exit(1);
+            }
+            v
+        }
+
+        pub fn cpu_ns(clock: i32) -> u64 {
+            let mut t = Timespec { tv_sec: 0, tv_nsec: 0 };
+            // Safety: `t` is a writable timespec of the C layout.
+            if unsafe { clock_gettime(clock, &mut t) } != 0 {
+                eprintln!("driver: clock_gettime: {}", std::io::Error::last_os_error());
+                std::process::exit(1);
+            }
+            t.tv_sec as u64 * 1_000_000_000 + t.tv_nsec as u64
+        }
+
+        pub fn process() -> u64 {
+            if unit() == NS {
+                return cpu_ns(CLOCK_PROCESS_CPUTIME_ID);
+            }
+            read_counter(PROCESS_FD.load(Ordering::Relaxed))
+        }
+
+        thread_local! {
+            static FD: Cell<i32> = const { Cell::new(-1) };
+        }
+
+        /// This thread's own counter (inherit off), opened at its first call.
+        pub fn thread() -> u64 {
+            if unit() == NS {
+                return cpu_ns(CLOCK_THREAD_CPUTIME_ID);
+            }
+            let fd = FD.get();
+            let fd = if fd >= 0 {
+                fd
+            } else {
+                match perf_open(false, unit() == INSTRUCTIONS_USER) {
+                    Ok(fd) => {
+                        FD.set(fd);
+                        fd
+                    }
+                    Err(e) => {
+                        eprintln!("driver: perf_event_open for a thread (the process's counter opened): {}", std::io::Error::from_raw_os_error(e));
+                        std::process::exit(1);
+                    }
+                }
+            };
+            read_counter(fd)
+        }
+    }
+
+    /// The whole process's work so far, every thread's, in `work::name()`'s unit.
+    #[cfg(target_os = "linux")]
+    fn process_work() -> u64 {
+        work::process()
+    }
+
+    /// The calling thread's work so far, in `work::name()`'s unit.
+    #[cfg(target_os = "linux")]
+    fn thread_work() -> u64 {
+        work::thread()
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    fn process_work() -> u64 {
+        eprintln!("driver: check counts work with macOS's proc_pid_rusage or Linux's perf_event, which this system lacks");
+        std::process::exit(2);
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    fn thread_work() -> u64 {
+        process_work()
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    mod work {
+        pub fn choose() {}
+        pub fn name() -> &'static str {
+            "unknown"
+        }
+    }
+
+    /// The work of each phase (prism_rtl's `world::probe`), by what each thread did
+    /// between its marks (`work::name()`'s unit): each thread's current phase and its
+    /// count at its last mark, and the totals per phase over every thread.
     mod phases {
         use std::cell::Cell;
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -283,10 +502,10 @@ mod bench_driver {
             static AT: Cell<Option<(Phase, u64)>> = const { Cell::new(None) };
         }
 
-        /// The probe's hook: the instructions since this thread's last mark go to the
-        /// phase it was in.
+        /// The probe's hook: this thread's work since its last mark goes to the phase it
+        /// was in.
         pub fn mark(next: Phase) {
-            let now = super::thread_instructions();
+            let now = super::thread_work();
             if let Some((was, since)) = AT.get() {
                 TOTAL[was as usize].fetch_add(now - since, Ordering::Relaxed);
             }
@@ -296,10 +515,10 @@ mod bench_driver {
             AT.set(Some((next, now)));
         }
 
-        /// This thread's instructions since its last mark, counted to its phase.
+        /// This thread's work since its last mark, counted to its phase.
         pub fn flush() {
             if let Some((was, since)) = AT.get() {
-                let now = super::thread_instructions();
+                let now = super::thread_work();
                 TOTAL[was as usize].fetch_add(now - since, Ordering::Relaxed);
                 AT.set(Some((was, now)));
             }
@@ -311,8 +530,8 @@ mod bench_driver {
             (std::array::from_fn(|i| TOTAL[i].load(Ordering::Relaxed)), TICKS.load(Ordering::Relaxed))
         }
 
-        /// One step's line: each phase's instructions from `from` to `to`, the rest of
-        /// the process's (`all`, every thread's) as `other`, and the ticks.
+        /// One step's line: each phase's work from `from` to `to`, the rest of the
+        /// process's (`all`, every thread's) as `other`, the ticks, and the unit.
         pub fn line(op: &str, kind: &str, from: &([u64; PHASES], u64), to: &([u64; PHASES], u64), all: u64) -> String {
             let names = ["loop", "propagate", "build", "patch", "diff", "perform", "compact", "paint"];
             let mut out = format!("phases {op} {kind}");
@@ -322,7 +541,7 @@ mod bench_driver {
                 sum += d;
                 out += &format!(" {}={d}", names[i]);
             }
-            out += &format!(" other={} total={all} ticks={}", all.saturating_sub(sum), to.1 - from.1);
+            out += &format!(" other={} total={all} ticks={} unit={}", all.saturating_sub(sum), to.1 - from.1, super::work::name());
             out
         }
     }
@@ -391,6 +610,9 @@ mod bench_driver {
         let mut t0 = Instant::now();
         let mut i0 = 0u64;
         let mut p0 = ([0u64; prism_rtl::world::probe::PHASES], 0u64);
+        if check {
+            work::choose(); // before the World's threads exist, so the process counter inherits to them
+        }
         if check && !prism_rtl::world::probe::set_hook(phases::mark) {
             eprintln!("driver: the phase probe's hook was set already");
             std::process::exit(1);
@@ -401,7 +623,7 @@ mod bench_driver {
         let hooks = Hooks {
             settled: Some(Box::new(move |s: &mut dyn Session| {
                 if waiting {
-                    let work = if check { instructions() - i0 } else { 0 };
+                    let work = if check { process_work() - i0 } else { 0 };
                     let p1 = if check { phases::now() } else { p0 };
                     if timing {
                         run += 1;
@@ -414,7 +636,7 @@ mod bench_driver {
                     }
                     if check {
                         let p = &steps[next - 1];
-                        println!("check {op} step {next} ({} row {}): {work} instructions", p.text, p.row);
+                        println!("check {op} step {next} ({} row {}): {work} {}", p.text, p.row, work::name());
                         let kind = if timing { "timed" } else if p.text == CREATE_1K { "setup" } else { "untimed" };
                         println!("{}", phases::line(&op, kind, &p0, &p1, work));
                         if !drawn_inside(s) {
@@ -444,7 +666,7 @@ mod bench_driver {
                 model.press(&p);
                 if check {
                     p0 = phases::now();
-                    i0 = instructions();
+                    i0 = process_work();
                 }
                 t0 = Instant::now();
                 s.input(&window, gui::press(x, y));

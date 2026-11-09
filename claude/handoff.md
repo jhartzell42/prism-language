@@ -1,238 +1,174 @@
-# Handoff: where the self-hosting branch stands
+# Handoff: the self-hosting branch as it stands
 
-*Written by Claude on the claude-self-hosting branch, 4 November 2026, for the move from
-the cloud container to a local macOS run; subject to change. Everything still to do, with
-the state each item is in. Delete an item when it is done; delete the file when it is
-empty.*
+*Written by Claude on the claude-self-hosting branch, 6 November 2026, at the end of the
+cloud session that finished the branch; subject to change. What exists, how to build and
+test it from a fresh clone, what is Jimmy's to decide, and what to rerun on the Mac. The
+PR's description (#20) says the same at more length; the numbers are in
+`claude/benchmarks-preliminary.md` and the three `RESULTS.md`.*
 
-## The `claude/` directory (Jimmy)
+## What exists
 
-- **Claude-written prose lives in `claude/`, never in a directory called `docs/`.** Jimmy:
-  calling Claude's write-ups "docs" "was not something I did or ever would sign off on.
-  Slop code can be mixed with human code but docs hell no." The old `docs/` is now
-  `claude/`, and every reference moved with it (`git mv` plus a rewrite of `docs/` to
-  `claude/` across the tree).
-- **Never create `docs/` again,** and never call these files docs in a commit, a README or
-  a PR. New write-ups (bug reports, designs, the handoff) go under `claude/`.
-- **The seeds were rewritten after the move,** since the templates' comments name these
-  files and the emitted code changed with them.
+- **`prismc`**, a self-hosting compiler written in Prism (`prismc/`, a module tree:
+  `syntax/`, `check/`, `lower/`, `emit/rust/`, `emit/cpp/`), which emits a Rust crate over
+  `runtime/rust` or a C++20 program over `runtime/cpp`. Both reach a fixed point
+  (`bootstrap/`), and the C++ prismc emits the Rust prismc's Rust byte for byte. The two
+  seeds (`bootstrap/prismc-rust.tar.xz`, `prismc-cpp.tar.xz`) are the fixed points of this
+  tree.
+- **Two runtimes and four Worlds:** `runtime/{rust,cpp}` (the graph: heights, holds,
+  hosts, `@PerKey`, `@Distinct`, the persistent `Map` and `Array`, regular expressions over
+  `regex`/RE2, `Text` as UTF-8 with cursors, Unicode 17 case mapping); `worlds/cli/{rust,
+  cpp}` (files, arguments, the Test World); `worlds/canvas/{rust,cpp}` (a window on
+  winit/softbuffer and on Cocoa or X11, painting only the damage of a new scene, each
+  window in sRGB).
+- **The language as built:** modules as a tree (`mod Name`, `test mod Tests`), regular
+  expression literals, arrays, the host document as `$(Path ==> $Elem c)`, `@Distinct`,
+  `@PerKey`, and `for k, $v <- $each:` over a map of dynamics binding the value under the
+  key (ruling FV: the `for`'s key walk tells a row whose dynamic was replaced; no row is
+  woken to ask, none is rebuilt).
+- **The C++ target as Rust's twin, and jemalloc for C++** (7 and 8 November, each asked
+  for by Jimmy, each green on every suite and measured in claude/benchmarks-preliminary.md's
+  Linux section):
+  - the C++ `Map` changes its nodes in place when nothing else shares them, as the Rust
+    `Map` does through `Rc::make_mut` (runtime/cpp/README.md, "Arrays and maps: the costs");
+  - a choice is a `std::variant` held by value, as the Rust enum is, and a recursive payload
+    a `prism_rtl::Rc<const T>`, whose `==` and `<=>` go by the value where `T` has them, as
+    Rust's `Rc<T>` does; identity is `ptr_eq` (prismc/README.md, picks CH and PT);
+  - the C++ printer moves where Rust moves: a bare read of an owned local, and a move
+    closure's capture `let`s as moving init-captures (pick MV);
+  - the C++ programs allocate with jemalloc, linked through `pkg-config`, sanitizer builds
+    excepted (pick AL); the Rust programs use the system allocator (jemalloc through
+    `tikv-jemallocator` was measured and taken out: it builds jemalloc from source on every
+    clean build; claude/todo-for-jimmy.md).
+  - `Float`'s `==` is bit identity with every NaN one value, and its order the IEEE total
+    order over the same bits (Type System round 6 FB and NO): `prism_rtl::Float` in both runtimes (pick BF), every `^Eq` a Rust `Eq`, every
+    `^Ord` an `Ord`, `Rc`'s `==` pointer first; prismc no longer looks for floats in types
+    (`Floaty` gone), nor do the maps and arrays keep self-equality caches.
+  - What it bought, the same night, six interleaved runs each: jemalloc took the C++
+    prismc's self-compile from 105.1 s to 75.7 s and the Rust prismc's from 69.9 s to
+    51.6 s (the Rust target has since gone back to the system allocator); FB took them,
+    both on jemalloc, on a later boot, from 76.9 s to 61.3 s and from 49.9 s to 39.6 s; the
+    moves and the one `Rc` were flat. Under the same allocator C++ takes about 1.5 times
+    Rust's time (doubt CH1); `bench/running/RESULTS.md` has the tip's numbers as built.
+- **Programs:** `examples/chess` (the rules, the board, and a window with a move list,
+  Back, Forward, Reset and a settings dialog, on the window library
+  `examples/chess/window`), the GUI table `bench/gui/prism` (js-framework-benchmark's
+  operations), `bench/gui/gtk` (the same in C with GTK 3), the conformance corpus
+  `tests/conformance/` (129 programs), the checker's corpus (`tests/checker/`, 162
+  negative programs), the cost pairs (`tests/cost/`, four).
+- **Claude's prose** lives under `claude/` and in the READMEs: `architecture.md`,
+  `backend.md` (the contract, and "Rust or C++ as the default back end"),
+  `benchmarks-preliminary.md`, `decisions.md`, `incremental-host-document.md`,
+  `modules-style-pass.md`, `regex-dialect.md`, `test-world-in-prism.md`, `todo-for-jimmy.md`,
+  `bugs/` (one file per bug not yet fixed).
+- **The books** are `jhartzell42/prism-notes` `main` (`claude/prism/`), at `db4232b` or
+  later: Semantics round 9 (HD, PK, FV), with chapters 4, 9 and appendix B and Platform
+  chapter 7 saying what this tree does.
 
-## Where things are
+## From a fresh clone
 
-- **Branch `claude-self-hosting`** is green on macOS (an M2 Pro): the Rust and the C++
-  fixed points, the C++ prismc emitting the Rust prismc's Rust byte for byte, both
-  compiled suites, the checker, the driver tests, the C++ runtime's and Worlds' tests
-  (ASan+UBSan under Homebrew clang; Apple clang's hangs at startup on macOS 26).
-  Everything builds and tests at cargo release and `-O3`, nothing lower (Jimmy).
-- **Merged:** modules as a tree (Jimmy: they nest as Rust's do, `mod Name`, no sections;
-  test modules are declared `test mod Tests` and read only by `prism test`;
-  `claude/modules-style-pass.md`, whose doubts are open for him); regular expressions in
-  both runtimes (`claude/regex-dialect.md`, `tests/regex/corpus.txt`) and in the compiler,
-  prismc's lexer reading by them (Regular expressions, below); per-module C++ headers; the first three bugs and gaps LP, LW, SR; `Text` as
-  UTF-8 with cursors; the performance queue (a non-atomic `prism_rtl::Rc`, less string
-  churn, gap NL, `?ParseNat`, the emitted-code cleanups).
-- **Also merged:** one persistent tree of chunks as `Array` in both runtimes and an AVL
-  `Map` in Rust (`im-rc` gone; the Rust prismc compiling itself fell from 2.9 GB and 75 s
-  to 275 MB and 45 s); `Upper` and `Lower` by Unicode 17's full case mapping in both
-  runtimes; `@Distinct`, a dynamic `let` read in several places computed once, and the
-  window library's first speedups (The window, below).
-- **Branch in flight:** `claude-lowering-fixes` (lifts over `?` and `~` in lowering, a
-  program's names kept off the runtime's helpers, both bootstraps' `--from-seed`, gap OC,
-  small modules sharing C++ translation units), merged here when green.
-- **The books** are `jhartzell42/prism-notes` `main` at `32597b0` or later: Semantics
-  round 4 (TX, Text), round 5 (regular expressions), round 6 (MT, TD: the module tree and
-  test modules), round 7 (CM, case mapping), round 8 (DU, `@Distinct`; CT, `Text` of a
-  `Char`); Type System rounds 4 and 5; Conformance round 2. Claude edits them in the
-  worktree `prism-notes-claude` and pushes to `main` fast-forward (Jimmy).
-- **The bootstrap.** Both seeds match the tree: `bootstrap/prismc-rust.tar.xz` and
-  `bootstrap/prismc-cpp.tar.xz`, each written from its fixed point.
-- **The benchmarks** are `bench/building`, `bench/running` and `bench/gui`; each writes a
-  `RESULTS.md` beside itself. The numbers so far are `claude/benchmarks-preliminary.md`.
+```
+cargo fetch                                  # once; every later build is offline
+bootstrap/bootstrap.sh                       # the Rust fixed point; installs target/bootstrap/prismc
+CXX=clang++ JOBS=$(nproc) bootstrap/bootstrap-cpp.sh   # the C++ fixed point; target/bootstrap/prismc-cpp
+make test                                    # every suite (below), or each by hand:
+cargo test --workspace --release
+make -C runtime/cpp test; make -C worlds/cli/cpp test; make -C worlds/canvas/cpp test
+tests/compiled/run.sh; tests/compiled/run.sh --target cpp
+tests/checker/run.sh; tests/driver/run.sh; tests/cost/run.sh [--target cpp]
+./prism check --unused prismc/
+bench/building/run.sh; bench/running/run.sh; bench/gui/prism/check.sh   # with nothing else running
+```
 
-## Measured so far
+- **Linux needs** `clang++` or `g++` (C++20), `make`, `pkg-config`, `libre2-dev`, `libjemalloc-dev`,
+  `libcairo2-dev`, `libfreetype-dev`, `libx11-dev`, `libxext-dev`, `libxtst-dev`, `xvfb`,
+  GNU `time`, and for the sanitizer builds under clang `libclang-rt-*-dev`; the cost tests
+  count instructions with `perf` where the machine has counters and with valgrind's
+  cachegrind where it has none (`bench/lib.sh`); the GUI benchmark and `damage_smoke` run
+  under `xvfb-run -a` when there is no `DISPLAY`. **macOS needs** Homebrew's `cairo
+  freetype jemalloc pkg-config gtk+3 llvm re2` (llvm for the sanitizer run; jemalloc not
+  yet tried on the Mac).
+- **Time on two cores** (the cloud VM, 6 November): the Rust bootstrap 6.5 min from the
+  seed, the C++ bootstrap 18 min, the C++ compiled suite 23 min, the Rust one 5 min, the
+  building benchmark 40 min, the GUI benchmark 13 min.
 
-Apple M2 Pro (12 cores, 16 GB), 4 November 2026, each pipeline all one language, both at
-the shipping configurations (cargo release, opt-level 3; clang++ -O3). Least of five runs
-for instruction counts; wall times with other jobs running, so rough. The full tables and
-their history are in prismc/README.md ("What it costs", "Strings: what is copied",
-"Building prismc, C++ against Rust").
+## Where the numbers are
 
-| Run | Rust | C++ |
-|---|---|---|
-| Build the compiler from clean (runtime library built beforehand) | 91 s wall, 255 s CPU (cargo, dependencies included) | 100 s wall, 1,003 s CPU (`make -j12`) |
-| The compiled prismc compiling itself | 72 s, 724 G instructions, 3.5 GB peak | 61 s, 727 G instructions, 1.2 GB peak |
-| Instructions, compiling `sem-ch07-normalize.prism` (`time -l`) | 1.40 G | 1.52 G |
-| Lines emitted for prismc | 103,850 | 154,462 |
+- **`bench/building/RESULTS.md`, `bench/running/RESULTS.md`, `bench/gui/RESULTS.md`:**
+  this machine (Linux, 2 cores, no counters): building from clean, running prismc, the
+  GUI table against GTK 3, each with the machine named. Not comparable with the Mac's.
+- **`claude/benchmarks-preliminary.md`:** the Mac's numbers (M2 Pro: the Low Power Mode
+  run of 6 November, the busy-machine runs of 5 November, the GUI phase tables) and a
+  section for this machine's.
+- **`claude/backend.md`, "Rust or C++ as the default back end":** Claude's
+  recommendation, Rust, argued from both models, with what would change it.
 
-- **What moved the numbers:** `Text` as UTF-8 with cursors (Rust 4.8 G → 1.4 G, the
-  `ropey` rope gone); per-module C++ headers (C++ build CPU down about a sixth); the
-  non-atomic `prism_rtl::Rc` and less string churn (C++ 1.79 G → 1.52 G, the C++
-  self-compile 77 s → 61 s).
-- **This table predates the arrays, regex and module work;** the later preliminary numbers
-  are `claude/benchmarks-preliminary.md`. The benchmarks proper are
-  `bench/building/run.sh` and `bench/running/run.sh`, to be run on a quiet machine once
-  the window is fixed, and they write `RESULTS.md` beside themselves.
+## Jimmy's to decide
 
-## The order (Jimmy's)
+Each has Claude's pick where it stands; his word overrules by editing.
 
-1. **The array fix** and **regular expressions in the compiler and its lexer**: done.
-2. **The layout bug** (The window, below): the host document as `$(Path ==> $Elem c)`,
-   built (branch `claude-window-cache`); what a small change still costs is in its bug
-   note. He asked for no full benchmark run until it is fixed.
-3. **The final fixed point and both seeds**, then **the final benchmarks** on a quiet
-   machine, and from them **a recommendation: Rust or C++ as the default back end**,
-   argued from both models, running and building (Jimmy).
-4. **The umbrella PR's write-up** (below).
+- **The default back end:** Rust (claude/backend.md). What would flip it is listed there.
+- **EP** (claude/incremental-host-document.md): each host-document entry published per
+  place, structural, one tick per host level for a value change.
+- **The window library's doubts** (examples/chess/window/README.md): DG (a slider drags
+  only once the canvas Worlds send pointer motion), OP, HS, FS; the chess doubts
+  (examples/chess/README.md): PC, DT, NT (moves written in coordinates), TS (the board's
+  and window's transcripts are not in the repository, over 10 KB), HT (13 ticks per press
+  to idle).
+- **The design note's doubts** (claude/incremental-host-document.md): ET, PB, SE, RF
+  (routing through every child's filter, linear), MT (claude/bugs/window-relayout-every-
+  change.md: a new word's extent reaches its layout a tick late).
+- **The regex dialect's doubts** (claude/regex-dialect.md): CT, SH among them.
+- **The checker's** (prismc/README.md, "Checker doubts" and "Gaps against ch. 5"): TR,
+  RP, CF, VW, UI, WL; gaps LR, RE, EE, R2, DG (binding groups half ordered), SU, FM, AT;
+  the checker mistypes `Show (? 3)` in a `check` line's pattern (taken out before checking).
+- **The back end's** (prismc/README.md, "Back-end picks" and "Contract gaps"): the picks
+  from NM to FV, gaps UV to DI, the C++ gaps CY and GC, doubts MH1 to MH4, and "Not
+  lowered yet".
+- **The modules pass's doubts** (claude/modules-style-pass.md) and the Test World in Prism
+  (claude/test-world-in-prism.md: Claude recommends (a), programs as values).
+- **CH1, the C++ self-compile's cost** (prismc/README.md, C++ doubts): under glibc the
+  inline variants cost about 9% against the handles (not measured under jemalloc); what
+  the jemalloc profile shows left is the records of maps (`G`, `Lx`, `St`, `TProgram`)
+  moved, copied and destroyed, about 30% of samples, and the unbounded folds' job per
+  element. The handle comes back from `7dc334d^`; `Rc`'s `==` could compare pointers
+  first where the type has no `Float`, as Rust's `Rc<T: Eq>` does (untried).
+- **`Sign` under the total order** (prismc/README.md, pick BF): `Sign`, `Max` and `Min`
+  use `<`, so `Sign -0.0` is -1.0 and every NaN's `Sign` is 1 (Claude: keep; else IEEE
+  `copysign` for `Sign`).
+- **Performance left:** remove still re-stacks the row list, in C++ 7.5 ms of CPU against
+  Rust's 5.0 here after the Map change (claude/bugs/window-relayout-every-change.md: the
+  path copies were a part of the gap, not its body; what remains is to profile); prismc's emit time grows faster than
+  its input (about 2,100 lines a second on itself here against 12,000 to 14,000 on chess
+  and the table, cause unknown); gap OC and the string copies SC1 to SC7 (prismc/README.md).
+- **The bugs filed, not fixed:** `claude/bugs/bench-cuis-latin1-and-software-paint.md`
+  (Cuis is out of the scripted runs).
+- **Remote branches to delete** (merged into `claude-self-hosting`; Claude deletes none):
+  `claude-arrays`, `claude-case`, `claude-chess-ui`, `claude-damage`, `claude-doc-design`,
+  `claude-headers-rebased`, `claude-host-cheap`, `claude-incremental`, `claude-layout`,
+  `claude-lowering-fixes`, `claude-lowering-rebased`, `claude-perf`, `claude-regex`,
+  `claude-regex-compiler`, `claude-style`, `claude-text`, `claude-window-cache`, and this
+  session's `claude-for-inner`, `claude-cpp-inline-choices`, `claude-cpp-moves`,
+  `claude-cpp-rc-jemalloc`, `claude-float-bits`; and `claude-cpp-jemalloc-wip`, not an
+  ancestor but superseded (its work came in through `claude-cpp-rc-jemalloc`). Not merged by
+  ancestry, from October (superseded by their rebased twins or by `main`, for Jimmy to
+  judge): `claude`, `claude-reflex`, `claude-lowering`, `claude-cpp-headers-wip`,
+  `claude-move-language`, `claude-q-g7-torn-down-request`, `claude-rt-1` to `claude-rt-6`.
 
-- **Other agents push to this branch** (bug reports under `claude/bugs/`, notes here):
-  fetch before starting and before every merge.
-- **A GUI benchmark opens windows on Jimmy's screen** and needs the display awake: ask or
-  wait for a time he gives; the other benchmarks and every test are headless or brief.
+## To rerun on the Mac
 
-## On macOS
+Everything here is green, and these are the parts the Mac alone can give:
 
-- **Both canvas Worlds run natively:** `worlds/canvas/rust` (winit) and `worlds/canvas/cpp`
-  (`src/app_macos.mm`, Cocoa). Each has `Hooks` and a smoke test driven through them
-  (`hooks_smoke`, `macos_smoke`); the Xvfb tests and the XTest robot are Linux-only.
-- **Homebrew:** `cairo freetype pkg-config gtk+3 llvm re2` (llvm for the sanitizer run).
-- **RE2 is a prerequisite of every C++ build** (`brew install re2`; Linux: `apt install
-  libre2-dev pkg-config`): the C++ runtime's library holds the regex engine, and its
-  Makefile stops with that instruction when RE2 is missing.
-- **Timings:** quit everything else, plug in power; `bench/run.sh` and
-  `bench/compiler/run.sh` record the machine and the load average.
-- **Instruction counts** come from macOS's `time -l` ("instructions retired"); valgrind
-  does not run on arm64 macOS.
-
-## Performance work still open
-
-- **Gap OC** (prismc/README.md): Rust still clones an owned match binding read on several
-  paths, or under a lambda or loop; one read once is moved.
-- **SC1, SC2, SC4 to SC7** (prismc/README.md, "Strings: what is copied"): the string
-  copies left.
-- **The performance table for the PR** comes from `bench/building/run.sh` and
-  `bench/running/run.sh`: cargo release against clang `-O3` only.
-
-## Regular expressions
-
-In both runtimes and in prismc: the literals `%/.../`, `%/.../.../` and the hashed form,
-checked before tick 0 by `Check.Regex` against claude/regex-dialect.md (held to the
-runtimes' corpus, tests/regex/corpus.txt); the prelude's `?Regex`, `?Match`, `?Find`,
-`Matches`, `Replace` and `Split` (the old text splitter is `SplitOn`); prismc's own lexer
-reading its token classes by anchored `?Match`, its output unchanged and its cost within
-a percent (prismc/README.md, Regular expressions; claude/backend.md; D18). Left: the
-lexer generator doubt (a token table as one automaton) stands, unmeasured; layout as a
-separate pass over the token stream was not in this work.
-
-## The window
-
-- **The host document is `$(Path ==> $Elem c)`** (Jimmy, 6 November 2026: "No, change
-  everything for this"), built on both targets: each hosted place an `Entry` of its own,
-  the outer moving only when a place comes or goes (`sem-ch09-host-doc-entries`). The
-  window lays each element out in a `for` row of its own (`@Laid`), each ending on plain
-  layout data with `^Eq`, with one placing pass at the window; each leaf measures its own
-  texts. `claude/incremental-host-document.md` is the design as built, with its doubts
-  (CL, WD, EP, MW, EQ, ET, PB, SE, RF).
-- **The canvas Worlds paint only the damage** (Jimmy, 6 November 2026: "allow damage
-  boxes or whatever and not repainting a whole frame"; branch `claude-damage`): each
-  window keeps its frame and its last draw commands with their bounds, and a new settled
-  scene repaints the boxes whose commands changed, held equal to a full repaint pixel for
-  pixel by both Worlds' tests (worlds/canvas/rust/src/damage.rs and README, "Painting").
-  Each window is in sRGB, so Core Animation no longer converts every frame on the CPU
-  (125 M of the 145 M a C++ frame cost). Only C++ on X11 presents just the damage; macOS
-  and the Rust World present the whole frame.
-- **A select costs 20.6 M instructions in C++ and 31 M in Rust** (create1k 632 M and
-  533 M), 1.4 M and 12.7 M of it painting, nine ticks (`bench/gui/prism/check.sh`, which
-  reports the phase table and fails on none; Jimmy threw out the bar of a tenth). It was
-  25.7 M and 35.3 M before the table's rows went over `@PerKey`, 166 M and 177 M painting
-  the whole frame, and 494 M and 436 M with the flat document. What remains is
-  `claude/bugs/window-relayout-every-change.md`.
-- **`@PerKey`** (Jimmy, round 9 PK: "A combinator that turns `$(k ==> v)` into `$(k ==>
-  $v)` ... that requires `v: ^Eq`"; branch `claude-per-key`): `$each <- @PerKey $m` in the
-  prelude, the lowering (`PerKeyLine`) and both runtimes (`prism_rtl::PerKey`). The outer
-  fires only when a key comes or goes, each key's inner only when its value changes by
-  `==`; a row of `for k, $$d <- $each:` reads its own with `@Flatten $$d`, in the tick of
-  the write (no tick added). The plain `for` is unchanged (pick UD). Pinned by
-  `sem-appB-per-key`, the cost pair `per-key-one-edit`/`per-key-many-edits` and the
-  checker's `per-key-needs-eq`; the table's rows use it.
-- **Jimmy's rulings:** no `Cached` prelude function and no hidden runtime cache; one tick
-  per level (every host level and every gathered `for`), no route D.
-- **The books' sentences that change** with the type are listed in the report of the
-  agent that built it (Semantics chs. 2, 7, 8, 9 and RULINGS; Type System chs. 1, 2 and
-  RULINGS WL; Pitch chs. 4, 5), for the coordinator to edit.
-- **The Cuis table crashes on `▶`; Linux Cuis times measure software painting**
-  (`claude/bugs/bench-cuis-latin1-and-software-paint.md`); Jimmy paused the Cuis runs.
-
-## The chess interface
-
-- **Chess has a fuller interface** (Jimmy: "a slightly more mature user interface for me to
-  start iterating from"; branch `claude-chess-ui`): beside the board a panel with the
-  status, a move counter, Back, Forward, Reset and Settings, and the list of moves; a
-  settings dialog in the window's bottom right corner edits the interface's copy, the players' names, the
-  squares' colours as `#rrggbb` and the board's border (a slider and a box in step), live.
-  The settings start at their defaults every run and live in the dialog's holds; nothing
-  touches a file. examples/chess/README.md, "The interface", says what each part does and
-  the choices made (a move from an earlier position discards the later moves; Reset
-  forgets the moves and keeps the settings).
-- **The window library gained** `Ui.Slider`, `Ui.Shown` (`@ShowIf`), `@Overlay`,
-  `@TextField`, a live frame spec (`@FramedBy`, `@Bordered`), a grid whose columns and rows
-  size to their children, opaque backgrounds, and keys only to an input that shows
-  (examples/chess/window/README.md, with doubts DG, OP, HS, FS).
-- **The lowering fixes it needed** (prismc/README.md, gap ID and the not-lowered list):
-  only a widget's own recursion is bounded, so widgets nest as deep as written and a
-  widget parameter no longer lowers to nothing past depth 32; a widget block's bundle
-  result is taken apart where it is bound; a block reads a widget's result on a line
-  above its binding, and a `for` row reads a widget's `$` parameter; an element's first
-  value at the build reads a parameter's value then; a map-keyed type variable is `Ord`
-  in Rust. Each has a conformance test (`sem-ch08-widget-depth`,
-  `sem-ch04-bundle-result`, `sem-ch08-widget-reads`). Filed, not fixed:
-  `claude/bugs/widget-plain-result-unbound.md`.
-- **Open for Jimmy:** dragging a slider needs pointer motion from the canvas Worlds (doubt
-  DG); `click element` by a whole chain would let a form be built of rows (chess doubt PC);
-  the windowed chess transcript is 2.5 MB (chess doubt TS).
-
-## Smaller items
-
-- **The C++ Worlds moved and leave old build directories behind.** Since `15d1ab8` they
-  are `worlds/{cli,canvas}/cpp`; a checkout that built at the old paths keeps
-  `worlds/cli-cpp/build` and `worlds/canvas-cpp/build`, which show as untracked. Nothing
-  to fix in the repo; delete them by hand.
-
-- **Lexer simplifications** (ideas Jimmy asked about; "don't do it just noodle"):
-  - walk with cursors (part of item 6);
-  - layout as a separate pass over the token stream, the way Haskell's layout algorithm
-    works;
-  - template lexing (about 330 lines) as its own module;
-  - the layout-corpus notation and Rust `{:?}` escaping (about 135 lines), which exist
-    only to diff against `prism_syntax`'s lexer.
-- **Over-engineering to look at** (Claude's suspicion, not read closely enough to claim):
-  - the Rust-specific bookkeeping in lowering's shared model (clones, borrows, `Rc`),
-    which may belong in the Rust printer;
-  - the three hosting forms, which may be one form with two thin wrappers.
-- **C++ build noise:** emitted chess C++ gives many g++ `-Wmaybe-uninitialized` warnings
-  at -O1 (e.g. a `FrameSpec` copy in `lay_frame`). The runtime test silences a false one
-  under ASan (`test_lang.cpp`).
-- **`TRY`** is a GNU statement expression (g++ and clang only); the docs say so. Lowering
-  refuses `?` of a place with a hard error, which no source reaches, so it has no test.
-  `tests/compiled/run.sh` has no way to check a refusal yet.
-- **Remaining gaps:** see `prismc/README.md` (NS, NL, RE, PL, CI, CY, GC, FA, MH1–MH4).
-- **Doubts for the PR write-up:**
-  - CW-color: signatures with `$`/`!`/`@` keep unwritten colors bounded;
-  - pick CS, place numbering;
-  - the driver refuses Ui-only roots;
-  - the per-module-header cycle refusal.
-- **The Test World in Prism:** `claude/test-world-in-prism.md`; Claude recommends (a),
-  programs as values with a uniquely owned handle. Nothing to do until Jimmy rules.
-
-## The umbrella PR
-
-- One PR from `claude-self-hosting`, titled "Claude: ... (do not merge)". It includes the
-  C++ target. There are no per-change PRs.
-- One write-up covering everything:
-  - the self-hosting fixed points (Rust and C++) and both seeds;
-  - the layout of the repository;
-  - the performance table;
-  - the GUI benchmark's results, if done;
-  - every doubt above and every remaining gap;
-  - the books' rulings made during this work (Semantics rounds 1 to 4, Type System
-    rounds 1 to 3), by name.
-- End the description with the PR attribution lines.
+- **Instruction counts** for `bench/running/run.sh` (the self-compile and normalize) and
+  `bench/gui/prism/check.sh`'s phase table: this VM has no hardware counters, so the
+  running results say "n/a" and the phase table is CPU milliseconds.
+- **The GUI timings on a real display:** `bench/gui/run.sh` here ran under Xvfb (software
+  painting, a frame handed to a server that shows nothing), so its milliseconds are not
+  the Mac's; the relative shape (Rust ahead on bulk operations, both ahead of GTK on
+  creates) holds.
+- **The Cocoa paths:** `macos_smoke`, chess in a window, the C++ canvas World's Cocoa
+  loop, and the sanitizer run under Homebrew clang. The X11 paths, damage painting on X11
+  and the on-screen colours after the sRGB change were checked here (the Worlds' tests and
+  the GUI check's pixel comparison under Xvfb).
+- **The sanitizer run of the compiled suite** (`make test-sanitize`), last run one merge
+  before the `for` change on the Mac; not run here (it takes the C++ suite's 23 minutes
+  several times over on two cores).

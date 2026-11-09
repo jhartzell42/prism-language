@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include "prism_rtl/float.hpp"
 #include "prism_rtl/rc.hpp"
 #include <compare>
 #include <cstdint>
@@ -31,14 +32,6 @@
 namespace prism_rtl {
 
 class Pod;
-
-/// An `f64` ordered by IEEE's total order, so `nan` can key a map (and `-0.0` is not
-/// `0.0`).
-struct F64 {
-    double v;
-    friend bool operator==(F64 a, F64 b) { return (a <=> b) == 0; }
-    friend std::strong_ordering operator<=>(F64 a, F64 b);
-};
 
 /// Nanoseconds.
 using Nanos = __int128;
@@ -148,7 +141,7 @@ public:
     static Pod integer(Int n) { return Pod(std::in_place_index<2>, std::move(n)); }
     /// Rust's `Pod::int`.
     static Pod int64(std::int64_t n) { return integer(Int(n)); }
-    static Pod floating(double f) { return Pod(std::in_place_index<3>, F64{f}); }
+    static Pod floating(double f) { return Pod(std::in_place_index<3>, Float{f}); }
     static Pod character(char32_t c) { return Pod(std::in_place_index<4>, c); }
     static Pod text(Text t) { return Pod(std::in_place_index<5>, std::move(t)); }
     static Pod duration(Nanos ns) { return Pod(std::in_place_index<6>, ns); }
@@ -181,7 +174,7 @@ public:
     // The payload of each kind, or null. These look at this value, not its structure.
     const bool* if_bool() const { return std::get_if<1>(&v_); }
     const Int* if_int() const { return std::get_if<2>(&v_); }
-    const F64* if_float() const { return std::get_if<3>(&v_); }
+    const Float* if_float() const { return std::get_if<3>(&v_); }
     const char32_t* if_char() const { return std::get_if<4>(&v_); }
     const Text* if_text() const { return std::get_if<5>(&v_); }
     const Nanos* if_duration() const { return std::get_if<6>(&v_); }
@@ -216,7 +209,7 @@ public:
     friend std::strong_ordering operator<=>(const Pod& a, const Pod& b);
 
 private:
-    using V = std::variant<Unit, bool, Int, F64, char32_t, Text, Nanos, Named, Choice, Named, std::vector<Pod>,
+    using V = std::variant<Unit, bool, Int, Float, char32_t, Text, Nanos, Named, Choice, Named, std::vector<Pod>,
                            std::vector<Pod>, Entries, Unit, Rc<const Pod>, Rc<const Pod>,
                            Rc<const Pod>, prism_rtl::Path, Shown>;
     template <std::size_t I, class... A>
@@ -305,7 +298,7 @@ PRISM_POD_LEAF(Nat, "a Nat", return Pod::integer(s.as_int());,
                if (auto n = p.if_int(); n && !n->is_negative()) return *Nat::from_int(*n);)
 PRISM_POD_LEAF(std::uint8_t, "a U8", return Pod::int64(s);,
                if (auto n = p.if_int()) if (auto i = n->to_i64(); i && *i >= 0 && *i < 256) return std::uint8_t(*i);)
-PRISM_POD_LEAF(double, "a Float", return Pod::floating(s);, if (auto f = p.if_float()) return f->v;)
+PRISM_POD_LEAF(Float, "a Float", return Pod::floating(s.v);, if (auto f = p.if_float()) return *f;)
 PRISM_POD_LEAF(char32_t, "a Char", return Pod::character(s);, if (auto c = p.if_char()) return *c;)
 PRISM_POD_LEAF(Text, "a Text", return Pod::text(s);, if (auto t = p.if_text()) return *t;)
 PRISM_POD_LEAF(Path, "a path", return Pod::path(s);, if (auto q = p.if_path()) return *q;)
@@ -390,7 +383,8 @@ struct FromPod<Fallible<T>> {
     }
 };
 
-/// A recursive payload, `Rc<T>` in Rust.
+/// A recursive payload, `Rc<T>` in Rust (`Rc<const T>` here): goes out as its value and
+/// comes back as one made from it.
 template <class T>
 struct ToPod<Rc<const T>> {
     static Pod to_pod(const Rc<const T>& x) { return prism_rtl::to_pod(*x); }

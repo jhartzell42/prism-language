@@ -104,7 +104,7 @@ public:
     std::string_view pattern() const;
     std::string_view flags() const;
     /// The same compiled regex, not merely an equal one.
-    bool same(const Regex& o) const { return c_.get() == o.c_.get(); }
+    bool same(const Regex& o) const { return ptr_eq(c_, o.c_); }
     /// Equal by spelling: pattern and flags written alike (Type System ch. 2, RX-EQ).
     friend bool operator==(const Regex& a, const Regex& b) { return a.pattern() == b.pattern() && a.flags() == b.flags(); }
     /// `%/pattern/flags`.

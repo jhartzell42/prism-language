@@ -8,10 +8,13 @@ use Window.Layout.*
 use Window.Hits.*
 
 # ---------------------------------------------------------------------------
-# Hosting: a box answers each of its child's Ui elements with the inputs routed to its path;
-# anything else it declines, and the host forwards it. Its children are its whole document
-# (`children=$elems`): an element that is not the library's is laid out as nothing (README,
-# doubt CL).
+# Hosting: a box answers each of its child's Ui elements with the inputs routed to its path:
+# recognised, so swallowed, and nothing above the box sees it. Anything else it declines
+# with `nil`, and the host forwards it: re-emitted in the enclosing scope, where the next
+# host answers it or the checker refuses it at the arm (Semantics ch. 9, the sandbox law;
+# RULINGS round 9 HD). An element is passed up or refused, never dropped. The box's
+# children are its whole document (`children=$elems`), a forwarded place among them, and
+# layout skips only that entry (`KNone`, `unplanned`: no room, no paint, no hit).
 
 ?ClickTo: fn Path, Routed -> ?Click
 fn ?ClickTo p, r = match r.input:

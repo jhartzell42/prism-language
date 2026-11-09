@@ -27,12 +27,10 @@
 //! indexing in place log, copying one chunk at most; iteration linear. Storage: at most
 //! `2n + 1` slots while the array is small, `n + 64` beyond, plus a node per chunk.
 //!
-//! `==` answers at once for a node both arrays share at the same index, when every element
-//! under it is known to equal itself: a join remembers that once it has been asked (the
-//! map's `SelfEqual`), a chunk is compared with itself (64 elements at most), and an
-//! update forgets it on the path it copies or changes. A shared node holding a value equal
-//! to nothing (a `Float` NaN, IEEE equality: Type System ch. 2) stays unequal, as the
-//! structural comparison has it, so sharing stays invisible (Semantics ch. 11).
+//! `==` answers at once for a node or a tail both arrays share at the same index: every
+//! `^Eq` is reflexive (a `Float` is equal exactly when its bits are, Type System round 6
+//! FB), so a shared node's elements equal themselves without being read, and sharing stays
+//! invisible (Semantics ch. 11).
 //!
 //! No `unsafe`. A panic partway through an update (an element's `clone` panicking) leaves
 //! a valid array, possibly without the elements of the node being rebuilt; programs do
@@ -45,14 +43,12 @@ use std::iter::FromIterator;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 
-use super::map::SelfEqual;
-
 const CHUNK: usize = 64;
 
 #[derive(Clone)]
 enum Node<T> {
     Leaf(Vec<T>),
-    Join { left: Rc<Node<T>>, right: Rc<Node<T>>, len: usize, height: u8, same: SelfEqual },
+    Join { left: Rc<Node<T>>, right: Rc<Node<T>>, len: usize, height: u8 },
 }
 
 impl<T> Node<T> {
@@ -71,21 +67,16 @@ impl<T> Node<T> {
 }
 
 /// The node at `n`, this array's own (copied first when another array shares it), to be
-/// changed: every change to a tree node goes through this, which forgets what a join knew
-/// of itself.
+/// changed.
 fn own<T: Clone>(n: &mut Rc<Node<T>>) -> &mut Node<T> {
-    let n = Rc::make_mut(n);
-    if let Node::Join { same, .. } = n {
-        same.forget();
-    }
-    n
+    Rc::make_mut(n)
 }
 
 /// Two siblings whose heights differ by one at most, under a node.
 fn join<T>(left: Rc<Node<T>>, right: Rc<Node<T>>) -> Rc<Node<T>> {
     let len = left.len() + right.len();
     let height = left.height().max(right.height()) + 1;
-    Rc::new(Node::Join { left, right, len, height, same: SelfEqual::new() })
+    Rc::new(Node::Join { left, right, len, height })
 }
 
 fn children<T>(n: &Rc<Node<T>>) -> (Rc<Node<T>>, Rc<Node<T>>) {
@@ -664,15 +655,6 @@ impl<T: Clone> IntoIterator for Array<T> {
     }
 }
 
-/// Whether every element under `n` equals itself: remembered in a join, computed for a
-/// chunk (64 elements at most).
-fn self_equal<T: PartialEq>(n: &Node<T>) -> bool {
-    match n {
-        Node::Leaf(v) => v.iter().all(|x| x == x),
-        Node::Join { left, right, same, .. } => same.get(|| self_equal(left) && self_equal(right)),
-    }
-}
-
 /// What is left to compare of one side, in order from the top of the stack: a whole
 /// subtree, or the rest of a chunk (or of the tail).
 enum Pending<'a, T> {
@@ -704,17 +686,31 @@ fn pending<T>(a: &Array<T>) -> Vec<Pending<'_, T>> {
     s
 }
 
-impl<T: PartialEq> PartialEq for Array<T> {
+/// `==` for `Eq` elements alone: the shared nodes it passes over are equal only because
+/// `==` is reflexive.
+impl<T: Eq> PartialEq for Array<T> {
     /// The elements compared in order, as `iter().eq()` would, except that a node both
-    /// arrays have at the same index is compared with itself, which [`self_equal`] answers
-    /// from the node once it is known. Equal lengths make the indices line up, so a
-    /// subtree is opened only while the other side's next item is not the same node: the
-    /// longer of two, or a subtree against a run; two runs compare the elements they
-    /// overlap by. Runs are never shared nodes, so the tail (64 at most) is compared
-    /// element by element.
+    /// arrays have at the same index is passed over without being read. Equal lengths make
+    /// the indices line up, so a subtree is opened only while the other side's next item
+    /// is not the same node: the longer of two, or a subtree against a run; two runs
+    /// compare the elements they overlap by. A tail both share is passed over too; one
+    /// that is not shared (64 at most) is compared element by element.
     fn eq(&self, other: &Self) -> bool {
         if self.len != other.len {
             return false;
+        }
+        let tails = match (&self.tail, &other.tail) {
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        let trees = match (&self.tree, &other.tree) {
+            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        if tails && trees {
+            return true;
         }
         // An array of a chunk or less is walked as it is.
         if self.len <= CHUNK {
@@ -727,9 +723,6 @@ impl<T: PartialEq> PartialEq for Array<T> {
                 (Pending::Tree(x), Pending::Tree(y)) => {
                     let (x, y) = (*x, *y);
                     if std::ptr::eq(x, y) {
-                        if !self_equal(x) {
-                            return false;
-                        }
                         sa.pop();
                         sb.pop();
                     } else if x.len() >= y.len() {
@@ -767,9 +760,9 @@ impl<T: PartialEq> PartialEq for Array<T> {
 
 impl<T: Eq> Eq for Array<T> {}
 
-impl<T: PartialOrd> PartialOrd for Array<T> {
+impl<T: Ord> PartialOrd for Array<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.iter().partial_cmp(other.iter())
+        Some(self.cmp(other))
     }
 }
 

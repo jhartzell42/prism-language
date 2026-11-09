@@ -15,6 +15,18 @@ BUILD := build/$(CONFIG)
 FLAGS := -std=c++20 -Wall -Wextra -Werror $(OPT) $(SANITIZE) -Iinclude -I$(RT)/include -I$(RT)/tests
 LIB := $(RT)/build/$(CONFIG)/libprism_rtl.a
 
+# The allocator of every binary linked here is jemalloc (runtime/cpp/README.md, pick AL), found with
+# pkg-config, except under a sanitizer (SANITIZE set: AddressSanitizer replaces malloc
+# with its own, which jemalloc would take the allocations from). The library itself links
+# nothing; a binary's link stops and names the package when pkg-config does not find it.
+ifeq ($(SANITIZE),)
+ALLOC_LIBS = $(shell pkg-config --libs jemalloc 2>/dev/null)
+ALLOC_READY = @pkg-config --exists jemalloc || { echo "a C++ binary of Prism links jemalloc, found with pkg-config, and pkg-config does not find it: apt install libjemalloc-dev pkg-config (Debian, Ubuntu), brew install jemalloc (macOS)"; false; }
+else
+ALLOC_LIBS =
+ALLOC_READY = @true
+endif
+
 .PHONY: test check FORCE
 
 # The sanitizer run's compiler: g++ on Linux; on macOS Homebrew's clang (`brew install
@@ -48,6 +60,7 @@ $(LIB): FORCE
 
 $(BUILD)/cli_tests: src/cli.cpp tests/test_cli.cpp include/prism_world_cli/cli.hpp $(RT)/tests/main.cpp $(LIB)
 	@mkdir -p $(BUILD)
-	$(CXX) $(FLAGS) -o $@ src/cli.cpp tests/test_cli.cpp $(RT)/tests/main.cpp $(LIB)
+	$(ALLOC_READY)
+	$(CXX) $(FLAGS) -o $@ src/cli.cpp tests/test_cli.cpp $(RT)/tests/main.cpp $(LIB) $(ALLOC_LIBS)
 
 FORCE:

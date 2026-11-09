@@ -1,4 +1,4 @@
-# Derived by hand from Jimmy's ruling of 6 November 2026 (the host document is `$(Path ==> $Elem c)`) and Semantics ch. 7 (round 3 ST): a click moves the child's label at n; its entry is published at n+1 (the host level's tick), where its row's `@Flatten` follows it and the gathered `$flat` is taken; `$flat` is published at n+2 (the gathered `for`'s tick), and `!Updated $flat` fires there with the flat document after the click, both ticks owed.
+# Derived by hand from Jimmy's ruling of 6 November 2026 (the host document is `$(Path ==> $Elem c)`) and Semantics ch. 7 (round 3 ST): a click moves the child's label at n; its entry is published at n+1 (the host level's tick), where its row's `$e` follows it and the gathered `$flat` is taken; `$flat` is published at n+2 (the gathered `for`'s tick), and `!Updated $flat` fires there with the flat document after the click, both ticks owed.
 test the_document_updates_in_its_tick
 
 tick 0

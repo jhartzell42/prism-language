@@ -251,7 +251,6 @@ type TyDef = record:
     cases: [CaseDef]
     eq: Bool
     ord: Bool
-    floaty: Bool
     show: Shown
     pod: Bool
     doc: Text
@@ -466,6 +465,10 @@ type ForDef = record:
     # the host its child's places came or went (`host_k_moved`, `document_moved`), which
     # the builder calls when a row came or left; "" otherwise.
     moved: Text
+    # Over a map of dynamics (`for k, $v <- $(k ==> $v)`, ruling FV): the rows' methods the
+    # builder calls on a row whose kept key holds another dynamic than the one it was built
+    # from, so that row alone follows it from the next tick; empty otherwise.
+    replaced: [Text]
 derive ^Eq, ^Show
 
 # The program of a root widget, as a World drives it.

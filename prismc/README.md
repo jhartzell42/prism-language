@@ -347,7 +347,7 @@ an empty array's element), or one a local `let` quantified (`gens` names those).
 
 `tests/checker/run.sh` checks every program of the corpus, the programs of its own
 under `pos/` (`lambda-color`, clean, with its colors in `pos/lambda-color.colors`), the
-88 negative cases and the two typed dumps. Every corpus program checks clean; a book program the checker refused
+175 negative cases (162 programs and 13 module trees) and the two typed dumps. Every corpus program checks clean; a book program the checker refused
 was a slip in the book, corrected there and here (Semantics round 3 CK).
 
 - **Clean:** `compiler-ch03-halfcounter`, `conf-ch01-counter`, `conf-ch01-journal`,
@@ -359,8 +359,9 @@ was a slip in the book, corrected there and here (Semantics round 3 CK).
 - **`prismc`** (clean): the checker over prismc's own tree (`prismc/`, its test modules
   read), the back end included.
 
-The negative cases (`neg/`, 88) give one diagnostic each, the error their name says, or a
-case of it (`live-field-bare` is a `mark-stack`; `values-not-shrinking` and
+The negative cases (`neg/`, 175) give one diagnostic each, the error their name says, or a
+case of it (`live-field-bare` is a `mark-stack`, and so is `for-double-dynamic`, a `for`
+over `$(k ==> $v)` binding `$$d` where ruling FV binds `$v`, with the fix in the message; `values-not-shrinking` and
 `summary-not-parts` are `may-not-end`s that keep doubt TR's map rule and pick SM's
 summaries from accepting a cycle that grows; `drop-unknown` and `long-cycle` are
 `may-not-end`s for pick SM's `Drop` rule and the closure's fixed point, `int-minus`,
@@ -1005,7 +1006,9 @@ qualified path, a label) or a literal's digits, never syntax.
 ### Where it stands
 
 End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), by
-`tests/compiled/run.sh`, which runs every program every time: all 81 pass, chess's board included.
+`tests/compiled/run.sh`, which runs every program every time: all 135 pass (the 129
+conformance programs, chess and chess's rules alone, the prelude's maps, and prismc's
+lexer, parser and regex checks), chess's board included.
 
 - **Pass:** `counter` and `half-counter`, which `prism_rtl`'s hand-written
   `tests/counter.rs` verifies against the same `.expected` files, and whose emitted node
@@ -1034,7 +1037,9 @@ End to end (compile, `cargo build`, transcript byte-equal to its `.expected`), b
   `sem-ch09-host-doc-in-tick`, `sem-ch09-host-delay`, `sem-ch09-host-nested` and `sem-ch09-host-teardown` (pick
   HO), `sem-ch07-updated` (pick UP), `sem-ch09-host-updated`, `sem-ch07-structural` and `sem-ch07-structural-law`
   (pick ST),
-  `sem-ch04-row-entry` (pick RE).
+  `sem-ch04-row-entry` (pick RE), `sem-ch04-for-replaced-inner` (pick FV: a `for` over
+  `$(k ==> $r)` gathered from `rebuild`s' dynamics, its rows following a replaced inner
+  without a rebuild; a hand-derived transcript, passing on both targets).
   `sem-ch08-clause-widget` (pick CS). The rest of the corpus that passes: the conformance
   counters (`conf-ch01-counter`, `sem-ch01-counter`, `compiler-ch03-halfcounter`),
   `conf-ch01-journal`, `todos`, `sem-ch04-birth`, `sem-ch04-given`, `sem-ch04-quiz`,
@@ -1078,13 +1083,21 @@ emit/cpp/prelude.prism (`Emit.Cpp.Prelude`, the prelude in C++, function for
 function the Rust one) as a C++20 program over `runtime/cpp` and `worlds/cli/cpp`
 (claude/backend.md, "The C++ side"). `./prism test --target cpp` builds it with make and
 `$CXX` (g++ by default) into `target/prism-cpp/NAME` and runs its tests under the C++
-Test World; `tests/compiled/run.sh --target cpp` runs every program so.
+Test World; `tests/compiled/run.sh --target cpp` runs every program so. `./prism run
+--target cpp` runs the root under the World its row asks for, as the Rust target does: a
+root with `Gui.*` is linked with `worlds/canvas/cpp` (X11 on Linux, Cocoa on macOS; the
+emitted Makefile's `CppMakefileCanvas` lines build its library after `runtime/cpp`'s),
+any other with the CLI World (`CppRunRoot`: `run_cli` or `prism_world_canvas::run`).
+`--world` names the World the binary is run with; it cannot add the canvas World to a
+program whose row did not ask for it, since that program is built without it
+(`CppNoCanvas` says so and exits 2), and a root whose row has `Ui.*` without `Gui.*` is
+refused by the binary with the Rust target's message.
 
 - **Where it stands:** every program of `tests/compiled/run.sh` passes under C++ (every
   conformance program, hosting included; chess's `rules.prismtest` and
   `board.prismtest`; prismc's lexer and parser checks), byte-equal to the `.expected`
   files the Rust target passes. A conformance program builds in about 8 s with g++.
-- **The C++ bootstrap:** prismc itself compiles to C++ (185,385 lines: 63 units and 280
+- **The C++ bootstrap:** prismc itself compiles to C++ (190,255 lines: 64 units and 280
   headers, picks MH and SF) and `bootstrap/bootstrap-cpp.sh` (`make bootstrap-cpp`)
   takes it to its fixed point and checks its Rust against the Rust prismc's
   (bootstrap/README.md). clang++ -O3 builds it in about 165 s wall (1,310 s CPU) with
@@ -1093,12 +1106,39 @@ Test World; `tests/compiled/run.sh --target cpp` runs every program so.
 
 C++ picks, each a place where C++ needs what the model leaves to Rust:
 
-- **CH: a choice is a handle.** A choice (and a row kind's values, `Elem`, `Answer`) is a
-  class holding a `prism_rtl::Rc` to a `std::variant` of its case structs. What it buys:
-  `Rc<T>` of any value type is `T` itself (`IsValueTy`), so a recursive type needs no box,
-  every `*` and `&` of the model is a no-op in C++, and `.` reaches a value's fields
-  whatever the Rust side derefs. A record is a plain struct; a cycle of records by value
-  with no choice on it does not compile (gap CY).
+- **CH: a choice is an inline variant, a recursive payload an `Rc<const T>`.** A choice (and
+  a row kind's values, `Elem`, `Answer`) is a class holding a `std::variant` of its case
+  structs by value, the cases nested in it and complete before it, as Rust's enum is by
+  value; a record is a plain struct; and a payload the lowering puts behind `Rc` (a case or
+  field whose type reaches its own, claude/backend.md "Types") is a `prism_rtl::Rc<const
+  T>`, the one `Rc` of the runtime, as Rust has one: a copy shares its allocation, `*v`
+  reaches the value, and `==` and `<=>` are the value's, the pointers compared first as
+  Rust's `Rc<T: Eq>` does (pick BF; defined on an `Rc<T>` exactly when `T` has them, so a
+  node's or a cell's `Rc` has none; identity is `prism_rtl::ptr_eq`),
+  and `show` and `to_pod` go by the value, as Rust's `Rc<T>` of a value does
+  (runtime/cpp/README.md, "Sharing"). The `const` says the payload is immutable and costs
+  nothing: an `Rc<const T>` moves and copies as an `Rc<T>` does (only the pointee is
+  `const`), and `make_rc<const T>` builds it. The model's `*x` prints by pick PT. What it
+  buys: a choice value is its variant, with no allocation and no count of its own, and a
+  record is copied by value as Rust copies it; `Pair (Num 2), (Num 5)` is two allocations
+  (the payloads' `Rc`s), as in Rust, where the handle made three. A cycle through a choice
+  orders in the types header, since an `Rc<const T>` needs only `T` declared.
+  The alternative refused: the handle, a class holding `prism_rtl::Rc<const std::variant>`,
+  with `Rc<T>` of any value type printed as `T` itself, so that every `*`, `&` and
+  `.clone()` was a no-op and no payload needed a box; it cost an allocation and a count per
+  choice value, and a record holding choices was that many pointers. What the layout asks
+  of the printer: a struct whose field names a type that may be incomplete where the struct
+  is defined (`Behind`: an `Rc` of anything, or a program type behind an array, a map, a
+  function, a dynamic or an event, which nothing orders before it) declares its comparisons
+  and defines them among the module's definitions, out of line, since a defaulted one is
+  defined where it is declared and clang then instantiates a standard template over the
+  incomplete type (`Rc<const std::optional<T>>`, `Array<std::tuple<Text, T>>` in `T`'s own
+  case; g++ waits); `<=>` is `std::strong_ordering` throughout (Rust's `Ord` is total, and
+  so is every ordering a type can hold, a `Float`'s included: pick BF), so no return type
+  waits on another's deduction; `decl.hpp`
+  holds declarations only, and a types header that holds `Elem` or `Answer` by value
+  includes `elem.types.hpp`. A cycle of records by value with no choice on it does not
+  compile (gap CY).
 - **SE: statement expressions.** A block is `({ ...; value; })`, a `match` a statement
   expression whose `Slot<T>` (`T` the model's type for it) the arm that holds sets before
   `goto _done`; a labelled block's `break` sets its slot and jumps to its label. What it
@@ -1120,11 +1160,23 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   tail (`OutUnknown "the job's turn"`); such a `match` is a chain of `?:`, whose type C++
   works out from the arms (`finished(..)` converts to any `Turn<B>`); a guard binds the
   pattern twice, once for its test and once for the value.
-- **PT: `->` and `.`.** A node is reached through a `prism_rtl::Rc`, a value directly. The
-  printer writes `->` where the model says a receiver is a pointer (`self`, a field or a
-  `let` of a pointer type, `node` in a constructor) and, elsewhere, for a member name some
-  node has; every record has an `operator->` returning itself, so the second rule is
-  harmless on a value.
+- **PT: `->`, `.` and `*`.** A node and a recursive payload are reached through a
+  `prism_rtl::Rc`, a value directly. The printer writes `->` where the model says a
+  receiver is a pointer (`self`, a field or a `let` of a pointer type, a payload's `Rc`
+  among them, `node` in a constructor) and, elsewhere, for a member name some node has;
+  every record has an `operator->` returning itself, so the second rule is harmless on a
+  value. The model's `*x` is Rust's, either the `*` of an `Rc` or the `*` of a reference
+  (`**x` of a `&Rc<T>` is both), and C++ spells only the first: where the printer knows
+  `x`'s type (a parameter, a typed `let`, a field of the node or job, and `*` or `&` of
+  one: `Cp.localTypes`, `?ExTy`), an `Rc` prints `*x` and a reference prints `x`; where it
+  does not (a pattern's binder, a receiver of unknown type, a field or tuple part read
+  through one, since Rust reaches a payload's fields through the `Rc` unwritten), it prints
+  `prism_rtl::deref(x)`, which tells the two apart by overload, the same function that
+  reaches a runtime cell through its `Rc` (runtime/cpp/README.md, "Sharing"). The
+  alternative refused: a function of its own for the model's `*` (`val`) beside `deref`;
+  the two did the same on an lvalue and differed only on a temporary, where `deref` now
+  copies the value out of a temporary `Rc<const T>` (its last owner may be that temporary)
+  and keeps a temporary `Rc<T>`'s place (a node's or a cell's owner keeps it).
 - **RN: a `let` that rebinds a name from itself** (Rust's shadowing, an `&` block's
   `let mut fuel = fuel.clone()`) binds a new name (`fuel_1`), which the statements after
   it read; a scope that binds the name anew hides the rename.
@@ -1136,8 +1188,40 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   a member, a free function of `lang.hpp`, an assignment (`Cell::set`), an exchange
   (`Option::take`) or nothing (`RefCell::borrow`); `CppCall` maps the runtime's
   constructors (`Hold::new` is `{init, cx}`, `Port::new` inside `Rc::new` `make_new()`).
-- **NC: a node's constructor takes its fields in declared order**, the initializers the
-  model orders by moves being copies in C++.
+- **NC: a node's constructor takes its fields in declared order**, and a record's
+  designated initializers stand in declared order too, whatever order the model wrote them
+  in (Rust evaluates a struct literal as written; C++ a designated initializer list in
+  declaration order). An initializer evaluated out of the model's order may run after one
+  the model put before it, so a local that one initializer moves (pick MV) and another
+  reads is left a place in both: the printer checks the initializers' texts for the name,
+  as it does a call's arguments, whose order C++ leaves open.
+- **MV: a bare read of an owned local moves it.** The model is Rust-shaped: lowering writes
+  `XClone` wherever Rust needs a copy, so a bare `XVar` of a non-`Copy` local that the
+  scope holds by value is a move in Rust, and rustc's accepting the Rust output proves it
+  the local's last read. The printer keeps the locals the scope holds by value (`Cp.owned`:
+  a `let` of a value, `auto x = ..` or a typed value; a lambda's by-value parameter) and
+  prints such a read as `std::move(x)` in a value position: an argument, a `let`'s value, a
+  `Slot`'s `set`, a case's or record's field, a tuple's part; a returned local stays bare,
+  since `return x` moves on its own. A read as a place moves nothing: a receiver of a
+  method or a field, the operand of `&`, `*` and `.clone()`, the left side of an
+  assignment, a scrutinee, a `for`'s range. What the scope does not hold by value is never
+  moved: a function parameter (`const T&`), a pattern's binder (a reference into the
+  scrutinee, pick PB), a `let` of a reference, and every capture inside a lambda's body
+  (constant copies in a `[=]` lambda, references in a `[&]` one; `Captured` empties
+  `owned` there). A move closure takes the `let`s lowering puts before it (its captures,
+  cloned in) by moving init-captures, `[=, g_1 = std::move(g_1)]`, as Rust's `move` moves
+  them in, and only those that nothing outside a move closure's body reads in the block's
+  value (`WithMoveCaptures` walks the model, `ReadsOf`): C++ fixes no order among a call's
+  arguments, so a sibling argument's read of the same local would be undefined against the
+  move, where Rust evaluated it first. For the same reason an argument that is a bare
+  local is left a place when another argument's text mentions it (`CppArgList`): a call's,
+  `cat`'s, a binary operator's, a record's reordered initializers (pick NC). `std::move` of a
+  scalar or a reference-typed local is harmless and not avoided. What it buys: the C++ does
+  what the Rust does, and a `G` or an `Lx` (records of twenty maps) captured by a fold's
+  lambda is copied once, as Rust clones it once, where it was copied twice; measured on
+  prismc's self-compile it buys no wall time, since a move of such a record costs about
+  what its copy did (claude/benchmarks-preliminary.md, "Moves where Rust moves (C++)";
+  doubt CH1).
 - **SF: translation units of up to 125,000 characters of definitions.** The modules'
   definitions, in the modules' order, are packed into `src/unit_N.cpp` as many to a unit
   as fit in 125,000 characters; a module's own definitions are cut into chunks of about
@@ -1171,7 +1255,10 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   and a C++ frame of the emitted code is larger than Rust's.
 - **PB: a pattern binds by reference into its value**, which therefore lives as long as
   the bindings: the scrutinee is a local (`_m`), and a guard's `let` over a value that
-  is no place binds it to a local (`_c1`) first (`ts-ch06-array-in-case`, under ASan).
+  is no place binds it to a local (`_c1`) first (`ts-ch06-array-in-case`, under ASan). A
+  payload behind an `Rc` is matched as the value behind it, which lowering derefs
+  (`BehindRc`, printed `prism_rtl::deref`, pick PT): the pattern's bindings are references
+  into the `Rc`'s allocation, which the scrutinee keeps alive.
 - **PC: persistent collections.** The C++ runtime's `Map` is a persistent AVL tree (the
   Rust runtime's too) and its `Array` a persistent balanced tree of chunks with a tail,
   the Rust runtime's design (runtime/cpp/include/prism_rtl/collections.hpp), so a fold
@@ -1180,8 +1267,8 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
   costs").
 - **MH: per-module headers.** No header holds the whole program. Each module has, in its
   directory (`src/check/env/` for `Check.Env`, whose namespace is `crate::check::env`),
-  `decl.hpp` (its types, nodes and jobs declared, its choices' handles), `types.hpp` (its
-  records, tags and newtypes, each after the types it holds, and its choices' cases),
+  `decl.hpp` (its types, nodes and jobs declared), `types.hpp` (its records, tags, newtypes
+  and choices with their cases, each after the types it holds by value),
   `module.hpp` (its prototypes, nodes and jobs) and, when it has templates, `generic.hpp`,
   each included from `src/` in angle brackets (`#include <check/env/decl.hpp>`: a quoted
   name is looked up beside the including file first, where `a/types/` would answer for the
@@ -1231,14 +1318,45 @@ C++ picks, each a place where C++ needs what the model leaves to Rust:
 
 Gaps:
 
-- **No canvas World in C++**: `./prism run --target cpp` runs the CLI World only; chess's
-  window is the Rust target's.
 - **CY:** a cycle of records held by value with no choice on it.
 - **GC:** a generic choice's case constructor (`Tree(Tree::Node{..})`) needs its type
   arguments, which CTAD cannot deduce from a nested case; no program here has one.
 
 C++ doubts:
 
+- **CH1** The inline layout is measured slower on prismc: compiling itself, the C++ prismc
+  takes about 9% more time and 6.5% more memory than with handles (claude/benchmarks-preliminary.md,
+  "Choices as inline variants (C++)", the same machine and base commit, six runs each),
+  the GUI table within its noise. prismc is trees of choices held in arrays, tuples and
+  records, where a value as large as its largest case, and a copy that counts every field,
+  cost more than the handle's one allocation saved. Printing moves where Rust moves (pick
+  MV) did not recover it: measured the night after on the same machine, six interleaved
+  runs each, the self-compile is 104.4 s and 461.5 MB before against 106.0 s and 464.5 MB
+  after, within the before's spread ("Moves where Rust moves (C++)"; the machine ran a
+  tenth slower that night, so those numbers do not compare with the 93.4 s above). The
+  profile says why: the copies became moves (copy constructors 8.2% of the samples to 5.9%,
+  move constructors 5.0% to 6.5%, destructors 11% either way), and a move of a record of
+  twenty `Rc` fields costs about what its copy does while the moved-from local's destructor
+  still runs. What the profile left was not the printer's copies but allocation, a third of
+  the time either way, and the job machinery of unbounded folds, a `Fn`, a `Frame` and a
+  `once_job` allocated per element (a fold over a type's arguments). jemalloc
+  (runtime/cpp/README.md, pick AL) took the first down: the self-compile is 75.7 s against
+  105.1 s under glibc on the same night, the allocator 13.6% of the samples where it was
+  34% ("jemalloc (C++)"). Whether the inline layout still costs against the handle under
+  jemalloc is not measured (the handle's binary was not rebuilt with it). Under jemalloc the Rust prismc
+  took 51.6 s against 69.9 s ("jemalloc (Rust)"), so the C++ prismc runs about a half
+  longer than the Rust one under the same allocator (75.7 s against 51.6 s), as under
+  glibc; the Rust target runs on the system allocator again (runtime/rust/README.md, pick
+  AL). What remains, by the C++ profile: the records of
+  maps (`G`, `Lx`, `St`, `TProgram`), moved, copied and destroyed, about 30% of the samples
+  between their constructors and destructors, and the folds' per-element jobs. *First ruling
+  (Claude's):* the layout mirrors Rust, as the brief asked, and the numbers are recorded
+  for Jimmy to rule on; *if otherwise:* the handle comes back from `7dc334d^`; and the fold
+  machinery is a question of its own. `Rc`'s `==` compares pointers first for every type
+  (pick BF); across that change the C++ self-compile went from 76.9 s to 61.3 s on a later
+  boot, the Rust profile putting the gain in the per-type fold over fields and arguments
+  that no longer runs, not in the comparisons (claude/benchmarks-preliminary.md, "Float
+  equality as bits").
 - **MH1** A module's qualified references are found in its source text: a line that is no
   comment and holds a module's name and a dot (`Zoo.`) names that module. A text literal
   holding one adds a module the file does not need (more includes, never fewer); the
@@ -1335,8 +1453,13 @@ Each is Claude's, for Jimmy to overturn.
   its own, which `runtime/rust/` (not this task's to change) would have to host.
 - **WG Widgets in static positions are inlined** (Semantics ch. 8: transparent, their
   places numbered in the caller's sequence): their parameters bound by layer (an event to
-  the caller's event, a dynamic to its reader, a plain value to a field). A node is
-  emitted per root widget only: the ones a test names and `@main`.
+  the caller's event, a dynamic to its reader, a plain value to a field). Their results
+  are bound the same way by the caller's `p <- @W ..`: an event or a dynamic as itself, a
+  bundle part by part (`WrParts`), and a plain value (a block ending on `@ door`) as a field
+  of the node computed in the build's `let`s (`BindPlainResult`, the field the name was
+  prebound to by `BindPlain`), so the build reads the local and the methods the field, as
+  for a plain parameter (`sem-ch08-widget-plain-result`); a tuple pattern binds each name
+  to its part. A node is emitted per root widget only: the ones a test names and `@main`.
 - **EV The event graph.** Within a node an event is a graph node (a source, a named
   `let !x`, a combinator) and a pipe of pure transforms that calls straight through, so
   `increment` calls `delta` calls the hold's write, as in Compiler ch. 3. A named event
@@ -1500,7 +1623,28 @@ Each is Claude's, for Jimmy to overturn.
   functions over `Self` (`Loud::loud(&x)`), defaults in the trait; an impl is a Rust
   impl. An `impl ^Show` is a function of its own (`show_sq`) and `impl Show` over it,
   and the type then crosses as `Pod::Shown` (claude/backend.md, "Printing"); an `impl ^Eq`
-  is `PartialEq` over its `==`.
+  is `PartialEq` over its `==`, and `Eq` (pick BF).
+- **BF `Float` compares by its bits** (Type System round 6, rulings FB and NO). `Float` is
+  `prism_rtl::Float` in both runtimes, a double whose `==` is bit identity with every NaN
+  one value (equal when the bits are, or both are NaNs), and whose ordering is IEEE 754's
+  totalOrder (Rust's `f64::total_cmp`) over the same bits with a NaN read as the positive
+  quiet NaN, after +infinity; arithmetic is the double's own. So a NaN's sign and payload,
+  which the hardware or the compiler's folding choose (x86's fresh NaN is negative, a
+  folded one positive), never reach a comparison, and the two targets agree. So every `^Eq` is reflexive and every `^Ord` total,
+  and no compiler code asks whether a type holds a `Float`: `derive ^Eq` is
+  `PartialEq, Eq`, `derive ^Ord` `PartialOrd, Ord`, the bounds `^Eq` and `^Ord` are `Eq`
+  and `Ord`, and a tag's struct and a row's enum that compare are `PartialEq, Eq`; in C++
+  every comparison is the defaulted one or `std::strong_ordering`'s. A literal is
+  `Float(1.5)` in Rust and `Float{1.5}` in C++. With `==` reflexive, an `Rc`'s `==`
+  compares the pointers first (Rust's `Rc<T: Eq>` already does; C++'s `prism_rtl::Rc`
+  does the same), and a map or an array passes over a node both sides share without
+  reading it. What it buys: one rule for every type, a `Float` keying a map, a record of
+  floats ordering, and no compiler pass over the types. Refused: `f64` and `double`
+  themselves, which make a NaN unequal to itself, so a type holding a `Float` is only
+  `PartialEq` and has no `Ord` in Rust and no `std::strong_ordering` in C++, the compiler
+  tracks which types hold one to keep their derives partial, and a shared node must
+  remember whether its values equal themselves before `==` may pass over it.
+  `tests/conformance/ts-ch02-float-bits` and `ts-ch02-nan-one` pin it.
 - **FL `Fs.List`.** prismc's own `fs.prism` replaces the prelude's `Fs` to declare it,
   since a family's tags are declared in the family's module (Semantics ch. 6) and the CLI
   World answers it for the program that declares it (worlds/cli/rust/README.md). Every
@@ -1534,7 +1678,7 @@ Each is Claude's, for Jimmy to overturn.
   is an `Array<Draw>`. A tag applied in an expression builds the variant; a tag pattern
   is the variant around a struct pattern; `Draw.*` is a `matches!` over the family's
   variants. Every tag struct and row enum is `Clone`, `ToPod` and `Show` (printing as
-  its `Pod`, `Draw.Rect(rect=Rect(..), paint=Grey)`), and `PartialEq` and `FromPod` when
+  its `Pod`, `Draw.Rect(rect=Rect(..), paint=Grey)`), and `PartialEq`, `Eq` and `FromPod` when
   all its fields are plain data. A document's element, `Elem r` (the checker's WL), is
   `crate::Elem`, emitted in `main.rs`: a variant per element tag's `Level`, so a pattern
   binds each field plain (`Ui.Label(text=$t)` binds the text in that tick). A live
@@ -1612,7 +1756,7 @@ Each is Claude's, for Jimmy to overturn.
   by `level_pod(cx)`, and one whose tag holds dynamics keeps a `prism_rtl::Watch`
   (`Place.watch`) renewed each time it is sent, so a move of a nested entry sends it again
   (doubt WD). A tag field holding a dynamic of any shape but `$Elem` or a map of them stops
-  the build with `compile_error!`. Its struct is `PartialEq` for the runtime alone (`eq`,
+  the build with `compile_error!`. Its struct is `PartialEq` and `Eq` for the runtime alone (`eq`,
   `RuntimeEq`: a dynamic equal only to itself, doubt EQ); the checker refuses `^Eq` and
   `^Show` there (`derive-dynamic`, and `no-impl` for an `Elem` whose row's tags hold
   dynamics).
@@ -1811,23 +1955,22 @@ ruling taken (Claude's).
   block in their tick. A `rebuild` that hands back a dynamic, `$$a`, is a structural
   dynamic too (`{gen}_result`): the build keeps the newborn generation's result as a
   `Dynamic` (`result_dynamic`, kept in `{gen}_result_live`) and marks the snapshot, which
-  the construction step takes after the generation is built. `@Flatten $$a` of a `for`
-  row's entry (a host document's entry, `EntryFlatten`) keeps its current inner in a
-  `Hold` set at the row's construction from the `value` its builder hands it and follows
-  the inner's update port (`prism_rtl::Follow`, `{name}_moved`, marking what reads it in
-  the tick the inner moved); the block's writes behind the entry patch the row
-  (`RowPlaceReads`), whose patch pass queues an adoption of an entry that is another
-  dynamic (`{name}_adopt`, owed; the shrink check reads `@Flatten` as no larger than its
-  argument, so a widget recurses over its rows' flattened entries). `@Flatten $$a` of a
+  the construction step takes after the generation is built. A `for` over the document,
+  `for k, $v <- $(Path ==> $Elem c)`, binds each row's entry flattened (pick FV: the row's
+  `$v` is the dynamic under its key, `EntryFlatten`; a `for` over a map of dynamics never
+  binds `$$d`). `@Flatten $$a` of a
   `rebuild`'s dynamic keeps its
   current inner in a `Hold` (`{name}_inner`), adopted at the build and, when the
   `rebuild`'s dynamic is published, among the first firings of the tick after
   (`{name}_adopt`, queued with `Cx::answer_later`, so that tick is owed); its dynamic
   samples the inner at the read point, and a write behind the current generation's result
-  marks its readers (`{gen}_result_moved`). So a generation built at n is the `rebuild`'s
+  marks its readers (`{gen}_result_moved`), which also fires the update port of the
+  `Dynamic` kept in `{gen}_result_live`, so a follower outside the node (a `for` gathering
+  `$$r`s into `$(k ==> $r)`, whose rows follow their inners) sees the result move
+  (`sem-ch04-for-replaced-inner`). So a generation built at n is the `rebuild`'s
   dynamic after n+1 and the `@Flatten`'s from n+2: `sem-ch08-viewer`'s label lags the watch
-  by two ticks, where the book has one (its transcript derives it). `@Flatten` of anything but a row's entry or a
-  `rebuild`'s dynamic is refused. *Refused:* the whole dynamic a tick late, the host's
+  by two ticks, where the book has one (its transcript derives it). `@Flatten` of anything but a
+  `rebuild`'s dynamic is refused (`FlattenLine`, naming the `for` form). *Refused:* the whole dynamic a tick late, the host's
   rows included (a host's `for` would build a newborn's row a tick after the child did,
   breaking forwarding parity); the snapshot of n read by samples at n+1 beside the event
   carrying it (a sample in the event's tick would read the new value, against R2/R3); the
@@ -1859,7 +2002,9 @@ ruling taken (Claude's).
   inlinings in `Wx.inlining`; widgets that call other widgets, and widget parameters
   applied, nest as deep as they are written: `sem-ch08-widget-depth`). At that depth the
   call gives a result of its type that is never read, and the node there faults at its
-  build (`Fault::too_deep`, `TooDeep`): a tree that deep stops the program loudly, and every
+  build (`Fault::too_deep`, `TooDeep`; for a plain result the fault is in the build's
+  `let`s, ahead of the value's typed `let`, `unreachable!()` in Rust and
+  `prism_rtl::unreachable_as<T>()` in C++, whose throw expression is `void`): a tree that deep stops the program loudly, and every
   shallower one runs (`sem-ch04-widget-recursion-result`; the window's `@Laid` is such a
   widget, so it lays out containers sixteen deep below the window). The rows nest a node
   type per level, past rustc's default limit for drop checking, so the emitted crate sets
@@ -1870,10 +2015,13 @@ ruling taken (Claude's).
   block's publication of a structural dynamic (pick ST) is `HoldWritten` of its name, so
   the row's marks are already in it, but no test pins a row's `!Updated` over one. *First
   ruling:* refused loudly for the row's own `!Updated` nodes (`UpdatedGaps`, over
-  `UpdatedHears`); a row's builders and `@Flatten`s hearing such a publication are marked
+  `UpdatedHears`); a row's builders hearing such a publication are marked
   like any write (`RowHears` takes the reads behind the row's own builders' sources, so a
   `for` in a row whose rows have no places rebuilds when the block writes behind it:
-  `sem-ch04-widget-recursion-result`). *Next:* a test, then the refusal goes.
+  `sem-ch04-widget-recursion-result`; and the reads behind the row's `rebuild`s' sources,
+  `genHolds`, so a row's `rebuild $gen` whose `$gen` is the block's hold hears the block's
+  write through `parent_wrote_{m}`, which marks the generation stale and lists the build,
+  `HeardBuild`: `sem-ch04-for-replaced-inner`). *Next:* a test, then the refusal goes.
 - **DM The document is `$(Path ==> $Elem c)`, built per place.** (Jimmy, 6 November
   2026.) No flat document is built: each hosted place's entry is taken in its own node's
   patch pass when a write behind it dirtied the node, so a tick that moves one of `n`
@@ -1883,7 +2031,7 @@ ruling taken (Claude's).
   the outer's `!Updated` silent; `sem-ch09-hosts`, `sem-ch04-row-source`'s hosted test).
   The host's rows' builder does nothing when the snapshot holds the places it last built
   from (`ForBuild`, `Map::same`). A program that wants the old flat value writes the `for`
-  that flattens each entry and pays its tick (`sem-ch09-host-updated`,
+  over the document, `for p, $e <- $doc:` (pick FV: `$e` is the entry under `p`), and pays its tick (`sem-ch09-host-updated`,
   `sem-ch09-host-doc-in-tick`; claude/incremental-host-document.md).
 - **SR A `for`'s source is computed once per write behind it.** The block's source getter
   (`{name}_source`, `Tag $doc, $clicks` in `sem-ch09-host-doc-in-tick`), which the
@@ -1906,11 +2054,40 @@ ruling taken (Claude's).
   (`SkPerKey`). The runtime walks the new map against the inners it holds: a kept key whose
   value differs by `==` has its inner written and fired; a new key gets an inner at its
   value; only a key that came or went writes the outer, so only then are its readers
-  marked. A row's `@Flatten $$d` follows its inner (`EntryFlatten`). A name `@Distinct`,
+  marked. A `for` over `$each` binds each row's inner, `for k, $v <- $each:` (pick FV; no
+  rule of the `for` is `@PerKey`'s own). A name `@Distinct`,
   `@PerKey` or `@Flatten` binds is pre-bound as a widget's result (`IsGetterBuiltin`), so a
   line above reads its getter (`sem-appB-per-key`, `sem-ch04-bind-read-above`; the
   checker asks `^Eq`, `per-key-needs-eq`; the cost pair `per-key-one-edit`,
   `per-key-many-edits`).
+- **FV A `for` over a map of dynamics binds the value under the key.** `for k, $v <-
+  $each:` over a `$(k ==> $v)` (a host document `$(Path ==> $Elem c)`, `@PerKey`'s output,
+  a `for` gathering `rebuild`s' dynamics) binds `$v` directly (Jimmy, round 9 FV; Semantics
+  ch. 4): the row's binder is its entry flattened (`ForLine` makes it an `EntryFlatten`
+  when the source's value type is a dynamic), a `Hold` of the current inner
+  (`{v}_inner`) set at the row's construction from the `value` its builder hands it, and a
+  `prism_rtl::Follow` (`{v}_follow`) on the inner's update port, which calls `{v}_moved`:
+  what reads `$v` reads it again in the tick the inner moved. A replaced dynamic is found
+  by the `for`'s builder, not by the row: `ForBuild` (both printers' templates, `FromKept`
+  and `ReplacedCall` in emit/rust/items.prism, `FromKeptCpp` and `ReplacedCallCpp` in
+  emit/cpp/program.prism) walks the kept keys and compares each one's dynamic in the new
+  source with the one in the map the rows were last built from (`{name}_from`; a
+  `Dynamic` equals only itself, in both runtimes), and calls that row's `{v}_replaced`
+  (`ForDef.replaced` lists the rows' methods), which queues `{v}_adopt` with
+  `Cx::answer_later`, so the row reads the new inner among the next tick's first firings,
+  owed (rulings VL, TK). The row's entry is not among `RowPlaceReads`, so a write of the
+  outer wakes no kept row, and a row is never rebuilt for a replaced dynamic (Semantics
+  ch. 11: a rebuilt row could tell two dynamics apart). `@PerKey` gets nothing of its own:
+  its output is a map of dynamics like any other. The old form, `for k, $$d <- $each:`
+  with `$v <- @Flatten $$d` on the next line, is a `mark-stack` in the checker with the
+  fix in the message (`tests/checker/neg/for-double-dynamic`), and `FlattenLine` refuses
+  `@Flatten` of anything but a `rebuild`'s dynamic. `sem-ch04-for-replaced-inner`; the
+  cost pair `per-key-drop-one`, `per-key-drop-many` (no `.expected`: 2,000 places exceed
+  the 10 KB a transcript may keep). *Refused:* the row's patch pass comparing its entry
+  with its inner on every write behind the outer (every kept row woken for a write that
+  replaced one dynamic, `n` comparisons where the builder's key walk already has the
+  map); rebuilding the row under a replaced dynamic (observable, ch. 11); a `@PerKey` rule
+  of its own (Jimmy: one `for` form over every map of dynamics).
 
 ### Strings: what is copied
 
@@ -2000,8 +2177,9 @@ a node, not a value; a lambda supplier is lowered); a supplier's answer `@ x` ou
 no value at the owner's build, a widget-function blueprint as an answer, and a bundle in
 a hosted scope (pick HO); a bundle as a root's result, and a `for` row, a `rebuild`'s
 generation or a widget clause ending on a bundle (a widget block's bundle result is
-lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); an element applied as a plain value and a live element's `$` field read in a plain
-function (gap LE), `@Flatten` of a dynamic that is neither a `rebuild`'s nor a `for` row's entry,
+lowered, each part its own result, `WrParts`: `sem-ch04-bundle-result`); a widget's plain
+result bound by a pattern other than a name, `ignore` or a tuple of those; an element applied as a plain value and a live element's `$` field read in a plain
+function (gap LE), `@Flatten` of a dynamic that is not a `rebuild`'s (a `for` over a map of dynamics binds the value under the key, pick FV),
 `!Updated` of a dynamic no sink of the node writes (pick UP), and in a row over a
 structural dynamic of its block (gap SU), an `@Machine` whose step is
 not a named function, a local function whose

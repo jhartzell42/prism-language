@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "prism_rtl/float.hpp"
 #include "prism_rtl/rc.hpp"
 #include <charconv>
 #include <functional>
@@ -44,6 +45,11 @@ private:
 /// `unreachable!()`, as an expression of any type.
 [[noreturn]] inline void unreachable(const char* what = "entered unreachable code") { panic(what); }
 
+/// `unreachable!()` where a local of type `T` is declared (`let n: T = unreachable!()`): a
+/// throw expression is `void`, so the declaration takes a call that has the type.
+template <class T>
+[[noreturn]] T unreachable_as(const char* what = "entered unreachable code") { panic(what); }
+
 /// Every type `C` is one of `Cs`: a choice's constructor takes one of its cases.
 template <class C, class... Cs>
 concept one_of = (std::is_same_v<std::remove_cvref_t<C>, Cs> || ...);
@@ -63,8 +69,8 @@ bool is_ok(const Expected<T, E>& e) { return e.has_value(); }
 template <class T, class E>
 bool is_err(const Expected<T, E>& e) { return !e.has_value(); }
 
-/// A case of a choice (`Shape::Circle`) against a value of the choice: the choice is a
-/// handle on its `cases()`, a `std::variant`.
+/// A case of a choice (`Shape::Circle`) against a value of the choice: the choice holds its
+/// `cases()`, a `std::variant`, by value; `as` is a reference into the value tested.
 template <class C, class V>
 struct Case {
     static bool is(const V& v) { return std::holds_alternative<C>(v.cases()); }
@@ -101,9 +107,10 @@ struct Case<pat::Key, Segment> {
 
 // ---- Sharing -----------------------------------------------------------------------------
 
-/// Whether a type is a Prism value, as opposed to a node or a cell: a value is shared by
-/// copying it (a choice is a handle on its cases already), so `Rc<T>` of a value is `T`,
-/// and `Rc::new` of one is the value itself. Emitted types say so with `prism_value`.
+/// Whether a type is a Prism value, as opposed to a node or a cell: `Rc::new` of a value
+/// makes an `Rc<const T>` (rc.hpp), an immutable shared value that compares by its value;
+/// of a node or a cell, an `Rc<T>`, which has `T`'s comparisons and so none. Emitted types
+/// say so with `prism_value`.
 template <class T>
 struct IsValue : std::bool_constant<std::is_arithmetic_v<T> || requires { typename T::prism_value; }> {};
 template <> struct IsValue<Unit> : std::true_type {};
@@ -118,12 +125,14 @@ template <class T> struct IsValue<Array<T>> : std::true_type {};
 template <class K, class V> struct IsValue<Map<K, V>> : std::true_type {};
 template <class T, class E> struct IsValue<Expected<T, E>> : std::true_type {};
 template <class... T> struct IsValue<std::tuple<T...>> : std::true_type {};
+template <class T> struct IsValue<Rc<const T>> : IsValue<T> {};
 
-/// `Rc::new(x)`: a value (or a closure, which a `Fn` takes) as it is; a node or a runtime
-/// cell on the heap.
+/// `Rc::new(x)`: a value as an `Rc<const T>` (a recursive payload); a closure (which a `Fn`
+/// takes) as it is; a node or a runtime cell on the heap, as an `Rc<T>`.
 template <class T>
 auto rc(T x) {
-    if constexpr (IsValue<T>::value || std::is_pointer_v<T> || requires { &T::operator(); }) return x;
+    if constexpr (std::is_pointer_v<T> || requires { &T::operator(); }) return x;
+    else if constexpr (IsValue<T>::value) return make_rc<const T>(std::move(x));
     else return make_rc<T>(std::move(x));
 }
 
@@ -148,16 +157,26 @@ std::optional<Rc<T>> upgrade(const Weak<T>& w) {
     return std::nullopt;
 }
 
-/// A runtime cell reached as Rust auto-derefs it: through a shared pointer, or as it is.
+/// The model's `*x` where the printer does not know `x`'s type (a pattern's binder, a
+/// receiver), and a runtime cell reached as Rust auto-derefs it: through an `Rc`, the value
+/// behind it; anything else, the place itself (Rust's `*` of a reference, which C++ has no
+/// need of). A temporary `Rc<const T>` of a value comes back as a copy of the value, since
+/// it may be the value's last owner; a temporary `Rc<T>` of a node or a cell as the place,
+/// which its owner keeps; a temporary of anything else as itself, moved.
 template <class T>
 struct IsShared : std::false_type {};
 template <class T>
 struct IsShared<Rc<T>> : std::true_type {};
 template <class T>
     requires(!IsShared<std::remove_cv_t<T>>::value)
-T& deref(T& x) { return x; }
+T& deref(T& x) noexcept { return x; }
 template <class T>
-T& deref(const Rc<T>& p) { return *p; }
+    requires(!IsShared<std::remove_cv_t<T>>::value && !std::is_lvalue_reference_v<T>)
+T deref(T&& x) { return std::move(x); }
+template <class T>
+T& deref(const Rc<T>& p) noexcept { return *p; }
+template <class T>
+T deref(Rc<const T>&& p) { return *p; }
 
 /// `Some(p)`'s payload: an option's value, a live node's pointer (`Weak::upgrade`'s).
 template <class T>
@@ -425,7 +444,7 @@ inline void display(std::string& out, char32_t c) { utf8_push(out, c); }
 inline void display(std::string& out, std::uint8_t b) { out += std::to_string(unsigned(b)); }
 inline void display(std::string& out, std::uint32_t n) { out += std::to_string(n); }
 inline void display(std::string& out, std::size_t n) { out += std::to_string(n); }
-inline void display(std::string& out, double f) { out += float_digits(f); }
+inline void display(std::string& out, Float f) { out += float_digits(f.v); }
 inline void display(std::string& out, bool b) { out += b ? "true" : "false"; }
 inline void display(std::string& out, const Path& p) { out += p.to_string(); }
 inline void display(std::string& out, const Pod& p) { out += p.to_string(); }

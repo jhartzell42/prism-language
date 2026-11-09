@@ -13,10 +13,19 @@ pipeline all one language:
    core, clang -O3), with the runtime library and the Worlds built from clean too. The
    shipping configurations only (Jimmy): no debug, no -O0, -O1 or -O2.
 
+3. **Rebuild.** The emitted program's own sources (every `.rs`, or `.cpp` and `.hpp`,
+   under its `src/`; not the runtime's) are touched and the same build runs again, so
+   cargo or make compiles and links the program once more over the runtime library and
+   the dependencies the clean build left: what an edit to a Prism program costs after its
+   first build, since prismc emits every file afresh.
+
 Subjects: `prismc/` itself (the compiler), `examples/chess`, and the GUI table
-(`bench/gui/prism/bench.prism` with the window library). `RESULTS.md` has emit, build and
-total seconds and the binary's size for each; the binaries stay under
-`target/bench/building/` for `bench/running/run.sh`.
+(`bench/gui/prism/bench.prism` with the window library). `RESULTS.md` has, for each: the
+emit seconds and the emitted lines a second (every file under the emitted `src/`, the
+nested modules' `mod.rs` and `mod.cpp` included), the build seconds, their total, the
+rebuild seconds, and the binary's size; its header names the machine (`bench/lib.sh`
+reads it from `sysctl` on macOS, from `/proc` and `/etc/os-release` on Linux) and the
+load. The binaries stay under `target/bench/building/` for `bench/running/run.sh`.
 
 ```
 bench/building/run.sh                        # every subject and configuration

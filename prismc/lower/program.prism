@@ -140,11 +140,12 @@ fn ImplPath how:
 
 # The program's types held by value where they are held (records, newtypes, unit types
 # and tags; a choice and a row are handles), by path (`ast::Span`).
+# The program's value types by path: records, newtypes, unit types, tags and choices (a C++
+# choice holds its variant by value, prismc/README.md pick CH), which a type holding one by
+# value needs complete.
 ValueTypes: fn [ModDef] -> (Text ==> Bool)
 fn ValueTypes defs = Fold defs, {}, \|acc, d| Fold d.items, acc, \|a, it| match it:
-    ItType t: match t.shape:
-        ShapeChoice: a
-        otherwise: Insert a, "{d.name}::{t.name}", True
+    ItType t: Insert a, "{d.name}::{t.name}", True
     ItTag t: Insert a, "{d.name}::{t.name}", True
     otherwise: a
 
@@ -157,8 +158,9 @@ fn ItemHeld names, valueTys, home, it = match it:
     otherwise: [[]]
 
 # The modules of the value types a type holds by value: itself, an option's, a result's,
-# a tuple's parts', a cell's and an `Rc`'s (which a target whose choices are handles holds
-# as the value itself), and a named type's arguments (which it may hold).
+# a tuple's parts', a cell's, and a named type's arguments (which it may hold). What is
+# behind a pointer (an `Rc`, an array, a map) needs only its declaration, which `declared`
+# gives (the type is named in the source).
 HeldIn: fn [Text], (Text ==> Bool), Text, OutTy -> [Text]
 fn HeldIn names, valueTys, home, t = match t:
     OutNamed n, args:
@@ -168,7 +170,6 @@ fn HeldIn names, valueTys, home, t = match t:
     OutOpt i: HeldIn names, valueTys, home, i
     OutRes i: HeldIn names, valueTys, home, i
     OutCell i: HeldIn names, valueTys, home, i
-    OutRc i: HeldIn names, valueTys, home, i
     OutTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (HeldIn names, valueTys, home, a)
     otherwise: [[]]
 
@@ -447,9 +448,8 @@ TyDefs: unbounded fn Lx, TyInfo -> [Item]
 fn TyDefs lx, ti:
     let derives = Each ti.derives, \|dn| BareName dn
     let params = Each ti.params, \|p| Camel p
-    let floaty = Floaty lx.g, (TyCon ti.name, [[]]), [[]]
     let bare = BareName ti.name
-    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, shape=shape, cases=cases, eq=(HasText derives, "Eq"), ord=(HasText derives, "Ord"), floaty=floaty, show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
+    let Mk = \|shape, cases| TyDef(name=(Camel bare), prism=bare, params=params, shape=shape, cases=cases, eq=(HasText derives, "Eq"), ord=(HasText derives, "Ord"), show=(if HasOwnShow lx, ti.name: ShownOwn else: if HasText derives, "Show": ShownDerived else: NotShown), pod=((TyPodable lx, (TyCon ti.name, [[]]), [[]]) and Fold cases, True, \|ok, c| ok and Fold c.fields, True, \|ok2, ((ignore, ft))| ok2 and Podable ft), doc=(TypeDoc lx, ti))
     match ti.body:
         BRecord fs:
             let fields = Each (Range0 (Len fs)), \|i|

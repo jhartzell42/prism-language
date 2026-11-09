@@ -5,8 +5,8 @@
 // the rows, a clear, a new table). Each time the loop settles, the hook reads every pixel
 // of the frame handed to the window system and checks it against a full repaint of the
 // World's current scene by a fresh `Renderer`, then presses. After the last step both
-// places leave and the run ends with 0. It needs a window system: on Linux with no
-// `DISPLAY` it says so and passes.
+// places leave and the run ends with 0. It needs a window system: on Linux the Makefile
+// runs it under `xvfb-run -a` when no `DISPLAY` is set, and with none it fails, saying so.
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
 
@@ -121,8 +121,8 @@ struct StepsProgram : Program {
 int main() {
 #ifndef __APPLE__
     if (!std::getenv("DISPLAY")) {
-        std::printf("damage_smoke: skipped, no DISPLAY\n");
-        return 0;
+        std::fprintf(stderr, "damage_smoke: no DISPLAY; run it under xvfb-run -a (the Makefile does)\n");
+        return 1;
     }
 #endif
     alarm(60);  // a window that never settles ends the test

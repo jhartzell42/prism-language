@@ -232,7 +232,7 @@ TEST(floats_print_as_rusts_display_and_read_back) {
     for (const FloatVector& v : FLOATS) {
         double f = std::bit_cast<double>(std::uint64_t(v.bits));
         CHECK_EQ(float_digits(f), std::string(v.rust));
-        std::string shown = show(f);
+        std::string shown = show(Float{f});
         std::string want = std::string(v.rust) + (std::strchr(v.rust, '.') ? "" : ".0");
         CHECK_EQ(shown, want);
         // The spelling reads back to the same bits.
@@ -241,10 +241,26 @@ TEST(floats_print_as_rusts_display_and_read_back) {
         ++checked;
     }
     CHECK(checked > 600);
-    CHECK_EQ(show(std::numeric_limits<double>::quiet_NaN()), std::string("nan"));
-    CHECK_EQ(show(-std::numeric_limits<double>::infinity()), std::string("-inf"));
+    CHECK_EQ(show(Float{std::numeric_limits<double>::quiet_NaN()}), std::string("nan"));
+    CHECK_EQ(show(Float{-std::numeric_limits<double>::infinity()}), std::string("-inf"));
     CHECK(Pod::floating(std::nan("")) == Pod::floating(std::nan("")));  // total order: nan keys a map
     CHECK(Pod::floating(-0.0) < Pod::floating(0.0));
+}
+
+TEST(floats_compare_by_their_bits_every_nan_one) {
+    // Type System round 6 FB: `==` is bit identity, `<=>` IEEE's totalOrder; NO: every NaN
+    // one value, after +infinity, whatever its sign or payload.
+    Float nan{std::nan("")}, zero{0.0}, neg_zero{-0.0}, one{1.0};
+    CHECK(nan == nan && !(nan != nan) && (nan <=> nan) == 0);
+    CHECK(!(zero == neg_zero) && neg_zero < zero);
+    Float other{std::bit_cast<double>(0xfff8000000000001ull)};
+    CHECK(Float{-std::nan("")} == nan && other == nan && (other <=> nan) == 0);
+    CHECK(Float{-std::numeric_limits<double>::infinity()} < Float{-std::nan("")});
+    CHECK(Float{std::numeric_limits<double>::infinity()} < other);
+    CHECK(Float{std::numeric_limits<double>::infinity()} < nan);
+    CHECK(one < Float{2.0} && Float{-2.0} < neg_zero);
+    CHECK(zero + one == one && (zero - zero) == zero && zero * Float{-1.0} == neg_zero);
+    CHECK(!(Float{0.1} + Float{0.2} == Float{0.3}));  // arithmetic stays IEEE
 }
 
 // ---- Spelling ---------------------------------------------------------------------------
@@ -285,7 +301,7 @@ TEST(typed_values_print_and_cross_as_pods) {
     CHECK_EQ(to_pod(failed).to_string(), show(failed));
     auto back = from_pod<Fallible<Text>>(read::value("Error(kind=Fs.NotFound, message=\"gone\")").value());
     CHECK(back.has_value() && *back == failed);
-    CHECK_EQ(show(std::tuple<Nat, double>(Nat(3), 2.5)), std::string("((3, 2.5))"));
+    CHECK_EQ(show(std::tuple<Nat, Float>(Nat(3), Float{2.5})), std::string("((3, 2.5))"));
     auto t = from_pod<std::tuple<Int, Text, bool>>(read::value("((1, \"x\", True))").value());
     CHECK(t.has_value() && std::get<1>(*t) == Text("x"));
     CHECK(!from_pod<std::tuple<Int, Text>>(read::value("((1, 2))").value()).has_value());

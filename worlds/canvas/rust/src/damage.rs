@@ -241,7 +241,7 @@ mod tests {
     use super::*;
     use crate::font::Font;
     use crate::world::gui;
-    use prism_rtl::pod::F64;
+    use prism_rtl::Float;
     use std::rc::Rc;
 
     const W: f64 = 300.0;
@@ -251,7 +251,7 @@ mod tests {
         Pod::element(tag, fields)
     }
     fn float(x: f64) -> Pod {
-        Pod::Float(F64(x))
+        Pod::Float(Float(x))
     }
     fn rect(x: f64, y: f64, w: f64, h: f64, paint: &str) -> Pod {
         el("Draw.Rect", vec![("rect", gui::rect(x, y, w, h)), ("paint", Pod::name(paint))])

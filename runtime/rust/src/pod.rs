@@ -12,6 +12,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use crate::collections::{Array, Map, Text};
+use crate::float::Float;
 use crate::num::{Int, Nat};
 
 /// A plain value as a World sees it.
@@ -21,7 +22,7 @@ pub enum Pod {
     Bool(bool),
     /// `Nat`, `Int` and the sized integers alike: a test's literal `1` matches any.
     Int(Int),
-    Float(F64),
+    Float(Float),
     Char(char),
     Text(Text),
     /// Nanoseconds.
@@ -77,32 +78,6 @@ impl std::hash::Hash for ShownText {
 impl From<&str> for ShownText {
     fn from(s: &str) -> ShownText {
         ShownText(s.into())
-    }
-}
-
-/// An `f64` ordered by IEEE's total order, so `nan` can key a map.
-#[derive(Clone, Copy, Debug)]
-pub struct F64(pub f64);
-
-impl PartialEq for F64 {
-    fn eq(&self, other: &F64) -> bool {
-        self.0.total_cmp(&other.0).is_eq()
-    }
-}
-impl Eq for F64 {}
-impl PartialOrd for F64 {
-    fn partial_cmp(&self, other: &F64) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for F64 {
-    fn cmp(&self, other: &F64) -> std::cmp::Ordering {
-        self.0.total_cmp(&other.0)
-    }
-}
-impl std::hash::Hash for F64 {
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        self.0.to_bits().hash(h)
     }
 }
 
@@ -306,7 +281,7 @@ pod_leaf!(bool, "a Bool", |s| Pod::Bool(*s), Pod::Bool(b) => *b);
 pod_leaf!(Int, "an Int", |s| Pod::Int(s.clone()), Pod::Int(n) => n.clone());
 pod_leaf!(Nat, "a Nat", |s| Pod::Int(s.as_int().clone()), Pod::Int(n) if !n.is_negative() => Nat::from_int(n.clone()).unwrap());
 pod_leaf!(u8, "a U8", |s| Pod::int(i64::from(*s)), Pod::Int(n) if n.to_i64().is_some_and(|n| (0..256).contains(&n)) => n.to_i64().unwrap() as u8);
-pod_leaf!(f64, "a Float", |s| Pod::Float(F64(*s)), Pod::Float(f) => f.0);
+pod_leaf!(Float, "a Float", |s| Pod::Float(*s), Pod::Float(f) => *f);
 pod_leaf!(char, "a Char", |s| Pod::Char(*s), Pod::Char(c) => *c);
 pod_leaf!(Text, "a Text", |s| Pod::Text(s.clone()), Pod::Text(t) => t.clone());
 pod_leaf!(Path, "a path", |s| Pod::Path(s.clone()), Pod::Path(p) => p.clone());

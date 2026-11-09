@@ -27,6 +27,7 @@
 use std::fmt::Write as _;
 
 use crate::collections::{Array, Cursor, Map, Text};
+use crate::float::Float;
 use crate::num::{Int, Nat};
 use crate::pod::{Error, Path, Pod, Segment};
 
@@ -217,7 +218,7 @@ show_with! {
     i64 => |s, p| p.display(s);
     () => |_s, p| p.raw("unit");
     bool => |s, p| p.raw(if *s { "True" } else { "False" });
-    f64 => |s, p| p.float(*s);
+    Float => |s, p| p.float(s.0);
     char => |s, p| p.quoted(std::iter::once(*s), '\'');
     Text => |s, p| p.quoted(s.chars(), '"');
     Cursor => |s, p| p.record("Cursor", &[("at", &Nat::from(u32::try_from(s.at()).expect("a text over 4 GB")))]);

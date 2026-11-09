@@ -9,8 +9,8 @@
 # The tests: test_canvas (no display), and on Linux xvfb_smoke (a window under xvfb-run,
 # clicked through XTest), on macOS macos_smoke (a Cocoa window, pressed through Hooks),
 # and damage_smoke (a window stepped through ten scenes through Hooks, each frame checked
-# against a full repaint; on Linux it needs a DISPLAY and otherwise says so and passes),
-# all run by `check`.
+# against a full repaint; on Linux under the DISPLAY set, else under `xvfb-run -a`), all
+# run by `check`.
 
 CXX ?= g++
 CONFIG ?= default
@@ -40,6 +40,11 @@ APP_FLAGS :=
 FRAMEWORKS :=
 SMOKE := xvfb_smoke
 LEAKS := 1
+# damage_smoke needs a display: the one set, else an Xvfb of its own through xvfb-run,
+# which must be installed (a test that cannot run is a failure, not a pass).
+ifeq ($(DISPLAY),)
+XVFB := $(if $(shell command -v xvfb-run 2>/dev/null),xvfb-run -a,$(error damage_smoke needs a display: set DISPLAY or install xvfb (apt install xvfb)))
+endif
 endif
 PKG_CFLAGS := $(shell pkg-config --cflags $(PKGS))
 PKG_LIBS := $(shell pkg-config --libs $(PKGS)) $(FRAMEWORKS)
@@ -52,6 +57,18 @@ LIB_SRCS := src/world.cpp src/font.cpp src/render.cpp src/damage.cpp src/big_sta
 LIB_OBJS := $(LIB_SRCS:src/%.cpp=$(BUILD)/%.o) $(BUILD)/app.o $(BUILD)/cli.o
 # the runtime's headers too: an object of this World holds the runtime's types by value
 HEADERS := $(wildcard include/prism_world_canvas/*.hpp) $(wildcard $(RT)/include/prism_rtl/*.hpp)
+
+# The allocator of every binary linked here is jemalloc (runtime/cpp/README.md, pick AL), found with
+# pkg-config, except under a sanitizer (SANITIZE set: AddressSanitizer replaces malloc
+# with its own, which jemalloc would take the allocations from). The library itself links
+# nothing; a binary's link stops and names the package when pkg-config does not find it.
+ifeq ($(SANITIZE),)
+ALLOC_LIBS = $(shell pkg-config --libs jemalloc 2>/dev/null)
+ALLOC_READY = @pkg-config --exists jemalloc || { echo "a C++ binary of Prism links jemalloc, found with pkg-config, and pkg-config does not find it: apt install libjemalloc-dev pkg-config (Debian, Ubuntu), brew install jemalloc (macOS)"; false; }
+else
+ALLOC_LIBS =
+ALLOC_READY = @true
+endif
 
 .PHONY: test check lib chess-smoke FORCE
 
@@ -81,7 +98,7 @@ test:
 check: $(BUILD)/canvas_tests $(BUILD)/$(SMOKE) $(BUILD)/damage_smoke
 	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/canvas_tests
 	$(BUILD)/$(SMOKE)
-	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(BUILD)/damage_smoke
+	ASAN_OPTIONS=detect_leaks=$(LEAKS) $(XVFB) $(BUILD)/damage_smoke
 
 lib: $(LIB)
 
@@ -105,16 +122,20 @@ $(LIB): $(LIB_OBJS)
 	ar rcs $@ $^
 
 $(BUILD)/canvas_tests: tests/test_canvas.cpp $(RT)/tests/main.cpp $(LIB) $(RTLIB) $(HEADERS)
-	$(CXX) $(FLAGS) -I$(RT)/tests -DPRISM_REPO='"$(REPO)"' -o $@ tests/test_canvas.cpp $(RT)/tests/main.cpp $(LIB) $(RTLIB) $(PKG_LIBS)
+	$(ALLOC_READY)
+	$(CXX) $(FLAGS) -I$(RT)/tests -DPRISM_REPO='"$(REPO)"' -o $@ tests/test_canvas.cpp $(RT)/tests/main.cpp $(LIB) $(RTLIB) $(PKG_LIBS) $(ALLOC_LIBS)
 
 $(BUILD)/macos_smoke: tests/macos_smoke.cpp tests/smoke_program.hpp $(LIB) $(RTLIB) $(HEADERS)
-	$(CXX) $(FLAGS) -o $@ tests/macos_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS)
+	$(ALLOC_READY)
+	$(CXX) $(FLAGS) -o $@ tests/macos_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS) $(ALLOC_LIBS)
 
 $(BUILD)/damage_smoke: tests/damage_smoke.cpp $(LIB) $(RTLIB) $(HEADERS)
-	$(CXX) $(FLAGS) -o $@ tests/damage_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS)
+	$(ALLOC_READY)
+	$(CXX) $(FLAGS) -o $@ tests/damage_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS) $(ALLOC_LIBS)
 
 $(BUILD)/xvfb_smoke: tests/xvfb_smoke.cpp tests/robot.hpp tests/smoke_program.hpp $(LIB) $(RTLIB) $(HEADERS)
-	$(CXX) $(FLAGS) -o $@ tests/xvfb_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS) -lXtst -lpthread
+	$(ALLOC_READY)
+	$(CXX) $(FLAGS) -o $@ tests/xvfb_smoke.cpp $(LIB) $(RTLIB) $(PKG_LIBS) -lXtst -lpthread $(ALLOC_LIBS)
 
 $(BUILD)/robot: tests/robot.cpp tests/robot.hpp
 	@mkdir -p $(BUILD)

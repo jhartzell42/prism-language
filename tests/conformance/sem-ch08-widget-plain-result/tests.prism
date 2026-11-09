@@ -1,0 +1,16 @@
+# The plain widget result's tests: declarations of sem-ch08-widget-plain-result.
+# Written by Claude on the claude-widget-plain branch; subject to change.
+emit Ui.* | Pad.*
+use App.*
+
+test a_plain_result_is_bound_at_the_caller, @page:
+    with Pad.Door(name="front") = "door 1", build
+        => expect Ui.Label(text="inside door 1")
+        => expect Ui.Label(text="hello door 1")
+        => expect Ui.Label(text="sign door 1")
+        => expect Ui.Label(text="door 1 knocked 0")
+        => expect Ui.Label(text="2 to 4 after 0")
+        => returns "door 1"
+    click at 4
+        => expect Ui.Label(text="door 1 knocked 1")
+        => returns "door 1, door 1"

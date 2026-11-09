@@ -379,14 +379,14 @@ pub fn number(v: Option<&Pod>) -> f64 {
 mod tests {
     use super::*;
     use crate::world::gui;
-    use prism_rtl::pod::F64;
+    use prism_rtl::Float;
 
     fn el(tag: &str, fields: Vec<(&str, Pod)>) -> Pod {
         Pod::element(tag, fields)
     }
 
     fn float(x: f64) -> Pod {
-        Pod::Float(F64(x))
+        Pod::Float(Float(x))
     }
 
     /// A red `Draw.Rect`.

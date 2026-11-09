@@ -18,8 +18,11 @@
 #include <cstdlib>
 #include <thread>
 
-#include "robot.hpp"
+// prism_rtl's headers before Xlib's, as src/app.cpp has them: Xlib defines `Bool`, `None`
+// and `True` as macros, which would rewrite the runtime's own names.
 #include "smoke_program.hpp"
+
+#include "robot.hpp"
 
 using namespace prism_rtl;
 using namespace prism_world_canvas;

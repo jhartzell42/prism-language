@@ -27,7 +27,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::rc::Rc;
 
-use prism_rtl::pod::F64;
+use prism_rtl::Float;
 use prism_rtl::{Path, Pod, ReadyState, TickIn, TickOut, World};
 
 use crate::font::Font;
@@ -40,7 +40,7 @@ pub mod gui {
     use super::*;
 
     fn float(x: f64) -> Pod {
-        Pod::Float(F64(x))
+        Pod::Float(Float(x))
     }
     /// `WindowId title`.
     pub fn window_id(title: &str) -> Pod {

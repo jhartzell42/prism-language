@@ -171,8 +171,7 @@ fn @Overlay $open, at, @child = @Anchor at, (Point 0.0, 0.0), @widget:
 @Laid: fn $Elem, $Room, [Path] -> @$Res
 fn @Laid $e, $outer, chain:
     $room <- @Distinct $outer
-    $kids <- for p, $$d <- KidsOf $e:                                    # 0/[p]
-        $c <- @Flatten $$d
+    $kids <- for p, $c <- KidsOf $e:                                     # 0/[p]
         $r <- @Laid $c, (KidRoom (KindOf $e), $room), (Push chain, p)
         @ $r
     $sizes <- for text, ignore <- TextsOf $e:                            # 1/[text]
@@ -186,8 +185,7 @@ fn @Window $title, start, @app:
     ((id, !incoming)) <- Gui.Window(title=$title, size=start)                 # 1
     $size <- start then !Filter (?ResizeOf !incoming)
     $topRoom <- @Distinct (TopRoom (Size $elems), $size)
-    $tops <- for p, $$d <- $elems:                                       # 2/[p]
-        $e <- @Flatten $$d
+    $tops <- for p, $e <- $elems:                                        # 2/[p]
         $r <- @Laid $e, $topRoom, [[p]]
         @ $r
     $?focus <- nil then (?Focused !Filter (?FocusChain !hit)) <| ((?NextFocus $placed.hits, $?focus) on !Filter (?TabOf !incoming))

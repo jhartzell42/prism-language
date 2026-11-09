@@ -18,8 +18,8 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
   window laid out the whole tree as one function of it, twice per change, with a word set
   walked over every label (`claude/bugs/window-relayout-every-change.md`).
 - **With the document as `$(Path ==> $Elem c)`** a select costs 21 M in C++ and 31 M in
-  Rust, now that the canvas Worlds paint only the damage of a new scene (doubt PB) and the
-  table's rows read their values through `@PerKey`; it was 166 M and 177 M painting the
+  Rust, with the canvas Worlds painting only the damage of a new scene (doubt PB) and the
+  table's rows reading their values through `@PerKey`; it was 166 M and 177 M painting the
   whole frame, and before the document changed, 494 M and 436 M.
 
 ## Jimmy's constraints
@@ -61,8 +61,8 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
   (`Ui.Column(spacing=g, align=a, children=$elems)`). Sampled, the field is a map from each
   child's path to that child's dynamic: it moves when a child comes or goes, not when one
   changes. So an `Elem` holds dynamics wherever it holds children.
-- **Neither compares nor prints in Prism** (doubt EQ): Type System ch. 3 says a value that
-  holds a dynamic has none of `^Eq`, `^Ord`, `^Show`, and the checker now holds to it: a
+- **Neither compares nor prints in Prism** (EQ, Jimmy's: "Correct"): Type System ch. 3
+  says a value that holds a dynamic has none of `^Eq`, `^Ord`, `^Show`, and the checker holds to it: a
   `derive` of one on a type a field of which holds a dynamic or an event is refused at its
   line (`derive-dynamic`), and an `Elem r` whose row has a tag holding dynamics has no
   built-in `^Eq` or `^Show` (`no-impl`).
@@ -78,10 +78,11 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
   after n-1; its update fires at n+1 when that element differs, owing the tick. A value
   change crosses a host level in one tick, as the flat document's did (HO: "hosting means
   inserting delay").
-- **A program that wants the old flat value** writes the `for` that flattens each entry
-  and pays its tick: `$flat <- for p, $$d <- $doc: $e <- @Flatten $$d; @ $e` gives
-  `$(Path ==> Elem)`, structural, a tick after the entries (`sem-ch09-host-updated`,
-  `sem-ch09-host-doc-in-tick`).
+- **A program that wants the flat value** writes the `for` that reads each entry and pays
+  its tick: `$flat <- for p, $e <- $doc: @ $e` gives `$(Path ==> Elem)`, structural, a
+  tick after the entries (`sem-ch09-host-updated`, `sem-ch09-host-doc-in-tick`). A `for`
+  over a map of dynamics binds the value under the key directly (ruling FV, Jimmy's: "Yes,
+  bind $v"); `@Flatten` is for a `rebuild`'s dynamic and other `$$a` values.
 - **A World paints only settled states** (PS), unchanged.
 
 ### The compiler and the runtimes
@@ -101,24 +102,33 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
   same paths.
 - **A forwarded element is the same place** for an enclosing host: a host row's own
   document is the child's entry (`HostRow::entries`), so nested hosts share it.
-- **A level that holds dynamics goes to a World deep** (doubt WD): `Elem` implements
-  `prism_rtl::Level`, each dynamic it holds sampled at the read point, and a World place
-  whose tag holds dynamics keeps a `prism_rtl::Watch` on them, sent again when any nested
-  entry moves. Chess's board test, which sends a `Ui.Grid` to the Test World, prints as it
-  did.
-- **`@Flatten` of a `for` row's entry** is lowered: the inner is set at the row's
-  construction and followed (`prism_rtl::Follow`), and an entry that becomes another
-  dynamic is adopted the tick after, owed (Semantics ch. 7; rulings VL, TK).
+- **Two kinds of World** (WD, Jimmy's: "we have to distinguish a foreign world (which
+  doesn't have access to dynamic types and which flattens through) and a hosted world
+  (which uses nested dynamics)"). A foreign World has no dynamics: it reads the document
+  flattened through, every nested entry sampled. `Elem` implements `prism_rtl::Level`,
+  each dynamic it holds sampled at the read point, and a World place whose tag holds
+  dynamics keeps a `prism_rtl::Watch` on them, sent again when any nested entry moves;
+  chess's board test, which sends a `Ui.Grid` to the Test World, prints the tree. A Prism
+  World is a host (`@Window` is `@HostSome` over the program) and holds the map of
+  dynamics, each container's children a `for` row of their own.
+- **A `for` row over a map of dynamics binds the value under its key** (`for p, $e <-
+  $doc`, ruling FV): the inner is set at the row's construction and followed
+  (`prism_rtl::Follow`). On a write of the outer the `for`'s builder walks the keys,
+  compares each kept key's dynamic with the one its row was built from, and tells only a
+  row whose dynamic was replaced; that row adopts the new one the tick after, owed
+  (Semantics ch. 7; rulings VL, TK), and is not rebuilt (ch. 11: a program cannot tell two
+  dynamics apart).
 - prismc/README.md, picks HO and ST and gaps DM, ID and SU, and `claude/backend.md`,
   "Hosting", say how each is lowered.
 
 ### How the window lays out a map of dynamics
 
-- **One row per element:** the window's `for p, $$d <- $elems` lays each top element out,
+- **One row per element:** the window's `for p, $e <- $elems` lays each top element out,
   and `@Laid $e, $room, chain` (widgets.prism) lays an element out in the room its parent
   gives it, with a `for` row per child over `KidsOf $e` (the container's document), each
-  flattening its entry and recursing (Semantics ch. 4: "widget functions recurse as deep
-  as their data"; the shrink check reads `@Flatten` as no larger than its argument).
+  bound to its child's value and recursing (Semantics ch. 4: "widget functions recurse as
+  deep as their data"). An element the box forwarded is still an entry of the document
+  (ruling HD: never dropped), and its row ends on `unplanned`: no room, no paint, no hit.
 - **What a row ends on is plain data with `^Eq`:** the element's `Res` (layout.prism): its
   kind, the room it was given, its chain of paths, its children's results, a leaf's
   measured texts, and its `Plan`, the layout with its placing as data. A container reuses
@@ -129,9 +139,9 @@ with the alternative refused, and Jimmy overrules by editing. Book citations are
   is a cached `let`, computed once per write behind it.
 - **One plain placing pass at the window** (`PlaceAt`, over the root's plan): draw commands
   and hits for what shows, with the focus, so a focus change lays out nothing.
-- **Each leaf measures its own texts** (doubt MW): a `for` over its texts in its row, a
-  `Gui.Metrics` each at `.../1/[text]/0`; the window's word set, its `Metrics` `for` and
-  `Claimed` (doubt CL) are gone.
+- **Each leaf measures its own texts** (MW, Jimmy's: "Yes this seems correct"): a `for`
+  over its texts in its row, a `Gui.Metrics` each at `.../1/[text]/0`; the window keeps no
+  word set and no `Metrics` `for` of its own.
 - **No hold cache is built:** each `for` row keeps its child's last result while its entry
   does not move, which is what a cache would have kept.
 - **Every element nests sixteen containers deep at most** below the window: the lowering
@@ -149,7 +159,7 @@ row's), each a computed answer a tick late.
 |---|---|---|
 | n to n+2 | the press; the window's, then the column's delivery | each box's `?Boxed` filters (the column's 1,001) |
 | n+3 | row k's `!sel`, the block's `!op`, `$table` written | `@PerKey` over `$table.rows` (the same map: one `==`, no inner fires); each row's selected flag (`@Distinct`, 1,000 comparisons), two of which move; those two buttons' labels and entries taken |
-| n+4 | the two entries published | the two buttons' `@Laid` rows: their `@Flatten`s move, each new word's `Gui.Metrics` row built, their results taken; the two rows' gathered results taken |
+| n+4 | the two entries published | the two buttons' `@Laid` rows: their bound values (`$e`) move, each new word's `Gui.Metrics` row built, their results taken; the two rows' gathered results taken |
 | n+5 | the leaves' measured texts and the rows' gathered results published | the two buttons' results again (now with the new word's extent); the two rows' results; the column's gathered results taken |
 | n+6 | the column's gathered results (first wave) and the rows' (second) | the column's result: one re-stack of 1,001 plans; the window's tops taken |
 | n+7 | the window's tops (first wave), the column's (second) | the window's placing; the column again |
@@ -172,28 +182,33 @@ row's), each a computed answer a tick late.
 - **The 1,000 selected flags** compared at n+3, each row's `@Distinct` reading the
   selection (doubt SE); no row whose value the write leaves alone is marked for the patch
   pass (`@PerKey`, below).
-- **A structural change marks every row** of the table's `for` for the patch pass, which
-  checks each row's entry for adoption (claude/bugs/window-relayout-every-change.md).
+- **A structural change walks the keys** of the table's `for`: its builder compares each
+  kept key's dynamic with the one the row was built from and tells only a row whose
+  dynamic was replaced (ruling FV), so no kept row is marked for the patch pass; what
+  remains is the walk, one comparison per key
+  (claude/bugs/window-relayout-every-change.md).
 - **A structural change** (remove, create, clear) gathers the outer of its host's document
   from every place's entry, once, and the window re-stacks the column's children.
-- **A structural change costs C++ three times Rust's** (remove's build 90 M against 29 M):
-  the outer's maps are built an insert at a time, and C++'s persistent map copies a path
-  per insert (claude/bugs/window-relayout-every-change.md).
+- **A structural change costs C++ three times Rust's** (remove's build 90 M against 29 M
+  on the Mac): the outer's maps are built an insert at a time
+  (claude/bugs/window-relayout-every-change.md, which says what the map's in-place
+  update took off it and what is left to profile).
 
 ### The table's rows over `@PerKey`
 
 - **`$rows <- @PerKey $table.rows`** (Semantics Appendix B, round 9 PK, Jimmy's) gives
-  `$(Nat ==> $Row)`, and the table's `for slot, $$d <- $rows:` reads each row's value with
-  `$entry <- @Flatten $$d`. The plain `for slot, $entry <- $table.rows` handed each row a
+  `$(Nat ==> $Row)`, and the table's `for slot, $entry <- $rows:` binds each row's value
+  under its key (ruling FV). The plain `for slot, $entry <- $table.rows` handed each row a
   projection whose event fired on every write of `$table` (pick UD), and every row was
   marked for the patch pass and recomputed its elements on every select, swap and remove.
 - **What a write costs:** `@PerKey` compares the new map with the one it last took (one
   `==`, at once for the same map) and else each kept key's value with the one its inner
   holds; only a changed key's inner fires, and only a key that came or went writes the
-  outer, which marks the `for` and its rows. A select writes the same map, so no row is
+  outer, which marks the `for`, whose builder walks the keys and tells only a row whose
+  dynamic was replaced (ruling FV). A select writes the same map, so no row is
   reached through its value; a swap or update10th reaches the rows that changed.
 - **No tick is added:** a kept key's inner fires in the tick of the write, at `@PerKey`'s
-  height, and the row's `@Flatten` follows it in that tick; a new key's row is built at the
+  height, and the row's `$entry` follows it in that tick; a new key's row is built at the
   end of the tick with its inner, which it reads from the start. A select is nine ticks, as
   before.
 
@@ -211,8 +226,8 @@ row's), each a computed answer a tick late.
 
 - **Both runtimes:** `Snapshot::take_compared` keeps the snapshot that stood when the new
   one is equal to it; `==` on maps and arrays answers at once for a node both sides share
-  at the same place, once the node knows its values equal themselves (a shared NaN stays
-  unequal). Safe by Semantics ch. 11: "sharing is invisible".
+  at the same place, every `^Eq` being reflexive (a `Float` compares by its bits,
+  prismc/README.md pick BF). Safe by Semantics ch. 11: "sharing is invisible".
 - **Both printers:** a `for`'s builder does nothing when its source is the very map it last
   built from (`Map::same`); a host's rows do the same over the places.
 - **Both runtimes:** a map collected from entries in ascending key order (a `for`'s
@@ -229,30 +244,39 @@ is a dynamic"), ch. 9 (the forms, "The result"), RULINGS (the ruling itself); Ty
 ch. 1 (`@Grid`, doubt GR), ch. 2 (`Elem r`, the primitives), RULINGS (WL); the Pitch's ch.
 4 and ch. 5.
 
+## Jimmy's rulings (Semantics RULINGS, round 9 HD)
+
+- **WD** (Jimmy's) "we have to distinguish a foreign world (which doesn't have access to
+  dynamic types and which flattens through) and a hosted world (which uses nested
+  dynamics)". A foreign World reads the document flattened through, every nested entry
+  sampled and the place sent again when one moves, so the Test World's transcripts keep
+  their shape; a Prism World is a host and holds the map of dynamics. The alternative,
+  elements with children never going to a World, is out.
+- **EQ** (Jimmy's: "Correct") The runtime compares levels with a dynamic equal only to
+  itself (the same read and update port), invisible to Prism, which compares no dynamic:
+  the checker refuses `^Eq` and `^Show` on an `Elem` whose tags hold a dynamic and a
+  `derive` over a dynamic or an event (Type System ch. 3). The alternative, comparing
+  deep-sampled levels, would sample the dynamics an old level held, whose places may have
+  left, and walk a container's whole subtree; the same-dynamic comparison never samples
+  and costs nothing, and differs from the deep one only where a place's dynamic is
+  replaced by another with equal samples, where it fires (allowed, round 3 DH).
+- **MK** (Jimmy's: "This seems correct") Pitch ch. 5's `Masked` is a plain function on one
+  element, lifted over each entry; Platform ch. 3's `Shown`, which filters by tag, reads
+  the flattened document and pays its tick.
+- **MW** (Jimmy's: "Yes this seems correct") Each leaf measures its own texts in a `for` of
+  its row (a label's words and the space); the window has no shared word set. A `rebuild
+  $text: Gui.Metrics(...)` would measure a label whole (so it could not wrap by words) and
+  its `@Flatten` would add two ticks where the `for` adds one; a word set gathered per
+  level into one Metrics `for` would pay the gathered ticks twice.
+
 ## Doubts
 
-- **CL** (Claude's) `Claimed` goes and a box's children are its whole document, a
-  non-library element laid as nothing; or a typed way to read a `$Elem`'s tag without a
-  sample (a new piece, not taken).
-- **WD** (Claude's) A World reads an element holding dynamics deep (each nested entry
-  sampled, sent again when one moves), so transcripts keep their shape; or elements with
-  children never go to a World.
 - **EP** (Claude's) Each entry published per place, structural, one tick per host level
   for a value change as before; or the entry as the place's live level, prompt (a value
   change would cross a host in no tick while a structural change still costs one).
-- **MW** (Claude's) Each leaf measures its own texts in a `for` of its row (a label's words
-  and the space), the word set gone. The note's first spelling, `rebuild $text:
-  Gui.Metrics(...)`, measures a label whole (so it cannot wrap by words) and its
-  `@Flatten` adds two ticks where the `for` adds one; or a word set gathered per level
-  into one Metrics `for` (the gathered ticks twice).
-- **EQ** (Claude's) The runtime compares levels with a dynamic equal only to itself (the
-  same read and update port), invisible to Prism, which compares no dynamic. The note's
-  first spelling compared deep-sampled levels: a take would then sample the dynamics an
-  old level held, whose places may have left, and walk a container's whole subtree; the
-  same-dynamic comparison never samples and costs nothing, and differs from the deep one
-  only where a place's dynamic is replaced by another with equal samples, where it fires
-  (allowed, round 3 DH). In Prism the checker refuses `^Eq` and `^Show` on what holds a
-  dynamic (Type System ch. 3).
+  Claude's pick is the first: it keeps HO ("hosting means inserting delay") the same for a
+  value as for a place, so a program's tick count does not depend on which kind of change
+  it made. Jimmy's to overrule.
 - **ET** (Claude's) An `Elem r` with an open row is judged by the tags it names: the
   checker refuses its `^Eq` only when one of those holds dynamics; or refused whenever a
   tail could stand for such a tag.

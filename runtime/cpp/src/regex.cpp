@@ -4,8 +4,9 @@
 // runtime/rust/src/regex_dialect.rs's, function for function; the shared corpus
 // (tests/regex/corpus.txt) holds both to every message and position.
 //
-// Lifetimes: RE2 sees the searched text as an `absl::string_view` into the `Text`'s
-// buffer only for the length of one `RE2::Match` call, which the `Text` (held by the
+// Lifetimes: RE2 sees the searched text as a `re2::StringPiece` (its own class in RE2 up to
+// 2023-03, Ubuntu 24.04's; an alias of `absl::string_view` since, Homebrew's) into the
+// `Text`'s buffer only for the length of one `RE2::Match` call, which the `Text` (held by the
 // caller) outlives; the submatch views are turned into byte offsets before the call
 // returns to Prism, and every `Text` and `Cursor` a match holds is a view counted on that
 // buffer. A compiled `RE2` lives in its `RegexCompiled`, which an `Rc` owns; RE2's
@@ -999,9 +1000,9 @@ bool search(const detail::RegexCompiled& c, const Text& t, std::size_t start, bo
             std::vector<std::pair<std::size_t, std::size_t>>& spans) {
     std::string_view hay = t.view();
     std::size_t n = c.groups + 1;
-    std::vector<absl::string_view> sub(n);
+    std::vector<re2::StringPiece> sub(n);
     while (true) {
-        if (!c.engine->Match(absl::string_view(hay.data(), hay.size()), start, hay.size(), anchored ? RE2::ANCHOR_START : RE2::UNANCHORED, sub.data(), int(n)))
+        if (!c.engine->Match(re2::StringPiece(hay.data(), hay.size()), start, hay.size(), anchored ? RE2::ANCHOR_START : RE2::UNANCHORED, sub.data(), int(n)))
             return false;
         std::size_t a = std::size_t(sub[0].data() - hay.data());
         if (sub[0].empty() && !on_boundary(hay, a)) {

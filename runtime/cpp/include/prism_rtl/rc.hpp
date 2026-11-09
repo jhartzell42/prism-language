@@ -16,12 +16,18 @@
 // - `RcFromThis<T>`, as `std::enable_shared_from_this`, gives an object made by `make_rc`
 //   or `rc_placed` its own `Rc` (`rc_from_this()`); asking an object no `Rc` owns is a
 //   panic.
+// - `==` and `<=>` on `Rc<T>` are `T`'s, through the pointer, defined exactly when `T` has
+//   them, as Rust's `Rc<T: PartialEq>` and `Rc<T: Ord>` are: an `Rc<const T>` of a value
+//   (a recursive payload of a choice or record) compares, orders, prints and goes out as
+//   plain data by the value, and a node or a cell, which has no `==`, has none through its
+//   `Rc` either. Identity is `ptr_eq` (Rust's `Rc::ptr_eq`), always written out.
 //
 // Written by Claude on the claude-self-hosting branch; subject to change.
 
 #pragma once
 
 #include <compare>
+#include <concepts>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -177,14 +183,6 @@ public:
     long use_count() const noexcept { return b_ ? static_cast<long>(b_->strong) : 0; }
 
     friend bool operator==(const Rc& a, std::nullptr_t) noexcept { return a.p_ == nullptr; }
-    template <class U>
-    friend bool operator==(const Rc& a, const Rc<U>& b) noexcept {
-        return a.get() == b.get();
-    }
-    template <class U>
-    friend std::strong_ordering operator<=>(const Rc& a, const Rc<U>& b) noexcept {
-        return std::compare_three_way{}(a.get(), b.get());
-    }
 
 private:
     T* p_ = nullptr;
@@ -214,6 +212,13 @@ private:
     template <class U, class V>
     friend Rc<U> rc_static_cast(const Rc<V>& r) noexcept;
 };
+
+/// Whether two `Rc`s point to the same allocation: Rust's `Rc::ptr_eq`, the one identity
+/// comparison (an `Rc`'s `==` asks it first, then its value's, below).
+template <class T, class U>
+bool ptr_eq(const Rc<T>& a, const Rc<U>& b) noexcept {
+    return static_cast<const void*>(a.get()) == static_cast<const void*>(b.get());
+}
 
 /// The value and its counts in one allocation: `std::make_shared`.
 template <class T, class... A>
@@ -364,9 +369,29 @@ private:
     }
 };
 
-}  // namespace prism_rtl
+/// `Rc<T>`'s comparisons, its value's (Rust's `impl<T: PartialEq> PartialEq for Rc<T>`, and
+/// `Ord` likewise): defined exactly when `T`'s are, so that sharing stays invisible
+/// (Semantics ch. 11) and a node's or a cell's `Rc`, whose `T` has none, has none. `==`
+/// compares the pointers first, as Rust's `Rc<T: Eq>` does: every `^Eq` is reflexive (a
+/// `Float` is equal exactly when its bits are, Type System round 6 FB), so one value is
+/// equal to itself without being read. `<=>` is `std::strong_ordering`, as the emitted
+/// comparisons are throughout (Rust's `Ord` is total), and answers `equal` for one value
+/// likewise. `T` may be incomplete where an `Rc<const T>` is declared as a member; it must
+/// be complete where the `Rc`s are compared.
+template <class T, class U>
+    requires requires(const T& a, const U& b) {
+        { a == b } -> std::convertible_to<bool>;
+    }
+bool operator==(const Rc<T>& a, const Rc<U>& b) {
+    return ptr_eq(a, b) || *a == *b;
+}
+template <class T, class U>
+    requires requires(const T& a, const U& b) {
+        { a <=> b } -> std::same_as<std::strong_ordering>;
+    }
+std::strong_ordering operator<=>(const Rc<T>& a, const Rc<U>& b) {
+    if (ptr_eq(a, b)) return std::strong_ordering::equal;
+    return *a <=> *b;
+}
 
-template <class T>
-struct std::hash<prism_rtl::Rc<T>> {
-    std::size_t operator()(const prism_rtl::Rc<T>& r) const noexcept { return std::hash<T*>{}(r.get()); }
-};
+}  // namespace prism_rtl

@@ -346,7 +346,9 @@ int App::paint() {
         cairo_surface_destroy(surface);
         // Only the damage goes to the server, unless its copy of the window is not the
         // image's; each box is inside the image (`Renderer::bounds` cuts it to the frame).
-        if (damage.full || w.exposed) damage.rects = {IRect{0, 0, std::uint32_t(w.pw), std::uint32_t(w.ph)}};
+        // (`assign`, not an initializer list: g++ 13 at -O3 under the sanitizers misreads the
+        // list's one-element array as copied out of bounds, a false -Warray-bounds.)
+        if (damage.full || w.exposed) damage.rects.assign(1, IRect{0, 0, std::uint32_t(w.pw), std::uint32_t(w.ph)});
         w.exposed = false;
         for (const IRect& r : damage.rects) {
             int x = int(r.x0), y = int(r.y0);

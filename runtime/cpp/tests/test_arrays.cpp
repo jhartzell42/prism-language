@@ -6,8 +6,8 @@
 // `mut_at`, iteration, equality and order; a write that throws halfway; and the storage an
 // array holds, which is linear in its length, never a whole chunk for a few elements; and
 // the costs, by counting the elements copied and moved; and `==` on arrays that share
-// nodes, by counting the elements compared: a shared node answers at once, and a NaN (a
-// value equal to nothing, itself included) keeps an array unequal to itself.
+// nodes, by counting the elements compared: a shared node answers at once, and an array holding
+// a NaN equals itself and a copy (Type System round 6, rulings FB and NO).
 
 #include <cmath>
 #include <cstdint>
@@ -376,17 +376,15 @@ TEST(an_array_from_a_vector_moves_each_element_once_into_storage_of_its_size) {
 
 namespace {
 
-/// An element that counts its comparisons; `Cmp{NAN_}` is equal to nothing, itself
-/// included, as a `Float` NaN is under IEEE equality (Type System ch. 2).
+/// An element that counts its comparisons.
 struct Cmp {
     static inline std::size_t compared = 0;
     int v = 0;
     friend bool operator==(const Cmp& a, const Cmp& b) {
         ++compared;
-        return a.v == b.v && a.v != -1;
+        return a.v == b.v;
     }
 };
-constexpr int NAN_ = -1;
 
 Array<Cmp> cmps(std::size_t n) {
     Array<Cmp> a;
@@ -406,9 +404,7 @@ std::size_t compared(F f) {
 TEST(an_array_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_elements) {
     for (std::size_t n : {std::size_t(0), std::size_t(1), std::size_t(64), std::size_t(65), std::size_t(300), BIG}) {
         Array<Cmp> a = cmps(n), b = a;
-        // the first comparison may look at every element once; after it, shared nodes
-        // answer at once
-        CHECK(a == b);
+        // shared nodes answer at once, the first comparison as every later one
         bool eq = false;
         CHECK(compared([&] { eq = a == b; }) <= BOUNDED && eq);
         if (n == 0) continue;
@@ -419,16 +415,13 @@ TEST(an_array_compared_with_what_shares_its_nodes_compares_a_bounded_number_of_e
     }
 }
 
-TEST(a_shared_array_holding_a_nan_is_not_equal_to_itself) {
-    for (std::size_t n : {std::size_t(1), std::size_t(64), std::size_t(65), std::size_t(300), BIG}) {
-        Array<Cmp> a = cmps(n).updated(n - 1, Cmp{NAN_}), b = a;
-        CHECK(!(a == b) && !(a == b) && !(a == a));
-        Array<Cmp> c = cmps(n).updated(0, Cmp{NAN_}), d = c;
-        CHECK(!(c == d) && !(c == d));
-    }
-    Array<double> floats{1.0, std::nan(""), 3.0};
-    Array<double> same = floats;
-    CHECK(!(floats == same));
+TEST(an_array_holding_a_nan_equals_itself_and_a_copy) {
+    // Type System round 6 FB: a `Float` is equal exactly when its bits are.
+    Array<Float> floats{Float{1.0}, Float{std::nan("")}, Float{3.0}};
+    Array<Float> same = floats;
+    Array<Float> built{Float{1.0}, Float{std::nan("")}, Float{3.0}};
+    CHECK(floats == same && floats == floats && floats == built);
+    CHECK(!(Array<Float>{Float{0.0}} == Array<Float>{Float{-0.0}}));
 }
 
 TEST(arrays_of_arrays_compare_shared_inner_arrays_at_once) {

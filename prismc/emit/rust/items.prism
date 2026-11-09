@@ -87,7 +87,7 @@ fn RustImpl i:
         "Prelude.Eq":
             let fns = Join (Each i.methods, \|f| RustFn f), "\n"
             let eq = Fold i.methods, "", \|acc, f| if (not (HasPrefix f.name, "ne")) and acc == "": f.name else: acc
-            "{fns}\n{Impl gens, "PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}"
+            "{fns}\n{Impl gens, "PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}\nimpl{gens} Eq for {head} \{\}"
         otherwise: "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body)), "\n")}\n\}\n"
 
 RustFn: unbounded fn FnDef -> Text
@@ -116,9 +116,7 @@ fn RustJob j:
 # A type, its derives, and its printer and plain-data impls (claude/backend.md, "Printing").
 TypeDecl: unbounded fn TyDef -> Text
 fn TypeDecl t:
-    let eq = t.eq and not t.floaty
-    let ord = t.ord and not t.floaty
-    let derives = Join (Filter [["Clone", (if t.eq or t.ord: "PartialEq" else: ""), (if eq or ord: "Eq" else: ""), (if t.ord: "PartialOrd" else: ""), (if ord: "Ord" else: "")]], \|d| d != ""), ", "
+    let derives = Join (Filter [["Clone", (if t.eq or t.ord: "PartialEq, Eq" else: ""), (if t.ord: "PartialOrd, Ord" else: "")]], \|d| d != ""), ", "
     let head = "{t.name}{GenericNames t.params}"
     let doc = SourceDoc "`{t.prism}`:", t.doc
     let decl = match t.shape:
@@ -189,7 +187,7 @@ RustTag: unbounded fn TagDef -> Text
 fn RustTag t:
     let fields = Join (Each t.fields, \|((ignore, f, ft))| "pub {f}: {Type ft},"), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "(\"{p}\", self.{f}.to_pod())"), ", "
-    let derives = if t.eq: "Clone, PartialEq" else: "Clone"
+    let derives = if t.eq: "Clone, PartialEq, Eq" else: "Clone"
     let reads = Join (Each t.fields, \|((p, f, ignore))| "{f}: FromPod::from_pod(field(p, \"{p}\")?)?"), ", "
     let back = if t.pod: "\n{TagFromPod t.name, t.tagName, reads}" else: ""
     let deep = Fold t.fields, False, \|d, ((ignore, ignore, ft))| d or HoldsDyn ft
@@ -218,7 +216,7 @@ fn DeepPorts f, ft = match ft:
 # A row kind's enum (pick RV): a variant per tag, printing and crossing as the tag's level.
 RustRow: unbounded fn RowDef -> Text
 fn RustRow r:
-    let derives = if r.eq: "Clone, PartialEq" else: "Clone"
+    let derives = if r.eq: "Clone, PartialEq, Eq" else: "Clone"
     let cases = Join (Each r.cases, \|((v, st))| "{v}({st}),"), "\n"
     let pods = Join (Each r.cases, \|((v, ignore))| "{r.name}::{v}(x) => x.to_pod(),"), "\n"
     let reads = Join (Each r.cases, \|((v, st))| "Some(t) if t == {st}::TAG => Ok({r.name}::{v}(FromPod::from_pod(p)?)),"), "\n"
@@ -265,7 +263,17 @@ fn RustNode n:
 
 # A `for`'s builder: rows that left torn down, new keys built.
 ForBuilder: unbounded fn ForDef -> Text
-fn ForBuilder b = ForBuild b.name, (Expression b.at), (Type b.keyTy), (Type b.valueTy), b.rowNode, b.source, (Expression b.parent), (Concat (Each b.passed, \|x| ", {Expression x}")), (MovedCall b.name, b.moved)
+fn ForBuilder b = ForBuild b.name, (Expression b.at), (Type b.keyTy), (Type b.valueTy), b.rowNode, b.source, (Expression b.parent), (Concat (Each b.passed, \|x| ", {Expression x}")), (MovedCall b.name, b.moved), (FromKept b.name, b.replaced), (ReplacedCall b.replaced)
+
+# The source the rows were last built from, kept: over a map of dynamics the walk reads the
+# one it replaces, to compare each kept key's dynamic with the one its row was built from.
+FromKept: fn Text, [Text] -> Text
+fn FromKept name, replaced = if (Len replaced) == 0: "*self.{name}_from.borrow_mut() = items.clone();" else: "let from = std::mem::replace(&mut *self.{name}_from.borrow_mut(), items.clone());"
+
+# A kept key whose dynamic is another than the one its row was built from (ruling FV): the
+# row is told, and adopts it among the next tick's first firings.
+ReplacedCall: fn [Text] -> Text
+fn ReplacedCall replaced = if (Len replaced) == 0: "" else: " else if from.get(k) != items.get(k) \{\n            // the dynamic under a kept key was replaced: that row follows it from the next tick\n{Concat (Each replaced, \|m| "            row.{m}(cx);\n")}        \}"
 
 # A builder whose rows' places are a host's document tells the host its child's places came
 # or went (`$(Path ==> $Elem c)`'s outer moves).
