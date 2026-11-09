@@ -107,8 +107,6 @@ fn CppDeclHeader title, includes, forward = inline_text <cpp>
 
 namespace crate {
 
-using namespace prelude;
-
 {{forward}}
 
 }  // namespace crate
@@ -124,8 +122,6 @@ fn CppTypesHeader title, includes, values = inline_text <cpp>
 {{includes}}
 
 namespace crate {
-
-using namespace prelude;
 
 {{values}}
 
@@ -154,8 +150,6 @@ fn CppModHeader title, includes, protos, outer, classes = inline_text <cpp>
 
 namespace crate {
 
-using namespace prelude;
-
 {{protos}}
 
 {{outer}}
@@ -178,8 +172,6 @@ fn CppGenericHeader title, includes, generic = inline_text <cpp>
 
 namespace crate {
 
-using namespace prelude;
-
 {{generic}}
 
 }  // namespace crate
@@ -197,8 +189,6 @@ fn CppElemDecl includes, forward, rows = inline_text <cpp>
 {{includes}}
 
 namespace crate {
-
-using namespace prelude;
 
 {{forward}}
 
@@ -221,8 +211,6 @@ fn CppElemTypes includes, values = inline_text <cpp>
 {{includes}}
 
 namespace crate {
-
-using namespace prelude;
 
 {{values}}
 
@@ -286,8 +274,8 @@ using namespace prelude;
 {{crateDefs}}
 
 /// The Test World with every root a test names, and the compiled `check` blocks.
-TestWorld test_world() {
-    TestWorld world;
+rt::TestWorld test_world() {
+    rt::TestWorld world;
     world{{registrations}}{{checks}};
     return world;
 }

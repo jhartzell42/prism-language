@@ -257,7 +257,7 @@ fn LiftedValue lx, env, e, ln:
 # The operands from the first: its value matched, the rest inside its arm.
 LiftOperands: unbounded fn Lx, Lx, Env, Expr, Text, [Range], OutTy -> Ex
 fn LiftOperands lx, lxIn, env, e, sigil, operands, t = match operands:
-    [[]]: XCtor (if sigil == "~": "Ok" else: "Some"), [[Own (PlainValueByKind lxIn, env, e)]]
+    [[]]: XCtor (if sigil == "~": "std::Ok" else: "std::Some"), [[Own (PlainValueByKind lxIn, env, e)]]
     otherwise:
         let r = Or operands[0], e.span
         let sv = ValueOf lx, env, (Or (?OperandAt e, r), dummyExpr)
@@ -269,9 +269,9 @@ fn LiftOperands lx, lxIn, env, e, sigil, operands, t = match operands:
         let x = "o{r.start}_{r.end}"
         let env2 = BindSpan env, (PlaceKey lx, r), (VlPlace (XVar x), mode, it)
         let body = LiftOperands lx, lxIn, env2, e, sigil, (Drop operands, 1), t
-        let failArm = if sigil == "~": XArm(pat=(PaCtor "Err", [[PaBind "{x}_e"]]), conds=[[]], body=(XCtor "Err", [[Own (VlPlace (XVar "{x}_e"), mode, OutError)]]))
-        else: XArm(pat=(PaUnit "None"), conds=[[]], body=(XTyped (XNone), t))
-        let arms = [[XArm(pat=(PaCtor (if sigil == "~": "Ok" else: "Some"), [[PaBind x]]), conds=[[]], body=body), failArm]]
+        let failArm = if sigil == "~": XArm(pat=(PaCtor "std::Err", [[PaBind "{x}_e"]]), conds=[[]], body=(XCtor "std::Err", [[Own (VlPlace (XVar "{x}_e"), mode, OutError)]]))
+        else: XArm(pat=(PaUnit "std::None"), conds=[[]], body=(XTyped (XNone), t))
+        let arms = [[XArm(pat=(PaCtor (if sigil == "~": "std::Ok" else: "std::Some"), [[PaBind x]]), conds=[[]], body=body), failArm]]
         XMatch (if owned: Own sv else: Ref sv), arms, False, t
 
 IsLiftedAt: fn Lx, Range -> Bool
@@ -309,9 +309,9 @@ fn PlainValueByKind lx, env, e:
             otherwise: VlOwned (Refusal "`{b}` outside a `for`"), t
         ENil ignore: VlOwned (XTyped (XNone), t), t
         ETuple es: VlOwned (XTuple (Each es, \|x| Own (ValueOf lx, env, x))), t
-        EArray [[]]: VlOwned (XTyped (XCall "Array::new", [[]]), t), t
-        EArray es: VlOwned (XCall "Array::from", [[XVec (Each es, \|x| Own (ValueOf lx, env, x))]]), t
-        EMap [[]]: VlOwned (XTyped (XCall "Map::new", [[]]), t), t
+        EArray [[]]: VlOwned (XTyped (XCall "rt::Array::new", [[]]), t), t
+        EArray es: VlOwned (XCall "rt::Array::from", [[XVec (Each es, \|x| Own (ValueOf lx, env, x))]]), t
+        EMap [[]]: VlOwned (XTyped (XCall "rt::Map::new", [[]]), t), t
         EMap kvs: VlOwned (XCall (Helper "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
         EGroup x: ValueOf lx, env, x
         ECall c, args, ignore, ignore: Application lx, env, c, args, e.span
@@ -324,8 +324,8 @@ fn PlainValueByKind lx, env, e:
                 let v = ValueOf lx, env, x
                 if IsCopy t: VlOwned (XUnary OpNeg, (Copy v)), t else: VlOwned (XUnary OpNeg, (Ref v)), t
         EUnary ignore, x: ValueOf lx, env, x
-        EFreeSigil "?", x: VlOwned (XCtor "Some", [[Own (ValueOf lx, env, x)]]), t
-        EFreeSigil "~", x: VlOwned (XCtor "Ok", [[Own (ValueOf lx, env, x)]]), t
+        EFreeSigil "?", x: VlOwned (XCtor "std::Some", [[Own (ValueOf lx, env, x)]]), t
+        EFreeSigil "~", x: VlOwned (XCtor "std::Ok", [[Own (ValueOf lx, env, x)]]), t
         EFreeSigil "@", x: PureBlueprint lx, env, x, t
         EFreeSigil ignore, x: ValueOf lx, env, x
         EField r, ignore, name: FieldValue lx, env, r, name.name
@@ -350,7 +350,7 @@ fn AnyValue lx, env, x, t:
     let v = Own (ValueOf lx, env, x)
     match Peel t:
         TyAny bounds:
-            if IsShowOnly bounds: VlOwned (XCall "Rc::new", [[v]]), OutShowAny
+            if IsShowOnly bounds: VlOwned (XCall "std::Rc::new", [[v]]), OutShowAny
             else:
                 let names = Each bounds, \|b| BareName b
                 let others = Filter names, \|b| not (HasText [["Show", "Eq", "Ord"]], b)
@@ -358,7 +358,7 @@ fn AnyValue lx, env, x, t:
                 else:
                     let packing = Fold names, (XCall "prism_rtl::Packed::of", [[v]]), \|acc, b| XMethod acc, "with_{Lower b}", [[]]
                     VlOwned (XMethod packing, "packed", [[]]), (OutNamed "prism_rtl::Packed", [[]])
-        otherwise: VlOwned (XCall "Rc::new", [[v]]), OutShowAny
+        otherwise: VlOwned (XCall "std::Rc::new", [[v]]), OutShowAny
 
 # `@ x` as a value (a supplier's arm; pick HO): a blueprint with no places whose output is
 # `x`, typed as the tag's variant of `crate::Answer`, so the arm must stand under a tag
@@ -402,8 +402,8 @@ DynamicBlueprint: unbounded fn Lx, Env, Expr, Expr, Text, OutTy -> Vl
 fn DynamicBlueprint lx, env, x, d, variant, t = match ((env.names["#dyn{DynKey x}"], env.names["#owner"])):
     ((? (BnLocal (XVar getter), ignore, dt), ? (BnLocal (XVar owner), ignore, ignore))):
         let atBuild = Own (ValueOf lx, (InitEnv env), d)
-        let arms = [[XArm(pat=(PaCtor "Some", [[PaBind "owner"]]), conds=[[]], body=(XCtor variant, [[(XMethod (XVar "owner"), getter, [[XCx]])]])), XArm(pat=(PaUnit "None"), conds=[[]], body=(XCtor variant, [[(XClone (XVar "at_build"))]]))]]
-        let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed "Cx", [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed "crate::Answer", [[]]))
+        let arms = [[XArm(pat=(PaCtor "std::Some", [[PaBind "owner"]]), conds=[[]], body=(XCtor variant, [[(XMethod (XVar "owner"), getter, [[XCx]])]])), XArm(pat=(PaUnit "std::None"), conds=[[]], body=(XCtor variant, [[(XClone (XVar "at_build"))]]))]]
+        let read = XClosure True, [[(PaTyped (PaBind "cx"), (OutRef (OutNamed "rt::Cx", [[]])))]], (XMatch (XMethod (XVar "link"), "owner", [[]]), arms, False, (OutNamed "crate::Answer", [[]]))
         let dynamic = XBlock [[(DoLet (PaBind "link"), (XClone (XVar owner))), (DoLet (PaBind "at_build"), atBuild)]], (XCall "prism_rtl::Dynamic::of", [[read, (XRef (XVar "{getter}_portx"))]])
         VlOwned (XCall "prism_rtl::dynamic_blueprint::<crate::Elem, _>", [[dynamic]]), t
     otherwise: VlOwned (Refusal "`@ {SrcText lx, lx.file, x.span}`, a supplier's dynamic answer that reads what has no value at the owner's build (a pushed place, a structural dynamic, or a `let` after the host's line)"), t
@@ -455,7 +455,7 @@ fn NameValue lx, env, n, span:
             match ?qk:
                 ? "True": VlOwned (XBool True), OutBool
                 ? "False": VlOwned (XBool False), OutBool
-                ? "Prelude.never": VlOwned (XCall "Event::never", [[]]), t
+                ? "Prelude.never": VlOwned (XCall "rt::Event::never", [[]]), t
                 ? qk: match lx.g.tags[qk]:
                     ? tg if tg.kind != "Prelude.Fault" and why == "tag": TagValue lx, env, tg, [[]]
                     otherwise: GlobalValue lx, qk, span, t
@@ -488,8 +488,8 @@ fn GlobalValue lx, qk, span, t = match lx.g.ctors[qk]:
                         let names = Each (Range0 (Len ps)), \|i| "a{i}"
                         let pa = if (Len ps) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
                         let f = XClosure False, [[pa]], (XCall (Helper "entered"), [[(XCall (StartPath lx, qk), (Each names, \|nm| XVar nm))]])
-                        VlOwned (XCast (XCall "Rc::new", [[f]]), t), t
-                    otherwise: VlOwned (XCall "Rc::new", [[XPath (ValuePath lx, qk)]]), t
+                        VlOwned (XCast (XCall "std::Rc::new", [[f]]), t), t
+                    otherwise: VlOwned (XCall "std::Rc::new", [[XPath (ValuePath lx, qk)]]), t
             nil: VlOwned (Refusal "the global {qk}"), t
 
 IsLetDef: fn Def -> Bool
@@ -607,7 +607,7 @@ fn TagValue lx, env, tg, args:
                     nil: nil
                 let v = match ?arg:
                     ? x: Own (ValueOf lx, env, x)
-                    nil: (XCall "Default::default", [[]])
+                    nil: (XCall "std::Default::default", [[]])
                 (((FieldSpell tg.home, fname, fty), v))
             VlOwned (XCtor variant, [[(XRecord structPath, fields)]]), t
 
@@ -661,7 +661,7 @@ fn WrapAsBounded f, pts, target:
     let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
     let arg = if (Len pts) == 1: XClone (XVar "a0") else: XTuple (Each names, \|nm| XClone (XVar nm))
     let body = XCall (Helper "run_to_end"), [[(XApply (XVar "job_fn"), [[arg]])]]
-    XBlock [[(DoLet (PaBind "job_fn"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, pas, body)]]), target)
+    XBlock [[(DoLet (PaBind "job_fn"), f)]], (XCast (XCall "std::Rc::new", [[(XClosure True, pas, body)]]), target)
 
 # A function's arguments, borrowed; a bare `Error(..)` where the parameter is a `~T` is
 # that `~T`'s failure (the checker's pick ER lets it wait for its type).
@@ -682,7 +682,7 @@ fn ArgsFor lx, env, v, args:
             TyFn CBound, ignore, ignore: False
             TyFn ignore, ignore, ignore: True
             otherwise: False
-        if isTry and isError: XRef (XCtor "Err", [[Own (ValueOf lx, env, a.value)]])
+        if isTry and isError: XRef (XCtor "std::Err", [[Own (ValueOf lx, env, a.value)]])
         else: if toUnbounded: XRef (AsJobValue lx, env, a.value)
         else: Argument lx, env, a.value
 
@@ -701,14 +701,14 @@ fn CtorApp lx, env, c, args, span:
         "Prelude.Error":
             let kind = Or vals[0], (XStr "")
             let msg = Or vals[1], (XText "")
-            let made = XCall "Error::new", [[kind, msg]]
+            let made = XCall "rt::Error::new", [[kind, msg]]
             match t:
-                OutRes ignore: VlOwned (XCtor "Err", [[made]]), t
+                OutRes ignore: VlOwned (XCtor "std::Err", [[made]]), t
                 otherwise: VlOwned made, OutError
         otherwise: match owner.body:
             BRecord fs:
                 if (Len c.fields) == 0: VlOwned (XPath tyPath), t
-                else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or vals[i], (XCall "Default::default", [[]])))))), t
+                else: VlOwned (XRecord tyPath, (Each (Range0 (Len c.fields)), \|i| (((FieldSpell (OwnerOf c.owner), (Or c.fields[i], ""), (Or c.args[i], TyErr)), (Or vals[i], (XCall "std::Default::default", [[]])))))), t
             BChoice cases:
                 let isUnitType = (Len cases) == 1 and (Len c.args) == 0 and IsLowerText (BareName c.name)
                 # a newtype is a tuple struct (a struct in C++), built by its own name
@@ -742,10 +742,10 @@ fn CtorFn lx, c, pts, span, t, job:
             OutJobFn x, ignore: x
             otherwise: OutUnit
         let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
-        VlOwned (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], (XCall (Helper "once_job"), [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[made]]))]]))]]), t), t
+        VlOwned (XCast (XCall "std::Rc::new", [[(XClosure True, [[pa]], (XCall (Helper "once_job"), [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[made]]))]]))]]), t), t
     else:
         let pas = Each (Range0 (Len pts)), \|i| PaTyped (PaBind (Or names[i], "a")), (OutRef (Or pts[i], OutUnit))
-        VlOwned (XCall "Rc::new", [[(XClosure False, pas, made)]]), t
+        VlOwned (XCall "std::Rc::new", [[(XClosure False, pas, made)]]), t
 
 IsNamedArg: fn Arg -> Bool
 fn IsNamedArg a = match a.?name:
@@ -765,8 +765,8 @@ fn CtorArgs lx, env, c, args:
         ? (? x):
             let v = Own (ValueOf lx, env, x)
             if c.owner == "Prelude.Error" and i == 0: v
-            else: if RcField lx, c.name, i: XCall "Rc::new", [[v]] else: v
-        otherwise: (XCall "Default::default", [[]])
+            else: if RcField lx, c.name, i: XCall "std::Rc::new", [[v]] else: v
+        otherwise: (XCall "std::Default::default", [[]])
 
 # A trait method applied: the operator a builtin, derived or written impl answers (an
 # `impl ^Eq` is emitted as Rust's `PartialEq` and `Eq`, so `==` reaches it), or the method of a
@@ -816,15 +816,15 @@ fn OpValue lx, op, a, b, span, t:
         otherwise: False
     if HasText [["==", "!=", "<", "<=", ">", ">="]], op: VlOwned (OpOf op, (Ref a), (Ref b)), OutBool
     else: if op == "mod": VlOwned (XMethod (Ref a), "modulo", [[Ref b]]), t
-    else: if generic: VlOwned (XCall "Num::{NumMethod op}", [[Ref a, Ref b]]), t
+    else: if generic: VlOwned (XCall "rt::Num::{NumMethod op}", [[Ref a, Ref b]]), t
     else: if op == "/":
         if at == OutFloat: VlOwned (XBin OpDiv, (Copy a), (Copy b)), t
         else: VlOwned (XMethod (Ref a), "div", [[Ref b]]), t
     else: if op == "-?":
         if at == OutNat: VlOwned (XMethod (Ref a), "checked_sub", [[Ref b]]), t
-        else: VlOwned (XCtor "Some", [[(XBin OpSub, (Ref a), (Ref b))]]), t
-    else: if op == "+?": VlOwned (XCtor "Some", [[(XBin OpAdd, (Ref a), (Ref b))]]), t
-    else: if op == "*?": VlOwned (XCtor "Some", [[(XBin OpMul, (Ref a), (Ref b))]]), t
+        else: VlOwned (XCtor "std::Some", [[(XBin OpSub, (Ref a), (Ref b))]]), t
+    else: if op == "+?": VlOwned (XCtor "std::Some", [[(XBin OpAdd, (Ref a), (Ref b))]]), t
+    else: if op == "*?": VlOwned (XCtor "std::Some", [[(XBin OpMul, (Ref a), (Ref b))]]), t
     else: if IsCopy at: VlOwned (OpOf op, (Copy a), (Copy b)), t
     else: VlOwned (OpOf op, (Ref a), (Ref b)), t
 
@@ -924,7 +924,7 @@ fn WrapAsJob f, pts, target, a:
     let pa = if (Len pts) == 1: PaTyped (PaBind "a0"), a else: PaTyped (PaTuple (Each names, \|nm| PaBind nm)), a
     let call = XApply (XVar "fy"), (Each names, \|nm| XRef (XVar nm))
     let body = XBlock [[(DoLet (PaBind "fy"), (XClone (XVar "f")))]], (XCall (Helper "once_job"), [[(XClosure True, [[]], (XCtor "prism_rtl::Turn::Finished", [[call]]))]])
-    XBlock [[(DoLet (PaBind "f"), f)]], (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], body)]]), target)
+    XBlock [[(DoLet (PaBind "f"), f)]], (XCast (XCall "std::Rc::new", [[(XClosure True, [[pa]], body)]]), target)
 
 # A named function's arguments, owned, as its job's fields take them: a function
 # parameter that is not bounded takes a `Start`.
@@ -1008,6 +1008,7 @@ fn Instantiated t, params, args = match t:
     TyArray e: TyArray (Instantiated e, params, args)
     TyMap k, v: TyMap (Instantiated k, params, args), (Instantiated v, params, args)
     TySig s, i: TySig s, (Instantiated i, params, args)
+    TyAssoc n, a: TyAssoc n, (Instantiated a, params, args)
     otherwise: t
 
 # `xs[i]`: an optional, of an array or a map (a text has no index: the checker refuses it).
@@ -1139,7 +1140,7 @@ fn PlainLambda lx, env, ps, body, ft:
     let v = LambdaBodyValue lx, env2, body
     # Cast to its function type, so that two lambdas meet where one type is wanted (an
     # array's elements, an `if`'s or a `match`'s arms), each a closure type of its own.
-    VlOwned (XBlock dos, (XCast (XCall "Rc::new", [[(XClosure True, pas, (Own v))]]), ft)), ft
+    VlOwned (XBlock dos, (XCast (XCall "std::Rc::new", [[(XClosure True, pas, (Own v))]]), ft)), ft
 
 # A lambda's parameter types, written on the closure so that rustc need not infer them
 # from its use (`fold(&xs, &None, &(|found: &Option<T>, x: &A| ..))`); none when one is
@@ -1222,7 +1223,7 @@ fn JobLambda lx, env, ps, body, ft, a, enter:
     let job0 = XCall (Helper "once_job"), [[(XClosure True, [[]], tail)]]
     let job = if enter: XCall (Helper "entered"), [[job0]] else: job0
     let call = if (Len again) == 0: job else: XBlock again, job
-    VlOwned (XBlock dos, (XCast (XCall "Rc::new", [[(XClosure True, [[pa]], call)]]), ft)), ft
+    VlOwned (XBlock dos, (XCast (XCall "std::Rc::new", [[(XClosure True, [[pa]], call)]]), ft)), ft
 
 # Whether a lambda's own checked type is not bounded (unbounded, or a color variable):
 # entering it is a cycle point (D6).

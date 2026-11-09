@@ -100,6 +100,9 @@ type OutTy = choice:
     OutQuantified Text
     # A job's turn, whose C++ type the printer reads off the job (`decltype(this->cycle())`).
     OutTurn
+    # An associated type no impl decides here (Type System ch. 3): the trait's path, the
+    # type's name and its argument, `Self` in the trait's own methods.
+    OutAssoc Text, Text, OutTy
     # A type lowering could not find (the checker found none, an associated type): writing
     # it anywhere is a prismc refusal naming what it is, never a type a compiler guesses.
     OutRefused Text
@@ -551,6 +554,8 @@ derive ^Eq, ^Show
 # A program's own trait: each method an associated function over `Self`, a default's body.
 type TraitDef = record:
     name: Text
+    # its associated types' names, as the target spells them
+    assocs: [Text]
     methods: [FnDef]
     defaults: [Text]
     doc: Text
@@ -563,6 +568,8 @@ type ImplDef = record:
     tr: Text
     head: OutTy
     generics: [((Text, [Text]))]
+    # the associated types it chooses, by name
+    assocs: [((Text, OutTy))]
     methods: [FnDef]
     doc: Text
 derive ^Eq, ^Show

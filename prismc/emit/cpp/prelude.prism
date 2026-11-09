@@ -31,7 +31,6 @@ fn CppPreludeSource unused = inline_text <cpp>
 
 namespace crate {
 
-using namespace prism_rtl;
 using namespace std::literals;
 
 namespace prelude {
@@ -450,9 +449,11 @@ inline Text upper(const Text& t) { return text_upper(t); }
 inline Text lower(const Text& t) { return text_lower(t); }
 
 /// `SplitOn t, sep`: the pieces between the separators (not in Appendix B, whose `Split`
-/// is a regular expression's). An empty separator is refused.
+/// is a regular expression's). An empty separator cuts at every character boundary.
 inline Array<Text> split_on(const Text& t, const Text& sep) {
-    if (sep.is_empty()) panic("`SplitOn` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
+    // An empty separator is `Split` of the empty pattern (Appendix B): it matches at every
+    // character boundary, so an empty text at each end and each character between.
+    if (sep.is_empty()) return Regex::lit("", "").split(t);
     return Array<Text>(t.split(sep.view()));
 }
 
@@ -484,7 +485,7 @@ inline std::optional<Cursor> cursor_at(const Text& t, const Nat& n) { return Cur
 // ---- Regular expressions (Appendix B; claude/regex-dialect.md) --------------------------
 // A literal is built where it stands (`Regex::lit`, a function-local static per literal);
 // these are the prelude's functions over prism_rtl's regex.hpp, each the runtime's search.
-// `Group` and `Match` are the runtime's records, seen through `using namespace prism_rtl`.
+// `Group` and `Match` are the runtime's records, seen through the prelude's `using namespace prism_rtl`.
 
 /// `?Regex: fn Text -> ?Regex`: the text as a pattern with no flags, none outside the
 /// dialect; linear in the text.
@@ -861,11 +862,25 @@ inline int on_big_stack(std::function<int()> f) {
     return job.code;
 }
 
+/// A port's firing from an event method, which returns nothing to pass a fault on through
+/// (prismc/README.md, PF). No fault reaches here today: a port's subscribers (a row's
+/// event method, a host's blueprint) return success, and every fault a firing can raise goes
+/// by `Cx::fail_later` or the tick's own result. A fault that ever does is a bug, so it
+/// stops the program naming it rather than being lost.
+inline void no_fault(const Done& d) {
+    if (!d) panic("a fault reached a port's firing, which has no way to pass it on (PF): " + d.error().to_string());
+}
+
 /// The root under the CLI World (`worlds/cli/cpp`).
 template <class P>
 int run_cli(const std::vector<std::string>& args) { return prism_world_cli::run<P>(args); }
 
 }  // namespace prelude
+
+/// The runtime side as the emitted code reaches it, by one short path: the prelude's own
+/// and, through it, the runtime library's (`rt::Hold`, `rt::Row`).
+namespace rt = prelude;
+
 }  // namespace crate
 </cpp>
 

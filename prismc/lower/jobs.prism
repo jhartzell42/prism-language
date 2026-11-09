@@ -53,7 +53,7 @@ use Lower.Node.Switch.*
 # `if` that is not in tail position still runs direct-style inside the cycle (gap DS).
 Tail: unbounded fn Lx, Env, Expr -> Ex
 fn Tail lx, env, e = match ?FrameCall lx, env, e, True:
-    ? c: Frame lx, env, c, (RestText lx, e.span, c.span, e.span), \|env2| Tail lx, env2, e
+    ? c: Frame lx, env, c, (RestReads lx, e.span, c.span, e.span), \|env2| Tail lx, env2, e
     nil: TailHere lx, env, e
 
 TailHere: unbounded fn Lx, Env, Expr -> Ex
@@ -64,6 +64,11 @@ fn TailHere lx, env, e = match e.kind:
         else: XCtor "prism_rtl::Turn::Finished", [[Own (ValueOf lx, env, e)]]
     EMatch s, arms: TailMatch lx, env, s, arms, e.span
     EIf (CondExpr c), thenB, (? elseB): XIf (AsBool (ValueOf lx, env, c)), (TailBlock lx, env, thenB), (TailBlock lx, env, elseB)
+    # a call right of `and` or `or` in the tail is the tail's (DS)
+    EBinary op, l, r if (op == "and" or op == "or") and AnyJob lx, env, r:
+        let shortcut = XCtor "prism_rtl::Turn::Finished", [[(XBool (op == "or"))]]
+        if op == "and": XIf (AsBool (ValueOf lx, env, l)), (Tail lx, env, r), shortcut
+        else: XIf (AsBool (ValueOf lx, env, l)), shortcut, (Tail lx, env, r)
     ECall callee, args, ignore, ignore: match ?TailCallee lx, env, callee:
         ? qk:
             let job = Or lx.rsNames[qk], (Snake (BareName qk))
@@ -73,7 +78,7 @@ fn TailHere lx, env, e = match e.kind:
             let vals = NamedArgsOwned lx, env, qk, args
             if EntersAtOnce lx, qk, args: XMethod (XCall (PathIn lx, (OwnerOf qk), "start_{job}"), vals), "cycle", [[]]
             else: if IsColorPoly lx, qk: XCtor "prism_rtl::Turn::More", [[(XCall (PathIn lx, (OwnerOf qk), "start_{job}"), vals)]]
-            else: XCtor "prism_rtl::Turn::More", [[(XCall "Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XUnit))))))]])]]
+            else: XCtor "prism_rtl::Turn::More", [[(XCall "std::Rc::new", [[(XRecord jobName, (Each (Range0 (Len vals)), \|i| (((Or fields[i], "arg"), (Or vals[i], (XUnit))))))]])]]
         nil: match ?LocalJobFn lx, env, callee:
             ? f: XMethod (StartCall f, (StartArgs lx, env, f, args)), "cycle", [[]]
             nil: match ?PreludeJobCall lx, env, e:
@@ -87,11 +92,20 @@ fn TailBlock lx, env, b = TailFrom lx, env, b, 0
 # A job's block from statement `i` on. A statement whose value needs a call is cut there:
 # the frame's continuation is the statement again, the call's place bound to its result.
 TailFrom: unbounded fn Lx, Env, Block, Nat -> Ex
-fn TailFrom lx, env, b, i:
+fn TailFrom lx, env, b, i = TailFromK lx, env, b, i, \|en, ?x| match ?x:
+    ? x: Tail lx, en, x
+    nil: XCtor "prism_rtl::Turn::Finished", [[XUnit]]
+
+# The same, the block's last expression (`nil` for a block that ends in another statement)
+# given to `Last`: `Tail` in a function's tail, a continuation's call in a branch (`TailK`).
+TailFromK: unbounded fn Lx, Env, Block, Nat, (unbounded fn Env, ?Expr -> Ex) -> Ex
+fn TailFromK lx, env, b, i, Last:
     let s = Or b.stmts[i], dummyStmtL
     if i + 1 >= (Len b.stmts): match s.kind:
-        SExpr x: Tail lx, env, x
-        otherwise: XCtor "prism_rtl::Turn::Finished", [[XUnit]]
+        SExpr x: Last env, (? x)
+        otherwise:
+            let ((dos, env2)) = BlockStmt lx, env, s
+            Prepend dos, (Last env2, nil)
     else:
         let ?found = match s.kind:
             SLet ignore, ignore, x: ?FrameCall lx, env, x, False
@@ -102,19 +116,108 @@ fn TailFrom lx, env, b, i:
                 EUpdate target, ub: if HasTopWhile lx, ub: ? ((p, target, ub, x)) else: nil
                 otherwise: nil
             otherwise: nil
+        let ?branched = match s.kind:
+            SLet p, ignore, x: if BranchJobs lx, env, x: ? (((? p), x)) else: nil
+            SExpr x: if BranchJobs lx, env, x: ? ((nil, x)) else: nil
+            otherwise: nil
         match ?looping:
             ? ((p, target, ub, x)):
                 UpdTail lx, env, target, ub, b.span, \|en, v|
                     let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{s.span.start}"
-                    let rest = TailFrom lx, (BindAll en, po.binds), b, i + 1
+                    let rest = TailFromK lx, (BindAll en, po.binds), b, i + 1, Last
                     Prepend [[(DoLet po.pa, v)]], rest
             nil: match ?found:
-                ? c: Frame lx, env, c, (RestText lx, s.span, c.span, b.span), \|env2| TailFrom lx, env2, b, i
-                nil:
-                    let ((dos, env2)) = BlockStmt lx, env, s
-                    match TailFrom lx, env2, b, i + 1:
-                        XBlock more, last: XBlock (Append dos, more), last
-                        last: if (Len dos) == 0: last else: XBlock dos, last
+                ? c: Frame lx, env, c, (RestReads lx, s.span, c.span, b.span), \|env2| TailFromK lx, env2, b, i, Last
+                nil: match ?branched:
+                    ? ((?p, x)): KStmt lx, env, b, i, s, ?p, x, Last
+                    nil:
+                        let ((dos, env2)) = BlockStmt lx, env, s
+                        match TailFromK lx, env2, b, i + 1, Last:
+                            XBlock more, last: XBlock (Append dos, more), last
+                            last: if (Len dos) == 0: last else: XBlock dos, last
+
+# D6 for a call a statement's value needs from a branch: an arm of a `match`, a branch of
+# an `if`, the right of `and` or `or` (DS). What follows the statement is bound once, a
+# continuation `k` over its value that each branch ends in, so a call in a branch is a
+# frame with the rest of its branch, then `k`, after. The borrowed locals the rest reads
+# are cloned into it first, as a frame's are.
+KStmt: unbounded fn Lx, Env, Block, Nat, Stmt, ?Pattern, Expr, (unbounded fn Env, ?Expr -> Ex) -> Ex
+fn KStmt lx, env, b, i, s, ?p, x, Last:
+    let rest = RestReads lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), b.span
+    # every local the rest reads, owned or borrowed: the branches run before `k` and read
+    # their own, so `k` takes copies
+    let caps = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
+        ? (BnLocal rs, mode, bt): if (not (OnSelf rs)) and Reads rest, k: Push acc, ((k, rs, mode, bt)) else: acc
+        otherwise: acc
+    let dos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
+    let envK = Fold caps, env, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
+    let t = OutTyOf lx, (Peel (TypeAt lx, x.span))
+    let v = "v{s.span.start}"
+    let kName = "k_let{s.span.start}"
+    let body = match ?p:
+        ? p:
+            let po = RustPat lx, p, (TypeAt lx, x.span), Owned, "l{s.span.start}"
+            Prepend [[(DoLet po.pa, (XVar v))]], (TailFromK lx, (BindAll envK, po.binds), b, i + 1, Last)
+        nil: TailFromK lx, envK, b, i + 1, Last
+    let kDo = DoLet (PaBind kName), (XClosure True, [[(PaTyped (PaBind v), t)]], body)
+    Prepend (Push dos, kDo), (TailK lx, env, x, \|en, val| XCall kName, [[val]])
+
+# An expression whose value goes to a continuation `K` (`KStmt`): a call it makes whatever
+# its value is a frame first; a `match`, an `if` or an `and`/`or` with a call in a branch
+# ends each branch in `K`; anything else is its value given to `K`.
+TailK: unbounded fn Lx, Env, Expr, (unbounded fn Env, Ex -> Ex) -> Ex
+fn TailK lx, env, e, K = match ?FrameCall lx, env, e, False:
+    ? c: Frame lx, env, c, (RestReads lx, e.span, c.span, e.span), \|env2| TailK lx, env2, e, K
+    nil:
+        let BlockK = \|en, bl| TailFromK lx, en, bl, 0, \|en2, ?y| match ?y:
+            ? y: TailK lx, en2, y, K
+            nil: K en2, XUnit
+        match e.kind:
+            EGroup y: TailK lx, env, y, K
+            EMatch sc, arms if BranchJobs lx, env, e:
+                let sty = TypeAt lx, sc.span
+                let label = "m{e.span.start}"
+                let xarms = Each (Range0 (Len arms)), \|j|
+                    let arm = Or arms[j], dummyArm
+                    let po = ArmPat lx, arm.?pattern, sty, Owned, "{label}_{j}"
+                    let envA = BindAll env, po.binds
+                    XArm(pat=po.pa, conds=(Append po.conds, (GuardConds lx, envA, arm.?guard)), body=(BlockK envA, arm.body))
+                Own (ArmsValue (Own (ValueOf lx, env, sc)), xarms, "'{label}", OutTurn)
+            EIf (CondExpr c), thenB, ?elseB if BranchJobs lx, env, e:
+                let elseX = match ?elseB:
+                    ? eb: BlockK env, eb
+                    nil: K env, XUnit
+                XIf (AsBool (ValueOf lx, env, c)), (BlockK env, thenB), elseX
+            EBinary op, l, r if (op == "and" or op == "or") and AnyJob lx, env, r:
+                let rightX = TailK lx, env, r, K
+                if op == "and": XIf (AsBool (ValueOf lx, env, l)), rightX, (K env, (XBool False))
+                else: XIf (AsBool (ValueOf lx, env, l)), (K env, (XBool True)), rightX
+            otherwise: K env, (Own (ValueOf lx, env, e))
+
+# Whether an expression is a `match`, an `if` or an `and`/`or` with a call of an unbounded
+# function in a branch, which a frame does not reach as part of the expression (DS).
+BranchJobs: unbounded fn Lx, Env, Expr -> Bool
+fn BranchJobs lx, env, e = match e.kind:
+    EGroup y: BranchJobs lx, env, y
+    EMatch ignore, arms: Fold arms, False, \|f, a| f or BlockJob lx, env, a.body
+    EIf (CondExpr ignore), thenB, ?elseB: (BlockJob lx, env, thenB) or match ?elseB:
+        ? eb: BlockJob lx, env, eb
+        nil: False
+    EBinary op, ignore, r: (op == "and" or op == "or") and AnyJob lx, env, r
+    otherwise: False
+
+# Whether a block or an expression makes a call of an unbounded function anywhere a job
+# reaches (not under a lambda): one a frame reaches, or one in a branch of it.
+BlockJob: unbounded fn Lx, Env, Block -> Bool
+fn BlockJob lx, env, b = Fold b.stmts, False, \|f, st| f or match st.kind:
+    SLet ignore, ignore, x: AnyJob lx, env, x
+    SExpr x: AnyJob lx, env, x
+    otherwise: False
+
+AnyJob: unbounded fn Lx, Env, Expr -> Bool
+fn AnyJob lx, env, e = match ?FrameCall lx, env, e, False:
+    ? ignore: True
+    nil: BranchJobs lx, env, e
 
 # ---- `while` in an `update` block of a job (D6: every turn of a `while` in an unbounded
 # `&` block is a cycle point; a loop whose turns are unbounded inside one cycle could keep
@@ -168,7 +271,7 @@ fn UpdTailFrom lx, outer, env, b, i, to, Cont:
     if i >= (Len b.stmts): Cont outer, (XVar "this")
     else:
         let s = Or b.stmts[i], dummyStmtL
-        let rest = RestText lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), to
+        let rest = RestReads lx, (Range(start=s.span.end, end=s.span.end)), (Range(start=s.span.end, end=s.span.end)), to
         let Next = \|o2, e2| UpdTailFrom lx, o2, e2, b, i + 1, to, Cont
         if (IsCycleWhile lx, s) or (HoldsCycleWhile lx, s): StmtJob lx, outer, env, s, rest, Next
         else:
@@ -176,7 +279,7 @@ fn UpdTailFrom lx, outer, env, b, i, to, Cont:
             Prepend dos, (UpdTailFrom lx, outer, env2, b, i + 1, to, Cont)
 
 # A statement that is or holds a cycle-point `while`, as a job, `Cont` after it.
-StmtJob: unbounded fn Lx, Env, Env, Stmt, Text, (unbounded fn Env, Env -> Ex) -> Ex
+StmtJob: unbounded fn Lx, Env, Env, Stmt, [Text], (unbounded fn Env, Env -> Ex) -> Ex
 fn StmtJob lx, outer, env, s, rest, Cont = match s.kind:
     SWhile c, wb: WhileJob lx, outer, env, c, wb, s.span, rest, Cont
     SExpr x: match x.kind:
@@ -195,8 +298,8 @@ fn Prepend dos, x = if (Len dos) == 0: x else: XBlock dos, x
 # One `while` as a loop job: the step closure takes the state a turn (`Ok`) or gives it
 # back when the condition fails (`Err`); the continuation takes the state again by the
 # same names. Locals the loop or the rest reads are cloned into each closure first.
-WhileJob: unbounded fn Lx, Env, Env, Cond, Block, Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
-fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
+WhileJob: unbounded fn Lx, Env, Env, Cond, Block, Range, [Text], (unbounded fn Env, Env -> Ex) -> Ex
+fn WhileJob lx, outer, env, c, wb, span, restReads, Cont:
     let state = Fold (Keys env.names), [[]], \|acc, k| if (not (HasPrefix k, "&")): acc else: match env.names[k]:
         ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
@@ -205,11 +308,9 @@ fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
     let pat = PaTuple (Each names, \|n| PaMut "{n}")
     let pack = XTuple (Each names, \|n| XVar n)
     let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal (XVar rs), Owned, bt)
-    let loopText = match lx.g.srcs[lx.file]:
-        ? src: SpanText src, span
-        nil: ""
+    let loopReads = ReadsIn lx, span
     # The loop's other locals: borrowed or owned, cloned into the step closure.
-    let caps = CapsIn envS, loopText, names
+    let caps = CapsIn envS, loopReads, names
     let capDos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind (CaptureName rs)), (Own (VlPlace rs, mode, bt))
     let envC = Fold caps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (CaptureName rs)), Owned, bt)
     # A body that holds a cycle-point loop of its own runs as a job a turn (`loop_turns`):
@@ -217,9 +318,9 @@ fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
     # the cycle and gives `Ok` or `Err` itself (`loop_job`).
     let jobs = HasTopWhile lx, wb
     let Finish = \|x| if jobs: XCtor "prism_rtl::Turn::Finished", [[x]] else: x
-    let stepTy = OutNamed "Result", [[stTy, stTy]]
-    let again = Finish (XTyped (XCtor "Ok", [[pack]]), stepTy)
-    let stop = Finish (XTyped (XCtor "Err", [[pack]]), stepTy)
+    let stepTy = OutNamed "std::Result", [[stTy, stTy]]
+    let again = Finish (XTyped (XCtor "std::Ok", [[pack]]), stepTy)
+    let stop = Finish (XTyped (XCtor "std::Err", [[pack]]), stepTy)
     let Body = \|en| if jobs: UpdTailFrom lx, en, en, wb, 0, wb.span, \|o2, e2| again else: StmtsThen lx, en, wb, again
     let resTy = if jobs: OutNamed "prism_rtl::Turn", [[stepTy]] else: stTy
     let turn = match c:
@@ -230,7 +331,7 @@ fn WhileJob lx, outer, env, c, wb, span, restText, Cont:
             let conds = Append po.conds, (GuardConds lx, envB, ?g)
             Own (ArmsValue (Own (ValueOf lx, envC, x)), [[XArm(pat=po.pa, conds=conds, body=(Body envB)), XArm(pat=PaWild, conds=[[]], body=stop)]], "'w{span.start}", resTy)
     # The continuation: the state by its names again, and the outer locals the rest reads.
-    let outCaps = CapsIn outer, restText, names
+    let outCaps = CapsIn outer, restReads, names
     let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
@@ -249,8 +350,8 @@ fn StmtsThen lx, env, b, last:
 # follows it is bound once, a continuation over the block's state (`this` and its `&`
 # locals) that each branch ends in (a missing `else` is the continuation at once), so a
 # loop in a branch is a loop job with the rest of its branch, then the continuation, after.
-IfJob: unbounded fn Lx, Env, Env, Cond, Block, ?Block, Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
-fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
+IfJob: unbounded fn Lx, Env, Env, Cond, Block, ?Block, Range, [Text], (unbounded fn Env, Env -> Ex) -> Ex
+fn IfJob lx, outer, env, c, thenB, ?elseB, span, restReads, Cont:
     let state = Fold (Keys env.names), [[]], \|acc, k| if (not (HasPrefix k, "&")): acc else: match env.names[k]:
         ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
@@ -260,7 +361,7 @@ fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
     let pack = XTuple (Each names, \|n| XVar n)
     let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal (XVar rs), Owned, bt)
     # the continuation: the state by its names again, and the outer locals the rest reads
-    let outCaps = CapsIn outer, restText, names
+    let outCaps = CapsIn outer, restReads, names
     let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
@@ -283,8 +384,8 @@ fn IfJob lx, outer, env, c, thenB, ?elseB, span, restText, Cont:
 # is for an `if`: what follows it is bound once, a continuation over the block's state that
 # each arm ends in, so a loop in an arm is a loop job with the rest of its arm, then the
 # continuation, after. The arms take the scrutinee owned, since each may be a job's.
-MatchJob: unbounded fn Lx, Env, Env, Expr, [Arm], Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
-fn MatchJob lx, outer, env, scrut, arms, span, restText, Cont:
+MatchJob: unbounded fn Lx, Env, Env, Expr, [Arm], Range, [Text], (unbounded fn Env, Env -> Ex) -> Ex
+fn MatchJob lx, outer, env, scrut, arms, span, restReads, Cont:
     let state = Fold (Keys env.names), [[]], \|acc, k| if (not (HasPrefix k, "&")): acc else: match env.names[k]:
         ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
@@ -293,7 +394,7 @@ fn MatchJob lx, outer, env, scrut, arms, span, restText, Cont:
     let pat = PaTuple (Each names, \|n| PaMut "{n}")
     let pack = XTuple (Each names, \|n| XVar n)
     let envS = Fold state, env, \|en, ((k, rs, bt))| Bind en, k, (BnLocal (XVar rs), Owned, bt)
-    let outCaps = CapsIn outer, restText, names
+    let outCaps = CapsIn outer, restReads, names
     let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
@@ -314,8 +415,8 @@ fn MatchJob lx, outer, env, scrut, arms, span, restText, Cont:
 # test, each turn a job (`for_turns_keyed`, `for_turns_indexed` over an array, its key the
 # index, `ix` too). The step takes the block's state and the entry's key and value; the
 # continuation takes the state again by the same names.
-ForJob: unbounded fn Lx, Env, Env, ?ForBinders, Expr, Block, Range, Text, (unbounded fn Env, Env -> Ex) -> Ex
-fn ForJob lx, outer, env, ?binders, source, body, span, restText, Cont:
+ForJob: unbounded fn Lx, Env, Env, ?ForBinders, Expr, Block, Range, [Text], (unbounded fn Env, Env -> Ex) -> Ex
+fn ForJob lx, outer, env, ?binders, source, body, span, restReads, Cont:
     let state = Fold (Keys env.names), [[]], \|acc, k| if (not (HasPrefix k, "&")): acc else: match env.names[k]:
         ? (BnLocal rs, ignore, bt): Push acc, ((k, (PlaceStem rs), bt))
         otherwise: acc
@@ -336,11 +437,9 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restText, Cont:
         otherwise: ((TyErr, TyErr))
     let keyName = "k{span.start}"
     let valName = "v{span.start}"
-    let loopText = match lx.g.srcs[lx.file]:
-        ? src2: SpanText src2, span
-        nil: ""
+    let loopReads = ReadsIn lx, span
     # The body's other locals, cloned into the step closure.
-    let caps = CapsIn envS, loopText, names
+    let caps = CapsIn envS, loopReads, names
     let capDos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind (CaptureName rs)), (Own (VlPlace rs, mode, bt))
     let envC = Fold caps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (CaptureName rs)), Owned, bt)
     let env1 = Bind (Bind envC, "key", (BnLocal (XVar keyName), Owned, kt)), "_", (BnLocal (XVar valName), Owned, vt)
@@ -357,11 +456,11 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restText, Cont:
                 ((([[(DoLet pk.pa, (XClone (XVar keyName))), (DoLet pv.pa, (XClone (XVar valName)))]]), (BindAll (BindAll envK, pk.binds), pv.binds)))
     let turn = Prepend binds, (UpdTailFrom lx, envB, envB, body, 0, body.span, \|o2, e2| XCtor "prism_rtl::Turn::Finished", [[pack]])
     let stepFn = Prepend capDos, (XClosure True, [[(PaTyped pat, stTy), (PaTyped (PaBind keyName), kt), (PaTyped (PaBind valName), vt)]], turn)
-    let outCaps = CapsIn outer, restText, names
+    let outCaps = CapsIn outer, restReads, names
     let outDos = Each outCaps, \|((ignore, rs, mode, bt))| DoLet (PaBind (OuterName rs)), (Own (VlPlace rs, mode, bt))
     let outer2 = Fold outCaps, outer, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
     let env2 = Fold outCaps, envS, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (OuterName rs)), Owned, bt)
-    let looping = if isArray: "for_turns_indexed" else: "for_turns_keyed"
+    let looping = Helper (if isArray: "for_turns_indexed" else: "for_turns_keyed")
     let enter = XCall (Helper "call_then"), [[(XCall looping, [[src, pack, stepFn]]), (XClosure True, [[(PaTyped pat, stTy)]], (Cont outer2, env2))]]
     Prepend outDos, enter
 
@@ -369,11 +468,11 @@ fn ForJob lx, outer, env, ?binders, source, body, span, restText, Cont:
 InstanceOf: fn Text -> Text
 fn InstanceOf k = Or (SplitOn k, "#inst")[0], k
 
-# The locals of `env` a source text names, other than `skip`: each to clone into a closure.
-CapsIn: fn Env, Text, [Text] -> [((Text, Ex, Holding, OutTy))]
-fn CapsIn env, text, skip = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
+# The locals of `env` that `reads` reads, other than `skip`: each to clone into a closure.
+CapsIn: fn Env, [Text], [Text] -> [((Text, Ex, Holding, OutTy))]
+fn CapsIn env, reads, skip = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
     ? (BnLocal rs, mode, bt):
-        if (HasText skip, (PlaceStem rs)) or (OnSelf rs) or not (Mentions text, (DropPrefix (InstanceOf k), (MarksOf k))): acc
+        if (HasText skip, (PlaceStem rs)) or (OnSelf rs) or not (Reads reads, k): acc
         else: Push acc, ((k, rs, mode, bt))
     otherwise: acc
 
@@ -426,8 +525,8 @@ fn ?FirstFrame lx, env, es = Fold es, nil, \|?found, x| match ?found:
 # which resumes `Cont` (in the cycle the callee finishes) with the call's place bound to
 # it. The continuation is a closure that owns what it reads: each borrowed local the rest
 # of the source names is cloned into it first.
-Frame: unbounded fn Lx, Env, Expr, Text, (unbounded fn Env -> Ex) -> Ex
-fn Frame lx, env, call, restText, Cont = match call.kind:
+Frame: unbounded fn Lx, Env, Expr, [Text], (unbounded fn Env -> Ex) -> Ex
+fn Frame lx, env, call, restReads, Cont = match call.kind:
     ECall c, args, ignore, ignore:
         let ?qk = ?TailCallee lx, env, c
         let qk = Or ?qk, ""
@@ -437,7 +536,7 @@ fn Frame lx, env, call, restText, Cont = match call.kind:
         let v = "{base}_{call.span.start}"
         let t = OutTyOf lx, (Peel (TypeAt lx, call.span))
         let caps = Fold (Keys env.names), [[]], \|acc, k| match env.names[k]:
-            ? (BnLocal rs, mode, bt): if (mode == ByRef or mode == RcRef) and Mentions restText, (InstanceOf k): Push acc, ((k, rs, mode, bt)) else: acc
+            ? (BnLocal rs, mode, bt): if (mode == ByRef or mode == RcRef) and Reads restReads, k: Push acc, ((k, rs, mode, bt)) else: acc
             otherwise: acc
         let dos = Each caps, \|((ignore, rs, mode, bt))| DoLet (PaBind (CaptureName rs)), (Own (VlPlace rs, mode, bt))
         let env2 = Fold caps, env, \|en, ((k, rs, ignore, bt))| Bind en, k, (BnLocal (XVar (CaptureName rs)), Owned, bt)
@@ -490,34 +589,22 @@ fn CalleeText c = match c.kind:
     EGroup x: CalleeText x
     otherwise: "call"
 
-# The source a frame's continuation covers: from `from` to the end of `to`, the call
+# The locals a frame's continuation reads: from `from` to the end of `to`, the call
 # included: a local its arguments name is cloned before the frame, so that no inner
 # frame finds it still borrowed.
-RestText: fn Lx, Range, Range, Range -> Text
-fn RestText lx, from, call, to = match lx.g.srcs[lx.file]:
-    ? src: SpanText src, (Range(start=from.start, end=to.end))
-    nil: ""
+RestReads: fn Lx, Range, Range, Range -> [Text]
+fn RestReads lx, from, call, to = ReadsIn lx, (Range(start=from.start, end=to.end))
 
-# Whether `text` names `name` as a whole word (a frame's captures; a mention in a
-# comment or a text only clones one more local).
-Mentions: fn Text, Text -> Bool
-fn Mentions text, name:
-    let parts = SplitOn text, name
-    let last = Dec (Len parts)
-    # Between parts i and i + 1 stands an occurrence; an empty part is two occurrences
-    # side by side (`ee` in `callee` for `e`), so its edge is the name's own letter.
-    Fold (Range0 last), False, \|found, i|
-        let before = Or parts[i], ""
-        let after = Or parts[i + 1], ""
-        let leftWord = if before != "": EndsIdent before else: i > 0 and EndsIdent name
-        let rightWord = if after != "": StartsIdent after else: (i + 1) < last and StartsIdent name
-        found or ((not leftWord) and not rightWord)
+# The names of the locals read in a range of the file being lowered, as the checker
+# resolved each use (pick UN): a name in a comment or a text is no read.
+ReadsIn: fn Lx, Range -> [Text]
+fn ReadsIn lx, r = Fold (Or lx.useNames[lx.file], [[]]), [[]], \|acc, ((at, n))| if at >= r.start and at < r.end and not (HasText acc, n): Push acc, n else: acc
 
-EndsIdent: fn Text -> Bool
-fn EndsIdent t = (Len t) > 0 and IsIdentChar (LastChar t)
-
-StartsIdent: fn Text -> Bool
-fn StartsIdent t = (Len t) > 0 and IsIdentChar (Head t)
+# Whether `reads` reads the local `k`, its marks aside.
+Reads: fn [Text], Text -> Bool
+fn Reads reads, k:
+    let base = DropPrefix (InstanceOf k), (MarksOf k)
+    Fold reads, False, \|found, n| found or (DropPrefix n, (MarksOf n)) == base
 
 TailBody: unbounded fn Lx, Env, FnBody -> Ex
 fn TailBody lx, env, (BodyExpr x) = Tail lx, env, x

@@ -73,7 +73,7 @@ fn LowerProgram srcs, trees, shown, tp, name:
     let mods = NeededMods g, shown
     let rsMods = Fold mods, {}, \|acc, m| Insert acc, m, (RustModName m)
     let modSegments = Fold (Values rsMods), {}, \|acc, p| Fold (SplitOn p, "::"), acc, \|a2, seg| Insert a2, seg, True
-    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={})
+    let lx0 = Lx(g=g, tys=tys, apps=apps, lifts=(Fold tp.lifts, {}, \|m, n| Insert m, (AtKey n.at), n), binders=bs, impls=ims, file=0, home="", site="", rsMods=rsMods, modSegments=modSegments, rsNames=(ValueNames g), layouts=(Layouts g), unbs=[[]], notes=[[]], globals=(GlobalNames g), inNode=False, unshrunk=(Fold tp.unshrunk, {}, \|m, a| Insert m, (AtKey a), True), gens=gens, insts=insts, quants=quants, genOfQ=genOfQ, useInsts=useInsts, localIds=(Fold tp.locals, {}, \|m, n| Insert m, (AtKey n.at), n.id), useIds=(Fold tp.uses, {}, \|m, n| Insert m, (AtKey n.at), n.id), useNames=(Fold tp.uses, {}, \|m, n| Insert m, n.at.file, (Push (Or m[n.at.file], [[]]), ((n.at.span.start, n.name)))), callIds=(Fold tp.calls, {}, \|m, n| Insert m, (AtKey n.at), n.id), inlined="", subst={}, csubst={})
     let lx = update lx0:
         &_.unbs <= JobRoots lx0
     let roots = RootWidgets lx
@@ -633,4 +633,4 @@ fn KindPath lx, kind = if kind == "Element": "crate::Elem" else: PathIn lx, (Or 
 
 # A `check` block: each line's value as plain data, or the fault that stopped it.
 CheckDefOf: unbounded fn Lx, CheckDecl -> CheckDef
-fn CheckDefOf lx, c = CheckDef(name=c.name.name, lines=(Each c.lines, \|l| XCtor "Ok", [[(XMethod (Own (ValueOf lx, emptyEnv, l.expr)), "to_pod", [[]])]]))
+fn CheckDefOf lx, c = CheckDef(name=c.name.name, lines=(Each c.lines, \|l| XCtor "std::Ok", [[(XMethod (Own (ValueOf lx, emptyEnv, l.expr)), "to_pod", [[]])]]))

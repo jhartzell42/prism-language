@@ -74,11 +74,11 @@ fn RustPat lx, p, ty, mode, fresh = match p.kind:
             PatOut(pa=(PaBind rs), conds=[[]], binds=[[((nkey, (BnLocal (XVar rs), mode, bt)))]])
     PIgnore: PatOnly PaWild
     PUnit: PatOnly PaWild
-    PNil: PatOnly (PaUnit "None")
+    PNil: PatOnly (PaUnit "std::None")
     PLit l: LitPat lx, l, ty, mode, fresh, False
     PNeg l: LitPat lx, l, ty, mode, fresh, True
-    PSigil "?", q: WrapPat lx, "Some", q, (InnerTy ty), mode, fresh
-    PSigil "~", q: WrapPat lx, "Ok", q, (InnerTy ty), mode, fresh
+    PSigil "?", q: WrapPat lx, "std::Some", q, (InnerTy ty), mode, fresh
+    PSigil "~", q: WrapPat lx, "std::Ok", q, (InnerTy ty), mode, fresh
     PSigil ignore, q: RustPat lx, q, ty, mode, fresh
     PGroup q: RustPat lx, q, ty, mode, fresh
     PCtor n, ps: CtorPat lx, n, ps, ty, mode, fresh
@@ -334,7 +334,7 @@ fn ErrorPat lx, fps, ty, mode, fresh:
                 otherwise: (([[]], [[]]))
             otherwise: (([[]], [[]]))
     let wrapped = match Peel ty:
-        TySig "~", ignore: PaCtor "Err", [[PaBind fresh]]
+        TySig "~", ignore: PaCtor "std::Err", [[PaBind fresh]]
         otherwise: PaBind fresh
     PatOut(pa=wrapped, conds=(Fold parts, [[]], \|acc, ((cs, ignore))| Append acc, cs), binds=(Fold parts, [[]], \|acc, ((ignore, bs))| Append acc, bs))
 
@@ -347,6 +347,6 @@ fn ArrayPat lx, ps, ty, mode, fresh:
     let arr = LocalPlace (XVar fresh), mode, (OutTyOf lx, (Peel ty))
     let lenCond = CcIf (XBin OpEq, (XMethod (Ref arr), "len", [[]]), (XIndex (Len ps)))
     let subs = Each (Range0 (Len ps)), \|i| ((i, (RustPat lx, (Or ps[i], dummyPat), et, Owned, "{fresh}_{i}")))
-    let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor "Some", [[o.pa]]), (XCall (Helper "index"), [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds
+    let conds = Fold subs, [[lenCond]], \|acc, ((i, o))| Append (Push acc, (CcLet (PaCtor "std::Some", [[o.pa]]), (XCall (Helper "index"), [[Ref arr, (XRef (XNat "{i}"))]]))), o.conds
     let binds = Fold subs, [[]], \|acc, ((ignore, o))| Append acc, o.binds
     PatOut(pa=(PaBind fresh), conds=conds, binds=binds)

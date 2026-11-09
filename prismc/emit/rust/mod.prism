@@ -47,53 +47,88 @@ use Emit.Rust.Items.*
 
 Type: unbounded fn OutTy -> Text
 fn Type t = match t:
-    OutNat: "Nat"
-    OutInt: "Int"
+    OutNat: "rt::Nat"
+    OutInt: "rt::Int"
     OutU8: "u8"
-    OutFloat: "Float"
+    OutFloat: "rt::Float"
     OutBool: "bool"
     OutChar: "char"
-    OutText: "Text"
-    OutCursor: "Cursor"
-    OutRegex: "Regex"
-    OutReplacement: "RegexReplacement"
+    OutText: "rt::Text"
+    OutCursor: "rt::Cursor"
+    OutRegex: "rt::Regex"
+    OutReplacement: "rt::RegexReplacement"
     OutUnit: "()"
-    OutPath: "Path"
-    OutDuration: "Duration"
-    OutError: "Error"
-    OutNamed n, [[]]: n
-    OutNamed n, args: "{n}<{Types args}>"
-    OutOpt i: "Option<{Type i}>"
-    OutRes i: "Result<{Type i}, Error>"
+    OutPath: "rt::Path"
+    OutDuration: "rt::Duration"
+    OutError: "rt::Error"
+    OutNamed n, [[]]: RsPath n
+    OutNamed n, args: "{RsPath n}<{Types args}>"
+    OutOpt i: "::std::option::Option<{Type i}>"
+    OutRes i: "::std::result::Result<{Type i}, rt::Error>"
     OutTuple [[one]]: "({Type one},)"
     OutTuple ts: "({Types ts})"
-    OutArray e: "Array<{Type e}>"
-    OutMap k, v: "Map<{Type k}, {Type v}>"
-    OutFn ps, r: "Rc<dyn Fn({RefTypes ps}) -> {Type r}>"
+    OutArray e: "rt::Array<{Type e}>"
+    OutMap k, v: "rt::Map<{Type k}, {Type v}>"
+    OutFn ps, r: "::std::rc::Rc<dyn ::std::ops::Fn({RefTypes ps}) -> {Type r}>"
     OutRef i: "&{Type i}"
-    OutJobFn a, b: "Rc<dyn Fn({Type a}) -> Rc<dyn prism_rtl::Job<{Type b}>>>"
-    OutJob b: "Rc<dyn prism_rtl::Job<{Type b}>>"
-    OutEvent i: "Event<{Type i}>"
-    OutDyn i: "Dynamic<{Type i}>"
+    OutJobFn a, b: "::std::rc::Rc<dyn ::std::ops::Fn({Type a}) -> ::std::rc::Rc<dyn prism_rtl::Job<{Type b}>>>"
+    OutJob b: "::std::rc::Rc<dyn prism_rtl::Job<{Type b}>>"
+    OutEvent i: "rt::Event<{Type i}>"
+    OutDyn i: "rt::Dynamic<{Type i}>"
     OutGen n: n
-    OutRc i: "Rc<{Type i}>"
-    OutPod: "Pod"
-    OutShowAny: "Rc<dyn Show>"
-    OutHold i: "Hold<{Type i}>"
-    OutStamped i: "Stamped<{Type i}>"
-    OutSnapshot i: "Snapshot<{Type i}>"
-    OutDefer i: "Defer<{Type i}>"
-    OutWeak n: "Weak<{n}>"
-    OutCell i: "RefCell<{Type i}>"
-    OutWakes: "Wakes"
+    OutRc i: "::std::rc::Rc<{Type i}>"
+    OutPod: "rt::Pod"
+    OutShowAny: "::std::rc::Rc<dyn rt::Show>"
+    OutHold i: "rt::Hold<{Type i}>"
+    OutStamped i: "rt::Stamped<{Type i}>"
+    OutSnapshot i: "rt::Snapshot<{Type i}>"
+    OutDefer i: "rt::Defer<{Type i}>"
+    OutWeak n: "::std::rc::Weak<{n}>"
+    OutCell i: "::std::cell::RefCell<{Type i}>"
+    OutWakes: "rt::Wakes"
     OutCount: "u32"
-    OutObj i: "Rc<dyn {Type i}>"
+    OutObj i: "::std::rc::Rc<dyn {Type i}>"
     OutSlice i: "[{Type i}]"
-    OutPort i: "Port<{Type i}>"
-    OutLive i: "Live<{Type i}>"
+    OutPort i: "rt::Port<{Type i}>"
+    OutLive i: "rt::Live<{Type i}>"
     OutTurn: "() /* the job's turn */"
+    OutAssoc tr, n, (OutNamed "Self", [[]]): "Self::{n}"
+    OutAssoc tr, n, a: "<{Type a} as {tr}>::{n}"
     OutRefused what: "compile_error!(\"{loweringRefusal}{what}\")"
     OutQuantified b: "compile_error!(\"{loweringRefusal}a quantified type variable of `{b}`: no instantiation gives it a type\")"
+
+# A path the model writes as Rust spells it: the standard library's items, which the model
+# marks `std::` (`std::Rc::new`, `std::Some`), from the root (`::std::rc::Rc::new`,
+# `::std::option::Option::Some`), so that a program's type or node of the same name (`Rc`,
+# `Some`) hides none of them; the runtime side's are `rt::` already, a program's from the
+# crate or its own module.
+RsPath: fn Text -> Text
+fn RsPath p = if HasPrefix p, "std::":
+    let segs = SplitOn (DropPrefix p, "std::"), "::"
+    match ?StdPath (Or segs[0], ""):
+        ? full: Join (Append [[full]], (Drop segs, 1)), "::"
+        nil: p
+else: p
+
+?StdPath: fn Text -> ?Text
+fn ?StdPath "Rc" = ? "::std::rc::Rc"
+fn ?StdPath "Weak" = ? "::std::rc::Weak"
+fn ?StdPath "Cell" = ? "::std::cell::Cell"
+fn ?StdPath "RefCell" = ? "::std::cell::RefCell"
+fn ?StdPath "Option" = ? "::std::option::Option"
+fn ?StdPath "Some" = ? "::std::option::Option::Some"
+fn ?StdPath "None" = ? "::std::option::Option::None"
+fn ?StdPath "Result" = ? "::std::result::Result"
+fn ?StdPath "Ok" = ? "::std::result::Result::Ok"
+fn ?StdPath "Err" = ? "::std::result::Result::Err"
+fn ?StdPath "Vec" = ? "::std::vec::Vec"
+fn ?StdPath "String" = ? "::std::string::String"
+fn ?StdPath "Box" = ? "::std::boxed::Box"
+fn ?StdPath "Default" = ? "::std::default::Default"
+fn ?StdPath "Clone" = ? "::std::clone::Clone"
+fn ?StdPath "Eq" = ? "::std::cmp::Eq"
+fn ?StdPath "Ord" = ? "::std::cmp::Ord"
+fn ?StdPath other = nil
 
 Types: unbounded fn [OutTy] -> Text
 fn Types ts = Join (Each ts, \|t| Type t), ", "
@@ -141,50 +176,50 @@ fn Args xs = Join (Each xs, \|x| Expression x), ", "
 Expression: unbounded fn Ex -> Text
 fn Expression x = match x:
     XVar n: n
-    XPath p: p
+    XPath p: RsPath p
     XSelf: "self"
     XCx: "cx"
     XConst n: "Self::{n}"
     XUnit: "()"
-    XNone: "None"
+    XNone: "::std::option::Option::None"
     XBool b: if b: "true" else: "false"
-    XNat d: if (Len d) <= 9: "Nat::from({d}u32)" else: if (Len d) <= 18: "Nat::from_int(Int::from({d}i64)).unwrap()" else: "Nat::from_int(Int::parse(\"{d}\").unwrap()).unwrap()"
-    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int::from({d})" else: "Int::parse(\"{d}\").unwrap()"
+    XNat d: if (Len d) <= 9: "rt::Nat::from({d}u32)" else: if (Len d) <= 18: "rt::Nat::from_int(rt::Int::from({d}i64)).unwrap()" else: "rt::Nat::from_int(rt::Int::parse(\"{d}\").unwrap()).unwrap()"
+    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "rt::Int::from({d})" else: "rt::Int::parse(\"{d}\").unwrap()"
     XByte d: "{d}u8"
-    XFloat d: "Float({d})"
+    XFloat d: "rt::Float({d})"
     XIndex n: "{n}"
     XChar c: "'{CharEscape c}'"
     XStr t: "\"{Escape t}\""
     # One literal, one compiled regex per thread: the static is built on its first use and
     # each use clones it, which counts a reference (prism_rtl's `Regex` is an `Rc`).
-    XRegex p, f: "\{ thread_local!(static R: Regex = Regex::lit(\"{Escape p}\", \"{Escape f}\")); R.with(Regex::clone) \}"
-    XReplacement p, r, f: "\{ thread_local!(static R: RegexReplacement = RegexReplacement::lit(\"{Escape p}\", \"{Escape f}\", \"{Escape r}\")); R.with(RegexReplacement::clone) \}"
+    XRegex p, f: "\{ thread_local!(static R: rt::Regex = rt::Regex::lit(\"{Escape p}\", \"{Escape f}\")); R.with(rt::Regex::clone) \}"
+    XReplacement p, r, f: "\{ thread_local!(static R: rt::RegexReplacement = rt::RegexReplacement::lit(\"{Escape p}\", \"{Escape f}\", \"{Escape r}\")); R.with(rt::RegexReplacement::clone) \}"
     XRef y: "&{Operand y}"
     XRefMut y: "&mut {Operand y}"
     XDeref y: "*{Operand y}"
     XTarget y: "(*{Expression y})"
     XClone y: "{Tight y}.clone()"
-    XWeak y: "Rc::downgrade({Expression y})"
+    XWeak y: "::std::rc::Rc::downgrade({Expression y})"
     XUpgrade y: "{Tight y}.upgrade()"
     XBreak l, y: "break {Label l} {Expression y}"
     XBreakLoop: "break"
-    XLater y: "Box::new(move |cx| \{ {Expression y}; Ok(()) \})"
+    XLater y: "::std::boxed::Box::new(move |cx| \{ {Expression y}; ::std::result::Result::Ok(()) \})"
     XFormatStr parts: FormatStr parts
     XIsCase y, [[]]: "false"
-    XIsCase y, cs: "matches!({Expression y}, {Join (Each cs, \|c| "{c}(..)"), " | "})"
+    XIsCase y, cs: "matches!({Expression y}, {Join (Each cs, \|c| "{RsPath c}(..)"), " | "})"
     XRefusal what: "compile_error!(\"{loweringRefusal}{Escape what}\")"
     XUnreachable: "unreachable!()"
-    XCall f, args: "{f}({Args args})"
+    XCall f, args: "{RsPath f}({Args args})"
     XApply f, args: "{Tight f}({Args args})"
     XMethod r, m, args: "{Tight r}.{m}({Args args})"
     XBin op, l, r: "{Operand l} {BinOpText op} {Operand r}"
     XUnary op, y: "{UnOpText op}{Operand y}"
-    XCtor p, args: "{p}({Args args})"
-    XRecord p, fs: "{p} \{ {Join (Each fs, \|((f, v))| FieldInit f, v), ", "} \}"
+    XCtor p, args: "{RsPath p}({Args args})"
+    XRecord p, fs: "{RsPath p} \{ {Join (Each fs, \|((f, v))| FieldInit f, v), ", "} \}"
     XTuple [[one]]: "({Expression one},)"
     XTuple xs: "({Args xs})"
     XVec xs: "vec![{Args xs}]"
-    XText t: "Text::lit(\"{Escape t}\")"
+    XText t: "rt::Text::lit(\"{Escape t}\")"
     XFormat parts: Format parts
     XMatch s, arms, fallback, ignore: MatchBlock (Expression s), (Arms arms, fallback)
     XChain label, s, arms, ignore: Chain (Label label), s, arms
@@ -206,10 +241,10 @@ fn FieldInit f, v = "{f}: {Expression v}"
 
 DecodeHead: unbounded fn OutTy -> Text
 fn DecodeHead t = match t:
-    OutNamed n, [[]]: n
-    OutNat: "Nat"
-    OutInt: "Int"
-    OutText: "Text"
+    OutNamed n, [[]]: RsPath n
+    OutNat: "rt::Nat"
+    OutInt: "rt::Int"
+    OutText: "rt::Text"
     otherwise: "<{Type t}>"
 
 Label: fn Text -> Text
@@ -221,8 +256,8 @@ Format: unbounded fn [Ex] -> Text
 fn Format parts:
     let lit = Concat (Each parts, \|p| FormatPiece p)
     let vals = Filter parts, \|p| not (IsText p)
-    if (Len vals) == 0: "Text::lit(\"{Escape (Concat (Each parts, \|p| PlainPiece p))}\")"
-    else: "Text::from(format!(\"{lit}\", {Args vals}))"
+    if (Len vals) == 0: "rt::Text::lit(\"{Escape (Concat (Each parts, \|p| PlainPiece p))}\")"
+    else: "rt::Text::from(format!(\"{lit}\", {Args vals}))"
 
 PlainPiece: fn Ex -> Text
 fn PlainPiece (XText t) = t
@@ -343,9 +378,10 @@ fn Pattern p = match p:
     PaWild: "_"
     PaBind n: n
     PaMut n: "mut {n}"
-    PaCtor c, ps: "{c}({Join (Each ps, \|q| Pattern q), ", "})"
-    PaUnit c: c
-    PaRecord c, fs, rest:
+    PaCtor c, ps: "{RsPath c}({Join (Each ps, \|q| Pattern q), ", "})"
+    PaUnit c: RsPath c
+    PaRecord c0, fs, rest:
+        let c = RsPath c0
         let parts = Each fs, \|((f, q))| match q:
             PaBind n: if n == f: f else: "{f}: {n}"
             otherwise: "{f}: {Pattern q}"

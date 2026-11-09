@@ -62,10 +62,21 @@ fn InferMatch env, st, scrut, arms, span, ?expected:
     let ((res, st3)) = FreshVar st2, False, ""
     let checking = ?expected != nil and not (IsTimeSigil sh)
     let scrutName = ExprName scrut
-    let ((layers, st4, ignore)) = Fold arms, (([[]], st3, [[]])), \|((acc, s, taken)), arm|
+    let ((layers, st4a, ignore, waits)) = Fold arms, (([[]], st3, [[]], [[]])), \|((acc, s, taken, ws)), arm|
         let envArm = Narrowed env, s, arm, scrutName, plainScrut, taken
-        let ((acc2, s2)) = InferArm envArm, s, arm, plainScrut, res, (if checking: ?expected else: nil), ?rigidOut, acc
-        ((acc2, s2, (TakenBy env, arm, taken)))
+        let ((acc2, s2, ?wait)) = InferArm envArm, s, arm, plainScrut, res, (if checking: ?expected else: nil), ?rigidOut, acc
+        let ws2 = match ?wait:
+            ? w: Push ws, w
+            nil: ws
+        ((acc2, s2, (TakenBy env, arm, taken), ws2))
+    # A tag arm's value waits for the arms that assume nothing (ch. 5, Refinement at tag
+    # matches: a variable from outside is untouchable in the arm), then meets the match's
+    # type under the arm's equality.
+    let st4 = Fold waits, st4a, \|s, w| match w.?against:
+        ? want: ArmAgainst s, (SubstRigid w.o, w.out, (Zonk s, want)), w.ty, w.span, w.fwd
+        nil: match Walk s, res:
+            TyFlex ignore: UnifyArm s, res, w.ty, w.span
+            otherwise: UnifyArm s, (SubstRigid w.o, w.out, (Zonk s, res)), w.ty, w.span
     let st5 = MatchCoverage env, st4, plainScrut, arms, span
     match ?expected:
         ? want: if checking: ((want, st5)) else: MatchResult env, st5, sh, layers, res, span
@@ -100,7 +111,19 @@ fn Narrowed env, st, arm, name, t, taken:
 
 # One arm: its pattern bound, its guard a `Bool`, its body's plain layer unified with the
 # others'. The arm's time layer goes into `acc`.
-InferArm: unbounded fn Env, St, Arm, Ty, Ty, ?Ty, ?Text, [((Text, Range))] -> (([((Text, Range))], St))
+# A tag arm's value waiting for the match's type: the arm's rigid output and what it
+# equals there, and the type the match is checked at, if it is (with whether the arm may
+# forward).
+type ArmWait = record:
+    o: Text
+    out: Ty
+    ty: Ty
+    span: Range
+    against: ?Ty
+    fwd: Bool
+derive ^Eq, ^Show
+
+InferArm: unbounded fn Env, St, Arm, Ty, Ty, ?Ty, ?Text, [((Text, Range))] -> (([((Text, Range))], St, ?ArmWait))
 fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
     let ((env2, st1)) = match arm.?pattern:
         ? p: BindPattern env, st, p, scrutTy, True
@@ -117,19 +140,20 @@ fn InferArm env, st, arm, scrutTy, res, ?expected, ?rigidOut, acc:
         nil: st1
     match ?expected:
         ? want:
-            let refined = match ?refinedOut:
-                ? ((o, out)): SubstRigid o, out, (Zonk st2, want)
-                nil: want
             let ((bt, st3)) = InferExprBlock env2, st2, arm.body
-            ((acc, (ArmAgainst st3, refined, bt, arm.body.span, (arm.?pattern == nil or (IsFamilyArm arm)))))
+            let fwd = arm.?pattern == nil or (IsFamilyArm arm)
+            match ?refinedOut:
+                ? ((o, out)): ((acc, st3, (? ArmWait(o=o, out=out, ty=bt, span=arm.body.span, against=(? want), fwd=fwd))))
+                nil: ((acc, (ArmAgainst st3, want, bt, arm.body.span, fwd), nil))
         nil:
             let ((bt, st3)) = InferExprBlock env2, st2, arm.body
             let head = HeadSigil st3, bt
             let plainBt = if IsTimeSigil head: InnerOf st3, bt else: bt
-            let st4 = UnifyArm st3, res, plainBt, arm.body.span
             let acc2 = if IsTimeSigil head: Push acc, ((head, arm.body.span)) else: Push acc, (("", arm.body.span))
             let acc3 = if head == "@": Push acc2, (("@", arm.body.span)) else: acc2
-            ((acc3, st4))
+            match ?refinedOut:
+                ? ((o, out)): ((acc3, st3, (? ArmWait(o=o, out=out, ty=plainBt, span=arm.body.span, against=nil, fwd=False))))
+                nil: ((acc3, (UnifyArm st3, res, plainBt, arm.body.span), nil))
 
 # An arm's value against the type the match is checked at: a blueprint's row goes in an
 # obligation, which at an arm that may forward is the forwarding check (ch. 5, pass 5).

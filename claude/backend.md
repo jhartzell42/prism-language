@@ -495,9 +495,11 @@ tick 0 and again by each runtime).
   class per block so a checkpoint names blocks; with no checkpoints rustc monomorphizes.
   *First ruling (Claude's):* rustc's generics. *If otherwise:* trait objects per block.
 - **AB A tick that aborts.** Conformance's AB goes on from the state before the tick;
-  with no checkpoint there is none. *First ruling (Claude's):* the program is dropped,
-  the Test World prints `aborted`, and later steps fail. *If otherwise:* `Program` gains
-  a snapshot, or the World rebuilds and replays the input log.
+  with no checkpoint there is none. *Ruled (coordinator, 9 November):* the Test World
+  logs each tick that closes, its input and the ready state it ran under, and after a
+  tick that aborts builds the program again and replays the log, both runtimes
+  (`conf-ab-goes-on`, a job pending across the abort). *If otherwise:* `Program` gains a
+  snapshot.
 - **GC The collector's watch list.** Trial deletion runs over zombies whose count
   dropped; `Rc` has no hook for that, so every live zombie is watched until it dies.
   *First ruling (Claude's):* watched until death. *If otherwise:* zombies count their

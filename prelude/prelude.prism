@@ -185,7 +185,8 @@ Text: fn Char -> Text
 ?CharOf: fn Nat -> ?Char
 Lower: fn Text -> Text
 # Not in Appendix B, whose `Split` is a regular expression's (below): the pieces between
-# the separators; an empty separator is refused.
+# the separators, what `Split` gives for the expression that matches the separator, so an
+# empty one cuts at every character boundary (`SplitOn "ab", ""` is `[["", "a", "b", ""]]`).
 SplitOn: fn Text, Text -> [Text]
 ?ParseNat: fn Text -> ?Nat
 

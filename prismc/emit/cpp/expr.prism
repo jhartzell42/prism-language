@@ -93,21 +93,21 @@ fn CppExpr cp, x = match x:
     XSelf: "prism_rtl::share(this)"
     XCx: "cx"
     XConst n: n
-    XUnit: "Unit\{\}"
+    XUnit: "rt::Unit\{\}"
     XNone: "std::nullopt"
     XBool b: if b: "true" else: "false"
-    XNat d: if (Len d) <= 9: "Nat({d}u)" else: "*Nat::from_int({CppExpr cp, (XInt d)})"
-    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "Int({d}ll)" else: "*Int::parse(\"{d}\")"
+    XNat d: if (Len d) <= 9: "rt::Nat({d}u)" else: "*rt::Nat::from_int({CppExpr cp, (XInt d)})"
+    XInt d: if (Len (if (HasPrefix d, "-"): AfterFirst d else: d)) <= 18: "rt::Int({d}ll)" else: "*rt::Int::parse(\"{d}\")"
     XByte d: "std::uint8_t({d})"
-    XFloat d: "Float\{{d}\}"
+    XFloat d: "rt::Float\{{d}\}"
     XIndex n: "{n}u"
     XChar c: "U'{CppCharEscape c}'"
     XStr t: CppString t
     # One literal, one compiled regex: a function-local static of the literal's own lambda,
     # built on its first call (thread-safe since C++11) and alive until exit; each use
     # copies it, which counts a reference.
-    XRegex p, f: "([]() -> const Regex& \{ static const Regex r = Regex::lit({CppString p}, {CppString f}); return r; \}())"
-    XReplacement p, r, f: "([]() -> const RegexReplacement& \{ static const RegexReplacement r = RegexReplacement::lit({CppString p}, {CppString f}, {CppString r}); return r; \}())"
+    XRegex p, f: "([]() -> const rt::Regex& \{ static const rt::Regex r = rt::Regex::lit({CppString p}, {CppString f}); return r; \}())"
+    XReplacement p, r, f: "([]() -> const rt::RegexReplacement& \{ static const rt::RegexReplacement r = rt::RegexReplacement::lit({CppString p}, {CppString f}, {CppString r}); return r; \}())"
     # `&x` and `x.clone()` are the value itself (a reference is `const T&`, a copy shares);
     # `*x` is the value behind an `Rc` (a recursive payload), or the place itself when `x`
     # is a reference (Rust's `*` of one), by `x`'s type where the printer knows it, else
@@ -124,7 +124,7 @@ fn CppExpr cp, x = match x:
     XUpgrade y: "prism_rtl::upgrade({CppExpr cp, y})"
     XBreak l, y: "({CppBreak cp, l, y})"
     XBreakLoop: "(\{ break; \})"
-    XLater y: "[=](Cx& cx) -> Done \{ {CppExpr (Captured cp), y}; return \{\}; \}"
+    XLater y: "[=](rt::Cx& cx) -> rt::Done \{ {CppExpr (Captured cp), y}; return \{\}; \}"
     XFormatStr parts: CppFormat cp, parts, "prism_rtl::str"
     XIsCase y, [[]]: "false"
     XIsCase y, cs: "({Join (Each cs, \|c| CaseTest cp, c, (CppTightPlace cp, y)), " || "})"
@@ -144,8 +144,8 @@ fn CppExpr cp, x = match x:
     XTuple xs: "std::tuple\{{CppArgs cp, xs}\}"
     XVec [[]]: "\{\}"
     XVec xs: "std::vector\{{CppArgs cp, xs}\}"
-    XText t: "Text::lit({CppString t})"
-    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "Text::lit({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
+    XText t: "rt::Text::lit({CppString t})"
+    XFormat parts: if Fold parts, True, \|f, p| f and IsTextPiece p: "rt::Text::lit({CppString (Concat (Each parts, \|p| TextPiece p))})" else: CppFormat cp, parts, "prism_rtl::cat"
     XMatch s, arms, fallback, t: CppMatch cp, s, arms, t
     XChain label, s, arms, t: CppMatch cp, s, arms, t
     XIf c, t, e: CppIf cp, c, t, e
@@ -205,9 +205,9 @@ fn CppCharEscape c = CharEscape c
 # A path as a value: a unit constructor, or a function.
 PathValue: fn Cp, Text -> Text
 fn PathValue cp, p = if IsNodeMethod cp, p: "&{TypePath (ParentPath p)}::{NodeMethodName cp, (LastSegment p)}" else: match ?CaseOf cp, p:
-    ? ty: "{TypePath ty}({TypePath p}\{\})"
+    ? ty: "{OwnTypePath cp, ty}({OwnTypePath cp, p}\{\})"
     nil: match ?TypeOf cp, p:
-        ? info: if info.kind == "unit": "{TypePath p}\{\}" else: TypePath p
+        ? info: if info.kind == "unit": "{OwnTypePath cp, p}\{\}" else: OwnTypePath cp, p
         nil: TypePath p
 
 # A node's method by its path (`Host::host_1_answer`), a member function as a value.
@@ -267,20 +267,20 @@ fn IsDigits t = t != "" and FoldChars t, True, \|ok, c| ok and Contains "0123456
 # A constructor: a choice's case moved into the choice, a newtype's or unit type's value, the
 # runtime's cases by their C++ names.
 CppCtor: unbounded fn Cp, Text, [Ex] -> Text
-fn CppCtor cp, p, args = match p:
+fn CppCtor cp, p0, args = match Bare p0:
     "Some": "std::optional({CppArgs cp, args})"
     "Ok": if args == [[XUnit]]: "prism_rtl::ok()" else: CppArgs cp, args
-    "Err": "unexpected({CppArgs cp, args})"
+    "Err": "rt::unexpected({CppArgs cp, args})"
     "prism_rtl::Turn::More": "prism_rtl::more({CppArgs cp, args})"
     "prism_rtl::Turn::Finished": "prism_rtl::finished({CppArgs cp, args})"
-    "Outcome::Fired": "Outcome::fired({CppArgs cp, args})"
-    "Outcome::Value": "Outcome::value({CppArgs cp, args})"
-    "Segment::Pos": "Segment::pos({CppArgs cp, args})"
-    "Segment::Gen": "Segment::gen({CppArgs cp, args})"
-    "Segment::Key": "Segment::key({CppArgs cp, args})"
-    otherwise: match ?CaseOf cp, p:
-        ? ty: "{TypePath ty}({TypePath p}\{{CppArgs cp, args}\})"
-        nil: "{TypePath p}\{{CppArgs cp, args}\}"
+    "Outcome::Fired": "rt::Outcome::fired({CppArgs cp, args})"
+    "Outcome::Value": "rt::Outcome::value({CppArgs cp, args})"
+    "Segment::Pos": "rt::Segment::pos({CppArgs cp, args})"
+    "Segment::Gen": "rt::Segment::gen({CppArgs cp, args})"
+    "Segment::Key": "rt::Segment::key({CppArgs cp, args})"
+    p: match ?CaseOf cp, p:
+        ? ty: "{OwnTypePath cp, ty}({OwnTypePath cp, p}\{{CppArgs cp, args}\})"
+        nil: "{OwnTypePath cp, p0}\{{CppArgs cp, args}\}"
 
 # A record: its fields in the order declared (designated initializers); a job's by its
 # constructor.
@@ -297,33 +297,33 @@ fn CppRecord cp, p, fs:
         nil: ""
     let values = CppArgList cp, ordered
     if kind == "job": "{TypePath p}({Join values, ", "})"
-    else: "{TypePath p}\{{Join (Each (Range0 (Len names)), \|i| ".{FieldId (Or names[i], "")} = {Or values[i], ""}"), ", "}\}"
+    else: "{OwnTypePath cp, p}\{{Join (Each (Range0 (Len names)), \|i| ".{FieldId (Or names[i], "")} = {Or values[i], ""}"), ", "}\}"
 
 # A call of a named function: the runtime's constructors by their C++ names (`Hold::new` is
 # `Hold(..)`), anything else by its path.
 CppCall: unbounded fn Cp, Text, [Ex] -> Text
 fn CppCall cp, f, args:
     let a = CppArgs cp, args
-    match DropPrefix f, "crate::prelude::":
+    match Bare (DropPrefix f, "crate::prelude::"):
         "Rc::new": if a == "\{\}": "prism_rtl::make_new()" else: "prism_rtl::rc({a})"
         "is_some": "prism_rtl::is_some({a})"
         "is_none": "prism_rtl::is_none({a})"
         "RefCell::new": a
         "Cell::new": a
         "Hold::new": "\{{a}\}"
-        "Snapshot::new": "snapshot({a})"
-        "Path::root": "Path::root()"
-        "Fault::answer": "Fault::answer({a})"
-        "Fault::too_deep": "Fault::too_deep({a})"
-        "Error::new": "Error({a})"
-        "Text::from": "Text({a})"
+        "Snapshot::new": "rt::snapshot({a})"
+        "Path::root": "rt::Path::root()"
+        "Fault::answer": "rt::Fault::answer({a})"
+        "Fault::too_deep": "rt::Fault::too_deep({a})"
+        "Error::new": "rt::Error({a})"
+        "Text::from": "rt::Text({a})"
         "String::new": "std::string()"
-        "Array::from": "Array({a})"
+        "Array::from": "rt::Array({a})"
         "prism_rtl::Dynamic::of": "prism_rtl::dynamic_of({a})"
         "Dynamic::of": "prism_rtl::dynamic_of({a})"
         "prism_rtl::Event::of": "prism_rtl::event_of({a})"
-        "prism_rtl::Host::new": "host_new({a})"
-        "prism_rtl::Entry::new": "entry_new({a})"
+        "prism_rtl::Host::new": "rt::host_new({a})"
+        "prism_rtl::Entry::new": "rt::entry_new({a})"
         "prism_rtl::forward_on_none": "prism_rtl::forward_on_none<crate::Elem, crate::Answer>({a})"
         "Event::never": "prism_rtl::never_event()"
         otherwise: if IsFresh f: "\{\}" else: "{FreeCallPath cp, f}({a})"
@@ -350,7 +350,7 @@ let stdNames = [["apply", "begin", "end", "size", "empty", "data", "get", "swap"
 
 # The runtime's constructors of an empty value, whose type the context gives.
 IsFresh: fn Text -> Bool
-fn IsFresh f = InList [["Stamped::new", "Cache::new", "Port::new", "Map::new", "Array::new", "Vec::new", "Default::default", "Wakes::default", "Defer::new", "prism_rtl::HostDoc::new", "prism_rtl::Watch::new", "prism_rtl::PerKey::new"]], f
+fn IsFresh f = InList [["rt::Stamped::new", "rt::Cache::new", "rt::Port::new", "rt::Map::new", "rt::Array::new", "std::Vec::new", "std::Default::default", "rt::Wakes::default", "rt::Defer::new", "prism_rtl::HostDoc::new", "prism_rtl::Watch::new", "prism_rtl::PerKey::new"]], f
 
 # A function's path: a node's constructor is `make` (`build` is the C++ runtime's virtual
 # build-list method), the rest as written.
@@ -411,7 +411,7 @@ fn ?Pointer cp, r = match r:
     XCx: ? False
     XVar "path": ? False
     XField ignore, "path": ? False
-    XCall "Path::root", ignore: ? False
+    XCall "rt::Path::root", ignore: ? False
     XMethod y, m, ignore if m == "at" or m == "child" or m == "join": match ?Pointer cp, y:
         ? False: ? False
         otherwise: nil
@@ -491,7 +491,7 @@ fn FreeName m = match m:
     "enumerate": "prism_rtl::enumerate"
     "unwrap_or_default": "prism_rtl::unwrap_or_default"
     "for_each": "prism_rtl::for_each"
-    otherwise: m
+    otherwise: "rt::{m}"
 
 MemberName: fn Text -> Text
 fn MemberName m = match m:
@@ -505,7 +505,7 @@ fn MemberName m = match m:
 
 # The test of a constructor against a value, as a C++ condition.
 CaseTest: fn Cp, Text, Text -> Text
-fn CaseTest cp, c, v = match c:
+fn CaseTest cp, c, v = match Bare c:
     "Some": "prism_rtl::is_some({v})"
     "None": "prism_rtl::is_none({v})"
     "Ok": "prism_rtl::is_ok({v})"
@@ -518,16 +518,16 @@ fn CaseTest cp, c, v = match c:
 
 # A constructor's case type: a choice's case, or a runtime constructor's pattern tag.
 CaseType: fn Text -> Text
-fn CaseType c = match c:
-    "Segment::Pos": "pat::Pos"
-    "Segment::Gen": "pat::Gen"
-    "Segment::Key": "pat::Key"
+fn CaseType c = match Bare c:
+    "Segment::Pos": "rt::pat::Pos"
+    "Segment::Gen": "rt::pat::Gen"
+    "Segment::Key": "rt::pat::Key"
     otherwise: TypePath c
 
 # A choice's case as tested against the value `v`: a generic choice's case by the value's
 # own type, whose arguments the path does not write (`Tree::Leaf` of a `Tree<A>`).
 CaseTypeOf: fn Cp, Text, Text -> Text
-fn CaseTypeOf cp, c, v = if IsGenericCase cp, c: "typename std::remove_cvref_t<decltype({v})>::{LastSegment (TypePath c)}" else: CaseType c
+fn CaseTypeOf cp, c, v = if IsGenericCase cp, c: "typename std::remove_cvref_t<decltype({v})>::{LastSegment (TypePath c)}" else: OwnTypePath cp, c
 
 # Whether a constructor path is a case of a choice with type parameters.
 IsGenericCase: fn Cp, Text -> Bool
@@ -539,7 +539,7 @@ fn IsGenericCase cp, p = match ?CaseOf cp, p:
 
 # The payload of a constructor's field `i` in a value.
 Payload: fn Cp, Text, Text, Nat -> Text
-fn Payload cp, c, v, i = match c:
+fn Payload cp, c, v, i = match Bare c:
     "Some": "prism_rtl::some_of({v})"
     "Ok": "*{v}"
     "Err": "{v}.error()"
@@ -550,7 +550,7 @@ fn Payload cp, c, v, i = match c:
         nil: if IsRuntimeCase c: "prism_rtl::as<{CaseType c}>({v}).a{i}" else: "{v}.a{i}"
 
 IsRuntimeCase: fn Text -> Bool
-fn IsRuntimeCase c = (HasPrefix c, "Segment::")
+fn IsRuntimeCase c = HasPrefix (DropPrefix c, "rt::"), "Segment::"
 
 # `if`: a conditional expression.
 CppIf: unbounded fn Cp, Ex, Ex, Ex -> Text
@@ -660,13 +660,13 @@ fn ReadsDos dos, into, acc = Fold dos, acc, \|a, d| match d:
     DoNote ignore: a
 
 IsCtor: fn Ex, Text -> Bool
-fn IsCtor (XCtor p, ignore), c = p == c
+fn IsCtor (XCtor p, ignore), c = (Bare p) == c
 fn IsCtor x, c = False
 
 # The failure a branch gives: `Err(y)`, or a block that ends in one.
 ?ErrOf: fn Ex -> ?Ex
 fn ?ErrOf x = match x:
-    XCtor "Err", [[y]]: ? y
+    XCtor "std::Err", [[y]]: ? y
     XBlock ignore, tail: ?ErrOf tail
     otherwise: nil
 
@@ -674,10 +674,10 @@ fn ?ErrOf x = match x:
 # other branch converts to, of `x`'s type and `y`'s.
 OkBranch: unbounded fn Cp, Ex, Ex -> Text
 fn OkBranch cp, x, y = match x:
-    XCtor "Ok", [[v]]: "Expected<std::decay_t<decltype({CppExpr cp, v})>, std::decay_t<decltype({CppExpr cp, y})>>({CppExpr cp, v})"
-    XBlock dos, (XCtor "Ok", [[v]]):
+    XCtor "std::Ok", [[v]]: "rt::Expected<std::decay_t<decltype({CppExpr cp, v})>, std::decay_t<decltype({CppExpr cp, y})>>({CppExpr cp, v})"
+    XBlock dos, (XCtor "std::Ok", [[v]]):
         let ((st, cp2)) = CppStatementsCp cp, dos
-        StmtExpr st, "Expected<std::decay_t<decltype({CppExpr cp2, v})>, std::decay_t<decltype({CppExpr cp2, y})>>({CppExpr cp2, v})"
+        StmtExpr st, "rt::Expected<std::decay_t<decltype({CppExpr cp2, v})>, std::decay_t<decltype({CppExpr cp2, y})>>({CppExpr cp2, v})"
     otherwise: CppExpr cp, x
 
 # A closure: a lambda capturing by value (`move`) or by reference. A move closure takes
@@ -731,5 +731,5 @@ ParamType: unbounded fn Cp, OutTy -> Text
 fn ParamType cp, t = match t:
     OutRef ignore: CppType cp, t
     OutSlice ignore: CppType cp, t
-    OutUnit: "Unit"
+    OutUnit: "rt::Unit"
     otherwise: CppType cp, t

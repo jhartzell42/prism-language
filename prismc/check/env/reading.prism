@@ -114,6 +114,11 @@ fn ConvNamed cx, st, n, args, span:
                 let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
                 ((TyElemAny rw, st2))
             otherwise: ((TyErr, (Err st, "kind", span, "`Elem` takes a row; here it has {CountWord (Len args)}")))
+    else: if (Len n.path) == 1 and (Len args) == 1 and IsAssocName cx.g, name:
+        # an associated type applied (Type System ch. 3, ch. 5's Traits): normalized when
+        # unified, at an impl's head
+        let ((a, st2)) = ConvType cx, st, (Or args[0], dummyType)
+        (((TyAssoc name, a), st2))
     else: if name == "Answer" or name == "Wired":
         (((TyCon name, [[]]), st))
     else: if name == "Instant":
@@ -394,3 +399,7 @@ fn ColorVarsOfType t = match t.kind:
     TMap k, v: UnionTexts (ColorVarsOfType k), (ColorVarsOfType v)
     TEmit ty, ignore: ColorVarsOfType ty
     otherwise: [[]]
+
+# Whether a name is an associated type some trait of the program declares.
+IsAssocName: fn G, Text -> Bool
+fn IsAssocName g, name = Fold (Values g.traits), False, \|f, tr| f or HasText tr.assocs, name

@@ -302,6 +302,8 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
             TiFn f: AddText acc, (DefNameText f.name)
             otherwise: acc
         let im = ImplInfo(cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, methods=names)
+        let st5 = update st4:
+            &_.assocImpls <= Append &_.assocImpls, (Each assocs, \|((an, at))| AssocImpl(name=an, head=head, qs=im.qs, value=at))
         let g2 = update g:
             &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
         let g3 = Fold names, g2, \|gg, mname|
@@ -310,4 +312,4 @@ fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.
                 otherwise: acc
             update gg:
                 &_.defs <= Push &_.defs, Def(qk="{cls} impl {mname}", name=mname, home=info.name, file=info.file, span=span, body=(DbMethod clauses, cls, im))
-        ((g3, st4))
+        ((g3, st5))

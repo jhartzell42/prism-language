@@ -72,9 +72,24 @@ NormAssoc: unbounded fn St, Ty -> Ty
 fn NormAssoc st, t = match t:
     TyAssoc "Quotient", a: match Walk st, a:
         TyCon "Float", [[]]: tFloat
-        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: t
-        otherwise: t
+        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: ImplAssoc st, "Quotient", (Walk st, a), t
+        otherwise: ImplAssoc st, "Quotient", (Walk st, a), t
+    TyAssoc n, a: ImplAssoc st, n, (Walk st, a), t
     other: other
+
+# An associated type at a known head: the type the one impl at that head chooses, its
+# variables the head's arguments (ch. 5: "the impl's `?Int` before comparing"); at a
+# variable, or with no impl choosing it, the application as it is.
+ImplAssoc: unbounded fn St, Text, Ty, Ty -> Ty
+fn ImplAssoc st, n, a, t = match a:
+    TyCon c, args: Fold st.assocImpls, t, \|found, ai| if found != t or ai.name != n: found else: match ai.head:
+        TyCon hc, hargs if hc == c and (Len hargs) == (Len args):
+            let tys = Fold (Range0 (Len hargs)), {}, \|m, i| match Or hargs[i], TyErr:
+                TyQ q: Insert m, q, (Or args[i], TyErr)
+                otherwise: m
+            SubstQ Inst(tys=tys, rows={}, cols={}), ai.value
+        otherwise: found
+    otherwise: t
 
 IsWaitingAssoc: unbounded fn St, Ty -> Bool
 fn IsWaitingAssoc st, t = match t:

@@ -76,10 +76,10 @@ fn RootResult wx = match wx.result:
         &_.rootDyn <= ? ((x, rds, t))
         &_.getters <= Push &_.getters, MethDef(name="result_value", recv=RecvRef, params=[[]], cx=CxRef, ret=OutPod, body=[[]], tail=(XMethod x, "to_pod", [[]]), doc="The root's dynamic result, pulled after the tick.")
         &_.fields <= Push &_.fields, (("result_last", (OutCell (OutOpt OutPod)), "the result the World last heard"))
-        &_.moves <= Push &_.moves, (("result_last", (XCall "RefCell::new", [[XNone]])))
+        &_.moves <= Push &_.moves, (("result_last", (XCall "std::RefCell::new", [[XNone]])))
         &_.build <= Push &_.build, (DoScope (ResultTold (XVar "node")))
     WrPlain x, ignore: update wx:
-        &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "result", [[(XCtor "Outcome::Value", [[(XMethod x, "to_pod", [[]])]])]]))
+        &_.build <= Push &_.build, (DoExpr (XMethod (XCx), "result", [[(XCtor "rt::Outcome::Value", [[(XMethod x, "to_pod", [[]])]])]]))
     WrParts ignore: update wx:
         &_.build <= Push &_.build, (RefusalDo "a bundle as the root's result: a World hears a plain value, a dynamic or an event")
     otherwise: wx
@@ -258,7 +258,7 @@ fn PreBindName wx, benv, menv, n, how:
         let pf = "{rs}_v_port"
         let pt = OutRc (OutPort et)
         let wx3 = update (Connect wx2, (EvRefOf wx2, id), (SkPort "{rs}_v")):
-            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall "Rc::new", [[(XCall "Port::new", [[]])]]))
+            &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind pf), pt), (XCall "std::Rc::new", [[(XCall "rt::Port::new", [[]])]]))
             &_.fields <= Push &_.fields, ((pf, pt, "`{nkey}` as a value: the port it fires"))
             &_.moves <= Push &_.moves, ((pf, (XClone (XVar pf))))
         let be = Bind (Bind benv, nkey, b), "{nkey}#port", (BnLocal (XVar pf), Owned, pt)
@@ -538,7 +538,7 @@ fn HoldLine wx, benv, menv, p, init, step:
     match ?BindingOf menv, p:
         ? (BnHold f, t):
             let iv = Own (ValueOf lx, benv, init)
-            let wx1 = AddField wx, f, (OutHold t), "`{PatText p}`", (XCall "Hold::new", [[(XClone (XVar "{f}_init")), XCx]])
+            let wx1 = AddField wx, f, (OutHold t), "`{PatText p}`", (XCall "rt::Hold::new", [[(XClone (XVar "{f}_init")), XCx]])
             let ((r, wx2)) = EventRef wx1, menv, step
             let wx3 = update (Connect wx2, r, (SkHold f)):
                 &_.lets <= Push &_.lets, (DoLet (PaTyped (PaBind "{f}_init"), t), iv)
@@ -601,7 +601,7 @@ fn LetLine wx, benv, menv, p, e:
             let cached = (Len reads) > 0 and Fold (ReadsAll wx.dynReads, reads), True, \|ok, r| ok and IsOwnRead r
             let tail = if cached: XMethod (XField XSelf, "{rs}_cache"), "get", [[XCx, (XClosure False, [[]], ex)]] else: ex
             let getter = MethDef(name=rs, recv=RecvRef, params=[[]], cx=CxRef, ret=t, body=[[]], tail=tail, doc="`{PatText p}`")
-            let wx1 = if cached: update (AddField wx, "{rs}_cache", (OutNamed "Cache", [[t]]), "`{PatText p}`, cached", (XCall "Cache::new", [[]])):
+            let wx1 = if cached: update (AddField wx, "{rs}_cache", (OutNamed "rt::Cache", [[t]]), "`{PatText p}`, cached", (XCall "rt::Cache::new", [[]])):
                 &_.letCaches <= Push &_.letCaches, rs
                 &_.taken <= Push &_.taken, "{rs}_cache"
             else: wx
@@ -649,13 +649,13 @@ fn WidgetLetField wx, f, t, v, doc = update wx:
 
 # An event of `Error`s feeding a `!~T`: each firing is the `~T`'s failure.
 ErrPipe: fn EvRef -> EvRef
-fn ErrPipe r = EvRef(node=r.node, owner=r.owner, pipe=(\|x, K| r.pipe x, \|y| K (XCtor "Err", [[y]])))
+fn ErrPipe r = EvRef(node=r.node, owner=r.owner, pipe=(\|x, K| r.pipe x, \|y| K (XCtor "std::Err", [[y]])))
 
 # An owned value where a `~T` is wanted: a bare `Error` is its failure (the checker's
 # pick ER lets an `Error(..)` wait for its type).
 OwnAs: fn OutTy, Vl -> Ex
 fn OwnAs t, v = match t:
-    OutRes ignore: if (ValueTy v) == OutError: XCtor "Err", [[Own v]] else: Own v
+    OutRes ignore: if (ValueTy v) == OutError: XCtor "std::Err", [[Own v]] else: Own v
     otherwise: Own v
 
 # `p <- e`: an element or a blueprint, its output or result bound.

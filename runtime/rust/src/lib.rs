@@ -62,3 +62,10 @@ pub use print::{Printer, Show, show, show_text};
 pub use regex::{Group, Match, Regex, RegexError, RegexPart, RegexReplacement};
 pub use world::test_world::TestWorld;
 pub use world::{Outcome, Program, ReadyMap, ReadyState, TickIn, TickOut, World, drive};
+
+/// The library's traits, unnamed: `use prism_rtl::traits::*` brings their methods into
+/// scope and none of their names, so emitted code that reaches every item by its path has
+/// the methods without a program's type of the same name (`Node`, `Show`) ever hiding one.
+pub mod traits {
+    pub use crate::{AnswerOf as _, FromPod as _, HostOf as _, Job as _, Level as _, Node as _, Program as _, ReadyState as _, Show as _, ToPod as _, World as _};
+}

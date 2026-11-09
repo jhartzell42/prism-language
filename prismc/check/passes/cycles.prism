@@ -61,7 +61,7 @@ fn IsDelayedWidget n = HasText [["@Defer", "@Later", "@Run", "@Machine", "@start
 BlockPromptCycles: unbounded fn Env, St, Block -> St
 fn BlockPromptCycles env, st, b:
     let defs = Fold b.stmts, [[]], \|acc, s| Append acc, (StmtDefs s)
-    let cx = PCx(g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts))
+    let cx = PCx(g=env.g, home=env.home, lams=(LetLambdas b.stmts), base=(PromptBase env, b.stmts), path=[[]])
     let edges = Fold b.stmts, [[]], \|acc, s| Append acc, (PromptEdges env, st, cx, s, defs)
     let cyc = FindCycle defs, edges
     if (Len cyc) == 0: st
@@ -113,6 +113,8 @@ type PCx = record:
     home: Text
     lams: (Nat ==> Expr)
     base: (Text ==> Rel)
+    # the widget functions whose summaries are being computed (`?PromptSummary`)
+    path: [Text]
 derive ^Eq, ^Show
 
 # The relations every right side of a block starts from: the prelude's names that no
@@ -212,7 +214,10 @@ fn PromptCallKids cx, e, ?n, m = match ?n:
             ? k:
                 if (IsPreludeKey cx.g, k) and (IsDelayedWidget (DropPrefix k, "Prelude.")): [[]]
                 else: if (IsPreludeKey cx.g, k) and (HasPrefix k, "Prelude.@"): ExprKids e, m
-                else: OpenLambdas cx, (ExprKids e, m)
+                else: match ((e.kind, (?PromptSummary cx, k))):
+                    (((ECall ignore, args, ignore, ignore), (? flags))): if Fold args, False, \|f, a| f or a.?name != nil: OpenLambdas cx, (ExprKids e, m)
+                        else: OpenLambdas cx, (Fold (Range0 (Len args)), [[]], \|acc, i| if (Or flags[i], True): Push acc, (KidExpr (Or args[i], dummyArgP).value, m) else: acc)
+                    otherwise: OpenLambdas cx, (ExprKids e, m)
             nil: OpenLambdas cx, (ExprKids e, m)
     nil: OpenLambdas cx, (ExprKids e, m)
 
@@ -276,3 +281,44 @@ fn Reach edges, frontier, seen = match frontier[0]:
     ? x:
         if HasText seen, x: Reach edges, (Drop frontier, 1), seen
         else: Reach edges, (Append (Drop frontier, 1), (Each (Filter edges, \|((f, ignore))| f == x), \|((ignore, t))| t)), (Push seen, x)
+
+# Prompt-cycle summaries (Type System ch. 5, the separate checkers, pass 1): for a
+# program's widget function of one clause, whether its result reads each argument
+# promptly, read off its body as a block's prompt edges are: a hold delays, every `let`
+# read counts as prompt (the function's own types are not at hand, so the summary errs
+# prompt), and a call of another widget function goes by that one's summary, computed on
+# demand bottom-up. A function already on the path (a cycle of widget functions) has none,
+# and is read as prompt in everything, as is any other callee.
+?PromptSummary: unbounded fn PCx, Text -> ?[Bool]
+fn ?PromptSummary cx, k = if (HasText cx.path, k) or not (HasPrefix (BareName k), "@"): nil
+else: match Filter cx.g.defs, \|d| d.qk == k:
+    [[d]]: match d.body:
+        DbFn [[c]]: match c.body:
+            BodyBlock b: ?BlockSummary cx, k, d.home, c.params, b
+            otherwise: nil
+        otherwise: nil
+    otherwise: nil
+
+?BlockSummary: unbounded fn PCx, Text, Text, [Pattern], Block -> ?[Bool]
+fn ?BlockSummary cx, k, home, params, b = match ?Last b.stmts:
+    ? last: match last.kind:
+        SExpr result:
+            let paramNames = Each params, \|p| PatternNames p
+            let defs = Fold b.stmts, (Fold paramNames, [[]], \|acc, ns| Append acc, ns), \|acc, s| Append acc, (StmtDefs s)
+            let base = Fold b.stmts, (PreludeSeeds cx.g, home), \|m, s| LamLetRels s, m
+            let inner = PCx(g=cx.g, home=home, lams=(LetLambdas b.stmts), base=base, path=(Push cx.path, k))
+            let edges = Fold b.stmts, [[]], \|acc, s| Append acc, (SummaryEdges inner, s, defs)
+            let reached = Reach edges, (PromptReads inner, result, defs), [[]]
+            ? (Each paramNames, \|ns| Fold ns, False, \|f, n| f or HasText reached, n)
+        otherwise: nil
+    nil: nil
+
+# A statement's prompt edges in a summary: a hold none, any other binding to all it reads.
+SummaryEdges: unbounded fn PCx, Stmt, [Text] -> [((Text, Text))]
+fn SummaryEdges cx, s, defs = match s.kind:
+    SBind ignore, ignore, (? ignore): [[]]
+    SBind p, e, nil: Edges (PatternNames p), (PromptReads cx, e, defs)
+    SLet p, ignore, e: Edges (PatternNames p), (PromptReads cx, e, defs)
+    otherwise: [[]]
+
+let dummyArgP = Arg(name=nil, value=(Expr(kind=EError, span=Range(start=0, end=0))), span=Range(start=0, end=0))

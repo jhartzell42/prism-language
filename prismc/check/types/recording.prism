@@ -34,9 +34,9 @@ fn NoteBinder st, span, name, t = if not st.recording: st else: update st:
     &_.typed.binders <= Push &_.typed.binders, BinderNote(at=(AtHere st, span), name=name, ty=t)
 
 # A local's binder and a use of it, by the binder's id (pick UN).
-NoteLocal: fn St, Range, Nat -> St
-fn NoteLocal st, span, id = if not st.recording: st else: update st:
-    &_.typed.locals <= Push &_.typed.locals, LocalNote(at=(AtHere st, span), id=id)
+NoteLocal: fn St, Range, Nat, Text -> St
+fn NoteLocal st, span, id, name = if not st.recording: st else: update st:
+    &_.typed.locals <= Push &_.typed.locals, LocalNote(at=(AtHere st, span), id=id, name=name)
 
 NoteGlobal: fn St, Range, Text -> St
 fn NoteGlobal st, span, qk = if not st.recording: st else: update st:
@@ -44,11 +44,11 @@ fn NoteGlobal st, span, qk = if not st.recording: st else: update st:
 
 NoteCall: fn St, Range, Nat -> St
 fn NoteCall st, span, id = if not st.recording: st else: update st:
-    &_.typed.calls <= Push &_.typed.calls, LocalNote(at=(AtHere st, span), id=id)
+    &_.typed.calls <= Push &_.typed.calls, LocalNote(at=(AtHere st, span), id=id, name="")
 
-NoteUse: fn St, Range, Nat -> St
-fn NoteUse st, span, id = if not st.recording: st else: update st:
-    &_.typed.uses <= Push &_.typed.uses, LocalNote(at=(AtHere st, span), id=id)
+NoteUse: fn St, Range, Nat, Text -> St
+fn NoteUse st, span, id, name = if not st.recording: st else: update st:
+    &_.typed.uses <= Push &_.typed.uses, LocalNote(at=(AtHere st, span), id=id, name=name)
 
 # A generalized local `let`: its binder and the variables its scheme quantified.
 NoteGen: fn St, Range, Text, Scheme -> St

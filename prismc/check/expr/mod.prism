@@ -99,7 +99,7 @@ fn BindLocalId env, st, name, span:
             let s2 = update st:
                 &_.localNext += 1
                 &_.localIds <= Insert &_.localIds, place, fresh
-            ((fresh, (NoteLocal s2, span, fresh)))
+            ((fresh, (NoteLocal s2, span, fresh, name)))
     let env2 = update env:
         &_.ids <= Insert &_.ids, name, id
     ((env2, st2))
@@ -258,7 +258,7 @@ fn InferNameIn env, st, n, span:
     match env.locals[local]:
         ? sc:
             let st2 = match env.ids[local]:
-                ? id: NoteUse st, span, id
+                ? id: NoteUse st, span, id, local
                 nil: st
             InstantiateLocal st2, sc, span, local
         nil: InferGlobal env, st, n, span

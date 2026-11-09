@@ -64,8 +64,7 @@ public:
     /// the tick.
     void set(T v, const Cx& cx) {
         if (stamp_ == cx.tick() && older_) {
-            cx.fail_later(Fault("Runtime.TwoWrites", std::string("a hold of ") + typeid(T).name() +
-                                                         " written twice in tick " + std::to_string(cx.tick())));
+            cx.fail_later(Fault("Runtime.TwoWrites", "a hold written twice in tick " + std::to_string(cx.tick())));
             return;
         }
         older_.emplace(std::move(newer_), stamp_);

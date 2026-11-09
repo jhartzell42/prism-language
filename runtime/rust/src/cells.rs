@@ -58,12 +58,11 @@ impl<T: Clone> Hold<T> {
     }
     /// The tick's one write (G1, Semantics R3): the older slot takes the value, stamped
     /// now. A second write in a tick is a node woken twice for the same inputs: a fault of
-    /// the tick (and an assertion in a debug build).
+    /// the tick, worded as the C++ runtime words it (prismc/README.md, TW).
     pub fn set(&self, v: T, cx: &Cx) {
         let mut s = self.slots.borrow_mut();
         if s.1 == cx.tick() && s.2.is_some() {
-            debug_assert!(false, "a hold of {} written twice in tick {}", std::any::type_name::<T>(), cx.tick());
-            cx.fail_later(crate::pod::Fault::new("Runtime.TwoWrites", format!("a hold of {} written twice in tick {}", std::any::type_name::<T>(), cx.tick())));
+            cx.fail_later(crate::pod::Fault::new("Runtime.TwoWrites", format!("a hold written twice in tick {}", cx.tick())));
             return;
         }
         let (old, stamp) = (std::mem::replace(&mut s.0, v), s.1);

@@ -68,7 +68,12 @@ fn CollectDecl g, st, info, d, ?lastType = match d.kind:
         ((g2, st2, nil))
     DTrait t:
         let name = QualKey info.name, (Dotted t.name.path)
-        let ti = TraitInfo(name=name, home=info.name, param=(Or (Each t.params, \|p| p.name)[0], "a"), supers=[[]], methods=[[]], defaults=[[]], assocs=[[]], file=info.file, span=d.span)
+        # its associated types named now, so a signature of any trait or function can
+        # apply one (`Item a`) before the trait's own items are read
+        let assocs = Fold t.items, [[]], \|acc, it| match it:
+            TiAssocType n, ignore, ignore, ignore: Push acc, n.name
+            otherwise: acc
+        let ti = TraitInfo(name=name, home=info.name, param=(Or (Each t.params, \|p| p.name)[0], "a"), supers=[[]], methods=[[]], defaults=[[]], assocs=assocs, file=info.file, span=d.span)
         let upd = update g:
             &_.traits <= Insert &_.traits, name, ti
         ((upd, st, nil))

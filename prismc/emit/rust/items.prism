@@ -37,7 +37,7 @@ use Emit.Rust.Prelude.*
 
 Generics: fn [((Text, [Text]))] -> Text
 fn Generics [[]] = ""
-fn Generics gs = "<{Join (Each gs, \|((g, bs))| if (Len bs) == 0: g else: "{g}: {Join bs, " + "}"), ", "}>"
+fn Generics gs = "<{Join (Each gs, \|((g, bs))| if (Len bs) == 0: g else: "{g}: {Join (Each bs, \|b| RsPath b), " + "}"), ", "}>"
 
 GenericNames: fn [Text] -> Text
 fn GenericNames [[]] = ""
@@ -62,7 +62,8 @@ fn RustItem it = match it:
 
 RustTrait: unbounded fn TraitDef -> Text
 fn RustTrait t:
-    let ms = Join (Each t.methods, \|f| TraitMethod f), "\n"
+    let types = Each t.assocs, \|a| "type {a}: ::std::clone::Clone;"
+    let ms = Join (Append types, (Each t.methods, \|f| TraitMethod f)), "\n"
     "{SourceDoc "", t.doc}pub trait {t.name} \{\n{Indent ms}\n\}\n"
 
 Signature: unbounded fn FnDef, Text -> Text
@@ -83,12 +84,14 @@ fn RustImpl i:
         "Prelude.Show":
             let fns = Join (Each i.methods, \|f| RustFn f), "\n"
             let shown = Or (Each i.methods, \|f| f.name)[0], "show"
-            "{fns}\n{Impl gens, "Show", head, "fn show(&self, p: &mut Printer)", "p.raw(&{shown}(self).to_string());"}"
+            "{fns}\n{Impl gens, "rt::Show", head, "fn show(&self, p: &mut rt::Printer)", "p.raw(&{shown}(self).to_string());"}"
         "Prelude.Eq":
             let fns = Join (Each i.methods, \|f| RustFn f), "\n"
             let eq = Fold i.methods, "", \|acc, f| if (not (HasPrefix f.name, "ne")) and acc == "": f.name else: acc
-            "{fns}\n{Impl gens, "PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}\nimpl{gens} Eq for {head} \{\}"
-        otherwise: "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body)), "\n")}\n\}\n"
+            "{fns}\n{Impl gens, "::std::cmp::PartialEq", head, "fn eq(&self, other: &Self) -> bool", "{eq}(self, other)"}\nimpl{gens} ::std::cmp::Eq for {head} \{\}"
+        otherwise:
+            let types = Each i.assocs, \|((a, t))| "type {a} = {Type t};"
+            "impl{gens} {i.tr} for {head} \{\n{Indent (Join (Append types, (Each i.methods, \|f| Fn "", (Signature f, ""), (BodyLines f.body))), "\n")}\n\}\n"
 
 RustFn: unbounded fn FnDef -> Text
 fn RustFn f:
@@ -109,14 +112,14 @@ fn RustJob j:
     let params = Join (Each j.fields, \|((n, t))| "{n}: {Type t}"), ", "
     # A job is an `Rc<dyn Job>`, so its type parameters live as long as the program.
     let bounded = StaticGenerics j.generics
-    let start = "pub fn {j.start}{bounded}({params}) -> Rc<dyn prism_rtl::Job<{Type j.ret}>>"
-    let startBody = "Rc::new({j.name} \{ {Join (Each j.fields, \|((n, ignore))| n), ", "} \})"
+    let start = "pub fn {j.start}{bounded}({params}) -> ::std::rc::Rc<dyn prism_rtl::Job<{Type j.ret}>>"
+    let startBody = "::std::rc::Rc::new({j.name} \{ {Join (Each j.fields, \|((n, ignore))| n), ", "} \})"
     Job (SourceDoc "", j.doc), j.name, gnames, bounded, fields, (Type j.ret), (BodyLines j.body), start, startBody
 
 # A type, its derives, and its printer and plain-data impls (claude/backend.md, "Printing").
 TypeDecl: unbounded fn TyDef -> Text
 fn TypeDecl t:
-    let derives = Join (Filter [["Clone", (if t.eq or t.ord: "PartialEq, Eq" else: ""), (if t.ord: "PartialOrd, Ord" else: "")]], \|d| d != ""), ", "
+    let derives = Join (Filter [["::std::clone::Clone", (if t.eq or t.ord: "::std::cmp::PartialEq, ::std::cmp::Eq" else: ""), (if t.ord: "::std::cmp::PartialOrd, ::std::cmp::Ord" else: "")]], \|d| d != ""), ", "
     let head = "{t.name}{GenericNames t.params}"
     let doc = SourceDoc "`{t.prism}`:", t.doc
     let decl = match t.shape:
@@ -153,7 +156,7 @@ fn ShowImpl t, head:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
             "p.record(\"{t.prism}\", &[{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", &self.{f})"), ", "}]);"
         otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => p.choice(\"{c.prism}\", &[{Join (Binders (Len c.fields)), ", "}]),"), "\n")
-    Impl (Bounded t.params, "Show"), "Show", head, "fn show(&self, p: &mut Printer)", body
+    Impl (Bounded t.params, "rt::Show"), "rt::Show", head, "fn show(&self, p: &mut rt::Printer)", body
 
 # A field's Prism spelling: the Rust one without the `_` a keyword took.
 PrismField: fn Text -> Text
@@ -170,31 +173,31 @@ fn ToPodImpl t, head:
     let body = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-            "Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", self.{f}.to_pod())"), ", "}])"
-        otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => Pod::Choice(\"{c.prism}\".into(), vec![{Join (Each (Binders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"), "\n")
+            "rt::Pod::record(\"{t.prism}\", vec![{Join (Each c.fields, \|((f, ignore))| "(\"{PrismFieldOf c, f}\", self.{f}.to_pod())"), ", "}])"
+        otherwise: MatchSelf (Join (Each t.cases, \|c| "{CasePattern t, c} => rt::Pod::Choice(\"{c.prism}\".into(), vec![{Join (Each (Binders (Len c.fields)), \|b| "{b}.to_pod()"), ", "}]),"), "\n")
     let shown = if t.show == ShownOwn: ShownPod body else: body
-    Impl (Bounded t.params, "ToPod"), "ToPod", head, "fn to_pod(&self) -> Pod", shown
+    Impl (Bounded t.params, "rt::ToPod"), "rt::ToPod", head, "fn to_pod(&self) -> rt::Pod", shown
 
 FromPodImpl: unbounded fn TyDef, Text -> Text
 fn FromPodImpl t, head:
     let body = match t.shape:
         ShapeRecord:
             let c = Or t.cases[0], (CaseDef(name="", prism="", fields=[[]], labels=[[]]))
-            "Ok({t.name} \{ {Join (Each c.fields, \|((f, ignore))| "{f}: FromPod::from_pod(field(p, \"{PrismFieldOf c, f}\")?)?"), ", "} \})"
+            "::std::result::Result::Ok({t.name} \{ {Join (Each c.fields, \|((f, ignore))| "{f}: rt::FromPod::from_pod(rt::field(p, \"{PrismFieldOf c, f}\")?)?"), ", "} \})"
         otherwise:
             let arms = Each t.cases, \|c|
                 let n = Len c.fields
-                let made = if n == 0: (if t.shape == ShapeUnit: t.name else: "{t.name}::{c.name}") else: "{if t.shape == ShapeNewtype: t.name else: "{t.name}::{c.name}"}({Join (Each (Range0 n), \|i| "FromPod::from_pod(&a[{i}])?"), ", "})"
-                "Pod::Choice(c, a) if &**c == \"{c.prism}\" && a.len() == {n} => Ok({made}),"
+                let made = if n == 0: (if t.shape == ShapeUnit: t.name else: "{t.name}::{c.name}") else: "{if t.shape == ShapeNewtype: t.name else: "{t.name}::{c.name}"}({Join (Each (Range0 n), \|i| "rt::FromPod::from_pod(&a[{i}])?"), ", "})"
+                "rt::Pod::Choice(c, a) if &**c == \"{c.prism}\" && a.len() == {n} => ::std::result::Result::Ok({made}),"
             FromPodBody (Join arms, "\n"), "a {t.prism}"
-    Impl (Bounded t.params, "FromPod"), "FromPod", head, "fn from_pod(p: &Pod) -> Result<Self, Fault>", body
+    Impl (Bounded t.params, "rt::FromPod"), "rt::FromPod", head, "fn from_pod(p: &rt::Pod) -> ::std::result::Result<Self, rt::Fault>", body
 
 RustTag: unbounded fn TagDef -> Text
 fn RustTag t:
     let fields = Join (Each t.fields, \|((ignore, f, ft))| "pub {f}: {Type ft},"), "\n"
     let pods = Join (Each t.fields, \|((p, f, ignore))| "(\"{p}\", self.{f}.to_pod())"), ", "
-    let derives = if t.eq: "Clone, PartialEq, Eq" else: "Clone"
-    let reads = Join (Each t.fields, \|((p, f, ignore))| "{f}: FromPod::from_pod(field(p, \"{p}\")?)?"), ", "
+    let derives = if t.eq: "::std::clone::Clone, ::std::cmp::PartialEq, ::std::cmp::Eq" else: "::std::clone::Clone"
+    let reads = Join (Each t.fields, \|((p, f, ignore))| "{f}: rt::FromPod::from_pod(rt::field(p, \"{p}\")?)?"), ", "
     let back = if t.pod: "\n{TagFromPod t.name, t.tagName, reads}" else: ""
     let deep = Fold t.fields, False, \|d, ((ignore, ignore, ft))| d or HoldsDyn ft
     let deepPods = Join (Each t.fields, \|((p, f, ft))| DeepField p, f, ft), ", "
@@ -222,10 +225,10 @@ fn DeepPorts f, ft = match ft:
 # A row kind's enum (pick RV): a variant per tag, printing and crossing as the tag's level.
 RustRow: unbounded fn RowDef -> Text
 fn RustRow r:
-    let derives = if r.eq: "Clone, PartialEq, Eq" else: "Clone"
+    let derives = if r.eq: "::std::clone::Clone, ::std::cmp::PartialEq, ::std::cmp::Eq" else: "::std::clone::Clone"
     let cases = Join (Each r.cases, \|((v, st))| "{v}({st}),"), "\n"
     let pods = Join (Each r.cases, \|((v, ignore))| "{r.name}::{v}(x) => x.to_pod(),"), "\n"
-    let reads = Join (Each r.cases, \|((v, st))| "Some(t) if t == {st}::TAG => Ok({r.name}::{v}(FromPod::from_pod(p)?)),"), "\n"
+    let reads = Join (Each r.cases, \|((v, st))| "::std::option::Option::Some(t) if t == {st}::TAG => ::std::result::Result::Ok({r.name}::{v}(rt::FromPod::from_pod(p)?)),"), "\n"
     let back = if r.pod: "\n{RowFromPod r.name, reads}" else: ""
     # An empty row's enum has no values: its match is over `*self`, with no arms.
     let pods2 = if (Len r.cases) == 0: "_ => unreachable!()," else: pods
@@ -242,7 +245,7 @@ fn RustAnswer a:
     let cases = Join (Each a.cases, \|c| "{c.variant}({Type c.ty}),"), "\n"
     let tags = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Answer::{c.variant}(_) => {c.structPath}::TAG,"), "\n"
     let accessors = Join (Each a.cases, \|c| AnswerGetter c.accessor, c.variant, c.tagName, (Type c.ty)), "\n"
-    let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Elem::{c.variant}(..) => Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?)),"), "\n"
+    let decodes = if (Len a.cases) == 0: "_ => unreachable!()," else: Join (Each a.cases, \|c| "Elem::{c.variant}(..) => ::std::result::Result::Ok(Answer::{c.variant}({DecodeHead c.ty}::from_pod(v)?)),"), "\n"
     AnswerType cases, tags, accessors, decodes
 
 # ---------------------------------------------------------------------------------------
@@ -254,9 +257,9 @@ fn RustNode n:
     let fields = Join (Each n.fields, \|((f, t, doc))| "{Doc doc}{f}: {Type t},"), "\n"
     let consts = Concat (Each n.consts, \|((c, h, doc))| "{Doc "The {doc}."}const {c}: u32 = {h};\n")
     let params = Concat (Each n.params, \|((p, t))| "{p}: {Type t}, ")
-    let ret = if n.fallible: "Result<Rc<{n.name}>, Fault>" else: "Rc<{n.name}>"
+    let ret = if n.fallible: "::std::result::Result<::std::rc::Rc<{n.name}>, rt::Fault>" else: "::std::rc::Rc<{n.name}>"
     let inits = Join (Append [["path"]], (Each n.inits, \|((f, v))| FieldInit f, v)), ", "
-    let tail = if n.fallible: "Ok(node)" else: "node"
+    let tail = if n.fallible: "::std::result::Result::Ok(node)" else: "node"
     let restText = if (Len n.build) == 0: tail else: "{Statements n.build}\n{tail}"
     let build = Build n.name, params, ret, (Statements n.lets), inits, restText
     let methods = Join (Each n.methods, \|m| RustMethod m), "\n"
@@ -295,7 +298,7 @@ GenBuilder: unbounded fn GenDef -> Text
 fn GenBuilder gd:
     # a transparent generation (a widget of several clauses in a static position) stands at
     # its caller's path
-    let path = if gd.transparent: "self.path.clone()" else: "{Expression gd.at}.child(Segment::Gen(g))"
+    let path = if gd.transparent: "self.path.clone()" else: "{Expression gd.at}.child(rt::Segment::Gen(g))"
     GenBuild gd.name, (Expression gd.at), path, (Expression gd.source), (Type gd.valueTy), (Expression gd.select), (GenMovedCall gd.moved)
 
 # A row's leaving (prelude `Row`): a `for` row keeps its entry as the tick opened, since
@@ -303,19 +306,19 @@ fn GenBuilder gd:
 # subscriptions let go. A hosted row's `Row` methods beside it.
 RustRowImpl: unbounded fn NodeDef -> Text
 fn RustRowImpl n:
-    let kept = if n.rowKind == ForRow: [["*self.left_entry.borrow_mut() = Some(self.entry(cx));"]] else: [[]]
-    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if let (Some(p), Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"
+    let kept = if n.rowKind == ForRow: [["*self.left_entry.borrow_mut() = ::std::option::Option::Some(self.entry(cx));"]] else: [[]]
+    let unsubscribe = Each n.subs, \|((ev, m, ignore))| "if let (::std::option::Option::Some(p), ::std::option::Option::Some(h)) = (self.parent.upgrade(), self.{m}_sub.take()) \{\n    p.{ev}_port.unsubscribe(h);\n\}"
     RowImpl n.name, (Join (Append (Push kept, "self.remove_places(cx);"), unsubscribe), "\n"), (Join (Each n.hosted, \|m| RustMethod m), "\n")
 
 RustMethod: unbounded fn MethDef -> Text
 fn RustMethod m:
     let recv = match m.recv:
-        RecvRc: "self: &Rc<Self>"
+        RecvRc: "self: &::std::rc::Rc<Self>"
         RecvRef: "&self"
-        RecvOwned: "self: Rc<Self>"
+        RecvOwned: "self: ::std::rc::Rc<Self>"
     let cx = match m.cx:
-        CxMut: ", cx: &mut Cx"
-        CxRef: ", cx: &Cx"
+        CxMut: ", cx: &mut rt::Cx"
+        CxRef: ", cx: &rt::Cx"
         CxNone: ""
     let params = Concat (Each m.params, \|((p, t))| ", {p}: {Type t}")
     let ret = if m.ret == OutUnit: "" else: " -> {Type m.ret}"
@@ -328,14 +331,14 @@ fn RustProgram p, fallible:
     let n = Len p.params
     let names = Each p.params, \|((a, ignore))| a
     let decode = if n == 0: "let _ = args;" else: DecodeArgs p, names
-    let call = "{p.node}::build(Path::root(), {Concat (Each names, \|a| "{a}, ")}&mut cx){if fallible: "?" else: ""}"
+    let call = "{p.node}::build(rt::Path::root(), {Concat (Each names, \|a| "{a}, ")}&mut cx){if fallible: "?" else: ""}"
     Program p.name, p.prism, p.node, decode, call
 
 DecodeArgs: unbounded fn ProgDef, [Text] -> Text
 fn DecodeArgs p, names:
     let n = Len names
     let plural = if n == 1: "" else: "s"
-    let head = "let [{Join names, ", "}] = args else \{ return Err(Fault::answer(\"@{p.prism} takes {n} argument{plural}\")) \};"
+    let head = "let [{Join names, ", "}] = args else \{ return ::std::result::Result::Err(rt::Fault::answer(\"@{p.prism} takes {n} argument{plural}\")) \};"
     Join (Append [[head]], (Each p.params, \|((a, t))| "let {a} = {DecodeHead t}::from_pod({a})?;")), "\n"
 
 # ---------------------------------------------------------------------------------------

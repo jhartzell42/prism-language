@@ -141,10 +141,11 @@ derive ^Eq, ^Show
 
 # A local's binder or a use of it, with the binder's id (pick UN): the checker numbers a
 # definition's local binders in the order it binds them, from 0, and a use names the
-# binder the checker resolved it to.
+# binder the checker resolved it to, and the name it is (a call's is "").
 type LocalNote = record:
     at: SrcAt
     id: Nat
+    name: Text
 derive ^Eq, ^Show
 
 type GlobalNote = record:

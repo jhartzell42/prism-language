@@ -22,6 +22,13 @@ use std::rc::Rc;
 // `Helper`).
 pub use prism_rtl::*;
 
+/// The runtime's traits and the prelude's, unnamed: `use crate::prelude::traits::*` brings
+/// their methods into scope and none of their names (the emitted modules' one import).
+pub mod traits {
+    pub use prism_rtl::traits::*;
+    pub use super::{Modulo as _, Num as _, Row as _};
+}
+
 // ---- Types ------------------------------------------------------------------------------
 
 /// `type Ordering = choice: Less | Equal | Greater; derive ^Eq, ^Ord, ^Show`.
@@ -543,10 +550,12 @@ pub fn lower(t: &Text) -> Text {
 }
 
 /// `SplitOn t, sep`: the pieces between the separators (not in Appendix B, whose `Split`
-/// is a regular expression's). An empty separator is refused.
+/// is a regular expression's). An empty separator cuts at every character boundary.
 pub fn split_on(t: &Text, sep: &Text) -> Array<Text> {
+    // An empty separator is `Split` of the empty pattern (Appendix B): it matches at every
+    // character boundary, so an empty text at each end and each character between.
     if sep.is_empty() {
-        panic!("`SplitOn` with an empty separator: walk the text's characters with a cursor (`Front`, `?Step`)");
+        return Regex::lit("", "").split(t);
     }
     t.split(sep.as_str()).collect()
 }
@@ -979,6 +988,17 @@ pub fn world_option(args: &[String], default: &str) -> (String, Vec<String>) {
 /// (doubt DS of prismc/README.md), and Rust's default stack is 8 MB.
 pub fn on_big_stack(f: impl FnOnce() -> u8 + Send + 'static) -> u8 {
     std::thread::Builder::new().stack_size(1 << 30).spawn(f).map_or(1, |h| h.join().unwrap_or(1))
+}
+
+/// A port's firing from an event method, which returns nothing to pass a fault on through
+/// (prismc/README.md, PF). No fault reaches here today: a port's subscribers (a row's
+/// event method, a host's blueprint) return `Ok`, and every fault a firing can raise goes
+/// by `Cx::fail_later` or the tick's own result. A fault that ever does is a bug, so it
+/// stops the program naming it rather than being lost.
+pub fn no_fault(d: Done) {
+    if let Err(f) = d {
+        panic!("a fault reached a port's firing, which has no way to pass it on (PF): {f}");
+    }
 }
 
 /// `test`: each script under the Test World. With `--print` the transcripts go to

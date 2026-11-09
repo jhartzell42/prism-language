@@ -104,7 +104,7 @@ else
 fi
 # Gap OC: a binder of an owned scrutinee its arm reads once is moved, not cloned.
 if ./prism compile tests/conformance/sem-ch07-normalize -o "$out/normalize" > /dev/null 2>&1 &&
-    grep -Eq 'Some\((b2_[0-9a-v]+)\) => Some\(Term::Lam\(Rc::new\(\1\)\)\),' "$out/normalize/src/program.rs"; then
+    grep -Eq 'Option::Some\((b2_[0-9a-v]+)\) => ::std::option::Option::Some\(Term::Lam\(::std::rc::Rc::new\(\1\)\)\),' "$out/normalize/src/program.rs"; then
     echo "ok owned-binder-moved: a binder read once is moved"
 else
     failed+=(owned-binder-moved)

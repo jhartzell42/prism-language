@@ -515,6 +515,9 @@ struct Run {
     std::optional<XorShift> rng;
     /// Each `Cards.Deck` place's shuffle, the next card, and its unanswered requests.
     std::map<Path, Deck> decks;
+    /// Every tick that closed, its input and the ready state it ran under, the build's
+    /// first: replayed onto a new build after a tick that aborts (Conformance AB).
+    std::vector<std::pair<TickIn, std::map<Pod, Pod>>> log;
 
     Expected<Unit, Err> step(const Step& step, std::string& out, std::vector<std::string>& failures, const std::string& test) {
         for (const auto& [e, v] : step.withs) ready.insert_or_assign(e, v);
@@ -660,6 +663,7 @@ struct Run {
     Ticked one_tick(TickIn input, std::span<const std::string> shown, std::string& out) {
         Document before = doc;
         TestReady r(ready);
+        std::pair<TickIn, std::map<Pod, Pod>> logged{input, ready};
         Result<TickOut> result = unexpected(Fault("", ""));
         if (program) {
             result = program->tick(input, r);
@@ -679,10 +683,27 @@ struct Run {
             if (o.result && o.result->kind == Outcome::Kind::Value) last_result = o.result->pod;
             observe(o);
             if (program) program->compact();
+            log.push_back(std::move(logged));
         } else {
-            program.reset();
+            // A tick that aborts leaves the state before it (Conformance AB): the program
+            // built again and the ticks that closed run again, their output already had.
+            program = replay();
         }
         return Ticked{std::move(result), std::move(before)};
+    }
+
+    /// The program as the last tick that closed left it: built, then every logged tick
+    /// run again under the ready state it ran under; null when there is none.
+    std::unique_ptr<Program> replay() const {
+        if (log.empty()) return nullptr;
+        auto built = (*builder)(args, TestReady(log.front().second));
+        if (!built) return nullptr;
+        std::unique_ptr<Program> p = std::move(built.value().first);
+        for (std::size_t i = 1; i < log.size(); ++i) {
+            if (!p->tick(log[i].first, TestReady(log[i].second))) return nullptr;
+            p->compact();
+        }
+        return p;
     }
 
     /// What the policies learn from a tick: windows' ids, decks' shuffles and requests.
@@ -855,7 +876,7 @@ Report TestWorld::run(std::string_view script) const {
                 failures.push_back("test " + t->name + ": no program named @" + t->program);
                 continue;
             }
-            Run run{&b->second, t->args, nullptr, Document(), {}, 0, false, std::nullopt, {}, std::nullopt, {}};
+            Run run{&b->second, t->args, nullptr, Document(), {}, 0, false, std::nullopt, {}, std::nullopt, {}, {}};
             if (t->seed) run.rng.emplace(*t->seed);
             for (const Step& step : t->steps) {
                 auto r = run.step(step, out, failures, t->name);

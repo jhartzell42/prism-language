@@ -158,6 +158,7 @@ impl TestWorld {
             windows: BTreeMap::new(),
             rng: t.seed.map(XorShift::new),
             decks: BTreeMap::new(),
+            log: Vec::new(),
         };
         for step in &t.steps {
             if let Err(e) = run.step(step, out, failures, &t.name) {
@@ -184,6 +185,9 @@ struct Run<'a> {
     rng: Option<XorShift>,
     /// Each `Cards.Deck` place's shuffle, the next card, and its unanswered requests.
     decks: BTreeMap<Path, (Vec<Pod>, usize, usize)>,
+    /// Every tick that closed, its input and the ready state it ran under, the build's
+    /// first: replayed onto a new build after a tick that aborts (Conformance AB).
+    log: Vec<(TickIn, BTreeMap<Pod, Pod>)>,
 }
 
 /// xorshift64*, the generator every implementation shares (Conformance ch. 1, "The
@@ -364,6 +368,7 @@ impl Run<'_> {
     fn one_tick(&mut self, input: TickIn, shown: &[String], out: &mut String) -> Ticked {
         let before = self.doc.clone();
         let ready = TestReady(&self.ready);
+        let logged = (input.clone(), self.ready.clone());
         let result = match self.program.as_mut() {
             Some(p) => p.tick(&input, &ready),
             None => (self.builder)(&self.args, &ready).map(|(p, o)| {
@@ -384,10 +389,25 @@ impl Run<'_> {
                 if let Some(p) = self.program.as_mut() {
                     p.compact();
                 }
+                self.log.push(logged);
             }
-            Err(_) => self.program = None,
+            // A tick that aborts leaves the state before it (Conformance AB): the program
+            // built again and the ticks that closed run again, their output already had.
+            Err(_) => self.program = self.replay(),
         }
         Ticked { out: result, before }
+    }
+
+    /// The program as the last tick that closed left it: built, then every logged tick
+    /// run again under the ready state it ran under; `None` when there is none.
+    fn replay(&self) -> Option<Box<dyn Program>> {
+        let ((_, built_under), rest) = self.log.split_first()?;
+        let (mut p, _) = (self.builder)(&self.args, &TestReady(built_under)).ok()?;
+        for (input, under) in rest {
+            p.tick(input, &TestReady(under)).ok()?;
+            p.compact();
+        }
+        Some(p)
     }
 
     /// What the policies learn from a tick: windows' ids, decks' shuffles and requests.

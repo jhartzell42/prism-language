@@ -51,7 +51,10 @@ fn InferCall env, st, callee, args, span = match callee.kind:
         let local = SNameKey n
         match env.locals[local]:
             ? sc:
-                let ((t, st2)) = InstantiateLocal st, sc, callee.span, local
+                let st1 = match env.ids[local]:
+                    ? id: NoteUse st, callee.span, id, local
+                    nil: st
+                let ((t, st2)) = InstantiateLocal st1, sc, callee.span, local
                 ApplyFn env, (NoteTy st2, callee.span, t), local, t, (Positional args), span
             nil: CallGlobal env, st, n, args, span, [[]], callee.span
     ETypeArgs target, tys: match target.kind:

@@ -49,9 +49,9 @@ use Lower.Node.Switch.*
 # column (`place`, the prelude's).
 TemplateValue: unbounded fn Lx, Env, Template -> Vl
 fn TemplateValue lx, env, tp:
-    let start = [[(DoLet (PaMut "out"), (XCall "String::new", [[]]))]]
+    let start = [[(DoLet (PaMut "out"), (XCall "std::String::new", [[]]))]]
     let dos = Fold tp.parts, start, \|acc, part| Append acc, (TemplatePartDos lx, env, part)
-    VlOwned (XBlock dos, (XCall "Text::from", [[(XVar "out")]])), OutText
+    VlOwned (XBlock dos, (XCall "rt::Text::from", [[(XVar "out")]])), OutText
 
 TemplatePartDos: unbounded fn Lx, Env, TemplatePart -> [Do]
 fn TemplatePartDos lx, env, part = match part:
@@ -59,7 +59,7 @@ fn TemplatePartDos lx, env, part = match part:
     TpPlaceholder x, ?col:
         let v = ValueOf lx, env, x
         let column = match ?col:
-            ? c: XCtor "Some", [[XIndex c]]
+            ? c: XCtor "std::Some", [[XIndex c]]
             nil: XNone
         [[DoExpr (XCall (Helper "place"), [[(XRefMut (XVar "out")), ShownText v, column]])]]
     TpBlock b:
@@ -77,8 +77,8 @@ fn TemplatePartDos lx, env, part = match part:
                 nil: Snake (SNameKey n)
         let body = match ?parts:
             ? ps:
-                let inner = Fold ps, [[(DoLet (PaMut "out"), (XCall "String::new", [[]]))]], \|acc, p| Append acc, (TemplatePartDos lx, env, p)
-                [[(XRef (XBlock inner, (XCall "Text::from", [[(XVar "out")]])))]]
+                let inner = Fold ps, [[(DoLet (PaMut "out"), (XCall "std::String::new", [[]]))]], \|acc, p| Append acc, (TemplatePartDos lx, env, p)
+                [[(XRef (XBlock inner, (XCall "rt::Text::from", [[(XVar "out")]])))]]
             nil: [[]]
         let passed = match ?qk:
             ? q: TemplateArgs lx, env, q, args, body
@@ -142,7 +142,7 @@ fn GivenValue lx, env, b, t, span:
     let n = Len b.stmts
     let ((dos, env2, ?last)) = Fold (Range0 n), (([[]], env, nil)), \|((acc, en, ?lv)), i|
         let s = Or b.stmts[i], dummyStmtL
-        let fail = if isTry: XCtor "Err", [[(XCall "Error::new", [[(XStr "Prelude.Unmet"), (XStr (SourceText lx, s.span))]])]] else: XNone
+        let fail = if isTry: XCtor "std::Err", [[(XCall "rt::Error::new", [[(XStr "Prelude.Unmet"), (XStr (SourceText lx, s.span))]])]] else: XNone
         match s.kind:
             SBind p, x, nil:
                 let v = ValueOf lx, en, x
@@ -163,8 +163,8 @@ fn GivenValue lx, env, b, t, span:
 # passed on.
 GivenBind: fn Bool, Pa, Ex, Text, OutTy -> Do
 fn GivenBind isTry, pa, x, label, t:
-    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor "Ok", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor "Err", [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor "Err", [[XVar "e"]])))]], False, t)
-    else: DoLetElse (PaCtor "Some", [[pa]]), x, (XBreak label, XNone)
+    if isTry: DoLet pa, (XMatch x, [[XArm(pat=(PaCtor "std::Ok", [[PaBind "v"]]), conds=[[]], body=(XVar "v")), XArm(pat=(PaCtor "std::Err", [[PaBind "e"]]), conds=[[]], body=(XBreak label, (XCtor "std::Err", [[XVar "e"]])))]], False, t)
+    else: DoLetElse (PaCtor "std::Some", [[pa]]), x, (XBreak label, XNone)
 
 # The source a range covers, in the file being lowered.
 SourceText: fn Lx, Range -> Text
@@ -362,8 +362,8 @@ fn PlaceOf lx, env, e = match e.kind:
     EIndex r, k:
         let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
         let f = match rt:
-            OutMap ignore, ignore: "at_mut_map"
-            otherwise: "at_mut"
+            OutMap ignore, ignore: Helper "at_mut_map"
+            otherwise: Helper "at_mut"
         XDeref (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k)]])
     EGroup x: PlaceOf lx, env, x
     otherwise: Refusal "a reference path this back end does not lower"
@@ -396,8 +396,8 @@ fn Assign lx, env, target, v = match target.kind:
     EIndex r, k:
         let rt = OutTyOf lx, (Peel (PlaceTy lx, r))
         let f = match rt:
-            OutMap ignore, ignore: "set_key"
-            otherwise: "set_index"
+            OutMap ignore, ignore: Helper "set_key"
+            otherwise: Helper "set_index"
         DoExpr (XCall f, [[(XRefMut (PlaceOf lx, env, r)), (Argument lx, env, k), v]])
     EGroup x: Assign lx, env, x, v
     otherwise: DoAssign (PlaceOf lx, env, target), v

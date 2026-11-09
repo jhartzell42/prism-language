@@ -110,6 +110,9 @@ type Lx = record:
     # Every local binder's id and every use's binder's id, by place (pick UN).
     localIds: (Text ==> Nat)
     useIds: (Text ==> Nat)
+    # each file's uses of locals: where each starts, and the name it was written as (a
+    # frame's or a continuation's captures are the locals the rest reads)
+    useNames: (Nat ==> [((Nat, Text))])
     # Every use of a top-level widget's id, by place, and the ids of the uses a widget
     # being lowered was inlined at, outermost first, as its locals' suffix (`_7_3`).
     callIds: (Text ==> Nat)
@@ -190,22 +193,16 @@ fn Snake name:
 LowerChar: fn Text -> Text
 fn LowerChar c = if IsUpper c: Lower c else: c
 
-# A type or constructor name as Rust and C++ write one: the first letter upper, and a `_`
-# after a name the emitted code also reaches bare from the runtimes or the standard
-# library (`runtimeNames`), so a program's `Row` or `Node` is never the runtime's.
+# A type or constructor name as Rust and C++ write one: the first letter upper, and `Self`
+# (Rust's keyword) with a `_`. The emitted code reaches the runtime side's types by path
+# (`rt::Row`) and the standard library's from the root (`::std::rc::Rc`), so a program's
+# `Row` or `Option` is its own (`ts-ch02-runtime-type-names`).
 Camel: fn Text -> Text
 fn Camel name:
     let b = Base name
     let first = Head b
     let fixed = if IsLower first: "{Upper first}{AfterFirst b}" else: b
-    if fixed == "Self" or HasText runtimeNames, fixed: "{fixed}_" else: fixed
-
-# The type, trait and class names the emitted code reaches bare: `prism_rtl`'s, in Rust
-# (`use prism_rtl::*`) and in C++ (`using namespace prism_rtl`), and the Rust names it
-# writes unqualified (`Rc`, `Cell`, `Vec`...). The prelude's own names (`Fault`, `Error`,
-# `Turn`, `Show`, `Text`, `Nat`, `Int`, `Map`, `Array`) are left out: the emitted code
-# names the runtime's by path, or they are the runtime's own.
-let runtimeNames = [["AnswerOf", "BigInt", "Blueprint", "Box", "Built", "Cache", "Case", "Cell", "Clickable", "Collector", "Cursor", "Cx", "Defer", "Demand", "Document", "Done", "DynShow", "Dynamic", "Edit", "Err", "Event", "F64", "Fallible", "Fields", "Finishing", "Fn", "Forward", "FromPod", "Gathered", "Gen", "Handle", "Hold", "Host", "HostOf", "HostRow", "Inert", "IsShared", "IsValue", "Job", "JobRef", "Later", "Link", "List", "Live", "MakeNew", "MutElements", "Nanos", "NeverEvent", "NewSnapshot", "Node", "NodeRef", "None", "Ok", "OkUnit", "Option", "Outcome", "Panic", "Patch", "Path", "Pattern", "Pod", "Port", "Pos", "Printer", "Program", "Rc", "ReadyMap", "ReadyState", "RefCell", "Report", "Request", "Result", "Row", "Rows", "Runtime", "Scope", "Segment", "ShowRef", "ShownText", "Sink", "Slot", "Snapshot", "Some", "Stamped", "String", "Subscribed", "Subscriber", "Supplied", "Supplier", "TestWorld", "Tick", "TickIn", "TickOut", "ToPod", "Unexpected", "Unit", "Vec", "Weak", "World", "XorShift"]]
+    if fixed == "Self": "{fixed}_" else: fixed
 
 # A Prism module's Rust module, by its path from the crate: `Check.Env` is `check::env`
 # (claude/modules-style-pass.md), the root `program`. The C++ target's namespaces and
@@ -217,7 +214,8 @@ fn RustModName m = if m == "": "program" else: Join (Each (SplitOn m, "."), \|s|
 ModSegment: fn Text -> Text
 fn ModSegment s:
     let n = Snake s
-    if HasText cppKeywords, n: "{n}_" else: n
+    # `rt` is the emitted code's path to the runtime side, in both targets
+    if (HasText cppKeywords, n) or n == "rt": "{n}_" else: n
 
 # The C++ keywords and the names the C++ standard library reaches bare (`errno`, `assert`).
 let cppKeywords = [["explicit", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool", "case", "catch", "char", "char8_t", "char16_t", "char32_t", "class", "compl", "concept", "const_cast", "consteval", "constexpr", "constinit", "co_await", "co_return", "co_yield", "decltype", "default", "delete", "double", "dynamic_cast", "explicit", "export", "extern", "float", "friend", "goto", "inline", "int", "long", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected", "public", "register", "reinterpret_cast", "requires", "short", "signed", "sizeof", "static_assert", "static_cast", "switch", "template", "this", "thread_local", "throw", "try", "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "xor", "xor_eq", "errno", "assert", "NULL", "EOF", "stdin", "stdout", "stderr", "major", "minor"]]

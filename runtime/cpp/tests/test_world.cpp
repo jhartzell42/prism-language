@@ -210,8 +210,9 @@ TEST(a_failed_check_is_reported_beside_the_transcript) {
 TEST(an_answer_to_no_place_aborts_the_tick) {
     Report report = counters().run("test nowhere, @counter:\n    build\n    click at 2\n        => aborted\n    tick\n");
     CHECK(report.transcript.find("tick 1\n  in:\n    2: click\n  aborted\n  | Runtime.Answer") != std::string::npos);
-    CHECK_EQ(report.failures.size(), 1u);
-    CHECK(!report.failures.empty() && report.failures[0].find("an earlier tick aborted") != std::string::npos);
+    // The state before the aborted tick goes on (Conformance AB): the next tick runs.
+    CHECK(report.failures.empty());
+    CHECK(report.transcript.find("tick 2\n") != std::string::npos);
 }
 
 TEST(a_static_widget_owes_no_tick) {
