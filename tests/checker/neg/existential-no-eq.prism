@@ -1,0 +1,8 @@
+# `no-impl`: an `any ^Eq` has no `^Eq` of its own (Jimmy, 9 November 2026): two arrays of
+# existentials compare their elements, each of which hides a type of its own, so nothing
+# says the two hidden types are one.
+HideNat: fn Nat -> any ^Eq
+fn HideNat n = any n
+
+Equal: fn Nat -> Bool
+fn Equal n = [[HideNat n]] == [[HideNat 2]]
