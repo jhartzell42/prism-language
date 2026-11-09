@@ -289,8 +289,12 @@ fn ImplDefOf lx, im:
             &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
         let fd = FnDefOf lx, mq, (MethodClauses d), sc
         if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{Snake (BareName (HeadName im.head))}" else: fd
-    let generics = Each im.qs, \|q| ((Camel q, [["Clone"]]))
+    # an impl's `where` clauses bound its type parameters, as a function's do
+    let generics = Each im.qs, \|q| ((Camel q, (ImplBounds lx, im, q)))
     ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (Camel (BareName im.cls))), head=head, generics=generics, methods=methods, doc="")
+
+ImplBounds: unbounded fn Lx, ImplInfo, Text -> [Text]
+fn ImplBounds lx, im, q = Fold im.bounds, [["Clone"]], \|acc, ((v, cls))| if v == q: UnionTexts acc, (BoundOf lx, cls) else: acc
 
 Renamed: fn FnDef, Text -> FnDef
 fn Renamed fd, n = update fd:
