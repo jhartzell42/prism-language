@@ -1,0 +1,9 @@
+# A lambda's parameter hiding a block's name: declarations of
+# sem-ch03-lambda-parameter-shadows. Written by Claude on the claude-bugs branch; subject to
+# change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_parameter_hides_the_blocks_name, @page:
+    build

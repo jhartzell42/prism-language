@@ -1,0 +1,20 @@
+# A lambda's parameter hides a name of the block around it (Semantics ch. 3's lambdas,
+# lexically scoped: in the body the parameter is the nearest binding of its name): `Add`'s
+# `n` is its argument, not the block's `n`, which is bound by applying `Add` and so cannot
+# be read inside it; the same in a function's block and in a widget block. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Shifted: fn Nat -> Nat
+fn Shifted base:
+    let Add = \|n| n + base
+    let n = Add 5
+    n * 2
+
+@page: @unit
+@page:
+    let Add = \|n| n + 100
+    let n = Add 5
+    Ui.Label(text=$"{Shifted 1} {n} {Add 1}")                                   # 0
