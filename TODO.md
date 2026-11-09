@@ -1,21 +1,14 @@
-# Initial steps
-
-* Create new branch, `jimmy`
-* Run local tests
-* Run chess
-* Get Claude to fix any brazen remaining bugs
-* Fix compiler warnings
-
-# Known Changes
-
-* Clean up overtesting
-
 # Rewrite
 
+* Fix compiler warnings
+* Pull/merge Claude branch for fix for new bugs
+    * Claude agent is fixing many critical bugs
 * All `README.md` files
     * Next up: Root `README.md`
+    * Find out where the pieces came from?
 * Makefile and shell scripts
     * Especially comments
+* Clean up overtesting
 * Example chess app
     * Rename `chess` to `basic-chess`
     * Rewrite the code, especially any comments

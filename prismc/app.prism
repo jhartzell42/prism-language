@@ -1,25 +1,5 @@
-# prismc's driver. `prismc compile SRC... -o OUT [--target rust|cpp] [--tests] [--name N]
-# [--prelude DIR] [--runtime DIR]` compiles a program (compile.prism); `--check` and
-# `--typed` run the checker (below; checking.prism); anything else is the front end alone:
-# `prismc FILE [OUT]` reads FILE through `Fs.Contents`, lexes and parses it, and writes its
-# tree as S-expressions (sexp.prism), then its diagnostics, through `Fs.Output` to OUT
-# (`FILE.sexp` when OUT is not given). With `--tokens` it writes the tokens in the layout
-# corpus's notation instead, and with `--fragment` it parses the file as a run of
-# statements. A file with a lexical or parse error is written all the same, and then the
-# program gives up with the diagnostics, which the CLI World prints before it exits 1. The
-# `prism` command (bin/prism, claude/usage.md) runs prismc for a person.
-#
-# With `--check FILE|DIR...` it reads the program (a directory as a tree, claude/
-# modules-style-pass.md; test modules with `--tests`), parses it, adds the prelude's
-# modules from `--prelude DIR` (`prelude` when not given) that it does not replace, and runs
-# the checker (README, Checker): the diagnostics, then a count, go to `--out OUT` when
-# given, and the program gives up with them when there is an error. `--world FAM,FAM`
-# names the families a World answers, for the root row check. `--typed FILE...` does the
-# same and writes the typed program (typed.prism) as S-expressions before the
-# diagnostics, which follow it as `;` comments.
-#
-# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
-# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+# Root of `prismc` from which all work is done
+
 emit Fs.* | Process.* | Prelude.*
 mod Reading
 mod Checking

@@ -30,4 +30,4 @@ make chess                    # Also run chess
 make test                     # Run overly thorough test suite
 ```
 
-Many subdirectories have their own `README.md` files, which contain more information.
+Some subdirectories have their own `README.md` files, which contain more information.
