@@ -1,0 +1,37 @@
+# An impl at `Pair a` calling its trait's method at `a`, the pair's part: through a
+# function (`Name (Left p)`) and with the very arguments it was given (`?Zero n`). Each call
+# is at a smaller type, so the calls end whatever the arguments: no `may-not-end`. Written
+# by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Named a:
+    Name: fn a -> Text
+    ?Zero: fn Nat -> ?a
+
+type Pair a = record:
+    left: a
+    right: a
+derive ^Eq, ^Show
+
+Left: fn Pair a -> a
+fn Left p = p.left
+
+impl ^Named Text:
+    fn Name t = t
+    fn ?Zero n = ? "z{n}"
+
+impl ^Named (Pair a) where a: ^Named:
+    fn Name p = "({Name (Left p)})"
+    fn ?Zero n = match ?Zero n:
+        ? z: ? Pair(left=z, right=z)
+        nil: nil
+
+@main: @unit
+@main:
+    let p = Pair(left=Pair(left="a", right="b"), right=Pair(left="c", right="d"))
+    let ?z: ?(Pair (Pair Text)) = ?Zero 3
+    let zs = match ?z:
+        ? q: Name q
+        nil: "none"
+    Ui.Label(text=$"{Name p} {zs}")    # 0
