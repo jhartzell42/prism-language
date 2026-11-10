@@ -1,0 +1,6 @@
+# Derived by hand: each call takes the first clause that matches.
+test clauses_in_order
+
+tick 0
+  added:
+    0: Ui.Label(text="gold silver place 5 none 3")
