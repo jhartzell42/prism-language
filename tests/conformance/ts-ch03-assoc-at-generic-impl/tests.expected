@@ -1,0 +1,7 @@
+# Derived by hand: `Open` of a text pair is its first text, interpolated as it is; the
+# firsts of two number pairs are 1 and 3.
+test assoc_at_generic_impl
+
+tick 0
+  added:
+    0: Ui.Label(text="a [[1, 3]]")
