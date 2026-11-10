@@ -211,7 +211,12 @@ fn CheckDef g, st, d:
 # The end of a definition: its own variables default (doubt LD); the top-level `let`s'
 # monomorphic ones wait for the program's end.
 DefaultDef: unbounded fn G, St -> St
-fn DefaultDef g, st:
+fn DefaultDef g, st0:
+    # a tuple's `Error` part nothing decided is an `Error`
+    let st = Fold st0.faultVars, st0, \|s, v| match Walk s, (TyFlex v):
+        TyFlex n: update s:
+            &_.tys <= Insert &_.tys, n, (TyCon "Prelude.Error", [[]])
+        otherwise: s
     let mine = Filter st.wants, \|w| match Walk st, w.ty:
         TyFlex n: (InfoOf st, n).level >= 1
         otherwise: True

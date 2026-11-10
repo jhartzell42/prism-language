@@ -279,8 +279,8 @@ type Ex = choice:
     XUnreachable
     XCall Ref, [Ex]
     # A call with its type arguments said, in the callee's order: a generic function some
-    # of whose type parameters no parameter's type holds (C++ deduces none from a result;
-    # Rust infers them, and prints the call plain).
+    # of whose type parameters no parameter's type holds: C++ deduces none from a result,
+    # and Rust none the checker settled alone (`Len (Empty 2)`'s element).
     XCallAt Ref, [OutTy], [Ex]
     # A call of a trait's method whose type parameter is only in its result, at the type
     # the call gives: the trait, the method, that type. Rust `<T as Trait>::m(..)`, C++

@@ -181,6 +181,10 @@ type St = record:
     # arm against the match's, a field, an element): at the program's end those where it
     # is one are the typed output's `faults` (`FaultNotes`).
     faultQs: [Waiting]
+    # A tuple's part that is a bare `Error` has a variable of its own, which the place the
+    # tuple meets decides (a `~T`, so the part is its failure) and the definition's end
+    # makes `Error` if nothing did (`DefaultDef`); monomorphic till then (`KeepWaiting`).
+    faultVars: [Nat]
 derive ^Eq, ^Show
 
 type AssocImpl = record:
@@ -201,7 +205,7 @@ type Waiting = record:
 derive ^Eq, ^Show
 
 NewSt: fn Nat -> St
-fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], faultQs=[[]])
+fn NewSt file = St(next=0, tys={}, infos={}, rows={}, lacks={}, wants=[[]], incls=[[]], diags=[[]], level=0, file=file, color=CBound, colorWhy="", colorFlex=[[]], cols={}, cleqs=[[]], colQ={}, colUp={}, deferred=[[]], binderAt={}, rowNames={}, layerQs=[[]], fieldQs=[[]], recording=False, typed=emptyTyped, choices={}, sizeTys={}, localNext=0, localIds={}, anyGivens=[[]], assocImpls=[[]], faultQs=[[]], faultVars=[[]])
 
 Closed: fn [Text] -> Rw
 fn Closed fs = Rw(fams=(SortTexts fs), minus=[[]], tail=TlClosed)

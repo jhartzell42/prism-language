@@ -155,7 +155,8 @@ fn InferKind env, st, e = match e.kind:
     EBound b: InferBound env, st, b, e.span
     ETuple es:
         let ((ts, st2)) = InferAll env, st, es
-        ((TyTuple ts, st2))
+        let ((parts, st3)) = Fold (Range0 (Len ts)), (([[]], st2)), \|((acc, s)), i| FaultPart s, acc, (Or ts[i], TyErr), (Or es[i], e).span
+        ((TyTuple parts, st3))
     EArray es: InferArray env, st, es, e.span
     EMap entries: InferMap env, st, entries, e.span
     EGroup x: Infer env, st, x
@@ -221,6 +222,21 @@ fn Check env, st, e, expected = match e.kind:
     otherwise:
         let ((t, st2)) = Infer env, st, e
         Unify (NoteFaultAt st2, e.span, expected, t), expected, t, e.span
+
+# A tuple's part: one that is a bare `Error` gets a variable of its own (`St.faultVars`), a
+# fault question at the part; any other keeps its type.
+FaultPart: unbounded fn St, [Ty], Ty, Range -> (([Ty], St))
+fn FaultPart st, acc, t, span = match Walk st, t:
+    TyCon "Prelude.Error", [[]]:
+        let ((v, st2)) = FreshVar st, False, ""
+        let st3 = update (NoteFaultAt st2, span, v, t):
+            &_.faultVars <= Push &_.faultVars, (FlexOf v)
+        (((Push acc, v), st3))
+    otherwise: (((Push acc, t), st))
+
+FlexOf: fn Ty -> Nat
+fn FlexOf (TyFlex n) = n
+fn FlexOf ignore = 0
 
 # `any e` against `any ^Show`: the bounds are solved at `e`'s type (ch. 5, Existentials).
 CheckAny: unbounded fn Env, St, Expr, Ty, Range -> St

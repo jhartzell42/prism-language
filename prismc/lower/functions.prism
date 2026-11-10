@@ -284,29 +284,33 @@ fn HeadName other = ""
 SelfIn: unbounded fn Ty, Text -> Ty
 fn SelfIn t, param = Instantiated t, [[param]], [[(TyCon "\u{0}Self", [[]])]]
 
-# Whether a trait method's own type parameter is only in its result (`?Read: fn Text -> ?a`):
+# Whether a trait method's own type parameter is decided by none of its parameters, being
+# only in its result (`?Read: fn Text -> ?a`) or under an associated type (`Make: fn Item a
+# -> a`):
 # a call is decided by the type it gives, never by an argument (`XCallSelf`).
 IsResultOnly: fn Lx, Text, Text -> Bool
 fn IsResultOnly lx, mq, param = match lx.g.vals[mq]:
     ? v: match v.scheme.ty:
-        TyFn ignore, ps, ignore: not (Fold ps, False, \|f, p| f or HasText (TyQsIn p), param)
+        TyFn ignore, ps, ignore: not (Fold ps, False, \|f, p| f or HasText (DeducibleQs p), param)
         otherwise: True
     nil: False
 
-# The type variables a type names.
-TyQsIn: fn Ty -> [Text]
-fn TyQsIn t = match t:
+# The type variables a value of a type decides.
+DeducibleQs: fn Ty -> [Text]
+fn DeducibleQs t = match t:
     TyQ q: [[q]]
     TyRigid q: [[q]]
-    TyCon ignore, xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (TyQsIn x)
-    TyFn ignore, ps, r: Fold ps, (TyQsIn r), \|acc, x| UnionTexts acc, (TyQsIn x)
-    TyTuple xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (TyQsIn x)
-    TyArray x: TyQsIn x
-    TyMap k, v: UnionTexts (TyQsIn k), (TyQsIn v)
-    TySig ignore, x: TyQsIn x
-    TyAt x, ignore: TyQsIn x
-    TyElem ignore, x: TyQsIn x
-    TyAssoc ignore, ignore, x: TyQsIn x
+    TyCon ignore, xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (DeducibleQs x)
+    TyFn ignore, ps, r: Fold ps, (DeducibleQs r), \|acc, x| UnionTexts acc, (DeducibleQs x)
+    TyTuple xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (DeducibleQs x)
+    TyArray x: DeducibleQs x
+    TyMap k, v: UnionTexts (DeducibleQs k), (DeducibleQs v)
+    TySig ignore, x: DeducibleQs x
+    TyAt x, ignore: DeducibleQs x
+    TyElem ignore, x: DeducibleQs x
+    # an associated type's argument is not decided by a value of it (`Item a` is `Nat` at
+    # every `a` whose impl chooses `Nat`)
+    TyAssoc ignore, ignore, ignore: [[]]
     otherwise: [[]]
 
 # The names a trait's methods whose parameter is only in their result take in the target.

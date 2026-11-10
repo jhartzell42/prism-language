@@ -80,7 +80,7 @@ derive ^Eq, ^Show
 # a fault's, a tuple's, a record's, `unit`'s, a closed row's tags. `nil` for a type no
 # finite set of constructors covers (numbers, texts, arrays, functions, open rows).
 ?CtorsOf: unbounded fn Env, St, Ty -> ?[Ctor]
-fn ?CtorsOf env, st, t = match Walk st, t:
+fn ?CtorsOf env, st, t = match Zonk st, t:
     TyCon "Bool", [[]]: ? [[Ctor(name="True", arity=0, args=[[]], shown="True"), Ctor(name="False", arity=0, args=[[]], shown="False")]]
     TyCon "unit", [[]]: ? [[Ctor(name="unit", arity=0, args=[[]], shown="unit")]]
     TySig "?", i: ? [[Ctor(name="?", arity=1, args=[[i]], shown="? _"), Ctor(name="nil", arity=0, args=[[]], shown="nil")]]
@@ -324,7 +324,7 @@ fn ArmSpan a = match a.?pattern:
 
 # A row the match cannot close: an element row with a tail, or a fault row in a library.
 IsOpenRow: unbounded fn Env, St, Ty -> Bool
-fn IsOpenRow env, st, t = match Walk st, t:
+fn IsOpenRow env, st, t = match Zonk st, t:
     TyElem rw, ignore: (WalkRow st, rw).tail != TlClosed
     TyElemAny rw: (WalkRow st, rw).tail != TlClosed
     TyCon n, [[]]: match env.g.types[n]:
@@ -334,7 +334,7 @@ fn IsOpenRow env, st, t = match Walk st, t:
 
 # Whether every family a row names is the matching module's own (Q-RW6).
 OwnsRow: unbounded fn Env, St, Ty -> Bool
-fn OwnsRow env, st, t = match Walk st, t:
+fn OwnsRow env, st, t = match Zonk st, t:
     TyElem rw, ignore: Fold (WalkRow st, rw).fams, True, \|ok, f| ok and (Or env.g.famOwner[f], "") == env.home
     TyCon n, [[]]: match env.g.types[n]:
         ? ti: ti.body != BRowKind
