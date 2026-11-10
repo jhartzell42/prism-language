@@ -1,0 +1,44 @@
+# A building `match` and a building `if` over plain scrutinees (Semantics ch. 4, "A building
+# `match` or `if` needs a plain scrutinee. The arm is fixed for the life of the block and
+# adds no path segment"; ch. 8, a widget block is transparent): the arm is chosen once, at
+# the build, by its pattern and guard; its places take the block's next positions, its
+# block reads the block's own names and its pattern's binders, and a `match` that ends
+# its block gives the arm's event as the block's. Arms of different widths leave the block's later places at the widest arm's
+# next position (prismc's pick CS, as for a widget of several clauses). Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Mode = choice:
+    Loud Text
+    Soft
+derive ^Eq, ^Show
+
+@Choose: fn Mode, $Nat -> @!Click
+fn @Choose mode, $resets:
+    Ui.Label(text=$"choose")                                           # 0
+    match mode:                                                        # 1, 2
+        Loud t if t != "":
+            !up <- Ui.Button(label=$"{t}!")                            # 1
+            Ui.Label(text=$"{t} {$resets}")                            # 2
+            @ !up
+        Loud t:
+            !e <- Ui.Button(label=$"empty")                            # 1
+            @ !e
+        Soft:
+            !s <- Ui.Button(label=$"soft")                             # 1
+            @ !s
+
+@Panel: fn Mode -> @unit
+fn @Panel mode:
+    !reset <- Ui.Button(label=$"reset")                                # 0
+    $resets <- 0 then $resets + 1 on !reset
+    let ?count = if mode == Soft: nil else: ? 2
+    !hit <- @Choose mode, $resets                                      # 1, 2, 3
+    if ? c <- ?count:                                                  # 4
+        Ui.Label(text=$"count {c}")
+    else:
+        Ui.Label(text=$"no count")
+    $hits <- 0 then $hits + 1 on !hit
+    Ui.Label(text=$"hits {$hits}")                                     # 5
