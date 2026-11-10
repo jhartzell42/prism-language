@@ -1,0 +1,36 @@
+# A program trait's defaults that give `Self` (`Twice`) and close over it (`Adder`), used
+# at a generic impl: the trait's values are whole values its functions may keep. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Mapper a:
+    Over: fn a, (fn Nat -> Nat) -> a
+    Get: fn a -> Nat
+    Adder: fn a -> (fn Nat -> Nat)
+    fn Adder x = \|n| n + (Get x)
+    Twice: fn a, (fn Nat -> Nat) -> a
+    fn Twice x, F = Over (Over x, F), F
+
+type Cell = record:
+    v: Nat
+
+type Wrap a = record:
+    inner: a
+
+impl ^Mapper Cell:
+    fn Over c, F = Cell(v=F c.v)
+    fn Get c = c.v
+
+impl ^Mapper (Wrap a) where a: ^Mapper:
+    fn Over w, F = Wrap(inner=(Over w.inner, F))
+    fn Get w = Get w.inner
+
+Bump: fn a -> Nat where a: ^Mapper
+fn Bump x:
+    let A = Adder x
+    Get (Twice x, \|n| A n)
+
+@main: @unit
+@main:
+    Ui.Label(text=$"{Bump (Cell(v=2))} {Bump (Wrap(inner=Cell(v=3)))}")    # 0
