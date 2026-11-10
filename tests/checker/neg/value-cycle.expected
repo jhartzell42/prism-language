@@ -1,0 +1,5 @@
+tests/checker/neg/value-cycle.prism:7: error[value-cycle]: a cycle among plain values: `x`, `y`
+        let x = y + n
+        ^^^^^^^^^^^^^
+  fix: compute them in order: a value cannot read itself, through other values or directly
+1 error

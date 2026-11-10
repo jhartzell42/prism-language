@@ -1,0 +1,9 @@
+# `value-cycle`: an expression block's `let`s are one binding group, and a cycle among plain
+# values is an error naming every binding in it (Semantics ch. 4, "Binding groups and
+# cycles": "a cycle among plain values is an error"). Written by Claude on the claude-bugs
+# branch; subject to change.
+Loop: fn Nat -> Nat
+fn Loop n:
+    let x = y + n
+    let y = x + 1
+    x
