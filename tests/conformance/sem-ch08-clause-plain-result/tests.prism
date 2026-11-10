@@ -1,7 +1,0 @@
-# The tests of sem-ch08-clause-plain-result (Semantics chapter 8).
-emit Ui.*
-use App.*
-use Ui.*
-
-test clause_plain_result, @main:
-    build

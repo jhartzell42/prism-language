@@ -1,0 +1,5 @@
+tests/checker/neg/mod-prelude/app.prism:5: error[mod-prelude]: `mod Prelude`: `Prelude` is the prelude's own module, which every file reaches by that name
+    mod Prelude
+    ^^^^^^^^^^^
+  fix: name the module otherwise
+1 error

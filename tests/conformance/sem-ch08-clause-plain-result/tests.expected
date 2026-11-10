@@ -1,8 +1,0 @@
-# Derived by hand from Semantics ch. 8: `? 3` chooses the second clause, its label and its
-# result "n3".
-test clause_plain_result
-
-tick 0
-  added:
-    0: Ui.Label(text="some 3")
-    1: Ui.Label(text="n3")

@@ -1,0 +1,5 @@
+# A program module named as the prelude, for mod-prelude.
+emit r
+
+Twice: fn Nat -> Nat
+fn Twice n = n * 2

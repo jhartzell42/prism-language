@@ -1,14 +1,15 @@
-# Modules named as the runtime's libraries and its path (`PrismRtl`, `PrismWorldCli`, `Rt`),
-# whose types share
-# names with the runtime's (`Dynamic`): the emitted code reaches the runtime by its own
-# names, so a program module never stands for it, in either target. Written by Claude on
+# Modules named as the runtime's libraries and its path (`PrismRtl`, `PrismWorldCli`,
+# `PrismWorldCanvas`, `Rt`),
+# whose types share names with the runtime's (`Dynamic`, `Hold`): the emitted code reaches
+# the runtime from the root, so a program module never stands for it, in either target. Written by Claude on
 # the claude-bugs branch; subject to change.
 emit Ui.*
 mod PrismRtl
 mod PrismWorldCli
+mod PrismWorldCanvas
 mod Rt
 test mod Tests
 
 @main: @unit
 @main:
-    Ui.Label(text=$"{PrismRtl.Twice 3} {Show (PrismRtl.Dynamic 2)} {PrismWorldCli.Run 4} {Show (Rt.Hold 5)}")    # 0
+    Ui.Label(text=$"{PrismRtl.Twice 3} {Show (PrismRtl.Dynamic 2)} {PrismWorldCli.Run 4} {Show (Rt.Hold 5)} {PrismWorldCanvas.Run 6}")    # 0
