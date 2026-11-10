@@ -1,0 +1,9 @@
+# The hosted clause widget's tests: declarations of sem-ch09-host-clause-widget.
+emit Ui.*
+use App.*
+
+test hosted_clauses, @hosted:
+    build
+        => expect Ui.Label(text="total 0")
+    click at 0/[1]/0
+        => expect Ui.Label(text="total 3")
