@@ -1,0 +1,20 @@
+# A `for` whose rows end on a plain result (`@ i`), gathered by key into the block's
+# dynamic, inside a widget inlined at its call. Written by Claude on the claude-bugs branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Rows: fn $[Nat] -> @$Nat
+fn @Rows $xs:
+    $keys <- for i, $x <- $xs:                                   # 0/[k]
+        Ui.Label(text=$"i{i}={$x}")
+        @ i
+    @ (Len (Values $keys))
+
+@main: @unit
+@main:
+    !go <- Ui.Button(label=$"go")                                # 0
+    $xs <- [[5]] then Push $xs, 7 on !go
+    $n <- @Rows $xs                                              # 1/[k]
+    Ui.Label(text=$"{$n}")                                       # 2
