@@ -248,6 +248,8 @@ type Wx = record:
     # The root's dynamic result: what it reads and its type (the World hears it at the
     # build and whenever it moves).
     ?rootDyn: ((Ex, [Read], OutTy))
+    # A generation's row: the `rebuild`'s field in its block (`GenRowOf`), else "".
+    genOf: Text
     # The `for`s whose rows read the block: what the rows read of it, by builder (gap DY).
     rowMarks: [RowMarks]
     # The `for`s' rows, lowered and waiting for the block's heights (pick RE).
@@ -299,15 +301,16 @@ type FlatDef = record:
 # A `for`'s rows' (or a `rebuild`'s generation's) reads of their block, as the block's own
 # names (gap DY): the builder's field; what the rows' places read, whose writes in the block
 # mark every row; and the names the rows' `!Updated` nodes read, a write behind one of
-# which tells every row through its `parent_wrote_{m}` (pick RE; a generation hears none,
-# `UpdatedGaps`).
+# which tells every row through its `parent_wrote_{m}` (pick RE; a generation's current
+# row, through a port of the block: `GenHears`).
 type RowMarks = record:
     builder: Text
     reads: [Read]
     wrote: [Text]
-    # a generation's names of the block its own builders read, which it is not told of (gap
-    # DY): refused unless the outer `rebuild`'s source reads them (`UnheardGaps`)
-    unheard: [Text]
+    # a generation's other names of the block, which only its own builders read (gap DY): a
+    # write behind one tells the current generation as `wrote` does, and its builders build
+    # only while the generation stays current (`current`)
+    builds: [Text]
     kind: RowKind
 
 # A host of the block (`@HostDocument`, `@HostSome`; pick HO): its line's position, its
@@ -361,7 +364,7 @@ fn NewWx lx, name, fields, inits, moves, getters, dynReads, taken, inlining, ?ho
     let hostedInits = match ?hostedBy:
         ? ignore: [[(("enclosing", (XVar "enclosing")))]]
         nil: [[]]
-    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], ?hostedBy=?hostedBy, ?rootDyn=nil, rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], ?resultMoved=nil, dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]])
+    Wx(lx=lx, node=name, pos=pos0, gns=[[]], fields=(Append fields, hostedFields), inits=inits, moves=(Append moves, hostedInits), lets=[[]], build=[[]], places=[[]], answers=[[]], started=[[]], defers=[[]], getters=getters, dynReads=dynReads, taken=(Push taken, "enclosing"), fallible=False, inlining=inlining, result=WrUnit, rows=[[]], builders=[[]], letCaches=[[]], buildHolds=[[]], upSink="", gens=[[]], genHolds=[[]], ports=[[]], subs=[[]], parentEnv=emptyEnv, hosts=[[]], dynPlaces=[[]], scopes=[[]], ?hostedBy=?hostedBy, ?rootDyn=nil, genOf="", rowMarks=[[]], pending=[[]], floors={}, snaps=[[]], ?resultMoved=nil, dynAnswers=[[]], inited=[[]], flattens=[[]], clauseResults=[[]], switches=[[]])
 
 # A name not yet taken in the node: `base`, else `base_2`, `base_3`.
 FreshName: fn Wx, Text -> ((Text, Wx))

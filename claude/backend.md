@@ -248,9 +248,14 @@ it make every program an interpreter run, and every type mistake a runtime fault
   whole and tells the port node. The outer's update port (`{name}_ofollow`) calls
   `cx.swap_later`, and `swap`, after the tick's propagation, listens to the inner the
   outer then holds: heard from n+1, with no catch-up (`sem-appB-merge-all-switched`).
-- **A generation's own builder over a name of its block** that the outer `rebuild`'s
-  source does not read is refused (`UnheardGaps`, gap DY; `sem-ch07-generation-rebuild`).
-  A generation is told only what its `!Updated` nodes read.
+- **A generation's own builder over a name of its block** (gap DY): the generation hears
+  every block name its `!Updated` nodes or its own builders read (`RowHears`), through
+  the block's `{gen}_wrote_{m}_port` (`sem-ch07-generation-rebuild`). A write behind a
+  name that the `rebuild`'s source reads too lists both the block and the old generation
+  for the build, in either order. The generation's `build` runs only while `current()`
+  holds: it has not left (`left`, set as its places are torn down), its block's
+  `{gen}_stale` is clear, and a generation block is current in turn. So a generation the
+  tick replaces builds nothing (`sem-ch07-paged`).
 - **`!Updated` in a generation over its block's names.** The block holds its current
   generation as a `Row`, which names no method of it, so each name the generation hears
   is a port of the block, `{gen}_wrote_{m}_port`, fired where a `for` row's

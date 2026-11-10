@@ -108,7 +108,7 @@ fn ForLine wx, benv, menv, ?binders, source, body, e, ?bound:
     let ((rbe, rme)) = ForEnvs benvL, menvL, ?binders, keyB, keyM, valB, valM, inner
     let rowWx = BlockInto rowWx0f, rbe, rme, body
     let wx3 = update wx2:
-        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=name, reads=(RowPlaceReads rowWx), wrote=(RowHears rowWx), unheard=[[]], kind=ForRow)
+        &_.rowMarks <= Push &_.rowMarks, RowMarks(builder=name, reads=(RowPlaceReads rowWx), wrote=(RowHears rowWx), builds=[[]], kind=ForRow)
     let full = TypeAt lx, e.span
     let outTy = OutTyOf lx, (Peel full)
     # a plain result is the row's from its build on: kept in a field of the row, read as a
