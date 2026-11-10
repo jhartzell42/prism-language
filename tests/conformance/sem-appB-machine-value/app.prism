@@ -1,0 +1,17 @@
+# `@Machine` whose step is a function value (Semantics Appendix B: `@Machine: fn (fn s, a ->
+# ((s, ?b))), s, !a -> @!b`, any function of that type): a lambda that reads the widget's
+# own parameter, made at the build. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+
+Past: fn Nat -> Text
+fn Past t = "past {t}"
+
+@Over: fn Nat -> @unit
+fn @Over limit:
+    !go <- Ui.Button(label=$"Go")                                       # 0
+    let step = \|total, n| ((total + n, if total + n > limit: ? (total + n) else: nil))
+    !over <- @Machine step, 0, (2 on !go)
+    $past <- "no" then Past !over
+    Ui.Label(text=$"{$past}")                                           # 1
